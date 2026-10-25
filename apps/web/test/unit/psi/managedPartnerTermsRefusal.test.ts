@@ -197,7 +197,7 @@ describe("a managed exchange whose partner refused its linkage terms", () => {
       NOW,
     );
     for (const failure of [live, recorded]) {
-      if (failure === undefined || failure.kind === "handed-off")
+      if (failure === undefined)
         throw new Error("expected the partner-refused-terms alert");
       expect(failure.kind).toBe("partner-refused-terms");
       expect(failure.title).toBe(TERMS_DIFFERENCE_TITLE);
@@ -205,15 +205,11 @@ describe("a managed exchange whose partner refused its linkage terms", () => {
       expect(managedRunRetryable(failure)).toBe(false);
     }
     // The terms that differ, under the label, as the one-shot alert shows them.
-    expect(live.kind !== "handed-off" && live.reportedCause).toBe(
+    expect(live.reportedCause).toBe(
       "Your partner stopped the exchange because the linkage terms differ: " +
         `algorithm mismatch: yours is "psi", your partner's is "psi-c"`,
     );
-    expect(
-      recorded !== undefined &&
-        recorded.kind !== "handed-off" &&
-        recorded.reportedCause,
-    ).toBeUndefined();
+    expect(recorded !== undefined && recorded.reportedCause).toBeUndefined();
   });
 
   test("states the refusal in the one-shot alert's own words", async () => {

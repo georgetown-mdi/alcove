@@ -13,10 +13,6 @@ import {
   tickManagedSchedules,
 } from "@psi/managed/managedScheduleRunner";
 import {
-  ManagedExchangeCustodyUnreadableError,
-  ManagedExchangeSpentError,
-} from "@psi/managed/managedExchangeRun";
-import {
   NO_STANDING_CONDITION,
   applyManagedExchangeCompromiseResponse,
   applyManagedExchangeLastRun,
@@ -35,6 +31,7 @@ import {
 } from "@psi/managed/managedExchangeArtifact";
 import { ManagedExchangeExpiredError } from "@psi/managed/managedExpiry";
 import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
+import { ManagedExchangeNotRunnableError } from "@psi/managed/managedExchangeRun";
 import { ManagedInputError } from "@psi/managed/managedInputGuard";
 import { ManagedSignalingEndpointRefusedError } from "@psi/managed/managedRendezvous";
 import { PartnerNoShowError } from "@psi/transport/waitForConnection";
@@ -157,7 +154,6 @@ function harness(options: {
   records: Array<ManagedExchangeRecord>;
   startAt: string;
   script?: AttemptScript;
-  localState?: Map<string, ManagedLocalState>;
   /** Stored keys the per-entry read could not parse, as the store reports them
    * beside the records it could. */
   unreadableIds?: Array<string>;
@@ -205,7 +201,7 @@ function harness(options: {
     readRecord: (id) => Promise.resolve(stored.get(id)),
     listLocalState: () =>
       Promise.resolve({
-        states: options.localState ?? new Map<string, ManagedLocalState>(),
+        states: new Map<string, ManagedLocalState>(),
         unreadableIds: options.unreadableLocalStateIds ?? [],
       }),
     persistAdvance: (id, advance) => {
@@ -413,13 +409,12 @@ describe("a due window in the open runtime", () => {
     for (const error of [
       new ManagedInputError({ reason: "acquire", cause: new Error("gone") }),
       new ManagedExchangeExpiredError("2026-01-05T00:00:00.000Z"),
-      new ManagedExchangeSpentError("record-under-test"),
-      // The custody reading that failed: a local storage problem the next attempt
-      // meets unchanged, so the window ends here rather than spending its whole
-      // attempt budget on it the way a transport fault would.
-      new ManagedExchangeCustodyUnreadableError(
+      // A stored copy the run cannot use: a local storage problem the next
+      // attempt meets unchanged, so the window ends here rather than spending its
+      // whole attempt budget on it the way a transport fault would.
+      new ManagedExchangeNotRunnableError(
         "record-under-test",
-        new Error("the sibling entry did not validate"),
+        new Error("the stored record did not validate"),
       ),
       new ManagedSignalingEndpointRefusedError(
         "Riverbend quarterly",
@@ -443,17 +438,22 @@ describe("a due window in the open runtime", () => {
     }
   });
 
-  test("a hand-off confirmed mid-window ends the window where it lands", async () => {
-    // The tick read the sibling state before the window opened, so the hand-off
-    // reaches this occupancy as the run path's own refusal on the second attempt.
-    // A retryable failure would otherwise have spun this window to the attempt
-    // cap; the refusal is what stops it there.
+  test("a stored copy that stops being runnable mid-window ends the window where it lands", async () => {
+    // The refusal reaches this occupancy as the run path's own on the second
+    // attempt. A retryable failure would otherwise have spun this window to the
+    // attempt cap; the refusal is what stops it there.
     const runner = harness({
       records: [recordWith()],
       startAt: "2026-01-06T14:00:00.000Z",
       script: [
         { kind: "fail", error: new Error("the broker refused") },
-        { kind: "fail", error: new ManagedExchangeSpentError("spent-record") },
+        {
+          kind: "fail",
+          error: new ManagedExchangeNotRunnableError(
+            "record-under-test",
+            new Error("the stored record did not validate"),
+          ),
+        },
       ],
     });
 
@@ -461,9 +461,8 @@ describe("a due window in the open runtime", () => {
 
     expect(entry.attempts).toBe(2);
     expect(entry.disposition).toBe("failed");
-    // The window says nothing about the partner: no miss counted, and the run
-    // that refused recorded its own `handed-off` bookkeeping, so the advance
-    // holds none.
+    // The window says nothing about the partner: no miss counted, and the
+    // refusal's bookkeeping is the run's own, so the advance holds none.
     expect(runner.advances[0].advance.schedule.consecutiveMisses).toBe(0);
     expect(runner.advances[0].advance.lastRun).toBeUndefined();
   });
@@ -1324,15 +1323,11 @@ describe("records the tick leaves alone", () => {
     attempted = 0;
   });
 
-  async function tickOne(
-    record: ManagedExchangeRecord,
-    localState?: Map<string, ManagedLocalState>,
-  ) {
+  async function tickOne(record: ManagedExchangeRecord) {
     const runner = harness({
       records: [record],
       startAt: "2026-01-06T14:30:00.000Z",
       script: [{ kind: "succeed" }],
-      ...(localState !== undefined ? { localState } : {}),
     });
     const [entry] = await tickManagedSchedules(runner.seams);
     attempted = runner.attempts.length;
@@ -1343,19 +1338,6 @@ describe("records the tick leaves alone", () => {
     const { entry } = await tickOne(recordWith({ schedule: undefined }));
     expect(entry.skipped).toBe("no-schedule");
     expect(attempted).toBe(0);
-  });
-
-  test("a copy this device handed off", async () => {
-    const record = recordWith();
-    const { entry, runner } = await tickOne(
-      record,
-      new Map([
-        [record.id, { spent: { spentAt: "2026-01-05T00:00:00.000Z" } }],
-      ]),
-    );
-    expect(entry.skipped).toBe("spent");
-    expect(attempted).toBe(0);
-    expect(runner.advances).toHaveLength(0);
   });
 
   test("a record with no working folder", async () => {

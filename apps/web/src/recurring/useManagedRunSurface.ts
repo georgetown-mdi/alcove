@@ -167,8 +167,6 @@ export interface ManagedRunSurfaceHost {
   dropUnrecordedRunFlag: () => void;
   /** Apply or decline the stored terms proposal. */
   settleTermsProposal: (apply: boolean) => Promise<void>;
-  /** Load the record again after a re-take cleared the spent state. */
-  readRecordAgain: () => void;
   /** Load the record again after a change elsewhere on the page wrote it. */
   rereadRecord: () => void;
   /** Adopt the record the configuration surface saved. */
@@ -188,8 +186,8 @@ export function useManagedRunSurface(id: string): ManagedRunSurfaceHost {
     managedRunSurfaceReducer,
     MANAGED_RUN_SURFACE_INITIAL,
   );
-  const { load, run: runState, recovery, reads, handoff } = surfaceState;
-  const exportBusy = handoff.export.kind === "busy";
+  const { load, run: runState, recovery, reads, exports } = surfaceState;
+  const exportBusy = exports.export.kind === "busy";
   const runnable = load.kind === "runnable" ? load : undefined;
   const record = runnable?.record;
   const localState = runnable?.localState;
@@ -512,19 +510,6 @@ export function useManagedRunSurface(id: string): ManagedRunSurfaceHost {
           Date.now(),
           dataExchangeStarted,
         );
-        // A run the hand-off refused moves the surface into the spent state here,
-        // rather than leaving the run controls standing over a copy this device no
-        // longer owns until the operator reloads. It is taken from the CLASSIFIED
-        // state rather than the raw error, so the phase-boundary guard the
-        // classification holds decides it: a refusal that somehow arrived past
-        // the first peer-visible payload is not this benign state and keeps the
-        // generic failure surface. The reload beside it supplies the date and the
-        // hand-off the spent surface names, and a reload that did not answer costs
-        // those and not the state.
-        if (failed.kind === "handed-off") {
-          dispatchSurface({ type: "run-handed-off", spent: local?.spent });
-          return;
-        }
         dispatchSurface({
           type: "run-failed",
           failure: { alert: failed, runNumber },
@@ -835,14 +820,6 @@ export function useManagedRunSurface(id: string): ManagedRunSurfaceHost {
     }
   }
 
-  // Load the record and its sibling state again after a re-take has cleared the
-  // spent state, so what the surface shows is what the store holds rather than the
-  // re-take's own answer: the load is the one place the run affordance, the backup
-  // state, and the standing condition are derived.
-  function readRecordAgain(): void {
-    dispatchSurface({ type: "record-retaken" });
-  }
-
   // Remove everything this exchange's scheduled runs left in this browser, then
   // read the store again: what the section shows afterwards is what the store
   // holds, not an assumption that the delete took. A rejection reaches the
@@ -885,7 +862,6 @@ export function useManagedRunSurface(id: string): ManagedRunSurfaceHost {
     clearParked,
     dropUnrecordedRunFlag,
     settleTermsProposal,
-    readRecordAgain,
     rereadRecord: () => dispatchSurface({ type: "record-read-requested" }),
     editConfiguration: (configuration) =>
       dispatchSurface({ type: "configuration-edited", configuration }),

@@ -13,7 +13,7 @@
  * from it: the record's local `side` dispatches the run, never `connection.role`;
  * the input is acquired per run through `acquireInput`, never read from the
  * record; and the pre-connection checks run in order inside the run+rotate lock
- * -- hand-off refusal, expiry of the record as stored, input -- before any
+ * -- expiry of the record as stored, then input -- before any
  * connection. Persist-before-success is {@link runManagedExchange}'s; this module
  * only supplies the phases it gates.
  */
@@ -37,15 +37,13 @@ import { PartnerNoShowError } from "../transport/waitForConnection";
 import { hasRecoveryHint } from "../authenticateExchange";
 
 import {
-  ManagedExchangeCustodyUnreadableError,
-  ManagedExchangeNotRunnableError,
-  ManagedExchangeSpentError,
-  runManagedExchange,
-} from "./managedExchangeRun";
-import {
   ManagedExchangeExpiredError,
   managedExchangeLapsed,
 } from "./managedExpiry";
+import {
+  ManagedExchangeNotRunnableError,
+  runManagedExchange,
+} from "./managedExchangeRun";
 import {
   ManagedInputError,
   managedInputFailureKind,
@@ -151,15 +149,13 @@ export interface ManagedRerunOptions {
  * {@link runManagedExchange} takes the single-writer lock and makes the
  * pre-connection checks inside it, in order:
  *
- * 1. **The hand-off refusal.** A copy an export handed off is refused
- *    ({@link ManagedExchangeSpentError}, the `"handed-off"` state).
- * 2. **Expiry.** The record is read again under the lock, and a lapsed
+ * 1. **Expiry.** The record is read again under the lock, and a lapsed
  *    `expires` on that copy (as of `now`) raises a
  *    {@link ManagedExchangeExpiredError}; no `lastRun` is written (no run
  *    happened, and the record already holds the lapse). The caller's `record`
  *    supplies only the id: its own `expires` may predate a rotation or a
  *    re-install.
- * 3. **The input.** The input is acquired and validated before the handshake
+ * 2. **The input.** The input is acquired and validated before the handshake
  *    opens any connection (a {@link ManagedInputError} has the `"input"` or
  *    `"terms-shortfall"` tier).
  *
@@ -182,11 +178,6 @@ export interface ManagedRerunOptions {
  * @throws {ManagedExchangeNotRunnableError} if the record read under the lock
  *   is gone, does not validate, or holds a configuration only; no input was
  *   read and no connection was attempted.
- * @throws {ManagedExchangeSpentError} if an export handed this device's copy off;
- *   no input was read and no connection was attempted.
- * @throws {ManagedExchangeCustodyUnreadableError} if the sibling entry holding
- *   that state could not be read; the run refuses rather than rotating on an
- *   unread custody.
  * @throws {ManagedInputError} if the input guard rejects (a missing file, a gone
  *   permission, or an unsatisfiable column shape); no connection was attempted.
  * @throws {ManagedExchangeLockUnavailableError} if a run is already in progress in
@@ -335,10 +326,8 @@ function isPartnerRefusedSetAbort(error: unknown): boolean {
  * section) classifies, or `undefined` for a failure whose bookkeeping is owned
  * elsewhere or absent by design:
  *
- * - {@link ManagedInputError}, {@link RotationPersistError},
- *   {@link ManagedExchangeSpentError}, and
- *   {@link ManagedExchangeCustodyUnreadableError}: already recorded
- *   best-effort inside the critical section.
+ * - {@link ManagedInputError} and {@link RotationPersistError}: already
+ *   recorded best-effort inside the critical section.
  * - {@link LinkageTermsUnsatisfiableError} before the data exchange began:
  *   records `terms-shortfall` here, since this refusal comes from the
  *   pre-connection prepare rather than the input guard.
@@ -395,10 +384,8 @@ export function rerunFailureLastRun(
   dataExchangeStarted: boolean,
 ): ManagedExchangeLastRun | undefined {
   if (
-    error instanceof ManagedExchangeCustodyUnreadableError ||
     error instanceof ManagedExchangeExpiredError ||
     error instanceof ManagedExchangeLockUnavailableError ||
-    error instanceof ManagedExchangeSpentError ||
     error instanceof ManagedInputError ||
     error instanceof RotationPersistError ||
     error instanceof ManagedRelayRegistrationError ||
@@ -444,7 +431,7 @@ export function rerunFailureLastRun(
 }
 
 /** The benign outcomes a surface classifies without attack framing. The first
- * six are read before any connection is attempted; `"missed"` is read after a
+ * five are read before any connection is attempted; `"missed"` is read after a
  * connection attempt found no partner, `"too-large"` before connecting or
  * after the terms exchange, `"partner-set-too-large"` and
  * `"partner-refused-set"` after the terms exchange, `"partner-refused-terms"`
@@ -453,7 +440,6 @@ export function rerunFailureLastRun(
  * did not confirm a pending registration. */
 type BenignRerunOutcome =
   | "expired"
-  | "handed-off"
   | "custody-unreadable"
   | "input"
   | "terms-shortfall"
@@ -477,12 +463,10 @@ type BenignRerunOutcome =
  * stays out of the transport bucket since no handshake ran and nothing left
  * this device.
  *
- * `"handed-off"` is read before the input state because the run refuses in that
- * order (see {@link ./managedExchangeRun.ts}): a copy an export gave away is
- * refused before its input file is read.
- *
- * `"custody-unreadable"` is read off the error rather than the record's stamp:
- * the failure that raises it takes the record's own evidence with it, so
+ * `"custody-unreadable"` is read before the input state because the run refuses
+ * in that order (see {@link ./managedExchangeRun.ts}), and it is read off the
+ * error rather than the record's stamp: the failure that raises it takes the
+ * record's own evidence with it, so
  * reading from the record alone would fall through to the retryable transport
  * tier -- offering a retry for a permanent local problem.
  *
@@ -496,8 +480,8 @@ type BenignRerunOutcome =
  * gates every outcome whose copy tells the operator nothing left this device:
  * `"missed"` and `"terms-shortfall"` share the guard their bookkeeping
  * counterpart applies in {@link rerunFailureLastRun}, so the state a surface
- * shows and the outcome the record holds cannot disagree. `"handed-off"` and
- * `"custody-unreadable"` are guarded here alone, since their stamp is always
+ * shows and the outcome the record holds cannot disagree.
+ * `"custody-unreadable"` is guarded here alone, since its stamp is always
  * written for a refusal made before any connection. A failure delivered past the
  * boundary is not a benign outcome here and falls through to the caller's
  * generic transport path. `"too-large"` is ungated: its copy states no
@@ -513,13 +497,7 @@ export function benignRerunOutcome(
   dataExchangeStarted: boolean,
 ): BenignRerunOutcome | undefined {
   if (error instanceof ManagedExchangeExpiredError) return "expired";
-  if (error instanceof ManagedExchangeSpentError && !dataExchangeStarted)
-    return "handed-off";
-  if (
-    (error instanceof ManagedExchangeCustodyUnreadableError ||
-      error instanceof ManagedExchangeNotRunnableError) &&
-    !dataExchangeStarted
-  )
+  if (error instanceof ManagedExchangeNotRunnableError && !dataExchangeStarted)
     return "custody-unreadable";
   if (error instanceof ManagedInputError && !dataExchangeStarted)
     return managedInputFailureKind(error.rejection);
@@ -543,5 +521,4 @@ export function benignRerunOutcome(
 
 export { ManagedExchangeExpiredError, ManagedInputError };
 export { ManagedExchangeLockUnavailableError, RotationPersistError };
-export { ManagedExchangeCustodyUnreadableError, ManagedExchangeSpentError };
 export { ManagedExchangeNotRunnableError, ManagedRelayRegistrationError };

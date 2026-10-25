@@ -2,8 +2,8 @@
  * The pure model behind the saved-exchanges affordance: turning a stored managed
  * record and its local sibling state into the small, accurate summary the lobby's run
  * list shows -- the label, this party's side, a one-line last-run status, the
- * schedule's due-ness where one is agreed, the derived backup state, and the spent
- * (handed-off) state. No React, no IndexedDB: the store reads and the actions live
+ * schedule's due-ness where one is agreed, and the derived backup state. No
+ * React, no IndexedDB: the store reads and the actions live
  * in the components, so the display derivation is unit-testable in Node.
  */
 
@@ -43,10 +43,7 @@ import type {
   ManagedFailureTier,
   ManagedStandingTier,
 } from "@psi/managed/managedFailureTiers";
-import type {
-  ManagedLocalState,
-  ManagedSpentHandoff,
-} from "@psi/managed/managedLocalState";
+import type { ManagedLocalState } from "@psi/managed/managedLocalState";
 
 /** This party's side, as the run list names it: the operator recognizes who
  * sent the invitation more readily than the wire roles. Shared with the
@@ -111,20 +108,11 @@ export interface SavedExchangeRow {
    * record's own shape, never from a stored flag, so the row withholds the Run
    * affordance for the same reason the exchange's own surface does. */
   configurationOnly: boolean;
-  /** When set, this device's copy was handed off by an export as of this date
-   * phrase: the row shows no Run affordance and names the handoff. Deleting is the
-   * only path forward, beside the recovery {@link spentHandoff} names. */
-  spentAsOf?: string;
-  /** Which hand-off spent the copy, when it was not the device migration: the two
-   * have different recoveries (a migration's artifact imports back; the
-   * command-line files do not), so the row names the one that applies. Absent on a
-   * row that is not spent, and on a migration spend. */
-  spentHandoff?: ManagedSpentHandoff;
-  /** The schedule lines, for a record that holds an agreed schedule and is not
-   * spent (see {@link scheduleLines}). Absent otherwise, so a row for an exchange
-   * nobody scheduled says nothing about scheduling. */
+  /** The schedule lines, for a record that holds an agreed schedule (see
+   * {@link scheduleLines}). Absent otherwise, so a row for an exchange nobody
+   * scheduled says nothing about scheduling. */
   schedule?: SavedExchangeScheduleLines;
-  /** The pending relay key registration, for a record that is not spent
+  /** The pending relay key registration
    * ({@link relayRegistrationPendingLine}). */
   relayRegistrationLine?: string;
 }
@@ -201,10 +189,6 @@ function tierStatus(
       return `Last run stopped: your partner's run refused your linkage terms (${at}); agree the terms through a terms update`;
     case "partner-protocol-refusal":
       return `Last run stopped: your partner's data did not follow the exchange protocol (${at}); check your Alcove versions with your partner`;
-    case "handed-off":
-      // The row already names the hand-off and its date beside this line, so the
-      // status says what the run did rather than repeating the state.
-      return `Last run stopped: this exchange was handed off (${at})`;
     case "custody-unreadable":
       return `Last run stopped before connecting (${at}); part of its stored copy could not be read`;
     case "storage":
@@ -324,16 +308,13 @@ function scheduleLines(
 
 /**
  * Derive the display row for a stored record as of `now`, given its local sibling
- * state (the backup marker and any spent state). A record holding no shared
+ * state (its backup and import markers). A record holding no shared
  * secret is a configuration only: it has no run, no lapse, and no backup state,
  * so the row says what it is and the list offers no Run. The last-run status holds a
  * lapsed-`expires` note when the secret has lapsed; the backup state is derived from
- * the marker's presence; a spent record names its handoff date and which hand-off it
- * was, and the list suppresses its run action. `now` is injected so the expiry note
- * is pure and testable.
+ * the marker's presence. `now` is injected so the expiry note is pure and testable.
  *
- * A record with an agreed schedule also has its schedule lines, unless it is spent
- * -- a spent row shows no run action.
+ * A record with an agreed schedule also has its schedule lines.
  */
 export function savedExchangeRow(
   record: ManagedExchangeRecord,
@@ -353,10 +334,7 @@ export function savedExchangeRow(
       backup: { kind: "not-applicable" },
       configurationOnly: true,
     };
-  const relayRegistrationLine =
-    local?.spent === undefined
-      ? relayRegistrationPendingLine(record)
-      : undefined;
+  const relayRegistrationLine = relayRegistrationPendingLine(record);
   return {
     id: record.id,
     label: record.label,
@@ -366,16 +344,9 @@ export function savedExchangeRow(
     expired: managedExchangeLapsed(record, now),
     backup: backupFor(local),
     configurationOnly: false,
-    ...(local?.spent !== undefined
-      ? {
-          spentAsOf: dateLabel(new Date(local.spent.spentAt)),
-          ...(local.spent.handoff !== undefined
-            ? { spentHandoff: local.spent.handoff }
-            : {}),
-        }
-      : record.schedule !== undefined
-        ? { schedule: scheduleLines(record.schedule, now) }
-        : {}),
+    ...(record.schedule !== undefined
+      ? { schedule: scheduleLines(record.schedule, now) }
+      : {}),
   };
 }
 

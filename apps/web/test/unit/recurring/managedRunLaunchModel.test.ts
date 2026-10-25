@@ -35,11 +35,6 @@ import {
   composeManagedExchangeFile,
 } from "@psi/managed/managedExchangeRecord";
 import {
-  ManagedExchangeCustodyUnreadableError,
-  ManagedExchangeNotRunnableError,
-  ManagedExchangeSpentError,
-} from "@psi/managed/managedExchangeRun";
-import {
   RotationPersistError,
   missedRun,
   storageFailureRun,
@@ -51,6 +46,7 @@ import {
 import { DEFAULT_RELAY_OFF_REMEDY } from "@psi/transport/defaultRelaySwitch";
 import { ManagedExchangeExpiredError } from "@psi/managed/managedExpiry";
 import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
+import { ManagedExchangeNotRunnableError } from "@psi/managed/managedExchangeRun";
 import { ManagedInputError } from "@psi/managed/managedInputGuard";
 import { ManagedRelayRegistrationError } from "@psi/managed/managedRelayRegistration";
 import { ManagedSignalingEndpointRefusedError } from "@psi/managed/managedRendezvous";
@@ -74,7 +70,6 @@ import type {
 import type {
   ManagedRunCausePlacement,
   ManagedRunFailure,
-  ManagedRunFailureAlert,
 } from "@recurring/managedRunLaunchModel";
 import type { ManagedLocalState } from "@psi/managed/managedLocalState";
 
@@ -121,7 +116,7 @@ function failed(
  * change what the classification reads, and of the host's fallback when the
  * post-failure reload rejects. The tests that turn on the difference between the
  * two readings build them separately. */
-function classifyStateAgainstOneRecord(
+function classifyAgainstOneRecord(
   error: unknown,
   recordForBothReadings: ManagedExchangeRecord,
   local: ManagedLocalState | undefined,
@@ -140,38 +135,11 @@ function classifyStateAgainstOneRecord(
   );
 }
 
-/** A classified state's copy, asserted to be there. Every state has copy except
- * the hand-off one, which the surface consumes by settling onto the stored spent
- * state, so a test reading copy off that state is reading prose that does not
- * exist. */
-function withCopy(
-  failure: ManagedRunFailure | undefined,
-): ManagedRunFailureAlert {
-  if (failure === undefined || failure.kind === "handed-off")
-    throw new Error(
-      `expected a classified state carrying copy, got ${String(failure?.kind)}`,
-    );
+/** A state read back from a record, asserted to be there. */
+function withCopy(failure: ManagedRunFailure | undefined): ManagedRunFailure {
+  if (failure === undefined)
+    throw new Error("expected a classified state carrying copy");
   return failure;
-}
-
-/** {@link classifyStateAgainstOneRecord}, narrowed to the states that have copy --
- * what every test drives except the two that drive the hand-off state itself. */
-function classifyAgainstOneRecord(
-  error: unknown,
-  recordForBothReadings: ManagedExchangeRecord,
-  local: ManagedLocalState | undefined,
-  now: number,
-  dataExchangeStarted: boolean,
-): ManagedRunFailureAlert {
-  return withCopy(
-    classifyStateAgainstOneRecord(
-      error,
-      recordForBothReadings,
-      local,
-      now,
-      dataExchangeStarted,
-    ),
-  );
 }
 
 describe("classifyManagedRunFailure: pre-connection benign states from the error", () => {
@@ -602,44 +570,6 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
     expect(failure.recovery).toBe("wait");
   });
 
-  test("a run that met a handed-off copy refuses outright, with no way back offered", () => {
-    // The attended half of the hand-off refusal, in the shape the real refusal
-    // leaves: the operator clicked Run on a surface that loaded before the
-    // hand-off, and the critical section stamped the kind before it threw. What
-    // they get is the refusal and where the exchange runs now -- no retry, no
-    // re-invite, and no override that would take the exchange back. Reaching this
-    // kind is what puts the surface onto the spent state.
-    const failure = classifyStateAgainstOneRecord(
-      new ManagedExchangeSpentError("abc"),
-      record({ lastRun: failed("handed-off") }),
-      { spent: { spentAt: "2026-07-13T09:00:00.000Z" } },
-      NOW,
-      false,
-    );
-    expect(failure.kind).toBe("handed-off");
-    expect(failure.recovery).toBe("none");
-    expect(managedRunRetryable(failure)).toBe(false);
-    expect(managedRunReinvites(failure)).toBe(false);
-    // The state has no copy of its own: the spent surface it settles onto is
-    // what names the hand-off and what the refused run did, and copy authored here
-    // would be prose no surface reaches (ManagedRunSections.tsx).
-    expect(failure).not.toHaveProperty("title");
-    expect(failure).not.toHaveProperty("message");
-  });
-
-  test("the recorded hand-off kind reads the same at the next visit", () => {
-    // The unattended half: a scheduled run that met the hand-off stamped the kind
-    // and nobody saw it happen, so the same state must come back off the record.
-    const failure = managedRunFailureFromRecord(
-      record({ lastRun: failed("handed-off") }),
-      { spent: { spentAt: "2026-07-13T09:00:00.000Z" } },
-      NOW,
-    );
-    expect(failure?.kind).toBe("handed-off");
-    expect(failure?.recovery).toBe("none");
-    expect(failure).not.toHaveProperty("message");
-  });
-
   test("a partner who never arrived is the benign no-show state, not the transport copy", () => {
     // The defect this closes: a no-show used to fall through to the transport
     // state, whose copy sends the operator to check their own connection for a
@@ -780,53 +710,7 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
     expect(failure.message).not.toMatch(/nothing left this device/i);
   });
 
-  test("a hand-off refusal delivered past the data-exchange boundary takes the transport copy", () => {
-    // The third of the same guard: the run surface settles on this classified state
-    // to put up the spent surface, so a refusal past the boundary must not reach it
-    // either. Both routes to the kind are driven: read off the error, and derived
-    // from the record's own standing stamp under a plain mid-exchange failure --
-    // what a run meets when its bookkeeping write is swallowed or the post-failure
-    // reload falls back to the pre-run record.
-    for (const error of [
-      new ManagedExchangeSpentError("abc"),
-      new Error("data channel dropped"),
-    ]) {
-      const failure = classifyAgainstOneRecord(
-        error,
-        record({ lastRun: failed("handed-off") }),
-        { spent: { spentAt: "2026-07-13T09:00:00.000Z" } },
-        NOW,
-        true,
-      );
-      expect(failure.kind).toBe("transport");
-      expect(failure.message).not.toMatch(/nothing left this device/i);
-    }
-  });
-
-  test("a run that could not read its custody entry is that state from the error alone", () => {
-    // The record cannot hold this one: the store that failed the run's custody
-    // read is the store the post-failure reload asks next, so the reload rejects
-    // with it and the classification is left the pre-run record, holding no
-    // stamp at all. Derived from that record alone the state is the retryable
-    // transport tier -- a retry offered for a local problem that answers the same
-    // way at every attempt, which is what this kind exists to prevent.
-    const failure = classifyAgainstOneRecord(
-      new ManagedExchangeCustodyUnreadableError("abc", new Error("invalid")),
-      record(),
-      undefined,
-      NOW,
-      false,
-    );
-    expect(failure.kind).toBe("custody-unreadable");
-    expect(failure.recovery).toBe("none");
-    expect(managedRunRetryable(failure)).toBe(false);
-    expect(managedRunReinvites(failure)).toBe(false);
-    expect(failure.message).toMatch(/could not read/i);
-    expect(failure.message).toMatch(/nothing left this device/i);
-    expect(failure.message).not.toMatch(/temporary connection problem/);
-  });
-
-  test("a run whose stored record is configuration-only names the record, not the note", () => {
+  test("a run whose stored record is configuration-only names the record", () => {
     const failure = classifyAgainstOneRecord(
       new ManagedExchangeNotRunnableError(
         "abc",
@@ -847,10 +731,9 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
       /reload the list and open the exchange again/i,
     );
     expect(failure.message).toMatch(/nothing left this device/i);
-    expect(failure.message).not.toMatch(/note it keeps/);
   });
 
-  test("a live run whose stored record is gone names the record, not the note", () => {
+  test("a live run whose stored record is gone names the record", () => {
     const failure = classifyAgainstOneRecord(
       new ManagedExchangeNotRunnableError(
         "abc",
@@ -871,10 +754,9 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
       /reload the list and open the exchange again/i,
     );
     expect(failure.message).toMatch(/nothing left this device/i);
-    expect(failure.message).not.toMatch(/note it keeps/);
   });
 
-  test("a live run whose stored record fails the record schema names the record, not the note", () => {
+  test("a live run whose stored record fails the record schema names the record", () => {
     const failure = classifyAgainstOneRecord(
       new ManagedExchangeNotRunnableError(
         "abc",
@@ -895,7 +777,6 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
       /reload the list and open the exchange again/i,
     );
     expect(failure.message).toMatch(/nothing left this device/i);
-    expect(failure.message).not.toMatch(/note it keeps/);
   });
 
   test("a not-runnable copy shows neither the record id nor the schema issues", () => {
@@ -928,50 +809,15 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
     }
   });
 
-  test("an unreadable hand-off note keeps its read error as the diagnostic", () => {
-    const failure = classifyAgainstOneRecord(
-      new ManagedExchangeCustodyUnreadableError(
-        "abc",
-        new Error("the note store refused the read"),
-      ),
-      record(),
-      undefined,
-      NOW,
-      false,
-    );
-    expect(failure.reportedCause).toBeUndefined();
-    expect(failure.message).toMatch(
-      /What went wrong here: .*the note store refused the read$/,
-    );
-    expect(failure.message).not.toContain("abc");
-  });
-
-  test("a live unreadable hand-off note shows a copy distinct from the not-runnable one", () => {
-    const failure = classifyAgainstOneRecord(
-      new ManagedExchangeCustodyUnreadableError("abc", new Error("invalid")),
-      record(),
-      undefined,
-      NOW,
-      false,
-    );
-    expect(failure.kind).toBe("custody-unreadable");
-    expect(failure.message).toMatch(/note it keeps beside this exchange/);
-    expect(failure.message).not.toMatch(
-      /stored copy is no longer one this page can run/,
-    );
-  });
-
-  test("a stamped unreadable-custody record read back later covers both causes", () => {
+  test("a stamped unreadable-custody record read back later names the stored copy", () => {
     const failure = managedRunFailureFromRecord(
       record({ lastRun: failed("custody-unreadable") }),
       undefined,
       NOW,
     );
     expect(failure?.kind).toBe("custody-unreadable");
-    if (failure === undefined || failure.kind === "handed-off")
-      throw new Error("expected an alert");
+    if (failure === undefined) throw new Error("expected an alert");
     expect(failure.message).toMatch(/stored copy/);
-    expect(failure.message).toMatch(/note it keeps/);
     expect(failure.message).toMatch(/nothing left this device/i);
   });
 
@@ -1212,7 +1058,7 @@ describe("classifyManagedRunFailure: the recorded tiers from the record's bookke
     // tier, whose copy reports a rotation that did not save and whose recovery is
     // a re-invite -- neither true of a run that refused before the handshake.
     const failure = classifyAgainstOneRecord(
-      new ManagedExchangeCustodyUnreadableError("abc", new Error("invalid")),
+      new ManagedExchangeNotRunnableError("abc", new Error("invalid")),
       record({ lastRun: failed("custody-unreadable") }),
       undefined,
       NOW,
@@ -1224,7 +1070,7 @@ describe("classifyManagedRunFailure: the recorded tiers from the record's bookke
     expect(managedRunRetryable(failure)).toBe(false);
     // The copy is about this browser's own stored copy, and says nothing about a
     // secret that did not save or about re-inviting.
-    expect(failure.message).toMatch(/could not read/i);
+    expect(failure.message).toMatch(/stored copy/i);
     expect(failure.message).toMatch(/nothing left this device/i);
     expect(failure.message).not.toMatch(/re-invite|different secrets|save/i);
     expect(failure.message).not.toMatch(/attack|tamper|desync|impersonat/i);
@@ -1327,7 +1173,7 @@ describe("classifyManagedRunFailure: the derived benign tiers take this run's bo
     // guard already declines past the boundary, and the tier derived from the
     // standing stamp under a plain mid-exchange failure.
     for (const error of [
-      new ManagedExchangeCustodyUnreadableError("abc", new Error("invalid")),
+      new ManagedExchangeNotRunnableError("abc", new Error("invalid")),
       new Error("data channel dropped"),
     ]) {
       const failure = classifyAgainstOneRecord(
@@ -1385,7 +1231,7 @@ describe("classifyManagedRunFailure: the derived benign tiers take this run's bo
       [
         ManagedExchangeRecord,
         ManagedLocalState | undefined,
-        ManagedRunFailureAlert["kind"],
+        ManagedRunFailure["kind"],
       ]
     > = [
       [record({ lastRun: failed("storage") }), undefined, "storage"],
@@ -1662,9 +1508,9 @@ describe("managedReinviteRecoveryCopy", () => {
 
 describe("the launch error a classified state shows", () => {
   // What the operator is shown follows from one table, and what it holds is a
-  // decision per state: the two states whose copy accounts for nothing show the
-  // error, one under the label attributing it to the exchange and one finishing
-  // its own copy, the partner's terms refusal shows the terms that differ and
+  // decision per state: the transport state, whose copy accounts for nothing,
+  // shows the error under the label attributing it to the exchange,
+  // the partner's terms refusal shows the terms that differ and
   // the refusal of the partner's data shows what was refused under that label,
   // and every other state whose copy states the cause itself shows none of it.
 
@@ -1673,13 +1519,13 @@ describe("the launch error a classified state shows", () => {
    * does not typecheck until it is decided here, and a kind whose placement
    * moves without a decision reddens the assertion below. */
   const CAUSE_PLACEMENT: Record<
-    ManagedRunFailureAlert["kind"],
+    ManagedRunFailure["kind"],
     ManagedRunCausePlacement
   > = {
     transport: "attributed",
     "partner-refused-terms": "attributed",
     "partner-protocol-refusal": "attributed",
-    "custody-unreadable": "own-account",
+    "custody-unreadable": "withheld",
     expired: "withheld",
     input: "withheld",
     "terms-shortfall": "withheld",
@@ -1704,7 +1550,7 @@ describe("the launch error a classified state shows", () => {
 
   test("the model applies each state's own decision", () => {
     const kinds = Object.keys(CAUSE_PLACEMENT) as Array<
-      ManagedRunFailureAlert["kind"]
+      ManagedRunFailure["kind"]
     >;
     for (const kind of kinds)
       expect([kind, managedRunCausePlacement(kind)]).toEqual([
@@ -1726,29 +1572,6 @@ describe("the launch error a classified state shows", () => {
     // Beside the copy and never inside it: the state's own sentence stays this
     // application's words, which is what the block's label attributes apart.
     expect(failure.message).not.toContain("the data channel closed");
-  });
-
-  test("an unreadable custody entry finishes its copy with the read's error", () => {
-    // This browser's own storage read, with no affordance that makes the entry
-    // readable, so the underlying error is the only diagnostic the state has --
-    // and it is this application's account of its own read, so it finishes the
-    // copy instead of standing under a label naming the exchange as its source
-    // (docs/notes/reported-failure-cause.md).
-    const failure = classifyAgainstOneRecord(
-      new ManagedExchangeCustodyUnreadableError(
-        "abc",
-        new Error("the stored entry is not valid JSON"),
-      ),
-      record(),
-      undefined,
-      NOW,
-      false,
-    );
-    expect(failure.kind).toBe("custody-unreadable");
-    expect(failure.message).toContain("not valid JSON");
-    expect(failure.message).not.toContain("has an unreadable hand-off state");
-    expect(failure.message).not.toContain("abc");
-    expect(failure.reportedCause).toBeUndefined();
   });
 
   test("a failed-closed handshake withholds its own message", () => {
@@ -1811,7 +1634,7 @@ describe("the launch error a classified state shows", () => {
     expect(failure.reportedCause).toBeUndefined();
   });
 
-  test("the error a state shows is escaped for display, either placement", () => {
+  test("the error a state shows is escaped for display", () => {
     const attributed = classifyAgainstOneRecord(
       new Error("channel closed \u001b[2J"),
       record({ lastRun: failed("transport") }),
@@ -1823,19 +1646,6 @@ describe("the launch error a classified state shows", () => {
     // Escaped once at this boundary, so the sequence that would drive a
     // terminal reaches the operator as text.
     expect(attributed.reportedCause).not.toContain("\u001b");
-
-    const ownAccount = classifyAgainstOneRecord(
-      new ManagedExchangeCustodyUnreadableError(
-        "abc",
-        new Error("unreadable \u001b[2J"),
-      ),
-      record(),
-      undefined,
-      NOW,
-      false,
-    );
-    expect(ownAccount.message).toContain("unreadable");
-    expect(ownAccount.message).not.toContain("\u001b");
   });
 
   test("an error with nothing to show leaves the copy alone", () => {
@@ -1848,16 +1658,13 @@ describe("the launch error a classified state shows", () => {
     );
     const bare = { ...base };
     delete bare.reportedCause;
-    // Neither a label promising an account the state has none of, nor a lead
-    // with nothing after it.
-    for (const placement of ["attributed", "own-account"] as const) {
-      expect(withShownCause(bare, new Error("   "), placement)).toEqual(bare);
-      expect(withShownCause(bare, "not an error", placement)).toEqual(bare);
-    }
+    // No label promising an account the state has none of.
+    expect(withShownCause(bare, new Error("   "), "attributed")).toEqual(bare);
+    expect(withShownCause(bare, "not an error", "attributed")).toEqual(bare);
   });
 
   test("a kind the table does not hold shows nothing", () => {
-    // A placement reaching this function outside the three literals -- an
+    // A placement reaching this function outside the two literals -- an
     // unmapped kind at runtime, past what the type checker can rule out --
     // fails closed rather than falling into the attributed block.
     const base = classifyAgainstOneRecord(

@@ -1,25 +1,25 @@
 import { describe, expect, test } from "vitest";
 
 import {
-  MANAGED_HANDOFF_INITIAL,
-  managedHandoffReducer,
-} from "@recurring/managedRunHandoffModel";
+  MANAGED_EXPORTS_INITIAL,
+  managedExportsReducer,
+} from "@recurring/managedRunExportModel";
 
 import type {
-  ManagedHandoffAction,
-  ManagedHandoffState,
-} from "@recurring/managedRunHandoffModel";
+  ManagedExportAction,
+  ManagedExportsState,
+} from "@recurring/managedRunExportModel";
 
 function fold(
-  actions: ReadonlyArray<ManagedHandoffAction>,
-  from: ManagedHandoffState = MANAGED_HANDOFF_INITIAL,
-): ManagedHandoffState {
-  return actions.reduce(managedHandoffReducer, from);
+  actions: ReadonlyArray<ManagedExportAction>,
+  from: ManagedExportsState = MANAGED_EXPORTS_INITIAL,
+): ManagedExportsState {
+  return actions.reduce(managedExportsReducer, from);
 }
 
 describe("an export", () => {
   test("starts idle", () => {
-    expect(MANAGED_HANDOFF_INITIAL).toEqual({ export: { kind: "idle" } });
+    expect(MANAGED_EXPORTS_INITIAL).toEqual({ export: { kind: "idle" } });
   });
 
   test("is busy until it ends", () => {

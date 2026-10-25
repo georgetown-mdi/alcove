@@ -8,7 +8,7 @@
  * data-exchange phase is a callback this module invokes only after the
  * durable persist resolves.
  *
- * Five invariants this module owns (normative in
+ * Four invariants this module owns (normative in
  * docs/spec/MANAGED_EXCHANGE_RECORD.md; docs/notes/managed-exchange-design.md
  * records the rationale):
  *
@@ -27,17 +27,8 @@
  *   second attended Run, or a scheduled attempt is refused or queued for the
  *   whole run rather than for its rotation alone, and cannot double-rotate or
  *   exchange a second time against the partner. The same lock is what both
- *   exports and a re-take take, so neither runs while an exchange is in
- *   flight.
- *
- * - **A handed-off copy does not run.** The locked window's first act is to
- *   re-read the record's sibling spent state and refuse a copy an earlier
- *   version's export handed off, before the input is read and before any
- *   connection -- a read per run, not a surface's mount-time reading. No
- *   current path writes that state. A reading that fails refuses the run
- *   under its own `custody-unreadable` kind: an
- *   unreadable local record, neither a hand-off nor a rotation this device
- *   failed to save.
+ *   exports and an import replacing the stored copy take, so none of them
+ *   runs while an exchange is in flight.
  *
  * - **A run uses the record as stored when it takes the lock.** The input
  *   guard and the handshake are handed the record read inside the locked
@@ -60,7 +51,6 @@ import { getLogger } from "@alcove/core";
 import { ManagedInputError, managedInputLastRun } from "./managedInputGuard";
 import {
   RotationPersistError,
-  failedRun,
   runRotationCriticalSection,
   succeededRun,
 } from "./managedRunRotate";
@@ -70,7 +60,6 @@ import {
   persistManagedExchangeRotation,
   recordManagedExchangeLastRun,
 } from "./managedExchangeStore";
-import { getManagedLocalState } from "./managedLocalState";
 import { runnableManagedExchangeOrRefuse } from "./managedExchangeRecord";
 import { withManagedExchangeLock } from "./managedExchangeLock";
 
@@ -79,45 +68,9 @@ import type {
   RunnableManagedExchangeRecord,
 } from "./managedExchangeRecord";
 import type { ManagedExchangeLockOptions } from "./managedExchangeLock";
-import type { ManagedLocalState } from "./managedLocalStateShape";
 import type { RotationWriteBack } from "./managedRunRotate";
 
 const log = getLogger("managedExchangeRun");
-
-/**
- * Raised when a run finds this device's copy of the record handed off: an
- * earlier version's export spent it, so the secret it would rotate belongs to
- * whoever the hand-off gave it to. Refusing is the whole response; recovery is
- * a re-invite. Raised inside the run+rotate lock before the input is read, so
- * a refused run has touched neither the operator's file nor the network.
- */
-export class ManagedExchangeSpentError extends Error {
-  constructor(id: string) {
-    super(
-      `managed exchange ${id} was handed off, so this device's copy no longer runs it`,
-    );
-    this.name = "ManagedExchangeSpentError";
-  }
-}
-
-/**
- * Raised when a run cannot read whether this device's copy was handed off:
- * the sibling entry does not validate, or its store did not answer. Has
- * its own `custody-unreadable` kind rather than the retryable `transport`
- * tier -- a scheduled window ends here rather than re-attempting an
- * unchanged reading -- or the `storage` kind a failed rotation persist
- * writes, since this refusal happens before the handshake and rotates
- * nothing.
- */
-export class ManagedExchangeCustodyUnreadableError extends Error {
-  constructor(id: string, cause: unknown) {
-    super(
-      `managed exchange ${id} has an unreadable hand-off state, so this run does not rotate`,
-      { cause },
-    );
-    this.name = "ManagedExchangeCustodyUnreadableError";
-  }
-}
 
 /**
  * Raised when the record a run reads inside the run+rotate lock is gone,
@@ -221,10 +174,9 @@ export interface ManagedExchangeRunResult<TExchange> {
  * "begin this run" through the success stamp, so the payload exchange runs
  * inside it; the data exchange still cannot begin before the persist resolves.
  *
- * A spent check, then the read of the record the run uses, then the input
- * guard run first inside the lock and refuse before any connection is opened,
- * the spent check and the guard recording the `handed-off` or benign input
- * `lastRun` respectively. A persist failure after rotation records a
+ * The read of the record the run uses, then the input guard, run first inside
+ * the lock and refuse before any connection is opened, the guard recording the
+ * benign input `lastRun`. A persist failure after rotation records a
  * `storage`-kind `lastRun`; a handshake or data-exchange failure propagates
  * unchanged for the runner to classify. Every bookkeeping write states
  * `runStartedAtMs`, so the store's write rules
@@ -236,12 +188,6 @@ export interface ManagedExchangeRunResult<TExchange> {
  *
  * @throws {ManagedExchangeLockUnavailableError} if `lock.ifAvailable` is set
  *   and a run is already in progress on this device.
- * @throws {ManagedExchangeSpentError} if an export has handed this device's
- *   copy off; the `handed-off` `lastRun` is recorded best-effort first, and
- *   no input was read and no connection made.
- * @throws {ManagedExchangeCustodyUnreadableError} if the sibling entry
- *   holding that state cannot be read; the `custody-unreadable` `lastRun` is
- *   recorded best-effort first, on the same no-input, no-connection terms.
  * @throws {ManagedExchangeNotRunnableError} if the record is gone, does not
  *   validate, or holds a configuration only when the lock is granted; no
  *   input was read and no connection made.
@@ -261,10 +207,6 @@ export async function runManagedExchange<TInput, THandshake, TExchange>(
   return await withManagedExchangeLock(
     record.id,
     async () => {
-      // A copy an earlier version's export handed off is refused before anything
-      // else this window does: the sibling state is read here rather than trusted
-      // from whatever a caller loaded.
-      await refuseHandedOffCopy(record.id, now, runStartedAtMs);
       const current = await readRecordToRun(record.id);
       // The input guard runs before the handshake opens any connection. A benign
       // input rejection records its classified bookkeeping inside the lock (this
@@ -358,49 +300,7 @@ export async function runManagedExchange<TInput, THandshake, TExchange>(
 }
 
 /**
- * Refuse this run when the record's sibling state says an export handed this
- * device's copy off, recording the `handed-off` `lastRun` before it
- * re-raises. Read inside the lock and before the input guard, so a refused
- * run has read no input file and opened no connection. The bookkeeping is
- * best-effort, like the input and storage tiers: a failed write must not
- * replace the refusal the runner classifies on.
- *
- * A reading that fails refuses the run too, as a
- * {@link ManagedExchangeCustodyUnreadableError}, recording the
- * `custody-unreadable` kind rather than the retryable `transport` tier.
- *
- * @throws {ManagedExchangeSpentError} when the copy is spent.
- * @throws {ManagedExchangeCustodyUnreadableError} when the sibling entry
- *   cannot be read.
- */
-async function refuseHandedOffCopy(
-  id: string,
-  now: () => number,
-  runStartedAtMs: number,
-): Promise<void> {
-  let local: ManagedLocalState | undefined;
-  try {
-    local = await getManagedLocalState(id);
-  } catch (error) {
-    await recordRefusal(
-      id,
-      failedRun(now(), "failed", "custody-unreadable"),
-      runStartedAtMs,
-    );
-    throw new ManagedExchangeCustodyUnreadableError(id, error);
-  }
-  if (local?.spent === undefined) return;
-  await recordRefusal(
-    id,
-    failedRun(now(), "failed", "handed-off"),
-    runStartedAtMs,
-  );
-  throw new ManagedExchangeSpentError(id);
-}
-
-/**
- * Read the record this run uses, inside the lock and after the hand-off
- * refusal.
+ * Read the record this run uses, inside the lock and before the input guard.
  *
  * @throws {ManagedExchangeNotRunnableError} if no record with `id` exists,
  *   the stored value is not a valid record, or it holds a configuration only.
@@ -415,20 +315,6 @@ async function readRecordToRun(
     return runnableManagedExchangeOrRefuse(stored);
   } catch (error) {
     throw new ManagedExchangeNotRunnableError(id, error);
-  }
-}
-
-/** Record a refusal's own bookkeeping, best-effort for the reason
- * {@link refuseHandedOffCopy} gives. */
-async function recordRefusal(
-  id: string,
-  lastRun: ManagedExchangeLastRun,
-  runStartedAtMs: number,
-): Promise<void> {
-  try {
-    await recordLastRun(id, lastRun, runStartedAtMs);
-  } catch {
-    // Swallowed: the refusal still reaches the runner.
   }
 }
 

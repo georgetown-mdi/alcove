@@ -62,10 +62,10 @@ export function sameAgreedTermsAndSide(
  * Every one of `records` that {@link sameAgreedTermsAndSide} matches
  * `imported` to, in store order, other than those `acknowledgedIds` names: the
  * ones the operator already confirmed installing beside. Which records are
- * asked about is the caller's: the backup import passes the live ones, the
- * command-line pair import those spent or holding a configuration only. The
- * caller settles a secret match before asking, since a secret match is the
- * same exchange by construction.
+ * asked about is the caller's: the backup import passes every stored one, the
+ * command-line pair import those holding a configuration only. The caller
+ * settles a secret match before asking, since a secret match is the same
+ * exchange by construction.
  */
 export function findRecordsByTermsAndSide(
   records: Iterable<ManagedExchangeRecord>,

@@ -179,7 +179,7 @@ describe("what neither export takes with it", () => {
 });
 
 describe("a backup taken with no run in flight", () => {
-  test("leaves the stored record unchanged and runnable, and records no hand-off", async () => {
+  test("leaves the stored record unchanged and runnable, and writes only its backup marker", async () => {
     const created = await createManagedExchange(newExchange());
     const before = await getManagedExchange(created.id);
     const downloads = captureDownloads();
@@ -191,7 +191,7 @@ describe("a backup taken with no run in flight", () => {
 
       expect(await getManagedExchange(created.id)).toEqual(before);
       const local = await getManagedLocalState(created.id);
-      expect(local?.spent).toBeUndefined();
+      expect(Object.keys(local ?? {})).toEqual(["backup"]);
       expect(local?.backup?.savedAs).toEqual({
         kind: "downloaded",
         fileName: downloads.captured[0].fileName,

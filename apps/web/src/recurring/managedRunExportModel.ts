@@ -10,29 +10,29 @@ export type ManagedExportRequest =
   { kind: "idle" } | { kind: "busy" } | { kind: "failed" };
 
 /** The exports' whole state. */
-export interface ManagedHandoffState {
+export interface ManagedExportsState {
   export: ManagedExportRequest;
 }
 
 /** No export this visit. */
-export const MANAGED_HANDOFF_INITIAL: ManagedHandoffState = {
+export const MANAGED_EXPORTS_INITIAL: ManagedExportsState = {
   export: { kind: "idle" },
 };
 
 /** The exports' events. `backup-exported` also marks the backup on the loaded
  * record; the composed surface reducer routes it to both. `export-finished`
  * ends an export that marked nothing, a run-lock refusal included. */
-export type ManagedHandoffAction =
+export type ManagedExportAction =
   | { type: "export-started" }
   | { type: "export-finished" }
   | { type: "export-failed" }
   | { type: "backup-exported" };
 
 /** The exports' reducer. */
-export function managedHandoffReducer(
-  state: ManagedHandoffState,
-  action: ManagedHandoffAction,
-): ManagedHandoffState {
+export function managedExportsReducer(
+  state: ManagedExportsState,
+  action: ManagedExportAction,
+): ManagedExportsState {
   switch (action.type) {
     case "export-started":
       return { ...state, export: { kind: "busy" } };

@@ -220,7 +220,8 @@ describe("repeated-miss coordination", () => {
         "their copy of the schedule and compare its next window in UTC, " +
         "repeat, and window length with yours below, paste theirs under " +
         "Local settings if it is the one you agreed, and check this device's " +
-        "clock.",
+        "clock. If you ran this exchange elsewhere, import it again here to " +
+        "make it runnable.",
     );
   });
 

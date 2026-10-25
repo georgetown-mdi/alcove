@@ -345,7 +345,8 @@ describe("an attended run whose surface is torn down during the folder write", (
 describe("the completion screen while the folder write is under way", () => {
   // The run released its lock before its outputs reached the screen (the
   // stubbed driver here takes none), so the updated backup gates on the lock
-  // alone, and never shows the run-in-progress reason beside a finished run.
+  // alone, and the run-in-progress reason it shows while the lock is held is
+  // another run's.
   const updatedBackup = () =>
     page.getByRole("button", { name: "Download updated backup" });
 
@@ -389,18 +390,22 @@ describe("the completion screen while the folder write is under way", () => {
     }
   });
 
-  test("with the lock held elsewhere, withholds it without the reason, and returns it once free", async () => {
+  test("with the lock held elsewhere, withholds it with the run-in-progress reason, and returns it once free", async () => {
     const { id, releaseWrite } = await holdFolderWrite();
     const releaseLock = await holdRunLockElsewhere(id);
     try {
       await expect.element(updatedBackup()).toBeDisabled();
-      expect(page.getByText(RUN_IN_FLIGHT_EXPORT_REASON).query()).toBe(null);
+      await expect
+        .element(page.getByText(RUN_IN_FLIGHT_EXPORT_REASON))
+        .toBeInTheDocument();
     } finally {
       releaseLock();
     }
     try {
       await expect.element(updatedBackup()).toBeEnabled();
-      expect(page.getByText(RUN_IN_FLIGHT_EXPORT_REASON).query()).toBe(null);
+      await expect
+        .element(page.getByText(RUN_IN_FLIGHT_EXPORT_REASON))
+        .not.toBeInTheDocument();
     } finally {
       releaseWrite();
       await stub.written;

@@ -233,15 +233,12 @@ export interface ManagedExchangeSchedule {
 export type ManagedExchangeRunOutcome =
   "succeeded" | "failed" | "desynced" | "missed" | "skipped";
 
-/** For a non-succeeded outcome, the kind of failure. Closed enum: the four benign
+/** For a non-succeeded outcome, the kind of failure. Closed enum: the three benign
  * pre-run problems -- an `"input"` problem (the file missing from the working
  * folder, or unreadable), a `"terms-shortfall"` refusal (the file cannot satisfy
- * every linkage key the standing terms declare), a `"handed-off"` refusal (an
- * export gave this device's copy away, so the run does not rotate a secret
- * whose owner is elsewhere), and a
- * `"custody-unreadable"` refusal (the sibling entry recording whether the copy
- * was handed off did not read, so the run does not rotate on custody it could
- * not establish) -- are detected before any connection and never routed through
+ * every linkage key the standing terms declare), and a `"custody-unreadable"`
+ * refusal (the record the run read inside its lock is gone, does not validate,
+ * or holds a configuration only) -- are detected before any connection and never routed through
  * desync/attack framing. A `"too-large"` refusal (a set this run had to send
  * was over the most values the partner can receive, or could not be counted
  * to check it) is benign the same way, but a round past the first can meet it
@@ -272,7 +269,6 @@ export type ManagedExchangeFailureKind =
   | "custody-unreadable"
   | "input"
   | "terms-shortfall"
-  | "handed-off"
   | "too-large"
   | "partner-set-too-large"
   | "partner-refused-set"
@@ -544,7 +540,6 @@ export const lastRunSchema: ZodType<ManagedExchangeLastRun> = z.object({
       "custody-unreadable",
       "input",
       "terms-shortfall",
-      "handed-off",
       "too-large",
       "partner-set-too-large",
       "partner-refused-set",
@@ -780,7 +775,7 @@ export function safeParseManagedExchangeRecord(raw: unknown) {
 
 /**
  * A record holding the secret its exchange runs on: the shape every run,
- * rotation, re-invite, hand-off, and backup path takes. The narrowing is the
+ * rotation, re-invite, and export path takes. The narrowing is the
  * type, so a configuration-only record (no {@link
  * ManagedExchangeRecord.sharedSecret}) cannot be passed to one of them at all.
  */
@@ -806,8 +801,8 @@ export function runnableManagedExchange(
 
 /**
  * The same narrowing as a refusal, for a path a configuration-only record has no
- * answer for at all -- a backup of a secret that is not stored, a hand-off of a
- * copy this browser never held. The surfaces withhold those controls on the
+ * answer for at all -- a backup of a secret that is not stored, a run or a
+ * rotation of one this browser never held. The surfaces withhold those controls on the
  * record's shape; this is the boundary that refuses one reached anyway, rather
  * than composing a file with an empty secret in it.
  *
@@ -1598,11 +1593,11 @@ export function applyManagedExchangeRotationInFlight(
 
 /**
  * Lay a record read from a command-line `alcove.yaml` and its `.alcove.key`
- * over the stored record it revives, producing a validated new record: the
+ * over the stored record it replaces or completes, producing a validated new record: the
  * document, `side`, max-age policy, and key pair come from the pair, an absent
  * `expires` or policy clearing the stored one, and everything the pair has no
  * field for -- the `id`, label, schedule, `lastRun`, standing condition, and
- * platform grants -- stays as stored, so the revive clears no condition only
+ * platform grants -- stays as stored, so the import clears no condition only
  * the operator, a re-invite, or a delete may clear. A rotation-in-flight
  * marker goes with the stored secret when the pair replaces it. A pair naming
  * a relay registrar replaces the stored one; a pair naming none keeps it. The
@@ -1672,62 +1667,6 @@ function sameRelayRegistrar(a: RelayRegistrar, b: RelayRegistrar): boolean {
     new URL(a.url).origin === new URL(b.url).origin &&
     a.exchangeId === b.exchangeId
   );
-}
-
-/**
- * Set the pending relay registration a command-line pair states on `record`,
- * by the rule the pair import applies
- * ({@link applyManagedExchangeCommandLinePair}), keeping its registrar, with
- * one difference: a key file's marker keeps a reason `record` holds rather
- * than dropping it. The reason says the kept registrar holds the key of a
- * replaced secret, and a key file still holding a marker shows the command
- * line registered nothing there. The same record comes back where the
- * registration does not change. The inputs are not mutated.
- *
- * @throws {ZodError} if the result is not a valid record.
- */
-export function applyCommandLineRelayRegistration(
-  record: ManagedExchangeRecord,
-  pair: RunnableManagedExchangeRecord,
-): ManagedExchangeRecord {
-  const fromPair = pendingRelayRegistrationFromCommandLine(record, pair);
-  const pending =
-    pair.relayRegistrationPendingSince !== undefined &&
-    record.relayRegistrationPendingReason !== undefined
-      ? {
-          since: pair.relayRegistrationPendingSince,
-          reason: record.relayRegistrationPendingReason,
-        }
-      : fromPair;
-  if (
-    pending?.since === record.relayRegistrationPendingSince &&
-    pending?.reason === record.relayRegistrationPendingReason
-  )
-    return record;
-  const next: ManagedExchangeRecord = { ...record };
-  setPendingRelayRegistration(next, pending);
-  return parseManagedExchangeRecord(next);
-}
-
-/**
- * Drop a `lastRun` recording the `handed-off` refusal -- a run that found this
- * device's copy spent ({@link ./managedExchangeRun.ts}) -- producing a validated
- * new record. The entry records a state a take-back ends, and left in place it
- * tiers the record that runs here again as handed off (see
- * {@link ./managedFailureTiers.ts}). Any other entry is run history and is kept,
- * as is a record holding none: both come back unchanged, the same object. The
- * refusal raises no standing condition ({@link standingConditionFrom}), so there
- * is none to answer with it. The input record is not mutated.
- *
- * @throws {ZodError} if the stored record is invalid.
- */
-export function clearHandedOffLastRun(
-  record: ManagedExchangeRecord,
-): ManagedExchangeRecord {
-  if (record.lastRun?.failureKind !== "handed-off") return record;
-  const next: ManagedExchangeRecord = { ...record };
-  delete next.lastRun;
-  return parseManagedExchangeRecord(next);
 }
 
 /** Apply a `lastRun` bookkeeping entry to a record, producing a validated new

@@ -7,24 +7,17 @@ import {
   composeManagedExchangeFile,
   runnableManagedExchangeOrRefuse,
 } from "@psi/managed/managedExchangeRecord";
-import {
-  decideCommandLinePairTarget,
-  decideRetake,
-  storedCopyState,
-} from "@psi/managed/managedPairRecognition";
+import { decideCommandLinePairTarget } from "@psi/managed/managedPairRecognition";
 
 import type {
   ManagedExchangeRecord,
   ManagedExchangeSide,
   RunnableManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
-import type { ManagedSpentState } from "@psi/managed/managedLocalStateShape";
-import type { ManagedStoredEntry } from "@psi/managed/managedPairRecognition";
 
-// Where a command-line pair lands once no stored record refuses it by its
-// secret, and what a re-take checks the pair it is given against. The store
-// makes both decisions inside its transactions; the transactions themselves,
-// against real IndexedDB, are the browser suite's.
+// Where a command-line pair lands once no stored record holds its secret. The
+// store makes the decision inside its transaction; the transaction itself,
+// against real IndexedDB, is the browser suite's.
 
 const linkageTerms = getDefaultLinkageTerms("County Health Dept");
 
@@ -68,430 +61,73 @@ function onOtherTerms(record: ManagedExchangeRecord): ManagedExchangeRecord {
   };
 }
 
-const handedOff: ManagedSpentState = {
-  spentAt: "2026-07-11T09:00:00.000Z",
-  handoff: "command-line",
-};
-const migrated: ManagedSpentState = { spentAt: "2026-07-11T09:00:00.000Z" };
-
-function entry(
-  record: ManagedExchangeRecord,
-  spent?: ManagedSpentState,
-): ManagedStoredEntry {
-  return { record, spent };
-}
-
-describe("which stored records a pair can land in", () => {
-  test("a hand-off, a migration, and a configuration only; never a live record", () => {
-    expect(storedCopyState(entry(runnable(), handedOff))).toBe("handed-off");
-    expect(storedCopyState(entry(runnable(), migrated))).toBe(
-      "migration-spent",
-    );
-    expect(storedCopyState(entry(configurationOnly()))).toBe(
-      "configuration-only",
-    );
-    expect(storedCopyState(entry(runnable()))).toBeUndefined();
-  });
-});
-
 describe("a pair whose secret no stored record holds", () => {
-  test("names a hand-off with its terms and side, and writes nothing until answered", () => {
-    const stored = runnable();
-    const imported = runnable();
-
-    expect(
-      decideCommandLinePairTarget(
-        [entry(stored, handedOff)],
-        imported,
-        undefined,
-      ),
-    ).toEqual({
-      kind: "stored-copy",
-      copies: [{ id: stored.id, label: stored.label, state: "handed-off" }],
-    });
-  });
-
-  test("accepted, takes the pair into the hand-off through its re-take", () => {
-    const stored = runnable();
-
-    expect(
-      decideCommandLinePairTarget(
-        [entry(stored, handedOff)],
-        runnable(),
-        undefined,
-        { into: stored.id },
-      ),
-    ).toEqual({ kind: "retake", id: stored.id });
-  });
-
-  test("declined, installs the pair as a new record", () => {
-    const stored = runnable();
-
-    expect(
-      decideCommandLinePairTarget(
-        [entry(stored, handedOff)],
-        runnable(),
-        undefined,
-        { besideIds: [stored.id] },
-      ),
-    ).toEqual({ kind: "no-match" });
-  });
-
   test("a configuration-only record with equal terms and side is offered, then completed in place", () => {
     const stored = configurationOnly();
     const imported = runnable();
 
-    expect(
-      decideCommandLinePairTarget([entry(stored)], imported, undefined),
-    ).toEqual({
+    expect(decideCommandLinePairTarget([stored], imported)).toEqual({
       kind: "stored-copy",
       copies: [{ id: stored.id, label: "", state: "configuration-only" }],
     });
     expect(
-      decideCommandLinePairTarget([entry(stored)], imported, undefined, {
-        into: stored.id,
-      }),
+      decideCommandLinePairTarget([stored], imported, { into: stored.id }),
     ).toEqual({ kind: "complete", into: stored });
   });
 
-  test("a migration-spent record with equal terms and side is offered, then revived", () => {
-    const stored = runnable();
+  test("declined, installs the pair as a new record", () => {
+    const stored = configurationOnly();
 
     expect(
-      decideCommandLinePairTarget(
-        [entry(stored, migrated)],
-        runnable(),
-        undefined,
-      ),
-    ).toMatchObject({
-      kind: "stored-copy",
-      copies: [{ id: stored.id, state: "migration-spent" }],
-    });
-    expect(
-      decideCommandLinePairTarget(
-        [entry(stored, migrated)],
-        runnable(),
-        undefined,
-        { into: stored.id },
-      ),
-    ).toEqual({ kind: "revive", into: stored });
+      decideCommandLinePairTarget([stored], runnable(), {
+        besideIds: [stored.id],
+      }),
+    ).toEqual({ kind: "no-match" });
   });
 
   test("unequal terms or side offer nothing, and the pair installs fresh", () => {
     const imported = runnable("inviter");
     for (const stored of [
-      entry(runnable("acceptor"), handedOff),
-      entry(onOtherTerms(runnable()), handedOff),
-      entry(configurationOnly("acceptor")),
-      entry(onOtherTerms(configurationOnly())),
-      entry(runnable("acceptor"), migrated),
+      configurationOnly("acceptor"),
+      onOtherTerms(configurationOnly()),
     ])
-      expect(
-        decideCommandLinePairTarget([stored], imported, undefined),
-      ).toEqual({ kind: "no-match" });
+      expect(decideCommandLinePairTarget([stored], imported)).toEqual({
+        kind: "no-match",
+      });
   });
 
-  test("a live record with equal terms and side is not offered", () => {
-    expect(
-      decideCommandLinePairTarget([entry(runnable())], runnable(), undefined),
-    ).toEqual({ kind: "no-match" });
+  test("a runnable record with equal terms and side is not offered", () => {
+    expect(decideCommandLinePairTarget([runnable()], runnable())).toEqual({
+      kind: "no-match",
+    });
   });
 
   test("names every qualifying record, less those declined", () => {
-    const first = runnable();
+    const first = configurationOnly();
     const second = configurationOnly();
-    const entries = [entry(first, handedOff), entry(second)];
+    const records = [first, runnable(), second];
 
-    expect(
-      decideCommandLinePairTarget(entries, runnable(), undefined),
-    ).toMatchObject({
+    expect(decideCommandLinePairTarget(records, runnable())).toMatchObject({
       kind: "stored-copy",
       copies: [{ id: first.id }, { id: second.id }],
     });
     expect(
-      decideCommandLinePairTarget(entries, runnable(), undefined, {
+      decideCommandLinePairTarget(records, runnable(), {
         besideIds: [first.id],
       }),
     ).toMatchObject({ kind: "stored-copy", copies: [{ id: second.id }] });
   });
 
   test("a chosen record that no longer qualifies is refused rather than installed beside", () => {
-    const stored = runnable();
+    const stored = configurationOnly();
 
-    for (const entries of [
+    for (const records of [
       [],
-      [entry(stored)],
-      [entry(runnable("acceptor"), handedOff)],
+      [runnableManagedExchangeOrRefuse({ ...runnable(), id: stored.id })],
+      [{ ...configurationOnly("acceptor"), id: stored.id }],
     ])
       expect(
-        decideCommandLinePairTarget(entries, runnable(), undefined, {
-          into: stored.id,
-        }),
+        decideCommandLinePairTarget(records, runnable(), { into: stored.id }),
       ).toEqual({ kind: "chosen-copy-changed" });
-  });
-});
-
-describe("a pair whose secret a migration-spent record holds", () => {
-  test("revives it where the sides agree", () => {
-    const stored = runnable("inviter");
-    const imported = {
-      ...runnable("inviter"),
-      sharedSecret: stored.sharedSecret,
-    };
-
-    expect(decideCommandLinePairTarget([], imported, stored)).toEqual({
-      kind: "revive",
-      into: stored,
-    });
-  });
-
-  test("refuses, naming the record, where the pair is the other side", () => {
-    const stored = runnable("inviter");
-    const partners = {
-      ...runnable("acceptor"),
-      sharedSecret: stored.sharedSecret,
-    };
-
-    expect(decideCommandLinePairTarget([], partners, stored)).toEqual({
-      kind: "side-mismatch",
-      label: stored.label,
-    });
-  });
-});
-
-describe("what a re-take checks and writes", () => {
-  test("a pair on the other side or other terms is refused, applying nothing", () => {
-    const stored = runnable("inviter");
-
-    expect(decideRetake(stored, runnable("acceptor"))).toEqual({
-      kind: "mismatch",
-      on: "side",
-    });
-    expect(
-      decideRetake(
-        stored,
-        runnableManagedExchangeOrRefuse(onOtherTerms(runnable("inviter"))),
-      ),
-    ).toEqual({ kind: "mismatch", on: "terms" });
-  });
-
-  test("the record's own pair applies its rotated secret and bound", () => {
-    const stored = runnable();
-    const taken = {
-      ...runnable(),
-      expires: "2026-12-31T00:00:00.000Z",
-    };
-
-    const decided = decideRetake(stored, taken);
-
-    expect(decided).toMatchObject({ kind: "retake", advanced: true });
-    if (decided.kind !== "retake") return;
-    expect(decided.record.sharedSecret).toBe(taken.sharedSecret);
-    expect(decided.record.expires).toBe(taken.expires);
-    expect(decided.record.label).toBe(stored.label);
-  });
-
-  test("a pair holding a pending relay registration carries it, on a record naming no registrar too", () => {
-    const stored = runnable();
-    const decided = decideRetake(stored, {
-      ...runnable(),
-      relayRegistrationPendingSince: "2026-09-01T00:00:00.000Z",
-    });
-
-    if (decided.kind !== "retake") throw new Error("expected a re-take");
-    expect(decided.record.relayRegistrar).toBeUndefined();
-    expect(decided.record.relayRegistrationPendingSince).toBe(
-      "2026-09-01T00:00:00.000Z",
-    );
-  });
-
-  test("a pair holding no pending relay registration keeps the stored one, whether or not the record names a registrar", () => {
-    const pending = {
-      ...runnable(),
-      relayRegistrationPendingSince: "2026-08-01T00:00:00.000Z",
-    };
-    const enrolled = {
-      ...pending,
-      relayRegistrar: {
-        url: "https://relay.example.org:8443",
-        exchangeId: "riverbend-q3",
-      },
-    };
-
-    const kept = decideRetake(enrolled, runnable());
-    const keptUnenrolled = decideRetake(pending, runnable());
-
-    if (kept.kind !== "retake" || keptUnenrolled.kind !== "retake")
-      throw new Error("expected a re-take");
-    expect(kept.record.relayRegistrationPendingSince).toBe(
-      "2026-08-01T00:00:00.000Z",
-    );
-    expect(keptUnenrolled.record.relayRegistrationPendingSince).toBe(
-      "2026-08-01T00:00:00.000Z",
-    );
-  });
-
-  test("a hand-off whose command line confirmed its registration and rotated leaves no pending marker", () => {
-    const registrar = {
-      url: "https://relay.example.org:8443",
-      exchangeId: "riverbend-q3",
-    };
-    const enrolled = runnableManagedExchangeOrRefuse({
-      ...runnable(),
-      relayRegistrar: registrar,
-      relayRegistrationPendingSince: "2026-08-01T00:00:00.000Z",
-    });
-    // The command line confirmed the registration, clearing the key file's
-    // marker, and rotated: its configuration names the registrar and its key
-    // file holds a new secret and no marker.
-    const confirmedAndRotated = runnableManagedExchangeOrRefuse({
-      ...runnable(),
-      relayRegistrar: registrar,
-    });
-
-    const decided = decideRetake(enrolled, confirmedAndRotated);
-
-    if (decided.kind !== "retake") throw new Error("expected a re-take");
-    expect(decided.advanced).toBe(true);
-    expect(decided.record.sharedSecret).toBe(confirmedAndRotated.sharedSecret);
-    expect(decided.record.relayRegistrar).toEqual(registrar);
-    expect(decided.record).not.toHaveProperty("relayRegistrationPendingSince");
-    expect(decided.record).not.toHaveProperty("relayRegistrationPendingReason");
-  });
-
-  test.each([
-    [
-      "another registrar",
-      { url: "https://other-relay.example.org", exchangeId: "riverbend-q3" },
-    ],
-    [
-      "another exchange id at the same registrar",
-      { url: "https://relay.example.org:8443", exchangeId: "riverbend-q4" },
-    ],
-  ])(
-    "a pair naming %s with no marker keeps the stored marker and reason",
-    (_case, repointed) => {
-      const enrolled = runnableManagedExchangeOrRefuse({
-        ...runnable(),
-        relayRegistrar: {
-          url: "https://relay.example.org:8443",
-          exchangeId: "riverbend-q3",
-        },
-        relayRegistrationPendingSince: "2026-08-01T00:00:00.000Z",
-        relayRegistrationPendingReason: "reinvite",
-      });
-
-      const decided = decideRetake(enrolled, {
-        ...runnable(),
-        relayRegistrar: repointed,
-      });
-
-      if (decided.kind !== "retake") throw new Error("expected a re-take");
-      expect(decided.record.relayRegistrar).toEqual(enrolled.relayRegistrar);
-      expect(decided.record.relayRegistrationPendingSince).toBe(
-        "2026-08-01T00:00:00.000Z",
-      );
-      expect(decided.record.relayRegistrationPendingReason).toBe("reinvite");
-    },
-  );
-
-  test("a pair naming the stored registrar's origin in another form with no marker clears the stored marker", () => {
-    const enrolled = runnableManagedExchangeOrRefuse({
-      ...runnable(),
-      relayRegistrar: {
-        url: "https://relay.example.org",
-        exchangeId: "riverbend-q3",
-      },
-      relayRegistrationPendingSince: "2026-08-01T00:00:00.000Z",
-    });
-
-    const decided = decideRetake(enrolled, {
-      ...runnable(),
-      relayRegistrar: {
-        // Written in a form the registrar url schema would normalize to the
-        // stored origin; the function under test compares the strings as given.
-        url: "https://RELAY.example.org:443",
-        exchangeId: "riverbend-q3",
-      },
-    });
-
-    if (decided.kind !== "retake") throw new Error("expected a re-take");
-    expect(decided.record).not.toHaveProperty("relayRegistrationPendingSince");
-  });
-
-  test("a pair naming the registrar with the key file's marker sets that marker", () => {
-    const registrar = {
-      url: "https://relay.example.org:8443",
-      exchangeId: "riverbend-q3",
-    };
-    const enrolled = runnableManagedExchangeOrRefuse({
-      ...runnable(),
-      relayRegistrar: registrar,
-    });
-
-    const decided = decideRetake(enrolled, {
-      ...runnable(),
-      relayRegistrar: registrar,
-      relayRegistrationPendingSince: "2026-09-01T00:00:00.000Z",
-    });
-
-    if (decided.kind !== "retake") throw new Error("expected a re-take");
-    expect(decided.record.relayRegistrationPendingSince).toBe(
-      "2026-09-01T00:00:00.000Z",
-    );
-  });
-
-  const reinvitedRegistrar = {
-    url: "https://relay.example.org:8443",
-    exchangeId: "riverbend-q3",
-  };
-
-  test.each([
-    ["the stored registrar", reinvitedRegistrar],
-    [
-      "another registrar",
-      { url: "https://other-relay.example.org", exchangeId: "riverbend-q3" },
-    ],
-    ["no registrar", undefined],
-  ])(
-    "a pair naming %s with the key file's marker takes the marker and keeps the stored re-invite reason",
-    (_case, named) => {
-      const reinvited = runnableManagedExchangeOrRefuse({
-        ...runnable(),
-        relayRegistrar: reinvitedRegistrar,
-        relayRegistrationPendingSince: "2026-08-01T00:00:00.000Z",
-        relayRegistrationPendingReason: "reinvite",
-      });
-
-      const decided = decideRetake(reinvited, {
-        ...runnable(),
-        ...(named === undefined ? {} : { relayRegistrar: named }),
-        relayRegistrationPendingSince: "2026-09-01T00:00:00.000Z",
-      });
-
-      if (decided.kind !== "retake") throw new Error("expected a re-take");
-      expect(decided.advanced).toBe(true);
-      expect(decided.record.relayRegistrar).toEqual(reinvitedRegistrar);
-      expect(decided.record.relayRegistrationPendingSince).toBe(
-        "2026-09-01T00:00:00.000Z",
-      );
-      expect(decided.record.relayRegistrationPendingReason).toBe("reinvite");
-    },
-  );
-
-  test("no pair, or one holding the stored secret, leaves the record as it was", () => {
-    const stored = runnable();
-
-    expect(decideRetake(stored, undefined)).toEqual({
-      kind: "retake",
-      record: stored,
-      advanced: false,
-    });
-    expect(
-      decideRetake(stored, {
-        ...runnable(),
-        sharedSecret: stored.sharedSecret,
-      }),
-    ).toEqual({ kind: "retake", record: stored, advanced: false });
   });
 });

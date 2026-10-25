@@ -58,7 +58,9 @@ import {
 
 import {
   getManagedLocalState,
+  listManagedLocalState,
   markManagedExchangeBackedUp,
+  markManagedExchangeKeyImported,
 } from "@psi/managed/managedLocalState";
 import { DISCLOSURE_ACCOUNTING_VERSION } from "@psi/disclosureAccounting";
 import { buildManagedDeposit } from "@exchange/manageOfferModel";
@@ -67,7 +69,6 @@ import {
   disclosureRecord,
   neighbouringRecordVersion,
 } from "../utils/disclosureFixtures";
-import { seedSpentState } from "./seedSpentState";
 
 import type { ExchangeRecord, WebRTCExchangeLocator } from "@alcove/core";
 import type {
@@ -1096,7 +1097,10 @@ describe("one-step delete leaves nothing behind", () => {
     // entry as well as the record -- the two stores the browser holds an exchange
     // in.
     await markManagedExchangeBackedUp(created.id, "2026-02-01T14:05:00.000Z");
-    await seedSpentState(created.id, "2026-02-02T09:00:00.000Z");
+    await markManagedExchangeKeyImported(
+      created.id,
+      "2026-02-02T09:00:00.000Z",
+    );
     // And file a run's disclosure, so the delete must clear the accounting too --
     // otherwise the delete strands cleartext partner and agreement metadata under
     // an id nothing shows.
@@ -1642,55 +1646,26 @@ describe("diagnostic read never rejects wholesale", () => {
 
     const [entry] = await listManagedExchangesDiagnostic();
     expect(entry.backedUp).toBe(true);
-    // Nothing of that entry's shape was read, so it states no spend either.
-    expect(entry.spent).toBeUndefined();
   });
 
-  test("a spent copy is reported with the route it was spent to", async () => {
+  test("a sibling entry an earlier version marked handed off is one this build does not read", async () => {
     const created = await createRunnableExchange(
-      newExchange({ label: "Handed off" }),
+      newExchange({ label: "Marked by an earlier version" }),
     );
-    await seedSpentState(
-      created.id,
-      "2026-07-14T13:00:00.000Z",
-      "command-line",
-    );
-
-    const [entry] = await listManagedExchangesDiagnostic();
-    // The whole spent state, not a boolean: the delete confirm states what the
-    // hand-off left running elsewhere, which is the route rather than the spend.
-    expect(entry.spent).toEqual({
-      spentAt: "2026-07-14T13:00:00.000Z",
-      handoff: "command-line",
-    });
-  });
-
-  test("a live record reports no spend", async () => {
-    await createRunnableExchange(newExchange({ label: "Live" }));
-    const [entry] = await listManagedExchangesDiagnostic();
-    expect(entry.spent).toBeUndefined();
-  });
-
-  test("an unreadable record's spend survives its unreadability", async () => {
-    const good = await createRunnableExchange(newExchange({ label: "Good" }));
-    await rawPut({
-      ...good,
-      id: "bad-record",
-      schemaVersion: "alcove-managed-exchange/v5",
-    });
-    // The spend is the sibling entry's, so it reads whatever the record does: the
-    // delete confirm for this row must still state what the hand-off keeps running.
-    await rawLocalPut("bad-record", {
+    // The local-state schema rejects a key it does not name, and no current
+    // shape names a handed-off state, so the entry is treated as unparseable: the
+    // strict reads reject on it, and the diagnostic read treats it as backed up.
+    await rawLocalPut(created.id, {
       spent: { spentAt: "2026-07-14T13:00:00.000Z", handoff: "command-line" },
     });
 
-    const entries = await listManagedExchangesDiagnostic();
-    const unreadable = entries.find((entry) => entry.kind === "unreadable");
-    expect(unreadable).toEqual({
-      kind: "unreadable",
-      id: "bad-record",
-      backedUp: false,
-      spent: { spentAt: "2026-07-14T13:00:00.000Z", handoff: "command-line" },
+    await expect(getManagedLocalState(created.id)).rejects.toThrow();
+    await expect(listManagedLocalState()).rejects.toThrow();
+    const [entry] = await listManagedExchangesDiagnostic();
+    expect(entry).toEqual({
+      kind: "readable",
+      essentials: expect.objectContaining({ id: created.id }),
+      backedUp: true,
     });
   });
 

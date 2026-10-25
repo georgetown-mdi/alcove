@@ -5,7 +5,7 @@ import { managedRunReinvites } from "./managedRunLaunchModel";
 import type { LiveManagedRunFailure } from "./managedRunSurfaceModel";
 import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 import type { ManagedReinvite } from "@psi/managed/managedReinvite";
-import type { ManagedRunFailureAlert } from "./managedRunLaunchModel";
+import type { ManagedRunFailure } from "./managedRunLaunchModel";
 import type { ManagedStandingConditionView } from "./managedStandingConditionModel";
 
 /**
@@ -345,7 +345,7 @@ export function managedReinviteFailureAt(
 export function managedStandingConditionShown(
   recovery: ManagedRecoveryState,
   view: ManagedStandingConditionView | undefined,
-  failure: ManagedRunFailureAlert | undefined,
+  failure: ManagedRunFailure | undefined,
 ): boolean {
   return (
     recovery.reinvite.composed === undefined &&
@@ -358,7 +358,7 @@ export function managedStandingConditionShown(
  * confirmation gate whose outcomes decide whether one happens. The standing
  * section then adds no mint control of its own. */
 export function managedFailureHoldsReinvite(
-  failure: ManagedRunFailureAlert | undefined,
+  failure: ManagedRunFailure | undefined,
 ): boolean {
   return (
     failure !== undefined &&

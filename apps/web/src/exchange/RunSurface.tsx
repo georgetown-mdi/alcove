@@ -734,7 +734,7 @@ export function FailureReportedCause({
 /**
  * The operator-facing text of a failed run, whichever seat classified it. The
  * two seats classify into types of their own -- `RunFailure` in
- * `./useInviterExchange`, `ManagedRunFailureAlert` in
+ * `./useInviterExchange`, `ManagedRunFailure` in
  * `../recurring/managedRunLaunchModel`, each with the recovery its own surface
  * offers -- and satisfy this shape, so the two voices are separated by one
  * component on both rather than by a copy of it on each.

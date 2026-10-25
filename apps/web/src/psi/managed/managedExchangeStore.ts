@@ -16,10 +16,6 @@ import {
 import { unfiledDisclosureKey } from "../unfiledDisclosure";
 
 import {
-  ManagedExchangeLockUnavailableError,
-  withManagedExchangeLock,
-} from "./managedExchangeLock";
-import {
   applyManagedExchangeCommandLinePair,
   applyManagedExchangeCompromiseResponse,
   applyManagedExchangeLastRun,
@@ -36,7 +32,6 @@ import {
   applyManagedExchangeTermsChange,
   applyManagedExchangeWorkingDirectory,
   buildManagedExchangeRecord,
-  clearHandedOffLastRun,
   diagnoseManagedExchangeRecord,
   parseManagedExchangeRecord,
   partitionReadableManagedExchanges,
@@ -44,13 +39,11 @@ import {
   safeParseManagedExchangeRecord,
   standingCompromiseResponse,
 } from "./managedExchangeRecord";
-import {
-  decideCommandLinePairTarget,
-  decideRetake,
-} from "./managedPairRecognition";
+import { decideCommandLinePairTarget } from "./managedPairRecognition";
 import { findRecordsByTermsAndSide } from "./managedLiveCopyMatch";
 import { foldElapsedWindowsUnderResponse } from "./managedSchedule";
 import { parseManagedLocalState } from "./managedLocalStateShape";
+import { withManagedExchangeLock } from "./managedExchangeLock";
 
 import type { RelayRegistrar } from "@alcove/core";
 
@@ -72,14 +65,9 @@ import type {
   RunnableManagedExchangeRecord,
 } from "./managedExchangeRecord";
 import type {
-  ManagedLocalState,
-  ManagedSpentHandoff,
-  ManagedSpentState,
-} from "./managedLocalStateShape";
-import type {
   ManagedPairImportOptions,
+  ManagedPairTarget,
   ManagedStoredCopy,
-  ManagedStoredEntry,
 } from "./managedPairRecognition";
 
 /** The IndexedDB database name, under the app's origin. */
@@ -89,11 +77,12 @@ export const MANAGED_EXCHANGE_DB_NAME = "alcove-managed-exchanges";
 export const MANAGED_EXCHANGE_STORE_NAME = "records";
 
 /**
- * The object store holding the local sibling state for a record (the backup marker
- * and the spent state), keyed by the record's `id`. A separate store, not a record
- * field: this state must never appear in the export artifact, and keeping it a
- * sibling makes that non-inclusion structural (the exporter reads only the records
- * store). Its shape is governed by {@link ./managedLocalState.ts}.
+ * The object store holding the local sibling state for a record (the backup and
+ * import markers and any terms proposal), keyed by the record's `id`. A separate
+ * store, not a record field: this state must never appear in the export
+ * artifact, and keeping it a sibling makes that non-inclusion structural (the
+ * exporter reads only the records store). Its shape is governed by
+ * {@link ./managedLocalState.ts}.
  */
 export const MANAGED_EXCHANGE_LOCAL_STORE_NAME = "localState";
 
@@ -370,26 +359,21 @@ export async function listReadableManagedExchanges(): Promise<ManagedExchangeRea
  * One entry in the diagnostic read: for a stored key, either the display essentials
  * the entry parsed to (`readable`) or an unreadable marker (`unreadable`) holding
  * only the key. Both hold the stored `id`, so a delete-by-key acts on either
- * without requiring a successful parse. Both also hold the custody the sibling
- * local-state store states -- `backedUp` and any `spent` state -- so the delete
- * confirm's custody notes show on the recovery path exactly as on the normal list.
- * A boolean suffices for the backup marker, whose timestamp is never shown here;
- * the spend is the sibling's own {@link ManagedSpentState}, since what a surface
- * reading it decides on is the route the copy was spent to, not the fact of a
- * spend alone.
+ * without requiring a successful parse. Both also hold whether the sibling
+ * local-state store states a backup (`backedUp`), so the delete confirm's custody
+ * note shows on the recovery path exactly as on the normal list. A boolean
+ * suffices for the backup marker, whose timestamp is never shown here.
  */
 export type ManagedExchangeDiagnosticEntry =
   | {
       kind: "readable";
       essentials: ManagedExchangeDiagnosticEssentials;
       backedUp: boolean;
-      spent?: ManagedSpentState;
     }
   | {
       kind: "unreadable";
       id: string;
       backedUp: boolean;
-      spent?: ManagedSpentState;
     };
 
 /**
@@ -409,7 +393,7 @@ export type ManagedExchangeDiagnosticEntry =
  * The custody is read from the sibling local-state store in the same transaction,
  * and is CONSERVATIVE on doubt: an unparseable sibling entry is treated as backed
  * up (a wrongly-shown custody warning is harmless; a wrongly-suppressed one is
- * not) and states no spend, nothing of its shape having been read.
+ * not).
  */
 export async function listManagedExchangesDiagnostic(): Promise<
   Array<ManagedExchangeDiagnosticEntry>
@@ -465,18 +449,15 @@ export async function listManagedExchangesDiagnostic(): Promise<
 }
 
 /** What a sibling entry states about one record's custody, for the diagnostic read:
- * whether an exported backup remains with the operator, and the spend when an
- * earlier version's export handed this copy off. */
+ * whether an exported backup remains with the operator. */
 interface ManagedExchangeDiagnosticCustody {
   backedUp: boolean;
-  spent?: ManagedSpentState;
 }
 
 /** Derive each record's custody from the sibling store's parallel key and value
  * arrays. CONSERVATIVE on doubt: a sibling entry that cannot be parsed is treated as
  * backed up (a wrongly-shown custody warning is harmless; a wrongly-suppressed one is
- * not) and states no spend. The backup marker's timestamp is never shown -- only its
- * presence. */
+ * not). The backup marker's timestamp is never shown -- only its presence. */
 function siblingCustodyByKey(
   keys: ReadonlyArray<IDBValidKey>,
   values: ReadonlyArray<unknown>,
@@ -485,11 +466,8 @@ function siblingCustodyByKey(
   for (let index = 0; index < keys.length; index += 1) {
     const key = String(keys[index]);
     try {
-      const { backup, spent } = parseManagedLocalState(values[index]);
-      custodyByKey.set(key, {
-        backedUp: backup !== undefined,
-        ...(spent !== undefined ? { spent } : {}),
-      });
+      const { backup } = parseManagedLocalState(values[index]);
+      custodyByKey.set(key, { backedUp: backup !== undefined });
     } catch {
       custodyByKey.set(key, { backedUp: true });
     }
@@ -563,8 +541,7 @@ function storeWriteFailure(error: DOMException | null): Error {
  * export of the current secret was taken since the last rotation." The import
  * marker clears for the same reason: a rotation is driven by a completed handshake
  * that proves both parties held the same secret, so it must not shield a later,
- * unexplained handshake failure (see {@link ./managedFailureTiers.ts}). Only the
- * backup and import markers are cleared; any spent state is left untouched.
+ * unexplained handshake failure (see {@link ./managedFailureTiers.ts}).
  *
  * The record write is field-scoped through `transform` exactly as
  * {@link readModifyWriteRecord}, so it cannot include a stale secret or document;
@@ -614,23 +591,17 @@ async function readModifyWriteRotation<T extends ManagedExchangeRecord>(
 
 /**
  * Drop the backup and import markers from a record's sibling local-state entry, on
- * an already-open local-state object store inside a live transaction. Deletes the
- * whole entry when no spent state remains, rather than leave an empty sibling. The
- * stored value is re-validated ({@link parseManagedLocalState}), so a corrupted
- * sibling aborts the transaction rather than being kept.
+ * an already-open local-state object store inside a live transaction, by deleting
+ * the entry. Nothing in it is kept, so it is deleted unread: an entry this build
+ * cannot parse goes too, rather than aborting a rotation the partner has already
+ * made.
  */
 function clearRotationSiblingsOnLocalStore(
   store: IDBObjectStore,
   id: string,
   raw: unknown,
 ): void {
-  if (raw === undefined) return;
-  const current = parseManagedLocalState(raw);
-  if (current.spent === undefined) {
-    store.delete(id);
-    return;
-  }
-  store.put({ spent: current.spent }, id);
+  if (raw !== undefined) store.delete(id);
 }
 
 /**
@@ -644,7 +615,7 @@ function clearRotationSiblingsOnLocalStore(
  * transaction) is never masked: this transaction either marks the pre-rotation
  * record before the rotation clears it, or marks the already-rotated secret.
  * The marker only advances forward, so a slow export's late mark cannot
- * revert a newer one; the spent state is left untouched.
+ * revert a newer one; the other sibling markers are left untouched.
  *
  * `composeExport` runs synchronously here, BEFORE the mark is issued: if it throws
  * (an export that refuses the record it read), the whole transaction aborts and no
@@ -715,7 +686,7 @@ export type ManagedBackupMarkOutcome = "marked" | "superseded" | "gone";
  * the comparison, and the mark are one transaction spanning the record and
  * sibling stores, so a rotation landing after the write is seen and the marker
  * is not stamped over a secret the file does not hold. The marker only advances
- * forward, as in {@link readRecordAndMarkBackedUp}, and any spent state is kept.
+ * forward, as in {@link readRecordAndMarkBackedUp}, and the other markers are kept.
  *
  * @throws {ZodError} if the stored record or sibling entry is invalid; the
  *   transaction aborts and nothing is written.
@@ -772,187 +743,9 @@ export async function markManagedBackupIfCurrent(
 }
 
 /**
- * How a re-take of a command-line hand-off ended. `"retaken"` is the one outcome
- * that writes: the spent state is cleared, and the `record` it holds is the one
- * that runs here from then on. The refusals write nothing and are held apart
- * because what the operator does next differs:
- *
- * - `"run-in-flight"` -- a run of this record holds the run+rotate lock. That run
- *   re-reads the spent state as its first act, so a re-take landing beside it would
- *   decide against state the run is about to read; it is refused until the run ends.
- * - `"gone"` -- no record is stored under that id, so there is nothing here to take
- *   back.
- * - `"not-handed-off"` -- the stored record is not spent under a command-line
- *   hand-off: it is live already, or it was spent by the device migration, whose
- *   recovery is importing its own artifact back.
- * - `"mismatch"` -- the pair given is on other agreed terms (`on: "terms"`) or
- *   the other side (`on: "side"`) than the stored record, so it is not this
- *   exchange's pair.
- */
-export type ManagedRetakeOutcome =
-  | { kind: "retaken"; record: ManagedExchangeRecord }
-  | { kind: "run-in-flight" }
-  | { kind: "gone" }
-  | { kind: "not-handed-off" }
-  | { kind: "mismatch"; on: "terms" | "side" };
-
-/**
- * Take a copy handed off to the command line back: clear the spent state so the
- * record runs in this browser again, reading `taken` -- the record read from the
- * `alcove.yaml` and `.alcove.key` the command-line run holds -- into the record
- * when its secret has moved past the stored one. `taken` is checked against the
- * stored record first ({@link decideRetake}): a pair on other agreed terms or
- * the other side is `"mismatch"`, and nothing is written.
- *
- * A run in flight excludes the re-take exactly as it excludes both exports: this
- * step takes the record's run+rotate lock ({@link ./managedExchangeLock.ts})
- * with `ifAvailable`, and a run holding it is reported as `"run-in-flight"` rather
- * than waited out -- the run re-reads the spent state as its first act inside that
- * lock, and the re-take is a write against exactly that state.
- *
- * `taken` is omitted where the scheduled command-line run has not run since the
- * hand-off, in which case the stored secret is still the partnership's and nothing
- * needs reading in. A `taken` whose secret has moved past the stored one is applied
- * through {@link applyManagedExchangeRotation}, the same field-scoped write a run's
- * own rotation takes, and clears the backup marker with it: the secret has advanced,
- * so any earlier export of this exchange no longer holds it. A `taken` sets the
- * pending relay registration as the pair import does, whether or not its secret
- * moved.
- *
- * Either way the entry is left marked imported -- as of `at` where a key file
- * installed a secret, and as of the hand-off instant where none was chosen. Nothing
- * here can tell a current key file from a stale one, and nothing here can
- * check the attestation that no command-line run has happened, so a handshake
- * failure at the next run tiers as imported, with the re-invite recovery, until a
- * run succeeds ({@link ./managedFailureTiers.ts}).
- *
- * A `lastRun` recording the `handed-off` refusal is dropped in the same
- * transaction, with or without a key ({@link clearHandedOffLastRun}); every other
- * entry stays, as does everything else about the record.
- *
- * @throws {Error} if the stored record holds a configuration only and `taken`
- *   would install a secret on it ({@link runnableManagedExchangeOrRefuse}); the
- *   transaction aborts, leaving the record as it stood.
- * @throws {ZodError} if the stored record or sibling entry is invalid, or `taken`
- *   produces an invalid record; the transaction aborts and nothing is written.
- */
-export async function retakeHandedOffManagedExchange(
-  id: string,
-  at: string,
-  taken?: RunnableManagedExchangeRecord,
-): Promise<ManagedRetakeOutcome> {
-  try {
-    return await withManagedExchangeLock(
-      id,
-      () => retakeSpentCopy(id, at, taken),
-      {
-        ifAvailable: true,
-      },
-    );
-  } catch (error) {
-    if (error instanceof ManagedExchangeLockUnavailableError)
-      return { kind: "run-in-flight" };
-    throw error;
-  }
-}
-
-/** The re-take itself, run under the record's run+rotate lock: the cross-store
- * transaction that reads the hand-off, checks the pair against it, applies the
- * pair's secret where it has advanced, marks the entry imported, drops the
- * hand-off's own run refusal, and clears the spent state. */
-async function retakeSpentCopy(
-  id: string,
-  at: string,
-  taken: RunnableManagedExchangeRecord | undefined,
-): Promise<ManagedRetakeOutcome> {
-  const db = await openManagedExchangeDatabase();
-  try {
-    return await new Promise<ManagedRetakeOutcome>((resolve, reject) => {
-      const transaction = db.transaction(
-        [MANAGED_EXCHANGE_STORE_NAME, MANAGED_EXCHANGE_LOCAL_STORE_NAME],
-        "readwrite",
-        { durability: "strict" },
-      );
-      const records = transaction.objectStore(MANAGED_EXCHANGE_STORE_NAME);
-      const local = transaction.objectStore(MANAGED_EXCHANGE_LOCAL_STORE_NAME);
-      const read = records.get(id);
-      const readLocal = local.get(id);
-      let outcome: ManagedRetakeOutcome = { kind: "not-handed-off" };
-      let failure: unknown;
-      const applyWhenReady = () => {
-        if (read.readyState !== "done" || readLocal.readyState !== "done")
-          return;
-        try {
-          if (read.result === undefined) {
-            outcome = { kind: "gone" };
-            return;
-          }
-          const current =
-            readLocal.result === undefined
-              ? undefined
-              : parseManagedLocalState(readLocal.result);
-          if (current?.spent?.handoff !== "command-line") return;
-          const stored = parseManagedExchangeRecord(read.result);
-          const decided = decideRetake(stored, taken);
-          if (decided.kind === "mismatch") {
-            outcome = decided;
-            return;
-          }
-          const { record: retaken, advanced } = decided;
-          if (retaken !== stored) records.put(retaken);
-          clearSpentOnLocalStore(
-            local,
-            id,
-            current,
-            advanced ? at : current.spent.spentAt,
-            advanced,
-          );
-          outcome = { kind: "retaken", record: retaken };
-        } catch (error) {
-          failure = error;
-          transaction.abort();
-        }
-      };
-      read.onsuccess = applyWhenReady;
-      readLocal.onsuccess = applyWhenReady;
-      transaction.oncomplete = () => resolve(outcome);
-      transaction.onerror = () => reject(failure ?? transaction.error);
-      transaction.onabort = () => reject(failure ?? transaction.error);
-    });
-  } finally {
-    db.close();
-  }
-}
-
-/**
- * Drop the spent state from a record's sibling entry, on an already-open local-state
- * object store inside a live transaction, leaving it marked imported as of
- * `importedAt`: what the copy taken back holds cannot be checked here, whether the
- * operator chose a key file or attested that nothing has run since the hand-off.
- * `secretAdvanced` says a key file's newer secret was installed, which drops the
- * backup marker with it -- no earlier export holds that secret -- while a re-take
- * that installed nothing keeps it.
- */
-function clearSpentOnLocalStore(
-  store: IDBObjectStore,
-  id: string,
-  current: ManagedLocalState,
-  importedAt: string,
-  secretAdvanced: boolean,
-): void {
-  const kept: ManagedLocalState = {
-    ...(secretAdvanced || current.backup === undefined
-      ? {}
-      : { backup: current.backup }),
-    imported: { importedAt },
-  };
-  store.put(parseManagedLocalState(kept), id);
-}
-
-/**
  * Advance the backup marker on a record's sibling entry to `marker`, on an
- * already-open local-state object store inside a live transaction, preserving any
- * spent state. The marker only moves forward: a stamp older than the stored marker
+ * already-open local-state object store inside a live transaction, preserving the
+ * other markers. The marker only moves forward: a stamp older than the stored marker
  * is a no-op, so a slow export's late mark cannot revert a newer one. Compared as
  * parsed instants, since the schema admits ISO stamps of differing precision.
  * The merged entry is validated before it is written, so a marker the reader
@@ -1114,8 +907,8 @@ export class ManagedReinviteWithheldError extends Error {
  * is held by that call alone, to sign the registration of the fresh one. What
  * it returns is what this returns.
  *
- * A run in flight is excluded rather than checked, exactly as both exports and
- * the re-take exclude it: this step takes the record's run+rotate lock
+ * A run in flight is excluded rather than checked, exactly as both exports
+ * exclude it: this step takes the record's run+rotate lock
  * ({@link ./managedExchangeLock.ts}) with `ifAvailable` before the transaction
  * opens, so a run holding it is refused here rather than having its secret
  * replaced mid-exchange. Neither rotation write compares against the secret it
@@ -1471,130 +1264,63 @@ export async function persistManagedExchangeWorkingDirectory(
 }
 
 /**
- * How {@link reviveSpentManagedExchange} reconciled an artifact against the
- * records in the store. Nothing is written except on `"revived"`:
+ * How {@link reconcileManagedBackupImport} reconciled an artifact against the
+ * records in the store. Nothing is written by any of them:
  *
- * - `"revived"` -- a MIGRATION-spent record held the artifact's secret and was
- *   revived in place, holding the revived record. After a scoped restore,
- *   `sameTermsAs` names a live record with the revived record's agreed terms
- *   and side, if one exists, for the caller to mention.
- * - `"handed-off"` -- a spent record holding the artifact's secret was handed off
- *   by a route of its own ({@link ManagedSpentHandoff}), which the artifact cannot
- *   take back. The caller refuses the import, naming the record the store still
- *   holds. The `label` is empty where the refusing record is one this build
- *   cannot parse, which leaves its own fields untrusted.
- * - `"custody-unreadable"` -- a record holding the artifact's secret has a sibling
- *   entry this build cannot parse, so whether a hand-off spent it cannot be read.
- *   The caller refuses the import without naming a hand-off route, none having
- *   been read. The `label` is empty where the record itself does not parse either.
- * - `"held"` -- a LIVE record holds the artifact's secret already. The caller
- *   refuses the import, naming that record's `label`.
- * - `"live-copy"` -- an import not scoped to a record found no live record
- *   holding the artifact's secret, and one or more with its agreed terms and
- *   side not yet acknowledged ({@link findRecordsByTermsAndSide}), listed
- *   in `copies`. The caller names them all and imports only on the operator's
- *   word, passing every `id` back in `besideIds`.
- * - `"other-exchange"` -- a restore scoped to one record found the artifact is
- *   not that record's backup: it does not hold the secret that migration-spent
- *   record holds.
+ * - `"held"` -- a stored record holds the artifact's secret already: it is the
+ *   same exchange. The caller refuses the import, naming that record's
+ *   `label`.
+ * - `"live-copy"` -- no stored record holds the artifact's secret, and one or
+ *   more have its agreed terms and side not yet acknowledged
+ *   ({@link findRecordsByTermsAndSide}), listed in `copies`. The caller names
+ *   them all and imports only on the operator's word, passing every `id` back
+ *   in `besideIds`.
  * - `"no-match"` -- nothing above applies, so the caller installs a fresh record.
  */
-export type ManagedReviveOutcome =
-  | {
-      kind: "revived";
-      record: ManagedExchangeRecord;
-      sameTermsAs?: { id: string; label: string };
-    }
-  | { kind: "handed-off"; handoff: ManagedSpentHandoff; label: string }
-  | { kind: "custody-unreadable"; label: string }
+export type ManagedBackupReconcileOutcome =
   | { kind: "held"; label: string }
   | {
       kind: "live-copy";
       copies: ReadonlyArray<{ id: string; label: string }>;
     }
-  | { kind: "other-exchange" }
   | { kind: "no-match" };
 
 /** What a backup import asks of the reconciliation beyond the artifact itself. */
-export interface ManagedReviveOptions {
-  /** The live records the operator confirmed installing beside, which the
-   * terms-and-side rule then passes over. Unused by a scoped restore, which
-   * never asks. */
+export interface ManagedBackupImportOptions {
+  /** The stored records the operator confirmed installing beside, which the
+   * terms-and-side rule then passes over. */
   besideIds?: ReadonlyArray<string>;
-  /** The migration-spent record a scoped restore brings back: the artifact must
-   * hold that record's secret, and any other file is `"other-exchange"`. The
-   * operator chose that record, so no live record is named for them to decide
-   * on; one with its agreed terms and side is reported in `sameTermsAs`. */
-  restoreInto?: string;
 }
 
 /**
  * Reconcile a reconstructed artifact against the store, in one transaction
- * spanning both stores: reads every record and sibling entry and compares each
- * record's `sharedSecret` with `reconstructed`'s in memory, so nothing
- * secret-derived is ever persisted. The outcomes decide in this order:
- *
- * 1. A match spent under a `handoff` refuses -- the migration is the only spend
- *    that leaves `handoff` absent, so a hand-off route added later refuses here
- *    by default. The exchange runs from what the hand-off saved and the artifact
- *    cannot take that copy back. This wins over a revive: when a migration-spent
- *    record holds the secret too, reviving it would put a second live owner
- *    beside the one the hand-off already runs.
- * 2. A match whose sibling this build cannot parse refuses (below).
- * 3. A scoped restore whose artifact is not `restoreInto`'s refuses.
- * 4. A LIVE match refuses: it is this exchange, and a second live copy of one
- *    secret splits at the first rotation either side makes.
- * 5. On an import not scoped by `restoreInto`, the live records with the
- *    artifact's agreed terms and side, other than those in `besideIds`, are
- *    named together for the operator to decide on
- *    ({@link findRecordsByTermsAndSide}): a secret may have rotated past
- *    the artifact's. A scoped restore skips this step: the
- *    operator chose the record, and the secret match confirms it.
- * 6. A match spent by the DEVICE MIGRATION is revived in place: the record's
- *    fields are updated from the artifact (keeping its own `id` and any
- *    working-folder grant), its spent state cleared,
- *    and the backup and import markers stamped as of `at`. The update is
- *    re-validated through the record schema, so a malformed revive aborts the
- *    transaction and leaves the store untouched. A scoped revive reports a
- *    live record with the revived record's agreed terms and side in
- *    `sameTermsAs`.
+ * reading every record and comparing each record's `sharedSecret` with
+ * `reconstructed`'s in memory, so nothing secret-derived is ever persisted. A
+ * stored record holding the same secret is the same exchange and refuses
+ * (`"held"`): a second copy of one secret splits at the first rotation either
+ * side makes. Otherwise the stored records with the artifact's agreed terms and
+ * side, other than those in `besideIds`, are named together for the operator to
+ * decide on ({@link findRecordsByTermsAndSide}): a secret may have rotated past
+ * the artifact's.
  *
  * Each stored record is parsed on its own, and an entry this build cannot parse is
  * SKIPPED rather than failing the reconciliation: one invalid record must not block
  * an import for a different exchange, which is the way forward the read-failed
  * recovery surface offers. The invalid entry stays in the store, listed by that
- * surface's diagnostic read, until the operator discards it. A skipped entry can
- * still refuse the import -- when its sibling entry holds a hand-off and its stored
- * secret is readable and equal to the artifact's, the outcome is that hand-off's
- * refusal -- but it can never be revived or named as a live copy, both needing
- * the whole record.
- *
- * Each sibling entry is parsed on its own too, on the same terms and for the same
- * reason. A record whose sibling this build cannot parse takes no part in the
- * reconciliation unless it holds the artifact's secret, in which case the outcome is
- * `"custody-unreadable"`: the sibling is where a hand-off is recorded, so an unreadable
- * one leaves no way to tell a handed-off record from a migration-spent or a live
- * one, and the conservative answer is the refusal rather than a revive or a second
- * live copy. Its secret is read off the raw value where the record does not parse
- * either, with the bound that read already has.
- *
- * @throws {ZodError} if the revived record is invalid.
+ * surface's diagnostic read, until the operator discards it.
  */
-export async function reviveSpentManagedExchange(
+export async function reconcileManagedBackupImport(
   reconstructed: ManagedExchangeRecord,
-  at: string,
-  options: ManagedReviveOptions = {},
-): Promise<ManagedReviveOutcome> {
+  options: ManagedBackupImportOptions = {},
+): Promise<ManagedBackupReconcileOutcome> {
   const outcome = await reconcileImportedSecret(
     reconstructed,
-    at,
+    "",
     "backup",
     options,
   );
   if (
     outcome.kind === "completed" ||
-    outcome.kind === "retake" ||
-    outcome.kind === "side-mismatch" ||
     outcome.kind === "stored-copy" ||
     outcome.kind === "chosen-copy-changed"
   )
@@ -1606,48 +1332,36 @@ export async function reviveSpentManagedExchange(
 
 /**
  * How {@link reconcileManagedCommandLinePair} reconciled an imported
- * command-line pair: {@link ManagedReviveOutcome}'s outcomes, read the same
- * way, less the two only a backup import asks for, and those only a pair
- * reaches ({@link ManagedPairTarget}):
+ * command-line pair: `"held"` and `"no-match"` read as on the backup import,
+ * and those only a pair reaches ({@link ManagedPairTarget}):
  *
  * - `"completed"` -- the configuration-only record the operator chose took
  *   the pair, holding the completed record.
- * - `"retake"` -- the record the operator chose is a command-line hand-off,
- *   which takes the pair through its re-take; nothing is written here.
- * - `"side-mismatch"`, `"stored-copy"`, and `"chosen-copy-changed"` -- as
+ * - `"stored-copy"` and `"chosen-copy-changed"` -- as
  *   {@link ManagedPairTarget} states; nothing is written.
  */
 export type ManagedPairReconcileOutcome =
-  | Exclude<
-      ManagedReviveOutcome,
-      { kind: "live-copy" } | { kind: "other-exchange" }
-    >
+  | Exclude<ManagedBackupReconcileOutcome, { kind: "live-copy" }>
   | { kind: "completed"; record: ManagedExchangeRecord }
-  | { kind: "retake"; id: string }
-  | { kind: "side-mismatch"; label: string }
   | { kind: "stored-copy"; copies: ReadonlyArray<ManagedStoredCopy> }
   | { kind: "chosen-copy-changed" };
 
 /**
  * Reconcile a record read from a command-line `alcove.yaml` and its
  * `.alcove.key` against the store, in the transaction the backup import's
- * {@link reviveSpentManagedExchange} uses. A stored record holding the same
- * `sharedSecret`, compared in memory, is the same exchange: a hand-off match,
- * an unreadable sibling, and a live match refuse exactly as they do there.
- * Where none holds it, the stored records a pair can land in -- handed off,
- * migration-spent, or holding a configuration only -- are looked for by
- * agreed terms and side, and the pair lands in one only as `options.into`
- * names it ({@link decideCommandLinePairTarget}).
+ * {@link reconcileManagedBackupImport} uses. A stored record holding the same
+ * `sharedSecret`, compared in memory, is the same exchange and refuses exactly
+ * as it does there. Where none holds it, the configuration-only records with
+ * its agreed terms and side are looked for, and the pair lands in one only as
+ * `options.into` names it ({@link decideCommandLinePairTarget}).
  *
- * A migration-spent record, and a configuration-only one, take the pair's
- * fields laid over the stored record ({@link applyManagedExchangeCommandLinePair})
- * -- the document, side, max-age policy, and key pair -- keeping the label,
- * schedule, run bookkeeping, standing condition, and platform grants the pair
- * has no field for. The spent state is cleared and the record marked imported
- * as of `at`; a backup marker it held is kept where the pair holds the secret
- * it attests, and none is stamped.
+ * The configuration-only record takes the pair's fields laid over it
+ * ({@link applyManagedExchangeCommandLinePair}) -- the document, side, max-age
+ * policy, and key pair -- keeping the label, schedule, run bookkeeping,
+ * standing condition, and platform grants the pair has no field for, and is
+ * marked imported as of `at`; no backup marker is stamped.
  *
- * @throws {ZodError} if the revived record is invalid; nothing is written.
+ * @throws {ZodError} if the completed record is invalid; nothing is written.
  */
 export async function reconcileManagedCommandLinePair(
   imported: RunnableManagedExchangeRecord,
@@ -1661,7 +1375,7 @@ export async function reconcileManagedCommandLinePair(
     {},
     options,
   );
-  if (outcome.kind === "live-copy" || outcome.kind === "other-exchange")
+  if (outcome.kind === "live-copy")
     throw new Error(
       `a command-line pair reconciliation reported ${outcome.kind}, which only a backup import asks for`,
     );
@@ -1678,13 +1392,13 @@ async function reconcileImportedSecret(
   reconstructed: ManagedExchangeRecord,
   at: string,
   source: ManagedImportSource,
-  options: ManagedReviveOptions,
+  options: ManagedBackupImportOptions,
   pairOptions: ManagedPairImportOptions = {},
-): Promise<ManagedReviveOutcome | ManagedPairReconcileOutcome> {
+): Promise<ManagedBackupReconcileOutcome | ManagedPairReconcileOutcome> {
   const db = await openManagedExchangeDatabase();
   try {
     return await new Promise<
-      ManagedReviveOutcome | ManagedPairReconcileOutcome
+      ManagedBackupReconcileOutcome | ManagedPairReconcileOutcome
     >((resolve, reject) => {
       const transaction = db.transaction(
         [MANAGED_EXCHANGE_STORE_NAME, MANAGED_EXCHANGE_LOCAL_STORE_NAME],
@@ -1693,194 +1407,63 @@ async function reconcileImportedSecret(
       );
       const records = transaction.objectStore(MANAGED_EXCHANGE_STORE_NAME);
       const local = transaction.objectStore(MANAGED_EXCHANGE_LOCAL_STORE_NAME);
-      const readRecordKeys = records.getAllKeys();
       const readRecords = records.getAll();
-      const readKeys = local.getAllKeys();
-      const readValues = local.getAll();
-      let outcome: ManagedReviveOutcome | ManagedPairReconcileOutcome = {
-        kind: "no-match",
-      };
+      let outcome: ManagedBackupReconcileOutcome | ManagedPairReconcileOutcome =
+        { kind: "no-match" };
       let failure: unknown;
-      const applyWhenReady = () => {
-        if (
-          readRecordKeys.readyState !== "done" ||
-          readRecords.readyState !== "done" ||
-          readKeys.readyState !== "done" ||
-          readValues.readyState !== "done"
-        )
-          return;
+      readRecords.onsuccess = () => {
         try {
-          const spentStates = new Map<string, ManagedSpentState>();
-          const backups = new Map<string, ManagedLocalState["backup"]>();
-          const unreadableSiblings = new Set<string>();
-          const keys = readKeys.result;
-          const values = readValues.result;
-          for (let index = 0; index < keys.length; index += 1) {
-            const key = String(keys[index]);
-            try {
-              const { spent, backup } = parseManagedLocalState(values[index]);
-              if (spent !== undefined) spentStates.set(key, spent);
-              if (backup !== undefined) backups.set(key, backup);
-            } catch {
-              unreadableSiblings.add(key);
-            }
-          }
-          const recordKeys = readRecordKeys.result;
-          const rawRecords = readRecords.result;
-          let match: ManagedExchangeRecord | undefined;
-          let handedOff:
-            { label: string; handoff: ManagedSpentHandoff } | undefined;
-          let handedOffUnreadable: ManagedSpentHandoff | undefined;
-          let custodyUnreadable: string | undefined;
           let held: string | undefined;
-          const liveRecords: Array<ManagedExchangeRecord> = [];
-          const storedEntries: Array<ManagedStoredEntry> = [];
-          for (let index = 0; index < rawRecords.length; index += 1) {
-            const raw = rawRecords[index];
-            // The store key, not the value's own `id`, which a failed parse leaves
-            // untrusted; for a record that parses the two are the same field.
-            const key = String(recordKeys[index]);
-            const spent = spentStates.get(key);
+          const others: Array<ManagedExchangeRecord> = [];
+          for (const raw of readRecords.result) {
             const parsed = safeParseManagedExchangeRecord(raw);
-            if (unreadableSiblings.has(key)) {
-              const secret = parsed.success
-                ? parsed.data.sharedSecret
-                : storedSharedSecret(raw);
-              if (secret === reconstructed.sharedSecret)
-                custodyUnreadable ??= parsed.success ? parsed.data.label : "";
-              continue;
-            }
-            if (!parsed.success) {
-              if (
-                spent?.handoff !== undefined &&
-                storedSharedSecret(raw) === reconstructed.sharedSecret
-              )
-                handedOffUnreadable ??= spent.handoff;
-              continue;
-            }
-            const existing = parsed.data;
-            storedEntries.push({ record: existing, spent });
-            if (spent === undefined) liveRecords.push(existing);
-            if (existing.sharedSecret !== reconstructed.sharedSecret) continue;
-            if (spent === undefined) held ??= existing.label;
-            else if (spent.handoff === undefined) {
-              if (match === undefined || existing.id === options.restoreInto)
-                match = existing;
-            } else
-              handedOff ??= { label: existing.label, handoff: spent.handoff };
-          }
-          if (handedOff !== undefined) {
-            outcome = {
-              kind: "handed-off",
-              handoff: handedOff.handoff,
-              label: handedOff.label,
-            };
-            return;
-          }
-          if (handedOffUnreadable !== undefined) {
-            outcome = {
-              kind: "handed-off",
-              handoff: handedOffUnreadable,
-              label: "",
-            };
-            return;
-          }
-          if (custodyUnreadable !== undefined) {
-            outcome = { kind: "custody-unreadable", label: custodyUnreadable };
-            return;
-          }
-          if (
-            options.restoreInto !== undefined &&
-            match?.id !== options.restoreInto
-          ) {
-            outcome = { kind: "other-exchange" };
-            return;
+            if (!parsed.success) continue;
+            if (parsed.data.sharedSecret === reconstructed.sharedSecret)
+              held ??= parsed.data.label;
+            else others.push(parsed.data);
           }
           if (held !== undefined) {
             outcome = { kind: "held", label: held };
             return;
           }
-          if (source === "backup" && options.restoreInto === undefined) {
+          if (source === "backup") {
             const liveCopies = findRecordsByTermsAndSide(
-              liveRecords,
+              others,
               reconstructed,
               options.besideIds,
             );
-            if (liveCopies.length > 0) {
+            if (liveCopies.length > 0)
               outcome = {
                 kind: "live-copy",
                 copies: liveCopies.map(({ id, label }) => ({ id, label })),
               };
-              return;
-            }
-          }
-          if (source === "command-line") {
-            const imported = runnableManagedExchangeOrRefuse(reconstructed);
-            const target = decideCommandLinePairTarget(
-              storedEntries,
-              imported,
-              match,
-              pairOptions,
-            );
-            if (target.kind !== "revive" && target.kind !== "complete") {
-              if (target.kind !== "no-match") outcome = target;
-              return;
-            }
-            const taken = applyManagedExchangeCommandLinePair(
-              target.into,
-              imported,
-            );
-            const backup = backups.get(target.into.id);
-            records.put(taken);
-            local.put(
-              parseManagedLocalState({
-                ...(backup !== undefined &&
-                target.into.sharedSecret === imported.sharedSecret
-                  ? { backup }
-                  : {}),
-                imported: { importedAt: at },
-              }),
-              target.into.id,
-            );
-            outcome = {
-              kind: target.kind === "revive" ? "revived" : "completed",
-              record: taken,
-            };
             return;
           }
-          if (match === undefined) return;
-          const revived = parseManagedExchangeRecord({
-            ...reconstructed,
-            id: match.id,
-            ...(match.workingDirectoryHandle !== undefined
-              ? { workingDirectoryHandle: match.workingDirectoryHandle }
-              : {}),
-          });
-          records.put(revived);
-          local.put(
-            { backup: { backedUpAt: at }, imported: { importedAt: at } },
-            match.id,
+          const imported = runnableManagedExchangeOrRefuse(reconstructed);
+          const target = decideCommandLinePairTarget(
+            others,
+            imported,
+            pairOptions,
           );
-          const sameTerms =
-            options.restoreInto === undefined
-              ? undefined
-              : findRecordsByTermsAndSide(liveRecords, revived)[0];
-          outcome = {
-            kind: "revived",
-            record: revived,
-            ...(sameTerms !== undefined
-              ? { sameTermsAs: { id: sameTerms.id, label: sameTerms.label } }
-              : {}),
-          };
+          if (target.kind !== "complete") {
+            if (target.kind !== "no-match") outcome = target;
+            return;
+          }
+          const completed = applyManagedExchangeCommandLinePair(
+            target.into,
+            imported,
+          );
+          records.put(completed);
+          local.put(
+            parseManagedLocalState({ imported: { importedAt: at } }),
+            target.into.id,
+          );
+          outcome = { kind: "completed", record: completed };
         } catch (error) {
           failure = error;
           transaction.abort();
         }
       };
-      readRecordKeys.onsuccess = applyWhenReady;
-      readRecords.onsuccess = applyWhenReady;
-      readKeys.onsuccess = applyWhenReady;
-      readValues.onsuccess = applyWhenReady;
       transaction.oncomplete = () => resolve(outcome);
       transaction.onerror = () => reject(failure ?? transaction.error);
       transaction.onabort = () => reject(failure ?? transaction.error);
@@ -1891,27 +1474,9 @@ async function reconcileImportedSecret(
 }
 
 /**
- * The `sharedSecret` a stored value holds as a string, read off the raw value
- * without the record schema, or `undefined` where the field is absent or of another
- * type. Read only to decide whether an entry {@link reviveSpentManagedExchange}
- * could not parse is one an import must be refused on -- its sibling's hand-off, or
- * a sibling this build cannot parse either -- which is the only comparison a skipped
- * entry takes part in. A best-effort check rather than a guarantee: an entry whose
- * secret field is unreadable too matches nothing and installs fresh, the same bound
- * the refusal already has against a record rotated or deleted past the artifact
- * (docs/spec/MANAGED_EXCHANGE_RECORD.md).
- */
-function storedSharedSecret(raw: unknown): string | undefined {
-  if (typeof raw !== "object" || raw === null || !("sharedSecret" in raw))
-    return undefined;
-  const { sharedSecret } = raw;
-  return typeof sharedSecret === "string" ? sharedSecret : undefined;
-}
-
-/**
  * Delete a managed exchange in one step, removing everything the browser holds
  * for it -- the record, the secret, the working-folder grant, the schedule, the run bookkeeping, the local sibling state (the backup
- * marker and any spent state), its accounting of disclosures and the note of any
+ * and import markers and any terms proposal), its accounting of disclosures and the note of any
  * run that could not be filed into it, AND the results a scheduled run parked
  * for the operator -- so nothing is left behind. All of it is removed in one
  * transaction spanning the four stores, so a delete cannot leave a stranded

@@ -316,7 +316,7 @@ describe("a panel whose lines are withheld", () => {
 });
 
 describe("the export leaves this browser's copy as it was", () => {
-  test("the stored record is unchanged, unspent, and still runs here", async () => {
+  test("the stored record is unchanged and still runs here", async () => {
     const created = await createManagedExchange(newExchange());
     const before = await getManagedExchange(created.id);
     const downloads = captureDownloads();

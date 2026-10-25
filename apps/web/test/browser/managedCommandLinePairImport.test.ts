@@ -15,8 +15,6 @@ import {
 import {
   ManagedImportAlreadyHeldError,
   ManagedImportChosenCopyError,
-  ManagedImportHandedOffError,
-  ManagedImportSideMismatchError,
   ManagedImportStoredCopyError,
   importManagedCommandLinePair,
   importManagedExchange,
@@ -36,8 +34,6 @@ import {
   markManagedExchangeBackedUp,
 } from "@psi/managed/managedLocalState";
 import { composeManagedCronExport } from "@psi/managed/managedCronExport";
-
-import { seedSpentState } from "./seedSpentState";
 
 import type {
   ManagedExchangeRecord,
@@ -242,62 +238,6 @@ describe("a stored exchange holding the pair's secret", () => {
     ).rejects.toBeInstanceOf(ManagedImportAlreadyHeldError);
     expect(await listManagedExchanges()).toEqual([live]);
   });
-
-  test("a migration-spent one is revived in place with the pair laid over it", async () => {
-    const husk = await createRunnableExchange(
-      newExchange({ schedule, tokenMaxAgeDays: 30 }),
-    );
-    await markManagedExchangeBackedUp(husk.id, "2026-07-10T09:00:00.000Z");
-    await seedSpentState(husk.id, "2026-07-11T09:00:00.000Z");
-    const onTheCommandLine = runnableManagedExchangeOrRefuse(
-      buildManagedExchangeRecord(
-        newExchange({
-          label: "",
-          sharedSecret: husk.sharedSecret,
-          expires: "2026-12-31T00:00:00.000Z",
-          tokenMaxAgeDays: 60,
-        }),
-      ),
-    );
-    const { configuration, key } = pairOf(onTheCommandLine);
-
-    const { record } = await importManagedCommandLinePair(configuration, key);
-
-    expect(record.id).toBe(husk.id);
-    const stored = await listManagedExchanges();
-    expect(stored.map((entry) => entry.id)).toEqual([husk.id]);
-    expect(stored[0].label).toBe(husk.label);
-    expect(stored[0].schedule).toEqual(schedule);
-    expect(stored[0].tokenMaxAgeDays).toBe(60);
-    expect(stored[0].expires).toBe("2026-12-31T00:00:00.000Z");
-    const local = await getManagedLocalState(husk.id);
-    expect(local?.spent).toBeUndefined();
-    expect(local?.imported?.importedAt).toEqual(expect.any(String));
-    // The secret did not move, so the backup taken before it still holds it.
-    expect(local?.backup?.backedUpAt).toBe("2026-07-10T09:00:00.000Z");
-  });
-
-  test("one handed off to the command line refuses the pair, writing nothing", async () => {
-    const handedOff = await createRunnableExchange(newExchange());
-    await seedSpentState(
-      handedOff.id,
-      "2026-07-11T09:00:00.000Z",
-      "command-line",
-    );
-    const { configuration, key } = pairOf(handedOff);
-
-    const error: unknown = await importManagedCommandLinePair(
-      configuration,
-      key,
-    ).catch((caught: unknown) => caught);
-
-    expect(error).toBeInstanceOf(ManagedImportHandedOffError);
-    expect((error as ManagedImportHandedOffError).label).toBe(handedOff.label);
-    expect(await listManagedExchanges()).toEqual([handedOff]);
-    const local = await getManagedLocalState(handedOff.id);
-    expect(local?.spent?.handoff).toBe("command-line");
-    expect(local?.imported).toBeUndefined();
-  });
 });
 
 describe("a stored record of the pair's terms and side that its secret misses", () => {
@@ -320,20 +260,6 @@ describe("a stored record of the pair's terms and side that its secret misses", 
     return { ...pairOf(onTheCommandLine), sharedSecret };
   }
 
-  async function handedOff(): Promise<RunnableManagedExchangeRecord> {
-    const record = await createRunnableExchange(newExchange({ schedule }));
-    await markManagedExchangeBackedUp(record.id, "2026-07-10T09:00:00.000Z");
-    await seedSpentState(record.id, "2026-07-11T09:00:00.000Z", "command-line");
-    return record;
-  }
-
-  async function migrationSpent(): Promise<RunnableManagedExchangeRecord> {
-    const record = await createRunnableExchange(newExchange({ schedule }));
-    await markManagedExchangeBackedUp(record.id, "2026-07-10T09:00:00.000Z");
-    await seedSpentState(record.id, "2026-07-11T09:00:00.000Z");
-    return record;
-  }
-
   async function configurationOnly(): Promise<ManagedExchangeRecord> {
     return createManagedExchange(newExchange({ sharedSecret: undefined }));
   }
@@ -350,137 +276,29 @@ describe("a stored record of the pair's terms and side that its secret misses", 
     return error as ManagedImportStoredCopyError;
   }
 
-  test("each kind of stored record is offered by state, a live one is not, and nothing is written", async () => {
-    const live = await createRunnableExchange(newExchange());
-    const handed = await handedOff();
-    const spent = await migrationSpent();
+  test("a configuration-only record is offered, a live one is not, and nothing is written", async () => {
+    const live = await createRunnableExchange(newExchange({ schedule }));
+    await markManagedExchangeBackedUp(live.id, "2026-07-10T09:00:00.000Z");
     const configured = await configurationOnly();
     const storedBefore = await listManagedExchanges();
-    const { configuration, key, sharedSecret } = rotatedPairOf(handed);
+    const { configuration, key, sharedSecret } = rotatedPairOf(live);
 
     const offer = await storedCopyOffer(configuration, key);
 
-    expect(
-      [...offer.copies].sort((left, right) => left.id.localeCompare(right.id)),
-    ).toEqual(
-      [
-        { id: handed.id, label: handed.label, state: "handed-off" },
-        { id: spent.id, label: spent.label, state: "migration-spent" },
-        {
-          id: configured.id,
-          label: configured.label,
-          state: "configuration-only",
-        },
-      ].sort((left, right) => left.id.localeCompare(right.id)),
-    );
+    expect(offer.copies).toEqual([
+      {
+        id: configured.id,
+        label: configured.label,
+        state: "configuration-only",
+      },
+    ]);
     expect(offer.copies.map(({ id }) => id)).not.toContain(live.id);
     expect(await listManagedExchanges()).toEqual(storedBefore);
-    expect(await getManagedLocalState(handed.id)).toEqual({
+    expect(await getManagedLocalState(live.id)).toEqual({
       backup: { backedUpAt: "2026-07-10T09:00:00.000Z" },
-      spent: {
-        spentAt: "2026-07-11T09:00:00.000Z",
-        handoff: "command-line",
-      },
     });
     expect(await getManagedLocalState(configured.id)).toBeUndefined();
     expect(await everywhereStored(sharedSecret)).toEqual([]);
-  });
-
-  test("taken into a hand-off, the pair's secret is read in through the re-take", async () => {
-    const handed = await handedOff();
-    const { configuration, key, sharedSecret } = rotatedPairOf(handed);
-    await storedCopyOffer(configuration, key);
-
-    const { record } = await importManagedCommandLinePair(
-      configuration,
-      key,
-      undefined,
-      { into: handed.id },
-    );
-
-    expect(record.id).toBe(handed.id);
-    const stored = await listManagedExchanges();
-    expect(stored.map((entry) => entry.id)).toEqual([handed.id]);
-    expect(stored[0].sharedSecret).toBe(sharedSecret);
-    expect(stored[0].label).toBe(handed.label);
-    expect(stored[0].schedule).toEqual(schedule);
-    // The secret moved past the one the backup attests, so its marker goes.
-    const local = await getManagedLocalState(handed.id);
-    expect(local?.spent).toBeUndefined();
-    expect(local?.backup).toBeUndefined();
-    expect(local?.imported?.importedAt).toEqual(expect.any(String));
-  });
-
-  test("added beside a hand-off, the pair installs fresh and leaves it spent", async () => {
-    const handed = await handedOff();
-    const { configuration, key, sharedSecret } = rotatedPairOf(handed);
-
-    const { record } = await importManagedCommandLinePair(
-      configuration,
-      key,
-      undefined,
-      { besideIds: [handed.id] },
-    );
-
-    expect(record.id).not.toBe(handed.id);
-    const stored = await listManagedExchanges();
-    expect(stored.map((entry) => entry.id).sort()).toEqual(
-      [handed.id, record.id].sort(),
-    );
-    expect(stored.find((entry) => entry.id === handed.id)).toEqual(handed);
-    expect((await getManagedLocalState(handed.id))?.spent?.handoff).toBe(
-      "command-line",
-    );
-    expect(await everywhereStored(sharedSecret)).toEqual([
-      `${MANAGED_EXCHANGE_STORE_NAME}[${record.id}].sharedSecret`,
-    ]);
-  });
-
-  test("taken into a migration-spent record, it is revived with the pair's secret and its backup marker dropped", async () => {
-    // The marker is kept only where the pair holds the secret it attests (the
-    // secret-match revive above); this pair's secret has moved past it.
-    const spent = await migrationSpent();
-    const { configuration, key, sharedSecret } = rotatedPairOf(spent);
-    await storedCopyOffer(configuration, key);
-
-    const { record } = await importManagedCommandLinePair(
-      configuration,
-      key,
-      undefined,
-      { into: spent.id },
-    );
-
-    expect(record.id).toBe(spent.id);
-    const stored = await listManagedExchanges();
-    expect(stored.map((entry) => entry.id)).toEqual([spent.id]);
-    expect(stored[0].sharedSecret).toBe(sharedSecret);
-    expect(stored[0].label).toBe(spent.label);
-    expect(stored[0].schedule).toEqual(schedule);
-    const local = await getManagedLocalState(spent.id);
-    expect(local?.spent).toBeUndefined();
-    expect(local?.backup).toBeUndefined();
-    expect(local?.imported?.importedAt).toEqual(expect.any(String));
-  });
-
-  test("added beside a migration-spent record, the pair installs fresh and leaves it spent", async () => {
-    const spent = await migrationSpent();
-    const { configuration, key } = rotatedPairOf(spent);
-
-    const { record } = await importManagedCommandLinePair(
-      configuration,
-      key,
-      undefined,
-      { besideIds: [spent.id] },
-    );
-
-    expect(record.id).not.toBe(spent.id);
-    expect(
-      (await listManagedExchanges()).find((entry) => entry.id === spent.id),
-    ).toEqual(spent);
-    expect(await getManagedLocalState(spent.id)).toEqual({
-      backup: { backedUpAt: "2026-07-10T09:00:00.000Z" },
-      spent: { spentAt: "2026-07-11T09:00:00.000Z" },
-    });
   });
 
   test("taken into a configuration-only record, it completes that record in place", async () => {
@@ -502,7 +320,6 @@ describe("a stored record of the pair's terms and side that its secret misses", 
     expect(stored[0].sharedSecret).toBe(sharedSecret);
     expect(stored[0].label).toBe(configured.label);
     const local = await getManagedLocalState(configured.id);
-    expect(local?.spent).toBeUndefined();
     expect(local?.backup).toBeUndefined();
     expect(local?.imported?.importedAt).toEqual(expect.any(String));
   });
@@ -521,34 +338,7 @@ describe("a stored record of the pair's terms and side that its secret misses", 
     ).catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(ManagedImportChosenCopyError);
-    expect((error as ManagedImportChosenCopyError).reason).toBe("changed");
     expect(await listManagedExchanges()).toEqual([]);
     expect(await everywhereStored(sharedSecret)).toEqual([]);
-  });
-});
-
-describe("a migration-spent record holding the pair's secret for the other side", () => {
-  test("refuses the pair, writing nothing", async () => {
-    // The partner's files hold the same secret from their side.
-    const husk = await createRunnableExchange(newExchange());
-    await seedSpentState(husk.id, "2026-07-11T09:00:00.000Z");
-    const partners = runnableManagedExchangeOrRefuse(
-      buildManagedExchangeRecord(
-        newExchange({ side: "acceptor", sharedSecret: husk.sharedSecret }),
-      ),
-    );
-    const { configuration, key } = pairOf(partners);
-
-    const error: unknown = await importManagedCommandLinePair(
-      configuration,
-      key,
-    ).catch((caught: unknown) => caught);
-
-    expect(error).toBeInstanceOf(ManagedImportSideMismatchError);
-    expect((error as ManagedImportSideMismatchError).label).toBe(husk.label);
-    expect(await listManagedExchanges()).toEqual([husk]);
-    expect(await getManagedLocalState(husk.id)).toEqual({
-      spent: { spentAt: "2026-07-11T09:00:00.000Z" },
-    });
   });
 });

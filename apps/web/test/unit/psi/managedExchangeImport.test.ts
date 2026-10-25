@@ -12,14 +12,10 @@ import { stringify as stringifyYaml } from "yaml";
 
 import {
   ManagedImportAlreadyHeldError,
-  ManagedImportCustodyUnreadableError,
-  ManagedImportHandedOffError,
   ManagedImportLiveCopyError,
-  ManagedImportOtherExchangeError,
   importManagedExchange,
   importManagedExchangeFile,
   managedInstallFields,
-  restoreManagedExchangeFromBackup,
 } from "@psi/managed/managedExchangeImport";
 import {
   buildManagedExchangeRecord,
@@ -37,8 +33,8 @@ import type {
   NewManagedExchange,
   RunnableManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
+import type { ManagedBackupReconcileOutcome } from "@psi/managed/managedExchangeStore";
 import type { ManagedImportDeps } from "@psi/managed/managedExchangeImport";
-import type { ManagedReviveOutcome } from "@psi/managed/managedExchangeStore";
 
 /** A record built from `fields` and narrowed to the runnable shape: every fixture
  * here is built with a shared secret, and the export paths take the record type
@@ -49,11 +45,9 @@ function runnableRecord(
   return runnableManagedExchangeOrRefuse(buildManagedExchangeRecord(fields));
 }
 
-// The import take-over, tested in Node with injected dependencies: a valid
-// artifact installs one owner and marks it imported-and-backed-up; a
-// migration-spent secret-match is revived in place; a match handed off by a
-// route of its own refuses the import outright, as does one whose sibling state
-// the reconciliation could not read; a malformed or tampered file
+// The backup import, tested in Node with injected dependencies: a valid
+// artifact installs and is marked imported-and-backed-up; a stored record
+// holding its secret refuses the import; a malformed or tampered file
 // is rejected before any install, so the store is left untouched. Each import
 // also reports which of the source's device-local grants the imported record
 // does not hold. The store-backed install (real IndexedDB) is the browser suite's.
@@ -131,16 +125,16 @@ function scheduledBytes(): string {
 }
 
 function recordingDeps(
-  reconciled: ManagedReviveOutcome = { kind: "no-match" },
+  reconciled: ManagedBackupReconcileOutcome = { kind: "no-match" },
 ): ManagedImportDeps & {
   installed: Array<ManagedExchangeRecord>;
-  reviveSpent: ReturnType<typeof vi.fn>;
+  reconcile: ReturnType<typeof vi.fn>;
   markImported: ReturnType<typeof vi.fn>;
 } {
   const installed: Array<ManagedExchangeRecord> = [];
   return {
     installed,
-    reviveSpent: vi.fn(() => Promise.resolve(reconciled)),
+    reconcile: vi.fn(() => Promise.resolve(reconciled)),
     install: (record) => {
       installed.push(record);
       return Promise.resolve(record);
@@ -157,76 +151,12 @@ describe("importManagedExchange", () => {
       goodBytes(),
       deps,
     );
-    expect(deps.reviveSpent).toHaveBeenCalledOnce();
+    expect(deps.reconcile).toHaveBeenCalledOnce();
     expect(deps.installed).toHaveLength(1);
     expect(deps.markImported).toHaveBeenCalledWith(
       installed.id,
       "2026-07-14T12:00:00.000Z",
     );
-  });
-
-  test("revives a migration-spent secret-match in place instead of installing a duplicate", async () => {
-    const existing = runnableRecord({
-      label: "Riverbend quarterly",
-      exchangeFile: composeManagedExchangeFile({
-        connection: { channel: "webrtc", host: "signaling.example.org" },
-        linkageTerms,
-      }),
-      side: "inviter",
-      sharedSecret: generateSharedSecret(),
-    });
-    const deps = recordingDeps({ kind: "revived", record: existing });
-    const result = await importManagedExchange(goodBytes(), deps);
-    // The revived record is returned; nothing fresh is installed and no separate
-    // marker write runs (the revive stamped it in its own transaction).
-    expect(result.record).toBe(existing);
-    expect(deps.installed).toHaveLength(0);
-    expect(deps.markImported).not.toHaveBeenCalled();
-  });
-
-  test("a match handed off by another route refuses, installing nothing", async () => {
-    // The husk the artifact would fork: the exchange runs from what the hand-off
-    // saved, so neither reviving it here nor installing a second live copy beside it
-    // is an import -- the refusal holds the stored record's label so the surface
-    // can name the exchange the operator still has.
-    const deps = recordingDeps({
-      kind: "handed-off",
-      handoff: "command-line",
-      label: "Riverbend quarterly",
-    });
-    await expect(importManagedExchange(goodBytes(), deps)).rejects.toThrow(
-      ManagedImportHandedOffError,
-    );
-    await expect(
-      importManagedExchange(goodBytes(), deps),
-    ).rejects.toMatchObject({
-      handoff: "command-line",
-      label: "Riverbend quarterly",
-    });
-    expect(deps.installed).toHaveLength(0);
-    expect(deps.markImported).not.toHaveBeenCalled();
-  });
-
-  test("a match whose saved state could not be read refuses, installing nothing", async () => {
-    // The sibling entry is where a hand-off is recorded, so a reconciliation that
-    // could not read it can say neither that the copy is still this browser's nor
-    // that it is gone. It refuses rather than reviving a copy a hand-off may hold or
-    // installing a second live one, and it names the exchange but no route.
-    const deps = recordingDeps({
-      kind: "custody-unreadable",
-      label: "Riverbend quarterly",
-    });
-    await expect(importManagedExchange(goodBytes(), deps)).rejects.toThrow(
-      ManagedImportCustodyUnreadableError,
-    );
-    await expect(
-      importManagedExchange(goodBytes(), deps),
-    ).rejects.toMatchObject({ label: "Riverbend quarterly" });
-    await expect(
-      importManagedExchange(goodBytes(), deps),
-    ).rejects.not.toHaveProperty("handoff");
-    expect(deps.installed).toHaveLength(0);
-    expect(deps.markImported).not.toHaveBeenCalled();
   });
 
   test("a marker-write failure after a fresh install still reports success", async () => {
@@ -282,27 +212,6 @@ describe("importManagedExchange", () => {
     const deps = recordingDeps();
     const { missingGrants } = await importManagedExchange(goodBytes(), deps);
     expect(missingGrants).toEqual([]);
-  });
-
-  test("a revive in place reports nothing missing: it keeps its own grants", async () => {
-    // The profile's own spent record still holds the folder it took, so the
-    // revive has nothing for the operator to choose again.
-    const existing = recordHolding({ workingFolder: true });
-    const deps = recordingDeps({ kind: "revived", record: existing });
-    const result = await importManagedExchange(grantedBytes(), deps);
-    expect(result.record).toBe(existing);
-    expect(result.missingGrants).toEqual([]);
-  });
-
-  test("a revive onto a record that lost its grant reports it", async () => {
-    // A revive keeps what the record has, not what the artifact's source had: a
-    // folder grant the operator dropped here is still one to choose again.
-    const deps = recordingDeps({
-      kind: "revived",
-      record: recordHolding({}),
-    });
-    const result = await importManagedExchange(grantedBytes(), deps);
-    expect(result.missingGrants).toEqual(["working-folder"]);
   });
 
   test("a malformed file installs nothing (store left untouched)", async () => {
@@ -403,12 +312,12 @@ describe("importManagedExchangeFile routes by what the file is", () => {
     ).config.text;
   }
 
-  test("a backup artifact takes the take-over leg", async () => {
+  test("a backup artifact takes the backup leg", async () => {
     const deps = recordingDeps();
 
     await importManagedExchangeFile(goodBytes(), deps);
 
-    expect(deps.reviveSpent).toHaveBeenCalledOnce();
+    expect(deps.reconcile).toHaveBeenCalledOnce();
     expect(deps.installed).toHaveLength(1);
   });
 
@@ -428,13 +337,13 @@ describe("importManagedExchangeFile routes by what the file is", () => {
 
   test("a configuration reconciles against nothing and marks nothing", async () => {
     // It brings no secret to match a stored record on, and no file it could be
-    // restored from: neither the revive nor the import marker has anything to
+    // restored from: neither the reconciliation nor the import marker has anything to
     // act on.
     const deps = recordingDeps();
 
     await importManagedExchangeFile(configurationBytes(), deps);
 
-    expect(deps.reviveSpent).not.toHaveBeenCalled();
+    expect(deps.reconcile).not.toHaveBeenCalled();
     expect(deps.markImported).not.toHaveBeenCalled();
   });
 
@@ -515,11 +424,9 @@ describe("a backup reconciles against the exchange it holds", () => {
       besideIds: ["listed-id", "second-id"],
     });
 
-    expect(deps.reviveSpent).toHaveBeenCalledWith(
-      expect.anything(),
-      "2026-07-14T12:00:00.000Z",
-      { besideIds: ["listed-id", "second-id"] },
-    );
+    expect(deps.reconcile).toHaveBeenCalledWith(expect.anything(), {
+      besideIds: ["listed-id", "second-id"],
+    });
     expect(deps.installed).toHaveLength(1);
   });
 
@@ -549,71 +456,6 @@ describe("a backup reconciles against the exchange it holds", () => {
 
     expect(record.exchangeFile.connection.channel).toBe("filedrop");
     expect(record.sharedSecret).toBeUndefined();
-    expect(deps.reviveSpent).not.toHaveBeenCalled();
-  });
-});
-
-describe("restoreManagedExchangeFromBackup takes that exchange's backup alone", () => {
-  test("scopes the reconciliation to the record being restored", async () => {
-    const existing = recordHolding({});
-    const deps = recordingDeps({ kind: "revived", record: existing });
-
-    const { record } = await restoreManagedExchangeFromBackup(
-      existing.id,
-      goodBytes(),
-      deps,
-    );
-
-    expect(record).toBe(existing);
-    expect(deps.reviveSpent).toHaveBeenCalledWith(
-      expect.anything(),
-      "2026-07-14T12:00:00.000Z",
-      { restoreInto: existing.id },
-    );
-    expect(deps.installed).toHaveLength(0);
-  });
-
-  test("another exchange's backup is refused, installing nothing", async () => {
-    const deps = recordingDeps({ kind: "other-exchange" });
-
-    await expect(
-      restoreManagedExchangeFromBackup("spent-id", goodBytes(), deps),
-    ).rejects.toBeInstanceOf(ManagedImportOtherExchangeError);
-    expect(deps.installed).toHaveLength(0);
-    expect(deps.markImported).not.toHaveBeenCalled();
-  });
-
-  test("a command-line configuration is refused before any reconciliation", async () => {
-    const deps = recordingDeps();
-    const configuration = composeManagedCronExport(recordHolding({})).config
-      .text;
-
-    await expect(
-      restoreManagedExchangeFromBackup("spent-id", configuration, deps),
-    ).rejects.toBeInstanceOf(ManagedImportOtherExchangeError);
-    expect(deps.reviveSpent).not.toHaveBeenCalled();
-    expect(deps.installed).toHaveLength(0);
-  });
-
-  test("a listed exchange with the same terms is returned, not asked about", async () => {
-    const existing = recordHolding({});
-    const deps = recordingDeps({
-      kind: "revived",
-      record: existing,
-      sameTermsAs: { id: "listed-id", label: "Riverbend again" },
-    });
-
-    const result = await restoreManagedExchangeFromBackup(
-      existing.id,
-      goodBytes(),
-      deps,
-    );
-
-    expect(result.record).toBe(existing);
-    expect(result.sameTermsAs).toEqual({
-      id: "listed-id",
-      label: "Riverbend again",
-    });
-    expect(deps.installed).toHaveLength(0);
+    expect(deps.reconcile).not.toHaveBeenCalled();
   });
 });

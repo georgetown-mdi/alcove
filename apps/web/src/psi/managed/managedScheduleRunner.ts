@@ -62,11 +62,6 @@ import {
   PartnerNoShowError,
 } from "../transport/waitForConnection";
 import {
-  ManagedExchangeCustodyUnreadableError,
-  ManagedExchangeNotRunnableError,
-  ManagedExchangeSpentError,
-} from "./managedExchangeRun";
-import {
   advanceManagedScheduleAfterWindow,
   catchUpManagedSchedule,
 } from "./managedSchedule";
@@ -77,6 +72,7 @@ import {
 } from "./managedExchangeRecord";
 import { ManagedExchangeExpiredError } from "./managedExpiry";
 import { ManagedExchangeLockUnavailableError } from "./managedExchangeLock";
+import { ManagedExchangeNotRunnableError } from "./managedExchangeRun";
 import { ManagedInputError } from "./managedInputGuard";
 import { ManagedRelayRegistrationError } from "./managedRelayRegistration";
 import { ManagedSignalingEndpointRefusedError } from "./managedRendezvous";
@@ -92,14 +88,11 @@ import type {
   RunnableManagedExchangeRecord,
 } from "./managedExchangeRecord";
 import type {
-  ManagedLocalState,
-  ManagedReadableLocalState,
-} from "./managedLocalStateShape";
-import type {
   ManagedScheduleWindow,
   ManagedScheduleWindowDisposition,
 } from "./managedSchedule";
 import type { ManagedInputSource } from "./managedInputHandle";
+import type { ManagedReadableLocalState } from "./managedLocalStateShape";
 
 /**
  * The wait one attempt gives the partner's runner to arrive, before the attempt
@@ -173,13 +166,9 @@ export interface ManagedScheduleTickSeams {
    * tick's bookkeeping, leaving the window unaccounted: an attempt whose answer
    * cannot be read does not connect. */
   readRecord: (id: string) => Promise<ManagedExchangeRecord | undefined>;
-  /** Each record's local sibling state, read once per tick. Its `spent` marker
-   * keeps a handed-off copy from being attempted. No current path writes it; it is
-   * left only on a record an earlier version's export spent. This read is
-   * the cheap pre-filter, not the guarantee -- the run path re-reads the marker
-   * inside the run+rotate lock on every attempt ({@link ./managedExchangeRun.ts}).
-   * Read per entry for the reason {@link listRecords} is: a record whose sibling
-   * entry does not parse is skipped as `"unreadable"`, and no other. */
+  /** Each record's local sibling state, read once per tick and per entry for
+   * the reason {@link listRecords} is: a record whose sibling entry does not
+   * parse is skipped as `"unreadable"`, and no other. */
   listLocalState: () => Promise<ManagedReadableLocalState>;
   /** The store's one conditioned, atomic schedule write. */
   persistAdvance: (
@@ -200,7 +189,6 @@ type ManagedScheduleSkipReason =
   | "unreadable"
   | "no-schedule"
   | "configuration-only"
-  | "spent"
   | "in-flight"
   | "not-due"
   | "no-working-folder"
@@ -276,8 +264,8 @@ export async function tickManagedSchedules(
   const unreadableLocalState = new Set(localState.unreadableIds);
   const ticked = await Promise.all(
     records.map((record) => {
-      // An unreadable sibling may be the one recording a hand-off, so the
-      // record is passed over rather than attempted.
+      // A sibling entry this build cannot parse is one it cannot read the
+      // record's local state from, so the record is passed over.
       if (unreadableLocalState.has(record.id))
         return {
           id: record.id,
@@ -295,11 +283,9 @@ export async function tickManagedSchedules(
           skipped: "in-flight" as const,
         };
       inFlight.add(record.id);
-      return tickManagedScheduleRecord(
-        record,
-        localState.states.get(record.id),
-        seams,
-      ).finally(() => inFlight.delete(record.id));
+      return tickManagedScheduleRecord(record, seams).finally(() =>
+        inFlight.delete(record.id),
+      );
     }),
   );
   return [...unreadable, ...ticked];
@@ -309,7 +295,6 @@ export async function tickManagedSchedules(
  * {@link ManagedScheduleTickEntry}). */
 async function tickManagedScheduleRecord(
   record: ManagedExchangeRecord,
-  localState: ManagedLocalState | undefined,
   seams: ManagedScheduleTickSeams,
 ): Promise<ManagedScheduleTickEntry> {
   // Filled in as the tick learns each field rather than rebuilt at every return,
@@ -323,7 +308,6 @@ async function tickManagedScheduleRecord(
   };
   const schedule = record.schedule;
   if (schedule === undefined) return { ...entry, skipped: "no-schedule" };
-  if (localState?.spent !== undefined) return { ...entry, skipped: "spent" };
   if (seams.stopped()) return { ...entry, skipped: "stopped" };
   try {
     return await occupyDueWindow(record, schedule, entry, seams);
@@ -511,10 +495,9 @@ async function occupyWindow(
     const startedAtMs = seams.now();
     const remainingMs = window.closesAtMs - startedAtMs;
     if (remainingMs <= 0 || attempts >= MAX_WINDOW_ATTEMPTS) break;
-    // The operator's answer is read off the store before every connect, as the
-    // run+rotate lock re-reads the sibling spent state before every run
-    // ({@link ./managedExchangeRun.ts}): an answer written while this window is
-    // being occupied must stop the attempt after it, not just the next window.
+    // The operator's answer is read off the store before every connect: an
+    // answer written while this window is being occupied must stop the attempt
+    // after it, not just the next window.
     // The answer rides on a raised condition, so the window's write has no
     // evidence of its own to carry here.
     const stored = await seams.readRecord(id);
@@ -654,8 +637,8 @@ interface ManagedScheduleWindowVerdict {
  * ({@link ./managedRunRotate.ts}, `runRotationCriticalSection`). Any failure
  * past the data-exchange phase boundary postdates both.
  *
- * Every other failure the mapper classifies -- a lapsed bound, a copy an
- * export handed off, an unreadable custody entry, an unusable input, a terms
+ * Every other failure the mapper classifies -- a lapsed bound, a stored copy
+ * the run cannot use, an unusable input, a terms
  * shortfall, a refused disclosure, or a cause the mapper cannot determine -- is
  * local, pre-connection, or names no phase, so it says nothing about whether
  * the partner was there.
@@ -686,14 +669,14 @@ function attemptProvesContact(
  *
  * Only the no-show and a failure with no determinate local cause (a dropped
  * connection, a broker fault) are retried inside the window. Every other
- * failure -- a lapsed bound, a hand-off, an unreadable custody entry, a
+ * failure -- a lapsed bound, a stored copy the run cannot use, a
  * refused saved signaling address, an unusable input, a terms shortfall, a
  * refused disclosure, a relay key registration the registrar refused, a
  * failed rotation persist, or a handshake that failed closed -- reproduces
  * identically on the next attempt, so it ends the window's occupancy where it
- * happened. The hand-off refusal is non-retryable and counts no partner miss
- * on its own, but a window that already found the partner absent still folds
- * to `"missed"` (see {@link foldWindowDisposition}).
+ * happened. Such a refusal counts no partner miss on its own, but a window
+ * that already found the partner absent still folds to `"missed"` (see
+ * {@link foldWindowDisposition}).
  *
  * `dataExchangeStarted` overrides all of it: past that boundary a re-attempt
  * would disclose a second time.
@@ -735,8 +718,6 @@ function managedScheduleWindowVerdict(
     };
   if (
     error instanceof ManagedExchangeExpiredError ||
-    error instanceof ManagedExchangeSpentError ||
-    error instanceof ManagedExchangeCustodyUnreadableError ||
     error instanceof ManagedExchangeNotRunnableError ||
     error instanceof ManagedSignalingEndpointRefusedError ||
     error instanceof ManagedInputError ||
