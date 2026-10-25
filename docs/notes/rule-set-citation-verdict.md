@@ -4,7 +4,7 @@ title: "A False Rule-Set Citation in the Acceptor's Record"
 
 # A false rule-set citation in the acceptor's record: annotate, refuse, or drop
 
-_Status: resolved - built. The mechanism is normatively specified in [EXCHANGE_RECORD.md](../spec/EXCHANGE_RECORD.md#the-writing-partys-verdict); this note records the three directions weighed and why the built one was chosen. See [docs/notes/README.md](README.md)._
+_Status: resolved - built for the record; the citation is being removed, and the terms review no longer shows it. The mechanism is normatively specified in [EXCHANGE_RECORD.md](../spec/EXCHANGE_RECORD.md#the-writing-partys-verdict); this note records the three directions weighed and why the built one was chosen. See [docs/notes/README.md](README.md)._
 
 A linkage-terms document may cite the named rule set its fields and keys were drawn from. The citation moves with the terms: an accepting party adopts the inviter's terms, keeps the citation, and copies it into its own exchange record - the artifact an operator populates a HIPAA accounting of disclosures or a FERPA disclosure record from. So an invitation citing a set Alcove ships, over rules Alcove can prove are not that set, wrote an unqualified false provenance claim into the acceptor's own governance artifact.
 
@@ -36,4 +36,6 @@ Three properties fell out of the choice, and each is a normative row in the spec
 
 **The writing party's own verdict, not a property of the terms.** The check runs against the sets the writing build ships, so two parties on different builds may write different verdicts for one run. That is a real asymmetry and the spec states it rather than leaving a reader to assume the two records agree the way the citation itself does. Nothing compares the verdicts, and none of this touches the terms hash: the verdict is written locally, after the agreement.
 
-The consent surfaces follow the same shape - a marker and a caveat per half, warning where a citation is disproved and never refusing - so an acceptor reads the finding before consenting rather than discovering it in the record afterwards. The declared keys and fields remain what the exchange holds both parties to; nothing here changes which fields or keys a run uses, or what it discloses.
+The consent surfaces were first built to follow the same shape - a marker and a caveat per half, warning where a citation is disproved and never refusing - so an acceptor read the finding before consenting rather than discovering it in the record afterwards. The declared keys and fields remain what the exchange holds both parties to; nothing here changes which fields or keys a run uses, or what it discloses.
+
+The accepting party's terms review does not show the citation or its verdict, because the owner ruled the citation removed; the record is the one place the verdict is kept ([the spec](../spec/EXCHANGE_RECORD.md#the-writing-partys-verdict)). The review states instead the built-in rule choice derived from the keys, as [the exchange reference](../EXCHANGE_REFERENCE.md#the-built-in-rules) describes.
