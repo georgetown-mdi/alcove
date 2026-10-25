@@ -656,9 +656,102 @@ describe("the command", () => {
   });
 
   it("passes with one line when no spec file changed", () => {
-    const result = runScript(ROOT, ["--base", "HEAD"]);
+    const result = runScript(ROOT, ["--base", "HEAD", "--head", "HEAD"]);
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain("no Markdown file under docs/spec/");
+  });
+
+  describe("with spec edits not yet committed", () => {
+    const gitIn = (dir, args) =>
+      execFileSync("git", args, { cwd: dir, stdio: "ignore" });
+
+    /** A branch whose only commit is outside docs/spec/, so the edits are all uncommitted. */
+    function withUncommittedEdit(edits, run) {
+      withMove({ "NOTES.txt": "unrelated\n" }, (dir) => {
+        write(dir, edits);
+        run(dir);
+      });
+    }
+
+    it("fails an unlisted edit, staged or not, naming the working tree", () => {
+      withUncommittedEdit(ONE_WORD_CHANGED, (dir) => {
+        const unstaged = runScript(dir, ["--base", "staging"]);
+        expect(unstaged.status, unstaged.stdout).toBe(1);
+        expect(unstaged.stderr).toContain("and the working tree.");
+        expect(unstaged.stderr).toContain(`list them in ${BRANCH_LIST},`);
+        expect(unstaged.stderr).toContain(
+          `- ${CHANGED_SENTENCE} -> -\n- - -> ${CHANGED_SENTENCE.replace("MUST", "SHOULD")}\n`,
+        );
+
+        gitIn(dir, ["add", "docs/spec"]);
+        const staged = runScript(dir, ["--base", "staging"]);
+        expect(staged.status, staged.stdout).toBe(1);
+      });
+    });
+
+    it("passes once the matching list is also uncommitted, untracked or staged", () => {
+      withUncommittedEdit(
+        { ...ONE_WORD_CHANGED, [BRANCH_LIST]: CHANGED_SENTENCE_LISTED },
+        (dir) => {
+          const untracked = runScript(dir, ["--base", "staging"]);
+          expect(untracked.status, untracked.stderr).toBe(0);
+          expect(untracked.stdout).toContain("passed over 2 changed files");
+
+          gitIn(dir, ["add", "docs/spec"]);
+          const staged = runScript(dir, ["--base", "staging"]);
+          expect(staged.status, staged.stderr).toBe(0);
+        },
+      );
+    });
+
+    it("reads only the uncommitted lines of a list file the branch already committed", () => {
+      withMove(
+        { "NOTES.txt": "unrelated\n", [BRANCH_LIST]: "# Branch list.\n" },
+        (dir) => {
+          write(dir, ONE_WORD_CHANGED);
+          const unlisted = runScript(dir, ["--base", "staging"]);
+          expect(unlisted.status, unlisted.stdout).toBe(1);
+
+          write(dir, {
+            [BRANCH_LIST]: `# Branch list.\n${CHANGED_SENTENCE_LISTED}`,
+          });
+          const listed = runScript(dir, ["--base", "staging"]);
+          expect(listed.status, listed.stderr).toBe(0);
+        },
+      );
+    });
+
+    it("counts a spec file deleted in the working tree as deleted", () => {
+      withUncommittedEdit({ "docs/spec/CHANNEL_SECURITY.md": null }, (dir) => {
+        const result = runScript(dir, ["--base", "staging"]);
+        expect(result.status, result.stdout).toBe(1);
+        expect(result.stderr).toContain(
+          "dropped sentence in docs/spec/CHANNEL_SECURITY.md:",
+        );
+      });
+    });
+
+    it("ignores the edits under --head, comparing only the committed revision", () => {
+      withUncommittedEdit(ONE_WORD_CHANGED, (dir) => {
+        const result = runScript(dir, ["--base", "staging", "--head", "HEAD"]);
+        expect(result.status, result.stderr).toBe(0);
+        expect(result.stdout).toContain("no Markdown file under docs/spec/");
+      });
+    });
+
+    it("passes a clean working tree as it does the committed revision", () => {
+      withMove(PURE_MOVE, (dir) => {
+        const working = runScript(dir, ["--base", "staging"]);
+        const committed = runScript(dir, [
+          "--base",
+          "staging",
+          "--head",
+          "HEAD",
+        ]);
+        expect(working.status, working.stderr).toBe(0);
+        expect(working.stdout).toBe(committed.stdout);
+      });
+    });
   });
 
   it("exits 2 on an explicit base that does not resolve", () => {

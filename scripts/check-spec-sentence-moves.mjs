@@ -32,8 +32,16 @@
 // it modified is read only for the lines the branch added, so a branch name
 // that reuses a merged pull request's file appends to it and the earlier
 // entries are never matched. Each branch name maps to one file.
+//
+// With no --head, the head side is the working tree: tracked files modified or
+// deleted, staged or not, and untracked files not ignored, are read from disk,
+// so a spec edit or list file not yet committed is checked as it will be
+// committed. With --head <ref>, the head side is that committed revision and
+// uncommitted edits are ignored.
 
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
@@ -410,23 +418,51 @@ export function resolveCommit(root, revision) {
   }
 }
 
-/** The Markdown files under docs/spec/ that differ between two commits. */
-export function changedSpecFiles(root, from, to) {
+/** The revisions a diff compares: `to` null means the working tree. */
+function diffRange(from, to) {
+  return to === null ? [from] : [from, to];
+}
+
+/** The untracked files, ignored ones aside, under a directory. */
+function untrackedFiles(root, directory) {
   return git(root, [
+    "ls-files",
+    "--others",
+    "--exclude-standard",
+    "-z",
+    "--",
+    directory,
+  ])
+    .split("\0")
+    .filter((file) => file !== "");
+}
+
+/**
+ * The Markdown files under docs/spec/ that differ between a commit and another
+ * commit, or the working tree when `to` is null.
+ */
+export function changedSpecFiles(root, from, to) {
+  const files = git(root, [
     "diff",
     "--name-only",
     "--no-renames",
     "-z",
-    from,
-    to,
+    ...diffRange(from, to),
     "--",
     SPEC_DIRECTORY,
-  ])
-    .split("\0")
-    .filter((file) => file.endsWith(".md"));
+  ]).split("\0");
+  if (to === null) files.push(...untrackedFiles(root, SPEC_DIRECTORY));
+  return [...new Set(files)].filter((file) => file.endsWith(".md"));
 }
 
 function readAt(root, commit, file) {
+  if (commit === null) {
+    try {
+      return readFileSync(resolve(root, file), "utf8");
+    } catch {
+      return "";
+    }
+  }
   const listed = git(root, ["ls-tree", "--name-only", commit, "--", file]);
   if (listed.trim() === "") return "";
   return git(root, ["show", `${commit}:${file}`]);
@@ -443,8 +479,7 @@ function branchListChanges(root, from, to) {
     "--name-status",
     "--no-renames",
     "-z",
-    from,
-    to,
+    ...diffRange(from, to),
     "--",
     WORDING_CHANGES_DIRECTORY,
   ]).split("\0");
@@ -453,6 +488,12 @@ function branchListChanges(root, from, to) {
     const [status, path] = [fields[at], fields[at + 1]];
     if (status !== "D" && path !== WORDING_CHANGES_README) {
       listFiles.push({ path, added: status === "A" });
+    }
+  }
+  if (to === null) {
+    for (const path of untrackedFiles(root, WORDING_CHANGES_DIRECTORY)) {
+      if (path !== WORDING_CHANGES_README)
+        listFiles.push({ path, added: true });
     }
   }
   return listFiles.sort((left, right) => (left.path < right.path ? -1 : 1));
@@ -469,7 +510,14 @@ export function branchListFiles(root, from, to) {
  */
 function branchListText(root, from, to, { path, added }) {
   if (added) return readAt(root, to, path);
-  const diff = git(root, ["diff", "--no-renames", "-U0", from, to, "--", path]);
+  const diff = git(root, [
+    "diff",
+    "--no-renames",
+    "-U0",
+    ...diffRange(from, to),
+    "--",
+    path,
+  ]);
   const lines = [];
   let inHunk = false;
   for (const line of diff.split("\n")) {
@@ -482,31 +530,34 @@ function branchListText(root, from, to, { path, added }) {
 /**
  * Runs the comparison between the merge base of `base` and `head`, and `head`,
  * against the entries of the list files the range added (whole) or modified
- * (the added lines only), read at `head`. Returns `{ files, listFiles, result }`, or `{ error }` when a
- * revision does not resolve.
+ * (the added lines only), read at `head`. With `head` null the head side is
+ * the working tree, and the merge base is taken with HEAD. Returns
+ * `{ files, listFiles, result }`, or `{ error }` when a revision does not resolve.
  */
 export function compareRevisions(root, base, head) {
   const baseCommit = resolveCommit(root, base);
   if (baseCommit === null) return { error: `${base} does not resolve.` };
-  const headCommit = resolveCommit(root, head);
-  if (headCommit === null) return { error: `${head} does not resolve.` };
+  const headName = head ?? "HEAD";
+  const headCommit = resolveCommit(root, headName);
+  if (headCommit === null) return { error: `${headName} does not resolve.` };
   let mergeBase;
   try {
     mergeBase = git(root, ["merge-base", baseCommit, headCommit]).trim();
   } catch {
-    return { error: `${base} and ${head} share no history.` };
+    return { error: `${base} and ${headName} share no history.` };
   }
-  const files = changedSpecFiles(root, mergeBase, headCommit);
+  const headSide = head === null ? null : headCommit;
+  const files = changedSpecFiles(root, mergeBase, headSide);
   const baseFiles = new Map(
     files.map((file) => [file, readAt(root, mergeBase, file)]),
   );
   const headFiles = new Map(
-    files.map((file) => [file, readAt(root, headCommit, file)]),
+    files.map((file) => [file, readAt(root, headSide, file)]),
   );
-  const changes = branchListChanges(root, mergeBase, headCommit);
+  const changes = branchListChanges(root, mergeBase, headSide);
   const listFiles = changes.map((change) => change.path);
   const wordingChanges = changes.flatMap((change) =>
-    parseWordingChanges(branchListText(root, mergeBase, headCommit, change)),
+    parseWordingChanges(branchListText(root, mergeBase, headSide, change)),
   );
   return {
     files,
@@ -518,9 +569,10 @@ export function compareRevisions(root, base, head) {
 /**
  * The branch the list file is named for: the pull request's head branch on
  * the runner, otherwise `head` when it names a local branch or is `HEAD` on
- * one, otherwise null.
+ * one (null, the working tree, is taken as `HEAD`), otherwise null.
  */
 export function currentBranch(root, head, env) {
+  if (head === null) head = "HEAD";
   if (head === "HEAD" && env.GITHUB_HEAD_REF) return env.GITHUB_HEAD_REF;
   try {
     if (head === "HEAD") {
@@ -555,13 +607,13 @@ function main(argv, env) {
       args: argv,
       options: {
         base: { type: "string" },
-        head: { type: "string", default: "HEAD" },
+        head: { type: "string" },
       },
     }));
   } catch (error) {
     console.error(`${PREFIX} ${error.message}`);
     console.error(
-      "usage: node scripts/check-spec-sentence-moves.mjs [--base <ref>] [--head <ref>]",
+      "usage: node scripts/check-spec-sentence-moves.mjs [--base <ref>] [--head <ref>]  (without --head, the working tree)",
     );
     return 2;
   }
@@ -586,7 +638,9 @@ function main(argv, env) {
     return 0;
   }
 
-  const comparison = compareRevisions(root, base, options.head);
+  const head = options.head ?? null;
+  const headLabel = head ?? "the working tree";
+  const comparison = compareRevisions(root, base, head);
   if (comparison.error) {
     console.error(`${PREFIX} ${comparison.error}`);
     return 2;
@@ -598,7 +652,7 @@ function main(argv, env) {
     );
     return 0;
   }
-  const listFile = listFileFor(currentBranch(root, options.head, env));
+  const listFile = listFileFor(currentBranch(root, head, env));
   const failures = formatFailures(result, { listFile, readFrom: listFiles });
   if (failures.length === 0) {
     console.log(
@@ -608,11 +662,11 @@ function main(argv, env) {
   }
   const compared =
     files.length === 0
-      ? `no Markdown file under ${SPEC_DIRECTORY} changed between the merge base with ${base} and ${options.head}.`
-      : `the units of ${files.join(", ")} differ between the merge base with ${base} and ${options.head}.`;
+      ? `no Markdown file under ${SPEC_DIRECTORY} changed between the merge base with ${base} and ${headLabel}.`
+      : `the units of ${files.join(", ")} differ between the merge base with ${base} and ${headLabel}.`;
   const read =
     listFiles.length > 0
-      ? `Wording changes were read from ${listFiles.join(", ")} at ${options.head}.`
+      ? `Wording changes were read from ${listFiles.join(", ")} ${head === null ? "in" : "at"} ${headLabel}.`
       : `No file under ${WORDING_CHANGES_DIRECTORY} was added or modified since the merge base, so this branch lists no change; write its list to ${listFile}.`;
   console.error(`${PREFIX} ${compared} ${read}\n`);
   for (const line of failures) console.error(line);
