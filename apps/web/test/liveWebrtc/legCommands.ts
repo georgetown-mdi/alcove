@@ -3,8 +3,9 @@ import { READINESS_BODY } from "@alcove/peerjs-broker/standaloneOptions";
 import { startStandaloneBroker } from "../utils/standaloneBroker.ts";
 
 import { CLI_IDENTITY, LEG_ENVIRONMENT_FAILURE } from "./legTypes.ts";
-import { startCliInviter } from "./cliPeer.ts";
+import { startCliInviter, startCliRelayInviter } from "./cliPeer.ts";
 import { startConsoleParty } from "./consolePeer.ts";
+import { startLiveRelay } from "./liveRelay.ts";
 
 import type {
   ConsoleAnswer,
@@ -13,9 +14,13 @@ import type {
   ConsoleWorkingFolderFiles,
   LiveLegCliOutcome,
   LiveLegStart,
+  LiveRelayLegOutcome,
+  LiveRelayLegStart,
+  LiveRelayObservations,
 } from "./legTypes.ts";
 import type { CliInviter } from "./cliPeer.ts";
 import type { ConsoleParty } from "./consolePeer.ts";
+import type { LiveRelay } from "./liveRelay.ts";
 import type { StandaloneBroker } from "../utils/standaloneBroker.ts";
 
 /**
@@ -30,9 +35,9 @@ import type { StandaloneBroker } from "../utils/standaloneBroker.ts";
  * assertion.
  *
  * The state below is per vitest node process. The leg's broker, the signaling
- * probe's broker (`signalingProbe.test.ts`) and the console leg's broker
- * (`consoleExchange.test.ts`) are held apart, so no file stops another's
- * broker.
+ * probe's broker (`signalingProbe.test.ts`), the console leg's broker
+ * (`consoleExchange.test.ts`) and the relay case's broker
+ * (`relayUnused.test.ts`) are held apart, so no file stops another's broker.
  */
 
 let broker: StandaloneBroker | undefined;
@@ -40,6 +45,9 @@ let inviter: CliInviter | undefined;
 let probeBroker: StandaloneBroker | undefined;
 let consoleBroker: StandaloneBroker | undefined;
 let consoleParty: ConsoleParty | undefined;
+let relayBroker: StandaloneBroker | undefined;
+let relay: LiveRelay | undefined;
+let relayInviter: CliInviter | undefined;
 
 /**
  * Start the broker on its own loopback origin, then an `alcove invite` waiting
@@ -128,6 +136,53 @@ async function stopConsoleLeg(): Promise<void> {
 }
 
 /**
+ * Start the broker on its own loopback origin and the WebSocket relay beside
+ * it, then an `alcove exchange` inviter waiting at both, and hand the browser
+ * peer the invitation, which names both.
+ */
+async function startRelayLeg(): Promise<LiveRelayLegStart> {
+  await stopRelayLeg();
+  relayBroker = await startStandaloneBroker(LEG_ENVIRONMENT_FAILURE);
+  relay = await startLiveRelay();
+  relayInviter = await startCliRelayInviter(
+    { port: relayBroker.port, path: relayBroker.path },
+    relay,
+  );
+  return {
+    invitation: relayInviter.invitation,
+    relayUrl: relay.url,
+    cliIdentity: CLI_IDENTITY,
+  };
+}
+
+/** Wait for the relay case's CLI party to finish, and report its run and what
+ * the relay saw by then. */
+async function relayLegOutcome(): Promise<LiveRelayLegOutcome> {
+  if (relayInviter === undefined || relay === undefined)
+    throw new Error(
+      "no CLI party is running; the relay case was never started",
+    );
+  const cli = await relayInviter.outcome();
+  return { cli, relay: relay.observations() };
+}
+
+/** What the relay case's relay has seen so far. */
+function relayLegObservations(): LiveRelayObservations {
+  if (relay === undefined)
+    throw new Error("no relay is running; the relay case was never started");
+  return relay.observations();
+}
+
+/** Stop the CLI party, the relay and the broker. Idempotent. */
+async function stopRelayLeg(): Promise<void> {
+  const running = [relayInviter?.stop(), relay?.stop(), relayBroker?.stop()];
+  relayInviter = undefined;
+  relay = undefined;
+  relayBroker = undefined;
+  await Promise.all(running);
+}
+
+/**
  * The commands `test.browser.commands` registers. Each takes the browser
  * command context, which this leg does not read: the processes are the Node
  * side's own, not the page's.
@@ -161,4 +216,9 @@ export const liveWebrtcLegCommands = {
   consoleWebrtcJobOutcome: (): Promise<ConsoleJobOutcome> =>
     runningConsoleParty().outcome(),
   stopConsoleWebrtcLeg: (): Promise<void> => stopConsoleLeg(),
+  startLiveRelayLeg: (): Promise<LiveRelayLegStart> => startRelayLeg(),
+  liveRelayLegObservations: (): Promise<LiveRelayObservations> =>
+    Promise.resolve(relayLegObservations()),
+  liveRelayLegOutcome: (): Promise<LiveRelayLegOutcome> => relayLegOutcome(),
+  stopLiveRelayLeg: (): Promise<void> => stopRelayLeg(),
 };

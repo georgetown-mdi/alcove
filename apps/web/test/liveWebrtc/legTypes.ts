@@ -88,9 +88,48 @@ export interface LiveLegCliOutcome {
    * the span.
    */
   closeWaitMs: number | null;
+  /** When the run wrote its "closing connection" line, or null when it wrote
+   * none. */
+  closingConnectionAt: number | null;
   /** stdout and stderr interleaved in arrival order, which is what an operator
    * reads and what a failure here quotes. */
   output: string;
+}
+
+/** What the WebSocket relay of the relay case saw, as read on the Node side. */
+export interface LiveRelayObservations {
+  /** Each socket the relay's server upgraded, in order: whether a browser
+   * opened it, read from the `Origin` header a browser sends and the CLI's
+   * client does not; when it was upgraded and when it closed; and its place
+   * among the closes, from 0. The last two are null while it is open. */
+  sockets: Array<{
+    fromBrowser: boolean;
+    upgradedAt: number;
+    closedAt: number | null;
+    closeOrder: number | null;
+  }>;
+  /** The hellos the relay checked under the exchange's id. */
+  hellos: number;
+  /** The messages the relay forwarded on the exchange's pairing. */
+  forwarded: number;
+}
+
+/** What the Node side of the relay case has standing: the broker, the relay,
+ * and an `alcove exchange` inviter waiting at both. */
+export interface LiveRelayLegStart {
+  /** The invitation the CLI party minted, which names the broker and the
+   * relay. */
+  invitation: string;
+  /** The relay's `wss://` url, which the invitation names. */
+  relayUrl: string;
+  /** The identity the CLI party declared. */
+  cliIdentity: string;
+}
+
+/** How the relay case's CLI party ended, and what the relay saw by then. */
+export interface LiveRelayLegOutcome {
+  cli: LiveLegCliOutcome;
+  relay: LiveRelayObservations;
 }
 
 /** What the Node side of the console leg has standing: the broker on its own

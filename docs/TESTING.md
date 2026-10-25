@@ -519,8 +519,8 @@ and follows it onto the relay. The CLI trusts the relay's loopback certificate
 through `NODE_EXTRA_CA_CERTS`, and the web party through Node's default CA list
 (`tls.setDefaultCACertificates`) for the file's duration. A run between a CLI
 party and a browser party with WebRTC open, whose relay sockets close unused,
-needs a browser peer and is not covered; the browser suite covers that case
-between two browser parties.
+needs a browser peer, so it runs on the live WebRTC leg below; the browser
+suite covers that case between two browser parties.
 
 It runs on both `cli_build_and_test.yaml` and `web_build_and_test.yaml`. That is
 by design rather than redundant: the drift it exists to catch can land on
@@ -565,6 +565,25 @@ browser invites, the app's listen registers at its build's own signaling
 address, which on the test page is the page's origin, so the harness hands the
 PeerJS constructor the broker's location instead; that is the one piece of the
 seat that is not the app's.
+
+`relayUnused.test.ts` runs the WebSocket relay fallback with WebRTC open. The
+leg's Node side runs the relay on loopback over `wss`, under the certificate
+the browser project's relay uses (`apps/web/test/devServer/relayTls.ts`), which
+the project's Chromium launch trusts and the CLI trusts through
+`NODE_EXTRA_CA_CERTS`. The CLI party is an `alcove exchange` inviter whose
+configuration names the broker and the relay, so its invitation names both;
+the browser party lists the relay from that invitation and races it against
+WebRTC through the app's fallback. WebRTC opens, and the case asserts that the
+exchange ran over it, that neither side sent its start, that the relay checked
+both hellos and forwarded nothing, and that every relay socket closed before
+the CLI party began closing its WebRTC connection. The relay closes a party's
+socket when its partner's closes, so the browser party's socket factory holds
+back each close its race calls until the CLI party's sockets have closed at
+the relay. The case then asserts that the CLI party's sockets closed there
+before the browser party's, so the CLI party's own race closed them, and that
+the browser party's race closed with 1000 every socket the relay had not
+already closed. The leg tells the two parties' sockets apart at the relay by
+the `Origin` header a browser sends and the CLI's client does not.
 
 A cross-origin broker is what lets the leg answer whether that broker needs a
 CORS header for the browser peer. It does not: PeerJS asks the broker for an id
