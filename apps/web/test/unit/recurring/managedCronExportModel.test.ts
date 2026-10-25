@@ -20,10 +20,10 @@ import {
   runnableManagedExchangeOrRefuse,
 } from "@psi/managed/managedExchangeRecord";
 import {
-  commandLineExportNotice,
   invitationRegistrarExportLine,
   managedConfigurationExportState,
   managedCronExportPanelState,
+  runElsewhereNotice,
 } from "@recurring/managedCronExportModel";
 
 import type { ExchangeLocator, WebRTCExchangeLocator } from "@alcove/core";
@@ -224,10 +224,10 @@ describe("what the panel gets to render", () => {
     expect(
       exportableState(managedRecord({ schedule: SCHEDULE })).fromAgreedSchedule,
     ).toBe(true);
-    expect(commandLineExportNotice(false)).toBe(
+    expect(runElsewhereNotice(false)).toBe(
       "If you run this exchange elsewhere, import it again to use it here later.",
     );
-    expect(commandLineExportNotice(true)).toBe(
+    expect(runElsewhereNotice(true)).toBe(
       "If you run this exchange elsewhere, turn off its schedule here; to use " +
         "it here later, import it again.",
     );
@@ -235,7 +235,7 @@ describe("what the panel gets to render", () => {
 
   test("the notice states only the re-import, with no hand-off wording", () => {
     for (const scheduleOn of [false, true])
-      expect(commandLineExportNotice(scheduleOn)).not.toMatch(
+      expect(runElsewhereNotice(scheduleOn)).not.toMatch(
         /hand|move|custody|owner|instead/i,
       );
   });

@@ -42,18 +42,11 @@ import {
   ReinvitePanel,
   StandingConditionSection,
 } from "./ManagedRunRecovery";
-import {
-  RECORD_GONE_HANDOFF_REASON,
-  RECORD_GONE_HANDOFF_TITLE,
-  RUN_IN_FLIGHT_HANDOFF_REASON,
-  RUN_IN_FLIGHT_HANDOFF_TITLE,
-  SUPERSEDED_HANDOFF_REASON,
-  SUPERSEDED_HANDOFF_TITLE,
-} from "./managedHandoffGate";
 import { DeleteExchangeButton } from "./SavedExchanges";
 import { ManagedConfigurationSurface } from "./ManagedConfigurationSurface";
 import { ManagedCronExportPanel } from "./ManagedCronExportPanel";
 import { ManagedExchangeDetail } from "./ManagedExchangeDetail";
+import { RUN_IN_FLIGHT_EXPORT_REASON } from "./managedCronExportModel";
 import { managedStandingConditionView } from "./managedStandingConditionModel";
 import { useManagedRunSurface } from "./useManagedRunSurface";
 
@@ -64,10 +57,6 @@ import {
   managedRunHoldsReinvite,
   managedStandingConditionShown,
 } from "./managedRunRecoveryModel";
-import {
-  managedMigrationRefusal,
-  managedRunHoldsMigration,
-} from "./managedRunHandoffModel";
 import { managedSurfaceView } from "./managedRunSurfaceModel";
 import { managedUnrecordedRunFlagged } from "./managedSurfaceReadsModel";
 
@@ -83,11 +72,10 @@ export function ManagedRunSurface({ id }: { id: string }) {
   const {
     state: surfaceState,
     runInFlight,
+    runLockRefused,
     running,
     liveFailure,
     runCompletion,
-    migrationDispatch,
-    staleMigration,
     compromiseResponse,
     reinviting,
     reselected,
@@ -98,9 +86,6 @@ export function ManagedRunSurface({ id }: { id: string }) {
     completion,
     run,
     backUp,
-    migrate,
-    confirmMigration,
-    keepMigrationOnDevice,
     downloadUpdatedBackup,
     reinviteNow,
     resolveConfirmation,
@@ -132,7 +117,6 @@ export function ManagedRunSurface({ id }: { id: string }) {
   const parkedResultsRead = reads.parkedResults.read;
   const exportBusy = handoff.export.kind === "busy";
   const exportFailed = handoff.export.kind === "failed";
-  const migrationRefusal = managedMigrationRefusal(handoff);
   const runnable = load.kind === "runnable" ? load : undefined;
   const record = runnable?.record;
   const localState = runnable?.localState;
@@ -150,7 +134,6 @@ export function ManagedRunSurface({ id }: { id: string }) {
   // connection failure. Only the offline direction is gated -- being online is no
   // promise the partner is there (see @utils/networkStatus).
   const online = useOnlineStatus();
-  const runHoldsMigration = managedRunHoldsMigration(handoff, runInFlight);
   // The Tier-2 confirmation gate: once the operator confirms a real partner-side
   // failure, the surface proceeds to re-invite; a "does not add up" reply routes to
   // the compromise-response copy instead.
@@ -318,91 +301,16 @@ export function ManagedRunSurface({ id }: { id: string }) {
                   mt="sm"
                   onClick={downloadUpdatedBackup}
                   loading={exportBusy}
+                  disabled={runInFlight}
                 >
                   Download updated backup
                 </Button>
+                {runInFlight && (
+                  <p className={styles.small}>{RUN_IN_FLIGHT_EXPORT_REASON}</p>
+                )}
               </div>
             )}
             <SavedExchangesFoot />
-          </>
-        ) : handoff.migration.kind === "migrated" ? (
-          <>
-            <h1 tabIndex={-1}>Handed off to another device</h1>
-            <p className={styles.sub}>
-              You downloaded this exchange&apos;s backup to take over on another
-              device, so it no longer runs here. Import that backup on the other
-              device to run it there. Keep the file somewhere only you can read.
-            </p>
-            <SavedExchangesFoot />
-          </>
-        ) : migrationDispatch !== undefined ? (
-          <>
-            <h1 tabIndex={-1}>Confirm the move</h1>
-            <p className={styles.sub}>
-              Your exchange&apos;s backup file was downloaded. Confirm you saved
-              it before this device gives up its copy: once you confirm, this
-              exchange no longer runs here and you import the file on the other
-              device to run it there.
-            </p>
-            {exportFailed && (
-              <Alert
-                role="alert"
-                color="red"
-                title="Could not hand off this exchange"
-                mb="md"
-              >
-                This device&apos;s copy could not be handed off. It is still
-                live here; try again.
-              </Alert>
-            )}
-            <p className={styles.small}>
-              Keep the file somewhere only you can read, and never send it over
-              an unencrypted channel.
-            </p>
-            <p className={styles.small}>
-              This exchange&apos;s accounting of disclosures stays on this
-              device: it does not travel in the backup file. If you need to keep
-              it, keep the exchange here for now, export the accounting as CSV,
-              and then move it.
-            </p>
-            {runHoldsMigration && (
-              <Alert color="yellow" title={RUN_IN_FLIGHT_HANDOFF_TITLE} mb="md">
-                {RUN_IN_FLIGHT_HANDOFF_REASON}
-              </Alert>
-            )}
-            {staleMigration && (
-              <Alert
-                color="yellow"
-                title={
-                  migrationRefusal === "record-gone"
-                    ? RECORD_GONE_HANDOFF_TITLE
-                    : SUPERSEDED_HANDOFF_TITLE
-                }
-                mb="md"
-              >
-                {migrationRefusal === "record-gone"
-                  ? RECORD_GONE_HANDOFF_REASON
-                  : SUPERSEDED_HANDOFF_REASON}
-              </Alert>
-            )}
-            <p>
-              <Button
-                onClick={confirmMigration}
-                loading={exportBusy}
-                disabled={runInFlight || staleMigration}
-              >
-                I saved the file; hand off this exchange
-              </Button>{" "}
-              <Button
-                variant="subtle"
-                disabled={exportBusy}
-                onClick={() => keepMigrationOnDevice()}
-              >
-                {migrationRefusal === "record-gone"
-                  ? "Close"
-                  : "Keep it on this device"}
-              </Button>
-            </p>
           </>
         ) : (
           <>
@@ -566,12 +474,13 @@ export function ManagedRunSurface({ id }: { id: string }) {
               busy={exportBusy}
               failed={exportFailed}
               runInFlight={runInFlight}
+              scheduleOn={load.record.schedule !== undefined}
               onBackUp={backUp}
-              onMigrate={migrate}
             />
             <ManagedCronExportPanel
               record={load.record}
               runInFlight={runInFlight}
+              onRunLockRefused={runLockRefused}
             />
             <ManagedExchangeDetail
               record={load.record}

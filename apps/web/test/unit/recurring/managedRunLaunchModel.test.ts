@@ -680,6 +680,24 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
     expect(failure.message).not.toMatch(/only replaces/i);
   });
 
+  test("the no-show copy names the import a copy run elsewhere needs", () => {
+    // A run elsewhere rotates the secret the rendezvous derives from, so this
+    // copy meets no one: the same no-show, with a remedy of its own.
+    const failure = classifyAgainstOneRecord(
+      new PartnerNoShowError("timed out waiting for the other party"),
+      record(),
+      undefined,
+      NOW,
+      false,
+    );
+    expect(failure.kind).toBe("missed");
+    expect(failure.message).toContain(
+      "If you ran this exchange elsewhere, import it again here to make it " +
+        "runnable.",
+    );
+    expect(failure.message).not.toMatch(/hand(ed)? off|another device/i);
+  });
+
   test("a live no-show against a standing missed outcome keeps the no-show state", () => {
     // The repeat case: the run before this one also ended with nobody there, so
     // the record has a missed outcome of its own and the live error agrees

@@ -207,8 +207,7 @@ It is held from "begin this run" through the success that run records, the excha
 Two tabs of the same origin cannot both enter it: the second waits or is refused.
 So a scheduled run and an operator-opened tab, or two tabs, on one device cannot fork the secret by racing a run, and no two of them exchange with the partner for one record at the same time.
 
-A hand-off's confirmation takes the same lock before it spends this device's copy, so a hand-off and a run exclude each other as two runs do.
-Whichever takes the lock first wins: a confirmation meeting a run is refused and told to wait, and a run meeting a confirmation waits for it and then finds the copy handed off.
+Both exports take the same lock, with `ifAvailable`, around their read and download, so an export and a run exclude each other as two runs do: an export meeting a run is refused and told to wait, since a file taken mid-run would hold the secret that run is about to replace.
 Creating a re-invitation takes the lock on the same terms before it replaces the secret, so a run and a fresh invitation cannot each write a secret the other discards.
 
 On the scheduled path a runner occupying a window holds the lock almost continuously from the window's open to its close, hours at the intended widths.
@@ -220,29 +219,27 @@ The lock is a same-profile **liveness guard**, not a persistent claim.
 It is released automatically when the holding tab or worker is destroyed, and it is taken without `steal: true`, since a steal would defeat the single-writer property it exists to provide.
 Web Locks is origin-scoped and same-profile, so it guards concurrency **within one browser profile on one device**, the scope where a racing second context is a realistic accident.
 It does **not** and cannot guard against a second physical device or a second browser profile holding a copy.
-The durable single-owner property rests on migration in place of sync, below, and not on the lock.
+Across devices one owner rests on no sync and on the operator, told at each export what running elsewhere means (below), and not on the lock.
 
 ### Export/import is migration, not sync
 
-Moving a managed exchange to another device is **migration**: the source copy is spent when the handover completes, so the secret is handed over and never duplicated.
 There is no sync by design, since syncing a linear secret across two live copies is the fork the invariant forbids.
-Framing the operation as "take over on this device" in place of "copy to this device" is what keeps a single owner across a device change.
+Moving a managed exchange is done by the import, but it does not happen at the export or the import.
+It happens at the first run of the imported copy elsewhere, which rotates the secret and leaves the copy here holding one the partner no longer has.
 
-The two export intents are distinct in the UI even though the artifact is one format.
-A backup export leaves the source live; a migration export spends it.
-The source is spent on the operator's attestation that they saved the artifact, not at the moment of export, so a cancelled or failed save leaves the source live and recoverable by exporting again.
-On confirmation the source record visibly turns into a spent, handed-off state, so the invalidation, which rests on cooperation and not cryptography, is clear at the one moment it can be broken.
+So an export only writes files: neither the backup nor the command-line export marks the stored record, and the copy here stays runnable.
+An export that spent the source would claim a move the export cannot know will happen, and a person who exports to keep a file would lose a working copy for it.
+What the page states instead is the one fact a person needs to know when they move an exchange: running it elsewhere means importing it again to use it here later, and, while a schedule is on here, turning that schedule off.
+A copy here that runs after a run elsewhere fails as a stale secret does; over WebRTC the partner never arrives, since the rendezvous peer ids derive from the secret, and the no-show copy names the import as the remedy.
 
-Both hand-offs re-read the stored record at confirmation and refuse unless what was downloaded still holds the current secret.
-A run rotates that secret at its handshake, so a run that reaches the partner between the download and the attestation supersedes what was downloaded.
-Confirming it would hand the new owner a copy whose first run meets a partner that has moved on, and only a re-invite would recover the pair.
+The cost is that a schedule left on here keeps firing after a move, and whichever copy runs first strands the other.
+The notice beside each export is the whole of the control: nothing in the browser can see a run elsewhere.
 
-The refusal also runs the other way, on the run path itself and not on what a screen last read.
-A run that finds this browser's copy spent stops before reading the input or connecting, so a hand-off confirmed while a run surface stood open, or between two attempts at one window, is not overtaken by the run that follows it.
-
-The hand-offs are also withheld from the screen while a run holds the lock.
+Both exports are withheld from the screen while a run holds the lock.
 That withholding is a reading of the lock taken every so often, so it can miss a run that starts between two readings.
-Nothing rests on it: confirming a hand-off takes the run's own lock before it spends anything, so a confirmation that spends and a run that rotates exclude each other, in either order.
+Nothing rests on it: each export takes the run's own lock before it reads anything, so an export and a run that rotates exclude each other, in either order.
+
+A record an earlier version marked spent still refuses to run here, on the run path itself and not on what a screen last read: a run that finds this browser's copy spent stops before reading the input or connecting.
 
 The artifact is a **plaintext credential file in the operator's custody**.
 Passphrase encryption is not done, by design: the record must be usable with nobody present to supply a passphrase at the moment of use.
@@ -250,14 +247,12 @@ It is the browser analog of handing over `alcove.yaml` plus `.alcove.key`, and i
 The artifact does not rotate: it snapshots the secret current at export, so a stale artifact stays usable until the partnership rotates past it or any `expires` it holds lapses.
 Its shape and the no-anti-rollback caveat are in [MANAGED_EXCHANGE_RECORD.md](../spec/MANAGED_EXCHANGE_RECORD.md#export-artifact).
 
-The invalidation is an **operator-cooperation property, not a cryptographic one**.
-Nothing in the protocol prevents a copied artifact, a browser-profile backup, or a VM snapshot from bringing back a copy the UI spent.
+Keeping one owner is an **operator-cooperation property, not a cryptographic one**.
+Nothing in the protocol prevents a copied artifact, a browser-profile backup, or a VM snapshot from bringing back a copy the partnership has rotated past.
 A captured or duplicated export is therefore a captured credential, live until the partnership rotates past it, under the standard [compromise response](../SECURITY_DESIGN.md#compromise-response) (notify the partner out-of-band, re-invite).
 Why the protocol cannot detect that, and the deferred hardening that would, are in [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#rollback-at-rest-copies-can-silently-resurrect).
 
-The command-line export is a migration by another route, and the single-owner rule applies to it unchanged.
-Its spend is operator-attested for the same reason a device migration's is: two downloads are two chances for a save to fail, and a click gives no landing signal.
-No path hands the secret to a scheduler and leaves a second live owner behind.
+The command-line export is the same move by another route, and the same notice stands beside it.
 Its two files are the command line's working copy, rewritten by every run there, so taking them does not count as a backup this browser restores from.
 
 ## Bringing a command-line configuration back

@@ -22,6 +22,10 @@ import {
   spendManagedExchangeIfCurrent,
 } from "@psi/managed/managedExchangeStore";
 import {
+  ManagedExchangeLockUnavailableError,
+  withManagedExchangeLock,
+} from "@psi/managed/managedExchangeLock";
+import {
   ManagedImportLiveCopyError,
   ManagedImportOtherExchangeError,
   importManagedExchange,
@@ -31,10 +35,6 @@ import {
   composeManagedExchangeFile,
   runnableManagedExchangeOrRefuse,
 } from "@psi/managed/managedExchangeRecord";
-import {
-  dispatchManagedMigration,
-  exportManagedBackup,
-} from "@psi/managed/managedExchangeExport";
 import {
   encodeManagedExchangeArtifact,
   importManagedExchangeArtifact,
@@ -47,17 +47,22 @@ import {
   markManagedExchangeImported,
 } from "@psi/managed/managedLocalState";
 import { deriveManagedFailureTier } from "@psi/managed/managedFailureTiers";
+import { exportManagedBackup } from "@psi/managed/managedExchangeExport";
 import { failedRun } from "@psi/managed/managedRunRotate";
 import { managedRunFailureFromRecord } from "@recurring/managedRunLaunchModel";
 import { savedExchangeRows } from "@recurring/savedExchangesModel";
-import { withManagedExchangeLock } from "@psi/managed/managedExchangeLock";
 
 import type {
   ManagedExchangeSchedule,
   NewManagedExchange,
   RunnableManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
+import type { ManagedExportDeps } from "@psi/managed/managedExchangeExport";
 import type { WebRTCExchangeLocator } from "@alcove/core";
+
+/** The run lock the page's backup export takes, refusing while a run holds it. */
+const runLock: ManagedExportDeps["withLock"] = (id, step) =>
+  withManagedExchangeLock(id, step, { ifAvailable: true });
 
 /** A stored record narrowed to the runnable shape these fixtures all have: every
  * record here is created with a shared secret, and the export, hand-off, and run
@@ -71,8 +76,9 @@ async function createRunnableExchange(
 // The store-backed export/import and local sibling state, exercised against real
 // Chromium (real IndexedDB and the sibling object store). The pure encode/parse and
 // derivation are unit-tested without a database; this suite proves an export/import
-// round-trip installs one owner against the real store, a migration spends the
-// source, the backup marker and spent state persist beside the record, a record
+// round-trip installs one owner against the real store, a backup export writes
+// the marker and no spent state, the backup marker and spent state persist
+// beside the record, a record
 // this build cannot parse is skipped rather than failing an import (as is a
 // sibling entry it cannot parse, which refuses conservatively where it holds the
 // artifact's secret), and a delete leaves no sibling entry behind.
@@ -467,15 +473,11 @@ describe("the export binds the marker to the bytes it serialized", () => {
   // The call sites a real export drives against the live store: read-and-mark
   // atomically, then download the bytes read. The download is captured so the
   // test can inspect the exact bytes the marker attests.
-  function exportDeps(): {
-    downloaded: Array<string>;
-    readAndMark: typeof readRecordAndMarkBackedUp;
-    download: (fileName: string, content: string) => void;
-    now: () => Date;
-  } {
+  function exportDeps(): ManagedExportDeps & { downloaded: Array<string> } {
     const downloaded: Array<string> = [];
     return {
       downloaded,
+      withLock: runLock,
       readAndMark: readRecordAndMarkBackedUp,
       download: (_fileName, content) => downloaded.push(content),
       now: () => new Date(),
@@ -573,21 +575,46 @@ describe("the export binds the marker to the bytes it serialized", () => {
     });
   });
 
-  test("a migration dispatch marks green but spends only on confirm", async () => {
+  test("a backup export marks green, writes no spent state, and leaves the record runnable", async () => {
     const record = await createRunnableExchange(newExchange());
-    const downloaded: Array<string> = [];
-    const dispatch = await dispatchManagedMigration(record.id, {
-      readAndMark: readRecordAndMarkBackedUp,
-      download: (_fileName, content) => downloaded.push(content),
-      spendIfCurrent: spendManagedExchangeIfCurrent,
-      now: () => new Date(),
-    });
-    // Dispatched: backed up, but the source is still live (no spent state yet).
-    expect((await getManagedLocalState(record.id))?.backup).toBeDefined();
-    expect((await getManagedLocalState(record.id))?.spent).toBeUndefined();
+    const before = await getManagedExchange(record.id);
 
-    await dispatch.confirm(new Date());
-    expect((await getManagedLocalState(record.id))?.spent).toBeDefined();
+    await exportManagedBackup(record.id, exportDeps());
+
+    const local = await getManagedLocalState(record.id);
+    expect(local?.backup).toBeDefined();
+    expect(local?.spent).toBeUndefined();
+    const stored = await getManagedExchange(record.id);
+    expect(stored).toEqual(before);
+    expect(
+      stored === undefined
+        ? undefined
+        : runnableManagedExchangeOrRefuse(stored).sharedSecret,
+    ).toBe(record.sharedSecret);
+  });
+
+  test("a backup export under a run's held lock reads, marks, and downloads nothing", async () => {
+    const record = await createRunnableExchange(newExchange());
+    const deps = exportDeps();
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await new Promise<void>((granted) => {
+      void withManagedExchangeLock(record.id, () => {
+        granted();
+        return held;
+      });
+    });
+    try {
+      await expect(exportManagedBackup(record.id, deps)).rejects.toBeInstanceOf(
+        ManagedExchangeLockUnavailableError,
+      );
+      expect(deps.downloaded).toEqual([]);
+      expect(await getManagedLocalState(record.id)).toBeUndefined();
+    } finally {
+      release();
+    }
   });
 });
 
@@ -600,6 +627,7 @@ describe("importing a spent secret-match revives in place", () => {
     const deps = {
       downloaded: [] as Array<string>,
       fileNames: [] as Array<string>,
+      withLock: runLock,
       readAndMark: readRecordAndMarkBackedUp,
       download: (fileName: string, content: string) => {
         deps.fileNames.push(fileName);

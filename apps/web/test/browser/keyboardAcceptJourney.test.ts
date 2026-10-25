@@ -79,15 +79,14 @@ vi.mock("@psi/exchangeLifecycle", async (importOriginal) => {
   );
 });
 
-// The move to another device downloads a backup file the runner cannot save;
-// the dispatch is stubbed to the state it leaves the surface in, as
-// managedRunSurfaceHandOff.test.ts does.
+// The backup downloads a file the runner cannot save; the export is stubbed to
+// the result it hands the surface.
 vi.mock("@psi/managed/managedExchangeExport", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  dispatchManagedMigration: () =>
+  exportManagedBackup: () =>
     Promise.resolve({
       backedUpAt: new Date("2026-07-10T09:00:00.000Z"),
-      confirm: () => Promise.resolve(),
+      fileName: "alcove-backup-Riverbend-quarterly-2026-07-10T090000Z.json",
     }),
 }));
 
@@ -210,16 +209,12 @@ test("recurring setup: save the accepted exchange, then step through its surface
     .toMatchTextContent("Riverbend quarterly");
   expectNoAccessibilityViolations(app.container, { page: true });
 
-  await activate(control("button", "Move to another device"));
-  await expectHeadingFocused("Confirm the move");
-  expectNoAccessibilityViolations(app.container, { page: true });
-
-  await activate(control("button", "Keep it on this device"));
-  await expectHeadingFocused("Riverbend quarterly");
-
-  await activate(control("button", "Move to another device"));
-  await expectHeadingFocused("Confirm the move");
-  await activate(control("button", "I saved the file; hand off this exchange"));
-  await expectHeadingFocused("Handed off to another device");
+  await activate(control("button", "Download a backup"));
+  // No screen of its own: the line in the panel's live region is the feedback,
+  // and focus stays on the control.
+  await expect
+    .element(page.getByRole("status").filter({ hasText: "Backed up as of" }))
+    .toBeInTheDocument();
+  expect(document.activeElement?.textContent).toBe("Download a backup");
   expectNoAccessibilityViolations(app.container, { page: true });
 });

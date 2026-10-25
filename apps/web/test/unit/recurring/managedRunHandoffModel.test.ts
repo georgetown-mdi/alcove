@@ -1,43 +1,14 @@
 import { describe, expect, test } from "vitest";
-import { getDefaultLinkageTerms } from "@alcove/core";
 
-import {
-  MANAGED_EXCHANGE_SCHEMA_VERSION,
-  NO_STANDING_CONDITION,
-  composeManagedExchangeFile,
-} from "@psi/managed/managedExchangeRecord";
 import {
   MANAGED_HANDOFF_INITIAL,
   managedHandoffReducer,
-  managedMigrationAwaitingConfirm,
-  managedMigrationRefusal,
-  managedMigrationStale,
-  managedRunHoldsMigration,
 } from "@recurring/managedRunHandoffModel";
 
 import type {
   ManagedHandoffAction,
   ManagedHandoffState,
 } from "@recurring/managedRunHandoffModel";
-import type { ManagedMigrationDispatch } from "@psi/managed/managedExchangeExport";
-
-const DISPATCH: ManagedMigrationDispatch = {
-  backedUpAt: new Date("2026-10-07T12:00:00Z"),
-  fileName: "alcove-backup-Riverbend-quarterly-2026-10-07T120000Z.json",
-  record: {
-    schemaVersion: MANAGED_EXCHANGE_SCHEMA_VERSION,
-    id: "abc",
-    label: "Riverbend quarterly",
-    exchangeFile: composeManagedExchangeFile({
-      connection: { channel: "webrtc", host: "signaling.example.org" },
-      linkageTerms: getDefaultLinkageTerms("County Health Dept"),
-    }),
-    side: "inviter",
-    sharedSecret: "loaded-secret",
-    standingCondition: NO_STANDING_CONDITION,
-  },
-  confirm: () => Promise.resolve(),
-};
 
 function fold(
   actions: ReadonlyArray<ManagedHandoffAction>,
@@ -46,17 +17,9 @@ function fold(
   return actions.reduce(managedHandoffReducer, from);
 }
 
-const awaiting = fold([
-  { type: "export-started" },
-  { type: "migration-dispatched", dispatch: DISPATCH },
-]);
-
 describe("an export", () => {
-  test("starts idle with no hand-off", () => {
-    expect(MANAGED_HANDOFF_INITIAL).toEqual({
-      export: { kind: "idle" },
-      migration: { kind: "none" },
-    });
+  test("starts idle", () => {
+    expect(MANAGED_HANDOFF_INITIAL).toEqual({ export: { kind: "idle" } });
   });
 
   test("is busy until it ends", () => {
@@ -78,107 +41,5 @@ describe("an export", () => {
     expect(fold([{ type: "export-started" }], failed).export).toEqual({
       kind: "busy",
     });
-  });
-});
-
-describe("a migration", () => {
-  test("once dispatched awaits the operator's confirmation", () => {
-    expect(awaiting.export).toEqual({ kind: "idle" });
-    expect(managedMigrationAwaitingConfirm(awaiting)).toBe(DISPATCH);
-    expect(managedMigrationRefusal(awaiting)).toBeUndefined();
-  });
-
-  test("confirmed is migrated and holds no dispatch", () => {
-    const migrated = fold(
-      [{ type: "migration-confirm-started" }, { type: "migration-confirmed" }],
-      awaiting,
-    );
-    expect(migrated.migration).toEqual({ kind: "migrated" });
-    expect(migrated.export).toEqual({ kind: "idle" });
-    expect(managedMigrationAwaitingConfirm(migrated)).toBeUndefined();
-  });
-
-  test("once migrated stays migrated", () => {
-    const migrated = fold([{ type: "migration-confirmed" }], awaiting);
-    expect(
-      fold([{ type: "migration-dispatched", dispatch: DISPATCH }], migrated)
-        .migration,
-    ).toEqual({ kind: "migrated" });
-    expect(fold([{ type: "migration-kept" }], migrated)).toBe(migrated);
-  });
-
-  test("a refused spend keeps the confirmation and states the refusal", () => {
-    const refused = fold(
-      [
-        { type: "migration-confirm-started" },
-        { type: "migration-refused", refusal: "superseded" },
-      ],
-      awaiting,
-    );
-    expect(refused.export).toEqual({ kind: "idle" });
-    expect(managedMigrationAwaitingConfirm(refused)).toBe(DISPATCH);
-    expect(managedMigrationRefusal(refused)).toBe("superseded");
-  });
-
-  test("a confirmation started again drops the last refusal", () => {
-    const retried = fold(
-      [
-        { type: "migration-refused", refusal: "run-in-flight" },
-        { type: "migration-confirm-started" },
-      ],
-      awaiting,
-    );
-    expect(retried.export).toEqual({ kind: "busy" });
-    expect(managedMigrationRefusal(retried)).toBeUndefined();
-  });
-
-  test("a refusal or a confirmation start outside a confirmation changes no migration", () => {
-    expect(
-      fold([{ type: "migration-refused", refusal: "record-gone" }]).migration,
-    ).toEqual({ kind: "none" });
-    expect(fold([{ type: "migration-confirm-started" }]).migration).toEqual({
-      kind: "none",
-    });
-  });
-
-  test("kept on this device drops the dispatch and its refusal", () => {
-    const kept = fold(
-      [
-        { type: "migration-refused", refusal: "record-gone" },
-        { type: "migration-kept" },
-      ],
-      awaiting,
-    );
-    expect(kept.migration).toEqual({ kind: "none" });
-    expect(managedMigrationRefusal(kept)).toBeUndefined();
-  });
-
-  test("kept with no confirmation showing returns the same state", () => {
-    expect(fold([{ type: "migration-kept" }])).toBe(MANAGED_HANDOFF_INITIAL);
-  });
-});
-
-describe("what holds a migration", () => {
-  test("a run holds it: the polled reading or the spend's own refusal", () => {
-    expect(managedRunHoldsMigration(awaiting, false)).toBe(false);
-    expect(managedRunHoldsMigration(awaiting, true)).toBe(true);
-    const refused = fold(
-      [{ type: "migration-refused", refusal: "run-in-flight" }],
-      awaiting,
-    );
-    expect(managedRunHoldsMigration(refused, false)).toBe(true);
-  });
-
-  test("a run's refusal is not stale; the others are", () => {
-    expect(managedMigrationStale(awaiting)).toBe(false);
-    for (const [refusal, stale] of [
-      ["run-in-flight", false],
-      ["superseded", true],
-      ["record-gone", true],
-    ] as const) {
-      const refused = fold([{ type: "migration-refused", refusal }], awaiting);
-      expect(managedMigrationStale(refused)).toBe(stale);
-      expect(managedRunHoldsMigration(refused, false)).toBe(!stale);
-    }
   });
 });

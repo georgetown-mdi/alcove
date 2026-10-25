@@ -2,72 +2,11 @@ import { describe, expect, test } from "vitest";
 
 import {
   CUSTODY_UNREADABLE_IMPORT_TITLE,
-  RECORD_GONE_HANDOFF_REASON,
-  RECORD_GONE_HANDOFF_TITLE,
-  RUN_IN_FLIGHT_HANDOFF_REASON,
-  SUPERSEDED_HANDOFF_REASON,
-  SUPERSEDED_HANDOFF_TITLE,
   custodyUnreadableImportReason,
   handedOffImportReason,
 } from "@recurring/managedHandoffGate";
 
-// The refusals the device migration shows. What to DO about one is only useful if
-// it names something the operator can reach from the screen showing it, which is
-// what these pin -- a refusal that instructs a download the screen cannot perform
-// leaves the operator to find the route themselves.
-
-describe("the superseded refusal", () => {
-  test("says what happened and that nothing was handed over", () => {
-    expect(SUPERSEDED_HANDOFF_REASON).toContain(
-      "This exchange's secret has changed since you",
-    );
-    expect(SUPERSEDED_HANDOFF_REASON).toContain("Nothing was handed over.");
-  });
-
-  test("sends the migration operator through the screen they are actually on", () => {
-    // The migration confirmation is a full screen that replaces the one holding
-    // "Move to another device", so the download control is not reachable from it:
-    // the way to a fresh copy is out of this screen first.
-    const reason = SUPERSEDED_HANDOFF_REASON;
-    expect(reason).toContain('"Keep it on this device"');
-    expect(reason).toContain("move it again");
-    expect(reason).not.toMatch(/Download this exchange again/i);
-  });
-
-  test("its heading names the state rather than the remedy", () => {
-    expect(SUPERSEDED_HANDOFF_TITLE).not.toMatch(/download/i);
-  });
-});
-
-describe("the record-gone refusal", () => {
-  test("points at no download, because there is no record left to download", () => {
-    // The refusal a hand-off meets when the exchange was deleted or its storage
-    // cleared while the confirmation stood. The superseded copy's remedy is the
-    // one sentence this case must not include.
-    expect(RECORD_GONE_HANDOFF_REASON).not.toMatch(/download .*again/i);
-    expect(RECORD_GONE_HANDOFF_REASON).toMatch(/no longer in this browser/);
-    expect(RECORD_GONE_HANDOFF_REASON).toMatch(/nothing was written/);
-    expect(RECORD_GONE_HANDOFF_TITLE).not.toMatch(/download/i);
-  });
-
-  test("is not the superseded refusal in other words", () => {
-    expect(RECORD_GONE_HANDOFF_REASON).not.toBe(SUPERSEDED_HANDOFF_REASON);
-  });
-});
-
-describe("the reasons around them", () => {
-  test("the run-in-flight reason still names every context a run can be in", () => {
-    expect(RUN_IN_FLIGHT_HANDOFF_REASON).toMatch(/another tab/);
-    expect(RUN_IN_FLIGHT_HANDOFF_REASON).toMatch(/schedule/);
-  });
-
-  test("the run-in-flight reason invites the retry rather than only asking to wait", () => {
-    // The confirm control stays enabled through this refusal (the click-time
-    // recheck is the control, not the disabled prop), so the copy must say the
-    // retry is the way out rather than displaying as a dead end.
-    expect(RUN_IN_FLIGHT_HANDOFF_REASON).toMatch(/hand off again/i);
-  });
-
+describe("the import refusal for a handed-off copy", () => {
   test("the refused import names the exchange the operator knows", () => {
     expect(handedOffImportReason("command-line", "Riverbend")).toContain(
       '"Riverbend"',

@@ -858,9 +858,9 @@ no schedule section at all, is never read for one.
 A recurring exchange runs from one browser on one device. Two copies that both
 run split its shared secret: the first to run changes it, and the other copy can
 no longer connect to your partner (see [Desync detection and
-recovery](#desync-detection-and-recovery)). So moving the exchange hands it over
-and never copies it, and a backup is for restoring this copy, not for running a
-second one. The reasons: [Single-device
+recovery](#desync-detection-and-recovery)). Exporting the exchange only writes
+files, and neither export stops this copy: what moves the exchange is running
+it somewhere else. The reasons: [Single-device
 ownership](notes/managed-exchange-design.md#single-device-ownership).
 
 ### When a run is already in progress
@@ -874,64 +874,52 @@ which can be after the window is over.
 
 ### Moving the exchange to another device
 
-The exchange's page offers two exports of the same file. A **backup** leaves the
-exchange running here (see [The durability backbone:
-export/import](#the-durability-backbone-exportimport)). **Move to another
-device** hands it over: it downloads the file and then asks you to confirm that
-you saved it. Nothing changes here until you confirm, so a cancelled or failed
-save leaves the exchange here and you can export again; declining keeps the
-exchange on this device.
+To run the exchange in another browser or on another device, **Download a
+backup** from the exchange's page and import that file there (see [Eviction
+recovery is the import flow](#eviction-recovery-is-the-import-flow)). The
+download writes nothing here but the backup state: the exchange stays on this
+page, runnable, with its schedule as it was (see [The durability backbone:
+export/import](#the-durability-backbone-exportimport)).
 
-Once you confirm, the exchange here shows as handed off, with the date, and
-offers no Run and no scheduled runs. You can remove it, or bring it back only by
-importing that file here again. Import the file on the other device to run it
-there (see [Eviction recovery is the import
-flow](#eviction-recovery-is-the-import-flow)). Results its earlier scheduled
-runs kept in this browser are still collected on its page (see [Where a
-scheduled run's results go](#where-a-scheduled-runs-results-go)).
+What moves the exchange is the first run elsewhere. That run replaces the
+shared secret, and the copy here, still holding the old one, can no longer
+connect to your partner. So the page states one thing beside the download: if
+you run this exchange elsewhere, import it again to use it here later. On an
+exchange with a schedule on here, it adds that the schedule here should be
+turned off: a scheduled run here would replace the secret too, and whichever
+copy runs second then fails to connect ([Desync detection and
+recovery](#desync-detection-and-recovery)). A run of the copy here after a run
+elsewhere says the same: over WebRTC the partner never arrives, since where the
+two parties meet is derived from the secret, and the failure says that if the
+exchange was run elsewhere, importing it again here makes it runnable.
 
-**A hand-off refuses a copy a run has already superseded.** Confirming the
-move re-reads the stored record first, and refuses unless what was downloaded
-still holds the exchange's current secret. A run rotates that secret at its
-handshake, so a run that reaches the partner between the download and the
-attestation supersedes what was downloaded: confirming it would hand the new
-owner a copy whose first run meets a partner that has moved on, and only a
-re-invite recovers the pair. The refusal says so, nothing is spent, and the
-remedy is to download the exchange again, by "Keep it on this device" then "Move
-to another device" on the migration screen.
-An exchange that has gone from this browser entirely -- deleted, or cleared with
-the browser's storage -- refuses the same attestation for a different reason, and
-says that instead: there is nothing here to hand over and nothing here to
-download again.
+Importing the newer files over the copy still in the list adds a second entry
+beside it rather than replacing it. Remove the older entry once the imported
+one has run.
 
-**And a run refuses a copy a hand-off has already given away.** The refusal runs
-both ways, on the run path itself rather than on what a screen last read: a run
-that finds this browser's copy spent stops before reading the input file and
-before connecting, so a hand-off confirmed while a run surface stood open, or
-between two attempts at one scheduled window, is not overtaken by the run that
-follows it. There is no override -- the exchange runs where the hand-off took
-it. An attended run refused that way leaves the surface on the handed-off state
-straight away, naming the hand-off that spent the copy and what it left behind,
-rather than an error the operator has to reload past.
+Both downloads -- the backup and the [command-line
+files](#exporting-to-the-command-line) -- are withheld while this tab is
+running the exchange, and while a run in any other context holds the
+[single-writer lock](#when-a-run-is-already-in-progress), which is how a second
+tab's run or a scheduled one reaches them: a file downloaded during a run would
+hold the secret that run is about to replace. The page names the run as the
+reason beside each, and both return when the run ends and releases its lock.
+If a run starts after the page last checked, the download is refused in the
+same words, nothing is downloaded and nothing changes here, and the reason goes
+at the page's next check once the run is over.
 
-A run that cannot read that state at all refuses on the same terms and says so
-in its own words: this browser could not read the note it keeps beside the
-exchange, so the run stopped before reading the input file and before
+**A copy handed off by an earlier version does not run here.** A run that
+finds this browser's copy marked handed off stops before reading the input file
+and before connecting. An attended run refused that way leaves the page on the
+handed-off state straight away, rather than an error the operator has to reload
+past. A run that cannot read that state at all refuses on the same terms and
+says so in its own words: this browser could not read the note it keeps beside
+the exchange, so the run stopped before reading the input file and before
 connecting. It is not reported as a rotation this device failed to save, and it
 offers no re-invite. Nothing rotated, so the two parties are not out of step
 and a fresh secret would replace one nothing moved; the note that did not read
 is what has to become readable, and running the exchange again meets the same
 note until it does.
-
-Ahead of that refusal, the move -- and the command-line export's download --
-are withheld while this tab is running the exchange, and while a run in any
-other context holds the [single-writer
-lock](#when-a-run-is-already-in-progress), which is how a second tab's
-run or a scheduled one reaches them. The surface names the run as the reason;
-both return when this tab's run ends or, for another context, when that
-run ends and releases its lock. If a run starts after the page last checked,
-confirming the move, or the command-line download, is refused in the same
-words: try again once the run is over.
 
 **The file is a credential.** It holds the exchange's shared secret in plain
 text, like the command line's `.alcove.key` (see [Key file
@@ -939,8 +927,8 @@ security](SECURITY_DESIGN.md#key-file-security)). Store it where only you can
 read it, never send it over an unencrypted channel, and use an encrypted
 location or a secrets manager if you want it encrypted at rest. The file does
 not change after you export it: it stays usable until a run changes the secret,
-or until the shared secret it holds expires. A copy that leaks, or a copy kept after
-a move, is a live credential until then; treat it under the [compromise
+or until the shared secret it holds expires. A copy that leaks is a live
+credential until then; treat it under the [compromise
 response](SECURITY_DESIGN.md#compromise-response): tell your partner over
 another channel and send a fresh invitation.
 
@@ -989,7 +977,8 @@ then fails to connect to the partner ([Desync detection and
 recovery](#desync-detection-and-recovery)). Importing the newer `alcove.yaml`
 and `.alcove.key` ([Bringing a command-line configuration
 back](#bringing-a-command-line-configuration-back)) brings the current secret
-back here.
+back here, as a second entry beside the copy still in the list; remove the older
+entry once the imported one has run.
 
 Two things do not travel with the files:
 
@@ -1011,8 +1000,8 @@ replaces the default.
 
 The two files have the current secret, but they are the command line's working
 copy, not a backup for this browser: every run there rewrites `.alcove.key`
-with the secret it rotated to. So -- unlike the backup and migration exports --
-taking this one **marks nothing**: the exchange's backup state is exactly what
+with the secret it rotated to. So, unlike the backup, taking this one **marks
+nothing**: the exchange's backup state is exactly what
 it was before. A backup indicator reading green is a promise that a file this
 browser restores from exists, and these files are not that file. The panel says
 so where it offers them, so the two kinds of export are told apart before
@@ -1159,15 +1148,18 @@ no longer connect to your partner. What the pair import takes and refuses:
   this browser already runs the exchange the key file belongs to, nothing is
   imported and the refusal names it. If you handed it off to the command line
   from here, the import refuses and names the way back: open it from the list and
-  choose "Take this exchange back", with these two files. An exchange moved to
-  another device from here comes back as the same entry in the list, unless the
-  files are for the other side of it -- your partner's -- which is refused.
+  choose "Take this exchange back", with these two files. An exchange an
+  earlier version moved to another device from here comes back as the same entry
+  in the list, unless the files are for the other side of it -- your partner's --
+  which is refused.
 - **An exchange you already have, after its secret changed.** A key file the
   command line has rotated since the exchange left this browser matches no
   secret here, and a configuration imported alone holds none. So when an
   exchange in the list was handed off to the command line, moved to another
-  device, or imported as a configuration only, and has the same terms and the
-  same side as the files, the import stops and names it. You can take the files
+  device by an earlier version, or imported as a configuration only, and has
+  the same terms and the same side as the files, the import stops and names it.
+  A copy in the list that still runs here is not among them: the files land as
+  a second entry beside it. You can take the files
   into it -- taking a handed-off exchange back, restoring a moved one, or
   completing a configuration with its key file -- add them as a new exchange
   instead, or cancel. Nothing is taken in without your answer. Before taking a
@@ -1911,10 +1903,10 @@ Because in-browser persistence can vanish silently, the **durability backbone is
 an export the operator holds outside the browser**, not the IndexedDB copy. The
 managed exchange can be exported to a file the operator keeps in their own
 secure storage and re-imported to reconstitute the exchange after an eviction.
-It is the same artifact, with the same custody model and the same
-handling, as a device move (see [Moving the exchange to another
-device](#moving-the-exchange-to-another-device)): an import re-establishes the
-one owner. A backup export differs only in leaving the source live.
+It is the same file, with the same custody model and the same
+handling, that runs the exchange on another device (see [Moving the exchange
+to another device](#moving-the-exchange-to-another-device)), and taking it
+leaves the exchange here runnable.
 
 Re-export is prompted by the attended run's completion surface and by the backup
 state below. An unattended run rotates with nobody present: where the exchange's

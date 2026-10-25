@@ -301,7 +301,9 @@ const ALREADY_RUNNING_FAILURE: ManagedRunFailureAlert = {
  *
  * The copy names re-invite for a partner who was at their machine at an agreed
  * time and still never arrived (see docs/MANAGED_EXCHANGE.md, "A missed window
- * is neither desync nor attack"), but stays out of the recovery affordance.
+ * is neither desync nor attack"), but stays out of the recovery affordance. It
+ * also names the import a copy needs once a run elsewhere has rotated its
+ * secret: the rendezvous derives from the secret, so that copy meets no one.
  *
  * Issued from THIS run's own no-show error ({@link classifyManagedRunFailure}),
  * never from a record's recorded outcome, which belongs to whichever run
@@ -316,7 +318,8 @@ const MISSED_FAILURE: ManagedRunFailureAlert = {
     "this exchange again when they are ready. If they were running their side " +
     "at a time you agreed and this keeps happening, re-invite your partner to " +
     "reconnect; the exchange keeps your terms, gets a new secret, and uses " +
-    "the coordination server the new invitation names.",
+    "the coordination server the new invitation names. If you ran this " +
+    "exchange elsewhere, import it again here to make it runnable.",
   recovery: "none",
 };
 

@@ -1207,7 +1207,7 @@ Three records are passed over rather than attempted, each leaving its window
 with no disposition at all -- the wake that finds the window elapsed counts it
 exactly as one this runtime slept through:
 
-- One this device has handed off (its local `spent` state), by either export.
+- One whose local `spent` state marks this device's copy handed off.
 - One with no persisted `workingDirectoryHandle`, which has no unattended read
   of the input at all.
 - One whose runtime stopped while the window was still open.
@@ -1378,10 +1378,10 @@ side of the send the run stopped on; the accounting does. And the cancel does no
 discard what the transport already holds buffered: the teardown's close flushes
 rather than drops, so a cancel does not mean nothing further leaves the device.
 The lock guards one browser profile; across devices the guard is **migration,
-not sync**. Nothing synchronizes a record between two devices, and the migration
-export spends the source copy, so the copy imported on the new device is the one
-that runs. The spend is written once the operator confirms the file is saved,
-never at the download, and a run that finds its copy spent refuses before it
+not sync**. Nothing synchronizes a record between two devices, and no export
+spends the source copy: a run of an exported copy elsewhere rotates the secret,
+and this browser's copy, still holding the older one, runs again only once the
+newer files are imported here. A run that finds its copy spent refuses before it
 connects (see [the spent
 state](#the-backup-marker-the-spent-state-and-the-import-marker-local-siblings-never-in-the-artifact)).
 The rationale for both guards is [Single-device
@@ -1816,11 +1816,14 @@ device's pending decision on a partner's changed terms. The four:
   "backup needed". "Taken since the last rotation" is enforced **structurally**, not
   re-derived from `lastRun`, by the write-side rules below -- which also settle which
   export the state is about:
-  - **A marking export binds the marker to the bytes it serialized.** The backup and
-    migration exports read the current record, serialize the bytes they will download,
-    and stamp the marker in one atomic store step (a cross-store
-    read-serialize-and-mark), then download exactly those bytes, so the marker can only
-    ever attest the secret the file holds. A stale tab or a stale in-memory record
+  - **A marking export binds the marker to the bytes it serialized.** The backup
+    export reads the current record, serializes the bytes it will download,
+    and stamps the marker in one atomic store step (a cross-store
+    read-serialize-and-mark), then downloads exactly those bytes, so the marker can only
+    ever attest the secret the file holds. It takes the record's [run+rotate
+    lock](#the-secret-is-a-linear-resource) with `ifAvailable` around that step and
+    the download, and a run holding the lock refuses it before anything is read, so
+    the file never holds a secret a run in flight is about to rotate. A stale tab or a stale in-memory record
     cannot mark a secret it did not serialize. Serializing inside the step is what binds
     the marker to bytes that exist: a step that resolved without serializing would leave
     a marker attesting bytes nothing produced, so it fails the export instead.
@@ -1876,9 +1879,9 @@ device's pending decision on a partner's changed terms. The four:
     "backed up" about a copy the first run there replaces, and the backup surfaces
     that read the marker send the operator to the backup file, not to it. The pair
     import stamps no backup marker for the same reason. The export takes a plain
-    read of the record by `id` and leaves the
-    marker -- present or absent -- exactly where it stood, whether the hand-off is
-    confirmed or dismissed. The two exports are named apart where they are offered, so
+    read of the record by `id`, under the run+rotate lock taken with `ifAvailable`
+    as the backup export's is, and leaves the
+    marker -- present or absent -- exactly where it stood. The two exports are named apart where they are offered, so
     the operator chooses between "a file this browser restores from" and "the files
     the command line runs from" rather than between two downloads.
   - **Rotation clears the marker.** The persist-before-success rotation write clears
@@ -1894,11 +1897,13 @@ device's pending decision on a partner's changed terms. The four:
   granted persist cannot suppress the actionable "backup needed" state (see
   [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#hosted-at-rest-threat-model-for-managed-exchanges)).
 - **The spent state** (`spentAt`, an ISO 8601 UTC instant, and an optional
-  `handoff` discriminator) records that an export handed this device's copy off.
-  Two exports write it, and the discriminator is which one did:
-  - the **migration export** ("take over on another device"), which writes
+  `handoff` discriminator) records that this device's copy was handed off. No
+  export writes it: each leaves the stored record runnable here. A record holds it
+  where an earlier build's export wrote it, and the discriminator is which export
+  did:
+  - the **migration export** ("take over on another device"), which wrote
     `spentAt` alone, so an absent `handoff` means a migration spend;
-  - the **command-line export**'s confirmed hand-off, which writes
+  - the **command-line export**'s confirmed hand-off, which wrote
     `handoff: "command-line"` beside it.
 
   Either way it transitions the source to a visible spent state -- no Run
@@ -1922,12 +1927,12 @@ device's pending decision on a partner's changed terms. The four:
 
   The spend is **operator-attested, not dispatch-anchored**: a download dispatch
   (`anchor.click()`) gives no landing signal, so a cancelled or failed save must not
-  spend the source. Each export downloads its files, then writes the spent state only
-  after the operator confirms they are saved; a dismissed dialog leaves the source
-  live and recoverable. The migration also marks the source backed-up on dispatch, so
-  a migration-spent copy has a current artifact by construction; the command-line
-  export marks nothing, so a copy spent that way holds whatever backup state it
-  already had. The attestation is checked rather than taken on its word, and the
+  spend the source. No export calls the store's spend step
+  (`spendManagedExchangeIfCurrent`), which writes the spent state only on the
+  operator's confirmation that the files are saved. A migration-spent copy was
+  marked backed up when its file was downloaded, so it has a current artifact by
+  construction; a copy spent by a command-line hand-off holds whatever backup state
+  it already had. The attestation is checked rather than taken on its word, and the
   check and the write are **one atomic store step** (a cross-store
   check-and-spend), as the backup marker's are. Inside a single transaction
   spanning the record and sibling stores, the confirmation reads the record by
@@ -1968,7 +1973,7 @@ device's pending decision on a partner's changed terms. The four:
   The spent state has no secret material and no epoch.
 
   **Revive by import is the migration spend's recovery, and only its.** The
-  migration export downloads the artifact that clears its own spend (a
+  migration export downloaded the artifact that clears its own spend (a
   **revive-in-place**: an import whose secret matches the spent record's updates
   that record's fields, keeps its `id` and its working-folder grant, clears the
   spent state,

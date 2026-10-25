@@ -86,8 +86,8 @@ describe("the backup panel as a fragment target", () => {
         busy: false,
         failed: false,
         runInFlight: false,
+        scheduleOn: false,
         onBackUp: () => undefined,
-        onMigrate: () => undefined,
       }),
     );
   }
