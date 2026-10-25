@@ -166,6 +166,17 @@ alcove_engine_answers() {
   "$1" version >/dev/null 2>&1
 }
 
+# What to say when the engine stopped answering during a run of the checks:
+# whatever they printed is not about the folder, or about this launcher and the
+# image.
+alcove_engine_stopped() {
+  alcove_bad "The container engine ($ALCOVE_ENGINE) stopped answering, so the checks did not finish."
+  local product="$ALCOVE_ENGINE"
+  [ "$ALCOVE_ENGINE" = 'docker' ] && product='Docker'
+  alcove_note "Start $product again and wait until it is running, then run this"
+  alcove_note 'script again.'
+}
+
 alcove_select_engine() {
   local candidate=''
   for candidate in docker podman; do
@@ -534,7 +545,7 @@ ALCOVE_CHECKS
 #      a verdict this launcher understands)
 alcove_run_doctor_mount() {
   local label="$1" directory="$2" requirement="$3"
-  local verdict='' status=0 version='' overall='' checks=''
+  local verdict='' status=0 version='' overall='' checks='' loaded='no'
   local -a arguments
 
   ALCOVE_VERDICT_OVERALL=''
@@ -547,6 +558,17 @@ alcove_run_doctor_mount() {
   arguments+=(--volume "$directory:/rz" "$(alcove_image)" doctor mount /rz --json)
   verdict=$("$ALCOVE_ENGINE" "${arguments[@]}")
   status=$?
+
+  # Asked before reading what the run printed: an engine stopped mid-run leaves
+  # an exit code and an output that would otherwise be blamed on the folder or
+  # on the launcher.
+  if [ "$status" -lt 125 ] && [ -n "$verdict" ] && alcove_json_load "$verdict"; then
+    loaded='yes'
+  fi
+  if [ "$loaded" = 'no' ] && ! alcove_engine_answers "$ALCOVE_ENGINE"; then
+    alcove_engine_stopped
+    return 1
+  fi
 
   # Docker reserves 125 and above for its own failure to start a container, and
   # every verdict code is below it -- so this is "the checks never ran" rather
@@ -564,7 +586,7 @@ alcove_run_doctor_mount() {
     alcove_note 'all, so nothing was established about the folder.'
     return 1
   fi
-  if ! alcove_json_load "$verdict"; then
+  if [ "$loaded" = 'no' ]; then
     alcove_bad 'The verdict could not be read.'
     alcove_note 'This launcher and that image do not agree on the verdict'
     alcove_note 'format. Use the launcher published with the image you are'

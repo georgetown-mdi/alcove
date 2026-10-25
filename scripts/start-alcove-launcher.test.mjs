@@ -70,6 +70,9 @@ if (args.includes("doctor")) {
   const code = Number(lines[0]);
   const body = lines.slice(1).join("\\n").trim();
   if (body) process.stdout.write(body + "\\n");
+  if (fs.existsSync(path.join(dir, "stops-on-turn-" + turn))) {
+    fs.writeFileSync(path.join(dir, engine + ".broken"), "");
+  }
   process.exit(code);
 }
 
@@ -175,6 +178,18 @@ function mountTarget(spec) {
 
 function breakEngine(workspace, name) {
   writeFileSync(join(workspace.stubDir, `${name}.broken`), "");
+}
+
+/**
+ * What the stub prints on its `turn`-th doctor run, exiting `exitCode`, after
+ * which it stops answering: what an engine stopped mid-run leaves.
+ */
+function stageEngineStop(workspace, turn, exitCode, output) {
+  writeFileSync(
+    join(workspace.stubDir, `verdict-${turn}`),
+    `${exitCode}\n${output}\n`,
+  );
+  writeFileSync(join(workspace.stubDir, `stops-on-turn-${turn}`), "");
 }
 
 /** A verdict the stub answers with on its `turn`-th doctor run. */
@@ -940,6 +955,56 @@ describe("the doctor loop", () => {
       .filter((line) => line.includes("doctor"));
     expect(doctorRuns).toHaveLength(1);
     expect(engineCalls(workspace)).not.toMatch(/serve/);
+  });
+
+  it.each([
+    ["printed nothing", 1, ""],
+    ["printed part of a verdict", 1, '{"version":1,"mode":"mou'],
+    ["ended in the engine's own range", 125, ""],
+  ])(
+    "names the stopped engine when it stops during the checks and the run %s",
+    (_label, exitCode, output) => {
+      const workspace = makeWorkspace();
+      installEngine(workspace, "docker");
+      stageEngineStop(workspace, 1, exitCode, output);
+      const launcher = stampedLauncher(workspace);
+
+      const run = runLauncher(workspace, launcher, [
+        "--data-root",
+        workspace.dataDir,
+        "--no-browser",
+      ]);
+
+      expect(run.status).not.toBe(0);
+      expect(run.stdout).toContain(
+        "The container engine (docker) stopped answering",
+      );
+      expect(run.stdout).toMatch(/Start Docker again/);
+      expect(run.stdout).not.toMatch(/launcher published/);
+      expect(run.stdout).not.toMatch(/printed no verdict/);
+      expect(run.stdout).not.toMatch(/could not be started/);
+      expect(engineCalls(workspace)).not.toMatch(/serve/);
+    },
+  );
+
+  it("keeps the verdict message while the engine still answers", () => {
+    const workspace = makeWorkspace();
+    installEngine(workspace, "docker");
+    writeFileSync(
+      join(workspace.stubDir, "verdict-last"),
+      '1\n{"version":1,"mode":"mou\n',
+    );
+    const launcher = stampedLauncher(workspace);
+
+    const run = runLauncher(workspace, launcher, [
+      "--data-root",
+      workspace.dataDir,
+      "--no-browser",
+    ]);
+
+    expect(run.status).not.toBe(0);
+    expect(run.stdout).toMatch(/The verdict could not be read/);
+    expect(run.stdout).not.toMatch(/stopped answering/);
   });
 
   it("runs the mount checks against every folder the console is given", () => {
