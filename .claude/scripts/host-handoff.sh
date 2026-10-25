@@ -140,13 +140,13 @@ if grep -q '^- Effort:' "$brief"; then
 fi
 
 # The Owner actions section is "none" or one list item per action, indented
-# lines continuing the item above. Prints the count, "bad: <line>" for the
+# list items counting too and other indented lines continuing the item above. Prints the count, "bad: <line>" for the
 # first line that is neither, "mixed" for a "none" beside listed actions, or
 # "empty".
 owner_actions="$(awk '
   /^## / { inside = ($0 ~ /^## Owner actions[ \t]*$/); next }
   !inside || /^[ \t]*$/ { next }
-  /^([0-9]+\.|[-*]) / { count++; next }
+  /^[ \t]*([0-9]+\.|[-*]) / { count++; next }
   /^[ \t]/ && count > 0 { next }
   tolower($0) ~ /^none\.?[ \t]*$/ { none++; next }
   bad == "" { bad = $0 }

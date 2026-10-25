@@ -475,6 +475,27 @@ describe("host-handoff.sh owner actions", () => {
     }
   });
 
+  it("counts indented list items under an action and refuses a total past the bound", () => {
+    const lines = ["1. Sign in to the VM."];
+    for (let n = 1; n <= OWNER_ACTION_BOUND; n++) {
+      lines.push(`   - Enter field ${n}.`);
+    }
+    const { status, stderr } = checkBrief(lines);
+    expect(status).toBe(1);
+    expect(stderr).toContain(
+      `lists ${OWNER_ACTION_BOUND + 1} owner actions, past the bound of ${OWNER_ACTION_BOUND}.`,
+    );
+  });
+
+  it("counts an action followed by an indented prose line as one", () => {
+    const { status, stdout } = checkBrief([
+      "1. Sign in to the VM.",
+      "   The login screen shows his account name.",
+    ]);
+    expect(status).toBe(0);
+    expect(stdout).toContain(`host-handoff: owner actions: 1, at most`);
+  });
+
   it("accepts an Owner actions section that says none", () => {
     for (const none of ["none", "None.", "none  "]) {
       const { status, stdout } = checkBrief([none]);
