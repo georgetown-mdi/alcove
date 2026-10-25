@@ -989,12 +989,16 @@ jobs:
       # whose upload did not succeed would fail the gate while showing nothing
       # it found. This puts the report where such a run can still be read.
       # Conditioned on the upload's outcome rather than on the fork predicate
-      # above, so any other reason the alerts do not land is covered too.
+      # above, so any other reason the alerts do not land is covered too. A
+      # failed scan prints it as well: the uploaded alerts of a pull request
+      # analysis do not appear in the Security tab's default listing, so the
+      # failing job's log is where its findings can be read.
       - name: Report the scan findings in the job log
         if: >-
           ${{ !cancelled()
           && steps.vulnerability_scan.outcome != 'skipped'
-          && steps.image_scan_upload.outcome != 'success' }}
+          && (steps.image_scan_upload.outcome != 'success'
+          || steps.vulnerability_scan.outcome == 'failure') }}
         run: cat trivy-image.sarif
 
   # docs/DEPLOYMENT.md hands the operator a restricted-egress recipe for the
