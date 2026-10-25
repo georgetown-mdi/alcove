@@ -4089,13 +4089,40 @@ describe.skipIf(runningAsRoot)(
 
     // websocket-address-limit.py is driven in scripts/relay-websocket.test.mjs;
     // here a python3 answers for both WebSocket probes, websocket-pair.py
-    // passing, and runs every other script on the real python3.
-    const verifyWithLimitProbe = (line, status) => {
+    // passing, and runs every other script on the real python3. A journalctl
+    // stands in for the front's journal, printing `journal` and exiting
+    // `journalStatus`.
+    const PROBE_PASSED =
+      "the front upgraded 8 sockets from 10.0.0.5 and one from 127.0.0.1 at wss://wsrelay.example/relay, and closed a ninth from 10.0.0.5 unanswered";
+    // The shape nginx's stream module writes: the message, then the client
+    // and the listening address.
+    const refusalLine = (address) =>
+      `2026/10/25 03:00:00 [warn] 22#22: *41 limiting connections by zone "alcove_websocket_relay", client: ${address}, server: 127.0.0.1:5351`;
+    const verifyWithLimitProbe = (
+      line,
+      status,
+      { journal = refusalLine("10.0.0.5"), journalStatus = 0 } = {},
+    ) => {
       const host = fixtureHost();
       const stubDir = join(host.root, "probe-stub");
       mkdirSync(stubDir);
       const argv = join(host.root, "limit-argv.log");
       writeFileSync(argv, "");
+      const journalArgv = join(host.root, "journalctl-argv.log");
+      writeFileSync(journalArgv, "");
+      const journalText = join(host.root, "journal.txt");
+      writeFileSync(journalText, `${journal}\n`);
+      writeFileSync(
+        join(stubDir, "journalctl"),
+        [
+          "#!/bin/bash",
+          `printf '%s\\n' "$*" >> '${journalArgv}'`,
+          `cat '${journalText}'`,
+          `exit ${journalStatus}`,
+          "",
+        ].join("\n"),
+      );
+      chmodSync(join(stubDir, "journalctl"), 0o755);
       const realPython = process.env.PATH.split(":")
         .map((dir) => join(dir, "python3"))
         .find(existsSync);
@@ -4123,11 +4150,17 @@ describe.skipIf(runningAsRoot)(
       return {
         result,
         runs: readFileSync(argv, "utf8").split("\n").filter(Boolean),
+        journalRuns: readFileSync(journalArgv, "utf8")
+          .split("\n")
+          .filter(Boolean),
       };
     };
 
     it("asks the front's bound for each client address from the connect target and from 127.0.0.1 once two sockets pair", () => {
-      const { result, runs } = verifyWithLimitProbe("upgraded", 0);
+      const { result, runs, journalRuns } = verifyWithLimitProbe(
+        PROBE_PASSED,
+        0,
+      );
       expect(result.stdout).toContain(
         "PASS     two sockets paired at the WebSocket relay through the front",
       );
@@ -4139,6 +4172,51 @@ describe.skipIf(runningAsRoot)(
       expect(result.stdout).toContain(
         "PASS     the front admitted 8 WebSocket relay sockets from one client address and one from another, and closed a ninth from the first",
       );
+      expect(result.stdout).toContain(
+        "PASS     the front logged its refusal of the ninth WebSocket relay socket, naming 10.0.0.5",
+      );
+      expect(journalRuns).toEqual([
+        expect.stringMatching(
+          /^-q -u alcove-relay-front\.service --since \d{4}-\d\d-\d\d \d\d:\d\d:\d\d --no-pager -o cat$/,
+        ),
+      ]);
+    });
+
+    // One run, since each spends verify.sh's 10 s of journal reads.
+    it("fails when the front's journal holds a reset line, or a refusal line for another address or zone, but not the probe's refusal", () => {
+      const journal = [
+        "recv() failed (104: Connection reset by peer), client: 10.0.0.5, server: 0.0.0.0:443",
+        refusalLine("10.0.0.50"),
+        refusalLine("10.0.0.5").replace("alcove_websocket_relay", "other"),
+      ].join("\n");
+      const { result, journalRuns } = verifyWithLimitProbe(PROBE_PASSED, 0, {
+        journal,
+      });
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain(
+        "FAIL     the front closed the ninth WebSocket relay socket from 10.0.0.5 but logged no refusal naming it",
+      );
+      expect(journalRuns).toHaveLength(10);
+    });
+
+    it("is unclear when the front's journal cannot be read", () => {
+      const { result } = verifyWithLimitProbe(PROBE_PASSED, 0, {
+        journal: "Failed to open journal",
+        journalStatus: 1,
+      });
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain(
+        "UNCLEAR  could not read the front's journal for its refusal of the ninth WebSocket relay socket",
+      );
+    });
+
+    it("is unclear when the probe's line names no refused address", () => {
+      const { result, journalRuns } = verifyWithLimitProbe("upgraded", 0);
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain(
+        "UNCLEAR  could not read which address the per-address probe's ninth socket came from",
+      );
+      expect(journalRuns).toEqual([]);
     });
 
     it.each([
