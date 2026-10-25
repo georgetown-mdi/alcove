@@ -529,10 +529,11 @@ export default defineConfig((configEnv) => {
               // above: the two peers configure a public STUN list they cannot
               // reach here, so a host candidate is the only one that connects,
               // and Chromium otherwise obfuscates those as `.local` mDNS names
-              // that do not resolve in a container.
+              // that do not resolve in a container. The relay case dials its
+              // relay over `wss`, under the certificate the last switch trusts.
               provider: playwright({
                 launchOptions: {
-                  args: [browserDisableFeaturesSwitch],
+                  args: [browserDisableFeaturesSwitch, ...relayTlsLaunchArgs],
                 },
               }),
               headless: true,

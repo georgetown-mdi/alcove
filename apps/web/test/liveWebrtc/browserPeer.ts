@@ -17,14 +17,22 @@ import { dialAsAcceptor, listenAsInviter } from "@psi/transport/rendezvous";
 import { authenticateExchange } from "@psi/authenticateExchange";
 import { boundPeerSignaling } from "@psi/transport/signalingBounds";
 import { inviterExchangeDataSpec } from "@psi/authoring/advancedInviteTerms";
+import { openOneShotPeerConnection } from "@psi/exchangeLifecycle";
 import { openPeerMessageConnection } from "@psi/transport/peerMessageConnection";
+import { openRunConnectionWithRelayFallback } from "@psi/transport/relayFallback";
 import { prepareAcceptedInvitation } from "@psi/acceptInvitation";
 import { prepareAcceptorExchange } from "@exchange/acceptorExchange";
+import { relayPlanForRun } from "@psi/transport/runRelayPlan";
 import { waitForIncomingConnection } from "@psi/transport/waitForConnection";
 
 import { LEG_ENVIRONMENT_FAILURE } from "./legTypes";
 
-import type { CSVRow, PreparedExchange, RendezvousRole } from "@alcove/core";
+import type {
+  CSVRow,
+  MessageConnection,
+  PreparedExchange,
+  RendezvousRole,
+} from "@alcove/core";
 import type { DataConnection } from "peerjs";
 import type { GeneratedInvitation } from "@psi/invitation";
 import type { MatchedPair } from "./legTypes";
@@ -133,6 +141,37 @@ export async function readBrowserCsv(
   return { rawRows: parsed.data, columns: parsed.meta.fields ?? [] };
 }
 
+/** Authenticate over an opened connection and run the PSI rounds, leaving the
+ * authenticated connection open for the caller's close. */
+async function authenticateAndRun(params: {
+  mc: MessageConnection;
+  role: RendezvousRole;
+  sharedSecret: string;
+  expires: string | undefined;
+  prepared: PreparedExchange;
+}): Promise<{
+  connection: MessageConnection;
+  partnerIdentity: string | undefined;
+  pairs: Array<MatchedPair>;
+}> {
+  const handshakeRole = handshakeRoleForRendezvousRole(params.role);
+  const { connection } = await authenticateExchange(
+    params.mc,
+    handshakeRole,
+    params.sharedSecret,
+    params.expires,
+  );
+  const psiLibrary = await (PSI() as Promise<PSILibrary>);
+  const result = await runExchange(connection, handshakeRole, params.prepared, {
+    psiLibrary,
+  });
+  return {
+    connection,
+    partnerIdentity: result.partnerTerms.identity,
+    pairs: matchedPairs(result.associationTable),
+  };
+}
+
 /** Authenticate over an opened connection, run the PSI rounds, and close
  * cleanly, measuring the close. */
 async function runOverConnection(params: {
@@ -160,16 +199,12 @@ async function runOverConnection(params: {
       closeOutcome = outcome;
     },
   });
-  const handshakeRole = handshakeRoleForRendezvousRole(role);
-  const { connection } = await authenticateExchange(
+  const { connection, partnerIdentity, pairs } = await authenticateAndRun({
     mc,
-    handshakeRole,
+    role,
     sharedSecret,
     expires,
-  );
-  const psiLibrary = await (PSI() as Promise<PSILibrary>);
-  const result = await runExchange(connection, handshakeRole, prepared, {
-    psiLibrary,
+    prepared,
   });
 
   const ending = endBeforeOwnClose(conn, connectionError);
@@ -182,12 +217,47 @@ async function runOverConnection(params: {
   peer.disconnect();
 
   return {
-    partnerIdentity: result.partnerTerms.identity,
-    pairs: matchedPairs(result.associationTable),
+    partnerIdentity,
+    pairs,
     closeOutcome,
     endBeforeOwnClose: ending,
     closeWaitMs,
   };
+}
+
+/** Accept `invitation` as the browser acceptor does: the app's own accept-path
+ * validation (checksum, expiry, an endpoint this build can drive, and the
+ * terms' fail-closed checks), then the confirm-columns editor's launch
+ * payload. */
+async function acceptInBrowser(invitation: string) {
+  const accepted = await prepareAcceptedInvitation(invitation, {
+    profile: "hosted",
+  });
+  const { endpoint, token } = accepted;
+  if (endpoint.channel !== "webrtc")
+    throw new Error(
+      `${LEG_ENVIRONMENT_FAILURE} the partner minted a ` +
+        `${endpoint.channel} endpoint, not a webrtc one`,
+    );
+
+  const { rawRows, columns } = await readBrowserCsv(BROWSER_CSV);
+  const { edits } = acceptorLaunchPayload(
+    acceptorColumnsEditorState(
+      acceptorInitialColumnsState(columns, token.linkageTerms.algorithm),
+      token.linkageTerms,
+      rawRows,
+    ),
+  );
+  const prepared = prepareAcceptorExchange({
+    linkageTerms: token.linkageTerms,
+    acceptorName: BROWSER_IDENTITY,
+    edits,
+    rawRows,
+    columns,
+    // The value an accept with no control of its own derives.
+    deduplicate: false,
+  });
+  return { token, endpoint, prepared };
 }
 
 /** Run the browser peer's whole acceptor half: accept the invitation, dial the
@@ -196,51 +266,144 @@ async function runOverConnection(params: {
 export async function runBrowserAcceptor(
   invitation: string,
 ): Promise<BrowserOutcome> {
-  // The app's own accept-path validation: checksum, expiry, an endpoint this
-  // build can drive, and the terms' fail-closed checks.
-  const accepted = await prepareAcceptedInvitation(invitation, {
-    profile: "hosted",
-  });
-  if (accepted.endpoint.channel !== "webrtc")
-    throw new Error(
-      `${LEG_ENVIRONMENT_FAILURE} the partner minted a ` +
-        `${accepted.endpoint.channel} endpoint, not a webrtc one`,
-    );
-
-  const { rawRows, columns } = await readBrowserCsv(BROWSER_CSV);
-  const { edits } = acceptorLaunchPayload(
-    acceptorColumnsEditorState(
-      acceptorInitialColumnsState(
-        columns,
-        accepted.token.linkageTerms.algorithm,
-      ),
-      accepted.token.linkageTerms,
-      rawRows,
-    ),
-  );
-  const prepared = prepareAcceptorExchange({
-    linkageTerms: accepted.token.linkageTerms,
-    acceptorName: BROWSER_IDENTITY,
-    edits,
-    rawRows,
-    columns,
-    // The value an accept with no control of its own derives.
-    deduplicate: false,
-  });
-
+  const { token, endpoint, prepared } = await acceptInBrowser(invitation);
   // The app's own dial, against the endpoint the partner minted.
-  const [peer, conn] = await dialAsAcceptor(
-    accepted.token.sharedSecret,
-    accepted.endpoint,
-  );
+  const [peer, conn] = await dialAsAcceptor(token.sharedSecret, endpoint);
   return await runOverConnection({
     peer,
     conn,
     role: "acceptor",
-    sharedSecret: accepted.token.sharedSecret,
-    expires: accepted.token.expires,
+    sharedSecret: token.sharedSecret,
+    expires: token.expires,
     prepared,
   });
+}
+
+/** What the browser acceptor's relay sockets were sent and closed with. */
+export interface RelaySocketRecord {
+  opened: Array<WebSocket>;
+  /** The `type` of each text frame sent: the relay protocol's hello and
+   * start. */
+  sentTypes: Array<string>;
+  /** The codes this side closed its sockets with. */
+  closedWith: Array<number>;
+}
+
+/** A relay case acceptor whose run connection has opened, before the key
+ * exchange. */
+export interface OpenedRelayCaseAcceptor {
+  /** The WebSocket relay urls the run listed. */
+  listedRelays: Array<string>;
+  /** The run notices, the one stating which path carries the exchange
+   * among them. */
+  notices: Array<string>;
+  sockets: RelaySocketRecord;
+  /** Authenticate, run the PSI rounds, close and release. */
+  exchange: () => Promise<{
+    partnerIdentity: string | undefined;
+    pairs: Array<MatchedPair>;
+  }>;
+}
+
+/** The relay client's socket factory, recording each socket it opens and
+ * what it sends and closes with. */
+function recordingSocketFactory(
+  record: RelaySocketRecord,
+): (url: string) => WebSocket {
+  return (url) => {
+    const socket = new WebSocket(url);
+    record.opened.push(socket);
+    const send = socket.send.bind(socket);
+    socket.send = (data) => {
+      if (typeof data === "string")
+        record.sentTypes.push((JSON.parse(data) as { type: string }).type);
+      send(data);
+    };
+    const close = socket.close.bind(socket);
+    socket.close = (code, reason) => {
+      if (code !== undefined) record.closedWith.push(code);
+      close(code, reason);
+    };
+    return socket;
+  };
+}
+
+/**
+ * Accept `invitation` and open the run connection as the app's acceptor
+ * does: the run's relay plan, from the invitation's relay with no relay of
+ * this browser's own and no default relay in the build, raced against the
+ * app's WebRTC dial by its relay fallback. The relay client's socket factory
+ * is the one piece of the harness's, and only records each socket.
+ */
+export async function openRelayCaseAcceptor(
+  invitation: string,
+): Promise<OpenedRelayCaseAcceptor> {
+  const { token, endpoint, prepared } = await acceptInBrowser(invitation);
+  const notices: Array<string> = [];
+  const onRunNotice = (notice: string): void => {
+    notices.push(notice);
+  };
+  const relayPlan = await relayPlanForRun(
+    token.sharedSecret,
+    endpoint.relay,
+    undefined,
+    {
+      readOwn: () => ({ kind: "none" }),
+      build: () => ({ kind: "none" }),
+      onRunNotice,
+    },
+  );
+  const sockets: RelaySocketRecord = {
+    opened: [],
+    sentTypes: [],
+    closedWith: [],
+  };
+  const signal = new AbortController().signal;
+  const run = await openRunConnectionWithRelayFallback(
+    {
+      role: "acceptor",
+      sharedSecret: token.sharedSecret,
+      relays: relayPlan.websocketRelays,
+      signal,
+      onCloseOutcome: () => {},
+      onRunNotice,
+      openWebRtc: async ({ signal: webRtcSignal, onPathFailed }) => {
+        const [peer, conn] = await dialAsAcceptor(
+          token.sharedSecret,
+          endpoint,
+          { signal: webRtcSignal, ...relayPlan, onPathFailed },
+        );
+        return openOneShotPeerConnection(peer, conn, {
+          signal: webRtcSignal,
+          onCloseOutcome: () => {},
+          onPathFailed,
+        });
+      },
+    },
+    { createSocket: recordingSocketFactory(sockets) },
+  );
+  return {
+    listedRelays: relayPlan.websocketRelays.map((relay) => relay.url),
+    notices,
+    sockets,
+    exchange: async () => {
+      try {
+        const { connection, partnerIdentity, pairs } = await authenticateAndRun(
+          {
+            mc: run.connection,
+            role: "acceptor",
+            sharedSecret: token.sharedSecret,
+            expires: token.expires,
+            prepared,
+          },
+        );
+        await connection.close();
+        return { partnerIdentity, pairs };
+      } finally {
+        run.release();
+      }
+    },
+  };
 }
 
 /**
