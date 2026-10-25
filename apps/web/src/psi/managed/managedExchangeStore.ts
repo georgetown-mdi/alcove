@@ -45,10 +45,13 @@ import {
   standingCompromiseResponse,
 } from "./managedExchangeRecord";
 import {
+  decideCommandLinePairTarget,
+  managedStoredCopy,
+} from "./managedPairRecognition";
+import {
   findRecordsByTermsAndSide,
   sameAgreedTermsAndSide,
 } from "./managedLiveCopyMatch";
-import { decideCommandLinePairTarget } from "./managedPairRecognition";
 import { foldElapsedWindowsUnderResponse } from "./managedSchedule";
 import { parseManagedLocalState } from "./managedLocalStateShape";
 
@@ -1312,10 +1315,7 @@ export async function persistManagedExchangeWorkingDirectory(
  */
 export type ManagedBackupReconcileOutcome =
   | { kind: "held"; label: string; stateUnreadable?: true }
-  | {
-      kind: "live-copy";
-      copies: ReadonlyArray<{ id: string; label: string }>;
-    }
+  | { kind: "live-copy"; copies: ReadonlyArray<ManagedStoredCopy> }
   | { kind: "replace"; id: string }
   | { kind: "chosen-copy-changed" }
   | { kind: "no-match" };
@@ -1529,10 +1529,7 @@ function decideBackupTarget(
     options.besideIds,
   );
   return liveCopies.length > 0
-    ? {
-        kind: "live-copy",
-        copies: liveCopies.map(({ id, label }) => ({ id, label })),
-      }
+    ? { kind: "live-copy", copies: liveCopies.map(managedStoredCopy) }
     : { kind: "no-match" };
 }
 

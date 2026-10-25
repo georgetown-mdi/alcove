@@ -16,12 +16,12 @@ import { runnableManagedExchange } from "./managedExchangeRecord";
 
 import type { ManagedExchangeRecord } from "./managedExchangeRecord";
 
-/** What a stored record a pair may land in holds: a configuration only, which
- * the pair completes, or a secret of its own, which the pair replaces. */
+/** What a stored record an import may land in holds: a configuration only, or
+ * a secret of its own. */
 export type ManagedStoredCopyState = "configuration-only" | "runs-here";
 
-/** A stored record a pair import names for the operator to take the pair
- * into, with its label (empty when the operator named nothing). */
+/** A stored record an import names for the operator to take the import into,
+ * with its label (empty when the operator named nothing). */
 export interface ManagedStoredCopy {
   id: string;
   label: string;
@@ -64,6 +64,17 @@ function storedCopyState(
   return runnableManagedExchange(record) ? "runs-here" : "configuration-only";
 }
 
+/** `record` as an import's question names it. */
+export function managedStoredCopy(
+  record: ManagedExchangeRecord,
+): ManagedStoredCopy {
+  return {
+    id: record.id,
+    label: record.label,
+    state: storedCopyState(record),
+  };
+}
+
 /**
  * Decide where `imported` lands among `records`, the stored records none of
  * which holds its secret, in store order. `options.into` lands the pair in the
@@ -92,10 +103,6 @@ export function decideCommandLinePairTarget(
   if (copies.length === 0) return { kind: "no-match" };
   return {
     kind: "stored-copy",
-    copies: copies.map((record) => ({
-      id: record.id,
-      label: record.label,
-      state: storedCopyState(record),
-    })),
+    copies: copies.map(managedStoredCopy),
   };
 }

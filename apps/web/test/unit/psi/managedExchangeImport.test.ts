@@ -403,8 +403,8 @@ describe("a backup reconciles against the exchange it holds", () => {
     const deps = recordingDeps({
       kind: "live-copy",
       copies: [
-        { id: "listed-id", label: "Riverbend quarterly" },
-        { id: "second-id", label: "" },
+        { id: "listed-id", label: "Riverbend quarterly", state: "runs-here" },
+        { id: "second-id", label: "", state: "runs-here" },
       ],
     });
 
@@ -415,8 +415,8 @@ describe("a backup reconciles against the exchange it holds", () => {
       importManagedExchangeFile(goodBytes(), deps),
     ).rejects.toMatchObject({
       copies: [
-        { id: "listed-id", label: "Riverbend quarterly" },
-        { id: "second-id", label: "" },
+        { id: "listed-id", label: "Riverbend quarterly", state: "runs-here" },
+        { id: "second-id", label: "", state: "runs-here" },
       ],
     });
     expect(deps.installed).toHaveLength(0);

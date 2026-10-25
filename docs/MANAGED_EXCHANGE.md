@@ -1987,7 +1987,9 @@ once, with three answers:
   backup's secret, terms, and schedule in place: it stays one entry, under its
   label and working folder, and keeps its run history and [accounting of
   disclosures](#the-accounting-of-disclosures). A replace waits for no run: while
-  a run of that exchange is in progress, it is refused and nothing changes.
+  a run of that exchange is in progress, it is refused and nothing changes. A
+  saved copy holding a configuration without its key file never ran here:
+  replace it when the backup is of that exchange.
 - **Keep the saved copy**, when the backup is the older: nothing is imported.
 - **Add as a new exchange**, when the backup is a separate exchange with the same
   terms.

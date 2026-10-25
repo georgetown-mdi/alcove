@@ -6,7 +6,6 @@
 - The import names every configuration-only record the [no-secret-match rule](#recognizing-a-stored-exchange-without-a-secret-match) finds, and installs nothing until the operator answers (`decideCommandLinePairTarget`, `apps/web/src/psi/managed/managedPairRecognition.ts`). -> The import names every record the [no-secret-match rule](#recognizing-a-stored-exchange-without-a-secret-match) finds, each with whether it holds a configuration only or runs here, and installs nothing until the operator answers (`decideCommandLinePairTarget`, `apps/web/src/psi/managed/managedPairRecognition.ts`).
 - **Complete one of them.** -> **Complete a configuration-only one.**
 - A chosen record that no longer qualifies -- deleted or changed -- refuses, and nothing is written. -> A chosen record that no longer qualifies -- deleted, or no longer of the pair's terms and side -- refuses, and nothing is written.
-- **Cancel**, writing nothing. -> **Keep or cancel**, writing nothing.
 - - -> **Replace one that runs here**, as [Replacing a saved copy](#replacing-a-saved-copy) states, the stored schedule kept, since a pair holds none.
 - The recovery listing shows that record as unreadable, treats it as backed up, and offers the delete-by-key, which removes the record and its sibling entry together. -> The recovery listing shows that record's label, side, and last run where the record itself parses, noting that part of its saved state cannot be read, and shows it as unreadable where it does not; either way it treats it as backed up and offers the delete-by-key, which removes the record and its sibling entry together.
 - - -> Its page cannot load, so its accounting of disclosures cannot be exported first, and the delete confirm says the accounting is removed with it unread rather than offering the export.
@@ -18,12 +17,13 @@
 - - -> **Replaced.**
 - - -> The operator chose a stored record the rule below named: it takes the artifact in place ([Replacing a saved copy](#replacing-a-saved-copy)).
 - The reconciliation reads no sibling entry, so one this build cannot parse decides nothing here. -> The reconciliation reads one sibling entry, the held record's, and only to word its refusal, so one this build cannot parse decides no outcome here.
-- **The list's backup import asks about every stored record**, and offers to open one or install beside them. -> **The list's backup import asks about every stored record**, and offers to replace one ([Replacing a saved copy](#replacing-a-saved-copy)), keep them, or install beside them.
-- **The command-line pair import asks about configuration-only records**, and offers to complete one with the pair or install it beside them ([Importing the key file beside a configuration](#importing-the-key-file-beside-a-configuration)). -> **The command-line pair import asks about every stored record too**, and offers to complete a configuration-only one with the pair, replace one that runs here, keep them, or install beside them ([Importing the key file beside a configuration](#importing-the-key-file-beside-a-configuration)).
+- **The list's backup import asks about every stored record**, and offers to open one or install beside them. -> **The list's backup import asks about every stored record**, runnable or holding a configuration only, and offers to replace one ([Replacing a saved copy](#replacing-a-saved-copy)), keep them, or install beside them.
+- **The command-line pair import asks about configuration-only records**, and offers to complete one with the pair or install it beside them ([Importing the key file beside a configuration](#importing-the-key-file-beside-a-configuration)). -> **The command-line pair import asks about every stored record too**, and offers to complete a configuration-only one with the pair, replace one that runs here, install beside them, or cancel ([Importing the key file beside a configuration](#importing-the-key-file-beside-a-configuration)).
 - It asks about no runnable record, and installs beside one whose secret it does not hold. -> -
 - - -> The answer naming one record is re-checked against the stored record inside the transaction that writes it: one deleted since, or no longer of the imported record's agreed terms and side, refuses, and nothing is written.
 - - -> Replacing a saved copy
-- - -> **A runnable record the operator chooses to replace takes the import in place, keeping its entry.**
+- - -> **A stored record the operator chooses to replace takes the import in place, keeping its entry.**
+- - -> A pair replaces a runnable record only, since it completes a configuration-only one instead; a backup replaces either, and one holding a configuration only runs here afterwards.
 - - -> The `id` is kept, so everything keyed by it stays with the exchange: the [accounting of disclosures](#the-accounting-of-disclosures), the [parked results](#the-parked-results-of-a-scheduled-run), and the [unfiled-record note](#a-run-whose-record-was-not-filed).
 - - -> The list holds one entry for the exchange afterwards.
 - - -> The code: `replaceManagedExchangeFromImport` (`managedExchangeStore.ts`) and `applyManagedExchangeImportReplace` (`managedExchangeRecord.ts`).
@@ -41,8 +41,7 @@
 - - -> The secret the stored record holds is not compared: the operator chose to replace it.
 - - -> Completing a configuration-only record takes no lock, since no run holds one.
 - - -> **Which copy is the newer is the operator's call.**
-- - -> A backup and the saved copy of one exchange differ in secret once either has run since the other, and nothing in a record orders them: there is no rotation epoch ([No anti-rollback](#export-artifact)), and the run history orders runs, not rotations -- a no-show or a run that failed before its handshake rotates nothing, and each copy's stamps come from its own device's clock.
-- - -> So the question offers replace, keep, and install beside, and states when each fits.
+- - -> Nothing in a record orders a backup and the saved copy of one exchange ([No anti-rollback](#export-artifact); the reasoning is in the [design note](../notes/managed-exchange-design.md#exportimport-is-migration-not-sync)), so the question offers replace, keep, and install beside, and states when each fits.
 - - -> Replacing a copy with an older import leaves it holding a secret the partner has rotated past: its next run fails to connect, as any stale copy does, and the remedy is the newer import or a re-invite.
 - - -> After a replace, the stored record holds the import's secret, so importing the same file again is refused as held and writes nothing.
 - - -> Stated limit: the replace transaction does not look for another record holding the imported secret.

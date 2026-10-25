@@ -214,31 +214,59 @@ function listedNames(labels: ReadonlyArray<string>): string {
  * saved copy, where it ran here since the backup was taken -- and the record
  * states nothing that orders them, so the operator chooses: replace the saved
  * copy, keep it, or add the backup as a separate exchange with the same terms.
- * Nothing is imported until they do. `labels` holds each listed exchange's
- * label, empty where unnamed.
+ * A listed exchange holding a configuration only never ran here, so the backup
+ * completes it where it is of that exchange. Nothing is imported until they
+ * answer.
  */
-export function liveCopyImportReason(labels: ReadonlyArray<string>): string {
-  if (labels.length === 1) {
-    const [label] = labels;
+export function liveCopyImportReason(
+  copies: ReadonlyArray<ManagedStoredCopy>,
+): string {
+  const separate =
+    " If this is a separate exchange with the same terms, add the backup as a " +
+    "new exchange.";
+  if (copies.length === 1) {
+    const [{ label, state }] = copies;
     const named = label === "" ? "An exchange in the list" : `"${label}"`;
+    if (state === "configuration-only")
+      return (
+        `${named} holds a configuration without its key file and has the ` +
+        "same terms and the same side as this backup. Nothing was imported. " +
+        "If the backup is of that exchange, replace the saved copy with it." +
+        separate
+      );
     return (
       `${named} has the same terms and the same side as this backup, with a ` +
       "different secret. Nothing was imported. If the exchange ran on " +
       "another device since the saved copy last ran here, this backup is the " +
       "newer one: replace the saved copy with it, and the saved copy's run " +
       "history and accounting of disclosures are kept. If this backup is " +
-      "older than the saved copy, keep the saved copy. If this is a separate " +
-      "exchange with the same terms, add the backup as a new exchange."
+      "older than the saved copy, keep the saved copy." +
+      separate
     );
   }
+  const names = listedNames(copies.map(({ label }) => label));
+  if (copies.every(({ state }) => state === "runs-here"))
+    return (
+      `${copies.length} exchanges in the list${names} have the same terms ` +
+      "and the same side as this backup, with different secrets. Nothing was " +
+      "imported. If the exchange ran on another device since one of them " +
+      "last ran here, this backup is the newer one: replace that saved copy " +
+      "with it, and its run history and accounting of disclosures are kept. " +
+      "If this backup is older, keep the saved copies." +
+      separate
+    );
+  const runsHere = copies.some(({ state }) => state === "runs-here");
   return (
-    `${labels.length} exchanges in the list${listedNames(labels)} have the ` +
-    "same terms and the same side as this backup, with different secrets. " +
-    "Nothing was imported. If the exchange ran on another device since one " +
-    "of them last ran here, this backup is the newer one: replace that saved " +
-    "copy with it, and its run history and accounting of disclosures are " +
-    "kept. If this backup is older, keep the saved copies. If this is a " +
-    "separate exchange with the same terms, add the backup as a new exchange."
+    `${copies.length} exchanges in the list${names} have the same terms and ` +
+    "the same side as this backup, and none holds its secret. Nothing was " +
+    "imported. If the backup is of one of them, replace that saved copy with " +
+    "it." +
+    (runsHere
+      ? " Replace one that runs here only if the exchange ran on another " +
+        "device since it last ran here: its run history and accounting of " +
+        "disclosures are kept."
+      : "") +
+    separate
   );
 }
 
@@ -303,7 +331,7 @@ export function storedCopyImportReason(
       "If the exchange ran from these files since the saved copy last ran " +
       "here, they are the newer copy: replace the saved copy with them, and " +
       "its run history and accounting of disclosures are kept. If these " +
-      "files are older than the saved copy, keep the saved copy." +
+      "files are older than the saved copy, cancel to keep the saved copy." +
       separate
     );
   }

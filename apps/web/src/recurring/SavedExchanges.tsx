@@ -851,7 +851,7 @@ interface ImportOutcome {
   /** The listed exchanges a backup may be a copy of, and the file to replace
    * one of them with, or import beside them all, on the operator's word. */
   liveCopy?: {
-    copies: ReadonlyArray<{ id: string; label: string }>;
+    copies: ReadonlyArray<ManagedStoredCopy>;
     file: File;
   };
   /** The stored exchanges a pair may belong to, and the two files to take
@@ -1081,7 +1081,9 @@ function ImportOutcomeAlerts({
       )}
       {liveCopy !== undefined && (
         <Alert color="yellow" title={LIVE_COPY_IMPORT_TITLE} mb="sm">
-          <p className={styles.small}>{liveCopyImportReason(liveCopyLabels)}</p>
+          <p className={styles.small}>
+            {liveCopyImportReason(liveCopy.copies)}
+          </p>
           <div className={styles.savedRowActions}>
             {liveCopy.copies.map(({ id }, index) => (
               <Button

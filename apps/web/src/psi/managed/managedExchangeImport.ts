@@ -124,16 +124,16 @@ export class ManagedImportAlreadyHeldError extends Error {
  * Raised when a backup import stops to ask: no record holds the artifact's
  * secret, but one or more stored ones have its agreed terms and side, so one may
  * be the same exchange, run here past the backup or run elsewhere since it was
- * saved here. Nothing is written. Holds every such record's `id` and label
- * (which may be empty): the operator's answer passes one back as `into` to
- * replace it, or all of them in `besideIds` to install beside them.
+ * saved here. Nothing is written. Holds every such record's `id`, label
+ * (which may be empty), and whether it runs here: the operator's answer passes
+ * one back as `into` to replace it, or all of them in `besideIds` to install
+ * beside them.
  */
 export class ManagedImportLiveCopyError extends Error {
-  /** The stored records the backup may be a copy of, each with its operator
-   * label (empty when the operator named nothing). */
-  readonly copies: ReadonlyArray<{ id: string; label: string }>;
+  /** The stored records the backup may be a copy of. */
+  readonly copies: ReadonlyArray<ManagedStoredCopy>;
 
-  constructor(copies: ReadonlyArray<{ id: string; label: string }>) {
+  constructor(copies: ReadonlyArray<ManagedStoredCopy>) {
     super(
       "a managed exchange with this backup's terms and side already runs in this browser, so the import waits for confirmation",
     );

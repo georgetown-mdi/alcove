@@ -307,7 +307,7 @@ the operator answers (`decideCommandLinePairTarget`,
   copy](#replacing-a-saved-copy) states, the stored schedule kept, since a pair
   holds none.
 - **Install as a new record**, beside every record named.
-- **Keep or cancel**, writing nothing.
+- **Cancel**, writing nothing.
 
 A chosen record that no longer qualifies -- deleted, or no longer of the pair's
 terms and side -- refuses, and nothing is written.
@@ -1988,12 +1988,12 @@ nothing. The code: `findRecordsByTermsAndSide`
 
 Which stored records each import asks about is what it can do with them:
 
-- **The list's backup import asks about every stored record**, and offers to
-  replace one ([Replacing a saved copy](#replacing-a-saved-copy)), keep them,
-  or install beside them.
+- **The list's backup import asks about every stored record**, runnable or
+  holding a configuration only, and offers to replace one ([Replacing a saved
+  copy](#replacing-a-saved-copy)), keep them, or install beside them.
 - **The command-line pair import asks about every stored record too**, and
   offers to complete a configuration-only one with the pair, replace one that
-  runs here, keep them, or install beside them ([Importing the key file beside
+  runs here, install beside them, or cancel ([Importing the key file beside
   a configuration](#importing-the-key-file-beside-a-configuration)).
 
 The answer naming one record is re-checked against the stored record inside
@@ -2010,8 +2010,11 @@ confirm did not name -- one added since the question -- is asked about again.
 
 ### Replacing a saved copy
 
-**A runnable record the operator chooses to replace takes the import in place,
-keeping its entry.** The `id` is kept, so everything keyed by it stays with
+**A stored record the operator chooses to replace takes the import in place,
+keeping its entry.** A pair replaces a runnable record only, since it completes
+a configuration-only one instead; a backup replaces either, and one holding a
+configuration only runs here afterwards. The `id` is kept, so everything keyed
+by it stays with
 the exchange: the [accounting of disclosures](#the-accounting-of-disclosures),
 the [parked results](#the-parked-results-of-a-scheduled-run), and the
 [unfiled-record note](#a-run-whose-record-was-not-filed). The list holds one
@@ -2054,13 +2057,12 @@ The secret the stored record holds is not compared: the operator chose to
 replace it. Completing a configuration-only record takes no lock, since no run
 holds one.
 
-**Which copy is the newer is the operator's call.** A backup and the saved
-copy of one exchange differ in secret once either has run since the other,
-and nothing in a record orders them: there is no rotation epoch ([No
-anti-rollback](#export-artifact)), and the run history orders runs, not
-rotations -- a no-show or a run that failed before its handshake rotates
-nothing, and each copy's stamps come from its own device's clock. So the
-question offers replace, keep, and install beside, and states when each fits.
+**Which copy is the newer is the operator's call.** Nothing in a record orders
+a backup and the saved copy of one exchange ([No
+anti-rollback](#export-artifact); the reasoning is in the [design
+note](../notes/managed-exchange-design.md#exportimport-is-migration-not-sync)),
+so the question offers replace, keep, and install beside, and states when each
+fits.
 Replacing a copy with an older import leaves it holding a secret the partner
 has rotated past: its next run fails to connect, as any stale copy does, and
 the remedy is the newer import or a re-invite.

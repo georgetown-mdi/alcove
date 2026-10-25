@@ -44,6 +44,7 @@ import type {
   WebRTCConnectionConfig,
   WebRTCExchangeLocator,
 } from "@alcove/core";
+import type { ManagedStoredCopy } from "@psi/managed/managedPairRecognition";
 
 /** A record built from `fields` and narrowed to the runnable shape: every fixture
  * here is built with a shared secret, and the export paths take the record type
@@ -261,11 +262,30 @@ describe("the artifact this build writes", () => {
   });
 });
 
+/** Listed exchanges that run here, one per label, as a backup import names
+ * them. */
+function runningCopies(...labels: Array<string>): Array<ManagedStoredCopy> {
+  return labels.map((label, index) => ({
+    id: `listed-${index}`,
+    label,
+    state: "runs-here",
+  }));
+}
+
 /** Every reason a backup import can be refused or stopped with, where a
  * listed exchange is involved. */
 const LISTED_EXCHANGE_REASONS: Array<[string, string]> = [
   ["already held", alreadyHeldBackupImportReason("Riverbend quarterly")],
-  ["a possible live copy", liveCopyImportReason(["Riverbend quarterly"])],
+  [
+    "a possible live copy",
+    liveCopyImportReason(runningCopies("Riverbend quarterly")),
+  ],
+  [
+    "a possible configuration-only copy",
+    liveCopyImportReason([
+      { id: "a", label: "Riverbend quarterly", state: "configuration-only" },
+    ]),
+  ],
 ];
 
 describe("what a backup import says about an exchange already listed", () => {
@@ -273,11 +293,13 @@ describe("what a backup import says about an exchange already listed", () => {
     for (const [, reason] of LISTED_EXCHANGE_REASONS)
       expect(reason).toContain('"Riverbend quarterly"');
     expect(alreadyHeldBackupImportReason("")).toMatch(/^That exchange /);
-    expect(liveCopyImportReason([""])).toMatch(/^An exchange in the list /);
+    expect(liveCopyImportReason(runningCopies(""))).toMatch(
+      /^An exchange in the list /,
+    );
   });
 
   test("the possible live copy states nothing was imported and the three ways on", () => {
-    const reason = liveCopyImportReason(["Riverbend quarterly"]);
+    const reason = liveCopyImportReason(runningCopies("Riverbend quarterly"));
     expect(reason).toContain("Nothing was imported.");
     expect(reason).toMatch(/this backup is the newer one: replace the saved/);
     expect(reason).toMatch(
@@ -289,7 +311,9 @@ describe("what a backup import says about an exchange already listed", () => {
   });
 
   test("several possible live copies are named in one reason", () => {
-    const reason = liveCopyImportReason(["Riverbend quarterly", "", "Weekly"]);
+    const reason = liveCopyImportReason(
+      runningCopies("Riverbend quarterly", "", "Weekly"),
+    );
     expect(reason).toMatch(/^3 exchanges in the list /);
     expect(reason).toContain(
       '"Riverbend quarterly", "Weekly", and 1 with no name',
@@ -297,9 +321,40 @@ describe("what a backup import says about an exchange already listed", () => {
     expect(reason).toContain("Nothing was imported.");
     expect(reason).toMatch(/replace that saved copy with it/);
     expect(reason).toMatch(/keep the saved copies/);
-    expect(liveCopyImportReason(["", ""])).toMatch(
+    expect(liveCopyImportReason(runningCopies("", ""))).toMatch(
       /^2 exchanges in the list have /,
     );
+  });
+
+  test("a configuration-only copy, which never ran here, is not said to have run here", () => {
+    const reason = liveCopyImportReason([
+      { id: "a", label: "Riverbend", state: "configuration-only" },
+    ]);
+    expect(reason).toBe(
+      '"Riverbend" holds a configuration without its key file and has the ' +
+        "same terms and the same side as this backup. Nothing was imported. " +
+        "If the backup is of that exchange, replace the saved copy with it. " +
+        "If this is a separate exchange with the same terms, add the backup " +
+        "as a new exchange.",
+    );
+
+    const configurationOnly = liveCopyImportReason([
+      { id: "a", label: "Riverbend", state: "configuration-only" },
+      { id: "b", label: "", state: "configuration-only" },
+    ]);
+    expect(configurationOnly).toMatch(
+      /^2 exchanges in the list \("Riverbend", and 1 with no name\)/,
+    );
+    expect(configurationOnly).toMatch(/none holds its secret/);
+    expect(configurationOnly).toMatch(/replace that saved copy with it/);
+
+    const mixed = liveCopyImportReason([
+      { id: "a", label: "Riverbend", state: "configuration-only" },
+      { id: "b", label: "Weekly", state: "runs-here" },
+    ]);
+    expect(mixed).toMatch(/Replace one that runs here only if the exchange/);
+    for (const text of [reason, configurationOnly])
+      expect(text).not.toMatch(/last ran here|different secret/);
   });
 
   test("one replace button for one copy, one per copy for several, then keep and add", () => {
@@ -387,7 +442,7 @@ describe("what a pair import says about a stored exchange it may belong to", () 
     ).toBe('Complete "Riverbend"');
   });
 
-  test("one that runs here is offered for replacing, with keep as the other answer", () => {
+  test("one that runs here is offered for replacing, with cancel to keep it", () => {
     const copies = [{ id: "a", label: "", state: "runs-here" }] as const;
     const reason = storedCopyImportReason(copies);
     expect(reason).toMatch(/^An exchange in the list runs in this browser/);
@@ -395,7 +450,8 @@ describe("what a pair import says about a stored exchange it may belong to", () 
     expect(reason).toMatch(
       /run history and accounting of disclosures are kept/,
     );
-    expect(reason).toMatch(/keep the saved copy/);
+    expect(reason).toMatch(/cancel to keep the saved copy/);
+    expect(reason).not.toMatch(/, keep the saved copy/);
     expect(reason).toMatch(/add these files as a new one/);
     expect(storedCopyTakeLabel(copies, 0)).toBe("Replace the saved copy");
 

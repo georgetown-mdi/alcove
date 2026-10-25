@@ -565,8 +565,8 @@ describe("a backup reconciles per exchange, whatever else is listed", () => {
     expect((asked as ManagedImportLiveCopyError).copies).toHaveLength(2);
     expect((asked as ManagedImportLiveCopyError).copies).toEqual(
       expect.arrayContaining([
-        { id: live.id, label: live.label },
-        { id: second.id, label: second.label },
+        { id: live.id, label: live.label, state: "runs-here" },
+        { id: second.id, label: second.label, state: "runs-here" },
       ]),
     );
     expect(await listManagedExchanges()).toHaveLength(2);
@@ -669,6 +669,38 @@ describe("a backup replaces the saved copy it is chosen for", () => {
     const local = await getManagedLocalState(stale.id);
     expect(local?.backup).toBeDefined();
     expect(local?.imported).toBeDefined();
+  });
+
+  test("a configuration-only copy is named as one, and replaced leaves one runnable entry", async () => {
+    const configured = await createManagedExchange(
+      newExchange({ sharedSecret: undefined }),
+    );
+    const backup = runnableManagedExchangeOrRefuse({
+      ...configured,
+      sharedSecret: generateSharedSecret(),
+    });
+    const bytes = serializeManagedExchangeArtifact(
+      encodeManagedExchangeArtifact(backup),
+    );
+
+    await expect(importManagedExchange(bytes)).rejects.toMatchObject({
+      name: "ManagedImportLiveCopyError",
+      copies: [
+        {
+          id: configured.id,
+          label: configured.label,
+          state: "configuration-only",
+        },
+      ],
+    });
+    const { record } = await importManagedExchange(bytes, undefined, {
+      into: configured.id,
+    });
+
+    expect(record.id).toBe(configured.id);
+    expect(record.sharedSecret).toBe(backup.sharedSecret);
+    expect(runnableManagedExchange(record)).toBe(true);
+    expect(await listManagedExchanges()).toEqual([record]);
   });
 
   test("the same backup imported again is refused as held, and nothing changes", async () => {
