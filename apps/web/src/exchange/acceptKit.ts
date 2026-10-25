@@ -241,6 +241,45 @@ function acceptCommand(version: string | undefined): string {
   );
 }
 
+/** The accept command as a partner types it in Windows PowerShell 5.1, where
+ * an unquoted `@name` parses as splatting and a mount quoted only around the
+ * folder does not reach docker as one argument. Runs under that shell in
+ * `.github/workflows/windows_resolution.yaml`. */
+function powershellAcceptCommand(version: string | undefined): string {
+  return (
+    `docker run --rm -it -v "C:\\Users\\you\\exchange:${WORK_MOUNT}" ` +
+    `${imageReference(version)} accept '@invitation.txt' your-file.csv`
+  );
+}
+
+/** What the partner substitutes in the accept command, then the two shell
+ * notes: keeping the code out of the history, and the Windows PowerShell
+ * form. Shared by every body's accept step. */
+function acceptSubstitutionLines(version: string | undefined): Array<string> {
+  return [
+    `   Replace ${INVITATION_PLACEHOLDER} with the invitation your`,
+    "   partner sent (the long block of letters and numbers, not the web",
+    "   link) and your-file.csv with your CSV file's name. Naming your",
+    "   file is what lets the display list the columns you would send",
+    "   before you confirm; without it, that list is worked out from your",
+    "   file only when the exchange runs, and you are not asked again.",
+    "",
+    "   To keep the invitation out of your command history, save it into",
+    "   a file named invitation.txt next to your CSV and write",
+    "   '@invitation.txt', single quotes included, in its place.",
+    "",
+    "   In Windows PowerShell, change every command on this sheet in two",
+    "   ways: use the folder's full path in place of $PWD, and put the",
+    "   whole of each -v value inside one pair of quotes. With the",
+    "   invitation in a file, the accept command becomes:",
+    "",
+    `     ${powershellAcceptCommand(version)}`,
+    "",
+    "   with C:\\Users\\you\\exchange replaced by your folder's full path.",
+    "",
+  ];
+}
+
 /**
  * What the partner's `exchange` command holds beyond the run itself: the
  * one flag standing for the bilateral settings their side must match.
@@ -582,21 +621,7 @@ function filedropAcceptStep(version: string | undefined): Array<string> {
     "",
     `     ${acceptCommand(version)}`,
     "",
-    `   Replace ${INVITATION_PLACEHOLDER} with the invitation your`,
-    "   partner sent (the long block of letters and numbers, not the web",
-    "   link) and your-file.csv with your CSV file's name. Naming your",
-    "   file is what lets the display list the columns you would send",
-    "   before you confirm; without it, that list is worked out from your",
-    "   file only when the exchange runs, and you are not asked again.",
-    "",
-    "   To keep the invitation out of your command history, save it into",
-    "   a file named invitation.txt next to your CSV and write",
-    "   @invitation.txt in its place.",
-    "",
-    '   On Windows PowerShell, replace "$PWD" with the folder\'s full path in',
-    "   every command on this sheet, for example",
-    `   -v "C:\\Users\\you\\exchange":${WORK_MOUNT}`,
-    "",
+    ...acceptSubstitutionLines(version),
   ];
 }
 
@@ -800,21 +825,7 @@ function sftpBody(
     "",
     `     ${acceptCommand(version)}`,
     "",
-    `   Replace ${INVITATION_PLACEHOLDER} with the invitation your`,
-    "   partner sent (the long block of letters and numbers, not the web",
-    "   link) and your-file.csv with your CSV file's name. Naming your",
-    "   file is what lets the display list the columns you would send",
-    "   before you confirm; without it, that list is worked out from your",
-    "   file only when the exchange runs, and you are not asked again.",
-    "",
-    "   To keep the invitation out of your command history, save it into",
-    "   a file named invitation.txt next to your CSV and write",
-    "   @invitation.txt in its place.",
-    "",
-    '   On Windows PowerShell, replace "$PWD" with the folder\'s full path in',
-    "   every command on this sheet, for example",
-    `   -v "C:\\Users\\you\\exchange":${WORK_MOUNT}`,
-    "",
+    ...acceptSubstitutionLines(version),
     "2. Fill in your credentials. Accepting wrote alcove.yaml with the",
     "   server and directory taken from the invitation; two things are yours",
     "   to supply, because an invitation never contains credentials:",

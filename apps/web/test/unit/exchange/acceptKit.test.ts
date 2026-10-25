@@ -986,6 +986,50 @@ describe("accept kit invariants", () => {
   });
 });
 
+describe("accept kit, Windows PowerShell lines", () => {
+  /** The file the Windows PowerShell 5.1 suite runs line by line
+   * (`support/maintainer-notes/AcceptSheet.Tests.ps1`); `npx vitest run -u`
+   * rewrites it from the generator. */
+  const POWERSHELL_LINES_FILE =
+    "../../../../../support/maintainer-notes/accept-sheet-powershell-lines.txt";
+
+  /** The sheet's commands written for Windows PowerShell: the ones naming a
+   * Windows folder. */
+  function powershellLines(text: string): Array<string> {
+    return text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith("docker run ") && line.includes(":\\"));
+  }
+
+  test("every sheet gives the PowerShell accept command", () => {
+    for (const endpoint of ENDPOINTS)
+      expect(powershellLines(sheet(endpoint))).toEqual([
+        "docker run --rm -it -v " +
+          '"C:\\Users\\you\\exchange:/work" ' +
+          "ghcr.io/georgetown-mdi/alcove:1.4.2 accept '@invitation.txt' " +
+          "your-file.csv",
+      ]);
+  });
+
+  test("quotes the @ file name in the tip too", () => {
+    for (const endpoint of ENDPOINTS) {
+      const text = sheet(endpoint);
+      expect(text).toContain("'@invitation.txt', single quotes included");
+      expect(text).not.toMatch(/(^|[^'])@invitation\.txt/m);
+    }
+  });
+
+  test("matches the lines the Windows CI suite runs", async () => {
+    const lines = new Set(
+      ENDPOINTS.flatMap((endpoint) => powershellLines(sheet(endpoint))),
+    );
+    await expect(`${[...lines].join("\n")}\n`).toMatchFileSnapshot(
+      POWERSHELL_LINES_FILE,
+    );
+  });
+});
+
 describe("accept kit filename", () => {
   test("stamps the local calendar day of the download click", () => {
     expect(acceptKitFileName(new Date(2026, 1, 3, 9, 30))).toBe(
