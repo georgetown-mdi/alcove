@@ -146,6 +146,10 @@ export interface AcceptorScreenState {
    * as typed, one entry per line. It starts empty for every invitation:
    * nothing pre-fills it. */
   acceptorAllowedRelays: string;
+  /** Whether the Allowed relays field was edited, Remove included, which
+   * keeps it offered (`acceptOffersAllowedRelays`) so its line's action can
+   * take focus after Remove empties it. */
+  allowedRelaysEdited: boolean;
   /** Whether Start met Allowed relays edited since the review step's Continue
    * and returned to that step, which then says to continue again. Cleared by
    * the Continue that commits the field. */
@@ -249,6 +253,7 @@ export const ACCEPTOR_SCREEN_INITIAL: AcceptorScreenState = {
   committedName: "",
   committedDeduplicate: false,
   acceptorAllowedRelays: "",
+  allowedRelaysEdited: false,
   allowedRelaysChangedAtStart: false,
   committedAllowedRelays: undefined,
   committedCsvDelimiter: undefined,
@@ -428,8 +433,9 @@ export function relayNamesTurnServer(
 
 /**
  * Whether the review step offers the Allowed relays field on a WebRTC
- * accept: where `listHeld`, the field holding a list, which is never hidden,
- * or where the run lists a relay for the list to keep or leave out. On the
+ * accept: where `fieldKept`, the field holding a list or edited
+ * (`allowedRelaysEdited`), which is never hidden, or where the run lists a
+ * relay for the list to keep or leave out. On the
  * console that is a TURN server the invitation names, since the console's
  * run has no other relay; in the browser it is `browserRunListsRelay` of the
  * invitation's relay, which reads this browser's own relay and the site's
@@ -438,11 +444,11 @@ export function relayNamesTurnServer(
 export function acceptOffersAllowedRelays(
   endpoint: AcceptableInvitation["endpoint"],
   consoleBuild: boolean,
-  listHeld: boolean,
+  fieldKept: boolean,
   browserRunListsRelay: (invitationRelay: RelayUrls | undefined) => boolean,
 ): boolean {
   if (endpoint.channel !== "webrtc") return false;
-  if (listHeld) return true;
+  if (fieldKept) return true;
   return consoleBuild
     ? relayNamesTurnServer(endpoint.relay)
     : browserRunListsRelay(endpoint.relay);
@@ -516,6 +522,7 @@ export function acceptorScreenReducer(
       return {
         ...state,
         acceptorAllowedRelays: action.value,
+        allowedRelaysEdited: true,
         committedAllowedRelays: undefined,
       };
     case "review-continued": {

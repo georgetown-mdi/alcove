@@ -3508,6 +3508,19 @@ describe("AcceptorScreen: the review's Allowed relays", () => {
     expect(pageText()).not.toContain(KEPT_BY_ALLOWED_RELAYS);
   });
 
+  test("Remove after the run stops listing a relay keeps the line, with focus on its action", async () => {
+    writeOwnRelaySetting({ turn: [KEPT_URL], stun: [] });
+    await openInvitation(null);
+    await setRelays("partner.example.net");
+    await doneButton().click();
+
+    writeOwnRelaySetting({ turn: [], stun: [] });
+    await removeButton().click();
+    await expect.element(setButton()).toHaveFocus();
+    expect(document.activeElement).not.toBe(document.body);
+    expect(pageText()).toContain(ALLOWED_RELAYS_UNSET_SUMMARY);
+  });
+
   test("the terms mark each TURN url kept or left out as the field is typed", async () => {
     await openRelayInvitation();
 

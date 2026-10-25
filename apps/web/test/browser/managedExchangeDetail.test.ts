@@ -1718,6 +1718,22 @@ describe("managed exchange detail document settings", () => {
       expect(saved[0].allowedRelays).toEqual(["relay.example.org"]);
     });
 
+    test("Remove after the runs stop listing a relay keeps the line, with focus on its action", async () => {
+      renderDetail(relaysRecord(), () => Promise.resolve());
+
+      await setButton().click();
+      await allowedField().fill("relay.example.org");
+      await doneButton().click();
+      writeOwnRelaySetting({ turn: [], stun: [] });
+      await removeButton().click();
+
+      await expect.element(setButton()).toHaveFocus();
+      expect(document.activeElement).not.toBe(document.body);
+      await expect
+        .element(page.getByText(ALLOWED_RELAYS_UNSET_SUMMARY))
+        .toBeInTheDocument();
+    });
+
     test("a refused entry is named by its line and blocks the save", async () => {
       const { saved, onSave } = recordingSaves();
       renderDetail(relaysRecord(), onSave);

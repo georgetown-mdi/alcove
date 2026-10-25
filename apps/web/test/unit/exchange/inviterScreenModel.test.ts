@@ -372,6 +372,21 @@ describe("whether the mint may proceed", () => {
     );
   });
 
+  test("the review's Allowed relays count as edited from the first change, an emptying one included, so the field stays offered", () => {
+    expect(INVITER_SCREEN_INITIAL.allowedRelaysEdited).toBe(false);
+    const typed = inviterScreenReducer(INVITER_SCREEN_INITIAL, {
+      type: "allowed-relays-changed",
+      value: "relay.example.org",
+    });
+    expect(typed.allowedRelaysEdited).toBe(true);
+    const emptied = inviterScreenReducer(typed, {
+      type: "allowed-relays-changed",
+      value: "",
+    });
+    expect(emptied.inviterAllowedRelays).toBe("");
+    expect(emptied.allowedRelaysEdited).toBe(true);
+  });
+
   test("starting over reopens the terms and discards what was minted", () => {
     const seeded = withFile();
     if (seeded.editor === undefined)

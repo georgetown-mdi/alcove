@@ -285,6 +285,19 @@ describe("InviterScreen: the review's Allowed relays", () => {
     expect(record.allowedRelays).toEqual(["relay.example.org"]);
   });
 
+  test("Remove after the run stops listing a relay keeps the line, with focus on its action", async () => {
+    ownRelay();
+    await openReview();
+    await setRelays("relay.example.org");
+    await doneButton().click();
+
+    writeOwnRelaySetting({ turn: [], stun: [] });
+    await removeButton().click();
+    await expect.element(setButton()).toHaveFocus();
+    expect(document.activeElement).not.toBe(document.body);
+    expect(pageText()).toContain(ALLOWED_RELAYS_UNSET_SUMMARY);
+  });
+
   test("creating the invitation commits the list: the invitation, its waiting record and its run keep only the relays it names", async () => {
     ownRelay();
     await openReview();

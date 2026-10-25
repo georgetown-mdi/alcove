@@ -70,7 +70,8 @@ decide are the command line's
 ([`connection.allowed_relays`](EXCHANGE_REFERENCE.md#connectionallowed_relays)).
 The page shows the list as one line, with **Change** and **Remove**, and
 an exchange with no list as one line with **Set Allowed relays**, offered
-only where its runs would list a relay for the list to keep or leave out
+only where its runs would list a relay for the list to keep or leave out,
+or once you have edited the field on the page
 ([WEB_APP.md](WEB_APP.md#allowed-relays)).
 
 Saving an exchange as recurring starts its list from the Allowed relays set on

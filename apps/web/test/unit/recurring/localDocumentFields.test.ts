@@ -598,19 +598,26 @@ describe("the allowed relays", () => {
     });
   });
 
-  test("are shown where the document holds a list, the field holds text, or the runs list a relay", () => {
+  test("are shown where the document holds a list, the field holds text or was edited, or the runs list a relay", () => {
     const unset = relaysDocument();
+    const untouched = { text: "", edited: false };
+    const typed = { text: "relay.example.org", edited: true };
 
-    expect(allowedRelaysShown(unset, "", false)).toBe(false);
-    expect(allowedRelaysShown(unset, "", true)).toBe(true);
-    expect(allowedRelaysShown(unset, "relay.example.org", false)).toBe(true);
-    expect(allowedRelaysShown(relaysDocument([]), "", false)).toBe(true);
+    expect(allowedRelaysShown(unset, untouched, false)).toBe(false);
+    expect(allowedRelaysShown(unset, untouched, true)).toBe(true);
+    expect(allowedRelaysShown(unset, typed, false)).toBe(true);
+    expect(allowedRelaysShown(unset, { text: "", edited: true }, false)).toBe(
+      true,
+    );
+    expect(allowedRelaysShown(relaysDocument([]), untouched, false)).toBe(true);
     expect(
-      allowedRelaysShown(relaysDocument(["relay.example.org"]), "", false),
+      allowedRelaysShown(
+        relaysDocument(["relay.example.org"]),
+        untouched,
+        false,
+      ),
     ).toBe(true);
-    expect(
-      allowedRelaysShown(assembleSftpDocument(), "relay.example.org", true),
-    ).toBe(false);
+    expect(allowedRelaysShown(assembleSftpDocument(), typed, true)).toBe(false);
   });
 
   test("a command-line run lists a relay where its connection or its invitation relay names a TURN or WebSocket relay url", () => {
