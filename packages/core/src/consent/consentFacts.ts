@@ -703,9 +703,9 @@ export const CONSENT_BASIS_MARKERS: Record<ConsentFactBasis, string> = {
 };
 
 /**
- * The sentence both acceptance surfaces state when the agreed keys are one
- * built-in choice's keys ({@link builtInRuleChoiceOf}). They state nothing
- * about the rules' origin otherwise.
+ * The sentence both acceptance surfaces state when the agreed keys, and the
+ * fields they read, are one built-in choice's ({@link builtInRuleChoiceOf}).
+ * They state nothing about the rules' origin otherwise.
  */
 export function builtInRuleChoiceStatement(choice: PrecisionFloor): string {
   return (

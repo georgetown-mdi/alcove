@@ -513,8 +513,9 @@ export interface InvitationSummary {
   matchedFields: Array<Displayable>;
   /** PII fields involved, each with its label and declared constraints. */
   linkageFields: Array<InvitationFieldSummary>;
-  /** The built-in choice the keys are, present only when they are one
-   * choice's keys whole ({@link builtInRuleChoiceOf}). */
+  /** The built-in choice the terms are, present only when the keys are one
+   * choice's keys whole and the fields they read are the built-in fields
+   * ({@link builtInRuleChoiceOf}). */
   builtInRuleChoice?: PrecisionFloor;
   /** Present only when the inviter attached a legal agreement. */
   legalAgreement?: InvitationLegalAgreementSummary;
@@ -1427,7 +1428,7 @@ export function summarizeInvitation(
       endpointRequiresRetainedFiles(endpoint),
   };
 
-  const builtInRuleChoice = builtInRuleChoiceOf(terms.linkageKeys);
+  const builtInRuleChoice = builtInRuleChoiceOf(terms);
   if (builtInRuleChoice !== undefined)
     summary.builtInRuleChoice = builtInRuleChoice;
 

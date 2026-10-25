@@ -516,23 +516,40 @@ export function linkageKeysAtPrecisionFloor(
 }
 
 /**
- * The built-in choice whose keys `linkageKeys` are, or `undefined` where they
- * are not one choice's keys whole and in its order: a subset, an edited or
- * reordered list, and expert-authored keys answer `undefined`. Compared under
+ * The built-in choice `rules` are, or `undefined` where they are not: the
+ * keys must be one choice's keys whole and in its order, and every field
+ * those keys read must be defined exactly as the built-in field. A subset,
+ * an edited or reordered list, expert-authored keys, and a field the keys
+ * read that is missing or redefined (another type, other constraints)
+ * answer `undefined`; a field no key reads is not compared. Compared under
  * {@link encodeForComparison}, the equality the two parties' terms are
  * compared under.
  */
 export function builtInRuleChoiceOf(
-  linkageKeys: ReadonlyArray<LinkageKey>,
+  rules: Pick<LinkageTerms, "linkageFields" | "linkageKeys">,
 ): PrecisionFloor | undefined {
-  const encoded = encodeForComparison(linkageKeys);
+  const encoded = encodeForComparison(rules.linkageKeys);
   if (encoded === null) return undefined;
-  return PRECISION_FLOORS.find(
+  const choice = PRECISION_FLOORS.find(
     (floor) =>
       encodeForComparison(
         linkageKeysAtPrecisionFloor(DEFAULT_LINKAGE_RULE_SET, { floor }),
       ) === encoded,
   );
+  if (choice === undefined) return undefined;
+  for (const name of referencedLinkageFieldNames(rules.linkageKeys)) {
+    const builtIn = DEFAULT_LINKAGE_RULE_SET.linkageFields.find(
+      (field) => field.name === name,
+    );
+    // Every field of the same name is compared, so a repeated declaration
+    // cannot pair a built-in copy with a redefined one.
+    const declared = rules.linkageFields.filter((field) => field.name === name);
+    if (builtIn === undefined || declared.length === 0) return undefined;
+    const builtInEncoded = encodeForComparison(builtIn);
+    if (declared.some((field) => encodeForComparison(field) !== builtInEncoded))
+      return undefined;
+  }
+  return choice;
 }
 
 /**
