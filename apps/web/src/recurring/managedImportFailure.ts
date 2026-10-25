@@ -40,10 +40,8 @@ import {
 import { ManagedArtifactOutdatedError } from "@psi/managed/managedExchangeArtifact";
 import { ManagedImportBackupNotConfigurationError } from "@psi/managed/managedExchangeImport";
 
-import type {
-  ManagedStoredCopy,
-  ManagedStoredCopyState,
-} from "@psi/managed/managedPairRecognition";
+import type { ManagedChosenCopyRefusal } from "@psi/managed/managedExchangeImport";
+import type { ManagedStoredCopy } from "@psi/managed/managedPairRecognition";
 
 /** The heading every import refusal here is shown under. */
 export const IMPORT_FAILURE_TITLE = "That file could not be imported";
@@ -136,26 +134,61 @@ export function pairImportFailureReason(error: unknown): string {
  * exchange its file belongs to. */
 export const ALREADY_HELD_IMPORT_TITLE = "That exchange is already here";
 
-/** The refusal a pair import meets when a record this browser runs already
- * holds the key file's secret: it is the same exchange, so nothing is added. */
-export function alreadyHeldImportReason(label: string): string {
-  const named = label === "" ? "That exchange" : `"${label}"`;
+/** What a refusal names a held exchange as: its label, or "That exchange". */
+function heldName(label: string): string {
+  return label === "" ? "That exchange" : `"${label}"`;
+}
+
+/** What a held-exchange refusal says where the held record's saved state does
+ * not parse: its page cannot be opened, so the way on is to remove it and
+ * import `what` again. */
+function unreadableHeldReason(
+  label: string,
+  secret: string,
+  what: string,
+): string {
   return (
-    `${named} already runs in this browser with the secret this .alcove.key ` +
-    "holds, so nothing was imported. Open it from the list. If the command " +
-    "line runs it on a schedule too, stop one of the two: each run changes " +
-    "the shared secret, and the copy that falls behind can no longer connect " +
-    "to your partner."
+    `${heldName(label)} is in this browser with ${secret}, but part of its ` +
+    "saved state cannot be read, so it cannot be opened. Remove it from the " +
+    `list, then import ${what} again.`
+  );
+}
+
+/** The refusal a pair import meets when a record this browser runs already
+ * holds the key file's secret: it is the same exchange, so nothing is added.
+ * `stateUnreadable` where that record's saved state does not parse. */
+export function alreadyHeldImportReason(
+  label: string,
+  stateUnreadable = false,
+): string {
+  if (stateUnreadable)
+    return unreadableHeldReason(
+      label,
+      "the secret this .alcove.key holds",
+      "these files",
+    );
+  return (
+    `${heldName(label)} already runs in this browser with the secret this ` +
+    ".alcove.key holds, so nothing was imported. Open it from the list. If " +
+    "the command line runs it on a schedule too, stop one of the two: each " +
+    "run changes the shared secret, and the copy that falls behind can no " +
+    "longer connect to your partner."
   );
 }
 
 /** The refusal a backup import meets when a record this browser runs already
- * holds the backup's secret: it is the same exchange, and nothing is added. */
-export function alreadyHeldBackupImportReason(label: string): string {
-  const named = label === "" ? "That exchange" : `"${label}"`;
+ * holds the backup's secret: it is the same exchange, and nothing is added.
+ * `stateUnreadable` where that record's saved state does not parse. */
+export function alreadyHeldBackupImportReason(
+  label: string,
+  stateUnreadable = false,
+): string {
+  if (stateUnreadable)
+    return unreadableHeldReason(label, "this backup's secret", "this backup");
   return (
-    `${named} already runs in this browser with the secret this backup file ` +
-    "holds, so nothing was imported. Open it from the list to run it."
+    `${heldName(label)} already runs in this browser with the secret this ` +
+    "backup file holds, so nothing was imported. Open it from the list to " +
+    "run it."
   );
 }
 
@@ -164,109 +197,156 @@ export function alreadyHeldBackupImportReason(label: string): string {
 export const LIVE_COPY_IMPORT_TITLE =
   "This may be an exchange you already have";
 
-/**
- * What a backup import says when it stops to ask: one or more listed exchanges
- * have the same agreed terms and side, and a different secret, which is what
- * an older backup of one of them looks like once it has run since. Two
- * exchanges can share both, so the operator decides; nothing is imported until
- * they do. `labels` holds each listed exchange's label, empty where unnamed.
- */
-export function liveCopyImportReason(labels: ReadonlyArray<string>): string {
-  if (labels.length === 1) {
-    const [label] = labels;
-    const named = label === "" ? "An exchange in the list" : `"${label}"`;
-    return (
-      `${named} has the same terms and the same side as this backup, with a ` +
-      "different secret - an older backup of it would look like this. " +
-      "Nothing was imported. If it is the same exchange, open it from the " +
-      "list instead: a second copy falls behind the first time either one " +
-      "runs, and then cannot connect to your partner. If it is a separate " +
-      "exchange with the same terms, add this backup beside it."
-    );
-  }
+/** The listed names a several-exchange question gives in brackets: each label,
+ * then a count of those with none. Empty when none is named. */
+function listedNames(labels: ReadonlyArray<string>): string {
   const names = labels.filter((label) => label !== "").map((l) => `"${l}"`);
   const unnamed = labels.length - names.length;
-  const listed =
-    names.length === 0
-      ? ""
-      : ` (${names.join(", ")}${unnamed === 0 ? "" : `, and ${unnamed} with no name`})`;
+  return names.length === 0
+    ? ""
+    : ` (${names.join(", ")}${unnamed === 0 ? "" : `, and ${unnamed} with no name`})`;
+}
+
+/**
+ * What a backup import says when it stops to ask: one or more listed exchanges
+ * have the same agreed terms and side, and a different secret. Either copy may
+ * be the newer -- the backup, where the exchange ran elsewhere since, or the
+ * saved copy, where it ran here since the backup was taken -- and the record
+ * states nothing that orders them, so the operator chooses: replace the saved
+ * copy, keep it, or add the backup as a separate exchange with the same terms.
+ * A listed exchange holding a configuration only never ran here, so the backup
+ * completes it where it is of that exchange. Nothing is imported until they
+ * answer.
+ */
+export function liveCopyImportReason(
+  copies: ReadonlyArray<ManagedStoredCopy>,
+): string {
+  const separate =
+    " If this is a separate exchange with the same terms, add the backup as a " +
+    "new exchange.";
+  if (copies.length === 1) {
+    const [{ label, state }] = copies;
+    const named = label === "" ? "An exchange in the list" : `"${label}"`;
+    if (state === "configuration-only")
+      return (
+        `${named} holds a configuration without its key file and has the ` +
+        "same terms and the same side as this backup. Nothing was imported. " +
+        "If the backup is of that exchange, replace the saved copy with it." +
+        separate
+      );
+    return (
+      `${named} has the same terms and the same side as this backup, with a ` +
+      "different secret. Nothing was imported. If the exchange ran on " +
+      "another device since the saved copy last ran here, this backup is the " +
+      "newer one: replace the saved copy with it, and the saved copy's run " +
+      "history and accounting of disclosures are kept. If this backup is " +
+      "older than the saved copy, keep the saved copy." +
+      separate
+    );
+  }
+  const names = listedNames(copies.map(({ label }) => label));
+  if (copies.every(({ state }) => state === "runs-here"))
+    return (
+      `${copies.length} exchanges in the list${names} have the same terms ` +
+      "and the same side as this backup, with different secrets. Nothing was " +
+      "imported. If the exchange ran on another device since one of them " +
+      "last ran here, this backup is the newer one: replace that saved copy " +
+      "with it, and its run history and accounting of disclosures are kept. " +
+      "If this backup is older, keep the saved copies." +
+      separate
+    );
+  const runsHere = copies.some(({ state }) => state === "runs-here");
   return (
-    `${labels.length} exchanges in the list${listed} have the same terms and ` +
-    "the same side as this backup, with different secrets - an older backup " +
-    "of one of them would look like this. Nothing was imported. If it is one " +
-    "of these exchanges, open that one from the list instead: a second copy " +
-    "falls behind the first time either one runs, and then cannot connect to " +
-    "your partner. If it is a separate exchange with the same terms, add this " +
-    "backup beside them."
+    `${copies.length} exchanges in the list${names} have the same terms and ` +
+    "the same side as this backup, and none holds its secret. Nothing was " +
+    "imported. If the backup is of one of them, replace that saved copy with " +
+    "it." +
+    (runsHere
+      ? " Replace one that runs here only if the exchange ran on another " +
+        "device since it last ran here: its run history and accounting of " +
+        "disclosures are kept."
+      : "") +
+    separate
   );
 }
 
-/** The button opening the listed exchange at `index` of `labels` from
- * {@link liveCopyImportReason}'s alert: one button when one exchange is
- * listed, else one per exchange, named by its label or its place in the list. */
-export function liveCopyOpenLabel(
+/** The button replacing the listed exchange at `index` of `labels` with the
+ * backup, from {@link liveCopyImportReason}'s alert: one button when one
+ * exchange is listed, else one per exchange, named by its label or its place
+ * in the list. */
+export function liveCopyReplaceLabel(
   labels: ReadonlyArray<string>,
   index: number,
 ): string {
-  if (labels.length === 1) return "Open the listed exchange";
+  if (labels.length === 1) return "Replace the saved copy";
   const label = labels[index];
-  return label === "" ? `Open listed exchange ${index + 1}` : `Open "${label}"`;
+  return label === ""
+    ? `Replace listed exchange ${index + 1}`
+    : `Replace "${label}"`;
 }
 
-/** The confirm on {@link liveCopyImportReason}'s alert. */
-export const LIVE_COPY_IMPORT_CONFIRM = "Add it as a separate exchange";
+/** The button on {@link liveCopyImportReason}'s alert that imports nothing
+ * and keeps the `count` listed exchanges as they are. */
+export function liveCopyKeepLabel(count: number): string {
+  return count === 1 ? "Keep the saved copy" : "Keep the saved copies";
+}
+
+/** The button on {@link liveCopyImportReason}'s alert that adds the backup
+ * beside every listed exchange. */
+export const LIVE_COPY_IMPORT_CONFIRM = "Add as a new exchange";
 
 /** The heading a pair import stops under when a stored exchange it may belong
  * to has its agreed terms and side. */
 export const STORED_COPY_IMPORT_TITLE =
   "These files may belong to an exchange you already have";
 
-/** How each state a pair can land in is described, what files of that
- * exchange would look like, and what taking them in does. */
-const STORED_COPY_WORDS: Record<
-  ManagedStoredCopyState,
-  { state: string; resembles: string; take: string }
-> = {
-  "configuration-only": {
-    state: "holds a configuration without its key file",
-    resembles: "this key file may be the one it lacks",
-    take: "complete it with these files",
-  },
-};
-
 /**
  * What a pair import says when it stops to ask: no stored exchange holds the
- * key file's secret, and one or more that the pair can land in have its agreed
- * terms and side. Two exchanges can share both, so the operator decides;
- * nothing is imported until they do.
+ * key file's secret, and one or more have its agreed terms and side. One that
+ * holds a configuration only is completed with the files; one that runs here
+ * is replaced by them, and as on the backup import, either copy may be the
+ * newer, so the operator chooses. Two exchanges can share terms and side, so
+ * nothing is imported until they answer.
  */
 export function storedCopyImportReason(
   copies: ReadonlyArray<ManagedStoredCopy>,
 ): string {
+  const separate =
+    " If this is a separate exchange with the same terms, add these files as " +
+    "a new one.";
   if (copies.length === 1) {
     const [{ label, state }] = copies;
     const named = label === "" ? "An exchange in the list" : `"${label}"`;
-    const words = STORED_COPY_WORDS[state];
+    if (state === "configuration-only")
+      return (
+        `${named} holds a configuration without its key file and has the ` +
+        "same terms and the same side as these files - this key file may be " +
+        "the one it lacks. Nothing was imported. If they belong to it, " +
+        "complete it with these files." +
+        separate
+      );
     return (
-      `${named} ${words.state} and has the same terms and the same side as ` +
-      `these files, with a different secret - ${words.resembles}. Nothing ` +
-      `was imported. If they belong to it, ${words.take}. If this is a ` +
-      "separate exchange with the same terms, add these files as a new one."
+      `${named} runs in this browser and has the same terms and the same ` +
+      "side as these files, with a different secret. Nothing was imported. " +
+      "If the exchange ran from these files since the saved copy last ran " +
+      "here, they are the newer copy: replace the saved copy with them, and " +
+      "its run history and accounting of disclosures are kept. If these " +
+      "files are older than the saved copy, cancel to keep the saved copy." +
+      separate
     );
   }
-  const names = copies
-    .filter(({ label }) => label !== "")
-    .map(({ label }) => `"${label}"`);
-  const unnamed = copies.length - names.length;
-  const listed =
-    names.length === 0
-      ? ""
-      : ` (${names.join(", ")}${unnamed === 0 ? "" : `, and ${unnamed} with no name`})`;
+  const runsHere = copies.some(({ state }) => state === "runs-here");
   return (
-    `${copies.length} exchanges in the list${listed} have the same terms and ` +
-    "the same side as these files, and none holds their secret. Nothing was " +
-    "imported. If they belong to one of them, choose it below. If this is a " +
-    "separate exchange with the same terms, add these files as a new one."
+    `${copies.length} exchanges in the list` +
+    `${listedNames(copies.map(({ label }) => label))} have the same terms ` +
+    "and the same side as these files, and none holds their secret. Nothing " +
+    "was imported. If they belong to one of them, choose it below." +
+    (runsHere
+      ? " Replace one that runs here only if the exchange ran from these " +
+        "files since it last ran here: its run history and accounting of " +
+        "disclosures are kept."
+      : "") +
+    separate
   );
 }
 
@@ -277,7 +357,16 @@ export function storedCopyTakeLabel(
   copies: ReadonlyArray<ManagedStoredCopy>,
   index: number,
 ): string {
-  const { label } = copies[index];
+  const { label, state } = copies[index];
+  if (state === "runs-here") {
+    const named =
+      label !== ""
+        ? `"${label}"`
+        : copies.length === 1
+          ? "the saved copy"
+          : `listed exchange ${index + 1}`;
+    return `Replace ${named}`;
+  }
   const named =
     label !== ""
       ? `"${label}"`
@@ -291,12 +380,21 @@ export function storedCopyTakeLabel(
  * a new exchange beside every one named. */
 export const STORED_COPY_IMPORT_CONFIRM = "Add them as a new exchange";
 
-/** The heading a pair import is refused under when the exchange the operator
+/** The heading an import is refused under when the exchange the operator
  * chose to take it in can no longer take it. */
-export const CHOSEN_COPY_IMPORT_TITLE = "The files were not taken in";
+export const CHOSEN_COPY_IMPORT_TITLE = "Nothing was imported";
 
-/** Why the exchange the operator chose could not take the pair, and what to
- * do: import the files again to be asked afresh. */
-export const CHOSEN_COPY_IMPORT_REASON =
-  "That exchange changed since you chose it - it was deleted or edited - so " +
-  "nothing was imported. Import the files again.";
+/** Why the exchange the operator chose could not take the import, and what to
+ * do: wait for a run to finish, or import `what` again to be asked afresh. */
+export function chosenCopyImportReason(
+  reason: ManagedChosenCopyRefusal,
+  what: "backup" | "files",
+): string {
+  const again = what === "backup" ? "the backup" : "the files";
+  return reason === "run-in-flight"
+    ? "That exchange is running right now - in this browser, in another " +
+        "tab, or on its schedule - so nothing was imported. When the run " +
+        `finishes, import ${again} again.`
+    : "That exchange changed since you chose it - it was deleted or edited " +
+        `- so nothing was imported. Import ${again} again.`;
+}

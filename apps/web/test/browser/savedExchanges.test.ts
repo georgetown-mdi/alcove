@@ -793,7 +793,34 @@ describe("saved list route: a backup reconciles against the exchange it holds", 
     expect(await listManagedExchanges()).toEqual([listed]);
   });
 
-  test("a copy rotated past the backup is named; cancel imports nothing, confirm adds it beside", async () => {
+  test("a newer backup replaces the saved copy in place, leaving one entry", async () => {
+    const listed = await createRunnableExchange(newExchange());
+    const newer = runnableManagedExchangeOrRefuse({
+      ...listed,
+      sharedSecret: generateSharedSecret(),
+    });
+    app.render(createElement(SavedExchanges));
+    await expect
+      .element(page.getByRole("button", { name: "Import a file" }))
+      .toBeInTheDocument();
+
+    await chooseIn(LIST_IMPORT, backupOf(newer));
+    await expect
+      .element(page.getByText(LIVE_COPY_IMPORT_TITLE))
+      .toBeInTheDocument();
+    expect(page.getByText(/open it from the list/i).query()).toBeNull();
+    await page.getByRole("button", { name: "Replace the saved copy" }).click();
+
+    await expect
+      .poll(async () => (await getManagedExchange(listed.id))?.sharedSecret)
+      .toBe(newer.sharedSecret);
+    expect((await listManagedExchanges()).map(({ id }) => id)).toEqual([
+      listed.id,
+    ]);
+    expect(page.getByText(LIVE_COPY_IMPORT_TITLE).query()).toBeNull();
+  });
+
+  test("a copy rotated past the backup is named; keep imports nothing, add puts it beside", async () => {
     const listed = await createRunnableExchange(newExchange());
     const bytes = backupOf(listed);
     await persistManagedExchangeRotation(listed.id, {
@@ -819,7 +846,7 @@ describe("saved list route: a backup reconciles against the exchange it holds", 
       .toBeInTheDocument();
     expect(await listManagedExchanges()).toEqual([rotated]);
 
-    await page.getByRole("button", { name: "Cancel" }).click();
+    await page.getByRole("button", { name: "Keep the saved copy" }).click();
     expect(page.getByText(LIVE_COPY_IMPORT_TITLE).query()).toBeNull();
     expect(await listManagedExchanges()).toEqual([rotated]);
 
@@ -855,13 +882,15 @@ describe("saved list route: a backup reconciles against the exchange it holds", 
       .element(page.getByText("2 exchanges in the list", { exact: false }))
       .toBeInTheDocument();
     await expect
-      .element(page.getByRole("button", { name: 'Open "Riverbend quarterly"' }))
+      .element(
+        page.getByRole("button", { name: 'Replace "Riverbend quarterly"' }),
+      )
       .toBeInTheDocument();
     await expect
-      .element(page.getByRole("button", { name: 'Open "Riverbend again"' }))
+      .element(page.getByRole("button", { name: 'Replace "Riverbend again"' }))
       .toBeInTheDocument();
 
-    await page.getByRole("button", { name: "Cancel" }).click();
+    await page.getByRole("button", { name: "Keep the saved copies" }).click();
     expect(page.getByText(LIVE_COPY_IMPORT_TITLE).query()).toBeNull();
     expect(await listManagedExchanges()).toEqual(before);
 

@@ -240,7 +240,10 @@ That withholding is a reading of the lock taken every so often, so it can miss a
 Nothing rests on it: each export takes the run's own lock before it reads anything, so an export and a run that rotates exclude each other, in either order.
 
 Bringing the exchange back here is the same import with the newer files.
-That import is recognized by the shared secret alone: the files from a run elsewhere hold a secret the copy here does not, so they land as a second entry beside it, and the older entry is the one to remove.
+The files from a run elsewhere hold a secret the copy here does not, so the secret alone cannot find it; the agreed terms and side do, and the import asks.
+The answer that brings the exchange back replaces the copy here in place rather than adding a second entry: its `id` keys the accounting of disclosures, the parked results and the local state, so keeping the `id` keeps them, and the operator has one entry to look after rather than an older one to remember to remove.
+The import does not decide which copy is the newer, because nothing in the record can: there is no rotation epoch (the no-anti-rollback caveat below), and the run history orders runs, not rotations -- a missed window or a run that failed before its handshake rotates nothing, and each copy's stamps come from its own device's clock.
+So the operator chooses between replacing and keeping, and the rule is in [Replacing a saved copy](../spec/MANAGED_EXCHANGE_RECORD.md#replacing-a-saved-copy).
 No state records that an exchange left, so none has to be cleared for it to come back, and nothing refuses a run or an import on it.
 
 The artifact is a **plaintext credential file in the operator's custody**.

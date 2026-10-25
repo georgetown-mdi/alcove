@@ -288,22 +288,29 @@ memory:
   paragraph states.
 
 **A pair no stored secret matches is recognized by its terms and side.** A
-configuration-only record holds no secret to match. The import names every
-configuration-only record the [no-secret-match
-rule](#recognizing-a-stored-exchange-without-a-secret-match) finds, and
-installs nothing until the operator answers (`decideCommandLinePairTarget`,
+configuration-only record holds no secret to match, and a runnable record
+holds the secret its own last run left, which a command-line run since has
+rotated past. The import names every record the [no-secret-match
+rule](#recognizing-a-stored-exchange-without-a-secret-match) finds, each with
+whether it holds a configuration only or runs here, and installs nothing until
+the operator answers (`decideCommandLinePairTarget`,
 `apps/web/src/psi/managed/managedPairRecognition.ts`). The answers:
 
-- **Complete one of them.** The pair's document, `side`, max-age policy, key
-  pair, relay registrar, and pending registration are laid over the
+- **Complete a configuration-only one.** The pair's document, `side`, max-age
+  policy, key pair, relay registrar, and pending registration are laid over the
   configuration-only record, an absent policy clearing the stored one, and the
   `id`, label, and standing condition are kept
   (`applyManagedExchangeCommandLinePair`). A configuration-only record holds no
   schedule, run bookkeeping, rotation marker, or folder grant, so the completed
-  record holds none either. A chosen record that
-  no longer qualifies -- deleted or changed -- refuses, and nothing is written.
+  record holds none either.
+- **Replace one that runs here**, as [Replacing a saved
+  copy](#replacing-a-saved-copy) states, the stored schedule kept, since a pair
+  holds none.
 - **Install as a new record**, beside every record named.
 - **Cancel**, writing nothing.
+
+A chosen record that no longer qualifies -- deleted, or no longer of the pair's
+terms and side -- refuses, and nothing is written.
 
 **The markers.** Every pair import that writes stamps the [import
 marker](#the-backup-and-import-markers-local-siblings-never-in-the-artifact)
@@ -1899,15 +1906,22 @@ newer deployment added, a corrupted value, or a handed-off state an earlier
 version wrote, which no current shape names -- rejects the strict reads. The
 attended list read joins the sibling state and rejects wholesale on it, so the
 operator meets the read-failed surface, and the exchange's own page does not
-load. The recovery listing shows that record as unreadable, treats it as backed
-up, and offers the delete-by-key, which removes the record and its sibling entry
-together. The wake skips that record alone ([Every admitted schedule
-renders](#every-admitted-schedule-renders)), and a rotation deletes the entry
-unread rather than aborting on it.
+load. The recovery listing shows that record's label, side, and last run where
+the record itself parses, noting that part of its saved state cannot be read,
+and shows it as unreadable where it does not; either way it treats it as backed
+up and offers the delete-by-key, which removes the record and its sibling entry
+together. Its page cannot load, so its accounting of disclosures cannot be
+exported first, and the delete confirm says the accounting is removed with it
+unread rather than offering the export. A backup or pair import holding that
+record's secret refuses as held, saying that part of its saved state cannot be
+read so it cannot be opened, and that the way on is to remove it and import the
+file again. No repair is offered. The wake skips that record alone ([Every
+admitted schedule renders](#every-admitted-schedule-renders)), and a rotation
+deletes the entry unread rather than aborting on it.
 
 A saved exchange an earlier pre-release build marked handed off, or whose run
 history holds a hand-off run, does not read: the recovery listing shows it as
-unreadable, and discarding it and importing its files again restores it.
+above, and discarding it and importing its files again restores it.
 
 ### Reconciling a backup import
 
@@ -1917,7 +1931,8 @@ offered beside every listing ([The configuration-only
 record](#the-configuration-only-record)), and what else the store holds decides
 nothing. The reconciliation runs in one transaction over the record and sibling
 stores (`reconcileManagedBackupImport`, `managedExchangeStore.ts`), comparing
-secrets in memory, and nothing is written on any outcome but a fresh install.
+secrets in memory, and nothing is written on any outcome but a fresh install
+or a replace ([Replacing a saved copy](#replacing-a-saved-copy)).
 
 Stated limit: a fresh install is a second transaction, run after the
 reconciliation has found no match. Two imports of the same artifact racing in
@@ -1932,7 +1947,11 @@ live-copy refusal below describes.
 - **Refused, a live copy is already here.** A stored record holds the
   artifact's secret: it is this exchange, and a second live copy of one secret splits from
   it at the first rotation either side makes. The refusal names that record and
-  says to open it.
+  says to open it, or, where that record's sibling entry does not parse, to
+  remove it and import the backup again.
+- **Replaced.** The operator chose a stored record the rule below named: it
+  takes the artifact in place ([Replacing a saved
+  copy](#replacing-a-saved-copy)).
 
 A copy recognized without a secret match (below) is asked about after the
 refusal and before a fresh install.
@@ -1944,8 +1963,8 @@ which is the way forward the read-failed recovery surface offers beside its
 listing. A skipped entry is never a match, so an artifact holding its secret
 installs fresh beside it, and the entry stays in the store, listed by that
 surface's per-entry diagnostic read, until the operator discards it. The
-reconciliation reads no sibling entry, so one this build cannot parse decides
-nothing here.
+reconciliation reads one sibling entry, the held record's, and only to word its
+refusal, so one this build cannot parse decides no outcome here.
 
 No refusal sends the operator to delete other exchanges: each names the one
 record it is about and what to do with that record.
@@ -1969,14 +1988,17 @@ nothing. The code: `findRecordsByTermsAndSide`
 
 Which stored records each import asks about is what it can do with them:
 
-- **The list's backup import asks about every stored record**, and offers to
-  open one or install beside them.
-- **The command-line pair import asks about configuration-only records**, and
-  offers to complete one with the pair or install it beside them ([Importing
-  the key file beside a
-  configuration](#importing-the-key-file-beside-a-configuration)). It asks
-  about no runnable record, and installs beside one whose secret it does not
-  hold.
+- **The list's backup import asks about every stored record**, runnable or
+  holding a configuration only, and offers to replace one ([Replacing a saved
+  copy](#replacing-a-saved-copy)), keep them, or install beside them.
+- **The command-line pair import asks about every stored record too**, and
+  offers to complete a configuration-only one with the pair, replace one that
+  runs here, install beside them, or cancel ([Importing the key file beside
+  a configuration](#importing-the-key-file-beside-a-configuration)).
+
+The answer naming one record is re-checked against the stored record inside
+the transaction that writes it: one deleted since, or no longer of the
+imported record's agreed terms and side, refuses, and nothing is written.
 
 Equal terms and side is a heuristic: two separate exchanges with one partner
 can share both. So the match is a question, never a refusal, and never a
@@ -1985,6 +2007,73 @@ question and chooses among the import's answers or cancels (nothing is
 written). The matches are named together and acknowledged by one confirm: a
 confirmed install names every record it goes beside, and only a match that
 confirm did not name -- one added since the question -- is asked about again.
+
+### Replacing a saved copy
+
+**A stored record the operator chooses to replace takes the import in place,
+keeping its entry.** A pair replaces a runnable record only, since it completes
+a configuration-only one instead; a backup replaces either, and one holding a
+configuration only runs here afterwards. The `id` is kept, so everything keyed
+by it stays with
+the exchange: the [accounting of disclosures](#the-accounting-of-disclosures),
+the [parked results](#the-parked-results-of-a-scheduled-run), and the
+[unfiled-record note](#a-run-whose-record-was-not-filed). The list holds one
+entry for the exchange afterwards. The code:
+`replaceManagedExchangeFromImport` (`managedExchangeStore.ts`) and
+`applyManagedExchangeImportReplace` (`managedExchangeRecord.ts`).
+
+The replaced record holds:
+
+- **From the import**: the document, `side`, `sharedSecret`, `expires`, the
+  max-age policy, and the relay registrar and pending registration, each absent
+  where the import states none; from a backup also its schedule.
+- **From the stored record**: the `id`, the label, and the working-folder
+  grant, which the artifact never holds; from a pair import also the schedule,
+  which a pair has no field for.
+- **Merged**: `lastRun` is the later of the two by instant, the stored one on a
+  tie, and the run list holds both records' entries newest first, an entry the
+  two share once, at most `MAX_RECENT_RUNS`.
+- **The standing condition**: the stored record's where one stands, else the
+  import's. A replace is none of the [three acts that clear
+  it](#the-standing-condition).
+- **No rotation-in-flight marker**: a stored one belongs to the replaced
+  secret's key exchange.
+
+The sibling entry is rewritten in the same transaction: the [import
+marker](#the-backup-and-import-markers-local-siblings-never-in-the-artifact)
+is stamped as of the import, a backup marker as of the import where the import
+is a backup (the file the operator holds is a backup of what is now stored)
+and none where it is a pair, and the pending terms decision is kept.
+
+**The replace takes the run lock and refuses rather than waits.** It takes the
+exchange's single-writer lock with `ifAvailable` before it reads anything, as
+the re-invite does, so while anything holds that lock -- a run of the exchange
+in any context, an export, or a terms or relay-registration write -- the
+replace refuses and nothing is written. Under
+the lock, one strict-durability transaction over the record and sibling stores
+reads the stored record, refuses where it is gone or no longer has the
+import's agreed terms and side, and writes the record and its sibling entry.
+The secret the stored record holds is not compared: the operator chose to
+replace it. Completing a configuration-only record takes no lock, since no run
+holds one.
+
+**Which copy is the newer is the operator's call.** Nothing in a record orders
+a backup and the saved copy of one exchange ([No
+anti-rollback](#export-artifact); the reasoning is in the [design
+note](../notes/managed-exchange-design.md#exportimport-is-migration-not-sync)),
+so the question offers replace, keep, and install beside, and states when each
+fits.
+Replacing a copy with an older import leaves it holding a secret the partner
+has rotated past: its next run fails to connect, as any stale copy does, and
+the remedy is the newer import or a re-invite.
+
+After a replace, the stored record holds the import's secret, so importing the
+same file again is refused as held and writes nothing.
+
+Stated limit: the replace transaction does not look for another record holding
+the imported secret. The reconciliation that asked found none, and one
+installed since, in another tab, is the race the fresh install's own limit
+states ([Reconciling a backup import](#reconciling-a-backup-import)).
 
 ## The accounting of disclosures
 

@@ -29,11 +29,14 @@ import {
 import { composeManagedCronExport } from "@psi/managed/managedCronExport";
 
 import type {
+  ManagedBackupReconcileOutcome,
+  ManagedReplaceOutcome,
+} from "@psi/managed/managedExchangeStore";
+import type {
   ManagedExchangeRecord,
   NewManagedExchange,
   RunnableManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
-import type { ManagedBackupReconcileOutcome } from "@psi/managed/managedExchangeStore";
 import type { ManagedImportDeps } from "@psi/managed/managedExchangeImport";
 
 /** A record built from `fields` and narrowed to the runnable shape: every fixture
@@ -126,15 +129,18 @@ function scheduledBytes(): string {
 
 function recordingDeps(
   reconciled: ManagedBackupReconcileOutcome = { kind: "no-match" },
+  replaced: ManagedReplaceOutcome = { kind: "changed" },
 ): ManagedImportDeps & {
   installed: Array<ManagedExchangeRecord>;
   reconcile: ReturnType<typeof vi.fn>;
+  replace: ReturnType<typeof vi.fn>;
   markImported: ReturnType<typeof vi.fn>;
 } {
   const installed: Array<ManagedExchangeRecord> = [];
   return {
     installed,
     reconcile: vi.fn(() => Promise.resolve(reconciled)),
+    replace: vi.fn(() => Promise.resolve(replaced)),
     install: (record) => {
       installed.push(record);
       return Promise.resolve(record);
@@ -397,8 +403,8 @@ describe("a backup reconciles against the exchange it holds", () => {
     const deps = recordingDeps({
       kind: "live-copy",
       copies: [
-        { id: "listed-id", label: "Riverbend quarterly" },
-        { id: "second-id", label: "" },
+        { id: "listed-id", label: "Riverbend quarterly", state: "runs-here" },
+        { id: "second-id", label: "", state: "runs-here" },
       ],
     });
 
@@ -409,8 +415,8 @@ describe("a backup reconciles against the exchange it holds", () => {
       importManagedExchangeFile(goodBytes(), deps),
     ).rejects.toMatchObject({
       copies: [
-        { id: "listed-id", label: "Riverbend quarterly" },
-        { id: "second-id", label: "" },
+        { id: "listed-id", label: "Riverbend quarterly", state: "runs-here" },
+        { id: "second-id", label: "", state: "runs-here" },
       ],
     });
     expect(deps.installed).toHaveLength(0);
@@ -428,6 +434,77 @@ describe("a backup reconciles against the exchange it holds", () => {
       besideIds: ["listed-id", "second-id"],
     });
     expect(deps.installed).toHaveLength(1);
+  });
+
+  test("a held record whose saved state does not parse is named as such", async () => {
+    const deps = recordingDeps({
+      kind: "held",
+      label: "Riverbend quarterly",
+      stateUnreadable: true,
+    });
+
+    await expect(
+      importManagedExchange(goodBytes(), deps),
+    ).rejects.toMatchObject({
+      name: "ManagedImportAlreadyHeldError",
+      stateUnreadable: true,
+    });
+    expect(deps.installed).toHaveLength(0);
+  });
+
+  test("a chosen record is replaced in place, installing nothing beside it", async () => {
+    const stored = runnableRecord({
+      label: "Riverbend quarterly",
+      exchangeFile: composeManagedExchangeFile({
+        connection: { channel: "webrtc", host: "signaling.example.org" },
+        linkageTerms,
+      }),
+      side: "inviter",
+      sharedSecret: generateSharedSecret(),
+    });
+    const deps = recordingDeps(
+      { kind: "replace", id: stored.id },
+      { kind: "replaced", record: stored },
+    );
+
+    const { record } = await importManagedExchangeFile(goodBytes(), deps, {
+      into: stored.id,
+    });
+
+    expect(deps.reconcile).toHaveBeenCalledWith(expect.anything(), {
+      into: stored.id,
+    });
+    expect(deps.replace).toHaveBeenCalledWith(
+      stored.id,
+      "2026-07-14T12:00:00.000Z",
+      expect.anything(),
+      "backup",
+    );
+    expect(record).toBe(stored);
+    expect(deps.installed).toHaveLength(0);
+    expect(deps.markImported).not.toHaveBeenCalled();
+  });
+
+  test("a replace a run or a change refuses installs nothing and says which", async () => {
+    for (const reason of ["run-in-flight", "changed"] as const) {
+      const deps = recordingDeps(
+        { kind: "replace", id: "listed-id" },
+        { kind: reason },
+      );
+      await expect(
+        importManagedExchange(goodBytes(), deps, { into: "listed-id" }),
+      ).rejects.toMatchObject({ name: "ManagedImportChosenCopyError", reason });
+      expect(deps.installed).toHaveLength(0);
+    }
+    const gone = recordingDeps({ kind: "chosen-copy-changed" });
+    await expect(
+      importManagedExchange(goodBytes(), gone, { into: "listed-id" }),
+    ).rejects.toMatchObject({
+      name: "ManagedImportChosenCopyError",
+      reason: "changed",
+    });
+    expect(gone.replace).not.toHaveBeenCalled();
+    expect(gone.installed).toHaveLength(0);
   });
 
   test("a configuration on a channel this app does not run installs, reconciling nothing", async () => {

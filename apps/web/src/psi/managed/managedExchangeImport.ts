@@ -15,14 +15,14 @@
  * - A command-line `alcove.yaml` WITH the `.alcove.key` beside it installs a
  *   runnable record ({@link importManagedCommandLinePair}), reconciled against
  *   the store on the backup leg's own rule: the same secret is the same
- *   exchange. Where no secret matches, a configuration-only record with its
- *   agreed terms and side is offered to take the pair instead.
+ *   exchange. Where no secret matches, a stored record with its agreed terms
+ *   and side is offered to take the pair instead.
  *
  * What follows is the backup leg (see docs/MANAGED_EXCHANGE.md, "Eviction
  * recovery is the import flow", and docs/notes/managed-exchange-design.md,
- * "Export/import is migration, not sync"). Restoring after eviction and moving
- * to a new device are the same operation: an import installs the copy that runs
- * here.
+ * "Export/import is migration, not sync"). Restoring after eviction, moving to
+ * a new device, and bringing back an exchange run elsewhere are the same
+ * operation: an import installs or replaces the copy that runs here.
  *
  * The file is untrusted structured input, so the whole parse-and-reconstruct is the
  * artifact module's trust boundary ({@link importManagedExchangeArtifact}: bounded
@@ -35,11 +35,12 @@
  * Import reconciles per exchange before installing fresh, whatever else the store
  * holds (docs/spec/MANAGED_EXCHANGE_RECORD.md, "Reconciling a backup import"). A
  * backup holds one exchange, so the guard is a lookup: a stored record holding the
- * artifact's secret refuses ({@link ManagedImportAlreadyHeldError}), and a stored
- * record with the artifact's agreed terms and side is named and installed beside
- * only on the operator's word ({@link ManagedImportLiveCopyError}). The import
- * installs a fresh record with a new `id` and NO working-folder grant: the
- * operator grants the folder again.
+ * artifact's secret refuses ({@link ManagedImportAlreadyHeldError}), and stored
+ * records with the artifact's agreed terms and side are named
+ * ({@link ManagedImportLiveCopyError}): the import replaces the one the operator
+ * chooses, keeping its `id` and working-folder grant, or installs beside them
+ * all, only on the operator's word. A fresh install holds a new `id` and NO
+ * working-folder grant: the operator grants the folder again.
  *
  * Every import reports whether this browser lacks the source's device-local
  * working folder. The artifact has no field for a File System Access handle, only
@@ -70,6 +71,7 @@ import {
   createManagedExchange,
   reconcileManagedBackupImport,
   reconcileManagedCommandLinePair,
+  replaceManagedExchangeFromImport,
 } from "./managedExchangeStore";
 import {
   markManagedExchangeImported,
@@ -81,9 +83,11 @@ import type {
   ManagedBackupImportOptions,
   ManagedBackupReconcileOutcome,
   ManagedPairReconcileOutcome,
+  ManagedReplaceOutcome,
 } from "./managedExchangeStore";
 import type {
   ManagedExchangeRecord,
+  ManagedImportSource,
   NewManagedExchange,
   RunnableManagedExchangeRecord,
 } from "./managedExchangeRecord";
@@ -102,29 +106,34 @@ import type { ManagedPlatformGrant } from "./managedExchangeArtifact";
 export class ManagedImportAlreadyHeldError extends Error {
   /** The stored record's operator label; empty when the operator named nothing. */
   readonly label: string;
+  /** Whether the stored record's sibling entry does not parse, so its page
+   * cannot load. */
+  readonly stateUnreadable: boolean;
 
-  constructor(label: string) {
+  constructor(label: string, stateUnreadable = false) {
     super(
       "this file's managed exchange already runs in this browser, so importing it is refused",
     );
     this.name = "ManagedImportAlreadyHeldError";
     this.label = label;
+    this.stateUnreadable = stateUnreadable;
   }
 }
 
 /**
  * Raised when a backup import stops to ask: no record holds the artifact's
  * secret, but one or more stored ones have its agreed terms and side, so one may
- * be the same exchange run past the backup. Nothing is written. Holds every
- * such record's `id`, which an import the operator confirms passes back in
- * `besideIds`, and its label (which may be empty) so the surface can name it.
+ * be the same exchange, run here past the backup or run elsewhere since it was
+ * saved here. Nothing is written. Holds every such record's `id`, label
+ * (which may be empty), and whether it runs here: the operator's answer passes
+ * one back as `into` to replace it, or all of them in `besideIds` to install
+ * beside them.
  */
 export class ManagedImportLiveCopyError extends Error {
-  /** The stored records the backup may be an older copy of, each with its
-   * operator label (empty when the operator named nothing). */
-  readonly copies: ReadonlyArray<{ id: string; label: string }>;
+  /** The stored records the backup may be a copy of. */
+  readonly copies: ReadonlyArray<ManagedStoredCopy>;
 
-  constructor(copies: ReadonlyArray<{ id: string; label: string }>) {
+  constructor(copies: ReadonlyArray<ManagedStoredCopy>) {
     super(
       "a managed exchange with this backup's terms and side already runs in this browser, so the import waits for confirmation",
     );
@@ -133,15 +142,62 @@ export class ManagedImportLiveCopyError extends Error {
   }
 }
 
+/** Why the stored record the operator chose could not take an import: a run
+ * of it holds its run lock, or it was deleted or changed since they chose. */
+export type ManagedChosenCopyRefusal = "run-in-flight" | "changed";
+
+/**
+ * Raised when the stored record the operator chose to take an import into can
+ * no longer take it ({@link ManagedChosenCopyRefusal}). Nothing is written.
+ */
+export class ManagedImportChosenCopyError extends Error {
+  /** Why the chosen record could not take the import. */
+  readonly reason: ManagedChosenCopyRefusal;
+
+  constructor(reason: ManagedChosenCopyRefusal) {
+    super(
+      reason === "run-in-flight"
+        ? "the chosen managed exchange is running, so the import was not taken into it"
+        : "the chosen managed exchange changed since it was chosen, so the import was not taken into it",
+    );
+    this.name = "ManagedImportChosenCopyError";
+    this.reason = reason;
+  }
+}
+
+/** Replace the stored record the operator chose with an imported one, marking
+ * it in the same write ({@link replaceManagedExchangeFromImport}). */
+type ManagedReplace = (
+  id: string,
+  at: string,
+  imported: ManagedExchangeRecord,
+  source: ManagedImportSource,
+) => Promise<ManagedReplaceOutcome>;
+
+/** The replaced record, or the refusal a replace that wrote nothing is. */
+async function replacedOrRefuse(
+  replace: ManagedReplace,
+  id: string,
+  at: string,
+  imported: ManagedExchangeRecord,
+  source: ManagedImportSource,
+): Promise<ManagedExchangeRecord> {
+  const replaced = await replace(id, at, imported, source);
+  if (replaced.kind === "replaced") return replaced.record;
+  throw new ManagedImportChosenCopyError(replaced.kind);
+}
+
 /** The platform boundaries the import drives, injected so the flow is testable. */
 export interface ManagedImportDeps {
   /** Reconcile the reconstructed artifact against the store
    * ({@link reconcileManagedBackupImport}): report the outcome that refuses,
-   * asks, or installs fresh. */
+   * asks, replaces, or installs fresh. */
   reconcile: (
     reconstructed: ManagedExchangeRecord,
     options?: ManagedBackupImportOptions,
   ) => Promise<ManagedBackupReconcileOutcome>;
+  /** Replace the stored record the operator chose. */
+  replace: ManagedReplace;
   /** Install a reconstructed record as a new managed exchange. */
   install: (record: ManagedExchangeRecord) => Promise<ManagedExchangeRecord>;
   /** Stamp the installed record's import and backup markers as of `at` -- the
@@ -193,6 +249,7 @@ export function managedInstallFields(
  * the sibling store, and read the wall clock. */
 const defaultDeps: ManagedImportDeps = {
   reconcile: reconcileManagedBackupImport,
+  replace: replaceManagedExchangeFromImport,
   install: async (record) =>
     createManagedExchange(managedInstallFields(record)),
   markImported: markManagedExchangeImported,
@@ -202,7 +259,7 @@ const defaultDeps: ManagedImportDeps = {
 /** What an import leaves the operator with: the record, and the grants they have to
  * take again on this browser before an unattended run can use them. */
 export interface ManagedImportResult {
-  /** The installed or completed record. */
+  /** The installed, completed, or replaced record. */
   record: ManagedExchangeRecord;
   /** The grants the source record held that {@link record} does not, in the order
    * they are presented. Empty when there is nothing to take again. */
@@ -237,10 +294,12 @@ function grantsMissingHere(
  * the artifact module's trust boundary (throwing on a malformed or tampered file
  * before any write), then reconciles it per exchange: refuses a stored record
  * holding its secret; stops to ask where stored records have the artifact's
- * agreed terms and side, unless `options.besideIds` names them all; otherwise
- * installs a fresh record and marks it imported and backed up as of the import
- * instant. Returns the installed record, with the grants it does not hold that
- * its source did.
+ * agreed terms and side, unless `options.into` chooses one to replace or
+ * `options.besideIds` names them all; otherwise installs a fresh record and
+ * marks it imported and backed up as of the import instant. A replace marks the
+ * record in its own write ({@link replaceManagedExchangeFromImport}). Returns
+ * the installed or replaced record, with the grants it does not hold that its
+ * source did.
  *
  * The import mark on a fresh install is best-effort after the install succeeds: a
  * valid record is already durable, so a failed marker write must not report the
@@ -253,9 +312,12 @@ function grantsMissingHere(
  * @throws {ManagedImportAlreadyHeldError} if a stored record holds the artifact's
  *   secret; nothing is written.
  * @throws {ManagedImportLiveCopyError} if a stored record not in `besideIds` has
- *   the artifact's agreed terms and side; nothing is written.
+ *   the artifact's agreed terms and side, and `into` chose none; nothing is
+ *   written.
+ * @throws {ManagedImportChosenCopyError} if the record `into` names can no
+ *   longer take the backup; nothing is written.
  * @throws {ZodError} if the artifact or the reconstructed record is invalid, or the
- *   install itself fails.
+ *   install or replace itself fails.
  */
 export async function importManagedExchange(
   source: string,
@@ -267,9 +329,27 @@ export async function importManagedExchange(
   const at = deps.now().toISOString();
   const reconciled = await deps.reconcile(reconstructed, options);
   if (reconciled.kind === "held")
-    throw new ManagedImportAlreadyHeldError(reconciled.label);
+    throw new ManagedImportAlreadyHeldError(
+      reconciled.label,
+      reconciled.stateUnreadable === true,
+    );
   if (reconciled.kind === "live-copy")
     throw new ManagedImportLiveCopyError(reconciled.copies);
+  if (reconciled.kind === "chosen-copy-changed")
+    throw new ManagedImportChosenCopyError("changed");
+  if (reconciled.kind === "replace") {
+    const replaced = await replacedOrRefuse(
+      deps.replace,
+      reconciled.id,
+      at,
+      reconstructed,
+      "backup",
+    );
+    return {
+      record: replaced,
+      missingGrants: grantsMissingHere(heldGrants, replaced),
+    };
+  }
   const installed = await deps.install(reconstructed);
   try {
     await deps.markImported(installed.id, at);
@@ -361,7 +441,7 @@ export class ManagedImportBackupNotConfigurationError extends Error {
  * @throws {ManagedConfigurationRefusedError} if a configuration fails the
  *   exchange-file schema, or is one this app cannot hold.
  * @throws Every refusal {@link importManagedExchange} raises, on the backup leg;
- *   `options.besideIds` reaches that leg alone.
+ *   `options` reaches that leg alone.
  * @throws {ZodError} if the backup file fails its schema, or the install does.
  */
 export async function importManagedExchangeFile(
@@ -391,14 +471,15 @@ async function installConfiguration(
 
 /**
  * Raised when a pair import stops to ask: no stored record holds the key
- * file's secret, but one or more holding a configuration only have its agreed
- * terms and side, so one may be its exchange. Nothing is written. The
- * operator's answer comes back as `into` (take the pair into one of `copies`)
- * or `besideIds` (install it as a new record beside them).
+ * file's secret, but one or more -- holding a configuration only, or running
+ * here with another secret -- have its agreed terms and side, so one may be its
+ * exchange. Nothing is written. The operator's answer comes back as `into`
+ * (take the pair into one of `copies`) or `besideIds` (install it as a new
+ * record beside them).
  */
 export class ManagedImportStoredCopyError extends Error {
   /** The stored records the pair may belong to, each with its label (empty
-   * when the operator named nothing) and why it can take the pair. */
+   * when the operator named nothing) and what it holds. */
   readonly copies: ReadonlyArray<ManagedStoredCopy>;
 
   constructor(copies: ReadonlyArray<ManagedStoredCopy>) {
@@ -407,20 +488,6 @@ export class ManagedImportStoredCopyError extends Error {
     );
     this.name = "ManagedImportStoredCopyError";
     this.copies = copies;
-  }
-}
-
-/**
- * Raised when the stored record the operator chose to take a pair into can no
- * longer take it: it was deleted or changed since they chose. Nothing is
- * written.
- */
-export class ManagedImportChosenCopyError extends Error {
-  constructor() {
-    super(
-      "the chosen managed exchange changed since it was chosen, so the files were not taken into it",
-    );
-    this.name = "ManagedImportChosenCopyError";
   }
 }
 
@@ -434,6 +501,8 @@ export interface ManagedPairImportDeps {
     at: string,
     options?: ManagedPairImportOptions,
   ) => Promise<ManagedPairReconcileOutcome>;
+  /** Replace the runnable record the operator chose. */
+  replace: ManagedReplace;
   /** Install the pair's record as a new managed exchange. */
   install: (record: ManagedExchangeRecord) => Promise<ManagedExchangeRecord>;
   /** Stamp the installed record's import marker as of `at`, and no backup
@@ -447,6 +516,7 @@ export interface ManagedPairImportDeps {
  * through the sibling store, and read the wall clock. */
 const defaultPairDeps: ManagedPairImportDeps = {
   reconcile: reconcileManagedCommandLinePair,
+  replace: replaceManagedExchangeFromImport,
   install: defaultDeps.install,
   markImported: markManagedExchangeKeyImported,
   now: () => new Date(),
@@ -461,10 +531,11 @@ const defaultPairDeps: ManagedPairImportDeps = {
  *
  * - a stored record holding the same secret refuses
  *   ({@link ManagedImportAlreadyHeldError});
- * - with no match, configuration-only records that have its agreed terms and
- *   side, other than those `options.besideIds` names, stop the import to ask
- *   ({@link ManagedImportStoredCopyError}). `options.into` completes the one
- *   the operator chose in place;
+ * - with no match, stored records that have its agreed terms and side, other
+ *   than those `options.besideIds` names, stop the import to ask
+ *   ({@link ManagedImportStoredCopyError}). `options.into` completes the
+ *   configuration-only record the operator chose in place, or replaces the
+ *   runnable one under its run lock ({@link replaceManagedExchangeFromImport});
  * - otherwise the record installs fresh and its import marker is stamped,
  *   best-effort after the durable install as on the backup leg. No backup
  *   marker is stamped: the pair is not the app's backup file.
@@ -484,7 +555,8 @@ const defaultPairDeps: ManagedPairImportDeps = {
  * @throws {ManagedImportStoredCopyError} if the import stops to ask.
  * @throws {ManagedImportChosenCopyError} if the record `options.into` names
  *   can no longer take the pair.
- * @throws {ZodError} if the record, the completion, or the install is invalid.
+ * @throws {ZodError} if the record, the completion, the replace, or the
+ *   install is invalid.
  */
 export async function importManagedCommandLinePair(
   configurationSource: string,
@@ -510,12 +582,25 @@ export async function importManagedCommandLinePair(
   const at = deps.now().toISOString();
   const reconciled = await deps.reconcile(imported, at, options);
   if (reconciled.kind === "completed") return landed(reconciled.record);
+  if (reconciled.kind === "replace")
+    return landed(
+      await replacedOrRefuse(
+        deps.replace,
+        reconciled.id,
+        at,
+        imported,
+        "command-line",
+      ),
+    );
   if (reconciled.kind === "stored-copy")
     throw new ManagedImportStoredCopyError(reconciled.copies);
   if (reconciled.kind === "chosen-copy-changed")
-    throw new ManagedImportChosenCopyError();
+    throw new ManagedImportChosenCopyError("changed");
   if (reconciled.kind === "held")
-    throw new ManagedImportAlreadyHeldError(reconciled.label);
+    throw new ManagedImportAlreadyHeldError(
+      reconciled.label,
+      reconciled.stateUnreadable === true,
+    );
   const installed = await deps.install(imported);
   try {
     await deps.markImported(installed.id, at);

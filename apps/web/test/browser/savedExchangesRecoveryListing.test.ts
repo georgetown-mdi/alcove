@@ -18,7 +18,12 @@ import {
   listManagedExchanges,
   listManagedExchangesDiagnostic,
   openManagedExchangeDatabase,
+  recordManagedExchangeLastRun,
 } from "@psi/managed/managedExchangeStore";
+import {
+  STATE_UNREADABLE_NOTE,
+  UNREADABLE_RECORD_LABEL,
+} from "@recurring/savedExchangesRecovery";
 import {
   composeManagedExchangeFile,
   runnableManagedExchangeOrRefuse,
@@ -32,7 +37,7 @@ import {
   markManagedExchangeBackedUp,
 } from "@psi/managed/managedLocalState";
 import { SavedExchanges } from "@recurring/SavedExchanges";
-import { UNREADABLE_RECORD_LABEL } from "@recurring/savedExchangesRecovery";
+import { dateLabel } from "@psi/formatting";
 
 import { createAppMount } from "./renderApp";
 
@@ -285,29 +290,72 @@ describe("recovery listing: the delete confirm's custody notes", () => {
     ).toBeNull();
   });
 
-  test("an unparseable sibling entry -> an unreadable row whose custody note shows (conservative on doubt)", async () => {
+  test("an unparseable sibling entry -> the row names the exchange and its unreadable state, and the confirm says the accounting goes unread", async () => {
     // No bad record here: a corrupted sibling entry alone fails the strict local-state
     // read, which routes the surface to read-failed on its own. The diagnostic read
-    // then lists that record as unreadable, backed up on doubt, so its delete
-    // confirm includes the custody note.
+    // then lists that record's essentials with its state unreadable, backed up on
+    // doubt, so its delete confirm includes the custody note.
     const good = await createRunnableExchange(
       newExchange({ label: "Doubtful partnership" }),
+    );
+    await recordManagedExchangeLastRun(
+      good.id,
+      { at: "2026-07-10T09:00:00.000Z", outcome: "succeeded" },
+      Date.parse("2026-07-10T09:00:00.000Z"),
     );
     await rawLocalPut(good.id, { backup: { backedUpAt: "not-an-instant" } });
     await expect(listManagedLocalState()).rejects.toThrow();
 
     app.render(createElement(SavedExchanges));
     await expect
-      .element(page.getByText(UNREADABLE_RECORD_LABEL))
+      .element(page.getByText("Doubtful partnership"))
       .toBeInTheDocument();
-    expect(page.getByText("Doubtful partnership").query()).toBeNull();
+    await expect
+      .element(page.getByText(STATE_UNREADABLE_NOTE, { exact: false }))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByText("You sent the invitation", { exact: false }))
+      .toBeInTheDocument();
+    await expect
+      .element(
+        page.getByText(dateLabel(new Date("2026-07-10T09:00:00.000Z")), {
+          exact: false,
+        }),
+      )
+      .toBeInTheDocument();
+    expect(page.getByText(UNREADABLE_RECORD_LABEL).query()).toBeNull();
+
+    await page.getByRole("button", { name: "Remove" }).first().click();
+    const dialog = page.getByRole("dialog");
+    await expect
+      .element(
+        dialog.getByText(
+          "its accounting of disclosures cannot be read or exported, and is removed with the exchange",
+          { exact: false },
+        ),
+      )
+      .toBeInTheDocument();
+    expect(
+      dialog.getByText("export the accounting first", { exact: false }).query(),
+    ).toBeNull();
+    await expect
+      .element(
+        dialog.getByText("A backup file you exported stays in your custody", {
+          exact: false,
+        }),
+      )
+      .toBeInTheDocument();
+  });
+
+  test("a readable row's confirm still offers exporting the accounting first", async () => {
+    await mountReadFailedWith("Readable partnership");
 
     await page.getByRole("button", { name: "Remove" }).first().click();
     await expect
       .element(
-        page.getByText("A backup file you exported stays in your custody", {
-          exact: false,
-        }),
+        page
+          .getByRole("dialog")
+          .getByText("export the accounting first", { exact: false }),
       )
       .toBeInTheDocument();
   });
