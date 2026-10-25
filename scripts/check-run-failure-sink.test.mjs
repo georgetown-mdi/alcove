@@ -49,7 +49,7 @@ const MANAGED_RUN_RECOVERY_FILE =
 /** The same regression on the recurring seat's own failure type: an alert
  * inlining both pieces in spans of its own. */
 const INLINE_MANAGED_FAILURE = `
-export function Alerted({ failure }: { failure: ManagedRunFailureAlert }) {
+export function Alerted({ failure }: { failure: ManagedRunFailure }) {
   return (
     <Alert title={failure.title}>
       <span style={{ whiteSpace: "pre-line" }}>{failure.message}</span>
@@ -165,7 +165,7 @@ describe("failure display-sink check", () => {
   });
 
   it("holds the recurring seat's surface, whose type is its own", () => {
-    // The seat that runs unattended classifies into ManagedRunFailureAlert and
+    // The seat that runs unattended classifies into ManagedRunFailure and
     // renders it through the shared body, so its bindings are found and none of
     // its renders sits outside a sink. The binding assertion is the vacuity
     // guard on the render one: an unfound binding reports no render either.
