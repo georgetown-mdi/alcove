@@ -35,6 +35,8 @@ before proceeding -- its Session lifecycle section defines this state.
    what it waits on. A branch that cannot reach its conclusion without the
    owner -- a step-back trigger, a failure nobody can diagnose -- is parked as
    a Decision item and reported as waiting on that ruling; anything else
-   unfinished is finished first, not reported. Then hold. Start neither the
-   docket nor the filing pass nor a close-out; the owner's next command picks
-   the state.
+   unfinished is finished first, not reported. Say the session is ready for
+   the docket, with your recommendation for what comes next, then hold.
+   Start neither the docket nor the filing pass, and do not ask for them: the
+   owner merges the PRs first, then fires the docket, and his next command
+   picks the state.

@@ -113,7 +113,7 @@ candidate:
 Delivered by: #N (YYYY-MM-DD)
 ```
 
-The session's close-out board pass (`/follow-ups`) writes the line, through `.claude/scripts/edit-issue.mjs`, for each PR merged in its window; the PR's Implements line names the item. A staged item lists each PR, oldest first, as `Delivered by: #N, #M (YYYY-MM-DD)`, dated by the last, and gains the line only when its last stage merges; a partial delivery stays in the item's progress notes. The stages are the item body's numbered split, or the PRs' "Part of" lines in merge order, the last one dating the line. It is a template line, not an enforced rule.
+The session's follow-ups pass (`/follow-ups`) writes the line, through `.claude/scripts/edit-issue.mjs`, for each PR merged in its window; the PR's Implements line names the item. A staged item lists each PR, oldest first, as `Delivered by: #N, #M (YYYY-MM-DD)`, dated by the last, and gains the line only when its last stage merges; a partial delivery stays in the item's progress notes. The stages are the item body's numbered split, or the PRs' "Part of" lines in merge order, the last one dating the line. It is a template line, not an enforced rule.
 
 Work a host session delivers has no PR to cite. When a host run's result file shows every acceptance criterion met, the line names that file, dated by the run, and the same pass writes it:
 
@@ -301,10 +301,13 @@ explicitly asked.
 
 The docket (`/docket`) is the only channel for rulings, one decision per
 message; a session that needs a ruling mid-work files the Decision item and
-presents it the same way. The ruling is recorded verbatim on the item in the
-same turn it is given: it replaces the pending-decision line -- e.g. "do not
-start until the owner rules" -- with "Ruled <date>; see Ruling." and moves the
-item out of Decision status into whatever status the ruling calls for.
+presents it the same way. The ruling is recorded verbatim in the session's own
+record in the turn it is given, and reaches its item in the session's
+follow-ups pass (`.claude/commands/follow-ups.md`), which writes every
+ruling's text and its consequences to the board in one pass. On the item it
+replaces the pending-decision line -- e.g. "do not start until the owner
+rules" -- with "Ruled <date>; see Ruling." and moves the item out of Decision
+status into whatever status the ruling calls for.
 
 All project-item reads and edits go through the scripts under `.claude/scripts/`;
 only `gh project item-create` is called directly. If `gh` is not installed or not
