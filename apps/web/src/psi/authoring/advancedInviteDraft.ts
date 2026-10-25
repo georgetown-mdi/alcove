@@ -427,27 +427,6 @@ export function draftWithBuiltInKeys(
   };
 }
 
-/**
- * Whether `draft` lists a key {@link draftWithBuiltInKeys} would not put back:
- * one added or changed in the expert editor, one loaded from a document that
- * differs from the built-in keys, or a built-in key the columns do not supply.
- * Matched by the canonical encoding, as {@link reconcileKeys} matches, so
- * neither the order nor a key turned off counts.
- */
-export function draftHasKeyBuiltInRulesWouldNotRestore(
-  draft: AdvancedInviteDraft,
-): boolean {
-  const restored = new Set(
-    newInvitationKeys(draft.identity, draft.metadata).map((entry) =>
-      encodeKeyForComparison(entry.key),
-    ),
-  );
-  return draft.keys.some((entry) => {
-    const encoded = encodeKeyForComparison(entry.key);
-    return encoded === null || !restored.has(encoded);
-  });
-}
-
 /** Whether every key `draft` lists is one the built-in catalog declares,
  * whatever its order: true of a guided list, reordered or not, and false once
  * a key was added or changed in the expert editor. */

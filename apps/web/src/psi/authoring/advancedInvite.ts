@@ -40,7 +40,6 @@ export {
   dateInputFormatsForColumns,
   defaultStandardizationForRows,
   draftFromTerms,
-  draftHasKeyBuiltInRulesWouldNotRestore,
   draftHasOfferedKeys,
   draftKeysAreBuiltIn,
   draftOffersBuiltInKeys,

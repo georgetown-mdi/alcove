@@ -34,7 +34,7 @@ import {
 import {
   addElement,
   addKey,
-  draftHasKeyBuiltInRulesWouldNotRestore,
+  draftKeysAreBuiltIn,
   moveElement,
   removeAllKeys,
   removeElement,
@@ -134,9 +134,8 @@ function elementIdentifier(element: LinkageKeyElement): string {
  * two-of-N swap over its own element identifiers, and an optional field it
  * matches only where one side is missing ({@link keyConditionOptions}). Keys
  * and elements add, remove, and reorder with keyboard-operable controls, and
- * one control removes every key, asking first where the list holds a key the
- * built-in rules would not put back
- * ({@link draftHasKeyBuiltInRulesWouldNotRestore}).
+ * one control removes every key, asking first where the list holds a key that
+ * is not a built-in key ({@link draftKeysAreBuiltIn}).
  *
  * Presentational over the draft: it computes the next draft with the pure helpers
  * in {@link advancedInvite} and emits it through {@link onChange}; the host owns
@@ -213,8 +212,8 @@ export function ExpertKeyEditor({
       return next;
     });
   const reduceMotion = useReducedMotion();
-  const listsKeyBuiltInRulesWouldNotRestore = useMemo(
-    () => draftHasKeyBuiltInRulesWouldNotRestore(draft),
+  const listsOnlyBuiltInKeys = useMemo(
+    () => draftKeysAreBuiltIn(draft),
     [draft],
   );
 
@@ -708,7 +707,7 @@ export function ExpertKeyEditor({
           variant="danger"
           leftSection={<IconTrash size={16} aria-hidden />}
           disabled={draft.keys.length === 0}
-          asksFirst={listsKeyBuiltInRulesWouldNotRestore}
+          asksFirst={!listsOnlyBuiltInKeys}
           statement={REMOVE_ALL_KEYS_STATEMENT}
           onConfirm={() => {
             onChange(removeAllKeys(draft));
