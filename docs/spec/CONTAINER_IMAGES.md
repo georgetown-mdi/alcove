@@ -319,9 +319,9 @@ architecture and fails on the other -- and it was resolved on 2026-10-25 (UTC)
 with `docker buildx imagetools inspect public.ecr.aws/amazonlinux/amazonlinux:2023`,
 the digest ECR Public's `2023.12.20261026.1` tag also names. `2023.12.20261026`
 is the release `AL2023_RELEASEVER` names, so the base and the packages are the
-same snapshot rather than two compatible ones. The `system-release` version the
-rootfs at that digest reports has not been read by hand on either architecture;
-the build's assertion below compares it on each architecture a build runs.
+same snapshot rather than two compatible ones. The built image's
+`system-release` package reads `2023.12.20261026` on `amd64` and `arm64` alike,
+read on 2026-10-25 in native builds of each architecture.
 
 The digest names Amazon's own registry, ECR Public, rather than Docker Hub's
 `amazonlinux:2023`. The two registries publish the same releases under
@@ -374,9 +374,10 @@ Ed25519, and that Node's key generation for them throws
 (`process.versions.openssl`) and the image's own `openssl` library and command
 are 3.5.8, two components that are both right for what each names. The
 `x86_64` build was not measured. That build ran Node v26.7.0. The v26.12.1
-the image pins links OpenSSL 3.5.9 (nodejs.org release index); the linked and
-library versions have not been read in a build at the pins above, and the
-X25519 and Ed25519 reading has not been re-taken on that build.
+the image pins reports linked OpenSSL 3.5.9 (`process.versions.openssl`) beside
+an `openssl` library of 3.5.8, read on 2026-10-25 in `linux/amd64` and
+`linux/arm64` builds at the pins above. The X25519 and Ed25519 reading has not
+been re-taken on that build.
 
 ## What certificate 5438 attests
 
@@ -689,7 +690,7 @@ difference in either direction.
 | `Dockerfile` | empty -- no setuid or setgid file |
 | `Dockerfile.fips` | empty -- no setuid or setgid file |
 
-For the FIPS variant the inventory was also measured on 2026-10-19, on
+For the FIPS variant the inventory was also measured on 2026-10-25, on native
 `linux/amd64` and `linux/arm64` builds without a layer cache, with
 `find / -xdev -type f \( -perm -2000 -o -perm -4000 \)` run as root: both
 results were empty.
@@ -794,14 +795,13 @@ closure their helper scripts were written against.
 > results for setuid and setgid files, the PAM helper list, the per-component
 > sizes) was measured on an earlier image build. The 2026-09-29 documentation
 > audit had no Docker and could not reach the image registries, so none of it was
-> re-run; a figure here may be out of date. The FIPS variant's package count,
-> GPL-3.0/LGPL-3.0 count, image size, comparison between architectures and
-> setuid and setgid inventory were measured on 2026-10-19 (UTC) at the
-> 2023.12.20261016 base, on `linux/amd64` (emulated on Docker Desktop on an Apple
-> Silicon Mac) and `linux/arm64` builds without a layer cache. Its attribution
-> list was regenerated on 2026-10-25 from the `linux/amd64` package query
-> `image_smoke.yaml` took of a build at the base pinned above, and states no
-> comparison between architectures.
+> re-run; a figure here may be out of date. The FIPS variant's attribution
+> list, package count, GPL-3.0/LGPL-3.0 count, comparison between architectures
+> and setuid and setgid inventory were measured on 2026-10-25 (UTC) at the base
+> pinned above, on native `linux/amd64` and `linux/arm64` builds without a layer
+> cache on GitHub-hosted runners, and its `aarch64` image size on that
+> `linux/arm64` build. Its `x86_64` image size was measured on 2026-10-19 at the
+> 2023.12.20261016 base.
 
 ### The OS-layer attribution lists
 
@@ -855,7 +855,7 @@ tag.
   architectures of an image disagree on.
 
 **What was measured.** Both images built without a layer cache at both
-architectures, the FIPS variant on 2026-10-19 and the default image on
+architectures, the FIPS variant on 2026-10-25 and the default image on
 2026-09-24. A first attempt with a warm cache reported an architecture
 difference that was a stale layer rather than a property of the image, so a
 re-measurement builds with `--no-cache` or it measures the cache.
@@ -1019,10 +1019,15 @@ holds a GPL-3.0 or LGPL-3.0 term. Five of the 170 -- `libselinux-utils`,
 `openssl` install resolves at snapshot `2023.12.20261026`; none holds a v3 term,
 and none adds a setuid or setgid file.
 
-The image weighs 658,068,804 bytes (658 MB) on `x86_64` and 811,627,447 bytes
-(812 MB) on `aarch64`, as `docker image inspect --format '{{.Size}}'` reports
-it, measured on 2026-10-19 on builds without a layer cache (`x86_64` emulated
-on Docker Desktop on an Apple Silicon Mac, `aarch64` native).
+The image weighs 812,060,852 bytes (812 MB) on `aarch64`, as
+`docker image inspect --format '{{.Size}}'` reports it, measured on 2026-10-25
+on a native build without a layer cache at the pins above. On `x86_64` it
+weighed 658,068,804 bytes (658 MB) at the 2023.12.20261016 base, measured on
+2026-10-19 on a build without a layer cache emulated on Docker Desktop on an
+Apple Silicon Mac. The `x86_64` figure was not re-taken at the pins above: the
+runner that built that architecture used Docker's containerd image store, whose
+`{{.Size}}` reading of 218,770,862 bytes is not the quantity the figures here
+record.
 
 The table below is the older one-off reference build `Dockerfile.fips` was
 derived from, measured on `aarch64` against the Alpine image built the same day.
