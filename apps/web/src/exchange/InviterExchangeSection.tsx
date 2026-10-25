@@ -322,15 +322,14 @@ export function InviterExchangeSection({
                   "invitation and send it to your partner."}
             </p>
           )}
-          {failure.coordinationServerUnreachable === true &&
-            !isConsoleBuild() && (
-              <p>
-                <Anchor href="/relay" target="_blank" rel="noreferrer">
-                  Open relay settings
-                  <VisuallyHidden> (opens in a new tab)</VisuallyHidden>
-                </Anchor>
-              </p>
-            )}
+          {failure.coordinationServerUnreachable === true && (
+            <p>
+              <Anchor href="/relay" target="_blank" rel="noreferrer">
+                Open relay settings
+                <VisuallyHidden> (opens in a new tab)</VisuallyHidden>
+              </Anchor>
+            </p>
+          )}
           {retryable && (
             <FailureRecoveryButton
               label={
