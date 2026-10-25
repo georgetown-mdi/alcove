@@ -1401,10 +1401,16 @@ export function InvitationTerms({
           )}
           {/* Outside the collapse as well: what a match through a key with a
               missing-field condition discloses, once per condition. Keyed by
-              index: the conditions are fixed for a given terms document. */}
-          {summary.conditionLines.map((line, index) => (
-            <MissingFieldConditionBlock key={index} line={line} />
-          ))}
+              index: the conditions are fixed for a given terms document. The
+              gap between blocks is wider than the one inside a block, so two
+              blocks do not run together as one list. */}
+          {summary.conditionLines.length > 0 && (
+            <Stack gap="sm">
+              {summary.conditionLines.map((line, index) => (
+                <MissingFieldConditionBlock key={index} line={line} />
+              ))}
+            </Stack>
+          )}
           {/* A labelled list of per-key disclosures. role=list/listitem (not
               Mantine List.Item, whose inline span body cannot hold the disclosure's
               flow content) so AT announces the set; keyed by each key's stable id
