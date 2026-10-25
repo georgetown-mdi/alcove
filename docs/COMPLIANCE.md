@@ -223,7 +223,7 @@ For HIPAA-regulated deployments:
   - The retention/disposition pointer is not itself a 164.528 accounting element; it is a local convenience recording where the result was filed and under what schedule, so an operator can locate and evidence the disposition during an audit without a separate lookup.
   - Whether a given disclosure is accountable, and the retention and production of the accounting, remain the agency's responsibility.
 
-No sample HIPAA conduit-exception determination memo is available yet; a deploying agency should have its own counsel prepare that determination.
+No sample HIPAA conduit-exception determination memo is available; a deploying agency should have its own counsel prepare that determination. [SERVICE_FACT_SHEET.md](SERVICE_FACT_SHEET.md) gives that counsel one page of facts about each service the project runs: what it receives, stores, and keeps, where it runs, and who operates it.
 
 ### FERPA considerations
 

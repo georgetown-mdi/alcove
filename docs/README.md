@@ -56,6 +56,7 @@ The documentation is organized in three tiers: this **overview** tier (`docs/`) 
 - [SECURITY_DESIGN.md](SECURITY_DESIGN.md) - for a security reviewer: the privacy guarantee of private set intersection, the threat model, authentication, channel security, and key rotation
 - [SHARED_RESPONSIBILITY.md](SHARED_RESPONSIBILITY.md) - for a security reviewer or agency IT lead filling in a security questionnaire: what the project is responsible for and what the deploying agency is, per deployment
 - [COMPLIANCE.md](COMPLIANCE.md) - for a compliance officer or agency reviewer: regulatory framings, data classification, and what to check
+- [SERVICE_FACT_SHEET.md](SERVICE_FACT_SHEET.md) - for an agency's counsel: one page of facts about each service the project runs for the hosted web application
 - [COMMUNICATION.md](COMMUNICATION.md) - for a reviewer or contributor who needs to know how an exchange proceeds: the channels, how the two sides stay in step, the web invitation and consent screens, message delivery, error handling, and the supporting services
 - [INCIDENT_RESPONSE.md](INCIDENT_RESPONSE.md) - for the maintainer handling a reported vulnerability, behind [SECURITY.md](../SECURITY.md): triage and severity, the private fix and release, the advisory, reporter communication, and the tabletop exercise record
 - [RELEASES.md](RELEASES.md) - for the maintainer cutting a release: versioning policy, the release checklist, and publishing the artifacts

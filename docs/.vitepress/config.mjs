@@ -221,6 +221,7 @@ export default {
           page("Security design", "docs/SECURITY_DESIGN.md"),
           page("Shared responsibility", "docs/SHARED_RESPONSIBILITY.md"),
           page("Compliance", "docs/COMPLIANCE.md"),
+          page("Service fact sheet", "docs/SERVICE_FACT_SHEET.md"),
           page("Privacy", "PRIVACY.md"),
           page("How an exchange communicates", "docs/COMMUNICATION.md"),
           page("Technical specifications", "docs/spec/README.md"),
