@@ -655,17 +655,15 @@ const PARTIAL_ROTATION_FAILURE: ManagedRunFailure = {
 };
 
 /** The Tier-1 restore/import state: this exchange was restored from a backup or
- * key file, or taken back from the command line, and has not successfully run
- * since, so it may be one the partnership has already moved past. Plain,
+ * key file and has not successfully run since, so it may be one the partnership
+ * has already moved past. Plain,
  * specific copy naming re-invite -- no attack checklist. */
 const IMPORTED_FAILURE: ManagedRunFailure = {
   kind: "imported",
-  title:
-    "This exchange was restored from a backup or key file, or taken back " +
-    "from the command line",
+  title: "This exchange was restored from a backup or key file",
   message:
-    "This exchange was restored from a backup or key file, or taken back " +
-    "from the command line, and no run has succeeded since, so it may be " +
+    "This exchange was restored from a backup or key file, and no run has " +
+    "succeeded since, so it may be " +
     "one you and your partner have already moved past. Re-invite your " +
     "partner to reconnect; the exchange keeps your terms, gets a new secret, " +
     "and uses the coordination server the new invitation names.",

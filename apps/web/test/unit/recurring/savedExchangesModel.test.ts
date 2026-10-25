@@ -458,8 +458,7 @@ describe("savedExchangeRow: a standing condition", () => {
       NOW,
     );
     expect(row.status).toBe(
-      "Restored from a backup or key file, or taken back from the command " +
-        "line; re-invite to reconnect",
+      "Restored from a backup or key file; re-invite to reconnect",
     );
   });
 });
