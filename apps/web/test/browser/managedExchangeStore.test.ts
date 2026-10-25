@@ -20,7 +20,6 @@ import {
   listManagedExchanges,
   listManagedExchangesDiagnostic,
   listReadableManagedExchanges,
-  markManagedExchangeRotationInFlight,
   openManagedExchangeDatabase,
   persistManagedExchangeReinvite,
   persistManagedExchangeRotation,
@@ -614,8 +613,8 @@ describe("field-scoped rotation write", () => {
 describe("the secret writes compare the secret they replace", () => {
   // A run's rotation and a re-invite each name the secret their operation began
   // from, and the write refuses where the record read inside its transaction
-  // holds another. Whichever lands second refuses, so the record holds the
-  // secret of the one that landed first and nothing of the other.
+  // holds another. Both take the run lock, so this is a safety check: were
+  // both to land, the second refuses and the record holds the first's secret.
   const reinviteRotation = (sharedSecret: string) => ({
     sharedSecret,
     expires: null,
@@ -660,26 +659,6 @@ describe("the secret writes compare the secret they replace", () => {
     ).rejects.toBeInstanceOf(ManagedExchangeSecretChangedError);
     expect(await getManagedExchange(created.id)).toEqual(before);
     expect(before?.sharedSecret).toBe(rotated);
-  });
-
-  test("the rotation-in-flight marker over a changed secret refuses and writes nothing", async () => {
-    const created = await createRunnableExchange(newExchange());
-    await persistManagedExchangeReinvite(
-      created.id,
-      created.sharedSecret,
-      reinviteRotation(generateSharedSecret()),
-    );
-    const before = await getManagedExchange(created.id);
-
-    await expect(
-      markManagedExchangeRotationInFlight(
-        created.id,
-        created.sharedSecret,
-        new Date().toISOString(),
-      ),
-    ).rejects.toBeInstanceOf(ManagedExchangeSecretChangedError);
-    expect(await getManagedExchange(created.id)).toEqual(before);
-    expect(before).not.toHaveProperty("rotationInFlightSince");
   });
 });
 

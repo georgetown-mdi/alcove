@@ -47,9 +47,9 @@ import { DEFAULT_RELAY_OFF_REMEDY } from "@psi/transport/defaultRelaySwitch";
 import { ManagedExchangeExpiredError } from "@psi/managed/managedExpiry";
 import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
 import { ManagedExchangeNotRunnableError } from "@psi/managed/managedExchangeRun";
-import { ManagedExchangeSecretChangedError } from "@psi/managed/managedExchangeStore";
 import { ManagedInputError } from "@psi/managed/managedInputGuard";
 import { ManagedRelayRegistrationError } from "@psi/managed/managedRelayRegistration";
+import { ManagedRunStoppedError } from "@psi/managed/managedWindowRuns";
 import { ManagedSignalingEndpointRefusedError } from "@psi/managed/managedRendezvous";
 import { PartnerNoShowError } from "@psi/transport/waitForConnection";
 
@@ -569,27 +569,19 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
     );
     expect(failure.kind).toBe("already-running");
     expect(failure.recovery).toBe("wait");
-    // Only a run holds the lock this refusal reads, so the copy names the
-    // runs that can hold it and says the refusal clears when that run ends.
-    expect(failure.message).toMatch(/scheduled run of this exchange/);
-    expect(failure.message).toMatch(/another window or tab on this device/);
-    expect(failure.message).toMatch(/once that run ends/);
   });
 
-  test("a run whose secret a re-invite replaced before the data exchange states the new invitation", () => {
+  test("a run this window stopped while it waited is the benign stopped state", () => {
     const failure = classifyAgainstOneRecord(
-      new ManagedExchangeSecretChangedError("id"),
+      new ManagedRunStoppedError("id"),
       record(),
       undefined,
       NOW,
       false,
     );
-    expect(failure.kind).toBe("reinvited");
+    expect(failure.kind).toBe("stopped");
+    expect(failure.title).toBe("This run was stopped");
     expect(failure.recovery).toBe("none");
-    expect(failure.title).toMatch(/new invitation/i);
-    expect(failure.message).toMatch(/before any data was exchanged/);
-    expect(failure.message).toMatch(/once your partner has accepted it/);
-    expect(managedRunRetryable(failure)).toBe(false);
   });
 
   test("a partner who never arrived is the benign no-show state, not the transport copy", () => {
@@ -1558,7 +1550,7 @@ describe("the launch error a classified state shows", () => {
     "partner-refused-set": "withheld",
     "terms-change": "withheld",
     "already-running": "withheld",
-    reinvited: "withheld",
+    stopped: "withheld",
     missed: "withheld",
     storage: "withheld",
     "partial-rotation": "withheld",
@@ -1627,7 +1619,6 @@ describe("the launch error a classified state shows", () => {
       ],
       [new PartnerNoShowError(WITHHELD_TEXT), record()],
       [new ManagedExchangeLockUnavailableError(WITHHELD_TEXT), record()],
-      [new ManagedExchangeSecretChangedError(WITHHELD_TEXT), record()],
       [new Error(WITHHELD_TEXT), record({ lastRun: failed("storage") })],
       [new Error(WITHHELD_TEXT), record({ lastRun: failed("auth") })],
     ];

@@ -1,3 +1,4 @@
+import { ManagedExchangeSecretChangedError } from "@psi/managed/managedExchangeStore";
 import { ManagedTermsProposalNotStoredError } from "@psi/managed/managedTermsProposal";
 import { matchingKeyTurnedOffNotice } from "@psi/matchingKeyModel";
 
@@ -68,10 +69,17 @@ export function termsProposalText(
 
 /**
  * What the panel says when applying or declining a kept proposal did not
- * complete: the change shown is not the stored one, or the write
+ * complete: the change shown is not the stored one, a run or a fresh
+ * invitation replaced the shared secret while it was applied, or the write
  * failed.
  */
 export function termsProposalFailureText(error: unknown): string {
+  if (error instanceof ManagedExchangeSecretChangedError)
+    return (
+      "This exchange ran, or a fresh invitation was made, while the change " +
+      "was being applied, so the exchange was not changed. Reload the page " +
+      "to see what is waiting."
+    );
   if (error instanceof ManagedTermsProposalNotStoredError)
     return (
       "This change was already applied, declined, or replaced by a newer " +

@@ -5,13 +5,16 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { generateSharedSecret, getDefaultLinkageTerms } from "@alcove/core";
 
 import {
+  ManagedExchangeLockUnavailableError,
+  awaitManagedExchangeLockTurn,
+} from "@psi/managed/managedExchangeLock";
+import {
   clearManagedExchanges,
   createManagedExchange,
   getManagedExchange,
   listReadableManagedExchanges,
   persistManagedExchangeScheduleAdvance,
 } from "@psi/managed/managedExchangeStore";
-import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 import { listReadableManagedLocalState } from "@psi/managed/managedLocalState";
 import { runManagedRerun } from "@psi/managed/managedRun";
@@ -90,6 +93,7 @@ function scheduleTickSeams(attempt: {
     now: Date.now,
     listRecords: listReadableManagedExchanges,
     readRecord: getManagedExchange,
+    awaitLockTurn: awaitManagedExchangeLockTurn,
     listLocalState: listReadableManagedLocalState,
     persistAdvance: persistManagedExchangeScheduleAdvance,
     delay: () => Promise.resolve(),

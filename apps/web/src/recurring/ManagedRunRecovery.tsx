@@ -20,9 +20,14 @@ import { CopyRow } from "@exchange/RunSurface";
 import styles from "@styles/app.module.css";
 
 import {
+  REINVITE_HELD_BY_RUN_TEXT,
+  STOP_RUN_AND_REINVITE_LABEL,
+} from "./managedRunHolder";
+import {
   managedReinviteRecoveryCopy,
   managedRunReinvites,
 } from "./managedRunLaunchModel";
+import { ManagedRunHolderNote } from "./ManagedRunHolderNote";
 import { STANDING_CONDITION_CLEAR_LABEL } from "./managedStandingConditionModel";
 
 import type { Ref } from "react";
@@ -31,6 +36,7 @@ import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 import type { ManagedReinvite } from "@psi/managed/managedReinvite";
 import type { ManagedReinviteFailureAlert } from "./managedRunRecoveryModel";
 import type { ManagedRunFailure } from "./managedRunLaunchModel";
+import type { ManagedRunHolder } from "./managedRunHolder";
 import type { ManagedStandingConditionView } from "./managedStandingConditionModel";
 import type { routeConfirmationReply } from "@psi/managed/managedFailureConfirmation";
 
@@ -39,8 +45,11 @@ interface FailureRecoveryProps {
   record: ManagedExchangeRecord;
   confirmationGated: boolean;
   reinviting: boolean;
+  runInFlight: boolean;
+  runHolder: ManagedRunHolder | undefined;
   reinviteFailure: ManagedReinviteFailureAlert | undefined;
   onReinvite: () => void;
+  onStopRunAndReinvite: () => void;
   onResolveConfirmation: (
     outcome: Parameters<typeof routeConfirmationReply>[0],
   ) => void;
@@ -59,8 +68,11 @@ export function FailureRecovery({
   record,
   confirmationGated,
   reinviting,
+  runInFlight,
+  runHolder,
   reinviteFailure,
   onReinvite,
+  onStopRunAndReinvite,
   onResolveConfirmation,
 }: FailureRecoveryProps) {
   if (failure.recovery === "confirm") {
@@ -72,8 +84,11 @@ export function FailureRecovery({
         <ReinviteRecovery
           record={record}
           reinviting={reinviting}
+          runInFlight={runInFlight}
+          runHolder={runHolder}
           reinviteFailure={reinviteFailure}
           onReinvite={onReinvite}
+          onStopRunAndReinvite={onStopRunAndReinvite}
         />
       );
     return (
@@ -90,8 +105,11 @@ export function FailureRecovery({
       <ReinviteRecovery
         record={record}
         reinviting={reinviting}
+        runInFlight={runInFlight}
+        runHolder={runHolder}
         reinviteFailure={reinviteFailure}
         onReinvite={onReinvite}
+        onStopRunAndReinvite={onStopRunAndReinvite}
       />
     );
 
@@ -180,12 +198,15 @@ interface StandingConditionSectionProps {
   clearing: boolean;
   clearFailed: boolean;
   reinviting: boolean;
+  runInFlight: boolean;
+  runHolder: ManagedRunHolder | undefined;
   reinviteFailure: ManagedReinviteFailureAlert | undefined;
   /** Whether the live failure above holds the re-invite: it offers the mint itself,
    * or it holds the gate deciding whether one happens. Either way this section shows
    * its status and its clearance and no control of its own. */
   reinviteHeldByFailure: boolean;
   onReinvite: () => void;
+  onStopRunAndReinvite: () => void;
   onClear: () => void;
   onResolve: (outcome: Parameters<typeof routeConfirmationReply>[0]) => void;
 }
@@ -218,9 +239,12 @@ export function StandingConditionSection({
   clearing,
   clearFailed,
   reinviting,
+  runInFlight,
+  runHolder,
   reinviteFailure,
   reinviteHeldByFailure,
   onReinvite,
+  onStopRunAndReinvite,
   onClear,
   onResolve,
 }: StandingConditionSectionProps) {
@@ -231,8 +255,11 @@ export function StandingConditionSection({
       <ReinviteRecovery
         record={record}
         reinviting={reinviting}
+        runInFlight={runInFlight}
+        runHolder={runHolder}
         reinviteFailure={reinviteFailure}
         onReinvite={onReinvite}
+        onStopRunAndReinvite={onStopRunAndReinvite}
       />
     ) : null;
   if (view === undefined) return null;
@@ -262,8 +289,11 @@ export function StandingConditionSection({
             <ReinviteRecovery
               record={record}
               reinviting={reinviting}
+              runInFlight={runInFlight}
+              runHolder={runHolder}
               reinviteFailure={reinviteFailure}
               onReinvite={onReinvite}
+              onStopRunAndReinvite={onStopRunAndReinvite}
             />
           )}
           {clearFailure}
@@ -284,8 +314,17 @@ export function StandingConditionSection({
 interface ReinviteRecoveryProps {
   record: ManagedExchangeRecord;
   reinviting: boolean;
+  /** Whether a run of this exchange is under way anywhere this browser profile
+   * can see. The mint replaces the secret that run is connecting on, so the
+   * control waits it out. */
+  runInFlight: boolean;
+  /** Where the run holding the lock runs, by that same reading or the mint's own
+   * refusal on the lock. It picks the reason shown, and offers the stop while
+   * the run is this window's and still waits for its partner. */
+  runHolder: ManagedRunHolder | undefined;
   reinviteFailure: ManagedReinviteFailureAlert | undefined;
   onReinvite: () => void;
+  onStopRunAndReinvite: () => void;
 }
 
 /** The re-invite recovery for a re-invite tier (lapsed, storage, imported). The
@@ -298,8 +337,11 @@ interface ReinviteRecoveryProps {
 function ReinviteRecovery({
   record,
   reinviting,
+  runInFlight,
+  runHolder,
   reinviteFailure,
   onReinvite,
+  onStopRunAndReinvite,
 }: ReinviteRecoveryProps) {
   const copy = managedReinviteRecoveryCopy(record);
   return (
@@ -322,9 +364,21 @@ function ReinviteRecovery({
               {reinviteFailure.message}
             </Alert>
           )}
-          <Button mt="sm" onClick={onReinvite} loading={reinviting}>
+          <Button
+            mt="sm"
+            onClick={onReinvite}
+            loading={reinviting}
+            disabled={runInFlight}
+          >
             Create a fresh invitation
           </Button>
+          <ManagedRunHolderNote
+            holder={runHolder}
+            text={REINVITE_HELD_BY_RUN_TEXT}
+            stopLabel={STOP_RUN_AND_REINVITE_LABEL}
+            busy={reinviting}
+            onStop={onStopRunAndReinvite}
+          />
         </>
       )}
     </div>

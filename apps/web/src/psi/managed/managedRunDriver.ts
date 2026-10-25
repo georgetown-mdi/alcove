@@ -56,12 +56,10 @@ import { waitForIncomingConnection } from "../transport/waitForConnection";
 
 import {
   ManagedTermsChangeTakenOnError,
+  declineManagedTermsProposal,
   managedTermsChangeHandler,
 } from "./managedTermsProposal";
-import {
-  clearManagedRunTermsProposal,
-  persistManagedRunPayloadReceiveFill,
-} from "./managedExchangeStore";
+import { persistManagedRunPayloadReceiveFill } from "./managedExchangeStore";
 import { prepareManagedRerunExchange } from "./managedPreparedExchange";
 import { runManagedRerun } from "./managedRun";
 
@@ -75,7 +73,6 @@ import {
   managedRelayRegistrarForRun,
   registerRotatedManagedRelayKey,
   retryPendingManagedRelayRegistration,
-  rotatedManagedRelayKeyRegistration,
 } from "./managedRelayRegistration";
 
 import { acquireValidatedManagedInput } from "./managedInputHandle";
@@ -87,6 +84,7 @@ import type {
   HandshakeRole,
   LinkageTerms,
   MessageConnection,
+  RelayRegistrar,
   ResolvedMatching,
   TermsChange,
 } from "@alcove/core";
@@ -102,7 +100,6 @@ import type { ManagedInputSource } from "./managedInputHandle";
 import type { ManagedRerunOptions } from "./managedRun";
 import type { ManagedRunRecordExpectation } from "./managedExchangeStore";
 import type { PeerCloseOutcome } from "../transport/waitForPeerClose";
-import type { RotatedManagedRelayKeyRegistration } from "./managedRelayRegistration";
 import type { RunConnection } from "../transport/runConnection";
 import type { RunnableManagedExchangeRecord } from "./managedExchangeRecord";
 
@@ -126,9 +123,16 @@ interface ManagedRerunCarried {
   prepared: ReturnType<typeof prepareManagedRerunExchange>;
   exchangeRole: HandshakeRole;
   csvDelimiter: RunnableManagedExchangeRecord["exchangeFile"]["csvDelimiter"];
-  /** The record's pre-rotation secret, held for the run only: it signs the
-   * registration of the rotated relay key the run may owe its registrar. */
-  preRotationSecret: string;
+  /** The relay key registration this run owes its relay's registrar once the
+   * data exchange ends, when it relays through this browser's own relay: the
+   * record's pre-rotation secret, held for the run only, signs the
+   * registration of the rotated one. */
+  relayRegistration?: {
+    registrar: RelayRegistrar;
+    preRotationSecret: string;
+    rotatedSecret: string;
+    maxAgeDays: number | null;
+  };
   /** The terms the run read when it took the lock, which its own terms writes
    * compare the stored terms with. */
   linkageTerms: LinkageTerms;
@@ -221,14 +225,26 @@ export interface ManagedRunDriverConfig {
  * unchanged for the caller's generic failure path; a data-exchange failure past
  * this party's payload send files its disclosure first
  * ({@link fileTerminatedDisclosure}).
+ *
+ * Each call is one run with its own stop: a controller that `config.signal`
+ * aborts too, which this window's re-invite or relay enrollment aborts while
+ * the run waits for its partner ({@link ./managedWindowRuns.ts}). A stopped
+ * run raises `ManagedRunStoppedError` and records nothing.
  */
 export function runManagedExchangeInBrowser(
   config: ManagedRunDriverConfig,
 ): Promise<ManagedExchangeRunResult<RunOutputs>> {
+  // The owner's abort is forwarded past the run's end too: the close drains
+  // after the run yields its outputs, and a cancel still has to cut it.
+  const stop = new AbortController();
+  const forwardOwnerAbort = () => stop.abort(config.signal.reason);
+  if (config.signal.aborted) forwardOwnerAbort();
+  else
+    config.signal.addEventListener("abort", forwardOwnerAbort, { once: true });
+  const signal = stop.signal;
   const {
     record,
     source,
-    signal,
     urls,
     onWarning,
     onResolvedMatching,
@@ -273,6 +289,9 @@ export function runManagedExchangeInBrowser(
   };
   signal.addEventListener("abort", cutRunOnCancel);
 
+  // The registrar this run registers at, decided before it connects.
+  let runRegistrar: RelayRegistrar | undefined;
+
   return runManagedRerun<ManagedRerunInput, ManagedRerunCarried, RunOutputs>(
     record,
     {
@@ -304,8 +323,11 @@ export function runManagedExchangeInBrowser(
         // local refusal and before any contact with the partner, so a relay
         // holding a key this run cannot mint under stops the run while the
         // shared secret is still unchanged.
-        if (managedRelayRegistrarForRun(current) !== undefined)
-          await retryPendingManagedRelayRegistration(current.id, { signal });
+        runRegistrar = managedRelayRegistrarForRun(current);
+        if (runRegistrar !== undefined)
+          await retryPendingManagedRelayRegistration(current, runRegistrar, {
+            signal,
+          });
         const psiPromise = loadPsiBackend(
           { loadWasm: () => PSI() as Promise<PSILibrary> },
           { isNode: false },
@@ -407,8 +429,15 @@ export function runManagedExchangeInBrowser(
             prepared: input.prepared,
             exchangeRole,
             csvDelimiter: current.exchangeFile.csvDelimiter,
-            preRotationSecret: current.sharedSecret,
             linkageTerms: current.exchangeFile.linkageTerms,
+            ...(runRegistrar !== undefined && {
+              relayRegistration: {
+                registrar: runRegistrar,
+                preRotationSecret: current.sharedSecret,
+                rotatedSecret: auth.rotatedSecret,
+                maxAgeDays: current.tokenMaxAgeDays ?? null,
+              },
+            }),
           };
           return { rotatedSecret: auth.rotatedSecret, handshake: carried };
         } catch (error) {
@@ -425,13 +454,11 @@ export function runManagedExchangeInBrowser(
       // After the durable persist: run the PSI exchange, file the disclosure on
       // either exit, build the outputs, and tear down regardless of outcome.
       // The rotated relay key is registered on either exit too, while the run
-      // still holds the lock and the pre-rotation secret, at the registrar the
-      // rotation write read.
-      dataExchange: async (carried, rotated) => {
+      // still holds the lock and the pre-rotation secret.
+      dataExchange: async (carried) => {
         const termsTakenOnRef: { current: boolean } = { current: false };
         const expected: ManagedRunRecordExpectation = {
           id: record.id,
-          sharedSecret: rotated.sharedSecret,
           linkageTerms: carried.linkageTerms,
         };
         try {
@@ -474,8 +501,9 @@ export function runManagedExchangeInBrowser(
               // Record the receive list this run fills from the partner's
               // declared send set into the stored terms before any key or
               // payload moves, and say which columns were taken; a failed
-              // write stops the run. Terms the operator wrote during the run
-              // are kept, and the run goes on without the notice.
+              // write stops the run.
+              // Terms the operator wrote during the run are kept, and the run
+              // goes on without the notice.
               onPayloadReceiveFilled: async (columns) => {
                 const written = await persistManagedRunPayloadReceiveFill(
                   expected,
@@ -500,7 +528,7 @@ export function runManagedExchangeInBrowser(
           // Terms agreed with the partner leave nothing a kept proposal could
           // still take on. Best-effort: a proposal left behind is one the
           // operator can still decline.
-          await clearManagedRunTermsProposal(expected).catch(() => undefined);
+          await declineManagedTermsProposal(record.id).catch(() => undefined);
           // The disclosure has happened, so its record is appended BEFORE the
           // outputs are built and reported: nobody takes an unattended run's
           // completion download, an attended run's tab can close on it, and a
@@ -531,12 +559,7 @@ export function runManagedExchangeInBrowser(
           // them -- for a duration the partner picks, so the drain runs on its
           // own while the outputs go to the caller.
           void teardown(carried.runConnection, carried.mc);
-          await registerRotatedKey(
-            rotatedManagedRelayKeyRegistration(
-              rotated,
-              carried.preRotationSecret,
-            ),
-          );
+          await registerRotatedKey(carried);
         }
       },
     },
@@ -545,6 +568,7 @@ export function runManagedExchangeInBrowser(
       // The abort probe the failure bookkeeping classifies "cancelled" on: an
       // operator-torn-down run is recorded as cancelled, not a transport fault.
       aborted: () => signal.aborted,
+      stop,
     },
   ).finally(() => {
     signal.removeEventListener("abort", cutRunOnCancel);
@@ -557,12 +581,13 @@ export function runManagedExchangeInBrowser(
    * record's pending registration, which the next run retries, is what the
    * exchange's page states afterwards. */
   async function registerRotatedKey(
-    registration: RotatedManagedRelayKeyRegistration | undefined,
+    carried: ManagedRerunCarried,
   ): Promise<void> {
-    if (registration === undefined) return;
-    const result = await registerRotatedManagedRelayKey(registration, {
-      cancel: signal,
-    });
+    if (carried.relayRegistration === undefined) return;
+    const result = await registerRotatedManagedRelayKey(
+      { id: record.id, ...carried.relayRegistration },
+      { cancel: signal },
+    );
     if (result.kind === "failed") {
       log.error(
         "managed re-run:",

@@ -26,12 +26,13 @@ export type ManagedReinviteSite = "recovery" | "detail";
 /** Why a mint failed. `saved-server-refused`: this browser's coordination
  * server setting cannot be read, so the re-invite names the server the
  * exchange saved, and that address fails the validation a run applies.
- * `secret-changed`: a run rotated the secret after this page read it, so the
- * store refused the mint's write over a secret it did not hold. */
+ * `secret-changed`: the re-invite write's safety check found the secret it
+ * was composed over replaced. */
 export type ManagedReinviteFailureCause =
   "saved-server-refused" | "secret-changed" | "other";
 
-/** The mint's last request. */
+/** The mint's last request. A mint a run's lock refused goes back to `idle`:
+ * the run-in-flight reading states why. */
 export type ManagedReinviteRequest =
   | { kind: "idle" }
   | { kind: "minting" }
@@ -58,8 +59,8 @@ export const MANAGED_REINVITE_FAILURE_ALERTS: Readonly<
   "secret-changed": {
     title: "Could not create a fresh invitation",
     message:
-      "This exchange ran while the invitation was being made, so nothing " +
-      "was saved and no invitation was made. Try again.",
+      "This exchange's shared secret changed while the invitation was being " +
+      "made, so nothing was saved and no invitation was made. Try again.",
   },
   other: {
     title: "Could not create a fresh invitation",
@@ -143,6 +144,9 @@ export type ManagedRecoveryAction =
   | { type: "standing-clear-failed" }
   | { type: "reinvite-started"; site: ManagedReinviteSite }
   | { type: "reinvite-composed"; reinvite: ManagedReinvite }
+  /** The recheck before the mint, or the lock the mint takes, found a run; the
+   * in-flight reading states it. */
+  | { type: "reinvite-held-by-run" }
   /** The store refused the mint over a compromise answer this page had not read. */
   | { type: "reinvite-withheld" }
   | { type: "reinvite-failed"; cause: ManagedReinviteFailureCause };
@@ -253,6 +257,11 @@ export function managedRecoveryReducer(
           request: { kind: "idle" },
           composed: action.reinvite,
         },
+      };
+    case "reinvite-held-by-run":
+      return {
+        ...state,
+        reinvite: { ...state.reinvite, request: { kind: "idle" } },
       };
     case "reinvite-withheld":
       return {

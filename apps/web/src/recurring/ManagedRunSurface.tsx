@@ -71,6 +71,9 @@ export function ManagedRunSurface({ id }: { id: string }) {
     state: surfaceState,
     runInFlight,
     runLockHeld,
+    runHolder,
+    recheckRunLock,
+    runLockRefused,
     running,
     liveFailure,
     runCompletion,
@@ -86,6 +89,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
     backUp,
     downloadUpdatedBackup,
     reinviteNow,
+    stopRunAndReinvite,
     resolveConfirmation,
     clearStanding,
     resolveStanding,
@@ -337,6 +341,8 @@ export function ManagedRunSurface({ id }: { id: string }) {
                       record={load.record}
                       confirmationGated={confirmationGated}
                       reinviting={reinviting}
+                      runInFlight={runInFlight}
+                      runHolder={runHolder}
                       // The failed alert renders only at the site that triggered the
                       // mint, so the recovery and the detail section do not both show it.
                       reinviteFailure={managedReinviteFailureAt(
@@ -344,6 +350,9 @@ export function ManagedRunSurface({ id }: { id: string }) {
                         "recovery",
                       )}
                       onReinvite={() => reinviteNow("recovery")}
+                      onStopRunAndReinvite={() =>
+                        stopRunAndReinvite("recovery")
+                      }
                       onResolveConfirmation={resolveConfirmation}
                     />
                   )}
@@ -368,9 +377,12 @@ export function ManagedRunSurface({ id }: { id: string }) {
                 clearing={clearingStanding}
                 clearFailed={clearStandingFailed}
                 reinviting={reinviting}
+                runInFlight={runInFlight}
+                runHolder={runHolder}
                 reinviteFailure={managedReinviteFailureAt(recovery, "recovery")}
                 reinviteHeldByFailure={failureHoldsReinvite}
                 onReinvite={() => reinviteNow("recovery")}
+                onStopRunAndReinvite={() => stopRunAndReinvite("recovery")}
                 onClear={() => clearStanding(false)}
                 onResolve={resolveStanding}
               />
@@ -479,6 +491,11 @@ export function ManagedRunSurface({ id }: { id: string }) {
               onRelayRegistrationChanged={rereadRecord}
               canReinvite={canReinviteFromRecord(load.record)}
               compromiseResponse={compromiseResponse}
+              runInFlight={runInFlight}
+              runHolder={runHolder}
+              onStopRunAndReinvite={() => stopRunAndReinvite("detail")}
+              onRunLockRefused={runLockRefused}
+              onRecheckRunLock={() => void recheckRunLock()}
               reinviting={reinviting}
               // The failed alert renders here only when the detail section triggered
               // the mint, so it and the failure-path recovery do not both show it.

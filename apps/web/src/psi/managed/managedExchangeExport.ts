@@ -257,8 +257,9 @@ async function removePreviousFolderBackup(
  * that did not land also removes nothing, so the previous backup stays.
  *
  * With `runSecret`, the secret the run's rotation stored, nothing is written
- * where the stored record holds another: a re-invite replaced it during the
- * run, and the record is the re-invite's.
+ * where the stored record holds another: the backup is made after the run
+ * released its lock, a re-invite replaced the secret since, and the record is
+ * the re-invite's.
  *
  * Never rejects: it runs after a completed run, which nothing here may fail.
  */

@@ -10,6 +10,12 @@ import {
 import { validateCompatibility } from "@alcove/core/testing";
 
 import {
+  ManagedExchangeSecretChangedError,
+  getManagedExchange,
+  persistManagedExchangeTermsChange,
+  persistManagedRunTermsChange,
+} from "@psi/managed/managedExchangeStore";
+import {
   ManagedTermsChangeTakenOnError,
   ManagedTermsProposalNotStoredError,
   TERMS_CHANGE_DECLINED_REASON,
@@ -31,13 +37,8 @@ import {
 import {
   clearManagedExchangeTermsProposal,
   getManagedLocalState,
+  recordManagedExchangeTermsProposal,
 } from "@psi/managed/managedLocalState";
-import {
-  clearManagedRunTermsProposal,
-  keepManagedRunTermsProposal,
-  persistManagedExchangeTermsChange,
-  persistManagedRunTermsChange,
-} from "@psi/managed/managedExchangeStore";
 import {
   termsChangeQuestionText,
   termsProposalText,
@@ -53,24 +54,20 @@ import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 vi.mock("@psi/managed/managedExchangeStore", async (importOriginal) => ({
   ...(await importOriginal<typeof ManagedExchangeStore>()),
   persistManagedExchangeTermsChange: vi.fn(() => Promise.resolve()),
+  getManagedExchange: vi.fn(() =>
+    Promise.resolve({ sharedSecret: "secret-read" }),
+  ),
   persistManagedRunTermsChange: vi.fn(
     (_expected: unknown, write: { scope: string; adoptedTerms?: unknown }) =>
       Promise.resolve({
         exchangeFile: { linkageTerms: write.adoptedTerms ?? {} },
       }),
   ),
-  keepManagedRunTermsProposal: vi.fn(() => Promise.resolve(true)),
-  clearManagedRunTermsProposal: vi.fn(() => Promise.resolve()),
 }));
 vi.mock("@psi/managed/managedLocalState", () => ({
   recordManagedExchangeTermsProposal: vi.fn(() => Promise.resolve()),
   clearManagedExchangeTermsProposal: vi.fn(() => Promise.resolve()),
   getManagedLocalState: vi.fn(() => Promise.resolve(undefined)),
-}));
-vi.mock("@psi/managed/managedExchangeLock", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  withManagedExchangeLock: (_id: string, work: () => Promise<unknown>) =>
-    work(),
 }));
 
 const LINKAGE_COLUMNS = ["first_name", "last_name", "dob", "ssn"];
@@ -261,14 +258,34 @@ describe("applying the stored proposal", () => {
     read.mockReset();
   });
 
-  test("applies the partner terms the store holds", async () => {
+  test("applies the partner terms the store holds, compared against the secret it read", async () => {
     read.mockResolvedValue({ termsProposal: stored });
     await applyManagedTermsProposal("id", stored.proposedAt);
-    expect(persist).toHaveBeenCalledWith("id", {
-      scope: "apply",
-      partnerTerms: stored.partnerTerms,
-    });
+    expect(persist).toHaveBeenCalledWith(
+      "id",
+      { scope: "apply", partnerTerms: stored.partnerTerms },
+      "secret-read",
+    );
     expect(clear).toHaveBeenCalledWith("id");
+  });
+
+  test("refuses and keeps the proposal when the secret changed before the write", async () => {
+    read.mockResolvedValue({ termsProposal: stored });
+    const changed = new ManagedExchangeSecretChangedError("id");
+    persist.mockRejectedValueOnce(changed);
+    await expect(
+      applyManagedTermsProposal("id", stored.proposedAt),
+    ).rejects.toBe(changed);
+    expect(clear).not.toHaveBeenCalled();
+  });
+
+  test("refuses and writes nothing when the exchange is gone", async () => {
+    vi.mocked(getManagedExchange).mockResolvedValueOnce(undefined);
+    read.mockResolvedValue({ termsProposal: stored });
+    await expect(
+      applyManagedTermsProposal("id", stored.proposedAt),
+    ).rejects.toBeInstanceOf(ManagedTermsProposalNotStoredError);
+    expect(persist).not.toHaveBeenCalled();
   });
 
   test("declining drops the proposal and writes nothing to the stored exchange", async () => {
@@ -385,20 +402,19 @@ describe("the matched-key column a partner's terms change turns off", () => {
 
 describe("the run's answer to a partner terms change", () => {
   const persist = vi.mocked(persistManagedRunTermsChange);
-  const keep = vi.mocked(keepManagedRunTermsProposal);
-  const clear = vi.mocked(clearManagedRunTermsProposal);
+  const keep = vi.mocked(recordManagedExchangeTermsProposal);
+  const clear = vi.mocked(clearManagedExchangeTermsProposal);
   beforeEach(() => {
     persist.mockClear();
     keep.mockClear();
     clear.mockClear();
   });
 
-  /** What the run compares the stored record with: its rotated secret and
-   * the terms it read when it took the lock. */
+  /** What the run compares the stored terms with: the terms it read when it
+   * took the lock. */
   function expectation() {
     return {
       id: "id",
-      sharedSecret: "rotated",
       linkageTerms: acceptorRecord().exchangeFile.linkageTerms,
     };
   }
@@ -418,7 +434,7 @@ describe("the run's answer to a partner terms change", () => {
       partnerTerms,
     });
     expect(takenOn).toHaveBeenCalledOnce();
-    expect(clear).toHaveBeenCalledWith(expected);
+    expect(clear).toHaveBeenCalledWith("id");
     expect(keep).not.toHaveBeenCalled();
     // The run's later terms writes compare against what this one stored.
     expect(expected.linkageTerms).toEqual(change.adoptedTerms);
@@ -479,7 +495,7 @@ describe("the run's answer to a partner terms change", () => {
       )(change),
     ).rejects.toBeInstanceOf(TermsChangeRefusedError);
     expect(keep).toHaveBeenCalledWith(
-      expected,
+      "id",
       managedTermsProposalFor(change, at),
     );
     expect(persist).not.toHaveBeenCalled();
@@ -495,17 +511,6 @@ describe("the run's answer to a partner terms change", () => {
     await expect(refusal).rejects.toThrow(TERMS_CHANGE_UNATTENDED_REASON);
     await expect(refusal).rejects.toThrow(
       `${TERMS_CHANGE_NOT_KEPT_REASON}: the quota is exhausted`,
-    );
-  });
-
-  test("unattended, a change not kept over a re-invited exchange refuses saying so", async () => {
-    keep.mockResolvedValueOnce(false);
-    const refusal = managedTermsChangeHandler(
-      expectation(),
-      undefined,
-    )(changeFor(acceptorRecord()));
-    await expect(refusal).rejects.toThrow(
-      `${TERMS_CHANGE_NOT_KEPT_REASON}: a re-invite replaced this exchange's shared secret during the run`,
     );
   });
 });

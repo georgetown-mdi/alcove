@@ -310,8 +310,8 @@ describe("the re-invite mint", () => {
     expect(managedReinviteInFlight(started)).toBe(true);
     for (const outcome of [
       { type: "reinvite-composed", reinvite: REINVITE },
+      { type: "reinvite-held-by-run" },
       { type: "reinvite-withheld" },
-      { type: "reinvite-failed", cause: "secret-changed" },
       { type: "reinvite-failed", cause: "other" },
     ] satisfies ReadonlyArray<ManagedRecoveryAction>)
       expect(managedReinviteInFlight(fold([outcome], started))).toBe(false);
@@ -375,17 +375,27 @@ describe("the re-invite mint", () => {
     ).toBeUndefined();
   });
 
-  test("a mint refused because a run rotated the secret says the exchange ran and to try again", () => {
+  test("a mint whose secret was replaced under it says nothing was saved", () => {
     const failed = fold([
-      { type: "reinvite-started", site: "recovery" },
+      { type: "reinvite-started", site: "detail" },
       { type: "reinvite-failed", cause: "secret-changed" },
     ]);
-    expect(managedReinviteFailureAt(failed, "recovery")).toEqual({
+    expect(managedReinviteFailureAt(failed, "detail")).toEqual({
       title: "Could not create a fresh invitation",
       message:
-        "This exchange ran while the invitation was being made, so nothing " +
-        "was saved and no invitation was made. Try again.",
+        "This exchange's shared secret changed while the invitation was " +
+        "being made, so nothing was saved and no invitation was made. Try " +
+        "again.",
     });
+  });
+
+  test("a mint a run held goes back to idle with no failure", () => {
+    const held = fold([
+      { type: "reinvite-started", site: "recovery" },
+      { type: "reinvite-held-by-run" },
+    ]);
+    expect(held.reinvite.request).toEqual({ kind: "idle" });
+    expect(managedReinviteFailureAt(held, "recovery")).toBeUndefined();
   });
 
   test("a run start leaves a mint in flight running", () => {

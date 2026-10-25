@@ -730,7 +730,8 @@ describe("the relay key registration", () => {
     const sent: Array<string> = [];
     const cleared: Array<string> = [];
     await retryPendingManagedRelayRegistration(
-      back.id,
+      back,
+      REGISTRAR,
       {
         fetch: (input: string | URL | Request) => {
           sent.push(String(input));
@@ -743,7 +744,6 @@ describe("the relay key registration", () => {
         },
       },
       {
-        getRecord: () => Promise.resolve(back),
         clearPending: (id, secret) => {
           cleared.push(secret);
           return Promise.resolve({ ...back, id });
@@ -763,14 +763,9 @@ describe("the relay key registration", () => {
         relayRegistrationPendingReason: "reinvite",
       }),
     );
-    const error = await retryPendingManagedRelayRegistration(
-      back.id,
-      { fetch: () => Promise.reject(new Error("no request expected")) },
-      {
-        getRecord: () => Promise.resolve(back),
-        clearPending: () => Promise.reject(new Error("no write expected")),
-      },
-    ).then(
+    const error = await retryPendingManagedRelayRegistration(back, REGISTRAR, {
+      fetch: () => Promise.reject(new Error("no request expected")),
+    }).then(
       () => undefined,
       (reason: unknown) => reason,
     );

@@ -1113,8 +1113,8 @@ export interface ManagedExchangeRotation {
   /** The restamped bound to set, or `null` to clear any standing bound. */
   expires: string | null;
   /** The pending relay registration to store: the instant of the rotation,
-   * stored only where the record the write reads names a relay registrar.
-   * Absent, the record keeps the pending registration it held
+   * on a record that names a relay registrar. Absent, the record keeps the
+   * pending registration it held
    * ({@link pendingRelayRegistrationAfterRotation}). */
   relayRegistrationPendingSince?: string;
   /** Why the pending registration cannot be confirmed by a run, stored with
@@ -1144,21 +1144,18 @@ interface PendingRelayRegistration {
 
 /**
  * The pending relay registration a rotation write leaves: the one the
- * rotation states where `record` names a registrar, else the one the record
- * held, since a rotation confirms nothing -- on a record naming no registrar
- * only an enrollment does. `record` is the one the write reads, so an
- * enrollment landing while a run is in flight leaves the run's rotation
- * pending. A reason the record held is kept with the marker, since no
- * rotation recovers the key the registrar holds.
+ * rotation states, else the one the record held, since a rotation confirms
+ * nothing -- on a record naming no registrar only an enrollment does. A
+ * reason the record held is kept with the marker, since no rotation recovers
+ * the key the registrar holds.
  */
 function pendingRelayRegistrationAfterRotation(
   record: RunnableManagedExchangeRecord,
   rotation: ManagedExchangeRotation,
 ): PendingRelayRegistration | undefined {
   const since =
-    (record.relayRegistrar !== undefined
-      ? rotation.relayRegistrationPendingSince
-      : undefined) ?? record.relayRegistrationPendingSince;
+    rotation.relayRegistrationPendingSince ??
+    record.relayRegistrationPendingSince;
   if (since === undefined) return undefined;
   const reason =
     rotation.relayRegistrationPendingReason ??
@@ -1251,24 +1248,19 @@ export function applyManagedExchangeRelayRegistrar(
 }
 
 /**
- * Drop the pending relay key registration once `registrar` confirmed it holds
- * the key derived from `confirmedSecret`. A record holding another secret,
- * naming another registrar, or holding no pending registration comes back
- * unchanged, the same object: a registration at one registrar never clears the
- * one pending at another.
+ * Drop the pending relay key registration once the registrar confirmed it
+ * holds the key derived from `confirmedSecret`. A record holding another
+ * secret, or no pending registration, comes back unchanged, the same object.
  *
  * @throws {ZodError} if the result is not a valid record.
  */
 export function applyManagedExchangeRelayRegistrationConfirmed(
   record: RunnableManagedExchangeRecord,
   confirmedSecret: string,
-  registrar: RelayRegistrar,
 ): RunnableManagedExchangeRecord {
   if (
     record.sharedSecret !== confirmedSecret ||
-    record.relayRegistrationPendingSince === undefined ||
-    record.relayRegistrar?.url !== registrar.url ||
-    record.relayRegistrar.exchangeId !== registrar.exchangeId
+    record.relayRegistrationPendingSince === undefined
   )
     return record;
   const next: ManagedExchangeRecord = { ...record };

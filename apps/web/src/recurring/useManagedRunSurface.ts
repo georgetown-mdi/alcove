@@ -27,8 +27,10 @@ import {
   runnableManagedExchangeOrRefuse,
 } from "@psi/managed/managedExchangeRecord";
 import { MANAGED_EXCHANGE_ARTIFACT_MIME } from "@psi/managed/managedExchangeArtifact";
+import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
 import { ManagedSignalingEndpointRefusedError } from "@psi/managed/managedRendezvous";
 import { canReinviteFromRecord } from "@psi/managed/managedReinvite";
+import { stopWaitingManagedWindowRun } from "@psi/managed/managedWindowRuns";
 
 import {
   chooseManagedWorkingDirectory,
@@ -84,6 +86,7 @@ import type {
 import type { ManagedBackupMarker } from "@psi/managed/managedBackupState";
 import type { ManagedCompromiseGate } from "./managedRunRecoveryModel";
 import type { ManagedInputSource } from "@psi/managed/managedInputHandle";
+import type { ManagedRunHolder } from "./managedRunHolder";
 import type { ManagedRunSurfaceState } from "./managedRunSurfaceModel";
 
 const log = getLogger("ManagedRunSurface");
@@ -104,6 +107,13 @@ export interface ManagedRunSurfaceHost {
    * a finished run's completion screen reads it, since that run released the
    * lock before its outputs reached the screen. */
   runLockHeld: boolean;
+  /** Which run holds the exchange, as the last reading saw it; `undefined`
+   * where none does. The re-invite and relay controls state it. */
+  runHolder: ManagedRunHolder | undefined;
+  /** Re-read the run lock now, for a control acting on {@link runHolder}. */
+  recheckRunLock: () => Promise<boolean>;
+  /** Report that an operation taking the run lock found it held. */
+  runLockRefused: () => void;
   /** The input file the operator chose, on a browser that cannot grant a folder. */
   reselected: File | undefined;
   /** Choose the input file for the next run. */
@@ -134,6 +144,8 @@ export interface ManagedRunSurfaceHost {
   downloadUpdatedBackup: () => void;
   /** Mint a fresh invitation, from the recovery or the detail section. */
   reinviteNow: (source: "recovery" | "detail") => void;
+  /** Stop this window's run waiting for the partner, then mint. */
+  stopRunAndReinvite: (source: "recovery" | "detail") => void;
   /** Route the reply to the live failure's confirmation gate. */
   resolveConfirmation: (outcome: ConfirmationReply) => void;
   /** Clear the standing condition; `pastResponse` when taken from under a
@@ -202,12 +214,18 @@ export function useManagedRunSurface(id: string): ManagedRunSurfaceHost {
   const outputs = runCompletion?.outputs;
   const finishedAt = runCompletion?.finishedAt;
   const liveFailure = managedRunLiveFailure(runState);
-  // The notes beside the exports read one in-flight signal, which sees a run
-  // started anywhere in this browser profile -- here, in a second tab, or by the
-  // scheduled runtime. The completion screen's note reads the lock alone: its
-  // run released the lock before the outputs were shown.
-  const { inFlight: runInFlight, lockHeld: runLockHeld } =
-    useManagedRunInFlight(id, running);
+  // The notes beside the exports, the re-invite mint below and the relay form
+  // read one in-flight signal, which sees a run started anywhere in this browser
+  // profile -- here, in a second tab, or by the scheduled runtime -- not just the
+  // one this surface started. The completion screen's note reads the lock alone:
+  // its run released the lock before the outputs were shown.
+  const {
+    inFlight: runInFlight,
+    lockHeld: runLockHeld,
+    holder: runHolder,
+    recheckLock,
+    lockRefused,
+  } = useManagedRunInFlight(id, running);
   // How many runs this visit has started, so each failure gets a number of its own.
   const runsStarted = useRef(0);
   // The compromise response is the record's own, written at whichever gate the
@@ -571,15 +589,49 @@ export function useManagedRunSurface(id: string): ManagedRunSurfaceHost {
   function reinviteNow(source: "recovery" | "detail") {
     // Closed at the mint rather than at each control that reaches it, whichever part
     // of the page asked: while a compromise response stands, a fresh invitation on
-    // this channel would hand the new secret to whoever is interfering. This is a
-    // second check over the store's own refusal, decided on the record the store
-    // reads rather than on this page's copy. A run in flight withholds nothing:
-    // whichever of its rotation and this mint writes second refuses.
+    // this channel would hand the new secret to whoever is interfering, and a run in
+    // flight is connecting on the secret the mint replaces. Both halves are a second
+    // check over the driver's own refusals, which are decided on the record it reads
+    // and the lock a run holds rather than on this page's copy.
+    if (record === undefined || reinviting || compromiseResponse || runInFlight)
+      return;
+    mint(record.id, source, false);
+  }
+
+  // The stop control: end this window's run while it still waits for the
+  // partner, then mint with the lock requested queued, so the mint takes the
+  // lock the stopped run releases before any later scheduled attempt can. A
+  // run past that point keeps going, and the next reading states it.
+  function stopRunAndReinvite(source: "recovery" | "detail") {
     if (record === undefined || reinviting || compromiseResponse) return;
+    if (stopWaitingManagedWindowRun(record.id) !== "stopped") {
+      void recheckLock();
+      return;
+    }
+    mint(record.id, source, true);
+  }
+
+  function mint(
+    recordId: string,
+    source: "recovery" | "detail",
+    afterStop: boolean,
+  ) {
     dispatchSurface({ type: "reinvite-started", site: source });
     void (async () => {
       try {
-        const result = await reinviteManagedExchange(record);
+        // The controls above render from a poll, so a run started since the last
+        // reading is still news here; re-reading also puts the reason on screen. A
+        // run this reading still misses is refused by the driver, which takes the
+        // run's lock. After a stop the lock is still held by the run unwinding,
+        // and the mint queues for it instead.
+        if (!afterStop && (await recheckLock())) {
+          dispatchSurface({ type: "reinvite-held-by-run" });
+          return;
+        }
+        const result = await reinviteManagedExchange(
+          recordId,
+          afterStop ? {} : { ifAvailable: true },
+        );
         dispatchSurface({
           type: "reinvite-composed",
           reinvite: result.reinvite,
@@ -591,9 +643,12 @@ export function useManagedRunSurface(id: string): ManagedRunSurfaceHost {
         // acknowledgement instead.
         if (error instanceof ManagedReinviteWithheldError) {
           dispatchSurface({ type: "reinvite-withheld" });
+        } else if (error instanceof ManagedExchangeLockUnavailableError) {
+          // The reading counts as held until the next poll, which then says
+          // which run holds the exchange.
+          lockRefused();
+          dispatchSurface({ type: "reinvite-held-by-run" });
         } else if (error instanceof ManagedExchangeSecretChangedError) {
-          // A run rotated the secret this page read, so the page reads the
-          // record again before the operator tries again.
           dispatchSurface({ type: "reinvite-failed", cause: "secret-changed" });
           dispatchSurface({ type: "record-read-requested" });
         } else {
@@ -802,6 +857,9 @@ export function useManagedRunSurface(id: string): ManagedRunSurfaceHost {
     state: surfaceState,
     runInFlight,
     runLockHeld,
+    runHolder,
+    recheckRunLock: recheckLock,
+    runLockRefused: lockRefused,
     running,
     liveFailure,
     runCompletion,
@@ -817,6 +875,7 @@ export function useManagedRunSurface(id: string): ManagedRunSurfaceHost {
     backUp,
     downloadUpdatedBackup,
     reinviteNow,
+    stopRunAndReinvite,
     resolveConfirmation,
     clearStanding,
     resolveStanding,

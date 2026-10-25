@@ -39,6 +39,7 @@ import {
   rerunFailureLastRun,
   runManagedRerun,
 } from "@psi/managed/managedRun";
+import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
 import { persistManagedExchangeRotation } from "@psi/managed/managedExchangeStore";
 
 import type {
@@ -154,20 +155,15 @@ const REGISTERED: [number, unknown] = [
   { maxAgeDays: null, lapsesAt: null },
 ];
 
-/** A store holding `held`, recording each pending registration it is asked to
- * drop. */
-function recordingStore(
-  held?: RunnableManagedExchangeRecord,
-): ManagedRelayRegistrationStore & {
+function recordingStore(): ManagedRelayRegistrationStore & {
   cleared: Array<[string, string]>;
 } {
   const cleared: Array<[string, string]> = [];
   return {
     cleared,
-    getRecord: () => Promise.resolve(held),
     clearPending: (id, secret) => {
       cleared.push([id, secret]);
-      return Promise.resolve(held ?? record({ id, sharedSecret: secret }));
+      return Promise.resolve(record({ id, sharedSecret: secret }));
     },
   };
 }
@@ -248,11 +244,10 @@ describe("which runs register", () => {
 describe("the rotation write", () => {
   test("stores the pending registration beside the rotated secret on a record that names a registrar, whether or not the run registers", async () => {
     stubGrantingWebLocks();
-    const stored = record({ relayRegistrar: REGISTRAR });
-    storedRecord.value = stored;
+    storedRecord.value = record({ relayRegistrar: REGISTRAR });
     const rotatedSecret = generateSharedSecret();
     await runManagedRerun(
-      stored,
+      storedRecord.value,
       {
         acquireInput: () => Promise.resolve("rows"),
         handshake: () =>
@@ -263,7 +258,7 @@ describe("the rotation write", () => {
     );
     expect(persistManagedExchangeRotation).toHaveBeenCalledWith(
       "record-under-test",
-      stored.sharedSecret,
+      storedRecord.value.sharedSecret,
       {
         sharedSecret: rotatedSecret,
         expires: null,
@@ -300,31 +295,21 @@ describe("the rotation write", () => {
     );
   });
 
-  test("stores it where an enrollment landed while the run was in flight", async () => {
+  test("stores none on an exchange that names no registrar", async () => {
     stubGrantingWebLocks();
-    const atStart = record();
-    storedRecord.value = atStart;
-    const rotatedSecret = generateSharedSecret();
-    await runManagedRerun(
-      atStart,
-      {
-        acquireInput: () => Promise.resolve("rows"),
-        handshake: () =>
-          Promise.resolve({ rotatedSecret, handshake: "carried" }),
-        dataExchange: () => Promise.resolve("exchanged"),
-      },
-      { now: () => NOW.getTime() },
-    );
+    storedRecord.value = record({});
+    await runManagedRerun(storedRecord.value, {
+      acquireInput: () => Promise.resolve("rows"),
+      handshake: () =>
+        Promise.resolve({
+          rotatedSecret: generateSharedSecret(),
+          handshake: "carried",
+        }),
+      dataExchange: () => Promise.resolve("exchanged"),
+    });
     const rotation = vi.mocked(persistManagedExchangeRotation).mock
       .calls[0]?.[2];
-    const enrolledMidRun = applyManagedExchangeRelayRegistrar(
-      atStart,
-      REGISTRAR,
-      atStart.sharedSecret,
-    );
-    const rotated = applyManagedExchangeRotation(enrolledMidRun, rotation);
-    expect(rotated.sharedSecret).toBe(rotatedSecret);
-    expect(rotated.relayRegistrationPendingSince).toBe(NOW.toISOString());
+    expect(rotation).not.toHaveProperty("relayRegistrationPendingSince");
   });
 
   test("keeps a re-invite's reason beside the marker it sets, since no rotation recovers the key the registrar holds", () => {
@@ -342,28 +327,21 @@ describe("the rotation write", () => {
     expect(rotated.relayRegistrationPendingReason).toBe("reinvite");
   });
 
-  test("stores none where the record the write reads names no registrar", async () => {
+  test("stores none on a record that names no registrar", async () => {
     stubGrantingWebLocks();
-    const stored = record();
-    storedRecord.value = stored;
-    await runManagedRerun(
-      stored,
-      {
-        acquireInput: () => Promise.resolve("rows"),
-        handshake: () =>
-          Promise.resolve({
-            rotatedSecret: generateSharedSecret(),
-            handshake: "carried",
-          }),
-        dataExchange: () => Promise.resolve("exchanged"),
-      },
-      { now: () => NOW.getTime() },
-    );
+    storedRecord.value = record();
+    await runManagedRerun(storedRecord.value, {
+      acquireInput: () => Promise.resolve("rows"),
+      handshake: () =>
+        Promise.resolve({
+          rotatedSecret: generateSharedSecret(),
+          handshake: "carried",
+        }),
+      dataExchange: () => Promise.resolve("exchanged"),
+    });
     const rotation = vi.mocked(persistManagedExchangeRotation).mock
       .calls[0]?.[2];
-    expect(applyManagedExchangeRotation(stored, rotation)).not.toHaveProperty(
-      "relayRegistrationPendingSince",
-    );
+    expect(rotation).not.toHaveProperty("relayRegistrationPendingSince");
   });
 
   test("a rotation sets the pending registration it is given", () => {
@@ -454,9 +432,7 @@ describe("the registration after a run rotates", () => {
     const preRotationSecret = generateSharedSecret();
     const rotatedSecret = generateSharedSecret();
     const registrar = fakeRegistrar([REGISTERED]);
-    const store = recordingStore(
-      record({ sharedSecret: rotatedSecret, tokenMaxAgeDays: 30 }),
-    );
+    const store = recordingStore();
 
     const result = await registerRotatedManagedRelayKey(
       {
@@ -464,6 +440,7 @@ describe("the registration after a run rotates", () => {
         registrar: REGISTRAR,
         preRotationSecret,
         rotatedSecret,
+        maxAgeDays: 30,
       },
       { fetch: registrar.fetch, now: () => NOW },
       store,
@@ -490,26 +467,22 @@ describe("the registration after a run rotates", () => {
     expect(store.cleared).toEqual([["record-under-test", rotatedSecret]]);
   });
 
-  test("a refusal under both keys leaves the pending registration and names the registrar and re-enrollment", async () => {
-    const registrar = fakeRegistrar([
-      [409, { error: "another key is held" }],
-      [409, { error: "another key is held" }],
-    ]);
-    const rotatedSecret = generateSharedSecret();
-    const store = recordingStore(record({ sharedSecret: rotatedSecret }));
+  test("a refusal leaves the pending registration and names the registrar and re-enrollment", async () => {
+    const registrar = fakeRegistrar([[409, { error: "another key is held" }]]);
+    const store = recordingStore();
 
     const result = await registerRotatedManagedRelayKey(
       {
         id: "record-under-test",
         registrar: REGISTRAR,
         preRotationSecret: generateSharedSecret(),
-        rotatedSecret,
+        rotatedSecret: generateSharedSecret(),
+        maxAgeDays: null,
       },
       { fetch: registrar.fetch },
       store,
     );
 
-    expect(registrar.sent).toHaveLength(2);
     expect(result.kind).toBe("failed");
     const message = result.kind === "failed" ? result.message : "";
     expect(message).toContain(
@@ -526,15 +499,15 @@ describe("the registration after a run rotates", () => {
       [503, {}],
       [503, {}],
     ]);
-    const rotatedSecret = generateSharedSecret();
-    const store = recordingStore(record({ sharedSecret: rotatedSecret }));
+    const store = recordingStore();
 
     const result = await registerRotatedManagedRelayKey(
       {
         id: "record-under-test",
         registrar: REGISTRAR,
         preRotationSecret: generateSharedSecret(),
-        rotatedSecret,
+        rotatedSecret: generateSharedSecret(),
+        maxAgeDays: null,
       },
       { fetch: registrar.fetch, sleep: () => Promise.resolve() },
       store,
@@ -553,9 +526,10 @@ describe("the retry before a run connects", () => {
   test("a record with no pending registration sends nothing", async () => {
     const registrar = fakeRegistrar([]);
     await retryPendingManagedRelayRegistration(
-      "record-under-test",
+      record({ relayRegistrar: REGISTRAR }),
+      REGISTRAR,
       { fetch: registrar.fetch },
-      recordingStore(record({ relayRegistrar: REGISTRAR })),
+      recordingStore(),
     );
     expect(registrar.sent).toEqual([]);
   });
@@ -566,10 +540,11 @@ describe("the retry before a run connects", () => {
       relayRegistrationPendingSince: PENDING_SINCE,
     });
     const registrar = fakeRegistrar([REGISTERED]);
-    const store = recordingStore(current);
+    const store = recordingStore();
 
     await retryPendingManagedRelayRegistration(
-      current.id,
+      current,
+      REGISTRAR,
       { fetch: registrar.fetch, now: () => NOW },
       store,
     );
@@ -593,14 +568,13 @@ describe("the retry before a run connects", () => {
 
   test("a refused retry stops the run with the registrar and the re-enrollment step", async () => {
     const registrar = fakeRegistrar([[401, { error: "proof refused" }]]);
-    const store = recordingStore(
+    const store = recordingStore();
+    const error = await retryPendingManagedRelayRegistration(
       record({
         relayRegistrar: REGISTRAR,
         relayRegistrationPendingSince: PENDING_SINCE,
       }),
-    );
-    const error = await retryPendingManagedRelayRegistration(
-      "record-under-test",
+      REGISTRAR,
       { fetch: registrar.fetch },
       store,
     ).then(
@@ -691,9 +665,10 @@ describe("the registration a re-invite makes", () => {
 
     const nextRun = fakeRegistrar([REGISTERED]);
     const error = await retryPendingManagedRelayRegistration(
-      result.id,
+      result,
+      REGISTRAR,
       { fetch: nextRun.fetch },
-      recordingStore(result),
+      store,
     ).then(
       () => undefined,
       (reason: unknown) => reason,
@@ -779,15 +754,14 @@ describe("a cancelled run's registration", () => {
     const cancel = new AbortController();
     const cancelled = new Error("the operator cancelled the run");
     const registrar = neverAnswering(() => cancel.abort(cancelled));
-    const store = recordingStore(
+    const store = recordingStore();
+
+    const error = await retryPendingManagedRelayRegistration(
       record({
         relayRegistrar: REGISTRAR,
         relayRegistrationPendingSince: PENDING_SINCE,
       }),
-    );
-
-    const error = await retryPendingManagedRelayRegistration(
-      "record-under-test",
+      REGISTRAR,
       { fetch: registrar.fetch, timeoutMs: 600_000, signal: cancel.signal },
       store,
     ).then(
@@ -805,19 +779,17 @@ describe("a cancelled run's registration", () => {
     registrar: REGISTRAR,
     preRotationSecret: generateSharedSecret(),
     rotatedSecret: generateSharedSecret(),
+    maxAgeDays: null,
   });
-  const storeHolding = (params: ReturnType<typeof rotation>) =>
-    recordingStore(record({ sharedSecret: params.rotatedSecret }));
 
   test("the registration after a cancelled run makes one attempt to its timeout and leaves it pending", async () => {
     const registrar = neverAnswering();
-    const params = rotation();
-    const store = storeHolding(params);
+    const store = recordingStore();
     const cancel = new AbortController();
     cancel.abort();
 
     const result = await registerRotatedManagedRelayKey(
-      params,
+      rotation(),
       {
         fetch: registrar.fetch,
         timeoutMs: 20,
@@ -836,9 +808,9 @@ describe("a cancelled run's registration", () => {
   });
 
   test("a cancel during the registration after the run does not cut it: its answer confirms", async () => {
+    const store = recordingStore();
     const cancel = new AbortController();
     const params = rotation();
-    const store = storeHolding(params);
     let requests = 0;
     const fetch = ((_input: string | URL | Request, init?: RequestInit) => {
       requests++;
@@ -872,15 +844,35 @@ describe("a cancelled run's registration", () => {
 });
 
 describe("stopping registration", () => {
-  test("drops the registrar of the record it names", async () => {
-    const removed: Array<string> = [];
+  test("drops the registrar under the run lock", async () => {
+    const steps: Array<string> = [];
     await stopManagedRelayRegistration("record-under-test", {
+      withLock: async <T>(_id: string, step: () => Promise<T>) => {
+        steps.push("locked");
+        const result = await step();
+        steps.push("released");
+        return result;
+      },
       removeRegistrar: (id) => {
-        removed.push(id);
+        steps.push(`removed ${id}`);
         return Promise.resolve(record());
       },
     });
-    expect(removed).toEqual(["record-under-test"]);
+    expect(steps).toEqual(["locked", "removed record-under-test", "released"]);
+  });
+
+  test("is refused, and writes nothing, while a run holds the exchange", async () => {
+    const removeRegistrar = vi.fn(() => Promise.resolve(record()));
+    await expect(
+      stopManagedRelayRegistration("record-under-test", {
+        withLock: () =>
+          Promise.reject(
+            new ManagedExchangeLockUnavailableError("record-under-test"),
+          ),
+        removeRegistrar,
+      }),
+    ).rejects.toBeInstanceOf(ManagedExchangeLockUnavailableError);
+    expect(removeRegistrar).not.toHaveBeenCalled();
   });
 });
 
@@ -948,10 +940,16 @@ describe("enrollment", () => {
   ) {
     const registrar = fakeRegistrar(answers);
     const persisted: Array<Array<unknown>> = [];
+    let locked = 0;
     return {
       registrar,
       persisted,
+      lockCount: () => locked,
       deps: {
+        withLock: <T>(_id: string, step: () => Promise<T>) => {
+          locked++;
+          return step();
+        },
         getRecord: () => Promise.resolve(current),
         persistRegistrar: (
           id: string,
@@ -972,6 +970,53 @@ describe("enrollment", () => {
     };
   }
 
+  test("takes the lock ifAvailable, and queued where the caller stopped this window's run", async () => {
+    const current = record();
+    const asked: Array<unknown> = [];
+    for (const lock of [undefined, {}]) {
+      const run = enrollmentDeps(current, [
+        [201, { maxAgeDays: null, lapsesAt: null }],
+      ]);
+      await enrollManagedRelayRegistrar(
+        {
+          id: current.id,
+          registrar: REGISTRAR,
+          ownerToken: OWNER_TOKEN,
+          ...(lock !== undefined && { lock }),
+        },
+        {
+          ...run.deps,
+          withLock: <T>(
+            _id: string,
+            step: () => Promise<T>,
+            options: unknown,
+          ) => {
+            asked.push(options);
+            return step();
+          },
+        },
+      );
+    }
+    expect(asked).toEqual([{ ifAvailable: true }, {}]);
+  });
+
+  test("is refused, and asks the registrar nothing, while a run holds the exchange", async () => {
+    const current = record();
+    const run = enrollmentDeps(current, []);
+    await expect(
+      enrollManagedRelayRegistrar(
+        { id: current.id, registrar: REGISTRAR, ownerToken: OWNER_TOKEN },
+        {
+          ...run.deps,
+          withLock: () =>
+            Promise.reject(new ManagedExchangeLockUnavailableError(current.id)),
+        },
+      ),
+    ).rejects.toBeInstanceOf(ManagedExchangeLockUnavailableError);
+    expect(run.registrar.sent).toEqual([]);
+    expect(run.persisted).toEqual([]);
+  });
+
   test("the relay-owner token reaches the one request and no store", async () => {
     const current = record({ relayRegistrationPendingSince: PENDING_SINCE });
     const run = enrollmentDeps(current, [
@@ -983,6 +1028,7 @@ describe("enrollment", () => {
       run.deps,
     );
 
+    expect(run.lockCount()).toBe(1);
     expect(run.registrar.sent).toHaveLength(1);
     expect(run.registrar.sent[0]?.method).toBe("POST");
     expect(run.registrar.sent[0]?.authorization).toBe(`Bearer ${OWNER_TOKEN}`);
@@ -1075,34 +1121,14 @@ describe("the record's registrar fields", () => {
       applyManagedExchangeRelayRegistrationConfirmed(
         stored,
         generateSharedSecret(),
-        REGISTRAR,
       ),
     ).toBe(stored);
     expect(
       applyManagedExchangeRelayRegistrationConfirmed(
         stored,
         stored.sharedSecret,
-        REGISTRAR,
       ),
     ).not.toHaveProperty("relayRegistrationPendingSince");
-  });
-
-  test("a confirmation at another registrar keeps the pending registration", () => {
-    const stored = record({
-      relayRegistrar: REGISTRAR,
-      relayRegistrationPendingSince: PENDING_SINCE,
-    });
-    for (const elsewhere of [
-      { ...REGISTRAR, url: "https://other.example.org:8443" },
-      { ...REGISTRAR, exchangeId: "riverbend-q4" },
-    ])
-      expect(
-        applyManagedExchangeRelayRegistrationConfirmed(
-          stored,
-          stored.sharedSecret,
-          elsewhere,
-        ),
-      ).toBe(stored);
   });
 
   test("a configuration-only record holds no registrar", () => {

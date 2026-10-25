@@ -109,14 +109,13 @@ export class RotationPersistError extends Error {
 
 /** The handshake and the durable persist, injected by the platform half. The
  * lock is the caller's and spans the whole run. */
-export interface ManagedRotationCriticalSection<THandshake, TPersisted = void> {
+export interface ManagedRotationCriticalSection<THandshake> {
   /** Run the authenticated handshake and yield the rotated secret plus what the
    * data-exchange phase needs. A throw aborts the run before any persist. */
   handshake: () => Promise<{ rotatedSecret: string; handshake: THandshake }>;
-  /** Durably persist the write-back and await the write, yielding what it
-   * stored. A throw means the secret did not persist and the data exchange
-   * must not begin. */
-  persist: (writeBack: RotationWriteBack) => Promise<TPersisted>;
+  /** Durably persist the write-back and await the write. A throw means the
+   * secret did not persist and the data exchange must not begin. */
+  persist: (writeBack: RotationWriteBack) => Promise<void>;
   /** The record's max-age policy, or `undefined` for no bound. */
   tokenMaxAgeDays: number | undefined;
   /** The clock the stamps read. */
@@ -125,11 +124,9 @@ export interface ManagedRotationCriticalSection<THandshake, TPersisted = void> {
 
 /** The handshake's value, obtainable only once the rotated secret is durably
  * persisted. */
-interface ManagedRotationGate<THandshake, TPersisted> {
+interface ManagedRotationGate<THandshake> {
   /** The handshake's value, for the data-exchange phase. */
   handshake: THandshake;
-  /** What the persist stored. */
-  persisted: TPersisted;
   /** The rotated secret the persist stored. */
   rotatedSecret: string;
 }
@@ -140,9 +137,9 @@ interface ManagedRotationGate<THandshake, TPersisted> {
  *
  * @throws {RotationPersistError} if the rotation write-back fails to persist.
  */
-export async function runRotationCriticalSection<THandshake, TPersisted>(
-  section: ManagedRotationCriticalSection<THandshake, TPersisted>,
-): Promise<ManagedRotationGate<THandshake, TPersisted>> {
+export async function runRotationCriticalSection<THandshake>(
+  section: ManagedRotationCriticalSection<THandshake>,
+): Promise<ManagedRotationGate<THandshake>> {
   const { rotatedSecret, handshake } = await section.handshake();
 
   const writeBack = rotationWriteBack(
@@ -150,12 +147,11 @@ export async function runRotationCriticalSection<THandshake, TPersisted>(
     section.tokenMaxAgeDays,
     section.now(),
   );
-  let persisted: TPersisted;
   try {
-    persisted = await section.persist(writeBack);
+    await section.persist(writeBack);
   } catch (error) {
     throw new RotationPersistError(section.now(), error);
   }
 
-  return { handshake, persisted, rotatedSecret: writeBack.sharedSecret };
+  return { handshake, rotatedSecret: writeBack.sharedSecret };
 }

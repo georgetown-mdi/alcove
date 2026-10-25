@@ -609,18 +609,12 @@ describe("the re-invite driver's relays", () => {
         }),
       });
       const asked: Array<ReadonlyArray<string> | undefined> = [];
-      await reinviteManagedExchange(record, {
-        location: () => location,
-        generateSecret: () => FRESH_SECRET,
-        encode: encodeInvitation,
-        persistRotation: () => Promise.resolve(record),
-        registerRelayKey: (_replaced, written) => Promise.resolve(written),
-        now: () => NOW,
+      await reinviteManagedExchange(record.id, undefined, {
+        ...driverDeps(record),
         ownRelay: (allowedRelays) => {
           asked.push(allowedRelays);
           return undefined;
         },
-        defaultRelay: () => undefined,
       });
       expect(asked).toEqual([["relay.example.org"]]);
     } finally {
@@ -628,3 +622,85 @@ describe("the re-invite driver's relays", () => {
     }
   });
 });
+
+describe("the re-invite driver's lock", () => {
+  test("reads the record under the lock and writes over the secret that read holds", async () => {
+    const stored = inviterRecord();
+    const steps: Array<string> = [];
+    const persisted: Array<string> = [];
+    await reinviteManagedExchange(stored.id, undefined, {
+      ...driverDeps(stored),
+      withLock: async (_id, step, options) => {
+        steps.push(`lock ${JSON.stringify(options)}`);
+        const result = await step();
+        steps.push("release");
+        return result;
+      },
+      readRecord: () => {
+        steps.push("read");
+        return Promise.resolve(stored);
+      },
+      persistRotation: (_id, expectedSecret) => {
+        steps.push("persist");
+        persisted.push(expectedSecret);
+        return Promise.resolve(stored);
+      },
+    });
+    expect(steps).toEqual([
+      'lock {"ifAvailable":true}',
+      "read",
+      "persist",
+      "release",
+    ]);
+    expect(persisted).toEqual([stored.sharedSecret]);
+  });
+
+  test("requests the lock queued when asked, as after a stop", async () => {
+    const stored = inviterRecord();
+    const asked: Array<unknown> = [];
+    await reinviteManagedExchange(
+      stored.id,
+      {},
+      {
+        ...driverDeps(stored),
+        withLock: (_id, step, options) => {
+          asked.push(options);
+          return step();
+        },
+      },
+    );
+    expect(asked).toEqual([{}]);
+  });
+
+  test("refuses a record that is gone, writing nothing", async () => {
+    const stored = inviterRecord();
+    const persist = vi.fn(() => Promise.resolve(stored));
+    await expect(
+      reinviteManagedExchange(stored.id, undefined, {
+        ...driverDeps(stored),
+        readRecord: () => Promise.resolve(undefined),
+        persistRotation: persist,
+      }),
+    ).rejects.toThrow(/no managed exchange/);
+    expect(persist).not.toHaveBeenCalled();
+  });
+});
+
+/** The re-invite driver's dependencies over `stored`, with the lock taken at
+ * once and every platform read stubbed. */
+function driverDeps(
+  stored: RunnableManagedExchangeRecord,
+): Parameters<typeof reinviteManagedExchange>[2] & object {
+  return {
+    withLock: (_id, step) => step(),
+    readRecord: () => Promise.resolve(stored),
+    location: () => location,
+    generateSecret: () => FRESH_SECRET,
+    encode: encodeInvitation,
+    persistRotation: () => Promise.resolve(stored),
+    registerRelayKey: (_replaced, written) => Promise.resolve(written),
+    now: () => NOW,
+    ownRelay: () => undefined,
+    defaultRelay: () => undefined,
+  };
+}

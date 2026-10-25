@@ -63,6 +63,7 @@ import { noteUnfiledDisclosureRun } from "../../../src/psi/unfiledDisclosureStor
 import { openPeerMessageConnection } from "../../../src/psi/transport/peerMessageConnection.js";
 import { parkWebSocketRelayConnection } from "../../../src/psi/transport/websocketRelayConnection.js";
 import { persistManagedRunPayloadReceiveFill } from "../../../src/psi/managed/managedExchangeStore.js";
+import { runManagedRerun } from "../../../src/psi/managed/managedRun.js";
 
 import { aeadWrappedPipe } from "../../utils/aeadWrappedPipe.js";
 
@@ -118,10 +119,6 @@ const markRotationInFlight = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 const lockedRead = vi.hoisted((): { record: unknown } => ({
   record: undefined,
 }));
-// The record the stubbed rotation write reads; unset, the in-lock read.
-const rotationRead = vi.hoisted((): { record: object | undefined } => ({
-  record: undefined,
-}));
 
 // The rest of the module stays real: the launch surface's classification reads
 // its benign-outcome check.
@@ -137,7 +134,7 @@ vi.mock("../../../src/psi/managed/managedRun.js", async (importOriginal) => ({
           mark: () => Promise<void>,
           current: unknown,
         ) => Promise<{ handshake: unknown }>;
-        dataExchange: (carried: unknown, rotated: unknown) => Promise<unknown>;
+        dataExchange: (carried: unknown) => Promise<unknown>;
       },
     ) => {
       const current = lockedRead.record ?? record;
@@ -147,12 +144,7 @@ vi.mock("../../../src/psi/managed/managedRun.js", async (importOriginal) => ({
         markRotationInFlight,
         current,
       );
-      // The record the rotation write stored: the one read inside the lock,
-      // or the one a case stores mid-run, at the handshake's rotated secret.
-      const exchange = await seams.dataExchange(handshake, {
-        ...((rotationRead.record ?? current) as object),
-        sharedSecret: "next",
-      });
+      const exchange = await seams.dataExchange(handshake);
       return { exchange, lastRun: { at: 0, outcome: "succeeded" } };
     },
   ),
@@ -446,7 +438,6 @@ function reportCloseOutcome(outcome: PeerCloseOutcome) {
 afterEach(() => {
   vi.clearAllMocks();
   lockedRead.record = undefined;
-  rotationRead.record = undefined;
 });
 
 describe("runManagedExchangeInBrowser", () => {
@@ -677,7 +668,7 @@ describe("runManagedExchangeInBrowser", () => {
     });
 
     expect(vi.mocked(persistManagedRunPayloadReceiveFill)).toHaveBeenCalledWith(
-      expect.objectContaining({ id: RECORD.id, sharedSecret: "next" }),
+      { id: RECORD.id, linkageTerms: RECORD.exchangeFile.linkageTerms },
       ["program", "back\\slash"],
     );
     expect(order).toEqual(["recorded", "noticed"]);
@@ -781,8 +772,28 @@ describe("runManagedExchangeInBrowser", () => {
 
     expect(mockedOpen).toHaveBeenCalledWith(conn, {
       onCloseOutcome: expect.any(Function),
-      signal: controller.signal,
+      signal: expect.any(AbortSignal),
     });
+    // The run's own signal, which the owner's abort reaches after the run
+    // yielded, while the close still drains.
+    const passed = mockedOpen.mock.calls[0]?.[1]?.signal;
+    expect(passed?.aborted).toBe(false);
+    controller.abort();
+    expect(passed?.aborted).toBe(true);
+  });
+
+  test("gives the run its own stop, whose signal is the one the transport waits on", async () => {
+    // A re-invite or enrollment in this window stops the run by aborting
+    // this controller, so the stop cuts the same waits a cancel does.
+    const { mc } = makeParkedCloseMc();
+    mockedOpen.mockResolvedValue(mc);
+    acquireResources();
+
+    await runDriver(new AbortController().signal);
+
+    const stop = vi.mocked(runManagedRerun).mock.calls[0]?.[2]?.stop;
+    expect(stop).toBeInstanceOf(AbortController);
+    expect(mockedOpen.mock.calls[0]?.[1]?.signal).toBe(stop?.signal);
   });
 
   test("a cancel cuts an exchange the partner has stalled mid-payload", async () => {
@@ -1238,11 +1249,11 @@ describe("the peer-wait bound", () => {
     await runDriver(controller.signal, undefined, recordForSide("inviter"));
 
     expect(rendezvousOptions().acquisition).toEqual({
-      signal: controller.signal,
+      signal: expect.any(AbortSignal),
       relayPlan: { relaysLeftOut: [], websocketRelays: [] },
     });
     expect(rendezvousOptions().inboundWait).toEqual({
-      signal: controller.signal,
+      signal: expect.any(AbortSignal),
     });
   });
 
@@ -1263,12 +1274,12 @@ describe("the peer-wait bound", () => {
     );
 
     expect(rendezvousOptions().acquisition).toEqual({
-      signal: controller.signal,
+      signal: expect.any(AbortSignal),
       relayPlan: { relaysLeftOut: [], websocketRelays: [] },
       peerWaitTimeoutMs: 90_000,
     });
     expect(rendezvousOptions().inboundWait).toEqual({
-      signal: controller.signal,
+      signal: expect.any(AbortSignal),
       timeoutMs: 90_000,
     });
   });
@@ -2065,38 +2076,10 @@ describe("the relay registrations of a run whose allowed relays leave its own re
       expect.anything(),
     );
     expect(retryPendingManagedRelayRegistration).toHaveBeenCalledWith(
-      ENROLLED.id,
+      ENROLLED,
+      REGISTRAR,
       expect.anything(),
     );
-    expect(registerRotatedManagedRelayKey).toHaveBeenCalledWith(
-      expect.objectContaining({
-        registrar: REGISTRAR,
-        preRotationSecret: RECORD.sharedSecret,
-        rotatedSecret: "next",
-      }),
-      expect.anything(),
-    );
-  });
-
-  test("a registrar enrolled after the run took the lock gets the rotated key's registration, from the record the rotation write stored", async () => {
-    storeOwnRelay();
-    const ENROLLED = enrolled([]);
-    const { relayRegistrar: _none, ...notEnrolled } = ENROLLED;
-    lockedRead.record = {
-      ...notEnrolled,
-      relayRegistrationPendingSince: undefined,
-    };
-    rotationRead.record = ENROLLED;
-    vi.mocked(registerRotatedManagedRelayKey).mockResolvedValueOnce({
-      kind: "registered",
-    });
-    const { mc } = makeParkedCloseMc();
-    mockedOpen.mockResolvedValue(mc);
-    acquireResources();
-
-    await runDriver(new AbortController().signal, undefined, ENROLLED);
-
-    expect(retryPendingManagedRelayRegistration).not.toHaveBeenCalled();
     expect(registerRotatedManagedRelayKey).toHaveBeenCalledWith(
       expect.objectContaining({
         registrar: REGISTRAR,

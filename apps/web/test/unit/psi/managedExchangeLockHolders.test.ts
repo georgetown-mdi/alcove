@@ -8,11 +8,11 @@ import { chosenCopyImportReason } from "@recurring/managedImportFailure";
 
 /**
  * Which writes take a managed exchange's run+rotate lock, as a check over the
- * app source rather than a claim in prose: a run, and the import replace
- * that writes a chosen copy over. Every other write runs unlocked and, where
- * it replaces the secret, compares the one it read inside its own
- * transaction. The import refusal that reads the lock names a run as its
- * holder, which is accurate only while this list holds.
+ * app source rather than a claim in prose: a run, the re-invite, relay
+ * enrollment and its stop, and the import replace that writes a chosen copy
+ * over. Every other write runs unlocked. The run's rotation and the
+ * re-invite are the only writes that replace a runnable record's secret, so
+ * no secret write lands inside a run's locked section.
  */
 
 const WEB_SOURCE_ROOT = new URL("../../../src/", import.meta.url);
@@ -45,11 +45,16 @@ function functionName(node: ts.Node): string | undefined {
   return undefined;
 }
 
-/** The outermost named function enclosing `node`, or `(module)`. */
+/** The outermost named function or variable enclosing `node`, or
+ * `(module)`. A variable names the dependency defaults a lock taker is
+ * injected with. */
 function outermostFunction(node: ts.Node): string {
   let outermost = "(module)";
   for (let at = node.parent; !ts.isSourceFile(at); at = at.parent)
-    outermost = functionName(at) ?? outermost;
+    outermost =
+      functionName(at) ??
+      (ts.isVariableDeclaration(at) ? at.name.getText() : undefined) ??
+      outermost;
   return outermost;
 }
 
@@ -92,7 +97,7 @@ function lockSites(symbol: string, declaredIn: string): Array<string> {
 }
 
 describe("the run+rotate lock's holders", () => {
-  test("only a run and the import replace take it", () => {
+  test("only a run, the re-invite, relay enrollment and its stop, and the import replace take it", () => {
     expect(
       lockSites(
         "withManagedExchangeLock",
@@ -101,6 +106,9 @@ describe("the run+rotate lock's holders", () => {
     ).toEqual([
       "psi/managed/managedExchangeRun.ts: runManagedExchange",
       "psi/managed/managedExchangeStore.ts: replaceManagedExchangeFromImport",
+      "psi/managed/managedReinviteDriver.ts: defaultDeps (not a call)",
+      "psi/managed/managedRelayRegistration.ts: defaultEnrollmentDeps (not a call)",
+      "psi/managed/managedRelayRegistration.ts: defaultStopDeps (not a call)",
     ]);
   });
 

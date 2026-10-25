@@ -85,6 +85,7 @@ import {
   getManagedLocalState,
   listReadableManagedLocalState,
 } from "./managedLocalState";
+import { awaitManagedExchangeLockTurn } from "./managedExchangeLock";
 import { runManagedExchangeInBrowser } from "./managedRunDriver";
 import { tickManagedSchedules } from "./managedScheduleRunner";
 
@@ -252,6 +253,7 @@ export function browserScheduleTickSeams(
     listLocalState: listReadableManagedLocalState,
     persistAdvance: persistManagedExchangeScheduleAdvance,
     delay: (ms) => delayUntilAborted(ms, signal),
+    awaitLockTurn: awaitManagedExchangeLockTurn,
     stopped: () => signal.aborted,
     runAttempt: (attempt) => runUnattendedAttempt(attempt, signal),
   };

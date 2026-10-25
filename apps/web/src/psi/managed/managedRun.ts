@@ -55,6 +55,7 @@ import {
 import { RotationPersistError, failedRun, missedRun } from "./managedRunRotate";
 import { ManagedExchangeLockUnavailableError } from "./managedExchangeLock";
 import { ManagedRelayRegistrationError } from "./managedRelayRegistration";
+import { ManagedRunStoppedError } from "./managedWindowRuns";
 import { ManagedTermsChangeTakenOnError } from "./managedTermsProposal";
 
 import type { RoundSetLimitError } from "@alcove/core";
@@ -109,12 +110,8 @@ interface ManagedRerunSeams<TInput, THandshake, TExchange> {
     current: RunnableManagedExchangeRecord,
   ) => Promise<ManagedRerunHandshake<THandshake>>;
   /** Run the data exchange -- reachable only after the durable persist resolves.
-   * Receives the handshake's output value and the record the rotation write
-   * stored ({@link runManagedExchange}). */
-  dataExchange: (
-    handshake: THandshake,
-    rotated: RunnableManagedExchangeRecord,
-  ) => Promise<TExchange>;
+   * Receives the handshake's output value. */
+  dataExchange: (handshake: THandshake) => Promise<TExchange>;
 }
 
 /** How a re-run launches, plus the clock. `attendance` is the run path (attended
@@ -139,6 +136,15 @@ export interface ManagedRerunOptions {
    * rather than a transport fault. Defaults to never-cancelled.
    */
   aborted?: () => boolean;
+  /**
+   * The run's own controller, whose signal ends the run. Given, the run is
+   * listed in this window's runs once it takes the lock
+   * ({@link ./managedWindowRuns.ts}), so a re-invite or a relay enrollment
+   * refused by it can stop it while it waits for its partner: a stop aborts
+   * this controller with a {@link ManagedRunStoppedError}, which the run
+   * raises in place of whatever the abort cut, recording nothing.
+   */
+  stop?: AbortController;
   /**
    * Called once when the data exchange begins -- the phase boundary past which
    * payload could have flowed. The run's own failure bookkeeping reads that
@@ -190,6 +196,8 @@ export interface ManagedRerunOptions {
  * @throws {ManagedExchangeLockUnavailableError} if a run is already in progress in
  *   another same-origin context.
  * @throws {RotationPersistError} if the rotation write fails after the handshake.
+ * @throws {ManagedRunStoppedError} if a stop through `options.stop` ended the
+ *   run before its rotation-in-flight marker; nothing is recorded.
  */
 export async function runManagedRerun<TInput, THandshake, TExchange>(
   record: ManagedExchangeRecord,
@@ -249,9 +257,14 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
         options.onDataExchangeStart?.();
       },
       ...(options.lock !== undefined ? { lock: options.lock } : {}),
+      ...(options.stop !== undefined ? { stop: options.stop } : {}),
       now,
     });
   } catch (error) {
+    // A stop is honored only before the rotation-in-flight marker, so the
+    // error it provoked is the stop's, whatever the teardown raised.
+    const stopReason: unknown = options.stop?.signal.reason;
+    if (stopReason instanceof ManagedRunStoppedError) throw stopReason;
     // A bound that lapsed mid-run remaps to the same benign expiry (see
     // remapLapsedRunFailure).
     const lapsed = remapLapsedRunFailure(error, current ?? record, now());
@@ -265,8 +278,9 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
     );
     if (lastRun !== undefined) {
       // Best-effort: a failed write here must never replace the run's own
-      // failure. Stamped only over the secret the run last stored, so a
-      // re-invite landing during the run keeps the record it left.
+      // failure. Made after the lock released, so it is stamped only over the
+      // secret the run last stored: a re-invite landing since keeps the record
+      // it left.
       try {
         await recordManagedExchangeLastRun(
           record.id,
@@ -368,9 +382,12 @@ function isPartnerRefusedSetAbort(error: unknown): boolean {
  * - {@link ManagedTermsChangeTakenOnError}: unrecorded -- the operator took on
  *   the partner's changed terms, which the stored exchange now holds, so
  *   nothing failed that a later visit has to answer.
- * - {@link ManagedExchangeSecretChangedError}: unrecorded -- a re-invite
- *   replaced the secret the run began from and dropped the run bookkeeping,
- *   so the record is the re-invite's.
+ * - {@link ManagedExchangeSecretChangedError}: unrecorded -- the rotation
+ *   write's safety check found the secret the run began from replaced, so the
+ *   record is the replacing write's.
+ * - {@link ManagedRunStoppedError}: unrecorded -- this window's re-invite or
+ *   relay enrollment stopped the run before its rotation-in-flight marker,
+ *   so nothing failed and the partner saw no key exchange.
  * - {@link ManagedExchangeNotRunnableError}: records `custody-unreadable` --
  *   the stored copy the run would rotate could not be used, refused before
  *   the input or any connection, and it refuses the same way at the next run.
@@ -421,7 +438,8 @@ export function rerunFailureLastRun(
     error instanceof RotationPersistError ||
     error instanceof ManagedRelayRegistrationError ||
     error instanceof ManagedTermsChangeTakenOnError ||
-    error instanceof ManagedExchangeSecretChangedError
+    error instanceof ManagedExchangeSecretChangedError ||
+    error instanceof ManagedRunStoppedError
   )
     return undefined;
   if (error instanceof ManagedExchangeNotRunnableError)
@@ -469,9 +487,9 @@ export function rerunFailureLastRun(
  * `"partner-refused-set"` after the terms exchange, `"partner-refused-terms"`
  * at the terms exchange, `"partner-protocol-refusal"` at any point after the
  * handshake, `"relay-registration"` before connecting, once the registrar
- * did not confirm a pending registration, and `"reinvited"` after the partner
- * connected and before the data exchange, once a re-invite replaced the
- * secret the run began from. */
+ * did not confirm a pending registration, and `"stopped"` before the
+ * rotation-in-flight marker, once this window's re-invite or relay
+ * enrollment stopped the run. */
 type BenignRerunOutcome =
   | "expired"
   | "custody-unreadable"
@@ -485,7 +503,7 @@ type BenignRerunOutcome =
   | "partner-refused-terms"
   | "partner-protocol-refusal"
   | "relay-registration"
-  | "reinvited";
+  | "stopped";
 
 /** Classify a launch failure into the benign outcome it holds, or `undefined`
  * for a failure that is not one of these states (a handshake failure, a storage
@@ -551,11 +569,7 @@ export function benignRerunOutcome(
   if (isPartnerProtocolRefusal(error)) return "partner-protocol-refusal";
   if (error instanceof ManagedRelayRegistrationError)
     return "relay-registration";
-  if (
-    error instanceof ManagedExchangeSecretChangedError &&
-    !dataExchangeStarted
-  )
-    return "reinvited";
+  if (error instanceof ManagedRunStoppedError) return "stopped";
   return undefined;
 }
 

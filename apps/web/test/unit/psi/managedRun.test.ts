@@ -955,80 +955,61 @@ describe("runManagedRerun: a store write that fails", () => {
     });
   });
 
-  test.each([
-    ["the rotation-in-flight marker", markManagedExchangeRotationInFlight],
-    ["the rotation persist", persistManagedExchangeRotation],
-  ] as const)(
-    "%s refused over a secret a re-invite replaced: the run stops before the data exchange and stamps nothing",
-    async (_write, refusing) => {
-      stubGrantingWebLocks();
-      const changed = new ManagedExchangeSecretChangedError(
-        "record-under-test",
-      );
-      vi.mocked(refusing).mockRejectedValueOnce(changed);
-      let dataExchangeRan = false;
+  test("the rotation persist refused over a replaced secret stops the run before the data exchange and stamps nothing", async () => {
+    // A safety check: every write that replaces the secret takes the lock
+    // the run holds, so the refusal is not expected to fire.
+    stubGrantingWebLocks();
+    const changed = new ManagedExchangeSecretChangedError("record-under-test");
+    vi.mocked(persistManagedExchangeRotation).mockRejectedValueOnce(changed);
+    let dataExchangeRan = false;
 
-      const error = await runManagedRerun(record(), {
-        ...completingSeams(),
-        dataExchange: () => {
-          dataExchangeRan = true;
-          return Promise.resolve("exchanged");
-        },
-      }).then(
-        () => undefined,
-        (reason: unknown) => reason,
-      );
+    const error = await runManagedRerun(record(), {
+      ...completingSeams(),
+      dataExchange: () => {
+        dataExchangeRan = true;
+        return Promise.resolve("exchanged");
+      },
+    }).then(
+      () => undefined,
+      (reason: unknown) => reason,
+    );
 
-      expect(error).toBe(changed);
-      expect(dataExchangeRan).toBe(false);
-      expect(recordManagedExchangeLastRun).not.toHaveBeenCalled();
-      expect(benignRerunOutcome(error, false)).toBe("reinvited");
-      expect(
-        rerunFailureLastRun(error, Date.now(), false, false),
-      ).toBeUndefined();
-    },
-  );
+    expect(error).toBe(changed);
+    expect(dataExchangeRan).toBe(false);
+    expect(recordManagedExchangeLastRun).not.toHaveBeenCalled();
+    expect(
+      rerunFailureLastRun(error, Date.now(), false, false),
+    ).toBeUndefined();
+  });
 
-  test("both secret writes name the secret the run read inside the lock", async () => {
+  test("the rotation persist names the secret the run read inside the lock", async () => {
     stubGrantingWebLocks();
     const stored = record({ sharedSecret: HELD_SECRET });
     storedRecord.value = stored;
 
     await runManagedRerun(stored, completingSeams());
 
-    expect(
-      vi.mocked(markManagedExchangeRotationInFlight).mock.calls[0]?.[1],
-    ).toBe(HELD_SECRET);
     expect(vi.mocked(persistManagedExchangeRotation).mock.calls[0]?.[1]).toBe(
       HELD_SECRET,
     );
   });
 
-  test.each([
-    ["the success stamp", () => Promise.resolve("exchanged")],
-    [
-      "the failure stamp after a dropped exchange",
-      () => Promise.reject(new Error("the partner's connection dropped")),
-    ],
-  ] as const)(
-    "%s is made only over the secret the rotation stored",
-    async (_stamp, dataExchange) => {
-      stubGrantingWebLocks();
-      storedRecord.value = record({ sharedSecret: HELD_SECRET });
-      const rotatedSecret = generateSharedSecret();
+  test("the failure stamp after a dropped exchange, made once the lock released, is made only over the secret the rotation stored", async () => {
+    stubGrantingWebLocks();
+    storedRecord.value = record({ sharedSecret: HELD_SECRET });
+    const rotatedSecret = generateSharedSecret();
 
-      await runManagedRerun(storedRecord.value, {
-        acquireInput: () => Promise.resolve("rows"),
-        handshake: () =>
-          Promise.resolve({ rotatedSecret, handshake: "carried" }),
-        dataExchange,
-      }).catch(() => undefined);
+    await runManagedRerun(storedRecord.value, {
+      acquireInput: () => Promise.resolve("rows"),
+      handshake: () => Promise.resolve({ rotatedSecret, handshake: "carried" }),
+      dataExchange: () =>
+        Promise.reject(new Error("the partner's connection dropped")),
+    }).catch(() => undefined);
 
-      const stamps = vi.mocked(recordManagedExchangeLastRun).mock.calls;
-      expect(stamps).toHaveLength(1);
-      expect(stamps[0]?.[3]).toBe(rotatedSecret);
-    },
-  );
+    const stamps = vi.mocked(recordManagedExchangeLastRun).mock.calls;
+    expect(stamps).toHaveLength(1);
+    expect(stamps[0]?.[3]).toBe(rotatedSecret);
+  });
 
   test("the storage stamp after a failed persist: the storage failure still reaches the caller", async () => {
     stubGrantingWebLocks();

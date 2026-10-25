@@ -19,15 +19,16 @@ import {
 import { ZodError } from "zod";
 
 import {
-  applyManagedExchangeTermsChange,
-  matchingKeyTurnedOffBy,
-  runnableManagedExchange,
-} from "./managedExchangeRecord";
-import {
+  ManagedExchangeSecretChangedError,
   getManagedExchange,
   persistManagedExchangeSentColumns,
   persistManagedExchangeTermsChange,
 } from "./managedExchangeStore";
+import {
+  applyManagedExchangeTermsChange,
+  matchingKeyTurnedOffBy,
+  runnableManagedExchange,
+} from "./managedExchangeRecord";
 import { clearManagedExchangeTermsProposal } from "./managedLocalState";
 import { managedExchangeLapsed } from "./managedExpiry";
 
@@ -260,8 +261,11 @@ export async function readManagedTermsUpdate(
  * terms change a scheduled run kept, which this answers. The stored record is
  * read and checked again, and applied only where the change is still the one
  * shown, the matched-key column it turns off included. Takes no lock: a run in
- * flight runs the terms it read when it took its lock, and one that rotated
- * the secret since the update was read refuses it here as `partnership`.
+ * flight runs the terms it read when it took its lock. The update is
+ * authenticated under the secret that read holds, and the write compares the
+ * stored secret with it, so a run's rotation or a re-invite landing before
+ * the read or between the read and the write refuses the update as
+ * `partnership`.
  *
  * @throws {ManagedTermsUpdateNotAppliedError} where it is refused.
  * @throws {ZodError} if the resulting record is invalid.
@@ -279,10 +283,20 @@ export async function applyManagedTermsUpdate(
     current.matchingKeyTurnedOff !== shown.matchingKeyTurnedOff
   )
     throw new ManagedTermsUpdateNotAppliedError("changed");
-  const applied = await persistManagedExchangeTermsChange(id, {
-    scope: "update",
-    update: current.update,
-  });
+  let applied: ManagedExchangeRecord;
+  try {
+    applied = await persistManagedExchangeTermsChange(
+      id,
+      { scope: "update", update: current.update },
+      stored.sharedSecret,
+    );
+  } catch (error) {
+    if (error instanceof ManagedExchangeSecretChangedError)
+      throw new ManagedTermsUpdateNotAppliedError("partnership", {
+        cause: error,
+      });
+    throw error;
+  }
   // Best-effort: a proposal left behind is one the operator can decline.
   await clearManagedExchangeTermsProposal(id).catch(() => undefined);
   return applied;

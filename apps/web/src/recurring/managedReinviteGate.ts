@@ -1,15 +1,17 @@
 /**
  * Why the exchange's page is not offering a fresh invitation. Both re-invite
- * controls read this -- the failure recovery's near the top and the
+ * controls read these -- the failure recovery's near the top and the
  * configuration section's far below -- so the operator meets the same words
  * whichever one they reached for, and a withheld control says what withheld it
  * rather than sitting inert.
  *
- * A standing compromise response is not waited out: it ends only when one of
- * the three acts that clear a standing condition clears it (see
- * docs/spec/MANAGED_EXCHANGE_RECORD.md, the `standingCondition` row). A run in
- * flight withholds nothing: the mint's write refuses over a secret the run
- * rotated, and the run stops where the mint lands first.
+ * The two withhold for different lengths of time. A run in flight is a wait: the
+ * control comes back when the run ends, whatever its outcome, and a run of this
+ * window still waiting for its partner can be stopped
+ * ({@link ./managedRunHolder.ts} holds that copy). A standing compromise
+ * response is not waited out -- it ends only when one of the three acts that
+ * clear a standing condition clears it (see
+ * docs/spec/MANAGED_EXCHANGE_RECORD.md, the `standingCondition` row).
  */
 
 /**

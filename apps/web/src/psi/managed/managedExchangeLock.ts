@@ -1,11 +1,12 @@
 /**
  * The run+rotate single-writer lock of a managed (recurring) exchange. A module
- * of its own because both the run ({@link ./managedExchangeRun.ts}) and the
- * store's import replace ({@link ./managedExchangeStore.ts}) take it, and the
- * run imports the store. Every other write to the record runs unlocked, and a
- * secret write compares the secret it replaces instead. A same-profile
- * liveness guard, auto-released with its holder; a second device or profile is
- * guarded by export semantics instead (docs/notes/managed-exchange-design.md).
+ * of its own because the run ({@link ./managedExchangeRun.ts}), the re-invite
+ * ({@link ./managedReinviteDriver.ts}), relay enrollment and its stop
+ * ({@link ./managedRelayRegistration.ts}) and the store's import replace
+ * ({@link ./managedExchangeStore.ts}) take it, and the run imports the store.
+ * Every other write to the record runs unlocked. A same-profile liveness
+ * guard, auto-released with its holder; a second device or profile is guarded
+ * by export semantics instead (docs/notes/managed-exchange-design.md).
  */
 
 /** Namespace prefix keeping the lock name clear of other same-origin locks. */
@@ -19,8 +20,8 @@ export function managedExchangeLockName(id: string): string {
 /**
  * Whether any same-origin context, this one included, holds the run+rotate lock
  * for `id`. A point-in-time reading with no change event, so a surface polls it.
- * Gate presentation on it, never a write: a secret write compares the secret it
- * replaces inside its own transaction.
+ * Gate presentation on it, never a write: a write that must not cross a run takes
+ * the lock itself.
  */
 export async function managedExchangeRunLockHeld(id: string): Promise<boolean> {
   const name = managedExchangeLockName(id);
@@ -30,8 +31,9 @@ export async function managedExchangeRunLockHeld(id: string): Promise<boolean> {
 
 /**
  * Raised on the `ifAvailable` path when another same-origin context holds the
- * lock: a run, or an import replace taking it for its step. The runner treats
- * both as "a run is already in progress on this device".
+ * lock: a run, or a re-invite, relay enrollment or import replace taking it for
+ * its step. The runner treats each as "a run is already in progress on this
+ * device".
  */
 export class ManagedExchangeLockUnavailableError extends Error {
   constructor(id: string) {
@@ -67,4 +69,15 @@ export async function withManagedExchangeLock<T>(
     if (lock === null) throw new ManagedExchangeLockUnavailableError(id);
     return critical();
   });
+}
+
+/**
+ * Wait for a turn at the run+rotate lock for `id`, queued behind every request
+ * made before this one, and release it at once. Web Locks grants an exclusive
+ * lock's queued requests in the order they were made, and refuses an
+ * `ifAvailable` request while any is queued, so an operation queued ahead of
+ * this call has run when it resolves.
+ */
+export async function awaitManagedExchangeLockTurn(id: string): Promise<void> {
+  await withManagedExchangeLock(id, () => Promise.resolve());
 }

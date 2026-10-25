@@ -69,6 +69,11 @@ import type { ManagedTermsUpdateReading } from "@psi/managed/managedTermsUpdate"
 
 /** The stored exchanges, by id, as the bytes the store would hold. */
 const storedBytes = vi.hoisted(() => new Map<string, string>());
+/** A write landing once, right after the apply's read: a rotation between
+ * the read and the apply's own write. */
+const afterNextRead = vi.hoisted(() => ({
+  write: undefined as (() => void) | undefined,
+}));
 
 vi.mock("@psi/managed/managedExchangeStore", async (importOriginal) => {
   const records = await import("@psi/managed/managedExchangeRecord");
@@ -78,13 +83,31 @@ vi.mock("@psi/managed/managedExchangeStore", async (importOriginal) => {
       ? undefined
       : records.parseManagedExchangeRecord(JSON.parse(bytes));
   };
+  const actual = await importOriginal<typeof ManagedExchangeStore>();
   return {
-    ...(await importOriginal<typeof ManagedExchangeStore>()),
-    getManagedExchange: vi.fn((id: string) => Promise.resolve(read(id))),
+    ...actual,
+    getManagedExchange: vi.fn((id: string) => {
+      const stored = read(id);
+      const landing = afterNextRead.write;
+      afterNextRead.write = undefined;
+      landing?.();
+      return Promise.resolve(stored);
+    }),
     persistManagedExchangeTermsChange: vi.fn(
-      (id: string, write: ManagedTermsChangeWrite) => {
+      (
+        id: string,
+        write: ManagedTermsChangeWrite,
+        expectedSharedSecret?: string,
+      ) => {
         const stored = read(id);
         if (stored === undefined) throw new Error(`no exchange ${id}`);
+        if (
+          expectedSharedSecret !== undefined &&
+          stored.sharedSecret !== expectedSharedSecret
+        )
+          return Promise.reject(
+            new actual.ManagedExchangeSecretChangedError(id),
+          );
         const next = records.applyManagedExchangeTermsChange(stored, write);
         storedBytes.set(id, JSON.stringify(next));
         return Promise.resolve(next);
@@ -808,6 +831,28 @@ describe("applying a partner's terms update", () => {
           ),
         ).toEqual(["notes", "county"]);
       },
+    );
+  });
+
+  test("refuses as partnership, writing nothing, where a rotation lands between the apply's read and its write", async () => {
+    const record = await agencyBRecord();
+    const reading = await readManagedTermsUpdate(record, CLI_TERMS_UPDATE);
+    let rotated: string | undefined;
+    afterNextRead.write = () => {
+      const next = {
+        ...storedRecord(record.id),
+        sharedSecret: generateSharedSecret(),
+      };
+      storedBytes.set(record.id, JSON.stringify(next));
+      rotated = storedBytes.get(record.id);
+    };
+    expect(await refusalOf(applyManagedTermsUpdate(record.id, reading))).toBe(
+      "partnership",
+    );
+    expect(rotated).toBeDefined();
+    expect(storedBytes.get(record.id)).toBe(rotated);
+    expect(clearManagedExchangeTermsProposal).not.toHaveBeenCalledWith(
+      record.id,
     );
   });
 

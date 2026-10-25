@@ -870,11 +870,12 @@ tab, or a run you start while a scheduled one is under way, waits or is told a
 run is already in progress. During a scheduled window that lasts as long as the
 window does, since the app keeps waiting for your partner across it. A run that
 connects just before the window closes holds on until its exchange finishes,
-which can be after the window is over. Only runs wait on each other: the
-downloads, the terms and relay controls, and a re-invite all stay available
-while a run is under way. The run uses the terms it started with, and a change
-you make meanwhile is what the exchange holds after it: the run does not write
-over your terms, and after a re-invite it records nothing on the exchange.
+which can be after the window is over. The downloads and the terms controls
+stay available while a run is under way. The run uses the terms it started
+with, and a change you make meanwhile is what the exchange holds after it: the
+run does not write over your terms. Creating a fresh invitation and changing
+the relay registration wait for the run to end, and the page says where the
+run is and how to end it sooner.
 
 ### Moving the exchange to another device
 
@@ -1023,10 +1024,11 @@ it replaces, before it shows you the invitation, and names the exchange id
 beside the WebSocket relay of this browser's relay settings, where they name
 one, so your partner's runs prove to that relay under it. An exchange accepted
 from an invitation that named your partner's relay is enrolled and registers
-the same way: each of its runs lists your relay beside your partner's. You can
-enroll, or enroll at another registrar, while a run is under way: the
-registrar the exchange is enrolled at when the run ends holds the run's new
-key, or the exchange shows the registration as pending.
+the same way: each of its runs lists your relay beside your partner's.
+Enrolling and stopping registration wait while a run of the exchange is under
+way. If the run is in this window and still waiting for your partner, **Stop
+the waiting run and enroll** ends it and enrolls; the token you entered is
+kept if the enrollment is refused because a run started.
 
 A registration the registrar does not confirm is kept on the exchange and tried
 again before the next run connects. If the registrar still does not confirm, the
@@ -1387,14 +1389,22 @@ rather than offering the invitation: the gate is asked once per failure, and no
 control creates an invitation while one of them is unanswered.
 
 While a run of this exchange is under way anywhere in the browser profile --
-this tab, another tab, or its schedule -- the same two controls still create an
-invitation. The new invitation and the run cannot both change the secret: if
-the run changes it first, the invitation is refused, nothing is saved, and you
-try again; if the invitation comes first, the run stops before any data is
-exchanged and records nothing. One case is left: a run that finishes while the
-invitation is being made leaves your partner on the run's new secret and this
-page on the invitation's, until your partner accepts the new invitation. The
-page shows the exchange as the invitation left it, without that run's outcome.
+this tab, another tab, or its schedule -- the same two controls create no
+invitation either, and say where the run is:
+
+- **In this window, waiting for your partner.** **Stop the waiting run and
+  re-invite** ends that run, which records nothing, and creates the
+  invitation. A scheduled run stopped this way is not counted as a missed
+  window, and its window's next attempt uses the new invitation.
+- **In this window, exchanging data with your partner.** It can no longer be
+  stopped this way; the controls return when it ends.
+- **In another window or tab, or the installed app.** Closing that window
+  ends it. For a scheduled run, turning off the schedule under Local settings
+  ends the scheduled window after its current attempt, within about 10
+  minutes.
+
+This lifts on its own once the run finishes, whatever it finished with, with
+nothing to answer.
 
 ### Expiry is its own state, never routed through attack framing
 
