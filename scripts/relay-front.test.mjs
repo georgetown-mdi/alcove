@@ -98,6 +98,7 @@ const WEBSOCKET_TLS = `127.0.0.1:${portOf("WEBSOCKET_TLS_PORT")}`;
 const WEBSOCKET_ZONE =
   "limit_conn_zone $binary_remote_addr zone=alcove_websocket_relay:1m;";
 const WEBSOCKET_LIMIT = "limit_conn alcove_websocket_relay 8;";
+const WEBSOCKET_LIMIT_LOG_LEVEL = "limit_conn_log_level info;";
 
 /** A configuration's server blocks, each as its setting lines. */
 const renderedServerBlocks = (text) =>
@@ -573,6 +574,7 @@ describe("front.conf.tmpl", () => {
     expect(websocket).toContain("set_real_ip_from 127.0.0.1;");
     expect(websocket.filter((line) => line.startsWith("limit_conn"))).toEqual([
       WEBSOCKET_LIMIT,
+      WEBSOCKET_LIMIT_LOG_LEVEL,
     ]);
     for (const server of servers.slice(0, 3)) {
       expect(server.some((line) => line.startsWith("limit_conn"))).toBe(false);

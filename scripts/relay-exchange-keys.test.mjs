@@ -4117,6 +4117,7 @@ describe.skipIf(runningAsRoot)(
       chmodSync(join(stubDir, "python3"), 0o755);
       const result = host.verify({
         PATH: `${stubDir}:${host.env.PATH}`,
+        ALCOVE_RELAY_VERIFY_CONNECT: "127.0.0.2",
         ALCOVE_RELAY_WEBSOCKET_NAME: "wsrelay.example.",
       });
       return {
@@ -4132,7 +4133,7 @@ describe.skipIf(runningAsRoot)(
       );
       expect(runs).toEqual([
         expect.stringMatching(
-          /^-B \S+\/websocket-address-limit\.py 127\.0\.0\.1 443 wsrelay\.example 127\.0\.0\.1$/,
+          /^-B \S+\/websocket-address-limit\.py 127\.0\.0\.2 443 wsrelay\.example 127\.0\.0\.1$/,
         ),
       ]);
       expect(result.stdout).toContain(

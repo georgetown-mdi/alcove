@@ -564,7 +564,7 @@ else
     case "$LIMIT_STATUS" in
       0) report pass "the front admitted 8 WebSocket relay sockets from one client address and one from another, and closed a ninth from the first" "$LIMIT_DETAIL" ;;
       6) report fail "the front closed a WebSocket relay socket it should have admitted" \
-           "$LIMIT_DETAIL; a socket from the second address closed means the front counts every client as one address" ;;
+           "$LIMIT_DETAIL; if the closed socket is the one from the second address, the front counts every client as one address" ;;
       7) report fail "the front did not close a ninth WebSocket relay socket from one client address" "$LIMIT_DETAIL" ;;
       4|5) report fail "the front's WebSocket relay server did not upgrade the per-address probe's sockets" "$LIMIT_DETAIL" ;;
       *) report unclear "could not ask the front's bound on WebSocket relay sockets for each client address" "$LIMIT_DETAIL" ;;

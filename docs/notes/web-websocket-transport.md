@@ -191,7 +191,7 @@ The owner's choice (2026-10-04) is one proxy on 443, and the relay reference bui
   TURN allocations and a signaling WebSocket passed through it there; a relayed exchange from a client admitted to 443 only is not yet measured ([webrtc-relay-deployment.md, One listener on 443](webrtc-relay-deployment.md#one-listener-on-443)).
 - **What the relay adds.** One more route, its own name to a server of the front that terminates its TLS under the relay's certificate, issued for that name too, and passes the upgrade to the relay on loopback; the relay has no certificate and opens no public listener ([infra/relay/README.md, The WebSocket relay](../../infra/relay/README.md#the-websocket-relay)).
 - **What the relay loses.** Behind the front every connection arrives from `127.0.0.1`, so the relay cannot read a client's address, and its quotas key on the exchange alone ([WEBSOCKET_RELAY.md, Quotas](../spec/WEBSOCKET_RELAY.md#quotas)).
-  Whether to add a per-address quota is open. The front's server for the relay could send a PROXY header naming the client, as its server for TURN does, but the relay answers an upgrade that opens with one `400` (measured 2026-10-19), so the relay would first have to read it.
+  The front bounds sockets for each client address instead ([WEBSOCKET_RELAY.md, Quotas](../spec/WEBSOCKET_RELAY.md#quotas)): its server for the relay already reads the address from the PROXY header from 443 with `set_real_ip_from`. The relay itself still cannot read it, since an upgrade that opens with a PROXY header draws one `400` (measured 2026-10-19).
   A per-address limit on enrollment without a token ([fork 1](#the-forks-and-their-rulings)) meets the same question at the registrar.
 
 A second public address on the relay instance is the deployment record's fallback should a TURN client fail through the front, at about $3.60 a month ([webrtc-relay-deployment.md](webrtc-relay-deployment.md#one-listener-on-443)); this path does not plan for it.
@@ -534,7 +534,7 @@ The reading after a ruling is how this note applies the ruling to the fork, not 
    What the two rulings leave open, for the maintainer:
 
    - Whether a key enrolled for a short lifetime outlasts a relayed exchange, since the relay checks the proof at the hello.
-   - Whether the relay adds a per-address quota beside its quotas on the exchange, and how it would read a client's address behind the 443 front ([Port 443 is a prerequisite](#who-runs-it-and-what-it-costs)).
+   - Settled 2026-10-24: the front bounds sockets for each client address, not the relay, which keeps its quotas on the exchange and reads no address ([Port 443 is a prerequisite](#who-runs-it-and-what-it-costs)).
 
 2. **Explicit relay path first, or automatic fallback first**: the explicit policy is smaller and verifiable alone; the fallback is the experience a party wants.
    Recommendation: explicit first with the start frame in the wire from the first cut, fallback as the next item ([How the parties choose it](#the-websocket-relay-as-recommended)).

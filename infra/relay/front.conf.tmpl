@@ -92,14 +92,17 @@ stream {
   # 300 s, ten times the relay's 30 s ping (docs/spec/WEBSOCKET_RELAY.md,
   # Keepalive).
   # Each client address holds at most 8 of its connections at once, a further
-  # one closed unanswered. The key is the address set_real_ip_from takes from
-  # the header from 443; were it not applied, every client would count as
-  # 127.0.0.1, which verify.sh's per-address probe would fail on.
+  # one closed unanswered and logged at info, below the front's warn level,
+  # so a refused socket adds no journal line. The key is the address
+  # set_real_ip_from takes from the header from 443; were it not applied,
+  # every client would count as 127.0.0.1, which verify.sh's per-address
+  # probe would fail on.
   limit_conn_zone $binary_remote_addr zone=alcove_websocket_relay:1m;
   server {
     listen 127.0.0.1:5351 ssl proxy_protocol;
     set_real_ip_from 127.0.0.1;
     limit_conn alcove_websocket_relay 8;
+    limit_conn_log_level info;
     ssl_certificate /etc/nginx/certs/fullchain.pem;
     ssl_certificate_key /etc/nginx/certs/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;

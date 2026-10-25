@@ -909,7 +909,9 @@ stops and disables it where that is unset.
   connections from one address at once (`limit_conn` in
   `front.conf.tmpl`), counted by the address it takes from the PROXY header
   from 443. It closes a further connection from that address before
-  answering it, so that party sees a closed connection, not a `503`.
+  answering it, so that party sees a closed connection, not a `503`; the
+  front writes no log line for it, since it logs a refusal at `info`, below
+  its `warn` level ([What it logs](#the-443-front)).
   `verify.sh` checks the bound from two addresses. The 8 is a working
   value, raised on request. The front's limit on all its connections is
   shared with every other service on 443 ([The 443 front](#the-443-front),
