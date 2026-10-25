@@ -516,6 +516,26 @@ export function linkageKeysAtPrecisionFloor(
 }
 
 /**
+ * The built-in choice whose keys `linkageKeys` are, or `undefined` where they
+ * are not one choice's keys whole and in its order: a subset, an edited or
+ * reordered list, and expert-authored keys answer `undefined`. Compared under
+ * {@link encodeForComparison}, the equality the two parties' terms are
+ * compared under.
+ */
+export function builtInRuleChoiceOf(
+  linkageKeys: ReadonlyArray<LinkageKey>,
+): PrecisionFloor | undefined {
+  const encoded = encodeForComparison(linkageKeys);
+  if (encoded === null) return undefined;
+  return PRECISION_FLOORS.find(
+    (floor) =>
+      encodeForComparison(
+        linkageKeysAtPrecisionFloor(DEFAULT_LINKAGE_RULE_SET, { floor }),
+      ) === encoded,
+  );
+}
+
+/**
  * Every rule set this build ships, in the order a citation is resolved
  * against them: the sets a document may cite and this build can check a
  * citation against, and the sets a derivation may draw its rules from. A

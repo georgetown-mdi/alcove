@@ -429,14 +429,10 @@ const SELF_AUTHORED_TRANSFORM_GAP =
   SELF_AUTHORED_DETAIL_BOUND;
 
 /** @internal */
-const SELF_AUTHORED_RULE_SET_GAP =
-  "The display names the cited set only where this build DISPROVES the " +
-  "citation, which is the one reading its seat can act on: the citation is " +
-  "this reader's own to correct, and a name the build confirms or does not " +
-  "ship leaves them nothing to do. A probe varying a half moves between two " +
-  "names this build does not ship, so both sides render alike and the term " +
-  "stays unrepresented. " +
-  SELF_AUTHORED_DETAIL_BOUND;
+const RULE_SET_CITATION_EXCLUSION =
+  "A provenance label the terms hold beside their rules. It selects nothing " +
+  "matched or disclosed: the keys and fields decide both, and the surfaces " +
+  "state the built-in choice from the keys themselves.";
 
 /** @internal */
 const SELF_AUTHORED_AGREEMENT_GAP =
@@ -883,58 +879,20 @@ export const LINKAGE_TERM_CONSENT_CLASSIFICATION: Record<
       }),
   },
   "linkageRuleSet.fieldSet.name": {
-    classification: "consent-relevant",
-    reason:
-      "Names the artifact the declared linkage fields are cited to, which is " +
-      "what an acceptor checks the exchange against an agreement or a " +
-      "governance review by -- and what its own disclosure log records as the " +
-      "substrate the match keyed on.",
-    unrepresented: { exchangeDisclosure: SELF_AUTHORED_RULE_SET_GAP },
-    vary: (terms) =>
-      edited(terms, (draft) => {
-        if (draft.linkageRuleSet !== undefined)
-          draft.linkageRuleSet.fieldSet.name = "probe-pii-extended";
-      }),
+    classification: "excluded",
+    reason: RULE_SET_CITATION_EXCLUSION,
   },
   "linkageRuleSet.fieldSet.version": {
-    classification: "consent-relevant",
-    reason:
-      "Pins which content the field set's name stands for. Two versions of one " +
-      "name are two different sets of fields and constraints, so a citation " +
-      "without the version identifies nothing an acceptor can rely on.",
-    unrepresented: { exchangeDisclosure: SELF_AUTHORED_RULE_SET_GAP },
-    vary: (terms) =>
-      edited(terms, (draft) => {
-        if (draft.linkageRuleSet !== undefined)
-          draft.linkageRuleSet.fieldSet.version = "2.0.0";
-      }),
+    classification: "excluded",
+    reason: RULE_SET_CITATION_EXCLUSION,
   },
   "linkageRuleSet.keySet.name": {
-    classification: "consent-relevant",
-    reason:
-      "Names the artifact the declared linkage keys are cited to -- which " +
-      "combinations of PII count as a match, and the set any validation on " +
-      "record attaches to. It is the citation an acceptor carries into an " +
-      "agreement and into its own disclosure log.",
-    unrepresented: { exchangeDisclosure: SELF_AUTHORED_RULE_SET_GAP },
-    vary: (terms) =>
-      edited(terms, (draft) => {
-        if (draft.linkageRuleSet !== undefined)
-          draft.linkageRuleSet.keySet.name = "probe-keys-strict";
-      }),
+    classification: "excluded",
+    reason: RULE_SET_CITATION_EXCLUSION,
   },
   "linkageRuleSet.keySet.version": {
-    classification: "consent-relevant",
-    reason:
-      "Pins which content the key set's name stands for. A key added, dropped, " +
-      "or moved in the cascade is a new version, so the version is what makes " +
-      "the citation identify the rules that ran rather than the name alone.",
-    unrepresented: { exchangeDisclosure: SELF_AUTHORED_RULE_SET_GAP },
-    vary: (terms) =>
-      edited(terms, (draft) => {
-        if (draft.linkageRuleSet !== undefined)
-          draft.linkageRuleSet.keySet.version = "2.0.0";
-      }),
+    classification: "excluded",
+    reason: RULE_SET_CITATION_EXCLUSION,
   },
   "payload.send[].name": {
     classification: "consent-relevant",

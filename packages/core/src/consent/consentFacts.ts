@@ -6,7 +6,8 @@
 // text, so a surface may render it verbatim. Rationale:
 // docs/notes/shared-consent-summary.md.
 
-import type { LinkageRuleSetCitationVerdict } from "../defaults/builtInLinkageTerms.js";
+import { precisionFloorSelectionStatement } from "../defaults/builtInLinkageTerms.js";
+import type { PrecisionFloor } from "../defaults/builtInLinkageTerms.js";
 
 /**
  * Whether the exchange holds a consent fact itself, or the fact is the inviting
@@ -590,20 +591,12 @@ export const CONSENT_FACTS = {
       "against this party's own copy before data moves, but Alcove vets " +
       "neither the agreement nor the purpose it states.",
   },
-  linkageRuleSet: {
-    basis: "trust-contingent",
+  builtInRuleChoice: {
+    basis: "enforced",
     reason:
-      "The inviting party's citation of its own rules -- two names and two " +
-      "content versions it wrote into the invitation, carried on a " +
-      "transcription checksum. Nothing authenticates them, and where BOTH " +
-      "parties cite a set the two citations must match before data moves, " +
-      "which binds an acceptor to the inviter's own string rather than " +
-      "vouching for it. What consent actually turns on is the declared keys " +
-      "and fields shown beside this, which ARE byte-compared between the " +
-      "parties. The caveat this row would otherwise carry is per half and " +
-      "per verdict, so it lives in LINKAGE_RULE_SET_VERDICT_COPY below: a " +
-      "single sentence cannot serve a name this build resolved and one it " +
-      "could not.",
+      "Derived by this build from the declared keys, which both parties' " +
+      "terms are compared on before data moves; the statement names no " +
+      "provenance the invitation claims.",
   },
   invitationExpiry: {
     basis: "enforced",
@@ -709,115 +702,16 @@ export const CONSENT_BASIS_MARKERS: Record<ConsentFactBasis, string> = {
   "trust-contingent": "your partner's word",
 };
 
-/** The finding a `contradicted` half states and what governs the run regardless:
- * both readers' caveats are composed from these, so they differ only in remedy. */
-const CONTRADICTED_FINDING =
-  "A half marked as not matching names a rule set Alcove ships, but the " +
-  "rules declared for it are not drawn from that set, so the citation does " +
-  "not describe what the exchange would match on.";
-
-const CONTRADICTED_RULES_GOVERN =
-  "the declared keys and fields are what the exchange holds both parties to, " +
-  "and what would run.";
-
 /**
- * The marker and caveat for one half of a cited linkage rule set, keyed by this
- * build's verdict on that half; the halves are decided independently. The marker
- * goes on the half's first-party label, never after the partner-controlled value,
- * where a crafted set name could imitate one. Each `note` addresses the recipient;
- * see {@link linkageRuleSetVerdictNote} and docs/notes/rule-set-citation-verdict.md.
+ * The sentence both acceptance surfaces state when the agreed keys are one
+ * built-in choice's keys ({@link builtInRuleChoiceOf}). They state nothing
+ * about the rules' origin otherwise.
  */
-export const LINKAGE_RULE_SET_VERDICT_COPY: Record<
-  LinkageRuleSetCitationVerdict,
-  { marker: string; note: string }
-> = {
-  consistent: {
-    marker: "checked: matches",
-    note:
-      "A half marked as matching names a rule set Alcove ships, and the rules " +
-      "declared for it are drawn from that set. The declared keys and fields " +
-      "are still what the exchange holds both parties to.",
-  },
-  contradicted: {
-    marker: "checked: does not match",
-    note:
-      `${CONTRADICTED_FINDING} Treat the name as unreliable and raise it with ` +
-      `the other party; ${CONTRADICTED_RULES_GOVERN}`,
-  },
-  unchecked: {
-    marker: "not checked",
-    note:
-      "A half marked as not checked names a rule set Alcove does not ship, so " +
-      "nothing was compared against it. Your partner's declared keys and " +
-      "fields are what the exchange holds both parties to.",
-  },
-};
-
-/**
- * Verdict severity, most severe first. A rank per verdict rather than an ordered
- * list, so a verdict added to the union and not ranked here fails to compile.
- */
-const LINKAGE_RULE_SET_VERDICT_SEVERITY: Record<
-  LinkageRuleSetCitationVerdict,
-  number
-> = {
-  contradicted: 0,
-  unchecked: 1,
-  consistent: 2,
-};
-
-/**
- * The distinct verdicts a citation's halves reached, most severe first: one caveat
- * per verdict rather than per half, in an order both surfaces share.
- */
-export function distinctLinkageRuleSetVerdicts(
-  ...verdicts: ReadonlyArray<LinkageRuleSetCitationVerdict>
-): Array<LinkageRuleSetCitationVerdict> {
-  return [...new Set(verdicts)].sort(
-    (one, other) =>
-      LINKAGE_RULE_SET_VERDICT_SEVERITY[one] -
-      LINKAGE_RULE_SET_VERDICT_SEVERITY[other],
+export function builtInRuleChoiceStatement(choice: PrecisionFloor): string {
+  return (
+    "The linkage keys are the built-in " +
+    `"${precisionFloorSelectionStatement({ floor: choice })}" rules.`
   );
-}
-
-/**
- * Who reads a citation's verdict. A recipient can only raise the name with the
- * other party; the citing party can correct its own terms.
- */
-type LinkageRuleSetVerdictReader = "recipient" | "citing-party";
-
-/** Citing-party substitutes. Only `contradicted` has one: the other caveats name
- * a partner as the citation's author, so its actual author is shown none. */
-const LINKAGE_RULE_SET_CITING_PARTY_NOTES: Partial<
-  Record<LinkageRuleSetCitationVerdict, string>
-> = {
-  contradicted:
-    `${CONTRADICTED_FINDING} The terms are yours to correct: restore the rules ` +
-    `the cited set declares, or drop the citation. Either way, ` +
-    `${CONTRADICTED_RULES_GOVERN}`,
-};
-
-/** The caveat `verdict` has for the party the citation was made to. */
-export function linkageRuleSetVerdictNote(
-  verdict: LinkageRuleSetCitationVerdict,
-  reader: "recipient",
-): string;
-/**
- * The caveat `verdict` has for a reader that may have written the citation: the
- * citing-party substitute, the recipient's sentence for a recipient, or
- * `undefined` where the citing party has none, which a surface renders as nothing.
- */
-export function linkageRuleSetVerdictNote(
-  verdict: LinkageRuleSetCitationVerdict,
-  reader: LinkageRuleSetVerdictReader,
-): string | undefined;
-export function linkageRuleSetVerdictNote(
-  verdict: LinkageRuleSetCitationVerdict,
-  reader: LinkageRuleSetVerdictReader,
-): string | undefined {
-  return reader === "citing-party"
-    ? LINKAGE_RULE_SET_CITING_PARTY_NOTES[verdict]
-    : LINKAGE_RULE_SET_VERDICT_COPY[verdict].note;
 }
 
 /**

@@ -16,7 +16,6 @@ import {
   DEDUPLICATE_PARTNER_DECLARED_DISCLOSURE_STATEMENT,
   DEDUPLICATE_PARTNER_DECLARED_SIDE_NOTE,
   DEDUPLICATE_SHARED_RESULT_DISCLOSURE_STATEMENT,
-  LINKAGE_RULE_SET_VERDICT_COPY,
 } from "@alcove/core";
 
 import {
@@ -434,18 +433,8 @@ describe("direct exchange confirm and run", () => {
     expect(app.container.textContent).not.toContain("Exchange proposal");
     expect(app.container.textContent).not.toContain("must review and consent");
 
-    // The inferred terms cite the built-in rule set, and here the citation is the
-    // operator's OWN word: no partner has been contacted, so the acceptor's
-    // partner-attribution caveat must not ride along with the names. The rules are
-    // inferred from the file and so drawn from the set they cite, which is what
-    // leaves the disproved-citation warning off this preview too.
-    expect(app.container.textContent).toContain("Linkage rule set");
-    expect(app.container.textContent).not.toContain(
-      LINKAGE_RULE_SET_VERDICT_COPY.unchecked.note,
-    );
-    expect(app.container.textContent).not.toContain(
-      LINKAGE_RULE_SET_VERDICT_COPY.contradicted.note,
-    );
+    // The inferred terms cite the built-in rule set; the preview shows no citation.
+    expect(app.container.textContent).not.toContain("Linkage rule set");
 
     // The two fixed symmetry notices frame the preview.
     await expect

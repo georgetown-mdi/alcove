@@ -1,6 +1,8 @@
 import { describe, expect, test, vi } from "vitest";
 import {
+  builtInRuleChoiceStatement,
   CONSENT_FACTS,
+  DEFAULT_LINKAGE_RULE_SET,
   DEDUPLICATE_ACCEPTOR_SIDE_NOTE,
   DEDUPLICATE_SHARED_RESULT_DISCLOSURE_STATEMENT,
   DEDUPLICATE_SOLE_RECEIVER_DISCLOSURE_STATEMENT,
@@ -8,7 +10,7 @@ import {
   DISPLAY_TRUNCATION_MARKER,
   getLogger,
   LESS_CERTAIN_KEY_COPY,
-  LINKAGE_RULE_SET_VERDICT_COPY,
+  linkageKeysAtPrecisionFloor,
   MAX_DECLARED_NAMES_SHOWN,
   MAX_NAME_LENGTH,
   missingFieldConditionStatement,
@@ -38,7 +40,7 @@ import type {
   ConnectionEndpoint,
   Displayable,
   InvitationToken,
-  LinkageRuleSetReference,
+  LinkageKey,
   LinkageStrategy,
   LinkageTerms,
   TransformStep,
@@ -189,7 +191,7 @@ function floodedDeclaration(prefix: string): Array<{ name: string }> {
   }));
 }
 
-describe("displayInvitation: the declared terms it discloses (columns, citations, dedup, retention)", () => {
+describe("displayInvitation: the declared terms it discloses (columns, built-in rules, dedup, retention)", () => {
   test("decode error escapes a hostile unrecognized endpoint key name end to end", async () => {
     // A malicious inviter adds an endpoint key whose NAME has control/ANSI
     // bytes; strictObject rejects it, echoing the name into the rejection
@@ -291,232 +293,85 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
     expect(joined).not.toContain("diagnosis");
   });
 
-  test("displayInvitation: the rule-set citation displays as the partner's word, and is absent when none is cited", () => {
-    // The citation is the inviting party's own claim about its rules, so the block
-    // holds the trust-contingent marker rather than displaying as a provenance
-    // Alcove vouched for. An invitation citing nothing prints no line:
-    // hand-authored rules have no citation, and inventing one would attribute them.
+  test("displayInvitation: names the built-in choice the keys are, and nothing for any other keys", () => {
+    const log = getLogger("accept-display-rule-choice-test");
+    log.setLevel("silent");
+    const base = sampleToken(FUTURE());
+    const withKeys = (
+      linkageKeys: ReadonlyArray<LinkageKey>,
+    ): InvitationToken => ({
+      ...base,
+      linkageTerms: {
+        ...base.linkageTerms,
+        linkageFields: [...DEFAULT_LINKAGE_RULE_SET.linkageFields],
+        linkageKeys: [...linkageKeys],
+      },
+    });
+    const keysAt = (floor: 99 | 95) =>
+      linkageKeysAtPrecisionFloor(DEFAULT_LINKAGE_RULE_SET, { floor });
+    const broader = builtInRuleChoiceStatement(95);
+    const precise = builtInRuleChoiceStatement(99);
+
+    const broaderLines = renderDisplayInvitation(
+      log,
+      withKeys(keysAt(95)),
+    ).split("\n");
+    expect(broaderLines).toContain("  built-in rules (enforced):");
+    expect(broaderLines).toContain(`    ${broader}`);
+
+    const highest = renderDisplayInvitation(log, withKeys(keysAt(99)));
+    expect(highest.split("\n")).toContain(`    ${precise}`);
+    expect(highest).not.toContain(broader);
+
+    // The sample terms are the broader keys narrowed to what the inviter's
+    // columns support: a subset, as are the cut and reordered lists.
+    expect(base.linkageTerms.linkageKeys.length).toBeLessThan(
+      keysAt(95).length,
+    );
+    for (const token of [
+      base,
+      withKeys(keysAt(95).slice(1)),
+      withKeys([...keysAt(99)].reverse()),
+    ]) {
+      const rendered = renderDisplayInvitation(log, token);
+      expect(rendered).not.toContain("built-in rules");
+      expect(rendered).not.toContain(broader);
+      expect(rendered).not.toContain(precise);
+    }
+  });
+
+  test("displayInvitation: states no rule-set citation, in the terms or above the prompt", () => {
+    // Keys no built-in choice declares, under a citation of the built-in sets:
+    // neither the citation nor any finding about it is shown.
     const log = getLogger("accept-display-rule-set-test");
     log.setLevel("silent");
     const base = sampleToken(FUTURE());
-    const cited = renderDisplayInvitation(log, {
-      ...base,
-      linkageTerms: {
-        ...base.linkageTerms,
-        linkageRuleSet: {
-          fieldSet: { name: "baseline-pii", version: "1.0.0" },
-          keySet: { name: "precision-ranked-rules", version: "2.4.0" },
-        },
-      },
-    });
-    expect(cited).toContain("linkage rule set (your partner's word):");
-    expect(cited).toContain('"precision-ranked-rules" 2.4.0');
-    expect(cited).toContain('"baseline-pii" 1.0.0');
-
-    // The name is partner-controlled free text and the version beside it is not, so
-    // the quoting is what keeps the boundary between them readable: a name ending in
-    // a version-shaped token must not be treated as the version this line reports.
-    const spacedName = renderDisplayInvitation(log, {
-      ...base,
-      linkageTerms: {
-        ...base.linkageTerms,
-        linkageRuleSet: {
-          fieldSet: { name: "baseline-pii", version: "1.0.0" },
-          keySet: { name: "precision-ranked-rules 9.9.9", version: "2.4.0" },
-        },
-      },
-    });
-    expect(spacedName).toContain('"precision-ranked-rules 9.9.9" 2.4.0');
-
-    const uncited = renderDisplayInvitation(log, {
-      ...base,
-      linkageTerms: { ...base.linkageTerms, linkageRuleSet: undefined },
-    });
-    expect(uncited).not.toContain("linkage rule set");
-    for (const verdict of ["consistent", "contradicted", "unchecked"] as const)
-      expect(uncited).not.toContain(
-        LINKAGE_RULE_SET_VERDICT_COPY[verdict].note,
-      );
-  });
-
-  test("displayInvitation: a cited set name cannot render another citation's line", () => {
-    // The name is delimited through core's terms-value boundary, which doubles a
-    // delimiter inside a run, so a name holding one cannot end its own value: what
-    // the operator reads is the whole name, never the line a citation of a shorter
-    // name at another version produces.
-    const log = getLogger("accept-display-rule-set-delimiter-test");
-    log.setLevel("silent");
-    const base = sampleToken(FUTURE());
-    const cite = (linkageRuleSet: LinkageRuleSetReference): string =>
-      renderDisplayInvitation(log, {
-        ...base,
-        linkageTerms: { ...base.linkageTerms, linkageRuleSet },
-      });
-    // Neither citation names a set this build ships -- the first by version, the
-    // second by name -- so both render under one marker and the pair of lines
-    // differs in nothing but how the name is rendered.
-    const marker = LINKAGE_RULE_SET_VERDICT_COPY.unchecked.marker;
-    const imitated = {
-      keys: `    keys (${marker}): "precision-ranked-rules" 9.9.9`,
-      fields: `    fields (${marker}): "baseline-pii" 9.9.9`,
-    };
-    const imitatedLines = cite({
-      fieldSet: { name: "baseline-pii", version: "9.9.9" },
-      keySet: { name: "precision-ranked-rules", version: "9.9.9" },
-    }).split("\n");
-    expect(imitatedLines).toContain(imitated.keys);
-    expect(imitatedLines).toContain(imitated.fields);
-
-    const rendered = cite({
-      fieldSet: { name: 'baseline-pii" 9.9.9', version: "1.0.0" },
-      keySet: { name: 'precision-ranked-rules" 9.9.9', version: "1.0.0" },
-    });
-    expect(rendered.split("\n")).toContain(
-      `    keys (${marker}): "precision-ranked-rules"" 9.9.9" 1.0.0`,
-    );
-    expect(rendered.split("\n")).toContain(
-      `    fields (${marker}): "baseline-pii"" 9.9.9" 1.0.0`,
-    );
-    expect(rendered).not.toContain(imitated.keys);
-    expect(rendered).not.toContain(imitated.fields);
-
-    // The version renders undelimited on the strength of the shape the terms schema
-    // holds it to, and that shape is re-checked on the value in hand: one outside it
-    // renders delimited instead, rather than standing in the line unattributed.
-    expect(
-      cite({
-        fieldSet: { name: "baseline-pii", version: "1.0.0" },
-        keySet: { name: "precision-ranked-rules", version: '1.0.0" 9.9.9' },
-      }).split("\n"),
-    ).toContain(
-      `    keys (${marker}): "precision-ranked-rules" "1.0.0"" 9.9.9"`,
-    );
-  });
-
-  test("displayInvitation: each citation half holds this build's own verdict on it", () => {
-    const log = getLogger("accept-display-rule-set-verdict-test");
-    log.setLevel("silent");
-    const base = sampleToken(FUTURE());
-
-    // The default terms ARE the built-in sets, narrowed by nothing, and they cite
-    // them: both halves resolve and match.
-    const truthful = renderDisplayInvitation(log, base);
-    expect(truthful).toContain(
-      `keys (${LINKAGE_RULE_SET_VERDICT_COPY.consistent.marker}): "precision-ranked-rules"`,
-    );
-    expect(truthful).toContain(
-      `fields (${LINKAGE_RULE_SET_VERDICT_COPY.consistent.marker}): "baseline-pii"`,
-    );
-    // One caveat for two agreeing halves, rather than the same sentence twice.
-    expect(
-      truthful.split(LINKAGE_RULE_SET_VERDICT_COPY.consistent.note).length - 1,
-    ).toBe(1);
-    expect(truthful).not.toContain(
-      LINKAGE_RULE_SET_VERDICT_COPY.contradicted.note,
-    );
-
-    // The same citation over a REORDERED cascade: key order is cascade order, so
-    // the reordered keys are provably not the set the citation names, while the
-    // untouched fields still are. The halves are decided independently.
-    const reordered = renderDisplayInvitation(log, {
+    const cited = {
       ...base,
       linkageTerms: {
         ...base.linkageTerms,
         linkageKeys: [...base.linkageTerms.linkageKeys].reverse(),
-      },
-    });
-    expect(reordered).toContain(
-      `keys (${LINKAGE_RULE_SET_VERDICT_COPY.contradicted.marker}): "precision-ranked-rules"`,
-    );
-    expect(reordered).toContain(
-      `fields (${LINKAGE_RULE_SET_VERDICT_COPY.consistent.marker}): "baseline-pii"`,
-    );
-    expect(reordered).toContain(
-      LINKAGE_RULE_SET_VERDICT_COPY.contradicted.note,
-    );
-    expect(reordered).toContain(LINKAGE_RULE_SET_VERDICT_COPY.consistent.note);
-    // Most severe first, so a reader who stops after one line has read the warning.
-    expect(
-      reordered.indexOf(LINKAGE_RULE_SET_VERDICT_COPY.contradicted.note),
-    ).toBeLessThan(
-      reordered.indexOf(LINKAGE_RULE_SET_VERDICT_COPY.consistent.note),
-    );
-
-    // A name this build does not ship resolves to nothing, so nothing is compared:
-    // unchecked, never contradicted, whatever the declared rules are.
-    const foreign = renderDisplayInvitation(log, {
-      ...base,
-      linkageTerms: {
-        ...base.linkageTerms,
-        linkageKeys: [...base.linkageTerms.linkageKeys].reverse(),
-        linkageRuleSet: {
-          fieldSet: { name: "county-pii", version: "3.1.0" },
-          keySet: { name: "county-keys", version: "3.1.0" },
-        },
-      },
-    });
-    expect(foreign).toContain(
-      `keys (${LINKAGE_RULE_SET_VERDICT_COPY.unchecked.marker}): "county-keys"`,
-    );
-    expect(foreign).toContain(
-      `fields (${LINKAGE_RULE_SET_VERDICT_COPY.unchecked.marker}): "county-pii"`,
-    );
-    expect(foreign).toContain(LINKAGE_RULE_SET_VERDICT_COPY.unchecked.note);
-    expect(foreign).not.toContain(
-      LINKAGE_RULE_SET_VERDICT_COPY.contradicted.note,
-    );
-  });
-
-  test("displayInvitation: a disproved citation is repeated in the block above the prompt", () => {
-    // The terms run well past a screen, so the decision block is where an operator
-    // answering the prompt is looking. A citation this build resolved and disproved
-    // is repeated there; the other two verdicts stay with the citation itself.
-    const log = getLogger("accept-display-rule-set-decision-test");
-    log.setLevel("silent");
-    const base = sampleToken(FUTURE());
-    const contradicted = {
-      ...base,
-      linkageTerms: {
-        ...base.linkageTerms,
-        linkageKeys: [...base.linkageTerms.linkageKeys].reverse(),
+        linkageRuleSet: DEFAULT_LINKAGE_RULE_SET.reference,
       },
     };
-    const rendered = renderDisplayInvitation(log, contradicted);
-    // Three times on a prompting render: once beside the citation, and once in each
-    // of the decision block's two printings (heading the terms, and again at the
-    // prompt the terms have scrolled away from).
-    expect(
-      rendered.split(LINKAGE_RULE_SET_VERDICT_COPY.contradicted.note).length -
-        1,
-    ).toBe(3);
-    // The repeated block holds the citation whole -- both halves under their own
-    // markers, each name behind a fixed first-party label -- so an operator reads
-    // WHICH name is disproved. Only the disproved caveat is repeated with it.
+    const rendered = renderDisplayInvitation(log, cited);
+    expect(rendered).not.toContain("linkage rule set");
+    expect(rendered).not.toContain(
+      DEFAULT_LINKAGE_RULE_SET.reference.keySet.name,
+    );
+    expect(rendered).not.toContain(
+      DEFAULT_LINKAGE_RULE_SET.reference.fieldSet.name,
+    );
+
     const decisionLines: string[] = [];
     logDecisionFacts(
       (line) => decisionLines.push(line),
-      summarizeInvitation(contradicted),
+      summarizeInvitation(cited),
       undefined,
     );
-    const decision = decisionLines.join("\n");
-    expect(decision).toContain(
-      `keys (${LINKAGE_RULE_SET_VERDICT_COPY.contradicted.marker}): "precision-ranked-rules"`,
+    expect(decisionLines.join("\n")).not.toContain(
+      DEFAULT_LINKAGE_RULE_SET.reference.keySet.name,
     );
-    expect(decision).toContain(
-      `fields (${LINKAGE_RULE_SET_VERDICT_COPY.consistent.marker}): "baseline-pii"`,
-    );
-    expect(decision).toContain(LINKAGE_RULE_SET_VERDICT_COPY.contradicted.note);
-    expect(decision).not.toContain(
-      LINKAGE_RULE_SET_VERDICT_COPY.consistent.note,
-    );
-
-    const truthfulLines: string[] = [];
-    logDecisionFacts(
-      (line) => truthfulLines.push(line),
-      summarizeInvitation(base),
-      undefined,
-    );
-    expect(truthfulLines.join("\n")).not.toContain("linkage rule set");
   });
 
   test("displayInvitation: the inviter's request-from-acceptor receive shows names, '(none)' when empty, and nothing when absent", () => {
