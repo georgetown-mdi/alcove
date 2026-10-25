@@ -279,14 +279,31 @@ export async function runBrowserAcceptor(
   });
 }
 
-/** What the browser acceptor's relay sockets were sent and closed with. */
+/** One relay socket the browser acceptor opened. */
+export interface RecordedRelaySocket {
+  socket: WebSocket;
+  /** The code of each close this side called on it, `undefined` for a close
+   * with no code. */
+  closeCodes: Array<number | undefined>;
+  /** Its `readyState` when the run connection opened. */
+  readyStateAtRunOpen: number | undefined;
+}
+
+/**
+ * What the browser acceptor's relay sockets were sent and closed with.
+ *
+ * Each close this side calls is recorded and held back until
+ * `releaseCloses`, so the CLI party's socket is the first of the pairing to
+ * close at the relay: the relay closes a party's socket when its partner's
+ * closes, which would otherwise hide whether the CLI party closed its own.
+ */
 export interface RelaySocketRecord {
-  opened: Array<WebSocket>;
+  opened: Array<RecordedRelaySocket>;
   /** The `type` of each text frame sent: the relay protocol's hello and
    * start. */
   sentTypes: Array<string>;
-  /** The codes this side closed its sockets with. */
-  closedWith: Array<number>;
+  /** Send every close held back, and stop holding them. */
+  releaseCloses: () => void;
 }
 
 /** A relay case acceptor whose run connection has opened, before the key
@@ -306,13 +323,29 @@ export interface OpenedRelayCaseAcceptor {
 }
 
 /** The relay client's socket factory, recording each socket it opens and
- * what it sends and closes with. */
-function recordingSocketFactory(
-  record: RelaySocketRecord,
-): (url: string) => WebSocket {
-  return (url) => {
+ * what it sends, and recording and holding back each close. */
+function recordingSocketFactory(): {
+  record: RelaySocketRecord;
+  createSocket: (url: string) => WebSocket;
+} {
+  let held: Array<() => void> | undefined = [];
+  const record: RelaySocketRecord = {
+    opened: [],
+    sentTypes: [],
+    releaseCloses: () => {
+      const closes = held ?? [];
+      held = undefined;
+      for (const close of closes) close();
+    },
+  };
+  const createSocket = (url: string): WebSocket => {
     const socket = new WebSocket(url);
-    record.opened.push(socket);
+    const recorded: RecordedRelaySocket = {
+      socket,
+      closeCodes: [],
+      readyStateAtRunOpen: undefined,
+    };
+    record.opened.push(recorded);
     const send = socket.send.bind(socket);
     socket.send = (data) => {
       if (typeof data === "string")
@@ -321,11 +354,13 @@ function recordingSocketFactory(
     };
     const close = socket.close.bind(socket);
     socket.close = (code, reason) => {
-      if (code !== undefined) record.closedWith.push(code);
-      close(code, reason);
+      recorded.closeCodes.push(code);
+      if (held === undefined) close(code, reason);
+      else held.push(() => close(code, reason));
     };
     return socket;
   };
+  return { record, createSocket };
 }
 
 /**
@@ -333,7 +368,8 @@ function recordingSocketFactory(
  * does: the run's relay plan, from the invitation's relay with no relay of
  * this browser's own and no default relay in the build, raced against the
  * app's WebRTC dial by its relay fallback. The relay client's socket factory
- * is the one piece of the harness's, and only records each socket.
+ * is the one piece of the harness's: it records each socket and holds back
+ * its closes ({@link RelaySocketRecord}).
  */
 export async function openRelayCaseAcceptor(
   invitation: string,
@@ -353,11 +389,7 @@ export async function openRelayCaseAcceptor(
       onRunNotice,
     },
   );
-  const sockets: RelaySocketRecord = {
-    opened: [],
-    sentTypes: [],
-    closedWith: [],
-  };
+  const { record: sockets, createSocket } = recordingSocketFactory();
   const signal = new AbortController().signal;
   const run = await openRunConnectionWithRelayFallback(
     {
@@ -380,8 +412,10 @@ export async function openRelayCaseAcceptor(
         });
       },
     },
-    { createSocket: recordingSocketFactory(sockets) },
+    { createSocket },
   );
+  for (const recorded of sockets.opened)
+    recorded.readyStateAtRunOpen = recorded.socket.readyState;
   return {
     listedRelays: relayPlan.websocketRelays.map((relay) => relay.url),
     notices,

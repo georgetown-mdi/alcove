@@ -98,9 +98,16 @@ export interface LiveLegCliOutcome {
 
 /** What the WebSocket relay of the relay case saw, as read on the Node side. */
 export interface LiveRelayObservations {
-  /** Each socket the relay's server upgraded, in order, with when it was
-   * upgraded and when it closed; `closedAt` is null while it is open. */
-  sockets: Array<{ upgradedAt: number; closedAt: number | null }>;
+  /** Each socket the relay's server upgraded, in order: whether a browser
+   * opened it, read from the `Origin` header a browser sends and the CLI's
+   * client does not; when it was upgraded and when it closed; and its place
+   * among the closes, from 0. The last two are null while it is open. */
+  sockets: Array<{
+    fromBrowser: boolean;
+    upgradedAt: number;
+    closedAt: number | null;
+    closeOrder: number | null;
+  }>;
   /** The hellos the relay checked under the exchange's id. */
   hellos: number;
   /** The messages the relay forwarded on the exchange's pairing. */

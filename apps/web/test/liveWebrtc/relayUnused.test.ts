@@ -5,7 +5,11 @@ import { commands } from "vitest/browser";
 
 import { BROWSER_PAIRS, CLI_PAIRS, openRelayCaseAcceptor } from "./browserPeer";
 
-import type { LiveRelayLegOutcome, LiveRelayLegStart } from "./legTypes";
+import type {
+  LiveRelayLegOutcome,
+  LiveRelayLegStart,
+  LiveRelayObservations,
+} from "./legTypes";
 
 /**
  * A CLI party and a browser party whose run names a WebSocket relay, with
@@ -21,18 +25,22 @@ import type { LiveRelayLegOutcome, LiveRelayLegStart } from "./legTypes";
  * connection, which a Node host cannot stand up.
  *
  * The relay forwards a message only once both parties have sent their start,
- * so a pairing that forwarded nothing carried none of the exchange.
+ * so a pairing that forwarded nothing carried none of the exchange. The relay
+ * also closes a party's socket when its partner's closes, so the browser
+ * party's closes are held back until the CLI party's socket has closed at the
+ * relay, which only the CLI party can then have closed.
  */
 
 declare module "vitest/internal/browser" {
   interface BrowserCommands {
     startLiveRelayLeg: () => Promise<LiveRelayLegStart>;
+    liveRelayLegObservations: () => Promise<LiveRelayObservations>;
     liveRelayLegOutcome: () => Promise<LiveRelayLegOutcome>;
     stopLiveRelayLeg: () => Promise<void>;
   }
 }
 
-/** How long the browser party's relay sockets may take to close once its run
+/** How long a party's relay sockets may take to close once its run
  * connection has opened: a close handshake on loopback, well under this. */
 const RELAY_SOCKET_CLOSE_TIMEOUT_MS = 5_000;
 
@@ -55,19 +63,36 @@ test("with WebRTC open the exchange runs over WebRTC and the relay sockets close
   ]);
   const { sockets } = acceptor;
   expect(sockets.opened.length).toBeGreaterThan(0);
-  // Before the key exchange: the race closes the relay sockets as WebRTC
+  expect(sockets.sentTypes).toEqual(["hello"]);
+  // The browser party's race closed with 1000 every socket the relay had not
+  // already closed when its run connection opened.
+  for (const { closeCodes, readyStateAtRunOpen } of sockets.opened) {
+    if (closeCodes.length > 0)
+      expect(new Set(closeCodes)).toEqual(new Set([1000]));
+    else expect(readyStateAtRunOpen).toBe(WebSocket.CLOSED);
+  }
+
+  // Before the key exchange: each race closes its relay sockets as WebRTC
   // opens, not at the run's end.
   await expect
     .poll(
-      () =>
-        sockets.opened.every(
-          (socket) => socket.readyState === WebSocket.CLOSED,
+      async () =>
+        (await commands.liveRelayLegObservations()).sockets.every(
+          (socket) => socket.fromBrowser || socket.closedAt !== null,
         ),
       { timeout: RELAY_SOCKET_CLOSE_TIMEOUT_MS },
     )
     .toBe(true);
-  expect(sockets.sentTypes).toEqual(["hello"]);
-  expect(sockets.closedWith.every((code) => code === 1000)).toBe(true);
+  sockets.releaseCloses();
+  await expect
+    .poll(
+      () =>
+        sockets.opened.every(
+          ({ socket }) => socket.readyState === WebSocket.CLOSED,
+        ),
+      { timeout: RELAY_SOCKET_CLOSE_TIMEOUT_MS },
+    )
+    .toBe(true);
 
   const browser = await acceptor.exchange();
   const { cli, relay } = await commands.liveRelayLegOutcome();
@@ -89,14 +114,22 @@ test("with WebRTC open the exchange runs over WebRTC and the relay sockets close
   // for, and the browser party's, and forwarded nothing on their pairing.
   expect(relay.hellos).toBeGreaterThanOrEqual(2);
   expect(relay.forwarded).toBe(0);
-  expect(relay.sockets.length).toBeGreaterThanOrEqual(2);
   const closingAt = cli.closingConnectionAt;
   expect(closingAt, cli.output).not.toBeNull();
-  // Every relay socket, the CLI party's among them, closed before that party
-  // began closing its WebRTC connection, so its race closed it rather than
-  // the end of its run.
   for (const socket of relay.sockets) {
     expect(socket.closedAt).not.toBeNull();
     expect(socket.closedAt).toBeLessThanOrEqual(closingAt ?? 0);
   }
+  // With the browser party's closes held back, the CLI party's sockets closed
+  // first, so its own race closed them, before it began closing its WebRTC
+  // connection.
+  const closeOrders = (fromBrowser: boolean): Array<number> =>
+    relay.sockets
+      .filter((socket) => socket.fromBrowser === fromBrowser)
+      .map((socket) => socket.closeOrder ?? Number.NaN);
+  const cliCloses = closeOrders(false);
+  const browserCloses = closeOrders(true);
+  expect(cliCloses.length).toBeGreaterThan(0);
+  expect(browserCloses.length).toBeGreaterThan(0);
+  expect(Math.max(...cliCloses)).toBeLessThan(Math.min(...browserCloses));
 });

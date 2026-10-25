@@ -16,6 +16,7 @@ import type {
   LiveLegStart,
   LiveRelayLegOutcome,
   LiveRelayLegStart,
+  LiveRelayObservations,
 } from "./legTypes.ts";
 import type { CliInviter } from "./cliPeer.ts";
 import type { ConsoleParty } from "./consolePeer.ts";
@@ -165,6 +166,13 @@ async function relayLegOutcome(): Promise<LiveRelayLegOutcome> {
   return { cli, relay: relay.observations() };
 }
 
+/** What the relay case's relay has seen so far. */
+function relayLegObservations(): LiveRelayObservations {
+  if (relay === undefined)
+    throw new Error("no relay is running; the relay case was never started");
+  return relay.observations();
+}
+
 /** Stop the CLI party, the relay and the broker. Idempotent. */
 async function stopRelayLeg(): Promise<void> {
   const running = [relayInviter?.stop(), relay?.stop(), relayBroker?.stop()];
@@ -209,6 +217,8 @@ export const liveWebrtcLegCommands = {
     runningConsoleParty().outcome(),
   stopConsoleWebrtcLeg: (): Promise<void> => stopConsoleLeg(),
   startLiveRelayLeg: (): Promise<LiveRelayLegStart> => startRelayLeg(),
+  liveRelayLegObservations: (): Promise<LiveRelayObservations> =>
+    Promise.resolve(relayLegObservations()),
   liveRelayLegOutcome: (): Promise<LiveRelayLegOutcome> => relayLegOutcome(),
   stopLiveRelayLeg: (): Promise<void> => stopRelayLeg(),
 };

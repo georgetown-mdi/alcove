@@ -576,7 +576,14 @@ the browser party lists the relay from that invitation and races it against
 WebRTC through the app's fallback. WebRTC opens, and the case asserts that the
 exchange ran over it, that neither side sent its start, that the relay checked
 both hellos and forwarded nothing, and that every relay socket closed before
-the CLI party began closing its WebRTC connection.
+the CLI party began closing its WebRTC connection. The relay closes a party's
+socket when its partner's closes, so the browser party's socket factory holds
+back each close its race calls until the CLI party's sockets have closed at
+the relay. The case then asserts that the CLI party's sockets closed there
+before the browser party's, so the CLI party's own race closed them, and that
+the browser party's race closed with 1000 every socket the relay had not
+already closed. The leg tells the two parties' sockets apart at the relay by
+the `Origin` header a browser sends and the CLI's client does not.
 
 A cross-origin broker is what lets the leg answer whether that broker needs a
 CORS header for the browser peer. It does not: PeerJS asks the broker for an id

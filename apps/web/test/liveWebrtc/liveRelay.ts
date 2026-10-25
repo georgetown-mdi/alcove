@@ -63,13 +63,19 @@ export async function startLiveRelay(): Promise<LiveRelay> {
   const firstHello = new Promise<void>((resolve) => (helloSeen = resolve));
 
   const server = createServer(credentials);
-  server.on("upgrade", (_request, socket) => {
+  let closes = 0;
+  server.on("upgrade", (request, socket) => {
     const record: LiveRelayObservations["sockets"][number] = {
+      fromBrowser: request.headers.origin !== undefined,
       upgradedAt: Date.now(),
       closedAt: null,
+      closeOrder: null,
     };
     sockets.push(record);
-    socket.once("close", () => (record.closedAt = Date.now()));
+    socket.once("close", () => {
+      record.closedAt = Date.now();
+      record.closeOrder = closes++;
+    });
   });
   const relay = attachWebSocketRelay(server, {
     keyTable: {
