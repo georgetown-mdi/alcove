@@ -842,7 +842,7 @@ tag.
   version and license on both architectures; the listing is what the generator
   parses.
 - FIPS variant: `rpm -qa --qf "%{NAME}\t...\t%{LICENSE}\n"`, RPM 4.16.1.3 with
-  dbpath `/var/lib/rpm`, on Amazon Linux 2023.12.20261016. The variant's
+  dbpath `/var/lib/rpm`, on Amazon Linux 2023.12.20261026. The variant's
   fips-only OpenSSL configuration does not reach rpm, which reads its database
   in C; what it breaks is dnf's own Python, which hashes with blake2s.
 - Neither Dockerfile names its final stage, so a `--target` query cannot reach
@@ -1016,7 +1016,7 @@ installs. At this pin the 37 is counted from the rows of that list whose license
 holds a GPL-3.0 or LGPL-3.0 term. Five of the 170 -- `libselinux-utils`,
 `policycoreutils`, `rpm-plugin-selinux`, `selinux-policy` and
 `selinux-policy-targeted` -- are dependencies the build's `samba-client` and
-`openssl` install resolves at snapshot `2023.12.20261016`; none holds a v3 term,
+`openssl` install resolves at snapshot `2023.12.20261026`; none holds a v3 term,
 and none adds a setuid or setgid file.
 
 The image weighs 658,068,804 bytes (658 MB) on `x86_64` and 811,627,447 bytes
