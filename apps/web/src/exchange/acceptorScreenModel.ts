@@ -423,12 +423,15 @@ export type AcceptorScreenAction =
   | { type: "manage-offer-deposited" }
   | { type: "manage-offer-failed"; refusal?: AlertContent };
 
-/** Whether a relay locator names a TURN server or a WebSocket relay, the
- * kinds the Allowed relays list can leave out. */
-export function relayNamesTurnOrWebSocketRelay(
+/** The kinds of relay a relay locator names that the Allowed relays list
+ * can leave out, in the order the accept notice names them. */
+export function allowedRelaysCoveredKinds(
   relay: { turn?: ReadonlyArray<string>; websocket?: string } | undefined,
-): boolean {
-  return (relay?.turn?.length ?? 0) > 0 || relay?.websocket !== undefined;
+): ReadonlyArray<"turn" | "websocket"> {
+  return [
+    ...((relay?.turn?.length ?? 0) > 0 ? (["turn"] as const) : []),
+    ...(relay?.websocket !== undefined ? (["websocket"] as const) : []),
+  ];
 }
 
 /**
@@ -450,7 +453,7 @@ export function acceptOffersAllowedRelays(
   if (endpoint.channel !== "webrtc") return false;
   if (fieldKept) return true;
   return consoleBuild
-    ? relayNamesTurnOrWebSocketRelay(endpoint.relay)
+    ? allowedRelaysCoveredKinds(endpoint.relay).length > 0
     : browserRunListsRelay(endpoint.relay);
 }
 

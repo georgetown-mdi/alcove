@@ -3,6 +3,7 @@ import { IconAlertTriangle } from "@tabler/icons-react";
 
 import { sanitizeForDisplay } from "@alcove/core";
 
+import { allowedRelaysCoveredKinds } from "@exchange/acceptorScreenModel";
 import { invitationReach } from "@exchange/invitationReach";
 import styles from "@styles/app.module.css";
 
@@ -15,10 +16,9 @@ function allowedRelaysExceptionClause(relay: {
   turn?: ReadonlyArray<string>;
   websocket?: string;
 }): string {
-  const kinds = [
-    ...((relay.turn?.length ?? 0) > 0 ? ["its TURN servers"] : []),
-    ...(relay.websocket !== undefined ? ["its WebSocket relay"] : []),
-  ];
+  const kinds = allowedRelaysCoveredKinds(relay).map((kind) =>
+    kind === "turn" ? "its TURN servers" : "its WebSocket relay",
+  );
   return kinds.length === 0
     ? "."
     : `, unless the Allowed relays below leave out ${kinds.join(" or ")}.`;
