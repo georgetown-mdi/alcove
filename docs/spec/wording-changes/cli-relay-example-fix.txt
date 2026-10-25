@@ -1,0 +1,2 @@
+- Terms holding such a delimiter written before this refusal - in a saved web exchange, a pending terms proposal, a signed receipt, or an agreed-terms file - are refused when read, with no migration. -> Terms holding such a delimiter written before this refusal - in a saved web exchange, a signed receipt, or an agreed-terms file - are refused when read, with no migration.
+- - -> A pending terms proposal holding one is dropped when read, and the rest of its stored entry loads without it (`managedLocalStateSchema`, `apps/web/src/psi/managed/managedLocalStateShape.ts`).
