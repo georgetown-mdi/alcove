@@ -1,5 +1,11 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,12 +15,14 @@ import { BODY_WRAP_COLUMNS, bodyLinesOf } from "./format-squash-message.mjs";
 import {
   ALLOWED_TOOLS,
   DISALLOWED_TOOLS,
+  NOT_LOGGED_IN_MESSAGE,
   claudeArgs,
   commitCountArgs,
   parseCommitCount,
   parsePrNumber,
   prompt,
   refusal,
+  reportsNotLoggedIn,
 } from "./squash-message.mjs";
 
 const SCRIPT = fileURLToPath(new URL("./squash-message.mjs", import.meta.url));
@@ -188,5 +196,82 @@ describe("squash-message output", () => {
     expect(result.status).toBe(2);
     expect(result.stdout).toBe(drafted);
     expect(result.stderr).toContain("wrap it by hand");
+  });
+});
+
+describe("squash-message login preflight", () => {
+  it("reads only a clear loggedIn false as not logged in", () => {
+    expect(
+      reportsNotLoggedIn('{"loggedIn": false, "authMethod": "none"}'),
+    ).toBe(true);
+    for (const stdout of [
+      '{"loggedIn": true, "authMethod": "oauth_token"}',
+      '{"logged_in": false}',
+      '{"loggedIn": "false"}',
+      "Not logged in",
+      "null",
+      "[]",
+      "",
+      undefined,
+    ]) {
+      expect(reportsNotLoggedIn(stdout), String(stdout)).toBe(false);
+    }
+  });
+
+  describe("with a stub claude on PATH", () => {
+    const directories = [];
+    afterEach(() => {
+      while (directories.length > 0) {
+        rmSync(directories.pop(), { recursive: true, force: true });
+      }
+    });
+
+    // The stub answers `auth status` with `statusOutput` and, for any other
+    // call, leaves a marker file before printing a draft.
+    function runWith(statusOutput) {
+      const directory = mkdtempSync(join(tmpdir(), "squash-message-auth-"));
+      directories.push(directory);
+      const marker = join(directory, "draft-ran");
+      const stub = (name, body) => {
+        const path = join(directory, name);
+        writeFileSync(path, `#!/bin/sh\n${body}\n`);
+        chmodSync(path, 0o755);
+      };
+      stub("gh", "echo 3");
+      stub(
+        "claude",
+        `if [ "$1" = auth ]; then\n  echo '${statusOutput}'\n  exit 1\nfi\ncat > /dev/null\ntouch ${marker}\necho A body sentence.`,
+      );
+      const result = spawnSync("node", [SCRIPT, "1374"], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PATH: `${directory}${delimiter}${process.env.PATH}`,
+        },
+      });
+      return { result, draftRan: existsSync(marker) };
+    }
+
+    it("stops with the message and never runs the draft when not logged in", () => {
+      const { result, draftRan } = runWith('{"loggedIn": false}');
+      expect(result.status).toBe(1);
+      expect(result.stderr).toBe(NOT_LOGGED_IN_MESSAGE);
+      expect(result.stderr).toContain("VS Code integrated terminal");
+      expect(result.stdout).toBe("");
+      expect(draftRan).toBe(false);
+    });
+
+    it("drafts as before when logged in", () => {
+      const { result, draftRan } = runWith('{"loggedIn": true}');
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe("A body sentence.\n");
+      expect(draftRan).toBe(true);
+    });
+
+    it("drafts when the status is not a clear answer", () => {
+      const { result, draftRan } = runWith("status format changed");
+      expect(result.status).toBe(0);
+      expect(draftRan).toBe(true);
+    });
   });
 });

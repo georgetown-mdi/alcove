@@ -177,6 +177,13 @@ so a draft here is a body and nothing else.
 Restating [CONTRIBUTING.md](../../CONTRIBUTING.md), Commit Messages, at each producer checks nothing, and a 120-column body line reaches the maintainer intact.
 The normalizer is where those rules are executable, and its wrap column is the only copy of that number outside CONTRIBUTING.md.
 
+### Why the drafter checks the login first
+
+Claude Code withholds its own login token, `CLAUDE_CODE_OAUTH_TOKEN`, from every shell it starts for a tool, and the container holds no other login, so `claude -p` run from a session's tool shell answers "Not logged in".
+The drafter therefore asks `claude auth status` before the run and, on a clear not-logged-in answer, stops with a message to run it from a container terminal, such as the VS Code integrated terminal, where the token is present;
+any other answer lets the run go ahead, so a changed status format never blocks a working terminal.
+The script does not read the token from `.env` or another process's environment: that would route around the withholding.
+
 ### Normalizing against refusing
 
 The split is whether the fix keeps the words.
