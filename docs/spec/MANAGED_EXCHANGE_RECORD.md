@@ -12,7 +12,7 @@ record's field-by-field shape -- what persists across runs versus what is
 supplied at each run -- the field types, and the key-derivation implications of
 the persisted secret. It also covers the schedule and run bookkeeping the
 unattended path relies on, the local sibling stores beside the record (the
-backup, spent, and import markers, the accounting of disclosures each run files
+backup and import markers, the accounting of disclosures each run files
 its record into with the note left by a run that could not, and the results a
 scheduled run parks for the operator's next visit), and the export artifact's
 custody model and rollback caveats. It is the
@@ -101,13 +101,13 @@ are the standing definition of the managed exchange.
 | `label` | string, at most 120 UTF-16 code units (enforced at write; a character outside the Basic Multilingual Plane counts as two) | An operator-supplied display name for the partnership. Local only; never sent -- but disclosed to any reader of the store (see [Metadata at rest](../SECURITY_DESIGN.md#metadata-at-rest-presence-and-shape)). The length cap is enforced; what the label discloses is not checked and cannot be. The label field states where the label appears, in results and backup file names and in notifications, and the operator applies their own rules to what they write there: **operator cooperation**, exactly as export-source invalidation is. The field's only structural protections are the cap and its never-sent locality. |
 | `exchangeFile` | object | This party's exchange-file document, verbatim: the validated `ExchangeSpec` shape both applications share (see [EXCHANGE_FILE.md](EXCHANGE_FILE.md), "The artifact is the CLI config schema") -- the linkage terms both parties validated (column **shape** and disclosed payload column **names**, never a row value), metadata, standardization, the acceptor's `expectedPartnerDeduplicate` -- the cardinality side the accepted invitation declared for the partner, which a re-run holds the partner to (see [EXCHANGE_FILE.md](EXCHANGE_FILE.md#terms-binding-consent), "Terms-binding consent") -- this party's own `includeOwnColumns` output-composition choice, a closed two-value enum naming no column, this party's own `includeMatchingKey` choice, a boolean, this party's own `csvDelimiter` -- the field-delimiter choice its input file is read under and its result file written with, naming no column and holding no row value: one character, or the reserved word `detect` where the operator chose to have the delimiter taken from the file itself, a value distinct from the field being absent; an absent field is read and written with a comma, so every record stored without one keeps reading and no migration pass rewrites it -- and the connection block. A record stored before that rule holds no delimiter: it was read by detection and now reads as a comma, with no `schemaVersion` change, so a recurring exchange whose input is not comma-separated fails closed at its next window, with the single-column delimiter remedy stated at launch. It has **no `authentication` block** (the secret lives in `sharedSecret` below) and is composed exactly as the mint layer composes a downloadable file: assembled from a credential-free locator input, validated through the shared schema, with the **parse result** (never the raw input) persisted. The document's operator-authored free-text fields persist verbatim with it: each metadata column's optional `description` (no schema length bound), each standardization step's `params` (an open parameter map -- an authored cleaning step can embed a literal value, a pattern or a replacement string), and `retentionDisposition` (bounded at 1024 characters, the config schema's text bound), plus the terms' own 1024-bounded payload `description` and legal-agreement `purpose` strings. The retention note field states where the note is saved: with the exchange records, backup files, and configurations. The record stores the document as minted, or as the operator last edited its local settings, so what these fields disclose is the same **operator cooperation** the `label` row describes, and no additional bound or strip pass runs at persist time: the document is kept verbatim, and a document the mint layer accepts must remain saveable as managed (see [Metadata at rest](../SECURITY_DESIGN.md#metadata-at-rest-presence-and-shape)). The document's connection is fixed for the partnership but for its `allowedRelays` and the `server` an inviter's re-invite replaces ([Role: a local `side` field](#role-a-local-side-field-not-the-document)), and a re-invite otherwise re-issues the document verbatim with a fresh secret. Its terms change only as a partner's terms change is taken on ([A refused terms change](#a-refused-terms-change)) or through [a terms update](#a-terms-update); exchanging with a different partner is a new exchange. Its five per-party settings -- `includeOwnColumns`, `includeMatchingKey`, `csvDelimiter`, `retentionDisposition`, and a webrtc connection's `allowedRelays` -- are local fields the operator edits in place (see [Local settings of the document](#local-settings-of-the-document)). |
 | `side` | enum (`"inviter"` \| `"acceptor"`), or absent | This party's side of the partnership; dispatches a re-run to the matching rendezvous flow (see [Role: a local `side` field](#role-a-local-side-field-not-the-document)). Local-only by design -- not the document's `connection.role`, which no web path reads. Present exactly when the document's connection is `webrtc`, the one channel whose connection names a `role`: a [configuration-only record](#the-configuration-only-record) on `sftp` or `filedrop` holds none, and a reader refuses a record whose `side` and channel disagree. |
-| `workingDirectoryHandle` | `FileSystemDirectoryHandle` or absent | A persisted **pointer** to the exchange's working folder, held where the File System Access API exists (Chromium), in `readwrite` mode: the one grant every run reads its input through and writes its results through, mirroring the single working directory the CLI runs in. **The app reads exactly one conventioned name from the folder and never enumerates it**: each run looks up `input.csv` (`MANAGED_INPUT_FILE_NAME`, the name the command-line export's emitted command also reads) afresh through `getFileHandle` and reads it with `getFile()` at run start; the results write looks up and creates only the results file it names, under the exchange's label and the run's own instant, and removes only an entry its own failed write created. The backup a scheduled run writes after its rotation ([below](#the-backup-marker-the-spent-state-and-the-import-marker-local-siblings-never-in-the-artifact)) looks up and creates only its own backup name, and stops without creating anything where the folder already holds an entry under it. That removal is best-effort, a stated limit rather than a guarantee: it asks again only while the platform refuses it for the write lock the aborted stream still holds, for at most `REMOVAL_LOCK_BUDGET_MS` (200 ms), and leaves the empty file standing on any other refusal or once that budget is spent. No entry is listed, no subfolder is opened, and no other file is read. `apps/web/test/unit/psi/unattendedRuntimeBoundaries.test.ts` holds this as far as its two checks reach: a recorder drives `acquireManagedInput`, `readInputFileModifiedAt`, `writeResultsToWorkingDirectory`, and `writeBackupToWorkingFolder` and fails on any folder access other than `getFileHandle`, `removeEntry`, and `name`; a source scan over `apps/web/src` fails on any `getFileHandle`, `getDirectoryHandle`, or `removeEntry` call beyond the known ones, and on any `for await` loop or `.values(`, `.keys(`, or `.entries(` call whose iterated expression names a handle, a directory, or a folder. An iteration elsewhere, reached through a name that says none of those, passes both. The pointer is a reference, never a copy: no input content or row value derived from it persists, which is where the no-second-copy invariant is enforced. It is live, not a snapshot: a `File` already obtained stops being readable once the file underneath it changes, so neither `File` objects nor file handles are kept across runs, which is what makes putting the current period's extract under that name the data-refresh workflow, by an overwrite in place, a rename over the name, or a delete and a create (see [The input file each run](../MANAGED_EXCHANGE.md#the-input-file-each-run)). A folder holding no file under that name at run start fails the read before any connection, naming the file expected and the folder looked in, recorded as a benign `"input"` failure (see `lastRun`), never routed through desync/attack framing. Successive results accumulate rather than overwrite, and a results name never equals the input's. A scheduled run and an attended run write through one writer, `writeRunResultsToWorkingFolder`, so both leave the same file under the same name; the same test file's call-site scan holds that writer to those two callers and the platform write beneath it to that writer, and holds the backup writer, `writeBackupToWorkingFolder`, to the scheduled runtime's backup step. A scheduled run whose grant is not honoured without a prompt or is revoked, and one whose write fails, parks the results instead (see [The parked results of a scheduled run](#the-parked-results-of-a-scheduled-run)); an attended run in either case reports the write that did not land beside the download it offers either way, and parks nothing. The grant is taken under an operator gesture -- where the exchange is put on a schedule, or on the run surface -- never at run time: the directory picker requires a user gesture, and at run time a scheduled run's permission is **queried and never prompted**. An attended run's input read may prompt, under the gesture that started the run, and asks in `readwrite` once so that the same answer also covers its results write, which only queries; a refused or declined request fails the read naming `readwrite`, with the permission failure copy, whose first remedy, choosing the folder again, needs no prompt. While it stands an in-origin script can read and write everything in that folder, and the folder's own name is disclosed to any reader of the store (see [Metadata at rest](../SECURITY_DESIGN.md#metadata-at-rest-presence-and-shape)). A record stored with the earlier separate `inputFileHandle` or `outputDirectoryHandle` reads without either -- the reader drops both keys alike -- so the exchange asks once for its folder and neither old pointer is followed; until a folder is granted, its unattended windows are skipped as `no-working-folder`. Absent on browsers without the API (each attended run re-selects the input file, and no run happens unattended) and never in the export artifact: it is a device- and profile-local platform object stored by structured clone, with no serialization. What an import then holds depends on which import it is: one that installs a fresh record has no handle and re-grants, while a [revive-in-place](#the-backup-marker-the-spent-state-and-the-import-marker-local-siblings-never-in-the-artifact) -- this profile's own spent record, updated rather than duplicated -- keeps the grant that record already held, since the folder was granted to this profile and the handle never left it. |
+| `workingDirectoryHandle` | `FileSystemDirectoryHandle` or absent | A persisted **pointer** to the exchange's working folder, held where the File System Access API exists (Chromium), in `readwrite` mode: the one grant every run reads its input through and writes its results through, mirroring the single working directory the CLI runs in. **The app reads exactly one conventioned name from the folder and never enumerates it**: each run looks up `input.csv` (`MANAGED_INPUT_FILE_NAME`, the name the command-line export's emitted command also reads) afresh through `getFileHandle` and reads it with `getFile()` at run start; the results write looks up and creates only the results file it names, under the exchange's label and the run's own instant, and removes only an entry its own failed write created. The backup a scheduled run writes after its rotation ([below](#the-backup-and-import-markers-local-siblings-never-in-the-artifact)) looks up and creates only its own backup name, and stops without creating anything where the folder already holds an entry under it. That removal is best-effort, a stated limit rather than a guarantee: it asks again only while the platform refuses it for the write lock the aborted stream still holds, for at most `REMOVAL_LOCK_BUDGET_MS` (200 ms), and leaves the empty file standing on any other refusal or once that budget is spent. No entry is listed, no subfolder is opened, and no other file is read. `apps/web/test/unit/psi/unattendedRuntimeBoundaries.test.ts` holds this as far as its two checks reach: a recorder drives `acquireManagedInput`, `readInputFileModifiedAt`, `writeResultsToWorkingDirectory`, and `writeBackupToWorkingFolder` and fails on any folder access other than `getFileHandle`, `removeEntry`, and `name`; a source scan over `apps/web/src` fails on any `getFileHandle`, `getDirectoryHandle`, or `removeEntry` call beyond the known ones, and on any `for await` loop or `.values(`, `.keys(`, or `.entries(` call whose iterated expression names a handle, a directory, or a folder. An iteration elsewhere, reached through a name that says none of those, passes both. The pointer is a reference, never a copy: no input content or row value derived from it persists, which is where the no-second-copy invariant is enforced. It is live, not a snapshot: a `File` already obtained stops being readable once the file underneath it changes, so neither `File` objects nor file handles are kept across runs, which is what makes putting the current period's extract under that name the data-refresh workflow, by an overwrite in place, a rename over the name, or a delete and a create (see [The input file each run](../MANAGED_EXCHANGE.md#the-input-file-each-run)). A folder holding no file under that name at run start fails the read before any connection, naming the file expected and the folder looked in, recorded as a benign `"input"` failure (see `lastRun`), never routed through desync/attack framing. Successive results accumulate rather than overwrite, and a results name never equals the input's. A scheduled run and an attended run write through one writer, `writeRunResultsToWorkingFolder`, so both leave the same file under the same name; the same test file's call-site scan holds that writer to those two callers and the platform write beneath it to that writer, and holds the backup writer, `writeBackupToWorkingFolder`, to the scheduled runtime's backup step. A scheduled run whose grant is not honoured without a prompt or is revoked, and one whose write fails, parks the results instead (see [The parked results of a scheduled run](#the-parked-results-of-a-scheduled-run)); an attended run in either case reports the write that did not land beside the download it offers either way, and parks nothing. The grant is taken under an operator gesture -- where the exchange is put on a schedule, or on the run surface -- never at run time: the directory picker requires a user gesture, and at run time a scheduled run's permission is **queried and never prompted**. An attended run's input read may prompt, under the gesture that started the run, and asks in `readwrite` once so that the same answer also covers its results write, which only queries; a refused or declined request fails the read naming `readwrite`, with the permission failure copy, whose first remedy, choosing the folder again, needs no prompt. While it stands an in-origin script can read and write everything in that folder, and the folder's own name is disclosed to any reader of the store (see [Metadata at rest](../SECURITY_DESIGN.md#metadata-at-rest-presence-and-shape)). A record stored with the earlier separate `inputFileHandle` or `outputDirectoryHandle` reads without either -- the reader drops both keys alike -- so the exchange asks once for its folder and neither old pointer is followed; until a folder is granted, its unattended windows are skipped as `no-working-folder`. Absent on browsers without the API (each attended run re-selects the input file, and no run happens unattended) and never in the export artifact: it is a device- and profile-local platform object stored by structured clone, with no serialization. What an import then holds depends on which import it is: one that installs a fresh record has no handle and re-grants, while a pair that completes a configuration-only record in place keeps any grant that record already held, since the folder was granted to this profile and the handle never left it. |
 | `sharedSecret` | string (base64url, 43 chars / 32 bytes), or absent | The **current** rotated shared secret, matching `SHARED_SECRET_REGEX` (see [EXCHANGE_FILE.md](EXCHANGE_FILE.md)) -- the `.alcove.key` analog the exchange-file document never holds. This is the one at-rest secret in the record. Rotated after every successful run and re-persisted before the run is treated as succeeded (see [Persist-before-success ordering](#persist-before-success-ordering)). A record saved from a completed one-shot exchange starts at the secret that run's handshake rotated to, which both parties derived; the invitation's secret is never stored. Absent in a [configuration-only record](#the-configuration-only-record), which runs nowhere here; its absence is what withholds the run, and no other field records that. Present only where the document's connection is `webrtc`, the one channel this app runs, and the document states no `signing` block, a part this app cannot run; a reader refuses a record holding one on any other channel or beside that block. |
 | `expires` | string (ISO 8601, UTC `Z`) or absent | The instant after which `sharedSecret` must not be used; the recovery when it lapses is re-invite. Absent means no bound is in force. The record inherits the CLI key file's **consumer** semantics for `expires` -- one field, one meaning to every consumer (see [Shared secret rotation and inactivity limit](../SECURITY_DESIGN.md#shared-secret-rotation-and-inactivity-limit), a citation about meaning, not sourcing) -- while its **provenance** is single-source: only the max-age stamp writes it, the invitation's setup lifetime having been consumed at provisioning. Two write paths stamp it -- a successful run's rotation write-back and an operator's in-place edit of `tokenMaxAgeDays` -- both under the same never-move-later rule (see [Edit-time re-derivation of `expires`](#edit-time-re-derivation-of-expires)). |
 | `tokenMaxAgeDays` | integer or absent | The operator's max-token-age policy for this exchange, the browser analog of the CLI `authentication.token_max_age_days`, and like it **off by default**: absent means no bound is in force, and a record is created with it absent unless the operator sets one. When set, each successful run stamps `expires` this many days out onto the rotated secret. The reason to opt in is a dormant partnership: rotation caps exposure only for an exchange that actually runs, so an idle stored secret has no automatic exposure bound without it (see [The primary controls](../SECURITY_DESIGN.md#the-primary-controls)). It is a **local field** the operator may edit in place without a re-invite; what the edit does to `expires` is [Edit-time re-derivation of `expires`](#edit-time-re-derivation-of-expires). |
 | `schedule` | object or absent | The partnership-agreed run schedule the unattended path executes: the agreed recurrence and run window -- the schedule is partnership-level agreement, coordinated out-of-band exactly as the terms are -- plus the retry bookkeeping for a missed window (the next planned attempt). Absent for an exchange run attended-only. The field-by-field layout is in [The `schedule` object](#the-schedule-object). |
-| `lastRun` | object or absent | Run bookkeeping the backup state and the tiered desync UX read (see [MANAGED_EXCHANGE.md](../MANAGED_EXCHANGE.md)): `at` (ISO 8601 UTC), `outcome` (`"succeeded"` \| `"failed"` \| `"desynced"` \| `"missed"` \| `"skipped"`), and, for a non-succeeded outcome, an optional `failureKind` (`"auth"` \| `"transport"` \| `"storage"` \| `"custody-unreadable"` \| `"input"` \| `"terms-shortfall"` \| `"handed-off"` \| `"too-large"` \| `"partner-set-too-large"` \| `"partner-refused-set"` \| `"partner-refused-terms"` \| `"partner-protocol-refusal"` \| `"terms-change"` \| `"cancelled"`). A `"terms-change"` failure records a partner's changed linkage terms the run did not take on, refused at the terms exchange before any linkage key or data moved; its remedy is the operator's decision on the change, never a retry ([A refused terms change](#a-refused-terms-change)). A `"missed"` outcome records a no-show: the wait for the other party's runner spent its whole budget with nobody arriving, so no handshake ran. A scheduled run reaches it when an agreed window passes without a completed handshake; an attended run reaches it when its own wait for the partner expires. It has no `failureKind` -- the outcome is the whole account, and it is held apart from `"transport"` (a connection that was made and broke, whose remedy is retrying the connection) and from `"cancelled"` (the operator stopped the run). It is benign, retried at the next window or whenever the operator runs the exchange again, and never routed through the desync/attack framing (see [MANAGED_EXCHANGE.md](../MANAGED_EXCHANGE.md#a-missed-window-is-neither-desync-nor-attack)). A `"skipped"` outcome records an agreed window the scheduled runner declined to open because the operator's [compromise response](#the-operators-response-to-it) stood on the record: nothing connected and nothing rotated, so it is neither a run nor a no-show, it has no `failureKind`, and it leaves the miss count where it stood (see [A due window under the operator's compromise response](#a-due-window-under-the-operators-compromise-response)). An `"input"` failure records a benign pre-run acquisition problem -- the handle's file missing, moved, or unreadable at run start -- detected before any connection, likewise never routed through that framing; putting the file back clears it, so its surface offers the run again. A `"terms-shortfall"` failure records the other benign pre-run input state, held apart from it because its remedy is not another attempt: the file was read and cannot satisfy every linkage key the standing terms declare, so the run is refused before connecting (by the run-start input guard, or by the run boundary's own `assertLinkageTermsSatisfiable` inside the pre-connection prepare), and the same file refuses identically at the next window. Its remedy is a file covering every agreed key, or terms re-agreed with the partner out of band -- never a retry or a bare re-pick. A `"terms-shortfall"` entry additionally holds `singleColumnInput`, admitted only as `true` and omitted rather than written `false`, when the file the run-start input guard read came out as ONE column -- the shape a file separated by something other than this record's `csvDelimiter` comes out as. The reading is what tells the delimiter remedy apart from a real shortfall of the agreed keys, and by the next visit the launch error that held it is gone, so the next visit's summary and the between-visit notification read it off the entry: where it is set both state the delimiter remedy, and where it is absent both state the agreed-keys copy. A `"handed-off"` failure records the third pre-connection refusal: the run found this device's copy [spent](#the-backup-marker-the-spent-state-and-the-import-marker-local-siblings-never-in-the-artifact) by an export and refused inside the run+rotate lock, before reading the input file and before connecting, rather than rotating a secret whose owner is now elsewhere. It is the single-owner invariant holding rather than a fault, so it too stays outside the desync/attack framing, and it is the record's own account of a run -- attended or scheduled -- that met a hand-off nobody was present to answer for. A `"custody-unreadable"` failure records the fourth, and it is that same refusal failing to read the entry it decides on: the sibling entry did not validate, or its store did not answer, so the run stopped in the same place rather than rotating on custody it could not establish. The same kind records the record itself failing the runnable check at the run's read inside that lock -- gone, not a valid record, or holding a configuration only -- which stops the run at the same point and rotates nothing. It is held apart from `"storage"` because the two leave different states behind -- a `"storage"` failure rotated a secret it could not save, which can leave the two parties holding different ones and is recovered by re-inviting, while this refusal precedes the handshake and rotates nothing, so nothing here is a desync and a fresh secret would replace one nothing moved. A `"too-large"` failure records a refusal to send a PSI set of this party's own over the most values its partner stated it can receive, or over the most any receiver admits ([PROTOCOL.md](PROTOCOL.md#the-receive-ceiling)): the first-round check, before connecting against the most any receiver admits and after the terms exchange against the partner's figure, which refuses before any set is sent, including a set whose size that check could not count; and a later round, which refuses its set before sending any of it. It is benign and outside the desync/attack framing. The entry holds no size, as no entry holds a count: the next visit and the between-visit notification state the remedy, and the bound where the entry names one, and only a live launch shows the refusal's own message, with the size where the check counted one. The set over the bound is this party's own, so both surfaces state one remedy: split your input into smaller exchanges. An entry an earlier build wrote may also hold `tooLargeSetOwner` (`"local"` \| `"partner"`); a reader drops it and states that same remedy. A `"too-large"` entry also holds `tooLargeBound` (`"partner-ceiling"` \| `"webrtc-message"`), which bound the refusal found the set over: the most values the partner stated it can receive, or, in an entry an earlier build wrote, the bytes one WebRTC message holds. Both surfaces name that bound, and its figure for the second; an entry without it names no bound. Where the first-round check could not count the set at all, the entry holds `setUncounted` instead, admitted only as `true` and omitted rather than written `false`: no bound was found crossed, so both surfaces say the set could not be counted and name no bound, and a reader states that even beside a `tooLargeBound`. Why the count failed is in the live launch's message only, as no entry holds free text. A `"partner-set-too-large"` failure records a run stopped over a partner's set for a linkage key with more values than `BROWSER_PSI_SET_MAX_ELEMENTS` ([PROTOCOL.md](PROTOCOL.md#the-receive-ceiling)), at one of two points, both after sets of this party's may have been sent -- its sets of earlier rounds, and a sender's setup for the same round: the partner's abort in place of its set, stating the fixed reason "a PSI set is too large to send", or this browser's refusal at the first part of the partner's set inside a round. An entry an earlier build wrote may record a refusal at the terms exchange, before any linkage key moved. Both current cases hold `refusedInRound`, admitted only as `true` and omitted rather than written `false`; the run history states that nothing was disclosed for an entry without it, and for an entry with it states that the run did not complete and that whether any data reached the partner is not recorded. It is benign and outside the desync/attack framing, and the entry holds no count: both surfaces state the cause and the remedy, the command-line application or a smaller input on the partner's side. A `"partner-refused-set"` failure records the partner's abort in place of its first set stating the fixed reason "a PSI set was refused before sending": the partner's run refused the set for a cause other than its size. It is met at the same point, after sets of this party's may have been sent, so it always holds `refusedInRound` and the run history states the uncertain line. It is benign and outside the desync/attack framing; the reason names no cause, so both surfaces say the partner's run refused and to ask the partner. A `"partner-refused-terms"` failure records the partner's abort at the terms exchange naming linkage terms that differ from the partner's own (`termsDifferenceRefusedBy` reading `"partner"`, [PROTOCOL.md](PROTOCOL.md#a-terms-change-at-the-terms-exchange)), before any linkage key or data moved. It is benign and outside the desync/attack framing, and the run history states that nothing was disclosed. Both surfaces state the refusal and its remedy, terms agreed with the partner through a [terms update](#a-terms-update) made or applied on the exchange's page, and only a live launch shows the terms that differ, as no entry holds free text. An entry an earlier build wrote for the same refusal holds `"transport"` and reads as the transport state. A `"partner-protocol-refusal"` failure records this party's refusal of what the partner sent as not following the exchange protocol (`isPartnerProtocolRefusal`, `packages/core/src/failureClass.ts`): a `PartnerProtocolRefusalError`, which only the sites refusing the partner's frames raise, such as a PSI setup out of ascending order, an unreadable response, a terms message missing a required field, or another protocol version ([PROTOCOL.md](PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute)). The partner's own abort, a refusal over the linkage terms, and a refusal whose fault could be either party's are not among them. It can be met at any point after the handshake, after sets of this party's may have been sent, so the run history states the uncertain line. It is benign and outside the desync/attack framing. The entry does not hold whether the refusal was over a version mismatch, so both surfaces state that the partner's data did not follow the exchange protocol and that the two parties check which version each runs, the one running the older version updating; only a live launch shows what was refused, and for a version mismatch which party runs the older version where the partner's version is an integer, as no entry holds free text. An entry an earlier build wrote for the same refusal holds `"transport"` and reads as the transport state. An attended run refused for its saved signaling address is recorded as a `"transport"` failure, with no kind of its own; the refusal alert, which offers no retry, is shown only in the run that met it, and a later visit shows the generic transport alert. `"terms-shortfall"`, `"too-large"`, `"partner-set-too-large"`, `"partner-refused-set"`, `"partner-refused-terms"`, `"partner-protocol-refusal"`, `"handed-off"`, and `"custody-unreadable"` are the failure kinds a surface must **not** present as retryable: the same input falls the same way short of the same keys and builds the same too-large set, the same partner input is refused at the same ceiling, the partner's run refuses its set the same way, the partner refuses the same terms until the two parties agree them, the partner's run sends the same nonconforming data, a handed-off copy refuses identically at every later run, and a run reads the same unreadable entry every time, so the remedy is the operator's, not another attempt's. A record written before a value was added to either enum still reads -- an entry with `"input"` for a shortfall loads and tiers as the generic input state; the converse is the reader-rejects-unknown rule's consequence, an artifact with an outcome or kind this reader does not know being refused whole rather than read with the value dropped. Widening either enum therefore leaves `schemaVersion` where it is: the version moves for a member an older build would read past and lose state by, not for a value it refuses, and not for `singleColumnInput`, `tooLargeBound`, or `setUncounted`, whose absence is the copy every build states (the agreed-keys copy, and a too-large set with no bound named): a build that does not know one gives worse advice rather than reading a state wrongly. `refusedInRound` is outside that reasoning: a build that does not know it reads past it and states that nothing was disclosed. A **re-invite clears `lastRun`** in the same rotation transaction that advances the fresh secret: the re-invite is the recovery for the failure the entry recorded, so leaving it would re-derive a consumed tier at the next visit -- and once the import marker is cleared alongside, a stale `"auth"` failure would re-derive as the attack tier rather than the benign import one. A successful run instead advances `lastRun` to `"succeeded"`; two recoveries drop it: the re-invite, and an apply of a partner's terms change, which drops a `"terms-change"` entry for the same reason ([A refused terms change](#a-refused-terms-change)). Which of two runs' entries the store keeps is [Recording a run outcome](#recording-a-run-outcome). |
-| `recentRuns` | array or absent | The outcomes `lastRun` has held, at most 10 (`MAX_RECENT_RUNS`): each entry has exactly the shape of a `lastRun` entry and is validated by the same schema, so it holds no free text. Every write that lands a `lastRun` entry puts that entry at the head and drops the oldest beyond the bound ([Recording a run outcome](#recording-a-run-outcome)). Entries are kept in the order recorded, most recently recorded first: the monotonic check compares a new entry with the stored `lastRun` only, so after `lastRun` is cleared (a re-invite, a terms decision, clearing a `"handed-off"` entry) a later-recorded entry with an earlier timestamp sits above entries stamped after it. An exchange artifact that carries a `recentRuns` member is refused on import (the local block is strict), not ignored; an entry either write rule drops joins neither field. A write to a record holding a `lastRun` but no `recentRuns` -- one stored before this field -- starts the list from that `lastRun`. Nothing that removes `lastRun` (a re-invite, a terms decision, clearing a `"handed-off"` entry) touches it, since it records what happened rather than a state to recover from. It is read only by the exchange's page, which lists it as the run history; no run, failure tier, gate, or notice reads it, so `lastRun` stays the bookkeeping. A list longer than the bound or holding an entry the `lastRun` schema refuses is refused whole at read. Absent in a [configuration-only record](#the-configuration-only-record), and never in the export artifact or the command-line export: an imported record starts it again from the `lastRun` the artifact holds. **`schemaVersion` does not move for it**, as it did not for `relayRegistrar`: a build that predates the field reads past it and drops it at its next write, losing only past entries of a display list, never a fact any run or gate reads. |
+| `lastRun` | object or absent | Run bookkeeping the backup state and the tiered desync UX read (see [MANAGED_EXCHANGE.md](../MANAGED_EXCHANGE.md)): `at` (ISO 8601 UTC), `outcome` (`"succeeded"` \| `"failed"` \| `"desynced"` \| `"missed"` \| `"skipped"`), and, for a non-succeeded outcome, an optional `failureKind` (`"auth"` \| `"transport"` \| `"storage"` \| `"custody-unreadable"` \| `"input"` \| `"terms-shortfall"` \| `"too-large"` \| `"partner-set-too-large"` \| `"partner-refused-set"` \| `"partner-refused-terms"` \| `"partner-protocol-refusal"` \| `"terms-change"` \| `"cancelled"`). A `"terms-change"` failure records a partner's changed linkage terms the run did not take on, refused at the terms exchange before any linkage key or data moved; its remedy is the operator's decision on the change, never a retry ([A refused terms change](#a-refused-terms-change)). A `"missed"` outcome records a no-show: the wait for the other party's runner spent its whole budget with nobody arriving, so no handshake ran. A scheduled run reaches it when an agreed window passes without a completed handshake; an attended run reaches it when its own wait for the partner expires. It has no `failureKind` -- the outcome is the whole account, and it is held apart from `"transport"` (a connection that was made and broke, whose remedy is retrying the connection) and from `"cancelled"` (the operator stopped the run). It is benign, retried at the next window or whenever the operator runs the exchange again, and never routed through the desync/attack framing (see [MANAGED_EXCHANGE.md](../MANAGED_EXCHANGE.md#a-missed-window-is-neither-desync-nor-attack)). A `"skipped"` outcome records an agreed window the scheduled runner declined to open because the operator's [compromise response](#the-operators-response-to-it) stood on the record: nothing connected and nothing rotated, so it is neither a run nor a no-show, it has no `failureKind`, and it leaves the miss count where it stood (see [A due window under the operator's compromise response](#a-due-window-under-the-operators-compromise-response)). An `"input"` failure records a benign pre-run acquisition problem -- the handle's file missing, moved, or unreadable at run start -- detected before any connection, likewise never routed through that framing; putting the file back clears it, so its surface offers the run again. A `"terms-shortfall"` failure records the other benign pre-run input state, held apart from it because its remedy is not another attempt: the file was read and cannot satisfy every linkage key the standing terms declare, so the run is refused before connecting (by the run-start input guard, or by the run boundary's own `assertLinkageTermsSatisfiable` inside the pre-connection prepare), and the same file refuses identically at the next window. Its remedy is a file covering every agreed key, or terms re-agreed with the partner out of band -- never a retry or a bare re-pick. A `"terms-shortfall"` entry additionally holds `singleColumnInput`, admitted only as `true` and omitted rather than written `false`, when the file the run-start input guard read came out as ONE column -- the shape a file separated by something other than this record's `csvDelimiter` comes out as. The reading is what tells the delimiter remedy apart from a real shortfall of the agreed keys, and by the next visit the launch error that held it is gone, so the next visit's summary and the between-visit notification read it off the entry: where it is set both state the delimiter remedy, and where it is absent both state the agreed-keys copy. A `"custody-unreadable"` failure records the third pre-connection refusal: the record itself failing the runnable check at the run's read inside the run+rotate lock -- gone, not a valid record, or holding a configuration only -- which stops the run before reading the input file and before connecting, and rotates nothing. It is held apart from `"storage"` because the two leave different states behind -- a `"storage"` failure rotated a secret it could not save, which can leave the two parties holding different ones and is recovered by re-inviting, while this refusal precedes the handshake and rotates nothing, so nothing here is a desync and a fresh secret would replace one nothing moved. A `"too-large"` failure records a refusal to send a PSI set of this party's own over the most values its partner stated it can receive, or over the most any receiver admits ([PROTOCOL.md](PROTOCOL.md#the-receive-ceiling)): the first-round check, before connecting against the most any receiver admits and after the terms exchange against the partner's figure, which refuses before any set is sent, including a set whose size that check could not count; and a later round, which refuses its set before sending any of it. It is benign and outside the desync/attack framing. The entry holds no size, as no entry holds a count: the next visit and the between-visit notification state the remedy, and the bound where the entry names one, and only a live launch shows the refusal's own message, with the size where the check counted one. The set over the bound is this party's own, so both surfaces state one remedy: split your input into smaller exchanges. An entry an earlier build wrote may also hold `tooLargeSetOwner` (`"local"` \| `"partner"`); a reader drops it and states that same remedy. A `"too-large"` entry also holds `tooLargeBound` (`"partner-ceiling"` \| `"webrtc-message"`), which bound the refusal found the set over: the most values the partner stated it can receive, or, in an entry an earlier build wrote, the bytes one WebRTC message holds. Both surfaces name that bound, and its figure for the second; an entry without it names no bound. Where the first-round check could not count the set at all, the entry holds `setUncounted` instead, admitted only as `true` and omitted rather than written `false`: no bound was found crossed, so both surfaces say the set could not be counted and name no bound, and a reader states that even beside a `tooLargeBound`. Why the count failed is in the live launch's message only, as no entry holds free text. A `"partner-set-too-large"` failure records a run stopped over a partner's set for a linkage key with more values than `BROWSER_PSI_SET_MAX_ELEMENTS` ([PROTOCOL.md](PROTOCOL.md#the-receive-ceiling)), at one of two points, both after sets of this party's may have been sent -- its sets of earlier rounds, and a sender's setup for the same round: the partner's abort in place of its set, stating the fixed reason "a PSI set is too large to send", or this browser's refusal at the first part of the partner's set inside a round. An entry an earlier build wrote may record a refusal at the terms exchange, before any linkage key moved. Both current cases hold `refusedInRound`, admitted only as `true` and omitted rather than written `false`; the run history states that nothing was disclosed for an entry without it, and for an entry with it states that the run did not complete and that whether any data reached the partner is not recorded. It is benign and outside the desync/attack framing, and the entry holds no count: both surfaces state the cause and the remedy, the command-line application or a smaller input on the partner's side. A `"partner-refused-set"` failure records the partner's abort in place of its first set stating the fixed reason "a PSI set was refused before sending": the partner's run refused the set for a cause other than its size. It is met at the same point, after sets of this party's may have been sent, so it always holds `refusedInRound` and the run history states the uncertain line. It is benign and outside the desync/attack framing; the reason names no cause, so both surfaces say the partner's run refused and to ask the partner. A `"partner-refused-terms"` failure records the partner's abort at the terms exchange naming linkage terms that differ from the partner's own (`termsDifferenceRefusedBy` reading `"partner"`, [PROTOCOL.md](PROTOCOL.md#a-terms-change-at-the-terms-exchange)), before any linkage key or data moved. It is benign and outside the desync/attack framing, and the run history states that nothing was disclosed. Both surfaces state the refusal and its remedy, terms agreed with the partner through a [terms update](#a-terms-update) made or applied on the exchange's page, and only a live launch shows the terms that differ, as no entry holds free text. An entry an earlier build wrote for the same refusal holds `"transport"` and reads as the transport state. A `"partner-protocol-refusal"` failure records this party's refusal of what the partner sent as not following the exchange protocol (`isPartnerProtocolRefusal`, `packages/core/src/failureClass.ts`): a `PartnerProtocolRefusalError`, which only the sites refusing the partner's frames raise, such as a PSI setup out of ascending order, an unreadable response, a terms message missing a required field, or another protocol version ([PROTOCOL.md](PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute)). The partner's own abort, a refusal over the linkage terms, and a refusal whose fault could be either party's are not among them. It can be met at any point after the handshake, after sets of this party's may have been sent, so the run history states the uncertain line. It is benign and outside the desync/attack framing. The entry does not hold whether the refusal was over a version mismatch, so both surfaces state that the partner's data did not follow the exchange protocol and that the two parties check which version each runs, the one running the older version updating; only a live launch shows what was refused, and for a version mismatch which party runs the older version where the partner's version is an integer, as no entry holds free text. An entry an earlier build wrote for the same refusal holds `"transport"` and reads as the transport state. An attended run refused for its saved signaling address is recorded as a `"transport"` failure, with no kind of its own; the refusal alert, which offers no retry, is shown only in the run that met it, and a later visit shows the generic transport alert. `"terms-shortfall"`, `"too-large"`, `"partner-set-too-large"`, `"partner-refused-set"`, `"partner-refused-terms"`, `"partner-protocol-refusal"`, and `"custody-unreadable"` are the failure kinds a surface must **not** present as retryable: the same input falls the same way short of the same keys and builds the same too-large set, the same partner input is refused at the same ceiling, the partner's run refuses its set the same way, the partner refuses the same terms until the two parties agree them, the partner's run sends the same nonconforming data, and a run reads the same unusable stored copy every time, so the remedy is the operator's, not another attempt's. A record written before a value was added to either enum still reads -- an entry with `"input"` for a shortfall loads and tiers as the generic input state; the converse is the reader-rejects-unknown rule's consequence, an artifact with an outcome or kind this reader does not know being refused whole rather than read with the value dropped. Widening either enum therefore leaves `schemaVersion` where it is: the version moves for a member an older build would read past and lose state by, not for a value it refuses, and not for `singleColumnInput`, `tooLargeBound`, or `setUncounted`, whose absence is the copy every build states (the agreed-keys copy, and a too-large set with no bound named): a build that does not know one gives worse advice rather than reading a state wrongly. `refusedInRound` is outside that reasoning: a build that does not know it reads past it and states that nothing was disclosed. A **re-invite clears `lastRun`** in the same rotation transaction that advances the fresh secret: the re-invite is the recovery for the failure the entry recorded, so leaving it would re-derive a consumed tier at the next visit -- and once the import marker is cleared alongside, a stale `"auth"` failure would re-derive as the attack tier rather than the benign import one. A successful run instead advances `lastRun` to `"succeeded"`; two recoveries drop it: the re-invite, and an apply of a partner's terms change, which drops a `"terms-change"` entry for the same reason ([A refused terms change](#a-refused-terms-change)). Which of two runs' entries the store keeps is [Recording a run outcome](#recording-a-run-outcome). |
+| `recentRuns` | array or absent | The outcomes `lastRun` has held, at most 10 (`MAX_RECENT_RUNS`): each entry has exactly the shape of a `lastRun` entry and is validated by the same schema, so it holds no free text. Every write that lands a `lastRun` entry puts that entry at the head and drops the oldest beyond the bound ([Recording a run outcome](#recording-a-run-outcome)). Entries are kept in the order recorded, most recently recorded first: the monotonic check compares a new entry with the stored `lastRun` only, so after `lastRun` is cleared (a re-invite, a terms decision) a later-recorded entry with an earlier timestamp sits above entries stamped after it. An exchange artifact that carries a `recentRuns` member is refused on import (the local block is strict), not ignored; an entry either write rule drops joins neither field. A write to a record holding a `lastRun` but no `recentRuns` -- one stored before this field -- starts the list from that `lastRun`. Nothing that removes `lastRun` (a re-invite, a terms decision) touches it, since it records what happened rather than a state to recover from. It is read only by the exchange's page, which lists it as the run history; no run, failure tier, gate, or notice reads it, so `lastRun` stays the bookkeeping. A list longer than the bound or holding an entry the `lastRun` schema refuses is refused whole at read. Absent in a [configuration-only record](#the-configuration-only-record), and never in the export artifact or the command-line export: an imported record starts it again from the `lastRun` the artifact holds. **`schemaVersion` does not move for it**, as it did not for `relayRegistrar`: a build that predates the field reads past it and drops it at its next write, losing only past entries of a display list, never a fact any run or gate reads. |
 | `rotationInFlightSince` | string (ISO 8601, UTC `Z`) or absent | The instant a run began a key exchange that has not saved its rotated secret: written durably after the partner connects and before the key exchange starts, and removed by the rotation write that stores the rotated secret, so a record still holding it outside a run records a key exchange that stopped between the two. What writes and reads it: [The rotation-in-flight marker](#the-rotation-in-flight-marker). Absent in a [configuration-only record](#the-configuration-only-record), and never in the export artifact or the command-line key file this app writes. |
 | `relayRegistrar` | object or absent | The relay registrar this browser enrolled the exchange at: `url`, the registrar's `https://` address, and `exchangeId`, the id it holds the exchange's relay key under, validated as the command line's [`connection.relay_registrar`](../EXCHANGE_REFERENCE.md#connectionrelay_registrar) is. It holds no credential: the relay-owner token is asked for at enrollment and written nowhere. Written by an enrollment once the registrar has confirmed it holds the relay key derived from the record's current secret; by a pair import whose configuration names a registrar; and by a backup restore holding one. A pair import or restore writes it whether or not that registrar confirmed the current key, and the key file's or backup's `relayRegistrationPendingSince` beside it records a registration it has not confirmed. Removed when the operator stops registering. A run registers there only when it relays through this browser's own relay ([PROTOCOL.md](PROTOCOL.md#registering-the-rotated-relay-key)). Absent in a [configuration-only record](#the-configuration-only-record). The export artifact holds it in its `local` block, and the command-line export writes it as `connection.relay_registrar` ([What the exports write](#what-the-exports-write)). |
 | `relayRegistrationPendingSince` | string (ISO 8601, UTC `Z`) or absent | The instant the secret the record holds was rotated to, while the relay registrar has not confirmed that it holds the relay key derived from it. What writes and reads it: [The pending relay registration](#the-pending-relay-registration). Absent in a [configuration-only record](#the-configuration-only-record). The export artifact's `key` block and the command-line key file this app writes hold it under the same name ([What the exports write](#what-the-exports-write)). |
@@ -202,7 +202,7 @@ control whether it is empty, populated, or unreadable. It takes the backup
 artifact or a command-line `alcove.yaml` and routes by what the file holds, not
 by which listing it stands beside:
 
-- **A backup** installs or revives a runnable record, reconciled against the
+- **A backup** installs a runnable record, reconciled against the
   one exchange it holds ([Reconciling a backup
   import](#reconciling-a-backup-import)).
 - **An `alcove.yaml` chosen alone**, on any channel, installs a
@@ -240,9 +240,8 @@ later command line wrote still imports. The landed import's notice names each
 dropped field to the operator, by name only and never its value.
 The key file is validated on its own -- the configuration's schema parse never
 sees it -- through the sensitive-JSON chokepoint and the shared key-file schema
-the [hand-off re-take](#taking-a-command-line-hand-off-back) also reads
-(`KeyFileSchema`), under the re-take's size cap, applied before the file
-is read. The export artifact's key half is read against the key-pair schema
+(`KeyFileSchema`), under the key file's own size cap
+(`MAX_KEY_FILE_IMPORT_BYTES`), applied before the file is read. The export artifact's key half is read against the key-pair schema
 (`keyPairFieldsSchema`) instead, which admits the pending relay registration
 and no rotation-in-flight marker.
 
@@ -263,7 +262,7 @@ and no rotation-in-flight marker.
 - A pair whose exchange a stored record already is, where the rule below
   refuses it.
 
-**Where the secret lands.** In the installed or revived record's `sharedSecret`,
+**Where the secret lands.** In the installed or completed record's `sharedSecret`,
 with the key file's `expires` in `expires`: the record fields every runnable
 record keeps them in, written by `createManagedExchange` or inside the
 reconciliation's transaction, with the at-rest treatment the backup import's
@@ -279,58 +278,37 @@ and the key file holds the secret and its bound. The rendezvous ids both parties
 register under are derived from the secret, so the secret is the exchange's
 identity, and it is the one the backup import already matches on. The pair is
 reconciled in the backup import's transaction (`reconcileManagedCommandLinePair`,
-`reviveSpentManagedExchange`'s own, `managedExchangeStore.ts`), compared in
+`reconcileManagedBackupImport`'s own, `managedExchangeStore.ts`), compared in
 memory:
 
-- **A match handed off to the command line refuses**, as it does for a backup,
-  naming the record: those files are what the hand-off saved, and the route
-  that brings them back is the [re-take](#taking-a-command-line-hand-off-back)
-  on that record's own surface, whose confirmation asks the operator to stop the
-  command-line run first. The refusal says to choose these two files there. **A
-  match whose sibling entry cannot be read refuses** on the backup's terms too.
-- **A migration-spent match is revived in place**: the pair's document, `side`,
-  max-age policy, and key pair are laid over the stored record, an absent
-  `expires` or policy clearing the stored one, and the `id`, label, schedule,
-  `lastRun`, standing condition, and platform grants -- none of which the pair
-  has a field for -- are kept (`applyManagedExchangeCommandLinePair`). The spent
-  state is cleared and the import marker stamped. **A migration-spent match on
-  the other `side` refuses**, naming the record: the partner's files hold the
-  same secret with the other side, so these are not this party's files.
-- **A live match refuses**, naming the record, as it does for a backup: the
-  pair holds nothing the live record lacks, so a second live copy of one secret
-  is all installing it could add. It decides ahead of a migration-spent match
-  for the same reason.
+- **A match refuses**, naming the record, as it does for a backup: the
+  pair holds nothing the stored record lacks, so a second live copy of one
+  secret is all installing it could add.
 - **No match asks, then installs fresh**, with a new `id`, as the next
   paragraph states.
 
 **A pair no stored secret matches is recognized by its terms and side.** A
-command-line run rotates the secret, so a pair from a hand-off that has run
-since, or from an exchange moved to another device and run there, matches no
-stored secret; a configuration-only record holds none to match. The import
-names every stored record the [no-secret-match
-rule](#recognizing-a-stored-exchange-without-a-secret-match) finds among those
-handed off to the command line, migration-spent, or configuration-only, and
+configuration-only record holds no secret to match. The import names every
+configuration-only record the [no-secret-match
+rule](#recognizing-a-stored-exchange-without-a-secret-match) finds, and
 installs nothing until the operator answers (`decideCommandLinePairTarget`,
 `apps/web/src/psi/managed/managedPairRecognition.ts`). The answers:
 
-- **Take the pair into one of them.** A handed-off record is taken back through
-  its [re-take](#taking-a-command-line-hand-off-back), which checks the pair
-  again under its lock; the question states the re-take's own condition, that
-  the command-line run is stopped first. A migration-spent record is revived and
-  a configuration-only record completed in place, both as a migration-spent
-  secret match is revived, less the backup marker where the pair's secret
-  differs from the one it attests. A chosen record that no longer qualifies --
-  deleted, taken back, running, or changed -- refuses, and nothing is written.
+- **Complete one of them.** The pair's document, `side`, max-age policy, and
+  key pair are laid over the configuration-only record, an absent `expires` or
+  policy clearing the stored one, and the `id`, label, schedule, `lastRun`,
+  standing condition, and platform grants -- none of which the pair has a field
+  for -- are kept (`applyManagedExchangeCommandLinePair`). A chosen record that
+  no longer qualifies -- deleted or changed -- refuses, and nothing is written.
 - **Install as a new record**, beside every record named.
 - **Cancel**, writing nothing.
 
 **The markers.** Every pair import that writes stamps the [import
-marker](#the-backup-marker-the-spent-state-and-the-import-marker-local-siblings-never-in-the-artifact)
+marker](#the-backup-and-import-markers-local-siblings-never-in-the-artifact)
 as of the import: a key file obtained outside this browser can hold a secret the
 partnership has rotated past, the reading the desync tiering gives it until a
 run succeeds. It stamps **no backup marker** -- the pair is not the app's backup
-file (the command-line export's rule, below) -- and a revive keeps any backup
-marker the stored record held, the secret it attests being unchanged.
+file (the command-line export's rule, below).
 
 #### The connection block: credential-free by composition
 
@@ -673,8 +651,7 @@ folded to a miss counts a window that was met -- so a stamp sharing the run's
 start instant is kept as well.
 
 The rules are the store write's, not a runner's, so they hold for a refusal
-recorded inside the lock (`handed-off`, `custody-unreadable`, an input
-rejection, a failed rotation persist) exactly as for one the runner classifies
+recorded inside the lock (an input rejection, a failed rotation persist) exactly as for one the runner classifies
 after the fact. They do not reach the entry a [schedule advance](#catch-up-on-wake)
 carries: that one is the catch-up walk's verdict on an already-closed window, or
 a skipped window's own stamp, rather than a run in flight, so it states no run
@@ -698,7 +675,7 @@ A partner whose linkage terms changed since the last run is met at the terms exc
 
 - **Attended, accepted.** The record's `exchangeFile` takes the partner's terms in one field-scoped store write (`persistManagedExchangeTermsChange`, through `applyManagedExchangeTermsChange` in `managedExchangeRecord.ts`), awaited before the run continues, so before any key or payload moves. Where the run can continue (`TermsChange.continuable`), the write is the command line's attended one: `linkageTerms` becomes core's adopted terms, whose `payload.receive` is the partner's send set, and `expectedPartnerDeduplicate` is left as it was. Where it cannot -- a change to terms the run was prepared under, or to the partner's `deduplicate` -- the write is the apply below, and core then refuses the run; the run's bookkeeping records nothing for it, since nothing about the exchange failed and the next run holds the new terms.
 - **Attended, declined.** Nothing is written. The run refuses with a `TermsChangeRefusedError` and records a `"terms-change"` failure.
-- **Unattended.** The run keeps the partner's terms as the record's `termsProposal` local sibling ([below](#the-backup-marker-the-spent-state-and-the-import-marker-local-siblings-never-in-the-artifact)), replacing an earlier one, refuses with a `TermsChangeRefusedError`, and records a `"terms-change"` failure, which earns a [between-visit notification](#the-between-visit-notification-opt-in). A proposal the store does not keep leaves the refusal standing, its message stating the store failure.
+- **Unattended.** The run keeps the partner's terms as the record's `termsProposal` local sibling ([below](#the-backup-and-import-markers-local-siblings-never-in-the-artifact)), replacing an earlier one, refuses with a `TermsChangeRefusedError`, and records a `"terms-change"` failure, which earns a [between-visit notification](#the-between-visit-notification-opt-in). A proposal the store does not keep leaves the refusal standing, its message stating the store failure.
 
 **Applying a kept proposal.** The next visit shows the kept change with Apply and Decline, both withheld while a run holds the exchange. Apply takes the [run+rotate lock](#the-secret-is-a-linear-resource) without waiting -- a run in flight refuses it -- reads the stored proposal under it, and applies that one only where its `proposedAt` is the one the operator reviewed; no proposal stored, or another one, refuses and writes nothing. It then writes the partner's terms and nothing else: `linkageTerms` derived from the partner's terms as an acceptance derives them (`deriveAcceptedLinkageTerms`), keeping this party's `identity` and `deduplicate`, with `payload.receive` the partner's send set; and `expectedPartnerDeduplicate` the partner's stated `deduplicate`. A `lastRun` holding a `"terms-change"` failure is dropped in the same write, as a re-invite drops the failure it recovers: the change it refused is the one applied. The proposal is then removed. Decline removes the proposal and writes nothing else, so the next run refuses the same way until the partner's terms match the record's again.
 
@@ -830,9 +807,8 @@ with the condition. A run never writes it, and a run never clears it.
   checked.** It shares the two controls and their withheld reason with the
   compromise response, and it has a write-time guarantee of its own: the rotation
   write takes the record's [run+rotate lock](#the-secret-is-a-linear-resource) with
-  `ifAvailable` before it opens its transaction, exactly as the [hand-off
-  spend](#the-backup-marker-the-spent-state-and-the-import-marker-local-siblings-never-in-the-artifact)
-  does, and refuses while a run holds it. Neither rotation write compares against
+  `ifAvailable` before it opens its transaction, exactly as both exports do,
+  and refuses while a run holds it. Neither rotation write compares against
   the secret it replaces, so a mint landing beside a run's own rotation would
   discard one of the two. The click re-reads the polled run signal immediately
   beforehand, which pre-empts that refusal in the words the refusal is shown in
@@ -987,11 +963,11 @@ would cost all of them. The attended read stays strict precisely so the operator
 does meet that surface, which is where a skipped entry is resolved.
 
 The wake reads each record's [local sibling
-state](#the-backup-marker-the-spent-state-and-the-import-marker-local-siblings-never-in-the-artifact)
+state](#the-backup-and-import-markers-local-siblings-never-in-the-artifact)
 the same way. A record whose sibling entry this build cannot parse -- a member a
-newer deployment added, or a corrupted value -- is skipped as unreadable, since
-that entry may be the one recording a hand-off, and every other record still
-runs.
+newer deployment added, a corrupted value, or a handed-off state an earlier
+version wrote, which no current shape names -- is skipped as unreadable, and
+every other record still runs.
 
 #### Catch-up on wake
 
@@ -1127,20 +1103,10 @@ Two boundaries the occupancy holds:
   than the failure's kind.
 
 Within those, an attempt is re-made only for a partner who never arrived and for
-a failure with no determinate local cause. A lapsed `expires`, a copy an earlier
-version's export handed off, a hand-off state the run could not read, an unusable input, a
-shortfall against the standing terms, a refused disclosure, a failed rotation
+a failure with no determinate local cause. A lapsed `expires`, a stored copy the
+run cannot use, an unusable input, a shortfall against the standing terms, a refused disclosure, a failed rotation
 persist, and a handshake that failed closed each reproduce identically on the
 next attempt, so each ends the window's occupancy where it happened.
-
-The spent state is read twice: the runner's own skip below reads it once when the
-wake begins, and the run path re-reads it inside the [run+rotate
-lock](#the-secret-is-a-linear-resource) at the start of every attempt. No current
-path writes that state; it is left only on a record an earlier version wrote. An
-attempt that finds it refuses outright rather than being re-attempted until the
-window closes; the refusal itself is non-retryable and counts no partner miss, but
-a window that already found the partner absent before it still folds to
-`"missed"` under the table below.
 
 The record itself is read on that same per-attempt cadence, and each attempt
 runs the record that read returns -- its secret, input handle, document, and
@@ -1202,11 +1168,10 @@ flight, so its bookkeeping lands in a window already advanced past; a
 the window uncounted. Every other disposition's `lastRun` is written by the run
 itself, so the schedule advance has none and cannot contend with it.
 
-Three records are passed over rather than attempted, each leaving its window
+Two records are passed over rather than attempted, each leaving its window
 with no disposition at all -- the wake that finds the window elapsed counts it
 exactly as one this runtime slept through:
 
-- One whose local `spent` state marks this device's copy handed off.
 - One with no persisted `workingDirectoryHandle`, which has no unattended read
   of the input at all.
 - One whose runtime stopped while the window was still open.
@@ -1348,10 +1313,8 @@ exchange included, rather than across its rotation alone. Once it holds the
 lock, a run reads the record again and runs that copy -- its secret, side,
 terms, and max-age policy -- rather than one its surface or its scheduled window
 read earlier, so each run, attended or scheduled, authenticates with and rotates
-the secret stored when it takes the lock. A [hand-off
-spend](#the-backup-marker-the-spent-state-and-the-import-marker-local-siblings-never-in-the-artifact),
-a [command-line hand-off taken back](#taking-a-command-line-hand-off-back), and a
-[re-invite's rotation write](#the-operators-response-to-it) each contend for that
+the secret stored when it takes the lock. Both exports and a
+[re-invite's rotation write](#the-operators-response-to-it) contend for that
 same lock, so they too are refused while an exchange is in flight.
 The partner influences how long the payload exchange takes, so the run's cancel
 reaches that width: it closes the run's connection, which rejects the wait the
@@ -1380,9 +1343,7 @@ The lock guards one browser profile; across devices the guard is **migration,
 not sync**. Nothing synchronizes a record between two devices, and no export
 spends the source copy: a run of an exported copy elsewhere rotates the secret,
 and this browser's copy, still holding the older one, runs again only once the
-newer files are imported here. A run that finds its copy spent refuses before it
-connects (see [the spent
-state](#the-backup-marker-the-spent-state-and-the-import-marker-local-siblings-never-in-the-artifact)).
+newer files are imported here.
 The rationale for both guards is [Single-device
 ownership](../notes/managed-exchange-design.md#single-device-ownership).
 
@@ -1444,8 +1405,8 @@ holds exactly one live `sharedSecret`, and no previous secret is kept.
   first instant. A no-show never reaches it, and a write that fails stops the
   run before the key exchange, with nothing rotated.
 - **Removed** by the rotation write that stores the rotated secret -- the run's
-  own and a re-invite's -- in the same transaction, and by a take-back that
-  replaces the secret. A recorded outcome supersedes it: the bookkeeping write
+  own and a re-invite's -- in the same transaction, and by a pair import that
+  lays another secret over the record. A recorded outcome supersedes it: the bookkeeping write
   that records a key exchange reaching a verdict at or after the marker -- a
   success, a failed-closed handshake, or a rotation not saved, the last two
   with the standing condition they raise -- removes it in the same write
@@ -1501,17 +1462,14 @@ not confirmed. The code: `apps/web/src/psi/managed/managedRelayRegistration.ts`.
 - **The reason.** A rotation write that sets or keeps the marker keeps the
   reason the record held, since no rotation recovers the key the registrar
   holds. Every write that removes the marker removes the reason. A key
-  file's marker carried in by a pair revive replaces both; one carried in by
-  the hand-off re-take replaces the marker and keeps a stored reason, since
-  the re-take is a rotation write. Either way the next run asks for
-  re-enrollment rather than a renewal while a reason stands.
+  file's marker carried in by a pair import replaces both.
 - **Removed** once the registrar confirms the key derived from the secret the
   record still holds, by a field-scoped write that leaves a record which has
   rotated since unchanged; by an enrollment; by stopping registration; and by
-  the revive or hand-off re-take of a pair whose configuration names the
-  record's registrar and whose key file holds no marker (**Carried in**,
+  a pair import whose configuration names the record's registrar and whose
+  key file holds no marker (**Carried in**,
   below). No other write removes it: a
-  rotation write sets or keeps it, and any other revive keeps it, on a record
+  rotation write sets or keeps it, and any other pair import keeps it, on a record
   naming a registrar or none.
 - **Read** by the next run that relays through this browser's own relay,
   inside the lock, after the input guard and before any contact with the
@@ -1529,27 +1487,16 @@ not confirmed. The code: `apps/web/src/psi/managed/managedRelayRegistration.ts`.
   no registrar.
 - **Carried in** from a command-line key file holding the CLI's own field
   ([EXCHANGE_FILE.md](EXCHANGE_FILE.md#the-pending-relay-registration)), by the
-  pair import and the hand-off re-take, so the exchange's first run here
-  retries it. A pair whose configuration names a registrar states the whole
-  registration: a revive takes its registrar, and the key file's marker or its
+  pair import, so the exchange's first run here retries it. A pair whose
+  configuration names a registrar states the whole registration: the import
+  takes its registrar, and the key file's marker or its
   absence, in place of the stored registrar, marker, and reason
   (`applyManagedExchangeCommandLinePair`). A pair naming no registrar keeps the
   registrar the stored record was enrolled at, and the key file's marker
   replaces the stored one; a key file holding none there does not show that
   the command line confirmed a registration, since the configuration had no
   registrar configured, so its absence keeps the stored marker, on a record
-  naming a registrar or none. The hand-off re-take reads the key file by the
-  same rule, whether or not its secret differs, except that a key file's
-  marker keeps a stored reason (**The reason**, above), and keeps the stored
-  registrar (`decideRetake`), so a command line that confirmed its
-  registration and rotated leaves no marker for the next run here to retry.
-  Because the re-take keeps the stored registrar, a key file holding no marker
-  clears the stored marker only beside a configuration naming that same
-  registrar: the same `url` origin and the same `exchangeId`. Beside a
-  configuration naming another registrar, the stored registrar confirmed
-  nothing, so the stored marker and reason stay. A pair import compares
-  against the registrar it takes from that pair, so there a pair naming a
-  registrar always names the record's.
+  naming a registrar or none.
   A marker carried in is kept on a record that names no registrar, where no
   run retries it; the page and the list name enrollment, which removes it,
   having registered the current key with the token.
@@ -1557,8 +1504,8 @@ not confirmed. The code: `apps/web/src/psi/managed/managedRelayRegistration.ts`.
 
 ### What the exports write
 
-The three fields leave the browser with the exchange, so a restored, migrated,
-or handed-off exchange keeps registering the key each rotation derives, and
+The three fields leave the browser with the exchange, so a restored, moved,
+or command-line exchange keeps registering the key each rotation derives, and
 the first run where it lands retries a pending registration before it dials.
 The code: `encodeManagedExchangeArtifact` and `reconstructRecordFromArtifact`
 (`managedExchangeArtifact.ts`), `composeManagedCronExport`
@@ -1567,9 +1514,8 @@ The code: `encodeManagedExchangeArtifact` and `reconstructRecordFromArtifact`
 
 - **The export artifact** holds `relayRegistrationPendingSince` in its `key`
   block, under the key file's own name, and `relayRegistrar` and
-  `relayRegistrationPendingReason` in `local`. A restore and a migration
-  reconstruct all three, a fresh install and a revive in place alike, and the
-  record schema refuses a reason without the marker. The `artifactVersion`
+  `relayRegistrationPendingReason` in `local`. A restore reconstructs all
+  three, and the record schema refuses a reason without the marker. The `artifactVersion`
   literal does not move for them: an older build's strict schemas refuse the
   file whole.
 - **The command-line export** writes the registrar as
@@ -1746,15 +1692,10 @@ either imports with the answer or is refused entire. The artifact's own
 - **What a reconstructed `lastRun` can and cannot assert.** The `local.lastRun`
   block is validated against the record's own `lastRun` schema rather than a
   narrower one, so an artifact is accepted with every outcome and
-  `failureKind` the [record shape](#persisted-across-runs) names, `"handed-off"`
-  among them, and an import copies what it read onto the reconstructed record
-  verbatim. That widens what the surfaces display and nothing else: the run
-  path's custody refusal reads the [spent sibling
-  entry](#the-backup-marker-the-spent-state-and-the-import-marker-local-siblings-never-in-the-artifact),
-  never `lastRun`, so an artifact asserting `"handed-off"` misdescribes the tier
-  shown for a record that is in the operator's own custody. It cannot make a
-  record run that would otherwise refuse, and it cannot stop a refusal the spent
-  entry earns.
+  `failureKind` the [record shape](#persisted-across-runs) names, and an
+  import copies what it read onto the reconstructed record verbatim. That
+  widens what the surfaces display: an artifact asserting a kind misdescribes
+  the tier shown for a record that is in the operator's own custody.
 - **CLI-separable format.** The record is the CLI's config-plus-key pair kept
   as one browser object, and its export stays consumable by the CLI toolchain
   rather than becoming a third format. The embedded `exchangeDocument` is a
@@ -1785,19 +1726,19 @@ either imports with the answer or is refused entire. The artifact's own
   the handshake gives the partner no way to recognize a superseded copy, so a
   restored artifact (or a browser-profile/VM snapshot) silently re-arms whatever
   secret it holds: still-current (the captured-credential case above) or
-  rotated-past (a guaranteed desync at the next run). Source invalidation on
-  export is an operator-cooperation property, not a cryptographic one. A
+  rotated-past (a guaranteed desync at the next run). Keeping one copy running
+  is an operator-cooperation property, not a cryptographic one. A
   monotonic rotation epoch held in the record and checked in the handshake
   would let a party detect a stale or forked peer; it is a future core hardening,
   deferred alongside the grace-window mitigation (see
   [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#rollback-at-rest-copies-can-silently-resurrect)).
 
-### The backup marker, the spent state, and the import marker: local siblings, never in the artifact
+### The backup and import markers: local siblings, never in the artifact
 
-Four pieces of state live **beside** the record, in a separate origin-local
+Three pieces of state live **beside** the record, in a separate origin-local
 store keyed by the record `id`, and are **neither record fields nor artifact
-contents**: three of derived-backup, migration, and restore state, and this
-device's pending decision on a partner's changed terms. The four:
+contents**: two of derived-backup and restore state, and this device's pending
+decision on a partner's changed terms. The three:
 
 - **The backup marker** (`backedUpAt`, an ISO 8601 UTC instant) records when a
   backup was last taken, and `savedAs`, where present, where it was saved:
@@ -1895,132 +1836,9 @@ device's pending decision on a partner's changed terms. The four:
   epoch. `navigator.storage.persisted()` is never an input to the derivation, so a
   granted persist cannot suppress the actionable "backup needed" state (see
   [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#hosted-at-rest-threat-model-for-managed-exchanges)).
-- **The spent state** (`spentAt`, an ISO 8601 UTC instant, and an optional
-  `handoff` discriminator) records that this device's copy was handed off. No
-  current path writes it: each export leaves the stored record runnable here, and
-  the state is left only on a record an earlier version's export wrote. The
-  discriminator is which export did:
-  - the **migration export** ("take over on another device"), which wrote
-    `spentAt` alone, so an absent `handoff` means a migration spend;
-  - the **command-line export**'s confirmed hand-off, which wrote
-    `handoff: "command-line"` beside it.
-
-  Either way it transitions the source to a visible spent state -- no Run
-  affordance, no scheduled runs, labeled with the handoff date -- so the
-  operator-cooperation invalidation is visible at the one moment it is violable.
-
-  **The run path enforces that state, not the surfaces that show it.** A surface
-  reads the spent state when it loads and a wake reads it when it begins, and both
-  readings are as old as whatever has happened since. So the run's own locked
-  window re-reads it first of all: a run that finds this device's copy spent
-  refuses -- before the input file is read and before any connection -- and records
-  a `handed-off` `lastRun` rather than rotating a secret whose owner is elsewhere.
-  Rotating would leave the new owner's first run meeting a partner that has moved
-  on, which nothing short of a re-invite recovers, and no run makes that decision on
-  the operator's behalf: the refusal is the whole response, with no override on the
-  run path. Taking a handed-off exchange back is a deliberate act on that record's
-  own surface (see [Taking a command-line hand-off
-  back](#taking-a-command-line-hand-off-back)).
-
-  A migration-spent copy was marked backed up when its file was downloaded, so it
-  has a current artifact by construction; a copy spent by a command-line hand-off
-  holds whatever backup state it already had. The spent state has no secret
-  material and no epoch.
-
-  **Revive by import is the migration spend's recovery, and only its.** The
-  migration export downloaded the artifact that clears its own spend (a
-  **revive-in-place**: an import whose secret matches the spent record's updates
-  that record's fields, keeps its `id` and its working-folder grant, clears the
-  spent state,
-  and marks it imported and backed-up, rather than installing a duplicate). The
-  command-line export downloads the CLI's `alcove.yaml` and `.alcove.key`, which
-  the command line runs from and rewrites; the import refuses that pair against the
-  record the hand-off spent while it holds that record's secret ([Importing the key
-  file beside a configuration](#importing-the-key-file-beside-a-configuration)),
-  and the route that takes it back is the [re-take](#taking-a-command-line-hand-off-back), behind
-  the operator's word that the command-line run has stopped. That is why the surfaces reading the spent state branch on the
-  discriminator rather than naming one recovery for both -- a spent copy is told
-  the recovery its hand-off actually has.
-
-  **The match is `spent` plus a secret match plus an absent `handoff`.** Revive keys
-  on the absence rather than on an inequality against a known route, so a hand-off
-  added later is gated by default instead of inheriting the migration's
-  recovery. An artifact the operator exported from this browser before a
-  command-line hand-off still has the secret that record was spent holding, and
-  the import **refuses it**. It neither revives the spent record -- that would
-  run a copy the hand-off gave away -- nor installs a fresh one, which would
-  split one secret across a spent husk here and a live row beside it. Nothing is
-  written. A handed-off match determines the
-  import by itself: an artifact whose secret matches a handed-off record is refused
-  even when a migration-spent record holds that secret too, and the refusal names the
-  handed-off record. Where it fires, the refusal names the stored record and the
-  recovery that record actually has -- the exchange runs from the files the
-  hand-off saved, and bringing it back to this browser is the re-take on that
-  record's own surface, which the refusal names by the words on its control. The
-  guard binds at the store's import path, and the surface an operator meets it at
-  -- the list's import -- is not the surface offering the re-take.
-
-  **The reconciliation parses each stored record on its own.** An entry this
-  build cannot parse is **skipped** rather than failing the import: an invalid
-  record at rest must not block importing an artifact for a different exchange,
-  which is the way forward the read-failed recovery surface offers beside its
-  listing. The skipped entry stays in the store, listed by that surface's
-  per-entry diagnostic read, until the operator discards it.
-
-  Two limits follow from the skip. A skipped entry cannot be **revived**, a
-  revive rewriting the whole record, so an artifact matching a migration-spent
-  entry this build cannot parse installs fresh and leaves the husk for the
-  operator to discard. And the handed-off refusal reads such an entry's
-  `sharedSecret` off the raw value rather than through the schema, so it still
-  fires for a skipped entry whose sibling holds a `handoff` and whose secret
-  field is readable and equal to the artifact's -- naming no label, the failed
-  parse leaving the record's own fields untrusted. An entry whose secret field is
-  unreadable too matches nothing and the import installs fresh, the bound the
-  refusal already has against a record rotated or deleted past the artifact.
-
-  **Each sibling entry is parsed on its own too**, on the same terms and for the
-  same reason: one local-state entry this build cannot parse must not block an
-  import for a different exchange either. A record whose sibling entry does not
-  parse takes no part in the reconciliation at all -- neither revived nor counted
-  a match -- unless it holds the artifact's `sharedSecret`, in which case the
-  import is **refused**. The `handoff` is recorded in that sibling, so an
-  unreadable one leaves no way to tell a handed-off record from a
-  migration-spent or a live one, and the refusal is the one answer that neither
-  runs a copy a hand-off may hold nor installs a second live copy beside it. It
-  names **no hand-off route**, none having been read, and names the record's
-  label only where the record itself parses; where it does not, the secret
-  comparison reads the raw value under the bound stated just above. A
-  handed-off refusal that did read its sibling determines the import ahead of
-  this one, naming the route it read.
-
-  The attended list read joins the sibling state and rejects wholesale on the
-  same unreadable entry, so the list an operator meets this refusal beside is
-  the read-failed one. The refusal names the store rather
-  than the file, the file being intact, and the discard it offers is the
-  delete-by-key that surface's recovery listing already provides.
-
-  **The refusal is scoped to this store's state at import**, and both of its
-  conditions are the operator's to remove: the handed-off record must still be in
-  this store, and its `sharedSecret` must still equal the artifact's. An artifact
-  exported before a rotation the record then took holds an older secret and
-  matches nothing, so it installs fresh; deleting the handed-off record removes the
-  match on the same terms. Neither is prevented -- the refusal is an
-  operator-cooperation property, not a cryptographic one, exactly as the revive
-  below is. Neither leaves a durable second owner either: an older artifact's
-  secret is already behind the partnership's, and a copy of the current secret
-  diverges from the handed-off one at the first rotation either side makes, so the
-  losing copy's next handshake fails and is reported through the import/desync tiering
-  (recovery: re-invite).
-
-  Reviving a migration spend remains an operator-cooperation property, not a
-  cryptographic one: nothing in the protocol prevents a copied artifact or a profile
-  snapshot from resurrecting a migrated copy -- the same caveat, with the same
-  response (see
-  [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#rollback-at-rest-copies-can-silently-resurrect)).
 - **The import marker** (`importedAt`, an ISO 8601 UTC instant) records that this
-  device installed or revived the record from a backup artifact or from a
-  command-line `alcove.yaml` and its `.alcove.key`, or took it back from a
-  command-line hand-off. It is the evidence the desync tiering reads to tell an
+  device installed the record from a backup artifact or from a command-line
+  `alcove.yaml` and its `.alcove.key`, or completed one with them. It is the evidence the desync tiering reads to tell an
   **import/restore since the last successful run** apart from an unexplained
   handshake failure (Tier 1 versus
   Tier 2; see [Telling a desync from an
@@ -2030,17 +1848,14 @@ device's pending decision on a partner's changed terms. The four:
   re-invite), not the attack path. "Since the last successful run" is enforced
   **structurally**, not by comparing timestamps, by two write-side rules that mirror
   the backup marker's:
-  - **Import stamps it.** A fresh install and a revive-in-place both stamp
-    `importedAt` (alongside the backup marker) as of the import instant. A
-    revive-in-place stamps it in its own transaction, so that record holds the
-    evidence from the moment it lands; a fresh install, from a backup or a
-    command-line pair, stamps it in a separate best-effort write after the
-    install, and a failure of that write leaves the installed record without it,
-    so a stale-secret handshake failure on that record tiers as unexplained
-    rather than as the import. Every [take-back of
-    a command-line hand-off](#taking-a-command-line-hand-off-back) stamps it too,
-    with or without a key file, and the one that installs a key file's secret clears
-    the backup marker rather than stamping it. An import of a command-line
+  - **Import stamps it.** A fresh install stamps `importedAt` as of the import
+    instant (from a backup, alongside the backup marker), in a separate
+    best-effort write after the install, and a failure of that write leaves the
+    installed record without it, so a stale-secret handshake failure on that
+    record tiers as unexplained rather than as the import. A pair that completes
+    a configuration-only record stamps it in the reconciliation's own
+    transaction, so that record holds the evidence from the moment it lands. An
+    import of a command-line
     `alcove.yaml` with its `.alcove.key` stamps it and no backup marker ([Importing
     the key file beside a configuration](#importing-the-key-file-beside-a-configuration)).
   - **Rotation clears it.** The persist-before-success rotation write clears the
@@ -2067,17 +1882,16 @@ device's pending decision on a partner's changed terms. The four:
   Its members are strict like the entry's others, but it is validated on its
   own: a stored proposal that does not validate -- corrupted, or holding terms
   a later core no longer accepts -- is dropped on read and the entry loads
-  without it, so it never takes the three markers above down with it. A write
+  without it, so it never takes the two markers above down with it. A write
   validates the proposal before storing it. A dropped proposal is the
   no-proposal state the surfaces show ([A refused terms
   change](#a-refused-terms-change)).
 
-All four are **local siblings by design**. The marker's currency input, this
-device's spent status, this device's restore history, and this device's
-pending decision must not travel in the export artifact: an imported copy is a
-fresh live owner, for which "the source last backed up on X", "the source was
-spent", "the source was imported on X", or "the source had a change to decide
-on" is meaningless. And the record schema is not strict: a member it does not name
+All three are **local siblings by design**. The marker's currency input, this
+device's restore history, and this device's pending decision must not travel in
+the export artifact: an imported copy is a fresh live owner, for which "the
+source last backed up on X", "the source was imported on X", or "the source had
+a change to decide on" is meaningless. And the record schema is not strict: a member it does not name
 is dropped on read rather than rejected, and is gone at that build's next write.
 Holding any of them on the record would therefore force a new `schemaVersion`,
 so no older build drops it silently, or leak into the artifact. Keeping them siblings makes their non-inclusion **structural**: the
@@ -2086,6 +1900,17 @@ only the record. Removing a managed exchange removes the record and its sibling
 state together (see [Removing a managed
 exchange](../MANAGED_EXCHANGE.md#removing-a-managed-exchange)).
 
+The sibling entry, unlike the record, is strict: a member its shape does not
+name rejects the whole entry. An entry this build cannot parse -- a member a
+newer deployment added, a corrupted value, or a handed-off state an earlier
+version wrote, which no current shape names -- rejects the strict reads. The
+attended list read joins the sibling state and rejects wholesale on it, so the
+operator meets the read-failed surface, whose recovery listing treats the
+entry as backed up and offers the delete-by-key, and the exchange's own page
+does not load. The wake skips that record alone ([Every admitted schedule
+renders](#every-admitted-schedule-renders)), and a rotation deletes the entry
+unread rather than aborting on it.
+
 ### Reconciling a backup import
 
 A backup artifact holds one exchange, so the guard on importing it is a lookup
@@ -2093,9 +1918,8 @@ against that exchange, not a condition on the rest of the store: the import is
 offered beside every listing ([The configuration-only
 record](#the-configuration-only-record)), and what else the store holds decides
 nothing. The reconciliation runs in one transaction over the record and sibling
-stores (`reviveSpentManagedExchange`, `managedExchangeStore.ts`), comparing
-secrets in memory, and nothing is written on any outcome but a revive or a fresh
-install.
+stores (`reconcileManagedBackupImport`, `managedExchangeStore.ts`), comparing
+secrets in memory, and nothing is written on any outcome but a fresh install.
 
 Stated limit: a fresh install is a second transaction, run after the
 reconciliation has found no match. Two imports of the same artifact racing in
@@ -2105,25 +1929,25 @@ live-copy refusal below describes.
 
 **The outcomes**, each named to the operator:
 
-- **Restored this device's spent copy.** A migration-spent record holding the
-  artifact's secret is revived in place ([the spent
-  state](#the-backup-marker-the-spent-state-and-the-import-marker-local-siblings-never-in-the-artifact)).
 - **Added as new.** No record holds the artifact's secret and no live copy is
   recognized: a fresh record installs with a new `id`.
-- **Refused, a live copy is already here.** A live record holds the artifact's
-  secret: it is this exchange, and a second live copy of one secret splits from
+- **Refused, a live copy is already here.** A stored record holds the
+  artifact's secret: it is this exchange, and a second live copy of one secret splits from
   it at the first rotation either side makes. The refusal names that record and
   says to open it.
-- **Refused, handed off to the command line.** A handed-off record holds the
-  artifact's secret; the refusal names the record and the take-back on that
-  record's own surface ([Taking a command-line hand-off
-  back](#taking-a-command-line-hand-off-back)).
 
-A record whose sibling entry cannot be read refuses as that section states. The
-refusals decide in this order: hand-off, unreadable sibling, a scoped
-restore's other file (below), live copy by secret. On the list's import, a
-live copy recognized without a secret match (below) is asked about after them
-and before a revive or a fresh install. A scoped restore does not ask (below).
+A copy recognized without a secret match (below) is asked about after the
+refusal and before a fresh install.
+
+**The reconciliation parses each stored record on its own.** An entry this
+build cannot parse is **skipped** rather than failing the import: an invalid
+record at rest must not block importing an artifact for a different exchange,
+which is the way forward the read-failed recovery surface offers beside its
+listing. A skipped entry is never a match, so an artifact holding its secret
+installs fresh beside it, and the entry stays in the store, listed by that
+surface's per-entry diagnostic read, until the operator discards it. The
+reconciliation reads no sibling entry, so one this build cannot parse decides
+nothing here.
 
 No refusal sends the operator to delete other exchanges: each names the one
 record it is about and what to do with that record.
@@ -2147,15 +1971,14 @@ nothing. The code: `findRecordsByTermsAndSide`
 
 Which stored records each import asks about is what it can do with them:
 
-- **The list's backup import asks about live records**, those no hand-off and
-  no migration has spent, and offers to open one or install beside them. A
-  scoped restore reports one after reviving (below).
-- **The command-line pair import asks about records handed off to the command
-  line, migration-spent, or configuration-only**, and offers to take the pair
-  into one or install it beside them ([Importing the key file beside a
+- **The list's backup import asks about every stored record**, and offers to
+  open one or install beside them.
+- **The command-line pair import asks about configuration-only records**, and
+  offers to complete one with the pair or install it beside them ([Importing
+  the key file beside a
   configuration](#importing-the-key-file-beside-a-configuration)). It asks
-  about no live record: a live record runs here, and its secret match is the
-  one the pair would have.
+  about no runnable record, and installs beside one whose secret it does not
+  hold.
 
 Equal terms and side is a heuristic: two separate exchanges with one partner
 can share both. So the match is a question, never a refusal, and never a
@@ -2164,122 +1987,6 @@ question and chooses among the import's answers or cancels (nothing is
 written). The matches are named together and acknowledged by one confirm: a
 confirmed install names every record it goes beside, and only a match that
 confirm did not name -- one added since the question -- is asked about again.
-
-#### Restoring a migration-spent record from its backup
-
-A migration-spent row offers "Restore from backup", which opens the same import
-scoped to that record (`restoreManagedExchangeFromBackup`,
-`managedExchangeImport.ts`). It revives the record only from an artifact holding
-the secret that record holds; any other file -- another exchange's backup, a
-backup taken after the exchange rotated on the other device, or a command-line
-file -- is refused, naming the list's import for it, and nothing is written.
-
-A scoped restore never asks about a live copy recognized by terms and side: the
-question exists to identify a record the operator has not, and here the
-operator chose the row and the secret match confirms it. The restore revives
-the record, and when a live record has the revived record's agreed terms and
-`side`, the restore's notice names that record in one sentence. It adds no
-confirm step and writes nothing to the other record.
-
-### Taking a command-line hand-off back
-
-A copy spent under `handoff: "command-line"` comes back to this browser through an
-explicit **re-take**, offered on that record's own surface and by the pair import
-when the operator takes a pair with the record's terms and side into it
-([Importing the key file beside a
-configuration](#importing-the-key-file-beside-a-configuration)). It is the only
-route from that spent state to a running one: the import refuses the artifact
-(above) and a command-line pair holding the record's secret alike, and the
-surface showing the spent state is where the operator already is.
-
-**The operator attests; the browser checks what it can.** Two facts decide a
-re-take and neither is readable here -- whether the scheduled command-line run has
-been stopped, and whether it has run since the hand-off. So the action is offered
-behind a confirmation stating both, and a declined confirmation writes nothing.
-Nothing here prevents a second live copy any more than the import refusal does: the
-re-take makes taking one a deliberate, stated act rather than an accidental one,
-which is all operator cooperation can be (see [Single-owner
-invariant](#single-owner-invariant)).
-
-**The secret comes from the key file, not from a fresh invitation.** The hand-off
-wrote this exchange's own secret into `.alcove.key` with no re-invite, so the
-take-back needs none either. Each command-line run rotates the secret and writes
-the rotated one back to that file, which decides what a re-take needs:
-
-- **Runs have happened there.** The operator chooses that `.alcove.key` with the
-  `alcove.yaml` beside it, in one pick, and the re-take reads the key file's
-  `sharedSecret` and `expires` into the record.
-- **None has.** The stored secret is still the partnership's, and no file is needed.
-- **The file cannot be produced.** The exchange is taken back without it, and the
-  [fast re-invite](../MANAGED_EXCHANGE.md#recovery-fast-re-invite) is the recovery
-  -- the one any secret this browser cannot match already has.
-
-A `.alcove.key` holds the secret and its bound and nothing naming the exchange it
-belongs to, which is why the `alcove.yaml` is chosen with it: a key file chosen
-alone is refused before either is read. Both files are untrusted structured input,
-read by the pair import's own reader (`readManagedCommandLinePair`) under its caps,
-and only a validated pair reaches the store. Files that are not such a pair leave
-the record spent and the store untouched.
-
-**What the re-take checks.** Inside its transaction, before installing anything,
-the re-take compares the pair's agreed terms and `side` with the stored record's,
-on the [no-secret-match rule](#recognizing-a-stored-exchange-without-a-secret-match)'s
-comparison (`decideRetake`, `managedPairRecognition.ts`): a pair on other terms,
-or on the other side -- the partner's files -- is refused, naming which, and
-nothing is written.
-
-**What the check cannot cover.** Equal terms and side do not name one exchange,
-and nothing tells this exchange's current key file from a stale copy of it. A
-stale pair, or another exchange's on the same terms and side, whose secret differs
-from the stored one is therefore installed over it, and the record then holds a
-secret the partner does not share, recoverable only by a fresh invitation. The
-confirmation states that cost and where the right files are (the folder the
-exchange was handed off to on the machine running it); the operator's reading of
-it is the only check there is beyond terms and side.
-
-**The write rules.**
-
-- **A run in flight excludes it**, on the [run+rotate
-  lock](#the-secret-is-a-linear-resource) taken with `ifAvailable`, exactly as
-  both exports are: the run re-reads the spent state as its first act inside that
-  lock, and the re-take is a write against that state. A run holding the lock is
-  reported rather than waited out.
-- **The read, the key application, and the spent-state clear are one transaction**
-  spanning the record and sibling stores, so a rotation lands fully before or fully
-  after it.
-- **A key that advances the secret is applied as a rotation** -- the same
-  field-scoped write a run's own rotation takes -- and **clears the backup marker**
-  in that same transaction: the secret has advanced, so no earlier export of this
-  exchange holds it. Whether it advances is decided on `sharedSecret` alone, so a
-  file holding the stored secret with a different `expires` applies nothing, which a
-  hand-edited file is the only way to reach.
-- **Every re-take is recorded as an import**, stamping the
-  [import marker](#the-backup-marker-the-spent-state-and-the-import-marker-local-siblings-never-in-the-artifact)
-  in that same transaction. Nothing here can tell this exchange's current key file
-  from a stale one or another exchange's, and nothing here can check the attestation
-  that no run has happened on the other machine, so either route can leave the record
-  holding a secret the partner has moved past: an `auth` failure at the next run
-  tiers as **imported**, whose recovery is the re-invite, until a run succeeds and
-  the rotation clears the marker.
-  The instant differs with what the re-take did to the secret: a key file whose
-  secret differs from the stored one stamps the re-take instant; a re-take that
-  left the stored secret in place, whether it chose no key file or one holding
-  the same secret, stamps the hand-off's own `spentAt`, the point from which this
-  device's copy may have fallen behind. A re-take that leaves the secret in place
-  also leaves the backup marker where it stands, the stored secret still being
-  the one that backup holds.
-- **The hand-off's own refusal is consumed.** A `lastRun` recording the
-  `handed-off` refusal -- a run that came due while this copy was spent -- is
-  dropped in the same transaction, with or without a key: the take-back ends the
-  state that entry records, and left in place it tiers a record running here again
-  as handed off. Every other `lastRun` is kept, being run history the take-back
-  does not answer.
-- **Only a `handoff: "command-line"` spend is taken back.** A migration spend's
-  recovery is the revive-in-place its own artifact performs, and a live record has
-  nothing to take back; both are reported, and neither is written to.
-- **Nothing else about the record moves.** The agreed terms, the label, the
-  schedule, and the working-folder grant are untouched: the exchange that comes back is
-  the one that was handed off.
 
 ## The accounting of disclosures
 

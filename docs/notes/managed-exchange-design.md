@@ -239,7 +239,9 @@ Both exports are withheld from the screen while a run holds the lock.
 That withholding is a reading of the lock taken every so often, so it can miss a run that starts between two readings.
 Nothing rests on it: each export takes the run's own lock before it reads anything, so an export and a run that rotates exclude each other, in either order.
 
-A record an earlier version marked spent still refuses to run here, on the run path itself and not on what a screen last read: a run that finds this browser's copy spent stops before reading the input or connecting.
+Bringing the exchange back here is the same import with the newer files.
+That import is recognized by the shared secret alone: the files from a run elsewhere hold a secret the copy here does not, so they land as a second entry beside it, and the older entry is the one to remove.
+No state records that an exchange left, so none has to be cleared for it to come back, and nothing refuses a run or an import on it.
 
 The artifact is a **plaintext credential file in the operator's custody**.
 Passphrase encryption is not done, by design: the record must be usable with nobody present to supply a passphrase at the moment of use.
