@@ -71,8 +71,8 @@ const KEYS = [
 const sets = ({ fields = FIELDS, keys = KEYS, second } = {}) => [
   {
     declaration: "DEFAULT_LINKAGE_RULE_SET",
-    fieldSet: { name: "baseline-pii", version: "1.0.0", content: fields },
-    keySet: { name: "example-keys", version: "1.0.0", content: keys },
+    fieldSet: { name: "baseline-pii", content: fields },
+    keySet: { name: "example-keys", content: keys },
   },
   ...(second === undefined ? [] : [second]),
 ];
@@ -198,12 +198,10 @@ describe("the property it holds", () => {
           declaration: "COUNTY_RULE_SET",
           fieldSet: {
             name: "county-pii",
-            version: "1.0.0",
             content: [{ name: "ssn", type: "ssn" }],
           },
           keySet: {
             name: "county-keys",
-            version: "1.0.0",
             content: [
               {
                 name: "SSN + DOB",

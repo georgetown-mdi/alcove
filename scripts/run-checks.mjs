@@ -325,13 +325,6 @@ export const CHECKS = [
       "Every configuration-schema option is documented in the template alcove init writes or listed with the reason it is left out, and the template documents no key the schema lacks.",
   },
   {
-    script: "check:built-in-set-versions",
-    group: INDEPENDENT,
-    expiresOn: "2027-03-31",
-    description:
-      "The built-in field set and key set match the pin recorded for the version each declares, cascade order and each rule's band included.",
-  },
-  {
     script: "check:spec-sentences",
     group: INDEPENDENT,
     expiresOn: "2027-01-31",

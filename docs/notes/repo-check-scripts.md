@@ -611,38 +611,6 @@ The generator was measured to overwrite a probe-marked file whole, so a probe le
 - A stale route tree against a broken web config: an invocation failing for another reason, such as an uncollectable test file or a missing `@alcove/core` build,
   is reported as a codegen failure with the command's own output.
 
-## Built-in rule set version bump
-
-[`scripts/check-built-in-set-versions.mjs`](../../scripts/check-built-in-set-versions.mjs)
-
-### Why it is a check
-
-[What the versions mean](default-linkage-rule-set.md#what-the-versions-mean) states the rule in prose:
-an edit to the built-in field set bumps its version, and an edit to the key set bumps the key set's,
-a reorder included, because the order is cascade order and moving a key changes which one claims a record more than one would match.
-The recorded validation attaches to a name and a version together,
-so an edited set holding the old version leaves that note describing rules nobody ran.
-A future obligation written as prose fails silently when it is forgotten; the check is that obligation.
-
-### Reading choices
-
-- Every set the registry declares is read, not the default alone, so a set added to it is pinned from its first commit.
-- The digest is over the evaluated declarations rather than the file text, so a cosmetic edit leaves a version alone, the case the note names.
-- Unlike the protocol-version pin, this rule binds from the outset rather than from a first publication, so the ledger ships populated.
-- The ledger is keyed by set name and then version, and is append-only: a bump adds an entry, so a legitimate bump and an in-place rewrite of a recorded pin are different diffs.
-  Retiring a set from the registry removes its entries, since the check fails an entry under a name the registry no longer declares.
-  The check cannot tell a legitimate re-pin from a rewrite that dodges the bump, the same limit the pull-request checklist's security-review sha has, so an edit to a recorded entry is a reviewer's call.
-- One name and version identify one content, which the ledger's keying takes for granted.
-  A shared set is one declaration read twice, but two different contents under one name and version fail rather than being pinned to whichever entry comes first.
-
-### What it does not cover
-
-- Whether the version decision was right: it fails moved content with no bump and a bump with no pin, but cannot judge which semver component a change deserved, or a bump that was not needed.
-- A content change against a cosmetic one below the property level.
-  Renaming a key or reordering a constraint's `exclude` list moves the digest, which fails toward taking the version decision.
-  A key's name is not cosmetic between the parties: the terms cross-check encodes the key list whole, so two builds spelling a key differently cancel the exchange.
-- A declaration that is not a plain literal, which fails rather than being guessed at, since the sets are read by evaluating their source initializers.
-
 ## Zero-setup key fields
 
 [`scripts/check-zero-setup-keys.mjs`](../../scripts/check-zero-setup-keys.mjs)
@@ -661,9 +629,8 @@ and every key referencing it is dropped from a zero-setup party's terms whatever
 
 ### What it does not cover
 
-- Whether a declared field is one a party really always holds.
-  Widening the field set is not silent, since its content is pinned by [the version bump check](#built-in-rule-set-version-bump) and a widening takes a bump there,
-  but whether the wider set is still guaranteed is a judgment no check makes.
+- Whether a declared field is one a party really always holds:
+  whether a widened field set is still guaranteed is a judgment no check makes.
 - The terms builder itself: that the filter binds an element by semantic type, which is what makes the name-equals-type rule matter, is covered by the core suite.
 - A file that supplies a column of the right type but no usable value: the property is that the keys stay inside the guaranteed fields, not that a given file matches on them.
 

@@ -421,8 +421,8 @@ function frozenThroughContents<T>(value: T): T {
  * point all cite the same rules.
  *
  * Composed from the declarations above rather than replacing them: the
- * built-in sets' drift and zero-setup checks read those declarations out
- * of this file by name and require each to be a literal
+ * built-in sets' zero-setup key check reads those declarations out of this
+ * file by name and requires each to be a literal
  * (`scripts/lib/builtInRuleSets.mjs`).
  *
  * Frozen through every level, and this object with it. The reference, the
@@ -431,12 +431,12 @@ function frozenThroughContents<T>(value: T): T {
  * party's exchange record, so a single in-place edit of a name, a version,
  * a constraint, or a key element would rewrite the built-in set in every
  * document the process later derives, and in every record written from
- * one -- without touching the declarations above that the drift checks
- * pin. The rules hold the same weight the citation does: they are what
+ * one -- without touching the declarations above. The rules hold the same
+ * weight the citation does: they are what
  * {@link checkLinkageRuleSetCitation} compares a cited document against,
  * so an edited set decides later verdicts too. Freezing makes such an
  * edit throw instead, at this composition, because those declarations
- * must stay plain literals for the checks named above to read them.
+ * must stay plain literals for the check named above to read them.
  */
 export const DEFAULT_LINKAGE_RULE_SET: BuiltInLinkageRuleSet = Object.freeze({
   reference: Object.freeze({

@@ -38,10 +38,10 @@ const wholeSet = (): Pick<LinkageTerms, "linkageFields" | "linkageKeys"> => ({
 });
 
 describe("DEFAULT_LINKAGE_RULE_SET", () => {
-  test("cites the declarations the built-in sets' drift checks read", () => {
-    // The citation and the pinned content are the same artifact: a set whose
-    // reference drifted from the declarations `scripts/lib/builtInRuleSets.mjs`
-    // reads would publish a version no pin covers.
+  test("cites the declarations the zero-setup key check reads", () => {
+    // A set whose reference drifted from the declarations
+    // `scripts/lib/builtInRuleSets.mjs` reads would cite a name and version
+    // the declarations do not carry.
     expect(DEFAULT_LINKAGE_RULE_SET.reference).toStrictEqual({
       fieldSet: {
         name: DEFAULT_LINKAGE_FIELD_SET_NAME,
@@ -811,7 +811,7 @@ describe("the built-in citation resists mutation", () => {
     // The same aliasing as the reference, over what the citation is CHECKED
     // against: an in-place edit of a field's constraints or of a key's elements
     // would move what counts as drawn from the built-in set for every later
-    // verdict, while the declarations the drift checks pin stayed put.
+    // verdict, while the declarations stayed put.
     const set = DEFAULT_LINKAGE_RULE_SET as unknown as {
       linkageFields: Array<{
         name: string;

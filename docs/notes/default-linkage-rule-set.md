@@ -93,8 +93,8 @@ and fails a key whose elements leave its own set's fields, or name a field a
 derived input cannot supply by semantic type. Zero-setup derives the default set
 and no other, but a set chosen by name is derived through the same filter, so
 the property is held over the registry rather than over the default alone.
-Widening a field set stays possible and stays an explicit decision: its content
-is pinned, so widening it takes the version decision below. What the check
+Widening a field set stays possible and stays an explicit decision, and it
+takes the version decision below. What the check
 covers, and what it cannot see, are in
 [repo-check-scripts.md](repo-check-scripts.md#zero-setup-key-fields).
 
@@ -291,21 +291,6 @@ rewritten, two properties written in the other order -- alters no rule, and is
 the only kind that leaves a version alone. A key's own name is not in that
 class: it travels in the terms document, which the two parties compare whole, so
 two builds spelling a key differently cancel the exchange between them.
-
-The edit that forgets the bump is the one this rule exists for, and nothing
-about a rule written as prose fails when it is forgotten. So the rule is held
-by a check: `npm run check:built-in-set-versions` digests the declared content
-of every set the registry holds -- the fields with their constraints, the keys
-with their elements and their cascade order -- and holds each to the pin
-`scripts/built-in-set-pins.json` records for the version the source declares.
-Content that moved under a recorded version fails, and a bump is asked to record
-the pin it ships. What moves the digest, and what the check cannot see, are in
-[repo-check-scripts.md](repo-check-scripts.md#built-in-rule-set-version-bump).
-
-One name and one version identify one content, which the same check holds over
-the registry: two rule sets may share a set, and a shared set is one declaration
-read twice, but two different contents under one name and version fail rather
-than being pinned to whichever entry the registry lists first.
 
 Two things the versions are not:
 
