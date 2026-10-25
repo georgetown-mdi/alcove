@@ -41,3 +41,22 @@
 - - -> A re-invite landing during the data exchange therefore leaves the record as the re-invite wrote it, and a terms write landing during a run is the one the record holds after it.
 - - -> The run registers its rotated key at the registrar the record that write stored names, not the one it read when it took the lock, so a registrar enrolled during the run is the one the marker and the registration are for.
 - **Removed** once the registrar confirms the key derived from the secret the record still holds, by a field-scoped write that leaves a record which has rotated since unchanged; by an enrollment; and by stopping registration. -> **Removed** once the registrar confirms the key derived from the secret the record still holds, by a field-scoped write that leaves unchanged a record which has rotated since or names another registrar; by an enrollment; and by stopping registration.
+# A scheduled window's write lands its evidence only over the secret its
+# attempt ran under, the run registers the key of the secret the record holds,
+# and the compare's three refusals are stated.
+- It lands under the same plan condition as the rest of the advance, so it is a second chance and not a guarantee. -> It lands under the same plan condition as the rest of the advance, and only while the record holds the secret that run read, so it is a second chance and not a guarantee.
+- - -> The `lastRun` and standing condition a window's write holds are also conditioned on the secret: each lands only while the stored record holds the secret it is about, the one the record held at the runner's last read before an attempt, or at the wake where no attempt was made.
+- - -> A [re-invite](#the-operators-response-to-it) takes no lock and can land while a window is occupied, dropping `lastRun` and clearing the standing condition.
+- - -> The window's write then advances the plan alone, since the window was used, and the record keeps what the re-invite wrote.
+- - -> The compare refuses three controls a run's rotation overtakes, and each writes nothing and stays offered.
+- - -> A re-invite composed over the page's copy of a record a run has since rotated states that the exchange ran while the invitation was being made, and the next try goes through.
+- - -> A relay enrollment whose registrar was asked while a run rotated the secret is refused as stale; the form keeps the registrar address and exchange id, and the relay-owner token, which no enrollment keeps, is entered again.
+- - -> A terms update checked before a run rotated the secret is refused on Accept as `partnership`; the pasted text is kept, and since it was made under the replaced secret, the partner makes a new one.
+- - -> A scheduled window's own write after its attempts advances the plan whatever a re-invite wrote, and lands its `lastRun` and standing condition only over the secret its last attempt ran under ([Catch-up on wake](#catch-up-on-wake)).
+- - -> **Registered by the run.**
+- - -> The run reads the record before it registers, and registers the key of the secret the record holds, signed under the key of the secret it read when it took the lock, or under the rotated secret's key where an enrollment after the rotation registered that one.
+- - -> The field-scoped write that removes the marker on a confirmed registration returns the record it read.
+- - -> Where that record holds another secret, a re-invite replaced it while the registration was made, and the re-invite's own registration, signed under the key of the secret it replaced, may have met a registrar still holding the key from before the rotation.
+- - -> The run then registers the re-invite's key, signed under the key just confirmed, up to three registrations in all (`registerRotatedManagedRelayKey`).
+- - -> A registrar that answers therefore ends holding the key of the secret the record holds, with no marker left.
+- **Read** by the next run that relays through this browser's own relay, inside the lock, after the input guard and before any contact with the partner. -> **Read** by the next run that relays through this browser's own relay, inside the lock, after the input guard and before any contact with the partner, from the record the store holds then rather than the copy the run read when it took the lock, since a re-invite takes no lock.

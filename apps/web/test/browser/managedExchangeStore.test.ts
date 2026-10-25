@@ -882,6 +882,7 @@ describe("atomic schedule advance", () => {
       schedule: advanced,
       fromNextWindow: schedule.nextWindow,
       fromConsecutiveMisses: schedule.consecutiveMisses,
+      evidenceSharedSecret: created.sharedSecret,
       lastRun: missedRun,
     });
     expect(written.schedule).toEqual(advanced);
@@ -904,6 +905,7 @@ describe("atomic schedule advance", () => {
       schedule: advanced,
       fromNextWindow: schedule.nextWindow,
       fromConsecutiveMisses: schedule.consecutiveMisses,
+      evidenceSharedSecret: created.sharedSecret,
       lastRun: missedRun,
     });
     expect(written.sharedSecret).toBe(rotatedSecret);
@@ -917,6 +919,7 @@ describe("atomic schedule advance", () => {
       schedule: advanced,
       fromNextWindow: schedule.nextWindow,
       fromConsecutiveMisses: schedule.consecutiveMisses,
+      evidenceSharedSecret: created.sharedSecret,
       lastRun: missedRun,
     });
     expect(written).not.toHaveProperty("schedule");
@@ -935,11 +938,13 @@ describe("atomic schedule advance", () => {
       schedule: newer,
       fromNextWindow: schedule.nextWindow,
       fromConsecutiveMisses: schedule.consecutiveMisses,
+      evidenceSharedSecret: created.sharedSecret,
     });
     const written = await persistManagedExchangeScheduleAdvance(created.id, {
       schedule: advanced,
       fromNextWindow: schedule.nextWindow,
       fromConsecutiveMisses: schedule.consecutiveMisses,
+      evidenceSharedSecret: created.sharedSecret,
       lastRun: missedRun,
     });
     expect(written.schedule).toEqual(newer);
@@ -957,6 +962,7 @@ describe("atomic schedule advance", () => {
       schedule: { ...advanced, consecutiveMisses: 4 },
       fromNextWindow: schedule.nextWindow,
       fromConsecutiveMisses: 3,
+      evidenceSharedSecret: created.sharedSecret,
       lastRun: missedRun,
     });
     expect(written.schedule).toEqual(cleared);
@@ -971,6 +977,7 @@ describe("atomic schedule advance", () => {
         schedule: { ...advanced, consecutiveMisses: -1 },
         fromNextWindow: schedule.nextWindow,
         fromConsecutiveMisses: schedule.consecutiveMisses,
+        evidenceSharedSecret: created.sharedSecret,
         lastRun: missedRun,
       }),
     ).rejects.toThrow();
@@ -985,6 +992,7 @@ describe("atomic schedule advance", () => {
         schedule: advanced,
         fromNextWindow: schedule.nextWindow,
         fromConsecutiveMisses: schedule.consecutiveMisses,
+        evidenceSharedSecret: undefined,
       }),
     ).rejects.toThrow();
   });

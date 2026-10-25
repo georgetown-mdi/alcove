@@ -217,8 +217,10 @@ export class ManagedRelayRegistrationError extends Error {
   }
 }
 
-/** The store writes a registration makes: injectable for tests. */
+/** The store reads and writes a registration makes: injectable for tests. */
 export interface ManagedRelayRegistrationStore {
+  /** Reads the stored record. */
+  getRecord: (id: string) => Promise<ManagedExchangeRecord | undefined>;
   /** Drops the pending registration where the record still holds
    * `confirmedSecret` and names `registrar`, and returns the stored record. */
   clearPending: (
@@ -229,32 +231,53 @@ export interface ManagedRelayRegistrationStore {
 }
 
 const defaultRegistrationStore: ManagedRelayRegistrationStore = {
+  getRecord: getManagedExchange,
   clearPending: clearManagedExchangeRelayRegistrationPending,
 };
 
+async function readRegistrationRecord(
+  store: ManagedRelayRegistrationStore,
+  id: string,
+): Promise<RunnableManagedExchangeRecord> {
+  const stored = await store.getRecord(id);
+  if (stored === undefined)
+    throw new Error(`no managed exchange with id ${id}`);
+  return runnableManagedExchangeOrRefuse(stored);
+}
+
 /**
- * Before a run connects: when `current` records a registration the registrar
- * did not confirm, register the key derived from its secret again. The key
- * the registrar held before that rotation left with the run that made it, so
- * this is a renewal signed with the current key, which the registrar takes
- * only if it already holds that key -- a rotation whose answer was lost. A
- * confirmed renewal drops the pending registration from the record.
- * `env.signal` cancels the renewal and its retries. A registration pending for
- * the reason `"reinvite"` sends nothing: the key the registrar holds is
- * derived from a secret the re-invite replaced, so no renewal can confirm it.
+ * Before a run connects: when the record stored under `id` records a
+ * registration the registrar did not confirm, register the key derived from
+ * its secret again, at the registrar it names. The record is read here rather
+ * than taken from the run's copy: a re-invite takes no lock, so it may have
+ * replaced the secret or confirmed its own registration since the run took
+ * the lock. The key the registrar held
+ * before that rotation left with the run that made it, so this is a renewal
+ * signed with the current key, which the registrar takes only if it already
+ * holds that key -- a rotation whose answer was lost. A confirmed renewal
+ * drops the pending registration from the record. `env.signal` cancels the
+ * renewal and its retries. A registration pending for the reason `"reinvite"`
+ * sends nothing: the key the registrar holds is derived from a secret the
+ * re-invite replaced, so no renewal can confirm it.
  *
  * @throws {ManagedRelayRegistrationError} if the registrar did not confirm,
  *   or the registration is pending for the reason `"reinvite"`.
+ * @throws {Error} if the record is gone or holds a configuration only.
  * @throws the reason `env.signal` aborted with, when it cancelled the renewal;
  *   the registration stays pending.
  */
 export async function retryPendingManagedRelayRegistration(
-  current: RunnableManagedExchangeRecord,
-  registrar: RelayRegistrar,
+  id: string,
   env: RelayRegistrationEnvironment = {},
   store: ManagedRelayRegistrationStore = defaultRegistrationStore,
 ): Promise<void> {
-  if (current.relayRegistrationPendingSince === undefined) return;
+  const current = await readRegistrationRecord(store, id);
+  const registrar = current.relayRegistrar;
+  if (
+    current.relayRegistrationPendingSince === undefined ||
+    registrar === undefined
+  )
+    return;
   if (current.relayRegistrationPendingReason === "reinvite")
     throw new ManagedRelayRegistrationError(registrar, { kind: "key-lost" });
   log.info(
@@ -285,7 +308,6 @@ export interface RotatedManagedRelayKeyRegistration {
   registrar: RelayRegistrar;
   preRotationSecret: string;
   rotatedSecret: string;
-  maxAgeDays: number | null;
 }
 
 /**
@@ -309,7 +331,6 @@ export function rotatedManagedRelayKeyRegistration(
     registrar,
     preRotationSecret,
     rotatedSecret: rotated.sharedSecret,
-    maxAgeDays: rotated.tokenMaxAgeDays ?? null,
   };
 }
 
@@ -326,13 +347,25 @@ export type RotatedManagedRelayKeyEnvironment = Omit<
 export type RotatedManagedRelayKeyResult =
   { kind: "registered" } | { kind: "failed"; message: string };
 
+/** The most registrations a run makes after it rotated: one for the secret the
+ * record holds, and one more for each re-invite that replaced it while the
+ * last was made. */
+const MAX_ROTATED_KEY_REGISTRATIONS = 3;
+
 /**
- * After a run rotated the secret: register the relay key derived from
- * `rotatedSecret`, signed with the key derived from `preRotationSecret`, which
- * the registrar holds. A confirmed registration drops the pending
- * registration the rotation write stored, unless the record has since been
- * enrolled at another registrar; a failed one leaves it for the next run's
- * retry, and its message names the registrar and the next step.
+ * After a run rotated the secret: read the record, and register the relay key
+ * derived from the secret it holds -- the rotated one, or a re-invite's that
+ * replaced it -- signed with the key derived from `preRotationSecret`, which
+ * the registrar holds, or failing that with the rotated one's, which an
+ * enrollment after the rotation registered. A confirmed registration drops
+ * the pending registration where the record still holds the secret it
+ * registered and names that registrar. Where the record holds another secret
+ * by then, a re-invite replaced it while the registration was made, and the
+ * re-invite's own registration was signed with a key the registrar no longer
+ * held or did not yet hold; that secret's key is registered next, signed with
+ * the key just confirmed. So the registrar ends holding the key of the secret
+ * the record holds. A failed registration leaves the pending registration for
+ * the next run's retry, and its message names the registrar and the next step.
  *
  * `env.cancel`, the run's cancel, ends the retries but reaches no request:
  * the attempt under way when it aborts, or the next one when it aborts
@@ -346,21 +379,9 @@ export async function registerRotatedManagedRelayKey(
   env: RotatedManagedRelayKeyEnvironment = {},
   store: ManagedRelayRegistrationStore = defaultRegistrationStore,
 ): Promise<RotatedManagedRelayKeyResult> {
-  const { id, registrar, preRotationSecret, rotatedSecret, maxAgeDays } =
-    params;
+  const { id, registrar, preRotationSecret, rotatedSecret } = params;
   const { cancel, ...transport } = env;
-  let outcome: RelayRegistrationOutcome;
-  try {
-    outcome = await registerRelayKey(
-      {
-        registrar,
-        signingSecret: preRotationSecret,
-        registeredSecret: rotatedSecret,
-        maxAgeDays,
-      },
-      { ...transport, lastAttemptSignal: cancel },
-    );
-  } catch (error) {
+  const couldNotRegister = (error: unknown): RotatedManagedRelayKeyResult => {
     log.error("registering the rotated relay key failed:", error);
     return {
       kind: "failed",
@@ -373,25 +394,62 @@ export async function registerRotatedManagedRelayKey(
         "rotation",
       ),
     };
-  }
-  if (outcome.kind !== "registered")
-    return {
-      kind: "failed",
-      message: managedRelayRegistrationFailureMessage(
-        registrar,
-        outcome,
-        "rotation",
-      ),
-    };
-  log.info(relayRegistrationNotice(registrar, outcome));
+  };
+  let signingSecrets: [string, ...Array<string>] = [
+    preRotationSecret,
+    rotatedSecret,
+  ];
+  let current: RunnableManagedExchangeRecord;
   try {
-    await store.clearPending(id, rotatedSecret, registrar);
+    current = await readRegistrationRecord(store, id);
   } catch (error) {
-    log.warn(
-      "the registrar confirmed the rotated relay key, and the record still " +
-        "records it as unconfirmed, so the next run confirms it again:",
-      error,
-    );
+    return couldNotRegister(error);
+  }
+  for (let made = 0; made < MAX_ROTATED_KEY_REGISTRATIONS; made += 1) {
+    const target = current;
+    const registerSignedWith = (signingSecret: string) =>
+      registerRelayKey(
+        {
+          registrar,
+          signingSecret,
+          registeredSecret: target.sharedSecret,
+          maxAgeDays: target.tokenMaxAgeDays ?? null,
+        },
+        { ...transport, lastAttemptSignal: cancel },
+      );
+    let outcome: RelayRegistrationOutcome;
+    try {
+      const [first, ...rest] = signingSecrets;
+      outcome = await registerSignedWith(first);
+      for (const signingSecret of rest)
+        if (outcome.kind === "refused")
+          outcome = await registerSignedWith(signingSecret);
+    } catch (error) {
+      return couldNotRegister(error);
+    }
+    if (outcome.kind !== "registered")
+      return {
+        kind: "failed",
+        message: managedRelayRegistrationFailureMessage(
+          registrar,
+          outcome,
+          "rotation",
+        ),
+      };
+    log.info(relayRegistrationNotice(registrar, outcome));
+    const registered = current.sharedSecret;
+    signingSecrets = [registered];
+    try {
+      current = await store.clearPending(id, registered, registrar);
+    } catch (error) {
+      log.warn(
+        "the registrar confirmed the rotated relay key, and the record still " +
+          "records it as unconfirmed, so the next run confirms it again:",
+        error,
+      );
+      return { kind: "registered" };
+    }
+    if (current.sharedSecret === registered) break;
   }
   return { kind: "registered" };
 }

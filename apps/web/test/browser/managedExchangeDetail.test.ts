@@ -1121,6 +1121,7 @@ describe("managed exchange detail local fields against the real store", () => {
       schedule: advanced,
       fromNextWindow: schedule.nextWindow,
       fromConsecutiveMisses: schedule.consecutiveMisses,
+      evidenceSharedSecret: stored.sharedSecret,
     });
 
     await page
@@ -1180,6 +1181,7 @@ describe("managed exchange detail local fields against the real store", () => {
       schedule: afterOneMissedWindow(schedule),
       fromNextWindow: schedule.nextWindow,
       fromConsecutiveMisses: schedule.consecutiveMisses,
+      evidenceSharedSecret: stored.sharedSecret,
     });
 
     await page.getByLabelText("A window opens every (days)").fill("7");

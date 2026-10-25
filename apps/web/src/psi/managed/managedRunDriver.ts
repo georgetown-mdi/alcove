@@ -304,11 +304,8 @@ export function runManagedExchangeInBrowser(
         // local refusal and before any contact with the partner, so a relay
         // holding a key this run cannot mint under stops the run while the
         // shared secret is still unchanged.
-        const runRegistrar = managedRelayRegistrarForRun(current);
-        if (runRegistrar !== undefined)
-          await retryPendingManagedRelayRegistration(current, runRegistrar, {
-            signal,
-          });
+        if (managedRelayRegistrarForRun(current) !== undefined)
+          await retryPendingManagedRelayRegistration(current.id, { signal });
         const psiPromise = loadPsiBackend(
           { loadWasm: () => PSI() as Promise<PSILibrary> },
           { isNode: false },

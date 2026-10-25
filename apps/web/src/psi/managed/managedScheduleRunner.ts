@@ -353,6 +353,7 @@ async function occupyDueWindow(
       ...(catchUp.caughtUpLastRun !== undefined
         ? { lastRun: catchUp.caughtUpLastRun }
         : {}),
+      evidenceSharedSecret: record.sharedSecret,
     });
     // The write is conditioned on the plan it was computed from: a record some
     // other wake or an operator edit moved first comes back unchanged. An edit
@@ -378,6 +379,7 @@ async function occupyDueWindow(
       fromNextWindow: planned.nextWindow,
       fromConsecutiveMisses: planned.consecutiveMisses,
       lastRun: { at: new Date(seams.now()).toISOString(), outcome: "skipped" },
+      evidenceSharedSecret: claimed.sharedSecret,
     });
     return { ...entry };
   }
@@ -426,6 +428,7 @@ async function occupyDueWindow(
     ...(occupancy.standingCondition !== undefined
       ? { standingCondition: occupancy.standingCondition }
       : {}),
+    evidenceSharedSecret: occupancy.evidenceSharedSecret,
   });
   return { ...entry };
 }
@@ -439,6 +442,9 @@ interface WindowOccupancy {
   /** The first standing condition an attempt raised, carried into the window's
    * own write; absent when none did. */
   standingCondition?: ManagedStandingCondition;
+  /** The secret of the record the occupancy last read before an attempt, which
+   * the window's `lastRun` and standing condition are about. */
+  evidenceSharedSecret?: string;
   /** Set where the per-attempt read ended the occupancy with nothing to record:
    * the record is gone, its plan no longer holds this window, or it can no
    * longer run unattended. The caller writes no bookkeeping for the window: a
@@ -487,6 +493,7 @@ async function occupyWindow(
   let contactWasProven = false;
   let disposition: ManagedScheduleWindowDisposition | undefined;
   let standingCondition: ManagedStandingCondition | undefined;
+  let evidenceSharedSecret: string | undefined;
   for (;;) {
     // A runtime going away mid-window leaves the window UNRESOLVED: it is still
     // open, and recording a miss for one this runner simply stopped occupying
@@ -509,8 +516,9 @@ async function occupyWindow(
     // `lastRun` over the success, and the window was met.
     if (windowMetByRecordedSuccess(stored, window, startedAtMs))
       return { attempts, disposition: "succeeded" };
+    evidenceSharedSecret = stored.sharedSecret;
     if (standingCompromiseResponse(stored) !== undefined)
-      return { attempts, disposition: "skipped" };
+      return { attempts, disposition: "skipped", evidenceSharedSecret };
     if (!runnableManagedExchange(stored))
       return { attempts, ended: "configuration-only" };
     const directory = stored.workingDirectoryHandle;
@@ -546,6 +554,7 @@ async function occupyWindow(
             contactWasProven,
           ),
           ...(standingCondition !== undefined ? { standingCondition } : {}),
+          evidenceSharedSecret,
         };
       disposition = verdict.disposition;
     }
@@ -576,6 +585,7 @@ async function occupyWindow(
         }
       : {}),
     ...(standingCondition !== undefined ? { standingCondition } : {}),
+    ...(evidenceSharedSecret !== undefined ? { evidenceSharedSecret } : {}),
   };
 }
 

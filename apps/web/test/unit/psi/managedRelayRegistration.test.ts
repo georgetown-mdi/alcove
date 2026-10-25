@@ -154,15 +154,20 @@ const REGISTERED: [number, unknown] = [
   { maxAgeDays: null, lapsesAt: null },
 ];
 
-function recordingStore(): ManagedRelayRegistrationStore & {
+/** A store holding `held`, recording each pending registration it is asked to
+ * drop. */
+function recordingStore(
+  held?: RunnableManagedExchangeRecord,
+): ManagedRelayRegistrationStore & {
   cleared: Array<[string, string]>;
 } {
   const cleared: Array<[string, string]> = [];
   return {
     cleared,
+    getRecord: () => Promise.resolve(held),
     clearPending: (id, secret) => {
       cleared.push([id, secret]);
-      return Promise.resolve(record({ id, sharedSecret: secret }));
+      return Promise.resolve(held ?? record({ id, sharedSecret: secret }));
     },
   };
 }
@@ -449,7 +454,9 @@ describe("the registration after a run rotates", () => {
     const preRotationSecret = generateSharedSecret();
     const rotatedSecret = generateSharedSecret();
     const registrar = fakeRegistrar([REGISTERED]);
-    const store = recordingStore();
+    const store = recordingStore(
+      record({ sharedSecret: rotatedSecret, tokenMaxAgeDays: 30 }),
+    );
 
     const result = await registerRotatedManagedRelayKey(
       {
@@ -457,7 +464,6 @@ describe("the registration after a run rotates", () => {
         registrar: REGISTRAR,
         preRotationSecret,
         rotatedSecret,
-        maxAgeDays: 30,
       },
       { fetch: registrar.fetch, now: () => NOW },
       store,
@@ -484,22 +490,26 @@ describe("the registration after a run rotates", () => {
     expect(store.cleared).toEqual([["record-under-test", rotatedSecret]]);
   });
 
-  test("a refusal leaves the pending registration and names the registrar and re-enrollment", async () => {
-    const registrar = fakeRegistrar([[409, { error: "another key is held" }]]);
-    const store = recordingStore();
+  test("a refusal under both keys leaves the pending registration and names the registrar and re-enrollment", async () => {
+    const registrar = fakeRegistrar([
+      [409, { error: "another key is held" }],
+      [409, { error: "another key is held" }],
+    ]);
+    const rotatedSecret = generateSharedSecret();
+    const store = recordingStore(record({ sharedSecret: rotatedSecret }));
 
     const result = await registerRotatedManagedRelayKey(
       {
         id: "record-under-test",
         registrar: REGISTRAR,
         preRotationSecret: generateSharedSecret(),
-        rotatedSecret: generateSharedSecret(),
-        maxAgeDays: null,
+        rotatedSecret,
       },
       { fetch: registrar.fetch },
       store,
     );
 
+    expect(registrar.sent).toHaveLength(2);
     expect(result.kind).toBe("failed");
     const message = result.kind === "failed" ? result.message : "";
     expect(message).toContain(
@@ -516,15 +526,15 @@ describe("the registration after a run rotates", () => {
       [503, {}],
       [503, {}],
     ]);
-    const store = recordingStore();
+    const rotatedSecret = generateSharedSecret();
+    const store = recordingStore(record({ sharedSecret: rotatedSecret }));
 
     const result = await registerRotatedManagedRelayKey(
       {
         id: "record-under-test",
         registrar: REGISTRAR,
         preRotationSecret: generateSharedSecret(),
-        rotatedSecret: generateSharedSecret(),
-        maxAgeDays: null,
+        rotatedSecret,
       },
       { fetch: registrar.fetch, sleep: () => Promise.resolve() },
       store,
@@ -543,10 +553,9 @@ describe("the retry before a run connects", () => {
   test("a record with no pending registration sends nothing", async () => {
     const registrar = fakeRegistrar([]);
     await retryPendingManagedRelayRegistration(
-      record({ relayRegistrar: REGISTRAR }),
-      REGISTRAR,
+      "record-under-test",
       { fetch: registrar.fetch },
-      recordingStore(),
+      recordingStore(record({ relayRegistrar: REGISTRAR })),
     );
     expect(registrar.sent).toEqual([]);
   });
@@ -557,11 +566,10 @@ describe("the retry before a run connects", () => {
       relayRegistrationPendingSince: PENDING_SINCE,
     });
     const registrar = fakeRegistrar([REGISTERED]);
-    const store = recordingStore();
+    const store = recordingStore(current);
 
     await retryPendingManagedRelayRegistration(
-      current,
-      REGISTRAR,
+      current.id,
       { fetch: registrar.fetch, now: () => NOW },
       store,
     );
@@ -585,13 +593,14 @@ describe("the retry before a run connects", () => {
 
   test("a refused retry stops the run with the registrar and the re-enrollment step", async () => {
     const registrar = fakeRegistrar([[401, { error: "proof refused" }]]);
-    const store = recordingStore();
-    const error = await retryPendingManagedRelayRegistration(
+    const store = recordingStore(
       record({
         relayRegistrar: REGISTRAR,
         relayRegistrationPendingSince: PENDING_SINCE,
       }),
-      REGISTRAR,
+    );
+    const error = await retryPendingManagedRelayRegistration(
+      "record-under-test",
       { fetch: registrar.fetch },
       store,
     ).then(
@@ -682,10 +691,9 @@ describe("the registration a re-invite makes", () => {
 
     const nextRun = fakeRegistrar([REGISTERED]);
     const error = await retryPendingManagedRelayRegistration(
-      result,
-      REGISTRAR,
+      result.id,
       { fetch: nextRun.fetch },
-      store,
+      recordingStore(result),
     ).then(
       () => undefined,
       (reason: unknown) => reason,
@@ -771,14 +779,15 @@ describe("a cancelled run's registration", () => {
     const cancel = new AbortController();
     const cancelled = new Error("the operator cancelled the run");
     const registrar = neverAnswering(() => cancel.abort(cancelled));
-    const store = recordingStore();
-
-    const error = await retryPendingManagedRelayRegistration(
+    const store = recordingStore(
       record({
         relayRegistrar: REGISTRAR,
         relayRegistrationPendingSince: PENDING_SINCE,
       }),
-      REGISTRAR,
+    );
+
+    const error = await retryPendingManagedRelayRegistration(
+      "record-under-test",
       { fetch: registrar.fetch, timeoutMs: 600_000, signal: cancel.signal },
       store,
     ).then(
@@ -796,17 +805,19 @@ describe("a cancelled run's registration", () => {
     registrar: REGISTRAR,
     preRotationSecret: generateSharedSecret(),
     rotatedSecret: generateSharedSecret(),
-    maxAgeDays: null,
   });
+  const storeHolding = (params: ReturnType<typeof rotation>) =>
+    recordingStore(record({ sharedSecret: params.rotatedSecret }));
 
   test("the registration after a cancelled run makes one attempt to its timeout and leaves it pending", async () => {
     const registrar = neverAnswering();
-    const store = recordingStore();
+    const params = rotation();
+    const store = storeHolding(params);
     const cancel = new AbortController();
     cancel.abort();
 
     const result = await registerRotatedManagedRelayKey(
-      rotation(),
+      params,
       {
         fetch: registrar.fetch,
         timeoutMs: 20,
@@ -825,9 +836,9 @@ describe("a cancelled run's registration", () => {
   });
 
   test("a cancel during the registration after the run does not cut it: its answer confirms", async () => {
-    const store = recordingStore();
     const cancel = new AbortController();
     const params = rotation();
+    const store = storeHolding(params);
     let requests = 0;
     const fetch = ((_input: string | URL | Request, init?: RequestInit) => {
       requests++;

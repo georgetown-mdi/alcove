@@ -2065,8 +2065,7 @@ describe("the relay registrations of a run whose allowed relays leave its own re
       expect.anything(),
     );
     expect(retryPendingManagedRelayRegistration).toHaveBeenCalledWith(
-      ENROLLED,
-      REGISTRAR,
+      ENROLLED.id,
       expect.anything(),
     );
     expect(registerRotatedManagedRelayKey).toHaveBeenCalledWith(

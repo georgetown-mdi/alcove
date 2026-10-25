@@ -1,45 +1,55 @@
 /// <reference types="@vitest/browser-playwright/context" />
 /// <reference types="vite/client" />
 
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
+  ConnectionError,
   deriveAcceptedLinkageTerms,
   deriveRelayKey,
   generateSharedSecret,
   getDefaultLinkageTerms,
   inferMetadata,
 } from "@alcove/core";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
   relayRegistrarAuthorization,
   validateCompatibility,
 } from "@alcove/core/testing";
 
 import {
+  NO_STANDING_CONDITION,
+  composeManagedExchangeFile,
+  runnableManagedExchangeOrRefuse,
+} from "@psi/managed/managedExchangeRecord";
+import {
   clearManagedExchanges,
   clearManagedRunTermsProposal,
   createManagedExchange,
   getManagedExchange,
   keepManagedRunTermsProposal,
+  listReadableManagedExchanges,
   persistManagedExchangeReinvite,
   persistManagedExchangeRelayRegistrar,
+  persistManagedExchangeScheduleAdvance,
   persistManagedExchangeTermsChange,
   persistManagedRunPayloadReceiveFill,
   persistManagedRunTermsChange,
 } from "@psi/managed/managedExchangeStore";
 import {
-  composeManagedExchangeFile,
-  runnableManagedExchangeOrRefuse,
-} from "@psi/managed/managedExchangeRecord";
-import {
   enrollManagedRelayRegistrar,
+  registerReinvitedManagedRelayKey,
   registerRotatedManagedRelayKey,
+  retryPendingManagedRelayRegistration,
   rotatedManagedRelayKeyRegistration,
 } from "@psi/managed/managedRelayRegistration";
-import { getManagedLocalState } from "@psi/managed/managedLocalState";
+import {
+  getManagedLocalState,
+  listReadableManagedLocalState,
+} from "@psi/managed/managedLocalState";
 import { managedTermsProposalFor } from "@psi/managed/managedTermsProposal";
 import { reinviteManagedExchange } from "@psi/managed/managedReinviteDriver";
 import { runManagedExchange } from "@psi/managed/managedExchangeRun";
 import { runManagedRerun } from "@psi/managed/managedRun";
+import { tickManagedSchedules } from "@psi/managed/managedScheduleRunner";
 
 import type { LinkageTerms, RelayRegistrar } from "@alcove/core";
 import type {
@@ -106,16 +116,22 @@ function answer(status: number, body: object): Response {
 }
 
 /**
- * Registrars holding one relay key each, by origin. The relay-owner token
- * enrolls a key (a `POST` only where none is held); a proof-signed `PUT` is
- * taken only when signed with the key held, as the registrar takes it.
+ * Registrars holding one relay key each, by origin, answering as
+ * docs/spec/PROTOCOL.md's registrar does. The relay-owner token enrolls a key
+ * (a `POST` only where none is held); a proof-made `PUT` is taken when it
+ * names the key held, a renewal, or is signed with that key, and is refused
+ * 409 otherwise. `beforeNext` runs once, before the next request is answered.
  */
 function registrars() {
   const held = new Map<string, string>();
+  let beforeNext: (() => Promise<unknown>) | undefined;
   const fetch = (async (
     input: string | URL | Request,
     init?: RequestInit,
   ): Promise<Response> => {
+    const pending = beforeNext;
+    beforeNext = undefined;
+    await pending?.();
     const url = requestUrl(input);
     const body = typeof init?.body === "string" ? init.body : "";
     const { key } = JSON.parse(body) as { key: string };
@@ -124,18 +140,19 @@ function registrars() {
     const accepted = authorization.startsWith("Bearer ")
       ? init?.method === "PUT" || current === undefined
       : current !== undefined &&
-        authorization ===
-          (await relayRegistrarAuthorization({
-            relayKey: current,
-            method: "PUT",
-            exchangeId: decodeURIComponent(
-              url.pathname.slice("/exchanges/".length),
-            ),
-            body,
-            now: NOW,
-          }));
+        (key === current ||
+          authorization ===
+            (await relayRegistrarAuthorization({
+              relayKey: current,
+              method: "PUT",
+              exchangeId: decodeURIComponent(
+                url.pathname.slice("/exchanges/".length),
+              ),
+              body,
+              now: NOW,
+            })));
     if (!accepted)
-      return answer(403, {
+      return answer(409, {
         error: "the request is not signed with the key held",
       });
     held.set(url.origin, key);
@@ -144,6 +161,9 @@ function registrars() {
   const env = { fetch, now: () => NOW, sleep: () => Promise.resolve() };
   return {
     env,
+    beforeNextRequest: (step: () => Promise<unknown>) => {
+      beforeNext = step;
+    },
     holds: (registrar: RelayRegistrar) =>
       held.get(new URL(registrar.url).origin),
     enroll: (id: string, registrar: RelayRegistrar, ownerToken?: string) =>
@@ -313,7 +333,6 @@ describe("a relay enrollment while a run holds the lock", () => {
         registrar: REGISTRAR_ONE,
         preRotationSecret: record.sharedSecret,
         rotatedSecret,
-        maxAgeDays: null,
       },
       fake.env,
     );
@@ -325,6 +344,121 @@ describe("a relay enrollment while a run holds the lock", () => {
     const stored = await getManagedExchange(record.id);
     expect(stored?.relayRegistrar).toEqual(REGISTRAR_TWO);
     expect(stored?.relayRegistrationPendingSince).toBeDefined();
+  });
+});
+
+describe("a re-invite of an enrolled exchange while a run is in flight", () => {
+  function reinviteEnrolled(
+    fake: ReturnType<typeof registrars>,
+    current: RunnableManagedExchangeRecord,
+  ) {
+    return persistManagedExchangeReinvite(
+      current.id,
+      current.sharedSecret,
+      {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+        signalingServer: { host: "signaling.example.org" },
+      },
+      (replaced, written) =>
+        registerReinvitedManagedRelayKey(replaced, written, fake.env),
+    );
+  }
+
+  async function enrolledRecord(fake: ReturnType<typeof registrars>) {
+    const created = await createManagedExchange(newExchange());
+    await fake.enroll(created.id, REGISTRAR_ONE, "owner-token");
+    return runnableManagedExchangeOrRefuse(
+      (await getManagedExchange(created.id))!,
+    );
+  }
+
+  /** Run the exchange, calling `duringDataExchange` with the record the
+   * rotation write stored, then register the rotated key as the run driver
+   * does. */
+  async function runThenRegister(
+    fake: ReturnType<typeof registrars>,
+    record: RunnableManagedExchangeRecord,
+    duringDataExchange: (
+      rotated: RunnableManagedExchangeRecord,
+    ) => Promise<unknown>,
+  ) {
+    let rotated: RunnableManagedExchangeRecord | undefined;
+    await runManagedExchange({
+      record,
+      runStartedAtMs: NOW.getTime(),
+      acquireInput: () => Promise.resolve(undefined),
+      handshake: async (_input, markRotationInFlight) => {
+        await markRotationInFlight();
+        return { rotatedSecret: generateSharedSecret(), handshake: "carried" };
+      },
+      dataExchange: async (_handshake, stored) => {
+        rotated = stored;
+        await duringDataExchange(stored);
+        return "exchanged";
+      },
+    });
+    return registerRotatedManagedRelayKey(
+      rotatedManagedRelayKeyRegistration(
+        rotated!,
+        record.sharedSecret,
+        OWN_RELAY,
+      )!,
+      fake.env,
+    );
+  }
+
+  /** The registrar holds the key of the secret the record holds, nothing is
+   * pending, and the next run's retry and a token-free renewal both go
+   * through. */
+  async function expectRegistrarHoldsCurrentKey(
+    fake: ReturnType<typeof registrars>,
+    id: string,
+  ) {
+    const stored = await getManagedExchange(id);
+    expect(fake.holds(REGISTRAR_ONE)).toBe(
+      await deriveRelayKey(stored!.sharedSecret!),
+    );
+    expect(stored).not.toHaveProperty("relayRegistrationPendingSince");
+    await retryPendingManagedRelayRegistration(id, fake.env);
+    expect((await fake.enroll(id, REGISTRAR_ONE)).kind).toBe("enrolled");
+  }
+
+  test("landing during the data exchange, the run registers the re-invite's key the registrar refused the re-invite", async () => {
+    const fake = registrars();
+    const record = await enrolledRecord(fake);
+    let reinvited: ManagedExchangeRecord | undefined;
+
+    const outcome = await runThenRegister(fake, record, async (rotated) => {
+      reinvited = await reinviteEnrolled(fake, rotated);
+    });
+
+    expect(reinvited?.relayRegistrationPendingReason).toBe("reinvite");
+    expect(outcome).toEqual({ kind: "registered" });
+    expect((await getManagedExchange(record.id))?.sharedSecret).toBe(
+      reinvited?.sharedSecret,
+    );
+    await expectRegistrarHoldsCurrentKey(fake, record.id);
+  });
+
+  test("landing while the run's registration is under way, the run then registers the re-invite's key", async () => {
+    const fake = registrars();
+    const record = await enrolledRecord(fake);
+    let reinvited: ManagedExchangeRecord | undefined;
+
+    const outcome = await runThenRegister(fake, record, (rotated) => {
+      fake.beforeNextRequest(async () => {
+        reinvited = await reinviteEnrolled(fake, rotated);
+      });
+      return Promise.resolve();
+    });
+
+    expect(reinvited?.relayRegistrationPendingReason).toBe("reinvite");
+    expect(outcome).toEqual({ kind: "registered" });
+    expect((await getManagedExchange(record.id))?.sharedSecret).toBe(
+      reinvited?.sharedSecret,
+    );
+    await expectRegistrarHoldsCurrentKey(fake, record.id);
   });
 });
 
@@ -468,6 +602,75 @@ describe("an operator's terms write while a run holds the lock", () => {
 
     expect(kept).toEqual([true, false]);
     expect(await getManagedLocalState(record.id)).toBeUndefined();
+  });
+});
+
+describe("a re-invite during a scheduled attempt", () => {
+  test("a handshake that then fails closed leaves the re-invite's standing condition, and the window advances", async () => {
+    const openedAt = new Date().toISOString();
+    const root = await navigator.storage.getDirectory();
+    const created = await createManagedExchange(
+      newExchange({
+        workingDirectoryHandle: await root.getDirectoryHandle(
+          "unlocked-writes-folder",
+          { create: true },
+        ),
+        schedule: {
+          anchor: openedAt,
+          intervalDays: 7,
+          windowSeconds: 60 * 60,
+          nextWindow: openedAt,
+          consecutiveMisses: 0,
+        },
+      }),
+    );
+    let reinvited: ManagedExchangeRecord | undefined;
+
+    const [entry] = await tickManagedSchedules({
+      now: Date.now,
+      listRecords: listReadableManagedExchanges,
+      readRecord: getManagedExchange,
+      listLocalState: listReadableManagedLocalState,
+      persistAdvance: persistManagedExchangeScheduleAdvance,
+      delay: () => Promise.resolve(),
+      stopped: () => false,
+      runAttempt: (scheduled) =>
+        runManagedRerun(
+          scheduled.record,
+          {
+            acquireInput: () => Promise.resolve(undefined),
+            handshake: async (_input, _markRotationInFlight, current) => {
+              reinvited = await persistManagedExchangeReinvite(
+                current.id,
+                current.sharedSecret,
+                {
+                  sharedSecret: generateSharedSecret(),
+                  expires: null,
+                  signalingServer: { host: "signaling.example.org" },
+                },
+              );
+              throw new ConnectionError(
+                "could not verify the partner",
+                "security",
+              );
+            },
+            dataExchange: () => Promise.resolve("exchanged"),
+          },
+          {
+            lock: { ifAvailable: true },
+            onDataExchangeStart: scheduled.onDataExchangeStart,
+          },
+        ),
+    });
+
+    expect(entry.disposition).toBe("failed");
+    const stored = await getManagedExchange(created.id);
+    expect(stored?.sharedSecret).toBe(reinvited?.sharedSecret);
+    expect(stored?.standingCondition).toEqual(NO_STANDING_CONDITION);
+    expect(stored).not.toHaveProperty("lastRun");
+    expect(Date.parse(stored!.schedule!.nextWindow)).toBeGreaterThan(
+      Date.parse(openedAt),
+    );
   });
 });
 

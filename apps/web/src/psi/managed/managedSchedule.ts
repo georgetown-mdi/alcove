@@ -568,6 +568,7 @@ export function foldElapsedWindowsUnderResponse(
       ...(caughtUp.caughtUpLastRun !== undefined
         ? { lastRun: caughtUp.caughtUpLastRun }
         : {}),
+      evidenceSharedSecret: record.sharedSecret,
     },
     nowMs,
   );

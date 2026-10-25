@@ -726,8 +726,9 @@ two sites, and needs both:
   not write at all: a store failure spanning the rotation write and the run's own
   best-effort bookkeeping write, recovering in time to answer the advance, would
   otherwise leave the plan moved past a window that neither ran nor recorded
-  anything. It lands under the same plan condition as the rest of the advance, so
-  it is a second chance and not a guarantee.
+  anything. It lands under the same plan condition as the rest of the advance,
+  and only while the record holds the secret that run read, so it is a second
+  chance and not a guarantee.
 
 **Cleared** -- returned to the `"none"` form -- by exactly three things, and
 nothing else:
@@ -1052,6 +1053,15 @@ the operator had just made, or restore a count they had just cleared on the plan
 the wake was running. A dropped write costs nothing: the next wake recomputes
 the same rule against the stored plan.
 
+The `lastRun` and standing condition a window's write holds are also
+conditioned on the secret: each lands only while the stored record holds the
+secret it is about, the one the record held at the runner's last read before
+an attempt, or at the wake where no attempt was made. A
+[re-invite](#the-operators-response-to-it) takes no lock and can land while a
+window is occupied, dropping `lastRun` and clearing the standing condition.
+The window's write then advances the plan alone, since the window was used,
+and the record keeps what the re-invite wrote.
+
 The import path is the rule's second consumer: an imported backup holds the
 snapshot's `nextWindow`, typically in the past by the time the artifact is
 restored, and the first wake after an import applies the same catch-up --
@@ -1323,8 +1333,9 @@ exchange included, rather than across its rotation alone. Once it holds the
 lock, a run reads the record again and runs that copy -- its secret, side,
 terms, and max-age policy -- rather than one its surface or its scheduled window
 read earlier, so each run, attended or scheduled, authenticates with and rotates
-the secret stored when it takes the lock. Only a run, attended or scheduled,
-and an import's [replace of the stored
+the secret stored when it takes the lock.
+
+Only a run, attended or scheduled, and an import's [replace of the stored
 record](#replacing-a-saved-copy) take that lock. Both exports,
 the terms and relay-registration writes, and a
 [re-invite](#the-operators-response-to-it) run unlocked and stay offered while
@@ -1333,7 +1344,19 @@ run's rotation-in-flight marker, its rotation, and the re-invite's secret write
 -- compares, inside its own transaction, the stored secret with the one it read,
 and refuses without writing where it changed. A re-invite and a run's rotation
 landing together therefore leave the record holding one consistent secret: the
-second of the two writes refuses. Every other write a run makes after it takes
+second of the two writes refuses.
+
+The compare refuses three controls a run's rotation overtakes, and each writes
+nothing and stays offered. A re-invite composed over the page's copy of a record
+a run has since rotated states that the exchange ran while the invitation was
+being made, and the next try goes through. A relay enrollment whose registrar
+was asked while a run rotated the secret is refused as stale; the form keeps the
+registrar address and exchange id, and the relay-owner token, which no
+enrollment keeps, is entered again. A terms update checked before a run rotated
+the secret is refused on Accept as `partnership`; the pasted text is kept, and
+since it was made under the replaced secret, the partner makes a new one.
+
+Every other write a run makes after it takes
 the lock reads the state it covers inside its own transaction, and writes
 nothing, without refusing, where an unlocked write changed it: its `lastRun`
 stamp, and the `standingCondition` that stamp raises, over the secret the run
@@ -1343,13 +1366,17 @@ last stored (the one it read, and once it rotates the rotated one); a kept
 terms over that secret and the terms the run read; and a scheduled run's
 [folder
 backup](#the-backup-and-import-markers-local-siblings-never-in-the-artifact)
-over the rotated secret. A
+over the rotated secret. A scheduled window's own write after its attempts
+advances the plan whatever a re-invite wrote, and lands its `lastRun` and
+standing condition only over the secret its last attempt ran under
+([Catch-up on wake](#catch-up-on-wake)). A
 re-invite landing during the data exchange therefore leaves the record as the
 re-invite wrote it, and a terms write landing during a run is the one the
 record holds after it. One limit remains. A run that completes while a
 re-invite lands leaves the two sides on different secrets until the partner
 accepts the new invitation: the partner rotated with the run, and this record
 holds the re-invite's secret.
+
 The partner influences how long the payload exchange takes, so the run's cancel
 reaches that width: it closes the run's connection, which rejects the wait the
 exchange is parked in, so the run ends and the lock releases without the holding
@@ -1485,6 +1512,19 @@ not confirmed. The code: `apps/web/src/psi/managed/managedRelayRegistration.ts`.
   registrar the record that write stored names, not the one it read when it
   took the lock, so a registrar enrolled during the run is the one the marker
   and the registration are for.
+- **Registered by the run.** The run reads the record before it registers,
+  and registers the key of the secret the record holds, signed under the key of
+  the secret it read when it took the lock, or under the rotated secret's key
+  where an enrollment after the rotation registered that one. The field-scoped
+  write that removes the marker on a confirmed registration returns the record
+  it read. Where that record holds another secret, a re-invite replaced it
+  while the registration was made, and the re-invite's own registration, signed
+  under the key of the secret it replaced, may have met a registrar still
+  holding the key from before the rotation. The run then registers the
+  re-invite's key, signed under the key just confirmed, up to three
+  registrations in all (`registerRotatedManagedRelayKey`). A registrar that
+  answers therefore ends holding the key of the secret the record holds, with
+  no marker left.
 - **Written by a re-invite** on a record that names a registrar: the
   re-invite's rotation write stores the marker with
   `relayRegistrationPendingReason` `"reinvite"`. The re-invite then registers the key derived from the
@@ -1509,10 +1549,11 @@ not confirmed. The code: `apps/web/src/psi/managed/managedRelayRegistration.ts`.
   naming a registrar or none.
 - **Read** by the next run that relays through this browser's own relay,
   inside the lock, after the input guard and before any contact with the
-  partner. With no reason, it registers the current key again, signed under
-  that key. With the reason `"reinvite"`, it sends nothing, since no key this
-  browser holds can sign the registration, and stops the run with the
-  owner-token re-enrollment step. A registrar that does not confirm stops the
+  partner, from the record the store holds then rather than the copy the run
+  read when it took the lock, since a re-invite takes no lock. With no reason,
+  it registers the current key again, signed under that key. With the reason
+  `"reinvite"`, it sends nothing, since no key this browser holds can sign the
+  registration, and stops the run with the owner-token re-enrollment step. A registrar that does not confirm stops the
   run with its answer, the registrar, and the next step; nothing rotated and no
   `lastRun` is written. A refusal names owner-token re-enrollment, since the
   key the registrar holds is not one this browser has.

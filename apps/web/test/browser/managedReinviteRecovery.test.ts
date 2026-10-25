@@ -484,7 +484,7 @@ describe("a re-invite of an exchange enrolled at a relay registrar", () => {
 
     const nextRun = registrarAnswering([200]);
     await expect(
-      retryPendingManagedRelayRegistration(stored, REGISTRAR, {
+      retryPendingManagedRelayRegistration(stored.id, {
         fetch: nextRun.fetch,
       }),
     ).rejects.toSatisfy(

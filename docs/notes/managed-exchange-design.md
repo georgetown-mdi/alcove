@@ -214,12 +214,16 @@ What the lock gave them is kept by the writes themselves: a run reads its terms 
 The run still writes after it takes the lock, and each of those writes reads what it covers inside its own transaction rather than trusting the copy the run read.
 Its own terms writes, the `payload.receive` it fills and the partner's change an attended run takes on, are made only over the terms it ran, so an operator's write landing first is the one the next run holds, and the run is neither stopped nor overwrites it.
 Its relay registration goes to the registrar the rotation write read, the one that write set the pending marker for, and a confirmed registration clears the marker only where the record still names that registrar, so an enrollment landing mid-run is never left holding a key nothing will renew.
+The key it registers is the one of the secret the record holds when it registers, read then rather than carried from the rotation, and the write clearing the marker reads the record again.
+A re-invite landing during the data exchange or the registration has its own registration refused, since it signs with the run's rotated key while the registrar still holds the one before it.
+So the run registers the re-invite's key next, signed with the key it just had confirmed, and the registrar ends holding the key of the secret the record holds rather than one the record discarded, which only the relay owner's token could replace.
 
 The writes that replace the secret need more than that, because two of them landing together would each store a secret the other discards.
 So each one compares, inside its own transaction, the stored secret with the one it read -- the run's rotation-in-flight marker and rotation against the secret the run took the lock on, the re-invite against the secret it composed the invitation over -- and refuses without writing where it changed.
 Whichever lands second refuses, and the record holds one secret, the one the side that landed first wrote.
 A run whose marker or rotation refuses stops before the data exchange and records nothing, since the record it would stamp is the re-invite's.
 A re-invite landing after the rotation meets the same rule from the other side: the run's later writes, its last-run stamp and the standing condition it raises, a kept terms proposal, and a scheduled run's backup, are made only over the secret the run stored, so the record keeps what the re-invite left rather than the run's account of an exchange under a secret it no longer holds.
+A scheduled window's own write after its attempts follows the same rule for what it reports: it advances the plan whatever a re-invite wrote, since the window was used, and lands its last-run stamp and the standing condition its attempt raised only over the secret that attempt ran under.
 The import replace keeps the lock as well as comparing.
 A replace landing during a run that then completes would leave the partner on the run's rotated secret and this record on the imported one, the limit below, with no invitation for the partner to accept that would bring the two together again.
 It compares as well, since a re-invite can land between the reconciliation the resubmitted import runs and the replace.
