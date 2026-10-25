@@ -157,6 +157,13 @@ export const RUN_IN_FLIGHT_EXPORT_REASON =
   "on its schedule. A run changes its shared secret, so a download now could " +
   "already be out of date. Try again when the run finishes.";
 
+/** What neither export takes with it, shown beside both: the accounting of
+ * disclosures is kept in this browser and is in no exported file. */
+export const EXPORT_LEAVES_ACCOUNTING_NOTE =
+  "This exchange's accounting of disclosures stays in this browser and is " +
+  "not included in this download. To keep a copy of it, export the " +
+  "accounting as CSV.";
+
 /** The lines running `composed` on `schedule`, from `image`. */
 function scheduledRunLines(
   composed: ManagedCommandLineConfig,

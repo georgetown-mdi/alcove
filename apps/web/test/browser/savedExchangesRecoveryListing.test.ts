@@ -18,7 +18,6 @@ import {
   listManagedExchanges,
   listManagedExchangesDiagnostic,
   openManagedExchangeDatabase,
-  spendManagedExchangeIfCurrent,
 } from "@psi/managed/managedExchangeStore";
 import {
   composeManagedExchangeFile,
@@ -35,6 +34,7 @@ import {
 import { SavedExchanges } from "@recurring/SavedExchanges";
 
 import { createAppMount } from "./renderApp";
+import { seedSpentState } from "./seedSpentState";
 
 import type {
   NewManagedExchange,
@@ -315,16 +315,13 @@ describe("recovery listing: the delete confirm's custody notes", () => {
     // Deleting this row is what removes the import refusal the hand-off stands on, so
     // the confirm has to state what those saved files keep running -- the same note
     // the normal list's confirm shows, from a surface whose list cannot be read.
-    let spend: string | undefined;
     await mountReadFailedWith("Handed to the command line", async (record) => {
-      spend = await spendManagedExchangeIfCurrent(
+      await seedSpentState(
         record.id,
-        record.sharedSecret,
         "2026-07-14T13:00:00.000Z",
         "command-line",
       );
     });
-    expect(spend).toBe("spent");
 
     await page.getByRole("button", { name: "Remove" }).first().click();
     await expect

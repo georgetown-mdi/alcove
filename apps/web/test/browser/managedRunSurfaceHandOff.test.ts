@@ -18,7 +18,6 @@ import {
   clearManagedExchanges,
   createManagedExchange,
   getManagedExchange,
-  spendManagedExchangeIfCurrent,
 } from "@psi/managed/managedExchangeStore";
 import {
   composeManagedExchangeFile,
@@ -30,6 +29,7 @@ import { getManagedLocalState } from "@psi/managed/managedLocalState";
 
 import { createAppMount } from "./renderApp";
 import { expectConsole } from "./expectedConsole";
+import { seedSpentState } from "./seedSpentState";
 
 import type {
   NewManagedExchange,
@@ -122,14 +122,11 @@ describe("the re-take on a spent copy's own surface", () => {
     const created = await createRunnableExchange(
       newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
-    expect(
-      await spendManagedExchangeIfCurrent(
-        created.id,
-        created.sharedSecret,
-        "2026-07-14T09:00:00.000Z",
-        "command-line",
-      ),
-    ).toBe("spent");
+    await seedSpentState(
+      created.id,
+      "2026-07-14T09:00:00.000Z",
+      "command-line",
+    );
     app.render(createElement(ManagedRunSurface, { id: created.id }));
     await expect
       .element(page.getByText("This exchange was handed off", { exact: true }))
@@ -196,14 +193,11 @@ describe("a run pressed after the hand-off arrived", () => {
     const runButton = page.getByRole("button", { name: "Run exchange" });
     await expect.element(runButton).toBeEnabled();
 
-    expect(
-      await spendManagedExchangeIfCurrent(
-        created.id,
-        created.sharedSecret,
-        "2026-07-14T09:00:00.000Z",
-        "command-line",
-      ),
-    ).toBe("spent");
+    await seedSpentState(
+      created.id,
+      "2026-07-14T09:00:00.000Z",
+      "command-line",
+    );
     await runButton.click();
 
     // The state the refusal left, on this render rather than the next load: the
@@ -258,14 +252,11 @@ describe("a run pressed after the hand-off arrived", () => {
     const runButton = page.getByRole("button", { name: "Run exchange" });
     await expect.element(runButton).toBeEnabled();
 
-    expect(
-      await spendManagedExchangeIfCurrent(
-        created.id,
-        created.sharedSecret,
-        "2026-07-14T09:00:00.000Z",
-        "command-line",
-      ),
-    ).toBe("spent");
+    await seedSpentState(
+      created.id,
+      "2026-07-14T09:00:00.000Z",
+      "command-line",
+    );
     recordRead.rejects = true;
     await runButton.click();
 

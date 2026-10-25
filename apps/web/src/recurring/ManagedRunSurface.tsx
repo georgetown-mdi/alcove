@@ -46,7 +46,6 @@ import { DeleteExchangeButton } from "./SavedExchanges";
 import { ManagedConfigurationSurface } from "./ManagedConfigurationSurface";
 import { ManagedCronExportPanel } from "./ManagedCronExportPanel";
 import { ManagedExchangeDetail } from "./ManagedExchangeDetail";
-import { RUN_IN_FLIGHT_EXPORT_REASON } from "./managedCronExportModel";
 import { managedStandingConditionView } from "./managedStandingConditionModel";
 import { useManagedRunSurface } from "./useManagedRunSurface";
 
@@ -72,6 +71,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
   const {
     state: surfaceState,
     runInFlight,
+    runLockHeld,
     runLockRefused,
     running,
     liveFailure,
@@ -301,13 +301,10 @@ export function ManagedRunSurface({ id }: { id: string }) {
                   mt="sm"
                   onClick={downloadUpdatedBackup}
                   loading={exportBusy}
-                  disabled={runInFlight}
+                  disabled={runLockHeld}
                 >
                   Download updated backup
                 </Button>
-                {runInFlight && (
-                  <p className={styles.small}>{RUN_IN_FLIGHT_EXPORT_REASON}</p>
-                )}
               </div>
             )}
             <SavedExchangesFoot />

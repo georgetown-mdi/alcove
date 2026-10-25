@@ -133,7 +133,7 @@ describe("a notice raised by a run that then failed", () => {
     await runUntilItFails();
 
     expect(app.container.textContent).not.toContain(
-      "accounting of disclosures",
+      "could not be saved to this exchange's accounting of disclosures",
     );
   });
 });

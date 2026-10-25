@@ -883,15 +883,20 @@ export/import](#the-durability-backbone-exportimport)).
 
 What moves the exchange is the first run elsewhere. That run replaces the
 shared secret, and the copy here, still holding the old one, can no longer
-connect to your partner. So the page states one thing beside the download: if
-you run this exchange elsewhere, import it again to use it here later. On an
+connect to your partner. So the page states beside the download that if you
+run this exchange elsewhere, you import it again to use it here later, and,
+beside both downloads, that the [accounting of
+disclosures](#the-accounting-of-disclosures) stays in this browser and is not
+in the downloaded files. On an
 exchange with a schedule on here, it adds that the schedule here should be
 turned off: a scheduled run here would replace the secret too, and whichever
 copy runs second then fails to connect ([Desync detection and
 recovery](#desync-detection-and-recovery)). A run of the copy here after a run
 elsewhere says the same: over WebRTC the partner never arrives, since where the
-two parties meet is derived from the secret, and the failure says that if the
-exchange was run elsewhere, importing it again here makes it runnable.
+two parties meet is derived from the secret. The no-show an attended run
+reports, and the notice a missed scheduled window raises between visits, each
+say that if the exchange was run elsewhere, importing it again here makes it
+runnable, ahead of any suggestion to re-invite.
 
 Importing the newer files over the copy still in the list adds a second entry
 beside it rather than replacing it. Remove the older entry once the imported

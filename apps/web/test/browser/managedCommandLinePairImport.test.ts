@@ -11,7 +11,6 @@ import {
   listManagedExchanges,
   openManagedExchangeDatabase,
   reconcileManagedCommandLinePair,
-  spendManagedExchangeIfCurrent,
 } from "@psi/managed/managedExchangeStore";
 import {
   ManagedImportAlreadyHeldError,
@@ -37,6 +36,8 @@ import {
   markManagedExchangeBackedUp,
 } from "@psi/managed/managedLocalState";
 import { composeManagedCronExport } from "@psi/managed/managedCronExport";
+
+import { seedSpentState } from "./seedSpentState";
 
 import type {
   ManagedExchangeRecord,
@@ -247,11 +248,7 @@ describe("a stored exchange holding the pair's secret", () => {
       newExchange({ schedule, tokenMaxAgeDays: 30 }),
     );
     await markManagedExchangeBackedUp(husk.id, "2026-07-10T09:00:00.000Z");
-    await spendManagedExchangeIfCurrent(
-      husk.id,
-      husk.sharedSecret,
-      "2026-07-11T09:00:00.000Z",
-    );
+    await seedSpentState(husk.id, "2026-07-11T09:00:00.000Z");
     const onTheCommandLine = runnableManagedExchangeOrRefuse(
       buildManagedExchangeRecord(
         newExchange({
@@ -282,9 +279,8 @@ describe("a stored exchange holding the pair's secret", () => {
 
   test("one handed off to the command line refuses the pair, writing nothing", async () => {
     const handedOff = await createRunnableExchange(newExchange());
-    await spendManagedExchangeIfCurrent(
+    await seedSpentState(
       handedOff.id,
-      handedOff.sharedSecret,
       "2026-07-11T09:00:00.000Z",
       "command-line",
     );
@@ -327,23 +323,14 @@ describe("a stored record of the pair's terms and side that its secret misses", 
   async function handedOff(): Promise<RunnableManagedExchangeRecord> {
     const record = await createRunnableExchange(newExchange({ schedule }));
     await markManagedExchangeBackedUp(record.id, "2026-07-10T09:00:00.000Z");
-    await spendManagedExchangeIfCurrent(
-      record.id,
-      record.sharedSecret,
-      "2026-07-11T09:00:00.000Z",
-      "command-line",
-    );
+    await seedSpentState(record.id, "2026-07-11T09:00:00.000Z", "command-line");
     return record;
   }
 
   async function migrationSpent(): Promise<RunnableManagedExchangeRecord> {
     const record = await createRunnableExchange(newExchange({ schedule }));
     await markManagedExchangeBackedUp(record.id, "2026-07-10T09:00:00.000Z");
-    await spendManagedExchangeIfCurrent(
-      record.id,
-      record.sharedSecret,
-      "2026-07-11T09:00:00.000Z",
-    );
+    await seedSpentState(record.id, "2026-07-11T09:00:00.000Z");
     return record;
   }
 
@@ -544,11 +531,7 @@ describe("a migration-spent record holding the pair's secret for the other side"
   test("refuses the pair, writing nothing", async () => {
     // The partner's files hold the same secret from their side.
     const husk = await createRunnableExchange(newExchange());
-    await spendManagedExchangeIfCurrent(
-      husk.id,
-      husk.sharedSecret,
-      "2026-07-11T09:00:00.000Z",
-    );
+    await seedSpentState(husk.id, "2026-07-11T09:00:00.000Z");
     const partners = runnableManagedExchangeOrRefuse(
       buildManagedExchangeRecord(
         newExchange({ side: "acceptor", sharedSecret: husk.sharedSecret }),

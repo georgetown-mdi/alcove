@@ -103,6 +103,10 @@ export interface ManagedRunSurfaceHost {
   /** Whether a run of this exchange is in flight anywhere this browser profile
    * can see (see {@link useManagedRunInFlight}). */
   runInFlight: boolean;
+  /** Whether the run lock reads as held, apart from this surface's own run state:
+   * a finished run's completion screen gates on it, since that run released the
+   * lock before its outputs reached the screen. */
+  runLockHeld: boolean;
   /** Report that an export taking the run lock found it held, so
    * {@link runInFlight} reads true until the next poll reading. */
   runLockRefused: () => void;
@@ -209,9 +213,11 @@ export function useManagedRunSurface(id: string): ManagedRunSurfaceHost {
   // Every export on this surface, plus the re-invite mint below, reads one
   // in-flight signal, which sees a run started anywhere in this browser profile
   // -- here, in a second tab, or by the scheduled runtime -- not just the one this
-  // surface started.
+  // surface started. The completion screen's updated backup reads the lock alone:
+  // its run released the lock before the outputs were shown.
   const {
     inFlight: runInFlight,
+    lockHeld: runLockHeld,
     recheckLock,
     lockRefused: runLockRefused,
   } = useManagedRunInFlight(id, running);
@@ -585,7 +591,7 @@ export function useManagedRunSurface(id: string): ManagedRunSurfaceHost {
   // Drive the completion surface's refreshed backup with the shared busy/failure
   // state, so a failed export shows without claiming the backup was taken.
   function downloadUpdatedBackup() {
-    if (completion.backupHook === undefined || exportBusy || runInFlight)
+    if (completion.backupHook === undefined || exportBusy || runLockHeld)
       return;
     dispatchSurface({ type: "export-started" });
     void completion.backupHook
@@ -849,6 +855,7 @@ export function useManagedRunSurface(id: string): ManagedRunSurfaceHost {
   return {
     state: surfaceState,
     runInFlight,
+    runLockHeld,
     runLockRefused,
     running,
     liveFailure,

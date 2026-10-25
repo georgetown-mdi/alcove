@@ -15,6 +15,11 @@ import styles from "@styles/app.module.css";
 import { useHashTarget } from "@components/useHashTarget";
 
 import {
+  EXPORT_LEAVES_ACCOUNTING_NOTE,
+  RUN_IN_FLIGHT_EXPORT_REASON,
+  runElsewhereNotice,
+} from "./managedCronExportModel";
+import {
   RETAKE_ACTION_LABEL,
   RETAKE_CONFIRM_LABEL,
   RETAKE_KEY_FILE_NOTE,
@@ -24,10 +29,6 @@ import {
   managedRetakeRefusal,
   retakeFileChoiceRefusal,
 } from "./managedRetakeModel";
-import {
-  RUN_IN_FLIGHT_EXPORT_REASON,
-  runElsewhereNotice,
-} from "./managedCronExportModel";
 import {
   WORKING_FOLDER_GRANT_NOTE,
   WORKING_FOLDER_SCOPE_NOTE,
@@ -118,6 +119,7 @@ export function BackupPanel({
         unencrypted channel.
       </p>
       <p className={styles.small}>{runElsewhereNotice(scheduleOn)}</p>
+      <p className={styles.small}>{EXPORT_LEAVES_ACCOUNTING_NOTE}</p>
       {failed && (
         <Alert
           role="alert"

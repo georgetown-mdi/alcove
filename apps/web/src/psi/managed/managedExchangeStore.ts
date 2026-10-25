@@ -73,7 +73,6 @@ import type {
 } from "./managedExchangeRecord";
 import type {
   ManagedLocalState,
-  ManagedSpendOutcome,
   ManagedSpentHandoff,
   ManagedSpentState,
 } from "./managedLocalStateShape";
@@ -466,8 +465,8 @@ export async function listManagedExchangesDiagnostic(): Promise<
 }
 
 /** What a sibling entry states about one record's custody, for the diagnostic read:
- * whether an exported backup remains with the operator, and the spend when an export
- * handed this copy off. */
+ * whether an exported backup remains with the operator, and the spend when an
+ * earlier version's export handed this copy off. */
 interface ManagedExchangeDiagnosticCustody {
   backedUp: boolean;
   spent?: ManagedSpentState;
@@ -773,131 +772,6 @@ export async function markManagedBackupIfCurrent(
 }
 
 /**
- * Spend this device's copy as of `spentAt` -- under `handoff`, or as the device
- * migration when it is omitted -- but ONLY while no run of this record is in flight
- * and the stored record still holds `expectedSharedSecret`, the secret the
- * hand-off's downloaded files hold.
- *
- * A run in flight excludes the spend outright: this step takes the record's
- * run+rotate lock ({@link ./managedExchangeLock.ts}) with `ifAvailable`, so a run
- * holding it refuses the spend as `"run-in-flight"` before the currency check runs.
- * A landed rotation refuses the spend instead: the read, the comparison, and the
- * spent-state write run inside one transaction spanning the record and sibling
- * stores, so a rotation is seen either fully before or fully after, never mid-check.
- *
- * Resolves `"run-in-flight"`, `"superseded"`, or `"gone"` -- writing nothing -- when
- * a run holds the lock, the stored secret has moved on, or no record exists under
- * `id`; reported apart because the remedy differs (wait, re-download, or nothing
- * left to hand over). An edit that leaves the secret alone (a label, a max-age
- * policy) leaves the downloaded copy spendable. Any backup marker is left untouched.
- *
- * @throws {ZodError} if the stored record or sibling entry is invalid; the
- *   transaction aborts and nothing is written.
- */
-export async function spendManagedExchangeIfCurrent(
-  id: string,
-  expectedSharedSecret: string,
-  spentAt: string,
-  handoff?: ManagedSpentHandoff,
-): Promise<ManagedSpendOutcome> {
-  try {
-    return await withManagedExchangeLock(
-      id,
-      () => spendCurrentCopy(id, expectedSharedSecret, spentAt, handoff),
-      { ifAvailable: true },
-    );
-  } catch (error) {
-    if (error instanceof ManagedExchangeLockUnavailableError)
-      return "run-in-flight";
-    throw error;
-  }
-}
-
-/** The checked spend itself, run under the record's run+rotate lock: the cross-store
- * transaction that compares the stored secret and writes the spent state. */
-async function spendCurrentCopy(
-  id: string,
-  expectedSharedSecret: string,
-  spentAt: string,
-  handoff: ManagedSpentHandoff | undefined,
-): Promise<ManagedSpendOutcome> {
-  const db = await openManagedExchangeDatabase();
-  try {
-    return await new Promise<ManagedSpendOutcome>((resolve, reject) => {
-      const transaction = db.transaction(
-        [MANAGED_EXCHANGE_STORE_NAME, MANAGED_EXCHANGE_LOCAL_STORE_NAME],
-        "readwrite",
-        { durability: "strict" },
-      );
-      const records = transaction.objectStore(MANAGED_EXCHANGE_STORE_NAME);
-      const local = transaction.objectStore(MANAGED_EXCHANGE_LOCAL_STORE_NAME);
-      const read = records.get(id);
-      const readLocal = local.get(id);
-      // Refusal is the default, so every way out of the transaction short of the
-      // write -- a missing record, a moved secret -- resolves as a refusal rather
-      // than relying on each to say so. The missing record then names itself,
-      // because the two refusals leave the operator with different things to do.
-      let outcome: ManagedSpendOutcome = "superseded";
-      let failure: unknown;
-      const applyWhenReady = () => {
-        if (read.readyState !== "done" || readLocal.readyState !== "done")
-          return;
-        try {
-          if (read.result === undefined) {
-            outcome = "gone";
-            return;
-          }
-          const stored = parseManagedExchangeRecord(read.result);
-          if (stored.sharedSecret !== expectedSharedSecret) return;
-          markSpentOnLocalStore(local, id, readLocal.result, spentAt, handoff);
-          outcome = "spent";
-        } catch (error) {
-          failure = error;
-          transaction.abort();
-        }
-      };
-      read.onsuccess = applyWhenReady;
-      readLocal.onsuccess = applyWhenReady;
-      transaction.oncomplete = () => resolve(outcome);
-      transaction.onerror = () => reject(failure ?? transaction.error);
-      transaction.onabort = () => reject(failure ?? transaction.error);
-    });
-  } finally {
-    db.close();
-  }
-}
-
-/**
- * Write the spent state onto a record's sibling entry, on an already-open local-state
- * object store inside a live transaction, preserving any backup and import markers.
- *
- * `handoff` records WHICH export spent the copy, since the two have different
- * recoveries: a migration spend (`handoff` omitted) is revived by importing the
- * downloaded artifact ({@link reviveSpentManagedExchange}), while a `"command-line"`
- * hand-off downloaded files that bring back no secret -- the import reads their
- * `alcove.yaml` as a configuration only and never the key file -- so an artifact
- * predating it is refused instead of reviving the copy. Re-validated
- * ({@link parseManagedLocalState}) before the write, so a malformed spent state
- * aborts the transaction rather than landing.
- */
-function markSpentOnLocalStore(
-  store: IDBObjectStore,
-  id: string,
-  raw: unknown,
-  spentAt: string,
-  handoff: ManagedSpentHandoff | undefined,
-): void {
-  const current = raw === undefined ? undefined : parseManagedLocalState(raw);
-  store.put(
-    parseManagedLocalState({
-      ...current,
-      spent: { spentAt, ...(handoff !== undefined ? { handoff } : {}) },
-    }),
-    id,
-  );
-}
-
-/**
  * How a re-take of a command-line hand-off ended. `"retaken"` is the one outcome
  * that writes: the spent state is cleared, and the `record` it holds is the one
  * that runs here from then on. The refusals write nothing and are held apart
@@ -930,8 +804,8 @@ export type ManagedRetakeOutcome =
  * stored record first ({@link decideRetake}): a pair on other agreed terms or
  * the other side is `"mismatch"`, and nothing is written.
  *
- * A run in flight excludes the re-take exactly as it excludes the hand-off spend:
- * this step takes the record's run+rotate lock ({@link ./managedExchangeLock.ts})
+ * A run in flight excludes the re-take exactly as it excludes both exports: this
+ * step takes the record's run+rotate lock ({@link ./managedExchangeLock.ts})
  * with `ifAvailable`, and a run holding it is reported as `"run-in-flight"` rather
  * than waited out -- the run re-reads the spent state as its first act inside that
  * lock, and the re-take is a write against exactly that state.
@@ -1240,8 +1114,8 @@ export class ManagedReinviteWithheldError extends Error {
  * is held by that call alone, to sign the registration of the fresh one. What
  * it returns is what this returns.
  *
- * A run in flight is excluded rather than checked, exactly as the hand-off spend
- * and the re-take exclude it: this step takes the record's run+rotate lock
+ * A run in flight is excluded rather than checked, exactly as both exports and
+ * the re-take exclude it: this step takes the record's run+rotate lock
  * ({@link ./managedExchangeLock.ts}) with `ifAvailable` before the transaction
  * opens, so a run holding it is refused here rather than having its secret
  * replaced mid-exchange. Neither rotation write compares against the secret it

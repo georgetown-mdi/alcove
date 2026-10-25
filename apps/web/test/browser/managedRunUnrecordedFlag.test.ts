@@ -15,7 +15,6 @@ import {
   createManagedExchange,
   deleteManagedExchange,
   openManagedExchangeDatabase,
-  spendManagedExchangeIfCurrent,
 } from "@psi/managed/managedExchangeStore";
 import {
   clearUnfiledExchangeFlag,
@@ -29,6 +28,7 @@ import {
 import { ManagedRunSurface } from "@recurring/ManagedRunSurface";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
+import { seedSpentState } from "./seedSpentState";
 
 import type {
   ManagedExchangeRecord,
@@ -149,14 +149,11 @@ describe("a flagged exchange whose page shows the operator nothing", () => {
 
   test("keeps its flag across a visit to a spent copy", async () => {
     const created = await createRunnableExchange(newExchange());
-    expect(
-      await spendManagedExchangeIfCurrent(
-        created.id,
-        created.sharedSecret,
-        "2026-07-14T09:00:00.000Z",
-        "command-line",
-      ),
-    ).toBe("spent");
+    await seedSpentState(
+      created.id,
+      "2026-07-14T09:00:00.000Z",
+      "command-line",
+    );
     expect(await flagUnfiledExchange(created.id)).toBe(true);
 
     app.render(createElement(ManagedRunSurface, { id: created.id }));
@@ -191,7 +188,7 @@ describe("a flagged exchange whose page states the run", () => {
     app.unmount();
     app.render(createElement(ManagedRunSurface, { id: created.id }));
     await expect
-      .element(page.getByText("Accounting of disclosures"))
+      .element(page.getByRole("heading", { name: "Accounting of disclosures" }))
       .toBeInTheDocument();
     expect(
       page.getByText(FLAG_ALERT_TITLE, { exact: false }).query(),

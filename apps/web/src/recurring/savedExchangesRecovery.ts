@@ -11,9 +11,9 @@
  * record" label and no other detail, since nothing about it could be parsed.
  * Every row holds the stored key the one-step delete-by-key acts on, so an
  * unreadable record is discardable without a successful parse, and the custody
- * the delete confirm states -- an exported backup, and the hand-off a spend
- * gave the copy to -- which survives a record's unreadability because it is the
- * sibling entry's, not the record's. Secret material never reaches this model:
+ * the delete confirm states -- an exported backup, and the hand-off an earlier
+ * version's spend gave the copy to -- which survives a record's unreadability
+ * because it is the sibling entry's, not the record's. Secret material never reaches this model:
  * the diagnostic entries hold display essentials only.
  */
 

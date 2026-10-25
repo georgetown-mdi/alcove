@@ -21,6 +21,9 @@ interface ManagedRunInFlight {
   /** Whether a run of this record is in flight anywhere this browser profile can
    * see. */
   inFlight: boolean;
+  /** Whether the record's run lock reads as held, whatever this surface's own run
+   * state: false once a finished run here has released it. */
+  lockHeld: boolean;
   /** Re-read the record's run lock right now, updating {@link inFlight} and resolving
    * what it read. A click handler takes this rather than trusting the poll, whose
    * last reading can be a beat old. */
@@ -89,8 +92,10 @@ export function useManagedRunInFlight(
     };
   }, [id]);
 
+  const lockHeld = managedRunLockReadsHeld(reading);
   return {
-    inFlight: runningHere || managedRunLockReadsHeld(reading),
+    inFlight: runningHere || lockHeld,
+    lockHeld,
     recheckLock,
     lockRefused,
   };

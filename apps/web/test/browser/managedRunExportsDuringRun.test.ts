@@ -14,6 +14,7 @@ import {
   createManagedExchange,
   getManagedExchange,
 } from "@psi/managed/managedExchangeStore";
+import { MANAGED_BACKUP_SECTION_ID } from "@recurring/managedSectionIds";
 import { ManagedRunSurface } from "@recurring/ManagedRunSurface";
 import { RUN_IN_FLIGHT_EXPORT_REASON } from "@recurring/managedCronExportModel";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
@@ -156,6 +157,24 @@ describe("a backup the run lock refuses at the click", () => {
       release();
       readings.restore();
     }
+  });
+});
+
+describe("what neither export takes with it", () => {
+  test("names the accounting of disclosures beside both downloads", async () => {
+    const note =
+      "This exchange's accounting of disclosures stays in this browser and " +
+      "is not included in this download. To keep a copy of it, export the " +
+      "accounting as CSV.";
+    const created = await createManagedExchange(newExchange());
+    app.render(createElement(ManagedRunSurface, { id: created.id }));
+    await openDisclosure(EXPORT_PANEL);
+    await expect.element(cliDownloadButton()).toBeEnabled();
+
+    expect(page.getByText(note).elements()).toHaveLength(2);
+    expect(
+      document.getElementById(MANAGED_BACKUP_SECTION_ID)?.textContent,
+    ).toContain(note);
   });
 });
 

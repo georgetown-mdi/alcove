@@ -28,6 +28,7 @@ import {
   PARTNER_SET_TOO_LARGE_PROBLEM,
   PARTNER_SET_TOO_LARGE_REMEDY,
   PARTNER_SET_TOO_LARGE_TITLE,
+  RAN_ELSEWHERE_IMPORT_REMEDY,
   RECORDED_PARTNER_PROTOCOL_REFUSAL_REMEDY,
   SINGLE_COLUMN_DELIMITER_REMEDY,
   TERMS_CHANGE_FAILURE_TITLE,
@@ -315,11 +316,11 @@ const MISSED_FAILURE: ManagedRunFailureAlert = {
     "This run waited for your partner and they never connected, so nothing was " +
     "exchanged and nothing left this device. That is not a fault on this " +
     "device: agree a time with your partner over your usual channel, and run " +
-    "this exchange again when they are ready. If they were running their side " +
-    "at a time you agreed and this keeps happening, re-invite your partner to " +
-    "reconnect; the exchange keeps your terms, gets a new secret, and uses " +
-    "the coordination server the new invitation names. If you ran this " +
-    "exchange elsewhere, import it again here to make it runnable.",
+    `this exchange again when they are ready. ${RAN_ELSEWHERE_IMPORT_REMEDY} ` +
+    "If they were running their side at a time you agreed and this keeps " +
+    "happening, re-invite your partner to reconnect; the exchange keeps your " +
+    "terms, gets a new secret, and uses the coordination server the new " +
+    "invitation names.",
   recovery: "none",
 };
 
@@ -772,6 +773,16 @@ const TRANSPORT_FAILURE: ManagedRunFailureAlert = {
   recovery: "retry",
 };
 
+/** A recorded `"missed"` outcome read as a launch failure: the transport copy, with
+ * the import a copy run elsewhere needs ahead of its re-invite. */
+const RECORDED_MISSED_FAILURE: ManagedRunFailureAlert = {
+  ...TRANSPORT_FAILURE,
+  message:
+    "This run could not be completed - usually a temporary connection problem " +
+    `rather than an issue with your data. ${RAN_ELSEWHERE_IMPORT_REMEDY} ` +
+    "Otherwise try again; if it keeps failing, re-invite your partner.",
+};
+
 /** The Tier-2 unexplained state: a handshake failed closed with no recorded benign
  * cause. This is the one failure that needs the operator's out-of-band confirmation
  * work, so the copy directs to the confirmation flow -- it names no benign cause and
@@ -794,14 +805,15 @@ const UNEXPLAINED_FAILURE: ManagedRunFailureAlert = {
  * `record.expires` to name the lapsed instant; the shortfall tier reads the
  * stamp's own `singleColumnInput` to choose between the delimiter remedy and
  * the agreed-keys copy; the terms-change tier reads whether `local` holds a
- * terms proposal; the transport, missed, and none tiers map to the generic
- * transport copy.
+ * terms proposal; the transport and none tiers map to the generic transport copy.
  *
  * The missed tier does not use the no-show copy: that copy attests nothing left
  * this device for THIS failure, while a recorded `"missed"` outcome belongs to
  * whichever run stamped it (the bookkeeping write is best-effort, see {@link
- * ../psi/managedRun.ts}). The list and history surfaces (`savedExchangesModel`,
- * `managedDetailModel`) phrase a next-visit read of that outcome informationally.
+ * ../psi/managedRun.ts}). It takes the transport copy with the import remedy a
+ * copy run elsewhere needs ({@link RECORDED_MISSED_FAILURE}). The list and
+ * history surfaces (`savedExchangesModel`, `managedDetailModel`) phrase a
+ * next-visit read of that outcome informationally.
  *
  * `"none"` and `"missed"` are handled explicitly even though {@link
  * managedRunFailureFromRecord} filters both before a record reaches this
@@ -853,8 +865,9 @@ export function managedRunTierFailure(
       return IMPORTED_FAILURE;
     case "unexplained":
       return UNEXPLAINED_FAILURE;
-    case "transport":
     case "missed":
+      return RECORDED_MISSED_FAILURE;
+    case "transport":
     case "none":
       return TRANSPORT_FAILURE;
   }

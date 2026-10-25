@@ -18,6 +18,7 @@ import styles from "@styles/app.module.css";
 
 import {
   CLI_BUILT_IN_STUN_URI,
+  EXPORT_LEAVES_ACCOUNTING_NOTE,
   RUN_IN_FLIGHT_EXPORT_REASON,
   invitationRegistrarExportLine,
   managedCronExportPanelState,
@@ -162,6 +163,7 @@ export function ManagedCronExportPanel({
                   </Anchor>
                   .
                 </p>
+                <p className={styles.small}>{EXPORT_LEAVES_ACCOUNTING_NOTE}</p>
                 {failed && (
                   <Alert
                     role="alert"
