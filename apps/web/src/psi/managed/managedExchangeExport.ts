@@ -18,24 +18,24 @@
  *   signal, so a cancelled or failed save must not spend the source. A
  *   dismissed dialog leaves the source live.
  * - A COMMAND-LINE export downloads the CLI's own two files
- *   ({@link composeManagedCronExport}) instead of the artifact, and spends
- *   the source on the same attestation the migration uses. It stamps no
- *   backup marker: what it downloads is not an artifact this app's import
- *   accepts.
+ *   ({@link composeManagedCronExport}) instead of the artifact and writes
+ *   nothing: no backup marker, since what it downloads is not the artifact,
+ *   and no spend, so the stored exchange stays runnable here. It reads and
+ *   downloads under the run's own lock, so a run in flight refuses it.
  *
  * The two marking intents compose what they download INSIDE the
  * read-and-mark step: the marker can never attest bytes nothing produced.
  *
- * Both spending intents' confirm step re-reads the record by id, and spends
- * only while no run of it is in flight and the downloaded artifact still
- * has the record's current secret
- * ({@link ManagedHandoffRefusedError} otherwise). A run in flight is
- * excluded on the run's own lock rather than checked directly (see
- * {@link ./managedExchangeStore.ts}, `spendManagedExchangeIfCurrent`).
+ * The migration's confirm step re-reads the record by id, and spends only
+ * while no run of it is in flight and the downloaded artifact still has the
+ * record's current secret ({@link ManagedHandoffRefusedError} otherwise). A
+ * run in flight is excluded on the run's own lock rather than checked
+ * directly (see {@link ./managedExchangeStore.ts},
+ * `spendManagedExchangeIfCurrent`).
  *
- * The boundaries (read-and-mark, the non-marking read by id, the download, the
- * currency-checked spend) are injected so the intents are testable without
- * a real download or database.
+ * The boundaries (read-and-mark, the non-marking read by id, the run lock, the
+ * download, the currency-checked spend) are injected so the intents are
+ * testable without a real download or database.
  */
 
 import { exchangeLabelFileFragment } from "../parkedResults";
@@ -62,13 +62,10 @@ import type {
   ManagedExchangeRecord,
   RunnableManagedExchangeRecord,
 } from "./managedExchangeRecord";
-import type {
-  ManagedSpendOutcome,
-  ManagedSpentHandoff,
-} from "./managedLocalStateShape";
 import type { HandlePermissionState } from "./managedInputHandle";
 import type { ManagedBackupMarkOutcome } from "./managedExchangeStore";
 import type { ManagedCronExport } from "./managedCronExport";
+import type { ManagedSpendOutcome } from "./managedLocalStateShape";
 import type { OwnRelayRead } from "../transport/ownRelaySetting";
 
 /** The UTC instant of `at` to the second, as `<YYYY-MM-DD>T<HHMMSS>Z`. */
@@ -490,95 +487,60 @@ export async function dispatchManagedMigration(
   };
 }
 
-/** The platform boundaries the command-line export drives: a NON-STAMPING read of
- * the record by id (this export marks no backup marker -- see the module header),
- * a download that takes each composed file's own media type -- the two files land
- * as the YAML and JSON documents the CLI opens, not as one artifact blob -- and a
- * spend that records which hand-off spent the copy, so the durable spent state
- * does not read as a migration's. */
+/** The platform boundaries the command-line export drives: the record's run+rotate
+ * lock, a NON-STAMPING read of the record by id (this export marks no backup
+ * marker -- see the module header) and a download that takes each composed file's
+ * own media type -- the two files land as the YAML and JSON documents the CLI
+ * opens, not as one artifact blob. No store write is among them, so the export
+ * cannot change the stored record. */
 export interface ManagedCronExportDeps {
+  /** Runs `step` under the record's run+rotate lock, refusing when a run holds it,
+   * so the key file never holds a secret a run in flight is about to rotate. */
+  withLock: <T>(id: string, step: () => Promise<T>) => Promise<T>;
   /** Read the current stored record for `id`, or `undefined` when none is stored.
-   * Read at dispatch and never from a caller-held record, so a stale tab composes the
-   * files the store's record has or none at all. */
+   * Read at export time and never from a caller-held record, so a stale tab
+   * composes the files the store's record has or none at all. */
   readRecord: (id: string) => Promise<ManagedExchangeRecord | undefined>;
   /** Trigger a client-side download of one composed file. */
   download: (fileName: string, content: string, mimeType: string) => void;
-  /** The migration's currency-checked spend, recording the hand-off that spent the
-   * copy. */
-  spendIfCurrent: (
-    id: string,
-    expectedSharedSecret: string,
-    spentAt: string,
-    handoff: ManagedSpentHandoff,
-  ) => Promise<ManagedSpendOutcome>;
   /** This browser's relay settings as the panel's own composition read them,
    * so the files downloaded name the TURN urls the panel showed. */
   readOwn: () => OwnRelayRead;
 }
 
-/** A dispatched command-line export awaiting the operator's "the files are saved"
- * confirmation. Both files are already downloaded; the source is spent only when
- * {@link confirm} is called, so a dismissed or failed save leaves it live -- and its
- * backup marker untouched either way. */
-export interface ManagedCronExportDispatch {
-  /** The record the export composed from (the fresh store read). */
-  record: RunnableManagedExchangeRecord;
-  /** What the two downloads held, and the invocation that runs them. */
-  composed: ManagedCronExport;
-  /** Spend the source as of `spentAt` (the operator's confirmation instant), under
-   * the command-line hand-off. Called only after the operator confirms both files
-   * are saved. Rejects with {@link ManagedHandoffRefusedError}, spending nothing,
-   * when a run of the record is in flight, when its secret has moved past the files
-   * this dispatch downloaded, or when the record is no longer stored. */
-  confirm: (spentAt: Date) => Promise<void>;
-}
-
-/** The hand-off a confirmed command-line export records on the spent state, so the
- * durable spent surfaces name the CLI files the exchange runs from rather than a
- * migration artifact this export never wrote. */
-const CRON_EXPORT_HANDOFF: ManagedSpentHandoff = "command-line";
-
 /**
- * Dispatch a COMMAND-LINE export: read the current record by id, compose
- * the CLI's two files from exactly that read, download each under its own
- * name, and return a dispatch whose
- * {@link ManagedCronExportDispatch.confirm} spends the source.
+ * Export the CLI's two files: under the record's run+rotate lock, read the
+ * current record by id, compose them from exactly that read, and download each
+ * under its own name. Returns what the two downloads held.
  *
- * No backup marker is stamped: the two files are not an artifact this app's
- * import accepts, so the exchange's backup state is left exactly as the
- * last artifact export set it, whatever happens to this dispatch.
+ * Nothing is written: no backup marker, since the two files are not the
+ * artifact this app's backup import accepts, and no spend, so the stored
+ * exchange stays runnable here whatever becomes of the files.
  *
  * The composition is partial ({@link composeManagedCronExport} refuses a
  * record this app could not have composed); a refusal throws before any
- * download and leaves the store untouched.
+ * download.
  *
- * The spend is not written here, for the reason
- * {@link dispatchManagedMigration} defers it (single-device ownership;
- * docs/notes/managed-exchange-design.md, "Single-device ownership"), and
- * records the command-line hand-off ({@link ManagedSpentHandoff}) rather than a bare
- * instant, so the durable spent state does not read as a migration's.
- *
+ * @throws {ManagedExchangeLockUnavailableError} if a run of the record holds
+ *   the lock; nothing is read or downloaded.
  * @throws {Error} if no record with `id` exists, or if the record is one
  *   the command-line export refuses ({@link composeManagedCronExport}).
  * @throws {ZodError} if the stored record is invalid.
  */
-export async function dispatchManagedCronExport(
+export async function exportManagedCronFiles(
   id: string,
   deps: ManagedCronExportDeps,
-): Promise<ManagedCronExportDispatch> {
-  const stored = await deps.readRecord(id);
-  if (stored === undefined)
-    throw new Error(`no managed exchange with id ${id}`);
-  const record = runnableManagedExchangeOrRefuse(stored);
-  const composed = composeManagedCronExport(record, deps.readOwn);
-  for (const file of [composed.config, composed.key])
-    deps.download(file.fileName, file.text, file.mimeType);
-  return {
-    record,
-    composed,
-    confirm: (spentAt) =>
-      spendIfArtifactIsCurrent(id, record, spentAt, (secret, at) =>
-        deps.spendIfCurrent(id, secret, at, CRON_EXPORT_HANDOFF),
-      ),
-  };
+): Promise<ManagedCronExport> {
+  return deps.withLock(id, async () => {
+    const stored = await deps.readRecord(id);
+    if (stored === undefined)
+      throw new Error(`no managed exchange with id ${id}`);
+    const composed = composeManagedCronExport(
+      runnableManagedExchangeOrRefuse(stored),
+      deps.readOwn,
+    );
+    for (const file of [composed.config, composed.key])
+      deps.download(file.fileName, file.text, file.mimeType);
+    return composed;
+  });
 }

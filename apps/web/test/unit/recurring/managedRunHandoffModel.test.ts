@@ -20,7 +20,6 @@ import type {
   ManagedHandoffState,
 } from "@recurring/managedRunHandoffModel";
 import type { ManagedMigrationDispatch } from "@psi/managed/managedExchangeExport";
-import type { RunLines } from "@recurring/scheduledRunCommand";
 
 const DISPATCH: ManagedMigrationDispatch = {
   backedUpAt: new Date("2026-10-07T12:00:00Z"),
@@ -40,11 +39,6 @@ const DISPATCH: ManagedMigrationDispatch = {
   confirm: () => Promise.resolve(),
 };
 
-const COMMAND_LINE: RunLines = {
-  kind: "withheld",
-  notice: "Run it on the other machine.",
-};
-
 function fold(
   actions: ReadonlyArray<ManagedHandoffAction>,
   from: ManagedHandoffState = MANAGED_HANDOFF_INITIAL,
@@ -62,7 +56,6 @@ describe("an export", () => {
     expect(MANAGED_HANDOFF_INITIAL).toEqual({
       export: { kind: "idle" },
       migration: { kind: "none" },
-      commandLine: undefined,
     });
   });
 
@@ -187,23 +180,5 @@ describe("what holds a migration", () => {
       expect(managedMigrationStale(refused)).toBe(stale);
       expect(managedRunHoldsMigration(refused, false)).toBe(!stale);
     }
-  });
-});
-
-describe("a command-line hand-off", () => {
-  test("holds the invocation handed over", () => {
-    expect(
-      fold([{ type: "command-line-handed-off", handoff: COMMAND_LINE }])
-        .commandLine,
-    ).toBe(COMMAND_LINE);
-  });
-
-  test("leaves the export and the migration as they were", () => {
-    const handedOff = fold(
-      [{ type: "command-line-handed-off", handoff: COMMAND_LINE }],
-      awaiting,
-    );
-    expect(handedOff.export).toBe(awaiting.export);
-    expect(handedOff.migration).toBe(awaiting.migration);
   });
 });

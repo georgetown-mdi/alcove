@@ -890,17 +890,15 @@ flow](#eviction-recovery-is-the-import-flow)). Results its earlier scheduled
 runs kept in this browser are still collected on its page (see [Where a
 scheduled run's results go](#where-a-scheduled-runs-results-go)).
 
-**A hand-off refuses a copy a run has already superseded.** Confirming either
-hand-off -- the device migration here, or the command-line export below --
-re-reads the stored record first, and refuses unless what was downloaded still
-holds the exchange's current secret. A run rotates that secret at its
+**A hand-off refuses a copy a run has already superseded.** Confirming the
+move re-reads the stored record first, and refuses unless what was downloaded
+still holds the exchange's current secret. A run rotates that secret at its
 handshake, so a run that reaches the partner between the download and the
 attestation supersedes what was downloaded: confirming it would hand the new
 owner a copy whose first run meets a partner that has moved on, and only a
 re-invite recovers the pair. The refusal says so, nothing is spent, and the
-remedy is to download the exchange again -- from where the refusal is shown,
-which is the download button beside the command-line panel's confirmation and
-"Keep it on this device" then "Move to another device" on the migration screen.
+remedy is to download the exchange again, by "Keep it on this device" then "Move
+to another device" on the migration screen.
 An exchange that has gone from this browser entirely -- deleted, or cleared with
 the browser's storage -- refuses the same attestation for a different reason, and
 says that instead: there is nothing here to hand over and nothing here to
@@ -925,15 +923,15 @@ and a fresh secret would replace one nothing moved; the note that did not read
 is what has to become readable, and running the exchange again meets the same
 note until it does.
 
-Ahead of that refusal, both hand-offs -- and the downloads that start them --
+Ahead of that refusal, the move -- and the command-line export's download --
 are withheld while this tab is running the exchange, and while a run in any
 other context holds the [single-writer
 lock](#when-a-run-is-already-in-progress), which is how a second tab's
 run or a scheduled one reaches them. The surface names the run as the reason;
-the hand-offs return when this tab's run ends or, for another context, when that
+both return when this tab's run ends or, for another context, when that
 run ends and releases its lock. If a run starts after the page last checked,
-confirming a hand-off is refused in the same words: confirm again once the run
-is over.
+confirming the move, or the command-line download, is refused in the same
+words: try again once the run is over.
 
 **The file is a credential.** It holds the exchange's shared secret in plain
 text, like the command line's `.alcove.key` (see [Key file
@@ -949,10 +947,9 @@ another channel and send a fresh invitation.
 ### Exporting to the command line
 
 When your organization can run installed software, the exchange's page has a
-collapsed **Run this from the command line instead** panel, beside the backup
-panel. It hands the exchange to `alcove exchange` under the host's own
-scheduler. Like a move to another device, it hands the exchange over: the
-exchange then runs from the command line and not here.
+collapsed **Run this from the command line** panel, beside the backup panel. It
+downloads the files `alcove exchange` runs the exchange from under the host's
+own scheduler.
 
 It downloads **two files rather than one archive**, because the two are handled
 differently once they land:
@@ -977,80 +974,56 @@ agreed schedule, or daily at 2am for an exchange with none ([how the lines
 state the schedule](spec/MANAGED_EXCHANGE_RECORD.md#the-command-line-exports-scheduled-lines)).
 A cron line for an installed `alcove` is shown too.
 
-The spend is **operator-attested**, exactly as a device migration's is: two
-downloads are two chances for a save to fail, and a click gives no landing
-signal, so the browser copy stays live and runnable until the operator confirms
-both files landed. Confirming spends it; declining keeps the exchange here, and
-the operator can export again. No path hands the secret to a scheduler and leaves
-a second live owner behind.
+**The export only writes files.** Downloading them changes nothing here: the
+exchange stays on this page, runnable, with its schedule and backup state as
+they were. The download is withheld while a run of the exchange is in progress,
+since that run is about to change the secret the key file would hold.
 
-On every later visit the browser names that hand-off rather than a migration's:
-the recovery a migration has -- import the artifact back -- has nothing to act on
-here, because the two files are the CLI's own, not the artifact. An older browser
-backup does not stand in for them either. Importing an artifact exported before the
-hand-off is **refused** while the handed-off exchange is still listed here and the
-artifact has the secret it was spent holding: importing it would either run a
-copy this browser gave away or leave that copy live beside the spent one, and one
-owner holds a recurring exchange's secret. The refusal names the exchange and
-what it has instead: it runs on the machine holding those two files from then
-on, and the way back to this browser is the take-back on that exchange's own
-page, below.
-
-Those two conditions bound it, and an import outside them installs an ordinary
-fresh exchange:
-
-- **An artifact older than the last rotation** has a secret no spent record
-  here holds, so nothing matches it.
-- **Removing the handed-off exchange** takes away the record the match is made
-  against -- the operator's own choice, and the same cooperation every
-  single-owner rule here rests on.
-
-Neither leaves two copies running side by side for long. An older artifact
-already has a secret the partnership has moved past, and a copy of the current
-one diverges from the handed-off files the moment either side runs and rotates,
-so the losing copy's next run fails its handshake and is exposed through
-[Desync detection and recovery](#desync-detection-and-recovery), whose recovery
-is a fresh invitation.
+What changes the exchange is running it. Every run, here or from those files,
+replaces the shared secret, and each copy knows only the secret its own last
+run left. So the panel states one thing beside the download: if you run the
+exchange elsewhere, import it again to use it here later. On an exchange with a
+schedule on here, it adds that the schedule here should be turned off: a
+scheduled run here would replace the secret too, and whichever copy runs second
+then fails to connect to the partner ([Desync detection and
+recovery](#desync-detection-and-recovery)). Importing the newer `alcove.yaml`
+and `.alcove.key` ([Bringing a command-line configuration
+back](#bringing-a-command-line-configuration-back)) brings the current secret
+back here.
 
 Two things do not travel with the files:
 
 - **The schedule.** The agreed run window is a browser-record field the CLI does
-  not read, so the cron entry or scheduled task is the schedule from then on --
-  set to the window the partner expects.
-- **The accounting of disclosures**, as with a device migration: export it as CSV
-  before confirming if it is needed.
+  not read, so the cron entry or scheduled task is the schedule there -- set to
+  the window the partner expects.
+- **The accounting of disclosures**, which stays in this browser, recording the
+  runs made here.
 
 The STUN disclosure moves rather than begins. A managed connection names no STUN
 server -- it is a credential-free rendezvous locator by composition -- so a
 managed run already falls back to a built-in STUN default to discover its own
 public address, in this browser as on the command line, disclosing that address
-and the fact of a session to that server (no exchange content). What the hand-off
-changes is **whose** address is disclosed -- the scheduling machine's rather than
-this browser's -- and that the CLI names it in a warning on every run. Naming a
-`stun` server in the exported `alcove.yaml` is what replaces the default.
+and the fact of a session to that server (no exchange content). What a
+command-line run changes is **whose** address is disclosed -- the scheduling
+machine's rather than this browser's -- and that the CLI names it in a warning
+on every run. Naming a `stun` server in the exported `alcove.yaml` is what
+replaces the default.
 
-The two files have the current secret, but they are a backup for the command line,
-not for this browser: reconstituting a browser copy after an eviction is the artifact
-import ([Eviction recovery is the import
-flow](#eviction-recovery-is-the-import-flow)), which these two files are not. The
-pair can be imported back ([Bringing a command-line configuration
-back](#bringing-a-command-line-configuration-back)), but it is the command line's
-working copy: every run there rewrites `.alcove.key` with the secret it rotated
-to. So -- unlike the backup and migration exports -- taking this one **marks nothing**: the
-exchange's backup state is exactly what it was before, whether the operator confirms
-the hand-off or declines it. A backup indicator reading green is a promise that a file
-this browser restores from exists, and these files are not that file. The panel says
-so where it offers them, so the two kinds of export are told apart before either is
-downloaded. An operator who declines the hand-off and keeps running here still needs
-an ordinary backup; one who confirms it has handed the exchange over, and the two
-files are the only copy of this exchange that can run from then on.
+The two files have the current secret, but they are the command line's working
+copy, not a backup for this browser: every run there rewrites `.alcove.key`
+with the secret it rotated to. So -- unlike the backup and migration exports --
+taking this one **marks nothing**: the exchange's backup state is exactly what
+it was before. A backup indicator reading green is a promise that a file this
+browser restores from exists, and these files are not that file. The panel says
+so where it offers them, so the two kinds of export are told apart before
+either is downloaded.
 
 ### Taking it back from the command line
 
-An exchange handed to the command line can be brought back. The scheduled job was
-abandoned, the machine is going away, or the operator simply wants to run it here
-again: the handed-off exchange's own page offers **Take this exchange back**, and
-it is the only way back -- an old backup file is refused, for the reasons above.
+An exchange handed to the command line by an earlier version can be brought back.
+The scheduled job was abandoned, the machine is going away, or the operator simply
+wants to run it here again: the handed-off exchange's own page offers **Take this
+exchange back**, and it is the only way back -- an old backup file is refused.
 
 Taking it back is one deliberate step with a confirmation, not a quiet reversal,
 because two things have to be true and only the operator knows them:
@@ -1958,7 +1931,7 @@ surfaces](notes/managed-exchange-design.md#moment-anchored-backup-surfaces).
   exchange shows a quiet, green "backed up as of <date>", naming where that
   backup went -- downloaded as its file name, or written to the working folder
   under it -- and nothing else. The export that counts is the artifact one, which this browser
-  imports back: the command-line hand-off's two files are not it, and taking them
+  imports back: the command-line export's two files are not it, and taking them
   leaves this state exactly where it stands (see [Exporting to the command
   line](#exporting-to-the-command-line)).
 - **Backup needed.** No current export exists: none was ever taken, or the

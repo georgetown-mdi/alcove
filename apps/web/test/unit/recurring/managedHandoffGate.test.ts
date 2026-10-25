@@ -5,48 +5,36 @@ import {
   RECORD_GONE_HANDOFF_REASON,
   RECORD_GONE_HANDOFF_TITLE,
   RUN_IN_FLIGHT_HANDOFF_REASON,
+  SUPERSEDED_HANDOFF_REASON,
   SUPERSEDED_HANDOFF_TITLE,
   custodyUnreadableImportReason,
   handedOffImportReason,
-  supersededHandoffReason,
 } from "@recurring/managedHandoffGate";
 
-// The refusals the managed hand-offs show. What happened is one explanation at
-// both hand-offs; what to DO about it is only useful if it names something the
-// operator can reach from the screen showing it, which is what these pin -- a
-// refusal that instructs a download the screen cannot perform leaves the operator
-// to find the route themselves.
+// The refusals the device migration shows. What to DO about one is only useful if
+// it names something the operator can reach from the screen showing it, which is
+// what these pin -- a refusal that instructs a download the screen cannot perform
+// leaves the operator to find the route themselves.
 
 describe("the superseded refusal", () => {
-  test("says the same thing happened at both hand-offs", () => {
-    const explanation = "This exchange's secret has changed since you";
-    expect(supersededHandoffReason("command-line")).toContain(explanation);
-    expect(supersededHandoffReason("migration")).toContain(explanation);
-    for (const handoff of ["command-line", "migration"] as const)
-      expect(supersededHandoffReason(handoff)).toContain(
-        "Nothing was handed over.",
-      );
-  });
-
-  test("sends the command-line operator to the download beside the confirmation", () => {
-    // The panel renders its download button and its confirmation together, so
-    // "download again" is a control the operator can see from where they are.
-    expect(supersededHandoffReason("command-line")).toMatch(
-      /Download the two files again/,
+  test("says what happened and that nothing was handed over", () => {
+    expect(SUPERSEDED_HANDOFF_REASON).toContain(
+      "This exchange's secret has changed since you",
     );
+    expect(SUPERSEDED_HANDOFF_REASON).toContain("Nothing was handed over.");
   });
 
   test("sends the migration operator through the screen they are actually on", () => {
     // The migration confirmation is a full screen that replaces the one holding
     // "Move to another device", so the download control is not reachable from it:
     // the way to a fresh copy is out of this screen first.
-    const reason = supersededHandoffReason("migration");
+    const reason = SUPERSEDED_HANDOFF_REASON;
     expect(reason).toContain('"Keep it on this device"');
     expect(reason).toContain("move it again");
     expect(reason).not.toMatch(/Download this exchange again/i);
   });
 
-  test("its heading names the state, which both hand-offs share", () => {
+  test("its heading names the state rather than the remedy", () => {
     expect(SUPERSEDED_HANDOFF_TITLE).not.toMatch(/download/i);
   });
 });
@@ -63,12 +51,7 @@ describe("the record-gone refusal", () => {
   });
 
   test("is not the superseded refusal in other words", () => {
-    expect(RECORD_GONE_HANDOFF_REASON).not.toBe(
-      supersededHandoffReason("migration"),
-    );
-    expect(RECORD_GONE_HANDOFF_REASON).not.toBe(
-      supersededHandoffReason("command-line"),
-    );
+    expect(RECORD_GONE_HANDOFF_REASON).not.toBe(SUPERSEDED_HANDOFF_REASON);
   });
 });
 

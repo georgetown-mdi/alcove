@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Alert, Anchor, Button } from "@mantine/core";
 
@@ -6,13 +6,11 @@ import { DisclosureSection } from "@components/DisclosureSection";
 import { triggerBlobDownload } from "@components/blobDownload";
 
 import {
-  ManagedHandoffRefusedError,
-  dispatchManagedCronExport,
-} from "@psi/managed/managedExchangeExport";
-import {
-  getManagedExchange,
-  spendManagedExchangeIfCurrent,
-} from "@psi/managed/managedExchangeStore";
+  ManagedExchangeLockUnavailableError,
+  withManagedExchangeLock,
+} from "@psi/managed/managedExchangeLock";
+import { exportManagedCronFiles } from "@psi/managed/managedExchangeExport";
+import { getManagedExchange } from "@psi/managed/managedExchangeStore";
 import { readOwnRelaySetting } from "@psi/transport/ownRelaySetting";
 
 import { CopyableCode } from "@components/CopyableCode";
@@ -20,25 +18,13 @@ import styles from "@styles/app.module.css";
 
 import {
   CLI_BUILT_IN_STUN_URI,
-  exportRun,
+  RUN_IN_FLIGHT_EXPORT_REASON,
+  commandLineExportNotice,
   invitationRegistrarExportLine,
   managedCronExportPanelState,
 } from "./managedCronExportModel";
-import {
-  RECORD_GONE_HANDOFF_REASON,
-  RECORD_GONE_HANDOFF_TITLE,
-  RUN_IN_FLIGHT_HANDOFF_REASON,
-  RUN_IN_FLIGHT_HANDOFF_TITLE,
-  SUPERSEDED_HANDOFF_TITLE,
-  supersededHandoffReason,
-} from "./managedHandoffGate";
 import { ScheduledRunLinesView } from "./ScheduledRunLinesView";
 
-import type {
-  ManagedCronExportDispatch,
-  ManagedHandoffRefusal,
-} from "@psi/managed/managedExchangeExport";
-import type { RunLines } from "./scheduledRunCommand";
 import type { RunnableManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 import type { ShownScheduledRunLines } from "./managedCronExportModel";
 
@@ -46,64 +32,36 @@ import type { ShownScheduledRunLines } from "./managedCronExportModel";
 const KEY_FILE_SECURITY_DOC_URL =
   "https://github.com/georgetown-mdi/alcove/blob/main/docs/SECURITY_DESIGN.md#key-file-security";
 
-/** The platform call sites the export drives: a read of the record by id (never
- * this component's mounted record, whose secret a concurrent rotation may already
- * have superseded) that stamps no backup marker, the blob download, and the atomic
- * spend the confirmation measures the operator's attestation against. */
-const cronExportDeps = {
-  readRecord: getManagedExchange,
-  download: triggerBlobDownload,
-  spendIfCurrent: spendManagedExchangeIfCurrent,
-};
-
 /**
  * The command-line export panel on a managed exchange's detail surface, beside the
- * backup panel and collapsed until the operator opens it: the graduation path from
- * a browser-run recurring exchange to `alcove exchange` under the host's own
+ * backup panel and collapsed until the operator opens it: the files that run a
+ * browser-run recurring exchange under `alcove exchange` and the host's own
  * scheduler (docs/MANAGED_EXCHANGE.md, "Exporting to the command line").
  *
  * Downloads `alcove.yaml` (no secret) and `.alcove.key` (a plaintext credential)
- * as two separate files rather than one archive, and marks no backup marker --
- * neither file is a backup this browser restores from; taking it, confirming the
- * hand-off, or dismissing it leaves the backup panel's state unchanged.
- *
- * The spend is operator-attested: this browser's copy stays live and runnable
- * until the operator confirms both files landed. The spend then re-reads the
- * record and refuses via {@link ManagedHandoffRefusedError} if a run has rotated
- * the files past or holds the run+rotate lock; the panel's poll of that lock only
- * withholds the button early -- the refusal at spend time is what enforces it.
+ * as two separate files rather than one archive, and writes nothing: the stored
+ * exchange stays runnable here, and its backup marker is left as it was.
  */
 export function ManagedCronExportPanel({
   record,
   runInFlight,
-  recheckRunInFlight,
-  onHandedOff,
 }: {
   record: RunnableManagedExchangeRecord;
   /** Whether a run of this exchange is in flight in any context this browser profile
-   * can see -- the host's own run, a second tab's, or the scheduled runtime's. Both
-   * the download and the hand-off confirmation are withheld while it is, for the
-   * reason they state ({@link RUN_IN_FLIGHT_HANDOFF_REASON}). */
+   * can see -- the host's own run, a second tab's, or the scheduled runtime's. The
+   * download is withheld while it is ({@link RUN_IN_FLIGHT_EXPORT_REASON}). */
   runInFlight: boolean;
-  /** Re-read the run signal now, resolving what it read. The confirmation takes it
-   * at the click, since {@link runInFlight} is a poll's last reading. */
-  recheckRunInFlight: () => Promise<boolean>;
-  /** The operator attested the files landed and the source is spent, so the host
-   * takes down the run affordances. Passes the command to run instead, or why
-   * none is shown. */
-  onHandedOff: (run: RunLines) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
-  // A dispatched export whose two downloads fired but whose spend awaits the
-  // operator attesting both files are saved; dismissing it leaves the source live.
-  const [dispatch, setDispatch] = useState<ManagedCronExportDispatch>();
-  // The confirmation the store refused, and which refusal it was: a run held the
-  // run+rotate lock at the click, a run rotated past the files this panel
-  // downloaded, or the record is gone from this browser entirely. Its own state,
-  // not `failed`, because none of the three is an error tier.
-  const [refusal, setRefusal] = useState<ManagedHandoffRefusal>();
+  // The export's own lock refused a run the poll had not yet read. Shown as the
+  // run-in-progress state until the poll's reading moves or the next click.
+  const [lockRefused, setLockRefused] = useState(false);
+  useEffect(() => {
+    setLockRefused(false);
+  }, [runInFlight]);
+  const runWithholds = runInFlight || lockRefused;
   // One read of the relay settings serves the panel and the download, so the
   // files name the TURN urls the panel composed with.
   const { ownRelay, state } = useMemo(() => {
@@ -118,62 +76,31 @@ export function ManagedCronExportPanel({
       ? invitationRegistrarExportLine(state.composed.connection)
       : undefined;
 
-  // A run holds the hand-off back: the polled reading, or the spend's own refusal
-  // at a click the poll's last reading was too old to hold back.
-  const runHoldsHandoff = runInFlight || refusal === "run-in-flight";
-  // The refusals no retry can clear -- the files on disk are out of date, or the
-  // record they came from is gone -- as against the run one, which ends with the
-  // run.
-  const staleHandoff = refusal !== undefined && refusal !== "run-in-flight";
-
-  // Downloading mid-run only manufactures files the confirmation will refuse: the
-  // run rotates past them before the operator can attest to them.
+  // Downloading mid-run only produces files the run is about to make out of date.
   function downloadFiles() {
     if (busy || runInFlight) return;
     setBusy(true);
     setFailed(false);
-    setRefusal(undefined);
-    void dispatchManagedCronExport(record.id, {
-      ...cronExportDeps,
+    setLockRefused(false);
+    void exportManagedCronFiles(record.id, {
+      withLock: (id, step) =>
+        withManagedExchangeLock(id, step, { ifAvailable: true }),
+      readRecord: getManagedExchange,
+      download: triggerBlobDownload,
       readOwn: () => ownRelay,
     })
-      .then(setDispatch)
-      .catch(() => setFailed(true))
-      .finally(() => setBusy(false));
-  }
-
-  // The spend itself refuses a run in flight and files the record has rotated past,
-  // so this classifies those refusals rather than guarding against them.
-  function confirmHandoff() {
-    if (dispatch === undefined || busy || runInFlight || staleHandoff) return;
-    const { composed } = dispatch;
-    setBusy(true);
-    setFailed(false);
-    setRefusal(undefined);
-    void (async () => {
-      try {
-        // The gate above renders from a poll, so a run started since the last
-        // reading is still news here; re-reading also puts the reason on screen.
-        // A run this reading still misses is refused by the spend itself, which
-        // takes the run's own lock.
-        if (await recheckRunInFlight()) return;
-        await dispatch.confirm(new Date());
-        setDispatch(undefined);
-        onHandedOff(exportRun(composed));
-      } catch (error) {
-        if (error instanceof ManagedHandoffRefusedError)
-          setRefusal(error.refusal);
+      .catch((error: unknown) => {
+        if (error instanceof ManagedExchangeLockUnavailableError)
+          setLockRefused(true);
         else setFailed(true);
-      } finally {
-        setBusy(false);
-      }
-    })();
+      })
+      .finally(() => setBusy(false));
   }
 
   return (
     <div className={styles.callout}>
       <DisclosureSection
-        label="Run this from the command line instead"
+        label="Run this from the command line"
         summary={
           state.kind === "refused"
             ? "Not available for this exchange"
@@ -186,7 +113,7 @@ export function ManagedCronExportPanel({
         {state.kind === "refused" ? (
           <>
             <p className={styles.small}>
-              This exchange cannot be handed to the command line, so there is
+              This exchange cannot run from the command line, so there is
               nothing to download here.
             </p>
             <p className={styles.small} style={{ whiteSpace: "pre-line" }}>
@@ -196,21 +123,14 @@ export function ManagedCronExportPanel({
         ) : (
           <>
             <p className={styles.small}>
-              This exchange runs in this browser. To run it on a schedule from
-              the command line instead, download the two files{" "}
-              <span className={styles.mono}>alcove exchange</span> opens, put
-              them in a folder on the machine that will run the schedule, and
-              schedule the command there. After you hand it over, this exchange
-              no longer runs in this browser.
+              To run this exchange on a schedule from the command line, download
+              the two files <span className={styles.mono}>alcove exchange</span>{" "}
+              opens, put them in a folder on the machine that will run the
+              schedule, and schedule the command there. Downloading them does
+              not change the backup state above.
             </p>
-            <p className={styles.small}>
-              These two files are for the command line, and this browser cannot
-              restore the exchange from them. Importing the alcove.yaml here
-              brings back its settings without the secret, and downloading the
-              files does not change the backup state above. To keep a file that
-              brings this exchange back to this browser, download a backup above
-              and keep the exchange here. After you hand it over, a backup taken
-              before the hand-off cannot bring it back.
+            <p className={styles.calloutLead}>
+              {commandLineExportNotice(state.fromAgreedSchedule)}
             </p>
             <ol className={styles.handoffSteps}>
               <li>
@@ -246,7 +166,7 @@ export function ManagedCronExportPanel({
                   </Anchor>
                   .
                 </p>
-                {failed && dispatch === undefined && (
+                {failed && (
                   <Alert
                     role="alert"
                     color="red"
@@ -255,7 +175,7 @@ export function ManagedCronExportPanel({
                   >
                     This export did not finish, so one or both files may be
                     missing. Check your browser&apos;s downloads and download
-                    again; nothing is handed off until you confirm it.
+                    again.
                   </Alert>
                 )}
                 <Button
@@ -267,8 +187,8 @@ export function ManagedCronExportPanel({
                   Download {state.composed.config.fileName} and{" "}
                   {state.composed.key.fileName}
                 </Button>
-                {runInFlight && dispatch === undefined && (
-                  <p className={styles.small}>{RUN_IN_FLIGHT_HANDOFF_REASON}</p>
+                {runWithholds && (
+                  <p className={styles.small}>{RUN_IN_FLIGHT_EXPORT_REASON}</p>
                 )}
               </li>
               {state.lines.kind === "withheld" ? (
@@ -312,86 +232,7 @@ export function ManagedCronExportPanel({
                     "scheduled task sets the schedule, so set it to the " +
                     "window your partner expects."}
               </li>
-              <li>
-                Once you confirm the hand-off, these two files are the only copy
-                of this exchange that can run. This browser&apos;s copy stops
-                working. Each scheduled run replaces the shared secret, so a
-                browser backup you took earlier stops working after the next
-                run.
-              </li>
             </ul>
-            {dispatch !== undefined && (
-              <>
-                <p className={styles.calloutLead}>Confirm the hand-off.</p>
-                <p className={styles.small}>
-                  Both files were downloaded. Check that both are saved before
-                  you confirm. Once you confirm, this exchange no longer runs
-                  here. If only one arrived, or a save was cancelled, keep it
-                  here and download again.
-                </p>
-                <p className={styles.small}>
-                  These files do not include this exchange&apos;s accounting of
-                  disclosures, which stays in this browser. If you need to keep
-                  it, export it as CSV below before you confirm.
-                </p>
-                {failed && (
-                  <Alert
-                    role="alert"
-                    color="red"
-                    title="Could not hand off this exchange"
-                    mb="sm"
-                  >
-                    This browser&apos;s copy could not be handed off. It is
-                    still live here; try again.
-                  </Alert>
-                )}
-                {runHoldsHandoff && (
-                  <Alert
-                    color="yellow"
-                    title={RUN_IN_FLIGHT_HANDOFF_TITLE}
-                    mb="sm"
-                  >
-                    {RUN_IN_FLIGHT_HANDOFF_REASON}
-                  </Alert>
-                )}
-                {staleHandoff && (
-                  <Alert
-                    color="yellow"
-                    title={
-                      refusal === "record-gone"
-                        ? RECORD_GONE_HANDOFF_TITLE
-                        : SUPERSEDED_HANDOFF_TITLE
-                    }
-                    mb="sm"
-                  >
-                    {refusal === "record-gone"
-                      ? RECORD_GONE_HANDOFF_REASON
-                      : supersededHandoffReason("command-line")}
-                  </Alert>
-                )}
-                <p>
-                  <Button
-                    onClick={confirmHandoff}
-                    loading={busy}
-                    disabled={runInFlight || staleHandoff}
-                  >
-                    I saved both files; hand off this exchange
-                  </Button>{" "}
-                  <Button
-                    variant="subtle"
-                    disabled={busy}
-                    onClick={() => {
-                      setDispatch(undefined);
-                      setRefusal(undefined);
-                    }}
-                  >
-                    {refusal === "record-gone"
-                      ? "Close"
-                      : "Keep it in this browser"}
-                  </Button>
-                </p>
-              </>
-            )}
           </>
         )}
       </DisclosureSection>
