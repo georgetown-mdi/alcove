@@ -40,7 +40,9 @@
 #   WebSocket relay
 #                 where relay.env names one: two sockets through the front, at
 #                 the relay's name, pair under a key registered for this run,
-#                 and one message and the close cross from one to the other.
+#                 and one message and the close cross from one to the other;
+#                 then the front upgrades 8 sockets from this host's address
+#                 and one from 127.0.0.1, and closes a ninth from the first.
 #                 Skipped, and said so, where the host names none
 #
 # internal-peer is the one that cannot be inferred from allocation: a relay that
@@ -549,6 +551,25 @@ else
     *) report unclear "could not ask the WebSocket relay through the front" \
          "$WS_DETAIL; is alcove-relay-websocket.service running? journalctl -u alcove-relay-websocket.service" ;;
   esac
+  # The front holds 8 WebSocket relay sockets from each client address. This
+  # host reaches it from two: the address it connects to CONNECT from, and
+  # 127.0.0.1. Asked only once two sockets have paired, since a socket the
+  # front admits must reach the relay to be answered.
+  if [ "$WS_STATUS" != 0 ]; then
+    report unclear "the front's bound on WebSocket relay sockets for each client address was not probed, since the relay did not pair two sockets"
+  else
+    LIMIT_OUT="$(bounded 60 python3 -B "$HERE/websocket-address-limit.py" "$CONNECT" 443 "$WEBSOCKET_NAME" 127.0.0.1 2>&1)"
+    LIMIT_STATUS=$?
+    LIMIT_DETAIL="$(printf '%s' "$LIMIT_OUT" | tr '\n' ' ' | cut -c1-200)"
+    case "$LIMIT_STATUS" in
+      0) report pass "the front admitted 8 WebSocket relay sockets from one client address and one from another, and closed a ninth from the first" "$LIMIT_DETAIL" ;;
+      6) report fail "the front closed a WebSocket relay socket it should have admitted" \
+           "$LIMIT_DETAIL; a socket from the second address closed means the front counts every client as one address" ;;
+      7) report fail "the front did not close a ninth WebSocket relay socket from one client address" "$LIMIT_DETAIL" ;;
+      4|5) report fail "the front's WebSocket relay server did not upgrade the per-address probe's sockets" "$LIMIT_DETAIL" ;;
+      *) report unclear "could not ask the front's bound on WebSocket relay sockets for each client address" "$LIMIT_DETAIL" ;;
+    esac
+  fi
 fi
 
 printf '\n%s pass, %s fail, %s unclear\n' "$PASS" "$FAIL" "$UNCLEAR"

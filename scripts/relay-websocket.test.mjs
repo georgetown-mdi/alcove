@@ -26,6 +26,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(here, "..");
 const RELAY = join(ROOT, "infra/relay");
 const PROBE = join(RELAY, "websocket-pair.py");
+const LIMIT_PROBE = join(RELAY, "websocket-address-limit.py");
 const BASH = existsSync("/bin/bash") ? "/bin/bash" : "bash";
 const NAME = "wsrelay.example";
 const REALM = "turn.example";
@@ -177,6 +178,66 @@ const startTlsServer = async (onSecure) => {
   return server.address().port;
 };
 
+/**
+ * A TLS server on every loopback address standing in for the front's
+ * WebSocket relay server and its bound for each client address: a connection
+ * past `limit` under the key `keyOf` gives its address is closed before its
+ * TLS handshake, and every other is passed to the relay.
+ */
+const startBoundedServer = async (keyOf, limit) => {
+  const held = new Map();
+  const server = tls.createServer(
+    {
+      key: readFileSync(join(dir, "privkey.pem")),
+      cert: readFileSync(join(dir, "fullchain.pem")),
+    },
+    (socket) => {
+      const upstream = net.connect(relayPort, "127.0.0.1");
+      socket.on("error", () => upstream.destroy());
+      upstream.on("error", () => socket.destroy());
+      socket.pipe(upstream).pipe(socket);
+    },
+  );
+  server.on("connection", (socket) => {
+    const key = keyOf(socket.remoteAddress);
+    const count = held.get(key) ?? 0;
+    if (count >= limit) {
+      socket.destroy();
+      return;
+    }
+    held.set(key, count + 1);
+    socket.on("close", () => held.set(key, held.get(key) - 1));
+  });
+  server.on("tlsClientError", () => {});
+  servers.push(server);
+  await new Promise((done) => server.listen(0, "::", done));
+  return server.address().port;
+};
+
+/** Runs websocket-address-limit.py from `host` and `otherHost`. */
+const limitProbe = (port, host, otherHost) =>
+  new Promise((done) => {
+    const child = spawn(
+      "python3",
+      [
+        "-B",
+        LIMIT_PROBE,
+        host,
+        String(port),
+        NAME,
+        otherHost,
+        "--cafile",
+        join(dir, "fullchain.pem"),
+      ],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    );
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (data) => (stdout += data));
+    child.stderr.on("data", (data) => (stderr += data));
+    child.on("close", (status) => done({ status, stdout, stderr }));
+  });
+
 /** Runs the probe without blocking the servers' event loop. */
 const probe = (port, { id = EXCHANGE_ID, key = KEY, name = NAME } = {}) =>
   new Promise((done) => {
@@ -308,6 +369,69 @@ describe("websocket-pair.py against the relay", { timeout: 60000 }, () => {
     expect(wait + probe + 1).toBeLessThan((share - killAfter) / 2);
   });
 });
+
+// The probe's two addresses here are 127.0.0.1 and ::1; on the host,
+// verify.sh's are the host's own address and 127.0.0.1.
+describe(
+  "websocket-address-limit.py against the relay",
+  { timeout: 60000 },
+  () => {
+    it("passes when 8 sockets from one address and one from another are upgraded and a ninth from the first is closed", async () => {
+      const port = await startBoundedServer((address) => address, 8);
+      const result = await limitProbe(port, "127.0.0.1", "::1");
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toBe(
+        `the front upgraded 8 sockets from 127.0.0.1 and one from ::1 at wss://${NAME}/relay, and closed a ninth from 127.0.0.1 unanswered\n`,
+      );
+    });
+
+    it("exits 6 when a front counting every client as one address closes the socket from the other", async () => {
+      const port = await startBoundedServer(() => "one address", 8);
+      const result = await limitProbe(port, "127.0.0.1", "::1");
+      expect(result.status).toBe(6);
+      expect(result.stderr).toBe(
+        "the front closed the socket from ::1 while 127.0.0.1 held 8 unanswered\n",
+      );
+    });
+
+    it("exits 7 when the ninth socket from one address is upgraded", async () => {
+      const port = await startBoundedServer((address) => address, 9);
+      const result = await limitProbe(port, "127.0.0.1", "::1");
+      expect(result.status).toBe(7);
+      expect(result.stderr).toBe(
+        "the ninth socket from 127.0.0.1 was answered 'HTTP/1.1 101 Switching Protocols' rather than closed\n",
+      );
+    });
+
+    it("exits 6 when the front closes a socket below the bound", async () => {
+      const port = await startBoundedServer((address) => address, 3);
+      const result = await limitProbe(port, "127.0.0.1", "::1");
+      expect(result.status).toBe(6);
+      expect(result.stderr).toBe(
+        "the front closed socket 4 of 8 from 127.0.0.1 unanswered\n",
+      );
+    });
+
+    it("exits 8 when both hosts are reached from the same local address", async () => {
+      const port = await startBoundedServer((address) => address, 8);
+      const result = await limitProbe(port, "127.0.0.1", "127.0.0.1");
+      expect(result.status).toBe(8);
+      expect(result.stderr).toBe(
+        "127.0.0.1 and 127.0.0.1 were both reached from 127.0.0.1, so the probe cannot tell two client addresses apart\n",
+      );
+    });
+
+    it("exits 2 when nothing listens, and 64 on a usage error", async () => {
+      const port = await startBoundedServer((address) => address, 8);
+      await new Promise((done) => servers.pop().close(done));
+      const result = await limitProbe(port, "127.0.0.1", "::1");
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain("could not connect to 127.0.0.1");
+      const usage = await limitProbe("x", "127.0.0.1", "::1");
+      expect(usage.status).toBe(64);
+    });
+  },
+);
 
 describe("alcove-relay-websocket.service", () => {
   const unit = read("alcove-relay-websocket.service");
@@ -455,8 +579,10 @@ describe("alcove-relay-websocket.service", () => {
     );
   });
 
-  it("installs the probe verify.sh runs", () => {
-    expect(install).toContain('"$HERE/websocket-pair.py"');
-    expect(read("verify.sh")).toContain('"$HERE/websocket-pair.py"');
+  it("installs the probes verify.sh runs", () => {
+    for (const probe of ["websocket-pair.py", "websocket-address-limit.py"]) {
+      expect(install).toContain(`"$HERE/${probe}"`);
+      expect(read("verify.sh")).toContain(`"$HERE/${probe}"`);
+    }
   });
 });
