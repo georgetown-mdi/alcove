@@ -141,7 +141,7 @@ def probe(host, port, server_name, other_host, cafile):
             expect_upgraded(label, status_line)
 
         label = "the ninth socket from %s" % host
-        _, status_line = open_socket(host, port, server_name, context, label, held)
+        ninth_local, status_line = open_socket(host, port, server_name, context, label, held)
         if status_line is not None:
             raise ProbeError(7, "%s was answered %r rather than closed" % (label, status_line))
 
@@ -158,7 +158,7 @@ def probe(host, port, server_name, other_host, cafile):
         # <address> unanswered" to find the front's refusal line naming it.
         print(
             "the front upgraded %d sockets from %s and one from %s at wss://%s%s, and closed a ninth from %s unanswered"
-            % (SOCKETS_PER_ADDRESS, local, other_local, server_name, RELAY_PATH, local),
+            % (SOCKETS_PER_ADDRESS, local, other_local, server_name, RELAY_PATH, ninth_local),
             flush=True,
         )
         return 0

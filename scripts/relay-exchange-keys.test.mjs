@@ -4182,19 +4182,32 @@ describe.skipIf(runningAsRoot)(
       ]);
     });
 
+    it("passes on a refusal line from another address, naming it and the probe's own", () => {
+      const { result, journalRuns } = verifyWithLimitProbe(PROBE_PASSED, 0, {
+        journal: refusalLine("198.51.100.9"),
+      });
+      expect(result.stdout).toContain(
+        "PASS     the front logged its refusal of the ninth WebSocket relay socket, naming 198.51.100.9",
+      );
+      expect(result.stdout).toContain(
+        "the probe's own address was 10.0.0.5; the front counts the address its PROXY header names",
+      );
+      expect(journalRuns).toHaveLength(1);
+    });
+
     // One run, since each spends verify.sh's 10 s of journal reads.
-    it("fails when the front's journal holds a reset line, or a refusal line for another address or zone, but not the probe's refusal", () => {
+    it("fails when the front's journal holds a reset line, or a refusal line for another zone or with no client, but no refusal for the WebSocket zone", () => {
       const journal = [
         "recv() failed (104: Connection reset by peer), client: 10.0.0.5, server: 0.0.0.0:443",
-        refusalLine("10.0.0.50"),
         refusalLine("10.0.0.5").replace("alcove_websocket_relay", "other"),
+        refusalLine(""),
       ].join("\n");
       const { result, journalRuns } = verifyWithLimitProbe(PROBE_PASSED, 0, {
         journal,
       });
       expect(result.status).toBe(1);
       expect(result.stdout).toContain(
-        "FAIL     the front closed the ninth WebSocket relay socket from 10.0.0.5 but logged no refusal naming it",
+        "FAIL     the front closed the ninth WebSocket relay socket from 10.0.0.5 but logged no refusal",
       );
       expect(journalRuns).toHaveLength(10);
     });
@@ -4210,13 +4223,13 @@ describe.skipIf(runningAsRoot)(
       );
     });
 
-    it("is unclear when the probe's line names no refused address", () => {
+    it("passes on the journal's refusal line when the probe's line names no address of its own", () => {
       const { result, journalRuns } = verifyWithLimitProbe("upgraded", 0);
-      expect(result.status).toBe(1);
       expect(result.stdout).toContain(
-        "UNCLEAR  could not read which address the per-address probe's ninth socket came from",
+        "PASS     the front logged its refusal of the ninth WebSocket relay socket, naming 10.0.0.5",
       );
-      expect(journalRuns).toEqual([]);
+      expect(result.stdout).not.toContain("the probe's own address");
+      expect(journalRuns).toHaveLength(1);
     });
 
     it.each([
