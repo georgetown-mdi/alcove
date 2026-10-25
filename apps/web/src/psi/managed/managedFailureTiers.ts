@@ -40,17 +40,16 @@ import type { ManagedLocalState } from "./managedLocalStateShape";
  * - `"partner-protocol-refusal"` -- this party refused what the partner sent
  *   as not following the exchange protocol (the two parties compare their
  *   versions of Alcove).
- * - `"handed-off"` -- an export handed this copy off (none here).
  * - `"missed"` -- the partner never arrived within the wait (the next window, or
  *   run again once the partner is ready).
- * - `"custody-unreadable"` -- the hand-off entry or the stored record could not be
+ * - `"custody-unreadable"` -- the stored record could not be
  *   read, before anything rotated (none here).
  * - `"storage"` -- a rotation could not be persisted and may have desynced the
  *   parties (re-invite).
  * - `"partial-rotation"` -- a rotation never saved and a later run met no partner,
  *   who probably saved a secret this device lacks (re-invite). Read only beside
  *   that no-show, so it cannot stand in for an unexplained handshake failure.
- * - `"imported"` -- a restore, import, or take-back since the last success
+ * - `"imported"` -- an import since the last success
  *   (re-invite).
  * - `"transport"` -- a connection drop that is not a failed-closed handshake, or a
  *   cancelled run (retry).
@@ -68,7 +67,6 @@ export type ManagedFailureTier =
   | "partner-refused-set"
   | "partner-refused-terms"
   | "partner-protocol-refusal"
-  | "handed-off"
   | "custody-unreadable"
   | "missed"
   | "storage"
@@ -79,7 +77,7 @@ export type ManagedFailureTier =
   | "none";
 
 /**
- * Whether a record's secret came from a restore or a take-back and has not
+ * Whether a record's secret came from an import and has not
  * succeeded since: the `imported` marker is cleared by the first rotation after
  * one, so its presence alone is the evidence.
  */
@@ -212,7 +210,6 @@ function recordedFailureTier(
     return "partner-refused-terms";
   if (lastRun.failureKind === "partner-protocol-refusal")
     return "partner-protocol-refusal";
-  if (lastRun.failureKind === "handed-off") return "handed-off";
   if (lastRun.failureKind === "custody-unreadable") return "custody-unreadable";
   if (lastRun.failureKind === "storage") return "storage";
 

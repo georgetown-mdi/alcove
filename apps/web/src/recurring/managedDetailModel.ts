@@ -328,7 +328,6 @@ const FAILURE_KIND_LABELS: Record<
   "custody-unreadable": "part of this exchange's stored copy could not be read",
   input: "your input file could not be used",
   "terms-shortfall": "your input file does not cover every agreed key",
-  "handed-off": "this exchange had been handed off",
   "partner-set-too-large": "your partner's set is too large for this browser",
   "partner-refused-set": "your partner's run refused to send its set",
   "partner-refused-terms": "your partner's run refused your linkage terms",
@@ -382,8 +381,8 @@ const OUTCOME_UNCERTAIN = `The run did not complete. ${DELIVERY_NOT_RECORDED}; c
  * began. The run lifecycle is: input guard, authenticated handshake, durable
  * rotation persist, then the data exchange (first peer-visible payload; see
  * {@link ../psi/managedExchangeRun.ts}). A `failureKind` that fires at or before
- * the persist precedes any data leaving this party: `"handed-off"` and
- * `"custody-unreadable"` (the run+rotate lock's first act, before any
+ * the persist precedes any data leaving this party:
+ * `"custody-unreadable"` (the run+rotate lock's first read, before any
  * connection), `"input"` and `"terms-shortfall"` (both
  * pre-connection), `"auth"` (a `security`-kind failure the classifier stamps
  * only before the data exchange begins; see {@link ../psi/managedRun.ts},
@@ -408,7 +407,6 @@ function disclosurePrecedesExchange(lastRun: ManagedExchangeLastRun): boolean {
   if (failureKind === "partner-set-too-large")
     return lastRun.refusedInRound !== true;
   return (
-    failureKind === "handed-off" ||
     failureKind === "custody-unreadable" ||
     failureKind === "input" ||
     failureKind === "terms-shortfall" ||

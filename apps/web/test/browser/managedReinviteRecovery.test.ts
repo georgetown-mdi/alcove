@@ -254,7 +254,7 @@ describe("a re-invite while a run holds the run+rotate lock", () => {
   test("is refused on the lock, leaving the secret the run is connecting on", async () => {
     // Neither rotation write compares against the secret it replaces, so a mint
     // landing beside the run's own rotation would discard one of the two. Excluded
-    // on the lock, exactly as the hand-off spend and the re-take are.
+    // on the lock, exactly as both exports are.
     const record = await createManagedExchange(newExchange());
     let granted!: () => void;
     const holding = new Promise<void>((resolve) => {

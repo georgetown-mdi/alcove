@@ -1,8 +1,8 @@
 /**
  * The local sibling state a managed exchange holds beside its record: the backup
- * marker (when a backup was last taken) and the spent state (an earlier version's
- * export handed this device's copy off, and which one did). Both are NOT record
- * fields and NOT in the export artifact:
+ * marker (when a backup was last taken), the import marker (when this device last
+ * installed or replaced it from imported files), and the terms proposal. None is a
+ * record field and none is in the export artifact:
  *
  * - The backup marker is derived-currency input the record must not hold -- a
  *   secret-derived or record-embedded "when I last backed up" would either force a
@@ -10,16 +10,8 @@
  *   or leak into the artifact;
  *   keeping it a sibling makes its non-inclusion structural (see
  *   {@link ./managedBackupState.ts}).
- * - The spent state is this device's own status after an earlier version's
- *   hand-off export, and an imported copy is a fresh live owner -- so the spent
- *   flag must not travel in the artifact either. It is a plain timestamp (the
- *   handoff date), no secret material and no rotation epoch (source invalidation
- *   is operator cooperation, not cryptography; see
- *   docs/notes/managed-exchange-design.md, "Export/import is migration, not
- *   sync"). No current path writes it; it is left only on a record an earlier
- *   version wrote. It is cleared only together with the record it hands the
- *   exchange back to, by the cross-store steps in {@link ./managedExchangeStore.ts}
- *   (`reviveSpentManagedExchange` and `retakeHandedOffManagedExchange`).
+ * - The import marker is this device's own restore history, meaningless to an
+ *   imported copy.
  * - The terms proposal is a partner terms change an unattended run refused,
  *   pending the operator's decision on this device ({@link ./managedTermsProposal.ts}).
  *
@@ -55,8 +47,6 @@ export type {
   ManagedImportMarker,
   ManagedLocalState,
   ManagedReadableLocalState,
-  ManagedSpentHandoff,
-  ManagedSpentState,
   ManagedTermsProposal,
 } from "./managedLocalStateShape";
 
@@ -242,9 +232,9 @@ async function readModifyWriteLocalState(
 
 /**
  * Record that a backup was taken for a record as of `backedUpAt`, advancing only the
- * backup marker and leaving any spent state untouched. The read-modify-write runs in
- * one transaction, so the marker update cannot clobber a concurrent write that
- * clears the spent state.
+ * backup marker and leaving the other markers untouched. The read-modify-write runs
+ * in one transaction, so the marker update cannot clobber a concurrent sibling
+ * write.
  */
 export async function markManagedExchangeBackedUp(
   id: string,
@@ -263,9 +253,7 @@ export async function markManagedExchangeBackedUp(
  * holds its restore evidence together. The import marker is what the desync tiering
  * reads to tell an import-since-last-success apart from an unexplained handshake
  * failure (see {@link ./managedFailureTiers.ts}); the backup marker keeps the freshly
- * installed record from immediately prompting a re-export. A revive-in-place instead
- * stamps both inside its own cross-store transaction (see
- * {@link ./managedExchangeStore.ts}, `reviveSpentManagedExchange`).
+ * installed record from immediately prompting a re-export.
  */
 export async function markManagedExchangeImported(
   id: string,
@@ -284,7 +272,7 @@ export async function markManagedExchangeImported(
  * marker is the same restore evidence {@link markManagedExchangeImported}
  * stamps; the backup marker is not stamped, since it attests the app's own
  * backup file and the pair is not one (docs/spec/MANAGED_EXCHANGE_RECORD.md,
- * "The backup marker, the spent state, and the import marker").
+ * "The backup and import markers").
  */
 export async function markManagedExchangeKeyImported(
   id: string,

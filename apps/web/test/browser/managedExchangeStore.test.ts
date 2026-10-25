@@ -58,7 +58,9 @@ import {
 
 import {
   getManagedLocalState,
+  listManagedLocalState,
   markManagedExchangeBackedUp,
+  markManagedExchangeKeyImported,
 } from "@psi/managed/managedLocalState";
 import { DISCLOSURE_ACCOUNTING_VERSION } from "@psi/disclosureAccounting";
 import { buildManagedDeposit } from "@exchange/manageOfferModel";
@@ -67,7 +69,6 @@ import {
   disclosureRecord,
   neighbouringRecordVersion,
 } from "../utils/disclosureFixtures";
-import { seedSpentState } from "./seedSpentState";
 
 import type { ExchangeRecord, WebRTCExchangeLocator } from "@alcove/core";
 import type {
@@ -1096,7 +1097,10 @@ describe("one-step delete leaves nothing behind", () => {
     // entry as well as the record -- the two stores the browser holds an exchange
     // in.
     await markManagedExchangeBackedUp(created.id, "2026-02-01T14:05:00.000Z");
-    await seedSpentState(created.id, "2026-02-02T09:00:00.000Z");
+    await markManagedExchangeKeyImported(
+      created.id,
+      "2026-02-02T09:00:00.000Z",
+    );
     // And file a run's disclosure, so the delete must clear the accounting too --
     // otherwise the delete strands cleartext partner and agreement metadata under
     // an id nothing shows.
@@ -1632,7 +1636,7 @@ describe("diagnostic read never rejects wholesale", () => {
     expect(entry.backedUp).toBe(false);
   });
 
-  test("an unparseable sibling entry is treated as backed up (conservative on doubt)", async () => {
+  test("an unparseable sibling entry is an unreadable marker treated as backed up (conservative on doubt)", async () => {
     const created = await createRunnableExchange(
       newExchange({ label: "Doubtful" }),
     );
@@ -1641,57 +1645,46 @@ describe("diagnostic read never rejects wholesale", () => {
     await rawLocalPut(created.id, { backup: { backedUpAt: "not-an-instant" } });
 
     const [entry] = await listManagedExchangesDiagnostic();
-    expect(entry.backedUp).toBe(true);
-    // Nothing of that entry's shape was read, so it states no spend either.
-    expect(entry.spent).toBeUndefined();
-  });
-
-  test("a spent copy is reported with the route it was spent to", async () => {
-    const created = await createRunnableExchange(
-      newExchange({ label: "Handed off" }),
-    );
-    await seedSpentState(
-      created.id,
-      "2026-07-14T13:00:00.000Z",
-      "command-line",
-    );
-
-    const [entry] = await listManagedExchangesDiagnostic();
-    // The whole spent state, not a boolean: the delete confirm states what the
-    // hand-off left running elsewhere, which is the route rather than the spend.
-    expect(entry.spent).toEqual({
-      spentAt: "2026-07-14T13:00:00.000Z",
-      handoff: "command-line",
-    });
-  });
-
-  test("a live record reports no spend", async () => {
-    await createRunnableExchange(newExchange({ label: "Live" }));
-    const [entry] = await listManagedExchangesDiagnostic();
-    expect(entry.spent).toBeUndefined();
-  });
-
-  test("an unreadable record's spend survives its unreadability", async () => {
-    const good = await createRunnableExchange(newExchange({ label: "Good" }));
-    await rawPut({
-      ...good,
-      id: "bad-record",
-      schemaVersion: "alcove-managed-exchange/v5",
-    });
-    // The spend is the sibling entry's, so it reads whatever the record does: the
-    // delete confirm for this row must still state what the hand-off keeps running.
-    await rawLocalPut("bad-record", {
-      spent: { spentAt: "2026-07-14T13:00:00.000Z", handoff: "command-line" },
-    });
-
-    const entries = await listManagedExchangesDiagnostic();
-    const unreadable = entries.find((entry) => entry.kind === "unreadable");
-    expect(unreadable).toEqual({
+    expect(entry).toEqual({
       kind: "unreadable",
-      id: "bad-record",
-      backedUp: false,
+      id: created.id,
+      backedUp: true,
+    });
+  });
+
+  test("a sibling entry an earlier version marked handed off is unreadable, and discarding it restores the list", async () => {
+    const good = await createRunnableExchange(newExchange({ label: "Good" }));
+    const created = await createRunnableExchange(
+      newExchange({ label: "Marked by an earlier version" }),
+    );
+    // The local-state schema rejects a key it does not name, and no current
+    // shape names a handed-off state, so the strict reads reject on the entry.
+    await rawLocalPut(created.id, {
       spent: { spentAt: "2026-07-14T13:00:00.000Z", handoff: "command-line" },
     });
+
+    await expect(getManagedLocalState(created.id)).rejects.toThrow();
+    await expect(listManagedLocalState()).rejects.toThrow();
+    const entries = await listManagedExchangesDiagnostic();
+    expect(entries.find((entry) => entry.kind === "unreadable")).toEqual({
+      kind: "unreadable",
+      id: created.id,
+      backedUp: true,
+    });
+    expect(
+      entries.find(
+        (entry) => entry.kind === "readable" && entry.essentials.id === good.id,
+      ),
+    ).toBeDefined();
+
+    await deleteManagedExchange(created.id);
+
+    expect(await rawStored(created.id)).toBeUndefined();
+    expect(await rawLocalStored(created.id)).toBeUndefined();
+    const states = await listManagedLocalState();
+    expect(states.has(created.id)).toBe(false);
+    const recovered = await listManagedExchanges();
+    expect(recovered.map((record) => record.id)).toEqual([good.id]);
   });
 
   test("one unreadable record does not fail the read; it yields an unreadable marker keyed for delete", async () => {

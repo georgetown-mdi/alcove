@@ -343,7 +343,7 @@ So each piece renders through one component in `apps/web/src/exchange/RunSurface
 
 ### The types it checks
 
-`FAILURE_TYPES` names the exchange roles' `RunFailure`, the recurring exchange's `ManagedRunFailureAlert`,
+`FAILURE_TYPES` names the exchange roles' `RunFailure`, the recurring exchange's `ManagedRunFailure`,
 and the `FailureText` shape both satisfy, which a component taking a failure as operator-facing text alone annotates its prop with.
 Each holds the two pieces and renders them through the same sinks.
 A type absent from that list binds nothing.

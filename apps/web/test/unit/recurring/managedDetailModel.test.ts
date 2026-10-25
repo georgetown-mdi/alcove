@@ -22,6 +22,7 @@ import {
   composeManagedExchangeFile,
   parseManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
+import { RAN_ELSEWHERE_IMPORT_REMEDY } from "@psi/managed/managedFailureCopy";
 import { managedExchangeLapsed } from "@psi/managed/managedExpiry";
 
 import type {
@@ -426,7 +427,6 @@ describe("lastRunMayHaveSentPayload matches the run history's own line", () => {
     { outcome: "failed" as const, failureKind: "auth" as const },
     { outcome: "failed" as const, failureKind: "input" as const },
     { outcome: "failed" as const, failureKind: "storage" as const },
-    { outcome: "failed" as const, failureKind: "handed-off" as const },
     { outcome: "failed" as const, failureKind: "terms-shortfall" as const },
     { outcome: "failed" as const, failureKind: "custody-unreadable" as const },
   ])(
@@ -575,6 +575,8 @@ describe("scheduleView", () => {
     expect(twice?.coordination?.prompt).toMatch(/partner/i);
     expect(twice?.coordination?.prompt).toMatch(/this device's clock/i);
     expect(twice?.coordination?.prompt).toMatch(/the schedule stands/i);
+    // A run elsewhere leaves this copy's secret behind, which looks the same.
+    expect(twice?.coordination?.prompt).toContain(RAN_ELSEWHERE_IMPORT_REMEDY);
   });
 
   const succeededAt: ManagedExchangeLastRun = {
@@ -674,7 +676,6 @@ describe("runHistoryEntries lists the runs the record keeps", () => {
     { failureKind: "storage", failure: /new secret could not be saved/ },
     { failureKind: "custody-unreadable", failure: /stored copy/ },
     { failureKind: "terms-shortfall", failure: /every agreed key/ },
-    { failureKind: "handed-off", failure: /handed off/ },
     { failureKind: "too-large", failure: /too large to send/ },
     { failureKind: "partner-set-too-large", failure: /partner's set/ },
     { failureKind: "partner-refused-set", failure: /refused to send/ },

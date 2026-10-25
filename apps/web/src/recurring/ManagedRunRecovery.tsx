@@ -31,12 +31,12 @@ import type { Ref } from "react";
 import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 import type { ManagedReinvite } from "@psi/managed/managedReinvite";
 import type { ManagedReinviteFailureAlert } from "./managedRunRecoveryModel";
-import type { ManagedRunFailureAlert } from "./managedRunLaunchModel";
+import type { ManagedRunFailure } from "./managedRunLaunchModel";
 import type { ManagedStandingConditionView } from "./managedStandingConditionModel";
 import type { routeConfirmationReply } from "@psi/managed/managedFailureConfirmation";
 
 interface FailureRecoveryProps {
-  failure: ManagedRunFailureAlert;
+  failure: ManagedRunFailure;
   record: ManagedExchangeRecord;
   confirmationGated: boolean;
   reinviting: boolean;

@@ -353,21 +353,15 @@ describe("a managed exchange that refused its partner's data", () => {
       [live, MANAGED_MESSAGE],
       [recorded, RECORDED_MESSAGE],
     ] as const) {
-      if (failure === undefined || failure.kind === "handed-off")
+      if (failure === undefined)
         throw new Error("expected the partner-protocol-refusal alert");
       expect(failure.kind).toBe("partner-protocol-refusal");
       expect(failure.title).toBe(PARTNER_PROTOCOL_REFUSAL_TITLE);
       expect(failure.message).toBe(message);
       expect(managedRunRetryable(failure)).toBe(false);
     }
-    expect(live.kind !== "handed-off" && live.reportedCause).toBe(
-      SETUP_REFUSAL_MESSAGE,
-    );
-    expect(
-      recorded !== undefined &&
-        recorded.kind !== "handed-off" &&
-        recorded.reportedCause,
-    ).toBeUndefined();
+    expect(live.reportedCause).toBe(SETUP_REFUSAL_MESSAGE);
+    expect(recorded !== undefined && recorded.reportedCause).toBeUndefined();
   });
 
   test("a live launch refused over a version mismatch names which party runs the older version", async () => {

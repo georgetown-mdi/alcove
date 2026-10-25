@@ -28,16 +28,12 @@ import {
   encodeManagedExchangeArtifact,
   serializeManagedExchangeArtifact,
 } from "@psi/managed/managedExchangeArtifact";
-import {
-  listManagedLocalState,
-  markManagedExchangeBackedUp,
-} from "@psi/managed/managedLocalState";
+import { markManagedExchangeBackedUp } from "@psi/managed/managedLocalState";
 
 import {
   ALREADY_HELD_IMPORT_TITLE,
   LIVE_COPY_IMPORT_CONFIRM,
   LIVE_COPY_IMPORT_TITLE,
-  OTHER_EXCHANGE_RESTORE_TITLE,
 } from "@recurring/managedImportFailure";
 import {
   KEY_FILE_ALONE_REASON,
@@ -45,12 +41,10 @@ import {
   RETIRED_SETTING_IMPORT_TITLE,
 } from "@recurring/managedImportFiles";
 import { Lobby } from "@exchange/Lobby";
-import { RESTORED_WITH_SAME_TERMS_TITLE } from "@recurring/managedImportGrantNotice";
 import { composeManagedCronExport } from "@psi/managed/managedCronExport";
 import styles from "@styles/app.module.css";
 
 import { createAppMount } from "./renderApp";
-import { seedSpentState } from "./seedSpentState";
 
 import type {
   ManagedExchangeSchedule,
@@ -593,120 +587,6 @@ describe("saved list route: delete is a fully supported, always-available action
     ).toBeNull();
   });
 
-  test("a command-line hand-off's confirm says the saved files keep running it", async () => {
-    // The hand-off marks no backup, so the backed-up note cannot hold the custody
-    // reminder for it: deleting this row leaves the CLI's two files and the schedule
-    // the operator set around them running the exchange.
-    const created = await createRunnableExchange(
-      newExchange({ label: "Handed off to cron" }),
-    );
-    await seedSpentState(
-      created.id,
-      "2026-07-12T09:00:00.000Z",
-      "command-line",
-    );
-
-    app.render(createElement(SavedExchanges));
-
-    await page.getByRole("button", { name: "Remove" }).click();
-
-    await expect
-      .element(
-        page.getByText(
-          "alcove.yaml and .alcove.key you saved still run this exchange",
-          { exact: false },
-        ),
-      )
-      .toBeInTheDocument();
-    await expect
-      .element(
-        page.getByText("nor stops the runs you scheduled", { exact: false }),
-      )
-      .toBeInTheDocument();
-    expect(
-      page
-        .getByText("A backup file you exported stays in your custody", {
-          exact: false,
-        })
-        .query(),
-    ).toBeNull();
-  });
-
-  test("a migration spend's confirm keeps the backup note, not the hand-off one", async () => {
-    const created = await createRunnableExchange(
-      newExchange({ label: "Migrated partnership" }),
-    );
-    await markManagedExchangeBackedUp(created.id, "2026-07-12T08:00:00.000Z");
-    await seedSpentState(created.id, "2026-07-12T09:00:00.000Z");
-
-    app.render(createElement(SavedExchanges));
-
-    await page.getByRole("button", { name: "Remove" }).click();
-
-    await expect
-      .element(
-        page.getByText("A backup file you exported stays in your custody", {
-          exact: false,
-        }),
-      )
-      .toBeInTheDocument();
-    expect(
-      page.getByText("still run this exchange", { exact: false }).query(),
-    ).toBeNull();
-  });
-
-  test("a spent (handed-off) row offers Open and Remove", async () => {
-    const created = await createRunnableExchange(
-      newExchange({ label: "Handed off partnership" }),
-    );
-    await seedSpentState(created.id, "2026-07-12T09:00:00.000Z");
-
-    app.render(createElement(SavedExchanges));
-
-    await expect
-      .element(page.getByRole("button", { name: "Open" }))
-      .toBeInTheDocument();
-    await expect
-      .element(page.getByRole("button", { name: "Remove" }))
-      .toBeInTheDocument();
-    // A spent row does not offer Run.
-    expect(page.getByRole("button", { name: "Run" }).query()).toBeNull();
-    // A migration spend is the one a backup brings back, from its own row.
-    await expect
-      .element(page.getByText("restore it from the backup", { exact: false }))
-      .toBeInTheDocument();
-    await expect
-      .element(page.getByRole("button", { name: "Restore from backup" }))
-      .toBeInTheDocument();
-  });
-
-  test("a command-line hand-off names its own recovery, not the import", async () => {
-    const created = await createRunnableExchange(
-      newExchange({ label: "Handed off partnership" }),
-    );
-    await seedSpentState(
-      created.id,
-      "2026-07-12T09:00:00.000Z",
-      "command-line",
-    );
-
-    app.render(createElement(SavedExchanges));
-
-    await expect
-      .element(
-        page.getByText("Handed off to the command line", { exact: false }),
-      )
-      .toBeInTheDocument();
-    // The exported alcove.yaml and .alcove.key are not the artifact the import
-    // flow accepts, so this row must not point the operator at one.
-    expect(
-      page.getByText("restore it from the backup", { exact: false }).query(),
-    ).toBeNull();
-    expect(
-      page.getByRole("button", { name: "Restore from backup" }).query(),
-    ).toBeNull();
-  });
-
   test("a rejected delete shows an error and leaves the row standing", async () => {
     await createRunnableExchange(newExchange({ label: "Riverbend quarterly" }));
     // The delete rejects (a transaction abort, quota, or blocked open): the confirm
@@ -870,33 +750,6 @@ describe("saved list route: a populated list imports a command-line configuratio
     expect(imported).toHaveLength(1);
     expect(imported[0].exchangeFile.signing).toEqual({ mode: "none" });
   });
-
-  test("a backup of a handed-off exchange meets the handed-off refusal there", async () => {
-    const record = await createRunnableExchange(
-      newExchange({ label: "Riverbend quarterly" }),
-    );
-    const backup = serializeManagedExchangeArtifact(
-      encodeManagedExchangeArtifact(record),
-    );
-    await seedSpentState(record.id, "2026-07-12T09:00:00.000Z", "command-line");
-    app.render(createElement(SavedExchanges));
-    await expect
-      .element(page.getByRole("button", { name: "Import a file" }))
-      .toBeInTheDocument();
-
-    await chooseFile(backup, "alcove-backup-2026-07-11.json");
-
-    await expect
-      .element(page.getByText("That exchange was handed off"))
-      .toBeInTheDocument();
-    await expect
-      .element(page.getByText("Take this exchange back", { exact: false }))
-      .toBeInTheDocument();
-    const stored = await listManagedExchanges();
-    expect(stored.map((entry) => entry.id)).toEqual([record.id]);
-    const local = await listManagedLocalState();
-    expect(local.get(record.id)?.spent?.handoff).toBe("command-line");
-  });
 });
 
 describe("saved list route: a backup reconciles against the exchange it holds", () => {
@@ -913,7 +766,6 @@ describe("saved list route: a backup reconciles against the exchange it holds", 
   }
 
   const LIST_IMPORT = "application/json,.json,application/yaml,.yaml,.yml,.key";
-  const ROW_RESTORE = "application/json,.json";
 
   function backupOf(record: RunnableManagedExchangeRecord): string {
     return serializeManagedExchangeArtifact(
@@ -1023,88 +875,6 @@ describe("saved list route: a backup reconciles against the exchange it holds", 
       before.find(({ id }) => id === listed.id),
     );
     expect(await getManagedExchange(second.id)).toEqual(second);
-  });
-
-  test("a moved row restores from its own backup in place", async () => {
-    const moved = await createRunnableExchange(newExchange());
-    const bytes = backupOf(moved);
-    await seedSpentState(moved.id, "2026-07-12T09:00:00.000Z");
-    await createRunnableExchange(
-      newExchange({ label: "Another partnership", side: "acceptor" }),
-    );
-    app.render(createElement(SavedExchanges));
-    await expect
-      .element(page.getByRole("button", { name: "Restore from backup" }))
-      .toBeInTheDocument();
-
-    await chooseIn(ROW_RESTORE, bytes);
-
-    await expect
-      .poll(async () => (await listManagedLocalState()).get(moved.id)?.spent)
-      .toBeUndefined();
-    expect(await listManagedExchanges()).toHaveLength(2);
-  });
-
-  test("a moved row restores in place beside an exchange with its terms and side, naming it", async () => {
-    const moved = await createRunnableExchange(newExchange());
-    const bytes = backupOf(moved);
-    await seedSpentState(moved.id, "2026-07-12T09:00:00.000Z");
-    const unrelated = await createRunnableExchange(
-      newExchange({ label: "Riverbend again" }),
-    );
-    const unrelatedLocalBefore = (await listManagedLocalState()).get(
-      unrelated.id,
-    );
-    app.render(createElement(SavedExchanges));
-    await expect
-      .element(page.getByRole("button", { name: "Restore from backup" }))
-      .toBeInTheDocument();
-
-    await chooseIn(ROW_RESTORE, bytes);
-
-    await expect
-      .element(page.getByText(RESTORED_WITH_SAME_TERMS_TITLE))
-      .toBeInTheDocument();
-    await expect
-      .element(
-        page.getByText('"Riverbend again" has the same terms and side', {
-          exact: false,
-        }),
-      )
-      .toBeInTheDocument();
-    expect(page.getByText(LIVE_COPY_IMPORT_TITLE).query()).toBeNull();
-    expect(
-      (await listManagedLocalState()).get(moved.id)?.spent,
-    ).toBeUndefined();
-    expect(await listManagedExchanges()).toHaveLength(2);
-    expect(await getManagedExchange(unrelated.id)).toEqual(unrelated);
-    expect((await listManagedLocalState()).get(unrelated.id)).toEqual(
-      unrelatedLocalBefore,
-    );
-  });
-
-  test("a moved row's restore refuses another exchange's backup", async () => {
-    const moved = await createRunnableExchange(newExchange());
-    await seedSpentState(moved.id, "2026-07-12T09:00:00.000Z");
-    const other = runnableManagedExchangeOrRefuse(
-      buildManagedExchangeRecord(
-        newExchange({ label: "Another partnership", side: "acceptor" }),
-      ),
-    );
-    app.render(createElement(SavedExchanges));
-    await expect
-      .element(page.getByRole("button", { name: "Restore from backup" }))
-      .toBeInTheDocument();
-
-    await chooseIn(ROW_RESTORE, backupOf(other));
-
-    await expect
-      .element(page.getByText(OTHER_EXCHANGE_RESTORE_TITLE))
-      .toBeInTheDocument();
-    expect((await listManagedExchanges()).map((r) => r.id)).toEqual([moved.id]);
-    expect((await listManagedLocalState()).get(moved.id)?.spent).toEqual({
-      spentAt: "2026-07-12T09:00:00.000Z",
-    });
   });
 });
 

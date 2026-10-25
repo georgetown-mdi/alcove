@@ -1,7 +1,7 @@
 import {
-  MANAGED_HANDOFF_INITIAL,
-  managedHandoffReducer,
-} from "./managedRunHandoffModel";
+  MANAGED_EXPORTS_INITIAL,
+  managedExportsReducer,
+} from "./managedRunExportModel";
 import {
   MANAGED_LOAD_INITIAL,
   managedLoadReducer,
@@ -26,9 +26,9 @@ import type { ManagedInputSource } from "@psi/managed/managedInputHandle";
 import type { RunOutputs } from "@psi/runOutputs";
 
 import type {
-  ManagedHandoffAction,
-  ManagedHandoffState,
-} from "./managedRunHandoffModel";
+  ManagedExportAction,
+  ManagedExportsState,
+} from "./managedRunExportModel";
 import type {
   ManagedLoadAction,
   ManagedLoadState,
@@ -44,7 +44,7 @@ import type {
 import type { AttendedFolderWrite } from "./attendedFolderWriteModel";
 import type { ManagedBackupMarker } from "@psi/managed/managedBackupState";
 import type { ManagedReinvite } from "@psi/managed/managedReinvite";
-import type { ManagedRunFailureAlert } from "./managedRunLaunchModel";
+import type { ManagedRunFailure } from "./managedRunLaunchModel";
 import type { RunnableManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 
 /**
@@ -64,7 +64,7 @@ import type { RunnableManagedExchangeRecord } from "@psi/managed/managedExchange
  * is what a confirmation the operator gave at a gate is granted for. */
 export interface LiveManagedRunFailure {
   /** The classified failure the surface renders. */
-  alert: ManagedRunFailureAlert;
+  alert: ManagedRunFailure;
   /** Which of this visit's runs produced it, counting from one. */
   runNumber: number;
 }
@@ -233,7 +233,7 @@ export interface ManagedRunSurfaceState {
   run: ManagedRunState;
   recovery: ManagedRecoveryState;
   reads: ManagedStoreReads;
-  handoff: ManagedHandoffState;
+  exports: ManagedExportsState;
   termsProposal: ManagedTermsProposalRequest;
 }
 
@@ -243,7 +243,7 @@ export const MANAGED_RUN_SURFACE_INITIAL: ManagedRunSurfaceState = {
   run: MANAGED_RUN_INITIAL,
   recovery: MANAGED_RECOVERY_INITIAL,
   reads: MANAGED_STORE_READS_INITIAL,
-  handoff: MANAGED_HANDOFF_INITIAL,
+  exports: MANAGED_EXPORTS_INITIAL,
   termsProposal: { kind: "idle" },
 };
 
@@ -270,7 +270,7 @@ export type ManagedRunSurfaceAction =
   | ManagedRecordWriteAction
   | ManagedLoadAction
   | ManagedStoreReadAction
-  | Exclude<ManagedHandoffAction, { type: ManagedBackupExportAction["type"] }>
+  | Exclude<ManagedExportAction, { type: ManagedBackupExportAction["type"] }>
   | ManagedBackupExportAction
   | ManagedTermsProposalAction;
 
@@ -288,11 +288,11 @@ function withLoad(
   return load === state.load ? state : { ...state, load };
 }
 
-function withHandoff(
+function withExports(
   state: ManagedRunSurfaceState,
-  handoff: ManagedHandoffState,
+  exports: ManagedExportsState,
 ): ManagedRunSurfaceState {
-  return handoff === state.handoff ? state : { ...state, handoff };
+  return exports === state.exports ? state : { ...state, exports };
 }
 
 function withReads(
@@ -311,8 +311,8 @@ function adopted(
 
 /** The surface's reducer. A run start moves both the run and the recovery; a
  * composed re-invite adopts the rotated record and replaces the failure it
- * recovers from; a standing clear adopts the record it wrote; a run the hand-off
- * refused settles with the copy spent; an export that marked the record backed up
+ * recovers from; a standing clear adopts the record it wrote; an export that
+ * marked the record backed up
  * lands the marker with its outcome; a settled terms proposal clears the failure
  * and reads the record again. */
 export function managedRunSurfaceReducer(
@@ -339,12 +339,6 @@ export function managedRunSurfaceReducer(
         load: adopted(state.load, action.record),
         recovery: managedRecoveryReducer(state.recovery, action),
       };
-    case "run-handed-off":
-      return {
-        ...state,
-        load: managedLoadReducer(state.load, action),
-        run: managedRunReducer(state.run, { type: "run-settled" }),
-      };
     case "warning-raised":
     case "matching-resolved":
     case "terms-change-asked":
@@ -364,7 +358,7 @@ export function managedRunSurfaceReducer(
           type: "backup-marked",
           marker: action.marker,
         }),
-        handoff: managedHandoffReducer(state.handoff, action),
+        exports: managedExportsReducer(state.exports, action),
       };
     case "terms-proposal-settled":
       return {
@@ -385,7 +379,7 @@ export function managedRunSurfaceReducer(
     case "export-started":
     case "export-finished":
     case "export-failed":
-      return withHandoff(state, managedHandoffReducer(state.handoff, action));
+      return withExports(state, managedExportsReducer(state.exports, action));
     case "accounting-read":
     case "unfiled-disclosures-read":
     case "parked-results-read":
@@ -396,7 +390,6 @@ export function managedRunSurfaceReducer(
     case "record-read":
     case "record-read-failed":
     case "record-read-requested":
-    case "record-retaken":
     case "record-adopted":
     case "configuration-edited":
     case "local-state-reloaded":

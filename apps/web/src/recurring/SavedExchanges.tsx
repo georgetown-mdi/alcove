@@ -16,15 +16,10 @@ import {
   MAX_IMPORT_FILE_BYTES,
   ManagedImportAlreadyHeldError,
   ManagedImportChosenCopyError,
-  ManagedImportCustodyUnreadableError,
-  ManagedImportHandedOffError,
   ManagedImportLiveCopyError,
-  ManagedImportOtherExchangeError,
-  ManagedImportSideMismatchError,
   ManagedImportStoredCopyError,
   importManagedCommandLinePair,
   importManagedExchangeFile,
-  restoreManagedExchangeFromBackup,
 } from "@psi/managed/managedExchangeImport";
 import {
   deleteManagedExchange,
@@ -51,36 +46,24 @@ import {
 
 import {
   ALREADY_HELD_IMPORT_TITLE,
+  CHOSEN_COPY_IMPORT_REASON,
   CHOSEN_COPY_IMPORT_TITLE,
   IMPORT_FAILURE_TITLE,
   LIVE_COPY_IMPORT_CONFIRM,
   LIVE_COPY_IMPORT_TITLE,
-  OTHER_EXCHANGE_RESTORE_TITLE,
   OVERSIZE_KEY_FILE_REASON,
-  SIDE_MISMATCH_IMPORT_TITLE,
   STORED_COPY_IMPORT_CONFIRM,
   STORED_COPY_IMPORT_TITLE,
   UNREADABLE_IMPORT_REASON,
   alreadyHeldBackupImportReason,
   alreadyHeldImportReason,
-  chosenCopyImportReason,
   importFailureReason,
   liveCopyImportReason,
   liveCopyOpenLabel,
-  otherExchangeRestoreReason,
   pairImportFailureReason,
-  sideMismatchImportReason,
   storedCopyImportReason,
   storedCopyTakeLabel,
 } from "./managedImportFailure";
-import {
-  CUSTODY_UNREADABLE_IMPORT_TITLE,
-  HANDED_OFF_IMPORT_TITLE,
-  custodyUnreadableImportReason,
-  custodyUnreadablePairImportReason,
-  handedOffImportReason,
-  handedOffPairImportReason,
-} from "./managedHandoffGate";
 import {
   managedImportFileChoice,
   oneFileImportedNotice,
@@ -89,7 +72,6 @@ import {
 import { BetweenVisitNotifications } from "./BetweenVisitNotifications";
 import { loadSavedExchanges } from "./savedExchangesLoad";
 import { recoveryRows } from "./savedExchangesRecovery";
-import { restoredWithSameTermsNotice } from "./managedImportGrantNotice";
 
 import type {
   ManagedPairImportOptions,
@@ -97,7 +79,6 @@ import type {
 } from "@psi/managed/managedPairRecognition";
 import type { ManagedImportGrantNotice } from "./managedImportGrantNotice";
 import type { ManagedImportResult } from "@psi/managed/managedExchangeImport";
-import type { ManagedSpentHandoff } from "@psi/managed/managedLocalState";
 import type { RecoveryRow } from "./savedExchangesRecovery";
 import type { SavedExchangeRow } from "./savedExchangesModel";
 import type { SavedExchangesLoad } from "./savedExchangesLoad";
@@ -205,8 +186,7 @@ function DelayedLoader() {
  * existed, so restore-from-backup lives here rather than only behind a detected loss
  * (see docs/MANAGED_EXCHANGE.md, "Eviction recovery is the import flow").
  *
- * Each row joins its record to the local sibling state (the backup marker and any
- * spent state): a spent record shows no Run action and names its handoff date.
+ * Each row joins its record to the local sibling state, for its backup marker.
  */
 export function SavedExchanges() {
   const { load, reload } = useSavedExchangesLoad();
@@ -255,8 +235,7 @@ function SavedExchangesSurface({
  * always-available remove, above a create entry into the invite/configure flow
  * (where saving as recurring is offered once the exchange completes) beside an
  * entry to the lobby's invitation field, the one-off quick-path alternative, and
- * the import every list state offers. A row moved to another
- * device also offers its own restore from backup. Removing a row calls `reload`,
+ * the import every list state offers. Removing a row calls `reload`,
  * so the list reflects the removal without a page navigation. */
 function SavedExchangesList({
   rows,
@@ -286,10 +265,6 @@ function SavedExchangesList({
                 </span>
               )}
               <BackupLine row={row} />
-              {row.spentAsOf !== undefined &&
-                row.spentHandoff === undefined && (
-                  <RestoreFromBackup id={row.id} label={row.label} />
-                )}
             </div>
             <div className={styles.savedRowActions}>
               <Button
@@ -307,7 +282,6 @@ function SavedExchangesList({
                 id={row.id}
                 label={row.label}
                 backedUp={row.backup.kind === "backed-up"}
-                handoff={row.spentHandoff}
                 configurationOnly={row.configurationOnly}
                 onDeleted={reload}
               />
@@ -375,10 +349,10 @@ function StorageUnavailable() {
 }
 
 /** Whether the row's exchange runs in this browser, which is what decides
- * between the Run and Open actions: a handed-off copy runs elsewhere and a
- * configuration-only record runs on the command line, so both open instead. */
+ * between the Run and Open actions: a configuration-only record runs on the
+ * command line, so it opens instead. */
 function runnableRow(row: SavedExchangeRow): boolean {
-  return row.spentAsOf === undefined && !row.configurationOnly;
+  return !row.configurationOnly;
 }
 
 /** The per-row schedule lines, for a row whose record holds an agreed
@@ -422,21 +396,11 @@ function ScheduleLines({ row }: { row: SavedExchangeRow }) {
 }
 
 /** The per-row backup line: a quiet "backed up as of <date>" when a current export
- * exists, or, when none does, a link to the exchange's backup panel. A spent row
- * names its handoff instead, with the recovery that hand-off actually has: the
- * migration's artifact brings the secret back, while the command-line files
- * bring back the configuration alone. A configuration-only row shows no backup
- * line at all: it holds no secret for a backup to be of. */
+ * exists, or, when none does, a link to the exchange's backup panel. A
+ * configuration-only row shows no backup line at all: it holds no secret for a
+ * backup to be of. */
 function BackupLine({ row }: { row: SavedExchangeRow }) {
   if (row.backup.kind === "not-applicable") return null;
-  if (row.spentAsOf !== undefined)
-    return (
-      <span className={`${styles.small} ${styles.sub}`}>
-        {row.spentHandoff === "command-line"
-          ? `Handed off to the command line ${row.spentAsOf}. It runs from the files you saved.`
-          : `Handed off ${row.spentAsOf}. To run it here again, restore it from the backup you downloaded then.`}
-      </span>
-    );
   if (row.backup.kind === "backed-up")
     return (
       <span className={`${styles.small} ${styles.statusLineOk}`}>
@@ -465,10 +429,9 @@ function BackupLine({ row }: { row: SavedExchangeRow }) {
 /** The always-available per-row delete: a primary action with one simple confirm.
  * The confirm names the exchange, names what the delete takes with it that the
  * operator may still want -- the accounting of disclosures, and any results a
- * scheduled run left for them -- and states a custody note for each thing the
- * delete leaves behind: an exported backup file (the row's backed-up state), and
- * the files a hand-off saved elsewhere ({@link handoff}), which keep running the
- * exchange from the machine that holds them. Deletion removes everything the
+ * scheduled run left for them -- and states a custody note for an exported
+ * backup file the delete leaves behind (the row's backed-up state). Deletion
+ * removes everything the
  * browser holds for the exchange in one step ({@link deleteManagedExchange}),
  * local and unilateral, so the confirm says the partner is not notified.
  * Exported so the per-exchange detail surface reuses this one confirm component. */
@@ -476,7 +439,6 @@ export function DeleteExchangeButton({
   id,
   label,
   backedUp,
-  handoff,
   configurationOnly = false,
   onDeleted,
 }: {
@@ -485,10 +447,6 @@ export function DeleteExchangeButton({
   /** Whether a backup was exported for this exchange (the custody note shows only
    * then; a never-exported exchange has nothing under the operator's custody). */
   backedUp: boolean;
-  /** The hand-off that spent this copy, when the surface knows of one: its own
-   * custody note then names what that hand-off left running elsewhere. Absent for a
-   * live copy and for a migration spend, which records no hand-off. */
-  handoff?: ManagedSpentHandoff;
   /** Whether this exchange is configuration only -- imported from a command-line
    * configuration, holding no secret and no history of runs here. What the delete
    * takes is then the settings alone, and what it leaves is the exchange itself,
@@ -572,14 +530,6 @@ export function DeleteExchangeButton({
             A backup file you exported stays in your custody - delete it
             yourself if you no longer want it. It remains a credential until the
             partnership rotates past it.
-          </p>
-        )}
-        {handoff === "command-line" && (
-          <p className={`${styles.small} ${styles.sub}`}>
-            The alcove.yaml and .alcove.key you saved still run this exchange.
-            Removing it here neither retires them nor stops the runs you
-            scheduled - remove the scheduled command and delete those two files
-            on that machine to end it.
           </p>
         )}
         {deleteFailed && (
@@ -711,7 +661,6 @@ function RecoveryListing({ reload }: { reload: () => void }) {
             id={row.id}
             label={row.deleteLabel}
             backedUp={row.backedUp}
-            handoff={row.spentHandoff}
             onDeleted={reload}
           />
         </li>
@@ -728,23 +677,11 @@ interface ImportFailureAlert {
   reason: string;
 }
 
-/** Which alert an import failure is shown as. The two refusals the store raises are
- * about an exchange this browser holds rather than about the file, so each names the
+/** Which alert an import failure is shown as. The refusal the store raises is
+ * about an exchange this browser holds rather than about the file, so it names the
  * exchange under its own heading; everything else is the file's own failure and is
  * shown as one. */
 function importFailureAlert(error: unknown): ImportFailureAlert {
-  if (error instanceof ManagedImportHandedOffError)
-    return {
-      color: "yellow",
-      title: HANDED_OFF_IMPORT_TITLE,
-      reason: handedOffImportReason(error.handoff, error.label),
-    };
-  if (error instanceof ManagedImportCustodyUnreadableError)
-    return {
-      color: "yellow",
-      title: CUSTODY_UNREADABLE_IMPORT_TITLE,
-      reason: custodyUnreadableImportReason(error.label),
-    };
   if (error instanceof ManagedImportAlreadyHeldError)
     return {
       color: "yellow",
@@ -763,29 +700,11 @@ function importFailureAlert(error: unknown): ImportFailureAlert {
  * own heading, in words that speak of the two files rather than a backup;
  * everything else is the files' own failure ({@link pairImportFailureReason}). */
 function pairImportFailureAlert(error: unknown): ImportFailureAlert {
-  if (error instanceof ManagedImportSideMismatchError)
-    return {
-      color: "yellow",
-      title: SIDE_MISMATCH_IMPORT_TITLE,
-      reason: sideMismatchImportReason(error.label),
-    };
   if (error instanceof ManagedImportChosenCopyError)
     return {
       color: "yellow",
       title: CHOSEN_COPY_IMPORT_TITLE,
-      reason: chosenCopyImportReason(error),
-    };
-  if (error instanceof ManagedImportHandedOffError)
-    return {
-      color: "yellow",
-      title: HANDED_OFF_IMPORT_TITLE,
-      reason: handedOffPairImportReason(error.handoff, error.label),
-    };
-  if (error instanceof ManagedImportCustodyUnreadableError)
-    return {
-      color: "yellow",
-      title: CUSTODY_UNREADABLE_IMPORT_TITLE,
-      reason: custodyUnreadablePairImportReason(error.label),
+      reason: CHOSEN_COPY_IMPORT_REASON,
     };
   if (error instanceof ManagedImportAlreadyHeldError)
     return {
@@ -825,13 +744,13 @@ const KEY_FILE_CHOOSER_NOTE =
  * the control ({@link importManagedExchangeFile}). A successful import puts the
  * operator on the imported exchange's own surface, so it is a way forward even
  * when the list read itself cannot be mended. A backup is reconciled against
- * the one exchange it holds, not against the list: one already running here
- * refuses, and those that may be it -- the same agreed terms and side -- are
- * named together, the backup added beside them all only on the operator's one
+ * the one exchange it holds, not against the list: one already here refuses,
+ * and those that may be it -- the same agreed terms and side -- are named
+ * together, the backup added beside them all only on the operator's one
  * confirm ({@link liveCopyImportReason}). A pair whose secret no stored
- * exchange holds is asked about the same way where a handed-off, moved, or
- * configuration-only exchange has its agreed terms and side: the operator
- * takes the files into one of them, adds them as a new exchange, or cancels
+ * exchange holds is asked about the same way where a configuration-only
+ * exchange has its agreed terms and side: the operator completes one of them
+ * with the files, adds them as a new exchange, or cancels
  * ({@link storedCopyImportReason}).
  *
  * A file the import will not take is refused with the reason its failure has
@@ -839,14 +758,6 @@ const KEY_FILE_CHOOSER_NOTE =
  * it holds and what to remove, a document the artifact schema rejects can be a
  * newer build's export, which the operator cannot see from the file, while bytes
  * that do not parse at all leave only the file itself to check.
- *
- * An import the store refuses because its exchange was handed off from this browser is
- * not the unreadable-file failure and does not read as one: the file is fine and the
- * exchange is still here, running somewhere else, so that refusal names the exchange
- * and the recovery it actually has ({@link handedOffImportReason}). One refused
- * because this browser could not read what it saved beside the exchange reads the
- * same way and for the same reason, naming the store rather than the file
- * ({@link custodyUnreadableImportReason}).
  *
  * An import that could not bring the source's working folder stops here
  * with that notice and a button onward, rather than taking the operator
@@ -897,64 +808,6 @@ function ImportExchangeFile() {
         )}
       </FileButton>
     </div>
-  );
-}
-
-/** The scoped restore on a row moved to another device: the same import,
- * taking only the backup that holds this record's secret
- * ({@link restoreManagedExchangeFromBackup}), which revives the row in place
- * without asking about a listed exchange with the same terms, and names one in
- * its notice. Any other file is refused, naming the list's import for it. */
-function RestoreFromBackup({ id, label }: { id: string; label: string }) {
-  const {
-    onFiles,
-    outcome,
-    importing,
-    confirmLiveCopy,
-    answerStoredCopy,
-    dismiss,
-  } = useImportFile({
-    maxBytes: MAX_IMPORT_FILE_BYTES,
-    oversizeReason: UNREADABLE_IMPORT_REASON,
-    importFile: (source) => restoreManagedExchangeFromBackup(id, source),
-    failureAlert: (error) =>
-      error instanceof ManagedImportOtherExchangeError
-        ? {
-            color: "red",
-            title: OTHER_EXCHANGE_RESTORE_TITLE,
-            reason: otherExchangeRestoreReason(label),
-          }
-        : importFailureAlert(error),
-  });
-
-  return (
-    <>
-      <FileButton
-        accept="application/json,.json"
-        onChange={(file) => {
-          if (file !== null) onFiles([file]);
-        }}
-        disabled={importing}
-      >
-        {(props) => (
-          <Button
-            size="xs"
-            variant="default"
-            loading={importing}
-            style={{ alignSelf: "flex-start" }}
-            {...props}
-          >
-            Restore from backup
-          </Button>
-        )}
-      </FileButton>
-      <ImportOutcomeAlerts
-        outcome={outcome}
-        onConfirmLiveCopy={confirmLiveCopy}
-        onAnswerStoredCopy={answerStoredCopy}
-        onDismiss={dismiss}
-      />
-    </>
   );
 }
 
@@ -1080,7 +933,6 @@ function useImportFile({
         const {
           record,
           missingGrants,
-          sameTermsAs,
           droppedTurnUrls,
           unreadKeyFileFields,
           retiredSettings,
@@ -1093,7 +945,7 @@ function useImportFile({
                 undefined,
                 pairAnswer,
               );
-        const grantNotice =
+        const notice =
           keySource === undefined
             ? oneFileImportedNotice(missingGrants, retiredSettings)
             : pairImportedNotice(record, {
@@ -1101,10 +953,6 @@ function useImportFile({
                 keyFileFields: unreadKeyFileFields,
                 retiredSettings,
               });
-        const notice =
-          sameTermsAs === undefined
-            ? grantNotice
-            : restoredWithSameTermsNotice(sameTermsAs.label, grantNotice);
         if (notice !== undefined) {
           setOutcome({ grantNotice: { id: record.id, notice } });
           return;

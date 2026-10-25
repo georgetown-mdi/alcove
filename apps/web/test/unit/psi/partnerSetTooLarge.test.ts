@@ -281,8 +281,6 @@ describe("a managed exchange", () => {
       NOW,
       true,
     );
-    if (failure.kind === "handed-off")
-      throw new Error("expected the partner-set-too-large alert");
     expect(failure.kind).toBe("partner-set-too-large");
     expect(failure.title).toBe(PARTNER_SET_TOO_LARGE_TITLE);
     expect(failure.message).toBe(refusal.message);
@@ -297,7 +295,7 @@ describe("a managed exchange", () => {
       undefined,
       NOW,
     );
-    if (failure === undefined || failure.kind === "handed-off")
+    if (failure === undefined)
       throw new Error("expected the partner-set-too-large alert");
     expect(failure.kind).toBe("partner-set-too-large");
     expect(failure.title).toBe(PARTNER_SET_TOO_LARGE_TITLE);
@@ -390,8 +388,6 @@ describe("a managed exchange the partner stopped over this browser's ceiling", (
       NOW,
       true,
     );
-    if (failure.kind === "handed-off")
-      throw new Error("expected the partner-set-too-large alert");
     expect(failure.kind).toBe("partner-set-too-large");
     expect(failure.title).toBe(PARTNER_SET_TOO_LARGE_TITLE);
     expect(failure.message).toMatch(
@@ -457,7 +453,7 @@ describe("a managed exchange the partner's run refused to send its set for", () 
       NOW,
     );
     for (const failure of [live, recorded]) {
-      if (failure === undefined || failure.kind === "handed-off")
+      if (failure === undefined)
         throw new Error("expected the partner-refused-set alert");
       expect(failure.kind).toBe("partner-refused-set");
       expect(failure.title).toBe(PARTNER_REFUSED_SET_TITLE);

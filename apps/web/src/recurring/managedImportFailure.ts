@@ -1,9 +1,6 @@
 /**
  * What the import affordance says when it will not take a backup file (see
- * docs/MANAGED_EXCHANGE.md, "Eviction recovery is the import flow"). The refusal
- * an already-handed-off exchange meets is not one of these -- that file is fine
- * and the exchange is still here, so it says so itself
- * ({@link ./managedHandoffGate.ts}).
+ * docs/MANAGED_EXCHANGE.md, "Eviction recovery is the import flow").
  *
  * A command-line configuration this app will not take is the one refusal that
  * states its own reason: the file is in front of the operator, who wrote it by
@@ -47,7 +44,6 @@ import type {
   ManagedStoredCopy,
   ManagedStoredCopyState,
 } from "@psi/managed/managedPairRecognition";
-import type { ManagedImportChosenCopyError } from "@psi/managed/managedExchangeImport";
 
 /** The heading every import refusal here is shown under. */
 export const IMPORT_FAILURE_TITLE = "That file could not be imported";
@@ -220,26 +216,6 @@ export function liveCopyOpenLabel(
 /** The confirm on {@link liveCopyImportReason}'s alert. */
 export const LIVE_COPY_IMPORT_CONFIRM = "Add it as a separate exchange";
 
-/** The heading a scoped restore is refused under when the file is not the
- * backup of the exchange it restores. */
-export const OTHER_EXCHANGE_RESTORE_TITLE =
-  "That is not this exchange's backup";
-
-/**
- * What "Restore from backup" on a moved exchange says when the file is not the
- * backup downloaded when it moved: another exchange's backup, a command-line
- * file, or a backup exported after the exchange ran on the other device, whose
- * secret has changed. Names the list's import for any other file.
- */
-export function otherExchangeRestoreReason(label: string): string {
-  const named = label === "" ? "this exchange" : `"${label}"`;
-  return (
-    `This file is not the backup you downloaded when you moved ${named} to ` +
-    "another device, so nothing was restored. Choose that backup file. To " +
-    'import a different file, use "Import a file" below the list.'
-  );
-}
-
 /** The heading a pair import stops under when a stored exchange it may belong
  * to has its agreed terms and side. */
 export const STORED_COPY_IMPORT_TITLE =
@@ -251,29 +227,12 @@ const STORED_COPY_WORDS: Record<
   ManagedStoredCopyState,
   { state: string; resembles: string; take: string }
 > = {
-  "handed-off": {
-    state: "was handed off to the command line",
-    resembles: "its files after a run there would look like this",
-    take: "take it back with these files",
-  },
-  "migration-spent": {
-    state: "was moved to another device",
-    resembles: "its files after it ran elsewhere would look like this",
-    take: "restore it here from these files",
-  },
   "configuration-only": {
     state: "holds a configuration without its key file",
     resembles: "this key file may be the one it lacks",
     take: "complete it with these files",
   },
 };
-
-/** What taking a handed-off exchange back needs first, stated wherever one is
- * offered: two copies running one exchange leave one unable to connect. */
-const STOP_THE_COMMAND_LINE_FIRST =
-  " Before taking a handed-off exchange back, stop its scheduled run on the " +
-  "machine running it: if both keep running it, each run changes the shared " +
-  "secret and the other one stops being able to connect to your partner.";
 
 /**
  * What a pair import says when it stops to ask: no stored exchange holds the
@@ -284,9 +243,6 @@ const STOP_THE_COMMAND_LINE_FIRST =
 export function storedCopyImportReason(
   copies: ReadonlyArray<ManagedStoredCopy>,
 ): string {
-  const stopFirst = copies.some(({ state }) => state === "handed-off")
-    ? STOP_THE_COMMAND_LINE_FIRST
-    : "";
   if (copies.length === 1) {
     const [{ label, state }] = copies;
     const named = label === "" ? "An exchange in the list" : `"${label}"`;
@@ -295,8 +251,7 @@ export function storedCopyImportReason(
       `${named} ${words.state} and has the same terms and the same side as ` +
       `these files, with a different secret - ${words.resembles}. Nothing ` +
       `was imported. If they belong to it, ${words.take}. If this is a ` +
-      "separate exchange with the same terms, add these files as a new one." +
-      stopFirst
+      "separate exchange with the same terms, add these files as a new one."
     );
   }
   const names = copies
@@ -311,8 +266,7 @@ export function storedCopyImportReason(
     `${copies.length} exchanges in the list${listed} have the same terms and ` +
     "the same side as these files, and none holds their secret. Nothing was " +
     "imported. If they belong to one of them, choose it below. If this is a " +
-    "separate exchange with the same terms, add these files as a new one." +
-    stopFirst
+    "separate exchange with the same terms, add these files as a new one."
   );
 }
 
@@ -323,50 +277,26 @@ export function storedCopyTakeLabel(
   copies: ReadonlyArray<ManagedStoredCopy>,
   index: number,
 ): string {
-  const { label, state } = copies[index];
+  const { label } = copies[index];
   const named =
     label !== ""
       ? `"${label}"`
       : copies.length === 1
         ? "it"
         : `listed exchange ${index + 1}`;
-  if (state === "handed-off") return `Take ${named} back`;
-  return state === "migration-spent" ? `Restore ${named}` : `Complete ${named}`;
+  return `Complete ${named}`;
 }
 
 /** The decline on {@link storedCopyImportReason}'s alert: the pair installs as
  * a new exchange beside every one named. */
 export const STORED_COPY_IMPORT_CONFIRM = "Add them as a new exchange";
 
-/** The heading a pair import is refused under when the stored exchange holding
- * its secret is the other side of it. */
-export const SIDE_MISMATCH_IMPORT_TITLE = "These files are for the other side";
-
-/** The refusal a pair import meets when the exchange moved to another device
- * that holds the key file's secret is the other side of the configuration:
- * the partner's files hold the same secret. */
-export function sideMismatchImportReason(label: string): string {
-  const named = label === "" ? "An exchange in the list" : `"${label}"`;
-  return (
-    `${named} holds this .alcove.key's secret for the other side of the ` +
-    "exchange - these look like your partner's files - so nothing was " +
-    "imported. Choose the alcove.yaml and .alcove.key saved for your side."
-  );
-}
-
 /** The heading a pair import is refused under when the exchange the operator
  * chose to take it in can no longer take it. */
 export const CHOSEN_COPY_IMPORT_TITLE = "The files were not taken in";
 
 /** Why the exchange the operator chose could not take the pair, and what to
- * do: wait out a run, or import the files again to be asked afresh. */
-export function chosenCopyImportReason(
-  error: ManagedImportChosenCopyError,
-): string {
-  return error.reason === "run-in-flight"
-    ? "That exchange is running right now - in this browser, in another " +
-        "tab, or on its schedule - so nothing was imported. When it " +
-        "finishes, import the files again."
-    : "That exchange changed since you chose it - it was deleted, taken " +
-        "back, or edited - so nothing was imported. Import the files again.";
-}
+ * do: import the files again to be asked afresh. */
+export const CHOSEN_COPY_IMPORT_REASON =
+  "That exchange changed since you chose it - it was deleted or edited - so " +
+  "nothing was imported. Import the files again.";

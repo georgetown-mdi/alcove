@@ -25,7 +25,7 @@ import type {
  *
  * Returns the call that drops the store's unrecorded-run flag, made by the alert
  * that shows it once it has rendered: the surface shows nothing for a missing,
- * unloadable or spent exchange, and dropping the flag on the visit instead would
+ * or unloadable exchange, and dropping the flag on the visit instead would
  * destroy the only trace of that run unseen.
  */
 export function useManagedSurfaceReads(

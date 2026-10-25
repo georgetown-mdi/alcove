@@ -40,7 +40,7 @@ export const WEB_SOURCE_DIR = "apps/web/src";
 export const FAILURE_TYPES = /** @type {const} */ ([
   { name: "RunFailure", file: "apps/web/src/exchange/useInviterExchange.ts" },
   {
-    name: "ManagedRunFailureAlert",
+    name: "ManagedRunFailure",
     file: "apps/web/src/recurring/managedRunLaunchModel.ts",
   },
   { name: "FailureText", file: "apps/web/src/exchange/RunSurface.tsx" },

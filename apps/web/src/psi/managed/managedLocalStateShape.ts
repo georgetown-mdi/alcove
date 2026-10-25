@@ -27,41 +27,17 @@ import type {
 } from "./managedBackupState";
 import type { ZodType } from "zod";
 
-/** Which export of an earlier version handed a spent copy off, where that was not
- * the device migration. `"command-line"` is that version's confirmed command-line
- * hand-off: the exchange runs from the exported `alcove.yaml` and `.alcove.key` on
- * some machine. The import reads that `alcove.yaml` as a configuration only and
- * never the key file, so that hand-off leaves nothing of its own to bring the
- * secret back. */
-export type ManagedSpentHandoff = "command-line";
-
-/** This device's spent state for a record: the visible spent state (no Run
- * affordance, no scheduled runs) an earlier version's hand-off export left. No
- * current path writes it; it is read only on a record an earlier version wrote. A
- * plain handoff timestamp beside the hand-off's route -- no secret material, no
- * rotation epoch. */
-export interface ManagedSpentState {
-  /** ISO 8601 UTC instant the copy was handed off. */
-  spentAt: string;
-  /** The hand-off that spent the copy, when it was not the device migration (see
-   * {@link ManagedSpentHandoff}). Absent means a migration export, whose own
-   * artifact revives it. */
-  handoff?: ManagedSpentHandoff;
-}
-
 /** This device's import marker for a record: stamped when the record was installed
- * or revived from a backup artifact, and by a take-back of a command-line hand-off,
- * with or without a key file. It is the evidence the desync tiering reads to
- * tell an import-since-last-success apart from an unexplained handshake failure: a
- * restored or taken-back copy can hold a secret the partnership has rotated past, so
- * a handshake failure after an import newer than the last success is the benign
- * import/restore tier, not the attack path. A plain instant -- no secret material, no
- * rotation epoch -- and a local sibling by design: it is this device's own restore
- * history, meaningless to an imported copy, so it must never enter the export
- * artifact. */
+ * from a backup artifact or a command-line pair, or completed by a pair.
+ * It is the evidence the desync tiering reads to tell an import-since-last-success
+ * apart from an unexplained handshake failure: an imported copy can hold a secret
+ * the partnership has rotated past, so a handshake failure after an import newer
+ * than the last success is the benign import/restore tier, not the attack path. A
+ * plain instant -- no secret material, no rotation epoch -- and a local sibling by
+ * design: it is this device's own restore history, meaningless to an imported
+ * copy, so it must never enter the export artifact. */
 export interface ManagedImportMarker {
-  /** ISO 8601 UTC instant the record was installed or revived, the key file's secret
-   * installed, or -- for a take-back that chose no key file -- the copy handed off. */
+  /** ISO 8601 UTC instant the record was installed or completed. */
   importedAt: string;
 }
 
@@ -92,19 +68,16 @@ export interface ManagedTermsProposal {
 }
 
 /** The local sibling state for a record: the optional backup marker, the optional
- * spent state, the optional import marker, and the optional terms proposal, each
- * present independently. An entry with none is meaningless and never written (a
- * cleared state deletes the entry). */
+ * import marker, and the optional terms proposal, each present independently. An
+ * entry with none is meaningless and never written (a cleared state deletes the
+ * entry). */
 export interface ManagedLocalState {
   /** When a backup was last taken (see {@link ManagedBackupMarker}); absent until
    * the first export. */
   backup?: ManagedBackupMarker;
-  /** This device's spent state (see {@link ManagedSpentState}); absent unless an
-   * earlier version's export handed the copy off. */
-  spent?: ManagedSpentState;
-  /** When this device installed or revived the record from a backup, or took it back
-   * from a command-line hand-off (see {@link ManagedImportMarker}); absent for a
-   * record created by an invite/accept deposit and neither imported nor taken back. */
+  /** When this device installed or completed the record from imported
+   * files (see {@link ManagedImportMarker}); absent for a record created by an
+   * invite/accept deposit and not imported since. */
   imported?: ManagedImportMarker;
   /** The partner terms change the last unattended run refused (see
    * {@link ManagedTermsProposal}); absent when none is pending. */
@@ -170,8 +143,8 @@ const backupLocationSchema: ZodType<ManagedBackupLocation> = z.union([
  * corrupted or app-upgrade-invalidated entry rejects rather than loading. The
  * one exception is the terms proposal, validated on its own: one that does
  * not parse is dropped and the entry loads without it, so a proposal core's
- * terms schema no longer accepts cannot take the backup, spent, and import
- * markers down with it.
+ * terms schema no longer accepts cannot take the backup and import markers
+ * down with it.
  */
 export const managedLocalStateSchema: ZodType<ManagedLocalState> = z
   .object({
@@ -180,13 +153,6 @@ export const managedLocalStateSchema: ZodType<ManagedLocalState> = z
       .object({
         backedUpAt: z.iso.datetime(),
         savedAs: backupLocationSchema.optional(),
-      })
-      .strict()
-      .optional(),
-    spent: z
-      .object({
-        spentAt: z.iso.datetime(),
-        handoff: z.literal("command-line").optional(),
       })
       .strict()
       .optional(),

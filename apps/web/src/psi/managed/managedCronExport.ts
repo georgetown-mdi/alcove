@@ -5,7 +5,7 @@
  * a host scheduler move a managed exchange onto the CLI
  * (docs/notes/managed-exchange-design.md, "Who this is for").
  *
- * This module is the pure half -- no download, no store write, no spend; the
+ * This module is the pure half -- no download and no store write; the
  * one thing it reads beyond the record is this browser's own relay setting,
  * through an injected reader.
  *
@@ -459,7 +459,7 @@ export function composeManagedCronExportConfig(
 /**
  * Compose a managed record into the CLI's two files and the command that runs
  * them: the configuration half above, plus the key file. The record is read,
- * never written, and no marker, spend, or download is involved; `readOwn`
+ * never written, and no marker or download is involved; `readOwn`
  * reads this browser's own relay setting. The record type is the runnable
  * one, so the key half cannot be asked of a record that holds no secret.
  *

@@ -28,12 +28,12 @@ import {
   managedRunRetryable,
 } from "./managedRunLaunchModel";
 import { TermsChangeQuestion, TermsProposalPanel } from "./ManagedTermsChange";
+import { RUN_IN_FLIGHT_EXPORT_REASON } from "./managedCronExportModel";
 
 import {
   BackupPanel,
   FolderWriteNote,
   SavedExchangesFoot,
-  SpentSurface,
   WorkingFolderPrompt,
 } from "./ManagedRunSections";
 import {
@@ -101,7 +101,6 @@ export function ManagedRunSurface({ id }: { id: string }) {
     clearParked,
     dropUnrecordedRunFlag,
     settleTermsProposal,
-    readRecordAgain,
     rereadRecord,
     editConfiguration,
   } = useManagedRunSurface(id);
@@ -110,13 +109,13 @@ export function ManagedRunSurface({ id }: { id: string }) {
     run: runState,
     recovery,
     reads,
-    handoff,
+    exports,
     termsProposal,
   } = surfaceState;
   const accountingRead = reads.accounting.read;
   const parkedResultsRead = reads.parkedResults.read;
-  const exportBusy = handoff.export.kind === "busy";
-  const exportFailed = handoff.export.kind === "failed";
+  const exportBusy = exports.export.kind === "busy";
+  const exportFailed = exports.export.kind === "failed";
   const runnable = load.kind === "runnable" ? load : undefined;
   const record = runnable?.record;
   const localState = runnable?.localState;
@@ -124,8 +123,6 @@ export function ManagedRunSurface({ id }: { id: string }) {
   const folderWrite = runCompletion?.folderWrite;
   const finishedAt = runCompletion?.finishedAt;
   const runOutcomeUnsavedReason = runCompletion?.unsavedReason;
-  // The hand-off has no failure copy of its own and never lands here: reaching it
-  // moves the surface to the spent state below.
   const failure = liveFailure?.alert;
   const { warnings: runWarnings, matching, termsChangeQuestion } = runState;
   // The record, its detail, and the backup affordances all read the browser's own
@@ -230,16 +227,6 @@ export function ManagedRunSurface({ id }: { id: string }) {
             </p>
             <SavedExchangesFoot />
           </>
-        ) : load.kind === "spent" ? (
-          <SpentSurface
-            spent={load.spent}
-            refusedRun={load.byRefusedRun}
-            parkedResultsRead={parkedResultsRead}
-            onRetryParkedResultsRead={retryParkedResultsRead}
-            onClearParkedResults={clearParked}
-            id={id}
-            onRetaken={readRecordAgain}
-          />
         ) : load.kind === "configuration" ? (
           <ManagedConfigurationSurface
             record={load.configuration}
@@ -305,6 +292,9 @@ export function ManagedRunSurface({ id }: { id: string }) {
                 >
                   Download updated backup
                 </Button>
+                {runLockHeld && (
+                  <p className={styles.small}>{RUN_IN_FLIGHT_EXPORT_REASON}</p>
+                )}
               </div>
             )}
             <SavedExchangesFoot />

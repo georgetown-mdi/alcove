@@ -1,8 +1,7 @@
 /**
  * The pure model behind the managed re-run's launch surface: classifies a launch
  * outcome into the state the surface shows -- title, message, and recovery
- * affordance -- except the hand-off state, which renders as the stored spent
- * state instead. No React, no I/O.
+ * affordance. No React, no I/O.
  *
  * The benign states ({@link benignRerunOutcome}) read from the launch error
  * directly; the RECORDED tiers ({@link deriveManagedFailureTier}) derive from
@@ -139,7 +138,7 @@ interface ManagedRunRecordReadings {
 /** A classified launch state the host renders as an alert: the state's kind (the
  * pre-connection benign states plus the derived tiers), its plain copy, and the
  * recovery affordance beneath it. */
-export interface ManagedRunFailureAlert {
+export interface ManagedRunFailure {
   /** The state's kind. The benign states read from the error, plus the recorded
    * tiers derived from the record's bookkeeping. */
   kind:
@@ -176,28 +175,10 @@ export interface ManagedRunFailureAlert {
   recovery: ManagedRunRecovery;
 }
 
-/** The classified hand-off state, which has no copy: the surface consumes this
- * kind by settling onto the stored spent state ({@link ./ManagedRunSections.tsx}),
- * which names the hand-off that spent the copy, what it left behind, and what the
- * refused run did. Copy authored here would be prose no surface can reach, and the
- * absent `title` and `message` keep it that way -- a host that renders this state
- * as an alert instead does not typecheck. */
-interface ManagedRunHandedOffFailure {
-  /** The state's kind, the discriminant the host branches on. */
-  kind: "handed-off";
-  /** Nothing here is retried and nothing here is decided again. */
-  recovery: "none";
-}
-
-/** A classified launch state: an alert with its copy, or the hand-off state the
- * surface branches on. */
-export type ManagedRunFailure =
-  ManagedRunFailureAlert | ManagedRunHandedOffFailure;
-
 /** The benign expiry state's copy: a lapsed stored secret, plain re-invite
  * framing (see docs/MANAGED_EXCHANGE.md, "Expiry is its own state"), naming the
  * lapsed instant the error has so the operator sees when the bound passed. */
-function expiredFailure(expires: string): ManagedRunFailureAlert {
+function expiredFailure(expires: string): ManagedRunFailure {
   return {
     kind: "expired",
     title: "This exchange's shared secret has expired",
@@ -210,50 +191,16 @@ function expiredFailure(expires: string): ManagedRunFailureAlert {
   };
 }
 
-/** The benign hand-off state: an export gave this browser's copy of the exchange
- * away, so the run refused before reading the input file and before connecting --
- * the single-owner invariant holding, not a failure to recover from.
- *
- * It holds no copy and offers nothing to take the exchange back with. Taking a
- * handed-off exchange back happens on that exchange's own surface, not through a
- * refused run; reaching this state fixes the run surface onto the stored spent
- * state, which tells the operator where the exchange runs and what the refused
- * run did. */
-const HANDED_OFF_FAILURE: ManagedRunHandedOffFailure = {
-  kind: "handed-off",
-  recovery: "none",
-};
-
-/** The unreadable-custody state: the run could not read the local entry recording
- * whether this device's copy was handed off, so it refused before reading the
- * input file and before connecting rather than rotating on custody it could not
- * establish. Not the storage state beside it: nothing rotated here, so there is
- * no desync to recover from. Recovery is `"none"` -- no affordance on this
- * surface makes the entry readable, so the read's own error finishes this copy
- * ({@link MANAGED_RUN_CAUSE_PLACEMENT}) as the only diagnostic the state has:
- * this browser's account of its own read, not something the exchange said. */
-const CUSTODY_UNREADABLE_FAILURE: ManagedRunFailureAlert = {
-  kind: "custody-unreadable",
-  title: "Part of this exchange's stored copy could not be read",
-  message:
-    "This browser could not read the note it keeps beside this exchange - the " +
-    "one recording whether this copy was handed off somewhere else - so the " +
-    "run stopped before reading your file and before connecting. Nothing left " +
-    "this device, nothing here changed, and your partner was not contacted. A " +
-    "run does not go ahead without that note, so running this exchange again " +
-    "stops the same way until this browser can read it.",
-  recovery: "none",
-};
-
 /** The unreadable-custody state as a live launch reads it off a
  * {@link ManagedExchangeNotRunnableError}: the stored record the run read
- * inside the lock was gone, invalid, or held a configuration only, so the
- * copy names the record rather than the hand-off note. Same kind and recovery
- * as {@link CUSTODY_UNREADABLE_FAILURE}, but it shows none of the launch error:
- * the wrapped cause is a record id or a schema issue list, internal names the
- * operator cannot act on, so the error stays with the developer console
+ * inside the lock was gone, invalid, or held a configuration only, so the run
+ * refused before reading the input file and before connecting. Not the storage
+ * state: nothing rotated here, so there is no desync to recover from. Recovery
+ * is `"none"`, and it shows none of the launch error: the wrapped cause is a
+ * record id or a schema issue list, internal names the operator cannot act on,
+ * so the error stays with the developer console
  * ({@link classifyManagedRunFailure}). */
-const NOT_RUNNABLE_FAILURE: ManagedRunFailureAlert = {
+const NOT_RUNNABLE_FAILURE: ManagedRunFailure = {
   kind: "custody-unreadable",
   title: "This exchange's stored copy can no longer be run",
   message:
@@ -266,25 +213,23 @@ const NOT_RUNNABLE_FAILURE: ManagedRunFailureAlert = {
 };
 
 /** The unreadable-custody state read back from a record's stamp at a later
- * visit, which does not say whether the run met an unreadable hand-off note or
- * a stored copy it could not run, so the copy covers both. */
-const RECORDED_CUSTODY_UNREADABLE_FAILURE: ManagedRunFailureAlert = {
+ * visit: the last run could not use the stored copy it read. */
+const RECORDED_CUSTODY_UNREADABLE_FAILURE: ManagedRunFailure = {
   kind: "custody-unreadable",
   title: "Part of this exchange's stored copy could not be read",
   message:
     "The last run stopped before reading your file and before connecting, " +
-    "because this browser could not read either this exchange's stored copy " +
-    "or the note it keeps beside it recording whether the copy was handed " +
-    "off. Nothing left this device, nothing here changed, and your partner " +
-    "was not contacted. Reload the list and open the exchange again; if a " +
-    "run stops the same way, running it again will not help until this " +
-    "browser can read both.",
+    "because this browser could not read this exchange's stored copy. " +
+    "Nothing left this device, nothing here changed, and your partner was " +
+    "not contacted. Reload the list and open the exchange again; if a run " +
+    "stops the same way, running it again will not help until this browser " +
+    "can read it.",
   recovery: "none",
 };
 
 /** The benign "already running elsewhere" state: another tab or a scheduled run holds
  * the single-writer lock. Not a failure of this run. */
-const ALREADY_RUNNING_FAILURE: ManagedRunFailureAlert = {
+const ALREADY_RUNNING_FAILURE: ManagedRunFailure = {
   kind: "already-running",
   title: "This exchange is already running",
   message:
@@ -309,7 +254,7 @@ const ALREADY_RUNNING_FAILURE: ManagedRunFailureAlert = {
  * Issued from THIS run's own no-show error ({@link classifyManagedRunFailure}),
  * never from a record's recorded outcome, which belongs to whichever run
  * stamped it. */
-const MISSED_FAILURE: ManagedRunFailureAlert = {
+const MISSED_FAILURE: ManagedRunFailure = {
   kind: "missed",
   title: "Your partner did not arrive",
   message:
@@ -326,7 +271,7 @@ const MISSED_FAILURE: ManagedRunFailureAlert = {
 
 /** The benign input state's copy. Fixed and non-oracular: an input rejection's
  * partner-influenced detail (the unsatisfied field names) is never echoed. */
-const INPUT_FAILURE: ManagedRunFailureAlert = {
+const INPUT_FAILURE: ManagedRunFailure = {
   kind: "input",
   title: INPUT_FAILURE_TITLE,
   message:
@@ -340,7 +285,7 @@ const INPUT_FAILURE: ManagedRunFailureAlert = {
 /** The input state where an attended run was not allowed to edit the working
  * folder. Choosing the folder again comes first because a permission that
  * already reads as denied shows no prompt on a re-run. */
-const INPUT_PERMISSION_FAILURE_READWRITE: ManagedRunFailureAlert = {
+const INPUT_PERMISSION_FAILURE_READWRITE: ManagedRunFailure = {
   ...INPUT_FAILURE,
   message:
     "The run stopped before connecting because this site was not allowed to " +
@@ -353,7 +298,7 @@ const INPUT_PERMISSION_FAILURE_READWRITE: ManagedRunFailureAlert = {
  * working folder lapsed. A scheduled run only ever queries and never prompts,
  * so the remedy names no browser prompt: running the exchange attended, where
  * the browser may still offer one, or choosing the folder again. */
-const INPUT_PERMISSION_FAILURE_READ: ManagedRunFailureAlert = {
+const INPUT_PERMISSION_FAILURE_READ: ManagedRunFailure = {
   ...INPUT_FAILURE,
   message:
     "The run stopped before connecting because this site's permission to " +
@@ -370,7 +315,7 @@ const INPUT_PERMISSION_FAILURE_READ: ManagedRunFailureAlert = {
  * fixed input copy otherwise. Both names are the operator's own -- the one
  * fixed name and the folder they chose -- so naming them echoes nothing a
  * partner wrote. */
-function inputFailure(error: unknown): ManagedRunFailureAlert {
+function inputFailure(error: unknown): ManagedRunFailure {
   if (
     !(error instanceof ManagedInputError) ||
     error.rejection.reason !== "acquire"
@@ -401,7 +346,7 @@ function inputFailure(error: unknown): ManagedRunFailureAlert {
  * only ways forward are a conforming file or terms agreed with the partner.
  * The recorded tier reaches it too, so an unattended run's shortfall is
  * classified here rather than through the input state's re-pick. */
-const TERMS_SHORTFALL_FAILURE: ManagedRunFailureAlert = {
+const TERMS_SHORTFALL_FAILURE: ManagedRunFailure = {
   kind: "terms-shortfall",
   title: TERMS_SHORTFALL_FAILURE_TITLE,
   message:
@@ -422,7 +367,7 @@ const TERMS_SHORTFALL_FAILURE: ManagedRunFailureAlert = {
  * the retry state -- the same terms refuse identically -- and its way forward
  * is the run surface's own terms-change panel, so the alert offers no
  * recovery of its own. */
-export const TERMS_CHANGE_FAILURE: ManagedRunFailureAlert = {
+export const TERMS_CHANGE_FAILURE: ManagedRunFailure = {
   kind: "terms-change",
   title: TERMS_CHANGE_FAILURE_TITLE,
   message:
@@ -437,7 +382,7 @@ export const TERMS_CHANGE_FAILURE: ManagedRunFailureAlert = {
  * declined the change, at the question or on the panel, or the proposal could
  * not be kept. No change waits to be applied, and the next run the operator
  * starts asks about the change again, so running again is the way forward. */
-export const TERMS_CHANGE_DECLINED_FAILURE: ManagedRunFailureAlert = {
+export const TERMS_CHANGE_DECLINED_FAILURE: ManagedRunFailure = {
   kind: "terms-change",
   title: TERMS_CHANGE_FAILURE_TITLE,
   message:
@@ -451,7 +396,7 @@ export const TERMS_CHANGE_DECLINED_FAILURE: ManagedRunFailureAlert = {
  * run could not continue under: the stored exchange holds them, and the next
  * run exchanges under them. Retryable in place: running again is the whole of
  * the way forward. */
-export const TERMS_CHANGE_TAKEN_ON_FAILURE: ManagedRunFailureAlert = {
+export const TERMS_CHANGE_TAKEN_ON_FAILURE: ManagedRunFailure = {
   kind: "terms-change",
   title: "Run the exchange again",
   message:
@@ -464,7 +409,7 @@ export const TERMS_CHANGE_TAKEN_ON_FAILURE: ManagedRunFailureAlert = {
 
 function termsChangeTakenOnKeyOffFailure(
   reason: MatchingKeyUnavailableReason,
-): ManagedRunFailureAlert {
+): ManagedRunFailure {
   return {
     ...TERMS_CHANGE_TAKEN_ON_FAILURE,
     message:
@@ -475,7 +420,7 @@ function termsChangeTakenOnKeyOffFailure(
 
 const TERMS_CHANGE_TAKEN_ON_KEY_OFF_FAILURES: Record<
   MatchingKeyUnavailableReason,
-  ManagedRunFailureAlert
+  ManagedRunFailure
 > = {
   "count-only": termsChangeTakenOnKeyOffFailure("count-only"),
   "single-pass": termsChangeTakenOnKeyOffFailure("single-pass"),
@@ -488,7 +433,7 @@ const TERMS_CHANGE_TAKEN_ON_KEY_OFF_FAILURES: Record<
  */
 export function termsChangeTakenOnFailure(
   matchingKeyTurnedOff: MatchingKeyUnavailableReason | undefined,
-): ManagedRunFailureAlert {
+): ManagedRunFailure {
   return matchingKeyTurnedOff === undefined
     ? TERMS_CHANGE_TAKEN_ON_FAILURE
     : TERMS_CHANGE_TAKEN_ON_KEY_OFF_FAILURES[matchingKeyTurnedOff];
@@ -517,7 +462,7 @@ export const RUN_OUTCOME_UNSAVED_NOTE = {
  * Reached from the live launch error, which holds the reading, and from a
  * record whose shortfall stamp holds it
  * ({@link ../psi/managed/managedExchangeRecord.ts}, `singleColumnInput`). */
-const SINGLE_COLUMN_SHORTFALL_FAILURE: ManagedRunFailureAlert = {
+const SINGLE_COLUMN_SHORTFALL_FAILURE: ManagedRunFailure = {
   kind: "terms-shortfall",
   title: TERMS_SHORTFALL_FAILURE_TITLE,
   message:
@@ -531,7 +476,7 @@ const SINGLE_COLUMN_SHORTFALL_FAILURE: ManagedRunFailureAlert = {
 /** Which shortfall state a launch error lands on: the single-column reading where
  * the input guard's own rejection holds it, the fixed shortfall copy otherwise --
  * the run boundary's refusal reports no column count for this state to read. */
-function shortfallFailure(error: unknown): ManagedRunFailureAlert {
+function shortfallFailure(error: unknown): ManagedRunFailure {
   return error instanceof ManagedInputError &&
     error.rejection.reason === "columns" &&
     error.rejection.singleColumn
@@ -547,9 +492,7 @@ const TOO_LARGE_RETRY_NOTE =
  * count, so this copy states no size; a live launch shows the refusal's own
  * message instead ({@link tooLargeFailure}). Not the retry state -- the same
  * files refuse identically. */
-function recordedTooLargeFailure(
-  reading: TooLargeReading,
-): ManagedRunFailureAlert {
+function recordedTooLargeFailure(reading: TooLargeReading): ManagedRunFailure {
   return {
     kind: "too-large",
     title: tooLargeFailureTitle(reading),
@@ -565,7 +508,7 @@ function recordedTooLargeFailure(
  * set's size, the bound, and the remedy, or that the first-round count could
  * not be taken and why, so it is the state's whole message. The titles are the
  * one-shot seats' own for the same refusal. */
-function tooLargeFailure(error: unknown): ManagedRunFailureAlert {
+function tooLargeFailure(error: unknown): ManagedRunFailure {
   if (!isSetTooLargeError(error)) return recordedTooLargeFailure({});
   return {
     ...recordedTooLargeFailure(tooLargeReadingOf(error)),
@@ -579,7 +522,7 @@ function tooLargeFailure(error: unknown): ManagedRunFailureAlert {
  * refused shows the refusal's own message instead
  * ({@link partnerSetTooLargeFailure}). Not the retry state -- the same partner
  * input refuses identically. */
-const RECORDED_PARTNER_SET_TOO_LARGE_FAILURE: ManagedRunFailureAlert = {
+const RECORDED_PARTNER_SET_TOO_LARGE_FAILURE: ManagedRunFailure = {
   kind: "partner-set-too-large",
   title: PARTNER_SET_TOO_LARGE_TITLE,
   message:
@@ -593,7 +536,7 @@ const RECORDED_PARTNER_SET_TOO_LARGE_FAILURE: ManagedRunFailureAlert = {
  * the refusal's message states the partner's count, this browser's ceiling,
  * and the remedy, so it is the state's whole message; where the partner
  * stopped the run, its abort states no figure, so the recorded copy stands. */
-function partnerSetTooLargeFailure(error: unknown): ManagedRunFailureAlert {
+function partnerSetTooLargeFailure(error: unknown): ManagedRunFailure {
   if (!(error instanceof RoundCapacityError))
     return RECORDED_PARTNER_SET_TOO_LARGE_FAILURE;
   return {
@@ -606,7 +549,7 @@ function partnerSetTooLargeFailure(error: unknown): ManagedRunFailureAlert {
  * send its set for a cause other than its size. The partner's abort states
  * only that it refused, so a live launch and the record read back show the
  * same copy. Not the retry state -- the partner's run refuses identically. */
-const PARTNER_REFUSED_SET_FAILURE: ManagedRunFailureAlert = {
+const PARTNER_REFUSED_SET_FAILURE: ManagedRunFailure = {
   kind: "partner-refused-set",
   title: PARTNER_REFUSED_SET_TITLE,
   message:
@@ -625,7 +568,7 @@ const PARTNER_REFUSED_SET_FAILURE: ManagedRunFailureAlert = {
  * recovery of its own. Its copy attests non-disclosure, so the recorded tier
  * is gated ({@link MANAGED_RUN_NON_DISCLOSURE_ATTESTATION}); the live reading
  * is not, since the error's mark is set only at the terms exchange. */
-const PARTNER_REFUSED_TERMS_FAILURE: ManagedRunFailureAlert = {
+const PARTNER_REFUSED_TERMS_FAILURE: ManagedRunFailure = {
   kind: "partner-refused-terms",
   title: TERMS_DIFFERENCE_TITLE,
   message: `${TERMS_DIFFERENCE_PROBLEM.partner} ${PARTNER_REFUSED_TERMS_REMEDY}`,
@@ -640,7 +583,7 @@ function partnerProtocolRefusalFailure(copy: {
   title: string;
   problem: string;
   remedy: string;
-}): ManagedRunFailureAlert {
+}): ManagedRunFailure {
   return {
     kind: "partner-protocol-refusal",
     title: copy.title,
@@ -663,7 +606,7 @@ const RECORDED_PARTNER_PROTOCOL_REFUSAL_FAILURE = partnerProtocolRefusalFailure(
  * error's own message names the registrar, its answer, and the next step: a
  * retry where the registrar did not answer, owner-token re-enrollment where it
  * refused. */
-function relayRegistrationFailure(error: unknown): ManagedRunFailureAlert {
+function relayRegistrationFailure(error: unknown): ManagedRunFailure {
   return {
     kind: "relay-registration",
     title: "The relay registrar did not confirm this exchange's relay key",
@@ -680,8 +623,8 @@ function relayRegistrationFailure(error: unknown): ManagedRunFailureAlert {
  * could not save it, which can leave the two parties on different secrets. Plain,
  * specific copy naming re-invite -- the record's own bookkeeping explains the
  * failure. This is the one-sided persist alone: the other local-storage refusal a
- * run can meet rotates nothing and is treated as {@link CUSTODY_UNREADABLE_FAILURE}. */
-const STORAGE_FAILURE: ManagedRunFailureAlert = {
+ * run can meet rotates nothing and is treated as {@link NOT_RUNNABLE_FAILURE}. */
+const STORAGE_FAILURE: ManagedRunFailure = {
   kind: "storage",
   title: "The last run could not be saved",
   message:
@@ -698,7 +641,7 @@ const STORAGE_FAILURE: ManagedRunFailureAlert = {
  * produces, since the rendezvous derives from the secret. Plain copy naming
  * re-invite, with no attack checklist: it is read only beside a no-show, never
  * beside a handshake that failed closed. */
-const PARTIAL_ROTATION_FAILURE: ManagedRunFailureAlert = {
+const PARTIAL_ROTATION_FAILURE: ManagedRunFailure = {
   kind: "partial-rotation",
   title: PARTIAL_ROTATION_FAILURE_TITLE,
   message:
@@ -712,17 +655,15 @@ const PARTIAL_ROTATION_FAILURE: ManagedRunFailureAlert = {
 };
 
 /** The Tier-1 restore/import state: this exchange was restored from a backup or
- * key file, or taken back from the command line, and has not successfully run
- * since, so it may be one the partnership has already moved past. Plain,
+ * key file and has not successfully run since, so it may be one the partnership
+ * has already moved past. Plain,
  * specific copy naming re-invite -- no attack checklist. */
-const IMPORTED_FAILURE: ManagedRunFailureAlert = {
+const IMPORTED_FAILURE: ManagedRunFailure = {
   kind: "imported",
-  title:
-    "This exchange was restored from a backup or key file, or taken back " +
-    "from the command line",
+  title: "This exchange was restored from a backup or key file",
   message:
-    "This exchange was restored from a backup or key file, or taken back " +
-    "from the command line, and no run has succeeded since, so it may be " +
+    "This exchange was restored from a backup or key file, and no run has " +
+    "succeeded since, so it may be " +
     "one you and your partner have already moved past. Re-invite your " +
     "partner to reconnect; the exchange keeps your terms, gets a new secret, " +
     "and uses the coordination server the new invitation names.",
@@ -741,7 +682,7 @@ const IMPORTED_FAILURE: ManagedRunFailureAlert = {
  * coordination server and stores it on the record. */
 function savedAddressRefusedFailure(
   error: ManagedSignalingEndpointRefusedError,
-): ManagedRunFailureAlert {
+): ManagedRunFailure {
   return {
     kind: "saved-address-refused",
     title: "The saved coordination server address cannot be used",
@@ -763,7 +704,7 @@ function savedAddressRefusedFailure(
  * about why this run stopped; the error itself reaches the operator escaped, in
  * the labelled block beneath that copy ({@link MANAGED_RUN_CAUSE_PLACEMENT}).
  * A temporary connection problem, retried in place. */
-const TRANSPORT_FAILURE: ManagedRunFailureAlert = {
+const TRANSPORT_FAILURE: ManagedRunFailure = {
   kind: "transport",
   title: "The run could not be completed",
   message:
@@ -775,7 +716,7 @@ const TRANSPORT_FAILURE: ManagedRunFailureAlert = {
 
 /** A recorded `"missed"` outcome read as a launch failure: the transport copy, with
  * the import a copy run elsewhere needs ahead of its re-invite. */
-const RECORDED_MISSED_FAILURE: ManagedRunFailureAlert = {
+const RECORDED_MISSED_FAILURE: ManagedRunFailure = {
   ...TRANSPORT_FAILURE,
   message:
     "This run could not be completed - usually a temporary connection problem " +
@@ -789,7 +730,7 @@ const RECORDED_MISSED_FAILURE: ManagedRunFailureAlert = {
  * invents no new security guidance. The forwardable message and the two-outcome gate
  * are composed in {@link ../psi/managedFailureConfirmation.ts}; this copy is the lead
  * the surface shows above them. */
-const UNEXPLAINED_FAILURE: ManagedRunFailureAlert = {
+const UNEXPLAINED_FAILURE: ManagedRunFailure = {
   kind: "unexplained",
   title: UNEXPLAINED_FAILURE_TITLE,
   message:
@@ -853,8 +794,6 @@ export function managedRunTierFailure(
       return RECORDED_PARTNER_PROTOCOL_REFUSAL_FAILURE;
     case "too-large":
       return recordedTooLargeFailure(record.lastRun ?? {});
-    case "handed-off":
-      return HANDED_OFF_FAILURE;
     case "custody-unreadable":
       return RECORDED_CUSTODY_UNREADABLE_FAILURE;
     case "storage":
@@ -922,26 +861,14 @@ function missedFailure(
   return MISSED_FAILURE;
 }
 
-/** The hand-off state's non-disclosure attestation: the line the stored spent
- * state adds for a run the hand-off refused ({@link ./ManagedRunSections.tsx}).
- * The hand-off state has no alert copy of its own -- reaching it settles the
- * whole surface onto that stored state -- so the claim its gating rests on is
- * written here, beside the gate. The unit test holds the gate to these words,
- * and the browser test holds the rendered line to them. */
-export const MANAGED_RUN_HANDED_OFF_ATTESTATION =
-  "The run you started stopped before reading your file and before " +
-  "connecting, and nothing left this device.";
-
 /** Where a tier's non-disclosure attestation -- the claim that THIS run stopped
  * before reading the input file and before connecting, so nothing left this
  * device -- is written for the operator to read.
  *
- * - `"alert-copy"` -- in the tier's own {@link ManagedRunFailureAlert} title and
+ * - `"alert-copy"` -- in the tier's own {@link ManagedRunFailure} title and
  *   message.
- * - `"spent-state"` -- in {@link MANAGED_RUN_HANDED_OFF_ATTESTATION}, the one
- *   state whose claim is not alert copy.
  * - `"none"` -- the tier states nothing about what this run disclosed. */
-type NonDisclosureAttestationSite = "alert-copy" | "spent-state" | "none";
+type NonDisclosureAttestationSite = "alert-copy" | "none";
 
 /** Where each record-derived tier attests THIS run's non-disclosure, and so which
  * tiers give way to the generic tier once this run's data exchange has started
@@ -961,7 +888,6 @@ type NonDisclosureAttestationSite = "alert-copy" | "spent-state" | "none";
 export const MANAGED_RUN_NON_DISCLOSURE_ATTESTATION: Readonly<
   Record<ManagedFailureTier, NonDisclosureAttestationSite>
 > = {
-  "handed-off": "spent-state",
   "custody-unreadable": "alert-copy",
   "terms-shortfall": "alert-copy",
   "too-large": "none",
@@ -995,35 +921,26 @@ function attestsNonDisclosure(tier: ManagedFailureTier): boolean {
  *   label naming the exchange as its source. Where words a partner or a network
  *   stack wrote belong, so they cannot read as this application's own account
  *   of the failure.
- * - `"own-account"` -- finishing the state's own copy, where this application's
- *   account of something it did itself belongs: a label attributing it to the
- *   exchange would be wrong about who wrote it, the treatment the `output`
- *   category's own-write cause already takes
- *   (docs/notes/reported-failure-cause.md).
  * - `"withheld"` -- nowhere.
  */
-export type ManagedRunCausePlacement =
-  "attributed" | "own-account" | "withheld";
+export type ManagedRunCausePlacement = "attributed" | "withheld";
 
 /**
  * Where each classified state's launch error reaches the operator. Exhaustive
  * by the kind union, so a state added to the model does not typecheck until its
  * placement is decided here.
  *
- * Two of the three states showing the error at all are the ones whose copy
- * accounts for nothing about why the run stopped. The transport state states a
- * connection problem and no more ({@link TRANSPORT_FAILURE}), and its error is
- * the partner- or network-written text the label exists to attribute. The
- * unreadable-custody state is this browser reading its own storage
- * ({@link CUSTODY_UNREADABLE_FAILURE}), with no affordance on this surface that
- * makes the entry readable, so the read's error is the only diagnostic it has
- * -- and it is this application's account of its own read, so it finishes the
- * copy instead. Every other state's copy states the cause itself, fixed and
- * non-oracular by the decision each constant above records, and the unexplained
- * state withholds for the reason the seats withhold a failed-closed handshake's
- * message (docs/notes/reported-failure-cause.md). The too-large state's live
- * copy is the refusal's own message ({@link tooLargeFailure}), so a second
- * block would repeat it, and so is the relay-registration state's
+ * The transport state shows the error because its copy accounts for nothing
+ * about why the run stopped: it states a connection problem and no more
+ * ({@link TRANSPORT_FAILURE}), and its error is the partner- or network-written
+ * text the label exists to attribute. Every other state's copy states the cause
+ * itself, fixed and non-oracular by the decision each constant above records,
+ * and the unexplained state withholds for the reason the seats withhold a
+ * failed-closed handshake's message (docs/notes/reported-failure-cause.md). The
+ * unreadable-custody state's error is a record id or a schema issue list,
+ * internal names the operator cannot act on. The too-large state's live copy is
+ * the refusal's own message ({@link tooLargeFailure}), so a second block would
+ * repeat it, and so is the relay-registration state's
  * ({@link relayRegistrationFailure}), and the partner-set-too-large state's
  * ({@link partnerSetTooLargeFailure}). The partner-refused-terms state shows
  * the error as the one-shot exchange's terms alert does: the copy states the
@@ -1033,13 +950,13 @@ export type ManagedRunCausePlacement =
  * data was refused, for the partner to act on.
  */
 const MANAGED_RUN_CAUSE_PLACEMENT: Record<
-  ManagedRunFailureAlert["kind"],
+  ManagedRunFailure["kind"],
   ManagedRunCausePlacement
 > = {
   transport: "attributed",
   "partner-refused-terms": "attributed",
   "partner-protocol-refusal": "attributed",
-  "custody-unreadable": "own-account",
+  "custody-unreadable": "withheld",
   expired: "withheld",
   input: "withheld",
   "terms-shortfall": "withheld",
@@ -1059,58 +976,36 @@ const MANAGED_RUN_CAUSE_PLACEMENT: Record<
 
 /**
  * Where a classified state of this kind shows the launch error, if it shows
- * it at all: a lookup in {@link MANAGED_RUN_CAUSE_PLACEMENT}. A state that
- * shows no error whatever its kind ({@link NOT_RUNNABLE_FAILURE}) is set
- * aside by identity in {@link classifyManagedRunFailure} before this lookup.
+ * it at all: a lookup in {@link MANAGED_RUN_CAUSE_PLACEMENT}.
  *
  * @internal exported for the unit test.
  */
 export function managedRunCausePlacement(
-  kind: ManagedRunFailureAlert["kind"],
+  kind: ManagedRunFailure["kind"],
 ): ManagedRunCausePlacement {
   return MANAGED_RUN_CAUSE_PLACEMENT[kind];
 }
-
-/** The lead an own-account placement finishes with the error: this application
- * still speaking, about an operation of its own, so the text lands inside its
- * own sentence rather than under a label naming the exchange as its source. */
-const OWN_ACCOUNT_CAUSE_LEAD = "What went wrong here:";
 
 /**
  * A classified state with `error` shown where `placement` puts it. The decision
  * is passed in rather than read here so it stays at the single site above and
  * this stays the mechanism: the escape at the display boundary, and the empty
- * cause that gets neither a block promising an account the state has none of
- * nor a dangling lead. A rejection that is not an `Error` has no chain to show.
- * An own-account placement shows the error the state's wrapper carries as its
- * cause when it has one, since the wrapper's own sentence is what the state's
- * copy already says.
+ * cause that gets no block promising an account the state has none of. A
+ * rejection that is not an `Error` has no chain to show.
  *
  * @internal exported for the unit test.
  */
 export function withShownCause(
-  failure: ManagedRunFailureAlert,
+  failure: ManagedRunFailure,
   error: unknown,
   placement: ManagedRunCausePlacement,
-): ManagedRunFailureAlert {
-  const shown =
-    placement === "own-account" &&
-    error instanceof Error &&
-    error.cause instanceof Error
-      ? error.cause
-      : error;
+): ManagedRunFailure {
   const cause: string =
-    (placement === "attributed" || placement === "own-account") &&
-    shown instanceof Error
-      ? sanitizeErrorForDisplay(shown)
+    placement === "attributed" && error instanceof Error
+      ? sanitizeErrorForDisplay(error)
       : "";
   if (cause.trim() === "") return failure;
-  return placement === "own-account"
-    ? {
-        ...failure,
-        message: `${failure.message} ${OWN_ACCOUNT_CAUSE_LEAD} ${cause}`,
-      }
-    : { ...failure, reportedCause: cause };
+  return { ...failure, reportedCause: cause };
 }
 
 /**
@@ -1137,8 +1032,7 @@ export function withShownCause(
  * it too ({@link MANAGED_RUN_NON_DISCLOSURE_ATTESTATION}).
  *
  * Whatever state it lands on, the launch error reaches the operator only
- * through {@link managedRunCausePlacement}, and never on the not-runnable
- * copy ({@link NOT_RUNNABLE_FAILURE}). The transport state of a connection
+ * through {@link managedRunCausePlacement}. The transport state of a connection
  * that did not open with this site's relay switched off
  * (`failedWithDefaultRelayOff`) adds {@link DEFAULT_RELAY_OFF_REMEDY} to its
  * own copy.
@@ -1157,8 +1051,6 @@ export function classifyManagedRunFailure(
     now,
     dataExchangeStarted,
   );
-  if (state.kind === "handed-off" || state === NOT_RUNNABLE_FAILURE)
-    return state;
   const shown = withShownCause(
     state,
     error,
@@ -1183,11 +1075,7 @@ function classifyLaunchState(
   if (benign === "expired" && error instanceof ManagedExchangeExpiredError)
     return expiredFailure(error.expires);
   if (benign === "already-running") return ALREADY_RUNNING_FAILURE;
-  if (benign === "handed-off") return HANDED_OFF_FAILURE;
-  if (benign === "custody-unreadable")
-    return error instanceof ManagedExchangeNotRunnableError
-      ? NOT_RUNNABLE_FAILURE
-      : CUSTODY_UNREADABLE_FAILURE;
+  if (benign === "custody-unreadable") return NOT_RUNNABLE_FAILURE;
   if (benign === "input") return inputFailure(error);
   if (benign === "terms-shortfall") return shortfallFailure(error);
   if (benign === "missed") return missedFailure(records.atLaunch, local, now);

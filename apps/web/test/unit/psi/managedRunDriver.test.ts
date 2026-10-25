@@ -1170,7 +1170,6 @@ describe("a first round over the per-set maximum", () => {
     expect(rejection).toBe(FIRST_ROUND_REFUSAL);
     expect(mockedRendezvous).not.toHaveBeenCalled();
     const shown = shownFor(rejection, false);
-    if (shown.kind === "handed-off") throw new Error("expected an alert");
     expect([shown.kind, shown.title, shown.message]).toEqual([
       "too-large",
       "Your file is too large to send",

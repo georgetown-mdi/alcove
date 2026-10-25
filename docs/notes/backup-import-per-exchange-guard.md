@@ -19,7 +19,7 @@ The rule stood in for a check the reconciliation did not have. The import alread
 
 ## The rule taken
 
-A backup holds one exchange, so the guard is a lookup against that exchange rather than a condition on the rest of the store. One import control stands beside every list state, and a backup reconciles to one of four named outcomes: restored this device's spent copy, added as new, refused because a live copy is already here, or refused because it was handed off to the command line.
+A backup holds one exchange, so the guard is a lookup against that exchange rather than a condition on the rest of the store. One import control stands beside every list state, and a backup reconciles to one of two named outcomes: added as new, or refused because a copy is already here. The record keeps no spent state for a revive or a hand-off refusal to read, so the reconciliation has neither.
 
 The missing live-copy check is two checks:
 

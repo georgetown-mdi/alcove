@@ -13,7 +13,6 @@ import {
   clearManagedExchanges,
   createManagedExchange,
 } from "@psi/managed/managedExchangeStore";
-import { ManagedExchangeCustodyUnreadableError } from "@psi/managed/managedExchangeRun";
 import { ManagedRunSurface } from "@recurring/ManagedRunSurface";
 import { REPORTED_CAUSE_LABEL } from "@exchange/RunSurface";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
@@ -23,22 +22,16 @@ import { expectConsole } from "./expectedConsole";
 
 import type { NewManagedExchange } from "@psi/managed/managedExchangeRecord";
 
-// The recurring seat shows a failed run's error on two states, and which voice
-// the operator reads it in is where it lands. The transport state's error is
-// the exchange's, so it stands under the label attributing it and outside the
-// seat's own copy; the unreadable-custody state's error is this browser's own
-// account of its own storage read, so it finishes that copy and no label
-// attributes it elsewhere. Structural properties, so each run below fails with
-// text that would mislead if it arrived in the other place.
+// Which voice the operator reads a failed run's error in is where it lands. The
+// transport state's error is the exchange's, so it stands under the label
+// attributing it and outside the seat's own copy. A structural property, so the
+// run below fails with text that would mislead if it arrived in the seat's own
+// copy.
 
 /** The relayed chain the stubbed transport run fails with: its second link
  * tells the operator the run is safe to repeat, which is advice only this
  * application is in a position to give. */
 const PLANTED_ADVICE = "it is safe to run this again";
-
-/** What the stubbed custody read fails with: a fault of this browser's own
- * storage, which no exchange said anything about. */
-const PLANTED_READ_FAULT = "the stored entry is not valid JSON";
 
 vi.mock("@tanstack/react-router", async () =>
   (await import("./moduleMocks")).reactRouterMock(),
@@ -155,35 +148,4 @@ test("the transport state's cause stands under the label, not in the seat's own 
     expect(
       above.compareDocumentPosition(below) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-});
-
-test("the unreadable-custody state's cause finishes the seat's own copy, under no label", async () => {
-  expectConsole(
-    "error",
-    /^ManagedExchangeCustodyUnreadableError: managed exchange abc has an unreadable /,
-  );
-  runRejection = new ManagedExchangeCustodyUnreadableError(
-    "abc",
-    new Error(PLANTED_READ_FAULT),
-  );
-  await runToFailure("Part of this exchange's stored copy could not be read");
-
-  const message = await vi.waitFor(() => {
-    const found = [...app.container.querySelectorAll("span")].find((node) =>
-      node.textContent.startsWith("This browser could not read the note"),
-    );
-    if (found === undefined)
-      throw new Error("the failure alert is not mounted with its copy");
-    return found;
-  });
-  // The read that failed is this browser's own, so its error is part of what
-  // this application says about what it did, inside that sentence.
-  expect(message.textContent).toContain(PLANTED_READ_FAULT);
-  // And nothing on the surface attributes it to the exchange, which said
-  // nothing here -- the run stopped before connecting.
-  expect(
-    [...app.container.querySelectorAll("*")].some(
-      (node) => node.textContent === REPORTED_CAUSE_LABEL,
-    ),
-  ).toBe(false);
 });

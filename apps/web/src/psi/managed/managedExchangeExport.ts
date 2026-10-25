@@ -357,7 +357,7 @@ export interface ManagedCronExportDeps {
  * under its own name. Returns what the two downloads held.
  *
  * Nothing is written: no backup marker, since the two files are not the
- * artifact this app's backup import accepts, and no spend, so the stored
+ * artifact this app's backup import accepts, and nothing else, so the stored
  * exchange stays runnable here whatever becomes of the files.
  *
  * The composition is partial ({@link composeManagedCronExport} refuses a

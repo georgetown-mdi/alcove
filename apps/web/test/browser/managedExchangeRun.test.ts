@@ -13,11 +13,6 @@ import {
   recordManagedExchangeLastRun,
 } from "@psi/managed/managedExchangeStore";
 import {
-  ManagedExchangeCustodyUnreadableError,
-  ManagedExchangeSpentError,
-  runManagedExchange,
-} from "@psi/managed/managedExchangeRun";
-import {
   ManagedExchangeLockUnavailableError,
   managedExchangeLockName,
   withManagedExchangeLock,
@@ -31,12 +26,10 @@ import {
   runnableManagedExchangeOrRefuse,
 } from "@psi/managed/managedExchangeRecord";
 import { ManagedInputError } from "@psi/managed/managedInputGuard";
-import { deriveManagedFailureTier } from "@psi/managed/managedFailureTiers";
 import { getManagedLocalState } from "@psi/managed/managedLocalState";
+import { runManagedExchange } from "@psi/managed/managedExchangeRun";
 
 import { waitFor } from "../utils/waitFor";
-
-import { seedSpentState } from "./seedSpentState";
 
 import type {
   NewManagedExchange,
@@ -56,7 +49,7 @@ async function createRunnableExchange(
 // The platform half of the run+rotate critical section, exercised against real
 // Chromium (real Web Locks and real IndexedDB): the single-writer lock's exclusion
 // under contention, the no-steal property, the strict-durability field-scoped
-// rotation write, the refusal of a copy a hand-off spent, and the
+// rotation write, and the
 // persist-before-success wiring end to end. The pure ordering and decision logic is
 // unit-tested in Node without either platform in test/unit/psi/managedRunRotate.test.ts.
 
@@ -688,147 +681,28 @@ describe("runManagedExchange: persist-before-success end to end", () => {
     expect(stored?.lastRun).toBeUndefined();
   });
 
-  test("a run refuses a copy a hand-off spent, rotating nothing", async () => {
-    // The run path reads the spent state itself rather than trusting a surface's
-    // reading. The sibling spent state is the one an earlier version's hand-off
-    // left.
-    const created = await createRunnableExchange(newExchange());
-    await seedSpentState(
-      created.id,
-      "2026-07-14T09:00:00.000Z",
-      "command-line",
-    );
-    let inputRead = false;
-    const refusedAt = Date.parse("2026-07-14T12:00:00.000Z");
-
-    const error: unknown = await runManagedExchange({
-      record: created,
-      runStartedAtMs: Date.now(),
-      acquireInput: () => {
-        inputRead = true;
-        return Promise.resolve(undefined);
-      },
-      handshake: () => {
-        throw new Error("the handshake must not run for a handed-off copy");
-      },
-      dataExchange: () => {
-        throw new Error("the data exchange must not run for a handed-off copy");
-      },
-      now: () => refusedAt,
-    }).then(
-      () => {
-        throw new Error("the run should have refused the handed-off copy");
-      },
-      (reason: unknown) => reason,
-    );
-
-    expect(error).toBeInstanceOf(ManagedExchangeSpentError);
-    // The refusal precedes the input guard, which precedes every connection.
-    expect(inputRead).toBe(false);
-    const stored = await getManagedExchange(created.id);
-    // The secret the hand-off gave away is exactly the one still stored: this run
-    // rotated nothing past it.
-    expect(stored?.sharedSecret).toBe(created.sharedSecret);
-    expect(stored?.lastRun).toEqual({
-      at: new Date(refusedAt).toISOString(),
-      outcome: "failed",
-      failureKind: "handed-off",
-    });
-    // The hand-off itself is untouched: the refusal records a run, not a spend.
-    expect((await getManagedLocalState(created.id))?.spent).toMatchObject({
-      handoff: "command-line",
-    });
-  });
-
-  test("a run whose custody reading fails refuses it under its own kind", async () => {
-    // The sibling entry a corruption or an app upgrade invalidated, driven through
-    // the real validating read: a run that cannot tell whether the copy was handed
-    // off must not assume it was not. It records the custody-unreadable kind, not
-    // the storage kind, which would wrongly report a rotation this run never
-    // reached -- and not the retryable transport kind, which would keep offering a
-    // scheduled window a retry on a permanent local problem.
+  test("a sibling entry an earlier version marked handed off does not stop a run", async () => {
+    // No gate reads a handed-off state: the run goes ahead, and its rotation
+    // drops the entry this build cannot parse along with the markers it clears.
     const created = await createRunnableExchange(newExchange());
     await putRawLocalState(created.id, {
-      spent: { spentAt: "not an instant" },
+      spent: { spentAt: "2026-07-14T09:00:00.000Z", handoff: "command-line" },
     });
-    let inputRead = false;
-    const refusedAt = Date.parse("2026-07-14T12:00:00.000Z");
-
-    const error: unknown = await runManagedExchange({
-      record: created,
-      runStartedAtMs: Date.now(),
-      acquireInput: () => {
-        inputRead = true;
-        return Promise.resolve(undefined);
-      },
-      handshake: () => {
-        throw new Error("the handshake must not run on an unread custody");
-      },
-      dataExchange: () => {
-        throw new Error("the data exchange must not run on an unread custody");
-      },
-      now: () => refusedAt,
-    }).then(
-      () => {
-        throw new Error("the run should have refused the unreadable custody");
-      },
-      (reason: unknown) => reason,
-    );
-
-    expect(error).toBeInstanceOf(ManagedExchangeCustodyUnreadableError);
-    // Fail-closed on the same terms as the hand-off refusal: no file read, no
-    // connection, and nothing rotated.
-    expect(inputRead).toBe(false);
-    const stored = await getManagedExchange(created.id);
-    expect(stored?.sharedSecret).toBe(created.sharedSecret);
-    expect(stored?.lastRun).toEqual({
-      at: new Date(refusedAt).toISOString(),
-      outcome: "failed",
-      failureKind: "custody-unreadable",
-    });
-    // What the stamp resolves to at the next visit -- the reading an unattended
-    // run's refusal shows through, having classified no live error of its own.
-    // The sibling read the tier derivation would take fails on the same entry, so
-    // the derivation is given what a caller that could not read it holds.
-    expect(deriveManagedFailureTier(stored!, undefined, refusedAt)).toBe(
-      "custody-unreadable",
-    );
-  });
-
-  test("the spent state is read per run, not once per surface", async () => {
-    // A record that ran cleanly and was handed off afterwards -- the shape a
-    // mount-time reading gets wrong, and the one a scheduled window meets between
-    // two attempts.
-    const created = await createRunnableExchange(newExchange());
     const rotatedSecret = generateSharedSecret();
-    await runManagedExchange({
+
+    const result = await runManagedExchange({
       record: created,
       runStartedAtMs: Date.now(),
       acquireInput: () => Promise.resolve(undefined),
       handshake: () => Promise.resolve({ rotatedSecret, handshake: "c" }),
       dataExchange: () => Promise.resolve("done"),
     });
-    await seedSpentState(created.id, "2026-07-14T09:00:00.000Z");
 
-    await expect(
-      runManagedExchange({
-        record: created,
-        runStartedAtMs: Date.now(),
-        acquireInput: () => Promise.resolve(undefined),
-        handshake: () =>
-          Promise.resolve({
-            rotatedSecret: generateSharedSecret(),
-            handshake: "c",
-          }),
-        dataExchange: () => Promise.resolve("done"),
-      }),
-    ).rejects.toBeInstanceOf(ManagedExchangeSpentError);
-
-    // The migrated copy's secret stands: the second run refused rather than
-    // rotating past the artifact the operator handed over.
+    expect(result.exchange).toBe("done");
     expect((await getManagedExchange(created.id))?.sharedSecret).toBe(
       rotatedSecret,
     );
+    expect(await getManagedLocalState(created.id)).toBeUndefined();
   });
 
   test("a slow run's stale success tail cannot mask a newer outcome", async () => {

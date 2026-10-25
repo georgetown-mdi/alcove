@@ -2,7 +2,6 @@ import { describe, expect, test } from "vitest";
 import { generateSharedSecret, getDefaultLinkageTerms } from "@alcove/core";
 
 import {
-  MANAGED_RUN_HANDED_OFF_ATTESTATION,
   MANAGED_RUN_NON_DISCLOSURE_ATTESTATION,
   classifyManagedRunFailure,
   managedRunTierFailure,
@@ -112,7 +111,6 @@ const TIER_EVIDENCE: Record<
     record({ lastRun: failed("partner-protocol-refusal") }),
     undefined,
   ],
-  "handed-off": [record({ lastRun: failed("handed-off") }), undefined],
   "custody-unreadable": [
     record({ lastRun: failed("custody-unreadable") }),
     undefined,
@@ -135,27 +133,17 @@ const TIER_EVIDENCE: Record<
   none: [record(), undefined],
 };
 
-/** What an operator reads for a tier, split by where they read it: an alert
- * state's title and message, or -- for the hand-off state, which has no alert
- * copy -- the line the stored spent state adds for a run the hand-off refused.
- * Resolved from the classified state's own shape, never from the table under
- * test, so a mis-declared site cannot steer the scan to the copy that would
- * agree with it. */
-function copyForTier(tier: ManagedFailureTier): {
-  alertCopy: string;
-  spentState: string;
-} {
+/** What an operator reads for a tier: its alert state's title and message.
+ * Resolved from the classified state itself, never from the table under test,
+ * so a mis-declared site cannot steer the scan to the copy that would agree
+ * with it. */
+function copyForTier(tier: ManagedFailureTier): string {
   const failure = managedRunTierFailure(
     tier,
     record({ expires: "2026-07-01T00:00:00.000Z" }),
     undefined,
   );
-  return failure.kind === "handed-off"
-    ? { alertCopy: "", spentState: MANAGED_RUN_HANDED_OFF_ATTESTATION }
-    : {
-        alertCopy: `${failure.title} ${failure.message}`,
-        spentState: "",
-      };
+  return `${failure.title} ${failure.message}`;
 }
 
 /** Classify one tier's evidence at a phase boundary, with a live error that
@@ -177,21 +165,16 @@ function classifyAt(
 describe("the non-disclosure gate is bound to the copy it gates", () => {
   test("each tier's declared attestation site is where its copy attests", () => {
     for (const tier of TIERS) {
-      const { alertCopy, spentState } = copyForTier(tier);
-      const site = attestsNonDisclosure(alertCopy)
+      const site = attestsNonDisclosure(copyForTier(tier))
         ? "alert-copy"
-        : attestsNonDisclosure(spentState)
-          ? "spent-state"
-          : "none";
+        : "none";
       expect(MANAGED_RUN_NON_DISCLOSURE_ATTESTATION[tier], tier).toBe(site);
     }
   });
 
   test("a tier gives way past the data-exchange boundary exactly when it attests", () => {
     for (const tier of TIERS) {
-      const { alertCopy, spentState } = copyForTier(tier);
-      const attests =
-        attestsNonDisclosure(alertCopy) || attestsNonDisclosure(spentState);
+      const attests = attestsNonDisclosure(copyForTier(tier));
       const before = classifyAt(tier, false);
       const past = classifyAt(tier, true);
       // Gated means the boundary replaced the tier with the generic transport
@@ -211,8 +194,6 @@ describe("the non-disclosure gate is bound to the copy it gates", () => {
       NOW,
       true,
     );
-    if (failure.kind === "handed-off")
-      throw new Error("expected an alert state");
     expect(failure.kind).toBe("transport");
     expect(attestsNonDisclosure(`${failure.title} ${failure.message}`)).toBe(
       false,

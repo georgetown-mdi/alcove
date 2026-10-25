@@ -913,19 +913,6 @@ If a run starts after the page last checked, the download is refused in the
 same words, nothing is downloaded and nothing changes here, and the reason goes
 at the page's next check once the run is over.
 
-**A copy handed off by an earlier version does not run here.** A run that
-finds this browser's copy marked handed off stops before reading the input file
-and before connecting. An attended run refused that way leaves the page on the
-handed-off state straight away, rather than an error the operator has to reload
-past. A run that cannot read that state at all refuses on the same terms and
-says so in its own words: this browser could not read the note it keeps beside
-the exchange, so the run stopped before reading the input file and before
-connecting. It is not reported as a rotation this device failed to save, and it
-offers no re-invite. Nothing rotated, so the two parties are not out of step
-and a fresh secret would replace one nothing moved; the note that did not read
-is what has to become readable, and running the exchange again meets the same
-note until it does.
-
 **The file is a credential.** It holds the exchange's shared secret in plain
 text, like the command line's `.alcove.key` (see [Key file
 security](SECURITY_DESIGN.md#key-file-security)). Store it where only you can
@@ -1011,50 +998,6 @@ it was before. A backup indicator reading green is a promise that a file this
 browser restores from exists, and these files are not that file. The panel says
 so where it offers them, so the two kinds of export are told apart before
 either is downloaded.
-
-### Taking it back from the command line
-
-An exchange handed to the command line by an earlier version can be brought back.
-The scheduled job was abandoned, the machine is going away, or the operator simply
-wants to run it here again: the handed-off exchange's own page offers **Take this
-exchange back**, and it is the only way back -- an old backup file is refused.
-
-Taking it back is one deliberate step with a confirmation, not a quiet reversal,
-because two things have to be true and only the operator knows them:
-
-- **The scheduled run there is stopped.** If both keep running, each run changes
-  the shared secret and whichever copy rotates second leaves the other unable to
-  connect to the partner.
-- **Whether it has run there since the hand-off.** Every command-line run changes
-  the shared secret and writes the new one back into `.alcove.key`, so after a run
-  that file holds the secret the partner expects and this browser's stored one does
-  not. The confirmation asks for that file together with the `alcove.yaml` beside
-  it, both in one pick, from the folder the exchange was handed off to; this
-  browser picks the exchange back up where the command line left it. The key file
-  names no exchange, so the `alcove.yaml` is what is checked: files stating other
-  terms, or the other side's files, are refused and nothing changes. Nothing can
-  tell an older copy of the key file from the current one, though, and the file
-  chosen replaces the only copy of the secret this browser has, so an older copy
-  leaves the exchange unable to connect and a fresh invitation the only way back.
-
-Where nothing has run there since the hand-off, no file is needed: the secret
-stored here is still the partnership's. Where the files cannot be got at all, take
-the exchange back without it and create a fresh invitation for the partner from the
-same page -- the recovery for any secret this browser cannot match ([Recovery: fast
-re-invite](#recovery-fast-re-invite)).
-
-An exchange taken back either way counts as restored until a run succeeds here. So
-if a command-line run did happen after all, and the secret stored here is behind the
-partner's, the next run's failure reports that benign state and its re-invite
-recovery instead of sending you to check with your partner out of band ([Telling a
-desync from an attack](#telling-a-desync-from-an-attack)).
-
-Declining the confirmation writes nothing: the exchange stays handed off, and the
-files on the other machine stay the only copy that can run. The exchange comes back as
-it was -- same terms, same label, same schedule, same accounting of disclosures --
-because none of that ever left this browser. The schedule is the one thing to
-settle by hand: the cron entry or scheduled task that was meeting the agreed window
-is no longer the one meeting it, so remove it there.
 
 ### When your relay runs a registrar
 
@@ -1150,25 +1093,15 @@ no longer connect to your partner. What the pair import takes and refuses:
   import the `alcove.yaml` on its own to edit it here. A `signing` block with
   `mode: none` asks for none, so it runs here and is kept as written.
 - **One copy of an exchange.** An exchange is recognized by its shared secret. If
-  this browser already runs the exchange the key file belongs to, nothing is
-  imported and the refusal names it. If you handed it off to the command line
-  from here, the import refuses and names the way back: open it from the list and
-  choose "Take this exchange back", with these two files. An exchange an
-  earlier version moved to another device from here comes back as the same entry
-  in the list, unless the files are for the other side of it -- your partner's --
-  which is refused.
-- **An exchange you already have, after its secret changed.** A key file the
-  command line has rotated since the exchange left this browser matches no
-  secret here, and a configuration imported alone holds none. So when an
-  exchange in the list was handed off to the command line, moved to another
-  device by an earlier version, or imported as a configuration only, and has
-  the same terms and the same side as the files, the import stops and names it.
-  A copy in the list that still runs here is not among them: the files land as
-  a second entry beside it. You can take the files
-  into it -- taking a handed-off exchange back, restoring a moved one, or
-  completing a configuration with its key file -- add them as a new exchange
-  instead, or cancel. Nothing is taken in without your answer. Before taking a
-  handed-off exchange back, stop its scheduled run on the command line.
+  this browser already holds the exchange the key file belongs to, nothing is
+  imported and the refusal names it.
+- **A configuration you already have.** A configuration imported alone holds no
+  secret, so when one in the list has the same terms and the same side as the
+  files, the import stops and names it. You can complete it with the files, add
+  them as a new exchange instead, or cancel. Nothing is taken in without your
+  answer. A copy in the list that still runs here is not asked about: a key
+  file the command line has rotated since matches no secret here, and the files
+  land as a second entry beside it.
 
 The secret is kept only in this browser's stored copy of the exchange, as for an
 exchange set up here; the import marks the exchange as restored, and it reads as
@@ -1960,7 +1893,7 @@ working folder, the run backs it up there without asking:
   prompts.
 - **What it writes.** The same contents "Back up this exchange" downloads,
   under a name stating the exchange's label and the date and time it was
-  written (the exact name: [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#the-backup-marker-the-spent-state-and-the-import-marker-local-siblings-never-in-the-artifact)).
+  written (the exact name: [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#the-backup-and-import-markers-local-siblings-never-in-the-artifact)).
   It is written into the working folder and nowhere else.
 - **What it replaces.** Once the new file is in the folder, the backup the
   previous scheduled run wrote there is deleted. A backup saved into the folder
@@ -2032,16 +1965,9 @@ what else is listed, and no refusal asks you to clear the list first. What
 happens depends on that one exchange (the rules:
 [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#reconciling-a-backup-import)):
 
-- **Moved from here to another device**: the listed entry is restored in place.
-  Its row also offers "Restore from backup", which takes only the backup
-  downloaded when it moved and refuses any other file. It restores without the
-  question below, and names any other listed entry with the same terms and
-  side.
 - **Not in this browser**: it is added as a new entry.
 - **Already running here with the backup's secret**: nothing is imported, and
   the refusal names the entry to open instead.
-- **Handed off to the command line from here**: nothing is imported, and the
-  refusal names the take-back on that exchange's page.
 
 An exchange that has run since the backup was taken has a newer secret than the
 file, so the secret no longer finds it. When listed exchanges have the same
@@ -2072,9 +1998,7 @@ unsaid, what would report it is a scheduled run -- which cannot read its input
 without the folder -- a whole window after the import that lost it. The import
 states it instead, while the operator is still standing there, only where the
 source record actually held a folder, and offers the way to the exchange where
-it is chosen. A record revived in place on the profile that handed it off keeps
-the grant it already had, so the import names the folder only when that record
-no longer holds one.
+it is chosen.
 
 ## Removing a managed exchange
 

@@ -204,7 +204,6 @@ describe("the kept proposal", () => {
     );
     const markers = {
       backup: { backedUpAt: "2026-09-01T00:00:00.000Z" },
-      spent: { spentAt: "2026-09-02T00:00:00.000Z" },
       imported: { importedAt: "2026-08-31T00:00:00.000Z" },
     };
     for (const termsProposal of [
@@ -222,6 +221,15 @@ describe("the kept proposal", () => {
       parseManagedLocalState({
         backup: { backedUpAt: "2026-09-01T00:00:00.000Z" },
         smuggled: true,
+      }),
+    ).toThrow();
+  });
+
+  test("a handed-off state an earlier version wrote is an unknown member too", () => {
+    expect(() =>
+      parseManagedLocalState({
+        backup: { backedUpAt: "2026-09-01T00:00:00.000Z" },
+        spent: { spentAt: "2026-09-02T00:00:00.000Z", handoff: "command-line" },
       }),
     ).toThrow();
   });

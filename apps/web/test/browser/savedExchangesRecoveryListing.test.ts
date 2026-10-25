@@ -32,9 +32,9 @@ import {
   markManagedExchangeBackedUp,
 } from "@psi/managed/managedLocalState";
 import { SavedExchanges } from "@recurring/SavedExchanges";
+import { UNREADABLE_RECORD_LABEL } from "@recurring/savedExchangesRecovery";
 
 import { createAppMount } from "./renderApp";
-import { seedSpentState } from "./seedSpentState";
 
 import type {
   NewManagedExchange,
@@ -285,11 +285,11 @@ describe("recovery listing: the delete confirm's custody notes", () => {
     ).toBeNull();
   });
 
-  test("an unparseable sibling entry -> the custody note shows (conservative on doubt)", async () => {
+  test("an unparseable sibling entry -> an unreadable row whose custody note shows (conservative on doubt)", async () => {
     // No bad record here: a corrupted sibling entry alone fails the strict local-state
     // read, which routes the surface to read-failed on its own. The diagnostic read
-    // then treats that unparseable sibling conservatively -- backed up on doubt -- so
-    // the good record's delete confirm includes the custody note.
+    // then lists that record as unreadable, backed up on doubt, so its delete
+    // confirm includes the custody note.
     const good = await createRunnableExchange(
       newExchange({ label: "Doubtful partnership" }),
     );
@@ -298,8 +298,9 @@ describe("recovery listing: the delete confirm's custody notes", () => {
 
     app.render(createElement(SavedExchanges));
     await expect
-      .element(page.getByText("Doubtful partnership"))
+      .element(page.getByText(UNREADABLE_RECORD_LABEL))
       .toBeInTheDocument();
+    expect(page.getByText("Doubtful partnership").query()).toBeNull();
 
     await page.getByRole("button", { name: "Remove" }).first().click();
     await expect
@@ -309,45 +310,6 @@ describe("recovery listing: the delete confirm's custody notes", () => {
         }),
       )
       .toBeInTheDocument();
-  });
-
-  test("a copy spent to the command line -> the hand-off note shows on the recovery confirm", async () => {
-    // Deleting this row is what removes the import refusal the hand-off stands on, so
-    // the confirm has to state what those saved files keep running -- the same note
-    // the normal list's confirm shows, from a surface whose list cannot be read.
-    await mountReadFailedWith("Handed to the command line", async (record) => {
-      await seedSpentState(
-        record.id,
-        "2026-07-14T13:00:00.000Z",
-        "command-line",
-      );
-    });
-
-    await page.getByRole("button", { name: "Remove" }).first().click();
-    await expect
-      .element(
-        page.getByText(
-          "The alcove.yaml and .alcove.key you saved still run this exchange",
-          { exact: false },
-        ),
-      )
-      .toBeInTheDocument();
-  });
-
-  test("a live copy -> no hand-off note on the recovery confirm", async () => {
-    await mountReadFailedWith("Live partnership");
-
-    await page.getByRole("button", { name: "Remove" }).first().click();
-    await expect
-      .element(page.getByText("your partner is not notified", { exact: false }))
-      .toBeInTheDocument();
-    expect(
-      page
-        .getByText("The alcove.yaml and .alcove.key you saved", {
-          exact: false,
-        })
-        .query(),
-    ).toBeNull();
   });
 
   test("an unlabeled readable entry's confirm displays 'Remove this exchange?', not the row's display text", async () => {
@@ -405,11 +367,10 @@ describe("the import this surface offers works from the read-failed state", () =
     await expect
       .poll(async () => (await listManagedExchangesDiagnostic()).length)
       .toBe(3);
-    // Neither refusal is shown: the file read fine and nothing was handed off.
+    // No refusal is shown: the file read fine.
     expect(
       page.getByText("That file could not be imported").query(),
     ).toBeNull();
-    expect(page.getByText("That exchange was handed off").query()).toBeNull();
     // The unreadable record is left in place, still listed for the operator.
     const entries = await listManagedExchangesDiagnostic();
     expect(

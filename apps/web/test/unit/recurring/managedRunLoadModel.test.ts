@@ -50,7 +50,6 @@ const MARKER: ManagedBackupMarker = {
   backedUpAt: "2026-07-10T09:00:00.000Z",
 };
 const LOCAL: ManagedLocalState = { backup: MARKER };
-const SPENT = { spentAt: "2026-07-14T09:00:00.000Z" };
 
 function fold(
   actions: ReadonlyArray<ManagedLoadAction>,
@@ -78,14 +77,6 @@ describe("a read of the store", () => {
     expect(classifyManagedRecordRead(undefined, LOCAL)).toEqual({
       kind: "missing",
     });
-  });
-
-  test("finds a spent copy: spent, whatever the record's shape", () => {
-    for (const record of [RECORD, CONFIGURATION])
-      expect(classifyManagedRecordRead(record, { spent: SPENT })).toEqual({
-        kind: "spent",
-        spent: SPENT,
-      });
   });
 
   test("finds a record holding no secret: a configuration", () => {
@@ -121,14 +112,6 @@ describe("the first read", () => {
     });
     expect(fold([read(undefined)])).toEqual({
       kind: "missing",
-      heldBefore: undefined,
-      reads: 0,
-    });
-    expect(fold([read(RECORD, { spent: SPENT })])).toEqual({
-      kind: "spent",
-      spent: SPENT,
-      byRefusedRun: false,
-      heldBefore: undefined,
       reads: 0,
     });
   });
@@ -137,7 +120,6 @@ describe("the first read", () => {
     const state = fold([{ type: "record-read-failed" }]);
     expect(state).toEqual({
       kind: "unloadable",
-      heldBefore: undefined,
       reads: 0,
     });
     expect(managedLoadFailed(state)).toBe(true);
@@ -161,15 +143,13 @@ describe("a later read", () => {
     });
   });
 
-  test("that finds a failure keeps the record held before it", () => {
+  test("that finds a failure replaces the record on screen", () => {
     expect(fold([read(undefined)], runnable)).toEqual({
       kind: "missing",
-      heldBefore: heldRunnable,
       reads: 0,
     });
     expect(fold([{ type: "record-read-failed" }], configuration)).toEqual({
       kind: "unloadable",
-      heldBefore: { kind: "configuration", configuration: CONFIGURATION },
       reads: 0,
     });
   });
@@ -178,26 +158,8 @@ describe("a later read", () => {
     const missing = fold([read(undefined)], runnable);
     expect(fold([read(ROTATED)], missing)).toBe(missing);
     expect(fold([read(CONFIGURATION)], missing)).toBe(missing);
-    expect(fold([read(RECORD, { spent: SPENT })], missing)).toEqual({
-      kind: "spent",
-      spent: SPENT,
-      byRefusedRun: false,
-      heldBefore: heldRunnable,
-      reads: 0,
-    });
-  });
-
-  test("of a spent copy keeps the refused run's account", () => {
-    const refused = fold(
-      [{ type: "run-handed-off", spent: undefined }],
-      runnable,
-    );
-    const reread = fold([read(RECORD, { spent: SPENT })], refused);
-    expect(reread).toEqual({
-      kind: "spent",
-      spent: SPENT,
-      byRefusedRun: true,
-      heldBefore: heldRunnable,
+    expect(fold([{ type: "record-read-failed" }], missing)).toEqual({
+      kind: "unloadable",
       reads: 0,
     });
   });
@@ -208,61 +170,11 @@ describe("a later read", () => {
   });
 });
 
-describe("a re-take of a spent copy", () => {
-  test("shows the record held before the hand-off again and reads it again", () => {
-    const refused = fold([{ type: "run-handed-off", spent: SPENT }], runnable);
-    expect(fold([{ type: "record-retaken" }], refused)).toEqual({
-      ...heldRunnable,
-      reads: 1,
-    });
-  });
-
-  test("of a copy the first read found spent returns to loading", () => {
-    const spent = fold([read(RECORD, { spent: SPENT })]);
-    const retaken = fold([{ type: "record-retaken" }], spent);
-    expect(retaken).toEqual({ kind: "loading", reads: 1 });
-    expect(fold([read(RECORD, LOCAL)], retaken)).toEqual({
-      ...heldRunnable,
-      reads: 1,
-    });
-  });
-
-  test("away from a failure only reads again", () => {
-    expect(fold([{ type: "record-retaken" }], runnable)).toEqual({
-      ...runnable,
-      reads: 1,
-    });
-  });
-});
-
-describe("a run the hand-off refused", () => {
-  test("spends the copy with the run's account, keeping the record held", () => {
-    const state = fold([{ type: "run-handed-off", spent: SPENT }], runnable);
-    expect(state).toEqual({
-      kind: "spent",
-      spent: SPENT,
-      byRefusedRun: true,
-      heldBefore: heldRunnable,
-      reads: 0,
-    });
-    expect(managedLoadFailed(state)).toBe(true);
-  });
-
-  test("names no hand-off where the reload did not answer", () => {
-    const state = fold(
-      [{ type: "run-handed-off", spent: undefined }],
-      runnable,
-    );
-    expect(state.kind === "spent" && state.spent).toBeUndefined();
-  });
-});
-
 describe("the events of a runnable record", () => {
   const others: ReadonlyArray<ManagedLoadState> = [
     MANAGED_LOAD_INITIAL,
     configuration,
     fold([read(undefined)], runnable),
-    fold([{ type: "run-handed-off", spent: SPENT }], runnable),
   ];
 
   test("an adopted write replaces the record and keeps what was read beside it", () => {

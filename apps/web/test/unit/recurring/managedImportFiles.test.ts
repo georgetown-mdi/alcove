@@ -30,10 +30,6 @@ import {
   readManagedCommandLineKeyFile,
   readManagedCommandLinePair,
 } from "@psi/managed/managedCommandLineImport";
-import {
-  custodyUnreadablePairImportReason,
-  handedOffPairImportReason,
-} from "@recurring/managedHandoffGate";
 import { ManagedImportBackupNotConfigurationError } from "@psi/managed/managedExchangeImport";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 import { managedImportGrantNotice } from "@recurring/managedImportGrantNotice";
@@ -408,17 +404,8 @@ describe("what the pair import says", () => {
     );
   });
 
-  test("the store's refusals name the exchange, or name it neutrally", () => {
+  test("the store's refusal names the exchange, or names it neutrally", () => {
     expect(alreadyHeldImportReason("Riverbend")).toContain('"Riverbend"');
     expect(alreadyHeldImportReason("")).toMatch(/^That exchange/);
-    expect(handedOffPairImportReason("command-line", "Riverbend")).toContain(
-      "Take this exchange back",
-    );
-    expect(handedOffPairImportReason("command-line", "")).toMatch(
-      /^That exchange/,
-    );
-    expect(custodyUnreadablePairImportReason("Riverbend")).toContain(
-      "alcove.yaml and .alcove.key again",
-    );
   });
 });

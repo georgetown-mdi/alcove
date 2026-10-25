@@ -50,9 +50,16 @@ export interface RepeatedMissCoordination {
    * leads to the steps: the bold lead sentence, then the likely cause. */
   rowLead: string;
   rowDetail: string;
-  /** The detail view's coordination prompt. */
+  /** The detail view's coordination prompt, ending in
+   * {@link RAN_ELSEWHERE_IMPORT_REMEDY}. */
   prompt: string;
 }
+
+/** The import remedy each no-show surface names: a run elsewhere replaced the
+ * secret the rendezvous derives from, so this browser's copy meets no one until
+ * it is imported again. */
+export const RAN_ELSEWHERE_IMPORT_REMEDY =
+  "If you ran this exchange elsewhere, import it again here to make it runnable.";
 
 /** The title over the coordination state. It names the state, not a fault: which
  * side was absent is exactly what the record cannot know. */
@@ -88,15 +95,9 @@ export function repeatedMissCoordination(
       `Ask your partner for their copy of the schedule and compare its ` +
       `next window in UTC, repeat, and window length with yours below, ` +
       `paste theirs under Local settings if it is the one you agreed, and ` +
-      `check this device's clock.`,
+      `check this device's clock. ${RAN_ELSEWHERE_IMPORT_REMEDY}`,
   };
 }
-
-/** The import remedy each no-show surface names: a run elsewhere replaced the
- * secret the rendezvous derives from, so this browser's copy meets no one until
- * it is imported again. */
-export const RAN_ELSEWHERE_IMPORT_REMEDY =
-  "If you ran this exchange elsewhere, import it again here to make it runnable.";
 
 /** The title over the benign input failure tier. */
 export const INPUT_FAILURE_TITLE = "Your input file could not be used";

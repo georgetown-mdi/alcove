@@ -18,11 +18,6 @@ import {
   runnableManagedExchangeOrRefuse,
 } from "@psi/managed/managedExchangeRecord";
 import {
-  ManagedExchangeCustodyUnreadableError,
-  ManagedExchangeNotRunnableError,
-  ManagedExchangeSpentError,
-} from "@psi/managed/managedExchangeRun";
-import {
   ManagedExchangeExpiredError,
   benignRerunOutcome,
   remapLapsedRunFailure,
@@ -39,9 +34,9 @@ import {
   recordManagedExchangeLastRun,
 } from "@psi/managed/managedExchangeStore";
 import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
+import { ManagedExchangeNotRunnableError } from "@psi/managed/managedExchangeRun";
 import { PartnerNoShowError } from "@psi/transport/waitForConnection";
 import { RotationPersistError } from "@psi/managed/managedRunRotate";
-import { parseManagedLocalState } from "@psi/managed/managedLocalStateShape";
 
 import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 
@@ -73,26 +68,6 @@ vi.mock("@psi/managed/managedExchangeStore", async (importOriginal) => ({
   recordManagedExchangeLastRun: vi.fn(() => Promise.resolve()),
 }));
 
-// The critical section reads the record's sibling state inside the lock to refuse
-// a copy an export handed off. It is a real IndexedDB read in the browser, so it
-// is the third platform piece these Node tests stub; `handedOff` is what the
-// stubbed read answers with.
-const handedOff = vi.hoisted(
-  (): {
-    state: { spent?: { spentAt: string } } | undefined;
-    // What the read rejects with instead of answering, for the entry a schema
-    // bound or an app upgrade invalidated.
-    unreadable: unknown;
-  } => ({ state: undefined, unreadable: undefined }),
-);
-vi.mock("@psi/managed/managedLocalState", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  getManagedLocalState: () =>
-    handedOff.unreadable === undefined
-      ? Promise.resolve(handedOff.state)
-      : Promise.reject(handedOff.unreadable),
-}));
-
 /** Grant the run+rotate lock immediately, so a Node test can drive the run through
  * the critical section the browser's Web Locks owns. */
 function stubGrantingWebLocks(): void {
@@ -112,8 +87,6 @@ afterEach(() => {
   vi.mocked(recordManagedExchangeLastRun).mockReset();
   vi.mocked(persistManagedExchangeRotation).mockReset();
   vi.mocked(markManagedExchangeRotationInFlight).mockReset();
-  handedOff.state = undefined;
-  handedOff.unreadable = undefined;
   storedRecord.value = undefined;
   storedRecord.deleted = false;
 });
@@ -138,17 +111,6 @@ function record(
     standingCondition: NO_STANDING_CONDITION,
     ...overrides,
   };
-}
-
-/** The rejection a corrupted or app-upgrade-invalidated sibling entry produces:
- * the validating read's own error, rather than a stand-in for one. */
-function unreadableSiblingEntry(): unknown {
-  try {
-    parseManagedLocalState({ spent: { spentAt: "not an instant" } });
-  } catch (error) {
-    return error;
-  }
-  throw new Error("an invalid sibling entry must not parse");
 }
 
 /** Seams that fail loudly if reached: a run refused before the input is read
@@ -331,141 +293,6 @@ describe("runManagedRerun: a partner who never arrives", () => {
   });
 });
 
-describe("runManagedRerun: a copy an export handed off", () => {
-  test("refuses inside the lock, before the input is read", async () => {
-    // The record loaded before the hand-off is what an attended surface still
-    // holds and what a scheduled window claimed, so the refusal cannot rest on
-    // either reading: the run re-reads the sibling state itself.
-    stubGrantingWebLocks();
-    handedOff.state = { spent: { spentAt: "2026-07-13T09:00:00.000Z" } };
-    let inputRead = false;
-
-    await expect(
-      runManagedRerun(record(), {
-        acquireInput: () => {
-          inputRead = true;
-          return Promise.resolve("rows");
-        },
-        handshake: () => {
-          throw new Error("the handshake must not run for a handed-off copy");
-        },
-        dataExchange: () => {
-          throw new Error(
-            "the data exchange must not run for a handed-off copy",
-          );
-        },
-      }),
-    ).rejects.toBeInstanceOf(ManagedExchangeSpentError);
-
-    // Nothing was read from the operator's file and nothing was dialed: the
-    // refusal precedes the input guard, which precedes every connection.
-    expect(inputRead).toBe(false);
-  });
-
-  test("records the handed-off outcome for whoever is not there to see it", async () => {
-    // The scheduled case: nobody is present to answer, so the refusal is what the
-    // record holds afterwards rather than a line in a log nobody reads.
-    stubGrantingWebLocks();
-    handedOff.state = { spent: { spentAt: "2026-07-13T09:00:00.000Z" } };
-    const at = Date.parse("2026-07-14T12:00:00.000Z");
-
-    await expect(
-      runManagedRerun(
-        record(),
-        {
-          acquireInput: () => Promise.resolve("rows"),
-          handshake: () => {
-            throw new Error("the handshake must not run for a handed-off copy");
-          },
-          dataExchange: () => {
-            throw new Error(
-              "the data exchange must not run for a handed-off copy",
-            );
-          },
-        },
-        { now: () => at },
-      ),
-    ).rejects.toBeInstanceOf(ManagedExchangeSpentError);
-
-    expect(vi.mocked(recordManagedExchangeLastRun).mock.calls).toEqual([
-      [
-        "record-under-test",
-        {
-          at: new Date(at).toISOString(),
-          outcome: "failed",
-          failureKind: "handed-off",
-        },
-        at,
-      ],
-    ]);
-  });
-
-  test("an unreadable sibling entry refuses the run under its own kind", async () => {
-    // A run that cannot read its custody does not proceed on the assumption the
-    // copy is still this device's. The record then holds the custody-unreadable
-    // kind rather than the retryable transport fault an unclassified failure would
-    // offer for a permanent local problem, or the storage kind, which would report
-    // a rotation that did not save -- and this run never reached the rotation.
-    stubGrantingWebLocks();
-    handedOff.unreadable = unreadableSiblingEntry();
-    const at = Date.parse("2026-07-14T12:00:00.000Z");
-    let inputRead = false;
-
-    await expect(
-      runManagedRerun(
-        record(),
-        {
-          acquireInput: () => {
-            inputRead = true;
-            return Promise.resolve("rows");
-          },
-          handshake: () => {
-            throw new Error("the handshake must not run on an unread custody");
-          },
-          dataExchange: () => {
-            throw new Error(
-              "the data exchange must not run on an unread custody",
-            );
-          },
-        },
-        { now: () => at },
-      ),
-    ).rejects.toBeInstanceOf(ManagedExchangeCustodyUnreadableError);
-
-    // Fail-closed on the same terms as the hand-off refusal beside it: no file
-    // read, nothing dialed.
-    expect(inputRead).toBe(false);
-    expect(vi.mocked(recordManagedExchangeLastRun).mock.calls).toEqual([
-      [
-        "record-under-test",
-        {
-          at: new Date(at).toISOString(),
-          outcome: "failed",
-          failureKind: "custody-unreadable",
-        },
-        at,
-      ],
-    ]);
-  });
-
-  test("a record with no hand-off runs as before", async () => {
-    stubGrantingWebLocks();
-    handedOff.state = { spent: undefined };
-
-    const result = await runManagedRerun(record(), {
-      acquireInput: () => Promise.resolve("rows"),
-      handshake: () =>
-        Promise.resolve({
-          rotatedSecret: generateSharedSecret(),
-          handshake: "carried",
-        }),
-      dataExchange: () => Promise.resolve("exchanged"),
-    });
-
-    expect(result.exchange).toBe("exchanged");
-  });
-});
-
 describe("runManagedRerun: the record a run uses", () => {
   test("a later run on a copy read before a rotation authenticates with the rotated secret", async () => {
     // Two runs launched from one copy of the record, as a window's attempts are
@@ -613,38 +440,12 @@ describe("benignRerunOutcome", () => {
     expect(
       benignRerunOutcome(new ManagedExchangeLockUnavailableError("id"), false),
     ).toBe("already-running");
-    expect(benignRerunOutcome(new ManagedExchangeSpentError("id"), false)).toBe(
-      "handed-off",
-    );
     expect(
       benignRerunOutcome(
-        new ManagedExchangeCustodyUnreadableError("id", new Error("invalid")),
+        new ManagedExchangeNotRunnableError("id", new Error("invalid")),
         false,
       ),
     ).toBe("custody-unreadable");
-  });
-
-  test("an unreadable custody entry past the data-exchange boundary is not a benign outcome", () => {
-    // The refusal is raised inside the lock before the input guard, exactly as
-    // the hand-off one is, so it follows the same guard rather than resting on
-    // where it is raised: past the boundary its copy's claim that nothing left
-    // this device cannot be made.
-    expect(
-      benignRerunOutcome(
-        new ManagedExchangeCustodyUnreadableError("id", new Error("invalid")),
-        true,
-      ),
-    ).toBeUndefined();
-  });
-
-  test("a hand-off refusal past the data-exchange boundary is not a benign outcome", () => {
-    // The refusal is raised inside the lock before the input guard, so it cannot
-    // follow payload flow; this is the check that holds that rather than a
-    // comment asserting it. Delivered past the boundary it is no longer the state
-    // whose copy says nothing left this device.
-    expect(benignRerunOutcome(new ManagedExchangeSpentError("id"), true)).toBe(
-      undefined,
-    );
   });
 
   test("a partner who never arrived is the benign missed state", () => {
@@ -901,27 +702,6 @@ describe("rerunFailureLastRun: the runner's failure bookkeeping", () => {
         false,
       ),
     ).toBeUndefined();
-    // The hand-off refusal: recorded inside the critical section that raised it,
-    // so the runner must not stamp a second, coarser entry over it.
-    expect(
-      rerunFailureLastRun(
-        new ManagedExchangeSpentError("id"),
-        AT,
-        false,
-        false,
-      ),
-    ).toBeUndefined();
-    // The unread custody refusal beside it, for the same reason: the section
-    // stamped the custody-unreadable tier, and a transport stamp over it would
-    // offer a retry for a local problem that reproduces.
-    expect(
-      rerunFailureLastRun(
-        new ManagedExchangeCustodyUnreadableError("id", new Error("invalid")),
-        AT,
-        false,
-        false,
-      ),
-    ).toBeUndefined();
   });
 });
 
@@ -1113,26 +893,6 @@ describe("runManagedRerun: a store write that fails", () => {
 
     expect(result.lastRunSaved).toBe(true);
     expect(result.lastRunNotSavedReason).toBeUndefined();
-  });
-
-  test("the hand-off refusal stamp: the refusal still reaches the caller", async () => {
-    stubGrantingWebLocks();
-    handedOff.state = { spent: { spentAt: "2026-07-13T09:00:00.000Z" } };
-    vi.mocked(recordManagedExchangeLastRun).mockRejectedValue(storeAbort());
-
-    await expect(
-      runManagedRerun(record(), unreachableSeams),
-    ).rejects.toBeInstanceOf(ManagedExchangeSpentError);
-  });
-
-  test("the custody-unreadable stamp: the refusal still reaches the caller", async () => {
-    stubGrantingWebLocks();
-    handedOff.unreadable = unreadableSiblingEntry();
-    vi.mocked(recordManagedExchangeLastRun).mockRejectedValue(storeAbort());
-
-    await expect(
-      runManagedRerun(record(), unreachableSeams),
-    ).rejects.toBeInstanceOf(ManagedExchangeCustodyUnreadableError);
   });
 
   test("the input stamp: the input rejection still reaches the caller", async () => {

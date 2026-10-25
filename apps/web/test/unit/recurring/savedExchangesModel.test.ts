@@ -20,7 +20,7 @@ import type { ManagedLocalState } from "@psi/managed/managedLocalState";
 
 // The saved-exchanges run list's display derivation, tested in Node: the side
 // label, the one-line status from `lastRun` and `expires`, the derived backup
-// state, and the spent (handed-off) state. The status is a plain last-run summary --
+// state. The status is a plain last-run summary --
 // the tiered desync/attack copy is a later item, so a failed run displays
 // neutrally here.
 
@@ -272,36 +272,6 @@ describe("savedExchangeRow backup state", () => {
   });
 });
 
-describe("savedExchangeRow spent state", () => {
-  test("a spent record names its handoff date", () => {
-    const local: ManagedLocalState = {
-      spent: { spentAt: "2026-07-12T09:00:00.000Z" },
-    };
-    const row = savedExchangeRow(record(), local, NOW);
-    expect(row.spentAsOf).toBeDefined();
-    // A migration spend has no hand-off: it is the one an import revives, and
-    // the row's recovery line says so.
-    expect(row.spentHandoff).toBeUndefined();
-  });
-
-  test("a command-line hand-off is named as one", () => {
-    // The two spends have different recoveries, so the row holds which one it
-    // was rather than one "handed off" line for both.
-    const local: ManagedLocalState = {
-      spent: { spentAt: "2026-07-12T09:00:00.000Z", handoff: "command-line" },
-    };
-    const row = savedExchangeRow(record(), local, NOW);
-    expect(row.spentAsOf).toBeDefined();
-    expect(row.spentHandoff).toBe("command-line");
-  });
-
-  test("a live record has no spent date", () => {
-    expect(
-      savedExchangeRow(record(), undefined, NOW).spentAsOf,
-    ).toBeUndefined();
-  });
-});
-
 describe("savedExchangeRow schedule lines", () => {
   // NOW is 2026-07-14T12:00Z: window 0 of this daily cadence opened an hour before
   // it and closes two hours after, so NOW sits inside a window.
@@ -366,8 +336,7 @@ describe("savedExchangeRow schedule lines", () => {
   test("a lapsed secret keeps its window line beside the lapse", () => {
     // The two states compose rather than one suppressing the other: a lapse is
     // recovered by a re-invite, which keeps the cadence the partnership agreed, so
-    // the row names the lapse AND where the recurrence stands. Contrast the spent
-    // row below, whose copy this browser no longer runs at all.
+    // the row names the lapse AND where the recurrence stands.
     const row = savedExchangeRow(
       record({ expires: "2026-07-01T00:00:00.000Z", schedule: daily }),
       undefined,
@@ -377,25 +346,12 @@ describe("savedExchangeRow schedule lines", () => {
     expect(row.status).toMatch(/expired/);
     expect(row.schedule?.dueLine).toMatch(/^Run window open now, until /);
   });
-
-  test("a spent row names no window: this browser's copy no longer runs", () => {
-    const local: ManagedLocalState = {
-      spent: { spentAt: "2026-07-12T09:00:00.000Z", handoff: "command-line" },
-    };
-    const row = savedExchangeRow(
-      record({ schedule: { ...daily, consecutiveMisses: 3 } }),
-      local,
-      NOW,
-    );
-    expect(row.spentAsOf).toBeDefined();
-    expect(row.schedule).toBeUndefined();
-  });
 });
 
 describe("savedExchangeRows", () => {
   test("derives a row per record in store order, joined to local state", () => {
     const local = new Map<string, ManagedLocalState>([
-      ["two", { spent: { spentAt: "2026-07-12T09:00:00.000Z" } }],
+      ["two", { backup: { backedUpAt: "2026-07-12T09:00:00.000Z" } }],
     ]);
     const rows = savedExchangeRows(
       [record({ id: "one" }), record({ id: "two" })],
@@ -403,8 +359,8 @@ describe("savedExchangeRows", () => {
       NOW,
     );
     expect(rows.map((row) => row.id)).toEqual(["one", "two"]);
-    expect(rows[0].spentAsOf).toBeUndefined();
-    expect(rows[1].spentAsOf).toBeDefined();
+    expect(rows[0].backup.kind).not.toBe("backed-up");
+    expect(rows[1].backup.kind).toBe("backed-up");
   });
 });
 
@@ -502,8 +458,7 @@ describe("savedExchangeRow: a standing condition", () => {
       NOW,
     );
     expect(row.status).toBe(
-      "Restored from a backup or key file, or taken back from the command " +
-        "line; re-invite to reconnect",
+      "Restored from a backup or key file; re-invite to reconnect",
     );
   });
 });
@@ -626,7 +581,7 @@ describe("the pending relay key registration", () => {
     );
   });
 
-  test("the list row shows it, and a row for a spent copy does not", () => {
+  test("the list row shows it", () => {
     const pending = record({
       relayRegistrar: REGISTRAR,
       relayRegistrationPendingSince: PENDING_SINCE,
@@ -634,15 +589,6 @@ describe("the pending relay key registration", () => {
     expect(
       savedExchangeRow(pending, undefined, NOW).relayRegistrationLine,
     ).toBe(relayRegistrationPendingLine(pending));
-    expect(
-      savedExchangeRow(
-        pending,
-        {
-          spent: { spentAt: "2026-07-01T10:00:00.000Z" },
-        },
-        NOW,
-      ),
-    ).not.toHaveProperty("relayRegistrationLine");
   });
 
   test("a re-invite's unconfirmed registration names owner-token re-enrollment and no retry", () => {

@@ -17,7 +17,7 @@ import {
   managedRunSurfaceReducer,
   managedSurfaceView,
 } from "@recurring/managedRunSurfaceModel";
-import { MANAGED_HANDOFF_INITIAL } from "@recurring/managedRunHandoffModel";
+import { MANAGED_EXPORTS_INITIAL } from "@recurring/managedRunExportModel";
 import { MANAGED_LOAD_INITIAL } from "@recurring/managedRunLoadModel";
 import { MANAGED_RECOVERY_INITIAL } from "@recurring/managedRunRecoveryModel";
 import { MANAGED_STORE_READS_INITIAL } from "@recurring/managedSurfaceReadsModel";
@@ -441,15 +441,8 @@ describe("the surface's view", () => {
 
   test("a load failure outranks everything", () => {
     for (const load of [
-      { kind: "missing", heldBefore: RUNNABLE_LOAD, reads: 0 },
-      { kind: "unloadable", heldBefore: RUNNABLE_LOAD, reads: 0 },
-      {
-        kind: "spent",
-        spent: undefined,
-        byRefusedRun: true,
-        heldBefore: RUNNABLE_LOAD,
-        reads: 0,
-      },
+      { kind: "missing", reads: 0 },
+      { kind: "unloadable", reads: 0 },
     ] satisfies ReadonlyArray<ManagedLoadState>)
       expect(
         managedSurfaceView({
@@ -637,31 +630,6 @@ describe("the surface's reducer and the record load", () => {
     expect(cleared.recovery.standing.settled).toBe(true);
   });
 
-  test("a run the hand-off refused settles with the copy spent and no failure", () => {
-    const spent = { spentAt: "2026-07-14T09:00:00.000Z" };
-    const handedOff = foldSurface(
-      [{ type: "run-started" }, { type: "run-handed-off", spent }],
-      loadedVisit,
-    );
-    expect(handedOff.load).toEqual({
-      kind: "spent",
-      spent,
-      byRefusedRun: true,
-      heldBefore: {
-        kind: "runnable",
-        record: RUNNABLE_LOAD.record,
-        localState: undefined,
-        backupMarker: undefined,
-      },
-      reads: RUNNABLE_LOAD.reads,
-    });
-    expect(managedRunInProgress(handedOff.run)).toBe(false);
-    expect(managedRunLiveFailure(handedOff.run)).toBeUndefined();
-    expect(managedRunSurfaceReducer(handedOff, { type: "run-settled" })).toBe(
-      handedOff,
-    );
-  });
-
   test("a load event leaves the run and the recovery as they were", () => {
     for (const action of [
       { type: "record-read-requested" },
@@ -697,7 +665,7 @@ describe("the surface's reducer and the exports", () => {
   };
 
   test("starts with no export", () => {
-    expect(MANAGED_RUN_SURFACE_INITIAL.handoff).toBe(MANAGED_HANDOFF_INITIAL);
+    expect(MANAGED_RUN_SURFACE_INITIAL.exports).toBe(MANAGED_EXPORTS_INITIAL);
   });
 
   test("a backup export marks the loaded record and ends the export", () => {
@@ -706,7 +674,7 @@ describe("the surface's reducer and the exports", () => {
       loadedVisit,
     );
     expect(exported.load).toEqual({ ...RUNNABLE_LOAD, backupMarker: MARKER });
-    expect(exported.handoff.export).toEqual({ kind: "idle" });
+    expect(exported.exports.export).toEqual({ kind: "idle" });
   });
 
   test("a backup export leaves the surface on the run controls", () => {
@@ -744,7 +712,7 @@ describe("the surface's reducer and the store reads", () => {
     expect(read.reads.accounting.read).toEqual({ kind: "unavailable" });
     expect(read.load).toBe(failedVisit.load);
     expect(read.run).toBe(failedVisit.run);
-    expect(read.handoff).toBe(failedVisit.handoff);
+    expect(read.exports).toBe(failedVisit.exports);
   });
 
   test("a flag already found returns the same state", () => {
@@ -950,7 +918,6 @@ const ROUTING: {
     action: { type: "record-read-requested" },
     owns: ["load"],
   },
-  "record-retaken": { action: { type: "record-retaken" }, owns: ["load"] },
   "record-adopted": {
     action: { type: "record-adopted", record: ROTATED },
     owns: ["load"],
@@ -966,10 +933,6 @@ const ROUTING: {
   "backup-marked": {
     action: { type: "backup-marked", marker: MARKER },
     owns: ["load"],
-  },
-  "run-handed-off": {
-    action: { type: "run-handed-off", spent: undefined },
-    owns: ["load", "run"],
   },
   "accounting-read": {
     action: { type: "accounting-read", read: { kind: "unavailable" } },
@@ -998,15 +961,15 @@ const ROUTING: {
     action: { type: "parked-results-read-requested" },
     owns: ["reads"],
   },
-  "export-started": { action: { type: "export-started" }, owns: ["handoff"] },
+  "export-started": { action: { type: "export-started" }, owns: ["exports"] },
   "export-finished": {
     action: { type: "export-finished" },
-    owns: ["handoff"],
+    owns: ["exports"],
   },
-  "export-failed": { action: { type: "export-failed" }, owns: ["handoff"] },
+  "export-failed": { action: { type: "export-failed" }, owns: ["exports"] },
   "backup-exported": {
     action: { type: "backup-exported", marker: MARKER },
-    owns: ["load", "handoff"],
+    owns: ["load", "exports"],
   },
   "terms-proposal-started": {
     action: { type: "terms-proposal-started" },
@@ -1031,7 +994,7 @@ describe("the surface's reducer slices", () => {
     reads: foldSurface([
       { type: "accounting-read", read: { kind: "unavailable" } },
     ]).reads,
-    handoff: { export: { kind: "failed" } },
+    exports: { export: { kind: "failed" } },
     termsProposal: { kind: "busy" },
   };
   const slices = Object.keys(everySliceHeld) as ReadonlyArray<SurfaceSlice>;

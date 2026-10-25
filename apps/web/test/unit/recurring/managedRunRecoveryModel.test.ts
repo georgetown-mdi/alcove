@@ -30,7 +30,7 @@ import type {
 } from "@recurring/managedRunRecoveryModel";
 import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 import type { ManagedReinvite } from "@psi/managed/managedReinvite";
-import type { ManagedRunFailureAlert } from "@recurring/managedRunLaunchModel";
+import type { ManagedRunFailure } from "@recurring/managedRunLaunchModel";
 import type { ManagedStandingConditionView } from "@recurring/managedStandingConditionModel";
 
 const REINVITE: ManagedReinvite = {
@@ -45,17 +45,17 @@ const REINVITE: ManagedReinvite = {
   },
 };
 
-const REINVITE_FAILURE: ManagedRunFailureAlert = {
+const REINVITE_FAILURE: ManagedRunFailure = {
   ...TERMS_CHANGE_TAKEN_ON_FAILURE,
   kind: "storage",
   recovery: "reinvite",
 };
-const CONFIRM_FAILURE: ManagedRunFailureAlert = {
+const CONFIRM_FAILURE: ManagedRunFailure = {
   ...TERMS_CHANGE_TAKEN_ON_FAILURE,
   kind: "unexplained",
   recovery: "confirm",
 };
-const RETRY_FAILURE: ManagedRunFailureAlert = {
+const RETRY_FAILURE: ManagedRunFailure = {
   ...TERMS_CHANGE_TAKEN_ON_FAILURE,
   recovery: "retry",
 };

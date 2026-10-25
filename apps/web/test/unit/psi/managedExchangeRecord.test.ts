@@ -387,7 +387,6 @@ describe("parseManagedExchangeRecord reader-rejects-unknown", () => {
       "custody-unreadable",
       "input",
       "terms-shortfall",
-      "handed-off",
       "cancelled",
     ];
     for (const failureKind of kinds) {
@@ -404,6 +403,18 @@ describe("parseManagedExchangeRecord reader-rejects-unknown", () => {
         failureKind,
       );
     }
+  });
+
+  test("refuses a handed-off failure kind, which no run records", () => {
+    const stored = {
+      ...buildManagedExchangeRecord(newExchange()),
+      lastRun: {
+        at: "2026-07-14T09:00:00.000Z",
+        outcome: "failed",
+        failureKind: "handed-off",
+      },
+    };
+    expect(safeParseManagedExchangeRecord(stored).success).toBe(false);
   });
 
   test("reads back every recorded outcome, the skipped window included", () => {
@@ -1786,7 +1797,6 @@ describe("standingConditionFrom", () => {
       "custody-unreadable",
       "input",
       "terms-shortfall",
-      "handed-off",
       "cancelled",
     ];
     for (const failureKind of kinds)
@@ -2346,7 +2356,6 @@ describe("the rotation-in-flight marker", () => {
     "custody-unreadable": false,
     input: false,
     "terms-shortfall": false,
-    "handed-off": false,
     "too-large": false,
     "partner-set-too-large": false,
     "partner-refused-set": false,

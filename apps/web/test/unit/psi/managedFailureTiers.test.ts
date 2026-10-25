@@ -156,19 +156,6 @@ describe("deriveManagedFailureTier: tier per recorded benign state", () => {
     ).toBe("transport");
   });
 
-  test("a recorded hand-off refusal is its own benign tier, not the attack one", () => {
-    // The kind a run stamps when it meets a copy an export gave away. Falling
-    // through to the unexplained tier would put the out-of-band attack checklist
-    // in front of an operator whose own hand-off is the whole explanation.
-    expect(
-      deriveManagedFailureTier(
-        record({ lastRun: failed("handed-off") }),
-        { spent: { spentAt: "2026-07-13T09:00:00.000Z" } },
-        NOW,
-      ),
-    ).toBe("handed-off");
-  });
-
   test("a cancelled run is treated as a retry, not a failure to tier", () => {
     expect(
       deriveManagedFailureTier(
@@ -676,8 +663,7 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
       NOW,
     );
     expect(failure?.kind).toBe("too-large");
-    if (failure === undefined || failure.kind === "handed-off")
-      throw new Error("expected the too-large alert");
+    if (failure === undefined) throw new Error("expected the too-large alert");
     expect(failure.message).toContain("256 MiB one WebRTC message can hold");
     expect(failure.message).toContain("Split your input into smaller files");
     expect(failure.message).not.toMatch(/nothing left this device/i);
@@ -691,8 +677,7 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
       undefined,
       NOW,
     );
-    if (failure === undefined || failure.kind === "handed-off")
-      throw new Error("expected the too-large alert");
+    if (failure === undefined) throw new Error("expected the too-large alert");
     expect(failure.message).toContain(
       "built from your input file was too large, so it was not sent",
     );
@@ -707,8 +692,7 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
       undefined,
       NOW,
     );
-    if (failure === undefined || failure.kind === "handed-off")
-      throw new Error("expected the too-large alert");
+    if (failure === undefined) throw new Error("expected the too-large alert");
     expect(failure.title).toBe(
       "Your file is too large for your partner to receive",
     );
@@ -727,8 +711,7 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
       undefined,
       NOW,
     );
-    if (failure === undefined || failure.kind === "handed-off")
-      throw new Error("expected the too-large alert");
+    if (failure === undefined) throw new Error("expected the too-large alert");
     expect(failure.title).toBe("Your file is too large for a browser exchange");
     expect(failure.message).toContain("built from your input file");
     expect(failure.message).toContain("256 MiB one WebRTC message can hold");
@@ -752,8 +735,6 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
         NOW,
         dataExchangeStarted,
       );
-      if (failure.kind === "handed-off")
-        throw new Error("expected the too-large alert");
       expect(failure.kind).toBe("too-large");
       expect(failure.message).toBe((error as Error).message);
       expect(failure.reportedCause).toBeUndefined();
@@ -785,8 +766,6 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
       NOW,
       false,
     );
-    if (failure.kind === "handed-off")
-      throw new Error("expected the too-large alert");
     expect(failure.kind).toBe("too-large");
     expect(failure.title).toBe(
       "The values built from your file could not be counted",
@@ -804,8 +783,7 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
       undefined,
       NOW,
     );
-    if (failure === undefined || failure.kind === "handed-off")
-      throw new Error("expected the too-large alert");
+    if (failure === undefined) throw new Error("expected the too-large alert");
     expect(failure.kind).toBe("too-large");
     expect(failure.title).toBe(
       "The values built from your file could not be counted",

@@ -28,7 +28,6 @@ import {
 import { ManagedRunSurface } from "@recurring/ManagedRunSurface";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
-import { seedSpentState } from "./seedSpentState";
 
 import type {
   ManagedExchangeRecord,
@@ -51,7 +50,7 @@ async function createRunnableExchange(
  *
  * The flag names the exchange and nothing else, so the visit that shows it is
  * the only account of that run an operator ever gets. The run surface shows
- * nothing at all for an exchange that is missing, unloadable or spent, which is
+ * nothing at all for an exchange that is missing or unloadable, which is
  * why the drop belongs to the alert rather than to the visit: this suite drives
  * those branches against the real store and the real localStorage.
  */
@@ -139,27 +138,6 @@ describe("a flagged exchange whose page shows the operator nothing", () => {
     await expect
       .element(
         page.getByRole("heading", { name: "This exchange cannot be loaded" }),
-      )
-      .toBeInTheDocument();
-    await flushPendingUpdates();
-
-    expect(unfiledExchangeFlagged(created.id)).toBe(true);
-    await clearUnfiledExchangeFlag(created.id);
-  });
-
-  test("keeps its flag across a visit to a spent copy", async () => {
-    const created = await createRunnableExchange(newExchange());
-    await seedSpentState(
-      created.id,
-      "2026-07-14T09:00:00.000Z",
-      "command-line",
-    );
-    expect(await flagUnfiledExchange(created.id)).toBe(true);
-
-    app.render(createElement(ManagedRunSurface, { id: created.id }));
-    await expect
-      .element(
-        page.getByRole("heading", { name: "This exchange was handed off" }),
       )
       .toBeInTheDocument();
     await flushPendingUpdates();
