@@ -537,9 +537,12 @@ function Invoke-DoctorLoop {
         something no retry will change.
 
         -AskCredentialAfterSignInFailure is for the battery that signs in to
-        the share: after the server refuses the credentials, a retry asks for
-        them again first, since signing in with the same password is one more
-        failed sign-in against an account that a handful of those lock out. #>
+        the share: after its authentication check fails, a retry offers to
+        take the credentials again first, since signing in with a wrong
+        password is one more failed sign-in against an account that a handful
+        of those lock out. That check also fails for reasons the credentials
+        do not cause, which its ACTION lines name, so an empty user name keeps
+        the credentials given and runs the checks again with them. #>
     param(
         [Parameter(Mandatory = $true)][string[]] $EngineArgs,
         [Parameter(Mandatory = $true)][string[]] $BatteryArgs,
@@ -552,17 +555,18 @@ function Invoke-DoctorLoop {
         if ($result.Overall -eq 'ok') { return $true }
         if ($result.Overall -eq 'fatal') { return $false }
 
-        $signInRefused = $AskCredentialAfterSignInFailure -and (@($result.Failed) -contains 'authentication')
+        $signInFailed = $AskCredentialAfterSignInFailure -and (@($result.Failed) -contains 'authentication')
         Write-Host ''
-        if ($signInRefused) {
-            Show-Note 'Running the checks again asks for the credentials first.'
+        if ($signInFailed) {
+            Show-Note 'If the user name or password was wrong, enter them again.'
+            Show-Note 'Press Enter at Username to keep the ones you gave.'
         }
         if (-not (Read-YesNo -Prompt 'Run the checks again? [Y/n]' -DefaultYes)) {
             Write-Host ''
             Show-Note 'Stopping without starting the console.'
             return $false
         }
-        if ($signInRefused -and -not (Update-ShareCredential)) { return $false }
+        if ($signInFailed -and -not (Update-ShareCredential)) { return $false }
     }
 }
 
@@ -768,16 +772,30 @@ function Clear-ShareCredential {
     $script:AlcoveShareCredentialServer = ''
 }
 
-function Update-ShareCredential {
-    <#  A new answer for the share the checks are signing in to, after the
-        server refused the last one. It replaces the answer this run holds for
-        that server and the SMB_* variables the probe reads, which
-        New-RendezvousShareMount sets for the run of the checks.
+function Read-RetryUsername {
+    <#  The first question of Update-ShareCredential, on its own so that a test
+        can answer it. #>
 
-        Returns whether an answer was given. #>
+    return (Read-Host 'Username (press Enter to keep the ones you gave)')
+}
+
+function Update-ShareCredential {
+    <#  The answer for the share the checks are signing in to, after they
+        failed to sign in. An empty user name keeps the answer this run holds.
+        Any other starts a new answer, which replaces that one for the server
+        and the SMB_* variables the probe reads, which New-RendezvousShareMount
+        sets for the run of the checks.
+
+        Returns whether the run has an answer to sign in with: false when a new
+        one was started and not finished. #>
 
     Show-Head 'Credentials for the file server'
-    $credential = Read-ShareCredential
+    $username = Read-RetryUsername
+    if (-not $username) {
+        Show-Info 'Keeping the credentials you gave.'
+        return $true
+    }
+    $credential = Read-ShareCredential -Username $username
     if (-not $credential) { return $false }
     $script:AlcoveShareCredential = $credential
     $env:SMB_USER = $credential.Username
@@ -864,8 +882,8 @@ function New-RendezvousShareMount {
                 return @{ Mounted = $false; VolumeName = '' }
             }
         }
-        # A retry after a refused sign-in replaced the answer, and the volume is
-        # made from the one the checks accepted.
+        # A retry after a failed sign-in may have replaced the answer, and the
+        # volume is made from the one the checks accepted.
         $credential = $script:AlcoveShareCredential
         $plainPass = $credential.Password
 

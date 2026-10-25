@@ -911,14 +911,15 @@ Describe 'A run of the checks the engine stopped during' {
     }
 }
 
-Describe 'The retry after the server refused the credentials' {
+Describe 'The retry after the checks failed to sign in' {
     BeforeAll {
         # The probe's answer on each turn: the first fails the checks named in
         # $script:FirstFailed, and every later one passes. What it records is
-        # the password each run of the checks would have signed in with.
+        # the account each run of the checks would have signed in with.
         function Invoke-DoctorBattery {
             $script:BatteryTurn++
             $script:Events += "checks:$env:SMB_PASS"
+            $script:SignInUsers += $env:SMB_USER
             if ($script:BatteryTurn -eq 1) {
                 return @{ Established = $true; Overall = 'fix_and_retry'; Failed = $script:FirstFailed }
             }
@@ -929,10 +930,18 @@ Describe 'The retry after the server refused the credentials' {
             $script:Events += 'retry'
             return $true
         }
+        function Read-RetryUsername { return $script:RetryUsername }
         function Read-ShareCredential {
+            param([string] $Username = '')
             $script:CredentialAsks++
             $script:Events += 'ask'
-            return @{ Username = 'alcoveci'; Domain = ''; Password = ('hunter' + (2 + $script:CredentialAsks)) }
+            if (-not $Username) { $Username = 'alcoveci' }
+            return @{ Username = $Username; Domain = ''; Password = ('hunter' + (2 + $script:CredentialAsks)) }
+        }
+        function New-ShareVolume {
+            param($VolumeName, $Server, $Share, $SubPath, $Username, $Password, $Domain, $Engine)
+            $script:VolumeAccounts += "${Username}:$Password"
+            return $true
         }
     }
 
@@ -941,14 +950,16 @@ Describe 'The retry after the server refused the credentials' {
         $script:AlcoveShareCredentialServer = ''
         $script:AlcoveEngine = 'docker'
         $script:Events = @()
+        $script:SignInUsers = @()
         $script:BatteryTurn = 0
         $script:CredentialAsks = 0
-        $script:VolumePasswords = @()
+        $script:VolumeAccounts = @()
         $script:FirstFailed = @('authentication')
+        $script:RetryUsername = 'alcoveci'
         $env:SMB_PASS = 'hunter2'
     }
 
-    It 'asks for the password before the checks sign in again' {
+    It 'takes new credentials before the checks sign in again' {
         $passed = Invoke-DoctorLoop -EngineArgs @('--env', 'SMB_PASS') -BatteryArgs @('doctor', 'probe') `
             -AskCredentialAfterSignInFailure 6>$null
 
@@ -957,11 +968,51 @@ Describe 'The retry after the server refused the credentials' {
         $script:AlcoveShareCredential.Password | Should -Be 'hunter3'
     }
 
-    It 'says the credentials are asked for again before the retry question' {
+    It 'says before the retry question that the credentials can be entered again or kept' {
         $said = @(Invoke-DoctorLoop -EngineArgs @('--env', 'SMB_PASS') -BatteryArgs @('doctor', 'probe') `
                 -AskCredentialAfterSignInFailure 6>&1 | ForEach-Object { [string] $_ }) -join ' '
 
-        $said | Should -BeLike '*asks for the credentials first*'
+        $said | Should -BeLike '*If the user name or password was wrong, enter them again.*' -Because $said
+        $said | Should -BeLike '*Press Enter at Username to keep the ones you gave.*' -Because $said
+        # The authentication check fails for more than a refused password, so
+        # the note claims no refusal.
+        $said | Should -Not -BeLike '*refused*' -Because $said
+    }
+
+    It 'keeps the credentials and runs again on an empty user name' {
+        $script:RetryUsername = ''
+
+        $passed = Invoke-DoctorLoop -EngineArgs @('--env', 'SMB_PASS') -BatteryArgs @('doctor', 'probe') `
+            -AskCredentialAfterSignInFailure 6>$null
+
+        $passed | Should -BeTrue
+        $script:CredentialAsks | Should -Be 0
+        ($script:Events -join ' ') | Should -Be 'checks:hunter2 retry checks:hunter2'
+    }
+
+    It 'makes the volume from the credentials kept on an empty user name' {
+        $script:RetryUsername = ''
+
+        $mount = @(New-RendezvousShareMount -VolumeName 'alcoveci-in' -Server 'fs-04' -Share 'exchange' `
+                -Legs @(@{ Label = 'the folder your partner writes into'; Path = 'from-clinic' }) 6>$null)[0]
+
+        $mount.Mounted | Should -BeTrue
+        $script:CredentialAsks | Should -Be 1
+        (@($script:VolumeAccounts) -join ' ') | Should -Be 'alcoveci:hunter3'
+        # The last run is the check through the volume.
+        ($script:Events -join ' ') | Should -Be 'ask checks:hunter3 retry checks:hunter3 checks:hunter3'
+    }
+
+    It 'signs in and makes the volume with the new user name and password' {
+        $script:RetryUsername = 'alcoveci2'
+
+        $mount = @(New-RendezvousShareMount -VolumeName 'alcoveci-in' -Server 'fs-04' -Share 'exchange' `
+                -Legs @(@{ Label = 'the folder your partner writes into'; Path = 'from-clinic' }) 6>$null)[0]
+
+        $mount.Mounted | Should -BeTrue
+        (@($script:SignInUsers) -join ' ') | Should -Be 'alcoveci alcoveci2 alcoveci2'
+        (@($script:VolumeAccounts) -join ' ') | Should -Be 'alcoveci2:hunter4'
+        ($script:Events -join ' ') | Should -Be 'ask checks:hunter3 retry ask checks:hunter4 checks:hunter4'
     }
 
     It 'stops when no new answer is given, without signing in again' {
@@ -985,18 +1036,12 @@ Describe 'The retry after the server refused the credentials' {
     }
 
     It 'makes the volume from the answer the checks accepted' {
-        function New-ShareVolume {
-            param($VolumeName, $Server, $Share, $SubPath, $Username, $Password, $Domain, $Engine)
-            $script:VolumePasswords += $Password
-            return $true
-        }
-
         $mount = @(New-RendezvousShareMount -VolumeName 'alcoveci-in' -Server 'fs-04' -Share 'exchange' `
                 -Legs @(@{ Label = 'the folder your partner writes into'; Path = 'from-clinic' }) 6>$null)[0]
 
         $mount.Mounted | Should -BeTrue
         $script:CredentialAsks | Should -Be 2
-        (@($script:VolumePasswords) -join ' ') | Should -Be 'hunter4'
+        (@($script:VolumeAccounts) -join ' ') | Should -Be 'alcoveci:hunter4'
         # The last run is the check through the volume, made after the retry.
         ($script:Events -join ' ') | Should -Be 'ask checks:hunter3 retry ask checks:hunter4 checks:hunter4'
     }
