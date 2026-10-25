@@ -135,7 +135,7 @@ and the hook raises that need right after the pull request opens rather than lea
 A message printed into the reply is gone by merge time: the session keeps working and the maintainer merging later has nowhere to look it up.
 A comment has a stable address on the page holding the merge button, readable from any machine, and never becomes repository content.
 The fence keeps GitHub from rendering the body as markdown, so what is copied is what was written.
-The format rules are not restated in the hook; [`format-squash-message.mjs`](../../.claude/scripts/format-squash-message.mjs) enforces them, as [the drafter and normalizer](#squash-message-drafter-and-normalizer) explains.
+The format rules are not restated in the hook; [`format-squash-message.mjs`](../../.claude/scripts/format-squash-message.mjs) enforces them, as [the normalizer](#squash-message-normalizer) explains.
 
 ### Which branch is counted
 
@@ -165,9 +165,9 @@ Within a pair, a `--head` no ref resolves is skipped rather than counted from th
   a single create then goes through the pairing path, its reminder unchanged while the lists pair and dropped when they do not.
 - The hook fails open on every error, an unreadable event, missing git, or an unresolvable `origin/staging`, since a reminder must never disrupt the session.
 
-## Squash-message drafter and normalizer
+## Squash-message normalizer
 
-[`.claude/scripts/squash-message.mjs`](../../.claude/scripts/squash-message.mjs) and [`.claude/scripts/format-squash-message.mjs`](../../.claude/scripts/format-squash-message.mjs)
+[`.claude/scripts/format-squash-message.mjs`](../../.claude/scripts/format-squash-message.mjs)
 
 ### Why the rules are executable
 
@@ -176,13 +176,6 @@ GitHub fills the subject from the pull request's title, whose budget [`scripts/l
 so a draft here is a body and nothing else.
 Restating [CONTRIBUTING.md](../../CONTRIBUTING.md), Commit Messages, at each producer checks nothing, and a 120-column body line reaches the maintainer intact.
 The normalizer is where those rules are executable, and its wrap column is the only copy of that number outside CONTRIBUTING.md.
-
-### Why the drafter checks the login first
-
-Claude Code withholds its own login token, `CLAUDE_CODE_OAUTH_TOKEN`, from every shell it starts for a tool, and the container holds no other login, so `claude -p` run from a session's tool shell answers "Not logged in".
-The drafter therefore asks `claude auth status` before the run and, on a clear not-logged-in answer, stops with a message to run it from a container terminal, such as the VS Code integrated terminal, where the token is present;
-any other answer lets the run go ahead, so a changed status format never blocks a working terminal.
-The script does not read the token from `.env` or another process's environment: that would route around the withholding.
 
 ### Normalizing against refusing
 
@@ -200,29 +193,13 @@ a list item becomes its own paragraph, its continuation lines joined into it, an
 
 `violations` is empty exactly when no refusal fires and the body is what the normalizer produces from it, character for character.
 A body wrapped by hand at another column is not, and the fix is one run of the script.
-Both entry points run `violations` over what normalizing produced and refuse to hand on output it rejects,
+The script runs `violations` over what normalizing produced and refuses to hand on output it rejects,
 so a shape the normalizer mangles is a failed run rather than a mangled message the maintainer pastes.
 
 ### Why the comment is fenced
 
 GitHub renders a comment as markdown, which would reflow the wrapped lines the maintainer copies; a fenced block shows them as written.
 The fence is longer than any run of backticks in the body, so nothing inside it can close it early.
-
-### Why the drafter is a script
-
-Alcove squash-merges, so the message GitHub proposes, the PR title plus a list of commit subjects, lands in the history unless someone writes a better one.
-Writing it is a fixed, repeated prompt, so it is a script rather than a habit.
-The prompt is left in the maintainer's own words except for the one sentence that keeps a subject line out,
-and it names CONTRIBUTING.md with an `@` mention, as the interactive ritual does, rather than restating conventions that would drift from the document.
-
-A one-commit pull request is refused because GitHub squash-merges it with that commit's own message, so a drafted one is discarded on merge and the writing belongs in the commit.
-The count comes from `gh pr view`, the list GitHub squashes, rather than a local revision walk that would depend on which checkout the script ran from.
-An unknown count drafts anyway: the guard is defense in depth for a manual run, not the reason the script exists.
-
-A draft the normalizer refuses is printed as the run produced it, with a nonzero exit, rather than half-fixed into something that reads finished.
-The colocated test pins the read-only tool allowance and the deny list of the argv the drafter builds.
-`--allowedTools` and `--disallowedTools` are variadic, so a trailing prompt argument would arrive as a pile of one-word deny rules and the run would die asking for input it was given;
-hence the prompt on stdin and each list as one token.
 
 ### Stated limits
 

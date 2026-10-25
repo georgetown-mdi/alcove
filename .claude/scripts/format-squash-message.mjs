@@ -6,7 +6,7 @@
 // markers dropped with their text kept, list items turned into paragraphs.
 // A block holding an indented line is left verbatim. What cannot be fixed
 // without changing the words, `refusals` below, is refused, and so is output
-// that fails `violations`, the check squash-message.mjs also runs. `--fenced`
+// that fails `violations`. `--fenced`
 // wraps the body in a code fence, the form posted as a pull-request comment.
 // The draft is the body alone; GitHub takes the subject from the PR title.
 //
@@ -397,8 +397,8 @@ export function selfCheckReport(broken) {
   );
 }
 
-// CLI entry: only runs when invoked directly, so squash-message.mjs and the
-// tests can import the functions above without reading stdin.
+// CLI entry: only runs when invoked directly, so the tests can import the
+// functions above without reading stdin.
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const args = parseArgs(process.argv.slice(2));
   if (args === null) {
