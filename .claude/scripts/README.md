@@ -31,16 +31,13 @@ push:
   `webrtc-capture.mjs`, which a host session runs for a browser step: it
   prints the capture code the owner pastes into a page's console and
   summarizes the file the page downloads, or a saved Firefox about:webrtc page
-- `squash-message.mjs`, which drafts the body of the squash message a pull
-  request lands as, and `format-squash-message.mjs`, which rewraps a draft
-  body, drops the markdown and list markers a commit message does not take,
-  reports what it cannot fix without rewriting the body, and with `--fenced`
-  prints the body as the code-fenced pull-request comment it is posted as. It
-  holds the wrap column, which the reminder hook takes from here rather than
-  restate it. The drafter stops when `claude auth status` reports no login,
-  because a Claude Code session withholds its login token from its tool
-  shells; run it from a container terminal such as the VS Code integrated
-  terminal. The subject is the PR title, whose budget
+- `format-squash-message.mjs`, which rewraps the draft body of the squash
+  message a pull request lands as, drops the markdown and list markers a
+  commit message does not take, reports what it cannot fix without rewriting
+  the body, and with `--fenced` prints the body as the code-fenced
+  pull-request comment it is posted as. It holds the wrap column, which the
+  reminder hook takes from here rather than restate it. The subject is the PR
+  title, whose budget
   [`squashSubjectBudget.mjs`](../../scripts/lib/squashSubjectBudget.mjs) holds
   for the PR checklist check and the PR-title hook
 - `verify-nonexecutable-delta.mjs`, which decides whether a review attestation
