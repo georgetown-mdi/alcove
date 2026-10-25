@@ -496,6 +496,66 @@ describe("console acceptor of a webrtc invitation", () => {
     expect(allowedField().query()).toBeNull();
   });
 
+  test("the review offers Allowed relays for an invitation naming only a WebSocket relay, and a list leaving it out reaches the run's create", async () => {
+    const WEBSOCKET_URL = "wss://ws.partner.example.net/relay";
+    const api = stubServerJobAccept();
+    window.location.hash = await encodeToken({
+      ...WEBRTC_ENDPOINT,
+      relay: { websocket: WEBSOCKET_URL },
+    });
+    app.render(createElement(AcceptorScreen));
+    await expect
+      .element(page.getByText(ALLOWED_RELAYS_UNSET_SUMMARY))
+      .toBeInTheDocument();
+    expect(allowedField().query()).toBeNull();
+    expect(pageText()).toContain(
+      "shown with the terms above, unless the Allowed relays below leave out its WebSocket relay.",
+    );
+    expect(pageText()).not.toContain("TURN servers");
+
+    await setAllowedRelays().click();
+    await userEvent.fill(allowedField(), "partner.example.net");
+    await expect
+      .poll(pageText)
+      .toContain(
+        `WebSocket relay ${WEBSOCKET_URL} (${LEFT_OUT_BY_ALLOWED_RELAYS})`,
+      );
+
+    await reachAcceptStart();
+    await expect
+      .element(page.getByRole("heading", { level: 1 }))
+      .toMatchTextContent("Exchange in progress");
+    const create = api.captured.find(
+      (request) => request.url === "/api/jobs" && request.method === "POST",
+    );
+    expect(JSON.parse(String(create?.body))).toMatchObject({
+      channel: "webrtc",
+      side: "acceptor",
+      signalingServer: { relay: { websocket: WEBSOCKET_URL } },
+      allowedRelays: ["partner.example.net"],
+    });
+  });
+
+  test("the review offers Allowed relays for an invitation naming a TURN server and a WebSocket relay, naming both in the notice", async () => {
+    stubServerJobAccept();
+    window.location.hash = await encodeToken({
+      ...WEBRTC_ENDPOINT,
+      relay: {
+        turn: ["turn:partner.example.net:3478"],
+        websocket: "wss://ws.partner.example.net/relay",
+      },
+    });
+    app.render(createElement(AcceptorScreen));
+    await expect
+      .element(page.getByText(ALLOWED_RELAYS_UNSET_SUMMARY))
+      .toBeInTheDocument();
+    await expect.element(setAllowedRelays()).toBeInTheDocument();
+    expect(allowedField().query()).toBeNull();
+    expect(pageText()).toContain(
+      "unless the Allowed relays below leave out its TURN servers or its WebSocket relay.",
+    );
+  });
+
   test("stops before any run is created when the console refuses the server, asking for another invitation", async () => {
     expectConsole(
       "error",

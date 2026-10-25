@@ -423,12 +423,15 @@ export type AcceptorScreenAction =
   | { type: "manage-offer-deposited" }
   | { type: "manage-offer-failed"; refusal?: AlertContent };
 
-/** Whether a relay locator names a TURN server, the only kind the Allowed
- * relays list can leave out. */
-export function relayNamesTurnServer(
-  relay: { turn?: ReadonlyArray<string> } | undefined,
-): boolean {
-  return (relay?.turn?.length ?? 0) > 0;
+/** The kinds of relay a relay locator names that the Allowed relays list
+ * can leave out, in the order the accept notice names them. */
+export function allowedRelaysCoveredKinds(
+  relay: { turn?: ReadonlyArray<string>; websocket?: string } | undefined,
+): ReadonlyArray<"turn" | "websocket"> {
+  return [
+    ...((relay?.turn?.length ?? 0) > 0 ? (["turn"] as const) : []),
+    ...(relay?.websocket !== undefined ? (["websocket"] as const) : []),
+  ];
 }
 
 /**
@@ -436,10 +439,10 @@ export function relayNamesTurnServer(
  * accept: where `fieldKept`, the field holding a list or edited
  * (`allowedRelaysEdited`), which is never hidden, or where the run lists a
  * relay for the list to keep or leave out. On the
- * console that is a TURN server the invitation names, since the console's
- * run has no other relay; in the browser it is `browserRunListsRelay` of the
- * invitation's relay, which reads this browser's own relay and the site's
- * beside it (`runListsRelay`).
+ * console that is a TURN server or WebSocket relay the invitation names,
+ * since the console's run has no other relay; in the browser it is
+ * `browserRunListsRelay` of the invitation's relay, which reads this
+ * browser's own relay and the site's beside it (`runListsRelay`).
  */
 export function acceptOffersAllowedRelays(
   endpoint: AcceptableInvitation["endpoint"],
@@ -450,7 +453,7 @@ export function acceptOffersAllowedRelays(
   if (endpoint.channel !== "webrtc") return false;
   if (fieldKept) return true;
   return consoleBuild
-    ? relayNamesTurnServer(endpoint.relay)
+    ? allowedRelaysCoveredKinds(endpoint.relay).length > 0
     : browserRunListsRelay(endpoint.relay);
 }
 
