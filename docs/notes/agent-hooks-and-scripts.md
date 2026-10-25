@@ -193,7 +193,7 @@ a list item becomes its own paragraph, its continuation lines joined into it, an
 
 `violations` is empty exactly when no refusal fires and the body is what the normalizer produces from it, character for character.
 A body wrapped by hand at another column is not, and the fix is one run of the script.
-Both entry points run `violations` over what normalizing produced and refuse to hand on output it rejects,
+The script runs `violations` over what normalizing produced and refuses to hand on output it rejects,
 so a shape the normalizer mangles is a failed run rather than a mangled message the maintainer pastes.
 
 ### Why the comment is fenced
