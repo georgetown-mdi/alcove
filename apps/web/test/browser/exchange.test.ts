@@ -2926,7 +2926,7 @@ describe("inviter screen", () => {
         .element(
           page.getByText(
             `alcove exchange your-data.csv --config-file ${fileName} ` +
-              "--invitation @invitation.txt",
+              "--invitation '@invitation.txt'",
           ),
         )
         .toBeInTheDocument();

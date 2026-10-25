@@ -251,6 +251,6 @@ export function exchangeFileInputFor(
 export function runCommand(fileName: string): string {
   return (
     `alcove exchange your-data.csv --config-file ${fileName} ` +
-    "--invitation @invitation.txt"
+    "--invitation '@invitation.txt'"
   );
 }

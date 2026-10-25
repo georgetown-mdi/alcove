@@ -338,7 +338,7 @@ What the default account asks of you is bind-mount ownership. A bind mount keeps
 **Running as your own account instead.** Where changing the directory's ownership is not an option, run the container as yourself:
 
 ```sh
-docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work ghcr.io/georgetown-mdi/alcove exchange input.csv
+docker run --rm --user "$(id -u):$(id -g)" -v "${PWD}:/work" ghcr.io/georgetown-mdi/alcove exchange input.csv
 ```
 
 The container then runs as an account the image knows nothing about, and `HOME` is not a question that arises. Alcove chooses no path under the home directory for anything: it reaches for the home directory only to expand a `~` you wrote yourself, so an ephemeral or unset `HOME` changes no path Alcove picks. It still resolves the ones you spell with a `~` against whatever home the container has, which in an ephemeral one is a different directory on every run -- so write those paths out in full. The signing identity, the one long-lived credential the CLI holds, is written and read only where you name it (see [Mounting the signing identity](#mounting-the-signing-identity)).
@@ -375,7 +375,7 @@ In all three the remedy is ownership, not mode: a `chmod` on a directory or file
 By default the image runs the headless CLI. Mount a working directory and pass CLI arguments:
 
 ```sh
-docker run --rm -v "$PWD":/work ghcr.io/georgetown-mdi/alcove exchange input.csv
+docker run --rm -v "${PWD}:/work" ghcr.io/georgetown-mdi/alcove exchange input.csv
 ```
 
 What the container needs to reach while it runs, and how to hold it to that, is in [Restricting the container's outbound network access](#restricting-the-containers-outbound-network-access).
@@ -387,7 +387,7 @@ The image starts the CLI with `NODE_OPTIONS=--max-old-space-size=19075`, the hea
 - **Raise or remove `--memory`** to give the run what it needs:
 
   ```sh
-  docker run --rm --memory 16g -v "$PWD":/work ghcr.io/georgetown-mdi/alcove exchange input.csv
+  docker run --rm --memory 16g -v "${PWD}:/work" ghcr.io/georgetown-mdi/alcove exchange input.csv
   ```
 
 - **Raise the heap limit** with your own `NODE_OPTIONS`, which the image places after its own and so takes precedence: `--env NODE_OPTIONS=--max-old-space-size=30000`.
@@ -414,7 +414,7 @@ An exchange gives the container one reason to reach the network: the SFTP connec
 For a shared-folder exchange on the CLI, take the network away outright:
 
 ```sh
-docker run --rm --network none -v "$PWD":/work ghcr.io/georgetown-mdi/alcove exchange input.csv
+docker run --rm --network none -v "${PWD}:/work" ghcr.io/georgetown-mdi/alcove exchange input.csv
 ```
 
 This is the strongest option here and the only portable one -- a `docker run` flag with no host configuration behind it. It is not an option for the console, whose browser traffic has to reach the published port; a console that will only ever run shared-folder exchanges takes the allowlist below with no SFTP entry in it, which denies the same traffic outbound.
@@ -461,7 +461,7 @@ The explicit rule numbers are critical. `-I` inserts at the position you give it
 ```sh
 # Headless CLI
 docker run --rm --network alcove-egress --dns 192.0.2.53 \
-  -v "$PWD":/work ghcr.io/georgetown-mdi/alcove exchange input.csv
+  -v "${PWD}:/work" ghcr.io/georgetown-mdi/alcove exchange input.csv
 
 # Console
 docker run --rm --network alcove-egress --dns 192.0.2.53 \

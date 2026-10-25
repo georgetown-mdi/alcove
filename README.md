@@ -11,7 +11,7 @@ Pick the one that matches who you are. All three run the same protocol, so the t
 1. **You have a spreadsheet and a browser.** Open [https://psi.data-bridge.org](https://psi.data-bridge.org). Nothing to install: your file is read and matched inside your browser and never uploaded to our servers. What is sent to your partner is encrypted first. Best for first-time and occasional exchanges. See [Web app](#web-app).
 2. **You run Docker and want a guided screen for an exchange over your own SFTP server.** Start the console from the directory holding your input file, then visit [http://127.0.0.1:3000](http://127.0.0.1:3000):
    ```sh
-   docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "$PWD":/work ghcr.io/georgetown-mdi/alcove:latest serve
+   docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "${PWD}:/work" ghcr.io/georgetown-mdi/alcove:latest serve
    ```
    On Windows, use the Windows form in the [Web Console Quickstart](#web-console-quickstart).
    For an exchange through a shared folder, add the folder as the [Web Console Quickstart](#web-console-quickstart) shows.
@@ -154,7 +154,7 @@ The same Docker image serves the guided web experience from your own machine, wi
 2. From a directory holding your input CSV, for Mac / Linux, run the command below. Replace `/path/to/shared-folder` with the folder your sync tool shares with your partner, and `shared-folder` on the line above it with the name you and your partner know that folder by:
 ```sh
 docker run --rm -p 127.0.0.1:3000:3000 \
-  --env JOB_DATA_ROOT=/work -v "$PWD":/work \
+  --env JOB_DATA_ROOT=/work -v "${PWD}:/work" \
   --env JOB_RENDEZVOUS_DIR=/shared \
   --env JOB_RENDEZVOUS_NAME=shared-folder \
   -v "/path/to/shared-folder":/shared \

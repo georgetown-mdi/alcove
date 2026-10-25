@@ -186,7 +186,7 @@ test("saveInvitedKeyFile writes the decoded key owner-only", async () => {
 });
 
 test("keyFileFromInvitation resolves an @path invitation reference", async () => {
-  // The @-file form (`--invitation @code.txt`) reads the code from a file so it
+  // The @-file form (`--invitation '@code.txt'`) reads the code from a file so it
   // stays out of shell history; the resolved code decodes identically.
   const keyPath = path.join(dir, ".alcove.key");
   const codePath = path.join(dir, "code.txt");

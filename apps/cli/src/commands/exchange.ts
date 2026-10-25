@@ -204,7 +204,7 @@ export function builder(cmd: Argv): Argv {
     type: "string",
     describe:
       "provision the key file from an invitation, the same one `alcove " +
-      "accept` takes (use @path, as in `--invitation @invitation.txt`, to " +
+      "accept` takes (use @path, as in `--invitation '@invitation.txt'`, to " +
       "keep it out of shell history). For the party that composed the " +
       "exchange in the web app and downloaded a config that has no secret: " +
       "this completes local provisioning from the invitation and runs the " +
@@ -270,7 +270,7 @@ export function parseArgs(argv: Arguments): ExchangeArgs {
   // Kept verbatim: unlike the server-* credential flags below, the invitation is
   // NOT @-resolved here. Its @-file form is read at decode time by
   // decodeAndValidateInvitation (via keyFileFromInvitation), so the
-  // code stays out of process argv even when supplied as `@code.txt`.
+  // code stays out of process argv even when supplied as `'@code.txt'`.
   const invitation = singleValue(argv, "invitation") as string | undefined;
   // Parse the common options through the shared parser (the same singleValue
   // repeat-rejection and log-level validation invite/accept use), then layer the

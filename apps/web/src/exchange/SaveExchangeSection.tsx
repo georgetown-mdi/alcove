@@ -184,7 +184,7 @@ export function SaveExchangeSection({
             <span className={styles.mono}>invitation.txt</span> beside the
             exchange file - this keeps it out of your shell history, and the
             command below reads it back with{" "}
-            <span className={styles.mono}>@invitation.txt</span>.
+            <span className={styles.mono}>'@invitation.txt'</span>.
           </p>
           <div className={`${styles.codeBlock} ${styles.mono}`}>
             {runCommand(saved.fileName)}
