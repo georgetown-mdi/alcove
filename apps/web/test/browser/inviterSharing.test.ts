@@ -389,7 +389,7 @@ describe("column-name isolation: what the wrapper does not contain", () => {
     ]);
     app.render(
       createElement(Ledger, {
-        rows: inviterLedgerRows(editorSendingUnrecognized(acquired)),
+        rows: inviterLedgerRows(editorSendingUnrecognized(acquired), "browser"),
       }),
     );
     await expect

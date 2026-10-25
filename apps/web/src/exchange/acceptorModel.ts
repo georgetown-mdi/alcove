@@ -15,9 +15,11 @@ import { isolatedColumnName } from "@components/ColumnName";
 import { COUNT_ONLY_RECEIVE_ROW_VALUE, settledReceiveValue } from "@psi/ledger";
 import { dateTimeLabel } from "@psi/formatting";
 
-import { TRANSPORT_LEDGER_LABELS } from "@psi/transportChooser";
+import {
+  TRANSPORT_LEDGER_LABELS,
+  TRANSPORT_RAIL_NOTES,
+} from "@psi/transportChooser";
 import { acceptedSignalingServer } from "@console/signalingServerModel";
-import { saveRailNote } from "./saveExchangeModel";
 
 import type { InvitationToken, LinkageTerms, Metadata } from "@alcove/core";
 import type { LedgerOutcome } from "@psi/ledger";
@@ -635,8 +637,7 @@ export function acceptorTransportNote(
   endpoint: AcceptEndpoint,
   consoleBuild: boolean,
 ): string {
-  if (!acceptorRunsAsServerJob(endpoint, consoleBuild)) return "Browser";
-  return endpoint.channel === "webrtc"
-    ? "WebRTC"
-    : saveRailNote(endpoint.channel);
+  if (!acceptorRunsAsServerJob(endpoint, consoleBuild))
+    return TRANSPORT_RAIL_NOTES.browser;
+  return TRANSPORT_RAIL_NOTES[endpoint.channel];
 }

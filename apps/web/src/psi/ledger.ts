@@ -22,6 +22,8 @@ import type { InviterEditor } from "./inviterEditor";
 
 import type { RunOutputs } from "./runOutputs";
 
+import type { Transport } from "./transportChooser";
+
 /** One disclosure-ledger row: `value` renders in the data voice, `muted`
  * renders in the empty-state voice ("None", "Nothing"), neither renders the
  * em-dash placeholder. `shareBar` marks the row as one of the headline
@@ -155,6 +157,8 @@ export function settledReceiveValue(
  * exists the send list, matched-on keys, expiry, and result direction are read
  * live from the draft. Once minted, `expires` replaces the relative lifetime
  * phrase; once complete, `outcome` replaces the forward-looking rows.
+ * `transport` is the one the chooser shows as selected, the build's default
+ * until the operator picks a card, so the How it runs row matches it.
  *
  * The send row names the operator's OWN disclosed CSV headers, so they take the
  * isolation their column-name surfaces show them with ({@link isolatedColumnName})
@@ -162,6 +166,7 @@ export function settledReceiveValue(
  */
 export function inviterLedgerRows(
   editor: InviterEditor | undefined,
+  transport: Transport,
   expiresIso?: string,
   outcome?: LedgerOutcome,
 ): Array<InviterLedgerRow> {
@@ -240,7 +245,7 @@ export function inviterLedgerRows(
     {
       label: "How it runs",
       reference: "Step 3",
-      value: TRANSPORT_LEDGER_LABELS[editor.transport ?? "browser"],
+      value: TRANSPORT_LEDGER_LABELS[transport],
     },
   ];
 }

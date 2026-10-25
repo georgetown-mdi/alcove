@@ -1805,6 +1805,71 @@ describe("console inviter mint and run", () => {
   });
 });
 
+/** The ledger's How it runs value, read from the row whose term names it. */
+function ledgerHowItRuns(): string | null | undefined {
+  const ledger = document.querySelector('aside[aria-label="This exchange"]');
+  const row = Array.from(ledger?.querySelectorAll("dt") ?? []).find(
+    (term) => term.childNodes[0].textContent === "How it runs",
+  );
+  return row?.nextElementSibling?.textContent;
+}
+
+/** The check-your-answers table's How it runs value. */
+function answersHowItRuns(): string | null | undefined {
+  const row = Array.from(document.querySelectorAll("tr")).find(
+    (candidate) => candidate.querySelector("th")?.textContent === "How it runs",
+  );
+  return row?.querySelector("td")?.textContent;
+}
+
+describe("console inviter names its transport in How it runs", () => {
+  const CASES = [
+    {
+      transport: "an SFTP",
+      api: {
+        sftp: { configured: true, host: "sftp.example.gov", port: 2222 },
+      },
+      card: "Over SFTP, run here",
+      label: "SFTP (command-line tool)",
+      topBarNote: "SFTP",
+    },
+    {
+      transport: "a shared-folder",
+      api: {
+        sftp: { configured: false },
+        rendezvous: {
+          configured: true,
+          locator: "alcove",
+          folderName: "alcove",
+        },
+      },
+      card: "Over a shared folder, run here",
+      label: "Shared folder (command-line tool)",
+      topBarNote: "Shared folder",
+    },
+  ];
+
+  for (const { transport, api, card, label, topBarNote } of CASES)
+    test(`${transport} invitation states its transport from review through the ready page`, async () => {
+      stubJobApi(api);
+      app.render(createElement(InviterScreen));
+      await reachReviewCreate();
+      // The default card, never picked: the rows follow what the chooser shows.
+      await expect.element(page.getByLabelText(card)).toBeChecked();
+      expect(answersHowItRuns()).toBe(label);
+      expect(ledgerHowItRuns()).toBe(label);
+
+      await page.getByRole("button", { name: "Create the invitation" }).click();
+      await expect
+        .element(page.getByRole("heading", { level: 1 }))
+        .toMatchTextContent("Your invitation is ready");
+      expect(ledgerHowItRuns()).toBe(label);
+      expect(document.querySelector(`.${styles.topBarNote}`)?.textContent).toBe(
+        topBarNote,
+      );
+    });
+});
+
 describe("console inviter never renders the recurring-save offer", () => {
   // The offer's only inviter render site is gated on the browser transport
   // (InviterScreen: `transport === "browser"` on the share surface). A console build

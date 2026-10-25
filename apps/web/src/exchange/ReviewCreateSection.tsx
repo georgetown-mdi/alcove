@@ -738,35 +738,37 @@ export function ReviewCreateSection({
                 : "Check your answers before saving your changes"}
           </caption>
           <tbody>
-            {answersRows(editor, csv, { makesInvitation }).map((row) => (
-              <tr key={row.label}>
-                <th scope="row">{row.label}</th>
-                <td className={row.mono === true ? styles.mono : undefined}>
-                  {row.value}
-                </td>
-                <td className={styles.answersChange}>
-                  {row.changeTarget !== undefined ? (
-                    <button
-                      type="button"
-                      className={styles.stepLink}
-                      onClick={() =>
-                        onNavigate(row.changeTarget as SpineTarget)
-                      }
-                    >
-                      Change
-                      <span className={styles.visuallyHidden}>
-                        {" "}
-                        {row.label.toLowerCase()}
+            {answersRows(editor, csv, transport, { makesInvitation }).map(
+              (row) => (
+                <tr key={row.label}>
+                  <th scope="row">{row.label}</th>
+                  <td className={row.mono === true ? styles.mono : undefined}>
+                    {row.value}
+                  </td>
+                  <td className={styles.answersChange}>
+                    {row.changeTarget !== undefined ? (
+                      <button
+                        type="button"
+                        className={styles.stepLink}
+                        onClick={() =>
+                          onNavigate(row.changeTarget as SpineTarget)
+                        }
+                      >
+                        Change
+                        <span className={styles.visuallyHidden}>
+                          {" "}
+                          {row.label.toLowerCase()}
+                        </span>
+                      </button>
+                    ) : row.setAbove === true ? (
+                      <span className={styles.setAbove}>
+                        Set above on this step
                       </span>
-                    </button>
-                  ) : row.setAbove === true ? (
-                    <span className={styles.setAbove}>
-                      Set above on this step
-                    </span>
-                  ) : null}
-                </td>
-              </tr>
-            ))}
+                    ) : null}
+                  </td>
+                </tr>
+              ),
+            )}
           </tbody>
         </table>
       </div>

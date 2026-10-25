@@ -112,6 +112,7 @@ import {
 import { runListsRelay } from "@psi/transport/runRelayPlan";
 
 import {
+  TRANSPORT_RAIL_NOTES,
   availableTransports,
   isCliTransport,
   transportRunMode,
@@ -1738,7 +1739,7 @@ export function InviterScreen() {
           <TopBar
             navLabel="Exchange progress"
             steps={steps}
-            transportNote="Browser"
+            transportNote={TRANSPORT_RAIL_NOTES[transport]}
           />
         ) : section === "save" && isCliTransport(transport) ? (
           <TopBar
@@ -1771,6 +1772,7 @@ export function InviterScreen() {
           customize={sealed ? undefined : facts}
           rows={inviterLedgerRows(
             editor,
+            transport,
             savedExchange?.invitation.expires ?? invitation?.expires,
             outputs === undefined ? undefined : ledgerOutcomeOf(outputs),
           ).map((row) => ({

@@ -1,3 +1,5 @@
+import { TRANSPORT_RAIL_NOTES } from "@psi/transportChooser";
+
 import { preRunTrustFooter, settledTrustFooter } from "./trustFooter";
 
 import type {
@@ -87,7 +89,7 @@ export function liveRunLedgerFooter(
 
 /** The top bar's transport note on the save surface. */
 export function saveRailNote(transport: CliTransport): string {
-  return transport === "sftp" ? "SFTP" : "Shared folder";
+  return TRANSPORT_RAIL_NOTES[transport];
 }
 
 /** The explicit channel-capability statement: the browser does not run this

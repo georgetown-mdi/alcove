@@ -121,7 +121,7 @@ function catalogKeyNames(
 }
 
 function rulesSelected(editor: InviterEditor, csv: AcquiredCsv): string {
-  const row = answersRows(editor, csv).find(
+  const row = answersRows(editor, csv, "browser").find(
     (entry) => entry.label === "Rules selected",
   );
   if (row === undefined) throw new Error("no Rules selected row");

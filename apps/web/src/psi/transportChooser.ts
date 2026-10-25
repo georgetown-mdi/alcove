@@ -37,6 +37,15 @@ export const TRANSPORT_ANSWER_LABELS: Record<Transport, string> = {
   webrtc: "WebRTC (command-line tool)",
 };
 
+/** The top bar's short transport note for each {@link Transport}, shown once
+ * the exchange is set up and on the save surface. */
+export const TRANSPORT_RAIL_NOTES: Record<Transport, string> = {
+  browser: "Browser",
+  sftp: "SFTP",
+  filedrop: "Shared folder",
+  webrtc: "WebRTC",
+};
+
 /** Whether a transport is one the command-line tool runs from a saved exchange
  * file -- the discriminant Create branches on: such a transport mints nothing
  * and routes to the save surface where the build saves a file, and the browser
