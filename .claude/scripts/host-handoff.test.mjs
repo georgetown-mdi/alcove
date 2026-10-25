@@ -60,8 +60,27 @@ const PATH_WITHOUT_CLAUDE = (process.env.PATH ?? "")
 
 const SLUG = "2026-10-24-relay-check";
 
+const OWNER_ACTION_BOUND = Number(
+  /^OWNER_ACTION_BOUND=(\d+)$/m.exec(readFileSync(SCRIPT, "utf8"))?.[1],
+);
+
+function ownerActionLines(count, marker = (n) => `${n}.`) {
+  const lines = [];
+  for (let n = 1; n <= count; n++) {
+    lines.push(`${marker(n)} Sign in to the VM -- the password is his alone.`);
+  }
+  return lines;
+}
+
 function briefText({
-  sections = ["## Contract", "## Host rules", "## Brief", "## Steps"],
+  sections = [
+    "## Owner actions",
+    "## Contract",
+    "## Host rules",
+    "## Brief",
+    "## Steps",
+  ],
+  ownerActions = ["none"],
   result = `\`scratch/handoffs/${SLUG}.result.md\`; artifacts in \`scratch/handoffs/${SLUG}-artifacts/\``,
   model,
   effort,
@@ -69,6 +88,7 @@ function briefText({
   const lines = ["# Host hand-off: relay check", ""];
   for (const section of sections) {
     lines.push(section, "");
+    if (section === "## Owner actions") lines.push(...ownerActions, "");
     if (section === "## Brief") {
       lines.push("- Goal: check the relay.");
       if (result !== null) lines.push(`- Result file: ${result}`);
@@ -229,6 +249,9 @@ describe("host-handoff.sh --check", () => {
       `host-handoff: result file: scratch/handoffs/${SLUG}.result.md`,
     );
     expect(stdout).toContain(
+      `host-handoff: owner actions: 0, at most ${OWNER_ACTION_BOUND}`,
+    );
+    expect(stdout).toContain(
       `claude --model claude-sonnet-5-5 --effort high '${PROMPT}'`,
     );
   });
@@ -366,8 +389,29 @@ describe("host-handoff.sh and the brief template", () => {
     expect(fixture.claudeCall()).toBeNull();
   });
 
-  it("accepts the template once its placeholders are filled in", () => {
+  it("refuses the template's Owner actions placeholder once the rest is filled in", () => {
     const filled = template().replaceAll("<YYYY-MM-DD>-<slug>", SLUG);
+    const fixture = checkout({ brief: filled });
+    const { status, stderr } = run(fixture, [
+      "--check",
+      `scratch/handoffs/${SLUG}.md`,
+    ]);
+    expect(status).toBe(1);
+    expect(stderr).toContain("Owner actions section has the line '<");
+  });
+
+  it("states the script's owner action bound", () => {
+    expect(Number.isInteger(OWNER_ACTION_BOUND)).toBe(true);
+    expect(readFileSync(TEMPLATE_DOCUMENT, "utf8")).toContain(
+      `lists more than ${OWNER_ACTION_BOUND} actions, printing the count and the bound. ${OWNER_ACTION_BOUND} is a working value`,
+    );
+  });
+
+  it("accepts the template once its placeholders are filled in", () => {
+    const filled = template()
+      .replaceAll("<YYYY-MM-DD>-<slug>", SLUG)
+      .replace(/^(## Owner actions\n\n)<[^\n]*>$/m, "$1none");
+    expect(filled).toMatch(/^## Owner actions\n\nnone$/m);
     const fixture = checkout({ brief: filled });
     const { status, stdout, stderr } = run(fixture, [
       "--check",
@@ -394,6 +438,82 @@ describe("host-handoff.sh and the brief template", () => {
       );
     }
     expect(fixture.claudeCall()).toBeNull();
+  });
+});
+
+describe("host-handoff.sh owner actions", () => {
+  const checkBrief = (ownerActions, args = ["--check"]) => {
+    const fixture = checkout({ brief: briefText({ ownerActions }) });
+    return {
+      fixture,
+      ...run(fixture, [...args, `scratch/handoffs/${SLUG}.md`]),
+    };
+  };
+
+  it("accepts a brief listing as many owner actions as the bound, continuation lines included", () => {
+    const lines = ownerActionLines(OWNER_ACTION_BOUND);
+    lines.splice(1, 0, "   The VM's login screen shows his account name.");
+    const { status, stdout, stderr } = checkBrief(lines);
+    expect(stderr).toBe("");
+    expect(status).toBe(0);
+    expect(stdout).toContain(
+      `host-handoff: owner actions: ${OWNER_ACTION_BOUND}, at most ${OWNER_ACTION_BOUND}`,
+    );
+  });
+
+  it("refuses a brief listing one owner action past the bound, printing the count and the bound", () => {
+    for (const marker of [(n) => `${n}.`, () => "-", () => "*"]) {
+      const lines = ownerActionLines(OWNER_ACTION_BOUND + 1, marker);
+      for (const args of [["--check"], []]) {
+        const { fixture, status, stderr } = checkBrief(lines, args);
+        expect(status, lines[0]).toBe(1);
+        expect(stderr, lines[0]).toContain(
+          `lists ${OWNER_ACTION_BOUND + 1} owner actions, past the bound of ${OWNER_ACTION_BOUND}.`,
+        );
+        expect(fixture.claudeCall()).toBeNull();
+      }
+    }
+  });
+
+  it("accepts an Owner actions section that says none", () => {
+    for (const none of ["none", "None.", "none  "]) {
+      const { status, stdout } = checkBrief([none]);
+      expect(status, none).toBe(0);
+      expect(stdout, none).toContain("host-handoff: owner actions: 0,");
+    }
+  });
+
+  it("refuses a brief with no Owner actions section", () => {
+    const fixture = checkout({
+      brief: briefText({
+        sections: ["## Contract", "## Host rules", "## Brief", "## Steps"],
+      }),
+    });
+    const { status, stderr } = run(fixture, [
+      "--check",
+      `scratch/handoffs/${SLUG}.md`,
+    ]);
+    expect(status).toBe(1);
+    expect(stderr).toContain("has no '## Owner actions' section");
+  });
+
+  it("refuses an Owner actions section that is empty, prose, or both none and a list", () => {
+    for (const [ownerActions, message] of [
+      [[], "Owner actions section is empty"],
+      [
+        ["The owner signs in, then pastes the token."],
+        "has the line 'The owner signs in, then pastes the token.'",
+      ],
+      [
+        ["   indented before any action"],
+        "has the line '   indented before any action'",
+      ],
+      [["none", ...ownerActionLines(1)], 'says "none" and also lists'],
+    ]) {
+      const { status, stderr } = checkBrief(ownerActions);
+      expect(status, message).toBe(1);
+      expect(stderr, message).toContain(message);
+    }
   });
 });
 

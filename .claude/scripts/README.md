@@ -26,7 +26,8 @@ push:
   command on the host, which starts a Claude Code session on the brief's model
   (Sonnet by default) at the brief's effort (high by default) pointed at the
   brief and ends saying whether the result file exists, its
-  `--check` reading a brief in the dev container before it is handed out;
+  `--check` reading a brief in the dev container before it is handed out,
+  and both refusing one that lists more owner actions than its bound;
   `wait-handoff-result.mjs`, which the dev container session runs in the
   background under `timeout` until the result file is written; and
   `webrtc-capture.mjs`, which a host session runs for a browser step: it

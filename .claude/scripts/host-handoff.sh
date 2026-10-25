@@ -14,6 +14,8 @@
 #
 # --check reads the brief and prints what a launch would run, without starting
 # a session: the dev container session runs it before handing a brief out.
+# Both refuse a brief whose Owner actions section lists more than
+# OWNER_ACTION_BOUND actions.
 #
 # Written for the bash 3.2 macOS ships. Exit 0 the result file is written (with
 # --check, the brief is ready to run); 1 a precondition failed or the session
@@ -23,6 +25,10 @@ set -euo pipefail
 
 DEFAULT_MODEL="claude-sonnet-5-5"
 DEFAULT_EFFORT="high"
+# The most owner actions a brief may list. A working value, chosen arbitrarily
+# until the owner sets one, and raised when he asks. The check counts only the
+# actions the brief lists, not any a session asks for mid-run.
+OWNER_ACTION_BOUND=5
 
 usage() {
   cat <<'EOF'
@@ -32,8 +38,9 @@ Starts a Claude Code session in this checkout that runs a host hand-off brief
 and ends when the brief's result file is written.
 
   <brief>      the brief: scratch/handoffs/<YYYY-MM-DD>-<slug>.md
-  --check      read the brief and print the model, the effort, the result file
-               and the command a launch runs, without starting a session
+  --check      read the brief and print the model, the effort, the result file,
+               the count of owner actions and the command a launch runs,
+               without starting a session
   -h, --help   print this help
 
 The session runs on the model the brief's Model line names in backticks, or
@@ -91,7 +98,7 @@ brief_dir="$(cd "$(dirname "$brief")" && pwd -P)"
   usage_error "'$brief' is not in $repo/scratch/handoffs/, where the dev container reads hand-offs."
 brief_rel="scratch/handoffs/$(basename "$brief")"
 
-for heading in "## Contract" "## Host rules" "## Brief" "## Steps"; do
+for heading in "## Contract" "## Host rules" "## Brief" "## Steps" "## Owner actions"; do
   grep -q "^$heading[[:space:]]*$" "$brief" ||
     fail "$brief_rel has no '$heading' section; a brief needs every section of the template in .claude/orchestration/host-handoff-brief.md."
 done
@@ -132,6 +139,32 @@ if grep -q '^- Effort:' "$brief"; then
   esac
 fi
 
+# The Owner actions section is "none" or one list item per action, indented
+# lines continuing the item above. Prints the count, "bad: <line>" for the
+# first line that is neither, "mixed" for a "none" beside listed actions, or
+# "empty".
+owner_actions="$(awk '
+  /^## / { inside = ($0 ~ /^## Owner actions[ \t]*$/); next }
+  !inside || /^[ \t]*$/ { next }
+  /^([0-9]+\.|[-*]) / { count++; next }
+  /^[ \t]/ && count > 0 { next }
+  tolower($0) ~ /^none\.?[ \t]*$/ { none++; next }
+  bad == "" { bad = $0 }
+  END {
+    if (bad != "") print "bad: " bad
+    else if (none > 0 && count > 0) print "mixed"
+    else if (none == 0 && count == 0) print "empty"
+    else print count + 0
+  }
+' "$brief")"
+case "$owner_actions" in
+  "bad: "*) fail "$brief_rel's Owner actions section has the line '${owner_actions#bad: }'; write \"none\", or each owner action as its own numbered line." ;;
+  mixed) fail "$brief_rel's Owner actions section says \"none\" and also lists actions; keep one or the other." ;;
+  empty) fail "$brief_rel's Owner actions section is empty; write \"none\", or each owner action as its own numbered line." ;;
+esac
+[ "$owner_actions" -le "$OWNER_ACTION_BOUND" ] ||
+  fail "$brief_rel lists $owner_actions owner actions, past the bound of $OWNER_ACTION_BOUND. Redesign it so the host session or a script takes every step but the few only the owner's hands can, as Owner actions in .claude/orchestration/host-handoff-brief.md says."
+
 prompt="Read $brief_rel and follow it. Its Contract and Host rules bind this session."
 
 if [ -e "$repo/$result" ]; then
@@ -143,6 +176,7 @@ if [ "$check_only" -eq 1 ]; then
   say "model: $model"
   say "effort: $effort"
   say "result file: $result"
+  say "owner actions: $owner_actions, at most $OWNER_ACTION_BOUND"
   say "a launch runs, in $repo: claude --model $model --effort $effort '$prompt'"
   exit 0
 fi
