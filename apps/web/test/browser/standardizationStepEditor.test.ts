@@ -369,8 +369,11 @@ describe("StandardizationStepEditor", () => {
     await userEvent.click(page.getByRole("button", { name: "Add a step" }));
     await userEvent.click(page.getByRole("menuitem", { name: "Uppercase" }));
 
-    // The new step is listed and the preview reflects it.
-    await expect.element(page.getByText("Uppercase")).toBeInTheDocument();
+    // The new step is listed and the preview reflects it. Matched whole: the
+    // step summary's live region names it too, once its debounce elapses.
+    await expect
+      .element(page.getByText("Uppercase", { exact: true }))
+      .toBeInTheDocument();
     await expect
       .element(page.getByTestId("outcome-value"))
       .toMatchTextContent("MARY");
@@ -378,7 +381,9 @@ describe("StandardizationStepEditor", () => {
     await userEvent.click(
       page.getByRole("button", { name: "Remove Uppercase" }),
     );
-    await expect.element(page.getByText("Uppercase")).not.toBeInTheDocument();
+    await expect
+      .element(page.getByText("Uppercase", { exact: true }))
+      .not.toBeInTheDocument();
     await expect
       .element(page.getByTestId("outcome-value"))
       .toMatchTextContent("mary");

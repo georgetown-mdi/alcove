@@ -1529,19 +1529,20 @@ describe("FileSyncRendezvous joiner-recovery window", () => {
               size: helloBytes(LOCK_FLAGS),
             },
           ];
+    // Read before the deadline is fixed, so time spent in setup counts
+    // toward the measured wait rather than shortening it.
+    const start = Date.now();
     const p = makeParty(
       "aaa",
       {
         locklessRendezvous: false,
         joinerRecoveryMs: 40,
         pollingFrequency: 20,
-        timeToLive: new Date(Date.now() + 200),
+        timeToLive: new Date(start + 200),
       },
       new Map<string, Buffer>(),
       { listScript },
     );
-
-    const start = Date.now();
     await expect(p.rdv.run(p.scope)).rejects.toMatchObject({
       message: expect.stringContaining("timed out before it completed"),
     });
@@ -3240,11 +3241,12 @@ describe("FileSyncRendezvous entry-present peer hello window", () => {
     // entry scan, so it is never timed by the window and gets the full budget.
     const files = new Map<string, Buffer>();
     placePeerHello(files, "zzz", flags);
+    // Read before budget() fixes the deadline, as in the sentinel test above.
+    const started = Date.now();
     const p = makeParty("aaa", { ...flags, ...budget() }, files, {
       hideAtEntry: [helloName("zzz", flags)],
     });
 
-    const started = Date.now();
     const err = await p.rdv.run(p.scope).then(
       () => undefined,
       (e: unknown) => e,

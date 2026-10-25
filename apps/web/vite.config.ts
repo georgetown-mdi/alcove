@@ -445,6 +445,11 @@ export default defineConfig((configEnv) => {
               "test/**/*.browser.{test,spec}.{ts,tsx}",
             ],
             name: "browser",
+            // A case's driver calls slow evenly with CPU load: across four full
+            // runs at a load average of 30 to 51 on 10 cores, eight cases on
+            // vitest's 15 s browser default ran past it, the slowest at 23.9 s.
+            // 36 s is a 1.5x margin over that; a case measured slower sets its own.
+            testTimeout: 36_000,
             // The same broker and dev-server setup as the integration project,
             // so a cold `test:browser` is green, and a WebSocket relay.
             globalSetup: [

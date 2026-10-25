@@ -24,7 +24,7 @@ const MAX_TAB_PRESSES = 200;
  * The test timeout of a whole keyboard journey. A journey makes 38 to 58
  * keyboard calls to the browser driver one after another, so its time grows
  * with CPU load: the slowest measured, the recurring-setup journey, took 24.7 s
- * at a load average of 33 to 39 on 10 cores, past the browser project's 15 s
+ * at a load average of 33 to 39 on 10 cores, past vitest's 15 s browser
  * default. 37 s is a 1.5x margin over it.
  */
 export const KEYBOARD_JOURNEY_TIMEOUT_MS = 37_000;
