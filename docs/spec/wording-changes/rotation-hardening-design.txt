@@ -1,0 +1,4 @@
+# The export artifact's no-anti-rollback caveat points at the rotation
+# hardening design, which recognizes a superseded copy and heals a one-sided
+# rotation, in place of calling the rotation epoch deferred.
+- A monotonic rotation epoch held in the record and checked in the handshake would let a party detect a stale or forked peer; it is a future core hardening, deferred alongside the grace-window mitigation (see [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#rollback-at-rest-copies-can-silently-resurrect)). -> Recognizing a superseded copy in the handshake is proposed, together with the grace window, in [rotation-hardening.md](../notes/rotation-hardening.md), and neither is built (see [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#rollback-at-rest-copies-can-silently-resurrect)).
