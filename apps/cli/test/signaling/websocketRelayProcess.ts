@@ -4,15 +4,16 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { stopChild } from "../stopChild";
 
 /**
  * Starts the repository's WebSocket relay (packages/websocket-relay) as a
  * child process over a key table of its own, so the CLI's relay transport is
- * driven against the real relay rather than a stand-in. Runs through `tsx`, as
- * the relay's own start script does.
+ * driven against the real relay rather than a stand-in. Runs under `tsx`'s
+ * loader in one process, so a figure read from the child, its resident set
+ * among them, is the relay's own and not a launcher's.
  */
 
 /** What the runner prints once it is listening (packages/websocket-relay/src/standalone.ts). */
@@ -35,6 +36,7 @@ const require = createRequire(import.meta.url);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const relayRoot = path.resolve(here, "../../../../packages/websocket-relay");
 const runner = path.join(relayRoot, "src/standalone.ts");
+const tsxLoader = pathToFileURL(require.resolve("tsx")).href;
 
 function insertKeys(database: DatabaseSync, keys: Record<string, string>) {
   for (const [exchangeId, key] of Object.entries(keys)) {
@@ -61,11 +63,13 @@ export interface WebSocketRelayProcess {
 
 /**
  * Spawn the relay with `keys` enrolled, exchange id to relay key, and resolve
- * once it reports its port. Rejects, after killing the child, if it exits
- * first or does not report within {@link START_TIMEOUT_MS}.
+ * once it reports its port. `env` is added to the child's environment.
+ * Rejects, after killing the child, if it exits first or does not report
+ * within {@link START_TIMEOUT_MS}.
  */
 export function startWebSocketRelayProcess(
   keys: Record<string, string>,
+  env: NodeJS.ProcessEnv = {},
 ): Promise<WebSocketRelayProcess> {
   const directory = mkdtempSync(path.join(tmpdir(), "alcove-ws-relay-"));
   const keyTable = path.join(directory, "turndb");
@@ -77,8 +81,12 @@ export function startWebSocketRelayProcess(
 
   const child = spawn(
     process.execPath,
-    [require.resolve("tsx/cli"), runner, "--key-table", keyTable],
-    { cwd: relayRoot, stdio: ["ignore", "pipe", "pipe"] },
+    [`--import=${tsxLoader}`, runner, "--key-table", keyTable],
+    {
+      cwd: relayRoot,
+      env: { ...process.env, ...env },
+      stdio: ["ignore", "pipe", "pipe"],
+    },
   );
   const removeKeyTable = (): void =>
     rmSync(directory, { recursive: true, force: true });
