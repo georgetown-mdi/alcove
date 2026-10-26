@@ -518,10 +518,12 @@ function loadConfigConnectionBlock(
 /**
  * Write the server address a create-mode `server.provision` endpoint returned
  * into `connection.server` of an existing `alcove.yaml`, in place: `host`
- * always, `port` and `path` when the answer states them, every other field --
- * `provision` among them -- and the operator's comments and key order left as
- * they are. Rewritten with the same owner-only permissions {@link saveConfig}
- * uses; throws if the file cannot be read, parsed or updated.
+ * always, `port`, `path` and `host_key_fingerprint` when the answer states
+ * them, every other field -- `provision` among them -- and the operator's
+ * comments and key order left as they are. A returned fingerprint replaces any
+ * pin the file states, a list included. Rewritten with the same owner-only
+ * permissions {@link saveConfig} uses; throws if the file cannot be read,
+ * parsed or updated.
  */
 export function persistProvisionedServerAddress(
   configPath: string,
@@ -534,6 +536,8 @@ export function persistProvisionedServerAddress(
       const fields: Array<[string, string | number]> = [["host", address.host]];
       if (address.port !== undefined) fields.push(["port", address.port]);
       if (address.path !== undefined) fields.push(["path", address.path]);
+      if (address.hostKeyFingerprint !== undefined)
+        fields.push(["host_key_fingerprint", address.hostKeyFingerprint]);
       for (const [field, value] of fields) {
         normalizeKeyPathSpelling(configPath, doc, [
           "connection",

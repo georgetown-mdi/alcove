@@ -1334,7 +1334,11 @@ export async function handler(argv: Arguments): Promise<void> {
         if (ready.provisionedAddress !== undefined)
           log.info(
             "wrote the address of the server the provisioning endpoint " +
-              "created into connection.server in " +
+              "created" +
+              (ready.provisionedAddress.hostKeyFingerprint !== undefined
+                ? " and its host-key fingerprint"
+                : "") +
+              " into connection.server in " +
               `${redactAndRenderOperatorSuppliedText(
                 operatorSuppliedText(ready.configPath),
               )}; later runs of 'alcove exchange' connect to it without ` +
