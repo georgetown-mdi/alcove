@@ -13,10 +13,10 @@
     bash and sh.
 
     Every command runs from a local folder whose name contains a space, the
-    working folder its ${PWD} mount names. A recorder compiled to docker.exe
-    and put first on PATH stands in for docker: it prints each argument it
-    receives on its own line, so a test sees what Windows PowerShell 5.1
-    passed to a native command. Nothing here starts a container.
+    working folder its ${PWD} mount names. docker is the stand-in
+    DockerStandIn.ps1 compiles, which prints each argument it receives on its
+    own line, so a test sees what Windows PowerShell 5.1 passed to a native
+    command. Nothing here starts a container.
 
     Run it through ci-resolution-tests.ps1 rather than Invoke-Pester directly:
     that script is what reports results as annotations, which is all the CI
@@ -42,23 +42,8 @@ BeforeAll {
     $script:invitationPlaceholder = 'PASTE_YOUR_INVITATION'
     $script:invitationFileArgument = "'@invitation.txt'"
 
-    $script:recorderFolder = Join-Path ([IO.Path]::GetTempPath()) ('alcove-docker-recorder-' + [guid]::NewGuid().ToString('N'))
-    New-Item -ItemType Directory -Path $script:recorderFolder | Out-Null
-    $script:recorderPath = Join-Path $script:recorderFolder 'docker.exe'
-    # Brackets around each argument keep an empty or space-edged one visible.
-    $recorderSource = @'
-public static class AlcoveDockerRecorder {
-    public static void Main(string[] args) {
-        foreach (string argument in args) {
-            System.Console.WriteLine("[" + argument + "]");
-        }
-    }
-}
-'@
-    Add-Type -TypeDefinition $recorderSource -OutputAssembly $script:recorderPath -OutputType ConsoleApplication
-
-    $script:savedPath = $env:PATH
-    $env:PATH = "$script:recorderFolder;$env:PATH"
+    . (Join-Path $PSScriptRoot 'DockerStandIn.ps1')
+    $script:standIn = Enable-DockerStandIn
 
     $script:createdFolder = Join-Path ([IO.Path]::GetTempPath()) ('alcove accept sheet ' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $script:createdFolder | Out-Null
@@ -66,20 +51,6 @@ public static class AlcoveDockerRecorder {
     # Taken from the location rather than the created path, which can differ
     # from it in an 8.3 short name or in letter case.
     $script:workingFolder = (Get-Location).Path
-
-    function Get-DockerArgument {
-        <#  Run one command line as typed at a prompt and return the arguments
-            the docker stand-in received. #>
-        param([Parameter(Mandatory = $true)] [string] $CommandLine)
-
-        @(Invoke-Expression $CommandLine) | ForEach-Object {
-            $text = [string] $_
-            if ($text.Length -lt 2 -or $text[0] -ne '[' -or $text[$text.Length - 1] -ne ']') {
-                throw "the docker stand-in printed an unexpected line: $text"
-            }
-            $text.Substring(1, $text.Length - 2)
-        }
-    }
 
     function Get-IntendedArgument {
         <#  The words of a sheet command after docker, each with one pair of
@@ -100,8 +71,7 @@ public static class AlcoveDockerRecorder {
 
 AfterAll {
     Pop-Location
-    $env:PATH = $script:savedPath
-    Remove-Item -LiteralPath $script:recorderFolder -Recurse -Force -ErrorAction SilentlyContinue
+    Disable-DockerStandIn -StandIn $script:standIn
     Remove-Item -LiteralPath $script:createdFolder -Recurse -Force -ErrorAction SilentlyContinue
 }
 
