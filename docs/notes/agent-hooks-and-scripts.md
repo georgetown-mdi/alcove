@@ -610,3 +610,31 @@ and one from a different board is refused rather than remapped.
 An edit whose value equals the stored one, ignoring trailing newlines, makes no API call,
 and an edit that runs is re-fetched and compared with what was sent, so an unchanged write cannot report success.
 Iteration and other field types are reported as unsupported rather than guessed at.
+
+## Panel second round
+
+[`.claude/scripts/panel-workflow.mjs`](../../.claude/scripts/panel-workflow.mjs)
+
+### Why it is a second round and not a deliberation
+
+The panel's optional later round re-runs one panelist per lens that answered, handing it the first round's answers.
+It was first named a deliberation, which implies each panelist revises its own answer in its own context.
+Measured on 2026-10-26, it does not, and the two runtimes answer differently.
+
+### What the two runtimes do
+
+- Workflow runtime: an `agent()` call returns its final text, or its schema-validated object, and exposes no handle to continue the agent.
+  `resumeFromRunId` replays cached results for unchanged calls and runs any changed call as a fresh agent (the Workflow tool's own description and authoring reference).
+  A panelist seated by the script therefore cannot be given the other answers, or new owner input, and revise its own answer in its own context.
+- Agent-tool runtime: an Opus `general-purpose` spawn answered a two-option design question with "POSITION: A".
+  A SendMessage carrying an opposing panelist's answer, with the `[accept-model-drop]` marker that `block-model-drop-sendmessage.mjs` requires, resumed it.
+  It restated its first answer accurately, weighed the other, and kept A with a refinement.
+  Both turns ran on `claude-opus-5-5`, the session model; a panelist pinned to another tier moves to the session model on resumption (that hook's header).
+  An Agent-tool spawn's output cannot be schema-forced.
+
+### What is open
+
+Under the Workflow runtime the round is fresh panelists reading the first round's answers, so it is named a second round, and its result records each lens's `first` and `second` positions.
+A true deliberation on Agent-tool spawns, resuming the first round's panelists and giving up schema-forced output, is possible and not built.
+Whether to build it is open for a ruling.
+Panel independence is unchanged under either route: no agent merges the answers.

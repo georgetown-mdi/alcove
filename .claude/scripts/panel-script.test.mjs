@@ -25,7 +25,7 @@ function compileScript() {
 
 const script = compileScript();
 const parallel = (thunks) => Promise.all(thunks.map((thunk) => thunk()));
-// Every convening call names the clean checkout it was given; a deliberation
+// Every convening call names the clean checkout it was given; a second round
 // takes it from the first round's result instead.
 const BASE = "/tmp/tmp.panelBase";
 // A convening call also names its seats: the script has no default. A case that
@@ -35,7 +35,7 @@ const withBase = (args) =>
   args !== null &&
   typeof args === "object" &&
   !Array.isArray(args) &&
-  !Object.hasOwn(args, "deliberate")
+  !Object.hasOwn(args, "secondRound")
     ? {
         ...(Object.hasOwn(args, "base") ? {} : { base: BASE }),
         ...(Object.hasOwn(args, "seats") ? {} : { seats: TEST_SEATS }),
@@ -317,7 +317,7 @@ describe.each(SHAPES)("panel seats ($shape args)", ({ deliver }) => {
   });
 });
 
-describe.each(SHAPES)("panel deliberation ($shape args)", ({ deliver }) => {
+describe.each(SHAPES)("panel second round ($shape args)", ({ deliver }) => {
   const run = runner(deliver);
   const firstRound = () =>
     run(
@@ -340,22 +340,22 @@ describe.each(SHAPES)("panel deliberation ($shape args)", ({ deliver }) => {
     );
     for (const prompt of asked) {
       expect(prompt).not.toContain("position of");
-      expect(prompt).not.toContain("deliberation");
+      expect(prompt).not.toContain("second round");
     }
   });
 
-  it("shows each panelist its own first answer and the others', and records first and revised side by side", async () => {
+  it("shows each panelist its own first answer and the others', and records first and second-round answers side by side", async () => {
     const first = await firstRound();
     const spawned = [];
-    const result = await run({ deliberate: first }, (prompt, options) => {
+    const result = await run({ secondRound: first }, (prompt, options) => {
       spawned.push({ prompt, options });
       return { ...answerFor(prompt, options), changed: false };
     });
 
     expect(spawned.map(({ options }) => options.label)).toEqual([
-      "panelist: failure-modes (deliberation)",
-      "panelist: design-ux (deliberation)",
-      "panelist: pragmatics (deliberation)",
+      "panelist: failure-modes (second round)",
+      "panelist: design-ux (second round)",
+      "panelist: pragmatics (second round)",
     ]);
     for (const { prompt, options } of spawned) {
       expect(prompt).toContain(QUESTION);
@@ -370,7 +370,7 @@ describe.each(SHAPES)("panel deliberation ($shape args)", ({ deliver }) => {
       expect(options.model).toBe("opus");
     }
 
-    expect(result.round).toBe("deliberation");
+    expect(result.round).toBe("second");
     expect(result.note).toMatch(/informs the owner and settles nothing/);
     expect(result.panelists).toEqual(
       first.positions.map((own) => ({
@@ -380,15 +380,15 @@ describe.each(SHAPES)("panel deliberation ($shape args)", ({ deliver }) => {
           rationale: own.rationale,
           keyRisk: own.keyRisk,
         },
-        revised: {
-          ...answer(`position of ${own.seat} (deliberation)`),
+        second: {
+          ...answer(`position of ${own.seat} (second round)`),
           changed: false,
         },
       })),
     );
   });
 
-  it("leaves out a panelist with no first position, and records a failed revision as null", async () => {
+  it("leaves out a panelist with no first position, and records a failed second-round answer as null", async () => {
     const first = await run(
       { question: QUESTION, seats: NAMED_SEATS },
       (prompt, options) =>
@@ -397,9 +397,9 @@ describe.each(SHAPES)("panel deliberation ($shape args)", ({ deliver }) => {
           : answerFor(prompt, options),
     );
     const spawned = [];
-    const result = await run({ deliberate: first }, (prompt, options) => {
+    const result = await run({ secondRound: first }, (prompt, options) => {
       spawned.push(prompt);
-      return options.label === "panelist: pragmatics (deliberation)"
+      return options.label === "panelist: pragmatics (second round)"
         ? null
         : { ...answerFor(prompt, options), changed: true };
     });
@@ -412,13 +412,13 @@ describe.each(SHAPES)("panel deliberation ($shape args)", ({ deliver }) => {
       "pragmatics",
       "design-ux",
     ]);
-    expect(result.panelists[1].revised).toBeNull();
+    expect(result.panelists[1].second).toBeNull();
   });
 
-  it("refuses a deliberation over anything but one first round's result", async () => {
+  it("refuses a second round over anything but one first round's result", async () => {
     const first = await firstRound();
-    const deliberation = await run(
-      { deliberate: first },
+    const secondRoundResult = await run(
+      { secondRound: first },
       (prompt, options) => ({
         ...answerFor(prompt, options),
         changed: false,
@@ -426,25 +426,25 @@ describe.each(SHAPES)("panel deliberation ($shape args)", ({ deliver }) => {
     );
     const extra = { seat: "architecture", ...answer("an extra") };
     const refused = [
-      [{ deliberate: deliberation }, /exactly as the panel returned it/],
-      [{ deliberate: true }, /exactly as the panel returned it/],
-      [{ deliberate: first, question: QUESTION }, /deliberate alone/],
-      [{ deliberate: first, base: BASE }, /deliberate alone/],
+      [{ secondRound: secondRoundResult }, /exactly as the panel returned it/],
+      [{ secondRound: true }, /exactly as the panel returned it/],
+      [{ secondRound: first, question: QUESTION }, /secondRound alone/],
+      [{ secondRound: first, base: BASE }, /secondRound alone/],
       [
-        { deliberate: { ...first, base: undefined } },
+        { secondRound: { ...first, base: undefined } },
         /exactly as the panel returned it/,
       ],
       [
-        { deliberate: { ...first, positions: first.positions.slice(0, 1) } },
+        { secondRound: { ...first, positions: first.positions.slice(0, 1) } },
         /at least two first positions/,
       ],
       [
-        { deliberate: { ...first, positions: [...first.positions, extra] } },
+        { secondRound: { ...first, positions: [...first.positions, extra] } },
         /not one of the first round's/,
       ],
       [
         {
-          deliberate: {
+          secondRound: {
             ...first,
             positions: [...first.positions, first.positions[0]],
           },

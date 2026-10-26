@@ -1,6 +1,6 @@
 ---
 name: panel
-description: Convene a bounded expert panel on one settle-able design question -- independent schema-forced panelists seated to suit the question, reading a clean staging checkout, one Workflow, no agent merging their answers, and an opt-in single deliberation round. Whether to convene at all, and what its outcome decides, is the deferred-decision rule in `.claude/orchestration/ruleset.md`, Decisions, briefs and reporting (measure first; stakes gate); this command only runs a convened panel correctly.
+description: Convene a bounded expert panel on one settle-able design question -- independent schema-forced panelists seated to suit the question, reading a clean staging checkout, one Workflow, no agent merging their answers, and an opt-in single second round. Whether to convene at all, and what its outcome decides, is the deferred-decision rule in `.claude/orchestration/ruleset.md`, Decisions, briefs and reporting (measure first; stakes gate); this command only runs a convened panel correctly.
 ---
 
 You are CONVENING a panel, not sitting on it. You do not answer the question
@@ -14,7 +14,7 @@ before proceeding -- it holds the session rules this command's steps assume.
 
 ## Input
 
-    /panel "<question>" [context-file ...] --seats <seat> ... [--deliberate]
+    /panel "<question>" [context-file ...] --seats <seat> ... [--second-round]
 
 - `<question>`: one settle-able question of technical judgment, phrased
   neutrally -- no candidate answer, no hint of which way you or the issue lean.
@@ -37,9 +37,10 @@ before proceeding -- it holds the session rules this command's steps assume.
   - For a lens no named seat covers, state it as
     `{"name": "<short-name>", "lens": "<one paragraph>"}`, phrased as
     neutrally as the question.
-- `--deliberate`: opt in to one deliberation round should the panel not
-  converge (Step 3). Without it, a split panel goes straight to the
-  owner.
+- `--second-round`: opt in to one second round should the panel not
+  converge (Step 3): fresh panelists, each reading the first round's answers
+  (not the first round's own agents, which cannot be continued). Without it, a
+  split panel goes straight to the owner.
 
 Whether a panel should run at all, and whether its outcome settles the
 question or goes to the owner, is not this command's call: the deferred-decision
@@ -125,16 +126,17 @@ panelist saw another's.
    NOT re-run the panel -- a re-run is for contamination evidence only (a
    panelist read a candidate edit or was told a preferred answer), never for
    disagreement, and never because agreement came quickly. The one exception is
-   the deliberation round, and only when `--deliberate` was given: before going to the owner,
+   the second round, and only when `--second-round` was given: before going to the owner,
    invoke the Workflow once more, same `scriptPath`, with `args` set to
-   `{"deliberate": <the first round's result, verbatim>}`. Each panelist that
-   answered sees its own first answer and the others' and may revise once. The
-   result, `{round: "deliberation", note, question, base, docs, seats, panelists}`,
-   holds each panelist's `first` and `revised` positions side by side
-   (`revised` is null where the revision failed). The script refuses anything
-   but a first round's result, so a deliberation cannot be deliberated again;
+   `{"secondRound": <the first round's result, verbatim>}`. The script seats a
+   fresh panelist for each seat that answered; it reads that seat's first answer
+   and the others' and answers once more. The
+   result, `{round: "second", note, question, base, docs, seats, panelists}`,
+   holds each seat's `first` and `second` positions side by side
+   (`second` is null where that panelist failed). The script refuses anything
+   but a first round's result, so a second round cannot be followed by a third;
    run it at most once per panel. Take the question to the owner with both
-   positions per panelist: a converged deliberation informs the owner and
+   positions per seat: a converged second round informs the owner and
    settles nothing.
 3. A panelist that returned null exhausted its schema retries and is missing
    from `positions`; its analysis is usually intact in the rejected attempts in
@@ -142,14 +144,22 @@ panelist saw another's.
    agree still converge; otherwise treat the round as split.
 4. Remove the worktree: `git worktree remove <base>`.
 
-The deliberation round is a decision taken, opt-in and bounded as above: a
+The second round is a decision taken, opt-in and bounded as above: a
 split panel may be missing a consideration only one panelist
 raised, and independence holds because every first position is formed and
 recorded before any panelist sees another's.
+
+## New input for a panel already run
+
+When the owner asks to feed new input to a panel already run, the session puts
+the route to the owner and does not choose one: a new panel whose question or
+docs carry the input, or building a second round that takes it, since the
+second round as built reads the first round's answers alone. The session runs
+neither until the owner answers.
 
 ## What you do NOT do
 
 - Do not vote yourself, and do not weight verdicts by which you prefer.
 - Do not tell panelists your view or the issue's lean, and do not pass one
-  panelist's answer to another outside the deliberation round.
+  panelist's answer to another outside the second round.
 - Do not use a panel's output to satisfy any review obligation.
