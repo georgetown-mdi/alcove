@@ -88,6 +88,9 @@
 //                     string is written to stdout; when unset, a default relay
 //                     verdict whose one TURN url was reached. The branch honors
 //                     STUB_EXIT_CODE, STUB_DELAY_MS, and STUB_IGNORE_SIGTERM.
+//   STUB_PID_FILE     When set, the `doctor` branch writes its own pid to this
+//                     path once its signal handler is installed, so a test can
+//                     wait for the child and then ask whether it still runs.
 //   STUB_FINGERPRINT_STDOUT
 //                     When the `fingerprint` subcommand is invoked, this raw
 //                     string is written to stdout. When unset a default canonical
@@ -254,6 +257,8 @@ if (process.argv[2] === "probe-host-key") {
     process.on("SIGTERM", () => {
       /* swallow: force escalation to SIGKILL */
     });
+  if (process.env.STUB_PID_FILE !== undefined)
+    fs.writeFileSync(process.env.STUB_PID_FILE, String(process.pid));
   writeStdio(
     process.stdout,
     process.env.STUB_DOCTOR_STDOUT ?? DEFAULT_DOCTOR_RELAY_LINE,

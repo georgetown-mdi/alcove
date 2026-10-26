@@ -52,6 +52,15 @@ type CapturedChildOutcome =
   | { kind: "exited"; code: number | null; stdout: string | undefined };
 
 /**
+ * A request to end a captured child before its watchdog: `signal`'s abort
+ * starts the SIGTERM-then-SIGKILL chain with `sigkillGraceMs` as its grace.
+ */
+export interface CapturedChildStop {
+  signal: AbortSignal;
+  sigkillGraceMs: number;
+}
+
+/**
  * Spawn `node argv` for a one-shot CLI child, capture its stdout under
  * `stdoutCap` or {@link CAPTURED_STDOUT_CAP}, and settle on the child's
  * `close`: once it has exited and its stdio has closed, whether it ended on its own, the watchdog
@@ -63,6 +72,10 @@ type CapturedChildOutcome =
  * process open or fires after the result is out. Both budgets are the caller's;
  * what the child itself spends is its own subcommand's business.
  *
+ * `stop` ends the child early through the same chain: aborting its signal
+ * SIGTERMs the child, escalating to SIGKILL after its own `sigkillGraceMs`,
+ * and the outcome is whatever the child's exit then reports.
+ *
  * `cwd` is omitted to inherit the server's working directory; a caller resolving
  * paths relative to it pins its own and creates it first.
  */
@@ -73,6 +86,7 @@ export function runCapturedCliChild(args: {
   sigtermMs: number;
   sigkillGraceMs: number;
   stdoutCap?: number;
+  stop?: CapturedChildStop;
 }): Promise<CapturedChildOutcome> {
   const stdoutCap = args.stdoutCap ?? CAPTURED_STDOUT_CAP;
   return new Promise<CapturedChildOutcome>((resolve) => {
@@ -107,25 +121,36 @@ export function runCapturedCliChild(args: {
     let timedOut = false;
     let settled = false;
     const timers: Array<NodeJS.Timeout> = [];
+    const stopSignal = args.stop?.signal;
     const settle = (outcome: CapturedChildOutcome): void => {
       if (settled) return;
       settled = true;
       for (const timer of timers) clearTimeout(timer);
+      stopSignal?.removeEventListener("abort", onStop);
       resolve(outcome);
     };
 
-    const toSigterm = setTimeout(() => {
-      timedOut = true;
+    const terminate = (sigkillGraceMs: number): void => {
       child.kill("SIGTERM");
       const toSigkill = setTimeout(() => {
         if (child.exitCode === null && child.signalCode === null)
           child.kill("SIGKILL");
-      }, args.sigkillGraceMs);
+      }, sigkillGraceMs);
       toSigkill.unref();
       timers.push(toSigkill);
+    };
+    const toSigterm = setTimeout(() => {
+      timedOut = true;
+      terminate(args.sigkillGraceMs);
     }, args.sigtermMs);
     toSigterm.unref();
     timers.push(toSigterm);
+
+    function onStop(): void {
+      if (args.stop !== undefined) terminate(args.stop.sigkillGraceMs);
+    }
+    if (stopSignal?.aborted === true) onStop();
+    else stopSignal?.addEventListener("abort", onStop, { once: true });
 
     // Settled on `close` alone: Node emits `close` after a failed spawn too, and
     // an `error` from a failed kill leaves the child running.

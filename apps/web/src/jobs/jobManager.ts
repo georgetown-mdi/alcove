@@ -790,11 +790,15 @@ export class JobManager {
    */
   private probeInFlight = false;
   /**
-   * Whether a relay check child is running. Claimed and cleared as
+   * The relay check child running, or null. Claimed and cleared as
    * {@link probeInFlight} is, so a concurrent {@link checkRelay} is refused
-   * with {@link RelayCheckBusyError}.
+   * with {@link RelayCheckBusyError}; {@link shutdown} aborts `stop` and waits
+   * on `settled`, which resolves once the child's exit is observed.
    */
-  private relayCheckInFlight = false;
+  private relayCheckRun: {
+    stop: AbortController;
+    settled: Promise<void>;
+  } | null = null;
   /**
    * Whether a signing-fingerprint child is running. Claimed and cleared exactly as
    * {@link probeInFlight} is, and for the reason
@@ -1474,7 +1478,7 @@ export class JobManager {
     | { kind: "unavailable"; reason: RelayCheckUnavailableReason }
   > {
     if (this.shuttingDown) throw new ConsoleShuttingDownError();
-    if (this.relayCheckInFlight) throw new RelayCheckBusyError();
+    if (this.relayCheckRun !== null) throw new RelayCheckBusyError();
     const running = this.activeSlotRecord();
     if (
       this.slot?.phase === "starting" ||
@@ -1486,15 +1490,24 @@ export class JobManager {
       return { kind: "unavailable", reason: offer.reason };
     if (offer.configurationDigest !== args.configurationDigest)
       return { kind: "configuration-changed" };
-    this.relayCheckInFlight = true;
+    const stop = new AbortController();
+    const run = runRelayCheck({
+      dataRoot: this.dataRoot,
+      binaryPath: this.binaryPath,
+      ...(this.childEnv !== undefined ? { childEnv: this.childEnv } : {}),
+      stop: { signal: stop.signal, sigkillGraceMs: this.cancelSigkillGraceMs },
+    });
+    this.relayCheckRun = {
+      stop,
+      settled: run.then(
+        () => undefined,
+        () => undefined,
+      ),
+    };
     try {
-      return await runRelayCheck({
-        dataRoot: this.dataRoot,
-        binaryPath: this.binaryPath,
-        ...(this.childEnv !== undefined ? { childEnv: this.childEnv } : {}),
-      });
+      return await run;
     } finally {
-      this.relayCheckInFlight = false;
+      this.relayCheckRun = null;
     }
   }
 
@@ -2428,16 +2441,28 @@ export class JobManager {
   }
 
   /**
-   * Shutdown hook: SIGTERM the running child, SIGKILL it if it is still running
-   * after the SIGKILL grace, and resolve once its exit has been observed, so the
-   * server exits only after the CLI's own cleanup and no orphaned CLI outlives
-   * it. Resolves at once when no child is running. A repeated call while that
-   * child is stopping signals nothing further and returns the same promise.
-   * From the first call on, every spawn is refused with
-   * {@link ConsoleShuttingDownError}.
+   * Shutdown hook: SIGTERM the running exchange child and the running relay
+   * check child, SIGKILL each still running after the SIGKILL grace, and
+   * resolve once their exits have been observed, so the server exits only
+   * after the CLI's own cleanup and no orphaned CLI outlives it. Resolves at
+   * once when neither is running. A repeated call while a child is stopping
+   * signals nothing further. From the first call on, every spawn is refused
+   * with {@link ConsoleShuttingDownError}.
    */
   shutdown(): Promise<void> {
     this.shuttingDown = true;
+    const exchangeStopped = this.stopExchangeChild();
+    const check = this.relayCheckRun;
+    if (check === null) return exchangeStopped;
+    check.stop.abort();
+    return Promise.all([exchangeStopped, check.settled]).then(() => undefined);
+  }
+
+  /**
+   * The exchange half of {@link shutdown}: signal the slot's running child
+   * and return the promise of its exit, the same promise on a repeated call.
+   */
+  private stopExchangeChild(): Promise<void> {
     const slot = this.slot;
     if (slot === null || slot.phase !== "active") return Promise.resolve();
     const record = slot.record;

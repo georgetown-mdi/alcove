@@ -32,6 +32,8 @@ import type {
   RelayTransport,
 } from "@alcove/core";
 
+import type { CapturedChildStop } from "./capturedCliChild";
+
 /**
  * The console's relay check driver. It spawns the CLI's `doctor relay --json`
  * against the working folder's `alcove.yaml` and `.alcove.key` -- the files a
@@ -332,7 +334,8 @@ export function reconcileRelayCheckExit(
  * Spawn `doctor relay --json` over the working folder's pair through the
  * shared captured-child boundary and reconcile what it printed. The argv is
  * a fixed template plus the two server-resolved paths; the child runs in the
- * working folder, as `alcove doctor relay` run there does.
+ * working folder, as `alcove doctor relay` run there does. `stop` ends the
+ * child before its watchdog, as server shutdown does.
  */
 export async function runRelayCheck(args: {
   dataRoot: string;
@@ -340,6 +343,7 @@ export async function runRelayCheck(args: {
   childEnv?: NodeJS.ProcessEnv;
   sigtermMs?: number;
   sigkillGraceMs?: number;
+  stop?: CapturedChildStop;
 }): Promise<RelayCheckResult> {
   const configPath = resolveWorkdirFile(args.dataRoot, JOB_FILE_NAMES.config);
   const keyPath = resolveWorkdirFile(args.dataRoot, JOB_FILE_NAMES.key);
@@ -358,6 +362,7 @@ export async function runRelayCheck(args: {
     sigtermMs: args.sigtermMs ?? RELAY_CHECK_SIGTERM_MS,
     sigkillGraceMs: args.sigkillGraceMs ?? RELAY_CHECK_SIGKILL_GRACE_MS,
     stdoutCap: RELAY_CHECK_STDOUT_CAP,
+    ...(args.stop !== undefined ? { stop: args.stop } : {}),
   });
   if (outcome.kind === "spawnFailed") return { kind: "error" };
   if (outcome.kind === "timedOut") return { kind: "timeout" };

@@ -14,7 +14,11 @@ import {
   snakeizeKeys,
 } from "@alcove/core";
 
-import { JobManager, RelayCheckBusyError } from "@jobs/jobManager";
+import {
+  ConsoleShuttingDownError,
+  JobManager,
+  RelayCheckBusyError,
+} from "@jobs/jobManager";
 import {
   RELAY_CHECK_CHILD_BUDGET_MS,
   RELAY_CHECK_SIGTERM_MS,
@@ -32,6 +36,7 @@ import {
   validIntent,
   validLinkageTerms,
 } from "../../utils/jobFixtures";
+import { waitFor } from "../../utils/waitFor";
 
 import type { RelayCheckOffer, RelayCheckResult } from "@jobs/relayCheck";
 
@@ -112,12 +117,17 @@ function workingFolder(extra: Record<string, unknown> = INVITATION_FIRST) {
   return root;
 }
 
-function managerFor(root: string, stub: NodeJS.ProcessEnv = {}): JobManager {
+function managerFor(
+  root: string,
+  stub: NodeJS.ProcessEnv = {},
+  options: { cancelSigkillGraceMs?: number } = {},
+): JobManager {
   const manager = new JobManager({
     dataRoot: root,
     binaryPath: STUB_CLI_PATH,
     jobRendezvousDir: scratchDir("rvz"),
     childEnv: stub,
+    ...options,
   });
   managers.push(manager);
   return manager;
@@ -329,6 +339,77 @@ describe("a started check", () => {
     );
     expect(RELAY_CHECK_SIGTERM_MS).toBeGreaterThan(
       RELAY_CHECK_CHILD_BUDGET_MS + 5_000,
+    );
+  });
+});
+
+/** Whether a process with this pid still runs (a reaped child does not). */
+function processRuns(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/** Start a check whose stub child waits, and the child's pid once it runs. */
+async function runningCheck(
+  stub: NodeJS.ProcessEnv,
+  options: { cancelSigkillGraceMs?: number } = {},
+): Promise<{
+  manager: JobManager;
+  check: Promise<unknown>;
+  pid: number;
+}> {
+  const pidFile = path.join(scratchDir("pid"), "pid");
+  const manager = managerFor(
+    workingFolder(),
+    { STUB_DELAY_MS: "30000", STUB_PID_FILE: pidFile, ...stub },
+    options,
+  );
+  const { configurationDigest } = available(manager.relayCheckOffer());
+  const check = manager.checkRelay({ configurationDigest });
+  await waitFor(
+    () => fs.existsSync(pidFile) && fs.readFileSync(pidFile, "utf8") !== "",
+  );
+  return { manager, check, pid: Number(fs.readFileSync(pidFile, "utf8")) };
+}
+
+describe("server shutdown and a check", () => {
+  test("stops a running check's child before it resolves", async () => {
+    const { manager, check, pid } = await runningCheck({});
+
+    await manager.shutdown();
+
+    expect(processRuns(pid)).toBe(false);
+    await expect(check).resolves.toBeDefined();
+  });
+
+  test("SIGKILLs a check child still running after the grace", async () => {
+    const { manager, check, pid } = await runningCheck(
+      { STUB_IGNORE_SIGTERM: "1" },
+      { cancelSigkillGraceMs: 200 },
+    );
+    const started = Date.now();
+
+    await manager.shutdown();
+
+    expect(Date.now() - started).toBeGreaterThanOrEqual(150);
+    expect(processRuns(pid)).toBe(false);
+    await expect(check).resolves.toBeDefined();
+  });
+
+  test("resolves at once when no check is running", async () => {
+    const manager = managerFor(workingFolder());
+    const { configurationDigest } = available(manager.relayCheckOffer());
+    expect((await manager.checkRelay({ configurationDigest })).kind).toBe(
+      "verdict",
+    );
+
+    await expect(manager.shutdown()).resolves.toBeUndefined();
+    await expect(manager.checkRelay({ configurationDigest })).rejects.toThrow(
+      ConsoleShuttingDownError,
     );
   });
 });
