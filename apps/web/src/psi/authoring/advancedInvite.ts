@@ -10,9 +10,8 @@
  * - {@link ./advancedInviteTerms} -- the linkage-terms mapping: a draft to the
  *   {@link LinkageTerms} it represents, and the inviter's own exchange spec.
  * - {@link ./advancedInviteValidation} -- the Generate gate, the import-refusal
- *   messages, and the notices that refuse nothing: a rule-set citation the
- *   rebuild drops, imported or seeded, and a declared default value the run
- *   will not substitute.
+ *   messages, and the notice that refuses nothing: a declared default value
+ *   the run will not substitute.
  * - {@link ./linkageComparison} -- the rule-set membership compares taken over
  *   draft-side values, each pruning the explicitly-`undefined` optional
  *   properties core's strict canonical equality cannot read. A lint ban keeps
@@ -61,29 +60,18 @@ export {
   updateKeyAt,
 } from "./advancedInviteDraft";
 
-export type {
-  AuthoredKeyGrade,
-  ImportedCitationDropCause,
-  InviterDataEdits,
-} from "./advancedInviteTerms";
+export type { AuthoredKeyGrade, InviterDataEdits } from "./advancedInviteTerms";
 export {
   buildAdvancedTerms,
   gradeAuthoredKeys,
-  importedCitationDropCause,
   inviterExchangeDataSpec,
   standardizationForTerms,
 } from "./advancedInviteTerms";
 
-export type { CitationDrop } from "./advancedInviteValidation";
 export {
-  IMPORTED_CITATION_DROP_TITLE,
-  SEEDED_CITATION_DROP_TITLE,
   USE_BUILT_IN_RULES_LABEL,
-  citationDropFor,
-  importedCitationDropNotice,
   importedConstraintDivergenceMessage,
   inertCoalesceNotice,
-  seededCitationDropNotice,
   validateAdvancedInvite,
 } from "./advancedInviteValidation";
 

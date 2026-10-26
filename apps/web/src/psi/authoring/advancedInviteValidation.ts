@@ -46,17 +46,11 @@ import {
   keyPositionLabel,
 } from "./keyCondition";
 import {
-  buildAdvancedTerms,
-  importedCitationDropCause,
-} from "./advancedInviteTerms";
-import {
   declarableFieldNames,
   draftFromTerms,
-  draftHasOfferedKeys,
-  draftKeysAreBuiltIn,
-  draftOffersBuiltInKeys,
   keyIsSupplyable,
 } from "./advancedInviteDraft";
+import { buildAdvancedTerms } from "./advancedInviteTerms";
 import { outputForDirection } from "./advancedInviteTypes";
 
 import type {
@@ -66,7 +60,6 @@ import type {
   LinkageTermsVerdict,
 } from "@alcove/core";
 
-import type { ImportedCitationDropCause } from "./advancedInviteTerms";
 import type { RefusedCleaningFanOut } from "../standardizationAuthoring";
 
 import type {
@@ -82,8 +75,8 @@ import type {
  * nothing. {@link validateAdvancedInvite} runs a draft's built terms through the
  * core schema and adds only the gates the schema does not express.
  * {@link importedConstraintDivergenceMessage} refuses an import holding a
- * constraint the editor cannot represent. {@link citationDropFor} and
- * {@link inertCoalesceNotice} state a consequence rather than block it.
+ * constraint the editor cannot represent. {@link inertCoalesceNotice} states
+ * a consequence rather than block it.
  * No React, no I/O.
  */
 
@@ -1040,203 +1033,9 @@ export function importedConstraintDivergenceMessage(
   return undefined;
 }
 
-/** What every dropped citation costs: the citation is a claim ABOUT the keys and
- * fields, which travel either way, so losing it moves the
- * document the two parties compare without moving what they match on. */
-const CITATION_DROP_CONSEQUENCE =
-  "The keys and fields themselves are unchanged, and they are what the exchange " +
-  "holds both parties to; only the citation goes, so the terms you create will " +
-  "not match the document you imported exactly.";
-
-/**
- * What each {@link ImportedCitationDropCause} tells the operator: that the rule-set
- * citation is left out of what the editor emits, why, and -- where an edit here
- * reaches the cause -- how to get it back.
- *
- * None of them names the set: an imported citation's names and versions are
- * partner-controlled free text, the same reason {@link UNSUPPLYABLE_KEY_MESSAGE}
- * and core's schema refines locate an offender by path rather than value. The
- * consent surface, which must show the operator the partner's own words, is
- * where those names render, each escaped and bound in its own chrome-free box
- * (`InvitationTerms`).
- */
-const CITATION_DROP_NOTICES: Record<ImportedCitationDropCause, string> = {
-  "shipped-set-unmet":
-    "The document you imported cites a rule set this application ships, but the " +
-    "keys and fields it declares are not that set's, so the citation cannot be " +
-    "verified and is left out of the terms you create. " +
-    `${CITATION_DROP_CONSEQUENCE} No edit here restores the citation.`,
-  "no-keys":
-    "A rule-set citation says which set the linkage keys came from, and these " +
-    "terms enable none, so the citation your imported document made is left out " +
-    "of the terms you create. Turn a linkage key back on to keep the citation.",
-  "rules-not-drawn":
-    "The keys and fields these terms declare are no longer drawn from the rule " +
-    "set your imported document cites, so that citation is left out of the terms " +
-    `you create. ${CITATION_DROP_CONSEQUENCE} Undo the key edits to keep the ` +
-    "citation, or create the invitation without it.",
-};
-
-/** The `no-keys` drop when NO key can be enabled: an import whose keys none of the
- * inviter's columns can supply lands with every one disabled, so the generic
- * "turn a key back on" remedy would only trade this notice for the blocking
- * unsupplyable-key error. It names the real obstacle and folds into that error's
- * guidance ({@link UNSUPPLYABLE_KEY_MESSAGE}) rather than pointing at a control
- * that cannot help. Named no field, for the reason {@link CITATION_DROP_NOTICES}
- * names no set. */
-const CITATION_DROP_NO_SUPPLYABLE_KEY =
-  "A rule-set citation says which set the linkage keys came from, but none of the " +
-  "linkage keys your imported document declares can be supplied by your file's " +
-  "columns, so the citation it made is left out of the terms you create. Add a " +
-  "column of the type a linkage key needs to keep it.";
-
-/**
- * The notice for an imported rule-set citation the rebuilt document will not include,
- * or `undefined` when it includes it (or when the draft imported nothing, or
- * imported a document that cited nothing).
- *
- * It blocks nothing: dropping the citation is correct in all three cases --
- * re-emitting it would claim a provenance the rules do not have -- so the
- * operator is told what the outgoing document will say, not stopped from
- * creating it. Not one of {@link validateAdvancedInvite}'s errors, whose every
- * member holds the Generate gate shut.
- */
-export function importedCitationDropNotice(
-  draft: AdvancedInviteDraft,
-  builtTerms?: Pick<LinkageTerms, "linkageFields" | "linkageKeys">,
-): string | undefined {
-  const cause = importedCitationDropCause(draft, builtTerms);
-  if (cause === undefined) return undefined;
-  // Split the `no-keys` cause on supplyability, which citationDropCause cannot see
-  // (it reads the terms, not the draft's columns): when no key can be enabled at
-  // all, "turn a key back on" is misdirection, so name the real obstacle instead.
-  if (cause === "no-keys" && !draftHasSupplyableKey(draft))
-    return CITATION_DROP_NO_SUPPLYABLE_KEY;
-  return CITATION_DROP_NOTICES[cause];
-}
-
 /** The label of the Matching keys action that replaces keys written in Expert
  * authoring or loaded from a document with the built-in rules. */
 export const USE_BUILT_IN_RULES_LABEL = "Use the built-in rules";
-
-/** What losing the built-in citation costs, in one clause. */
-const SEEDED_CITATION_DROP_CONSEQUENCE =
-  "the terms you create will not cite it, so they will not tell your partner " +
-  "that these keys are the built-in rules";
-
-/** What each way of losing the built-in citation tells the author. */
-const SEEDED_CITATION_DROP_NOTICES = {
-  noKeys:
-    "A rule-set citation says which set the linkage keys came from, and these " +
-    "terms enable none, so the built-in rule set is not cited in the terms you " +
-    "create. Turn a linkage key back on to keep the citation.",
-  reordered:
-    "A key was moved out of the built-in order, so these keys are no longer " +
-    `drawn from the built-in rule set, and ${SEEDED_CITATION_DROP_CONSEQUENCE}. ` +
-    "Move the keys back into their built-in order to keep the citation, or " +
-    "create the invitation without it.",
-  edited:
-    "A key was added or changed in expert authoring, so these keys are no " +
-    "longer drawn from the built-in rule set, and " +
-    `${SEEDED_CITATION_DROP_CONSEQUENCE}. To keep the citation, choose ` +
-    `${USE_BUILT_IN_RULES_LABEL} on Matching keys, which replaces the keys, ` +
-    "fields, and cleaning with the ones a new invitation starts with, or " +
-    "create the invitation without it.",
-  editedNoBuiltInKeys:
-    "A key was added or changed in expert authoring, so these keys are no " +
-    "longer drawn from the built-in rule set, and " +
-    `${SEEDED_CITATION_DROP_CONSEQUENCE}. The built-in rules supply no key ` +
-    "for this file's columns as they are now.",
-  editedNotOffered:
-    "A key was added or changed in expert authoring, so these keys are no " +
-    "longer drawn from the built-in rule set, and " +
-    `${SEEDED_CITATION_DROP_CONSEQUENCE}.`,
-} as const;
-
-/**
- * The notice for a draft seeded from the built-in rules whose terms will not
- * cite them, or `undefined` where they will. Read from the terms the draft
- * would emit against what it started from: a draft whose file the built-in
- * rules supplied at its seed, or whose columns the catalog offers keys at its
- * selection, had a citation to lose. Silent for an imported draft
- * ({@link importedCitationDropNotice} speaks for it), and for an empty key
- * list, which the empty-list note and the key error speak for. Blocks nothing,
- * for the reason the imported notice blocks nothing.
- *
- * `useBuiltInRulesOffered` is whether Matching keys shows
- * {@link USE_BUILT_IN_RULES_LABEL} for the session, which only the session
- * knows: the notice names that action only then.
- */
-export function seededCitationDropNotice(
-  draft: AdvancedInviteDraft,
-  seed: Pick<AdvancedInviteSeed, "terms">,
-  useBuiltInRulesOffered: boolean,
-  builtTerms?: Pick<
-    LinkageTerms,
-    "linkageFields" | "linkageKeys" | "linkageRuleSet"
-  >,
-): string | undefined {
-  if (
-    draft.importedRuleSetCitation !== undefined ||
-    draft.precisionFloorSelection === undefined
-  )
-    return undefined;
-  if (seed.terms.linkageRuleSet === undefined && !draftHasOfferedKeys(draft))
-    return undefined;
-  const terms = builtTerms ?? buildAdvancedTerms(draft);
-  if (terms.linkageRuleSet !== undefined || draft.keys.length === 0)
-    return undefined;
-  if (terms.linkageKeys.length === 0)
-    return SEEDED_CITATION_DROP_NOTICES.noKeys;
-  if (draftKeysAreBuiltIn(draft)) return SEEDED_CITATION_DROP_NOTICES.reordered;
-  if (useBuiltInRulesOffered) return SEEDED_CITATION_DROP_NOTICES.edited;
-  return draftOffersBuiltInKeys(draft)
-    ? SEEDED_CITATION_DROP_NOTICES.editedNotOffered
-    : SEEDED_CITATION_DROP_NOTICES.editedNoBuiltInKeys;
-}
-
-/** The title of the notice {@link importedCitationDropNotice} words. */
-export const IMPORTED_CITATION_DROP_TITLE =
-  "The imported rule-set citation will not be included";
-
-/** The title of the notice {@link seededCitationDropNotice} words. */
-export const SEEDED_CITATION_DROP_TITLE =
-  "The built-in rule-set citation will not be included";
-
-/** A dropped rule-set citation as the editor states it. */
-export interface CitationDrop {
-  title: string;
-  notice: string;
-}
-
-/**
- * The dropped-citation notice for `draft`, imported or seeded, or `undefined`
- * where its terms keep the citation they started with: the one read the
- * Matching keys tab and Review & create both make, so no path that drops a
- * citation drops it unnoticed. `useBuiltInRulesOffered` is as
- * {@link seededCitationDropNotice} takes it; the session-level read that
- * supplies it is `editorCitationDrop`.
- */
-export function citationDropFor(
-  draft: AdvancedInviteDraft,
-  seed: Pick<AdvancedInviteSeed, "terms">,
-  useBuiltInRulesOffered: boolean,
-  builtTerms?: LinkageTerms,
-): CitationDrop | undefined {
-  const terms = builtTerms ?? buildAdvancedTerms(draft);
-  const imported = importedCitationDropNotice(draft, terms);
-  if (imported !== undefined)
-    return { title: IMPORTED_CITATION_DROP_TITLE, notice: imported };
-  const seeded = seededCitationDropNotice(
-    draft,
-    seed,
-    useBuiltInRulesOffered,
-    terms,
-  );
-  if (seeded !== undefined)
-    return { title: SEEDED_CITATION_DROP_TITLE, notice: seeded };
-  return undefined;
-}
 
 /**
  * The fields whose declared cleaning or linkage-key transform includes a
@@ -1326,23 +1125,5 @@ export function inertCoalesceNotice(
     "for the column never reaches those steps at all. Records pass through them " +
     "unchanged, so they add no matches. Move each step after a rule that can " +
     "drop a value, give it a text default, or remove it."
-  );
-}
-
-/** Whether any of the draft's keys -- enabled or not -- references only fields the
- * inviter's columns can supply, the same test {@link validateAdvancedInvite} uses
- * to decide whether enabling a key could help. */
-function draftHasSupplyableKey(draft: AdvancedInviteDraft): boolean {
-  const declarable = declarableFieldNames(
-    draft.metadata,
-    draft.standardization,
-  );
-  return draft.keys.some((entry) =>
-    keyIsSupplyable(
-      entry.key,
-      declarable,
-      draft.importedLinkageFields,
-      draft.metadata,
-    ),
   );
 }

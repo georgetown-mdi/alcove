@@ -651,8 +651,8 @@ export function InviterScreen() {
     loadedTermsFile !== undefined &&
     loadedTermsFile === acquired &&
     termsEditedSinceOpened(loadedTermsBaseline, editor);
-  // Read by Matching keys and Review & create alike, so the note, the offer
-  // of Use the built-in rules and the dropped-citation notices agree.
+  // Read by Matching keys, so the note and the offer of Use the built-in
+  // rules agree.
   const openedConfigurationKeysShown = keysFromOpenedConfiguration(screenState);
   // A signed console run of an opened configuration naming signing paths of
   // its own waits for the operator to convert it to the console's; one run in
@@ -1929,7 +1929,6 @@ export function InviterScreen() {
             <>
               <ReviewCreateSection
                 editor={editor}
-                keysFromOpenedConfiguration={openedConfigurationKeysShown}
                 csv={acquired}
                 problems={openProblems}
                 minting={minting}

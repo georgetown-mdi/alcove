@@ -14,10 +14,7 @@ import {
   AUTHORED_KEYS_FLOOR_NOTE,
   OPENED_CONFIGURATION_KEYS_NOTE,
 } from "@psi/inviterEditor";
-import {
-  SEEDED_CITATION_DROP_TITLE,
-  USE_BUILT_IN_RULES_LABEL,
-} from "@psi/authoring/advancedInvite";
+import { USE_BUILT_IN_RULES_LABEL } from "@psi/authoring/advancedInvite";
 
 import {
   CLOSE_CONFIGURATION_LABEL,
@@ -1140,8 +1137,5 @@ describe("the review step of an opened configuration's run", () => {
       .toBeInTheDocument();
     expect(openedNote.query()).toBeNull();
     await expect.element(useBuiltInRules).toBeInTheDocument();
-    await expect
-      .element(page.getByRole("note", { name: SEEDED_CITATION_DROP_TITLE }))
-      .toMatchTextContent(USE_BUILT_IN_RULES_LABEL);
   });
 });

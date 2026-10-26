@@ -7,18 +7,13 @@ import {
 } from "@alcove/core";
 
 import {
-  IMPORTED_CITATION_DROP_TITLE,
-  SEEDED_CITATION_DROP_TITLE,
-  USE_BUILT_IN_RULES_LABEL,
   addKey,
   buildAdvancedTerms,
-  draftFromTerms,
   draftHasOfferedKeys,
   draftKeysAreBuiltIn,
   draftOffersBuiltInKeys,
   draftWithBuiltInKeys,
   removeKey,
-  seededCitationDropNotice,
   updateKeyAt,
   validateAdvancedInvite,
 } from "@psi/authoring/advancedInvite";
@@ -28,7 +23,6 @@ import {
   REMOVE_ALL_KEYS_STATEMENT,
   USE_BUILT_IN_RULES_STATEMENT,
   columnEditKeysAnnouncement,
-  editorCitationDrop,
   editorFromCsv,
   editorOffersBuiltInKeys,
   editorOffersUseBuiltInRules,
@@ -172,7 +166,6 @@ describe("choosing a precision floor", () => {
       expect(buildAdvancedTerms(chosen.draft).linkageRuleSet).toStrictEqual(
         DEFAULT_LINKAGE_RULE_SET.reference,
       );
-      expect(editorCitationDrop(chosen, false)).toBeUndefined();
     }
   });
 
@@ -403,7 +396,6 @@ describe("replacing authored keys with the built-in rules", () => {
     expect(buildAdvancedTerms(guided.draft).linkageRuleSet).toStrictEqual(
       DEFAULT_LINKAGE_RULE_SET.reference,
     );
-    expect(editorCitationDrop(guided, false)).toBeUndefined();
     expect(
       editorWithPrecisionFloorSelection(guided, AT_99).draft
         .precisionFloorSelection,
@@ -445,9 +437,7 @@ describe("replacing authored keys with the built-in rules", () => {
     const misdescribed = buildAdvancedTerms(seeded.draft);
     misdescribed.linkageKeys = [...misdescribed.linkageKeys].reverse();
     const imported = editorWithImportedTerms(seeded, withSsn, misdescribed);
-    expect(editorCitationDrop(imported, false)?.title).toBe(
-      IMPORTED_CITATION_DROP_TITLE,
-    );
+    expect(imported.draft.importedRuleSetCitation?.kind).toBe("cited");
     const guided = editorWithBuiltInKeys(imported, withSsn);
     expect(guided.draft.importedRuleSetCitation).toBeUndefined();
     expect(guided.draft.importedLinkageFields).toBeUndefined();
@@ -960,76 +950,9 @@ describe("highest precision on columns that supply none of its rules", () => {
   });
 });
 
-describe("a seeded draft's dropped citation", () => {
-  const seeded = editorFromCsv("Dana", withSsn);
-
-  test("is not dropped by turning one key off", () => {
-    const narrowed = editorWithKeyEnabled(seeded, 0, false);
-    expect(buildAdvancedTerms(narrowed.draft).linkageRuleSet).toBeDefined();
-    expect(editorCitationDrop(narrowed, false)).toBeUndefined();
-  });
-
-  test("is noticed when a key moves out of order, and restored by moving it back", () => {
-    const moved = editorWithKeyMoved(seeded, 0, 1);
-    expect(buildAdvancedTerms(moved.draft).linkageRuleSet).toBeUndefined();
-    const drop = editorCitationDrop(moved, false);
-    expect(drop?.title).toBe(SEEDED_CITATION_DROP_TITLE);
-    expect(drop?.notice).toBe(
-      "A key was moved out of the built-in order, so these keys are no " +
-        "longer drawn from the built-in rule set, and the terms you create " +
-        "will not cite it, so they will not tell your partner that these " +
-        "keys are the built-in rules. Move the keys back into their built-in " +
-        "order to keep the citation, or create the invitation without it.",
-    );
-    const restored = editorWithKeyMoved(moved, 1, -1);
-    expect(editorCitationDrop(restored, false)).toBeUndefined();
-  });
-
-  test("is noticed when a key is added in Expert authoring, naming the way back", () => {
-    const authored = editorWithAuthoredDraft(
-      seeded,
-      addKey(seeded.draft, "first_name"),
-    );
-    expect(buildAdvancedTerms(authored.draft).linkageRuleSet).toBeUndefined();
-    expect(
-      seededCitationDropNotice(
-        authored.draft,
-        authored.seed,
-        editorOffersUseBuiltInRules(authored, false),
-      ),
-    ).toBe(
-      "A key was added or changed in expert authoring, so these keys are no " +
-        "longer drawn from the built-in rule set, and the terms you create " +
-        "will not cite it, so they will not tell your partner that these " +
-        "keys are the built-in rules. To keep the citation, choose Use the " +
-        "built-in rules on Matching keys, which replaces the keys, fields, " +
-        "and cleaning with the ones a new invitation starts with, or create " +
-        "the invitation without it.",
-    );
-  });
-
-  test("names no action where Matching keys withholds the built-in rules", () => {
-    const authored = editorWithAuthoredDraft(
-      seeded,
-      addKey(seeded.draft, "first_name"),
-    );
-    expect(draftOffersBuiltInKeys(authored.draft)).toBe(true);
-    const notice = seededCitationDropNotice(
-      authored.draft,
-      authored.seed,
-      false,
-    );
-    expect(notice).toBe(
-      "A key was added or changed in expert authoring, so these keys are no " +
-        "longer drawn from the built-in rule set, and the terms you create " +
-        "will not cite it, so they will not tell your partner that these " +
-        "keys are the built-in rules.",
-    );
-  });
-
-  test("does not offer the built-in rules where the columns supply no key", () => {
+describe("the built-in rules on columns that supply no key", () => {
+  test("are not offered for keys authored over them", () => {
     const named = editorFromCsv("Dana", namesAndDate);
-    expect(buildAdvancedTerms(named.draft).linkageRuleSet).toBeDefined();
     const retyped = editorWithColumnType(
       named,
       namesAndDate,
@@ -1042,94 +965,17 @@ describe("a seeded draft's dropped citation", () => {
       retyped,
       addKey(retyped.draft, "first_name"),
     );
-    expect(buildAdvancedTerms(authored.draft).linkageRuleSet).toBeUndefined();
-    const notice = seededCitationDropNotice(
-      authored.draft,
-      authored.seed,
-      editorOffersUseBuiltInRules(authored, false),
-    );
-    expect(notice).toBe(
-      "A key was added or changed in expert authoring, so these keys are no " +
-        "longer drawn from the built-in rule set, and the terms you create " +
-        "will not cite it, so they will not tell your partner that these " +
-        "keys are the built-in rules. The built-in rules supply no key for " +
-        "this file's columns as they are now.",
-    );
-    expect(notice).not.toContain(USE_BUILT_IN_RULES_LABEL);
-  });
-
-  test("is noticed when every key is off", () => {
-    let allOff = seeded;
-    for (const index of seeded.draft.keys.keys())
-      allOff = editorWithKeyEnabled(allOff, index, false);
-    expect(
-      seededCitationDropNotice(
-        allOff.draft,
-        allOff.seed,
-        editorOffersUseBuiltInRules(allOff, false),
-      ),
-    ).toContain("Turn a linkage key back on to keep the citation");
-  });
-
-  test("is noticed for keys authored after a floor that offers the file none", () => {
-    const at99 = editorWithPrecisionFloorSelection(
-      editorFromCsv("Dana", namesAndDate),
-      AT_99,
-    );
-    expect(at99.draft.keys).toHaveLength(0);
-    expect(editorCitationDrop(at99, false)).toBeUndefined();
-    const authored = editorWithAuthoredDraft(
-      at99,
-      addKey(at99.draft, "first_name"),
-    );
-    expect(editorCitationDrop(authored, false)?.notice).toContain(
-      USE_BUILT_IN_RULES_LABEL,
-    );
-  });
-
-  test("is not stated for a file the built-in rules never supplied", () => {
-    const unmatchable = csvOf({
-      client_id: "1",
-      first_name: "Ann",
-      program_code: "A",
-    });
-    const seededBare = editorFromCsv("Dana", unmatchable);
-    expect(buildAdvancedTerms(seededBare.draft).linkageRuleSet).toBeUndefined();
-    const authored = editorWithAuthoredDraft(
-      seededBare,
-      addKey(seededBare.draft, "first_name"),
-    );
-    expect(editorCitationDrop(authored, false)).toBeUndefined();
-  });
-
-  test("leaves an imported draft's drop to the imported notice", () => {
-    const misdescribed = buildAdvancedTerms(seeded.draft);
-    misdescribed.linkageKeys = [...misdescribed.linkageKeys].reverse();
-    const imported = editorWithAuthoredDraft(
-      seeded,
-      draftFromTerms(misdescribed, seeded.seed, 3600, withSsn.rawRows),
-    );
-    expect(
-      seededCitationDropNotice(
-        imported.draft,
-        imported.seed,
-        editorOffersUseBuiltInRules(imported, false),
-      ),
-    ).toBeUndefined();
-    expect(editorCitationDrop(imported, false)?.title).toBe(
-      IMPORTED_CITATION_DROP_TITLE,
-    );
+    expect(editorOffersUseBuiltInRules(authored, false)).toBe(false);
   });
 });
 
 describe("an authored draft a column edit leaves the catalog offering no key", () => {
-  test("states the citation its new keys drop", () => {
+  test("generates terms from its new keys", () => {
     const at99 = editorWithPrecisionFloorSelection(
       editorFromCsv("Dana", withSsn),
       AT_99,
     );
     const narrowed = editorWithAuthoredDraft(at99, removeKey(at99.draft, 0));
-    expect(buildAdvancedTerms(narrowed.draft).linkageRuleSet).toBeDefined();
 
     const retyped = editorWithColumnType(
       narrowed,
@@ -1151,9 +997,5 @@ describe("an authored draft a column edit leaves the catalog offering no key", (
     expect(
       validateAdvancedInvite(rewritten.draft, rewritten.seed).canGenerate,
     ).toBe(true);
-    expect(buildAdvancedTerms(rewritten.draft).linkageRuleSet).toBeUndefined();
-    const drop = editorCitationDrop(rewritten, false);
-    expect(drop?.title).toBe(SEEDED_CITATION_DROP_TITLE);
-    expect(drop?.notice).toContain(USE_BUILT_IN_RULES_LABEL);
   });
 });
