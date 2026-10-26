@@ -128,7 +128,9 @@ The hook fails open on an unexpected error, so a bug in it cannot wedge every Ba
 
 Pull requests merge by squash-and-merge, so GitHub folds every commit on a branch into one whose default message is the PR title plus a list of commit subjects.
 A maintainer squash-merging a multi-commit branch is better served by a body that follows the Commit Messages rules,
-and the hook raises that need right after the pull request opens rather than leaving the maintainer to notice it missing.
+and the hook raises that need right after the pull request opens, or after a draft is marked ready, rather than leaving the maintainer to notice it missing.
+A draft opens at one commit and may grow before it is marked ready, so `gh pr ready <number>` asks `gh pr view` for the pull request's head and base and counts the head's commits over `origin/<base>`;
+a `gh pr ready` naming no number, a failed `gh`, or a head not present locally emits nothing.
 
 ### Why a pull-request comment
 

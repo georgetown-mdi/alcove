@@ -1,5 +1,11 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,16 +24,17 @@ const NORMALIZER = join(
 // Run the hook as a real subprocess, piping a synthesized PostToolUse payload on
 // stdin the way Claude Code itself invokes it, and returning its stdout. The hook
 // always exits 0 (fail-safe), so a nonzero exit here is itself a test failure.
-function runHook(payload) {
+function runHook(payload, env = process.env) {
   return execFileSync("node", [HOOK], {
     input: JSON.stringify(payload),
     encoding: "utf8",
+    env,
   });
 }
 
 /** The additionalContext the hook emitted, or null when it emitted nothing. */
-function context(payload) {
-  const out = runHook(payload);
+function context(payload, env) {
+  const out = runHook(payload, env);
   if (out === "") return null;
   const parsed = JSON.parse(out);
   expect(parsed.hookSpecificOutput.hookEventName).toBe("PostToolUse");
@@ -110,6 +117,39 @@ function addWorktree(main, branch) {
   ]);
   return path;
 }
+
+// A `gh` ahead of the real one on PATH that logs its arguments and either prints
+// `viewJson` or exits non-zero, so `gh pr view` answers deterministically.
+// Returns the environment to run the hook under and the log's path.
+function stubGh(dir, viewJson) {
+  const bin = join(dir, "bin");
+  mkdirSync(bin);
+  const log = join(dir, "gh-args.log");
+  writeFileSync(
+    join(bin, "gh"),
+    '#!/bin/sh\nprintf \'%s\\n\' "$@" > "$GH_STUB_LOG"\n' +
+      '[ -n "$GH_STUB_JSON" ] || exit 1\nprintf \'%s\' "$GH_STUB_JSON"\n',
+    { mode: 0o755 },
+  );
+  return {
+    env: {
+      ...process.env,
+      PATH: `${bin}:${process.env.PATH}`,
+      GH_STUB_LOG: log,
+      GH_STUB_JSON: viewJson ?? "",
+    },
+    log,
+  };
+}
+
+const prReadyEvent = (dir, command) => ({
+  tool_name: "Bash",
+  tool_input: { command },
+  tool_response: {
+    stdout: '✓ Pull request #7 is marked as "ready for review"\n',
+  },
+  cwd: dir,
+});
 
 describe("remind-squash-message hook", () => {
   const dirs = [];
@@ -349,6 +389,104 @@ describe("remind-squash-message hook", () => {
   it("emits nothing for gh pr create on a single-commit branch", () => {
     const dir = track(makeRepo(1));
     expect(context(prCreateEvent(dir, ghOutput(1)))).toBeNull();
+  });
+
+  describe("gh pr ready", () => {
+    const view = (head, base = "staging") =>
+      JSON.stringify({ headRefName: head, baseRefName: base });
+
+    it("reminds when the pull request's head has two commits over its base", () => {
+      const dir = track(makeRepo(0, "staging"));
+      const branch = addBranch(dir, "draft-branch", 2);
+      const stub = stubGh(
+        track(mkdtempSync(join(tmpdir(), "stub-gh-"))),
+        view(branch),
+      );
+      const additionalContext = context(
+        prReadyEvent(dir, "gh pr ready 7"),
+        stub.env,
+      );
+      expect(additionalContext).toContain("2 commits over origin/staging");
+      expect(additionalContext).toContain("PR #7");
+      expect(additionalContext).toContain(target(7));
+      expect(readFileSync(stub.log, "utf8")).toBe(
+        "pr\nview\n7\n--json\nheadRefName,baseRefName\n",
+      );
+    });
+
+    it("counts over the pull request's own base and reads a URL and --repo", () => {
+      const dir = track(makeRepo(0, "staging"));
+      const branch = addBranch(dir, "draft-branch", 3);
+      execFileSync("git", [
+        "-C",
+        dir,
+        "update-ref",
+        "refs/remotes/origin/release",
+        branch + "~2",
+      ]);
+      const stub = stubGh(
+        track(mkdtempSync(join(tmpdir(), "stub-gh-"))),
+        view(branch, "release"),
+      );
+      const additionalContext = context(
+        prReadyEvent(
+          dir,
+          `gh pr ready --repo owner/name https://github.com/owner/name/pull/9`,
+        ),
+        stub.env,
+      );
+      expect(additionalContext).toContain("2 commits over origin/release");
+      expect(readFileSync(stub.log, "utf8")).toBe(
+        "pr\nview\n9\n--json\nheadRefName,baseRefName\n--repo\nowner/name\n",
+      );
+    });
+
+    it("emits nothing when the head has one commit", () => {
+      const dir = track(makeRepo(0, "staging"));
+      const branch = addBranch(dir, "draft-branch", 1);
+      const stub = stubGh(
+        track(mkdtempSync(join(tmpdir(), "stub-gh-"))),
+        view(branch),
+      );
+      expect(context(prReadyEvent(dir, "gh pr ready 7"), stub.env)).toBeNull();
+    });
+
+    it("emits nothing and exits 0 when gh pr view fails", () => {
+      const dir = track(makeRepo(2, "feature"));
+      const stub = stubGh(track(mkdtempSync(join(tmpdir(), "stub-gh-"))), null);
+      const { status, stdout } = spawnSync("node", [HOOK], {
+        input: JSON.stringify(prReadyEvent(dir, "gh pr ready 7")),
+        encoding: "utf8",
+        env: stub.env,
+      });
+      expect(status).toBe(0);
+      expect(stdout).toBe("");
+    });
+
+    it("emits nothing when the head is not a local ref", () => {
+      const dir = track(makeRepo(2, "feature"));
+      const stub = stubGh(
+        track(mkdtempSync(join(tmpdir(), "stub-gh-"))),
+        view("no-such-branch"),
+      );
+      expect(context(prReadyEvent(dir, "gh pr ready 7"), stub.env)).toBeNull();
+    });
+
+    it("emits nothing without a pull request number or after --undo", () => {
+      const dir = track(makeRepo(0, "staging"));
+      const branch = addBranch(dir, "draft-branch", 2);
+      const stub = stubGh(
+        track(mkdtempSync(join(tmpdir(), "stub-gh-"))),
+        view(branch),
+      );
+      for (const command of [
+        "gh pr ready",
+        "gh pr ready draft-branch",
+        "gh pr ready 7 --undo",
+      ]) {
+        expect(context(prReadyEvent(dir, command), stub.env)).toBeNull();
+      }
+    });
   });
 
   it("emits nothing for a command that is not gh pr create", () => {

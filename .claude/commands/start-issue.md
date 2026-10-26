@@ -121,8 +121,9 @@ covering what you changed, and once they pass, the pre-push checks
 browser, interop and webrtc tiers are CI's, on the draft PR. Then sweep your own
 diff (`git diff`): delete every comment that restates the code, narrates the
 change, or cites a board id, and move any "this cannot happen" claim into a
-check. Report what you ran and the result; do not commit on red without saying
-so. When the issue has an Open Questions section, the report also names
+check. Report what you ran and the result, and that CI has not run the
+integration, browser, interop and webrtc tiers; do not commit on red without
+saying so. When the issue has an Open Questions section, the report also names
 each question and the route it took -- settled as obvious, paneled, or asked.
 
 Commit to the new branch following `CONTRIBUTING.md`, Commit Messages (no
