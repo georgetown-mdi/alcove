@@ -4,7 +4,7 @@ title: "Recurring Web Exchange Design"
 
 # Recurring web exchanges: the design and the decisions taken
 
-_Status: decided and built, except the grace window, which is deferred and not designed.
+_Status: decided and built, except the grace window, which is designed in [rotation-hardening.md](rotation-hardening.md) and not built.
 The user guide is [MANAGED_EXCHANGE.md](../MANAGED_EXCHANGE.md), which says what an operator does and sees.
 The record's fields, the persist-before-success step sequence and the export artifact's format are specified in [MANAGED_EXCHANGE_RECORD.md](../spec/MANAGED_EXCHANGE_RECORD.md) and are not restated here.
 The browser at-rest threat model is in [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#hosted-at-rest-threat-model-for-managed-exchanges).
@@ -339,7 +339,7 @@ The first managed release ships with implicit-only detection plus the explicit r
 The grace window belongs in core and not in the web app, and later and not first, because it is a threat-model change.
 It widens the active-impersonation window for a leaked secret (it accepts an extra, older secret), so the CLI and the web app should inherit one reviewed implementation and not diverge on a web-first version.
 Fast re-invite already closes the operational gap without it, so the first release is not blocked on it.
-The anticipated core shape is a brief **two-secret rotation window**, keeping the previous secret during rotation, which stays deferred and is not designed here.
+Its design, a previous secret kept only until the partner's first frame after the handshake confirms the rotation, is in [rotation-hardening.md](rotation-hardening.md#part-1-healing-a-one-sided-rotation), together with the stale-copy detection that replaces the rotation epoch; neither is built.
 
 ### Telling a desync from an attack
 

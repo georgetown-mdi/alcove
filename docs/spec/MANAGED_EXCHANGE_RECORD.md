@@ -1823,10 +1823,10 @@ either imports with the answer or is refused entire. The artifact's own
   restored artifact (or a browser-profile/VM snapshot) silently re-arms whatever
   secret it holds: still-current (the captured-credential case above) or
   rotated-past (a guaranteed desync at the next run). Keeping one copy running
-  is an operator-cooperation property, not a cryptographic one. A
-  monotonic rotation epoch held in the record and checked in the handshake
-  would let a party detect a stale or forked peer; it is a future core hardening,
-  deferred alongside the grace-window mitigation (see
+  is an operator-cooperation property, not a cryptographic one. Recognizing a
+  superseded copy in the handshake is designed, together with the grace window,
+  in [rotation-hardening.md](../notes/rotation-hardening.md), and neither is
+  built (see
   [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#rollback-at-rest-copies-can-silently-resurrect)).
 
 ### The backup and import markers: local siblings, never in the artifact

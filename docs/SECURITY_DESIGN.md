@@ -1,7 +1,7 @@
 ---
 title: "Alcove Security Design"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-10-25"
+last_reviewed: "2026-10-26"
 ---
 
 # Alcove security
@@ -379,7 +379,7 @@ At-rest encryption of the browser store sits beneath these three as defense-in-d
 
 ### Rollback: at-rest copies can silently resurrect
 
-The rotating secret's linearity is maintained by the parties' behavior, not by recorded state: the managed record keeps no rotation epoch or history, and the handshake gives a party no way to recognize that its peer holds a superseded copy. Anything that snapshots the record (the export artifact, a browser-profile backup, a VM snapshot, a duplicated file) can therefore silently re-arm the secret it captured. If that secret is still current, the copy is a live credential: treat a captured export exactly as a captured token under [Compromise response](#compromise-response), because it stays usable until the partnership rotates past it, which a dormant partnership may not do for months. If the partnership has already rotated past it, a restored copy instead produces a desync at the next run, indistinguishable to the partner from an attack (see [MANAGED_EXCHANGE.md](MANAGED_EXCHANGE.md#desync-detection-and-recovery)). A monotonic rotation epoch stored in the record and checked in the handshake would let a party detect a stale or forked peer; it is deferred future core hardening.
+The rotating secret's linearity is maintained by the parties' behavior, not by recorded state: the managed record keeps no rotation epoch or history, and the handshake gives a party no way to recognize that its peer holds a superseded copy. Anything that snapshots the record (the export artifact, a browser-profile backup, a VM snapshot, a duplicated file) can therefore silently re-arm the secret it captured. If that secret is still current, the copy is a live credential: treat a captured export exactly as a captured token under [Compromise response](#compromise-response), because it stays usable until the partnership rotates past it, which a dormant partnership may not do for months. If the partnership has already rotated past it, a restored copy instead produces a desync at the next run, indistinguishable to the partner from an attack (see [MANAGED_EXCHANGE.md](MANAGED_EXCHANGE.md#desync-detection-and-recovery)). Recognizing a superseded copy in the handshake, and healing a rotation only one side saved, are designed in [rotation-hardening.md](notes/rotation-hardening.md) and not built. The design finds that a rotation counter would not do it: over WebRTC two copies on different secrets never reach the handshake, and before authentication a counter is only what its sender states.
 
 ### Metadata at rest: presence and shape
 
