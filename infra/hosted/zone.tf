@@ -112,11 +112,8 @@ resource "cloudflare_dns_record" "caa" {
 # every name in the zone fail validation: remove the DS record first
 # (README.md, DNSSEC).
 resource "cloudflare_zone_dnssec" "zone" {
-  zone_id             = var.cloudflare_zone_id
-  status              = "active"
-  dnssec_multi_signer = false
-  dnssec_presigned    = false
-  dnssec_use_nsec3    = false
+  zone_id = var.cloudflare_zone_id
+  status  = "active"
 
   lifecycle {
     prevent_destroy = true
