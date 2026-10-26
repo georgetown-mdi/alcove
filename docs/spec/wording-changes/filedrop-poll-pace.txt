@@ -63,3 +63,5 @@
 - - -> At 10 records it is under 50 ms a step; on a larger input the masking cost in [PROTOCOL.md](PROTOCOL.md) ("Masking compute is a wall-clock expectation") outweighs the interval.
 - - -> **One run per interval, on one machine.**
 - - -> Run-to-run variation was not measured; the three 250 ms runs, across both modes, ranged from 2.08 to 2.36 s a step.
+- - -> **The sweep's hello read is not shortened by the interval.**
+- - -> The read deadline of `--sweep-exchange-files`' retain inspection is two poll intervals floored at the joiner recovery window, so a shorter interval does not shorten it.

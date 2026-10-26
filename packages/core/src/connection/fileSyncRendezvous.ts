@@ -887,10 +887,11 @@ export class FileSyncRendezvous {
   //       body-free; does not cover an early-rendezvous retain peer that
   //       has written no ack yet.
   //   (b) the peer hello's `retain_files` flag, read through the I5a gate,
-  //       bounded to RETAIN_INSPECTION_POLL_CYCLES (never the full peer
-  //       timeout); an unresolved body is retain-uncertain. An oversized or
-  //       malformed body is a terminal refusal on the bare flag and
-  //       retain-uncertain under --force-retain-sweep.
+  //       bounded to RETAIN_INSPECTION_POLL_CYCLES, floored like the
+  //       rendezvous bounds (never the full peer timeout); an unresolved
+  //       body is retain-uncertain. An oversized or malformed body is a
+  //       terminal refusal on the bare flag and retain-uncertain under
+  //       --force-retain-sweep.
   // Local retain mode is a signal too. When any signal is present the bare
   // flag refuses (exit 64); --force-retain-sweep permits the wipe after a
   // loud warning.
@@ -951,7 +952,7 @@ export class FileSyncRendezvous {
       // can impose.
       const inspectionDeadline = new Date(
         Date.now() +
-          RETAIN_INSPECTION_POLL_CYCLES * deps.options().pollingFrequency,
+          rendezvousBoundMs(deps.options(), RETAIN_INSPECTION_POLL_CYCLES),
       );
       for (const hello of peerHellos) {
         try {

@@ -336,6 +336,7 @@ The 1 ms row is the floor without poll waits: its polls do little but list the d
 - **A listing grows with the directory in retain mode.** Retain mode keeps every message and acknowledgment, 562 files in the one directory by the end of the 30-step retain run, and each poll lists them all: the 250 ms retain run spent 45 ms a step on file I/O against 10 to 17 ms in delete mode. Over a share each entry can cost a round trip.
 - **Computation grows with the input.** At 10 records it is under 50 ms a step; on a larger input the masking cost in [PROTOCOL.md](PROTOCOL.md) ("Masking compute is a wall-clock expectation") outweighs the interval.
 - **One run per interval, on one machine.** Run-to-run variation was not measured; the three 250 ms runs, across both modes, ranged from 2.08 to 2.36 s a step.
+- **The sweep's hello read is not shortened by the interval.** The read deadline of `--sweep-exchange-files`' retain inspection is two poll intervals floored at the joiner recovery window, so a shorter interval does not shorten it.
 
 ## Invariants
 

@@ -3148,7 +3148,10 @@ test("synchronize() --sweep-exchange-files: one delete failure still attempts ev
 test("synchronize() --sweep-exchange-files: a non-resolving peer hello is retain-uncertain and refuses the bare flag (bounded)", async () => {
   const peerId = "peer-uuid";
   const { client, files } = makeMockClient();
-  const conn = await makeConnectedConn(client, { pollingFrequency: 10 });
+  const conn = await makeConnectedConn(client, {
+    pollingFrequency: 10,
+    joinerRecoveryMs: 30,
+  });
   conn.id = "me";
   conn.options.sweepExchangeFiles = true;
   const peerHelloName = helloName(peerId, RETAIN_HELLO_BODY);
@@ -3181,13 +3184,52 @@ test("synchronize() --sweep-exchange-files: a non-resolving peer hello is retain
   expect(elapsed).toBeLessThan(2_000);
 });
 
+test("synchronize() --sweep-exchange-files: the retain inspection's read deadline is floored at the joiner recovery window", async () => {
+  // Two poll cycles (20 ms) end well before the body is readable (150 ms), but
+  // the floor (joinerRecoveryMs, 400 ms) outlasts it, so the hello is read.
+  const { client, files } = makeMockClient();
+  const conn = await makeConnectedConn(client, {
+    pollingFrequency: 10,
+    joinerRecoveryMs: 400,
+    timeToLiveMs: 700,
+  });
+  conn.id = "me";
+  conn.options.sweepExchangeFiles = true;
+  const peerHelloName = helloName("peer-uuid");
+  files.set(`/test/${peerHelloName}`, LOCK_HELLO_BODY);
+  const readableAt = Date.now() + 150;
+  const origGet = client.get.bind(client);
+  client.get = async (p: string, options: GetOptions) => {
+    if (p.endsWith(peerHelloName) && Date.now() < readableAt)
+      throw new Error("partial sync");
+    return origGet(p, options);
+  };
+
+  const deleted: string[] = [];
+  const origDelete = client.delete.bind(client);
+  client.delete = async (p: string) => {
+    deleted.push(p);
+    return origDelete(p);
+  };
+
+  const err = await conn.synchronize().then(
+    () => undefined,
+    (e: unknown) => e,
+  );
+  expect(err).not.toBeInstanceOf(UsageError);
+  expect(deleted.some((p) => p.endsWith(peerHelloName))).toBe(true);
+});
+
 test("synchronize() --sweep-exchange-files: the retain inspection stops at the first unreadable hello", async () => {
   // Short-circuit: once a hello body cannot be read, retain-uncertainty is sticky
   // and the decision (refuse on the bare flag, warn under --force) is fixed, so
   // the inspection must not read later hellos -- a hostile directory of
   // unreadable hellos cannot be made to cost one network read apiece.
   const { client, files } = makeMockClient();
-  const conn = await makeConnectedConn(client, { pollingFrequency: 10 });
+  const conn = await makeConnectedConn(client, {
+    pollingFrequency: 10,
+    joinerRecoveryMs: 30,
+  });
   conn.id = "me";
   conn.options.sweepExchangeFiles = true;
   const firstHello = helloName("peerA", RETAIN_HELLO_BODY);
@@ -3224,6 +3266,7 @@ test("synchronize() --sweep-exchange-files --force-retain-sweep: an earlier unre
     const { client, files } = makeMockClient();
     const conn = await makeConnectedConn(client, {
       pollingFrequency: 10,
+      joinerRecoveryMs: 30,
       timeToLiveMs: 120,
     });
     conn.id = "me";
