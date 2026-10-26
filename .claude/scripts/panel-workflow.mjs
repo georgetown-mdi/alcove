@@ -10,8 +10,8 @@
 export const meta = {
   name: "panel",
   description:
-    "Independent schema-forced panelists on one design question, with an opt-in single deliberation round",
-  phases: [{ title: "Panel" }, { title: "Deliberate" }],
+    "Independent schema-forced panelists on one design question, with an opt-in single second round",
+  phases: [{ title: "Panel" }, { title: "Second round" }],
 };
 
 const SCHEMA = {
@@ -33,14 +33,15 @@ const SCHEMA = {
   },
 };
 
-const REVISED_SCHEMA = {
+const SECOND_ROUND_SCHEMA = {
   type: "object",
   required: [...SCHEMA.required, "changed"],
   properties: {
     ...SCHEMA.properties,
     changed: {
       type: "boolean",
-      description: "Whether your position differs from your first one.",
+      description:
+        "Whether your position differs from the first-round answer for your lens.",
     },
   },
 };
@@ -55,8 +56,8 @@ const SEATS = {
     "design and user experience -- the user-facing flows, the states a user can reach, the copy, and what the operator sees and does at each step",
 };
 
-const DELIBERATION_NOTE =
-  "A converged deliberation informs the owner and settles nothing: the question goes to the owner with every panelist's first and revised positions.";
+const SECOND_ROUND_NOTE =
+  "A converged second round informs the owner and settles nothing: the question goes to the owner with every panelist's first and second-round positions.";
 
 // The harness may hand a script its arguments as JSON text rather than as the
 // object the caller passed. Any other delivery -- an array, a bare scalar, null,
@@ -160,9 +161,9 @@ function resolveDocs(docs) {
 const firstAnswer = (answer) =>
   Object.fromEntries(SCHEMA.required.map((key) => [key, answer[key]]));
 
-// A deliberation call passes back the first round's result verbatim. Anything
-// else -- a deliberation's own result above all -- is refused, so a
-// deliberation cannot be chained into a second one.
+// A second-round call passes back the first round's result verbatim. Anything
+// else -- a second round's own result above all -- is refused, so a
+// second round cannot be chained into a third.
 function resolveFirstRound(first) {
   if (
     !isObject(first) ||
@@ -173,7 +174,7 @@ function resolveFirstRound(first) {
     !Array.isArray(first.positions)
   ) {
     throw new Error(
-      "deliberate takes the first round's result exactly as the panel returned it.",
+      "secondRound takes the first round's result exactly as the panel returned it.",
     );
   }
   const seats = resolveSeats(
@@ -191,14 +192,14 @@ function resolveFirstRound(first) {
       !SCHEMA.required.every((key) => typeof answer[key] === "string")
     ) {
       throw new Error(
-        `deliberate holds a position that is not one of the first round's: ${JSON.stringify(answer)}.`,
+        `secondRound holds a position that is not one of the first round's: ${JSON.stringify(answer)}.`,
       );
     }
     answered.add(answer.seat);
   }
   if (answered.size < 2) {
     throw new Error(
-      "A deliberation needs at least two first positions; take the question to the owner as it stands.",
+      "A second round needs at least two first positions; take the question to the owner as it stands.",
     );
   }
   return {
@@ -215,20 +216,20 @@ function resolveFirstRound(first) {
 
 const input = resolveWorkflowArgs(args);
 
-const deliberating = input.deliberate !== undefined;
+const isSecondRound = input.secondRound !== undefined;
 if (
-  deliberating &&
+  isSecondRound &&
   ["question", "base", "docs", "seats"].some((key) => input[key] !== undefined)
 ) {
   throw new Error(
-    "A deliberation call passes deliberate alone: its question, base, docs, and seats come from the first round's result.",
+    "A second-round call passes secondRound alone: its question, base, docs, and seats come from the first round's result.",
   );
 }
-if (!deliberating && !isText(input.question)) {
+if (!isSecondRound && !isText(input.question)) {
   throw new Error("question is the non-empty text of the panel's question.");
 }
-const panel = deliberating
-  ? resolveFirstRound(input.deliberate)
+const panel = isSecondRound
+  ? resolveFirstRound(input.secondRound)
   : {
       question: input.question,
       base: resolveBase(input.base),
@@ -254,7 +255,7 @@ ${panel.question}`;
 
 const lensOf = (name) => panel.seats.find((seat) => seat.name === name).lens;
 
-if (!deliberating) {
+if (!isSecondRound) {
   const answers = await parallel(
     panel.seats.map(
       (seat) => () =>
@@ -279,9 +280,9 @@ if (!deliberating) {
   };
 }
 
-const revisionPrompt = (own) => `${briefing(lensOf(own.seat))}
+const secondRoundPrompt = (own) => `${briefing(lensOf(own.seat))}
 
-This is the panel's one deliberation round. Every panelist first answered on its own, and the panelists did not converge. Your first answer was:
+This is the panel's one second round, seated fresh: you did not give the first answer below, you are reading it. Every panelist first answered on its own, and the panelists did not converge. The first-round answer for your lens was:
 ${JSON.stringify(firstAnswer(own), null, 1)}
 
 The other panelists' first answers, each with the lens it was weighed through:
@@ -293,17 +294,17 @@ ${JSON.stringify(
   1,
 )}
 
-Reconsider once, still through your own lens. Keep your position where their answers do not move you and revise it where one does; do not split the difference between positions. This is your last answer on the question.
+Answer the question again, still through your own lens, having read the first-round answers. Keep the first-round position for your lens where the other answers do not move you and change it where one does; do not split the difference between positions. This is the last answer on the question.
 
-${requiredKeysClause(REVISED_SCHEMA)}`;
+${requiredKeysClause(SECOND_ROUND_SCHEMA)}`;
 
-const revisions = await parallel(
+const secondAnswers = await parallel(
   panel.positions.map(
     (own) => () =>
-      agent(revisionPrompt(own), {
-        label: `panelist: ${own.seat} (deliberation)`,
-        phase: "Deliberate",
-        schema: REVISED_SCHEMA,
+      agent(secondRoundPrompt(own), {
+        label: `panelist: ${own.seat} (second round)`,
+        phase: "Second round",
+        schema: SECOND_ROUND_SCHEMA,
         model: "opus",
         effort: "high",
       }),
@@ -311,8 +312,8 @@ const revisions = await parallel(
 );
 
 return {
-  round: "deliberation",
-  note: DELIBERATION_NOTE,
+  round: "second",
+  note: SECOND_ROUND_NOTE,
   question: panel.question,
   base: panel.base,
   docs: panel.docs,
@@ -320,6 +321,6 @@ return {
   panelists: panel.positions.map((own, i) => ({
     seat: own.seat,
     first: firstAnswer(own),
-    revised: revisions[i] ?? null,
+    second: secondAnswers[i] ?? null,
   })),
 };
