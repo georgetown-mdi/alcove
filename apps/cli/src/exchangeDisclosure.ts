@@ -21,12 +21,9 @@ import {
   matchedFieldColumns,
   matchedFieldEntry,
   matchedFieldsWithColumns,
-  InternalConsistencyError,
-  linkageRuleSetVerdictNote,
   precisionFloorSelectionStatement,
   redactAndSanitizeForDisplay,
   redactUrlCredentials,
-  ruleSetCitation,
   summarizeInvitation,
   withholdsPartnerAssociationTable,
 } from "@alcove/core";
@@ -36,7 +33,6 @@ import {
   displayLessCertainNote,
   LESS_CERTAIN_REMEDY,
   marked,
-  verdictMarked,
   type ConsentSurfaceSink,
 } from "./invitationDisplay";
 import { singlePassDisclosureNotice } from "./onlineBootstrap";
@@ -44,7 +40,6 @@ import { logFileLinePattern, readLogFileTail } from "./util/logging";
 
 import type { ProtocolConnectionConfig } from "./protocol";
 import type {
-  InvitationRuleSetSummary,
   LinkageTerms,
   Metadata,
   PreparedExchange,
@@ -148,58 +143,6 @@ function displayOutboundColumns(
   emit(`${label}:`);
   for (const column of columns)
     emit(`    - ${redactAndSanitizeForDisplay(column)}`);
-}
-
-/**
- * The heading the disproved citation leads with. It states the finding
- * rather than labelling a term, so it takes no basis marker: the
- * enforced/partner's-word vocabulary {@link marked} puts on the lines around
- * it answers whose word a term rests on, and this citation is the reader's
- * own. Worded for either half alone, since the two are judged separately and
- * the half lines below say which one this build disproved.
- */
-const CONTRADICTED_CITATION_HEADING =
-  "the rule set your terms cite does not match what they declare:";
-
-/**
- * The citation this build resolved and DISPROVED, and what it claims: the two
- * set identities the operator's own file names, each under this build's
- * verdict on it, then the caveat written for the party that wrote them.
- *
- * Only a contradicted citation reaches the display. The other two verdicts are
- * context for a citation a reader is being shown rather than a finding about
- * one they wrote -- a name this build resolved and confirmed, or one it does
- * not ship, leaves nothing for this seat to correct -- so stating them here
- * would put two lines of provenance in front of an operator on every run.
- *
- * Both names are already escaped by the summary and render through core's
- * citation grammar ({@link ruleSetCitation}) behind fixed first-party labels.
- * The grammar must run on escaped text, never before: the escape truncates and
- * redacts, and running it after could strip the closing delimiter.
- */
-function displayContradictedRuleSetCitation(
-  emit: ConsentSurfaceSink,
-  citation: InvitationRuleSetSummary,
-): void {
-  emit(`  ${CONTRADICTED_CITATION_HEADING}`);
-  emit(
-    `    ${verdictMarked("keys", citation.keySet.verdict)}: ` +
-      ruleSetCitation(citation.keySet.name, citation.keySet.version),
-  );
-  emit(
-    `    ${verdictMarked("fields", citation.fieldSet.verdict)}: ` +
-      ruleSetCitation(citation.fieldSet.name, citation.fieldSet.version),
-  );
-  // Core withholds a citing-party caveat for the verdicts that have no
-  // first-person remedy, and only `contradicted` reaches here, which has one.
-  // A build where it does not stops rather than printing a finding with the
-  // remedy missing from under it.
-  const caveat = linkageRuleSetVerdictNote("contradicted", "citing-party");
-  if (caveat === undefined)
-    throw new InternalConsistencyError(
-      "no citing-party caveat for a disproved linkage rule set citation",
-    );
-  emit(`    ${caveat}`);
 }
 
 /**
@@ -401,20 +344,6 @@ export function renderExchangeDisclosure(
   }
   if (summary.linkageKeys.some((key) => key.lessCertain))
     displayLessCertainNote(emit, LESS_CERTAIN_REMEDY[run]);
-
-  // Last, directly beneath the keys and fields it is a finding about: the
-  // caveat ends on those being what the exchange holds both parties to, and a
-  // reader who has just read them is the one who can judge what the cited name
-  // was meant to claim. The verdict is core's own, from the summary already
-  // rendered above, so this display and the acceptance surfaces cannot reach
-  // different answers on one document.
-  const citation = summary.linkageRuleSet;
-  if (
-    citation !== undefined &&
-    (citation.keySet.verdict === "contradicted" ||
-      citation.fieldSet.verdict === "contradicted")
-  )
-    displayContradictedRuleSetCitation(emit, citation);
 }
 
 /**

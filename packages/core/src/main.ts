@@ -400,6 +400,7 @@ export {
   DEFAULT_PRECISION_FLOOR_SELECTION,
   PRECISION_FLOORS,
   authoredLinkageFields,
+  builtInRuleChoiceOf,
   encodeForComparison,
   findBuiltInLinkageRuleSet,
   getDefaultLinkageTerms,
@@ -705,7 +706,6 @@ export type {
   InvitationConditionLine,
   InvitationKeySummary,
   MatchedFieldColumns,
-  InvitationRuleSetSummary,
   InvitationSummary,
 } from "./consent/invitationSummary.js";
 // The classification and caveat copy that go with that display model: whether a
@@ -722,15 +722,13 @@ export {
   DEDUPLICATE_SHARED_RESULT_DISCLOSURE_STATEMENT,
   DEDUPLICATE_SOLE_RECEIVER_DISCLOSURE_STATEMENT,
   LESS_CERTAIN_KEY_COPY,
-  LINKAGE_RULE_SET_VERDICT_COPY,
+  builtInRuleChoiceStatement,
   missingFieldConditionStatement,
   OUTBOUND_SEND_NO_PAYLOAD_SENTENCE,
   PROPOSED_NOT_APPLIED_NOTES,
   RECORDED_LINKAGE_RULE_SET_CAVEAT,
   UNRECOGNIZED_TRANSFORM_NOTE,
   describeDeduplicatePair,
-  distinctLinkageRuleSetVerdicts,
-  linkageRuleSetVerdictNote,
 } from "./consent/consentFacts.js";
 export type { ConsentFactId } from "./consent/consentFacts.js";
 // The count every acceptance surface paints a partner-declared name list under,

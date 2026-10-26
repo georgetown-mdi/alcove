@@ -12,17 +12,18 @@ import {
   DEDUPLICATE_ACCEPTOR_SIDE_NOTE,
   DEDUPLICATE_SHARED_RESULT_DISCLOSURE_STATEMENT,
   DEDUPLICATE_SOLE_RECEIVER_DISCLOSURE_STATEMENT,
+  DEFAULT_LINKAGE_RULE_SET,
   DEFAULT_MAX_DISPLAY_LENGTH,
   DISPLAY_TRUNCATION_MARKER,
   LESS_CERTAIN_KEY_COPY,
-  LINKAGE_RULE_SET_VERDICT_COPY,
   MAX_DECLARED_NAMES_SHOWN,
   MAX_NAME_LENGTH,
   PROPOSED_NOT_APPLIED_NOTES,
   UNRECOGNIZED_TRANSFORM_NOTE,
+  builtInRuleChoiceStatement,
   describeDeduplicatePair,
   getDefaultLinkageTerms,
-  linkageRuleSetVerdictNote,
+  linkageKeysAtPrecisionFloor,
   missingFieldConditionStatement,
   sanitizeForDisplay,
   unshownDeclaredNamesLine,
@@ -50,6 +51,7 @@ import {
   hostileVariants,
 } from "@alcove/core/testing";
 import { activate, control as namedControl } from "./keyboardOnly";
+import { createAppMount, flushPendingUpdates } from "./renderApp";
 import {
   openDisclosure,
   readyCollapse,
@@ -58,7 +60,6 @@ import {
   disclosureToggle as toggle,
 } from "./collapsePanels";
 import { restoreMatchMedia, stubReducedMotion } from "./reducedMotion";
-import { createAppMount } from "./renderApp";
 
 import type { ComponentProps } from "react";
 
@@ -296,214 +297,64 @@ describe("InvitationTerms: per-key matching disclosures", () => {
     );
   });
 
-  // Terms citing a rule set, rendered under each perspective below so the three
-  // cases differ at the perspective alone. The two halves reach DIFFERENT
-  // verdicts against this build, which is what the citation's independent halves
-  // are for: `baseline-pii 1.3.0` is a set this build ships, and the fields above
-  // are not it (no constraints on `ssn`, a field named `dob`), while
-  // `precision-ranked-rules 9.0.0` is a version it does not ship at all.
-  const citingTerms: LinkageTerms = {
-    ...terms,
-    linkageRuleSet: {
-      fieldSet: { name: "baseline-pii", version: "1.3.0" },
-      keySet: { name: "precision-ranked-rules", version: "9.0.0" },
-    },
-  };
-
-  test("the rule-set citation is always-visible, each half holding this build's verdict, and absent when none is cited", async () => {
-    // The citation names the rules the collapsed list below enumerates, so it
-    // stays outside the disclosure: an acceptor reads which set was cited, and
-    // what Alcove found about it, without expanding. A disproved half must not
-    // be reachable only by opening the matching panel.
-    await renderTerms(citingTerms, { perspective: "review" });
-    await expect.element(toggle("Matching strategies")).toBeInTheDocument();
-    expect(app.container.textContent).toContain("Linkage rule set");
-    expect(app.container.textContent).toContain(
-      '"precision-ranked-rules" 9.0.0',
-    );
-    expect(app.container.textContent).toContain('"baseline-pii" 1.3.0');
-    expect(app.container.textContent).toContain(
-      `Keys (${LINKAGE_RULE_SET_VERDICT_COPY.unchecked.marker}):`,
-    );
-    expect(app.container.textContent).toContain(
-      `Fields (${LINKAGE_RULE_SET_VERDICT_COPY.contradicted.marker}):`,
-    );
-    // Both halves' caveats, and the disproved one first.
-    expect(app.container.textContent).toContain(
-      LINKAGE_RULE_SET_VERDICT_COPY.contradicted.note,
-    );
-    expect(app.container.textContent).toContain(
-      LINKAGE_RULE_SET_VERDICT_COPY.unchecked.note,
-    );
-    const text = app.container.textContent;
-    expect(
-      text.indexOf(LINKAGE_RULE_SET_VERDICT_COPY.contradicted.note),
-    ).toBeLessThan(text.indexOf(LINKAGE_RULE_SET_VERDICT_COPY.unchecked.note));
-    const panel = (await readyPanel("Matching strategies")).textContent;
-    expect(panel).not.toContain("precision-ranked-rules");
-    expect(panel).not.toContain(
-      LINKAGE_RULE_SET_VERDICT_COPY.contradicted.note,
-    );
-  });
-
-  test("a truthful citation says so rather than being treated as unchecked", async () => {
-    // The other side of the same block: rules genuinely drawn from the shipped
-    // sets get a `consistent` verdict on both halves, so the absence of a warning
-    // is never all an acceptor has to go on.
-    const drawnFromDefaults = getDefaultLinkageTerms(
-      "County Health Department",
-    );
-    await renderTerms(drawnFromDefaults, { perspective: "review" });
-    await expect.element(toggle("Matching strategies")).toBeInTheDocument();
-    expect(app.container.textContent).toContain(
-      `Keys (${LINKAGE_RULE_SET_VERDICT_COPY.consistent.marker}):`,
-    );
-    expect(app.container.textContent).toContain(
-      `Fields (${LINKAGE_RULE_SET_VERDICT_COPY.consistent.marker}):`,
-    );
-    expect(app.container.textContent).toContain(
-      LINKAGE_RULE_SET_VERDICT_COPY.consistent.note,
-    );
-    expect(app.container.textContent).not.toContain(
-      LINKAGE_RULE_SET_VERDICT_COPY.contradicted.note,
-    );
-  });
-
-  test("a set name containing a version-shaped token stays delimited from the version", async () => {
-    // The name is partner-controlled free text and the version beside it is not,
-    // so the quoting is what keeps the boundary between them readable: a name
-    // ending in a version-shaped token must not be treated as the version this
-    // block reports.
-    await renderTerms(
-      {
-        ...citingTerms,
-        linkageRuleSet: {
-          fieldSet: { name: "baseline-pii", version: "1.3.0" },
-          keySet: { name: "precision-ranked-rules 9.9.9", version: "9.0.0" },
-        },
-      },
-      { perspective: "review" },
-    );
-    await expect.element(toggle("Matching strategies")).toBeInTheDocument();
-    expect(app.container.textContent).toContain(
-      '"precision-ranked-rules 9.9.9" 9.0.0',
-    );
-  });
-
-  test("a cited set name cannot render another citation's value", async () => {
-    // The name is delimited through core's `quoteTermsValue`, which doubles a
-    // delimiter inside a run, so a name containing one cannot end its own value:
-    // what an acceptor reads is the whole name, never the value a citation of a
-    // shorter name at another version renders. Asserted on each half's own
-    // element rather than on the screen's concatenated text, so what is measured
-    // is the run the name occupies, not a substring of the page.
-    //
-    // Neither citation below names a set this build ships -- the first pair by
-    // version, the second by name -- so all four halves render under one marker
-    // and the two renderings differ in nothing but how the name is rendered.
-    const imitated = {
-      keys: '"precision-ranked-rules" 9.9.9',
-      fields: '"baseline-pii" 9.9.9',
-    };
-    await renderTerms(
-      {
-        ...citingTerms,
-        linkageRuleSet: {
-          fieldSet: { name: "baseline-pii", version: "9.9.9" },
-          keySet: { name: "precision-ranked-rules", version: "9.9.9" },
-        },
-      },
-      { perspective: "review" },
-    );
-    for (const value of [imitated.keys, imitated.fields])
-      await expect
-        .element(page.getByText(value, { exact: true }))
-        .toBeInTheDocument();
-
-    await renderTerms(
-      {
-        ...citingTerms,
-        linkageRuleSet: {
-          fieldSet: { name: 'baseline-pii" 9.9.9', version: "1.0.0" },
-          keySet: { name: 'precision-ranked-rules" 9.9.9', version: "1.0.0" },
-        },
-      },
-      { perspective: "review" },
-    );
-    for (const value of [
-      '"precision-ranked-rules"" 9.9.9" 1.0.0',
-      '"baseline-pii"" 9.9.9" 1.0.0',
-    ])
-      await expect
-        .element(page.getByText(value, { exact: true }))
-        .toBeInTheDocument();
-    expect(app.container.textContent).not.toContain(imitated.keys);
-    expect(app.container.textContent).not.toContain(imitated.fields);
-  });
-
-  test("a version outside the bare shape is treated as a delimited run, not as prose", async () => {
-    // The version renders undelimited on the strength of the shape the terms
-    // schema holds it to, and `bareTermsValue` re-checks that shape on the value
-    // in hand: one outside it takes the delimited run rather than standing in
-    // the citation unattributed.
-    await renderTerms(
-      {
-        ...citingTerms,
-        linkageRuleSet: {
-          fieldSet: { name: "baseline-pii", version: "1.3.0" },
-          keySet: { name: "precision-ranked-rules", version: '1.0.0" 9.9.9' },
-        },
-      },
-      { perspective: "review" },
-    );
-    await expect
-      .element(
-        page.getByText('"precision-ranked-rules" "1.0.0"" 9.9.9"', {
-          exact: true,
-        }),
-      )
-      .toBeInTheDocument();
-  });
-
-  test("the viewer's own proposing preview cites the set without attributing it to a partner, and states a disproved half as theirs to correct", async () => {
-    // Under "proposing" the terms are the viewer's own -- the console's direct
-    // exchange states outright that there is no invitation for a partner to
-    // review -- so the citation is the operator's own word. The names, versions,
-    // and verdicts still render (they are true of these terms whoever authored
-    // them); the caveat that a PARTNER cites them does not. The disproved half's
-    // warning is not attribution -- it is this build's finding about the document
-    // on screen -- so it renders here too, in the reading that fits this reader:
-    // the remedy is the one they can act on, not the recipient's "raise it with
-    // the other party" over a document they cannot edit.
-    await renderTerms(citingTerms, { perspective: "proposing" });
-    await expect.element(toggle("Matching strategies")).toBeInTheDocument();
-    expect(app.container.textContent).toContain("Linkage rule set");
-    expect(app.container.textContent).toContain(
-      '"precision-ranked-rules" 9.0.0',
-    );
-    expect(app.container.textContent).toContain('"baseline-pii" 1.3.0');
-    expect(app.container.textContent).toContain(
-      linkageRuleSetVerdictNote("contradicted", "citing-party"),
-    );
-    expect(app.container.textContent).not.toContain(
-      LINKAGE_RULE_SET_VERDICT_COPY.contradicted.note,
-    );
-    expect(app.container.textContent).not.toContain(
-      LINKAGE_RULE_SET_VERDICT_COPY.unchecked.note,
-    );
-  });
-
-  test("terms citing no rule set render no citation at all", async () => {
-    // Hand-authored rules have no citation, and inventing one would attribute
-    // them -- so the block is absent rather than empty or hedged, and there is no
-    // verdict to state about a claim nobody made.
-    await renderTerms({ ...terms, linkageRuleSet: undefined });
-    await expect.element(toggle("Matching strategies")).toBeInTheDocument();
-    expect(app.container.textContent).not.toContain("Linkage rule set");
-    for (const verdict of ["consistent", "contradicted", "unchecked"] as const)
-      expect(app.container.textContent).not.toContain(
-        LINKAGE_RULE_SET_VERDICT_COPY[verdict].note,
+  test.each(["review", "proposing"] as const)(
+    "names the built-in choice the keys are, always-visible, under %s",
+    async (perspective) => {
+      const broader = getDefaultLinkageTerms("County Health Department");
+      await renderTerms(broader, { perspective });
+      await expect.element(toggle("Matching strategies")).toBeInTheDocument();
+      expect(app.container.textContent).toContain("Built-in rules");
+      expect(app.container.textContent).toContain(
+        builtInRuleChoiceStatement(95),
       );
+      expect(
+        (await readyPanel("Matching strategies")).textContent,
+      ).not.toContain(builtInRuleChoiceStatement(95));
+
+      await flushPendingUpdates();
+      app.unmount();
+      await renderTerms(
+        {
+          ...broader,
+          linkageKeys: linkageKeysAtPrecisionFloor(DEFAULT_LINKAGE_RULE_SET, {
+            floor: 99,
+          }),
+        },
+        { perspective },
+      );
+      await expect.element(toggle("Matching strategies")).toBeInTheDocument();
+      expect(app.container.textContent).toContain(
+        builtInRuleChoiceStatement(99),
+      );
+      expect(app.container.textContent).not.toContain(
+        builtInRuleChoiceStatement(95),
+      );
+    },
+  );
+
+  test("states no built-in choice for keys that are not one, and no rule-set citation", async () => {
+    // A cut and a reordered list of the built-in keys, under a citation of the
+    // built-in sets, and the expert-authored keys the base terms declare.
+    const broader = getDefaultLinkageTerms("County Health Department");
+    for (const linkageTerms of [
+      { ...broader, linkageKeys: broader.linkageKeys.slice(1) },
+      { ...broader, linkageKeys: [...broader.linkageKeys].reverse() },
+      { ...terms, linkageRuleSet: DEFAULT_LINKAGE_RULE_SET.reference },
+    ]) {
+      await flushPendingUpdates();
+      app.unmount();
+      await renderTerms(linkageTerms, { perspective: "review" });
+      await expect.element(toggle("Matching strategies")).toBeInTheDocument();
+      const text = app.container.textContent;
+      expect(text).not.toContain("Built-in rules");
+      expect(text).not.toContain("Linkage rule set");
+      expect(text).not.toContain(
+        DEFAULT_LINKAGE_RULE_SET.reference.keySet.name,
+      );
+      expect(text).not.toContain(
+        DEFAULT_LINKAGE_RULE_SET.reference.fieldSet.name,
+      );
+    }
   });
 
   test("opening one key disclosure exposes its detail to AT and leaves the others collapsed", async () => {

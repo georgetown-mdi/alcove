@@ -1,4 +1,5 @@
 import {
+  builtInRuleChoiceStatement,
   CONSENT_BASIS_MARKERS,
   CONSENT_FACTS,
   COUNT_ONLY_DISCLOSURE_STATEMENT,
@@ -6,14 +7,11 @@ import {
   DEDUPLICATE_SHARED_RESULT_DISCLOSURE_STATEMENT,
   DEDUPLICATE_SOLE_RECEIVER_DISCLOSURE_STATEMENT,
   displayText,
-  distinctLinkageRuleSetVerdicts,
   InternalConsistencyError,
   LESS_CERTAIN_KEY_COPY,
-  LINKAGE_RULE_SET_VERDICT_COPY,
   MAX_DECLARED_NAMES_SHOWN,
   PROPOSED_NOT_APPLIED_NOTES,
   redactAndSanitizeForDisplay,
-  ruleSetCitation,
   summarizeInvitation,
   turnUrlIsAllowed,
   webSocketRelayUrlIsAllowed,
@@ -36,9 +34,7 @@ import type {
   ConsentFactId,
   Displayable,
   InvitationKeySummary,
-  InvitationRuleSetSummary,
   InvitationSummary,
-  LinkageRuleSetCitationVerdict,
   getLogger,
 } from "@alcove/core";
 
@@ -150,64 +146,6 @@ function allowedRelaysMark(
   return allowed
     ? ` (${KEPT_BY_ALLOWED_RELAYS})`
     : ` (${LEFT_OUT_BY_ALLOWED_RELAYS})`;
-}
-
-/**
- * The label one half of a cited rule set takes: its own wording plus this
- * build's verdict on that half, from the shared table. It replaces the
- * basis marker on these two lines -- what an operator needs beside a set
- * name is whether Alcove could check it and what it found, not the
- * enforced/partner's-word vocabulary {@link marked} uses elsewhere.
- *
- * The verdict sits on the LABEL, like {@link marked}: the set name and
- * version that follow are partner-controlled, so a marker placed after
- * them could be manufactured by a crafted name.
- *
- * Shared with the disclosure a locally authored exchange shows before it
- * runs (`exchangeDisclosure.ts`), so one seat cannot mark a half by a
- * vocabulary the other does not use.
- */
-export function verdictMarked(
-  label: string,
-  verdict: LinkageRuleSetCitationVerdict,
-): string {
-  return `${label} (${LINKAGE_RULE_SET_VERDICT_COPY[verdict].marker})`;
-}
-
-/**
- * The rules' citation: the two set identities the inviting party names, each
- * under this build's verdict on it, and then one caveat per verdict in
- * `notes`.
- *
- * One renderer for both call sites -- beside the terms, and repeated in the
- * decision block above the prompt -- so the second printing is a repetition
- * rather than a second account; `notes` selects which caveats appear.
- *
- * Keys before fields: the key set is the artifact, the field set its
- * substrate. Both names and versions are partner-controlled but already
- * sanitized by the summary, and each renders through core's citation
- * grammar ({@link ruleSetCitation}) behind its own fixed first-party label,
- * so a crafted name displays as content of one value rather than as
- * structure. The citation grammar must run on already-escaped text, never
- * before: the escape truncates and redacts, and running it after the
- * grammar's delimiters could strip the closing one.
- */
-function displayRuleSetCitation(
-  emit: ConsentSurfaceSink,
-  ruleSet: InvitationRuleSetSummary,
-  notes: ReadonlyArray<LinkageRuleSetCitationVerdict>,
-): void {
-  emit(`  ${marked("linkage rule set", "linkageRuleSet")}:`);
-  emit(
-    `    ${verdictMarked("keys", ruleSet.keySet.verdict)}: ` +
-      ruleSetCitation(ruleSet.keySet.name, ruleSet.keySet.version),
-  );
-  emit(
-    `    ${verdictMarked("fields", ruleSet.fieldSet.verdict)}: ` +
-      ruleSetCitation(ruleSet.fieldSet.name, ruleSet.fieldSet.version),
-  );
-  for (const verdict of notes)
-    emit(`    ${LINKAGE_RULE_SET_VERDICT_COPY[verdict].note}`);
 }
 
 /**
@@ -758,21 +696,6 @@ export function logDecisionFacts(
     emit(`    ${CONSENT_FACTS.countOnlyInputChoice.note}`);
   }
 
-  // A citation this build resolved and DISPROVED, repeated here since
-  // accepting writes it into this party's own disclosure record: the
-  // operator answering the prompt is the one who decides what a name their
-  // build can prove wrong is worth. Only the contradicted CAVEAT is
-  // lifted -- the other two verdicts are context for the citation, not a
-  // fact this decision turns on -- while the citation itself always
-  // renders whole, both halves under their own markers.
-  const citation = summary.linkageRuleSet;
-  if (
-    citation !== undefined &&
-    (citation.keySet.verdict === "contradicted" ||
-      citation.fieldSet.verdict === "contradicted")
-  )
-    displayRuleSetCitation(emit, citation, ["contradicted"]);
-
   // What outlives the run: an acceptor is agreeing to a permanent
   // transcript at the rendezvous location, so this belongs in the decision
   // block, not the terms. Printed wherever the invitation discloses retain
@@ -1075,22 +998,10 @@ export function displayInvitation(params: {
         summary.matchedFields.join(", "),
     );
 
-  // The rules' citation, ahead of the fields and keys it cites, so a
-  // reader meets the name -- the inviting party's word, with this build's
-  // own verdict beside it -- before the enumeration it stands for. This
-  // block takes one caveat per DISTINCT verdict the two halves reached, in
-  // descending severity, not one per half: where both halves agree the
-  // sentence covers both, and where they differ each half's own marker
-  // ties it to its caveat.
-  if (summary.linkageRuleSet !== undefined)
-    displayRuleSetCitation(
-      emit,
-      summary.linkageRuleSet,
-      distinctLinkageRuleSetVerdicts(
-        summary.linkageRuleSet.keySet.verdict,
-        summary.linkageRuleSet.fieldSet.verdict,
-      ),
-    );
+  if (summary.builtInRuleChoice !== undefined) {
+    emit(`  ${marked("built-in rules", "builtInRuleChoice")}:`);
+    emit(`    ${builtInRuleChoiceStatement(summary.builtInRuleChoice)}`);
+  }
 
   // The short, high-level field list precedes the long key list: the keys enumerate
   // the combinations OF these fields, and on a terminal the block printed second is

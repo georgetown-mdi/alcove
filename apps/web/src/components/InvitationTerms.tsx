@@ -25,15 +25,12 @@ import {
   DEDUPLICATE_SHARED_RESULT_DISCLOSURE_STATEMENT,
   DEDUPLICATE_SOLE_RECEIVER_DISCLOSURE_STATEMENT,
   LESS_CERTAIN_KEY_COPY,
-  LINKAGE_RULE_SET_VERDICT_COPY,
   MAX_DECLARED_NAMES_SHOWN,
   OUTBOUND_SEND_NO_PAYLOAD_SENTENCE,
   PROPOSED_NOT_APPLIED_NOTES,
   UNRECOGNIZED_TRANSFORM_NOTE,
+  builtInRuleChoiceStatement,
   describeDeduplicatePair,
-  distinctLinkageRuleSetVerdicts,
-  linkageRuleSetVerdictNote,
-  ruleSetCitation,
   summarizeInvitation,
   turnUrlIsAllowed,
   unshownDeclaredNamesLine,
@@ -92,19 +89,6 @@ function joinList(items: Array<string>): string {
   if (items.length === 2) return `${items[0]} and ${items[1]}`;
   return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
 }
-
-/**
- * The bounded frame a raw partner-controlled value is rendered in: its own box,
- * so the value cannot run into the fixed chrome around it. Shared by the
- * rule-set citation and declared apart from the allowed-character class's inline
- * copy only because the citation renders two of them.
- */
-const ruleSetValueStyle = {
-  border: "1px solid var(--mantine-color-default-border)",
-  borderRadius: "var(--mantine-radius-sm)",
-  padding: "2px 6px",
-  wordBreak: "break-all",
-} as const;
 
 /**
  * The matching-multiplicity headline, in the roles the reading seat holds.
@@ -595,10 +579,9 @@ export function InvitationTerms({
   partnerDeclaresOwnDeduplicate?: boolean;
   /** Which context this renders in. Drives the heading and intro copy, the
    * viewer-centric blocks (Result sharing, the payload send/receive framing, and
-   * the inviter-only sent-columns chips above "Other details"), and the two
-   * `review`-only caveats on a partner's own word (the unverified identity and
-   * the rule-set citation's attribution); the matching keys and the rest of the
-   * body are identical. */
+   * the inviter-only sent-columns chips above "Other details"), and the
+   * `review`-only caveat on a partner's own word (the unverified identity); the
+   * matching keys and the rest of the body are identical. */
   perspective?: "review" | "proposing";
   /** Semantic heading level (its visual size is fixed at the h2 scale), so the
    * heading nests correctly under its container -- h1 when this is the page's
@@ -1278,78 +1261,11 @@ export function InvitationTerms({
           </Term>
         )}
 
-        {/* The rules' citation renders above the matching list it cites: a reader
-            meets the name before the enumeration it stands for. Both names and
-            versions are partner-controlled, sanitized by summarizeInvitation and
-            bound in their own Text between fixed chrome -- never joined into the
-            label -- so a crafted value cannot display as system chrome. Each half
-            renders through core's `ruleSetCitation`, the same grammar the CLI
-            accept prompt and core's own mismatch message use, and runs after
-            summarizeInvitation's escape (which truncates and redacts) since either
-            order risks the closing delimiter.
-
-            Each half's label states this build's own verdict, from the same
-            shared table the caveats come from. One caveat per DISTINCT verdict the
-            two halves reached follows the pair, most severe first. The `unchecked`
-            and `consistent` caveats attribute the citation to a partner, so they
-            are gated to `review`; the `contradicted` caveat is not gated, being
-            this build's own finding about the document on screen rather than an
-            attribution to anyone. Which sentence a perspective gets is core's call
-            (`linkageRuleSetVerdictNote`). */}
-        {summary.linkageRuleSet !== undefined && (
-          <Term label="Linkage rule set">
-            <Stack gap={2}>
-              <Text size="sm">
-                Keys (
-                {
-                  LINKAGE_RULE_SET_VERDICT_COPY[
-                    summary.linkageRuleSet.keySet.verdict
-                  ].marker
-                }
-                ):
-              </Text>
-              <Text size="sm" ff="monospace" style={ruleSetValueStyle}>
-                {ruleSetCitation(
-                  summary.linkageRuleSet.keySet.name,
-                  summary.linkageRuleSet.keySet.version,
-                )}
-              </Text>
-              <Text size="sm">
-                Fields (
-                {
-                  LINKAGE_RULE_SET_VERDICT_COPY[
-                    summary.linkageRuleSet.fieldSet.verdict
-                  ].marker
-                }
-                ):
-              </Text>
-              <Text size="sm" ff="monospace" style={ruleSetValueStyle}>
-                {ruleSetCitation(
-                  summary.linkageRuleSet.fieldSet.name,
-                  summary.linkageRuleSet.fieldSet.version,
-                )}
-              </Text>
-            </Stack>
-            {distinctLinkageRuleSetVerdicts(
-              summary.linkageRuleSet.keySet.verdict,
-              summary.linkageRuleSet.fieldSet.verdict,
-            )
-              .filter(
-                (verdict) =>
-                  verdict === "contradicted" || perspective === "review",
-              )
-              .map((verdict) => (
-                <Text
-                  key={verdict}
-                  size="sm"
-                  fw={verdict === "contradicted" ? 500 : undefined}
-                >
-                  {linkageRuleSetVerdictNote(
-                    verdict,
-                    perspective === "proposing" ? "citing-party" : "recipient",
-                  )}
-                </Text>
-              ))}
+        {summary.builtInRuleChoice !== undefined && (
+          <Term label="Built-in rules">
+            <Text size="sm">
+              {builtInRuleChoiceStatement(summary.builtInRuleChoice)}
+            </Text>
           </Term>
         )}
 

@@ -36,8 +36,8 @@ import {
 import { endpointRequiresRetainedFiles } from "../config/invitation.js";
 import type { InvitationToken } from "../config/invitation.js";
 import { linkageKeyFieldNames } from "../config/linkageTermsSchema.js";
-import { checkLinkageRuleSetCitation } from "../defaults/builtInLinkageTerms.js";
-import type { LinkageRuleSetCitationVerdict } from "../defaults/builtInLinkageTerms.js";
+import { builtInRuleChoiceOf } from "../defaults/builtInLinkageTerms.js";
+import type { PrecisionFloor } from "../defaults/builtInLinkageTerms.js";
 import {
   bothSidedDeduplicateRefused,
   candidateSetIsImplementedForStrategy,
@@ -197,34 +197,6 @@ export interface InvitationLegalAgreementSummary {
    * even though the `z.iso` schema already rejects deceptive characters.
    */
   expirationDate: Displayable;
-}
-
-/**
- * One half of the inviter's rule-set citation (the field set or the key set),
- * with both strings sanitized.
- *
- * The name and version are the inviter's own declaration, not alcove-vouched
- * provenance: the token is accepted on a transcription checksum.
- * {@link verdict} is this build's own check against the rule sets it ships.
- */
-interface InvitationRuleSetIdentitySummary {
-  /** The set's declared name, sanitized for display. */
-  name: Displayable;
-  /** The set's declared content version, sanitized for display. */
-  version: Displayable;
-  /** This build's check of this half against the rule sets it ships. */
-  verdict: LinkageRuleSetCitationVerdict;
-}
-
-/**
- * The rule set the inviter cites its fields and keys to. Present only when the
- * invitation declares one; authored terms have none.
- */
-export interface InvitationRuleSetSummary {
-  /** The set the declared linkage fields are cited to. */
-  fieldSet: InvitationRuleSetIdentitySummary;
-  /** The set the declared linkage keys are cited to. */
-  keySet: InvitationRuleSetIdentitySummary;
 }
 
 /** The optional data columns the inviter declares, with names sanitized. */
@@ -541,12 +513,10 @@ export interface InvitationSummary {
   matchedFields: Array<Displayable>;
   /** PII fields involved, each with its label and declared constraints. */
   linkageFields: Array<InvitationFieldSummary>;
-  /**
-   * The rule set the keys and fields are cited to, present only when the
-   * invitation declares one. {@link InvitationRuleSetSummary} says why a
-   * surface shows it as the inviter's citation.
-   */
-  linkageRuleSet?: InvitationRuleSetSummary;
+  /** The built-in choice the terms are, present only when the keys are one
+   * choice's keys whole and the fields they read are the built-in fields
+   * ({@link builtInRuleChoiceOf}). */
+  builtInRuleChoice?: PrecisionFloor;
   /** Present only when the inviter attached a legal agreement. */
   legalAgreement?: InvitationLegalAgreementSummary;
   /** Present only when the inviter declared payload columns to send or
@@ -1458,26 +1428,9 @@ export function summarizeInvitation(
       endpointRequiresRetainedFiles(endpoint),
   };
 
-  if (terms.linkageRuleSet !== undefined) {
-    // Verdicts run over the same terms the names are read from.
-    const verdicts = checkLinkageRuleSetCitation(terms.linkageRuleSet, terms);
-    summary.linkageRuleSet = {
-      fieldSet: {
-        name: redactAndSanitizeForDisplay(terms.linkageRuleSet.fieldSet.name),
-        version: redactAndSanitizeForDisplay(
-          terms.linkageRuleSet.fieldSet.version,
-        ),
-        verdict: verdicts.fieldSet,
-      },
-      keySet: {
-        name: redactAndSanitizeForDisplay(terms.linkageRuleSet.keySet.name),
-        version: redactAndSanitizeForDisplay(
-          terms.linkageRuleSet.keySet.version,
-        ),
-        verdict: verdicts.keySet,
-      },
-    };
-  }
+  const builtInRuleChoice = builtInRuleChoiceOf(terms);
+  if (builtInRuleChoice !== undefined)
+    summary.builtInRuleChoice = builtInRuleChoice;
 
   if (terms.legalAgreement !== undefined) {
     summary.legalAgreement = {

@@ -1040,9 +1040,8 @@ export function importedConstraintDivergenceMessage(
   return undefined;
 }
 
-/** What every dropped citation costs, in the words the consent surface uses for
- * the same fact (`CONSENT_FACTS.linkageRuleSet.note`): the citation is a claim
- * ABOUT the keys and fields, which travel either way, so losing it moves the
+/** What every dropped citation costs: the citation is a claim ABOUT the keys and
+ * fields, which travel either way, so losing it moves the
  * document the two parties compare without moving what they match on. */
 const CITATION_DROP_CONSEQUENCE =
   "The keys and fields themselves are unchanged, and they are what the exchange " +

@@ -1,7 +1,6 @@
 import { describe, expect, test } from "vitest";
 
 import {
-  LINKAGE_RULE_SET_VERDICT_COPY,
   RECORDED_LINKAGE_RULE_SET_CAVEAT,
   UNNAMED_PARTY_LABEL,
   sanitizeForDisplay,
@@ -180,10 +179,6 @@ describe("a disclosure's facts", () => {
 
     expect(note).toContain("exchange record");
     expect(note).not.toContain("has not checked");
-    // The verdict is pointed at, never restated: its own vocabulary -- the
-    // markers the consent surfaces put on each half -- stays off this surface.
-    for (const verdict of ["consistent", "contradicted", "unchecked"] as const)
-      expect(note).not.toContain(LINKAGE_RULE_SET_VERDICT_COPY[verdict].marker);
   });
 
   test("say the terms cited no rule set rather than leaving the cell blank, and caveat nothing", async () => {

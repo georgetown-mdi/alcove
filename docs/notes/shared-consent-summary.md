@@ -776,7 +776,7 @@ printings, with no abridgement for it to drift from.
 
 The retain line is last in the block so the caveat lands under the line it
 explains. Printed under whatever else the block reached, it would display as the
-count-only tier's or the disproved citation's. That adjacency is a check rather
+count-only tier's. That adjacency is a check rather
 than a sentence here.
 
 The single-pass disclosure note lands where it does under the same rule, and
