@@ -10,7 +10,7 @@ there are two bands, why a rule loosens one element, where the coverage
 condition comes from, how the rules compare with published practice, why they
 run in precision order, what transfers to two-party exact matching, the
 features they need, and the evidence a rule set must show before it ships.
-Nothing here is adopted or shipped; the shipped field and key sets are in
+Nothing here is adopted or shipped; the shipped fields and keys are in
 [default-linkage-rule-set.md](default-linkage-rule-set.md). See
 [docs/notes/README.md](README.md)._
 
@@ -406,7 +406,7 @@ disguised missing value (Ong et al. 2024). HUD tells staff
 to record `01` for an unknown month and day, unless the Continuum has its own
 filler (HUD 2025a), so two records independently agree on a date neither knows,
 and its name data-quality codes admit placeholder and made-up names entered to
-create a record (HUD 2025a). `baseline-pii` excludes placeholder SSNs, and the
+create a record (HUD 2025a). The built-in fields exclude placeholder SSNs, and the
 default cleaning drops a listed placeholder name or date
 ([DEFAULT_STANDARDIZATION.md](../spec/DEFAULT_STANDARDIZATION.md#per-party-placeholder-lists))
 and the SSN, ZIP and phone fillers below

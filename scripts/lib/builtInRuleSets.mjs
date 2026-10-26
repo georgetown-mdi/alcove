@@ -1,17 +1,14 @@
-// The built-in linkage rule sets, read out of their source declarations.
+// The built-in linkage rule set, read out of its source declarations.
 //
-// check-zero-setup-keys.mjs holds a property of those sets, and needs every set
-// the registry ships as VALUES rather than as text. Reading them from the source
-// rather than from the built package is by design. The field and key arrays are
-// module-private (`getDefaultLinkageTerms` is the only way out of that module,
-// and it filters), and a check that imported a built dist would pass against a
-// stale build -- the one failure mode a guard over source content cannot afford.
+// check-zero-setup-keys.mjs holds a property of that set, and needs its fields
+// and keys as VALUES rather than as text. Reading them from the source rather
+// than from the built package is by design: a check that imported a built dist
+// would pass against a stale build -- the one failure mode a guard over source
+// content cannot afford.
 //
-// The registry declaration is the entry point, so a set added to it is covered
-// with no list to keep in step here. Each entry is followed to the declarations
-// it composes: the name and content of its field set and of its key set, and a
-// failure is reported under the declaration it came from so it names what to
-// edit.
+// The set's declaration is the entry point. It is followed to the declarations
+// it composes, its fields and its keys, and a failure is reported under the
+// declaration it came from so it names what to edit.
 //
 // The source is parsed with the TypeScript compiler's own parser and each
 // declaration's initializer evaluated as a literal, so a comment, a reflow, or
@@ -26,16 +23,16 @@ import { resolve } from "node:path";
 
 import ts from "typescript";
 
-/** The source the built-in rule sets are declared in. */
+/** The source the built-in rule set is declared in. */
 export const RULE_SET_SOURCE =
   "packages/core/src/defaults/builtInLinkageTerms.ts";
 
-/** The declaration holding every rule set the build ships, in registry order. */
-export const REGISTRY_DECLARATION = "BUILT_IN_LINKAGE_RULE_SETS";
+/** The declaration composing the built-in rule set. */
+export const RULE_SET_DECLARATION = "DEFAULT_LINKAGE_RULE_SET";
 
 /**
  * The calls that return their single argument's value unchanged, and so are
- * read through rather than refused: the freezing the sets are declared under.
+ * read through rather than refused: the freezing the set is declared under.
  * Every other call is refused, since its value is not in the source.
  */
 const IDENTITY_CALLS = ["Object.freeze", "frozenThroughContents"];
@@ -302,142 +299,89 @@ function propertyAt(properties, key, where) {
   return node;
 }
 
-/** Which content declaration each half of a rule set takes its rules from. */
+/** Which content property each half of the rule set takes its rules from. */
 const HALF_CONTENT = { fieldSet: "linkageFields", keySet: "linkageKeys" };
 
-/** One registry entry: its two halves, each with its name and content. */
-function readRuleSet(element, index, constants, read) {
-  const declaration =
-    declarationName(element) ?? `${REGISTRY_DECLARATION}[${index}]`;
-  const entry = objectAt(element, constants, `\`${declaration}\``);
-  const reference = objectAt(
-    propertyAt(entry, "reference", `\`${declaration}\``),
-    constants,
-    `\`${declaration}.reference\``,
-  );
-
-  const halves = {};
-  for (const [role, contentKey] of Object.entries(HALF_CONTENT)) {
-    const where = `\`${declaration}.reference.${role}\``;
-    const identity = objectAt(
-      propertyAt(reference, role, `\`${declaration}.reference\``),
-      constants,
-      where,
-    );
-    halves[role] = {
-      role,
-      name: literalValue(propertyAt(identity, "name", where), read),
-      content: literalValue(
-        propertyAt(entry, contentKey, `\`${declaration}\``),
-        read,
-      ),
-    };
-  }
-  return { declaration, index, ...halves };
-}
-
-/** The registry's elements, in declaration order. */
-function registryElements(constants) {
-  const initializer = constants.get(REGISTRY_DECLARATION);
+/**
+ * The rule set's two halves, each `{role, name, content}`. A half's `name` is
+ * the declaration its content is composed from, or the property path where
+ * the content is written inline.
+ */
+function readRuleSetHalves(constants, read) {
+  const initializer = constants.get(RULE_SET_DECLARATION);
   if (initializer === undefined) {
     throw new UnreadableDeclaration(
-      `${RULE_SET_SOURCE} declares no top-level \`const ${REGISTRY_DECLARATION}\``,
-      REGISTRY_DECLARATION,
+      `${RULE_SET_SOURCE} declares no top-level \`const ${RULE_SET_DECLARATION}\``,
+      RULE_SET_DECLARATION,
     );
   }
   if (initializer === null) {
     throw new UnreadableDeclaration(
       "it has no initializer",
-      REGISTRY_DECLARATION,
+      RULE_SET_DECLARATION,
     );
   }
-  const array = unwrap(initializer);
-  if (!ts.isArrayLiteralExpression(array)) {
-    throw new UnreadableDeclaration(
-      `its initializer is ${describe(array)} rather than an array literal`,
-      REGISTRY_DECLARATION,
-    );
+  const where = `\`${RULE_SET_DECLARATION}\``;
+  const entry = objectAt(
+    unwrapIn(initializer, RULE_SET_DECLARATION),
+    constants,
+    where,
+  );
+
+  const halves = {};
+  for (const [role, contentKey] of Object.entries(HALF_CONTENT)) {
+    const node = propertyAt(entry, contentKey, where);
+    halves[role] = {
+      role,
+      name: declarationName(node) ?? `${RULE_SET_DECLARATION}.${contentKey}`,
+      content: literalValue(node, read),
+    };
   }
-  for (const element of array.elements) {
-    if (ts.isSpreadElement(element)) {
-      throw new UnreadableDeclaration(
-        "an entry is a spread, whose sets depend on another binding",
-        REGISTRY_DECLARATION,
-      );
-    }
-  }
-  if (array.elements.length === 0) {
-    throw new UnreadableDeclaration(
-      "it holds no rule set, so there is nothing here to hold anything to",
-      REGISTRY_DECLARATION,
-    );
-  }
-  return array.elements;
+  return { declaration: RULE_SET_DECLARATION, ...halves };
 }
 
 /**
- * The rule sets a source file's registry declares, as `{ruleSets, unreadable}`.
- * Each entry is `{declaration, index, fieldSet, keySet}`, and each half is
- * `{role, name, content}`. An entry with any unreadable
- * declaration is left out and its reason is in `unreadable`.
+ * The rule set a source file declares, as `{ruleSet, unreadable}`. `ruleSet`
+ * is `{declaration, fieldSet, keySet}`, each half `{role, name, content}`; it
+ * is `undefined` where any declaration it composes is unreadable, and the
+ * reason is in `unreadable`.
  */
-export function readRuleSets(source) {
+export function readRuleSet(source) {
   const constants = topLevelConstants(source);
   const read = constantReader(constants);
-  const ruleSets = [];
-  const unreadable = [];
-
-  let elements;
   try {
-    elements = registryElements(constants);
+    return { ruleSet: readRuleSetHalves(constants, read), unreadable: [] };
   } catch (error) {
     if (!(error instanceof UnreadableDeclaration)) throw error;
     return {
-      ruleSets,
+      ruleSet: undefined,
       unreadable: [
         {
-          declaration: error.declaration ?? REGISTRY_DECLARATION,
+          declaration: error.declaration ?? RULE_SET_DECLARATION,
           reason: error.message,
         },
       ],
     };
   }
-
-  elements.forEach((element, index) => {
-    try {
-      ruleSets.push(readRuleSet(element, index, constants, read));
-    } catch (error) {
-      if (!(error instanceof UnreadableDeclaration)) throw error;
-      unreadable.push({
-        declaration:
-          error.declaration ??
-          declarationName(element) ??
-          `${REGISTRY_DECLARATION}[${index}]`,
-        reason: error.message,
-      });
-    }
-  });
-
-  return { ruleSets, unreadable };
 }
 
 /**
- * {@link readRuleSets} over the tree at `root`. A source file the tree does not
+ * {@link readRuleSet} over the tree at `root`. A source file the tree does not
  * hold at all -- reachable through a caller's `--root` pointed at a tree
  * missing it -- is unreadable the same way a bad declaration is, under
  * {@link RULE_SET_SOURCE} rather than a declaration name, so a caller's
  * `unreadable`-to-`blocked` mapping covers this failure with no separate catch
  * of its own.
  */
-export function readRuleSetsFrom(root) {
+export function readRuleSetFrom(root) {
   let source;
   try {
     source = readFileSync(resolve(root, RULE_SET_SOURCE), "utf8");
   } catch (error) {
     return {
-      ruleSets: [],
+      ruleSet: undefined,
       unreadable: [{ declaration: RULE_SET_SOURCE, reason: error.message }],
     };
   }
-  return readRuleSets(source);
+  return readRuleSet(source);
 }

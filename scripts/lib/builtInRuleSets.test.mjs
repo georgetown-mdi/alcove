@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  REGISTRY_DECLARATION,
+  RULE_SET_DECLARATION,
   RULE_SET_SOURCE,
-  readRuleSets,
-  readRuleSetsFrom,
+  readRuleSet,
+  readRuleSetFrom,
 } from "./builtInRuleSets.mjs";
 
 import { mkdtempSync, rmSync } from "node:fs";
@@ -14,190 +14,107 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
-/** What one set's six declarations are called, under a per-set prefix. */
-const declarationsOf = (prefix) => ({
-  fieldSetName: `${prefix}_FIELD_SET_NAME`,
-  fieldSetVersion: `${prefix}_FIELD_SET_VERSION`,
-  fields: `${prefix}_FIELDS`,
-  keySetName: `${prefix}_KEY_SET_NAME`,
-  keySetVersion: `${prefix}_KEY_SET_VERSION`,
-  keys: `${prefix}_KEYS`,
-  ruleSet: `${prefix}_RULE_SET`,
-});
-
-/** One rule set as the source declares it: six declarations and the frozen
- * composition over them, the shape the reader follows. */
-const ruleSetBlock = ({
-  prefix = "DEFAULT",
-  fieldSetName = '"baseline-pii"',
-  fieldSetVersion = '"1.0.0"',
+/** A whole source file as the reader follows it: the field and key
+ * declarations, and the frozen composition over them. */
+const source = ({
   fields = '[{ name: "ssn", type: "ssn" }]',
-  keySetName = '"example-keys"',
-  keySetVersion = '"1.0.0"',
   keys = '[{ name: "SSN", elements: [{ field: "ssn" }] }]',
-} = {}) => {
-  const declared = declarationsOf(prefix);
-  return `export const ${declared.fieldSetName} = ${fieldSetName};
-export const ${declared.fieldSetVersion} = ${fieldSetVersion};
-const ${declared.fields}: ReadonlyArray<LinkageField> = ${fields};
-export const ${declared.keySetName} = ${keySetName};
-export const ${declared.keySetVersion} = ${keySetVersion};
-const ${declared.keys} = ${keys};
-export const ${declared.ruleSet}: BuiltInLinkageRuleSet = Object.freeze({
-  reference: Object.freeze({
-    fieldSet: {
-      name: ${declared.fieldSetName},
-      version: ${declared.fieldSetVersion},
-    },
-    keySet: {
-      name: ${declared.keySetName},
-      version: ${declared.keySetVersion},
-    },
-  }),
-  linkageFields: frozenThroughContents(${declared.fields}),
-  linkageKeys: frozenThroughContents(${declared.keys}),
-});
-`;
+  ruleSet,
+} = {}) => `import type { LinkageField } from "../config/linkageTermsSchema";
+
+const DEFAULT_LINKAGE_FIELDS: ReadonlyArray<LinkageField> = ${fields};
+const DEFAULT_LINKAGE_KEYS = ${keys};
+export const ${RULE_SET_DECLARATION}: BuiltInLinkageRuleSet = ${
+  ruleSet ??
+  `Object.freeze({
+  linkageFields: frozenThroughContents(DEFAULT_LINKAGE_FIELDS),
+  linkageKeys: frozenThroughContents(DEFAULT_LINKAGE_KEYS),
+})`
 };
-
-/** A whole source file: the given sets, and a registry over them. */
-const source = ({ sets = [{}], registry } = {}) => {
-  const entries = sets
-    .map((set) => declarationsOf(set.prefix ?? "DEFAULT").ruleSet)
-    .join(", ");
-  return `import type { LinkageField } from "../config/linkageTermsSchema";
-
-${sets.map(ruleSetBlock).join("\n")}
-export const ${REGISTRY_DECLARATION}: ReadonlyArray<BuiltInLinkageRuleSet> =
-  Object.freeze(${registry ?? `[${entries}]`});
 `;
-};
 
-/** The one set a default source declares. */
-const onlySet = (built) => {
+/** The set a source declares, which must read cleanly. */
+const readable = (built) => {
   expect(built.unreadable).toEqual([]);
-  expect(built.ruleSets).toHaveLength(1);
-  return built.ruleSets[0];
+  return built.ruleSet;
 };
 
-describe("the registry it follows", () => {
-  it("reads each entry's two halves out of the declarations it composes", () => {
-    const ruleSet = onlySet(readRuleSets(source()));
-    expect(ruleSet.declaration).toBe("DEFAULT_RULE_SET");
-    expect(ruleSet.index).toBe(0);
+describe("the declaration it follows", () => {
+  it("reads the two halves out of the declarations the set composes", () => {
+    const ruleSet = readable(readRuleSet(source()));
+    expect(ruleSet.declaration).toBe(RULE_SET_DECLARATION);
     expect(ruleSet.fieldSet).toEqual({
       role: "fieldSet",
-      name: "baseline-pii",
+      name: "DEFAULT_LINKAGE_FIELDS",
       content: [{ name: "ssn", type: "ssn" }],
     });
     expect(ruleSet.keySet).toEqual({
       role: "keySet",
-      name: "example-keys",
+      name: "DEFAULT_LINKAGE_KEYS",
       content: [{ name: "SSN", elements: [{ field: "ssn" }] }],
     });
   });
 
-  it("reads every entry the registry holds, in its declaration order", () => {
-    const { ruleSets, unreadable } = readRuleSets(
+  it("reads a half written inline, naming it by its property", () => {
+    const inline = readRuleSet(
       source({
-        sets: [{}, { prefix: "COUNTY", fieldSetName: '"county-pii"' }],
+        ruleSet: `{
+          linkageFields: [{ name: "ssn", type: "ssn" }],
+          linkageKeys: frozenThroughContents(DEFAULT_LINKAGE_KEYS),
+        }`,
       }),
     );
-    expect(unreadable).toEqual([]);
-    expect(ruleSets.map((ruleSet) => ruleSet.fieldSet.name)).toEqual([
-      "baseline-pii",
-      "county-pii",
-    ]);
-    expect(ruleSets.map((ruleSet) => ruleSet.declaration)).toEqual([
-      "DEFAULT_RULE_SET",
-      "COUNTY_RULE_SET",
-    ]);
-  });
-
-  it("reads an entry written inline in the registry", () => {
-    const inline = readRuleSets(
-      source({
-        registry: `[
-          {
-            reference: {
-              fieldSet: { name: "inline-pii", version: "2.0.0" },
-              keySet: { name: "inline-keys", version: "2.0.0" },
-            },
-            linkageFields: [{ name: "ssn", type: "ssn" }],
-            linkageKeys: [{ name: "SSN", elements: [{ field: "ssn" }] }],
-          },
-        ]`,
-      }),
-    );
-    const ruleSet = onlySet(inline);
-    expect(ruleSet.declaration).toBe(`${REGISTRY_DECLARATION}[0]`);
-    expect(ruleSet.fieldSet.name).toBe("inline-pii");
-    expect(ruleSet.keySet.name).toBe("inline-keys");
+    const ruleSet = readable(inline);
+    expect(ruleSet.fieldSet.name).toBe(`${RULE_SET_DECLARATION}.linkageFields`);
     expect(ruleSet.fieldSet.content).toEqual([{ name: "ssn", type: "ssn" }]);
+    expect(ruleSet.keySet.name).toBe("DEFAULT_LINKAGE_KEYS");
   });
 
-  it("refuses a registry that is not an array of entries", () => {
+  it("refuses a set that is not an object literal", () => {
     expect(
-      readRuleSets(source({ registry: "shippedRuleSets()" })).unreadable,
+      readRuleSet(source({ ruleSet: "shippedRuleSet()" })).unreadable,
     ).toEqual([
       {
-        declaration: REGISTRY_DECLARATION,
-        reason: expect.stringContaining("rather than an array literal"),
+        declaration: RULE_SET_DECLARATION,
+        reason: expect.stringContaining("rather than an object literal"),
       },
     ]);
-    expect(
-      readRuleSets(source({ registry: "[...LEGACY_SETS]" })).unreadable[0]
-        .reason,
-    ).toContain("spread");
-    expect(
-      readRuleSets(source({ registry: "[]" })).unreadable[0].reason,
-    ).toContain("holds no rule set");
   });
 
   it("refuses a freezing call given more than the one value it returns", () => {
-    const inlineEntry = readRuleSets(
-      source({ registry: '[Object.freeze(DEFAULT_RULE_SET, "extra")]' }),
-    );
-    expect(inlineEntry.ruleSets).toEqual([]);
-    expect(inlineEntry.unreadable).toEqual([
-      {
-        declaration: `${REGISTRY_DECLARATION}[0]`,
-        reason: expect.stringContaining("called with 2 arguments"),
-      },
-    ]);
-
-    const namedEntry = readRuleSets(
+    const built = readRuleSet(
       source().replace(
-        "export const DEFAULT_RULE_SET: BuiltInLinkageRuleSet = Object.freeze({",
-        'export const DEFAULT_RULE_SET: BuiltInLinkageRuleSet = Object.freeze("extra", {',
+        `${RULE_SET_DECLARATION}: BuiltInLinkageRuleSet = Object.freeze({`,
+        `${RULE_SET_DECLARATION}: BuiltInLinkageRuleSet = Object.freeze("extra", {`,
       ),
     );
-    expect(namedEntry.unreadable).toEqual([
+    expect(built.ruleSet).toBeUndefined();
+    expect(built.unreadable).toEqual([
       {
-        declaration: "DEFAULT_RULE_SET",
+        declaration: RULE_SET_DECLARATION,
         reason: expect.stringContaining("called with 2 arguments"),
       },
     ]);
   });
 
-  it("refuses a source declaring no registry at all", () => {
-    const withoutRegistry = ruleSetBlock();
-    expect(readRuleSets(withoutRegistry).unreadable).toEqual([
+  it("refuses a source declaring no rule set at all", () => {
+    const withoutSet = source().replace(/export const [\s\S]*$/, "");
+    expect(readRuleSet(withoutSet).unreadable).toEqual([
       {
-        declaration: REGISTRY_DECLARATION,
+        declaration: RULE_SET_DECLARATION,
         reason: expect.stringContaining("no top-level"),
       },
     ]);
   });
 
-  it("refuses an entry missing a half, naming the entry", () => {
+  it("refuses a set missing a half, naming the set", () => {
     const withoutKeys = source().replace(
-      /  linkageKeys: frozenThroughContents\(DEFAULT_KEYS\),\n/,
+      /  linkageKeys: frozenThroughContents\(DEFAULT_LINKAGE_KEYS\),\n/,
       "",
     );
-    expect(readRuleSets(withoutKeys).unreadable).toEqual([
+    expect(readRuleSet(withoutKeys).unreadable).toEqual([
       {
-        declaration: "DEFAULT_RULE_SET",
+        declaration: RULE_SET_DECLARATION,
         reason: expect.stringContaining("declares no `linkageKeys`"),
       },
     ]);
@@ -205,26 +122,22 @@ describe("the registry it follows", () => {
 });
 
 describe("the declarations it evaluates", () => {
-  it("evaluates the literal forms the sets are written in", () => {
-    const ruleSet = onlySet(
-      readRuleSets(
+  it("evaluates the literal forms the set is written in", () => {
+    const ruleSet = readable(
+      readRuleSet(
         source({
-          sets: [
+          fields: `[
             {
-              fields: `[
-                {
-                  name: "ssn",
-                  type: "ssn",
-                  constraints: { exclude: ["111111111"], validOnly: true },
-                },
-                {
-                  "date_of_birth": "quoted key",
-                  transform: [{ params: { start: 1, length: -3 } }],
-                  absent: null,
-                },
-              ]`,
+              name: "ssn",
+              type: "ssn",
+              constraints: { exclude: ["111111111"], validOnly: true },
             },
-          ],
+            {
+              "date_of_birth": "quoted key",
+              transform: [{ params: { start: 1, length: -3 } }],
+              absent: null,
+            },
+          ]`,
         }),
       ),
     );
@@ -243,32 +156,32 @@ describe("the declarations it evaluates", () => {
   });
 
   it("sees through the type assertions a declaration may have", () => {
-    const asserted = readRuleSets(
-      source({ sets: [{ keys: '[{ name: "SSN" }] as const' }] }),
+    const asserted = readRuleSet(
+      source({ keys: '[{ name: "SSN" }] as const' }),
     );
-    expect(onlySet(asserted).keySet.content).toEqual([{ name: "SSN" }]);
+    expect(readable(asserted).keySet.content).toEqual([{ name: "SSN" }]);
   });
 
   it("refuses an initializer that is not a literal, naming the declaration", () => {
-    const { ruleSets, unreadable } = readRuleSets(
-      source({ sets: [{ keys: "buildDefaultKeys()" }] }),
+    const { ruleSet, unreadable } = readRuleSet(
+      source({ keys: "buildDefaultKeys()" }),
     );
-    expect(ruleSets).toEqual([]);
+    expect(ruleSet).toBeUndefined();
     expect(unreadable).toEqual([
       {
-        declaration: "DEFAULT_KEYS",
+        declaration: "DEFAULT_LINKAGE_KEYS",
         reason: expect.stringContaining("rather than a literal"),
       },
     ]);
   });
 
   it("refuses a spread, whose value lives in another binding", () => {
-    const { unreadable } = readRuleSets(
-      source({ sets: [{ keys: '[...LEGACY_KEYS, { name: "SSN" }]' }] }),
+    const { unreadable } = readRuleSet(
+      source({ keys: '[...LEGACY_KEYS, { name: "SSN" }]' }),
     );
     expect(unreadable).toEqual([
       {
-        declaration: "DEFAULT_KEYS",
+        declaration: "DEFAULT_LINKAGE_KEYS",
         reason: expect.stringContaining("spread"),
       },
     ]);
@@ -276,20 +189,19 @@ describe("the declarations it evaluates", () => {
 
   it("refuses a computed key and a shorthand property", () => {
     expect(
-      readRuleSets(source({ sets: [{ fields: "[{ [nameOf(field)]: 1 }]" }] }))
-        .unreadable[0].reason,
+      readRuleSet(source({ fields: "[{ [nameOf(field)]: 1 }]" })).unreadable[0]
+        .reason,
     ).toContain("object key is");
     expect(
-      readRuleSets(source({ sets: [{ fields: "[{ name }]" }] })).unreadable[0]
-        .reason,
+      readRuleSet(source({ fields: "[{ name }]" })).unreadable[0].reason,
     ).toContain("plain `key: value` assignment");
   });
 
   it("reports a declaration the source does not contain", () => {
-    const trimmed = source().replace(/^.*DEFAULT_KEY_SET_NAME = .*$/m, "");
-    expect(readRuleSets(trimmed).unreadable).toEqual([
+    const trimmed = source().replace(/^const DEFAULT_LINKAGE_KEYS = .*$/m, "");
+    expect(readRuleSet(trimmed).unreadable).toEqual([
       {
-        declaration: "DEFAULT_KEY_SET_NAME",
+        declaration: "DEFAULT_LINKAGE_KEYS",
         reason: expect.stringContaining("no top-level"),
       },
     ]);
@@ -297,12 +209,12 @@ describe("the declarations it evaluates", () => {
 
   it("refuses a declaration that reads itself", () => {
     const circular = source().replace(
-      /^const DEFAULT_KEYS = .*$/m,
-      "const DEFAULT_KEYS = DEFAULT_KEYS;",
+      /^const DEFAULT_LINKAGE_KEYS = .*$/m,
+      "const DEFAULT_LINKAGE_KEYS = DEFAULT_LINKAGE_KEYS;",
     );
-    expect(readRuleSets(circular).unreadable).toEqual([
+    expect(readRuleSet(circular).unreadable).toEqual([
       {
-        declaration: "DEFAULT_KEYS",
+        declaration: "DEFAULT_LINKAGE_KEYS",
         reason: expect.stringContaining("reads itself"),
       },
     ]);
@@ -311,29 +223,27 @@ describe("the declarations it evaluates", () => {
   it("ignores a same-named binding inside a function", () => {
     const shadowed = `${source()}
 function build() {
-  const DEFAULT_KEYS = [{ name: "shadow" }];
-  return DEFAULT_KEYS;
+  const DEFAULT_LINKAGE_KEYS = [{ name: "shadow" }];
+  return DEFAULT_LINKAGE_KEYS;
 }
 `;
-    expect(onlySet(readRuleSets(shadowed)).keySet.content).toEqual([
+    expect(readable(readRuleSet(shadowed)).keySet.content).toEqual([
       { name: "SSN", elements: [{ field: "ssn" }] },
     ]);
   });
 
   it("reads the committed source", () => {
-    const { ruleSets, unreadable } = readRuleSetsFrom(repoRoot);
-    expect(unreadable).toEqual([]);
-    expect(ruleSets.length).toBe(1);
-    expect(ruleSets[0].fieldSet.name).toBe("baseline-pii");
-    expect(ruleSets[0].keySet.name).toBe("precision-ranked-rules");
-    expect(ruleSets[0].keySet.content.length).toBeGreaterThan(0);
+    const ruleSet = readable(readRuleSetFrom(repoRoot));
+    expect(ruleSet.fieldSet.name).toBe("DEFAULT_LINKAGE_FIELDS");
+    expect(ruleSet.keySet.name).toBe("DEFAULT_LINKAGE_KEYS");
+    expect(ruleSet.keySet.content.length).toBeGreaterThan(0);
   });
 
   it("fails a tree that does not contain the source at all, naming the file", () => {
     const root = mkdtempSync(resolve(tmpdir(), "alcove-rule-set-source-"));
     try {
-      const { ruleSets, unreadable } = readRuleSetsFrom(root);
-      expect(ruleSets).toEqual([]);
+      const { ruleSet, unreadable } = readRuleSetFrom(root);
+      expect(ruleSet).toBeUndefined();
       expect(unreadable).toEqual([
         {
           declaration: RULE_SET_SOURCE,
@@ -347,13 +257,13 @@ function build() {
 });
 
 describe("the source it names", () => {
-  it("is the file the built-in sets are declared in", () => {
+  it("is the file the built-in set is declared in", () => {
     expect(RULE_SET_SOURCE).toBe(
       "packages/core/src/defaults/builtInLinkageTerms.ts",
     );
   });
 
-  it("names the registry the committed source declares", () => {
-    expect(REGISTRY_DECLARATION).toBe("BUILT_IN_LINKAGE_RULE_SETS");
+  it("names the declaration the committed source composes the set in", () => {
+    expect(RULE_SET_DECLARATION).toBe("DEFAULT_LINKAGE_RULE_SET");
   });
 });

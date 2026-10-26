@@ -1,170 +1,140 @@
 ---
-title: "The built-in linkage rules: provenance, naming, and versioning"
+title: "The built-in linkage rules: what they cover and their provenance"
 ---
 
-# The built-in linkage rules: provenance, naming, and versioning
+# The built-in linkage rules: what they cover and their provenance
 
-_Status: decided and built. The two sets are defined in
+_Status: decided and built. The built-in fields and keys are defined in
 `packages/core/src/defaults/builtInLinkageTerms.ts` as
-`DEFAULT_LINKAGE_FIELD_SET_NAME` / `DEFAULT_LINKAGE_FIELD_SET_VERSION` and
-`DEFAULT_LINKAGE_KEY_SET_NAME` / `DEFAULT_LINKAGE_KEY_SET_VERSION`, and the
-operator-facing description -- which paths use them and what each name covers
--- is in [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#the-built-in-rules).
-Terms drawn from the sets do not cite them: the linkage terms hold the fields
-and keys alone, and no rule-set citation. This note
-records what the two sets are, why they are named apart, what the key set's
-validation rests on, the criticisms on record against it, and why both names
-are neutral. See [docs/notes/README.md](README.md).
+`DEFAULT_LINKAGE_RULE_SET`, and the operator-facing description -- which paths
+use them and what they cover -- is in
+[EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#the-built-in-rules). The two
+halves were once named and versioned, and terms drawn from them cited those
+names; the owner ruled the citation removed, and the names and versions went
+with it, so the terms hold the fields and keys themselves and nothing else
+identifies the rules. This note records what the two halves are, what the
+keys' validation rests on, and the criticisms on record against them. See
+[docs/notes/README.md](README.md)._
 
-The key set it describes is the first built-in key set, 1.0.0 over
-`baseline-pii` 1.0.0. Both are retired: a citation of either names a set this
-build does not ship. The built-in key set is the catalog of
-[linkage-rule-catalog.md](linkage-rule-catalog.md), published as
-`precision-ranked-rules` 2.5.0 over `baseline-pii` 1.3.0, which adds
+The first built-in keys are retired. The built-in keys are the catalog of
+[linkage-rule-catalog.md](linkage-rule-catalog.md), over eleven fields that add
 `phone_number`, `email_address`, `zip_code`, `state`, `county` and
-`street_number`. The catalog's earlier versions, 2.0.0 over 1.1.0, 2.1.0
-over 1.2.0, and 2.2.0, 2.3.0 and 2.4.0 over 1.3.0, are retired the same way.
-2.1.0 adds the ZIP3, state and county rules and 1.2.0 the `state` and
-`county` fields; 2.2.0 adds the street number rule and 1.3.0 the
-`street_number` field; 2.3.0 drops the condition that offered the three name
-and date rules only to files from one state or one metropolitan area,
-offering them for any pair of files, marked less certain; 2.4.0 requires a
-first name of at least two letters in every rule on the full first name;
-2.5.0 adds the five contact rules with no date of birth, each matching only
-where one of the two records has no valid date of birth._
+`street_number` to the first set's five. The catalog's revisions added the ZIP3,
+state and county rules with the `state` and `county` fields, then the street
+number rule with the `street_number` field; dropped the condition that offered
+the three name and date rules only to files from one state or one metropolitan
+area, offering them for any pair of files, marked less certain; required a
+first name of at least two letters in every rule on the full first name; and
+added the five contact rules with no date of birth, each matching only where
+one of the two records has no valid date of birth.
 
 This is design rationale. Nothing here binds an implementation.
 
-## What the names cover
+## What the two halves cover
 
-The built-in rules are two artifacts with two names and two versions.
+The built-in rules have two halves.
 
-`baseline-pii` names the **linkage fields**: the eleven PII elements the
-built-in rules work from, each in its standardized form and with the
-constraints it has. The elements are `ssn`, `ssn4`, `first_name`, `last_name`,
-`date_of_birth`, `phone_number`, `email_address`, `zip_code`, `state`,
-`county` and `street_number`. It is a substrate: it fixes what can be matched
-on and how each element is cleaned and bounded, and says nothing about what
-constitutes a match.
+The **linkage fields** are the eleven PII elements the built-in rules work
+from, each in its standardized form and with the constraints it has. The
+elements are `ssn`, `ssn4`, `first_name`, `last_name`, `date_of_birth`,
+`phone_number`, `email_address`, `zip_code`, `state`, `county` and
+`street_number`. They are a substrate: they fix what can be matched on and how
+each element is cleaned and bounded, and say nothing about what constitutes a
+match.
 
-The key set names the **linkage keys**: the forty-one combinations built from
-those fields, applied in the order the set lists them. It is the specific
-artifact -- which combinations count as a match, and in what cascade order.
-That order is the catalog's precision order, the 99% band before the 95% band;
-the keys and their bands are in [linkage-rule-catalog.md](linkage-rule-catalog.md#order).
+The **linkage keys** are the forty-one combinations built from those fields,
+applied in the order listed. They are the specific artifact -- which
+combinations count as a match, and in what cascade order. That order is the
+catalog's precision order, the 99% band before the 95% band; the keys and their
+bands are in [linkage-rule-catalog.md](linkage-rule-catalog.md#order).
 
-Every built-in key is built from the fields of `baseline-pii`, so a citation of
-the key set cites the field set with it. The reverse does not hold: the same
-substrate supports key sets settled for other uses.
+Every built-in key is built from the built-in fields. The reverse does not
+hold: the same substrate supports keys settled for other uses.
 
 Everything else in a default terms document is a per-party choice made at the
-time of the exchange and is outside both names: the party `identity`, the
-`date`, the `algorithm`, the linkage strategy, the output preferences, and
+time of the exchange and is outside the built-in rules: the party `identity`,
+the `date`, the `algorithm`, the linkage strategy, the output preferences, and
 `deduplicate`. Two parties can run these rules and still disagree about who
-receives output; they cannot run one key set and disagree about what a key is.
+receives output; they cannot run one set of keys and disagree about what a key
+is.
 
 Terms derived from an input file leave out any key that input cannot supply, so
-an exchange matches on a **subset** of the key set, never on an addition to it.
-That is what makes describing a run by the set's name accurate: the name is an
-upper bound on what was tried, and the terms document that travels with the
-exchange still records exactly which keys ran.
+an exchange matches on a **subset** of the built-in keys, never on an addition
+to them. The terms document that travels with the exchange records exactly
+which keys ran. Where those keys are exactly one built-in choice's, in their
+order, over the built-in fields, the accepting party's terms review says so,
+worked out from the keys and fields themselves.
 
 ## What zero-setup rests on
 
 A zero-setup exchange authors nothing. Each party derives its terms from its own
 input file, keeping the built-in keys that file can satisfy, and the two derived
 documents are then cross-checked against each other. That works with no
-authoring because every built-in key is built from `baseline-pii`, so a party
-derives each key from the same field declarations as its partner.
+authoring because every built-in key is built from the built-in fields, so a
+party derives each key from the same field declarations as its partner.
 
 A built-in key over a field outside that substrate would strand the party whose
 file does not include it, as terms referencing a field they never declare,
 which names no cause to an operator who authored nothing. A key over a field
 inside it that only one party's file supplies -- a phone, email, street number,
-ZIP, state or county column, which `baseline-pii` 1.3.0 declares -- stops the
+ZIP, state or county column, which the built-in fields declare -- stops the
 exchange at the terms check instead, before any data moves, and the party whose
 file has the column is told which column to remove ([EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#the-built-in-rules)).
 
 So the property is held by a check rather than by review:
-`npm run check:zero-setup-keys` reads every set the built-in registry declares
-and fails a key whose elements leave its own set's fields, or name a field a
-derived input cannot supply by semantic type. Zero-setup derives the default set
-and no other, but a set chosen by name is derived through the same filter, so
-the property is held over the registry rather than over the default alone.
-Widening a field set stays possible and stays an explicit decision, and it
-takes the version decision below. What the check
-covers, and what it cannot see, are in
+`npm run check:zero-setup-keys` reads the built-in set and fails a key whose
+elements leave the built-in fields, or name a field a derived input cannot
+supply by semantic type. Widening the fields stays possible and stays an
+explicit decision. What the check covers, and what it cannot see, are in
 [repo-check-scripts.md](repo-check-scripts.md#zero-setup-key-fields).
 
-## Why the fields and the keys are named apart
+## Why the fields and the keys are described apart
 
-One name over both would attach the keys' provenance to the fields. The
-validation on record, and both criticisms on record, are about which
+The validation on record, and both criticisms on record, are about which
 combinations of PII count as a match -- a judgment made for a particular class
-of system. The fields are the generic part: the same five elements, cleaned the
-same way, underlie key sets settled for entirely different uses. Naming them
-together would mean either extending a specific set's lineage to a substrate
-that does not have it, or forcing a use-case-neutral name onto keys that are
-use-case-specific.
+of system. The fields are the generic part: the same elements, cleaned the same
+way, underlie keys settled for entirely different uses. Describing them
+together would extend the keys' provenance to a substrate that does not have
+it.
 
-It would also tie the two versions together. An added constraint would version
-the keys, and a reordered cascade would version the fields, each making a
-citation of the untouched artifact look stale for a reason that has nothing to
-do with it.
-
-## Why the sets are named at all
-
-An anonymous rule set has two costs, and buying them off is what the names
-are for. Neither is cosmetic.
-
-**An edit would be silent.** These rules are the artifact a user of the
-built-in defaults trusts. With nothing naming or versioning them, any edit --
-adding a key, loosening a constraint, reordering the cascade -- changes what
-that trust is in with no visible trace, and a user relying on "the defaults" a
-year apart would be relying on two different things with no way to tell.
-
-**Nothing else is citable.** Without a name, a data-governance reviewer asking
-which rules a linkage matched on can be answered only by quoting the key
-combinations out of a config file, or by the unhelpfully circular "the
-product's defaults". A name and a version is the artifact that fits in an
-agreement, a review memo, or a disclosure log line.
-
-## What the key set's validation rests on
+## What the keys' validation rests on
 
 The keys are not derived from a published linkage standard. Their basis is
-**operational**: they were developed and validated with partner agencies of the
-class the product primarily serves, running against their own administrative
-records, and the key combinations the set ships with -- and the order they are
-applied in -- are the ones that engagement settled on. That operational
-validation is what a user of the built-in rules is relying on, and the whole
-of the claim this repository records: no certification, no accreditation, and no
+**operational**: the first built-in keys were developed and validated with
+partner agencies of the class the product primarily serves, running against
+their own administrative records, and the key combinations they shipped with --
+and the order they were applied in -- are the ones that engagement settled on.
+That operational validation, and the grounding the catalog gives each later
+rule, is what a user of the built-in rules is relying on, and the whole of the
+claim this repository records: no certification, no accreditation, and no
 benchmark against a public gold-standard linked file.
 
 Two limits on this note, stated rather than left to be inferred:
 
 - **The engagement's identifying detail is kept out of this repository by
   design.** This repository is public; who the partners were, and what their
-  data covered, is not the product's to publish (see [Why both names are
-  neutral](#why-both-names-are-neutral)).
+  data covered, is not the product's to publish. Attribution belongs in
+  user-facing communications and in an agreement, where it can be made with the
+  partner's consent and withdrawn.
 - **The underlying measurements are not published here.** No precision or recall
   figure, and no comparison against a named external standard, is on record in
   this repository. A written comparison of these keys against the standards used
   elsewhere for linkage of this class, and a stated evidence bar that any future
-  built-in set would have to meet, are both still to be produced.
+  built-in keys would have to meet, are both still to be produced.
 
-So what this note supports is the shape of the two sets, the fact that the
+So what this note supports is the shape of the two halves, the fact that the
 keys' provenance is operational validation rather than derivation from a
 standard, and the criticisms below. It does not support a claim about measured
 accuracy.
 
-The field set has no validation lineage of its own. It is the generic
-substrate -- five standardized PII elements with constraints -- and a substrate
-is not a claim about matching accuracy: what was validated is which
-combinations of it count as a match.
+The fields have no validation lineage of their own. They are the generic
+substrate -- standardized PII elements with constraints -- and a substrate is
+not a claim about matching accuracy: what was validated is which combinations
+of it count as a match.
 
 ## Criticisms on record
 
-Two criticisms are on record against the key set, and they point in opposite
+Two criticisms are on record against the keys, and they point in opposite
 directions. Both are recorded here because a reader deciding whether to run the
 built-in rules should meet them at the same time as the validation claim, not
 after adopting the keys.
@@ -187,17 +157,17 @@ beside a full SSN fall in its 99% band.
 
 **Recognized matchable fields go unused.** `phone_number`, `email_address`, and
 `zip_code` are semantic types the product recognizes, infers from column names,
-and can match on -- and no key of the first built-in key set, 1.0.0,
-references any of them. A party whose data includes a phone number gets no
-matching value from it under that set; it has to add a key itself. The gap is
-not an oversight to be closed by adding keys casually: rules for those fields would have their own
+and can match on -- and no key of the first built-in keys references any of
+them. A party whose data includes a phone number gets no matching value from it
+under those keys; it has to add a key itself. The gap is not an oversight to be
+closed by adding keys casually: rules for those fields would have their own
 precision/recall consequences and are not covered by the validation these keys
 rest on, so they need their own grounding before they could ship as built-in.
 
-The catalog closes the gap with that grounding. `precision-ranked-rules` 2.5.0
-matches on each of those types, each rule with the band
-[linkage-rule-catalog.md](linkage-rule-catalog.md) gives it, and `baseline-pii`
-1.3.0 declares the three fields. Where a refinement sits in the order is in
+The catalog closes the gap with that grounding. The built-in keys match on each
+of those types, each rule with the band
+[linkage-rule-catalog.md](linkage-rule-catalog.md) gives it, and the built-in
+fields declare the three. Where a refinement sits in the order is in
 [linkage-rule-grounding.md](linkage-rule-grounding.md#placements-the-evidence-forces).
 
 Each such rule is compound -- the type beside a name and a birth date, or its
@@ -216,10 +186,11 @@ number, ZIP, state or county field, adding that a location column must hold
 each person's own, never a site's.
 
 The email shape `FN + EMAIL` has no band, since no source measures it, and is
-in no built-in set. An operator reaches it, or any other combination nothing
+not a built-in key. An operator reaches it, or any other combination nothing
 here has grounded, only by authoring it in the expert key editor. Terms with an
-added key are not drawn from the set, so they cite none -- the departure
-reaches the accepting party's terms review, not only the operator's screen.
+added key are no built-in choice's, so the accepting party's terms review names
+no built-in choice for them -- the departure reaches that review, not only the
+operator's screen.
 
 A key over one of these types gets the type's recommended cleaning whichever
 door authors it -- the guided list's checkbox, an imported document, or the
@@ -230,75 +201,17 @@ nothing, with neither side told. The editor seeds the recommended pipeline
 instead, and an operator who wants other steps edits them in the data-prep
 workbench, where the change is theirs and visible.
 
-In short, the first built-in key set is looser than some standards where it
-matches, and narrower than the product's own capability in what it can match
-on.
+In short, the first built-in keys were looser than some standards where they
+matched, and narrower than the product's own capability in what they could
+match on.
 
-## Why both names are neutral
+## Changing the built-in rules
 
-`baseline-pii` names the fields by what they are, and `precision-ranked-rules`
-names the keys by how they are organized: ranked by precision, so a party can
-select them by floor. Neither names who validated anything, and neither names a
-class of system or a use case. That is by design, for three reasons.
-
-1. **The repository is public and the attribution is not the product's to
-   publish.** Naming a validating partner in source code publishes an
-   association that partner did not agree to publish, permanently and in a place
-   nobody can retract it from. Attribution belongs in user-facing communications
-   and in an agreement, where it can be made with the partner's consent and
-   withdrawn.
-2. **Each name claims exactly the scope its artifact has.** The fields match on
-   SSN, names, and date of birth, which is not specific to any jurisdiction or
-   program: `baseline` says what they are -- the built-in substrate everything
-   else starts from -- with no use case attached. The keys are named for their
-   structure, not for a kind of system or program, so the name implies no
-   applicability they have not been shown to have.
-3. **A name should not make a claim the repository cannot substantiate.**
-   Calling either set "validated" or "certified" in its own identifier would put
-   a claim into every citation of it that this repository holds no evidence for
-   (see the limits above). These names say what the rules are, and the
-   provenance is here, where it can be qualified.
-
-The cost of a neutral name is that the trust anchor -- the engagement that
-validated the keys -- is not visible from the identifier. That is what this note
-is for, and it is why a citation of the built-in rules is properly a citation of
-the names, their versions, and this note together.
-
-## What the versions mean
-
-`DEFAULT_LINKAGE_FIELD_SET_VERSION` and `DEFAULT_LINKAGE_KEY_SET_VERSION`
-version the **content** of their own set, and move independently. Neither is
-`linkage_terms.version`, which versions the terms document's schema, is
-cross-checked between the parties, and travels on the wire; the three are
-unrelated and happen to start at the same value.
-
-The rule for editing, one per artifact:
-
-- An edit to the fields -- a field added or dropped, a constraint loosened or
-  tightened -- bumps the field set's version.
-- An edit to the keys bumps the key set's version. A reorder counts: the order
-  is the order the keys are applied in, so moving one changes which key claims a
-  record that more than one would match, even though the same keys are
-  present.
-
-The recorded validation attaches to a name and a version together, so an edited
-set keeping the old version would leave this note describing rules nobody ran
--- the exact failure the naming exists to prevent. A change that emits the same
-fields and the same keys in the same order -- the file reorganized, a comment
-rewritten, two properties written in the other order -- alters no rule, and is
-the only kind that leaves a version alone. A key's own name is not in that
-class: it travels in the terms document, which the two parties compare whole, so
-two builds spelling a key differently cancel the exchange between them.
-
-Two things the versions are not:
-
-- **Not a compatibility negotiation.** Whether two parties' terms agree is
-  decided by the terms document itself, field by field and key by key, exactly
-  as it was before the sets had names. The citation goes beside those rules
-  and is compared where both parties have one, but nothing is negotiated from
-  it: two builds shipping different versions of a set do not reconcile them, and
-  a party citing nothing is not held to the other's citation. What a version
-  buys is that the artifact a record names is identifiable, not that a partner
-  can be met halfway on it.
-- **Not a migration ladder.** There is no path from one version of a set to
-  another and no meaning attached to the semver components beyond ordering.
+Two parties' terms agree or not on the terms documents themselves, field by
+field and key by key, so two builds shipping different built-in rules do not
+reconcile them: a quick exchange between them stops at the terms check. A
+change that emits the same fields and the same keys in the same order -- the
+file reorganized, a comment rewritten, two properties written in the other
+order -- alters no rule. A key's own name is not in that class: it travels in
+the terms document, which the two parties compare whole, so two builds spelling
+a key differently cancel the exchange between them.

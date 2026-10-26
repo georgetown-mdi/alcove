@@ -5,7 +5,7 @@ title: "Linkage Rule Catalog: Rules and Their Precision Bands"
 # Linkage rule catalog: rules and their precision bands
 
 _Status: built.
-Every rule here is a key of the built-in key set `precision-ranked-rules` 2.5.0, in this order and with these bands (`packages/core/src/defaults/builtInLinkageTerms.ts`; [default-linkage-rule-set.md](default-linkage-rule-set.md)).
+Every rule here is a built-in linkage key, in this order and with these bands (`packages/core/src/defaults/builtInLinkageTerms.ts`; [default-linkage-rule-set.md](default-linkage-rule-set.md)).
 The design rationale behind this catalog -- why two bands, why one loosened element per rule, why the rules run in precision order, how they compare with published practice, and what the evidence does not settle -- is in [linkage-rule-grounding.md](linkage-rule-grounding.md).
 See [docs/notes/README.md](README.md)._
 
@@ -129,8 +129,8 @@ Why precision order: [linkage-rule-grounding.md](linkage-rule-grounding.md#why-p
 
 ### Status
 
-Every rule below is a key of the built-in key set.
-Eleven of the fourteen rules of the retired first built-in key set, 1.0.0, are in the 99% band; rules 26, 31 and 32 are in the 95% band.
+Every rule below is a built-in key.
+Eleven of the fourteen rules of the retired first built-in keys are in the 99% band; rules 26, 31 and 32 are in the 95% band.
 
 ## The 99% band
 
