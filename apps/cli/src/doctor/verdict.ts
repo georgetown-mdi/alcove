@@ -8,8 +8,11 @@ import {
   UNAVAILABLE_EXIT_CODE,
 } from "@alcove/cli-contract";
 import { redactPrivateKeyMaterial } from "@alcove/core";
+import type { RelayTransport } from "@alcove/core";
 
 import { asciiSafeJsonLine } from "../util/jsonLine";
+
+export type { RelayTransport };
 
 /**
  * Schema version of the `--json` verdict. A consumer reads this field first and
@@ -20,9 +23,6 @@ export const DOCTOR_VERDICT_VERSION = 1;
 
 /** Which check set produced a verdict. */
 export type DoctorMode = "probe" | "mount" | "relay";
-
-/** The transport a TURN url names, as a `relay` check reports it. */
-export type RelayTransport = "udp" | "tcp" | "tls";
 
 /**
  * The outcome of a single check. `warn` is a check that ran and does not block

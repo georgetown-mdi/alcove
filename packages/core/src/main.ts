@@ -939,6 +939,32 @@ export type {
   RunWebSocketRelay,
 } from "./relayCredential";
 export {
+  INVITATION_RELAY_ENROLLMENT_WAIT_MS,
+  invitationRelayEnrolledNotice,
+  invitationRelayNotEnrolledStatement,
+  LATER_TURN_URL_NOT_CONTACTED,
+  LEFT_OUT_BY_CONNECTION_ALLOWED_RELAYS,
+  NO_RELAY_CANDIDATE_GATHERED,
+  registrarNotContactedReason,
+  RELAY_CHECK_BOUND_MS,
+  RELAY_CHECK_ENROLLMENT_ID,
+  relayCheckHeadline,
+  relayCheckPlan,
+  relayHostStatement,
+  relayHostStatementLines,
+  turnUrlTransport,
+} from "./relayCheck";
+export type {
+  RelayCheckContact,
+  RelayCheckFields,
+  RelayCheckHeadlineOptions,
+  RelayCheckPlan,
+  RelayCheckRegistrar,
+  RelayHostStatement,
+  RelayHostStatementEntry,
+  RelayTransport,
+} from "./relayCheck";
+export {
   enrollRelayKey,
   enrollRelayKeyWithinWait,
   enrollRelayKeyWithoutToken,

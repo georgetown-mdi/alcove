@@ -3,7 +3,10 @@
 // leaves out (`selectRunRelay` in core). Operator page:
 // docs/EXCHANGE_REFERENCE.md, connection.allowed_relays.
 
-import { redactAndSanitizeForDisplay } from "@alcove/core";
+import {
+  LEFT_OUT_BY_CONNECTION_ALLOWED_RELAYS,
+  redactAndSanitizeForDisplay,
+} from "@alcove/core";
 import type {
   RunRelaySelection,
   RunTurnServer,
@@ -14,8 +17,7 @@ import type {
 export const KEPT_BY_ALLOWED_RELAYS = "kept by connection.allowed_relays";
 
 /** The mark of a TURN url the setting leaves out. */
-export const LEFT_OUT_BY_ALLOWED_RELAYS =
-  "left out by connection.allowed_relays";
+export const LEFT_OUT_BY_ALLOWED_RELAYS = LEFT_OUT_BY_CONNECTION_ALLOWED_RELAYS;
 
 /** What the setting decides, and what it does not. */
 export const ALLOWED_RELAYS_SCOPE =

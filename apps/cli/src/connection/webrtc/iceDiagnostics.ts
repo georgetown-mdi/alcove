@@ -1,3 +1,5 @@
+import { NO_RELAY_CANDIDATE_GATHERED } from "@alcove/core";
+
 import {
   ALLOWED_RELAYS_REMEDY,
   LEFT_OUT_BY_ALLOWED_RELAYS,
@@ -35,11 +37,7 @@ export const UNREPORTED_CANDIDATE_TYPE = "unreported";
 /** The candidate type that means a relay was reachable and gave an address. */
 const RELAY_CANDIDATE_TYPE = "relay";
 
-/**
- * The clause a failure states when this side gathered no relay candidate,
- * shared by a run's ICE diagnosis and `alcove doctor relay`.
- */
-export const NO_RELAY_CANDIDATE_GATHERED = "no relay candidate gathered";
+export { NO_RELAY_CANDIDATE_GATHERED };
 
 /**
  * How many distinct candidate types one side's tally names before the rest

@@ -1,7 +1,11 @@
 import type { Argv, Arguments } from "yargs";
 import logLibrary from "loglevel";
 
-import { redactAndSanitizeForDisplay } from "@alcove/core";
+import {
+  redactAndSanitizeForDisplay,
+  relayHostStatement,
+  relayHostStatementLines,
+} from "@alcove/core";
 
 import {
   gatherRelayCandidate,
@@ -14,7 +18,6 @@ import {
   enrollBeforeRelayCheck,
   relayCheckConnection,
   relayCheckPlan,
-  relayHostStatement,
   runRelayCheck,
 } from "../doctor/relay";
 import { readSmbMountInput, readSmbProbeInput } from "../doctor/smbEnvironment";
@@ -116,7 +119,9 @@ export async function checkRelay(
       options.now ?? new Date(),
     ),
   );
-  for (const line of relayHostStatement(plan, connection))
+  for (const line of relayHostStatementLines(
+    relayHostStatement(plan, connection),
+  ))
     options.writeStatementLine(line);
   const enrollment =
     plan.registrar?.contacted === true

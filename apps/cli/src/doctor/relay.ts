@@ -1,11 +1,20 @@
 import {
   InternalConsistencyError,
-  runEnrollsAtInvitationRegistrar,
+  LATER_TURN_URL_NOT_CONTACTED,
+  RELAY_CHECK_BOUND_MS,
+  RELAY_CHECK_ENROLLMENT_ID,
+  registrarNotContactedReason,
+  relayCheckHeadline,
+  relayCheckPlan as relayCheckHostPlan,
   selectRunRelay,
+  turnUrlTransport,
   UsageError,
 } from "@alcove/core";
 import type {
   ConnectionConfig,
+  RelayCheckContact,
+  RelayCheckHeadlineOptions,
+  RelayCheckPlan as RelayCheckHostPlan,
   RelayCredential,
   RunRelayConnection,
   RunTurnServer,
@@ -13,38 +22,24 @@ import type {
 } from "@alcove/core";
 import type { RTCIceServer } from "werift";
 
-import { LEFT_OUT_BY_ALLOWED_RELAYS } from "../allowedRelays";
-import { NO_RELAY_CANDIDATE_GATHERED } from "../connection/webrtc/iceDiagnostics";
 import {
   ICE_PROVISION_REFUSAL,
   turnIceServer,
 } from "../connection/webrtc/weriftPeer";
-import {
-  enrollAtInvitationRelay,
-  invitationRelayEnrolledNotice,
-  invitationRelayNotEnrolledStatement,
-} from "../invitationRelayEnrollment";
+import { enrollAtInvitationRelay } from "../invitationRelayEnrollment";
 import type { InvitationRelayEnrollment } from "../invitationRelayEnrollment";
-import type {
-  DoctorCheckRecord,
-  DoctorReport,
-  RelayTransport,
-} from "./verdict";
-import { fail, ok, skipped, warn } from "./verdict";
+import type { DoctorCheck, DoctorCheckRecord, DoctorReport } from "./verdict";
 
 // `alcove doctor relay`: whether this host reaches the TURN relay a webrtc run
 // allocates on, asked as the run's ICE gathering asks. It contacts exactly the
 // relay hosts a run of the configuration contacts: the first TURN url the run
 // lists, and the invitation's registrar only where the run enrolls there. It
-// runs only when the operator names it. Contract: docs/spec/CLI_DOCTOR.md;
-// operator page: docs/CLI.md, Checking the relay of a WebRTC exchange.
+// runs only when the operator names it. The plan, the host statement and each
+// check's headline are composed in core (relayCheck.ts).
+// Contract: docs/spec/CLI_DOCTOR.md; operator page: docs/CLI.md, Checking the
+// relay of a WebRTC exchange.
 
-/**
- * The one bound on the relay request: a relay that has given no relay
- * candidate when it expires is reported as not reached. An arbitrary working
- * value; see docs/spec/CLI_DOCTOR.md, The relay check.
- */
-export const RELAY_CHECK_BOUND_MS = 30_000;
+export { turnUrlTransport };
 
 /**
  * What to do when no relay candidate was gathered from a configured relay,
@@ -79,29 +74,13 @@ export function relayCheckAllLeftOutMessage(
 }
 
 /** The TURN url the check asks, with what it presents there. */
-export interface RelayCheckTarget {
-  server: RunTurnServer;
-  transport: RelayTransport;
+export interface RelayCheckTarget extends RelayCheckContact {
   iceServer: RTCIceServer;
 }
 
-/** The registrar `invitation_relay` names, and whether a run enrolls there. */
-export interface RelayCheckRegistrar {
-  url: string;
-  /** `runEnrollsAtInvitationRegistrar` for the configuration. */
-  contacted: boolean;
-}
-
-/** What the check contacts, and what a run lists that it does not. */
-export interface RelayCheckPlan {
-  /** The first TURN url a run lists: the one it allocates on. */
+/** Core's plan, with what the check presents to the url it asks. */
+export interface RelayCheckPlan extends RelayCheckHostPlan {
   contacted: RelayCheckTarget;
-  /** Every later TURN url a run lists, in its order; none is contacted. */
-  notContacted: RunTurnServer[];
-  /** Every TURN url `allowed_relays` left out; none is contacted. */
-  leftOut: RunTurnServer[];
-  /** Absent where the configuration's `invitation_relay` names no registrar. */
-  registrar?: RelayCheckRegistrar;
 }
 
 /**
@@ -113,18 +92,6 @@ export type RelayCandidateGathering = (
   server: RTCIceServer,
   signal: AbortSignal,
 ) => Promise<boolean>;
-
-/**
- * The transport a TURN url names, read as the ICE layer reads it: `turns:` is
- * TLS, `turn:` is TCP where its first `transport` parameter says `tcp`, and
- * UDP otherwise.
- */
-export function turnUrlTransport(url: string): RelayTransport {
-  if (url.startsWith("turns:")) return "tls";
-  const queryStart = url.indexOf("?");
-  const query = queryStart === -1 ? "" : url.slice(queryStart + 1);
-  return new URLSearchParams(query).get("transport") === "tcp" ? "tcp" : "udp";
-}
 
 /**
  * The connection the check applies to, refusing one it does not: one that is
@@ -151,10 +118,9 @@ export function relayCheckConnection(
 }
 
 /**
- * What the check contacts for `connection`, as a run of it does: the first
- * TURN url the run lists, presented the entry's static pair or else the
- * credential the run mints, and the invitation's registrar where the run
- * enrolls there.
+ * What the check contacts for `connection` ({@link relayCheckHostPlan}), with
+ * what it presents to the first TURN url: the entry's static pair or else the
+ * credential the run mints.
  *
  * @throws {Error} if the connection lists no TURN url, which
  *   {@link relayCheckConnection} refuses first.
@@ -163,142 +129,34 @@ export function relayCheckPlan(
   connection: RunRelayConnection,
   runRelayCredential: RelayCredential | undefined,
 ): RelayCheckPlan {
-  const { turn, turnLeftOut } = selectRunRelay(connection);
-  const [first, ...rest] = turn ?? [];
-  if (first === undefined)
-    throw new InternalConsistencyError(
-      "relayCheckPlan: the relay check was given no TURN url",
-    );
-  const registrar = connection.invitationRelay?.registrar;
+  const plan = relayCheckHostPlan(connection);
   return {
+    ...plan,
     contacted: {
-      server: first,
-      transport: turnUrlTransport(first.url),
-      iceServer: turnIceServer(first, runRelayCredential),
+      ...plan.contacted,
+      iceServer: turnIceServer(plan.contacted.server, runRelayCredential),
     },
-    notContacted: rest,
-    leftOut: turnLeftOut ?? [],
-    ...(registrar !== undefined && {
-      registrar: {
-        url: registrar,
-        contacted: runEnrollsAtInvitationRegistrar(connection),
-      },
-    }),
   };
 }
 
-// werift retries a failed UDP allocation over TCP to the same host and port,
-// for a url naming `?transport=udp` as for one naming no transport
-// (test/integration/webrtc/doctorRelayGathering.test.ts).
-const TRANSPORT_LABEL: Record<RelayTransport, string> = {
-  udp: "UDP, then TCP",
-  tcp: "TCP",
-  tls: "TLS",
-};
-
-function sourceLabel(server: RunTurnServer): string {
-  return server.source === "invitation"
-    ? "from your partner's invitation"
-    : "from connection.turn";
-}
-
-const LATER_URL_NOT_CONTACTED =
-  "a run allocates on the first TURN url it lists alone";
-
-const REGISTRAR_NAMED = "The relay registrar your partner's invitation names";
-
-function capitalized(sentence: string): string {
-  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
-}
-
-/** Why a run of the configuration does not enroll at the registrar. */
-function registrarNotContactedReason(plan: RelayCheckPlan): string {
-  const listed = [plan.contacted.server, ...plan.notContacted];
-  if (
-    plan.leftOut.some((server) => server.source === "invitation") &&
-    !listed.some((server) => server.source === "invitation")
-  )
-    return "connection.allowed_relays leaves out the relay it names";
-  return plan.contacted.server.credential !== undefined
-    ? "the relay it allocates on is sent its connection.turn entry's own " +
-        "credential"
-    : "the relay it allocates on is not one the invitation names";
-}
-
-function transportAndSource(server: RunTurnServer): string {
-  return `over ${TRANSPORT_LABEL[turnUrlTransport(server.url)]}, ${sourceLabel(server)}`;
-}
-
 /**
- * The lines printed before any request: the hosts the check contacts, then
- * each host the configuration names that a run of it, and so the check, does
- * not contact, with the reason. Raw: the urls and the registrar are
- * configuration text, escaped where the lines are shown. Each host is alone
- * on its line, so a host longer than the display bound loses only its own
- * tail; its transport, source and explanation are on the lines below it,
- * every one short of that bound.
+ * The record of `check`, its summary the headline core composes from the
+ * check's own `--json` fields.
  */
-export function relayHostStatement(
-  plan: RelayCheckPlan,
-  connection: Pick<WebRTCConnectionConfig, "invitationRelay">,
-): string[] {
-  const { contacted, notContacted, leftOut, registrar } = plan;
-  const lines = [
-    "This check contacts these hosts, as a run of this configuration does:",
-    `  ${contacted.server.url}`,
-    `    The relay a run allocates on, ${transportAndSource(contacted.server)}. ` +
-      "The check asks it for a relay address, sending the credential a run " +
-      "sends there.",
-    "    Whoever runs that relay learns this machine's network address.",
-  ];
-  if (registrar?.contacted === true)
-    lines.push(
-      `  ${registrar.url}`,
-      `    ${REGISTRAR_NAMED}. Before it asks the relay, the check enrolls ` +
-        "this exchange's relay key there, as a run does just before it " +
-        "connects.",
-      "    Whoever runs that registrar learns this machine's network address.",
+function withHeadline(
+  check: DoctorCheck,
+  options?: RelayCheckHeadlineOptions,
+): DoctorCheckRecord {
+  const summary = relayCheckHeadline(check, options);
+  if (summary === undefined)
+    throw new InternalConsistencyError(
+      `the relay check composed no headline for its ${check.id} check`,
     );
-  const skippedRegistrar =
-    registrar?.contacted === false ? registrar : undefined;
-  if (
-    notContacted.length > 0 ||
-    leftOut.length > 0 ||
-    skippedRegistrar !== undefined
-  )
-    lines.push(
-      "It does not contact these hosts, because a run of this configuration " +
-        "does not:",
-      ...notContacted.flatMap((server) => [
-        `  ${server.url}`,
-        `    ${capitalized(transportAndSource(server))}. ` +
-          `${capitalized(LATER_URL_NOT_CONTACTED)}.`,
-      ]),
-      ...leftOut.flatMap((server) => [
-        `  ${server.url}`,
-        `    ${capitalized(transportAndSource(server))}. ` +
-          `${capitalized(LEFT_OUT_BY_ALLOWED_RELAYS)}.`,
-      ]),
-      ...(skippedRegistrar === undefined
-        ? []
-        : [
-            `  ${skippedRegistrar.url}`,
-            `    ${REGISTRAR_NAMED}. A run does not enroll there, because ` +
-              `${registrarNotContactedReason(plan)}.`,
-          ]),
-    );
-  lines.push(
-    connection.invitationRelay !== undefined && registrar === undefined
-      ? "It contacts nothing else. This configuration's invitation_relay " +
-          "names no relay registrar, so it contacts none and enrolls nothing."
-      : "It contacts nothing else.",
-    "",
-  );
-  return lines;
+  return { ...check, summary };
 }
 
 /** The id of the enrollment's check line. */
-export const ENROLLMENT_CHECK_ID = "enrollment";
+export const ENROLLMENT_CHECK_ID = RELAY_CHECK_ENROLLMENT_ID;
 
 /**
  * The enrollment the check made at the invitation relay's registrar before
@@ -353,20 +211,21 @@ export function enrollmentCheckRecord(
 ): DoctorCheckRecord {
   const { registrar, outcome } = enrollment;
   if (outcome.kind === "enrolled")
-    return ok(
-      ENROLLMENT_CHECK_ID,
-      `${invitationRelayEnrolledNotice(registrar, outcome.lapsesAt)}.`,
-      {
-        registrar,
-        ...(outcome.lapsesAt !== null && { lapses_at: outcome.lapsesAt }),
-      },
-    );
-  return warn(
-    ENROLLMENT_CHECK_ID,
-    invitationRelayNotEnrolledStatement(registrar, outcome.detail),
-    ENROLLMENT_FAILED_MEANING,
-    ENROLLMENT_FAILED_ACTION,
-    { registrar },
+    return withHeadline({
+      id: ENROLLMENT_CHECK_ID,
+      status: "ok",
+      registrar,
+      ...(outcome.lapsesAt !== null && { lapses_at: outcome.lapsesAt }),
+    });
+  return withHeadline(
+    {
+      id: ENROLLMENT_CHECK_ID,
+      status: "warn",
+      meaning: ENROLLMENT_FAILED_MEANING,
+      action: ENROLLMENT_FAILED_ACTION,
+      registrar,
+    },
+    { registrarAnswer: outcome.detail },
   );
 }
 
@@ -377,18 +236,15 @@ function registrarNotContactedRecord(plan: RelayCheckPlan): DoctorCheckRecord {
     throw new InternalConsistencyError(
       "registrarNotContactedRecord: the configuration names no registrar",
     );
-  return skipped(
-    ENROLLMENT_CHECK_ID,
-    `the relay registrar at ${registrar} that your partner's invitation ` +
-      "names: not contacted.",
-    {
-      meaning:
-        "a run of this configuration does not enroll at this registrar, " +
-        `because ${registrarNotContactedReason(plan)}, so the check does ` +
-        "not contact it.",
-      registrar,
-    },
-  );
+  return withHeadline({
+    id: ENROLLMENT_CHECK_ID,
+    status: "skipped",
+    meaning:
+      "a run of this configuration does not enroll at this registrar, " +
+      `because ${registrarNotContactedReason(plan)}, so the check does ` +
+      "not contact it.",
+    registrar,
+  });
 }
 
 const NOT_REACHED_MEANING =
@@ -421,42 +277,36 @@ function notReachedMeaning(
   );
 }
 
-function boundSeconds(boundMs: number): string {
-  return `${Math.round(boundMs / 1000)} s`;
-}
-
 /**
  * The check record of the relay a run allocates on, given whether a relay
  * candidate came back and the enrollment made before it was asked, if any.
  */
 export function relayCheckRecord(
-  target: RelayCheckTarget,
+  target: RelayCheckContact,
   relayGathered: boolean,
   boundMs: number = RELAY_CHECK_BOUND_MS,
   enrollment?: RelayCheckEnrollment,
 ): DoctorCheckRecord {
   const id = "turn_1";
   const { server, transport } = target;
-  const heading = `${server.url} over ${TRANSPORT_LABEL[transport]}, the relay a run allocates on`;
-  const located = { url: server.url, transport };
   if (relayGathered)
-    return ok(
+    return withHeadline({ id, status: "ok", url: server.url, transport });
+  return withHeadline(
+    {
       id,
-      `${heading}: reached; the relay gave a relay address.`,
-      located,
-    );
-  return fail(
-    id,
-    `${heading}: ${NO_RELAY_CANDIDATE_GATHERED} within ${boundSeconds(boundMs)}.`,
-    notReachedMeaning(server, enrollment),
-    RELAY_NOT_REACHED_REMEDY,
-    located,
+      status: "fail",
+      meaning: notReachedMeaning(server, enrollment),
+      action: RELAY_NOT_REACHED_REMEDY,
+      url: server.url,
+      transport,
+    },
+    { boundMs },
   );
 }
 
 const LATER_URL_NOT_CONTACTED_MEANING =
   `a run of this configuration does not contact this relay: ` +
-  `${LATER_URL_NOT_CONTACTED}, so the check does not ask it.`;
+  `${LATER_TURN_URL_NOT_CONTACTED}, so the check does not ask it.`;
 
 /** What to do about a later url the check did not contact. */
 export const NOT_CONTACTED_ACTION =
@@ -467,16 +317,15 @@ function laterUrlRecord(
   server: RunTurnServer,
   index: number,
 ): DoctorCheckRecord {
-  return skipped(
-    `turn_${index + 2}`,
-    `${server.url}, listed after the relay a run allocates on: not contacted.`,
-    {
-      meaning: LATER_URL_NOT_CONTACTED_MEANING,
-      action: NOT_CONTACTED_ACTION,
-      url: server.url,
-      transport: turnUrlTransport(server.url),
-    },
-  );
+  const id = `turn_${index + 2}`;
+  return withHeadline({
+    id,
+    status: "skipped",
+    meaning: LATER_URL_NOT_CONTACTED_MEANING,
+    action: NOT_CONTACTED_ACTION,
+    url: server.url,
+    transport: turnUrlTransport(server.url),
+  });
 }
 
 /**

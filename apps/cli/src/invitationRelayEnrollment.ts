@@ -7,6 +7,9 @@
 
 import {
   enrollRelayKeyWithinWait,
+  INVITATION_RELAY_ENROLLMENT_WAIT_MS,
+  invitationRelayEnrolledNotice,
+  invitationRelayNotEnrolledStatement,
   redactAndSanitizeForDisplay,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
 } from "@alcove/core";
@@ -14,14 +17,11 @@ import type { RelayEnrollmentWithinWait } from "@alcove/core";
 
 import type { EventStreamEmitter } from "./eventStream";
 
-/**
- * How long a run waits for its enrollment at the invitation relay's registrar
- * before it dials without it. An arbitrary working value, the browser's own
- * (`DEFAULT_RELAY_DIAL_WAIT_MS` in apps/web): a registrar that is up answers
- * one HTTPS request well inside it, and one that is down or slow costs a run
- * no more than this.
- */
-export const INVITATION_RELAY_ENROLLMENT_WAIT_MS = 3_000;
+export {
+  INVITATION_RELAY_ENROLLMENT_WAIT_MS,
+  invitationRelayEnrolledNotice,
+  invitationRelayNotEnrolledStatement,
+};
 
 /** What one enrollment at the invitation relay's registrar came to. */
 export type InvitationRelayEnrollment = RelayEnrollmentWithinWait;
@@ -49,41 +49,6 @@ export function enrollAtInvitationRelay(
   return enrollRelayKeyWithinWait(
     { registrarUrl, sharedSecret },
     { waitMs: INVITATION_RELAY_ENROLLMENT_WAIT_MS, ...dependencies },
-  );
-}
-
-/** The registrar as a message names it: its origin alone. */
-function registrarOrigin(registrarUrl: string): string {
-  return new URL(registrarUrl).origin;
-}
-
-/**
- * The line a run states when the invitation relay's registrar enrolls the
- * exchange, with the lapse the registrar states. Composed raw, as the warning
- * below is.
- */
-export function invitationRelayEnrolledNotice(
-  registrarUrl: string,
-  lapsesAt: string | null,
-): string {
-  const lapse = lapsesAt === null ? "" : `, until ${lapsesAt}`;
-  return (
-    `the relay registrar at ${registrarOrigin(registrarUrl)} that your ` +
-    `partner's invitation names enrolled this exchange${lapse}`
-  );
-}
-
-/**
- * The first sentence of {@link invitationRelayNotEnrolledWarning}: the
- * registrar and what it answered.
- */
-export function invitationRelayNotEnrolledStatement(
-  registrarUrl: string,
-  detail: string,
-): string {
-  return (
-    `the relay registrar at ${registrarOrigin(registrarUrl)} that your ` +
-    `partner's invitation names did not enroll this exchange (${detail}).`
   );
 }
 

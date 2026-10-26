@@ -1,0 +1,240 @@
+{
+  "enrolledAndReached": {
+    "statement": [
+      "This check contacts these hosts, as a run of this configuration does:",
+      "  turns:relay.example.org:443?transport=tcp",
+      "    The relay a run allocates on, over TLS, from your partner's invitation. The check asks it for a relay address, sending the credential a run sends there.",
+      "    Whoever runs that relay learns this machine's network address.",
+      "  https://registrar.example.org",
+      "    The relay registrar your partner's invitation names. Before it asks the relay, the check enrolls this exchange's relay key there, as a run does just before it connects.",
+      "    Whoever runs that registrar learns this machine's network address.",
+      "It does not contact these hosts, because a run of this configuration does not:",
+      "  turn:relay-2.example.org:3478",
+      "    Over UDP, then TCP, from your partner's invitation. A run allocates on the first TURN url it lists alone.",
+      "It contacts nothing else.",
+      ""
+    ],
+    "lines": [
+      "OK: the relay registrar at https://registrar.example.org that your partner's invitation names enrolled this exchange, until 2026-01-01T01:10:00Z.",
+      "OK: turns:relay.example.org:443?transport=tcp over TLS, the relay a run allocates on: reached; the relay gave a relay address.",
+      "SKIP: turn:relay-2.example.org:3478, listed after the relay a run allocates on: not contacted.",
+      "MEANING: a run of this configuration does not contact this relay: a run",
+      "         allocates on the first TURN url it lists alone, so the check does",
+      "         not ask it.",
+      "ACTION:  If this relay should be the one a run allocates on, list it first",
+      "         under connection.turn and run this check again.",
+      "",
+      "ALL CHECKS PASSED"
+    ],
+    "json": "{\"version\":1,\"mode\":\"relay\",\"overall\":\"ok\",\"checks\":[{\"id\":\"enrollment\",\"status\":\"ok\",\"registrar\":\"https://registrar.example.org\",\"lapses_at\":\"2026-01-01T01:10:00Z\"},{\"id\":\"turn_1\",\"status\":\"ok\",\"url\":\"turns:relay.example.org:443?transport=tcp\",\"transport\":\"tls\"},{\"id\":\"turn_2\",\"status\":\"skipped\",\"meaning\":\"a run of this configuration does not contact this relay: a run allocates on the first TURN url it lists alone, so the check does not ask it.\",\"action\":\"If this relay should be the one a run allocates on, list it first under connection.turn and run this check again.\",\"url\":\"turn:relay-2.example.org:3478\",\"transport\":\"udp\"}]}"
+  },
+  "refusedEnrollmentNotReached": {
+    "statement": [
+      "This check contacts these hosts, as a run of this configuration does:",
+      "  turns:relay.example.org:443?transport=tcp",
+      "    The relay a run allocates on, over TLS, from your partner's invitation. The check asks it for a relay address, sending the credential a run sends there.",
+      "    Whoever runs that relay learns this machine's network address.",
+      "  https://registrar.example.org",
+      "    The relay registrar your partner's invitation names. Before it asks the relay, the check enrolls this exchange's relay key there, as a run does just before it connects.",
+      "    Whoever runs that registrar learns this machine's network address.",
+      "It does not contact these hosts, because a run of this configuration does not:",
+      "  turn:relay-2.example.org:3478",
+      "    Over UDP, then TCP, from your partner's invitation. A run allocates on the first TURN url it lists alone.",
+      "It contacts nothing else.",
+      ""
+    ],
+    "lines": [
+      "WARN: the relay registrar at https://registrar.example.org that your partner's invitation names did not enroll this exchange (HTTP 409: no).",
+      "MEANING: the registrar did not record this exchange's relay key. A run makes",
+      "         this same enrollment just before it connects, because it uses a",
+      "         TURN relay or a WebSocket relay that your partner's invitation",
+      "         names.",
+      "ACTION:  Run this check again. If the enrollment keeps failing, ask your",
+      "         partner whether the relay registrar their invitation names is up. A",
+      "         run goes on without this enrollment, but the relay your partner's",
+      "         invitation names refuses the run's credential until either of you",
+      "         enrolls the exchange there.",
+      "FAIL: turns:relay.example.org:443?transport=tcp over TLS, the relay a run allocates on: no relay candidate gathered within 30 s.",
+      "MEANING: nothing on this host reached this relay, the relay refused the",
+      "         credential, or it presented a certificate this host does not trust;",
+      "         the reason is not reported, so the check cannot tell which. The",
+      "         likely cause is the failed enrollment above: this relay refuses the",
+      "         credential derived from the exchange's shared secret until the",
+      "         exchange's relay key is enrolled at its registrar.",
+      "ACTION:  Fix the relay, or arrange a direct path; waiting longer changes",
+      "         nothing.",
+      "SKIP: turn:relay-2.example.org:3478, listed after the relay a run allocates on: not contacted.",
+      "MEANING: a run of this configuration does not contact this relay: a run",
+      "         allocates on the first TURN url it lists alone, so the check does",
+      "         not ask it.",
+      "ACTION:  If this relay should be the one a run allocates on, list it first",
+      "         under connection.turn and run this check again.",
+      "",
+      "NOT READY YET -- follow the ACTION lines above and run this again."
+    ],
+    "json": "{\"version\":1,\"mode\":\"relay\",\"overall\":\"fix_and_retry\",\"checks\":[{\"id\":\"enrollment\",\"status\":\"warn\",\"meaning\":\"the registrar did not record this exchange's relay key. A run makes this same enrollment just before it connects, because it uses a TURN relay or a WebSocket relay that your partner's invitation names.\",\"action\":\"Run this check again. If the enrollment keeps failing, ask your partner whether the relay registrar their invitation names is up. A run goes on without this enrollment, but the relay your partner's invitation names refuses the run's credential until either of you enrolls the exchange there.\",\"registrar\":\"https://registrar.example.org\"},{\"id\":\"turn_1\",\"status\":\"fail\",\"meaning\":\"nothing on this host reached this relay, the relay refused the credential, or it presented a certificate this host does not trust; the reason is not reported, so the check cannot tell which. The likely cause is the failed enrollment above: this relay refuses the credential derived from the exchange's shared secret until the exchange's relay key is enrolled at its registrar.\",\"action\":\"Fix the relay, or arrange a direct path; waiting longer changes nothing.\",\"url\":\"turns:relay.example.org:443?transport=tcp\",\"transport\":\"tls\"},{\"id\":\"turn_2\",\"status\":\"skipped\",\"meaning\":\"a run of this configuration does not contact this relay: a run allocates on the first TURN url it lists alone, so the check does not ask it.\",\"action\":\"If this relay should be the one a run allocates on, list it first under connection.turn and run this check again.\",\"url\":\"turn:relay-2.example.org:3478\",\"transport\":\"udp\"}]}"
+  },
+  "enrolledWithoutLapseNotReached": {
+    "statement": [
+      "This check contacts these hosts, as a run of this configuration does:",
+      "  turns:relay.example.org:443?transport=tcp",
+      "    The relay a run allocates on, over TLS, from your partner's invitation. The check asks it for a relay address, sending the credential a run sends there.",
+      "    Whoever runs that relay learns this machine's network address.",
+      "  https://registrar.example.org",
+      "    The relay registrar your partner's invitation names. Before it asks the relay, the check enrolls this exchange's relay key there, as a run does just before it connects.",
+      "    Whoever runs that registrar learns this machine's network address.",
+      "It does not contact these hosts, because a run of this configuration does not:",
+      "  turn:relay-2.example.org:3478",
+      "    Over UDP, then TCP, from your partner's invitation. A run allocates on the first TURN url it lists alone.",
+      "It contacts nothing else.",
+      ""
+    ],
+    "lines": [
+      "OK: the relay registrar at https://registrar.example.org that your partner's invitation names enrolled this exchange.",
+      "FAIL: turns:relay.example.org:443?transport=tcp over TLS, the relay a run allocates on: no relay candidate gathered within 30 s.",
+      "MEANING: nothing on this host reached this relay, the relay refused the",
+      "         credential, or it presented a certificate this host does not trust;",
+      "         the reason is not reported, so the check cannot tell which.",
+      "ACTION:  Fix the relay, or arrange a direct path; waiting longer changes",
+      "         nothing.",
+      "SKIP: turn:relay-2.example.org:3478, listed after the relay a run allocates on: not contacted.",
+      "MEANING: a run of this configuration does not contact this relay: a run",
+      "         allocates on the first TURN url it lists alone, so the check does",
+      "         not ask it.",
+      "ACTION:  If this relay should be the one a run allocates on, list it first",
+      "         under connection.turn and run this check again.",
+      "",
+      "NOT READY YET -- follow the ACTION lines above and run this again."
+    ],
+    "json": "{\"version\":1,\"mode\":\"relay\",\"overall\":\"fix_and_retry\",\"checks\":[{\"id\":\"enrollment\",\"status\":\"ok\",\"registrar\":\"https://registrar.example.org\"},{\"id\":\"turn_1\",\"status\":\"fail\",\"meaning\":\"nothing on this host reached this relay, the relay refused the credential, or it presented a certificate this host does not trust; the reason is not reported, so the check cannot tell which.\",\"action\":\"Fix the relay, or arrange a direct path; waiting longer changes nothing.\",\"url\":\"turns:relay.example.org:443?transport=tcp\",\"transport\":\"tls\"},{\"id\":\"turn_2\",\"status\":\"skipped\",\"meaning\":\"a run of this configuration does not contact this relay: a run allocates on the first TURN url it lists alone, so the check does not ask it.\",\"action\":\"If this relay should be the one a run allocates on, list it first under connection.turn and run this check again.\",\"url\":\"turn:relay-2.example.org:3478\",\"transport\":\"udp\"}]}"
+  },
+  "ownFirstNotReached": {
+    "statement": [
+      "This check contacts these hosts, as a run of this configuration does:",
+      "  turn:own-relay.example.org:3478?transport=tcp",
+      "    The relay a run allocates on, over TCP, from connection.turn. The check asks it for a relay address, sending the credential a run sends there.",
+      "    Whoever runs that relay learns this machine's network address.",
+      "It does not contact these hosts, because a run of this configuration does not:",
+      "  turn:static-relay.example.org:3478",
+      "    Over UDP, then TCP, from connection.turn. A run allocates on the first TURN url it lists alone.",
+      "  turns:relay.example.org:443?transport=tcp",
+      "    Over TLS, from your partner's invitation. A run allocates on the first TURN url it lists alone.",
+      "  https://registrar.example.org",
+      "    The relay registrar your partner's invitation names. A run does not enroll there, because the relay it allocates on is not one the invitation names.",
+      "It contacts nothing else.",
+      ""
+    ],
+    "lines": [
+      "SKIP: the relay registrar at https://registrar.example.org that your partner's invitation names: not contacted.",
+      "MEANING: a run of this configuration does not enroll at this registrar,",
+      "         because the relay it allocates on is not one the invitation names,",
+      "         so the check does not contact it.",
+      "FAIL: turn:own-relay.example.org:3478?transport=tcp over TCP, the relay a run allocates on: no relay candidate gathered within 30 s.",
+      "MEANING: nothing on this host reached this relay, the relay refused the",
+      "         credential, or it presented a certificate this host does not trust;",
+      "         the reason is not reported, so the check cannot tell which. A relay",
+      "         that takes enrolled keys refuses the credential derived from the",
+      "         exchange's shared secret until the exchange's relay key is enrolled",
+      "         there with alcove enroll-relay.",
+      "ACTION:  Fix the relay, or arrange a direct path; waiting longer changes",
+      "         nothing.",
+      "SKIP: turn:static-relay.example.org:3478, listed after the relay a run allocates on: not contacted.",
+      "SKIP: turns:relay.example.org:443?transport=tcp, listed after the relay a run allocates on: not contacted.",
+      "MEANING: a run of this configuration does not contact this relay: a run",
+      "         allocates on the first TURN url it lists alone, so the check does",
+      "         not ask it.",
+      "ACTION:  If this relay should be the one a run allocates on, list it first",
+      "         under connection.turn and run this check again.",
+      "",
+      "NOT READY YET -- follow the ACTION lines above and run this again."
+    ],
+    "json": "{\"version\":1,\"mode\":\"relay\",\"overall\":\"fix_and_retry\",\"checks\":[{\"id\":\"enrollment\",\"status\":\"skipped\",\"meaning\":\"a run of this configuration does not enroll at this registrar, because the relay it allocates on is not one the invitation names, so the check does not contact it.\",\"registrar\":\"https://registrar.example.org\"},{\"id\":\"turn_1\",\"status\":\"fail\",\"meaning\":\"nothing on this host reached this relay, the relay refused the credential, or it presented a certificate this host does not trust; the reason is not reported, so the check cannot tell which. A relay that takes enrolled keys refuses the credential derived from the exchange's shared secret until the exchange's relay key is enrolled there with alcove enroll-relay.\",\"action\":\"Fix the relay, or arrange a direct path; waiting longer changes nothing.\",\"url\":\"turn:own-relay.example.org:3478?transport=tcp\",\"transport\":\"tcp\"},{\"id\":\"turn_2\",\"status\":\"skipped\",\"meaning\":\"a run of this configuration does not contact this relay: a run allocates on the first TURN url it lists alone, so the check does not ask it.\",\"action\":\"If this relay should be the one a run allocates on, list it first under connection.turn and run this check again.\",\"url\":\"turn:static-relay.example.org:3478\",\"transport\":\"udp\"},{\"id\":\"turn_3\",\"status\":\"skipped\",\"meaning\":\"a run of this configuration does not contact this relay: a run allocates on the first TURN url it lists alone, so the check does not ask it.\",\"action\":\"If this relay should be the one a run allocates on, list it first under connection.turn and run this check again.\",\"url\":\"turns:relay.example.org:443?transport=tcp\",\"transport\":\"tls\"}]}"
+  },
+  "staticFirstReached": {
+    "statement": [
+      "This check contacts these hosts, as a run of this configuration does:",
+      "  turns:relay.example.org:443?transport=tcp",
+      "    The relay a run allocates on, over TLS, from connection.turn. The check asks it for a relay address, sending the credential a run sends there.",
+      "    Whoever runs that relay learns this machine's network address.",
+      "It does not contact these hosts, because a run of this configuration does not:",
+      "  https://registrar.example.org",
+      "    The relay registrar your partner's invitation names. A run does not enroll there, because the relay it allocates on is sent its connection.turn entry's own credential.",
+      "It contacts nothing else.",
+      ""
+    ],
+    "lines": [
+      "SKIP: the relay registrar at https://registrar.example.org that your partner's invitation names: not contacted.",
+      "MEANING: a run of this configuration does not enroll at this registrar,",
+      "         because the relay it allocates on is sent its connection.turn",
+      "         entry's own credential, so the check does not contact it.",
+      "OK: turns:relay.example.org:443?transport=tcp over TLS, the relay a run allocates on: reached; the relay gave a relay address.",
+      "",
+      "ALL CHECKS PASSED"
+    ],
+    "json": "{\"version\":1,\"mode\":\"relay\",\"overall\":\"ok\",\"checks\":[{\"id\":\"enrollment\",\"status\":\"skipped\",\"meaning\":\"a run of this configuration does not enroll at this registrar, because the relay it allocates on is sent its connection.turn entry's own credential, so the check does not contact it.\",\"registrar\":\"https://registrar.example.org\"},{\"id\":\"turn_1\",\"status\":\"ok\",\"url\":\"turns:relay.example.org:443?transport=tcp\",\"transport\":\"tls\"}]}"
+  },
+  "invitationRelayLeftOut": {
+    "statement": [
+      "This check contacts these hosts, as a run of this configuration does:",
+      "  turn:own-relay.example.org:3478?transport=tcp",
+      "    The relay a run allocates on, over TCP, from connection.turn. The check asks it for a relay address, sending the credential a run sends there.",
+      "    Whoever runs that relay learns this machine's network address.",
+      "It does not contact these hosts, because a run of this configuration does not:",
+      "  turns:relay.example.org:443?transport=tcp",
+      "    Over TLS, from your partner's invitation. Left out by connection.allowed_relays.",
+      "  https://registrar.example.org",
+      "    The relay registrar your partner's invitation names. A run does not enroll there, because connection.allowed_relays leaves out the relay it names.",
+      "It contacts nothing else.",
+      ""
+    ],
+    "lines": [
+      "SKIP: the relay registrar at https://registrar.example.org that your partner's invitation names: not contacted.",
+      "MEANING: a run of this configuration does not enroll at this registrar,",
+      "         because connection.allowed_relays leaves out the relay it names, so",
+      "         the check does not contact it.",
+      "OK: turn:own-relay.example.org:3478?transport=tcp over TCP, the relay a run allocates on: reached; the relay gave a relay address.",
+      "",
+      "ALL CHECKS PASSED"
+    ],
+    "json": "{\"version\":1,\"mode\":\"relay\",\"overall\":\"ok\",\"checks\":[{\"id\":\"enrollment\",\"status\":\"skipped\",\"meaning\":\"a run of this configuration does not enroll at this registrar, because connection.allowed_relays leaves out the relay it names, so the check does not contact it.\",\"registrar\":\"https://registrar.example.org\"},{\"id\":\"turn_1\",\"status\":\"ok\",\"url\":\"turn:own-relay.example.org:3478?transport=tcp\",\"transport\":\"tcp\"}]}"
+  },
+  "noRegistrarNotReached": {
+    "statement": [
+      "This check contacts these hosts, as a run of this configuration does:",
+      "  turns:relay.example.org:443?transport=tcp",
+      "    The relay a run allocates on, over TLS, from your partner's invitation. The check asks it for a relay address, sending the credential a run sends there.",
+      "    Whoever runs that relay learns this machine's network address.",
+      "It contacts nothing else. This configuration's invitation_relay names no relay registrar, so it contacts none and enrolls nothing.",
+      ""
+    ],
+    "lines": [
+      "FAIL: turns:relay.example.org:443?transport=tcp over TLS, the relay a run allocates on: no relay candidate gathered within 30 s.",
+      "MEANING: nothing on this host reached this relay, the relay refused the",
+      "         credential, or it presented a certificate this host does not trust;",
+      "         the reason is not reported, so the check cannot tell which. This",
+      "         relay refuses the credential derived from the exchange's shared",
+      "         secret until the exchange's relay key is enrolled there.",
+      "ACTION:  Fix the relay, or arrange a direct path; waiting longer changes",
+      "         nothing.",
+      "",
+      "NOT READY YET -- follow the ACTION lines above and run this again."
+    ],
+    "json": "{\"version\":1,\"mode\":\"relay\",\"overall\":\"fix_and_retry\",\"checks\":[{\"id\":\"turn_1\",\"status\":\"fail\",\"meaning\":\"nothing on this host reached this relay, the relay refused the credential, or it presented a certificate this host does not trust; the reason is not reported, so the check cannot tell which. This relay refuses the credential derived from the exchange's shared secret until the exchange's relay key is enrolled there.\",\"action\":\"Fix the relay, or arrange a direct path; waiting longer changes nothing.\",\"url\":\"turns:relay.example.org:443?transport=tcp\",\"transport\":\"tls\"}]}"
+  },
+  "ownOnlyReached": {
+    "statement": [
+      "This check contacts these hosts, as a run of this configuration does:",
+      "  turn:own-relay.example.org:3478?transport=tcp",
+      "    The relay a run allocates on, over TCP, from connection.turn. The check asks it for a relay address, sending the credential a run sends there.",
+      "    Whoever runs that relay learns this machine's network address.",
+      "It contacts nothing else.",
+      ""
+    ],
+    "lines": [
+      "OK: turn:own-relay.example.org:3478?transport=tcp over TCP, the relay a run allocates on: reached; the relay gave a relay address.",
+      "",
+      "ALL CHECKS PASSED"
+    ],
+    "json": "{\"version\":1,\"mode\":\"relay\",\"overall\":\"ok\",\"checks\":[{\"id\":\"turn_1\",\"status\":\"ok\",\"url\":\"turn:own-relay.example.org:3478?transport=tcp\",\"transport\":\"tcp\"}]}"
+  }
+}
