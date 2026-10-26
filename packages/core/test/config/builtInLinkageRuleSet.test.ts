@@ -95,9 +95,6 @@ const unfrozenPathsWithin = (value: unknown, path: string): string[] => {
 describe("BUILT_IN_LINKAGE_RULE_SETS", () => {
   test("holds the set every path that authors nothing draws from", () => {
     expect(BUILT_IN_LINKAGE_RULE_SETS).toContain(DEFAULT_LINKAGE_RULE_SET);
-    expect(getDefaultLinkageTerms("Party A").linkageRuleSet).toStrictEqual(
-      DEFAULT_LINKAGE_RULE_SET.reference,
-    );
   });
 
   test("is frozen against an added or replaced set", () => {
@@ -282,24 +279,21 @@ describe("findBuiltInLinkageRuleSet", () => {
 });
 
 describe("linkageTermsFromRuleSet", () => {
-  test("cites the set it drew from, with and without metadata", () => {
-    expect(getDefaultLinkageTerms("Party A").linkageRuleSet).toStrictEqual(
-      DEFAULT_LINKAGE_RULE_SET.reference,
+  test("cites no rule set, with and without metadata", () => {
+    expect(getDefaultLinkageTerms("Party A")).not.toHaveProperty(
+      "linkageRuleSet",
     );
     const metadata: Metadata = [
       col("s", "ssn"),
       col("l", "last_name"),
       col("d", "date_of_birth"),
     ];
-    expect(
-      getDefaultLinkageTerms("Party A", metadata).linkageRuleSet,
-    ).toStrictEqual(DEFAULT_LINKAGE_RULE_SET.reference);
+    expect(getDefaultLinkageTerms("Party A", metadata)).not.toHaveProperty(
+      "linkageRuleSet",
+    );
   });
 
-  test("cites the set even where the input narrows the emitted keys", () => {
-    // The citation is an upper bound on what was tried, not a claim that every
-    // key ran: a file with no first name drops the keys that need one, and the
-    // narrowed document still cites the set those keys came from.
+  test("narrows the emitted keys to a subset of the set where the input lacks a field", () => {
     const narrowed = getDefaultLinkageTerms("Party A", [
       col("s", "ssn"),
       col("l", "last_name"),
@@ -307,9 +301,6 @@ describe("linkageTermsFromRuleSet", () => {
     ]);
     expect(narrowed.linkageKeys.length).toBeLessThan(
       DEFAULT_LINKAGE_RULE_SET.linkageKeys.length,
-    );
-    expect(narrowed.linkageRuleSet).toStrictEqual(
-      DEFAULT_LINKAGE_RULE_SET.reference,
     );
     expect(isDrawnFromLinkageRuleSet(DEFAULT_LINKAGE_RULE_SET, narrowed)).toBe(
       true,
@@ -363,7 +354,7 @@ describe("linkageTermsFromRuleSet", () => {
     const terms = linkageTermsFromRuleSet(ruleSet, "Party A");
     expect(terms.linkageKeys).toEqual(ruleSet.linkageKeys);
     expect(terms.linkageFields).toEqual(ruleSet.linkageFields);
-    expect(terms.linkageRuleSet).toStrictEqual(ruleSet.reference);
+    expect(terms).not.toHaveProperty("linkageRuleSet");
   });
 
   test("a key is kept, its condition's field declared, where the columns lack that field", () => {
@@ -801,10 +792,6 @@ describe("the built-in citation resists mutation", () => {
         version: DEFAULT_LINKAGE_KEY_SET_VERSION,
       },
     });
-    // And a document derived after those attempts still cites the real set.
-    expect(getDefaultLinkageTerms("Party A").linkageRuleSet).toStrictEqual(
-      DEFAULT_LINKAGE_RULE_SET.reference,
-    );
   });
 
   test("the declared rules are frozen through their contents, arrays and members alike", () => {

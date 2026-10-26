@@ -12,11 +12,11 @@
  * - {@link ./advancedInviteValidation} -- the Generate gate, the import-refusal
  *   messages, and the notice that refuses nothing: a declared default value
  *   the run will not substitute.
- * - {@link ./linkageComparison} -- the rule-set membership compares taken over
- *   draft-side values, each pruning the explicitly-`undefined` optional
- *   properties core's strict canonical equality cannot read. A lint ban keeps
- *   the rest of `apps/web/src` off core's own predicates, so these four are the
- *   whole surface for those questions.
+ * - {@link ./linkageComparison} -- the key compare taken over draft-side
+ *   values, pruning the explicitly-`undefined` optional properties core's
+ *   strict canonical equality cannot read. A lint ban keeps the rest of
+ *   `apps/web/src` off core's own encoder, so it is the whole surface for that
+ *   question.
  */
 
 export type {
@@ -75,8 +75,4 @@ export {
   validateAdvancedInvite,
 } from "./advancedInviteValidation";
 
-export {
-  encodeKeyForComparison,
-  isDraftDrawnFromLinkageRuleSet,
-  linkageRuleSetReferenceForDraft,
-} from "../linkageComparison";
+export { encodeKeyForComparison } from "../linkageComparison";

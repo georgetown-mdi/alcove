@@ -11,13 +11,13 @@ import {
 } from "./eslint-strip-type-aware-layer.mjs";
 
 // Coverage of the linkage-compare chokepoint ban in apps/web/eslint.config.js:
-// the draft-side rule-set membership questions are asked through
+// the draft-side key compare is asked through
 // apps/web/src/psi/linkageComparison.ts, which prunes explicitly-`undefined`
 // optional properties before handing the value to core's strict canonical
-// compare, and nowhere else under apps/web/src. A direct import of core's
-// predicate skips the prune, and skips it silently -- the compare answers
-// `false` for draft rules that say exactly what the set says, dropping the
-// terms' rule-set citation rather than failing.
+// encoder, and nowhere else under apps/web/src. A direct import of core's
+// encoder skips the prune, and skips it silently -- the compare answers
+// `false` for a draft key that says exactly what an offered key says, dropping
+// its match rather than failing.
 //
 // The ban itself fails silently in the other direction: an import specifier or
 // import-name that stops matching keeps reporting zero problems, which reads the
@@ -59,7 +59,7 @@ async function importHits(filePath, source) {
 
 // The chokepoint, one of its src-side callers, and a test file. The test tree is
 // outside the ban by design: the suites that pin the prune's effect ask core's
-// strict predicate and the wrapper about the same key and compare the answers.
+// strict encoder and the wrapper about the same key and compare the answers.
 const CHOKEPOINT = resolve(repoRoot, "apps/web/src/psi/linkageComparison.ts");
 const WEB_SRC = resolve(
   repoRoot,
@@ -70,12 +70,8 @@ const WEB_TEST = resolve(
   "apps/web/test/unit/psi/guidedCatalogKeys.test.ts",
 );
 
-/** The core predicates the wrappers in linkageComparison.ts stand in front of. */
-const BANNED_NAMES = [
-  "encodeForComparison",
-  "isDrawnFromLinkageRuleSet",
-  "linkageRuleSetReferenceFor",
-];
+/** The core encoder the wrapper in linkageComparison.ts stands in front of. */
+const BANNED_NAMES = ["encodeForComparison"];
 
 // Loading the flat config and the typescript-eslint parser for the first time is
 // the expensive part of a lintText call, independent of which file or how much
@@ -159,12 +155,9 @@ describe("the linkage-compare chokepoint ban", { timeout: 60_000 }, () => {
   for (const [shape, source] of [
     [
       "a renamed import",
-      'import { linkageRuleSetReferenceFor as p } from "@alcove/core";',
+      'import { encodeForComparison as p } from "@alcove/core";',
     ],
-    [
-      "a re-export",
-      'export { linkageRuleSetReferenceFor } from "@alcove/core";',
-    ],
+    ["a re-export", 'export { encodeForComparison } from "@alcove/core";'],
     ["a namespace import", 'import * as core from "@alcove/core";'],
     ["a blanket re-export", 'export * from "@alcove/core";'],
   ]) {
@@ -182,7 +175,7 @@ describe("the linkage-compare chokepoint ban", { timeout: 60_000 }, () => {
     ).toHaveLength(0);
   });
 
-  it("accepts the wrappers through the advancedInvite barrel", async () => {
+  it("accepts the wrapper through the advancedInvite barrel", async () => {
     expect(
       await importHits(
         WEB_SRC,

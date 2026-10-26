@@ -4,20 +4,14 @@ import {
   decideLinkageTermsVerdict,
   getDefaultLinkageTerms,
   referencedLinkageFieldNames,
-  resolveLinkageRuleSetCitation,
 } from "@alcove/core";
 
-import {
-  isDraftDrawnFromLinkageRuleSet,
-  linkageRuleSetReferenceForDraft,
-} from "../linkageComparison";
 import { normalizeLinkageTermsText } from "../linkageTermsText";
 import { payloadSendForMetadata } from "../metadataEditing";
 
 import { outputForDirection } from "./advancedInviteTypes";
 
 import type {
-  BuiltInLinkageRuleSet,
   ExchangeDataSpec,
   LinkageField,
   LinkageKey,
@@ -36,9 +30,6 @@ import type { AdvancedInviteDraft, DraftKey } from "./advancedInviteTypes";
  * represents, and assemble the inviter's own {@link ExchangeDataSpec} from those
  * terms. Pure -- no validation. {@link validateAdvancedInvite} runs the built terms
  * through the core schema, which stays the single validation source.
- *
- * The rule-set citation an imported document keeps or loses is decided here too,
- * by {@link citationStands}.
  */
 
 /** Whether `constraints` is an empty object (`{}`) -- a present key declaring nothing.
@@ -187,43 +178,6 @@ function withColumnlessConditionFields(
 }
 
 /**
- * The rule set an imported citation is checked against, resolved one half at a time:
- * the rules a shipped set declares for that half where the citation names one of
- * them, otherwise the document's own claimed rules for that half. The two halves are
- * composed under the document's reference, and `isDraftDrawnFromLinkageRuleSet`
- * judges fields and keys independently.
- */
-function ruleSetForImportedCitation(
-  cited: BuiltInLinkageRuleSet,
-): BuiltInLinkageRuleSet {
-  const shipped = resolveLinkageRuleSetCitation(cited.reference);
-  return {
-    reference: cited.reference,
-    linkageFields: shipped.linkageFields ?? cited.linkageFields,
-    linkageKeys: shipped.linkageKeys ?? cited.linkageKeys,
-  };
-}
-
-/**
- * Whether `cited` is still re-emitted over `rules`.
- *
- * Keyless rules are excluded here rather than in the predicate: they are drawn
- * from every set vacuously, so `isDraftDrawnFromLinkageRuleSet` alone would
- * re-emit a citation over a document asserting provenance for no key. A draft can
- * reach and export from that state (every key disabled), so this makes the same
- * exclusion `linkageRuleSetReferenceForDraft` makes on the derived branch.
- */
-function citationStands(
-  cited: BuiltInLinkageRuleSet,
-  rules: Pick<LinkageTerms, "linkageFields" | "linkageKeys">,
-): boolean {
-  return (
-    rules.linkageKeys.length > 0 &&
-    isDraftDrawnFromLinkageRuleSet(ruleSetForImportedCitation(cited), rules)
-  );
-}
-
-/**
  * The payload the built terms state: the columns the draft's metadata sends,
  * each with the description a held document gives a column of that name, and
  * the held list of columns expected back. That list is left out where this
@@ -267,12 +221,6 @@ function payloadWithHeldSettings(
  * (mirroring `getDefaultLinkageTerms`), a condition's field no column supplies
  * declared as an imported document or the built-in fields declare it
  * ({@link columnlessConditionField}).
- *
- * The rule-set citation is re-decided against the built terms rather than
- * taken from the seed: an edited draft cites nothing, an unedited one still
- * cites the built-in set, and an IMPORTED draft re-emits its source document's
- * citation state for as long as the built rules are still drawn from the set it
- * names.
  *
  * A draft opened from a console configuration also re-emits the terms settings
  * it holds ({@link AdvancedInviteDraft.heldTermsSettings}): each imported
@@ -330,27 +278,6 @@ export function buildAdvancedTerms(draft: AdvancedInviteDraft): LinkageTerms {
     linkageFields,
     linkageKeys: enabledKeys,
   };
-
-  // The seed cites the built-in rule set; the draft may have edited its way out of
-  // it (a key reordered, a field renamed). Re-decide the citation against what
-  // this draft actually built rather than taking the seed's, so an edited draft
-  // never claims a provenance it does not have.
-  //
-  // An IMPORTED document's citation is held rather than re-derived: a document
-  // may cite a set this build does not ship, or decline to cite one at all, and
-  // re-deriving would relabel the first or stamp a provenance on the second. The
-  // import re-emits its own citation while the built rules are still drawn from
-  // the set it cited (ruleSetForImportedCitation, citationStands).
-  const importedCitation = draft.importedRuleSetCitation;
-  const ruleSetReference =
-    importedCitation === undefined
-      ? linkageRuleSetReferenceForDraft(terms)
-      : importedCitation.kind === "cited" &&
-          citationStands(importedCitation.ruleSet, terms)
-        ? importedCitation.ruleSet.reference
-        : undefined;
-  if (ruleSetReference !== undefined) terms.linkageRuleSet = ruleSetReference;
-  else delete terms.linkageRuleSet;
 
   // Author terms.payload.send from the columns the draft metadata discloses, via the
   // shared payloadSendForMetadata derivation the quick path also uses (so the two

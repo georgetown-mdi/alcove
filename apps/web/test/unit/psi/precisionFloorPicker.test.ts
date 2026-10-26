@@ -131,9 +131,6 @@ describe("the seeded draft", () => {
     expect(keyNames(editor)).toStrictEqual(
       catalogKeyNames(editor, DEFAULT_PRECISION_FLOOR_SELECTION),
     );
-    expect(buildAdvancedTerms(editor.draft).linkageRuleSet).toStrictEqual(
-      DEFAULT_LINKAGE_RULE_SET.reference,
-    );
   });
 });
 
@@ -158,15 +155,6 @@ describe("choosing a precision floor", () => {
     expect(keyNames(at95)).toContain("SSN + LN + DOB");
     expect(keyNames(at95)).toContain("SSN + FN");
     expect(keyNames(at95)).toStrictEqual(keyNames(seeded));
-  });
-
-  test("emits the catalog's citation at either floor", () => {
-    for (const selection of [AT_99, DEFAULT_PRECISION_FLOOR_SELECTION]) {
-      const chosen = editorWithPrecisionFloorSelection(seeded, selection);
-      expect(buildAdvancedTerms(chosen.draft).linkageRuleSet).toStrictEqual(
-        DEFAULT_LINKAGE_RULE_SET.reference,
-      );
-    }
   });
 
   test("keeps a key turned off across a floor change and back", () => {
@@ -228,9 +216,6 @@ describe("the name + date rules marked less certain", () => {
         const entry = seeded.draft.keys.find((key) => key.key.name === rule);
         expect(entry?.enabled).toBe(true);
       }
-      expect(buildAdvancedTerms(seeded.draft).linkageRuleSet).toStrictEqual(
-        DEFAULT_LINKAGE_RULE_SET.reference,
-      );
     }
   });
 
@@ -317,9 +302,6 @@ describe("the street number rule on the guided list", () => {
       expect(enabledKeys(selected.draft)).toHaveLength(
         selected.draft.keys.length,
       );
-      expect(buildAdvancedTerms(selected.draft).linkageRuleSet).toStrictEqual(
-        DEFAULT_LINKAGE_RULE_SET.reference,
-      );
     },
   );
 
@@ -393,9 +375,6 @@ describe("replacing authored keys with the built-in rules", () => {
       DEFAULT_PRECISION_FLOOR_SELECTION,
     );
     expect(guided.draft.keys).toStrictEqual(seeded.draft.keys);
-    expect(buildAdvancedTerms(guided.draft).linkageRuleSet).toStrictEqual(
-      DEFAULT_LINKAGE_RULE_SET.reference,
-    );
     expect(
       editorWithPrecisionFloorSelection(guided, AT_99).draft
         .precisionFloorSelection,
@@ -433,17 +412,13 @@ describe("replacing authored keys with the built-in rules", () => {
     expect(guided.transport).toBe(authored.transport);
   });
 
-  test("takes an imported document's citation and fields with its keys", () => {
-    const misdescribed = buildAdvancedTerms(seeded.draft);
-    misdescribed.linkageKeys = [...misdescribed.linkageKeys].reverse();
-    const imported = editorWithImportedTerms(seeded, withSsn, misdescribed);
-    expect(imported.draft.importedRuleSetCitation?.kind).toBe("cited");
+  test("takes an imported document's fields with its keys", () => {
+    const reordered = buildAdvancedTerms(seeded.draft);
+    reordered.linkageKeys = [...reordered.linkageKeys].reverse();
+    const imported = editorWithImportedTerms(seeded, withSsn, reordered);
+    expect(imported.draft.importedLinkageFields).toBeDefined();
     const guided = editorWithBuiltInKeys(imported, withSsn);
-    expect(guided.draft.importedRuleSetCitation).toBeUndefined();
     expect(guided.draft.importedLinkageFields).toBeUndefined();
-    expect(buildAdvancedTerms(guided.draft).linkageRuleSet).toStrictEqual(
-      DEFAULT_LINKAGE_RULE_SET.reference,
-    );
     expect(validateAdvancedInvite(guided.draft, guided.seed).canGenerate).toBe(
       true,
     );
@@ -452,9 +427,8 @@ describe("replacing authored keys with the built-in rules", () => {
   test("builds valid terms from a document that named a field its own way", () => {
     const terms = buildAdvancedTerms(seeded.draft);
     const rename = (name: string) => (name === "last_name" ? "surname" : name);
-    const { linkageRuleSet: _citation, ...uncited } = terms;
     const renamed = {
-      ...uncited,
+      ...terms,
       linkageFields: terms.linkageFields.map((field) => ({
         ...field,
         name: rename(field.name),
@@ -473,9 +447,6 @@ describe("replacing authored keys with the built-in rules", () => {
     );
     expect(validateAdvancedInvite(guided.draft, guided.seed).canGenerate).toBe(
       true,
-    );
-    expect(buildAdvancedTerms(guided.draft).linkageRuleSet).toStrictEqual(
-      DEFAULT_LINKAGE_RULE_SET.reference,
     );
   });
 
@@ -594,7 +565,6 @@ function withoutKeysFieldsAndCleaning(draft: AdvancedInviteDraft) {
     standardization: _standardization,
     precisionFloorSelection: _selection,
     importedLinkageFields: _fields,
-    importedRuleSetCitation: _citation,
     ...rest
   } = draft;
   return rest;
@@ -641,12 +611,8 @@ describe("the built-in rules as a reset to a new invitation's keys, fields and c
       fresh.draft.precisionFloorSelection,
     );
     expect(guided.draft.importedLinkageFields).toBeUndefined();
-    expect(guided.draft.importedRuleSetCitation).toBeUndefined();
     const terms = buildAdvancedTerms(guided.draft);
     expect(terms).toStrictEqual(buildAdvancedTerms(fresh.draft));
-    expect(terms.linkageRuleSet).toStrictEqual(
-      DEFAULT_LINKAGE_RULE_SET.reference,
-    );
   }
 
   test("restores edited first_name cleaning on an authored draft", () => {
@@ -682,38 +648,18 @@ describe("the built-in rules as a reset to a new invitation's keys, fields and c
     expectFreshSeed(editorWithBuiltInKeys(authored, everyType));
   });
 
-  test("replaces a loaded document's own cleaning and citation", () => {
-    const cited = buildAdvancedTerms(fresh.draft);
-    expect(cited.linkageRuleSet).toBeDefined();
+  test("replaces a loaded document's own cleaning", () => {
     const loaded = editorWithPastedConfiguration(
       fresh,
       everyType,
-      cited,
+      buildAdvancedTerms(fresh.draft),
       withSteps(fresh.draft.standardization, "first_name", (steps) =>
         steps.slice(1),
       ),
     ).editor;
-    expect(loaded.draft.importedRuleSetCitation?.kind).toBe("cited");
     expect(loaded.draft.standardization).not.toStrictEqual(
       fresh.draft.standardization,
     );
-    expectFreshSeed(editorWithBuiltInKeys(loaded, everyType));
-  });
-
-  test("replaces a loaded document that cites no rules", () => {
-    const { linkageRuleSet: _citation, ...uncited } = buildAdvancedTerms(
-      fresh.draft,
-    );
-    const loaded = editorWithPastedConfiguration(
-      fresh,
-      everyType,
-      uncited,
-      withSteps(fresh.draft.standardization, "last_name", () => []),
-    ).editor;
-    expect(loaded.draft.importedRuleSetCitation).toStrictEqual({
-      kind: "uncited",
-    });
-    expect(buildAdvancedTerms(loaded.draft).linkageRuleSet).toBeUndefined();
     expectFreshSeed(editorWithBuiltInKeys(loaded, everyType));
   });
 

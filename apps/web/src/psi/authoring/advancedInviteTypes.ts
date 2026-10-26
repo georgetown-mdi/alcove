@@ -1,6 +1,5 @@
 import type {
   Algorithm,
-  BuiltInLinkageRuleSet,
   LinkageField,
   LinkageKey,
   LinkageKeyElement,
@@ -28,16 +27,6 @@ import type {
 export type FuzzyComparison = NonNullable<
   LinkageKeyElement["generateFuzzyComparisons"]
 >;
-
-/**
- * What an imported terms document said about its rule set: the set it cited, or
- * that it cited none. Uncited is a state of its own so an uncited import is not
- * given a citation on export. `honoredAtImport` is fixed at import, so a later
- * drop is attributed to an edit rather than to the document.
- */
-type ImportedRuleSetCitation =
-  | { kind: "cited"; ruleSet: BuiltInLinkageRuleSet; honoredAtImport: boolean }
-  | { kind: "uncited" };
 
 /** One linkage key in the editor and whether it is enabled. Array position is
  * match order; a disabled key is dropped from the built terms. */
@@ -146,14 +135,6 @@ export interface AdvancedInviteDraft {
    * fidelity. Set only by {@link draftFromTerms}.
    */
   importedLinkageFields?: Array<LinkageField>;
-  /**
-   * An imported terms document's rule-set citation, so
-   * {@link buildAdvancedTerms} re-emits what the document claimed. Set by
-   * {@link draftFromTerms} on every import. An import narrowed only by disabling
-   * keys still builds rules drawn from the document; one with keys edited,
-   * reordered or added does not.
-   */
-  importedRuleSetCitation?: ImportedRuleSetCitation;
   /**
    * Terms settings a configuration opened in the console states that no control
    * here edits, so {@link buildAdvancedTerms} writes them back unchanged. Set

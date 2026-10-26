@@ -423,9 +423,7 @@ function initNextSteps(
  * config this writes names the sanitized column, not the header as typed.
  *
  * `ruleSet` is the built-in rule set the terms are drawn from, the default set
- * unless one is chosen. The template cites whichever it was, so the file this
- * writes states where its rules came from and a later load resolves that
- * citation to the same rules.
+ * unless one is chosen.
  *
  * `csvDelimiter` reads the input by that field delimiter and is written into
  * the template, so the exchange the template governs runs it without a flag.

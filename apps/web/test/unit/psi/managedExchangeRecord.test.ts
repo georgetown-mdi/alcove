@@ -7,11 +7,8 @@ import {
   getDefaultLinkageTerms,
   termsAsTheRunStatedThem,
 } from "@alcove/core";
-import {
-  DEFAULT_LINKAGE_KEY_SET_NAME,
-  computeTermsHash,
-} from "@alcove/core/testing";
 import { describe, expect, test } from "vitest";
+import { computeTermsHash } from "@alcove/core/testing";
 
 import { storedWorkingDirectoryUsable } from "@psi/managed/managedWorkingDirectory";
 
@@ -129,18 +126,10 @@ describe("composeManagedExchangeFile", () => {
     expect(Object.keys(server ?? {}).sort()).toEqual(["host", "path", "port"]);
     // Scanned as bare substrings, so a credential held as a VALUE (a PeerJS API
     // key, an SSH username) is caught wherever in the document it sits, not just a
-    // property named for one. The two strings the linkage terms' rule-set citation
-    // legitimately spells "key" in -- the `keySet` property and the key set's own
-    // name -- are excised by their exact text first, so the scan keeps its reach
-    // without treating the citation as a credential.
+    // property named for one.
     const serialized = JSON.stringify(file);
-    expect(serialized).toContain('"keySet"');
-    expect(serialized).toContain(DEFAULT_LINKAGE_KEY_SET_NAME);
-    const withoutCitation = serialized
-      .replaceAll('"keySet"', "")
-      .replaceAll(DEFAULT_LINKAGE_KEY_SET_NAME, "");
-    expect(withoutCitation).not.toContain("username");
-    expect(withoutCitation).not.toContain("key");
+    expect(serialized).not.toContain("username");
+    expect(serialized).not.toContain("key");
   });
 
   test("rejects a locator smuggling a credential-bearing field", () => {

@@ -1240,9 +1240,8 @@ describe("serialize / parse", () => {
     expect(() => parseExchangeRecord(v10)).toThrow(/"version"/);
   });
 
-  test("a record built from terms citing a rule set holds no citation", async () => {
+  test("a record built from the default terms holds no citation", async () => {
     const drawnFromDefaults = getDefaultLinkageTerms("Party A");
-    expect(drawnFromDefaults.linkageRuleSet).toBeDefined();
     const { record } = await buildExchangeRecord(
       {
         ...baseInputs,

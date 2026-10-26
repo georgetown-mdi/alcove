@@ -626,7 +626,7 @@ test("handler: an --identity still holding the init placeholder exits 64", async
 });
 
 test("handler: a file with ZIP, state and county columns runs the geography rules", async () => {
-  // The same keys, fields and citation the web app's direct exchange previews
+  // The same keys and fields the web app's direct exchange previews
   // for this header (apps/web/test/unit/exchange/directExchangeModel.test.ts),
   // so the two parties of a CLI-to-browser quick exchange present equal terms.
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-zerogeo-"));
@@ -666,10 +666,7 @@ test("handler: a file with ZIP, state and county columns runs the geography rule
       { name: "state", type: "state" },
       { name: "county", type: "county" },
     ]);
-    expect(terms.linkageRuleSet).toStrictEqual({
-      fieldSet: { name: "baseline-pii", version: "1.3.0" },
-      keySet: { name: "precision-ranked-rules", version: "2.5.0" },
-    });
+    expect(terms).not.toHaveProperty("linkageRuleSet");
   } finally {
     exitSpy.mockRestore();
     fs.rmSync(dir, { recursive: true, force: true });
@@ -677,7 +674,7 @@ test("handler: a file with ZIP, state and county columns runs the geography rule
 });
 
 test("handler: a file with house number and ZIP columns runs the street number rule", async () => {
-  // The same keys, fields and citation the web app's direct exchange previews
+  // The same keys and fields the web app's direct exchange previews
   // for this header (apps/web/test/unit/exchange/directExchangeModel.test.ts),
   // so the two parties of a CLI-to-browser quick exchange present equal terms.
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-zerostreet-"));
@@ -715,10 +712,7 @@ test("handler: a file with house number and ZIP columns runs the street number r
       { name: "zip_code", type: "zip_code" },
       { name: "street_number", type: "street_number" },
     ]);
-    expect(terms.linkageRuleSet).toStrictEqual({
-      fieldSet: { name: "baseline-pii", version: "1.3.0" },
-      keySet: { name: "precision-ranked-rules", version: "2.5.0" },
-    });
+    expect(terms).not.toHaveProperty("linkageRuleSet");
   } finally {
     exitSpy.mockRestore();
     fs.rmSync(dir, { recursive: true, force: true });
