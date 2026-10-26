@@ -199,6 +199,10 @@ priced -- not this note.
 - `webrtcInboundFrameFixtures.ts` -- test-only. The labelled WebRTC inbound
   frames, chunk envelopes and malformed datagrams both transports' parity suites
   drive, built with the packer core declares.
+- `websocketRelayProofFixtures.ts` -- test-only. The labelled refused WebSocket
+  relay proofs and the refusal each draws, driven through core's proof parse
+  and check and through the relay's hello. It imports only core's own modules,
+  so it takes this channel and ships.
 - The helpers `testing.ts` defines -- `sortAssociationTable`,
   `withCapturedLogs`, `installCapturedLogsInterceptor`, and the `LogEntry`
   shape -- test-only. No product code calls them.
