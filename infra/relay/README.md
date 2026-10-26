@@ -822,6 +822,12 @@ TCP to coturn on loopback, which opens no TLS listener and holds no key.
   the WebSocket relay's server refused under its bound for each client
   address, one line per socket (measured 2026-10-25). Which address the
   TURN server's and the route hop's lines name is not yet measured.
+  The WebSocket relay's server also writes its own line for each socket it
+  refuses under that bound, at `warn` (`limit_conn_log_level`): `limiting
+  connections by zone "alcove_websocket_relay"`, naming the client's
+  address, the one the PROXY header from 443 names, as `client:`.
+  `verify.sh` checks for it (see the verification list below). That line is
+  not yet measured on the project's relay host.
 - **The broker.** The broker's TLS front ([infra/broker](../broker/README.md))
   listens on 8443 and presents its own certificate, so on a host that runs it,
   `ALCOVE_RELAY_FRONT_ROUTES="signal.example.org=8443"` answers it on 443
@@ -914,10 +920,9 @@ stops and disables it where that is unset.
   connections from one address at once (`limit_conn` in
   `front.conf.tmpl`), counted by the address it takes from the PROXY header
   from 443. It closes a further connection from that address before
-  answering it, so that party sees a closed connection, not a `503`. The
-  bound writes no line of its own, since it logs a refusal at `info`, below
-  the front's `warn` level, but the 443 server writes one line for each
-  refused socket, the reset line naming the client's address and the relay
+  answering it, so that party sees a closed connection, not a `503`. Each
+  refusal writes a `limiting connections by zone` line naming the client's
+  address, and the 443 server a reset line naming it beside the relay
   server's loopback port ([What it logs](#the-443-front)).
   `verify.sh` checks the bound from two addresses. The 8 is a working
   value, raised on request. The front's limit on all its connections is
@@ -948,7 +953,11 @@ stops and disables it where that is unset.
   they have, it runs `websocket-address-limit.py` through the front from
   two addresses, the one it connects from and `127.0.0.1`: 8 sockets from
   the first and one from the second must be upgraded, and a ninth from the
-  first closed unanswered. The run's key is revoked on exit.
+  first closed unanswered. The front's journal
+  (`journalctl -u alcove-relay-front.service`) must then hold a refusal
+  line naming a client address, written since the probe started, in one of
+  ten reads a second apart, each bounded at 10 s. The run's key is revoked
+  on exit.
 
 ## Supervision and the container runtime
 
@@ -1027,7 +1036,7 @@ its maximum run time:
   sized to (its header). The OS update's hour is more than twice the 23-minute
   upgrade measured under [OS updates](#os-updates). The verification's 30
   minutes are above the sum of `verify.sh`'s own timeouts, about 23 minutes
-  with one front route and a minute more with the WebSocket relay. The renewals' 10 minutes are a working value, not a
+  with one front route and about four minutes more with the WebSocket relay. The renewals' 10 minutes are a working value, not a
   measured one: neither `renew.sh` bounds its ACME client.
 - **A host that was down** at a job's start runs the renewals and the
   verification when it boots, under the lock below; the OS update and the pull
@@ -1316,8 +1325,10 @@ ss -Htn state established '( sport = :443 )' | awk '{print $4}' | sed 's/:[0-9]*
   alcove-relay.service --since -1h | grep -c 'are wrong'` counts failed
   authentications, a client guessing credentials. The front's journal
   (`journalctl -u alcove-relay-front.service`) names a client address beside
-  the service port when a service refused or reset it. Block the addresses
-  sending most of the traffic; revoke an exchange known to be theirs.
+  the service port when a service refused or reset it, and its `limiting
+  connections by zone` lines name each address the WebSocket relay's bound
+  refused. Block the addresses sending most of the traffic; revoke an
+  exchange known to be theirs.
 - **`alcove-relay-tokenless-enrollments` and the three refusal alarms.** The
   registrar's journal (`journalctl -u alcove-relay-registrar.service --since
   -1h`) has one line per request, naming its method, path and status, and a

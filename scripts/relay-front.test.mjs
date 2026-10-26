@@ -98,7 +98,7 @@ const WEBSOCKET_TLS = `127.0.0.1:${portOf("WEBSOCKET_TLS_PORT")}`;
 const WEBSOCKET_ZONE =
   "limit_conn_zone $binary_remote_addr zone=alcove_websocket_relay:1m;";
 const WEBSOCKET_LIMIT = "limit_conn alcove_websocket_relay 8;";
-const WEBSOCKET_LIMIT_LOG_LEVEL = "limit_conn_log_level info;";
+const WEBSOCKET_LIMIT_LOG_LEVEL = "limit_conn_log_level warn;";
 
 /** A configuration's server blocks, each as its setting lines. */
 const renderedServerBlocks = (text) =>
@@ -726,6 +726,36 @@ describe("front.conf.tmpl", () => {
     ]);
     const errorLogs = template.filter((line) => line.startsWith("error_log"));
     expect(errorLogs).toEqual(["error_log /dev/stderr warn;"]);
+  });
+
+  // nginx's severities, least first; a line below error_log's is dropped.
+  const NGINX_LEVELS = [
+    "debug",
+    "info",
+    "notice",
+    "warn",
+    "error",
+    "crit",
+    "alert",
+    "emerg",
+  ];
+
+  it("logs each WebSocket relay refusal at a level the error log records, under the zone verify.sh looks for", () => {
+    const levelOf = (directive) => {
+      const line = template.find((setting) =>
+        setting.startsWith(`${directive} `),
+      );
+      return NGINX_LEVELS.indexOf(line.replace(/;$/, "").split(/\s+/).pop());
+    };
+    const errorLogLevel = levelOf("error_log");
+    const refusalLevel = levelOf("limit_conn_log_level");
+    expect(errorLogLevel).toBeGreaterThanOrEqual(0);
+    expect(refusalLevel).toBeGreaterThanOrEqual(errorLogLevel);
+    const verifyZone = /^WEBSOCKET_ZONE=(\S+)$/m.exec(read("verify.sh"))[1];
+    expect(WEBSOCKET_ZONE).toBe(
+      `limit_conn_zone $binary_remote_addr zone=${verifyZone}:1m;`,
+    );
+    expect(WEBSOCKET_LIMIT).toBe(`limit_conn ${verifyZone} 8;`);
   });
 });
 

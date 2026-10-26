@@ -42,8 +42,9 @@
 #                 the relay's name, pair under a key registered for this run,
 #                 and one message and the close cross from one to the other;
 #                 then the front upgrades 8 sockets from this host's address
-#                 and one from 127.0.0.1, and closes a ninth from the first.
-#                 Skipped, and said so, where the host names none
+#                 and one from 127.0.0.1, and closes a ninth from the first,
+#                 writing a refusal line naming the first address to its
+#                 journal. Skipped, and said so, where the host names none
 #
 # internal-peer is the one that cannot be inferred from allocation: a relay that
 # allocates is working, and a relay that allocates toward its own VPC and the
@@ -534,6 +535,27 @@ fi
 # on 443 under the relay's name, and the key reaches the probe on stdin.
 WEBSOCKET_NAME="${ALCOVE_RELAY_WEBSOCKET_NAME:-}"
 WEBSOCKET_NAME="${WEBSOCKET_NAME%.}"
+# front.conf.tmpl's limit_conn_zone for the WebSocket relay server, whose
+# refusal line names the zone and the client's address.
+WEBSOCKET_ZONE=alcove_websocket_relay
+FRONT_UNIT=alcove-relay-front.service
+# 0 when the front's journal since $1 holds a refusal line for the zone with a
+# non-empty client address, which it leaves in REFUSAL_CLIENT; 1 when it holds
+# none after 10 s of reads; 2 when it cannot be read. The front counts the
+# address its PROXY header names, which is the probe's own only when nothing
+# translates it on the way, so the line is not matched to the probe's address.
+REFUSAL_CLIENT=
+refusal_logged() {
+  local journal attempt
+  for attempt in 1 2 3 4 5 6 7 8 9 10; do
+    journal="$(bounded 10 journalctl -q -u "$FRONT_UNIT" --since "$1" --no-pager -o cat 2>&1)" || return 2
+    REFUSAL_CLIENT="$(grep -F "limiting connections by zone \"$WEBSOCKET_ZONE\"" <<<"$journal" \
+      | sed -n 's/.*client: \([^,[:space:]][^,[:space:]]*\),.*/\1/p' | head -n 1)"
+    [ -z "$REFUSAL_CLIENT" ] || return 0
+    [ "$attempt" = 10 ] || sleep 1
+  done
+  return 1
+}
 if [ -z "$WEBSOCKET_NAME" ]; then
   printf '  SKIP     the WebSocket relay is not configured on this host (no ALCOVE_RELAY_WEBSOCKET_NAME)\n'
 elif ! WS_REG_OUT="$(printf '%s\n' "$KEY_W" | ALCOVE_RELAY_VERIFY_RUN=1 "$HERE/register-exchange.sh" "$VERIFY_W" none 2>&1)"; then
@@ -558,6 +580,7 @@ else
   if [ "$WS_STATUS" != 0 ]; then
     report unclear "the front's bound on WebSocket relay sockets for each client address was not probed, since the relay did not pair two sockets"
   else
+    LIMIT_SINCE="$(date '+%Y-%m-%d %H:%M:%S')"
     LIMIT_OUT="$(bounded 60 python3 -B "$HERE/websocket-address-limit.py" "$CONNECT" 443 "$WEBSOCKET_NAME" 127.0.0.1 2>&1)"
     LIMIT_STATUS=$?
     LIMIT_DETAIL="$(printf '%s' "$LIMIT_OUT" | tr '\n' ' ' | cut -c1-200)"
@@ -569,6 +592,21 @@ else
       4|5) report fail "the front's WebSocket relay server did not upgrade the per-address probe's sockets" "$LIMIT_DETAIL" ;;
       *) report unclear "could not ask the front's bound on WebSocket relay sockets for each client address" "$LIMIT_DETAIL" ;;
     esac
+    if [ "$LIMIT_STATUS" = 0 ]; then
+      REFUSED_ADDRESS="$(printf '%s\n' "$LIMIT_OUT" | sed -n 's/.*, and closed a ninth from \([^ ]*\) unanswered$/\1/p' | tail -n 1)"
+      REFUSAL_LOGGED=0; refusal_logged "$LIMIT_SINCE" || REFUSAL_LOGGED=$?
+      case "$REFUSAL_LOGGED" in
+        0) if [ -n "$REFUSED_ADDRESS" ] && [ "$REFUSED_ADDRESS" != "$REFUSAL_CLIENT" ]; then
+             report pass "the front logged its refusal of the ninth WebSocket relay socket, naming $REFUSAL_CLIENT" \
+               "the probe's own address was $REFUSED_ADDRESS; the front counts the address its PROXY header names"
+           else
+             report pass "the front logged its refusal of the ninth WebSocket relay socket, naming $REFUSAL_CLIENT"
+           fi ;;
+        1) report fail "the front closed the ninth WebSocket relay socket${REFUSED_ADDRESS:+ from $REFUSED_ADDRESS} but logged no refusal" \
+             "no 'limiting connections by zone \"$WEBSOCKET_ZONE\"' line naming a client in journalctl -u $FRONT_UNIT since $LIMIT_SINCE; is limit_conn_log_level in /etc/alcove-relay/front.conf at the error_log level or above?" ;;
+        *) report unclear "could not read the front's journal for its refusal of the ninth WebSocket relay socket" "journalctl -u $FRONT_UNIT failed" ;;
+      esac
+    fi
   fi
 fi
 

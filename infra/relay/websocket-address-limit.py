@@ -14,8 +14,9 @@ close it. No hello is sent, so the relay closes each held socket at its
 10-second hello window; a run longer than 8 seconds stops rather than count a
 socket the relay closed as one the front refused.
 
-Prints one line saying which sockets were upgraded and which was closed, or
-what went wrong.
+Prints one line saying which sockets were upgraded and which was closed, the
+last address it names being the closed socket's local address, or what went
+wrong.
 
 Exit status: 0 when the 8 sockets and the one from <other-host> were upgraded
 and the ninth was closed, 2 when a TCP connection could not be made, 3 when an
@@ -140,7 +141,7 @@ def probe(host, port, server_name, other_host, cafile):
             expect_upgraded(label, status_line)
 
         label = "the ninth socket from %s" % host
-        _, status_line = open_socket(host, port, server_name, context, label, held)
+        ninth_local, status_line = open_socket(host, port, server_name, context, label, held)
         if status_line is not None:
             raise ProbeError(7, "%s was answered %r rather than closed" % (label, status_line))
 
@@ -153,9 +154,11 @@ def probe(host, port, server_name, other_host, cafile):
                 % (host, other_host, local),
             )
         expect_upgraded(label, status_line)
+        # verify.sh reads the ninth socket's address from "closed a ninth from
+        # <address> unanswered" to find the front's refusal line naming it.
         print(
             "the front upgraded %d sockets from %s and one from %s at wss://%s%s, and closed a ninth from %s unanswered"
-            % (SOCKETS_PER_ADDRESS, local, other_local, server_name, RELAY_PATH, local),
+            % (SOCKETS_PER_ADDRESS, local, other_local, server_name, RELAY_PATH, ninth_local),
             flush=True,
         )
         return 0
