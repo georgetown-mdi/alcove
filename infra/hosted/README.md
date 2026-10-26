@@ -109,7 +109,7 @@ A CAA set that leaves out an authority in use does nothing until that certificat
 DNSSEC is on, Cloudflare signing the zone, with the DS record at the `.org` registry pointing at Cloudflare's key-signing key. The order matters in both directions, because a DS record at the registry with no signed zone behind it makes every name in the zone fail validation:
 
 - **Turning it on:** the zone is signed first (`status = "active"`), then the DS record that Cloudflare shows (`ds` on the resource) is added at the registrar.
-- **Turning it off:** the DS record is removed at the registrar first, then DNSSEC is turned off in the zone only after the registry's DS TTL has passed since the removal (`dig DS <zone>` shows the TTL). `prevent_destroy` on `cloudflare_zone_dnssec.zone` keeps a plan from turning it off in one step.
+- **Turning it off:** the DS record is removed at the registrar first, then DNSSEC is turned off in the zone only after the registry's DS TTL has passed since the removal (`dig DS <zone>` shows the TTL). `prevent_destroy` on `cloudflare_zone_dnssec.zone` refuses a plan that destroys or replaces the resource, but not one that sets `status` to `disabled`, which is an in-place update: read the plan before an apply that touches it.
 
 Check it from a validating resolver: `dig @1.1.1.1 <zone> A +dnssec` answers with the `ad` flag.
 

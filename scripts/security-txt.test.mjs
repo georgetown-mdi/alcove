@@ -50,6 +50,9 @@ function expiresProblem(value, now) {
     return `Expires ${value} is not an RFC 3339 UTC timestamp`;
   }
   const daysLeft = (Date.parse(value) - now.getTime()) / DAY_MS;
+  if (Number.isNaN(daysLeft)) {
+    return `Expires ${value} is not a real date`;
+  }
   if (daysLeft < RENEW_DAYS) {
     return `Expires ${value} is ${Math.floor(daysLeft)} days away, under the ${RENEW_DAYS} the check allows: set a date under a year ahead in both files and deploy each site`;
   }
@@ -95,6 +98,15 @@ describe("expiresProblem", () => {
 
   it("fails a value that is not a UTC timestamp", () => {
     expect(expiresProblem("2027-06-01", now)).toMatch(/not an RFC 3339/);
+  });
+
+  it("fails a timestamp with an out-of-range field", () => {
+    expect(expiresProblem("2027-13-01T00:00:00Z", now)).toMatch(
+      /not a real date/,
+    );
+    expect(expiresProblem("2027-06-01T25:00:00Z", now)).toMatch(
+      /not a real date/,
+    );
   });
 });
 
