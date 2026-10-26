@@ -127,6 +127,8 @@ export interface ManagedRotationCriticalSection<THandshake> {
 interface ManagedRotationGate<THandshake> {
   /** The handshake's value, for the data-exchange phase. */
   handshake: THandshake;
+  /** The rotated secret the persist stored. */
+  rotatedSecret: string;
 }
 
 /**
@@ -151,5 +153,5 @@ export async function runRotationCriticalSection<THandshake>(
     throw new RotationPersistError(section.now(), error);
   }
 
-  return { handshake };
+  return { handshake, rotatedSecret: writeBack.sharedSecret };
 }

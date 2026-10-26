@@ -894,10 +894,6 @@ const ROUTING: {
     action: { type: "reinvite-held-by-run" },
     owns: ["recovery"],
   },
-  "reinvite-refused-by-run": {
-    action: { type: "reinvite-refused-by-run" },
-    owns: ["recovery"],
-  },
   "reinvite-withheld": {
     action: { type: "reinvite-withheld" },
     owns: ["recovery"],

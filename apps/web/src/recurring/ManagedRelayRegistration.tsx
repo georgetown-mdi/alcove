@@ -27,11 +27,19 @@ import {
   stopManagedRelayRegistration,
 } from "@psi/managed/managedRelayRegistration";
 import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
+import { stopWaitingManagedWindowRun } from "@psi/managed/managedWindowRuns";
 
 import styles from "@styles/app.module.css";
 
+import {
+  RELAY_REGISTRATION_HELD_BY_RUN_TEXT,
+  STOP_RUN_AND_ENROLL_LABEL,
+} from "./managedRunHolder";
+import { ManagedRunHolderNote } from "./ManagedRunHolderNote";
 import { relayRegistrationPendingLine } from "./savedExchangesModel";
 
+import type { ManagedRunHolder } from "./managedRunHolder";
+import type { RelayRegistrar } from "@alcove/core";
 import type { RunnableManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 
 /** The section's heading. */
@@ -73,17 +81,30 @@ const FAILURE_TITLE: Record<"enroll" | "stop", string> = {
 /**
  * Enrolling a saved exchange at its relay's registrar, and stopping its
  * registration. The relay-owner token is component state from the moment it is
- * typed until the request settles, then cleared; it reaches no store. Every
- * write is withheld while a run holds the exchange. `onChanged` is told once
- * the stored exchange changed, so the page reads it again.
+ * typed until the request settles, then cleared; it reaches no store. Both
+ * writes take the exchange's run lock and are withheld while a run holds it;
+ * the form stays editable, and a run of this window still waiting for its
+ * partner can be stopped to enroll at once. `onChanged` is told once the
+ * stored exchange changed, so the page reads it again.
  */
 export function ManagedRelayRegistration({
   record,
   runInFlight,
+  runHolder,
+  onRunLockRefused,
+  onRecheckRunLock,
   onChanged,
 }: {
   record: RunnableManagedExchangeRecord;
+  /** Whether a run of this exchange is under way anywhere this browser
+   * profile can see; both writes wait it out. */
   runInFlight: boolean;
+  /** Where that run is ({@link ./managedRunHolder.ts}). */
+  runHolder: ManagedRunHolder | undefined;
+  /** Report that a write found the run lock held. */
+  onRunLockRefused: () => void;
+  /** Re-read the run lock now. */
+  onRecheckRunLock: () => void;
   onChanged: () => void;
 }) {
   const [url, setUrl] = useState(record.relayRegistrar?.url ?? "");
@@ -107,7 +128,9 @@ export function ManagedRelayRegistration({
     if (value === "") setReplace(false);
   };
 
-  const enroll = async () => {
+  /** The registrar the form names, or `undefined` with the fields' problems
+   * shown. */
+  const checkedRegistrar = (): RelayRegistrar | undefined => {
     const parsed = RelayRegistrarSchema.safeParse({ url, exchangeId });
     if (!parsed.success) {
       const { issues } = parsed.error;
@@ -116,19 +139,27 @@ export function ManagedRelayRegistration({
       setExchangeIdProblems(
         idProblems.length > 0 ? [...idProblems, EXCHANGE_ID_PRIVACY] : [],
       );
-      return;
+      return undefined;
     }
     setUrlProblems([]);
     setExchangeIdProblems([]);
+    return parsed.data;
+  };
+
+  const enroll = async (registrar: RelayRegistrar, afterStop: boolean) => {
     setOutcome(undefined);
     setBusy(true);
     const token = ownerToken === "" ? undefined : ownerToken;
+    let keepToken = false;
     try {
+      // After a stop the lock is requested queued, so the stopped run's next
+      // scheduled attempt, which asks ifAvailable, cannot take it first.
       const result = await enrollManagedRelayRegistrar({
         id: record.id,
-        registrar: parsed.data,
+        registrar,
         ...(token !== undefined && { ownerToken: token }),
         replace,
+        lock: afterStop ? {} : { ifAvailable: true },
       });
       if (result.kind === "enrolled") {
         setOutcome({ kind: "enrolled" });
@@ -139,7 +170,7 @@ export function ManagedRelayRegistration({
           action: "enroll",
           message: sanitizeForDisplay(
             managedRelayEnrollmentFailureMessage(
-              parsed.data,
+              registrar,
               result.outcome,
               token !== undefined,
             ),
@@ -147,15 +178,35 @@ export function ManagedRelayRegistration({
           ),
         });
     } catch (error) {
+      // A lock refusal sent nothing, so the token stays for the retry.
+      keepToken = error instanceof ManagedExchangeLockUnavailableError;
+      if (keepToken) onRunLockRefused();
       setOutcome({
         kind: "failed",
         action: "enroll",
         message: failureText(error),
       });
     } finally {
-      changeOwnerToken("");
+      if (!keepToken) changeOwnerToken("");
       setBusy(false);
     }
+  };
+
+  const enrollNow = () => {
+    const registrar = checkedRegistrar();
+    if (registrar !== undefined) void enroll(registrar, false);
+  };
+
+  // The form is checked before the run is stopped, so a form that cannot
+  // enroll leaves the run waiting.
+  const stopRunAndEnroll = () => {
+    const registrar = checkedRegistrar();
+    if (registrar === undefined) return;
+    if (stopWaitingManagedWindowRun(record.id) !== "stopped") {
+      onRecheckRunLock();
+      return;
+    }
+    void enroll(registrar, true);
   };
 
   const stop = async () => {
@@ -166,6 +217,8 @@ export function ManagedRelayRegistration({
       setOutcome({ kind: "removed" });
       onChanged();
     } catch (error) {
+      if (error instanceof ManagedExchangeLockUnavailableError)
+        onRunLockRefused();
       setOutcome({
         kind: "failed",
         action: "stop",
@@ -177,7 +230,11 @@ export function ManagedRelayRegistration({
   };
 
   const stopButton = enrolled !== undefined && (
-    <Button variant="default" onClick={() => void stop()} disabled={busy}>
+    <Button
+      variant="default"
+      onClick={() => void stop()}
+      disabled={busy || runInFlight}
+    >
       Stop registering
     </Button>
   );
@@ -196,55 +253,55 @@ export function ManagedRelayRegistration({
           ].join(" ")}
         </p>
       )}
-      {runInFlight ? (
-        <p className={styles.small}>
-          A run of this exchange is under way. Change its relay registration
-          once the run ends.
-        </p>
-      ) : (
-        <Stack gap="xs">
-          <TextInput
-            label="Registrar address"
-            value={url}
-            onChange={(event) => setUrl(event.currentTarget.value)}
-            error={urlProblems.length > 0 ? urlProblems.join(" ") : undefined}
-            errorProps={{ role: "alert" }}
-            disabled={busy}
-          />
-          <TextInput
-            label="Exchange id at the registrar"
-            value={exchangeId}
-            onChange={(event) => setExchangeId(event.currentTarget.value)}
-            error={
-              exchangeIdProblems.length > 0
-                ? exchangeIdProblems.join(" ")
-                : undefined
-            }
-            errorProps={{ role: "alert" }}
-            disabled={busy}
-          />
-          <PasswordInput
-            label="Relay-owner token"
-            description={TOKEN_TEXT}
-            value={ownerToken}
-            onChange={(event) => changeOwnerToken(event.currentTarget.value)}
-            autoComplete="off"
-            disabled={busy}
-          />
-          <Checkbox
-            label="Replace the key the registrar holds for this exchange id"
-            checked={replace}
-            onChange={(event) => setReplace(event.currentTarget.checked)}
-            disabled={busy || ownerToken === ""}
-          />
-          <Group gap="sm">
-            <Button onClick={() => void enroll()} loading={busy}>
-              Enroll
-            </Button>
-            {stopButton}
-          </Group>
-        </Stack>
-      )}
+      <Stack gap="xs">
+        <TextInput
+          label="Registrar address"
+          value={url}
+          onChange={(event) => setUrl(event.currentTarget.value)}
+          error={urlProblems.length > 0 ? urlProblems.join(" ") : undefined}
+          errorProps={{ role: "alert" }}
+          disabled={busy}
+        />
+        <TextInput
+          label="Exchange id at the registrar"
+          value={exchangeId}
+          onChange={(event) => setExchangeId(event.currentTarget.value)}
+          error={
+            exchangeIdProblems.length > 0
+              ? exchangeIdProblems.join(" ")
+              : undefined
+          }
+          errorProps={{ role: "alert" }}
+          disabled={busy}
+        />
+        <PasswordInput
+          label="Relay-owner token"
+          description={TOKEN_TEXT}
+          value={ownerToken}
+          onChange={(event) => changeOwnerToken(event.currentTarget.value)}
+          autoComplete="off"
+          disabled={busy}
+        />
+        <Checkbox
+          label="Replace the key the registrar holds for this exchange id"
+          checked={replace}
+          onChange={(event) => setReplace(event.currentTarget.checked)}
+          disabled={busy || ownerToken === ""}
+        />
+        <Group gap="sm">
+          <Button onClick={enrollNow} loading={busy} disabled={runInFlight}>
+            Enroll
+          </Button>
+          {stopButton}
+        </Group>
+        <ManagedRunHolderNote
+          holder={runInFlight ? runHolder : undefined}
+          text={RELAY_REGISTRATION_HELD_BY_RUN_TEXT}
+          stopLabel={STOP_RUN_AND_ENROLL_LABEL}
+          busy={busy}
+          onStop={stopRunAndEnroll}
+        />
+      </Stack>
       {outcome?.kind === "enrolled" && (
         <p className={styles.small}>
           The registrar holds this exchange&apos;s current relay key.
@@ -271,6 +328,9 @@ export function ManagedRelayRegistration({
 
 function failureText(error: unknown): string {
   if (error instanceof ManagedExchangeLockUnavailableError)
-    return "A run of this exchange holds it. Try again once the run ends.";
+    return (
+      "A run of this exchange started before the request was sent, so " +
+      "nothing changed. Try again once the run ends."
+    );
   return sanitizeErrorForDisplay(error);
 }

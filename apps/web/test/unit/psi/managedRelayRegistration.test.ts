@@ -258,6 +258,7 @@ describe("the rotation write", () => {
     );
     expect(persistManagedExchangeRotation).toHaveBeenCalledWith(
       "record-under-test",
+      storedRecord.value.sharedSecret,
       {
         sharedSecret: rotatedSecret,
         expires: null,
@@ -287,7 +288,7 @@ describe("the rotation write", () => {
       { now: () => NOW.getTime() },
     );
     const rotation = vi.mocked(persistManagedExchangeRotation).mock
-      .calls[0]?.[1];
+      .calls[0]?.[2];
     expect(rotation).toHaveProperty(
       "relayRegistrationPendingSince",
       NOW.toISOString(),
@@ -307,7 +308,7 @@ describe("the rotation write", () => {
       dataExchange: () => Promise.resolve("exchanged"),
     });
     const rotation = vi.mocked(persistManagedExchangeRotation).mock
-      .calls[0]?.[1];
+      .calls[0]?.[2];
     expect(rotation).not.toHaveProperty("relayRegistrationPendingSince");
   });
 
@@ -339,7 +340,7 @@ describe("the rotation write", () => {
       dataExchange: () => Promise.resolve("exchanged"),
     });
     const rotation = vi.mocked(persistManagedExchangeRotation).mock
-      .calls[0]?.[1];
+      .calls[0]?.[2];
     expect(rotation).not.toHaveProperty("relayRegistrationPendingSince");
   });
 
@@ -968,6 +969,53 @@ describe("enrollment", () => {
       },
     };
   }
+
+  test("takes the lock ifAvailable, and queued where the caller stopped this window's run", async () => {
+    const current = record();
+    const asked: Array<unknown> = [];
+    for (const lock of [undefined, {}]) {
+      const run = enrollmentDeps(current, [
+        [201, { maxAgeDays: null, lapsesAt: null }],
+      ]);
+      await enrollManagedRelayRegistrar(
+        {
+          id: current.id,
+          registrar: REGISTRAR,
+          ownerToken: OWNER_TOKEN,
+          ...(lock !== undefined && { lock }),
+        },
+        {
+          ...run.deps,
+          withLock: <T>(
+            _id: string,
+            step: () => Promise<T>,
+            options: unknown,
+          ) => {
+            asked.push(options);
+            return step();
+          },
+        },
+      );
+    }
+    expect(asked).toEqual([{ ifAvailable: true }, {}]);
+  });
+
+  test("is refused, and asks the registrar nothing, while a run holds the exchange", async () => {
+    const current = record();
+    const run = enrollmentDeps(current, []);
+    await expect(
+      enrollManagedRelayRegistrar(
+        { id: current.id, registrar: REGISTRAR, ownerToken: OWNER_TOKEN },
+        {
+          ...run.deps,
+          withLock: () =>
+            Promise.reject(new ManagedExchangeLockUnavailableError(current.id)),
+        },
+      ),
+    ).rejects.toBeInstanceOf(ManagedExchangeLockUnavailableError);
+    expect(run.registrar.sent).toEqual([]);
+    expect(run.persisted).toEqual([]);
+  });
 
   test("the relay-owner token reaches the one request and no store", async () => {
     const current = record({ relayRegistrationPendingSince: PENDING_SINCE });

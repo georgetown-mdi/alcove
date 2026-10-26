@@ -28,7 +28,7 @@ import {
   managedRunRetryable,
 } from "./managedRunLaunchModel";
 import { TermsChangeQuestion, TermsProposalPanel } from "./ManagedTermsChange";
-import { RUN_IN_FLIGHT_EXPORT_REASON } from "./managedCronExportModel";
+import { RUN_IN_FLIGHT_EXPORT_NOTE } from "./managedCronExportModel";
 
 import {
   BackupPanel,
@@ -53,7 +53,6 @@ import {
   managedConfirmationGranted,
   managedFailureHoldsReinvite,
   managedReinviteFailureAt,
-  managedRunHoldsReinvite,
   managedStandingConditionShown,
 } from "./managedRunRecoveryModel";
 import { managedSurfaceView } from "./managedRunSurfaceModel";
@@ -72,6 +71,8 @@ export function ManagedRunSurface({ id }: { id: string }) {
     state: surfaceState,
     runInFlight,
     runLockHeld,
+    runHolder,
+    recheckRunLock,
     runLockRefused,
     running,
     liveFailure,
@@ -88,6 +89,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
     backUp,
     downloadUpdatedBackup,
     reinviteNow,
+    stopRunAndReinvite,
     resolveConfirmation,
     clearStanding,
     resolveStanding,
@@ -141,7 +143,6 @@ export function ManagedRunSurface({ id }: { id: string }) {
   const clearingStanding = recovery.standing.clear.kind === "clearing";
   const clearStandingFailed = recovery.standing.clear.kind === "failed";
   const reinvite = recovery.reinvite.composed;
-  const runHoldsReinvite = managedRunHoldsReinvite(recovery, runInFlight);
   const reinviteSource = recovery.reinvite.site;
 
   // The re-invite result panel, scrolled into view when the detail section (far below
@@ -288,12 +289,11 @@ export function ManagedRunSurface({ id }: { id: string }) {
                   mt="sm"
                   onClick={downloadUpdatedBackup}
                   loading={exportBusy}
-                  disabled={runLockHeld}
                 >
                   Download updated backup
                 </Button>
                 {runLockHeld && (
-                  <p className={styles.small}>{RUN_IN_FLIGHT_EXPORT_REASON}</p>
+                  <p className={styles.small}>{RUN_IN_FLIGHT_EXPORT_NOTE}</p>
                 )}
               </div>
             )}
@@ -342,7 +342,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
                       confirmationGated={confirmationGated}
                       reinviting={reinviting}
                       runInFlight={runInFlight}
-                      runHoldsReinvite={runHoldsReinvite}
+                      runHolder={runHolder}
                       // The failed alert renders only at the site that triggered the
                       // mint, so the recovery and the detail section do not both show it.
                       reinviteFailure={managedReinviteFailureAt(
@@ -350,6 +350,9 @@ export function ManagedRunSurface({ id }: { id: string }) {
                         "recovery",
                       )}
                       onReinvite={() => reinviteNow("recovery")}
+                      onStopRunAndReinvite={() =>
+                        stopRunAndReinvite("recovery")
+                      }
                       onResolveConfirmation={resolveConfirmation}
                     />
                   )}
@@ -375,10 +378,11 @@ export function ManagedRunSurface({ id }: { id: string }) {
                 clearFailed={clearStandingFailed}
                 reinviting={reinviting}
                 runInFlight={runInFlight}
-                runHoldsReinvite={runHoldsReinvite}
+                runHolder={runHolder}
                 reinviteFailure={managedReinviteFailureAt(recovery, "recovery")}
                 reinviteHeldByFailure={failureHoldsReinvite}
                 onReinvite={() => reinviteNow("recovery")}
+                onStopRunAndReinvite={() => stopRunAndReinvite("recovery")}
                 onClear={() => clearStanding(false)}
                 onResolve={resolveStanding}
               />
@@ -416,7 +420,6 @@ export function ManagedRunSurface({ id }: { id: string }) {
                   partnerTerms: load.localState.termsProposal.partnerTerms,
                 })}
                 busy={termsProposal.kind === "busy"}
-                disabled={running || runInFlight}
                 failure={
                   termsProposal.kind === "failed"
                     ? termsProposal.failure
@@ -467,7 +470,6 @@ export function ManagedRunSurface({ id }: { id: string }) {
             <ManagedCronExportPanel
               record={load.record}
               runInFlight={runInFlight}
-              onRunLockRefused={runLockRefused}
             />
             <ManagedExchangeDetail
               record={load.record}
@@ -490,7 +492,10 @@ export function ManagedRunSurface({ id }: { id: string }) {
               canReinvite={canReinviteFromRecord(load.record)}
               compromiseResponse={compromiseResponse}
               runInFlight={runInFlight}
-              runHoldsReinvite={runHoldsReinvite}
+              runHolder={runHolder}
+              onStopRunAndReinvite={() => stopRunAndReinvite("detail")}
+              onRunLockRefused={runLockRefused}
+              onRecheckRunLock={() => void recheckRunLock()}
               reinviting={reinviting}
               // The failed alert renders here only when the detail section triggered
               // the mint, so it and the failure-path recovery do not both show it.

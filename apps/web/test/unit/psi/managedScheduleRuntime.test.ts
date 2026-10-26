@@ -187,6 +187,9 @@ function driverConfig(): ManagedRunDriverConfig {
  * results are held to their retention from. */
 const RUN_AT = "2026-03-01T09:00:00.000Z";
 
+/** The secret the runs below rotate to, which the store holds after them. */
+const RUN_SECRET = generateSharedSecret();
+
 /** A completed run as the driver reports one: the outputs it built and the
  * `succeeded` stamp it wrote. Defaults to a run whose agreed terms gave this
  * party no result table, which has nothing to park. */
@@ -197,6 +200,7 @@ function completedRun(
     exchange: outputs,
     lastRun: { at: RUN_AT, outcome: "succeeded" },
     lastRunSaved: true,
+    rotatedSecret: RUN_SECRET,
   };
 }
 
@@ -739,7 +743,7 @@ describe("the backup a completed unattended run takes", () => {
           linkageTerms: getDefaultLinkageTerms("County Health Dept"),
         }),
         side: "inviter",
-        sharedSecret: generateSharedSecret(),
+        sharedSecret: RUN_SECRET,
       }),
       id: RECORD.id,
       workingDirectoryHandle: handle as FileSystemDirectoryHandle,

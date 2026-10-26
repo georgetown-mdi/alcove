@@ -22,6 +22,10 @@ import {
   standingCompromiseResponse,
 } from "@psi/managed/managedExchangeRecord";
 import {
+  REINVITE_HELD_BY_RUN_TEXT,
+  STOP_RUN_AND_REINVITE_LABEL,
+} from "@recurring/managedRunHolder";
+import {
   clearManagedExchangeStandingCondition,
   clearManagedExchanges,
   createManagedExchange,
@@ -31,8 +35,9 @@ import {
 } from "@psi/managed/managedExchangeStore";
 import { failedRun, missedRun } from "@psi/managed/managedRunRotate";
 import { ManagedRunSurface } from "@recurring/ManagedRunSurface";
-import { REINVITE_RUN_IN_FLIGHT_REASON } from "@recurring/managedReinviteGate";
 import { STANDING_CONDITION_CLEAR_LABEL } from "@recurring/managedStandingConditionModel";
+import { enterManagedWindowRun } from "@psi/managed/managedWindowRuns";
+import { withManagedExchangeLock } from "@psi/managed/managedExchangeLock";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 import {
@@ -1443,7 +1448,13 @@ describe("a re-invite control while a run is in flight", () => {
     await runButton.click();
     await expect.element(recovery).toBeDisabled();
     await expect.element(terms).toBeDisabled();
-    expect(app.container.textContent).toContain(REINVITE_RUN_IN_FLIGHT_REASON);
+    // This page's own run, with no stop on offer once it is past waiting.
+    expect(app.container.textContent).toContain(
+      REINVITE_HELD_BY_RUN_TEXT["here-exchanging"],
+    );
+    expect(app.container.textContent).not.toContain(
+      STOP_RUN_AND_REINVITE_LABEL,
+    );
 
     release();
     // The run control is disabled for the length of a run, so its return to
@@ -1454,7 +1465,7 @@ describe("a re-invite control while a run is in flight", () => {
     await expect.element(recovery).toBeEnabled();
     await expect.element(terms).toBeEnabled();
     expect(app.container.textContent).not.toContain(
-      REINVITE_RUN_IN_FLIGHT_REASON,
+      REINVITE_HELD_BY_RUN_TEXT["here-exchanging"],
     );
   });
 
@@ -1494,7 +1505,7 @@ describe("a re-invite control while a run is in flight", () => {
         secretBefore,
       );
       expect(app.container.textContent).toContain(
-        REINVITE_RUN_IN_FLIGHT_REASON,
+        REINVITE_HELD_BY_RUN_TEXT.elsewhere,
       );
 
       release();
@@ -1549,7 +1560,7 @@ describe("a re-invite control while a run is in flight", () => {
       // being left with a control that silently did nothing.
       await vi.waitFor(() => {
         expect(app.container.textContent).toContain(
-          REINVITE_RUN_IN_FLIGHT_REASON,
+          REINVITE_HELD_BY_RUN_TEXT.elsewhere,
         );
       });
       expect((await getManagedExchange(created.id))?.sharedSecret).toBe(
@@ -1571,6 +1582,73 @@ describe("a re-invite control while a run is in flight", () => {
     } finally {
       release?.();
       readings?.restore();
+    }
+  });
+
+  test("a run of this window waiting for its partner is stopped, and the re-invite then lands", async () => {
+    const created = await createManagedExchange(
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
+    );
+    const failedAt = Date.now() - 120_000;
+    await recordManagedExchangeLastRun(
+      created.id,
+      failedRun(failedAt, "failed", "storage"),
+      failedAt,
+    );
+    const secretBefore = (await getManagedExchange(created.id))?.sharedSecret;
+    // A run of this window, holding the lock while it waits for its partner,
+    // listed as the run path lists it and released as it unwinds on the stop.
+    const stop = new AbortController();
+    let granted!: () => void;
+    const holding = new Promise<void>((resolve) => {
+      granted = resolve;
+    });
+    const run = withManagedExchangeLock(created.id, async () => {
+      const listed = enterManagedWindowRun(created.id, stop);
+      granted();
+      try {
+        await new Promise<void>((resolve) => {
+          stop.signal.addEventListener("abort", () => resolve());
+        });
+      } finally {
+        listed.release();
+      }
+    });
+    await holding;
+
+    try {
+      app.render(createElement(ManagedRunSurface, { id: created.id }));
+      const recovery = page.getByRole("button", {
+        name: "Create a fresh invitation",
+      });
+      const terms = page.getByRole("button", {
+        name: "Re-invite with the same terms",
+      });
+      await expect.element(recovery).toBeDisabled();
+      await expect.element(terms).toBeDisabled();
+      // Both re-invite controls say so and offer the stop.
+      await expect
+        .poll(
+          () =>
+            page.getByText(REINVITE_HELD_BY_RUN_TEXT["here-waiting"]).all()
+              .length,
+        )
+        .toBe(2);
+
+      await page
+        .getByRole("button", { name: STOP_RUN_AND_REINVITE_LABEL })
+        .first()
+        .click();
+
+      expect(stop.signal.aborted).toBe(true);
+      await vi.waitFor(async () => {
+        expect((await getManagedExchange(created.id))?.sharedSecret).not.toBe(
+          secretBefore,
+        );
+      });
+    } finally {
+      stop.abort();
+      await run;
     }
   });
 });

@@ -14,7 +14,6 @@ import {
   managedRecoveryReducer,
   managedReinviteFailureAt,
   managedReinviteInFlight,
-  managedRunHoldsReinvite,
   managedStandingConditionShown,
 } from "@recurring/managedRunRecoveryModel";
 import {
@@ -312,7 +311,6 @@ describe("the re-invite mint", () => {
     for (const outcome of [
       { type: "reinvite-composed", reinvite: REINVITE },
       { type: "reinvite-held-by-run" },
-      { type: "reinvite-refused-by-run" },
       { type: "reinvite-withheld" },
       { type: "reinvite-failed", cause: "other" },
     ] satisfies ReadonlyArray<ManagedRecoveryAction>)
@@ -377,33 +375,26 @@ describe("the re-invite mint", () => {
     ).toBeUndefined();
   });
 
-  test("a run holds the mint by the polled reading or by the mint's own refusal", () => {
-    expect(managedRunHoldsReinvite(MANAGED_RECOVERY_INITIAL, true)).toBe(true);
-    expect(managedRunHoldsReinvite(MANAGED_RECOVERY_INITIAL, false)).toBe(
-      false,
-    );
-    const refused = fold([
-      { type: "reinvite-started", site: "recovery" },
-      { type: "reinvite-refused-by-run" },
+  test("a mint whose secret was replaced under it says nothing was saved", () => {
+    const failed = fold([
+      { type: "reinvite-started", site: "detail" },
+      { type: "reinvite-failed", cause: "secret-changed" },
     ]);
-    expect(managedRunHoldsReinvite(refused, false)).toBe(true);
-    expect(
-      managedRunHoldsReinvite(fold([{ type: "run-started" }], refused), false),
-    ).toBe(true);
-    expect(
-      managedRunHoldsReinvite(
-        fold([{ type: "reinvite-started", site: "recovery" }], refused),
-        false,
-      ),
-    ).toBe(false);
+    expect(managedReinviteFailureAt(failed, "detail")).toEqual({
+      title: "Could not create a fresh invitation",
+      message:
+        "This exchange's shared secret changed while the invitation was " +
+        "being made, so nothing was saved and no invitation was made. Try " +
+        "again.",
+    });
   });
 
-  test("a recheck that found a run leaves no refusal and no failure", () => {
+  test("a mint a run held goes back to idle with no failure", () => {
     const held = fold([
       { type: "reinvite-started", site: "recovery" },
       { type: "reinvite-held-by-run" },
     ]);
-    expect(managedRunHoldsReinvite(held, false)).toBe(false);
+    expect(held.reinvite.request).toEqual({ kind: "idle" });
     expect(managedReinviteFailureAt(held, "recovery")).toBeUndefined();
   });
 

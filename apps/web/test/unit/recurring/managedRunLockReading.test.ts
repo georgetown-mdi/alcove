@@ -36,7 +36,7 @@ describe("the run lock's reading", () => {
   });
 });
 
-describe("an export the lock refused", () => {
+describe("an operation the lock refused", () => {
   const refused = fold([
     { type: "read", held: false, refusalsBefore: 0 },
     { type: "refused", refusal: 1 },

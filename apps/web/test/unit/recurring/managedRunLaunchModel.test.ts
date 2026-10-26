@@ -49,6 +49,7 @@ import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchang
 import { ManagedExchangeNotRunnableError } from "@psi/managed/managedExchangeRun";
 import { ManagedInputError } from "@psi/managed/managedInputGuard";
 import { ManagedRelayRegistrationError } from "@psi/managed/managedRelayRegistration";
+import { ManagedRunStoppedError } from "@psi/managed/managedWindowRuns";
 import { ManagedSignalingEndpointRefusedError } from "@psi/managed/managedRendezvous";
 import { PartnerNoShowError } from "@psi/transport/waitForConnection";
 
@@ -568,6 +569,19 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
     );
     expect(failure.kind).toBe("already-running");
     expect(failure.recovery).toBe("wait");
+  });
+
+  test("a run this window stopped while it waited is the benign stopped state", () => {
+    const failure = classifyAgainstOneRecord(
+      new ManagedRunStoppedError("id"),
+      record(),
+      undefined,
+      NOW,
+      false,
+    );
+    expect(failure.kind).toBe("stopped");
+    expect(failure.title).toBe("This run was stopped");
+    expect(failure.recovery).toBe("none");
   });
 
   test("a partner who never arrived is the benign no-show state, not the transport copy", () => {
@@ -1536,6 +1550,7 @@ describe("the launch error a classified state shows", () => {
     "partner-refused-set": "withheld",
     "terms-change": "withheld",
     "already-running": "withheld",
+    stopped: "withheld",
     missed: "withheld",
     storage: "withheld",
     "partial-rotation": "withheld",

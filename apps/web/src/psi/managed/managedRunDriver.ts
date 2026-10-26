@@ -59,7 +59,7 @@ import {
   declineManagedTermsProposal,
   managedTermsChangeHandler,
 } from "./managedTermsProposal";
-import { persistManagedExchangePayloadReceiveFill } from "./managedExchangeStore";
+import { persistManagedRunPayloadReceiveFill } from "./managedExchangeStore";
 import { prepareManagedRerunExchange } from "./managedPreparedExchange";
 import { runManagedRerun } from "./managedRun";
 
@@ -82,6 +82,7 @@ import type {
   ExchangeRecord,
   ExchangeResult,
   HandshakeRole,
+  LinkageTerms,
   MessageConnection,
   RelayRegistrar,
   ResolvedMatching,
@@ -97,6 +98,7 @@ import type { PairTableFactors } from "../resultSizeProjection";
 import type { ManagedExchangeRunResult } from "./managedExchangeRun";
 import type { ManagedInputSource } from "./managedInputHandle";
 import type { ManagedRerunOptions } from "./managedRun";
+import type { ManagedRunRecordExpectation } from "./managedExchangeStore";
 import type { PeerCloseOutcome } from "../transport/waitForPeerClose";
 import type { RunConnection } from "../transport/runConnection";
 import type { RunnableManagedExchangeRecord } from "./managedExchangeRecord";
@@ -131,6 +133,9 @@ interface ManagedRerunCarried {
     rotatedSecret: string;
     maxAgeDays: number | null;
   };
+  /** The terms the run read when it took the lock, which its own terms writes
+   * compare the stored terms with. */
+  linkageTerms: LinkageTerms;
 }
 
 /** How a re-run reads its input this run, and how it is attended. `source` is the
@@ -220,14 +225,26 @@ export interface ManagedRunDriverConfig {
  * unchanged for the caller's generic failure path; a data-exchange failure past
  * this party's payload send files its disclosure first
  * ({@link fileTerminatedDisclosure}).
+ *
+ * Each call is one run with its own stop: a controller that `config.signal`
+ * aborts too, which this window's re-invite or relay enrollment aborts while
+ * the run waits for its partner ({@link ./managedWindowRuns.ts}). A stopped
+ * run raises `ManagedRunStoppedError` and records nothing.
  */
 export function runManagedExchangeInBrowser(
   config: ManagedRunDriverConfig,
 ): Promise<ManagedExchangeRunResult<RunOutputs>> {
+  // The owner's abort is forwarded past the run's end too: the close drains
+  // after the run yields its outputs, and a cancel still has to cut it.
+  const stop = new AbortController();
+  const forwardOwnerAbort = () => stop.abort(config.signal.reason);
+  if (config.signal.aborted) forwardOwnerAbort();
+  else
+    config.signal.addEventListener("abort", forwardOwnerAbort, { once: true });
+  const signal = stop.signal;
   const {
     record,
     source,
-    signal,
     urls,
     onWarning,
     onResolvedMatching,
@@ -412,6 +429,7 @@ export function runManagedExchangeInBrowser(
             prepared: input.prepared,
             exchangeRole,
             csvDelimiter: current.exchangeFile.csvDelimiter,
+            linkageTerms: current.exchangeFile.linkageTerms,
             ...(runRegistrar !== undefined && {
               relayRegistration: {
                 registrar: runRegistrar,
@@ -439,6 +457,10 @@ export function runManagedExchangeInBrowser(
       // still holds the lock and the pre-rotation secret.
       dataExchange: async (carried) => {
         const termsTakenOnRef: { current: boolean } = { current: false };
+        const expected: ManagedRunRecordExpectation = {
+          id: record.id,
+          linkageTerms: carried.linkageTerms,
+        };
         try {
           const result = await runExchange(
             carried.mc,
@@ -480,18 +502,22 @@ export function runManagedExchangeInBrowser(
               // declared send set into the stored terms before any key or
               // payload moves, and say which columns were taken; a failed
               // write stops the run.
+              // Terms the operator wrote during the run are kept, and the run
+              // goes on without the notice.
               onPayloadReceiveFilled: async (columns) => {
-                await persistManagedExchangePayloadReceiveFill(
-                  record.id,
+                const written = await persistManagedRunPayloadReceiveFill(
+                  expected,
                   columns,
                 );
+                if (written === undefined) return;
+                expected.linkageTerms = written.exchangeFile.linkageTerms;
                 emitRunNotice(payloadReceiveFilledNotice(columns));
               },
               // The partner's changed terms, met before any key or payload
               // moves: taken on or refused here, never left to the generic
               // mismatch refusal.
               onTermsChange: managedTermsChangeHandler(
-                record.id,
+                expected,
                 decideTermsChange,
                 () => {
                   termsTakenOnRef.current = true;
@@ -542,6 +568,7 @@ export function runManagedExchangeInBrowser(
       // The abort probe the failure bookkeeping classifies "cancelled" on: an
       // operator-torn-down run is recorded as cancelled, not a transport fault.
       aborted: () => signal.aborted,
+      stop,
     },
   ).finally(() => {
     signal.removeEventListener("abort", cutRunOnCancel);

@@ -149,13 +149,13 @@ export function runElsewhereNotice(scheduleOn: boolean): string {
         "later.";
 }
 
-/** Why both exports are withheld while a run of this exchange is in flight:
- * the run changes the secret a download would hold. Names every context a run
+/** The note beside both downloads while a run of this exchange is in flight:
+ * the run replaces the secret a download then holds. Names every context a run
  * can be in, since the operator reading it may not have started it. */
-export const RUN_IN_FLIGHT_EXPORT_REASON =
+export const RUN_IN_FLIGHT_EXPORT_NOTE =
   "This exchange is running right now - in this browser, in another tab, or " +
-  "on its schedule. A run changes its shared secret, so a download now could " +
-  "already be out of date. Try again when the run finishes.";
+  "on its schedule. A download now holds the shared secret that run " +
+  "replaces, so download it again once the run ends.";
 
 /** What neither export takes with it, shown beside both: the accounting of
  * disclosures is kept in this browser and is in no exported file. */

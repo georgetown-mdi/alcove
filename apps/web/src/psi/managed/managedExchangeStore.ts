@@ -9,6 +9,8 @@
  * docs/spec/MANAGED_EXCHANGE_RECORD.md).
  */
 
+import { canonicalString } from "@alcove/core";
+
 import {
   clearUnfiledExchangeFlag,
   clearUnfiledExchangeFlags,
@@ -55,7 +57,7 @@ import {
 import { foldElapsedWindowsUnderResponse } from "./managedSchedule";
 import { parseManagedLocalState } from "./managedLocalStateShape";
 
-import type { RelayRegistrar } from "@alcove/core";
+import type { LinkageTerms, RelayRegistrar } from "@alcove/core";
 
 import type {
   ManagedBackupLocation,
@@ -513,11 +515,12 @@ function siblingCustodyByKey(
  * `transform` must be synchronous (Zod validation is) or the transaction would
  * auto-commit before the write is issued; it throws to abort the transaction,
  * leaving the stored record unchanged, and receives `undefined` when no record
- * exists under `id`.
+ * exists under `id`. A transform returning {@link UnwrittenRecord} writes
+ * nothing and resolves with the record it names.
  */
 async function readModifyWriteRecord(
   id: string,
-  transform: (stored: unknown) => ManagedExchangeRecord,
+  transform: (stored: unknown) => ManagedExchangeRecord | UnwrittenRecord,
 ): Promise<ManagedExchangeRecord> {
   const db = await openManagedExchangeDatabase();
   try {
@@ -533,8 +536,12 @@ async function readModifyWriteRecord(
       let failure: unknown;
       read.onsuccess = () => {
         try {
-          written = transform(read.result);
-          store.put(written);
+          const next = transform(read.result);
+          if ("unwritten" in next) written = next.unwritten;
+          else {
+            written = next;
+            store.put(written);
+          }
         } catch (error) {
           failure = error;
           transaction.abort();
@@ -554,6 +561,52 @@ async function readModifyWriteRecord(
   } finally {
     db.close();
   }
+}
+
+/** What a {@link readModifyWriteRecord} transform returns to write nothing:
+ * the stored record, as read. */
+interface UnwrittenRecord {
+  unwritten: ManagedExchangeRecord;
+}
+
+/**
+ * What a run's own terms write compares the stored terms with: the terms the
+ * run read when it took the lock, or the terms its own last terms write
+ * stored. An Apply or a terms update takes no lock, so either can land while
+ * the run is in flight; a run's write finding the stored terms moved past
+ * these writes nothing, so the operator's write is the one kept.
+ */
+export interface ManagedRunRecordExpectation {
+  id: string;
+  linkageTerms: LinkageTerms;
+}
+
+/**
+ * A run's own terms write: `apply` over the stored record, inside one
+ * strict-durability readwrite transaction, only where it still holds the
+ * terms `expected` names.
+ *
+ * @returns the record written, or `undefined` where nothing was.
+ * @throws {Error} if no record with the id exists.
+ */
+async function modifyRunRecordIfCurrent(
+  expected: ManagedRunRecordExpectation,
+  apply: (existing: ManagedExchangeRecord) => ManagedExchangeRecord,
+): Promise<ManagedExchangeRecord | undefined> {
+  const outcome: { written?: ManagedExchangeRecord } = {};
+  await readModifyWriteRecord(expected.id, (stored) => {
+    if (stored === undefined)
+      throw new Error(`no managed exchange with id ${expected.id}`);
+    const existing = parseManagedExchangeRecord(stored);
+    if (
+      canonicalString(existing.exchangeFile.linkageTerms) !==
+      canonicalString(expected.linkageTerms)
+    )
+      return { unwritten: existing };
+    outcome.written = apply(existing);
+    return outcome.written;
+  });
+  return outcome.written;
 }
 
 /** The rejection for a store write whose transaction did not commit: the
@@ -841,15 +894,23 @@ export async function updateManagedExchangeLocalFields(
  * durable write the persist-before-success ordering awaits before the data
  * exchange begins (see docs/spec/MANAGED_EXCHANGE_RECORD.md).
  *
+ * The write replaces `expectedSharedSecret`, the secret the run read when it
+ * took the lock, and refuses where the record read inside the transaction holds
+ * another. A safety check: the re-invite and the import replace take the same
+ * lock, so neither lands while the run holds it.
+ *
  * @throws {Error} if no record with `id` exists, or if the stored record holds a
  *   configuration only ({@link runnableManagedExchangeOrRefuse}): the `id` carries
  *   no shape, so the record read inside the transaction is what the rotation is
  *   narrowed on, and the transaction aborts with the record still keyless.
+ * @throws {ManagedExchangeSecretChangedError} if the stored secret is not
+ *   `expectedSharedSecret`; the transaction aborts and nothing is written.
  * @throws {ZodError} if the stored value is not a valid v4 record or the rotation
  *   produces an invalid one; the transaction aborts and nothing is written.
  */
 export async function persistManagedExchangeRotation(
   id: string,
+  expectedSharedSecret: string,
   rotation: ManagedExchangeRotation,
 ): Promise<RunnableManagedExchangeRecord> {
   return readModifyWriteRotation(id, (stored) => {
@@ -858,8 +919,34 @@ export async function persistManagedExchangeRotation(
     const existing = runnableManagedExchangeOrRefuse(
       parseManagedExchangeRecord(stored),
     );
+    refuseChangedSecret(existing, expectedSharedSecret);
     return applyManagedExchangeRotation(existing, rotation);
   });
+}
+
+/**
+ * Raised when a write finds the stored record holding a secret other than the
+ * one its operation began from or was made under: a run's rotation, a
+ * re-invite, or an import replace landed in between. The write aborts and
+ * nothing is stored.
+ */
+export class ManagedExchangeSecretChangedError extends Error {
+  constructor(id: string) {
+    super(
+      `the shared secret of managed exchange ${id} changed since this write began, so nothing was written`,
+    );
+    this.name = "ManagedExchangeSecretChangedError";
+  }
+}
+
+/** Refuse a secret-replacing write over a record whose secret is not the one
+ * the operation began from. */
+function refuseChangedSecret(
+  stored: ManagedExchangeRecord,
+  expectedSharedSecret: string | undefined,
+): void {
+  if (stored.sharedSecret !== expectedSharedSecret)
+    throw new ManagedExchangeSecretChangedError(stored.id);
 }
 
 /**
@@ -932,71 +1019,66 @@ export class ManagedReinviteWithheldError extends Error {
  *
  * On a record whose relay registrar holds the key of the secret this replaces
  * ({@link reinviteLosesRegistrarKey}), the write stores the registration as
- * pending for the reason `"reinvite"`, and `registerReinvitedKey`, still under
- * the lock, is handed the record as read and as written: the replaced secret
- * is held by that call alone, to sign the registration of the fresh one. What
- * it returns is what this returns.
+ * pending for the reason `"reinvite"`, and `registerReinvitedKey` is handed the
+ * record as read and as written: the replaced secret is held by that call
+ * alone, to sign the registration of the fresh one. What it returns is what
+ * this returns.
  *
- * A run in flight is excluded rather than checked, exactly as both exports
- * exclude it: this step takes the record's run+rotate lock
- * ({@link ./managedExchangeLock.ts}) with `ifAvailable` before the transaction
- * opens, so a run holding it is refused here rather than having its secret
- * replaced mid-exchange. Neither rotation write compares against the secret it
- * replaces, so a re-invite landing beside a run's own rotation would discard one
- * of the two.
+ * The caller holds the record's run+rotate lock ({@link ./managedExchangeLock.ts})
+ * across the read the re-invite is composed over and this write, so no run's
+ * rotation lands between them. The write replaces `expectedSharedSecret`, the
+ * secret the re-invite was composed over, and refuses where the record read
+ * inside the transaction holds another: a safety check, since the lock already
+ * excludes every other secret write.
  *
  * @throws {Error} if no record with `id` exists, or if the stored record holds a
  *   configuration only, narrowed inside the transaction exactly as
  *   {@link persistManagedExchangeRotation} narrows it.
- * @throws {ManagedExchangeLockUnavailableError} if a run of this record holds the
- *   lock; no transaction is opened and nothing is written.
  * @throws {ManagedReinviteWithheldError} if the stored record has a standing
  *   compromise response; the transaction aborts, leaving the secret and the
  *   response as they were.
+ * @throws {ManagedExchangeSecretChangedError} if the stored secret is not
+ *   `expectedSharedSecret`; the transaction aborts and nothing is written.
  * @throws {ZodError} if the stored value is not a valid v4 record or the rotation
  *   produces an invalid one; the transaction aborts and nothing is written.
  */
 export async function persistManagedExchangeReinvite(
   id: string,
+  expectedSharedSecret: string,
   rotation: ManagedExchangeReinviteRotation,
   registerReinvitedKey?: (
     replaced: RunnableManagedExchangeRecord,
     written: RunnableManagedExchangeRecord,
   ) => Promise<RunnableManagedExchangeRecord>,
 ): Promise<RunnableManagedExchangeRecord> {
-  return withManagedExchangeLock(
-    id,
-    async () => {
-      const read: { replaced?: RunnableManagedExchangeRecord } = {};
-      const written = await readModifyWriteRotation(id, (stored) => {
-        if (stored === undefined)
-          throw new Error(`no managed exchange with id ${id}`);
-        const existing = runnableManagedExchangeOrRefuse(
-          parseManagedExchangeRecord(stored),
-        );
-        if (standingCompromiseResponse(existing) !== undefined)
-          throw new ManagedReinviteWithheldError(id);
-        read.replaced = existing;
-        return applyManagedExchangeReinviteRotation(
-          existing,
-          reinviteLosesRegistrarKey(existing)
-            ? {
-                ...rotation,
-                relayRegistrationPendingSince: new Date().toISOString(),
-                relayRegistrationPendingReason: "reinvite",
-              }
-            : rotation,
-        );
-      });
-      const { replaced } = read;
-      return replaced !== undefined &&
-        registerReinvitedKey !== undefined &&
-        reinviteLosesRegistrarKey(replaced)
-        ? registerReinvitedKey(replaced, written)
-        : written;
-    },
-    { ifAvailable: true },
-  );
+  const read: { replaced?: RunnableManagedExchangeRecord } = {};
+  const written = await readModifyWriteRotation(id, (stored) => {
+    if (stored === undefined)
+      throw new Error(`no managed exchange with id ${id}`);
+    const existing = runnableManagedExchangeOrRefuse(
+      parseManagedExchangeRecord(stored),
+    );
+    if (standingCompromiseResponse(existing) !== undefined)
+      throw new ManagedReinviteWithheldError(id);
+    refuseChangedSecret(existing, expectedSharedSecret);
+    read.replaced = existing;
+    return applyManagedExchangeReinviteRotation(
+      existing,
+      reinviteLosesRegistrarKey(existing)
+        ? {
+            ...rotation,
+            relayRegistrationPendingSince: new Date().toISOString(),
+            relayRegistrationPendingReason: "reinvite",
+          }
+        : rotation,
+    );
+  });
+  const { replaced } = read;
+  return replaced !== undefined &&
+    registerReinvitedKey !== undefined &&
+    reinviteLosesRegistrarKey(replaced)
+    ? registerReinvitedKey(replaced, written)
+    : written;
 }
 
 /**
@@ -1067,11 +1149,18 @@ export async function clearManagedExchangeRelayRegistrationPending(
  * Record a partner's changed linkage terms into the stored record's exchange
  * file ({@link applyManagedExchangeTermsChange}), inside one strict-durability
  * readwrite transaction, so the write lands on the freshest stored record and
- * cannot carry a stale secret back over a rotation. Takes no lock of its own:
- * a run awaits it at the terms exchange under the lock it already holds, and
- * an apply outside a run takes the lock around it.
+ * cannot carry a stale secret back over a rotation. Takes no lock: a run in
+ * flight runs the terms it read when it took the lock, whatever this writes,
+ * and its own terms writes leave this one stored
+ * ({@link persistManagedRunTermsChange}).
+ *
+ * With `expectedSharedSecret`, the secret the change was checked under, the
+ * write refuses where the record read inside the transaction holds another: a
+ * run's rotation or a re-invite landed since the change was read.
  *
  * @throws {Error} if no record with `id` exists.
+ * @throws {ManagedExchangeSecretChangedError} if the stored secret is not
+ *   `expectedSharedSecret`; nothing is written.
  * @throws {UsageError} for an `apply` or `update` the record's own identity
  *   cannot take.
  * @throws {ZodError} if the stored value or the resulting record is invalid.
@@ -1079,22 +1168,43 @@ export async function clearManagedExchangeRelayRegistrationPending(
 export async function persistManagedExchangeTermsChange(
   id: string,
   write: ManagedTermsChangeWrite,
+  expectedSharedSecret?: string,
 ): Promise<ManagedExchangeRecord> {
   return readModifyWriteRecord(id, (stored) => {
     if (stored === undefined)
       throw new Error(`no managed exchange with id ${id}`);
-    return applyManagedExchangeTermsChange(
-      parseManagedExchangeRecord(stored),
-      write,
-    );
+    const existing = parseManagedExchangeRecord(stored);
+    if (expectedSharedSecret !== undefined)
+      refuseChangedSecret(existing, expectedSharedSecret);
+    return applyManagedExchangeTermsChange(existing, write);
   });
+}
+
+/**
+ * A run's own terms write, the partner's changed terms an attended run took on:
+ * {@link persistManagedExchangeTermsChange}, made only while the stored record
+ * holds the terms `expected` names. Where an operator's terms write moved it
+ * past them, nothing is written and the operator's write is kept.
+ *
+ * @returns the record written, or `undefined` where nothing was.
+ * @throws {Error} if no record with the id exists.
+ * @throws {UsageError} for an `apply` the record's own identity cannot take.
+ * @throws {ZodError} if the stored value or the resulting record is invalid.
+ */
+export async function persistManagedRunTermsChange(
+  expected: ManagedRunRecordExpectation,
+  write: ManagedTermsChangeWrite,
+): Promise<ManagedExchangeRecord | undefined> {
+  return modifyRunRecordIfCurrent(expected, (existing) =>
+    applyManagedExchangeTermsChange(existing, write),
+  );
 }
 
 /**
  * Record which of this party's own columns the stored exchange sends
  * ({@link applyManagedExchangeSentColumns}), inside one strict-durability
  * readwrite transaction, as {@link persistManagedExchangeTermsChange} does.
- * Takes no lock of its own; the caller holds the run lock around it.
+ * Takes no lock, as that write does not.
  *
  * @throws {Error} if no record with `id` exists.
  * @throws {UsageError} where the exchange offers no such choice.
@@ -1129,6 +1239,12 @@ export async function persistManagedExchangeSentColumns(
  * no-op against a success stamped at or after `runStartedAtMs`, the instant the
  * run producing `lastRun` began.
  *
+ * With `expectedSharedSecret`, the secret the run last stored or began from,
+ * the write is also a no-op where the stored record holds another: a write
+ * made after the run released its lock finds a re-invite or a later run
+ * replaced it, so the record is theirs and this run's outcome is not stamped
+ * on it.
+ *
  * @throws {Error} if no record with `id` exists.
  * @throws {ZodError} if the stored value or the resulting record is invalid.
  */
@@ -1136,11 +1252,17 @@ export async function recordManagedExchangeLastRun(
   id: string,
   lastRun: ManagedExchangeLastRun,
   runStartedAtMs: number,
+  expectedSharedSecret?: string,
 ): Promise<ManagedExchangeRecord> {
   return readModifyWriteRecord(id, (stored) => {
     if (stored === undefined)
       throw new Error(`no managed exchange with id ${id}`);
     const existing = parseManagedExchangeRecord(stored);
+    if (
+      expectedSharedSecret !== undefined &&
+      existing.sharedSecret !== expectedSharedSecret
+    )
+      return { unwritten: existing };
     return applyManagedExchangeLastRun(existing, lastRun, runStartedAtMs);
   });
 }
@@ -1153,22 +1275,23 @@ export async function recordManagedExchangeLastRun(
  * rotation. Awaited at the terms exchange, before any key or payload moves: a
  * rejection stops the run.
  *
- * @throws {Error} if no record with `id` exists, or its terms already state
- *   the list.
+ * Made only while the stored record holds the terms `expected` names. Where an
+ * operator's terms write moved it past them, nothing is written and nothing is
+ * thrown: the operator's write is kept, and the run goes on under the terms it
+ * agreed with the partner.
+ *
+ * @returns the record written, or `undefined` where nothing was.
+ * @throws {Error} if no record with the id exists, or its terms already
+ *   state the list.
  * @throws {ZodError} if the stored value or the resulting record is invalid.
  */
-export async function persistManagedExchangePayloadReceiveFill(
-  id: string,
+export async function persistManagedRunPayloadReceiveFill(
+  expected: ManagedRunRecordExpectation,
   columns: ReadonlyArray<string>,
-): Promise<ManagedExchangeRecord> {
-  return readModifyWriteRecord(id, (stored) => {
-    if (stored === undefined)
-      throw new Error(`no managed exchange with id ${id}`);
-    return applyManagedExchangePayloadReceiveFill(
-      parseManagedExchangeRecord(stored),
-      columns,
-    );
-  });
+): Promise<ManagedExchangeRecord | undefined> {
+  return modifyRunRecordIfCurrent(expected, (existing) =>
+    applyManagedExchangePayloadReceiveFill(existing, columns),
+  );
 }
 
 /**
@@ -1308,7 +1431,8 @@ export async function persistManagedExchangeWorkingDirectory(
  *   to replace it, or every `id` in `besideIds` to install beside them.
  * - `"replace"` -- the record `into` names still has the artifact's agreed
  *   terms and side, so the caller replaces it
- *   ({@link replaceManagedExchangeFromImport}).
+ *   ({@link replaceManagedExchangeFromImport}), over the `sharedSecret` it
+ *   held at this read, absent where it held a configuration only.
  * - `"chosen-copy-changed"` -- the record `into` names is gone or no longer has
  *   the artifact's agreed terms and side.
  * - `"no-match"` -- nothing above applies, so the caller installs a fresh record.
@@ -1316,7 +1440,7 @@ export async function persistManagedExchangeWorkingDirectory(
 export type ManagedBackupReconcileOutcome =
   | { kind: "held"; label: string; stateUnreadable?: true }
   | { kind: "live-copy"; copies: ReadonlyArray<ManagedStoredCopy> }
-  | { kind: "replace"; id: string }
+  | { kind: "replace"; id: string; sharedSecret?: string }
   | { kind: "chosen-copy-changed" }
   | { kind: "no-match" };
 
@@ -1521,7 +1645,13 @@ function decideBackupTarget(
     );
     return chosen === undefined
       ? { kind: "chosen-copy-changed" }
-      : { kind: "replace", id: chosen.id };
+      : {
+          kind: "replace",
+          id: chosen.id,
+          ...(chosen.sharedSecret !== undefined
+            ? { sharedSecret: chosen.sharedSecret }
+            : {}),
+        };
   }
   const liveCopies = findRecordsByTermsAndSide(
     records,
@@ -1549,10 +1679,10 @@ function parsedSiblingEntry(raw: unknown): ManagedLocalState | undefined {
  * outcome that writes, holding the record that runs here from then on. The
  * refusals write nothing:
  *
- * - `"run-in-flight"` -- another context holds the record's run+rotate lock,
- *   so a replace landing beside a run would overwrite the secret it rotates.
- * - `"changed"` -- the record is gone, or no longer has the import's agreed
- *   terms and side, since the operator chose it.
+ * - `"run-in-flight"` -- a run of the record holds its run+rotate lock, so a
+ *   replace landing beside it would overwrite the secret it rotates.
+ * - `"changed"` -- the record is gone, lacks the import's agreed terms
+ *   and side, or holds another secret, since the operator chose it.
  */
 export type ManagedReplaceOutcome =
   | { kind: "replaced"; record: RunnableManagedExchangeRecord }
@@ -1572,11 +1702,14 @@ export type ManagedReplaceOutcome =
  * this build cannot parse is dropped whole.
  *
  * The step takes the record's run+rotate lock ({@link ./managedExchangeLock.ts})
- * with `ifAvailable` before its transaction opens, as the re-invite's rotation
- * write does, so a run holding it refuses the replace rather than having its
- * secret replaced mid-exchange. The read, the check that the record still has
- * the import's agreed terms and side, and both writes are one transaction; the
- * secret the record holds is not compared.
+ * with `ifAvailable` before its transaction opens, as the re-invite does, so a
+ * run holding it refuses the replace rather than having its secret replaced
+ * mid-exchange. The read, the check that the record still has the import's
+ * agreed terms and side, the check that it still holds `expectedSharedSecret`
+ * -- the secret the reconciliation that chose it read, absent for a
+ * configuration-only record -- and both writes are one transaction, so a
+ * re-invite or a run landing between that reconciliation and the lock refuses
+ * the replace.
  *
  * @throws {Error} if `imported` holds no secret; nothing is written.
  * @throws {ZodError} if the stored record or the result is invalid; the
@@ -1584,6 +1717,7 @@ export type ManagedReplaceOutcome =
  */
 export async function replaceManagedExchangeFromImport(
   id: string,
+  expectedSharedSecret: string | undefined,
   at: string,
   imported: ManagedExchangeRecord,
   source: ManagedImportSource,
@@ -1591,7 +1725,7 @@ export async function replaceManagedExchangeFromImport(
   try {
     return await withManagedExchangeLock(
       id,
-      () => replaceStoredCopy(id, at, imported, source),
+      () => replaceStoredCopy(id, expectedSharedSecret, at, imported, source),
       { ifAvailable: true },
     );
   } catch (error) {
@@ -1604,6 +1738,7 @@ export async function replaceManagedExchangeFromImport(
 /** The replace itself, run under the record's run+rotate lock. */
 async function replaceStoredCopy(
   id: string,
+  expectedSharedSecret: string | undefined,
   at: string,
   imported: ManagedExchangeRecord,
   source: ManagedImportSource,
@@ -1630,6 +1765,7 @@ async function replaceStoredCopy(
           if (read.result === undefined) return;
           const stored = parseManagedExchangeRecord(read.result);
           if (!sameAgreedTermsAndSide(stored, runnable)) return;
+          if (stored.sharedSecret !== expectedSharedSecret) return;
           const replaced = applyManagedExchangeImportReplace(
             stored,
             runnable,

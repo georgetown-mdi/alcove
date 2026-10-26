@@ -14,10 +14,7 @@ import {
 } from "@alcove/core";
 import { validateCompatibility } from "@alcove/core/testing";
 
-import {
-  ManagedExchangeLockUnavailableError,
-  managedExchangeLockName,
-} from "@psi/managed/managedExchangeLock";
+import { managedExchangeLockName } from "@psi/managed/managedExchangeLock";
 
 import {
   ManagedTermsUpdateNotAppliedError,
@@ -72,6 +69,11 @@ import type { ManagedTermsUpdateReading } from "@psi/managed/managedTermsUpdate"
 
 /** The stored exchanges, by id, as the bytes the store would hold. */
 const storedBytes = vi.hoisted(() => new Map<string, string>());
+/** A write landing once, right after the apply's read: a rotation between
+ * the read and the apply's own write. */
+const afterNextRead = vi.hoisted(() => ({
+  write: undefined as (() => void) | undefined,
+}));
 
 vi.mock("@psi/managed/managedExchangeStore", async (importOriginal) => {
   const records = await import("@psi/managed/managedExchangeRecord");
@@ -81,13 +83,31 @@ vi.mock("@psi/managed/managedExchangeStore", async (importOriginal) => {
       ? undefined
       : records.parseManagedExchangeRecord(JSON.parse(bytes));
   };
+  const actual = await importOriginal<typeof ManagedExchangeStore>();
   return {
-    ...(await importOriginal<typeof ManagedExchangeStore>()),
-    getManagedExchange: vi.fn((id: string) => Promise.resolve(read(id))),
+    ...actual,
+    getManagedExchange: vi.fn((id: string) => {
+      const stored = read(id);
+      const landing = afterNextRead.write;
+      afterNextRead.write = undefined;
+      landing?.();
+      return Promise.resolve(stored);
+    }),
     persistManagedExchangeTermsChange: vi.fn(
-      (id: string, write: ManagedTermsChangeWrite) => {
+      (
+        id: string,
+        write: ManagedTermsChangeWrite,
+        expectedSharedSecret?: string,
+      ) => {
         const stored = read(id);
         if (stored === undefined) throw new Error(`no exchange ${id}`);
+        if (
+          expectedSharedSecret !== undefined &&
+          stored.sharedSecret !== expectedSharedSecret
+        )
+          return Promise.reject(
+            new actual.ManagedExchangeSecretChangedError(id),
+          );
         const next = records.applyManagedExchangeTermsChange(stored, write);
         storedBytes.set(id, JSON.stringify(next));
         return Promise.resolve(next);
@@ -286,35 +306,24 @@ describe("refusing a terms update", () => {
     const record = await runnableRecord({
       expires: "2026-10-29T00:00:00.000Z",
     });
-    expect(managedTermsUpdateRefusal(record, NOW, false)).toBeNull();
+    expect(managedTermsUpdateRefusal(record, NOW)).toBeNull();
   });
 
   test("refuses once the secret has lapsed", async () => {
     const record = await runnableRecord({
       expires: "2026-09-01T00:00:00.000Z",
     });
-    expect(managedTermsUpdateRefusal(record, NOW, false)).toBe("lapsed");
+    expect(managedTermsUpdateRefusal(record, NOW)).toBe("lapsed");
     expect(
-      managedTermsUpdateRefusal(
-        record,
-        Date.parse("2026-08-29T00:00:00Z"),
-        false,
-      ),
+      managedTermsUpdateRefusal(record, Date.parse("2026-08-29T00:00:00Z")),
     ).toBeNull();
   });
 
   test("refuses terms naming no identity, a blank one, or the placeholder", async () => {
     for (const identity of [undefined, " ", PLACEHOLDER_IDENTITY])
-      expect(
-        managedTermsUpdateRefusal(await withIdentity(identity), NOW, false),
-      ).toBe("no-identity");
-  });
-
-  test("refuses while a run is in flight", async () => {
-    const record = await runnableRecord({
-      expires: "2026-10-29T00:00:00.000Z",
-    });
-    expect(managedTermsUpdateRefusal(record, NOW, true)).toBe("run-in-flight");
+      expect(managedTermsUpdateRefusal(await withIdentity(identity), NOW)).toBe(
+        "no-identity",
+      );
   });
 
   test("make refuses under a lapsed secret at the time of the call", async () => {
@@ -332,16 +341,15 @@ describe("refusing a terms update", () => {
       );
   });
 
-  test("make refuses while the run lock is held", async () => {
+  test("make is offered while a run holds the lock", async () => {
     const record = await runnableRecord();
     await navigator.locks.request(
       managedExchangeLockName(record.id),
       async () => {
-        expect(await refusalOfMake(record)).toBe("run-in-flight");
+        await expect(makeManagedTermsUpdate(record)).resolves.toEqual(
+          expect.any(String),
+        );
       },
-    );
-    await expect(makeManagedTermsUpdate(record)).resolves.toEqual(
-      expect.any(String),
     );
   });
 });
@@ -809,22 +817,43 @@ describe("applying a partner's terms update", () => {
     expect(storedBytes.get(record.id)).toBe(before);
   });
 
-  test("refuses without waiting while a run is in flight", async () => {
+  test("reads and applies while a run holds the lock", async () => {
     const record = await agencyBRecord();
-    const reading = await readManagedTermsUpdate(record, CLI_TERMS_UPDATE);
-    const before = storedBytes.get(record.id);
     await navigator.locks.request(
       managedExchangeLockName(record.id),
       async () => {
+        const reading = await readManagedTermsUpdate(record, CLI_TERMS_UPDATE);
+        const applied = await applyManagedTermsUpdate(record.id, reading);
+        expect(storedRecord(record.id)).toEqual(applied);
         expect(
-          await refusalOf(readManagedTermsUpdate(record, CLI_TERMS_UPDATE)),
-        ).toBe("run-in-flight");
-        await expect(
-          applyManagedTermsUpdate(record.id, reading),
-        ).rejects.toBeInstanceOf(ManagedExchangeLockUnavailableError);
+          applied.exchangeFile.linkageTerms.payload?.receive?.map(
+            ({ name }) => name,
+          ),
+        ).toEqual(["notes", "county"]);
       },
     );
-    expect(storedBytes.get(record.id)).toBe(before);
+  });
+
+  test("refuses as partnership, writing nothing, where a rotation lands between the apply's read and its write", async () => {
+    const record = await agencyBRecord();
+    const reading = await readManagedTermsUpdate(record, CLI_TERMS_UPDATE);
+    let rotated: string | undefined;
+    afterNextRead.write = () => {
+      const next = {
+        ...storedRecord(record.id),
+        sharedSecret: generateSharedSecret(),
+      };
+      storedBytes.set(record.id, JSON.stringify(next));
+      rotated = storedBytes.get(record.id);
+    };
+    expect(await refusalOf(applyManagedTermsUpdate(record.id, reading))).toBe(
+      "partnership",
+    );
+    expect(rotated).toBeDefined();
+    expect(storedBytes.get(record.id)).toBe(rotated);
+    expect(clearManagedExchangeTermsProposal).not.toHaveBeenCalledWith(
+      record.id,
+    );
   });
 
   test("refuses where the stored exchange changed after the update was read", async () => {

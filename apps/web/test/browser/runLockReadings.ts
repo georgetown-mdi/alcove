@@ -46,29 +46,6 @@ export function filterLockFromReadings(id: string): {
 }
 
 /**
- * Filter this record's lock out of every reading, as
- * {@link filterLockFromReadings} does, and hold every reading unanswered until
- * `resume` is called: a surface keeps the state it had at the pause, whatever
- * its poll's interval, until the test lets the readings through.
- */
-export function pauseLockReadings(id: string): {
-  resume: () => void;
-  restore: () => void;
-} {
-  const filtered = filterLockFromReadings(id);
-  const filteredQuery = navigator.locks.query.bind(navigator.locks);
-  let resume: () => void = () => undefined;
-  const resumed = new Promise<void>((resolve) => {
-    resume = resolve;
-  });
-  (navigator.locks as unknown as { query: unknown }).query = async () => {
-    await resumed;
-    return filteredQuery();
-  };
-  return { resume, restore: filtered.restore };
-}
-
-/**
  * Hold this record's lock reading STALE for the surfaces' poll -- their only
  * reading of a run in another context -- until a click is dispatched, from which
  * moment the reading is true again.

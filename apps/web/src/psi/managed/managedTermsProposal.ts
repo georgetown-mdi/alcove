@@ -11,14 +11,18 @@ import {
   getManagedLocalState,
   recordManagedExchangeTermsProposal,
 } from "./managedLocalState";
-import { persistManagedExchangeTermsChange } from "./managedExchangeStore";
-import { withManagedExchangeLock } from "./managedExchangeLock";
+import {
+  getManagedExchange,
+  persistManagedExchangeTermsChange,
+  persistManagedRunTermsChange,
+} from "./managedExchangeStore";
 
 import type {
   ManagedExchangeRecord,
   ManagedTermsChangeWrite,
 } from "./managedExchangeRecord";
 import type { TermsChange, TermsDelta } from "@alcove/core";
+import type { ManagedRunRecordExpectation } from "./managedExchangeStore";
 import type { ManagedTermsProposal } from "./managedLocalStateShape";
 
 /**
@@ -111,15 +115,19 @@ export async function keepManagedTermsProposal(
 /**
  * Apply the partner terms of the proposal stored for the exchange
  * (the `apply` scope of `applyManagedExchangeTermsChange`), then drop it. `shownProposedAt` is the `proposedAt` of the
- * proposal the operator reviewed; the stored one is read under the lock and
- * applied only where it is that proposal. Held under the run lock without
- * waiting: a run of this exchange in flight refuses the apply, rather than
- * having its terms rewritten under it.
+ * proposal the operator reviewed; the stored one is read again and applied
+ * only where it is that proposal. Takes no lock: a run in flight runs the terms
+ * it read when it took its lock, and the next run holds the applied ones.
  *
- * @throws {ManagedExchangeLockUnavailableError} while a run of this exchange
- *   holds the lock; nothing is written.
+ * The proposal is kept beside the secret the record held when it was read, so
+ * the write compares the stored secret with that one: a run's rotation or a
+ * re-invite landing between the read and the write drops the proposal with the
+ * secret it replaces, and the apply refuses rather than reviving it.
+ *
  * @throws {ManagedTermsProposalNotStoredError} where no proposal, or another
  *   one, is stored; nothing is written.
+ * @throws {ManagedExchangeSecretChangedError} where the stored secret changed
+ *   since the proposal was read; nothing is written.
  * @throws {UsageError} where the stored terms cannot take the partner's.
  * @throws {ZodError} if the resulting record is invalid; nothing is written.
  */
@@ -127,21 +135,17 @@ export async function applyManagedTermsProposal(
   id: string,
   shownProposedAt: string,
 ): Promise<ManagedExchangeRecord> {
-  return withManagedExchangeLock(
+  const secretRead = (await getManagedExchange(id))?.sharedSecret;
+  const stored = (await getManagedLocalState(id))?.termsProposal;
+  if (secretRead === undefined || stored?.proposedAt !== shownProposedAt)
+    throw new ManagedTermsProposalNotStoredError();
+  const applied = await persistManagedExchangeTermsChange(
     id,
-    async () => {
-      const stored = (await getManagedLocalState(id))?.termsProposal;
-      if (stored?.proposedAt !== shownProposedAt)
-        throw new ManagedTermsProposalNotStoredError();
-      const applied = await persistManagedExchangeTermsChange(id, {
-        scope: "apply",
-        partnerTerms: stored.partnerTerms,
-      });
-      await clearManagedExchangeTermsProposal(id);
-      return applied;
-    },
-    { ifAvailable: true },
+    { scope: "apply", partnerTerms: stored.partnerTerms },
+    secretRead,
   );
+  await clearManagedExchangeTermsProposal(id);
+  return applied;
 }
 
 /** Decline a kept proposal: drop it and leave the stored exchange as it is. */
@@ -196,13 +200,19 @@ export function managedTermsChangeWrite(
  * refusal is a `TermsChangeRefusedError` holding the delta, so the run's
  * bookkeeping records it as a terms change. `onTakenOn` is told once the
  * stored exchange holds the partner's terms.
+ *
+ * The take-on compares the stored terms with `expected`
+ * ({@link ManagedRunRecordExpectation}): a terms write the operator made
+ * during the run is kept, the take-on then writes nothing and the run goes
+ * on, and a take-on that lands moves `expected` to the terms it stored.
  */
 export function managedTermsChangeHandler(
-  id: string,
+  expected: ManagedRunRecordExpectation,
   decideTermsChange: ((change: TermsChange) => Promise<boolean>) | undefined,
   onTakenOn: () => void = () => undefined,
   now: () => Date = () => new Date(),
 ): (change: TermsChange) => Promise<void> {
+  const { id } = expected;
   return async (change) => {
     if (decideTermsChange === undefined) {
       const keepFailure = await keepManagedTermsProposal(
@@ -228,10 +238,12 @@ export function managedTermsChangeHandler(
         TERMS_CHANGE_DECLINED_REASON,
         change.delta,
       );
-    await persistManagedExchangeTermsChange(
-      id,
+    const written = await persistManagedRunTermsChange(
+      expected,
       managedTermsChangeWrite(change),
     );
+    if (written === undefined) return;
+    expected.linkageTerms = written.exchangeFile.linkageTerms;
     onTakenOn();
     // A change an earlier scheduled run kept is answered by this one.
     // Best-effort: a proposal left behind is one the operator can decline.

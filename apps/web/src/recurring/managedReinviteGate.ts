@@ -6,21 +6,13 @@
  * rather than sitting inert.
  *
  * The two withhold for different lengths of time. A run in flight is a wait: the
- * control comes back when the run ends, whatever its outcome. A standing
- * compromise response is not waited out -- it ends only when one of the three
- * acts that clear a standing condition clears it (see
+ * control comes back when the run ends, whatever its outcome, and a run of this
+ * window still waiting for its partner can be stopped
+ * ({@link ./managedRunHolder.ts} holds that copy). A standing compromise
+ * response is not waited out -- it ends only when one of the three acts that
+ * clear a standing condition clears it (see
  * docs/spec/MANAGED_EXCHANGE_RECORD.md, the `standingCondition` row).
  */
-
-/**
- * A run of this exchange is under way, so a fresh invitation would replace the
- * secret the run is connecting on. Names the contexts a run can be under way in,
- * because the operator reading this may not be the one who started it.
- */
-export const REINVITE_RUN_IN_FLIGHT_REASON =
-  "This exchange is running right now - in this browser, in another tab, or on " +
-  "its schedule. A fresh invitation replaces its shared secret, which would " +
-  "break the run in progress. When it finishes, re-invite again.";
 
 /**
  * The operator answered a failure gate "something does not add up", so this

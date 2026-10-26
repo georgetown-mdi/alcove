@@ -10,6 +10,12 @@ import {
 import { validateCompatibility } from "@alcove/core/testing";
 
 import {
+  ManagedExchangeSecretChangedError,
+  getManagedExchange,
+  persistManagedExchangeTermsChange,
+  persistManagedRunTermsChange,
+} from "@psi/managed/managedExchangeStore";
+import {
   ManagedTermsChangeTakenOnError,
   ManagedTermsProposalNotStoredError,
   TERMS_CHANGE_DECLINED_REASON,
@@ -39,7 +45,6 @@ import {
 } from "@recurring/managedTermsChangeModel";
 import { matchingKeyTurnedOffNotice } from "@psi/matchingKeyModel";
 import { parseManagedLocalState } from "@psi/managed/managedLocalStateShape";
-import { persistManagedExchangeTermsChange } from "@psi/managed/managedExchangeStore";
 import { rerunFailureLastRun } from "@psi/managed/managedRun";
 
 import type * as ManagedExchangeStore from "@psi/managed/managedExchangeStore";
@@ -49,16 +54,20 @@ import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 vi.mock("@psi/managed/managedExchangeStore", async (importOriginal) => ({
   ...(await importOriginal<typeof ManagedExchangeStore>()),
   persistManagedExchangeTermsChange: vi.fn(() => Promise.resolve()),
+  getManagedExchange: vi.fn(() =>
+    Promise.resolve({ sharedSecret: "secret-read" }),
+  ),
+  persistManagedRunTermsChange: vi.fn(
+    (_expected: unknown, write: { scope: string; adoptedTerms?: unknown }) =>
+      Promise.resolve({
+        exchangeFile: { linkageTerms: write.adoptedTerms ?? {} },
+      }),
+  ),
 }));
 vi.mock("@psi/managed/managedLocalState", () => ({
   recordManagedExchangeTermsProposal: vi.fn(() => Promise.resolve()),
   clearManagedExchangeTermsProposal: vi.fn(() => Promise.resolve()),
   getManagedLocalState: vi.fn(() => Promise.resolve(undefined)),
-}));
-vi.mock("@psi/managed/managedExchangeLock", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  withManagedExchangeLock: (_id: string, work: () => Promise<unknown>) =>
-    work(),
 }));
 
 const LINKAGE_COLUMNS = ["first_name", "last_name", "dob", "ssn"];
@@ -249,14 +258,34 @@ describe("applying the stored proposal", () => {
     read.mockReset();
   });
 
-  test("applies the partner terms the store holds", async () => {
+  test("applies the partner terms the store holds, compared against the secret it read", async () => {
     read.mockResolvedValue({ termsProposal: stored });
     await applyManagedTermsProposal("id", stored.proposedAt);
-    expect(persist).toHaveBeenCalledWith("id", {
-      scope: "apply",
-      partnerTerms: stored.partnerTerms,
-    });
+    expect(persist).toHaveBeenCalledWith(
+      "id",
+      { scope: "apply", partnerTerms: stored.partnerTerms },
+      "secret-read",
+    );
     expect(clear).toHaveBeenCalledWith("id");
+  });
+
+  test("refuses and keeps the proposal when the secret changed before the write", async () => {
+    read.mockResolvedValue({ termsProposal: stored });
+    const changed = new ManagedExchangeSecretChangedError("id");
+    persist.mockRejectedValueOnce(changed);
+    await expect(
+      applyManagedTermsProposal("id", stored.proposedAt),
+    ).rejects.toBe(changed);
+    expect(clear).not.toHaveBeenCalled();
+  });
+
+  test("refuses and writes nothing when the exchange is gone", async () => {
+    vi.mocked(getManagedExchange).mockResolvedValueOnce(undefined);
+    read.mockResolvedValue({ termsProposal: stored });
+    await expect(
+      applyManagedTermsProposal("id", stored.proposedAt),
+    ).rejects.toBeInstanceOf(ManagedTermsProposalNotStoredError);
+    expect(persist).not.toHaveBeenCalled();
   });
 
   test("declining drops the proposal and writes nothing to the stored exchange", async () => {
@@ -372,7 +401,7 @@ describe("the matched-key column a partner's terms change turns off", () => {
 });
 
 describe("the run's answer to a partner terms change", () => {
-  const persist = vi.mocked(persistManagedExchangeTermsChange);
+  const persist = vi.mocked(persistManagedRunTermsChange);
   const keep = vi.mocked(recordManagedExchangeTermsProposal);
   const clear = vi.mocked(clearManagedExchangeTermsProposal);
   beforeEach(() => {
@@ -381,15 +410,25 @@ describe("the run's answer to a partner terms change", () => {
     clear.mockClear();
   });
 
+  /** What the run compares the stored terms with: the terms it read when it
+   * took the lock. */
+  function expectation() {
+    return {
+      id: "id",
+      linkageTerms: acceptorRecord().exchangeFile.linkageTerms,
+    };
+  }
+
   test("attended, accepting writes the terms the run continues under", async () => {
     const change = changeFor(acceptorRecord());
     const takenOn = vi.fn();
+    const expected = expectation();
     await managedTermsChangeHandler(
-      "id",
+      expected,
       () => Promise.resolve(true),
       takenOn,
     )(change);
-    expect(persist).toHaveBeenCalledWith("id", {
+    expect(persist).toHaveBeenCalledWith(expected, {
       scope: "run",
       adoptedTerms: change.adoptedTerms,
       partnerTerms,
@@ -397,20 +436,44 @@ describe("the run's answer to a partner terms change", () => {
     expect(takenOn).toHaveBeenCalledOnce();
     expect(clear).toHaveBeenCalledWith("id");
     expect(keep).not.toHaveBeenCalled();
+    // The run's later terms writes compare against what this one stored.
+    expect(expected.linkageTerms).toEqual(change.adoptedTerms);
   });
 
   test("attended, accepting a change the run cannot continue under applies it", async () => {
     const change = changeFor(acceptorRecord(), false);
-    await managedTermsChangeHandler("id", () => Promise.resolve(true))(change);
-    expect(persist).toHaveBeenCalledWith("id", {
+    const expected = expectation();
+    await managedTermsChangeHandler(expected, () => Promise.resolve(true))(
+      change,
+    );
+    expect(persist).toHaveBeenCalledWith(expected, {
       scope: "apply",
       partnerTerms,
     });
   });
 
+  test("attended, accepting over terms the operator wrote during the run writes nothing and lets the run go on", async () => {
+    persist.mockResolvedValueOnce(undefined);
+    const takenOn = vi.fn();
+    const expected = expectation();
+    const before = expected.linkageTerms;
+
+    await expect(
+      managedTermsChangeHandler(
+        expected,
+        () => Promise.resolve(true),
+        takenOn,
+      )(changeFor(acceptorRecord())),
+    ).resolves.toBeUndefined();
+
+    expect(takenOn).not.toHaveBeenCalled();
+    expect(clear).not.toHaveBeenCalled();
+    expect(expected.linkageTerms).toBe(before);
+  });
+
   test("attended, declining refuses and writes nothing", async () => {
     const change = changeFor(acceptorRecord());
-    const refusal = managedTermsChangeHandler("id", () =>
+    const refusal = managedTermsChangeHandler(expectation(), () =>
       Promise.resolve(false),
     )(change);
     await expect(refusal).rejects.toBeInstanceOf(TermsChangeRefusedError);
@@ -422,8 +485,14 @@ describe("the run's answer to a partner terms change", () => {
   test("unattended, the change is kept for the next visit and the run refused", async () => {
     const change = changeFor(acceptorRecord());
     const at = new Date("2026-09-29T02:00:00.000Z");
+    const expected = expectation();
     await expect(
-      managedTermsChangeHandler("id", undefined, undefined, () => at)(change),
+      managedTermsChangeHandler(
+        expected,
+        undefined,
+        undefined,
+        () => at,
+      )(change),
     ).rejects.toBeInstanceOf(TermsChangeRefusedError);
     expect(keep).toHaveBeenCalledWith(
       "id",
@@ -435,7 +504,7 @@ describe("the run's answer to a partner terms change", () => {
   test("unattended, a change the store does not keep still refuses as a terms change, naming the store failure", async () => {
     keep.mockRejectedValueOnce(new Error("the quota is exhausted"));
     const refusal = managedTermsChangeHandler(
-      "id",
+      expectation(),
       undefined,
     )(changeFor(acceptorRecord()));
     await expect(refusal).rejects.toBeInstanceOf(TermsChangeRefusedError);

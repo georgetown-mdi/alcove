@@ -169,6 +169,7 @@ export class ManagedImportChosenCopyError extends Error {
  * it in the same write ({@link replaceManagedExchangeFromImport}). */
 type ManagedReplace = (
   id: string,
+  expectedSharedSecret: string | undefined,
   at: string,
   imported: ManagedExchangeRecord,
   source: ManagedImportSource,
@@ -177,12 +178,18 @@ type ManagedReplace = (
 /** The replaced record, or the refusal a replace that wrote nothing is. */
 async function replacedOrRefuse(
   replace: ManagedReplace,
-  id: string,
+  target: { id: string; sharedSecret?: string },
   at: string,
   imported: ManagedExchangeRecord,
   source: ManagedImportSource,
 ): Promise<ManagedExchangeRecord> {
-  const replaced = await replace(id, at, imported, source);
+  const replaced = await replace(
+    target.id,
+    target.sharedSecret,
+    at,
+    imported,
+    source,
+  );
   if (replaced.kind === "replaced") return replaced.record;
   throw new ManagedImportChosenCopyError(replaced.kind);
 }
@@ -340,7 +347,7 @@ export async function importManagedExchange(
   if (reconciled.kind === "replace") {
     const replaced = await replacedOrRefuse(
       deps.replace,
-      reconciled.id,
+      reconciled,
       at,
       reconstructed,
       "backup",
@@ -586,7 +593,7 @@ export async function importManagedCommandLinePair(
     return landed(
       await replacedOrRefuse(
         deps.replace,
-        reconciled.id,
+        reconciled,
         at,
         imported,
         "command-line",

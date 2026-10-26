@@ -1,6 +1,5 @@
 import { sanitizeErrorForDisplay } from "@alcove/core";
 
-import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
 import { ManagedTermsUpdateNotAppliedError } from "@psi/managed/managedTermsUpdate";
 import { matchingKeyTurnedOffNotice } from "@psi/matchingKeyModel";
 
@@ -24,8 +23,9 @@ export const SENT_COLUMNS_TEXT =
 export const SAVE_SENT_COLUMNS_LABEL = "Save columns";
 
 export const SENT_COLUMNS_SAVED_TEXT =
-  "Saved. Your next run sends these columns. Make a terms update and send " +
-  "it to your partner to apply before then.";
+  "Saved. Your next run sends these columns; a run already in progress keeps " +
+  "the columns it started with. Make a terms update and send it to your " +
+  "partner to apply before then.";
 
 /** Why a column used to match offers no send choice. */
 export const MATCHING_COLUMN_NOTE =
@@ -42,21 +42,10 @@ export function sentColumnNote(column: ColumnMetadata): string | undefined {
   return column.role === "identifier" ? IDENTIFIER_COLUMN_NOTE : undefined;
 }
 
-/**
- * What the column choice says when a save did not complete: a run in flight
- * holds the exchange, or the write failed.
- */
-export function sentColumnsFailureText(error: unknown): string {
-  if (error instanceof ManagedExchangeLockUnavailableError)
-    return (
-      "A run of this exchange is in progress, so nothing was saved. Save " +
-      "once it finishes."
-    );
-  return (
-    "The columns could not be saved, and the exchange was not changed. " +
-    "Reload the page and try again."
-  );
-}
+/** What the column choice says when a save did not complete. */
+export const SENT_COLUMNS_FAILURE_TEXT =
+  "The columns could not be saved, and the exchange was not changed. " +
+  "Reload the page and try again.";
 
 export const SEND_TERMS_UPDATE_LABEL = "Send a terms update";
 
@@ -88,10 +77,6 @@ export const TERMS_UPDATE_WITHHELD_TEXT = {
   "no-identity":
     "This exchange's terms name no identity for you, so it cannot make or " +
     "apply a terms update. Start a new exchange that names your agency.",
-  "run-in-flight":
-    "This exchange is running right now - in this browser, in another tab, " +
-    "or on its schedule. The run replaces the shared secret a terms update " +
-    "is made and checked under, so make or apply one when it finishes.",
 } as const satisfies Record<ManagedTermsUpdateRefusal, string>;
 
 export const APPLY_TERMS_UPDATE_LABEL = "Apply a terms update";
@@ -183,8 +168,7 @@ export const TERMS_UPDATE_NOT_APPLIED_TEXT = {
 
 /**
  * What the apply control says when a terms update was not applied: the
- * reason it was refused, a run in flight holding the exchange, or a write
- * that failed. A `not-runnable` refusal adds core's message naming the rule
+ * reason it was refused, or a write that failed. A `not-runnable` refusal adds core's message naming the rule
  * the terms break, the one `alcove apply` prints for the same update.
  */
 export function termsUpdateNotAppliedText(error: unknown): string {
@@ -193,8 +177,6 @@ export function termsUpdateNotAppliedText(error: unknown): string {
       ? `${TERMS_UPDATE_NOT_APPLIED_TEXT["not-runnable"]} The rule the ` +
           `terms break: ${sanitizeErrorForDisplay(error.cause)}`
       : TERMS_UPDATE_NOT_APPLIED_TEXT[error.refusal];
-  if (error instanceof ManagedExchangeLockUnavailableError)
-    return TERMS_UPDATE_WITHHELD_TEXT["run-in-flight"];
   return (
     "The terms update could not be saved to this exchange, and the " +
     "exchange was not changed. Reload the page and try again."

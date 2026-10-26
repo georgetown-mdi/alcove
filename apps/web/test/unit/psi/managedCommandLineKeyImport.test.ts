@@ -58,6 +58,9 @@ import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
 
 const linkageTerms = getDefaultLinkageTerms("County Health Dept");
 
+/** The secret the chosen stored copy holds, which a replace writes over. */
+const STORED_SECRET = generateSharedSecret();
+
 function newExchange(
   overrides: Partial<NewManagedExchange> = {},
 ): NewManagedExchange {
@@ -629,10 +632,10 @@ describe("importing a configuration with its key file", () => {
     expect(deps.installed).toHaveLength(0);
   });
 
-  test("a chosen exchange that runs here is replaced in place, installing nothing", async () => {
+  test("a chosen exchange that runs here is replaced in place over the secret it holds, installing nothing", async () => {
     const { configuration, key, record } = exportedPair();
     const deps = recordingDeps(
-      { kind: "replace", id: record.id },
+      { kind: "replace", id: record.id, sharedSecret: STORED_SECRET },
       { kind: "replaced", record },
     );
     const result = await importManagedCommandLinePair(
@@ -643,6 +646,7 @@ describe("importing a configuration with its key file", () => {
     );
     expect(deps.replace).toHaveBeenCalledWith(
       record.id,
+      STORED_SECRET,
       "2026-07-14T12:00:00.000Z",
       expect.objectContaining({ sharedSecret: record.sharedSecret }),
       "command-line",
@@ -655,7 +659,7 @@ describe("importing a configuration with its key file", () => {
   test("a replace a run holds off is refused as a run in progress", async () => {
     const { configuration, key, record } = exportedPair();
     const deps = recordingDeps(
-      { kind: "replace", id: record.id },
+      { kind: "replace", id: record.id, sharedSecret: STORED_SECRET },
       { kind: "run-in-flight" },
     );
     const error = await rejectionOf(() =>

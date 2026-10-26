@@ -1988,6 +1988,12 @@ export interface ManagedExchangeScheduleAdvance {
    * (see {@link ./managedScheduleRunner.ts}). Omitted when the window raised
    * none. */
   standingCondition?: ManagedStandingCondition;
+  /** The secret the record held when {@link lastRun} and
+   * {@link standingCondition} were read: the one the window's last attempt ran
+   * under, or the one the wake read. Both land only while the stored record
+   * still holds it, so a re-invite landing during the window keeps what it
+   * wrote and the advance moves the plan alone. */
+  evidenceSharedSecret: string | undefined;
 }
 
 /** Apply a scheduled window's bookkeeping to a record, producing a validated new
@@ -2022,7 +2028,12 @@ export interface ManagedExchangeScheduleAdvance {
  *
  * A standing condition the advance carries is raised under the same plan
  * condition as the rest -- it is this write's second chance at evidence the
- * window's own run may not have persisted, not a guarantee. */
+ * window's own run may not have persisted, not a guarantee.
+ *
+ * The `lastRun` and standing condition are also held to
+ * `evidenceSharedSecret`: on a record holding another secret, a re-invite's,
+ * the schedule advances, since the window was used, and nothing else is
+ * written. */
 export function applyManagedExchangeScheduleAdvance(
   record: ManagedExchangeRecord,
   advance: ManagedExchangeScheduleAdvance,
@@ -2038,8 +2049,11 @@ export function applyManagedExchangeScheduleAdvance(
     stored.consecutiveMisses !== advance.fromConsecutiveMisses
   )
     return parseManagedExchangeRecord(record);
+  const evidenceStands = record.sharedSecret === advance.evidenceSharedSecret;
   const advanced: ManagedExchangeRecord = {
-    ...withStandingCondition(record, advance.standingCondition),
+    ...(evidenceStands
+      ? withStandingCondition(record, advance.standingCondition)
+      : record),
     schedule: advance.schedule,
   };
   const storedAtMs =
@@ -2047,6 +2061,7 @@ export function applyManagedExchangeScheduleAdvance(
       ? Number.NaN
       : parseStoredInstant(record.lastRun.at);
   if (
+    evidenceStands &&
     advance.lastRun !== undefined &&
     !(
       storedAtMs > parseStoredInstant(advance.lastRun.at) && storedAtMs <= nowMs

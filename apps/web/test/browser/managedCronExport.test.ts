@@ -15,7 +15,7 @@ import "@mantine/core/styles.css";
 
 import {
   CLI_BUILT_IN_STUN_URI,
-  RUN_IN_FLIGHT_EXPORT_REASON,
+  RUN_IN_FLIGHT_EXPORT_NOTE,
   runElsewhereNotice,
 } from "@recurring/managedCronExportModel";
 import {
@@ -30,12 +30,11 @@ import {
 import { ManagedRunSurface } from "@recurring/ManagedRunSurface";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 import { exportManagedCronFiles } from "@psi/managed/managedExchangeExport";
-import { withManagedExchangeLock } from "@psi/managed/managedExchangeLock";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 import { disclosureToggle, openDisclosure } from "./collapsePanels";
-import { holdRunLockElsewhere, pauseLockReadings } from "./runLockReadings";
 import { captureDownloads } from "./captureDownloads";
+import { holdRunLockElsewhere } from "./runLockReadings";
 
 import type { DownloadCapture } from "./captureDownloads";
 import type { NewManagedExchange } from "@psi/managed/managedExchangeRecord";
@@ -112,9 +111,9 @@ const EXPORT_PANEL = "Run this from the command line";
 // collapsed summary.
 const exportToggle = () => disclosureToggle(new RegExp(`^${EXPORT_PANEL}`));
 
-/** How many places show the run-in-progress reason: one beside each export. */
-const reasonsShown = () =>
-  page.getByText(RUN_IN_FLIGHT_EXPORT_REASON).elements().length;
+/** How many places show the run-in-progress note: one beside each export. */
+const notesShown = () =>
+  page.getByText(RUN_IN_FLIGHT_EXPORT_NOTE).elements().length;
 
 /** Open the collapsed export panel on a freshly rendered run surface, through
  * the helper that waits out its open transition: the download button inside it
@@ -337,68 +336,31 @@ describe("the export leaves this browser's copy as it was", () => {
   });
 });
 
-describe("a run the panel's poll has not yet read", () => {
-  test("refuses the download on the run's own lock, and the record is unchanged", async () => {
-    // The poll's readings are held unanswered and never show the held lock, so
-    // the refusal shown can only come from the export taking the lock itself.
+describe("a run in flight in another context", () => {
+  test("downloads both files beside the note, and the record is unchanged", async () => {
     const created = await createManagedExchange(newExchange());
     const before = await getManagedExchange(created.id);
-    const readings = pauseLockReadings(created.id);
     const release = await holdRunLockElsewhere(created.id);
     const downloads = captureDownloads();
     try {
       app.render(createElement(ManagedRunSurface, { id: created.id }));
       await openExportPanel();
-      expect(reasonsShown()).toBe(0);
+      await expect.poll(notesShown).toBe(2);
 
       await page
         .getByRole("button", { name: "Download alcove.yaml and .alcove.key" })
         .click();
 
-      // One beside each export: the refusal is the run-in-progress reading
-      // both share.
-      await expect.poll(reasonsShown).toBe(2);
+      await expect.poll(() => downloads.captured.length).toBe(2);
+      await downloads.settled();
       expect(
         page.getByText("Could not export the command-line files").query(),
       ).toBe(null);
-      await downloads.settled();
-      expect(downloads.captured).toEqual([]);
       expect(await getManagedExchange(created.id)).toEqual(before);
       expect(await getManagedLocalState(created.id)).toBeUndefined();
     } finally {
       downloads.restore();
       release();
-      readings.restore();
-    }
-  });
-
-  test("clears the refusal's reason on the next reading after a short hold", async () => {
-    const created = await createManagedExchange(newExchange());
-    const readings = pauseLockReadings(created.id);
-    const release = await holdRunLockElsewhere(created.id);
-    try {
-      app.render(createElement(ManagedRunSurface, { id: created.id }));
-      await openExportPanel();
-      await page
-        .getByRole("button", { name: "Download alcove.yaml and .alcove.key" })
-        .click();
-      await expect.poll(reasonsShown).toBe(2);
-
-      // The hold ends before the poll reads again, so no reading ever sees it:
-      // the next one finds the lock free and takes the reason away.
-      release();
-      readings.resume();
-      await expect.poll(reasonsShown).toBe(0);
-      await expect
-        .element(
-          page.getByRole("button", {
-            name: "Download alcove.yaml and .alcove.key",
-          }),
-        )
-        .toBeEnabled();
-    } finally {
-      release();
-      readings.restore();
     }
   });
 });
@@ -576,8 +538,6 @@ describe("a record this app could not have composed", () => {
 
     await expect(
       exportManagedCronFiles(created.id, {
-        withLock: (id, step) =>
-          withManagedExchangeLock(id, step, { ifAvailable: true }),
         readRecord: getManagedExchange,
         download: (fileName) => downloaded.push(fileName),
         readOwn: () => ({ kind: "none" }),

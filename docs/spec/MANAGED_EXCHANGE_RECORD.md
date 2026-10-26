@@ -682,11 +682,11 @@ met one raises it whether or not its own entry lands.
 
 A partner whose linkage terms changed since the last run is met at the terms exchange ([PROTOCOL.md](PROTOCOL.md#a-terms-change-at-the-terms-exchange)); the run hands core an `onTermsChange` (`managedTermsChangeHandler`, `apps/web/src/psi/managed/managedTermsProposal.ts`) and core states the change as a `TermsDelta`. What is written depends on who is there to answer:
 
-- **Attended, accepted.** The record's `exchangeFile` takes the partner's terms in one field-scoped store write (`persistManagedExchangeTermsChange`, through `applyManagedExchangeTermsChange` in `managedExchangeRecord.ts`), awaited before the run continues, so before any key or payload moves. Where the run can continue (`TermsChange.continuable`), the write is the command line's attended one: `linkageTerms` becomes core's adopted terms, whose `payload.receive` is the partner's send set, and `expectedPartnerDeduplicate` is left as it was. Where it cannot -- a change to terms the run was prepared under, or to the partner's `deduplicate` -- the write is the apply below, and core then refuses the run; the run's bookkeeping records nothing for it, since nothing about the exchange failed and the next run holds the new terms.
+- **Attended, accepted.** The record's `exchangeFile` takes the partner's terms in one field-scoped store write (`persistManagedRunTermsChange`, through `applyManagedExchangeTermsChange` in `managedExchangeRecord.ts`), awaited before the run continues, so before any key or payload moves. The write is made only while the stored record holds the terms the run ran; where an operator's terms write moved the record past them, it writes nothing, the operator's write stands, and the run goes on or is refused as core decides. Where the run can continue (`TermsChange.continuable`), the write is the command line's attended one: `linkageTerms` becomes core's adopted terms, whose `payload.receive` is the partner's send set, and `expectedPartnerDeduplicate` is left as it was. Where it cannot -- a change to terms the run was prepared under, or to the partner's `deduplicate` -- the write is the apply below, and core then refuses the run; the run's bookkeeping records nothing for it, since nothing about the exchange failed and the next run holds the new terms.
 - **Attended, declined.** Nothing is written. The run refuses with a `TermsChangeRefusedError` and records a `"terms-change"` failure.
 - **Unattended.** The run keeps the partner's terms as the record's `termsProposal` local sibling ([below](#the-backup-and-import-markers-local-siblings-never-in-the-artifact)), replacing an earlier one, refuses with a `TermsChangeRefusedError`, and records a `"terms-change"` failure, which earns a [between-visit notification](#the-between-visit-notification-opt-in). A proposal the store does not keep leaves the refusal standing, its message stating the store failure.
 
-**Applying a kept proposal.** The next visit shows the kept change with Apply and Decline, both withheld while a run holds the exchange. Apply takes the [run+rotate lock](#the-secret-is-a-linear-resource) without waiting -- a run in flight refuses it -- reads the stored proposal under it, and applies that one only where its `proposedAt` is the one the operator reviewed; no proposal stored, or another one, refuses and writes nothing. It then writes the partner's terms and nothing else: `linkageTerms` derived from the partner's terms as an acceptance derives them (`deriveAcceptedLinkageTerms`), keeping this party's `identity` and `deduplicate`, with `payload.receive` the partner's send set; and `expectedPartnerDeduplicate` the partner's stated `deduplicate`. A `lastRun` holding a `"terms-change"` failure is dropped in the same write, as a re-invite drops the failure it recovers: the change it refused is the one applied. The proposal is then removed. Decline removes the proposal and writes nothing else, so the next run refuses the same way until the partner's terms match the record's again.
+**Applying a kept proposal.** The next visit shows the kept change with Apply and Decline, both offered while a run is in flight. Apply takes no lock -- a run in flight runs the terms it read when it took the [run+rotate lock](#the-secret-is-a-linear-resource), its own terms writes leave the applied ones stored ([Single-owner invariant](#single-owner-invariant)), and the next run holds them -- reads the stored proposal again, and applies that one only where its `proposedAt` is the one the operator reviewed; no proposal stored, or another one, refuses and writes nothing. The write compares the stored secret with the one the record held when the proposal was read, and refuses without writing where a run's rotation or a re-invite replaced it since ([Single-owner invariant](#single-owner-invariant)). It then writes the partner's terms and nothing else: `linkageTerms` derived from the partner's terms as an acceptance derives them (`deriveAcceptedLinkageTerms`), keeping this party's `identity` and `deduplicate`, with `payload.receive` the partner's send set; and `expectedPartnerDeduplicate` the partner's stated `deduplicate`. A `lastRun` holding a `"terms-change"` failure is dropped in the same write, as a re-invite drops the failure it recovers: the change it refused is the one applied. The proposal is then removed. Decline removes the proposal and writes nothing else, so the next run refuses the same way until the partner's terms match the record's again.
 
 **What the surfaces show.** A `"terms-change"` failure is shown from two stored facts alone: the `lastRun` kind and whether a proposal is stored. With one, the run surface's alert, the saved-exchanges row, and the between-visit notification state that the partner's terms changed and point at Apply or Decline. Without one -- declined at the question or on the panel, not kept, or dropped as invalid -- they state that the change was declined and that the next run the operator starts asks about it again, and name no Apply.
 
@@ -700,11 +700,11 @@ Neither write changes the secret, the connection block, or the schedule, and the
 
 A runnable record changes its own terms between runs and tells its partner through the same terms update `alcove update` makes, and applies a partner's update as `alcove apply` does ([EXCHANGE_FILE.md](EXCHANGE_FILE.md#terms-update)); the code is `apps/web/src/psi/managed/managedTermsUpdate.ts`.
 
-- **The columns this party sends.** Offered where the document declares `metadata` and its terms send payload (not `psi-c`, and `output.shareWithPartner` true). The operator chooses which of the columns whose `role` is `payload`, `ignored`, or `identifier` are sent; a `role: linkage` column is left as it is. One field-scoped store write (`persistManagedExchangeSentColumns`, through `applyManagedExchangeSentColumns` in `managedExchangeRecord.ts`) sets each offered `payload` or `ignored` column's `role` and `isPayload` to `payload`/`true` or `ignored`/`false`, and an `identifier` column's `isPayload` to `true` or `false` with its `role` kept, as the setup's column step does, and restates `linkageTerms.payload.send` from the edited metadata (`termsStatingDeclaredPayloadSend`), so the next run states the new set. It takes the [run+rotate lock](#the-secret-is-a-linear-resource) without waiting: a run in flight refuses it and nothing is written. The secret, the connection, `expectedPartnerDeduplicate`, and the bookkeeping are untouched.
-- **Making the update.** The update is composed from the stored `linkageTerms` and `metadata` by core's `termsUpdateFor`, the function `alcove update` composes it with, and encoded under `sharedSecret`, so a record and a command-line configuration holding the same terms, metadata, and secret make byte-identical updates. Nothing is written. The update is shown in the copy row an invitation code uses, not downloaded.
-- **Applying a partner's update.** The pasted text, with whitespace removed, is decoded under `sharedSecret` by core's `decodeTermsUpdate`, and refused on the check that fails: `format`, `partnership` (made under another secret: another exchange, or one a run has since rotated), or `authentication`. It is then refused as `own-terms` where the update's `identity` equals the record's own `linkageTerms.identity` -- the check `alcove apply` makes, since applying one's own update would swap this party's side of the terms for the partner's -- and passed through the terms-update write (`applyManagedExchangeTermsChange`, its `update` scope), the `apply` write of [A refused terms change](#a-refused-terms-change), which derives this party's terms from the update's through core's `deriveAcceptedLinkageTerms`, as `alcove apply` does. It is refused as `not-runnable` where that derivation refuses the update's terms -- `psi-c` terms outside the count-only shape, a `deduplicate` no implemented strategy matches, an element transform that does not compile, or derived terms that are not a valid terms document -- and as `not-applicable` where the record that write produces fails the record schema. It is then refused as `not-runnable` where a run under the terms that write stores, beside the record's own `metadata` and `standardization`, would refuse before it sends anything: core's `assertTermsRunnable`, the check `alcove apply` makes before its write, refusing count-only terms beside metadata that transmits a column, a standardization that does not match the terms, an algorithm, `deduplicate`, or fan-out this build does not implement, and a transform step that does not compile. Either `not-runnable` refusal shows core's message naming the rule, the one `alcove apply` prints for the same update. An update that passes is shown as the delta core's `compareTerms` finds between the record's terms and the update's, holding the partner to the record's `expectedPartnerDeduplicate` as a run does, through the display a run's terms change uses (`termsDeltaSections`). On Accept, the stored record is read again under the [run+rotate lock](#the-secret-is-a-linear-resource), taken without waiting, and checked again; it is written through that same write (`persistManagedExchangeTermsChange`) only where its delta, and whether the write turns off `includeMatchingKey`, still equal the ones shown, and refused as `changed` otherwise. Where the stored document sets `includeMatchingKey` and the terms the write stores leave this party no key to name (core's `matchingKeyUnavailableReason`), the write drops `includeMatchingKey` with the terms, as every `applyManagedExchangeTermsChange` write does, rather than failing the record schema; the shown change states that accepting turns the setting off, and the notice after Accept states that it was turned off. A stored terms proposal is then dropped, best-effort, since the partner's newer terms answer it. Every refusal writes nothing.
+- **The columns this party sends.** Offered where the document declares `metadata` and its terms send payload (not `psi-c`, and `output.shareWithPartner` true). The operator chooses which of the columns whose `role` is `payload`, `ignored`, or `identifier` are sent; a `role: linkage` column is left as it is. One field-scoped store write (`persistManagedExchangeSentColumns`, through `applyManagedExchangeSentColumns` in `managedExchangeRecord.ts`) sets each offered `payload` or `ignored` column's `role` and `isPayload` to `payload`/`true` or `ignored`/`false`, and an `identifier` column's `isPayload` to `true` or `false` with its `role` kept, as the setup's column step does, and restates `linkageTerms.payload.send` from the edited metadata (`termsStatingDeclaredPayloadSend`), so the next run states the new set. It takes no lock: a run in flight states the set it read when it took the [run+rotate lock](#the-secret-is-a-linear-resource). The secret, the connection, `expectedPartnerDeduplicate`, and the bookkeeping are untouched.
+- **Making the update.** The update is composed from the stored `linkageTerms` and `metadata` by core's `termsUpdateFor`, the function `alcove update` composes it with, and encoded under `sharedSecret`, so a record and a command-line configuration holding the same terms, metadata, and secret make byte-identical updates. Nothing is written, and no lock is taken: an update made while a run is in flight is made under the secret that run then rotates, so the partner's apply refuses it as `partnership` once the run completes, and a new update is made. The update is shown in the copy row an invitation code uses, not downloaded.
+- **Applying a partner's update.** The pasted text, with whitespace removed, is decoded under `sharedSecret` by core's `decodeTermsUpdate`, and refused on the check that fails: `format`, `partnership` (made under another secret: another exchange, or one a run has since rotated), or `authentication`. It is then refused as `own-terms` where the update's `identity` equals the record's own `linkageTerms.identity` -- the check `alcove apply` makes, since applying one's own update would swap this party's side of the terms for the partner's -- and passed through the terms-update write (`applyManagedExchangeTermsChange`, its `update` scope), the `apply` write of [A refused terms change](#a-refused-terms-change), which derives this party's terms from the update's through core's `deriveAcceptedLinkageTerms`, as `alcove apply` does. It is refused as `not-runnable` where that derivation refuses the update's terms -- `psi-c` terms outside the count-only shape, a `deduplicate` no implemented strategy matches, an element transform that does not compile, or derived terms that are not a valid terms document -- and as `not-applicable` where the record that write produces fails the record schema. It is then refused as `not-runnable` where a run under the terms that write stores, beside the record's own `metadata` and `standardization`, would refuse before it sends anything: core's `assertTermsRunnable`, the check `alcove apply` makes before its write, refusing count-only terms beside metadata that transmits a column, a standardization that does not match the terms, an algorithm, `deduplicate`, or fan-out this build does not implement, and a transform step that does not compile. Either `not-runnable` refusal shows core's message naming the rule, the one `alcove apply` prints for the same update. An update that passes is shown as the delta core's `compareTerms` finds between the record's terms and the update's, holding the partner to the record's `expectedPartnerDeduplicate` as a run does, through the display a run's terms change uses (`termsDeltaSections`). On Accept, the stored record is read again, with no lock taken, and checked again, so an update a run's rotation or a re-invite has since overtaken is refused there as `partnership`; the write compares the stored secret with the one that read holds, and refuses as `partnership` without writing where it was replaced between the read and the write. It is written through that same write (`persistManagedExchangeTermsChange`) only where its delta, and whether the write turns off `includeMatchingKey`, still equal the ones shown, and refused as `changed` otherwise. Where the stored document sets `includeMatchingKey` and the terms the write stores leave this party no key to name (core's `matchingKeyUnavailableReason`), the write drops `includeMatchingKey` with the terms, as every `applyManagedExchangeTermsChange` write does, rather than failing the record schema; the shown change states that accepting turns the setting off, and the notice after Accept states that it was turned off. A stored terms proposal is then dropped, best-effort, since the partner's newer terms answer it. Every refusal writes nothing.
 
-An update is neither made nor applied for a record whose `expires` has passed, whose terms name no `identity` (absent, blank, or the `alcove init` placeholder, through core's `unnamedPartyIdentity`), or while a run holds the run+rotate lock, whose rotation would replace the secret the update is made or checked under: the first two as `alcove update` and `alcove apply` refuse an expired key file and an unnamed identity. One function, `managedTermsUpdateRefusal`, decides all three; the page withholds both controls on it, and the make, the read, and the apply re-evaluate it at the time of the call. The record's `schemaVersion` does not move: the column choice and the apply change values of fields the record already holds.
+An update is neither made nor applied for a record whose `expires` has passed, or whose terms name no `identity` (absent, blank, or the `alcove init` placeholder, through core's `unnamedPartyIdentity`), as `alcove update` and `alcove apply` refuse an expired key file and an unnamed identity. One function, `managedTermsUpdateRefusal`, decides both; the page withholds both controls on it, and the make, the read, and the apply re-evaluate it at the time of the call. The record's `schemaVersion` does not move: the column choice and the apply change values of fields the record already holds.
 
 #### The standing condition
 
@@ -726,8 +726,9 @@ two sites, and needs both:
   not write at all: a store failure spanning the rotation write and the run's own
   best-effort bookkeeping write, recovering in time to answer the advance, would
   otherwise leave the plan moved past a window that neither ran nor recorded
-  anything. It lands under the same plan condition as the rest of the advance, so
-  it is a second chance and not a guarantee.
+  anything. It lands under the same plan condition as the rest of the advance,
+  and only while the record holds the secret that run read, so it is a second
+  chance and not a guarantee.
 
 **Cleared** -- returned to the `"none"` form -- by exactly three things, and
 nothing else:
@@ -813,16 +814,19 @@ with the condition. A run never writes it, and a run never clears it.
   fresh invitation is minted: the answer is cleared by the acknowledgement
   first, and the re-invite is on offer after it.
 - **A run in flight is a second, independent withhold, excluded rather than
-  checked.** It shares the two controls and their withheld reason with the
-  compromise response, and it has a write-time guarantee of its own: the rotation
-  write takes the record's [run+rotate lock](#the-secret-is-a-linear-resource) with
-  `ifAvailable` before it opens its transaction, exactly as both exports do,
-  and refuses while a run holds it. Neither rotation write compares against
-  the secret it replaces, so a mint landing beside a run's own rotation would
-  discard one of the two. The click re-reads the polled run signal immediately
-  beforehand, which pre-empts that refusal in the words the refusal is shown in
-  rather than deciding it. This withhold needs no clearer of its own because it is
-  not standing: ending the run restores the controls without an acknowledgement.
+  checked.** The re-invite takes the record's [run+rotate
+  lock](#the-secret-is-a-linear-resource) with `ifAvailable` before it reads the
+  record, and refuses while a run holds it; under the lock it reads the stored
+  record and composes over that copy, whatever copy the page showed. Both
+  controls are withheld while the page reads a run as holding the lock, with a
+  reason stating where the run is: in this app window and waiting for the
+  partner, with a control that [stops it](#stopping-a-waiting-run) and then
+  re-invites; in this app window and exchanging data with the partner; or in
+  another window or tab of this app, or the installed app, which closing that
+  window ends, or, for a scheduled run, turning the schedule off, which ends
+  that window after its current attempt. This withhold needs no clearer of its
+  own because it is not standing: ending the run restores the controls without
+  an acknowledgement.
 
 ### The schedule object
 
@@ -1050,6 +1054,16 @@ the two-miss escalation by exactly the misses it erased -- overwrite a re-plan
 the operator had just made, or restore a count they had just cleared on the plan
 the wake was running. A dropped write costs nothing: the next wake recomputes
 the same rule against the stored plan.
+
+The `lastRun` and standing condition a window's write holds are also
+conditioned on the secret: each lands only while the stored record holds the
+secret it is about, the one the record held at the runner's last read before
+an attempt, or at the wake where no attempt was made. A
+[re-invite](#the-operators-response-to-it) can land while a window is
+occupied, between its attempts or after one it stopped, dropping `lastRun`
+and clearing the standing condition.
+The window's write then advances the plan alone, since the window was used,
+and the record keeps what the re-invite wrote.
 
 The import path is the rule's second consumer: an imported backup holds the
 snapshot's `nextWindow`, typically in the past by the time the artifact is
@@ -1322,9 +1336,52 @@ exchange included, rather than across its rotation alone. Once it holds the
 lock, a run reads the record again and runs that copy -- its secret, side,
 terms, and max-age policy -- rather than one its surface or its scheduled window
 read earlier, so each run, attended or scheduled, authenticates with and rotates
-the secret stored when it takes the lock. Both exports and a
-[re-invite's rotation write](#the-operators-response-to-it) contend for that
-same lock, so they too are refused while an exchange is in flight.
+the secret stored when it takes the lock.
+
+A run, attended or scheduled, a [re-invite](#the-operators-response-to-it), a
+relay enrollment and stopping registration ([The pending relay
+registration](#the-pending-relay-registration)), and an import's [replace of
+the stored record](#replacing-a-saved-copy) take that lock. Each but the run
+requests it with `ifAvailable`, so each is refused while a run of the exchange
+holds it in any context; the re-invite or enrollment that follows a
+[stop](#stopping-a-waiting-run) queues instead. The run's rotation and the re-invite are the writes that replace a
+runnable record's secret, so neither lands inside a run's locked section. Both
+exports and the terms writes -- a terms update made or applied, a kept
+proposal applied or declined, and the columns this party sends -- take no lock
+and stay offered while an exchange is in flight.
+
+**Which writes compare the secret.** A write compares, inside its own
+transaction, the stored secret with the one it was made under, and writes
+nothing where it changed, when a write replacing the secret can land between
+its read and its write. A terms update's Accept and a kept proposal's Apply
+read the record with no lock taken, so each compares and refuses. A run's
+writes made after it releases the lock land only over the secret the run last
+stored (the one it read, and once it rotates the rotated one), and otherwise
+write nothing, without refusing: its failure `lastRun` stamp and the
+`standingCondition` that stamp raises, and a scheduled run's [folder
+backup](#the-backup-and-import-markers-local-siblings-never-in-the-artifact)
+over the rotated secret. A scheduled window's own write after its attempts
+advances the plan whatever a re-invite wrote, and lands its `lastRun` and
+standing condition only over the secret its last attempt ran under
+([Catch-up on wake](#catch-up-on-wake)). A run that could not read its record
+holds no secret to compare, so the failure stamp it writes after releasing the
+lock lands even over a re-invite made in that gap. The run's rotation and the
+re-invite's secret write compare too, each refusing without writing, though
+both hold the lock from their read to their write: a safety check. A terms
+update made writes nothing, and the columns choice holds no secret, so neither
+compares. A run's own terms writes, its `payload.receive` fill and an attended
+run's take-on of a partner's changed terms, compare the terms instead: each
+writes nothing where an operator's terms write changed the terms the run read,
+so a terms write landing during a run is the one the record holds after it.
+
+The compare refuses two controls a run's rotation overtakes, and each writes
+nothing and stays offered. A terms update checked before a run rotated the
+secret is refused on Accept as `partnership`; the pasted text is kept, and
+since it was made under the replaced secret, the partner makes a new one. A
+kept proposal applied while a run rotated the secret is refused; the page
+states that the exchange ran, or a fresh invitation was made, while the change
+was being applied, and a reload shows what is waiting.
+
 The partner influences how long the payload exchange takes, so the run's cancel
 reaches that width: it closes the run's connection, which rejects the wait the
 exchange is parked in, so the run ends and the lock releases without the holding
@@ -1355,6 +1412,35 @@ and this browser's copy, still holding the older one, runs again only once the
 newer files are imported here.
 The rationale for both guards is [Single-device
 ownership](../notes/managed-exchange-design.md#single-device-ownership).
+
+#### Stopping a waiting run
+
+A re-invite or a relay enrollment refused by a run in the same app window that
+is still waiting for its partner offers one control that stops that run and
+then performs the operation ("Stop the waiting run and re-invite", "Stop the
+waiting run and enroll"). The run decides whether the stop lands, not the
+page. Each run has its own stop, and is listed in its window's runs from
+taking the lock to releasing it (`apps/web/src/psi/managed/managedWindowRuns.ts`).
+Inside the lock, immediately before it writes the [rotation-in-flight
+marker](#the-rotation-in-flight-marker), the run checks for a stop: one asked
+before that check ends the run with nothing rotated and nothing recorded, and
+one asked after it is refused, the page then stating that the run is
+exchanging data with the partner. A stop asked after the channel opened but
+before the check still lands, and the partner sees no key exchange. A run
+whose checks before the handshake fail on their own -- the stored copy, its
+expiry, or the input -- ends on that failure whether or not a stop was asked
+meanwhile, and records and reports it as a run no stop was asked of does; the
+operation still follows once the lock is free.
+
+After the stop the operation requests the lock queued rather than with
+`ifAvailable`. Web Locks grants an exclusive lock to queued requests in the
+order they were made, so the operation takes the lock as the stopped run
+releases it. A stopped scheduled attempt ends that attempt, not its window,
+and counts no miss; the window waits for a queued turn of the lock, asked
+only once the stopped attempt has unwound, so its next attempt follows the
+operation, reads the record afresh, and runs on the secret the re-invite
+stored. A stopped attended run records nothing. No signal crosses windows: a
+run another window or tab, or the installed app, holds is only described.
 
 ### Persist-before-success ordering
 
@@ -1457,7 +1543,7 @@ not confirmed. The code: `apps/web/src/psi/managed/managedRelayRegistration.ts`.
 - **Written by a re-invite** on a record that names a registrar: the
   re-invite's rotation write stores the marker with
   `relayRegistrationPendingReason` `"reinvite"`. Still under the run+rotate
-  lock the write took, the re-invite then registers the key derived from the
+  lock the re-invite took, it then registers the key derived from the
   fresh secret, signed under the key of the secret it replaced, from
   its own copy of the record it read in that transaction
   (`registerReinvitedManagedRelayKey`). A confirmed registration removes both
@@ -1760,10 +1846,11 @@ decision on a partner's changed terms. The three:
     export reads the current record, serializes the bytes it will download,
     and stamps the marker in one atomic store step (a cross-store
     read-serialize-and-mark), then downloads exactly those bytes, so the marker can only
-    ever attest the secret the file holds. It takes the record's [run+rotate
-    lock](#the-secret-is-a-linear-resource) with `ifAvailable` around that step and
-    the download, and a run holding the lock refuses it before anything is read, so
-    the file never holds a secret a run in flight is about to rotate. A stale tab or a stale in-memory record
+    ever attest the secret the file holds. It takes no lock and stays offered
+    while a run is in flight, with a note beside it that a download then holds
+    the secret the run replaces: that run's rotation clears the marker it
+    stamped, so the state reads "backup needed" again once the run rotates, and
+    the operator downloads again. A stale tab or a stale in-memory record
     cannot mark a secret it did not serialize. Serializing inside the step is what binds
     the marker to bytes that exist: a step that resolved without serializing would leave
     a marker attesting bytes nothing produced, so it fails the export instead.
@@ -1819,8 +1906,8 @@ decision on a partner's changed terms. The three:
     "backed up" about a copy the first run there replaces, and the backup surfaces
     that read the marker send the operator to the backup file, not to it. The pair
     import stamps no backup marker for the same reason. The export takes a plain
-    read of the record by `id`, under the run+rotate lock taken with `ifAvailable`
-    as the backup export's is, and leaves the
+    read of the record by `id`, with no lock taken and the same note beside it
+    while a run is in flight as the backup export, and leaves the
     marker -- present or absent -- exactly where it stood. The two exports are named apart where they are offered, so
     the operator chooses between "a file this browser restores from" and "the files
     the command line runs from" rather than between two downloads.
@@ -2047,15 +2134,16 @@ and none where it is a pair, and the pending terms decision is kept.
 
 **The replace takes the run lock and refuses rather than waits.** It takes the
 exchange's single-writer lock with `ifAvailable` before it reads anything, as
-the re-invite does, so while anything holds that lock -- a run of the exchange
-in any context, an export, or a terms or relay-registration write -- the
-replace refuses and nothing is written. Under
+a re-invite and a relay enrollment do, so while a run of the exchange holds
+that lock in any context the replace refuses and nothing is written. Under
 the lock, one strict-durability transaction over the record and sibling stores
-reads the stored record, refuses where it is gone or no longer has the
-import's agreed terms and side, and writes the record and its sibling entry.
-The secret the stored record holds is not compared: the operator chose to
-replace it. Completing a configuration-only record takes no lock, since no run
-holds one.
+reads the stored record, refuses where it is gone, no longer has the import's
+agreed terms and side, or no longer holds the secret the reconciliation that
+chose it read, and writes the record and its sibling entry. That
+reconciliation is the one the resubmitted import runs once the operator has
+answered, so the compare refuses a re-invite landing between that
+reconciliation and the replace taking the lock.
+Completing a configuration-only record takes no lock, since no run holds one.
 
 **Which copy is the newer is the operator's call.** Nothing in a record orders
 a backup and the saved copy of one exchange ([No
@@ -2074,6 +2162,11 @@ Stated limit: the replace transaction does not look for another record holding
 the imported secret. The reconciliation that asked found none, and one
 installed since, in another tab, is the race the fresh install's own limit
 states ([Reconciling a backup import](#reconciling-a-backup-import)).
+
+Stated limit: a re-invite landing while the replace question is on screen is
+not refused. The secret the replace compares with is the one the reconciliation
+on the resubmitted import reads, after the operator answered, not the one the
+question was asked over, so the replace writes over the re-invite's secret.
 
 ## The accounting of disclosures
 

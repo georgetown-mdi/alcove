@@ -5,13 +5,16 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { generateSharedSecret, getDefaultLinkageTerms } from "@alcove/core";
 
 import {
+  ManagedExchangeLockUnavailableError,
+  awaitManagedExchangeLockTurn,
+} from "@psi/managed/managedExchangeLock";
+import {
   clearManagedExchanges,
   createManagedExchange,
   getManagedExchange,
   listReadableManagedExchanges,
   persistManagedExchangeScheduleAdvance,
 } from "@psi/managed/managedExchangeStore";
-import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 import { listReadableManagedLocalState } from "@psi/managed/managedLocalState";
 import { runManagedRerun } from "@psi/managed/managedRun";
@@ -24,7 +27,8 @@ import type { WebRTCExchangeLocator } from "@alcove/core";
 // The two run paths against each other, on real Chromium Web Locks and real
 // IndexedDB: an attended Run and a scheduled attempt are the two contexts that
 // can meet over one record, and the single-writer lock is what keeps at most one
-// of them exchanging with the partner. Both directions go through the real run
+// of them exchanging with the partner; two windows' scheduled runtimes meet the
+// same way. Both directions go through the real run
 // path, so the acquisition, the refusal, and the window's own bookkeeping are
 // the ones the app runs.
 
@@ -90,6 +94,7 @@ function scheduleTickSeams(attempt: {
     now: Date.now,
     listRecords: listReadableManagedExchanges,
     readRecord: getManagedExchange,
+    awaitLockTurn: awaitManagedExchangeLockTurn,
     listLocalState: listReadableManagedLocalState,
     persistAdvance: persistManagedExchangeScheduleAdvance,
     delay: () => Promise.resolve(),
@@ -218,5 +223,53 @@ describe("a scheduled attempt exchanging when the operator runs by hand", () => 
     const stored = await getManagedExchange(created.id);
     expect(stored?.lastRun?.outcome).toBe("succeeded");
     expect(stored?.sharedSecret).toBe(rotatedSecret);
+  });
+});
+
+describe("two app windows' scheduled runtimes ticking one exchange", () => {
+  test("never hold its lock at once: one window's attempt exchanges, and the other's is refused and counts no miss", async () => {
+    const created = await recordWithOpenWindow();
+    const releaseExchange = deferred();
+    let holding = 0;
+    let mostHolding = 0;
+    let handshakes = 0;
+    const windowSeams = () =>
+      scheduleTickSeams({
+        handshake: () => {
+          handshakes += 1;
+          holding += 1;
+          mostHolding = Math.max(mostHolding, holding);
+          return Promise.resolve({
+            rotatedSecret: generateSharedSecret(),
+            handshake: "scheduled",
+          });
+        },
+        dataExchange: async () => {
+          await releaseExchange.promise;
+          holding -= 1;
+          return "scheduled";
+        },
+      });
+
+    // Each window's runtime keeps its own registry of records in flight, so
+    // neither tick passes the record over for the other's.
+    const ticks = [
+      tickManagedSchedules(windowSeams()),
+      tickManagedSchedules(windowSeams()),
+    ];
+    const [refused] = await Promise.race(ticks);
+    releaseExchange.resolve();
+    const entries = (await Promise.all(ticks)).flat();
+
+    expect(refused).toMatchObject({ attempts: 1, disposition: "unattempted" });
+    expect(mostHolding).toBe(1);
+    expect(handshakes).toBe(1);
+    expect(entries.map(({ disposition }) => disposition).sort()).toEqual([
+      "succeeded",
+      "unattempted",
+    ]);
+    const stored = await getManagedExchange(created.id);
+    expect(stored?.lastRun?.outcome).toBe("succeeded");
+    expect(stored?.schedule?.consecutiveMisses).toBe(0);
   });
 });

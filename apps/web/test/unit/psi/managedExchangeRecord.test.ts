@@ -1203,6 +1203,7 @@ describe("applyManagedExchangeScheduleAdvance", () => {
       schedule: advancedSchedule,
       fromNextWindow: schedule.nextWindow,
       fromConsecutiveMisses: schedule.consecutiveMisses,
+      evidenceSharedSecret: record.sharedSecret,
       lastRun: missedRun,
     });
     expect(advanced.schedule).toEqual(advancedSchedule);
@@ -1224,6 +1225,7 @@ describe("applyManagedExchangeScheduleAdvance", () => {
         schedule: advancedSchedule,
         fromNextWindow: schedule.nextWindow,
         fromConsecutiveMisses: schedule.consecutiveMisses,
+        evidenceSharedSecret: record.sharedSecret,
         lastRun: missedRun,
       },
       Date.parse("2026-01-14T00:00:00.000Z"),
@@ -1236,6 +1238,7 @@ describe("applyManagedExchangeScheduleAdvance", () => {
       schedule: advancedSchedule,
       fromNextWindow: schedule.nextWindow,
       fromConsecutiveMisses: schedule.consecutiveMisses,
+      evidenceSharedSecret: undefined,
     });
     expect(advanced.schedule).toEqual(advancedSchedule);
     expect(advanced).not.toHaveProperty("lastRun");
@@ -1249,6 +1252,7 @@ describe("applyManagedExchangeScheduleAdvance", () => {
       schedule: advancedSchedule,
       fromNextWindow: schedule.nextWindow,
       fromConsecutiveMisses: schedule.consecutiveMisses,
+      evidenceSharedSecret: record.sharedSecret,
       lastRun: missedRun,
     });
     expect(advanced).not.toHaveProperty("schedule");
@@ -1263,6 +1267,7 @@ describe("applyManagedExchangeScheduleAdvance", () => {
       schedule: advancedSchedule,
       fromNextWindow: schedule.nextWindow,
       fromConsecutiveMisses: schedule.consecutiveMisses,
+      evidenceSharedSecret: record.sharedSecret,
       lastRun: missedRun,
     });
     // The planned window the advance holds was derived from the replaced
@@ -1282,6 +1287,7 @@ describe("applyManagedExchangeScheduleAdvance", () => {
           schedule: advancedSchedule,
           fromNextWindow: schedule.nextWindow,
           fromConsecutiveMisses: schedule.consecutiveMisses,
+          evidenceSharedSecret: undefined,
           lastRun: missedRun,
         },
       );
@@ -1303,11 +1309,13 @@ describe("applyManagedExchangeScheduleAdvance", () => {
       },
       fromNextWindow: schedule.nextWindow,
       fromConsecutiveMisses: schedule.consecutiveMisses,
+      evidenceSharedSecret: undefined,
     });
     const applied = applyManagedExchangeScheduleAdvance(newer, {
       schedule: advancedSchedule,
       fromNextWindow: schedule.nextWindow,
       fromConsecutiveMisses: schedule.consecutiveMisses,
+      evidenceSharedSecret: newer.sharedSecret,
       lastRun: missedRun,
     });
     expect(applied.schedule).toEqual({
@@ -1334,6 +1342,7 @@ describe("applyManagedExchangeScheduleAdvance", () => {
       schedule: advancedSchedule,
       fromNextWindow: schedule.nextWindow,
       fromConsecutiveMisses: schedule.consecutiveMisses,
+      evidenceSharedSecret: record.sharedSecret,
       lastRun: missedRun,
     });
     expect(advanced.schedule).toEqual(replanned);
@@ -1355,6 +1364,7 @@ describe("applyManagedExchangeScheduleAdvance", () => {
       schedule: { ...advancedSchedule, consecutiveMisses: 4 },
       fromNextWindow: schedule.nextWindow,
       fromConsecutiveMisses: counted.consecutiveMisses,
+      evidenceSharedSecret: record.sharedSecret,
       lastRun: missedRun,
     });
     expect(advanced.schedule).toEqual(cleared);
@@ -1377,6 +1387,7 @@ describe("applyManagedExchangeScheduleAdvance", () => {
       schedule: advancedSchedule,
       fromNextWindow: schedule.nextWindow,
       fromConsecutiveMisses: schedule.consecutiveMisses,
+      evidenceSharedSecret: record.sharedSecret,
       lastRun: missedRun,
     });
     expect(advanced.schedule).toEqual(advancedSchedule);
@@ -1392,6 +1403,7 @@ describe("applyManagedExchangeScheduleAdvance", () => {
         schedule: advancedSchedule,
         fromNextWindow,
         fromConsecutiveMisses: schedule.consecutiveMisses,
+        evidenceSharedSecret: undefined,
         lastRun: missedRun,
       });
       expect(advanced.schedule).toEqual(schedule);
@@ -1411,6 +1423,7 @@ describe("applyManagedExchangeScheduleAdvance", () => {
       schedule: advancedSchedule,
       fromNextWindow: schedule.nextWindow,
       fromConsecutiveMisses: schedule.consecutiveMisses,
+      evidenceSharedSecret: record.sharedSecret,
       lastRun: missedRun,
     });
     expect(advanced.schedule).toEqual(advancedSchedule);
@@ -1446,6 +1459,7 @@ describe("applyManagedExchangeScheduleAdvance", () => {
           schedule: advancedSchedule,
           fromNextWindow: schedule.nextWindow,
           fromConsecutiveMisses: schedule.consecutiveMisses,
+          evidenceSharedSecret: record.sharedSecret,
           lastRun: missedRun,
         }),
       );
@@ -1460,6 +1474,7 @@ describe("applyManagedExchangeScheduleAdvance", () => {
         schedule: { ...advancedSchedule, consecutiveMisses: -1 },
         fromNextWindow: schedule.nextWindow,
         fromConsecutiveMisses: schedule.consecutiveMisses,
+        evidenceSharedSecret: undefined,
       }),
     ).toThrow();
   });
@@ -1576,6 +1591,7 @@ describe("the recent runs list", () => {
         schedule: { ...schedule, consecutiveMisses: 1 },
         fromNextWindow: schedule.nextWindow,
         fromConsecutiveMisses: schedule.consecutiveMisses,
+        evidenceSharedSecret: stored.sharedSecret,
         lastRun: missed,
       },
       Date.parse("2026-12-31T00:00:00.000Z"),
@@ -1934,12 +1950,33 @@ describe("the standing condition across the bookkeeping writes", () => {
       },
       fromNextWindow: schedule.nextWindow,
       fromConsecutiveMisses: schedule.consecutiveMisses,
+      evidenceSharedSecret: record.sharedSecret,
       standingCondition: { since: raisedAt, kind: "storage" },
     });
     expect(advanced.standingCondition).toEqual({
       since: raisedAt,
       kind: "storage",
     });
+    expect(advanced).not.toHaveProperty("lastRun");
+  });
+
+  test("a schedule advance over a secret a re-invite replaced moves the plan alone", () => {
+    const record = buildManagedExchangeRecord(newExchange({ schedule }));
+    const next = {
+      ...schedule,
+      nextWindow: "2026-01-20T14:00:00.000Z",
+      consecutiveMisses: schedule.consecutiveMisses,
+    };
+    const advanced = applyManagedExchangeScheduleAdvance(record, {
+      schedule: next,
+      fromNextWindow: schedule.nextWindow,
+      fromConsecutiveMisses: schedule.consecutiveMisses,
+      evidenceSharedSecret: generateSharedSecret(),
+      lastRun: { at: raisedAt, outcome: "skipped" },
+      standingCondition: { since: raisedAt, kind: "auth" },
+    });
+    expect(advanced.schedule).toEqual(next);
+    expect(advanced.standingCondition).toEqual(NO_STANDING_CONDITION);
     expect(advanced).not.toHaveProperty("lastRun");
   });
 
@@ -1952,6 +1989,7 @@ describe("the standing condition across the bookkeeping writes", () => {
       },
       fromNextWindow: schedule.nextWindow,
       fromConsecutiveMisses: schedule.consecutiveMisses,
+      evidenceSharedSecret: undefined,
       standingCondition: { since: laterAt, kind: "storage" },
     });
     expect(advanced.standingCondition).toEqual(standing);

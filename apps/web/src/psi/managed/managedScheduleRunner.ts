@@ -73,8 +73,10 @@ import {
 import { ManagedExchangeExpiredError } from "./managedExpiry";
 import { ManagedExchangeLockUnavailableError } from "./managedExchangeLock";
 import { ManagedExchangeNotRunnableError } from "./managedExchangeRun";
+import { ManagedExchangeSecretChangedError } from "./managedExchangeStore";
 import { ManagedInputError } from "./managedInputGuard";
 import { ManagedRelayRegistrationError } from "./managedRelayRegistration";
+import { ManagedRunStoppedError } from "./managedWindowRuns";
 import { ManagedSignalingEndpointRefusedError } from "./managedRendezvous";
 import { RotationPersistError } from "./managedRunRotate";
 
@@ -180,6 +182,11 @@ export interface ManagedScheduleTickSeams {
   runAttempt: (attempt: ManagedScheduleAttempt) => Promise<unknown>;
   /** Pace the next attempt. */
   delay: (ms: number) => Promise<void>;
+  /** Wait until the record's run+rotate lock is free of every request queued
+   * for it now. Awaited after an attempt a stop ended, so the operation that
+   * stopped it, queued for the lock, lands before the next attempt reads the
+   * record (see {@link occupyWindow}). */
+  awaitLockTurn: (id: string) => Promise<void>;
   /** Whether the runtime hosting this tick is going away. */
   stopped: () => boolean;
 }
@@ -352,6 +359,7 @@ async function occupyDueWindow(
       ...(catchUp.caughtUpLastRun !== undefined
         ? { lastRun: catchUp.caughtUpLastRun }
         : {}),
+      evidenceSharedSecret: record.sharedSecret,
     });
     // The write is conditioned on the plan it was computed from: a record some
     // other wake or an operator edit moved first comes back unchanged. An edit
@@ -377,6 +385,7 @@ async function occupyDueWindow(
       fromNextWindow: planned.nextWindow,
       fromConsecutiveMisses: planned.consecutiveMisses,
       lastRun: { at: new Date(seams.now()).toISOString(), outcome: "skipped" },
+      evidenceSharedSecret: claimed.sharedSecret,
     });
     return { ...entry };
   }
@@ -425,6 +434,7 @@ async function occupyDueWindow(
     ...(occupancy.standingCondition !== undefined
       ? { standingCondition: occupancy.standingCondition }
       : {}),
+    evidenceSharedSecret: occupancy.evidenceSharedSecret,
   });
   return { ...entry };
 }
@@ -438,6 +448,9 @@ interface WindowOccupancy {
   /** The first standing condition an attempt raised, carried into the window's
    * own write; absent when none did. */
   standingCondition?: ManagedStandingCondition;
+  /** The secret of the record the occupancy last read before an attempt, which
+   * the window's `lastRun` and standing condition are about. */
+  evidenceSharedSecret?: string;
   /** Set where the per-attempt read ended the occupancy with nothing to record:
    * the record is gone, its plan no longer holds this window, or it can no
    * longer run unattended. The caller writes no bookkeeping for the window: a
@@ -467,6 +480,13 @@ interface WindowOccupancy {
  * The window's disposition folds every attempt rather than reading the last one
  * (see {@link foldWindowDisposition}).
  *
+ * An attempt a stop ended ({@link ManagedRunStoppedError}) is no verdict on the
+ * window: it counts no miss, leaves an otherwise empty window `"unattempted"`,
+ * and the next attempt starts once the operation that stopped it has taken
+ * and released the lock ({@link ManagedScheduleTickSeams.awaitLockTurn}), so
+ * it reads the record that operation wrote, a re-invite's fresh secret
+ * included.
+ *
  * The first standing condition an attempt raises is carried out with the
  * disposition, for the window's own write to persist. Each attempt's run already
  * stamps it best-effort, so this is a second chance rather than the only one:
@@ -486,6 +506,7 @@ async function occupyWindow(
   let contactWasProven = false;
   let disposition: ManagedScheduleWindowDisposition | undefined;
   let standingCondition: ManagedStandingCondition | undefined;
+  let evidenceSharedSecret: string | undefined;
   for (;;) {
     // A runtime going away mid-window leaves the window UNRESOLVED: it is still
     // open, and recording a miss for one this runner simply stopped occupying
@@ -508,8 +529,9 @@ async function occupyWindow(
     // `lastRun` over the success, and the window was met.
     if (windowMetByRecordedSuccess(stored, window, startedAtMs))
       return { attempts, disposition: "succeeded" };
+    evidenceSharedSecret = stored.sharedSecret;
     if (standingCompromiseResponse(stored) !== undefined)
-      return { attempts, disposition: "skipped" };
+      return { attempts, disposition: "skipped", evidenceSharedSecret };
     if (!runnableManagedExchange(stored))
       return { attempts, ended: "configuration-only" };
     const directory = stored.workingDirectoryHandle;
@@ -528,6 +550,14 @@ async function occupyWindow(
       });
       return { attempts, disposition: "succeeded" };
     } catch (error) {
+      if (error instanceof ManagedRunStoppedError) {
+        // This window's re-invite or relay enrollment stopped the attempt
+        // before it met the partner, and queued for the lock: the next
+        // attempt runs once that lands, over the record it leaves.
+        disposition ??= "unattempted";
+        await seams.awaitLockTurn(id);
+        continue;
+      }
       const verdict = managedScheduleWindowVerdict(error, dataExchangeStarted);
       if (verdict.disposition === "missed") partnerWasAbsent = true;
       if (verdict.provesContact) contactWasProven = true;
@@ -545,6 +575,7 @@ async function occupyWindow(
             contactWasProven,
           ),
           ...(standingCondition !== undefined ? { standingCondition } : {}),
+          evidenceSharedSecret,
         };
       disposition = verdict.disposition;
     }
@@ -575,6 +606,7 @@ async function occupyWindow(
         }
       : {}),
     ...(standingCondition !== undefined ? { standingCondition } : {}),
+    ...(evidenceSharedSecret !== undefined ? { evidenceSharedSecret } : {}),
   };
 }
 
@@ -634,8 +666,10 @@ interface ManagedScheduleWindowVerdict {
  * ({@link ./managedRunDriver.ts}); a partner who never arrives raises
  * {@link PartnerNoShowError} instead. A {@link RotationPersistError} is raised
  * only after that handshake has yielded the rotated secret
- * ({@link ./managedRunRotate.ts}, `runRotationCriticalSection`). Any failure
- * past the data-exchange phase boundary postdates both.
+ * ({@link ./managedRunRotate.ts}, `runRotationCriticalSection`), and so is a
+ * {@link ManagedExchangeSecretChangedError}, the rotation write's safety
+ * check. Any failure past the data-exchange phase boundary postdates all of
+ * them.
  *
  * Every other failure the mapper classifies -- a lapsed bound, a stored copy
  * the run cannot use, an unusable input, a terms
@@ -650,6 +684,7 @@ function attemptProvesContact(
   return (
     dataExchangeStarted ||
     error instanceof RotationPersistError ||
+    error instanceof ManagedExchangeSecretChangedError ||
     isTrustBoundaryFailure(classifyFailure(error))
   );
 }
@@ -672,7 +707,8 @@ function attemptProvesContact(
  * failure -- a lapsed bound, a stored copy the run cannot use, a
  * refused saved signaling address, an unusable input, a terms shortfall, a
  * refused disclosure, a relay key registration the registrar refused, a
- * failed rotation persist, or a handshake that failed closed -- reproduces
+ * failed rotation persist, a rotation the safety check refused over a
+ * replaced secret, or a handshake that failed closed -- reproduces
  * identically on the next attempt, so it ends the window's occupancy where it
  * happened. Such a refusal counts no partner miss on its own, but a window
  * that already found the partner absent still folds to `"missed"` (see
@@ -722,6 +758,7 @@ function managedScheduleWindowVerdict(
     error instanceof ManagedSignalingEndpointRefusedError ||
     error instanceof ManagedInputError ||
     error instanceof LinkageTermsUnsatisfiableError ||
+    error instanceof ManagedExchangeSecretChangedError ||
     (error instanceof ManagedRelayRegistrationError &&
       error.outcome.kind !== "unavailable")
   )

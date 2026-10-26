@@ -1,11 +1,11 @@
 /**
- * The run+rotate lock as a surface last read it: the poll's reading, and an
- * export's refusal on the lock since then. No React and no I/O -- the hook
- * ({@link ./useManagedRunInFlight.ts}) polls the lock and reports each reading
- * and refusal here.
+ * The run+rotate lock as a surface last read it: the poll's reading, and a
+ * re-invite's or relay enrollment's refusal on the lock since then. No React
+ * and no I/O -- the hook ({@link ./useManagedRunInFlight.ts}) polls the lock
+ * and reports each reading and refusal here.
  *
- * An export that takes the lock itself can find it held between two poll
- * readings. That refusal counts as a held reading until the first poll reading
+ * A re-invite or an enrollment takes the lock itself, so it can find it held
+ * between two poll readings. That refusal counts as a held reading until the first poll reading
  * begun after it, so the run-in-progress reason it shows clears on the next
  * poll tick however short the hold was. A reading begun before the refusal
  * cannot clear it: it may predate the hold the refusal met.
@@ -25,7 +25,7 @@ export const MANAGED_RUN_LOCK_READING_INITIAL: ManagedRunLockReading = {
 };
 
 /** A poll or click-time reading of the lock, begun once `refusalsBefore`
- * refusals had been counted; or an export's refusal, numbered from 1. */
+ * refusals had been counted; or an operation's refusal, numbered from 1. */
 export type ManagedRunLockReadingEvent =
   | { type: "read"; held: boolean; refusalsBefore: number }
   | { type: "refused"; refusal: number };

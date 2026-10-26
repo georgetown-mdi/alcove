@@ -37,6 +37,7 @@ import {
   SAVE_SENT_COLUMNS_LABEL,
   SEND_TERMS_UPDATE_LABEL,
   SEND_TERMS_UPDATE_TEXT,
+  SENT_COLUMNS_FAILURE_TEXT,
   SENT_COLUMNS_LABEL,
   SENT_COLUMNS_SAVED_TEXT,
   SENT_COLUMNS_TEXT,
@@ -46,7 +47,6 @@ import {
   TERMS_UPDATE_NOT_MADE_TEXT,
   TERMS_UPDATE_WITHHELD_TEXT,
   sentColumnNote,
-  sentColumnsFailureText,
   termsUpdateAppliedText,
   termsUpdateNotAppliedText,
   termsUpdateReadingText,
@@ -58,19 +58,17 @@ import type { RunnableManagedExchangeRecord } from "@psi/managed/managedExchange
 /**
  * Changing a saved exchange's terms between runs: the columns this party
  * sends, the terms update that tells the partner, and applying the partner's.
- * Every write is withheld while a run holds the exchange. `onChanged` is told
+ * Each control stays offered while a run is in flight. `onChanged` is told
  * once the stored exchange changed, so the page reads it again.
  */
 export function ManagedTermsUpdate({
   record,
-  runInFlight,
   onChanged,
 }: {
   record: RunnableManagedExchangeRecord;
-  runInFlight: boolean;
   onChanged: () => void;
 }) {
-  const refusal = managedTermsUpdateRefusal(record, Date.now(), runInFlight);
+  const refusal = managedTermsUpdateRefusal(record, Date.now());
   const storedKey = sentColumnsKey(storedSentColumns(record));
   const [savedKey, setSavedKey] = useState<string>();
   return (
@@ -80,7 +78,6 @@ export function ManagedTermsUpdate({
         <SentColumnsEditor
           key={storedKey}
           record={record}
-          runInFlight={runInFlight}
           saved={savedKey === storedKey}
           onSaved={(key) => {
             setSavedKey(key);
@@ -120,12 +117,10 @@ function storedSentColumns(
  */
 function SentColumnsEditor({
   record,
-  runInFlight,
   saved,
   onSaved,
 }: {
   record: RunnableManagedExchangeRecord;
-  runInFlight: boolean;
   saved: boolean;
   onSaved: (key: string) => void;
 }) {
@@ -158,7 +153,7 @@ function SentColumnsEditor({
       onSaved(sentColumnsKey(sent));
     } catch (error) {
       whenDiagnostic(() => console.error(error));
-      setStatus(sentColumnsFailureText(error));
+      setStatus(SENT_COLUMNS_FAILURE_TEXT);
     } finally {
       setBusy(false);
     }
@@ -196,7 +191,7 @@ function SentColumnsEditor({
         mt="sm"
         variant="default"
         loading={busy}
-        disabled={unchanged || runInFlight}
+        disabled={unchanged}
         onClick={() => void save()}
       >
         {SAVE_SENT_COLUMNS_LABEL}

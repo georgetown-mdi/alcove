@@ -62,7 +62,8 @@ import { disclosureRecord } from "../../utils/disclosureFixtures.js";
 import { noteUnfiledDisclosureRun } from "../../../src/psi/unfiledDisclosureStore.js";
 import { openPeerMessageConnection } from "../../../src/psi/transport/peerMessageConnection.js";
 import { parkWebSocketRelayConnection } from "../../../src/psi/transport/websocketRelayConnection.js";
-import { persistManagedExchangePayloadReceiveFill } from "../../../src/psi/managed/managedExchangeStore.js";
+import { persistManagedRunPayloadReceiveFill } from "../../../src/psi/managed/managedExchangeStore.js";
+import { runManagedRerun } from "../../../src/psi/managed/managedRun.js";
 
 import { aeadWrappedPipe } from "../../utils/aeadWrappedPipe.js";
 
@@ -212,7 +213,7 @@ vi.mock(
   "../../../src/psi/managed/managedExchangeStore.js",
   async (importOriginal) => ({
     ...(await importOriginal<Record<string, unknown>>()),
-    persistManagedExchangePayloadReceiveFill: vi.fn(() => Promise.resolve()),
+    persistManagedRunPayloadReceiveFill: vi.fn(() => Promise.resolve()),
   }),
 );
 vi.mock("../../../src/psi/managed/managedPreparedExchange.js", () => ({
@@ -647,7 +648,7 @@ describe("runManagedExchangeInBrowser", () => {
     mockedOpen.mockResolvedValue(mc);
     acquireResources();
     const order: Array<string> = [];
-    vi.mocked(persistManagedExchangePayloadReceiveFill).mockImplementationOnce(
+    vi.mocked(persistManagedRunPayloadReceiveFill).mockImplementationOnce(
       () => {
         order.push("recorded");
         return Promise.resolve(RECORD);
@@ -666,15 +667,39 @@ describe("runManagedExchangeInBrowser", () => {
       warnings.push(message);
     });
 
-    expect(
-      vi.mocked(persistManagedExchangePayloadReceiveFill),
-    ).toHaveBeenCalledWith(RECORD.id, ["program", "back\\slash"]);
+    expect(vi.mocked(persistManagedRunPayloadReceiveFill)).toHaveBeenCalledWith(
+      { id: RECORD.id, linkageTerms: RECORD.exchangeFile.linkageTerms },
+      ["program", "back\\slash"],
+    );
     expect(order).toEqual(["recorded", "noticed"]);
     // Raw: the seat's sink escapes the line once.
     expect(warnings).toEqual([
       payloadReceiveFilledNotice(["program", "back\\slash"]),
     ]);
     expect(warnings[0]).toContain('"back\\slash"');
+  });
+
+  test("a receive list the store keeps the operator's terms over is not noticed, and the run completes", async () => {
+    const { mc } = makeParkedCloseMc();
+    mockedOpen.mockResolvedValue(mc);
+    acquireResources();
+    vi.mocked(persistManagedRunPayloadReceiveFill).mockResolvedValueOnce(
+      undefined,
+    );
+    mockedRunExchange.mockImplementationOnce(async (...args) => {
+      await args[3].onPayloadReceiveFilled?.(["program"]);
+      return minimalExchangeResult({
+        partnerTerms: getDefaultLinkageTerms("Managed re-run partner"),
+      });
+    });
+    const warnings: Array<string> = [];
+
+    const result = await runDriver(new AbortController().signal, (message) =>
+      warnings.push(message),
+    );
+
+    expect(result.exchange).toBe(OUTPUTS);
+    expect(warnings).toEqual([]);
   });
 
   test("yields its outputs while the close is still draining", async () => {
@@ -747,8 +772,28 @@ describe("runManagedExchangeInBrowser", () => {
 
     expect(mockedOpen).toHaveBeenCalledWith(conn, {
       onCloseOutcome: expect.any(Function),
-      signal: controller.signal,
+      signal: expect.any(AbortSignal),
     });
+    // The run's own signal, which the owner's abort reaches after the run
+    // yielded, while the close still drains.
+    const passed = mockedOpen.mock.calls[0]?.[1]?.signal;
+    expect(passed?.aborted).toBe(false);
+    controller.abort();
+    expect(passed?.aborted).toBe(true);
+  });
+
+  test("gives the run its own stop, whose signal is the one the transport waits on", async () => {
+    // A re-invite or enrollment in this window stops the run by aborting
+    // this controller, so the stop cuts the same waits a cancel does.
+    const { mc } = makeParkedCloseMc();
+    mockedOpen.mockResolvedValue(mc);
+    acquireResources();
+
+    await runDriver(new AbortController().signal);
+
+    const stop = vi.mocked(runManagedRerun).mock.calls[0]?.[2]?.stop;
+    expect(stop).toBeInstanceOf(AbortController);
+    expect(mockedOpen.mock.calls[0]?.[1]?.signal).toBe(stop?.signal);
   });
 
   test("a cancel cuts an exchange the partner has stalled mid-payload", async () => {
@@ -1204,11 +1249,11 @@ describe("the peer-wait bound", () => {
     await runDriver(controller.signal, undefined, recordForSide("inviter"));
 
     expect(rendezvousOptions().acquisition).toEqual({
-      signal: controller.signal,
+      signal: expect.any(AbortSignal),
       relayPlan: { relaysLeftOut: [], websocketRelays: [] },
     });
     expect(rendezvousOptions().inboundWait).toEqual({
-      signal: controller.signal,
+      signal: expect.any(AbortSignal),
     });
   });
 
@@ -1229,12 +1274,12 @@ describe("the peer-wait bound", () => {
     );
 
     expect(rendezvousOptions().acquisition).toEqual({
-      signal: controller.signal,
+      signal: expect.any(AbortSignal),
       relayPlan: { relaysLeftOut: [], websocketRelays: [] },
       peerWaitTimeoutMs: 90_000,
     });
     expect(rendezvousOptions().inboundWait).toEqual({
-      signal: controller.signal,
+      signal: expect.any(AbortSignal),
       timeoutMs: 90_000,
     });
   });

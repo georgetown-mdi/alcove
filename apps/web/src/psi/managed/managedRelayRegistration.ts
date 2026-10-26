@@ -45,6 +45,7 @@ import type {
   ManagedExchangeRecord,
   RunnableManagedExchangeRecord,
 } from "./managedExchangeRecord";
+import type { ManagedExchangeLockOptions } from "./managedExchangeLock";
 import type { OwnRelayRead } from "../transport/ownRelaySetting";
 
 const log = getLogger("managedRelayRegistration");
@@ -428,8 +429,13 @@ export type ManagedRelayEnrollmentResult =
 
 /** The platform boundaries an enrollment drives: injectable for tests. */
 export interface ManagedRelayEnrollmentDeps {
-  /** Runs `step` under the record's run+rotate lock, refusing when a run holds it. */
-  withLock: <T>(id: string, step: () => Promise<T>) => Promise<T>;
+  /** Runs `step` under the record's run+rotate lock, requested as `options`
+   * says: refused while a run holds it, or queued behind a run just stopped. */
+  withLock: <T>(
+    id: string,
+    step: () => Promise<T>,
+    options: ManagedExchangeLockOptions,
+  ) => Promise<T>;
   getRecord: (id: string) => Promise<ManagedExchangeRecord | undefined>;
   persistRegistrar: (
     id: string,
@@ -440,8 +446,7 @@ export interface ManagedRelayEnrollmentDeps {
 }
 
 const defaultEnrollmentDeps: ManagedRelayEnrollmentDeps = {
-  withLock: (id, step) =>
-    withManagedExchangeLock(id, step, { ifAvailable: true }),
+  withLock: withManagedExchangeLock,
   getRecord: getManagedExchange,
   persistRegistrar: persistManagedExchangeRelayRegistrar,
 };
@@ -459,7 +464,9 @@ const defaultEnrollmentDeps: ManagedRelayEnrollmentDeps = {
  * enrolled, brought here.
  *
  * Runs under the record's run+rotate lock, so no run rotates the secret while
- * the registrar is asked.
+ * the registrar is asked. `lock` defaults to `ifAvailable`; the enrollment that
+ * follows stopping this window's waiting run queues instead
+ * ({@link ./managedWindowRuns.ts}).
  *
  * @throws {ManagedExchangeLockUnavailableError} if a run holds the lock.
  * @throws {Error} if the record is gone or holds a configuration only.
@@ -471,55 +478,65 @@ export async function enrollManagedRelayRegistrar(
     registrar: RelayRegistrar;
     ownerToken?: string;
     replace?: boolean;
+    lock?: ManagedExchangeLockOptions;
   },
   deps: ManagedRelayEnrollmentDeps = defaultEnrollmentDeps,
 ): Promise<ManagedRelayEnrollmentResult> {
   const { id, registrar, ownerToken } = params;
-  return deps.withLock(id, async () => {
-    const stored = await deps.getRecord(id);
-    if (stored === undefined)
-      throw new Error(`no managed exchange with id ${id}`);
-    const record = runnableManagedExchangeOrRefuse(stored);
-    const maxAgeDays = record.tokenMaxAgeDays ?? null;
-    const outcome =
-      ownerToken === undefined
-        ? await registerRelayKey(
-            {
-              registrar,
-              signingSecret: record.sharedSecret,
-              registeredSecret: record.sharedSecret,
-              maxAgeDays,
-            },
-            deps.env,
-          )
-        : await enrollRelayKey(
-            {
-              registrar,
-              sharedSecret: record.sharedSecret,
-              maxAgeDays,
-              ownerToken,
-              replace: params.replace === true,
-            },
-            deps.env,
-          );
-    if (outcome.kind !== "registered") return { kind: "failed", outcome };
-    return {
-      kind: "enrolled",
-      record: await deps.persistRegistrar(id, registrar, record.sharedSecret),
-    };
-  });
+  const lock = params.lock ?? { ifAvailable: true };
+  return deps.withLock(
+    id,
+    async () => {
+      const stored = await deps.getRecord(id);
+      if (stored === undefined)
+        throw new Error(`no managed exchange with id ${id}`);
+      const record = runnableManagedExchangeOrRefuse(stored);
+      const maxAgeDays = record.tokenMaxAgeDays ?? null;
+      const outcome =
+        ownerToken === undefined
+          ? await registerRelayKey(
+              {
+                registrar,
+                signingSecret: record.sharedSecret,
+                registeredSecret: record.sharedSecret,
+                maxAgeDays,
+              },
+              deps.env,
+            )
+          : await enrollRelayKey(
+              {
+                registrar,
+                sharedSecret: record.sharedSecret,
+                maxAgeDays,
+                ownerToken,
+                replace: params.replace === true,
+              },
+              deps.env,
+            );
+      if (outcome.kind !== "registered") return { kind: "failed", outcome };
+      return {
+        kind: "enrolled",
+        record: await deps.persistRegistrar(id, registrar, record.sharedSecret),
+      };
+    },
+    lock,
+  );
 }
 
 /** The platform boundaries stopping a registration drives: injectable for
  * tests. */
 export interface ManagedRelayRegistrationStopDeps {
   /** Runs `step` under the record's run+rotate lock, refusing when a run holds it. */
-  withLock: <T>(id: string, step: () => Promise<T>) => Promise<T>;
+  withLock: <T>(
+    id: string,
+    step: () => Promise<T>,
+    options: ManagedExchangeLockOptions,
+  ) => Promise<T>;
   removeRegistrar: (id: string) => Promise<RunnableManagedExchangeRecord>;
 }
 
 const defaultStopDeps: ManagedRelayRegistrationStopDeps = {
-  withLock: defaultEnrollmentDeps.withLock,
+  withLock: withManagedExchangeLock,
   removeRegistrar: (id) => persistManagedExchangeRelayRegistrar(id, undefined),
 };
 
@@ -535,7 +552,9 @@ export async function stopManagedRelayRegistration(
   id: string,
   deps: ManagedRelayRegistrationStopDeps = defaultStopDeps,
 ): Promise<RunnableManagedExchangeRecord> {
-  return deps.withLock(id, () => deps.removeRegistrar(id));
+  return deps.withLock(id, () => deps.removeRegistrar(id), {
+    ifAvailable: true,
+  });
 }
 
 /** What a form taking a registrar's exchange id adds to a refusal of it. */

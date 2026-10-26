@@ -80,7 +80,7 @@ vi.mock("../../../src/psi/managed/managedRun.js", async (importOriginal) => ({
           mark: () => Promise<void>,
           current: unknown,
         ) => Promise<{ handshake: unknown }>;
-        dataExchange: (carried: unknown) => Promise<unknown>;
+        dataExchange: (carried: unknown, rotated: unknown) => Promise<unknown>;
       },
     ) => {
       const input = await seams.acquireInput(record);
@@ -89,7 +89,7 @@ vi.mock("../../../src/psi/managed/managedRun.js", async (importOriginal) => ({
         () => Promise.resolve(),
         record,
       );
-      const exchange = await seams.dataExchange(handshake);
+      const exchange = await seams.dataExchange(handshake, record);
       return { exchange, lastRun: { at: 0, outcome: "succeeded" } };
     },
   ),
@@ -120,7 +120,7 @@ vi.mock(
   "../../../src/psi/managed/managedExchangeStore.js",
   async (importOriginal) => ({
     ...(await importOriginal<Record<string, unknown>>()),
-    persistManagedExchangePayloadReceiveFill: vi.fn(() => Promise.resolve()),
+    persistManagedRunPayloadReceiveFill: vi.fn(() => Promise.resolve()),
   }),
 );
 vi.mock("../../../src/psi/managed/managedPreparedExchange.js", () => ({

@@ -45,14 +45,18 @@ import {
   runManagedExchange,
 } from "./managedExchangeRun";
 import {
+  ManagedExchangeSecretChangedError,
+  recordManagedExchangeLastRun,
+} from "./managedExchangeStore";
+import {
   ManagedInputError,
   managedInputFailureKind,
 } from "./managedInputGuard";
 import { RotationPersistError, failedRun, missedRun } from "./managedRunRotate";
 import { ManagedExchangeLockUnavailableError } from "./managedExchangeLock";
 import { ManagedRelayRegistrationError } from "./managedRelayRegistration";
+import { ManagedRunStoppedError } from "./managedWindowRuns";
 import { ManagedTermsChangeTakenOnError } from "./managedTermsProposal";
-import { recordManagedExchangeLastRun } from "./managedExchangeStore";
 
 import type { RoundSetLimitError } from "@alcove/core";
 
@@ -133,6 +137,16 @@ export interface ManagedRerunOptions {
    */
   aborted?: () => boolean;
   /**
+   * The run's own controller, whose signal ends the run. Given, the run is
+   * listed in this window's runs once it takes the lock
+   * ({@link ./managedWindowRuns.ts}), so a re-invite or a relay enrollment
+   * refused by it can stop it while it waits for its partner: a stop aborts
+   * this controller with a {@link ManagedRunStoppedError}, which the run
+   * raises in place of whatever the abort cut, recording nothing. A failure
+   * of the checks before the handshake is raised and recorded as itself.
+   */
+  stop?: AbortController;
+  /**
    * Called once when the data exchange begins -- the phase boundary past which
    * payload could have flowed. The run's own failure bookkeeping reads that
    * boundary ({@link rerunFailureLastRun}), and a caller classifying the failure
@@ -183,6 +197,8 @@ export interface ManagedRerunOptions {
  * @throws {ManagedExchangeLockUnavailableError} if a run is already in progress in
  *   another same-origin context.
  * @throws {RotationPersistError} if the rotation write fails after the handshake.
+ * @throws {ManagedRunStoppedError} if a stop through `options.stop` ended the
+ *   run before its rotation-in-flight marker; nothing is recorded.
  */
 export async function runManagedRerun<TInput, THandshake, TExchange>(
   record: ManagedExchangeRecord,
@@ -203,6 +219,14 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
   // The record the run used, once the lock is granted; the expiry re-map reads
   // it, since the bound the handshake enforced is that record's.
   let current: RunnableManagedExchangeRecord | undefined;
+  // The secret the run last stored: the one it read under the lock, then the
+  // one its rotation stored once the data exchange began.
+  let storedSecret: string | undefined;
+  // The secret the handshake rotated to, stored once the data exchange began.
+  let rotatedSecret: string | undefined;
+  // Whether the handshake phase began. A failure before it is this run's own,
+  // a stop asked or not, unless it is the stop's own abort reason.
+  const phase = { handshakeBegan: false };
 
   // The input guard, the single-writer lock, the persist-before-success rotation,
   // and the data exchange are runManagedExchange's, wired to this record's seams.
@@ -212,6 +236,7 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
       runStartedAtMs,
       acquireInput: (read) => {
         current = read;
+        storedSecret = read.sharedSecret;
         // Checked on the stored copy before the input is read or any connection
         // opens: a lapsed bound means no run happened, so no lastRun is written.
         if (managedExchangeLapsed(read, now()))
@@ -220,32 +245,58 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
           throw new ManagedExchangeExpiredError(read.expires as string);
         return seams.acquireInput(read);
       },
-      handshake: seams.handshake,
+      handshake: async (input, markRotationInFlight, read) => {
+        phase.handshakeBegan = true;
+        const handshake = await seams.handshake(
+          input,
+          markRotationInFlight,
+          read,
+        );
+        rotatedSecret = handshake.rotatedSecret;
+        return handshake;
+      },
       dataExchange: seams.dataExchange,
       onDataExchangeStart: () => {
         dataExchangeStarted = true;
+        storedSecret = rotatedSecret;
         options.onDataExchangeStart?.();
       },
       ...(options.lock !== undefined ? { lock: options.lock } : {}),
+      ...(options.stop !== undefined ? { stop: options.stop } : {}),
       now,
     });
   } catch (error) {
+    // A stop is honored only before the rotation-in-flight marker, so a
+    // failure from the handshake phase after one is the stop's, whatever the
+    // teardown raised. Before that phase only the stop's own reason is.
+    const stopReason: unknown = options.stop?.signal.reason;
+    const stopRequested = stopReason instanceof ManagedRunStoppedError;
+    if (stopRequested && (phase.handshakeBegan || error === stopReason))
+      throw stopReason;
     // A bound that lapsed mid-run remaps to the same benign expiry (see
     // remapLapsedRunFailure).
     const lapsed = remapLapsedRunFailure(error, current ?? record, now());
     if (lapsed !== undefined) throw lapsed;
     // Everything rerunFailureLastRun does not own (see its doc) is stamped here.
+    // A stop's abort does not make this run's own failure a cancel.
     const lastRun = rerunFailureLastRun(
       error,
       now(),
-      options.aborted?.() ?? false,
+      !stopRequested && (options.aborted?.() ?? false),
       dataExchangeStarted,
     );
     if (lastRun !== undefined) {
       // Best-effort: a failed write here must never replace the run's own
-      // failure.
+      // failure. Made after the lock released, so it is stamped only over the
+      // secret the run last stored: a re-invite landing since keeps the record
+      // it left.
       try {
-        await recordManagedExchangeLastRun(record.id, lastRun, runStartedAtMs);
+        await recordManagedExchangeLastRun(
+          record.id,
+          lastRun,
+          runStartedAtMs,
+          storedSecret,
+        );
       } catch {
         // Swallowed: the original failure still reaches the caller on the rethrow.
       }
@@ -340,6 +391,12 @@ function isPartnerRefusedSetAbort(error: unknown): boolean {
  * - {@link ManagedTermsChangeTakenOnError}: unrecorded -- the operator took on
  *   the partner's changed terms, which the stored exchange now holds, so
  *   nothing failed that a later visit has to answer.
+ * - {@link ManagedExchangeSecretChangedError}: unrecorded -- the rotation
+ *   write's safety check found the secret the run began from replaced, so the
+ *   record is the replacing write's.
+ * - {@link ManagedRunStoppedError}: unrecorded -- this window's re-invite or
+ *   relay enrollment stopped the run before its rotation-in-flight marker,
+ *   so nothing failed and the partner saw no key exchange.
  * - {@link ManagedExchangeNotRunnableError}: records `custody-unreadable` --
  *   the stored copy the run would rotate could not be used, refused before
  *   the input or any connection, and it refuses the same way at the next run.
@@ -389,7 +446,9 @@ export function rerunFailureLastRun(
     error instanceof ManagedInputError ||
     error instanceof RotationPersistError ||
     error instanceof ManagedRelayRegistrationError ||
-    error instanceof ManagedTermsChangeTakenOnError
+    error instanceof ManagedTermsChangeTakenOnError ||
+    error instanceof ManagedExchangeSecretChangedError ||
+    error instanceof ManagedRunStoppedError
   )
     return undefined;
   if (error instanceof ManagedExchangeNotRunnableError)
@@ -436,8 +495,10 @@ export function rerunFailureLastRun(
  * after the terms exchange, `"partner-set-too-large"` and
  * `"partner-refused-set"` after the terms exchange, `"partner-refused-terms"`
  * at the terms exchange, `"partner-protocol-refusal"` at any point after the
- * handshake, and `"relay-registration"` before connecting, once the registrar
- * did not confirm a pending registration. */
+ * handshake, `"relay-registration"` before connecting, once the registrar
+ * did not confirm a pending registration, and `"stopped"` before the
+ * rotation-in-flight marker, once this window's re-invite or relay
+ * enrollment stopped the run. */
 type BenignRerunOutcome =
   | "expired"
   | "custody-unreadable"
@@ -450,7 +511,8 @@ type BenignRerunOutcome =
   | "partner-refused-set"
   | "partner-refused-terms"
   | "partner-protocol-refusal"
-  | "relay-registration";
+  | "relay-registration"
+  | "stopped";
 
 /** Classify a launch failure into the benign outcome it holds, or `undefined`
  * for a failure that is not one of these states (a handshake failure, a storage
@@ -516,6 +578,7 @@ export function benignRerunOutcome(
   if (isPartnerProtocolRefusal(error)) return "partner-protocol-refusal";
   if (error instanceof ManagedRelayRegistrationError)
     return "relay-registration";
+  if (error instanceof ManagedRunStoppedError) return "stopped";
   return undefined;
 }
 

@@ -155,6 +155,7 @@ export interface ManagedRunFailure {
     | "saved-address-refused"
     | "custody-unreadable"
     | "already-running"
+    | "stopped"
     | "missed"
     | "storage"
     | "partial-rotation"
@@ -236,6 +237,21 @@ const ALREADY_RUNNING_FAILURE: ManagedRunFailure = {
     "A run for this exchange is already in progress in another tab or a " +
     "scheduled run on this device. Wait for it to finish, then try again.",
   recovery: "wait",
+};
+
+/** The benign state of a run this window's re-invite or relay enrollment
+ * stopped while it waited for its partner: before the rotation-in-flight
+ * marker, so no key exchange ran and nothing of the run was recorded. */
+const STOPPED_FAILURE: ManagedRunFailure = {
+  kind: "stopped",
+  title: "This run was stopped",
+  message:
+    "You stopped this run while it waited for your partner, to create a " +
+    "fresh invitation or change the relay registration. Nothing was " +
+    "exchanged and nothing from the run was saved. Run it again when you " +
+    "are ready; after a fresh invitation, the run connects once your " +
+    "partner has accepted it.",
+  recovery: "none",
 };
 
 /** The benign no-show state: the run spent its whole wait on the partner's runner
@@ -967,6 +983,7 @@ const MANAGED_RUN_CAUSE_PLACEMENT: Record<
   "partner-refused-set": "withheld",
   "terms-change": "withheld",
   "already-running": "withheld",
+  stopped: "withheld",
   missed: "withheld",
   storage: "withheld",
   "partial-rotation": "withheld",
@@ -1075,6 +1092,7 @@ function classifyLaunchState(
   if (benign === "expired" && error instanceof ManagedExchangeExpiredError)
     return expiredFailure(error.expires);
   if (benign === "already-running") return ALREADY_RUNNING_FAILURE;
+  if (benign === "stopped") return STOPPED_FAILURE;
   if (benign === "custody-unreadable") return NOT_RUNNABLE_FAILURE;
   if (benign === "input") return inputFailure(error);
   if (benign === "terms-shortfall") return shortfallFailure(error);

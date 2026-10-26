@@ -104,13 +104,15 @@ import {
   projectedResultSizeWarning,
 } from "./parkedResultsModel";
 import {
-  REINVITE_COMPROMISE_REASON,
-  REINVITE_RUN_IN_FLIGHT_REASON,
-} from "./managedReinviteGate";
+  REINVITE_HELD_BY_RUN_TEXT,
+  STOP_RUN_AND_REINVITE_LABEL,
+} from "./managedRunHolder";
 import {
   REPEATED_MISS_TITLE,
   UNCHANGED_INPUT_TITLE,
 } from "./scheduleSurfacingModel";
+import { ManagedRunHolderNote } from "./ManagedRunHolderNote";
+import { REINVITE_COMPROMISE_REASON } from "./managedReinviteGate";
 
 import { CHANGE_TERMS_TITLE } from "./managedTermsUpdateModel";
 import { KeepRunningSection } from "./KeepRunningSection";
@@ -134,6 +136,7 @@ import type { ConfigRow } from "./managedDetailModel";
 import type { DisclosureAccountingRead } from "@psi/disclosureAccountingStore";
 import type { DisclosureFact } from "./disclosureAccountingModel";
 import type { ManagedReinviteFailureAlert } from "./managedRunRecoveryModel";
+import type { ManagedRunHolder } from "./managedRunHolder";
 import type { ParkedResultsRead } from "@psi/parkedResultsStore";
 import type { StoredDisclosureAccounting } from "@psi/disclosureAccounting";
 import type { UnfiledDisclosureRead } from "@psi/unfiledDisclosureStore";
@@ -177,7 +180,10 @@ export function ManagedExchangeDetail({
   canReinvite,
   compromiseResponse,
   runInFlight,
-  runHoldsReinvite,
+  runHolder,
+  onStopRunAndReinvite,
+  onRunLockRefused,
+  onRecheckRunLock,
   reinviting,
   reinviteFailure,
 }: {
@@ -257,14 +263,19 @@ export function ManagedExchangeDetail({
    * {@link ./ManagedRunRecovery.tsx}). The terms re-invite is withheld under one: it
    * mints a fresh secret on the channel they flagged. */
   compromiseResponse: boolean;
-  /** Whether a run of this exchange is under way anywhere this browser profile can
-   * see. The terms re-invite waits it out: the mint replaces the secret the run is
-   * connecting on. */
+  /** Whether a run of this exchange is under way anywhere this browser profile
+   * can see. The terms re-invite and the relay registration writes take the
+   * run lock, so they wait it out. */
   runInFlight: boolean;
-  /** That same reading, or the mint write's own refusal when a run held the lock at
-   * it. It states the reason; it does not disable the control, which the reading
-   * gives back when the run ends (see {@link ./ManagedRunRecovery.tsx}). */
-  runHoldsReinvite: boolean;
+  /** Where that run is, which picks the reason shown and offers the stop
+   * ({@link ./managedRunHolder.ts}). */
+  runHolder: ManagedRunHolder | undefined;
+  /** Stop this window's run still waiting for its partner, then re-invite. */
+  onStopRunAndReinvite: () => void;
+  /** Report that a relay registration write found the run lock held. */
+  onRunLockRefused: () => void;
+  /** Re-read the run lock now. */
+  onRecheckRunLock: () => void;
   /** Whether a re-invite is in flight, so the terms button shows loading. Shared
    * with the run surface's own re-invite state (see {@link ./ManagedRunSurface.tsx}),
    * so an in-flight re-invite displays the same on a healthy exchange as on a failed one. */
@@ -312,21 +323,21 @@ export function ManagedExchangeDetail({
         canReinvite={canReinvite}
         compromiseResponse={compromiseResponse}
         runInFlight={runInFlight}
-        runHoldsReinvite={runHoldsReinvite}
+        runHolder={runHolder}
+        onStopRunAndReinvite={onStopRunAndReinvite}
         reinviting={reinviting}
         reinviteFailure={reinviteFailure}
       />
       {runnableManagedExchange(record) && (
-        <ManagedTermsUpdate
-          record={record}
-          runInFlight={runInFlight}
-          onChanged={onTermsChanged}
-        />
+        <ManagedTermsUpdate record={record} onChanged={onTermsChanged} />
       )}
       {runnableManagedExchange(record) && relayRegistrationShown && (
         <ManagedRelayRegistration
           record={record}
           runInFlight={runInFlight}
+          runHolder={runHolder}
+          onRunLockRefused={onRunLockRefused}
+          onRecheckRunLock={onRecheckRunLock}
           onChanged={onRelayRegistrationChanged}
         />
       )}
@@ -399,9 +410,9 @@ export function ConfigRowItem({ row }: { row: ConfigRow }) {
  * invitation; the acceptor is told the terms cannot change by re-invite, and
  * that other terms mean a new exchange from the partner. It is withheld while a compromise
  * response stands -- minting would put a fresh secret on a channel the operator
- * has flagged -- and while a run is in flight, whose secret the mint replaces
- * ({@link ./managedReinviteGate.ts} holds both reasons, shared with the failure
- * recovery's own control).
+ * has flagged ({@link ./managedReinviteGate.ts} holds the reason, shared with the
+ * failure recovery) -- and while a run holds the exchange, since the mint takes
+ * the run lock ({@link ./managedRunHolder.ts} holds that copy).
  */
 function ConfigurationView({
   record,
@@ -409,7 +420,8 @@ function ConfigurationView({
   canReinvite,
   compromiseResponse,
   runInFlight,
-  runHoldsReinvite,
+  runHolder,
+  onStopRunAndReinvite,
   reinviting,
   reinviteFailure,
 }: {
@@ -418,7 +430,8 @@ function ConfigurationView({
   canReinvite: boolean;
   compromiseResponse: boolean;
   runInFlight: boolean;
-  runHoldsReinvite: boolean;
+  runHolder: ManagedRunHolder | undefined;
+  onStopRunAndReinvite: () => void;
   reinviting: boolean;
   reinviteFailure: ManagedReinviteFailureAlert | undefined;
 }) {
@@ -473,9 +486,13 @@ function ConfigurationView({
           {compromiseResponse ? (
             <p className={styles.small}>{REINVITE_COMPROMISE_REASON}</p>
           ) : (
-            runHoldsReinvite && (
-              <p className={styles.small}>{REINVITE_RUN_IN_FLIGHT_REASON}</p>
-            )
+            <ManagedRunHolderNote
+              holder={runHolder}
+              text={REINVITE_HELD_BY_RUN_TEXT}
+              stopLabel={STOP_RUN_AND_REINVITE_LABEL}
+              busy={reinviting}
+              onStop={onStopRunAndReinvite}
+            />
           )}
         </>
       ) : (

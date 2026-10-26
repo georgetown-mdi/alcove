@@ -207,8 +207,30 @@ It is held from "begin this run" through the success that run records, the excha
 Two tabs of the same origin cannot both enter it: the second waits or is refused.
 So a scheduled run and an operator-opened tab, or two tabs, on one device cannot fork the secret by racing a run, and no two of them exchange with the partner for one record at the same time.
 
-Both exports take the same lock, with `ifAvailable`, around their read and download, so an export and a run exclude each other as two runs do: an export meeting a run is refused and told to wait, since a file taken mid-run would hold the secret that run is about to replace.
-Creating a re-invitation takes the lock on the same terms before it replaces the secret, so a run and a fresh invitation cannot each write a secret the other discards.
+Runs take the lock, attended and scheduled, and so do the writes that replace the secret or change where a run's key is registered: a re-invite, relay enrollment and stopping registration, and an import's replace of the stored record.
+A run holds it for minutes and a scheduled window for hours, so a control that takes it is out of reach for exactly the stretch an operator is most likely to be on the page.
+The exports and the terms writes therefore take no lock and stay offered during a run.
+None of them replaces the secret, and a run reads its terms and its secret when it takes the lock, so a terms write landing mid-run changes the next run, not this one.
+The run's own terms writes, the `payload.receive` it fills and the partner's change an attended run takes on, are made only over the terms it ran, so an operator's write landing first is the one the next run holds, and the run neither stops nor overwrites it.
+
+The re-invite and relay enrollment stay on the lock.
+Letting them land during a run made every write the run makes after it takes the lock defend against the secret or the registrar changing under it: a compare on the rotation-in-flight marker, a rotated-key registration that followed a re-invite's key with a second signer, and a registrar read again at each step; each review of that design found another gap in it.
+Held to the lock, neither lands inside a run's locked section, so the run's rotation and its relay registration need none of that.
+The cost is a wait: a re-invite or an enrollment is refused for as long as a run holds the exchange, up to a scheduled window.
+A run in the same app window that is still waiting for its partner can be stopped from the refused control, and the operation then goes through.
+The run decides whether the stop lands, checking for it inside the lock immediately before it writes its rotation-in-flight marker, so a stop never cuts a key exchange the partner has begun.
+The operation then requests the lock queued rather than with `ifAvailable`, and Web Locks grants queued requests in the order they were made, so the scheduled window's next attempt, which asks for its turn only once the stopped attempt has unwound, comes after the operation and runs on the secret it stored.
+A browser test measures that order on real Web Locks rather than assuming it.
+A run another window or the installed app holds gets no signal, since nothing reaches across windows; the refusal says how to end it, by closing that window or turning the schedule off.
+
+A write compares the stored secret with the one it was made under where a write replacing the secret can land between its read and its write.
+A terms update's Accept and a kept proposal's Apply read the record with no lock taken, so a run's rotation can land between the read and the write, and each compares.
+A run's writes made after it releases the lock -- its failure stamp and the standing condition it raises, and a scheduled run's backup -- are made only over the secret the run stored, and a scheduled window's own write after its attempts lands its last-run stamp and standing condition only over the secret its attempt ran under, since a re-invite can land once the lock is free.
+The run's rotation and the re-invite's secret write compare too, as a safety check: the lock already keeps them apart.
+The import replace keeps the lock as well as comparing.
+A replace landing during a run that then completes would leave the partner on the run's rotated secret and this record on the imported one, with no invitation for the partner to accept that would bring the two together again.
+It compares as well, since a re-invite can land between the reconciliation the resubmitted import runs and the replace taking the lock.
+The compare reaches no further back: a re-invite landing while the replace question is on screen is not refused, a limit the spec states ([Replacing a saved copy](../spec/MANAGED_EXCHANGE_RECORD.md#replacing-a-saved-copy)).
 
 On the scheduled path a runner occupying a window holds the lock almost continuously from the window's open to its close, hours at the intended widths.
 Each attempt holds it across its whole wait for the partner, and the next attempt begins as soon as the last one's wait ends.
@@ -235,9 +257,8 @@ A copy here that runs after a run elsewhere fails as a stale secret does; over W
 The cost is that a schedule left on here keeps firing after a move, and whichever copy runs first strands the other.
 The notice beside each export is the whole of the control: nothing in the browser can see a run elsewhere.
 
-Both exports are withheld from the screen while a run holds the lock.
-That withholding is a reading of the lock taken every so often, so it can miss a run that starts between two readings.
-Nothing rests on it: each export takes the run's own lock before it reads anything, so an export and a run that rotates exclude each other, in either order.
+Both exports stay offered while a run holds the lock, with a note beside them that a download then holds the secret that run replaces.
+Refusing them instead would keep the operator from a backup for the whole of a scheduled window, and a file taken mid-run is not a wrong one: the run's rotation clears the backup marker it stamped, so the page asks for a backup again once the run rotates.
 
 Bringing the exchange back here is the same import with the newer files.
 The files from a run elsewhere hold a secret the copy here does not, so the secret alone cannot find it; the agreed terms and side do, and the import asks.
@@ -347,7 +368,7 @@ A run that failed the same way after the answer is a failure the operator has co
 The response's rules are in [MANAGED_EXCHANGE_RECORD.md](../spec/MANAGED_EXCHANGE_RECORD.md#the-operators-response-to-it).
 
 A run in flight withholds the same two controls for a different reason: a fresh invitation would replace the secret the run is connecting on.
-The screen's reading of a run in flight is polled and can be stale, so nothing rests on it: creating the invitation takes the run's lock before it replaces the secret ([Cross-tab single-writer locking](#cross-tab-single-writer-locking-web-locks)).
+The screen's reading of a run in flight is polled and can be stale, so nothing rests on it: creating the invitation takes the run's lock before it reads the record, and a run in the same window still waiting for its partner can be stopped from the control ([Cross-tab single-writer locking](#cross-tab-single-writer-locking-web-locks)).
 
 ### Recovery: fast re-invite
 
