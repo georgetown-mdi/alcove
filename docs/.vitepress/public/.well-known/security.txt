@@ -1,0 +1,5 @@
+Contact: https://github.com/georgetown-mdi/alcove/security/advisories/new
+Contact: mailto:vincent.dorie@georgetown.edu
+Expires: 2027-09-30T00:00:00.000Z
+Policy: https://github.com/georgetown-mdi/alcove/security/policy
+Preferred-Languages: en

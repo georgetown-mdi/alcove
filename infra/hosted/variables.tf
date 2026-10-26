@@ -45,3 +45,8 @@ variable "demo_name" {
   type        = string
   description = "The name the demo site is served on."
 }
+
+variable "dns_only_names" {
+  type        = set(string)
+  description = "The names in the zone whose address records this root does not declare: the relay host's DNS-only names. Each gets the zone's no-mail records."
+}
