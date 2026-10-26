@@ -30,7 +30,9 @@ const BASH = existsSync("/bin/bash") ? "/bin/bash" : "bash";
 // The fields PRIVACY.md lists for the front's access log. A signaling URL's
 // query string contains the rendezvous identifier and the client token, so no
 // variable that includes it ($request, $request_uri, $args, $query_string,
-// $is_args, $arg_*) may join this list.
+// $is_args, $arg_*) may join this list. PRIVACY.md says the access log records
+// no user agent and no Origin header, so neither $http_user_agent nor
+// $http_origin may join it.
 const ALLOWED_LOG_VARIABLES = [
   "time_iso8601",
   "remote_addr",
@@ -103,6 +105,8 @@ describe("nginx.conf.tmpl logging", () => {
     ["log_format f '$request';", "request"],
     ["log_format f '${request}';", "request"],
     ["log_format f '$uri?${args}';", "args"],
+    ["log_format f '$http_user_agent';", "http_user_agent"],
+    ["log_format f '${http_origin}';", "http_origin"],
   ])("finds the undocumented variable in %s", (text, variable) => {
     const found = logFormatVariables(directives(`http { ${text} }`)).flat();
     expect(found).toContain(variable);
