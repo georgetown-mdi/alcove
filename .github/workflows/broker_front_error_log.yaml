@@ -11,6 +11,9 @@ name: Broker Front Error Log
 # request waits out the template's 300 s proxy_read_timeout.
 on:
   workflow_dispatch:
+  push:
+    branches: [broker-nginx-error-log]
+    paths: [".github/workflows/broker_front_error_log.yaml", "scripts/measure-broker-error-log.mjs"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
