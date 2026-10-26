@@ -2,11 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import {
-  RECORDED_LINKAGE_RULE_SET_CAVEAT,
-  getDefaultLinkageTerms,
-  inferMetadata,
-} from "@alcove/core";
+import { getDefaultLinkageTerms, inferMetadata } from "@alcove/core";
 
 import { page, userEvent } from "vitest/browser";
 
@@ -2719,7 +2715,7 @@ describe("managed exchange detail accounting of disclosures", () => {
       .toBeInTheDocument();
   });
 
-  test("an opened disclosure shows the cited rule set under core's recorded-citation caveat", async () => {
+  test("an opened disclosure shows no rule set, whatever the agreed terms cited", async () => {
     const accounting = appendDisclosureRecord(
       undefined,
       await disclosureRecord({ linkageRuleSet: true }),
@@ -2758,148 +2754,10 @@ describe("managed exchange detail accounting of disclosures", () => {
 
     await page.getByRole("button", { name: entry.when, exact: false }).click();
 
-    await expect
-      .element(page.getByText('Keys: "precision-ranked-rules" 2.1.0'))
-      .toBeVisible();
-    await expect
-      .element(page.getByText('Fields: "baseline-pii" 1.0.0'))
-      .toBeVisible();
-    // The citation is the authoring party's own declaration; the screen says so
-    // beside it rather than letting the row display as a checked provenance, and
-    // sends a reader after this build's own finding to the record's verdict --
-    // which this surface does not restate, by design.
-    await expect
-      .element(
-        page.getByText(RECORDED_LINKAGE_RULE_SET_CAVEAT, { exact: false }),
-      )
-      .toBeVisible();
-  });
-
-  test("a crafted set name is treated as one run in the opened disclosure, not as a citation of another set", async () => {
-    // The names are the authoring party's free text, and this row is the one a
-    // HIPAA or FERPA reader consults, so a name holding the delimiter and a
-    // version-shaped token must not be able to stand in the rendered line as a
-    // shorter name at a version the record does not hold. Driven through the
-    // real view rather than the model alone: what a reader is held to is the
-    // text the detail renders.
-    //
-    // The imitated pair names the two sets the standing fixture cites, at a
-    // version neither half is recorded at, so neither string can reach the
-    // screen from anywhere but a run the crafted name broke out of.
-    const imitated = {
-      keys: 'Keys: "precision-ranked-rules" 9.9.9',
-      fields: 'Fields: "baseline-pii" 9.9.9',
-    };
-    const accounting = appendDisclosureRecord(
-      undefined,
-      await disclosureRecord({
-        linkageRuleSet: {
-          fieldSet: { name: 'baseline-pii" 9.9.9', version: "1.0.0" },
-          keySet: { name: 'precision-ranked-rules" 9.9.9', version: "1.0.0" },
-        },
-      }),
-    );
-    const [entry] = disclosureEntries(accounting);
-    app.render(
-      createElement(ManagedExchangeDetail, {
-        record: record("inviter"),
-        parkedResultsRead: { kind: "none" },
-        accountingRead: { kind: "accounting", accounting },
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: () => Promise.resolve(),
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
-      }),
-    );
-
-    await page.getByRole("button", { name: entry.when, exact: false }).click();
-
-    await expect
-      .element(
-        page.getByText('Keys: "precision-ranked-rules"" 9.9.9" 1.0.0', {
-          exact: true,
-        }),
-      )
-      .toBeVisible();
-    await expect
-      .element(
-        page.getByText('Fields: "baseline-pii"" 9.9.9" 1.0.0', { exact: true }),
-      )
-      .toBeVisible();
-    expect(app.container.textContent).not.toContain(imitated.keys);
-    expect(app.container.textContent).not.toContain(imitated.fields);
-  });
-
-  test("a disclosure whose terms cited no rule set says so, with no caveat to qualify", async () => {
-    const accounting = appendDisclosureRecord(
-      undefined,
-      await disclosureRecord(),
-    );
-    const [entry] = disclosureEntries(accounting);
-    app.render(
-      createElement(ManagedExchangeDetail, {
-        record: record("inviter"),
-        parkedResultsRead: { kind: "none" },
-        accountingRead: { kind: "accounting", accounting },
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: () => Promise.resolve(),
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
-      }),
-    );
-
-    await page.getByRole("button", { name: entry.when, exact: false }).click();
-
-    await expect
-      .element(
-        page.getByText("Not cited - the agreed terms' rules were authored", {
-          exact: false,
-        }),
-      )
-      .toBeVisible();
-    expect(
-      page
-        .getByText(RECORDED_LINKAGE_RULE_SET_CAVEAT, { exact: false })
-        .query(),
-    ).toBeNull();
+    await expect.element(page.getByText("MOU-2025-0042")).toBeVisible();
+    expect(app.container.textContent).not.toContain("Rule set");
+    expect(app.container.textContent).not.toContain("precision-ranked-rules");
+    expect(app.container.textContent).not.toContain("baseline-pii");
   });
 
   test("two disclosures sharing a createdAt open and close independently", async () => {

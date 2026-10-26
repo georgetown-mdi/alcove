@@ -12,7 +12,7 @@ operator-facing description -- which paths use them and what each name covers
 -- is in [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#the-built-in-rules).
 Terms drawn from the sets cite them, in
 [`linkage_terms.linkage_rule_set`](../EXCHANGE_REFERENCE.md#linkage_termslinkage_rule_set),
-so the citation goes with the exchange and is written into each party's record;
+so the citation goes with the exchange, though not into either party's record;
 what a citation does and does not assert is that field's to state. This note
 records what the two sets are, why they are named apart, what the key set's
 validation rests on, the criticisms on record against it, and why both names

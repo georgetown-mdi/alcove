@@ -932,8 +932,8 @@ export function compareTerms(
   // The rule-set citation, checked only where BOTH parties declare one. It
   // names rules the two documents already had to agree on field by field
   // and key by key, so a disagreement here is a disagreement about the NAME
-  // of matching content -- which still cancels, since each party records
-  // its own citation in its own exchange record. Skipped where either party
+  // of matching content -- which still cancels, so two parties never hold
+  // different names for one set of rules. Skipped where either party
   // declares none: a hand-authored document has no citation, and holding it
   // to the partner's would refuse an exchange whose rules match exactly.
   // Compared by canonical form, like the fields and keys above. The set

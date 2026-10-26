@@ -728,7 +728,6 @@ export {
   missingFieldConditionStatement,
   OUTBOUND_SEND_NO_PAYLOAD_SENTENCE,
   PROPOSED_NOT_APPLIED_NOTES,
-  RECORDED_LINKAGE_RULE_SET_CAVEAT,
   UNRECOGNIZED_TRANSFORM_NOTE,
   describeDeduplicatePair,
 } from "./consent/consentFacts.js";
@@ -827,7 +826,6 @@ export type {
   CommitmentName,
   ExchangeRecord,
   ExchangeRecordOutcome,
-  RecordLinkageRuleSet,
   VerificationKeys,
 } from "./records/exchangeRecord";
 export {

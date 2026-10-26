@@ -1,10 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import {
-  RECORDED_LINKAGE_RULE_SET_CAVEAT,
-  UNNAMED_PARTY_LABEL,
-  sanitizeForDisplay,
-} from "@alcove/core";
+import { UNNAMED_PARTY_LABEL } from "@alcove/core";
 
 import {
   DISCLOSED_AT_LABEL,
@@ -66,12 +62,6 @@ function factValues(
   const found = factNamed(facts, label);
   return found.values.length === 0 ? [found.muted] : [...found.values];
 }
-
-/** The caveat the accounting attaches to a present rule-set citation. Read from
- * core rather than restated here: it is the sentence the consent surfaces'
- * per-verdict copy sits beside, and a literal transcribed into this suite would
- * let the accounting drift from it while every assertion stayed green. */
-const RULE_SET_CAVEAT = RECORDED_LINKAGE_RULE_SET_CAVEAT;
 
 /** The exported CSV split into physical rows, the trailing terminator dropped. */
 function csvRows(csv: string): Array<string> {
@@ -155,130 +145,17 @@ describe("a disclosure's facts", () => {
     ]);
   });
 
-  test("state the rule set the terms cited, keys before fields, under core's caveat for a recorded citation", async () => {
+  test("state no rule set, whatever the agreed terms cited", async () => {
     const record = await disclosureRecord({ linkageRuleSet: true });
 
     const facts = disclosureFacts(record);
 
-    expect(factValues(facts, "Rule set cited")).toEqual([
-      'Keys: "precision-ranked-rules" 2.1.0',
-      'Fields: "baseline-pii" 1.0.0',
-    ]);
-    expect(factNamed(facts, "Rule set cited").note).toBe(RULE_SET_CAVEAT);
-  });
-
-  test("point the reader at the record's own verdict rather than denying one was reached", async () => {
-    // A record's citation is always paired with the writing party's verdict on
-    // it, so a caveat asserting that nothing checked the citation would be false
-    // of every record the accounting can render -- including one whose citation
-    // this build resolved and disproved.
-    const record = await disclosureRecord({ linkageRuleSet: true });
-    expect(record.governance.linkageRuleSetVerdict).toBeDefined();
-
-    const { note } = factNamed(disclosureFacts(record), "Rule set cited");
-
-    expect(note).toContain("exchange record");
-    expect(note).not.toContain("has not checked");
-  });
-
-  test("say the terms cited no rule set rather than leaving the cell blank, and caveat nothing", async () => {
-    // The record omits the citation exactly when the terms drew their rules from
-    // no named set, so the accounting reports that rather than a gap -- and a
-    // citation that is not there has nothing for the caveat to qualify.
-    const record = await disclosureRecord();
-    expect(record.governance.linkageRuleSet).toBeUndefined();
-
-    const fact = factNamed(disclosureFacts(record), "Rule set cited");
-
-    expect(factValues([fact], "Rule set cited")).toEqual([
-      "Not cited - the agreed terms' rules were authored rather than drawn from a named set",
-    ]);
-    expect(fact.note).toBeUndefined();
-  });
-
-  test("escape a cited set's name and version, which the authoring party chose", async () => {
-    // The citation passes through unvetted, so its names and versions are free
-    // text of somebody's choosing exactly as the partner identity is; this module
-    // is their display sink too. A version renders undelimited on the strength of
-    // a shape the boundary re-checks on the value in hand, so the escaped one below
-    // takes the delimited run rather than standing in the line unattributed.
-    const record = await disclosureRecord({
-      linkageRuleSet: {
-        fieldSet: { name: "baseline‮pii", version: "1.0.0" },
-        keySet: { name: "precision-ranked-rules", version: "2.1.0[31m" },
-      },
-    });
-    expect(record.governance.linkageRuleSet?.fieldSet.name).toBe(
-      "baseline‮pii",
-    );
-
-    expect(factValues(disclosureFacts(record), "Rule set cited")).toEqual([
-      'Keys: "precision-ranked-rules" "2.1.0\\x1b[31m"',
-      'Fields: "baseline\\u202epii" 1.0.0',
-    ]);
-  });
-
-  test("a crafted set name cannot be treated as a shorter name at another version", async () => {
-    // A set name is free text the authoring party chose, so one holding the
-    // delimiter and a version-shaped token beside it can spell the citation of
-    // another set at another version, on the row a compliance reader consults.
-    // The boundary's run is what answers that: the delimiter is doubled inside the
-    // name, so what the name spells stays content of one value rather than
-    // structure this line asserted.
-    //
-    // The imitated pair is what a reader would take the crafted names for -- the
-    // two set names the standing fixture cites, at a version neither half is
-    // recorded at -- so absence of both is what the assertion measures.
-    const imitated = {
-      keys: 'Keys: "precision-ranked-rules" 9.9.9',
-      fields: 'Fields: "baseline-pii" 9.9.9',
-    };
-    const record = await disclosureRecord({
-      linkageRuleSet: {
-        fieldSet: { name: 'baseline-pii" 9.9.9', version: "1.0.0" },
-        keySet: { name: 'precision-ranked-rules" 9.9.9', version: "1.0.0" },
-      },
-    });
-
-    const values = factValues(disclosureFacts(record), "Rule set cited");
-
-    expect(values).toEqual([
-      'Keys: "precision-ranked-rules"" 9.9.9" 1.0.0',
-      'Fields: "baseline-pii"" 9.9.9" 1.0.0',
-    ]);
-    for (const citation of [imitated.keys, imitated.fields])
-      expect(values.join("\n")).not.toContain(citation);
-  });
-
-  test("a cited half crosses the display boundary once, delimiters and all", async () => {
-    // The boundary states delimiting, not escaping, so its result reaches a fact by
-    // an assertion rather than by the escape's own return type, and what that
-    // assertion claims is measured here: over names and versions built from the
-    // classes the escape exists to remove, every byte of the rendered line is
-    // printable ASCII, so nothing the escape rewrites survives into a run.
-    //
-    // The escape's own mark is what says it ran at all: each of these values
-    // escapes to a form holding a backslash, so re-escaping the line changes
-    // it. That much is a floor, not a count -- a twice-escaped line would read
-    // the same way here -- and the exact forms below are what pin the count,
-    // since a second pass would double every backslash in them.
-    const record = await disclosureRecord({
-      linkageRuleSet: {
-        fieldSet: { name: "base‮line\u{1f600}", version: "1.0.0" },
-        keySet: { name: 'example\u0000"keys', version: "2.1\u001b.0" },
-      },
-    });
-
-    const values = factValues(disclosureFacts(record), "Rule set cited");
-
-    expect(values).toEqual([
-      'Keys: "example\\x00""keys" "2.1\\x1b.0"',
-      'Fields: "base\\u202eline\\u{1f600}" 1.0.0',
-    ]);
-    for (const value of values) {
-      expect(value).toMatch(/^[\x20-\x7e]+$/);
-      expect(sanitizeForDisplay(value)).not.toBe(value);
-    }
+    expect(facts.map((fact) => fact.label)).toEqual(DISCLOSURE_FACT_LABELS);
+    const rendered = facts
+      .flatMap((fact) => [...fact.values, fact.muted, fact.note ?? ""])
+      .join("\n");
+    expect(rendered).not.toContain("precision-ranked-rules");
+    expect(rendered).not.toContain("baseline-pii");
   });
 
   test("read a count-only run as the count-only disclosure it was", async () => {
@@ -665,61 +542,19 @@ describe("the exported accounting", () => {
     );
   });
 
-  test("has the rule-set citation and its caveat in the same row as the run's other governance fields", async () => {
+  test("exports no rule-set column, whatever the agreed terms cited", async () => {
     const accounting = accountingOf(
       await disclosureRecord({ linkageRuleSet: true }),
     );
 
     const [header, row] = csvRows(disclosureAccountingCsv(accounting));
 
-    // One cell of the one run's row, beside the agreement and the matching basis:
-    // both cited halves and the caveat, which the export holds because it is
-    // read without the screen that showed it.
-    expect(
-      splitCsvRow(row)[splitCsvRow(header).indexOf("Rule set cited")],
-    ).toBe(
-      `Keys: "precision-ranked-rules" 2.1.0\nFields: "baseline-pii" 1.0.0\n${RULE_SET_CAVEAT}`,
-    );
-    expect(row).toContain('"MOU-2025-0042"');
-    expect(splitCsvRow(row)).toHaveLength(splitCsvRow(header).length);
-  });
-
-  test("exports the uncited case as its named empty state, with no caveat to qualify it", async () => {
-    const accounting = accountingOf(await disclosureRecord());
-
-    const [header, row] = csvRows(disclosureAccountingCsv(accounting));
-
-    expect(
-      splitCsvRow(row)[splitCsvRow(header).indexOf("Rule set cited")],
-    ).toBe(
-      "Not cited - the agreed terms' rules were authored rather than drawn from a named set",
-    );
-  });
-
-  test("leaves a formula-led set name unable to lead its cell, this app's own chrome holding that position", async () => {
-    // The cited names are free text of the authoring party's choosing, so a
-    // spreadsheet lead can reach this cell -- but each line opens with the half's
-    // fixed name, so no partner byte occupies the position a spreadsheet reads a
-    // formula from. Pinned as a check rather than argued.
-    const accounting = accountingOf(
-      await disclosureRecord({
-        linkageRuleSet: {
-          fieldSet: { name: "=1+1", version: "1.0.0" },
-          keySet: { name: "@SUM(A1:A9)", version: "2.1.0" },
-        },
-      }),
-    );
-
-    const [header, row] = csvRows(disclosureAccountingCsv(accounting));
-    const cell =
-      splitCsvRow(row)[splitCsvRow(header).indexOf("Rule set cited")];
-
-    expect(cell.startsWith("Keys: ")).toBe(true);
-    expect(cell).toContain('Keys: "@SUM(A1:A9)" 2.1.0');
-    expect(cell).toContain('Fields: "=1+1" 1.0.0');
-    // The apostrophe guard is for a cell a partner value leads; it has nothing to
-    // neutralize here, so it adds nothing.
-    expect(row).not.toContain("\"'Keys:");
+    expect(splitCsvRow(header)).toEqual([
+      DISCLOSED_AT_LABEL,
+      ...DISCLOSURE_FACT_LABELS,
+    ]);
+    expect(row).not.toContain("precision-ranked-rules");
+    expect(row).not.toContain("baseline-pii");
   });
 
   test("quotes a value holding the delimiter, so a comma cannot shift the columns", async () => {

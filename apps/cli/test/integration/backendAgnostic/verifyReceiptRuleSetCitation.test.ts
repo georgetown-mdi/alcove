@@ -209,8 +209,8 @@ describe("verify-receipt of a run from configurations alcove init wrote", () => 
           .replace(`${DEFAULT_RECORD_BASENAME}-`, `${DEFAULT_RESULT_BASENAME}-`)
           .replace(/\.json$/, ".csv"),
       );
-      // A subset of the set's keys still cites it, into the record.
-      expect(fs.readFileSync(record, "utf8")).toContain(
+      // The configuration cites the set; the record holds no citation.
+      expect(fs.readFileSync(record, "utf8")).not.toContain(
         `"${DEFAULT_LINKAGE_RULE_SET.reference.keySet.name}"`,
       );
 

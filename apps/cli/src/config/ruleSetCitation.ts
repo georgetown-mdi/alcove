@@ -109,15 +109,15 @@ export function linkageTermsStandingOf(
  * Warn when a loaded config's `linkage_terms.linkage_rule_set` cites a set
  * this build ships over rules that are not drawn from it -- the state a
  * hand edit to `linkage_fields` or `linkage_keys` leaves behind. Left
- * unreported, that citation travels onto the invitation and both parties'
- * exchange records claiming a provenance the rules no longer have.
+ * unreported, that citation travels onto the invitation and the terms the
+ * partner reviews, claiming a provenance the rules no longer have.
  *
  * Only a half this build can RESOLVE is judged: a citation naming a set
  * Alcove does not ship has no content here to compare the rules against,
  * so that half is passed over, and each half is judged separately so a
  * foreign half cannot buy the built-in half a pass.
  *
- * Warns rather than refuses: the citation is display-and-record only, and
+ * Warns rather than refuses: the citation is display-only, and
  * the exchange runs on the declared fields and keys either way.
  *
  * `standing` decides the remedy wording (see {@link LinkageTermsStanding}):
@@ -179,8 +179,8 @@ export function warnOnLinkageRuleSetCitationDrift(
 
   const consequence =
     standing === "accepted-with-partner"
-      ? "The citation is recorded in both parties' exchange records, so it " +
-        "credits a source these rules did not come from. You accepted these " +
+      ? "The citation travels with these terms, so it credits a source " +
+        "these rules did not come from. You accepted these " +
         "terms from the inviting party, so editing the rules here would make " +
         "them differ from that party's and the exchange would refuse them. " +
         (alternative === "author-fresh-terms"
@@ -188,9 +188,9 @@ export function warnOnLinkageRuleSetCitationDrift(
             "this invitation."
           : "Agree the citation with that party and accept again, or decline " +
             "to reuse these terms.")
-      : "This citation is copied into the invitation, into the terms your " +
-        "partner reviews, and into both parties' exchange records, so it " +
-        "credits a source these rules did not come from. Remove " +
+      : "This citation is copied into the invitation and into the terms " +
+        "your partner reviews, so it credits a source these rules did not " +
+        "come from. Remove " +
         "linkage_rule_set if you wrote these rules yourself, or restore the " +
         "rules the cited set defines.";
 

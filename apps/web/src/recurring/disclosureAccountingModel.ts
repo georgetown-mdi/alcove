@@ -13,22 +13,20 @@
  * entry with none says so rather than substituting a number from elsewhere.
  *
  * A record stores partner-authored free text byte-exactly (the partner identity,
- * the agreement reference and purpose, the payload column names and their
- * dictionary descriptions, and the cited rule set's names and content versions),
- * which is what the byte-exact cross-party validation needs and what makes this
- * module the display sink the record format's rendering note requires: every such
- * value crosses {@link sanitizeForDisplay} here, once, on its way to a screen or
- * an exported file, and the stored record is never mutated.
+ * the agreement reference and purpose, and the payload column names and their
+ * dictionary descriptions), which is what the byte-exact cross-party validation
+ * needs and what makes this module the display sink the record format's
+ * rendering note requires: every such value crosses {@link sanitizeForDisplay}
+ * here, once, on its way to a screen or an exported file, and the stored record
+ * is never mutated.
  * The {@link Displayable} type is what enforces it -- a raw `string` does not
  * typecheck into a fact.
  */
 
 import {
-  RECORDED_LINKAGE_RULE_SET_CAVEAT,
   displayPartyIdentity,
   displayText,
   recordFileStamp,
-  ruleSetCitation,
   sanitizeForDisplay,
 } from "@alcove/core";
 
@@ -39,7 +37,6 @@ import type {
   Displayable,
   ExchangeRecord,
   ExchangeRecordOutcome,
-  RecordLinkageRuleSet,
 } from "@alcove/core";
 import type {
   DisclosureAccounting,
@@ -123,7 +120,6 @@ export const DISCLOSURE_FACT_LABELS: ReadonlyArray<string> = [
   "Columns you sent",
   "Columns you received",
   "Matched on",
-  "Rule set cited",
   "Records you exposed",
   "Result size",
   "Where the result was filed",
@@ -142,18 +138,6 @@ const NO_COLUMNS = "No columns";
  * docs/spec/EXCHANGE_RECORD.md), so its absence is a statement about entitlement,
  * not a missing number. */
 const RESULT_SIZE_ABSENT = "Not recorded - only one party received the result";
-
-/** The label of the rule-set citation, named because both branches of the fact
- * below have it. It is held to {@link DISCLOSURE_FACT_LABELS} by the same unit
- * test that pins every other fact's label against the export's columns. */
-const RULE_SET_LABEL = "Rule set cited";
-
-/** The named empty state for a record whose agreed terms cited no named set. The
- * record omits the field exactly then (see docs/spec/EXCHANGE_RECORD.md, "The
- * rule-set citation"), so the absence is a statement about how the terms were
- * authored, not a field the writer left out. */
-const RULE_SET_ABSENT =
-  "Not cited - the agreed terms' rules were authored rather than drawn from a named set";
 
 /** How each recorded `outcome` reads to an operator. A record is written once the
  * exchange has disclosed, so both values describe a disclosure that happened; what
@@ -274,63 +258,12 @@ function categoryLabel(column: {
 }
 
 /**
- * One cited half of a rule set -- the set name beside that half's content
- * version -- composed through core's terms-value boundary ({@link ruleSetCitation}).
- *
- * The boundary brands delimiting and control-character treatment, not escaping, so
- * its result is not a {@link Displayable} on its own; the cast below holds only
- * because this function escapes both values itself and takes the raw pair to do
- * it, so no value reaches a fact unescaped.
- */
-function citedSetIdentity(setIdentity: {
-  name: string;
-  version: string;
-}): Displayable {
-  return ruleSetCitation(
-    sanitizeForDisplay(setIdentity.name),
-    sanitizeForDisplay(setIdentity.version),
-  ) as string as Displayable;
-}
-
-/**
- * The rule-set citation as its two cited halves, keys before fields -- the order
- * core's own mismatch message and the acceptance surfaces use -- each rendered
- * through core's terms-value boundary ({@link ruleSetCitation}).
- *
- * The record stores both values raw, so unlike the consent surfaces (escaped
- * from `summarizeInvitation`), this is where they cross the display boundary:
- * each value is escaped ahead of the delimiters, so a value's own truncation
- * cannot take the closing delimiter off the composed run.
- *
- * The caveat below is core's ({@link RECORDED_LINKAGE_RULE_SET_CAVEAT}), matching
- * the per-verdict copy the consent surfaces render, so what the accounting says a
- * citation is worth cannot drift from what they say -- it points at the writing
- * party's verdict rather than restating it (see docs/spec/EXCHANGE_RECORD.md,
- * "The writing party's verdict").
- */
-function ruleSetFact(
-  ruleSet: RecordLinkageRuleSet | undefined,
-): DisclosureFact {
-  if (ruleSet === undefined)
-    return { label: RULE_SET_LABEL, values: [], muted: RULE_SET_ABSENT };
-  return {
-    label: RULE_SET_LABEL,
-    values: [
-      displayText`Keys: ${citedSetIdentity(ruleSet.keySet)}`,
-      displayText`Fields: ${citedSetIdentity(ruleSet.fieldSet)}`,
-    ],
-    muted: RULE_SET_ABSENT,
-    note: RECORDED_LINKAGE_RULE_SET_CAVEAT,
-  };
-}
-
-/**
  * The facts of one disclosure, in the fixed order {@link DISCLOSURE_FACT_LABELS}
  * names: to whom, under what authority and for what purpose, what kind of
  * disclosure it was, how the run that made it ended, the categories each way, the
- * basis the match keyed on and the rule set the terms cited it to, the records
- * this party exposed, the result size where it was recorded, and where the result
- * was filed. Each is a field of the run's exchange record.
+ * basis the match keyed on, the records this party exposed, the result size where
+ * it was recorded, and where the result was filed. Each is a field of the run's
+ * exchange record.
  *
  * The same facts in the same order for every record. A terminated run's entry
  * differs in two of them only: the outcome fact takes
@@ -384,7 +317,6 @@ export function disclosureFacts(
       ),
       "No fields",
     ),
-    ruleSetFact(governance.linkageRuleSet),
     fact("Records you exposed", displayText`${record.recordsExposed}`),
     optionalFact(
       "Result size",

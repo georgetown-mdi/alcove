@@ -245,7 +245,7 @@ export const FIELD_DOCS: Array<{ path: Array<string>; lines: Array<string> }> =
       path: ["linkage_terms", "linkage_rule_set"],
       lines: [
         "The named, versioned rule set the fields and keys above were drawn from,",
-        "recorded in both parties' exchange records as where those rules came from.",
+        "shown to your partner with these terms as where those rules came from.",
         "Delete it if you add, edit, or reorder any of them -- rules you author",
         "yourself are no longer that set's. Leaving out a key or field you cannot",
         "supply narrows the set rather than departing from it, so the citation",
