@@ -9,6 +9,8 @@ import {
   parseLinkageTerms,
   referencedLinkageFieldNames,
   safeParseLinkageTerms,
+  safeParseLinkageTermsTheReaderWrote,
+  safeParseStoredLinkageTerms,
   MAX_NAME_LENGTH,
   MAX_TEXT_LENGTH,
   NAME_SHAPE_MESSAGE,
@@ -2545,16 +2547,6 @@ const NAME_FIELDS: Array<[string, (name: string) => unknown]> = [
       },
     }),
   ],
-  [
-    "a linkage rule set name",
-    (name) => ({
-      ...base,
-      linkageRuleSet: {
-        fieldSet: { name, version: "1.0.0" },
-        keySet: { name: "baseline-keys", version: "1.0.0" },
-      },
-    }),
-  ],
 ];
 
 test.each(NAME_FIELDS)("accepts %s written in letters", (_label, terms) => {
@@ -2973,10 +2965,6 @@ const wideTerms = {
       swap: ["left", "right"] as [string, string],
     },
   ],
-  linkageRuleSet: {
-    fieldSet: { name: "baseline-pii", version: "1.0.0" },
-    keySet: { name: "baseline-keys", version: "1.0.0" },
-  },
   payload: {
     send: [{ name: "enrollmentDate", description: "Date of enrollment" }],
     receive: [{ name: "programId", description: "Program identifier" }],
@@ -3044,9 +3032,8 @@ test("the wide fixture every lone-surrogate case mutates parses as authored", ()
 // The enumeration: every position a partner may write free-form text at. The
 // remaining string positions the schema declares -- `version`, `date`,
 // `algorithm`, `linkageStrategy`, a linkage field's `type`, an element's
-// `generateFuzzyComparisons`, each rule-set `version`, and the legal
-// agreement's `expirationDate` -- are fixed by a format or an enum, and the
-// sweep below covers them.
+// `generateFuzzyComparisons`, and the legal agreement's `expirationDate` --
+// are fixed by a format or an enum, and the sweep below covers them.
 test.each([
   ["the party identity", ["identity"]],
   ["a linkage field name", ["linkageFields", 0, "name"]],
@@ -3085,8 +3072,6 @@ test.each([
     ],
   ],
   ["a swap target", ["linkageKeys", 1, "swap", 0]],
-  ["a cited field-set name", ["linkageRuleSet", "fieldSet", "name"]],
-  ["a cited key-set name", ["linkageRuleSet", "keySet", "name"]],
   ["a sent payload column name", ["payload", "send", 0, "name"]],
   ["a sent payload column description", ["payload", "send", 0, "description"]],
   ["a received payload column name", ["payload", "receive", 0, "name"]],
@@ -3776,96 +3761,47 @@ describe("referencedLinkageFieldNames", () => {
   });
 });
 
-describe("linkageRuleSet", () => {
-  const citation = {
-    fieldSet: { name: "baseline-pii", version: "1.0.0" },
-    keySet: { name: "example-keys", version: "1.0.0" },
+describe("a rule-set citation", () => {
+  const cited = {
+    ...base,
+    linkage_rule_set: {
+      field_set: { name: "baseline-pii", version: "1.0.0" },
+      key_set: { name: "example-keys", version: "1.0.0" },
+    },
   };
 
-  test("parses a citation and leaves a document without one alone", () => {
-    expect(
-      parseLinkageTerms({ ...base, linkage_rule_set: citation }).linkageRuleSet,
-    ).toStrictEqual(citation);
-    expect(parseLinkageTerms(base).linkageRuleSet).toBeUndefined();
+  test("is dropped from a partner's terms, which parse to the rules alone", () => {
+    const parsed = parseLinkageTerms(cited);
+    expect(Object.keys(parsed)).not.toContain("linkageRuleSet");
+    expect(parsed).toStrictEqual(parseLinkageTerms(base));
   });
 
-  test("refuses a half-declared citation and a non-semver set version", () => {
-    expect(() =>
-      parseLinkageTerms({
-        ...base,
-        linkage_rule_set: { field_set: citation.fieldSet },
-      }),
-    ).toThrow(ZodError);
-    expect(() =>
-      parseLinkageTerms({
-        ...base,
-        linkage_rule_set: {
-          ...citation,
-          keySet: { name: "example-keys", version: "1" },
-        },
-      }),
-    ).toThrow(ZodError);
-    expect(() =>
-      parseLinkageTerms({
-        ...base,
-        linkage_rule_set: {
-          ...citation,
-          keySet: { name: "", version: "1.0.0" },
-        },
-      }),
-    ).toThrow(ZodError);
+  test("is refused in the reading party's own terms, naming the key", () => {
+    const result = safeParseLinkageTermsTheReaderWrote(cited);
+    expect(result.success).toBe(false);
+    const issue = result.error?.issues[0];
+    expect(issue?.code).toBe("unrecognized_keys");
+    expect(issue?.path).toEqual([]);
+    expect(issue?.message).toBe('Unrecognized key: "linkage_rule_set"');
   });
 
-  test("decides nothing when the two parties cite different sets", () => {
-    const local = parseLinkageTerms({ ...base, linkage_rule_set: citation });
+  test("is refused in a stored copy of the terms", () => {
+    expect(safeParseStoredLinkageTerms(cited).success).toBe(false);
+  });
+
+  test("decides nothing between two parties whose rules agree", () => {
+    const local = parseLinkageTerms(cited);
     const partner = parseLinkageTerms({
       ...base,
       output: { expectsOutput: false, shareWithPartner: true },
       linkage_rule_set: {
-        ...citation,
-        keySet: { name: "example-keys", version: "2.0.0" },
-      },
-    });
-    for (const [mine, theirs] of [
-      [local, partner],
-      [partner, local],
-    ]) {
-      const { errors, warnings } = validateCompatibility(mine, theirs);
-      expect(errors).toEqual([]);
-      expect(warnings).toEqual([]);
-    }
-  });
-
-  test("is skipped where either party cites nothing", () => {
-    // A hand-authored document holds no citation, and holding it to the
-    // partner's would refuse an exchange whose fields and keys match exactly.
-    const cited = parseLinkageTerms({ ...base, linkage_rule_set: citation });
-    const uncited = parseLinkageTerms({
-      ...base,
-      output: { expectsOutput: false, shareWithPartner: true },
-    });
-    expect(validateCompatibility(cited, uncited).errors).toEqual([]);
-    expect(validateCompatibility(uncited, cited).errors).toEqual([]);
-  });
-
-  test("agrees when the two parties cite the same set in either property order", () => {
-    const local = parseLinkageTerms({ ...base, linkage_rule_set: citation });
-    const partner = parseLinkageTerms({
-      ...base,
-      output: { expectsOutput: false, shareWithPartner: true },
-      linkage_rule_set: {
-        key_set: { version: "1.0.0", name: "example-keys" },
-        field_set: { version: "1.0.0", name: "baseline-pii" },
+        field_set: { name: "baseline-pii", version: "1.0.0" },
+        key_set: { name: "example-keys", version: "2.0.0" },
       },
     });
     expect(validateCompatibility(local, partner).errors).toEqual([]);
-  });
-
-  test("is adopted verbatim by an acceptor, so both parties record one citation", () => {
-    const inviter = parseLinkageTerms({ ...base, linkage_rule_set: citation });
-    const derived = deriveAcceptedLinkageTerms(inviter, "Accepting Org");
-    expect(derived.linkageRuleSet).toStrictEqual(citation);
-    expect(validateCompatibility(inviter, derived).errors).toEqual([]);
+    const derived = deriveAcceptedLinkageTerms(local, "Accepting Org");
+    expect(Object.keys(derived)).not.toContain("linkageRuleSet");
   });
 });
 

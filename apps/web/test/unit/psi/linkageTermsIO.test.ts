@@ -89,6 +89,20 @@ describe("importLinkageTerms round-trip", () => {
       ]);
     }
   });
+
+  test("a document holding a rule-set citation imports without it", () => {
+    const document = JSON.parse(exportLinkageTerms(TERMS, "json")) as Record<
+      string,
+      unknown
+    >;
+    document["linkage_rule_set"] = { name: "alcove-default", version: "1.0.0" };
+    const result = importLinkageTerms(JSON.stringify(document));
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.terms).not.toHaveProperty("linkageRuleSet");
+      expect(result.terms).toEqual(TERMS);
+    }
+  });
 });
 
 describe("importLinkageTerms rejection", () => {

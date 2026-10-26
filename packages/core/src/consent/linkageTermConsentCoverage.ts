@@ -309,13 +309,6 @@ export const CONSENT_PROBE_TERMS: LinkageTerms = {
       condition: { missingField: "birth_date" },
     },
   ],
-  // A citation of its own rather than the built-in set's: the probe's fields and
-  // keys are not the built-in ones, so citing the built-in key set here would
-  // make the document claim rules it does not have.
-  linkageRuleSet: {
-    fieldSet: { name: "probe-pii", version: "1.0.0" },
-    keySet: { name: "probe-keys", version: "1.0.0" },
-  },
   payload: {
     send: [
       { name: "risk_score", description: "Model score for the matched record" },
@@ -427,12 +420,6 @@ const SELF_AUTHORED_TRANSFORM_GAP =
   "The display names the fields each key combines and not the steps applied " +
   "to their values before they are matched. " +
   SELF_AUTHORED_DETAIL_BOUND;
-
-/** @internal */
-const RULE_SET_CITATION_EXCLUSION =
-  "A provenance label the terms hold beside their rules. It selects nothing " +
-  "matched or disclosed: the keys and fields decide both, and the surfaces " +
-  "state the built-in choice from the keys themselves.";
 
 /** @internal */
 const SELF_AUTHORED_AGREEMENT_GAP =
@@ -877,22 +864,6 @@ export const LINKAGE_TERM_CONSENT_CLASSIFICATION: Record<
       edited(terms, (draft) => {
         delete draft.linkageKeys[1].condition;
       }),
-  },
-  "linkageRuleSet.fieldSet.name": {
-    classification: "excluded",
-    reason: RULE_SET_CITATION_EXCLUSION,
-  },
-  "linkageRuleSet.fieldSet.version": {
-    classification: "excluded",
-    reason: RULE_SET_CITATION_EXCLUSION,
-  },
-  "linkageRuleSet.keySet.name": {
-    classification: "excluded",
-    reason: RULE_SET_CITATION_EXCLUSION,
-  },
-  "linkageRuleSet.keySet.version": {
-    classification: "excluded",
-    reason: RULE_SET_CITATION_EXCLUSION,
   },
   "payload.send[].name": {
     classification: "consent-relevant",

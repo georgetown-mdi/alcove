@@ -622,6 +622,24 @@ test("a key no block reads is refused, naming it as the file spells it", () => {
   expect(issue?.message).not.toContain("mysterySetting");
 });
 
+test("a rule-set citation in linkage_terms is refused as a key no block reads", () => {
+  const result = safeParseExchangeSpec({
+    ...minimalSpec,
+    linkageTerms: {
+      ...minimalLinkageTerms,
+      linkage_rule_set: {
+        field_set: { name: "baseline-pii", version: "1.3.0" },
+        key_set: { name: "precision-ranked-rules", version: "2.5.0" },
+      },
+    },
+  });
+  expect(result.success).toBe(false);
+  const issue = result.error?.issues[0];
+  expect(issue?.code).toBe("unrecognized_keys");
+  expect(issue?.path).toEqual(["linkageTerms"]);
+  expect(issue?.message).toBe('Unrecognized key: "linkage_rule_set"');
+});
+
 test("a filedrop connection stating server.provision is refused: the channel has no server", () => {
   const result = safeParseExchangeSpec({
     ...minimalSpec,

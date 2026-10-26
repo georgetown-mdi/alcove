@@ -10,10 +10,8 @@ _Status: decided and built. The two sets are defined in
 `DEFAULT_LINKAGE_KEY_SET_NAME` / `DEFAULT_LINKAGE_KEY_SET_VERSION`, and the
 operator-facing description -- which paths use them and what each name covers
 -- is in [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#the-built-in-rules).
-Terms drawn from the sets cite them, in
-[`linkage_terms.linkage_rule_set`](../EXCHANGE_REFERENCE.md#linkage_termslinkage_rule_set),
-so the citation goes with the exchange, though not into either party's record;
-what a citation does and does not assert is that field's to state. This note
+Terms drawn from the sets do not cite them: the linkage terms hold the fields
+and keys alone, and no rule-set citation. This note
 records what the two sets are, why they are named apart, what the key set's
 validation rests on, the criticisms on record against it, and why both names
 are neutral. See [docs/notes/README.md](README.md).

@@ -49,10 +49,10 @@ export const PRINTABLE_ASCII = /^[\x20-\x7e]*$/;
  * them (the pattern's value, the field and key names).
  *
  * By design, this goes beyond what the schema admits, on two counts.
- * `version`, `date`, `expirationDate`, and the two rule-set `version` strings
- * are format-constrained (semver, `z.iso.date`). The four free-text fields --
- * `identity`, the legal agreement's `purpose`, the payload `description`, and
- * the constraint `exclude` value -- are held to the control-character rule
+ * `version`, `date`, and `expirationDate` are format-constrained (semver,
+ * `z.iso.date`). The four free-text fields -- `identity`, the legal
+ * agreement's `purpose`, the payload `description`, and the constraint
+ * `exclude` value -- are held to the control-character rule
  * (`TEXT_CONTROL_CHAR_PATTERN`, config/linkageTermsSchema.ts), which refuses
  * the ESC and BEL they hold here, and the first three refuse the bidi override
  * beside it (`TEXT_DIRECTION_MESSAGE`), which all three hold here. The values a
@@ -138,10 +138,6 @@ export const hostileTerms: LinkageTerms = {
       condition: { missingField: `birth${ESC}date` },
     },
   ],
-  linkageRuleSet: {
-    fieldSet: { name: `base${BEL}line`, version: `1.0.0${RLO}` },
-    keySet: { name: `key${RLO}set`, version: `2.0.0${BEL}` },
-  },
   payload: {
     send: [{ name: `risk${BEL}score`, description: `sco${RLO}re` }],
     receive: [{ name: `outcome${RLO}` }],

@@ -1009,6 +1009,25 @@ test("a token holding the disclosed-columns list an earlier build wrote decodes 
   expect(decoded.linkageTerms).toEqual(baseToken.linkageTerms);
 });
 
+test("a token whose terms hold a rule-set citation decodes without it", async () => {
+  // An unknown key at the top level of the terms is dropped, as at the
+  // token's own top level, so the acceptor reviews and runs the rules alone.
+  const decoded = await decodeInvitation(
+    await encodeRawInvitation({
+      ...baseToken,
+      linkageTerms: {
+        ...baseToken.linkageTerms,
+        linkage_rule_set: {
+          field_set: { name: "baseline-pii", version: "1.3.0" },
+          key_set: { name: "precision-ranked-rules", version: "2.5.0" },
+        },
+      },
+    }),
+  );
+  expect(decoded.linkageTerms).not.toHaveProperty("linkageRuleSet");
+  expect(decoded.linkageTerms).toEqual(baseToken.linkageTerms);
+});
+
 // --- Retain-mode declaration -------------------------------------------------
 
 test("round-trips the inviter's retain-mode declaration on the token", async () => {

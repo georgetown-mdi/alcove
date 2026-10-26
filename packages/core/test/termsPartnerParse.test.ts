@@ -15,8 +15,7 @@ const rows = [{ short_id: "abc123def456" }, { short_id: "zyx987wvu654" }];
 const metadata: Metadata = [
   { name: "short_id", type: "identifier", role: "linkage", isPayload: false },
 ];
-const { linkageRuleSet: _unused, ...defaultTerms } =
-  getDefaultLinkageTerms("Party A");
+const defaultTerms = getDefaultLinkageTerms("Party A");
 const identifierTerms = {
   ...defaultTerms,
   linkageFields: [{ name: "short_id", type: "identifier" }],

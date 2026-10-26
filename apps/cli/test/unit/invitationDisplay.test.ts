@@ -340,40 +340,6 @@ describe("displayInvitation: the declared terms it discloses (columns, built-in 
     }
   });
 
-  test("displayInvitation: states no rule-set citation, in the terms or above the prompt", () => {
-    // Keys no built-in choice declares, under a citation of the built-in sets:
-    // neither the citation nor any finding about it is shown.
-    const log = getLogger("accept-display-rule-set-test");
-    log.setLevel("silent");
-    const base = sampleToken(FUTURE());
-    const cited = {
-      ...base,
-      linkageTerms: {
-        ...base.linkageTerms,
-        linkageKeys: [...base.linkageTerms.linkageKeys].reverse(),
-        linkageRuleSet: DEFAULT_LINKAGE_RULE_SET.reference,
-      },
-    };
-    const rendered = renderDisplayInvitation(log, cited);
-    expect(rendered).not.toContain("linkage rule set");
-    expect(rendered).not.toContain(
-      DEFAULT_LINKAGE_RULE_SET.reference.keySet.name,
-    );
-    expect(rendered).not.toContain(
-      DEFAULT_LINKAGE_RULE_SET.reference.fieldSet.name,
-    );
-
-    const decisionLines: string[] = [];
-    logDecisionFacts(
-      (line) => decisionLines.push(line),
-      summarizeInvitation(cited),
-      undefined,
-    );
-    expect(decisionLines.join("\n")).not.toContain(
-      DEFAULT_LINKAGE_RULE_SET.reference.keySet.name,
-    );
-  });
-
   test("displayInvitation: the inviter's request-from-acceptor receive shows names, '(none)' when empty, and nothing when absent", () => {
     // The opposite direction from "columns you will receive": the inviter's
     // payload.receive is what it requests FROM this party. A declared receive
@@ -1221,7 +1187,7 @@ describe("displayInvitation: the declared terms it discloses (columns, built-in 
     expect(lines.filter((line) => line === noteLine)).toHaveLength(1);
     // Directly under the line it explains. The block emits the retain line last for
     // this: a caveat printed after whatever else the block reached would be treated
-    // as that line's instead, and the contradicted-citation lines can be there.
+    // as that line's instead.
     expect(lines[retainAt[0] + 1]).toBe(noteLine);
     // And nothing of it reaches the repetition, whose whole point here is its
     // length: the tail from the heading down is the block alone.
