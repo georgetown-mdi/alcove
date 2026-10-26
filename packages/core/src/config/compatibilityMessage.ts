@@ -93,14 +93,3 @@ export function compatibilityMessage(
     composed += values[index] + fixedSpans[index + 1];
   return composed as CompatibilityMessageFragment;
 }
-
-/**
- * A rule-set citation as every screen and log shows it: the name quoted, the
- * version bare. A caller's own treatment (escaping, redaction) comes first.
- */
-export function ruleSetCitation(
-  name: string,
-  version: string,
-): CompatibilityMessageFragment {
-  return compatibilityMessage`${quoteTermsValue(name)} ${bareTermsValue(version)}`;
-}

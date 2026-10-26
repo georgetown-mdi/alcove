@@ -619,7 +619,6 @@ The generator was measured to overwrite a probe-marked file whole, so a probe le
 
 The property and its failure modes are in [What zero-setup rests on](default-linkage-rule-set.md#what-zero-setup-rests-on).
 Held by review, it is the shape that goes stale, because the edit that breaks it is one nobody would recognize as touching zero-setup at all.
-Holding only the default set would leave a later set covered by nothing until someone remembered.
 
 ### Why a field's name must equal its type
 

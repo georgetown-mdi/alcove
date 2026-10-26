@@ -4,9 +4,9 @@ title: "A False Rule-Set Citation in the Acceptor's Record"
 
 # A false rule-set citation in the acceptor's record: annotate, refuse, or drop
 
-_Status: resolved - built for the record, then withdrawn: the owner ruled the citation removed, and neither the exchange record nor the terms review holds it or a verdict on it. This note records the three directions weighed and why the built one was chosen. See [docs/notes/README.md](README.md)._
+_Status: resolved - built for the record, then withdrawn: the owner ruled the citation removed, and the linkage terms no longer hold it, so neither the exchange record nor the terms review holds it or a verdict on it. This note records the three directions weighed and why the built one was chosen. See [docs/notes/README.md](README.md)._
 
-A linkage-terms document may cite the named rule set its fields and keys were drawn from. The citation moves with the terms: an accepting party adopts the inviter's terms, keeps the citation, and copies it into its own exchange record - the artifact an operator populates a HIPAA accounting of disclosures or a FERPA disclosure record from. So an invitation citing a set Alcove ships, over rules Alcove can prove are not that set, wrote an unqualified false provenance claim into the acceptor's own governance artifact.
+A linkage-terms document could cite the named rule set its fields and keys were drawn from. The citation moved with the terms: an accepting party adopted the inviter's terms, kept the citation, and copied it into its own exchange record - the artifact an operator populates a HIPAA accounting of disclosures or a FERPA disclosure record from. So an invitation citing a set Alcove ships, over rules Alcove can prove are not that set, wrote an unqualified false provenance claim into the acceptor's own governance artifact.
 
 The predicate that catches it already existed. `isDrawnFromLinkageRuleSet` decides whether a document's rules are drawn from a set - byte-exact on fields, cascade-order on keys - and the shipped set is one this build holds. What it did not do was run anywhere on the exchange path: it ran only in the web invite editors, deciding whether rules edited after being seeded from a set could still cite it.
 

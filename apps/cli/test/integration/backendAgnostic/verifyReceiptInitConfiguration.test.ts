@@ -15,10 +15,10 @@ import { DEFAULT_RESULT_BASENAME } from "../../../src/resultFile";
 import { captureProcessExit } from "../../exitCapture";
 
 // Configurations `alcove init INPUT_FILE` wrote hold the built-in rule set's
-// lists at the 95% floor, narrowed to that file and citing the set. Two such
-// configurations exchange, as written and with the 95% keys deleted to run
-// only the 99% rules, and verify-receipt given the configuration re-derives
-// the terms the run agreed, so the record verifies.
+// lists at the 95% floor, narrowed to that file. Two such configurations
+// exchange, as written and with the 95% keys deleted to run only the 99%
+// rules, and verify-receipt given the configuration re-derives the terms
+// the run agreed, so the record verifies.
 //
 // filedrop only, like verifyReceiptDefaultExchange.test.ts beside it.
 
@@ -42,7 +42,7 @@ let originalCwd: string;
 let exitSpy: MockInstance<typeof process.exit> | undefined;
 
 beforeEach(() => {
-  work = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-verify-rule-set-"));
+  work = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-verify-init-"));
   originalCwd = process.cwd();
   process.chdir(work);
   exitSpy = captureProcessExit();
@@ -209,11 +209,6 @@ describe("verify-receipt of a run from configurations alcove init wrote", () => 
           .replace(`${DEFAULT_RECORD_BASENAME}-`, `${DEFAULT_RESULT_BASENAME}-`)
           .replace(/\.json$/, ".csv"),
       );
-      // The configuration cites the set; the record holds no citation.
-      expect(fs.readFileSync(record, "utf8")).not.toContain(
-        `"${DEFAULT_LINKAGE_RULE_SET.reference.keySet.name}"`,
-      );
-
       const own = await verify([
         record,
         inputA,

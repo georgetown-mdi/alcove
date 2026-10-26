@@ -9,7 +9,6 @@ import YAML from "yaml";
 
 import {
   computeCertificateFingerprint,
-  DEFAULT_LINKAGE_RULE_SET,
   DEFAULT_MAX_DISPLAY_LENGTH,
   DISPLAY_TRUNCATION_MARKER,
   EXCHANGE_RECORD_VERSION,
@@ -1342,56 +1341,28 @@ describe("handler", () => {
     expect(stdout).toBe("");
   });
 
-  test("a --partner-terms file naming a rule set and writing no rules fails the schema", async () => {
+  test("a --partner-terms file holding a rule-set citation is refused, naming the key", async () => {
     const { recordPath } = await exchangeArtifacts();
-    const {
-      linkageFields: _fields,
-      linkageKeys: _keys,
-      ...withoutRules
-    } = baseInputs.partnerTerms;
     const { stdout, stderr, exits } = await runVerify({
       record: recordPath,
       "partner-terms": writeYaml(
         YAML.stringify({
           linkage_terms: {
-            ...withoutRules,
-            linkage_rule_set: DEFAULT_LINKAGE_RULE_SET.reference,
+            ...baseInputs.partnerTerms,
+            linkage_rule_set: {
+              field_set: { name: "baseline-pii", version: "1.3.0" },
+              key_set: { name: "precision-ranked-rules", version: "2.5.0" },
+            },
           },
         }),
         "partner.yaml",
       ),
     });
     expect(exits).toEqual([64]);
-    expect(stderr).toContain("has invalid linkage_terms");
-    expect(stderr).toContain("linkage_fields");
+    expect(stderr).toContain(
+      'the setting "linkage_terms.linkage_rule_set" is retired; delete it from the file',
+    );
     expect(stdout).toBe("");
-  });
-
-  test("a --partner-terms file citing a set this build lacks still verifies", async () => {
-    // The same rule from the other side: an unresolvable citation beside the
-    // partner's own written-out rules stops nothing, because nothing here
-    // resolves it.
-    const partnerTerms: LinkageTerms = {
-      ...baseInputs.partnerTerms,
-      linkageRuleSet: {
-        fieldSet: { name: "partner-fields", version: "9.9.9" },
-        keySet: { name: "partner-keys", version: "9.9.9" },
-      },
-    };
-    const { recordPath } = await exchangeArtifacts({ partnerTerms });
-    const { stdout, exits, exitCode } = await runVerify({
-      record: recordPath,
-      "config-file": writeYaml(
-        YAML.stringify({ linkage_terms: baseInputs.localTerms }),
-      ),
-      "partner-terms": writeYaml(
-        YAML.stringify({ linkage_terms: partnerTerms }),
-        "partner.yaml",
-      ),
-    });
-    expect(exits).toEqual([]);
-    expect(stdout).toContain("agreed-terms hash: re-derives and matches");
-    expect(exitCode).toBe(RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE);
   });
 
   test("a --config-file holding only the pin is accepted for it", async () => {

@@ -21,6 +21,7 @@ import {
   getLogger,
   prepareForExchange,
   sanitizeErrorForDisplay,
+  snakeizeKeys,
   termsAsTheRunStatedThem,
 } from "@alcove/core";
 import { computeTermsHash } from "@alcove/core/testing";
@@ -503,6 +504,27 @@ test("injects sharedSecret from key file even when a top-level authentication bl
   saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
   const result = loadConfig(baseOptions());
   expect(result.authentication.sharedSecret).toBe(TOKEN_A);
+});
+
+test("loadConfig refuses a config whose terms hold a rule-set citation, naming the key", () => {
+  fs.writeFileSync(
+    configFile,
+    YAML.stringify({
+      connection: { channel: "filedrop", path: "/mnt/share/drop" },
+      linkage_terms: {
+        ...(snakeizeKeys(getDefaultLinkageTerms("Test Party")) as object),
+        linkage_rule_set: {
+          field_set: { name: "baseline-pii", version: "1.3.0" },
+          key_set: { name: "precision-ranked-rules", version: "2.5.0" },
+        },
+      },
+    }),
+  );
+  saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
+  expect(() => loadConfig(baseOptions())).toThrow(UsageError);
+  expect(() => loadConfig(baseOptions())).toThrow(
+    'the setting "linkage_terms.linkage_rule_set" is retired; delete it from the file',
+  );
 });
 
 // --- config file errors ------------------------------------------------------

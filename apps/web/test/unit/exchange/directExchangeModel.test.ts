@@ -100,7 +100,7 @@ describe("previewInferredTerms", () => {
   });
 
   test("a file with ZIP, state and county columns previews the geography rules", () => {
-    // The same keys, fields and citation the CLI's quick exchange runs for this
+    // The same keys and fields the CLI's quick exchange runs for this
     // header (apps/cli/test/unit/commands/zeroSetup.test.ts), so the two
     // parties of a CLI-to-browser quick exchange present equal terms.
     const preview = previewInferredTerms(
@@ -138,15 +138,12 @@ describe("previewInferredTerms", () => {
       { name: "state", type: "state" },
       { name: "county", type: "county" },
     ]);
-    expect(terms.linkageRuleSet).toStrictEqual({
-      fieldSet: { name: "baseline-pii", version: "1.3.0" },
-      keySet: { name: "precision-ranked-rules", version: "2.5.0" },
-    });
+    expect(terms).not.toHaveProperty("linkageRuleSet");
     expect(preview.refusal).toBeUndefined();
   });
 
   test("a file with house number and ZIP columns previews the street number rule", () => {
-    // The same keys, fields and citation the CLI's quick exchange runs for this
+    // The same keys and fields the CLI's quick exchange runs for this
     // header (apps/cli/test/unit/commands/zeroSetup.test.ts), so the two
     // parties of a CLI-to-browser quick exchange present equal terms.
     const preview = previewInferredTerms(
@@ -182,10 +179,7 @@ describe("previewInferredTerms", () => {
       { name: "zip_code", type: "zip_code" },
       { name: "street_number", type: "street_number" },
     ]);
-    expect(terms.linkageRuleSet).toStrictEqual({
-      fieldSet: { name: "baseline-pii", version: "1.3.0" },
-      keySet: { name: "precision-ranked-rules", version: "2.5.0" },
-    });
+    expect(terms).not.toHaveProperty("linkageRuleSet");
     expect(preview.refusal).toBeUndefined();
   });
 

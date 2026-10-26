@@ -187,20 +187,49 @@ const RETIRED_TOP_LEVEL_SETTINGS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The refusal of a raw exchange file holding a retired top-level setting,
- * naming each such key as the file writes it and stating the remedy, or
- * `undefined` when it holds none. The whole-file parses apply it before any
- * other check, and so does a CLI reader of only some of the file's blocks, so
- * each refuses such a file with the same message.
+ * Settings inside a top-level block this build refuses by name, keyed by that
+ * block. The linkage terms state their rules in their fields and keys, and
+ * cite no rule set.
+ */
+const RETIRED_BLOCK_SETTINGS: ReadonlyMap<
+  string,
+  ReadonlySet<string>
+> = new Map([["linkageTerms", new Set(["linkageRuleSet"])]]);
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * The retired settings a raw exchange file holds, each as the file writes it:
+ * a top-level key bare, a key inside a block after that block's key and a dot.
+ */
+function retiredSettingsAsWritten(raw: Record<string, unknown>): string[] {
+  const retired: string[] = [];
+  for (const [key, value] of Object.entries(raw)) {
+    const camelized = camelizeKey(key);
+    if (RETIRED_TOP_LEVEL_SETTINGS.has(camelized)) retired.push(key);
+    const blockSettings = RETIRED_BLOCK_SETTINGS.get(camelized);
+    if (blockSettings === undefined || !isPlainObject(value)) continue;
+    for (const nested of Object.keys(value))
+      if (blockSettings.has(camelizeKey(nested)))
+        retired.push(`${key}.${nested}`);
+  }
+  return retired;
+}
+
+/**
+ * The refusal of a raw exchange file holding a retired setting, at the top
+ * level or inside a block, naming each such key as the file writes it and
+ * stating the remedy, or `undefined` when it holds none. The whole-file parses
+ * apply it before any other check, and so does a CLI reader of only some of the
+ * file's blocks, so each refuses such a file with the same message.
  */
 export function retiredSettingIssue(
   raw: unknown,
 ): z.core.$ZodIssue | undefined {
-  if (raw === null || typeof raw !== "object" || Array.isArray(raw))
-    return undefined;
-  const retired = Object.keys(raw).filter((key) =>
-    RETIRED_TOP_LEVEL_SETTINGS.has(camelizeKey(key)),
-  );
+  if (!isPlainObject(raw)) return undefined;
+  const retired = retiredSettingsAsWritten(raw);
   if (retired.length === 0) return undefined;
   const named = retired.map((key) => `"${key}"`).join(" and ");
   return {

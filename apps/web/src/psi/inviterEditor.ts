@@ -17,7 +17,6 @@ import {
 import { isolatedColumnName } from "@components/ColumnName";
 
 import {
-  citationDropFor,
   draftFromTerms,
   draftHasOfferedKeys,
   draftOffersBuiltInKeys,
@@ -48,7 +47,6 @@ import type {
   AdvancedInviteDraft,
   AdvancedInviteSeed,
   AuthoredKeyGrade,
-  CitationDrop,
   CleaningNotLoaded,
   DraftLegalAgreement,
   OutputDirection,
@@ -257,23 +255,6 @@ export function editorOffersUseBuiltInRules(
     editor.keysAuthored === true &&
     !keysFromOpenedConfiguration &&
     editorOffersBuiltInKeys(editor)
-  );
-}
-
-/** The dropped-citation notice for the session ({@link citationDropFor}),
- * naming the Matching keys action only where
- * {@link editorOffersUseBuiltInRules} shows it for the same
- * `keysFromOpenedConfiguration`. */
-export function editorCitationDrop(
-  editor: InviterEditor,
-  keysFromOpenedConfiguration: boolean,
-  builtTerms?: LinkageTerms,
-): CitationDrop | undefined {
-  return citationDropFor(
-    editor.draft,
-    editor.seed,
-    editorOffersUseBuiltInRules(editor, keysFromOpenedConfiguration),
-    builtTerms,
   );
 }
 

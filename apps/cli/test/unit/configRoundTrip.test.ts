@@ -199,7 +199,6 @@ function documentSettings(variant: Variant) {
           : field,
       ),
       linkageKeys: defaults.linkageKeys.slice(variant),
-      linkageRuleSet: pick(variant, defaults.linkageRuleSet, undefined),
       payload: {
         send: [{ name: "program", description }],
         receive: [{ name: pick(variant, "outcome", "outcome_code") }],

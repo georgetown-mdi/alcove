@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 
 import {
-  BUILT_IN_LINKAGE_RULE_SETS,
+  DEFAULT_LINKAGE_RULE_SET,
   getDefaultLinkageTerms,
 } from "../../src/defaults/builtInLinkageTerms.js";
 import {
@@ -1590,18 +1590,17 @@ describe("the consent summary's padded-slice marker", () => {
   test("no built-in key slices a padded value", () => {
     // A higher-ranked marker can mask "padded slice"; the built-in keys are
     // kept out of that case by never slicing after a pad.
-    for (const ruleSet of BUILT_IN_LINKAGE_RULE_SETS)
-      for (const key of ruleSet.linkageKeys)
-        for (const element of key.elements) {
-          const functions = (element.transform ?? []).map(
-            (step) => step.function,
-          );
-          const padAt = functions.indexOf("pad_left");
-          expect(
-            padAt === -1 || !functions.slice(padAt + 1).includes("substring"),
-            `${key.name} ${element.field}`,
-          ).toBe(true);
-        }
+    for (const key of DEFAULT_LINKAGE_RULE_SET.linkageKeys)
+      for (const element of key.elements) {
+        const functions = (element.transform ?? []).map(
+          (step) => step.function,
+        );
+        const padAt = functions.indexOf("pad_left");
+        expect(
+          padAt === -1 || !functions.slice(padAt + 1).includes("substring"),
+          `${key.name} ${element.field}`,
+        ).toBe(true);
+      }
   });
 });
 

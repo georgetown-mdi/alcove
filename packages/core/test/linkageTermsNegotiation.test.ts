@@ -92,10 +92,6 @@ const everyFieldStated: LinkageTerms = {
     { name: "SSN", elements: [{ field: "ssn" }] },
     { name: "DOB", elements: [{ field: "dob" }] },
   ],
-  linkageRuleSet: {
-    fieldSet: { name: "baseline-pii", version: "1.0.0" },
-    keySet: { name: "baseline-keys", version: "1.0.0" },
-  },
   payload: { send: [{ name: "a" }], receive: [{ name: "b" }] },
   legalAgreement: {
     reference: "MOU-001",
@@ -129,13 +125,6 @@ const boundFieldEdits: Record<
     linkageFields: [{ name: "ssn", type: "ssn" }],
   }),
   linkageKeys: (terms) => ({ ...terms, linkageKeys: sharedKeys }),
-  linkageRuleSet: (terms) => ({
-    ...terms,
-    linkageRuleSet: {
-      fieldSet: { name: "baseline-pii", version: "2.0.0" },
-      keySet: { name: "baseline-keys", version: "1.0.0" },
-    },
-  }),
   payload: (terms) => ({
     ...terms,
     payload: { send: [{ name: "c" }], receive: [{ name: "b" }] },
@@ -236,18 +225,15 @@ test("an edit to every bound field is a terms change", () => {
 
 test("a terms change the comparison skips leaves the delta empty", () => {
   const baselines = { partnerDeduplicate: everyFieldStatedPartner.deduplicate };
-  const { linkageRuleSet: _ruleSet, ...withoutRuleSet } =
-    everyFieldStatedPartner;
   const withoutReceive: LinkageTerms = {
     ...everyFieldStatedPartner,
     payload: { send: [{ name: "b" }] },
   };
-  for (const partner of [withoutRuleSet, withoutReceive])
-    expect(
-      termsDeltaIsEmpty(
-        compareTerms(everyFieldStated, partner, baselines).delta,
-      ),
-    ).toBe(true);
+  expect(
+    termsDeltaIsEmpty(
+      compareTerms(everyFieldStated, withoutReceive, baselines).delta,
+    ),
+  ).toBe(true);
 });
 
 test("changedPartnerBoundTerms names each bound field an edit changes", () => {
@@ -259,12 +245,12 @@ test("changedPartnerBoundTerms names each bound field an edit changes", () => {
 });
 
 test("changedPartnerBoundTerms counts a field one side leaves unstated", () => {
-  const { linkageRuleSet: _ruleSet, ...withoutRuleSet } = everyFieldStated;
-  expect(changedPartnerBoundTerms(everyFieldStated, withoutRuleSet)).toEqual([
-    "linkageRuleSet",
+  const { legalAgreement: _agreement, ...withoutAgreement } = everyFieldStated;
+  expect(changedPartnerBoundTerms(everyFieldStated, withoutAgreement)).toEqual([
+    "legalAgreement",
   ]);
-  expect(changedPartnerBoundTerms(withoutRuleSet, everyFieldStated)).toEqual([
-    "linkageRuleSet",
+  expect(changedPartnerBoundTerms(withoutAgreement, everyFieldStated)).toEqual([
+    "legalAgreement",
   ]);
   expect(
     changedPartnerBoundTerms(everyFieldStated, {

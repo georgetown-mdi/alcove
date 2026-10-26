@@ -45,7 +45,7 @@ The document's four free-text fields -- [`identity`](#linkage_termsidentity), th
 
 Because those three are read out of a record long after the run, they refuse a second class the `exclude` value does not: the nine Unicode text-direction formatting characters -- the embeddings, overrides, and isolates of Unicode UAX #9 -- which the [name rule](#linkage-terms) below refuses for the same reason. One of them opens a layout scope that outlives the value and reorders the copy the record is read beside, and nothing legitimate in an identity, a purpose, or a description needs one: a right-to-left sentence lays out correctly from its own letters. The implicit direction marks `U+200E`, `U+200F`, and `U+061C` are outside the class and stay admitted, in these three fields as in a name. An `exclude` value keeps the nine, being a value your data is matched against rather than text a record holds.
 
-The document's names take a rule of their own, inside their 256-character cap: a linkage field, key, or element `name`, an element's `field` or `swap` reference, a [transform step's](#transform-steps) `function` name and each of its `params` keys, a [payload column's](#linkage_termspayload) `name`, the legal agreement's [`reference`](#linkage_termslegal_agreement), and a [rule set's](#linkage_termslinkage_rule_set) `name` may hold neither a control character nor one of the nine Unicode text-direction formatting characters -- the embeddings, overrides, and isolates of Unicode UAX #9. A name is matched on, written verbatim into both parties' exchange records, and shown beside first-party copy on the screen where the exchange is agreed to, and a text-direction character in one reorders the sentence around it. A rule set's name is the one not written into the records; it is matched on and shown the same way. Nothing legitimate in a name needs one: a right-to-left or mixed-direction label lays out correctly from its own letters, and letters in any script are untouched. Alcove removes those same characters from your own CSV column headers when it reads the file (see [CSV header sanitation](spec/PARSED_INPUT_BOUNDS.md#csv-header-sanitation-at-ingestion)), so a header and a terms name agree on what a column may be called. The [`metadata`](#input-metadata) block's column `name` takes the same rule, for the same reason: a name you declare there is matched on, and a disclosed one is listed to your partner in the invitation.
+The document's names take a rule of their own, inside their 256-character cap: a linkage field, key, or element `name`, an element's `field` or `swap` reference, a [transform step's](#transform-steps) `function` name and each of its `params` keys, a [payload column's](#linkage_termspayload) `name`, and the legal agreement's [`reference`](#linkage_termslegal_agreement) may hold neither a control character nor one of the nine Unicode text-direction formatting characters -- the embeddings, overrides, and isolates of Unicode UAX #9. A name is matched on, written verbatim into both parties' exchange records, and shown beside first-party copy on the screen where the exchange is agreed to, and a text-direction character in one reorders the sentence around it. Nothing legitimate in a name needs one: a right-to-left or mixed-direction label lays out correctly from its own letters, and letters in any script are untouched. Alcove removes those same characters from your own CSV column headers when it reads the file (see [CSV header sanitation](spec/PARSED_INPUT_BOUNDS.md#csv-header-sanitation-at-ingestion)), so a header and a terms name agree on what a column may be called. The [`metadata`](#input-metadata) block's column `name` takes the same rule, for the same reason: a name you declare there is matched on, and a disclosed one is listed to your partner in the invitation.
 
 Two kinds of value stay outside both rules, held to their length caps alone: the string values of a transform step's `params` -- a regex pattern, a replacement, a delimiter, a default -- bounded at 1000 characters each, and a name constraint's [`allowed_characters`](#constraints) class, bounded at 256. Each is data a step matches or substitutes with rather than a name, so a tab is a plausible delimiter and a line break a plausible replacement, and refusing them would refuse legitimate terms; a `params` key takes the name rule, being the parameter's name rather than data the step works with. What neutralizes a control character in one of those is the display escaping Alcove applies wherever it renders a value, the same boundary that covers every other partner-supplied string on its way to a screen, a log, or an error.
 
@@ -53,36 +53,35 @@ Two kinds of value stay outside both rules, held to their length caps alone: the
 
 Not every exchange authors its own linkage fields and keys. A quick exchange, an invitation the web app creates from its defaults, and the template `alcove init` writes all fill them in for you, from the product's built-in rules. They are also where the web app's Advanced invite path starts, before you edit the keys.
 
-The built-in rules are two named artifacts, versioned separately:
+The built-in rules have two parts:
 
-- **`baseline-pii`, version `1.3.0`** -- the linkage **fields**: eleven PII elements, `ssn`, `ssn4`, `first_name`, `last_name`, `date_of_birth`, `phone_number`, `email_address`, `zip_code`, `state`, `county`, and `street_number`, each in its standardized form and with the constraints it holds. This is the substrate keys are built from, and it is general-purpose: it says which PII the built-in rules work from and how each element is cleaned, not what constitutes a match.
-- **`precision-ranked-rules`, version `2.5.0`** -- the linkage **keys**: the rules of the [linkage rule catalog](notes/linkage-rule-catalog.md), each in one of two bands, applied in the catalog's order: the highest-precision rules, then the rules broader matching adds. Earlier versions of both sets, and the earlier built-in rules they replace, are retired: a document or record citing one names a set this build does not ship, which each exchange record marks as unchecked.
+- The linkage **fields**: eleven PII elements, `ssn`, `ssn4`, `first_name`, `last_name`, `date_of_birth`, `phone_number`, `email_address`, `zip_code`, `state`, `county`, and `street_number`, each in its standardized form and with the constraints it holds. This is the substrate keys are built from, and it is general-purpose: it says which PII the built-in rules work from and how each element is cleaned, not what constitutes a match.
+- The linkage **keys**: the rules of the [linkage rule catalog](notes/linkage-rule-catalog.md), each in one of two bands, applied in the catalog's order: the highest-precision rules, then the rules broader matching adds.
 
-For an exchange that did not author its own, the key set is an upper bound on the rules that could have run, not the account of which did -- that account is the terms document's, below.
+For an exchange that did not author its own, the built-in keys are an upper bound on the rules that could have run, not the account of which did -- that account is the terms document's, below.
 
-What the names do and do not cover:
+What the built-in rules do and do not cover:
 
-- Between them they cover the linkage **fields** (with their constraints) and the linkage **keys** (with their bands), and nothing else. Each version versions its own artifact: an edit to a field or a constraint is a new version of `baseline-pii`, and an edit to the keys -- including a reordering, since the order is the order they are applied in, or a moved band -- is a new version of `precision-ranked-rules`.
-- They do not cover the rest of the terms document. `identity`, `date`, `algorithm`, `linkage_strategy`, `output`, and `deduplicate` are each party's own choice on the day, and two parties can run the same rules while differing on them.
-- A run matches on a **subset** of the key set, never on an addition to it: the keys a precision floor selects, less any key that matches on a field no column of your input file can supply. The terms document that travels with the exchange still records exactly which keys ran, so it -- not either name -- is the authoritative account of any one exchange.
+- They cover the linkage **fields** (with their constraints) and the linkage **keys** (with their bands), and nothing else. `identity`, `date`, `algorithm`, `linkage_strategy`, `output`, and `deduplicate` are each party's own choice on the day, and two parties can run the same rules while differing on them.
+- A run matches on a **subset** of the built-in keys, never on an addition to them: the keys a precision floor selects, less any key that matches on a field no column of your input file can supply. The terms document that travels with the exchange records exactly which keys ran, so it is the authoritative account of any one exchange.
 - Both parties' keys must match key for key. A quick exchange between two files where only one supplies a column a selected key needs, such as a ZIP code, stops before any data moves, naming the keys only one side declares. Remove the column from the file that has it, or agree terms through an invitation.
 
-Terms drawn from these rules cite them, in the [`linkage_rule_set`](#linkage_termslinkage_rule_set) field below, so the citation travels with the exchange: it is in the invitation and on the wire. The exchange record does not hold it. The accepting party's terms review does not show it: where the agreed keys are exactly the "highest precision" or "broader matching" keys, in their order, and the fields those keys read are the built-in fields, the review says so, worked out from the keys and fields themselves.
+The terms do not name the built-in rules; they hold the fields and keys themselves. Where the agreed keys are exactly the "highest precision" or "broader matching" keys, in their order, and the fields those keys read are the built-in fields, the accepting party's terms review says so, worked out from the keys and fields themselves.
 
 Five of the rules broader matching adds match a name with a phone number or an email address and no date of birth: `LN + FN + PHONE`, `PHONE + soundex(LN) + FN`, `FN + PHONE`, `LN + FN + EMAIL`, and `EMAIL + soundex(LN) + FN`. Each matches only where one of the two records has no valid date of birth ([Keys that run only where a field is missing](#keys-that-run-only-where-a-field-is-missing)), so a file with no date-of-birth column still matches through them.
 
 Every built-in rule on the whole first name, such as `LN + FN + DOB`, matches only a first name of at least two letters. The default cleaning keeps a first name of one letter, and each of those rules drops it with a [`filter_regex`](#string-transformation) step on its first-name element (see [`first_name`](spec/DEFAULT_STANDARDIZATION.md#first_name)), so a record holding only an initial matches through the rules on part of the first name, such as `SSN + LN + FN1`. The key lists on the acceptance screens show that step under each such rule.
 
-#### Choosing rules by precision floor
+#### Choosing the built-in rules
 
 Each rule is in one of two bands: the highest-precision rules, and the others. The evidence placing each rule is in the [linkage rule catalog](notes/linkage-rule-catalog.md#bands). A precision floor selects every rule whose band is at or above it, in the catalog's order. The screens name each floor by a label:
 
 - **Highest precision**: selects the highest-precision rules.
 - **Broader matching**: selects them all, the highest-precision rules first.
 
-No configuration key sets the floor; it decides which keys are written into the terms. It does not travel: the terms hold the keys selected, and the citation names the set and its version. Where each path takes it from:
+No configuration key sets the floor; it decides which keys are written into the terms. It does not travel: the terms hold the keys selected. Where each path takes it from:
 
-- A quick exchange and `alcove init` write the keys for broader matching. In a configuration `alcove init` wrote, its comments beside `linkage_rule_set` list the keys to delete to run only the highest-precision rules or to leave out the rules marked less certain.
+- A quick exchange and `alcove init` write the keys for broader matching. In a configuration `alcove init` wrote, its comments beside `linkage_keys` list the keys to delete to run only the highest-precision rules or to leave out the rules marked less certain.
 - The invitation editor of the web app and the console starts at the same floor and offers both floors on Customize > Matching keys; Review & create names the floor the keys were drawn with ([Choosing the matching keys](WEB_APP.md#choosing-the-matching-keys)).
 - The display a run shows before it connects lists the keys selected, and on a quick exchange names the selection ([What the run shows before it starts](CLI.md#what-the-run-shows-before-it-starts)).
 
@@ -100,7 +99,7 @@ Three of the rules broader matching adds match on a name and a date of birth wit
 
 A `zip` column must hold the ZIP code of the person's own address. A site's or agency's ZIP code, and likewise a staff or agency phone number, matches unrelated people served at that site. Give such a column `role: ignored` in `metadata`; in a quick exchange, which has no `metadata` block, remove it from the file, since a renamed header is sent to your partner.
 
-What the key set's validation rests on, the criticisms recorded against it, what a quick exchange rests on, and the rule for bumping either version are in [default-linkage-rule-set.md](notes/default-linkage-rule-set.md).
+What the built-in keys' validation rests on, the criticisms recorded against them, and what a quick exchange rests on are in [default-linkage-rule-set.md](notes/default-linkage-rule-set.md).
 
 ### `linkage_terms.version`
 
@@ -251,7 +250,7 @@ expected_partner_deduplicate: true
 ### `linkage_terms.linkage_fields`
 
 *Type:* array  
-*Required:* yes, written out even where the block names a rule set  
+*Required:* yes  
 *Consistency:* mandatory
 
 The linkage fields define the standardized form of each PII element that participates in linkage. Each field has a name, a semantic type, and optional constraints. The name is a unique identifier used by linkage key elements and data standardizing transformations.
@@ -330,7 +329,7 @@ A `street_name` column is inferred from `street_name`, a `unit` column from `uni
 A ZIP column is inferred as `zip_code` from any of its recognized names (`zip` and its spellings; the complete table is in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#type-inference-from-column-names)). Like `phone_number` and `email_address`, it has built-in linkage keys, each beside a name and a date of birth, so an inferred ZIP column is matched on wherever the file also supplies those, and is not sent as payload unless you mark it so. A ZIP code on its own is a weak identifier -- it matches everyone who shares an area -- so it does its work inside a compound key alongside a name or a date of birth.
 A key element over a `zip_code` field can match on the three-digit ZIP area instead, with the [`zip3`](#string-transformation) transform: `02139` matches as `021`. The built-in rule `LN + FN + DOB + ZIP3` does.
 
-A `state` column is inferred from `state`, `state_code`, or `state_name`, and a `county` column from `county` or `county_name` (the no-separator spellings too; complete table in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#type-inference-from-column-names)). Each has a built-in linkage key beside a name and a date of birth, `LN + FN + DOB + STATE` and `LN + FN + DOB + COUNTY`, so an inferred state or county column is matched on wherever the file also supplies those, and is not sent as payload unless you mark it so. The county key is selected for any pair of files ([Choosing rules by precision floor](#choosing-rules-by-precision-floor)). A state is cleaned to its two-letter code from the full name or the code, and a value that is neither is dropped. A county name is cleaned to uppercase with the word `COUNTY` and punctuation removed. The same county name exists in many states, so for files spanning several states the county key narrows less than the state key, which runs first where a file has both; the cleaning steps for both types are in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#per-type-pipelines).
+A `state` column is inferred from `state`, `state_code`, or `state_name`, and a `county` column from `county` or `county_name` (the no-separator spellings too; complete table in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#type-inference-from-column-names)). Each has a built-in linkage key beside a name and a date of birth, `LN + FN + DOB + STATE` and `LN + FN + DOB + COUNTY`, so an inferred state or county column is matched on wherever the file also supplies those, and is not sent as payload unless you mark it so. The county key is selected for any pair of files ([Choosing the built-in rules](#choosing-the-built-in-rules)). A state is cleaned to its two-letter code from the full name or the code, and a value that is neither is dropped. A county name is cleaned to uppercase with the word `COUNTY` and punctuation removed. The same county name exists in many states, so for files spanning several states the county key narrows less than the state key, which runs first where a file has both; the cleaning steps for both types are in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#per-type-pipelines).
 
 #### Constraints
 
@@ -349,7 +348,7 @@ The table above is the complete set of constraints. A constraint not listed for 
 ### `linkage_terms.linkage_keys`
 
 *Type:* array  
-*Required:* yes, written out even where the block names a rule set  
+*Required:* yes  
 *Consistency:* mandatory
 
 An ordered list of linkage keys applied in sequence, in the order listed. Each round of the PSI protocol matches only records not yet resolved in a prior round. Each element references a linkage field by name and may optionally specify transformations applied to that field's canonical value before it is concatenated into the key.
@@ -460,36 +459,6 @@ linkage_terms:
 
 The specification is in [PROTOCOL.md](spec/PROTOCOL.md#keys-with-a-missing-field-condition).
 
-### `linkage_terms.linkage_rule_set`
-
-*Type:* object  
-*Required:* no  
-*Consistency:* mandatory when both parties declare one
-
-The named rule set the `linkage_fields` and `linkage_keys` above were drawn from -- a citation, not a specification. It names two artifacts and their content versions: `field_set` for the fields, `key_set` for the keys. [The built-in rules](#the-built-in-rules) are the set Alcove ships.
-
-```yaml
-linkage_terms:
-  linkage_rule_set:
-    field_set:
-      name: "baseline-pii"
-      version: "1.3.0"
-    key_set:
-      name: "precision-ranked-rules"
-      version: "2.2.0"
-```
-
-Every path that fills in your fields and keys for you writes this citation: a quick exchange, the template `alcove init` writes, the web app's default and Advanced invite paths, and the console's quick exchange. It travels wherever the terms do -- into the invitation and onto the wire -- but not into either party's exchange record, whose matching basis lists the fields the agreed keys read.
-
-What it does and does not determine:
-
-- **It is not what the exchange runs on.** The `linkage_fields` and `linkage_keys` are, and they are cross-checked between the parties field by field and key by key. A run matches on a subset of the cited set, never on an addition to it, so a citation is an upper bound on what was tried.
-- **It does not stand in for the rules.** `linkage_fields` and `linkage_keys` are required in `linkage_terms` whether or not it names a rule set.
-- **It is not vouched for.** Your partner's citation is text your partner wrote, and nothing resolves a partner's set name to content. The accepting party's terms review does not show it, and neither party's exchange record holds it.
-- **Omit it for rules you author yourself.** Rules you author can cite only the built-in set -- there is no way to select another -- and citing a set your rules were not drawn from misdescribes them. A terms document you import keeps the citation its own author wrote, including one naming a set Alcove does not ship; the web Advanced invite path drops that citation as soon as the rules stop being drawn from the set it names, exactly as it drops the built-in citation when you edit your way out of the rules it seeded from. It tells you when it will not include an imported citation and why -- your edits moved the rules out of the cited set, the terms declare no key to claim provenance for, or the document cited the set Alcove ships over rules that are not it -- and leaves you free to create the invitation without it.
-- **A configuration file keeps the citation you edit past.** Editing `linkage_fields` or `linkage_keys` in `alcove.yaml` leaves the citation the file was written with in place, and nothing checks it against the rules the file now holds.
-- **Two parties that both cite a set must cite the same one**; a mismatch cancels the exchange before any data moves. A party that cites none is not held to the other's, which is what lets hand-authored rules meet an identical named set. An `alcove accept` that reuses a configuration already at the path applies the same rule when it compares that file against the invitation, so a citation the two disagree on is reported with the other terms differences and stops the acceptance, rather than passing there and cancelling the run later.
-
 ### `linkage_terms.legal_agreement`
 
 *Type:* object  
@@ -548,7 +517,7 @@ Your terms state the columns your input metadata sends, whatever `payload.send` 
 The party whose terms differ from its partner's decides on what it receives:
 
 - The difference covers the columns your partner now sends you or no longer sends you -- a narrowing is decided exactly as an addition is -- compared against your `payload.receive`. Columns you send that your partner's terms do not receive are shown too, but they are your partner's to decide.
-- Any other agreed term that differs -- a legal agreement, a rule-set citation, the linkage keys -- is part of the same change. The party that receives the first terms message (the responder) is the one asked about those, so a party that changes one of them by hand and wants its partner to take it on sends it with [`alcove update`](CLI.md#changing-the-terms-of-an-established-partnership) instead.
+- Any other agreed term that differs -- a legal agreement, the linkage keys -- is part of the same change. The party that receives the first terms message (the responder) is the one asked about those, so a party that changes one of them by hand and wants its partner to take it on sends it with [`alcove update`](CLI.md#changing-the-terms-of-an-established-partnership) instead.
 - `alcove exchange` at a terminal shows the change and asks. Confirming writes your partner's terms into the `alcove.yaml` it runs from, through the write `alcove apply` makes, and the same run continues under them; declining ends the run before any key moves. A run with no terminal on stdin refuses instead, writes your partner's terms beside the configuration as a terms update (`alcove.proposed-terms` beside `alcove.yaml`), and names the `alcove apply` command that applies it; see [CLI.md](CLI.md#when-your-partners-terms-change).
 - A change to the linkage fields, keys, algorithm, strategy, output direction, or version cannot continue the run it is met in, since your data was prepared under the old terms: every run refuses it and writes the proposal file, attended or not.
 - A change to your partner's `deduplicate`, against the `expected_partner_deduplicate` your configuration holds it to, cannot continue the run either, since it changes what your records disclose: every run refuses it and writes the proposal file, attended or not, and `alcove apply` shows it among the changes it asks about. Confirming a change at the terminal never changes `expected_partner_deduplicate`.
@@ -1513,7 +1482,7 @@ When metadata is inferred (no explicit `metadata` block), an empty (zero-length)
 
 A column name that holds invisible control characters (a tab, a NUL, an escape, or one of the text-direction characters among them) loses them at every read (see [CSV header sanitation](spec/PARSED_INPUT_BOUNDS.md#csv-header-sanitation-at-ingestion)), and the app that read the file states which column positions changed. Two consequences reach this block. A name made only of those characters comes back empty and meets the refusal above, which states the removal as the cause instead of the header-row causes. And a name written as the header was typed -- a `metadata` `name`, a `linkage_fields` `name`, or a `standardization` output -- does not name a column of the file: write it as the column without those characters, which is the name `alcove init` writes into a configuration it authors from that file.
 
-A declared name holding those characters is refused rather than reconciled against the header. Where it is a `linkage_fields` name, an element `field` or `swap` reference, a `payload` column name, the legal agreement's `reference`, or a rule set's `name`, the name rule above refuses the document outright; where it is a `metadata` `name`, the same shape refuses it here, under a message naming this block. Either way the configuration fails to load, naming the field by its issue path and printing none of the value, and no exchange runs -- so no column name you declare reaches your partner with these characters in it, the invitation's disclosed payload column list included. The path is spelled as the command that read the file spells it: `alcove exchange` names `linkageTerms.linkageFields.0.name` for a terms name and `metadata.0.name` for one declared here, while `alcove invite` names `linkage_fields.0.name` under a prefix naming the linkage terms and a bare `0.name` under one naming the `metadata` block. A `standardization` `output` or `input` is outside the rule: it names a linkage field and a column of your own input, and neither is sent. Each is still held to the same 256-character ceiling every other declared name has, in a configuration file as at the console's own boundary.
+A declared name holding those characters is refused rather than reconciled against the header. Where it is a `linkage_fields` name, an element `field` or `swap` reference, a `payload` column name, or the legal agreement's `reference`, the name rule above refuses the document outright; where it is a `metadata` `name`, the same shape refuses it here, under a message naming this block. Either way the configuration fails to load, naming the field by its issue path and printing none of the value, and no exchange runs -- so no column name you declare reaches your partner with these characters in it, the invitation's disclosed payload column list included. The path is spelled as the command that read the file spells it: `alcove exchange` names `linkageTerms.linkageFields.0.name` for a terms name and `metadata.0.name` for one declared here, while `alcove invite` names `linkage_fields.0.name` under a prefix naming the linkage terms and a bare `0.name` under one naming the `metadata` block. A `standardization` `output` or `input` is outside the rule: it names a linkage field and a column of your own input, and neither is sent. Each is still held to the same 256-character ceiling every other declared name has, in a configuration file as at the console's own boundary.
 
 A signed receipt or exchange record written from such a header holds the column name as it was recorded, so verifying it against a read of the same file is the same shape and takes the same correction. That one is stated from the mechanism rather than measured.
 
@@ -1805,7 +1774,6 @@ The cells:
 | `linkage_terms.linkage_fields` (`name`, `type`) | authored (inferred) | authored (inferred) | carried with a notice |
 | `linkage_terms.linkage_fields` (`constraints`) | carried | carried with a notice | carried with a notice |
 | `linkage_terms.linkage_keys` | authored (inferred) | authored | carried with a notice |
-| `linkage_terms.linkage_rule_set` | authored (inferred) | authored (inferred) | carried with a notice |
 | `linkage_terms.legal_agreement` | carried | authored | carried with a notice |
 | `linkage_terms.payload.send` (`name`) | authored (stated from `metadata` on invite and update) | authored (inferred) | carried with a notice |
 | `linkage_terms.payload.send` (`description`) | carried | carried with a notice | carried with a notice |

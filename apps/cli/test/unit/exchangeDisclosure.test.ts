@@ -11,7 +11,6 @@ import {
   COUNT_ONLY_DISCLOSURE_STATEMENT,
   DEDUPLICATE_PARTNER_DECLARED_DISCLOSURE_STATEMENT,
   DEDUPLICATE_PARTNER_DECLARED_SIDE_NOTE,
-  DEFAULT_LINKAGE_RULE_SET,
   inferMetadata,
   inferredRecordIdentifierStatement,
   LESS_CERTAIN_KEY_COPY,
@@ -1144,29 +1143,6 @@ test("single-pass linkage states the disclosure it trades for its round trip", (
   }).join("\n");
   expect(lines).toContain("linkage strategy (enforced): single-pass");
   expect(lines).toContain("single-pass linkage means one of you sends");
-});
-
-// --- The rule set the terms cite ----------------------------------------------
-
-test("a rule-set citation is stated nowhere, whether or not the rules match it", () => {
-  const citation = DEFAULT_LINKAGE_RULE_SET.reference;
-  const citedAndDrawn: LinkageTerms = {
-    ...localTerms,
-    linkageFields: [...DEFAULT_LINKAGE_RULE_SET.linkageFields],
-    linkageKeys: [...DEFAULT_LINKAGE_RULE_SET.linkageKeys],
-    linkageRuleSet: citation,
-  };
-  for (const terms of [
-    citedAndDrawn,
-    { ...citedAndDrawn, linkageKeys: localTerms.linkageKeys },
-    { ...localTerms, linkageRuleSet: citation },
-  ]) {
-    const lines = rendered(terms).join("\n");
-    expect(lines).toContain(DISCLOSURE_HEADING);
-    expect(lines).not.toContain("rule set");
-    expect(lines).not.toContain(citation.keySet.name);
-    expect(lines).not.toContain(citation.fieldSet.name);
-  }
 });
 
 // --- The facts this seat alone can state --------------------------------------

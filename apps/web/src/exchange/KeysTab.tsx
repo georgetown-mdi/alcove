@@ -9,7 +9,6 @@ import {
   NativeSelect,
   Radio,
   Switch,
-  VisuallyHidden,
 } from "@mantine/core";
 import { IconArrowDown, IconArrowUp } from "@tabler/icons-react";
 
@@ -50,7 +49,6 @@ import {
   OPENED_CONFIGURATION_KEYS_NOTE,
   USE_BUILT_IN_RULES_STATEMENT,
   declaredFieldsFor,
-  editorCitationDrop,
   editorOffersUseBuiltInRules,
   highestPrecisionHeldWithoutRules,
   highestPrecisionUnavailable,
@@ -62,7 +60,6 @@ import {
 import styles from "@styles/app.module.css";
 
 import { BUILT_IN_RULES_GUIDE_URL } from "./userGuide";
-import { CitationDropNotice } from "./CitationDropNotice";
 
 import type { AcquiredCsv, InviterEditor } from "@psi/inviterEditor";
 import type {
@@ -115,11 +112,6 @@ const SHARED_VALUE_CAVEAT =
  * configuration states (`keysFromOpenedConfiguration`,
  * `@exchange/inviterScreenModel`), authored or guided, get a note naming the
  * file and the command that change them in place of the floor, and no action.
- *
- * Also renders {@link editorCitationDrop} live from the draft, so a rule-set
- * citation the rebuild drops is flagged as soon as the import lands or an
- * edit costs it. Review & create restates the same notice, for an operator
- * who edits here and leaves without reading it.
  */
 export function KeysTab({
   editor,
@@ -194,10 +186,6 @@ export function KeysTab({
       ...currentTerms.linkageFields,
     ],
     [declaredFields, editor.draft.importedLinkageFields, currentTerms],
-  );
-  const citationDrop = useMemo(
-    () => editorCitationDrop(editor, keysFromOpenedConfiguration, currentTerms),
-    [editor, keysFromOpenedConfiguration, currentTerms],
   );
   const keysAuthored = editor.keysAuthored === true;
   const offersUseBuiltInRules = useMemo(
@@ -394,17 +382,6 @@ export function KeysTab({
           {keysError}
         </p>
       )}
-      {/* Rendered against the key list, not beside the import control: the list
-        is what costs and restores the citation, and the drop outlives the
-        Expert switch the import hides behind. The persistent region announces
-        only the notice's title, not its body: a conditionally-mounted region
-        is missed by screen readers watching only what is already in the DOM,
-        and repeating the whole body would voice it twice -- once live, once in
-        reading order. */}
-      {citationDrop !== undefined && <CitationDropNotice drop={citationDrop} />}
-      <VisuallyHidden role="status" aria-live="polite" aria-atomic="true">
-        {citationDrop?.title ?? ""}
-      </VisuallyHidden>
       <Switch
         label="Expert authoring"
         description="Build linkage keys element by element, edit transforms and swaps, and import or export the terms as JSON or YAML. Editing keys here replaces the choice of built-in rules above."

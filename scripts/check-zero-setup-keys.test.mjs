@@ -12,7 +12,6 @@ import { fileURLToPath } from "node:url";
 
 import { afterAll, describe, expect, it } from "vitest";
 
-import { REGISTRY_DECLARATION } from "./lib/builtInRuleSets.mjs";
 import {
   NOTE_SECTION,
   RULE_SET_SOURCE,
@@ -67,60 +66,28 @@ const KEYS = [
   },
 ];
 
-/** The registry entries the check reads, as its reader hands them over. */
-const sets = ({ fields = FIELDS, keys = KEYS, second } = {}) => [
-  {
-    declaration: "DEFAULT_LINKAGE_RULE_SET",
-    fieldSet: { name: "baseline-pii", content: fields },
-    keySet: { name: "example-keys", content: keys },
-  },
-  ...(second === undefined ? [] : [second]),
-];
-
-/** One rule set as the source declares it: its declarations, and the
- * composition the reader follows from the registry. */
-const ruleSetSource = ({ prefix, fieldSetName, fields, keySetName, keys }) => `
-export const ${prefix}_FIELD_SET_NAME = "${fieldSetName}";
-export const ${prefix}_FIELD_SET_VERSION = "1.0.0";
-const ${prefix}_FIELDS = ${JSON.stringify(fields, null, 2)};
-export const ${prefix}_KEY_SET_NAME = "${keySetName}";
-export const ${prefix}_KEY_SET_VERSION = "1.0.0";
-const ${prefix}_KEYS = ${JSON.stringify(keys, null, 2)};
-export const ${prefix}_RULE_SET = Object.freeze({
-  reference: Object.freeze({
-    fieldSet: {
-      name: ${prefix}_FIELD_SET_NAME,
-      version: ${prefix}_FIELD_SET_VERSION,
-    },
-    keySet: { name: ${prefix}_KEY_SET_NAME, version: ${prefix}_KEY_SET_VERSION },
-  }),
-  linkageFields: frozenThroughContents(${prefix}_FIELDS),
-  linkageKeys: frozenThroughContents(${prefix}_KEYS),
+/** The rule set the check reads, as its reader hands it over. */
+const ruleSet = ({ fields = FIELDS, keys = KEYS } = {}) => ({
+  declaration: "DEFAULT_LINKAGE_RULE_SET",
+  fieldSet: { name: "DEFAULT_LINKAGE_FIELDS", content: fields },
+  keySet: { name: "DEFAULT_LINKAGE_KEYS", content: keys },
 });
-`;
 
-/** A tree holding only what the check reads: the registry and its sets. */
-function fixtureTree({ fields = FIELDS, keys = KEYS, second, source } = {}) {
+/** A tree holding only what the check reads: the rule set and the
+ * declarations it composes. */
+function fixtureTree({ fields = FIELDS, keys = KEYS, source } = {}) {
   const root = mkdtempSync(resolve(tmpdir(), "alcove-zero-setup-keys-"));
   temporaryRoots.push(root);
   mkdirSync(resolve(root, dirname(RULE_SET_SOURCE)), { recursive: true });
-  const entries = [
-    {
-      prefix: "DEFAULT_LINKAGE",
-      fieldSetName: "baseline-pii",
-      fields,
-      keySetName: "example-keys",
-      keys,
-    },
-    ...(second === undefined ? [] : [second]),
-  ];
   writeFileSync(
     resolve(root, RULE_SET_SOURCE),
     source ??
-      `${entries.map(ruleSetSource).join("")}
-export const ${REGISTRY_DECLARATION} = Object.freeze([${entries
-        .map((entry) => `${entry.prefix}_RULE_SET`)
-        .join(", ")}]);
+      `const DEFAULT_LINKAGE_FIELDS = ${JSON.stringify(fields, null, 2)};
+const DEFAULT_LINKAGE_KEYS = ${JSON.stringify(keys, null, 2)};
+export const DEFAULT_LINKAGE_RULE_SET = Object.freeze({
+  linkageFields: frozenThroughContents(DEFAULT_LINKAGE_FIELDS),
+  linkageKeys: frozenThroughContents(DEFAULT_LINKAGE_KEYS),
+});
 `,
   );
   return root;
@@ -128,12 +95,12 @@ export const ${REGISTRY_DECLARATION} = Object.freeze([${entries
 
 describe("the property it holds", () => {
   it("passes a key set built entirely from the declared fields", () => {
-    expect(keyFieldViolations(sets())).toEqual([]);
+    expect(keyFieldViolations(ruleSet())).toEqual([]);
   });
 
   it("fails a key over a field the set does not declare, naming both", () => {
     const violations = keyFieldViolations(
-      sets({
+      ruleSet({
         keys: [
           ...KEYS,
           {
@@ -147,13 +114,15 @@ describe("the property it holds", () => {
     expect(violations[0].kind).toBe("outside");
     expect(violations[0].message).toContain('Key "PHONE + DOB"');
     expect(violations[0].message).toContain("`phone_number`");
-    expect(violations[0].message).toContain("baseline-pii does not declare");
+    expect(violations[0].message).toContain(
+      "DEFAULT_LINKAGE_FIELDS does not declare",
+    );
     expect(violations[0].message).toContain(NOTE_SECTION);
   });
 
   it("fails a key over a field no input can supply by type", () => {
     const violations = keyFieldViolations(
-      sets({
+      ruleSet({
         fields: [{ name: "ssn_full", type: "ssn" }, ...FIELDS.slice(1)],
         keys: [
           {
@@ -171,7 +140,7 @@ describe("the property it holds", () => {
 
   it("reports one violation per offending element, not per key", () => {
     const violations = keyFieldViolations(
-      sets({
+      ruleSet({
         keys: [
           {
             name: "PHONE + EMAIL",
@@ -186,44 +155,17 @@ describe("the property it holds", () => {
   it("holds nothing against a declared field no key references", () => {
     expect(
       keyFieldViolations(
-        sets({ fields: [...FIELDS, { name: "zip", type: "zip_code" }] }),
+        ruleSet({ fields: [...FIELDS, { name: "zip", type: "zip_code" }] }),
       ),
     ).toEqual([]);
   });
 
-  it("holds every set the registry declares, each against its own fields", () => {
-    const violations = keyFieldViolations(
-      sets({
-        second: {
-          declaration: "COUNTY_RULE_SET",
-          fieldSet: {
-            name: "county-pii",
-            content: [{ name: "ssn", type: "ssn" }],
-          },
-          keySet: {
-            name: "county-keys",
-            content: [
-              {
-                name: "SSN + DOB",
-                elements: [{ field: "ssn" }, { field: "date_of_birth" }],
-              },
-            ],
-          },
-        },
-      }),
-    );
-    expect(violations).toHaveLength(1);
-    expect(violations[0].kind).toBe("outside");
-    expect(violations[0].message).toContain("county-keys");
-    expect(violations[0].message).toContain("county-pii does not declare");
-  });
-
   it("states the substrate the property rests on", () => {
-    expect(substrateReport({ ruleSets: sets() })).toEqual([
-      "  baseline-pii  ssn -- type ssn",
-      "  baseline-pii  last_name -- type last_name",
-      "  baseline-pii  date_of_birth -- type date_of_birth",
-      "  example-keys  1 key, every element inside baseline-pii",
+    expect(substrateReport({ ruleSet: ruleSet() })).toEqual([
+      "  DEFAULT_LINKAGE_FIELDS  ssn -- type ssn",
+      "  DEFAULT_LINKAGE_FIELDS  last_name -- type last_name",
+      "  DEFAULT_LINKAGE_FIELDS  date_of_birth -- type date_of_birth",
+      "  DEFAULT_LINKAGE_KEYS  1 key, every element inside DEFAULT_LINKAGE_FIELDS",
     ]);
   });
 });
@@ -251,34 +193,13 @@ describe("the check driven end to end", () => {
     expect(stderr).toContain("`phone_number`");
   });
 
-  it("fails a second registry set whose key leaves its own field set", () => {
-    const root = fixtureTree({
-      second: {
-        prefix: "COUNTY",
-        fieldSetName: "county-pii",
-        fields: [{ name: "ssn", type: "ssn" }],
-        keySetName: "county-keys",
-        keys: [{ name: "EMAIL", elements: [{ field: "email_address" }] }],
-      },
-    });
-    const { status, stderr } = runCheck(root);
-    expect(status).toBe(1);
-    expect(stderr).toContain("`email_address`");
-    expect(stderr).toContain("county-pii does not declare");
-  });
-
   it("fails a set it cannot read rather than reading it as empty", () => {
     const root = fixtureTree({
       source: `const DEFAULT_LINKAGE_KEYS = buildDefaultKeys();
 export const DEFAULT_LINKAGE_RULE_SET = Object.freeze({
-  reference: Object.freeze({
-    fieldSet: { name: "baseline-pii", version: "1.0.0" },
-    keySet: { name: "example-keys", version: "1.0.0" },
-  }),
   linkageFields: [{ name: "ssn", type: "ssn" }],
   linkageKeys: frozenThroughContents(DEFAULT_LINKAGE_KEYS),
 });
-export const ${REGISTRY_DECLARATION} = Object.freeze([DEFAULT_LINKAGE_RULE_SET]);
 `,
     });
     const { status, stderr } = runCheck(root);

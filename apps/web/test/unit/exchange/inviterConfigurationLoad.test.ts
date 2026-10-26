@@ -39,7 +39,6 @@ import {
   termsSettingsWithNoControl,
 } from "@console/loadedConfig";
 import {
-  editorCitationDrop,
   editorFromCsv,
   editorOffersUseBuiltInRules,
   editorWithAuthoredDraft,
@@ -65,8 +64,6 @@ import { EMPTY_SFTP_FORM } from "@console/sftpConnectionForm";
 import { configurationHandBack } from "@console/configurationHandBack";
 
 import {
-  SEEDED_CITATION_DROP_TITLE,
-  USE_BUILT_IN_RULES_LABEL,
   addKey,
   buildAdvancedTerms,
   draftOffersBuiltInKeys,
@@ -2204,17 +2201,14 @@ describe("the reference's fan-out configuration", () => {
 
 // Matching keys states that the keys are the opened configuration's, and
 // withholds Use the built-in rules, exactly while the session's keys and fields
-// equal the ones the configuration loaded, whatever edits led there; the
-// dropped-citation notice names that action only where Matching keys shows it.
+// equal the ones the configuration loaded, whatever edits led there.
 describe("keys from an opened configuration", () => {
-  /** What Matching keys and the dropped-citation notices show for the screen's
-   * session, read through the functions InviterScreen, KeysTab and Review &
-   * create read. */
+  /** What Matching keys shows for the screen's session, read through the
+   * functions InviterScreen and KeysTab read. */
   function keysView(state: InviterScreenState) {
     const editor = state.editor;
     if (editor === undefined) throw new Error("expected a seated editor");
     const fromConfiguration = keysFromOpenedConfiguration(state);
-    const drop = editorCitationDrop(editor, fromConfiguration);
     return {
       openedConfigurationNote: fromConfiguration,
       guidedControls: editor.keysAuthored !== true && !fromConfiguration,
@@ -2222,8 +2216,6 @@ describe("keys from an opened configuration", () => {
         editor,
         fromConfiguration,
       ),
-      noticeNamesAction:
-        drop?.notice.includes(USE_BUILT_IN_RULES_LABEL) === true,
     };
   }
 
@@ -2355,8 +2347,7 @@ describe("keys from an opened configuration", () => {
     );
   };
 
-  /** A pasted terms document whose keys are reordered under the citation it
-   * states, so the imported notice speaks for it. */
+  /** A pasted terms document whose keys are reordered. */
   function loadedDocument(): InviterScreenState {
     const state = seeded();
     return replaced(state, ({ editor, csv }) => {
@@ -2376,7 +2367,6 @@ describe("keys from an opened configuration", () => {
     openedConfigurationNote: true,
     guidedControls: false,
     useBuiltInRulesOffered: false,
-    noticeNamesAction: false,
   };
 
   const rows: Array<{
@@ -2391,7 +2381,6 @@ describe("keys from an opened configuration", () => {
         openedConfigurationNote: false,
         guidedControls: true,
         useBuiltInRulesOffered: false,
-        noticeNamesAction: false,
       },
     },
     {
@@ -2401,7 +2390,6 @@ describe("keys from an opened configuration", () => {
         openedConfigurationNote: false,
         guidedControls: false,
         useBuiltInRulesOffered: true,
-        noticeNamesAction: true,
       },
     },
     {
@@ -2411,7 +2399,6 @@ describe("keys from an opened configuration", () => {
         openedConfigurationNote: false,
         guidedControls: false,
         useBuiltInRulesOffered: true,
-        noticeNamesAction: false,
       },
     },
     {
@@ -2431,7 +2418,6 @@ describe("keys from an opened configuration", () => {
         openedConfigurationNote: false,
         guidedControls: true,
         useBuiltInRulesOffered: false,
-        noticeNamesAction: false,
       },
     },
     {
@@ -2441,7 +2427,6 @@ describe("keys from an opened configuration", () => {
         openedConfigurationNote: false,
         guidedControls: false,
         useBuiltInRulesOffered: true,
-        noticeNamesAction: true,
       },
     },
     {
@@ -2451,7 +2436,6 @@ describe("keys from an opened configuration", () => {
         openedConfigurationNote: false,
         guidedControls: false,
         useBuiltInRulesOffered: true,
-        noticeNamesAction: false,
       },
     },
     {
@@ -2464,7 +2448,6 @@ describe("keys from an opened configuration", () => {
         openedConfigurationNote: false,
         guidedControls: false,
         useBuiltInRulesOffered: true,
-        noticeNamesAction: false,
       },
     },
     {
@@ -2474,7 +2457,6 @@ describe("keys from an opened configuration", () => {
         openedConfigurationNote: false,
         guidedControls: false,
         useBuiltInRulesOffered: true,
-        noticeNamesAction: false,
       },
     },
     {
@@ -2498,7 +2480,6 @@ describe("keys from an opened configuration", () => {
         openedConfigurationNote: false,
         guidedControls: false,
         useBuiltInRulesOffered: true,
-        noticeNamesAction: false,
       },
     },
     {
@@ -2517,7 +2498,6 @@ describe("keys from an opened configuration", () => {
         openedConfigurationNote: false,
         guidedControls: false,
         useBuiltInRulesOffered: true,
-        noticeNamesAction: false,
       },
     },
     {
@@ -2551,7 +2531,6 @@ describe("keys from an opened configuration", () => {
         openedConfigurationNote: false,
         guidedControls: false,
         useBuiltInRulesOffered: true,
-        noticeNamesAction: false,
       },
     },
     {
@@ -2603,18 +2582,15 @@ describe("keys from an opened configuration", () => {
         openedConfigurationNote: false,
         guidedControls: false,
         useBuiltInRulesOffered: true,
-        noticeNamesAction: false,
       },
     },
   ];
 
   test.each(rows)(
-    "$state: the note, the offer and the notice agree",
+    "$state: the note and the offer agree",
     ({ build, expected }) => {
       const view = keysView(build());
       expect(view).toEqual(expected);
-      if (view.noticeNamesAction)
-        expect(view.useBuiltInRulesOffered).toBe(true);
       if (view.openedConfigurationNote) {
         expect(view.useBuiltInRulesOffered).toBe(false);
         expect(view.guidedControls).toBe(false);
@@ -2622,7 +2598,7 @@ describe("keys from an opened configuration", () => {
     },
   );
 
-  test("open, reset and an Expert edit: the action is offered where the notice names it", () => {
+  test("open, reset and an Expert edit: the edit is offered the action", () => {
     const afterReset = reset(opened());
     expect(afterReset.loadedTermsFile).toBe(afterReset.acquired);
     expect(afterReset.editor?.keysAuthored).toBeUndefined();
@@ -2631,14 +2607,10 @@ describe("keys from an opened configuration", () => {
     const edited = authored(afterReset);
     const { editor } = seatedEditor(edited);
     expect(draftOffersBuiltInKeys(editor.draft)).toBe(true);
-    expect(
-      editorCitationDrop(editor, keysFromOpenedConfiguration(edited))?.title,
-    ).toBe(SEEDED_CITATION_DROP_TITLE);
     expect(keysView(edited)).toEqual({
       openedConfigurationNote: false,
       guidedControls: false,
       useBuiltInRulesOffered: true,
-      noticeNamesAction: true,
     });
   });
 
@@ -2651,13 +2623,11 @@ describe("keys from an opened configuration", () => {
     );
     const { editor } = seatedEditor(guided);
     expect(editor.keysAuthored).toBeUndefined();
-    expect(editor.draft.importedRuleSetCitation).toBeUndefined();
     expect(editor.draft.importedLinkageFields).toBeUndefined();
     expect(keysView(guided)).toEqual({
       openedConfigurationNote: false,
       guidedControls: true,
       useBuiltInRulesOffered: false,
-      noticeNamesAction: false,
     });
   });
 

@@ -16,7 +16,6 @@ import {
   buildAdvancedTerms,
   inertCoalesceNotice,
 } from "@psi/authoring/advancedInvite";
-import { editorCitationDrop } from "@psi/inviterEditor";
 
 import { isConsoleBuild } from "@utils/clientConfig";
 import { useDeferredAnnouncement } from "@components/useDeferredAnnouncement";
@@ -81,7 +80,6 @@ import { splitRendezvousRetainProblem } from "@console/filedropRendezvousChoice"
 import styles from "@styles/app.module.css";
 
 import { ALLOWED_RELAYS_GUIDE_URL } from "./userGuide";
-import { CitationDropNotice } from "./CitationDropNotice";
 import { DefaultRelayNotice } from "./DefaultRelayNotice";
 import { UnreadableCoordinationServerNotice } from "./CoordinationServerSection";
 
@@ -120,8 +118,7 @@ const DIRECTION_CHOICES: ReadonlyArray<{
 /**
  * Step 3 of the inviter spine: the review-time decisions (lifetime, result
  * direction, transport), the check-your-answers restatement of the whole
- * proposal, the dropped-citation notice where a rule-set citation will not be
- * included, and the create action -- the point of no return whose copy
+ * proposal, and the create action -- the point of no return whose copy
  * says so. The transport chooser offers the live-browser exchange and the two
  * command-line transports (SFTP and a shared directory); its copy comes from
  * {@link transportChooserCopy}, which reflects whether the deployment runs a
@@ -134,7 +131,6 @@ const DIRECTION_CHOICES: ReadonlyArray<{
  */
 export function ReviewCreateSection({
   editor,
-  keysFromOpenedConfiguration = false,
   csv,
   problems,
   minting,
@@ -179,10 +175,6 @@ export function ReviewCreateSection({
   allowedRelays,
 }: {
   editor: InviterEditor;
-  /** Whether the keys are an opened configuration's, as Matching keys is told
-   * (`keysFromOpenedConfiguration`, `@exchange/inviterScreenModel`), so the
-   * dropped-citation notice here names only an action that tab shows. */
-  keysFromOpenedConfiguration?: boolean;
   csv: AcquiredCsv;
   problems: ReadonlyArray<SpineProblem>;
   minting: boolean;
@@ -298,17 +290,11 @@ export function ReviewCreateSection({
 }) {
   const consoleBuild = isConsoleBuild();
   const online = useOnlineStatus();
-  // Derived from the draft here rather than passed in, the same read the Matching
-  // keys tab makes for the notice the two steps share: a notice is a function of
-  // the terms this step is restating, and two surfaces showing one must not
-  // answer it differently.
+  // Derived from the draft here rather than passed in: a notice is a function
+  // of the terms this step is restating.
   const currentTerms = useMemo(
     () => buildAdvancedTerms(editor.draft),
     [editor.draft],
-  );
-  const citationDrop = useMemo(
-    () => editorCitationDrop(editor, keysFromOpenedConfiguration, currentTerms),
-    [editor, keysFromOpenedConfiguration, currentTerms],
   );
   const inertCoalesce = useMemo(
     () => inertCoalesceNotice(editor.draft, currentTerms),
@@ -708,13 +694,7 @@ export function ReviewCreateSection({
         Check every term before you create the invitation. Creating it seals the
         terms.
       </p>
-      {/* The one fact about the outgoing terms that the restatement below cannot
-        show: a citation the rebuilt document drops is absent from it, so a table
-        of what the terms say has nothing to put in the row. It is stated where
-        the terms are confirmed as well as in the tab that costs it, since an
-        operator can import there and come straight here. */}
-      {citationDrop !== undefined && <CitationDropNotice drop={citationDrop} />}
-      {/* The other fact the restatement below cannot show: a declared default the
+      {/* The one fact the restatement below cannot show: a declared default the
         run will not substitute is a term that is treated as widening the match and
         does nothing. Stated where the terms are sealed, since the step editor's
         own advisory sits inside a card an operator need never reopen. It holds

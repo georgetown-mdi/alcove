@@ -37,11 +37,9 @@ import {
 } from "@alcove/core";
 
 import {
-  SEEDED_CITATION_DROP_TITLE,
   USE_BUILT_IN_RULES_LABEL,
   addKey,
   buildAdvancedTerms,
-  draftFromTerms,
 } from "@psi/authoring/advancedInvite";
 
 import { KeysTab } from "@exchange/KeysTab";
@@ -152,81 +150,6 @@ describe("KeysTab: the dead-key badge", () => {
     await expect
       .element(badge)
       .toMatchTextContent("cleaning drops every value");
-  });
-});
-
-describe("KeysTab: the dropped-citation notice", () => {
-  test("names the cause on the guided tab, with expert authoring off", async () => {
-    // An imported document citing the set this build ships over rules that are not
-    // it: the citation is not re-emitted, so the operator is told here -- in the
-    // guided tab, since the import that included the citation is not the only way
-    // to reach the drop and the key list is what costs and restores it.
-    const editor = editorFromCsv("Dana Okafor", csv);
-    const misdescribed = buildAdvancedTerms(editor.draft);
-    expect(misdescribed.linkageRuleSet).toBeDefined();
-    misdescribed.linkageKeys[0] = {
-      ...misdescribed.linkageKeys[0],
-      name: `${misdescribed.linkageKeys[0].name} (house rules)`,
-    };
-    const imported = editorWithAuthoredDraft(
-      editor,
-      draftFromTerms(misdescribed, editor.seed, 3600, csv.rawRows),
-    );
-    expect(buildAdvancedTerms(imported.draft).linkageRuleSet).toBeUndefined();
-
-    app.render(
-      createElement(KeysTab, {
-        editor: imported,
-        csv,
-        expertMode: false,
-        onExpertMode: () => undefined,
-        onPrecisionFloorSelection: () => undefined,
-        onUseBuiltInRules: () => undefined,
-        onKeyEnabled: () => undefined,
-        onKeyMoved: () => undefined,
-        onAuthoredDraft: () => undefined,
-        onStrategy: () => undefined,
-        onAlgorithm: () => undefined,
-        onDeduplicate: () => undefined,
-        onImport: () => [],
-        keysError: undefined,
-        announce: () => undefined,
-        onBack: () => undefined,
-      }),
-    );
-
-    // The visible notice contains the title and the full cause; the persistent live
-    // region announces only the short headline (that title), so a screen-reader
-    // user is not read the whole body twice -- once live, once in reading order.
-    const notice = page.getByRole("note").filter({
-      hasText: "The imported rule-set citation will not be included",
-    });
-    await expect.element(notice).toBeInTheDocument();
-    await expect
-      .element(notice)
-      .toMatchTextContent("the citation cannot be verified");
-    await expect
-      .element(page.getByRole("status"))
-      .toMatchTextContent(
-        "The imported rule-set citation will not be included",
-      );
-    await expect
-      .element(page.getByRole("status"))
-      .not.toMatchTextContent("the citation cannot be verified");
-  });
-
-  test("is absent -- and its live region silent, not unmounted -- while the citation stands", async () => {
-    render(false, false);
-
-    await expect
-      .element(page.getByRole("heading", { name: "Matching keys" }))
-      .toBeInTheDocument();
-    expect(document.body.textContent).not.toContain(
-      "The imported rule-set citation will not be included",
-    );
-    // The live region stays mounted and empty: a region added only when the notice
-    // appears is missed by screen readers that watch only what is already there.
-    expect(page.getByRole("status").element().textContent).toBe("");
   });
 });
 
@@ -637,7 +560,7 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
       .element(link)
       .toHaveAttribute(
         "href",
-        "https://github.com/georgetown-mdi/alcove/blob/main/docs/EXCHANGE_REFERENCE.md#choosing-rules-by-precision-floor",
+        "https://github.com/georgetown-mdi/alcove/blob/main/docs/EXCHANGE_REFERENCE.md#choosing-the-built-in-rules",
       );
     await expect.element(link).toHaveAttribute("target", "_blank");
     await expect.element(link).toHaveAttribute("rel", "noreferrer");
@@ -793,27 +716,16 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
     await expect.element(nameAndDate).toBeChecked();
   });
 
-  test("states a citation the moved keys drop, and clears it once moved back", async () => {
+  test("states no rule-set citation when the keys leave the built-in order", async () => {
     const seeded = editorFromCsv("Dana Okafor", csv);
     app.render(createElement(Harness, { initial: seeded }));
 
     const firstName = seeded.draft.keys[0].key.name;
     await page.getByRole("button", { name: `Move ${firstName} later` }).click();
-
-    const notice = page.getByRole("note", { name: SEEDED_CITATION_DROP_TITLE });
     await expect
-      .element(notice)
-      .toMatchTextContent(
-        "Move the keys back into their built-in order to keep the citation",
-      );
-    await expect
-      .element(page.getByRole("status"))
-      .toMatchTextContent(SEEDED_CITATION_DROP_TITLE);
-
-    await page
-      .getByRole("button", { name: `Move ${firstName} earlier` })
-      .click();
-    await expect.element(notice).not.toBeInTheDocument();
+      .element(page.getByRole("button", { name: `Move ${firstName} earlier` }))
+      .toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/citation/i);
   });
 
   test("is withheld on keys written in Expert authoring, with a note saying so", async () => {
@@ -1107,9 +1019,6 @@ describe("KeysTab: the precision floor and the less certain mark", () => {
         .getByRole("note")
         .filter({ hasText: AUTHORED_KEYS_FLOOR_NOTE })
         .query(),
-    ).toBeNull();
-    expect(
-      page.getByRole("note", { name: SEEDED_CITATION_DROP_TITLE }).query(),
     ).toBeNull();
   });
 

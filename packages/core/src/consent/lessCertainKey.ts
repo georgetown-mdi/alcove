@@ -12,10 +12,9 @@ const NAME_AND_DATE_OF_BIRTH_FIELD_TYPES: ReadonlySet<LinkageField["type"]> =
 /**
  * Whether `key` is marked less certain: it has at least one element, and every
  * element reads a field `fields` types as a first name, last name or date of
- * birth. Read from the field types alone, never the key's name or a rule-set
- * citation, so a key written by hand or loaded from a document is marked as a
- * built-in one is. An element whose field `fields` does not declare leaves the
- * key unmarked.
+ * birth. Read from the field types alone, never the key's name, so a key
+ * written by hand or loaded from a document is marked as a built-in one is.
+ * An element whose field `fields` does not declare leaves the key unmarked.
  */
 export function linkageKeyIsLessCertain(
   key: Pick<LinkageKey, "elements">,

@@ -1,7 +1,5 @@
 import { referencedLinkageFieldNames } from "../config/linkageTermsSchema";
 import type {
-  LinkageRuleSetReference,
-  LinkageSetIdentity,
   LinkageTerms,
   LinkageField,
   LinkageKey,
@@ -22,50 +20,9 @@ import type {
 import type { SemanticType } from "../types";
 
 /**
- * Neutral, stable identifier of the built-in linkage field set: the PII
- * substrate ({@link DEFAULT_LINKAGE_FIELDS}) that
- * {@link getDefaultLinkageTerms} emits when a party does not author its
- * own. It names which PII elements the built-in rules work from and how
- * each is cleaned and bounded -- not which combinations constitute a
- * match, which is what the key set ({@link DEFAULT_LINKAGE_KEY_SET_NAME})
- * names. The two are separate artifacts because the substrate is generic
- * where the keys are specific: every built-in key is built from these
- * fields, but the same fields support key sets settled for other uses.
- *
- * Naming it lets "which rules did this linkage match on" be answered by a
- * name rather than by "the defaults", and lets the set be cited in a
- * data-sharing agreement or a governance review without quoting the field
- * list.
- *
- * By design, it says nothing about who validated anything: these fields
- * hold no validation lineage of their own -- what was validated, against
- * what, and the criticisms on record all attach to the key set, recorded
- * in `docs/notes/default-linkage-rule-set.md` rather than in either
- * identifier.
- */
-export const DEFAULT_LINKAGE_FIELD_SET_NAME = "baseline-pii";
-
-/**
- * Version of the field set named by {@link DEFAULT_LINKAGE_FIELD_SET_NAME}.
- *
- * Distinct from `LinkageTerms.version`, which versions the terms schema and
- * is cross-checked between the parties at exchange time. This one versions
- * the content of the built-in field set -- which fields it declares and
- * which constraints they hold -- and is not on the wire. Neither it nor
- * {@link DEFAULT_LINKAGE_KEY_SET_VERSION} may ever be assigned to a terms
- * document's `version`.
- *
- * Bump it in the same change that edits {@link DEFAULT_LINKAGE_FIELDS}: a
- * field added or dropped, or a constraint loosened or tightened. The two
- * sets version independently, so an edit to the keys bumps
- * {@link DEFAULT_LINKAGE_KEY_SET_VERSION} and leaves this one alone.
- */
-export const DEFAULT_LINKAGE_FIELD_SET_VERSION = "1.3.0";
-
-/**
- * The linkage fields of the {@link DEFAULT_LINKAGE_FIELD_SET_NAME} field set:
- * the standardized form of each PII element the built-in keys are built from,
- * with the constraints each field commits both parties to.
+ * The built-in linkage fields: the standardized form of each PII element the
+ * built-in keys are built from, with the constraints each field commits both
+ * parties to.
  */
 const DEFAULT_LINKAGE_FIELDS: ReadonlyArray<LinkageField> = [
   {
@@ -99,35 +56,6 @@ const DEFAULT_LINKAGE_FIELDS: ReadonlyArray<LinkageField> = [
   { name: "county", type: "county" },
   { name: "street_number", type: "street_number" },
 ];
-
-/**
- * Neutral, stable identifier of the built-in linkage KEY set: the catalog of
- * rules in `docs/notes/linkage-rule-catalog.md`, as the key combinations
- * ({@link DEFAULT_LINKAGE_KEYS}) a precision floor selects from. Every key is
- * built from the fields of {@link DEFAULT_LINKAGE_FIELD_SET_NAME}, so a
- * citation of this set is a citation of that one too; what this name adds is
- * which combinations of that substrate count as a match, and in what cascade
- * order.
- */
-export const DEFAULT_LINKAGE_KEY_SET_NAME = "precision-ranked-rules";
-
-/**
- * Version of the key set named by {@link DEFAULT_LINKAGE_KEY_SET_NAME}.
- *
- * Distinct from `LinkageTerms.version`, which versions the terms schema and
- * is cross-checked between the parties at exchange time. This one versions
- * the content of the built-in key set -- which key combinations it declares,
- * in what order, and each one's precision band -- and is not on the wire.
- * Neither it nor {@link DEFAULT_LINKAGE_FIELD_SET_VERSION} may ever be
- * assigned to a terms document's `version`.
- *
- * Bump it in the same change that edits {@link DEFAULT_LINKAGE_KEYS} or
- * {@link DEFAULT_LINKAGE_RULE_BANDS}: a key added or removed, an element or
- * transform changed, the keys reordered, or a band moved. The recorded
- * evidence attaches to the name and version together, so an edited set
- * holding the old version makes that record describe rules nobody ran.
- */
-export const DEFAULT_LINKAGE_KEY_SET_VERSION = "2.5.0";
 
 /** A precision band of the catalog: the share, in percent, of the pairs a rule
  * accepts at its position in the order that are the same person, at least. */
@@ -233,11 +161,11 @@ const DOB_DAY_MONTH: LinkageKeyElement = {
 const NO_DATE_OF_BIRTH: LinkageKeyCondition = { missingField: "date_of_birth" };
 
 /**
- * The linkage key combinations of the {@link DEFAULT_LINKAGE_KEY_SET_NAME}
- * key set, in the catalog's cascade order: an earlier key claims a record
- * first, and a record it claims is withheld from every later round. The order
- * is the catalog's precision order, the 99% band before the 95% band
- * ({@link DEFAULT_LINKAGE_RULE_BANDS}).
+ * The built-in linkage keys, the catalog of rules in
+ * `docs/notes/linkage-rule-catalog.md`, in the catalog's cascade order: an
+ * earlier key claims a record first, and a record it claims is withheld from
+ * every later round. The order is the catalog's precision order, the 99% band
+ * before the 95% band ({@link DEFAULT_LINKAGE_RULE_BANDS}).
  *
  * {@link linkageTermsFromRuleSet} emits a subset of these: the keys a
  * precision floor selects, less any key whose elements the input's columns
@@ -379,19 +307,10 @@ const DEFAULT_LINKAGE_RULE_BANDS: ReadonlyArray<LinkageRuleBand> = [
 ];
 
 /**
- * A named, versioned collection of linkage fields and keys terms can be drawn
- * from: the field set and the key set that
- * {@link LinkageRuleSetReference} cites, together with the content each names.
- *
- * The reference is what travels -- in a terms document and an invitation --
- * while the content is what a terms document is built from. Keeping both on
- * one object is what makes a set a selectable thing rather than a pair of
- * loose declarations: a caller selects a set and gets rules and citation
- * together, so the two cannot come apart.
+ * A collection of linkage fields and keys terms can be drawn from, with the
+ * precision band of each key a precision floor selects by.
  */
 export interface BuiltInLinkageRuleSet {
-  /** The name and version of each half, as a terms document cites them. */
-  reference: LinkageRuleSetReference;
   /** The set's linkage fields, in declaration order. */
   linkageFields: ReadonlyArray<LinkageField>;
   /** The set's linkage keys, in the cascade order the set declares. */
@@ -413,41 +332,26 @@ function frozenThroughContents<T>(value: T): T {
 }
 
 /**
- * The built-in catalog: the {@link DEFAULT_LINKAGE_KEY_SET_NAME} keys and
- * their bands over the {@link DEFAULT_LINKAGE_FIELD_SET_NAME} fields, at the
- * version each declares. It is the set every path that authors nothing
- * selects from, at {@link DEFAULT_PRECISION_FLOOR_SELECTION}, so a zero-setup
- * exchange, the `alcove init` template, and the web invite editors' starting
- * point all cite the same rules.
+ * The built-in catalog: the built-in keys and their bands over the built-in
+ * fields. It is the set every path that authors nothing selects from, at
+ * {@link DEFAULT_PRECISION_FLOOR_SELECTION}, so a zero-setup exchange, the
+ * `alcove init` template, and the web invite editors' starting point all run
+ * the same rules.
  *
  * Composed from the declarations above rather than replacing them: the
- * built-in sets' zero-setup key check reads those declarations out of this
- * file by name and requires each to be a literal
- * (`scripts/lib/builtInRuleSets.mjs`).
+ * zero-setup key check reads those declarations out of this file by name and
+ * requires each to be a literal (`scripts/lib/builtInRuleSets.mjs`).
  *
- * Frozen through every level, and this object with it. The reference, the
- * fields, and the keys are all aliased into every terms document derived
- * from the set ({@link linkageTermsFromRuleSet}), so a single in-place edit
- * of a name, a version, a constraint, or a key element would rewrite the
- * built-in set in every document the process later derives -- without
- * touching the declarations above. The rules hold the same weight the
- * citation does: they are what {@link checkLinkageRuleSetCitation}
- * compares a cited document against, so an edited set decides later
- * verdicts too. Freezing makes such an
- * edit throw instead, at this composition, because those declarations
- * must stay plain literals for the check named above to read them.
+ * Frozen through every level, and this object with it. The fields and the
+ * keys are aliased into every terms document derived from the set
+ * ({@link linkageTermsFromRuleSet}), so a single in-place edit of a
+ * constraint or a key element would rewrite the built-in rules in every
+ * document the process later derives, and in the choice
+ * {@link builtInRuleChoiceOf} names. Freezing makes such an edit throw
+ * instead, at this composition, because the declarations above must stay
+ * plain literals for the check named above to read them.
  */
 export const DEFAULT_LINKAGE_RULE_SET: BuiltInLinkageRuleSet = Object.freeze({
-  reference: Object.freeze({
-    fieldSet: Object.freeze({
-      name: DEFAULT_LINKAGE_FIELD_SET_NAME,
-      version: DEFAULT_LINKAGE_FIELD_SET_VERSION,
-    }),
-    keySet: Object.freeze({
-      name: DEFAULT_LINKAGE_KEY_SET_NAME,
-      version: DEFAULT_LINKAGE_KEY_SET_VERSION,
-    }),
-  }),
   linkageFields: frozenThroughContents(DEFAULT_LINKAGE_FIELDS),
   linkageKeys: frozenThroughContents(DEFAULT_LINKAGE_KEYS),
   ruleBands: frozenThroughContents(DEFAULT_LINKAGE_RULE_BANDS),
@@ -552,68 +456,12 @@ export function builtInRuleChoiceOf(
 }
 
 /**
- * Every rule set this build ships, in the order a citation is resolved
- * against them: the sets a document may cite and this build can check a
- * citation against, and the sets a derivation may draw its rules from. A
- * set outside this list is one nothing here resolves -- held and
- * caveated rather than guessed at.
- *
- * The order decides which set a document drawn from more than one is
- * cited to ({@link linkageRuleSetReferenceFor}), so it is the list's own
- * declaration order rather than a property of the sets.
- *
- * Frozen, as each set it holds is: the sets are aliased into every terms
- * document derived from one and into every verdict reached against one,
- * so a replaced entry would decide later derivations and verdicts alike.
- */
-export const BUILT_IN_LINKAGE_RULE_SETS: ReadonlyArray<BuiltInLinkageRuleSet> =
-  Object.freeze([DEFAULT_LINKAGE_RULE_SET]);
-
-/**
- * Whether `rules` were drawn from `ruleSet`: every key byte-identical to a
- * key the set declares, in the set's own cascade order, and every field
- * byte-identical to a distinct field it declares. A narrowed emission
- * passes -- what an input file cannot supply is left out -- while an
- * added, edited, or repeated key or field, and a reordered cascade, do
- * not.
- *
- * Order is part of the answer for the keys and not for the fields, for
- * the same reason each set versions its own content: key order is cascade
- * order, so moving one changes which key claims a record more than one
- * would match, whereas the field array's order is not significant.
- *
- * This is what keeps a citation accurate where rules are edited after
- * being seeded from a set -- the web invite editors' path. A received
- * document's citation is judged by {@link checkLinkageRuleSetCitation}
- * instead, which annotates it with a verdict rather than rewriting or
- * dropping it: the reference stays that party's own statement about its
- * own rules.
- *
- * Compared through the canonical encoding, the same equality the two
- * parties' terms are compared under, so property order does not enter
- * it. A value outside the canonical domain (a transform param beyond the
- * safe integer range) cannot be compared and answers `false` rather than
- * throwing: such rules are not the built-in set, which holds no such
- * value.
- */
-export function isDrawnFromLinkageRuleSet(
-  ruleSet: BuiltInLinkageRuleSet,
-  rules: Pick<LinkageTerms, "linkageFields" | "linkageKeys">,
-): boolean {
-  return (
-    fieldsDrawnFromSet(ruleSet.linkageFields, rules.linkageFields) &&
-    keysDrawnFromSet(ruleSet.linkageKeys, rules.linkageKeys)
-  );
-}
-
-/**
  * `value` in the canonical encoding, the equality the two parties' terms
  * are compared under, or `null` when it holds a value outside the
  * canonical domain (a transform param beyond the safe integer range) and
  * so cannot be compared. Every comparison here reads `null` as no match
- * rather than throwing, the answer {@link isDrawnFromLinkageRuleSet} gives
- * such rules: the built-in sets hold no such value, so nothing incomparable
- * is one of them.
+ * rather than throwing: the built-in rules hold no such value, so nothing
+ * incomparable is one of them.
  *
  * @internal exported for the web editor's key reconciliation, which
  * matches a draft key to an offer under this same equality.
@@ -626,279 +474,17 @@ export function encodeForComparison(value: unknown): string | null {
   }
 }
 
-/** The field half of {@link isDrawnFromLinkageRuleSet}: every candidate field
- * byte-identical to a distinct declared field, order not significant. */
-function fieldsDrawnFromSet(
-  declaredFieldList: ReadonlyArray<LinkageField>,
-  fields: ReadonlyArray<LinkageField>,
-): boolean {
-  // Each declaration is consumed on match, so a field the candidate repeats meets
-  // no declaration the second time -- the same answer the key cursor gives a
-  // repeated key, rather than a lookup that would accept the repeat.
-  const declaredFields = new Map(
-    declaredFieldList.map(
-      (field) => [field.name, encodeForComparison(field)] as const,
-    ),
-  );
-  for (const field of fields) {
-    const declared = declaredFields.get(field.name);
-    if (declared === undefined || declared === null) return false;
-    if (encodeForComparison(field) !== declared) return false;
-    declaredFields.delete(field.name);
-  }
-  return true;
-}
-
-/** The key half of {@link isDrawnFromLinkageRuleSet}: every candidate key
- * byte-identical to a declared key, in the set's own cascade order. */
-function keysDrawnFromSet(
-  declaredKeyList: ReadonlyArray<LinkageKey>,
-  keys: ReadonlyArray<LinkageKey>,
-): boolean {
-  // Walk the set's keys and the candidate's together: each candidate key must
-  // meet the next set key that matches it, so a key the set does not declare, a
-  // repeated key, and a pair in the wrong cascade order all run the cursor off
-  // the end.
-  const declaredKeys = declaredKeyList.map(encodeForComparison);
-  let cursor = 0;
-  for (const key of keys) {
-    const encoded = encodeForComparison(key);
-    if (encoded === null) return false;
-    let matched = false;
-    while (cursor < declaredKeys.length && !matched) {
-      matched = declaredKeys[cursor] === encoded;
-      cursor += 1;
-    }
-    if (!matched) return false;
-  }
-  return true;
-}
-
 /**
- * One party's verdict on one half of a rule-set citation, reached by this build
- * against the sets it ships.
- *
- * - `consistent` -- the cited half names a set this build ships, and the rules
- *   the same document declares for that half are drawn from it.
- * - `contradicted` -- the cited half names a set this build ships, and the
- *   declared rules are not drawn from it: the citation states a provenance the
- *   rules beside it do not have.
- * - `unchecked` -- the cited half names a set this build does not ship, so
- *   nothing here resolves the name and no comparison was made.
- *
- * Three states rather than two because the absence of `contradicted` must
- * never be treated as verification: a build that cannot resolve a name has
- * checked nothing, which is a different statement from having checked and
- * found the rules to match.
- */
-export type LinkageRuleSetCitationVerdict =
-  "consistent" | "contradicted" | "unchecked";
-
-/**
- * A verdict per citation half. The two halves are decided independently, for the
- * reason they are named and versioned independently: a document can truthfully
- * cite the built-in field set while its keys are not the built-in key set.
- */
-interface LinkageRuleSetCitationVerdicts {
-  /** The verdict on the set the declared linkage fields are cited to. */
-  fieldSet: LinkageRuleSetCitationVerdict;
-  /** The verdict on the set the declared linkage keys are cited to. */
-  keySet: LinkageRuleSetCitationVerdict;
-}
-
-/** Whether two set identities name the same set: both the name and the content
- * version, since a name without its version identifies no fixed content. */
-function namesSameSet(
-  cited: LinkageSetIdentity,
-  shipped: LinkageSetIdentity,
-): boolean {
-  return cited.name === shipped.name && cited.version === shipped.version;
-}
-
-/**
- * The built-in rules a citation's two halves name, each half either
- * resolved to the rules a shipped set declares for it or left
- * unresolved.
- */
-export interface ResolvedLinkageRuleSetCitation {
-  /** The linkage fields of the set the cited field set names, or
-   * `undefined` where no shipped set declares that field set. */
-  linkageFields: ReadonlyArray<LinkageField> | undefined;
-  /** The linkage keys of the set the cited key set names, or `undefined`
-   * where no shipped set declares that key set. */
-  linkageKeys: ReadonlyArray<LinkageKey> | undefined;
-}
-
-/**
- * What `citation` names among `ruleSets`, one half at a time: the linkage
- * fields of the set declaring the cited field set, and the linkage keys of
- * the set declaring the cited key set. The single place a cited name is
- * turned into rules, so every reader of a citation resolves it alike.
- *
- * Each half is matched on its name AND version, since a name without its
- * content version identifies no fixed content, and each half is resolved
- * on its own: a document can cite a shipped field set while its key set is
- * one this build does not ship, and the halves may resolve to different
- * sets. An unresolved half is `undefined` rather than a fallback set --
- * nothing here guesses at a name it does not ship, and a caller decides
- * what an unresolvable half means for it.
- *
- * Returns rules rather than the sets holding them, so a caller cannot read
- * one half's rules off the set the other half resolved to.
- *
- * @param ruleSets the sets to resolve against, this build's own
- * ({@link BUILT_IN_LINKAGE_RULE_SETS}) by default.
- */
-export function resolveLinkageRuleSetCitation(
-  citation: LinkageRuleSetReference,
-  ruleSets: ReadonlyArray<BuiltInLinkageRuleSet> = BUILT_IN_LINKAGE_RULE_SETS,
-): ResolvedLinkageRuleSetCitation {
-  return {
-    linkageFields: ruleSets.find((ruleSet) =>
-      namesSameSet(citation.fieldSet, ruleSet.reference.fieldSet),
-    )?.linkageFields,
-    linkageKeys: ruleSets.find((ruleSet) =>
-      namesSameSet(citation.keySet, ruleSet.reference.keySet),
-    )?.linkageKeys,
-  };
-}
-
-/**
- * The set among `ruleSets` that `reference` names whole: the one whose field
- * set and key set identities are both the named ones, and `undefined` where no
- * single set declares both. This is how an authoring path chooses which
- * built-in rules it derives terms from, where
- * {@link linkageTermsFromRuleSet} then builds the document.
- *
- * Both halves against one set, where {@link resolveLinkageRuleSetCitation}
- * resolves each half on its own: a citation records where a document's rules
- * came from and may name two sets, while a choice selects rules to derive and
- * takes one set's fields, keys, and reference together.
- *
- * Matched on name AND version per half, since a name without its content
- * version identifies no fixed content. A reference naming no shipped set
- * answers `undefined` rather than the default set: nothing here guesses at a
- * name it does not ship, and what an unknown name means is the caller's
- * decision.
- *
- * @param ruleSets the sets the reference is looked up in, this build's own
- * ({@link BUILT_IN_LINKAGE_RULE_SETS}) by default.
- */
-export function findBuiltInLinkageRuleSet(
-  reference: LinkageRuleSetReference,
-  ruleSets: ReadonlyArray<BuiltInLinkageRuleSet> = BUILT_IN_LINKAGE_RULE_SETS,
-): BuiltInLinkageRuleSet | undefined {
-  return ruleSets.find(
-    (ruleSet) =>
-      namesSameSet(reference.fieldSet, ruleSet.reference.fieldSet) &&
-      namesSameSet(reference.keySet, ruleSet.reference.keySet),
-  );
-}
-
-/**
- * This build's verdict on `citation`, the rule set `rules` are cited to,
- * one half at a time.
- *
- * Total over a citation that exists: a caller asks for a verdict
- * exactly where it has a citation to be about, so the absence of one is
- * the caller's own branch rather than a fourth state here.
- *
- * The verdict is the checking build's own check, made at the moment it is
- * asked for and against the sets that build ships. It is not a property
- * of the terms and not a cross-party agreement: two parties on different
- * builds may reach different verdicts on one document, since a set one of
- * them ships is a set the other may not.
- *
- * Resolution is {@link resolveLinkageRuleSetCitation}'s, per half and
- * against every set in `ruleSets`: a half naming one of them is compared
- * against that set's own rules, and a half naming none is `unchecked`.
- * Nothing here resolves a partner's set name to content -- an
- * unresolvable name stays unresolvable, held and caveated rather than
- * guessed at.
- *
- * What "drawn from" means is exactly {@link isDrawnFromLinkageRuleSet}'s
- * answer for that half, so this widens and narrows nothing: a narrowed
- * emission is `consistent`, while an added, edited, or repeated rule, or
- * a reordered cascade, is `contradicted`.
- *
- * @param ruleSets the sets the citation is resolved and compared against,
- * this build's own ({@link BUILT_IN_LINKAGE_RULE_SETS}) by default.
- */
-export function checkLinkageRuleSetCitation(
-  citation: LinkageRuleSetReference,
-  rules: Pick<LinkageTerms, "linkageFields" | "linkageKeys">,
-  ruleSets: ReadonlyArray<BuiltInLinkageRuleSet> = BUILT_IN_LINKAGE_RULE_SETS,
-): LinkageRuleSetCitationVerdicts {
-  const shipped = resolveLinkageRuleSetCitation(citation, ruleSets);
-  return {
-    fieldSet:
-      shipped.linkageFields === undefined
-        ? "unchecked"
-        : fieldsDrawnFromSet(shipped.linkageFields, rules.linkageFields)
-          ? "consistent"
-          : "contradicted",
-    keySet:
-      shipped.linkageKeys === undefined
-        ? "unchecked"
-        : keysDrawnFromSet(shipped.linkageKeys, rules.linkageKeys)
-          ? "consistent"
-          : "contradicted",
-  };
-}
-
-/**
- * The citation `rules` are entitled to: the reference of the first set in
- * `ruleSets` the rules were drawn from, and `undefined` where they were
- * drawn from none of them -- edited, reordered, authored from scratch, or
- * declaring no key. The single place a builder that lets an operator edit
- * seeded rules decides whether the result may still cite the set it
- * started from.
- *
- * One set's whole reference, never a pair of halves from two sets: a
- * citation names where the rules came from, and rules drawn from no one
- * set came from no set the list holds. Where several sets would each
- * answer -- a narrowed emission both declare -- the list's order decides,
- * so the citation is stable across runs rather than a property of the
- * rules alone.
- *
- * A citation asserts that the keys came from the named set, so rules
- * declaring none hold no provenance to claim: they are drawn from every
- * set vacuously, and the predicate alone would hand them the first set's
- * citation over whatever field declarations outlived their keys. A
- * builder reaches that state as an intermediate (disabling every key in
- * the web editor), so the keyless case is excluded here rather than left
- * to the downstream rejection.
- *
- * @param ruleSets the sets the rules may be cited to, this build's own
- * ({@link BUILT_IN_LINKAGE_RULE_SETS}) by default.
- */
-export function linkageRuleSetReferenceFor(
-  rules: Pick<LinkageTerms, "linkageFields" | "linkageKeys">,
-  ruleSets: ReadonlyArray<BuiltInLinkageRuleSet> = BUILT_IN_LINKAGE_RULE_SETS,
-): LinkageRuleSetReference | undefined {
-  if (rules.linkageKeys.length === 0) return undefined;
-  return ruleSets.find((ruleSet) => isDrawnFromLinkageRuleSet(ruleSet, rules))
-    ?.reference;
-}
-
-/**
- * Returns a {@link LinkageTerms} drawn from `ruleSet`, citing it: the terms
- * a party runs when it authors none of its own.
+ * Returns a {@link LinkageTerms} drawn from `ruleSet`: the terms a party
+ * runs when it authors none of its own.
  *
  * The keys are those `selection` selects ({@link linkageKeysAtPrecisionFloor}).
  * When metadata are provided, only those whose element fields can be satisfied
  * by the present columns are included; metadata declaring no column satisfies
  * none. A key condition's field needs no column: an input without one runs the
- * key with every record lacking the field. Either way the
- * emitted keys are a subset of the set, never an addition to it: what the
- * input supports narrows the set, and nothing widens it -- which is what
- * makes the emitted citation accurate, an upper bound on what was tried
- * rather than a claim that every key ran.
- *
- * Narrowed all the way to no key, the citation goes with the keys: it
- * asserts where the keys came from, so a derivation emitting none has no
- * provenance to claim -- the same exclusion
- * {@link linkageRuleSetReferenceFor} makes.
+ * key with every record lacking the field. Either way the emitted keys are a
+ * subset of the set, never an addition to it: what the input supports narrows
+ * the set, and nothing widens it.
  */
 export function linkageTermsFromRuleSet(
   ruleSet: BuiltInLinkageRuleSet,
@@ -939,7 +525,6 @@ export function linkageTermsFromRuleSet(
     deduplicate: false,
     linkageFields,
     linkageKeys,
-    ...(linkageKeys.length > 0 && { linkageRuleSet: ruleSet.reference }),
   };
 }
 
