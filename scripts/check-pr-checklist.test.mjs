@@ -593,4 +593,13 @@ describe("the check against the pull request as it stands now", () => {
       expect(workflow).not.toContain(payloadField);
     }
   });
+
+  it("skips a draft and runs when the pull request is marked ready", () => {
+    const workflow = readFileSync(
+      new URL("../.github/workflows/pr_checklist.yaml", import.meta.url),
+      "utf8",
+    );
+    expect(workflow).toMatch(/types: \[[^\]]*\bready_for_review\b[^\]]*\]/);
+    expect(workflow).toMatch(/^\s+if: .*!github\.event\.pull_request\.draft/m);
+  });
 });

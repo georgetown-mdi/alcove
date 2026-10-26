@@ -80,8 +80,9 @@ its local `staging` falls behind `origin/staging`. Sync it before branching:
 Pull requests land as squash merges, so `git branch --merged`, `git cherry`, and
 subject greps cannot tell whether a prior branch already landed -- decide from
 tree content or `git range-diff staging...<branch>`. A stacked branch rebases
-onto `origin/staging` as soon as its base PR merges; a byte-identical tree
-afterwards means the prior gate runs still stand.
+onto `origin/staging` as soon as its base PR merges and is force-pushed, so CI
+runs again on the rebased head; no earlier run counts for it, even when the
+tree is byte-identical.
 
 ## Step 4 -- Plan, implement, verify
 
@@ -115,12 +116,14 @@ Know when to decide and when to ask:
 Implement on the branch, following CONTRIBUTING.md. Verify before you commit:
 rebuild core (`npm run build -w packages/core`) if you touched it -- it was built
 at issue start, so this only picks up changes you made. Then run the tests
-covering what you changed, and once they pass, the repo-wide gates
-`CLAUDE.md`, Writing, tooling and commits, names, once. Then sweep your own
+covering what you changed, and once they pass, the pre-push checks
+`CLAUDE.md`, Writing, tooling and commits, names, once. The integration,
+browser, interop and webrtc tiers are CI's, on the draft PR. Then sweep your own
 diff (`git diff`): delete every comment that restates the code, narrates the
 change, or cites a board id, and move any "this cannot happen" claim into a
-check. Report what you ran and the result; do not commit on red without saying
-so. When the issue has an Open Questions section, the report also names
+check. Report what you ran and the result, and that CI has not run the
+integration, browser, interop and webrtc tiers; do not commit on red without
+saying so. When the issue has an Open Questions section, the report also names
 each question and the route it took -- settled as obvious, paneled, or asked.
 
 Commit to the new branch following `CONTRIBUTING.md`, Commit Messages (no
@@ -190,14 +193,19 @@ steps above. When the instruction is to orchestrate:
   the owner, or a session the owner has delegated budgets to, raises it. Keep a running sum of the subagent spend each task
   notification reports; crossing the bucket's expected band is a step-back --
   stop, report the sum and what consumed it, and ask.
-- **Proceed to an open PR, and stop there.** The terminal state is a pushed
-  branch, an open PR against staging with its checklist resolved, and a final
-  report -- or a stated blocker. Raise concerns in prose as you go and keep
-  moving; stop early only for Step 4's STOP-and-ask cases or a fired step-back
-  trigger (assess-review, Step 2), batched into one message. The open PR ends
-  the session: post-CI fixes, the merge, and board work belong to a fresh
-  session started from the final report, which doubles as the continuation
-  note. Beyond the PR body it includes the rounds-ledger path and row count,
-  assess-review's left-unaddressed table, and the Security review line's basis
+- **Open a draft at the implementation commit.** Once the implementer's
+  commit lands, push the branch and open a draft PR against staging, so CI
+  runs the full set while the review rounds run; watch CI and send a real
+  failure to a fix pass. The draft, a stack's drafts, and marking ready follow
+  `.claude/orchestration/ruleset.md`, Review flow.
+- **Proceed to a ready PR, and stop there.** The terminal state is a pushed
+  branch and a PR against staging marked ready -- review rounds done, CI green
+  on its head, its checklist resolved -- and a final report, or a stated
+  blocker. Raise concerns in prose as you go and keep moving; stop early only
+  for Step 4's STOP-and-ask cases or a fired step-back trigger (assess-review,
+  Step 2), batched into one message. The ready PR ends the session: the merge
+  and board work belong to a fresh session started from the final report,
+  which doubles as the continuation note. Beyond the PR body it includes the
+  rounds-ledger path and row count, assess-review's left-unaddressed table, and the Security review line's basis
   -- the sha, the review kind, and for an n/a the enumeration that produced it
   -- so the next session can tell a re-scan from a re-review.

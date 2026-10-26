@@ -53,15 +53,27 @@ produce is your final message to the caller. Never end expecting a reply.
   600000 ms), per the one-shot wait rule in `CLAUDE.md`, Spawns and reports.
   Background only a chain that cannot fit that ceiling, as one call wrapped
   in `timeout <N>`, N over 600 s.
-- Before you report, run each command line `node scripts/required-suites.mjs`
-  prints for your diff: the builds, then the suites CI runs on the paths you
-  touched, then the repo-wide gates once at the end. Its comment lines and the
-  CI-only note are not commands. The gates are the ones CI runs, as the script
-  prints them, so `formatcheck` is the check where `CLAUDE.md` names `format`,
-  the fixer. The list is read from the workflows, so it holds whether or not
-  your prompt names a suite; report any suite you could not run, and why. While
-  working, check only what you changed (`CONTRIBUTING.md`, Code Conventions).
-  State in your report whether the work is committed.
+- CI is the gate: the caller pushes your commit as a draft pull request into
+  staging, and CI runs every suite and check there. Locally you run two
+  things, and a fix pass runs the same two for what the fix changed:
+  - While working, only the tests covering the code you changed: single test
+    files (`npx vitest run <file>` from the repository root, which also reaches
+    `scripts/`, `.claude/` and the hooks), or the touched workspace's unit
+    suite (`CONTRIBUTING.md`, Testing). One integration file covering your
+    change, such as the one a CI failure names, counts.
+  - Once, before you report a commit: `npm run typecheck`, `npm run lint`,
+    `npm run format`, and the unit suites of the workspaces you touched, plus
+    `npm run test` when you touched a package under `packages/`, so the apps
+    that consume it run too (rebuild core first when it changed: `CLAUDE.md`,
+    Commands). Add `npm run check:all` when the diff touches an instruction
+    file (`CLAUDE.md`, `CONTRIBUTING.md`, anything under `.claude/`) or a
+    Markdown doc: those checks are cheap and their failures are the common
+    ones.
+  Do not run a whole integration, browser, interop or webrtc suite, or the
+  builds only they need, unless your prompt names it: CI runs them on the
+  draft. `node scripts/required-suites.mjs` names what CI will run for your
+  diff. Your report states which local checks ran and their results, that CI
+  has not yet run, and whether the work is committed.
 - Any Agent spawn you make passes an explicit model -- an omitted model silently
   inherits this session's model.
 - Put open questions in your final report instead of guessing or stalling; the

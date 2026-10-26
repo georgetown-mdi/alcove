@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // PR-body checklist guard: `npm run check:pr-checklist`, run by
-// pr_checklist.yaml on every pull request, a body edit included. On the runner
-// it judges the pull request the workflow fetched into PR_JSON, not the event
+// pr_checklist.yaml on every pull request that is not a draft, a body edit
+// included. On the runner it judges the pull request the workflow fetched into
+// PR_JSON, not the event
 // payload; locally the body comes from PR_BODY or a file argument. HTML
 // comments are stripped first, so a template example can neither satisfy nor
 // trip a rule, and only the first `## Checklist` section is read.

@@ -23,10 +23,11 @@ before proceeding -- its Session lifecycle section defines this state.
    review round, fix round or CI fix on a branch already in flight is part of
    finishing it, not new work.
 2. Take everything already started to its full conclusion: each branch, run
-   and host handoff. For an implementation branch that is an open PR with its
-   review rounds done and green CI, as the ruleset's Review flow section
-   describes; a step that branch's flow calls for -- its review rounds, its PR,
-   a handoff its item needs -- is part of the branch and is taken, not skipped.
+   and host handoff. For an implementation branch that is a PR marked ready,
+   its review rounds done and CI green on its head, as the ruleset's Review
+   flow section describes; a step that branch's flow calls for -- its review
+   rounds, its PR, a handoff its item needs -- is part of the branch and is
+   taken, not skipped.
    For a run already under way -- a benchmark, a stress test, a host handoff --
    it is the run's result. The only thing not started is a new board item.
 3. Keep the continuation brief current as each branch lands.
