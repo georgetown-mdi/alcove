@@ -243,10 +243,19 @@ describe("PSI crypto Web Worker (real Vite-native worker, real WASM)", () => {
 // (./seededKeyPsiCrypto.worker.ts), so the reference is an engine on this
 // page built from the seeded key, and the page sends a helper no request.
 describe("the PSI worker pool (real workers, real WASM)", () => {
-  const POOL_VALUES = Array.from({ length: 4096 }, (_, i) => `v-${i}`);
-  const STARTER_POOL_VALUES = POOL_VALUES.map((value, i) =>
-    i % 2 === 0 ? value : `starter-only-${i}`,
+  // Each case's masking is CPU time that stretches with the machine's load,
+  // so the sets are the smallest that test the split. The joiner's is the
+  // fewest that split three ways at core's 1024 elements a shard, plus one
+  // so the shards are uneven. No split operation reads the starter's set,
+  // so it is small.
+  const POOL_VALUES = Array.from({ length: 3 * 1024 + 1 }, (_, i) => `v-${i}`);
+  const SHARED_INDICES = POOL_VALUES.flatMap((_, i) =>
+    i % 64 === 0 ? [i] : [],
   );
+  const STARTER_POOL_VALUES = SHARED_INDICES.flatMap((i) => [
+    POOL_VALUES[i],
+    `starter-only-${i}`,
+  ]);
 
   // Compared in place of the bytes: a mismatch between two messages this
   // large otherwise hangs the run in the diff of its failure report.
@@ -285,7 +294,9 @@ describe("the PSI worker pool (real workers, real WASM)", () => {
 
   test.for<PsiEngineMode>(["identifier-revealing", "count-only"])(
     "a %s round across three workers puts one engine's bytes on the wire",
-    { timeout: 60_000 },
+    // 1.5x the slowest case measured at a load average of 50 to 60 on 10
+    // cores, 50.6 s; the same case takes about 6 s on an idle machine.
+    { timeout: 76_000 },
     async (mode) => {
       const psi = await (PSI() as Promise<PSILibrary>);
       const options = psiEngineOptionsForBackend("wasm");
@@ -323,13 +334,11 @@ describe("the PSI worker pool (real workers, real WASM)", () => {
         expect(splits).toEqual([true, true]);
         if (mode === "count-only")
           expect(await joiner.computeIntersectionCardinality(response)).toBe(
-            2048,
+            SHARED_INDICES.length,
           );
         else {
           const [local] = await joiner.computeAssociationTable(response);
-          expect([...local].sort((a, b) => a - b)).toEqual(
-            POOL_VALUES.flatMap((_, i) => (i % 2 === 0 ? [i] : [])),
-          );
+          expect([...local].sort((a, b) => a - b)).toEqual(SHARED_INDICES);
         }
       } finally {
         for (const engine of engines) engine.dispose();
