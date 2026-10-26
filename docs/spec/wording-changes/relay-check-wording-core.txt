@@ -1,0 +1,7 @@
+# The relay check's headlines and host statement are composed in core, from
+# the verdict's closed fields, so another consumer of the verdict can state
+# the CLI's lines.
+- - -> In `relay` mode the `summary` is composed from the check's own `id`, `status`, `url`, `transport`, `registrar` and `lapses_at` and the check's 30-second bound, by core's `relayCheckHeadline` (`packages/core/src/relayCheck.ts`).
+- - -> The one exception is a `warn` enrollment, whose summary also holds the registrar's answer.
+- - -> A consumer that composes a headline from the verdict with that function states the line the CLI prints, less that answer.
+- - -> The host statement is core's too (`relayCheckPlan` and `relayHostStatement`), so a consumer can state the hosts a check of a configuration contacts before it runs one.
