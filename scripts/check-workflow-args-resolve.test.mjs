@@ -31,7 +31,7 @@ describe("workflow args resolve check", () => {
     }
   });
 
-  it("finds the real canonical resolves, so the pattern has not rotted", () => {
+  it("finds the real canonical resolves, so the pattern still matches", () => {
     const total = readSources().reduce(
       (sum, { file, source }) => sum + resolveCount(file, source),
       0,

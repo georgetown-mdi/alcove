@@ -3,21 +3,28 @@
 Executables CI and contributors run against this repository. Most are the
 `check:*` guards `npm run check:all` drives from the one list in
 [`run-checks.mjs`](run-checks.mjs), which also states what keeps each excluded
-check off it. Beside them: the doc-link checker, the `npm run dev` launcher, the
-mutation run, the release and provenance verifiers, the dependency-drift check
-`.github/actions/setup` runs after a cache restore, the installed-Chromium check
-the dev container's `post-create.sh` runs, the OS-layer attribution
-generator `image_smoke.yaml` regenerates each image's list beside `NOTICE` from,
-the container-pair wait its bind-mount smoke step runs the exchange under,
-[`required-suites.mjs`](required-suites.mjs), which prints the builds, test
-suites and gates a diff needs as read from the workflows CI runs,
-the ranking of slowest test files CI writes into each test job's summary, the
-tally of each scheduled workflow's red streak that docs/TESTING.md names,
-the job list `nightly_core_stress.yaml` runs its tiers from,
-the packer of the core files the signaling broker runs, which
-`broker_core_build.yaml` archives, signs and publishes,
-the relay host's deployment check `nightly_relay_deployment.yaml` runs,
-and the helper modules the checks import, in [`lib/`](lib).
+check off it. Beside them:
+
+- the doc-link checker;
+- the `npm run dev` launcher;
+- the mutation run;
+- the release and provenance verifiers;
+- the dependency-drift check `.github/actions/setup` runs after a cache restore;
+- the installed-Chromium check the dev container's `post-create.sh` runs;
+- the OS-layer attribution generator, from which `image_smoke.yaml` regenerates
+  each image's list beside `NOTICE`;
+- the container-pair wait that `image_smoke.yaml`'s bind-mount smoke step runs
+  the exchange under;
+- [`required-suites.mjs`](required-suites.mjs), which prints the builds, test
+  suites, and gates a diff needs, as read from the workflows CI runs;
+- the ranking of slowest test files CI writes into each test job's summary;
+- the tally of each scheduled workflow's red streak, which docs/TESTING.md
+  names;
+- the job list `nightly_core_stress.yaml` runs its tiers from;
+- the packer of the core files the signaling broker runs, which
+  `broker_core_build.yaml` archives, signs, and publishes;
+- the relay host's deployment check `nightly_relay_deployment.yaml` runs;
+- the helper modules the checks import, in [`lib/`](lib).
 
 A check's test sits beside it; a guard that asserts a workflow, Dockerfile or
 config directly is the test alone. Both run in the vitest project

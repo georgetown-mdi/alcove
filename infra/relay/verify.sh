@@ -143,7 +143,7 @@ printf '\n'
 DEADLINE=$((SECONDS + WAIT))
 until echo | bounded 5 openssl s_client -connect "$CONNECT:443" -servername "$REALM" >/dev/null 2>&1; do
   if [ "$SECONDS" -ge "$DEADLINE" ]; then
-    report fail "no TLS handshake through $CONNECT:443 after ${WAIT}s" "ALCOVE_RELAY_VERIFY_WAIT to allow longer"
+    report fail "no TLS handshake through $CONNECT:443 after ${WAIT}s" "set ALCOVE_RELAY_VERIFY_WAIT to wait longer"
     break
   fi
   sleep 1

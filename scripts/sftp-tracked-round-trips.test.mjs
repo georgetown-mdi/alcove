@@ -25,14 +25,12 @@ import { descendants } from "./lib/typeScriptSources.mjs";
 // coverage and nothing about the span above it: the inclusion check over that
 // span is the sibling file, scripts/sftp-operation-spans.test.mjs.
 //
-// docs/spec/SFTP_SESSION_RECOVERY.md states which round trips are excluded, and prose
-// asserting a code fact rots silently: the exclusion set has been wrong before
-// (rename()'s re-issue existence probe was issued a layer above the bracket).
-// This is that claim as a check, and it is an INCLUSION check -- it fails on any
-// request-issuing call site the bracket does not cover, whether or not anyone
-// thought to list it. The known exceptions below are what it ALLOWS, each with
-// its reason; an allowance that no longer matches a call site fails too, so the list
-// cannot rot into a record of what used to be true.
+// docs/spec/SFTP_SESSION_RECOVERY.md states which round trips are excluded, in
+// prose no run checks. This is that claim as a check, and it is an INCLUSION
+// check -- it fails on any request-issuing call site the bracket does not
+// cover, whether or not anyone thought to list it. The known exceptions below
+// are what it ALLOWS, each with its reason; an allowance that matches no call
+// site fails too, so the list cannot keep a false entry.
 //
 // What counts as a request-issuing call site, and the reach of that decision, is
 // scripts/lib/sftpAdapterSites.mjs -- shared with the span check so the two
@@ -257,7 +255,7 @@ const outsideTheBracket = sites.filter((site) => !covered.has(site.node));
 
 describe("SFTP adapter round trips are bracketed by tracked()", () => {
   it("finds the adapter's request sites and its tracked() brackets", () => {
-    // A rot guard: an adapter refactor that renames the bracket, or moves the
+    // An enumeration guard: an adapter refactor that renames the bracket, or moves the
     // client behind another property, would otherwise empty one of these and
     // make every assertion below vacuous.
     expect(seeds).toBeGreaterThan(0);

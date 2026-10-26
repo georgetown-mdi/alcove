@@ -2,13 +2,12 @@
 // PreToolUse hook: refuse `git push` whose destination is a protected branch
 // (staging/main).
 //
-// Why this exists: the gated-autonomous-push work removes the blanket `git push`
-// deny from .claude/settings.json so a contained, unattended agent can push
-// feature branches and open PRs without an interactive prompt. This hook is the
-// client-side half of the replacement gate; GitHub branch protection on
-// staging/main is the authoritative server-side half. The hook gives an
-// unattended agent instant local feedback instead of a wasted network round-trip
-// the server would reject anyway -- it is defense-in-depth, not the wall.
+// Why this exists: .claude/settings.json does not deny `git push`, so a
+// contained, unattended agent can push feature branches and open PRs without an
+// interactive prompt. This hook is the client-side half of the gate on
+// staging/main; GitHub branch protection is the authoritative server-side half.
+// The hook gives an unattended agent local feedback before a push the server
+// would reject anyway: defense in depth.
 //
 // Which tree it asks: a push naming no refspec resolves against a branch, so the
 // verdict depends on where the push runs. That is not always the directory the

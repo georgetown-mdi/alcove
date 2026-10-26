@@ -1,28 +1,16 @@
 #!/usr/bin/env node
 // CLAUDE.md byte budget, run by static_checks.yaml on every PR.
 //
-// The budget forces one-in, one-out: a pull request that pushes CLAUDE.md past
-// the ceiling must relocate its own weight into the file that owns the mechanism
-// it describes.
+// Fails when CLAUDE.md is over BUDGET_BYTES. CLAUDE.md is loaded into every
+// agent session, so its size is its cost: this bounds size, where
+// check-contributing-scope.mjs checks CONTRIBUTING.md by section heading. The
+// ceiling is the size the last strip pass reached.
 //
-// Why a length gate here, when check-contributing-scope.mjs refuses, by design,
-// to be one: the two files fail differently. CONTRIBUTING.md degrades by growing
-// the WRONG KIND of section, which a heading allowlist names directly, so a
-// length threshold there would reward padding a permitted section while a
-// reference-depth one crept in. CLAUDE.md is loaded into every agent session, so
-// its cost is its size whatever the sections are called, and the failure mode is
-// uniform regrowth: each rule restates mechanics that already live in a command
-// file or a hook header, and every restatement is billed on every session. Size
-// is the thing to bound, and it is the one property of this file no shape check
-// can see.
-//
-// The ceiling is not a target to fill. It is set at the size of a deliberate
-// strip pass, so a PR that lands under it has no license to grow up to it.
-//
-// A rule is never deleted to make room. The move is to leave the one-line rule
-// plus a pointer here and put the mechanics where they are already enforced:
-// `.claude/commands/` for the review and panel flows, a hook's own header for
-// what that hook does, `docs/` for anything a human reader also needs.
+// To add a rule past the budget, keep the one-line rule and a pointer in
+// CLAUDE.md and move the mechanics to where they are enforced:
+// `.claude/commands/` for the review and panel flows, the hook's own header for
+// what a hook does, `docs/` for anything a human reader also needs. Do not
+// delete a rule to make room. Rationale: docs/notes/claude-md-spawn-cost.md.
 
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";

@@ -30,7 +30,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // working tree, and the parser guard among them parses every JavaScript-family
 // source in it a second time. Alone on an idle container the heaviest runs 3.8s
 // against vitest's 5s default -- and 11.4s with the rest of the suite competing
-// for the same cores, which is the contention that reddened it. Sized at roughly
+// for the same cores, which is the contention that failed it. Sized at roughly
 // five times that worst measurement, this stays a hang safety check -- an extractor
 // that loops, or a walk that never terminates, still fails here -- rather than
 // an assertion about how fast the scan runs.
@@ -1025,7 +1025,7 @@ describe("the repository as it stands", { timeout: SCAN_TIMEOUT_MS }, () => {
       ).parseDiagnostics.length;
 
     // `parseDiagnostics` is off the public SourceFile type, so probe it: a
-    // TypeScript upgrade that renames it must redden here rather than report
+    // TypeScript upgrade that renames it must fail here rather than report
     // every file error-free.
     expect(
       parseErrors("const a = ;\nfunction (\n", "probe.ts"),

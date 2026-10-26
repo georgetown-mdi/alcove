@@ -41,7 +41,7 @@ const CODEGEN_AND_RPC = [
 // with `npm install --package-lock-only` in a throwaway tree reproduces the
 // committed value exactly, and repeating that over a tarball with one byte
 // changed moves it. A future npm that repacked a `file:` dependency before
-// hashing would redden this check rather than pass it silently.
+// hashing would fail this check rather than pass it silently.
 const tarballIntegrity = (path) =>
   `sha512-${createHash("sha512").update(readFileSync(path)).digest("base64")}`;
 

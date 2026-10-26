@@ -71,10 +71,9 @@ item, its URL, and the line you appended. It creates no item, so it does not
 count against the ruleset's filing limit.
 
 **DECLINED** -- the concern is real but is not worth an item of its own. Name
-the sink it goes to instead -- a limits line in the governing `docs/spec/` file
+where it is recorded instead -- a limits line in the governing `docs/spec/` file
 on the branch that raised it, a fix in the caller's own pass, or nothing -- and
-say why the board is the wrong home. Declining is a result, not a failure to do
-the job.
+say why the board is the wrong home. Declining is a normal result.
 
 **NEEDS INPUT** -- you cannot give useful feedback or a useful capture
 without an answer only the human has (e.g. "is this a security-sensitive path?",

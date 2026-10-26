@@ -2,15 +2,12 @@
 // Production-scope dependency audit with a bounded retry, run by
 // static_checks.yaml as the merge gate's blocking audit step.
 //
-// The command it runs is exactly the one CONTRIBUTING.md's Dependency Policy
-// and docs/RELEASES.md step 4 hand a maintainer, so the local answer and the
-// gate cannot diverge; the retry is the only thing this file adds. npm's audit
-// endpoint is a network service the branch under test has no relationship
-// with: when it answers 503, every pull request open at that moment goes red
-// after all of its tests have passed, and the only remedy a contributor has is
-// to push an empty commit. A bounded retry converts that into a slower green.
+// It runs the command CONTRIBUTING.md's Dependency Policy and docs/RELEASES.md
+// step 4 give a maintainer, and adds only a bounded retry: without it, a 503
+// from npm's audit endpoint fails every open pull request after its tests have
+// passed.
 //
-// What is retried, and what is never retried. npm exits 1 both for a genuine
+// What is retried, and what is never retried. npm exits 1 both for an
 // advisory finding and for an endpoint failure, so the exit code cannot tell
 // them apart; the message can. A run that reached the endpoint prints its
 // report and exits, and a run that did not prints `npm error audit endpoint
@@ -33,8 +30,8 @@
 //     endpoint failure under it is treated as unclassifiable and fails on the
 //     first attempt -- the safe direction, and why the classification is an
 //     allowlist of one message rather than a denylist of report shapes.
-//   - An outage outliving the delay table below still fails the run, which is
-//     the intent: this buys a bounded wait, not an unbounded one.
+//   - An outage outliving the delay table below still fails the run: the wait
+//     is bounded by design.
 
 import { spawn } from "node:child_process";
 import { dirname, resolve } from "node:path";

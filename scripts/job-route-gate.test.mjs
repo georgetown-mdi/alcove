@@ -21,8 +21,8 @@ import {
 // makes the call and drops the refusal in its outcome, are exposed on all three
 // counts alike, and each handler is otherwise pinned only by its own test, so
 // one added in either shape ships with nothing failing.
-// apps/web/src/jobs/routeSupport.ts states the property in prose, and prose
-// asserting a code fact rots silently; this is that claim as a check.
+// apps/web/src/jobs/routeSupport.ts states the property in prose, which no
+// run checks; this is that claim as a check.
 //
 // It is an INCLUSION check over the directory: the route modules are found by
 // walking the routes tree, and the handlers by reading each module's inline
@@ -59,8 +59,8 @@ import {
 // leaves the handler on the refusing side -- a `return` or a `throw`, written
 // directly, at the end of a block, or on both sides of a nested `if`. Either
 // polarity is read (`=== "response"` and `!== "manager"` alike), which rests on
-// the outcome union having exactly two kinds; the rot guard below fails if it
-// grows a third.
+// the outcome union having exactly two kinds; the enumeration guard below fails
+// if it grows a third.
 //
 // The success-first guard clause is that shape with its refusing side left
 // implicit: the test's own branch takes the passing kind and exits, and the
@@ -280,7 +280,7 @@ function exitsHandler(statement) {
  * kind -- `"then"` or `"else"` -- or null when the condition is not a strict
  * comparison of that outcome's discriminant against one of {@link OUTCOME_KINDS}.
  * Reading the inverted polarity (`!== "manager"`) rests on the union having
- * exactly two kinds, which the rot guard pins.
+ * exactly two kinds, which the enumeration guard pins.
  */
 function refusingBranch(condition, name) {
   if (!ts.isBinaryExpression(condition)) return null;
@@ -505,7 +505,7 @@ const handlers = allHandlers(readings);
 
 describe("every job-API route handler is gated", () => {
   it("finds the route modules and the gate they are read against", () => {
-    // A rot guard: a routes move, a rename of the gate, or an extraction of the
+    // An enumeration guard: a routes move, a rename of the gate, or an extraction of the
     // handlers behind a helper would otherwise empty the enumeration and make
     // every assertion below vacuous.
     expect(modules.length).toBeGreaterThan(0);

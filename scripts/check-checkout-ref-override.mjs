@@ -1,13 +1,12 @@
 #!/usr/bin/env node
 // Checkout ref override check, run by static_checks.yaml on every PR.
 //
-// The rebase re-attestation route (.claude/commands/assess-review.md, Step 4,
-// argued in docs/notes/rebase-reattestation.md) re-attests a review across a
-// rebase with no fresh round. What covers the composition it does not read is
-// mechanical: the pull-request gates re-run at the new head, against the head
-// merged with the base tip. That is what actions/checkout produces on a
-// `pull_request` event when the step names no ref of its own, and this check is
-// what holds the repository to it.
+// On a `pull_request` event, an actions/checkout step naming no ref of its own
+// checks out the head merged with the base tip, so the pull-request gates test
+// the change as it would merge. A review carried across a rebase with no fresh
+// round (.claude/commands/assess-review.md, Step 4;
+// docs/notes/rebase-reattestation.md) relies on the gates re-running against
+// that merge at the new head.
 //
 // The rule: in a workflow triggered by `pull_request` or `pull_request_target`,
 // no `actions/checkout` step sets `ref` or `sha` under `with:`.
@@ -31,7 +30,7 @@
 //   - A composite action or a reusable workflow that a pull-request-triggered
 //     workflow calls. Only the files under .github/workflows are read, and a
 //     checkout inside a called definition is outside the rule.
-//   - Whether a run in fact built the merge result. This holds one property of
+//   - Whether a run in fact built the merge result. This checks one property of
 //     the committed tree and confirms nothing about any run.
 
 import { dirname, resolve } from "node:path";
@@ -80,7 +79,7 @@ function describeOverride(path, location, triggers, key, value) {
       : "";
   const coversMerge = triggers.includes("pull_request");
   const rationale = coversMerge
-    ? "On a pull request the action defaults to the head merged with the base tip, and the rebase re-attestation route in .claude/commands/assess-review.md rests on a gate having run that merge; a step naming its own ref runs something else."
+    ? "On a pull request the action defaults to the head merged with the base tip, so the gates test the change as it would merge; a step naming its own ref tests something else."
     : "Under pull_request_target the action defaults to the base branch, so no run there covers the head merged with the base tip, and a step naming its own ref makes it look as though one might.";
   const remedy = coversMerge
     ? "Remove the key to take the default, or move the step into a workflow with no pull-request trigger."

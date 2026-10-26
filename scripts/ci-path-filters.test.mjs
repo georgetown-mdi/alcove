@@ -41,8 +41,8 @@ const GUARDED_ROOTS = ["apps/web", "packages/core"];
 // sources runs the PR suite but must not trigger a rebuild+redeploy. Allowlisting
 // a directory SUPPRESSES its deploy-coverage check, so an entry here must be a real
 // "this directory does not ship" decision, not a way to mute a failure. The live
-// tests below assert each entry still exists, so a removed/renamed tree cannot rot
-// the list. apps/web/eslint-rules holds lint-time custom rules that never ship in
+// tests below assert each entry still exists, so a removed/renamed tree cannot leave
+// a stale entry. apps/web/eslint-rules holds lint-time custom rules that never ship in
 // the artifact.
 const DEPLOY_EXCLUDED = new Set([
   "apps/web/test",
@@ -199,7 +199,7 @@ describe("ci path-filter drift guard (live workflows)", () => {
     }
   });
 
-  it("no deploy-excluded entry has rotted (each still exists as a tracked dir)", () => {
+  it("no deploy-excluded entry is stale (each still exists as a tracked dir)", () => {
     for (const excluded of DEPLOY_EXCLUDED) {
       const root = GUARDED_ROOTS.find((r) => excluded.startsWith(`${r}/`));
       expect(root, `${excluded} is not under a guarded root`).toBeDefined();

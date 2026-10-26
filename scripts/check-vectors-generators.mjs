@@ -212,7 +212,7 @@ export function maskExcusedValues(text, keys = []) {
 /**
  * Directory entries the manifests do not account for and manifest entries the
  * directory does not hold, as `{unclassified, missing}`. This is what keeps the
- * coverage from rotting: a vectors file or a script added beside the others
+ * coverage complete: a vectors file or a script added beside the others
  * fails until it is classified.
  */
 export function classifyDirectory(

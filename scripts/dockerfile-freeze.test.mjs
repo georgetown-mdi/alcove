@@ -1385,7 +1385,7 @@ describe("the engagement probe the FIPS variant runs at startup", () => {
   it("copies in every module that probe imports", () => {
     // Read from the committed source of the copied file rather than from the
     // Dockerfile's source list, so an import added to the probe without a
-    // matching COPY reddens here instead of at the operator's first run.
+    // matching COPY fails here instead of at the operator's first run.
     const copy = image.runtimeCopies.find(({ dests }) =>
       dests.includes(probePath),
     );

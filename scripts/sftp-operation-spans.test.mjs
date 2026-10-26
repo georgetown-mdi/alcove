@@ -18,14 +18,13 @@ import { descendants, parseSource } from "./lib/typeScriptSources.mjs";
 // round trip a release cannot see, so a boundary can close the session out from
 // under it.
 //
-// docs/spec/SFTP_SESSION_RECOVERY.md states which round trips are excluded, and prose
-// asserting a code fact rots silently. This is that claim as a check, and it is
+// docs/spec/SFTP_SESSION_RECOVERY.md states which round trips are excluded, in
+// prose no run checks. This is that claim as a check, and it is
 // an INCLUSION check -- it fails on any request-issuing call site no span
 // encloses, whether or not anyone thought to list it, so an entry added later
 // that forgets runOperation fails here rather than passing unnoticed. The known
-// exceptions below are what it ALLOWS, each with its reason; an allowance that no
-// longer matches a call site fails too, so the list cannot rot into a record of
-// what used to be true.
+// exceptions below are what it ALLOWS, each with its reason; an allowance that
+// matches no call site fails too, so the list cannot keep a false entry.
 //
 // What counts as a request-issuing call site, and the reach of that decision, is
 // scripts/lib/sftpAdapterSites.mjs -- shared with the per-attempt bracket check
@@ -188,7 +187,7 @@ const outsideTheSpan = sites.filter(
 
 describe("SFTP adapter round trips run inside a runOperation span", () => {
   it("finds the adapter's request sites and its runOperation spans", () => {
-    // A rot guard: an adapter refactor that renames the entry point, moves it
+    // An enumeration guard: an adapter refactor that renames the entry point, moves it
     // off the class, splits the adapter into two classes that both declare one,
     // or moves the client behind another property would otherwise empty one of
     // these and make every assertion below vacuous.

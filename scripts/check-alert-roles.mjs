@@ -286,7 +286,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const total = scanned.reduce((sum, { alerts }) => sum + alerts.length, 0);
   if (total === 0)
     failures.push(
-      `No red Alert was found under ${WEB_SOURCE_DIR} -- with none found this check holds nothing, so the scan has stopped recognizing them; update scripts/check-alert-roles.mjs.`,
+      `No red Alert was found under ${WEB_SOURCE_DIR}, so the scan in scripts/check-alert-roles.mjs no longer recognizes them and checks nothing. If you changed how a red Alert is written, update the scan to match.`,
     );
   failures.push(...alertRoleFailures(scanned));
   if (failures.length > 0) {

@@ -105,7 +105,7 @@ export function Alerted({ failure }: { failure: RunFailure }) {
 // Bound for the case that walks the whole web source tree: it parses every
 // module in it, with no wait in it. It runs 0.7s alone against vitest's 5s
 // default, and 9.0s with the rest of the script suites competing for the same
-// cores, which is the contention that reddened it. Sized well past that worst
+// cores, which is the contention that failed it. Sized well past that worst
 // measurement, this stays a hang safety check -- a walk that never terminates
 // still fails here -- rather than a claim about how fast the scan runs.
 const TREE_SCAN_TIMEOUT_MS = 60_000;

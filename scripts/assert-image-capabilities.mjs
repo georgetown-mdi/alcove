@@ -6,8 +6,8 @@
 // The set under test is derived rather than listed: scripts/derive-image-
 // dependencies.mjs reads it out of the scripts themselves. This module holds
 // only how to exercise each derived thing, and refuses to pass when a derived
-// capability has no recipe -- which is how a new call site reddens a run instead
-// of being quietly left out.
+// capability has no recipe, so a new call site fails the run instead of being
+// left out.
 //
 // Every dependency is exercised, never matched against help text or a
 // Dockerfile: an Alcove argument vector is handed to a container and its verdict

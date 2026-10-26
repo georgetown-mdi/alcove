@@ -112,7 +112,7 @@ export function resolveViolations(file, source) {
   return violations;
 }
 
-/** Count the canonical resolves a source holds, for the pattern-rot guard. */
+/** Count the canonical resolves a source holds, for the guard that the pattern still matches. */
 export function resolveCount(file, source) {
   return codeBlocks(file, source).reduce(
     (total, block) => total + canonicalResolveCount(block.code),

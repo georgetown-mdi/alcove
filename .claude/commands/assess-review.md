@@ -113,7 +113,7 @@ round.
    or more.
 3. Reviewers propose contradictory remedies for the same hunk. A role round
    has one reviewer, so this trigger reads light rounds only.
-4. The lens reviewer voted that a materially simpler shape exists. Only a
+4. The lens reviewer voted that a clearly simpler design exists. Only a
    light round holds that vote.
 5. A fix you are about to order would grow the branch's diff by roughly a third
    or more.
@@ -146,7 +146,7 @@ A gated claim or confirmed review finding has four dispositions, not one:
    Whether it also becomes a `docs/spec/` limits line at merge-ready is set by
    `.claude/orchestration/ruleset.md`, Review flow.
 
-The last two are the cheap ones, not failures. A true finding whose fix would
+Narrowing and stating a limit are normal outcomes. A true finding whose fix would
 grow the guarded surface is usually best narrowed, and one that costs nothing a
 user or partner can reach is usually best stated.
 
@@ -157,8 +157,9 @@ differently. Reach past it -- to a fix, or to any sink that costs a board item -
 only for a finding that reaches such a surface, or one you can say in a line why
 the branch is worse for leaving. Absent that line, state it and move on.
 
-- **Default to fixing.** You do not need permission to fix something small and
-  clearly right.
+- **A fix needs no permission.** Where the stated-limit default above lets a
+  finding through to a fix, you do not need permission to fix something small
+  and clearly right.
 - **Contest by measurement before fixing for it.** A finding or refuted claim
   about an external tool's behavior that rests on reading rather than running
   is still open: reproduce the claimed behavior against the real tool first.
@@ -391,21 +392,14 @@ Each path is recorded on the checklist line naming both shas:
   cannot read each void it and take a full round; so does a head of any other
   shape, which the verifier refuses rather than answering about.
 
-The rebase path composes the branch with staging content no round has read,
-which is the same objection that keeps a base sync out, and it answers it rather
-than routing around it: a rebase leaves the branch's own effective diff as an
-object that can be compared across the move, and a merge does not. Where that
-diff is identical at both ends, the round that read it still stands. What the
-path does not attest is the content the branch now sits on -- paths outside its
-own diff, and the rest of a shared file outside the branch's hunks, are not
-compared -- and what covers that is mechanical rather than
-read: the gates re-run at the new head, and a pull-request gate runs against the
-head merged with the base tip, so a composition that fails to build, typecheck,
-lint, or test is caught there. The residual is an interaction that compiles and
-passes, which is why a single executable line inside the branch's own hunks
-sends the head to a full round, and why a shared file a review claim names does
-too. The whole argument, the hunk comparison, the markdown exclusion it inherits
-and the `docs/spec/` conflict that exclusion leaves unread:
+The rebase path does not compare the content the branch now sits on: paths
+outside its own diff, and the rest of a shared file outside the branch's hunks.
+The gates cover that, re-running at the new head against the head merged with
+the base tip. An interaction that builds and passes is not covered, so a single
+executable line inside the branch's own hunks, or a shared file a review claim
+names, sends the head to a full round. Rationale, the hunk comparison, the
+markdown exclusion it inherits, and the `docs/spec/` conflict that exclusion
+leaves unread:
 [`docs/notes/rebase-reattestation.md`](../../docs/notes/rebase-reattestation.md).
 
 When origin/staging has moved under a branch, bring the branch forward by

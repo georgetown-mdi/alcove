@@ -28,8 +28,8 @@
 // JSON.parse, which has its own inner catch that exits 0 (an unreadable event
 // must not interfere). The outer try/catch is therefore purely defensive: no
 // expected path reaches it, but if an unexpected error ever does on a SendMessage
-// event, it blocks (exit 2) to match the fail-closed posture the other guards
-// take for their enforced tool.
+// event, it blocks (exit 2): this hook fails closed for the one tool it
+// enforces.
 //
 // Exit 0 allows the call; exit 2 blocks it and feeds stderr back to Claude.
 

@@ -14,7 +14,7 @@
 //      deliberate edit to this list that a reviewer sees, the same allowlist
 //      discipline as apps/cli/test/integration/consoleAllowlist.ts; deep material
 //      goes to the doc named in CONTRIBUTING's "Scope of this document" instead.
-//      An allowlist entry that no longer appears also fails, so it cannot rot.
+//      An allowlist entry that does not appear also fails, so none goes stale.
 //   2. Dependency source-path citation. A `node_modules/<pkg>/...` path is the
 //      tell of dependency-internal spelunking, which belongs in
 //      docs/spec/DEPENDENCY_PINS.md. Requiring a segment AFTER the package name

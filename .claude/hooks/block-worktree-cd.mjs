@@ -3,13 +3,13 @@
 // worktree under .claude/worktrees/.
 //
 // Why this exists: the Bash tool's directory persists between calls, so a
-// command beginning `cd <tree> && ...` does not scope that one call to the tree
-// -- it re-homes the session into it. The write fence every non-isolated spawn
-// inherits follows the session's directory, so the move lands later spawns, and
-// the shells of runs already under way, in a tree that is not theirs. It was
-// observed against a session whose implementer was writing in a sibling tree.
-// `env -C <tree> <command>` and `git -C <tree> <args>` scope the call and leave
-// the session where it stands, which is what the refusal names.
+// command beginning `cd <tree> && ...` does not scope that one call to the tree:
+// it moves the session's working directory into it. A spawn that is not
+// worktree-isolated may write only under the session's working directory, so
+// the move puts later spawns, and the shells of runs already under way, in a
+// tree that is not theirs. `env -C <tree> <command>` and `git -C <tree> <args>`
+// scope the call and leave the session where it is, which is what the refusal
+// names.
 //
 // What it refuses: a command whose FIRST token is `cd` and whose destination --
 // either of zsh's two `cd` forms, resolved in lib/shell.mjs -- lies inside a
@@ -19,7 +19,7 @@
 //
 // What it allows by design:
 //   - a `cd` into the tree the call is already being made from: the session is
-//     homed there already, so nothing moves
+//     already there, so nothing moves
 //   - a `cd` to the `.claude/worktrees` root itself, which is no worktree
 //   - a `cd` anywhere else -- /workspace, a /tmp rebase tree, a subdirectory
 //
@@ -47,9 +47,9 @@ export const EXPIRES_ON = "2027-06-30";
 function block(tree) {
   process.stderr.write(
     `Blocked by block-worktree-cd hook: this command opens with a \`cd\` into ${tree}, ` +
-      "which re-homes this session into that worktree rather than scoping the call to it. " +
-      "The write fence every non-isolated spawn inherits moves with it, onto a tree that " +
-      "may already be another agent's.\n" +
+      "which changes this session's working directory to that worktree for every later call. " +
+      "Spawns that are not worktree-isolated may write only under the session's working " +
+      "directory, so they would follow it into a tree that may already be another agent's.\n" +
       `Scope the call instead: \`env -C ${tree} <command>\`, or \`git -C ${tree} <args>\` ` +
       "for a git question about that tree.\n",
   );

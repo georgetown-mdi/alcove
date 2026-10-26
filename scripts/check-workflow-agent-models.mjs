@@ -269,7 +269,7 @@ export function definitionEffortViolations(agentsDir) {
   return violations;
 }
 
-/** Count the `agent(` calls a source contains, for the pattern-rot guard. */
+/** Count the `agent(` calls a source contains, for the guard that the pattern still matches. */
 export function agentCallCount(file, source) {
   return codeBlocks(file, source).reduce(
     (total, block) => total + agentCalls(block.code).length,
