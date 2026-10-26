@@ -186,7 +186,7 @@ export function resetViolations({
     if (isPublishedRelease(takenAtRelease) !== true) {
       violations.push({
         kind: "discharge",
-        message: `${CHECK_SOURCE} records the reset as taken at "${takenAtRelease}", which is not a release above the pre-publication ${PRE_PUBLICATION_RELEASE}. Set RESET_TAKEN_AT_RELEASE to the release that shipped the reset, or back to undefined if no release has: any other value turns this rule off before the reset is taken.`,
+        message: `${CHECK_SOURCE} records the reset as taken at "${takenAtRelease}", which is not a release above the pre-publication ${PRE_PUBLICATION_RELEASE}. Set RESET_TAKEN_AT_RELEASE to the release that shipped the reset, or back to undefined if no release has: any other value would turn this rule off before the reset is taken.`,
       });
     } else {
       const compared = compareReleaseVersions(takenAtRelease, releaseVersion);

@@ -4,7 +4,13 @@
 // Fails when CLAUDE.md is over BUDGET_BYTES. CLAUDE.md is loaded into every
 // agent session, so its size is its cost: this bounds size, where
 // check-contributing-scope.mjs checks CONTRIBUTING.md by section heading. The
-// ceiling is the size the last strip pass reached.
+// ceiling is the size the last strip pass reached, not a target to fill.
+//
+// Why a length gate here when check-contributing-scope.mjs refuses one by
+// design: CONTRIBUTING.md goes wrong by growing the wrong kind of section,
+// which a heading allowlist names, while CLAUDE.md goes wrong by growing in
+// size whatever the sections are called, and every byte is billed on every
+// session.
 //
 // To add a rule past the budget, keep the one-line rule and a pointer in
 // CLAUDE.md and move the mechanics to where they are enforced:

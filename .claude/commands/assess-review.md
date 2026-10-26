@@ -113,7 +113,7 @@ round.
    or more.
 3. Reviewers propose contradictory remedies for the same hunk. A role round
    has one reviewer, so this trigger reads light rounds only.
-4. The lens reviewer voted that a clearly simpler design exists. Only a
+4. The lens reviewer voted that a materially simpler shape exists. Only a
    light round holds that vote.
 5. A fix you are about to order would grow the branch's diff by roughly a third
    or more.

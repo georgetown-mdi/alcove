@@ -271,8 +271,8 @@ Common to both:
    flaggedBy (descending) -- one row each with issue number, name, description, severity,
    file, "flagged by N of `<reviewerCount>`", and the verification outcome with its note
    -- then a `## Trajectory` section with: the round number; confirmed-new vs
-   confirmed-repeat counts; the hotspot files; the contested list; and the simpler-design
-   vote ("N of `<reviewerCount>` reviewers see a clearly simpler design", each reason on
+   confirmed-repeat counts; the hotspot files; the contested list; and the simpler-shape
+   vote ("N of `<reviewerCount>` reviewers see a materially simpler shape", each reason on
    its own line when N > 0).
    Before marking any row, save the Workflow's result to a file (the task output
    file holding `{"result": ...}` serves as is) and run

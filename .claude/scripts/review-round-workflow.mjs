@@ -439,7 +439,7 @@ ${docsClause}Review for: correctness bugs, logic errors, security issues, missin
 
 Do NOT flag missing comments or ask for more explanatory prose unless a non-obvious constraint is stated nowhere in the code, names, types, or tests -- this codebase treats prose as a last resort and a check, test, or rename as the preferred place for it.
 
-Separately from the findings, answer the design question: is there a clearly simpler design for this branch's change -- a different factoring, an existing mechanism it should have reused, a smaller surface? Set simpler=true ONLY if you can name the design in one sentence (put it in reason); otherwise simpler=false with a short reason. Do not force it.
+Separately from the findings, answer the shape question: is there a materially simpler shape for this branch's change -- a different factoring, an existing mechanism it should have reused, a smaller surface? Set simpler=true ONLY if you can name the shape in one sentence (put it in reason); otherwise simpler=false with a short reason. Do not force it.
 
 ${requiredKeysClause(REVIEWER_SCHEMA)}`;
 
