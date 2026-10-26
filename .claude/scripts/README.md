@@ -22,6 +22,10 @@ push:
   commit in a fresh clone -- the workspaces the CLI needs and, on request,
   Docker images -- without touching the checkout it shares with the dev
   container
+- `host-commit-check.sh`, which a host session runs in a hand-off brief's
+  Step 0 to check that the branch the brief names still carries the briefed
+  commit -- as a descendant or a rebase with the same patch id -- or, once the
+  branch has merged and is gone, that `main` holds it
 - the hand-off commands around a brief: `host-handoff.sh`, the owner's one
   command on the host, which starts a Claude Code session on the brief's model
   (Sonnet by default) at the brief's effort (high by default) pointed at the
