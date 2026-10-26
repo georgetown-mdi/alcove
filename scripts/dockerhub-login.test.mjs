@@ -40,6 +40,10 @@ const HUB_THROUGH_SCRIPT = new Map([
     "static_checks.yaml repo-guards Repository checks",
     "scripts/relay-turn-secret-schema.test.mjs runs the coturn image infra/relay/Dockerfile pins",
   ],
+  [
+    "broker_front_error_log.yaml measure Measure",
+    "scripts/measure-broker-error-log.mjs runs the nginx image infra/broker/Dockerfile pins",
+  ],
 ]);
 
 // `${file} ${job} ${step name}` -> the registry the step pulls from instead.
