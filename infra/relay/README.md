@@ -493,8 +493,12 @@ whose operator gave it none; that is turned on in `relay.env` -- see
   read-only system and no home, a private `/tmp` and `/dev`, no kernel,
   cgroup, clock, or hostname writes, the `@system-service` system calls, and
   write access to `/var/lib/alcove-relay` alone -- and the sweep's unit the
-  same with no network. It is `python3` from the distribution (3.9 or later,
-  the standard library only), which Amazon Linux 2023 ships.
+  same with no network. `/etc/alcove-relay` is hidden from both units
+  (`InaccessiblePaths=`) as a second layer behind the root-only directory,
+  since the relay image's account owns the rendered `turnserver.conf` there;
+  systemd reads `relay.env` and the credential sources before it sets up that
+  view. It is `python3` from the distribution (3.9 or later, the standard
+  library only), which Amazon Linux 2023 ships.
 - **What it logs.** One line per request to the journal (`journalctl -u
   alcove-relay-registrar.service`), naming the method, the status, and the
   path, and the result of each write: a registration as one

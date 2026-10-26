@@ -43,3 +43,4 @@ SystemCallFilter=@system-service
 SystemCallFilter=~@privileged @resources
 RemoveIPC=true
 UMask=0077
+InaccessiblePaths=/etc/alcove-relay

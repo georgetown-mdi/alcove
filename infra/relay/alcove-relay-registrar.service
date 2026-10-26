@@ -6,6 +6,10 @@
 # It runs as the relay image's account, which owns the secrets table, with no
 # capability and no container runtime: the token and certificate reach it as
 # systemd credentials, since /etc/alcove-relay is root's alone.
+# /etc/alcove-relay is hidden from it as a second layer behind that mode: that
+# account owns the rendered turnserver.conf, which can hold coturn's
+# static-auth-secret, and the registrar reads nothing there once it holds its
+# credentials.
 
 [Unit]
 Description=alcove relay registrar (HTTPS)
@@ -56,6 +60,7 @@ SystemCallFilter=@system-service
 SystemCallFilter=~@privileged @resources
 RemoveIPC=true
 UMask=0077
+InaccessiblePaths=/etc/alcove-relay
 
 [Install]
 WantedBy=multi-user.target
