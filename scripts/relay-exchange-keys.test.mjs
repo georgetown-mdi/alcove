@@ -4580,6 +4580,7 @@ describe("the units that run as the relay image's account", () => {
     ]);
     expect(registrar.filter((line) => !sweep.includes(line))).toEqual([
       "RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX",
+      "InaccessiblePaths=/etc/alcove-relay",
     ]);
     for (const line of [
       "NoNewPrivileges=true",
@@ -4590,5 +4591,31 @@ describe("the units that run as the relay image's account", () => {
     ]) {
       expect(registrar).toContain(line);
     }
+  });
+
+  // render-config.sh writes coturn's configuration, static-auth-secret
+  // included, under this directory, owned by the account the registrar runs
+  // as; the token and certificate reach the registrar as credentials.
+  it("hides the directory coturn's rendered configuration is in from the registrar", () => {
+    const render = readFileSync(join(relay, "render-config.sh"), "utf8");
+    const etc = /^ETC=(\S+)$/m.exec(render)[1];
+    expect(render).toContain(
+      'OUT="${ALCOVE_RELAY_CONF:-$ETC/turnserver.conf}"',
+    );
+    const registrar = unit("alcove-relay-registrar.service");
+    const inaccessible = [...registrar.matchAll(/^InaccessiblePaths=(.*)$/gm)];
+    expect(inaccessible.map((match) => match[1])).toEqual([etc]);
+    for (const credential of [
+      "registrar-token",
+      "fullchain.pem",
+      "privkey.pem",
+    ]) {
+      expect(registrar).toMatch(
+        new RegExp(`^LoadCredential=${credential}:`, "m"),
+      );
+    }
+    expect(registrar).toMatch(
+      /^EnvironmentFile=\/etc\/alcove-relay\/relay\.env$/m,
+    );
   });
 });
