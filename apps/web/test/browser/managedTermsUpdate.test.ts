@@ -34,6 +34,7 @@ import {
   MATCHING_COLUMN_NOTE,
   READ_TERMS_UPDATE_LABEL,
   SAVE_SENT_COLUMNS_LABEL,
+  SENT_COLUMNS_SAVED_TEXT,
   TERMS_UPDATE_APPLIED_TEXT,
   TERMS_UPDATE_INPUT_LABEL,
   TERMS_UPDATE_NOT_APPLIED_TEXT,
@@ -136,6 +137,38 @@ describe("changing a saved exchange's terms", () => {
         (await getManagedExchange(record.id))?.exchangeFile.linkageTerms.payload
           ?.send,
       ).toEqual([{ name: "notes" }, { name: "county" }]);
+    } finally {
+      release();
+    }
+  });
+
+  test("tells the operator a run in progress keeps its columns when columns are saved under its lock", async () => {
+    const record = runnableManagedExchangeOrRefuse(
+      await createManagedExchange(savedExchange()),
+    );
+    const release = await holdRunLockElsewhere(record.id);
+    try {
+      const onChanged = vi.fn();
+      renderSection(record, onChanged);
+
+      await userEvent.click(page.getByRole("checkbox", { name: "county" }));
+      await userEvent.click(
+        page.getByRole("button", { name: SAVE_SENT_COLUMNS_LABEL }),
+      );
+      await expect.poll(() => onChanged.mock.calls.length).toBe(1);
+      const stored = await getManagedExchange(record.id);
+      expect(stored?.exchangeFile.linkageTerms.payload?.send).toEqual([
+        { name: "notes" },
+        { name: "county" },
+      ]);
+
+      renderSection(runnableManagedExchangeOrRefuse(stored!), onChanged);
+      expect(SENT_COLUMNS_SAVED_TEXT).toContain(
+        "a run already in progress keeps the columns it started with",
+      );
+      await expect
+        .element(page.getByText(SENT_COLUMNS_SAVED_TEXT))
+        .toBeInTheDocument();
     } finally {
       release();
     }

@@ -23,8 +23,9 @@ export const SENT_COLUMNS_TEXT =
 export const SAVE_SENT_COLUMNS_LABEL = "Save columns";
 
 export const SENT_COLUMNS_SAVED_TEXT =
-  "Saved. Your next run sends these columns. Make a terms update and send " +
-  "it to your partner to apply before then.";
+  "Saved. Your next run sends these columns; a run already in progress keeps " +
+  "the columns it started with. Make a terms update and send it to your " +
+  "partner to apply before then.";
 
 /** Why a column used to match offers no send choice. */
 export const MATCHING_COLUMN_NOTE =

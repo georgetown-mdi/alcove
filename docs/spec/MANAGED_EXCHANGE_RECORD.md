@@ -1363,7 +1363,9 @@ backup](#the-backup-and-import-markers-local-siblings-never-in-the-artifact)
 over the rotated secret. A scheduled window's own write after its attempts
 advances the plan whatever a re-invite wrote, and lands its `lastRun` and
 standing condition only over the secret its last attempt ran under
-([Catch-up on wake](#catch-up-on-wake)). The run's rotation and the
+([Catch-up on wake](#catch-up-on-wake)). A run that could not read its record
+holds no secret to compare, so the failure stamp it writes after releasing the
+lock lands even over a re-invite made in that gap. The run's rotation and the
 re-invite's secret write compare too, each refusing without writing, though
 both hold the lock from their read to their write: a safety check. A terms
 update made writes nothing, and the columns choice holds no secret, so neither
