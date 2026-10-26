@@ -10,7 +10,7 @@ import YAML from "yaml";
 import {
   CONNECTION_BLOCK_DOC_URL,
   CONNECTION_BLOCK_NOTICE,
-  DEFAULT_POLLING_FREQUENCY_MS,
+  DEFAULT_SFTP_POLLING_FREQUENCY_MS,
   DISPLAY_TRUNCATION_MARKER,
   encodeInvitation,
   getDiagnosticSink,
@@ -3442,7 +3442,7 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
       const raw = fs.readFileSync(configFile, "utf8");
       expect(raw).toContain(CONNECTION_BLOCK_DOC_URL);
       expect(raw).toContain(
-        `#   poll_interval_ms: ${DEFAULT_POLLING_FREQUENCY_MS}`,
+        `#   poll_interval_ms: ${DEFAULT_SFTP_POLLING_FREQUENCY_MS}`,
       );
     } finally {
       stdio.restore();

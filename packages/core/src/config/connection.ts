@@ -895,9 +895,9 @@ export interface FileSyncOptions extends SharedOptions {
    * Milliseconds between checks for the partner's uploaded file. Must be a
    * positive integer: `0` is not "as fast as possible" but a `setTimeout(0)`
    * hot poll that busy-loops directory listings (a self-inflicted flood), so
-   * the schema rejects it. When unset, the connection applies
-   * `DEFAULT_POLLING_FREQUENCY_MS` (5000); see that constant in
-   * `fileSyncConnection.ts`.
+   * the schema rejects it. When unset, the connection applies the channel's
+   * default, `defaultPollingFrequencyMs` in `fileSyncConnection.ts`: 5000 on
+   * `sftp`, 250 on `filedrop`.
    */
   pollIntervalMs?: number;
   /**

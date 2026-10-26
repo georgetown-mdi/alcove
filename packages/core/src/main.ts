@@ -104,7 +104,9 @@ export type { Algorithm, HandshakeRole, SemanticType } from "./types";
 export {
   DEFAULT_PEER_INACTIVITY_TIMEOUT_MS,
   DEFAULT_PEER_TIMEOUT_MS,
-  DEFAULT_POLLING_FREQUENCY_MS,
+  DEFAULT_FILEDROP_POLLING_FREQUENCY_MS,
+  DEFAULT_SFTP_POLLING_FREQUENCY_MS,
+  defaultPollingFrequencyMs,
   FileSyncConnection,
   normalizeFiledropPath,
 } from "./connection/fileSyncConnection";

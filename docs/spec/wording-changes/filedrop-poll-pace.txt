@@ -1,0 +1,67 @@
+- - -> Poll interval and step pace
+- - -> A party learns of the partner's file only by listing the directory, so every message waits for the partner's next poll.
+- - -> This section records what that costs one linking-key step and the defaults set from it, `defaultPollingFrequencyMs` in `packages/core/src/connection/fileSyncConnection.ts`.
+- - -> The measurement
+- - -> **The run.**
+- - -> Two `alcove` quick-exchange processes built from this repository ran a `filedrop` exchange over one local directory in the dev container, on 10 records each from `test_data/` (all 10 matching), under the default `cascade` strategy: 30 linking-key steps.
+- - -> A module preloaded into each process (`node --import`) recorded every timer armed at the poll interval and every `fs/promises` call, each with its start and end.
+- - -> A step is the window between the first party's `stage` and `stageEnd` events on `--event-stream`.
+- - -> There was one run per interval, on 2026-10-25, in delete mode unless the row says otherwise.
+- - -> **The attribution.**
+- - -> Within a step, a message file on disk that its reader has not yet opened is a discovery wait.
+- - -> A sender's wait for its previous message to be consumed (delete mode) or acknowledged (retain mode), outside a discovery wait, is a send-gate wait.
+- - -> A file operation of either party outside both waits is file I/O, and the rest is computation.
+- - -> Each stretch of the step spent in a wait is one sequential poll wait.
+- - -> Mean per step, in milliseconds; the last column is the whole run, rendezvous and output included:
+- - -> Interval | Step | Discovery waits | Send-gate waits | File I/O (of it, writes and renames) | Computation | Sequential poll waits | Whole run
+- - -> 1 ms | 118 | 25 | 2 | 74 (16) | 17 | - | 5.0 s
+- - -> 50 ms | 458 | 375 | 49 | 11 (4) | 23 | 8.9 | 14.5 s
+- - -> 100 ms | 888 | 722 | 132 | 10 (4) | 23 | 9.6 | 27.4 s
+- - -> 250 ms | 2083 | 1737 | 288 | 17 (8) | 41 | 8.1 | 64.1 s
+- - -> 250 ms, retain mode | 2363 | 2032 | 261 | 45 (7) | 25 | 8.9 | 72.2 s
+- - -> 250 ms, the `filedrop` default (no flag) | 2204 | 1789 | 381 | 10 (4) | 23 | 8.3 | 67.9 s
+- - -> 500 ms | 4262 | 3484 | 741 | 13 (5) | 24 | 8.1 | 129.5 s
+- - -> 1 s | 6924 | 5117 | 1745 | 23 (9) | 39 | 6.8 | 210.4 s
+- - -> 5 s, the `sftp` default | 31209 | 21033 | 10113 | 20 (8) | 44 | 6.2 | 947.6 s
+- - -> The 1 ms row is the floor without poll waits: its polls do little but list the directory, so its file I/O is mostly listings, and a stretch of waiting there is too short to count.
+- - -> **What a step is made of.**
+- - -> A step writes 9.2 message files on average across the two parties.
+- - -> At most one message per direction is outstanding ([Phase 2](#phase-2----message-loop-delete-mode)), so a step's messages are sequential: each costs the reader's next poll, and a party sending two in a row first waits for the partner to consume the first.
+- - -> Poll waits are 92% of a step at 50 ms and 97% or more from 250 ms up.
+- - -> At 10 records, computation is 17 to 44 ms a step, and writes and renames are 4 to 16 ms.
+- - -> **Why a wait costs nearly a whole interval.**
+- - -> Each party schedules its next poll one interval after its previous poll ends, so the offset between the two parties' polls drifts only slowly.
+- - -> In every run up to 500 ms the median offset was 1 to 4 ms, less than the time a party takes to write its reply after the poll that brought the partner's message.
+- - -> The reply therefore lands just after the partner's own poll of that instant, and the partner finds it one interval later rather than half an interval later on average.
+- - -> At 1 s and 5 s the median offset was 48 and 81 ms, long enough for a reply to land before the partner's next poll in one direction, and a step took 6.2 to 6.9 intervals rather than 8.3 to 9.5.
+- - -> **The Windows share.**
+- - -> The 2026-10-24 lab run over an SMB share on the same LAN, at the 5 s interval in retain mode, took 30.7 s per step and 967 s in all; the local run at 5 s took 31.2 s per step and 948 s.
+- - -> At 5 s the interval accounts for the whole pace, and the share added nothing measurable.
+- - -> The defaults
+- - -> **`filedrop`: 250 ms** (`DEFAULT_FILEDROP_POLLING_FREQUENCY_MS`), a working value.
+- - -> The measurement fixes what an interval costs, six to ten of them per step and nearly all of a small exchange's time, but not the interval itself.
+- - -> At 250 ms a 30-step exchange of 10 records took 64 to 72 s over a local directory, against 948 s at 5 s, and each party lists the directory four times a second.
+- - -> A shared folder has no server whose flood protection the cadence could trip, so the CLI's sub-second warning and the console's matching advisory apply on `sftp` only.
+- - -> **`sftp`: 5 s** (`DEFAULT_SFTP_POLLING_FREQUENCY_MS`), unchanged.
+- - -> About ten listings a second tripped an SFTP server's flood protection and dropped the connection, and this measurement does not cover an SFTP server.
+- - -> **No other wait.**
+- - -> The send-gate waits use the same interval, so no other per-step wait has a setting of its own.
+- - -> Limits
+- - -> **A networked share's own latency is not measured.**
+- - -> Every run was on a local directory, where a listing shows a file as soon as its rename lands.
+- - -> A network share adds a round trip to each listing and file operation, and a client that caches directory listings or file attributes can hide a new file for the life of its cache.
+- - -> That would put a floor under every discovery wait at any interval.
+- - -> The container has no share to measure it on; the lab run shows no such floor at 5 s, and at 250 ms it is unmeasured.
+- - -> **The floor that remains.**
+- - -> At 250 ms a step is still 97% poll waits, about eight of them, against 33 to 70 ms of computation and file I/O.
+- - -> A shorter interval only scales the waits down.
+- - -> Fewer waits per step need a change to the message loop, such as polling soon after this party's own write or sending fewer messages per step, not a different default.
+- - -> **A listing grows with the directory in retain mode.**
+- - -> Retain mode keeps every message and acknowledgment, 562 files in the one directory by the end of the 30-step retain run, and each poll lists them all: the 250 ms retain run spent 45 ms a step on file I/O against 10 to 17 ms in delete mode.
+- - -> Over a share each entry can cost a round trip.
+- - -> **Computation grows with the input.**
+- - -> At 10 records it is under 50 ms a step; on a larger input the masking cost in [PROTOCOL.md](PROTOCOL.md) ("Masking compute is a wall-clock expectation") outweighs the interval.
+- - -> **One run per interval, on one machine.**
+- - -> Run-to-run variation was not measured; the three 250 ms runs, across both modes, ranged from 2.08 to 2.36 s a step.
+- - -> **The sweep's hello read is not shortened by the interval.**
+- - -> The read deadline of `--sweep-exchange-files`' retain inspection is two poll intervals floored at the joiner recovery window and capped at the remaining peer budget, so a shorter interval does not shorten it.

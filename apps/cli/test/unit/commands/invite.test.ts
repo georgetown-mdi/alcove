@@ -12,7 +12,7 @@ import {
   ConnectionError,
   decodeInvitation,
   DEFAULT_PEER_TIMEOUT_MS,
-  DEFAULT_POLLING_FREQUENCY_MS,
+  DEFAULT_SFTP_POLLING_FREQUENCY_MS,
   deriveAcceptedLinkageTerms,
   disclosedColumnNames,
   getDefaultLinkageTerms,
@@ -3614,7 +3614,7 @@ test("handler: the offline notice and the written config point at the block", as
     const raw = fs.readFileSync(configFile, "utf8");
     expect(raw).toContain(CONNECTION_BLOCK_DOC_URL);
     expect(raw).toContain(
-      `#   poll_interval_ms: ${DEFAULT_POLLING_FREQUENCY_MS}`,
+      `#   poll_interval_ms: ${DEFAULT_SFTP_POLLING_FREQUENCY_MS}`,
     );
   } finally {
     stdio.restore();

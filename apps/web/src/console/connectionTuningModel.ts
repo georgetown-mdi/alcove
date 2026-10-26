@@ -3,12 +3,13 @@ import {
   DEFAULT_MAX_RECONNECT_ATTEMPTS,
   DEFAULT_PEER_INACTIVITY_TIMEOUT_MS,
   DEFAULT_PEER_TIMEOUT_MS,
-  DEFAULT_POLLING_FREQUENCY_MS,
   DEFAULT_SERVER_CONNECT_TIMEOUT_MS,
+  DEFAULT_SFTP_POLLING_FREQUENCY_MS,
   LOW_POLLING_FREQUENCY_WARN_MS,
   MAX_RECONNECT_ATTEMPTS,
   MAX_TIMEOUT_SECONDS,
   MAX_TIMER_MS,
+  defaultPollingFrequencyMs,
 } from "@alcove/core";
 
 import type { JobExchangeOptions } from "@jobContract/intentSchemas";
@@ -169,8 +170,11 @@ export const CONNECTION_TUNING_DEFAULT: ConnectionTuningDraft = {
  * intent's filedrop arms refuse it and the card withholds it there. The silence
  * wait has no command-line flag, so a zero-setup run, which reaches the CLI
  * through flags alone, cannot hold it and its intent arms refuse it. A webrtc
- * run checks no folder, so its intent arm refuses the check interval. */
+ * run checks no folder, so its intent arm refuses the check interval. The
+ * channel decides the check interval's default and whether the anti-flood
+ * advisory applies, which it does only against an SFTP server. */
 export interface ConnectionTuningCapabilities {
+  channel: "sftp" | "filedrop" | "webrtc";
   pollInterval: boolean;
   connectionPerPoll: boolean;
   inactivityTimeout: boolean;
@@ -178,6 +182,7 @@ export interface ConnectionTuningCapabilities {
 
 /** The capabilities of an sftp flow: every control the card offers applies. */
 export const SFTP_CONNECTION_TUNING: ConnectionTuningCapabilities = {
+  channel: "sftp",
   pollInterval: true,
   connectionPerPoll: true,
   inactivityTimeout: true,
@@ -186,6 +191,7 @@ export const SFTP_CONNECTION_TUNING: ConnectionTuningCapabilities = {
 /** The capabilities of a shared-directory (filedrop) flow, whose connectionless
  * client has no session to cycle. */
 export const FILEDROP_CONNECTION_TUNING: ConnectionTuningCapabilities = {
+  channel: "filedrop",
   pollInterval: true,
   connectionPerPoll: false,
   inactivityTimeout: true,
@@ -193,6 +199,7 @@ export const FILEDROP_CONNECTION_TUNING: ConnectionTuningCapabilities = {
 
 /** The capabilities of a webrtc flow, which has no folder to check. */
 export const WEBRTC_CONNECTION_TUNING: ConnectionTuningCapabilities = {
+  channel: "webrtc",
   pollInterval: false,
   connectionPerPoll: false,
   inactivityTimeout: true,
@@ -210,6 +217,7 @@ export function connectionTuningCapabilitiesFor(
 /** The capabilities of a zero-setup sftp exchange, which composes no
  * configuration for the silence wait to be written into. */
 export const DIRECT_SFTP_CONNECTION_TUNING: ConnectionTuningCapabilities = {
+  channel: "sftp",
   pollInterval: true,
   connectionPerPoll: true,
   inactivityTimeout: false,
@@ -217,6 +225,7 @@ export const DIRECT_SFTP_CONNECTION_TUNING: ConnectionTuningCapabilities = {
 
 /** The capabilities of a zero-setup shared-directory exchange. */
 export const DIRECT_FILEDROP_CONNECTION_TUNING: ConnectionTuningCapabilities = {
+  channel: "filedrop",
   pollInterval: true,
   connectionPerPoll: false,
   inactivityTimeout: false,
@@ -455,10 +464,11 @@ export const CONNECTION_PER_POLL_SHORT_INTERVAL_ADVISORY =
  * and guide, never a block -- both values are legitimate against a server
  * the operator controls.
  *
- * The short-interval advisory reads the EFFECTIVE interval,
- * `DEFAULT_POLLING_FREQUENCY_MS` included, matching the CLI: an unset
- * interval with the session mode on is the wasteful pairing this warns
- * about, not an untuned run.
+ * The sub-second advisory is raised on sftp only, as the CLI raises it: a
+ * shared directory has no server to flood. The short-interval advisory reads
+ * the EFFECTIVE interval, `DEFAULT_SFTP_POLLING_FREQUENCY_MS` included,
+ * matching the CLI: an unset interval with the session mode on is the
+ * wasteful pairing this warns about, not an untuned run.
  */
 export function connectionTuningAdvisories(
   draft: ConnectionTuningDraft,
@@ -468,6 +478,7 @@ export function connectionTuningAdvisories(
   if (!capabilities.pollInterval) return advisories;
   const pollIntervalMs = durationMs(draft.pollInterval);
   if (
+    capabilities.channel === "sftp" &&
     typeof pollIntervalMs === "number" &&
     pollIntervalMs < LOW_POLLING_FREQUENCY_WARN_MS
   )
@@ -475,7 +486,7 @@ export function connectionTuningAdvisories(
   const effectiveIntervalMs =
     typeof pollIntervalMs === "number"
       ? pollIntervalMs
-      : DEFAULT_POLLING_FREQUENCY_MS;
+      : DEFAULT_SFTP_POLLING_FREQUENCY_MS;
   if (
     capabilities.connectionPerPoll &&
     draft.connectionPerPoll &&
@@ -527,12 +538,22 @@ export function defaultPlaceholder(
   return `default ${natural.magnitude} ${natural.unit}`;
 }
 
-/** Core's default for each duration field, keyed by the draft field it belongs
- * to, so the card's placeholders show the values the run actually applies rather
- * than restating them. */
+/** Core's default for each duration field but the check interval, keyed by the
+ * draft field it belongs to, so the card's placeholders show the values the run
+ * actually applies rather than restating them. The check interval's default
+ * differs by channel: {@link pollIntervalDefaultMs}. */
 export const TUNING_DEFAULT_MS = {
-  pollInterval: DEFAULT_POLLING_FREQUENCY_MS,
   peerTimeout: DEFAULT_PEER_TIMEOUT_MS,
   inactivityTimeout: DEFAULT_PEER_INACTIVITY_TIMEOUT_MS,
   serverConnectTimeout: DEFAULT_SERVER_CONNECT_TIMEOUT_MS,
 } as const;
+
+/** Core's check-interval default for the flow's channel, for the card's
+ * placeholder. */
+export function pollIntervalDefaultMs(
+  capabilities: ConnectionTuningCapabilities,
+): number {
+  return defaultPollingFrequencyMs(
+    capabilities.channel === "filedrop" ? "filedrop" : "sftp",
+  );
+}
