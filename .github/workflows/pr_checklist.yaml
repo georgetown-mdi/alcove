@@ -1,8 +1,9 @@
 name: PR Checklist
 
-# Validates the PR description's Checklist section on every pull request: no box
-# left unchecked, none of the required lines deleted, every checked line holding
-# a resolution clause, and every n/a earned with a reason. This is the
+# Validates the PR description's Checklist section on every pull request that is
+# not a draft: no box left unchecked, none of the required lines deleted, every
+# checked line holding a resolution clause, and every n/a earned with a
+# reason. This is the
 # mechanical safety check for the template's "resolve every line" rule (whether
 # a reason holds up stays a review call) -- see scripts/check-pr-checklist.mjs
 # for the rules.
@@ -11,11 +12,16 @@ name: PR Checklist
 # runs on `edited` too: fixing the PR body re-runs the check without pushing a
 # new commit. static_checks stays commit-triggered -- its results depend only on
 # the tree, so a body edit must not re-run it.
+#
+# A draft pull request skips the check: its checklist is resolved when it is
+# marked ready, so `ready_for_review` runs it then. This workflow is not a
+# required check (GATING_WORKFLOWS in scripts/check-merge-gate-identities.mjs),
+# so the skip holds no merge pending.
 
 on:
   pull_request:
     branches: [main, staging]
-    types: [opened, edited, reopened, synchronize]
+    types: [opened, edited, reopened, synchronize, ready_for_review]
 
 # Cancel a superseded run when a newer commit or body edit lands on the same PR.
 concurrency:
@@ -33,7 +39,7 @@ jobs:
     name: PR Checklist
     # Bot PRs skip the check: bots (dependabot targets staging) do not use the PR
     # template, and dependency PRs are gated by dependency_review.yaml instead.
-    if: github.event.pull_request.user.type != 'Bot'
+    if: github.event.pull_request.user.type != 'Bot' && !github.event.pull_request.draft
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
@@ -49,9 +55,11 @@ jobs:
       # edit, judges the body it froze, and fails on a sha the author has already
       # updated -- and re-running it hands it that same frozen payload again. Only
       # the fields that cannot change over a pull request's life are read from the
-      # payload above: its number, and whether its author is a bot. The path is
-      # set on each step rather than on the job, where the runner context is not
-      # available.
+      # payload above: its number, and whether its author is a bot. Whether it
+      # is a draft is read from the payload too: a run whose event preceded
+      # `gh pr ready` is followed by the `ready_for_review` run, which sees the
+      # pull request ready. The path is set on each step rather than on the job,
+      # where the runner context is not available.
       - name: Fetch the pull request
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

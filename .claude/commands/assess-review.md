@@ -248,11 +248,12 @@ there is the one the brief describes.
   edits written out inside the same brief.
 - The brief ends by ordering the verification and the commit: build core
   (`npm run build -w packages/core`) if the fix touched it, then the tests
-  covering what changed, then the repo-wide gates `CLAUDE.md`, Writing,
-  tooling and commits, names, once, then a commit
-  to the branch -- never staging or main -- following `CONTRIBUTING.md`, Commit
-  Messages (no markdown, no top-level lists, no self-attribution). Report what
-  the spawn ran and what it reported.
+  covering what the fix changed, then the pre-push checks `CLAUDE.md`,
+  Writing, tooling and commits, names, once, for what the fix changed, then a
+  commit to the branch -- never staging or main -- following
+  `CONTRIBUTING.md`, Commit Messages (no markdown, no top-level lists, no
+  self-attribution). The integration tiers are left to CI, which reruns when
+  the session pushes the fix. Report what the spawn ran and what it reported.
 
 Then record what you decided. The round's row in
 `PRIMARY/scratch/review-rounds/<key>.jsonl` contains a `dispositions` entry per
@@ -298,7 +299,8 @@ The branch is ready when the diff has stabilized (trajectory converging, not
 churning), no unaddressed finding touches a security-relevant surface (one
 narrowed, or recorded as a stated limit, stops gating readiness once the owner
 ratifies that disposition), brittle areas are shored up or independently
-assessed, and typecheck/lint/tests are green. When it is ready, say so.
+assessed, and CI is green on the head, read from a fresh `gh pr view`
+(`.claude/orchestration/ruleset.md`, Review flow). When it is ready, say so.
 
 **Merge-ready dispositions check.** Before reporting the branch ready to merge,
 run `node .claude/scripts/check-review-ledger-dispositions.mjs
@@ -394,9 +396,9 @@ Each path is recorded on the checklist line naming both shas:
 
 The rebase path does not compare the content the branch now sits on: paths
 outside its own diff, and the rest of a shared file outside the branch's hunks.
-The gates cover that, re-running at the new head against the head merged with
-the base tip. An interaction that builds and passes is not covered, so a single
-executable line inside the branch's own hunks, or a shared file a review claim
+CI covers that, re-running on the force-pushed head merged with the base tip.
+An interaction that builds and passes is not covered, so a single executable
+line inside the branch's own hunks, or a shared file a review claim
 names, sends the head to a full round. Rationale, the hunk comparison, the
 markdown exclusion it inherits, and the `docs/spec/` conflict that exclusion
 leaves unread:

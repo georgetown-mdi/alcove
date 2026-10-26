@@ -519,7 +519,7 @@ The computation sits above the fetch layer so the colocated test drives it on a 
 
 ### Why it exists
 
-The PR Checklist workflow fails an open pull request whose title is over budget, but only after the fact,
+The PR Checklist workflow fails a pull request that is not a draft and whose title is over budget, but only after the fact,
 so a session reusing a board item's own title pays a red run and a retitle.
 The hook applies the same rule when the title is written.
 
