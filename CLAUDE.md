@@ -67,7 +67,7 @@ Beyond the conventions in `CONTRIBUTING.md`:
 - Every Agent spawn passes an explicit model, or names a `subagent_type` whose `.claude/agents/` definition pins the tier -- Opus for implementation and ordinary review, Sonnet for mechanical work, Haiku for an exact-edit brief. Enforced by `require-agent-model.mjs`.
 - A brief or report asserts a repo convention or a fact only by citing the repo file that states it; anything taken from memory is labeled advisory or unverified -- an agent cannot tell an unsourced claim from a real one, and applies both.
 - A subagent's final report stays within roughly 600 tokens; anything longer -- a survey's inventory above all -- goes in a file the report names by path.
-- Every agent-written artifact -- a commit, a plan, an earlier session's conclusion -- is a proposal until the maintainer ratifies it in PR review or direct word; attribute that provenance when reporting state.
+- Every agent-written artifact -- a commit, a plan, a stated limit, an earlier session's conclusion -- is a proposal until the maintainer ratifies it by direct word, in PR review or a docket ratification; a merge alone ratifies nothing. Attribute that provenance when reporting state.
 - Weight the concrete driving scenario over general applicability -- an unattended failure needs a remedy, not a log line -- and rank efficiency work by token spend, not wall-clock time; the maintainer decides scheduling and parallelism.
 - A control the issue's acceptance criteria do not require -- a new check, guard, or freeze -- is proposed in a line the owner can scope or defer before it is built: a policy making a surface in-scope for review licenses reviewing it, not constructing on it.
 
