@@ -170,6 +170,9 @@ export default {
   rewrites: REWRITES,
   cleanUrls: true,
   lastUpdated: false,
+  // With srcDir at the repository root, the default public directory would be
+  // a top-level public/; the site's static files sit beside this config.
+  vite: { publicDir: resolve(repoRoot, "docs/.vitepress/public") },
   markdown: {
     // Raw HTML is shown as text, and HTML comments are dropped
     // (dropHtmlComments): a `<name>` placeholder in prose would otherwise reach

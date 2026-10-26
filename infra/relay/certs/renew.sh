@@ -109,7 +109,7 @@ case "$CLIENT" in
       # shellcheck disable=SC1090
       . "$ACME_ENV"
       set +a
-      acme.sh --home "$ACME_HOME" --issue --dns "dns_$PROVIDER" "${ACMESH_DOMAINS[@]}" \
+      acme.sh --home "$ACME_HOME" --issue --server letsencrypt --dns "dns_$PROVIDER" "${ACMESH_DOMAINS[@]}" \
         --accountemail "$EMAIL" ${ACMESH_FORCE[@]+"${ACMESH_FORCE[@]}"}
     ) || [ $? -eq 2 ] # 2 is acme.sh for "not due for renewal"
     SRC_CRT="$ACME_HOME/$REALM/fullchain.cer"

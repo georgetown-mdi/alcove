@@ -163,6 +163,14 @@ Both public names are custom domains of the Pages project, each a proxied DNS re
 | Always Use HTTPS | On, so plain HTTP to any of these names is answered `301` at the edge |
 | HSTS | On, `max-age=15552000`, without `includeSubDomains` and without preload |
 
+The root also declares the zone's own records:
+
+- **`www.data-bridge.org`** serves no site: the edge answers every request on it with a `301` to the same path and query on `https://data-bridge.org`, the project site.
+- **No mail.** No name in the zone sends or receives mail. Each name that answers with an address has a null MX (RFC 7505) and SPF `v=spf1 -all`, and DMARC `p=reject` at `_dmarc.data-bridge.org` covers every name, with no report address.
+- **CAA** records limit certificate issuance to the authorities that issue for the zone's names: Cloudflare's edge and Pages certificates, and Let's Encrypt for the relay host ([infra/hosted/README.md](../infra/hosted/README.md#certificate-authorities)).
+- **DNSSEC** is on, with the DS record at the registry ([infra/hosted/README.md](../infra/hosted/README.md#dnssec)).
+- **`/.well-known/security.txt`** (RFC 9116) is served by the web application's build, on the two public names and the demo site's, and by the project site's build at the apex. It names the reporting routes [SECURITY.md](../SECURITY.md#reporting-a-vulnerability) names, and its `Expires` date is renewed by hand: `scripts/security-txt.test.mjs` fails 45 days before it.
+
 ### Headers, caching, and the fallback document
 
 The build writes only the part of Pages' configuration the site needs: a `_headers` file with the four security headers and the `/assets/*` cache rule, and no `_redirects` or `404.html`, so Pages answers an unmatched path with the root `index.html` ([notes/hosted-static-build.md](notes/hosted-static-build.md#no-catch-all-rewrite)). Two limits of Pages, measured on the deployment:
