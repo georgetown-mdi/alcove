@@ -8,6 +8,7 @@ import { describeResolvedMatching } from "@alcove/core";
 import { dateTimeLabel, invitationUsable } from "@psi/formatting";
 import { OPENED_EXCHANGE_CONTINUES } from "@console/mountedConfiguration";
 import { RecurringHandoff } from "@recurring/RecurringHandoff";
+import { RelayCheckPanel } from "@console/RelayCheckPanel";
 import { TermsChangeRecovery } from "@console/TermsChangeRecovery";
 import styles from "@styles/app.module.css";
 
@@ -76,6 +77,7 @@ export function InviterExchangeSection({
   serverJob,
   continuesOpenedExchange = false,
   runsInWorkingFolder = false,
+  relayCheckOffered = false,
   jobId,
   reattached,
   reattaching,
@@ -133,6 +135,9 @@ export function InviterExchangeSection({
   /** Whether that run uses the working folder's own alcove.yaml, where a
    * partner terms change it stops on leaves its proposal. */
   runsInWorkingFolder?: boolean;
+  /** Whether a failed attempt offers the console's relay check beside the
+   * retry: a console WebRTC run, whose files stay in the working folder. */
+  relayCheckOffered?: boolean;
   /** The console job id of a server-job run, once created. Threads the run's job
    * to the recurring hand-off panel; undefined on a browser run. */
   jobId: string | undefined;
@@ -340,6 +345,7 @@ export function InviterExchangeSection({
               folder={discardFolder}
             />
           )}
+          {retryable && relayCheckOffered && <RelayCheckPanel />}
           {offersStartOver && (
             <FailureRecoveryButton
               label={

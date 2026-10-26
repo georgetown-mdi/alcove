@@ -17,6 +17,7 @@ import {
 } from "@alcove/cli-contract";
 
 import { JOB_FILE_NAMES } from "@jobContract/intentSchemas";
+import { isRelayCheckStatus } from "@jobContract/relayCheckResponses";
 
 import {
   ConfigurationLoadRefusedError,
@@ -31,6 +32,11 @@ import type {
   RelayHostStatement,
   RelayTransport,
 } from "@alcove/core";
+
+import type {
+  RelayCheckLine,
+  RelayCheckUnavailableReason,
+} from "@jobContract/relayCheckResponses";
 
 import type { CapturedChildStop } from "./capturedCliChild";
 
@@ -78,18 +84,6 @@ const MAX_RELAY_CHECKS = 256;
 export const RELAY_CHECK_TEXT_MAX_DISPLAY_LENGTH =
   COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH;
 
-/** The status of one check, as the CLI's verdict states it. */
-export type RelayCheckStatus = "ok" | "warn" | "fail" | "skipped";
-
-/** One check as the browser is given it: every string escaped and bounded. */
-export interface RelayCheckLine {
-  id: string;
-  status: RelayCheckStatus;
-  headline: string;
-  meaning?: string;
-  action?: string;
-}
-
 /**
  * How a relay check ended:
  * - `verdict`: the child printed a verdict this boundary accepts.
@@ -108,16 +102,6 @@ export type RelayCheckResult =
   | { kind: "refused" }
   | { kind: "timeout" }
   | { kind: "error" };
-
-/** Why the working folder holds no configuration this check applies to. */
-export type RelayCheckUnavailableReason =
-  | "no-configuration"
-  | "configuration-refused"
-  | "not-webrtc"
-  | "ice-provision"
-  | "no-turn-url"
-  | "turn-urls-left-out"
-  | "key-file";
 
 /**
  * Whether the working folder's pair can be checked, and the hosts a check of
@@ -208,12 +192,6 @@ export function relayCheckOffer(dataRoot: string): RelayCheckOffer {
   };
 }
 
-const STATUSES: ReadonlySet<string> = new Set([
-  "ok",
-  "warn",
-  "fail",
-  "skipped",
-]);
 const TRANSPORTS: ReadonlySet<string> = new Set(["udp", "tcp", "tls"]);
 const CHECK_ID = /^(?:enrollment|turn_[1-9][0-9]{0,3})$/;
 const LAPSE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$/;
@@ -233,7 +211,7 @@ function checkLineOf(value: unknown): RelayCheckLine | null {
   const record = value as Record<string, unknown>;
   const { id, status, transport } = record;
   if (typeof id !== "string" || !CHECK_ID.test(id)) return null;
-  if (typeof status !== "string" || !STATUSES.has(status)) return null;
+  if (!isRelayCheckStatus(status)) return null;
   if (
     transport !== undefined &&
     (typeof transport !== "string" || !TRANSPORTS.has(transport))
@@ -251,7 +229,7 @@ function checkLineOf(value: unknown): RelayCheckLine | null {
   if (lapse !== undefined && !LAPSE.test(lapse)) return null;
   const fields: RelayCheckFields = {
     id,
-    status: status as RelayCheckStatus,
+    status,
     ...(url !== undefined && { url }),
     ...(transport !== undefined && { transport: transport as RelayTransport }),
     ...(registrar !== undefined && { registrar }),

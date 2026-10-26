@@ -270,6 +270,7 @@ describe("the job API contract stays loadable in the browser", () => {
         join(CONTRACT_DIRECTORY, "jobHandoff.ts"),
         join(CONTRACT_DIRECTORY, "mountBrowsePurpose.ts"),
         join(CONTRACT_DIRECTORY, "recordUnavailableReason.ts"),
+        join(CONTRACT_DIRECTORY, "relayCheckResponses.ts"),
         join(CONTRACT_DIRECTORY, "relayEvent.ts"),
         join(CONTRACT_DIRECTORY, "runArtifactNames.ts"),
         join(CONTRACT_DIRECTORY, "sftpConnection.ts"),
