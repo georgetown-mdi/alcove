@@ -13,7 +13,6 @@ import {
 import type {
   ConnectionConfig,
   RelayCheckContact,
-  RelayCheckFields,
   RelayCheckHeadlineOptions,
   RelayCheckPlan as RelayCheckHostPlan,
   RelayCredential,
@@ -29,8 +28,7 @@ import {
 } from "../connection/webrtc/weriftPeer";
 import { enrollAtInvitationRelay } from "../invitationRelayEnrollment";
 import type { InvitationRelayEnrollment } from "../invitationRelayEnrollment";
-import type { DoctorCheckRecord, DoctorReport } from "./verdict";
-import { fail, ok, skipped, warn } from "./verdict";
+import type { DoctorCheck, DoctorCheckRecord, DoctorReport } from "./verdict";
 
 // `alcove doctor relay`: whether this host reaches the TURN relay a webrtc run
 // allocates on, asked as the run's ICE gathering asks. It contacts exactly the
@@ -141,17 +139,20 @@ export function relayCheckPlan(
   };
 }
 
-/** The headline core composes for a check this module reports. */
-function headline(
-  fields: RelayCheckFields,
+/**
+ * The record of `check`, its summary the headline core composes from the
+ * check's own `--json` fields.
+ */
+function withHeadline(
+  check: DoctorCheck,
   options?: RelayCheckHeadlineOptions,
-): string {
-  const composed = relayCheckHeadline(fields, options);
-  if (composed === undefined)
+): DoctorCheckRecord {
+  const summary = relayCheckHeadline(check, options);
+  if (summary === undefined)
     throw new InternalConsistencyError(
-      `the relay check composed no headline for its ${fields.id} check`,
+      `the relay check composed no headline for its ${check.id} check`,
     );
-  return composed;
+  return { ...check, summary };
 }
 
 /** The id of the enrollment's check line. */
@@ -210,28 +211,21 @@ export function enrollmentCheckRecord(
 ): DoctorCheckRecord {
   const { registrar, outcome } = enrollment;
   if (outcome.kind === "enrolled")
-    return ok(
-      ENROLLMENT_CHECK_ID,
-      headline({
-        id: ENROLLMENT_CHECK_ID,
-        status: "ok",
-        registrar,
-        ...(outcome.lapsesAt !== null && { lapsesAt: outcome.lapsesAt }),
-      }),
-      {
-        registrar,
-        ...(outcome.lapsesAt !== null && { lapses_at: outcome.lapsesAt }),
-      },
-    );
-  return warn(
-    ENROLLMENT_CHECK_ID,
-    headline(
-      { id: ENROLLMENT_CHECK_ID, status: "warn", registrar },
-      { registrarAnswer: outcome.detail },
-    ),
-    ENROLLMENT_FAILED_MEANING,
-    ENROLLMENT_FAILED_ACTION,
-    { registrar },
+    return withHeadline({
+      id: ENROLLMENT_CHECK_ID,
+      status: "ok",
+      registrar,
+      ...(outcome.lapsesAt !== null && { lapses_at: outcome.lapsesAt }),
+    });
+  return withHeadline(
+    {
+      id: ENROLLMENT_CHECK_ID,
+      status: "warn",
+      meaning: ENROLLMENT_FAILED_MEANING,
+      action: ENROLLMENT_FAILED_ACTION,
+      registrar,
+    },
+    { registrarAnswer: outcome.detail },
   );
 }
 
@@ -242,17 +236,15 @@ function registrarNotContactedRecord(plan: RelayCheckPlan): DoctorCheckRecord {
     throw new InternalConsistencyError(
       "registrarNotContactedRecord: the configuration names no registrar",
     );
-  return skipped(
-    ENROLLMENT_CHECK_ID,
-    headline({ id: ENROLLMENT_CHECK_ID, status: "skipped", registrar }),
-    {
-      meaning:
-        "a run of this configuration does not enroll at this registrar, " +
-        `because ${registrarNotContactedReason(plan)}, so the check does ` +
-        "not contact it.",
-      registrar,
-    },
-  );
+  return withHeadline({
+    id: ENROLLMENT_CHECK_ID,
+    status: "skipped",
+    meaning:
+      "a run of this configuration does not enroll at this registrar, " +
+      `because ${registrarNotContactedReason(plan)}, so the check does ` +
+      "not contact it.",
+    registrar,
+  });
 }
 
 const NOT_REACHED_MEANING =
@@ -297,15 +289,18 @@ export function relayCheckRecord(
 ): DoctorCheckRecord {
   const id = "turn_1";
   const { server, transport } = target;
-  const located = { url: server.url, transport };
   if (relayGathered)
-    return ok(id, headline({ id, status: "ok", ...located }), located);
-  return fail(
-    id,
-    headline({ id, status: "fail", ...located }, { boundMs }),
-    notReachedMeaning(server, enrollment),
-    RELAY_NOT_REACHED_REMEDY,
-    located,
+    return withHeadline({ id, status: "ok", url: server.url, transport });
+  return withHeadline(
+    {
+      id,
+      status: "fail",
+      meaning: notReachedMeaning(server, enrollment),
+      action: RELAY_NOT_REACHED_REMEDY,
+      url: server.url,
+      transport,
+    },
+    { boundMs },
   );
 }
 
@@ -323,7 +318,9 @@ function laterUrlRecord(
   index: number,
 ): DoctorCheckRecord {
   const id = `turn_${index + 2}`;
-  return skipped(id, headline({ id, status: "skipped", url: server.url }), {
+  return withHeadline({
+    id,
+    status: "skipped",
     meaning: LATER_URL_NOT_CONTACTED_MEANING,
     action: NOT_CONTACTED_ACTION,
     url: server.url,

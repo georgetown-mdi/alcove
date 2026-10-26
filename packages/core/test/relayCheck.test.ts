@@ -78,7 +78,7 @@ describe("relayCheckHeadline", () => {
         id: "enrollment",
         status: "ok",
         registrar: REGISTRAR,
-        lapsesAt: "2026-01-01T01:10:00Z",
+        lapses_at: "2026-01-01T01:10:00Z",
       },
       "the relay registrar at https://registrar.example.org that your " +
         "partner's invitation names enrolled this exchange, until " +

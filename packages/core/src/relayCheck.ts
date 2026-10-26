@@ -327,7 +327,7 @@ export interface RelayCheckFields {
   url?: string;
   transport?: RelayTransport;
   registrar?: string;
-  lapsesAt?: string;
+  lapses_at?: string;
 }
 
 /** What a headline adds to the verdict's fields, where its writer has it. */
@@ -362,7 +362,7 @@ export function relayCheckHeadline(
     if (registrar === undefined) return undefined;
     try {
       if (status === "ok")
-        return `${invitationRelayEnrolledNotice(registrar, check.lapsesAt ?? null)}.`;
+        return `${invitationRelayEnrolledNotice(registrar, check.lapses_at ?? null)}.`;
       if (status === "warn")
         return invitationRelayNotEnrolledStatement(
           registrar,

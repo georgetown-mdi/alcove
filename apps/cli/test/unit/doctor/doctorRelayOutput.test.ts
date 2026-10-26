@@ -4,6 +4,8 @@ import path from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import YAML from "yaml";
 
+import { RELAY_CHECK_ENROLLMENT_ID, relayCheckHeadline } from "@alcove/core";
+import type { RelayCheckFields } from "@alcove/core";
 import type { RTCIceServer } from "werift";
 
 import { checkRelay } from "../../../src/commands/doctor";
@@ -188,5 +190,43 @@ test.each([
     });
 
     expect(output).toEqual(RECORDED[name]);
+  },
+);
+
+// The registrar's answer in refusedEnrollmentNotReached, which the --json
+// verdict withholds and the human summary holds.
+const REFUSED_ENROLLMENT_ANSWER = "HTTP 409: no";
+
+const STATUS_LABEL: Record<RelayCheckFields["status"], string> = {
+  ok: "OK",
+  warn: "WARN",
+  fail: "FAIL",
+  skipped: "SKIP",
+};
+
+test.each(Object.keys(RECORDED))(
+  "relayCheckHeadline composes each recorded summary of %s from its --json check",
+  (name) => {
+    const recorded = RECORDED[name];
+    if (recorded === undefined) throw new Error(`no recorded output ${name}`);
+    const { checks } = JSON.parse(recorded.json) as {
+      checks: RelayCheckFields[];
+    };
+    const summaryLines = recorded.lines.filter((line) =>
+      /^(OK|WARN|FAIL|SKIP): /.test(line),
+    );
+
+    expect(summaryLines).toHaveLength(checks.length);
+    checks.forEach((check, index) => {
+      const refusedEnrollment =
+        check.id === RELAY_CHECK_ENROLLMENT_ID && check.status === "warn";
+      const headline = relayCheckHeadline(
+        check,
+        refusedEnrollment ? { registrarAnswer: REFUSED_ENROLLMENT_ANSWER } : {},
+      );
+      expect(summaryLines[index]).toBe(
+        `${STATUS_LABEL[check.status]}: ${headline}`,
+      );
+    });
   },
 );
