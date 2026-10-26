@@ -25,18 +25,12 @@ Pass `serve` as the first argument to run the single-party console instead of th
 For a shared-folder exchange, mount your working folder and the shared folder separately:
 
 ```sh
-docker run --rm -p 127.0.0.1:3000:3000 \
-  --env JOB_DATA_ROOT=/data \
-  -v /host/work:/data \
-  --env JOB_RENDEZVOUS_DIR=/shared \
-  --env JOB_RENDEZVOUS_NAME=agency-a-agency-b \
-  -v /host/agency-a-agency-b:/shared \
-  ghcr.io/georgetown-mdi/alcove:latest serve
+docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/data -v "/host/work:/data" --env JOB_RENDEZVOUS_DIR=/shared --env JOB_RENDEZVOUS_NAME=agency-a-agency-b -v "/host/agency-a-agency-b:/shared" ghcr.io/georgetown-mdi/alcove:latest serve
 ```
 
 The operator drops their input CSVs into `/host/work`; `/host/agency-a-agency-b` is the folder their sync tool shares with the partner, and `JOB_RENDEZVOUS_NAME` is the name an invitation tells the partner to look for (see below).
 
-For an SFTP exchange, which syncs no folder with the partner, the single mount is enough: leave out the three shared-folder lines. A shared-folder exchange still runs on the single mount, out of `JOB_DATA_ROOT` -- but then this console's shared folder is the folder holding your files. Whoever syncs it gets your input, configuration, and results. The console says so where you choose the shared-folder transport, with the flags above, and once more when the run starts; it does not refuse the run (see [The input folder](#the-input-folder)).
+For an SFTP exchange, which syncs no folder with the partner, the single mount is enough: leave out the three shared-folder flags, the two `JOB_RENDEZVOUS_` variables and the second `-v`. A shared-folder exchange still runs on the single mount, out of `JOB_DATA_ROOT` -- but then this console's shared folder is the folder holding your files. Whoever syncs it gets your input, configuration, and results. The console says so where you choose the shared-folder transport, with the flags to add to your `docker run` command just before the image name, and once more when the run starts; it does not refuse the run (see [The input folder](#the-input-folder)).
 
 Inputs can have a mount of their own as well, which can be read-only:
 

@@ -1,14 +1,15 @@
 <#
 .SYNOPSIS
-    Pester suite that runs the docker lines README.md prints, and the line the
-    console's shared-folder notice gives, under Windows PowerShell and checks the
-    arguments each one hands to docker. Maintainer-facing.
+    Pester suite that runs the docker lines README.md and docs/CONSOLE.md
+    print, and the line the console's shared-folder notice gives, under Windows
+    PowerShell and checks the arguments each one hands to docker.
+    Maintainer-facing.
 
 .DESCRIPTION
     The commands are read from docker-lines.txt, each followed by the arguments
     it means docker to receive. The repository test
-    scripts/docker-lines.test.mjs writes that file from README.md and the
-    console's flags, compares it on every run, and splits the same lines under
+    scripts/docker-lines.test.mjs writes that file from README.md,
+    docs/CONSOLE.md, and the console's flags, compares it on every run, and splits the same lines under
     bash and sh; rewrite it with `npx vitest run -u` on that test. Only the
     lines printed on one line are here: a line continued with a trailing
     backslash is for a Mac or Linux shell, and the README says so above it.

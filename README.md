@@ -219,7 +219,7 @@ A command in this README written on one line runs as written in PowerShell and i
 docker run -it --rm --mount type=bind,src='C:\Users\me\Documents\alcove',dst=/work ghcr.io/georgetown-mdi/alcove:latest sftp://user@example.org/psi --server-password=@passwd input.csv ./results
 ```
 
-A command that mounts `$PWD` or `${PWD}` needs a folder on a drive letter. From a network location, a path starting with `\\`, PowerShell gives `$PWD` as `Microsoft.PowerShell.Core\FileSystem::\\server\share\...`, which Docker cannot mount. Run the command from the share's mapped drive letter instead, such as `Z:\exchange`, or write the folder's path in place of `$PWD`, as in the example above.
+A command that mounts `$PWD` or `${PWD}` needs a folder on a local drive. From a network location, a path starting with `\\`, PowerShell gives `$PWD` as `Microsoft.PowerShell.Core\FileSystem::\\server\share\...`, which Docker cannot mount. Docker cannot mount a folder on a network location by its path either, whether a `\\` path or a mapped drive such as `Z:\exchange`: it reaches that folder through a volume the Windows shared-folder setup makes, described in [Using a network file drop with Alcove on Windows](support/windows-network-filedrop/README.md). For a folder on a local drive, you can write its path in place of `$PWD`, as in the example above.
 
 ### Docker run background
 

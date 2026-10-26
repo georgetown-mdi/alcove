@@ -10,24 +10,29 @@ import { SHARED_FOLDER_MOUNT_FLAGS } from "../apps/web/src/console/filedropRende
 
 import { fencedBlocks } from "./lib/markdownFences.mjs";
 
-// The docker lines README.md prints, and the one the console's shared-folder
-// notice gives, as each shell hands them to docker. A line written on one line
-// is for every shell: it is split here under bash and sh, and written with the
-// arguments it means to the file the Windows PowerShell 5.1 suite
-// (support/maintainer-notes/DockerLines.Tests.ps1) runs; `npx vitest run -u`
-// rewrites that file. A line continued with a trailing backslash is for a Mac
-// or Linux shell only, and the README says so above it.
+// The docker lines README.md and docs/CONSOLE.md print, and the one the
+// console's shared-folder notice gives, as each shell hands them to docker. A
+// line written on one line is for every shell: it is split here under bash and
+// sh, and written with the arguments it means to the file the Windows
+// PowerShell 5.1 suite (support/maintainer-notes/DockerLines.Tests.ps1) runs;
+// `npx vitest run -u` rewrites that file. A line continued with a trailing
+// backslash is for a Mac or Linux shell only, and the README says so above it.
 
 const README = fileURLToPath(new URL("../README.md", import.meta.url));
+const CONSOLE_DOC = fileURLToPath(
+  new URL("../docs/CONSOLE.md", import.meta.url),
+);
 const COMMANDS_FILE = "../support/maintainer-notes/docker-lines.txt";
 
 /** The stand-in for the folder a command runs from, in the commands file. */
 const WORKING_FOLDER = "<working folder>";
 
-/** Every docker command in README.md's sh blocks, each as printed, with
+const readmeCommands = () => documentCommands(README);
+
+/** Every docker command in a markdown file's sh blocks, each as printed, with
  * `lineAbove` the nearest non-blank line above its block. */
-function readmeCommands() {
-  const source = readFileSync(README, "utf8");
+function documentCommands(path) {
+  const source = readFileSync(path, "utf8");
   const lines = source.split("\n");
   return fencedBlocks(source)
     .filter((block) => block.language === "sh")
@@ -113,17 +118,23 @@ function intendedArguments(command) {
   return words.slice(1);
 }
 
+/** Every command the documents print, then the console's with its notice's
+ * flags added. */
+const allCommands = () => [
+  ...readmeCommands().map(({ command }) => command),
+  consoleCommandWithSharedFolder(),
+  ...documentCommands(CONSOLE_DOC).map(({ command }) => command),
+];
+
 /** Every command printed on one line, each once: the ones the PowerShell
  * suite runs. */
 function oneLineCommands() {
-  const commands = [
-    ...readmeCommands().map(({ command }) => command),
-    consoleCommandWithSharedFolder(),
-  ].filter((command) => !command.includes("\n"));
-  return [...new Set(commands)];
+  return [
+    ...new Set(allCommands().filter((command) => !command.includes("\n"))),
+  ];
 }
 
-describe("the README and console docker lines", () => {
+describe("the README, docs/CONSOLE.md, and console docker lines", () => {
   test("a command continued over lines is labeled for a Mac or Linux shell", () => {
     const unlabeled = readmeCommands()
       .filter(({ command }) => command.includes("\n"))
@@ -155,11 +166,7 @@ describe("the README and console docker lines", () => {
         mkdtempSync(join(tmpdir(), "alcove docker lines ")),
       );
       try {
-        const commands = [
-          ...readmeCommands().map(({ command }) => command),
-          consoleCommandWithSharedFolder(),
-        ];
-        for (const command of commands) {
+        for (const command of allCommands()) {
           // A docker stand-in printing each argument it receives in brackets,
           // so an empty or space-edged one stays visible.
           const script =
