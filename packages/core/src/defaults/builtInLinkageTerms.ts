@@ -889,16 +889,9 @@ export function linkageRuleSetReferenceFor(
  * When metadata are provided, only those whose element fields can be satisfied
  * by the present columns are included; metadata declaring no column satisfies
  * none. A key condition's field needs no column: an input without one runs the
- * key with every record lacking the field. Either way the
- * emitted keys are a subset of the set, never an addition to it: what the
- * input supports narrows the set, and nothing widens it -- which is what
- * makes the emitted citation accurate, an upper bound on what was tried
- * rather than a claim that every key ran.
- *
- * Narrowed all the way to no key, the citation goes with the keys: it
- * asserts where the keys came from, so a derivation emitting none has no
- * provenance to claim -- the same exclusion
- * {@link linkageRuleSetReferenceFor} makes.
+ * key with every record lacking the field. Either way the emitted keys are a
+ * subset of the set, never an addition to it: what the input supports narrows
+ * the set, and nothing widens it.
  */
 export function linkageTermsFromRuleSet(
   ruleSet: BuiltInLinkageRuleSet,
@@ -939,7 +932,6 @@ export function linkageTermsFromRuleSet(
     deduplicate: false,
     linkageFields,
     linkageKeys,
-    ...(linkageKeys.length > 0 && { linkageRuleSet: ruleSet.reference }),
   };
 }
 

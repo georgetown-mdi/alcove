@@ -1,7 +1,6 @@
 import { describe, expect, test } from "vitest";
 
 import {
-  DEFAULT_LINKAGE_RULE_SET,
   getDefaultLinkageTerms,
   getDefaultStandardization,
   inferMetadata,
@@ -12,7 +11,6 @@ import { composeManagedDocument } from "@exchange/manageOfferModel";
 
 import {
   buildAdvancedTerms,
-  linkageRuleSetReferenceForDraft,
   seedAdvancedInvite,
   setDraftMetadata,
   validateAdvancedInvite,
@@ -73,11 +71,11 @@ describe("the guided key list", () => {
     expect(names).not.toContain("LN + FN + DOB + ZIP");
   });
 
-  test("builds terms citing the catalog, cleaned as the terms declare", async () => {
+  test("builds the catalog's terms, cleaned as the terms declare", async () => {
     const draft = guided();
     const terms = buildAdvancedTerms(draft);
-    expect(linkageRuleSetReferenceForDraft(terms)).toStrictEqual(
-      DEFAULT_LINKAGE_RULE_SET.reference,
+    expect(terms.linkageKeys).toStrictEqual(
+      getDefaultLinkageTerms("Inviter", metadata).linkageKeys,
     );
     const minted = await generateInvitation({
       allowedRelays: undefined,
@@ -89,9 +87,7 @@ describe("the guided key list", () => {
       metadata: draft.metadata,
       standardization: draft.standardization,
     });
-    expect(minted.linkageTerms.linkageRuleSet).toStrictEqual(
-      DEFAULT_LINKAGE_RULE_SET.reference,
-    );
+    expect(minted.linkageTerms).not.toHaveProperty("linkageRuleSet");
     expect(
       validateStandardizationAgainstTerms(
         minted.standardization ?? [],
@@ -156,10 +152,11 @@ describe("a key a column edit newly makes offerable", () => {
     );
   });
 
-  test("leaves the built terms citing the catalog", () => {
-    expect(
-      linkageRuleSetReferenceForDraft(buildAdvancedTerms(edited())),
-    ).toStrictEqual(DEFAULT_LINKAGE_RULE_SET.reference);
+  test("builds the catalog's keys in catalog order", () => {
+    const draft = edited();
+    expect(buildAdvancedTerms(draft).linkageKeys).toStrictEqual(
+      getDefaultLinkageTerms("Inviter", draft.metadata).linkageKeys,
+    );
   });
 });
 
@@ -189,14 +186,11 @@ describe("a file with no date-of-birth column", () => {
     ]);
   });
 
-  test("builds the quick path's terms, citing the catalog, and can generate", () => {
+  test("builds the quick path's terms and can generate", () => {
     const { draft, seed } = seeded();
     const terms = buildAdvancedTerms(draft);
     expect(terms.linkageKeys).toStrictEqual(seed.terms.linkageKeys);
     expect(terms.linkageFields).toStrictEqual(seed.terms.linkageFields);
-    expect(linkageRuleSetReferenceForDraft(terms)).toStrictEqual(
-      DEFAULT_LINKAGE_RULE_SET.reference,
-    );
     const validation = validateAdvancedInvite(draft, seed);
     expect(validation.errors).toEqual({});
     expect(validation.canGenerate).toBe(true);
@@ -225,7 +219,6 @@ describe("a saved exchange holding a retired offer key", () => {
         },
       ],
     };
-    delete terms.linkageRuleSet;
     const document = composeManagedDocument(
       {
         side: "inviter",

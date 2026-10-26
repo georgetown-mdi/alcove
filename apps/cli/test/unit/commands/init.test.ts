@@ -6,7 +6,6 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Arguments } from "yargs";
 import YAML from "yaml";
 import {
-  BUILT_IN_LINKAGE_RULE_SETS,
   DEFAULT_LINKAGE_RULE_SET,
   ExchangeSpecSchema,
   getDefaultLinkageTerms,
@@ -190,17 +189,16 @@ test("renderConfigTemplate: the delimiter init was given is written into the tem
   expect(parseExchangeSpec(YAML.parse(none)).csvDelimiter).toBeUndefined();
 });
 
-test("renderConfigTemplate: every shipped rule set round-trips as its own citation", async () => {
-  // A template drawn from a set cites that set. One shipped set today; a set
-  // added to the registry is covered here without an edit.
-  for (const ruleSet of BUILT_IN_LINKAGE_RULE_SETS) {
-    const template = renderConfigTemplate(
-      await buildTemplateData(undefined, "Org", ruleSet),
-    );
-    const parsed = parseExchangeSpec(YAML.parse(template));
-    expect(parsed.linkageTerms.linkageRuleSet).toEqual(ruleSet.reference);
-    expect(parsed.linkageTerms.linkageKeys).toEqual(ruleSet.linkageKeys);
-  }
+test("renderConfigTemplate: the template holds the built-in keys and no rule-set citation", async () => {
+  const template = renderConfigTemplate(
+    await buildTemplateData(undefined, "Org", DEFAULT_LINKAGE_RULE_SET),
+  );
+  const parsed = parseExchangeSpec(YAML.parse(template));
+  expect(parsed.linkageTerms.linkageKeys).toEqual(
+    DEFAULT_LINKAGE_RULE_SET.linkageKeys,
+  );
+  expect(parsed.linkageTerms).not.toHaveProperty("linkageRuleSet");
+  expect(template).not.toContain("linkage_rule_set");
 });
 
 test("renderConfigTemplate: an input file populates metadata and standardization", async () => {
@@ -235,10 +233,9 @@ test("renderConfigTemplate: every FIELD_DOCS entry lands a comment in the docume
   }
 });
 
-test("the rule-set help names the keys each narrower choice deletes", () => {
+test("the linkage-keys help names the keys each narrower choice deletes", () => {
   const help = FIELD_DOCS.find(
-    ({ path: docPath }) =>
-      docPath.join(".") === "linkage_terms.linkage_rule_set",
+    ({ path: docPath }) => docPath.join(".") === "linkage_terms.linkage_keys",
   )!.lines.join(" ");
   const bands = new Map(
     (DEFAULT_LINKAGE_RULE_SET.ruleBands ?? []).map((band) => [band.rule, band]),

@@ -1,30 +1,19 @@
-import {
-  encodeForComparison,
-  isDrawnFromLinkageRuleSet,
-  linkageRuleSetReferenceFor,
-} from "@alcove/core";
+import { encodeForComparison } from "@alcove/core";
 
-import type {
-  BuiltInLinkageRuleSet,
-  LinkageKey,
-  LinkageRuleSetReference,
-  LinkageTerms,
-} from "@alcove/core";
+import type { LinkageKey } from "@alcove/core";
 
 /**
- * The rule-set membership questions the inviter's editor asks about DRAFT-side
- * values -- does this key match an offered one, are these rules drawn from the set they
- * cite, which citation are they entitled to -- each taken over the value with its
+ * The key-match question the inviter's editor asks about DRAFT-side values --
+ * does this key match an offered one -- taken over the value with its
  * explicitly-`undefined` optional properties dropped.
  *
- * Core answers each by byte equality under the canonical encoding, which the
+ * Core answers it by byte equality under the canonical encoding, which the
  * signed document format depends on and which rejects an explicit `undefined`
- * where it accepts an absent property. The values these compares take are
- * DRAFT-side: live JavaScript objects the editor holds and rebuilds, not the
- * parsed documents the predicates are otherwise handed, so both spellings of "not
- * set" are representable. A key spelling it the second way states what the set
- * states, so an unpruned compare would answer `false` for it and drop the built
- * terms' rule-set citation.
+ * where it accepts an absent property. The values compared here are DRAFT-side:
+ * live JavaScript objects the editor holds and rebuilds, not parsed documents,
+ * so both spellings of "not set" are representable. A key spelling it the
+ * second way states what the offered key states, so an unpruned compare would
+ * answer that it does not match.
  *
  * The prune closes that by making the difference unrepresentable at the compare.
  * No draft-editing helper and no import builds terms holding an explicit
@@ -34,19 +23,17 @@ import type {
  * instead.
  *
  * A `no-restricted-imports` ban in `apps/web/eslint.config.js` routes the
- * editor's membership compares through this module rather than core's predicate
- * directly, refusing an import of `encodeForComparison`,
- * `isDrawnFromLinkageRuleSet`, or `linkageRuleSetReferenceFor` from
- * `@alcove/core` anywhere under `apps/web/src` but this module. It reads static
- * import and re-export specifiers -- a named import, a rename, a namespace
- * binding and a blanket re-export alike -- so a predicate reached through a
- * runtime `import()` is past it;
- * `scripts/eslint-linkage-comparison-ban.test.mjs` pins the shapes it refuses.
+ * editor's key compares through this module rather than core's encoder
+ * directly, refusing an import of `encodeForComparison` from `@alcove/core`
+ * anywhere under `apps/web/src` but this module. It reads static import and
+ * re-export specifiers -- a named import, a rename, a namespace binding and a
+ * blanket re-export alike -- so an encoder reached through a runtime `import()`
+ * is past it; `scripts/eslint-linkage-comparison-ban.test.mjs` pins the shapes
+ * it refuses.
  *
  * The prune returns a value it drops nothing from by reference, so a parsed
- * document asked through these wrappers is the same value core would have been
- * handed directly: they are the whole import surface the ban leaves, and the
- * `advancedInvite` barrel the console imports re-exports all three.
+ * document asked through this wrapper is the same value core would have been
+ * handed directly.
  */
 
 /**
@@ -100,43 +87,9 @@ function comparableForm<TValue>(value: TValue): TValue {
   }
 }
 
-/** `rules` in the form the structure-level compares take them: the
- * {@link comparableForm} prune applied per declared field and per key, over the
- * two rule arrays core compares and nothing else.
- *
- * The prune runs per entry rather than over the whole structure: an unreadable
- * value in one rule does not cost the prune on the rules beside it. An unreadable
- * rule alone is compared unpruned, which core answers as it answers any value it
- * cannot encode. */
-function comparableRules(
-  rules: Pick<LinkageTerms, "linkageFields" | "linkageKeys">,
-): Pick<LinkageTerms, "linkageFields" | "linkageKeys"> {
-  return {
-    linkageFields: rules.linkageFields.map((field) => comparableForm(field)),
-    linkageKeys: rules.linkageKeys.map((key) => comparableForm(key)),
-  };
-}
-
 /** `key` in the byte form the editor matches a draft key to an offer under: the
  * canonical encoding of the key as {@link comparableForm} states it, or `null`
  * when the key cannot be canonically encoded at all. */
 export function encodeKeyForComparison(key: LinkageKey): string | null {
   return encodeForComparison(comparableForm(key));
-}
-
-/** Whether the draft-built `rules` were drawn from `ruleSet`, the predicate that
- * keeps a citation accurate over rules the editor let an operator edit. */
-export function isDraftDrawnFromLinkageRuleSet(
-  ruleSet: BuiltInLinkageRuleSet,
-  rules: Pick<LinkageTerms, "linkageFields" | "linkageKeys">,
-): boolean {
-  return isDrawnFromLinkageRuleSet(ruleSet, comparableRules(rules));
-}
-
-/** The citation the draft-built `rules` are entitled to: the built-in rule set's
- * reference where they were drawn from it, and `undefined` where they were not. */
-export function linkageRuleSetReferenceForDraft(
-  rules: Pick<LinkageTerms, "linkageFields" | "linkageKeys">,
-): LinkageRuleSetReference | undefined {
-  return linkageRuleSetReferenceFor(comparableRules(rules));
 }

@@ -433,7 +433,6 @@ describe("direct exchange confirm and run", () => {
     expect(app.container.textContent).not.toContain("Exchange proposal");
     expect(app.container.textContent).not.toContain("must review and consent");
 
-    // The inferred terms cite the built-in rule set; the preview shows no citation.
     expect(app.container.textContent).not.toContain("Linkage rule set");
 
     // The two fixed symmetry notices frame the preview.

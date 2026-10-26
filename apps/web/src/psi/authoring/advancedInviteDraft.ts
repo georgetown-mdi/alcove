@@ -401,7 +401,7 @@ export function draftOffersBuiltInKeys(draft: AdvancedInviteDraft): boolean {
  * starts with for its current columns ({@link seededKeysAndCleaning}): the
  * way back to the guided list from keys written in the expert editor or
  * loaded from a terms document. An imported document's field declarations
- * and citation go with its keys; the columns and the rest of the settings
+ * go with its keys; the columns and the rest of the settings
  * stay. Returns `draft` itself where the columns supply no built-in key
  * ({@link draftOffersBuiltInKeys}).
  */
@@ -411,11 +411,7 @@ export function draftWithBuiltInKeys(
   dateInputFormats?: ProfiledDateInputFormats,
 ): AdvancedInviteDraft {
   if (!draftOffersBuiltInKeys(draft)) return draft;
-  const {
-    importedLinkageFields: _importedLinkageFields,
-    importedRuleSetCitation: _importedRuleSetCitation,
-    ...kept
-  } = draft;
+  const { importedLinkageFields: _importedLinkageFields, ...kept } = draft;
   return {
     ...kept,
     ...seededKeysAndCleaning(
@@ -717,8 +713,7 @@ function reconcileStandardization(
  * ({@link offerableDraftKeys}): keys that remain offered keep their order
  * and enabled flag (replaced with the fresh template); a newly-offered key
  * arrives at its offered flag, placed above the first kept key the offer
- * lists after it, so the list keeps the catalog's cascade order and its
- * citation.
+ * lists after it, so the list keeps the catalog's cascade order.
  *
  * A draft key is matched to an offer by the canonical encoding
  * ({@link encodeKeyForComparison}), not by NAME, so a key that merely
@@ -1281,7 +1276,7 @@ export function draftFromTerms(
   // visible, its "no column for" badge readable in the expert key editor, to
   // re-enable once a matching column exists. Disable-and-show, not silent drop.
   const declarable = declarableFieldNames(seed.metadata, standardization);
-  const draft: AdvancedInviteDraft = {
+  return {
     // An imported document that names nobody seeds an empty name field for the
     // operator to fill, which is what an unnamed draft is here.
     identity: terms.identity ?? "",
@@ -1309,24 +1304,6 @@ export function draftFromTerms(
     // faithfully (order + declared-but-unreferenced fields + a benign empty
     // `constraints: {}`); see AdvancedInviteDraft.importedLinkageFields.
     importedLinkageFields: terms.linkageFields,
-    // And what the document said about the rules' provenance -- the set it cited
-    // with the rules it cited them over, or that it cited none. Both answers are
-    // recorded: a document citing nothing is re-exported citing nothing, which
-    // absence alone could not express (see
-    // AdvancedInviteDraft.importedRuleSetCitation).
-    importedRuleSetCitation:
-      terms.linkageRuleSet !== undefined
-        ? {
-            kind: "cited",
-            ruleSet: {
-              reference: terms.linkageRuleSet,
-              linkageFields: terms.linkageFields,
-              linkageKeys: terms.linkageKeys,
-            },
-            // Finalized just below, once the import-time terms are built.
-            honoredAtImport: false,
-          }
-        : { kind: "uncited" },
     keys: terms.linkageKeys.map((key) => ({
       key,
       enabled: keyIsSupplyable(
@@ -1336,20 +1313,6 @@ export function draftFromTerms(
         seed.metadata,
       ),
     })),
-  };
-  const citation = draft.importedRuleSetCitation;
-  if (citation?.kind !== "cited") return draft;
-  // Whether the editor's arrival-time narrowing (disabling the keys these columns
-  // cannot supply) left the citation standing: buildAdvancedTerms holds
-  // linkageRuleSet only when it does. Fixed here so a later operator edit that
-  // drops the citation is attributed to that edit, not to the imported document
-  // -- see ImportedRuleSetCitation.honoredAtImport.
-  return {
-    ...draft,
-    importedRuleSetCitation: {
-      ...citation,
-      honoredAtImport: buildAdvancedTerms(draft).linkageRuleSet !== undefined,
-    },
   };
 }
 
@@ -1376,7 +1339,7 @@ export type CleaningNotLoaded = { output: string; input: string } & (
  * reconstruction never does on its own: a fan-out field cleaned beside its
  * plain one from the same column. A key the
  * reconstruction disabled for want of such a field is enabled once the field
- * is declared, and the rule-set citation is re-decided against the result.
+ * is declared.
  */
 export function draftWithConfigurationCleaning(
   draft: AdvancedInviteDraft,
@@ -1443,22 +1406,8 @@ export function draftWithConfigurationCleaning(
       ? { ...entry, enabled: true }
       : entry,
   );
-  const result: AdvancedInviteDraft = {
-    ...draft,
-    standardization: next,
-    keys,
-  };
-  const citation = result.importedRuleSetCitation;
-  if (citation?.kind !== "cited") return { draft: result, notLoaded };
   return {
-    draft: {
-      ...result,
-      importedRuleSetCitation: {
-        ...citation,
-        honoredAtImport:
-          buildAdvancedTerms(result).linkageRuleSet !== undefined,
-      },
-    },
+    draft: { ...draft, standardization: next, keys },
     notLoaded,
   };
 }

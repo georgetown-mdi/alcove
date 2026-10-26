@@ -423,7 +423,7 @@ describe("the street number rule", () => {
     expect(all.indexOf(ZIP5_RULE)).toBe(all.indexOf(STREET_NUMBER_RULE) + 1);
   });
 
-  test("leaves a file with no street number column the keys and fields it had, under this citation", () => {
+  test("leaves a file with no street number column the keys and fields it had", () => {
     const terms = linkageTermsFromRuleSet(
       catalog,
       "Party A",
@@ -438,7 +438,6 @@ describe("the street number rule", () => {
       "state",
       "county",
     ]);
-    expect(terms.linkageRuleSet).toStrictEqual(catalog.reference);
     expect(checkLinkageRuleSetCitation(catalog.reference, terms)).toStrictEqual(
       { fieldSet: "consistent", keySet: "consistent" },
     );
@@ -474,11 +473,11 @@ describe("the quick exchange's selection", () => {
 });
 
 describe("the citation", () => {
-  test("names the catalog and its version, not the floor", () => {
+  test("is absent from the terms, while the catalog keeps its names and versions", () => {
     const terms = linkageTermsFromRuleSet(catalog, "Party A", undefined, {
       floor: 99,
     });
-    expect(terms.linkageRuleSet).toStrictEqual(catalog.reference);
+    expect(terms).not.toHaveProperty("linkageRuleSet");
     expect(catalog.reference).toStrictEqual({
       fieldSet: { name: "baseline-pii", version: "1.3.0" },
       keySet: { name: "precision-ranked-rules", version: "2.5.0" },

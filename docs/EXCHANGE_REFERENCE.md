@@ -67,7 +67,7 @@ What the names do and do not cover:
 - A run matches on a **subset** of the key set, never on an addition to it: the keys a precision floor selects, less any key that matches on a field no column of your input file can supply. The terms document that travels with the exchange still records exactly which keys ran, so it -- not either name -- is the authoritative account of any one exchange.
 - Both parties' keys must match key for key. A quick exchange between two files where only one supplies a column a selected key needs, such as a ZIP code, stops before any data moves, naming the keys only one side declares. Remove the column from the file that has it, or agree terms through an invitation.
 
-Terms drawn from these rules cite them, in the [`linkage_rule_set`](#linkage_termslinkage_rule_set) field below, so the citation travels with the exchange: it is in the invitation and on the wire. The exchange record does not hold it. The accepting party's terms review does not show it: where the agreed keys are exactly the "highest precision" or "broader matching" keys, in their order, and the fields those keys read are the built-in fields, the review says so, worked out from the keys and fields themselves.
+The terms do not name the built-in rules; they hold the fields and keys themselves. Where the agreed keys are exactly the "highest precision" or "broader matching" keys, in their order, and the fields those keys read are the built-in fields, the accepting party's terms review says so, worked out from the keys and fields themselves.
 
 Five of the rules broader matching adds match a name with a phone number or an email address and no date of birth: `LN + FN + PHONE`, `PHONE + soundex(LN) + FN`, `FN + PHONE`, `LN + FN + EMAIL`, and `EMAIL + soundex(LN) + FN`. Each matches only where one of the two records has no valid date of birth ([Keys that run only where a field is missing](#keys-that-run-only-where-a-field-is-missing)), so a file with no date-of-birth column still matches through them.
 
@@ -80,9 +80,9 @@ Each rule is in one of two bands: the highest-precision rules, and the others. T
 - **Highest precision**: selects the highest-precision rules.
 - **Broader matching**: selects them all, the highest-precision rules first.
 
-No configuration key sets the floor; it decides which keys are written into the terms. It does not travel: the terms hold the keys selected, and the citation names the set and its version. Where each path takes it from:
+No configuration key sets the floor; it decides which keys are written into the terms. It does not travel: the terms hold the keys selected. Where each path takes it from:
 
-- A quick exchange and `alcove init` write the keys for broader matching. In a configuration `alcove init` wrote, its comments beside `linkage_rule_set` list the keys to delete to run only the highest-precision rules or to leave out the rules marked less certain.
+- A quick exchange and `alcove init` write the keys for broader matching. In a configuration `alcove init` wrote, its comments beside `linkage_keys` list the keys to delete to run only the highest-precision rules or to leave out the rules marked less certain.
 - The invitation editor of the web app and the console starts at the same floor and offers both floors on Customize > Matching keys; Review & create names the floor the keys were drawn with ([Choosing the matching keys](WEB_APP.md#choosing-the-matching-keys)).
 - The display a run shows before it connects lists the keys selected, and on a quick exchange names the selection ([What the run shows before it starts](CLI.md#what-the-run-shows-before-it-starts)).
 
@@ -479,14 +479,14 @@ linkage_terms:
       version: "2.2.0"
 ```
 
-Every path that fills in your fields and keys for you writes this citation: a quick exchange, the template `alcove init` writes, the web app's default and Advanced invite paths, and the console's quick exchange. It travels wherever the terms do -- into the invitation and onto the wire -- but not into either party's exchange record, whose matching basis lists the fields the agreed keys read.
+No path that fills in your fields and keys for you writes this citation: not a quick exchange, the template `alcove init` writes, the web app's default and Advanced invite paths, or the console's quick exchange. A citation written by hand travels wherever the terms do -- into the invitation and onto the wire -- but not into either party's exchange record, whose matching basis lists the fields the agreed keys read.
 
 What it does and does not determine:
 
 - **It is not what the exchange runs on.** The `linkage_fields` and `linkage_keys` are, and they are cross-checked between the parties field by field and key by key. A run matches on a subset of the cited set, never on an addition to it, so a citation is an upper bound on what was tried.
 - **It does not stand in for the rules.** `linkage_fields` and `linkage_keys` are required in `linkage_terms` whether or not it names a rule set.
 - **It is not vouched for.** Your partner's citation is text your partner wrote, and nothing resolves a partner's set name to content. The accepting party's terms review does not show it, and neither party's exchange record holds it.
-- **Omit it for rules you author yourself.** Rules you author can cite only the built-in set -- there is no way to select another -- and citing a set your rules were not drawn from misdescribes them. A terms document you import keeps the citation its own author wrote, including one naming a set Alcove does not ship; the web Advanced invite path drops that citation as soon as the rules stop being drawn from the set it names, exactly as it drops the built-in citation when you edit your way out of the rules it seeded from.
+- **Omit it for rules you author yourself.** Rules you author can cite only the built-in set -- there is no way to select another -- and citing a set your rules were not drawn from misdescribes them. The web Advanced invite path does not carry the citation of a terms document you import into the terms it builds.
 - **A configuration file keeps the citation you edit past.** Editing `linkage_fields` or `linkage_keys` in `alcove.yaml` leaves the citation the file was written with in place, and nothing checks it against the rules the file now holds.
 - **It does not have to match your partner's.** The two parties' citations are not compared, so parties whose fields and keys agree exchange whatever sets they cite, or whether they cite one at all.
 

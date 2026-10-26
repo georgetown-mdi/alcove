@@ -239,17 +239,6 @@ export const FIELD_DOCS: Array<{ path: Array<string>; lines: Array<string> }> =
         "rules first, then the rules broader matching adds. A key with",
         "condition: missing_field: date_of_birth matches only where one side's",
         "record has no valid date of birth.",
-      ],
-    },
-    {
-      path: ["linkage_terms", "linkage_rule_set"],
-      lines: [
-        "The named, versioned rule set the fields and keys above were drawn from,",
-        "shown to your partner with these terms as where those rules came from.",
-        "Delete it if you add, edit, or reorder any of them -- rules you author",
-        "yourself are no longer that set's. Leaving out a key or field you cannot",
-        "supply narrows the set rather than departing from it, so the citation",
-        "still holds.",
         "The keys written are the rules broader matching selects. Three of them",
         "are less certain, matching on a name and a date of birth alone:",
         "LN + FN + DOB, swap(LN, FN) + DOB, and split(LN) + FN + DOB.",

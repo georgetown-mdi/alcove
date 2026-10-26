@@ -672,7 +672,7 @@ export function singlePassDisclosureNotice(): string {
  * `ruleSet`, when given, is the built-in rule set the terms this function
  * authors are drawn from; it is the default set otherwise, and it is ignored
  * where `terms` are supplied, which were drawn from whatever their author drew
- * them from. The derived terms cite the set they came from either way.
+ * them from.
  *
  * `dateInputFormat`, when given, is the DOB date-input format the caller already
  * inferred (via `inferDateInputFormatFromSource`, from a bounded sample) and

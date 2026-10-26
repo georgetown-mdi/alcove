@@ -89,10 +89,7 @@ export function referenceMetadata(): Metadata {
  * cleans no `ssn4`, and an authored standardization derives none from the SSN
  * column, so the default `ssn4` field and its keys are left out. */
 export function referenceTerms(): LinkageTerms {
-  const { linkageRuleSet: _cited, ...terms } = getDefaultLinkageTerms(
-    "County Health",
-    referenceMetadata(),
-  );
+  const terms = getDefaultLinkageTerms("County Health", referenceMetadata());
   const lastName = terms.linkageFields.find(
     (field) => field.name === "last_name",
   );

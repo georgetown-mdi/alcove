@@ -46,26 +46,21 @@ const rootLoglevelImportBan = {
     "Do not import loglevel's default export in the web app: it is the root logger, whose emits skip the context prefix and the private-key redaction @alcove/core's getLogger installs. Emit through getLogger; import the named `setDefaultLevel` / `levels` for level configuration.",
 };
 
-// Hold the draft-side rule-set membership compares at the one chokepoint that
-// prunes explicitly-`undefined` optional properties first, src/psi/linkageComparison.ts
-// (exempted below, since it is the module that calls core). Core answers these
-// questions by byte equality under the canonical encoding, which rejects an explicit
-// `undefined` where it accepts an absent property -- and a draft is live objects the
-// editor rebuilds, where a spread restates an unset property as `undefined`. So a
-// direct import of core's predicate reads rules that say exactly what the set says
-// as a non-match, dropping their rule-set citation
-// from the built terms: a partner-visible provenance claim lost over a property that
-// says nothing. The failure is silent at the call site, which is why the routing is a
+// Hold the draft-side key compare at the one chokepoint that prunes
+// explicitly-`undefined` optional properties first, src/psi/linkageComparison.ts
+// (exempted below, since it is the module that calls core). Core answers it by
+// byte equality under the canonical encoding, which rejects an explicit
+// `undefined` where it accepts an absent property -- and a draft is live objects
+// the editor rebuilds, where a spread restates an unset property as `undefined`.
+// So a direct import of core's encoder reads a key that says exactly what an
+// offered key says as a non-match, and the guided list loses the key's place and
+// flag. The failure is silent at the call site, which is why the routing is a
 // rule rather than a note in the module.
 const linkageComparisonChokepointBan = {
   name: "@alcove/core",
-  importNames: [
-    "encodeForComparison",
-    "isDrawnFromLinkageRuleSet",
-    "linkageRuleSetReferenceFor",
-  ],
+  importNames: ["encodeForComparison"],
   message:
-    "Ask rule-set membership about a draft through src/psi/linkageComparison.ts (encodeKeyForComparison / isDraftDrawnFromLinkageRuleSet / linkageRuleSetReferenceForDraft, re-exported from @psi/authoring/advancedInvite), not core's strict predicates: those compare by canonical byte equality, which reads an explicitly-`undefined` optional property -- what a draft rebuild spreads in -- as a difference and silently drops the terms' rule-set citation.",
+    "Compare a draft's keys through src/psi/linkageComparison.ts (encodeKeyForComparison, re-exported from @psi/authoring/advancedInvite), not core's strict encoder: it compares by canonical byte equality, which reads an explicitly-`undefined` optional property -- what a draft rebuild spreads in -- as a difference and silently drops the key's match.",
 };
 
 // The one message both halves of the fetched-body ban report: the `.json` property
