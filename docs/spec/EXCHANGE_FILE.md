@@ -187,6 +187,9 @@ sharply:
   the block holding it, naming the key in the file's own snake_case spelling
   (`packages/core/src/config/unreadKeys.ts`), so an older CLI reads a newer web
   app's added field as a load-time failure rather than running one field short.
+  The retired `linkage_terms.linkage_rule_set` is refused ahead of that, by the
+  same readers and in the same way as the retired top-level settings above,
+  named with the key of the block holding it.
   What makes the strip unacceptable on its own is the writer side: a consumer that
   loads a file, edits part of it, and saves it writes the PARSE RESULT, so a
   stripped key is gone from the next file too (the rule below).

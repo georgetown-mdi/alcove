@@ -622,22 +622,59 @@ test("a key no block reads is refused, naming it as the file spells it", () => {
   expect(issue?.message).not.toContain("mysterySetting");
 });
 
-test("a rule-set citation in linkage_terms is refused as a key no block reads", () => {
-  const result = safeParseExchangeSpec({
-    ...minimalSpec,
-    linkageTerms: {
-      ...minimalLinkageTerms,
-      linkage_rule_set: {
-        field_set: { name: "baseline-pii", version: "1.3.0" },
-        key_set: { name: "precision-ranked-rules", version: "2.5.0" },
-      },
-    },
-  });
-  expect(result.success).toBe(false);
-  const issue = result.error?.issues[0];
-  expect(issue?.code).toBe("unrecognized_keys");
-  expect(issue?.path).toEqual(["linkageTerms"]);
-  expect(issue?.message).toBe('Unrecognized key: "linkage_rule_set"');
+const RULE_SET_CITATION = {
+  field_set: { name: "baseline-pii", version: "1.3.0" },
+  key_set: { name: "precision-ranked-rules", version: "2.5.0" },
+};
+
+test.each([
+  [
+    "linkage_terms",
+    "linkage_rule_set",
+    'the setting "linkage_terms.linkage_rule_set" is retired; delete it from the file',
+  ],
+  [
+    "linkageTerms",
+    "linkageRuleSet",
+    'the setting "linkageTerms.linkageRuleSet" is retired; delete it from the file',
+  ],
+])(
+  "a rule-set citation at %s.%s is refused as retired, named as the file writes it",
+  (block, key, refusal) => {
+    const document = {
+      connection: minimalConnection,
+      [block]: { ...minimalLinkageTerms, [key]: RULE_SET_CITATION },
+    };
+    let thrown: unknown;
+    try {
+      parseExchangeSpec(document);
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(ZodError);
+    expect((thrown as ZodError).issues.map(({ message }) => message)).toEqual([
+      refusal,
+    ]);
+    const result = safeParseExchangeSpec(document);
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues.map(({ message }) => message)).toEqual([
+      refusal,
+    ]);
+  },
+);
+
+test("a rule-set citation beside a retired top-level setting is refused naming both", () => {
+  expect(
+    retiredSettingIssue({
+      ...minimalSpec,
+      disclosed_payload_columns: [],
+      linkageTerms: { ...minimalLinkageTerms, linkage_rule_set: {} },
+    })?.message,
+  ).toBe(
+    'the settings "linkageTerms.linkage_rule_set" and "disclosed_payload_columns" ' +
+      "are retired; delete them from the file",
+  );
 });
 
 test("a filedrop connection stating server.provision is refused: the channel has no server", () => {

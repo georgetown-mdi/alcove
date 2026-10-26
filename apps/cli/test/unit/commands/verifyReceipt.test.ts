@@ -1359,7 +1359,9 @@ describe("handler", () => {
       ),
     });
     expect(exits).toEqual([64]);
-    expect(stderr).toContain("linkage_rule_set");
+    expect(stderr).toContain(
+      'the setting "linkage_terms.linkage_rule_set" is retired; delete it from the file',
+    );
     expect(stdout).toBe("");
   });
 

@@ -522,7 +522,9 @@ test("loadConfig refuses a config whose terms hold a rule-set citation, naming t
   );
   saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
   expect(() => loadConfig(baseOptions())).toThrow(UsageError);
-  expect(() => loadConfig(baseOptions())).toThrow(/linkage_rule_set/);
+  expect(() => loadConfig(baseOptions())).toThrow(
+    'the setting "linkage_terms.linkage_rule_set" is retired; delete it from the file',
+  );
 });
 
 // --- config file errors ------------------------------------------------------
