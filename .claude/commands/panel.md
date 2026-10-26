@@ -152,9 +152,10 @@ recorded before any panelist sees another's.
 ## New input for a panel already run
 
 When the owner asks to feed new input to a panel already run, the session puts
-the route to the owner and does not choose one: a second round seated with the
-input (fresh panelists reading the first round's answers and the input), or a
-new panel. The session runs neither until the owner answers.
+the route to the owner and does not choose one: a new panel whose question or
+docs carry the input, or building a second round that takes it, since the
+second round as built reads the first round's answers alone. The session runs
+neither until the owner answers.
 
 ## What you do NOT do
 

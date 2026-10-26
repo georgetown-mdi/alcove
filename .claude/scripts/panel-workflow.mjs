@@ -57,7 +57,7 @@ const SEATS = {
 };
 
 const SECOND_ROUND_NOTE =
-  "A converged second round informs the owner and settles nothing: the question goes to the owner with every panelist's first and second-round positions.";
+  "A converged second round informs the owner and settles nothing: the question goes to the owner with every seat's first and second-round positions.";
 
 // The harness may hand a script its arguments as JSON text rather than as the
 // object the caller passed. Any other delivery -- an array, a bare scalar, null,
