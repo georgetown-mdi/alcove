@@ -233,8 +233,8 @@ const send = (bytes) =>
     socket.on("close", finish);
   });
 
-const waitForFront = async () => {
-  for (let attempt = 0; attempt < 60; attempt++) {
+const waitForFront = async (stopped) => {
+  for (let attempt = 0; attempt < 60 && !stopped(); attempt++) {
     const up = await new Promise((done) => {
       const socket = connect({
         host: "127.0.0.1",
@@ -259,7 +259,7 @@ const contains = (line, id) => ({
     FIELDS.map((field) => [field.label, line.includes(field.marker(id))]),
   ),
   "query string": line.includes(queryMarker(id)),
-  "client IP": line.includes("127.0.0.1"),
+  "client IP": /\bclient: 127\.0\.0\.1\b/.test(line),
 });
 
 const yesNo = (present) => (present ? "yes" : "no");
@@ -345,13 +345,22 @@ const main = async () => {
 
   const results = [];
   try {
-    if (!(await waitForFront()))
-      return fail("the front did not accept a TLS connection within 30 s");
+    if (!(await waitForFront(() => exited))) {
+      await delay(SETTLE_MS);
+      console.log("front output before it stopped:");
+      for (const { text } of lines.splice(0)) console.log(`  ${text}`);
+      console.log();
+      return fail(
+        exited
+          ? "the front exited before it accepted a TLS connection"
+          : "the front did not accept a TLS connection within 30 s",
+      );
+    }
     await delay(SETTLE_MS);
     const startup = lines.splice(0);
     if (startup.length) {
       console.log("lines before the first request:");
-      for (const { log, text } of startup) console.log(`  ${log}: ${text}`);
+      for (const { text } of startup) console.log(`  start-up: ${text}`);
       console.log();
     }
     for (const testCase of CASES) {
