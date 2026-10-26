@@ -14,7 +14,6 @@ import {
 } from "@psi/inviterEditor";
 
 import {
-  SEEDED_CITATION_DROP_TITLE,
   buildAdvancedTerms,
   draftFromTerms,
 } from "@psi/authoring/advancedInvite";
@@ -40,14 +39,7 @@ import { createAppMount } from "./renderApp";
 import type { AcquiredCsv, InviterEditor } from "@psi/inviterEditor";
 import type { AdvancedInviteDraft } from "@psi/authoring/advancedInvite";
 
-const CITATION_DROP_NOTICE_NAME =
-  "The imported rule-set citation will not be included";
 const INERT_COALESCE_NOTICE_NAME = "A default value will not be substituted";
-
-// The review step's own notice: an imported document's rule-set citation the terms
-// this step is about to seal will not hold. It is the Matching keys tab's notice
-// restated here, not a second wording -- an operator can import in that tab and
-// come straight to this step to create.
 
 const csv: AcquiredCsv = {
   fileName: "clients.csv",
@@ -107,23 +99,19 @@ function render(
   );
 }
 
-/** An editor whose imported document cited the set this build ships over rules
- * that are not it: the rebuild drops the citation, the same construction the
- * Matching keys tab's notice is driven with. */
-function importedWithDroppedCitation(): InviterEditor {
+/** An editor whose keys were loaded from a terms document holding a key the
+ * built-in rules do not declare. */
+function importedFromDocument(): InviterEditor {
   const editor = editorFromCsv("Dana Okafor", csv);
-  const misdescribed = buildAdvancedTerms(editor.draft);
-  expect(misdescribed.linkageRuleSet).toBeDefined();
-  misdescribed.linkageKeys[0] = {
-    ...misdescribed.linkageKeys[0],
-    name: `${misdescribed.linkageKeys[0].name} (house rules)`,
+  const document = buildAdvancedTerms(editor.draft);
+  document.linkageKeys[0] = {
+    ...document.linkageKeys[0],
+    name: `${document.linkageKeys[0].name} (house rules)`,
   };
-  const imported = editorWithAuthoredDraft(
+  return editorWithAuthoredDraft(
     editor,
-    draftFromTerms(misdescribed, editor.seed, 3600, csv.rawRows),
+    draftFromTerms(document, editor.seed, 3600, csv.rawRows),
   );
-  expect(buildAdvancedTerms(imported.draft).linkageRuleSet).toBeUndefined();
-  return imported;
 }
 
 /** An editor whose first field's cleaning declares a coalesce with nothing ahead
@@ -148,42 +136,6 @@ function withFirstPositionCoalesce(): InviterEditor {
 }
 
 afterEach(app.unmount);
-
-describe("ReviewCreateSection: the dropped-citation notice", () => {
-  test("restates it where the terms are confirmed, blocking nothing", async () => {
-    render(importedWithDroppedCitation());
-
-    await expect
-      .element(page.getByRole("heading", { name: "Review & create" }))
-      .toBeInTheDocument();
-    const citationNotice = page.getByRole("note", {
-      name: CITATION_DROP_NOTICE_NAME,
-    });
-    await expect
-      .element(citationNotice)
-      .toMatchTextContent(CITATION_DROP_NOTICE_NAME);
-    await expect
-      .element(citationNotice)
-      .toMatchTextContent("the citation cannot be verified");
-    // Told, not stopped: dropping the citation is the correct outcome, so the
-    // create action stays available.
-    await expect
-      .element(page.getByRole("button", { name: "Create the invitation" }))
-      .toBeEnabled();
-  });
-
-  test("shows nothing where the draft's citation stands", async () => {
-    render(editorFromCsv("Dana Okafor", csv));
-
-    await expect
-      .element(page.getByRole("heading", { name: "Review & create" }))
-      .toBeInTheDocument();
-    expect(app.container.textContent).not.toContain(CITATION_DROP_NOTICE_NAME);
-    expect(
-      page.getByRole("note", { name: CITATION_DROP_NOTICE_NAME }).query(),
-    ).toBeNull();
-  });
-});
 
 describe("ReviewCreateSection: the rules the keys were selected with", () => {
   function rulesSelectedCell() {
@@ -218,7 +170,7 @@ describe("ReviewCreateSection: the rules the keys were selected with", () => {
   });
 
   test("names no floor for keys loaded from a document", async () => {
-    render(importedWithDroppedCitation());
+    render(importedFromDocument());
 
     await expect
       .element(rulesSelectedCell())
@@ -227,15 +179,13 @@ describe("ReviewCreateSection: the rules the keys were selected with", () => {
       );
   });
 
-  test("restates a seeded draft's dropped citation, blocking nothing", async () => {
+  test("states no rule-set citation for keys moved out of the built-in order", async () => {
     render(editorWithKeyMoved(editorFromCsv("Dana Okafor", csv), 0, 1));
 
     await expect
-      .element(page.getByRole("note", { name: SEEDED_CITATION_DROP_TITLE }))
-      .toMatchTextContent("no longer drawn from the built-in rule set");
-    await expect
       .element(page.getByRole("button", { name: "Create the invitation" }))
       .toBeEnabled();
+    expect(app.container.textContent).not.toMatch(/citation/i);
   });
 });
 
