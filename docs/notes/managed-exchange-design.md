@@ -4,7 +4,7 @@ title: "Recurring Web Exchange Design"
 
 # Recurring web exchanges: the design and the decisions taken
 
-_Status: decided and built, except the grace window, which is designed in [rotation-hardening.md](rotation-hardening.md) and not built.
+_Status: decided and built, except the grace window, which is proposed in [rotation-hardening.md](rotation-hardening.md) and not built.
 The user guide is [MANAGED_EXCHANGE.md](../MANAGED_EXCHANGE.md), which says what an operator does and sees.
 The record's fields, the persist-before-success step sequence and the export artifact's format are specified in [MANAGED_EXCHANGE_RECORD.md](../spec/MANAGED_EXCHANGE_RECORD.md) and are not restated here.
 The browser at-rest threat model is in [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#hosted-at-rest-threat-model-for-managed-exchanges).

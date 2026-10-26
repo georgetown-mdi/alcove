@@ -1824,7 +1824,7 @@ either imports with the answer or is refused entire. The artifact's own
   secret it holds: still-current (the captured-credential case above) or
   rotated-past (a guaranteed desync at the next run). Keeping one copy running
   is an operator-cooperation property, not a cryptographic one. Recognizing a
-  superseded copy in the handshake is designed, together with the grace window,
+  superseded copy in the handshake is proposed, together with the grace window,
   in [rotation-hardening.md](../notes/rotation-hardening.md), and neither is
   built (see
   [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#rollback-at-rest-copies-can-silently-resurrect)).

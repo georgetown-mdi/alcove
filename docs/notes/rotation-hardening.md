@@ -100,7 +100,8 @@ Each side so learns whether either side used a previous secret: the initiator fr
 A tag under a secret the other side does not hold verifies nothing, so a party with neither secret learns nothing it could not learn today.
 
 The run that completes under a previous secret rotates as any run does: both sides store the rotated secret, and each keeps the secret it used as its previous one until the partner confirms.
-The ahead side's unshared current secret is discarded.
+The ahead side's unshared current secret is discarded, and its history gets no new verifier from this rotation: the secret it used is already in the list from the run that was cut, and the secret it discards was never shared.
+The behind side appends the verifier of the secret it retires, the same one, so both lists hold the same verifiers in the same order.
 
 ### Meeting on WebRTC
 
@@ -121,8 +122,14 @@ The registrar replaces the relay key at each rotation the relay's party register
 The credential only authorizes use of the relay; the exchange's authentication rests on the key exchange ([PROTOCOL.md](../spec/PROTOCOL.md#relay-credential-derivation)).
 So the relay key and the handshake secret are decoupled:
 
-- **A party's credential for its own relay** is minted from the key its registrar holds: the key of its stored current secret, whichever secret the handshake uses.
+- **A party's credential for its own relay** is minted from the key its registrar holds: the key of its stored current secret, whichever secret the handshake uses, once any pending registration has landed (next bullet).
   The ahead side holds that key, so its own allocation works in a heal run.
+- **A registration the cut run did not confirm.** Where the cut run stopped before its registrar confirmed the rotated key, the key file or record holds `relayRegistrationPendingSince`, and the registrar may still hold the key of the previous secret.
+  Today the retry before the next run dials signs under the current secret's key ([PROTOCOL.md](../spec/PROTOCOL.md#registering-the-rotated-relay-key), The retry before the next run dials), which that registrar refuses, so the heal run would end with exit 77 before any contact.
+  While a previous secret is held, the retry is signed under the previous secret's relay key instead, the request the cut run would have sent.
+  A registrar still holding that key verifies the proof and takes the rotation; one already holding the current key, because the rotation landed and only its answer was lost, takes the request as a renewal, which it accepts under a proof made under the key it replaced ([PROTOCOL.md](../spec/PROTOCOL.md#the-registrar-request-proof), Verification).
+  Neither the wire nor the registrar changes.
+  A party holding no previous secret retries as today.
 - **Its registration after a heal run** is signed under the key its registrar holds, the key of the current secret at the run's start, and not under the key of the secret the handshake used.
   Both apps already sign with the secret held at the run's start: the command line with the secret it loaded (`registerRotatedRelayKey` in `apps/cli/src/relayKeyRotation.ts`), the browser with its copy of the record read inside the run+rotate lock ([PROTOCOL.md](../spec/PROTOCOL.md#the-invitations-relay-locator), The run credential).
   The build keeps that true when the handshake used the previous secret.
@@ -179,8 +186,9 @@ The stale side holds one thing the current side once had: the superseded secret 
 At each rotation write, and at each re-invite, a record appends a **history verifier** for the secret it is retiring: a key derived from that secret under a label of its own, in the [domain-separation label space](../spec/PROTOCOL.md#p-256-authenticated-key-exchange).
 The record keeps verifiers, never the retired secrets.
 
-- **What a verifier grants.** It proves that a peer holds the secret it was derived from, and nothing else: no handshake, peer id, relay key or AEAD key derives from it.
-  Anyone who reads the record already has the current secret, so the list adds nothing an attacker can use against the partnership.
+- **What a verifier grants.** A proof under it shows that the peer holds the secret it was derived from or a later copy of the record, since every copy keeps the verifiers of all the secrets it retired.
+  So a proof bounds how old the peer's copy is and proves nothing more: no handshake, peer id, relay key or AEAD key derives from a verifier.
+  Anyone who reads the record already has the current secret, so the list lets no one authenticate who could not already; what it lets a reader learn from recorded handshakes is in [What changes in the threat model](#what-changes-in-the-threat-model).
 - **Its order is the count.** The newest verifier is one rotation old, the next two, and so on, so the list replaces the counter and states nothing either side chose.
 - **The derived-never-stored rule.** That rule exists so no stored value has to be kept consistent with the secret ([MANAGED_EXCHANGE_RECORD.md](../spec/MANAGED_EXCHANGE_RECORD.md#derived-never-stored)).
   A verifier is derived from a secret the record no longer has, so it cannot be re-derived and nothing has to match it; the spec rule gains this one exception.
@@ -193,27 +201,29 @@ The shares are fresh in every handshake, so a proof cannot be replayed into anot
 - **The responder's proof is in message 2**, always, so the message's shape does not depend on the outcome.
 - **The initiator's proof is in its abort**, which it sends when neither tag verifies.
 - **Each side checks the peer's proof against its own history.**
-  A match at position *k* proves the peer holds the secret this party retired *k* rotations ago.
+  A match at position *k* shows that the peer's copy is no older than the secret this party retired *k* rotations ago: a copy that old makes exactly that proof, and a newer copy, which holds that verifier too, can make it as well.
   No match leaves the generic failure exactly as today.
 
-A match is a fact, not an explanation: someone holding a secret this partnership retired is on the other end.
+A match is a fact, not an explanation: someone holding a copy of this partnership's secrets no more than *k* rotations behind is on the other end.
 That is the partner's restored backup or second copy in the case the product guards first, and a stolen old copy otherwise, so the message keeps the confirm-with-your-partner step:
 
-- **The current side, drafted:** "The other side connected with this exchange's secret from 3 rotations ago, from an older copy of your partner's key file or saved exchange. Ask your partner to run from their newest copy; if they did not restore or copy one, treat this as a compromise and re-invite."
+- **The current side, drafted:** "The other side connected with an older copy of this exchange, no more than 3 rotations behind yours, such as an older copy of your partner's key file or saved exchange. Ask your partner to run from their newest copy; if they did not restore or copy one, treat this as a compromise and re-invite."
 - The command line exits 77, the authentication failure code, as any failed key exchange does ([CLI.md](../CLI.md#out-of-sync-tokens)).
 
 ### Telling the stale side
 
 The stale side cannot check the current side's proof: the current secret is newer than anything in its history.
 The current side can still tell it, authenticated, because it holds the verifier of the stale side's secret: on a match it sends a **behind notice**, the count *k* under a MAC by that verifier over both shares, which the stale side checks with the verifier of its own current secret.
+A notice that verifies shows only that the sender holds a copy newer than the stale side's, one that retired its secret.
+The count is the sender's statement: every newer copy holds that verifier and can put any count under it, so the stale side's message does not repeat it.
 
 - Where the current side is the initiator, the notice goes in its abort.
 - Where the current side is the responder, it answers the initiator's abort with an abort that contains the notice.
   A responder answers every abort that contains a proof, with or without a notice, so the reply's arrival tells nothing to a peer with no copy.
   The initiator waits for that reply only when its own check found no match, within the per-message handshake bound ([PROTOCOL.md](../spec/PROTOCOL.md#p-256-authenticated-key-exchange), Failure handling), and a peer that sends none leaves the generic failure.
-- **The stale side, drafted:** "This copy has the secret from 3 rotations ago, and your partner's copy is newer. Run from your newest copy of this exchange, or ask your partner for a new invitation."
+- **The stale side, drafted:** "This copy of the exchange is older than the one on the other side. Run from your newest copy of this exchange, or ask your partner for a new invitation."
 
-The notice tells a holder of an old copy how many rotations the partnership has made since.
+A notice from the current side states to a holder of an old copy how many rotations the partnership has made since.
 That holder is the partner's own operator in the case the product guards first, and the count is no more than the run cadence the shared folder's operator or the coordination server can already observe ([PROTOCOL.md](../spec/PROTOCOL.md#webrtc-rendezvous-peer-id-derivation)), so the notice is sent.
 
 ### How long the history is kept
@@ -221,7 +231,7 @@ That holder is the partner's own operator in the case the product guards first, 
 A verifier is useful only while the copy holding its secret could still connect.
 
 - **With an `expires`.** A verifier is dropped once the retired secret's own `expires` passes, since a copy holding it then refuses before connecting ([PROTOCOL.md](../spec/PROTOCOL.md#expires-enforcement-and-the-expiring-soon-advisory)).
-- **Without one.** The list keeps the 64 newest verifiers, an arbitrary working value, raised on request.
+- **With or without one.** The list also keeps at most the 64 newest verifiers, an arbitrary working value, raised on request, so a short run cadence under a long `token_max_age_days` cannot grow it.
   At 32 bytes each, base64url-encoded, that is under 4 KB of key file or record.
 
 A copy older than the list, or from before the history was built, gets the generic failure.
@@ -245,7 +255,7 @@ The export artifact and the command-line export include the history, so a moved 
 
 | Channel | A stale copy | A one-sided rotation |
 | ------- | ------------ | -------------------- |
-| `sftp` | Detected in the key exchange when the copy is within the partner's history. The current side is told the copy's age and to confirm with the partner; the stale side receives the behind notice. Older copies: the generic failure. | Heals at the next run in the key exchange, whichever side initiates; both sides are told. |
+| `sftp` | Detected in the key exchange when the copy is within the partner's history. The current side is told how far behind the copy is at most, and to confirm with the partner; the stale side receives the behind notice. Older copies: the generic failure. | Heals at the next run in the key exchange, whichever side initiates; both sides are told. |
 | `filedrop` | As for `sftp`: the rendezvous is the shared folder. | As for `sftp`. |
 | `webrtc`, browser | Not detected across the wire. The restored copy's import marker beside its no-shows is reported as a possibly stale restore; the current side sees no-shows. A copy exactly one rotation behind a side still holding its previous secret heals instead. | Heals at the next run: the ahead side registers or offers under both secrets' ids; both sides are told. Subject to the relay limit. |
 | `webrtc`, command line | Not detected across the wire. Both sides see no-shows; the CLI has no import marker, so its no-show message names a restored or copied key file among the causes. | As for the browser. |
@@ -253,10 +263,10 @@ The export artifact and the command-line export include the history, so a moved 
 ## The problems, answered
 
 - **A counter cannot fire on WebRTC.** Correct; the design keeps no counter. On `webrtc` a stale copy is reported locally (the import marker in the browser, the no-show message on the command line) and not across the wire, a stated limit unless the maintainer chooses otherwise ([question 1](#open-questions)). The one-sided rotation does heal there, through the two-id rendezvous.
-- **A counter compared before authentication is advisory.** Replaced by the history proof, which the stale side can make only by holding the retired secret, and by the behind notice, which only a holder of that secret's verifier can make.
+- **A counter compared before authentication is advisory.** Replaced by the history proof, which only a holder of the retired secret or of a later copy can make, and by the behind notice, which only a holder of that secret's verifier can make. The proof bounds how old the peer's copy is and the notice shows that the sender's copy is newer; only the notice's count is the sender's statement, and the stale side's message does not show it.
 - **The previous secret lengthens a captured copy's live window.** Bounded to one run, and only after a run cut between its handshake and the partner's first frame. Where the partner is behind, the previous secret is the partner's current one and live anyway; where it is not, a captured copy of it stays live until the next run instead of the last. An attacker who can cut a run can extend a captured secret by that one run, not indefinitely, since the next completed handshake retires it.
 - **The previous secret can hide a stale restore or a self-fork.** A copy restored from before a completed run is not healed: the previous secret was dropped when that run's partner frame arrived, and the history proof reports the copy instead. The remaining case, a copy exactly one rotation behind a run that was itself cut, is indistinguishable from the failure the window heals, and the heal is reported on both sides with the question that exposes a second copy.
-- **The registrar has replaced the previous relay key.** The relay credential is decoupled from the handshake secret, so each side's own relay works; the behind side's allocation on the ahead side's relay is the stated limit.
+- **The registrar has replaced the previous relay key.** The relay credential is decoupled from the handshake secret, and a registration the cut run left pending is retried under the previous secret's key, so each side's own relay works; the behind side's allocation on the ahead side's relay is the stated limit.
 - **A wire change pre-release.** Every change is to the key exchange's existing three messages and its abort. The protocol-version tag is reserved for a suite change, and the strict message schemas fail a mismatched build closed at parse ([PROTOCOL.md](../spec/PROTOCOL.md#p-256-authenticated-key-exchange), Protocol-version tag), so before the first release the change takes no version decision; after it, the same change would strand every deployed peer with a parse failure.
 
 ## What changes in the threat model
@@ -264,6 +274,7 @@ The export artifact and the command-line export include the history, so a moved 
 - **A secret can authenticate a second handshake.** Today each secret authenticates one completed handshake and is retired ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#token-format-and-entropy) states it is never reused). With the previous secret, a secret whose run was cut before the partner's first frame authenticates one more, the heal, and one more again for each heal cut the same way. An organization whose rotation policy forbids that is the subject of [question 2](#open-questions).
 - **A superseded secret is at rest** on the device that ran a cut run, for up to one run, under the same custody as the current secret.
 - **Frames before authentication say more.** Message 2 always has a second tag and a history proof; an abort can have a proof and a notice. None verifies for a party with no copy. Message 2's additions are sent on every handshake and the abort's proof on every failed one, so neither tells an outcome; the notice goes only to a proven holder of an old copy.
+- **A later holder of a secret can pick out the handshakes that used it.** The history proof is a MAC under a key derived from the secret alone, over the two public shares, and so is a notice under a retired secret's verifier. Anyone who later obtains a secret, or any later copy of the record, key file or export, which holds its verifier, can check recorded handshake frames and tell which ones used that secret, tying them to this partnership and ordering them. On `sftp` and `filedrop` the shared folder's operator can record those frames. The confirmation tags allow no such check, since their key derives from the chaining key, which includes the ECDH output ([PROTOCOL.md](../spec/PROTOCOL.md#p-256-authenticated-key-exchange), Key schedule). The proof cannot be keyed from the chaining key instead: the pre-shared secret enters it at the first step, before the ECDH output, so two parties on different secrets share no chaining-key value.
 - **The coordination server can link two rotations** of a partnership in the unconfirmed state, from one party's two registrations or offers.
 
 ## Proposed spec and documentation changes
@@ -271,8 +282,8 @@ The export artifact and the command-line export include the history, so a moved 
 Each change lands with the stage that builds it, so the spec keeps describing the code.
 
 - **[PROTOCOL.md](../spec/PROTOCOL.md#p-256-authenticated-key-exchange)**, P-256 authenticated key exchange: the second tag and the history proof in message 2, the flag under message 3's tag, the abort's proof and notice, the trial verification and the constant work on both sides, the history-verifier label family in the label space, and regenerated vectors. Shared-secret rotation: the previous secret, its confirmation, and the history append. WebRTC rendezvous peer-id derivation: both secrets' ids while a previous secret is held. Relay credential derivation, Registering the rotated relay key, and Enrolling at a default relay: the relay rules in [The relay](#the-relay).
-- **[EXCHANGE_FILE.md](../spec/EXCHANGE_FILE.md#the-key-file-schema)**, the key file: the previous secret and its `expires`, the history, and the rotation-in-flight marker's "no previous secret is kept".
-- **[MANAGED_EXCHANGE_RECORD.md](../spec/MANAGED_EXCHANGE_RECORD.md#the-secret-is-a-linear-resource)**: the linear-resource rule that neither party keeps the old secret, the single-owner invariant's "there is no grace window", the persist-before-success steps (the previous secret stored, the confirmation write), the rotation-in-flight marker, the exception to derived-never-stored, the export artifact (history in, previous secret out) and its no-anti-rollback caveat, the import marker read beside a no-show, and the replace question stating an order.
+- **[EXCHANGE_FILE.md](../spec/EXCHANGE_FILE.md#the-key-file-schema)**, the key file: the previous secret and its `expires`, the history, the rotation-in-flight marker's "no previous secret is kept", and the key the pending relay registration's retry is signed under.
+- **[MANAGED_EXCHANGE_RECORD.md](../spec/MANAGED_EXCHANGE_RECORD.md#the-secret-is-a-linear-resource)**: the linear-resource rule that neither party keeps the old secret, the single-owner invariant's "there is no grace window", the persist-before-success steps (the previous secret stored, the confirmation write), the rotation-in-flight marker, the key the pending relay registration's retry is signed under, the exception to derived-never-stored, the export artifact (history in, previous secret out) and its no-anti-rollback caveat, the import marker read beside a no-show, and the replace question stating an order.
 - **[SECURITY_DESIGN.md](../SECURITY_DESIGN.md#recurring-exchange-authentication)**: the one-sided write paragraph, the never-reused sentence, the compromise response's "valid until the next successful exchange", the primary controls, and the rollback section, each per [What changes in the threat model](#what-changes-in-the-threat-model).
 - **[CLI.md](../CLI.md#out-of-sync-tokens)**, Out-of-sync tokens, and [MANAGED_EXCHANGE.md](../MANAGED_EXCHANGE.md#desync-detection-and-recovery): the heal, its message, and when re-invite is still the recovery.
 - **[managed-exchange-design.md](managed-exchange-design.md#the-grace-window)**: the grace window and single-device ownership sections point here.
@@ -288,9 +299,11 @@ Three items, the first ahead of the other two, which are independent of each oth
    **Security review: required.** It changes the handshake and adds frames read before authentication; it is the one protocol review, and covers both mechanisms.
 2. **Command line.**
    The key file's previous secret, its rotation and confirmation writes, the history append and pruning, both ids in the WebRTC attempt cycle, the relay registration and enrollment rules, the measurement of one-sided relay allocation against the reference relay, and the messages and exit codes.
+   It tests the pending registration's retry under the previous secret's relay key against a registrar still holding that key and against one already holding the current key.
    **Security review: required**, scoped to the superseded secret at rest and the second rendezvous registration, not the protocol.
 3. **Web application.**
    The record's previous secret and history, under the run+rotate lock with strict-durability writes; exports omitting the previous secret and including the history; both ids in the browser rendezvous and the default-relay enrollment; the heal notes; the import marker beside a no-show; the import's order.
+   It tests the managed run's pending-registration retry under the previous secret's relay key as item 2 does.
    **Security review: required**, scoped as for item 2, plus a UX review for the notes and the replace question.
 
 Each item lands its own spec changes, with its wording-change list, and the `SECURITY_DESIGN.md` changes it makes true.

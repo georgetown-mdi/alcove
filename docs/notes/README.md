@@ -44,7 +44,7 @@ stands, from a direction still open to a decision taken and built.
 | [linkage-rule-catalog.md](linkage-rule-catalog.md) | Proposed; bands the shipped keys and proposes the rest, each rule with its precision band and evidence. |
 | [linkage-rule-grounding.md](linkage-rule-grounding.md) | Proposal, pending adoption -- nothing here is adopted or shipped. |
 | [lockless-rendezvous-barrier.md](lockless-rendezvous-barrier.md) | Weighed and set aside; the shipped symmetric barrier stands. |
-| [managed-exchange-design.md](managed-exchange-design.md) | Decided and built; the grace window is designed in rotation-hardening.md and not built. |
+| [managed-exchange-design.md](managed-exchange-design.md) | Decided and built; the grace window is proposed in rotation-hardening.md and not built. |
 | [one-sided-disclosure.md](one-sided-disclosure.md) | Resolved - shipped as the opt-in `single-pass` linkage strategy (the cascade stays the default). |
 | [one-sided-fuzzy-expansion.md](one-sided-fuzzy-expansion.md) | Decided, built, and applied. |
 | [operator-message-control-characters.md](operator-message-control-characters.md) | Decided and built. |
