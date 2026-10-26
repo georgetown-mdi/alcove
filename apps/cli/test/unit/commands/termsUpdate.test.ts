@@ -445,29 +445,6 @@ describe("alcove apply", () => {
     ).toEqual([{ name: "notes", description: "case notes, reworded" }]);
   });
 
-  test("an update dropping a rule-set citation only this party states asks", async () => {
-    expect(readSpec(partnership.b.config).linkageTerms.linkageRuleSet).toEqual(
-      partnership.aTerms.linkageRuleSet,
-    );
-    const { linkageRuleSet: _ruleSet, ...uncited } = partnership.aTerms;
-    saveConfig(partnership.a.config, {
-      ...readSpec(partnership.a.config),
-      linkageTerms: uncited,
-    });
-    const update = await runUpdate();
-    promptConfirmMock.mockResolvedValue("no");
-    const before = fs.readFileSync(partnership.b.config, "utf8");
-
-    const { exit, stderr } = await runApply(update);
-    const lines = stderr.split("\n");
-    expect(exit).toBeUndefined();
-    expect(promptConfirmMock).toHaveBeenCalledTimes(1);
-    expect(lines).toContain("  linkage rule set: change");
-    expect(lines).toContain("    after: not stated");
-    expect(lines).not.toContain("  linkage terms: no change");
-    expect(fs.readFileSync(partnership.b.config, "utf8")).toBe(before);
-  });
-
   test("an update stating no columns the partner receives asks before dropping this party's send", async () => {
     const spec = readSpec(partnership.b.config);
     saveConfig(partnership.b.config, {

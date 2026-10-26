@@ -237,9 +237,9 @@ The recovery step is composed ahead of the conflict block, so the cap can only e
 And the link's budget is shared out by provenance before any value is rendered: the fixed copy is measured where it stands, and the operator's own configuration path is fitted to a budget of its own (**128** rendered characters).
 The conflict block is handed exactly what `COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH` leaves, inside which every line is charged the first-party skeleton it is named by and what remains is shared out among the value slots by need.
 Each side is measured at what it would actually render to, a side takes only that, and what a short value leaves is available to a long one beside it.
-A constraint therefore falls only on the sides too wide for the room -- eight ordinary disagreements are eight lines with both their values, however many of them there are, because the count of disagreeing fields is not what decides it.
-A slot whose side is a clause of several values -- the rule-set citation's two names and two versions, the legal agreement's reference and expiry, or the directory-form hint's inbound and outbound locators -- shares its slot out among those values by the same rule, its own connectives measured and kept.
-So a slot too small to hold everything degrades a value rather than deleting the clause structure behind it, and a partner-chosen set name at the schema's length cannot take the version, the ` over `, and the whole second half off both sides of the line.
+A constraint therefore falls only on the sides too wide for the room -- seven ordinary disagreements are seven lines with both their values, however many of them there are, because the count of disagreeing fields is not what decides it.
+A slot whose side is a clause of several values -- the legal agreement's reference and expiry, or the directory-form hint's inbound and outbound locators -- shares its slot out among those values by the same rule, its own connectives measured and kept.
+So a slot too small to hold everything degrades a value rather than deleting the clause structure behind it, and a partner-chosen agreement reference at the schema's length cannot take the expiry off both sides of the line.
 So neither a chooser nor any one conflict line can spend another's room, and every disagreeing field is named whatever becomes of its values -- a field the operator is never told about is a difference they cannot go and resolve.
 A side that cannot be given the least it displays as -- a delimited run showing some of its own bytes (**32** rendered characters), or a clause showing some of every value it names inside its own connectives (the truncation marker's own cost plus **8** per value) -- does not render cut back to punctuation and markers.
 That line is named without its values, under a first-party line saying so, whether it is one wide line among short ones or a field list long enough to leave nothing for any of them.
@@ -274,10 +274,9 @@ What an operator can rely on is the marker's ABSENCE.
 And the fixed copy fits its budget by measurement rather than by construction, which is held by a check rather than by this paragraph (`apps/cli/test/unit/config.test.ts`).
 One case drives every fragment at once at the widest the linkage-terms schema admits of that fragment.
 For a value the schema bounds only in length, that is a run of BMP code points at or above U+0100, which escape to six characters each against an astral code point's ten over two of the schema's UTF-16 units.
-Where the schema also constrains a value's shape, it is the same bound in that shape's own characters, so a citation version is a semver spelled out to the full **256** characters that bound admits, past the ceiling core renders a value bare under and so a delimited run the fit divides its share with.
-That case covers both names and both versions of the citation on each side, both legal-agreement references, the linkage-key list in the full-JSON form it falls back to and the linkage-field list as the delimited name list a by-name difference renders, a payload description at the free-text bound, and the connection locators.
+That case covers both legal-agreement references, the linkage-key list in the full-JSON form it falls back to and the linkage-field list as the delimited name list a by-name difference renders, a payload description at the free-text bound, and the connection locators.
 It fails unless the recovery step and every field name arrive under the cap, unless the notice explaining a field named without its values is shown exactly when the block holds one, and unless every line that kept its values kept both of them.
-Another case drives an ordinary refusal and fails if any part of it is cut at all, and a third drives eight ordinary disagreements and fails unless all sixteen of their values render whole.
+Another case drives an ordinary refusal and fails if any part of it is cut at all, and a third drives seven ordinary disagreements and fails unless all fourteen of their values render whole.
 
 ## Consent summary display types
 

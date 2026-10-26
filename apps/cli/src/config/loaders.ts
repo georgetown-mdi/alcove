@@ -35,7 +35,6 @@ import {
   configFileRefusal,
   normalizeKeyPathSpelling,
 } from "./persist";
-import type { LinkageTermsStanding } from "./ruleSetCitation";
 
 // --- Config reader -----------------------------------------------------------
 
@@ -77,13 +76,6 @@ export interface ConfigLinkageSource {
    * will read it by.
    */
   csvDelimiter?: string;
-  /**
-   * Whether an acceptance stands behind the config's linkage terms, for
-   * readers that report on the citation those terms hold. Read as the
-   * single presence check {@link linkageTermsStandingOf} describes, at the
-   * top-level key rather than through the spec schema.
-   */
-  linkageTermsStanding: LinkageTermsStanding;
 }
 
 /**
@@ -331,7 +323,6 @@ export function readConfigLinkageSource(
       metadata,
       csvDelimiter: readCsvDelimiterDeclaration(obj, configPath),
       retainsFiles: readRetainFilesDeclaration(obj),
-      linkageTermsStanding: readLinkageTermsStanding(obj),
     },
   };
 }
@@ -366,26 +357,6 @@ function readCsvDelimiterDeclaration(
       "has an invalid csv_delimiter: " + csvDelimiterRefusal(declared),
     );
   return resolved;
-}
-
-/**
- * The standing of a loaded config's terms, read from the presence of a
- * top-level `expected_partner_deduplicate` at its fixed key, unparsed for
- * the same reason {@link readRetainFilesDeclaration} reads its own key that
- * way. Both spellings are accepted, matching `saveConfig`'s snake_case
- * write.
- *
- * Presence alone decides it, on {@link linkageTermsStandingOf}'s rule that
- * the record says an acceptance happened rather than what was agreed. A
- * value the strict paths refuse is refused there, by core's schema, on the
- * commands that build an exchange from the file.
- */
-function readLinkageTermsStanding(
-  obj: Record<string, unknown>,
-): LinkageTermsStanding {
-  const declared =
-    obj["expected_partner_deduplicate"] ?? obj["expectedPartnerDeduplicate"];
-  return declared === undefined ? "held-alone" : "accepted-with-partner";
 }
 
 /**
