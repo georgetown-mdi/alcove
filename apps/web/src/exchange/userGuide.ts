@@ -10,7 +10,7 @@ export const CONSOLE_GUIDE_URL =
 
 /** How the built-in rules behind each Built-in rules choice were chosen. */
 export const BUILT_IN_RULES_GUIDE_URL =
-  "https://github.com/georgetown-mdi/alcove/blob/main/docs/EXCHANGE_REFERENCE.md#choosing-rules-by-precision-floor";
+  "https://github.com/georgetown-mdi/alcove/blob/main/docs/EXCHANGE_REFERENCE.md#choosing-the-built-in-rules";
 
 /** What an exchange's Allowed relays decide in the browser, and what they do
  * not. */
