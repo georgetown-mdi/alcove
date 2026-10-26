@@ -1,9 +1,21 @@
 import {
+  isRelayCheckStatus,
+  isRelayCheckUnavailableReason,
+} from "@jobContract/relayCheckResponses";
+
+import {
   MAX_JOB_LISTING_RESPONSE_BYTES,
   MAX_JOB_STATUS_RESPONSE_BYTES,
   isRecord,
   readJsonOrNull,
 } from "./jobApiBody";
+
+import type {
+  RelayCheckHost,
+  RelayCheckLine,
+  RelayCheckStatement,
+  RelayCheckUnavailableReason,
+} from "@jobContract/relayCheckResponses";
 
 /**
  * The console's relay check (`GET` and `POST /api/jobs/relay-check`,
@@ -12,40 +24,6 @@ import {
  * string the server sends is already escaped and bounded there, so it is
  * shown as given.
  */
-
-/** One host of the statement, with the lines that explain it. */
-export interface RelayCheckHost {
-  host: string;
-  explanation: Array<string>;
-}
-
-/** The hosts a check contacts, then those it does not, as the CLI states them. */
-export interface RelayCheckStatement {
-  contactedHeading: string;
-  contacted: Array<RelayCheckHost>;
-  notContacted?: { heading: string; hosts: Array<RelayCheckHost> };
-  closing: string;
-}
-
-/** Why the working folder holds nothing this check applies to. */
-export type RelayCheckUnavailableReason =
-  | "no-configuration"
-  | "configuration-refused"
-  | "not-webrtc"
-  | "ice-provision"
-  | "no-turn-url"
-  | "turn-urls-left-out"
-  | "key-file";
-
-const UNAVAILABLE_REASONS: ReadonlySet<string> = new Set([
-  "no-configuration",
-  "configuration-refused",
-  "not-webrtc",
-  "ice-provision",
-  "no-turn-url",
-  "turn-urls-left-out",
-  "key-file",
-]);
 
 /** What `GET /api/jobs/relay-check` answered, or `error` for anything else. */
 export type RelayCheckOffer =
@@ -61,25 +39,6 @@ export type RelayCheckOffer =
       websocketRelayNotChecked: boolean;
     }
   | { kind: "error" };
-
-/** The status of one check, as the CLI's verdict states it. */
-export type RelayCheckStatus = "ok" | "warn" | "fail" | "skipped";
-
-const STATUSES: ReadonlySet<string> = new Set([
-  "ok",
-  "warn",
-  "fail",
-  "skipped",
-]);
-
-/** One check of a verdict, its headline composed by core on the server. */
-export interface RelayCheckLine {
-  id: string;
-  status: RelayCheckStatus;
-  headline: string;
-  meaning?: string;
-  action?: string;
-}
 
 /**
  * How a started check ended:
@@ -166,13 +125,8 @@ export async function fetchRelayCheckOffer(
   if (!isRecord(body)) return { kind: "error" };
   const websocketRelayNotChecked = body.websocketRelayNotChecked === true;
   if (body.status === "unavailable")
-    return typeof body.reason === "string" &&
-      UNAVAILABLE_REASONS.has(body.reason)
-      ? {
-          kind: "unavailable",
-          reason: body.reason as RelayCheckUnavailableReason,
-          websocketRelayNotChecked,
-        }
+    return isRelayCheckUnavailableReason(body.reason)
+      ? { kind: "unavailable", reason: body.reason, websocketRelayNotChecked }
       : { kind: "error" };
   const statement = statementOf(body.statement);
   if (
@@ -194,8 +148,7 @@ function checkLineOf(value: unknown): RelayCheckLine | null {
   const { id, status, headline, meaning, action } = value;
   if (
     typeof id !== "string" ||
-    typeof status !== "string" ||
-    !STATUSES.has(status) ||
+    !isRelayCheckStatus(status) ||
     typeof headline !== "string" ||
     (meaning !== undefined && typeof meaning !== "string") ||
     (action !== undefined && typeof action !== "string")
@@ -203,7 +156,7 @@ function checkLineOf(value: unknown): RelayCheckLine | null {
     return null;
   return {
     id,
-    status: status as RelayCheckStatus,
+    status,
     headline,
     ...(meaning !== undefined && { meaning }),
     ...(action !== undefined && { action }),
@@ -251,12 +204,8 @@ export async function startRelayCheck(
   if (!isRecord(body) || typeof body.status !== "string")
     return { kind: "error" };
   if (body.status === "unavailable")
-    return typeof body.reason === "string" &&
-      UNAVAILABLE_REASONS.has(body.reason)
-      ? {
-          kind: "unavailable",
-          reason: body.reason as RelayCheckUnavailableReason,
-        }
+    return isRelayCheckUnavailableReason(body.reason)
+      ? { kind: "unavailable", reason: body.reason }
       : { kind: "error" };
   if (body.status !== "verdict")
     return PLAIN_OUTCOMES.has(body.status)

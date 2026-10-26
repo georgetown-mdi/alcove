@@ -2,32 +2,106 @@ import { describe, expect, test } from "vitest";
 
 import {
   relayCheckLinesShown,
+  relayCheckPanelState,
   relayCheckShowsUnavailable,
+  relayCheckShowsWebsocketNote,
 } from "@console/relayCheckModel";
 
-import type { RelayCheckLine } from "@psi/jobClient/relayCheckClient";
+import type {
+  RelayCheckOffer,
+  RelayCheckOutcome,
+} from "@psi/jobClient/relayCheckClient";
+import type { RelayCheckLine } from "@jobContract/relayCheckResponses";
 
 describe("relayCheckLinesShown", () => {
-  test("states a meaning shared by a run of skipped checks once, under the last", () => {
-    const skipped = (id: string): RelayCheckLine => ({
-      id,
-      status: "skipped",
-      headline: `${id}: not contacted.`,
-      meaning: "a run does not reach it.",
-      action: "List it first.",
-    });
-    const checks: Array<RelayCheckLine> = [
-      { id: "turn_1", status: "ok", headline: "reached." },
-      skipped("turn_2"),
-      skipped("turn_3"),
-    ];
-
-    expect(relayCheckLinesShown(checks)).toEqual([
-      checks[0],
-      { id: "turn_2", status: "skipped", headline: "turn_2: not contacted." },
-      checks[2],
-    ]);
+  const skipped = (id: string, action: string): RelayCheckLine => ({
+    id,
+    status: "skipped",
+    headline: `${id}: not contacted.`,
+    meaning: "a run does not reach it.",
+    action,
   });
+  const turn2 = {
+    id: "turn_2",
+    status: "skipped",
+    headline: "turn_2: not contacted.",
+  };
+
+  test.each([
+    ["the same action drops both", "List it first.", turn2],
+    [
+      "a different action keeps the first one's action",
+      "Remove it.",
+      { ...turn2, action: "List it first." },
+    ],
+  ])(
+    "a meaning shared by the next skipped check is stated once: %s",
+    (_name, nextAction, firstShown) => {
+      const checks: Array<RelayCheckLine> = [
+        { id: "turn_1", status: "ok", headline: "reached." },
+        skipped("turn_2", "List it first."),
+        skipped("turn_3", nextAction),
+      ];
+      expect(relayCheckLinesShown(checks)).toEqual([
+        checks[0],
+        firstShown,
+        checks[2],
+      ]);
+    },
+  );
+});
+
+describe("relayCheckPanelState", () => {
+  const hiddenReason: RelayCheckOffer = {
+    kind: "unavailable",
+    reason: "not-webrtc",
+    websocketRelayNotChecked: false,
+  };
+
+  test("a reason the panel hides is hidden until the operator opens the check", () => {
+    expect(relayCheckPanelState(hiddenReason, false)).toEqual({
+      step: "hidden",
+    });
+    expect(relayCheckPanelState(hiddenReason, true)).toEqual({
+      step: "unavailable",
+      offer: hiddenReason,
+    });
+  });
+});
+
+describe("relayCheckShowsWebsocketNote", () => {
+  const verdict: RelayCheckOutcome = {
+    kind: "verdict",
+    overall: "ok",
+    checks: [],
+  };
+
+  test.each<[RelayCheckOutcome, boolean, boolean]>([
+    [verdict, true, true],
+    [verdict, false, false],
+    [{ kind: "unavailable", reason: "key-file" }, true, false],
+    ...(
+      [
+        "refused",
+        "timeout",
+        "configuration-changed",
+        "busy",
+        "exchange-running",
+        "error",
+      ] as const
+    ).map((kind): [RelayCheckOutcome, boolean, boolean] => [
+      { kind },
+      true,
+      false,
+    ]),
+  ])(
+    "%o with a WebSocket relay listed %s shows the note: %s",
+    (outcome, websocketRelayNotChecked, shown) => {
+      expect(
+        relayCheckShowsWebsocketNote(outcome, { websocketRelayNotChecked }),
+      ).toBe(shown);
+    },
+  );
 });
 
 describe("relayCheckShowsUnavailable", () => {

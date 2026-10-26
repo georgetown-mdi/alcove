@@ -2,9 +2,12 @@ import { RELAY_CHECK_BOUND_MS } from "@alcove/core";
 
 import type {
   RelayCheckLine,
-  RelayCheckOutcome,
   RelayCheckStatus,
   RelayCheckUnavailableReason,
+} from "@jobContract/relayCheckResponses";
+import type {
+  RelayCheckOffer,
+  RelayCheckOutcome,
 } from "@psi/jobClient/relayCheckClient";
 
 /** The control that shows the hosts a check contacts, before any is contacted. */
@@ -152,20 +155,68 @@ export function relayCheckStatusLabel(status: RelayCheckStatus): string {
 
 /**
  * The checks as shown: a run of skipped checks with the same meaning shows
- * it, and the action, once, under the last of them, as the CLI prints them.
+ * it once, under the last of them, and an action they also share likewise,
+ * as the CLI prints them.
  */
 export function relayCheckLinesShown(
   checks: ReadonlyArray<RelayCheckLine>,
 ): Array<RelayCheckLine> {
   return checks.map((check, index) => {
     const next = checks.at(index + 1);
-    const sharesNotes =
+    const sharesMeaning =
       next !== undefined &&
       check.status === "skipped" &&
       next.status === "skipped" &&
       check.meaning === next.meaning;
-    return sharesNotes
-      ? { id: check.id, status: check.status, headline: check.headline }
-      : check;
+    const sharesAction = sharesMeaning && check.action === next.action;
+    return {
+      id: check.id,
+      status: check.status,
+      headline: check.headline,
+      ...(!sharesMeaning &&
+        check.meaning !== undefined && { meaning: check.meaning }),
+      ...(!sharesAction &&
+        check.action !== undefined && { action: check.action }),
+    };
   });
+}
+
+type AvailableOffer = Extract<RelayCheckOffer, { kind: "available" }>;
+type UnavailableOffer = Extract<RelayCheckOffer, { kind: "unavailable" }>;
+
+/** Where the relay-check panel stands. */
+export type RelayCheckPanelState =
+  | { step: "reading" }
+  | { step: "hidden" }
+  | { step: "closed"; unreadable: boolean }
+  | { step: "opening" }
+  | { step: "unavailable"; offer: UnavailableOffer }
+  | { step: "hosts"; offer: AvailableOffer }
+  | { step: "checking"; offer: AvailableOffer }
+  | { step: "done"; outcome: RelayCheckOutcome; websocketNote: boolean };
+
+/**
+ * Where the panel stands once an offer is read: `opened` where the operator
+ * asked for the check, so a reason the panel otherwise hides is stated.
+ */
+export function relayCheckPanelState(
+  offer: RelayCheckOffer,
+  opened: boolean,
+): RelayCheckPanelState {
+  if (offer.kind === "error") return { step: "closed", unreadable: opened };
+  if (offer.kind === "unavailable")
+    return opened || relayCheckShowsUnavailable(offer)
+      ? { step: "unavailable", offer }
+      : { step: "hidden" };
+  return opened
+    ? { step: "hosts", offer }
+    : { step: "closed", unreadable: false };
+}
+
+/** Whether a check's outcome is followed by the WebSocket-relay note. */
+export function relayCheckShowsWebsocketNote(
+  outcome: RelayCheckOutcome,
+  offer: { websocketRelayNotChecked: boolean },
+): boolean {
+  return outcome.kind === "verdict" && offer.websocketRelayNotChecked;
 }

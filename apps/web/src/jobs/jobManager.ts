@@ -149,15 +149,12 @@ import type {
   LoadedConfigurationResponse,
   OpenedMountedConfiguration,
 } from "./configLoad";
-import type {
-  RelayCheckOffer,
-  RelayCheckResult,
-  RelayCheckUnavailableReason,
-} from "./relayCheck";
+import type { RelayCheckOffer, RelayCheckResult } from "./relayCheck";
 import type { AuthoredSignalingServer } from "./signalingServer";
 import type { JobFolderView } from "@jobContract/jobFolderContents";
 import type { JobHandoff } from "@jobContract/jobHandoff";
 import type { RecordUnavailableReason } from "@jobContract/recordUnavailableReason";
+import type { RelayCheckUnavailableReason } from "@jobContract/relayCheckResponses";
 import type { RelayEvent } from "@jobContract/relayEvent";
 import type { RendezvousLeg } from "./jobRendezvous";
 import type { RunArtifactPaths } from "./runArtifacts";

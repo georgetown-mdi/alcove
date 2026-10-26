@@ -19,42 +19,19 @@ import {
   WEBSOCKET_RELAY_NOT_CHECKED,
   relayCheckLinesShown,
   relayCheckOutcomeText,
-  relayCheckShowsUnavailable,
+  relayCheckPanelState,
+  relayCheckShowsWebsocketNote,
   relayCheckStatusLabel,
   relayCheckUnavailableText,
   relayCheckVerdictSummary,
 } from "./relayCheckModel";
 
-import type {
-  RelayCheckHost,
-  RelayCheckOffer,
-  RelayCheckOutcome,
-} from "@psi/jobClient/relayCheckClient";
+import type { RelayCheckHost } from "@jobContract/relayCheckResponses";
+import type { RelayCheckOffer } from "@psi/jobClient/relayCheckClient";
+
+import type { RelayCheckPanelState } from "./relayCheckModel";
 
 type AvailableOffer = Extract<RelayCheckOffer, { kind: "available" }>;
-type UnavailableOffer = Extract<RelayCheckOffer, { kind: "unavailable" }>;
-
-type PanelState =
-  | { step: "reading" }
-  | { step: "hidden" }
-  | { step: "closed"; unreadable: boolean }
-  | { step: "opening" }
-  | { step: "unavailable"; offer: UnavailableOffer }
-  | { step: "hosts"; offer: AvailableOffer }
-  | { step: "checking"; offer: AvailableOffer }
-  | { step: "done"; outcome: RelayCheckOutcome; websocketNote: boolean };
-
-/** Where the panel stands once an offer is read. */
-function stateFor(offer: RelayCheckOffer, opened: boolean): PanelState {
-  if (offer.kind === "error") return { step: "closed", unreadable: opened };
-  if (offer.kind === "unavailable")
-    return relayCheckShowsUnavailable(offer)
-      ? { step: "unavailable", offer }
-      : { step: "hidden" };
-  return opened
-    ? { step: "hosts", offer }
-    : { step: "closed", unreadable: false };
-}
 
 function HostList({ hosts }: { hosts: ReadonlyArray<RelayCheckHost> }) {
   return (
@@ -81,12 +58,12 @@ function HostList({ hosts }: { hosts: ReadonlyArray<RelayCheckHost> }) {
  * Shows nothing where the files name no TURN relay to check.
  */
 export function RelayCheckPanel() {
-  const [state, setState] = useState<PanelState>({ step: "reading" });
+  const [state, setState] = useState<RelayCheckPanelState>({ step: "reading" });
 
   useEffect(() => {
     let current = true;
     void fetchRelayCheckOffer().then((offer) => {
-      if (current) setState(stateFor(offer, false));
+      if (current) setState(relayCheckPanelState(offer, false));
     });
     return () => {
       current = false;
@@ -95,7 +72,7 @@ export function RelayCheckPanel() {
 
   async function open(): Promise<void> {
     setState({ step: "opening" });
-    setState(stateFor(await fetchRelayCheckOffer(), true));
+    setState(relayCheckPanelState(await fetchRelayCheckOffer(), true));
   }
 
   async function start(offer: AvailableOffer): Promise<void> {
@@ -104,7 +81,7 @@ export function RelayCheckPanel() {
     setState({
       step: "done",
       outcome,
-      websocketNote: offer.websocketRelayNotChecked,
+      websocketNote: relayCheckShowsWebsocketNote(outcome, offer),
     });
   }
 
