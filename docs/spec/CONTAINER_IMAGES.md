@@ -800,8 +800,9 @@ closure their helper scripts were written against.
 > and setuid and setgid inventory were measured on 2026-10-25 (UTC) at the base
 > pinned above, on native `linux/amd64` and `linux/arm64` builds without a layer
 > cache on GitHub-hosted runners, and its `aarch64` image size on that
-> `linux/arm64` build. Its `x86_64` image size was measured on 2026-10-19 at the
-> 2023.12.20261016 base.
+> `linux/arm64` build. Its `x86_64` image size was measured on 2026-10-26 (UTC)
+> at the base pinned above, on a build without a layer cache emulated on Docker
+> Desktop on an Apple Silicon Mac.
 
 ### The OS-layer attribution lists
 
@@ -1022,11 +1023,10 @@ and none adds a setuid or setgid file.
 The image weighs 812,060,852 bytes (812 MB) on `aarch64`, as
 `docker image inspect --format '{{.Size}}'` reports it, measured on 2026-10-25
 on a native build without a layer cache at the pins above. On `x86_64` it
-weighed 658,068,804 bytes (658 MB) at the 2023.12.20261016 base, measured on
-2026-10-19 on a build without a layer cache emulated on Docker Desktop on an
-Apple Silicon Mac. The `x86_64` figure was not re-taken at the pins above: the
-runner that built that architecture used Docker's containerd image store, whose
-`{{.Size}}` reading of 218,770,862 bytes is not the quantity the figures here
+weighs 658,606,218 bytes (659 MB), measured on 2026-10-26 at the pins above on a
+build without a layer cache emulated on Docker Desktop on an Apple Silicon Mac.
+A runner using Docker's containerd image store reads a different `{{.Size}}`
+(218,770,862 bytes at these pins), which is not the quantity the figures here
 record.
 
 The table below is the older one-off reference build `Dockerfile.fips` was
