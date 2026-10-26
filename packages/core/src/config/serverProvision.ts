@@ -4,10 +4,10 @@
  * wake a primary server kept down between exchanges; a 2xx answer means the
  * server now accepts connections, and only the status is read. In `create`
  * mode `alcove invite` sends it to have a new server made, and the 2xx
- * answer's body is that server's address. Every other outcome stops the
- * command, classified so the exit code says whether a retry can help. The
- * contract the endpoint meets: docs/EXCHANGE_REFERENCE.md, "On-demand server
- * provisioning".
+ * answer's body is that server's address and, optionally, its SSH host-key
+ * fingerprint. Every other outcome stops the command, classified so the exit
+ * code says whether a retry can help. The contract the endpoint meets:
+ * docs/EXCHANGE_REFERENCE.md, "On-demand server provisioning".
  *
  * The body is network content the operator cannot inspect: a start-mode body
  * is cancelled unread, a create-mode body is read under a byte cap and held to
@@ -31,6 +31,7 @@ import {
   MAX_ENDPOINT_HOST_LENGTH,
   MAX_ENDPOINT_PATH_LENGTH,
 } from "./invitation.js";
+import { HOST_KEY_FINGERPRINT_REGEX } from "./connection.js";
 import type {
   ConnectionConfigAwaitingAddress,
   FileDropConnectionConfig,
@@ -50,10 +51,11 @@ export const PROVISION_REQUEST_TIMEOUT_MS = 120_000;
 
 /**
  * The cap on a create-mode answer's body. The widest document
- * {@link ProvisionedServerAddress} admits, every host and path code unit
- * written as a six-byte `\uXXXX` escape, is (256 + 4096) * 6 bytes plus 34 of
- * keys, punctuation and a five-digit port: 26,146 bytes. 32 KiB is the next
- * power of two, its margin whitespace between tokens.
+ * {@link ProvisionedServerAddress} admits, every host, path, fingerprint and
+ * key code unit written as a six-byte `\uXXXX` escape, is
+ * (256 + 4096 + 50 + 32) * 6 bytes plus 28 of punctuation and a five-digit
+ * port: 26,632 bytes. 32 KiB is the next power of two, its margin whitespace
+ * between tokens.
  */
 export const MAX_PROVISION_RESPONSE_BYTES = 32 * 1024;
 
@@ -65,9 +67,20 @@ export interface ProvisionedServerAddress {
   host: string;
   port?: number;
   path?: string;
+  /**
+   * The created server's SSH host-key fingerprint in OpenSSH SHA256 form,
+   * written as an sftp connection's `host_key_fingerprint` pin in place of
+   * any it states. Sent as `host_key_fingerprint`.
+   */
+  hostKeyFingerprint?: string;
 }
 
-const PROVISIONED_ADDRESS_FIELDS = ["host", "port", "path"] as const;
+const PROVISIONED_ADDRESS_FIELDS = [
+  "host",
+  "port",
+  "path",
+  "host_key_fingerprint",
+] as const;
 
 /** A DNS label: 1-63 characters of letters, digits and hyphens, neither
  * leading nor trailing with a hyphen. */
@@ -96,8 +109,8 @@ function isSafeProvisionPath(path: string): boolean {
   return !/\s/.test(path);
 }
 
-const ProvisionedServerAddressSchema: z.ZodType<ProvisionedServerAddress> =
-  z.strictObject({
+const ProvisionedServerAddressSchema: z.ZodType<ProvisionedServerAddress> = z
+  .strictObject({
     host: z
       .string()
       .min(1)
@@ -110,7 +123,17 @@ const ProvisionedServerAddressSchema: z.ZodType<ProvisionedServerAddress> =
       .check(maxCodeUnits(MAX_ENDPOINT_PATH_LENGTH))
       .refine(isSafeProvisionPath)
       .optional(),
-  });
+    host_key_fingerprint: z
+      .string()
+      .regex(HOST_KEY_FINGERPRINT_REGEX)
+      .optional(),
+  })
+  .transform(({ host_key_fingerprint, ...address }) => ({
+    ...address,
+    ...(host_key_fingerprint !== undefined
+      ? { hostKeyFingerprint: host_key_fingerprint }
+      : {}),
+  }));
 
 /** The request a provisioning block describes, before a signal is attached. */
 export interface ProvisionRequest {
@@ -393,13 +416,18 @@ function refusedAddressReason(issues: ReadonlyArray<z.core.$ZodIssue>): string {
       return "its host holds a character a host name cannot contain";
     if (field === "path" && issue.code === "custom")
       return "its path holds a character a path cannot contain";
+    if (field === "host_key_fingerprint")
+      return (
+        "its host_key_fingerprint is not an OpenSSH SHA256 fingerprint " +
+        "(SHA256: followed by 43 unpadded standard base64 characters)"
+      );
     if (
       issue.code !== "unrecognized_keys" &&
       PROVISIONED_ADDRESS_FIELDS.some((name) => name === field)
     )
       return `its ${String(field)} is missing, of the wrong type, or out of range`;
   }
-  return "it holds a field other than host, port, and path";
+  return "it holds a field other than host, port, path, and host_key_fingerprint";
 }
 
 /**
@@ -447,8 +475,9 @@ export async function requestProvisionedServerAddress(
         `${refusedAddressReason(parsed.error.issues)}. The answer must be a ` +
         "JSON object holding a host name or IP address of at most " +
         `${MAX_ENDPOINT_HOST_LENGTH} characters and, optionally, a port ` +
-        "(1-65535) and a path of at most " +
-        `${MAX_ENDPOINT_PATH_LENGTH} characters, and nothing else; ${remedy}`,
+        "(1-65535), a path of at most " +
+        `${MAX_ENDPOINT_PATH_LENGTH} characters, and a host_key_fingerprint ` +
+        `in OpenSSH SHA256 form, and nothing else; ${remedy}`,
     );
   return parsed.data;
 }
@@ -456,9 +485,13 @@ export async function requestProvisionedServerAddress(
 /**
  * The connection with the address a create-mode endpoint returned in place of
  * its own, or in the place a configuration left empty for it: `host` always,
- * `port` and `path` when the answer states them. The `provision` block is
- * kept, the record the next invitation creates a server from. A bare IPv6
- * address is written bracketed, the form a dial and an invitation take.
+ * `port`, `path` and `hostKeyFingerprint` when the answer states them. A
+ * returned fingerprint replaces the pin an sftp server states; an answer with
+ * none leaves that pin as it is. The `provision` block is kept, the record the
+ * next invitation creates a server from. A bare IPv6 address is written
+ * bracketed, the form a dial and an invitation take. A webrtc connection has no
+ * SSH host key to pin, so a returned fingerprint is never written into one;
+ * the caller refuses such an answer.
  */
 export function withProvisionedServerAddress<
   C extends Exclude<ConnectionConfigAwaitingAddress, FileDropConnectionConfig>,
@@ -472,6 +505,10 @@ export function withProvisionedServerAddress<
         : address.host,
       ...(address.port !== undefined ? { port: address.port } : {}),
       ...(address.path !== undefined ? { path: address.path } : {}),
+      ...(address.hostKeyFingerprint !== undefined &&
+      connection.channel === "sftp"
+        ? { hostKeyFingerprint: address.hostKeyFingerprint }
+        : {}),
     },
   };
 }

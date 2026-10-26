@@ -334,32 +334,43 @@ function offlineWebRTCEndpoint(
 /**
  * The connection with the server address a create-mode endpoint returned in
  * place of its own, refused when the result is not a connection the schema
- * accepts (an sftp `path` beside an `inbound_path`, say). The refusal names the
- * endpoint, the schema's reasons, and the created server's host, which nothing
- * else records once the invite stops; never the returned path, which may hold
- * a token.
+ * accepts (an sftp `path` beside an `inbound_path`, say) or when a webrtc
+ * connection is given a host-key fingerprint, which it has no SSH host key to
+ * pin. A refusal names the endpoint, its reason, and the created server's
+ * host, which nothing else records once the invite stops; never the returned
+ * path, which may hold a token, or the returned fingerprint.
  */
 function connectionAtProvisionedAddress(
   connection: SFTPConnectionAwaitingAddress | WebRTCConnectionAwaitingAddress,
   address: ProvisionedServerAddress,
 ): SFTPConnectionConfig | WebRTCConnectionConfig {
+  const provision = serverProvisionOf(connection);
+  const label =
+    provision !== undefined
+      ? provisionEndpointLabel(provision)
+      : "the provisioning endpoint";
+  const createdServerNote =
+    `The endpoint created a server at ${hostForAuthority(address.host)}, which this ` +
+    "configuration does not record; remove it through the endpoint's " +
+    "operator if nothing else will use it.";
+  if (
+    connection.channel === "webrtc" &&
+    address.hostKeyFingerprint !== undefined
+  )
+    throw new UsageError(
+      `${label} answered with a host_key_fingerprint for a webrtc ` +
+        "connection, which has no SSH host key to pin; have the endpoint " +
+        `leave host_key_fingerprint out of its answer for this server. ${createdServerNote}`,
+    );
   const result = safeParseConnectionConfig(
     withProvisionedServerAddress(connection, address),
   );
   if (!result.success) {
-    const provision = serverProvisionOf(connection);
-    const label =
-      provision !== undefined
-        ? provisionEndpointLabel(provision)
-        : "the provisioning endpoint";
     throw new UsageError(
       `${label} returned a server address this configuration's ` +
         "connection block cannot use: " +
         result.error.issues.map((issue) => issue.message).join("; ") +
-        "; change connection.server or the endpoint so the two agree. The " +
-        `endpoint created a server at ${hostForAuthority(address.host)}, which this ` +
-        "configuration does not record; remove it through the endpoint's " +
-        "operator if nothing else will use it.",
+        `; change connection.server or the endpoint so the two agree. ${createdServerNote}`,
     );
   }
   if (result.data.channel === "filedrop")
@@ -1334,7 +1345,11 @@ export async function handler(argv: Arguments): Promise<void> {
         if (ready.provisionedAddress !== undefined)
           log.info(
             "wrote the address of the server the provisioning endpoint " +
-              "created into connection.server in " +
+              "created" +
+              (ready.provisionedAddress.hostKeyFingerprint !== undefined
+                ? " and its host-key fingerprint"
+                : "") +
+              " into connection.server in " +
               `${redactAndRenderOperatorSuppliedText(
                 operatorSuppliedText(ready.configPath),
               )}; later runs of 'alcove exchange' connect to it without ` +

@@ -501,21 +501,47 @@ test("a create-mode answer may state a host alone", async () => {
   ).resolves.toEqual({ host: "peers-3.example.org" });
 });
 
+const HOST_KEY_PIN = `SHA256:${"A".repeat(42)}w`;
+
+test("a create-mode answer's host_key_fingerprint resolves as hostKeyFingerprint", async () => {
+  const { fetch } = answeringFetch(
+    JSON.stringify({
+      host: "sftp-17.example.org",
+      host_key_fingerprint: HOST_KEY_PIN,
+    }),
+  );
+  await expect(
+    requestProvisionedServerAddress(createProvision, { fetch }),
+  ).resolves.toEqual({
+    host: "sftp-17.example.org",
+    hostKeyFingerprint: HOST_KEY_PIN,
+  });
+});
+
+/** `text` with every code unit written as a six-byte `\uXXXX` JSON escape. */
+function fullyEscaped(text: string): string {
+  return Array.from(
+    text,
+    (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`,
+  ).join("");
+}
+
 test("the widest answer the schema admits, fully escaped, fits the byte cap", async () => {
-  // Every host and path code unit a six-byte \u escape: the derivation beside
-  // MAX_PROVISION_RESPONSE_BYTES. JSON may escape any character, so a host
-  // name's letters count at six bytes too. The host is split into 63-unit
-  // labels (the longest a hostname check admits) joined by escaped dots so
-  // its total still spends MAX_ENDPOINT_HOST_LENGTH code units.
+  // Every host, path and fingerprint code unit a six-byte \u escape: the
+  // derivation beside MAX_PROVISION_RESPONSE_BYTES. JSON may escape any
+  // character, so a host name's letters count at six bytes too. The host is
+  // split into 63-unit labels (the longest a hostname check admits) joined by
+  // escaped dots so its total still spends MAX_ENDPOINT_HOST_LENGTH code units.
   const hostLabelLengths = [63, 63, 63, 62, 1];
   const widestHost = hostLabelLengths
     .map((length) => "\\u0061".repeat(length))
     .join("\\u002e");
   const body =
     `{"host":"${widestHost}",` +
-    `"port":65535,"path":"\\u002f${"\\u0061".repeat(MAX_ENDPOINT_PATH_LENGTH - 1)}"}`;
+    `"port":65535,"path":"\\u002f${"\\u0061".repeat(MAX_ENDPOINT_PATH_LENGTH - 1)}",` +
+    `"host_key_fingerprint":"${fullyEscaped(HOST_KEY_PIN)}"}`;
   const bytes = new TextEncoder().encode(body).byteLength;
-  expect(bytes).toBe(26_146);
+  expect(bytes).toBe(26_472);
   expect(bytes).toBeLessThanOrEqual(MAX_PROVISION_RESPONSE_BYTES);
   const { fetch } = answeringFetch(body);
   const address = await requestProvisionedServerAddress(createProvision, {
@@ -523,6 +549,7 @@ test("the widest answer the schema admits, fully escaped, fits the byte cap", as
   });
   expect(address.host).toHaveLength(MAX_ENDPOINT_HOST_LENGTH);
   expect(address.path).toHaveLength(MAX_ENDPOINT_PATH_LENGTH);
+  expect(address.hostKeyFingerprint).toBe(HOST_KEY_PIN);
 });
 
 test("an answer padded with trailing spaces to exactly the byte cap is accepted, one byte more refused", async () => {
@@ -565,7 +592,7 @@ test.each([
   [
     "an extra key",
     JSON.stringify({ host: "a.example.org", [BODY_SECRET]: "x" }),
-    "it holds a field other than host, port, and path",
+    "it holds a field other than host, port, path, and host_key_fingerprint",
   ],
   [
     "a host one code unit too long",
@@ -632,7 +659,7 @@ test.each([
   [
     "an array",
     JSON.stringify([{ host: BODY_SECRET }]),
-    "it holds a field other than host, port, and path",
+    "it holds a field other than host, port, path, and host_key_fingerprint",
   ],
 ])(
   "a create-mode answer holding %s is refused as a usage error that shows none of it",
@@ -650,6 +677,63 @@ test.each([
     expect(shown).not.toContain("path-token");
   },
 );
+
+const MALFORMED_FINGERPRINT_SENTINEL = "fp-sentinel-1357";
+
+test.each([
+  ["no SHA256: prefix", `${"A".repeat(42)}w`],
+  ["a base64url signing fingerprint", `${"_".repeat(42)}w`],
+  ["base64url characters after the prefix", `SHA256:${"-".repeat(42)}A`],
+  ["one character short", `SHA256:${"A".repeat(42)}`],
+  ["base64 padding", `SHA256:${"A".repeat(43)}=`],
+  [
+    "a final character holding nonzero padding bits",
+    `SHA256:${"A".repeat(42)}B`,
+  ],
+  ["a lowercase prefix", `sha256:${"A".repeat(42)}w`],
+  ["an MD5 fingerprint", "MD5:16:27:ac:a5:76:28:2d:36:63:1b:56:4d:eb:df:a6:48"],
+  ["an empty string", ""],
+  ["arbitrary text", `SHA256:${MALFORMED_FINGERPRINT_SENTINEL}`],
+  ["a trailing line break", `SHA256:${"A".repeat(42)}w\n`],
+  ["a list", [`SHA256:${"A".repeat(42)}w`]],
+  ["a number", 256],
+  ["null", null],
+])(
+  "a create-mode answer whose host_key_fingerprint is %s is refused, naming the field and not the value",
+  async (_, fingerprint) => {
+    const { fetch } = answeringFetch(
+      JSON.stringify({
+        host: "a.example.org",
+        host_key_fingerprint: fingerprint,
+      }),
+    );
+    const err = await caught(
+      requestProvisionedServerAddress(createProvision, { fetch }),
+    );
+    expect(err).toBeInstanceOf(UsageError);
+    const shown = rendered(err);
+    expect(shown).toContain("the provisioning endpoint at api.example.org:443");
+    expect(shown).toContain(
+      "its host_key_fingerprint is not an OpenSSH SHA256 fingerprint",
+    );
+    expect(shown).not.toContain(MALFORMED_FINGERPRINT_SENTINEL);
+    if (typeof fingerprint === "string" && fingerprint.length > 0)
+      expect(shown).not.toContain(fingerprint);
+  },
+);
+
+test("a create-mode answer spelling the fingerprint key hostKeyFingerprint is refused as an unknown field", async () => {
+  const { fetch } = answeringFetch(
+    JSON.stringify({ host: "a.example.org", hostKeyFingerprint: HOST_KEY_PIN }),
+  );
+  const err = await caught(
+    requestProvisionedServerAddress(createProvision, { fetch }),
+  );
+  expect(err).toBeInstanceOf(UsageError);
+  expect(rendered(err)).toContain(
+    "it holds a field other than host, port, path, and host_key_fingerprint",
+  );
+});
 
 test.each([
   ["a control character", "/x\u0001y"],
@@ -824,4 +908,61 @@ test("withProvisionedServerAddress replaces host, keeps an unstated port and pat
     port: 22,
     path: "/in",
   });
+});
+
+const STATED_PIN = `SHA256:${"B".repeat(42)}A`;
+
+test.each([
+  ["no pin", undefined],
+  ["a pin", STATED_PIN],
+  ["a list of pins", [STATED_PIN, `SHA256:${"C".repeat(42)}A`]],
+])(
+  "withProvisionedServerAddress writes a returned fingerprint over %s on an sftp server",
+  (_, stated) => {
+    const connection = {
+      channel: "sftp" as const,
+      server: {
+        host: "pending",
+        username: "alice",
+        provision: createProvision,
+        ...(stated !== undefined ? { hostKeyFingerprint: stated } : {}),
+      },
+    };
+    expect(
+      withProvisionedServerAddress(connection, {
+        host: "sftp-1.example.org",
+        hostKeyFingerprint: HOST_KEY_PIN,
+      }).server.hostKeyFingerprint,
+    ).toBe(HOST_KEY_PIN);
+  },
+);
+
+test("withProvisionedServerAddress keeps a stated pin when the answer returns none", () => {
+  const connection = {
+    channel: "sftp" as const,
+    server: {
+      host: "pending",
+      provision: createProvision,
+      hostKeyFingerprint: STATED_PIN,
+    },
+  };
+  expect(
+    withProvisionedServerAddress(connection, { host: "sftp-1.example.org" })
+      .server.hostKeyFingerprint,
+  ).toBe(STATED_PIN);
+});
+
+test("withProvisionedServerAddress writes no fingerprint into a webrtc connection", () => {
+  const connection = {
+    channel: "webrtc" as const,
+    role: "inviter" as const,
+    server: { provision: createProvision },
+  };
+  const result = withProvisionedServerAddress(connection, {
+    host: "peers-1.example.org",
+    hostKeyFingerprint: HOST_KEY_PIN,
+  });
+  expect(result.server).toHaveProperty("host", "peers-1.example.org");
+  expect(result.server).not.toHaveProperty("hostKeyFingerprint");
+  expect(JSON.stringify(result)).not.toContain(HOST_KEY_PIN);
 });

@@ -6,6 +6,10 @@ import type { FileTransportClient } from "../../src/connection/fileSyncConnectio
 import type { SFTPConnectionConfig } from "../../src/config/connection";
 import { DEFAULT_SERVER_CONNECT_TIMEOUT_MS } from "../../src/config/connection";
 import { MAX_ENDPOINT_HOST_LENGTH } from "../../src/config/invitation";
+import {
+  requestProvisionedServerAddress,
+  withProvisionedServerAddress,
+} from "../../src/config/serverProvision";
 import type { getLoggerForVerbosity } from "../../src/utils/logger";
 import { computeHostKeyFingerprint } from "../../src/utils/sshHostKey";
 import {
@@ -540,6 +544,34 @@ for (const [branch, render, firstPartyStep] of REFUSAL_BRANCHES) {
     expect(rendered).toContain(firstPartyStep);
   });
 }
+
+test("the host-key fingerprint a create-mode provisioning answer returns is the pin the connection enforces", async () => {
+  const createdKey = hostKeyBlob("ssh-ed25519");
+  const provision = { mode: "create" as const, host: "api.example.org" };
+  const fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        host: "sftp-9.example.org",
+        host_key_fingerprint: await computeHostKeyFingerprint(createdKey),
+      }),
+      { status: 200 },
+    )) as typeof globalThis.fetch;
+  const address = await requestProvisionedServerAddress(provision, { fetch });
+  const config = withProvisionedServerAddress(
+    { channel: "sftp", server: { host: "pending", provision } },
+    address,
+  );
+
+  const matching = new FileSyncConnection(hostKeyMockClient(createdKey), {
+    verbose: -1,
+  });
+  await expect(matching.open(config)).resolves.toBeUndefined();
+
+  const otherKey = hostKeyBlob("ecdsa-sha2-nistp256");
+  const rendered = await renderRefusalFromBlob(config, otherKey);
+  expect(rendered).toContain("which does not match the pinned fingerprint");
+  expect(rendered).toContain(await computeHostKeyFingerprint(otherKey));
+});
 
 // Redaction at the composition site is a convention over every server- and
 // partner-controlled fragment, kept whether or not the partition already

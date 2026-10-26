@@ -31,7 +31,7 @@ In create mode it bounds the body read too: the read is raced against the same s
 
 **Create-mode answer.**
 The body of a `2xx` answer is read through `readBoundedJsonBody` (`packages/core/src/utils/boundedJsonBody.ts`), streamed under `MAX_PROVISION_RESPONSE_BYTES` = 32,768 bytes with `Content-Length` never trusted, and parsed through `parseBoundedJson`.
-The cap is derived from the schema below: its widest document, every host and path code unit a six-byte `\uXXXX` escape, is (256 + 4096) x 6 + 34 = 26,146 bytes, and 32 KiB is the next power of two, leaving room for whitespace between tokens.
+The cap is derived from the schema below: its widest document, every host, path, fingerprint, and key code unit a six-byte `\uXXXX` escape, is (256 + 4096 + 50 + 32) x 6 + 28 = 26,632 bytes, and 32 KiB is the next power of two, leaving room for whitespace between tokens.
 The parsed value must be an object with exactly these keys, any other key refused:
 
 | Key | Type | Required | Bound |
@@ -39,9 +39,14 @@ The parsed value must be an object with exactly these keys, any other key refuse
 | `host` | string | yes | 1 to `MAX_ENDPOINT_HOST_LENGTH` (256) UTF-16 code units; a host name (letters, digits, `-`, `.`) or an IP address, the check `server.provision.host` itself gets |
 | `port` | integer | no | 1-65535 |
 | `path` | string | no | 1 to `MAX_ENDPOINT_PATH_LENGTH` (4096) UTF-16 code units |
+| `host_key_fingerprint` | string | no | One fingerprint matching `HOST_KEY_FINGERPRINT_REGEX`: `SHA256:` followed by 43 unpadded standard base64 characters, the canonical form `server.host_key_fingerprint` takes |
 
-The bounds are the invitation endpoint's own, so an accepted address always fits the invitation.
+The `host`, `port`, and `path` bounds are the invitation endpoint's own, so an accepted address always fits the invitation.
 The address then replaces `server.host`, or fills it where a create-mode configuration left it out, and `port` and `path` when present, and the result must still pass the connection schema (an sftp `path` beside an `inbound_path` does not).
+A returned `host_key_fingerprint` replaces whatever `server.host_key_fingerprint` the sftp connection states, a list included, so every later connection to the created server requires that key; an answer without one leaves the configured pin, or its absence, unchanged.
+A list it replaces takes the comments on its key and entries with it.
+A returned `host_key_fingerprint` for a webrtc connection is refused with exit 64 (`UsageError`), since that connection has no SSH host key to pin.
+The fingerprint is not sent in the invitation, so the accepting party still confirms the created server's key on first use.
 A refusal of the body names the endpoint by host and port and names the schema field at fault, never a key or value the body chose.
 A refusal by the connection schema, once the body has passed the schema above, also names the returned `host` -- the one lead to a server the endpoint made and no configuration records -- composed raw into the error and escaped where it is displayed, and never the returned `path`.
 

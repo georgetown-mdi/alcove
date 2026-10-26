@@ -33,6 +33,9 @@ import { captureProcessExit } from "../../exitCapture";
 // a failed call leaves no token printed and no key file written.
 
 const BEARER = "create-bearer-2468";
+const RETURNED_PIN = `SHA256:${"R".repeat(42)}A`;
+const STATED_PIN = `SHA256:${"S".repeat(42)}A`;
+const OTHER_STATED_PIN = `SHA256:${"T".repeat(42)}A`;
 
 const tmpDirs: string[] = [];
 afterEach(() => {
@@ -437,6 +440,24 @@ test.each([
     200,
     64,
   ],
+  [
+    "a returned host_key_fingerprint not in OpenSSH SHA256 form",
+    JSON.stringify({
+      host: "a.example.org",
+      host_key_fingerprint: `SHA256:${"_".repeat(42)}w`,
+    }),
+    200,
+    64,
+  ],
+  [
+    "a returned host_key_fingerprint given as a list",
+    JSON.stringify({
+      host: "a.example.org",
+      host_key_fingerprint: [RETURNED_PIN],
+    }),
+    200,
+    64,
+  ],
 ] as Array<[string, string | null, number, number]>)(
   "handler: %s stops the invite before any token or key file",
   async (_, body, status, code) => {
@@ -460,6 +481,123 @@ test.each([
     expect(fs.readFileSync(configPath, "utf8")).toBe(before);
   },
 );
+
+/** Run the invite handler to completion with console output discarded. */
+async function inviteSucceeds(dir: string): Promise<void> {
+  const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+  const exitSpy = captureProcessExit();
+  try {
+    await inviteHandler(inviteArgv(dir));
+    expect(exitSpy).not.toHaveBeenCalled();
+  } finally {
+    logSpy.mockRestore();
+    exitSpy.mockRestore();
+  }
+}
+
+/** The sftp create-mode fixture with `pin` stated as its host-key pin. */
+function sftpCreatePinned(pin: string | string[]): ExchangeSpec["connection"] {
+  if (sftpCreate.channel !== "sftp") throw new Error("expected sftp");
+  return {
+    ...sftpCreate,
+    server: { ...sftpCreate.server, hostKeyFingerprint: pin },
+  };
+}
+
+test.each([
+  ["no pin", sftpCreate],
+  ["a pin", sftpCreatePinned(STATED_PIN)],
+  ["a list of pins", sftpCreatePinned([STATED_PIN, OTHER_STATED_PIN])],
+] as Array<[string, ExchangeSpec["connection"]]>)(
+  "handler: a returned host_key_fingerprint is written over %s and is the pin later runs load",
+  async (_, connection) => {
+    const dir = scratch();
+    const configPath = writeConfig(dir, connection);
+    stubFetch(
+      JSON.stringify({
+        host: "sftp-7.example.org",
+        host_key_fingerprint: RETURNED_PIN,
+      }),
+    );
+    await inviteSucceeds(dir);
+    const text = fs.readFileSync(configPath, "utf8");
+    expect(text.startsWith("# operator note: keep me\n")).toBe(true);
+    const written = YAML.parse(text);
+    expect(written.connection.server.host).toBe("sftp-7.example.org");
+    expect(written.connection.server.host_key_fingerprint).toBe(RETURNED_PIN);
+    expect(written.connection.server.provision.mode).toBe("create");
+    const options = optionsIn(dir);
+    const loaded = loadConfig({
+      configFile: options.configFile,
+      keyFile: options.keyFile,
+    });
+    if (loaded.connection.channel !== "sftp")
+      throw new Error("expected an sftp connection");
+    expect(loaded.connection.server.hostKeyFingerprint).toBe(RETURNED_PIN);
+  },
+);
+
+test("handler: an answer with no host_key_fingerprint leaves the stated pin in place", async () => {
+  const dir = scratch();
+  const configPath = writeConfig(dir, sftpCreatePinned(STATED_PIN));
+  stubFetch(JSON.stringify({ host: "sftp-7.example.org" }));
+  await inviteSucceeds(dir);
+  const written = YAML.parse(fs.readFileSync(configPath, "utf8"));
+  expect(written.connection.server.host).toBe("sftp-7.example.org");
+  expect(written.connection.server.host_key_fingerprint).toBe(STATED_PIN);
+});
+
+test("handler: a returned host_key_fingerprint for a webrtc configuration stops the invite before any token or key file", async () => {
+  const dir = scratch();
+  const configPath = writeConfig(dir, webrtcCreate);
+  const before = fs.readFileSync(configPath, "utf8");
+  stubFetch(
+    JSON.stringify({
+      host: "peers-4.example.org",
+      host_key_fingerprint: RETURNED_PIN,
+    }),
+  );
+  const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+  const exitSpy = captureProcessExit();
+  try {
+    await expect(inviteHandler(inviteArgv(dir))).rejects.toThrow("exit:64");
+    expect(logSpy).not.toHaveBeenCalled();
+  } finally {
+    logSpy.mockRestore();
+    exitSpy.mockRestore();
+  }
+  expect(fs.existsSync(path.join(dir, ".alcove.key"))).toBe(false);
+  expect(fs.readFileSync(configPath, "utf8")).toBe(before);
+});
+
+test("a returned host_key_fingerprint for a webrtc configuration is refused, naming the endpoint and the created host and not the fingerprint", async () => {
+  const dir = scratch();
+  writeConfig(dir, webrtcCreate);
+  stubFetch(
+    JSON.stringify({
+      host: "peers-4.example.org",
+      host_key_fingerprint: RETURNED_PIN,
+    }),
+  );
+  const err = await validateInvite({
+    resolved: { mode: "offline" },
+    options: optionsIn(dir),
+    acceptTimeout: 900,
+    log: quietLog(),
+  }).catch((raised: unknown) => raised);
+  expect(err).toBeInstanceOf(UsageError);
+  const shown = sanitizeErrorForDisplay(err);
+  expect(shown).toContain(
+    "the provisioning endpoint at api.example.org:443 answered with a " +
+      "host_key_fingerprint for a webrtc connection, which has no SSH host " +
+      "key to pin",
+  );
+  expect(shown).toContain(
+    "The endpoint created a server at peers-4.example.org, which this " +
+      "configuration does not record",
+  );
+  expect(shown).not.toContain(RETURNED_PIN);
+});
 
 test("handler: a returned path of / is accepted and written into connection.server.path", async () => {
   const dir = scratch();
