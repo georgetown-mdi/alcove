@@ -83,42 +83,53 @@ Describe 'The README and console docker lines in Windows PowerShell' {
     }
 }
 
-Describe 'PROBE docker line forms (record only)' {
-    It 'records the arguments each form hands to docker' {
-        $probes = [ordered]@{
-            'mount-src-quoted-pwd'      = 'docker run --mount type=bind,src="$PWD",dst=/work img'
-            'mount-src-bare-pwd'        = 'docker run --mount type=bind,src=$PWD,dst=/work img'
-            'mount-whole-quoted-braced' = 'docker run --mount "type=bind,src=${PWD},dst=/work" img'
-            'mount-placeholder'         = 'docker run --mount type=bind,src=WORK_PATH,dst=/work img'
-            'mount-windows-path-bare'   = 'docker run --mount type=bind,src=C:\Users\me\psi-exchange,dst=/work img'
-            'mount-windows-path-single' = 'docker run --mount type=bind,src=''C:\Users\me\Documents\alcove'',dst=/work img'
-            'v-quoted-then-colon'       = 'docker run -v "/path/to/shared-folder":/shared img'
-            'v-whole-quoted'            = 'docker run -v "/path/to/shared-folder:/shared" img'
-            'v-placeholder-whole'       = 'docker run -v "WORK_PATH:/work" img'
-            'password-backslash-bang'   = 'docker run img sftp://user:passw\!rd@example.org/psi'
-            'password-single-quoted'    = 'docker run img ''sftp://user:passw!rd@example.org/psi'''
-            'at-file-mid-word'          = 'docker run img --server-password=@passwd x'
-            'fingerprint'               = 'docker run img --server-host-key-fingerprint=SHA256:FINGERPRINT x'
-            'continuation'              = "docker run --rm \`n  --env JOB_RENDEZVOUS_DIR=/shared \`n  img serve"
-        }
-        foreach ($case in $probes.Keys) {
-            try {
-                $received = @(Invoke-Expression $probes[$case] 2>&1 | ForEach-Object { [string] $_ })
-                Write-Host ("PROBE ${case}: " + (ConvertTo-Json -Compress -InputObject $received))
-            } catch {
-                Write-Host ("PROBE ${case}: ERROR " + $_.Exception.Message)
-            }
-        }
-        $startedIn = (Get-Location).Path
+Describe 'Forms that fail in Windows PowerShell 5.1' {
+    It 'a mount quoted only around the host path reaches docker as two arguments' {
+        $received = @(Get-DockerArgument -CommandLine 'docker run -v "/path/to/shared-folder":/shared image')
+        ($received -join ' | ') | Should -Be 'run | -v | /path/to/shared-folder | :/shared | image'
+    }
+
+    It 'a command continued with a trailing backslash does not parse' {
+        $tokens = $null
+        $parseErrors = $null
+        [System.Management.Automation.Language.Parser]::ParseInput(
+            "docker run --rm \`n  --env JOB_RENDEZVOUS_DIR=/shared \`n  image serve",
+            [ref] $tokens, [ref] $parseErrors) | Out-Null
+        @($parseErrors | ForEach-Object { $_.ErrorId }) | Should -Contain 'MissingExpressionAfterOperator'
+    }
+
+    It 'a backslash before ! reaches docker, unlike in bash' {
+        $received = @(Get-DockerArgument -CommandLine 'docker run image sftp://user:passw\!rd@example.org/psi')
+        $received | Should -Contain 'sftp://user:passw\!rd@example.org/psi'
+    }
+
+    It '${PWD} from a network location is provider-qualified, not a path docker can mount' {
+        $local = (Get-Location).Path
+        $unc = '\\localhost\' + $local.Substring(0, 1) + '$' + $local.Substring(2)
+        Set-Location -LiteralPath $unc
         try {
-            $unc = '\\localhost\' + $startedIn.Substring(0, 1) + '$' + $startedIn.Substring(2)
-            Set-Location -LiteralPath $unc -ErrorAction Stop
-            Write-Host ('PROBE unc-pwd: ' + "${PWD}")
-            Write-Host ('PROBE unc-provider-path: ' + (Get-Location).ProviderPath)
-        } catch {
-            Write-Host ('PROBE unc: ERROR ' + $_.Exception.Message)
+            $received = @(Get-DockerArgument -CommandLine 'docker run -v "${PWD}:/work" image')
+            $received[2] | Should -Be "Microsoft.PowerShell.Core\FileSystem::$($unc):/work"
         } finally {
-            Set-Location -LiteralPath $startedIn
+            Set-Location -LiteralPath $local
+        }
+    }
+
+    It '${PWD} from the same location through a mapped drive letter is a drive path' {
+        $local = (Get-Location).Path
+        $unc = '\\localhost\' + $local.Substring(0, 1) + '$' + $local.Substring(2)
+        $letter = [string] (@('Z', 'Y', 'X', 'W', 'V') |
+                Where-Object { -not (Test-Path -LiteralPath "$($_):\") } |
+                Select-Object -First 1)
+        $letter | Should -Not -BeNullOrEmpty
+        New-PSDrive -Name $letter -PSProvider FileSystem -Root $unc -Persist -Scope Global | Out-Null
+        try {
+            Set-Location -LiteralPath "$($letter):\"
+            $received = @(Get-DockerArgument -CommandLine 'docker run -v "${PWD}:/work" image')
+            $received[2] | Should -Be "$($letter):\:/work"
+        } finally {
+            Set-Location -LiteralPath $local
+            Remove-PSDrive -Name $letter -Force -ErrorAction SilentlyContinue
         }
     }
 }

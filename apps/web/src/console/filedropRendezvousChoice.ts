@@ -122,8 +122,8 @@ export function splitRendezvousRetainProblem(
 export const SHARED_FOLDER_EXPOSURE_NOTICE =
   "This console's shared folder is the folder holding your files. Whoever " +
   "syncs it gets your input, configuration, and results. Give the shared " +
-  "folder its own mount: add these lines to your docker run command, before " +
-  "the image name, and restart the console.";
+  "folder its own mount: add these flags to your docker run command, just " +
+  "before the image name, and restart the console.";
 
 /** The mount point {@link SHARED_FOLDER_MOUNT_FLAGS} binds the shared folder at:
  * outside the single-mount layout's own mount, so the two do not nest. */
@@ -134,19 +134,19 @@ const SHARED_FOLDER_MOUNT_POINT = "/shared";
 const SHARED_FOLDER_PLACEHOLDER = "shared-folder";
 
 /**
- * The docker flags that give the shared folder its own mount, each line ending in
- * a shell continuation so the block drops in above the image name of a
- * multi-line `docker run`. The folder's name is set explicitly because the mount
- * point is named for the container's layout, and without the name an invitation
- * would hand the partner the mount point's.
+ * The docker flags that give the shared folder its own mount, on one line with
+ * no shell continuation and the whole mount value in one pair of double quotes,
+ * so they drop in before the image name in Windows PowerShell 5.1, bash, and
+ * POSIX sh alike (`scripts/docker-lines.test.mjs` and the Windows CI suite it
+ * feeds). The folder's name is set explicitly because the mount point is named
+ * for the container's layout, and without the name an invitation would hand the
+ * partner the mount point's.
  */
 export const SHARED_FOLDER_MOUNT_FLAGS = [
   `--env JOB_RENDEZVOUS_DIR=${SHARED_FOLDER_MOUNT_POINT}`,
   `--env JOB_RENDEZVOUS_NAME=${SHARED_FOLDER_PLACEHOLDER}`,
-  `-v "/path/to/${SHARED_FOLDER_PLACEHOLDER}":${SHARED_FOLDER_MOUNT_POINT}`,
-]
-  .map((line) => `${line} \\`)
-  .join("\n");
+  `-v "/path/to/${SHARED_FOLDER_PLACEHOLDER}:${SHARED_FOLDER_MOUNT_POINT}"`,
+].join(" ");
 
 /** The line under {@link SHARED_FOLDER_MOUNT_FLAGS} saying what to replace in it. */
 export const SHARED_FOLDER_MOUNT_HINT =
