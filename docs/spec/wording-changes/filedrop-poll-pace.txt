@@ -28,18 +28,18 @@
 - - -> A step writes 9.2 message files on average across the two parties.
 - - -> At most one message per direction is outstanding ([Phase 2](#phase-2----message-loop-delete-mode)), so a step's messages are sequential: each costs the reader's next poll, and a party sending two in a row first waits for the partner to consume the first.
 - - -> Poll waits are 92% of a step at 50 ms and 97% or more from 250 ms up.
-- - -> At 10 records, computation is 17 to 44 ms a step, and writes and renames are 4 to 9 ms.
+- - -> At 10 records, computation is 17 to 44 ms a step, and writes and renames are 4 to 16 ms.
 - - -> **Why a wait costs nearly a whole interval.**
 - - -> Each party schedules its next poll one interval after its previous poll ends, so the offset between the two parties' polls drifts only slowly.
 - - -> In every run up to 500 ms the median offset was 1 to 4 ms, less than the time a party takes to write its reply after the poll that brought the partner's message.
 - - -> The reply therefore lands just after the partner's own poll of that instant, and the partner finds it one interval later rather than half an interval later on average.
-- - -> At 1 s and 5 s the median offset was 48 and 81 ms, long enough for a reply to land before the partner's next poll in one direction, and a step took 6.2 to 6.9 intervals rather than 8.1 to 8.5.
+- - -> At 1 s and 5 s the median offset was 48 and 81 ms, long enough for a reply to land before the partner's next poll in one direction, and a step took 6.2 to 6.9 intervals rather than 8.3 to 9.5.
 - - -> **The Windows share.**
 - - -> The 2026-10-24 lab run over an SMB share on the same LAN, at the 5 s interval in retain mode, took 30.7 s per step and 967 s in all; the local run at 5 s took 31.2 s per step and 948 s.
 - - -> At 5 s the interval accounts for the whole pace, and the share added nothing measurable.
 - - -> The defaults
 - - -> **`filedrop`: 250 ms** (`DEFAULT_FILEDROP_POLLING_FREQUENCY_MS`), a working value.
-- - -> The measurement fixes what an interval costs, six to nine of them per step and nearly all of a small exchange's time, but not the interval itself.
+- - -> The measurement fixes what an interval costs, six to ten of them per step and nearly all of a small exchange's time, but not the interval itself.
 - - -> At 250 ms a 30-step exchange of 10 records took 64 to 72 s over a local directory, against 948 s at 5 s, and each party lists the directory four times a second.
 - - -> A shared folder has no server whose flood protection the cadence could trip, so the CLI's sub-second warning and the console's matching advisory apply on `sftp` only.
 - - -> **`sftp`: 5 s** (`DEFAULT_SFTP_POLLING_FREQUENCY_MS`), unchanged.
@@ -53,7 +53,7 @@
 - - -> That would put a floor under every discovery wait at any interval.
 - - -> The container has no share to measure it on; the lab run shows no such floor at 5 s, and at 250 ms it is unmeasured.
 - - -> **The floor that remains.**
-- - -> At 250 ms a step is still 97% poll waits, about eight of them, against 35 to 70 ms of computation and file I/O.
+- - -> At 250 ms a step is still 97% poll waits, about eight of them, against 33 to 70 ms of computation and file I/O.
 - - -> A shorter interval only scales the waits down.
 - - -> Fewer waits per step need a change to the message loop, such as polling soon after this party's own write or sending fewer messages per step, not a different default.
 - - -> **A listing grows with the directory in retain mode.**
@@ -64,4 +64,4 @@
 - - -> **One run per interval, on one machine.**
 - - -> Run-to-run variation was not measured; the three 250 ms runs, across both modes, ranged from 2.08 to 2.36 s a step.
 - - -> **The sweep's hello read is not shortened by the interval.**
-- - -> The read deadline of `--sweep-exchange-files`' retain inspection is two poll intervals floored at the joiner recovery window, so a shorter interval does not shorten it.
+- - -> The read deadline of `--sweep-exchange-files`' retain inspection is two poll intervals floored at the joiner recovery window and capped at the remaining peer budget, so a shorter interval does not shorten it.

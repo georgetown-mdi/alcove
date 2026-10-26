@@ -3220,6 +3220,37 @@ test("synchronize() --sweep-exchange-files: the retain inspection's read deadlin
   expect(deleted.some((p) => p.endsWith(peerHelloName))).toBe(true);
 });
 
+test("synchronize() --sweep-exchange-files: the retain inspection's read deadline is capped at the peer budget", async () => {
+  // The peer budget (150 ms) is shorter than the recovery window (5 s) that
+  // floors the deadline, and the body never becomes readable: the inspection
+  // must end by the peer budget, not wait out the window.
+  const { client, files } = makeMockClient();
+  const conn = await makeConnectedConn(client, {
+    pollingFrequency: 10,
+    joinerRecoveryMs: 5_000,
+    timeToLiveMs: 150,
+  });
+  conn.id = "me";
+  conn.options.sweepExchangeFiles = true;
+  const peerHelloName = helloName("peer-uuid", RETAIN_HELLO_BODY);
+  files.set(`/test/${peerHelloName}`, RETAIN_HELLO_BODY);
+  const origGet = client.get.bind(client);
+  client.get = async (p: string, options: GetOptions) => {
+    if (p.endsWith(peerHelloName)) throw new Error("partial sync");
+    return origGet(p, options);
+  };
+
+  const start = Date.now();
+  const err = await conn.synchronize().then(
+    () => undefined,
+    (e: unknown) => e,
+  );
+  const elapsed = Date.now() - start;
+  expect(err).toBeInstanceOf(UsageError);
+  expect((err as Error).message).toContain("retain mode cannot be ruled out");
+  expect(elapsed).toBeLessThan(2_000);
+});
+
 test("synchronize() --sweep-exchange-files: the retain inspection stops at the first unreadable hello", async () => {
   // Short-circuit: once a hello body cannot be read, retain-uncertainty is sticky
   // and the decision (refuse on the bare flag, warn under --force) is fixed, so

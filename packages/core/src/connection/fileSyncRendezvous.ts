@@ -468,8 +468,9 @@ const controlWriterId = (name: string): string =>
 // the full peer timeout, so a non-resolving hello cannot stall the sweep.
 // The gate's do-while still guarantees one read, so a stale directory's
 // hello resolves on the first attempt; this budget only absorbs sync-tool
-// flush jitter. Expressed as poll cycles, not a raw millisecond constant,
-// so it tracks the configured cadence.
+// flush jitter. Expressed as poll cycles floored by rendezvousBoundMs at the
+// joiner recovery window, and capped at the remaining peer budget, so a
+// short peer timeout is never exceeded.
 const RETAIN_INSPECTION_POLL_CYCLES = 2;
 
 // Bounds every rendezvous-time peer-hello read through the same I5a gate:
@@ -494,29 +495,34 @@ const RENDEZVOUS_HELLO_READ_POLL_CYCLES = 6;
 //
 // joinerRecoveryMs is that wall-clock quantity already -- what the lock
 // path allows for a peer's write-and-rename to land -- so it is reused
-// rather than adding a second constant. Neither bound below extends a wait
-// past what the operator configured: the I5a hello-read bound stays capped
-// at the remaining peer budget, and the entry-hello window arms only when
-// it fits strictly inside that budget; below that floor the ordinary peer
-// timeout fires instead.
+// rather than adding a second constant. None of the bounds below extends a
+// wait past what the operator configured: the I5a hello-read bound and the
+// retain-inspection bound stay capped at the remaining peer budget, and the
+// entry-hello window arms only when it fits strictly inside that budget;
+// below that floor the ordinary peer timeout fires instead.
 const rendezvousBoundMs = (
   options: RendezvousOptions,
   pollCycles: number,
 ): number =>
   Math.max(pollCycles * options.pollingFrequency, options.joinerRecoveryMs);
 
-// The near-future deadline a rendezvous-time hello read is given, capped at the
-// remaining peer budget so it is never longer than the operator asked for.
-// open() sets timeToLive before synchronize() runs, so the non-null assertion is
-// safe at every call site.
-const helloReadDeadline = (options: RendezvousOptions): Date =>
+// A near-future deadline for a bounded hello read, capped at the remaining peer
+// budget so it is never longer than the operator asked for. open() sets
+// timeToLive before synchronize() runs, so the non-null assertion is safe at
+// every call site.
+const boundedReadDeadline = (
+  options: RendezvousOptions,
+  pollCycles: number,
+): Date =>
   new Date(
     Math.min(
-      Date.now() +
-        rendezvousBoundMs(options, RENDEZVOUS_HELLO_READ_POLL_CYCLES),
+      Date.now() + rendezvousBoundMs(options, pollCycles),
       options.timeToLive!.getTime(),
     ),
   );
+
+const helloReadDeadline = (options: RendezvousOptions): Date =>
+  boundedReadDeadline(options, RENDEZVOUS_HELLO_READ_POLL_CYCLES);
 
 // Classifies the hello a rendezvous-time read is about against the at-most-one
 // hello the entry scan found, so no call site has to reason about which of its
@@ -950,9 +956,9 @@ export class FileSyncRendezvous {
       // cannot change the outcome, and breaking caps the work a pile of
       // unreadable hellos (a hostile directory under --sweep-exchange-files)
       // can impose.
-      const inspectionDeadline = new Date(
-        Date.now() +
-          rendezvousBoundMs(deps.options(), RETAIN_INSPECTION_POLL_CYCLES),
+      const inspectionDeadline = boundedReadDeadline(
+        deps.options(),
+        RETAIN_INSPECTION_POLL_CYCLES,
       );
       for (const hello of peerHellos) {
         try {
