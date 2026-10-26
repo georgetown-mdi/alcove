@@ -4,6 +4,8 @@ import { IconInfoCircle } from "@tabler/icons-react";
 
 import { Tooltip, VisuallyHidden } from "@mantine/core";
 
+import { isConsoleBuild } from "@utils/clientConfig";
+
 import styles from "@styles/app.module.css";
 
 import { DisclosureSection } from "../components/DisclosureSection";
@@ -87,6 +89,21 @@ const HEADING_INFO: Record<string, string | undefined> = {
     "files on an SFTP server or shared folder using the command-line " +
     "tool.",
 };
+
+/** The "How it runs" explanation on the console, where the server runs every
+ * exchange and the browser does no exchange work. */
+const CONSOLE_HOW_IT_RUNS_INFO =
+  "How the exchange runs: this console runs it, not your " +
+  "browser. It goes through files on an SFTP server or a shared folder, or " +
+  "live over WebRTC.";
+
+/** The explanation for a ledger heading, or undefined when it has none. */
+function headingInfoFor(label: string): string | undefined {
+  if (label === "How it runs" && isConsoleBuild()) {
+    return CONSOLE_HOW_IT_RUNS_INFO;
+  }
+  return HEADING_INFO[label];
+}
 
 /** The info icon beside a ledger heading: a focusable control whose tooltip
  * explains the heading in plain language. Hover, keyboard focus, and touch all
@@ -236,7 +253,7 @@ function LedgerRows({ rows }: { rows: ReadonlyArray<LedgerRow> }) {
   return (
     <dl>
       {rows.map((row) => {
-        const info = HEADING_INFO[row.label];
+        const info = headingInfoFor(row.label);
         return (
           <div key={row.label} className={styles.ledgerRow}>
             <dt>
