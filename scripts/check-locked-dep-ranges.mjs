@@ -74,7 +74,7 @@ export const OUT_OF_RANGE_BY_DESIGN = [
     dependency: "vite",
     range: "^5.4.14",
     reason:
-      "The root overrides block moves VitePress's own vite copy to 6.4.3: every vite 5 release depends on an esbuild with a published advisory, and no non-prerelease VitePress declares vite 6. site_deploy.yaml builds the site on every pull request changing package.json or package-lock.json, so a break on this edge fails there.",
+      "The root overrides block moves VitePress's own vite copy to 6.4.4: every vite 5 release depends on an esbuild with a published advisory, and no non-prerelease VitePress declares vite 6. site_deploy.yaml builds the site on every pull request changing package.json or package-lock.json, so a break on this edge fails there.",
   },
 ];
 
