@@ -10,10 +10,13 @@
 # It accepts the branch's tip when it is the briefed commit, a descendant of
 # it, or a rebase of the same change: the commits the briefed commit adds over
 # its fork point and the same number of commits at the tip have one
-# `git patch-id --stable`. When the branch is gone from the source, merged and
-# deleted, it reads the merged ref (main by default) instead and accepts it
-# when it holds the briefed commit or a commit with that patch id. Anything
-# else is refused.
+# `git patch-id --verbatim`, which counts whitespace. Where git has no
+# `--verbatim`, only the briefed commit or a descendant is accepted. When the
+# branch is gone from the source, merged and deleted, it reads the merged ref
+# (main by default) instead and accepts it when it holds the briefed commit, or
+# when every line the briefed change made is at its tip: the change applies in
+# reverse to its tree. A --ref naming the merged ref gets the branch check
+# alone. Anything else is refused.
 #
 # The briefed commit is read from this checkout, which shares its object
 # database with the dev container; the refs are fetched into a temporary
@@ -44,9 +47,10 @@ the ref and commit to build. Changes nothing in this checkout.
   -h, --help          print this help
 
 BRANCH is accepted when its tip is SHA, a descendant of SHA, or a rebase of
-the same change (equal git patch-id --stable). When BRANCH is not on the
-source, the merged ref is accepted when it holds SHA or a commit with that
-patch id. The second-to-last line is REF=<ref> TIP=<sha>; build TIP.
+the same change (equal git patch-id --verbatim, where this git has it). When
+BRANCH is not on the source, the merged ref is accepted when it holds SHA or
+every line SHA's change made. The second-to-last line is REF=<ref> TIP=<sha>;
+build TIP.
 EOF
 }
 
@@ -112,7 +116,6 @@ valid_branch "$ref" || usage_error "--ref takes a branch name, for example filed
 printf '%s\n' "$commit" | grep -Eq '^[0-9a-f]{40}$' ||
   usage_error "--commit takes a full 40-character sha; got '$commit'."
 valid_branch "$merged_ref" || usage_error "--merged-ref takes a branch name, for example main; got '$merged_ref'."
-[ "$merged_ref" != "$ref" ] || usage_error "--merged-ref names the same branch as --ref."
 
 # Resolved before any cd, which would read a relative path against another
 # directory.
@@ -154,7 +157,7 @@ fetch_ref() {
 # The patch id of the change from one commit to another, or nothing for an
 # empty change.
 patch_id() {
-  g diff-tree -p "$1" "$2" | g patch-id --stable | cut -d' ' -f1
+  g diff-tree -p "$1" "$2" | g patch-id --verbatim | cut -d' ' -f1
 }
 
 accept() {
@@ -175,6 +178,8 @@ if [ -n "$tip" ]; then
   fi
   fork="$(g merge-base "$commit" "$tip")" ||
     fail "$ref at $tip shares no history with the briefed commit $commit; refusing it."
+  printf '' | g patch-id --verbatim >/dev/null 2>&1 ||
+    fail "$ref at $tip is not the briefed commit $commit or a descendant of it, and this git has no 'git patch-id --verbatim' to tell whether it is a rebase of the same change, whitespace included. Refusing it; update git and rerun, or the brief needs the new commit."
   count="$(g rev-list --count "$tip..$commit")"
   briefed_id="$(patch_id "$fork" "$commit")"
   tip_id=""
@@ -187,6 +192,7 @@ if [ -n "$tip" ]; then
   fail "$ref at $tip is not the briefed commit $commit, a descendant of it, or a rebase of the same change: the briefed commit's $count commit(s) over $fork have patch id ${briefed_id:-none}, and the branch's last $count have ${tip_id:-none}. Refusing it; the brief needs the new commit."
 fi
 
+[ "$ref" != "$merged_ref" ] || fail "$ref is not on $from; refusing to guess a ref."
 say "$ref is not on $from, so it has merged or been deleted; reading $merged_ref instead"
 merged_tip="$(remote_tip "$merged_ref")"
 [ -n "$merged_tip" ] || fail "neither $ref nor $merged_ref is on $from; refusing to guess a ref."
@@ -197,11 +203,22 @@ if g merge-base --is-ancestor "$commit" "$merged_tip"; then
 fi
 fork="$(g merge-base "$commit" "$merged_tip")" ||
   fail "$merged_ref at $merged_tip shares no history with the briefed commit $commit; refusing it."
-briefed_id="$(patch_id "$fork" "$commit")"
-[ -n "$briefed_id" ] || fail "the briefed commit $commit changes nothing over $fork; refusing it."
-holder="$(g rev-list --no-merges "$fork..$merged_tip" | g diff-tree --stdin -p | g patch-id --stable |
-  awk -v want="$briefed_id" '$1 == want && !found { print $2; found = 1 }')"
-if [ -n "$holder" ]; then
-  accept "$merged_ref" "$merged_tip" "it holds the briefed change as $holder (patch id $briefed_id)"
+if g diff-tree --quiet "$fork" "$commit"; then
+  fail "the briefed commit $commit changes nothing over $fork; refusing it."
 fi
-fail "$merged_ref at $merged_tip holds no commit with the briefed change (patch id $briefed_id). If $ref has merged to staging, $merged_ref gets it when staging is promoted to $merged_ref: a hand-off that needs it on $merged_ref waits for a session after that promotion."
+# A squash merge also holds the branch's later commits, so no commit on the
+# merged ref need match the briefed change; its lines at the tip are checked
+# instead, against an index read from the tip.
+g diff-tree -p --binary "$fork" "$commit" >"$scratch/change.patch"
+GIT_INDEX_FILE="$scratch/index" git --git-dir="$scratch/git" read-tree "$merged_tip"
+change_applies() {
+  GIT_INDEX_FILE="$scratch/index" git --git-dir="$scratch/git" apply --check --cached "$@" \
+    "$scratch/change.patch" >/dev/null 2>&1
+}
+if change_applies -R; then
+  accept "$merged_ref" "$merged_tip" "it holds every line the briefed change $fork..$commit made"
+fi
+if change_applies; then
+  fail "$merged_ref at $merged_tip holds none of the lines the briefed change $fork..$commit made. If $ref has not reached $merged_ref yet, a hand-off that needs it on $merged_ref waits for a session after it does."
+fi
+fail "$merged_ref at $merged_tip holds neither the briefed change $fork..$commit as briefed nor the lines it replaced: later commits changed some of the same lines or the lines around them. Refusing it; re-brief the hand-off at a $merged_ref commit."
