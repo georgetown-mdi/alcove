@@ -16,7 +16,7 @@ import { fencedBlocks } from "./lib/markdownFences.mjs";
 // sh, and written with the arguments it means to the file the Windows
 // PowerShell 5.1 suite (support/maintainer-notes/DockerLines.Tests.ps1) runs;
 // `npx vitest run -u` rewrites that file. A line continued with a trailing
-// backslash is for a Mac or Linux shell only, and the README says so above it.
+// backslash is for a Mac or Linux shell only, and the document says so above it.
 
 const README = fileURLToPath(new URL("../README.md", import.meta.url));
 const CONSOLE_DOC = fileURLToPath(
@@ -136,7 +136,7 @@ function oneLineCommands() {
 
 describe("the README, docs/CONSOLE.md, and console docker lines", () => {
   test("a command continued over lines is labeled for a Mac or Linux shell", () => {
-    const unlabeled = readmeCommands()
+    const unlabeled = [...readmeCommands(), ...documentCommands(CONSOLE_DOC)]
       .filter(({ command }) => command.includes("\n"))
       .filter(({ lineAbove }) => !/\b(Mac|Linux|bash)\b/.test(lineAbove))
       .map(({ command }) => command.split("\n")[0]);
