@@ -14,7 +14,10 @@ Neither [`infra/relay/install.sh`](../relay/install.sh) nor [`infra/broker/insta
    Otherwise the run takes every step below, even when the link already names the tip because an earlier run switched it and did not finish installing.
    A tree already on disk for the tip is never reused: step 4 stages a new one and replaces it.
 2. Reads the tip's GitHub Actions workflow runs from GitHub's API without a token: `GET /repos/georgetown-mdi/alcove/actions/runs?head_sha=<commit>&event=push&per_page=100`, reading further pages while the answer's `total_count` is larger than the runs read, up to 10 pages.
-   The tip is green when it has at least one workflow run triggered by a `push` and every one has completed with conclusion `success`.
+   The tip is green when it has at least one workflow run triggered by a `push` and every one has completed with conclusion `success`, except that a run completed as `cancelled` counts when a run of the same workflow on the same branch completed as `success`.
+   That is how a run cancelled as a duplicate looks when the commit is pushed twice to one branch.
+   A run's workflow is its `workflow_id`, the number GitHub assigns its workflow file, not its `name`, which a workflow can set per run and two files can share.
+   A cancelled run with no such twin, and a run with any other conclusion, such as `failure` or `timed_out`, refuse the tip.
    A push of the commit to `staging` counts as well as its push to `main`.
    Runs triggered by any other event, such as the scheduled nightly workflows or Dependabot's, do not gate the pull.
 3. Downloads `alcove-broker-core-<commit>.tar.gz` and its Sigstore bundle from the `broker-core-build` prerelease ([docs/RELEASES.md](../../docs/RELEASES.md#the-broker-core-build)) and verifies the signature with the command in [`infra/broker/README.md`, Install](../broker/README.md#install), step 5.
@@ -52,7 +55,7 @@ A host that is down at 09:30 skips the day rather than pulling at boot.
 | --- | --- | --- |
 | `unchanged` | 0 | the tip of `main` is the deployed commit |
 | `skipped` | 0 | a push-triggered workflow run has not completed, none has started yet, the prerelease does not yet have the tip's build, or `main` moved during the run |
-| `refused` | 1 | a push-triggered workflow run completed with another conclusion, the signature does not verify, or the unpacked files do not match `SHA256SUMS` or the names it lists |
+| `refused` | 1 | a push-triggered workflow run completed with another conclusion, other than a cancelled run that step 2 counts, the signature does not verify, or the unpacked files do not match `SHA256SUMS` or the names it lists |
 | `failed` | 1 | a step could not run: a download, the fetch, `npm ci`, a precondition below, the installs at the tip when there was no deployed commit to roll back to, or the run was stopped by a signal, such as `timeout`'s at the run's one-hour maximum |
 | `rolled-back` | 1 | the installs at the tip failed, and both install scripts and `verify.sh` passed again on the deployed commit |
 | `rollback-failed` | 1 | the installs at the tip failed, and so did those on the deployed commit; the units are as far as the second attempt got |
