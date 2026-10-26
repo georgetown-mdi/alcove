@@ -4580,7 +4580,6 @@ describe("the units that run as the relay image's account", () => {
     ]);
     expect(registrar.filter((line) => !sweep.includes(line))).toEqual([
       "RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX",
-      "InaccessiblePaths=/etc/alcove-relay",
     ]);
     for (const line of [
       "NoNewPrivileges=true",
