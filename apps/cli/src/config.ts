@@ -55,14 +55,6 @@ export {
 } from "./config/termsUpdate";
 export type { TermsUpdateWrite } from "./config/termsUpdate";
 export {
-  linkageTermsStandingOf,
-  warnOnLinkageRuleSetCitationDrift,
-} from "./config/ruleSetCitation";
-export type {
-  CitationDriftAlternative,
-  LinkageTermsStanding,
-} from "./config/ruleSetCitation";
-export {
   csvDelimiterForRun,
   describeConfigSchemaError,
   loadConfigLinkageSource,

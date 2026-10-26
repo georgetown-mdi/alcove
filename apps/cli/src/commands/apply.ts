@@ -15,7 +15,6 @@ import {
   operatorSuppliedText,
   redactAndRenderOperatorSuppliedText,
   redactAndSanitizeForDisplay,
-  ruleSetCitation,
   stripInvitationWhitespace,
   termsDeltaIsEmpty,
   TermsUpdateRefusedError,
@@ -23,7 +22,6 @@ import {
 } from "@alcove/core";
 import type {
   ExchangeSpec,
-  LinkageRuleSetReference,
   LinkageTerms,
   PartnerBoundTerms,
   TermsDelta,
@@ -242,23 +240,29 @@ const RECEIVE_NOT_STATED =
 const SEND_NOT_STATED =
   "the next exchange sends the columns your metadata marks as payload";
 
-/** The citation as the change summary shows it, each value escaped. */
-function ruleSetLine(
-  label: string,
-  ruleSet: LinkageRuleSetReference | undefined,
-): string {
-  if (ruleSet === undefined) return `    ${label}: not stated`;
-  const cite = ({ name, version }: { name: string; version: string }) =>
-    ruleSetCitation(
-      redactAndSanitizeForDisplay(name),
-      redactAndSanitizeForDisplay(version),
-    );
-  return `    ${label}: ${cite(ruleSet.keySet)} over ${cite(ruleSet.fieldSet)}`;
-}
-
 function snakeCase(field: string): string {
   return field.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
 }
+
+type TermsDifferenceKind = ReturnType<
+  typeof compareTerms
+>["otherTermDifferences"][number]["kind"];
+
+/** The configuration term each kind of terms difference is over. */
+const TERM_OF_DIFFERENCE: Readonly<
+  Record<TermsDifferenceKind, keyof PartnerBoundTerms>
+> = {
+  version: "version",
+  algorithm: "algorithm",
+  "linkage-strategy": "linkageStrategy",
+  output: "output",
+  "linkage-fields": "linkageFields",
+  "linkage-keys": "linkageKeys",
+  "linkage-rule-set": "linkageRuleSet",
+  "legal-agreement": "legalAgreement",
+  payload: "payload",
+  deduplicate: "deduplicate",
+};
 
 /** What applying an update changes in the configuration. */
 interface UpdateChanges {
@@ -270,6 +274,8 @@ interface UpdateChanges {
    * description aside, including the ones the comparison skips.
    */
   changedTerms: Array<keyof PartnerBoundTerms>;
+  /** The terms `delta.otherTerms` holds a diagnostic for. */
+  comparedTerms: ReadonlySet<keyof PartnerBoundTerms>;
   /**
    * The partner's `deduplicate` the update records where the configuration
    * records none, which the comparison does not hold the partner to.
@@ -290,9 +296,11 @@ function updateChanges(
   update: TermsUpdate,
   accepted: AcceptedInvitationTerms,
 ): UpdateChanges {
-  const { delta } = compareTerms(existing.linkageTerms, update.linkageTerms, {
-    partnerDeduplicate: existing.expectedPartnerDeduplicate,
-  });
+  const { delta, otherTermDifferences } = compareTerms(
+    existing.linkageTerms,
+    update.linkageTerms,
+    { partnerDeduplicate: existing.expectedPartnerDeduplicate },
+  );
   const changedTerms = changedPartnerBoundTerms(
     existing.linkageTerms,
     accepted.linkageTerms,
@@ -306,6 +314,9 @@ function updateChanges(
     before: existing.linkageTerms,
     after: accepted.linkageTerms,
     changedTerms,
+    comparedTerms: new Set(
+      otherTermDifferences.map(({ kind }) => TERM_OF_DIFFERENCE[kind]),
+    ),
     firstPartnerDeduplicate,
     none:
       termsDeltaIsEmpty(delta) &&
@@ -321,10 +332,10 @@ const columnNames = (
 /**
  * State what the update changes in the configuration, ahead of the terms it
  * adopts, in the sections every front end shows a terms change in. A change
- * the comparison does not show -- a rule-set citation only one side states,
- * the columns this party sends where the partner states none it receives,
- * the columns it receives where the configuration lists none -- is stated on
- * its own lines, and any other changed term by name. A received-column list
+ * the comparison does not show -- the columns this party sends where the
+ * partner states none it receives, the columns it receives where the
+ * configuration lists none -- is stated on its own lines, and any other
+ * changed term the comparison does not show by name. A received-column list
  * the update leaves unstated is shown as before and after lines, not as
  * columns removed, since the next exchange then takes whatever is sent.
  */
@@ -333,7 +344,13 @@ function displayChanges(
   configPath: string,
   changes: UpdateChanges,
 ): void {
-  const { before, after, changedTerms, firstPartnerDeduplicate } = changes;
+  const {
+    before,
+    after,
+    changedTerms,
+    comparedTerms,
+    firstPartnerDeduplicate,
+  } = changes;
   const sendBefore = columnNames(before.payload?.send);
   const sendAfter = columnNames(after.payload?.send);
   const receiveBefore = columnNames(before.payload?.receive);
@@ -343,20 +360,19 @@ function displayChanges(
   const delta: TermsDelta = receiveBecomesUnstated
     ? { ...changes.delta, received: undefined }
     : changes.delta;
-  const showRuleSet =
-    changedTerms.includes("linkageRuleSet") &&
-    (before.linkageRuleSet === undefined || after.linkageRuleSet === undefined);
   const showSend =
     delta.sent === undefined && !sameColumns(sendBefore, sendAfter);
   const showReceive =
     delta.received === undefined && !sameColumns(receiveBefore, receiveAfter);
-  const shown = new Set<string>([
-    ...(showRuleSet ? ["linkageRuleSet"] : []),
-    ...(showSend || showReceive ? ["payload"] : []),
-  ]);
-  const unnamed = termsDeltaIsEmpty(delta)
-    ? changedTerms.filter((field) => !shown.has(field))
-    : [];
+  const payloadShown =
+    delta.sent !== undefined ||
+    delta.received !== undefined ||
+    showSend ||
+    showReceive;
+  const unnamed = changedTerms.filter(
+    (field) =>
+      !comparedTerms.has(field) && !(field === "payload" && payloadShown),
+  );
 
   displayTermsDelta(
     emit,
@@ -365,20 +381,10 @@ function displayChanges(
     )}:`,
     delta,
   );
-  if (
-    termsDeltaIsEmpty(delta) &&
-    !showRuleSet &&
-    !showSend &&
-    unnamed.length === 0
-  )
+  if (termsDeltaIsEmpty(delta) && !showSend && unnamed.length === 0)
     emit("  linkage terms: no change");
   if (unnamed.length > 0)
     emit(`  other terms that change: ${unnamed.map(snakeCase).join(", ")}`);
-  if (showRuleSet) {
-    emit("  linkage rule set: change");
-    emit(ruleSetLine("before", before.linkageRuleSet));
-    emit(ruleSetLine("after", after.linkageRuleSet));
-  }
   if (firstPartnerDeduplicate !== undefined)
     emit(
       `  your partner's deduplicate: recorded as ${String(firstPartnerDeduplicate)}`,

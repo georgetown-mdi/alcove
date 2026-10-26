@@ -1558,7 +1558,6 @@ function withConfig(
   terms: LinkageTerms,
   standardization?: Standardization,
   metadata?: Metadata,
-  expectedPartnerDeduplicate?: boolean,
 ): { dir: string; configPath: string; keyPath: string } {
   const dir = fs.mkdtempSync(path.join(tmpdir(), "alcove-invite-cfg-"));
   const configPath = path.join(dir, "alcove.yaml");
@@ -1567,9 +1566,6 @@ function withConfig(
     linkageTerms: terms,
     ...(standardization !== undefined && { standardization }),
     ...(metadata !== undefined && { metadata }),
-    ...(expectedPartnerDeduplicate !== undefined && {
-      expectedPartnerDeduplicate,
-    }),
   });
   return { dir, configPath, keyPath: path.join(dir, ".alcove.key") };
 }
@@ -1935,79 +1931,6 @@ test("validateInvite: --identity over a reused config redacts a planted key mark
     // The config path is the operator's own, so the warning shows it as typed.
     expect(ignored[0]).toContain(configPath);
     expect(ignored[0]).toMatch(/to change it\.$/);
-  } finally {
-    warnSpy.mockRestore();
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("validateInvite: a config citing a rule set its own keys left is reported at the mint", async () => {
-  // The citation the config holds rides the token to the partner, so a hand
-  // edit that took the keys out of the cited set is named here rather than after
-  // the invitation has left. The mint is not blocked by it.
-  const terms = defaultTerms();
-  const [first, second, ...rest] = terms.linkageKeys;
-  const { dir, configPath, keyPath } = withConfig({
-    ...terms,
-    linkageKeys: [second!, first!, ...rest],
-  });
-  const log = getLogger("invite-citation-drift-test");
-  log.setLevel("silent");
-  const warnSpy = vi.spyOn(log, "warn");
-  try {
-    const ready = await validateInvite({
-      resolved: { mode: "offline" },
-      options: testOptions({ configFile: configPath, keyFile: keyPath }),
-      acceptTimeout: 900,
-      log,
-    });
-    expect(ready.mode).toBe("offlineFromConfig");
-    const drifted = warnSpy.mock.calls
-      .map((call) => String(call[0]))
-      .filter((message) => message.includes("linkage_rule_set"));
-    expect(drifted).toHaveLength(1);
-    expect(drifted[0]).toContain(configPath);
-  } finally {
-    warnSpy.mockRestore();
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("validateInvite: a drifted citation on accepted terms offers the mint's own remedy", async () => {
-  // The config holds an acceptance's record, so these terms are agreed with
-  // the party that invited this operator: restoring the cited set's rules would
-  // edit that agreement single-handedly. What this operator is doing is minting
-  // an invitation of their own, where declining to reuse the terms and accepting
-  // again are not choices they have -- authoring fresh terms for the invitation
-  // is.
-  const terms = defaultTerms();
-  const [first, second, ...rest] = terms.linkageKeys;
-  const { dir, configPath, keyPath } = withConfig(
-    { ...terms, linkageKeys: [second!, first!, ...rest] },
-    undefined,
-    undefined,
-    false,
-  );
-  const log = getLogger("invite-accepted-citation-drift-test");
-  log.setLevel("silent");
-  const warnSpy = vi.spyOn(log, "warn");
-  try {
-    await validateInvite({
-      resolved: { mode: "offline" },
-      options: testOptions({ configFile: configPath, keyFile: keyPath }),
-      acceptTimeout: 900,
-      log,
-    });
-    const drifted = warnSpy.mock.calls
-      .map((call) => String(call[0]))
-      .filter((message) => message.includes("linkage_rule_set"));
-    expect(drifted).toHaveLength(1);
-    expect(drifted[0]).toContain(
-      "You accepted these terms from the inviting party",
-    );
-    expect(drifted[0]).toContain("author fresh terms for this invitation");
-    expect(drifted[0]).not.toContain("decline to reuse these terms");
-    expect(drifted[0]).not.toContain("accept again");
   } finally {
     warnSpy.mockRestore();
     fs.rmSync(dir, { recursive: true, force: true });
@@ -2386,7 +2309,6 @@ test("validateInvite: offline config-source refuses an algorithm with no run pat
   vi.mocked(loadConfigLinkageSource).mockReturnValueOnce({
     linkageTerms: { ...defaultTerms(), algorithm: "psi-x" as Algorithm },
     retainsFiles: false,
-    linkageTermsStanding: "held-alone",
   });
   try {
     let thrown: unknown;

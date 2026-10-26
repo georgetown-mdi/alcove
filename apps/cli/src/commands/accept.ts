@@ -999,17 +999,9 @@ function reconcileAcceptConfig(params: {
   // source(s) every message here names.
   const { against, retryWith } = reconciliationSources(target !== undefined);
 
-  // Reported ahead of the reconciliation below, so a kept config's stale
-  // citation reaches the operator whether or not its terms agree with the
-  // invitation's -- it is a claim about this file's own rules either way. The
-  // standing read here is the file's as it stands, before this acceptance
-  // records itself on it: terms no earlier acceptance stands behind are still
-  // the operator's alone to correct at this point.
   const conflicts = diffKeptLinkageTerms({
-    configPath,
     existing,
     accepted: myTerms,
-    citationDriftAlternative: "decline-to-reuse",
     log,
   });
 

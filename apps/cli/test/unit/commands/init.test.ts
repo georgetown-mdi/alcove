@@ -40,7 +40,6 @@ import {
   templateConnection,
 } from "../../../src/commands/init";
 import { buildDataSpec, loadInputRows } from "../../../src/onlineBootstrap";
-import { warnOnLinkageRuleSetCitationDrift } from "../../../src/config";
 import {
   IDENTITY_PROMPT_PREAMBLE,
   INIT_IDENTITY_QUESTION,
@@ -192,10 +191,8 @@ test("renderConfigTemplate: the delimiter init was given is written into the tem
 });
 
 test("renderConfigTemplate: every shipped rule set round-trips as its own citation", async () => {
-  // A template drawn from a set cites that set, and the citation resolves back
-  // to the rules the file holds -- so the drift check a later load runs over
-  // the written file has nothing to report. One shipped set today; a set added
-  // to the registry is covered here without an edit.
+  // A template drawn from a set cites that set. One shipped set today; a set
+  // added to the registry is covered here without an edit.
   for (const ruleSet of BUILT_IN_LINKAGE_RULE_SETS) {
     const template = renderConfigTemplate(
       await buildTemplateData(undefined, "Org", ruleSet),
@@ -203,16 +200,6 @@ test("renderConfigTemplate: every shipped rule set round-trips as its own citati
     const parsed = parseExchangeSpec(YAML.parse(template));
     expect(parsed.linkageTerms.linkageRuleSet).toEqual(ruleSet.reference);
     expect(parsed.linkageTerms.linkageKeys).toEqual(ruleSet.linkageKeys);
-
-    const warnings: string[] = [];
-    warnOnLinkageRuleSetCitationDrift(
-      parsed.linkageTerms,
-      "alcove.yaml",
-      { warn: (message: string) => warnings.push(message) },
-      "held-alone",
-      "decline-to-reuse",
-    );
-    expect(warnings).toEqual([]);
   }
 });
 

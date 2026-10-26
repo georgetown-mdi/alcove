@@ -34,9 +34,7 @@ import {
   assertRetainSweepGuard,
   csvDelimiterForRun,
   describeConfigSchemaError,
-  linkageTermsStandingOf,
   persistFilledPayloadReceive,
-  warnOnLinkageRuleSetCitationDrift,
 } from "../config";
 import { outcomeLineWriter } from "../exchangeOutcome";
 import { expandTilde } from "../fileUtils";
@@ -610,14 +608,6 @@ function readExchangeConfig(
         operatorSuppliedText(options.configFile),
       )}: ${retiredSigningSetting}`,
     );
-
-  warnOnLinkageRuleSetCitationDrift(
-    exchangeDataSpec.linkageTerms,
-    options.configFile,
-    log,
-    linkageTermsStandingOf(exchangeDataSpec),
-    "decline-to-reuse",
-  );
 
   const connection = applyConnectionOverrides(
     baseConn,
