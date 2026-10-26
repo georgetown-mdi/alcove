@@ -152,8 +152,8 @@ function derivedRoutes(sourceFile) {
  * Every path the router serves, as `{path, route}` pairs read from
  * {@link SERVED_PATHS}, or null when that interface is absent or holds a member
  * written in any shape other than a quoted path typed `typeof <route>` -- the
- * only one this check reads, so a generator that writes another fails the rot
- * guard rather than shrinking the enumeration.
+ * only one this check reads, so a generator that writes another fails the
+ * enumeration guard rather than shrinking the enumeration.
  */
 function servedPaths(sourceFile) {
   for (const statement of sourceFile.statements) {
@@ -212,7 +212,7 @@ const guardSource = parseFile(GUARD_MODULE);
 
 describe("the router serves no route under /api", () => {
   it("reads the routes the router serves", () => {
-    // A rot guard: a renamed guard, or a generated route tree this check no
+    // An enumeration guard: a renamed guard, or a generated route tree this check no
     // longer reads, would otherwise empty the enumeration and make the
     // assertion below vacuous. The tree's served paths may not be empty.
     expect(

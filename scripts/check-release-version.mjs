@@ -7,25 +7,26 @@
 // (docs/RELEASES.md) -- is what the image build bakes into the client bundle as
 // VITE_ALCOVE_VERSION, and that is the version the partner accept kit prints in
 // every `docker run` line it hands the partner (docs/spec/SERVER_JOB_API.md).
-// Their agreement rests on a release-checklist step ordering, the manifest bump
-// preceding the tag push, and an ordering cannot fail: a tag pushed without the
-// bump publishes an image whose kit names the release BEFORE it -- a tag that
-// exists, so the partner runs a build other than the one that minted their
-// invitation and nothing reports it. This check is what fails instead.
+// They agree only if the release checklist's manifest bump comes before the
+// tag push. A tag pushed without the bump publishes an image whose kit names the
+// previous release, a tag that exists, so the partner runs a build other than
+// the one that minted their invitation and nothing reports it. This check
+// fails instead.
 //
-// Two rules, read from the tag the run was triggered by and the manifest the
-// same checkout holds:
+// Two rules, read from the tag the run was triggered by and the manifest in the
+// same checkout:
 //
 //   A. The tag names a release version: `vX.Y.Z`, the shape release.yaml's own
 //      trigger filter admits. A tag this cannot parse names no version to
 //      compare, so it fails rather than passing a comparison it never made.
 //   B. That version and the manifest's are the same string, and the manifest
-//      holds one at all. Each failure names both values, since which of the two
-//      is the wrong one is the maintainer's call and not this check's.
+//      has one at all. Each failure names both values: which of the two is
+//      wrong is the maintainer's call.
 //
 // What this check cannot see:
-//   - Whether the version the two hold is the one the release was meant to
-//     publish. It holds them to each other; wrong together is agreement.
+//   - Whether the version the two name is the one the release was meant to
+//     publish. It compares them with each other, so two equally wrong values
+//     pass.
 //   - Any build off the release path. It runs on a tag push, so an image built
 //     from a non-release tree, or from a release branch before its tag is
 //     pushed, is outside it -- the accept kit's remaining release-version limits,

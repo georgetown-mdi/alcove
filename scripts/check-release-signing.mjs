@@ -472,7 +472,7 @@ export function couplingViolations({
   const signers = [...new Set(signerWorkflows(docSource))];
   if (signers.length === 0) {
     violations.push(
-      `${RELEASES_DOC} publishes no \`--signer-workflow\`, so nothing holds its attestation command to ${workflowPath}. Either the document stopped naming the workflow that attests -- leaving a command \`--repo\` alone satisfies, for an attestation any workflow in this repository produced -- or that command has moved and this rule is measuring nothing.`,
+      `${RELEASES_DOC} publishes no \`--signer-workflow\`, so its attestation command is not tied to ${workflowPath}: with \`--repo\` alone, an attestation from any workflow in this repository satisfies it. Add \`--signer-workflow\` naming ${workflowPath} to that command, or, if the command has moved, update this check to read it where it is.`,
     );
   }
   for (const signer of signers) {

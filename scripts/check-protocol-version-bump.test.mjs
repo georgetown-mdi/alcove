@@ -290,6 +290,9 @@ describe("the rule once a release marker arms it", () => {
     const { status, stderr } = runCheck(root);
     expect(status).toBe(1);
     expect(stderr).toContain("records none for PROTOCOL_VERSION 1");
+    expect(stderr).toContain(
+      `Write this to ${PINS_FILE}; it adds the entry for PROTOCOL_VERSION 1`,
+    );
     expect(stderr).toContain('"psi-engine-wire-vectors.json": "sha256:');
   });
 
@@ -398,6 +401,7 @@ describe("the rule once a release marker arms it", () => {
     const { status, stderr } = runCheck(root);
     expect(status).toBe(1);
     expect(stderr).toContain("pins nothing for");
+    expect(stderr).toContain('Add "psi-intersection-vectors.json": "sha256:');
   });
 
   it("fails a pin recorded ahead of the version the build advertises", () => {
@@ -412,7 +416,7 @@ describe("the rule once a release marker arms it", () => {
     expect(status).toBe(1);
     expect(stderr).toContain("above the 1 this build advertises");
     // A malformed ledger is not repaired by a pin to write, so none is printed.
-    expect(stderr).not.toContain("would carry for PROTOCOL_VERSION");
+    expect(stderr).not.toContain("adds the entry for PROTOCOL_VERSION");
   });
 
   it("fails a ledger with an entry dropped out of the middle", () => {
@@ -445,7 +449,7 @@ describe("the rule once a release marker arms it", () => {
     expect(stderr).toContain(PINS_FILE);
     expect(stderr).toContain('records a pin under "abc"');
     // A malformed ledger is not repaired by a pin to write, so none is printed.
-    expect(stderr).not.toContain("would carry for PROTOCOL_VERSION");
+    expect(stderr).not.toContain("adds the entry for PROTOCOL_VERSION");
   });
 
   it("fails every key shape a pin lookup would miss", () => {
@@ -504,7 +508,7 @@ describe("the inputs it refuses to run without", () => {
     const { status, stderr } = runCheck(root);
     expect(status).toBe(1);
     expect(stderr).toContain("new-wire-vectors.json is classified by neither");
-    expect(stderr).not.toContain("would carry for PROTOCOL_VERSION");
+    expect(stderr).not.toContain("adds the entry for PROTOCOL_VERSION");
   });
 
   it("refuses a --root it was handed no value for", () => {

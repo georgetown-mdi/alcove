@@ -1,10 +1,9 @@
 // Reading a Bash command line, and putting a read-only question to git.
 //
-// Three hooks split a command line into stages and tokenize it before
-// deciding anything, and five ran git to answer a question about a
-// repository. Each carried its own copy. The splitters and the tokenizer are
-// the code most likely to need a shared fix -- they are pragmatic and say so
-// -- and a hole closed in one copy stayed open in the others.
+// The hooks that split a command line into stages and tokenize it before
+// deciding anything, or ask git a question about a repository, share this
+// one copy, so a fix to the splitters or the tokenizer -- pragmatic, and they
+// say so -- reaches every hook at once.
 //
 // None of this is a shell parser and none will become one. What it reads is a
 // plain command line: a subshell, a brace group, a command substitution, an

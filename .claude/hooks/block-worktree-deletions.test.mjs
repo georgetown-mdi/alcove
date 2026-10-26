@@ -435,13 +435,13 @@ describe("block-worktree-deletions hook", () => {
     expectAllowed([`rm ${HANDED}/probe.test.ts`, "rm probe.test.ts"], handed);
     expectBlocked([`rm -rf ${HANDED}`, `rm ${SIBLING}/probe.test.ts`], handed);
 
-    // A refusal has to state the procedure that clears a stranded tree without a
+    // A refusal has to state the procedure that clears a finished tree without a
     // deletion, or a session with one to retire has nothing to do next -- and it
     // has to say plainly that a tree another session is working in gets no
     // cleanup at all.
     const refusal = verdict(`rm ${SIBLING}/probe.test.ts`, handed).stderr;
     expect(refusal).toContain("stash push -u -- <path>");
-    expect(refusal).toContain("STRANDED tree");
+    expect(refusal).toContain("finished tree no session is working in");
     expect(refusal).toContain("gets no cleanup of any kind");
 
     expectBlocked([`rm ${HANDED}/probe.test.ts`], {

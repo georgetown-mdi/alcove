@@ -211,7 +211,7 @@ export function suggestedLedger(pins, version, digests) {
 // nothing else. JSON object keys are text, so every lookup here is by exactly
 // `String(protocolVersion)` -- a key in any other shape ("abc", "1.0", "01") is
 // one this check never looks up and never compares, so it fails rather than
-// sitting in the ledger holding a pin nothing is held to.
+// staying in the ledger unchecked.
 const LEDGER_VERSION_KEY = /^[1-9][0-9]*$/;
 
 /**
@@ -231,7 +231,7 @@ export function pinViolations({ published, protocolVersion, digests, pins }) {
   for (const key of malformed) {
     violations.push({
       kind: "ledger",
-      message: `${PINS_FILE} records a pin under "${key}", which is not a PROTOCOL_VERSION. A ledger key is the version's integer written out ("1", "2"), and a pin is looked up by exactly that string, so a key in any other shape records a wire format nothing is ever held to.`,
+      message: `${PINS_FILE} records a pin under "${key}", which is not a PROTOCOL_VERSION. Rename the key to the version's integer written out ("1", "2"): this check looks a pin up by that string only, so it never compares a pin under any other key.`,
     });
   }
   const recorded = keys
@@ -243,7 +243,7 @@ export function pinViolations({ published, protocolVersion, digests, pins }) {
     if (version > protocolVersion) {
       violations.push({
         kind: "ledger",
-        message: `${PINS_FILE} records a pin for PROTOCOL_VERSION ${version}, above the ${protocolVersion} this build advertises: a pin names a version that shipped, so nothing should be recorded ahead of ${PROTOCOL_VERSION_SOURCE}.`,
+        message: `${PINS_FILE} records a pin for PROTOCOL_VERSION ${version}, above the ${protocolVersion} this build advertises. Remove that entry, or raise PROTOCOL_VERSION in ${PROTOCOL_VERSION_SOURCE} in the same change: a pin records a version that shipped.`,
       });
     }
   }
@@ -254,8 +254,8 @@ export function pinViolations({ published, protocolVersion, digests, pins }) {
       kind: "record",
       message:
         recorded.length === 0
-          ? `${RELEASE_MANIFEST} names a published release, so the wire-format pin binds from here on, and ${PINS_FILE} records none for PROTOCOL_VERSION ${protocolVersion} yet. Record the pin below; it is the wire format this release publishes, and every later change to it takes a bump (${SPEC_PARAGRAPH}).`
-          : `${PINS_FILE} records no pin for PROTOCOL_VERSION ${protocolVersion}. A bump records the wire format it ships beside it -- record the pin below (${SPEC_PARAGRAPH}).`,
+          ? `${RELEASE_MANIFEST} names a published release, and ${PINS_FILE} records none for PROTOCOL_VERSION ${protocolVersion} yet. Write the ledger printed below: its entry records the wire format this release publishes, and every later change to that format takes a version bump (${SPEC_PARAGRAPH}).`
+          : `${PINS_FILE} records no pin for PROTOCOL_VERSION ${protocolVersion}. Write the ledger printed below, which adds the entry recording the wire format this version ships (${SPEC_PARAGRAPH}).`,
     });
   } else {
     for (const { vectors } of COVERED_VECTORS) {
@@ -263,12 +263,12 @@ export function pinViolations({ published, protocolVersion, digests, pins }) {
       if (pinned === undefined) {
         violations.push({
           kind: "ledger",
-          message: `${PINS_FILE}'s PROTOCOL_VERSION ${protocolVersion} entry pins nothing for ${VECTORS_DIRECTORY}/${vectors}, which this check covers: a covered file with no recorded pin is a wire format nothing holds.`,
+          message: `${PINS_FILE}'s PROTOCOL_VERSION ${protocolVersion} entry pins nothing for ${VECTORS_DIRECTORY}/${vectors}, which this check covers. ${digests[vectors] === undefined ? "Restore the file, then add its pin to that entry" : `Add "${vectors}": "${digests[vectors]}" to that entry`}: until it has one, a change to that file is not compared against anything.`,
         });
       } else if (pinned !== digests[vectors]) {
         violations.push({
           kind: "moved",
-          message: `${VECTORS_DIRECTORY}/${vectors} has moved under published PROTOCOL_VERSION ${protocolVersion} (recorded ${pinned}, tree ${digests[vectors]}). A wire-format delta takes a bump from the first published deployment onward: raise PROTOCOL_VERSION in ${PROTOCOL_VERSION_SOURCE} and record the new pin beside it, or leave the wire format where it is (${SPEC_PARAGRAPH}).`,
+          message: `${VECTORS_DIRECTORY}/${vectors} has moved under published PROTOCOL_VERSION ${protocolVersion} (recorded ${pinned}, tree ${digests[vectors]}). Raise PROTOCOL_VERSION in ${PROTOCOL_VERSION_SOURCE} and write the ledger printed below, or revert the change to the file: from the first published release on, a wire-format delta takes a version bump (${SPEC_PARAGRAPH}).`,
         });
       }
     }
@@ -276,7 +276,7 @@ export function pinViolations({ published, protocolVersion, digests, pins }) {
       if (!COVERED_VECTORS.some((covered) => covered.vectors === vectors)) {
         violations.push({
           kind: "ledger",
-          message: `${PINS_FILE}'s PROTOCOL_VERSION ${protocolVersion} entry pins ${vectors}, which this check does not cover: a pin over a file whose version marker is elsewhere fails a change that took the right decision under the wrong marker.`,
+          message: `${PINS_FILE}'s PROTOCOL_VERSION ${protocolVersion} entry pins ${vectors}, which this check does not cover. Remove it from that entry, or move the file from UNCOVERED_VECTORS to COVERED_VECTORS in ${CHECK_SOURCE} if PROTOCOL_VERSION is the marker for its format.`,
         });
       }
     }
@@ -287,7 +287,7 @@ export function pinViolations({ published, protocolVersion, digests, pins }) {
     if (pins[String(version)] === undefined) {
       violations.push({
         kind: "ledger",
-        message: `${PINS_FILE} records pins for ${recorded.join(", ")} but none for ${version}, which sits between them and this build's ${protocolVersion}. The ledger is append-only: a dropped entry erases the record of what that version published.`,
+        message: `${PINS_FILE} records pins for ${recorded.join(", ")} but none for ${version}, which sits between them and this build's ${protocolVersion}. Restore the dropped entry from git history: the ledger is append-only, and each entry records what that version published.`,
       });
     }
   }
@@ -296,11 +296,11 @@ export function pinViolations({ published, protocolVersion, digests, pins }) {
 }
 
 /**
- * Read the tree at `root` and report what the rule holds there, as
+ * Read the tree at `root` and report what the rule finds there, as
  * `{published, releaseVersion, protocolVersion, digests, pins, coverage,
  * violations, blocked}`. `violations` are `{kind, message}`, `kind` also
- * holding `coverage` for a vectors file neither manifest classifies. `blocked`
- * holds the reasons the check could not read an input at all, which fail
+ * taking `coverage` for a vectors file neither manifest classifies. `blocked`
+ * lists the reasons the check could not read an input at all, which fail
  * rather than passing as inert.
  */
 export function inspect(root) {
@@ -311,14 +311,14 @@ export function inspect(root) {
   const published = isPublishedRelease(releaseVersion);
   if (published === undefined) {
     blocked.push(
-      `${RELEASE_MANIFEST} carries ${releaseVersion === undefined ? "no version" : `"${releaseVersion}"`}, which is not a release version this can compare against ${PRE_PUBLICATION_RELEASE}. A marker it cannot read leaves the rule neither armed nor knowably inert.`,
+      `${RELEASE_MANIFEST} has ${releaseVersion === undefined ? "no version" : `"${releaseVersion}"`}, which is not a release version this can compare against ${PRE_PUBLICATION_RELEASE}. Set it to a release version (major.minor.patch); until then this check cannot tell whether the rule applies.`,
     );
   }
 
   const protocolVersion = protocolVersionFrom(read(PROTOCOL_VERSION_SOURCE));
   if (protocolVersion === undefined) {
     blocked.push(
-      `${PROTOCOL_VERSION_SOURCE} declares no \`export const PROTOCOL_VERSION = <integer>;\` this can read, so there is no version to hold a pin against.`,
+      `${PROTOCOL_VERSION_SOURCE} declares no \`export const PROTOCOL_VERSION = <integer>;\` this can read. Declare it in that form, or update the pattern in ${CHECK_SOURCE} to read the new one: the pins are compared under that version.`,
     );
   }
 
@@ -336,7 +336,7 @@ export function inspect(root) {
   const { pins } = JSON.parse(read(PINS_FILE));
   if (pins === null || typeof pins !== "object" || Array.isArray(pins)) {
     blocked.push(
-      `${PINS_FILE} carries no \`pins\` object, so there is no ledger to hold the tree to.`,
+      `${PINS_FILE} has no \`pins\` object. Restore it from git history, or as \`{"pins": {}}\` if no release above ${PRE_PUBLICATION_RELEASE} has shipped.`,
     );
   }
 
@@ -391,7 +391,7 @@ export function classificationReport() {
 
 /**
  * The version a suggested ledger should record under: the current one when it
- * holds no entry, the next one when its entry has moved -- so the printed block
+ * has no entry, the next one when its entry has moved -- so the printed block
  * is never the in-place rewrite of a published pin.
  */
 export function ledgerSuggestionVersion(pins, protocolVersion) {
@@ -420,11 +420,11 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         report.protocolVersion,
       );
       console.error(
-        `\nThe pin ${PINS_FILE} would carry for PROTOCOL_VERSION ${version}:\n`,
+        `\nWrite this to ${PINS_FILE}; it adds the entry for PROTOCOL_VERSION ${version}:\n`,
       );
       console.error(suggestedLedger(report.pins, version, report.digests));
       console.error(
-        `Write it, run \`npm run format\`, and leave every already-recorded entry as it stands: ${SPEC_PARAGRAPH} is the rule, and an entry rewritten in place records a version that never shipped that wire format.`,
+        `Then run \`npm run format\`. Leave every entry already recorded unchanged: an entry rewritten in place records a version that never shipped that wire format (${SPEC_PARAGRAPH}).`,
       );
     }
     process.exit(1);

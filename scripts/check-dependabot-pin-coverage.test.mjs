@@ -805,7 +805,7 @@ describe("the real repository configuration", () => {
     expect(new Set(swept.map(({ path }) => path)).size).toBeGreaterThan(1);
   });
 
-  it("reddens on a range where an exact version stands", () => {
+  it("fails on a range where an exact version stands", () => {
     const [first, ...rest] = declarations();
     const violations = exactnessViolations(packages(), [
       { ...first, specifier: `^${first.specifier}` },
@@ -819,7 +819,7 @@ describe("the real repository configuration", () => {
     expect(versionAgreementViolations(packages(), declarations())).toEqual([]);
   });
 
-  it("reddens when a package several manifests declare drifts in one", () => {
+  it("fails when a package several manifests declare drifts in one", () => {
     const swept = declarations();
     const shared = packages().filter(
       (name) => swept.filter((entry) => entry.name === name).length > 1,

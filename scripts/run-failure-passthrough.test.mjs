@@ -24,9 +24,9 @@ import {
 //
 // The unit pins in apps/web/test/unit/jobRunDiagnostics.unit.test.ts and
 // apps/web/test/unit/exchange/reattachOnBusy.test.ts measure `failureFor` itself, which
-// is where the composition happens; a decorating call site would redden neither,
+// is where the composition happens; a decorating call site would fail neither,
 // since the unit project is node-only and renders no seat. Those pins state that
-// limit in prose, and prose asserting a code fact rots silently; this is the
+// limit in prose, which no run checks; this is the
 // other half as a check.
 //
 // It is an INCLUSION check over the directory: the call sites are found by
@@ -221,7 +221,7 @@ const sites = readCallSites(modules);
 
 describe("no seat decorates the failure it composed", () => {
   it("finds the call sites and the composer they are read against", () => {
-    // A rot guard: a directory move, a rename of the composer, or an extraction of
+    // An enumeration guard: a directory move, a rename of the composer, or an extraction of
     // the seats' failure path behind a helper would otherwise empty the
     // enumeration and make every assertion below vacuous.
     expect(modules.length).toBeGreaterThan(0);

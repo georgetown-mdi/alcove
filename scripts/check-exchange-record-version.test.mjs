@@ -396,7 +396,7 @@ describe("the check as CI runs it", () => {
     );
 
     expect(status).toBe(1);
-    expect(stderr).toContain("records no discharge");
+    expect(stderr).toContain("records no RESET_TAKEN_AT_RELEASE");
   });
 
   it("passes a published release whose recorded discharges retire both rules", () => {

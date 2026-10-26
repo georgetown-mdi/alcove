@@ -745,7 +745,7 @@ except relay_table.TableError as error:
     const mapFile = join(host.root, "exchange-keys");
     // The form feed splits "old-2"/KEY_B into two fields just like a space
     // would, so this row still parses; str.splitlines() also treats it as a
-    // line break, which used to drift the refusal below to "line 4".
+    // line break, which would shift the refusal below to "line 4".
     writeFileSync(mapFile, `old-1 ${KEY_A}\nold-2\f${KEY_B}\n${KEY_C}\n`);
     const result = spawnSync(
       "python3",

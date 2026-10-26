@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 // verdict blocks that package's install script, and under the root .npmrc's
 // `strict-allow-scripts` a package with no verdict fails the install outright,
 // so the map's completeness is what keeps every install from grounding. Two ways
-// the map rots with no diagnostic at all. An entry naming a package the tree no
+// the map goes wrong with no diagnostic at all. An entry naming a package the tree no
 // longer installs matches nothing, so it displays as a live verdict while governing
 // nothing. An entry spelled in a form npm cannot honor is either dropped from
 // the policy or kept and matched against nothing.

@@ -6,10 +6,9 @@
 // puts a subagent in its own worktree; prose in the prompt is inert. A spawn that
 // asserts "you are in an isolated worktree" but omits the flag lands the agent in
 // the shared /workspace, where concurrent writers clobber each other's uncommitted
-// edits and race the IDE formatter (the exact five-way collision this hook was
-// written after). The tell is a contradiction inside a single call -- the prompt
-// claims isolation the call did not request -- so it is checkable, and a check
-// cannot rot the way a convention note does.
+// edits and race the IDE formatter. The sign is a contradiction inside a single
+// call -- the prompt claims isolation the call did not request -- so it is
+// checkable.
 //
 // Scope: this fires ONLY on the contradiction. A spawn that correctly passes the
 // flag is allowed; a spawn whose prompt never claims worktree isolation is allowed

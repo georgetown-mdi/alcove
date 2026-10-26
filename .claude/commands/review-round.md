@@ -212,8 +212,8 @@ Common to both:
    1 (`mkdir -p` the directory; scratch/ is gitignored). That exact findings path is
    what assess-review looks for; it hard-stops without it. Read the ledger if it
    exists; this round's number is its line count + 1, counting rounds of every kind.
-   The first row written for a branch also contains `"cap"`: the Step 5 bucket's total
-   round allowance for this diff (1 for the second bucket or the instruction-file
+   The first row written for a branch also contains `"cap"`: the total
+   round allowance that the review tier from `.claude/commands/start-issue.md`, Step 5, sets for this diff (1 for the second bucket or the instruction-file
    floor, 3 for the full pipeline; a cap the owner, or an orchestrating session the owner has delegated budgets to,
    raises is edited in place, with the raise appended to that row's `capRaises`
    list -- its shape is in `.claude/commands/assess-review.md`, Step 2).

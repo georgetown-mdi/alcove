@@ -148,8 +148,8 @@ function block(reason) {
       "deleting one destroys it unrecoverably -- there is no branch, stash, or reflog " +
       "behind it. Leave another session's tree alone, and retire a finished tree with " +
       "`git worktree remove <path>` (no --force), which refuses while the tree still has " +
-      "uncommitted work. In a STRANDED tree -- one no session is working in, waiting to " +
-      "be retired -- an untracked leftover is cleared without a deletion: " +
+      "uncommitted work. In a finished tree no session is working in, " +
+      "an untracked leftover is cleared without a deletion: " +
       "`git -C <tree> stash push -u -- <path>` takes that path off disk, keeps its " +
       "content in the repository's stash, and leaves the tree retirable by that plain " +
       "remove. A tree git reports as locked (an agent stopped mid-run) is not forced " +

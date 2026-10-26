@@ -160,7 +160,7 @@ jobs:
       # A probe that reports ABSENT, NOT ENGAGED or UNSETTLED has measured
       # something, and both scripts exit 0 whatever they find, so a non-zero exit
       # from here is docker or the image failing -- an infrastructure fault, and
-      # the only thing that reddens this job.
+      # the only thing that fails this job.
       - name: List the provider's algorithms
         run: |
           set -o pipefail

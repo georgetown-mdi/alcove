@@ -887,7 +887,7 @@ const emptyLedger = () => {
 describe("the script as an agent runs it", () => {
   // Five cold Node spawns in one case: 1.4s together alone against vitest's 5s
   // default, and 11.4s with the rest of the script suites competing for the same
-  // cores, which is the contention that reddened it. Sized well past that worst
+  // cores, which is the contention that failed it. Sized well past that worst
   // measurement, this stays a hang safety check rather than a claim about how
   // fast a process starts.
   const USAGE_SPAWN_TIMEOUT_MS = 60_000;

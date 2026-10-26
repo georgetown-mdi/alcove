@@ -34,7 +34,7 @@ describe("workflow agent model check", () => {
     }
   });
 
-  it("finds the real agent() calls, so the pattern has not rotted", () => {
+  it("finds the real agent() calls, so the pattern still matches", () => {
     const total = readSources().reduce(
       (sum, { file, source }) => sum + agentCallCount(file, source),
       0,

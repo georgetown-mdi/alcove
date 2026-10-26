@@ -77,7 +77,7 @@ describe("CONTRIBUTING scope guard", () => {
     expect(() => scopeViolations(text)).toThrow("CONTRIBUTING.md:");
   });
 
-  it("flags an allowlist entry that no longer appears (cannot rot)", () => {
+  it("flags an allowlist entry that no longer appears (none goes stale)", () => {
     const text = "# Contributing\n\n## Prerequisites\n\nbody\n";
     const v = scopeViolations(text);
     expect(v.some((m) => m.includes("no longer appears"))).toBe(true);

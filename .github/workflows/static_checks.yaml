@@ -135,7 +135,7 @@ jobs:
       # local run and the gate cannot diverge. The wrapper it runs through
       # (scripts/npm-audit-retry.mjs) adds one thing to that command: a bounded
       # retry of npm's audit endpoint failing, which is a registry outage rather
-      # than anything about the branch under test, and which reddened ten open
+      # than anything about the branch under test, and which failed ten open
       # pull requests at once when it last happened. An advisory finding is never
       # retried -- see the script's header for how the two are told apart, and
       # its test for the drive against the real npm that decides it. It answers

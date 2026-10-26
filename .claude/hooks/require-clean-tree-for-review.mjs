@@ -46,7 +46,12 @@ import { worktreeRecords } from "./lib/worktrees.mjs";
 export const EXPIRES_ON = "2027-06-30";
 
 const DIRTY_ENTRIES_SHOWN = 10;
-const UNCONFIRMED = "could not confirm a clean tree; commit and retry";
+const NOT_AN_OBJECT =
+  "the hook event is not a JSON object, so no tree could be confirmed clean; " +
+  "retry the call, and report it to the maintainer if it repeats";
+const UNEXPECTED =
+  "the hook failed unexpectedly, so no tree could be confirmed clean; retry the " +
+  "call, and report it to the maintainer if it repeats";
 
 function block(reason) {
   // A multi-line reason (the dirty-entry list) is self-terminating; only a
@@ -77,7 +82,8 @@ function requireClean(path, subject) {
   const status = git(["-C", path, "status", "--porcelain"]);
   if (status === null) {
     block(
-      `could not read git status in '${path}' to confirm ${subject} is clean; commit and retry`,
+      `could not read git status in '${path}' to confirm ${subject} is clean; ` +
+        "check that the tree exists and `git status` runs there, then retry",
     );
   }
   if (status.length === 0) return;
@@ -96,7 +102,7 @@ function requireClean(path, subject) {
 
 function main() {
   const event = readEvent();
-  if (event === NOT_AN_EVENT) block(UNCONFIRMED);
+  if (event === NOT_AN_EVENT) block(NOT_AN_OBJECT);
   if (event === null || event.tool_name !== "Workflow") process.exit(0);
 
   // From here every path fails CLOSED. An event naming no directory is a
@@ -105,14 +111,16 @@ function main() {
   const cwd = eventCwd(event);
   if (cwd === null) {
     block(
-      "could not locate a git repo to confirm a clean tree; commit and retry",
+      "the call names no working directory, so no tree could be confirmed clean; " +
+        "make the call from a session working in the repository",
     );
   }
 
   const root = git(["-C", cwd, "rev-parse", "--show-toplevel"]);
   if (!root) {
     block(
-      "could not locate a git repo to confirm a clean tree; commit and retry",
+      `'${cwd}' is not inside a git repository, so no tree could be confirmed ` +
+        "clean; make the call from a session working in the repository",
     );
   }
   requireClean(root, "the calling session's own working tree");
@@ -147,7 +155,7 @@ function main() {
   if (records === null) {
     block(
       "could not list this repository's worktrees to locate the tree holding each " +
-        "target ref; commit and retry",
+        "target ref; check that `git worktree list` runs in the repository, then retry",
     );
   }
   const mainRoot = records[0].path;
@@ -193,5 +201,5 @@ try {
   // Structural fail-closed safety check: the two exit-0 cases (unparseable event,
   // non-Workflow tool) are decided before any throwing code, so any error that
   // reaches here is on a path that must block, not allow.
-  block(UNCONFIRMED);
+  block(UNEXPECTED);
 }

@@ -27,7 +27,7 @@ const repoRoot = resolve(here, "..");
 // comment-strip pass past its timeout (measured, run 30683166508). The real run
 // has its own home -- the `Route tree freshness` step in static_checks.yaml,
 // which is `npm run check:routetree` over the committed tree on every pull
-// request. An invocation that stops regenerating reddens that step, since the
+// request. An invocation that stops regenerating fails that step, since the
 // check fails closed on a surviving probe line; the logic around it is what is
 // left for this file, driven through an injected codegen.
 const GENERATED = "// generated\nexport const routeTree = 1\n";

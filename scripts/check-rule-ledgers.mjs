@@ -1,25 +1,21 @@
 #!/usr/bin/env node
 // Rule-ledger split check, run by static_checks.yaml on every PR.
 //
-// The agent rules live in two ledgers with different readers. CLAUDE.md is
-// injected into every spawn, so a rule there is billed to every agent whether or
-// not it binds one; .claude/orchestration/ruleset.md is read by the orchestrating
-// session and by the front doors that open one, so a rule there costs a
-// single Read. The split only holds while each rule sits in exactly one of them:
-// a rule copied back into CLAUDE.md is paid for by every spawn again, and a rule
-// stated in both drifts until the two statements disagree and an agent follows
-// the wrong one.
+// The agent rules live in two files with different readers. CLAUDE.md is loaded
+// into every spawn, so each rule there costs every agent;
+// .claude/orchestration/ruleset.md is read by the orchestrating session and by
+// the FRONT_DOORS commands that start one, at the cost of one Read. Each rule is
+// stated in one of the two: a rule copied into CLAUDE.md costs every spawn
+// again, and a rule stated in both drifts until an agent follows the wrong copy.
 //
-// Three properties encode that. A hook is claimed by one ledger, so "Enforced by
-// `<hook>.mjs`" locates the rule it enforces. A `##`/`###` heading text appears
-// in one ledger, so a subsection re-created wholesale is caught by name. And the
-// load mechanism stays wired: CLAUDE.md names the ledger exactly once, in the
-// pointer bullet, and each front door names it at least once.
+// Fails on: a hook named by an "Enforced by `<hook>.mjs`" line in both files; a
+// `##`/`###` heading present in both; CLAUDE.md naming the ruleset other than
+// exactly once, in its pointer bullet; and a FRONT_DOORS file not naming it.
 //
-// What this cannot see: a rule that returns under new words, with no enforcement
-// claim and no heading of its own -- CLAUDE.md's byte budget
-// (scripts/check-claudemd-budget.mjs) is the guard that covers bulk regrowth,
-// and review covers the rest.
+// What it cannot see: a rule restated in new words, with no enforcement claim
+// and no heading of its own. CLAUDE.md's byte budget
+// (scripts/check-claudemd-budget.mjs) bounds bulk regrowth; review covers the
+// rest.
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -83,7 +79,7 @@ export function ledgerViolations({ claudeMd, ledger, frontDoors }) {
   for (const hook of claimedHooks(claudeMd)) {
     if (ledgerHooks.has(hook)) {
       problems.push(
-        `${CLAUDE_MD} and ${LEDGER} both claim enforcement by \`${hook}\`. A rule and the hook that enforces it belong to one ledger: keep it whole in the file whose readers it binds, and delete it from the other. Do not state it in both.`,
+        `${CLAUDE_MD} and ${LEDGER} both claim enforcement by \`${hook}\`. A rule and the hook that enforces it belong to one ledger: keep it whole in the file whose readers it applies to, and delete it from the other.`,
       );
     }
   }
@@ -92,7 +88,7 @@ export function ledgerViolations({ claudeMd, ledger, frontDoors }) {
   for (const heading of headings(claudeMd)) {
     if (ledgerHeadings.has(heading)) {
       problems.push(
-        `"${heading}" is a heading in both ${CLAUDE_MD} and ${LEDGER}. A subsection lives in one ledger: move its bullets into the file whose readers they bind, and drop the emptied heading from the other.`,
+        `"${heading}" is a heading in both ${CLAUDE_MD} and ${LEDGER}. A subsection lives in one ledger: move its bullets into the file whose readers they apply to, and drop the emptied heading from the other.`,
       );
     }
   }
@@ -104,14 +100,14 @@ export function ledgerViolations({ claudeMd, ledger, frontDoors }) {
     );
   } else if (pointers > 1) {
     problems.push(
-      `${CLAUDE_MD} names ${LEDGER} ${pointers} times. One pointer bullet is the whole load mechanism, and every extra mention is billed to every spawn: fold them into that bullet.`,
+      `${CLAUDE_MD} names ${LEDGER} ${pointers} times. Keep the one pointer bullet under "Orchestrating a session" and fold the other mentions into it: CLAUDE.md is loaded into every spawn, so each extra mention costs every spawn.`,
     );
   }
 
   for (const { file, source } of frontDoors) {
     if (mentions(source, LEDGER) === 0) {
       problems.push(
-        `${file} does not name ${LEDGER}, so it runs without the session rules its steps assume. Add the "First" line that reads the ledger, in the shape the other front doors use.`,
+        `${file} does not name ${LEDGER}, so it runs without the session rules its steps assume. Add the "First" line that reads the ruleset, written as the other FRONT_DOORS files write it.`,
       );
     }
   }

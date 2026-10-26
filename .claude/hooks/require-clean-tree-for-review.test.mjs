@@ -150,7 +150,7 @@ describe("require-clean-tree-for-review hook", () => {
       encoding: "utf8",
     });
     expect(status).toBe(2);
-    expect(stderr).toContain("could not confirm a clean tree");
+    expect(stderr).toContain("the hook event is not a JSON object");
   });
 
   it("allows a target-less Workflow call on a clean tree", () => {
@@ -176,15 +176,30 @@ describe("require-clean-tree-for-review hook", () => {
     // Every unconfirmable state fails CLOSED: nothing catches a review that
     // returns a false clean.
     const notARepo = track(mkdtempSync(join(tmpdir(), "clean-tree-bare-")));
-    for (const event of [
-      { tool_name: "Workflow", tool_input: PANEL, cwd: notARepo },
-      { tool_name: "Workflow", tool_input: PANEL },
-      { tool_name: "Workflow", tool_input: PANEL, cwd: "" },
-      { tool_name: "Workflow", tool_input: PANEL, cwd: 7 },
+    // Each refusal names its own cause, and none tells the caller to commit,
+    // which fixes none of them.
+    for (const [event, cause] of [
+      [
+        { tool_name: "Workflow", tool_input: PANEL, cwd: notARepo },
+        "is not inside a git repository",
+      ],
+      [
+        { tool_name: "Workflow", tool_input: PANEL },
+        "the call names no working directory",
+      ],
+      [
+        { tool_name: "Workflow", tool_input: PANEL, cwd: "" },
+        "the call names no working directory",
+      ],
+      [
+        { tool_name: "Workflow", tool_input: PANEL, cwd: 7 },
+        "the call names no working directory",
+      ],
     ]) {
       const { status, stderr } = runHook(event);
       expect(status, JSON.stringify(event)).toBe(2);
-      expect(stderr).toContain("commit and retry");
+      expect(stderr).toContain(cause);
+      expect(stderr).not.toContain("commit");
     }
   });
 

@@ -9,10 +9,9 @@
 // Rule 1, the bump. A move invalidates every managed accounting of disclosures
 // at rest in a browser (docs/spec/MANAGED_EXCHANGE_RECORD.md), and its recovery
 // has been driven against RECORD_VERSION_PIN alone. So a literal off the pin
-// fails, naming the recovery obligations to discharge before recording the new
-// value: re-drive the envelope/entries split
-// (apps/web/test/unit/psi/disclosureAccounting.test.ts), re-check both recovery
-// arms are reachable in order
+// fails, naming the steps to take before recording the new value: re-drive the
+// envelope/entries split (apps/web/test/unit/psi/disclosureAccounting.test.ts),
+// re-check both recovery arms are reachable in order
 // (apps/web/test/browser/managedExchangeDetail.test.ts), restate what the bump
 // does to a stored accounting in the spec and docs/MANAGED_EXCHANGE.md if it
 // changed, then set RECORD_VERSION_PIN. Each RECOVERY_ENTRY_POINTS function no
@@ -26,12 +25,12 @@
 // fails. The steps are docs/RELEASES.md, "Reset the exchange-record format at
 // first publication".
 //
-// Both discharges are recorded in this file, so recording one is an edit a
-// reviewer sees. `--root <tree>` reads another tree. Exit 0 when the tree meets
-// both rules; 1 on a violation or an input it cannot read (a
-// marker that is not a release version, a literal that is not a quoted string);
-// 2 on `--root` naming no tree. Rationale and what the check cannot see:
-// docs/notes/repo-check-scripts.md.
+// RECORD_VERSION_PIN and RESET_TAKEN_AT_RELEASE are constants in this file, so
+// recording either is an edit a reviewer sees. `--root <tree>` reads another
+// tree. Exit 0 when the tree meets both rules; 1 on a violation or an input it
+// cannot read (a marker that is not a release version, a literal that is not a
+// quoted string); 2 on `--root` naming no tree. Rationale and what the check
+// cannot see: docs/notes/repo-check-scripts.md.
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -89,7 +88,7 @@ export const CHECKLIST_STEP = `docs/RELEASES.md, "${CHECKLIST_HEADING}"`;
 
 /**
  * The release the reset was taken at, or undefined while it has not been taken.
- * Recording it here discharges the obligation and retires the reset rule.
+ * Recording it here retires the reset rule.
  */
 export const RESET_TAKEN_AT_RELEASE = undefined;
 
@@ -123,7 +122,7 @@ export function missingRecoveryEntryPoints(sources) {
 }
 
 /**
- * The reasons the tree does not stand where rule 1 pins it, as
+ * The reasons the tree breaks rule 1, as
  * `{kind, message}`; empty when the record version is where the recovery was
  * driven against it and the recovery is still there to defer to. `declared` is
  * the literal read from the tree, which `inspect` blocks on when it is
@@ -164,14 +163,14 @@ export function bumpViolations(declared, sources) {
 export function recoveryViolations(sources) {
   return missingRecoveryEntryPoints(sources).map(({ file, name }) => ({
     kind: "recovery",
-    message: `${file}: "${name}" is no longer exported. This check defers a version-bump decision to the recovery path from a version-invalidated accounting of disclosures; without that entry point there is nothing to defer to, and a bump would strand every stored accounting with no way out. Restore it, or retire this rule along with the obligation it carries.`,
+    message: `${file}: "${name}" is no longer exported. Restore the export, or remove rule 1 from ${CHECK_SOURCE}: it defers a version-bump decision to the recovery path from a version-invalidated accounting of disclosures, and without this entry point there is nothing to defer to, so a bump would leave every stored accounting with no recovery.`,
   }));
 }
 
 /**
- * The reasons the tree does not stand where rule 2 holds it, as
- * `{kind, message}`; empty when it does. `kind` is `discharge` (the recorded
- * discharge is not a release this can hold anything to), `early` (the reset
+ * The reasons the tree breaks rule 2, as `{kind, message}`; empty when it
+ * meets it. `kind` is `discharge` (the recorded RESET_TAKEN_AT_RELEASE names
+ * no published release, or one ahead of the marker), `early` (the reset
  * landed before the release that publishes it), `due` (the reset is due and the
  * literal is elsewhere), or `record` (the reset landed and is not recorded).
  */
@@ -187,14 +186,14 @@ export function resetViolations({
     if (isPublishedRelease(takenAtRelease) !== true) {
       violations.push({
         kind: "discharge",
-        message: `${CHECK_SOURCE} records the reset as taken at "${takenAtRelease}", which is not a release above the pre-publication ${PRE_PUBLICATION_RELEASE}. The discharge names the release that shipped the reset, so a value that names no such release retires this rule without anything having met it.`,
+        message: `${CHECK_SOURCE} records the reset as taken at "${takenAtRelease}", which is not a release above the pre-publication ${PRE_PUBLICATION_RELEASE}. Set RESET_TAKEN_AT_RELEASE to the release that shipped the reset, or back to undefined if no release has: any other value would turn this rule off before the reset is taken.`,
       });
     } else {
       const compared = compareReleaseVersions(takenAtRelease, releaseVersion);
       if (compared === undefined || compared > 0) {
         violations.push({
           kind: "discharge",
-          message: `${CHECK_SOURCE} records the reset as taken at "${takenAtRelease}", ahead of the ${releaseVersion === undefined ? "version-less" : `"${releaseVersion}"`} ${RELEASE_MANIFEST} names. A discharge names a release that shipped, so nothing should be recorded ahead of the marker.`,
+          message: `${CHECK_SOURCE} records the reset as taken at "${takenAtRelease}", ahead of the ${releaseVersion === undefined ? "version-less" : `"${releaseVersion}"`} ${RELEASE_MANIFEST} names. Set RESET_TAKEN_AT_RELEASE back to undefined until ${RELEASE_MANIFEST} names that release: it records a release that has shipped the reset.`,
         });
       }
     }
@@ -223,14 +222,14 @@ export function resetViolations({
       message: [
         `${RELEASE_MANIFEST} names ${releaseVersion}, a release above the pre-publication ${PRE_PUBLICATION_RELEASE}, and ${RECORD_VERSION_SOURCE} declares EXCHANGE_RECORD_VERSION "${declared}".`,
         "",
-        `First publication ships the record format at "${RESET_RECORD_VERSION}": the counter cycled freely while no published artifact carried any of its literals, and this release is what ends that.`,
+        `First publication ships the record format at "${RESET_RECORD_VERSION}": the counter moved freely while no published artifact contained any of its values, and from this release one does.`,
         "",
         `Take the reset as one piece (${CHECKLIST_STEP}):`,
         `  - set EXCHANGE_RECORD_VERSION to "${RESET_RECORD_VERSION}" in ${RECORD_VERSION_SOURCE};`,
-        "  - regenerate the record vectors through their generator, which `npm run check:vectors` holds them to;",
+        "  - regenerate the record vectors through their generator, which `npm run check:vectors` compares them against;",
         `  - re-take the recovery obligations rule 1 names and re-record RECORD_VERSION_PIN in ${CHECK_SOURCE}, which fails on its own once the literal moves;`,
         "  - clear the development artifacts the checklist step enumerates, which a downward move leaves misread rather than refused;",
-        `  - record the discharge here: RESET_TAKEN_AT_RELEASE = "${releaseVersion}" in ${CHECK_SOURCE}.`,
+        `  - record the reset: RESET_TAKEN_AT_RELEASE = "${releaseVersion}" in ${CHECK_SOURCE}.`,
       ].join("\n"),
     });
     return violations;
@@ -239,18 +238,18 @@ export function resetViolations({
   violations.push({
     kind: "record",
     message: [
-      `${RECORD_VERSION_SOURCE} declares EXCHANGE_RECORD_VERSION "${RESET_RECORD_VERSION}" and ${RELEASE_MANIFEST} names published release ${releaseVersion}, but ${CHECK_SOURCE} records no discharge.`,
+      `${RECORD_VERSION_SOURCE} declares EXCHANGE_RECORD_VERSION "${RESET_RECORD_VERSION}" and ${RELEASE_MANIFEST} names published release ${releaseVersion}, but ${CHECK_SOURCE} records no RESET_TAKEN_AT_RELEASE.`,
       "",
-      `The reset is taken once. With the rest of the checklist step met -- the vectors regenerated, RECORD_VERSION_PIN re-recorded, and the development artifacts cleared -- set RESET_TAKEN_AT_RELEASE to "${releaseVersion}" in ${CHECK_SOURCE}, which retires this rule so an ordinary forward bump after this release is not held to "${RESET_RECORD_VERSION}" forever (${CHECKLIST_STEP}).`,
+      `Once the rest of the checklist step is met -- the vectors regenerated, RECORD_VERSION_PIN re-recorded, and the development artifacts cleared -- set RESET_TAKEN_AT_RELEASE to "${releaseVersion}" in ${CHECK_SOURCE}. The reset is taken once, and recording it retires this rule, so an ordinary forward bump after this release passes (${CHECKLIST_STEP}).`,
     ].join("\n"),
   });
   return violations;
 }
 
 /**
- * Read the tree at `root` and report what both rules hold there, as
+ * Read the tree at `root` and report what both rules find there, as
  * `{published, releaseVersion, declared, takenAtRelease, violations, blocked}`.
- * `blocked` holds the reasons an input could not be read at all, which fail
+ * `blocked` lists the reasons an input could not be read at all, which fail
  * rather than passing as inert. A blocked run still reports the recovery
  * violations, which rest on no input it is blocked on.
  */
@@ -273,7 +272,7 @@ export function inspect(root) {
   const published = isPublishedRelease(releaseVersion);
   if (published === undefined) {
     blocked.push(
-      `${RELEASE_MANIFEST} carries ${releaseVersion === undefined ? "no version" : `"${releaseVersion}"`}, which is not a release version this can compare against ${PRE_PUBLICATION_RELEASE}. A marker it cannot read leaves the reset neither due nor knowably not due.`,
+      `${RELEASE_MANIFEST} has ${releaseVersion === undefined ? "no version" : `"${releaseVersion}"`}, which is not a release version this can compare against ${PRE_PUBLICATION_RELEASE}. Set it to a release version (major.minor.patch); until then this check cannot tell whether the reset is due.`,
     );
   }
 
@@ -326,7 +325,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   if (blocked || failed) process.exit(1);
 
   console.log(
-    `check-exchange-record-version: EXCHANGE_RECORD_VERSION stands at "${RECORD_VERSION_PIN}", and the recovery path from a version-invalidated accounting is in place.`,
+    `check-exchange-record-version: EXCHANGE_RECORD_VERSION is "${RECORD_VERSION_PIN}", and the recovery path from a version-invalidated accounting is in place.`,
   );
   console.log(
     report.takenAtRelease !== undefined

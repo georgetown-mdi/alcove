@@ -2,11 +2,9 @@
 // CLI command inventory check, run by static_checks.yaml on every PR.
 //
 // docs/DESIGN.md and docs/CLI.md enumerate the CLI's subcommands; the registry
-// lives in apps/cli/src/cliParser.ts. The enumerations drift when a command
-// ships without the overview docs being revisited (verify-receipt shipped and
-// DESIGN.md said "five subcommands" until a later sweep caught it). Prose
-// cannot assert a code fact reliably, so the claim is encoded as a check:
-// every registered command name must appear in both docs.
+// is apps/cli/src/cliParser.ts. Fails when a registered command name is missing
+// from either doc. Only the mention is checked: a doc's description of a
+// command, or a count of commands, can still be wrong.
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";

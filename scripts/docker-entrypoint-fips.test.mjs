@@ -100,7 +100,7 @@ function runPreamble({
 // The preamble's own wording for the success line, asserted against instead of
 // the shorter "FIPS provider active:". The failure path replays the probe's
 // whole transcript into the same stream, so a negative assertion on a fragment
-// the probe could also emit would redden for a reason unrelated to the preamble.
+// the probe could also emit would fail for a reason unrelated to the preamble.
 const SERVED_SENTENCE = "this container's crypto is served by";
 
 for (const [shell, label] of SHELLS) {
@@ -299,8 +299,8 @@ describe("the engagement probe the image ships", () => {
 // The tarball fetched in Dockerfile.fips's nodebase stage is checked against a
 // per-architecture sha256 committed in that same RUN, by piping one checksum
 // line into `sha256sum -c -`. That the check fails closed is the property the
-// image's whole Node runtime rests on, and CLAUDE.md's rule is to encode such a
-// claim as a check rather than as a Dockerfile comment, which cannot fail. These
+// image's whole Node runtime rests on, and CONTRIBUTING.md, Code Conventions, asks for
+// such a claim as a check rather than a Dockerfile comment, which cannot fail. These
 // run the real tool through a real shell pipeline rather than modelling either.
 //
 // Every digest below is 64 hex characters, valid or not, because coreutils

@@ -84,14 +84,14 @@ export function upgradeSections(source) {
 
 /**
  * Every upgrade checklist whose heading no package name can be read out of, as
- * message strings. Empty means each section names packages this check can hold
+ * message strings. Empty means each section names packages this check can test
  * the config against.
  */
 export function headingViolations(sections) {
   return sections.flatMap(({ heading, packages }) => {
     if (packages.length === 0) {
       return [
-        `${PINS_DOC}: the "${heading}" section names no package in its heading, so nothing holds ${CONFIG_FILE} to keeping its bumps out of a batch. End the heading with the packages it covers: ${HEADING_FORM}.`,
+        `${PINS_DOC}: the "${heading}" section names no package in its heading. End the heading with the packages it covers: ${HEADING_FORM}. Until it does, this check cannot test that ${CONFIG_FILE} keeps their bumps out of a batch.`,
       ];
     }
     return packages
