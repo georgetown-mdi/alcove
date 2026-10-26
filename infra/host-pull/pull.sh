@@ -153,7 +153,8 @@ download() {
   return "$status"
 }
 
-# Every push-triggered workflow run on the tip completed as success; runs of
+# Every push-triggered workflow run on the tip completed as success, or was
+# cancelled beside a successful run of its workflow and branch; runs of
 # other events do not gate (README.md, What a run does).
 require_green() {
   local page=1 file verdict
@@ -172,7 +173,7 @@ require_green() {
     page=$((page + 1))
   done
   case "$verdict" in
-    "green "*) log "every push run on $TIP succeeded (${verdict#green })" ;;
+    "green "*) log "CI passed on $TIP: ${verdict#green }" ;;
     "pending "*) finish skipped 0 "CI has not finished on $TIP: ${verdict#pending }" ;;
     none) finish skipped 0 "no push run has reported on $TIP yet" ;;
     "red "*) finish refused 1 "CI did not pass on $TIP: ${verdict#red }" ;;

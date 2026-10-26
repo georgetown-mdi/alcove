@@ -227,9 +227,17 @@ const buildArchive = (
   expect(tar.status).toBe(0);
 };
 
+const workflowIds = new Map();
+/** A fixed workflow_id per workflow name, as GitHub assigns one per file. */
+const workflowId = (name) => {
+  if (!workflowIds.has(name)) workflowIds.set(name, 300000 + workflowIds.size);
+  return workflowIds.get(name);
+};
+
 /** One workflow run of TIP, completed as success on a push to main unless overridden. */
 const workflowRun = (name, overrides = {}) => ({
   name,
+  workflow_id: workflowId(name),
   head_sha: TIP,
   head_branch: "main",
   event: "push",
@@ -485,7 +493,7 @@ describeOnScriptHost("pull.sh", () => {
       reason: `deployed ${TIP}`,
     });
     expect(r.record.time).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/);
-    expect(r.stderr).toContain(`every push run on ${TIP} succeeded (4)`);
+    expect(r.stderr).toContain(`CI passed on ${TIP}: 4 succeeded`);
     expect(h.marker()).toBe(`${TIP}\n`);
     expect(
       lstatSync(join(h.root, "var/lib/alcove-host-pull/deployed")).mode & 0o777,
@@ -598,6 +606,35 @@ describeOnScriptHost("pull.sh", () => {
     untouched(h);
   });
 
+  it("installs a tip whose cancelled push runs each have a successful twin", () => {
+    const h = host();
+    h.runs([
+      ...GREEN,
+      ...NOT_GATING,
+      workflowRun("CodeQL", { conclusion: "cancelled" }),
+      workflowRun("Deploy to Cloudflare Pages", { conclusion: "cancelled" }),
+    ]);
+    const r = outcome(h, "updated", 0);
+    expect(r.stderr).toContain(
+      `CI passed on ${TIP}: 4 succeeded, 2 cancelled beside a successful run of the same workflow and branch`,
+    );
+  });
+
+  it("refuses a tip with a cancelled push run and no successful twin", () => {
+    const h = host();
+    h.runs([
+      ...GREEN,
+      workflowRun("CodeQL", { conclusion: "cancelled" }),
+      workflowRun("Image Smoke", { conclusion: "cancelled" }),
+    ]);
+    const r = outcome(h, "refused", 1);
+    expect(r.record.reason).toBe(
+      `CI did not pass on ${TIP}: Image Smoke (main)`,
+    );
+    expect(downloads(r.calls)).toEqual([]);
+    untouched(h);
+  });
+
   it("reads every page of push runs, and refuses a failure on the last", () => {
     const h = host();
     const many = Array.from({ length: 230 }, (_, index) =>
@@ -608,7 +645,7 @@ describeOnScriptHost("pull.sh", () => {
     expect(named(green.calls, "curl ").slice(0, 3)).toEqual(
       [1, 2, 3].map((page) => expect.stringContaining(runsUrl(page))),
     );
-    expect(green.stderr).toContain("succeeded (230)");
+    expect(green.stderr).toContain(`CI passed on ${TIP}: 230 succeeded`);
 
     const h2 = host();
     many[229] = workflowRun("Run 229", { conclusion: "failure" });
@@ -1169,6 +1206,127 @@ describeOnScriptHost("pull.sh", () => {
     expect(r.record).toBeUndefined();
     expect(r.calls).toEqual([]);
   });
+});
+
+describe("workflow-runs.mjs", () => {
+  const verdict = (...pages) => {
+    const dir = fixtureDir("workflow-runs-");
+    const files = pages.map((runs, index) => {
+      const file = join(dir, `page-${index + 1}.json`);
+      const total = pages.reduce((sum, page) => sum + page.length, 0);
+      writeFileSync(
+        file,
+        JSON.stringify({
+          total_count: total,
+          workflow_runs: JSON.parse(workflowRuns(runs)).map((run) => ({
+            ...run,
+            id: run.id + index * 1000,
+          })),
+        }),
+      );
+      return file;
+    });
+    const result = spawnSync(
+      process.execPath,
+      [join(PULL_DIR, "workflow-runs.mjs"), TIP, ...files],
+      { encoding: "utf8" },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    return result.stdout.trim();
+  };
+  const PAIRED =
+    "cancelled beside a successful run of the same workflow and branch";
+
+  it("passes cancelled runs each beside a successful run of their workflow and branch", () => {
+    expect(
+      verdict([
+        workflowRun("CodeQL"),
+        workflowRun("CodeQL", { conclusion: "cancelled" }),
+        workflowRun("CodeQL", { conclusion: "cancelled" }),
+        workflowRun("Deploy the Project Site", { conclusion: "cancelled" }),
+        workflowRun("Deploy the Project Site"),
+        workflowRun("Static Checks", { head_branch: "staging" }),
+      ]),
+    ).toBe(`green 3 succeeded, 3 ${PAIRED}`);
+  });
+
+  it("pairs a cancelled run with its successful twin on another page", () => {
+    expect(
+      verdict(
+        [workflowRun("CodeQL", { conclusion: "cancelled" })],
+        [workflowRun("CodeQL")],
+      ),
+    ).toBe(`green 1 succeeded, 1 ${PAIRED}`);
+  });
+
+  it("reports only the count when no run was cancelled", () => {
+    expect(verdict([workflowRun("CodeQL")])).toBe("green 1 succeeded");
+  });
+
+  it.each([
+    ["no other run of its workflow", [workflowRun("CodeQL")]],
+    [
+      "only cancelled runs of its workflow",
+      [workflowRun("Image Smoke", { conclusion: "cancelled" })],
+    ],
+    [
+      "a failed run of its workflow",
+      [workflowRun("Image Smoke", { conclusion: "failure" })],
+    ],
+    [
+      "a successful run of its workflow on another branch",
+      [workflowRun("Image Smoke", { head_branch: "staging" })],
+    ],
+    [
+      "a successful run of another workflow with the same name",
+      [workflowRun("Image Smoke", { workflow_id: 1 })],
+    ],
+    [
+      "a run of its workflow that has not completed",
+      [workflowRun("Image Smoke", { status: "in_progress", conclusion: null })],
+    ],
+  ])("refuses a cancelled run beside %s", (_, others) => {
+    expect(
+      verdict([
+        ...others,
+        workflowRun("Image Smoke", { conclusion: "cancelled" }),
+      ]),
+    ).toMatch(/^red .*Image Smoke \(main\)/);
+  });
+
+  it.each([
+    ["no workflow_id", { workflow_id: undefined }],
+    ["a workflow_id that is a string", { workflow_id: "300000" }],
+    ["no head_branch", { head_branch: null }],
+  ])(
+    "refuses a cancelled run with %s beside a run alike in it",
+    (_, fields) => {
+      expect(
+        verdict([
+          workflowRun("Image Smoke", fields),
+          workflowRun("Image Smoke", { conclusion: "cancelled", ...fields }),
+        ]),
+      ).toMatch(/^red Image Smoke/);
+    },
+  );
+
+  it.each([
+    "failure",
+    "timed_out",
+    "neutral",
+    "skipped",
+    "action_required",
+    "stale",
+    "startup_failure",
+    null,
+  ])(
+    "refuses a completed run with conclusion %s beside a successful twin",
+    (conclusion) => {
+      expect(
+        verdict([workflowRun("CodeQL"), workflowRun("CodeQL", { conclusion })]),
+      ).toBe("red CodeQL (main)");
+    },
+  );
 });
 
 describe("install.sh", () => {

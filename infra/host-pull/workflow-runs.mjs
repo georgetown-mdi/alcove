@@ -3,9 +3,12 @@
 // (`GET /repos/<owner>/<repo>/actions/runs?head_sha=<sha>&event=push&per_page=100&page=<n>`)
 // and prints one line for pull.sh:
 //
-//   green <count>        every run completed with conclusion success
+//   green <counts>       every run completed with conclusion success, or was
+//                        cancelled beside a successful run of the same
+//                        workflow_id and head_branch
 //   pending <names>      at least one run has not completed, and none failed
-//   red <names>          at least one run completed with any other conclusion
+//   red <names>          at least one run completed with any other conclusion,
+//                        or was cancelled with no such successful run
 //   none                 the commit has no push-triggered run
 //   more                 the pages hold fewer runs than total_count; read the next
 //   unread <reason>      the pages are not an answer this can decide on
@@ -24,6 +27,17 @@ const printable = (text) =>
   String(text)
     .replace(/[^A-Za-z0-9 ._:/()-]/g, "?")
     .slice(0, 80);
+
+// A cancelled run passes only beside a successful run of the same workflow
+// file, keyed by its numeric workflow_id: `name` is the run-name, which a
+// workflow sets per run and two files can share. The branch must match too, so
+// a staging run never stands in for a main run whose jobs can differ.
+const hasWorkflowKey = (run) =>
+  Number.isInteger(run.workflow_id) &&
+  typeof run.head_branch === "string" &&
+  run.head_branch !== "";
+
+const workflowKey = (run) => `${run.workflow_id} ${run.head_branch}`;
 
 const label = (run) => `${printable(run.name)} (${printable(run.head_branch)})`;
 
@@ -66,12 +80,30 @@ function verdict(sha, bodies) {
   if (runs.size === 0) return "none";
   const all = [...runs.values()];
   const unfinished = all.filter((run) => run.status !== "completed");
+  const succeeded = all.filter(
+    (run) => run.status === "completed" && run.conclusion === "success",
+  );
+  const succeededWorkflows = new Set(
+    succeeded.filter(hasWorkflowKey).map(workflowKey),
+  );
+  const duplicates = all.filter(
+    (run) =>
+      run.status === "completed" &&
+      run.conclusion === "cancelled" &&
+      hasWorkflowKey(run) &&
+      succeededWorkflows.has(workflowKey(run)),
+  );
   const failed = all.filter(
-    (run) => run.status === "completed" && run.conclusion !== "success",
+    (run) =>
+      run.status === "completed" &&
+      run.conclusion !== "success" &&
+      !duplicates.includes(run),
   );
   if (failed.length > 0) return `red ${listed(failed)}`;
   if (unfinished.length > 0) return `pending ${listed(unfinished)}`;
-  return `green ${all.length}`;
+  return duplicates.length > 0
+    ? `green ${succeeded.length} succeeded, ${duplicates.length} cancelled beside a successful run of the same workflow and branch`
+    : `green ${succeeded.length} succeeded`;
 }
 
 const [sha, ...files] = process.argv.slice(2);
