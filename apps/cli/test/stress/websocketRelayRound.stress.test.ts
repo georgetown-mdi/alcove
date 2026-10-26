@@ -48,11 +48,23 @@ import type { WebSocketRelayProcess } from "../signaling/websocketRelayProcess";
 //   relay's memory sampled every 200 ms (memory-relay.log,
 //   peakMemoryReport.mjs) and a summary of the run (websocket-relay-round.json).
 
-const ROUND_BYTES = Number(
-  process.env.ALCOVE_STRESS_RELAY_ROUND_BYTES ?? 539_000_000,
+function positiveIntegerFrom(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${name} must be a positive integer, not "${raw}"`);
+  }
+  return value;
+}
+
+const ROUND_BYTES = positiveIntegerFrom(
+  "ALCOVE_STRESS_RELAY_ROUND_BYTES",
+  539_000_000,
 );
-const FRAME_BYTES = Number(
-  process.env.ALCOVE_STRESS_RELAY_FRAME_BYTES ?? 267_532_651,
+const FRAME_BYTES = positiveIntegerFrom(
+  "ALCOVE_STRESS_RELAY_FRAME_BYTES",
+  267_532_651,
 );
 const LOG_DIR = process.env.ALCOVE_STRESS_RELAY_LOG_DIR;
 const PAIRING_BYTES_PER_SECOND = 2_000_000;
