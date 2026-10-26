@@ -1071,7 +1071,7 @@ describe("readExchangeRecordFile / readVerificationKeysFile", () => {
     writeFileSync(recPath, JSON.stringify(bumped, null, 2));
     expect(() => readExchangeRecordFile(recPath)).toThrow(UsageError);
     expect(() => readExchangeRecordFile(recPath)).toThrow(
-      /unrecognized version \(alcove-exchange-record\/v1\); this build recognizes alcove-exchange-record\/v10/,
+      /unrecognized version \(alcove-exchange-record\/v1\); this build recognizes alcove-exchange-record\/v11/,
     );
   });
 
@@ -1084,7 +1084,7 @@ describe("readExchangeRecordFile / readVerificationKeysFile", () => {
     const recPath = join(dir, "rec.json");
     writeFileSync(recPath, JSON.stringify(previous, null, 2));
     expect(() => readExchangeRecordFile(recPath)).toThrow(
-      /unrecognized version \(alcove-exchange-record\/v9\); this build recognizes alcove-exchange-record\/v10/,
+      /unrecognized version \(alcove-exchange-record\/v9\); this build recognizes alcove-exchange-record\/v11/,
     );
   });
 
@@ -1650,12 +1650,10 @@ describe("handler", () => {
     );
   });
 
-  test("a --config-file citing a rule set its own keys left is reported through the command's log", async () => {
-    // configFileTerms is the fourth call site sharing warnOnLinkageRuleSetCitationDrift
-    // with loadConfig, validateInvite, and validateAccept; this pins only that it
-    // is wired -- the warning fires, reaches the command's log, and the terms it
-    // names still come back (the agreed-terms line below is not the "defines no
-    // linkage_terms" note) -- the warning's own per-half logic is config.test.ts's.
+  test("a --config-file citing a rule set its own keys left raises no citation warning", async () => {
+    // The record holds no citation, so verifying one has nothing to say about
+    // the configuration's; the terms still come back (the agreed-terms line
+    // below is not the "defines no linkage_terms" note).
     const terms = getDefaultLinkageTerms("Test Party");
     const [first, second, ...rest] = terms.linkageKeys;
     const drifted: LinkageTerms = {
@@ -1670,11 +1668,7 @@ describe("handler", () => {
       "log-level": "warn",
     });
     expect(exits).toEqual([]);
-    const driftWarnings = stderr
-      .split("\n")
-      .filter((line) => line.includes("linkage_rule_set"));
-    expect(driftWarnings).toHaveLength(1);
-    expect(driftWarnings[0]).toContain(configPath);
+    expect(stderr).not.toContain("linkage_rule_set");
     expect(stdout).toContain(
       "agreed-terms hash: not checked (pass --partner-terms)",
     );

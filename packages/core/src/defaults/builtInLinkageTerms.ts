@@ -383,11 +383,11 @@ const DEFAULT_LINKAGE_RULE_BANDS: ReadonlyArray<LinkageRuleBand> = [
  * from: the field set and the key set that
  * {@link LinkageRuleSetReference} cites, together with the content each names.
  *
- * The reference is what travels -- in a terms document, an invitation, and each
- * party's exchange record -- while the content is what a terms document is built
- * from. Keeping both on one object is what makes a set a selectable thing rather
- * than a pair of loose declarations: a caller selects a set and gets rules and
- * citation together, so the two cannot come apart.
+ * The reference is what travels -- in a terms document and an invitation --
+ * while the content is what a terms document is built from. Keeping both on
+ * one object is what makes a set a selectable thing rather than a pair of
+ * loose declarations: a caller selects a set and gets rules and citation
+ * together, so the two cannot come apart.
  */
 export interface BuiltInLinkageRuleSet {
   /** The name and version of each half, as a terms document cites them. */
@@ -427,14 +427,13 @@ function frozenThroughContents<T>(value: T): T {
  *
  * Frozen through every level, and this object with it. The reference, the
  * fields, and the keys are all aliased into every terms document derived
- * from the set ({@link linkageTermsFromRuleSet}) and from there into each
- * party's exchange record, so a single in-place edit of a name, a version,
- * a constraint, or a key element would rewrite the built-in set in every
- * document the process later derives, and in every record written from
- * one -- without touching the declarations above. The rules hold the same
- * weight the citation does: they are what
- * {@link checkLinkageRuleSetCitation} compares a cited document against,
- * so an edited set decides later verdicts too. Freezing makes such an
+ * from the set ({@link linkageTermsFromRuleSet}), so a single in-place edit
+ * of a name, a version, a constraint, or a key element would rewrite the
+ * built-in set in every document the process later derives -- without
+ * touching the declarations above. The rules hold the same weight the
+ * citation does: they are what {@link checkLinkageRuleSetCitation}
+ * compares a cited document against, so an edited set decides later
+ * verdicts too. Freezing makes such an
  * edit throw instead, at this composition, because those declarations
  * must stay plain literals for the check named above to read them.
  */
@@ -800,7 +799,7 @@ export function findBuiltInLinkageRuleSet(
  * This build's verdict on `citation`, the rule set `rules` are cited to,
  * one half at a time.
  *
- * Total over a citation that exists: a caller renders or records a verdict
+ * Total over a citation that exists: a caller asks for a verdict
  * exactly where it has a citation to be about, so the absence of one is
  * the caller's own branch rather than a fourth state here.
  *

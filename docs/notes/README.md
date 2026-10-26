@@ -60,7 +60,7 @@ stands, from a direction still open to a decision taken and built.
 | [rename-to-alcove.md](rename-to-alcove.md) | Decided on the maintainer's rulings and built. |
 | [repo-check-scripts.md](repo-check-scripts.md) | Decided and built; the rationale and stated limits behind the repository check scripts whose headers state only their contract. |
 | [reported-failure-cause.md](reported-failure-cause.md) | Decided on the maintainer's ruling and built; the two shapes declined, and what the block holds apart that escaping does not. |
-| [rule-set-citation-verdict.md](rule-set-citation-verdict.md) | Resolved - built. |
+| [rule-set-citation-verdict.md](rule-set-citation-verdict.md) | Resolved - built, then withdrawn on the maintainer's ruling removing the citation. |
 | [sftp-adapter-state-machine.md](sftp-adapter-state-machine.md) | Shipped. |
 | [shared-consent-summary.md](shared-consent-summary.md) | Shipped. |
 | [signing-identity-custody.md](signing-identity-custody.md) | Decided and built, by a 3-panelist design panel converging 3-0. |

@@ -100,7 +100,7 @@ const PROVISION_ROWS = [
   },
 ];
 
-const RECORD_VERSION = "alcove-exchange-record/v10";
+const RECORD_VERSION = "alcove-exchange-record/v11";
 
 let work: string;
 let originalCwd: string;

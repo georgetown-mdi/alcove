@@ -1535,7 +1535,7 @@ function recordFilesIn(folder: string): string[] {
 }
 
 const sampleRecord: ExchangeRecord = {
-  version: "alcove-exchange-record/v10",
+  version: "alcove-exchange-record/v11",
   outcome: "completed",
   certificateMismatchObserved: false,
   createdAt: "2026-01-02T03:04:05.000Z",

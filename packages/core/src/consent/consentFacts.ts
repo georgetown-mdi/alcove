@@ -715,20 +715,6 @@ export function builtInRuleChoiceStatement(choice: PrecisionFloor): string {
 }
 
 /**
- * The caveat a surface reading a filed exchange record (the disclosure accounting
- * screen and its CSV) renders beside the rule-set citation. A record always pairs
- * the citation with the writing party's verdict (docs/spec/EXCHANGE_RECORD.md), so
- * one sentence pointing at that verdict serves all three verdicts.
- */
-export const RECORDED_LINKAGE_RULE_SET_CAVEAT =
-  "This citation is the authoring party's own declaration, recorded as " +
-  "written. What Alcove could check about it -- whether these names resolve " +
-  "to a rule set it ships, and whether the declared rules are drawn from that " +
-  "set -- is the writing party's verdict, recorded beside the citation in the " +
-  "exchange record itself. What the exchange held both parties to is the " +
-  "matching basis recorded beside it.";
-
-/**
  * The outbound-send line when the viewer's partner receives no result. The payload
  * step then sends an empty message, so listing a column set would overstate the
  * disclosure. Viewer-relative, so one sentence serves either side.

@@ -65,11 +65,7 @@ import {
   RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE,
 } from "@alcove/cli-contract";
 
-import {
-  readConfigLinkageSource,
-  warnOnLinkageRuleSetCitationDrift,
-  type ConfigLinkageSource,
-} from "../config";
+import { readConfigLinkageSource, type ConfigLinkageSource } from "../config";
 import { expandTilde } from "../fileUtils";
 import { checkInputFitsMainThreadHeap } from "../inputHeapCheck";
 import {
@@ -848,13 +844,10 @@ export function formatSignedRecordReport(
  * `signing.identity_file` -- so a config that defines no `linkage_terms` is
  * accepted rather than refused, reported here as no source at all. A path
  * that does not exist is a usage error (this command never auto-loads a
- * config). The rule-set citation is checked here, not in the reader shared
- * with `--partner-terms`: this party's config load has no standing to report
- * on the PARTNER's own citation of its rules.
+ * config).
  */
 function configFileSource(
   configFile: string | undefined,
-  log: { warn: (message: string) => void },
 ): ConfigLinkageSource | undefined {
   if (configFile === undefined) return undefined;
   const source = readConfigLinkageSource(expandTilde(configFile));
@@ -865,13 +858,6 @@ function configFileSource(
     throw keepOperatorSuppliedText(new UsageError(message.text), message);
   }
   if (source.status === "no-linkage-terms") return undefined;
-  warnOnLinkageRuleSetCitationDrift(
-    source.source.linkageTerms,
-    configFile,
-    log,
-    source.source.linkageTermsStanding,
-    "decline-to-reuse",
-  );
   return source.source;
 }
 
@@ -1350,7 +1336,7 @@ export async function handler(argv: Arguments): Promise<void> {
       }
     }
 
-    const localSource = configFileSource(configFile, log);
+    const localSource = configFileSource(configFile);
     // The flag governs this verification and the configuration's csv_delimiter
     // a verification given none, the precedence every command reading a CSV
     // applies: the files being verified are the ones that configuration's own

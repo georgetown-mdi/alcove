@@ -127,7 +127,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v10",
+        "version": "alcove-exchange-record/v11",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -269,7 +269,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v10",
+        "version": "alcove-exchange-record/v11",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -408,7 +408,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v10",
+        "version": "alcove-exchange-record/v11",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -554,7 +554,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v10",
+        "version": "alcove-exchange-record/v11",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -728,7 +728,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v10",
+        "version": "alcove-exchange-record/v11",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -909,7 +909,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v10",
+        "version": "alcove-exchange-record/v11",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -1088,7 +1088,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v10",
+        "version": "alcove-exchange-record/v11",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -1142,578 +1142,6 @@
           "localPayloadSent": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
           "partnerPayloadReceived": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI",
           "associationTable": "AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM"
-        }
-      }
-    },
-    {
-      "name": "cited-rule-set-contradicted",
-      "description": "The agreed terms cite both built-in rule sets over rules that are not those sets -- one field with no constraints and a key the set does not declare -- so governance carries the citation verbatim beside the writing party's own verdict on it, `contradicted` on each half. Verbatim is the point: the refuted claim stays in the record rather than being dropped, so the artifact states what was claimed as well as what this build found. Otherwise identical to no-data-payloads, so the pair pins both sides of the citation: present here, absent there, and absent by omission rather than by a null. The citation is part of the agreed terms, so it is folded into termsHash: this vector's hash differs from no-data-payloads' for that reason alone. The verdict is not -- it is written locally, after the hash, and never exchanged.",
-      "inputs": {
-        "localTerms": {
-          "version": "1.0.0",
-          "identity": "Party A",
-          "date": "2025-01-01",
-          "algorithm": "psi",
-          "linkageStrategy": "cascade",
-          "output": {
-            "expectsOutput": true,
-            "shareWithPartner": true
-          },
-          "deduplicate": false,
-          "linkageFields": [
-            {
-              "name": "ssn",
-              "type": "ssn"
-            }
-          ],
-          "linkageKeys": [
-            {
-              "name": "SSN",
-              "elements": [
-                {
-                  "field": "ssn"
-                }
-              ]
-            }
-          ],
-          "linkageRuleSet": {
-            "fieldSet": {
-              "name": "baseline-pii",
-              "version": "1.3.0"
-            },
-            "keySet": {
-              "name": "precision-ranked-rules",
-              "version": "2.5.0"
-            }
-          }
-        },
-        "partnerTerms": {
-          "version": "1.0.0",
-          "identity": "Party B",
-          "date": "2025-01-01",
-          "algorithm": "psi",
-          "linkageStrategy": "cascade",
-          "output": {
-            "expectsOutput": true,
-            "shareWithPartner": true
-          },
-          "deduplicate": false,
-          "linkageFields": [
-            {
-              "name": "ssn",
-              "type": "ssn"
-            }
-          ],
-          "linkageKeys": [
-            {
-              "name": "SSN",
-              "elements": [
-                {
-                  "field": "ssn"
-                }
-              ]
-            }
-          ],
-          "linkageRuleSet": {
-            "fieldSet": {
-              "name": "baseline-pii",
-              "version": "1.3.0"
-            },
-            "keySet": {
-              "name": "precision-ranked-rules",
-              "version": "2.5.0"
-            }
-          }
-        },
-        "contributedLinkageFields": ["ssn"],
-        "resultSize": 1,
-        "associationTable": [[0], [0]],
-        "localPayloadSent": {
-          "columns": [],
-          "rows": []
-        },
-        "partnerPayloadReceived": {
-          "columns": [],
-          "rows": []
-        },
-        "createdAt": "2026-01-02T03:04:05.000Z",
-        "outcome": "completed",
-        "certificateMismatchObserved": false,
-        "recordsExposed": 3
-      },
-      "randomness": {
-        "bindingNonce": "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA",
-        "salts": {
-          "localPayloadSent": "ISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISE",
-          "partnerPayloadReceived": "IiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiI",
-          "associationTable": "IyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyM"
-        }
-      },
-      "record": {
-        "version": "alcove-exchange-record/v10",
-        "createdAt": "2026-01-02T03:04:05.000Z",
-        "outcome": "completed",
-        "certificateMismatchObserved": false,
-        "termsHash": "cKbNbY5gHe9ywwzZqkxk-qcxVVC77eLwDFUWbVPiLsI",
-        "localIdentity": "Party A",
-        "partnerIdentity": "Party B",
-        "governance": {
-          "algorithm": "psi",
-          "matchingBasis": [
-            {
-              "name": "ssn",
-              "type": "ssn"
-            }
-          ],
-          "linkageRuleSet": {
-            "fieldSet": {
-              "name": "baseline-pii",
-              "version": "1.3.0"
-            },
-            "keySet": {
-              "name": "precision-ranked-rules",
-              "version": "2.5.0"
-            }
-          },
-          "linkageRuleSetVerdict": {
-            "fieldSet": "contradicted",
-            "keySet": "contradicted"
-          },
-          "payloadSent": [],
-          "payloadReceived": [],
-          "matching": {
-            "localDeduplicate": false,
-            "partnerDeduplicate": false,
-            "cardinality": "one-to-one"
-          }
-        },
-        "recordsExposed": 3,
-        "resultSize": 1,
-        "bindingNonce": "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA",
-        "commitments": {
-          "localPayloadSent": "jUWwgGtQ88gpTJo9L4xcRrtwSZTelZboHRIhgFaVN70",
-          "partnerPayloadReceived": "BFMEZNMQZcZxST4HtS-m7IffdmNxrnWQIe1pq-6fSKE",
-          "associationTable": "VmB9TWDUr_CNsom__Z9Gmv1GlDGt7DYaqGoK93ZI_z4"
-        }
-      },
-      "keys": {
-        "version": "alcove-exchange-keys/v2",
-        "salts": {
-          "localPayloadSent": "ISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISE",
-          "partnerPayloadReceived": "IiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiI",
-          "associationTable": "IyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyM"
-        }
-      }
-    },
-    {
-      "name": "cited-rule-set-consistent",
-      "description": "The mirror of cited-rule-set-contradicted: the same built-in citation over rules genuinely drawn from those sets -- the most precise built-in key and exactly the built-in fields it references -- so each half's verdict is `consistent`. A narrowed emission still counts as drawn from the set, which is what lets a run over an input file that cannot supply every key keep its citation. The pair pins that the verdict is computed from the declared rules rather than fixed by the presence of a citation.",
-      "inputs": {
-        "localTerms": {
-          "version": "1.0.0",
-          "identity": "Party A",
-          "date": "2025-01-01",
-          "algorithm": "psi",
-          "linkageStrategy": "cascade",
-          "output": {
-            "expectsOutput": true,
-            "shareWithPartner": true
-          },
-          "deduplicate": false,
-          "linkageFields": [
-            {
-              "name": "ssn",
-              "type": "ssn",
-              "constraints": {
-                "exclude": ["111111111", "123456789"],
-                "validOnly": true
-              }
-            },
-            {
-              "name": "last_name",
-              "type": "last_name",
-              "constraints": {
-                "affixesAllowed": false,
-                "allowedCharacters": "A-Z "
-              }
-            },
-            {
-              "name": "date_of_birth",
-              "type": "date_of_birth"
-            }
-          ],
-          "linkageKeys": [
-            {
-              "name": "SSN + LN + DOB",
-              "elements": [
-                {
-                  "field": "ssn"
-                },
-                {
-                  "field": "last_name"
-                },
-                {
-                  "field": "date_of_birth"
-                }
-              ]
-            }
-          ],
-          "linkageRuleSet": {
-            "fieldSet": {
-              "name": "baseline-pii",
-              "version": "1.3.0"
-            },
-            "keySet": {
-              "name": "precision-ranked-rules",
-              "version": "2.5.0"
-            }
-          }
-        },
-        "partnerTerms": {
-          "version": "1.0.0",
-          "identity": "Party B",
-          "date": "2025-01-01",
-          "algorithm": "psi",
-          "linkageStrategy": "cascade",
-          "output": {
-            "expectsOutput": true,
-            "shareWithPartner": true
-          },
-          "deduplicate": false,
-          "linkageFields": [
-            {
-              "name": "ssn",
-              "type": "ssn",
-              "constraints": {
-                "exclude": ["111111111", "123456789"],
-                "validOnly": true
-              }
-            },
-            {
-              "name": "last_name",
-              "type": "last_name",
-              "constraints": {
-                "affixesAllowed": false,
-                "allowedCharacters": "A-Z "
-              }
-            },
-            {
-              "name": "date_of_birth",
-              "type": "date_of_birth"
-            }
-          ],
-          "linkageKeys": [
-            {
-              "name": "SSN + LN + DOB",
-              "elements": [
-                {
-                  "field": "ssn"
-                },
-                {
-                  "field": "last_name"
-                },
-                {
-                  "field": "date_of_birth"
-                }
-              ]
-            }
-          ],
-          "linkageRuleSet": {
-            "fieldSet": {
-              "name": "baseline-pii",
-              "version": "1.3.0"
-            },
-            "keySet": {
-              "name": "precision-ranked-rules",
-              "version": "2.5.0"
-            }
-          }
-        },
-        "contributedLinkageFields": ["ssn", "last_name", "date_of_birth"],
-        "recordsExposed": 5,
-        "localPayloadSent": {
-          "columns": [],
-          "rows": []
-        },
-        "partnerPayloadReceived": {
-          "columns": [],
-          "rows": []
-        },
-        "createdAt": "2026-01-02T03:04:05.000Z",
-        "outcome": "completed",
-        "certificateMismatchObserved": false
-      },
-      "randomness": {
-        "bindingNonce": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-        "salts": {
-          "localPayloadSent": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
-          "partnerPayloadReceived": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI"
-        }
-      },
-      "record": {
-        "version": "alcove-exchange-record/v10",
-        "createdAt": "2026-01-02T03:04:05.000Z",
-        "outcome": "completed",
-        "certificateMismatchObserved": false,
-        "termsHash": "5RbvPYTv6D5-tx2KjR4cV2EXpI98clYsTxTJjQx9AgI",
-        "localIdentity": "Party A",
-        "partnerIdentity": "Party B",
-        "governance": {
-          "algorithm": "psi",
-          "matchingBasis": [
-            {
-              "name": "date_of_birth",
-              "type": "date_of_birth"
-            },
-            {
-              "name": "last_name",
-              "type": "last_name"
-            },
-            {
-              "name": "ssn",
-              "type": "ssn"
-            }
-          ],
-          "linkageRuleSet": {
-            "fieldSet": {
-              "name": "baseline-pii",
-              "version": "1.3.0"
-            },
-            "keySet": {
-              "name": "precision-ranked-rules",
-              "version": "2.5.0"
-            }
-          },
-          "linkageRuleSetVerdict": {
-            "fieldSet": "consistent",
-            "keySet": "consistent"
-          },
-          "payloadSent": [],
-          "payloadReceived": [],
-          "matching": {
-            "localDeduplicate": false,
-            "partnerDeduplicate": false,
-            "cardinality": "one-to-one"
-          }
-        },
-        "recordsExposed": 5,
-        "bindingNonce": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-        "commitments": {
-          "localPayloadSent": "ZjAhI8xuAUKaIaVMIR8_5eU_z-oIcRMabxNC7XzVjB0",
-          "partnerPayloadReceived": "R3s-GUkdPLHEgA-LpefV9cX4rjBJ58URhAo0OVi7DpI"
-        }
-      },
-      "keys": {
-        "version": "alcove-exchange-keys/v2",
-        "salts": {
-          "localPayloadSent": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
-          "partnerPayloadReceived": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI"
-        }
-      }
-    },
-    {
-      "name": "cited-rule-set-unchecked",
-      "description": "The third verdict: the agreed terms cite a rule set this build does not ship, so neither half resolves to anything to compare against and each verdict is `unchecked`. The declared rules are byte-identical to cited-rule-set-consistent's -- the built-in fields and the most precise built-in key -- which is what pins that a half is resolved by the cited NAME and content version rather than by the rules beside it: the same declarations reach `consistent` under a citation naming the shipped set and `unchecked` under one this build cannot resolve. The citation is recorded verbatim either way, so a reader can tell a name that was checked and matched from one nothing was compared against.",
-      "inputs": {
-        "localTerms": {
-          "version": "1.0.0",
-          "identity": "Party A",
-          "date": "2025-01-01",
-          "algorithm": "psi",
-          "linkageStrategy": "cascade",
-          "output": {
-            "expectsOutput": true,
-            "shareWithPartner": true
-          },
-          "deduplicate": false,
-          "linkageFields": [
-            {
-              "name": "ssn",
-              "type": "ssn",
-              "constraints": {
-                "exclude": ["111111111", "123456789"],
-                "validOnly": true
-              }
-            },
-            {
-              "name": "last_name",
-              "type": "last_name",
-              "constraints": {
-                "affixesAllowed": false,
-                "allowedCharacters": "A-Z "
-              }
-            },
-            {
-              "name": "date_of_birth",
-              "type": "date_of_birth"
-            }
-          ],
-          "linkageKeys": [
-            {
-              "name": "SSN + LN + DOB",
-              "elements": [
-                {
-                  "field": "ssn"
-                },
-                {
-                  "field": "last_name"
-                },
-                {
-                  "field": "date_of_birth"
-                }
-              ]
-            }
-          ],
-          "linkageRuleSet": {
-            "fieldSet": {
-              "name": "county-pii",
-              "version": "2.0.0"
-            },
-            "keySet": {
-              "name": "county-keys",
-              "version": "2.0.0"
-            }
-          }
-        },
-        "partnerTerms": {
-          "version": "1.0.0",
-          "identity": "Party B",
-          "date": "2025-01-01",
-          "algorithm": "psi",
-          "linkageStrategy": "cascade",
-          "output": {
-            "expectsOutput": true,
-            "shareWithPartner": true
-          },
-          "deduplicate": false,
-          "linkageFields": [
-            {
-              "name": "ssn",
-              "type": "ssn",
-              "constraints": {
-                "exclude": ["111111111", "123456789"],
-                "validOnly": true
-              }
-            },
-            {
-              "name": "last_name",
-              "type": "last_name",
-              "constraints": {
-                "affixesAllowed": false,
-                "allowedCharacters": "A-Z "
-              }
-            },
-            {
-              "name": "date_of_birth",
-              "type": "date_of_birth"
-            }
-          ],
-          "linkageKeys": [
-            {
-              "name": "SSN + LN + DOB",
-              "elements": [
-                {
-                  "field": "ssn"
-                },
-                {
-                  "field": "last_name"
-                },
-                {
-                  "field": "date_of_birth"
-                }
-              ]
-            }
-          ],
-          "linkageRuleSet": {
-            "fieldSet": {
-              "name": "county-pii",
-              "version": "2.0.0"
-            },
-            "keySet": {
-              "name": "county-keys",
-              "version": "2.0.0"
-            }
-          }
-        },
-        "contributedLinkageFields": ["ssn", "last_name", "date_of_birth"],
-        "recordsExposed": 5,
-        "localPayloadSent": {
-          "columns": [],
-          "rows": []
-        },
-        "partnerPayloadReceived": {
-          "columns": [],
-          "rows": []
-        },
-        "createdAt": "2026-01-02T03:04:05.000Z",
-        "outcome": "completed",
-        "certificateMismatchObserved": false
-      },
-      "randomness": {
-        "bindingNonce": "MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA",
-        "salts": {
-          "localPayloadSent": "MTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTE",
-          "partnerPayloadReceived": "MjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjI"
-        }
-      },
-      "record": {
-        "version": "alcove-exchange-record/v10",
-        "createdAt": "2026-01-02T03:04:05.000Z",
-        "outcome": "completed",
-        "certificateMismatchObserved": false,
-        "termsHash": "3OHhRwEZ7tBpWeBAg2_pjQDfOpZZ5ysQnZ050rUbyNk",
-        "localIdentity": "Party A",
-        "partnerIdentity": "Party B",
-        "governance": {
-          "algorithm": "psi",
-          "matchingBasis": [
-            {
-              "name": "date_of_birth",
-              "type": "date_of_birth"
-            },
-            {
-              "name": "last_name",
-              "type": "last_name"
-            },
-            {
-              "name": "ssn",
-              "type": "ssn"
-            }
-          ],
-          "linkageRuleSet": {
-            "fieldSet": {
-              "name": "county-pii",
-              "version": "2.0.0"
-            },
-            "keySet": {
-              "name": "county-keys",
-              "version": "2.0.0"
-            }
-          },
-          "linkageRuleSetVerdict": {
-            "fieldSet": "unchecked",
-            "keySet": "unchecked"
-          },
-          "payloadSent": [],
-          "payloadReceived": [],
-          "matching": {
-            "localDeduplicate": false,
-            "partnerDeduplicate": false,
-            "cardinality": "one-to-one"
-          }
-        },
-        "recordsExposed": 5,
-        "bindingNonce": "MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA",
-        "commitments": {
-          "localPayloadSent": "JqJEtgOC21PF80UAMuoxKDEfDIVApb8CqY6aB88zAPo",
-          "partnerPayloadReceived": "dwnewIX3-ikV9Kb0FHPAy_nVUSMkfxBHiEes5QLkgJY"
-        }
-      },
-      "keys": {
-        "version": "alcove-exchange-keys/v2",
-        "salts": {
-          "localPayloadSent": "MTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTE",
-          "partnerPayloadReceived": "MjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjI"
         }
       }
     },
@@ -1801,7 +1229,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v10",
+        "version": "alcove-exchange-record/v11",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -1968,7 +1396,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v10",
+        "version": "alcove-exchange-record/v11",
         "createdAt": "2026-01-02T03:04:06.000Z",
         "outcome": "receipt-swap-terminated",
         "certificateMismatchObserved": false,
@@ -2152,7 +1580,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v10",
+        "version": "alcove-exchange-record/v11",
         "createdAt": "2026-01-02T03:04:07.000Z",
         "outcome": "receipt-swap-terminated",
         "certificateMismatchObserved": true,
@@ -2349,7 +1777,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v10",
+        "version": "alcove-exchange-record/v11",
         "createdAt": "2026-02-03T14:20:00.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -2549,7 +1977,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v10",
+        "version": "alcove-exchange-record/v11",
         "createdAt": "2026-02-03T14:20:01.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
@@ -2749,7 +2177,7 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v10",
+        "version": "alcove-exchange-record/v11",
         "createdAt": "2026-02-04T08:45:00.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,

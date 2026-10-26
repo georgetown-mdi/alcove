@@ -22,7 +22,6 @@ import {
   MAX_PAYLOAD_ENTRIES,
   MAX_TEXT_LENGTH,
 } from "../config/linkageTermsSchema.js";
-import { checkLinkageRuleSetCitation } from "../defaults/builtInLinkageTerms.js";
 import { chainDetailCauses } from "../errors.js";
 import { termsResolvingPayloadReceive } from "../config/recurringTerms.js";
 import { boundedArray } from "../utils/boundedArray.js";
@@ -53,7 +52,7 @@ import type { Algorithm, AssociationTable } from "../types.js";
  * rejects any other. It moves with the field set and with the bytes a field
  * is computed over. See docs/spec/EXCHANGE_RECORD.md#record-fields.
  */
-export const EXCHANGE_RECORD_VERSION = "alcove-exchange-record/v10";
+export const EXCHANGE_RECORD_VERSION = "alcove-exchange-record/v11";
 
 /** The one recognized format version for v2 {@link VerificationKeys}. */
 export const EXCHANGE_KEYS_VERSION = "alcove-exchange-keys/v2";
@@ -196,29 +195,6 @@ interface RecordLinkageField {
   type: string;
 }
 
-/** The named rule set the agreed terms cited, copied from them: a citation,
- * not an account of the keys that ran. See
- * docs/spec/EXCHANGE_RECORD.md#the-rule-set-citation. */
-export interface RecordLinkageRuleSet {
-  /** Name and content version of the set the linkage fields were cited to. */
-  fieldSet: { name: string; version: string };
-  /** Name and content version of the set the linkage keys were cited to. */
-  keySet: { name: string; version: string };
-}
-
-/**
- * The writing party's own verdict, per half, on whether the declared fields
- * and keys are drawn from the cited sets. Build-relative and not compared
- * across parties; the citation is kept verbatim whatever it says. See
- * docs/spec/EXCHANGE_RECORD.md#the-writing-partys-verdict.
- */
-interface RecordLinkageRuleSetVerdict {
-  /** Verdict on the set the linkage fields were cited to. */
-  fieldSet: "consistent" | "contradicted" | "unchecked";
-  /** Verdict on the set the linkage keys were cited to. */
-  keySet: "consistent" | "contradicted" | "unchecked";
-}
-
 /**
  * Readable governance metadata: names, categories, descriptions, and
  * references, never a value. Both parties' blocks agree except for payload
@@ -233,10 +209,6 @@ interface ExchangeRecordGovernance {
   /** The fields the linkage keys reference (an element's field or a key
    * condition's), once each, sorted by `name` in UTF-16 code units. */
   matchingBasis: RecordLinkageField[];
-  /** Omitted when the terms cited no set. */
-  linkageRuleSet?: RecordLinkageRuleSet;
-  /** Present exactly when {@link linkageRuleSet} is. */
-  linkageRuleSetVerdict?: RecordLinkageRuleSetVerdict;
   /** The columns this party committed as sent; `[]` when none. */
   payloadSent: RecordPayloadColumn[];
   /** The columns this party committed as received; `[]` when none. */
@@ -385,31 +357,6 @@ const RecordLinkageFieldSchema: z.ZodType<RecordLinkageField> = z.object({
   type: z.string().min(1).check(maxCodeUnits(MAX_NAME_LENGTH)),
 });
 
-// `version` is open, not a semver pattern, for the reason `type` is above.
-const RecordLinkageSetIdentitySchema = z.object({
-  name: z.string().min(1).check(maxCodeUnits(MAX_NAME_LENGTH)),
-  version: z.string().min(1).check(maxCodeUnits(MAX_NAME_LENGTH)),
-});
-
-const RecordLinkageRuleSetSchema: z.ZodType<RecordLinkageRuleSet> = z.object({
-  fieldSet: RecordLinkageSetIdentitySchema,
-  keySet: RecordLinkageSetIdentitySchema,
-});
-
-// Closed, like `algorithm`: an unknown verdict is a claim this reader cannot
-// interpret.
-const RecordLinkageRuleSetVerdictValueSchema = z.enum([
-  "consistent",
-  "contradicted",
-  "unchecked",
-]);
-
-const RecordLinkageRuleSetVerdictSchema: z.ZodType<RecordLinkageRuleSetVerdict> =
-  z.object({
-    fieldSet: RecordLinkageRuleSetVerdictValueSchema,
-    keySet: RecordLinkageRuleSetVerdictValueSchema,
-  });
-
 // Closed, like `algorithm`.
 const ResolvedMatchingSchema: z.ZodType<ResolvedMatching> = z.object({
   localDeduplicate: z.boolean(),
@@ -417,8 +364,8 @@ const ResolvedMatchingSchema: z.ZodType<ResolvedMatching> = z.object({
   cardinality: z.enum(LINKAGE_CARDINALITIES),
 });
 
-const ExchangeRecordGovernanceSchema: z.ZodType<ExchangeRecordGovernance> = z
-  .object({
+const ExchangeRecordGovernanceSchema: z.ZodType<ExchangeRecordGovernance> =
+  z.object({
     // Closed, unlike `type`: an unknown algorithm changes what the record
     // discloses.
     algorithm: AlgorithmSchema,
@@ -428,8 +375,6 @@ const ExchangeRecordGovernanceSchema: z.ZodType<ExchangeRecordGovernance> = z
       MAX_LINKAGE_ENTRIES,
       `matchingBasis must not exceed ${MAX_LINKAGE_ENTRIES} entries`,
     ),
-    linkageRuleSet: RecordLinkageRuleSetSchema.optional(),
-    linkageRuleSetVerdict: RecordLinkageRuleSetVerdictSchema.optional(),
     payloadSent: boundedArray(
       RecordPayloadColumnSchema,
       MAX_PAYLOAD_ENTRIES,
@@ -441,17 +386,7 @@ const ExchangeRecordGovernanceSchema: z.ZodType<ExchangeRecordGovernance> = z
       `payloadReceived must not exceed ${MAX_PAYLOAD_ENTRIES} entries`,
     ),
     matching: ResolvedMatchingSchema,
-  })
-  .refine(
-    (governance) =>
-      (governance.linkageRuleSet === undefined) ===
-      (governance.linkageRuleSetVerdict === undefined),
-    {
-      message:
-        "linkageRuleSetVerdict must be present exactly when linkageRuleSet is",
-      path: ["linkageRuleSetVerdict"],
-    },
-  );
+  });
 
 const outcomeSchema = z.enum(EXCHANGE_RECORD_OUTCOMES);
 
@@ -546,12 +481,12 @@ export interface BuiltExchangeRecord {
 }
 
 /**
- * The record's governance metadata. The algorithm, agreement, citation, and
- * matching basis come from this party's agreed terms, the verdict from this
- * build's rule sets, the matching from both terms, and the payload column
- * sets from the committed payloads, which are what flowed (the dictionary
- * adds descriptions only). A basis naming a field a key element reads and
- * the run contributed none of is refused, not narrowed. See
+ * The record's governance metadata. The algorithm, agreement, and matching
+ * basis come from this party's agreed terms, the matching from both terms,
+ * and the payload column sets from the committed payloads, which are what
+ * flowed (the dictionary adds descriptions only). A basis naming a field a
+ * key element reads and the run contributed none of is refused, not
+ * narrowed. See
  * docs/spec/EXCHANGE_RECORD.md#the-matching-basis-against-what-the-run-contributed.
  */
 function governanceFromTerms(
@@ -618,27 +553,6 @@ function governanceFromTerms(
       },
     );
 
-  const citation = terms.linkageRuleSet;
-  const citedRuleSet: Pick<
-    ExchangeRecordGovernance,
-    "linkageRuleSet" | "linkageRuleSetVerdict"
-  > =
-    citation === undefined
-      ? {}
-      : {
-          linkageRuleSet: {
-            fieldSet: {
-              name: citation.fieldSet.name,
-              version: citation.fieldSet.version,
-            },
-            keySet: {
-              name: citation.keySet.name,
-              version: citation.keySet.version,
-            },
-          },
-          linkageRuleSetVerdict: checkLinkageRuleSetCitation(citation, terms),
-        };
-
   return {
     algorithm: terms.algorithm,
     ...(terms.legalAgreement !== undefined
@@ -651,7 +565,6 @@ function governanceFromTerms(
         }
       : {}),
     matchingBasis,
-    ...citedRuleSet,
     payloadSent: describeCommitted(
       localPayloadSent.columns,
       terms.payload?.send,
