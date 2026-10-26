@@ -394,7 +394,6 @@ export type {
 // Named for the same reason: ServerProvision's mode field is typed by it.
 export type { ServerProvisionMode } from "./config/connection";
 export {
-  BUILT_IN_LINKAGE_RULE_SETS,
   CONTACT_AND_LOCATION_FIELD_TYPES,
   DEFAULT_LINKAGE_RULE_SET,
   DEFAULT_PRECISION_FLOOR_SELECTION,
@@ -402,15 +401,11 @@ export {
   authoredLinkageFields,
   builtInRuleChoiceOf,
   encodeForComparison,
-  findBuiltInLinkageRuleSet,
   getDefaultLinkageTerms,
-  isDrawnFromLinkageRuleSet,
   linkageKeysAtPrecisionFloor,
-  linkageRuleSetReferenceFor,
   linkageTermsFromRuleSet,
   precisionFloorLabel,
   precisionFloorSelectionStatement,
-  resolveLinkageRuleSetCitation,
 } from "./defaults/builtInLinkageTerms";
 export type {
   BuiltInLinkageRuleSet,
@@ -418,7 +413,6 @@ export type {
   PrecisionBand,
   PrecisionFloor,
   PrecisionFloorSelection,
-  LinkageRuleSetCitationVerdict,
 } from "./defaults/builtInLinkageTerms";
 export { linkageKeyIsLessCertain } from "./consent/lessCertainKey";
 export {
@@ -505,8 +499,6 @@ export type {
   LinkageKey,
   LinkageKeyCondition,
   LinkageKeyElement,
-  LinkageRuleSetReference,
-  LinkageSetIdentity,
   LinkageStrategy,
   LinkageTerms,
   Output,

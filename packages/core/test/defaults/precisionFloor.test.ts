@@ -2,19 +2,14 @@ import { describe, expect, test } from "vitest";
 
 import * as core from "../../src/main";
 import {
-  BUILT_IN_LINKAGE_RULE_SETS,
   DEFAULT_LINKAGE_RULE_SET,
   DEFAULT_PRECISION_FLOOR_SELECTION,
   PRECISION_FLOORS,
-  checkLinkageRuleSetCitation,
-  findBuiltInLinkageRuleSet,
   getDefaultLinkageTerms,
   linkageKeysAtPrecisionFloor,
-  linkageRuleSetReferenceFor,
   linkageTermsFromRuleSet,
   precisionFloorLabel,
   precisionFloorSelectionStatement,
-  resolveLinkageRuleSetCitation,
 } from "../../src/defaults/builtInLinkageTerms";
 import { inferMetadata } from "../../src/config/metadata";
 import { linkageKeyIsLessCertain } from "../../src/consent/lessCertainKey";
@@ -312,7 +307,7 @@ describe("the geography rules", () => {
     ]);
   });
 
-  test("cite the catalog over the subset a file with these columns supplies", () => {
+  test("declare the fields a file with these columns supplies", () => {
     const terms = linkageTermsFromRuleSet(catalog, "Party A", withGeography);
     expect(terms.linkageFields.map((field) => field.name)).toStrictEqual([
       "first_name",
@@ -322,10 +317,6 @@ describe("the geography rules", () => {
       "state",
       "county",
     ]);
-    expect(linkageRuleSetReferenceFor(terms)).toStrictEqual(catalog.reference);
-    expect(checkLinkageRuleSetCitation(catalog.reference, terms)).toStrictEqual(
-      { fieldSet: "consistent", keySet: "consistent" },
-    );
   });
 });
 
@@ -438,12 +429,9 @@ describe("the street number rule", () => {
       "state",
       "county",
     ]);
-    expect(checkLinkageRuleSetCitation(catalog.reference, terms)).toStrictEqual(
-      { fieldSet: "consistent", keySet: "consistent" },
-    );
   });
 
-  test("cites the catalog over the subset a file with a street number supplies", () => {
+  test("declares the fields a file with a street number supplies", () => {
     const terms = linkageTermsFromRuleSet(catalog, "Party A", withStreetNumber);
     expect(terms.linkageFields.map((field) => field.name)).toStrictEqual([
       "first_name",
@@ -454,10 +442,6 @@ describe("the street number rule", () => {
       "county",
       "street_number",
     ]);
-    expect(linkageRuleSetReferenceFor(terms)).toStrictEqual(catalog.reference);
-    expect(checkLinkageRuleSetCitation(catalog.reference, terms)).toStrictEqual(
-      { fieldSet: "consistent", keySet: "consistent" },
-    );
   });
 });
 
@@ -469,105 +453,6 @@ describe("the quick exchange's selection", () => {
         linkageKeysAtPrecisionFloor(catalog, DEFAULT_PRECISION_FLOOR_SELECTION),
       ),
     );
-  });
-});
-
-describe("the citation", () => {
-  test("is absent from the terms, while the catalog keeps its names and versions", () => {
-    const terms = linkageTermsFromRuleSet(catalog, "Party A", undefined, {
-      floor: 99,
-    });
-    expect(terms).not.toHaveProperty("linkageRuleSet");
-    expect(catalog.reference).toStrictEqual({
-      fieldSet: { name: "baseline-pii", version: "1.3.0" },
-      keySet: { name: "precision-ranked-rules", version: "2.5.0" },
-    });
-  });
-
-  test.each([
-    ["1.2.0", "2.1.0"],
-    ["1.1.0", "2.0.0"],
-  ])(
-    "of the previous versions %s and %s resolves to no set, and is unchecked",
-    (fieldVersion, keyVersion) => {
-      const previous = {
-        fieldSet: { name: "baseline-pii", version: fieldVersion },
-        keySet: { name: "precision-ranked-rules", version: keyVersion },
-      };
-      const terms = linkageTermsFromRuleSet(
-        catalog,
-        "Party A",
-        inferMetadata(["ssn", "first_name", "last_name", "dob"], []),
-      );
-      expect(findBuiltInLinkageRuleSet(previous)).toBeUndefined();
-      expect(resolveLinkageRuleSetCitation(previous)).toStrictEqual({
-        linkageFields: undefined,
-        linkageKeys: undefined,
-      });
-      expect(checkLinkageRuleSetCitation(previous, terms)).toStrictEqual({
-        fieldSet: "unchecked",
-        keySet: "unchecked",
-      });
-    },
-  );
-
-  test("is consistent over the subset of a floor's rules a file supplies", () => {
-    const metadata = inferMetadata(["first_name", "last_name", "dob"], []);
-    const terms = linkageTermsFromRuleSet(
-      catalog,
-      "Party A",
-      metadata,
-      DEFAULT_PRECISION_FLOOR_SELECTION,
-    );
-    expect(terms.linkageKeys.length).toBeGreaterThan(0);
-    expect(terms.linkageKeys.length).toBeLessThan(catalog.linkageKeys.length);
-    expect(linkageRuleSetReferenceFor(terms)).toStrictEqual(catalog.reference);
-    expect(checkLinkageRuleSetCitation(catalog.reference, terms)).toStrictEqual(
-      { fieldSet: "consistent", keySet: "consistent" },
-    );
-  });
-
-  test("is not earned by rules edited outside the catalog", () => {
-    const terms = getDefaultLinkageTerms("Party A");
-    const edited = {
-      ...terms,
-      linkageKeys: [
-        ...terms.linkageKeys,
-        {
-          name: "FN + EMAIL",
-          elements: [{ field: "first_name" }, { field: "email_address" }],
-        },
-      ],
-    };
-    expect(linkageRuleSetReferenceFor(edited)).toBeUndefined();
-    expect(checkLinkageRuleSetCitation(catalog.reference, edited).keySet).toBe(
-      "contradicted",
-    );
-  });
-});
-
-describe("the registry", () => {
-  test("holds the catalog alone", () => {
-    expect(BUILT_IN_LINKAGE_RULE_SETS).toStrictEqual([
-      DEFAULT_LINKAGE_RULE_SET,
-    ]);
-  });
-
-  test("resolves no other version of the catalog's field set", () => {
-    const otherFieldVersion = {
-      fieldSet: { name: catalog.reference.fieldSet.name, version: "1.0.0" },
-      keySet: catalog.reference.keySet,
-    };
-    expect(findBuiltInLinkageRuleSet(otherFieldVersion)).toBeUndefined();
-    expect(
-      resolveLinkageRuleSetCitation(otherFieldVersion).linkageFields,
-    ).toBeUndefined();
-    expect(
-      checkLinkageRuleSetCitation(
-        otherFieldVersion,
-        getDefaultLinkageTerms("Party A"),
-      ),
-    ).toStrictEqual({ fieldSet: "unchecked", keySet: "consistent" });
   });
 });
 
@@ -584,6 +469,21 @@ describe("the guided opt-in offers", () => {
       "email_address",
       "zip_code",
     ]);
+  });
+});
+
+describe("the rule-set citation", () => {
+  test("is retired from core", () => {
+    for (const retired of [
+      "BUILT_IN_LINKAGE_RULE_SETS",
+      "checkLinkageRuleSetCitation",
+      "findBuiltInLinkageRuleSet",
+      "isDrawnFromLinkageRuleSet",
+      "linkageRuleSetReferenceFor",
+      "resolveLinkageRuleSetCitation",
+      "ruleSetCitation",
+    ])
+      expect(Object.keys(core)).not.toContain(retired);
   });
 });
 

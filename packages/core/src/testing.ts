@@ -209,7 +209,6 @@ export {
   partnerOriginTextList,
   PARTNER_LABELLED_VALUE_BUDGET,
 } from "./utils/partnerOriginText.js";
-export { DEFAULT_LINKAGE_KEY_SET_NAME } from "./defaults/builtInLinkageTerms.js";
 export { DEDUPLICATE_IMPLEMENTED_BY_STRATEGY } from "./linkageTermsPolicy.js";
 export {
   MAX_PAYLOAD_ENTRIES,

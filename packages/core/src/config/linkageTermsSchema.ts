@@ -1004,30 +1004,6 @@ export const LinkageStrategySchema: z.ZodType<LinkageStrategy> = z.enum([
   "single-pass",
 ]);
 
-// --- Linkage rule set --------------------------------------------------------
-
-/**
- * A named, versioned artifact the linkage rules were drawn from. Its `version`
- * versions the artifact's content, unrelated to `LinkageTerms.version`.
- */
-export interface LinkageSetIdentity {
-  /** Stable identifier of the set (e.g. `baseline-pii`). */
-  name: string;
-  /** Semver string versioning the set's content (e.g. `1.0.0`). */
-  version: string;
-}
-
-/**
- * The names and versions of a built-in rule set's two halves. No linkage terms
- * document holds one.
- */
-export interface LinkageRuleSetReference {
-  /** The set the linkage fields are drawn from. */
-  fieldSet: LinkageSetIdentity;
-  /** The set the linkage keys are drawn from. */
-  keySet: LinkageSetIdentity;
-}
-
 // --- Linkage Terms -----------------------------------------------------------
 
 /**

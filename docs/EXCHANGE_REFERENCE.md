@@ -53,18 +53,17 @@ Two kinds of value stay outside both rules, held to their length caps alone: the
 
 Not every exchange authors its own linkage fields and keys. A quick exchange, an invitation the web app creates from its defaults, and the template `alcove init` writes all fill them in for you, from the product's built-in rules. They are also where the web app's Advanced invite path starts, before you edit the keys.
 
-The built-in rules are two named artifacts, versioned separately:
+The built-in rules have two parts:
 
-- **`baseline-pii`, version `1.3.0`** -- the linkage **fields**: eleven PII elements, `ssn`, `ssn4`, `first_name`, `last_name`, `date_of_birth`, `phone_number`, `email_address`, `zip_code`, `state`, `county`, and `street_number`, each in its standardized form and with the constraints it holds. This is the substrate keys are built from, and it is general-purpose: it says which PII the built-in rules work from and how each element is cleaned, not what constitutes a match.
-- **`precision-ranked-rules`, version `2.5.0`** -- the linkage **keys**: the rules of the [linkage rule catalog](notes/linkage-rule-catalog.md), each in one of two bands, applied in the catalog's order: the highest-precision rules, then the rules broader matching adds. Earlier versions of both sets, and the earlier built-in rules they replace, are retired: a document or record citing one names a set this build does not ship, which each exchange record marks as unchecked.
+- The linkage **fields**: eleven PII elements, `ssn`, `ssn4`, `first_name`, `last_name`, `date_of_birth`, `phone_number`, `email_address`, `zip_code`, `state`, `county`, and `street_number`, each in its standardized form and with the constraints it holds. This is the substrate keys are built from, and it is general-purpose: it says which PII the built-in rules work from and how each element is cleaned, not what constitutes a match.
+- The linkage **keys**: the rules of the [linkage rule catalog](notes/linkage-rule-catalog.md), each in one of two bands, applied in the catalog's order: the highest-precision rules, then the rules broader matching adds.
 
-For an exchange that did not author its own, the key set is an upper bound on the rules that could have run, not the account of which did -- that account is the terms document's, below.
+For an exchange that did not author its own, the built-in keys are an upper bound on the rules that could have run, not the account of which did -- that account is the terms document's, below.
 
-What the names do and do not cover:
+What the built-in rules do and do not cover:
 
-- Between them they cover the linkage **fields** (with their constraints) and the linkage **keys** (with their bands), and nothing else. Each version versions its own artifact: an edit to a field or a constraint is a new version of `baseline-pii`, and an edit to the keys -- including a reordering, since the order is the order they are applied in, or a moved band -- is a new version of `precision-ranked-rules`.
-- They do not cover the rest of the terms document. `identity`, `date`, `algorithm`, `linkage_strategy`, `output`, and `deduplicate` are each party's own choice on the day, and two parties can run the same rules while differing on them.
-- A run matches on a **subset** of the key set, never on an addition to it: the keys a precision floor selects, less any key that matches on a field no column of your input file can supply. The terms document that travels with the exchange still records exactly which keys ran, so it -- not either name -- is the authoritative account of any one exchange.
+- They cover the linkage **fields** (with their constraints) and the linkage **keys** (with their bands), and nothing else. `identity`, `date`, `algorithm`, `linkage_strategy`, `output`, and `deduplicate` are each party's own choice on the day, and two parties can run the same rules while differing on them.
+- A run matches on a **subset** of the built-in keys, never on an addition to them: the keys a precision floor selects, less any key that matches on a field no column of your input file can supply. The terms document that travels with the exchange records exactly which keys ran, so it is the authoritative account of any one exchange.
 - Both parties' keys must match key for key. A quick exchange between two files where only one supplies a column a selected key needs, such as a ZIP code, stops before any data moves, naming the keys only one side declares. Remove the column from the file that has it, or agree terms through an invitation.
 
 The terms do not name the built-in rules; they hold the fields and keys themselves. Where the agreed keys are exactly the "highest precision" or "broader matching" keys, in their order, and the fields those keys read are the built-in fields, the accepting party's terms review says so, worked out from the keys and fields themselves.
@@ -100,7 +99,7 @@ Three of the rules broader matching adds match on a name and a date of birth wit
 
 A `zip` column must hold the ZIP code of the person's own address. A site's or agency's ZIP code, and likewise a staff or agency phone number, matches unrelated people served at that site. Give such a column `role: ignored` in `metadata`; in a quick exchange, which has no `metadata` block, remove it from the file, since a renamed header is sent to your partner.
 
-What the key set's validation rests on, the criticisms recorded against it, what a quick exchange rests on, and the rule for bumping either version are in [default-linkage-rule-set.md](notes/default-linkage-rule-set.md).
+What the built-in keys' validation rests on, the criticisms recorded against them, and what a quick exchange rests on are in [default-linkage-rule-set.md](notes/default-linkage-rule-set.md).
 
 ### `linkage_terms.version`
 
