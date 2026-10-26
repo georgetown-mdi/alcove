@@ -265,6 +265,22 @@ When the run starts, the console writes its `alcove.yaml` and `.alcove.key` into
 
 The review step offers no file-handling settings for a WebRTC exchange, and connection tuning without the check interval.
 
+### Checking the relay
+
+The console can run `alcove doctor relay` ([Checking the relay of a WebRTC exchange](CLI.md#checking-the-relay-of-a-webrtc-exchange)) over the `alcove.yaml` and `.alcove.key` in your working folder, to learn whether the TURN relay a run uses gives this container a relay address. It is offered in two places:
+
+- **Before a run**, under an open `webrtc` configuration that lists a TURN server.
+- **After an attempt that failed or that your partner did not join**, beside **Try again** and **Keep waiting**.
+
+It is never offered while a run is in progress, and the console refuses to start one while an exchange is running over those files or another check is running.
+
+- **Nothing is contacted until you start the check.** **Check the relay** first lists the hosts the check contacts, and the relays the configuration names that it does not contact and why, as `alcove doctor relay` prints them. **Start the check** then runs it. If `alcove.yaml` changed since the hosts were shown, the console contacts nothing and says so: review the hosts, then start the check again.
+- **The result is in the command line's words.** Each check is shown with what it found, what that means, and what to do, as `alcove doctor relay` prints them. Where the relay's registrar refused the key, the console says so without the registrar's own answer; run `alcove doctor relay` in the working folder to see it.
+- **The WebSocket relay is not checked.** Where the configuration names a WebSocket relay, the console says the check does not test it. A configuration whose only relay is a WebSocket relay is not offered the check.
+- **A relay that does not answer is reported after 30 seconds.** A check still running after 45 seconds is stopped, and the console says so.
+
+The endpoint contract is in [SERVER_JOB_API.md](spec/SERVER_JOB_API.md#checking-the-relay).
+
 ### Accepting a WebRTC invitation
 
 A WebRTC invitation from a partner in the Alcove web app, or from `alcove invite`, is accepted on the console as `alcove accept` accepts it: the console's `alcove` runs the exchange, not the browser tab.

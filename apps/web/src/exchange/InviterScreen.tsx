@@ -2236,6 +2236,9 @@ export function InviterScreen() {
                 openedRunsInPlace &&
                 transport === "webrtc"
               }
+              relayCheckOffered={
+                chosenRunMode === "server-job" && transport === "webrtc"
+              }
               jobId={jobId}
               reattached={reattached}
               reattaching={reattaching}

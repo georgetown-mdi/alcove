@@ -71,6 +71,7 @@ import { ConnectionTuningCard } from "@console/ConnectionTuningCard";
 import { EditedTermsNotice } from "@console/MountedConfigurationCard";
 import { ExchangeFilesCard } from "@console/ExchangeFilesCard";
 import { ReceiptsCard } from "@console/ReceiptsCard";
+import { RelayCheckPanel } from "@console/RelayCheckPanel";
 import { RunDiagnosticsCard } from "@console/RunDiagnosticsCard";
 import { SftpConnectionCard } from "@console/SftpConnectionCard";
 import { SharedFolderExposureNotice } from "@console/SharedFolderExposureNotice";
@@ -649,6 +650,7 @@ export function ReviewCreateSection({
                 <Text size="sm" c="dimmed">
                   {OPENED_SIGNALING_SERVER_NOTE}
                 </Text>
+                {openedRelayTurnUrls.length > 0 && <RelayCheckPanel />}
               </Stack>
             )}
             {transport === "webrtc" &&
