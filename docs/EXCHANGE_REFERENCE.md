@@ -464,7 +464,7 @@ The specification is in [PROTOCOL.md](spec/PROTOCOL.md#keys-with-a-missing-field
 
 *Type:* object  
 *Required:* no  
-*Consistency:* mandatory when both parties declare one
+*Consistency:* none
 
 The named rule set the `linkage_fields` and `linkage_keys` above were drawn from -- a citation, not a specification. It names two artifacts and their content versions: `field_set` for the fields, `key_set` for the keys. [The built-in rules](#the-built-in-rules) are the set Alcove ships.
 
@@ -488,7 +488,7 @@ What it does and does not determine:
 - **It is not vouched for.** Your partner's citation is text your partner wrote, and nothing resolves a partner's set name to content. The accepting party's terms review does not show it, and neither party's exchange record holds it.
 - **Omit it for rules you author yourself.** Rules you author can cite only the built-in set -- there is no way to select another -- and citing a set your rules were not drawn from misdescribes them. A terms document you import keeps the citation its own author wrote, including one naming a set Alcove does not ship; the web Advanced invite path drops that citation as soon as the rules stop being drawn from the set it names, exactly as it drops the built-in citation when you edit your way out of the rules it seeded from.
 - **A configuration file keeps the citation you edit past.** Editing `linkage_fields` or `linkage_keys` in `alcove.yaml` leaves the citation the file was written with in place, and nothing checks it against the rules the file now holds.
-- **Two parties that both cite a set must cite the same one**; a mismatch cancels the exchange before any data moves. A party that cites none is not held to the other's, which is what lets hand-authored rules meet an identical named set.
+- **It does not have to match your partner's.** The two parties' citations are not compared, so parties whose fields and keys agree exchange whatever sets they cite, or whether they cite one at all.
 
 ### `linkage_terms.legal_agreement`
 

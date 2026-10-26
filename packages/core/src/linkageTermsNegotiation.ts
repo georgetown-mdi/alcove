@@ -13,7 +13,6 @@ import {
   compatibilityMessage,
   quoteTermsValue,
   quoteTermsValueList,
-  ruleSetCitation,
 } from "./config/compatibilityMessage.js";
 import type { CompatibilityMessageFragment } from "./config/compatibilityMessage.js";
 import {
@@ -34,7 +33,6 @@ import { BIDI_CONTROL_PATTERN } from "./utils/nameControls.js";
 import { holdsPrivateKeyMaterial } from "./utils/sanitizeErrorForDisplay.js";
 import type {
   LinkageField,
-  LinkageRuleSetReference,
   LinkageTerms,
   Payload,
   PayloadColumn,
@@ -242,22 +240,6 @@ export function deriveAcceptedLinkageTerms(
 }
 
 // --- Compatibility -----------------------------------------------------------
-
-/**
- * A rule-set reference as one readable clause, keys first: the keys are the
- * specific artifact and the fields the substrate they are built from, so a
- * reader meets the narrower claim before the broader one.
- *
- * Each half renders through {@link ruleSetCitation}, which supplies the
- * shared grammar for the pair, so a name holding a space, this clause's own
- * " over ", or a delimiter of its own is treated as content of one value
- * rather than as structure the clause asserted.
- */
-export function describeRuleSet(
-  reference: LinkageRuleSetReference,
-): CompatibilityMessageFragment {
-  return compatibilityMessage`${ruleSetCitation(reference.keySet.name, reference.keySet.version)} over ${ruleSetCitation(reference.fieldSet.name, reference.fieldSet.version)}`;
-}
 
 // Sort by UTF-16 code unit, not localeCompare: this comparator decides the
 // element order and therefore the canonical bytes (canonical encoding
@@ -472,9 +454,9 @@ export interface TermsDelta {
 /**
  * Whether `delta` holds no difference {@link compareTerms} reports. A payload
  * column's `description` never makes one, since columns are compared by name.
- * The comparison skips a `linkageRuleSet` only one side states and the sent
- * columns where the partner states no `payload.receive`, so an empty delta
- * does not mean adopting the partner's terms changes nothing:
+ * The comparison skips a `linkageRuleSet` and the sent columns where the
+ * partner states no `payload.receive`, so an empty delta does not mean
+ * adopting the partner's terms changes nothing:
  * {@link changedPartnerBoundTerms} answers that.
  */
 export function termsDeltaIsEmpty(delta: TermsDelta): boolean {
@@ -560,7 +542,6 @@ export type TermsDifferenceKind =
   | "output"
   | "linkage-fields"
   | "linkage-keys"
-  | "linkage-rule-set"
   | "legal-agreement"
   | "payload"
   | "deduplicate";
@@ -574,7 +555,6 @@ const TERMS_DIFFERENCE_NAMES: Readonly<
   output: compatibilityMessage`output`,
   "linkage-fields": compatibilityMessage`linkage fields`,
   "linkage-keys": compatibilityMessage`linkage keys`,
-  "linkage-rule-set": compatibilityMessage`linkage rule set`,
   "legal-agreement": compatibilityMessage`legal agreement`,
   payload: compatibilityMessage`payload columns`,
   deduplicate: compatibilityMessage`deduplicate`,
@@ -754,10 +734,9 @@ export function compareTerms(
   const warnings: CompatibilityMessageFragment[] = [];
 
   // Both arrays below answer the same threat: a mutually-distrusting
-  // partner controls reference/purpose/set/column names, and controls them
-  // on the side these messages call "yours" too, since
-  // deriveAcceptedLinkageTerms adopts the inviter's legalAgreement and
-  // linkageRuleSet verbatim.
+  // partner controls reference/purpose/column names, and controls them on
+  // the side these messages call "yours" too, since
+  // deriveAcceptedLinkageTerms adopts the inviter's legalAgreement verbatim.
   //
   // DELIMITING is applied here, at composition, to every value either list
   // names (config/compatibilityMessage.ts). ESCAPING stays assigned to one
@@ -927,43 +906,6 @@ export function compareTerms(
         compatibilityMessage`keys`,
       )}`,
     );
-  }
-
-  // The rule-set citation, checked only where BOTH parties declare one. It
-  // names rules the two documents already had to agree on field by field
-  // and key by key, so a disagreement here is a disagreement about the NAME
-  // of matching content -- which still cancels, so two parties never hold
-  // different names for one set of rules. Skipped where either party
-  // declares none: a hand-authored document has no citation, and holding it
-  // to the partner's would refuse an exchange whose rules match exactly.
-  // Compared by canonical form, like the fields and keys above. The set
-  // names are delimited by describeRuleSet, and the values inside those
-  // delimiters stay raw for the same reason the legal-agreement mismatches
-  // below are: an error is escaped once where it is shown.
-  if (
-    local.linkageRuleSet !== undefined &&
-    partner.linkageRuleSet !== undefined
-  ) {
-    const localRuleSet = canonicalOrError(
-      local.linkageRuleSet,
-      "linkage-rule-set",
-      compatibilityMessage`your linkage rule set`,
-    );
-    const partnerRuleSet = canonicalOrError(
-      partner.linkageRuleSet,
-      "linkage-rule-set",
-      compatibilityMessage`your partner's linkage rule set`,
-    );
-    if (
-      localRuleSet !== null &&
-      partnerRuleSet !== null &&
-      localRuleSet !== partnerRuleSet
-    ) {
-      differ(
-        "linkage-rule-set",
-        compatibilityMessage`linkage rule set mismatch: yours names ${describeRuleSet(local.linkageRuleSet)}, your partner's names ${describeRuleSet(partner.linkageRuleSet)}`,
-      );
-    }
   }
 
   if (
