@@ -952,27 +952,17 @@ test("withProvisionedServerAddress keeps a stated pin when the answer returns no
   ).toBe(STATED_PIN);
 });
 
-test("withProvisionedServerAddress refuses a returned fingerprint for a webrtc connection", () => {
+test("withProvisionedServerAddress writes no fingerprint into a webrtc connection", () => {
   const connection = {
     channel: "webrtc" as const,
     role: "inviter" as const,
     server: { provision: createProvision },
   };
-  let err: unknown;
-  try {
-    withProvisionedServerAddress(connection, {
-      host: "peers-1.example.org",
-      hostKeyFingerprint: HOST_KEY_PIN,
-    });
-  } catch (raised) {
-    err = raised;
-  }
-  expect(err).toBeInstanceOf(UsageError);
-  const shown = rendered(err);
-  expect(shown).toContain(
-    "the provisioning endpoint at api.example.org:443 answered with a " +
-      "host_key_fingerprint for a webrtc connection",
-  );
-  expect(shown).not.toContain(HOST_KEY_PIN);
-  expect(shown).not.toContain("path-token");
+  const result = withProvisionedServerAddress(connection, {
+    host: "peers-1.example.org",
+    hostKeyFingerprint: HOST_KEY_PIN,
+  });
+  expect(result.server).toHaveProperty("host", "peers-1.example.org");
+  expect(result.server).not.toHaveProperty("hostKeyFingerprint");
+  expect(JSON.stringify(result)).not.toContain(HOST_KEY_PIN);
 });

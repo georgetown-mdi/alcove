@@ -545,11 +545,6 @@ for (const [branch, render, firstPartyStep] of REFUSAL_BRANCHES) {
   });
 }
 
-// Redaction at the composition site is a convention over every server- and
-// partner-controlled fragment, kept whether or not the partition already
-// contains the fragment's reach. The configured host is where a sliced key can
-// still arrive on these refusals -- on the acceptor route it is copied verbatim
-// out of the partner's invitation endpoint -- and no armor of it ever renders.
 test("the host-key fingerprint a create-mode provisioning answer returns is the pin the connection enforces", async () => {
   const createdKey = hostKeyBlob("ssh-ed25519");
   const provision = { mode: "create" as const, host: "api.example.org" };
@@ -578,6 +573,11 @@ test("the host-key fingerprint a create-mode provisioning answer returns is the 
   expect(rendered).toContain(await computeHostKeyFingerprint(otherKey));
 });
 
+// Redaction at the composition site is a convention over every server- and
+// partner-controlled fragment, kept whether or not the partition already
+// contains the fragment's reach. The configured host is where a sliced key can
+// still arrive on these refusals -- on the acceptor route it is copied verbatim
+// out of the partner's invitation endpoint -- and no armor of it ever renders.
 test("a sliced key in the configured host does not suppress the no-pin refusal", async () => {
   const rendered = await renderNoPinRefusal(
     "ssh-ed25519",

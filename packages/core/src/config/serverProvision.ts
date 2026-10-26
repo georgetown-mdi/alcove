@@ -6,9 +6,8 @@
  * mode `alcove invite` sends it to have a new server made, and the 2xx
  * answer's body is that server's address and, optionally, its SSH host-key
  * fingerprint. Every other outcome stops the command, classified so the exit
- * code says whether a retry can help. The
- * contract the endpoint meets: docs/EXCHANGE_REFERENCE.md, "On-demand server
- * provisioning".
+ * code says whether a retry can help. The contract the endpoint meets:
+ * docs/EXCHANGE_REFERENCE.md, "On-demand server provisioning".
  *
  * The body is network content the operator cannot inspect: a start-mode body
  * is cancelled unread, a create-mode body is read under a byte cap and held to
@@ -489,29 +488,13 @@ export async function requestProvisionedServerAddress(
  * returned fingerprint replaces the pin an sftp server states; an answer with
  * none leaves that pin as it is. The `provision` block is kept, the record the
  * next invitation creates a server from. A bare IPv6 address is written
- * bracketed, the form a dial and an invitation take.
- *
- * @throws {UsageError} when the answer states a fingerprint for a webrtc
- *   connection, which has no SSH host key to pin.
+ * bracketed, the form a dial and an invitation take. A webrtc connection has no
+ * SSH host key to pin, so a returned fingerprint is never written into one;
+ * the caller refuses such an answer.
  */
 export function withProvisionedServerAddress<
   C extends Exclude<ConnectionConfigAwaitingAddress, FileDropConnectionConfig>,
 >(connection: C, address: ProvisionedServerAddress): C {
-  if (
-    address.hostKeyFingerprint !== undefined &&
-    connection.channel !== "sftp"
-  ) {
-    const provision = connection.server.provision;
-    const label =
-      provision !== undefined
-        ? provisionEndpointLabel(provision)
-        : "the provisioning endpoint";
-    throw new UsageError(
-      `${label} answered with a host_key_fingerprint for a webrtc ` +
-        "connection, which has no SSH host key to pin; have the endpoint " +
-        "leave host_key_fingerprint out of its answer for this server.",
-    );
-  }
   return {
     ...connection,
     server: {
@@ -521,7 +504,8 @@ export function withProvisionedServerAddress<
         : address.host,
       ...(address.port !== undefined ? { port: address.port } : {}),
       ...(address.path !== undefined ? { path: address.path } : {}),
-      ...(address.hostKeyFingerprint !== undefined
+      ...(address.hostKeyFingerprint !== undefined &&
+      connection.channel === "sftp"
         ? { hostKeyFingerprint: address.hostKeyFingerprint }
         : {}),
     },

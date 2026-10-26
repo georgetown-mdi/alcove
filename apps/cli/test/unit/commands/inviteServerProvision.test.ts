@@ -570,6 +570,35 @@ test("handler: a returned host_key_fingerprint for a webrtc configuration stops 
   expect(fs.readFileSync(configPath, "utf8")).toBe(before);
 });
 
+test("a returned host_key_fingerprint for a webrtc configuration is refused, naming the endpoint and the created host and not the fingerprint", async () => {
+  const dir = scratch();
+  writeConfig(dir, webrtcCreate);
+  stubFetch(
+    JSON.stringify({
+      host: "peers-4.example.org",
+      host_key_fingerprint: RETURNED_PIN,
+    }),
+  );
+  const err = await validateInvite({
+    resolved: { mode: "offline" },
+    options: optionsIn(dir),
+    acceptTimeout: 900,
+    log: quietLog(),
+  }).catch((raised: unknown) => raised);
+  expect(err).toBeInstanceOf(UsageError);
+  const shown = sanitizeErrorForDisplay(err);
+  expect(shown).toContain(
+    "the provisioning endpoint at api.example.org:443 answered with a " +
+      "host_key_fingerprint for a webrtc connection, which has no SSH host " +
+      "key to pin",
+  );
+  expect(shown).toContain(
+    "The endpoint created a server at peers-4.example.org, which this " +
+      "configuration does not record",
+  );
+  expect(shown).not.toContain(RETURNED_PIN);
+});
+
 test("handler: a returned path of / is accepted and written into connection.server.path", async () => {
   const dir = scratch();
   const configPath = writeConfig(dir, sftpCreate);
