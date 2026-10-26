@@ -2092,15 +2092,6 @@ function identityNoEffectNotice(promptWrites: string): string {
   return notices[0];
 }
 
-/** The default terms with their first two keys swapped: rules that no longer
- *  support the rule-set citation the same terms hold, key order being cascade
- *  order. */
-function termsCitingASetTheyLeft(identity: string): LinkageTerms {
-  const terms = sampleTerms(identity);
-  const [first, second, ...rest] = terms.linkageKeys;
-  return { ...terms, linkageKeys: [second!, first!, ...rest] };
-}
-
 describe("reconciling a pre-existing config", () => {
   test("validateAccept: offline reuses a config whose linkage terms match the invitation", async () => {
     const options = testOptions();
@@ -2318,44 +2309,6 @@ describe("reconciling a pre-existing config", () => {
     expect(notice).toContain(sanitizeForDisplay(stored));
     expect(notice).not.toContain(ESC);
     expect(notice).not.toContain(ZWJ);
-  });
-
-  test("validateAccept: a reused config's rule-set citation is checked against its own rules", async () => {
-    // The reconcile compares the terms that define the agreement, and the citation
-    // is not one of them -- so a config agreeing with the invitation key for key
-    // can still hold a citation its own rules left. Reuse proceeds, and the drift
-    // is reported before the confirmation prompt.
-    const options = testOptions();
-    writeExistingConfig(options.configFile, {
-      terms: termsCitingASetTheyLeft("Acceptor Org"),
-    });
-    const log = getLogger("accept-citation-drift");
-    log.setLevel("silent");
-    const warnSpy = vi.spyOn(log, "warn");
-    // This run's flag names the party differently from the kept file, so the
-    // no-effect notice reaches the prompt's own sink as well as the log.
-    const stdio = captureStdio();
-    try {
-      const encoded = await encodeInvitation({
-        ...sampleToken(FUTURE()),
-        linkageTerms: termsCitingASetTheyLeft("Inviter Org"),
-      });
-      const ready = await validateAccept({
-        resolved: { mode: "offline", invitation: encoded },
-        options,
-        log,
-      });
-      expect(ready.reuseExistingConfig).toBe(true);
-      const drifted = warnSpy.mock.calls
-        .map((call) => String(call[0]))
-        .filter((message) => message.includes("linkage_rule_set"));
-      expect(drifted).toHaveLength(1);
-      expect(drifted[0]).toContain(options.configFile);
-    } finally {
-      stdio.restore();
-      warnSpy.mockRestore();
-      fs.rmSync(options.configFile, { force: true });
-    }
   });
 
   test("validateAccept: a matching config is reconciled but a pre-existing key file still hard-aborts", async () => {
@@ -4611,10 +4564,10 @@ const ARMORED_RENDERED = [
 
 /**
  * An invitation holding key material in the partner-declared values the
- * consent surface renders that this fixture plants (the rule-set citation names
- * and the transform names and parameters are left plain): the payload names
- * declared in each direction, a linkage key's name, a linkage field's name (with
- * the keys citing it), and the legal agreement's reference and purpose. The
+ * consent surface renders that this fixture plants (the transform names and
+ * parameters are left plain): the payload names declared in each direction, a
+ * linkage key's name, a linkage field's name (with the keys citing it), and
+ * the legal agreement's reference and purpose. The
  * inviting party's identity is left plain because the decode refuses one holding
  * key material. The declared `receive` names the column {@link armoredFixture}
  * discloses, so the acceptance renders it in this party's own outbound set too.

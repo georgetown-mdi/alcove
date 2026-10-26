@@ -25,11 +25,8 @@ import type {
 
 import {
   diffLinkageTerms,
-  linkageTermsStandingOf,
   type TermsUpdateWrite,
   persistExpectedPartnerDeduplicate,
-  warnOnLinkageRuleSetCitationDrift,
-  type CitationDriftAlternative,
   type ReconcileDiff,
 } from "./config";
 import { reportPersistenceLoss, type EventStreamEmitter } from "./eventStream";
@@ -80,30 +77,16 @@ export function deriveAcceptedInvitationTerms(
 }
 
 /**
- * Compare the linkage terms of a configuration already at `configPath`
- * against the terms an acceptance adopts, returning the disagreements that
- * must refuse keeping it. The soft mismatches are logged as warnings.
- *
- * A stale rule-set citation in the kept configuration is reported first,
- * whether or not the terms agree, judged on the file as it stands before this
- * acceptance records itself on it.
+ * Compare the linkage terms of a configuration already kept against the
+ * terms an acceptance adopts, returning the disagreements that must refuse
+ * keeping it. The soft mismatches are logged as warnings.
  */
 export function diffKeptLinkageTerms(params: {
-  configPath: string;
   existing: ExchangeSpec;
   accepted: LinkageTerms;
-  citationDriftAlternative: CitationDriftAlternative;
   log: { warn: (message: string) => void };
 }): ReconcileDiff[] {
-  const { configPath, existing, accepted, citationDriftAlternative, log } =
-    params;
-  warnOnLinkageRuleSetCitationDrift(
-    existing.linkageTerms,
-    configPath,
-    log,
-    linkageTermsStandingOf(existing),
-    citationDriftAlternative,
-  );
+  const { existing, accepted, log } = params;
   const { conflicts, warnings } = diffLinkageTerms(
     existing.linkageTerms,
     accepted,

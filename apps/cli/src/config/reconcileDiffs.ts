@@ -431,9 +431,8 @@ function renderStructural(
 
 /**
  * Render a rule-set citation for a diff line, keys first -- the order core's
- * own mismatch message and the drift warning both use, so the two accounts
- * of one citation cannot drift apart on how a name is delimited. Unescaped,
- * unlike {@link describeRuleSetCitation}: a diff line is composed into a
+ * own mismatch message uses, so the two accounts of one citation cannot drift
+ * apart on how a name is delimited. Unescaped: a diff line is composed into a
  * {@link UsageError} and escaped once where it is shown. All four values
  * stand in ONE clause rather than two nested halves, so the
  * {@link reconcileClause} sub-partition runs once rather than dividing a

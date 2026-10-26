@@ -12,7 +12,6 @@ import {
   DEFAULT_CONFIG_PATH,
   persistStatedPayloadSend,
   replacedPayloadSendWarning,
-  warnOnLinkageRuleSetCitationDrift,
 } from "../config";
 import {
   addLoggingOptions,
@@ -67,13 +66,6 @@ export async function handler(argv: Arguments): Promise<void> {
 
       const source = readPartnershipTermsSource(configPath);
       const terms = source.linkageTerms;
-      warnOnLinkageRuleSetCitationDrift(
-        terms,
-        configPath,
-        log,
-        source.linkageTermsStanding,
-        "author-fresh-terms",
-      );
       resolveTermsUpdateIdentity(terms.identity, configPath);
       assertTermsRunnable(terms, source);
       const sharedSecret = readPartnershipSecret(keyPath);

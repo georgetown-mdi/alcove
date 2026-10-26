@@ -14,7 +14,6 @@ import {
   DISPLAY_TRUNCATION_MARKER,
   EXCHANGE_RECORD_VERSION,
   generateSigningIdentity,
-  getDefaultLinkageTerms,
   serializeAgreedTerms,
   serializeDualSignedRecord,
   serializeExchangeRecord,
@@ -1647,30 +1646,6 @@ describe("handler", () => {
     // passed on this command line.
     expect(lines[termsAt]).toContain(
       "pass a --config-file that defines linkage_terms and --partner-terms",
-    );
-  });
-
-  test("a --config-file citing a rule set its own keys left raises no citation warning", async () => {
-    // The record holds no citation, so verifying one has nothing to say about
-    // the configuration's; the terms still come back (the agreed-terms line
-    // below is not the "defines no linkage_terms" note).
-    const terms = getDefaultLinkageTerms("Test Party");
-    const [first, second, ...rest] = terms.linkageKeys;
-    const drifted: LinkageTerms = {
-      ...terms,
-      linkageKeys: [second!, first!, ...rest],
-    };
-    const { recordPath } = await exchangeArtifacts();
-    const configPath = writeYaml(YAML.stringify({ linkage_terms: drifted }));
-    const { stdout, stderr, exits } = await runVerify({
-      record: recordPath,
-      "config-file": configPath,
-      "log-level": "warn",
-    });
-    expect(exits).toEqual([]);
-    expect(stderr).not.toContain("linkage_rule_set");
-    expect(stdout).toContain(
-      "agreed-terms hash: not checked (pass --partner-terms)",
     );
   });
 

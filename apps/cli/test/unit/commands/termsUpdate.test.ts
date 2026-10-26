@@ -445,27 +445,38 @@ describe("alcove apply", () => {
     ).toEqual([{ name: "notes", description: "case notes, reworded" }]);
   });
 
-  test("an update dropping a rule-set citation only this party states asks", async () => {
-    expect(readSpec(partnership.b.config).linkageTerms.linkageRuleSet).toEqual(
-      partnership.aTerms.linkageRuleSet,
+  test("an update changing a term the comparison shows still names one it does not", async () => {
+    // Agency B's empty payload block against an update stating none: no
+    // column direction for the comparison to show, beside linkage keys it does.
+    const spec = readSpec(partnership.b.config);
+    saveConfig(partnership.b.config, {
+      ...spec,
+      linkageTerms: { ...spec.linkageTerms, payload: {} },
+    });
+    const { metadata: _metadata, ...withoutMetadata } = readSpec(
+      partnership.a.config,
     );
-    const { linkageRuleSet: _ruleSet, ...uncited } = partnership.aTerms;
     saveConfig(partnership.a.config, {
-      ...readSpec(partnership.a.config),
-      linkageTerms: uncited,
+      ...withoutMetadata,
+      linkageTerms: {
+        ...partnership.aTerms,
+        linkageKeys: partnership.aTerms.linkageKeys.slice(1),
+      },
     });
     const update = await runUpdate();
+    expect(
+      (await decodeTermsUpdate(update, partnership.secret)).linkageTerms
+        .payload,
+    ).toBeUndefined();
     promptConfirmMock.mockResolvedValue("no");
-    const before = fs.readFileSync(partnership.b.config, "utf8");
 
-    const { exit, stderr } = await runApply(update);
+    const { stderr } = await runApply(update);
     const lines = stderr.split("\n");
-    expect(exit).toBeUndefined();
     expect(promptConfirmMock).toHaveBeenCalledTimes(1);
-    expect(lines).toContain("  linkage rule set: change");
-    expect(lines).toContain("    after: not stated");
-    expect(lines).not.toContain("  linkage terms: no change");
-    expect(fs.readFileSync(partnership.b.config, "utf8")).toBe(before);
+    expect(
+      lines.some((line) => line.startsWith("    linkage keys do not match")),
+    ).toBe(true);
+    expect(lines).toContain("  other terms that change: payload");
   });
 
   test("an update stating no columns the partner receives asks before dropping this party's send", async () => {

@@ -39,7 +39,6 @@ import {
   describeConfigSchemaError,
   diffLinkageTerms,
   formatReconcileDiffs,
-  linkageTermsStandingOf,
   reconcileConflictError,
   reconcileConflictMessage,
   reconcileDiffValue,
@@ -53,18 +52,11 @@ import {
   persistStatedPayloadSend,
   readConfigLinkageSource,
   saveConfig,
-  warnOnLinkageRuleSetCitationDrift,
 } from "../../src/config";
 import { diffConnectionAgainstTarget } from "../../src/reconcile";
 import type { RunnableConnectionConfig } from "../../src/connectionFromUrl";
+import type { ReconcileDiff } from "../../src/config";
 import type {
-  CitationDriftAlternative,
-  ConfigLinkageSource,
-  LinkageTermsStanding,
-  ReconcileDiff,
-} from "../../src/config";
-import type {
-  BuiltInLinkageRuleSet,
   ConnectionConfig,
   ExchangeSpec,
   FileDropConnectionConfig,
@@ -4357,7 +4349,6 @@ describe("readConfigLinkageSource", () => {
     const defaults = getDefaultLinkageTerms("Agency A");
     const terms: LinkageTerms = {
       ...defaults,
-      linkageRuleSet: undefined,
       linkageKeys: [
         {
           name: "LN+FN+DOB+street number",
@@ -4402,7 +4393,6 @@ describe("readConfigLinkageSource", () => {
     const defaults = getDefaultLinkageTerms("Agency A");
     const terms: LinkageTerms = {
       ...defaults,
-      linkageRuleSet: undefined,
       linkageFields: [
         ...defaults.linkageFields,
         { name: "street_name", type: "street_name" },
@@ -4464,7 +4454,6 @@ describe("readConfigLinkageSource", () => {
         standardization: undefined,
         metadata: undefined,
         retainsFiles: false,
-        linkageTermsStanding: "held-alone",
       },
     });
   });
@@ -4474,7 +4463,6 @@ describe("readConfigLinkageSource", () => {
     const defaults = getDefaultLinkageTerms("Agency A");
     const terms: LinkageTerms = {
       ...defaults,
-      linkageRuleSet: undefined,
       linkageKeys: [
         {
           name: "LN+FN+DOB+ZIP3",
@@ -5305,29 +5293,6 @@ describe("assertRetainSweepGuard", () => {
 
 // --- a rule-set citation with no rules written -------------------------------
 
-/**
- * A second built-in rule set, for the drift checks that must be shown judging
- * the set a document cites rather than the default one. Only one set ships, so
- * the registry every function here takes is how a non-default set is reached;
- * this one is passed in by the tests below and by nothing else.
- */
-const OTHER_RULE_SET: BuiltInLinkageRuleSet = {
-  reference: {
-    fieldSet: { name: "other-fields", version: "3.1.0" },
-    keySet: { name: "other-keys", version: "4.2.0" },
-  },
-  linkageFields: [
-    { name: "ssn", type: "ssn", constraints: { validOnly: true } },
-    { name: "last_name", type: "last_name" },
-  ],
-  linkageKeys: [
-    { name: "SSN", elements: [{ field: "ssn" }] },
-    { name: "LN", elements: [{ field: "last_name" }] },
-  ],
-};
-
-const OTHER_RULE_SETS: ReadonlyArray<BuiltInLinkageRuleSet> = [OTHER_RULE_SET];
-
 /** Linkage terms as a configuration file writes them, snake_case, citing
  *  `reference` and writing neither rule list. */
 function citationOnlyTerms(
@@ -5423,395 +5388,13 @@ test.each<[string, unknown]>([
   },
 );
 
-// --- warnOnLinkageRuleSetCitationDrift ---------------------------------------
-
-/** The warnings one drift check emits, in order. Terms default to the standing
- *  that offers both remedies; the accepted standing is asked for explicitly, as
- *  is the alternative a command minting an invitation from them offers. */
-function citationWarnings(
-  terms: Pick<LinkageTerms, "linkageRuleSet" | "linkageFields" | "linkageKeys">,
-  standing: LinkageTermsStanding = "held-alone",
-  alternative: CitationDriftAlternative = "decline-to-reuse",
-  ruleSets?: ReadonlyArray<BuiltInLinkageRuleSet>,
-): string[] {
-  const warnings: string[] = [];
-  warnOnLinkageRuleSetCitationDrift(
-    terms,
-    "alcove.yaml",
-    { warn: (message: string) => warnings.push(message) },
-    standing,
-    alternative,
-    ...(ruleSets === undefined ? [] : [ruleSets]),
-  );
-  return warnings;
-}
-
-/** Terms citing `ruleSet` over the rules `rules` declares, for the checks that
- *  judge a citation against a set other than the default one. */
-function termsCiting(
-  ruleSet: BuiltInLinkageRuleSet,
-  rules: Pick<BuiltInLinkageRuleSet, "linkageFields" | "linkageKeys">,
-): Pick<LinkageTerms, "linkageRuleSet" | "linkageFields" | "linkageKeys"> {
-  return {
-    linkageRuleSet: ruleSet.reference,
-    linkageFields: [...rules.linkageFields],
-    linkageKeys: [...rules.linkageKeys],
-  };
-}
-
-/** The terms with their first two keys swapped: the smallest edit that takes
- *  rules out of the set they cite, since key order is cascade order. */
-function withReorderedKeys(terms: LinkageTerms): LinkageTerms {
-  const [first, second, ...rest] = terms.linkageKeys;
-  return { ...terms, linkageKeys: [second!, first!, ...rest] };
-}
-
-/** The terms with a linkage field the cited set does not declare, the
- *  field-side counterpart of {@link withReorderedKeys}. A narrowed field list
- *  stays drawn from the set, so it takes an ADDITION to leave it. */
-function withAddedField(terms: LinkageTerms): LinkageTerms {
-  return {
-    ...terms,
-    linkageFields: [
-      ...terms.linkageFields,
-      { name: "zip_code", type: "zip_code" },
-    ],
-  };
-}
-
-test("an untouched alcove init config draws no citation warning", () => {
-  expect(citationWarnings(getDefaultLinkageTerms("Agency A"))).toEqual([]);
-});
-
-test("narrowing the cited key set draws no citation warning", () => {
-  // What an input file that cannot supply every key yields: a subset of the set,
-  // which the citation is an upper bound on rather than a claim against.
-  const terms = getDefaultLinkageTerms("Agency A");
-  expect(
-    citationWarnings({ ...terms, linkageKeys: terms.linkageKeys.slice(0, -1) }),
-  ).toEqual([]);
-});
-
-test("terms with no citation draw no warning however their rules read", () => {
-  const terms = withReorderedKeys(getDefaultLinkageTerms("Agency A"));
-  delete terms.linkageRuleSet;
-  expect(citationWarnings(terms)).toEqual([]);
-});
-
-test("a reordered cascade under the built-in citation warns, naming linkage_keys", () => {
-  const warnings = citationWarnings(
-    withReorderedKeys(getDefaultLinkageTerms("Agency A")),
-  );
-  expect(warnings).toHaveLength(1);
-  expect(warnings[0]).toContain("alcove.yaml: linkage_terms.linkage_rule_set");
-  expect(warnings[0]).toContain(
-    `"${DEFAULT_LINKAGE_RULE_SET.reference.keySet.name}" ` +
-      DEFAULT_LINKAGE_RULE_SET.reference.keySet.version,
-  );
-  expect(warnings[0]).toContain("its linkage_keys are not drawn from");
-  expect(warnings[0]).not.toContain("linkage_fields");
-  expect(warnings[0]).toContain("Remove linkage_rule_set");
-});
-
-test("an added linkage field under the built-in citation warns, naming linkage_fields", () => {
-  const warnings = citationWarnings(
-    withAddedField(getDefaultLinkageTerms("Agency A")),
-  );
-  expect(warnings).toHaveLength(1);
-  expect(warnings[0]).toContain("its linkage_fields are not drawn from");
-  expect(warnings[0]).not.toContain("linkage_keys");
-});
-
-test("both halves edited are reported in one warning, each against its own set", () => {
-  const warnings = citationWarnings(
-    withAddedField(withReorderedKeys(getDefaultLinkageTerms("Agency A"))),
-  );
-  const { fieldSet, keySet } = DEFAULT_LINKAGE_RULE_SET.reference;
-  expect(warnings).toHaveLength(1);
-  expect(warnings[0]).toContain(
-    `its linkage_fields are not drawn from the "${fieldSet.name}" ` +
-      `${fieldSet.version} this build ships`,
-  );
-  expect(warnings[0]).toContain(
-    `its linkage_keys are not drawn from the "${keySet.name}" ` +
-      `${keySet.version} this build ships`,
-  );
-});
-
-test("a non-default set's own rules under its citation draw no warning", () => {
-  expect(
-    citationWarnings(
-      termsCiting(OTHER_RULE_SET, OTHER_RULE_SET),
-      "held-alone",
-      "decline-to-reuse",
-      OTHER_RULE_SETS,
-    ),
-  ).toEqual([]);
-});
-
-test("the drift warning judges the cited set, not the default one", () => {
-  // The rules here are the default set's, whole and in order. What decides the
-  // verdict is the set the terms cite, which is not that one.
-  const warnings = citationWarnings(
-    termsCiting(OTHER_RULE_SET, DEFAULT_LINKAGE_RULE_SET),
-    "held-alone",
-    "decline-to-reuse",
-    OTHER_RULE_SETS,
-  );
-  expect(warnings).toHaveLength(1);
-  expect(warnings[0]).toContain(
-    'its linkage_keys are not drawn from the "other-keys" 4.2.0 this build ships',
-  );
-  expect(warnings[0]).toContain(
-    'its linkage_fields are not drawn from the "other-fields" 3.1.0 this ' +
-      "build ships",
-  );
-});
-
-test("a citation of a set the registry does not hold stays unchecked", () => {
-  // Nothing resolves the default set's name in a build shipping only the other
-  // one, so its rules are compared against nothing rather than against the
-  // set that happens to be there.
-  expect(
-    citationWarnings(
-      termsCiting(DEFAULT_LINKAGE_RULE_SET, OTHER_RULE_SET),
-      "held-alone",
-      "decline-to-reuse",
-      OTHER_RULE_SETS,
-    ),
-  ).toEqual([]);
-});
-
-test("a set name in the drift warning cannot forge the clause it is named in", () => {
-  // The warning is first-party prose whose clause an operator reads as
-  // Alcove's own -- `<name> <version> this build ships` -- and the set name is
-  // free text whoever authored the config chose. The escape does not reach a
-  // forgery made of printable ASCII, so the name is delimited through the same
-  // quoteTermsValue call core's own rule-set message uses; the doubling grammar
-  // keeps a name with a delimiter of its own from closing its run early.
-  //
-  // Driven on the CITED half, which the warning echoes back verbatim: the half
-  // it reports drift against is this build's own shipped name.
-  const terms = withReorderedKeys(getDefaultLinkageTerms("Agency A"));
-  const keySet = DEFAULT_LINKAGE_RULE_SET.reference.keySet;
-  terms.linkageRuleSet = {
-    fieldSet: { name: 'a" 9.9.9 this build ships, and "b', version: "3.1.0" },
-    keySet,
-  };
-  const warnings = citationWarnings(terms);
-  expect(warnings).toHaveLength(1);
-  expect(warnings[0]).not.toContain('"a" 9.9.9 this build ships, and "b"');
-  expect(warnings[0]).toContain('"a"" 9.9.9 this build ships, and ""b"');
-  // A version that does not meet bareTermsValue's checked bare shape takes the
-  // delimited form too, rather than standing in the sentence undelimited.
-  const versionForged = withReorderedKeys(getDefaultLinkageTerms("Agency A"));
-  versionForged.linkageRuleSet = {
-    fieldSet: { name: "county-pii", version: "over" },
-    keySet,
-  };
-  expect(citationWarnings(versionForged)[0]).toContain('"county-pii" "over"');
-});
-
-test("a set name in the drift warning reaches its sink with no control character", () => {
-  // The other renderer these values reach. Its route escapes at COMPOSITION and
-  // its sink is a `log.warn` that escapes nothing further, so a control
-  // character the operator's terminal could act on must be gone by the time the
-  // warning is handed over -- and gone from the whole composed line, first-party
-  // copy included, so this renderer places no control character for a value to
-  // be confused with either.
-  const terms = withReorderedKeys(getDefaultLinkageTerms("Agency A"));
-  terms.linkageRuleSet = {
-    fieldSet: {
-      name: "a\n  county-pii\r 9.9.9 this build ships",
-      version: "3.1.0\x1b[31m",
-    },
-    keySet: DEFAULT_LINKAGE_RULE_SET.reference.keySet,
-  };
-  const warnings = citationWarnings(withAddedField(terms));
-  expect(warnings).toHaveLength(1);
-  expect(warnings[0]).not.toMatch(/\p{Cc}/u);
-  // Non-vacuous: the name did reach the warning, at the width it was chosen.
-  expect(warnings[0]).toContain("county-pii");
-});
-
-test("a citation this build cannot resolve draws no warning", () => {
-  // Nothing here resolves either name to a set, so nothing about these rules is
-  // provable: reporting drift would assert a comparison never made.
-  const terms = withReorderedKeys(getDefaultLinkageTerms("Agency A"));
-  terms.linkageRuleSet = {
-    fieldSet: { name: "county-pii", version: "3.1.0" },
-    keySet: { name: "county-keys", version: "3.1.0" },
-  };
-  expect(citationWarnings(withAddedField(terms))).toEqual([]);
-});
-
-test("a built-in set name at a version this build does not ship is not resolvable", () => {
-  // The recorded content attaches to the name and the version together, so a set
-  // at another version is as unknown to this build as another name entirely.
-  const terms = withReorderedKeys(getDefaultLinkageTerms("Agency A"));
-  terms.linkageRuleSet = {
-    fieldSet: DEFAULT_LINKAGE_RULE_SET.reference.fieldSet,
-    keySet: {
-      name: DEFAULT_LINKAGE_RULE_SET.reference.keySet.name,
-      version: "9.9.9",
-    },
-  };
-  expect(citationWarnings(terms)).toEqual([]);
-});
-
-test("a foreign field-set half does not exempt the built-in key set beside it", () => {
-  const terms = withReorderedKeys(getDefaultLinkageTerms("Agency A"));
-  terms.linkageRuleSet = {
-    fieldSet: { name: "county-pii", version: "3.1.0" },
-    keySet: DEFAULT_LINKAGE_RULE_SET.reference.keySet,
-  };
-  const warnings = citationWarnings(terms);
-  expect(warnings).toHaveLength(1);
-  expect(warnings[0]).toContain("its linkage_keys are not drawn from");
-  expect(warnings[0]).not.toContain("linkage_fields");
-});
-
-test("a half-foreign citation reports the drift against the half this build ships", () => {
-  // Only the key half resolves here, so the report must name that set rather than
-  // "the citation": the citation also names a set this build does not ship, and
-  // claiming to have compared the rules against it would assert a check no build
-  // here can make.
-  const terms = withReorderedKeys(getDefaultLinkageTerms("Agency A"));
-  const keySet = DEFAULT_LINKAGE_RULE_SET.reference.keySet;
-  terms.linkageRuleSet = {
-    fieldSet: { name: "county-pii", version: "3.1.0" },
-    keySet,
-  };
-  const warnings = citationWarnings(terms);
-  expect(warnings[0]).toContain(
-    `its linkage_keys are not drawn from the "${keySet.name}" ` +
-      `${keySet.version} this build ships`,
-  );
-  expect(warnings[0]).not.toContain("this build ships under that citation");
-  expect(warnings[0]).not.toContain('"county-pii" 3.1.0 this build ships');
-});
-
-test("fields the unresolvable half covers do not decide the resolvable half", () => {
-  // Both lists here have been edited, and only the key set's name resolves: the
-  // report must be the key set's answer alone, with the added field neither
-  // named nor able to turn a fitting key set into a warning.
-  const drifted = withAddedField(
-    withReorderedKeys(getDefaultLinkageTerms("Agency A")),
-  );
-  const foreignFieldSet = { name: "county-pii", version: "3.1.0" };
-  const keySet = DEFAULT_LINKAGE_RULE_SET.reference.keySet;
-  expect(
-    citationWarnings({
-      ...drifted,
-      linkageRuleSet: { fieldSet: foreignFieldSet, keySet },
-    }),
-  ).toEqual([
-    expect.stringContaining("its linkage_keys are not drawn from") as string,
-  ]);
-  expect(
-    citationWarnings({
-      ...withAddedField(getDefaultLinkageTerms("Agency A")),
-      linkageRuleSet: { fieldSet: foreignFieldSet, keySet },
-    }),
-  ).toEqual([]);
-});
-
-test("a set name with control characters is escaped at this sink", () => {
-  // Only a resolvable half's name is a shipped literal; the half beside it is
-  // whatever the file says, and this log.warn is that value's display boundary.
-  const terms = withReorderedKeys(getDefaultLinkageTerms("Agency A"));
-  terms.linkageRuleSet = {
-    fieldSet: { name: "county-pii\u0007\nsecond line", version: "3.1.0" },
-    keySet: DEFAULT_LINKAGE_RULE_SET.reference.keySet,
-  };
-  const warnings = citationWarnings(terms);
-  expect(warnings).toHaveLength(1);
-  expect(warnings[0]).toContain("county-pii");
-  expect(warnings[0]).not.toContain("\u0007");
-  expect(warnings[0]).not.toContain("\n");
-});
-
-test("terms an acceptance stands behind are not addressed to their author", () => {
-  // Neither remedy addressed to an author applies to terms both parties hold:
-  // restoring the cited set's rules would edit an agreement unilaterally, and
-  // the exchange would refuse the result against the partner running the
-  // originals.
-  const drifted = withReorderedKeys(getDefaultLinkageTerms("Agency A"));
-  const warnings = citationWarnings(drifted, "accepted-with-partner");
-  expect(warnings).toHaveLength(1);
-  expect(warnings[0]).toContain("its linkage_keys are not drawn from");
-  expect(warnings[0]).not.toContain("rules you author yourself");
-  expect(warnings[0]).not.toContain("restore the rules the cited set declares");
-  expect(warnings[0]).toContain(
-    "You accepted these terms from the inviting party",
-  );
-  expect(warnings[0]).toContain("decline to reuse these terms");
-});
-
-test("a mint from accepted terms is offered the remedy a mint has", () => {
-  // "Accept again" and "decline to reuse these terms" name nothing an operator
-  // minting an invitation can do: the acceptance behind these terms is already
-  // recorded, and what is in front of them is a new document to author. Settling
-  // with the party that acceptance was made with is still the first choice, so
-  // only the alternative changes.
-  const drifted = withReorderedKeys(getDefaultLinkageTerms("Agency A"));
-  const warnings = citationWarnings(
-    drifted,
-    "accepted-with-partner",
-    "author-fresh-terms",
-  );
-  expect(warnings).toHaveLength(1);
-  expect(warnings[0]).toContain("Agree the citation with that party");
-  expect(warnings[0]).toContain("author fresh terms for this invitation");
-  expect(warnings[0]).not.toContain("accept again");
-  expect(warnings[0]).not.toContain("decline to reuse these terms");
-  // The clauses before the remedy are one source, so the mint reading has
-  // the same account of why the terms are not the operator's alone.
-  expect(warnings[0]).toContain(
-    "You accepted these terms from the inviting party",
-  );
-  expect(warnings[0]).toContain("its linkage_keys are not drawn from");
-});
-
-test("terms no acceptance stands behind read the same whatever the command", () => {
-  // The alternative is the accepted reading's alone: terms held alone are the
-  // operator's to edit whether they are being used or minted from.
-  const drifted = withReorderedKeys(getDefaultLinkageTerms("Agency A"));
-  expect(citationWarnings(drifted, "held-alone", "author-fresh-terms")).toEqual(
-    citationWarnings(drifted, "held-alone", "decline-to-reuse"),
-  );
-});
-
-test("a drifted citation is reported under either standing", () => {
-  // The claim is reported whoever authored it; only the remedy differs, so the
-  // accepted reading is not a way for a drifted citation to go unmentioned.
-  const drifted = withReorderedKeys(getDefaultLinkageTerms("Agency A"));
-  for (const standing of ["held-alone", "accepted-with-partner"] as const) {
-    const warnings = citationWarnings(drifted, standing);
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain(
-      "alcove.yaml: linkage_terms.linkage_rule_set cites",
-    );
-    expect(warnings[0]).toContain(
-      "credits a source these rules did not come from",
-    );
-    expect(warnings[0]).not.toContain("exchange record");
-  }
-});
-
-test("a config with no drift is silent under either standing", () => {
-  const clean = getDefaultLinkageTerms("Agency A");
-  expect(citationWarnings(clean, "held-alone")).toEqual([]);
-  expect(citationWarnings(clean, "accepted-with-partner")).toEqual([]);
-});
-
 // --- The vocabulary a bare value must not be able to spell here ---------------
 
 /** Whether a token would render undelimited, asked of bareTermsValue itself so
  *  this cannot fall behind a change to the shape it admits. */
 const rendersBare = (token: string): boolean => bareTermsValue(token) === token;
 
-test("no token of the reconcile refusal's or the drift warning's copy is bare-shaped", () => {
+test("no token of the reconcile refusal's copy is bare-shaped", () => {
   // The argument the undelimited form rests on, as a check over the copy THIS
   // module composes. A bare value has no space, so it is exactly one token
   // wherever a template drops it; if no token of the first-party copy around it
@@ -5819,8 +5402,8 @@ test("no token of the reconcile refusal's or the drift warning's copy is bare-sh
   // wrote, whatever the party that chose it intended. Core's own check reads the
   // templates in its `validateCompatibility` module, which says nothing about
   // the clauses composed here -- the citation's version and the legal
-  // agreement's expiration date on a conflict line, and the version in the drift
-  // warning, all stand in copy no check there reads.
+  // agreement's expiration date on a conflict line both stand in copy no check
+  // there reads.
   //
   // Driven rather than restated: each message below is composed for real over
   // values with no delimiter of their own, so removing its delimited runs
@@ -5883,26 +5466,12 @@ test("no token of the reconcile refusal's or the drift warning's copy is bare-sh
         ...connectionConflicts(),
       ],
     }),
-    ...citationWarnings(withReorderedKeys(getDefaultLinkageTerms("Agency A"))),
-    ...citationWarnings(
-      withAddedField(withReorderedKeys(getDefaultLinkageTerms("Agency A"))),
-      "accepted-with-partner",
-      "author-fresh-terms",
-    ),
-    ...citationWarnings(
-      withReorderedKeys(getDefaultLinkageTerms("Agency A")),
-      "accepted-with-partner",
-      "decline-to-reuse",
-    ),
   ];
   // The shapes each message was built to drive, so a message that stopped
   // reaching its own copy fails here rather than shrinking the vocabulary.
   expect(messages[0]).toContain("(unset)");
   expect(messages[1]).toContain("read alike");
   expect(messages[2]).toContain("too wide for the room");
-  expect(messages[3]).toContain("Remove linkage_rule_set");
-  expect(messages[4]).toContain("author fresh terms");
-  expect(messages[5]).toContain("decline");
 
   const tokens = messages.flatMap((message) =>
     message
@@ -5918,7 +5487,6 @@ test("no token of the reconcile refusal's or the drift warning's copy is bare-sh
       "(expires",
       "existing",
       "required",
-      "cites",
       "send=[",
       "--config-file",
     ]),
@@ -5931,100 +5499,9 @@ test("no token of the reconcile refusal's or the drift warning's copy is bare-sh
     incoming.version,
     existing.linkageRuleSet.keySet.version,
     incoming.linkageRuleSet.keySet.version,
-    DEFAULT_LINKAGE_RULE_SET.reference.keySet.version,
-    DEFAULT_LINKAGE_RULE_SET.reference.fieldSet.version,
   ]);
   for (const token of tokens)
     if (!bareValues.has(token)) expect(rendersBare(token), token).toBe(false);
-});
-
-// --- linkageTermsStandingOf --------------------------------------------------
-
-test("the partner-deduplicate record is what marks an accepted config", () => {
-  // `alcove accept` records the invitation's declared cardinality on every
-  // config it writes and every config it reuses, and nothing else writes one, so
-  // its presence -- either value -- is the mark of an acceptance.
-  expect(linkageTermsStandingOf({})).toBe("held-alone");
-  expect(
-    linkageTermsStandingOf({ expectedPartnerDeduplicate: undefined }),
-  ).toBe("held-alone");
-  expect(linkageTermsStandingOf({ expectedPartnerDeduplicate: false })).toBe(
-    "accepted-with-partner",
-  );
-  expect(linkageTermsStandingOf({ expectedPartnerDeduplicate: true })).toBe(
-    "accepted-with-partner",
-  );
-});
-
-describe("readConfigLinkageSource", () => {
-  test("reads the terms' standing off the loaded file", () => {
-    const write = (
-      name: string,
-      extra: Partial<ExchangeSpec>,
-    ): ConfigLinkageSource => {
-      const configPath = path.join(dir, name);
-      saveConfig(configPath, {
-        connection: { channel: "filedrop", path: "/mnt/share" },
-        linkageTerms: getDefaultLinkageTerms("Agency A"),
-        ...extra,
-      });
-      const result = readConfigLinkageSource(configPath);
-      if (result.status !== "loaded")
-        throw new Error(`expected ${name} to load, got ${result.status}`);
-      return result.source;
-    };
-    expect(write("held-alone.yaml", {}).linkageTermsStanding).toBe(
-      "held-alone",
-    );
-    // The record in the snake_case spelling saveConfig serializes it to.
-    expect(
-      write("accepted.yaml", { expectedPartnerDeduplicate: false })
-        .linkageTermsStanding,
-    ).toBe("accepted-with-partner");
-  });
-});
-
-// Both spellings are read, and the record's PRESENCE is what marks an
-// acceptance: a value `alcove accept` would not have written is an operator's
-// edit of a machine-written record, but the record still stands there, so it
-// is treated as an acceptance rather than as an error here (the commands that build
-// an exchange from the file refuse the value through core's schema). A key
-// with no value at all is YAML's null, which is no record.
-describe("readConfigLinkageSource", () => {
-  test.each([
-    ["a camelCase spelling", "expectedPartnerDeduplicate: true\n", true],
-    ["a key with no value", "expected_partner_deduplicate:\n", false],
-    ["a non-boolean value", "expected_partner_deduplicate: 'true'\n", true],
-  ])("reads an acceptance from %s: %j", (_label, block, accepted) => {
-    const configPath = path.join(dir, "alcove.yaml");
-    const terms = getDefaultLinkageTerms("Agency A");
-    fs.writeFileSync(
-      configPath,
-      `${block}${YAML.stringify({ linkage_terms: terms })}`,
-    );
-    expect(readConfigLinkageSource(configPath)).toMatchObject({
-      status: "loaded",
-      source: {
-        linkageTermsStanding: accepted ? "accepted-with-partner" : "held-alone",
-      },
-    });
-  });
-});
-
-test("the record persistExpectedPartnerDeduplicate writes marks a reused config", () => {
-  // The accept-reuse path leaves the operator's own terms on disk and writes
-  // this record beside them, so a config whose terms an acceptance agreed to
-  // is treated as accepted even though nothing rewrote the terms themselves.
-  const configPath = path.join(dir, "reused.yaml");
-  saveConfig(configPath, {
-    connection: { channel: "filedrop", path: "/mnt/share" },
-    linkageTerms: getDefaultLinkageTerms("Agency A"),
-  });
-  persistExpectedPartnerDeduplicate(configPath, true);
-  const result = readConfigLinkageSource(configPath);
-  if (result.status !== "loaded")
-    throw new Error(`expected the config to load, got ${result.status}`);
-  expect(result.source.linkageTermsStanding).toBe("accepted-with-partner");
 });
 
 // --- the operator's own path in a refusal ------------------------------------
@@ -6299,25 +5776,6 @@ test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     }
   },
 );
-
-test("the citation-drift warning names the config path as the operator typed it", () => {
-  // A log sink, where nothing is escaped on the way out (the log prefixer
-  // redacts private-key material and no more), so what this holds is the one
-  // property the mark decides: the operator's path arrives single.
-  const configPath = backslashedConfigPath();
-  const warnings: string[] = [];
-  warnOnLinkageRuleSetCitationDrift(
-    withReorderedKeys(getDefaultLinkageTerms("Agency A")),
-    configPath,
-    { warn: (message: string) => warnings.push(message) },
-    "held-alone",
-    "decline-to-reuse",
-  );
-
-  expect(warnings).toHaveLength(1);
-  expect(warnings[0]).toContain(`${configPath}: linkage_terms`);
-  expect(warnings[0]).not.toContain(escaped(configPath));
-});
 
 // --- server.provision override (--server-provision) ---------------------------
 

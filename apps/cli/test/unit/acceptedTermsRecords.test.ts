@@ -141,10 +141,8 @@ function keptSpec(terms: LinkageTerms): ExchangeSpec {
 test("diffKeptLinkageTerms returns no conflict for terms that agree", () => {
   const log = recordingLog();
   const conflicts = diffKeptLinkageTerms({
-    configPath,
     existing: keptSpec(sampleTerms("Acceptor Org")),
     accepted: sampleTerms("Acceptor Org"),
-    citationDriftAlternative: "decline-to-reuse",
     log,
   });
   expect(conflicts).toEqual([]);
@@ -154,13 +152,11 @@ test("diffKeptLinkageTerms returns no conflict for terms that agree", () => {
 test("diffKeptLinkageTerms returns a conflict for a disagreeing agreement field", () => {
   const accepted = sampleTerms("Acceptor Org");
   const conflicts = diffKeptLinkageTerms({
-    configPath,
     existing: keptSpec({
       ...sampleTerms("Acceptor Org"),
       linkageKeys: accepted.linkageKeys.slice(1),
     }),
     accepted,
-    citationDriftAlternative: "decline-to-reuse",
     log: recordingLog(),
   });
   expect(conflicts.length).toBeGreaterThan(0);
@@ -169,10 +165,8 @@ test("diffKeptLinkageTerms returns a conflict for a disagreeing agreement field"
 test("diffKeptLinkageTerms warns on a soft mismatch without a conflict", () => {
   const log = recordingLog();
   const conflicts = diffKeptLinkageTerms({
-    configPath,
     existing: keptSpec({ ...sampleTerms("Acceptor Org"), date: "2020-01-01" }),
     accepted: { ...sampleTerms("Acceptor Org"), date: "2021-01-01" },
-    citationDriftAlternative: "decline-to-reuse",
     log,
   });
   expect(conflicts).toEqual([]);
@@ -189,10 +183,8 @@ function withPayloadNote(name: string, description: string): LinkageTerms {
 test("diffKeptLinkageTerms keeps a configuration a re-invite differs from only in a payload description", () => {
   const log = recordingLog();
   const conflicts = diffKeptLinkageTerms({
-    configPath,
     existing: keptSpec(withPayloadNote("note", "Case notes")),
     accepted: withPayloadNote("note", "Case notes, free text"),
-    citationDriftAlternative: "decline-to-reuse",
     log,
   });
   expect(conflicts).toEqual([]);
@@ -201,10 +193,8 @@ test("diffKeptLinkageTerms keeps a configuration a re-invite differs from only i
 
 test("diffKeptLinkageTerms refuses a configuration a re-invite differs from in a linkage term", () => {
   const conflicts = diffKeptLinkageTerms({
-    configPath,
     existing: keptSpec(withPayloadNote("note", "Case notes")),
     accepted: withPayloadNote("case_note", "Case notes"),
-    citationDriftAlternative: "decline-to-reuse",
     log: recordingLog(),
   });
   expect(conflicts.map((c) => c.field)).toEqual(["payload"]);
