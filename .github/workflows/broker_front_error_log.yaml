@@ -1,0 +1,50 @@
+name: Broker Front Error Log
+
+# Measurement harness behind PRIVACY.md's TLS front error-log bullet: it runs
+# the broker's TLS front, rendered from infra/broker/nginx.conf.tmpl in the
+# image infra/broker/Dockerfile pins, and prints which request header values
+# and query strings its error-log and access-log lines contain
+# (scripts/measure-broker-error-log.mjs). It needs Docker, which the dev
+# container lacks.
+#
+# Manual only. The answer moves when the template or the image changes, and one
+# request waits out the template's 300 s proxy_read_timeout.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    name: Measure the TLS front's error log
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    env:
+      # A step's `if:` is not given the secrets context, so whether the Docker
+      # Hub token is set reaches the login step below through this.
+      DOCKERHUB_LOGIN: ${{ secrets.DOCKERHUB_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # The script is dependency-free, so a plain pinned Node suffices.
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+
+      # The nginx image comes from Docker Hub, which limits anonymous pulls per
+      # source IP, and hosted runners share theirs.
+      - name: Log in to Docker Hub
+        if: ${{ env.DOCKERHUB_LOGIN == 'true' }}
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Measure
+        run: node scripts/measure-broker-error-log.mjs
