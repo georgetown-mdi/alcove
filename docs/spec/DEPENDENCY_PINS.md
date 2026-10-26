@@ -528,16 +528,19 @@ resolution, which this tree has dozens of.
 
 ### The project site's vite override
 
-The root `package.json` holds `"overrides": { "vitepress": { "vite": "6.4.3" } }`.
+The root `package.json` holds `"overrides": { "vitepress": { "vite": "6.4.4" } }`.
 VitePress 1.6.4, the newest non-prerelease, declares `vite` `^5.4.14`, and every
 vite 5 release depends on an esbuild below 0.25, which GHSA-67mh-4wv8-2f99 covers
 (a website can send requests to esbuild's development server and read the
 response). Without the override, `npm audit --package-lock-only` reports
-esbuild 0.21.5, vite 5.4.21 and vitepress 1.6.4 with no fix available. vite 6.4.3
-is the lowest release outside the advisory's range and depends on esbuild
-`^0.25.0`, which resolves to 0.25.12.
+esbuild 0.21.5, vite 5.4.21 and vitepress 1.6.4 with no fix available. vite 6.4.4
+is the lowest release outside that advisory's range and outside five later
+advisories that cover `vite` 6.4.3 and earlier (GHSA-9jrq-w75r-8gcw,
+GHSA-rq7h-c2jc-7f22, GHSA-r825-w8mm-5pxw, GHSA-587h-7wmj-h5pm and
+GHSA-698v-4r3x-3vcv). It depends on esbuild `^0.25.0`, which resolves to
+0.25.12.
 
-Measured 2026-10-12 on npm 11.20.0 with the override in force:
+Measured 2026-10-26 on npm 11.20.0 with the override in force:
 
 - `npm audit --package-lock-only` answers `found 0 vulnerabilities`.
 - `npm run site:build` completes, with VitePress's dead-link check running.
