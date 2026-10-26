@@ -5795,6 +5795,7 @@ test("a drifted citation is reported under either standing", () => {
     expect(warnings[0]).toContain(
       "credits a source these rules did not come from",
     );
+    expect(warnings[0]).not.toContain("exchange record");
   }
 });
 
