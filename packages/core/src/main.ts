@@ -306,17 +306,15 @@ export {
 } from "./utils/partnerOriginText";
 export type { PartnerOriginText } from "./utils/partnerOriginText";
 // The delimiting grammar for a linkage-terms value named in an operator-facing
-// diagnostic. Exported because the CLI's reconcile refusal and citation-drift
-// warning and both consent surfaces name the same class of partner-chosen
-// value in the same clause structure, and a second delimiting grammar there
-// would be the independent re-implementation the shared-primitive rule exists
-// to prevent.
+// diagnostic. Exported because the CLI's reconcile refusal names the same
+// class of partner-chosen value in the same clause structure, and a second
+// delimiting grammar there would be the independent re-implementation the
+// shared-primitive rule exists to prevent.
 export {
   quoteTermsValue,
   quoteTermsValueList,
   bareTermsValue,
   compatibilityMessage,
-  ruleSetCitation,
 } from "./config/compatibilityMessage";
 export type { CompatibilityMessageFragment } from "./config/compatibilityMessage";
 export {

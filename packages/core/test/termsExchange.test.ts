@@ -815,6 +815,31 @@ test("a terms frame still holding the retired width field is ignored", async () 
   expect(result.warnings).toEqual([]);
 });
 
+test("two parties citing different rule sets over agreeing rules proceed", async () => {
+  const citing = (version: string): LinkageTerms["linkageRuleSet"] => ({
+    fieldSet: { name: "baseline-pii", version: "1.0.0" },
+    keySet: { name: "example-keys", version },
+  });
+  const [connA, connB] = makeConnections();
+  const responder = exchangeTerms(
+    connB,
+    "responder",
+    { ...termsB, linkageRuleSet: citing("2.0.0") },
+    200,
+  );
+  await connA.send({
+    linkageTerms: { ...termsA, linkageRuleSet: citing("1.0.0") },
+    recordCount: 100,
+    receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
+    protocolVersion: PROTOCOL_VERSION,
+  });
+  const msg2 = (await connA.receive()) as Record<string, unknown>;
+  expect(msg2).toMatchObject({ decision: "proceed" });
+  await connA.send({ decision: "proceed" });
+
+  expect((await responder).warnings).toEqual([]);
+});
+
 // --- Missing record count ----------------------------------------------------
 
 test("initiator aborts when a proceed frame omits the record count", async () => {
@@ -1308,10 +1333,6 @@ function bothRenders(settled: PromiseSettledResult<unknown>[]): string[] {
   });
 }
 
-const ruleSet = (version: string): LinkageTerms["linkageRuleSet"] => ({
-  keySet: { name: "example-keys", version },
-  fieldSet: { name: "baseline-pii", version: "1.0.0" },
-});
 const agreement = {
   reference: "MOU-001",
   purpose: "Care coordination",
@@ -1379,16 +1400,6 @@ const RESPONDER_REFUSALS: ReadonlyArray<{
       'linkage keys do not match: only you declare "SSN-only"; only your partner declares "SSN"',
   },
   {
-    kind: "linkage rule set",
-    responderTerms: { ...termsB, linkageRuleSet: ruleSet("2.0.0") },
-    initiator:
-      'linkage rule set mismatch: yours names "example-keys" 1.0.0 over "baseline-pii" 1.0.0, ' +
-      `your partner's names "example-keys" 2.0.0 over "baseline-pii" 1.0.0`,
-    responder:
-      'linkage rule set mismatch: yours names "example-keys" 2.0.0 over "baseline-pii" 1.0.0, ' +
-      `your partner's names "example-keys" 1.0.0 over "baseline-pii" 1.0.0`,
-  },
-  {
     kind: "legal agreement",
     responderTerms: { ...termsB, legalAgreement: agreement },
     initiator: "your partner has a legal agreement but you do not",
@@ -1405,15 +1416,11 @@ const RESPONDER_REFUSALS: ReadonlyArray<{
 test.each(RESPONDER_REFUSALS)(
   "a $kind refusal is worded from each party's own side",
   async ({ kind, responderTerms, initiator, responder }) => {
-    const initiatorTerms: LinkageTerms =
-      kind === "linkage rule set"
-        ? { ...termsA, linkageRuleSet: ruleSet("1.0.0") }
-        : termsA;
     const [connA, connB] = makeConnections();
     const { conn: recordingB, sent } = recordingConnection(connB);
     const [initiatorRender, responderRender] = bothRenders(
       await Promise.allSettled([
-        exchangeTerms(connA, "initiator", initiatorTerms, 100),
+        exchangeTerms(connA, "initiator", termsA, 100),
         exchangeTerms(recordingB, "responder", responderTerms, 200),
       ]),
     );

@@ -258,7 +258,6 @@ const TERM_OF_DIFFERENCE: Readonly<
   output: "output",
   "linkage-fields": "linkageFields",
   "linkage-keys": "linkageKeys",
-  "linkage-rule-set": "linkageRuleSet",
   "legal-agreement": "legalAgreement",
   payload: "payload",
   deduplicate: "deduplicate",

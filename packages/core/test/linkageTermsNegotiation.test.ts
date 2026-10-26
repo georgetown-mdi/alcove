@@ -176,6 +176,12 @@ test("the partner refuses an edit to every bound field", () => {
       ).toThrow(InvitationTermDivergenceError);
       continue;
     }
+    if (field === "linkageRuleSet") {
+      expect(
+        validateCompatibility(edited, everyFieldStatedPartner).errors,
+      ).toEqual([]);
+      continue;
+    }
     expect(
       validateCompatibility(edited, everyFieldStatedPartner).errors,
       field,
@@ -231,7 +237,7 @@ test("an edit to every bound field is a terms change", () => {
           .delta,
       ),
       field,
-    ).toBe(false);
+    ).toBe(field === "linkageRuleSet");
 });
 
 test("a terms change the comparison skips leaves the delta empty", () => {

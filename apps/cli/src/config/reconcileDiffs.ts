@@ -1,8 +1,4 @@
-import type {
-  CompatibilityMessageFragment,
-  LinkageRuleSetReference,
-  LinkageTerms,
-} from "@alcove/core";
+import type { CompatibilityMessageFragment, LinkageTerms } from "@alcove/core";
 import {
   bareTermsValue,
   canonicalString,
@@ -430,40 +426,6 @@ function renderStructural(
 }
 
 /**
- * Render a rule-set citation for a diff line, keys first -- the order core's
- * own mismatch message uses, so the two accounts of one citation cannot drift
- * apart on how a name is delimited. Unescaped: a diff line is composed into a
- * {@link UsageError} and escaped once where it is shown. All four values
- * stand in ONE clause rather than two nested halves, so the
- * {@link reconcileClause} sub-partition runs once rather than dividing a
- * quarter share twice over.
- */
-function renderRuleSetCitation(
-  reference: LinkageRuleSetReference,
-): ReconcileClause {
-  return reconcileClause`${reconcileDiffValue(reference.keySet.name)} ${reconcileDiffBareValue(reference.keySet.version)} over ${reconcileDiffValue(reference.fieldSet.name)} ${reconcileDiffBareValue(reference.fieldSet.version)}`;
-}
-
-/**
- * The two sides of a `linkage_rule_set` conflict, each as its clause.
- *
- * No full-detail fallback beside it, unlike the structural lists: the clause
- * is built from delimited runs and a checked bare form, which no two
- * different citations can spell alike, so two clauses that read the same are
- * citations whose difference redaction took out. {@link formatReconcileDiffs}
- * is where a pair that reads alike is reported.
- */
-function renderRuleSetCitationConflict(
-  existing: LinkageRuleSetReference,
-  incoming: LinkageRuleSetReference,
-): Omit<ReconcileDiff, "field"> {
-  return reconcileClauseConflict(
-    renderRuleSetCitation(existing),
-    renderRuleSetCitation(incoming),
-  );
-}
-
-/**
  * Compare a pre-existing config's linkage terms against the terms an
  * acceptance would adopt from the invitation, returning the mandatory
  * disagreements that must abort the acceptance and the soft mismatches that
@@ -473,10 +435,10 @@ function renderRuleSetCitationConflict(
  * agreement?"), not the cross-party {@link validateCompatibility} (which
  * checks that two different parties' terms work together). The
  * agreement-defining fields -- version, algorithm, linkage strategy, linkage
- * fields and keys, the rule-set citation (where both sides declare one),
- * legal agreement, and payload -- must match; per-party fields (`identity`,
- * `output`, `deduplicate`) are excluded, since each party legitimately holds
- * its own value. `date` is soft, matching `validateCompatibility`.
+ * fields and keys, legal agreement, and payload -- must match; per-party
+ * fields (`identity`, `output`, `deduplicate`) are excluded, since each party
+ * legitimately holds its own value. `date` is soft, matching
+ * `validateCompatibility`.
  *
  * Every value is compared BYTE-EXACT (canonical form, or string equality for
  * a schema-constrained scalar), matching the predicate `validateCompatibility`
@@ -577,26 +539,6 @@ export function diffLinkageTerms(
   ) {
     const r = renderStructural(existing.linkageKeys, incoming.linkageKeys);
     add("linkage_keys", r.existing, r.incoming);
-  }
-
-  // Only where BOTH sides cite, which is validateCompatibility's own gate for
-  // the citation rather than a second rule invented here (see the doc comment).
-  if (
-    existing.linkageRuleSet !== undefined &&
-    incoming.linkageRuleSet !== undefined &&
-    canonicalDiffers(
-      existing.linkageRuleSet,
-      incoming.linkageRuleSet,
-      "linkage rule set",
-    )
-  ) {
-    conflicts.push({
-      field: "linkage_rule_set",
-      ...renderRuleSetCitationConflict(
-        existing.linkageRuleSet,
-        incoming.linkageRuleSet,
-      ),
-    });
   }
 
   // The reference is partner-chosen free text and the expiration date is

@@ -12,7 +12,6 @@ import {
   compatibilityMessage,
   quoteTermsValue,
   quoteTermsValueList,
-  ruleSetCitation,
 } from "../../src/config/compatibilityMessage";
 import { validateCompatibility } from "../../src/linkageTermsNegotiation";
 import {
@@ -227,44 +226,6 @@ describe("quoteTermsValueList", () => {
   });
 });
 
-describe("ruleSetCitation", () => {
-  test("renders the name delimited and a schema-shaped version bare", () => {
-    // The pair every surface showing a citation renders, pinned here so the one
-    // grammar core's mismatch diagnostic, both consent surfaces, and the CLI's
-    // drift warning share is asserted where it is written rather than only in
-    // each of their renderings.
-    expect(ruleSetCitation("example-keys", "1.2.0")).toBe(
-      '"example-keys" 1.2.0',
-    );
-  });
-
-  test("a name cannot spell the pair beside it", () => {
-    // What the delimiting is for: a name displaying as a name plus a version,
-    // or holding a delimiter of its own, stays one run rather than standing
-    // in the citation as a set at a version the invitation does not name.
-    const citation = ruleSetCitation(
-      'example-keys 9.9.9" over "other',
-      "1.2.0",
-    );
-    expect(citation).toBe('"example-keys 9.9.9"" over ""other" 1.2.0');
-    const read = readMessage(citation);
-    expect(read.values).toEqual(['example-keys 9.9.9" over "other']);
-    expect(read.skeleton).toBe("<value> 1.2.0");
-  });
-
-  test("a version outside the bare shape takes the delimited run", () => {
-    // Checked on the value in hand: a citation reaches these surfaces from a
-    // partner's decoded invitation as readily as from a schema parse.
-    const version = '1.2.0" over "forged';
-    expect(ruleSetCitation("example-keys", version)).toBe(
-      `"example-keys" ${quoteTermsValue(version)}`,
-    );
-    expect(
-      readMessage(ruleSetCitation("example-keys", version)).values,
-    ).toEqual(["example-keys", version]);
-  });
-});
-
 test("a raw terms value cannot be composed into a diagnostic", () => {
   // The compile-time half of the sweep: the tagged template takes only
   // fragments the delimiting boundary produced, so dropping a delimiter
@@ -358,8 +319,6 @@ test("no connective or label the diagnostics are built from is bare-shaped", () 
   const tokens = firstPartyTokens();
   expect(tokens).toEqual(
     expect.arrayContaining([
-      "over",
-      "names",
       "yours",
       "is",
       "do",
@@ -402,12 +361,6 @@ const withAgreement = (
   ...terms,
   legalAgreement: { reference, purpose, expirationDate },
 });
-
-const withRuleSet = (
-  terms: LinkageTerms,
-  keySet: { name: string; version: string },
-  fieldSet: { name: string; version: string },
-): LinkageTerms => ({ ...terms, linkageRuleSet: { keySet, fieldSet } });
 
 const withPayload = (
   terms: LinkageTerms,
@@ -526,8 +479,8 @@ const TREATED_ESC = controlCharacterMarker(0x1b);
 /**
  * Every VALUE SLOT of every compatibility diagnostic that names a terms value,
  * with the value under test threaded through it: one entry per slot, so both
- * sides of a two-slot comparison and each of the four the rule-set clause
- * renders are driven rather than one standing in for the rest -- the two sides
+ * sides of a two-slot comparison are driven rather than one standing in for
+ * the other -- the two sides
  * of a slot pair are separate interpolations, and a delimiter dropped from
  * either is a separate defect. Each entry supplies a benign token the case would
  * have anyway, and the adversarial shapes below are built AROUND that token, so
@@ -571,158 +524,6 @@ interface SweptDiagnostic {
 }
 
 const SWEPT: readonly SweptDiagnostic[] = [
-  {
-    id: "rule set mismatch, local key set name",
-    benign: "example-keys",
-    compose: (value) =>
-      errorStartingWith(
-        withRuleSet(
-          base,
-          { name: value, version: "1.0.0" },
-          { name: "baseline-pii", version: "1.0.0" },
-        ),
-        withRuleSet(
-          base,
-          { name: "other-keys", version: "2.0.0" },
-          { name: "baseline-pii", version: "1.0.0" },
-        ),
-        "linkage rule set mismatch",
-        "rule set mismatch, local key set name",
-      ),
-  },
-  {
-    id: "rule set mismatch, partner key set name",
-    benign: "example-keys",
-    compose: (value) =>
-      errorStartingWith(
-        withRuleSet(
-          base,
-          { name: "other-keys", version: "2.0.0" },
-          { name: "baseline-pii", version: "1.0.0" },
-        ),
-        withRuleSet(
-          base,
-          { name: value, version: "1.0.0" },
-          { name: "baseline-pii", version: "1.0.0" },
-        ),
-        "linkage rule set mismatch",
-        "rule set mismatch, partner key set name",
-      ),
-  },
-  {
-    id: "rule set mismatch, local field set name",
-    benign: "baseline-pii",
-    compose: (value) =>
-      errorStartingWith(
-        withRuleSet(
-          base,
-          { name: "example-keys", version: "1.0.0" },
-          { name: value, version: "1.0.0" },
-        ),
-        withRuleSet(
-          base,
-          { name: "example-keys", version: "1.0.0" },
-          { name: "other-pii", version: "2.0.0" },
-        ),
-        "linkage rule set mismatch",
-        "rule set mismatch, local field set name",
-      ),
-  },
-  {
-    id: "rule set mismatch, partner field set name",
-    benign: "baseline-pii",
-    compose: (value) =>
-      errorStartingWith(
-        withRuleSet(
-          base,
-          { name: "example-keys", version: "1.0.0" },
-          { name: "other-pii", version: "2.0.0" },
-        ),
-        withRuleSet(
-          base,
-          { name: "example-keys", version: "1.0.0" },
-          { name: value, version: "1.0.0" },
-        ),
-        "linkage rule set mismatch",
-        "rule set mismatch, partner field set name",
-      ),
-  },
-  {
-    id: "rule set mismatch, local key set version",
-    benign: "2.0.0",
-    compose: (value) =>
-      errorStartingWith(
-        withRuleSet(
-          base,
-          { name: "example-keys", version: value },
-          { name: "baseline-pii", version: "1.0.0" },
-        ),
-        withRuleSet(
-          base,
-          { name: "other-keys", version: "1.0.0" },
-          { name: "baseline-pii", version: "1.0.0" },
-        ),
-        "linkage rule set mismatch",
-        "rule set mismatch, local key set version",
-      ),
-  },
-  {
-    id: "rule set mismatch, partner key set version",
-    benign: "2.0.0",
-    compose: (value) =>
-      errorStartingWith(
-        withRuleSet(
-          base,
-          { name: "example-keys", version: "1.0.0" },
-          { name: "baseline-pii", version: "1.0.0" },
-        ),
-        withRuleSet(
-          base,
-          { name: "example-keys", version: value },
-          { name: "baseline-pii", version: "1.0.0" },
-        ),
-        "linkage rule set mismatch",
-        "rule set mismatch, partner key set version",
-      ),
-  },
-  {
-    id: "rule set mismatch, local field set version",
-    benign: "2.0.0",
-    compose: (value) =>
-      errorStartingWith(
-        withRuleSet(
-          base,
-          { name: "example-keys", version: "1.0.0" },
-          { name: "baseline-pii", version: value },
-        ),
-        withRuleSet(
-          base,
-          { name: "example-keys", version: "1.0.0" },
-          { name: "other-pii", version: "1.0.0" },
-        ),
-        "linkage rule set mismatch",
-        "rule set mismatch, local field set version",
-      ),
-  },
-  {
-    id: "rule set mismatch, partner field set version",
-    benign: "2.0.0",
-    compose: (value) =>
-      errorStartingWith(
-        withRuleSet(
-          base,
-          { name: "example-keys", version: "1.0.0" },
-          { name: "baseline-pii", version: "1.0.0" },
-        ),
-        withRuleSet(
-          base,
-          { name: "example-keys", version: "1.0.0" },
-          { name: "other-pii", version: value },
-        ),
-        "linkage rule set mismatch",
-        "rule set mismatch, partner field set version",
-      ),
-  },
   {
     id: "legal agreement reference mismatch, local side",
     benign: "MOU-001",
@@ -1023,8 +824,8 @@ const ADVERSARIAL_SHAPES: ReadonlyArray<{
     marker: "forged",
   },
   {
-    // A value that displays as the "<name> <version>" pair the rule-set clause
-    // renders, so an undelimited one passes off a version nobody cited.
+    // A value that displays as a name followed by a version, so an undelimited
+    // one passes off a version nobody stated.
     name: "a space-joined version",
     shape: (benign) => `${benign} 9.9.9 over forged-substrate`,
     marker: "forged",
@@ -1033,13 +834,13 @@ const ADVERSARIAL_SHAPES: ReadonlyArray<{
     // A bare connective, which the other three cannot be: each has a space or
     // a comma, so each is delimited whatever the value slot does with it. This
     // one is the delimiting boundary's charset throughout and spells the
-    // rule-set clause's own " over " with none of the space -- the template
+    // mismatch clauses' own " is " with none of the space -- the template
     // supplies that -- so it is the shape the digit requirement exists for, and
     // it takes the delimited branch only because it has no digit. It plants no
     // marker: it IS a token the templates are built from, which is the whole of
     // the attack.
     name: "a bare connective",
-    shape: () => "over",
+    shape: () => "is",
   },
   {
     // The bare branch's own hostile case: still the delimiting boundary's
