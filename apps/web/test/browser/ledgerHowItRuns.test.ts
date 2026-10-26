@@ -55,7 +55,7 @@ describe("the ledger's How it runs tooltip", () => {
     await expect
       .element(tooltip)
       .toHaveTextContent(
-        "How the exchange runs: this console's server runs it, not your browser. It goes through files on an SFTP server or a shared folder, or live over WebRTC.",
+        "How the exchange runs: this console runs it, not your browser. It goes through files on an SFTP server or a shared folder, or live over WebRTC.",
       );
     expect(tooltip.element().textContent).not.toMatch(/two browsers/);
   });

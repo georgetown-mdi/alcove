@@ -93,7 +93,7 @@ const HEADING_INFO: Record<string, string | undefined> = {
 /** The "How it runs" explanation on the console, where the server runs every
  * exchange and the browser does no exchange work. */
 const CONSOLE_HOW_IT_RUNS_INFO =
-  "How the exchange runs: this console's server runs it, not your " +
+  "How the exchange runs: this console runs it, not your " +
   "browser. It goes through files on an SFTP server or a shared folder, or " +
   "live over WebRTC.";
 
