@@ -67,12 +67,7 @@ To link a file:
 2. Within the Docker terminal (or in a Windows/Mac/Linux terminal window), run:  
 ```sh
 docker pull ghcr.io/georgetown-mdi/alcove:latest
-docker run -it \
-  --rm --mount type=bind,src=WORK_PATH,dst=/work \
-  ghcr.io/georgetown-mdi/alcove:latest \
-  sftp://SFTP_USER@SFTP_HOST:SFTP_PORT/SFTP_PATH \
-  --server-password=@PASSWORD_FILE \
-  INPUT_FILE OUTPUT_FOLDER
+docker run -it --rm --mount type=bind,src=WORK_PATH,dst=/work ghcr.io/georgetown-mdi/alcove:latest sftp://SFTP_USER@SFTP_HOST:SFTP_PORT/SFTP_PATH --server-password=@PASSWORD_FILE INPUT_FILE OUTPUT_FOLDER
 ```  
 Replacing each of the following:
    * `WORK_PATH` - relative or absolute path to a directory on your machine that contains your input file. The container can only read and write inside this directory, and the output folder is in it. Example: `/Users/me/psi-exchange` (Mac/Linux) or `C:\Users\me\psi-exchange` (Windows).
@@ -87,12 +82,7 @@ If `docker pull` stops with a certificate error or a refusal behind your organiz
 A complete example, run from `/Users/me/psi-exchange` containing `clients.csv`:
 
 ```sh
-docker run -it \
-  --rm --mount type=bind,src=/Users/me/psi-exchange,dst=/work \
-  ghcr.io/georgetown-mdi/alcove:latest \
-  sftp://exchange_user@sftp.example.org/exchanges/county-a-county-b \
-  --server-password=@passwd \
-  clients.csv matches/
+docker run -it --rm --mount type=bind,src=/Users/me/psi-exchange,dst=/work ghcr.io/georgetown-mdi/alcove:latest sftp://exchange_user@sftp.example.org/exchanges/county-a-county-b --server-password=@passwd clients.csv matches/
 ```
 
 The `-it` flag connects your terminal to the container. On the first connection, Alcove shows the SFTP server's host-key fingerprint and asks you to confirm it; check it against the fingerprint your server administrator gives you before answering yes. Without `-it` there is no terminal to ask at, and Alcove refuses to connect to a server whose fingerprint it has not been given.
@@ -100,20 +90,13 @@ The `-it` flag connects your terminal to the container. On the first connection,
 To run without a terminal, as a scheduled job does, read the fingerprint first, confirm it with your server administrator, and pass it on each run:
 
 ```sh
-docker run --rm ghcr.io/georgetown-mdi/alcove:latest \
-  probe-host-key sftp://sftp.example.org
+docker run --rm ghcr.io/georgetown-mdi/alcove:latest probe-host-key sftp://sftp.example.org
 ```
 
 Then paste the whole fingerprint it printed in place of `SHA256:FINGERPRINT` in the run command:
 
 ```sh
-docker run \
-  --rm --mount type=bind,src=/Users/me/psi-exchange,dst=/work \
-  ghcr.io/georgetown-mdi/alcove:latest \
-  sftp://exchange_user@sftp.example.org/exchanges/county-a-county-b \
-  --server-password=@passwd \
-  --server-host-key-fingerprint=SHA256:FINGERPRINT \
-  clients.csv matches/
+docker run --rm --mount type=bind,src=/Users/me/psi-exchange,dst=/work ghcr.io/georgetown-mdi/alcove:latest sftp://exchange_user@sftp.example.org/exchanges/county-a-county-b --server-password=@passwd --server-host-key-fingerprint=SHA256:FINGERPRINT clients.csv matches/
 ```
 
 See [Reading a host key with `probe-host-key`](docs/CLI.md#reading-a-host-key-with-probe-host-key).
@@ -157,7 +140,7 @@ docker run --rm -p 127.0.0.1:3000:3000 \
   --env JOB_DATA_ROOT=/work -v "${PWD}:/work" \
   --env JOB_RENDEZVOUS_DIR=/shared \
   --env JOB_RENDEZVOUS_NAME=shared-folder \
-  -v "/path/to/shared-folder":/shared \
+  -v "/path/to/shared-folder:/shared" \
   ghcr.io/georgetown-mdi/alcove:latest serve
 ```
    On Windows, navigate to that directory in the Docker console and run:
@@ -189,14 +172,13 @@ Read the password from a file with `--server-password=@PASSWORD_FILE`, as the qu
 If you put the password in the connection string instead, special characters in it can be interpreted incorrectly by your shell. To avoid this, encase the whole connection string in single-quotation marks or escape the problematic characters. As an example of an exchange running from the current directory (indicated by mounting `$PWD`, or **p**rinting the **w**orking **d**irectory):
 
 ```sh
-docker run -it --rm --mount type=bind,src=$PWD,dst=/work ghcr.io/georgetown-mdi/alcove:latest \
-   'sftp://user:passw!rd@example.org/psi' input.csv ./results
+docker run -it --rm --mount type=bind,src="$PWD",dst=/work ghcr.io/georgetown-mdi/alcove:latest 'sftp://user:passw!rd@example.org/psi' input.csv ./results
 ```
 
-or
+or, in a Mac or Linux terminal only, where a backslash escapes the character:
 
 ```sh
-docker run -it --rm --mount type=bind,src=$PWD,dst=/work ghcr.io/georgetown-mdi/alcove:latest \
+docker run -it --rm --mount type=bind,src="$PWD",dst=/work ghcr.io/georgetown-mdi/alcove:latest \
    sftp://user:passw\!rd@example.org/psi input.csv ./results
 ```
 
@@ -212,10 +194,7 @@ Connection parameters can also be specified individually as command line flags t
 Using `@path`s specifies that the value should be read from a file. For example, to have the script read a password from the file `passwd` in the working directory, run:
 
 ```sh
-docker run -it --rm --mount type=bind,src=$PWD,dst=/work ghcr.io/georgetown-mdi/alcove:latest \
-  sftp://user@example.org/psi \
-  --server-password=@passwd \
-  input.csv ./results
+docker run -it --rm --mount type=bind,src="$PWD",dst=/work ghcr.io/georgetown-mdi/alcove:latest sftp://user@example.org/psi --server-password=@passwd input.csv ./results
 ```
 
 Note that because Docker prevents the container from accessing any path on your host system that isn't explicitly mounted, if you wish to use a pre-existing private key the program cannot access `~/.ssh` by default. In that case, either add a read-only mount to the key folder or copy the key to the working directory.
@@ -234,11 +213,13 @@ To execute commands, launch a terminal from within Docker Desktop by clicking on
 
 Paths can be given to Docker using standard Windows-style back-slashes. One exception is at the very end of the string: a trailing back-slash can cause Docker to fail to understand the end of the string. It is safe to remove it as it will still be treated as a directory.
 
-Additionally, the line-continuation markers given in the examples (the `\` at the end of each line) above do not parse correctly. Put commands all on one line instead. For example:
+A command in this README written on one line runs as written in PowerShell and in a Mac or Linux terminal. A command split over several lines, with a `\` at the end of each line, is for a Mac or Linux terminal only: PowerShell does not read the `\`. Put such a command on one line without the `\` marks instead. For example:
 
 ```sh
 docker run -it --rm --mount type=bind,src='C:\Users\me\Documents\alcove',dst=/work ghcr.io/georgetown-mdi/alcove:latest sftp://user@example.org/psi --server-password=@passwd input.csv ./results
 ```
+
+A command that mounts `$PWD` or `${PWD}` needs a folder on a local drive. From a network location, a path starting with `\\`, PowerShell gives `$PWD` as `Microsoft.PowerShell.Core\FileSystem::\\server\share\...`, which Docker cannot mount. Docker cannot mount a folder on a network location by its path either, whether a `\\` path or a mapped drive such as `Z:\exchange`: it reaches that folder through a volume the Windows shared-folder setup makes, described in [Using a network file drop with Alcove on Windows](support/windows-network-filedrop/README.md). For a folder on a local drive, you can write its path in place of `$PWD`, as in the example above.
 
 ### Docker run background
 

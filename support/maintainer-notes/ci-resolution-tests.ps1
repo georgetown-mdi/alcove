@@ -1,8 +1,8 @@
 <#
 .SYNOPSIS
     Runs this folder's Pester suites -- Setup-AlcoveFileDrop.Tests.ps1,
-    Start-Alcove.Tests.ps1, and AcceptSheet.Tests.ps1 -- and reports the run
-    as check-run annotations.
+    Start-Alcove.Tests.ps1, AcceptSheet.Tests.ps1, and DockerLines.Tests.ps1
+    -- and reports the run as check-run annotations.
     Maintainer-facing: an operator following the setup page never touches it.
 
 .DESCRIPTION
@@ -172,7 +172,7 @@ $failedJob = $false
 try {
     # Named one by one rather than discovered by mask: a suite that was renamed
     # or lost would otherwise leave the job green having run whatever remained.
-    $testFiles = @('Setup-AlcoveFileDrop.Tests.ps1', 'Start-Alcove.Tests.ps1', 'AcceptSheet.Tests.ps1') |
+    $testFiles = @('Setup-AlcoveFileDrop.Tests.ps1', 'Start-Alcove.Tests.ps1', 'AcceptSheet.Tests.ps1', 'DockerLines.Tests.ps1') |
         ForEach-Object { Join-Path $PSScriptRoot $_ }
     foreach ($file in $testFiles) {
         if (-not (Test-Path -LiteralPath $file)) { throw "a suite is not at $file" }

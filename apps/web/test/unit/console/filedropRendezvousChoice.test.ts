@@ -206,7 +206,9 @@ describe("the notice for a shared folder that holds the working folder", () => {
       /--env (\w+)=(\S+)/g,
     ))
       env[match[1]] = match[2];
-    const mountPoint = /:(\/\S+) \\$/m.exec(SHARED_FOLDER_MOUNT_FLAGS)?.[1];
+    const mountPoint = /-v "[^"]+:(\/[^"]+)"/.exec(
+      SHARED_FOLDER_MOUNT_FLAGS,
+    )?.[1];
     expect(mountPoint).toBe(env.JOB_RENDEZVOUS_DIR);
     const provisioning = resolveJobRendezvousProvisioning(env);
     expect(provisioning.sharesDataRoot).toBeUndefined();
