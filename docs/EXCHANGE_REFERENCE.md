@@ -45,7 +45,7 @@ The document's four free-text fields -- [`identity`](#linkage_termsidentity), th
 
 Because those three are read out of a record long after the run, they refuse a second class the `exclude` value does not: the nine Unicode text-direction formatting characters -- the embeddings, overrides, and isolates of Unicode UAX #9 -- which the [name rule](#linkage-terms) below refuses for the same reason. One of them opens a layout scope that outlives the value and reorders the copy the record is read beside, and nothing legitimate in an identity, a purpose, or a description needs one: a right-to-left sentence lays out correctly from its own letters. The implicit direction marks `U+200E`, `U+200F`, and `U+061C` are outside the class and stay admitted, in these three fields as in a name. An `exclude` value keeps the nine, being a value your data is matched against rather than text a record holds.
 
-The document's names take a rule of their own, inside their 256-character cap: a linkage field, key, or element `name`, an element's `field` or `swap` reference, a [transform step's](#transform-steps) `function` name and each of its `params` keys, a [payload column's](#linkage_termspayload) `name`, the legal agreement's [`reference`](#linkage_termslegal_agreement), and a [rule set's](#linkage_termslinkage_rule_set) `name` may hold neither a control character nor one of the nine Unicode text-direction formatting characters -- the embeddings, overrides, and isolates of Unicode UAX #9. A name is matched on, written verbatim into both parties' exchange records, and shown beside first-party copy on the screen where the exchange is agreed to, and a text-direction character in one reorders the sentence around it. A rule set's name is the one not written into the records; it is matched on and shown the same way. Nothing legitimate in a name needs one: a right-to-left or mixed-direction label lays out correctly from its own letters, and letters in any script are untouched. Alcove removes those same characters from your own CSV column headers when it reads the file (see [CSV header sanitation](spec/PARSED_INPUT_BOUNDS.md#csv-header-sanitation-at-ingestion)), so a header and a terms name agree on what a column may be called. The [`metadata`](#input-metadata) block's column `name` takes the same rule, for the same reason: a name you declare there is matched on, and a disclosed one is listed to your partner in the invitation.
+The document's names take a rule of their own, inside their 256-character cap: a linkage field, key, or element `name`, an element's `field` or `swap` reference, a [transform step's](#transform-steps) `function` name and each of its `params` keys, a [payload column's](#linkage_termspayload) `name`, and the legal agreement's [`reference`](#linkage_termslegal_agreement) may hold neither a control character nor one of the nine Unicode text-direction formatting characters -- the embeddings, overrides, and isolates of Unicode UAX #9. A name is matched on, written verbatim into both parties' exchange records, and shown beside first-party copy on the screen where the exchange is agreed to, and a text-direction character in one reorders the sentence around it. A rule set's name is the one not written into the records; it is matched on and shown the same way. Nothing legitimate in a name needs one: a right-to-left or mixed-direction label lays out correctly from its own letters, and letters in any script are untouched. Alcove removes those same characters from your own CSV column headers when it reads the file (see [CSV header sanitation](spec/PARSED_INPUT_BOUNDS.md#csv-header-sanitation-at-ingestion)), so a header and a terms name agree on what a column may be called. The [`metadata`](#input-metadata) block's column `name` takes the same rule, for the same reason: a name you declare there is matched on, and a disclosed one is listed to your partner in the invitation.
 
 Two kinds of value stay outside both rules, held to their length caps alone: the string values of a transform step's `params` -- a regex pattern, a replacement, a delimiter, a default -- bounded at 1000 characters each, and a name constraint's [`allowed_characters`](#constraints) class, bounded at 256. Each is data a step matches or substitutes with rather than a name, so a tab is a plausible delimiter and a line break a plausible replacement, and refusing them would refuse legitimate terms; a `params` key takes the name rule, being the parameter's name rather than data the step works with. What neutralizes a control character in one of those is the display escaping Alcove applies wherever it renders a value, the same boundary that covers every other partner-supplied string on its way to a screen, a log, or an error.
 
@@ -251,7 +251,7 @@ expected_partner_deduplicate: true
 ### `linkage_terms.linkage_fields`
 
 *Type:* array  
-*Required:* yes, written out even where the block names a rule set  
+*Required:* yes  
 *Consistency:* mandatory
 
 The linkage fields define the standardized form of each PII element that participates in linkage. Each field has a name, a semantic type, and optional constraints. The name is a unique identifier used by linkage key elements and data standardizing transformations.
@@ -349,7 +349,7 @@ The table above is the complete set of constraints. A constraint not listed for 
 ### `linkage_terms.linkage_keys`
 
 *Type:* array  
-*Required:* yes, written out even where the block names a rule set  
+*Required:* yes  
 *Consistency:* mandatory
 
 An ordered list of linkage keys applied in sequence, in the order listed. Each round of the PSI protocol matches only records not yet resolved in a prior round. Each element references a linkage field by name and may optionally specify transformations applied to that field's canonical value before it is concatenated into the key.
@@ -460,36 +460,6 @@ linkage_terms:
 
 The specification is in [PROTOCOL.md](spec/PROTOCOL.md#keys-with-a-missing-field-condition).
 
-### `linkage_terms.linkage_rule_set`
-
-*Type:* object  
-*Required:* no  
-*Consistency:* none
-
-The named rule set the `linkage_fields` and `linkage_keys` above were drawn from -- a citation, not a specification. It names two artifacts and their content versions: `field_set` for the fields, `key_set` for the keys. [The built-in rules](#the-built-in-rules) are the set Alcove ships.
-
-```yaml
-linkage_terms:
-  linkage_rule_set:
-    field_set:
-      name: "baseline-pii"
-      version: "1.3.0"
-    key_set:
-      name: "precision-ranked-rules"
-      version: "2.2.0"
-```
-
-No path that fills in your fields and keys for you writes this citation: not a quick exchange, the template `alcove init` writes, the web app's default and Advanced invite paths, or the console's quick exchange. A citation written by hand travels wherever the terms do -- into the invitation and onto the wire -- but not into either party's exchange record, whose matching basis lists the fields the agreed keys read.
-
-What it does and does not determine:
-
-- **It is not what the exchange runs on.** The `linkage_fields` and `linkage_keys` are, and they are cross-checked between the parties field by field and key by key. A run matches on a subset of the cited set, never on an addition to it, so a citation is an upper bound on what was tried.
-- **It does not stand in for the rules.** `linkage_fields` and `linkage_keys` are required in `linkage_terms` whether or not it names a rule set.
-- **It is not vouched for.** Your partner's citation is text your partner wrote, and nothing resolves a partner's set name to content. The accepting party's terms review does not show it, and neither party's exchange record holds it.
-- **Omit it for rules you author yourself.** Rules you author can cite only the built-in set -- there is no way to select another -- and citing a set your rules were not drawn from misdescribes them. The web Advanced invite path does not carry the citation of a terms document you import into the terms it builds.
-- **A configuration file keeps the citation you edit past.** Editing `linkage_fields` or `linkage_keys` in `alcove.yaml` leaves the citation the file was written with in place, and nothing checks it against the rules the file now holds.
-- **It does not have to match your partner's.** The two parties' citations are not compared, so parties whose fields and keys agree exchange whatever sets they cite, or whether they cite one at all.
-
 ### `linkage_terms.legal_agreement`
 
 *Type:* object  
@@ -548,7 +518,7 @@ Your terms state the columns your input metadata sends, whatever `payload.send` 
 The party whose terms differ from its partner's decides on what it receives:
 
 - The difference covers the columns your partner now sends you or no longer sends you -- a narrowing is decided exactly as an addition is -- compared against your `payload.receive`. Columns you send that your partner's terms do not receive are shown too, but they are your partner's to decide.
-- Any other agreed term that differs -- a legal agreement, a rule-set citation, the linkage keys -- is part of the same change. The party that receives the first terms message (the responder) is the one asked about those, so a party that changes one of them by hand and wants its partner to take it on sends it with [`alcove update`](CLI.md#changing-the-terms-of-an-established-partnership) instead.
+- Any other agreed term that differs -- a legal agreement, the linkage keys -- is part of the same change. The party that receives the first terms message (the responder) is the one asked about those, so a party that changes one of them by hand and wants its partner to take it on sends it with [`alcove update`](CLI.md#changing-the-terms-of-an-established-partnership) instead.
 - `alcove exchange` at a terminal shows the change and asks. Confirming writes your partner's terms into the `alcove.yaml` it runs from, through the write `alcove apply` makes, and the same run continues under them; declining ends the run before any key moves. A run with no terminal on stdin refuses instead, writes your partner's terms beside the configuration as a terms update (`alcove.proposed-terms` beside `alcove.yaml`), and names the `alcove apply` command that applies it; see [CLI.md](CLI.md#when-your-partners-terms-change).
 - A change to the linkage fields, keys, algorithm, strategy, output direction, or version cannot continue the run it is met in, since your data was prepared under the old terms: every run refuses it and writes the proposal file, attended or not.
 - A change to your partner's `deduplicate`, against the `expected_partner_deduplicate` your configuration holds it to, cannot continue the run either, since it changes what your records disclose: every run refuses it and writes the proposal file, attended or not, and `alcove apply` shows it among the changes it asks about. Confirming a change at the terminal never changes `expected_partner_deduplicate`.
@@ -1805,7 +1775,6 @@ The cells:
 | `linkage_terms.linkage_fields` (`name`, `type`) | authored (inferred) | authored (inferred) | carried with a notice |
 | `linkage_terms.linkage_fields` (`constraints`) | carried | carried with a notice | carried with a notice |
 | `linkage_terms.linkage_keys` | authored (inferred) | authored | carried with a notice |
-| `linkage_terms.linkage_rule_set` | authored (inferred) | authored (inferred) | carried with a notice |
 | `linkage_terms.legal_agreement` | carried | authored | carried with a notice |
 | `linkage_terms.payload.send` (`name`) | authored (stated from `metadata` on invite and update) | authored (inferred) | carried with a notice |
 | `linkage_terms.payload.send` (`description`) | carried | carried with a notice | carried with a notice |

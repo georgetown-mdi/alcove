@@ -815,20 +815,19 @@ test("a terms frame still holding the retired width field is ignored", async () 
   expect(result.warnings).toEqual([]);
 });
 
-test("two parties citing different rule sets over agreeing rules proceed", async () => {
-  const citing = (version: string): LinkageTerms["linkageRuleSet"] => ({
-    fieldSet: { name: "baseline-pii", version: "1.0.0" },
-    keySet: { name: "example-keys", version },
-  });
+test("a partner's terms still holding a rule-set citation are read without it", async () => {
+  // The terms schema drops a key it does not read, so a peer that still sends
+  // the retired citation is held to its fields and keys alone, which agree.
   const [connA, connB] = makeConnections();
-  const responder = exchangeTerms(
-    connB,
-    "responder",
-    { ...termsB, linkageRuleSet: citing("2.0.0") },
-    200,
-  );
+  const responder = exchangeTerms(connB, "responder", termsB, 200);
   await connA.send({
-    linkageTerms: { ...termsA, linkageRuleSet: citing("1.0.0") },
+    linkageTerms: {
+      ...termsA,
+      linkageRuleSet: {
+        fieldSet: { name: "baseline-pii", version: "1.0.0" },
+        keySet: { name: "example-keys", version: "1.0.0" },
+      },
+    },
     recordCount: 100,
     receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
     protocolVersion: PROTOCOL_VERSION,
@@ -837,7 +836,9 @@ test("two parties citing different rule sets over agreeing rules proceed", async
   expect(msg2).toMatchObject({ decision: "proceed" });
   await connA.send({ decision: "proceed" });
 
-  expect((await responder).warnings).toEqual([]);
+  const result = await responder;
+  expect(result.partnerTerms).not.toHaveProperty("linkageRuleSet");
+  expect(result.warnings).toEqual([]);
 });
 
 // --- Missing record count ----------------------------------------------------

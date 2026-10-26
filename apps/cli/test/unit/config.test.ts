@@ -7,7 +7,6 @@ import { ZodError } from "zod";
 import {
   bareTermsValue,
   COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
-  DEFAULT_LINKAGE_RULE_SET,
   DISPLAY_TRUNCATION_MARKER,
   getDefaultLinkageTerms,
   MAX_NAME_LENGTH,
@@ -62,7 +61,6 @@ import type {
   ConnectionConfig,
   ExchangeSpec,
   FileDropConnectionConfig,
-  LinkageRuleSetReference,
   LinkageTerms,
   Metadata,
   SFTPConnectionConfig,
@@ -4987,26 +4985,7 @@ describe("assertRetainSweepGuard", () => {
   });
 });
 
-// --- a rule-set citation with no rules written -------------------------------
-
-/** Linkage terms as a configuration file writes them, snake_case, citing
- *  `reference` and writing neither rule list. */
-function citationOnlyTerms(
-  reference: LinkageRuleSetReference,
-): Record<string, unknown> {
-  return {
-    version: "1.0.0",
-    identity: "Agency A",
-    date: "2026-01-01",
-    algorithm: "psi",
-    output: { expects_output: true, share_with_partner: true },
-    deduplicate: false,
-    linkage_rule_set: {
-      field_set: { ...reference.fieldSet },
-      key_set: { ...reference.keySet },
-    },
-  };
-}
+// --- linkage_terms keys this build does not read ------------------------------
 
 /** A configuration file written with `terms` as its linkage terms. */
 function writeTermsConfig(terms: Record<string, unknown>): string {
@@ -5021,55 +5000,16 @@ function writeTermsConfig(terms: Record<string, unknown>): string {
   return configPath;
 }
 
-test.each<[string, LinkageRuleSetReference]>([
-  ["the shipped set", DEFAULT_LINKAGE_RULE_SET.reference],
-  [
-    "a set this build does not ship",
-    {
-      fieldSet: { name: "no-such-fields", version: "9.9.9" },
-      keySet: { name: "no-such-keys", version: "9.9.9" },
-    },
-  ],
-])(
-  "a config citing %s and writing no rules is refused by the schema",
-  (_label, reference) => {
-    const configPath = writeTermsConfig(citationOnlyTerms(reference));
-    expect(() => loadConfigLinkageSource(configPath)).toThrow(UsageError);
-    expect(() => loadConfigLinkageSource(configPath)).toThrow(
-      "has invalid linkage_terms",
-    );
-    expect(() => readConfigLinkageSource(configPath)).toThrow(
-      "has invalid linkage_terms",
-    );
-    expect(() =>
-      parseExchangeSpec(YAML.parse(fs.readFileSync(configPath, "utf8"))),
-    ).toThrow(/linkageFields/);
-  },
-);
-
-test("rules written out beside a citation load as written", () => {
-  const terms = getDefaultLinkageTerms("Agency A");
-  const source = loadConfigLinkageSource(
-    writeTermsConfig(snakeizeKeys(terms) as Record<string, unknown>),
-  );
-  expect(source!.linkageTerms.linkageKeys).toEqual(terms.linkageKeys);
-  expect(source!.linkageTerms.linkageFields).toEqual(terms.linkageFields);
-  expect(source!.linkageTerms.linkageRuleSet).toEqual(terms.linkageRuleSet);
-});
-
-test("one rule list beside a citation is left for the schema", () => {
-  const configPath = writeTermsConfig({
-    ...citationOnlyTerms(DEFAULT_LINKAGE_RULE_SET.reference),
-    linkage_keys: [{ name: "SSN", elements: [{ field: "ssn" }] }],
-  });
-  expect(() => loadConfigLinkageSource(configPath)).toThrow(
-    "has invalid linkage_terms",
-  );
-});
-
 test.each<[string, unknown]>([
   ["precision_floor", 95],
   ["one_state_or_metro_area", true],
+  [
+    "linkage_rule_set",
+    {
+      field_set: { name: "baseline-pii", version: "1.3.0" },
+      key_set: { name: "precision-ranked-rules", version: "2.5.0" },
+    },
+  ],
 ])(
   "a config writing linkage_terms.%s is refused as an unknown key",
   (key, value) => {
@@ -5079,6 +5019,9 @@ test.each<[string, unknown]>([
     });
     expect(() => loadConfigLinkageSource(configPath)).toThrow(UsageError);
     expect(() => loadConfigLinkageSource(configPath)).toThrow(
+      `Unrecognized key: "${key}"`,
+    );
+    expect(() => readConfigLinkageSource(configPath)).toThrow(
       `Unrecognized key: "${key}"`,
     );
   },

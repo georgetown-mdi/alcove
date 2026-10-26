@@ -103,9 +103,6 @@ export interface DisclosureRecordOverrides {
    * record byte-exactly -- the hook a suite uses to plant partner-controlled text
    * in a payload column name rather than in an identity. */
   partnerPayloadColumn?: string;
-  /** Whether both parties' terms cite a named rule set, which the record built
-   * from them does not hold. Omitted by default. */
-  linkageRuleSet?: true;
   /** How far the run got. Defaults to the completed run every other fixture
    * field describes; a suite asks for the record a terminated swap leaves. */
   outcome?: ExchangeRecord["outcome"];
@@ -113,13 +110,6 @@ export interface DisclosureRecordOverrides {
    * identity. Defaults to the false every run but the refused one records. */
   certificateMismatchObserved?: boolean;
 }
-
-/** The rule set the citing fixture terms name: a field set and a key set, each
- * separately named and separately versioned as the terms document holds them. */
-const LOCAL_RULE_SET: NonNullable<LinkageTerms["linkageRuleSet"]> = {
-  fieldSet: { name: "baseline-pii", version: "1.0.0" },
-  keySet: { name: "precision-ranked-rules", version: "2.1.0" },
-};
 
 /** The partner's terms: the local ones relabelled, or -- for an explicit `null`
  * -- holding no identity key at all, the shape a partner that supplied no name
@@ -151,9 +141,6 @@ export async function disclosureRecord(
     ...termsWithoutAgreement,
     algorithm: overrides.algorithm ?? LOCAL_TERMS.algorithm,
     ...(agreement !== undefined ? { legalAgreement: agreement } : {}),
-    ...(overrides.linkageRuleSet === true
-      ? { linkageRuleSet: LOCAL_RULE_SET }
-      : {}),
   };
   const built = await buildExchangeRecord({
     localTerms,

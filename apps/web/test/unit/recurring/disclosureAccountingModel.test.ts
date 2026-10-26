@@ -145,19 +145,6 @@ describe("a disclosure's facts", () => {
     ]);
   });
 
-  test("state no rule set, whatever the agreed terms cited", async () => {
-    const record = await disclosureRecord({ linkageRuleSet: true });
-
-    const facts = disclosureFacts(record);
-
-    expect(facts.map((fact) => fact.label)).toEqual(DISCLOSURE_FACT_LABELS);
-    const rendered = facts
-      .flatMap((fact) => [...fact.values, fact.muted, fact.note ?? ""])
-      .join("\n");
-    expect(rendered).not.toContain("precision-ranked-rules");
-    expect(rendered).not.toContain("baseline-pii");
-  });
-
   test("read a count-only run as the count-only disclosure it was", async () => {
     const record = await disclosureRecord({ algorithm: "psi-c" });
 
@@ -540,21 +527,6 @@ describe("the exported accounting", () => {
         )[0],
       ),
     );
-  });
-
-  test("exports no rule-set column, whatever the agreed terms cited", async () => {
-    const accounting = accountingOf(
-      await disclosureRecord({ linkageRuleSet: true }),
-    );
-
-    const [header, row] = csvRows(disclosureAccountingCsv(accounting));
-
-    expect(splitCsvRow(header)).toEqual([
-      DISCLOSED_AT_LABEL,
-      ...DISCLOSURE_FACT_LABELS,
-    ]);
-    expect(row).not.toContain("precision-ranked-rules");
-    expect(row).not.toContain("baseline-pii");
   });
 
   test("quotes a value holding the delimiter, so a comma cannot shift the columns", async () => {

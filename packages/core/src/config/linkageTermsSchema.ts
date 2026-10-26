@@ -1017,32 +1017,16 @@ export interface LinkageSetIdentity {
   version: string;
 }
 
-const LinkageSetIdentitySchema: z.ZodType<LinkageSetIdentity> = z.object({
-  name: nameValue(z.string().min(1).check(maxCodeUnits(MAX_NAME_LENGTH))),
-  version: z
-    .string()
-    .check(maxCodeUnits(MAX_NAME_LENGTH))
-    .regex(/^\d+\.\d+\.\d+$/, "version must be a valid semver string"),
-});
-
 /**
- * Which named rule sets a document's linkage fields and keys were drawn from.
- * A citation, not a specification: the run matches on the document's own
- * `linkageFields` and `linkageKeys`. Absent for authored rules
- * (docs/EXCHANGE_REFERENCE.md#linkage_termslinkage_rule_set).
+ * The names and versions of a built-in rule set's two halves. No linkage terms
+ * document holds one.
  */
 export interface LinkageRuleSetReference {
-  /** The set the `linkageFields` were drawn from. */
+  /** The set the linkage fields are drawn from. */
   fieldSet: LinkageSetIdentity;
-  /** The set the `linkageKeys` were drawn from. */
+  /** The set the linkage keys are drawn from. */
   keySet: LinkageSetIdentity;
 }
-
-const LinkageRuleSetReferenceSchema: z.ZodType<LinkageRuleSetReference> =
-  z.object({
-    fieldSet: LinkageSetIdentitySchema,
-    keySet: LinkageSetIdentitySchema,
-  });
 
 // --- Linkage Terms -----------------------------------------------------------
 
@@ -1103,11 +1087,6 @@ export interface LinkageTerms {
    * Consistency: mandatory.
    */
   linkageKeys: LinkageKey[];
-  /**
-   * The named rule set the fields and keys were drawn from, absent for authored
-   * rules. Consistency: mandatory only when both parties declare one.
-   */
-  linkageRuleSet?: LinkageRuleSetReference;
   payload?: Payload;
   legalAgreement?: LegalAgreement;
 }
@@ -1155,7 +1134,6 @@ const linkageTermsBaseSchema = (options: TransformParamRefusalOptions) =>
       `linkage_keys must not exceed ${MAX_LINKAGE_ENTRIES} entries`,
       1,
     ),
-    linkageRuleSet: LinkageRuleSetReferenceSchema.optional(),
     payload: PayloadSchema.optional(),
     legalAgreement: LegalAgreementSchema.optional(),
   });

@@ -332,28 +332,20 @@ describe("InvitationTerms: per-key matching disclosures", () => {
     },
   );
 
-  test("states no built-in choice for keys that are not one, and no rule-set citation", async () => {
-    // A cut and a reordered list of the built-in keys, under a citation of the
-    // built-in sets, and the expert-authored keys the base terms declare.
+  test("states no built-in choice for keys that are not one", async () => {
+    // A cut and a reordered list of the built-in keys, and the expert-authored
+    // keys the base terms declare.
     const broader = getDefaultLinkageTerms("County Health Department");
     for (const linkageTerms of [
       { ...broader, linkageKeys: broader.linkageKeys.slice(1) },
       { ...broader, linkageKeys: [...broader.linkageKeys].reverse() },
-      { ...terms, linkageRuleSet: DEFAULT_LINKAGE_RULE_SET.reference },
+      terms,
     ]) {
       await flushPendingUpdates();
       app.unmount();
       await renderTerms(linkageTerms, { perspective: "review" });
       await expect.element(toggle("Matching strategies")).toBeInTheDocument();
-      const text = app.container.textContent;
-      expect(text).not.toContain("Built-in rules");
-      expect(text).not.toContain("Linkage rule set");
-      expect(text).not.toContain(
-        DEFAULT_LINKAGE_RULE_SET.reference.keySet.name,
-      );
-      expect(text).not.toContain(
-        DEFAULT_LINKAGE_RULE_SET.reference.fieldSet.name,
-      );
+      expect(app.container.textContent).not.toContain("Built-in rules");
     }
   });
 

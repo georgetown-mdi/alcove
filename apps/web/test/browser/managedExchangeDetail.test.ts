@@ -2715,51 +2715,6 @@ describe("managed exchange detail accounting of disclosures", () => {
       .toBeInTheDocument();
   });
 
-  test("an opened disclosure shows no rule set, whatever the agreed terms cited", async () => {
-    const accounting = appendDisclosureRecord(
-      undefined,
-      await disclosureRecord({ linkageRuleSet: true }),
-    );
-    const [entry] = disclosureEntries(accounting);
-    app.render(
-      createElement(ManagedExchangeDetail, {
-        record: record("inviter"),
-        parkedResultsRead: { kind: "none" },
-        accountingRead: { kind: "accounting", accounting },
-        onResetAccounting: () => Promise.resolve(),
-        onRetryAccountingRead: () => undefined,
-        onRetryParkedResultsRead: () => undefined,
-        onClearParkedResults: () => Promise.resolve(),
-        onGrantWorkingFolder: () => Promise.resolve(),
-        onStopUsingWorkingFolder: () => Promise.resolve(),
-        onSaveLocalFields: () => Promise.resolve(),
-        onTermsChanged: () => undefined,
-        onRelayRegistrationChanged: () => undefined,
-        onReinviteToChangeTerms: () => undefined,
-        canReinvite: true,
-        reinviting: false,
-        reinviteFailure: undefined,
-        compromiseResponse: false,
-        runInFlight: false,
-        runHolder: undefined,
-        onStopRunAndReinvite: () => undefined,
-        onRunLockRefused: () => undefined,
-        onRecheckRunLock: () => undefined,
-        unfiledDisclosureRead: { kind: "none" },
-        unrecordedRunFlagged: false,
-        onUnrecordedRunFlagShown: () => undefined,
-        onFileUnfiledDisclosures: () => Promise.resolve(),
-      }),
-    );
-
-    await page.getByRole("button", { name: entry.when, exact: false }).click();
-
-    await expect.element(page.getByText("MOU-2025-0042")).toBeVisible();
-    expect(app.container.textContent).not.toContain("Rule set");
-    expect(app.container.textContent).not.toContain("precision-ranked-rules");
-    expect(app.container.textContent).not.toContain("baseline-pii");
-  });
-
   test("two disclosures sharing a createdAt open and close independently", async () => {
     // createdAt is millisecond-resolution and not guaranteed unique across runs;
     // only the record's own bindingNonce distinguishes them, so the view must key

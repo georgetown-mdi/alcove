@@ -100,7 +100,6 @@ const NAMED_LINKAGE_TERMS_FIELDS = [
   "deduplicate",
   "linkage_fields",
   "linkage_keys",
-  "linkage_rule_set",
   "payload",
   "legal_agreement",
 ] as const;

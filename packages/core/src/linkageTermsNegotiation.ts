@@ -42,9 +42,9 @@ import type {
  * Derive the {@link LinkageTerms} an ACCEPTOR runs from the inviter's terms
  * decoded from an invitation. The acceptor adopts the inviter's shared,
  * agreed fields verbatim -- `version`, `algorithm`, `linkageFields`,
- * `linkageKeys`, `linkageRuleSet`, `legalAgreement`, and so on are
- * cross-checked for equality at exchange time -- but four facets are the
- * acceptor's own perspective and are derived, not copied:
+ * `linkageKeys`, `legalAgreement`, and so on are cross-checked for equality
+ * at exchange time -- but four facets are the acceptor's own perspective and
+ * are derived, not copied:
  *
  * - `identity` is replaced with the acceptor's own name (a CLI flag or
  *   prompt, a browser field), so the inviter's identity does not leak into
@@ -454,10 +454,9 @@ export interface TermsDelta {
 /**
  * Whether `delta` holds no difference {@link compareTerms} reports. A payload
  * column's `description` never makes one, since columns are compared by name.
- * The comparison skips a `linkageRuleSet` and the sent columns where the
- * partner states no `payload.receive`, so an empty delta does not mean
- * adopting the partner's terms changes nothing:
- * {@link changedPartnerBoundTerms} answers that.
+ * The comparison skips the sent columns where the partner states no
+ * `payload.receive`, so an empty delta does not mean adopting the partner's
+ * terms changes nothing: {@link changedPartnerBoundTerms} answers that.
  */
 export function termsDeltaIsEmpty(delta: TermsDelta): boolean {
   return (
@@ -1156,7 +1155,6 @@ const TERMS_A_PREPARED_RUN_CAN_ADOPT = [
   "deduplicate",
   "payload",
   "legalAgreement",
-  "linkageRuleSet",
 ] as const;
 
 /**
