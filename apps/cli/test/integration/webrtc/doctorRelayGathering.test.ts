@@ -39,6 +39,13 @@ const CREDENTIAL = {
 const ENDED_ON_REFUSAL_WITHIN_MS = 5_000;
 
 /**
+ * How many TCP ports the TURN stand-in tries before its UDP bind is taken as
+ * failed. With half the ephemeral range held by UDP sockets, every try
+ * collides about once in 65,000 stand-ins.
+ */
+const TURN_STAND_IN_PORT_ATTEMPTS = 16;
+
+/**
  * An allocate error response (401) to `request`, echoing its transaction id.
  * It names no realm or nonce, so werift does not retry with credentials.
  */
@@ -169,14 +176,24 @@ async function listenTcp(): Promise<LoopbackTurnListener> {
  * A TURN stand-in listening for UDP and TCP on one loopback port. TCP takes
  * the port the OS assigns and UDP binds that number: a TCP client's port,
  * open or in TIME_WAIT, refuses a TCP listen on it but not a UDP bind, so a
- * TCP listen on a port a UDP bind was given can collide.
+ * TCP listen on a port a UDP bind was given can collide. The two protocols
+ * share the ephemeral range, so a UDP socket of werift's or another process
+ * can hold the number TCP was given; that bind is refused and the pair is
+ * taken again on a new TCP port, the refused listener kept open until the
+ * test ends so the OS cannot hand its port back.
  */
 async function startTurnStandIn(
   refuse: boolean,
 ): Promise<{ relay: LoopbackTurnSocket; tcp: LoopbackTurnListener }> {
-  const tcp = await listenTcp();
-  const relay = await startTurnSocket(refuse, tcp.port);
-  return { relay, tcp };
+  for (let attempt = 1; ; attempt += 1) {
+    const tcp = await listenTcp();
+    try {
+      return { relay: await startTurnSocket(refuse, tcp.port), tcp };
+    } catch (error) {
+      const inUse = (error as NodeJS.ErrnoException).code === "EADDRINUSE";
+      if (!inUse || attempt === TURN_STAND_IN_PORT_ATTEMPTS) throw error;
+    }
+  }
 }
 
 function ownPlan(...urls: Array<string>) {
