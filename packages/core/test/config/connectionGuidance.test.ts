@@ -19,7 +19,8 @@ import type { ExchangeSpec } from "../../src/config/exchangeSpec";
 import {
   DEFAULT_PEER_INACTIVITY_TIMEOUT_MS,
   DEFAULT_PEER_TIMEOUT_MS,
-  DEFAULT_POLLING_FREQUENCY_MS,
+  DEFAULT_FILEDROP_POLLING_FREQUENCY_MS,
+  DEFAULT_SFTP_POLLING_FREQUENCY_MS,
 } from "../../src/connection/fileSyncConnection";
 import { getDefaultLinkageTerms } from "../../src/defaults/builtInLinkageTerms";
 
@@ -58,7 +59,7 @@ test("the written connection block names every channel and the block for each", 
 test("the written connection block shows the tuning commented at its defaults", () => {
   const raw = write(placeholderSpec());
   expect(raw).toContain(
-    `#   poll_interval_ms: ${DEFAULT_POLLING_FREQUENCY_MS}`,
+    `#   poll_interval_ms: ${DEFAULT_SFTP_POLLING_FREQUENCY_MS}`,
   );
   expect(raw).toContain(
     `#   server_connect_timeout_ms: ${DEFAULT_SERVER_CONNECT_TIMEOUT_MS}`,
@@ -90,7 +91,7 @@ test("the commented tuning example loads once the operator uncomments it", () =>
   expect(spec.connection).toMatchObject({
     channel: "sftp",
     options: {
-      pollIntervalMs: DEFAULT_POLLING_FREQUENCY_MS,
+      pollIntervalMs: DEFAULT_SFTP_POLLING_FREQUENCY_MS,
       serverConnectTimeoutMs: DEFAULT_SERVER_CONNECT_TIMEOUT_MS,
       peerTimeoutMs: DEFAULT_PEER_TIMEOUT_MS,
       maxReconnectAttempts: DEFAULT_MAX_RECONNECT_ATTEMPTS,
@@ -145,23 +146,37 @@ test("a seeded options block keeps its own fields and is not shown them twice", 
         retainFiles: true,
         locklessRendezvous: true,
         timestampInFilename: true,
-        pollIntervalMs: 250,
+        pollIntervalMs: 750,
       },
     },
     linkageTerms: getDefaultLinkageTerms("Agency A"),
   });
   // The seeded value stands, and the example does not offer the field again.
-  expect(raw).toContain("poll_interval_ms: 250");
-  expect(raw).not.toContain(
-    `# poll_interval_ms: ${DEFAULT_POLLING_FREQUENCY_MS}`,
-  );
+  expect(raw).toContain("poll_interval_ms: 750");
+  expect(raw).not.toContain("# poll_interval_ms:");
   // The fields the seeded block leaves unset are still offered, indented under
   // the live `options` key rather than beside it.
   expect(raw).toContain(`    # peer_timeout_ms: ${DEFAULT_PEER_TIMEOUT_MS}`);
   const parsed = parseExchangeSpec(YAML.parse(raw));
   expect(parsed.connection).toMatchObject({
-    options: { pollIntervalMs: 250, retainFiles: true },
+    options: { pollIntervalMs: 750, retainFiles: true },
   });
+});
+
+test("a filedrop block shows the filedrop poll default, not the sftp one", () => {
+  const raw = write({
+    connection: { channel: "filedrop", path: "/mnt/drop" },
+    linkageTerms: getDefaultLinkageTerms("Agency A"),
+  });
+  expect(DEFAULT_FILEDROP_POLLING_FREQUENCY_MS).not.toBe(
+    DEFAULT_SFTP_POLLING_FREQUENCY_MS,
+  );
+  expect(raw).toContain(
+    `#   poll_interval_ms: ${DEFAULT_FILEDROP_POLLING_FREQUENCY_MS}`,
+  );
+  expect(raw).not.toContain(
+    `poll_interval_ms: ${DEFAULT_SFTP_POLLING_FREQUENCY_MS}`,
+  );
 });
 
 test("the notice and the config comment name a section of the reference that exists", () => {

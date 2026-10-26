@@ -3,7 +3,7 @@ import logLibrary from "loglevel";
 
 import {
   CONNECTION_PER_POLL_SHORT_INTERVAL_WARN_MS,
-  DEFAULT_POLLING_FREQUENCY_MS,
+  DEFAULT_SFTP_POLLING_FREQUENCY_MS,
   HOST_KEY_FINGERPRINT_REGEX,
   isSftpPort,
   LOW_POLLING_FREQUENCY_WARN_MS,
@@ -544,10 +544,11 @@ export function addCommonBootstrapOptions(
       type: "string",
       describe:
         "how often to poll the shared folder for the partner's files on " +
-        "the sftp/filedrop channels (default: 5s); overrides " +
-        "connection.options.poll_interval_ms. A conservative default keeps " +
-        "within SFTP servers' anti-flood limits; a sub-second value is " +
-        "accepted for a demo against a controlled server but warns. " +
+        "the sftp/filedrop channels (default: 5s on sftp, 250ms on " +
+        "filedrop); overrides connection.options.poll_interval_ms. The sftp " +
+        "default keeps within SFTP servers' anti-flood limits; a sub-second " +
+        "value on sftp is accepted for a demo against a controlled server " +
+        "but warns. " +
         FINE_DURATION_VALUE_HELP,
     })
     .option("max-reconnect-attempts", {
@@ -1090,13 +1091,11 @@ export { LOW_POLLING_FREQUENCY_WARN_MS };
  * A no-op when the flag is absent or at/above the threshold, so a conservative
  * value emits nothing.
  *
- * A no-op on a non-file-sync `channel`: `pollIntervalMs` is applied only on
- * `sftp`/`filedrop` (see {@link applyConnectionOverrides}), so on any other
- * channel the override is dropped and its ignored-flag warning is emitted by
- * {@link warnUnsupportedFileSyncFlags} instead -- the aggressively-low advisory
- * here would be misleading, since no poll ever runs at that rate. `channel` is
- * `undefined` when the command could not resolve one (an unknown URL scheme in
- * zero-setup), which is likewise not a file-sync channel, so it no-ops too.
+ * A no-op on any `channel` but `sftp`. A `filedrop` directory has no server to
+ * flood, and its own default is sub-second. On a non-file-sync channel the
+ * override is dropped and its ignored-flag warning is emitted by
+ * {@link warnUnsupportedFileSyncFlags} instead. `channel` is `undefined` when
+ * the command could not resolve one (an unknown URL scheme in zero-setup).
  *
  * Scoped to the CLI override value (the parsed `pollingFrequencyMs`), not the
  * effective merged interval: a low value already sitting in a loaded config's
@@ -1112,7 +1111,7 @@ export function warnLowPollingFrequency(
   pollingFrequencyMs: number | undefined,
   log: { warn: (message: string) => void },
 ): void {
-  if (channel !== "sftp" && channel !== "filedrop") return;
+  if (channel !== "sftp") return;
   if (
     pollingFrequencyMs === undefined ||
     pollingFrequencyMs >= LOW_POLLING_FREQUENCY_WARN_MS
@@ -1132,7 +1131,7 @@ export function warnLowPollingFrequency(
  * (below {@link CONNECTION_PER_POLL_SHORT_INTERVAL_WARN_MS}). The mode dials a new
  * session each cycle to survive a server's session-lifetime cap across long idle
  * gaps; that only pays off at a long interval, so a sub-minute effective interval
- * -- including the {@link DEFAULT_POLLING_FREQUENCY_MS} default when none is set --
+ * -- including the {@link DEFAULT_SFTP_POLLING_FREQUENCY_MS} default when none is set --
  * draws this advisory pointing at a longer `--polling-frequency`. Warn-not-block,
  * per the trusted-operator posture: a controlled test may legitimately want it.
  *
@@ -1153,7 +1152,8 @@ export function warnConnectionPerPollShortInterval(
   log: { warn: (message: string) => void },
 ): void {
   if (channel !== "sftp" || connectionPerPoll !== true) return;
-  const effectiveIntervalMs = pollIntervalMs ?? DEFAULT_POLLING_FREQUENCY_MS;
+  const effectiveIntervalMs =
+    pollIntervalMs ?? DEFAULT_SFTP_POLLING_FREQUENCY_MS;
   if (effectiveIntervalMs >= CONNECTION_PER_POLL_SHORT_INTERVAL_WARN_MS) return;
   log.warn(
     `--connection-per-poll with a ${effectiveIntervalMs}ms poll interval opens ` +

@@ -35,8 +35,8 @@ afterEach(() => {
 
 function makeConn(): FileSyncConnection {
   // Explicit fast poll so the two-party handshake completes within the test
-  // timeout; do not inherit DEFAULT_POLLING_FREQUENCY_MS (5 s), which is
-  // conservative for real SFTP servers, not test speed.
+  // timeout; do not inherit the channel default (defaultPollingFrequencyMs),
+  // which is set for real directories and servers, not test speed.
   return new FileSyncConnection(new LocalFSClient(), {
     verbose: -1,
     pollingFrequency: 10,

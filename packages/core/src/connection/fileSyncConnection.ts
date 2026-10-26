@@ -140,13 +140,30 @@ export const TERMINAL_FRAME_DRAIN_TIMEOUT_MS = 1000 * 60;
 /** @internal */
 export const CONNECTION_CLOSE_TIMEOUT_MS = 1000 * 30;
 /**
- * Default poll interval, in milliseconds, when `pollIntervalMs` is unset;
- * exported so the CLI's config template pre-fills the same value. Not
- * sub-second: a faster cadence can trip an SFTP server's anti-flood protection
- * and drop the connection (seen at 100 ms), and PSI encryption dominates an
- * exchange's time anyway.
+ * The `sftp` channel's poll interval, in milliseconds, when `pollIntervalMs` is
+ * unset. Not sub-second: a faster cadence can trip an SFTP server's anti-flood
+ * protection and drop the connection (seen at 100 ms).
  */
-export const DEFAULT_POLLING_FREQUENCY_MS = 5000;
+export const DEFAULT_SFTP_POLLING_FREQUENCY_MS = 5000;
+/**
+ * The `filedrop` channel's poll interval, in milliseconds, when
+ * `pollIntervalMs` is unset. A working value set from the measured step cost;
+ * see docs/spec/FILE_SYNC.md#poll-interval-and-step-pace.
+ */
+export const DEFAULT_FILEDROP_POLLING_FREQUENCY_MS = 250;
+
+/**
+ * The poll interval a file-based `channel` takes when `pollIntervalMs` is
+ * unset; exported so the CLI's config template and the console pre-fill the
+ * value the run applies.
+ */
+export function defaultPollingFrequencyMs(
+  channel: "sftp" | "filedrop",
+): number {
+  return channel === "filedrop"
+    ? DEFAULT_FILEDROP_POLLING_FREQUENCY_MS
+    : DEFAULT_SFTP_POLLING_FREQUENCY_MS;
+}
 const DEFAULT_VERBOSITY = 1;
 
 // Wall-clock allowance for a peer's write-and-rename to land: how long the
@@ -199,7 +216,7 @@ interface Options {
 
 const getDefaultOptions = (): Options => {
   return {
-    pollingFrequency: DEFAULT_POLLING_FREQUENCY_MS,
+    pollingFrequency: DEFAULT_SFTP_POLLING_FREQUENCY_MS,
     verbose: DEFAULT_VERBOSITY,
     timestampInFilename: false,
     locklessRendezvous: false,
@@ -344,6 +361,9 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   // docs/spec/FILE_SYNC.md#split-inboundoutbound-directories.
   outbound: string | undefined;
   private config: SFTPConnectionConfig | FileDropConnectionConfig | undefined;
+  // Whether the constructor set pollingFrequency, which open() then keeps
+  // over the channel's default when the config sets none.
+  private readonly pollingFrequencyFromConstructor: boolean;
   // The partner-arrival budget open() derived timeToLive from; unset when the
   // constructor supplied timeToLive, whose budget is not known.
   private arrivalBudgetMs: number | undefined;
@@ -458,6 +478,8 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
     this.responsibleFiles = new Set();
 
     this.options = { ...getDefaultOptions(), ...options } as Options;
+    this.pollingFrequencyFromConstructor =
+      options?.pollingFrequency !== undefined;
     this.log = getLoggerForVerbosity(
       `filesync-${this.id.substring(0, 8)}`,
       this.options.verbose,
@@ -666,6 +688,8 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   ): Promise<void> {
     if (config.options?.pollIntervalMs !== undefined)
       this.options.pollingFrequency = config.options.pollIntervalMs;
+    else if (!this.pollingFrequencyFromConstructor)
+      this.options.pollingFrequency = defaultPollingFrequencyMs(config.channel);
     if (config.options?.timestampInFilename !== undefined)
       this.options.timestampInFilename = config.options.timestampInFilename;
     if (config.options?.locklessRendezvous !== undefined)

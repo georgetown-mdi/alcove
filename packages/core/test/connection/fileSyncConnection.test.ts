@@ -2,6 +2,9 @@ import { describe, expect, test, vi } from "vitest";
 
 import {
   CONNECTION_CLOSE_TIMEOUT_MS,
+  DEFAULT_FILEDROP_POLLING_FREQUENCY_MS,
+  DEFAULT_SFTP_POLLING_FREQUENCY_MS,
+  defaultPollingFrequencyMs,
   FileSyncConnection,
   normalizeFiledropPath,
   TERMINAL_FRAME_DRAIN_TIMEOUT_MS,
@@ -1371,6 +1374,51 @@ test("open maps pollIntervalMs to pollingFrequency for filedrop config", async (
     options: { pollIntervalMs: 15_000 },
   });
   expect(conn.options.pollingFrequency).toBe(15_000);
+});
+
+describe("an unset pollIntervalMs takes the channel's own default", () => {
+  test("filedrop polls at the filedrop default", async () => {
+    const { client } = makeMockClient();
+    const conn = new FileSyncConnection(client, { verbose: -1 });
+    await conn.open({ channel: "filedrop", path: "/mnt/share/drop" });
+    expect(conn.options.pollingFrequency).toBe(
+      DEFAULT_FILEDROP_POLLING_FREQUENCY_MS,
+    );
+  });
+
+  test("sftp keeps the sftp default", async () => {
+    const { client } = makeMockClient();
+    const conn = new FileSyncConnection(client, { verbose: -1 });
+    await conn.open({
+      channel: "sftp",
+      server: { host: "sftp.example.org", path: "/exchanges" },
+    });
+    expect(conn.options.pollingFrequency).toBe(
+      DEFAULT_SFTP_POLLING_FREQUENCY_MS,
+    );
+    expect(DEFAULT_SFTP_POLLING_FREQUENCY_MS).not.toBe(
+      DEFAULT_FILEDROP_POLLING_FREQUENCY_MS,
+    );
+  });
+
+  test("a constructor interval is kept over the channel default", async () => {
+    const { client } = makeMockClient();
+    const conn = new FileSyncConnection(client, {
+      verbose: -1,
+      pollingFrequency: 7,
+    });
+    await conn.open({ channel: "filedrop", path: "/mnt/share/drop" });
+    expect(conn.options.pollingFrequency).toBe(7);
+  });
+
+  test("defaultPollingFrequencyMs names each channel's default", () => {
+    expect(defaultPollingFrequencyMs("filedrop")).toBe(
+      DEFAULT_FILEDROP_POLLING_FREQUENCY_MS,
+    );
+    expect(defaultPollingFrequencyMs("sftp")).toBe(
+      DEFAULT_SFTP_POLLING_FREQUENCY_MS,
+    );
+  });
 });
 
 test("the bridged connection reports the configured poll interval", async () => {

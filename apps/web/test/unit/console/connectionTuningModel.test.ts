@@ -4,9 +4,10 @@ import { parse as parseYaml } from "yaml";
 
 import {
   CONNECTION_PER_POLL_SHORT_INTERVAL_WARN_MS,
+  DEFAULT_FILEDROP_POLLING_FREQUENCY_MS,
   DEFAULT_MAX_RECONNECT_ATTEMPTS,
-  DEFAULT_POLLING_FREQUENCY_MS,
   DEFAULT_SERVER_CONNECT_TIMEOUT_MS,
+  DEFAULT_SFTP_POLLING_FREQUENCY_MS,
   LOW_POLLING_FREQUENCY_WARN_MS,
   MAX_RECONNECT_ATTEMPTS,
   MAX_TIMEOUT_SECONDS,
@@ -35,6 +36,7 @@ import {
   defaultPlaceholder,
   durationFieldForMs,
   durationUnitChoices,
+  pollIntervalDefaultMs,
   withConnectionTuning,
 } from "@console/connectionTuningModel";
 import { zeroSetupOptionsArgv } from "@jobs/intentArgv";
@@ -455,7 +457,7 @@ describe("the CLI's two advisories are raised at authoring time", () => {
   // and leaves the interval alone, so the run polls at core's seconds-scale
   // default and dials afresh every few seconds.
   test("the session mode with an unset interval reads core's default", () => {
-    expect(DEFAULT_POLLING_FREQUENCY_MS).toBeLessThan(
+    expect(DEFAULT_SFTP_POLLING_FREQUENCY_MS).toBeLessThan(
       CONNECTION_PER_POLL_SHORT_INTERVAL_WARN_MS,
     );
     expect(
@@ -501,6 +503,23 @@ describe("the CLI's two advisories are raised at authoring time", () => {
       ),
     ).toEqual([]);
   });
+
+  // A shared directory has no server to flood, and its own default is
+  // sub-second, so the CLI raises no anti-flood warning there either.
+  test.each([
+    ["an invitation", FILEDROP_CONNECTION_TUNING],
+    ["a zero-setup run", DIRECT_FILEDROP_CONNECTION_TUNING],
+  ] as const)(
+    "a sub-second interval on a shared directory (%s) draws no anti-flood advisory",
+    (_flow, capabilities) => {
+      expect(
+        connectionTuningAdvisories(
+          draft({ pollInterval: { magnitude: "100", unit: "ms" } }),
+          capabilities,
+        ),
+      ).toEqual([]);
+    },
+  );
 });
 
 describe("the collapsed summary counts only what the flow holds", () => {
@@ -541,11 +560,26 @@ describe("the placeholder shows core's own default in the chosen unit", () => {
     ["ms", "5000"],
     ["s", "5"],
   ] as const)(
-    "the poll default displays as a bare number in %s, which is exact",
+    "the sftp poll default displays as a bare number in %s, which is exact",
     (unit, expected) => {
-      expect(defaultPlaceholder(DEFAULT_POLLING_FREQUENCY_MS, unit)).toBe(
-        expected,
+      expect(
+        defaultPlaceholder(pollIntervalDefaultMs(SFTP_CONNECTION_TUNING), unit),
+      ).toBe(expected);
+    },
+  );
+
+  test.each([
+    ["an invitation", FILEDROP_CONNECTION_TUNING],
+    ["a zero-setup run", DIRECT_FILEDROP_CONNECTION_TUNING],
+  ] as const)(
+    "a shared-directory flow (%s) shows the filedrop poll default",
+    (_flow, capabilities) => {
+      expect(pollIntervalDefaultMs(capabilities)).toBe(
+        DEFAULT_FILEDROP_POLLING_FREQUENCY_MS,
       );
+      expect(
+        defaultPlaceholder(pollIntervalDefaultMs(capabilities), "ms"),
+      ).toBe(String(DEFAULT_FILEDROP_POLLING_FREQUENCY_MS));
     },
   );
 
@@ -555,7 +589,7 @@ describe("the placeholder shows core's own default in the chosen unit", () => {
   test.each([
     [
       "the poll default in minutes",
-      DEFAULT_POLLING_FREQUENCY_MS,
+      DEFAULT_SFTP_POLLING_FREQUENCY_MS,
       "m",
       "default 5 s",
     ],

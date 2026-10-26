@@ -3,7 +3,7 @@ import YAML from "yaml";
 import {
   DEFAULT_PEER_INACTIVITY_TIMEOUT_MS,
   DEFAULT_PEER_TIMEOUT_MS,
-  DEFAULT_POLLING_FREQUENCY_MS,
+  defaultPollingFrequencyMs,
 } from "../connection/fileSyncConnection.js";
 import {
   DEFAULT_MAX_RECONNECT_ATTEMPTS,
@@ -71,7 +71,10 @@ function tuningDefaults(channel: unknown): Array<[string, number]> {
       [INACTIVITY_TIMEOUT_KEY, DEFAULT_PEER_INACTIVITY_TIMEOUT_MS],
     ];
   return [
-    [POLL_INTERVAL_KEY, DEFAULT_POLLING_FREQUENCY_MS],
+    [
+      POLL_INTERVAL_KEY,
+      defaultPollingFrequencyMs(channel === "filedrop" ? "filedrop" : "sftp"),
+    ],
     ["server_connect_timeout_ms", DEFAULT_SERVER_CONNECT_TIMEOUT_MS],
     ["peer_timeout_ms", DEFAULT_PEER_TIMEOUT_MS],
     [INACTIVITY_TIMEOUT_KEY, DEFAULT_PEER_INACTIVITY_TIMEOUT_MS],

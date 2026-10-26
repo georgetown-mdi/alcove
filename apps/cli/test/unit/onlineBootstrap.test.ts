@@ -7,11 +7,13 @@ import type { Arguments } from "yargs";
 import YAML from "yaml";
 import {
   ConnectionError,
+  DEFAULT_FILEDROP_POLLING_FREQUENCY_MS,
   getDefaultLinkageTerms,
   getDiagnosticSink,
   getLogger,
   inferDateInputFormatFromSource,
   InternalConsistencyError,
+  LOW_POLLING_FREQUENCY_WARN_MS,
   MAX_RECONNECT_ATTEMPTS,
   parseExchangeSpec,
   RoundSetLimitError,
@@ -665,7 +667,7 @@ describe("connectionOverridesFrom", () => {
 // --- warnLowPollingFrequency -------------------------------------------------
 
 describe("warnLowPollingFrequency", () => {
-  test("warns below the 1s threshold on a file-sync channel", () => {
+  test("warns below the 1s threshold on sftp", () => {
     const warnings: string[] = [];
     warnLowPollingFrequency("sftp", 100, { warn: (m) => warnings.push(m) });
     expect(warnings).toHaveLength(1);
@@ -673,12 +675,15 @@ describe("warnLowPollingFrequency", () => {
     expect(warnings[0]).toContain("--polling-frequency");
     expect(warnings[0]).toContain("100ms");
     expect(warnings[0]).toContain("anti-flood");
-    // Applies on filedrop too, not just sftp.
-    const filedropWarnings: string[] = [];
-    warnLowPollingFrequency("filedrop", 100, {
-      warn: (m) => filedropWarnings.push(m),
-    });
-    expect(filedropWarnings).toHaveLength(1);
+  });
+
+  test("silent on filedrop, which has no server and a sub-second default", () => {
+    const warnings: string[] = [];
+    warnLowPollingFrequency("filedrop", 100, { warn: (m) => warnings.push(m) });
+    expect(warnings).toEqual([]);
+    expect(DEFAULT_FILEDROP_POLLING_FREQUENCY_MS).toBeLessThan(
+      LOW_POLLING_FREQUENCY_WARN_MS,
+    );
   });
 
   test("silent at exactly the 1s threshold", () => {
