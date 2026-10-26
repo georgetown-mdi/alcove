@@ -195,7 +195,10 @@ The record keeps verifiers, never the retired secrets.
 
 ### The proof in the key exchange
 
-When no secret matches, the two sides exchange **history proofs**: a MAC under the verifier of the sender's own current secret, over both ephemeral shares of this handshake.
+When no secret matches, the two sides exchange **history proofs**: a MAC over both ephemeral shares of this handshake, under `HKDF(verifier || dh)`, a key derived under a label of the history-verifier family from the verifier of the sender's own current secret and this handshake's `dh`.
+`dh` is the output of the key exchange's `ee` step, `ECDH(e_self_private, e_peer_public)` ([PROTOCOL.md](../spec/PROTOCOL.md#p-256-authenticated-key-exchange), Key schedule), the same value on both sides whatever secrets they hold.
+The responder has it before it sends message 2, whose confirmation tag already depends on it, and the initiator once it reads message 2, before it sends its abort.
+The chaining key cannot stand in for it: the pre-shared secret enters the chaining key at the first step, so two parties on different secrets share no chaining-key value.
 The shares are fresh in every handshake, so a proof cannot be replayed into another one.
 
 - **The responder's proof is in message 2**, always, so the message's shape does not depend on the outcome.
@@ -213,7 +216,7 @@ That is the partner's restored backup or second copy in the case the product gua
 ### Telling the stale side
 
 The stale side cannot check the current side's proof: the current secret is newer than anything in its history.
-The current side can still tell it, authenticated, because it holds the verifier of the stale side's secret: on a match it sends a **behind notice**, the count *k* under a MAC by that verifier over both shares, which the stale side checks with the verifier of its own current secret.
+The current side can still tell it, authenticated, because it holds the verifier of the stale side's secret: on a match it sends a **behind notice**, the count *k* under a MAC over both shares, keyed by `HKDF(verifier || dh)` from that verifier, which the stale side checks under the key from the verifier of its own current secret.
 A notice that verifies shows only that the sender holds a copy newer than the stale side's, one that retired its secret.
 The count is the sender's statement: every newer copy holds that verifier and can put any count under it, so the stale side's message does not repeat it.
 
@@ -274,7 +277,7 @@ The export artifact and the command-line export include the history, so a moved 
 - **A secret can authenticate a second handshake.** Today each secret authenticates one completed handshake and is retired ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#token-format-and-entropy) states it is never reused). With the previous secret, a secret whose run was cut before the partner's first frame authenticates one more, the heal, and one more again for each heal cut the same way. An organization whose rotation policy forbids that is the subject of [question 2](#open-questions).
 - **A superseded secret is at rest** on the device that ran a cut run, for up to one run, under the same custody as the current secret.
 - **Frames before authentication say more.** Message 2 always has a second tag and a history proof; an abort can have a proof and a notice. None verifies for a party with no copy. Message 2's additions are sent on every handshake and the abort's proof on every failed one, so neither tells an outcome; the notice goes only to a proven holder of an old copy.
-- **A later holder of a secret can pick out the handshakes that used it.** The history proof is a MAC under a key derived from the secret alone, over the two public shares, and so is a notice under a retired secret's verifier. Anyone who later obtains a secret, or any later copy of the record, key file or export, which holds its verifier, can check recorded handshake frames and tell which ones used that secret, tying them to this partnership and ordering them. On `sftp` and `filedrop` the shared folder's operator can record those frames. The confirmation tags allow no such check, since their key derives from the chaining key, which includes the ECDH output ([PROTOCOL.md](../spec/PROTOCOL.md#p-256-authenticated-key-exchange), Key schedule). The proof cannot be keyed from the chaining key instead: the pre-shared secret enters it at the first step, before the ECDH output, so two parties on different secrets share no chaining-key value.
+- **A recorded handshake cannot be checked against a secret without one of its ephemeral private keys.** The history proof and the behind notice are keyed from a verifier and that handshake's `dh`, which only a holder of the initiator's or the responder's ephemeral private key can compute. So someone who later obtains a secret, or a later copy of the record, key file or export, cannot tell from recorded frames, such as those the shared folder's operator can record on `sftp` and `filedrop`, which handshakes used it. A party to the handshake can check it, since it held one of the two keys; that is the check the design makes.
 - **The coordination server can link two rotations** of a partnership in the unconfirmed state, from one party's two registrations or offers.
 
 ## Proposed spec and documentation changes
