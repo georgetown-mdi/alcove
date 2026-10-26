@@ -5,7 +5,7 @@
 // through environment variables so a test can drive one binary through many
 // scenarios without a separate script per case.
 //
-// It also emulates the `probe-host-key`, `fingerprint`, and `apply`
+// It also emulates the `probe-host-key`, `fingerprint`, `apply`, and `doctor`
 // subcommands the console spawns (self-contained branches that never touch the
 // exchange emulation).
 //
@@ -84,6 +84,13 @@
 //                     gets a well-formed probe result. The probe branch honors
 //                     STUB_EXIT_CODE, STUB_DELAY_MS, and STUB_IGNORE_SIGTERM, and
 //                     never runs the exchange emulation.
+//   STUB_DOCTOR_STDOUT When the `doctor` subcommand is invoked, this raw
+//                     string is written to stdout; when unset, a default relay
+//                     verdict whose one TURN url was reached. The branch honors
+//                     STUB_EXIT_CODE, STUB_DELAY_MS, and STUB_IGNORE_SIGTERM.
+//   STUB_PID_FILE     When set, the `doctor` branch writes its own pid to this
+//                     path once its signal handler is installed, so a test can
+//                     wait for the child and then ask whether it still runs.
 //   STUB_FINGERPRINT_STDOUT
 //                     When the `fingerprint` subcommand is invoked, this raw
 //                     string is written to stdout. When unset a default canonical
@@ -120,6 +127,23 @@ const DEFAULT_PROBE_LINE =
   JSON.stringify({
     fingerprint: "SHA256:" + "A".repeat(43),
     key_type: "ssh-ed25519",
+  }) + "\n";
+
+// The default verdict emitted by `doctor` when STUB_DOCTOR_STDOUT is unset: a
+// relay check whose one TURN url was reached.
+const DEFAULT_DOCTOR_RELAY_LINE =
+  JSON.stringify({
+    version: 1,
+    mode: "relay",
+    overall: "ok",
+    checks: [
+      {
+        id: "turn_1",
+        status: "ok",
+        url: "turn:relay.example.org:3478",
+        transport: "udp",
+      },
+    ],
   }) + "\n";
 
 // The default fingerprint line emitted when STUB_FINGERPRINT_STDOUT is unset: a
@@ -228,6 +252,18 @@ if (process.argv[2] === "probe-host-key") {
   exitAfterDelay(outcome);
 } else if (process.argv[2] === "apply") {
   runApplyStub();
+} else if (process.argv[2] === "doctor") {
+  if (process.env.STUB_IGNORE_SIGTERM === "1")
+    process.on("SIGTERM", () => {
+      /* swallow: force escalation to SIGKILL */
+    });
+  if (process.env.STUB_PID_FILE !== undefined)
+    fs.writeFileSync(process.env.STUB_PID_FILE, String(process.pid));
+  writeStdio(
+    process.stdout,
+    process.env.STUB_DOCTOR_STDOUT ?? DEFAULT_DOCTOR_RELAY_LINE,
+  );
+  exitAfterDelay(Number.parseInt(process.env.STUB_EXIT_CODE ?? "0", 10));
 } else {
   runExchangeStub();
 }

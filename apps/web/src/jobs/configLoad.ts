@@ -1059,6 +1059,22 @@ export function loadMountedConfiguration(
 }
 
 /**
+ * The mounted `alcove.yaml` as it is now, read through the sensitive-parse
+ * chokepoint and the shared schema alone: the document the CLI would load
+ * from it, whoever wrote it. Null where the mount holds no such file.
+ *
+ * @throws {ConfigurationLoadRefusedError} when a file is there and is not a
+ *   configuration the schema reads.
+ */
+export function mountedExchangeDocument(
+  dataRoot: string,
+): { source: string; document: ExchangeSpec } | null {
+  const source = mountedConfigurationSource(dataRoot);
+  if (source === null) return null;
+  return { source, document: parsedDocument(parsedYaml(source)) };
+}
+
+/**
  * Whether the mount still holds, byte for byte, the configuration opened from
  * `openedSource`. A file removed, unreadable, or changed in any byte is not.
  */
