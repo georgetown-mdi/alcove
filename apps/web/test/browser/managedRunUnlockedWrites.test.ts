@@ -37,10 +37,16 @@ import {
 } from "@psi/managed/managedRelayRegistration";
 import {
   getManagedLocalState,
+  markManagedExchangeImported,
   recordManagedExchangeTermsProposal,
 } from "@psi/managed/managedLocalState";
+import {
+  managedWindowRunStage,
+  stopWaitingManagedWindowRun,
+} from "@psi/managed/managedWindowRuns";
 import { reinviteManagedExchange } from "@psi/managed/managedReinviteDriver";
 import { runManagedExchange } from "@psi/managed/managedExchangeRun";
+import { runManagedRerun } from "@psi/managed/managedRun";
 
 import type { LinkageTerms, RelayRegistrar } from "@alcove/core";
 import type {
@@ -266,13 +272,22 @@ describe("the kept proposal's apply while a run holds the lock", () => {
 });
 
 describe("the writes that take the run lock while a run holds it", () => {
-  test("a re-invite, an enrollment and stopping registration are each refused, and write nothing", async () => {
+  /** An exchange enrolled at its registrar, with backup and import markers
+   * in its local-state entry, which a re-invite would drop. */
+  async function enrolledExchange(): Promise<RunnableManagedExchangeRecord> {
     const created = await createManagedExchange(newExchange());
-    const enrolled = await persistManagedExchangeRelayRegistrar(
+    await markManagedExchangeImported(created.id, NOW.toISOString());
+    return await persistManagedExchangeRelayRegistrar(
       created.id,
       REGISTRAR,
       created.sharedSecret,
     );
+  }
+
+  /** Attempt the re-invite, an enrollment and stopping registration, each as
+   * its control does without a stop, expecting each refused; returns the
+   * registrar requests they made. */
+  async function attemptLockedWrites(id: string): Promise<Array<string>> {
     const asked: Array<string> = [];
     const env = {
       fetch: ((input: string | URL | Request) => {
@@ -280,32 +295,122 @@ describe("the writes that take the run lock while a run holds it", () => {
         return Promise.reject(new TypeError("no request expected"));
       }) as typeof globalThis.fetch,
     };
+    await expect(reinviteManagedExchange(id)).rejects.toBeInstanceOf(
+      ManagedExchangeLockUnavailableError,
+    );
+    await expect(
+      enrollManagedRelayRegistrar(
+        {
+          id,
+          registrar: REGISTRAR,
+          ownerToken: "owner-token-for-this-test-only",
+        },
+        {
+          withLock: withManagedExchangeLock,
+          getRecord: getManagedExchange,
+          persistRegistrar: persistManagedExchangeRelayRegistrar,
+          env,
+        },
+      ),
+    ).rejects.toBeInstanceOf(ManagedExchangeLockUnavailableError);
+    await expect(stopManagedRelayRegistration(id)).rejects.toBeInstanceOf(
+      ManagedExchangeLockUnavailableError,
+    );
+    return asked;
+  }
 
+  test("a re-invite, an enrollment and stopping registration are each refused, and write nothing", async () => {
+    const enrolled = await enrolledExchange();
+    const localBefore = await getManagedLocalState(enrolled.id);
+    expect(localBefore?.imported).toBeDefined();
+
+    let asked: Array<string> = [];
     await whileRunHolds(enrolled.id, async () => {
-      await expect(reinviteManagedExchange(enrolled.id)).rejects.toBeInstanceOf(
-        ManagedExchangeLockUnavailableError,
-      );
-      await expect(
-        enrollManagedRelayRegistrar(
-          {
-            id: enrolled.id,
-            registrar: REGISTRAR,
-            ownerToken: "owner-token-for-this-test-only",
-          },
-          {
-            withLock: withManagedExchangeLock,
-            getRecord: getManagedExchange,
-            persistRegistrar: persistManagedExchangeRelayRegistrar,
-            env,
-          },
-        ),
-      ).rejects.toBeInstanceOf(ManagedExchangeLockUnavailableError);
-      await expect(
-        stopManagedRelayRegistration(enrolled.id),
-      ).rejects.toBeInstanceOf(ManagedExchangeLockUnavailableError);
+      asked = await attemptLockedWrites(enrolled.id);
     });
 
     expect(asked).toEqual([]);
     expect(await getManagedExchange(enrolled.id)).toEqual(enrolled);
+    expect(await getManagedLocalState(enrolled.id)).toEqual(localBefore);
+  });
+
+  test("each is refused by a run of this window waiting for its partner, which goes on waiting", async () => {
+    const enrolled = await enrolledExchange();
+    const localBefore = await getManagedLocalState(enrolled.id);
+    const stop = new AbortController();
+    let waiting!: () => void;
+    const listed = new Promise<void>((resolve) => {
+      waiting = resolve;
+    });
+    const run = runManagedRerun(
+      enrolled,
+      {
+        acquireInput: () => Promise.resolve(undefined),
+        handshake: () =>
+          new Promise<never>((_resolve, reject) => {
+            waiting();
+            stop.signal.addEventListener("abort", () => {
+              reject(new Error("the wait for the partner was aborted"));
+            });
+          }),
+        dataExchange: () => Promise.resolve("exchanged"),
+      },
+      { stop },
+    ).catch((error: unknown) => error);
+    await listed;
+
+    try {
+      expect(await attemptLockedWrites(enrolled.id)).toEqual([]);
+      expect(managedWindowRunStage(enrolled.id)).toBe("waiting");
+      expect(stop.signal.aborted).toBe(false);
+      expect(await getManagedExchange(enrolled.id)).toEqual(enrolled);
+      expect(await getManagedLocalState(enrolled.id)).toEqual(localBefore);
+    } finally {
+      stopWaitingManagedWindowRun(enrolled.id);
+      await run;
+    }
+  });
+
+  test("each is refused by a run of this window past its rotation-in-flight marker", async () => {
+    const enrolled = await enrolledExchange();
+    const localBefore = await getManagedLocalState(enrolled.id);
+    let marked!: () => void;
+    const pastMarker = new Promise<void>((resolve) => {
+      marked = resolve;
+    });
+    let finish!: () => void;
+    const finished = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const run = runManagedRerun(
+      enrolled,
+      {
+        acquireInput: () => Promise.resolve(undefined),
+        handshake: async (_input, markRotationInFlight) => {
+          await markRotationInFlight();
+          marked();
+          await finished;
+          return {
+            rotatedSecret: generateSharedSecret(),
+            handshake: "carried",
+          };
+        },
+        dataExchange: () => Promise.resolve("exchanged"),
+      },
+      { stop: new AbortController() },
+    );
+    await pastMarker;
+    const marking = await getManagedExchange(enrolled.id);
+    expect(marking?.rotationInFlightSince).toBeDefined();
+
+    try {
+      expect(managedWindowRunStage(enrolled.id)).toBe("exchanging");
+      expect(await attemptLockedWrites(enrolled.id)).toEqual([]);
+      expect(await getManagedExchange(enrolled.id)).toEqual(marking);
+      expect(await getManagedLocalState(enrolled.id)).toEqual(localBefore);
+    } finally {
+      finish();
+      await run;
+    }
   });
 });

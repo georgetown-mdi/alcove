@@ -38,6 +38,7 @@ import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchang
 import { ManagedExchangeNotRunnableError } from "@psi/managed/managedExchangeRun";
 import { PartnerNoShowError } from "@psi/transport/waitForConnection";
 import { RotationPersistError } from "@psi/managed/managedRunRotate";
+import { stopWaitingManagedWindowRun } from "@psi/managed/managedWindowRuns";
 
 import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 
@@ -291,6 +292,51 @@ describe("runManagedRerun: a partner who never arrives", () => {
         { at: new Date(at).toISOString(), outcome: "missed" },
         at,
         // Stamped only over the secret the run read inside the lock.
+        HELD_SECRET,
+      ],
+    ]);
+  });
+});
+
+describe("runManagedRerun: a stop asked before the handshake", () => {
+  test("a failure of the run's own that follows is raised and stamped as with no stop, not as a cancel", async () => {
+    stubGrantingWebLocks();
+    const at = Date.parse("2026-07-14T12:00:00.000Z");
+    storedRecord.value = record({ sharedSecret: HELD_SECRET });
+    const stop = new AbortController();
+    const unreadable = new Error("the folder could not be read");
+
+    await expect(
+      runManagedRerun(
+        record(),
+        {
+          acquireInput: () => {
+            expect(stopWaitingManagedWindowRun("record-under-test")).toBe(
+              "stopped",
+            );
+            return Promise.reject(unreadable);
+          },
+          handshake: () => {
+            throw new Error("the handshake must not run");
+          },
+          dataExchange: () => {
+            throw new Error("the data exchange must not run");
+          },
+        },
+        { now: () => at, stop, aborted: () => stop.signal.aborted },
+      ),
+    ).rejects.toBe(unreadable);
+
+    expect(stop.signal.aborted).toBe(true);
+    expect(vi.mocked(recordManagedExchangeLastRun).mock.calls).toEqual([
+      [
+        "record-under-test",
+        {
+          at: new Date(at).toISOString(),
+          outcome: "failed",
+          failureKind: "transport",
+        },
+        at,
         HELD_SECRET,
       ],
     ]);

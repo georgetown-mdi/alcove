@@ -47,6 +47,7 @@
 - - -> Each run has its own stop, and is listed in its window's runs from taking the lock to releasing it (`apps/web/src/psi/managed/managedWindowRuns.ts`).
 - - -> Inside the lock, immediately before it writes the [rotation-in-flight marker](#the-rotation-in-flight-marker), the run checks for a stop: one asked before that check ends the run with nothing rotated and nothing recorded, and one asked after it is refused, the page then stating that the run is exchanging data with the partner.
 - - -> A stop asked after the channel opened but before the check still lands, and the partner sees no key exchange.
+- - -> A run whose checks before the handshake fail on their own -- the stored copy, its expiry, or the input -- ends on that failure whether or not a stop was asked meanwhile, and records and reports it as a run no stop was asked of does; the operation still follows once the lock is free.
 - - -> After the stop the operation requests the lock queued rather than with `ifAvailable`.
 - - -> Web Locks grants an exclusive lock to queued requests in the order they were made, so the operation takes the lock as the stopped run releases it.
 - - -> A stopped scheduled attempt ends that attempt, not its window, and counts no miss; the window waits for a queued turn of the lock, asked only once the stopped attempt has unwound, so its next attempt follows the operation, reads the record afresh, and runs on the secret the re-invite stored.

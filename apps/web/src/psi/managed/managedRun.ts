@@ -142,7 +142,8 @@ export interface ManagedRerunOptions {
    * ({@link ./managedWindowRuns.ts}), so a re-invite or a relay enrollment
    * refused by it can stop it while it waits for its partner: a stop aborts
    * this controller with a {@link ManagedRunStoppedError}, which the run
-   * raises in place of whatever the abort cut, recording nothing.
+   * raises in place of whatever the abort cut, recording nothing. A failure
+   * of the checks before the handshake is raised and recorded as itself.
    */
   stop?: AbortController;
   /**
@@ -223,6 +224,9 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
   let storedSecret: string | undefined;
   // The secret the handshake rotated to, stored once the data exchange began.
   let rotatedSecret: string | undefined;
+  // Whether the handshake phase began. A failure before it is this run's own,
+  // a stop asked or not, unless it is the stop's own abort reason.
+  const phase = { handshakeBegan: false };
 
   // The input guard, the single-writer lock, the persist-before-success rotation,
   // and the data exchange are runManagedExchange's, wired to this record's seams.
@@ -242,6 +246,7 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
         return seams.acquireInput(read);
       },
       handshake: async (input, markRotationInFlight, read) => {
+        phase.handshakeBegan = true;
         const handshake = await seams.handshake(
           input,
           markRotationInFlight,
@@ -261,19 +266,23 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
       now,
     });
   } catch (error) {
-    // A stop is honored only before the rotation-in-flight marker, so the
-    // error it provoked is the stop's, whatever the teardown raised.
+    // A stop is honored only before the rotation-in-flight marker, so a
+    // failure from the handshake phase after one is the stop's, whatever the
+    // teardown raised. Before that phase only the stop's own reason is.
     const stopReason: unknown = options.stop?.signal.reason;
-    if (stopReason instanceof ManagedRunStoppedError) throw stopReason;
+    const stopRequested = stopReason instanceof ManagedRunStoppedError;
+    if (stopRequested && (phase.handshakeBegan || error === stopReason))
+      throw stopReason;
     // A bound that lapsed mid-run remaps to the same benign expiry (see
     // remapLapsedRunFailure).
     const lapsed = remapLapsedRunFailure(error, current ?? record, now());
     if (lapsed !== undefined) throw lapsed;
     // Everything rerunFailureLastRun does not own (see its doc) is stamped here.
+    // A stop's abort does not make this run's own failure a cancel.
     const lastRun = rerunFailureLastRun(
       error,
       now(),
-      options.aborted?.() ?? false,
+      !stopRequested && (options.aborted?.() ?? false),
       dataExchangeStarted,
     );
     if (lastRun !== undefined) {

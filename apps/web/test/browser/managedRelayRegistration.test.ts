@@ -1,6 +1,6 @@
 /// <reference types="@vitest/browser-playwright/context" />
 
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { generateSharedSecret, getDefaultLinkageTerms } from "@alcove/core";
 
@@ -15,6 +15,11 @@ import {
   STOPPED_OWN_RELAY_TEXT,
 } from "@recurring/ManagedRelayRegistration";
 import {
+  ManagedRunStoppedError,
+  managedWindowRunStage,
+  stopWaitingManagedWindowRun,
+} from "@psi/managed/managedWindowRuns";
+import {
   buildManagedExchangeRecord,
   composeManagedExchangeFile,
   runnableManagedExchangeOrRefuse,
@@ -22,8 +27,10 @@ import {
 import {
   clearManagedExchanges,
   createManagedExchange,
+  getManagedExchange,
   persistManagedExchangeRelayRegistrar,
 } from "@psi/managed/managedExchangeStore";
+import { runManagedRerun } from "@psi/managed/managedRun";
 
 import {
   RELAY_REGISTRATION_HELD_BY_RUN_TEXT,
@@ -323,5 +330,105 @@ describe("the relay registration section while a run holds the exchange", () => 
       release();
       await run;
     }
+  });
+});
+
+describe("stopping a waiting run of this window to enroll", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** A run of `record` in this window, waiting for a partner who never
+   * arrives until its stop cuts the wait. */
+  async function waitingRun(record: RunnableManagedExchangeRecord) {
+    const stop = new AbortController();
+    let waiting!: () => void;
+    const listed = new Promise<void>((resolve) => {
+      waiting = resolve;
+    });
+    const run = runManagedRerun(
+      record,
+      {
+        acquireInput: () => Promise.resolve(undefined),
+        handshake: () =>
+          new Promise<never>((_resolve, reject) => {
+            waiting();
+            stop.signal.addEventListener("abort", () => {
+              reject(new Error("the wait for the partner was aborted"));
+            });
+          }),
+        dataExchange: () => Promise.resolve("exchanged"),
+      },
+      { stop },
+    ).catch((error: unknown) => error);
+    await listed;
+    return { stop, run };
+  }
+
+  test("a form the registrar schema refuses leaves the run waiting and marks the field", async () => {
+    const record = runnableManagedExchangeOrRefuse(
+      await createManagedExchange(newExchange()),
+    );
+    const { stop, run } = await waitingRun(record);
+    renderSection(record, { holder: "here-waiting" });
+
+    try {
+      await userEvent.fill(addressField(), "http://relay.example.org");
+      await userEvent.fill(exchangeIdField(), REGISTRAR.exchangeId);
+      await userEvent.click(
+        page.getByRole("button", { name: STOP_RUN_AND_ENROLL_LABEL }),
+      );
+
+      await expect
+        .element(addressField())
+        .toHaveAttribute("aria-invalid", "true");
+      await expect
+        .element(addressField())
+        .toHaveAccessibleDescription(
+          /^The registrar address must be an https:\/\/ url/,
+        );
+      expect(managedWindowRunStage(record.id)).toBe("waiting");
+      expect(stop.signal.aborted).toBe(false);
+    } finally {
+      stopWaitingManagedWindowRun(record.id);
+      await run;
+    }
+  });
+
+  test("a valid form stops the run and enrolls", async () => {
+    const record = runnableManagedExchangeOrRefuse(
+      await createManagedExchange(newExchange()),
+    );
+    const asked: Array<string> = [];
+    vi.stubGlobal("fetch", (input: string | URL | Request) => {
+      asked.push(String(input));
+      return Promise.resolve(
+        new Response(JSON.stringify({ maxAgeDays: null, lapsesAt: null }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    });
+    const { run } = await waitingRun(record);
+    renderSection(record, { holder: "here-waiting" });
+
+    await userEvent.fill(addressField(), REGISTRAR.url);
+    await userEvent.fill(exchangeIdField(), REGISTRAR.exchangeId);
+    await userEvent.click(
+      page.getByRole("button", { name: STOP_RUN_AND_ENROLL_LABEL }),
+    );
+
+    expect(await run).toBeInstanceOf(ManagedRunStoppedError);
+    await expect
+      .element(
+        page.getByText(
+          "The registrar holds this exchange's current relay key.",
+        ),
+      )
+      .toBeInTheDocument();
+    expect(asked).toHaveLength(1);
+    expect((await getManagedExchange(record.id))?.relayRegistrar).toEqual(
+      REGISTRAR,
+    );
   });
 });

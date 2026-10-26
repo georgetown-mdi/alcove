@@ -1424,7 +1424,11 @@ marker](#the-rotation-in-flight-marker), the run checks for a stop: one asked
 before that check ends the run with nothing rotated and nothing recorded, and
 one asked after it is refused, the page then stating that the run is
 exchanging data with the partner. A stop asked after the channel opened but
-before the check still lands, and the partner sees no key exchange.
+before the check still lands, and the partner sees no key exchange. A run
+whose checks before the handshake fail on their own -- the stored copy, its
+expiry, or the input -- ends on that failure whether or not a stop was asked
+meanwhile, and records and reports it as a run no stop was asked of does; the
+operation still follows once the lock is free.
 
 After the stop the operation requests the lock queued rather than with
 `ifAvailable`. Web Locks grants an exclusive lock to queued requests in the

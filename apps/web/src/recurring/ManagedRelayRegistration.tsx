@@ -39,6 +39,7 @@ import { ManagedRunHolderNote } from "./ManagedRunHolderNote";
 import { relayRegistrationPendingLine } from "./savedExchangesModel";
 
 import type { ManagedRunHolder } from "./managedRunHolder";
+import type { RelayRegistrar } from "@alcove/core";
 import type { RunnableManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 
 /** The section's heading. */
@@ -127,7 +128,9 @@ export function ManagedRelayRegistration({
     if (value === "") setReplace(false);
   };
 
-  const enroll = async (afterStop: boolean) => {
+  /** The registrar the form names, or `undefined` with the fields' problems
+   * shown. */
+  const checkedRegistrar = (): RelayRegistrar | undefined => {
     const parsed = RelayRegistrarSchema.safeParse({ url, exchangeId });
     if (!parsed.success) {
       const { issues } = parsed.error;
@@ -136,10 +139,14 @@ export function ManagedRelayRegistration({
       setExchangeIdProblems(
         idProblems.length > 0 ? [...idProblems, EXCHANGE_ID_PRIVACY] : [],
       );
-      return;
+      return undefined;
     }
     setUrlProblems([]);
     setExchangeIdProblems([]);
+    return parsed.data;
+  };
+
+  const enroll = async (registrar: RelayRegistrar, afterStop: boolean) => {
     setOutcome(undefined);
     setBusy(true);
     const token = ownerToken === "" ? undefined : ownerToken;
@@ -149,7 +156,7 @@ export function ManagedRelayRegistration({
       // scheduled attempt, which asks ifAvailable, cannot take it first.
       const result = await enrollManagedRelayRegistrar({
         id: record.id,
-        registrar: parsed.data,
+        registrar,
         ...(token !== undefined && { ownerToken: token }),
         replace,
         lock: afterStop ? {} : { ifAvailable: true },
@@ -163,7 +170,7 @@ export function ManagedRelayRegistration({
           action: "enroll",
           message: sanitizeForDisplay(
             managedRelayEnrollmentFailureMessage(
-              parsed.data,
+              registrar,
               result.outcome,
               token !== undefined,
             ),
@@ -185,12 +192,21 @@ export function ManagedRelayRegistration({
     }
   };
 
+  const enrollNow = () => {
+    const registrar = checkedRegistrar();
+    if (registrar !== undefined) void enroll(registrar, false);
+  };
+
+  // The form is checked before the run is stopped, so a form that cannot
+  // enroll leaves the run waiting.
   const stopRunAndEnroll = () => {
+    const registrar = checkedRegistrar();
+    if (registrar === undefined) return;
     if (stopWaitingManagedWindowRun(record.id) !== "stopped") {
       onRecheckRunLock();
       return;
     }
-    void enroll(true);
+    void enroll(registrar, true);
   };
 
   const stop = async () => {
@@ -273,11 +289,7 @@ export function ManagedRelayRegistration({
           disabled={busy || ownerToken === ""}
         />
         <Group gap="sm">
-          <Button
-            onClick={() => void enroll(false)}
-            loading={busy}
-            disabled={runInFlight}
-          >
+          <Button onClick={enrollNow} loading={busy} disabled={runInFlight}>
             Enroll
           </Button>
           {stopButton}
