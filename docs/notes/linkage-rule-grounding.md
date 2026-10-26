@@ -747,7 +747,8 @@ What it pins:
 - **Precision, recall, and per-key attribution**: the true and false pairs each
   key claims. A change that moves them updates the pin in the same commit. A
   floor on precision and on recall fails the test below it whatever the pin
-  says; the precision floor is the 95% band.
+  says. Each floor is a chosen margin below its pin, 90%, not a catalog band:
+  synthetic precision is not band evidence.
 
 Its limits:
 

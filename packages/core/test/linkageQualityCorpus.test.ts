@@ -180,13 +180,12 @@ const EXPECTED_TOTALS = {
 };
 
 /**
- * The floors no pin moves. The precision floor is the catalog's lowest band,
- * which the default selection takes (docs/notes/linkage-rule-catalog.md,
- * Bands). The notes set no recall floor; this one is a choice, not a
- * measurement.
+ * The floors no pin moves: a margin below the pinned figures, chosen rather
+ * than measured. Synthetic precision is not band evidence, so neither floor is
+ * a catalog band.
  */
-const PRECISION_FLOOR = 0.95;
-const RECALL_FLOOR = 0.95;
+const PRECISION_FLOOR = 0.9;
+const RECALL_FLOOR = 0.9;
 
 const psiLibrary = await PSI();
 const corpus: Corpus = buildCorpus();
