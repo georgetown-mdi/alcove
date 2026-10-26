@@ -31,7 +31,7 @@ In create mode it bounds the body read too: the read is raced against the same s
 
 **Create-mode answer.**
 The body of a `2xx` answer is read through `readBoundedJsonBody` (`packages/core/src/utils/boundedJsonBody.ts`), streamed under `MAX_PROVISION_RESPONSE_BYTES` = 32,768 bytes with `Content-Length` never trusted, and parsed through `parseBoundedJson`.
-The cap is derived from the schema below: its widest document, every host, path, and fingerprint code unit a six-byte `\uXXXX` escape, is (256 + 4096 + 50) x 6 + 60 = 26,472 bytes, and 32 KiB is the next power of two, leaving room for whitespace between tokens.
+The cap is derived from the schema below: its widest document, every host, path, fingerprint, and key code unit a six-byte `\uXXXX` escape, is (256 + 4096 + 50 + 32) x 6 + 28 = 26,632 bytes, and 32 KiB is the next power of two, leaving room for whitespace between tokens.
 The parsed value must be an object with exactly these keys, any other key refused:
 
 | Key | Type | Required | Bound |
@@ -44,6 +44,7 @@ The parsed value must be an object with exactly these keys, any other key refuse
 The `host`, `port`, and `path` bounds are the invitation endpoint's own, so an accepted address always fits the invitation.
 The address then replaces `server.host`, or fills it where a create-mode configuration left it out, and `port` and `path` when present, and the result must still pass the connection schema (an sftp `path` beside an `inbound_path` does not).
 A returned `host_key_fingerprint` replaces whatever `server.host_key_fingerprint` the sftp connection states, a list included, so every later connection to the created server requires that key; an answer without one leaves the configured pin, or its absence, unchanged.
+A list it replaces takes the comments on its key and entries with it.
 A returned `host_key_fingerprint` for a webrtc connection is refused with exit 64 (`UsageError`), since that connection has no SSH host key to pin.
 The fingerprint is not sent in the invitation, so the accepting party still confirms the created server's key on first use.
 A refusal of the body names the endpoint by host and port and names the schema field at fault, never a key or value the body chose.

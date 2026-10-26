@@ -51,10 +51,11 @@ export const PROVISION_REQUEST_TIMEOUT_MS = 120_000;
 
 /**
  * The cap on a create-mode answer's body. The widest document
- * {@link ProvisionedServerAddress} admits, every host, path and fingerprint
- * code unit written as a six-byte `\uXXXX` escape, is (256 + 4096 + 50) * 6
- * bytes plus 60 of keys, punctuation and a five-digit port: 26,472 bytes.
- * 32 KiB is the next power of two, its margin whitespace between tokens.
+ * {@link ProvisionedServerAddress} admits, every host, path, fingerprint and
+ * key code unit written as a six-byte `\uXXXX` escape, is
+ * (256 + 4096 + 50 + 32) * 6 bytes plus 28 of punctuation and a five-digit
+ * port: 26,632 bytes. 32 KiB is the next power of two, its margin whitespace
+ * between tokens.
  */
 export const MAX_PROVISION_RESPONSE_BYTES = 32 * 1024;
 

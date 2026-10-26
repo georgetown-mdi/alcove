@@ -521,9 +521,10 @@ function loadConfigConnectionBlock(
  * always, `port`, `path` and `host_key_fingerprint` when the answer states
  * them, every other field -- `provision` among them -- and the operator's
  * comments and key order left as they are. A returned fingerprint replaces any
- * pin the file states, a list included. Rewritten with the same owner-only
- * permissions {@link saveConfig} uses; throws if the file cannot be read,
- * parsed or updated.
+ * pin the file states; a list it replaces takes the comments on its key and
+ * entries with it. Rewritten with the same owner-only permissions
+ * {@link saveConfig} uses; throws if the file cannot be read, parsed or
+ * updated.
  */
 export function persistProvisionedServerAddress(
   configPath: string,
