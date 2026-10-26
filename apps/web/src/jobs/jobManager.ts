@@ -105,6 +105,7 @@ import {
   signingIdentityPath,
   signingIdentityTargetExists,
 } from "./signingIdentity";
+import { relayCheckOffer, runRelayCheck } from "./relayCheck";
 import { buildJobHandoff } from "./handoff";
 import { checkedMountedKeyFilePath } from "./mountedKeyFile";
 import { consoleOwnedCredentialField } from "./consoleOwnedFiles";
@@ -148,6 +149,11 @@ import type {
   LoadedConfigurationResponse,
   OpenedMountedConfiguration,
 } from "./configLoad";
+import type {
+  RelayCheckOffer,
+  RelayCheckResult,
+  RelayCheckUnavailableReason,
+} from "./relayCheck";
 import type { AuthoredSignalingServer } from "./signalingServer";
 import type { JobFolderView } from "@jobContract/jobFolderContents";
 import type { JobHandoff } from "@jobContract/jobHandoff";
@@ -255,6 +261,18 @@ export class SftpProbeBusyError extends Error {
   constructor() {
     super("a host-key probe is already running");
     this.name = "SftpProbeBusyError";
+  }
+}
+
+/**
+ * Thrown by {@link JobManager.checkRelay} when a relay check child is already
+ * running: one check runs at a time, so a concurrent request is refused with
+ * a 409.
+ */
+export class RelayCheckBusyError extends Error {
+  constructor() {
+    super("a relay check is already running");
+    this.name = "RelayCheckBusyError";
   }
 }
 
@@ -771,6 +789,12 @@ export class JobManager {
    * both pass; cleared when the child settles. Independent of the exchange slot.
    */
   private probeInFlight = false;
+  /**
+   * Whether a relay check child is running. Claimed and cleared as
+   * {@link probeInFlight} is, so a concurrent {@link checkRelay} is refused
+   * with {@link RelayCheckBusyError}.
+   */
+  private relayCheckInFlight = false;
   /**
    * Whether a signing-fingerprint child is running. Claimed and cleared exactly as
    * {@link probeInFlight} is, and for the reason
@@ -1421,6 +1445,56 @@ export class JobManager {
       });
     } finally {
       this.probeInFlight = false;
+    }
+  }
+
+  /**
+   * What a relay check of the working folder's `alcove.yaml` and `.alcove.key`
+   * would contact, or why there is nothing to check ({@link relayCheckOffer}).
+   * Reads the folder and contacts nothing.
+   */
+  relayCheckOffer(): RelayCheckOffer {
+    return relayCheckOffer(this.dataRoot);
+  }
+
+  /**
+   * Run the CLI's `doctor relay` over the working folder's pair, when the
+   * `alcove.yaml` there is the one `configurationDigest` names
+   * ({@link relayCheckOffer}). `exchange-running` while the slot holds an
+   * exchange whose child has not exited, so the check never reads a pair a
+   * run is rotating. One check at a time: the flag is claimed synchronously,
+   * so a concurrent check is {@link RelayCheckBusyError} (a 409).
+   */
+  async checkRelay(args: {
+    configurationDigest: string;
+  }): Promise<
+    | RelayCheckResult
+    | { kind: "exchange-running" }
+    | { kind: "configuration-changed" }
+    | { kind: "unavailable"; reason: RelayCheckUnavailableReason }
+  > {
+    if (this.shuttingDown) throw new ConsoleShuttingDownError();
+    if (this.relayCheckInFlight) throw new RelayCheckBusyError();
+    const running = this.activeSlotRecord();
+    if (
+      this.slot?.phase === "starting" ||
+      (running !== null && running.terminal === null)
+    )
+      return { kind: "exchange-running" };
+    const offer = relayCheckOffer(this.dataRoot);
+    if (offer.kind === "unavailable")
+      return { kind: "unavailable", reason: offer.reason };
+    if (offer.configurationDigest !== args.configurationDigest)
+      return { kind: "configuration-changed" };
+    this.relayCheckInFlight = true;
+    try {
+      return await runRelayCheck({
+        dataRoot: this.dataRoot,
+        binaryPath: this.binaryPath,
+        ...(this.childEnv !== undefined ? { childEnv: this.childEnv } : {}),
+      });
+    } finally {
+      this.relayCheckInFlight = false;
     }
   }
 

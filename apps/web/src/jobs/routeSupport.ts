@@ -283,6 +283,12 @@ export const MAX_SIGNALING_AUTHOR_BODY_BYTES = 16 * 1024;
 export const MAX_SIGNING_FINGERPRINT_BODY_BYTES = 4 * 1024;
 
 /**
+ * The byte cap on a `POST /api/jobs/relay-check` body: the digest of the
+ * configuration the operator was shown, nothing else.
+ */
+export const MAX_RELAY_CHECK_BODY_BYTES = 1024;
+
+/**
  * The byte cap on a `PUT /api/jobs/config` hand-back body: the linkage terms,
  * the column metadata, and the cleaning pipeline, each bounded by the schema,
  * plus a few short settings. No input file is representable, so it sits far

@@ -14,6 +14,7 @@ import { route as LogRoute } from "./routes/$jobId/log";
 import { route as ProfileRoute } from "./routes/inputs/profile";
 import { route as ReceiptRoute } from "./routes/$jobId/receipt";
 import { route as RecordRoute } from "./routes/$jobId/record";
+import { route as RelayCheckRoute } from "./routes/relay-check";
 import { route as RendezvousRoute } from "./routes/rendezvous";
 import { route as ResultRoute } from "./routes/$jobId/result";
 import { route as SamplesRoute } from "./routes/inputs/samples";
@@ -45,6 +46,7 @@ export const jobRoutes: ReadonlyArray<JobRouteDefinition> = [
   SftpRoute,
   SftpProbeRoute,
   WebrtcRoute,
+  RelayCheckRoute,
   SigningFingerprintRoute,
   JobRoute,
   ApplyTermsRoute,

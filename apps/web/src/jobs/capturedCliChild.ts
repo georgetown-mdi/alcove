@@ -7,9 +7,10 @@ import type { ChildProcess } from "node:child_process";
 /**
  * The one spawn boundary the console's short-lived CLI drivers cross: the
  * host-key probe ({@link ./sftpProbe}), the signing-identity fingerprint
- * ({@link ./signingIdentity}), and the terms-proposal apply
- * ({@link ./termsProposal}). Each is a request-scoped child that prints at most a
- * single line and exits, so all need the same three controls -- a no-shell argv
+ * ({@link ./signingIdentity}), the terms-proposal apply
+ * ({@link ./termsProposal}), and the relay check ({@link ./relayCheck}). Each
+ * is a request-scoped child that prints at most a single line and exits, so
+ * all need the same three controls -- a no-shell argv
  * array, a capped stdout read, and a watchdog that bounds the child's lifetime
  * -- and each is reached from an unauthenticated loopback endpoint. Holding them
  * once is what keeps them from drifting apart: a caller contributes only its
@@ -28,11 +29,12 @@ import type { ChildProcess } from "node:child_process";
  */
 
 /**
- * The cap on retained child stdout, in UTF-16 code units. Every caller's child
- * emits ONE short line (a fingerprint digest, or a small JSON object) and sends
- * every diagnostic to stderr, so anything past a few KiB is a malformed or
- * hostile child: the read is bounded rather than left to grow, and the overflow
- * is reported as a missing read the caller classifies as an error.
+ * The default cap on retained child stdout, in UTF-16 code units. Every
+ * caller's child emits ONE line (a fingerprint digest, or a JSON object) and
+ * sends every diagnostic to stderr, so anything past the line's own size is a
+ * malformed or hostile child: the read is bounded rather than left to grow,
+ * and the overflow is reported as a missing read the caller classifies as an
+ * error. A caller whose line can be longer passes its own `stdoutCap`.
  */
 const CAPTURED_STDOUT_CAP = 4096;
 
@@ -42,7 +44,7 @@ const CAPTURED_STDOUT_CAP = 4096;
  * - `timedOut`: the watchdog killed it (it outlived the caller's budget).
  * - `exited`: it ended on its own. `code` is its exit code, or null when a signal
  *   ended it; `stdout` is the captured text, or undefined when the read
- *   overflowed {@link CAPTURED_STDOUT_CAP}.
+ *   overflowed the cap.
  */
 type CapturedChildOutcome =
   | { kind: "spawnFailed" }
@@ -51,8 +53,8 @@ type CapturedChildOutcome =
 
 /**
  * Spawn `node argv` for a one-shot CLI child, capture its stdout under
- * {@link CAPTURED_STDOUT_CAP}, and settle on the child's `close`: once it has
- * exited and its stdio has closed, whether it ended on its own, the watchdog
+ * `stdoutCap` or {@link CAPTURED_STDOUT_CAP}, and settle on the child's
+ * `close`: once it has exited and its stdio has closed, whether it ended on its own, the watchdog
  * killed it, or it never spawned.
  *
  * The watchdog SIGTERMs at `sigtermMs`, escalating to SIGKILL after
@@ -70,7 +72,9 @@ export function runCapturedCliChild(args: {
   childEnv?: NodeJS.ProcessEnv;
   sigtermMs: number;
   sigkillGraceMs: number;
+  stdoutCap?: number;
 }): Promise<CapturedChildOutcome> {
+  const stdoutCap = args.stdoutCap ?? CAPTURED_STDOUT_CAP;
   return new Promise<CapturedChildOutcome>((resolve) => {
     let child: ChildProcess;
     try {
@@ -92,7 +96,7 @@ export function runCapturedCliChild(args: {
       out.on("data", (chunk: string) => {
         if (stdoutOverflow) return;
         stdout += chunk;
-        if (stdout.length > CAPTURED_STDOUT_CAP) {
+        if (stdout.length > stdoutCap) {
           stdoutOverflow = true;
           stdout = "";
         }
