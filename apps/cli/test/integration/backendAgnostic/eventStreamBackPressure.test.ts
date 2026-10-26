@@ -18,10 +18,17 @@ const CHILD = path.join(import.meta.dirname, "eventStreamBackPressureChild.ts");
 const CLI_ROOT = path.join(import.meta.dirname, "..", "..", "..");
 
 // Reads `stream` in chunks with a pause after each, so the writer runs ahead
-// of the reader for the whole run.
-async function readSlowly(stream: Readable): Promise<Buffer> {
+// of the reader for the whole run. Nothing is read until 300 ms after the
+// child says it is writing, so the buffers fill and a write blocks for most
+// of that hold; a hold timed from the spawn can end before the child, still
+// starting, writes at all.
+async function readSlowly(
+  stream: Readable,
+  writing: Promise<void>,
+): Promise<Buffer> {
   const chunks: Buffer[] = [];
   stream.pause();
+  await writing;
   await new Promise((settle) => setTimeout(settle, 300));
   for await (const chunk of stream) {
     chunks.push(chunk as Buffer);
@@ -60,6 +67,23 @@ async function exitOf(child: ReturnType<typeof spawn>): Promise<number | null> {
   return new Promise((settle) => child.once("close", settle));
 }
 
+// The child's stderr as it arrives, and when it says it is about to write;
+// a child that exits first settles that too, for the assertions to report.
+function watchStderr(child: ReturnType<typeof spawn>): {
+  text: () => string;
+  writing: Promise<void>;
+} {
+  let stderr = "";
+  const writing = new Promise<void>((settle) => {
+    child.stderr!.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+      if (/^writing$/m.test(stderr)) settle();
+    });
+    child.once("close", () => settle());
+  });
+  return { text: () => stderr, writing };
+}
+
 describe("the event stream under back pressure", () => {
   test("a socket pair read slowly receives every event as one whole line", async () => {
     const child = spawn(process.execPath, ["--import", "tsx", CHILD], {
@@ -67,12 +91,14 @@ describe("the event stream under back pressure", () => {
       env: { ...process.env, ALCOVE_TEST_EVENT_COUNT: String(EVENT_COUNT) },
       stdio: ["ignore", "ignore", "pipe", "pipe"],
     });
-    let stderr = "";
-    child.stderr!.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
+    const stderr = watchStderr(child);
     const exited = exitOf(child);
-    const received = await readSlowly(child.stdio[3] as Readable);
+    const received = await readSlowly(
+      child.stdio[3] as Readable,
+      stderr.writing,
+    );
     expect(await exited).toBe(0);
-    expectBackPressureMet(stderr);
+    expectBackPressureMet(stderr.text());
     expectWholeLinesInOrder(received);
   }, 120_000);
 
@@ -91,12 +117,11 @@ describe("the event stream under back pressure", () => {
         stdio: ["ignore", "pipe", "pipe"],
       },
     );
-    let stderr = "";
-    child.stderr!.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
+    const stderr = watchStderr(child);
     const exited = exitOf(child);
-    const received = await readSlowly(child.stdout!);
+    const received = await readSlowly(child.stdout!, stderr.writing);
     expect(await exited).toBe(0);
-    expectBackPressureMet(stderr);
+    expectBackPressureMet(stderr.text());
     expectWholeLinesInOrder(received);
   }, 120_000);
 });
