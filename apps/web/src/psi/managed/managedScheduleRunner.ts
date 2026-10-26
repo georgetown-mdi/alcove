@@ -485,7 +485,10 @@ interface WindowOccupancy {
  * and the next attempt starts once the operation that stopped it has taken
  * and released the lock ({@link ManagedScheduleTickSeams.awaitLockTurn}), so
  * it reads the record that operation wrote, a re-invite's fresh secret
- * included.
+ * included. An attempt refused the lock ({@link
+ * ManagedExchangeLockUnavailableError}) is no verdict either: it is paced like
+ * any attempt, does not count toward {@link MAX_WINDOW_ATTEMPTS}, and leaves an
+ * otherwise empty window `"unattempted"`.
  *
  * The first standing condition an attempt raises is carried out with the
  * disposition, for the window's own write to persist. Each attempt's run already
@@ -558,26 +561,36 @@ async function occupyWindow(
         await seams.awaitLockTurn(id);
         continue;
       }
-      const verdict = managedScheduleWindowVerdict(error, dataExchangeStarted);
-      if (verdict.disposition === "missed") partnerWasAbsent = true;
-      if (verdict.provesContact) contactWasProven = true;
-      if (verdict.standing !== undefined && standingCondition === undefined)
-        standingCondition = {
-          since: new Date(seams.now()).toISOString(),
-          kind: verdict.standing,
-        };
-      if (!verdict.retryable)
-        return {
-          attempts,
-          disposition: foldWindowDisposition(
-            verdict.disposition,
-            partnerWasAbsent,
-            contactWasProven,
-          ),
-          ...(standingCondition !== undefined ? { standingCondition } : {}),
-          evidenceSharedSecret,
-        };
-      disposition = verdict.disposition;
+      if (error instanceof ManagedExchangeLockUnavailableError) {
+        // Another context's run holds the record, which is not this runner's
+        // attempt at the window.
+        attempts -= 1;
+        disposition ??= "unattempted";
+      } else {
+        const verdict = managedScheduleWindowVerdict(
+          error,
+          dataExchangeStarted,
+        );
+        if (verdict.disposition === "missed") partnerWasAbsent = true;
+        if (verdict.provesContact) contactWasProven = true;
+        if (verdict.standing !== undefined && standingCondition === undefined)
+          standingCondition = {
+            since: new Date(seams.now()).toISOString(),
+            kind: verdict.standing,
+          };
+        if (!verdict.retryable)
+          return {
+            attempts,
+            disposition: foldWindowDisposition(
+              verdict.disposition,
+              partnerWasAbsent,
+              contactWasProven,
+            ),
+            ...(standingCondition !== undefined ? { standingCondition } : {}),
+            evidenceSharedSecret,
+          };
+        disposition = verdict.disposition;
+      }
     }
     // Paced from the failed attempt's start, and clamped to the window's own
     // close: the loop head is what ends an occupancy, so a delay outlasting the
@@ -624,9 +637,10 @@ async function occupyWindow(
  * `"missed"` and contact-proving today, so it holds no more than the evidence
  * of the attempt that just ended the window.
  *
- * A window whose failures are all local keeps `"failed"`, and the lock refusal
- * keeps `"unattempted"` -- neither is a claim about the partner. `"succeeded"`
- * never reaches here: a completed exchange returns from the loop.
+ * A window whose failures are all local keeps `"failed"`, and one of lock
+ * refusals and stopped attempts alone keeps `"unattempted"` -- neither is a
+ * claim about the partner. `"succeeded"` never reaches here: a completed exchange
+ * returns from the loop.
  */
 function foldWindowDisposition(
   last: ManagedScheduleWindowDisposition,
@@ -693,10 +707,8 @@ function attemptProvesContact(
  * Read a failed attempt as a window verdict
  * (docs/spec/MANAGED_EXCHANGE_RECORD.md, "Occupying a due window").
  *
- * The single-writer lock being held elsewhere is not this window's to account
- * for: another context holds the record, so the window records neither an
- * attempt nor a miss (`"unattempted"`), and this runner defers rather than
- * contending for the lock it was refused.
+ * The single-writer lock being held elsewhere never reaches here: it is no
+ * attempt at the window, and {@link occupyWindow} paces the next one.
  *
  * A partner who never arrived is the benign no-show, and the only failure that
  * counts a coordination miss. Everything else is `"failed"`, leaving
@@ -725,12 +737,6 @@ function managedScheduleWindowVerdict(
   error: unknown,
   dataExchangeStarted: boolean,
 ): ManagedScheduleWindowVerdict {
-  if (error instanceof ManagedExchangeLockUnavailableError)
-    return {
-      disposition: "unattempted",
-      retryable: false,
-      provesContact: false,
-    };
   const retryable = !dataExchangeStarted;
   const provesContact = attemptProvesContact(error, dataExchangeStarted);
   if (error instanceof PartnerNoShowError)

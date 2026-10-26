@@ -1029,7 +1029,7 @@ resets the count the elapsed windows before it raised.
 One window the walk does not visit is read the same way before it starts: the
 window immediately preceding `nextWindow`, whose recorded `"succeeded"` run
 resets the count. That window is where a run the schedule advanced past as
-`"unattempted"` lands its outcome -- the advance happens while the other
+`"unattempted"` lands its outcome -- the advance can come while the other
 context's run is still in flight -- so without this reading a completed exchange
 inside an agreed window could fail to discharge the miss run, and the escalation
 threshold could be crossed a window early. The reach is exactly one window: a
@@ -1102,9 +1102,12 @@ outcome](#recording-a-run-outcome) holds a failing run's entry off a success
 stamped after that run began. An attempt that
 instead meets that Run still in flight -- the lock spans its payload exchange --
 is refused rather than queued, since the scheduled path takes the lock
-fail-fast: the window's disposition is `"unattempted"`, the occupancy ends
-there, and the schedule advances past the window, so the window is consumed
-rather than re-attempted against the rotated record. A designed
+fail-fast. A refused attempt neither uses up nor ends the window: the next
+attempt is paced from its start like any other and reads the record again, the
+rotated one included, and the pacing interval and the close bound the
+refusals. A refusal does not count toward the attempt cap, and the window's
+disposition is left to the attempts that took the lock; the window is
+`"unattempted"` only where it closes with no such attempt. A designed
 inter-attempt yield -- one that makes the free interval wide enough for an
 attended Run to take rather than leaving it to how an attempt happened to
 fail -- is deferred rather than designed away.
@@ -1125,8 +1128,9 @@ Two boundaries the occupancy holds:
   re-attempt would disclose a second time. The boundary gates the retry rather
   than the failure's kind.
 
-Within those, an attempt is re-made only for a partner who never arrived and for
-a failure with no determinate local cause. A lapsed `expires`, a stored copy the
+Within those, an attempt is re-made only for a partner who never arrived, for
+a failure with no determinate local cause, and for a refusal of the
+single-writer lock (above). A lapsed `expires`, a stored copy the
 run cannot use, an unusable input, a shortfall against the standing terms, a refused disclosure, a failed rotation
 persist, and a handshake that failed closed each reproduce identically on the
 next attempt, so each ends the window's occupancy where it happened.
@@ -1161,7 +1165,7 @@ response](#a-due-window-under-the-operators-compromise-response)):
 | `"succeeded"` | an attempt completed the exchange, or another context recorded a success inside the window | reset to 0 | no -- the run recorded its own |
 | `"missed"` | none did, at least one found the partner absent, and none failed in a way that proves the partner was met | incremented | no -- the run recorded its own |
 | `"failed"` | its attempts failed, none of them on an absent partner -- or one of them proved the partner was met | unchanged | no -- the run recorded its own |
-| `"unattempted"` | its last attempt was refused the single-writer lock, held by another context | unchanged | no -- the window has no bookkeeping |
+| `"unattempted"` | it closed with every attempt refused the single-writer lock, held by another context | unchanged | no -- the window has no bookkeeping |
 
 The `"missed"` row folds rather than reading the last attempt because an attempt
 that spent its whole peer wait has already answered the question the miss count
@@ -1181,11 +1185,13 @@ records `"failed"` and counts nothing. A failure with no determinate cause
 proves nothing either way and leaves the fold to the absence above.
 
 `"unattempted"` is the one disposition that is not an outcome the record can
-hold, and the one that stands whatever the attempts before it found: another
-context was running this very record, so the window is that context's to account
-for rather than this runner's, and the schedule advances past it recording
-neither an attempt nor a miss. The advance happens while that run is still in
-flight, so its bookkeeping lands in a window already advanced past; a
+hold. Another context was running this very record across the window, so the
+window is that context's to account for rather than this runner's, and the
+schedule advances past it recording neither an attempt nor a miss. A refusal
+among attempts that took the lock leaves the fold to them, so one between two
+no-show waits does not stop the window from folding to `"missed"`. The advance
+can come while that run is still in flight, and its bookkeeping then lands in a
+window already advanced past; a
 `"succeeded"` one is credited at the next wake (see
 [Catch-up on wake](#catch-up-on-wake)), while any other outcome it records leaves
 the window uncounted. Every other disposition's `lastRun` is written by the run

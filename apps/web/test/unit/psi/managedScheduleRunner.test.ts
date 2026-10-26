@@ -1042,25 +1042,31 @@ describe("a due window under the operator's compromise response", () => {
 });
 
 describe("a window the single-writer lock was held through", () => {
-  test("records neither an attempt nor a miss, and advances past it", async () => {
+  function refusal(record: ManagedExchangeRecord): AttemptScript[number] {
+    return {
+      kind: "fail",
+      error: new ManagedExchangeLockUnavailableError(record.id),
+    };
+  }
+
+  test("records neither an attempt nor a miss when every attempt to the close was refused", async () => {
     const record = recordWith();
     const runner = harness({
       records: [record],
       startAt: "2026-01-06T14:00:00.000Z",
-      script: [
-        {
-          kind: "fail",
-          error: new ManagedExchangeLockUnavailableError(record.id),
-        },
-      ],
+      script: [refusal(record)],
     });
 
     const [entry] = await tickManagedSchedules(runner.seams);
 
     expect(entry.disposition).toBe("unattempted");
-    // One attempt was made and refused the lock; the runner defers rather than
-    // contending for it again.
-    expect(entry.attempts).toBe(1);
+    expect(entry.attempts).toBe(0);
+    // Paced across the whole window rather than ending at the first refusal.
+    expect(runner.attempts).toHaveLength(
+      (3 * 60 * 60 * 1000) / ATTEMPT_RATE_GAP_MS,
+    );
+    expect(runner.nowMs()).toBe(at("2026-01-06T17:00:00.000Z"));
+    expect(runner.advances).toHaveLength(1);
     expect(runner.advances[0].advance).toMatchObject({
       fromConsecutiveMisses: 0,
       schedule: {
@@ -1071,34 +1077,85 @@ describe("a window the single-writer lock was held through", () => {
     expect(runner.advances[0].advance.lastRun).toBeUndefined();
   });
 
-  test("dominates the no-show waits the same window already took", async () => {
-    // The two findings a window can hold at once: attempts that waited out an
-    // absent partner, then a refusal that says another context is running this
-    // very record. The refusal wins -- the window is that context's to account
-    // for -- so nothing here is counted as a miss.
+  test("attempts again inside the same window after a refusal", async () => {
+    const record = recordWith();
+    const runner = harness({
+      records: [record],
+      startAt: "2026-01-06T14:00:00.000Z",
+      script: [refusal(record), { kind: "succeed" }],
+    });
+
+    const [entry] = await tickManagedSchedules(runner.seams);
+
+    expect(entry).toMatchObject({ attempts: 1, disposition: "succeeded" });
+    expect(
+      runner.attempts[1].startedAtMs - runner.attempts[0].startedAtMs,
+    ).toBe(ATTEMPT_RATE_GAP_MS);
+    expect(runner.advances).toHaveLength(1);
+    expect(runner.advances[0].advance.schedule.consecutiveMisses).toBe(0);
+  });
+
+  test("does not spend the attempt cap on refusals", async () => {
     const record = recordWith();
     const runner = harness({
       records: [record],
       startAt: "2026-01-06T14:00:00.000Z",
       script: [
-        ...noShowScript(),
-        ...noShowScript(),
-        {
-          kind: "fail",
-          error: new ManagedExchangeLockUnavailableError(record.id),
-        },
+        ...Array.from({ length: MAX_WINDOW_ATTEMPTS + 1 }, () =>
+          refusal(record),
+        ),
+        { kind: "succeed" },
       ],
     });
 
     const [entry] = await tickManagedSchedules(runner.seams);
 
-    expect(entry.attempts).toBe(3);
-    expect(entry.disposition).toBe("unattempted");
+    expect(entry).toMatchObject({ attempts: 1, disposition: "succeeded" });
+    expect(runner.attempts).toHaveLength(MAX_WINDOW_ATTEMPTS + 2);
+  });
+
+  test("leaves the no-show waits around a refusal to count the window as missed", async () => {
+    const record = recordWith();
+    const runner = harness({
+      records: [record],
+      startAt: "2026-01-06T14:00:00.000Z",
+      script: [...noShowScript(), refusal(record), ...noShowScript()],
+    });
+
+    const [entry] = await tickManagedSchedules(runner.seams);
+
+    expect(entry.disposition).toBe("missed");
+    expect(entry.attempts).toBe(runner.attempts.length - 1);
+    expect(runner.advances[0].advance.schedule).toMatchObject({
+      nextWindow: "2026-01-13T14:00:00.000Z",
+      consecutiveMisses: 1,
+    });
+    expect(runner.advances[0].advance.lastRun).toBeUndefined();
+  });
+
+  test("ends succeeded once the run that held the lock records its success inside the window", async () => {
+    const record = recordWith();
+    const runner = harness({
+      records: [record],
+      startAt: "2026-01-06T14:00:00.000Z",
+      script: [refusal(record)],
+      // The other context's run completes while this attempt is refused.
+      writeDuringAttempt: (held) =>
+        applyManagedExchangeLastRun(
+          held,
+          { at: "2026-01-06T14:00:00.000Z", outcome: "succeeded" },
+          at("2026-01-06T14:00:00.000Z"),
+        ),
+    });
+
+    const [entry] = await tickManagedSchedules(runner.seams);
+
+    expect(entry).toMatchObject({ attempts: 0, disposition: "succeeded" });
+    expect(runner.attempts).toHaveLength(1);
     expect(runner.advances[0].advance.schedule).toMatchObject({
       nextWindow: "2026-01-13T14:00:00.000Z",
       consecutiveMisses: 0,
     });
-    expect(runner.advances[0].advance.lastRun).toBeUndefined();
   });
 
   /** A record already one miss into the count, refused the lock at its window,
