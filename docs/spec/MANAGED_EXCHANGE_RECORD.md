@@ -1107,7 +1107,11 @@ attempt is paced from its start like any other and reads the record again, the
 rotated one included, and the pacing interval and the close bound the
 refusals. A refusal does not count toward the attempt cap, and the window's
 disposition is left to the attempts that took the lock; the window is
-`"unattempted"` only where it closes with no such attempt. A designed
+`"unattempted"` only where it closes with no such attempt. The pacing and the
+cap are each app window's own: a second app window with the exchange open
+occupies the same window with its own attempts, which can land in the first
+one's free pacing gaps, so a window can see up to twice the attempt cap and two
+attempts inside one pacing interval. A designed
 inter-attempt yield -- one that makes the free interval wide enough for an
 attended Run to take rather than leaving it to how an attempt happened to
 fail -- is deferred rather than designed away.
