@@ -18,6 +18,7 @@ import type {
   WebSocketRelayProof,
   WebSocketRelayProofRefusal,
 } from "../src/websocketRelayProof";
+import { webSocketRelayProofRefusalFixtures } from "../src/websocketRelayProofFixtures";
 
 interface RelayProofVectors {
   inputs: {
@@ -171,45 +172,14 @@ describe("parseWebSocketRelayProof", () => {
     expect(toHex(proof.tag)).toBe(inviterVector.tagHex);
   });
 
+  // The malformed proofs a hello can hold are in the shared refusal fixtures
+  // below; these are the arguments no hello can present.
   const tag = fromHex(inviterVector.tagHex);
-  const text = (s: string) => new TextEncoder().encode(s);
-  const label = "alcove-relay-websocket-v2:hello";
   test.each<[string, unknown, unknown]>([
     ["a string message", inviterVector.message, tag],
     ["a missing message", undefined, tag],
     ["a hex tag", fromHex(inviterVector.messageHex), inviterVector.tagHex],
-    ["a 31-byte tag", fromHex(inviterVector.messageHex), tag.slice(1)],
-    [
-      "a 33-byte tag",
-      fromHex(inviterVector.messageHex),
-      new Uint8Array([...tag, 0]),
-    ],
-    [
-      "another label",
-      text("alcove-relay-registrar-v2:request\ninviter\n1"),
-      tag,
-    ],
-    ["a role that is not a rendezvous role", text(`${label}\nrelay\n1`), tag],
-    ["an uppercase role", text(`${label}\nINVITER\n1`), tag],
-    ["a leading zero", text(`${label}\ninviter\n01`), tag],
-    ["a negative expiry", text(`${label}\ninviter\n-1`), tag],
-    ["a trailing LF", text(`${label}\ninviter\n1\n`), tag],
-    ["a CR LF separator", text(`${label}\r\ninviter\r\n1`), tag],
-    ["a leading BOM", text(`﻿${label}\ninviter\n1`), tag],
-    ["a fourth field", text(`${label}\ninviter\n1\n2`), tag],
-    ["a missing expiry", text(`${label}\ninviter`), tag],
-    [
-      "an expiry past the safe integers",
-      text(`${label}\ninviter\n${"9".repeat(17)}`),
-      tag,
-    ],
     ["bytes that are not UTF-8", new Uint8Array([0xff, 0xfe]), tag],
-    [
-      "a message over the bound",
-      text(`${label}\ninviter\n${"1".repeat(200)}`),
-      tag,
-    ],
-    ["an empty message", new Uint8Array(0), tag],
   ])("refuses %s as malformed", async (_, message, presentedTag) => {
     expect(
       await refusalOf(() => parseWebSocketRelayProof(message, presentedTag)),
@@ -249,106 +219,6 @@ describe("checkWebSocketRelayProof", () => {
     ).resolves.toBeUndefined();
   });
 
-  test("refuses a proof at and after its expiry", async () => {
-    for (const nowSeconds of [
-      inputs.expiresAtSeconds,
-      inputs.expiresAtSeconds + 1,
-    ]) {
-      expect(
-        await refusalOf(() =>
-          checkWebSocketRelayProof({
-            proofKey,
-            proof: presented(inviterVector),
-            role: "inviter",
-            now: new Date(nowSeconds * 1000),
-          }),
-        ),
-      ).toBe("expired");
-    }
-  });
-
-  test("refuses a proof made for the other role", async () => {
-    expect(
-      await refusalOf(() =>
-        checkWebSocketRelayProof({
-          proofKey,
-          proof: presented(inviterVector),
-          role: "acceptor",
-          now: madeAt,
-        }),
-      ),
-    ).toBe("role-mismatch");
-  });
-
-  test("refuses one role's tag under the other role's message", async () => {
-    const proof = parseWebSocketRelayProof(
-      fromHex(vectors.proofs[1].messageHex),
-      fromHex(inviterVector.tagHex),
-    );
-    expect(
-      await refusalOf(() =>
-        checkWebSocketRelayProof({
-          proofKey,
-          proof,
-          role: "acceptor",
-          now: madeAt,
-        }),
-      ),
-    ).toBe("tag-mismatch");
-  });
-
-  test.each([0, 15, 31])("refuses a tag with byte %i flipped", async (i) => {
-    const tag = fromHex(inviterVector.tagHex);
-    tag[i] ^= 0x01;
-    expect(
-      await refusalOf(() =>
-        checkWebSocketRelayProof({
-          proofKey,
-          proof: parseWebSocketRelayProof(
-            fromHex(inviterVector.messageHex),
-            tag,
-          ),
-          role: "inviter",
-          now: madeAt,
-        }),
-      ),
-    ).toBe("tag-mismatch");
-  });
-
-  test("refuses a later expiry under the original tag", async () => {
-    const message = new TextEncoder().encode(
-      `alcove-relay-websocket-v2:hello\ninviter\n${inputs.expiresAtSeconds + 1}`,
-    );
-    expect(
-      await refusalOf(() =>
-        checkWebSocketRelayProof({
-          proofKey,
-          proof: parseWebSocketRelayProof(
-            message,
-            fromHex(inviterVector.tagHex),
-          ),
-          role: "inviter",
-          now: madeAt,
-        }),
-      ),
-    ).toBe("tag-mismatch");
-  });
-
-  test("refuses a proof under the relay key or the registrar proof key", async () => {
-    for (const keyHex of [derived.relayKeyHex, derived.registrarProofKeyHex]) {
-      expect(
-        await refusalOf(() =>
-          checkWebSocketRelayProof({
-            proofKey: fromHex(keyHex),
-            proof: presented(inviterVector),
-            role: "inviter",
-            now: madeAt,
-          }),
-        ),
-      ).toBe("tag-mismatch");
-    }
-  });
-
   test.each([
     ["a proof key that is not 32 bytes", { proofKey: proofKey.slice(1) }],
     ["an invalid date", { now: new Date(Number.NaN) }],
@@ -363,4 +233,37 @@ describe("checkWebSocketRelayProof", () => {
       }),
     ).rejects.toThrow(/checkWebSocketRelayProof/);
   });
+});
+
+describe("the shared refusal fixtures", async () => {
+  const fixtures = await webSocketRelayProofRefusalFixtures({
+    relayKey: derived.relayKeyHex,
+    now: madeAt,
+  });
+
+  test("hold every refusal, each label once", () => {
+    expect(new Set(fixtures.map(({ refusedBy }) => refusedBy))).toEqual(
+      new Set(["malformed", "role-mismatch", "expired", "tag-mismatch"]),
+    );
+    expect(new Set(fixtures.map(({ label }) => label)).size).toBe(
+      fixtures.length,
+    );
+  });
+
+  test.each(fixtures)(
+    "$label draws $refusedBy",
+    async ({ message, tag, role, refusedBy }) => {
+      const bytes = new TextEncoder().encode(message);
+      expect(
+        await refusalOf(async () =>
+          checkWebSocketRelayProof({
+            proofKey,
+            proof: parseWebSocketRelayProof(bytes, tag),
+            role,
+            now: madeAt,
+          }),
+        ),
+      ).toBe(refusedBy);
+    },
+  );
 });

@@ -129,6 +129,12 @@ Every close reason is empty except 4005's.
 | 4008 | the sender of a hello | The relay holds as many pairings as its cap |
 | 4009 | both parties | No message crossed the pairing within the idle bound |
 
+## Measured round at the largest exchange size
+
+Measured 2026-10-26 in the development container (10 cores, 23 GB; aarch64 Linux, Node v26.12.1), with other workloads running beside it, load average 5.88 at the start.
+One round of 539,000,000 bytes, the largest measured exchange's size, went one way through the relay's standalone process between two of the command-line client's relay connections, in three frames, in 274.3 s, and the relay's resident set peaked at 97.5 MB, from 83.1 MB idle.
+`apps/cli/test/stress/websocketRelayRound.stress.test.ts` drives the round in the CLI's opt-in stress tier (`npm run test:stress -w apps/cli`), and needs no built CLI.
+
 ## The web application's client
 
 The web application's relay transport (`apps/web/src/psi/transport/websocketRelayConnection.ts`) is one party's side of this wire.

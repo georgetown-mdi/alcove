@@ -153,6 +153,14 @@ export type {
   WebrtcMalformedDatagramFixture,
 } from "./connection/webrtcInboundFrameFixtures.js";
 
+// The labelled refused WebSocket relay proofs core's suite and the relay's
+// both hold their reading of a presented proof to.
+export { webSocketRelayProofRefusalFixtures } from "./websocketRelayProofFixtures.js";
+export type {
+  WebSocketRelayProofFixture,
+  WebSocketRelayProofFixtureOptions,
+} from "./websocketRelayProofFixtures.js";
+
 // The header each part of a PSI set begins with, and the byte bound a set's
 // first part is held to, so each WebRTC transport's suite can join the parts a
 // round sent back into the set and drive a first part at that bound's edge.
