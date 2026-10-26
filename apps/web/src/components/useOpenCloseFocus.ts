@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 
 /**
  * Focus for a setting shown as one line until the user opens it: the field
@@ -10,7 +10,10 @@ export function useOpenCloseFocus<TField extends HTMLElement>() {
   const focusNext = useRef<"field" | "action" | undefined>(undefined);
   const fieldRef = useRef<TField>(null);
   const actionRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
+  // A layout effect, since a passive one left over from an earlier render
+  // can run after the handler and before the render it causes, moving focus
+  // to an element that render then removes.
+  useLayoutEffect(() => {
     const target = focusNext.current;
     if (target === undefined) return;
     focusNext.current = undefined;
