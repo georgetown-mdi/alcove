@@ -13,9 +13,9 @@
  * and the peer wait is the window's rather than the flow's default.
  *
  * The lock is taken fail-fast (`ifAvailable`), matching the attended surface: a
- * run already in progress in another tab is a window this runner defers, not one
- * it queues behind. The tick reads that refusal as the window's `"unattempted"`
- * disposition.
+ * run already in progress in another tab is not queued behind. The tick paces
+ * that refusal like any attempt and tries again inside the window; the window is
+ * `"unattempted"` only when it closes with no attempt that took the lock.
  *
  * WHAT AN UNATTENDED RUN PRODUCES: the rotated secret is persisted and the
  * disclosure is filed to this exchange's accounting (both inside the driver), the

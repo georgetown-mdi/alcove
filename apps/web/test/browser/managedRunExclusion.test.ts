@@ -20,8 +20,11 @@ import { listReadableManagedLocalState } from "@psi/managed/managedLocalState";
 import { runManagedRerun } from "@psi/managed/managedRun";
 import { tickManagedSchedules } from "@psi/managed/managedScheduleRunner";
 
+import type {
+  ManagedScheduleTickEntry,
+  ManagedScheduleTickSeams,
+} from "@psi/managed/managedScheduleRunner";
 import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
-import type { ManagedScheduleTickSeams } from "@psi/managed/managedScheduleRunner";
 import type { WebRTCExchangeLocator } from "@alcove/core";
 
 // The two run paths against each other, on real Chromium Web Locks and real
@@ -85,11 +88,15 @@ async function recordWithOpenWindow(): Promise<ManagedExchangeRecord> {
 
 /** The platform boundaries one tick runs on, wired to the real store, with each
  * attempt going through the real attended run path on the scheduled runtime's
- * own fail-fast lock discipline. `attempt` supplies each attempt's phases. */
-function scheduleTickSeams(attempt: {
-  handshake: () => Promise<{ rotatedSecret: string; handshake: string }>;
-  dataExchange: () => Promise<string>;
-}): ManagedScheduleTickSeams {
+ * own fail-fast lock discipline. `attempt` supplies each attempt's phases, and
+ * `delay` the pacing between attempts, which a refused attempt waits out. */
+function scheduleTickSeams(
+  attempt: {
+    handshake: () => Promise<{ rotatedSecret: string; handshake: string }>;
+    dataExchange: () => Promise<string>;
+  },
+  delay: () => Promise<void> = () => Promise.resolve(),
+): ManagedScheduleTickSeams {
   return {
     now: Date.now,
     listRecords: listReadableManagedExchanges,
@@ -97,7 +104,7 @@ function scheduleTickSeams(attempt: {
     awaitLockTurn: awaitManagedExchangeLockTurn,
     listLocalState: listReadableManagedLocalState,
     persistAdvance: persistManagedExchangeScheduleAdvance,
-    delay: () => Promise.resolve(),
+    delay,
     stopped: () => false,
     runAttempt: (scheduled) =>
       runManagedRerun(
@@ -124,7 +131,7 @@ afterEach(async () => {
 });
 
 describe("an attended Run exchanging when a scheduled attempt is due", () => {
-  test("the attempt does not exchange, counts no miss, and leaves the Run's success", async () => {
+  test("the attempt does not exchange, counts no miss, and the window ends on the Run's success", async () => {
     const created = await recordWithOpenWindow();
     const rotatedSecret = generateSharedSecret();
     const exchanging = deferred();
@@ -147,26 +154,29 @@ describe("an attended Run exchanging when a scheduled attempt is due", () => {
     await exchanging.promise;
 
     const [entry] = await tickManagedSchedules(
-      scheduleTickSeams({
-        handshake: () => {
-          scheduledHandshakes += 1;
-          return Promise.resolve({
-            rotatedSecret: generateSharedSecret(),
-            handshake: "scheduled",
-          });
+      scheduleTickSeams(
+        {
+          handshake: () => {
+            scheduledHandshakes += 1;
+            return Promise.resolve({
+              rotatedSecret: generateSharedSecret(),
+              handshake: "scheduled",
+            });
+          },
+          dataExchange: () => Promise.resolve("scheduled"),
         },
-        dataExchange: () => Promise.resolve("scheduled"),
-      }),
+        // The Run completes while the refused attempt waits out its pacing.
+        async () => {
+          releaseExchange.resolve();
+          await attended;
+        },
+      ),
     );
 
-    releaseExchange.resolve();
-    await attended;
-
-    // No second exchange: the attempt was refused the lock before its handshake.
+    // No second exchange: the attempt was refused the lock before its handshake,
+    // and the attempt after it found the Run's success inside the window.
     expect(scheduledHandshakes).toBe(0);
-    // Not a no-show either -- the window records no attempt of its own, so the
-    // miss count the retry policy reads stands still.
-    expect(entry.disposition).toBe("unattempted");
+    expect(entry).toMatchObject({ attempts: 0, disposition: "succeeded" });
     const stored = await getManagedExchange(created.id);
     expect(stored?.schedule?.consecutiveMisses).toBe(0);
     // And the attended Run's own outcome is the record's, unwritten over.
@@ -233,41 +243,57 @@ describe("two app windows' scheduled runtimes ticking one exchange", () => {
     let holding = 0;
     let mostHolding = 0;
     let handshakes = 0;
-    const windowSeams = () =>
-      scheduleTickSeams({
-        handshake: () => {
-          handshakes += 1;
-          holding += 1;
-          mostHolding = Math.max(mostHolding, holding);
-          return Promise.resolve({
-            rotatedSecret: generateSharedSecret(),
-            handshake: "scheduled",
-          });
+    const ticks: Array<Promise<Array<ManagedScheduleTickEntry>>> = [];
+    const windowSeams = (other: number) =>
+      scheduleTickSeams(
+        {
+          handshake: () => {
+            handshakes += 1;
+            holding += 1;
+            mostHolding = Math.max(mostHolding, holding);
+            return Promise.resolve({
+              rotatedSecret: generateSharedSecret(),
+              handshake: "scheduled",
+            });
+          },
+          dataExchange: async () => {
+            await releaseExchange.promise;
+            holding -= 1;
+            return "scheduled";
+          },
         },
-        dataExchange: async () => {
-          await releaseExchange.promise;
-          holding -= 1;
-          return "scheduled";
+        // The refused window's pacing outlasts the other window's whole tick,
+        // as a minute's pacing outlasts a stamp and an advance.
+        async () => {
+          releaseExchange.resolve();
+          await ticks[other];
         },
-      });
+      );
 
     // Each window's runtime keeps its own registry of records in flight, so
     // neither tick passes the record over for the other's.
-    const ticks = [
-      tickManagedSchedules(windowSeams()),
-      tickManagedSchedules(windowSeams()),
-    ];
-    const [refused] = await Promise.race(ticks);
-    releaseExchange.resolve();
+    ticks.push(
+      tickManagedSchedules(windowSeams(1)),
+      tickManagedSchedules(windowSeams(0)),
+    );
     const entries = (await Promise.all(ticks)).flat();
 
-    expect(refused).toMatchObject({ attempts: 1, disposition: "unattempted" });
     expect(mostHolding).toBe(1);
     expect(handshakes).toBe(1);
-    expect(entries.map(({ disposition }) => disposition).sort()).toEqual([
-      "succeeded",
-      "unattempted",
-    ]);
+    // The refused window attempts again and finds the plan the other window's
+    // success advanced: it ends with nothing to record, and counts no miss.
+    expect(
+      entries.map(({ attempts, disposition, skipped }) => ({
+        attempts,
+        disposition,
+        skipped,
+      })),
+    ).toEqual(
+      expect.arrayContaining([
+        { attempts: 1, disposition: "succeeded", skipped: undefined },
+        { attempts: 0, disposition: undefined, skipped: "plan-moved" },
+      ]),
+    );
     const stored = await getManagedExchange(created.id);
     expect(stored?.lastRun?.outcome).toBe("succeeded");
     expect(stored?.schedule?.consecutiveMisses).toBe(0);
