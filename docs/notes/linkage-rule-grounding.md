@@ -710,6 +710,58 @@ A rule set should not ship without:
 Numbers 2, 3, 6 and 7 are the two-party and cascade additions; 1, 4 and 5 are
 the field's triad. None has a pass-mark.
 
+### The synthetic regression corpus
+
+`packages/core/test/linkageQualityCorpus.test.ts` runs the shipped default
+terms end to end over a synthetic two-party corpus whose true pairs are known,
+built by `packages/core/test/utils/linkageQualityCorpus.ts`. It fails when a
+change to the default cleaning or the default key set moves the pairs the
+cascade claims. It is a regression guard, not band evidence and not a
+benchmark.
+
+How the corpus is built:
+
+- Every record holds the id of the person it describes, so every cross-file
+  pair is labeled true or false.
+- It is built in memory from a fixed seed and never committed. Names are made
+  of syllables, phones are 555-01XX numbers and emails are at `example.org`.
+  Full SSNs are random numbers the default cleaning keeps, as the shipped
+  sample's are.
+- It is made of pair classes. Each class is one error mode or look-alike from
+  this note or the catalog, built the same way in every instance, so it has one
+  expected outcome. Each names the section it comes from. Its count follows a
+  prevalence the notes cite where they give one, and a share they do not give
+  is marked as reasoning.
+- The classes cover an error mode for each key's position, the shared-error
+  modes listed above, the
+  [fillers the default cleaning drops](#fillers-the-default-cleaning-drops), and
+  false pairs that look alike: two people sharing a name and date of birth, a
+  parent and child of one name at one address and phone, twins, and a wife
+  recorded under her husband's SSN.
+
+What it pins:
+
+- **Each class's outcome**: the key that first claims its pairs, or none. Every
+  default key first claims at least one true pair, so a regression on one key
+  moves a pinned class.
+- **Precision, recall, and per-key attribution**: the true and false pairs each
+  key claims. A change that moves them updates the pin in the same commit. A
+  floor on precision and on recall fails the test below it whatever the pin
+  says; the precision floor is the 95% band.
+
+Its limits:
+
+- Each class is built to meet the key its error mode points at, and its
+  records are otherwise clean and drawn from no real population. The truth
+  flatters for the reason
+  [Substitute truth, and why it flatters](#substitute-truth-and-why-it-flatters)
+  gives, and further: nothing in the corpus is an error nobody listed.
+- Each class has at least three instances whatever its prevalence, so the
+  aggregate precision and recall describe the corpus's mix of classes, not any
+  file's.
+- It runs the default terms only: a one-to-one cascade with no deduplication,
+  every field present in both files' columns.
+
 ## What the evidence does not settle
 
 These gaps were searched for and not found:
