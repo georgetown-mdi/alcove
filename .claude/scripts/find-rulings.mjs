@@ -21,8 +21,8 @@
 //   - Cited rulings: items those ruling lines name by id that hold ruling lines
 //     of their own, so an earlier ruling worded differently is still found.
 //   - Documented behavior: lines in docs/ and docs/spec/ at origin/staging that
-//     hold every word. A default or behavior the user docs state was ratified
-//     in PR review, so it is a ruling, not an open question.
+//     hold every word. A default or behavior the user docs state is the
+//     ruling on what the behavior is, not an open question.
 //   - Design records and agent rules: the same over docs/notes/,
 //     CONTRIBUTING.md, CLAUDE.md, and the markdown under .claude/.
 //   - Commits: the 10 most recent origin/staging commits whose message holds
@@ -447,7 +447,7 @@ async function main() {
     process.stdout.write(moreLine(hits.more));
   };
   heading(
-    `Documented behavior in docs/ and docs/spec/ at ${STAGING_REF}: ratified rulings (PR review ratified them)`,
+    `Documented behavior in docs/ and docs/spec/ at ${STAGING_REF}: the ruling on what the behavior is`,
   );
   printRepo(repoHits.filter((hit) => !isRecord(hit)));
   heading(
