@@ -140,7 +140,24 @@ describe("startRelayCheck", () => {
     [
       "an unavailable answer",
       answering({ status: "unavailable", reason: "turn-urls-left-out" }),
-      { kind: "unavailable", reason: "turn-urls-left-out" },
+      {
+        kind: "unavailable",
+        reason: "turn-urls-left-out",
+        websocketRelayNotChecked: false,
+      },
+    ],
+    [
+      "an unavailable answer listing a WebSocket relay",
+      answering({
+        status: "unavailable",
+        reason: "key-file",
+        websocketRelayNotChecked: true,
+      }),
+      {
+        kind: "unavailable",
+        reason: "key-file",
+        websocketRelayNotChecked: true,
+      },
     ],
     ["a 409 with no body", answering(undefined, 409), { kind: "busy" }],
     [

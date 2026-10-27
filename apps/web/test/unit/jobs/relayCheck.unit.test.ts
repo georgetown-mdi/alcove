@@ -248,6 +248,19 @@ describe("the hosts stated before a check", () => {
       reason: "configuration-refused",
     });
   });
+
+  test("say the WebSocket relay is not checked over a folder with no key file", () => {
+    const keyless = workingFolder({
+      turn: [{ url: OWN_TURN }],
+      websocketRelay: "wss://relay.example.org/relay",
+    });
+    fs.rmSync(path.join(keyless, ".alcove.key"));
+    expect(relayCheckOffer(keyless)).toEqual({
+      kind: "unavailable",
+      reason: "key-file",
+      websocketRelayNotChecked: true,
+    });
+  });
 });
 
 describe("a started check", () => {
@@ -287,6 +300,24 @@ describe("a started check", () => {
 
     expect(await manager.checkRelay({ configurationDigest })).toEqual({
       kind: "configuration-changed",
+    });
+    expect(fs.existsSync(argvFile)).toBe(false);
+  });
+
+  test("over a folder become unavailable says the WebSocket relay is not checked", async () => {
+    const root = workingFolder({
+      turn: [{ url: OWN_TURN }],
+      websocketRelay: "wss://relay.example.org/relay",
+    });
+    const argvFile = path.join(scratchDir("argv"), "argv.json");
+    const manager = managerFor(root, { STUB_ARGV_FILE: argvFile });
+    const { configurationDigest } = available(manager.relayCheckOffer());
+    fs.rmSync(path.join(root, ".alcove.key"));
+
+    expect(await manager.checkRelay({ configurationDigest })).toEqual({
+      kind: "unavailable",
+      reason: "key-file",
+      websocketRelayNotChecked: true,
     });
     expect(fs.existsSync(argvFile)).toBe(false);
   });

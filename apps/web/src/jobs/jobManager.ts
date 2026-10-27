@@ -151,10 +151,10 @@ import type {
 } from "./configLoad";
 import type { RelayCheckOffer, RelayCheckResult } from "./relayCheck";
 import type { AuthoredSignalingServer } from "./signalingServer";
+import type { CapturedChildStop } from "./capturedCliChild";
 import type { JobFolderView } from "@jobContract/jobFolderContents";
 import type { JobHandoff } from "@jobContract/jobHandoff";
 import type { RecordUnavailableReason } from "@jobContract/recordUnavailableReason";
-import type { RelayCheckUnavailableReason } from "@jobContract/relayCheckResponses";
 import type { RelayEvent } from "@jobContract/relayEvent";
 import type { RendezvousLeg } from "./jobRendezvous";
 import type { RunArtifactPaths } from "./runArtifacts";
@@ -787,15 +787,11 @@ export class JobManager {
    */
   private probeInFlight = false;
   /**
-   * The relay check child running, or null. Claimed and cleared as
+   * Whether a relay check child is running. Claimed and cleared as
    * {@link probeInFlight} is, so a concurrent {@link checkRelay} is refused
-   * with {@link RelayCheckBusyError}; {@link shutdown} aborts `stop` and waits
-   * on `settled`, which resolves once the child's exit is observed.
+   * with {@link RelayCheckBusyError}.
    */
-  private relayCheckRun: {
-    stop: AbortController;
-    settled: Promise<void>;
-  } | null = null;
+  private relayCheckInFlight = false;
   /**
    * Whether a signing-fingerprint child is running. Claimed and cleared exactly as
    * {@link probeInFlight} is, and for the reason
@@ -808,6 +804,16 @@ export class JobManager {
    * whose failed run holds it until deleted.
    */
   private termsApplyInFlight = false;
+  /**
+   * The captured CLI children running ({@link runStoppableChild}): the host-key
+   * probe, the signing fingerprint, the terms apply, and the relay check.
+   * {@link shutdown} aborts each one's `stop` and waits on its `settled`, which
+   * resolves once the driver has observed the child's exit.
+   */
+  private readonly capturedChildren = new Set<{
+    stop: AbortController;
+    settled: Promise<void>;
+  }>();
   private shuttingDown = false;
   /**
    * The configuration the operator last opened off the mount, as that open
@@ -1438,14 +1444,46 @@ export class JobManager {
     if (this.probeInFlight) throw new SftpProbeBusyError();
     this.probeInFlight = true;
     try {
-      return await probeSftpHostKey({
-        host: args.host,
-        ...(args.port !== undefined ? { port: args.port } : {}),
-        binaryPath: this.binaryPath,
-        ...(this.childEnv !== undefined ? { childEnv: this.childEnv } : {}),
-      });
+      return await this.runStoppableChild((stop) =>
+        probeSftpHostKey({
+          host: args.host,
+          ...(args.port !== undefined ? { port: args.port } : {}),
+          binaryPath: this.binaryPath,
+          ...(this.childEnv !== undefined ? { childEnv: this.childEnv } : {}),
+          stop,
+        }),
+      );
     } finally {
       this.probeInFlight = false;
+    }
+  }
+
+  /**
+   * Run one captured CLI child's driver, handing it the stop {@link shutdown}
+   * aborts, and hold it in {@link capturedChildren} until the driver settles,
+   * so shutdown waits on the child's exit. A driver that returns without
+   * spawning settles at once and does not delay shutdown.
+   */
+  private async runStoppableChild<TResult>(
+    start: (stop: CapturedChildStop) => Promise<TResult>,
+  ): Promise<TResult> {
+    const stop = new AbortController();
+    const run = start({
+      signal: stop.signal,
+      sigkillGraceMs: this.cancelSigkillGraceMs,
+    });
+    const child = {
+      stop,
+      settled: run.then(
+        () => undefined,
+        () => undefined,
+      ),
+    };
+    this.capturedChildren.add(child);
+    try {
+      return await run;
+    } finally {
+      this.capturedChildren.delete(child);
     }
   }
 
@@ -1472,10 +1510,10 @@ export class JobManager {
     | RelayCheckResult
     | { kind: "exchange-running" }
     | { kind: "configuration-changed" }
-    | { kind: "unavailable"; reason: RelayCheckUnavailableReason }
+    | Extract<RelayCheckOffer, { kind: "unavailable" }>
   > {
     if (this.shuttingDown) throw new ConsoleShuttingDownError();
-    if (this.relayCheckRun !== null) throw new RelayCheckBusyError();
+    if (this.relayCheckInFlight) throw new RelayCheckBusyError();
     const running = this.activeSlotRecord();
     if (
       this.slot?.phase === "starting" ||
@@ -1483,28 +1521,21 @@ export class JobManager {
     )
       return { kind: "exchange-running" };
     const offer = relayCheckOffer(this.dataRoot);
-    if (offer.kind === "unavailable")
-      return { kind: "unavailable", reason: offer.reason };
+    if (offer.kind === "unavailable") return offer;
     if (offer.configurationDigest !== args.configurationDigest)
       return { kind: "configuration-changed" };
-    const stop = new AbortController();
-    const run = runRelayCheck({
-      dataRoot: this.dataRoot,
-      binaryPath: this.binaryPath,
-      ...(this.childEnv !== undefined ? { childEnv: this.childEnv } : {}),
-      stop: { signal: stop.signal, sigkillGraceMs: this.cancelSigkillGraceMs },
-    });
-    this.relayCheckRun = {
-      stop,
-      settled: run.then(
-        () => undefined,
-        () => undefined,
-      ),
-    };
+    this.relayCheckInFlight = true;
     try {
-      return await run;
+      return await this.runStoppableChild((stop) =>
+        runRelayCheck({
+          dataRoot: this.dataRoot,
+          binaryPath: this.binaryPath,
+          ...(this.childEnv !== undefined ? { childEnv: this.childEnv } : {}),
+          stop,
+        }),
+      );
     } finally {
-      this.relayCheckRun = null;
+      this.relayCheckInFlight = false;
     }
   }
 
@@ -1573,16 +1604,19 @@ export class JobManager {
       return { kind: "syncing" };
     this.fingerprintInFlight = true;
     try {
-      return await runSigningFingerprint({
-        binaryPath: this.binaryPath,
-        dataRoot: this.dataRoot,
-        identityPath,
-        identityLabel: args.identityLabel,
-        ...(args.exportCertificate
-          ? { exportPath: signingCertificatePath(this.dataRoot) }
-          : {}),
-        ...(this.childEnv !== undefined ? { childEnv: this.childEnv } : {}),
-      });
+      return await this.runStoppableChild((stop) =>
+        runSigningFingerprint({
+          binaryPath: this.binaryPath,
+          dataRoot: this.dataRoot,
+          identityPath,
+          identityLabel: args.identityLabel,
+          ...(args.exportCertificate
+            ? { exportPath: signingCertificatePath(this.dataRoot) }
+            : {}),
+          ...(this.childEnv !== undefined ? { childEnv: this.childEnv } : {}),
+          stop,
+        }),
+      );
     } finally {
       this.fingerprintInFlight = false;
     }
@@ -2101,13 +2135,16 @@ export class JobManager {
       return { kind: "configuration-changed" };
     this.termsApplyInFlight = true;
     try {
-      const result = await runTermsProposalApply({
-        binaryPath: this.binaryPath,
-        dataRoot: this.dataRoot,
-        workdir: record.runsInWorkingFolder ? this.dataRoot : record.workdir,
-        keyPath: basis.keyPath,
-        ...(this.childEnv !== undefined ? { childEnv: this.childEnv } : {}),
-      });
+      const result = await this.runStoppableChild((stop) =>
+        runTermsProposalApply({
+          binaryPath: this.binaryPath,
+          dataRoot: this.dataRoot,
+          workdir: record.runsInWorkingFolder ? this.dataRoot : record.workdir,
+          keyPath: basis.keyPath,
+          ...(this.childEnv !== undefined ? { childEnv: this.childEnv } : {}),
+          stop,
+        }),
+      );
       if (result.kind === "applied") record.termsProposal = "applied";
       return result;
     } finally {
@@ -2438,21 +2475,24 @@ export class JobManager {
   }
 
   /**
-   * Shutdown hook: SIGTERM the running exchange child and the running relay
-   * check child, SIGKILL each still running after the SIGKILL grace, and
-   * resolve once their exits have been observed, so the server exits only
-   * after the CLI's own cleanup and no orphaned CLI outlives it. Resolves at
-   * once when neither is running. A repeated call while a child is stopping
-   * signals nothing further. From the first call on, every spawn is refused
-   * with {@link ConsoleShuttingDownError}.
+   * Shutdown hook: SIGTERM the running exchange child and every running
+   * captured child -- the host-key probe, the signing fingerprint, the terms
+   * apply, and the relay check -- SIGKILL each still running after the
+   * SIGKILL grace, and resolve once their exits have been observed, so the
+   * server exits only after the CLI's own cleanup and no orphaned CLI
+   * outlives it. Resolves at once when none is running. A repeated call while
+   * a child is stopping signals nothing further. From the first call on,
+   * every spawn is refused with {@link ConsoleShuttingDownError}.
    */
   shutdown(): Promise<void> {
     this.shuttingDown = true;
     const exchangeStopped = this.stopExchangeChild();
-    const check = this.relayCheckRun;
-    if (check === null) return exchangeStopped;
-    check.stop.abort();
-    return Promise.all([exchangeStopped, check.settled]).then(() => undefined);
+    if (this.capturedChildren.size === 0) return exchangeStopped;
+    const settled = [...this.capturedChildren].map((child) => {
+      child.stop.abort();
+      return child.settled;
+    });
+    return Promise.all([exchangeStopped, ...settled]).then(() => undefined);
   }
 
   /**

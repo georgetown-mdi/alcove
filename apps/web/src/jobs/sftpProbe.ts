@@ -7,6 +7,8 @@ import {
 
 import { runCapturedCliChild } from "./capturedCliChild";
 
+import type { CapturedChildStop } from "./capturedCliChild";
+
 /**
  * The console's SFTP host-key probe driver. It spawns the CLI's
  * `probe-host-key` subcommand -- the same binary the exchange runs -- to read
@@ -257,6 +259,7 @@ export async function probeSftpHostKey(args: {
   childEnv?: NodeJS.ProcessEnv;
   sigtermMs?: number;
   sigkillGraceMs?: number;
+  stop?: CapturedChildStop;
 }): Promise<SftpProbeResult> {
   const url = formatSftpUrl({
     host: args.host,
@@ -274,6 +277,7 @@ export async function probeSftpHostKey(args: {
     ...(args.childEnv !== undefined ? { childEnv: args.childEnv } : {}),
     sigtermMs: args.sigtermMs ?? PROBE_SIGTERM_MS,
     sigkillGraceMs: args.sigkillGraceMs ?? PROBE_SIGKILL_GRACE_MS,
+    ...(args.stop !== undefined ? { stop: args.stop } : {}),
   });
   if (outcome.kind === "spawnFailed") return { kind: "error" };
   if (outcome.kind === "timedOut") return { kind: "timeout" };

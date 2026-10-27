@@ -79,7 +79,24 @@ describe("relayCheckShowsWebsocketNote", () => {
   test.each<[RelayCheckOutcome, boolean, boolean]>([
     [verdict, true, true],
     [verdict, false, false],
-    [{ kind: "unavailable", reason: "key-file" }, true, false],
+    [
+      {
+        kind: "unavailable",
+        reason: "key-file",
+        websocketRelayNotChecked: true,
+      },
+      false,
+      true,
+    ],
+    [
+      {
+        kind: "unavailable",
+        reason: "key-file",
+        websocketRelayNotChecked: false,
+      },
+      true,
+      false,
+    ],
     ...(
       [
         "refused",
