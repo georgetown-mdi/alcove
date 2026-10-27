@@ -413,7 +413,7 @@ test.each([
   "expected_payload_columns",
   "expectedPayloadColumns",
 ])(
-  "loadConfig refuses a configuration holding %s, naming the key and the remedy",
+  "loadConfig refuses a configuration holding %s as an unrecognized key",
   (key) => {
     fs.writeFileSync(
       configFile,
@@ -422,7 +422,7 @@ test.each([
     saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
     expect(() => loadConfig(baseOptions())).toThrow(UsageError);
     expect(() => loadConfig(baseOptions())).toThrow(
-      `the setting "${key}" is retired; delete it from the file`,
+      `is not a valid exchange spec: Unrecognized key: "${key}"`,
     );
   },
 );
@@ -506,7 +506,7 @@ test("injects sharedSecret from key file even when a top-level authentication bl
   expect(result.authentication.sharedSecret).toBe(TOKEN_A);
 });
 
-test("loadConfig refuses a config whose terms hold a rule-set citation, naming the key", () => {
+test("loadConfig refuses a config whose terms hold a rule-set citation as an unrecognized key", () => {
   fs.writeFileSync(
     configFile,
     YAML.stringify({
@@ -523,7 +523,7 @@ test("loadConfig refuses a config whose terms hold a rule-set citation, naming t
   saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
   expect(() => loadConfig(baseOptions())).toThrow(UsageError);
   expect(() => loadConfig(baseOptions())).toThrow(
-    'the setting "linkage_terms.linkage_rule_set" is retired; delete it from the file',
+    'Unrecognized key: "linkage_rule_set"',
   );
 });
 
@@ -872,7 +872,7 @@ test("expires set in the top-level authentication block does not override the ke
   ).toBe(true);
 });
 
-test("signing.receipt_output is accepted and warned about, naming where the receipt goes", () => {
+test("loadConfig refuses signing.receipt_output as an unrecognized key", () => {
   fs.writeFileSync(
     configFile,
     YAML.stringify({
@@ -881,23 +881,10 @@ test("signing.receipt_output is accepted and warned about, naming where the rece
     }),
   );
   saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
-  const result = loadConfig(baseOptions());
-  expect(result.signing?.mode).toBe("none");
-  expect(mockState.warnings).toEqual([
-    `${configFile}: the setting "signing.receipt_output" is ` +
-      "ignored: a signed run writes its receipt into the output folder as " +
-      "alcove-receipt-<time>.json, with the same time stamp as the run's " +
-      "result and record. Delete the setting from the file.",
-  ]);
-});
-
-test("a signing block without receipt_output draws no warning", () => {
-  fs.writeFileSync(
-    configFile,
-    YAML.stringify({ ...minimalSFTPConfig, signing: { mode: "none" } }),
+  expect(() => loadConfig(baseOptions())).toThrow(UsageError);
+  expect(() => loadConfig(baseOptions())).toThrow(
+    'Unrecognized key: "receipt_output"',
   );
-  saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
-  loadConfig(baseOptions());
   expect(mockState.warnings).toEqual([]);
 });
 
@@ -2323,7 +2310,7 @@ const LOCALLY_REFUSED_RUNS: Array<{
   ].map((key) => ({
     name: `holding ${key}`,
     seed: seedConfig({ ...minimalFiledropConfig, [key]: ["notes"] }),
-    says: `the setting "${key}" is retired; delete it from the file`,
+    says: `Unrecognized key: "${key}"`,
   })),
   {
     name: "that does not exist",

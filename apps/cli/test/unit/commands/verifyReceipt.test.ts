@@ -1341,7 +1341,7 @@ describe("handler", () => {
     expect(stdout).toBe("");
   });
 
-  test("a --partner-terms file holding a rule-set citation is refused, naming the key", async () => {
+  test("a --partner-terms file holding a rule-set citation is refused as an unrecognized key", async () => {
     const { recordPath } = await exchangeArtifacts();
     const { stdout, stderr, exits } = await runVerify({
       record: recordPath,
@@ -1359,9 +1359,7 @@ describe("handler", () => {
       ),
     });
     expect(exits).toEqual([64]);
-    expect(stderr).toContain(
-      'the setting "linkage_terms.linkage_rule_set" is retired; delete it from the file',
-    );
+    expect(stderr).toContain('Unrecognized key: "linkage_rule_set"');
     expect(stdout).toBe("");
   });
 

@@ -1,6 +1,5 @@
 import type { Argv, Arguments } from "yargs";
 import fs from "node:fs";
-import { z } from "zod";
 
 import {
   classifyFailure,
@@ -9,8 +8,6 @@ import {
   operatorSuppliedText,
   redactAndRenderOperatorSuppliedText,
   parseExchangeSpec,
-  retiredSettingIssue,
-  retiredSigningSettingNotice,
   getLogger,
   matchingKeyUnavailableReason,
   OperatorConfigError,
@@ -498,24 +495,6 @@ function readConfigDocument(configFile: string): unknown {
   }
 }
 
-/**
- * Refuse a configuration holding a retired setting with the refusal
- * {@link loadConfig} raises, for a caller about to decode an invitation first,
- * so that refusal comes ahead of the invitation's own. A configuration that
- * cannot be read or parsed is left for {@link loadConfig} to report.
- */
-function refuseRetiredSettingBeforeInvitation(configFile: string): void {
-  let raw: unknown;
-  try {
-    raw = readConfigDocument(configFile);
-  } catch {
-    return;
-  }
-  const retired = retiredSettingIssue(raw);
-  if (retired !== undefined)
-    throw invalidExchangeSpecError(configFile, new z.ZodError([retired]));
-}
-
 /** The configuration and key file {@link loadConfig} reads, resolved. */
 type LoadedExchangeConfig = {
   connection: ProtocolConnectionConfig;
@@ -600,14 +579,6 @@ function readExchangeConfig(
       operatorSuppliedText(options.configFile),
     ),
   );
-
-  const retiredSigningSetting = retiredSigningSettingNotice(rawConfig);
-  if (retiredSigningSetting !== undefined)
-    log.warn(
-      `${redactAndRenderOperatorSuppliedText(
-        operatorSuppliedText(options.configFile),
-      )}: ${retiredSigningSetting}`,
-    );
 
   const connection = applyConnectionOverrides(
     baseConn,
@@ -1162,7 +1133,6 @@ export async function handler(argv: Arguments): Promise<void> {
       // written only once every local refusal below has passed.
       let invitedKeyFile: KeyFile | undefined;
       if (invitation !== undefined) {
-        refuseRetiredSettingBeforeInvitation(options.configFile);
         invitedKeyFile = await keyFileFromInvitation(
           invitation,
           options.keyFile,

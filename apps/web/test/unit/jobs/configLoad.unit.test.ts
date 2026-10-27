@@ -189,7 +189,6 @@ describe("what the load discloses", () => {
           mode: "certificate",
           partner_fingerprint: PARTNER_FINGERPRINT,
           identity_file: "/home/operator/.alcove/identity.json",
-          receipt_output: "/home/operator/receipts/latest.json",
         },
       }),
     );
@@ -199,18 +198,16 @@ describe("what the load discloses", () => {
     });
   });
 
-  test("the signing paths the file states are named, never sent, and the retired receipt path is named apart", () => {
+  test("the signing paths the file states are named, never sent", () => {
     const response = loadDocument(
       savedSftpDocument({
         signing: {
           mode: "certificate",
           identity_file: "/home/operator/.alcove/identity.json",
-          receipt_output: "/home/operator/receipts/latest.json",
         },
       }),
     );
     expect(response.signingPathSettings).toEqual(["signing.identity_file"]);
-    expect(response.retiredSettings).toEqual(["signing.receipt_output"]);
     expect(response.folderPathSettings).toEqual([]);
     expect(JSON.stringify(response)).not.toContain("/home/operator");
   });
@@ -218,7 +215,6 @@ describe("what the load discloses", () => {
   test("a file stating no signing path names none", () => {
     const response = loadDocument(savedSftpDocument());
     expect(response.signingPathSettings).toEqual([]);
-    expect(response.retiredSettings).toBeUndefined();
   });
 
   test("no credential value and no @ reference appears anywhere in the body", () => {
@@ -227,7 +223,6 @@ describe("what the load discloses", () => {
         signing: {
           mode: "certificate",
           identity_file: "@/run/secrets/identity",
-          receipt_output: "/out/receipt.json",
         },
       }),
     );
@@ -1004,13 +999,48 @@ describe("what the load refuses", () => {
     "expected_payload_columns",
     "disclosed_payload_columns",
     "outbound_payload_consent",
-  ])("a retired %s, named with the remedy the command line states", (key) => {
-    const message = refusal(savedSftpDocument({ [key]: ["age"] }));
-    expect(message).toContain(
-      `the setting "${key}" is retired; delete it from the file`,
+  ])("%s at the top level, refused as any unread key is", (key) => {
+    expect(refusal(savedSftpDocument({ [key]: ["age"] }))).toBe(
+      refusal(savedSftpDocument({ zz_probe_key: ["age"] })).replace(
+        "zz_probe_key",
+        key,
+      ),
     );
-    expect(message).toContain("open it again");
-    expect(message).not.toContain("not an Alcove exchange configuration");
+  });
+
+  test("signing.receipt_output, refused as any unread key of the block is", () => {
+    const signed = (extra: Record<string, unknown>) =>
+      savedSftpDocument({ signing: { mode: "none", ...extra } });
+    const message = refusal(signed({ receipt_output: "/out/receipt.json" }));
+    expect(message).toContain("signing.receipt_output");
+    expect(message).not.toContain("/out/receipt.json");
+    expect(message).toBe(
+      refusal(signed({ zz_probe_key: "/out/receipt.json" })).replace(
+        "zz_probe_key",
+        "receipt_output",
+      ),
+    );
+  });
+
+  test("linkage_terms.linkage_rule_set, refused as any unread key of the block is", () => {
+    const cited = (key: string) => {
+      const document = savedSftpDocument();
+      return {
+        ...document,
+        linkage_terms: {
+          ...(document["linkage_terms"] as Record<string, unknown>),
+          [key]: { field_set: { name: "baseline-pii", version: "1.3.0" } },
+        },
+      };
+    };
+    const message = refusal(cited("linkage_rule_set"));
+    expect(message).toContain("linkage_terms.linkage_rule_set");
+    expect(message).toBe(
+      refusal(cited("zz_probe_key")).replace(
+        "zz_probe_key",
+        "linkage_rule_set",
+      ),
+    );
   });
 
   test("bytes that are not YAML, without the parser's own words", () => {
@@ -1105,7 +1135,6 @@ describe("the settings the console holds without an editor", () => {
           mode: "certificate",
           partner_fingerprint: PARTNER_FINGERPRINT,
           identity_file: "/home/operator/.alcove/identity.json",
-          receipt_output: "/out/receipt.json",
         },
       }),
     );

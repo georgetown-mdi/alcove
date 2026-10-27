@@ -4,7 +4,6 @@ import { expect, test } from "vitest";
 import {
   parseExchangeSpec,
   safeParseExchangeSpec,
-  retiredSettingIssue,
 } from "../../src/config/exchangeSpec";
 import { UNALLOCATED_SERVER_HOST_MESSAGE } from "../../src/config/connection";
 import {
@@ -263,42 +262,26 @@ test.each([
   "disclosedPayloadColumns",
   "expectedPayloadColumns",
   "outboundPayloadConsent",
-])(
-  "a configuration holding %s is refused, naming the key and the remedy",
-  (key) => {
-    const refusal = `the setting "${key}" is retired; delete it from the file`;
-    let thrown: unknown;
-    try {
-      parseExchangeSpec({ ...minimalSpec, [key]: ["program"] });
-    } catch (err) {
-      thrown = err;
-    }
-    expect(thrown).toBeInstanceOf(ZodError);
-    expect((thrown as ZodError).issues.map(({ message }) => message)).toEqual([
-      refusal,
-    ]);
-    const result = safeParseExchangeSpec({ ...minimalSpec, [key]: [] });
-    expect(result.success).toBe(false);
-    if (result.success) return;
-    expect(result.error.issues.map(({ message }) => message)).toEqual([
-      refusal,
-    ]);
-  },
-);
-
-test("a configuration holding both retired settings is refused naming both", () => {
-  expect(
-    retiredSettingIssue({
-      ...minimalSpec,
-      disclosed_payload_columns: [],
-      outbound_payload_consent: {},
-    })?.message,
-  ).toBe(
-    'the settings "disclosed_payload_columns" and "outbound_payload_consent" ' +
-      "are retired; delete them from the file",
-  );
-  expect(retiredSettingIssue(minimalSpec)).toBeUndefined();
-  expect(retiredSettingIssue(["disclosed_payload_columns"])).toBeUndefined();
+])("a configuration holding %s is refused as an unrecognized key", (key) => {
+  const expected = [
+    {
+      code: "unrecognized_keys",
+      path: [],
+      message: `Unrecognized key: "${key}"`,
+    },
+  ];
+  let thrown: unknown;
+  try {
+    parseExchangeSpec({ ...minimalSpec, [key]: ["program"] });
+  } catch (err) {
+    thrown = err;
+  }
+  expect(thrown).toBeInstanceOf(ZodError);
+  expect((thrown as ZodError).issues).toMatchObject(expected);
+  const result = safeParseExchangeSpec({ ...minimalSpec, [key]: [] });
+  expect(result.success).toBe(false);
+  if (result.success) return;
+  expect(result.error.issues).toMatchObject(expected);
 });
 
 // --- Payload column-list count ----------------------------------------------
@@ -628,23 +611,22 @@ const RULE_SET_CITATION = {
 };
 
 test.each([
-  [
-    "linkage_terms",
-    "linkage_rule_set",
-    'the setting "linkage_terms.linkage_rule_set" is retired; delete it from the file',
-  ],
-  [
-    "linkageTerms",
-    "linkageRuleSet",
-    'the setting "linkageTerms.linkageRuleSet" is retired; delete it from the file',
-  ],
+  ["linkage_terms", "linkage_rule_set"],
+  ["linkageTerms", "linkageRuleSet"],
 ])(
-  "a rule-set citation at %s.%s is refused as retired, named as the file writes it",
-  (block, key, refusal) => {
+  "a rule-set citation at %s.%s is refused as an unrecognized key of the block",
+  (block, key) => {
     const document = {
       connection: minimalConnection,
       [block]: { ...minimalLinkageTerms, [key]: RULE_SET_CITATION },
     };
+    const expected = [
+      {
+        code: "unrecognized_keys",
+        path: ["linkageTerms"],
+        message: `Unrecognized key: "${key}"`,
+      },
+    ];
     let thrown: unknown;
     try {
       parseExchangeSpec(document);
@@ -652,30 +634,13 @@ test.each([
       thrown = err;
     }
     expect(thrown).toBeInstanceOf(ZodError);
-    expect((thrown as ZodError).issues.map(({ message }) => message)).toEqual([
-      refusal,
-    ]);
+    expect((thrown as ZodError).issues).toMatchObject(expected);
     const result = safeParseExchangeSpec(document);
     expect(result.success).toBe(false);
     if (result.success) return;
-    expect(result.error.issues.map(({ message }) => message)).toEqual([
-      refusal,
-    ]);
+    expect(result.error.issues).toMatchObject(expected);
   },
 );
-
-test("a rule-set citation beside a retired top-level setting is refused naming both", () => {
-  expect(
-    retiredSettingIssue({
-      ...minimalSpec,
-      disclosed_payload_columns: [],
-      linkageTerms: { ...minimalLinkageTerms, linkage_rule_set: {} },
-    })?.message,
-  ).toBe(
-    'the settings "linkageTerms.linkage_rule_set" and "disclosed_payload_columns" ' +
-      "are retired; delete them from the file",
-  );
-});
 
 test("a filedrop connection stating server.provision is refused: the channel has no server", () => {
   const result = safeParseExchangeSpec({

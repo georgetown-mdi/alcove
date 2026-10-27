@@ -799,9 +799,9 @@ describe("alcove apply", () => {
   });
 });
 
-describe("a configuration holding a retired setting", () => {
+describe("a configuration holding an unrecognized top-level key", () => {
   /** Add `key` to the configuration at `configPath` as written YAML. */
-  function addRetiredSetting(configPath: string, key: string): void {
+  function addUnrecognizedKey(configPath: string, key: string): void {
     const doc = YAML.parse(fs.readFileSync(configPath, "utf8")) as Record<
       string,
       unknown
@@ -813,55 +813,16 @@ describe("a configuration holding a retired setting", () => {
     "disclosed_payload_columns",
     "outbound_payload_consent",
     "expected_payload_columns",
-  ])(
-    "alcove update refuses one holding %s before printing anything, naming the key and the remedy",
-    async (key) => {
-      addRetiredSetting(partnership.a.config, key);
-      const before = fs.readFileSync(partnership.a.config, "utf8");
-      const exitSpy = captureProcessExit();
-      const printed: unknown[] = [];
-      const logSpy = vi
-        .spyOn(console, "log")
-        .mockImplementation((...args: unknown[]) => {
-          printed.push(...args);
-        });
-      const stdio = captureStdio();
-      try {
-        await expect(
-          updateHandler(argv("update", partnership.a)),
-        ).rejects.toThrow("exit:64");
-      } finally {
-        stdio.restore();
-        exitSpy.mockRestore();
-        logSpy.mockRestore();
-      }
-      expect(printed).toEqual([]);
-      expect(stdio.stderrWrites.join("")).toContain(
-        `the setting "${key}" is retired; delete it from the file`,
-      );
-      expect(fs.readFileSync(partnership.a.config, "utf8")).toBe(before);
-    },
-  );
+  ])("alcove apply refuses one holding %s, naming the key", async (key) => {
+    editAgencyA();
+    const update = await runUpdate();
+    addUnrecognizedKey(partnership.b.config, key);
+    const before = fs.readFileSync(partnership.b.config, "utf8");
 
-  test.each([
-    "disclosed_payload_columns",
-    "outbound_payload_consent",
-    "expected_payload_columns",
-  ])(
-    "alcove apply refuses one holding %s, naming the key and the remedy",
-    async (key) => {
-      editAgencyA();
-      const update = await runUpdate();
-      addRetiredSetting(partnership.b.config, key);
-      const before = fs.readFileSync(partnership.b.config, "utf8");
-
-      const { exit, stderr } = await runApply(update);
-      expect(exit).toBe("exit:64");
-      expect(stderr).toContain(
-        `the setting "${key}" is retired; delete it from the file`,
-      );
-      expect(promptConfirmMock).not.toHaveBeenCalled();
-      expect(fs.readFileSync(partnership.b.config, "utf8")).toBe(before);
-    },
-  );
+    const { exit, stderr } = await runApply(update);
+    expect(exit).toBe("exit:64");
+    expect(stderr).toContain(`Unrecognized key: "${key}"`);
+    expect(promptConfirmMock).not.toHaveBeenCalled();
+    expect(fs.readFileSync(partnership.b.config, "utf8")).toBe(before);
+  });
 });

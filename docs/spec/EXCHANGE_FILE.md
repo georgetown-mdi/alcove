@@ -167,15 +167,7 @@ sharply:
   exchange never starts. One top-level key is an enforcement record whose
   absence is a valid state (`expected_partner_deduplicate`), so stripping a
   misspelling of it would silently disable the control it names; that hazard
-  governs the whole top level rather than being spot-checked key by key. A file
-  holding the retired `disclosed_payload_columns`, `expected_payload_columns`,
-  or `outbound_payload_consent` is refused before that rule applies, by every
-  reader that parses the whole file and by `alcove invite` and `alcove update`,
-  which read only its terms, metadata, and standardization, with a message
-  naming the key and telling the operator to delete it (`retiredSettingIssue`
-  in `packages/core/src/config/exchangeSpec.ts`): both payload directions are
-  stated in the agreed terms instead
-  ([Payload-disclosure consent](#payload-disclosure-consent)).
+  governs the whole top level rather than being spot-checked key by key.
 - **An unknown field inside a spec block is rejected loudly too.** The blocks
   themselves (`linkage_terms`, `metadata`, `standardization`, `connection`) strip
   unrecognized keys on parse, the `connection` union's webrtc member excepted
@@ -187,9 +179,6 @@ sharply:
   the block holding it, naming the key in the file's own snake_case spelling
   (`packages/core/src/config/unreadKeys.ts`), so an older CLI reads a newer web
   app's added field as a load-time failure rather than running one field short.
-  The retired `linkage_terms.linkage_rule_set` is refused ahead of that, by the
-  same readers and in the same way as the retired top-level settings above,
-  named with the key of the block holding it.
   What makes the strip unacceptable on its own is the writer side: a consumer that
   loads a file, edits part of it, and saves it writes the PARSE RESULT, so a
   stripped key is gone from the next file too (the rule below).

@@ -426,7 +426,6 @@ export {
   ExchangeSpecSchema,
   parseExchangeSpec,
   safeParseExchangeSpec,
-  retiredSettingIssue,
 } from "./config/exchangeSpec";
 export type { ExchangeSpec } from "./config/exchangeSpec";
 export {
@@ -620,13 +619,7 @@ export type {
   MetadataInferenceMode,
   OwnColumnSelection,
 } from "./config/metadata";
-export {
-  FINGERPRINT_REGEX,
-  partnerPinIsPresent,
-  retiredSettingNotice,
-  retiredSigningSetting,
-  retiredSigningSettingNotice,
-} from "./config/signing";
+export { FINGERPRINT_REGEX, partnerPinIsPresent } from "./config/signing";
 export type { SigningConfig } from "./config/signing";
 export {
   SIGNING_CERTIFICATE_VERSION,

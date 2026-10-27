@@ -311,17 +311,25 @@ describe("no-input-content invariant", () => {
   });
 });
 
-describe("a stored document holding a retired setting", () => {
-  test("reads without its expectedPayloadColumns", () => {
-    const built = buildManagedExchangeRecord(newExchange({ schedule }));
-    const stored = {
-      ...built,
-      exchangeFile: { ...built.exchangeFile, expectedPayloadColumns: ["age"] },
-    };
-    const record = parseManagedExchangeRecord(stored);
-    expect(record.exchangeFile).not.toHaveProperty("expectedPayloadColumns");
-    expect(record.exchangeFile).toEqual(built.exchangeFile);
-  });
+describe("a stored document holding a key the document schema does not read", () => {
+  test.each(["expectedPayloadColumns", "zzProbeKey"])(
+    "is refused for %s",
+    (key) => {
+      const built = buildManagedExchangeRecord(newExchange({ schedule }));
+      const result = safeParseManagedExchangeRecord({
+        ...built,
+        exchangeFile: { ...built.exchangeFile, [key]: ["age"] },
+      });
+      expect(result.success).toBe(false);
+      expect(result.error?.issues).toMatchObject([
+        {
+          code: "unrecognized_keys",
+          keys: [key],
+          path: ["exchangeFile"],
+        },
+      ]);
+    },
+  );
 });
 
 describe("parseManagedExchangeRecord reader-rejects-unknown", () => {

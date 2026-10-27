@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { maxCodeUnits } from "../utils/maxCodeUnits.js";
 import {
-  camelizeKey,
   camelizeKeys,
   KeyFoldCollisionError,
   type WidthBounds,
@@ -29,10 +28,7 @@ import {
   MATCHING_KEY_CONFIG_REFUSALS,
   matchingKeyUnavailableReason,
 } from "./matchingKeyAvailability.js";
-import {
-  SigningConfigSchema,
-  withoutRetiredSigningSetting,
-} from "./signing.js";
+import { SigningConfigSchema } from "./signing.js";
 
 // --- Exchange spec -----------------------------------------------------------
 
@@ -176,73 +172,6 @@ const EXCHANGE_FILE_WIDTH_BOUNDS: WidthBounds = new Map([
 ]);
 
 /**
- * Top-level settings this build refuses by name rather than as unknown keys,
- * so the refusal tells the operator to delete them. The agreed terms'
- * `payload.send` and `payload.receive` state the payload sets they named.
- */
-const RETIRED_TOP_LEVEL_SETTINGS: ReadonlySet<string> = new Set([
-  "disclosedPayloadColumns",
-  "expectedPayloadColumns",
-  "outboundPayloadConsent",
-]);
-
-/**
- * Settings inside a top-level block this build refuses by name, keyed by that
- * block. The linkage terms state their rules in their fields and keys, and
- * cite no rule set.
- */
-const RETIRED_BLOCK_SETTINGS: ReadonlyMap<
-  string,
-  ReadonlySet<string>
-> = new Map([["linkageTerms", new Set(["linkageRuleSet"])]]);
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-/**
- * The retired settings a raw exchange file holds, each as the file writes it:
- * a top-level key bare, a key inside a block after that block's key and a dot.
- */
-function retiredSettingsAsWritten(raw: Record<string, unknown>): string[] {
-  const retired: string[] = [];
-  for (const [key, value] of Object.entries(raw)) {
-    const camelized = camelizeKey(key);
-    if (RETIRED_TOP_LEVEL_SETTINGS.has(camelized)) retired.push(key);
-    const blockSettings = RETIRED_BLOCK_SETTINGS.get(camelized);
-    if (blockSettings === undefined || !isPlainObject(value)) continue;
-    for (const nested of Object.keys(value))
-      if (blockSettings.has(camelizeKey(nested)))
-        retired.push(`${key}.${nested}`);
-  }
-  return retired;
-}
-
-/**
- * The refusal of a raw exchange file holding a retired setting, at the top
- * level or inside a block, naming each such key as the file writes it and
- * stating the remedy, or `undefined` when it holds none. The whole-file parses
- * apply it before any other check, and so does a CLI reader of only some of the
- * file's blocks, so each refuses such a file with the same message.
- */
-export function retiredSettingIssue(
-  raw: unknown,
-): z.core.$ZodIssue | undefined {
-  if (!isPlainObject(raw)) return undefined;
-  const retired = retiredSettingsAsWritten(raw);
-  if (retired.length === 0) return undefined;
-  const named = retired.map((key) => `"${key}"`).join(" and ");
-  return {
-    code: "custom",
-    path: [],
-    message:
-      retired.length === 1
-        ? `the setting ${named} is retired; delete it from the file`
-        : `the settings ${named} are retired; delete them from the file`,
-  };
-}
-
-/**
  * Parse and validate a raw value as an {@link ExchangeSpec}.
  * Snake_case keys are converted to camelCase before validation, so JSON/YAML
  * from disk can be passed directly.
@@ -255,18 +184,12 @@ export function retiredSettingIssue(
  * both spellings is refused by the case conversion above
  * ({@link keyFoldCollisionIssue}). Every refusal names its keys as the raw
  * document spells them ({@link unrecognizedKeysAsWritten}), the schema's own
- * included. A retired top-level setting is refused first, by name
- * ({@link retiredSettingIssue}); the retired `signing.receipt_output` is
- * removed instead ({@link withoutRetiredSigningSetting}), so a file holding it
- * still opens.
+ * included.
  *
  * @throws {ZodError} if validation fails, if the document holds a key the
  *   schema does not read, or if it writes one key in two spellings.
  */
-export function parseExchangeSpec(document: unknown): ExchangeSpec {
-  const raw = withoutRetiredSigningSetting(document);
-  const retired = retiredSettingIssue(raw);
-  if (retired !== undefined) throw new z.ZodError([retired]);
+export function parseExchangeSpec(raw: unknown): ExchangeSpec {
   let camelized: unknown;
   try {
     camelized = camelizeKeys(raw, EXCHANGE_FILE_WIDTH_BOUNDS);
@@ -290,15 +213,8 @@ export function parseExchangeSpec(document: unknown): ExchangeSpec {
  * {@link safeParseCamelized}.
  */
 export function safeParseExchangeSpec(
-  document: unknown,
+  raw: unknown,
 ): z.ZodSafeParseResult<ExchangeSpec> {
-  const raw = withoutRetiredSigningSetting(document);
-  const retired = retiredSettingIssue(raw);
-  if (retired !== undefined)
-    return {
-      success: false,
-      error: new z.ZodError([retired]) as z.ZodError<ExchangeSpec>,
-    };
   return safeParseCamelized(
     ExchangeSpecSchema,
     raw,

@@ -124,10 +124,10 @@ export interface AdvancedInviteDraft {
   includeMatchingKey?: true;
   keys: Array<DraftKey>;
   /**
-   * The precision floor the guided keys were drawn from the
+   * The built-in rule choice the guided keys were drawn from the
    * built-in catalog with. Set by {@link seedAdvancedInvite} and
    * {@link draftWithPrecisionFloorSelection}; absent on a draft built from a
-   * terms document, whose keys no floor selected. Never part of the terms.
+   * terms document, whose keys no rule choice selected. Never part of the terms.
    */
   precisionFloorSelection?: PrecisionFloorSelection;
   /**

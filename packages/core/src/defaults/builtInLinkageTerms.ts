@@ -168,7 +168,7 @@ const NO_DATE_OF_BIRTH: LinkageKeyCondition = { missingField: "date_of_birth" };
  * before the 95% band ({@link DEFAULT_LINKAGE_RULE_BANDS}).
  *
  * {@link linkageTermsFromRuleSet} emits a subset of these: the keys a
- * precision floor selects, less any key whose elements the input's columns
+ * built-in rule choice selects, less any key whose elements the input's columns
  * cannot satisfy.
  */
 const DEFAULT_LINKAGE_KEYS: ReadonlyArray<LinkageKey> = [
@@ -308,14 +308,14 @@ const DEFAULT_LINKAGE_RULE_BANDS: ReadonlyArray<LinkageRuleBand> = [
 
 /**
  * A collection of linkage fields and keys terms can be drawn from, with the
- * precision band of each key a precision floor selects by.
+ * precision band of each key a built-in rule choice selects by.
  */
 export interface BuiltInLinkageRuleSet {
   /** The set's linkage fields, in declaration order. */
   linkageFields: ReadonlyArray<LinkageField>;
   /** The set's linkage keys, in the cascade order the set declares. */
   linkageKeys: ReadonlyArray<LinkageKey>;
-  /** Each rule's precision band, for a set a precision floor selects from;
+  /** Each rule's precision band, for a set a built-in rule choice selects from;
    * absent on a set with no bands. */
   ruleBands?: ReadonlyArray<LinkageRuleBand>;
 }
@@ -357,10 +357,10 @@ export const DEFAULT_LINKAGE_RULE_SET: BuiltInLinkageRuleSet = Object.freeze({
   ruleBands: frozenThroughContents(DEFAULT_LINKAGE_RULE_BANDS),
 });
 
-/** A precision floor: the lowest band whose rules are selected. */
+/** A built-in rule choice: the lowest band whose rules are selected. */
 export type PrecisionFloor = PrecisionBand;
 
-/** What an author chooses the catalog's rules by: the floor. */
+/** What an author chooses the catalog's rules by: the lowest band selected. */
 export interface PrecisionFloorSelection {
   floor: PrecisionFloor;
 }

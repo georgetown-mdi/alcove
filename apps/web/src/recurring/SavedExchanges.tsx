@@ -68,11 +68,11 @@ import {
 import { STATE_UNREADABLE_NOTE, recoveryRows } from "./savedExchangesRecovery";
 import {
   managedImportFileChoice,
-  oneFileImportedNotice,
   pairImportedNotice,
 } from "./managedImportFiles";
 import { BetweenVisitNotifications } from "./BetweenVisitNotifications";
 import { loadSavedExchanges } from "./savedExchangesLoad";
+import { managedImportGrantNotice } from "./managedImportGrantNotice";
 
 import type {
   ManagedPairImportOptions,
@@ -793,7 +793,7 @@ const KEY_FILE_CHOOSER_NOTE =
  *
  * An import that could not bring the source's working folder stops here
  * with that notice and a button onward, rather than taking the operator
- * straight to the exchange ({@link oneFileImportedNotice}): the folder is
+ * straight to the exchange ({@link managedImportGrantNotice}): the folder is
  * what they have to choose again, and the notice is only read where it is
  * shown. A pair import stops the same way to say the exchange now runs
  * here, to name the settings it keeps without a control, and to name the
@@ -955,13 +955,7 @@ function useImportFile({
         // Best-effort persistence on the imported record's origin, the same request
         // a create makes; a denied grant does not fail the import.
         void requestPersistentStorage();
-        const {
-          record,
-          missingGrants,
-          droppedTurnUrls,
-          unreadKeyFileFields,
-          retiredSettings,
-        } =
+        const { record, missingGrants, droppedTurnUrls, unreadKeyFileFields } =
           keySource === undefined
             ? await importFile(source, backupAnswer)
             : await importManagedCommandLinePair(
@@ -972,11 +966,10 @@ function useImportFile({
               );
         const notice =
           keySource === undefined
-            ? oneFileImportedNotice(missingGrants, retiredSettings)
+            ? managedImportGrantNotice(missingGrants)
             : pairImportedNotice(record, {
                 turnUrls: droppedTurnUrls,
                 keyFileFields: unreadKeyFileFields,
-                retiredSettings,
               });
         if (notice !== undefined) {
           setOutcome({ grantNotice: { id: record.id, notice } });

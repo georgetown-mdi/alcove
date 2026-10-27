@@ -2,8 +2,6 @@ import { describe, expect, test } from "vitest";
 
 import {
   parseSigningConfig,
-  retiredSigningSetting,
-  retiredSigningSettingNotice,
   safeParseSigningConfig,
 } from "../../src/config/signing";
 import {
@@ -125,65 +123,26 @@ describe("ExchangeSpec signing block", () => {
   });
 });
 
-describe("retired signing.receipt_output", () => {
-  test("a spec holding the key parses, drops it, and draws the notice", () => {
-    const raw = {
-      ...baseSpec,
-      signing: { mode: "certificate", receipt_output: "./r.json" },
-    };
-    const spec = parseExchangeSpec(raw);
-    expect(spec.signing).toEqual({ mode: "certificate" });
-    expect(spec.signing).not.toHaveProperty("receiptOutput");
-    expect(safeParseExchangeSpec(raw).data?.signing).toEqual({
-      mode: "certificate",
-    });
-    expect(raw.signing).toHaveProperty("receipt_output");
-    expect(retiredSigningSetting(raw)).toBe("signing.receipt_output");
-    expect(retiredSigningSettingNotice(raw)).toContain(
-      '"signing.receipt_output" is ignored',
-    );
-  });
-
-  test("the camelCase spelling parses and is dropped too", () => {
-    const spec = parseExchangeSpec({
-      ...baseSpec,
-      signing: { mode: "none", receiptOutput: "./r.json" },
-    });
-    expect(spec.signing).toEqual({ mode: "none" });
-  });
-});
-
-describe("retiredSigningSettingNotice", () => {
-  test("names the receipt path setting and where the receipt goes", () => {
-    expect(
-      retiredSigningSettingNotice({
-        signing: { mode: "certificate", receipt_output: "./r.json" },
-      }),
-    ).toBe(
-      'the setting "signing.receipt_output" is ignored: a signed run writes ' +
-        "its receipt into the output folder as alcove-receipt-<time>.json, " +
-        "with the same time stamp as the run's result and record. Delete the " +
-        "setting from the file.",
-    );
-  });
-
-  test("names the key as the file spells it", () => {
-    expect(
-      retiredSigningSettingNotice({
-        signing: { mode: "none", receiptOutput: "./r.json" },
-      }),
-    ).toContain('"signing.receiptOutput"');
-  });
-
-  test("is undefined for a file without the setting", () => {
-    expect(
-      retiredSigningSettingNotice({ signing: { mode: "certificate" } }),
-    ).toBeUndefined();
-    expect(retiredSigningSettingNotice({})).toBeUndefined();
-    expect(retiredSigningSettingNotice({ signing: null })).toBeUndefined();
-    expect(retiredSigningSettingNotice(null)).toBeUndefined();
-    expect(
-      retiredSigningSettingNotice({ receipt_output: "./r.json" }),
-    ).toBeUndefined();
-  });
+describe("signing.receipt_output", () => {
+  test.each(["receipt_output", "receiptOutput"])(
+    "a spec holding signing.%s is refused as an unrecognized key of the block",
+    (key) => {
+      const raw = {
+        ...baseSpec,
+        signing: { mode: "certificate", [key]: "./r.json" },
+      };
+      const expected = [
+        {
+          code: "unrecognized_keys",
+          path: ["signing"],
+          message: `Unrecognized key: "${key}"`,
+        },
+      ];
+      expect(() => parseExchangeSpec(raw)).toThrow();
+      const result = safeParseExchangeSpec(raw);
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.error.issues).toMatchObject(expected);
+    },
+  );
 });

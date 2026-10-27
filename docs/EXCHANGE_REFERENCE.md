@@ -63,7 +63,7 @@ For an exchange that did not author its own, the built-in keys are an upper boun
 What the built-in rules do and do not cover:
 
 - They cover the linkage **fields** (with their constraints) and the linkage **keys** (with their bands), and nothing else. `identity`, `date`, `algorithm`, `linkage_strategy`, `output`, and `deduplicate` are each party's own choice on the day, and two parties can run the same rules while differing on them.
-- A run matches on a **subset** of the built-in keys, never on an addition to them: the keys a precision floor selects, less any key that matches on a field no column of your input file can supply. The terms document that travels with the exchange records exactly which keys ran, so it is the authoritative account of any one exchange.
+- A run matches on a **subset** of the built-in keys, never on an addition to them: the keys of the built-in rules chosen, less any key that matches on a field no column of your input file can supply. The terms document that travels with the exchange records exactly which keys ran, so it is the authoritative account of any one exchange.
 - Both parties' keys must match key for key. A quick exchange between two files where only one supplies a column a selected key needs, such as a ZIP code, stops before any data moves, naming the keys only one side declares. Remove the column from the file that has it, or agree terms through an invitation.
 
 The terms do not name the built-in rules; they hold the fields and keys themselves. Where the agreed keys are exactly the "highest precision" or "broader matching" keys, in their order, and the fields those keys read are the built-in fields, the accepting party's terms review says so, worked out from the keys and fields themselves.
@@ -74,15 +74,15 @@ Every built-in rule on the whole first name, such as `LN + FN + DOB`, matches on
 
 #### Choosing the built-in rules
 
-Each rule is in one of two bands: the highest-precision rules, and the others. The evidence placing each rule is in the [linkage rule catalog](notes/linkage-rule-catalog.md#bands). A precision floor selects every rule whose band is at or above it, in the catalog's order. The screens name each floor by a label:
+Each rule is in one of two bands: the highest-precision rules, and the others. The evidence placing each rule is in the [linkage rule catalog](notes/linkage-rule-catalog.md#bands). There are two choices, each selecting rules in the catalog's order:
 
 - **Highest precision**: selects the highest-precision rules.
 - **Broader matching**: selects them all, the highest-precision rules first.
 
-No configuration key sets the floor; it decides which keys are written into the terms. It does not travel: the terms hold the keys selected. Where each path takes it from:
+No configuration key sets the choice; it decides which keys are written into the terms. It does not travel: the terms hold the keys selected. Where each path takes it from:
 
 - A quick exchange and `alcove init` write the keys for broader matching. In a configuration `alcove init` wrote, its comments beside `linkage_keys` list the keys to delete to run only the highest-precision rules or to leave out the rules marked less certain.
-- The invitation editor of the web app and the console starts at the same floor and offers both floors on Customize > Matching keys; Review & create names the floor the keys were drawn with ([Choosing the matching keys](WEB_APP.md#choosing-the-matching-keys)).
+- The invitation editor of the web app and the console starts at the same choice and offers both on Customize > Matching keys; Review & create names the choice the keys were drawn with ([Choosing the matching keys](WEB_APP.md#choosing-the-matching-keys)).
 - The display a run shows before it connects lists the keys selected, and on a quick exchange names the selection ([What the run shows before it starts](CLI.md#what-the-run-shows-before-it-starts)).
 
 #### Rules marked less certain
@@ -535,8 +535,6 @@ Two fields govern payload, both members of this `linkage_terms.payload` block: `
 - **`payload.receive`** -- what this party expects to be disclosed. Declaring it -- including an explicit empty `receive: []`, which asserts the partner discloses nothing -- is strict: a partner whose `send` differs is a [terms change](#when-your-partners-terms-change) this party takes on or refuses before data moves. Omitting it lets an invitation be authored without the inviter knowing the partner's columns: a recurring exchange fills it from the partner's declared `send` on its first run and is strict from then on ([Leaving `payload.receive` unset](#leaving-payloadreceive-unset)), and a one-off run takes whatever the partner sends. Omitting it relaxes only this declaration check, never what is disclosed -- each sender's own metadata always governs what it sends. Accepting an invitation sets it from the invitation's `send`. A received payload is not checked against it again after it arrives: the columns your partner's run states at the terms exchange are the ones its payload step sends.
   - An explicit `receive: []` is compared against the partner's stated `payload.send` at the terms exchange, wherever you are entitled to the result. A partner whose terms leave `payload.send` unset states the columns its input metadata transmits, so a partner transmitting a column is refused there, before any linkage round, association table, or payload moves, under either [linkage strategy](#linkage_termslinkage_strategy). Where you declared `expects_output: false` instead, your partner sends you no payload at all, so the empty `receive` the schema requires of you there contradicts nothing and the pair runs. To go ahead with those columns, list them in your own `receive`, or remove `receive` so a recurring exchange sets it from the partner's declared columns on its next run; to go ahead with none, have your partner mark them `is_payload: false` (or `role: ignored`) so its metadata transmits none.
 In practice you rarely author either list: accepting an invitation sets `payload.receive` from the invitation's `send`, a recurring exchange fills an unset one on its first run, and inviting writes `payload.send` from your metadata into the configuration, as does [`alcove update`](CLI.md#changing-the-terms-of-an-established-partnership).
-
-`expected_payload_columns` is not a setting: a configuration holding it at the top level is refused when it is read, with a message naming the key and telling you to delete it. The columns you receive are your `payload.receive`.
 
 How the terms exchange holds both lists, and how an unset `payload.receive` is filled on the first run, are specified in [EXCHANGE_FILE.md](spec/EXCHANGE_FILE.md#payload-disclosure-consent).
 
@@ -1336,7 +1334,7 @@ signing:
 
 ### Where the receipt is written
 
-No setting names the receipt's location: `signing.receipt_output` is gone. A configuration that still sets it opens, and the command line and the console warn, naming the setting and where the receipt goes; the setting is ignored, so delete it from the file. Under `certificate` mode the CLI writes the signed receipt to a timestamped `alcove-receipt-<time>.json` in the run's output folder, or the working directory when the result goes to stdout (the stamp matching the exchange record's), so repeated exchanges accumulate an audit trail ([Where a run's files go](spec/EXCHANGE_RECORD.md#where-a-runs-files-go)). The file is written owner-only. It holds no payload contents and no private keys -- only public certificates, signatures, the terms and data-flow attestation, and a copy of the partner's linkage terms, which verification re-derives the agreed-terms hash from -- so it does not reveal the matched data or leak whether either direction included a payload. It does bind both parties' identities and the agreed terms (that is its purpose, a mutually non-repudiable attestation), so it is not anonymous; share it by copying the file when handing it to a partner or auditor. What a holder does and does not learn is enumerated in [EXCHANGE_RECORD.md](spec/EXCHANGE_RECORD.md#receipt-privacy-properties).
+No setting names the receipt's location. Under `certificate` mode the CLI writes the signed receipt to a timestamped `alcove-receipt-<time>.json` in the run's output folder, or the working directory when the result goes to stdout (the stamp matching the exchange record's), so repeated exchanges accumulate an audit trail ([Where a run's files go](spec/EXCHANGE_RECORD.md#where-a-runs-files-go)). The file is written owner-only. It holds no payload contents and no private keys -- only public certificates, signatures, the terms and data-flow attestation, and a copy of the partner's linkage terms, which verification re-derives the agreed-terms hash from -- so it does not reveal the matched data or leak whether either direction included a payload. It does bind both parties' identities and the agreed terms (that is its purpose, a mutually non-repudiable attestation), so it is not anonymous; share it by copying the file when handing it to a partner or auditor. What a holder does and does not learn is enumerated in [EXCHANGE_RECORD.md](spec/EXCHANGE_RECORD.md#receipt-privacy-properties).
 
 Under `certificate` mode a receipt is accepted only if the identity the partner used in its agreed terms is the one the presenting certificate authorizes -- an exact match of the full identity over the same canonical bytes the record commits to and the receipt signs, checked against the agreed-terms identity rather than the certificate's own held value. A party that uses a different identity string than the one bound into its certificate needs a new certificate (a regeneration); see [PROTOCOL.md](spec/PROTOCOL.md#signing-identity-and-certificate-pinning).
 
@@ -1829,7 +1827,6 @@ The cells:
 | `signing.mode` | carried | authored | opens and is carried with a notice, but refused at run (a mode of `none` asks for no receipt and runs) |
 | `signing.identity_file` | carried | carried with a notice (a signed run waits for converting, which replaces it with a location you pick in the console) | opens and is carried with a notice, but refused at run |
 | `signing.partner_fingerprint` | authored (pinned on first contact) | authored | opens and is carried with a notice, but refused at run |
-| `signing.receipt_output` (gone) | not applicable (ignored with a warning) | not applicable (ignored with a warning, and left out of a saved or scheduled configuration) | not applicable (left out of the stored configuration) |
 | **Other top-level settings** | | | |
 | `retention_disposition` | carried | authored | authored |
 | `include_own_columns` | carried | authored | authored |

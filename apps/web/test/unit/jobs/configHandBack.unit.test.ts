@@ -573,28 +573,6 @@ describe("the signing block a hand-back writes", () => {
     });
   });
 
-  test("a retired receipt path the file states is not written back", () => {
-    const dir = mountHolding(
-      webrtcDocument({
-        signing: {
-          mode: "certificate",
-          identity_file: "/home/county/.alcove/identity.json",
-          receipt_output: "/home/county/receipts/latest.json",
-        },
-      }),
-    );
-    const opened = readBack(dir);
-    handBackMountedConfiguration(dir, {
-      ...unchangedHandBack(opened),
-      csvDelimiter: ";",
-    });
-    expect(mountedText(dir)).not.toContain("receipt_output");
-    expect(readBack(dir).signing).toEqual({
-      mode: "certificate",
-      identityFile: "/home/county/.alcove/identity.json",
-    });
-  });
-
   test("a session-derived block the operator left is kept whole", () => {
     const dir = mountHolding(
       webrtcDocument({ signing: { mode: "session-derived" } }),

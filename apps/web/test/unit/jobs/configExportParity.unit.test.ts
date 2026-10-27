@@ -417,25 +417,6 @@ describe("the settings a loaded configuration keeps in the export", () => {
     expect(handoff.pathsAsRead.sharedDirectory).toBe(true);
   });
 
-  test("a retired receipt path alone is no signing path as read", () => {
-    const { identityFile: _unset, ...signingWithoutIdentityFile } =
-      MOUNTED_SIGNING;
-    const document = mountedDocument(
-      { tokenMaxAgeDays: 30 },
-      {
-        signing: {
-          ...signingWithoutIdentityFile,
-          receipt_output: "/home/operator/receipt.json",
-        },
-      },
-    );
-    const handoff = handoffOver(document, { signing: { mode: "none" } });
-    expect(handoff.pathsAsRead.signing).toBe(false);
-    if (handoff.template.kind !== "config")
-      throw new Error("an exchange hand-off composed no template");
-    expect(handoff.template.yaml).not.toContain("receipt_output");
-  });
-
   test("a folder the file names as the placeholder is not a folder as read", () => {
     const document = parseExchangeSpec({
       connection: {

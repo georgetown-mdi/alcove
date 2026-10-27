@@ -219,7 +219,7 @@ export function editorWithKeyEnabled(
   };
 }
 
-/** Choose the precision floor the guided keys are drawn
+/** Choose the built-in rules the guided keys are drawn
  * with, reseeding them from the built-in catalog
  * ({@link draftWithPrecisionFloorSelection}). Returns the session unchanged
  * where its keys were written in the expert editor or loaded from a document
@@ -261,7 +261,7 @@ export function editorOffersUseBuiltInRules(
 /** Replace keys written in the expert editor or loaded from a document, with
  * their fields and cleaning, by those a new invitation starts with for the
  * session's columns ({@link draftWithBuiltInKeys}), returning the session to
- * the guided list: the precision floor control applies again, and
+ * the guided list: the built-in rule choice applies again, and
  * a later column edit reconciles the keys. Returns the session unchanged
  * where the columns supply no built-in key ({@link editorOffersBuiltInKeys}). */
 export function editorWithBuiltInKeys(
@@ -280,8 +280,8 @@ export function editorWithBuiltInKeys(
   };
 }
 
-/** What Matching keys shows in place of the precision floor
- * control on a session whose keys no floor selected
+/** What Matching keys shows in place of the built-in rule
+ * choice on a session whose keys no rule choice selected
  * ({@link editorWithPrecisionFloorSelection} refuses there), beside the
  * action that replaces them ({@link editorWithBuiltInKeys}). */
 export const AUTHORED_KEYS_FLOOR_NOTE =
@@ -361,8 +361,8 @@ export const BUILT_IN_RULES_INFO = {
   linkText: "How the rules were chosen",
 } as const;
 
-/** What Matching keys shows in place of the precision floor
- * control on the console, for keys a run of an opened configuration
+/** What Matching keys shows in place of the built-in rule
+ * choice on the console, for keys a run of an opened configuration
  * continues under: the partner holds them, so no action here replaces them. */
 export const OPENED_CONFIGURATION_KEYS_NOTE =
   "These keys come from the configuration you opened, which your partner " +
@@ -406,7 +406,7 @@ export function keyOrderHelp(
         "then the rules broader matching adds.";
 }
 
-/** What a screen reader hears after a precision floor choice
+/** What a screen reader hears after a built-in rule choice
  * reseeds the guided keys: how many the list shows and how many are on, and
  * for an empty list, why. */
 export function guidedKeysAnnouncement(editor: InviterEditor): string {
