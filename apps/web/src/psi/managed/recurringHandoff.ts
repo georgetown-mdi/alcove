@@ -273,16 +273,24 @@ function shellQuoteToken(token: string): string {
  * Task Scheduler example. cmd.exe does not honor the POSIX single quotes {@link
  * shellJoinCommand} emits, so a token with a space or a cmd metacharacter is
  * wrapped in double quotes (any internal `"` doubled) and a token with none is
- * emitted bare. Display shaping for the same server-composed, secret-free tokens,
- * not a security boundary.
+ * emitted bare, unless `alwaysQuote` holds for it: a token holding a
+ * placeholder the operator replaces with a path that may contain a space.
+ * Display shaping for the same server-composed, secret-free tokens, not a
+ * security boundary.
  */
-export function windowsJoinCommand(argv: ReadonlyArray<string>): string {
-  return argv.map(windowsQuoteToken).join(" ");
+export function windowsJoinCommand(
+  argv: ReadonlyArray<string>,
+  alwaysQuote: (token: string) => boolean = () => false,
+): string {
+  return argv
+    .map((token) => windowsQuoteToken(token, alwaysQuote(token)))
+    .join(" ");
 }
 
 const CMD_NEEDS_QUOTING = /[\s"&|<>^()%!]/;
 
-function windowsQuoteToken(token: string): string {
-  if (token.length > 0 && !CMD_NEEDS_QUOTING.test(token)) return token;
+function windowsQuoteToken(token: string, alwaysQuote: boolean): string {
+  if (!alwaysQuote && token.length > 0 && !CMD_NEEDS_QUOTING.test(token))
+    return token;
   return `"${token.replace(/"/g, '""')}"`;
 }

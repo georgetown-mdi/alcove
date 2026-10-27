@@ -148,10 +148,11 @@ describe("what the panel gets to render", () => {
     );
     expect(lines.dockerTaskSchedulerLine).toContain("/SC DAILY /ST 02:00 ");
     expect(lines.dockerTaskSchedulerLine).toContain(
-      "cmd /c cd /d C:\\path\\to\\your\\exchange-folder && docker run --rm " +
-        "--mount type=bind,src=C:\\path\\to\\your\\exchange-folder,dst=/work " +
-        `${IMAGE} exchange --log-file=exchange.log input.csv ./`,
+      'cmd /c cd /d \\"C:\\path\\to\\your\\exchange-folder\\" && docker run ' +
+        '--rm --mount \\"type=bind,src=C:\\path\\to\\your\\exchange-folder,' +
+        `dst=/work\\" ${IMAGE} exchange --log-file=exchange.log input.csv ./`,
     );
+    expect(lines.taskSchedulerShell).toBe("Command Prompt");
     expect(state.fromAgreedSchedule).toBe(false);
     expect(lines.schedule).toBe("daily at 2am");
     expect(lines.scheduleNote).toBeUndefined();
@@ -215,8 +216,10 @@ describe("what the panel gets to render", () => {
         "--peer-timeout=1h input.csv ./",
     );
     expect(lines.dockerTaskSchedulerLine).toContain(
-      "/SC DAILY /MO 3 /SD 10/06/2026 /ST 14:30 ",
+      "New-ScheduledTaskTrigger -Daily -DaysInterval 3 -At " +
+        "([datetime]::new(2026, 10, 6, 14, 30, 0))",
     );
+    expect(lines.taskSchedulerShell).toBe("PowerShell");
   });
 
   test("the notice's schedule clause follows whether this copy has a schedule", () => {

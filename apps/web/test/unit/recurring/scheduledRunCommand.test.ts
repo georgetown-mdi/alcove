@@ -15,6 +15,10 @@ import {
   unmountableBindPaths,
   workingFolderCommand,
 } from "@psi/dockerRunCommand";
+import {
+  runScheduleFor,
+  taskSchedulerShell,
+} from "@recurring/scheduleTemplates";
 import { parseHandoff } from "@psi/managed/recurringHandoff";
 
 import type { ScheduledRunSource } from "@psi/dockerRunCommand";
@@ -92,7 +96,7 @@ describe("the console hand-off's command lines", () => {
     const line = dockerTaskSchedulerLine(SOURCE);
     expect(line).toContain(
       "docker run --rm --mount " +
-        "type=bind,src=C:\\path\\to\\your\\exchange-folder,dst=/work " +
+        '\\"type=bind,src=C:\\path\\to\\your\\exchange-folder,dst=/work\\" ' +
         `${IMAGE} exchange --log-file=exchange.log clients.csv ./"`,
     );
     expect(line).not.toContain("shared-directory");
@@ -351,5 +355,77 @@ describe("the docker run argv", () => {
     expect(
       dockerRunArgv(source, "docker", "/folder", { interactive: true }),
     ).toEqual(["docker", "run", "--rm", "-it", ...tail]);
+  });
+});
+
+describe("the Task Scheduler lines the Windows CI suite registers", () => {
+  // support/maintainer-notes/ScheduleLines.Tests.ps1 registers each line under
+  // its shell and runs it, so the file it reads is kept equal to the lines.
+  const LINES_FILE =
+    "../../../../../support/maintainer-notes/schedule-lines.txt";
+  const WINDOWS_FOLDER = "C:\\path\\to\\your\\exchange-folder";
+  /** A Tuesday, in the past, so a start date on it is one already passed. */
+  const AGREED = "2026-10-06T14:30:00.000Z";
+
+  /** Each line's arguments and interval, and the trigger the suite expects
+   * it to register: the interval, the time, the weekday of a weekly line and
+   * the start date of a line that states one. */
+  const FIXTURES: ReadonlyArray<{
+    args: ReadonlyArray<string>;
+    intervalDays?: number;
+    trigger: string;
+  }> = [
+    { args: [], trigger: "interval=1 time=02:00 weekday=- start=-" },
+    {
+      args: ["--csv-delimiter=;", "--identity=Agency A"],
+      intervalDays: 1,
+      trigger: "interval=1 time=14:30 weekday=- start=-",
+    },
+    {
+      args: ["--csv-delimiter=|", "--identity=Agency A & B"],
+      intervalDays: 7,
+      trigger: "interval=7 time=14:30 weekday=Tuesday start=-",
+    },
+    {
+      args: ["--csv-delimiter=tab", "--identity=Agency A & B"],
+      intervalDays: 3,
+      trigger: "interval=3 time=14:30 weekday=- start=2026-10-06",
+    },
+    {
+      args: ["--csv-delimiter=|", "--identity=O'Brien $HOME"],
+      intervalDays: 2,
+      trigger: "interval=2 time=14:30 weekday=- start=2026-10-06",
+    },
+  ];
+
+  function entry({
+    args,
+    intervalDays,
+    trigger,
+  }: (typeof FIXTURES)[number]): string {
+    const source: ScheduledRunSource = {
+      argv: ["alcove", "exchange", ...args, "input.csv", "./"],
+      bindPaths: [],
+      image: IMAGE,
+    };
+    const schedule =
+      intervalDays === undefined
+        ? undefined
+        : runScheduleFor({ anchor: AGREED, intervalDays });
+    const tokens =
+      dockerRunArgv(source, "docker", WINDOWS_FOLDER, {
+        mountBindPaths: false,
+      }) ?? [];
+    return [
+      `shell: ${taskSchedulerShell(schedule)}`,
+      `trigger: ${trigger}`,
+      dockerTaskSchedulerLine(source, schedule) ?? "",
+      ...tokens.slice(1).map((token) => `  [${token}]`),
+    ].join("\n");
+  }
+
+  test("match the file the suite reads", async () => {
+    const entries = FIXTURES.map(entry);
+    await expect(`${entries.join("\n\n")}\n`).toMatchFileSnapshot(LINES_FILE);
   });
 });

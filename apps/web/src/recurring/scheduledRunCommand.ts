@@ -16,15 +16,16 @@ import {
   cronIntervalGuard,
   cronScheduleFields,
   taskSchedulerLine,
+  taskSchedulerShell,
 } from "./scheduleTemplates";
 
+import type { RunSchedule, TaskSchedulerShell } from "./scheduleTemplates";
 import type {
   ScheduledRunSource,
   UnmountableBindPath,
   UnmountableReason,
 } from "@psi/dockerRunCommand";
 import type { HandoffBindPath } from "@jobContract/handoffBindPaths";
-import type { RunSchedule } from "./scheduleTemplates";
 
 /**
  * The command lines the recurring-run hand-offs show -- the console's and the
@@ -109,7 +110,8 @@ function installedCronLine(
  * The Task Scheduler registration running the image over the exchange folder.
  * It mounts the folder alone, since a Windows path cannot be mounted at the
  * same path inside the container; the panel names each bind path to mount by
- * hand. Undefined when a bind path cannot be mounted.
+ * hand. The mount naming the folder is quoted, so a folder path with a space
+ * stays one argument. Undefined when a bind path cannot be mounted.
  */
 export function dockerTaskSchedulerLine(
   source: ScheduledRunSource,
@@ -123,7 +125,12 @@ export function dockerTaskSchedulerLine(
   );
   return argv === undefined
     ? undefined
-    : taskSchedulerLine(windowsJoinCommand(argv), schedule);
+    : taskSchedulerLine(
+        windowsJoinCommand(argv, (token) =>
+          token.includes(WINDOWS_EXCHANGE_FOLDER_PLACEHOLDER),
+        ),
+        schedule,
+      );
 }
 
 /**
@@ -152,6 +159,8 @@ export interface ShownRunLines {
   dockerCronLine: string | undefined;
   /** Undefined where a path cannot be mounted. */
   dockerTaskSchedulerLine: string | undefined;
+  /** The shell the Task Scheduler line is pasted into. */
+  taskSchedulerShell: TaskSchedulerShell;
   installedCronLine: string;
   /** Why the Docker lines are not shown, where a path cannot be mounted. */
   dockerLinesNotice: string | undefined;
@@ -173,6 +182,7 @@ export function runLines(
     runCommand: dockerRunCommand(source) ?? installedRunCommand(source),
     dockerCronLine: dockerCronLine(source, schedule),
     dockerTaskSchedulerLine: dockerTaskSchedulerLine(source, schedule),
+    taskSchedulerShell: taskSchedulerShell(schedule),
     installedCronLine: installedCronLine(source, schedule),
     dockerLinesNotice:
       unmountable.length > 0

@@ -1282,10 +1282,13 @@ The command-line export's cron and Task Scheduler lines state the record's
   dropped, since both schedulers start a job on a whole minute. The panel
   tells the operator to convert the hour on a machine not set to UTC.
 - **`intervalDays` of 1 or 7.** A daily line, or a weekly line on `anchor`'s
-  UTC weekday, in both cron and Task Scheduler.
-- **Any other interval.** Task Scheduler states it directly
-  (`/SC DAILY /MO <intervalDays>`, with `anchor`'s UTC date as the start date,
-  written month/day/year). cron cannot, so its line runs daily behind a shell
+  UTC weekday, in both cron and Task Scheduler. The Task Scheduler line is a
+  `schtasks` command for Command Prompt, with no start date.
+- **Any other interval.** Task Scheduler states it directly, in a PowerShell
+  line (`New-ScheduledTaskTrigger -Daily -DaysInterval <intervalDays>`, its
+  first run `anchor`'s UTC date and time built from their parts by
+  `[datetime]::new`), since `schtasks` reads a `/SD` start date in the
+  machine's own date format. cron cannot, so its line runs daily behind a shell
   test that lets the command through only when the whole days since `anchor`'s
   UTC date are a multiple of `intervalDays`. The days are counted from twelve
   hours before the time of day, so a run moved by less than twelve hours -- an

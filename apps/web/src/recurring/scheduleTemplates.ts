@@ -129,39 +129,100 @@ export function cronIntervalGuard(schedule: RunSchedule | undefined): string {
   );
 }
 
+/** The shell a Task Scheduler line is written for, as the panel names it. */
+export type TaskSchedulerShell = "Command Prompt" | "PowerShell";
+
+/** Whether `schedule` needs a start date: an interval other than a day or a
+ * week, whose days are counted from the first window. */
+function needsStartDate(
+  schedule: RunSchedule | undefined,
+): schedule is RunSchedule {
+  return schedule !== undefined && !cronStatesInterval(schedule);
+}
+
+/**
+ * The shell the Task Scheduler line for `schedule` is pasted into. schtasks
+ * reads a `/SD` start date in the machine's own date format, so a schedule
+ * needing one is registered from PowerShell with the date given by its parts.
+ */
+export function taskSchedulerShell(
+  schedule: RunSchedule | undefined,
+): TaskSchedulerShell {
+  return needsStartDate(schedule) ? "PowerShell" : "Command Prompt";
+}
+
 /** The schtasks options stating `schedule`, or daily at 2am without one. */
-function taskSchedulerTrigger(schedule: RunSchedule | undefined): string {
+function schtasksTrigger(schedule: RunSchedule | undefined): string {
   if (schedule === undefined) return "/SC DAILY /ST 02:00";
   const time = timeOfDay(schedule);
-  if (schedule.intervalDays === 1) return `/SC DAILY /ST ${time}`;
   if (schedule.intervalDays === WEEK_DAYS)
     return `/SC WEEKLY /D ${TASK_SCHEDULER_DAYS[schedule.weekday]} /ST ${time}`;
-  const [year, month, day] = schedule.anchorDate.split("-");
+  return `/SC DAILY /ST ${time}`;
+}
+
+const CMD_OPERATOR = /[&|<>^]/;
+
+/**
+ * `text` with a caret before each cmd operator that cmd reads outside its
+ * quotes. cmd starts and ends a quoted run at every `"`, a `\"` included, so
+ * the inside of a token schtasks reads as `\"...\"` is outside cmd's quotes.
+ */
+function escapeCmdOperators(text: string): string {
+  let quoted = false;
+  let escaped = "";
+  for (const character of text) {
+    if (character === '"') quoted = !quoted;
+    else if (!quoted && CMD_OPERATOR.test(character)) escaped += "^";
+    escaped += character;
+  }
+  return escaped;
+}
+
+/** `text` as a PowerShell double-quoted string: each double quote doubled,
+ * and a backtick before each character that would end or expand it, the
+ * typographic double quotes PowerShell also reads as quotes included. */
+function powerShellString(text: string): string {
+  const escaped = text.replace(/["\u201C\u201D\u201E`$]/g, (character) =>
+    character === '"' ? '""' : `\`${character}`,
+  );
+  return `"${escaped}"`;
+}
+
+/** The PowerShell registration running `action` under cmd on an interval
+ * `schedule`, its first window given as a date built from its parts. */
+function powerShellRegistration(action: string, schedule: RunSchedule): string {
+  const [year, month, day] = schedule.anchorDate.split("-").map(Number);
+  const firstRun =
+    `[datetime]::new(${year}, ${month}, ${day}, ` +
+    `${schedule.hour}, ${schedule.minute}, 0)`;
   return (
-    `/SC DAILY /MO ${schedule.intervalDays} /SD ${month}/${day}/${year} ` +
-    `/ST ${time}`
+    "Register-ScheduledTask -TaskName 'alcove exchange' -Trigger " +
+    `(New-ScheduledTaskTrigger -Daily -DaysInterval ${schedule.intervalDays} ` +
+    `-At (${firstRun})) -Action (New-ScheduledTaskAction -Execute 'cmd.exe' ` +
+    `-Argument ${powerShellString(`/c ${action}`)})`
   );
 }
 
 /**
  * The Windows Task Scheduler command that registers `command` on `schedule`
- * (daily at 2am without one) from the folder holding the exchange's files.
- * `command` is already quoted for `cmd`.
+ * (daily at 2am without one) from the folder holding the exchange's files,
+ * for the shell {@link taskSchedulerShell} names. `command` is already quoted
+ * for `cmd`, which runs it.
  *
- * The command is interpolated into the `/TR "..."` argument, so a double quote
- * inside it would end that argument early: schtasks needs each one escaped as
- * `\"` for its argv parse to preserve it for the scheduled `cmd` to re-read.
- * That escape happens here, not at each call site, so every caller gets the
- * same treatment.
+ * In the schtasks form the command is inside the `/TR "..."` argument, so each
+ * double quote in it is escaped as `\"` for schtasks to keep, and each cmd
+ * operator cmd would then read outside its quotes is escaped with a caret.
  */
 export function taskSchedulerLine(
   command: string,
   schedule?: RunSchedule,
 ): string {
+  const action = `cd /d "${WINDOWS_FOLDER_PLACEHOLDER}" && ${command}`;
+  if (needsStartDate(schedule)) return powerShellRegistration(action, schedule);
+  const taskRun = `"cmd /c ${action.replaceAll('"', '\\"')}"`;
   return (
-    `schtasks /Create /TN "alcove exchange" ${taskSchedulerTrigger(schedule)} ` +
-    `/TR "cmd /c cd /d ${WINDOWS_FOLDER_PLACEHOLDER} && ` +
-    `${command.replaceAll('"', '\\"')}"`
+    `schtasks /Create /TN "alcove exchange" ${schtasksTrigger(schedule)} ` +
+    `/TR ${escapeCmdOperators(taskRun)}`
   );
 }
 
@@ -181,7 +242,7 @@ export function scheduleDescription(schedule: RunSchedule | undefined): string {
 /**
  * What the operator checks before using lines composed from `schedule`: the
  * times are UTC, and, on an interval cron cannot state, how the cron line
- * counts days and how the Task Scheduler start date is written. Undefined
+ * counts days and the Task Scheduler start date. Undefined
  * without a schedule.
  */
 export function scheduleNote(
@@ -203,8 +264,6 @@ export function scheduleNote(
     utc +
     ", and the Task Scheduler start date where that change crosses " +
     "midnight. The cron line runs daily and starts the exchange only on " +
-    "the days counted from the first window. The Task Scheduler start date " +
-    "is written month/day/year: on a machine set to another date format, " +
-    "write it in that format."
+    "the days counted from the first window."
   );
 }

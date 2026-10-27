@@ -1,0 +1,2 @@
+- - -> The Task Scheduler line is a `schtasks` command for Command Prompt, with no start date.
+- Task Scheduler states it directly (`/SC DAILY /MO <intervalDays>`, with `anchor`'s UTC date as the start date, written month/day/year). -> Task Scheduler states it directly, in a PowerShell line (`New-ScheduledTaskTrigger -Daily -DaysInterval <intervalDays>`, its first run `anchor`'s UTC date and time built from their parts by `[datetime]::new`), since `schtasks` reads a `/SD` start date in the machine's own date format.
