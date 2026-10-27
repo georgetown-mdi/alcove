@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
@@ -325,7 +325,7 @@ describe("host-commit-check.sh on a branch still on origin", () => {
     ]);
     expect(missing.status).toBe(1);
     expect(missing.stderr).toContain(
-      `main is not on ${elsewhere}; refusing to guess a ref.`,
+      `main is not on ${realpathSync(elsewhere)}; refusing to guess a ref.`,
     );
   });
 
@@ -391,7 +391,7 @@ describe("host-commit-check.sh once the branch has merged", () => {
     expect(result.stderr).toBe("");
     expect(result.status).toBe(0);
     expect(result.stdout).toContain(
-      `feature is not on ${w.origin}, so it has merged or been deleted; reading main instead`,
+      `feature is not on ${realpathSync(w.origin)}, so it has merged or been deleted; reading main instead`,
     );
     expect(result.refLine).toBe(`REF=main TIP=${main}`);
     expect(result.last).toContain("it holds every line the briefed change");
