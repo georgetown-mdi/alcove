@@ -342,14 +342,17 @@ publications date, a position for each use, and what stays open.
   no later than January 2, 2030 (Appendix A, section 4), and does not apply to
   national security systems (section 1).
 - **IR 8547 attributes the two deadlines to the order and the memo jointly**
-  (section 4, p. 13), and extends the 2030 key-establishment date to "other
-  systems with highly sensitive data" (section 4.1.2, p. 17). Its own window
+  (section 4, p. 13), and reads the memo as requiring the 2030
+  key-establishment date of "other systems with highly sensitive data"
+  (section 4.1.2, p. 17). Its own window
   "does not alter the earlier deadlines that apply to high value assets, high
   impact systems, and other high-sensitivity federal systems under EO 14412 and
   OMB M-26-15" (section 4, p. 13).
 
-The deadlines bind federal systems in those categories, and whether a system
-running Alcove is one is the agency's classification, not Alcove's.
+On IR 8547's reading the deadlines bind federal systems in those categories,
+though the order only directs guidance and the memo does not itself state the
+dates as requirements. Whether a system running Alcove is one is the agency's
+classification, not Alcove's.
 
 ### Key agreement: NNpsk0 over P-256 ECDH
 
@@ -379,7 +382,10 @@ bound has two limits, both read from the spec:
   ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#bootstrapping-a-shared-secret)).
   A recurring exchange begun that way starts from a secret that is only as
   protected as that quick exchange's transport, below. One begun from
-  `alcove invite` never sends the secret through the exchange server.
+  `alcove invite` does not send the secret through the exchange server, but
+  the invitation carries the setup secret over an out-of-band channel
+  ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#invitation-contents-and-confidentiality)),
+  so that secret is only as protected as that channel.
 
 ML-KEM is the only approved post-quantum key-establishment scheme based on
 public-key cryptography, with ML-KEM-768 the recommended default parameter set
@@ -391,10 +397,10 @@ wire-format change: the protocol-version tag changes, and peers on different
 tags fail closed rather than negotiate, as peers on the earlier `kex-v1` and
 `kex-v2` tags do
 ([PROTOCOL.md](../spec/PROTOCOL.md#p-256-authenticated-key-exchange)). Two
-things reopen the question: an agency requirement for post-quantum or hybrid
-key establishment, or hybrid support maturing in both platforms'
-`crypto.subtle`, since reasons 1 and 5 above bind whatever primitive replaces
-this one.
+developments bear on the open decision below: an agency requirement for
+post-quantum or hybrid key establishment, and hybrid support maturing in both
+platforms' `crypto.subtle`, since reasons 1 and 5 above bind whatever primitive
+replaces this one.
 
 ### Signatures: certificate and receipt, ECDSA over P-256
 
@@ -438,7 +444,8 @@ a hashed PSI set element
 an encrypted element is a compressed P-256 point
 ([PROTOCOL.md](../spec/PROTOCOL.md#the-memory-ceiling-and-the-csv-intake-cap)).
 The privacy of a non-matching value rests on neither side being able to strip
-the other's key, and a key built from too little PII is open to brute force
+the other's key, and a linkage key built from too little PII is open to brute
+force
 ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#private-set-intersection)).
 
 **What stays unestablished.** The spec does not state the cipher's algebra: it
@@ -446,8 +453,9 @@ does not say that an element is the hashed value's curve point multiplied by
 the party's scalar. So it does not establish that solving the discrete log on
 P-256 recovers a party's scalar from the elements a transcript contains. If it
 does, removing the scalars leaves the hashed values, which a dictionary search
-over candidate identifiers matches: the brute force a weak key is already open
-to, extended to every key. That chain is a stated limit, not a finding.
+over candidate identifiers matches: the brute force a weak linkage key is
+already open to, extended to every linkage key. That chain is a stated limit,
+not a finding.
 
 **Per exchange type**, what a recorder who can solve the discrete log reaches:
 
@@ -484,16 +492,19 @@ key exchange.
 - **SSH for SFTP.** The key-exchange list in
   [FIPS_SFTP_PROFILE.md](../FIPS_SFTP_PROFILE.md) contains only elliptic-curve
   and finite-field Diffie-Hellman methods, the two DH families Table 4 lists.
-  The `ssh2` default list is not documented in this repository, so whether it
-  offers a post-quantum method is not established here. A quick exchange over
-  SFTP relies on SSH alone.
+  The default offer measured on the wire inside the FIPS image lists only those
+  two families
+  ([FIPS_SFTP_PROFILE.md](../FIPS_SFTP_PROFILE.md#the-default-offer-measured-inside-the-image)),
+  and an ordinary runtime's default adds only `curve25519-sha256` and its
+  `@libssh.org` spelling, so neither default offers a post-quantum method. A
+  quick exchange over SFTP relies on SSH alone.
 - **DTLS for WebRTC.** A quick exchange never runs on WebRTC: the CLI refuses a
   secret-less `webrtc` run
   ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#transport-layer-authentication)).
   DTLS therefore sits beneath the application-layer wrap on every WebRTC
   exchange and is never the only protection.
 
-### The decision
+### The open decision
 
 The plan is an open decision for the owner.
 
