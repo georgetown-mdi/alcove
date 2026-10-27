@@ -208,7 +208,7 @@ A [WebSocket relay](DESIGN.md#websocket-relay) carries a WebRTC exchange for two
 - **When a run uses it.** A run connects to each WebSocket relay it lists as it starts waiting for its partner, and moves the exchange onto one only when no WebRTC path opens or the partner has already moved there ([WEBRTC_TRANSPORT.md](spec/WEBRTC_TRANSPORT.md#falling-back-to-the-websocket-relay)).
 - **What admits a party.** A proof made from the exchange's shared secret, checked against the relay key the relay's registrar or its owner enrolled for the exchange, as for the TURN relay ([PROTOCOL.md](spec/PROTOCOL.md#the-websocket-relay-proof)).
 
-The relay forwards the exchange's messages under the application-layer encryption both applications apply, apart from the key-exchange messages that set it up, which hold no exchange data, and stores none of them. What its operator can observe is in [PRIVACY.md](../PRIVACY.md#what-supporting-services-can-observe).
+The relay forwards the exchange's messages and stores none of them. All of them cross under the application-layer encryption both applications apply, except the key-exchange messages that set it up, which hold no exchange data. What its operator can observe is in [PRIVACY.md](../PRIVACY.md#what-supporting-services-can-observe).
 
 ### WebSocket-to-TCP proxy
 

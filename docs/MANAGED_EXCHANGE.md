@@ -362,7 +362,8 @@ sooner. One fires for each of these:
 
 The six conditions from your partner's terms change to the protocol failure recur
 at every window until you act, so none is offered as retryable. A missing or
-rejected input file is: put the file in place, then try again.
+rejected input file is offered as retryable: put the file in place, or replace
+a rejected one with a file whose columns satisfy the terms, then try again.
 
 Each notification fires once, when its state begins, and a condition already
 reported is not repeated at later wakes. The app remembers what it last reported
