@@ -1,0 +1,252 @@
+# Count-only (psi-c) rebuilt over every agreed linkage key: the PSI-C
+# section of PROTOCOL.md rewritten for the construction, the candidate-set
+# and missing-field refusal reasons elsewhere in PROTOCOL.md restated on
+# psi-c's own grounds, and the count-only record rows in EXCHANGE_RECORD.md.
+- Four of its rows are fixed by what a count-only run does and does not produce. -> Five of its rows are fixed by what a count-only run does and does not produce.
+- The count is the run's whole result, and it is recorded in the result-size field under exactly the gate [Result size and per-direction disclosure](#result-size-and-per-direction-disclosure) sets: present when both parties' agreed terms have them both receive output, omitted when only one does. -> The count is the run's whole result: the size of the one-to-one table over every agreed key in the permuted space ([PROTOCOL.md, Computing the count](PROTOCOL.md#computing-the-count)).
+- [psi-c](#psi-c) is cascade-only and refuses a candidate set on its own terms: a count-only round counts matched values where the resolution accepts at most one pair per record, so the count over-reports the linkage the run is used to justify. -> [psi-c](#psi-c) is cascade-only and refuses a candidate set on its own terms: its rounds give each record exactly one element, and no padded layout or record-level replay of a candidate set is specified for it ([Refusals under count-only](#refusals-under-count-only)).
+- A count-only round counts matched values where the resolution accepts at most one pair per record, so the count over-reports the table the run is used to justify, with no identifier to contradict it ([Why a candidate set is refused rather than counted](#psi-c)). -> A count-only round gives each record exactly one element, and no padded layout or record-level replay of a candidate set is specified for it ([Refusals under count-only](#refusals-under-count-only)).
+- That frame states every accepted pair set a round produces ([The final mapped-element entry names the positions its record's pairs rest on](#the-per-round-grouping-the-two-frames-hold)), so each combination above stands on the reason stated with it -- a count that would over-report the table, a cardinality one strategy does not pair and whose resolution the other has not yet built, a strategy whose resolution is unwritten -- and a shape the sweep resolves is never refused for want of a way to state it. -> That frame states every accepted pair set a round produces ([The final mapped-element entry names the positions its record's pairs rest on](#the-per-round-grouping-the-two-frames-hold)), so each combination above stands on the reason stated with it -- a count-only round that gives each record one element, a cardinality one strategy does not pair and whose resolution the other has not yet built, a strategy whose resolution is unwritten -- and a shape the sweep resolves is never refused for want of a way to state it.
+- [psi-c](#psi-c) refuses a candidate set on its own reason, which is the count it would report rather than the absence of a resolution. -> [psi-c](#psi-c) refuses a candidate set on its own reason, the one element its rounds give each record ([Refusals under count-only](#refusals-under-count-only)), not for want of a resolution.
+- A count-only (`psi-c`) exchange runs one key in one round, so terms stating a condition under it are refused. -> A count-only (`psi-c`) exchange refuses terms stating a condition, since how its two rounds are placed, padded, and disclosed under count-only is not specified ([Refusals under count-only](#refusals-under-count-only)).
+- PSI-C ([`linkage_terms.algorithm: psi-c`](../EXCHANGE_REFERENCE.md#linkage_termsalgorithm)) reports the size of the intersection and nothing else: no identifier, no matched pairing, no payload, no per-record result. -> -
+- It is the pre-agreement feasibility instrument -- the exchange two parties run to find out whether a linkage is worth negotiating at all -- so it runs at the point in a partnership where the least trust has been established, which is what fixes the scope of the claim it makes (see [Threat-model scope of the count-only claim](#threat-model-scope-of-the-count-only-claim) below). -> -
+- **One key, one round, cascade only.** -> -
+- A count-only exchange is exactly one [PSI base function](#psi-base-function) round over exactly one linkage key, under [`linkage_strategy: cascade`](#linkage-strategies-cascade-and-single-pass). -> -
+- There is no count-only cascade over several keys and no count-only single-pass: a multi-key count is not specified here, and terms declaring one are refused rather than narrowed to the first key. -> -
+- Why a round-consistent multi-key count is not offered is recorded in [psi-c-count-only.md](../notes/psi-c-count-only.md). -> -
+- **Refusals.** -> -
+- more than one entry in [`linkage_keys`](../EXCHANGE_REFERENCE.md#linkage-terms); -> -
+- a candidate set for the key, from any producer -- an element `transform` declaring a fan-out function or `generate_fuzzy_comparisons`, or a key declaring `swap`. -> -
+- The half a party authors in its own [data standardization](../EXCHANGE_REFERENCE.md#data-standardizing-transformations) is per-party and local, so no invitation holds it and a partner cannot derive it; that half MUST be refused at the prepare step, as [the fan-out rule's local half](#fan-out-runs-under-both-linkage-strategies) is. -> -
+- **Why a candidate set is refused rather than counted** below states the reason, which is psi-c's own rather than one inherited from the strategy. -> -
+- **The round.** -> -
+- The wire shape is the cascade round's, unchanged. -> -
+- Three frames: -> -
+- **sender -> receiver** -- the sender's setup message over the values it contributes, each encrypted once under the sender's key, as a `Raw` data structure. -> -
+- **receiver -> sender** -- the receiver's request over the values it contributes, each encrypted once under the receiver's key. -> -
+- **sender -> receiver** -- the response: the receiver's request re-encrypted under the sender's key. -> -
+- The sender does not need the setup message's internal sorting permutation, because there is no pairing to map back to rows. -> -
+- **The reveal flag is cleared, and it is not a local preference.** -> -
+- Both parties MUST construct their base-function objects with the library's reveal-intersection flag cleared, where a `psi` run sets it. -> -
+- Three properties follow, and together they are what makes the mode count-only rather than a convention: -> -
+- **The flag rides the receiver's request.** -> -
+- Of the three messages only the request holds it, as a field of its own; the setup and the response have no mode marker. -> -
+- So the mode the receiver ran under is on the wire rather than asserted, and it is the sender that reads it. -> -
+- **Mismatched parties cannot complete the round.** -> -
+- The sender enforces agreement when it processes the request: a request whose flag differs from the sender's own throws rather than producing a response, in both orientations. -> -
+- A count-only sender therefore refuses to serve a revealing receiver, and a revealing sender refuses to serve a count-only one, so a completed round implies the two flags agreed. -> -
+- The mismatch fails; it never resolves silently to either mode. -> -
+- **The identifier-revealing operations are unavailable.** -> -
+- With the flag cleared, the client operations that return the matched positions or the association table throw instead of returning. -> -
+- The receiver's own software cannot produce a pairing out of a count-only round even if it asks for one. -> -
+- The response also does not positionally name the matches: its encrypted elements are emitted in an order the library fixes from the ciphertext bytes rather than in the request's order, and the receiver cannot re-derive the correspondence, since doing so would require encrypting its own value under the sender's key. -> -
+- What that does not do is make the attribution unavailable to a receiver that chooses its input set -- see the threat-model scope below. -> -
+- **Computing the count.** -> -
+- The receiver computes the count locally from the setup and the response, with the engine's streamed match over the two, whose count is the library's cardinality operation's for the same setup and response. -> -
+- The sender computes nothing and learns nothing about the count from the round itself. -> -
+- **The match counts inside the engine.** -> -
+- The receiver's engine takes the response in pieces, in its own order, marks each setup element a decrypted element equals, and counts the marks once the whole response is fed ([The single-pass dataset ceiling: receiver memory and masking compute](#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute)). -> -
+- The response, which carries the byte-order shuffle, is fed whole and in order, and no frame changes. -> -
+- No per-piece count leaves the engine, and none would add to what the receiver holds: with its own key and the setup it can already tell which setup elements match. -> -
+- The probabilistic structures the library also offers -- a Bloom filter and a Golomb-coded set -- admit false positives, so the figure they yield is an upper bound on the cardinality rather than the cardinality. -> -
+- **Within-dataset value handling, and comparability with `psi`.** -> -
+- A count-only round applies the same rule every cascade round applies ([Key input data](#key-input-data)): a record with no value for the key is omitted from the round, and a record whose key value is duplicated within its own party's dataset is omitted too, since an ambiguous match cannot be attributed to a single record. -> -
+- Each party therefore contributes exactly the key values that occur exactly once in its own dataset. -> -
+- Applying that filter is normative, not an optimization inherited from the cascade, because the library's cardinality operation does not reproduce it. -> -
+- That operation reports the size of the multiset intersection: a value repeated on both sides contributes the smaller of the two multiplicities, where the cascade rule drops such a value from the round entirely. -> -
+- A party that passed its raw column through would therefore report a figure that can exceed the number of records that actually match -- and a count-only run reports no identifier that would contradict it. -> -
+- With the filter applied on both sides every contributed value is unique within its own dataset, so the multiset question does not arise and the psi-c count equals the size of the association table a single-key `psi` run over the same key and the same data would produce. -> -
+- That equality is what makes a count-only feasibility run comparable to the linkage it is used to justify. -> -
+- It is not comparable to a multi-key `psi` run, which matches records a single key alone misses. -> -
+- **Why a candidate set is refused rather than counted.** -> -
+- That equality is also what the refusal above protects. -> -
+- A count-only round counts matched VALUES, where a `psi` run's [record-level resolution](#record-level-resolution-canonical-order-and-tiebreak) collapses every matched value between one pair of records into one accepted pair and accepts at most one pair per record in the round. -> -
+- A record realizing several candidates therefore contributes several matched values to a count whose comparison table holds at most one pair for it, so the count over-reports the linkage the run is used to justify -- and psi-c reports no identifier that would contradict the figure, exactly as in the multiset case above. -> -
+- The refusal holds under both linkage strategies for that reason, so the cascade realizing candidate sets does not lift it ([The combinations that stay unsupported](#the-combinations-that-stay-unsupported)). -> -
+- **Count reporting and entitlement.** -> -
+- Whether it travels back is decided by the agreed terms' [`output`](../EXCHANGE_REFERENCE.md#linkage_termsoutput) entitlement, derived identically on both parties before the round runs: -> -
+- After the round the receiver sends a single **count-report** frame holding its tally to the sender over the authenticated channel. -> -
+- The reference implementations are `linkViaCountOnlyPSI` (`packages/core/src/psi/link.ts`), which runs the round and this leg, and `reportsCountToSender` (`packages/core/src/protocolSetup.ts`), the entitlement predicate both parties evaluate. -> -
+- The count-report frame's `intersectionCount` is bounded like every other partner-supplied integer: a non-negative safe integer no greater than [`MAX_RECORD_COUNT`](#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute) and no greater than the smaller of the two record counts the terms exchange carried, since an intersection cannot exceed either party's dataset. -> -
+- The bound rejects an absurd figure at decode; it does not make the number checkable, which is the trust-contingency stated above rather than a gap in the bound. -> -
+- **What each party learns, and on what basis.** -> -
+- With its flag cleared its software cannot produce a pairing, and a round that completes at all is one both parties ran with the flag cleared. -> -
+- **A party's view of what its partner receives is enforced at the wire, and bounded by the model.** -> -
+- A partner cannot run a revealing round against a count-only one: the flag mismatch refuses it. -> -
+- What that does not bound is a partner that runs the count-only round faithfully and recovers membership from its own choice of inputs, below. -> -
+- **What the rounds still disclose.** -> -
+- Each party's setup or request contains one encrypted element per value it contributed, so the frame's element count is that party's number of distinct, non-repeating values for the key. -> -
+- Set beside the raw row count the terms exchange already states ([Role resolution and work minimization](#role-resolution-and-work-minimization)), that tells the partner how well the key covers the dataset -- a smaller figure for a sparsely populated key. -> -
+- Neither number is the intersection, and neither is hidden by the count-only mode. -> -
+- It protects the sender against a receiver that contributes a genuine dataset. -> -
+- Two count-only runs whose input sets differ in one value name that value's membership by the difference of their counts. -> -
+- This is the differencing attack SECURITY_DESIGN.md already names for linkage keys, applied to the count, and psi-c's one-round shape makes it cheap to repeat. -> -
+- Both routes tamper with an input rather than merely observing one, so both sit a step beyond honest-but-curious -- the same category as the record-count manipulation SECURITY_DESIGN.md records for role assignment -- and both are accepted rather than prevented. -> -
+- Neither route is a wire deviation, and the asymmetry runs one way. -> -
+- A receiver cannot weaken the round from its own side: it cannot make the sender return a response in request order, and the flag mismatch stops it from running a revealing round. -> -
+- The only party positioned to waive the count-only property on the wire is the sender -- the party the property protects -- by returning a response whose element order the receiver can attribute. -> -
+- A deviating sender therefore reduces only its own protection, which is why the enforcement above is stated as holding without the partner's cooperation. -> -
+- First, the count-only property is a property of the algorithm, not of the partner: it says the protocol hands the receiver only a number, not that the receiver cannot arrange for that number to be an answer about one record. -> -
+- The count-only refusal is permanent, resting on psi-c's own reason. -> The count-only refusal rests on psi-c's own reason ([Refusals under count-only](#refusals-under-count-only)).
+- - -> It is recorded in the result-size field under exactly the gate [Result size and per-direction disclosure](#result-size-and-per-direction-disclosure) sets: present when both parties' agreed terms have them both receive output, omitted when only one does.
+- - -> **The matching basis lists every agreed key's fields.**
+- - -> A count-only run matches on every agreed linkage key, so its [matching basis](#the-matching-basis-against-what-the-run-contributed) is the one any record lists: every linkage field the agreed keys reference, by the same rule and in the same order, never narrowed to one key or to the keys a match was found on.
+- - -> Neither operator is told which key any match was found on, so the basis states what the count was matched on, not what matched.
+- - -> **Not yet built:** this section specifies count-only over every agreed linkage key.
+- - -> The shipped build runs an earlier construction in its place: one round over exactly one linkage key, under the library's cardinality mode (the reveal flag cleared, the response sorted by ciphertext, the receiver's match returning only a size), over the key values exactly one of a party's records has, with terms declaring more than one key refused.
+- - -> This construction replaces it when it lands, and until then the user documentation describes the shipped build.
+- - -> Why the construction changed: [psi-c-count-only.md](../notes/psi-c-count-only.md).
+- - -> PSI-C ([`linkage_terms.algorithm: psi-c`](../EXCHANGE_REFERENCE.md#linkage_termsalgorithm)) reports the size of a one-to-one linkage over the agreed keys and nothing else: no identifier, no matched pairing, no payload, no per-record result.
+- - -> It is a feasibility instrument -- the exchange two parties run to find out whether a linkage is worth negotiating at all.
+- - -> The PPRL using PSI is intended for operational use, while PSI-C is intended only for research.
+- - -> It runs at the point in a partnership where the least trust has been established, which is what fixes the scope of the claim it makes ([Threat-model scope of the count-only claim](#threat-model-scope-of-the-count-only-claim)).
+- - -> The count-only rounds
+- - -> **Every agreed key, in order, every round full-size.**
+- - -> A count-only exchange runs one [PSI base function](#psi-base-function) round for each entry of `linkage_keys`, in the agreed key order, under [`linkage_strategy: cascade`](#linkage-strategies-cascade-and-single-pass).
+- - -> No round's set is narrowed by an earlier round's matches, as a `psi` cascade round's is: neither party learns which of its own records matched, so there is nothing either could remove on the wire.
+- - -> Every round includes every record of both parties, and the cascade's removal takes place inside the receiver's computation of the count ([Computing the count](#computing-the-count)).
+- - -> **Roles.**
+- - -> Below, `n_R` is the receiver's declared record count and `n_S` the sender's, both as the terms exchange states them.
+- - -> **One element per record, in record order.**
+- - -> In every round each party's set has exactly one element for each of its records, so its element count is its declared record count, the figure the [first-round count at the start](#the-memory-ceiling-and-the-csv-intake-cap) and the count against the partner's [receive ceiling](#the-receive-ceiling) weigh for a count-only round:
+- - -> The receiver's request lists its records in its own record order, the same order in every round, so position `i` of every round's request is the receiver's record `i`.
+- - -> The sender's setup has one element for each of the sender's records.
+- - -> A record's element is its round value (below) when the record has a value for the key ([Key input data](#key-input-data)) and no other record of the same party has that value for the key.
+- - -> Otherwise the element is a dummy.
+- - -> A dummy is 32 bytes from the platform's cryptographically secure random generator, written as 64 lowercase hexadecimal characters, drawn anew for each record in each round and never reused.
+- - -> It contains no colon, so it never equals a round value, and two dummies coincide only with negligible probability.
+- - -> On the wire it cannot be told from a real element.
+- - -> **Uniqueness over the whole dataset.**
+- - -> A key value two or more of a party's records have is a dummy for every one of those records.
+- - -> The test reads the party's whole dataset for that key, never only the records still unmatched, which is where the count can differ from a `psi` run's ([Comparability with `psi`](#comparability-with-psi)).
+- - -> **Round values are separated by round.**
+- - -> A record's round value in round `k`, `k` being the key's 0-based position in the agreed key order, is the decimal `k`, a colon, and the key value: `0:` followed by the value in the first round.
+- - -> Both parties apply it to every real element before encryption.
+- - -> A party's PSI key may serve every round of the exchange, so without the prefix a value appearing under two keys would encrypt to the same element in both rounds, and the receiver, which knows which of its own records share a value across keys, could link those two rounds' slots to those records.
+- - -> **The sender's permutation.**
+- - -> Once the terms exchange has given it `n_R`, the sender draws one permutation `pi` of the positions `0` to `n_R - 1`, uniformly at random from the platform's cryptographically secure random generator.
+- - -> In every round it processes the receiver's request in the library's revealing mode, then reorders the response under `pi` before it sends any part of it: slot `s` of the response as sent is the element at position `pi(s)` of the response the library returned.
+- - -> The same `pi` serves every round of the exchange.
+- - -> It MUST NOT be sent, written to disk, or logged, and MUST be discarded when the exchange ends, whether it completes or fails; each run of an exchange draws its own.
+- - -> The library returns a revealing-mode response in request order, so slot `s` of every round answers the receiver's record `pi(s)`.
+- - -> A slot is therefore a stable pseudonym of one receiver record for the whole exchange, and only the sender, which holds `pi`, can map it back.
+- - -> **The sender's pseudonyms and the index table.**
+- - -> The sender draws a second permutation, `sigma`, of its own records `0` to `n_S - 1`, under the same rules as `pi`; `sigma(j)` is the pseudonym of its record `j`.
+- - -> The library sorts a setup by ciphertext, and reports the input index at each setup position (its sorting permutation).
+- - -> So in each round, after building the setup, the sender sends that round's **index table**: `n_S` entries, entry `p` being `sigma` of the record whose element is at position `p` of the setup as sent.
+- - -> The table is a binary frame of `n_S` little-endian `Int32` values, so `4 * n_S` bytes, and it is a permutation of `0` to `n_S - 1`.
+- - -> A matched setup position therefore names a sender pseudonym that is the same in every round, without naming a sender record.
+- - -> **The frames of one round.**
+- - -> In the agreed key order, each round is four frames:
+- - -> **sender -> receiver** -- the setup message over `n_S` elements, each encrypted once under the sender's key, as a `Raw` data structure, in parts ([A PSI set is sent in parts](#a-psi-set-is-sent-in-parts)).
+- - -> **sender -> receiver** -- the round's index table, one binary frame.
+- - -> **receiver -> sender** -- the request over `n_R` elements, each encrypted once under the receiver's key, in parts.
+- - -> **sender -> receiver** -- the response: the request re-encrypted under the sender's key and reordered under `pi`, in parts.
+- - -> Each round sends `35 * (n_S + 2 * n_R)` bytes of encrypted elements and `4 * n_S` bytes of index table, whatever the key's coverage.
+- - -> After the last round comes the count-report leg where the entitlement calls for it ([Count reporting and entitlement](#count-reporting-and-entitlement)).
+- - -> **Each frame's size is checked against the declared counts.**
+- - -> The receiver MUST refuse a setup whose element count is not `n_S`, and an index table whose length is not `n_S` or which is not a permutation of `0` to `n_S - 1`.
+- - -> The sender MUST refuse a request whose element count is not `n_R`.
+- - -> Each refusal is a protocol error raised before the round goes on ([Partner-supplied index tables are checked against local state](#partner-supplied-index-tables-are-checked-against-local-state)), and a response is held to its request's element count as every response is.
+- - -> These checks hold a conforming partner to the padded shape.
+- - -> They do not stop a party choosing its own inputs ([Threat-model scope of the count-only claim](#threat-model-scope-of-the-count-only-claim)).
+- - -> **Revealing mode, with Alcove applying the permutation.**
+- - -> Both parties MUST construct their base-function objects with the library's reveal-intersection flag set, as a `psi` run does, and MUST NOT run the library's cardinality mode, the flag cleared, for a count-only round.
+- - -> In that mode the library's server sorts each round's response by ciphertext and takes no permutation, so no order can be held across rounds, and its match returns only a size.
+- - -> The revealing match returns, for each response element it matches, that element's position in the response as received and the setup position it equals; under `pi` the position is a slot.
+- - -> Two properties the cardinality mode's flag would give are therefore provided elsewhere:
+- - -> **The flag does not tell the algorithms apart.**
+- - -> Both a `psi` and a `psi-c` round set it, so the library's own mode check does not refuse a partner running the other algorithm.
+- - -> That agreement is the agreed terms': `algorithm` is a mandatory-consistency term, compared at the terms exchange and again at the agreed-terms run boundary before any round (`resolveCountOnlyRun`, `packages/core/src/exchange.ts`), so a `psi` party and a `psi-c` party never reach a round together.
+- - -> **The receiver's engine, not the library, withholds the matches.**
+- - -> The library hands the revealing match's pairs to whatever calls it; the receiver's engine keeps them (below).
+- - -> **The receiver's engine returns only the count.**
+- - -> A count-only receiver's engine takes each round's setup, index table and response, keeps every round's matched pairs inside the engine across the exchange's rounds, and returns one figure, the count, after the last round.
+- - -> It MUST NOT return to its caller, report as progress, or log an association table, a slot, a pseudonym, a per-round or running match count, or any other per-record result; its progress reports count elements processed and nothing else.
+- - -> Its identifier-revealing operations, and any operation returning a per-round result, are refused in count-only mode.
+- - -> This holds on both backends, and whether the engine runs in process, in a worker, or across a pool of workers.
+- - -> Nothing the engine keeps is beyond what the receiver's software could derive from the frames with its own key, but keeping all of it inside the engine is what makes "the operator sees only the count" a property of the software rather than of each of its callers.
+- - -> The probabilistic structures the library also offers -- a Bloom filter and a Golomb-coded set -- admit false positives, which here would be spurious pairs in the count.
+- - -> Computing the count
+- - -> The count is the size of the one-to-one cascade's association table in the permuted space, computed by the receiver's engine:
+- - -> **The round's pairs.**
+- - -> In round `k`, for each response slot `s` whose decrypted element equals the setup element at position `p`, the engine forms the pair (`s`, `T_k[p]`), `T_k` being that round's index table.
+- - -> Each party's elements in a round are distinct, so a slot or a pseudonym occurs in at most one of the round's pairs; a round whose pairs repeat either is refused as an internal fault.
+- - -> **The replay.**
+- - -> Two sets start empty: the accepted slots and the accepted pseudonyms.
+- - -> Round by round, in the agreed key order, every pair whose slot and pseudonym are both not yet accepted is accepted, and its slot and pseudonym join the two sets.
+- - -> A round's pairs are disjoint, so their order within the round does not change the result.
+- - -> **The count** is the number of pairs accepted.
+- - -> The replay is symmetric in the two parties, so the count does not depend on which party is the receiver, and it is at most the smaller of the two record counts.
+- - -> **Comparability with `psi`.**
+- - -> Where no key value is repeated within either party's dataset, the count equals the size of the association table a one-to-one `psi` run over the same terms and the same data produces, under either linkage strategy, since both produce the same table.
+- - -> Where a value is repeated within one party's dataset for a key, the two can differ, and only through such values:
+- - -> The `psi` cascade applies its within-round uniqueness rule to the records still unmatched at that key's round ([Matching Algorithms](#psi)).
+- - -> A repeated value whose other holders an earlier key has matched is unique among the unmatched records, so it takes part in the `psi` round.
+- - -> PSI-C gives every holder of a repeated value a dummy, so that value takes no part in the key's round.
+- - -> A pair one run accepts and the other does not changes which records are still free for later keys, so the difference can propagate to later rounds and can go in either direction.
+- - -> Applying the `psi` rule exactly would mean sending every holder of a repeated value and resolving the repetition in the replay, since neither party knows on the wire which of its own records have matched.
+- - -> The receiver's software would then see a repeated value of its own as one setup position matched by several slots, and since the receiver knows which of its records share a value, those slots would be tied to those records.
+- - -> The whole-dataset rule keeps every element of a round distinct, at the cost of the difference above.
+- - -> Refusals under count-only
+- - -> a candidate set for a key, from any producer -- an element `transform` declaring a fan-out function or `generate_fuzzy_comparisons`, or a key declaring `swap`.
+- - -> The half a party authors in its own [data standardization](../EXCHANGE_REFERENCE.md#data-standardizing-transformations) is per-party and local, so no invitation holds it and a partner cannot derive it; that half MUST be refused at the prepare step, as [the fan-out rule's local half](#fan-out-runs-under-both-linkage-strategies) is;
+- - -> a linkage key with a [missing-field condition](#keys-with-a-missing-field-condition).
+- - -> **Why each is refused.**
+- - -> Each reason is psi-c's own:
+- - -> **`deduplicate`.**
+- - -> The count is the size of a one-to-one table.
+- - -> What a count means under a many-to-X cardinality is not specified here.
+- - -> **Payload.**
+- - -> A count-only exchange discloses no column, which is what its record states ([EXCHANGE_RECORD.md](EXCHANGE_RECORD.md#count-only-psi-c-records)).
+- - -> **`single-pass`.**
+- - -> Every count-only round is already full-size, so a single-pass realization would differ from the cascade only in batching: one frame holding every key's request as a block of `n_R` slots under the one `pi`, with every round's index table.
+- - -> That frame is not specified here, and whether to admit it is an open decision.
+- - -> **A candidate set.**
+- - -> The construction gives each record exactly one element, and so one slot, in each round.
+- - -> A candidate set gives a record several.
+- - -> Counting it would need every record's candidates padded to its key's declared width, so the number of a record's elements does not identify the record, and a replay that resolves a record's candidates to one pair; neither is specified here, and whether to admit candidate sets is an open decision.
+- - -> The refusal holds under both linkage strategies, so the cascade realizing candidate sets does not lift it ([The combinations that stay unsupported](#the-combinations-that-stay-unsupported)).
+- - -> **A missing-field condition.**
+- - -> Such a key runs as two rounds, each building the key for only one side's records that lack the field.
+- - -> Under count-only those rounds would need their own positions in the round order, their padding, and their disclosure stated; none of that is specified here, and whether to admit the condition is an open decision.
+- - -> Count reporting and entitlement
+- - -> Whether it travels back is decided by the agreed terms' [`output`](../EXCHANGE_REFERENCE.md#linkage_termsoutput) entitlement, derived identically on both parties before the rounds run:
+- - -> After the last round the receiver sends a single **count-report** frame holding its tally to the sender over the authenticated channel.
+- - -> The reference implementations are `linkViaCountOnlyPSI` (`packages/core/src/psi/link.ts`), which runs the rounds and this leg, and `reportsCountToSender` (`packages/core/src/protocolSetup.ts`), the entitlement predicate both parties evaluate.
+- - -> The count-report frame's `intersectionCount` is bounded like every other partner-supplied integer: a non-negative safe integer no greater than [`MAX_RECORD_COUNT`](#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute) and no greater than the smaller of the two record counts the terms exchange stated, since a one-to-one table cannot exceed either party's dataset.
+- - -> The bound rejects an absurd figure at decode; it does not make the number checkable, which is the trust-contingency stated below rather than a gap in the bound.
+- - -> What each party learns, and on what basis
+- - -> Its own software shows its operator the count and nothing finer: the receiver's engine returns only the count, and the sender computes no match at all.
+- - -> **The sender learns nothing about the receiver's records but their number.**
+- - -> It sees `n_R` encrypted elements a round, in the receiver's record order, and computes no match.
+- - -> This is enforced: no frame the receiver sends it contains more.
+- - -> **That the receiver cannot attribute a match to a record rests on the sender's own software.**
+- - -> Only the sender draws `pi` and `sigma`, so a sender running this protocol protects its own records, and the receiver cannot tell whether a sender applied them.
+- - -> A receiver cannot weaken that protection from its own side.
+- - -> **The receiver's software learns more than the count, from genuine inputs, and that is accepted.**
+- - -> Its engine keeps every round's pairs, so the receiver's software can derive, beyond the count: the number of matches on each key; the overlap between keys, how many slots matched on each combination of keys; and the pseudonymous pair table of slots against sender pseudonyms.
+- - -> And from its own records' key coverage: a slot that matched on a set of keys belongs to one of the receiver's records with a real value for every one of those keys, so where few of its records have that coverage the match narrows the slot to those records, or names one.
+- - -> None of this needs a deviation from the protocol, and none of it is shown to the operator.
+- - -> How often coverage singles out a record on real data is not measured.
+- - -> **What the rounds disclose.**
+- - -> Each party's set in every round has exactly its declared record count, which the terms exchange already states, so a frame's element count tells the partner nothing more, and in particular not how well a key covers the party's dataset.
+- - -> Without `sigma`, an index table is a uniformly random permutation.
+- - -> Neither party's frames state the count.
+- - -> It protects the sender against a receiver that contributes a genuine dataset, up to the disclosure from genuine inputs stated above.
+- - -> **A crafted pattern across the keys.**
+- - -> A receiver gives each of its records its own pattern of keys with a real value and keys with a dummy, for instance by leaving a field blank in its own input so that a conforming party sends a dummy.
+- - -> A slot can only match in rounds where its record has a real value, so with patterns chosen so that none contains another, a slot that matched on every key where its record had a real value names the record.
+- - -> About `log2(n_R)` keys or more give enough such patterns for every record, and one run then yields the membership of most matched records.
+- - -> It needs no modified software and only one run.
+- - -> It is the same mechanism as the cross-key count, so no padding or permutation removes it.
+- - -> Two count-only runs whose input sets differ in one record name that record's membership by the difference of their counts.
+- - -> This is the differencing attack SECURITY_DESIGN.md already names for linkage keys, applied to the count.
+- - -> All three tamper with an input rather than merely observing one, so all three sit a step beyond honest-but-curious -- the same category as the record-count manipulation SECURITY_DESIGN.md records for role assignment -- and all three are accepted rather than prevented.
+- - -> The crafted pattern is the cheapest by far: one run, no modified software, and up to every matched record, where a crafted set or a differencing pair yields about one record a run.
+- - -> None of the three is a wire deviation, and the asymmetry runs one way.
+- - -> A receiver cannot weaken the rounds from its own side: it cannot make the sender return a response in request order, and it never holds `pi` or `sigma`.
+- - -> The only party positioned to waive the count-only property on the wire is the sender -- the party the property protects -- by returning a response it did not reorder, or reordered under a permutation the receiver can predict.
+- - -> A deviating sender therefore reduces only its own protection, and the receiver cannot detect it.
+- - -> First, the count-only property is a property of the algorithm, not of the partner: it says the protocol hands the receiver's operator only a number, not that the receiver cannot arrange for its software to learn which records matched.
