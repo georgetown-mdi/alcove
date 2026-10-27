@@ -57,9 +57,19 @@ Choose **Continue to matching & sharing**.
 
 Screen: Step 2 of 3 - Matching & sharing
 
+**Matching method**: leave **Reveal the matched identifiers (standard)** for a list of matched records. For a count only, choose **Reveal only the count (psi-c)**, then untick every key but one in step 3 ([A list or only a count](./agree-the-terms.md#a-list-or-only-a-count)).
+
+**Who receives the matched results** ([Who receives the result](./agree-the-terms.md#who-receives-the-result)):
+
+| Option | What it does | Pick it when |
+| --- | --- | --- |
+| **You and your partner** | Both of you get the result | Usual: both of you need the matches |
+| **Only you** | Your partner gets "Results withheld by the terms" | Only you need the matches. What your partner can still learn: [What each party learns](./agree-the-terms.md#what-each-party-learns). |
+| **Only your partner** | You get "Results withheld by the terms" | Only your partner needs them |
+
 Alcove fills in each column's type and use from its name. It sends nothing by default, except a column named `id` or `identifier`, which starts as **Unique record identifier - sent to your partner**.
 
-**Your ID column.** Set your own ID column, whatever it is called, to **Unique record identifier - not sent**. Your result then starts each row with your own ID, and your partner never receives it. Alcove recognizes a column named `id` or `identifier`, or one whose name ends in `_id` once spaces and dashes count as `_` (so `Client ID` counts). A column named `id` or `identifier` starts as sent to your partner; a column the app does not recognize starts as **Ignored**. With no column set as your ID, your result holds row numbers only, counting from 0.
+**Your ID column.** Set your own ID column, whatever it is called, to **Unique record identifier - not sent**. Your result then starts each row with your own ID, and your partner never receives it. Alcove recognizes a column named `id`, `identifier`, `ClientID`, `PersonID`, or `PersonalID`, or one whose name ends in `_id` once spaces, dots, and dashes count as `_` (so `Client ID` counts). A column named `id` or `identifier` starts as sent to your partner; a column the app does not recognize starts as **Ignored**. With no column set as your ID, your result holds row numbers only, counting from 0.
 
 Change any other column's use only as you agreed ([What each of you sends](./agree-the-terms.md#what-each-of-you-sends)).
 
@@ -86,10 +96,10 @@ Choose **Continue to review & create**.
 
 ### 3. Matching keys, if you agreed other than the default
 
-In the side panel, under **Customize**, choose **Matching on**. The **Matching keys** screen opens.
+In the side panel, under **Customize**, choose **Matching keys**. The **Matching keys** screen opens.
 
 - **Built-in rules**: **Broader matching** is the default; **Highest precision** keeps only the most precise keys. Untick any key you agreed to leave out ([What you match on](./agree-the-terms.md#what-you-match-on)).
-- **Matching method**: leave **Reveal the matched identifiers (standard)** for a list of matched records. For a count only, choose **Reveal only the count (psi-c)** and untick every key but one. Keep the first key in the list whose columns both files fill for most records ([A list or only a count](./agree-the-terms.md#a-list-or-only-a-count)).
+- For a count only, untick every key but one. Keep the first key in the list whose columns both files fill for most records ([A list or only a count](./agree-the-terms.md#a-list-or-only-a-count)).
 
 Choose **Back to Review & create**.
 
@@ -104,14 +114,6 @@ Screen: Step 3 of 3 - Review & create
 | **1 hour** | The invitation expires 1 hour after you create it | Usual: you have agreed a time with your partner |
 | **6 hours**, **1 day**, **7 days**, **30 days**, **1 year** | The invitation lasts that long | You cannot agree a time within the hour |
 
-**Who receives the matched results** ([Who receives the result](./agree-the-terms.md#who-receives-the-result)):
-
-| Option | What it does | Pick it when |
-| --- | --- | --- |
-| **You and your partner** | Both of you get the result | Usual: both of you need the matches |
-| **Only you** | Your partner gets "Results withheld by the terms" | Only you need the matches. What your partner can still learn: [What each party learns](./agree-the-terms.md#what-each-party-learns). |
-| **Only your partner** | You get "Results withheld by the terms" | Only your partner needs them |
-
 **How will this exchange run?**:
 
 | Option | What it does | Pick it when |
@@ -120,7 +122,7 @@ Screen: Step 3 of 3 - Review & create
 | **Over SFTP, run by the Alcove command-line tool** | Saves an exchange file for the command line | Your side runs on the command line ([Your partner uses a different app](./index.md#your-partner-uses-a-different-app)) |
 | **Over a shared folder, run by the command-line tool** | Saves an exchange file for the command line | The same, through a shared folder |
 
-Check each line under **Check your answers before creating the invitation**, then choose **Create the invitation**.
+Check each line under **Exchange proposal**, then choose **Create the invitation**.
 
 > [!WARNING]
 > Creating the invitation seals the terms. To change any term afterwards, create a new invitation.

@@ -19,7 +19,7 @@ Review your partner's invitation, connect, and run the exchange from the console
 | --- | --- |
 | The console | Any invitation, sent as text |
 | The command line | An invitation on the WebRTC channel, made as [If your partner uses the console or the web app](./cli-invite.md#if-your-partner-uses-the-console-or-the-web-app) shows. Over their SFTP server or shared folder, invite them yourself from [Invite from the console](./console-invite.md), using an account they make for you. If you agreed the default terms, the same command line section has their command for an SFTP invitation. |
-| The web app | An invitation made with **Live, in this browser**, sent as text |
+| The web app | An invitation made with **Live, in this browser**, sent as the link or the message |
 
 A command line invitation made without an address, such as `alcove invite --identity "State agency" input.csv`, stops with "This invitation does not include a connection endpoint this build can accept, so it cannot be run here."
 
@@ -73,7 +73,7 @@ Screen: Step 3 of 3 - Confirm your columns
 Check that the screen says every key can match, such as "All 30 keys can match".
 Alcove fills in each column's type and use from its name. It sends nothing by default, except a column named `id` or `identifier`, which starts as **Unique record identifier - sent to your partner**.
 
-**Your ID column.** Set your own ID column, whatever it is called, to **Unique record identifier - not sent**. Your result then starts each row with your own ID, and your partner never receives it. Alcove recognizes a column named `id` or `identifier`, or one whose name ends in `_id` once spaces and dashes count as `_` (so `Client ID` counts). A column named `id` or `identifier` starts as sent to your partner; a column the app does not recognize starts as **Ignored**. With no column set as your ID, your result holds row numbers only, counting from 0.
+**Your ID column.** Set your own ID column, whatever it is called, to **Unique record identifier - not sent**. Your result then starts each row with your own ID, and your partner never receives it. Alcove recognizes a column named `id`, `identifier`, `ClientID`, `PersonID`, or `PersonalID`, or one whose name ends in `_id` once spaces, dots, and dashes count as `_` (so `Client ID` counts). A column named `id` or `identifier` starts as sent to your partner; a column the app does not recognize starts as **Ignored**. With no column set as your ID, your result holds row numbers only, counting from 0.
 
 Change **How it is used** only as you agreed ([What each of you sends](./agree-the-terms.md#what-each-of-you-sends)):
 

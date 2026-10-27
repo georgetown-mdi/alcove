@@ -23,11 +23,7 @@ Install Docker Engine, then pull the image:
 docker pull ghcr.io/georgetown-mdi/alcove:latest
 ```
 
-The container runs as uid 1000. If your account is not uid 1000, give the folder you run Alcove from to that uid once:
-
-```sh
-sudo chown 1000:1000 .
-```
+Docker Engine needs `--user "$(id -u):$(id -g)"` on every run, which the command form below includes: it runs the container as your own account, so it can write your folder.
 
 == Windows
 
@@ -72,13 +68,13 @@ These pages write each command as `alcove ...`. Run it from the folder that hold
 == Linux
 
 ```sh
-docker run -it --rm -v "$PWD":/work ghcr.io/georgetown-mdi/alcove:latest
+docker run -it --rm --user "$(id -u):$(id -g)" -v "$PWD":/work ghcr.io/georgetown-mdi/alcove:latest
 ```
 
 For example, `alcove exchange input.csv ./` becomes:
 
 ```sh
-docker run -it --rm -v "$PWD":/work ghcr.io/georgetown-mdi/alcove:latest exchange input.csv ./
+docker run -it --rm --user "$(id -u):$(id -g)" -v "$PWD":/work ghcr.io/georgetown-mdi/alcove:latest exchange input.csv ./
 ```
 
 == Windows
@@ -152,7 +148,7 @@ Every run writes into the folder you name as its output (`./` on these pages). E
 
 | File | What it holds | Share or keep |
 | --- | --- | --- |
-| `alcove-results-<time>.csv` | One row per matched record: your ID column, `row_id` (your partner's row number, counting from 0), then the columns your partner sends. | Keep private |
+| `alcove-results-<time>.csv` | One row per matched record: your ID column, `row_id` (your partner's row number, counting from 0), then the columns your partner sends. With no ID column, `row_id` is your own row number and `their_row_id` your partner's. | Keep private |
 | `alcove-record-<time>.json` | The exchange record: both names, the method, the columns sent and received, your record count, and the match count when the terms give both of you the result. You wrote it; your partner did not sign it. | Keep; not secret |
 | `alcove-record-<time>.keys.json` | The values that open the record's checks, for `alcove verify-receipt`. | Keep private |
 | `alcove-record-<time>.terms.json` | Both parties' agreed terms, for `alcove verify-receipt`. | Keep; not secret |
@@ -160,7 +156,7 @@ Every run writes into the folder you name as its output (`./` on these pages). E
 | `alcove.yaml` | This exchange's configuration. | Keep; not secret if credentials are `@` file references |
 | `.alcove.key` | The shared secret. It changes after every run. | Keep private |
 
-A count-only exchange writes no results file: the run prints `exchange complete: N records in common, no result file (count only)`, and the record holds the count. A party the terms give no result gets no results file: the run prints `exchange complete: no result file for you under the agreed terms`.
+A count-only exchange writes no results file: the run prints `exchange complete: N records in common, no result file (count only)`, or, where only your partner computed the count, `exchange complete: your partner reported N records in common ...`. The record holds the count. A party the terms give no result gets no results file: the run prints `exchange complete: no result file for you under the agreed terms`.
 
 > [!WARNING]
 > Keep `.alcove.key` on one machine. A stale or second copy that runs desynchronizes the secret, and both of you must start over with a new invitation.

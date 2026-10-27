@@ -45,7 +45,7 @@ Each of you sets a use for every column in your own file. The inviter does it on
 
 Alcove fills in each column's type and use from its name. It sends nothing by default, except a column named `id` or `identifier`, which starts as **Unique record identifier - sent to your partner**.
 
-**Your ID column.** Set your own ID column, whatever it is called, to **Unique record identifier - not sent**. Your result then starts each row with your own ID, and your partner never receives it. Alcove recognizes a column named `id` or `identifier`, or one whose name ends in `_id` once spaces and dashes count as `_` (so `Client ID` counts); if several qualify, only the first starts as an ID. A column named `id` or `identifier` starts as sent to your partner; a column the app does not recognize starts as **Ignored**. With no column set as your ID, your result holds row numbers only, counting from 0. On the command line, set its `metadata` entry to `role: identifier` and `is_payload: false`.
+**Your ID column.** Set your own ID column, whatever it is called, to **Unique record identifier - not sent**. Your result then starts each row with your own ID, and your partner never receives it. Alcove recognizes a column named `id`, `identifier`, `ClientID`, `PersonID`, or `PersonalID`, or one whose name ends in `_id` once spaces, dots, and dashes count as `_` (so `Client ID` counts); if several qualify, only the first starts as an ID. A column named `id` or `identifier` starts as sent to your partner; a column the app does not recognize starts as **Ignored**. With no column set as your ID, your result holds row numbers only, counting from 0. On the command line, set its `metadata` entry to `role: identifier` and `is_payload: false`.
 
 ## Who receives the result
 
@@ -62,7 +62,7 @@ Choose under **Who receives the matched results**. The party that receives no re
 
 ## A list or only a count
 
-Choose under **Matching method**, on the Matching keys screen.
+Choose under **Matching method**, at the top of **Matching & sharing**.
 
 | Option | What it does | Pick it when |
 | --- | --- | --- |
@@ -140,12 +140,12 @@ In the web app, 10,000 records a side took 4 minutes 44 seconds, with both brows
 
 | Decision | Web app | Console | Command line |
 | --- | --- | --- | --- |
-| Built-in rules | Customize > **Matching on**, then **Built-in rules** | **Change** beside **Matching on**, then **Built-in rules** | `alcove init` writes the Broader matching keys into `linkage_terms.linkage_keys`; delete keys to narrow them |
-| Leave out a less certain key | Customize > **Matching on**, then turn off the key's checkbox | **Change** beside **Matching on**, then turn off the key's checkbox | Delete the key from `linkage_terms.linkage_keys` |
+| Built-in rules | Customize > **Matching keys**, then **Built-in rules** | **Change** beside **Matching keys**, then **Built-in rules** | `alcove init` writes the Broader matching keys into `linkage_terms.linkage_keys`; delete keys to narrow them |
+| Leave out a less certain key | Customize > **Matching keys**, then turn off the key's checkbox | **Change** beside **Matching keys**, then turn off the key's checkbox | Delete the key from `linkage_terms.linkage_keys` |
 | Each column's use | **How it is used**, on **Matching & sharing** or **Confirm your columns** | **How it is used**, on **Matching & sharing** or **Confirm your columns** | `metadata`: each column's `role` and `is_payload` |
-| Who receives the result | **Review & create**: **Who receives the matched results** | **Review & create**: **Who receives the matched results** | `linkage_terms.output`: `expects_output` (you) and `share_with_partner` (your partner) |
-| A list or only a count | Customize > **Matching on**, then **Matching method** | **Change** beside **Matching on**, then **Matching method** | `linkage_terms.algorithm`: `psi` or `psi-c` |
-| Linkage strategy | Customize > **Matching on**, then **Linkage strategy** | **Change** beside **Matching on**, then **Linkage strategy** | `linkage_terms.linkage_strategy`: `cascade` or `single-pass` |
+| Who receives the result | **Matching & sharing**: **Who receives the matched results** | **Matching & sharing**: **Who receives the matched results** | `linkage_terms.output`: `expects_output` (you) and `share_with_partner` (your partner) |
+| A list or only a count | **Matching & sharing**: **Matching method** | **Matching & sharing**: **Matching method** | `linkage_terms.algorithm`: `psi` or `psi-c` |
+| Linkage strategy | Customize > **Matching keys**, then **Linkage strategy** | **Change** beside **Matching keys**, then **Linkage strategy** | `linkage_terms.linkage_strategy`: `cascade` or `single-pass` |
 | Invitation lifetime | **Review & create**: **Invitation duration** | **Review & create**: **Invitation duration** | `alcove invite --expires-in`, such as `--expires-in 2d` |
 | Wait for the other side | Fixed at 10 minutes | **Connection tuning**: **How long to wait for your partner** | `--peer-timeout`, or `connection.options.peer_timeout_ms` |
 

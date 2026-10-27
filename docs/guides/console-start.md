@@ -49,15 +49,10 @@ Open a terminal, go to your folder, and run:
 
 ```sh
 cd ~/alcove-state
-docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "${PWD}:/work" ghcr.io/georgetown-mdi/alcove:latest serve
+docker run --rm -p 127.0.0.1:3000:3000 --user "$(id -u):$(id -g)" --env JOB_SFTP_CREDENTIAL_DIR=/tmp/alcove-sftp-credentials --env JOB_DATA_ROOT=/work -v "${PWD}:/work" ghcr.io/georgetown-mdi/alcove:latest serve
 ```
 
-With Docker Desktop, that is all.
-With Docker Engine, the console runs as user 1000. If your account is not uid 1000 (`id -u` prints another number), give it the folder once, before the command:
-
-```sh
-sudo chown 1000:1000 .
-```
+`--user` runs the console as your own account, so it can write into your folder.
 
 == Podman
 

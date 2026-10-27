@@ -49,7 +49,7 @@ To choose the columns sent, set up an exchange with [Invite a partner](./cli-inv
 
 ## A partner in the browser
 
-This invites a partner who uses the web app at `https://psi.data-bridge.org/`. Alcove takes the terms from your file's columns. A column named `id` or `identifier` is sent to your partner for matched records. To keep it, rename it first so its name ends in `_id`, such as `client_id`: Alcove then uses it as your ID and does not send it. To set the terms first, use [Invite a partner](./cli-invite.md) with its WebRTC tab instead: your partner pastes that invitation under **Have an invitation? Paste it here** in the web app.
+This invites a partner who uses the web app at `https://psi.data-bridge.org/`. Alcove takes the terms from your file's columns. A column named `id` or `identifier` is sent to your partner for matched records. To keep it, rename it first so its name ends in `_id`, such as `client_id`, or to `ClientID`: Alcove then uses it as your ID and does not send it. To set the terms first, use [Invite a partner](./cli-invite.md) with its WebRTC tab instead: your partner pastes that invitation under **Have an invitation? Paste it here** in the web app.
 
 ### 1. Create the invitation and wait
 
@@ -82,7 +82,7 @@ Later runs use `alcove exchange input.csv ./` from the same folder, at a time yo
 
 | File | What it holds | Share or keep |
 | --- | --- | --- |
-| `alcove-results-<time>.csv` | Your matched records: your ID, `row_id` (your partner's row number, counting from 0), then the columns your partner sent. In `./results` for a quick exchange. | Keep private |
+| `alcove-results-<time>.csv` | Your matched records: your ID, `row_id` (your partner's row number, counting from 0), then the columns your partner sent. With no ID column, `row_id` is your own row number and `their_row_id` your partner's. In `./results` for a quick exchange. | Keep private |
 | `alcove-record-<time>.json` | The exchange record of this run. | Keep; not secret |
 | `alcove-record-<time>.keys.json` | The values that open the record's checks. | Keep private |
 | `alcove-record-<time>.terms.json` | Both parties' terms. | Keep; not secret |

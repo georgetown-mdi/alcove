@@ -32,9 +32,18 @@ Choose **Continue to matching & sharing**.
 
 Screen: Step 2 of 3 - Matching & sharing
 
+Set the two choices at the top:
+
+| Option | What it does | Pick it when |
+| --- | --- | --- |
+| **Matching method**: **Reveal the matched identifiers (standard)** | Matches records and writes a result file | Usual |
+| **Reveal only the count (psi-c)** | Reports only how many records you have in common | You agreed a count only ([A list or only a count](./agree-the-terms.md#a-list-or-only-a-count)) |
+| **Who receives the matched results**: **You and your partner** | Both of you get the result | Usual ([Who receives the result](./agree-the-terms.md#who-receives-the-result)) |
+| **Only you** or **Only your partner** | One of you gets it. The other still contributes records and sees **Results withheld by the terms** ([What each party learns](./agree-the-terms.md#what-each-party-learns)) | You agreed one side only |
+
 Alcove fills in each column's type and use from its name. It sends nothing by default, except a column named `id` or `identifier`, which starts as **Unique record identifier - sent to your partner**.
 
-**Your ID column.** Set your own ID column, whatever it is called, to **Unique record identifier - not sent**. Your result then starts each row with your own ID, and your partner never receives it. Alcove recognizes a column named `id` or `identifier`, or one whose name ends in `_id` once spaces and dashes count as `_` (so `Client ID` counts). A column named `id` or `identifier` starts as sent to your partner; a column the app does not recognize starts as **Ignored**. With no column set as your ID, your result holds row numbers only, counting from 0.
+**Your ID column.** Set your own ID column, whatever it is called, to **Unique record identifier - not sent**. Your result then starts each row with your own ID, and your partner never receives it. Alcove recognizes a column named `id`, `identifier`, `ClientID`, `PersonID`, or `PersonalID`, or one whose name ends in `_id` once spaces, dots, and dashes count as `_` (so `Client ID` counts). A column named `id` or `identifier` starts as sent to your partner; a column the app does not recognize starts as **Ignored**. With no column set as your ID, your result holds row numbers only, counting from 0.
 
 Change **How it is used** only as you agreed ([What each of you sends](./agree-the-terms.md#what-each-of-you-sends)):
 
@@ -54,16 +63,12 @@ Choose **Continue to review & create**.
 
 Screen: Step 3 of 3 - Review & create
 
-Set the two choices on this step:
-
 | Option | What it does | Pick it when |
 | --- | --- | --- |
 | **Invitation duration**: **1 hour** | Your partner must accept within 1 hour | Usual: your partner is ready to accept now |
 | **Invitation duration**: **6 hours**, **1 day**, **7 days**, **30 days** or **1 year** | Gives your partner longer to accept | Your partner accepts later |
-| **Who receives the matched results**: **You and your partner** | Both of you get the result | Usual ([Who receives the result](./agree-the-terms.md#who-receives-the-result)) |
-| **Only you** or **Only your partner** | One of you gets it. The other still contributes records and sees **Results withheld by the terms** ([What each party learns](./agree-the-terms.md#what-each-party-learns)) | You agreed one side only |
 
-If you agreed a count only, other built-in rules, or a different strategy, choose **Change** beside **Matching on** under **Exchange proposal**. That opens **Matching keys**, with **Built-in rules** (default **Broader matching**), **Linkage strategy** (default **Cascade**) and **Matching method** (default **Reveal the matched identifiers (standard)**; a count only is **Reveal only the count (psi-c)**). Choose **Back to Review & create** when done. What each one means: [Agree the terms](./agree-the-terms.md#where-each-decision-is-set).
+If you agreed a count only, other built-in rules, or a different strategy, choose **Change** beside **Matching keys** under **Exchange proposal**. That opens **Matching keys**, with **Built-in rules** (default **Broader matching**) and **Linkage strategy** (default **Cascade**). Choose **Back to Review & create** when done. What each one means: [Agree the terms](./agree-the-terms.md#where-each-decision-is-set).
 
 Under **How will this exchange run?**, choose your channel:
 

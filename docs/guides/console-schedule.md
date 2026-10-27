@@ -103,7 +103,7 @@ Run the command under **Run the exchange**, with the paths you set in step 3.
 
 == Linux
 
-Run the command under **Run the exchange**, with the paths you set in step 3.
+Run the command under **Run the exchange**, with the paths you set in step 3, and add `--user "$(id -u):$(id -g)"` after `docker run`.
 
 :::
 
@@ -114,11 +114,12 @@ You should see: a new `alcove-results-<time>.csv` in the exchange folder, and th
 Under **Schedule it (set the time you agreed with your partner)**, the panel gives two lines, both daily at 2am:
 
 - **cron (Linux/macOS), daily at 2am, running Alcove from its Docker image**
-- **Windows Task Scheduler, daily at 2am, running Alcove from its Docker image**
+- **Windows Task Scheduler (in PowerShell), daily at 2am, running Alcove from its Docker image**
 
-It offers no other cadence. For weekly, monthly or quarterly, replace the cron `0 2 * * *` or the Task Scheduler `/SC DAILY /ST 02:00` with the row for your cadence in [Cadences](./cli-schedule.md#cadences). Your partner uses the same row and time.
-Add the cron line with `crontab -e`, or run the `schtasks` line once in a terminal.
-On Linux and macOS, the cron line names `/usr/bin/docker`. A scheduled job does not use your shell's PATH, so check where Docker is with `command -v docker` and correct the line if it differs.
+It offers no other cadence. For weekly, monthly or quarterly, replace the cron `0 2 * * *` with the row for your cadence in [Cadences](./cli-schedule.md#cadences). Your partner uses the same row and time.
+In the Task Scheduler command, for weekly on Mondays replace `-Daily` with `-Weekly -DaysOfWeek Monday`. It has no monthly option: for monthly or quarterly, write a `schtasks` line instead, as [Schedule it](./cli-schedule.md#1-write-the-schedule-line) shows.
+Add the cron line with `crontab -e`, or run the Task Scheduler command once in PowerShell.
+On Linux and macOS, the cron line names `/usr/bin/docker`. A scheduled job does not use your shell's PATH, so check where Docker is with `command -v docker` and correct the line if it differs. On Linux, add `--user "$(id -u):$(id -g)"` after `docker run` in the cron line, as in step 4.
 
 The configuration the console writes sets no inactivity limit on the secret, so a missed run does not end the exchange.
 

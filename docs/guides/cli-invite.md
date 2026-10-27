@@ -88,7 +88,7 @@ Make each edit you agreed. What each one means: [Agree the terms](./agree-the-te
 
 A column with `is_payload: false`, or not listed, is not sent.
 
-**Your ID column.** Set your own ID column, whatever it is called, so it is not sent: its entry reads `role: identifier` and `is_payload: false`. Your result then starts each row with your own ID, and your partner never receives it. Alcove recognizes an ID column when it is named `id` or `identifier`, or its name ends in `_id` once spaces and dashes count as `_` (so `Client ID` counts). `id` and `identifier` start with `is_payload: true`, which sends them; change it to `false`. Any other name is listed commented out at the end of `metadata` with `is_payload: true`. Do not just remove the `#` marks from its listed entry: that entry sends it. Write its entry as below in place of the listed one, with your column's name. With no ID column, your result holds row numbers only, counting from 0.
+**Your ID column.** Set your own ID column, whatever it is called, so it is not sent: its entry reads `role: identifier` and `is_payload: false`. Your result then starts each row with your own ID, and your partner never receives it. Alcove recognizes an ID column when it is named `id`, `identifier`, `ClientID`, `PersonID`, or `PersonalID`, or its name ends in `_id` once spaces, dots, and dashes count as `_` (so `Client ID` counts). `id` and `identifier` start with `is_payload: true`, which sends them; change it to `false`. A name Alcove does not recognize is listed commented out at the end of `metadata` with `is_payload: true`. Do not just remove the `#` marks from its listed entry: that entry sends it. Write its entry as below in place of the listed one, with your column's name. With no ID column, your result holds row numbers only, counting from 0.
 
 ```yaml
   - name: Client_Number
@@ -97,7 +97,7 @@ A column with `is_payload: false`, or not listed, is not sent.
     is_payload: false
 ```
 
-**Columns you ask your partner for.** Optional. Under `linkage_terms`, add the columns your partner agreed to send, and your partner sees them as a request when accepting. Without it, the first exchange records whichever columns your partner sends, and later runs refuse a different list. For example:
+**Columns you ask your partner for.** Optional. On WebRTC, the command line cannot send requested columns for now, so if your partner accepts on the command line, request none. Under `linkage_terms`, add the columns your partner agreed to send, and your partner sees them as a request when accepting; if `linkage_terms` already has a `payload:` line, add `receive:` under it. Without the request, the first exchange records whichever columns your partner sends, and later runs refuse a different list. For example:
 
 ```yaml
   payload:
@@ -105,7 +105,7 @@ A column with `is_payload: false`, or not listed, is not sent.
       - name: Case_Manager_Phone_Number
 ```
 
-**Keys** ([What you match on](./agree-the-terms.md#what-you-match-on)). `linkage_terms.linkage_keys` holds the Broader matching keys your file supports. To leave out the three less certain keys, delete the entries named `LN + FN + DOB`, `swap(LN, FN) + DOB` and `split(LN) + FN + DOB`, each with every line under it. The comment above `linkage_rule_set` that begins "To run the highest-precision rules only" names the further keys to delete.
+**Keys** ([What you match on](./agree-the-terms.md#what-you-match-on)). `linkage_terms.linkage_keys` holds the Broader matching keys your file supports. To leave out the three less certain keys, delete the entries named `LN + FN + DOB`, `swap(LN, FN) + DOB` and `split(LN) + FN + DOB`, each with every line under it. The comment above `linkage_keys` that begins "To run the highest-precision rules only" names the further keys to delete.
 
 **Who receives the result** ([Who receives the result](./agree-the-terms.md#who-receives-the-result)). Set `linkage_terms.output`:
 
@@ -126,7 +126,7 @@ A column with `is_payload: false`, or not listed, is not sent.
 == Linux
 
 ```sh
-docker run --rm -v "$PWD":/work ghcr.io/georgetown-mdi/alcove:latest invite --expires-in 2d input.csv > invitation.txt
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work ghcr.io/georgetown-mdi/alcove:latest invite --expires-in 2d input.csv > invitation.txt
 ```
 
 == Windows
@@ -200,7 +200,7 @@ You should see: `exchange complete: 10 records matched, result written to` the r
 
 - **Your partner never arrives:** after 1 hour (10 minutes on WebRTC) the run exits 69 and says your partner did not arrive. The key file is unchanged; run again.
 - **The server refuses your password or key:** after 3 retries the run exits 69 with `All configured authentication methods failed`. Fix the credential; running again unchanged does not help.
-- **The run is interrupted:** it prints `Retry with the same key file; if authentication fails on retry, ask your partner for a new invitation.` Do that.
+- **The run is interrupted:** it may print `Retry with the same key file; if authentication fails on retry, ask your partner for a new invitation.` Either way, run again with the same key file.
 - **Any other failure** prints the error and the next step, and exits with a code from [Exit codes](./cli-schedule.md#exit-codes).
 
 ## Practice, then go live
@@ -234,14 +234,14 @@ Send the invitation text with [Accept with the web app](./web-accept.md) or [Acc
 
 ### 1. Invite a console partner with the server's address on the command
 
-This one command prints the invitation, waits for your partner to accept, and runs the exchange. It takes its terms from your file's columns, not from `alcove.yaml`: Broader matching, both of you receive the result, a list of matched records, and each column's use as Alcove infers it from its name. A column named `id` or `identifier` is sent to your partner for matched records. To keep it, rename it first so its name ends in `_id`, such as `client_id`: Alcove then uses it as your ID and does not send it. Run it in a new folder holding only `input.csv` and `passwd`: it stops if `alcove.yaml` or `.alcove.key` is there.
+This one command prints the invitation, waits for your partner to accept, and runs the exchange. It takes its terms from your file's columns, not from `alcove.yaml`: Broader matching, both of you receive the result, a list of matched records, and each column's use as Alcove infers it from its name. A column named `id` or `identifier` is sent to your partner for matched records. To keep it, rename it first so its name ends in `_id`, such as `client_id`, or to `ClientID`: Alcove then uses it as your ID and does not send it. Run it in a new folder holding only `input.csv` and `passwd`: it stops if `alcove.yaml` or `.alcove.key` is there.
 
 ::: tabs platform
 
 == Linux
 
 ```sh
-docker run --rm -v "$PWD":/work ghcr.io/georgetown-mdi/alcove:latest invite --identity "Northside Health Plan" --expires-in 2h --accept-timeout 2h --server-password @passwd --server-host-key-fingerprint SHA256:... sftp://alcove@sftp.example.org/exchanges/plan-coc input.csv ./ > invitation.txt
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work ghcr.io/georgetown-mdi/alcove:latest invite --identity "Northside Health Plan" --expires-in 2h --accept-timeout 2h --server-password @passwd --server-host-key-fingerprint SHA256:... sftp://alcove@sftp.example.org/exchanges/plan-coc input.csv ./ > invitation.txt
 ```
 
 == Windows

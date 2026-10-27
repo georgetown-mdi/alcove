@@ -17,7 +17,7 @@ Run the exchange on a cadence from cron or the Windows Task Scheduler, and act o
 - **The scheduling account** must own the folder and the key file, and must find `docker`: give its full path, or put it on that account's `PATH`.
 - **The shared secret does not expire between runs**, however long the gap, unless `authentication.token_max_age_days` is set in `alcove.yaml`. If you set it, make it longer than two intervals.
 - **Each period, put the new `input.csv` in the folder** before the scheduled time, under the same column names. A run with none exits 66.
-- **On SFTP or a shared folder, each of you names your side.** Under `connection.options` in `alcove.yaml`, add `peer_id:` with a name for your side, different from your partner's, and set `timestamp_in_filename: true`. If `options` already lists `timestamp_in_filename: false`, change that line: the same key twice stops the run. `peer_id` without `timestamp_in_filename: true` stops the run with exit 64. With both set, a file a killed run left behind stops the next run with the file named.
+- **On SFTP or a shared folder, each of you names your side.** Under `connection` in `alcove.yaml`, add an `options:` block if there is none, and under it add `peer_id:` with a name for your side, different from your partner's, and set `timestamp_in_filename: true`. If `options` already lists `timestamp_in_filename: false`, change that line: the same key twice stops the run. `peer_id` without `timestamp_in_filename: true` stops the run with exit 64. With both set, a file a killed run left behind stops the next run with the file named.
 - **If the machine cannot be on at that hour**, run `alcove exchange input.csv ./` by hand at the agreed time each period instead.
 
 ## Cadences
@@ -45,7 +45,7 @@ Add this to the scheduling account's crontab with `crontab -e`. Use the path to 
 
 ```text
 MAILTO=alcove-owner@example.org
-0 2 1 1,4,7,10 * /usr/bin/docker run --rm -v /srv/alcove/plan-coc:/work ghcr.io/georgetown-mdi/alcove:latest exchange input.csv ./ --log-file exchange.log || echo "alcove exchange failed with exit code $?; see /srv/alcove/plan-coc/exchange.log"
+0 2 1 1,4,7,10 * /usr/bin/docker run --rm --user "$(id -u):$(id -g)" -v /srv/alcove/plan-coc:/work ghcr.io/georgetown-mdi/alcove:latest exchange input.csv ./ --log-file exchange.log || echo "alcove exchange failed with exit code $?; see /srv/alcove/plan-coc/exchange.log"
 ```
 
 cron mails what the line prints to `MAILTO`, where the machine can send mail. On failure that is the error, its next step and the exit code. Where it cannot send mail, put a command that alerts you in place of the `echo`.
@@ -124,7 +124,7 @@ Alcove does not stop a second run of the same exchange from starting. Two runs a
 - **On Linux, skip a start while a run is going** by putting `flock` in front of the command. A skipped start exits 75:
 
 ```text
-0 2 1 1,4,7,10 * flock -n -E 75 /srv/alcove/plan-coc/.run.lock /usr/bin/docker run --rm -v /srv/alcove/plan-coc:/work ghcr.io/georgetown-mdi/alcove:latest exchange input.csv ./ --log-file exchange.log || echo "alcove exchange failed with exit code $?; see /srv/alcove/plan-coc/exchange.log"
+0 2 1 1,4,7,10 * flock -n -E 75 /srv/alcove/plan-coc/.run.lock /usr/bin/docker run --rm --user "$(id -u):$(id -g)" -v /srv/alcove/plan-coc:/work ghcr.io/georgetown-mdi/alcove:latest exchange input.csv ./ --log-file exchange.log || echo "alcove exchange failed with exit code $?; see /srv/alcove/plan-coc/exchange.log"
 ```
 
 - **On Windows**, a task made with `schtasks /Create` does not start while its last run is still going.

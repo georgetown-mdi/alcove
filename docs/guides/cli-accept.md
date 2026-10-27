@@ -71,11 +71,11 @@ The `inviting party` name is your partner's own word; Alcove has not verified it
 You should see: `wrote config to ./alcove.yaml` and `wrote key file to ./.alcove.key`.
 
 > [!NOTE]
-> On a WebRTC invitation, the terms open with `This acceptance runs the exchange itself`, and the question reads `Accept this invitation and run the exchange now, through <server>?`. Answering `y` runs the exchange at once, so accept at the agreed time, while your partner runs. Check `columns you will send` first: on WebRTC a column named `id` or `identifier` is sent, and accepting writes no `metadata` block to change it. Before you accept, rename your ID column in `input.csv` so its name ends in `_id`, such as `client_id`: Alcove then keeps it as your ID and does not send it. With no `metadata` block, the column entries in step 3 apply only on SFTP or a shared folder.
+> On a WebRTC invitation, the terms open with `This acceptance runs the exchange itself`, and the question reads `Accept this invitation and run the exchange now, through <server>?`. Answering `y` runs the exchange at once, so accept at the agreed time, while your partner runs. Check `columns you will send` first: on WebRTC a column named `id` or `identifier` is sent, and accepting writes no `metadata` block to change it. Before you accept, rename your ID column in `input.csv` so its name ends in `_id`, such as `client_id`, or to `ClientID`: Alcove then keeps it as your ID and does not send it. With no `metadata` block, the column entries in step 3 apply only on SFTP or a shared folder.
 
 ### 3. Set your ID column, and the columns your partner asked for
 
-**Your ID column.** On SFTP or a shared folder, set your own ID column, whatever it is called, so it is not sent: its entry reads `role: identifier` and `is_payload: false`. Your result then starts each row with your own ID, and your partner never receives it. Alcove recognizes an ID column when it is named `id` or `identifier`, or its name ends in `_id` once spaces and dashes count as `_` (so `Client ID` counts). `id` and `identifier` start with `is_payload: true`, which sends them; change it to `false`. Accepting writes no entry for any other column: add your ID column's entry at the end of the `metadata` block, as below, with your column's name. With no ID column, your result holds row numbers only, counting from 0. On WebRTC, rename the column as the note under step 2 says.
+**Your ID column.** On SFTP or a shared folder, set your own ID column, whatever it is called, so it is not sent: its entry reads `role: identifier` and `is_payload: false`. Your result then starts each row with your own ID, and your partner never receives it. Alcove recognizes an ID column when it is named `id`, `identifier`, `ClientID`, `PersonID`, or `PersonalID`, or its name ends in `_id` once spaces, dots, and dashes count as `_` (so `Client ID` counts). `id` and `identifier` start with `is_payload: true`, which sends them; change it to `false`. Accepting writes no entry for a column Alcove does not recognize: add your ID column's entry at the end of the `metadata` block, as below, with your column's name. With no ID column, your result holds row numbers only, counting from 0. On WebRTC, rename the column as the note under step 2 says.
 
 ```yaml
   - name: Client_Number
@@ -84,7 +84,7 @@ You should see: `wrote config to ./alcove.yaml` and `wrote key file to ./.alcove
     is_payload: false
 ```
 
-**Columns your partner asked for.** On SFTP or a shared folder, for each column under `columns the inviting party requests from you` that you agreed to send, add an entry at the end of the `metadata` block in `alcove.yaml`:
+**Columns your partner asked for.** On WebRTC, the command line cannot send them for now. On SFTP or a shared folder, for each column under `columns the inviting party requests from you` that you agreed to send, add an entry at the end of the `metadata` block in `alcove.yaml`:
 
 ```yaml
   - name: Case_Manager_Phone_Number
@@ -139,6 +139,8 @@ Nothing to fill in: accepting wrote the connection.
 
 ### 5. Both of you: run the first exchange
 
+On WebRTC, accepting with your input file in step 2 already ran the first exchange: skip this step.
+
 At the agreed time, while your partner runs the same command:
 
 ```sh
@@ -151,7 +153,7 @@ You should see: `exchange complete: 10 records matched, result written to` the r
 
 - **Your partner never arrives:** after 1 hour (10 minutes on WebRTC) the run exits 69 and says your partner did not arrive. The key file is unchanged; run again.
 - **The server refuses your password or key:** after 3 retries the run exits 69 with `All configured authentication methods failed`. Fix the credential; running again unchanged does not help.
-- **The run is interrupted:** it prints `Retry with the same key file; if authentication fails on retry, ask your partner for a new invitation.` Do that.
+- **The run is interrupted:** it may print `Retry with the same key file; if authentication fails on retry, ask your partner for a new invitation.` Either way, run again with the same key file.
 - **Any other failure** prints the error and the next step, and exits with a code from [Exit codes](./cli-schedule.md#exit-codes).
 
 More detail: [Everything the terms display can show](../CLI.md#what-the-display-shows-in-order), [Every connection setting by channel](../EXCHANGE_REFERENCE.md#connection-blocks-by-channel).
