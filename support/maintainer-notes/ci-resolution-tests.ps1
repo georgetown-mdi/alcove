@@ -5,7 +5,9 @@
     Setup-AlcoveFileDrop.Tests.ps1, Start-Alcove.Tests.ps1,
     AcceptSheet.Tests.ps1, and DockerLines.Tests.ps1; -Suite
     ConstrainedLanguage runs ConstrainedLanguage.Tests.ps1, alone, because it
-    sets a machine-wide policy no other suite may run under.
+    sets a machine-wide policy no other suite may run under; -Suite
+    ScheduleLines runs ScheduleLines.Tests.ps1, alone, because it changes the
+    culture every process started meanwhile reads.
     Maintainer-facing: an operator following the setup page never touches it.
 
 .DESCRIPTION
@@ -45,11 +47,14 @@
 
 .EXAMPLE
     powershell -NoProfile -ExecutionPolicy Bypass -File .\ci-resolution-tests.ps1 -Suite ConstrainedLanguage
+
+.EXAMPLE
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\ci-resolution-tests.ps1 -Suite ScheduleLines
 #>
 
 [CmdletBinding()]
 param(
-    [ValidateSet('Resolution', 'ConstrainedLanguage')]
+    [ValidateSet('Resolution', 'ConstrainedLanguage', 'ScheduleLines')]
     [string] $Suite = 'Resolution'
 )
 
@@ -194,6 +199,7 @@ $failedJob = $false
 $suiteFiles = @{
     Resolution          = @('Setup-AlcoveFileDrop.Tests.ps1', 'Start-Alcove.Tests.ps1', 'AcceptSheet.Tests.ps1', 'DockerLines.Tests.ps1')
     ConstrainedLanguage = @('ConstrainedLanguage.Tests.ps1')
+    ScheduleLines       = @('ScheduleLines.Tests.ps1')
 }
 
 try {

@@ -345,6 +345,28 @@ the typed path passed as a bind mount (`--volume Y:\drop:/rendezvous`, and
 `--volume \\localhost\<share>\drop:/rendezvous`) and no network-share volume
 created (`volume_create=false`).
 
+**The web app's Task Scheduler lines are driven in CI under two cultures.**
+`ScheduleLines.Tests.ps1`, run alone by the workflow's `schedule` job, reads
+the lines from `schedule-lines.txt`, which a web unit test keeps equal to the
+generator. It replaces the folder placeholder with a folder whose name holds a
+space and a single quote, and pastes each line into the shell the panel names
+for it -- Command Prompt for the daily and weekly `schtasks` lines, PowerShell
+for the every-few-days line -- once under en-US and once under en-GB. It
+asserts:
+
+- the task registered, read back with `Get-ScheduledTask`: its time, its
+  interval or weekday, the first window's start date where the line states
+  one, and a next run a whole number of intervals from that date;
+- the task run, against a docker stand-in in the folder, handing docker each
+  intended argument whole: a `;`, `|` or `tab` delimiter, an identity holding
+  a space, `&`, `'` or `$`, and the folder's mount;
+- that under en-GB `schtasks` reads `/SD 03/04/2026` as 3 April, the reason
+  the every-few-days line is not a `schtasks` line.
+
+What it leaves undriven: a `schtasks` line pasted into PowerShell, which the
+panel does not offer, and a line as long as a full configuration gives, which
+`schtasks` may refuse past a `/TR` length limit (unmeasured).
+
 **What the GitHub-hosted Windows runner hosts, measured 27 October 2026 (run
 40505959607).** A probe job, since removed, asked each question below and
 reported one annotation per answer; the run's check-run annotations are the
