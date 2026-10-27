@@ -265,8 +265,8 @@ describe("the count-only fan-out gate at the Generate boundary", () => {
       "A count-only exchange matches one value per record, but the Split on " +
         "step in the Last name cleaning from the last_name column splits a " +
         "value into parts. Remove " +
-        'that step, or on the Matching on tab set Matching method to "Reveal ' +
-        'the matched identifiers (standard)".',
+        'that step, or set Matching method to "Reveal the matched ' +
+        'identifiers (standard)" on Matching & sharing.',
     );
   });
 

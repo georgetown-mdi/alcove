@@ -677,6 +677,115 @@ describe("inviter screen", () => {
     expect(document.querySelector('section[aria-label="Problems"]')).toBeNull();
   });
 
+  test("count-only is chosen first on Matching & sharing and restated at review", async () => {
+    app.render(createElement(InviterScreen));
+
+    await expect.element(page.getByLabelText("Your name")).toBeInTheDocument();
+    await userEvent.fill(page.getByLabelText("Your name"), "Dana Okafor");
+    const fileInput = document.querySelector('input[type="file"]');
+    await userEvent.upload(
+      page.elementLocator(fileInput as HTMLElement),
+      new File(
+        ["client_id,first_name,last_name,dob\n1,Ann,Lee,01/02/1990\n"],
+        "clients.csv",
+        { type: "text/csv" },
+      ),
+    );
+    await expect.element(page.getByText("clients.csv")).toBeInTheDocument();
+    await page
+      .getByRole("button", { name: "Continue to matching & sharing" })
+      .click();
+    await expect
+      .element(page.getByRole("heading", { level: 1 }))
+      .toMatchTextContent("Matching & sharing");
+
+    // The section opens the step, ahead of the column grid it constrains.
+    const produces = page.getByRole("heading", {
+      level: 2,
+      name: "What the exchange produces",
+    });
+    await expect.element(produces).toBeInTheDocument();
+    const grid = document.querySelector("table") as Element;
+    expect(
+      (produces.element() as Element).compareDocumentPosition(grid) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    await expect
+      .element(
+        page.getByRole("radio", {
+          name: "Reveal the matched identifiers (standard)",
+        }),
+      )
+      .toBeChecked();
+    await expect
+      .element(page.getByLabelText("Who receives the matched results"))
+      .toHaveValue("both");
+
+    await page
+      .getByLabelText(usedLabel("client_id"))
+      .selectOptions("identifier-sent");
+    await page
+      .getByRole("radio", { name: "Reveal only the count (psi-c)" })
+      .click();
+    const ledger = document.querySelector(
+      'aside[aria-label="This exchange"]',
+    ) as Element;
+    await expect
+      .poll(() => ledger.textContent)
+      .toContain("How many records you have in common");
+
+    // The step's live region names the identifier the choice stopped sending
+    // and the problem it raised above the heading.
+    const politeText = () =>
+      Array.from(
+        document.querySelectorAll('p[aria-live="polite"]'),
+        (region) => region.textContent,
+      ).join("\n");
+    await expect
+      .poll(politeText)
+      .toContain(
+        `${isolatedColumnName("client_id")} is no longer sent to your partner. ` +
+          "A problem above must be resolved before you can create.",
+      );
+    await expect
+      .element(page.getByLabelText(usedLabel("client_id")))
+      .toHaveValue("identifier");
+    expect(
+      document.querySelector('section[aria-label="Problems"]'),
+    ).not.toBeNull();
+    // Switching back clears the notice rather than leaving it stale.
+    await page
+      .getByRole("radio", {
+        name: "Reveal the matched identifiers (standard)",
+      })
+      .click();
+    await expect.poll(politeText).not.toContain("no longer sent");
+    await page
+      .getByRole("radio", { name: "Reveal only the count (psi-c)" })
+      .click();
+
+    await page
+      .getByRole("button", { name: "Continue to review & create" })
+      .click();
+    await expect
+      .element(page.getByRole("heading", { level: 1 }))
+      .toMatchTextContent("Review & create");
+    const methodRow = Array.from(document.querySelectorAll("tr")).find(
+      (row) => row.querySelector("th")?.textContent === "Matching method",
+    );
+    expect(methodRow?.querySelector("td")?.textContent).toBe(
+      "Reveal only the count (psi-c)",
+    );
+
+    // Its Change link returns to the section, where the choice stands.
+    await page.getByRole("button", { name: "Change matching method" }).click();
+    await expect
+      .element(
+        page.getByRole("radio", { name: "Reveal only the count (psi-c)" }),
+      )
+      .toBeChecked();
+  });
+
   test("review restates the proposal, gates on problems, and create seals", async () => {
     app.render(createElement(InviterScreen));
 
@@ -703,12 +812,23 @@ describe("inviter screen", () => {
     await page
       .getByLabelText(usedLabel("program_code"))
       .selectOptions("payload");
+    // An incoherent direction (payload to a partner receiving no results),
+    // chosen on this step, shows up in the work column's Problems block.
+    await page
+      .getByLabelText("Who receives the matched results")
+      .selectOptions("inviter");
+    await expect
+      .poll(() => document.querySelector('section[aria-label="Problems"]'))
+      .not.toBeNull();
     await page
       .getByRole("button", { name: "Continue to review & create" })
       .click();
     await expect
       .element(page.getByRole("heading", { level: 1 }))
       .toMatchTextContent("Review & create");
+    expect(
+      page.getByLabelText("Who receives the matched results").query(),
+    ).toBeNull();
 
     await expect
       .element(page.getByText("clients.csv - 2 rows"))
@@ -730,26 +850,26 @@ describe("inviter screen", () => {
       )
       .toBeInTheDocument();
 
-    // An incoherent direction (payload to a partner receiving no results)
-    // shows up in the work column's Problems block and refuses to arm the
-    // create button.
-    await page
-      .getByLabelText("Who receives the matched results")
-      .selectOptions("inviter");
+    // The direction problem refuses to arm the create button, and the
+    // answers table's Change link returns to the step that holds the choice.
     await expect
       .element(page.getByText("Resolve the problem above to continue."))
       .toBeInTheDocument();
-    expect(
-      document.querySelector('section[aria-label="Problems"]'),
-    ).not.toBeNull();
     const createButton = page.getByRole("button", {
       name: "Create the invitation",
     });
     await expect.element(createButton).toBeDisabled();
 
+    await page.getByRole("button", { name: "Change results go to" }).click();
+    await expect
+      .element(page.getByRole("heading", { level: 1 }))
+      .toMatchTextContent("Matching & sharing");
     await page
       .getByLabelText("Who receives the matched results")
       .selectOptions("both");
+    await page
+      .getByRole("button", { name: "Continue to review & create" })
+      .click();
     await expect
       .element(page.getByText("Ready to create."))
       .toBeInTheDocument();
@@ -1544,7 +1664,7 @@ describe("inviter screen", () => {
     // The ledger's Customize rows are plain buttons once the file is read;
     // the open tab's row has aria-current="true" (spine steps use "step"),
     // and each row's accessible name includes its quiet fact.
-    await page.getByRole("button", { name: /Matching on/ }).click();
+    await page.getByRole("button", { name: /Matching keys/ }).click();
     await expect
       .element(page.getByRole("heading", { level: 1 }))
       .toMatchTextContent("Matching keys");
@@ -1552,7 +1672,7 @@ describe("inviter screen", () => {
       document.querySelector(
         `aside[aria-label="This exchange"] button[aria-current="true"]`,
       )?.textContent,
-    ).toContain("Matching on");
+    ).toContain("Matching keys");
 
     // Reordering the guided list reorders the ledger's matched-on keys.
     const orderBefore = ledgerRow("Matched on")?.querySelector("dd")
@@ -1572,13 +1692,11 @@ describe("inviter screen", () => {
       .element(page.getByText("Single-pass widens what one of you can observe"))
       .toBeInTheDocument();
 
-    // The matching-method and deduplication controls are both live: the exchange
-    // conducts both algorithms, and it applies a deduplicating term, which an
-    // invitation states to the accepting party as the inviting party's own side
-    // of the cardinality.
-    await expect
-      .element(page.getByLabelText("Matching method"))
-      .not.toBeDisabled();
+    // The deduplication control is live: the exchange applies a deduplicating
+    // term, which an invitation states to the accepting party as the inviting
+    // party's own side of the cardinality. The matching method is chosen on
+    // Matching & sharing, not here.
+    expect(page.getByText("Matching method").query()).toBeNull();
     await expect
       .element(
         page.getByLabelText(
@@ -1674,7 +1792,7 @@ describe("inviter screen", () => {
       .element(page.getByRole("heading", { level: 1 }))
       .toMatchTextContent("Review & create");
 
-    await page.getByRole("button", { name: /Matching on/ }).click();
+    await page.getByRole("button", { name: /Matching keys/ }).click();
     await page.getByRole("radio", { name: "Highest precision" }).click();
     await expect
       .element(page.getByRole("radio", { name: "Highest precision" }))
@@ -3218,9 +3336,9 @@ describe("exchange screen at a narrow viewport", () => {
     expect((cleaningRow.element() as HTMLElement).textContent).toMatch(
       /Cleaning.*field/,
     );
-    const keysRow = page.getByRole("button", { name: /Matching on/ });
+    const keysRow = page.getByRole("button", { name: /Matching keys/ });
     expect((keysRow.element() as HTMLElement).textContent).toMatch(
-      /Matching on.*key/,
+      /Matching keys.*key/,
     );
 
     // Opening the disclosure reaches each tab: the matching-keys editor opens

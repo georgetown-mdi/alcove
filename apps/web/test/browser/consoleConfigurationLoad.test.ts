@@ -1077,11 +1077,24 @@ describe("the review step of an opened configuration's run", () => {
   test("a changed term is warned of until it is undone", async () => {
     await goToReview();
     const direction = page.getByLabelText("Who receives the matched results");
+    const continueToReview = page.getByRole("button", {
+      name: "Continue to review & create",
+    });
+    // The console's Matching & sharing opens with the same choices of what the
+    // exchange produces as the web app's.
+    await page.getByRole("button", { name: "Change results go to" }).click();
+    await expect.element(direction).toBeInTheDocument();
+    await expect
+      .element(
+        page.getByRole("radio", { name: "Reveal only the count (psi-c)" }),
+      )
+      .toBeInTheDocument();
     const opened = (direction.element() as HTMLSelectElement).value;
     await userEvent.selectOptions(
       direction,
       opened === "inviter" ? "partner" : "inviter",
     );
+    await continueToReview.click();
     await expect
       .element(page.getByText(/dst=\/work \S+ update/).first())
       .toBeInTheDocument();
@@ -1092,7 +1105,12 @@ describe("the review step of an opened configuration's run", () => {
       .element(page.getByRole("button", { name: START_OPENED_EXCHANGE_LABEL }))
       .toBeEnabled();
 
+    await page.getByRole("button", { name: "Change results go to" }).click();
     await userEvent.selectOptions(direction, opened);
+    await continueToReview.click();
+    await expect
+      .element(page.getByRole("button", { name: START_OPENED_EXCHANGE_LABEL }))
+      .toBeInTheDocument();
     await expect
       .element(page.getByText(/alcove update/).first())
       .not.toBeInTheDocument();
@@ -1107,7 +1125,7 @@ describe("the review step of an opened configuration's run", () => {
       name: USE_BUILT_IN_RULES_LABEL,
     });
 
-    await page.getByRole("button", { name: /Matching on/ }).click();
+    await page.getByRole("button", { name: /Matching keys/ }).click();
     await expect.element(openedNote).toBeInTheDocument();
     expect(useBuiltInRules.query()).toBeNull();
 
@@ -1121,7 +1139,7 @@ describe("the review step of an opened configuration's run", () => {
       .element(page.getByText("Reset to the default settings."))
       .toBeInTheDocument();
 
-    await page.getByRole("button", { name: /Matching on/ }).click();
+    await page.getByRole("button", { name: /Matching keys/ }).click();
     await expect.element(openedNote).toBeInTheDocument();
     expect(
       page.getByRole("radio", { name: precisionFloorLabel(95) }).query(),

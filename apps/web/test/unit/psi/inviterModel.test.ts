@@ -45,9 +45,11 @@ import {
   editorWithTransport,
   enabledKeys,
   identifierProblem,
+  identifiersStoppedSending,
   keySatisfiabilityFor,
   resetToRecommended,
   sealEditor,
+  stoppedSendingNotice,
   unsealEditor,
 } from "@psi/inviterEditor";
 
@@ -57,6 +59,8 @@ import {
   inviterCleaningAttention,
   inviterCreateStatus,
   inviterRailFacts,
+  methodChangeAnnouncement,
+  problemsAboveAnnouncement,
   reviewValidation,
   spineProblems,
 } from "@psi/inviterModel";
@@ -285,6 +289,7 @@ describe("spine derivation from the read file", () => {
     const facts = inviterRailFacts(editor);
     expect(facts[0].label).toBe("Cleaning");
     expect(facts[0].fact).toMatch(/^\d+ fields?$/);
+    expect(facts[1].label).toBe("Matching keys");
     expect(facts[1].fact).toBe(`${enabledKeys(editor.draft).length} keys`);
     expect(facts[2].fact).toBeUndefined();
   });
@@ -342,6 +347,32 @@ describe("ledger tracks step-2 edits", () => {
     expect(
       ledgerValue(editorFromCsv("Dana", csv), "You will receive").value,
     ).toBe("Matched rows + your partner's shared columns");
+  });
+
+  test("the receive row follows the result direction", () => {
+    const seeded = editorFromCsv("Dana", csv);
+    const partnerOnly = editorWithOutputDirection(seeded, "partner");
+    const matched = ledgerValue(partnerOnly, "You will receive");
+    expect(matched.value).toBeUndefined();
+    expect(matched.muted).toBe(
+      "Nothing - only your partner receives the matched results",
+    );
+    const counted = ledgerValue(
+      editorWithAlgorithm(partnerOnly, "psi-c"),
+      "You will receive",
+    );
+    expect(counted.value).toBeUndefined();
+    expect(counted.muted).toBe(
+      "Nothing - only your partner receives the count",
+    );
+    expect(
+      ledgerValue(
+        editorWithOutputDirection(seeded, "inviter"),
+        "You will receive",
+      ).value,
+    ).toBe("Matched rows + your partner's shared columns");
+    for (const label of ["You will receive", "Results go to"])
+      expect(ledgerValue(partnerOnly, label).reference).toBe("Step 2");
   });
 
   test("a name edit relabels the identity without touching the keys", () => {
@@ -508,13 +539,38 @@ describe("review and create", () => {
     expect(byLabel.get("Cleaning")?.value).toMatch(
       /^\d+ fields?, filled in from your file$/,
     );
-    expect(byLabel.get("Matching on")?.value).toMatch(
+    expect(byLabel.get("Matching keys")?.value).toMatch(
       /^\d+ keys?, tried in order$/,
     );
+    expect(byLabel.get("Matching keys")?.changeTarget).toBe("keys");
     expect(byLabel.get("Invitation duration")?.value).toBe("1 day");
     expect(byLabel.get("Invitation duration")?.setAbove).toBe(true);
+    expect(byLabel.get("Matching method")?.value).toBe(
+      "Reveal the matched identifiers (standard)",
+    );
+    expect(byLabel.get("Matching method")?.changeTarget).toBe("columns");
     expect(byLabel.get("Results go to")?.value).toBe("You and your partner");
+    expect(byLabel.get("Results go to")?.changeTarget).toBe("columns");
     expect(byLabel.get("How it runs")?.value).toBe("Live, in this browser");
+  });
+
+  test("check-your-answers restates a count-only method", () => {
+    const editor = editorWithAlgorithm(editorFromCsv("Dana", csv), "psi-c");
+    const row = answersRows(editor, csv, "browser").find(
+      (entry) => entry.label === "Matching method",
+    );
+    expect(row?.value).toBe("Reveal only the count (psi-c)");
+  });
+
+  test("a result-direction problem points at Matching & sharing", () => {
+    const editor = editorWithOutputDirection(
+      editorWithDeduplicate(editorFromCsv("Dana", csv), true),
+      "partner",
+    );
+    const problem = spineProblems(editor).find((entry) =>
+      entry.message.includes("Who receives the matched results"),
+    );
+    expect(problem?.target).toBe("columns");
   });
 
   test("a run that makes no invitation restates no duration", () => {
@@ -1530,6 +1586,46 @@ describe("customize tabs", () => {
     ).editor;
     expect(reviewValidation(remarked).errors.payload).toMatch(
       /^A count-only exchange sends no data columns/,
+    );
+  });
+
+  test("a method change announces the identifier it stopped sending and the problems it raised", () => {
+    const withId: AcquiredCsv = {
+      ...csv,
+      columns: ["id", "first_name", "last_name", "dob"],
+      rawRows: [{ id: "1", first_name: "Ann", last_name: "Lee", dob: "x" }],
+    };
+    const seeded = editorFromCsv("Dana", withId);
+    const countOnly = editorWithAlgorithm(seeded, "psi-c");
+    expect(spineProblems(seeded)).toHaveLength(0);
+    expect(spineProblems(countOnly)).toHaveLength(1);
+
+    expect(methodChangeAnnouncement(seeded, countOnly, 0)).toBe(
+      `${isolatedColumnName("id")} is no longer sent to your partner. ` +
+        "A problem above must be resolved before you can create.",
+    );
+    // Problems the draft does not produce are counted in the total.
+    expect(methodChangeAnnouncement(seeded, countOnly, 1)).toContain(
+      "2 problems above must be resolved before you can create.",
+    );
+    // Switching back stops sending nothing and raises nothing, so the region
+    // clears.
+    expect(
+      methodChangeAnnouncement(
+        countOnly,
+        editorWithAlgorithm(countOnly, "psi"),
+        0,
+      ),
+    ).toBe("");
+  });
+
+  test("the method-change notices name several columns and problems", () => {
+    expect(problemsAboveAnnouncement(3)).toBe(
+      "3 problems above must be resolved before you can create.",
+    );
+    expect(identifiersStoppedSending([], [])).toEqual([]);
+    expect(stoppedSendingNotice(["a", "b"])).toBe(
+      `${isolatedColumnName("a")}, ${isolatedColumnName("b")} are no longer sent to your partner.`,
     );
   });
 

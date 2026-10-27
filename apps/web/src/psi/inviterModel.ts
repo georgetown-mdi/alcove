@@ -29,9 +29,16 @@ import {
   enabledKeys,
   highestPrecisionHeldWithoutRules,
   identifierProblem,
+  identifiersStoppedSending,
+  stoppedSendingNotice,
 } from "./inviterEditor";
 
-import { RESULTS_DIRECTION_LABELS, lifetimeNoun } from "./formatting";
+import {
+  MATCHING_METHOD_LABEL,
+  MATCHING_METHOD_LABELS,
+  RESULTS_DIRECTION_LABELS,
+  lifetimeNoun,
+} from "./formatting";
 
 import type {
   AdvancedField,
@@ -164,7 +171,7 @@ export function inviterRailFacts(
       target: "cleaning",
     },
     {
-      label: "Matching on",
+      label: "Matching keys",
       fact: editor === undefined ? undefined : keysFact(editor.draft),
       target: "keys",
     },
@@ -185,7 +192,7 @@ export type SpineTarget =
  * to where the fix lives. */
 const FIELD_TARGETS: Record<AdvancedField, SpineTarget> = {
   identity: "file",
-  output: "review",
+  output: "columns",
   payload: "columns",
   keys: "keys",
   standardization: "cleaning",
@@ -300,6 +307,36 @@ export function spineProblems(
     problems.push({ message, target: FIELD_TARGETS[field as AdvancedField] });
   }
   return problems;
+}
+
+/** The sentence a live region speaks for the problems the work column lists
+ * above the step heading, read apart from that list. */
+export function problemsAboveAnnouncement(count: number): string {
+  return `${count === 1 ? "A problem" : `${count} problems`} above must be resolved before you can create.`;
+}
+
+/**
+ * What step 2's polite region says when the matching method changes: the
+ * identifier columns the change stopped sending, then, when it added problems,
+ * how many the work column now lists. Those problems render above the step
+ * heading and name a fix on another tab, out of view of the choice that raised
+ * them. `otherProblemCount` counts the listed problems `spineProblems` does not
+ * produce.
+ */
+export function methodChangeAnnouncement(
+  before: InviterEditor,
+  after: InviterEditor,
+  otherProblemCount: number,
+): string {
+  const stopped = stoppedSendingNotice(
+    identifiersStoppedSending(before.draft.metadata, after.draft.metadata),
+  );
+  const afterCount = spineProblems(after).length;
+  const raised =
+    afterCount > spineProblems(before).length
+      ? problemsAboveAnnouncement(afterCount + otherProblemCount)
+      : "";
+  return [stopped, raised].filter((part) => part !== "").join(" ");
 }
 
 /** What holds the create on the review step, in the reading order of the screen
@@ -430,7 +467,7 @@ export function inviterCreateStatus(
   if (gates.problemCount > 0)
     return heldCreate(
       `Resolve ${gates.problemCount === 1 ? "the problem" : `the ${gates.problemCount} problems`} above to continue.`,
-      `${gates.problemCount === 1 ? "A problem" : `${gates.problemCount} problems`} above must be resolved before you can create.`,
+      problemsAboveAnnouncement(gates.problemCount),
     );
   return {
     ready: true,
@@ -475,6 +512,16 @@ export function answersRows(
       changeTarget: "file",
     },
     {
+      label: MATCHING_METHOD_LABEL,
+      value: MATCHING_METHOD_LABELS[editor.draft.algorithm],
+      changeTarget: "columns",
+    },
+    {
+      label: "Results go to",
+      value: RESULTS_DIRECTION_LABELS[editor.draft.outputDirection],
+      changeTarget: "columns",
+    },
+    {
       label: "Columns shared",
       value: sent.length > 0 ? sent.map(isolatedColumnName).join(", ") : "None",
       mono: sent.length > 0,
@@ -486,7 +533,7 @@ export function answersRows(
       changeTarget: "cleaning",
     },
     {
-      label: "Matching on",
+      label: "Matching keys",
       value: `${keysFact(editor.draft)}, tried in order`,
       changeTarget: "keys",
     },
@@ -510,11 +557,6 @@ export function answersRows(
           },
         ]
       : []),
-    {
-      label: "Results go to",
-      value: RESULTS_DIRECTION_LABELS[editor.draft.outputDirection],
-      setAbove: true,
-    },
     {
       label: "How it runs",
       value: TRANSPORT_ANSWER_LABELS[transport],

@@ -65,8 +65,9 @@ const HEADING_INFO: Record<string, string | undefined> = {
     "The columns from your file your partner received, and only for " +
     "records you both hold. Nothing was sent for your other records.",
   "You will receive":
-    "What you get when the exchange finishes: which of your records your " +
-    "partner also holds, plus any columns your partner marked as sent.",
+    "What you get when the exchange finishes, if anything: which of your " +
+    "records your partner also holds and any columns your partner marked " +
+    "as sent, or only how many records you have in common.",
   "You received":
     "What arrived when the exchange finished: the records you both hold, " +
     "plus any columns your partner marked as sent.",
@@ -78,7 +79,8 @@ const HEADING_INFO: Record<string, string | undefined> = {
     "When the invitation stops working. If it expires before the exchange " +
     "runs, a new invitation is needed.",
   "Results go to":
-    "Who receives the list of matched records when the exchange finishes.",
+    "Who receives the result when the exchange finishes: the matched " +
+    "records, or only the count.",
   "Results went to":
     "Who received the list of matched records when the exchange finished.",
   Agreement:

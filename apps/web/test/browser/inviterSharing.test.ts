@@ -80,6 +80,10 @@ function mountMetadata(metadata: Metadata, announcement: string) {
   const noop = () => undefined;
   app.render(
     createElement(MatchingSharingSection, {
+      algorithm: "psi",
+      onAlgorithm: noop,
+      direction: "both",
+      onDirection: noop,
       metadata,
       onColumnType: noop,
       onColumnDisclosure: noop,

@@ -10,6 +10,8 @@ import {
   sanitizeForDisplay,
 } from "@alcove/core";
 
+import { MATCHING_METHOD_LABEL, MATCHING_METHOD_LABELS } from "../formatting";
+
 import { linkageFieldLabel } from "./linkageFieldLabel";
 
 import type {
@@ -82,9 +84,11 @@ export function withKeyCondition(
 }
 
 /** The way out every count-only message offers besides fixing the setting it
- * names: the other Matching method, quoted as the control labels it. */
+ * names: the other matching method, quoted as the control labels it, and the
+ * step that holds the control. */
 export const REVEAL_IDENTIFIERS_INSTEAD =
-  'set Matching method to "Reveal the matched identifiers (standard)".';
+  `set ${MATCHING_METHOD_LABEL} to "${MATCHING_METHOD_LABELS.psi}" on ` +
+  "Matching & sharing.";
 
 const OPEN_THE_KEY = "Open that key";
 

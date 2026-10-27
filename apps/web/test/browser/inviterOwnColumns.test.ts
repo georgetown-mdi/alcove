@@ -56,6 +56,10 @@ async function mount(
   const chosen: Array<OwnColumnsChoice> = [];
   app.render(
     createElement(MatchingSharingSection, {
+      algorithm: "psi",
+      onAlgorithm: () => undefined,
+      direction: "both",
+      onDirection: () => undefined,
       metadata: columns,
       onColumnType: () => undefined,
       onColumnDisclosure: () => undefined,

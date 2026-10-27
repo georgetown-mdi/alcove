@@ -17,25 +17,29 @@ import { disclosedColumnNames } from "@alcove/core";
 
 import styles from "@styles/app.module.css";
 
+import { ExchangeProducesField } from "./ExchangeProducesField";
 import { MatchingKeyField } from "./MatchingKeyField";
 import { OwnColumnsChoiceField } from "./OwnColumnsChoiceField";
 
 import type {
+  Algorithm,
   MatchingKeyUnavailableReason,
   Metadata,
   SemanticType,
 } from "@alcove/core";
 import type { DisclosureChoice } from "@psi/metadataEditing";
+import type { OutputDirection } from "@psi/authoring/advancedInvite";
 import type { OwnColumnsChoice } from "@psi/ownColumnsModel";
 
 const SEMANTIC_TYPES = Object.keys(SEMANTIC_TYPE_LABELS) as Array<SemanticType>;
 
 /**
- * Step 2 of the inviter spine -- the one mandatory review: what each column is
- * and what it is used for, which together decide exactly what the partner can
- * ever see. Presentational over the host's metadata; edits go up through the
- * two callbacks and the single-identifier rule's demotions come back down as
- * `announcement`.
+ * Step 2 of the inviter spine -- the one mandatory review: what the exchange
+ * produces and for whom ({@link ExchangeProducesField}), then what each column
+ * is and what it is used for, which together decide exactly what the partner
+ * can ever see. Presentational over the host's draft; edits go up through the
+ * callbacks, and the single-identifier rule's demotions and what a method
+ * change stopped sending or raised come back down as `announcement`.
  *
  * The grid's row headers and its two control labels, the chip list, the summary
  * its live region speaks, and the demotion `announcement` its caller composes all
@@ -59,6 +63,10 @@ const SEMANTIC_TYPES = Object.keys(SEMANTIC_TYPE_LABELS) as Array<SemanticType>;
  * operator's own result file contains.
  */
 export function MatchingSharingSection({
+  algorithm,
+  onAlgorithm,
+  direction,
+  onDirection,
   metadata,
   onColumnType,
   onColumnDisclosure,
@@ -69,6 +77,10 @@ export function MatchingSharingSection({
   announcement,
   onContinue,
 }: {
+  algorithm: Algorithm;
+  onAlgorithm: (algorithm: Algorithm) => void;
+  direction: OutputDirection;
+  onDirection: (direction: OutputDirection) => void;
   metadata: Metadata;
   onColumnType: (columnName: string, type: SemanticType) => void;
   onColumnDisclosure: (columnName: string, choice: DisclosureChoice) => void;
@@ -87,8 +99,8 @@ export function MatchingSharingSection({
     withheld: MatchingKeyUnavailableReason | undefined;
   };
   onMatchingKey: (chosen: boolean) => void;
-  /** The demotion notice from the last edit, announced politely and rendered
-   * under the table; empty when the last edit displaced nothing. */
+  /** The notice from the last column or method edit, announced politely and
+   * rendered under the table; empty when that edit changed nothing else. */
   announcement: string;
   onContinue: () => void;
 }) {
@@ -125,6 +137,13 @@ export function MatchingSharingSection({
     <>
       <p className={styles.eyebrow}>Step 2 of 3</p>
       <h1 tabIndex={-1}>Matching &amp; sharing</h1>
+      <ExchangeProducesField
+        algorithm={algorithm}
+        onAlgorithm={onAlgorithm}
+        direction={direction}
+        onDirection={onDirection}
+      />
+      <h2>How each column is used</h2>
       <p>Confirm what each column is and what it is used for.</p>
       <div className={styles.tableScroll}>
         <table className={styles.dataTable}>

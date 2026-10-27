@@ -24,11 +24,7 @@ import { useOnlineStatus } from "@components/useOnlineStatus";
 import { AllowedRelaysField } from "@components/AllowedRelaysField";
 import { CREATED_INVITATION_ALLOWED_RELAYS_SCOPE } from "@psi/transport/relayRestriction";
 
-import {
-  LIFETIME_CHOICES,
-  RESULTS_DIRECTION_LABELS,
-  expiryLabel,
-} from "@psi/formatting";
+import { LIFETIME_CHOICES, expiryLabel } from "@psi/formatting";
 import { answersRows, inviterCreateStatus } from "@psi/inviterModel";
 import {
   availableTransports,
@@ -99,25 +95,15 @@ import type {
 import type { ConnectionTuningDraft } from "@console/connectionTuningModel";
 import type { ExchangeFilesDraft } from "@console/exchangeFilesModel";
 import type { JobRendezvousConfig } from "@psi/jobClient/workInputClient";
-import type { OutputDirection } from "@psi/authoring/advancedInvite";
 import type { ReceiptsDraft } from "@psi/receiptsModel";
 import type { RunDiagnosticsDraft } from "@psi/runDiagnosticsModel";
 import type { SftpConnectionFormValues } from "@console/sftpConnectionForm";
 import type { SftpConnectionProjection } from "@jobContract/sftpConnection";
 import type { SignalingServerProjection } from "@jobContract/signalingServer";
 
-const DIRECTION_CHOICES: ReadonlyArray<{
-  value: OutputDirection;
-  label: string;
-}> = [
-  { value: "both", label: RESULTS_DIRECTION_LABELS.both },
-  { value: "inviter", label: RESULTS_DIRECTION_LABELS.inviter },
-  { value: "partner", label: RESULTS_DIRECTION_LABELS.partner },
-];
-
 /**
- * Step 3 of the inviter spine: the review-time decisions (lifetime, result
- * direction, transport), the check-your-answers restatement of the whole
+ * Step 3 of the inviter spine: the review-time decisions (lifetime and
+ * transport), the check-your-answers restatement of the whole
  * proposal, and the create action -- the point of no return whose copy
  * says so. The transport chooser offers the live-browser exchange and the two
  * command-line transports (SFTP and a shared directory); its copy comes from
@@ -159,7 +145,6 @@ export function ReviewCreateSection({
   inPlaceSigningIdentity,
   onReceipts,
   onLifetime,
-  onDirection,
   onTransport,
   onAuthorConnection,
   onClearConnection,
@@ -250,7 +235,6 @@ export function ReviewCreateSection({
   inPlaceSigningIdentity?: InPlaceSigningIdentityShown;
   onReceipts: (draft: ReceiptsDraft) => void;
   onLifetime: (seconds: number) => void;
-  onDirection: (direction: OutputDirection) => void;
   onTransport: (transport: Transport) => void;
   /** An in-app authored connection landed (its credential-free projection). */
   onAuthorConnection: (connection: SftpConnectionProjection) => void;
@@ -488,19 +472,6 @@ export function ReviewCreateSection({
           </p>
         </>
       )}
-      <NativeSelect
-        label="Who receives the matched results"
-        description="The party who receives no results still contributes records to the match."
-        value={editor.draft.outputDirection}
-        data={DIRECTION_CHOICES.map((choice) => ({
-          value: choice.value,
-          label: choice.label,
-        }))}
-        onChange={(event) =>
-          onDirection(event.currentTarget.value as OutputDirection)
-        }
-        mt="md"
-      />
       <fieldset className={styles.fieldset}>
         <legend>How will this exchange run?</legend>
         <div

@@ -86,7 +86,6 @@ function render(
       receipts: RECEIPTS_DEFAULT,
       onReceipts: () => undefined,
       onLifetime: () => undefined,
-      onDirection: () => undefined,
       onTransport: () => undefined,
       onAuthorConnection: () => undefined,
       onClearConnection: () => undefined,

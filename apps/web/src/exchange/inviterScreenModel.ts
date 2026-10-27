@@ -390,7 +390,9 @@ export type InviterScreenAction =
   | { type: "editor-announced"; announcement: string }
   /** A column's type or disclosure changed, with the demotion it forced and
    * what it did to the key list (`columnEditKeysAnnouncement` in
-   * `@psi/inviterEditor`). */
+   * `@psi/inviterEditor`); or the matching method changed, with the columns
+   * it stopped sending and the problems it raised
+   * (`methodChangeAnnouncement` in `@psi/inviterModel`). */
   | {
       type: "column-edited";
       editor: InviterEditor;
