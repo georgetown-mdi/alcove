@@ -1,0 +1,12 @@
+- - -> **The Task Scheduler line.**
+- - -> A PowerShell `Register-ScheduledTask` command whose action runs the command under `cmd.exe`.
+- - -> A daily or weekly line starts at `anchor`'s UTC time on the day it is registered (`[datetime]::Today` plus the hour and minute), since its start date does not change which days it runs.
+- - -> Any other interval starts at `anchor`'s UTC date and time, built from their parts by `[datetime]::new`, since the interval counts from that date.
+- - -> It is not a `schtasks` command, since `schtasks` reads a `/SD` start date in the machine's own date format and turns each single quote in `/TR` into a double quote, which breaks the task for a folder whose name holds one.
+- Task Scheduler states it directly (`/SC DAILY /MO <intervalDays>`, with `anchor`'s UTC date as the start date, written month/day/year). -> Task Scheduler states it directly (`New-ScheduledTaskTrigger -Daily -DaysInterval <intervalDays>`).
+- - -> The start time is stored with the machine's UTC offset at registration, so the task keeps that UTC time when a daylight saving change moves the machine's offset.
+- - -> **Limit: `%` and `!`
+- - -> in the Task Scheduler line.**
+- - -> The line's action runs the command under `cmd.exe`, which expands `%NAME%` even inside the double quotes the panel wraps a token in, and `!NAME!`
+- - -> where delayed expansion is on.
+- - -> The panel neither escapes nor refuses either character, so a token the operator chose, such as the identity or the input file's name, that holds `%NAME%` for a variable defined on the scheduling machine reaches Alcove with that variable's value in its place.

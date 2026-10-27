@@ -345,6 +345,39 @@ the typed path passed as a bind mount (`--volume Y:\drop:/rendezvous`, and
 `--volume \\localhost\<share>\drop:/rendezvous`) and no network-share volume
 created (`volume_create=false`).
 
+**The web app's Task Scheduler lines are driven in CI under two cultures.**
+`ScheduleLines.Tests.ps1`, run alone by the workflow's `schedule` job, reads
+the lines from `schedule-lines.txt`, which a web unit test keeps equal to the
+generator. It replaces the folder placeholder with a folder whose name holds a
+space and a single quote, and pastes each line into PowerShell, the shell the
+panel names, once under en-US and once under en-GB. It asserts:
+
+- the task registered, read back with `Get-ScheduledTask`: its time, its
+  interval or weekday, the first window's start date where the line states
+  one, and a next run a whole number of intervals from that date;
+- the task run, against a docker stand-in in the folder, handing docker each
+  intended argument whole: a `;`, `|` or `tab` delimiter, an identity holding
+  a space, `&`, `'` or `$`, and the folder's mount;
+- the two reasons no line is a `schtasks` line: under en-GB `schtasks` reads
+  `/SD 03/04/2026` as 3 April, and it stores a single quote in `/TR` as a
+  double quote;
+- under the Eastern time zone, which has daylight saving, the daily and
+  every-few-days tasks store a start boundary holding the machine's UTC
+  offset at registration, and moving the machine from Eastern to Central time
+  (the one-hour shift a daylight saving change makes) leaves each task's next
+  run at the same UTC instant (reported as a `Measured_schedule_zone`
+  notice);
+- in a PowerShell put in ConstrainedLanguage, each line registers its
+  intended trigger class and interval, and the weekly line its weekday as the
+  Task Scheduler `DaysOfWeek` bitmask (Sunday 1, Monday 2, Tuesday 4, ...).
+
+**What `schtasks` stored for a folder holding a single quote, measured 27
+October 2026 (job 122258644280).** Daily and weekly `schtasks` lines for
+Command Prompt, run against that folder, each stored the action
+`/c cd /d "C:\alcove sched it"s 170dd646" && docker ...`: the folder's quote
+became a double quote, the `cd` failed, and the task ended with result 1
+without running docker.
+
 **What the GitHub-hosted Windows runner hosts, measured 27 October 2026 (run
 40505959607).** A probe job, since removed, asked each question below and
 reported one annotation per answer; the run's check-run annotations are the

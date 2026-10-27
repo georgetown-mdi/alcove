@@ -149,7 +149,7 @@ describe("RecurringHandoff panel", () => {
 
     // Both scheduler snippets, and the line for an installed Alcove.
     expect(text()).toContain("0 2 * * * /usr/bin/docker run");
-    expect(text()).toContain("schtasks /Create");
+    expect(text()).toContain("Register-ScheduledTask");
     expect(text()).toContain(
       "cd /path/to/your/exchange-folder && /path/to/alcove",
     );
@@ -170,10 +170,10 @@ describe("RecurringHandoff panel", () => {
       .toBeInTheDocument();
 
     const text = () => app.container.textContent;
-    // The cron line honors POSIX single quotes; the Windows /TR example escapes
-    // the cmd-honored double quotes so schtasks preserves them.
+    // The cron line honors POSIX single quotes; the Windows line's cmd-honored
+    // double quotes are doubled inside its PowerShell string.
     expect(text()).toContain("'--identity=Agency A'");
-    expect(text()).toContain('\\"--identity=Agency A\\"');
+    expect(text()).toContain('""--identity=Agency A""');
     // The shared folder is mounted at its own path, and named to mount by hand
     // on Windows.
     expect(text()).toContain(
@@ -201,7 +201,7 @@ describe("RecurringHandoff panel", () => {
     // The copy-the-key step and both scheduler snippets.
     expect(text()).toContain(".alcove.key");
     expect(text()).toContain("0 2 * * *");
-    expect(text()).toContain("schtasks /Create");
+    expect(text()).toContain("Register-ScheduledTask");
     // An unsigned run is told nothing about copying a signing identity.
     expect(text()).not.toContain("Copy your signing identity");
   });
@@ -280,7 +280,7 @@ describe("RecurringHandoff panel", () => {
     expect(text()).toMatch(
       /0 2 \* \* \* \/usr\/bin\/docker run .* exchange clients\.csv matches\.csv/,
     );
-    expect(text()).toContain("schtasks /Create");
+    expect(text()).toContain("Register-ScheduledTask");
     expect(text()).not.toContain("input.csv");
   });
 
@@ -317,7 +317,7 @@ describe("RecurringHandoff panel", () => {
       "The Docker commands are not shown because /srv/a,b contains a comma",
     );
     expect(text()).not.toContain("docker run --rm");
-    expect(text()).not.toContain("schtasks /Create");
+    expect(text()).not.toContain("Register-ScheduledTask");
     expect(text()).toContain("'--identity=Agency A' input.csv ./");
     expect(text()).toContain(
       "cd /path/to/your/exchange-folder && /path/to/alcove",
@@ -350,7 +350,7 @@ describe("RecurringHandoff panel", () => {
           "new path in the configuration.",
       );
       expect(text()).not.toContain("docker run --rm");
-      expect(text()).not.toContain("schtasks /Create");
+      expect(text()).not.toContain("Register-ScheduledTask");
       expect(text()).not.toContain("/path/to/alcove");
       expect(text()).not.toContain("input.csv ./");
       expect(text()).not.toContain("Schedule it");

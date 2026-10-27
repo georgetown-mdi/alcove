@@ -1283,14 +1283,26 @@ The command-line export's cron and Task Scheduler lines state the record's
   tells the operator to convert the hour on a machine not set to UTC.
 - **`intervalDays` of 1 or 7.** A daily line, or a weekly line on `anchor`'s
   UTC weekday, in both cron and Task Scheduler.
+- **The Task Scheduler line.** A PowerShell `Register-ScheduledTask` command
+  whose action runs the command under `cmd.exe`. A daily or weekly line
+  starts at `anchor`'s UTC time on the day it is registered
+  (`[datetime]::Today` plus the hour and minute), since its start date does
+  not change which days it runs. Any other interval starts at `anchor`'s UTC
+  date and time, built from their parts by `[datetime]::new`, since the
+  interval counts from that date. The start time is stored with the machine's
+  UTC offset at registration, so the task keeps that UTC time when a daylight
+  saving change moves the machine's offset. It is not a `schtasks` command, since
+  `schtasks` reads a `/SD` start date in the machine's own date format and
+  turns each single quote in `/TR` into a double quote, which breaks the task
+  for a folder whose name holds one.
 - **Any other interval.** Task Scheduler states it directly
-  (`/SC DAILY /MO <intervalDays>`, with `anchor`'s UTC date as the start date,
-  written month/day/year). cron cannot, so its line runs daily behind a shell
-  test that lets the command through only when the whole days since `anchor`'s
-  UTC date are a multiple of `intervalDays`. The days are counted from twelve
-  hours before the time of day, so a run moved by less than twelve hours -- an
-  hour converted to the machine's time zone, or a daylight saving change --
-  counts on its own window's day.
+  (`New-ScheduledTaskTrigger -Daily -DaysInterval <intervalDays>`). cron
+  cannot, so its line runs daily behind a shell test that lets the command
+  through only when the whole days since `anchor`'s UTC date are a multiple
+  of `intervalDays`. The days are counted from twelve hours before the time
+  of day, so a run moved by less than twelve hours -- an hour converted to the
+  machine's time zone, or a daylight saving change -- counts on its own
+  window's day.
 - **The window.** The command waits for the partner as long as
   `windowSeconds`, as `--peer-timeout` in the largest unit that states it
   exactly.

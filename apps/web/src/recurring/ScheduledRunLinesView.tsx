@@ -36,8 +36,8 @@ export function ScheduledRunLinesView({
       {lines.dockerTaskSchedulerLine !== undefined && (
         <>
           <p className={styles.small}>
-            Windows Task Scheduler, {lines.schedule}, running Alcove from its
-            Docker image:
+            Windows Task Scheduler (in PowerShell), {lines.schedule}, running
+            Alcove from its Docker image:
           </p>
           <CopyableCode
             code={lines.dockerTaskSchedulerLine}

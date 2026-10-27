@@ -109,7 +109,8 @@ function installedCronLine(
  * The Task Scheduler registration running the image over the exchange folder.
  * It mounts the folder alone, since a Windows path cannot be mounted at the
  * same path inside the container; the panel names each bind path to mount by
- * hand. Undefined when a bind path cannot be mounted.
+ * hand. The mount naming the folder is quoted, so a folder path with a space
+ * stays one argument. Undefined when a bind path cannot be mounted.
  */
 export function dockerTaskSchedulerLine(
   source: ScheduledRunSource,
@@ -123,7 +124,12 @@ export function dockerTaskSchedulerLine(
   );
   return argv === undefined
     ? undefined
-    : taskSchedulerLine(windowsJoinCommand(argv), schedule);
+    : taskSchedulerLine(
+        windowsJoinCommand(argv, (token) =>
+          token.includes(WINDOWS_EXCHANGE_FOLDER_PLACEHOLDER),
+        ),
+        schedule,
+      );
 }
 
 /**

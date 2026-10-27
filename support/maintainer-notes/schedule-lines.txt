@@ -1,0 +1,67 @@
+shell: PowerShell
+trigger: interval=1 time=02:00 weekday=- start=-
+Register-ScheduledTask -TaskName 'alcove exchange' -Trigger (New-ScheduledTaskTrigger -Daily -At ([datetime]::Today.AddHours(2))) -Action (New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c cd /d ""C:\path\to\your\exchange-folder"" && docker run --rm --mount ""type=bind,src=C:\path\to\your\exchange-folder,dst=/work"" ghcr.io/georgetown-mdi/alcove:1.2.3 exchange input.csv ./")
+  [run]
+  [--rm]
+  [--mount]
+  [type=bind,src=C:\path\to\your\exchange-folder,dst=/work]
+  [ghcr.io/georgetown-mdi/alcove:1.2.3]
+  [exchange]
+  [input.csv]
+  [./]
+
+shell: PowerShell
+trigger: interval=1 time=14:30 weekday=- start=-
+Register-ScheduledTask -TaskName 'alcove exchange' -Trigger (New-ScheduledTaskTrigger -Daily -At ([datetime]::Today.AddHours(14).AddMinutes(30))) -Action (New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c cd /d ""C:\path\to\your\exchange-folder"" && docker run --rm --mount ""type=bind,src=C:\path\to\your\exchange-folder,dst=/work"" ghcr.io/georgetown-mdi/alcove:1.2.3 exchange --csv-delimiter=; ""--identity=Agency A"" input.csv ./")
+  [run]
+  [--rm]
+  [--mount]
+  [type=bind,src=C:\path\to\your\exchange-folder,dst=/work]
+  [ghcr.io/georgetown-mdi/alcove:1.2.3]
+  [exchange]
+  [--csv-delimiter=;]
+  [--identity=Agency A]
+  [input.csv]
+  [./]
+
+shell: PowerShell
+trigger: interval=7 time=14:30 weekday=Tuesday start=-
+Register-ScheduledTask -TaskName 'alcove exchange' -Trigger (New-ScheduledTaskTrigger -Weekly -DaysOfWeek Tuesday -At ([datetime]::Today.AddHours(14).AddMinutes(30))) -Action (New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c cd /d ""C:\path\to\your\exchange-folder"" && docker run --rm --mount ""type=bind,src=C:\path\to\your\exchange-folder,dst=/work"" ghcr.io/georgetown-mdi/alcove:1.2.3 exchange ""--csv-delimiter=|"" ""--identity=Agency A & B"" input.csv ./")
+  [run]
+  [--rm]
+  [--mount]
+  [type=bind,src=C:\path\to\your\exchange-folder,dst=/work]
+  [ghcr.io/georgetown-mdi/alcove:1.2.3]
+  [exchange]
+  [--csv-delimiter=|]
+  [--identity=Agency A & B]
+  [input.csv]
+  [./]
+
+shell: PowerShell
+trigger: interval=3 time=14:30 weekday=- start=2026-10-06
+Register-ScheduledTask -TaskName 'alcove exchange' -Trigger (New-ScheduledTaskTrigger -Daily -DaysInterval 3 -At ([datetime]::new(2026, 10, 6, 14, 30, 0))) -Action (New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c cd /d ""C:\path\to\your\exchange-folder"" && docker run --rm --mount ""type=bind,src=C:\path\to\your\exchange-folder,dst=/work"" ghcr.io/georgetown-mdi/alcove:1.2.3 exchange --csv-delimiter=tab ""--identity=Agency A & B"" input.csv ./")
+  [run]
+  [--rm]
+  [--mount]
+  [type=bind,src=C:\path\to\your\exchange-folder,dst=/work]
+  [ghcr.io/georgetown-mdi/alcove:1.2.3]
+  [exchange]
+  [--csv-delimiter=tab]
+  [--identity=Agency A & B]
+  [input.csv]
+  [./]
+
+shell: PowerShell
+trigger: interval=2 time=14:30 weekday=- start=2026-10-06
+Register-ScheduledTask -TaskName 'alcove exchange' -Trigger (New-ScheduledTaskTrigger -Daily -DaysInterval 2 -At ([datetime]::new(2026, 10, 6, 14, 30, 0))) -Action (New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c cd /d ""C:\path\to\your\exchange-folder"" && docker run --rm --mount ""type=bind,src=C:\path\to\your\exchange-folder,dst=/work"" ghcr.io/georgetown-mdi/alcove:1.2.3 exchange ""--csv-delimiter=|"" ""--identity=O'Brien `$HOME"" input.csv ./")
+  [run]
+  [--rm]
+  [--mount]
+  [type=bind,src=C:\path\to\your\exchange-folder,dst=/work]
+  [ghcr.io/georgetown-mdi/alcove:1.2.3]
+  [exchange]
+  [--csv-delimiter=|]
+  [--identity=O'Brien $HOME]
+  [input.csv]
+  [./]

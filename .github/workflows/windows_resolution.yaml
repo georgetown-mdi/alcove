@@ -26,6 +26,16 @@ name: Windows Path Resolution
 #            launcher's typed folder prompts. Its own job because the policy
 #            reaches every PowerShell started while it is set. It ASSERTS, on
 #            the same pull requests as test.
+#   schedule The web app's Task Scheduler lines, each pasted into the shell the
+#            panel names under the en-US and en-GB cultures, the task it
+#            registers read back and run against a docker stand-in; two lines
+#            registered under a time zone with daylight saving; then each line
+#            run once more in a session the machine-wide policy has put in
+#            ConstrainedLanguage, and the trigger it registers checked.
+#            The web unit tests keep the file holding those lines equal to
+#            their generator. Its own job because the culture, time zone and
+#            policy it sets reach every process started meanwhile. It ASSERTS,
+#            on the same pull requests.
 #   measure The original measurement harness, which asks whether the runner can
 #            host the rig at all and never fails. Kept for re-measuring, and run
 #            only on manual dispatch -- an edit to that harness is checked by
@@ -33,10 +43,11 @@ name: Windows Path Resolution
 #
 # The session reading a run can read check-run annotations and nothing else, so
 # every job reports everything a reader needs as single-line annotations and
-# nothing as log-only. The test and clm jobs emit one ::error per failed test, one
-# ::notice summarising the counts and the Pester version, and one ::notice per
-# rig assumption, so an infrastructure failure is distinguishable from a script
-# that resolves a path wrongly. Read a run through its annotations:
+# nothing as log-only. The test, clm and schedule jobs emit one ::error per
+# failed test, one ::notice summarising the counts and the Pester version, and
+# one ::notice per rig assumption, so an infrastructure failure is
+# distinguishable from a script that resolves a path wrongly. Read a run
+# through its annotations:
 #
 #   gh api repos/<owner>/<repo>/check-runs/<check-run-id>/annotations
 #
@@ -58,6 +69,8 @@ on:
       - "support/maintainer-notes/DockerLines.Tests.ps1"
       - "support/maintainer-notes/DockerStandIn.ps1"
       - "support/maintainer-notes/docker-lines.txt"
+      - "support/maintainer-notes/ScheduleLines.Tests.ps1"
+      - "support/maintainer-notes/schedule-lines.txt"
       - "support/maintainer-notes/ci-resolution-tests.ps1"
       - ".github/workflows/windows_resolution.yaml"
   workflow_dispatch:
@@ -101,6 +114,17 @@ jobs:
       - name: Run the constrained language suite
         shell: cmd
         run: powershell -NoProfile -ExecutionPolicy Bypass -File .\support\maintainer-notes\ci-resolution-tests.ps1 -Suite ConstrainedLanguage
+
+  schedule:
+    name: Task Scheduler lines under two cultures
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Run the schedule line suite
+        shell: cmd
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\support\maintainer-notes\ci-resolution-tests.ps1 -Suite ScheduleLines
 
   measure:
     name: Measure drive and namespace resolution

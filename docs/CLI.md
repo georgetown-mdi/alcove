@@ -1080,11 +1080,13 @@ The three-second return means a scheduled run does not hold its slot, or its con
 
 ### Windows Task Scheduler
 
-The same rules apply under the Task Scheduler, with the account the task runs as in place of the cron account: it must own `.alcove.key` under an owner-only ACL, own the working directory, and reach the program -- by its full path, or by having it on that account's `PATH`. The equivalent of the daily cron line above, which assumes Alcove is on the task account's `PATH` (name it by full path there otherwise):
+The same rules apply under the Task Scheduler, with the account the task runs as in place of the cron account: it must own `.alcove.key` under an owner-only ACL, own the working directory, and reach the program -- by its full path, or by having it on that account's `PATH`. The equivalent of the daily cron line above, run in Command Prompt, which assumes Alcove is on the task account's `PATH` (name it by full path there otherwise):
 
 ```cmd
 schtasks /Create /TN "alcove exchange" /SC DAILY /ST 02:00 /TR "cmd /c cd /d C:\alcove\agency-b && alcove exchange input.csv ./"
 ```
+
+For a folder or arguments holding a `'`, or a task that needs a start date, register the task from PowerShell with `Register-ScheduledTask` instead, as the web app's [command-line export](MANAGED_EXCHANGE.md#exporting-to-the-command-line) does: `schtasks` stores a `'` in `/TR` as `"`, and reads a `/SD` date in the machine's own date format ([why](spec/MANAGED_EXCHANGE_RECORD.md#the-command-line-exports-scheduled-lines)).
 
 An exchange folder that lives on a Windows network location -- a mapped drive, a UNC path, or a DFS namespace -- is not bind-mountable into the container by its drive letter: the container reaches it through a CIFS volume instead, which the Windows shared-folder setup script provisions with the ownership the image needs (see [The user the image runs as](DEPLOYMENT.md#the-user-the-image-runs-as)).
 

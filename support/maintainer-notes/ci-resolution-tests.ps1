@@ -5,7 +5,10 @@
     Setup-AlcoveFileDrop.Tests.ps1, Start-Alcove.Tests.ps1,
     AcceptSheet.Tests.ps1, and DockerLines.Tests.ps1; -Suite
     ConstrainedLanguage runs ConstrainedLanguage.Tests.ps1, alone, because it
-    sets a machine-wide policy no other suite may run under.
+    sets a machine-wide policy no other suite may run under; -Suite
+    ScheduleLines runs ScheduleLines.Tests.ps1, alone, because it changes the
+    culture every process started meanwhile reads and, in its last block, sets
+    the same machine-wide policy.
     Maintainer-facing: an operator following the setup page never touches it.
 
 .DESCRIPTION
@@ -45,11 +48,14 @@
 
 .EXAMPLE
     powershell -NoProfile -ExecutionPolicy Bypass -File .\ci-resolution-tests.ps1 -Suite ConstrainedLanguage
+
+.EXAMPLE
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\ci-resolution-tests.ps1 -Suite ScheduleLines
 #>
 
 [CmdletBinding()]
 param(
-    [ValidateSet('Resolution', 'ConstrainedLanguage')]
+    [ValidateSet('Resolution', 'ConstrainedLanguage', 'ScheduleLines')]
     [string] $Suite = 'Resolution'
 )
 
@@ -194,6 +200,7 @@ $failedJob = $false
 $suiteFiles = @{
     Resolution          = @('Setup-AlcoveFileDrop.Tests.ps1', 'Start-Alcove.Tests.ps1', 'AcceptSheet.Tests.ps1', 'DockerLines.Tests.ps1')
     ConstrainedLanguage = @('ConstrainedLanguage.Tests.ps1')
+    ScheduleLines       = @('ScheduleLines.Tests.ps1')
 }
 
 try {
@@ -283,13 +290,16 @@ try {
     }
     if ($failed.Count -gt 0) { $failedJob = $true }
 
-    # Run in FullLanguage, the constrained suite would pass or fail on the
-    # scripts' other branches and establish nothing about this one.
-    if ($Suite -eq 'ConstrainedLanguage') {
+    # Run in FullLanguage, the constrained suite and the schedule suite's
+    # constrained block would each pass or fail on FullLanguage behavior and
+    # establish nothing about ConstrainedLanguage.
+    $modeFields = @{ ConstrainedLanguage = 'child_file'; ScheduleLines = 'child_encoded' }
+    if ($modeFields.ContainsKey($Suite)) {
+        $modeField = $modeFields[$Suite]
         $premises = Get-Variable -Name 'AlcoveRigPremises' -Scope Global -ValueOnly -ErrorAction SilentlyContinue
         $childMode = $null
-        if ($premises -and $premises.Contains('clm') -and $premises.clm.Contains('child_file')) {
-            $childMode = [string] $premises.clm.child_file
+        if ($premises -and $premises.Contains('clm') -and $premises.clm.Contains($modeField)) {
+            $childMode = [string] $premises.clm[$modeField]
         }
         if (-not $childMode) {
             Write-HarnessError 'the policy was never put in effect, so no session ran under it and nothing was established (see the Rig_clm annotation)'
