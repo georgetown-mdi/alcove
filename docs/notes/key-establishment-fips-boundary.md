@@ -220,9 +220,9 @@ parameter ranges are in
   section 5.9.2 offers the feature for "any key-agreement scheme in which each
   party is required to own a static key-establishment key pair", and this
   handshake has no static keys -- its authentication anchor is the pre-shared
-  secret. Read directly from the publication; the citation this project used
-  before pointed additionally at section 6.2.1.5, which is key confirmation for
-  a C(1e, 2s) scheme and further still from this handshake's shape.
+  secret. Read directly from the publication. Section 6.2.1.5 does not reach
+  it either: it is key confirmation for a C(1e, 2s) scheme, further still from
+  this handshake's shape.
 
 **The composition disclosure is required on either path**, and it outlives the
 migration: a protocol composed in JavaScript above primitive calls yields
