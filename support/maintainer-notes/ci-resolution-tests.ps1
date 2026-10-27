@@ -1,8 +1,11 @@
 <#
 .SYNOPSIS
-    Runs this folder's Pester suites -- Setup-AlcoveFileDrop.Tests.ps1,
-    Start-Alcove.Tests.ps1, AcceptSheet.Tests.ps1, and DockerLines.Tests.ps1
-    -- and reports the run as check-run annotations.
+    Runs this folder's Pester suites and reports the run as check-run
+    annotations. -Suite Resolution, the default, runs
+    Setup-AlcoveFileDrop.Tests.ps1, Start-Alcove.Tests.ps1,
+    AcceptSheet.Tests.ps1, and DockerLines.Tests.ps1; -Suite
+    ConstrainedLanguage runs ConstrainedLanguage.Tests.ps1, alone, because it
+    sets a machine-wide policy no other suite may run under.
     Maintainer-facing: an operator following the setup page never touches it.
 
 .DESCRIPTION
@@ -22,6 +25,7 @@
       - one ::notice per rig premise, so that a runner which could not build the
         share, the mapped letter or the DFS namespace is distinguishable from a
         script that resolved a path wrongly;
+      - one ::notice per measurement a suite records rather than asserts;
       - ::error titled Harness for this script itself breaking, which means the
         run established nothing rather than that anything failed.
 
@@ -38,10 +42,16 @@
 
 .EXAMPLE
     powershell -NoProfile -ExecutionPolicy Bypass -File .\ci-resolution-tests.ps1
+
+.EXAMPLE
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\ci-resolution-tests.ps1 -Suite ConstrainedLanguage
 #>
 
 [CmdletBinding()]
-param()
+param(
+    [ValidateSet('Resolution', 'ConstrainedLanguage')]
+    [string] $Suite = 'Resolution'
+)
 
 $ErrorActionPreference = 'Stop'
 
@@ -167,13 +177,27 @@ function Write-RigPremises {
     }
 }
 
+function Write-SuiteMeasurements {
+    <# What a suite measured without asserting it, one annotation each. #>
+
+    $measurements = Get-Variable -Name 'AlcoveMeasurements' -Scope Global -ValueOnly -ErrorAction SilentlyContinue
+    if (-not $measurements) { return }
+    foreach ($name in $measurements.Keys) {
+        Write-Measurement -Title "Measured_$name" -Fields $measurements[$name]
+    }
+}
+
 $failedJob = $false
 
+# Named one by one rather than discovered by mask: a suite that was renamed or
+# lost would otherwise leave the job green having run whatever remained.
+$suiteFiles = @{
+    Resolution          = @('Setup-AlcoveFileDrop.Tests.ps1', 'Start-Alcove.Tests.ps1', 'AcceptSheet.Tests.ps1', 'DockerLines.Tests.ps1')
+    ConstrainedLanguage = @('ConstrainedLanguage.Tests.ps1')
+}
+
 try {
-    # Named one by one rather than discovered by mask: a suite that was renamed
-    # or lost would otherwise leave the job green having run whatever remained.
-    $testFiles = @('Setup-AlcoveFileDrop.Tests.ps1', 'Start-Alcove.Tests.ps1', 'AcceptSheet.Tests.ps1', 'DockerLines.Tests.ps1') |
-        ForEach-Object { Join-Path $PSScriptRoot $_ }
+    $testFiles = $suiteFiles[$Suite] | ForEach-Object { Join-Path $PSScriptRoot $_ }
     foreach ($file in $testFiles) {
         if (-not (Test-Path -LiteralPath $file)) { throw "a suite is not at $file" }
     }
@@ -240,6 +264,7 @@ try {
     }
 
     Write-Measurement -Title 'Pester_summary' -Fields ([ordered]@{
+            suite      = $Suite
             passed     = $passed.Count
             failed     = $failed.Count
             skipped    = $skipped.Count
@@ -257,11 +282,26 @@ try {
         $failedJob = $true
     }
     if ($failed.Count -gt 0) { $failedJob = $true }
+
+    # Run in FullLanguage, the constrained suite would pass or fail on the
+    # scripts' other branches and establish nothing about this one.
+    if ($Suite -eq 'ConstrainedLanguage') {
+        $premises = Get-Variable -Name 'AlcoveRigPremises' -Scope Global -ValueOnly -ErrorAction SilentlyContinue
+        $childMode = $null
+        if ($premises -and $premises.Contains('clm') -and $premises.clm.Contains('child_file')) {
+            $childMode = [string] $premises.clm.child_file
+        }
+        if ($childMode -ne 'ConstrainedLanguage') {
+            Write-HarnessError "the sessions under test ran in '$childMode', not ConstrainedLanguage, so nothing was established"
+            $failedJob = $true
+        }
+    }
 } catch {
     Write-HarnessError $_.Exception.Message
     $failedJob = $true
 } finally {
     Write-RigPremises
+    Write-SuiteMeasurements
 }
 
 if ($failedJob) { exit 1 }

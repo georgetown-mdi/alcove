@@ -314,10 +314,43 @@ unmeasured is the same as everywhere else here: Windows, a real share, and the
 
 The folder picker, its typed fallback, the credential prompt itself and the
 paths that need a real engine and a real share were executed by the 17 September
-2026 pass below. Still unexecuted anywhere: the DFS offer, and the
-constrained-language branch, which is the one chosen from documentation rather
-than measurement -- the picker in a session whose language mode really is
-constrained is where the next pass should start.
+2026 pass below. Still unexecuted anywhere: the DFS offer.
+
+**Constrained language mode is driven in CI by a policy, as of 27 October 2026,
+on a route not yet measured to take effect.** `ConstrainedLanguage.Tests.ps1`,
+run alone by the workflow's `clm` job, sets the machine environment variable
+`__PSLockdownPolicy=4` and runs both scripts in new `powershell.exe` sessions
+against the stub engine. It asserts:
+
+- the setup script's preflight refusal, its pointer to the Command Prompt
+  script, exit 1, and no call reaching the engine;
+- the launcher's warning, its typed folder prompt in place of the picker, and a
+  folder on this PC reaching the console.
+
+A network folder typed into the launcher's prompt -- a mapped letter and a UNC
+path over the runner's loopback share -- is recorded as a `Measured_`
+annotation rather than asserted, until a run shows what the launcher does with
+it. That the variable puts a new session in ConstrainedLanguage with no restart
+is unverified: the mechanism is recalled, not read from a source. The suite's
+first test, and a harness check in `ci-resolution-tests.ps1`, fail the job when
+the sessions under test ran in any other mode. A real WDAC or AppLocker policy
+on a managed endpoint is not what this drives.
+
+**Runner capabilities the planned suites depend on are unverified until the
+`probe` job answers them.** `ci-capability-probe.ps1` asks, one annotation
+each: whether `__PSLockdownPolicy` takes effect, machine-wide or per process
+(P1); whether AppLocker's service starts (P2); whether `schtasks /Run` starts a
+task created without `/RU`, and with `/RU SYSTEM` (P3); how `schtasks` reads
+`/SD` under en-US and en-GB (P3b); whether a Docker engine or WSL is present,
+and what `docker run` says with the engine stopped (P4, P4b); whether a created
+standard user can run a child and what `Get-SmbConnection` answers there (P6);
+the token's integrity level (P7); and whether console input injected into a new
+window reaches `set /p` and `Read-Host -AsSecureString` (P8). Two such questions
+were already answered by the `measure` job's dispatch of 26 October 2026: the
+job's token passes the scripts' own `Test-Elevated` test (`Q0_runner`,
+`elevated=true`), and after a write through a DFS link and a letter mapped to
+it, an elevated `Get-SmbConnection` lists the target share by the server's own
+name beside the namespace share (`Q3_resolve`, `smb_connections`).
 
 The launcher's CIFS volume options are the setup script's -- since 5 August 2026
 literally, through `New-ShareVolume`, which the launcher calls with `-Engine`
