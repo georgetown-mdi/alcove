@@ -40,10 +40,12 @@ means possibly already underway -- check for an existing branch or PR before
 treating it as free), Epic and Order (lower Order first within an epic),
 dependencies the body names (an unmet "Depends on" disqualifies), and value
 (rank by what the item gives users and how much other work it unblocks,
-never by size or difficulty: an item projecting past ~1,200 lines is listed,
-its split the first planning step). An item waiting on a host step (Docker,
-the open internet, a cloud account, another machine, the owner's hands) or on
-a scope or product call only the owner makes is a candidate, never a skip.
+never by size or difficulty: an item projecting past ~1,200 added or changed
+non-test lines, deletions not counted (`.claude/pm/ruleset.md`, Task
+template), is listed, its split the first planning step). An item waiting on
+a host step (Docker, the open internet, a cloud account, another machine, the
+owner's hands) or on a scope or product call only the owner makes is a
+candidate, never a skip.
 
 Before listing an In Progress item or a candidate (the up-to-10 pool you
 would otherwise list; not every item on the boards), check whether merged work

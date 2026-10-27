@@ -6,10 +6,14 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createGitFixtures } from "./lib/gitFixture.mjs";
 import { parseLedger } from "./lib/reviewLedger.mjs";
 import {
+  FIX_REVIEW_RULE_DATE,
   LEGACY_CUTOFF_DATE,
   LIMIT_RULE_DATE,
+  REATTESTATION_ROUTES,
   capRaiseCheck,
   checkLedger,
+  fixReviewCheck,
+  isProductPath,
   remapFixCommits,
 } from "./check-review-ledger-dispositions.mjs";
 
@@ -78,6 +82,26 @@ const row = (dispositions, extra = {}) =>
 
 const check = (fixture, ledgerText, head) =>
   checkLedger({ rows: parseLedger(ledgerText).rows, head, git: fixture.git });
+
+/** A PR body whose Checklist's Security review line attests `sha`. */
+const prBody = (sha, resolution = "lens round") =>
+  [
+    "## Summary",
+    "",
+    "A change.",
+    "",
+    "## Checklist",
+    "",
+    "- [x] Docs: updated -- n/a: no behavior change",
+    `- [x] Security review of ${sha} -- ${resolution}`,
+    "",
+  ].join("\n");
+
+const writeBody = (text) => {
+  const path = join(makeTempDir("pr-body-"), "body.md");
+  writeFileSync(path, text);
+  return path;
+};
 
 describe("fixed entries", () => {
   it("refuses a fix commit that never reached the head", () => {
@@ -482,13 +506,229 @@ describe("cap raises", () => {
   });
 });
 
+/**
+ * A repository whose `branch` holds one product commit, `reviewed`, the head
+ * the ledger's round read.
+ */
+function reviewedBranch() {
+  const fixture = makeFixture("post-review-fix-");
+  fixture.write("packages/core/src/a.ts", "export const a = 1;\n");
+  fixture.commit("Base");
+  fixture.git(["branch", "-m", "staging"]);
+  fixture.git(["switch", "-q", "-c", "branch"]);
+  fixture.write("packages/core/src/a.ts", "export const a = 2;\n");
+  const reviewed = fixture.commit("Change a");
+  return { fixture, reviewed };
+}
+
+/** Commit a product fix on top of the fixture's branch. */
+function productFix(fixture, value = 3) {
+  fixture.write("packages/core/src/a.ts", `export const a = ${value};\n`);
+  return fixture.commit(`Fix a to ${value}`);
+}
+
+const roundRow = (head, extra = {}) =>
+  JSON.stringify({
+    round: 1,
+    kind: "light",
+    date: FIX_REVIEW_RULE_DATE,
+    ref: "branch",
+    head,
+    dispositions: [],
+    ...extra,
+  });
+const fixReviewRow = (from, head) =>
+  JSON.stringify({
+    kind: "fix-review",
+    date: FIX_REVIEW_RULE_DATE,
+    ref: "branch",
+    from,
+    head,
+    dispositions: [],
+  });
+const fixCheck = (fixture, lines, head, body = prBody(head)) =>
+  fixReviewCheck({
+    rows: parseLedger(lines.join("\n")).rows,
+    head,
+    body,
+    git: fixture.git,
+  });
+
+describe("post-review fixes", () => {
+  it("treats apps/ and packages/ as product code, their test/ trees excepted", () => {
+    for (const path of [
+      "packages/core/src/a.ts",
+      "apps/web/src/App.tsx",
+      "apps/cli/package.json",
+    ])
+      expect(isProductPath(path), path).toBe(true);
+    for (const path of [
+      "packages/core/test/a.test.ts",
+      "apps/web/test/e2e/flow.ts",
+      "docs/notes/a.md",
+      "docs/spec/PROTOCOL.md",
+      "scripts/check.mjs",
+      ".claude/scripts/check.mjs",
+    ])
+      expect(isProductPath(path), path).toBe(false);
+  });
+
+  it("passes a product fix a fix review read", () => {
+    const { fixture, reviewed } = reviewedBranch();
+    const fix = productFix(fixture);
+    const result = fixCheck(
+      fixture,
+      [roundRow(reviewed), fixReviewRow(reviewed, fix)],
+      fix,
+    );
+    expect(result.status).toBe("ok");
+    expect(result.reason).toMatch(/no product commit after/);
+  });
+
+  it('passes a product fix the Security review line declares "not re-reviewed"', () => {
+    const { fixture, reviewed } = reviewedBranch();
+    const fix = productFix(fixture);
+    const result = fixCheck(
+      fixture,
+      [roundRow(reviewed)],
+      fix,
+      prBody(fix, "lens round; the exact-edit fix after it not re-reviewed"),
+    );
+    expect(result.status).toBe("ok");
+    expect(result.commits.map((c) => c.sha)).toEqual([fix]);
+  });
+
+  it("refuses a product fix with neither a fix review nor the declaration", () => {
+    const { fixture, reviewed } = reviewedBranch();
+    const fix = productFix(fixture);
+    const result = fixCheck(fixture, [roundRow(reviewed)], fix);
+    expect(result.status).toBe("refused");
+    expect(result.reason).toMatch(
+      new RegExp(
+        `1 product commit\\(s\\) after the last reviewed head ${reviewed} have no fix review`,
+      ),
+    );
+    expect(result.commits).toEqual([
+      { sha: fix, subject: "Fix a to 3", paths: ["packages/core/src/a.ts"] },
+    ]);
+  });
+
+  it("passes when no product commit follows the last review", () => {
+    const { fixture, reviewed } = reviewedBranch();
+    fixture.write("packages/core/test/a.test.ts", "it('a', () => {});\n");
+    fixture.write("docs/notes/a.md", "# A\n");
+    fixture.write(".claude/scripts/a.mjs", "export {};\n");
+    const head = fixture.commit("Test, docs and tooling");
+    expect(fixCheck(fixture, [roundRow(reviewed)], reviewed).status).toBe("ok");
+    const result = fixCheck(fixture, [roundRow(reviewed)], head);
+    expect(result.status).toBe("ok");
+    expect(result.commits).toEqual([]);
+  });
+
+  it("refuses a fix review that starts after the reviewed head", () => {
+    const { fixture, reviewed } = reviewedBranch();
+    const first = productFix(fixture, 3);
+    const second = productFix(fixture, 4);
+    const result = fixCheck(
+      fixture,
+      [roundRow(reviewed), fixReviewRow(first, second)],
+      second,
+    );
+    expect(result.status).toBe("refused");
+    expect(result.reason).toMatch(/2 product commit\(s\)/);
+    expect(result.reason).toMatch(/leaves the commits between unreviewed/);
+  });
+
+  it("follows a rebase-invariance re-attestation from the reviewed head only", () => {
+    const { fixture, reviewed } = reviewedBranch();
+    const moved = productFix(fixture);
+    const reattested = (from) => ({
+      reattested: [{ route: "rebase-invariance", from, to: moved, date: DATE }],
+    });
+    expect(
+      fixCheck(fixture, [roundRow(reviewed, reattested(reviewed))], moved)
+        .status,
+    ).toBe("ok");
+    const base = fixture.git(["rev-parse", "staging"]).trim();
+    expect(
+      fixCheck(fixture, [roundRow(reviewed, reattested(base))], moved).status,
+    ).toBe("refused");
+  });
+
+  it("follows each verifier route's re-attestation with no declaration, and no other route", () => {
+    const { fixture, reviewed } = reviewedBranch();
+    fixture.write(
+      "packages/core/src/a.ts",
+      "// The value a reads.\nexport const a = 2;\n",
+    );
+    const commented = fixture.commit("Comment a");
+    const rows = (route) => [
+      roundRow(reviewed, {
+        reattested: [{ route, from: reviewed, to: commented, date: DATE }],
+      }),
+    ];
+    for (const route of REATTESTATION_ROUTES) {
+      const result = fixCheck(fixture, rows(route), commented);
+      expect(result.status, route).toBe("ok");
+      expect(result.commits, route).toEqual([]);
+    }
+    const unverified = fixCheck(fixture, rows("narrowing"), commented);
+    expect(unverified.status).toBe("refused");
+    expect(unverified.commits.map((c) => c.sha)).toEqual([commented]);
+  });
+
+  it("refuses a row on or after the rule date that records no head, and reports a ledger with none recorded not checked", () => {
+    const { fixture } = reviewedBranch();
+    const fix = productFix(fixture);
+    const headless = (date) =>
+      JSON.stringify({ round: 1, kind: "light", date, dispositions: [] });
+    const refused = fixCheck(fixture, [headless(FIX_REVIEW_RULE_DATE)], fix);
+    expect(refused.status).toBe("refused");
+    expect(refused.reason).toMatch(/round 1 records no "head"/);
+    expect(fixCheck(fixture, [headless(DATE)], fix).status).toBe("not-checked");
+  });
+
+  it("refuses a body whose Security review line is missing or attests another sha", () => {
+    const { fixture, reviewed } = reviewedBranch();
+    const fix = productFix(fixture);
+    const rows = [roundRow(reviewed)];
+    expect(fixCheck(fixture, rows, fix, prBody(reviewed)).reason).toMatch(
+      /attests [0-9a-f]+, not the head/,
+    );
+    expect(fixCheck(fixture, rows, fix, "## Checklist\n").reason).toMatch(
+      /no single Security review line/,
+    );
+  });
+
+  it("refuses a reviewed head the PR head does not descend from", () => {
+    const { fixture, reviewed } = reviewedBranch();
+    fixture.git(["switch", "-q", "-c", "other", "staging"]);
+    const head = productFix(fixture);
+    const result = fixCheck(fixture, [roundRow(reviewed)], head);
+    expect(result.status).toBe("refused");
+    expect(result.reason).toMatch(/is not an ancestor of/);
+  });
+});
+
 // Each case builds a fixture repository and spawns the script up to three
 // times, each a cold Node start, which runs slowly under load and can pass
 // vitest's 5 s default. Sized well past that, the bound catches a hung spawn
 // rather than timing a slow one.
 describe("the command line", { timeout: 60_000 }, () => {
-  const runScript = (cwd, args) =>
-    spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: "utf8" });
+  // The first form also takes the PR body; unless a case names one, it is a
+  // body whose Security review line attests the head the case passes.
+  const runScript = (cwd, args, body) =>
+    spawnSync(
+      process.execPath,
+      [
+        SCRIPT,
+        ...args,
+        ...(args[0] === "--remap"
+          ? []
+          : ["--body", writeBody(body ?? prBody(args[1]))]),
+      ],
+      { cwd, encoding: "utf8" },
+    );
 
   it("exits 1 on a refusal, 0 on a pass, 2 on an unreadable line", () => {
     const { fixture, fix, oldHead } = branchWithFix();
@@ -600,5 +840,85 @@ describe("the command line", { timeout: 60_000 }, () => {
       fixture.git(["rev-parse", "HEAD~1"]).trim(),
     );
     expect(lines[2]).toBe("");
+  });
+
+  it("exits 1 on an unreviewed product fix, 0 once the line declares it, 2 with no body", () => {
+    const { fixture, reviewed } = reviewedBranch();
+    const fix = productFix(fixture);
+    const dir = makeTempDir("ledger-file-");
+    const ledgerPath = join(dir, "branch.jsonl");
+    writeFileSync(ledgerPath, `${roundRow(reviewed)}\n`);
+
+    const refused = runScript(fixture.dir, [ledgerPath, fix]);
+    expect(refused.status).toBe(1);
+    expect(refused.stdout).toContain(`  ${fix}  Fix a to 3\n`);
+    expect(refused.stdout).toMatch(/^post-review fixes: REFUSED -- /m);
+    expect(refused.stdout).toMatch(/^dispositions: PASS/m);
+
+    const declared = runScript(
+      fixture.dir,
+      [ledgerPath, fix],
+      prBody(fix, "lens round; fix not re-reviewed"),
+    );
+    expect(declared.status).toBe(0);
+    expect(declared.stdout).toMatch(/^post-review fixes: PASS -- /m);
+
+    const bare = spawnSync(process.execPath, [SCRIPT, ledgerPath, fix], {
+      cwd: fixture.dir,
+      encoding: "utf8",
+    });
+    expect(bare.status).toBe(2);
+  });
+
+  it("--print-base prints the head a rebase re-attested, and a fix review based on it passes", () => {
+    const { fixture, reviewed } = reviewedBranch();
+    fixture.git(["switch", "-q", "staging"]);
+    fixture.write("docs/notes/b.md", "# B\n");
+    fixture.commit("Staging moves on");
+    fixture.git(["switch", "-q", "branch"]);
+    expect(fixture.run(["rebase", "staging"]).status).toBe(0);
+    const rebased = fixture.head();
+    const fix = productFix(fixture);
+    const dir = makeTempDir("ledger-file-");
+    const ledgerPath = join(dir, "branch.jsonl");
+    const reattestedRound = roundRow(reviewed, {
+      reattested: [
+        { route: "rebase-invariance", from: reviewed, to: rebased, date: DATE },
+      ],
+    });
+    const printBase = () =>
+      spawnSync(process.execPath, [SCRIPT, "--print-base", ledgerPath], {
+        cwd: fixture.dir,
+        encoding: "utf8",
+      });
+
+    writeFileSync(
+      ledgerPath,
+      `${JSON.stringify({ round: 1, kind: "light", date: DATE, dispositions: [] })}\n`,
+    );
+    const none = printBase();
+    expect(none.status).toBe(1);
+    expect(none.stdout).toBe("");
+
+    writeFileSync(ledgerPath, `${reattestedRound}\n`);
+    const printed = printBase();
+    expect(printed.status).toBe(0);
+    expect(printed.stdout).toBe(`${rebased}\n`);
+
+    writeFileSync(
+      ledgerPath,
+      `${reattestedRound}\n${fixReviewRow(printed.stdout.trim(), fix)}\n`,
+    );
+    const based = runScript(fixture.dir, [ledgerPath, fix]);
+    expect(based.status).toBe(0);
+    expect(based.stdout).toMatch(/^post-review fixes: PASS -- /m);
+
+    writeFileSync(
+      ledgerPath,
+      `${reattestedRound}\n${fixReviewRow(reviewed, fix)}\n`,
+    );
+    const spanning = runScript(fixture.dir, [ledgerPath, fix]);
+    expect(spanning.status).toBe(1);
+    expect(spanning.stdout).toMatch(/leaves the commits between unreviewed/);
   });
 });

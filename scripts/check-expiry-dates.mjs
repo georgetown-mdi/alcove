@@ -12,8 +12,8 @@
 //     `export const EXPIRES_ON = "YYYY-MM-DD";` line in the file itself, the
 //     shape scripts/check-no-legacy-names.mjs set;
 //   - every check CHECKS_DATED_IN_FILE below names, run by neither list, by
-//     the date line it names in that check's file: capRaiseCheck in
-//     .claude/scripts/check-review-ledger-dispositions.mjs.
+//     the date line it names in that check's file: capRaiseCheck and
+//     fixReviewCheck in .claude/scripts/check-review-ledger-dispositions.mjs.
 //
 // A date is the last day, UTC, the entry passes. A new check or hook picks its
 // own date when it is proposed. A renewal follows the entry's record since its
@@ -55,6 +55,11 @@ export const CHECKS_DATED_IN_FILE = [
     check: "capRaiseCheck",
     file: ".claude/scripts/check-review-ledger-dispositions.mjs",
     constant: "CAP_RAISE_CHECK_EXPIRES_ON",
+  },
+  {
+    check: "fixReviewCheck",
+    file: ".claude/scripts/check-review-ledger-dispositions.mjs",
+    constant: "FIX_REVIEW_CHECK_EXPIRES_ON",
   },
 ];
 

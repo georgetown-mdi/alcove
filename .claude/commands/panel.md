@@ -39,7 +39,7 @@ before proceeding -- it holds the session rules this command's steps assume.
     neutrally as the question.
 - `--second-round`: opt in to one second round should the panel not
   converge (Step 3): fresh panelists, each reading the first round's answers
-  (not the first round's own agents, which cannot be continued). Without it, a
+  (not the first round's own agents, so the script seats every panelist itself). Without it, a
   split panel goes straight to the owner.
 
 Whether a panel should run at all, and whether its outcome settles the

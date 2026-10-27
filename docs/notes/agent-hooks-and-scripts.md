@@ -345,9 +345,8 @@ while a bug that failed closed would block every edit in every tree.
 
 ### The override
 
-It follows the idiom of `block-model-drop-sendmessage.mjs`'s `[accept-model-drop]` marker.
-Edit and Write have no free-text field a marker could go in, so the opt-in is a file.
-Like that marker it is self-applicable: what it buys is an override that is named, visible in the tree, and reversible, not one that cannot be forged.
+Edit and Write have no free-text field a message marker could go in, so the opt-in is a file.
+It is self-applicable: what it buys is an override that is named, visible in the tree, and reversible, not one that cannot be forged.
 
 ### Limits
 
@@ -382,6 +381,14 @@ and an entry with no `surface` is taken as reachable, so leaving the field off c
 A raise's reasons were written as `capNote` prose, and the prose rule to step back did not stop one branch's cap going from 3 to 7.
 So each raise is a `capRaises` entry with the step-back triggers evaluated, and the second has to name the shared-cause answer and the pivot taken (`.claude/commands/assess-review.md`, Step 2).
 Raises are counted from those entries alone, so a ledger whose raises are only in prose passes: every ledger written before the field reads as having no raise.
+
+### Why it reads post-review fixes
+
+A fix made after a branch's last review was not re-reviewed, yet the Security review line could attest a head that held it; four PRs measured on 2026-10-26 merged with such fixes.
+The rule ([`.claude/commands/assess-review.md`](../../.claude/commands/assess-review.md), Step 3) gives a judgment-shaped product fix a review of its own diff, and the check reads the ledger's reviewed heads and git history for product commits after the last one.
+The check runs locally rather than in CI because the ledger is gitignored.
+It accepts the "not re-reviewed" declaration for any fix, since only the session knows whether a fix was an exact edit.
+A fix review counts against no round budget: the rule falls after the branch's rounds, when the budget is usually spent, and the review reads only the fix's diff.
 
 ### Legacy rows and dates
 
@@ -540,7 +547,7 @@ The hook applies the same rule when the title is written.
 
 ### Why it exists
 
-The ruleset contains the rules for conducting an orchestration: the review contracts and round caps, how a fix is dispatched, the spawn and SendMessage mechanics, where a decision goes.
+The ruleset contains the rules for conducting an orchestration: the review contracts and round caps, how a fix is dispatched, the spawn mechanics, where a decision goes.
 A pointer in CLAUDE.md and the front doors its preamble lists load it, and nothing else confirms the session doing the conducting has it.
 A session that starts spawning without it runs the flow from whatever it remembers of an earlier one,
 and the rules it skips are the ones no later check catches: a round dispatched wrongly is a wasted round, not a red test.
@@ -629,9 +636,9 @@ Measured on 2026-10-26, it does not, and the two runtimes answer differently.
   `resumeFromRunId` replays cached results for unchanged calls and runs any changed call as a fresh agent (the Workflow tool's own description and authoring reference).
   A panelist seated by the script therefore cannot be given the other answers, or new owner input, and revise its own answer in its own context.
 - Agent-tool runtime: an Opus `general-purpose` spawn answered a two-option design question with "POSITION: A".
-  A SendMessage carrying an opposing panelist's answer, with the `[accept-model-drop]` marker that `block-model-drop-sendmessage.mjs` requires, resumed it.
+  A SendMessage containing an opposing panelist's answer resumed it.
   It restated its first answer accurately, weighed the other, and kept A with a refinement.
-  Both turns ran on `claude-opus-5-5`, the session model; a panelist pinned to another tier moves to the session model on resumption (that hook's header).
+  Both turns ran on `claude-opus-5-5`; a resumed agent pinned to another tier keeps that tier (Retired SendMessage model guard, below).
   An Agent-tool spawn's output cannot be schema-forced.
 
 ### What is open
@@ -640,3 +647,16 @@ Under the Workflow runtime the round is fresh panelists reading the first round'
 A true deliberation on Agent-tool spawns, resuming the first round's panelists and giving up schema-forced output, is possible and not built.
 Whether to build it is open for a ruling.
 Panel independence is unchanged under either route: no agent merges the answers.
+
+## Retired SendMessage model guard
+
+`block-model-drop-sendmessage.mjs` refused a SendMessage that continued an agent, since on 2026-07-15 and 2026-07-16 a resumed agent's next turn ran on the session model rather than its pinned tier.
+Its removal criterion was a resumed turn keeping the recipient's pin.
+
+On 2026-10-26, under harness 2.1.310, a Sonnet-pinned agent spawned and then resumed by SendMessage from an Opus top-level session ran both turns on `claude-sonnet-5-5`.
+The model was read from each turn's `message.model` field in the agent's transcript, `~/.claude/projects/<project>/subagents/agent-<id>.jsonl`.
+That met the criterion, and the hook, its test and its settings entry were removed.
+The owner ruled on 2026-10-27 that the ban on continuing an agent dated from when the mechanism was in preview, and that the session should use it intelligently, so the ruleset carries no rule for or against it.
+Continuing an agent or spawning a fresh one is a per-case choice.
+Continuing reuses what the agent already holds, which is cheap while its context is cached and the follow-up needs it.
+A fresh spawn is cheaper for a narrow follow-up against a large or expired context, and lets the brief set a cheaper tier.

@@ -475,6 +475,60 @@ describe.each(SHAPES)(
   },
 );
 
+const BASE = "0123456789abcdef0123456789abcdef01234567";
+
+describe.each(SHAPES)(
+  "review-round fix review ($shape args)",
+  ({ deliver }) => {
+    const run = runner(deliver);
+
+    it("reviews only the commits after the base, in both lens prompts", async () => {
+      const prompts = [];
+      await run({ ...lensArgs, base: BASE }, (prompt, options) => {
+        prompts.push(prompt);
+        return lensReply(prompt, options);
+      });
+      expect(prompts).toHaveLength(2);
+      for (const prompt of prompts) {
+        expect(prompt).toContain(`git diff "${BASE}..${TARGET}"`);
+        expect(prompt).not.toContain(`origin/staging...${TARGET}`);
+      }
+    });
+
+    it("reviews the whole branch when the base is null or absent", async () => {
+      for (const base of [null, undefined]) {
+        const prompts = [];
+        await run({ ...lensArgs, base }, (prompt, options) => {
+          prompts.push(prompt);
+          return lensReply(prompt, options);
+        });
+        for (const prompt of prompts) {
+          expect(prompt).toContain(`origin/staging...${TARGET}`);
+        }
+      }
+    });
+
+    it("refuses a base that is not a full sha", async () => {
+      for (const base of ["HEAD~1", BASE.slice(0, 12), "", 7, [BASE]]) {
+        await expect(
+          run({ ...lensArgs, base }, () => {
+            throw new Error("must not spawn");
+          }),
+          JSON.stringify(base),
+        ).rejects.toThrow(/base must be the full 40-character sha/);
+      }
+    });
+
+    it("refuses a base given with a role", async () => {
+      await expect(
+        run({ ...roleArgs(["a claim"]), base: BASE }, () => {
+          throw new Error("must not spawn");
+        }),
+      ).rejects.toThrow(/a fix review \(base\) is a lens round/);
+    });
+  },
+);
+
 describe.each(SHAPES)("review-round lens mode ($shape args)", ({ deliver }) => {
   const run = runner(deliver);
 

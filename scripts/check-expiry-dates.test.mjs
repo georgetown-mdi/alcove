@@ -32,7 +32,7 @@ function checkEntry(script, expiresOn) {
 // A tree holding a run-checks.mjs with `checks` as CHECKS, a settings.json
 // registering one hook whose file has `hookExpiry` as its date line, or none,
 // and a ledger-dispositions script whose cap-raise date line is
-// `capRaiseExpiry`, or none for null.
+// `capRaiseExpiry`, or none for null, beside a fix-review date line that passes.
 function fixtureTree({ checks, hookExpiry, capRaiseExpiry = "2026-12-31" }) {
   const root = mkdtempSync(resolve(tmpdir(), "check-expiry-dates-"));
   trees.push(root);
@@ -46,6 +46,7 @@ function fixtureTree({ checks, hookExpiry, capRaiseExpiry = "2026-12-31" }) {
       ...(capRaiseExpiry === null
         ? []
         : [`export const CAP_RAISE_CHECK_EXPIRES_ON = "${capRaiseExpiry}";`]),
+      'export const FIX_REVIEW_CHECK_EXPIRES_ON = "2026-12-31";',
       "",
     ].join("\n"),
   );
@@ -260,6 +261,9 @@ describe("this repository", () => {
     expect(entries.some((entry) => entry.name.endsWith(" capRaiseCheck"))).toBe(
       true,
     );
+    expect(
+      entries.some((entry) => entry.name.endsWith(" fixReviewCheck")),
+    ).toBe(true);
     expect(expiryViolations(entries, "2026-01-01")).toEqual([]);
   });
 });

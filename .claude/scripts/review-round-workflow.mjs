@@ -10,7 +10,7 @@
 export const meta = {
   name: "review-round",
   description:
-    "One review round over the target ref's diff against staging: one schema-forced lens reviewer plus a verifier, or one schema-forced role reviewer under a refutation contract",
+    "One review round over the target ref's diff against staging, or over the fix commits after a base sha: one schema-forced lens reviewer plus a verifier, or one schema-forced role reviewer under a refutation contract",
   phases: [{ title: "Review" }, { title: "Verify" }],
 };
 
@@ -242,6 +242,20 @@ const worktreePath =
     ? input.worktreePath.trim()
     : null;
 
+// A fix review: the round reads `<base>..<targetRef>`, the commits since the
+// head an earlier round read, instead of the whole branch. A full sha, since a
+// per-worktree ref names a different commit in each tree.
+if (
+  input.base !== undefined &&
+  input.base !== null &&
+  (typeof input.base !== "string" || !/^[0-9a-f]{40}$/.test(input.base.trim()))
+) {
+  throw new Error(
+    `base must be the full 40-character sha of the head an earlier round read, or null for a round over the whole branch; got ${JSON.stringify(input.base)}.`,
+  );
+}
+const base = typeof input.base === "string" ? input.base.trim() : null;
+
 const docsClause =
   input.docs && input.docs.length
     ? "First read these docs for design context: " +
@@ -249,9 +263,17 @@ const docsClause =
       ". When an issue could be a deliberate design decision, check whether these docs justify it before flagging it.\n\n"
     : "";
 
-const diffScope = `Generate the diff yourself with git diff "origin/staging...${targetRef}" -- the ref and the three-dot form are both deliberate and non-negotiable: it shows ONLY what ${targetRef} added since it forked from staging, and it excludes every commit staging gained after the fork. That diff is the complete and exclusive scope of your review. Never widen it: do not run a two-dot git diff origin/staging ${targetRef}, do not substitute a local staging ref (it goes stale and drags in merged work), do not diff against ${targetRef}~N, the tip of staging, or any other base. Review ${targetRef} and nothing else -- never HEAD, and never whatever branch a working directory you land in happens to hold.
+const branchDiffScope = `Generate the diff yourself with git diff "origin/staging...${targetRef}" -- the ref and the three-dot form are both deliberate and non-negotiable: it shows ONLY what ${targetRef} added since it forked from staging, and it excludes every commit staging gained after the fork. That diff is the complete and exclusive scope of your review. Never widen it: do not run a two-dot git diff origin/staging ${targetRef}, do not substitute a local staging ref (it goes stale and drags in merged work), do not diff against ${targetRef}~N, the tip of staging, or any other base. Review ${targetRef} and nothing else -- never HEAD, and never whatever branch a working directory you land in happens to hold.
 
 Review the branch's own changes and nothing else. Anything attributable to staging advancing since the branch forked -- the branch's base or starting point moving, the "root" of the branch changing, upstream commits the branch has not yet absorbed -- is OUT OF SCOPE and not this branch's responsibility. Do not flag it, describe it, or even mention that the base moved; treat such material as invisible. If a hunk merely re-states upstream staging work rather than introducing new behavior authored on this branch, ignore it. Open another file only if a hunk cannot be judged without it.`;
+
+const fixDiffScope = `Generate the diff yourself with git diff "${base}..${targetRef}" -- the fix commits ${targetRef} gained after ${base}, the head an earlier review already read. That diff is the complete and exclusive scope of your review. Never widen it: do not diff against origin/staging, a local staging ref, or any other base, and review ${targetRef} and nothing else -- never HEAD, and never whatever branch a working directory you land in happens to hold. Open another file only if a hunk cannot be judged without it.`;
+
+const diffScope = base === null ? branchDiffScope : fixDiffScope;
+const diffCommand =
+  base === null
+    ? `git diff "origin/staging...${targetRef}" (three-dot; that ref's own changes only`
+    : `git diff "${base}..${targetRef}" (the fix commits after ${base} only`;
 
 // Where the reviewer stands, and where anything it creates goes. Both halves are
 // critical: a shell's working directory does not persist between an agent's
@@ -292,6 +314,11 @@ if (input.role !== undefined && input.role !== null) {
   if (!ROLES.includes(input.role)) {
     throw new Error(
       `role must be ${ROLES.join(" or ")}, not "${input.role}"; no other agent runs under a refutation contract.`,
+    );
+  }
+  if (base !== null) {
+    throw new Error(
+      "a fix review (base) is a lens round; a role round reviews the whole branch under its contract, so pass no base with a role.",
     );
   }
   if (!Array.isArray(input.claims) || input.claims.length === 0) {
@@ -455,13 +482,13 @@ const reviews = [review];
 
 const verifierPrompt = `${workingTreeClause}
 
-You are verifying a code review of the ref ${targetRef}. One reviewer examined git diff "origin/staging...${targetRef}" (three-dot; that ref's own changes only -- never widen the diff, and never substitute HEAD). Its findings:
+You are verifying a code review of the ref ${targetRef}. One reviewer examined ${diffCommand} -- never widen the diff, and never substitute HEAD). Its findings:
 ${JSON.stringify(review.findings, null, 1)}
 
 ${groundRules}
 
 ${docsClause}In a single pass -- no sub-agents, no iteration:
-1. Drop any finding that is not about ${targetRef}'s own changes (anything describing the branch's base moving, or staging's progress since the fork) -- discard it, do not even list it as refuted.
+1. Drop any finding that is not about ${base === null ? `${targetRef}'s own changes` : `the commits ${base}..${targetRef}`} (anything describing the branch's base moving, or staging's progress since the fork) -- discard it, do not even list it as refuted.
 2. Return one cluster per remaining finding, never merging findings; flaggedBy is 1 on every cluster.
 3. Verify each finding's core claim by reading only the specific hunks or files it names -- not the whole diff -- and set verification confirmed/refuted/unverifiable with a one-line verificationNote.
 4. Set userVisibleString on every cluster: true when the issue touches text a user or operator reads -- UI copy, CLI output, an error, warning or log message shown to them, or user documentation -- and false otherwise. Every nit with userVisibleString false is batched with the other such nits into one stated limit that nobody fixes, so judge it on what the text is, not on how much the nit matters.

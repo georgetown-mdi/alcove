@@ -54,13 +54,14 @@ Start with the whole, not the parts:
   invisible to accounting keyed on `subagent_type`, which undercounts the
   rounds a branch ran). Converging is confirmed-new falling with repeats near
   zero; churn is fixes spawning findings.
-- **Kind.** Each ledger row has a `kind`: `light` for a lens round, or the
-  name of the role that ran it (`security-reviewer`, `adversarial-verifier`).
+- **Kind.** Each ledger row has a `kind`: `light` for a lens round, the
+  name of the role that ran it (`security-reviewer`, `adversarial-verifier`),
+  or `fix-review` for a fix review (Step 3).
   A row with no `kind` predates the field and is a `light` round. Compare a
   round only against prior rounds of the same kind -- a role round's claims and
   a lens round's clusters count different things. Same-kind scoping governs
-  trajectory only: the branch's round budget is the ledger's full line count,
-  every kind included, capped by the review-tier bucket
+  trajectory only: the branch's round budget is the ledger's line count,
+  every kind but `fix-review` included, capped by the review-tier bucket
   (`.claude/commands/start-issue.md`, Step 5) -- a round of a new kind is not a
   fresh budget. In a role row, a claim whose
   verdict is `REFUTED` or `COULD-NOT-VERIFY` is a confirmed finding on its file,
@@ -174,8 +175,20 @@ the branch is worse for leaving. Absent that line, state it and move on.
   owner-approved consult on the choice, never a Fable fix round.
 - **A fix that adds behavior gets a test.** When a fix introduces new branching
   or a new code path (error handling, a guard, a fallback), the brief orders its
-  guarantees pinned with a test in the same pass. No later round re-reviews a
-  fix: another round exists only for the step-back triggers.
+  guarantees pinned with a test in the same pass.
+- **A judgment-shaped product fix gets a fix review.** No later whole-branch
+  round re-reviews a fix: another round exists only for the step-back
+  triggers. A fix after the last review that changes `packages/` or `apps/`
+  outside their `test/` trees and is judgment-shaped -- not a `haiku` exact-edit
+  brief -- gets a FIX REVIEW before the PR is marked ready instead:
+  `/review-round --target <branch> --base <sha>`, `<sha>` the last reviewed head
+  that `node .claude/scripts/check-review-ledger-dispositions.mjs --print-base
+  PRIMARY/scratch/review-rounds/<key>.jsonl` prints, a lens
+  round over the fix commits' own diff, booked as a `fix-review` row and
+  triaged here like any round. An exact-edit fix, or one changing only docs,
+  tests or agent tooling, skips it, and the Security review line then says
+  "not re-reviewed". The session declares that only for those: the Step 4
+  check cannot tell an exact edit from a judgment fix.
 - **A pattern in the findings gets a class sweep.** When several findings share
   one mechanism (a port dropping behavior its original had, a rename
   missing sites, a repeated idiom misused), the brief orders one focused pass
@@ -302,15 +315,19 @@ ratifies that disposition), brittle areas are shored up or independently
 assessed, and CI is green on the head, read from a fresh `gh pr view`
 (`.claude/orchestration/ruleset.md`, Review flow). When it is ready, say so.
 
-**Merge-ready dispositions check.** Before reporting the branch ready to merge,
-run `node .claude/scripts/check-review-ledger-dispositions.mjs
-PRIMARY/scratch/review-rounds/<key>.jsonl <PR head sha>` against the PR head.
-It refuses a `fixed` entry whose commit is not contained in the head -- as an
+**Merge-ready dispositions check.** Before reporting the branch ready to merge
+and before `gh pr ready`, once the Security review line names the head, run
+`gh pr view <n> --json body --jq .body | node
+.claude/scripts/check-review-ledger-dispositions.mjs
+PRIMARY/scratch/review-rounds/<key>.jsonl <PR head sha> --body -` against the
+PR head. It refuses product commits after the last reviewed head that have
+neither a fix review nor "not re-reviewed" on the line (Step 3), and it refuses a `fixed` entry whose commit is not contained in the head -- as an
 ancestor, or as a commit with the same patch after a rebase -- and a `deferred`
 entry that names neither a board item nor a limits line the head holds, and a
 `limit` entry on a reachable surface without a limits line the head holds, and
 a second cap raise with no step-back record (Step 2); its header states which
-older rows it skips. A refusal gates readiness: a fix that
+older rows it skips. A refusal gates readiness: an unreviewed product fix
+takes its fix review, a fix that
 never reached the head goes back into a fix pass, a deferral with no home is
 given one or rewritten as `limit` with a note, and a reachable limit has its
 limits line written on the branch, or its entry marked `"surface": "internal"`
@@ -329,11 +346,20 @@ names in its output -- the primary checkout when the flow's own invocation calls
 the script there by path, while the branch sits in its own worktree. Both shas
 resolve the same from either, since linked worktrees share one object database,
 so name them in full: a per-worktree ref (`HEAD`, `HEAD~n`, `ORIG_HEAD`) means a
-different commit in each tree. A fresh full round is what the verifier's answer
-buys -- it runs when the verifier reports an executable delta that the narrowing
-path does not cover, never as the reflex the act of fixing triggers.
+different commit in each tree. When the verifier reports an executable delta
+that the narrowing path does not cover, the head takes Step 3's fix review, or
+"not re-reviewed" on the line for an exact-edit or non-product fix -- never a
+fresh full round as the reflex the act of fixing triggers.
 
-Each path is recorded on the checklist line naming both shas:
+Each path is recorded on the checklist line naming both shas. A path a
+checked-in verifier passed is also recorded in the branch's ledger: add to its
+last row, in place like the dispositions, a `reattested` array entry
+`{"route": "<route>", "from": "<attested sha>", "to": "<head sha>", "date": "<date -I>"}`,
+the route being the verifier's name without `verify-` and `.mjs`
+(`nonexecutable-delta`, `additive-test-delta`, or `rebase-invariance`). The
+merge-ready check follows an entry whose `from` is the last reviewed head (the
+sha `--print-base` prints), so the commits it re-attested need neither a fix
+review nor "not re-reviewed".
 
 - **An n/a line.** Re-run the security-scope enumeration against the new head's
   diff -- a scan, not a review round.
@@ -341,7 +367,7 @@ Each path is recorded on the checklist line naming both shas:
   surface or strictly narrows it -- no new or changed enforcement, no new input
   reached -- is re-attested by verifying exactly that property of the diff,
   recorded as a narrowing verification. Anything added or changed voids this
-  path and takes a full round.
+  path and takes Step 3's fix-review rule.
 - **No executable delta.** A head whose diff against the attested sha changes no
   executable line -- comments and markdown only -- is likewise re-attested by
   verifying exactly that property, recorded as a non-executable-delta
@@ -355,12 +381,12 @@ Each path is recorded on the checklist line naming both shas:
   a type-only edit compares identical under it, and a raw scanner has no parser
   context, so a backtick inside a comment puts it in template state and it
   reports comment-only edits as changes. A single executable line voids this
-  path and takes a full round, as does a delta that only a reviewer could judge
-  harmless.
+  path and takes Step 3's fix-review rule, as does a delta that only a reviewer
+  could judge harmless.
 - **An additive test delta.** A head whose diff against the attested sha only
   ADDS lines to test files is re-attested by verifying exactly that, recorded as
   an additive-test-delta verification. A test-only delta in general is NOT this
-  path and takes a full round: a deleted assertion, a loosened expectation and a
+  path and takes Step 3's fix-review rule: a deleted assertion, a loosened expectation and a
   mock that bypasses a check each weaken a control while touching tests alone.
   What this path admits is the narrow case where every line the round read is
   still there untouched, and nothing added reaches past the statement holding
@@ -369,7 +395,7 @@ Each path is recorded on the checklist line naming both shas:
   which names the directories it treats as test-only and the inserted lines it
   refuses. It fails closed on a deleted or replaced line, on a path outside those
   directories, and on a change it cannot read as lines at all; a head it refuses
-  takes one of the paths above or a full round.
+  takes one of the paths above or Step 3's fix-review rule.
 - **A rebase that left the branch's own diff alone.** A head the branch was
   REBASED to -- its commits re-authored onto a later origin/staging, which
   leaves the attested head no ancestor of the new one -- is re-attested by
@@ -409,10 +435,9 @@ REBASING and re-attest it by the rebase path above, not by a base sync: the
 rebase-invariance verification costs no round, and a base sync costs a full
 standing-contract role round. A round runs after such a rebase only when that
 verifier refuses the move, and it is then the standing-contract round described
-below, run at the rebased head. Record the verification in the branch's ledger:
-add to its last row, in place like the dispositions, a `reattested` array entry
-`{"route": "rebase-invariance", "from": "<pre-rebase head sha>", "to": "<post-rebase head sha>", "date": "<date -I>"}`.
-Then re-record the fix commits the rebase re-authored: `node
+below, run at the rebased head. Record the verification in the branch's ledger
+as above, a `rebase-invariance` entry from the pre-rebase head to the
+post-rebase head. Then re-record the fix commits the rebase re-authored: `node
 .claude/scripts/check-review-ledger-dispositions.mjs --remap
 PRIMARY/scratch/review-rounds/<key>.jsonl` followed by the same four shas the
 verifier took. It rewrites each `fixed` entry's `commit` in place to the commit

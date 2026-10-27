@@ -222,6 +222,20 @@ function attestationFindings(items, headSha) {
 }
 
 /**
+ * The Checklist's Security review item in PR body `text` as `{line, checked,
+ * label, clause, attested}`, `attested` being the sha its label names or null;
+ * null when the section holds no such item or more than one.
+ */
+export function securityReviewItem(text) {
+  const reviews = (parseChecklist(text) ?? []).filter((item) =>
+    item.label.startsWith(REVIEW_PREFIX),
+  );
+  if (reviews.length !== 1) return null;
+  const [review] = reviews;
+  return { ...review, attested: ATTESTED_SHA.exec(review.label)?.[1] ?? null };
+}
+
+/**
  * Return the list of review-attestation violations in PR body `text`, given the
  * PR's head sha -- null when it cannot be determined, as in a local run, which
  * checks only that the line names a sha.
