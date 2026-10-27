@@ -382,6 +382,14 @@ A raise's reasons were written as `capNote` prose, and the prose rule to step ba
 So each raise is a `capRaises` entry with the step-back triggers evaluated, and the second has to name the shared-cause answer and the pivot taken (`.claude/commands/assess-review.md`, Step 2).
 Raises are counted from those entries alone, so a ledger whose raises are only in prose passes: every ledger written before the field reads as having no raise.
 
+### Why it reads post-review fixes
+
+A fix made after a branch's last review was not re-reviewed, yet the Security review line could attest a head that held it; four PRs measured on 2026-10-26 merged with such fixes.
+The rule ([`.claude/commands/assess-review.md`](../../.claude/commands/assess-review.md), Step 3) gives a judgment-shaped product fix a review of its own diff, and the check reads the ledger's reviewed heads and git history for product commits after the last one.
+The check runs locally rather than in CI because the ledger is gitignored.
+It accepts the "not re-reviewed" declaration for any fix, since only the session knows whether a fix was an exact edit.
+A fix review counts against no round budget: the rule falls after the branch's rounds, when the budget is usually spent, and the review reads only the fix's diff.
+
 ### Legacy rows and dates
 
 Rows written before these fields existed name no commit and no home, so they are skipped under the header's three conditions and reported as skipped rather than refused.

@@ -23,6 +23,25 @@
 // "pivot": "re-scope" | "panel" | "owner"}`, and a `capRaises` that is not a
 // list is refused. A raise recorded only in `capNote` prose is not counted.
 //
+// It also refuses product commits made after the last review with no fix review
+// and no declaration, run before `gh pr ready` with the PR body (`--body`):
+//
+// - The last reviewed head is the last of: a round row's `"head"`, a
+//   `"kind": "fix-review"` row's `"head"` when its `"from"` is the reviewed head
+//   or an ancestor of it, and a rebase-invariance `reattested` entry's `"to"`
+//   when its `"from"` is the reviewed head. A row dated FIX_REVIEW_RULE_DATE or
+//   later that records no head is refused; with no head recorded at all the
+//   rule is reported not checked.
+// - A product commit is one in `<reviewed head>..<PR head>`, merges excluded,
+//   touching a path matching `^(apps|packages)/` and not
+//   `^(apps|packages)/[^/]+/test/` (isProductPath). A base sync after the last
+//   review therefore lists staging's commits too.
+// - With any, the PR body's single Security review line, which must attest the
+//   PR head, has to contain "not re-reviewed" in its label or resolution.
+//
+// Whether a fix was an exact edit or a judgment call is the session's to know:
+// the declaration is accepted for either, and this check cannot tell them apart.
+//
 // `--remap` rewrites each `fixed` entry's commit in place to the commit a rebase
 // made from it, paired by author, author date and message; a fix the rebase
 // squashed or reworded stays unpaired and keeps its old id.
@@ -34,14 +53,16 @@
 // LIMIT_RULE_DATE is exempt from the `limit` rule. Git runs in the worktree the
 // process was invoked from; name full shas, not a per-worktree ref.
 //
-// Exit 0 every held entry and the cap raises pass; 1 an entry or the cap raises
-// are refused, each reported on its own summary line; 2 usage, an unreadable
-// ledger line, an invocation outside a git worktree, or a git error.
+// Exit 0 every held entry, the cap raises and the post-review fixes pass; 1 any
+// of them is refused, each reported on its own summary line; 2 usage, an
+// unreadable ledger line or body, an invocation outside a git worktree, or a
+// git error.
 // Rationale: docs/notes/agent-hooks-and-scripts.md.
 
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { securityReviewItem } from "../../scripts/check-pr-checklist.mjs";
 import { parseLedger } from "./lib/reviewLedger.mjs";
 import { isAncestor } from "./verify-rebase-invariance.mjs";
 
@@ -252,6 +273,178 @@ export function capRaiseCheck(rows) {
   return result(null);
 }
 
+/** The ledger row kind a fix review is booked under. */
+export const FIX_REVIEW_KIND = "fix-review";
+
+/** Rows dated on or after this day record the head they read. */
+export const FIX_REVIEW_RULE_DATE = "2026-10-28";
+
+/**
+ * The last date, YYYY-MM-DD, fixReviewCheck stands before it is renewed or
+ * deleted (scripts/check-expiry-dates.mjs).
+ */
+export const FIX_REVIEW_CHECK_EXPIRES_ON = "2027-03-31";
+
+/** The declaration a Security review line makes for an unreviewed fix. */
+export const NOT_RE_REVIEWED = "not re-reviewed";
+
+/** Whether `path` is product code: under apps/ or packages/, outside a test/. */
+export function isProductPath(path) {
+  return (
+    /^(apps|packages)\//.test(path) &&
+    !/^(apps|packages)\/[^/]+\/test\//.test(path)
+  );
+}
+
+/** The full sha `ref` names, or null where it names no commit. */
+function resolveCommit(ref, git) {
+  if (typeof ref !== "string" || ref === "") return null;
+  try {
+    return git(["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]).trim();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The last head a review read, walking rows in order: a round's `head`, a
+ * fix review's `head` when its `from` is that head or an ancestor of it, and a
+ * rebase-invariance `reattested` entry's `to` when its `from` is that head.
+ * Returns `{reviewed, problems, notes}`; `reviewed` is null when no row
+ * records a head.
+ */
+export function lastReviewedHead({ rows, git }) {
+  let reviewed = null;
+  const problems = [];
+  const notes = [];
+  for (const { row } of rows) {
+    const label =
+      row.kind === FIX_REVIEW_KIND ? "a fix review" : `round ${row.round}`;
+    const bound =
+      typeof row.date === "string" && row.date >= FIX_REVIEW_RULE_DATE;
+    if (row.kind === FIX_REVIEW_KIND) {
+      const from = resolveCommit(row.from, git);
+      const to = resolveCommit(row.head, git);
+      if (from === null || to === null) {
+        problems.push(
+          `${label} names no "from" and "head" commits that resolve`,
+        );
+      } else if (
+        reviewed === null ||
+        from === reviewed ||
+        isAncestor({ ancestor: from, descendant: reviewed, git })
+      ) {
+        reviewed = to;
+      } else {
+        notes.push(
+          `${label} of ${from}..${to} starts after ${reviewed}, so it leaves the commits between unreviewed`,
+        );
+      }
+    } else if (row.head !== undefined) {
+      const to = resolveCommit(row.head, git);
+      if (to === null) problems.push(`${label}'s "head" does not resolve`);
+      else reviewed = to;
+    } else if (bound) {
+      problems.push(`${label} records no "head"`);
+    }
+    for (const entry of Array.isArray(row.reattested) ? row.reattested : []) {
+      if (entry?.route !== "rebase-invariance" || reviewed === null) continue;
+      const to = resolveCommit(entry.to, git);
+      if (resolveCommit(entry.from, git) === reviewed && to !== null)
+        reviewed = to;
+    }
+  }
+  return { reviewed, problems, notes };
+}
+
+/** The commits in `reviewed..head` touching a product path, newest first. */
+export function postReviewProductCommits({ reviewed, head, git }) {
+  const commits = [];
+  const log = git([
+    "log",
+    "--no-merges",
+    "--format=%H %s",
+    `${reviewed}..${head}`,
+  ]).trim();
+  for (const line of log === "" ? [] : log.split("\n")) {
+    const space = line.indexOf(" ");
+    const sha = line.slice(0, space);
+    const paths = git([
+      "diff-tree",
+      "--no-commit-id",
+      "--name-only",
+      "--no-renames",
+      "-r",
+      "--root",
+      sha,
+    ])
+      .split("\n")
+      .filter(isProductPath);
+    if (paths.length > 0)
+      commits.push({ sha, subject: line.slice(space + 1), paths });
+  }
+  return commits;
+}
+
+/**
+ * The post-review fix rule, as `{status, reason, commits}`: status `ok`,
+ * `refused`, or `not-checked` (no row records a head). `body` is the PR body
+ * whose Security review line must attest `head`.
+ */
+export function fixReviewCheck({ rows, head, body, git }) {
+  const result = (status, reason, commits = []) => ({
+    status,
+    reason,
+    commits,
+  });
+  const item = securityReviewItem(body);
+  if (item === null)
+    return result(
+      "refused",
+      "the PR body holds no single Security review line",
+    );
+  if (
+    item.attested === null ||
+    !head.toLowerCase().startsWith(item.attested.toLowerCase())
+  )
+    return result(
+      "refused",
+      `the Security review line attests ${item.attested ?? "no sha"}, not the head ${head}`,
+    );
+  const { reviewed, problems, notes } = lastReviewedHead({ rows, git });
+  if (problems.length > 0) return result("refused", problems.join("; "));
+  if (reviewed === null)
+    return result(
+      "not-checked",
+      `no ledger row records the head it read (rows dated before ${FIX_REVIEW_RULE_DATE} need not)`,
+    );
+  if (!isAncestor({ ancestor: reviewed, descendant: head, git }))
+    return result(
+      "refused",
+      `the last reviewed head ${reviewed} is not an ancestor of ${head}; record the rebase re-attestation, or review the fix range`,
+    );
+  const commits = postReviewProductCommits({ reviewed, head, git });
+  if (commits.length === 0)
+    return result("ok", `no product commit after ${reviewed}`);
+  const declared = `${item.label} -- ${item.clause}`
+    .toLowerCase()
+    .includes(NOT_RE_REVIEWED);
+  if (declared)
+    return result(
+      "ok",
+      `${commits.length} product commit(s) after ${reviewed}, declared "${NOT_RE_REVIEWED}"`,
+      commits,
+    );
+  return result(
+    "refused",
+    [
+      `${commits.length} product commit(s) after the last reviewed head ${reviewed} have no fix review`,
+      ...notes,
+    ].join("; "),
+    commits,
+  );
+}
+
 /** Commits in `base..head`, keyed by author, author date, and message. */
 function commitsByAuthorship({ base, head, git }) {
   const byKey = new Map();
@@ -323,9 +516,11 @@ export function remapFixCommits({
 }
 
 const USAGE =
-  "Usage: node .claude/scripts/check-review-ledger-dispositions.mjs <ledger.jsonl> <head-sha>\n" +
+  "Usage: node .claude/scripts/check-review-ledger-dispositions.mjs <ledger.jsonl> <head-sha> --body <pr-body-file | ->\n" +
   "       node .claude/scripts/check-review-ledger-dispositions.mjs --remap <ledger.jsonl> <pre-rebase-base> <pre-rebase-head> <post-rebase-base> <post-rebase-head>\n" +
-  "The first form checks every fixed, deferred and limit entry against the PR head. The second,\n" +
+  "The first form checks every fixed, deferred and limit entry against the PR head, and the\n" +
+  "product commits after the last reviewed head against the PR body's Security review line\n" +
+  "(`-` reads the body from stdin: gh pr view <n> --json body --jq .body | ... --body -). The second,\n" +
   "run at a rebase re-attestation with the four shas given to verify-rebase-invariance.mjs,\n" +
   "rewrites each fixed entry's commit in the ledger to the commit the rebase made from it.\n" +
   "Refs resolve in the git worktree this is run from; name full shas.\n";
@@ -333,12 +528,32 @@ const USAGE =
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
   const remap = args[0] === "--remap";
-  const positional = remap ? args.slice(1) : args;
-  if (positional.length !== (remap ? 5 : 2)) {
+  const bodyAt = args.indexOf("--body");
+  const bodyPath = bodyAt === -1 ? undefined : args[bodyAt + 1];
+  const positional = remap
+    ? args.slice(1)
+    : bodyAt === -1
+      ? args
+      : args.filter((_, i) => i !== bodyAt && i !== bodyAt + 1);
+  if (
+    positional.length !== (remap ? 5 : 2) ||
+    (remap ? bodyAt !== -1 : bodyPath === undefined)
+  ) {
     process.stderr.write(USAGE);
     process.exit(2);
   }
   const [ledgerPath, ...refs] = positional;
+  let body;
+  if (!remap) {
+    try {
+      body = readFileSync(bodyPath === "-" ? 0 : bodyPath, "utf8");
+    } catch (error) {
+      process.stderr.write(
+        `error: cannot read the PR body from ${bodyPath}: ${error.message}\n`,
+      );
+      process.exit(2);
+    }
+  }
 
   let worktree;
   try {
@@ -423,7 +638,24 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         ? `cap raises: PASS -- ${caps.count} recorded\n`
         : `cap raises: REFUSED -- ${caps.reason}; record each raise in a "capRaises" list, and a "stepBack" on the second\n`,
     );
-    process.exit(refused === 0 && caps.reason === null ? 0 : 1);
+    const fixes = fixReviewCheck({
+      rows,
+      head: resolveCommit(head, git),
+      body,
+      git,
+    });
+    for (const { sha, subject } of fixes.commits)
+      process.stdout.write(`  ${sha}  ${subject}\n`);
+    process.stdout.write(
+      fixes.status === "refused"
+        ? `post-review fixes: REFUSED -- ${fixes.reason}; run a fix review (/review-round --base), or, for an exact edit, write "${NOT_RE_REVIEWED}" on the Security review line\n`
+        : `post-review fixes: ${fixes.status === "ok" ? "PASS" : "NOT CHECKED"} -- ${fixes.reason}\n`,
+    );
+    process.exit(
+      refused === 0 && caps.reason === null && fixes.status !== "refused"
+        ? 0
+        : 1,
+    );
   } catch (error) {
     process.stderr.write(`error: ${error.message ?? error}\n`);
     process.exit(2);

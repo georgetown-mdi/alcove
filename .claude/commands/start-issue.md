@@ -167,7 +167,8 @@ State the bucket, the numbers behind it, and any file that forces the third
 bucket. Whether to run the tier is the owner's call in the plain flow (stop at
 the commit and recommend); when orchestrating, determining the bucket and
 running it are the same act. Either way the bucket binds as a ceiling: rounds
-of every kind count against it, and only the owner, or an orchestrating session
+of every kind but a fix review (`.claude/commands/assess-review.md`, Step 3)
+count against it, and only the owner, or an orchestrating session
 the owner has delegated budgets to, raises it (raising when it delivers value,
 stepping back on a repeat hotspot).
 
@@ -199,8 +200,9 @@ steps above. When the instruction is to orchestrate:
   failure to a fix pass. The draft, a stack's drafts, and marking ready follow
   `.claude/orchestration/ruleset.md`, Review flow.
 - **Proceed to a ready PR, and stop there.** The terminal state is a pushed
-  branch and a PR against staging marked ready -- review rounds done, CI green
-  on its head, its checklist resolved -- and a final report, or a stated
+  branch and a PR against staging marked ready -- review rounds done, any
+  judgment-shaped product fix after them fix-reviewed (assess-review, Step 3),
+  CI green on its head, its checklist resolved -- and a final report, or a stated
   blocker. Raise concerns in prose as you go and keep moving; stop early only
   for Step 4's STOP-and-ask cases or a fired step-back trigger (assess-review,
   Step 2), batched into one message. The ready PR ends the session: the merge

@@ -17,7 +17,7 @@ before proceeding -- it holds the session rules this command's steps assume.
 
 ## Input
 
-    /review-round [--target <ref> ...] [--role <name> --claims <path>] [doc-file ...]
+    /review-round [--target <ref> ...] [--role <name> --claims <path>] [--base <sha>] [doc-file ...]
 
 - `--target <ref>`: optional and repeatable. The ref to review, once per ref.
   With none, the target is the branch `HEAD` resolves to where you are standing,
@@ -26,6 +26,10 @@ before proceeding -- it holds the session rules this command's steps assume.
   else -- stop if the name is anything else. Selects ROLE mode; without it you are in
   LENS mode.
 - `--claims <path>`: the refutation contract for role mode, one claim per line.
+- `--base <sha>`: a FIX REVIEW (`.claude/commands/assess-review.md`, Step 3): a
+  lens round over `<sha>..<ref>`, the fix commits after the head the last round
+  read, instead of `origin/staging...<ref>`. It takes one `--target` and no
+  `--role`, and the full sha is the `head` of the ledger's last row.
 - `[doc-file ...]`: optional paths to documentation relevant to these changes (e.g.
   `docs/spec/FILE_SYNC.md`). These are the remaining tokens in `$ARGUMENTS` after the
   flags above; call this list DOCS. There may be none.
@@ -101,8 +105,10 @@ For each entry of TARGETS (or, with none given, for the one branch
    when no record holds it. A ref with no tree is reviewable by a lens round,
    which only reads; a role round that must RUN code against it has nowhere to
    run, so say so and stop rather than checking anything out.
-3. Run `git diff "origin/staging...<ref>" --stat`. If it reports no changes, say
-   there is nothing to review on that ref and drop it from the round.
+3. Run `git diff "origin/staging...<ref>" --stat` (`git diff "<base>..<ref>"
+   --stat` for a fix review). If it reports no changes, say there is nothing to
+   review on that ref and drop it from the round. Record HEAD, the full sha
+   `git rev-parse <ref>` prints, for the ledger row.
 
 Three-dot (`origin/staging...<ref>`) means "what that ref changed since its merge-base
 with staging", i.e. PR semantics -- it ignores commits staging gained after the branch
@@ -114,9 +120,11 @@ no full diff enters this conversation's context.
 Also read each target's rounds ledger (`PRIMARY/scratch/review-rounds/<key>.jsonl`)
 if it exists: its first row's `cap` is that branch's round budget (a first row
 without `cap` predates the field -- treat the budget as unset). When a ledger already
-holds `cap` rows, drop that target and say its round budget is spent -- only the owner,
+holds `cap` rows, not counting `fix-review` rows, drop that target and say its round
+budget is spent -- only the owner,
 or an orchestrating session the owner has delegated budgets to, raises it (raising
-when it delivers value, stepping back on a repeat hotspot).
+when it delivers value, stepping back on a repeat hotspot). A fix review runs whatever
+the budget.
 
 When you ask the owner to raise a spent budget, state the default recommendations
 below with the ask. The size thresholds are measured -- the quartiles of branch diff
@@ -162,7 +170,7 @@ message so they run concurrently. Each call sets `scriptPath` to the ABSOLUTE
 path `<PRIMARY>/.claude/scripts/review-round-workflow.mjs`, with PRIMARY from Step 1 --
 the bare relative `.claude/scripts/review-round-workflow.mjs` fails the call with
 "script file not found" -- and `args` to
-`{"targetRef": "<ref>", "worktreePath": <TREE, or null when no tree holds the ref>, "docs": [<the DOCS list, possibly empty>], "role": <the role name or null>, "claims": [<CLAIMS, or an empty list in lens mode>]}`.
+`{"targetRef": "<ref>", "worktreePath": <TREE, or null when no tree holds the ref>, "docs": [<the DOCS list, possibly empty>], "role": <the role name or null>, "claims": [<CLAIMS, or an empty list in lens mode>], "base": <the --base sha, or null>}`.
 
 One call reviews one ref. There is no batched multi-ref call to build: the fan-out
 is several Workflow calls, which is the only shape available -- a subagent cannot
@@ -211,7 +219,8 @@ Common to both:
    file is `PRIMARY/scratch/review-rounds/<key>.findings.md`, with `<key>` from Step
    1 (`mkdir -p` the directory; scratch/ is gitignored). That exact findings path is
    what assess-review looks for; it hard-stops without it. Read the ledger if it
-   exists; this round's number is its line count + 1, counting rounds of every kind.
+   exists; this round's number is its line count + 1, counting rounds of every kind
+   but `fix-review`.
    The first row written for a branch also contains `"cap"`: the total
    round allowance that the review tier from `.claude/commands/start-issue.md`, Step 5, sets for this diff (1 for the second bucket or the instruction-file
    floor, 3 for the full pipeline; a cap the owner, or an orchestrating session the owner has delegated budgets to,
@@ -222,11 +231,14 @@ Common to both:
    branch's next round until it ages out, so releasing it is part of booking the
    round, not cleanup you may skip. Delete it even when the round failed or you are
    abandoning its result.
-3. Every ledger row contains `"kind"`: the role name in role mode, `"light"` in lens mode.
+3. Every ledger row contains `"kind"`: the role name in role mode, `"light"` in lens mode,
+   `"fix-review"` for a fix review.
    Trajectory comparisons -- REPEAT files, hotspots, whether the contested list grew --
    run against prior rounds of the SAME kind only. A role round's claims and a lens
    round's clusters are not comparable evidence. Kind scopes trajectory only:
-   the round number and the branch's round budget count rounds of every kind.
+   the round number and the branch's round budget count rounds of every kind but
+   `fix-review`, which counts against no budget, since the rule requiring it falls
+   after the branch's rounds and it reads only the fix's own diff.
 4. REPEATs and hotspots are computed on file paths. An entry whose `file` is empty names
    no file, so it is never a repeat and never a hotspot -- skip it rather than letting
    every fileless entry collide into one.
@@ -257,8 +269,11 @@ Common to both:
    `reviewerCount` is above 1), severity critical or major, and verification not
    `refuted`. With a single reviewer no cluster is contested.
 8. Append one JSON line to the ledger:
-   `{"round": N, "kind": "light", "date": "<date -I>", "ref": "<the target ref>", "reviewerCount": <reviewerCount>, "clusters": [{"name", "file", "severity", "verification"}], "simplerShapeVotes": <count of simpler=true>, "dispositions": [{"item": <confirmed cluster name>, "disposition": "open"}]}`.
+   `{"round": N, "kind": "light", "date": "<date -I>", "ref": "<the target ref>", "head": "<HEAD>", "reviewerCount": <reviewerCount>, "clusters": [{"name", "file", "severity", "verification"}], "simplerShapeVotes": <count of simpler=true>, "dispositions": [{"item": <confirmed cluster name>, "disposition": "open"}]}`.
    A branch's first row also contains `"cap": <the round budget>` (Common item 1).
+   A fix review's row has `"kind": "fix-review"` and `"from": "<the --base sha>"` in
+   place of `"round"`; `check-review-ledger-dispositions.mjs` reads its `from` and
+   `head`.
    The confirmed nit batch, the cluster with `"statedLimit": true`, is the one entry
    written already disposed:
    `{"item": <its name>, "disposition": "limit", "surface": "internal", "note": "nits touching no user-visible string, not fixed"}`.
@@ -302,7 +317,7 @@ number you asked for.
    nothing else. The out-of-claim `findings` never move it -- they are triage material
    for assess-review, which reads them off the artifact.
 8. Append one JSON line to the ledger:
-   `{"round": N, "kind": "<role>", "date": "<date -I>", "ref": "<the target ref>", "gate": <gate>, "claims": [{"claim", "verdict", "file"}], "findings": [{"name", "file", "severity"}], "dispositions": [{"item": <gating claim or finding>, "disposition": "open"}]}`.
+   `{"round": N, "kind": "<role>", "date": "<date -I>", "ref": "<the target ref>", "head": "<HEAD>", "gate": <gate>, "claims": [{"claim", "verdict", "file"}], "findings": [{"name", "file", "severity"}], "dispositions": [{"item": <gating claim or finding>, "disposition": "open"}]}`.
    A branch's first row also contains `"cap": <the round budget>` (Common item 1).
 9. Write the findings file: a header block naming the branch, the target ref, the role,
    the number of claims it was contracted to refute, and the gate outcome (`gate` true
