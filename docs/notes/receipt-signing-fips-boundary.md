@@ -62,12 +62,12 @@ would be elective.
 either other option, and is eliminated before the real fork is reached. See below
 for why the measurement that makes it look available is not a green light.
 
-The migration is implemented. The normative constructions -- the certificate
-body, the EC JWK public key, the pinned signature encoding, and the load-time
-rejections -- are specified in
+Both signing operations run ECDSA over P-256 through `crypto.subtle`. The
+normative constructions -- the certificate body, the EC JWK public key, the
+pinned signature encoding, and the load-time rejections -- are specified in
 [PROTOCOL.md](../spec/PROTOCOL.md#signing-identity-and-certificate-pinning) and
 [EXCHANGE_RECORD.md](../spec/EXCHANGE_RECORD.md#signed-receipt); this record
-keeps the reasoning and the two design choices the migration was left to decide
+keeps the reasoning and the two design choices the decision left open
 (below).
 
 ## Why migrate rather than disclose
