@@ -4,6 +4,7 @@ import {
   COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
   INVITATION_RELAY_ENROLLMENT_WAIT_MS,
   RELAY_CHECK_BOUND_MS,
+  WEBSOCKET_RELAY_CHECK_OUTCOMES,
   parseBoundedJson,
   relayCheckHeadline,
   relayCheckPlan,
@@ -31,6 +32,7 @@ import type {
   RelayCheckFields,
   RelayHostStatement,
   RelayTransport,
+  WebSocketRelayCheckOutcome,
 } from "@alcove/core";
 
 import type {
@@ -49,9 +51,10 @@ import type { CapturedChildStop } from "./capturedCliChild";
  * child's own statement goes to its stderr, which is discarded.
  *
  * Every verdict field is re-validated at this boundary: the check id, the
- * statuses, the transport, and the lapse against closed sets; each check's
- * headline composed by core's `relayCheckHeadline` from those fields, and it
- * and the `meaning` and `action` escaped and bounded. A url or a registrar
+ * statuses, the transport, the outcome, the close code and the lapse against
+ * closed sets; each check's headline composed by core's `relayCheckHeadline`
+ * from those fields, and it and the `meaning` and `action` escaped and
+ * bounded. A url or a registrar
  * can come from the partner's invitation, so none crosses unescaped.
  * Contract: docs/spec/SERVER_JOB_API.md, Checking the relay.
  */
@@ -71,7 +74,7 @@ export const RELAY_CHECK_CHILD_BUDGET_MS =
   RELAY_CHECK_BOUND_MS + INVITATION_RELAY_ENROLLMENT_WAIT_MS;
 
 /**
- * The cap on the verdict line, in UTF-16 code units: one check per TURN url
+ * The cap on the verdict line, in UTF-16 code units: one check per relay url
  * the configuration lists, each with its url, `meaning` and `action`. A
  * configuration whose verdict is longer is reported as an `error`.
  */
@@ -114,14 +117,8 @@ export type RelayCheckOffer =
       kind: "available";
       configurationDigest: string;
       statement: RelayHostStatement;
-      /** Whether a run lists a WebSocket relay, which the check does not ask. */
-      websocketRelayNotChecked: boolean;
     }
-  | {
-      kind: "unavailable";
-      reason: RelayCheckUnavailableReason;
-      websocketRelayNotChecked?: true;
-    };
+  | { kind: "unavailable"; reason: RelayCheckUnavailableReason };
 
 function shown(text: string): string {
   return sanitizeForDisplay(text, {
@@ -172,32 +169,31 @@ export function relayCheckOffer(dataRoot: string): RelayCheckOffer {
     return { kind: "unavailable", reason: "not-webrtc" };
   if (connection.iceProvision !== undefined)
     return { kind: "unavailable", reason: "ice-provision" };
-  const { turn, turnLeftOut, websocket } = selectRunRelay(connection);
-  const websocketRelayNotChecked = (websocket ?? []).length > 0;
-  if ((turn ?? []).length === 0)
+  const { turn, turnLeftOut, websocket, websocketLeftOut } =
+    selectRunRelay(connection);
+  if ((turn ?? []).length === 0 && (websocket ?? []).length === 0)
     return {
       kind: "unavailable",
-      reason: turnLeftOut === undefined ? "no-turn-url" : "turn-urls-left-out",
-      ...(websocketRelayNotChecked && { websocketRelayNotChecked: true }),
+      reason:
+        turnLeftOut === undefined && websocketLeftOut === undefined
+          ? "no-relay"
+          : "relays-left-out",
     };
   if (mountedKeyFileFault(dataRoot) !== undefined)
-    return {
-      kind: "unavailable",
-      reason: "key-file",
-      ...(websocketRelayNotChecked && { websocketRelayNotChecked: true }),
-    };
+    return { kind: "unavailable", reason: "key-file" };
   return {
     kind: "available",
     configurationDigest: configurationDigestOf(read.source),
     statement: shownStatement(
       relayHostStatement(relayCheckPlan(connection), connection),
     ),
-    websocketRelayNotChecked,
   };
 }
 
 const TRANSPORTS: ReadonlySet<string> = new Set(["udp", "tcp", "tls"]);
-const CHECK_ID = /^(?:enrollment|turn_[1-9][0-9]{0,3})$/;
+const OUTCOMES: ReadonlySet<string> = new Set(WEBSOCKET_RELAY_CHECK_OUTCOMES);
+const CHECK_ID =
+  /^(?:enrollment|turn_[1-9][0-9]{0,3}|websocket_[1-9][0-9]{0,3})$/;
 const LAPSE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$/;
 
 const STRING_FIELDS = [
@@ -213,7 +209,8 @@ function checkLineOf(value: unknown): RelayCheckLine | null {
   if (value === null || typeof value !== "object" || Array.isArray(value))
     return null;
   const record = value as Record<string, unknown>;
-  const { id, status, transport } = record;
+  const { id, status, transport, outcome } = record;
+  const closeCode = record["close_code"];
   if (typeof id !== "string" || !CHECK_ID.test(id)) return null;
   if (!isRelayCheckStatus(status)) return null;
   if (
@@ -221,6 +218,12 @@ function checkLineOf(value: unknown): RelayCheckLine | null {
     (typeof transport !== "string" || !TRANSPORTS.has(transport))
   )
     return null;
+  if (
+    outcome !== undefined &&
+    (typeof outcome !== "string" || !OUTCOMES.has(outcome))
+  )
+    return null;
+  if (closeCode !== undefined && !Number.isSafeInteger(closeCode)) return null;
   const strings: Partial<Record<(typeof STRING_FIELDS)[number], string>> = {};
   for (const key of STRING_FIELDS) {
     const field = record[key];
@@ -238,6 +241,10 @@ function checkLineOf(value: unknown): RelayCheckLine | null {
     ...(transport !== undefined && { transport: transport as RelayTransport }),
     ...(registrar !== undefined && { registrar }),
     ...(lapse !== undefined && { lapses_at: lapse }),
+    ...(outcome !== undefined && {
+      outcome: outcome as WebSocketRelayCheckOutcome,
+    }),
+    ...(closeCode !== undefined && { close_code: closeCode as number }),
   };
   const headline = relayCheckHeadline(fields);
   if (headline === undefined) return null;

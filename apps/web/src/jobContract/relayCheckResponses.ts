@@ -33,8 +33,8 @@ export type RelayCheckUnavailableReason =
   | "configuration-refused"
   | "not-webrtc"
   | "ice-provision"
-  | "no-turn-url"
-  | "turn-urls-left-out"
+  | "no-relay"
+  | "relays-left-out"
   | "key-file";
 
 const REASON_MEMBERS: Record<RelayCheckUnavailableReason, true> = {
@@ -42,8 +42,8 @@ const REASON_MEMBERS: Record<RelayCheckUnavailableReason, true> = {
   "configuration-refused": true,
   "not-webrtc": true,
   "ice-provision": true,
-  "no-turn-url": true,
-  "turn-urls-left-out": true,
+  "no-relay": true,
+  "relays-left-out": true,
   "key-file": true,
 };
 

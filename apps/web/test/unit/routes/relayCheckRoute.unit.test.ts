@@ -116,7 +116,6 @@ describe("/api/jobs/relay-check", () => {
 
     expect(offer).toMatchObject({
       status: "available",
-      websocketRelayNotChecked: false,
       statement: {
         contacted: [{ host: "turn:relay.example.org:3478" }],
       },
@@ -160,7 +159,22 @@ describe("/api/jobs/relay-check", () => {
     expect(await response.json()).toEqual({ status: "configuration-changed" });
   });
 
-  test("POST over a pair become unavailable says the WebSocket relay is not checked", async () => {
+  test("GET states a WebSocket relay among the hosts the check contacts", async () => {
+    seedManager({}, { websocketRelay: "wss://relay.example.org/relay" });
+    const offer = await getOffer();
+
+    expect(offer).toMatchObject({
+      status: "available",
+      statement: {
+        contacted: [
+          { host: "turn:relay.example.org:3478" },
+          { host: "wss://relay.example.org/relay" },
+        ],
+      },
+    });
+  });
+
+  test("POST over a pair become unavailable answers the reason alone", async () => {
     const root = seedManager(
       {},
       { websocketRelay: "wss://relay.example.org/relay" },
@@ -173,7 +187,6 @@ describe("/api/jobs/relay-check", () => {
     expect(await response.json()).toEqual({
       status: "unavailable",
       reason: "key-file",
-      websocketRelayNotChecked: true,
     });
   });
 

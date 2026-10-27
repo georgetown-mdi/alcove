@@ -24,13 +24,9 @@ export const RELAY_CHECK_AGAIN_LABEL = "Check again";
 
 /** What the check does, beside the control that opens it. */
 export const RELAY_CHECK_INTRO =
-  "This console can ask the relay a run uses for a relay address, from " +
-  "this container and with the files in your working folder, as a run " +
-  "does. Nothing is contacted until you start the check.";
-
-/** What the check leaves untested where a run lists a WebSocket relay. */
-export const WEBSOCKET_RELAY_NOT_CHECKED =
-  "The check does not test the WebSocket relay this configuration names.";
+  "This console can check the relays a run uses, from this container and " +
+  "with the files in your working folder, as a run contacts them. Nothing " +
+  "is contacted until you start the check.";
 
 /** Where the check is running. */
 export const RELAY_CHECK_RUNNING =
@@ -53,12 +49,12 @@ const UNAVAILABLE_TEXT: Record<RelayCheckUnavailableReason, string> = {
   "ice-provision":
     "The alcove.yaml in your working folder sets connection.ice_provision, " +
     "which the check does not test.",
-  "no-turn-url":
-    "The alcove.yaml in your working folder lists no TURN server, so there " +
-    "is no relay to check.",
-  "turn-urls-left-out":
-    "connection.allowed_relays leaves out every TURN server the alcove.yaml " +
-    "in your working folder lists, so a run contacts no relay and there is " +
+  "no-relay":
+    "The alcove.yaml in your working folder lists no TURN server and no " +
+    "WebSocket relay, so there is no relay to check.",
+  "relays-left-out":
+    "connection.allowed_relays leaves out every relay the alcove.yaml in " +
+    "your working folder lists, so a run contacts no relay and there is " +
     "none to check.",
   "key-file":
     "Your working folder holds no usable .alcove.key beside alcove.yaml, " +
@@ -78,15 +74,13 @@ export const RELAY_CHECK_UNREADABLE =
  */
 export function relayCheckShowsUnavailable(offer: {
   reason: RelayCheckUnavailableReason;
-  websocketRelayNotChecked: boolean;
 }): boolean {
   switch (offer.reason) {
     case "key-file":
     case "configuration-refused":
-    case "turn-urls-left-out":
+    case "relays-left-out":
       return true;
-    case "no-turn-url":
-      return offer.websocketRelayNotChecked;
+    case "no-relay":
     case "no-configuration":
     case "not-webrtc":
     case "ice-provision":
@@ -106,8 +100,8 @@ export function relayCheckVerdictSummary(
   overall: "ok" | "fix_and_retry",
 ): string {
   return overall === "ok"
-    ? "The relay a run uses gave this console a relay address."
-    : "The relay a run uses did not give this console a relay address. " +
+    ? "Every relay the check asked answered this console as a run needs."
+    : "A relay the check asked did not answer this console as a run needs. " +
         "Follow the steps below, then check again.";
 }
 
@@ -193,7 +187,7 @@ export type RelayCheckPanelState =
   | { step: "unavailable"; offer: UnavailableOffer }
   | { step: "hosts"; offer: AvailableOffer }
   | { step: "checking"; offer: AvailableOffer }
-  | { step: "done"; outcome: RelayCheckOutcome; websocketNote: boolean };
+  | { step: "done"; outcome: RelayCheckOutcome };
 
 /**
  * Where the panel stands once an offer is read: `opened` where the operator
@@ -211,17 +205,4 @@ export function relayCheckPanelState(
   return opened
     ? { step: "hosts", offer }
     : { step: "closed", unreadable: false };
-}
-
-/**
- * Whether a check's outcome is followed by the WebSocket-relay note: a
- * verdict by the shown offer's flag, an `unavailable` answer by its own,
- * since the server re-read the file to give it.
- */
-export function relayCheckShowsWebsocketNote(
-  outcome: RelayCheckOutcome,
-  offer: { websocketRelayNotChecked: boolean },
-): boolean {
-  if (outcome.kind === "unavailable") return outcome.websocketRelayNotChecked;
-  return outcome.kind === "verdict" && offer.websocketRelayNotChecked;
 }

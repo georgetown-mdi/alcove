@@ -31,13 +31,8 @@ export type RelayCheckOffer =
       kind: "available";
       configurationDigest: string;
       statement: RelayCheckStatement;
-      websocketRelayNotChecked: boolean;
     }
-  | {
-      kind: "unavailable";
-      reason: RelayCheckUnavailableReason;
-      websocketRelayNotChecked: boolean;
-    }
+  | { kind: "unavailable"; reason: RelayCheckUnavailableReason }
   | { kind: "error" };
 
 /**
@@ -57,11 +52,7 @@ export type RelayCheckOutcome =
       overall: "ok" | "fix_and_retry";
       checks: Array<RelayCheckLine>;
     }
-  | {
-      kind: "unavailable";
-      reason: RelayCheckUnavailableReason;
-      websocketRelayNotChecked: boolean;
-    }
+  | { kind: "unavailable"; reason: RelayCheckUnavailableReason }
   | {
       kind:
         | "refused"
@@ -127,10 +118,9 @@ export async function fetchRelayCheckOffer(
   if (!response.ok) return { kind: "error" };
   const body = await readJsonOrNull(response, MAX_JOB_LISTING_RESPONSE_BYTES);
   if (!isRecord(body)) return { kind: "error" };
-  const websocketRelayNotChecked = body.websocketRelayNotChecked === true;
   if (body.status === "unavailable")
     return isRelayCheckUnavailableReason(body.reason)
-      ? { kind: "unavailable", reason: body.reason, websocketRelayNotChecked }
+      ? { kind: "unavailable", reason: body.reason }
       : { kind: "error" };
   const statement = statementOf(body.statement);
   if (
@@ -143,7 +133,6 @@ export async function fetchRelayCheckOffer(
     kind: "available",
     configurationDigest: body.configurationDigest,
     statement,
-    websocketRelayNotChecked,
   };
 }
 
@@ -209,11 +198,7 @@ export async function startRelayCheck(
     return { kind: "error" };
   if (body.status === "unavailable")
     return isRelayCheckUnavailableReason(body.reason)
-      ? {
-          kind: "unavailable",
-          reason: body.reason,
-          websocketRelayNotChecked: body.websocketRelayNotChecked === true,
-        }
+      ? { kind: "unavailable", reason: body.reason }
       : { kind: "error" };
   if (body.status !== "verdict")
     return PLAIN_OUTCOMES.has(body.status)

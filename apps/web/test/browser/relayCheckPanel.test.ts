@@ -12,7 +12,6 @@ import {
   RELAY_CHECK_AGAIN_LABEL,
   RELAY_CHECK_OPEN_LABEL,
   RELAY_CHECK_START_LABEL,
-  WEBSOCKET_RELAY_NOT_CHECKED,
   relayCheckUnavailableText,
   relayCheckVerdictSummary,
 } from "@console/relayCheckModel";
@@ -31,7 +30,6 @@ const AVAILABLE = {
     contacted: [{ host: RELAY_HOST, explanation: [] }],
     closing: "Nothing else is contacted.",
   },
-  websocketRelayNotChecked: false,
 };
 
 const VERDICT = {
@@ -100,12 +98,8 @@ describe("RelayCheckPanel: a configuration that could not be read", () => {
 });
 
 describe("RelayCheckPanel: a start answered unavailable", () => {
-  test("says the WebSocket relay is not checked where the file lists one", async () => {
-    stubRelayCheck([AVAILABLE], {
-      status: "unavailable",
-      reason: "key-file",
-      websocketRelayNotChecked: true,
-    });
+  test("states the reason alone", async () => {
+    stubRelayCheck([AVAILABLE], { status: "unavailable", reason: "key-file" });
     app.render(createElement(RelayCheckPanel));
 
     await page.getByRole("button", { name: RELAY_CHECK_OPEN_LABEL }).click();
@@ -114,8 +108,84 @@ describe("RelayCheckPanel: a start answered unavailable", () => {
     await expect
       .element(page.getByText(relayCheckUnavailableText("key-file")))
       .toBeInTheDocument();
-    await expect
-      .element(page.getByText(WEBSOCKET_RELAY_NOT_CHECKED))
-      .toBeInTheDocument();
   });
+});
+
+describe("RelayCheckPanel: a verdict over a WebSocket relay", () => {
+  const WEBSOCKET_HOST = "wss://relay.example.org/relay";
+  const offer = {
+    ...AVAILABLE,
+    statement: {
+      ...AVAILABLE.statement,
+      contacted: [{ host: WEBSOCKET_HOST, explanation: [] }],
+    },
+  };
+
+  test.each([
+    [
+      "admitted",
+      "ok",
+      {
+        id: "websocket_1",
+        status: "ok",
+        headline: `${WEBSOCKET_HOST}, a WebSocket relay a run dials: admitted.`,
+      },
+    ],
+    [
+      "not admitted",
+      "fix_and_retry",
+      {
+        id: "websocket_1",
+        status: "fail",
+        headline: `${WEBSOCKET_HOST}: not admitted (close code 4003).`,
+        meaning: "The relay holds no key for this exchange.",
+        action: "Run the check again once your partner has enrolled.",
+      },
+    ],
+    [
+      "not reached",
+      "fix_and_retry",
+      {
+        id: "websocket_1",
+        status: "fail",
+        headline: `${WEBSOCKET_HOST}: not reached within 30 s.`,
+        meaning: "A run on this computer cannot open a connection to it.",
+        action: "Check that this computer can reach the relay.",
+      },
+    ],
+    [
+      "a certificate that did not verify",
+      "fix_and_retry",
+      {
+        id: "websocket_1",
+        status: "fail",
+        headline: `${WEBSOCKET_HOST}: its TLS certificate did not verify.`,
+        meaning: "This computer does not trust the relay's certificate.",
+        action: "Name your network's certificate in NODE_EXTRA_CA_CERTS.",
+      },
+    ],
+  ] as const)(
+    "%s shows its headline, meaning and action",
+    async (_name, overall, check) => {
+      stubRelayCheck([offer], { status: "verdict", overall, checks: [check] });
+      app.render(createElement(RelayCheckPanel));
+
+      await page.getByRole("button", { name: RELAY_CHECK_OPEN_LABEL }).click();
+      await expect.element(page.getByText(WEBSOCKET_HOST)).toBeInTheDocument();
+      await page.getByRole("button", { name: RELAY_CHECK_START_LABEL }).click();
+
+      await expect
+        .element(page.getByText(relayCheckVerdictSummary(overall)))
+        .toBeInTheDocument();
+      await expect.element(page.getByText(check.headline)).toBeInTheDocument();
+      if ("meaning" in check) {
+        await expect
+          .element(page.getByText(`What this means: ${check.meaning}`))
+          .toBeInTheDocument();
+        await expect
+          .element(page.getByText(`What to do: ${check.action}`))
+          .toBeInTheDocument();
+      }
+    },
+  );
 });

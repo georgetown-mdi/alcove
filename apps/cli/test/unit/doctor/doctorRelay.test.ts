@@ -24,7 +24,7 @@ import {
   ENROLLMENT_CHECK_ID,
   ENROLLMENT_FAILED_ACTION,
   NOT_CONTACTED_ACTION,
-  RELAY_CHECK_NO_TURN_URL,
+  RELAY_CHECK_NO_RELAY,
   RELAY_CHECK_WEBRTC_ONLY,
   RELAY_NOT_REACHED_REMEDY,
   relayCheckPlan,
@@ -623,7 +623,7 @@ test("a configuration whose every TURN url allowed_relays leaves out is refused,
       gather: scriptedGathering({}, requests),
     }),
   ).rejects.toThrow(
-    `connection.allowed_relays leaves out every TURN url this configuration ` +
+    `connection.allowed_relays leaves out every relay url this configuration ` +
       `lists (${OWN_TURN}), so a run contacts no relay and there is none to ` +
       "check. Nothing was contacted.",
   );
@@ -1179,7 +1179,7 @@ test("a configuration that is not webrtc is refused before anything is contacted
   expect(requests).toEqual([]);
 });
 
-test("a webrtc configuration listing no TURN url is refused as having no relay to check", async () => {
+test("a webrtc configuration listing no TURN url and no WebSocket relay is refused as having no relay to check", async () => {
   writeConfig(webrtcConnection({ stun: ["stun:stun.example.org:3478"] }));
   const requests: Array<RTCIceServer> = [];
   const lines: Array<string> = [];
@@ -1191,7 +1191,7 @@ test("a webrtc configuration listing no TURN url is refused as having no relay t
     gather: scriptedGathering({}, requests),
   });
 
-  await expect(checked).rejects.toThrow(RELAY_CHECK_NO_TURN_URL);
+  await expect(checked).rejects.toThrow(RELAY_CHECK_NO_RELAY);
   expect(lines).toEqual([]);
   expect(requests).toEqual([]);
 });

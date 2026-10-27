@@ -11,6 +11,7 @@ import {
   gatherRelayCandidate,
   relayCredentialForRun,
 } from "../connection/webrtc/weriftPeer";
+import { webSocketRelayDialsFor } from "../connection/webrtc/websocketRelayDial";
 import { runMountChecks } from "../doctor/mount";
 import { runProbe } from "../doctor/probe";
 import type { RelayCandidateGathering } from "../doctor/relay";
@@ -21,6 +22,7 @@ import {
   runRelayCheck,
 } from "../doctor/relay";
 import { readSmbMountInput, readSmbProbeInput } from "../doctor/smbEnvironment";
+import type { WebSocketRelayAsking } from "../doctor/websocketRelay";
 import type { DoctorMode, DoctorReport } from "../doctor/verdict";
 import {
   DOCTOR_EXIT_CODE,
@@ -45,8 +47,8 @@ import { loadConfig } from "./exchange";
 // is attempted: `doctor probe` checks over the network as smbclient sees it,
 // `doctor mount` through the kernel as a mounted folder. Connection inputs come
 // from the SMB_* environment, never flags, so a password never becomes an argv
-// value. `doctor relay` asks the TURN relay a webrtc run allocates on, and only
-// when the operator names it. Full behavior and the `--json` verdict
+// value. `doctor relay` asks the relays a webrtc run uses, and only when the
+// operator names it. Full behavior and the `--json` verdict
 // contract: docs/CLI.md, "Checking a network shared folder", and
 // docs/spec/CLI_DOCTOR.md.
 
@@ -87,6 +89,8 @@ export interface RelayCheckOptions {
    */
   writeStatementLine: (line: string) => void;
   gather?: RelayCandidateGathering;
+  /** Asks each WebSocket relay whether it admits the run's proof. */
+  askWebSocket?: WebSocketRelayAsking;
   /** The fetch the enrollment at the invitation relay's registrar sends with. */
   fetch?: typeof globalThis.fetch;
   now?: Date;
@@ -98,8 +102,8 @@ export interface RelayCheckOptions {
  * describe: refuse a configuration the check does not apply to, state the
  * hosts it contacts and those it does not, then contact what a run of the
  * configuration contacts -- the invitation's registrar where the run enrolls
- * there, and the first TURN url the run lists, presented what the run
- * presents -- and nothing else.
+ * there, the first TURN url the run lists and every WebSocket relay it
+ * dials, each presented what the run presents -- and nothing else.
  *
  * @internal exported for testing
  */
@@ -111,6 +115,15 @@ export async function checkRelay(
     keyFile: options.keyFile,
   });
   const connection = relayCheckConnection(loaded);
+  const role = connection.role;
+  const websocketDials =
+    role === undefined
+      ? []
+      : await webSocketRelayDialsFor(
+          connection,
+          authentication.sharedSecret,
+          role,
+        );
   const plan = relayCheckPlan(
     connection,
     await relayCredentialForRun(
@@ -118,6 +131,7 @@ export async function checkRelay(
       authentication.sharedSecret,
       options.now ?? new Date(),
     ),
+    websocketDials,
   );
   for (const line of relayHostStatementLines(
     relayHostStatement(plan, connection),
@@ -136,6 +150,7 @@ export async function checkRelay(
     options.gather ?? gatherRelayCandidate,
     options.boundMs,
     enrollment,
+    options.askWebSocket,
   );
 }
 
@@ -205,8 +220,10 @@ export function builder(cmd: Argv): Argv {
           .usage("Usage: $0 doctor relay [options]")
           .epilog(
             "Asks the TURN relay a run allocates on, the first the " +
-              "configuration lists, for a relay address, after naming the " +
-              "hosts it contacts and those it does not. Where a run " +
+              "configuration lists, for a relay address, and each " +
+              "WebSocket relay a run dials whether it admits the run's " +
+              "proof, after naming the hosts it contacts and those it does " +
+              "not. Where a run " +
               "enrolls at the registrar the invitation names, first " +
               "enrolls the exchange's relay key there, as a run does. It " +
               "contacts no other relay host. " +

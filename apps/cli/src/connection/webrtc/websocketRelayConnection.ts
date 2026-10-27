@@ -77,7 +77,7 @@ export interface WebSocketRelayConnectionOptions {
   closeFlushTimeoutMs?: number;
   /** Ends the dial early, closing the socket. */
   signal?: AbortSignal;
-  /** Tests only. */
+  /** Tests, and the relay check, which watches each socket's close through it. */
   socketFactory?: (url: string) => WebSocket;
   /** Tests only. */
   now?: () => Date;
@@ -128,7 +128,7 @@ const WEBSOCKET_CLOSING = 2;
 const WEBSOCKET_CLOSED = 3;
 
 /** The relay's close codes: docs/spec/WEBSOCKET_RELAY.md, Close codes. */
-const RELAY_CLOSE = {
+export const RELAY_CLOSE = {
   normal: 1000,
   goingAway: 1001,
   tooBig: 1009,
@@ -205,6 +205,12 @@ class ProofExpiredRefusal extends ConnectionError {
     super(message, "transport");
   }
 }
+
+/**
+ * The failure a message the relay sends before the exchange starts becomes,
+ * where this side does not take that message at that point.
+ */
+export class UnexpectedRelayMessageError extends ConnectionError {}
 
 function withNextStep(message: string, kind: "transport" | "protocol") {
   return markStatesItsOwnNextStep(new ConnectionError(message, kind));
@@ -657,11 +663,13 @@ class ParkedRelay implements ParkedWebSocketRelay {
       return;
     }
     this.fail(
-      withNextStep(
-        `the WebSocket relay at ${this.url} sent a message this side does ` +
-          "not take at that point. Check that connection.websocket_relay " +
-          "names an Alcove WebSocket relay.",
-        "protocol",
+      markStatesItsOwnNextStep(
+        new UnexpectedRelayMessageError(
+          `the WebSocket relay at ${this.url} sent a message this side does ` +
+            "not take at that point. Check that connection.websocket_relay " +
+            "names an Alcove WebSocket relay.",
+          "protocol",
+        ),
       ),
     );
   }

@@ -9,6 +9,7 @@ import {
   RUN_RELAY_CREDENTIAL_LABEL,
   runEnrollsAtInvitationRegistrar,
   selectRunRelay,
+  webSocketRelayEnrollsAtInvitationRegistrar,
 } from "../src/relayCredential";
 import {
   generateSharedSecret,
@@ -355,6 +356,37 @@ describe("runEnrollsAtInvitationRegistrar", () => {
       runEnrollsAtInvitationRegistrar({
         invitationRelay: { turn: [invitationTurn] },
       }),
+    ).toBe(false);
+  });
+});
+
+describe("webSocketRelayEnrollsAtInvitationRegistrar", () => {
+  const url = "wss://partner.example/relay";
+  const registrar = "https://registrar.partner.example";
+
+  test.each([
+    ["an own entry naming the invitation's url", { source: "own", url }, true],
+    ["the invitation's own entry", { source: "invitation", url }, true],
+    [
+      "the invitation's url under an exchange id it names",
+      { source: "invitation", url, exchangeId: "named" },
+      false,
+    ],
+    ["another url", { source: "own", url: "wss://own.example/relay" }, false],
+  ] as const)("%s", (_case, relay, expected) => {
+    expect(
+      webSocketRelayEnrollsAtInvitationRegistrar(relay, {
+        invitationRelay: { websocket: url, registrar },
+      }),
+    ).toBe(expected);
+  });
+
+  test("an invitation naming no registrar: no enrollment", () => {
+    expect(
+      webSocketRelayEnrollsAtInvitationRegistrar(
+        { source: "invitation", url },
+        { invitationRelay: { websocket: url } },
+      ),
     ).toBe(false);
   });
 });

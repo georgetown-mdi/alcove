@@ -4,14 +4,12 @@ import {
   relayCheckLinesShown,
   relayCheckPanelState,
   relayCheckShowsUnavailable,
-  relayCheckShowsWebsocketNote,
+  relayCheckUnavailableText,
+  relayCheckVerdictSummary,
 } from "@console/relayCheckModel";
 
-import type {
-  RelayCheckOffer,
-  RelayCheckOutcome,
-} from "@psi/jobClient/relayCheckClient";
 import type { RelayCheckLine } from "@jobContract/relayCheckResponses";
+import type { RelayCheckOffer } from "@psi/jobClient/relayCheckClient";
 
 describe("relayCheckLinesShown", () => {
   const skipped = (id: string, action: string): RelayCheckLine => ({
@@ -49,13 +47,27 @@ describe("relayCheckLinesShown", () => {
       ]);
     },
   );
+
+  test("each WebSocket relay's line is shown as the server sent it, its meaning and action included", () => {
+    const checks: Array<RelayCheckLine> = [
+      { id: "turn_1", status: "ok", headline: "reached." },
+      { id: "websocket_1", status: "ok", headline: "admitted." },
+      {
+        id: "websocket_2",
+        status: "fail",
+        headline: "not admitted.",
+        meaning: "the relay holds no key for this exchange.",
+        action: "Run this check again.",
+      },
+    ];
+    expect(relayCheckLinesShown(checks)).toEqual(checks);
+  });
 });
 
 describe("relayCheckPanelState", () => {
   const hiddenReason: RelayCheckOffer = {
     kind: "unavailable",
     reason: "not-webrtc",
-    websocketRelayNotChecked: false,
   };
 
   test("a reason the panel hides is hidden until the operator opens the check", () => {
@@ -69,78 +81,14 @@ describe("relayCheckPanelState", () => {
   });
 });
 
-describe("relayCheckShowsWebsocketNote", () => {
-  const verdict: RelayCheckOutcome = {
-    kind: "verdict",
-    overall: "ok",
-    checks: [],
-  };
-
-  test.each<[RelayCheckOutcome, boolean, boolean]>([
-    [verdict, true, true],
-    [verdict, false, false],
-    [
-      {
-        kind: "unavailable",
-        reason: "key-file",
-        websocketRelayNotChecked: true,
-      },
-      false,
-      true,
-    ],
-    [
-      {
-        kind: "unavailable",
-        reason: "key-file",
-        websocketRelayNotChecked: false,
-      },
-      true,
-      false,
-    ],
-    ...(
-      [
-        "refused",
-        "timeout",
-        "configuration-changed",
-        "busy",
-        "exchange-running",
-        "error",
-      ] as const
-    ).map((kind): [RelayCheckOutcome, boolean, boolean] => [
-      { kind },
-      true,
-      false,
-    ]),
-  ])(
-    "%o with a WebSocket relay listed %s shows the note: %s",
-    (outcome, websocketRelayNotChecked, shown) => {
-      expect(
-        relayCheckShowsWebsocketNote(outcome, { websocketRelayNotChecked }),
-      ).toBe(shown);
-    },
-  );
-});
-
 describe("relayCheckShowsUnavailable", () => {
   test("states why where the files name a relay the operator may expect checked", () => {
-    expect(
-      relayCheckShowsUnavailable({
-        reason: "no-turn-url",
-        websocketRelayNotChecked: true,
-      }),
-    ).toBe(true);
-    expect(
-      relayCheckShowsUnavailable({
-        reason: "turn-urls-left-out",
-        websocketRelayNotChecked: false,
-      }),
-    ).toBe(true);
-    expect(
-      relayCheckShowsUnavailable({
-        reason: "key-file",
-        websocketRelayNotChecked: false,
-      }),
-    ).toBe(true);
+    for (const reason of [
+      "relays-left-out",
+      "key-file",
+      "configuration-refused",
+    ] as const)
+      expect(relayCheckShowsUnavailable({ reason })).toBe(true);
   });
 
   test("shows nothing where the files name no relay", () => {
@@ -148,15 +96,26 @@ describe("relayCheckShowsUnavailable", () => {
       "no-configuration",
       "not-webrtc",
       "ice-provision",
+      "no-relay",
     ] as const)
-      expect(
-        relayCheckShowsUnavailable({ reason, websocketRelayNotChecked: false }),
-      ).toBe(false);
-    expect(
-      relayCheckShowsUnavailable({
-        reason: "no-turn-url",
-        websocketRelayNotChecked: false,
-      }),
-    ).toBe(false);
+      expect(relayCheckShowsUnavailable({ reason })).toBe(false);
+  });
+
+  test("a configuration with no relay is told it lists neither kind", () => {
+    expect(relayCheckUnavailableText("no-relay")).toBe(
+      "The alcove.yaml in your working folder lists no TURN server and no " +
+        "WebSocket relay, so there is no relay to check.",
+    );
+  });
+});
+
+describe("relayCheckVerdictSummary", () => {
+  test("speaks of every relay the check asked, not the TURN relay alone", () => {
+    expect(relayCheckVerdictSummary("ok")).toBe(
+      "Every relay the check asked answered this console as a run needs.",
+    );
+    expect(relayCheckVerdictSummary("fix_and_retry")).toMatch(
+      /^A relay the check asked did not answer/,
+    );
   });
 });

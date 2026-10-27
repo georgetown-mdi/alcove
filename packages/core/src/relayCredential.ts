@@ -379,11 +379,48 @@ export function runEnrollsAtInvitationRegistrar(
     (invitation.turn ?? []).includes(allocating.url) &&
     allocating.username === undefined &&
     allocating.credential === undefined;
-  const dialsThere = (websocket ?? []).some(
-    (relay) =>
-      relay.url === invitation.websocket && relay.exchangeId === undefined,
+  const dialsThere = (websocket ?? []).some((relay) =>
+    webSocketRelayEnrollsAtInvitationRegistrar(relay, connection),
   );
   return allocatesThere || dialsThere;
+}
+
+/**
+ * Whether a run dialing `relay` enrolls at the registrar its connection's
+ * `invitationRelay` names on that relay's account: the invitation names a
+ * registrar, `relay` has the url of the invitation's WebSocket relay, and the
+ * run dials it under the exchange id derived from the secret. Decided by the
+ * url, not the entry's `source`, as {@link runEnrollsAtInvitationRegistrar}.
+ */
+export function webSocketRelayEnrollsAtInvitationRegistrar(
+  relay: RunWebSocketRelay,
+  connection: Pick<RunRelayConnection, "invitationRelay">,
+): boolean {
+  const invitation = connection.invitationRelay;
+  return (
+    invitation?.registrar !== undefined &&
+    relay.url === invitation.websocket &&
+    relay.exchangeId === undefined
+  );
+}
+
+/**
+ * Whether a run dialing `relay` dials the invitation's WebSocket relay under
+ * the exchange id the invitation names, so the partner enrolled that id at
+ * their own registrar with a relay-owner token this side does not hold.
+ * Decided by the url, not the entry's `source`, as
+ * {@link runEnrollsAtInvitationRegistrar}.
+ */
+export function webSocketRelayIsPartnersUnderInvitationExchangeId(
+  relay: RunWebSocketRelay,
+  connection: Pick<RunRelayConnection, "invitationRelay">,
+): boolean {
+  const invitation = connection.invitationRelay;
+  return (
+    invitation?.websocket !== undefined &&
+    relay.url === invitation.websocket &&
+    relay.exchangeId !== undefined
+  );
 }
 
 /**
