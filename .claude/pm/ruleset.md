@@ -24,8 +24,10 @@ not `*` for bullets, and soft line wrapping.
 
 Right-size the work itself, not just the body: substantive work is scoped so
 an issue lands as roughly a 150-900 changed-line PR, and work projecting past
-~1,200 lines is split first -- a 2026-08 retro measured PRs above that line
-causing follow-up fixes at roughly four times the rate of smaller ones. Small
+~1,200 added or changed non-test lines is split first -- a 2026-08 retro
+measured PRs above that line causing follow-up fixes at roughly four times the
+rate of smaller ones. Whole-file and pure deletions do not count toward it, a
+working rule until measured. Small
 no-new-behavior items are unaffected: they take the Light tier below and batch
 well, several to one orchestration session; never inflate or merge tasks to
 fill a session.
