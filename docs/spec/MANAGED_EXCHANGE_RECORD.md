@@ -1289,7 +1289,9 @@ The command-line export's cron and Task Scheduler lines state the record's
   (`[datetime]::Today` plus the hour and minute), since its start date does
   not change which days it runs. Any other interval starts at `anchor`'s UTC
   date and time, built from their parts by `[datetime]::new`, since the
-  interval counts from that date. It is not a `schtasks` command, since
+  interval counts from that date. The start time is stored with the machine's
+  UTC offset at registration, so the task keeps that UTC time when a daylight
+  saving change moves the machine's offset. It is not a `schtasks` command, since
   `schtasks` reads a `/SD` start date in the machine's own date format and
   turns each single quote in `/TR` into a double quote, which breaks the task
   for a folder whose name holds one.

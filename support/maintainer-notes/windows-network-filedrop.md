@@ -362,9 +362,11 @@ panel names, once under en-US and once under en-GB. It asserts:
   `/SD 03/04/2026` as 3 April, and it stores a single quote in `/TR` as a
   double quote;
 - under the Eastern time zone, which has daylight saving, the daily and
-  every-few-days tasks store a start boundary with no UTC offset, the form
-  Task Scheduler reads in the machine's own zone (a stored offset is reported
-  as a `Measured_schedule_zone` notice and the test skipped);
+  every-few-days tasks store a start boundary holding the machine's UTC
+  offset at registration, and moving the machine from Eastern to Central time
+  (the one-hour shift a daylight saving change makes) leaves each task's next
+  run at the same UTC instant (reported as a `Measured_schedule_zone`
+  notice);
 - in a PowerShell put in ConstrainedLanguage, each line registers its
   intended trigger class and interval, and the weekly line its weekday as the
   Task Scheduler `DaysOfWeek` bitmask (Sunday 1, Monday 2, Tuesday 4, ...).

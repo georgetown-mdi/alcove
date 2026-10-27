@@ -29,9 +29,10 @@
     It then checks the two schtasks behaviors that are why the generator
     writes no schtasks line (windows-network-filedrop.md gives them). Under
     the Eastern time zone, which has daylight saving, it registers a daily and
-    an every-few-days line and asserts that each task's start boundary has no
-    UTC offset, the form Task Scheduler reads in the machine's own zone; a
-    stored offset is reported as a notice and the test skipped.
+    an every-few-days line, moves the machine to the Central time zone (the
+    one-hour shift of a daylight saving change), and asserts that each task's
+    next run is the same UTC instant before and after; both readings and the
+    start boundaries are reported as a notice.
 
     Last, each line is run once more in a new PowerShell an application-control
     policy has put in ConstrainedLanguage (the machine-wide
@@ -123,6 +124,21 @@ public static class AlcoveScheduledDockerRecorder {
 
     function Remove-TestTask {
         Unregister-ScheduledTask -TaskName $script:TaskName -Confirm:$false -ErrorAction SilentlyContinue
+    }
+
+    function Get-NextRunReading {
+        <#  The task's next run as local time and as UTC, read after the
+            cached time zone is dropped so that both follow the zone now in
+            force. Returns null when the task has no next run. #>
+        [TimeZoneInfo]::ClearCachedData()
+        $next = (Get-ScheduledTaskInfo -TaskName $script:TaskName).NextRunTime
+        if ($null -eq $next) { return $null }
+        $invariant = [Globalization.CultureInfo]::InvariantCulture
+        return [ordered]@{
+            Local = $next.ToString('yyyy-MM-ddTHH:mm:ss', $invariant)
+            Utc   = $next.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss', $invariant) + 'Z'
+            Kind  = $next.Kind.ToString()
+        }
     }
 
     function Invoke-PastedLine {
@@ -294,11 +310,10 @@ Describe 'What schtasks does to a start date and a single quote' {
 }
 
 Describe 'The Task Scheduler lines, registered under a time zone with daylight saving' {
-    It 'store a start boundary with no UTC offset, read as local time' -ForEach $zoneCases {
-        $zone = 'Eastern Standard Time'
-        $measurement = [ordered]@{ zone = $zone; zone_before = $script:ZoneBefore }
-        $starts = [ordered]@{}
-        Set-TimeZone -Id $zone
+    It 'keep the UTC time they were registered for when the machine''s UTC offset changes' -ForEach $zoneCases {
+        $zoneEast = 'Eastern Standard Time'
+        $zoneWest = 'Central Standard Time'
+        $measurement = [ordered]@{ zone_registered = $zoneEast; zone_moved_to = $zoneWest; zone_before = $script:ZoneBefore }
         try {
             foreach ($zoneLine in $ZoneLines) {
                 $expected = @{}
@@ -306,23 +321,39 @@ Describe 'The Task Scheduler lines, registered under a time zone with daylight s
                     $name, $value = $pair -split '=', 2
                     $expected[$name] = $value
                 }
+                $label = "interval_$($expected.interval)"
                 Remove-TestTask
+                Set-TimeZone -Id $zoneEast
                 $run = Invoke-PastedLine -Shell 'PowerShell' -Line $zoneLine.Line.Replace($script:Placeholder, $script:Folder)
                 $task = Get-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue
                 $task | Should -Not -BeNullOrEmpty -Because "the interval $($expected.interval) line registered no task (exit $($run.Exit): $($run.Output))"
                 $start = [string] @($task.Triggers)[0].StartBoundary
-                $starts["interval_$($expected.interval)"] = $start
-                $measurement["start_interval_$($expected.interval)"] = $start
+                $measurement["start_$label"] = $start
                 $start | Should -Match ('T' + $expected.time + ':00') -Because 'the task starts at the line''s time'
+
+                $before = Get-NextRunReading
+                $before | Should -Not -BeNullOrEmpty -Because "the interval $($expected.interval) task has no next run under $zoneEast (start boundary $start)"
+                $measurement["before_local_$label"] = $before.Local
+                $measurement["before_utc_$label"] = $before.Utc
+                $measurement["before_kind_$label"] = $before.Kind
+
+                Set-TimeZone -Id $zoneWest
+                # Read again for up to 30 s, in case the service takes a moment
+                # to recompute after the zone change; the first reading's UTC
+                # instant is what the task must keep.
+                $waited = [Diagnostics.Stopwatch]::StartNew()
+                $after = Get-NextRunReading
+                while ($waited.Elapsed.TotalSeconds -lt 30 -and ($null -eq $after -or $after.Utc -ne $before.Utc)) {
+                    Start-Sleep -Milliseconds 500
+                    $after = Get-NextRunReading
+                }
+                $waitedText = [math]::Round($waited.Elapsed.TotalSeconds, 1).ToString([Globalization.CultureInfo]::InvariantCulture)
+                $measurement["waited_seconds_$label"] = $waitedText
+                $after | Should -Not -BeNullOrEmpty -Because "the interval $($expected.interval) task has no next run under $zoneWest (start boundary $start)"
+                $measurement["after_local_$label"] = $after.Local
+                $measurement["after_utc_$label"] = $after.Utc
+                $after.Utc | Should -Be $before.Utc -Because "the interval $($expected.interval) task's next run was $($before.Local) local ($($before.Utc) UTC) under $zoneEast and $($after.Local) local ($($after.Utc) UTC) under $zoneWest after $waitedText s, start boundary $start"
                 Remove-TestTask
-            }
-            $withOffset = @($starts.Keys | Where-Object { $starts[$_] -match '(Z|[+-]\d{2}:\d{2})$' })
-            $measurement['with_offset'] = $(if ($withOffset.Count -gt 0) { $withOffset -join ',' } else { 'none' })
-            if ($withOffset.Count -gt 0) {
-                Set-ItResult -Skipped -Because "the start boundary of $($withOffset -join ', ') has a UTC offset (see the Measured_schedule_zone notice)"
-            }
-            foreach ($key in $starts.Keys) {
-                $starts[$key] | Should -Match '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?$' -Because "$key is stored as local time"
             }
         } finally {
             $global:AlcoveMeasurements['schedule_zone'] = $measurement
