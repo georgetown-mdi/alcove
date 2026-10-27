@@ -154,7 +154,6 @@ import type { AuthoredSignalingServer } from "./signalingServer";
 import type { JobFolderView } from "@jobContract/jobFolderContents";
 import type { JobHandoff } from "@jobContract/jobHandoff";
 import type { RecordUnavailableReason } from "@jobContract/recordUnavailableReason";
-import type { RelayCheckUnavailableReason } from "@jobContract/relayCheckResponses";
 import type { RelayEvent } from "@jobContract/relayEvent";
 import type { RendezvousLeg } from "./jobRendezvous";
 import type { RunArtifactPaths } from "./runArtifacts";
@@ -1472,7 +1471,7 @@ export class JobManager {
     | RelayCheckResult
     | { kind: "exchange-running" }
     | { kind: "configuration-changed" }
-    | { kind: "unavailable"; reason: RelayCheckUnavailableReason }
+    | Extract<RelayCheckOffer, { kind: "unavailable" }>
   > {
     if (this.shuttingDown) throw new ConsoleShuttingDownError();
     if (this.relayCheckRun !== null) throw new RelayCheckBusyError();
@@ -1483,8 +1482,7 @@ export class JobManager {
     )
       return { kind: "exchange-running" };
     const offer = relayCheckOffer(this.dataRoot);
-    if (offer.kind === "unavailable")
-      return { kind: "unavailable", reason: offer.reason };
+    if (offer.kind === "unavailable") return offer;
     if (offer.configurationDigest !== args.configurationDigest)
       return { kind: "configuration-changed" };
     const stop = new AbortController();

@@ -39,8 +39,14 @@ afterEach(async () => {
     fs.rmSync(root, { recursive: true, force: true });
 });
 
-/** Seed the global manager over a working folder holding a webrtc pair. */
-function seedManager(childEnv: Record<string, string> = {}): void {
+/**
+ * Seed the global manager over a working folder holding a webrtc pair, whose
+ * connection has `connection` added, and return the folder.
+ */
+function seedManager(
+  childEnv: Record<string, string> = {},
+  connection: Record<string, unknown> = {},
+): string {
   const root = tempDataRoot("routes-relay-check");
   roots.push(root);
   fs.mkdirSync(root, { recursive: true });
@@ -53,6 +59,7 @@ function seedManager(childEnv: Record<string, string> = {}): void {
           server: { host: "peers.example.org" },
           role: "inviter",
           turn: [{ url: "turn:relay.example.org:3478" }],
+          ...connection,
         },
         linkageTerms: validLinkageTerms(),
       }),
@@ -66,6 +73,7 @@ function seedManager(childEnv: Record<string, string> = {}): void {
   vi.stubEnv("JOB_DATA_ROOT", root);
   (globalThis as { jobManagerInstance?: JobManager }).jobManagerInstance =
     new JobManager({ dataRoot: root, binaryPath: STUB_CLI_PATH, childEnv });
+  return root;
 }
 
 function handler(method: "GET" | "POST"): Handler {
@@ -150,6 +158,23 @@ describe("/api/jobs/relay-check", () => {
       JSON.stringify({ configurationDigest: "0".repeat(64) }),
     );
     expect(await response.json()).toEqual({ status: "configuration-changed" });
+  });
+
+  test("POST over a pair become unavailable says the WebSocket relay is not checked", async () => {
+    const root = seedManager(
+      {},
+      { websocketRelay: "wss://relay.example.org/relay" },
+    );
+    const { configurationDigest } = await getOffer();
+    fs.rmSync(path.join(root, ".alcove.key"));
+
+    const response = await postCheck(JSON.stringify({ configurationDigest }));
+
+    expect(await response.json()).toEqual({
+      status: "unavailable",
+      reason: "key-file",
+      websocketRelayNotChecked: true,
+    });
   });
 
   test("POST while a check runs is a 409 with no body", async () => {

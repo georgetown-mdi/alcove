@@ -92,10 +92,7 @@ export const route = defineJobRoute({
         case "exchange-running":
           return jobJsonResponse({ reason: "exchange-running" }, 409);
         case "unavailable":
-          return jobJsonResponse({
-            status: "unavailable",
-            reason: result.reason,
-          });
+          return jobJsonResponse(offerEnvelope(result));
         case "verdict":
           return jobJsonResponse({
             status: "verdict",

@@ -117,6 +117,11 @@ export function RelayCheckPanel() {
           {state.offer.websocketRelayNotChecked && (
             <Text size="sm">{WEBSOCKET_RELAY_NOT_CHECKED}</Text>
           )}
+          <Group>
+            <Button variant="default" onClick={() => void open()}>
+              {RELAY_CHECK_AGAIN_LABEL}
+            </Button>
+          </Group>
         </Stack>
       );
     case "hosts":

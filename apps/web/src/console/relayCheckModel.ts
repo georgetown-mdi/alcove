@@ -213,10 +213,15 @@ export function relayCheckPanelState(
     : { step: "closed", unreadable: false };
 }
 
-/** Whether a check's outcome is followed by the WebSocket-relay note. */
+/**
+ * Whether a check's outcome is followed by the WebSocket-relay note: a
+ * verdict by the shown offer's flag, an `unavailable` answer by its own,
+ * since the server re-read the file to give it.
+ */
 export function relayCheckShowsWebsocketNote(
   outcome: RelayCheckOutcome,
   offer: { websocketRelayNotChecked: boolean },
 ): boolean {
+  if (outcome.kind === "unavailable") return outcome.websocketRelayNotChecked;
   return outcome.kind === "verdict" && offer.websocketRelayNotChecked;
 }

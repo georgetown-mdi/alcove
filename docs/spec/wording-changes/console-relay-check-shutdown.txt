@@ -1,0 +1,3 @@
+# A start request answered unavailable states the WebSocket-relay flag as
+# the hosts read does.
+- Where the file's digest is not the one given, it answers `{ "status": "configuration-changed" }` and spawns nothing, so a check runs only over the configuration whose hosts the operator was shown; where the pair is now unavailable, it answers `{ "status": "unavailable", "reason" }`. -> Where the file's digest is not the one given, it answers `{ "status": "configuration-changed" }` and spawns nothing, so a check runs only over the configuration whose hosts the operator was shown; where the pair is now unavailable, it answers `{ "status": "unavailable", "reason" }`, with `websocketRelayNotChecked` as `GET` sets it.

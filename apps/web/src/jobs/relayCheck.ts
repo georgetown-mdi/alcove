@@ -181,7 +181,11 @@ export function relayCheckOffer(dataRoot: string): RelayCheckOffer {
       ...(websocketRelayNotChecked && { websocketRelayNotChecked: true }),
     };
   if (mountedKeyFileFault(dataRoot) !== undefined)
-    return { kind: "unavailable", reason: "key-file" };
+    return {
+      kind: "unavailable",
+      reason: "key-file",
+      ...(websocketRelayNotChecked && { websocketRelayNotChecked: true }),
+    };
   return {
     kind: "available",
     configurationDigest: configurationDigestOf(read.source),
