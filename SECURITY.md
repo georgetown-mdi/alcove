@@ -22,9 +22,9 @@ Alcove maintains security patches for the current major release and the previous
 
 **Do not report security vulnerabilities through public GitHub issues, pull requests, or discussions.**
 
-Use GitHub's built-in [private vulnerability reporting](https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing/privately-reporting-a-security-vulnerability) for this repository. This opens a private thread visible only to you and the maintainers and is the fastest path to a coordinated fix.
+Use GitHub's built-in [private vulnerability reporting](https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing/privately-reporting-a-security-vulnerability) for this repository. This opens a private thread visible only to you and the maintainers, where the coordinated fix is tracked.
 
-If you cannot use the GitHub path -- you have no GitHub account, or private reporting is unavailable when you arrive -- email the maintainer at [vincent.dorie@georgetown.edu](mailto:vincent.dorie@georgetown.edu) with the same details below. Prefer the GitHub path when both are open: the private thread is visible to the maintainer team rather than a single mailbox, and it is where the coordinated fix is tracked.
+If you cannot use the GitHub path -- you have no GitHub account, or private reporting is unavailable when you arrive -- email the maintainer at [vincent.dorie@georgetown.edu](mailto:vincent.dorie@georgetown.edu) with the same details below. Prefer the GitHub path when both are open.
 
 When reporting, please include:
 
@@ -70,7 +70,7 @@ The following are out of scope:
 
 - Fundamental cryptographic flaws in the PSI primitive itself -- report those to [OpenMined/PSI](https://github.com/OpenMined/PSI) directly, then notify us so we can coordinate an update to the vendored copy. Alcove is responsible for updating the vendored copy when security patches are released upstream and will do so as part of normal maintenance.
 - Denial-of-service attacks against shared infrastructure (SFTP servers, STUN/TURN relays, peer coordination servers)
-- Attacks that require an adversary to have already compromised the host running Alcove. A second, unprivileged account on that host reading a file Alcove wrote owner-only is the at-rest permissions item above rather than this one.
+- Attacks that require an adversary to have already compromised the host running Alcove. A second, unprivileged account on that host reading a file Alcove wrote owner-only is covered by the at-rest permissions item above.
 - The absence of at-rest encryption. Alcove encrypts nothing on disk by design: it applies owner-only permissions and leaves at-rest confidentiality to the deploying agency's storage or full-disk encryption (see [docs/COMPLIANCE.md](docs/COMPLIANCE.md#nist-sp-800-53), control SC-28).
 - Social engineering
 

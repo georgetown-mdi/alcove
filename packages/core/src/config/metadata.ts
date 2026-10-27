@@ -345,6 +345,28 @@ export function columnNameLookupKey(name: string): string {
     .replace(/[\s_.-]+/g, "_");
 }
 
+/**
+ * Lookup keys of no-separator identifier names, which do not end in `_id` but
+ * infer as a name that does. `personalid` is the client column of the HMIS
+ * CSV export.
+ */
+const UNSEPARATED_ID_LOOKUP_KEYS: ReadonlySet<string> = new Set([
+  "clientid",
+  "personid",
+  "personalid",
+]);
+
+/**
+ * Whether a lookup key absent from {@link ALIAS_TYPE_META_MAP} infers
+ * `type: identifier`: it ends in `_id`, or is one of
+ * {@link UNSEPARATED_ID_LOOKUP_KEYS}.
+ */
+function isUnlistedIdentifierLookupKey(lookupName: string): boolean {
+  return (
+    lookupName.endsWith("_id") || UNSEPARATED_ID_LOOKUP_KEYS.has(lookupName)
+  );
+}
+
 // The lookup key joins words with `_`, so a no-separator spelling such as
 // `firstname` is a key of its own and is listed as an alias.
 const DEFAULT_COLUMN_TYPES_AND_ALIASES: Array<TypeMeta> = [
@@ -374,8 +396,9 @@ const DEFAULT_COLUMN_TYPES_AND_ALIASES: Array<TypeMeta> = [
     isPayload: false,
   },
   /**
-   * Identifier columns are also inferred if a column ends in _id, which can't
-   * be represented as a simple alias. See {@link inferMetadata}.
+   * Identifier columns are also inferred from a name ending in `_id` or one of
+   * {@link UNSEPARATED_ID_LOOKUP_KEYS}, outside this table because the mode
+   * decides whether they are sent. See {@link inferMetadata}.
    */
   { type: "identifier", aliases: ["id"], role: "identifier", isPayload: true },
   {
@@ -546,12 +569,14 @@ function assertColumnNamesNonEmpty(
  *
  * - `declaredOnly` -- an invited or recurring exchange, and the default:
  *   such a column is left out, so it is not declared and never sent, and an
- *   `_id` column is declared only as the identifier, unsent; an identifier-
- *   typed column that is not the identifier is left out too.
+ *   `_id`, `ClientID`, `PersonID`, or `PersonalID` column is declared only as
+ *   the identifier, unsent; an identifier-typed column that is not the
+ *   identifier is left out too.
  * - `direct` -- a run on an input file with no invitation or configuration:
  *   such a column is declared `role: payload` and sent, and every
- *   identifier-typed column (`id`, `identifier`, a name ending in `_id`) is
- *   sent. Every column is declared, so none is undeclared.
+ *   identifier-typed column (`id`, `identifier`, a name ending in `_id`,
+ *   `ClientID`, `PersonID`, `PersonalID`) is sent. Every column is declared,
+ *   so none is undeclared.
  *
  * A linkage-key alias infers alike under both and is never sent; it is
  * matched on only where a linkage key reads it.
@@ -567,9 +592,10 @@ export interface InferMetadataOptions {
 /**
  * Assigns default roles to the columns inference recognizes by name: a name
  * whose {@link columnNameLookupKey} is a key of {@link ALIAS_TYPE_META_MAP},
- * or ends in `_id`, which may become this party's identifier. Each column
- * keeps its raw header as its name. Under the default `declaredOnly` mode
- * every other column is left out, so it is not declared and never sent
+ * or ends in `_id` or is `clientid`, `personid`, or `personalid`, which may
+ * become this party's identifier. Each column keeps its raw header as its
+ * name. Under the default `declaredOnly` mode every other column is left
+ * out, so it is not declared and never sent
  * ({@link undeclaredColumnNames} lists them); under `direct` it is declared
  * as payload and sent ({@link MetadataInferenceMode}).
  *
@@ -629,7 +655,9 @@ export function inferMetadataForEveryColumn(
     // An own-property test: `in` also matches inherited names such as
     // `constructor` and `__proto__`, which have no entry.
     if (!Object.hasOwn(ALIAS_TYPE_META_MAP, lookupName)) {
-      const type = lookupName.endsWith("_id") ? "identifier" : "other";
+      const type = isUnlistedIdentifierLookupKey(lookupName)
+        ? "identifier"
+        : "other";
       return direct
         ? { name, type, role: "payload", isPayload: true }
         : { name, type, role: "ignored", isPayload: false };
@@ -666,8 +694,9 @@ export function undeclaredColumnNames(
 
 /**
  * The names among `columnNames`, in order, that infer `type: identifier`
- * (`id`, `identifier`, or a name ending in `_id`). An empty name is skipped:
- * inference refuses it, and a run's intake has refused it already.
+ * (`id`, `identifier`, a name ending in `_id`, `ClientID`, `PersonID`, or
+ * `PersonalID`). An empty name is skipped: inference refuses it, and a run's
+ * intake has refused it already.
  */
 export function identifierTypedColumnNames(
   columnNames: ReadonlyArray<string>,

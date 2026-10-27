@@ -21,7 +21,7 @@ Pick the one that matches who you are. All three run the same protocol, so the t
    ```
    Best for recurring or scheduled exchanges and for IT teams fitting linkage into a data pipeline. See the [CLI App Quickstart](#cli-app-quickstart).
 
-How many records each one handles, and roughly how long an exchange takes: [How large an exchange can be](docs/WEB_APP.md#how-large-an-exchange-can-be).
+How many records each one handles, and roughly how long an exchange takes: [How large an exchange can be](docs/DEPLOYMENT.md#how-large-an-exchange-can-be).
 
 To run the web app from source instead, see [apps/web/README.md](apps/web/README.md).
 

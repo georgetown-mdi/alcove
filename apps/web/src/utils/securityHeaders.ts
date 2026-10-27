@@ -2,7 +2,7 @@
  * Defense-in-depth response headers, stated once: the hosted build writes them to
  * `_headers` (`apps/web/hosted/headersFile.ts`) and the console server sets them
  * on every response (`apps/web/server/console/app.ts`). What each guards:
- * docs/SECURITY_DESIGN.md, Channel security. Extend the one CSP value rather than
+ * docs/DEPLOYMENT.md, Headers, caching, and the fallback document. Extend the one CSP value rather than
  * adding a second `Content-Security-Policy` header, since browsers enforce the
  * intersection; a worker-restricting directive must allow `worker-src 'self'` for
  * the bundled CSV-parse worker.

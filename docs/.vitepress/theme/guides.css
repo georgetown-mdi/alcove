@@ -1,0 +1,252 @@
+/* The guides under docs/guides/: every rule is scoped to the page class
+   docs/.vitepress/guides.mjs gives them, and uses the default theme's colors. */
+
+.guide-page .vp-doc :not(pre) > code {
+  overflow-wrap: anywhere;
+}
+
+.guide-page .vp-doc p.guide-lede {
+  font-size: 18px;
+  line-height: 1.55;
+  color: var(--vp-c-text-2);
+}
+
+/* The front-matter rows under the title */
+.guide-page .vp-doc .guide-ledger {
+  margin: 24px 0 8px;
+  border-top: 2px solid var(--vp-c-text-1);
+  font-size: 14px;
+  line-height: 1.55;
+}
+.guide-page .vp-doc .guide-ledger-row {
+  display: grid;
+  grid-template-columns: 10rem minmax(0, 1fr);
+  gap: 4px 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+.guide-page .vp-doc .guide-ledger dt {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vp-c-text-3);
+  padding-top: 1px;
+}
+.guide-page .vp-doc .guide-ledger dd {
+  margin: 0;
+}
+@media (max-width: 640px) {
+  .guide-page .vp-doc .guide-ledger-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Steps: a timeline of square marks; the mark shows which party acts */
+.guide-page .vp-doc .guide-step {
+  display: flow-root;
+  position: relative;
+  padding: 24px 0 0 34px;
+}
+.guide-page .vp-doc .guide-step > h3 {
+  position: relative;
+  margin-top: 0;
+}
+.guide-page .vp-doc .guide-step > h3 .header-anchor {
+  display: none;
+}
+.guide-page .vp-doc .guide-step > h3::before,
+.guide-page .vp-doc .guide-mark {
+  box-sizing: border-box;
+  width: 15px;
+  height: 15px;
+  border: 2px solid var(--vp-c-brand-1);
+  background: var(--vp-c-bg);
+}
+.guide-page .vp-doc .guide-step > h3::before {
+  content: "";
+  position: absolute;
+  left: -30px;
+  top: 7px;
+  z-index: 1;
+}
+.guide-page .vp-doc .guide-step::after {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--vp-c-divider);
+}
+.guide-page .vp-doc .guide-step.first::after {
+  top: 31px;
+}
+.guide-page .vp-doc .guide-step.first.has-screen::after {
+  top: 55px;
+}
+.guide-page .vp-doc .guide-step.last::after {
+  bottom: auto;
+  height: 31px;
+}
+.guide-page .vp-doc .guide-step.last.has-screen::after {
+  height: 55px;
+}
+.guide-page .vp-doc .guide-step.first.last::after {
+  display: none;
+}
+.guide-page .vp-doc .guide-step[data-party="a"] > h3::before,
+.guide-page .vp-doc .guide-mark[data-party="a"] {
+  background: var(--vp-c-brand-1);
+}
+.guide-page .vp-doc .guide-step[data-party="both"] > h3::before,
+.guide-page .vp-doc .guide-mark[data-party="both"] {
+  background: linear-gradient(
+    135deg,
+    var(--vp-c-brand-1) 0 50%,
+    var(--vp-c-bg) 50%
+  );
+}
+@media (max-width: 639px) {
+  /* A code block bleeds to the right edge only, clear of the timeline. */
+  .guide-page .vp-doc .guide-step div[class*="language-"] {
+    margin-left: 0;
+  }
+}
+.guide-page .vp-doc .guide-num {
+  font-family: var(--vp-font-family-mono);
+  font-weight: 700;
+  color: var(--vp-c-brand-1);
+  margin-right: 8px;
+}
+.guide-page .vp-doc p.guide-party-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 20px 0 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--vp-c-text-2);
+}
+.guide-page .vp-doc .guide-party-key span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.guide-page .vp-doc .guide-mark {
+  display: inline-block;
+}
+
+/* The product's own screen header over a step */
+.guide-page .vp-doc p.guide-screen {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vp-c-text-3);
+}
+
+/* Checkpoint and More detail lines */
+.guide-page .vp-doc p.guide-checkpoint,
+.guide-page .vp-doc p.guide-more {
+  position: relative;
+  padding-left: 16px;
+  font-size: 15px;
+  color: var(--vp-c-text-2);
+}
+.guide-page .vp-doc p.guide-checkpoint::before,
+.guide-page .vp-doc p.guide-more::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 4px;
+}
+.guide-page .vp-doc p.guide-checkpoint::before {
+  background: var(--vp-c-success-1);
+}
+.guide-page .vp-doc p.guide-checkpoint > strong:first-child {
+  color: var(--vp-c-success-1);
+}
+.guide-page .vp-doc p.guide-more::before {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--vp-c-brand-1) 0 4px,
+    var(--vp-c-brand-soft) 4px 8px
+  );
+}
+
+/* Choice table and "What you get" table */
+.guide-page .vp-doc .guide-choice tr.guide-usual td {
+  background: var(--vp-c-brand-soft);
+}
+.guide-page .vp-doc .guide-choice tr.guide-usual td:first-child {
+  box-shadow: inset 3px 0 0 var(--vp-c-brand-1);
+}
+.guide-page .vp-doc .guide-badge {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--vp-c-brand-1);
+  border-radius: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vp-c-brand-1);
+  vertical-align: 1px;
+}
+.guide-page .vp-doc .guide-files td.guide-private {
+  color: var(--vp-c-warning-1);
+  font-weight: 600;
+}
+
+/* Platform and channel switcher */
+.guide-page .vp-doc .guide-tabs {
+  margin: 16px 0;
+}
+.guide-page .vp-doc .guide-tabs [role="tablist"] {
+  display: flex;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+.guide-page .vp-doc .guide-tabs [role="tab"] {
+  margin-bottom: -1px;
+  padding: 8px 14px 6px;
+  border-bottom: 2px solid transparent;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--vp-c-text-2);
+  cursor: pointer;
+}
+.guide-page .vp-doc .guide-tabs [role="tab"]:hover {
+  color: var(--vp-c-text-1);
+}
+.guide-page .vp-doc .guide-tabs [role="tab"][aria-selected="true"] {
+  border-bottom-color: var(--vp-c-brand-1);
+  color: var(--vp-c-text-1);
+}
+.guide-page .vp-doc .guide-tabs [role="tab"]:focus-visible {
+  outline: 2px solid var(--vp-c-brand-1);
+  outline-offset: -2px;
+}
+
+/* About */
+.guide-about .vp-doc img[src*="mdi-logo"] {
+  box-sizing: content-box;
+  width: 220px;
+  padding: 14px 22px;
+  border-radius: 2px;
+  background: #041e42;
+}
+.guide-about .vp-doc h3 + p > img {
+  width: 112px;
+  height: 112px;
+  object-fit: cover;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 2px;
+}

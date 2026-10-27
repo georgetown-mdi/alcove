@@ -215,10 +215,6 @@ function SavedExchangesSurface({
       <main className={`${styles.lobby} ${styles.lobbyFullWidth}`}>
         <p className={styles.siteHeadline}>{HOME_HEADLINE}</p>
         <h1 className={styles.savedListTitle}>Recurring exchanges</h1>
-        <p className={styles.sub}>
-          Exchanges you saved to run again with the same partner, stored in this
-          browser. Choose one to run it again without a new invitation.
-        </p>
         {load === undefined ? (
           <DelayedLoader />
         ) : load.kind === "failed" ? (

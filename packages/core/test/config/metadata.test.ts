@@ -102,6 +102,89 @@ test("an _id column ahead of a canonical id column: the _id column is the identi
   ]);
 });
 
+test("a ClientID column ahead of a canonical id column: ClientID is the identifier, id is left out", () => {
+  expect(inferMetadata(["ClientID", "id"], [])).toEqual([
+    {
+      name: "ClientID",
+      type: "identifier",
+      role: "identifier",
+      isPayload: false,
+    },
+  ]);
+});
+
+// --- inferMetadata: no-separator client and person ids ----------------------
+
+describe.each(["declaredOnly", "direct"] as const)(
+  "%s mode: ClientID, PersonID and PersonalID infer as a client_id column does",
+  (mode) => {
+    const inferredAlone = (name: string) =>
+      inferMetadataForEveryColumn([name], [], { mode }).map((column) => ({
+        ...column,
+        name: "client_id",
+      }));
+
+    test.each([
+      "ClientID",
+      "clientID",
+      "clientid",
+      "CLIENTID",
+      "PersonID",
+      "personId",
+      "PersonalID",
+      "PERSONALID",
+      " personalid ",
+    ])("%s", (name) => {
+      expect(inferredAlone(name)).toEqual(inferredAlone("client_id"));
+      expect(
+        inferMetadata([name, "client_id", "first_name"], [], { mode }),
+      ).toEqual(
+        inferMetadata(["case_id", "client_id", "first_name"], [], {
+          mode,
+        }).map((column) =>
+          column.name === "case_id" ? { ...column, name } : column,
+        ),
+      );
+    });
+
+    test("an id column keeps its own inference", () => {
+      expect(inferMetadata(["id"], [], { mode })).toEqual([
+        { name: "id", type: "identifier", role: "identifier", isPayload: true },
+      ]);
+    });
+  },
+);
+
+test("PersonalID is the identifier, unsent, by default", () => {
+  expect(inferMetadata(["PersonalID", "FirstName", "notes"], [])).toEqual([
+    {
+      name: "PersonalID",
+      type: "identifier",
+      role: "identifier",
+      isPayload: false,
+    },
+    {
+      name: "FirstName",
+      type: "first_name",
+      role: "linkage",
+      isPayload: false,
+    },
+  ]);
+});
+
+test("other no-separator id spellings are not identifiers", () => {
+  expect(
+    inferMetadataForEveryColumn(["memberid", "caseid", "personalidx"], []).map(
+      (column) => column.type,
+    ),
+  ).toEqual(["other", "other", "other"]);
+});
+
+test("ClientID, PersonID and PersonalID are not entries of the alias table", () => {
+  for (const key of ["clientid", "personid", "personalid"])
+    expect(Object.hasOwn(ALIAS_TYPE_META_MAP, key)).toBe(false);
+});
+
 test("two canonical identifier columns: only the first is the identifier", () => {
   expect(inferMetadata(["identifier", "id"], [])).toEqual([
     {

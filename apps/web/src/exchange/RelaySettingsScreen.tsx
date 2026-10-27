@@ -1,16 +1,20 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import {
   Alert,
   Anchor,
   Button,
   Group,
+  Input,
   Stack,
   Switch,
   TextInput,
   Textarea,
+  VisuallyHidden,
 } from "@mantine/core";
 import { Link } from "@tanstack/react-router";
+
+import { InfoButton } from "@components/InfoButton";
 
 import {
   DEFAULT_RELAY_SWITCH_LABEL,
@@ -29,6 +33,7 @@ import { relayTestTargets } from "@psi/transport/relayTest";
 import styles from "@styles/app.module.css";
 
 import { CoordinationServerSection } from "./CoordinationServerSection";
+import { RELAY_SETTINGS_GUIDE_URL } from "./userGuide";
 import { RelayTestSection } from "./RelayTestSection";
 import { WorkShell } from "./WorkShell";
 
@@ -39,8 +44,8 @@ import type {
 import type { RelayUrlLines } from "@psi/transport/ownRelaySetting";
 
 /**
- * What the relay's operator learns, shown at the end of the relay settings page
- * and in `DefaultRelayNotice`. docs/COMMUNICATION.md and
+ * What the relay's operator learns, behind the relay settings page's info
+ * buttons and in `DefaultRelayNotice`. docs/COMMUNICATION.md and
  * docs/SHARED_RESPONSIBILITY.md state it in full, with the reason the address
  * reaches the relay when no traffic is relayed.
  */
@@ -77,22 +82,22 @@ export const NO_RELAY_SET = "No relay of your own is set.";
 export const NO_OWN_RELAY_SITE_RELAY_IN_USE =
   "No relay of your own is set. Exchanges use this site's relay server.";
 
-/** The relay settings page's opening paragraph: when a relay is needed, and
- * which party sets it up. */
+/** The relay settings page's opening line: when a relay is needed. */
 export const RELAY_PAGE_INTRO =
-  "When a firewall blocks a direct connection to your partner, you can both " +
-  "connect through a TURN relay. If you run the relay, create the invitation " +
-  "so your partner uses it too.";
+  "Use a relay when a firewall blocks a direct connection to your partner.";
 
-/** Where the hosted app's relay settings page points to the coordination
- * server section below, under {@link RELAY_PAGE_INTRO}. */
-export const RELAY_PAGE_COORDINATION_SERVER_NOTE =
-  "This page also sets the coordination server your invitations use, under " +
-  "Coordination server below.";
+/** The explanation behind the info button on {@link RELAY_PAGE_INTRO}: which
+ * party sets the relay up, what its operator learns, and where an exchange
+ * leaves a relay out. */
+export const RELAY_PAGE_INFO =
+  "If you run the relay, create the invitation so your partner uses it too. " +
+  `${RELAY_OPERATOR_DISCLOSURE} The allowed relays an exchange sets on its ` +
+  "review, or a saved exchange on its own page, can leave out any of the " +
+  "relays saved here.";
 
 /**
- * What the relay must hold for each run's credential, shown under the page's
- * opening paragraph and stated in docs/COMMUNICATION.md.
+ * What the relay must hold for each run's credential, behind the TURN field's
+ * info button and stated in docs/COMMUNICATION.md.
  */
 export const RELAY_KEY_NOTICE =
   "Each exchange signs in to the relay with a credential derived from that " +
@@ -104,26 +109,37 @@ export const RELAY_KEY_NOTICE =
   "exchange through your relay needs its key registered with the relay again " +
   "after each run.";
 
-/** The STUN field's description: what a STUN server learns, and that the
- * servers entered and an accepted invitation's take the default's place
- * (`buildIceServers`). */
-export const STUN_FIELD_DESCRIPTION =
-  "One per line. A STUN server finds each browser's public network address, " +
-  "so it learns the network address of each party that uses it. The servers " +
-  "you enter replace the default, Google's public STUN server, in every " +
-  "exchange this browser runs, and invitations you create name them, so your " +
-  "partner contacts them in place of the default too. Servers an invitation " +
-  "you accept names are contacted as well, and also replace the default. " +
-  "For example: stun:stun.example.org:3478";
+/** The TURN field's description. */
+export const TURN_FIELD_DESCRIPTION =
+  "One per line, for example turns:relay.example.org:443?transport=tcp";
 
-/** The WebSocket relay field's description: what the relay's operator
- * learns, since each run that lists the url opens a socket to it. */
+/** The STUN field's description. */
+export const STUN_FIELD_DESCRIPTION =
+  "One per line, for example stun:stun.example.org:3478";
+
+/** The explanation behind the STUN field's info button: what a STUN server
+ * learns, and that the servers entered and an accepted invitation's take the
+ * default's place (`buildIceServers`). */
+export const STUN_FIELD_INFO =
+  "A STUN server finds each browser's public network address, so it learns " +
+  "the network address of each party that uses it. The servers you enter " +
+  "replace the default, Google's public STUN server, in every exchange this " +
+  "browser runs, and invitations you create name them, so your partner " +
+  "contacts them in place of the default too. Servers an invitation you " +
+  "accept names are contacted as well, and also replace the default.";
+
+/** The WebSocket relay field's description. */
 export const WEBSOCKET_RELAY_FIELD_DESCRIPTION =
+  "For example: wss://relay.example.org/relay";
+
+/** The explanation behind the WebSocket relay field's info button: what the
+ * relay's operator learns, since each run that lists the url opens a socket
+ * to it. */
+export const WEBSOCKET_RELAY_FIELD_INFO =
   "A relay for networks that block connections through a TURN relay. An " +
   "invitation you send names it. Each exchange connects to it as it starts, " +
   "so its operator learns your network address, and the exchange passes " +
-  "through it, encrypted, only when no other connection opens. For example: " +
-  "wss://relay.example.org/relay";
+  "through it, encrypted, only when no other connection opens.";
 
 /** The field error for one list's parse, or `undefined` when it parsed. */
 function fieldError(lines: RelayUrlLines): string | undefined {
@@ -166,6 +182,9 @@ export function RelaySettingsScreen({
    * unset. */
   defaultRelay?: () => DefaultRelaySetting | undefined;
 }) {
+  const turnFieldId = useId();
+  const stunFieldId = useId();
+  const websocketFieldId = useId();
   const [offersSwitch] = useState(() => build().kind === "opt-in");
   const [switchOn, setSwitchOn] = useState(readDefaultRelaySwitch);
   const [switchNotSaved, setSwitchNotSaved] = useState(false);
@@ -262,30 +281,46 @@ export function RelaySettingsScreen({
   return (
     <WorkShell>
       <h1>Relay server</h1>
-      <p className={`${styles.small} ${styles.sub}`}>{RELAY_PAGE_INTRO}</p>
-      <p className={`${styles.small} ${styles.sub}`}>
-        {RELAY_PAGE_COORDINATION_SERVER_NOTE}
-      </p>
-      <p className={`${styles.small} ${styles.sub}`}>
-        {
-          "The allowed relays an exchange sets on its review, or a saved exchange on its own page, can leave out any of the relays saved here."
-        }{" "}
-        {RELAY_KEY_NOTICE}
-      </p>
+      <InfoButton label="About relays" explanation={RELAY_PAGE_INFO}>
+        <p className={`${styles.small} ${styles.sub} ${styles.infoLine}`}>
+          {RELAY_PAGE_INTRO}{" "}
+          <Anchor
+            inherit
+            href={RELAY_SETTINGS_GUIDE_URL}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Learn more
+            <VisuallyHidden>
+              {" "}
+              about relay settings (opens in a new tab)
+            </VisuallyHidden>
+          </Anchor>
+        </p>
+      </InfoButton>
 
       {offersSwitch && (
-        <Switch
+        <InfoButton
           mt="md"
-          label={DEFAULT_RELAY_SWITCH_LABEL}
-          description={DEFAULT_RELAY_SWITCH_DESCRIPTION}
-          checked={switchOn}
-          error={
-            switchNotSaved ? (
-              <span role="alert">{DEFAULT_RELAY_SWITCH_NOT_SAVED}</span>
-            ) : undefined
-          }
-          onChange={(event) => switchDefaultRelay(event.currentTarget.checked)}
-        />
+          label="About this site's relay server"
+          explanation={DEFAULT_RELAY_SWITCH_DESCRIPTION}
+        >
+          {(explanationId) => (
+            <Switch
+              label={DEFAULT_RELAY_SWITCH_LABEL}
+              aria-describedby={explanationId}
+              checked={switchOn}
+              error={
+                switchNotSaved ? (
+                  <span role="alert">{DEFAULT_RELAY_SWITCH_NOT_SAVED}</span>
+                ) : undefined
+              }
+              onChange={(event) =>
+                switchDefaultRelay(event.currentTarget.checked)
+              }
+            />
+          )}
+        </InfoButton>
       )}
 
       {initial.kind === "unreadable" && status.kind === "idle" && (
@@ -298,43 +333,69 @@ export function RelaySettingsScreen({
       )}
 
       <Stack gap="md" mt="md">
-        <Textarea
-          label="TURN server urls"
-          description="One per line, for example turns:relay.example.org:443?transport=tcp"
-          autosize
-          minRows={2}
-          value={turnText}
-          error={turnError}
-          errorProps={{ role: "alert" }}
-          onChange={(event) => {
-            setTurnText(event.currentTarget.value);
-            setStatus({ kind: "idle" });
-          }}
-        />
-        <Textarea
-          label="STUN server urls"
-          description={STUN_FIELD_DESCRIPTION}
-          autosize
-          minRows={2}
-          value={stunText}
-          error={stunError}
-          errorProps={{ role: "alert" }}
-          onChange={(event) => {
-            setStunText(event.currentTarget.value);
-            setStatus({ kind: "idle" });
-          }}
-        />
-        <TextInput
-          label="WebSocket relay url"
-          description={WEBSOCKET_RELAY_FIELD_DESCRIPTION}
-          value={websocketText}
-          error={websocketError}
-          errorProps={{ role: "alert" }}
-          onChange={(event) => {
-            setWebsocketText(event.currentTarget.value);
-            setStatus({ kind: "idle" });
-          }}
-        />
+        <InfoButton
+          label="About TURN servers"
+          explanation={RELAY_KEY_NOTICE}
+          controls={() => (
+            <Textarea
+              id={turnFieldId}
+              description={TURN_FIELD_DESCRIPTION}
+              autosize
+              minRows={2}
+              value={turnText}
+              error={turnError}
+              errorProps={{ role: "alert" }}
+              onChange={(event) => {
+                setTurnText(event.currentTarget.value);
+                setStatus({ kind: "idle" });
+              }}
+            />
+          )}
+        >
+          <Input.Label htmlFor={turnFieldId}>TURN server urls</Input.Label>
+        </InfoButton>
+        <InfoButton
+          label="About STUN servers"
+          explanation={STUN_FIELD_INFO}
+          controls={() => (
+            <Textarea
+              id={stunFieldId}
+              description={STUN_FIELD_DESCRIPTION}
+              autosize
+              minRows={2}
+              value={stunText}
+              error={stunError}
+              errorProps={{ role: "alert" }}
+              onChange={(event) => {
+                setStunText(event.currentTarget.value);
+                setStatus({ kind: "idle" });
+              }}
+            />
+          )}
+        >
+          <Input.Label htmlFor={stunFieldId}>STUN server urls</Input.Label>
+        </InfoButton>
+        <InfoButton
+          label="About the WebSocket relay"
+          explanation={WEBSOCKET_RELAY_FIELD_INFO}
+          controls={() => (
+            <TextInput
+              id={websocketFieldId}
+              description={WEBSOCKET_RELAY_FIELD_DESCRIPTION}
+              value={websocketText}
+              error={websocketError}
+              errorProps={{ role: "alert" }}
+              onChange={(event) => {
+                setWebsocketText(event.currentTarget.value);
+                setStatus({ kind: "idle" });
+              }}
+            />
+          )}
+        >
+          <Input.Label htmlFor={websocketFieldId}>
+            WebSocket relay url
+          </Input.Label>
+        </InfoButton>
       </Stack>
 
       <div className={styles.workFoot}>
@@ -359,9 +420,6 @@ export function RelaySettingsScreen({
         targets={testTargets}
         unsavedChanges={unsavedTurnChanges}
       />
-
-      <h2>What the relay&apos;s operator learns</h2>
-      <p>{RELAY_OPERATOR_DISCLOSURE}</p>
 
       <CoordinationServerSection />
 
