@@ -53,6 +53,10 @@
 //                     read from stdin is written to this path.
 //   STUB_APPLY_EXIT_CODE  When set, the `apply` subcommand exits with this code
 //                     and writes nothing.
+//   STUB_APPLY_DELAY_MS  Milliseconds the `apply` subcommand waits before
+//                     exiting, in place of STUB_DELAY_MS, which the exchange
+//                     run sharing its environment also reads. The branch honors
+//                     STUB_IGNORE_SIGTERM and STUB_PID_FILE.
 //   STUB_RECORD_JSON  When set, the record is written with this content, and its
 //                     paired .keys.json alongside it (so the record/keys routes
 //                     have files) as alcove-record-<time>.json in the working
@@ -88,8 +92,9 @@
 //                     string is written to stdout; when unset, a default relay
 //                     verdict whose one TURN url was reached. The branch honors
 //                     STUB_EXIT_CODE, STUB_DELAY_MS, and STUB_IGNORE_SIGTERM.
-//   STUB_PID_FILE     When set, the `doctor` branch writes its own pid to this
-//                     path once its signal handler is installed, so a test can
+//   STUB_PID_FILE     When set, the `probe-host-key`, `fingerprint`, `apply`,
+//                     and `doctor` branches write their own pid to this path
+//                     once their signal handler is installed, so a test can
 //                     wait for the child and then ask whether it still runs.
 //   STUB_FINGERPRINT_STDOUT
 //                     When the `fingerprint` subcommand is invoked, this raw
@@ -194,33 +199,38 @@ function writeStdio(stream, text) {
   );
 }
 
-function exitAfterDelay(code) {
-  const delayMs = Number.parseInt(process.env.STUB_DELAY_MS ?? "0", 10);
+function exitAfterDelay(code, delayVariable = "STUB_DELAY_MS") {
+  const delayMs = Number.parseInt(process.env[delayVariable] ?? "0", 10);
   const exitOnceFlushed = () =>
     void Promise.all(pendingStdioWrites).then(() => process.exit(code));
   if (delayMs > 0) setTimeout(exitOnceFlushed, delayMs);
   else exitOnceFlushed();
 }
 
-// The probe-host-key subcommand the console's host-key probe driver spawns is
-// self-contained: emit a chosen stdout line and exit, never touching the
-// exchange emulation below. Honors STUB_IGNORE_SIGTERM so the watchdog SIGKILL
-// escalation can be exercised.
-if (process.argv[2] === "probe-host-key") {
+// A console subcommand's signal handling, then its pid: STUB_IGNORE_SIGTERM so
+// the SIGKILL escalation can be exercised, and STUB_PID_FILE written after it,
+// so a test that waits for the file signals a child already prepared.
+function prepareSubcommand() {
   if (process.env.STUB_IGNORE_SIGTERM === "1")
     process.on("SIGTERM", () => {
       /* swallow: force escalation to SIGKILL */
     });
+  if (process.env.STUB_PID_FILE !== undefined)
+    fs.writeFileSync(process.env.STUB_PID_FILE, String(process.pid));
+}
+
+// The probe-host-key subcommand the console's host-key probe driver spawns is
+// self-contained: emit a chosen stdout line and exit, never touching the
+// exchange emulation below.
+if (process.argv[2] === "probe-host-key") {
+  prepareSubcommand();
   writeStdio(
     process.stdout,
     process.env.STUB_PROBE_STDOUT ?? DEFAULT_PROBE_LINE,
   );
   exitAfterDelay(Number.parseInt(process.env.STUB_EXIT_CODE ?? "0", 10));
 } else if (process.argv[2] === "fingerprint") {
-  if (process.env.STUB_IGNORE_SIGTERM === "1")
-    process.on("SIGTERM", () => {
-      /* swallow: force escalation to SIGKILL */
-    });
+  prepareSubcommand();
   if (process.env.STUB_CWD_FILE !== undefined)
     fs.writeFileSync(process.env.STUB_CWD_FILE, process.cwd());
   const exitCode = Number.parseInt(process.env.STUB_EXIT_CODE ?? "0", 10);
@@ -251,14 +261,10 @@ if (process.argv[2] === "probe-host-key") {
   }
   exitAfterDelay(outcome);
 } else if (process.argv[2] === "apply") {
+  prepareSubcommand();
   runApplyStub();
 } else if (process.argv[2] === "doctor") {
-  if (process.env.STUB_IGNORE_SIGTERM === "1")
-    process.on("SIGTERM", () => {
-      /* swallow: force escalation to SIGKILL */
-    });
-  if (process.env.STUB_PID_FILE !== undefined)
-    fs.writeFileSync(process.env.STUB_PID_FILE, String(process.pid));
+  prepareSubcommand();
   writeStdio(
     process.stdout,
     process.env.STUB_DOCTOR_STDOUT ?? DEFAULT_DOCTOR_RELAY_LINE,
@@ -282,18 +288,21 @@ function runApplyStub() {
     if (process.env.STUB_APPLY_STDIN_FILE !== undefined)
       fs.writeFileSync(process.env.STUB_APPLY_STDIN_FILE, answer);
     if (process.env.STUB_APPLY_EXIT_CODE !== undefined) {
-      exitAfterDelay(Number.parseInt(process.env.STUB_APPLY_EXIT_CODE, 10));
+      exitAfterDelay(
+        Number.parseInt(process.env.STUB_APPLY_EXIT_CODE, 10),
+        "STUB_APPLY_DELAY_MS",
+      );
       return;
     }
     const update = process.argv.find((token) => token.startsWith("@"));
     if (update === undefined || !fs.existsSync(update.slice(1))) {
-      exitAfterDelay(64);
+      exitAfterDelay(64, "STUB_APPLY_DELAY_MS");
       return;
     }
     const configFile = flagValue(process.argv, "--config-file");
     if (process.argv.includes("--consent-to-terms") && configFile !== undefined)
       fs.appendFileSync(configFile, "# applied by the stub\n");
-    exitAfterDelay(0);
+    exitAfterDelay(0, "STUB_APPLY_DELAY_MS");
   });
 }
 

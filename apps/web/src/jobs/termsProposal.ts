@@ -12,6 +12,8 @@ import { runCapturedCliChild } from "./capturedCliChild";
 
 import type { LinkageTerms } from "@alcove/core";
 
+import type { CapturedChildStop } from "./capturedCliChild";
+
 /**
  * How applying a run's terms proposal to the mounted configuration ended:
  * - `applied`: `alcove apply` exited 0, having rewritten the mounted
@@ -111,6 +113,7 @@ export async function runTermsProposalApply(args: {
   childEnv?: NodeJS.ProcessEnv;
   sigtermMs?: number;
   sigkillGraceMs?: number;
+  stop?: CapturedChildStop;
 }): Promise<TermsProposalApplyResult> {
   const configPath = resolveWorkdirFile(args.dataRoot, JOB_FILE_NAMES.config);
   const runConfigPath = resolveWorkdirFile(args.workdir, JOB_FILE_NAMES.config);
@@ -140,6 +143,7 @@ export async function runTermsProposalApply(args: {
     ...(args.childEnv !== undefined ? { childEnv: args.childEnv } : {}),
     sigtermMs: args.sigtermMs ?? APPLY_SIGTERM_MS,
     sigkillGraceMs: args.sigkillGraceMs ?? APPLY_SIGKILL_GRACE_MS,
+    ...(args.stop !== undefined ? { stop: args.stop } : {}),
   });
   if (outcome.kind === "timedOut") return { kind: "timeout" };
   if (outcome.kind === "spawnFailed") return { kind: "error" };

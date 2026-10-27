@@ -24,6 +24,8 @@ import { runCapturedCliChild } from "./capturedCliChild";
 import type { InPlaceSigningIdentity } from "@jobContract/disclosedConfiguration";
 import type { JobSigningIdentityLocation } from "@jobContract/intentSchemas";
 
+import type { CapturedChildStop } from "./capturedCliChild";
+
 /**
  * The console's signing-identity driver. It spawns the CLI's `fingerprint`
  * subcommand -- the same binary the exchange runs -- rather than
@@ -468,6 +470,7 @@ export function runSigningFingerprint(args: {
   childEnv?: NodeJS.ProcessEnv;
   sigtermMs?: number;
   sigkillGraceMs?: number;
+  stop?: CapturedChildStop;
 }): Promise<SigningFingerprintResult> {
   if (args.exportPath !== undefined)
     assertExportPathDistinct(args.identityPath, args.exportPath);
@@ -488,6 +491,7 @@ export function runSigningFingerprint(args: {
     ...(args.childEnv !== undefined ? { childEnv: args.childEnv } : {}),
     sigtermMs: args.sigtermMs ?? FINGERPRINT_SIGTERM_MS,
     sigkillGraceMs: args.sigkillGraceMs ?? FINGERPRINT_SIGKILL_GRACE_MS,
+    ...(args.stop !== undefined ? { stop: args.stop } : {}),
   }).then(async (outcome): Promise<SigningFingerprintResult> => {
     if (outcome.kind === "spawnFailed") return { kind: "error" };
     if (outcome.kind === "timedOut") return { kind: "timeout" };
