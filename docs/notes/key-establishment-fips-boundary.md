@@ -315,25 +315,187 @@ change for the balance to shift.
 
 ## Post-quantum horizon
 
-Neither the migrated curve nor the retained schedule is post-quantum. P-256
-ECDH falls to a cryptanalytically relevant quantum computer, and NIST IR 8547
-(draft) contemplates deprecating classical elliptic-curve key establishment
-around 2030 and disallowing it by 2035 -- dates recorded here from a secondary
-reading, advisory until they are read against the publication the way the
-certificates above were. What the retained schedule does buy is a bound on
-harvest-now-decrypt-later: the pre-shared secret is mixed into the chaining key
-alongside the ECDH output, so a recorded transcript stays confidential against
-an adversary who solves the Diffie-Hellman but never held the secret -- the
-converse of the limit recorded above, where forward secrecy covers a secret
-that leaks later. The industry migration path is a hybrid exchange, classical
-ECDH alongside ML-KEM. Taking it is a wire-format change and the owner's
-decision: the protocol-version tag changes, and peers on different tags fail
-closed rather than negotiate, as they do across the X25519-to-P-256 migration
+None of the three public-key uses in Alcove's own protocol is post-quantum: the key agreement
+(P-256 ECDH), the certificate and receipt signatures (ECDSA over P-256), and
+the private set intersection's group (P-256). This section records what the
+publications date, a position for each use, and what stays open.
+
+### What the publications state
+
+- **NIST IR 8547**, final, October 2026
+  ([doi:10.6028/NIST.IR.8547](https://doi.org/10.6028/NIST.IR.8547)), lists
+  ECDSA in Table 2 (section 4.1.1, p. 15) and Elliptic Curve DH and MQV in
+  Table 4 (section 4.1.2, pp. 16-17) as quantum-vulnerable. Each row is at 112
+  bits of classical security strength or more, deprecated after 2030 and
+  disallowed after 2035.
+- **Executive Order 14412** of June 22, 2026, section 4(b) (91 FR 38483, at
+  38484), directs the Director of OMB to issue guidance requiring each agency
+  to transition all high value assets and high impact systems to post-quantum
+  cryptography for key establishment by December 31, 2030, and for digital
+  signatures by December 31, 2031. Section 4(b)(i) excludes National Security
+  Systems.
+- **OMB M-26-15** of June 24, 2026 states neither date as a requirement. It
+  requires a migration "with the objective of mitigating as much quantum risk
+  as feasible by December 31, 2030" (section 3.A, p. 2). Its phases "should"
+  migrate key establishment in 2028-2030 and signatures in 2031, and complete
+  the migration by 2035 (section 3.D, pp. 4-5). It requires TLS 1.3 support
+  no later than January 2, 2030 (Appendix A, section 4), and does not apply to
+  national security systems (section 1).
+- **IR 8547 attributes the two deadlines to the order and the memo jointly**
+  (section 4, p. 13), and extends the 2030 key-establishment date to "other
+  systems with highly sensitive data" (section 4.1.2, p. 17). Its own window
+  "does not alter the earlier deadlines that apply to high value assets, high
+  impact systems, and other high-sensitivity federal systems under EO 14412 and
+  OMB M-26-15" (section 4, p. 13).
+
+The deadlines bind federal systems in those categories, and whether a system
+running Alcove is one is the agency's classification, not Alcove's.
+
+### Key agreement: NNpsk0 over P-256 ECDH
+
+The handshake's Diffie-Hellman is an elliptic-curve DH, a Table 4 row. IR 8547
+adds that, against harvest-now-decrypt-later attacks on network
+communications, application-specific guidance "may require or recommend
+migration to quantum-resistant key-establishment schemes before the classical
+schemes are generally disallowed" (section 4.1.2, p. 17).
+
+What the retained schedule does buy is a bound on harvest-now-decrypt-later.
+The pre-shared secret is mixed into the chaining key alongside the ECDH output,
+so a recorded transcript stays confidential against an adversary who solves the
+Diffie-Hellman but never held the secret. That is the converse of the limit
+recorded above, where forward secrecy covers a secret that leaks later. The
+bound has two limits, both read from the spec:
+
+- **A recorder who holds one secret.** A rotated secret's confidentiality
+  against a party holding the secret it replaces "rests on the ephemeral
+  exchange alone"
+  ([PROTOCOL.md](../spec/PROTOCOL.md#shared-secret-rotation)). A recorder
+  holding one secret who solves that handshake's Diffie-Hellman derives its
+  session key and the next secret, and, solving each later handshake in turn,
+  every later one.
+- **A secret bootstrapped on a quick exchange.** A secret both parties save
+  with `--save` is sent under the transport alone, because a quick exchange
+  has no session key
+  ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#bootstrapping-a-shared-secret)).
+  A recurring exchange begun that way starts from a secret that is only as
+  protected as that quick exchange's transport, below. One begun from
+  `alcove invite` never sends the secret through the exchange server.
+
+ML-KEM is the only approved post-quantum key-establishment scheme based on
+public-key cryptography, with ML-KEM-768 the recommended default parameter set
+(IR 8547 section 4.1.2, p. 17). IR 8547 defines a hybrid key-establishment
+mode as a combination of two or more key-establishment schemes, and a shared
+secret key generated as specified in FIPS 203 "may be used as the value Z in the generic composite
+mode" (section 3.2.1, p. 11). Taking a hybrid ECDH and ML-KEM exchange is a
+wire-format change: the protocol-version tag changes, and peers on different
+tags fail closed rather than negotiate, as peers on the earlier `kex-v1` and
+`kex-v2` tags do
 ([PROTOCOL.md](../spec/PROTOCOL.md#p-256-authenticated-key-exchange)). Two
 things reopen the question: an agency requirement for post-quantum or hybrid
 key establishment, or hybrid support maturing in both platforms'
 `crypto.subtle`, since reasons 1 and 5 above bind whatever primitive replaces
 this one.
+
+### Signatures: certificate and receipt, ECDSA over P-256
+
+Both signing operations, the certificate self-signature and the receipt
+signature, are ECDSA over P-256 with SHA-256 through `crypto.subtle`
+([receipt-signing-fips-boundary.md](receipt-signing-fips-boundary.md)). ECDSA
+is a Table 2 row, and the order's December 31, 2031 date is the signature
+deadline for systems in its categories.
+
+- **Candidates.** ML-DSA (FIPS 204) and SLH-DSA (FIPS 205) are the stateless
+  post-quantum signature families IR 8547 lists in Table 3 (section 4.1.1,
+  p. 16), beside the stateful LMS, HSS, XMSS, and XMSS^MT of SP 800-208.
+- **What a change touches.** The certificate's format version and the signing
+  identity's discriminant "move together with the signature scheme"
+  ([PROTOCOL.md](../spec/PROTOCOL.md#signing-identity-and-certificate-pinning)),
+  and a new key is a new fingerprint, which invalidates every pin a partner
+  has recorded for the old one.
+- **Not established here.** Whether `crypto.subtle` offers ML-DSA or SLH-DSA on
+  both platforms has not been measured.
+
+Whether a signature plan is wanted is part of the open decision below.
+
+### The private set intersection's group: P-256
+
+The masking is an elliptic-curve construction over P-256 that no NIST
+publication specifies
+([COMPLIANCE.md, SC-13](../COMPLIANCE.md#nist-sp-800-53)), so no row of Table 2
+or Table 4 names it.
+
+**Replacement.** No source in this project's documentation or its reference
+material describes a quantum-safe private
+set intersection construction. Whether one exists that could replace the P-256
+group is an open question, not a claim either way.
+
+**What the spec establishes about the elements.** Each party's key is a random
+scalar in the P-256 group, held only in memory for the exchange, and the wire
+contains each party's values under its own key and one party's values under both
+keys ([PROTOCOL.md](../spec/PROTOCOL.md#psi-base-function)). A value enters as
+a hashed PSI set element
+([PROTOCOL.md](../spec/PROTOCOL.md#linkage-participation-the-role-axis)), and
+an encrypted element is a compressed P-256 point
+([PROTOCOL.md](../spec/PROTOCOL.md#the-memory-ceiling-and-the-csv-intake-cap)).
+The privacy of a non-matching value rests on neither side being able to strip
+the other's key, and a key built from too little PII is open to brute force
+([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#private-set-intersection)).
+
+**What stays unestablished.** The spec does not state the cipher's algebra: it
+does not say that an element is the hashed value's curve point multiplied by
+the party's scalar. So it does not establish that solving the discrete log on
+P-256 recovers a party's scalar from the elements a transcript contains. If it
+does, removing the scalars leaves the hashed values, which a dictionary search
+over candidate identifiers matches: the brute force a weak key is already open
+to, extended to every key. That chain is a stated limit, not a finding.
+
+**Per exchange type**, what a recorder who can solve the discrete log reaches:
+
+- **A recurring exchange (SFTP or filedrop) and every WebRTC exchange.** The
+  PSI frames travel inside AES-256-GCM under keys derived from the session
+  key, and every channel requests that wrap
+  ([CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#which-channels-request-it)).
+  The session key derives from a chaining key that includes the pre-shared
+  secret ([PROTOCOL.md](../spec/PROTOCOL.md#p-256-authenticated-key-exchange)), so
+  under the bound above the recorder does not reach the PSI elements; the two
+  limits of that bound apply.
+- **A quick exchange over SFTP.** It has no session key and no application-layer
+  wrap ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#what-it-protects-and-from-whom)),
+  so the PSI frames are protected by SSH alone, and the server's administrator
+  reads them as the parties wrote them. A recorder who solves the SSH session's key exchange
+  reaches what that administrator does, and the unestablished chain above
+  decides whether that exposes the identifiers.
+- **A quick exchange over filedrop.** Alcove applies no transport encryption;
+  the share's protection is whatever the operator configures for it
+  ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#transport-layer-authentication)).
+  A reader of the share or of an unencrypted path reaches the PSI elements
+  without solving anything, and what the share's own protocol resists is
+  outside this project.
+
+On every type the partner receives the elements the base function sends it,
+so against a partner who can solve the discrete log the wrap and the transport
+do nothing, and the same unestablished chain applies.
+
+### Transport key exchange
+
+The open decision includes whether a plan also covers the transport layers'
+key exchange.
+
+- **SSH for SFTP.** The key-exchange list in
+  [FIPS_SFTP_PROFILE.md](../FIPS_SFTP_PROFILE.md) contains only elliptic-curve
+  and finite-field Diffie-Hellman methods, the two DH families Table 4 lists.
+  The `ssh2` default list is not documented in this repository, so whether it
+  offers a post-quantum method is not established here. A quick exchange over
+  SFTP relies on SSH alone.
+- **DTLS for WebRTC.** A quick exchange never runs on WebRTC: the CLI refuses a
+  secret-less `webrtc` run
+  ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#transport-layer-authentication)).
+  DTLS therefore sits beneath the application-layer wrap on every WebRTC
+  exchange and is never the only protection.
+
+### The decision
+
+The plan is an open decision for the owner.
 
 ## Rotation moves to an independent secret
 
