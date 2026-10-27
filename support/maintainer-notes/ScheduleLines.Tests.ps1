@@ -35,6 +35,16 @@
     .github/workflows/windows_resolution.yaml), because the culture it sets
     reaches every process started while it is set. Run it through
     ci-resolution-tests.ps1 -Suite ScheduleLines.
+
+    Last, each line is run once more in a new PowerShell an application-control
+    policy has put in ConstrainedLanguage (the machine-wide
+    __PSLockdownPolicy=4, set in that block's BeforeAll and cleared in its
+    AfterAll, as ConstrainedLanguage.Tests.ps1 does), under en-US. Whether
+    the task registers, and with what trigger, is measured rather than
+    asserted: each line is reported through $global:AlcoveMeasurements, which
+    ci-resolution-tests.ps1 turns into ::notice annotations, and fails the job
+    as a harness error when the session under test is not in
+    ConstrainedLanguage.
 #>
 
 BeforeDiscovery {
@@ -55,6 +65,9 @@ BeforeDiscovery {
             $current.Line = $text
         }
     }
+    $constrainedCases = for ($index = 0; $index -lt $entries.Count; $index++) {
+        @{ Number = $index + 1; Shell = $entries[$index].Shell; Trigger = $entries[$index].Trigger; Line = $entries[$index].Line }
+    }
     $cases = foreach ($culture in @('en-US', 'en-GB')) {
         foreach ($entry in $entries) {
             @{
@@ -74,6 +87,7 @@ BeforeAll {
     $script:CultureBefore = (Get-Culture).Name
 
     $global:AlcoveRigPremises = [ordered]@{ schedule = [ordered]@{ state = 'not_reached'; culture_before = $script:CultureBefore } }
+    $global:AlcoveMeasurements = [ordered]@{}
 
     # On the system drive rather than under the runner's profile, whose temp
     # path is an 8.3 short name.
@@ -265,6 +279,134 @@ Describe 'What schtasks does to a start date and a single quote' {
             @($task.Actions)[0].Arguments | Should -Be '/c echo it"s'
         } finally {
             Remove-TestTask
+        }
+    }
+}
+
+Describe 'The Task Scheduler lines, pasted into a PowerShell in ConstrainedLanguage' {
+    BeforeAll {
+        # The ScheduledTasks module is loaded here, before the policy, so this
+        # session never has to load it under the policy.
+        Import-Module ScheduledTasks
+
+        function Start-ConstrainedPastedLine {
+            <#  Run one line in a new powershell.exe and return its exit code
+                and both streams, with standard input from a file so that a
+                run reaching a prompt ends rather than waits. #>
+            param([Parameter(Mandatory = $true)][string] $Line, [int] $TimeoutSeconds = 120)
+
+            $outFile = [IO.Path]::GetTempFileName()
+            $errFile = [IO.Path]::GetTempFileName()
+            $inFile = [IO.Path]::GetTempFileName()
+            try {
+                $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Line))
+                $process = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') `
+                    -ArgumentList @('-NoProfile', '-NonInteractive', '-EncodedCommand', $encoded) `
+                    -NoNewWindow -PassThru -RedirectStandardInput $inFile `
+                    -RedirectStandardOutput $outFile -RedirectStandardError $errFile
+                # Touch the handle before the wait: without it the Start-Process
+                # wrapper can report ExitCode as null after a timed WaitForExit.
+                try { $null = $process.Handle } catch { }
+                $exited = $process.WaitForExit($TimeoutSeconds * 1000)
+                if ($exited) { $process.WaitForExit() }
+                if (-not $exited) {
+                    $process.Kill()
+                    $process.WaitForExit(10000) | Out-Null
+                }
+                $exitCode = $null
+                if ($exited) { $exitCode = $process.ExitCode }
+                $stdout = [string] (Get-Content -LiteralPath $outFile -Raw)
+                $stderr = [string] (Get-Content -LiteralPath $errFile -Raw)
+                return [ordered]@{
+                    TimedOut = (-not $exited)
+                    Exit     = $exitCode
+                    Output   = (($stdout + ' ' + $stderr) -replace '\s+', ' ').Trim()
+                }
+            } finally {
+                Remove-Item -LiteralPath $outFile, $errFile, $inFile -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        $global:AlcoveRigPremises.clm = [ordered]@{ state = 'not_reached' }
+        $script:LockdownName = '__PSLockdownPolicy'
+        $script:LockdownBefore = [Environment]::GetEnvironmentVariable($script:LockdownName, 'Machine')
+        $script:LockdownSet = $false
+        $script:ChildMode = 'not_measured'
+        # The policy last, once nothing this session still has to load is left.
+        try {
+            [Environment]::SetEnvironmentVariable($script:LockdownName, '4', 'Machine')
+            $script:LockdownSet = $true
+            $probe = Start-ConstrainedPastedLine -Line '$ExecutionContext.SessionState.LanguageMode' -TimeoutSeconds 60
+            $script:ChildMode = $probe.Output
+            $global:AlcoveRigPremises.clm = [ordered]@{
+                state         = 'policy_set'
+                route         = 'machine_PSLockdownPolicy_4'
+                child_encoded = $script:ChildMode
+                harness       = [string] $ExecutionContext.SessionState.LanguageMode
+            }
+        } catch {
+            $global:AlcoveRigPremises.clm = [ordered]@{
+                state = 'failed'
+                route = 'machine_PSLockdownPolicy_4'
+                error = $_.Exception.Message
+            }
+        }
+    }
+
+    AfterAll {
+        if ($script:LockdownSet) {
+            [Environment]::SetEnvironmentVariable($script:LockdownName, $script:LockdownBefore, 'Machine')
+        }
+        Remove-TestTask
+        Set-Culture -CultureInfo $script:CultureBefore
+    }
+
+    It 'is in effect in a new PowerShell, while this session keeps FullLanguage' {
+        $shape = ($global:AlcoveRigPremises.clm.Keys | ForEach-Object {
+                "$_=$($global:AlcoveRigPremises.clm[$_])" }) -join ' '
+        $script:LockdownSet | Should -BeTrue -Because $shape
+        $script:ChildMode | Should -Be 'ConstrainedLanguage' -Because $shape
+        [string] $ExecutionContext.SessionState.LanguageMode | Should -Be 'FullLanguage' -Because $shape
+    }
+
+    It 'line <Number> is run and what it registers is recorded' -ForEach $constrainedCases {
+        $expected = @{}
+        foreach ($pair in $Trigger -split ' ') {
+            $name, $value = $pair -split '=', 2
+            $expected[$name] = $value
+        }
+
+        Remove-TestTask
+        Set-Culture -CultureInfo 'en-US'
+        try {
+            $run = Start-ConstrainedPastedLine -Line $Line.Replace($script:Placeholder, $script:Folder)
+            $task = Get-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue
+            $measurement = [ordered]@{
+                intended   = $Trigger
+                registered = ($null -ne $task)
+                exit       = $run.Exit
+                timedout   = $run.TimedOut
+            }
+            if ($task) {
+                $registered = @($task.Triggers)[0]
+                $start = [string] $registered.StartBoundary
+                $class = [string] $registered.CimClass.CimClassName
+                $interval = if ($class -eq 'MSFT_TaskWeeklyTrigger') { $registered.WeeksInterval } else { $registered.DaysInterval }
+                $asIntended = ($start -match ('T' + $expected.time + ':00')) -and
+                    (($expected.start -eq '-') -or ($start -match ('^' + $expected.start + 'T'))) -and
+                    ($interval -eq [int] $expected.interval) -and
+                    ($class -eq $(if ($expected.weekday -ne '-') { 'MSFT_TaskWeeklyTrigger' } else { 'MSFT_TaskDailyTrigger' }))
+                $measurement['as_intended'] = $asIntended
+                $measurement['start'] = $start
+                $measurement['trigger_class'] = $class
+                $measurement['interval'] = $interval
+                if ($class -eq 'MSFT_TaskWeeklyTrigger') { $measurement['days_of_week'] = [string] $registered.DaysOfWeek }
+            }
+            $measurement['output'] = $run.Output
+            $global:AlcoveMeasurements["schedule_clm_line$Number"] = $measurement
+        } finally {
+            Remove-TestTask
+            Set-Culture -CultureInfo $script:CultureBefore
         }
     }
 }

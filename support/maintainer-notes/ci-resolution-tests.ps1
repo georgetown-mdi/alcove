@@ -7,7 +7,8 @@
     ConstrainedLanguage runs ConstrainedLanguage.Tests.ps1, alone, because it
     sets a machine-wide policy no other suite may run under; -Suite
     ScheduleLines runs ScheduleLines.Tests.ps1, alone, because it changes the
-    culture every process started meanwhile reads.
+    culture every process started meanwhile reads and, in its last block, sets
+    the same machine-wide policy.
     Maintainer-facing: an operator following the setup page never touches it.
 
 .DESCRIPTION
@@ -290,12 +291,15 @@ try {
     if ($failed.Count -gt 0) { $failedJob = $true }
 
     # Run in FullLanguage, the constrained suite would pass or fail on the
-    # scripts' other branches and establish nothing about this one.
-    if ($Suite -eq 'ConstrainedLanguage') {
+    # scripts' other branches and establish nothing about this one; the same
+    # holds for the schedule suite's constrained block.
+    $modeFields = @{ ConstrainedLanguage = 'child_file'; ScheduleLines = 'child_encoded' }
+    if ($modeFields.ContainsKey($Suite)) {
+        $modeField = $modeFields[$Suite]
         $premises = Get-Variable -Name 'AlcoveRigPremises' -Scope Global -ValueOnly -ErrorAction SilentlyContinue
         $childMode = $null
-        if ($premises -and $premises.Contains('clm') -and $premises.clm.Contains('child_file')) {
-            $childMode = [string] $premises.clm.child_file
+        if ($premises -and $premises.Contains('clm') -and $premises.clm.Contains($modeField)) {
+            $childMode = [string] $premises.clm[$modeField]
         }
         if (-not $childMode) {
             Write-HarnessError 'the policy was never put in effect, so no session ran under it and nothing was established (see the Rig_clm annotation)'
