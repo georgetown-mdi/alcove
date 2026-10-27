@@ -89,12 +89,17 @@ const RECORDED_SITES: Readonly<Record<string, readonly string[]>> = {
   // A count-only-permuted round's partner frames: a request of another size
   // than the exchange's first; an index table of the wrong length, another
   // length than the first, or not a permutation; a response of the wrong
-  // size, or whose matches repeat a slot or a pseudonym.
+  // size, or whose matches repeat a slot or a pseudonym; and any round call
+  // or count after one of those was refused.
   "packages/core/src/psi/psiEngine.ts :: InProcessPsiEngine.permutedResponse": [
     PARTNER,
   ],
-  "packages/core/src/psi/psiEngine.ts :: InProcessPsiEngine.receiveIndexTable":
-    [PARTNER, PARTNER],
+  "packages/core/src/psi/psiEngine.ts :: InProcessPsiEngine.takeIndexTable": [
+    PARTNER,
+    PARTNER,
+  ],
+  "packages/core/src/psi/psiEngine.ts :: InProcessPsiEngine.refuseAfterPartnerRefusal":
+    [PARTNER],
   "packages/core/src/psi/countOnlyPermutation.ts :: assertIndexTableIsPermutation":
     [PARTNER],
   "packages/core/src/psi/psiEngine.ts :: InProcessPsiEngine.permutedRoundOf": [

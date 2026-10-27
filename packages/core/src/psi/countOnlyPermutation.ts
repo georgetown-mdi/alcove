@@ -89,17 +89,24 @@ export class HeldPermutation {
 
 /**
  * Refuses an index table that is not a permutation of `0` to its length minus
- * one, as a protocol error naming `engineId`.
+ * one, as a protocol error naming `engineId`. An entry that is not an integer
+ * is refused whatever the array type.
  *
  * @internal
  */
 export function assertIndexTableIsPermutation(
   engineId: string,
-  indexTable: Int32Array,
+  indexTable: ArrayLike<number>,
 ): void {
   const seen = new Uint8Array(indexTable.length);
-  for (const entry of indexTable) {
-    if (entry < 0 || entry >= indexTable.length || seen[entry] === 1)
+  for (let position = 0; position < indexTable.length; position += 1) {
+    const entry = indexTable[position]!;
+    if (
+      !Number.isInteger(entry) ||
+      entry < 0 ||
+      entry >= indexTable.length ||
+      seen[entry] === 1
+    )
       throw new PartnerProtocolRefusalError(
         `${engineId} protocol error: the partner's index table is not a permutation of its ${String(indexTable.length)} positions`,
       );

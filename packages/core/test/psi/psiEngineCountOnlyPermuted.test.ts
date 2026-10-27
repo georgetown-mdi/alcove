@@ -8,6 +8,7 @@ import {
   PartnerProtocolRefusalError,
 } from "../../src/errors";
 import {
+  assertIndexTableIsPermutation,
   drawUniformPermutation,
   HeldPermutation,
   PermutedCountReplay,
@@ -536,6 +537,75 @@ describe("the count-only-permuted engine refuses", () => {
     }
   });
 
+  test("a count, or a later round, after a refused round", async () => {
+    const sender = inProcess(wasm, "starter");
+    const probe = inProcess(wasm, "joiner");
+    // Replays a round's frames, with `response` for its response, on a
+    // receiver holding the same client key.
+    const replayRound = async (
+      receiver: PsiEngine,
+      frames: RoundFrames,
+      response: Uint8Array,
+    ) => {
+      await receiver.receiveServerSetup(frames.setup);
+      await receiver.receiveIndexTable(frames.indexTable);
+      await receiver.createClientRequest(frames.receiverValues);
+      await receiver.matchPermutedRound(response);
+    };
+    const repeatingResponse = async (frames: RoundFrames) => {
+      const { slots } = await slotsFromWire(wasm, frames);
+      const elements = responseElements(wasm, frames.response);
+      const unmatched = elements.findIndex((_, slot) => !slots.includes(slot));
+      const repeating = [...elements];
+      repeating[unmatched] = elements[slots[0]!]!;
+      return serializeResponse(wasm, repeating);
+    };
+    const afterRefusal = /after the partner's input was refused/;
+    try {
+      const first = await runRound(sender, probe, 0);
+      const second = await runRound(sender, probe, 1);
+
+      const refusedFirst = inProcess(wasm, "joiner");
+      try {
+        await expect(
+          replayRound(refusedFirst, first, await repeatingResponse(first)),
+        ).rejects.toThrow(/repeats an element/);
+        const count = refusedFirst.finishPermutedCount();
+        await expect(count).rejects.toBeInstanceOf(PartnerProtocolRefusalError);
+        await expect(count).rejects.toThrow(afterRefusal);
+        await expect(
+          refusedFirst.receiveServerSetup(second.setup),
+        ).rejects.toThrow(afterRefusal);
+      } finally {
+        refusedFirst.dispose();
+      }
+
+      const refusedSecond = inProcess(wasm, "joiner");
+      try {
+        await replayRound(refusedSecond, first, first.response);
+        await expect(
+          replayRound(refusedSecond, second, await repeatingResponse(second)),
+        ).rejects.toThrow(/repeats an element/);
+        const count = refusedSecond.finishPermutedCount();
+        await expect(count).rejects.toBeInstanceOf(PartnerProtocolRefusalError);
+        await expect(count).rejects.toThrow(afterRefusal);
+      } finally {
+        refusedSecond.dispose();
+      }
+    } finally {
+      sender.dispose();
+      probe.dispose();
+    }
+  });
+
+  test("an index table entry that is not an integer, whatever the array type", () => {
+    expect(() => assertIndexTableIsPermutation("joiner", [0, 1])).not.toThrow();
+    for (const table of [[0.5, 0.5], Float64Array.of(NaN, NaN)])
+      expect(() => assertIndexTableIsPermutation("joiner", table)).toThrow(
+        PartnerProtocolRefusalError,
+      );
+  });
+
   test("a request whose size differs from the exchange's first", async () => {
     const sender = inProcess(wasm, "starter");
     const receiver = inProcess(wasm, "joiner");
@@ -691,6 +761,25 @@ describe("what the count-only-permuted engine reports and keeps", () => {
     expect(permutationDiscard).toHaveBeenCalledTimes(2);
     receiver.dispose();
     expect(replayDiscard).toHaveBeenCalledTimes(1);
+  });
+
+  test("a disposed sender refuses a setup or a request and draws no permutation", async () => {
+    const draw = vi.spyOn(HeldPermutation, "draw");
+    const sender = inProcess(wasm, "starter");
+    const receiver = inProcess(wasm, "joiner");
+    try {
+      const request = await receiver.createClientRequest(roundSet(RECEIVER, 0));
+      sender.dispose();
+      await expect(
+        sender.createPermutedSetup(roundSet(SENDER, 0)),
+      ).rejects.toThrow(/called on a disposed PSI engine/);
+      await expect(
+        Promise.resolve().then(() => sender.processClientRequest(request)),
+      ).rejects.toThrow(/called on a disposed PSI engine/);
+      expect(draw).not.toHaveBeenCalled();
+    } finally {
+      receiver.dispose();
+    }
   });
 
   test("no property of an engine, and no package export, reaches pi, sigma or the replay", async () => {
