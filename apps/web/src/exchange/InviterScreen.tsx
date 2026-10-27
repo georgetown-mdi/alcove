@@ -1876,6 +1876,14 @@ export function InviterScreen() {
           editor !== undefined &&
           acquired !== undefined && (
             <MatchingSharingSection
+              algorithm={editor.draft.algorithm}
+              onAlgorithm={(algorithm) =>
+                applyEditor(editorWithAlgorithm(editor, algorithm))
+              }
+              direction={editor.draft.outputDirection}
+              onDirection={(direction) =>
+                applyEditor(editorWithOutputDirection(editor, direction))
+              }
               metadata={editor.draft.metadata}
               onColumnType={(columnName: string, type: SemanticType) =>
                 applyColumnEdit(
@@ -1994,9 +2002,6 @@ export function InviterScreen() {
                 }
                 onLifetime={(seconds) =>
                   applyEditor(editorWithLifetime(editor, seconds))
-                }
-                onDirection={(direction) =>
-                  applyEditor(editorWithOutputDirection(editor, direction))
                 }
                 onTransport={(next) =>
                   dispatch({
@@ -2168,9 +2173,6 @@ export function InviterScreen() {
               }
               onStrategy={(strategy) =>
                 applyEditor(editorWithLinkageStrategy(editor, strategy))
-              }
-              onAlgorithm={(algorithm) =>
-                applyEditor(editorWithAlgorithm(editor, algorithm))
               }
               onDeduplicate={(deduplicate) =>
                 applyEditor(editorWithDeduplicate(editor, deduplicate))

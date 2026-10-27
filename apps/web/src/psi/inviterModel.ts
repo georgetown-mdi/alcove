@@ -31,7 +31,12 @@ import {
   identifierProblem,
 } from "./inviterEditor";
 
-import { RESULTS_DIRECTION_LABELS, lifetimeNoun } from "./formatting";
+import {
+  MATCHING_METHOD_LABEL,
+  MATCHING_METHOD_LABELS,
+  RESULTS_DIRECTION_LABELS,
+  lifetimeNoun,
+} from "./formatting";
 
 import type {
   AdvancedField,
@@ -164,7 +169,7 @@ export function inviterRailFacts(
       target: "cleaning",
     },
     {
-      label: "Matching on",
+      label: "Matching keys",
       fact: editor === undefined ? undefined : keysFact(editor.draft),
       target: "keys",
     },
@@ -185,7 +190,7 @@ export type SpineTarget =
  * to where the fix lives. */
 const FIELD_TARGETS: Record<AdvancedField, SpineTarget> = {
   identity: "file",
-  output: "review",
+  output: "columns",
   payload: "columns",
   keys: "keys",
   standardization: "cleaning",
@@ -475,6 +480,16 @@ export function answersRows(
       changeTarget: "file",
     },
     {
+      label: MATCHING_METHOD_LABEL,
+      value: MATCHING_METHOD_LABELS[editor.draft.algorithm],
+      changeTarget: "columns",
+    },
+    {
+      label: "Results go to",
+      value: RESULTS_DIRECTION_LABELS[editor.draft.outputDirection],
+      changeTarget: "columns",
+    },
+    {
       label: "Columns shared",
       value: sent.length > 0 ? sent.map(isolatedColumnName).join(", ") : "None",
       mono: sent.length > 0,
@@ -486,7 +501,7 @@ export function answersRows(
       changeTarget: "cleaning",
     },
     {
-      label: "Matching on",
+      label: "Matching keys",
       value: `${keysFact(editor.draft)}, tried in order`,
       changeTarget: "keys",
     },
@@ -510,11 +525,6 @@ export function answersRows(
           },
         ]
       : []),
-    {
-      label: "Results go to",
-      value: RESULTS_DIRECTION_LABELS[editor.draft.outputDirection],
-      setAbove: true,
-    },
     {
       label: "How it runs",
       value: TRANSPORT_ANSWER_LABELS[transport],

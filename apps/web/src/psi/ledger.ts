@@ -176,17 +176,26 @@ export function inviterLedgerRows(
       { label: "You will receive", reference: "Step 2" },
       { label: "Matched on", reference: "Step 2", shareBar: true },
       { label: "Expires", reference: "Step 3", shareBar: true },
-      { label: "Results go to", reference: "Step 3" },
+      { label: "Results go to", reference: "Step 2" },
       { label: "Agreement" },
       { label: "How it runs", reference: "Step 3" },
     ];
   }
   const sent = disclosedColumnNames(editor.draft.metadata);
   const keys = enabledKeys(editor.draft);
-  const forwardReceive =
-    editor.draft.algorithm === "psi-c"
-      ? COUNT_ONLY_RECEIVE_ROW_VALUE
-      : "Matched rows + your partner's shared columns";
+  const countOnly = editor.draft.algorithm === "psi-c";
+  const forwardReceive: Pick<InviterLedgerRow, "value" | "muted"> =
+    editor.draft.outputDirection === "partner"
+      ? {
+          muted: countOnly
+            ? "Nothing - only your partner receives the count"
+            : "Nothing - only your partner receives the matched results",
+        }
+      : {
+          value: countOnly
+            ? COUNT_ONLY_RECEIVE_ROW_VALUE
+            : "Matched rows + your partner's shared columns",
+        };
   return [
     sent.length > 0
       ? {
@@ -204,10 +213,9 @@ export function inviterLedgerRows(
     {
       label: "You will receive",
       reference: "Step 2",
-      value:
-        outcome === undefined
-          ? forwardReceive
-          : settledReceiveValue(outcome, " + shared columns"),
+      ...(outcome === undefined
+        ? forwardReceive
+        : { value: settledReceiveValue(outcome, " + shared columns") }),
     },
     keys.length > 0
       ? {
@@ -235,7 +243,7 @@ export function inviterLedgerRows(
     },
     {
       label: "Results go to",
-      reference: "Step 3",
+      reference: "Step 2",
       value: RESULTS_DIRECTION_LABELS[editor.draft.outputDirection],
     },
     editor.draft.legalAgreement?.reference !== undefined &&

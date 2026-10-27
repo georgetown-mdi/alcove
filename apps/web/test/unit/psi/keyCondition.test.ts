@@ -289,7 +289,7 @@ describe("Generate is held where core refuses, in the web app's words", () => {
       "A count-only exchange runs its one linkage key in one round, but a " +
         'key set to "Match only where a field is missing" runs in two. Clear ' +
         'the choice on Key 2, or set Matching method to "Reveal the matched ' +
-        'identifiers (standard)".',
+        'identifiers (standard)" on Matching & sharing.',
     );
     expect(message).not.toMatch(SCHEMA_WORDS);
   });

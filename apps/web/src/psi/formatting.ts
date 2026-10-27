@@ -1,7 +1,7 @@
 /**
  * The display labels the exchange screens share: file sizes, invitation
- * lifetimes and their expiry, and the direction the matched results go. Pure
- * string building over values the caller already holds.
+ * lifetimes and their expiry, the matching method, and the direction the matched
+ * results go. Pure string building over values the caller already holds.
  */
 
 import {
@@ -9,6 +9,8 @@ import {
   formatCount,
   hasExpiryInstantPassed,
 } from "@alcove/core";
+
+import type { Algorithm } from "@alcove/core";
 
 import type { OutputDirection } from "./authoring/advancedInvite";
 
@@ -111,4 +113,14 @@ export const RESULTS_DIRECTION_LABELS: Record<OutputDirection, string> = {
   both: "You and your partner",
   inviter: "Only you",
   partner: "Only your partner",
+};
+
+/** The label the matching method is chosen under and restated beside. */
+export const MATCHING_METHOD_LABEL = "Matching method";
+
+/** Each matching method's option label, shared by the choice, the
+ * check-your-answers row and the messages that name the choice. */
+export const MATCHING_METHOD_LABELS: Record<Algorithm, string> = {
+  psi: "Reveal the matched identifiers (standard)",
+  "psi-c": "Reveal only the count (psi-c)",
 };

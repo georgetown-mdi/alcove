@@ -6,14 +6,12 @@ import {
   Anchor,
   Checkbox,
   Input,
-  NativeSelect,
   Radio,
   Switch,
 } from "@mantine/core";
 import { IconArrowDown, IconArrowUp } from "@tabler/icons-react";
 
 import {
-  AlgorithmSchema,
   CONTACT_AND_LOCATION_FIELD_TYPES,
   DEFAULT_PRECISION_FLOOR_SELECTION,
   LESS_CERTAIN_KEY_COPY,
@@ -67,7 +65,6 @@ import type {
   CleaningNotLoaded,
 } from "@psi/authoring/advancedInvite";
 import type {
-  Algorithm,
   LinkageStrategy,
   LinkageTerms,
   PrecisionFloorSelection,
@@ -94,9 +91,8 @@ const SHARED_VALUE_CAVEAT =
  * The Matching keys tab: the precision floor the guided keys are drawn from
  * the built-in catalog with, the guided ordered key list (enable + reorder),
  * the expert switch that opens element-by-element authoring and terms
- * import/export, and the matching settings -- the linkage strategy, matching
- * method, and deduplication controls, each live while the exchange applies
- * what it writes.
+ * import/export, and the matching settings -- the linkage strategy and
+ * deduplication controls, each live while the exchange applies what it writes.
  *
  * The list holds the built-in keys the chosen floor selects for these
  * columns, each with a checkbox and the reorder pair, and a key core marks
@@ -125,7 +121,6 @@ export function KeysTab({
   onKeyMoved,
   onAuthoredDraft,
   onStrategy,
-  onAlgorithm,
   onDeduplicate,
   onImport,
   keysError,
@@ -150,7 +145,6 @@ export function KeysTab({
   onKeyMoved: (index: number, offset: -1 | 1) => void;
   onAuthoredDraft: (draft: AdvancedInviteDraft) => void;
   onStrategy: (strategy: LinkageStrategy) => void;
-  onAlgorithm: (algorithm: Algorithm) => void;
   onDeduplicate: (deduplicate: boolean) => void;
   /** Load imported terms and a pasted configuration's cleaning steps; returns
    * the cleaning that did not load. */
@@ -436,19 +430,6 @@ export function KeysTab({
           {SINGLE_PASS_DISCLOSURE_BODY}
         </Alert>
       )}
-      <NativeSelect
-        label="Matching method"
-        description="Reveal the matched identifiers, or only the count."
-        value={editor.draft.algorithm}
-        data={[
-          { value: "psi", label: "Reveal the matched identifiers (standard)" },
-          { value: "psi-c", label: "Reveal only the count (psi-c)" },
-        ]}
-        onChange={(event) =>
-          onAlgorithm(AlgorithmSchema.parse(event.currentTarget.value))
-        }
-        mt="md"
-      />
       {/* The accepting party's own side of the cardinality is not this control's
       to set: acceptance derives it as false, so what this authors is one-sided
       by construction. */}

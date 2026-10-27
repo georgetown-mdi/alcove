@@ -106,7 +106,6 @@ function render(typedName: string, receipts: ReceiptsDraft): void {
       receipts,
       onReceipts: () => undefined,
       onLifetime: () => undefined,
-      onDirection: () => undefined,
       onTransport: () => undefined,
       onAuthorConnection: () => undefined,
       onClearConnection: () => undefined,

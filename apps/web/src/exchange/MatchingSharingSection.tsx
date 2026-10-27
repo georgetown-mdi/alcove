@@ -17,24 +17,28 @@ import { disclosedColumnNames } from "@alcove/core";
 
 import styles from "@styles/app.module.css";
 
+import { ExchangeProducesField } from "./ExchangeProducesField";
 import { MatchingKeyField } from "./MatchingKeyField";
 import { OwnColumnsChoiceField } from "./OwnColumnsChoiceField";
 
 import type {
+  Algorithm,
   MatchingKeyUnavailableReason,
   Metadata,
   SemanticType,
 } from "@alcove/core";
 import type { DisclosureChoice } from "@psi/metadataEditing";
+import type { OutputDirection } from "@psi/authoring/advancedInvite";
 import type { OwnColumnsChoice } from "@psi/ownColumnsModel";
 
 const SEMANTIC_TYPES = Object.keys(SEMANTIC_TYPE_LABELS) as Array<SemanticType>;
 
 /**
- * Step 2 of the inviter spine -- the one mandatory review: what each column is
- * and what it is used for, which together decide exactly what the partner can
- * ever see. Presentational over the host's metadata; edits go up through the
- * two callbacks and the single-identifier rule's demotions come back down as
+ * Step 2 of the inviter spine -- the one mandatory review: what the exchange
+ * produces and for whom ({@link ExchangeProducesField}), then what each column
+ * is and what it is used for, which together decide exactly what the partner
+ * can ever see. Presentational over the host's draft; edits go up through the
+ * callbacks and the single-identifier rule's demotions come back down as
  * `announcement`.
  *
  * The grid's row headers and its two control labels, the chip list, the summary
@@ -59,6 +63,10 @@ const SEMANTIC_TYPES = Object.keys(SEMANTIC_TYPE_LABELS) as Array<SemanticType>;
  * operator's own result file contains.
  */
 export function MatchingSharingSection({
+  algorithm,
+  onAlgorithm,
+  direction,
+  onDirection,
   metadata,
   onColumnType,
   onColumnDisclosure,
@@ -69,6 +77,10 @@ export function MatchingSharingSection({
   announcement,
   onContinue,
 }: {
+  algorithm: Algorithm;
+  onAlgorithm: (algorithm: Algorithm) => void;
+  direction: OutputDirection;
+  onDirection: (direction: OutputDirection) => void;
   metadata: Metadata;
   onColumnType: (columnName: string, type: SemanticType) => void;
   onColumnDisclosure: (columnName: string, choice: DisclosureChoice) => void;
@@ -125,6 +137,13 @@ export function MatchingSharingSection({
     <>
       <p className={styles.eyebrow}>Step 2 of 3</p>
       <h1 tabIndex={-1}>Matching &amp; sharing</h1>
+      <ExchangeProducesField
+        algorithm={algorithm}
+        onAlgorithm={onAlgorithm}
+        direction={direction}
+        onDirection={onDirection}
+      />
+      <h2>Your columns</h2>
       <p>Confirm what each column is and what it is used for.</p>
       <div className={styles.tableScroll}>
         <table className={styles.dataTable}>

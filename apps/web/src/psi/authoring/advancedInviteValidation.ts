@@ -319,10 +319,9 @@ function cleaningFanOutMessage(
     `${sanitizeForDisplay(refused.input)} column`;
   return countOnly
     ? `A count-only exchange matches one value per record, but ${step} ` +
-        "splits a value into parts. Remove that step, or on the Matching on " +
-        `tab ${REVEAL_IDENTIFIERS_INSTEAD}`
+        `splits a value into parts. Remove that step, or ${REVEAL_IDENTIFIERS_INSTEAD}`
     : `This linkage strategy matches one value per record, but ${step} ` +
-        "splits a value into parts. Remove that step, or on the Matching on " +
+        "splits a value into parts. Remove that step, or on the Matching keys " +
         "tab change Linkage strategy.";
 }
 
