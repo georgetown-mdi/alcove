@@ -22,10 +22,12 @@
     The task each line registers is read back with Get-ScheduledTask and
     Get-ScheduledTaskInfo and started. docker is a stand-in compiled into the
     folder, which cmd finds in the task's working folder before the runner's
-    own docker; it writes the arguments it received to a file there.
+    own docker; it writes the arguments it received to a file there. A task
+    that does not write it within 60 s fails with the task's stored action,
+    the processes it left running, and where cmd finds docker from the folder.
 
-    Every task the suite creates is deleted and the culture restored, test by
-    test. The suite runs alone (the schedule job of
+    Every task the suite creates is stopped and deleted and the culture
+    restored, test by test. The suite runs alone (the schedule job of
     .github/workflows/windows_resolution.yaml), because the culture it sets
     reaches every process started while it is set. Run it through
     ci-resolution-tests.ps1 -Suite ScheduleLines.
@@ -135,6 +137,41 @@ public static class AlcoveScheduledDockerRecorder {
         }
         return (Test-Path -LiteralPath $script:Recorded)
     }
+
+    function Get-TaskRunDiagnostics {
+        <#  One line stating what the task stored and what it left running:
+            its actions, the cmd processes the Task Scheduler service started
+            and their descendants, any docker or WerFault process, the folder's
+            files, and where cmd finds docker from the folder. #>
+        $parts = New-Object System.Collections.ArrayList
+        $task = Get-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue
+        foreach ($action in @($task.Actions)) {
+            [void] $parts.Add("action Execute=[$($action.Execute)] Arguments=[$($action.Arguments)] WorkingDirectory=[$($action.WorkingDirectory)]")
+        }
+        $processes = @(Get-CimInstance Win32_Process)
+        $schedulePid = (Get-CimInstance Win32_Service -Filter "Name='Schedule'").ProcessId
+        $shown = @{}
+        $pending = New-Object System.Collections.Queue
+        foreach ($process in $processes) {
+            if ($process.ParentProcessId -eq $schedulePid -and $process.Name -eq 'cmd.exe') { $pending.Enqueue($process) }
+            if ($process.Name -eq 'docker.exe' -or $process.Name -eq 'WerFault.exe') { $pending.Enqueue($process) }
+        }
+        while ($pending.Count -gt 0) {
+            $process = $pending.Dequeue()
+            if ($shown.ContainsKey($process.ProcessId)) { continue }
+            $shown[$process.ProcessId] = $true
+            [void] $parts.Add("process $($process.ProcessId) parent $($process.ParentProcessId) $($process.ExecutablePath): $($process.CommandLine)")
+            foreach ($child in $processes) {
+                if ($child.ParentProcessId -eq $process.ProcessId) { $pending.Enqueue($child) }
+            }
+        }
+        if ($shown.Count -eq 0) { [void] $parts.Add('process none from the Task Scheduler service') }
+        [void] $parts.Add("folder holds [$((@(Get-ChildItem -LiteralPath $script:Folder -Name)) -join ', ')]")
+        [void] $parts.Add("NoDefaultCurrentDirectoryInExePath=[$env:NoDefaultCurrentDirectoryInExePath]")
+        $where = Invoke-PastedLine -Shell 'Command Prompt' -Line ('cd /d "' + $script:Folder + '" && where docker')
+        [void] $parts.Add("where docker from the folder (exit $($where.Exit)): $($where.Output)")
+        return ($parts -join ' || ')
+    }
 }
 
 AfterAll {
@@ -189,10 +226,14 @@ Describe 'The Task Scheduler lines, pasted and run' {
             }
 
             Start-ScheduledTask -TaskName $script:TaskName
-            Wait-ForRecorded | Should -BeTrue -Because "the task did not run docker in the folder within 60 s (last result $((Get-ScheduledTaskInfo -TaskName $script:TaskName).LastTaskResult))"
+            $ran = Wait-ForRecorded
+            $diagnostics = if ($ran) { '' } else { Get-TaskRunDiagnostics }
+            $ran | Should -BeTrue -Because "the task did not run docker in the folder within 60 s (last result $((Get-ScheduledTaskInfo -TaskName $script:TaskName).LastTaskResult)): $diagnostics"
             $received = @(Get-Content -LiteralPath $script:Recorded | ForEach-Object { $_.Substring(1, $_.Length - 2) })
             ($received -join ' | ') | Should -Be ($intended -join ' | ')
         } finally {
+            # A task still running would otherwise outlive its deletion.
+            Stop-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue
             Remove-TestTask
             Set-Culture -CultureInfo $script:CultureBefore
         }
