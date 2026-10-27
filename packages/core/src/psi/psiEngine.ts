@@ -360,6 +360,8 @@ export interface PsiEngine {
  * receiver's record count and the round's failure.
  */
 export interface PermutedShardPrimary {
+  /** The mode the engine was built in. */
+  readonly mode: PsiEngineMode;
   /**
    * Checks `values`, the whole of a receiver's request, as
    * {@link PsiEngine.createClientRequest} checks it, records it as the
@@ -427,7 +429,8 @@ const SETUP_CLIENT_INPUT_COUNT = -1;
 export class InProcessPsiEngine implements PsiEngine, PermutedShardPrimary {
   private readonly library: PSILibrary;
   private readonly id: string;
-  private readonly mode: PsiEngineMode;
+  /** The mode the engine was built in. */
+  readonly mode: PsiEngineMode;
   private readonly revealFlag: boolean;
   private readonly server?: PSIServer;
   private readonly client?: PSIClient;

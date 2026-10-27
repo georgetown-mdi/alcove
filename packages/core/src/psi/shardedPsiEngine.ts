@@ -43,11 +43,16 @@ export function shardHelperMode(mode: PsiEngineMode): PsiEngineMode {
   return known === "count-only-permuted" ? "identifier-revealing" : known;
 }
 
+// A primary in another mode answers a request in the library's order, with no
+// `pi` applied.
 function isPermutedShardPrimary(
   engine: PsiEngine,
 ): engine is PsiEngine & PermutedShardPrimary {
   const candidate = engine as PsiEngine & Partial<PermutedShardPrimary>;
-  return typeof candidate.createRequestFirstPart === "function";
+  return (
+    typeof candidate.createRequestFirstPart === "function" &&
+    candidate.mode === "count-only-permuted"
+  );
 }
 
 /**
@@ -146,13 +151,16 @@ class ShardProgressWatch {
  * another key masks its part to different bytes, and the merged message is
  * then wrong without any engine failing. The engines must not be shared with
  * another caller, since each sees its own lockstep calls. A partner request
- * in another mode is refused before any engine sees it, with the message one
- * engine named `id` refuses it with. A shard that fails fails its operation
- * at once, as does one silent past
- * {@link ShardedPsiEngineOptions.shardProgressTimeoutMs}; no shard is retried.
+ * whose reveal flag differs from `mode`'s is refused with the message one
+ * engine named `id` refuses it with: before any engine sees it, except in the
+ * count-only-permuted mode, where the primary is given every request whole
+ * and refuses it. A shard that fails fails its operation at once, as does one
+ * silent past {@link ShardedPsiEngineOptions.shardProgressTimeoutMs}; no
+ * shard is retried.
  *
  * In the count-only-permuted mode the primary must also be a
- * {@link PermutedShardPrimary}. It checks the whole of a split request and
+ * {@link PermutedShardPrimary} built in that mode, or construction throws.
+ * It checks the whole of a split request and
  * masks its first part, and it answers every partner request whole, so `pi`
  * and the mode's state never leave it.
  *
@@ -191,7 +199,7 @@ export class ShardedPsiEngine implements PsiEngine {
     if (this.mode === "count-only-permuted") {
       if (!isPermutedShardPrimary(primary))
         throw new InternalConsistencyError(
-          `${id}: a sharded PSI engine in the count-only-permuted mode needs a primary that creates the first part of a split request`,
+          `${id}: a sharded PSI engine in the count-only-permuted mode needs a primary built in that mode that creates the first part of a split request`,
         );
       this.permutedPrimary = primary;
     }

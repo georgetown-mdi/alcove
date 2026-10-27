@@ -395,9 +395,31 @@ describe("the sharded engine in the count-only-permuted mode", () => {
     expect(
       () => new ShardedPsiEngine(wasm, "starter", mode, fakeEngine(), []),
     ).toThrow(
-      "starter: a sharded PSI engine in the count-only-permuted mode needs a primary that creates the first part of a split request",
+      "starter: a sharded PSI engine in the count-only-permuted mode needs a primary built in that mode that creates the first part of a split request",
     );
   });
+
+  test.for(["identifier-revealing", "count-only"] as const)(
+    "a primary built in the %s mode is refused at construction, and one in this mode is not",
+    (primaryMode) => {
+      const mismatched = keyedEngine(wasm, "starter", primaryMode);
+      const matching = keyedEngine(wasm, "starter", mode);
+      const helper = keyedEngine(wasm, "starter", shardHelperMode(mode));
+      try {
+        const refused = () =>
+          new ShardedPsiEngine(wasm, "starter", mode, mismatched, [helper]);
+        expect(refused).toThrow(InternalConsistencyError);
+        expect(refused).toThrow(
+          "starter: a sharded PSI engine in the count-only-permuted mode needs a primary built in that mode that creates the first part of a split request",
+        );
+        expect(
+          new ShardedPsiEngine(wasm, "starter", mode, matching, [helper]),
+        ).toBeInstanceOf(ShardedPsiEngine);
+      } finally {
+        for (const engine of [mismatched, matching, helper]) engine.dispose();
+      }
+    },
+  );
 
   test("a disposed engine refuses a split operation before any engine sees it", async () => {
     const engines = [fakeEngine(), fakeEngine()];

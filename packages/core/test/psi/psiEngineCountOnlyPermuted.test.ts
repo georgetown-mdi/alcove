@@ -1073,7 +1073,7 @@ describe("the count-only-permuted engine refuses", () => {
             [],
           ),
       ).toThrow(
-        /needs a primary that creates the first part of a split request/,
+        /needs a primary built in that mode that creates the first part of a split request/,
       );
     } finally {
       primary.dispose();

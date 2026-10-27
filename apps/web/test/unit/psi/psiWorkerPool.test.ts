@@ -1,7 +1,12 @@
 import { describe, expect, test, vi } from "vitest";
 
-import { InProcessPsiEngine, shardStalledError } from "@alcove/core";
+import {
+  InProcessPsiEngine,
+  InternalConsistencyError,
+  shardStalledError,
+} from "@alcove/core";
 import PSI from "@openmined/psi.js";
+import { PartnerProtocolRefusalError } from "@alcove/core/testing";
 
 import {
   createBrowserPsiEngineFactory,
@@ -763,6 +768,90 @@ describe("the PSI worker pool in the count-only-permuted mode", () => {
         engine.dispose();
     }
   }, 60_000);
+
+  // The refusals the in-process engine raises, through a pool and the worker
+  // program: each crosses to the page as the error class it was raised as.
+  const permutedSender = (): InProcessPsiEngine =>
+    new InProcessPsiEngine(wasm, "starter", "server", mode);
+  const SENDER_VALUES = values(48);
+
+  test("a joiner pool refuses an index table of the wrong length", async () => {
+    const { spawn } = inProcessSpawner(() => loadOf(wasm));
+    const pool = joinerPool(spawn, mode, 3);
+    const sender = permutedSender();
+    try {
+      const { setup, indexTable } =
+        await sender.createPermutedSetup(SENDER_VALUES);
+      await pool.receiveServerSetup(setup);
+      const refused = pool.receiveIndexTable(indexTable.slice(1));
+      await expect(refused).rejects.toBeInstanceOf(PartnerProtocolRefusalError);
+      await expect(refused).rejects.toThrow(
+        /has 47 entries for a setup of 48 elements/,
+      );
+    } finally {
+      pool.dispose();
+      sender.dispose();
+    }
+  }, 30_000);
+
+  test("a joiner pool refuses a response repeating an element, and then a finish", async () => {
+    const { spawn } = inProcessSpawner(() => loadOf(wasm));
+    const pool = joinerPool(spawn, mode, 3);
+    const sender = permutedSender();
+    try {
+      const { setup, indexTable } =
+        await sender.createPermutedSetup(SENDER_VALUES);
+      await pool.receiveServerSetup(setup);
+      await pool.receiveIndexTable(indexTable);
+      const response = wasm.response.deserializeBinary(
+        await sender.processClientRequest(
+          await pool.createClientRequest(values(3072)),
+        ),
+      );
+      const elements = response.getEncryptedElementsList_asU8();
+      elements[1] = elements[0]!;
+      response.setEncryptedElementsList(elements);
+      const refused = pool.matchPermutedRound(response.serializeBinary());
+      await expect(refused).rejects.toBeInstanceOf(PartnerProtocolRefusalError);
+      await expect(refused).rejects.toThrow(/repeats an element/);
+      const count = pool.finishPermutedCount();
+      await expect(count).rejects.toBeInstanceOf(PartnerProtocolRefusalError);
+      await expect(count).rejects.toThrow(
+        /after the partner's input was refused/,
+      );
+    } finally {
+      pool.dispose();
+      sender.dispose();
+    }
+  }, 60_000);
+
+  test("a joiner pool disposed after a round refuses every later call and posts its workers nothing", async () => {
+    const { spawn, toWorkers } = inProcessSpawner(() => loadOf(wasm));
+    const pool = joinerPool(spawn, mode, 3);
+    const sender = permutedSender();
+    try {
+      const { setup, indexTable } =
+        await sender.createPermutedSetup(SENDER_VALUES);
+      await pool.receiveServerSetup(setup);
+      await pool.receiveIndexTable(indexTable);
+      const response = await sender.processClientRequest(
+        await pool.createClientRequest(values(64)),
+      );
+      pool.dispose();
+      const posted = toWorkers.length;
+      for (const call of [
+        () => pool.receiveServerSetup(setup),
+        () => pool.receiveIndexTable(indexTable),
+        () => pool.createClientRequest(values(64)),
+        () => pool.matchPermutedRound(response),
+        () => pool.finishPermutedCount(),
+      ])
+        await expect(call()).rejects.toBeInstanceOf(InternalConsistencyError);
+      expect(toWorkers).toHaveLength(posted);
+    } finally {
+      sender.dispose();
+    }
+  }, 30_000);
 });
 
 // A worker the test answers by hand.

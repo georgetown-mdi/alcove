@@ -5,7 +5,7 @@
 - - -> The primary holds `pi`, `sigma` and the receiver's state, and no helper is given them.
 - - -> Only the request is split, each helper masking its part in the identifier-revealing mode (`shardHelperMode`), which sets the same reveal flag.
 - - -> The primary checks and records the whole set, then masks the first part after every helper has its own, so a set it refuses fails only after the helpers' parts are sent.
-- - -> It answers every partner request whole, refusing one in another mode or of another size than the exchange's first.
+- - -> It answers every partner request whole, refusing one whose reveal flag differs from its own, which only a request in the library's cardinality mode has, or one of another size than the exchange's first.
 - - -> `shardedPsiEngine.test.ts` and `psiWorkerPool.test.ts` check that no helper answers, and `psiEngineCountOnlyPermuted.test.ts` the refusals.
 # The identity tests extend to the PSI-C construction.
 - The merged request and response are byte-identical to one engine's under the same key. -> The merged request and response are byte-identical to one engine's under the same key, and in the [PSI-C](#psi-c) construction under the same `pi`.
