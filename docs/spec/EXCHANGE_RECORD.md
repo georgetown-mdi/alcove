@@ -154,6 +154,8 @@ The cleartext field is the count's whole attestation in the record. No commitmen
 
 **Payload commitments are present and empty.** psi-c refuses payload in either direction, so both directions commit the empty committed payload `{ "columns": [], "rows": [] }` -- present, salted, and domain-separated exactly as a populated one would be, never omitted. The readable `payloadSent` and `payloadReceived` lists are likewise the explicit empty list. Recording the no-payload case explicitly rather than by omission is the rule the `psi` no-payload case already follows, and it is what keeps a reader from having to guess whether a field is absent because nothing flowed or because the writer left it out.
 
+The linkage strategy is not among those rows. Count-only terms may declare `single-pass`, which runs as the cascade realization ([PROTOCOL.md, A declared `single-pass` runs the same rounds](PROTOCOL.md#a-declared-single-pass-runs-the-same-rounds)). The record has no strategy field, and the agreed-terms hash, the [agreed-terms file](#agreed-terms-file), and the receipt's terms envelope each state the strategy as the terms declare it, never which realization ran.
+
 What the separate signed receipt does and does not attest for such a run is under [A count-only run's receipt](#a-count-only-runs-receipt) below.
 
 ## Governance metadata
