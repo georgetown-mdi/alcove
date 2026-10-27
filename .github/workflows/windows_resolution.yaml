@@ -59,7 +59,6 @@ on:
       - "support/maintainer-notes/DockerStandIn.ps1"
       - "support/maintainer-notes/docker-lines.txt"
       - "support/maintainer-notes/ci-resolution-tests.ps1"
-      - "support/maintainer-notes/ci-capability-probe.ps1"
       - ".github/workflows/windows_resolution.yaml"
   workflow_dispatch:
 
@@ -102,21 +101,6 @@ jobs:
       - name: Run the constrained language suite
         shell: cmd
         run: powershell -NoProfile -ExecutionPolicy Bypass -File .\support\maintainer-notes\ci-resolution-tests.ps1 -Suite ConstrainedLanguage
-
-  # Measures what the runner can host for the suites still to be written
-  # (ci-capability-probe.ps1 names each question), and never fails. Runs on
-  # pull requests as well as on dispatch so that its first run answers them;
-  # whether it stays, and under which trigger, is decided from that run.
-  probe:
-    name: Probe runner capabilities
-    runs-on: windows-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Probe policy, scheduler, engine, accounts and console input
-        shell: cmd
-        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\support\maintainer-notes\ci-capability-probe.ps1
 
   measure:
     name: Measure drive and namespace resolution
