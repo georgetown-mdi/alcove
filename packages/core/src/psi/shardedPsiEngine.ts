@@ -12,6 +12,7 @@ import {
 } from "./psiChunks";
 import {
   knownEngineMode,
+  modeSetsRevealFlag,
   partnerRequestModeError,
   valuesContributedExactlyOnce,
 } from "./psiEngine";
@@ -46,11 +47,7 @@ function isPermutedShardPrimary(
   engine: PsiEngine,
 ): engine is PsiEngine & PermutedShardPrimary {
   const candidate = engine as PsiEngine & Partial<PermutedShardPrimary>;
-  return (
-    typeof candidate.createRequestFirstPart === "function" &&
-    typeof candidate.answerRequestFirstPart === "function" &&
-    typeof candidate.permuteAnsweredRequest === "function"
-  );
+  return typeof candidate.createRequestFirstPart === "function";
 }
 
 /**
@@ -155,10 +152,9 @@ class ShardProgressWatch {
  * {@link ShardedPsiEngineOptions.shardProgressTimeoutMs}; no shard is retried.
  *
  * In the count-only-permuted mode the primary must also be a
- * {@link PermutedShardPrimary}. It masks the first part of a split operation
- * and keeps the mode's state; the helpers' answers are joined to its own in
- * request order and the whole is reordered under `pi` on the primary, so the
- * response is the one engine's under the same key and `pi`.
+ * {@link PermutedShardPrimary}. It checks the whole of a split request and
+ * masks its first part, and it answers every partner request whole, so `pi`
+ * and the mode's state never leave it.
  *
  * `library` builds and parses the merged messages on the calling thread; it
  * creates no key and masks nothing.
@@ -191,11 +187,11 @@ export class ShardedPsiEngine implements PsiEngine {
     this.library = library;
     this.id = id;
     this.mode = knownEngineMode(mode);
-    this.revealFlag = this.mode !== "count-only";
+    this.revealFlag = modeSetsRevealFlag(this.mode);
     if (this.mode === "count-only-permuted") {
       if (!isPermutedShardPrimary(primary))
         throw new InternalConsistencyError(
-          `${id}: a sharded PSI engine in the count-only-permuted mode needs a primary that answers the first part of a split request`,
+          `${id}: a sharded PSI engine in the count-only-permuted mode needs a primary that creates the first part of a split request`,
         );
       this.permutedPrimary = primary;
     }
@@ -306,6 +302,8 @@ export class ShardedPsiEngine implements PsiEngine {
 
   async processClientRequest(requestBytes: Uint8Array): Promise<Uint8Array> {
     this.requireUndisposed("processClientRequest");
+    if (this.permutedPrimary !== undefined)
+      return this.permutedPrimary.processClientRequest(requestBytes);
     let declared: number;
     try {
       declared = countDeclaredPsiElements(
@@ -334,34 +332,18 @@ export class ShardedPsiEngine implements PsiEngine {
     // Each part keeps the partner's own reveal flag, so every shard applies
     // the mode check one engine applies to the whole request.
     const inbound = request.getEncryptedElementsList_asU8();
-    const partRequest = (range: PsiChunkRange): Uint8Array =>
-      buildRequest(
-        this.library,
-        inbound.slice(range.start, range.end),
-        revealFlag,
-      ).serializeBinary();
-    const permutedPrimary = this.permutedPrimary;
-    if (permutedPrimary !== undefined) {
-      // The primary holds its own part's answer, so it returns nothing here;
-      // every helper answers its part in request order.
-      const parts = await this.overShards(ranges, async (engine, range) => {
-        if (engine === permutedPrimary) {
-          await permutedPrimary.answerRequestFirstPart(
-            partRequest(range),
-            declared,
-          );
-          return [];
-        }
-        return this.answeredElements(
-          await engine.processClientRequest(partRequest(range)),
-        );
-      });
-      return permutedPrimary.permuteAnsweredRequest(parts.slice(1));
-    }
     const parts = await this.overShards(ranges, async (engine, range) =>
-      this.answeredElements(
-        await engine.processClientRequest(partRequest(range)),
-      ),
+      this.library.response
+        .deserializeBinary(
+          await engine.processClientRequest(
+            buildRequest(
+              this.library,
+              inbound.slice(range.start, range.end),
+              revealFlag,
+            ).serializeBinary(),
+          ),
+        )
+        .getEncryptedElementsList_asU8(),
     );
     if (this.mode === "count-only")
       return serializeResponse(
@@ -371,12 +353,6 @@ export class ShardedPsiEngine implements PsiEngine {
     const response = buildResponse(this.library, []);
     for (const part of parts) appendChunkElements(response, part);
     return response.serializeBinary();
-  }
-
-  private answeredElements(responseBytes: Uint8Array): Array<Uint8Array> {
-    return this.library.response
-      .deserializeBinary(responseBytes)
-      .getEncryptedElementsList_asU8();
   }
 
   async createClientRequest(

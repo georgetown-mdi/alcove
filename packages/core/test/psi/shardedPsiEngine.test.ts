@@ -9,7 +9,6 @@ import {
   drawUniformPermutation,
   HeldPermutation,
 } from "../../src/psi/countOnlyPermutation";
-import { mergeCountOnlyResponseChunks } from "../../src/psi/psiChunks";
 import { InProcessPsiEngine } from "../../src/psi/psiEngine";
 import {
   PSI_SHARD_MIN_ELEMENTS,
@@ -316,53 +315,68 @@ describe.each([
 describe("the sharded engine in the count-only-permuted mode", () => {
   const mode: PsiEngineMode = "count-only-permuted";
 
-  test("each helper answers its part in request order, and only the primary's answer is reordered", async () => {
-    const primary = keyedEngine(wasm, "starter", mode);
-    const helpers = [1, 2].map(() => {
-      const helper = keyedEngine(wasm, "starter", shardHelperMode(mode));
-      const answer = vi.fn(helper.processClientRequest.bind(helper));
-      helper.processClientRequest = answer;
-      return { helper, answer };
-    });
-    const firstPart = vi.spyOn(primary, "answerRequestFirstPart");
-    const primaryWhole = vi.spyOn(primary, "processClientRequest");
-    const sharded = new ShardedPsiEngine(
-      wasm,
-      "starter",
-      mode,
-      primary,
-      helpers.map(({ helper }) => helper),
-      { minShardElements: MIN_SHARD_ELEMENTS },
+  // A starter whose engines each record the requests they are asked to answer.
+  const answeringEngines = (engineMode: PsiEngineMode, engines: number) => {
+    const primary = keyedEngine(wasm, "starter", engineMode);
+    const helpers = Array.from({ length: engines - 1 }, () =>
+      keyedEngine(wasm, "starter", shardHelperMode(engineMode)),
     );
-    const joiner = keyedEngine(wasm, "joiner", mode);
-    const inOrder = keyedEngine(wasm, "starter", "identifier-revealing");
-    try {
-      const request = await joiner.createClientRequest(serverValues);
-      const response = await sharded.processClientRequest(request);
-      expect(primaryWhole).not.toHaveBeenCalled();
-      expect(firstPart).toHaveBeenCalledOnce();
-      expect(firstPart.mock.calls[0]![1]).toBe(TOTAL);
-      const elementsOf = (bytes: Uint8Array) =>
-        wasm.response.deserializeBinary(bytes).getEncryptedElementsList_asU8();
-      const expected = elementsOf(await inOrder.processClientRequest(request));
-      // Three parts of 66, 67 and 67: each helper's answer is its range of the
-      // in-order answer.
-      const helperAnswers = await Promise.all(
-        helpers.map(({ answer }) => answer.mock.results[0]!.value),
+    return {
+      sharded: new ShardedPsiEngine(
+        wasm,
+        "starter",
+        engineMode,
+        primary,
+        helpers,
+        { minShardElements: MIN_SHARD_ELEMENTS },
+      ),
+      primaryAnswers: vi.spyOn(primary, "processClientRequest"),
+      helperAnswers: helpers.map((helper) =>
+        vi.spyOn(helper, "processClientRequest"),
+      ),
+    };
+  };
+
+  test.for([2, 3, 5])(
+    "across %i engines the primary answers the whole request, to one engine's bytes under the same pi, at a size the other modes split",
+    async (engines) => {
+      fixEveryPermutation();
+      const permuted = answeringEngines(mode, engines);
+      const split = answeringEngines("identifier-revealing", engines);
+      const single = keyedEngine(wasm, "starter", mode);
+      const joiner = keyedEngine(wasm, "joiner", mode);
+      const revealingJoiner = keyedEngine(
+        wasm,
+        "joiner",
+        "identifier-revealing",
       );
-      expect(helperAnswers.map(elementsOf)).toStrictEqual([
-        expected.slice(66, 133),
-        expected.slice(133),
-      ]);
-      const sent = elementsOf(response);
-      expect(sent).not.toStrictEqual(expected);
-      expect(mergeCountOnlyResponseChunks([sent])).toStrictEqual(
-        mergeCountOnlyResponseChunks([expected]),
-      );
-    } finally {
-      for (const engine of [sharded, joiner, inOrder]) engine.dispose();
-    }
-  });
+      try {
+        const request = await joiner.createClientRequest(serverValues);
+        expect(await permuted.sharded.processClientRequest(request)).toEqual(
+          await single.processClientRequest(request),
+        );
+        expect(permuted.primaryAnswers).toHaveBeenCalledOnce();
+        expect(permuted.primaryAnswers).toHaveBeenCalledWith(request);
+        for (const answer of permuted.helperAnswers)
+          expect(answer).not.toHaveBeenCalled();
+
+        await split.sharded.processClientRequest(
+          await revealingJoiner.createClientRequest(serverValues),
+        );
+        for (const answer of split.helperAnswers)
+          expect(answer).toHaveBeenCalledOnce();
+      } finally {
+        for (const engine of [
+          permuted.sharded,
+          split.sharded,
+          single,
+          joiner,
+          revealingJoiner,
+        ])
+          engine.dispose();
+      }
+    },
+  );
 
   test("a value repeated across two parts is refused, as one engine refuses it", async () => {
     const sharded = shardedEngine(wasm, "joiner", mode, 3);
@@ -377,11 +391,11 @@ describe("the sharded engine in the count-only-permuted mode", () => {
     }
   });
 
-  test("a primary that is not built to answer the first part of a split is refused at construction", () => {
+  test("a primary that is not built to create the first part of a split request is refused at construction", () => {
     expect(
       () => new ShardedPsiEngine(wasm, "starter", mode, fakeEngine(), []),
     ).toThrow(
-      "starter: a sharded PSI engine in the count-only-permuted mode needs a primary that answers the first part of a split request",
+      "starter: a sharded PSI engine in the count-only-permuted mode needs a primary that creates the first part of a split request",
     );
   });
 
@@ -672,11 +686,9 @@ describe("helpers built from the primary's copied key", () => {
     ["joiner", "count-only-permuted"],
     ["starter", "identifier-revealing"],
     ["starter", "count-only"],
-    ["starter", "count-only-permuted"],
   ])(
     "a %s in %s mode puts the primary's own bytes on the wire",
     async ([role, mode]) => {
-      fixEveryPermutation();
       // The count-only-permuted mode takes distinct values.
       const values =
         mode === "count-only-permuted" ? serverValues : clientValues;

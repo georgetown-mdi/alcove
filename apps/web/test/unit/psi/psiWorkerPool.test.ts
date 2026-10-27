@@ -681,18 +681,54 @@ describe("the PSI worker pool in the count-only-permuted mode", () => {
     }
   }, 30_000);
 
-  test("a starter pool answers every round under one pi", async () => {
+  // A starter pool whose primary's every message to a helper is recorded on
+  // the port the helper's key went down.
+  function recordedStarterPool(poolMode: PsiEngineMode): {
+    pool: PsiEngine;
+    toHelpers: Array<unknown>;
+  } {
     const library = keyLoggingLibrary({ generated: 0, given: [] });
-    const { spawn } = inProcessSpawner(() => loadOf(library));
+    const inProcess = inProcessSpawner(() => loadOf(library));
+    const toHelpers: Array<unknown> = [];
+    const spawn: SpawnPsiCryptoWorker = (seed) => {
+      const worker = inProcess.spawn(seed);
+      if (seed.shard !== "primary") return worker;
+      const post = worker.postMessage;
+      worker.postMessage = (message, transfer) => {
+        if (kindOf(message) === "key-ports")
+          for (const port of (message as PsiKeyPortsMessage).ports) {
+            const send = port.postMessage.bind(port);
+            port.postMessage = (sent: unknown, sentTransfer?: unknown) => {
+              toHelpers.push(sent);
+              send(sent, sentTransfer as Array<Transferable>);
+            };
+          }
+        post(message, transfer);
+      };
+      return worker;
+    };
     const pool = startPsiWorkerPool(
       spawn,
       "starter",
       "server",
-      mode,
+      poolMode,
       3,
       TIMEOUT_MS,
     );
+    return { pool, toHelpers };
+  }
+  const answersSent = (toHelpers: ReadonlyArray<unknown>): number =>
+    toHelpers.filter(
+      (message) =>
+        (message as { body?: { method?: string } }).body?.method ===
+        "processClientRequest",
+    ).length;
+
+  test("a starter pool answers every round on its primary under one pi, sending no helper a part, at a size the other modes split", async () => {
+    const { pool, toHelpers } = recordedStarterPool(mode);
+    const control = recordedStarterPool("identifier-revealing");
     const partner = engineUnderKey(mode);
+    const revealingPartner = engineUnderKey("identifier-revealing");
     const inOrder = inOrderStarter();
     try {
       const pis: Array<Array<number>> = [];
@@ -710,48 +746,23 @@ describe("the PSI worker pool in the count-only-permuted mode", () => {
       expect([...pis[0]].sort((a, b) => a - b)).toEqual(identity);
       expect(pis[0]).not.toEqual(identity);
       expect(pis[1]).toEqual(pis[0]);
+      expect(answersSent(toHelpers)).toBe(0);
+
+      await control.pool.processClientRequest(
+        await revealingPartner.createClientRequest(values(3072)),
+      );
+      expect(answersSent(control.toHelpers)).toBe(2);
     } finally {
-      pool.dispose();
-      partner.dispose();
-      inOrder.dispose();
+      for (const engine of [
+        pool,
+        control.pool,
+        partner,
+        revealingPartner,
+        inOrder,
+      ])
+        engine.dispose();
     }
   }, 60_000);
-
-  test("a helper answers its part in request order, so it draws no pi", async () => {
-    const { scope, posted } = runProgram(
-      encodePsiWorkerInit({
-        role: "starter",
-        id: "server",
-        mode,
-        shard: "helper",
-      }),
-      loadOf(keyLoggingLibrary({ generated: 0, given: [] })),
-    );
-    const channel = new MessageChannel();
-    giveKeyPorts(scope, [channel.port2]);
-    channel.port1.postMessage(Uint8Array.from(KEY));
-    await vi.waitFor(() =>
-      expect(posted).toEqual([{ kind: "helper-setup", ready: true }]),
-    );
-    const partner = engineUnderKey(mode);
-    const inOrder = inOrderStarter();
-    try {
-      const request = await partner.createClientRequest(values(64));
-      const fromHelper = firstMessage(channel.port1);
-      channel.port1.postMessage({
-        id: 1,
-        body: { method: "processClientRequest", requestBytes: request },
-      });
-      expect(await fromHelper).toEqual({
-        id: 1,
-        ok: true,
-        result: await inOrder.processClientRequest(request),
-      });
-    } finally {
-      partner.dispose();
-      inOrder.dispose();
-    }
-  });
 });
 
 // A worker the test answers by hand.

@@ -585,22 +585,28 @@ describe("the count-only-permuted engine refuses", () => {
     },
   );
 
-  test("a request in the cardinality mode", async () => {
-    const sender = inProcess(wasm, "starter");
-    const cardinalityReceiver = engine(wasm, "joiner", "count-only");
-    try {
-      await sender.createPermutedSetup(roundSet(SENDER, 0));
-      const request = await cardinalityReceiver.createClientRequest(["a", "b"]);
-      await expect(
-        Promise.resolve().then(() => sender.processClientRequest(request)),
-      ).rejects.toThrow(
-        /the partner's PSI request ran the count-only mode, where this exchange runs count-only-permuted/,
-      );
-    } finally {
-      sender.dispose();
-      cardinalityReceiver.dispose();
-    }
-  });
+  test.for(refusingEngines)(
+    "a request in the cardinality mode, %s",
+    async ([, create]) => {
+      const sender = create(wasm, "starter");
+      const cardinalityReceiver = engine(wasm, "joiner", "count-only");
+      try {
+        await sender.createPermutedSetup(roundSet(SENDER, 0));
+        const request = await cardinalityReceiver.createClientRequest([
+          "a",
+          "b",
+        ]);
+        await expect(
+          Promise.resolve().then(() => sender.processClientRequest(request)),
+        ).rejects.toThrow(
+          /the partner's PSI request ran the count-only mode, where this exchange runs count-only-permuted/,
+        );
+      } finally {
+        sender.dispose();
+        cardinalityReceiver.dispose();
+      }
+    },
+  );
 
   test.for(refusingEngines)(
     "an index table of the wrong length, or that is not a permutation, %s",
@@ -1054,7 +1060,7 @@ describe("the count-only-permuted engine refuses", () => {
     },
   );
 
-  test("a sharded engine whose primary cannot answer the first part of a split request", () => {
+  test("a sharded engine whose primary cannot create the first part of a split request", () => {
     const primary = workerBacked(wasm, "starter");
     try {
       expect(
@@ -1067,7 +1073,7 @@ describe("the count-only-permuted engine refuses", () => {
             [],
           ),
       ).toThrow(
-        /needs a primary that answers the first part of a split request/,
+        /needs a primary that creates the first part of a split request/,
       );
     } finally {
       primary.dispose();
