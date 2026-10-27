@@ -1,12 +1,19 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import type { Mock } from "vitest";
 
 import PSI from "@openmined/psi.js";
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
+import { InternalConsistencyError } from "../../src/errors";
+import {
+  drawUniformPermutation,
+  HeldPermutation,
+} from "../../src/psi/countOnlyPermutation";
 import { InProcessPsiEngine } from "../../src/psi/psiEngine";
 import {
+  PSI_SHARD_MIN_ELEMENTS,
   ShardedPsiEngine,
+  shardHelperMode,
   shardStalledError,
 } from "../../src/psi/shardedPsiEngine";
 import { fixedKeyPsiLibrary, psiTestKey } from "../utils/fixedKeyPsiLibrary";
@@ -53,15 +60,35 @@ function shardedEngine(
   role: "starter" | "joiner",
   mode: PsiEngineMode,
   engines: number,
+  minShardElements = MIN_SHARD_ELEMENTS,
 ): ShardedPsiEngine {
   return new ShardedPsiEngine(
     library,
     role,
     mode,
     keyedEngine(library, role, mode),
-    Array.from({ length: engines - 1 }, () => keyedEngine(library, role, mode)),
-    { minShardElements: MIN_SHARD_ELEMENTS },
+    Array.from({ length: engines - 1 }, () =>
+      keyedEngine(library, role, shardHelperMode(mode)),
+    ),
+    { minShardElements },
   );
+}
+
+afterEach(() => vi.restoreAllMocks());
+
+// Every permutation an engine draws is the one fixed for its size, so two
+// engines under the same key reorder under the same `pi` and `sigma`. Each
+// draw gets its own copy, which the engine zeroes when it is discarded.
+function fixEveryPermutation(): Mock<(size: number) => HeldPermutation> {
+  const fixed = new Map<number, Int32Array>();
+  return vi.spyOn(HeldPermutation, "draw").mockImplementation((size) => {
+    let order = fixed.get(size);
+    if (order === undefined) {
+      order = drawUniformPermutation(size);
+      fixed.set(size, order);
+    }
+    return new HeldPermutation(order.slice());
+  });
 }
 
 describe.each([
@@ -156,6 +183,275 @@ describe.each([
       single.dispose();
       sharded.dispose();
     }
+  });
+});
+
+describe.each([
+  ["wasm", wasm],
+  ["native addon", native],
+])("the %s backend in a count-only-permuted round", (_name, library) => {
+  const mode: PsiEngineMode = "count-only-permuted";
+  // At the shipped floor, enough elements that every engine takes a part:
+  // 2,100 for one or two engines, 3,124 for three and 5,172 for five.
+  const elementsFor = (engines: number): number =>
+    Math.max(2, engines) * PSI_SHARD_MIN_ELEMENTS + 52;
+  // Every third receiver value is a sender value.
+  const permutedValues = (elements: number) => ({
+    sender: Array.from({ length: elements }, (_, index) => `s-${index}`),
+    receiver: Array.from({ length: elements }, (_, index) =>
+      index % 3 === 0 ? `s-${index}` : `r-${index}`,
+    ),
+    matches: Math.ceil(elements / 3),
+  });
+
+  test.for([1, 2, 3, 5])(
+    "across %i engines puts one engine's bytes on the wire under the same pi, and the receiver counts every match",
+    { timeout: 120_000 },
+    async (engines, ctx) => {
+      if (!library) {
+        ctx.skip();
+        return;
+      }
+      const draws = fixEveryPermutation();
+      const values = permutedValues(elementsFor(engines));
+      const single = {
+        starter: keyedEngine(library, "starter", mode),
+        joiner: keyedEngine(library, "joiner", mode),
+      };
+      const sharded = {
+        starter: shardedEngine(
+          library,
+          "starter",
+          mode,
+          engines,
+          PSI_SHARD_MIN_ELEMENTS,
+        ),
+        joiner: shardedEngine(
+          library,
+          "joiner",
+          mode,
+          engines,
+          PSI_SHARD_MIN_ELEMENTS,
+        ),
+      };
+      try {
+        const setup = await single.starter.createPermutedSetup(values.sender);
+        const request = await single.joiner.createClientRequest(
+          values.receiver,
+        );
+        const response = await single.starter.processClientRequest(request);
+
+        const drawsBefore = draws.mock.calls.length;
+        expect(
+          await sharded.starter.createPermutedSetup(values.sender),
+        ).toStrictEqual(setup);
+        expect(
+          await sharded.joiner.createClientRequest(values.receiver),
+        ).toEqual(request);
+        expect(await sharded.starter.processClientRequest(request)).toEqual(
+          response,
+        );
+        // `sigma` and `pi`, each drawn once, on the primary.
+        expect(draws.mock.calls.length - drawsBefore).toBe(2);
+
+        await sharded.joiner.receiveServerSetup(setup.setup);
+        await sharded.joiner.receiveIndexTable(setup.indexTable);
+        await sharded.joiner.matchPermutedRound(response);
+        expect(await sharded.joiner.finishPermutedCount()).toBe(values.matches);
+      } finally {
+        for (const engine of [
+          single.starter,
+          single.joiner,
+          sharded.starter,
+          sharded.joiner,
+        ])
+          engine.dispose();
+      }
+    },
+  );
+
+  test("a second round reorders under the first round's pi, and a request of another size is refused", async (ctx) => {
+    if (!library) {
+      ctx.skip();
+      return;
+    }
+    const draws = fixEveryPermutation();
+    const values = permutedValues(elementsFor(3));
+    const single = keyedEngine(library, "starter", mode);
+    const sharded = shardedEngine(
+      library,
+      "starter",
+      mode,
+      3,
+      PSI_SHARD_MIN_ELEMENTS,
+    );
+    const joiner = keyedEngine(library, "joiner", mode);
+    const shorterJoiner = keyedEngine(library, "joiner", mode);
+    try {
+      let shardedDraws = 0;
+      for (const round of [0, 1]) {
+        const request = await joiner.createClientRequest(
+          values.receiver.map((value) => `${String(round)}:${value}`),
+        );
+        const expected = await single.processClientRequest(request);
+        const drawsBefore = draws.mock.calls.length;
+        expect(await sharded.processClientRequest(request)).toEqual(expected);
+        shardedDraws += draws.mock.calls.length - drawsBefore;
+      }
+      expect(shardedDraws).toBe(1);
+      const shorter = await shorterJoiner.createClientRequest(
+        values.receiver.slice(1),
+      );
+      await expect(sharded.processClientRequest(shorter)).rejects.toThrow(
+        /has 3123 elements where the exchange's first had 3124/,
+      );
+    } finally {
+      for (const engine of [single, sharded, joiner, shorterJoiner])
+        engine.dispose();
+    }
+  }, 120_000);
+});
+
+describe("the sharded engine in the count-only-permuted mode", () => {
+  const mode: PsiEngineMode = "count-only-permuted";
+
+  // A starter whose engines each record the requests they are asked to answer.
+  const answeringEngines = (engineMode: PsiEngineMode, engines: number) => {
+    const primary = keyedEngine(wasm, "starter", engineMode);
+    const helpers = Array.from({ length: engines - 1 }, () =>
+      keyedEngine(wasm, "starter", shardHelperMode(engineMode)),
+    );
+    return {
+      sharded: new ShardedPsiEngine(
+        wasm,
+        "starter",
+        engineMode,
+        primary,
+        helpers,
+        { minShardElements: MIN_SHARD_ELEMENTS },
+      ),
+      primaryAnswers: vi.spyOn(primary, "processClientRequest"),
+      helperAnswers: helpers.map((helper) =>
+        vi.spyOn(helper, "processClientRequest"),
+      ),
+    };
+  };
+
+  test.for([2, 3, 5])(
+    "across %i engines the primary answers the whole request, to one engine's bytes under the same pi, at a size the other modes split",
+    async (engines) => {
+      fixEveryPermutation();
+      const permuted = answeringEngines(mode, engines);
+      const split = answeringEngines("identifier-revealing", engines);
+      const single = keyedEngine(wasm, "starter", mode);
+      const joiner = keyedEngine(wasm, "joiner", mode);
+      const revealingJoiner = keyedEngine(
+        wasm,
+        "joiner",
+        "identifier-revealing",
+      );
+      try {
+        const request = await joiner.createClientRequest(serverValues);
+        expect(await permuted.sharded.processClientRequest(request)).toEqual(
+          await single.processClientRequest(request),
+        );
+        expect(permuted.primaryAnswers).toHaveBeenCalledOnce();
+        expect(permuted.primaryAnswers).toHaveBeenCalledWith(request);
+        for (const answer of permuted.helperAnswers)
+          expect(answer).not.toHaveBeenCalled();
+
+        await split.sharded.processClientRequest(
+          await revealingJoiner.createClientRequest(serverValues),
+        );
+        for (const answer of split.helperAnswers)
+          expect(answer).toHaveBeenCalledOnce();
+      } finally {
+        for (const engine of [
+          permuted.sharded,
+          split.sharded,
+          single,
+          joiner,
+          revealingJoiner,
+        ])
+          engine.dispose();
+      }
+    },
+  );
+
+  test("a value repeated across two parts is refused, as one engine refuses it", async () => {
+    const sharded = shardedEngine(wasm, "joiner", mode, 3);
+    try {
+      const repeated = [...serverValues];
+      repeated[TOTAL - 1] = repeated[0]!;
+      const refused = sharded.createClientRequest(repeated);
+      await expect(refused).rejects.toBeInstanceOf(InternalConsistencyError);
+      await expect(refused).rejects.toThrow(/was given a repeated value/);
+    } finally {
+      sharded.dispose();
+    }
+  });
+
+  test("a primary that is not built to create the first part of a split request is refused at construction", () => {
+    expect(
+      () => new ShardedPsiEngine(wasm, "starter", mode, fakeEngine(), []),
+    ).toThrow(
+      "starter: a sharded PSI engine in the count-only-permuted mode needs a primary built in that mode that creates the first part of a split request",
+    );
+  });
+
+  test.for(["identifier-revealing", "count-only"] as const)(
+    "a primary built in the %s mode is refused at construction, and one in this mode is not",
+    (primaryMode) => {
+      const mismatched = keyedEngine(wasm, "starter", primaryMode);
+      const matching = keyedEngine(wasm, "starter", mode);
+      const helper = keyedEngine(wasm, "starter", shardHelperMode(mode));
+      try {
+        const refused = () =>
+          new ShardedPsiEngine(wasm, "starter", mode, mismatched, [helper]);
+        expect(refused).toThrow(InternalConsistencyError);
+        expect(refused).toThrow(
+          "starter: a sharded PSI engine in the count-only-permuted mode needs a primary built in that mode that creates the first part of a split request",
+        );
+        expect(
+          new ShardedPsiEngine(wasm, "starter", mode, matching, [helper]),
+        ).toBeInstanceOf(ShardedPsiEngine);
+      } finally {
+        for (const engine of [mismatched, matching, helper]) engine.dispose();
+      }
+    },
+  );
+
+  test("a disposed engine refuses a split operation before any engine sees it", async () => {
+    const engines = [fakeEngine(), fakeEngine()];
+    const engine = new ShardedPsiEngine(
+      wasm,
+      "joiner",
+      "identifier-revealing",
+      engines[0]!,
+      engines.slice(1),
+      { minShardElements: 1 },
+    );
+    engine.dispose();
+    await expect(engine.createClientRequest(["a", "b"])).rejects.toThrow(
+      "joiner: createClientRequest called on a disposed PSI engine",
+    );
+    await expect(
+      engine.processClientRequest(new wasm.request().serializeBinary()),
+    ).rejects.toThrow(
+      "joiner: processClientRequest called on a disposed PSI engine",
+    );
+    for (const each of engines) {
+      expect(each.createClientRequest).not.toHaveBeenCalled();
+      expect(each.processClientRequest).not.toHaveBeenCalled();
+    }
+  });
+
+  test("the helper mode is the mode itself, except identifier-revealing for count-only-permuted", () => {
+    expect(shardHelperMode("identifier-revealing")).toBe(
+      "identifier-revealing",
+    );
+    expect(shardHelperMode("count-only")).toBe("count-only");
+    expect(shardHelperMode("count-only-permuted")).toBe("identifier-revealing");
   });
 });
 
@@ -409,15 +705,19 @@ describe("helpers built from the primary's copied key", () => {
   test.for<["starter" | "joiner", PsiEngineMode]>([
     ["joiner", "identifier-revealing"],
     ["joiner", "count-only"],
+    ["joiner", "count-only-permuted"],
     ["starter", "identifier-revealing"],
     ["starter", "count-only"],
   ])(
     "a %s in %s mode puts the primary's own bytes on the wire",
     async ([role, mode]) => {
+      // The count-only-permuted mode takes distinct values.
+      const values =
+        mode === "count-only-permuted" ? serverValues : clientValues;
       const primary = new InProcessPsiEngine(wasm, role, role, mode);
       const helpers = [1, 2].map(
         () =>
-          new InProcessPsiEngine(wasm, role, role, mode, {
+          new InProcessPsiEngine(wasm, role, role, shardHelperMode(mode), {
             secretKey: primary.copySecretKey(),
           }),
       );
@@ -430,11 +730,11 @@ describe("helpers built from the primary's copied key", () => {
       });
       try {
         if (role === "joiner")
-          expect(await sharded.createClientRequest(clientValues)).toEqual(
-            await single.createClientRequest(clientValues),
+          expect(await sharded.createClientRequest(values)).toEqual(
+            await single.createClientRequest(values),
           );
         else {
-          const request = await partner.createClientRequest(clientValues);
+          const request = await partner.createClientRequest(values);
           expect(await sharded.processClientRequest(request)).toEqual(
             await single.processClientRequest(request),
           );

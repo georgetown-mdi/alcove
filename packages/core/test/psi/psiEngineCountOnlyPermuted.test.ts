@@ -27,7 +27,10 @@ import {
   type PsiWorkerHandle,
   type PsiWorkerResponse,
 } from "../../src/psi/psiWorkerEngine";
-import { ShardedPsiEngine } from "../../src/psi/shardedPsiEngine";
+import {
+  ShardedPsiEngine,
+  shardHelperMode,
+} from "../../src/psi/shardedPsiEngine";
 import { fixedKeyPsiLibrary, psiTestKey } from "../utils/fixedKeyPsiLibrary";
 import { loadNativeAddonOrSkip } from "../utils/nativeAddon";
 
@@ -134,11 +137,16 @@ const inProcess: EngineFactory = (library, role, options) =>
 
 // structuredClone stands in for a worker's postMessage, so an index table or
 // a count that could not cross a worker boundary fails here.
-const workerBacked: EngineFactory = (library, role, options) => {
+function workerEngine(
+  library: Library,
+  role: "starter" | "joiner",
+  mode: PsiEngineMode,
+  options: InProcessPsiEngineOptions = {},
+): WorkerPsiEngine {
   let deliver: (response: PsiWorkerResponse) => void = () => {};
   const dispatch = servePsiWorker(
     fixedKeyPsiLibrary(library, SERVER_KEY, CLIENT_KEY),
-    { role, id: role, mode: "count-only-permuted" },
+    { role, id: role, mode },
     (response) => deliver(structuredClone(response)),
     options,
   );
@@ -150,7 +158,38 @@ const workerBacked: EngineFactory = (library, role, options) => {
     terminate: () => {},
   };
   return new WorkerPsiEngine(handle);
-};
+}
+
+const workerBacked: EngineFactory = (library, role, options) =>
+  workerEngine(library, role, "count-only-permuted", options);
+
+// The primary in process and two worker-backed helpers under the same keys.
+// A floor of 20 splits the 64-element request three ways, while each 48-element
+// setup and every match run on the primary.
+const SHARD_FLOOR = 20;
+const sharded: EngineFactory = (library, role, options) =>
+  new ShardedPsiEngine(
+    library,
+    role,
+    "count-only-permuted",
+    engine(library, role, "count-only-permuted", options),
+    [1, 2].map(() =>
+      workerEngine(
+        library,
+        role,
+        shardHelperMode("count-only-permuted"),
+        options,
+      ),
+    ),
+    { minShardElements: SHARD_FLOOR },
+  );
+
+// The engines a refusal is held on: the in-process engine, and the sharded
+// engine whose primary holds the same state.
+const refusingEngines = [
+  ["in-process", inProcess],
+  ["sharded", sharded],
+] as const;
 
 interface RoundFrames {
   readonly senderValues: Array<string>;
@@ -312,6 +351,7 @@ const isPermutation = (order: ArrayLike<number>): boolean =>
 describe.each([
   { name: "in-process", create: inProcess },
   { name: "worker-backed", create: workerBacked },
+  { name: "sharded", create: sharded },
 ])("the count-only-permuted $name engines", ({ create }) => {
   test("the count is the one-to-one replay, not the union of slots", async () => {
     const sender = create(wasm, "starter");
@@ -482,39 +522,42 @@ describe.each([
 });
 
 describe("the count-only-permuted engine refuses", () => {
-  test("every operation that would name a match or a per-round result", async () => {
-    const sender = inProcess(wasm, "starter");
-    const receiver = inProcess(wasm, "joiner");
-    try {
-      const frames = await runRound(sender, receiver, 0);
-      await expect(
-        Promise.resolve().then(() =>
-          sender.createServerSetup(frames.senderValues),
-        ),
-      ).rejects.toThrow(
-        /createServerSetup needs a PSI engine that is identifier-revealing or count-only; this one is count-only-permuted/,
-      );
-      await receiver.receiveServerSetup(frames.setup);
-      await expect(
-        receiver.computeAssociationTable(frames.response),
-      ).rejects.toThrow(
-        /computeAssociationTable needs a PSI engine that is identifier-revealing; this one is count-only-permuted/,
-      );
-      await expect(
-        receiver.computeIntersectionCardinality(frames.response),
-      ).rejects.toThrow(
-        /computeIntersectionCardinality needs a PSI engine that is count-only; this one is count-only-permuted/,
-      );
-      // A round's match returns nothing: no pair and no per-round count.
-      await receiver.receiveIndexTable(frames.indexTable);
-      await expect(
-        receiver.matchPermutedRound(frames.response),
-      ).resolves.toBeUndefined();
-    } finally {
-      sender.dispose();
-      receiver.dispose();
-    }
-  });
+  test.for(refusingEngines)(
+    "every operation that would name a match or a per-round result, %s",
+    async ([, create]) => {
+      const sender = create(wasm, "starter");
+      const receiver = create(wasm, "joiner");
+      try {
+        const frames = await runRound(sender, receiver, 0);
+        await expect(
+          Promise.resolve().then(() =>
+            sender.createServerSetup(frames.senderValues),
+          ),
+        ).rejects.toThrow(
+          /createServerSetup needs a PSI engine that is identifier-revealing or count-only; this one is count-only-permuted/,
+        );
+        await receiver.receiveServerSetup(frames.setup);
+        await expect(
+          receiver.computeAssociationTable(frames.response),
+        ).rejects.toThrow(
+          /computeAssociationTable needs a PSI engine that is identifier-revealing; this one is count-only-permuted/,
+        );
+        await expect(
+          receiver.computeIntersectionCardinality(frames.response),
+        ).rejects.toThrow(
+          /computeIntersectionCardinality needs a PSI engine that is count-only; this one is count-only-permuted/,
+        );
+        // A round's match returns nothing: no pair and no per-round count.
+        await receiver.receiveIndexTable(frames.indexTable);
+        await expect(
+          receiver.matchPermutedRound(frames.response),
+        ).resolves.toBeUndefined();
+      } finally {
+        sender.dispose();
+        receiver.dispose();
+      }
+    },
+  );
 
   test.for(["identifier-revealing", "count-only"] as const)(
     "its operations on a %s engine",
@@ -542,208 +585,239 @@ describe("the count-only-permuted engine refuses", () => {
     },
   );
 
-  test("a request in the cardinality mode", async () => {
-    const sender = inProcess(wasm, "starter");
-    const cardinalityReceiver = engine(wasm, "joiner", "count-only");
-    try {
-      await sender.createPermutedSetup(roundSet(SENDER, 0));
-      const request = await cardinalityReceiver.createClientRequest(["a", "b"]);
-      await expect(
-        Promise.resolve().then(() => sender.processClientRequest(request)),
-      ).rejects.toThrow(
-        /the partner's PSI request ran the count-only mode, where this exchange runs count-only-permuted/,
-      );
-    } finally {
-      sender.dispose();
-      cardinalityReceiver.dispose();
-    }
-  });
+  test.for(refusingEngines)(
+    "a request in the cardinality mode, %s",
+    async ([, create]) => {
+      const sender = create(wasm, "starter");
+      const cardinalityReceiver = engine(wasm, "joiner", "count-only");
+      try {
+        await sender.createPermutedSetup(roundSet(SENDER, 0));
+        const request = await cardinalityReceiver.createClientRequest([
+          "a",
+          "b",
+        ]);
+        await expect(
+          Promise.resolve().then(() => sender.processClientRequest(request)),
+        ).rejects.toThrow(
+          /the partner's PSI request ran the count-only mode, where this exchange runs count-only-permuted/,
+        );
+      } finally {
+        sender.dispose();
+        cardinalityReceiver.dispose();
+      }
+    },
+  );
 
-  test("an index table of the wrong length, or that is not a permutation", async () => {
-    const sender = inProcess(wasm, "starter");
-    try {
-      const { setup, indexTable } = await sender.createPermutedSetup(
-        roundSet(SENDER, 0),
-      );
-      const n = indexTable.length;
-      const bad: Array<[Int32Array, RegExp]> = [
-        [indexTable.subarray(1), /has 47 entries for a setup of 48 elements/],
-        [Int32Array.of(...indexTable, n), /has 49 entries for a setup of 48/],
-        [Int32Array.of(n, ...indexTable.subarray(1)), /not a permutation/],
-        [Int32Array.of(-1, ...indexTable.subarray(1)), /not a permutation/],
-        [
-          Int32Array.of(indexTable[1]!, ...indexTable.subarray(1)),
-          /not a permutation/,
-        ],
-      ];
-      for (const [table, refusal] of bad) {
-        const receiver = inProcess(wasm, "joiner");
+  test.for(refusingEngines)(
+    "an index table of the wrong length, or that is not a permutation, %s",
+    async ([, create]) => {
+      const sender = create(wasm, "starter");
+      try {
+        const { setup, indexTable } = await sender.createPermutedSetup(
+          roundSet(SENDER, 0),
+        );
+        const n = indexTable.length;
+        const bad: Array<[Int32Array, RegExp]> = [
+          [indexTable.subarray(1), /has 47 entries for a setup of 48 elements/],
+          [Int32Array.of(...indexTable, n), /has 49 entries for a setup of 48/],
+          [Int32Array.of(n, ...indexTable.subarray(1)), /not a permutation/],
+          [Int32Array.of(-1, ...indexTable.subarray(1)), /not a permutation/],
+          [
+            Int32Array.of(indexTable[1]!, ...indexTable.subarray(1)),
+            /not a permutation/,
+          ],
+        ];
+        for (const [table, refusal] of bad) {
+          const receiver = create(wasm, "joiner");
+          try {
+            await receiver.receiveServerSetup(setup);
+            const refused = receiver.receiveIndexTable(table);
+            await expect(refused).rejects.toBeInstanceOf(
+              PartnerProtocolRefusalError,
+            );
+            await expect(refused).rejects.toThrow(refusal);
+          } finally {
+            receiver.dispose();
+          }
+        }
+      } finally {
+        sender.dispose();
+      }
+    },
+  );
+
+  test.for(refusingEngines)(
+    "an index table whose length differs from an earlier round's, %s",
+    async ([, create]) => {
+      const sender = create(wasm, "starter");
+      const receiver = create(wasm, "joiner");
+      const shorterSender = create(wasm, "starter");
+      try {
+        await runRound(sender, receiver, 0);
+        const { setup, indexTable } = await shorterSender.createPermutedSetup(
+          roundSet(SENDER.slice(1), 1),
+        );
+        await receiver.receiveServerSetup(setup);
+        await expect(receiver.receiveIndexTable(indexTable)).rejects.toThrow(
+          /has 47 entries where the exchange's first had 48/,
+        );
+      } finally {
+        sender.dispose();
+        receiver.dispose();
+        shorterSender.dispose();
+      }
+    },
+  );
+
+  test.for(refusingEngines)(
+    "a response repeating a matched element, or of the wrong size, %s",
+    async ([, create]) => {
+      const sender = create(wasm, "starter");
+      const probe = create(wasm, "joiner");
+      try {
+        const frames = await runRound(sender, probe, 0);
+        const { slots } = await slotsFromWire(wasm, frames);
+        const elements = responseElements(wasm, frames.response);
+        const unmatched = elements.findIndex(
+          (_, slot) => !slots.includes(slot),
+        );
+        const repeating = [...elements];
+        repeating[unmatched] = elements[slots[0]!]!;
+        const cases: Array<[Uint8Array, RegExp]> = [
+          [serializeResponse(wasm, repeating), /repeats an element/],
+          [
+            serializeResponse(wasm, elements.slice(1)),
+            /response has 63 elements for a request of 64/,
+          ],
+        ];
+        for (const [response, refusal] of cases) {
+          const receiver = create(wasm, "joiner");
+          try {
+            await receiver.receiveServerSetup(frames.setup);
+            await receiver.receiveIndexTable(frames.indexTable);
+            await receiver.createClientRequest(frames.receiverValues);
+            const refused = receiver.matchPermutedRound(response);
+            await expect(refused).rejects.toBeInstanceOf(
+              PartnerProtocolRefusalError,
+            );
+            await expect(refused).rejects.toThrow(refusal);
+          } finally {
+            receiver.dispose();
+          }
+        }
+      } finally {
+        sender.dispose();
+        probe.dispose();
+      }
+    },
+  );
+
+  test.for(refusingEngines)(
+    "a count, or a later round, after a refused round, %s",
+    async ([, create]) => {
+      const sender = create(wasm, "starter");
+      const probe = create(wasm, "joiner");
+      // Replays a round's frames, with `response` for its response, on a
+      // receiver holding the same client key.
+      const replayRound = async (
+        receiver: PsiEngine,
+        frames: RoundFrames,
+        response: Uint8Array,
+      ) => {
+        await receiver.receiveServerSetup(frames.setup);
+        await receiver.receiveIndexTable(frames.indexTable);
+        await receiver.createClientRequest(frames.receiverValues);
+        await receiver.matchPermutedRound(response);
+      };
+      const repeatingResponse = async (frames: RoundFrames) => {
+        const { slots } = await slotsFromWire(wasm, frames);
+        const elements = responseElements(wasm, frames.response);
+        const unmatched = elements.findIndex(
+          (_, slot) => !slots.includes(slot),
+        );
+        const repeating = [...elements];
+        repeating[unmatched] = elements[slots[0]!]!;
+        return serializeResponse(wasm, repeating);
+      };
+      const afterRefusal = /after the partner's input was refused/;
+      try {
+        const first = await runRound(sender, probe, 0);
+        const second = await runRound(sender, probe, 1);
+
+        const refusedFirst = create(wasm, "joiner");
         try {
-          await receiver.receiveServerSetup(setup);
-          const refused = receiver.receiveIndexTable(table);
-          await expect(refused).rejects.toBeInstanceOf(
+          await expect(
+            replayRound(refusedFirst, first, await repeatingResponse(first)),
+          ).rejects.toThrow(/repeats an element/);
+          const count = refusedFirst.finishPermutedCount();
+          await expect(count).rejects.toBeInstanceOf(
             PartnerProtocolRefusalError,
           );
-          await expect(refused).rejects.toThrow(refusal);
+          await expect(count).rejects.toThrow(afterRefusal);
+          await expect(
+            refusedFirst.receiveServerSetup(second.setup),
+          ).rejects.toThrow(afterRefusal);
         } finally {
-          receiver.dispose();
+          refusedFirst.dispose();
         }
-      }
-    } finally {
-      sender.dispose();
-    }
-  });
 
-  test("an index table whose length differs from an earlier round's", async () => {
-    const sender = inProcess(wasm, "starter");
-    const receiver = inProcess(wasm, "joiner");
-    const shorterSender = inProcess(wasm, "starter");
-    try {
-      await runRound(sender, receiver, 0);
-      const { setup, indexTable } = await shorterSender.createPermutedSetup(
-        roundSet(SENDER.slice(1), 1),
-      );
-      await receiver.receiveServerSetup(setup);
-      await expect(receiver.receiveIndexTable(indexTable)).rejects.toThrow(
-        /has 47 entries where the exchange's first had 48/,
-      );
-    } finally {
-      sender.dispose();
-      receiver.dispose();
-      shorterSender.dispose();
-    }
-  });
-
-  test("a response repeating a matched element, or of the wrong size", async () => {
-    const sender = inProcess(wasm, "starter");
-    const probe = inProcess(wasm, "joiner");
-    try {
-      const frames = await runRound(sender, probe, 0);
-      const { slots } = await slotsFromWire(wasm, frames);
-      const elements = responseElements(wasm, frames.response);
-      const unmatched = elements.findIndex((_, slot) => !slots.includes(slot));
-      const repeating = [...elements];
-      repeating[unmatched] = elements[slots[0]!]!;
-      const cases: Array<[Uint8Array, RegExp]> = [
-        [serializeResponse(wasm, repeating), /repeats an element/],
-        [
-          serializeResponse(wasm, elements.slice(1)),
-          /response has 63 elements for a request of 64/,
-        ],
-      ];
-      for (const [response, refusal] of cases) {
-        const receiver = inProcess(wasm, "joiner");
+        const refusedSecond = create(wasm, "joiner");
         try {
-          await receiver.receiveServerSetup(frames.setup);
-          await receiver.receiveIndexTable(frames.indexTable);
-          await receiver.createClientRequest(frames.receiverValues);
-          const refused = receiver.matchPermutedRound(response);
-          await expect(refused).rejects.toBeInstanceOf(
+          await replayRound(refusedSecond, first, first.response);
+          await expect(
+            replayRound(refusedSecond, second, await repeatingResponse(second)),
+          ).rejects.toThrow(/repeats an element/);
+          const count = refusedSecond.finishPermutedCount();
+          await expect(count).rejects.toBeInstanceOf(
             PartnerProtocolRefusalError,
           );
-          await expect(refused).rejects.toThrow(refusal);
+          await expect(count).rejects.toThrow(afterRefusal);
         } finally {
-          receiver.dispose();
+          refusedSecond.dispose();
         }
-      }
-    } finally {
-      sender.dispose();
-      probe.dispose();
-    }
-  });
-
-  test("a count, or a later round, after a refused round", async () => {
-    const sender = inProcess(wasm, "starter");
-    const probe = inProcess(wasm, "joiner");
-    // Replays a round's frames, with `response` for its response, on a
-    // receiver holding the same client key.
-    const replayRound = async (
-      receiver: PsiEngine,
-      frames: RoundFrames,
-      response: Uint8Array,
-    ) => {
-      await receiver.receiveServerSetup(frames.setup);
-      await receiver.receiveIndexTable(frames.indexTable);
-      await receiver.createClientRequest(frames.receiverValues);
-      await receiver.matchPermutedRound(response);
-    };
-    const repeatingResponse = async (frames: RoundFrames) => {
-      const { slots } = await slotsFromWire(wasm, frames);
-      const elements = responseElements(wasm, frames.response);
-      const unmatched = elements.findIndex((_, slot) => !slots.includes(slot));
-      const repeating = [...elements];
-      repeating[unmatched] = elements[slots[0]!]!;
-      return serializeResponse(wasm, repeating);
-    };
-    const afterRefusal = /after the partner's input was refused/;
-    try {
-      const first = await runRound(sender, probe, 0);
-      const second = await runRound(sender, probe, 1);
-
-      const refusedFirst = inProcess(wasm, "joiner");
-      try {
-        await expect(
-          replayRound(refusedFirst, first, await repeatingResponse(first)),
-        ).rejects.toThrow(/repeats an element/);
-        const count = refusedFirst.finishPermutedCount();
-        await expect(count).rejects.toBeInstanceOf(PartnerProtocolRefusalError);
-        await expect(count).rejects.toThrow(afterRefusal);
-        await expect(
-          refusedFirst.receiveServerSetup(second.setup),
-        ).rejects.toThrow(afterRefusal);
       } finally {
-        refusedFirst.dispose();
+        sender.dispose();
+        probe.dispose();
       }
+    },
+  );
 
-      const refusedSecond = inProcess(wasm, "joiner");
+  test.for(refusingEngines)(
+    "a response copying a set of unmatched elements over others, in the first round, %s",
+    async ([, create]) => {
+      const sender = create(wasm, "starter");
+      const probe = create(wasm, "joiner");
+      const receiver = create(wasm, "joiner");
       try {
-        await replayRound(refusedSecond, first, first.response);
-        await expect(
-          replayRound(refusedSecond, second, await repeatingResponse(second)),
-        ).rejects.toThrow(/repeats an element/);
-        const count = refusedSecond.finishPermutedCount();
-        await expect(count).rejects.toBeInstanceOf(PartnerProtocolRefusalError);
-        await expect(count).rejects.toThrow(afterRefusal);
+        const frames = await runRound(sender, probe, 0);
+        const { slots } = await slotsFromWire(wasm, frames);
+        const elements = responseElements(wasm, frames.response);
+        const unmatched = elements
+          .map((_, slot) => slot)
+          .filter((slot) => !slots.includes(slot));
+        const copied = [...elements];
+        for (let member = 0; member < 10; member += 1)
+          copied[unmatched[10 + member]!] = elements[unmatched[member]!]!;
+        await receiver.receiveServerSetup(frames.setup);
+        await receiver.receiveIndexTable(frames.indexTable);
+        await receiver.createClientRequest(frames.receiverValues);
+        const refused = receiver.matchPermutedRound(
+          serializeResponse(wasm, copied),
+        );
+        await expect(refused).rejects.toBeInstanceOf(
+          PartnerProtocolRefusalError,
+        );
+        await expect(refused).rejects.toThrow(/repeats an element/);
+        await expect(receiver.finishPermutedCount()).rejects.toThrow(
+          /after the partner's input was refused/,
+        );
       } finally {
-        refusedSecond.dispose();
+        sender.dispose();
+        probe.dispose();
+        receiver.dispose();
       }
-    } finally {
-      sender.dispose();
-      probe.dispose();
-    }
-  });
-
-  test("a response copying a set of unmatched elements over others, in the first round", async () => {
-    const sender = inProcess(wasm, "starter");
-    const probe = inProcess(wasm, "joiner");
-    const receiver = inProcess(wasm, "joiner");
-    try {
-      const frames = await runRound(sender, probe, 0);
-      const { slots } = await slotsFromWire(wasm, frames);
-      const elements = responseElements(wasm, frames.response);
-      const unmatched = elements
-        .map((_, slot) => slot)
-        .filter((slot) => !slots.includes(slot));
-      const copied = [...elements];
-      for (let member = 0; member < 10; member += 1)
-        copied[unmatched[10 + member]!] = elements[unmatched[member]!]!;
-      await receiver.receiveServerSetup(frames.setup);
-      await receiver.receiveIndexTable(frames.indexTable);
-      await receiver.createClientRequest(frames.receiverValues);
-      const refused = receiver.matchPermutedRound(
-        serializeResponse(wasm, copied),
-      );
-      await expect(refused).rejects.toBeInstanceOf(PartnerProtocolRefusalError);
-      await expect(refused).rejects.toThrow(/repeats an element/);
-      await expect(receiver.finishPermutedCount()).rejects.toThrow(
-        /after the partner's input was refused/,
-      );
-    } finally {
-      sender.dispose();
-      probe.dispose();
-      receiver.dispose();
-    }
-  });
+    },
+  );
 
   test.for(
     (
@@ -794,43 +868,47 @@ describe("the count-only-permuted engine refuses", () => {
     },
   );
 
-  test("a count, or a later round, after a round this party ended", async () => {
-    const sender = inProcess(wasm, "starter", { chunkElements: 10 });
-    const receiver = inProcess(wasm, "joiner", { chunkElements: 10 });
-    let stopRequested = false;
-    receiver.observeProcessedElements!(() => {
-      if (stopRequested) throw new Error("stop requested");
-    });
-    try {
-      await runRound(sender, receiver, 0);
-      const { setup, indexTable } = await sender.createPermutedSetup(
-        roundSet(SENDER, 1),
-      );
-      await receiver.receiveServerSetup(setup);
-      await receiver.receiveIndexTable(indexTable);
-      const response = await sender.processClientRequest(
-        await receiver.createClientRequest(roundSet(RECEIVER, 1)),
-      );
-      stopRequested = true;
-      await expect(receiver.matchPermutedRound(response)).rejects.toThrow(
-        /stop requested/,
-      );
-      stopRequested = false;
-      const count = receiver.finishPermutedCount();
-      await expect(count).rejects.toBeInstanceOf(InternalConsistencyError);
-      await expect(count).rejects.toThrow(/after a count-only round failed/);
-      await expect(receiver.receiveServerSetup(setup)).rejects.toThrow(
-        /after a count-only round failed/,
-      );
-    } finally {
-      sender.dispose();
-      receiver.dispose();
-    }
-  });
+  test.for(refusingEngines)(
+    "a count, or a later round, after a round this party ended, %s",
+    async ([, create]) => {
+      const sender = create(wasm, "starter", { chunkElements: 10 });
+      const receiver = create(wasm, "joiner", { chunkElements: 10 });
+      let stopRequested = false;
+      receiver.observeProcessedElements!(() => {
+        if (stopRequested) throw new Error("stop requested");
+      });
+      try {
+        await runRound(sender, receiver, 0);
+        const { setup, indexTable } = await sender.createPermutedSetup(
+          roundSet(SENDER, 1),
+        );
+        await receiver.receiveServerSetup(setup);
+        await receiver.receiveIndexTable(indexTable);
+        const response = await sender.processClientRequest(
+          await receiver.createClientRequest(roundSet(RECEIVER, 1)),
+        );
+        stopRequested = true;
+        await expect(receiver.matchPermutedRound(response)).rejects.toThrow(
+          /stop requested/,
+        );
+        stopRequested = false;
+        const count = receiver.finishPermutedCount();
+        await expect(count).rejects.toBeInstanceOf(InternalConsistencyError);
+        await expect(count).rejects.toThrow(/after a count-only round failed/);
+        await expect(receiver.receiveServerSetup(setup)).rejects.toThrow(
+          /after a count-only round failed/,
+        );
+      } finally {
+        sender.dispose();
+        receiver.dispose();
+      }
+    },
+  );
 
   test.for([
     ["in-process", inProcess],
     ["worker-backed", workerBacked],
+    ["sharded", sharded],
   ] as const)(
     "a count, or a later round, after a round's setup was discarded, %s",
     async ([, create]) => {
@@ -902,28 +980,33 @@ describe("the count-only-permuted engine refuses", () => {
       );
   });
 
-  test("a request whose size differs from the exchange's first", async () => {
-    const sender = inProcess(wasm, "starter");
-    const receiver = inProcess(wasm, "joiner");
-    const shorterReceiver = inProcess(wasm, "joiner");
-    try {
-      await runRound(sender, receiver, 0);
-      const request = await shorterReceiver.createClientRequest(
-        roundSet(RECEIVER.slice(1), 1),
-      );
-      const refused = Promise.resolve().then(() =>
-        sender.processClientRequest(request),
-      );
-      await expect(refused).rejects.toBeInstanceOf(PartnerProtocolRefusalError);
-      await expect(refused).rejects.toThrow(
-        /has 63 elements where the exchange's first had 64/,
-      );
-    } finally {
-      sender.dispose();
-      receiver.dispose();
-      shorterReceiver.dispose();
-    }
-  });
+  test.for(refusingEngines)(
+    "a request whose size differs from the exchange's first, %s",
+    async ([, create]) => {
+      const sender = create(wasm, "starter");
+      const receiver = create(wasm, "joiner");
+      const shorterReceiver = create(wasm, "joiner");
+      try {
+        await runRound(sender, receiver, 0);
+        const request = await shorterReceiver.createClientRequest(
+          roundSet(RECEIVER.slice(1), 1),
+        );
+        const refused = Promise.resolve().then(() =>
+          sender.processClientRequest(request),
+        );
+        await expect(refused).rejects.toBeInstanceOf(
+          PartnerProtocolRefusalError,
+        );
+        await expect(refused).rejects.toThrow(
+          /has 63 elements where the exchange's first had 64/,
+        );
+      } finally {
+        sender.dispose();
+        receiver.dispose();
+        shorterReceiver.dispose();
+      }
+    },
+  );
 
   test("a set that repeats a value, or changes size between rounds", async () => {
     const sender = inProcess(wasm, "starter");
@@ -951,31 +1034,34 @@ describe("the count-only-permuted engine refuses", () => {
     }
   });
 
-  test("a count before any round, a second count, or a round after the count", async () => {
-    const sender = inProcess(wasm, "starter");
-    const receiver = inProcess(wasm, "joiner");
-    try {
-      await expect(receiver.finishPermutedCount()).rejects.toThrow(
-        /with no round matched, or a second time/,
-      );
-      const frames = await runRound(sender, receiver, 0);
-      await expect(receiver.finishPermutedCount()).resolves.toBe(2);
-      await expect(receiver.finishPermutedCount()).rejects.toThrow(
-        /with no round matched, or a second time/,
-      );
-      await receiver.receiveServerSetup(frames.setup);
-      await receiver.receiveIndexTable(frames.indexTable);
-      await expect(
-        receiver.matchPermutedRound(frames.response),
-      ).rejects.toThrow(/after the count was taken/);
-    } finally {
-      sender.dispose();
-      receiver.dispose();
-    }
-  });
+  test.for(refusingEngines)(
+    "a count before any round, a second count, or a round after the count, %s",
+    async ([, create]) => {
+      const sender = create(wasm, "starter");
+      const receiver = create(wasm, "joiner");
+      try {
+        await expect(receiver.finishPermutedCount()).rejects.toThrow(
+          /with no round matched, or a second time/,
+        );
+        const frames = await runRound(sender, receiver, 0);
+        await expect(receiver.finishPermutedCount()).resolves.toBe(2);
+        await expect(receiver.finishPermutedCount()).rejects.toThrow(
+          /with no round matched, or a second time/,
+        );
+        await receiver.receiveServerSetup(frames.setup);
+        await receiver.receiveIndexTable(frames.indexTable);
+        await expect(
+          receiver.matchPermutedRound(frames.response),
+        ).rejects.toThrow(/after the count was taken/);
+      } finally {
+        sender.dispose();
+        receiver.dispose();
+      }
+    },
+  );
 
-  test("a sharded engine in this mode", () => {
-    const primary = inProcess(wasm, "starter");
+  test("a sharded engine whose primary cannot create the first part of a split request", () => {
+    const primary = workerBacked(wasm, "starter");
     try {
       expect(
         () =>
@@ -986,7 +1072,9 @@ describe("the count-only-permuted engine refuses", () => {
             primary,
             [],
           ),
-      ).toThrow(/does not run the count-only-permuted mode/);
+      ).toThrow(
+        /needs a primary built in that mode that creates the first part of a split request/,
+      );
     } finally {
       primary.dispose();
     }
@@ -1059,24 +1147,29 @@ describe("what the count-only-permuted engine reports and keeps", () => {
     expect(replayDiscard).toHaveBeenCalledTimes(1);
   });
 
-  test("a disposed sender refuses a setup or a request and draws no permutation", async () => {
-    const draw = vi.spyOn(HeldPermutation, "draw");
-    const sender = inProcess(wasm, "starter");
-    const receiver = inProcess(wasm, "joiner");
-    try {
-      const request = await receiver.createClientRequest(roundSet(RECEIVER, 0));
-      sender.dispose();
-      await expect(
-        sender.createPermutedSetup(roundSet(SENDER, 0)),
-      ).rejects.toThrow(/called on a disposed PSI engine/);
-      await expect(
-        Promise.resolve().then(() => sender.processClientRequest(request)),
-      ).rejects.toThrow(/called on a disposed PSI engine/);
-      expect(draw).not.toHaveBeenCalled();
-    } finally {
-      receiver.dispose();
-    }
-  });
+  test.for(refusingEngines)(
+    "a disposed sender refuses a setup or a request and draws no permutation, %s",
+    async ([, create]) => {
+      const draw = vi.spyOn(HeldPermutation, "draw");
+      const sender = create(wasm, "starter");
+      const receiver = create(wasm, "joiner");
+      try {
+        const request = await receiver.createClientRequest(
+          roundSet(RECEIVER, 0),
+        );
+        sender.dispose();
+        await expect(
+          sender.createPermutedSetup(roundSet(SENDER, 0)),
+        ).rejects.toThrow(/called on a disposed PSI engine/);
+        await expect(
+          Promise.resolve().then(() => sender.processClientRequest(request)),
+        ).rejects.toThrow(/called on a disposed PSI engine/);
+        expect(draw).not.toHaveBeenCalled();
+      } finally {
+        receiver.dispose();
+      }
+    },
+  );
 
   test("no property of an engine, and no package export, reaches pi, sigma or the replay", async () => {
     const sender = inProcess(wasm, "starter");

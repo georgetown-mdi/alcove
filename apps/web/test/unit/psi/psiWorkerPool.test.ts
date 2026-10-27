@@ -1,7 +1,12 @@
 import { describe, expect, test, vi } from "vitest";
 
-import { InProcessPsiEngine, shardStalledError } from "@alcove/core";
+import {
+  InProcessPsiEngine,
+  InternalConsistencyError,
+  shardStalledError,
+} from "@alcove/core";
 import PSI from "@openmined/psi.js";
+import { PartnerProtocolRefusalError } from "@alcove/core/testing";
 
 import {
   createBrowserPsiEngineFactory,
@@ -654,6 +659,201 @@ describe("the PSI worker program's key handling", () => {
   });
 });
 
+describe("the PSI worker pool in the count-only-permuted mode", () => {
+  const mode: PsiEngineMode = "count-only-permuted";
+  const elementsOf = (bytes: Uint8Array): Array<string> =>
+    wasm.response
+      .deserializeBinary(bytes)
+      .getEncryptedElementsList_asU8()
+      .map((element) => Buffer.from(element).toString("hex"));
+  const inOrderStarter = (): InProcessPsiEngine =>
+    new InProcessPsiEngine(wasm, "starter", "server", "identifier-revealing", {
+      secretKey: KEY,
+    });
+
+  test("a joiner pool masks the request across its workers to one engine's bytes", async () => {
+    const library = keyLoggingLibrary({ generated: 0, given: [] });
+    const { spawn } = inProcessSpawner(() => loadOf(library));
+    const pool = joinerPool(spawn, mode, 3);
+    const single = engineUnderKey(mode);
+    try {
+      expect(await pool.createClientRequest(values(3072))).toEqual(
+        await single.createClientRequest(values(3072)),
+      );
+    } finally {
+      pool.dispose();
+      single.dispose();
+    }
+  }, 30_000);
+
+  // A starter pool whose primary's every message to a helper is recorded on
+  // the port the helper's key went down.
+  function recordedStarterPool(poolMode: PsiEngineMode): {
+    pool: PsiEngine;
+    toHelpers: Array<unknown>;
+  } {
+    const library = keyLoggingLibrary({ generated: 0, given: [] });
+    const inProcess = inProcessSpawner(() => loadOf(library));
+    const toHelpers: Array<unknown> = [];
+    const spawn: SpawnPsiCryptoWorker = (seed) => {
+      const worker = inProcess.spawn(seed);
+      if (seed.shard !== "primary") return worker;
+      const post = worker.postMessage;
+      worker.postMessage = (message, transfer) => {
+        if (kindOf(message) === "key-ports")
+          for (const port of (message as PsiKeyPortsMessage).ports) {
+            const send = port.postMessage.bind(port);
+            port.postMessage = (sent: unknown, sentTransfer?: unknown) => {
+              toHelpers.push(sent);
+              send(sent, sentTransfer as Array<Transferable>);
+            };
+          }
+        post(message, transfer);
+      };
+      return worker;
+    };
+    const pool = startPsiWorkerPool(
+      spawn,
+      "starter",
+      "server",
+      poolMode,
+      3,
+      TIMEOUT_MS,
+    );
+    return { pool, toHelpers };
+  }
+  const answersSent = (toHelpers: ReadonlyArray<unknown>): number =>
+    toHelpers.filter(
+      (message) =>
+        (message as { body?: { method?: string } }).body?.method ===
+        "processClientRequest",
+    ).length;
+
+  test("a starter pool answers every round on its primary under one pi, sending no helper a part, at a size the other modes split", async () => {
+    const { pool, toHelpers } = recordedStarterPool(mode);
+    const control = recordedStarterPool("identifier-revealing");
+    const partner = engineUnderKey(mode);
+    const revealingPartner = engineUnderKey("identifier-revealing");
+    const inOrder = inOrderStarter();
+    try {
+      const pis: Array<Array<number>> = [];
+      for (const round of [0, 1]) {
+        const request = await partner.createClientRequest(
+          values(3072).map((value) => `${String(round)}:${value}`),
+        );
+        const expected = elementsOf(
+          await inOrder.processClientRequest(request),
+        );
+        const sent = elementsOf(await pool.processClientRequest(request));
+        pis.push(sent.map((element) => expected.indexOf(element)));
+      }
+      const identity = values(3072).map((_, index) => index);
+      expect([...pis[0]].sort((a, b) => a - b)).toEqual(identity);
+      expect(pis[0]).not.toEqual(identity);
+      expect(pis[1]).toEqual(pis[0]);
+      expect(answersSent(toHelpers)).toBe(0);
+
+      await control.pool.processClientRequest(
+        await revealingPartner.createClientRequest(values(3072)),
+      );
+      expect(answersSent(control.toHelpers)).toBe(2);
+    } finally {
+      for (const engine of [
+        pool,
+        control.pool,
+        partner,
+        revealingPartner,
+        inOrder,
+      ])
+        engine.dispose();
+    }
+  }, 60_000);
+
+  // The refusals the in-process engine raises, through a pool and the worker
+  // program: each crosses to the page as the error class it was raised as.
+  const permutedSender = (): InProcessPsiEngine =>
+    new InProcessPsiEngine(wasm, "starter", "server", mode);
+  const SENDER_VALUES = values(48);
+
+  test("a joiner pool refuses an index table of the wrong length", async () => {
+    const { spawn } = inProcessSpawner(() => loadOf(wasm));
+    const pool = joinerPool(spawn, mode, 3);
+    const sender = permutedSender();
+    try {
+      const { setup, indexTable } =
+        await sender.createPermutedSetup(SENDER_VALUES);
+      await pool.receiveServerSetup(setup);
+      const refused = pool.receiveIndexTable(indexTable.slice(1));
+      await expect(refused).rejects.toBeInstanceOf(PartnerProtocolRefusalError);
+      await expect(refused).rejects.toThrow(
+        /has 47 entries for a setup of 48 elements/,
+      );
+    } finally {
+      pool.dispose();
+      sender.dispose();
+    }
+  }, 30_000);
+
+  test("a joiner pool refuses a response repeating an element, and then a finish", async () => {
+    const { spawn } = inProcessSpawner(() => loadOf(wasm));
+    const pool = joinerPool(spawn, mode, 3);
+    const sender = permutedSender();
+    try {
+      const { setup, indexTable } =
+        await sender.createPermutedSetup(SENDER_VALUES);
+      await pool.receiveServerSetup(setup);
+      await pool.receiveIndexTable(indexTable);
+      const response = wasm.response.deserializeBinary(
+        await sender.processClientRequest(
+          await pool.createClientRequest(values(3072)),
+        ),
+      );
+      const elements = response.getEncryptedElementsList_asU8();
+      elements[1] = elements[0]!;
+      response.setEncryptedElementsList(elements);
+      const refused = pool.matchPermutedRound(response.serializeBinary());
+      await expect(refused).rejects.toBeInstanceOf(PartnerProtocolRefusalError);
+      await expect(refused).rejects.toThrow(/repeats an element/);
+      const count = pool.finishPermutedCount();
+      await expect(count).rejects.toBeInstanceOf(PartnerProtocolRefusalError);
+      await expect(count).rejects.toThrow(
+        /after the partner's input was refused/,
+      );
+    } finally {
+      pool.dispose();
+      sender.dispose();
+    }
+  }, 60_000);
+
+  test("a joiner pool disposed after a round refuses every later call and posts its workers nothing", async () => {
+    const { spawn, toWorkers } = inProcessSpawner(() => loadOf(wasm));
+    const pool = joinerPool(spawn, mode, 3);
+    const sender = permutedSender();
+    try {
+      const { setup, indexTable } =
+        await sender.createPermutedSetup(SENDER_VALUES);
+      await pool.receiveServerSetup(setup);
+      await pool.receiveIndexTable(indexTable);
+      const response = await sender.processClientRequest(
+        await pool.createClientRequest(values(64)),
+      );
+      pool.dispose();
+      const posted = toWorkers.length;
+      for (const call of [
+        () => pool.receiveServerSetup(setup),
+        () => pool.receiveIndexTable(indexTable),
+        () => pool.createClientRequest(values(64)),
+        () => pool.matchPermutedRound(response),
+        () => pool.finishPermutedCount(),
+      ])
+        await expect(call()).rejects.toBeInstanceOf(InternalConsistencyError);
+      expect(toWorkers).toHaveLength(posted);
+    } finally {
+      sender.dispose();
+    }
+  }, 30_000);
+});
+
 // A worker the test answers by hand.
 class FakeWorker implements PsiCryptoWorker {
   onmessage:
@@ -861,40 +1061,20 @@ describe("the web exchange's PSI engine factory", () => {
     expect(workers[0].keyPorts[0]?.ports).toHaveLength(3);
   });
 
-  test("elsewhere runs the count-only-permuted joiner on one worker, with no helper", () => {
+  test("elsewhere runs the count-only-permuted joiner on the core count up to four, as the other modes", () => {
     const { spawn, workers } = fakeSpawner();
     createPooledBrowserPsiEngineFactory(spawn, linux)(
       "joiner",
       "client",
       "count-only-permuted",
     ).dispose();
+    const seed = { role: "joiner", id: "client", mode: "count-only-permuted" };
     expect(workers.map((worker) => worker.seed)).toEqual([
-      {
-        role: "joiner",
-        id: "client",
-        mode: "count-only-permuted",
-        shard: "primary",
-        helpers: 0,
-      },
+      { ...seed, shard: "primary", helpers: 3 },
+      { ...seed, shard: "helper" },
+      { ...seed, shard: "helper" },
+      { ...seed, shard: "helper" },
     ]);
-    expect(workers[0].keyPorts).toEqual([]);
-  });
-
-  test("a pool refuses the count-only-permuted mode before it spawns a worker", () => {
-    const spawn = vi.fn<SpawnPsiCryptoWorker>();
-    expect(() =>
-      startPsiWorkerPool(
-        spawn,
-        "joiner",
-        "client",
-        "count-only-permuted",
-        2,
-        TIMEOUT_MS,
-      ),
-    ).toThrow(
-      "client: a sharded PSI engine does not run the count-only-permuted mode",
-    );
-    expect(spawn).not.toHaveBeenCalled();
   });
 
   test("elsewhere runs the starter on one worker, which answers the request with no split", async () => {

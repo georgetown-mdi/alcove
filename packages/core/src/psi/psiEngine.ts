@@ -98,8 +98,12 @@ export function knownEngineMode(mode: PsiEngineMode): PsiEngineMode {
     : "count-only";
 }
 
-// The library's reveal-intersection flag a mode's key objects are created with.
-function modeSetsRevealFlag(mode: PsiEngineMode): boolean {
+/**
+ * The library's reveal-intersection flag a mode's key objects are created with.
+ *
+ * @internal
+ */
+export function modeSetsRevealFlag(mode: PsiEngineMode): boolean {
   return knownEngineMode(mode) !== "count-only";
 }
 
@@ -349,6 +353,28 @@ export interface PsiEngine {
   dispose(): void;
 }
 
+/**
+ * The operation a {@link ./shardedPsiEngine.ShardedPsiEngine} in the
+ * count-only-permuted mode runs on its primary to create a split request: the
+ * primary masks the first part while the helpers mask the rest, and keeps the
+ * receiver's record count and the round's failure.
+ */
+export interface PermutedShardPrimary {
+  /** The mode the engine was built in. */
+  readonly mode: PsiEngineMode;
+  /**
+   * Checks `values`, the whole of a receiver's request, as
+   * {@link PsiEngine.createClientRequest} checks it, records it as the
+   * exchange's request, and masks only its first `partElements` values,
+   * returning that part as a request. Client role, count-only-permuted mode
+   * only.
+   */
+  createRequestFirstPart(
+    values: ReadonlyArray<string>,
+    partElements: number,
+  ): Promise<Uint8Array>;
+}
+
 /** Settings for an {@link InProcessPsiEngine}; the worker entry points pass them through {@link ./psiWorkerEngine.servePsiWorker}. */
 export interface InProcessPsiEngineOptions {
   /**
@@ -400,10 +426,11 @@ const SETUP_CLIENT_INPUT_COUNT = -1;
  * policy); a set at or below the chunk floor takes one chunk and runs the
  * single call unchanged.
  */
-export class InProcessPsiEngine implements PsiEngine {
+export class InProcessPsiEngine implements PsiEngine, PermutedShardPrimary {
   private readonly library: PSILibrary;
   private readonly id: string;
-  private readonly mode: PsiEngineMode;
+  /** The mode the engine was built in. */
+  readonly mode: PsiEngineMode;
   private readonly revealFlag: boolean;
   private readonly server?: PSIServer;
   private readonly client?: PSIClient;
@@ -809,24 +836,57 @@ export class InProcessPsiEngine implements PsiEngine {
 
   createClientRequest(values: ReadonlyArray<string>): Promise<Uint8Array> {
     const client = this.requireClient("createClientRequest");
-    if (this.mode === "count-only-permuted") {
-      this.refuseAfterFailedRound("createClientRequest");
-      this.assertDistinctValues("createClientRequest", values);
-      this.receiverRecords ??= values.length;
-      if (this.receiverRecords !== values.length)
-        throw new InternalConsistencyError(
-          `${this.id}: a count-only request has ${String(values.length)} values where the exchange's first had ${String(this.receiverRecords)}`,
-        );
-    }
+    if (this.mode === "count-only-permuted")
+      this.recordPermutedRequest("createClientRequest", values);
     const contributed =
       this.mode === "count-only"
         ? valuesContributedExactlyOnce(values)
         : values;
-    const ranges = this.rangesFor(contributed.length, "createRequest");
-    if (ranges.length === 1)
-      return Promise.resolve(
-        client.createRequest(contributed).serializeBinary(),
+    return Promise.resolve(this.maskRequest(client, contributed));
+  }
+
+  createRequestFirstPart(
+    values: ReadonlyArray<string>,
+    partElements: number,
+  ): Promise<Uint8Array> {
+    return settled(() => {
+      const client = this.requireClient("createRequestFirstPart");
+      this.requireMode("createRequestFirstPart", "count-only-permuted");
+      if (
+        !Number.isSafeInteger(partElements) ||
+        partElements < 0 ||
+        partElements > values.length
+      )
+        throw new InternalConsistencyError(
+          `${this.id}: the first part of a request cannot have ${String(partElements)} of its ${String(values.length)} values`,
+        );
+      this.recordPermutedRequest("createRequestFirstPart", values);
+      return this.maskRequest(client, values.slice(0, partElements));
+    });
+  }
+
+  // A count-only-permuted receiver's request: one distinct value per record,
+  // the same record count in every round.
+  private recordPermutedRequest(
+    operation: string,
+    values: ReadonlyArray<string>,
+  ): void {
+    this.refuseAfterFailedRound(operation);
+    this.assertDistinctValues(operation, values);
+    this.receiverRecords ??= values.length;
+    if (this.receiverRecords !== values.length)
+      throw new InternalConsistencyError(
+        `${this.id}: a count-only request has ${String(values.length)} values where the exchange's first had ${String(this.receiverRecords)}`,
       );
+  }
+
+  private maskRequest(
+    client: PSIClient,
+    values: ReadonlyArray<string>,
+  ): Uint8Array {
+    const ranges = this.rangesFor(values.length, "createRequest");
+    if (ranges.length === 1)
+      return client.createRequest(values).serializeBinary();
     // A request holds its elements in input order, so each chunk's masked
     // elements go straight into the outgoing message, with no list held
     // beside it to concatenate.
@@ -835,11 +895,11 @@ export class InProcessPsiEngine implements PsiEngine {
       appendChunkElements(
         request,
         client
-          .createRequest(contributed.slice(range.start, range.end))
+          .createRequest(values.slice(range.start, range.end))
           .getEncryptedElementsList_asU8(),
       ),
     );
-    return Promise.resolve(request.serializeBinary());
+    return request.serializeBinary();
   }
 
   receiveServerSetup(setupBytes: Uint8Array): Promise<void> {

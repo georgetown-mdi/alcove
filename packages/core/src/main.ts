@@ -80,10 +80,15 @@ export type { PsiEngine, PsiEngineMode } from "./psi/psiEngine";
 // points share can refer only to a type one of them exports.
 export type {
   InProcessPsiEngineOptions,
+  PermutedShardPrimary,
   PsiProcessedElementsReporter,
 } from "./psi/psiEngine";
 export { psiEngineOptionsForBackend } from "./psi/psiWasmBudget";
-export { ShardedPsiEngine, shardStalledError } from "./psi/shardedPsiEngine";
+export {
+  ShardedPsiEngine,
+  shardHelperMode,
+  shardStalledError,
+} from "./psi/shardedPsiEngine";
 export type { ShardedPsiEngineOptions } from "./psi/shardedPsiEngine";
 export {
   WorkerPsiEngine,
