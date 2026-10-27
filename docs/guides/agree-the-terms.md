@@ -26,7 +26,7 @@ Broader matching has 41 rules and Highest precision has 24. An invitation keeps 
 
 A ZIP code or phone number column must be the person's own. A site's or agency's ZIP code or phone number matches unrelated people served there.
 
-More detail: [How the rules are ranked by precision](../EXCHANGE_REFERENCE.md#choosing-rules-by-precision-floor), [How to leave out the less certain rules](../EXCHANGE_REFERENCE.md#rules-marked-less-certain).
+More detail: [How the rules are ranked by precision](../EXCHANGE_REFERENCE.md#choosing-the-built-in-rules), [How to leave out the less certain rules](../EXCHANGE_REFERENCE.md#rules-marked-less-certain).
 
 ## What each of you sends
 
