@@ -23,12 +23,12 @@ All three run the same protocol, so you and your partner do not have to pick the
   It writes the configuration and runs one exchange for you, so you can try an exchange with test data before moving it to the command line.
   Read [the console guide](CONSOLE.md).
 
-How many records each one handles, and roughly how long an exchange takes: [How large an exchange can be](WEB_APP.md#how-large-an-exchange-can-be).
+How many records each one handles, and roughly how long an exchange takes: [How large an exchange can be](DEPLOYMENT.md#how-large-an-exchange-can-be).
 
 ## User guides
 
 - [Documentation index](README.md), with a reading guide for each role: analysts, invited partners, program officers, security reviewers, compliance officers, and IT staff.
-- [Deployment](DEPLOYMENT.md), for IT staff hosting Alcove or its supporting services.
+- [Deployment](DEPLOYMENT.md), for IT staff hosting Alcove or its supporting services, with the [network requirements](DEPLOYMENT.md#network-requirements) of each role: the hosts, ports, and protocols a deployment opens.
 - [Shared responsibility](SHARED_RESPONSIBILITY.md), where an agency security review starts.
 - [Security design](SECURITY_DESIGN.md), [compliance](COMPLIANCE.md), and [privacy](../PRIVACY.md).
 

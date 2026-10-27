@@ -25,7 +25,7 @@ Alcove is a privacy-preserving record linkage (PPRL) tool that enables partner a
 
 ## Glossary
 
-Each concept has one official word, listed below, and the screens, messages, and guides use it. A sentence may use another wording where the context makes clear what it means, and comes back to the official word where a reader may have lost track; not every mention has to match. Configuration keys, command-line flags, environment variable names, and code keep their own names.
+The screens, messages, and guides use the words below. Configuration keys, command-line flags, environment variable names, and code keep their own names.
 
 | Word | What it names | Where it is set |
 |------|---------------|-----------------|
@@ -41,63 +41,63 @@ Each concept has one official word, listed below, and the screens, messages, and
 
 ## Document inventory
 
-The documentation is organized in three tiers: this **overview** tier (`docs/`) of conceptual and operational documents; a **technical specification** tier ([`docs/spec/`](spec/README.md)) of wire formats, byte encodings, normative constants, and implementation-level design for implementors and auditors; and a **design notes** tier ([`docs/notes/`](notes/README.md)) of citeable, non-normative design records -- the model behind a mechanism, the options weighed, and the decisions taken. The spec and notes tiers each have their own index.
+The documentation is organized in three tiers: this **overview** tier (`docs/`) of conceptual and operational documents; a **technical specification** tier ([`docs/spec/`](spec/README.md)) of wire formats, byte encodings, normative constants, and implementation-level design for implementors and auditors; and a **design notes** tier ([`docs/notes/`](notes/README.md)) of citeable, non-normative design records: the model behind a mechanism, the options weighed, and the decisions taken. The spec and notes tiers each have their own index.
 
 ### Overview (`docs/`)
 
-- [WEB_APP.md](WEB_APP.md) - for an analyst or program staff member at either party running one exchange in the browser: creating or accepting an invitation, reading the results, keeping and checking the exchange record, and how large an exchange can be
-- [MANAGED_EXCHANGE.md](MANAGED_EXCHANGE.md) - for the same reader running that exchange again on a schedule from the browser: saving it, installing the app, the schedule, moving it to another device or the command line, recovering from a failed run, the accounting of disclosures, and backups
-- [CLI.md](CLI.md) - for IT staff running exchanges from the command line: a task index, a first recurring exchange step by step, every command, the configuration files, scheduling, recovery, and exit codes
-- [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md) - for IT staff writing or checking an `alcove.yaml`: every field of the exchange configuration file
-- [CONSOLE.md](CONSOLE.md) - for an operator trying out one exchange from a graphical console on their own machine before moving it to the command line: running the container, its mounts and settings, and what it hands over
-- [DEPLOYMENT.md](DEPLOYMENT.md) - for IT staff hosting Alcove: running the supporting services and deploying the command line app with Docker
-- [FIPS_SFTP_PROFILE.md](FIPS_SFTP_PROFILE.md) - for IT staff at an agency required to use FIPS-approved cryptography: the SFTP settings to use, what they exclude, and the host-key gap
-- [DESIGN.md](DESIGN.md) - for a program officer or new contributor who wants the whole picture: what Alcove does, its architecture, the exchange configuration in summary, and the user journey
-- [SECURITY_DESIGN.md](SECURITY_DESIGN.md) - for a security reviewer: the privacy guarantee of private set intersection, the threat model, authentication, channel security, and key rotation
-- [SHARED_RESPONSIBILITY.md](SHARED_RESPONSIBILITY.md) - for a security reviewer or agency IT lead filling in a security questionnaire: what the project is responsible for and what the deploying agency is, per deployment
-- [COMPLIANCE.md](COMPLIANCE.md) - for a compliance officer or agency reviewer: regulatory framings, data classification, and what to check
-- [SERVICE_FACT_SHEET.md](SERVICE_FACT_SHEET.md) - for an agency's counsel: one page of facts about each service the project runs for the hosted web application
-- [COMMUNICATION.md](COMMUNICATION.md) - for a reviewer or contributor who needs to know how an exchange proceeds: the channels, how the two sides stay in step, the web invitation and consent screens, message delivery, error handling, and the supporting services
-- [INCIDENT_RESPONSE.md](INCIDENT_RESPONSE.md) - for the maintainer handling a reported vulnerability, behind [SECURITY.md](../SECURITY.md): triage and severity, the private fix and release, the advisory, reporter communication, and the tabletop exercise record
-- [RELEASES.md](RELEASES.md) - for the maintainer cutting a release: versioning policy, the release checklist, and publishing the artifacts
-- [PREBUILD_REVENDOR.md](PREBUILD_REVENDOR.md) - for the maintainer replacing the vendored native PSI build, and the reviewer checking that work: the two integrity controls, the procedure, and the chain-of-custody steps
-- [TESTING.md](TESTING.md) - for a contributor adding or running tests: where a test goes, the integration backends and profiles, the console check, the browser suite, and coverage
-- [ROADMAP.md](ROADMAP.md) - for anyone asking what is planned next
+- [WEB_APP.md](WEB_APP.md) - running one exchange in the browser: creating or accepting an invitation, the results, the exchange record, and size limits
+- [MANAGED_EXCHANGE.md](MANAGED_EXCHANGE.md) - running that exchange again on a schedule from the browser: saving, installing, the schedule, moving it, failed runs, the accounting of disclosures, and backups
+- [CLI.md](CLI.md) - IT staff running exchanges from the command line: a task index, a first recurring exchange, every command, scheduling, recovery, and exit codes
+- [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md) - every field of the exchange configuration file, `alcove.yaml`
+- [CONSOLE.md](CONSOLE.md) - running one exchange from the graphical console on your own machine: the container, its mounts and settings, and the hand-off to the command line
+- [DEPLOYMENT.md](DEPLOYMENT.md) - IT staff hosting Alcove: the supporting services, network requirements, and the command line app under Docker
+- [FIPS_SFTP_PROFILE.md](FIPS_SFTP_PROFILE.md) - the SFTP settings for an agency required to use FIPS-approved cryptography, what they exclude, and the host-key gap
+- [DESIGN.md](DESIGN.md) - the whole picture: what Alcove does, its architecture, the configuration in summary, and the user journey
+- [SECURITY_DESIGN.md](SECURITY_DESIGN.md) - the PSI privacy guarantee, the threat model, authentication, channel security, and key rotation
+- [SHARED_RESPONSIBILITY.md](SHARED_RESPONSIBILITY.md) - what the project is responsible for and what the deploying agency is, per deployment
+- [COMPLIANCE.md](COMPLIANCE.md) - regulatory framings, data classification, and what a reviewer checks
+- [SERVICE_FACT_SHEET.md](SERVICE_FACT_SHEET.md) - one page of facts, for counsel, about each service the project runs for the hosted web application
+- [COMMUNICATION.md](COMMUNICATION.md) - how an exchange proceeds: the channels, synchronization, the web invitation and consent screens, message delivery, error handling, and the supporting services
+- [INCIDENT_RESPONSE.md](INCIDENT_RESPONSE.md) - how the maintainer handles a reported vulnerability, behind [SECURITY.md](../SECURITY.md), and the tabletop exercise record
+- [RELEASES.md](RELEASES.md) - the versioning policy, the release checklist, and verifying the published artifacts
+- [PREBUILD_REVENDOR.md](PREBUILD_REVENDOR.md) - replacing the vendored native PSI build: the integrity controls, the procedure, and chain of custody
+- [TESTING.md](TESTING.md) - where a test goes, the integration backends and profiles, the console check, the browser suite, and coverage
+- [ROADMAP.md](ROADMAP.md) - what is planned next
 
 ### Technical specifications ([`docs/spec/`](spec/README.md))
 
-- [PROTOCOL.md](spec/PROTOCOL.md) - for an implementor or auditor of the matching: the PSI and PSI-C algorithms, linkage, datasets, the steps after linkage, and the P-256 key exchange at the wire level
-- [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md) - for an auditor of the transport: the application-layer encryption and the authenticated abort marker
-- [TRANSPORT_BOUNDS.md](spec/TRANSPORT_BOUNDS.md) - for an auditor of the transport: the memory bounds on what a hostile server or partner writes for a party to read, from the inbound frame size to the WebRTC data channel
-- [TRANSPORT_LIVENESS.md](spec/TRANSPORT_LIVENESS.md) - for an auditor of the transport: the deadlines and budgets that fail a stalled transport operation, and the heartbeat that keeps a quiet SFTP session open
-- [SFTP_CONNECTION.md](spec/SFTP_CONNECTION.md) - for an auditor of the SFTP channel: the server-provisioning endpoint call, SFTP crash safety on a fatal packet, and host-key verification
-- [SFTP_SESSION_RECOVERY.md](spec/SFTP_SESSION_RECOVERY.md) - for an auditor of the SFTP channel: how a session the server drops mid-exchange is re-dialed, what is re-issued, and the bounds on both
-- [PARSED_INPUT_BOUNDS.md](spec/PARSED_INPUT_BOUNDS.md) - for an auditor of what a party parses: the count, length, and depth bounds on a partner's input, the CSV-read line ceiling and header sanitation, and the name rule a linkage-terms document is held to
-- [TRANSFORM_REGEX_DIALECT.md](spec/TRANSFORM_REGEX_DIALECT.md) - for an auditor of the transforms a partner authors: the linear-time dialect their regular expressions run under, and its size and search bounds
-- [TRANSFORM_PARAMETER_BOUNDS.md](spec/TRANSFORM_PARAMETER_BOUNDS.md) - for an auditor of the transforms a partner authors: the declared type of each parameter, and the bounds on the values that drive per-row work
-- [DISPLAY_ESCAPE.md](spec/DISPLAY_ESCAPE.md) - for an auditor of what an operator is shown, or anyone writing an error, log line, or prompt: how partner- and server-chosen text is escaped once where it is shown, and how a diagnostic delimits the values it names
-- [DISPLAY_REDACTION.md](spec/DISPLAY_REDACTION.md) - for an auditor of what an operator is shown, or anyone writing an error, log line, or prompt: how private-key material is removed from what is shown, and the length budgets that keep an instruction from being cut
-- [SIGNALING_SERVER_BOUNDS.md](spec/SIGNALING_SERVER_BOUNDS.md) - for whoever deploys or assesses the coordination server: the bounds it holds against an unauthenticated client, from the upgrade handshake to the relay's queues
-- [FILE_SYNC.md](spec/FILE_SYNC.md) - for an implementor of the `sftp` and `filedrop` channels: the shared folder as a state machine, the file names, where each rule is enforced, and the preconditions for an exchange
-- [WEBRTC_TRANSPORT.md](spec/WEBRTC_TRANSPORT.md) - for an implementor of the `webrtc` channel, where the browser and command line ends must match: the rendezvous roles, the signaling messages, the data-channel framing and close, the ICE list rule, and the transport's limits
-- [EXCHANGE_RECORD.md](spec/EXCHANGE_RECORD.md) - for an implementor or auditor of the exchange record: its files, the commitment scheme, the governance metadata, and its privacy properties
-- [EXCHANGE_FILE.md](spec/EXCHANGE_FILE.md) - for an implementor of the exchange file the web app downloads: that it is the command line's configuration schema, what the web app guarantees when it writes one, the versioning policy, the invitation channel-binding rule, and how its key file is provisioned
-- [INVITATION_TOKEN.md](spec/INVITATION_TOKEN.md) - for an implementor or auditor of the invitation token: its encoding and checksum, its fields and connection endpoint, the size bounds, and the checks the party that mints it and the party that accepts it apply
-- [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md) - for an implementor or auditor of cleaning: the default pipeline per data type when a configuration sets no `standardization`, the rule both parties rely on, and the column-name table behind the inferred defaults
-- [CANONICAL_ENCODING.md](spec/CANONICAL_ENCODING.md) - for an implementor computing receipts, record commitments, or the agreed-terms hash: the RFC 8785 byte encoding they are computed over
-- [CREDENTIAL_STORAGE.md](spec/CREDENTIAL_STORAGE.md) - for an auditor of files at rest: how the key file, signing identity, exchange record, and result CSV are written owner-only and durably
-- [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md) - for an implementor or auditor of recurring web exchanges: the record the browser stores, the save-before-success ordering, the one-owner rule for the secret, and the export file's custody model and format
-- [CLI_EVENTS.md](spec/CLI_EVENTS.md) - for a developer driving the command line from another program: the opt-in `--event-stream` output, its framing, event types, error categories, and field sanitization
-- [CLI_DOCTOR.md](spec/CLI_DOCTOR.md) - for a developer reading `alcove doctor --json`: the document's fields, its schema version and compatibility rule, the status values, each mode's checks, and the exit codes
-- [SERVER_JOB_API.md](spec/SERVER_JOB_API.md) - for a contributor working on the console's server: the job API that runs the command line as a subprocess, its request schema, the SFTP connection the operator authors, the one-exchange-at-a-time lifecycle, the working-folder layout, the event relay, and the startup rules
-- [DEPENDENCY_PINS.md](spec/DEPENDENCY_PINS.md) - for the maintainer upgrading the SFTP or WebRTC stack: why they are exact-pinned, what each assumes, the upgrade checklists, and the install-script policy
-- [CONTAINER_IMAGES.md](spec/CONTAINER_IMAGES.md) - for an auditor of the shipped images, the standard and the FIPS variant: how each fixes its dependencies to the lockfile, what each pins, what the FIPS provider's CMVP certificate covers, and the measured writable and setuid inventories
+- [PROTOCOL.md](spec/PROTOCOL.md) - the PSI and PSI-C algorithms, linkage, the steps after linkage, and the P-256 key exchange
+- [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md) - the application-layer encryption and the authenticated abort marker
+- [TRANSPORT_BOUNDS.md](spec/TRANSPORT_BOUNDS.md) - memory bounds on what a hostile server or partner writes for a party to read
+- [TRANSPORT_LIVENESS.md](spec/TRANSPORT_LIVENESS.md) - the deadlines that fail a stalled transport operation, and the SFTP heartbeat
+- [SFTP_CONNECTION.md](spec/SFTP_CONNECTION.md) - the server-provisioning call, SFTP crash safety, and host-key verification
+- [SFTP_SESSION_RECOVERY.md](spec/SFTP_SESSION_RECOVERY.md) - how a dropped SFTP session is re-dialed, and its bounds
+- [PARSED_INPUT_BOUNDS.md](spec/PARSED_INPUT_BOUNDS.md) - bounds on a partner's input, the CSV-read ceiling and header sanitation, and the linkage-terms name rule
+- [TRANSFORM_REGEX_DIALECT.md](spec/TRANSFORM_REGEX_DIALECT.md) - the linear-time regular expression dialect of partner-authored transforms, and its bounds
+- [TRANSFORM_PARAMETER_BOUNDS.md](spec/TRANSFORM_PARAMETER_BOUNDS.md) - the type of each transform parameter, and the bounds on per-row work
+- [DISPLAY_ESCAPE.md](spec/DISPLAY_ESCAPE.md) - how partner- and server-chosen text is escaped where it is shown
+- [DISPLAY_REDACTION.md](spec/DISPLAY_REDACTION.md) - how private-key material is removed from what is shown, and the length budgets
+- [SIGNALING_SERVER_BOUNDS.md](spec/SIGNALING_SERVER_BOUNDS.md) - the bounds the coordination server holds against an unauthenticated client
+- [FILE_SYNC.md](spec/FILE_SYNC.md) - the `sftp` and `filedrop` channels: the shared folder as a state machine, file names, and preconditions
+- [WEBRTC_TRANSPORT.md](spec/WEBRTC_TRANSPORT.md) - the `webrtc` channel: rendezvous roles, signaling messages, data-channel framing and close, the ICE list rule, and limits
+- [EXCHANGE_RECORD.md](spec/EXCHANGE_RECORD.md) - the exchange record: its files, the commitment scheme, governance metadata, and privacy properties
+- [EXCHANGE_FILE.md](spec/EXCHANGE_FILE.md) - the exchange file the web app downloads, its versioning, the invitation channel-binding rule, and key file provisioning
+- [INVITATION_TOKEN.md](spec/INVITATION_TOKEN.md) - the invitation token's encoding, fields, size bounds, and the checks on minting and accepting it
+- [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md) - the default cleaning per data type, and the column-name table behind the inferred defaults
+- [CANONICAL_ENCODING.md](spec/CANONICAL_ENCODING.md) - the RFC 8785 encoding that receipts, record commitments, and the agreed-terms hash are computed over
+- [CREDENTIAL_STORAGE.md](spec/CREDENTIAL_STORAGE.md) - how the key file, signing identity, exchange record, and result CSV are written owner-only and durably
+- [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md) - the record a recurring web exchange stores, the save-before-success order, the one-owner rule, and the export file
+- [CLI_EVENTS.md](spec/CLI_EVENTS.md) - the opt-in `--event-stream` output: framing, event types, error categories, and sanitization
+- [CLI_DOCTOR.md](spec/CLI_DOCTOR.md) - the `alcove doctor --json` document: fields, schema version, status values, checks, and exit codes
+- [SERVER_JOB_API.md](spec/SERVER_JOB_API.md) - the console's job API: request schema, SFTP connection, lifecycle, working-folder layout, event relay, and startup rules
+- [DEPENDENCY_PINS.md](spec/DEPENDENCY_PINS.md) - the exact-pinned SFTP and WebRTC stack, the upgrade checklists, and the install-script policy
+- [CONTAINER_IMAGES.md](spec/CONTAINER_IMAGES.md) - the standard and FIPS images: dependency pinning, the FIPS provider's CMVP certificate coverage, and the writable and setuid inventories
 
 ### Design notes ([`docs/notes/`](notes/README.md))
 
 Tracked, citeable design records: the model behind a mechanism, the options weighed, and the decisions taken. Nothing here binds an implementation; a note points at the spec for the normative rows. Its [index](notes/README.md) lists each note with its status and holds the maturity ladder from `scratch/` up to the formal tiers.
 
-The web application's interface has its own record outside this tree: [`design/web-redesign/`](../design/web-redesign/README.md) holds the chosen redesign as a non-functional HTML mockup, with the framing, the alternatives weighed, and the civic-design sourcing behind it -- the direction `apps/web/src/exchange/`, `apps/web/src/recurring/`, and `apps/web/src/console/` implement.
+The web application's interface has its own record outside this tree: [`design/web-redesign/`](../design/web-redesign/README.md) holds the chosen redesign as a non-functional HTML mockup, with the framing, the alternatives weighed, and the civic-design sourcing behind it. `apps/web/src/exchange/`, `apps/web/src/recurring/`, and `apps/web/src/console/` implement that direction.
 
 ## System architecture
 
