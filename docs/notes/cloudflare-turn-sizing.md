@@ -46,8 +46,10 @@ JSON body `{"ttl": N}`, or `{}` for none.
   and `credential`, and no expiry or ttl field, so whoever mints has to track
   the lifetime it asked for.
 - **The URL list includes 443.** It lists `turns:turn.cloudflare.com:443?transport=tcp`
-  and `turns:...:5349`, unlike the managed vendor in the relay record, which
-  answered on 443 without listing it
+  and `turns:...:5349`, unlike the `credentials/generate` endpoint behind the
+  relay record, which answered on 443 without listing it. Both are Cloudflare
+  Realtime TURN, so the difference is between two endpoints of one vendor, and
+  a deployment that calls `credentials/generate` still gets no 443 entry
   ([webrtc-relay-deployment.md](webrtc-relay-deployment.md#question-3-self-hosted-or-managed)).
 
 ### A relayed exchange over TURN on 443
@@ -114,8 +116,9 @@ lifetime on every call, in minutes within a one-hour ceiling
 [No relay of its own](turn-provisioning-governance.md#no-relay-of-its-own)).
 That lies inside the measured 60 to 172800 s, so the exact minimum, the exact
 maximum and the no-ttl default are all outside anything a design asks for. The
-measured maximum also confirms the "caller-set, up to 48 hours" the governance
-survey read from Cloudflare's documentation
+probes are also consistent with the "caller-set, up to 48 hours" the governance
+survey read from Cloudflare's documentation (48 hours was accepted; the cap
+itself was not established)
 ([turn-provisioning-governance.md](turn-provisioning-governance.md#relaying-through-a-third-party-managed-service)).
 
 ## Does a self-hosted coturn answer an agency concern Cloudflare does not
@@ -129,7 +132,7 @@ Per concern. "Self-hosted" means the reference relay in
 | What the relay can read of the exchange | Nothing: DTLS plus the application-layer wrap | Nothing, the same way | No: the protection is in the exchange, not the relay, so the choice of relay does not change it |
 | Metadata retention, and what is published about it | No retention period stated: none found on 2026-09-21 ([turn-provisioning-governance.md](turn-provisioning-governance.md#relaying-through-a-third-party-managed-service)), and none on the four pages read 2026-10-27 | Stated and checkable: at the reference's settings coturn writes no line for a successful allocation, and the journal deletes entries about 90 days after the newest in their file ([webrtc-relay-deployment.md](webrtc-relay-deployment.md#what-the-relay-host-keeps)) | Yes: a reviewer asking how long relay metadata is kept and who reads it gets an answer only from the self-hosted relay |
 | Compliance scope | Cloudflare's HIPAA page does not list TURN as in scope (inferred from absence, read 2026-09-21); its FAQ has a HIPAA/GDPR/FedRAMP question whose answer the 2026-10-27 read did not capture; it states FIPS 140-3 support for TURN over TLS (published, not measured) | No vendor to bring into scope; the relay is a new internet-facing system in the operator's own estate, under its own approval ([turn-provisioning-governance.md](turn-provisioning-governance.md#runbook-relay)) | Yes, for an agency that needs a BAA or an in-scope listing for every vendor on the path; whether the relay is a HIPAA conduit stays the agency's determination either way ([COMPLIANCE.md](../COMPLIANCE.md#hipaa-considerations)) |
-| Operating cost | $0.05/GB past 1,000 GB a month (published). The largest exchange the relay record sizes moves about 3.2 GB, about $0.16 at that rate (computed); whether a relay-to-relay exchange is billed once or twice is not known | About $9.80 a month held continuously at the smallest instance (computed from published rates, [webrtc-relay-deployment.md](webrtc-relay-deployment.md#provisioning-phase-by-phase)), plus redeploying for coturn advisories, holding the static secret, and keeping logs ([turn-provisioning-governance.md](turn-provisioning-governance.md#runbook-relay)) | Not a security concern; it is the price of the two answers above |
+| Operating cost | $0.05/GB past 1,000 GB a month (published). The largest exchange the relay record sizes moves about 3.2 GB, about $0.16 at that rate (computed), and nothing while the month's total stays within the free 1,000 GB; whether a relay-to-relay exchange is billed once or twice is not known | About $9.80 a month held continuously at the smallest instance (computed from published rates, [webrtc-relay-deployment.md](webrtc-relay-deployment.md#provisioning-phase-by-phase)), plus redeploying for coturn advisories, holding the static secret, and keeping logs ([turn-provisioning-governance.md](turn-provisioning-governance.md#runbook-relay)) | Not a security concern; it is the price of the three answers above |
 
 **In short:** self-hosting answers the relay-vendor and retention concerns, and
 the compliance-scope concern where an agency requires every vendor on the path
