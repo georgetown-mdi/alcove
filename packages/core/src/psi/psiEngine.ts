@@ -20,6 +20,7 @@ import {
 import { DistinctValues } from "../utils/distinctValues";
 import {
   assertIndexTableIsPermutation,
+  assertResponseElementsDistinct,
   HeldPermutation,
   PermutedCountReplay,
 } from "./countOnlyPermutation";
@@ -299,16 +300,18 @@ export interface PsiEngine {
    * Matches the partner's permuted response against the held setup and index
    * table and replays the round's (slot, pseudonym) pairs into the count,
    * returning nothing: no pair, slot, pseudonym or per-round count leaves the
-   * engine. A response whose element count is not this party's request's, or
-   * whose matches repeat a slot or a pseudonym, is refused as a protocol
-   * error. Client role, count-only-permuted mode only.
+   * engine. A response that is not a list of 33-byte elements or that repeats
+   * an element is refused as a protocol error before any element is matched,
+   * and one whose element count is not this party's request's after. Client
+   * role, count-only-permuted mode only.
    */
   matchPermutedRound(responseBytes: Uint8Array): Promise<void>;
   /**
    * Returns the count over every round matched, then discards the replay; no
-   * round is matched after it. Once the engine has refused the partner's
-   * setup, index table or response, this and every later round call refuse
-   * as a protocol error. Client role, count-only-permuted mode only.
+   * round is matched after it. Once a round call has failed, this and every
+   * later round call refuse: as a protocol error where the engine refused the
+   * partner's setup, index table or response, and as an internal fault
+   * otherwise. Client role, count-only-permuted mode only.
    */
   finishPermutedCount(): Promise<number>;
   /**
@@ -414,10 +417,10 @@ export class InProcessPsiEngine implements PsiEngine {
   #heldIndexTable: Int32Array | undefined;
   #replay: PermutedCountReplay | undefined;
   private countTaken = false;
-  // Latched when a count-only-permuted receiver refuses the partner's setup,
-  // index table or response: the count over the rounds before it is not the
+  // Latched when a count-only-permuted receiver's round fails, on the
+  // partner's input or here: the count over the rounds before it is not the
   // exchange's count, so no later round or count is answered.
-  private partnerInputRefused = false;
+  private failedRound: "partner" | "local" | undefined;
   // Latched by dispose() so freeing the library objects is idempotent: their
   // embind delete() is not safe to call twice.
   private disposed = false;
@@ -499,28 +502,34 @@ export class InProcessPsiEngine implements PsiEngine {
       );
   }
 
-  private refuseAfterPartnerRefusal(operation: string): void {
-    if (this.partnerInputRefused)
+  private refuseAfterFailedRound(operation: string): void {
+    if (this.failedRound === "partner")
       throw new PartnerProtocolRefusalError(
         `${this.id} protocol error: ${operation} called after the partner's input was refused`,
       );
+    if (this.failedRound === "local")
+      throw new InternalConsistencyError(
+        `${this.id}: ${operation} called after a count-only round failed`,
+      );
   }
 
-  // Runs `step` over the partner's input. In the count-only-permuted mode, a
-  // refusal of that input, or the library's failure on it, latches the
-  // refusal and discards the replay.
-  private refusingPartnerInput<T>(step: () => T): T {
+  // Runs one step of a round. In the count-only-permuted mode, any failure
+  // latches: a refusal of the partner's input or the library's failure on it
+  // as the partner's, anything else as this party's. The latch discards the
+  // replay and the round's setup.
+  private latchingRoundFailure<T>(step: () => T): T {
     try {
       return step();
     } catch (error) {
-      if (
-        this.mode === "count-only-permuted" &&
-        (error instanceof PartnerProtocolRefusalError ||
-          isPsiLibraryFailure(error))
-      ) {
-        this.partnerInputRefused = true;
+      if (this.mode === "count-only-permuted") {
+        this.failedRound ??=
+          error instanceof PartnerProtocolRefusalError ||
+          isPsiLibraryFailure(error)
+            ? "partner"
+            : "local";
         this.#replay?.discard();
         this.#replay = undefined;
+        this.freeSetup();
       }
       throw error;
     }
@@ -789,7 +798,7 @@ export class InProcessPsiEngine implements PsiEngine {
   createClientRequest(values: ReadonlyArray<string>): Promise<Uint8Array> {
     const client = this.requireClient("createClientRequest");
     if (this.mode === "count-only-permuted") {
-      this.refuseAfterPartnerRefusal("createClientRequest");
+      this.refuseAfterFailedRound("createClientRequest");
       this.assertDistinctValues("createClientRequest", values);
       this.receiverRecords ??= values.length;
       if (this.receiverRecords !== values.length)
@@ -829,12 +838,12 @@ export class InProcessPsiEngine implements PsiEngine {
 
   receiveServerSetupPiece(piece: Uint8Array): Promise<void> {
     return settled(() =>
-      this.refusingPartnerInput(() => this.takeSetupPiece(piece)),
+      this.latchingRoundFailure(() => this.takeSetupPiece(piece)),
     );
   }
 
   completeServerSetup(): Promise<void> {
-    return settled(() => this.refusingPartnerInput(() => this.endSetup()));
+    return settled(() => this.latchingRoundFailure(() => this.endSetup()));
   }
 
   discardServerSetup(): Promise<void> {
@@ -857,7 +866,7 @@ export class InProcessPsiEngine implements PsiEngine {
   }
 
   private takeSetupPiece(piece: Uint8Array): void {
-    this.refuseAfterPartnerRefusal("receiveServerSetupPiece");
+    this.refuseAfterFailedRound("receiveServerSetupPiece");
     if (this.heldSetup !== undefined)
       throw new InternalConsistencyError(
         `${this.id}: a PSI server setup piece arrived while a completed setup awaits its match`,
@@ -896,7 +905,7 @@ export class InProcessPsiEngine implements PsiEngine {
   }
 
   private endSetup(): void {
-    this.refuseAfterPartnerRefusal("completeServerSetup");
+    this.refuseAfterFailedRound("completeServerSetup");
     const receiving = this.receivingSetup;
     if (receiving === undefined)
       throw new InternalConsistencyError(
@@ -1062,14 +1071,14 @@ export class InProcessPsiEngine implements PsiEngine {
 
   receiveIndexTable(indexTable: Int32Array): Promise<void> {
     return settled(() =>
-      this.refusingPartnerInput(() => this.takeIndexTable(indexTable)),
+      this.latchingRoundFailure(() => this.takeIndexTable(indexTable)),
     );
   }
 
   private takeIndexTable(indexTable: Int32Array): void {
     this.requireClient("receiveIndexTable");
     this.requireMode("receiveIndexTable", "count-only-permuted");
-    this.refuseAfterPartnerRefusal("receiveIndexTable");
+    this.refuseAfterFailedRound("receiveIndexTable");
     if (this.heldSetup === undefined)
       throw new Error(
         `${this.id}: receiveIndexTable called before the partner's setup completed`,
@@ -1094,14 +1103,14 @@ export class InProcessPsiEngine implements PsiEngine {
 
   matchPermutedRound(responseBytes: Uint8Array): Promise<void> {
     return settled(() =>
-      this.refusingPartnerInput(() => this.permutedRoundOf(responseBytes)),
+      this.latchingRoundFailure(() => this.permutedRoundOf(responseBytes)),
     );
   }
 
   private permutedRoundOf(responseBytes: Uint8Array): void {
     this.requireClient("matchPermutedRound");
     this.requireMode("matchPermutedRound", "count-only-permuted");
-    this.refuseAfterPartnerRefusal("matchPermutedRound");
+    this.refuseAfterFailedRound("matchPermutedRound");
     if (this.countTaken)
       throw new InternalConsistencyError(
         `${this.id}: matchPermutedRound called after the count was taken`,
@@ -1112,6 +1121,8 @@ export class InProcessPsiEngine implements PsiEngine {
       throw new Error(
         `${this.id}: matchPermutedRound called before the round's index table and request`,
       );
+    // Before any element is matched, so the refusal does not depend on a match.
+    assertResponseElementsDistinct(this.id, responseBytes);
     const match = this.beginMatch("matchPermutedRound", "count-only-permuted");
     this.#heldIndexTable = undefined;
     try {
@@ -1149,7 +1160,7 @@ export class InProcessPsiEngine implements PsiEngine {
     return settled(() => {
       this.requireClient("finishPermutedCount");
       this.requireMode("finishPermutedCount", "count-only-permuted");
-      this.refuseAfterPartnerRefusal("finishPermutedCount");
+      this.refuseAfterFailedRound("finishPermutedCount");
       const replay = this.#replay;
       if (replay === undefined || this.countTaken)
         throw new InternalConsistencyError(

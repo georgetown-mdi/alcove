@@ -9,6 +9,7 @@ import {
 } from "../../src/errors";
 import {
   assertIndexTableIsPermutation,
+  assertResponseElementsDistinct,
   drawUniformPermutation,
   HeldPermutation,
   PermutedCountReplay,
@@ -259,6 +260,52 @@ async function slotsFromWire(
   }
 }
 
+// The library's curve, P-256: its field prime and its `b`, with `a` = -3.
+const P256_FIELD_PRIME = 2n ** 256n - 2n ** 224n + 2n ** 192n + 2n ** 96n - 1n;
+const P256_B =
+  0x5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604bn;
+
+function fieldPower(base: bigint, exponent: bigint): bigint {
+  let result = 1n;
+  let square = base % P256_FIELD_PRIME;
+  for (let rest = exponent; rest > 0n; rest >>= 1n) {
+    if ((rest & 1n) === 1n) result = (result * square) % P256_FIELD_PRIME;
+    square = (square * square) % P256_FIELD_PRIME;
+  }
+  return result;
+}
+
+const curveRightSide = (x: bigint): bigint =>
+  (((x * x * x - 3n * x + P256_B) % P256_FIELD_PRIME) + P256_FIELD_PRIME) %
+  P256_FIELD_PRIME;
+
+function bigEndian(value: bigint, bytes: number): Array<number> {
+  return Array.from({ length: bytes }, (_, index) =>
+    Number((value >> BigInt(8 * (bytes - 1 - index))) & 0xffn),
+  );
+}
+
+// The least x-coordinate of a point on the curve, small enough that x plus the
+// field prime still fits in 32 bytes.
+const SMALL_X = (() => {
+  let x = 1n;
+  while (fieldPower(curveRightSide(x), (P256_FIELD_PRIME - 1n) / 2n) !== 1n)
+    x += 1n;
+  return x;
+})();
+
+const compressedPoint = (x: bigint): Uint8Array =>
+  Uint8Array.of(0x02, ...bigEndian(x, 32));
+
+// The 65-byte uncompressed encoding of a compressed point.
+function uncompressedPoint(compressed: Uint8Array): Uint8Array {
+  const x = BigInt(`0x${hex(compressed.subarray(1))}`);
+  let y = fieldPower(curveRightSide(x), (P256_FIELD_PRIME + 1n) / 4n);
+  expect((y * y) % P256_FIELD_PRIME).toBe(curveRightSide(x));
+  if ((y & 1n) !== BigInt(compressed[0]! & 1)) y = P256_FIELD_PRIME - y;
+  return Uint8Array.of(0x04, ...bigEndian(x, 32), ...bigEndian(y, 32));
+}
+
 const isPermutation = (order: ArrayLike<number>): boolean =>
   [...Array.from(order)].sort((a, b) => a - b).every((v, i) => v === i);
 
@@ -363,6 +410,74 @@ describe.each([
     }
     expect(drawn[1]!.pi).not.toStrictEqual(drawn[0]!.pi);
     expect(drawn[1]!.sigma).not.toStrictEqual(drawn[0]!.sigma);
+  });
+
+  test("a response copying one element is refused before any match, whether or not the copy matches", async () => {
+    const sender = create(wasm, "starter");
+    const probe = create(wasm, "joiner");
+    try {
+      const frames = await runRound(sender, probe, 0);
+      const { slots } = await slotsFromWire(wasm, frames);
+      const elements = responseElements(wasm, frames.response);
+      const unmatched = elements
+        .map((_, slot) => slot)
+        .filter((slot) => !slots.includes(slot));
+      const copying = (from: number, over: number) => {
+        const copied = [...elements];
+        copied[over] = elements[from]!;
+        return serializeResponse(wasm, copied);
+      };
+      // The match reports each piece it feeds but the last, so a refusal
+      // before the match reports none.
+      const matchTicks = async (response: Uint8Array) => {
+        const receiver = create(wasm, "joiner", { chunkElements: 10 });
+        const ticks: Array<number> = [];
+        receiver.observeProcessedElements!((processed) =>
+          ticks.push(processed),
+        );
+        try {
+          await receiver.receiveServerSetup(frames.setup);
+          await receiver.receiveIndexTable(frames.indexTable);
+          await receiver.createClientRequest(frames.receiverValues);
+          ticks.length = 0;
+          const outcome = await receiver.matchPermutedRound(response).then(
+            () => undefined,
+            (error: unknown) => error,
+          );
+          const count = await receiver.finishPermutedCount().then(
+            (value) => value,
+            (error: unknown) => error,
+          );
+          return { ticks, outcome, count };
+        } finally {
+          receiver.dispose();
+        }
+      };
+      const conforming = await matchTicks(frames.response);
+      expect(conforming.outcome).toBeUndefined();
+      expect(conforming.count).toBe(2);
+      expect(conforming.ticks).toStrictEqual([9, 18, 27, 36, 45, 54]);
+      for (const response of [
+        copying(slots[0]!, unmatched[0]!),
+        copying(unmatched[1]!, unmatched[0]!),
+      ]) {
+        const { ticks, outcome, count } = await matchTicks(response);
+        expect(outcome).toBeInstanceOf(PartnerProtocolRefusalError);
+        expect(outcome).toMatchObject({
+          message: expect.stringMatching(/repeats an element/),
+        });
+        expect(ticks).toStrictEqual([]);
+        expect(count).toBeInstanceOf(PartnerProtocolRefusalError);
+        expect(count).toMatchObject({
+          message: expect.stringMatching(
+            /after the partner's input was refused/,
+          ),
+        });
+      }
+    } finally {
+      sender.dispose();
+      probe.dispose();
+    }
   });
 });
 
@@ -596,6 +711,159 @@ describe("the count-only-permuted engine refuses", () => {
       sender.dispose();
       probe.dispose();
     }
+  });
+
+  test("a response copying a set of unmatched elements over others, in the first round", async () => {
+    const sender = inProcess(wasm, "starter");
+    const probe = inProcess(wasm, "joiner");
+    const receiver = inProcess(wasm, "joiner");
+    try {
+      const frames = await runRound(sender, probe, 0);
+      const { slots } = await slotsFromWire(wasm, frames);
+      const elements = responseElements(wasm, frames.response);
+      const unmatched = elements
+        .map((_, slot) => slot)
+        .filter((slot) => !slots.includes(slot));
+      const copied = [...elements];
+      for (let member = 0; member < 10; member += 1)
+        copied[unmatched[10 + member]!] = elements[unmatched[member]!]!;
+      await receiver.receiveServerSetup(frames.setup);
+      await receiver.receiveIndexTable(frames.indexTable);
+      await receiver.createClientRequest(frames.receiverValues);
+      const refused = receiver.matchPermutedRound(
+        serializeResponse(wasm, copied),
+      );
+      await expect(refused).rejects.toBeInstanceOf(PartnerProtocolRefusalError);
+      await expect(refused).rejects.toThrow(/repeats an element/);
+      await expect(receiver.finishPermutedCount()).rejects.toThrow(
+        /after the partner's input was refused/,
+      );
+    } finally {
+      sender.dispose();
+      probe.dispose();
+      receiver.dispose();
+    }
+  });
+
+  test.for(
+    (
+      [
+        ["wasm", wasm],
+        ["native", native],
+      ] satisfies Array<[string, Library | undefined]>
+    ).filter(
+      (backend): backend is [string, Library] => backend[1] !== undefined,
+    ),
+  )(
+    "a response holding one point in another encoding, on %s",
+    async ([, library]) => {
+      const sender = inProcess(library, "starter");
+      const probe = inProcess(library, "joiner");
+      try {
+        const frames = await runRound(sender, probe, 0);
+        const elements = responseElements(library, frames.response);
+        const uncompressedCopy = [...elements];
+        uncompressedCopy[3] = uncompressedPoint(elements[2]!);
+        const shiftedPair = [...elements];
+        shiftedPair[1] = compressedPoint(SMALL_X);
+        shiftedPair[2] = compressedPoint(SMALL_X + P256_FIELD_PRIME);
+        const cases: Array<[Array<Uint8Array>, RegExp]> = [
+          [uncompressedCopy, /is not a list of 33-byte elements/],
+          [shiftedPair, /Could not decode point/],
+        ];
+        for (const [response, refusal] of cases) {
+          const receiver = inProcess(library, "joiner");
+          try {
+            await receiver.receiveServerSetup(frames.setup);
+            await receiver.receiveIndexTable(frames.indexTable);
+            await receiver.createClientRequest(frames.receiverValues);
+            await expect(
+              receiver.matchPermutedRound(serializeResponse(library, response)),
+            ).rejects.toThrow(refusal);
+            await expect(receiver.finishPermutedCount()).rejects.toThrow(
+              /after the partner's input was refused/,
+            );
+          } finally {
+            receiver.dispose();
+          }
+        }
+      } finally {
+        sender.dispose();
+        probe.dispose();
+      }
+    },
+  );
+
+  test("a count, or a later round, after a round this party ended", async () => {
+    const sender = inProcess(wasm, "starter", { chunkElements: 10 });
+    const receiver = inProcess(wasm, "joiner", { chunkElements: 10 });
+    let stopRequested = false;
+    receiver.observeProcessedElements!(() => {
+      if (stopRequested) throw new Error("stop requested");
+    });
+    try {
+      await runRound(sender, receiver, 0);
+      const { setup, indexTable } = await sender.createPermutedSetup(
+        roundSet(SENDER, 1),
+      );
+      await receiver.receiveServerSetup(setup);
+      await receiver.receiveIndexTable(indexTable);
+      const response = await sender.processClientRequest(
+        await receiver.createClientRequest(roundSet(RECEIVER, 1)),
+      );
+      stopRequested = true;
+      await expect(receiver.matchPermutedRound(response)).rejects.toThrow(
+        /stop requested/,
+      );
+      stopRequested = false;
+      const count = receiver.finishPermutedCount();
+      await expect(count).rejects.toBeInstanceOf(InternalConsistencyError);
+      await expect(count).rejects.toThrow(/after a count-only round failed/);
+      await expect(receiver.receiveServerSetup(setup)).rejects.toThrow(
+        /after a count-only round failed/,
+      );
+    } finally {
+      sender.dispose();
+      receiver.dispose();
+    }
+  });
+
+  test("a serialized response that is not a list of distinct 33-byte elements", () => {
+    const field = (element: Uint8Array) => Uint8Array.of(0x0a, 33, ...element);
+    const element = (lead: number, last: number) => {
+      const bytes = new Uint8Array(33);
+      bytes[0] = 0x02;
+      bytes.fill(lead, 1, 5);
+      bytes[32] = last;
+      return bytes;
+    };
+    const frame = (...elements: Array<Uint8Array>) =>
+      Uint8Array.from(elements.flatMap((each) => [...field(each)]));
+    const check = (response: Uint8Array) => () =>
+      assertResponseElementsDistinct("joiner", response);
+    expect(check(new Uint8Array())).not.toThrow();
+    // Three elements sharing their leading bytes, the repeat not adjacent.
+    expect(
+      check(frame(element(1, 1), element(1, 2), element(1, 3), element(2, 1))),
+    ).not.toThrow();
+    expect(
+      check(frame(element(1, 1), element(1, 2), element(2, 1), element(1, 1))),
+    ).toThrow(/repeats an element/);
+    expect(check(frame(element(1, 1)).subarray(1))).toThrow(
+      /is not a list of 33-byte elements/,
+    );
+    const otherField = frame(element(1, 1));
+    otherField[0] = 0x12;
+    expect(check(otherField)).toThrow(PartnerProtocolRefusalError);
+  });
+
+  test("a replayed round whose pairs repeat a slot or a pseudonym, as an internal fault", () => {
+    expect(() =>
+      new PermutedCountReplay(3, 3).acceptRound("joiner", [0, 0], [0, 1]),
+    ).toThrow(InternalConsistencyError);
+    expect(() =>
+      new PermutedCountReplay(3, 3).acceptRound("joiner", [0, 1], [2, 2]),
+    ).toThrow(InternalConsistencyError);
   });
 
   test("an index table entry that is not an integer, whatever the array type", () => {

@@ -1,3 +1,4 @@
+import { PSI_ENCODED_ELEMENT_BYTES } from "../connection/webrtcOutboundBound";
 import {
   InternalConsistencyError,
   PartnerProtocolRefusalError,
@@ -114,6 +115,98 @@ export function assertIndexTableIsPermutation(
   }
 }
 
+// A response element's protobuf field header: field 1, length-delimited, and
+// the length of a compressed curve point.
+const RESPONSE_ELEMENT_TAG = 0x0a;
+const ELEMENT_BYTES = PSI_ENCODED_ELEMENT_BYTES - 2;
+const LITTLE_ENDIAN = new Uint8Array(Uint32Array.of(1).buffer)[0] === 1;
+
+/**
+ * Refuses, as a protocol error naming `engineId`, a serialized PSI response
+ * that is not a list of 33-byte elements or that holds one element twice. A
+ * conforming response is such a list, every element distinct; a compressed
+ * point has one 33-byte encoding, so a repeated point is a repeated element.
+ *
+ * @internal
+ */
+export function assertResponseElementsDistinct(
+  engineId: string,
+  response: Uint8Array,
+): void {
+  const refusal = (what: string) =>
+    new PartnerProtocolRefusalError(
+      `${engineId} protocol error: the partner's response ${what}`,
+    );
+  if (response.byteLength % PSI_ENCODED_ELEMENT_BYTES !== 0)
+    throw refusal(`is not a list of ${String(ELEMENT_BYTES)}-byte elements`);
+  const count = response.byteLength / PSI_ENCODED_ELEMENT_BYTES;
+  // Each element's index beside four bytes of its x-coordinate, in the high
+  // half, so a native sort of the 64-bit keys puts elements whose four bytes
+  // agree next to each other; only those are compared in full.
+  const keys = new BigUint64Array(count);
+  const words = new Uint32Array(keys.buffer);
+  const high = LITTLE_ENDIAN ? 1 : 0;
+  const low = 1 - high;
+  try {
+    for (let index = 0; index < count; index += 1) {
+      const header = index * PSI_ENCODED_ELEMENT_BYTES;
+      if (
+        response[header] !== RESPONSE_ELEMENT_TAG ||
+        response[header + 1] !== ELEMENT_BYTES
+      )
+        throw refusal(
+          `is not a list of ${String(ELEMENT_BYTES)}-byte elements`,
+        );
+      const x = header + 3;
+      words[2 * index + high] =
+        ((response[x]! << 24) |
+          (response[x + 1]! << 16) |
+          (response[x + 2]! << 8) |
+          response[x + 3]!) >>>
+        0;
+      words[2 * index + low] = index;
+    }
+    keys.sort();
+    let groupStart = 0;
+    for (let next = 1; next <= count; next += 1) {
+      if (
+        next < count &&
+        words[2 * next + high] === words[2 * groupStart + high]
+      )
+        continue;
+      if (next - groupStart > 1) {
+        const starts = new Int32Array(next - groupStart);
+        for (let member = 0; member < starts.length; member += 1)
+          starts[member] =
+            words[2 * (groupStart + member) + low]! *
+              PSI_ENCODED_ELEMENT_BYTES +
+            2;
+        starts.sort((a, b) => compareElementsAt(response, a, b));
+        for (let member = 1; member < starts.length; member += 1)
+          if (
+            compareElementsAt(
+              response,
+              starts[member - 1]!,
+              starts[member]!,
+            ) === 0
+          )
+            throw refusal("repeats an element");
+      }
+      groupStart = next;
+    }
+  } finally {
+    words.fill(0);
+  }
+}
+
+function compareElementsAt(bytes: Uint8Array, a: number, b: number): number {
+  for (let offset = 0; offset < ELEMENT_BYTES; offset += 1) {
+    const difference = bytes[a + offset]! - bytes[b + offset]!;
+    if (difference !== 0) return difference;
+  }
+  return 0;
+}
+
 /**
  * The receiver's replay of the one-to-one cascade in the permuted space
  * (docs/spec/PROTOCOL.md, Computing the count): round by round, a pair is
@@ -144,8 +237,9 @@ export class PermutedCountReplay {
 
   /**
    * Replays one round's pairs, `slots[i]` paired with `pseudonyms[i]`. A round
-   * pairing a slot or a pseudonym twice is refused as a protocol error naming
-   * `engineId`, before any of its pairs is accepted.
+   * pairing a slot or a pseudonym twice is refused as an internal fault naming
+   * `engineId`, before any of its pairs is accepted: the engine refuses a
+   * response that repeats an element before matching it.
    */
   acceptRound(
     engineId: string,
@@ -181,8 +275,8 @@ export class PermutedCountReplay {
           `${engineId}: a count-only round paired a slot or pseudonym outside the exchange's sets`,
         );
       if (slotRound[slot] === round || pseudonymRound[pseudonym] === round)
-        throw new PartnerProtocolRefusalError(
-          `${engineId} protocol error: the partner's response repeats an element, so a round's matches repeat a slot or a pseudonym`,
+        throw new InternalConsistencyError(
+          `${engineId}: a count-only round's matches repeat a slot or a pseudonym`,
         );
       slotRound[slot] = round;
       pseudonymRound[pseudonym] = round;
