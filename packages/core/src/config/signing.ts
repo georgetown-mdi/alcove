@@ -92,66 +92,6 @@ export function partnerPinIsPresent(
   return pinnedFingerprint !== undefined && pinnedFingerprint.length > 0;
 }
 
-/** The spellings of the retired receipt-path setting under `signing`. */
-const RETIRED_RECEIPT_OUTPUT_FORMS = ["receipt_output", "receiptOutput"];
-
-/**
- * The retired receipt-path setting a raw exchange document's `signing` block
- * still states, as the file writes it (`signing.receipt_output`), or
- * `undefined` when it states none.
- */
-export function retiredSigningSetting(raw: unknown): string | undefined {
-  if (raw === null || typeof raw !== "object" || Array.isArray(raw))
-    return undefined;
-  const signing = (raw as Record<string, unknown>)["signing"];
-  if (signing === null || typeof signing !== "object" || Array.isArray(signing))
-    return undefined;
-  const key = RETIRED_RECEIPT_OUTPUT_FORMS.find((form) =>
-    Object.hasOwn(signing, form),
-  );
-  return key === undefined ? undefined : `signing.${key}`;
-}
-
-/**
- * The warning for a file stating the retired receipt-path `setting`, named as
- * the file writes it; the setting is accepted and ignored.
- */
-export function retiredSettingNotice(setting: string): string {
-  return (
-    `the setting "${setting}" is ignored: a signed run writes its ` +
-    "receipt into the output folder as alcove-receipt-<time>.json, with the " +
-    "same time stamp as the run's result and record. Delete the setting " +
-    "from the file."
-  );
-}
-
-/**
- * The warning for a raw exchange document whose `signing` block still names a
- * receipt path ({@link retiredSettingNotice}), or `undefined` when it names
- * none.
- */
-export function retiredSigningSettingNotice(raw: unknown): string | undefined {
-  const setting = retiredSigningSetting(raw);
-  return setting === undefined ? undefined : retiredSettingNotice(setting);
-}
-
-/**
- * A raw exchange document with the retired receipt-path setting removed from
- * its `signing` block, so the whole-file parse accepts a file still holding it
- * instead of refusing it as an unread key; {@link retiredSigningSettingNotice}
- * is the warning that goes with it. Any other value is returned unchanged.
- */
-export function withoutRetiredSigningSetting(raw: unknown): unknown {
-  if (retiredSigningSetting(raw) === undefined) return raw;
-  const document = raw as Record<string, unknown>;
-  const signing = Object.fromEntries(
-    Object.entries(document["signing"] as Record<string, unknown>).filter(
-      ([key]) => !RETIRED_RECEIPT_OUTPUT_FORMS.includes(key),
-    ),
-  );
-  return { ...document, signing };
-}
-
 /**
  * Parse and validate a raw value as a {@link SigningConfig}. Snake_case keys are
  * converted to camelCase before validation, so JSON/YAML from disk can be passed

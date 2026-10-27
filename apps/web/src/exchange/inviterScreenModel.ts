@@ -495,7 +495,7 @@ export type InviterScreenAction =
 /**
  * Whether the session's keys are an opened configuration's, which the partner
  * agreed to: Matching keys then names the file in place of the authored-keys
- * note or the precision floor control and withholds Use the built-in rules.
+ * note or the built-in rule choice and withholds Use the built-in rules.
  * Decided from content:
  * the session's keys and fields equal those of
  * {@link InviterScreenState.openedConfigurationKeys}, whatever edits led

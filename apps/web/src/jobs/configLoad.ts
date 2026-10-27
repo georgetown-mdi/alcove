@@ -51,7 +51,6 @@ import {
   getDefaultLinkageTerms,
   parseExchangeSpec,
   parseSensitiveYaml,
-  retiredSigningSetting,
   safeParseExchangeSpec,
   selectRunRelay,
   snakeizeKey,
@@ -61,7 +60,6 @@ import {
   namedFieldList,
   refusedDocumentFields,
   refusesUnallocatedServerHost,
-  retiredSettingsRefusal,
 } from "@psi/exchangeDocumentRefusal";
 
 import {
@@ -154,9 +152,6 @@ export interface LoadedConfigurationResponse {
   /** The shared-folder paths the file states, as it spells them
    * ({@link folderPathSettings}). Absent where no file was opened. */
   folderPathSettings?: Array<string>;
-  /** The retired settings the file states, as it spells them: the load drops
-   * each and the console warns about it. Absent where the file states none. */
-  retiredSettings?: Array<string>;
   /** The block's own settings are not sent ({@link namesRelayRegistrar}). */
   relayRegistrarNamed?: true;
   /** A webrtc file states `connection.ice_provision`, which no run here or
@@ -547,12 +542,6 @@ function heldProvisionIsLost(raw: unknown): boolean {
 function parsedDocument(raw: unknown): ExchangeSpec {
   const parsed = safeParseExchangeSpec(raw);
   if (parsed.success) return parsed.data;
-  const retired = retiredSettingsRefusal(raw);
-  if (retired !== undefined)
-    throw new ConfigurationLoadRefusedError(
-      "The alcove.yaml in your working folder is not a valid Alcove " +
-        `configuration: ${retired}, then open it again.`,
-    );
   const fields = refusedDocumentFields(parsed.error, raw);
   const awaitingServerAddress = refusesUnallocatedServerHost(parsed.error);
   if (awaitingServerAddress && heldProvisionIsLost(raw))
@@ -884,7 +873,7 @@ export function disclosedDocument(
  *   the console can open.
  */
 export function mountedConfigurationDocument(source: string): ExchangeSpec {
-  return openedConfiguration(source).document;
+  return openedConfiguration(source);
 }
 
 /**
@@ -906,20 +895,15 @@ export function statesSameConfiguration(
   return isDeepStrictEqual(parsed, document);
 }
 
-/** {@link mountedConfigurationDocument}, with the retired settings the source
- * states that the parse dropped. */
-function openedConfiguration(source: string): {
-  document: ExchangeSpec;
-  retiredSettings: Array<string>;
-} {
+/** The document {@link mountedConfigurationDocument} reads. */
+function openedConfiguration(source: string): ExchangeSpec {
   const raw = parsedYaml(source);
   const document = parsedDocument(raw);
   openedChannel(document);
   assertNoStatedSecret(document);
   assertRecordsSurvive(document);
   assertHeldSettingsSurvive(document);
-  const retired = retiredSigningSetting(raw);
-  return { document, retiredSettings: retired === undefined ? [] : [retired] };
+  return document;
 }
 
 /**
@@ -937,13 +921,7 @@ export function readMountedConfiguration(
 }
 
 /** The response body stating an opened document. */
-function responseFor({
-  document,
-  retiredSettings,
-}: {
-  document: ExchangeSpec;
-  retiredSettings: Array<string>;
-}): LoadedConfigurationResponse {
+function responseFor(document: ExchangeSpec): LoadedConfigurationResponse {
   return {
     configured: true,
     present: true,
@@ -952,7 +930,6 @@ function responseFor({
     warnings: credentialFieldsNotAdopted(document),
     signingPathSettings: signingPathSettings(document),
     folderPathSettings: folderPathSettings(document),
-    ...(retiredSettings.length > 0 ? { retiredSettings } : {}),
     ...(namesRelayRegistrar(document)
       ? { relayRegistrarNamed: true as const }
       : {}),
@@ -1009,8 +986,7 @@ export function openMountedConfiguration(
       },
       opened: undefined,
     };
-  const opened = openedConfiguration(source);
-  const { document } = opened;
+  const document = openedConfiguration(source);
   const { channel } = document.connection;
   const keyFileFault =
     isJobChannel(channel) || runsInPlace(channel)
@@ -1025,7 +1001,7 @@ export function openMountedConfiguration(
       : consoleSigningIdentityLocation(identityFile, { dataRoot, secretsDir });
   return {
     response: {
-      ...responseFor(opened),
+      ...responseFor(document),
       ...(keyFileFault !== undefined ? { keyFileFault } : {}),
       ...(identityFile !== undefined
         ? {

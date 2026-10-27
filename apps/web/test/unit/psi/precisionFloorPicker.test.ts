@@ -134,7 +134,7 @@ describe("the seeded draft", () => {
   });
 });
 
-describe("choosing a precision floor", () => {
+describe("choosing the built-in rules", () => {
   const seeded = editorFromCsv("Dana", withSsn);
 
   test("at 99% keeps a rule at the floor and drops one below it", () => {

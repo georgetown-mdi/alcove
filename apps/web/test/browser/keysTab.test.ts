@@ -383,7 +383,7 @@ describe("KeysTab: expert import/export over a rows-withheld console shape", () 
   });
 });
 
-describe("KeysTab: the precision floor and the less certain mark", () => {
+describe("KeysTab: the built-in rule choice and the less certain mark", () => {
   /** A configuration open on the console, whose run continues its exchange. */
   const OPENED_MOUNTED_CONFIGURATION: MountedConfigurationState = {
     status: "opened",

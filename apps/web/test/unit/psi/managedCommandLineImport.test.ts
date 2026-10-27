@@ -18,9 +18,7 @@ import { ZodError } from "zod";
 import {
   ManagedConfigurationRefusedError,
   readManagedCommandLineConfiguration,
-  readManagedCommandLineConfigurationImport,
   readManagedCommandLinePair,
-  readManagedCommandLinePairImport,
 } from "@psi/managed/managedCommandLineImport";
 import {
   applyManagedExchangeLocalEdits,
@@ -636,16 +634,17 @@ describe("refusing what this app cannot hold", () => {
     "expected_payload_columns",
     "disclosed_payload_columns",
     "outbound_payload_consent",
-  ])("a retired %s is named with the remedy the command line states", (key) => {
+  ])("%s at the top level is refused as any unread key is", (key) => {
     const message = refusal(
       configText(commandLineDocument({ [key]: ["age"] })),
     );
 
-    expect(message).toContain(
-      `the setting "${key}" is retired; delete it from the file`,
+    expect(message).toContain(key);
+    expect(message).toBe(
+      refusal(
+        configText(commandLineDocument({ zz_probe_key: ["age"] })),
+      ).replace("zz_probe_key", key),
     );
-    expect(message).toContain("import it again");
-    expect(message).not.toContain("not an Alcove exchange configuration");
   });
 
   test("a key outside the schema is named, not mistaken for another file", () => {
@@ -1252,57 +1251,42 @@ describe("the configuration-only record shape", () => {
   });
 });
 
-describe("a retired receipt_output", () => {
+describe("a key the file format does not read, under a block", () => {
   const keyText = (): string =>
     JSON.stringify({ sharedSecret: generateSharedSecret() });
 
-  test.each([
-    [
-      "signing.receipt_output",
-      { mode: "certificate", receipt_output: "./r.json" },
-    ],
-    ["signing.receiptOutput", { mode: "none", receiptOutput: "./r.json" }],
-  ] as const)(
-    "%s is dropped from the record and named as the file writes it",
-    (setting, signingInFile) => {
-      const source = stringifyYaml({
-        ...(snakeizeKeys(commandLineDocument()) as Record<string, unknown>),
-        signing: signingInFile,
-      });
-      const { record, retiredSettings } =
-        readManagedCommandLineConfigurationImport(source);
+  /** A file whose `block` holds `key` beside what the export composes. */
+  function holding(block: "signing" | "linkage_terms", key: string): string {
+    const document = snakeizeKeys(commandLineDocument()) as Record<
+      string,
+      unknown
+    >;
+    const base =
+      block === "signing"
+        ? { mode: "none" }
+        : (document.linkage_terms as Record<string, unknown>);
+    return stringifyYaml({
+      ...document,
+      [block]: { ...base, [key]: { field_set: "./r.json" } },
+    });
+  }
 
-      expect(retiredSettings).toEqual([setting]);
-      expect(record.exchangeFile.signing).toEqual({
-        mode: signingInFile.mode,
-      });
+  test.each([
+    ["signing", "receipt_output"],
+    ["signing", "receiptOutput"],
+    ["linkage_terms", "linkage_rule_set"],
+  ] as const)(
+    "%s.%s is refused as any unread key of the block is, by both imports",
+    (block, key) => {
+      const message = refusal(holding(block, key));
+
+      expect(message).toContain(`${block}.${key}`);
+      expect(message).toBe(
+        refusal(holding(block, "zz_probe_key")).replace("zz_probe_key", key),
+      );
+      expect(() =>
+        readManagedCommandLinePair(holding(block, key), keyText()),
+      ).toThrow(message);
     },
   );
-
-  test("is named by a pair import too", () => {
-    const source = stringifyYaml({
-      ...(snakeizeKeys(commandLineDocument()) as Record<string, unknown>),
-      signing: { mode: "none", receipt_output: "./r.json" },
-    });
-    const { record, retiredSettings } = readManagedCommandLinePairImport(
-      source,
-      keyText(),
-    );
-
-    expect(retiredSettings).toEqual(["signing.receipt_output"]);
-    expect(record.exchangeFile.signing).toEqual({ mode: "none" });
-  });
-
-  test("a file without it names none", () => {
-    const source = configText(
-      commandLineDocument({ signing: { mode: "none" } }),
-    );
-
-    expect(
-      readManagedCommandLineConfigurationImport(source).retiredSettings,
-    ).toEqual([]);
-    expect(
-      readManagedCommandLinePairImport(source, keyText()).retiredSettings,
-    ).toEqual([]);
-  });
 });

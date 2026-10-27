@@ -5086,6 +5086,13 @@ function writeTermsConfig(terms: Record<string, unknown>): string {
 test.each<[string, unknown]>([
   ["precision_floor", 95],
   ["one_state_or_metro_area", true],
+  [
+    "linkage_rule_set",
+    {
+      field_set: { name: "baseline-pii", version: "1.3.0" },
+      key_set: { name: "precision-ranked-rules", version: "2.5.0" },
+    },
+  ],
 ])(
   "a config writing linkage_terms.%s is refused as an unknown key",
   (key, value) => {
@@ -5102,21 +5109,6 @@ test.each<[string, unknown]>([
     );
   },
 );
-
-test("a config writing linkage_terms.linkage_rule_set is refused as retired, with the remedy", () => {
-  const configPath = writeTermsConfig({
-    ...(snakeizeKeys(getDefaultLinkageTerms("Agency A")) as object),
-    linkage_rule_set: {
-      field_set: { name: "baseline-pii", version: "1.3.0" },
-      key_set: { name: "precision-ranked-rules", version: "2.5.0" },
-    },
-  });
-  const refusal =
-    'the setting "linkage_terms.linkage_rule_set" is retired; delete it from the file';
-  expect(() => loadConfigLinkageSource(configPath)).toThrow(UsageError);
-  expect(() => loadConfigLinkageSource(configPath)).toThrow(refusal);
-  expect(() => readConfigLinkageSource(configPath)).toThrow(refusal);
-});
 
 // --- The vocabulary a bare value must not be able to spell here ---------------
 

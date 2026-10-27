@@ -2,7 +2,6 @@ import {
   PREVIOUS_CONFIGURATION_FILE_NAME,
   runsInPlace,
 } from "@jobContract/intentSchemas";
-import { retiredSettingNotice } from "@alcove/core";
 import { workingFolderCommand } from "@psi/dockerRunCommand";
 
 import {
@@ -89,10 +88,9 @@ export type MountedConfigurationState =
    * and `iceProvision` one stating `connection.ice_provision`, whose run is
    * withheld ({@link ICE_PROVISION_RUN_WITHHELD}).
    * `keyFileFault` is why the `.alcove.key` beside the file would refuse its
-   * run ({@link keyFileNotice}), `retiredSettings` the settings the file
-   * states that Alcove no longer reads ({@link retiredSettingsNotices}), and
-   * `newInvitation` the operator's choice to create a new invitation from the
-   * file's settings instead ({@link withNewInvitation}). */
+   * run ({@link keyFileNotice}), and `newInvitation` the operator's choice to
+   * create a new invitation from the file's settings instead
+   * ({@link withNewInvitation}). */
   | {
       status: "opened";
       carriedThrough: Array<string>;
@@ -103,7 +101,6 @@ export type MountedConfigurationState =
       relayEnrollment?: true;
       iceProvision?: true;
       keyFileFault?: "absent" | "invalid";
-      retiredSettings?: Array<string>;
       newInvitation?: true;
       runsInPlace?: true;
       signalingServer?: string;
@@ -987,23 +984,11 @@ export function mountedConfigurationOfferable(
   return state.status === "unread" || state.status === "unavailable";
 }
 
-/** What the operator is told about each retired setting the opened file
- * states: core's own warning, the one the command line prints, so both name
- * the setting and where the receipt goes in the same words. */
-export function retiredSettingsNotices(
-  settings: ReadonlyArray<string>,
-): Array<string> {
-  return settings.map(
-    (setting) => `In your alcove.yaml, ${retiredSettingNotice(setting)}`,
-  );
-}
-
 /** The whole of what an opened configuration puts beside the control, in the
  * order it renders: a channel this console has nothing to run over, then
  * the carry-through notice, since it is about the run itself, then the
- * credential the operator has to supply, then the relay enrollment step, then
- * what their input file could not supply, and last the retired settings the
- * file states to delete.
+ * credential the operator has to supply, then the relay enrollment step, and
+ * last what their input file could not supply.
  * `run` is what the carry-through notice is narrowed by, absent until a file
  * is read. */
 export function mountedConfigurationNotices(
@@ -1024,7 +1009,6 @@ export function mountedConfigurationNotices(
         : undefined,
     termsNotAppliedNotice(state.notApplied ?? []),
     columnsNotCoveredNotice(state.notCovered ?? []),
-    ...retiredSettingsNotices(state.retiredSettings ?? []),
   ].filter((notice): notice is string => notice !== undefined);
 }
 
@@ -1096,10 +1080,6 @@ export function mountedConfigurationRead(answer: MountedConfigurationAnswer): {
           ...(answer.folderPathSettings !== undefined &&
           answer.folderPathSettings.length > 0
             ? { folderPaths: answer.folderPathSettings }
-            : {}),
-          ...(answer.retiredSettings !== undefined &&
-          answer.retiredSettings.length > 0
-            ? { retiredSettings: answer.retiredSettings }
             : {}),
           ...(answer.relayRegistrarNamed === true
             ? { relayEnrollment: true as const }

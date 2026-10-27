@@ -88,7 +88,7 @@ const SHARED_VALUE_CAVEAT =
   "own, never that of a site that serves them.";
 
 /**
- * The Matching keys tab: the precision floor the guided keys are drawn from
+ * The Matching keys tab: the built-in rule choice the guided keys are drawn from
  * the built-in catalog with, the guided ordered key list (enable + reorder),
  * the expert switch that opens element-by-element authoring and terms
  * import/export, and the matching settings -- the linkage strategy and
@@ -131,7 +131,7 @@ export function KeysTab({
   csv: AcquiredCsv;
   expertMode: boolean;
   onExpertMode: (on: boolean) => void;
-  /** Reseed the guided keys at a precision floor. */
+  /** Reseed the guided keys at a built-in rule choice. */
   onPrecisionFloorSelection: (selection: PrecisionFloorSelection) => void;
   /** Replace keys written in Expert authoring or loaded from a document, with
    * their fields and cleaning, by a new invitation's, once the operator

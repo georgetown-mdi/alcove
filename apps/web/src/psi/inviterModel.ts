@@ -135,9 +135,10 @@ function keysFact(draft: AdvancedInviteDraft): string {
   return plural(enabledKeys(draft).length, "key");
 }
 
-/** What the keys were selected with: the precision floor
+/** What the keys were selected with: the built-in rule choice
  * in core's words, the ones the quick exchange's confirm step uses, or that no
- * floor selected keys written in Expert authoring or loaded from a document. */
+ * rule choice selected keys written in Expert authoring or loaded from a
+ * document. */
 function rulesSelectedFact(editor: InviterEditor): string {
   const selection = editor.draft.precisionFloorSelection;
   if (editor.keysAuthored === true || selection === undefined)

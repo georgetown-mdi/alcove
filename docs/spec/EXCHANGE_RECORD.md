@@ -351,7 +351,7 @@ The CLI's `OUTPUT_FOLDER` positional names the folder a run writes its files in:
 - **A folder, never a file.** A path naming an existing file, or anything else that is not a folder, is refused before the partner is contacted, with exit 64: nothing is sent and the file is left as it is.
 - **Created when missing.** A folder that does not exist is created, parents included, before the partner is contacted, and is left in place if the run fails afterwards. A folder that cannot be created, or in which the run cannot create a file, is refused before contact with exit 64.
 - **Without one.** With no `OUTPUT_FOLDER` the result goes to stdout, and the other files go to the working directory under the same names.
-- **No receipt override.** No setting names the signed receipt's location; it is written in the folder under its stamped name. The `signing.receipt_output` setting is gone from the exchange file: a configuration that still sets it is accepted, the setting is dropped when the file is read, and the CLI and the console warn, naming the setting and where the receipt goes.
+- **No receipt override.** No setting names the signed receipt's location; it is written in the folder under its stamped name.
 
 ### Result file name
 

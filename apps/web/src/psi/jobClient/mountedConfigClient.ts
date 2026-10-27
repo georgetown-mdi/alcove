@@ -39,8 +39,6 @@ export type MountedConfigurationAnswer =
       warnings: Array<string>;
       signingPathSettings?: Array<string>;
       folderPathSettings?: Array<string>;
-      /** The retired settings the file states, which the console ignores. */
-      retiredSettings?: Array<string>;
       relayRegistrarNamed?: true;
       /** The file states `connection.ice_provision`, which withholds its run
        * here. */
@@ -172,8 +170,6 @@ export async function fetchMountedConfiguration(
     const warnings = namesOf(body.warnings);
     const signingPathSettings = namesOf(body.signingPathSettings);
     const folderPathSettings = namesOf(body.folderPathSettings);
-    const retiredSettings =
-      body.retiredSettings === undefined ? [] : namesOf(body.retiredSettings);
     const { relayRegistrarNamed, iceProvisionNamed, keyFileFault } = body;
     const inPlaceSigningIdentity =
       body.inPlaceSigningIdentity === undefined
@@ -186,7 +182,6 @@ export async function fetchMountedConfiguration(
       warnings === null ||
       signingPathSettings === null ||
       folderPathSettings === null ||
-      retiredSettings === null ||
       (relayRegistrarNamed !== undefined && relayRegistrarNamed !== true) ||
       (iceProvisionNamed !== undefined && iceProvisionNamed !== true) ||
       (keyFileFault !== undefined &&
@@ -201,7 +196,6 @@ export async function fetchMountedConfiguration(
       warnings,
       signingPathSettings,
       folderPathSettings,
-      ...(retiredSettings.length > 0 ? { retiredSettings } : {}),
       ...(relayRegistrarNamed === true
         ? { relayRegistrarNamed: true as const }
         : {}),

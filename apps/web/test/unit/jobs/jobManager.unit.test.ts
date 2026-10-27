@@ -2744,11 +2744,10 @@ describe("the mounted configuration as the hand-off's merge base", () => {
 
 describe("an opened configuration's own signing paths", () => {
   const OPERATOR_IDENTITY = "/home/operator/.alcove/identity.json";
-  const OPERATOR_RECEIPT = "/home/operator/receipts/latest.json";
   const OPERATOR_FOLDER = "/srv/exchange";
 
   /** A manager whose mounted configuration names the operator's own signing
-   * identity and the retired receipt path under `mode`, and its key file. */
+   * identity under `mode`, and its key file. */
   function managerOverSignedConfiguration(
     mode: "certificate" | "none",
   ): JobManager {
@@ -2764,7 +2763,6 @@ describe("an opened configuration's own signing paths", () => {
           signing: {
             mode,
             identityFile: OPERATOR_IDENTITY,
-            receiptOutput: OPERATOR_RECEIPT,
           },
         }),
       ),
@@ -2814,18 +2812,15 @@ describe("an opened configuration's own signing paths", () => {
     expect(yaml).toContain(HANDOFF_SIGNING_IDENTITY_PLACEHOLDER);
     expect(yaml).toContain(HANDOFF_SHARED_DIRECTORY_PLACEHOLDER);
     expect(yaml).not.toContain(OPERATOR_IDENTITY);
-    expect(yaml).not.toContain("receipt_output");
     expect(yaml).not.toContain(OPERATOR_FOLDER);
   });
 
-  test("an unsigned run of it unconverted has a hand-off stating every path it read but the retired receipt path", async () => {
+  test("an unsigned run of it unconverted has a hand-off stating every path it read", async () => {
     const manager = managerOverSignedConfiguration("none");
     const id = await manager.createJob(openedIntent());
     const yaml = handoffYaml(manager, id);
     expect(yaml).toContain(`identity_file: ${OPERATOR_IDENTITY}`);
     expect(yaml).toContain(`path: ${OPERATOR_FOLDER}`);
-    expect(yaml).not.toContain("receipt_output");
-    expect(yaml).not.toContain(OPERATOR_RECEIPT);
   });
 
   test("the load names the paths a conversion replaces", () => {
@@ -2833,7 +2828,6 @@ describe("an opened configuration's own signing paths", () => {
     const response = manager.openMountedConfiguration();
     expect(response.signingPathSettings).toEqual(["signing.identity_file"]);
     expect(response.folderPathSettings).toEqual(["connection.path"]);
-    expect(response.retiredSettings).toEqual(["signing.receipt_output"]);
   });
 });
 

@@ -66,7 +66,7 @@ describe("the catalog's bands", () => {
   });
 });
 
-describe("a precision floor", () => {
+describe("a built-in rule choice", () => {
   const at99 = names(linkageKeysAtPrecisionFloor(catalog, { floor: 99 }));
   const at95 = names(linkageKeysAtPrecisionFloor(catalog, { floor: 95 }));
 

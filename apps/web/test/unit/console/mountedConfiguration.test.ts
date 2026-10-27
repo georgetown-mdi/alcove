@@ -644,26 +644,6 @@ describe("the notices name the settings and say what happens to them", () => {
     expect(notices[3]).toContain("metadata");
   });
 
-  test("a retired setting the file states is warned about last, in core's words", () => {
-    const read = mountedConfigurationRead({
-      kind: "opened",
-      document: document(),
-      carriedThrough: [],
-      warnings: [],
-      retiredSettings: ["signing.receipt_output"],
-    });
-    const notices = mountedConfigurationNotices(read.state);
-    expect(notices).toEqual([
-      'In your alcove.yaml, the setting "signing.receipt_output" is ignored: ' +
-        "a signed run writes its receipt into the output folder as " +
-        "alcove-receipt-<time>.json, with the same time stamp as the run's " +
-        "result and record. Delete the setting from the file.",
-    ]);
-    expect(
-      mountedConfigurationNotices(mountedConfigurationRead(opened()).state),
-    ).toEqual([]);
-  });
-
   test("a load that opened nothing takes neither added notice", () => {
     expect(withUnavailableTransport({ status: "absent" }, "filedrop")).toEqual({
       status: "absent",

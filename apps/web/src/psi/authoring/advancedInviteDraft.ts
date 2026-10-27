@@ -238,7 +238,7 @@ export function seedAdvancedInvite(
 }
 
 /**
- * The keys, cleaning and precision floor selection a new invitation's draft
+ * The keys, cleaning and built-in rule choice a new invitation's draft
  * starts with for `metadata` ({@link seedAdvancedInvite}): the built-in keys
  * these columns supply at {@link DEFAULT_PRECISION_FLOOR_SELECTION}, all on,
  * and the recommended per-type cleaning, with the date-of-birth format
@@ -305,8 +305,8 @@ function newInvitationKeys(
 }
 
 /**
- * Whether the built-in catalog offers `draft` any key at its precision floor
- * selection: false for a draft whose columns supply none of the keys that
+ * Whether the built-in catalog offers `draft` any key at its built-in rule
+ * choice: false for a draft whose columns supply none of the keys that
  * selection picks, and for a draft built from a terms document.
  */
 export function draftHasOfferedKeys(draft: AdvancedInviteDraft): boolean {
