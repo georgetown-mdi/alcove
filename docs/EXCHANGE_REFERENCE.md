@@ -21,7 +21,7 @@ An exchange specification has four top-level components:
 | `metadata` | no | Descriptions of input fields and their roles |
 | `standardization` | no | Data cleaning and standardizing transformations applied before linkage |
 
-Beside them sit the optional top-level blocks [`authentication`](#authentication), [`signing`](#signing), [`retention_disposition`](#retention_disposition), [`include_own_columns`](#include_own_columns), [`include_matching_key`](#include_matching_key) and [`csv_delimiter`](#csv_delimiter), and the terms enforcement record [`expected_partner_deduplicate`](#expected_partner_deduplicate). Any other top-level key is rejected when the configuration is read, with an error naming it, and no exchange runs until it is corrected. Unrecognized keys *inside* `linkage_terms`, `connection`, `metadata`, and `standardization` are dropped instead; see [EXCHANGE_FILE.md](spec/EXCHANGE_FILE.md) for what each behavior means when a file written by a newer web application is loaded by an older CLI.
+Beside them sit the optional top-level blocks [`authentication`](#authentication), [`signing`](#signing), [`retention_disposition`](#retention_disposition), [`include_own_columns`](#include_own_columns), [`include_matching_key`](#include_matching_key) and [`csv_delimiter`](#csv_delimiter), and the terms enforcement record [`expected_partner_deduplicate`](#expected_partner_deduplicate). A key the configuration schema does not read is rejected when the configuration is read, at any level: at the top level, and inside any block, such as `linkage_terms`, a `linkage_fields` entry, `connection` and its `server` and `options`, `metadata`, `standardization`, `authentication`, and `signing`. The error names the key and the block holding it, and no exchange runs until it is corrected. `alcove invite`, `alcove update`, and `alcove verify-receipt --partner-terms` read only the blocks they use, so a key outside those is refused by the file's next whole-file read (`alcove exchange`, `alcove apply`). What this means when a file written by a newer web application is loaded by an older CLI: [EXCHANGE_FILE.md](spec/EXCHANGE_FILE.md#what-an-older-cli-does-with-a-newer-file).
 
 ## File references
 
@@ -331,7 +331,7 @@ The column names each type is inferred from are in [DEFAULT_STANDARDIZATION.md](
 | `allowed_characters` | string | name fields | Regex character class; characters outside it must have been removed |
 | `affixes_allowed` | boolean | name fields | If false, honorifics (Mr., Dr., etc.) and suffixes (Jr., III, etc.) are expected to have been removed |
 
-The table above is the complete set of constraints. A constraint not listed for a given semantic type is ignored rather than rejected: the schema silently drops the unrecognized key (for example, `allowed_characters` on an `ssn` field is stripped, not flagged as an error).
+The table above is the complete set of constraints. A constraint not listed for a given semantic type, such as `allowed_characters` on an `ssn` field, is refused as an unrecognized key in your own configuration, like any other key the schema does not read. In a partner's terms it is dropped.
 
 ---
 
