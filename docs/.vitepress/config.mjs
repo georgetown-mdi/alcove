@@ -171,6 +171,15 @@ export default {
   rewrites: REWRITES,
   cleanUrls: true,
   lastUpdated: false,
+  // Without JavaScript the guide switchers cannot change pane, so every pane
+  // is shown under its name.
+  head: [
+    [
+      "noscript",
+      {},
+      '<style>html .guide-page .vp-doc .guide-tabs [role="tablist"]{display:none}.guide-tabs [role="tabpanel"][hidden]{display:block}.guide-tabs [role="tabpanel"]::before{content:attr(data-name);display:block;margin-top:16px;font-weight:600}</style>',
+    ],
+  ],
   // With srcDir at the repository root, the default public directory would be
   // a top-level public/; the site's static files sit beside this config.
   vite: { publicDir: resolve(repoRoot, "docs/.vitepress/public") },

@@ -295,7 +295,14 @@ function wrapSteps(state) {
       tokens[after]?.type === "paragraph_open" &&
       /^Screen:/.test(inlineText(tokens[after + 1]))
     ) {
-      stripLeadingText(tokens[after + 1], /^\s*Screen:\s*/);
+      const screenAt = stripLeadingText(tokens[after + 1], /^\s*Screen:\s*/);
+      if (screenAt !== -1) {
+        tokens[after + 1].children.splice(
+          screenAt,
+          0,
+          htmlInline(state, '<span class="visually-hidden">Screen: </span>'),
+        );
+      }
       tokens[after].attrJoin("class", "guide-screen");
       out.push(tokens[after], tokens[after + 1], tokens[after + 2]);
       stepOpen.meta.screen = true;

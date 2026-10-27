@@ -15,6 +15,12 @@ import {
 
 const STORAGE_PREFIX = "alcove-tab:";
 
+/**
+ * The pane shown for a pick this switcher has no pane for.
+ * @type {Record<string, string>}
+ */
+const FALLBACK_PANE = { Podman: "Linux" };
+
 /** @type {Record<string, string>} */
 const selections = reactive({});
 
@@ -47,7 +53,11 @@ export default defineComponent({
     const names = computed(() => props.names.split("|"));
     const selected = computed(() => {
       const pick = selections[props.group];
-      return pick && names.value.includes(pick) ? pick : names.value[0];
+      if (pick && names.value.includes(pick)) return pick;
+      const fallback = pick && FALLBACK_PANE[pick];
+      return fallback && names.value.includes(fallback)
+        ? fallback
+        : names.value[0];
     });
 
     onMounted(() => {
@@ -70,14 +80,17 @@ export default defineComponent({
 
     /** @param {KeyboardEvent} event */
     function onKeydown(event) {
-      if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
       const tab = /** @type {HTMLElement} */ (event.currentTarget);
       const list = /** @type {HTMLElement} */ (tab.parentElement);
-      const next = /** @type {HTMLElement} */ (
-        event.key === "ArrowRight"
-          ? (tab.nextElementSibling ?? list.firstElementChild)
-          : (tab.previousElementSibling ?? list.lastElementChild)
-      );
+      /** @type {Record<string, Element | null>} */
+      const targets = {
+        ArrowRight: tab.nextElementSibling ?? list.firstElementChild,
+        ArrowLeft: tab.previousElementSibling ?? list.lastElementChild,
+        Home: list.firstElementChild,
+        End: list.lastElementChild,
+      };
+      if (!Object.hasOwn(targets, event.key)) return;
+      const next = /** @type {HTMLElement} */ (targets[event.key]);
       event.preventDefault();
       choose(next, next.dataset.name ?? "");
       next.focus();
@@ -121,6 +134,7 @@ export default defineComponent({
               role: "tabpanel",
               id: `${id}-panel-${index}`,
               "aria-labelledby": `${id}-tab-${index}`,
+              tabindex: 0,
               "data-name": name,
               hidden: name !== selected.value,
             },
