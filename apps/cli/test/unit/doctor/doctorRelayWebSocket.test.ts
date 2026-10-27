@@ -10,6 +10,7 @@ import {
   deriveWebSocketRelayProofKey,
   parseWebSocketRelayProof,
   UsageError,
+  WEBSOCKET_RELAY_LINE_BELOW,
 } from "@alcove/core";
 
 import type { RTCIceServer } from "werift";
@@ -19,6 +20,7 @@ import { webSocketRelayDialFor } from "../../../src/connection/webrtc/websocketR
 import type { WebSocketRelayDial } from "../../../src/connection/webrtc/websocketRelayConnection";
 import {
   RELAY_CHECK_ROLE_REQUIRED,
+  RELAY_NOT_REACHED_REMEDY,
   relayCheckAllLeftOutMessage,
 } from "../../../src/doctor/relay";
 import type { RelayCandidateGathering } from "../../../src/doctor/relay";
@@ -297,6 +299,7 @@ describe("asking one WebSocket relay", () => {
     await expect(asking).resolves.toEqual({
       outcome: "not_admitted",
       closeCode: 4005,
+      proofRemadeOnRelayClock: true,
     });
 
     const unstated = harness();
@@ -312,6 +315,22 @@ describe("asking one WebSocket relay", () => {
       outcome: "not_admitted",
       closeCode: 4005,
     });
+  });
+
+  test("a message the run's relay client does not take is its own answer, and every socket is closed", async () => {
+    const { sockets, options } = harness();
+    const asking = askWebSocketRelay(
+      await relayDial(),
+      new AbortController().signal,
+      options,
+    );
+    const [first, second] = await dialed(sockets, 2);
+    first!.open();
+    second!.open();
+    first!.control("welcome");
+
+    await expect(asking).resolves.toEqual({ outcome: "unexpected_message" });
+    expect(second!.closeCalls).toEqual([1000]);
   });
 
   test("a socket that closes before it opens asks the certificate check, and a certificate that does not verify is its own answer", async () => {
@@ -608,6 +627,182 @@ test("a relay holding another key points at replacing it", async () => {
   expect(only(report, "websocket_1").action).toContain(
     "alcove enroll-relay --replace-relay-key",
   );
+});
+
+test("an own relay naming the invitation's url is decided by the url, as the run's enrollment is: the failed enrollment is its likely cause, and the partner's registrar the action", async () => {
+  writeConfig(
+    webrtcConnection({
+      websocket_relay: INVITATION_WEBSOCKET,
+      invitation_relay: {
+        websocket: INVITATION_WEBSOCKET,
+        registrar: REGISTRAR,
+      },
+    }),
+  );
+  const registrar = fakeRegistrar([]);
+
+  const { report } = await check(
+    { [INVITATION_WEBSOCKET]: { outcome: "not_admitted", closeCode: 4003 } },
+    { fetch: registrar.fetch },
+  );
+
+  expect(only(report, "enrollment").status).toBe("warn");
+  const record = only(report, "websocket_1");
+  expect(record.meaning).toContain(
+    "The likely cause is the failed enrollment above.",
+  );
+  expect(record.action).toMatch(/^Run this check again\. .*your partner/);
+});
+
+test("the invitation's relay under an exchange id the invitation names points at alcove enroll-relay, with no enrollment to blame", async () => {
+  writeConfig(
+    webrtcConnection({
+      invitation_relay: {
+        websocket: INVITATION_WEBSOCKET,
+        websocket_exchange_id: "named-exchange",
+        registrar: REGISTRAR,
+      },
+    }),
+  );
+
+  const { report } = await check({
+    [INVITATION_WEBSOCKET]: { outcome: "not_admitted", closeCode: 4003 },
+  });
+
+  const record = only(report, "websocket_1");
+  expect(record.meaning).not.toContain("failed enrollment");
+  expect(record.action).toContain("alcove enroll-relay");
+});
+
+test("a second expired refusal, of a proof made on the relay's clock, does not blame this computer's clock", async () => {
+  writeConfig(webrtcConnection({ websocket_relay: OWN_WEBSOCKET }));
+
+  const { report } = await check({
+    [OWN_WEBSOCKET]: {
+      outcome: "not_admitted",
+      closeCode: 4005,
+      proofRemadeOnRelayClock: true,
+    },
+  });
+
+  const record = only(report, "websocket_1");
+  expect(record.meaning).toBe(
+    "the relay refused the proof a run presents as expired twice, the " +
+      "second time a proof made on the relay's own clock, so this " +
+      "computer's clock is not the cause.",
+  );
+  expect(record.action).toBe(
+    "Run this check again. If the relay refuses the proof the same way, " +
+      "check the relay and the exchange's enrollment at its registrar.",
+  );
+  expect(record.summary).toBe(
+    `${OWN_WEBSOCKET}, a WebSocket relay a run dials: not admitted; the ` +
+      "relay refused the proof as expired (close code 4005).",
+  );
+});
+
+test("an expired refusal stating no clock points at this computer's clock first", async () => {
+  writeConfig(webrtcConnection({ websocket_relay: OWN_WEBSOCKET }));
+
+  const { report } = await check({
+    [OWN_WEBSOCKET]: { outcome: "not_admitted", closeCode: 4005 },
+  });
+
+  const record = only(report, "websocket_1");
+  expect(record.meaning).toContain("without stating its own clock");
+  expect(record.action).toMatch(/^Correct this computer's clock, /);
+});
+
+test("a relay that received no proof in time points at the network path", async () => {
+  writeConfig(webrtcConnection({ websocket_relay: OWN_WEBSOCKET }));
+
+  const { report } = await check({
+    [OWN_WEBSOCKET]: { outcome: "not_admitted", closeCode: 4007 },
+  });
+
+  const record = only(report, "websocket_1");
+  expect(record.meaning).toBe(
+    "the relay received no proof from this side within 10 seconds of the " +
+      "connection opening, so something on the path may be slow or holding " +
+      "messages back.",
+  );
+  expect(record.action).toBe(
+    "Check the network path to the relay, including any proxy, then run " +
+      "this check again.",
+  );
+});
+
+test("a relay that sends a message the run's relay client does not take is that relay's outcome, beside a TURN check that passed", async () => {
+  writeConfig(
+    webrtcConnection({
+      turn: [{ url: OWN_TURN }],
+      websocket_relay: OWN_WEBSOCKET,
+    }),
+  );
+  const { sockets, options } = harness();
+
+  const checking = checkRelay({
+    configFile,
+    keyFile,
+    writeStatementLine: () => undefined,
+    gather: gatheringFor(true, []),
+    askWebSocket: (dial, signal) => askWebSocketRelay(dial, signal, options),
+    now: NOW,
+  });
+  const [first, second] = await dialed(sockets, 2);
+  first!.open();
+  second!.open();
+  first!.control("welcome");
+  const report = await checking;
+
+  const record = only(report, "websocket_1");
+  expect(verdictOf(report)).toEqual({
+    version: 1,
+    mode: "relay",
+    overall: "fix_and_retry",
+    checks: [
+      { id: "turn_1", status: "ok", url: OWN_TURN, transport: "tcp" },
+      {
+        id: "websocket_1",
+        status: "fail",
+        meaning: record.meaning,
+        action: record.action,
+        url: OWN_WEBSOCKET,
+        outcome: "unexpected_message",
+      },
+    ],
+  });
+  expect(record.summary).toBe(
+    `${OWN_WEBSOCKET}, a WebSocket relay a run dials: did not answer as an ` +
+      "Alcove WebSocket relay.",
+  );
+  expect(record.action).toBe(
+    "Check that the url names an Alcove WebSocket relay, then run this " +
+      "check again.",
+  );
+});
+
+test("a TURN relay not reached beside a WebSocket relay says the WebSocket relay's line shows whether the exchange can still go that way", async () => {
+  writeConfig(
+    webrtcConnection({
+      turn: [{ url: OWN_TURN }],
+      websocket_relay: OWN_WEBSOCKET,
+    }),
+  );
+
+  const { report } = await check(
+    { [OWN_WEBSOCKET]: { outcome: "admitted" } },
+    { gather: gatheringFor(false, []) },
+  );
+
+  expect(only(report, "turn_1").action).toBe(
+    `${RELAY_NOT_REACHED_REMEDY} ${WEBSOCKET_RELAY_LINE_BELOW}`,
+  );
+  expect(WEBSOCKET_RELAY_LINE_BELOW).toBe(
+    "Each WebSocket relay line below shows whether the exchange can still " +
+      "go that way.",
+  );
+  expect(overallOf(report)).toBe("fix_and_retry");
 });
 
 test("a relay that is not reached fails the check, distinct from not admitted", async () => {

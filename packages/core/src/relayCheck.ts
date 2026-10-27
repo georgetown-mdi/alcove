@@ -10,6 +10,7 @@ import {
   allowedRelaysLeaveOutInvitationRelay,
   runEnrollsAtInvitationRegistrar,
   selectRunRelay,
+  webSocketRelayEnrollsAtInvitationRegistrar,
 } from "./relayCredential.js";
 import type {
   RunRelayConnection,
@@ -54,6 +55,14 @@ export const RELAY_CHECK_ENROLLMENT_ID = "enrollment";
 export const LATER_TURN_URL_NOT_CONTACTED =
   "a run allocates on the first TURN url it lists alone";
 
+/**
+ * What a TURN relay not reached adds where a run also dials a WebSocket
+ * relay, whose check is reported after the TURN relay's.
+ */
+export const WEBSOCKET_RELAY_LINE_BELOW =
+  "Each WebSocket relay line below shows whether the exchange can still go " +
+  "that way.";
+
 /** The transport a TURN url names, as a `relay` check reports it. */
 export type RelayTransport = "udp" | "tcp" | "tls";
 
@@ -72,6 +81,12 @@ export interface RelayCheckRegistrar {
   notContactedReason?: string;
 }
 
+/** A WebSocket relay a run dials, as the check plans it. */
+export interface RelayCheckWebSocketRelay extends RunWebSocketRelay {
+  /** `webSocketRelayEnrollsAtInvitationRegistrar` for this relay. */
+  enrollsAtInvitationRegistrar: boolean;
+}
+
 /** What the check contacts, and what a run lists that it does not. */
 export interface RelayCheckPlan {
   /**
@@ -84,7 +99,7 @@ export interface RelayCheckPlan {
   /** Every TURN url `allowed_relays` left out; none is contacted. */
   leftOut: RunTurnServer[];
   /** Every WebSocket relay a run dials, in its order; each is contacted. */
-  websocket: RunWebSocketRelay[];
+  websocket: RelayCheckWebSocketRelay[];
   /** Every WebSocket relay url `allowed_relays` left out; none is contacted. */
   websocketLeftOut: RunWebSocketRelay[];
   /** Absent where the configuration's `invitation_relay` names no registrar. */
@@ -158,7 +173,13 @@ export function relayCheckPlan(connection: RunRelayConnection): RelayCheckPlan {
     }),
     notContacted: rest,
     leftOut: turnLeftOut ?? [],
-    websocket: websocket ?? [],
+    websocket: (websocket ?? []).map((relay) => ({
+      ...relay,
+      enrollsAtInvitationRegistrar: webSocketRelayEnrollsAtInvitationRegistrar(
+        relay,
+        connection,
+      ),
+    })),
     websocketLeftOut: websocketLeftOut ?? [],
     ...(registrar !== undefined && {
       registrar: {
@@ -398,9 +419,18 @@ export function invitationRelayNotEnrolledStatement(
   );
 }
 
+/** What the check can find at a WebSocket relay a run dials, the closed set. */
+export const WEBSOCKET_RELAY_CHECK_OUTCOMES = [
+  "admitted",
+  "not_admitted",
+  "not_reached",
+  "certificate_not_verified",
+  "unexpected_message",
+] as const;
+
 /** What the check found at a WebSocket relay a run dials. */
 export type WebSocketRelayCheckOutcome =
-  "admitted" | "not_admitted" | "not_reached" | "certificate_not_verified";
+  (typeof WEBSOCKET_RELAY_CHECK_OUTCOMES)[number];
 
 /** The id of the check of the `position`-th WebSocket relay a run dials, from 1. */
 export function webSocketRelayCheckId(position: number): string {
@@ -489,6 +519,8 @@ function webSocketRelayHeadline(
     return `${heading}: not reached within ${boundSeconds(boundMs)}.`;
   if (outcome === "certificate_not_verified")
     return `${heading}: not reached; its TLS certificate did not verify on this host.`;
+  if (outcome === "unexpected_message")
+    return `${heading}: did not answer as an Alcove WebSocket relay.`;
   return undefined;
 }
 

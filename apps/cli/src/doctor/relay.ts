@@ -9,6 +9,7 @@ import {
   selectRunRelay,
   turnUrlTransport,
   UsageError,
+  WEBSOCKET_RELAY_LINE_BELOW,
   webSocketRelayCheckId,
 } from "@alcove/core";
 import type {
@@ -16,10 +17,10 @@ import type {
   RelayCheckContact,
   RelayCheckHeadlineOptions,
   RelayCheckPlan as RelayCheckHostPlan,
+  RelayCheckWebSocketRelay,
   RelayCredential,
   RunRelayConnection,
   RunTurnServer,
-  RunWebSocketRelay,
   WebRTCConnectionConfig,
 } from "@alcove/core";
 import type { RTCIceServer } from "werift";
@@ -324,13 +325,15 @@ function notReachedMeaning(
 
 /**
  * The check record of the relay a run allocates on, given whether a relay
- * candidate came back and the enrollment made before it was asked, if any.
+ * candidate came back, the enrollment made before it was asked, if any, and
+ * whether the run also dials a WebSocket relay.
  */
 export function relayCheckRecord(
   target: RelayCheckContact,
   relayGathered: boolean,
   boundMs: number = RELAY_CHECK_BOUND_MS,
   enrollment?: RelayCheckEnrollment,
+  dialsWebSocketRelay = false,
 ): DoctorCheckRecord {
   const id = "turn_1";
   const { server, transport } = target;
@@ -341,7 +344,9 @@ export function relayCheckRecord(
       id,
       status: "fail",
       meaning: notReachedMeaning(server, enrollment),
-      action: RELAY_NOT_REACHED_REMEDY,
+      action: dialsWebSocketRelay
+        ? `${RELAY_NOT_REACHED_REMEDY} ${WEBSOCKET_RELAY_LINE_BELOW}`
+        : RELAY_NOT_REACHED_REMEDY,
       url: server.url,
       transport,
     },
@@ -377,17 +382,16 @@ const WEBSOCKET_RELAY_RETRY = "then run this check again.";
 
 /** What a WebSocket relay's refusal of the proof means, and what to do. */
 function webSocketRefusalWords(
-  relay: RunWebSocketRelay,
-  closeCode: number,
+  relay: RelayCheckWebSocketRelay,
+  refusal: Extract<WebSocketRelayAnswer, { outcome: "not_admitted" }>,
   enrollment: RelayCheckEnrollment | undefined,
 ): { meaning: string; action: string } {
-  switch (closeCode) {
+  switch (refusal.closeCode) {
     case 4003: {
       const enrollmentFailed =
         enrollment !== undefined &&
         enrollment.outcome.kind !== "enrolled" &&
-        relay.exchangeId === undefined &&
-        relay.source === "invitation";
+        relay.enrollsAtInvitationRegistrar;
       return {
         meaning:
           "the relay holds no key for this exchange, so it refuses the " +
@@ -396,14 +400,13 @@ function webSocketRefusalWords(
           (enrollmentFailed
             ? " The likely cause is the failed enrollment above."
             : ""),
-        action:
-          relay.source === "invitation"
-            ? "Run this check again. If the relay still holds no key, ask " +
-              "your partner whether the relay registrar their invitation " +
-              "names is up, since either of you enrolling the exchange there " +
-              "lets the relay admit it."
-            : "Enroll this exchange's relay key at the relay's registrar " +
-              `with alcove enroll-relay, ${WEBSOCKET_RELAY_RETRY}`,
+        action: relay.enrollsAtInvitationRegistrar
+          ? "Run this check again. If the relay still holds no key, ask " +
+            "your partner whether the relay registrar their invitation " +
+            "names is up, since either of you enrolling the exchange there " +
+            "lets the relay admit it."
+          : "Enroll this exchange's relay key at the relay's registrar " +
+            `with alcove enroll-relay, ${WEBSOCKET_RELAY_RETRY}`,
       };
     }
     case 4004:
@@ -417,15 +420,37 @@ function webSocketRefusalWords(
           `--replace-relay-key, ${WEBSOCKET_RELAY_RETRY}`,
       };
     case 4005:
+      return refusal.proofRemadeOnRelayClock === true
+        ? {
+            meaning:
+              "the relay refused the proof a run presents as expired twice, " +
+              "the second time a proof made on the relay's own clock, so " +
+              "this computer's clock is not the cause.",
+            action:
+              "Run this check again. If the relay refuses the proof the " +
+              "same way, check the relay and the exchange's enrollment at " +
+              "its registrar.",
+          }
+        : {
+            meaning:
+              "the relay refused the proof a run presents as expired " +
+              "without stating its own clock, so the proof could not be " +
+              "made again on that clock, and this computer's clock and the " +
+              "relay's may differ by more than five minutes.",
+            action:
+              `Correct this computer's clock, ${WEBSOCKET_RELAY_RETRY} If ` +
+              "the relay refuses the proof the same way, ask the relay's " +
+              "operator to check its clock.",
+          };
+    case 4007:
       return {
         meaning:
-          "the relay refused the proof a run presents as expired, so this " +
-          "computer's clock and the relay's may differ by more than five " +
-          "minutes.",
+          "the relay received no proof from this side within 10 seconds of " +
+          "the connection opening, so something on the path may be slow or " +
+          "holding messages back.",
         action:
-          `Correct this computer's clock, ${WEBSOCKET_RELAY_RETRY} If the ` +
-          "relay refuses the proof the same way, ask the relay's operator " +
-          "to check its clock.",
+          "Check the network path to the relay, including any proxy, " +
+          WEBSOCKET_RELAY_RETRY,
       };
     case 4008:
       return {
@@ -477,7 +502,7 @@ const TRUST_THE_NETWORK_CA =
  * if any.
  */
 export function webSocketRelayCheckRecord(
-  relay: RunWebSocketRelay,
+  relay: RelayCheckWebSocketRelay,
   position: number,
   answer: WebSocketRelayAnswer,
   boundMs: number = RELAY_CHECK_BOUND_MS,
@@ -492,7 +517,7 @@ export function webSocketRelayCheckRecord(
       return withHeadline({
         id,
         status: "fail",
-        ...webSocketRefusalWords(relay, answer.closeCode, enrollment),
+        ...webSocketRefusalWords(relay, answer, enrollment),
         url,
         outcome: "not_admitted",
         close_code: answer.closeCode,
@@ -510,6 +535,20 @@ export function webSocketRelayCheckRecord(
           "whether its certificate is current and issued for its host.",
         url,
         outcome: "certificate_not_verified",
+      });
+    case "unexpected_message":
+      return withHeadline({
+        id,
+        status: "fail",
+        meaning:
+          "the relay answered the proof with a message an Alcove WebSocket " +
+          "relay does not send at that point, so the url may not name an " +
+          "Alcove WebSocket relay.",
+        action:
+          "Check that the url names an Alcove WebSocket relay, " +
+          WEBSOCKET_RELAY_RETRY,
+        url,
+        outcome: "unexpected_message",
       });
     case "not_reached":
       return withHeadline(
@@ -574,7 +613,13 @@ export async function runRelayCheck(
       contacted === undefined || gathered === undefined
         ? []
         : [
-            relayCheckRecord(contacted, gathered, boundMs, enrollment),
+            relayCheckRecord(
+              contacted,
+              gathered,
+              boundMs,
+              enrollment,
+              plan.websocket.length > 0,
+            ),
             ...plan.notContacted.map(laterUrlRecord),
           ];
     return {

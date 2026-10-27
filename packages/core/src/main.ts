@@ -920,6 +920,7 @@ export {
   RELAY_CREDENTIAL_MAX_TTL_SECONDS,
   runEnrollsAtInvitationRegistrar,
   selectRunRelay,
+  webSocketRelayEnrollsAtInvitationRegistrar,
 } from "./relayCredential";
 export type {
   RelayCredential,
@@ -944,6 +945,8 @@ export {
   relayHostStatement,
   relayHostStatementLines,
   turnUrlTransport,
+  WEBSOCKET_RELAY_CHECK_OUTCOMES,
+  WEBSOCKET_RELAY_LINE_BELOW,
   webSocketRelayCheckId,
 } from "./relayCheck";
 export type {
@@ -952,6 +955,7 @@ export type {
   RelayCheckHeadlineOptions,
   RelayCheckPlan,
   RelayCheckRegistrar,
+  RelayCheckWebSocketRelay,
   RelayHostStatement,
   RelayHostStatementEntry,
   RelayTransport,

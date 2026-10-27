@@ -11,6 +11,7 @@ import type {
 import {
   parkWebSocketRelay,
   RELAY_CLOSE,
+  UnexpectedRelayMessageError,
 } from "../connection/webrtc/websocketRelayConnection";
 import type {
   ParkedWebSocketRelay,
@@ -29,7 +30,16 @@ import type {
 /** What the check found at one WebSocket relay. */
 export type WebSocketRelayAnswer =
   | { outcome: "admitted" }
-  | { outcome: "not_admitted"; closeCode: number }
+  | {
+      outcome: "not_admitted";
+      closeCode: number;
+      /**
+       * Present on a 4005 refusing a proof made again on the relay's clock,
+       * after a first 4005 stated that clock.
+       */
+      proofRemadeOnRelayClock?: true;
+    }
+  | { outcome: "unexpected_message" }
   | {
       outcome: "not_reached";
       /** The run has environment proxying on, so no certificate was checked. */
@@ -100,12 +110,14 @@ async function unopenedAnswer(
  * Ask the relay `dial` names whether it admits the proof a run presents: park
  * {@link ADMISSION_SOCKETS} sockets in the run's role and read the first
  * answer. A pairing, or a refusal as role taken, is an admission; a refusal of
- * the hello before that is not; a socket that closes any other way, or no
- * answer before `signal` aborts, is not reached, asking the certificate check
- * first where the socket never opened. Every socket is closed before this
- * resolves.
+ * the hello before that is not; a message the run's relay client does not
+ * take at that point is its own answer; a socket that closes any other way, or
+ * no answer before `signal` aborts, is not reached, asking the certificate
+ * check first where the socket never opened. Every socket is closed before
+ * this resolves.
  *
- * @throws {ConnectionError} where a socket could not be dialed at all.
+ * @throws {ConnectionError} where the run's relay client ends with a failure
+ *   of its own, such as a socket it could not dial at all.
  */
 export function askWebSocketRelay(
   dial: WebSocketRelayDial,
@@ -144,7 +156,13 @@ export function askWebSocketRelay(
         return;
       }
       if (isWebSocketRelayRefusal(code))
-        return answer({ outcome: "not_admitted", closeCode: code });
+        return answer({
+          outcome: "not_admitted",
+          closeCode: code,
+          ...(code === RELAY_CLOSE.proofExpired && {
+            proofRemadeOnRelayClock: true,
+          }),
+        });
       if (opened)
         return answer({ outcome: "not_reached", certificateNotChecked: false });
       if (conclude())
@@ -182,6 +200,8 @@ export function askWebSocketRelay(
           if (relay.paired) return answer({ outcome: "admitted" });
           const failure = relay.failure;
           if (failure === undefined) return;
+          if (failure instanceof UnexpectedRelayMessageError)
+            return answer({ outcome: "unexpected_message" });
           const code = lastClose.get(index);
           if (code !== undefined && isWebSocketRelayRefusal(code))
             return answer({ outcome: "not_admitted", closeCode: code });

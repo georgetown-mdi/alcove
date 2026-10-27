@@ -4,6 +4,7 @@ import {
   COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
   INVITATION_RELAY_ENROLLMENT_WAIT_MS,
   RELAY_CHECK_BOUND_MS,
+  WEBSOCKET_RELAY_CHECK_OUTCOMES,
   parseBoundedJson,
   relayCheckHeadline,
   relayCheckPlan,
@@ -190,12 +191,7 @@ export function relayCheckOffer(dataRoot: string): RelayCheckOffer {
 }
 
 const TRANSPORTS: ReadonlySet<string> = new Set(["udp", "tcp", "tls"]);
-const OUTCOMES: ReadonlySet<string> = new Set<WebSocketRelayCheckOutcome>([
-  "admitted",
-  "not_admitted",
-  "not_reached",
-  "certificate_not_verified",
-]);
+const OUTCOMES: ReadonlySet<string> = new Set(WEBSOCKET_RELAY_CHECK_OUTCOMES);
 const CHECK_ID =
   /^(?:enrollment|turn_[1-9][0-9]{0,3}|websocket_[1-9][0-9]{0,3})$/;
 const LAPSE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$/;

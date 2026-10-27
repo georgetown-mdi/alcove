@@ -323,7 +323,8 @@
       "         exchange's shared secret until the exchange's relay key is enrolled",
       "         there with alcove enroll-relay.",
       "ACTION:  Fix the relay, or arrange a direct path; waiting longer changes",
-      "         nothing.",
+      "         nothing. Each WebSocket relay line below shows whether the exchange",
+      "         can still go that way.",
       "FAIL: wss://own-relay.example.org/relay, a WebSocket relay a run dials: not reached; its TLS certificate did not verify on this host.",
       "MEANING: the relay presented a TLS certificate that does not verify on this",
       "         host, as one does where the network intercepts TLS.",
@@ -335,6 +336,6 @@
       "",
       "NOT READY YET -- follow the ACTION lines above and run this again."
     ],
-    "json": "{\"version\":1,\"mode\":\"relay\",\"overall\":\"fix_and_retry\",\"checks\":[{\"id\":\"turn_1\",\"status\":\"fail\",\"meaning\":\"nothing on this host reached this relay, the relay refused the credential, or it presented a certificate this host does not trust; the reason is not reported, so the check cannot tell which. A relay that takes enrolled keys refuses the credential derived from the exchange's shared secret until the exchange's relay key is enrolled there with alcove enroll-relay.\",\"action\":\"Fix the relay, or arrange a direct path; waiting longer changes nothing.\",\"url\":\"turn:own-relay.example.org:3478?transport=tcp\",\"transport\":\"tcp\"},{\"id\":\"websocket_1\",\"status\":\"fail\",\"meaning\":\"the relay presented a TLS certificate that does not verify on this host, as one does where the network intercepts TLS.\",\"action\":\"If this network intercepts TLS, add its certificate authority to this machine's trust store, or name a file holding it in NODE_EXTRA_CA_CERTS, then run this check again. Otherwise ask the relay's operator whether its certificate is current and issued for its host.\",\"url\":\"wss://own-relay.example.org/relay\",\"outcome\":\"certificate_not_verified\"}]}"
+    "json": "{\"version\":1,\"mode\":\"relay\",\"overall\":\"fix_and_retry\",\"checks\":[{\"id\":\"turn_1\",\"status\":\"fail\",\"meaning\":\"nothing on this host reached this relay, the relay refused the credential, or it presented a certificate this host does not trust; the reason is not reported, so the check cannot tell which. A relay that takes enrolled keys refuses the credential derived from the exchange's shared secret until the exchange's relay key is enrolled there with alcove enroll-relay.\",\"action\":\"Fix the relay, or arrange a direct path; waiting longer changes nothing. Each WebSocket relay line below shows whether the exchange can still go that way.\",\"url\":\"turn:own-relay.example.org:3478?transport=tcp\",\"transport\":\"tcp\"},{\"id\":\"websocket_1\",\"status\":\"fail\",\"meaning\":\"the relay presented a TLS certificate that does not verify on this host, as one does where the network intercepts TLS.\",\"action\":\"If this network intercepts TLS, add its certificate authority to this machine's trust store, or name a file holding it in NODE_EXTRA_CA_CERTS, then run this check again. Otherwise ask the relay's operator whether its certificate is current and issued for its host.\",\"url\":\"wss://own-relay.example.org/relay\",\"outcome\":\"certificate_not_verified\"}]}"
   }
 }

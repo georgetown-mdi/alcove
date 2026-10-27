@@ -67,11 +67,40 @@ describe("relayCheckPlan", () => {
 
     expect(plan.contacted).toBeUndefined();
     expect(plan.websocket).toEqual([
-      { source: "own", url: OWN_WEBSOCKET },
-      { source: "invitation", url: INVITATION_WEBSOCKET },
+      {
+        source: "own",
+        url: OWN_WEBSOCKET,
+        enrollsAtInvitationRegistrar: false,
+      },
+      {
+        source: "invitation",
+        url: INVITATION_WEBSOCKET,
+        enrollsAtInvitationRegistrar: true,
+      },
     ]);
     expect(plan.websocketLeftOut).toEqual([]);
     expect(plan.registrar).toEqual({ url: REGISTRAR, contacted: true });
+  });
+
+  test("an own WebSocket relay naming the invitation's url enrolls at its registrar, decided by the url", () => {
+    const plan = relayCheckPlan(
+      connection({
+        websocketRelay: INVITATION_WEBSOCKET,
+        invitationRelay: {
+          websocket: INVITATION_WEBSOCKET,
+          registrar: REGISTRAR,
+        },
+      }),
+    );
+
+    expect(plan.websocket).toEqual([
+      {
+        source: "own",
+        url: INVITATION_WEBSOCKET,
+        enrollsAtInvitationRegistrar: true,
+      },
+    ]);
+    expect(plan.registrar?.contacted).toBe(true);
   });
 
   test("a WebSocket relay allowed_relays leaves out is not contacted", () => {
@@ -294,6 +323,16 @@ describe("relayCheckHeadline", () => {
       },
       `${OWN_WEBSOCKET}, a WebSocket relay a run dials: not reached; its TLS ` +
         "certificate did not verify on this host.",
+    ],
+    [
+      {
+        id: "websocket_1",
+        status: "fail",
+        url: OWN_WEBSOCKET,
+        outcome: "unexpected_message",
+      },
+      `${OWN_WEBSOCKET}, a WebSocket relay a run dials: did not answer as ` +
+        "an Alcove WebSocket relay.",
     ],
   ] as const)("%o is worded as doctor relay prints it", (fields, expected) => {
     expect(relayCheckHeadline(fields)).toBe(expected);

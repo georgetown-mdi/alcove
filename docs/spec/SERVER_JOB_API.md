@@ -542,6 +542,7 @@ Non-2xx is reserved for HTTP-level conditions only: `400` for a bad body, `409` 
 
 - **A run started during a check is not refused.** The check writes nothing in the working folder, so an exchange created while a check runs starts as it would otherwise; the two contact the relay at once. At a WebSocket relay the check's sockets hold this side's role while it runs, so the run's own socket is refused as role taken and dials again, as its relay client does on that refusal ([WEBSOCKET_RELAY.md](WEBSOCKET_RELAY.md#the-command-line-client)).
 - **The offer before a run follows the TURN urls.** The console offers the check before a run only under a configuration that lists a TURN url, so a configuration whose only relay is a WebSocket relay is offered it after a failed attempt alone.
+- **A configuration with no role is offered the check.** A configuration that lists a WebSocket relay and sets no `role` is offered the check, and starting it answers `refused`, as a run of that file is refused.
 - **The digest is compared before the spawn, not bound to it.** The child reads `alcove.yaml` by path after its digest matched, so an edit made between the two is checked without the operator having seen its hosts; only the operator writes the working folder.
 
 ## The signing identity
