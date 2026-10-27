@@ -243,6 +243,10 @@ export function startPsiWorkerPool(
   shardCount: number,
   progressTimeoutMs: number,
 ): PsiEngine {
+  if (mode === "count-only-permuted")
+    throw new Error(
+      `${id}: a sharded PSI engine does not run the count-only-permuted mode`,
+    );
   const primaryWorker = spawn({
     role,
     id,
@@ -295,7 +299,8 @@ export function startPsiWorkerPool(
  * answers it, runs one worker: a pooled answer at the browser's set ceiling
  * ran the renderer out of memory where one worker did not
  * (docs/spec/PROTOCOL.md, "The browser runs its masking across a pool of PSI
- * workers").
+ * workers"). The `count-only-permuted` mode runs on one worker for both roles:
+ * the sharded engine does not run it.
  */
 export function createPooledBrowserPsiEngineFactory(
   spawn: SpawnPsiCryptoWorker,
@@ -305,7 +310,7 @@ export function createPooledBrowserPsiEngineFactory(
   const shardCount = browserPsiShardCount(environment);
   if (shardCount === 1) return singleWorker;
   return (role, id, mode) =>
-    role === "starter"
+    role === "starter" || mode === "count-only-permuted"
       ? singleWorker(role, id, mode)
       : startPsiWorkerPool(
           spawn,
