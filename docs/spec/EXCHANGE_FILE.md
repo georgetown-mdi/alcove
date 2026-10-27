@@ -168,6 +168,10 @@ sharply:
   absence is a valid state (`expected_partner_deduplicate`), so stripping a
   misspelling of it would silently disable the control it names; that hazard
   governs the whole top level rather than being spot-checked key by key.
+  `alcove invite`, `alcove update` and `alcove verify-receipt --partner-terms`
+  read only the blocks they use, so they do not run this check: an unknown
+  top-level key, a retired one included, is refused by the file's next
+  whole-file load (`alcove exchange`, `alcove apply`), not by them.
 - **An unknown field inside a spec block is rejected loudly too.** The blocks
   themselves (`linkage_terms`, `metadata`, `standardization`, `connection`) strip
   unrecognized keys on parse, the `connection` union's webrtc member excepted

@@ -6,3 +6,4 @@
 - `retiredSettings` is present for a document stating a setting Alcove no longer reads -- `signing.receipt_output`, as the file spells it -- and absent otherwise. -> -
 - The load drops the setting rather than refusing the file, and the browser shows core's warning for it, the one the CLI prints: the receipt is written into the output folder, and the setting is to be deleted from the file. -> -
 - A save that writes the file, or a hand-off, writes the document without it. -> -
+- - -> `alcove invite`, `alcove update` and `alcove verify-receipt --partner-terms` read only the blocks they use, so they do not run this check: an unknown top-level key, a retired one included, is refused by the file's next whole-file load (`alcove exchange`, `alcove apply`), not by them.
