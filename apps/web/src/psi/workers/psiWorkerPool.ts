@@ -196,6 +196,24 @@ export class PsiWorkerPoolEngine implements PsiEngine {
     return this.primary.computeIntersectionCardinality(responseBytes);
   }
 
+  createPermutedSetup(
+    values: ReadonlyArray<string>,
+  ): Promise<{ setup: Uint8Array; indexTable: Int32Array }> {
+    return this.primary.createPermutedSetup(values);
+  }
+
+  receiveIndexTable(indexTable: Int32Array): Promise<void> {
+    return this.primary.receiveIndexTable(indexTable);
+  }
+
+  matchPermutedRound(responseBytes: Uint8Array): Promise<void> {
+    return this.primary.matchPermutedRound(responseBytes);
+  }
+
+  finishPermutedCount(): Promise<number> {
+    return this.primary.finishPermutedCount();
+  }
+
   stopInFlight(): boolean {
     return this.primary.stopInFlight?.() ?? false;
   }

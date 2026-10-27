@@ -35,19 +35,23 @@ const MIB = 1024 * 1024;
 const GIB = 1024 * MIB;
 const HEAP_MIB = Math.min(16_384, Math.floor(totalmem() / MIB) - 2_048);
 
-// Satisfying Record<PsiEngineMode, ...> makes the compiler reject a missing
+// The probe matches one round through the setup-and-response operations, which
+// a count-only-permuted engine refuses; its rounds are not probed here.
+type ProbedMode = Exclude<PsiEngineMode, "count-only-permuted">;
+
+// Satisfying Record<ProbedMode, ...> makes the compiler reject a missing
 // or an extra mode, so the accepted set follows the engine's type.
 const ENGINE_MODES = {
   "identifier-revealing": true,
   "count-only": true,
-} as const satisfies Record<PsiEngineMode, true>;
+} as const satisfies Record<ProbedMode, true>;
 
 const ENGINE_NAMES = {
   wasm: "the WebAssembly engine",
   native: "the native addon",
 } as const satisfies Record<MatchBackend, string>;
 
-function isEngineMode(value: string): value is PsiEngineMode {
+function isEngineMode(value: string): value is ProbedMode {
   return Object.hasOwn(ENGINE_MODES, value);
 }
 
@@ -66,7 +70,7 @@ function positiveIntegerFromEnvironment(
   return value;
 }
 
-function modeFromEnvironment(name: string): PsiEngineMode {
+function modeFromEnvironment(name: string): ProbedMode {
   const raw = process.env[name] ?? "identifier-revealing";
   if (!isEngineMode(raw))
     throw new Error(

@@ -593,6 +593,10 @@ function fakeEngine(stops = false): FakeEngine {
     discardServerSetup: refuse,
     computeAssociationTable: refuse,
     computeIntersectionCardinality: refuse,
+    createPermutedSetup: refuse,
+    receiveIndexTable: refuse,
+    matchPermutedRound: refuse,
+    finishPermutedCount: refuse,
     observeProcessedElements: (report) => {
       engine.report = report;
     },

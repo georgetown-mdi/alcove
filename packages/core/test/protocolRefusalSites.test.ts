@@ -86,6 +86,22 @@ const RECORDED_SITES: Readonly<Record<string, readonly string[]>> = {
   "packages/core/src/psi/psiEngine.ts :: InProcessPsiEngine.matchStreamed": [
     PARTNER,
   ],
+  // A count-only-permuted round's partner frames: a request of another size
+  // than the exchange's first; an index table of the wrong length, another
+  // length than the first, or not a permutation; a response of the wrong
+  // size, or whose matches repeat a slot or a pseudonym.
+  "packages/core/src/psi/psiEngine.ts :: InProcessPsiEngine.permutedResponse": [
+    PARTNER,
+  ],
+  "packages/core/src/psi/psiEngine.ts :: InProcessPsiEngine.receiveIndexTable":
+    [PARTNER, PARTNER],
+  "packages/core/src/psi/countOnlyPermutation.ts :: assertIndexTableIsPermutation":
+    [PARTNER],
+  "packages/core/src/psi/psiEngine.ts :: InProcessPsiEngine.permutedRoundOf": [
+    PARTNER,
+  ],
+  "packages/core/src/psi/countOnlyPermutation.ts :: PermutedCountReplay.acceptRound":
+    [PARTNER],
   // The partner's PSI setup is not Raw, or not in ascending order.
   "packages/core/src/psi/psiWasmBudget.ts :: setupNotRawError": [PARTNER],
   "packages/core/src/psi/psiWasmBudget.ts :: setupNotStrictlyAscendingError": [

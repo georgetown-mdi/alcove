@@ -98,6 +98,22 @@ class SetupOrderUncheckedEngine implements PsiEngine {
     throw new Error("this engine runs identifier-revealing rounds only");
   }
 
+  createPermutedSetup(): never {
+    throw new Error("this engine runs identifier-revealing rounds only");
+  }
+
+  receiveIndexTable(): never {
+    throw new Error("this engine runs identifier-revealing rounds only");
+  }
+
+  matchPermutedRound(): never {
+    throw new Error("this engine runs identifier-revealing rounds only");
+  }
+
+  finishPermutedCount(): never {
+    throw new Error("this engine runs identifier-revealing rounds only");
+  }
+
   dispose(): void {
     this.inner.dispose();
   }
