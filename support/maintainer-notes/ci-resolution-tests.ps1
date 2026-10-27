@@ -291,7 +291,10 @@ try {
         if ($premises -and $premises.Contains('clm') -and $premises.clm.Contains('child_file')) {
             $childMode = [string] $premises.clm.child_file
         }
-        if ($childMode -ne 'ConstrainedLanguage') {
+        if (-not $childMode) {
+            Write-HarnessError 'the policy was never put in effect, so no session ran under it and nothing was established (see the Rig_clm annotation)'
+            $failedJob = $true
+        } elseif ($childMode -ne 'ConstrainedLanguage') {
             Write-HarnessError "the sessions under test ran in '$childMode', not ConstrainedLanguage, so nothing was established"
             $failedJob = $true
         }

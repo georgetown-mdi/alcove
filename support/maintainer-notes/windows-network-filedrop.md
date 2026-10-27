@@ -350,14 +350,10 @@ created (`volume_create=false`).
 reported one annotation per answer; the run's check-run annotations are the
 record.
 
-- P1, the lockdown policy: the machine-wide `__PSLockdownPolicy=4` (unset
-  before) puts a new session in ConstrainedLanguage, whether started by
-  `-Command` or by `-File`, with no restart. The running harness session stayed
-  FullLanguage, and new sessions were FullLanguage again once the variable was
-  removed. A new process given the variable at process level alone was
-  FullLanguage. One further check, a script file run from the parent session,
-  failed with "is not recognized as the name of a cmdlet, function, script file,
-  or operable program" for its path, so it answers nothing.
+- P1, the lockdown policy: `__PSLockdownPolicy=4` was unset before. A new
+  process given the variable at process level alone was FullLanguage, so the
+  policy has to be set machine-wide. New sessions were FullLanguage again once
+  the variable was removed.
 - P3b, `schtasks` dates: under en-GB, `schtasks /SD 10/27/2026` is refused
   ("Incorrect Start Date") and `03/04/2026` reads as 3 April. Under en-US,
   `03/04/2026` reads as 4 March. The session's culture was en-US before the
