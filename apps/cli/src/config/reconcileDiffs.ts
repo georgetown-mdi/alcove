@@ -541,30 +541,39 @@ export function diffLinkageTerms(
     add("linkage_keys", r.existing, r.incoming);
   }
 
-  // The reference is partner-chosen free text and the expiration date is
-  // schema-constrained, so each takes the form its own shape earns, as a
-  // clause: a slot too small divides between the two values rather than
-  // deleting the expiry.
+  // The reference and purpose are partner-chosen free text and the expiration
+  // date is schema-constrained, so each takes the form its own shape earns, as
+  // a clause: a slot too small divides among the values rather than deleting
+  // the expiry. The purpose is shown only where the two sides differ in it, so
+  // its width is spent only on a line it explains.
   const renderAgreement = (
     la: LinkageTerms["legalAgreement"],
+    withPurpose: boolean,
   ): ReconcileClause =>
     la === undefined
       ? RECONCILE_ABSENT_CLAUSE
-      : reconcileClause`${reconcileDiffValue(la.reference)} (expires ${reconcileDiffBareValue(la.expirationDate)})`;
+      : withPurpose
+        ? reconcileClause`${reconcileDiffValue(la.reference)} (expires ${reconcileDiffBareValue(la.expirationDate)}, purpose ${reconcileDiffValue(la.purpose)})`
+        : reconcileClause`${reconcileDiffValue(la.reference)} (expires ${reconcileDiffBareValue(la.expirationDate)})`;
   if (
     canonicalDiffers(
       existing.legalAgreement ?? null,
       incoming.legalAgreement ?? null,
       "legal agreement",
     )
-  )
+  ) {
+    const purposeDiffers =
+      existing.legalAgreement !== undefined &&
+      incoming.legalAgreement !== undefined &&
+      existing.legalAgreement.purpose !== incoming.legalAgreement.purpose;
     conflicts.push({
       field: "legal_agreement",
       ...reconcileClauseConflict(
-        renderAgreement(existing.legalAgreement),
-        renderAgreement(incoming.legalAgreement),
+        renderAgreement(existing.legalAgreement, purposeDiffers),
+        renderAgreement(incoming.legalAgreement, purposeDiffers),
       ),
     });
+  }
 
   const renderPayload = (
     p: LinkageTerms["payload"],

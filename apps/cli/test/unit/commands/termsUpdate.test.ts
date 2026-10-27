@@ -420,7 +420,11 @@ describe("alcove apply", () => {
     expect(promptConfirmMock).toHaveBeenCalledTimes(1);
     expect(lines).toContain("  columns your partner now sends you:");
     expect(lines).toContain("    county");
-    expect(lines).not.toContain("  other terms that differ:");
+    // Neither the comparison's section nor the line naming a changed term it
+    // does not show: the column change is shown in its own section.
+    expect(lines.filter((line) => line.includes("other terms that"))).toEqual(
+      [],
+    );
   });
 
   test("a description-only update is applied without asking", async () => {

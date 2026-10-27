@@ -2335,6 +2335,87 @@ describe("diffLinkageTerms", () => {
     );
     expect(rendered).toContain("then retry with the same invitation.");
   });
+
+  test("agreements differing only in purpose show the purpose, with no withheld notice", () => {
+    const existing = cloneTerms(getDefaultLinkageTerms("Org"));
+    const incoming = cloneTerms(getDefaultLinkageTerms("Org"));
+    const agreement = (purpose: string) => ({
+      reference: "MOU-2025-0042",
+      purpose,
+      expirationDate: "2030-01-01",
+    });
+    existing.legalAgreement = agreement(
+      "Audit and evaluation of the State tutoring program",
+    );
+    incoming.legalAgreement = agreement("Verification of program enrollment");
+    const { conflicts } = diffLinkageTerms(existing, incoming);
+    expect(conflicts.map((c) => c.field)).toEqual(["legal_agreement"]);
+
+    const rendered = renderedAcceptReconcileError(conflicts);
+    expect(conflictValues(rendered, "legal_agreement")).toEqual([
+      '"MOU-2025-0042" (expires 2030-01-01, purpose "Audit and evaluation of the State tutoring program")',
+      '"MOU-2025-0042" (expires 2030-01-01, purpose "Verification of program enrollment")',
+    ]);
+    expect(rendered).not.toContain("display withheld");
+  });
+
+  test("purposes the fit cannot tell apart are reported as withheld", () => {
+    // Purposes at the free-text bound differing only past what the fit keeps,
+    // beside a linkage field at the name bound competing for the block.
+    const purpose = widestAtSchemaBound(MAX_TEXT_LENGTH);
+    const existing = cloneTerms(getDefaultLinkageTerms("Org"));
+    const incoming = cloneTerms(getDefaultLinkageTerms("Org"));
+    const agreement = (value: string) => ({
+      reference: "MOU-2025-0042",
+      purpose: value,
+      expirationDate: "2030-01-01",
+    });
+    existing.legalAgreement = agreement(purpose);
+    incoming.legalAgreement = agreement(`${purpose.slice(0, -1)}a`);
+    const name = widestAtSchemaBound(MAX_NAME_LENGTH);
+    existing.linkageFields = [{ name, type: "ssn" }];
+    incoming.linkageFields = [{ name, type: "last_name" }];
+    const { conflicts } = diffLinkageTerms(existing, incoming);
+    expect(conflicts.map((c) => c.field)).toEqual([
+      "linkage_fields",
+      "legal_agreement",
+    ]);
+
+    const rendered = renderedAcceptReconcileError(conflicts);
+    expect(rendered.length).toBeLessThanOrEqual(
+      COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
+    );
+    const sides = conflictValues(rendered, "legal_agreement");
+    expect(sides[0]).toBe(sides[1]);
+    expect(sides[0]).toContain(", purpose ");
+    expect(sides[0]).toContain(DISPLAY_TRUNCATION_MARKER);
+    expect(rendered).toContain(
+      "two sides that read alike differ only inside what this display withheld",
+    );
+  });
+
+  test("purposes both sides redact away are reported as withheld", () => {
+    const existing = cloneTerms(getDefaultLinkageTerms("Org"));
+    const incoming = cloneTerms(getDefaultLinkageTerms("Org"));
+    const agreement = (purpose: string) => ({
+      reference: "MOU-2025-0042",
+      purpose,
+      expirationDate: "2030-01-01",
+    });
+    existing.legalAgreement = agreement("-----BEGIN OPENSSH PRIVATE KEY-----");
+    incoming.legalAgreement = agreement("-----BEGIN RSA PRIVATE KEY-----");
+    const { conflicts } = diffLinkageTerms(existing, incoming);
+
+    const rendered = renderedAcceptReconcileError(conflicts);
+    expect(rendered).not.toContain("PRIVATE KEY-----");
+    const sides = conflictValues(rendered, "legal_agreement");
+    expect(sides[0]).toBe(sides[1]);
+    expect(sides[0]).toContain(", purpose ");
+    expect(sides[0]).toContain("[redacted private key]");
+    expect(rendered).toContain(
+      "two sides that read alike differ only inside what this display withheld",
+    );
+  });
 });
 
 // The widest a schema-bounded value can render at the display boundary. The
@@ -2407,7 +2488,8 @@ test("the worst-case fixture's values are the widest the schema admits", () => {
 // compares, each disagreement with values at the widest the schema admits,
 // plus the shapes that are hostile rather than merely wide: a name shaped like
 // the display boundary's private-key marker, a name spelling the conflict line's
-// own clause, and a payload description at the free-text bound.
+// own clause, and a payload description and agreement purpose at the free-text
+// bound.
 function maximallyConflictingTerms(): {
   existing: LinkageTerms;
   incoming: LinkageTerms;
@@ -2439,12 +2521,12 @@ function maximallyConflictingTerms(): {
 
   existing.legalAgreement = {
     reference: widestAtSchemaBound(MAX_NAME_LENGTH),
-    purpose: "Audit and evaluation of the State tutoring program",
+    purpose: widestAtSchemaBound(MAX_TEXT_LENGTH),
     expirationDate: "2030-01-01",
   };
   incoming.legalAgreement = {
     reference: otherWidestAtSchemaBound(MAX_NAME_LENGTH),
-    purpose: "Audit and evaluation of the State tutoring program",
+    purpose: otherWidestAtSchemaBound(MAX_TEXT_LENGTH),
     expirationDate: "2031-01-01",
   };
 
@@ -2480,8 +2562,9 @@ function connectionConflicts(): ReconcileDiff[] {
 test("the reconcile refusal keeps its recovery step and names every field, at every fragment's worst case", () => {
   // The acceptance criterion this whole composition exists for: schema-maximal
   // and hostile values through every fragment AT ONCE -- both legal-agreement
-  // references, both structural lists (which fall to their full-JSON form), a
-  // payload description at the free-text bound, and the connection locators --
+  // references and purposes, both structural lists (which fall to their
+  // full-JSON form), a payload description at the free-text bound, and the
+  // connection locators --
   // and still the operator reads what to do and which fields to go and look at.
   const { existing, incoming } = maximallyConflictingTerms();
   const { conflicts } = diffLinkageTerms(existing, incoming);
