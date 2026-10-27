@@ -335,6 +335,19 @@ key establishment, or hybrid support maturing in both platforms'
 `crypto.subtle`, since reasons 1 and 5 above bind whatever primitive replaces
 this one.
 
+## Rotation moves to an independent secret
+
+The specified rotation derives the next pre-shared secret from the session key
+([PROTOCOL.md](../spec/PROTOCOL.md#shared-secret-rotation)), so its value
+depends on the current secret's, which SP 800-57 Part 1 Rev. 5 section 8.2.3.2
+calls key update and forbids to federal applications. The rotation-hardening
+design makes the next secret an independent random value that the initiator
+sends AES-KW wrapped under a key derived from the session key: re-keying under
+section 8.2.3.1. The harvest-now-decrypt-later bound above is kept, because the
+wrapping key still mixes the pre-shared secret with the ECDH output. The design
+is not built; it is in
+[rotation-hardening.md](rotation-hardening.md#the-next-secret-independent-of-the-current-one).
+
 ## Open questions
 
 Two questions the documents could not decide. Both are recorded as open rather

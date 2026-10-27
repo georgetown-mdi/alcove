@@ -4,7 +4,7 @@ title: "Rotation Hardening Design"
 
 # Rotation hardening: recognizing a stale copy, and healing a one-sided rotation
 
-_Status: design only, not built, and proposed for the maintainer's ratification; two choices are left open ([Open questions](#open-questions)).
+_Status: design only, not built, and proposed for the maintainer's ratification; the maintainer chose to always accept the previous secret, and two questions are left open ([Open questions](#open-questions)).
 Nothing here is normative.
 The rotation and the key exchange are specified in [PROTOCOL.md](../spec/PROTOCOL.md#shared-secret-rotation), the browser record in [MANAGED_EXCHANGE_RECORD.md](../spec/MANAGED_EXCHANGE_RECORD.md#the-secret-is-a-linear-resource), the key file in [EXCHANGE_FILE.md](../spec/EXCHANGE_FILE.md#the-key-file-schema), and the threat model this changes in [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#rollback-at-rest-copies-can-silently-resurrect).
 The spec changes the design implies are listed in [Proposed spec and documentation changes](#proposed-spec-and-documentation-changes), to be made with the stage that builds each.
@@ -14,15 +14,16 @@ See [docs/notes/README.md](README.md)._
 
 A recurring exchange authenticates on a shared secret that both parties replace after every completed key exchange.
 Two failures leave the parties on different secrets, and both are designed here as one change because both change the key exchange and the same threat model.
+The same change makes the next secret independent of the current one, which SP 800-57 asks of a key replacement ([The next secret](#the-next-secret-independent-of-the-current-one)).
 
 - **A stale copy.**
   A restored backup, an export, a browser-profile or VM snapshot, or a duplicated key file brings back the secret it captured.
   If the partnership has rotated past that secret, the copy's next run fails.
   Today nothing records which secrets came before, so neither party can tell a superseded copy from a stranger ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#rollback-at-rest-copies-can-silently-resurrect)).
 - **A one-sided rotation.**
-  Both parties derive the next secret at the end of the key exchange, and each stores it before it sends anything else.
-  When one side's store fails, or the process stops between the handshake and the store, that side keeps the old secret and the other has the new one; so does a lost third key-exchange message, which leaves the initiator with the rotated secret and the responder on the old one, and which a party on the path of the shared folder can cause on purpose ([MANAGED_EXCHANGE_RECORD.md](../spec/MANAGED_EXCHANGE_RECORD.md#persist-before-success-ordering); `authenticateRun` in `apps/cli/src/protocol.ts`).
-  A secret that expires during the key exchange has the same effect: that side refuses the rotated secret and the other stores it ([CLI.md](../CLI.md#out-of-sync-tokens)).
+  Both parties end the key exchange holding the next secret, and each stores it before it sends anything else.
+  When one side's store fails, or the process stops between the handshake and the store, that side keeps the old secret and the other has the new one; so does a lost third key-exchange message, which leaves the initiator with the next secret and the responder on the old one, and which a party on the path of the shared folder can cause on purpose ([MANAGED_EXCHANGE_RECORD.md](../spec/MANAGED_EXCHANGE_RECORD.md#persist-before-success-ordering); `authenticateRun` in `apps/cli/src/protocol.ts`).
+  A secret that expires during the key exchange has the same effect: that side refuses the next secret and the other stores it ([CLI.md](../CLI.md#out-of-sync-tokens)).
   Today the only recovery is a re-invite, and each side keeps exactly one secret ([EXCHANGE_FILE.md](../spec/EXCHANGE_FILE.md#the-rotation-in-flight-marker)).
 
 What the operator sees today:
@@ -45,19 +46,87 @@ Four properties of the code fix what a mechanism can do.
 3. **The first key-exchange message does not depend on the secret.**
    Message 1 is the initiator's ephemeral share and its encryption flag; the secret first shapes a message in the responder's confirmation tag in message 2 ([PROTOCOL.md](../spec/PROTOCOL.md#p-256-authenticated-key-exchange), Message flow).
    So the initiator does not commit to a secret before the responder has answered.
-4. **A frame from the peer after the handshake proves the peer stored its rotated secret.**
+4. **A frame from the peer after the handshake proves the peer stored the next secret.**
    The CLI writes the rotated key file, fsync-durable, before it wraps the connection and sends any data frame (`authenticateRun` in `apps/cli/src/protocol.ts`), and the browser awaits its rotation write before it begins the data exchange ([MANAGED_EXCHANGE_RECORD.md](../spec/MANAGED_EXCHANGE_RECORD.md#persist-before-success-ordering)).
    Every channel requests the application-layer encryption, and the negotiated decision is the OR of both requests ([PROTOCOL.md](../spec/PROTOCOL.md#p-256-authenticated-key-exchange), Request-encryption flag), so every frame after the handshake is one the AEAD layer opens, and only a holder of the session key can make one.
-   A one-shot web party stores nothing, but it either saves the rotated secret when the operator keeps the exchange or has no secret at all ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#recurring-web-exchanges-single-use-vs-managed)), so its frame proves the same for any later run.
+   A one-shot web party stores nothing, but it either saves the next secret when the operator keeps the exchange or has no secret at all ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#recurring-web-exchanges-single-use-vs-managed)), so its frame proves the same for any later run.
    The proof is good only within the durability limits each store states: a committed browser write survives a renderer crash but not necessarily an OS crash ([managed-exchange-design.md](managed-exchange-design.md#the-durability-limit)).
+   Under the independent next secret below, the fact holds as stated: the responder stores the value it unwrapped from message 3, which the initiator's tag and the unwrap's integrity check make the initiator's value.
+
+## The next secret: independent of the current one
+
+Today both parties derive the next secret from the session key, `HKDF(session_key, ...)` ([PROTOCOL.md](../spec/PROTOCOL.md#shared-secret-rotation)), and the session key mixes in the current secret, so the next secret's value depends on the current one's.
+NIST SP 800-57 Part 1 Rev. 5 names that a key update and forbids it:
+
+- **Section 8.2.3.2:** "If the 'value' of the new key is dependent on the value of the old key, the process is known as key update", and "Federal applications shall not use key update".
+- **Section 8.2.3.1:** "If the new key is generated in a manner that is entirely independent of the 'value' of the old key, the process is known as re-keying. Replacement shall be accomplished using one of the key-establishment methods discussed in Section 8.1.5."
+- IRS Publication 1075's SC-12 requires SP 800-57 for key management.
+
+A reading under which the derivation is re-keying by key agreement exists, but the project claims no approved key-agreement scheme ([COMPLIANCE.md](../COMPLIANCE.md#nist-sp-800-53), SC-12), so an assessor reading the text literally is likely to refuse it.
+The design makes rotation re-keying instead, in the handshake Part 1 already changes, so it is built and reviewed once.
+
+### The construction
+
+- **The initiator generates the next secret:** 32 bytes from the CSPRNG an invitation token is drawn from ([PROTOCOL.md](../spec/PROTOCOL.md#shared-secret-rotation)).
+  The initiator is the first party to hold key confirmation: it has verified the responder's tag in message 2 before it sends message 3.
+  SP 800-57 section 8.1.5.2.3 says keying material from a key agreement "shall not be used to protect and send information" until its assurances, key confirmation among them, have been obtained, and the responder, sending message 2, has not yet confirmed the initiator.
+- **It is sent in message 3.** Message 3 gains one field, the wrapped secret, bound under the initiator's confirmation tag together with the previous-secret flag ([Which secret a handshake uses](#which-secret-a-handshake-uses)), so a changed byte fails the tag.
+  The abort form has no such field.
+  No message or round trip is added.
+- **The wrap is AES-KW.** The key-wrapping key is `HKDF(session_key, "alcove-shared-secret-wrap-v2", 32)` by the application HKDF; its label is a single fixed label that takes the place of `alcove-shared-secret-rotation-v2` in the [label space](../spec/PROTOCOL.md#p-256-authenticated-key-exchange).
+  The key wraps one secret and is then discarded, so it is used only for key wrapping.
+  The wrapped secret is 40 bytes, 54 base64url characters.
+- **The responder** verifies message 3's tag, then unwraps under the key it derives the same way.
+  An unwrap that fails its integrity check fails the handshake with the generic authentication failure, as a tag mismatch does.
+- **`authenticateConnection`** returns the next secret where it returns the rotated secret, so neither app's store changes.
+
+Why AES-KW rather than the existing AES-GCM AEAD under a derived key:
+
+- **It is the method SP 800-57 names.** Section 8.1.5.2.2.2, on automated key transport: "Approved key-wrapping methods that provide both confidentiality and integrity protection are provided in SP 800-38F."
+  AES-GCM is SP 800-38D's authenticated-encryption mode, which that section does not name.
+- **The FIPS variant's module approves it.** Certificate 5438's security policy lists `AES-KW` under SP 800-38F among its approved algorithms, while its AES-GCM with a caller-supplied IV, the only form `crypto.subtle` offers, is a non-approved service ([COMPLIANCE.md](../COMPLIANCE.md#fips-140)).
+- **It takes no IV.** KW is deterministic, so a single-use key needs no nonce rule.
+
+### What was measured
+
+Driven in Node 26's `crypto.subtle`, with OpenSSL beneath it:
+
+- **The algorithm.** Wrapping 32 bytes under a 256-bit key with `AES-KW` reproduces RFC 3394 section 4.6's test vector, and so does OpenSSL's `id-aes256-wrap` through `node:crypto`, so the independent vector generator can compute the wrap without WebCrypto.
+- **The secret is wrapped as a `CryptoKey`.** It is imported as an extractable HMAC or AES-GCM key, which wrap to the same bytes; `wrapKey` refuses a non-extractable key (`InvalidAccessError`), and an HKDF key cannot be imported extractable.
+  `unwrapKey` to an extractable key, then `exportKey("raw")`, returns the 32 bytes.
+- **Integrity.** A flipped bit at the start, middle or end of the wrapped bytes fails the unwrap (`OperationError`).
+- **The key.** HKDF `deriveKey` straight to an `AES-KW` key wraps to the same bytes as `deriveBits` followed by `importKey`; `AES-KW` offers no `encrypt` (`NotSupportedError`).
+
+Not measured here: Chromium's `AES-KW`, which build item 1's browser vector run measures, and the FIPS module performing the call, which a probe leg measures before any document says the module performs it.
+That WebCrypto's `AES-KW`, the RFC 3394 algorithm, is SP 800-38F's KW rests on the certificate's labeling of that row: SP 800-38F itself was not read, and the spec's citation of it is checked against the publication first.
+
+### What it does to the one-sided rotation
+
+- **When each side stores it.** Where it stores the rotated secret today: the initiator once message 3 is sent, the responder once message 3 verifies and unwraps, each before any data frame.
+  A one-sided rotation therefore comes from the same cuts as today: a lost message 3 leaves the initiator ahead, a stop or a failed store leaves that side behind, and a secret that expires during the key exchange leaves the side that refuses the next secret behind.
+  Storing on the initiator before message 3 is sent would move a durable write into the handshake for no gain, since Part 1 heals either direction.
+- **The partner's confirmation.** Fact 4 holds as stated above, so the previous secret is dropped on the partner's first frame as Part 1 sets out.
+- **A heal run** completes under the previous secret and sends a fresh next secret like any run.
+  The ahead side's unshared current secret, which the cut run's initiator generated and only the ahead side stored, is discarded.
+- **The previous-secret rules hold unchanged:** its life is one run, it keeps its own `expires`, a re-invite drops it, an export omits it, and every heal is reported.
+  It is always accepted ([question 2](#open-questions)).
+  SP 800-57 section 8.2.3.2 does not reach it: the previous secret enters no later secret, so keeping it for one heal run is a question of how long a secret is used, not of how its replacement is made.
+
+### What it does to the values derived from the secret
+
+- **The rendezvous peer ids, the relay key and the token-less exchange id** derive from the current secret ([PROTOCOL.md](../spec/PROTOCOL.md#webrtc-rendezvous-peer-id-derivation), [Relay credential derivation](../spec/PROTOCOL.md#relay-credential-derivation)) and move at each rotation, to values independent of the previous ones.
+  Each is a key derivation from the secret that does not replace it, not a key update.
+  The rules in [Meeting on WebRTC](#meeting-on-webrtc) and [The relay](#the-relay) do not change.
+- **The relay key's registration** sends the new key to the registrar under a proof made under the old relay key, as today; the relay key authorizes use of the relay and nothing else.
+- **The history verifier** of Part 2 is derived from a secret the record retires and replaces nothing, so the proofs and the behind notice do not change.
 
 ## Part 1: healing a one-sided rotation
 
 ### Keeping the previous secret until the partner confirms
 
-The rotation write keeps the secret the handshake used as the **previous secret**, beside the rotated one.
+The rotation write keeps the secret the handshake used as the **previous secret**, beside the next one.
 The run drops the previous secret as soon as the AEAD layer opens the partner's first frame after the handshake, in a write made before the run ends.
-By fact 4 that frame proves the partner stored the rotated secret, so the previous secret is no longer needed.
+By fact 4 that frame proves the partner stored the next secret, so the previous secret is no longer needed.
 
 The previous secret therefore stays at rest only after a run that ended between its handshake and the partner's first frame.
 That window is the partner's own rotation write plus one transit, and it is exactly the window a one-sided rotation comes from.
@@ -95,11 +164,12 @@ The key exchange picks the newest secret both parties hold, with no message adde
   It always computes both schedules, for the same reason.
 - **Message 3 states whether the initiator used its previous secret**, bound under the initiator's confirmation tag so a changed flag fails the handshake.
   The responder verifies message 3 against both of its schedules and learns which of its own secrets matched.
+  The wrapped next secret in message 3 is under the session key of the schedule that completed, and the responder unwraps it under the key derived from that schedule's session key.
 
 Each side so learns whether either side used a previous secret: the initiator from which of the responder's tags verified, the responder from message 3's flag and from which of its own schedules matched.
 A tag under a secret the other side does not hold verifies nothing, so a party with neither secret learns nothing it could not learn today.
 
-The run that completes under a previous secret rotates as any run does: both sides store the rotated secret, and each keeps the secret it used as its previous one until the partner confirms.
+The run that completes under a previous secret rotates as any run does: the initiator sends a fresh next secret, both sides store it, and each keeps the secret it used as its previous one until the partner confirms.
 The ahead side's unshared current secret is discarded, and its history gets no new verifier from this rotation: the secret it used is already in the list from the run that was cut, and the secret it discards was never shared.
 The behind side appends the verifier of the secret it retires, the same one, so both lists hold the same verifiers in the same order.
 
@@ -279,15 +349,27 @@ The export artifact and the command-line export include the history, so a moved 
 - **Frames before authentication say more.** Message 2 always has a second tag and a history proof; an abort can have a proof and a notice. None verifies for a party with no copy. Message 2's additions are sent on every handshake and the abort's proof on every failed one, so neither tells an outcome; the notice goes only to a proven holder of an old copy.
 - **A recorded handshake cannot be checked against a secret without one of its ephemeral private keys.** The history proof and the behind notice are keyed from a verifier and that handshake's `dh`, which only a holder of the initiator's or the responder's ephemeral private key can compute. So someone who later obtains a secret, or a later copy of the record, key file or export, cannot tell from recorded frames, such as those the shared folder's operator can record on `sftp` and `filedrop`, which handshakes used it. A party to the handshake can check it, since it held one of the two keys; that is the check the design makes.
 - **The coordination server can link two rotations** of a partnership in the unconfirmed state, from one party's two registrations or offers.
+- **The next secret is independent of the current one.** Rotation is re-keying (SP 800-57 section 8.2.3.1), not key update: no secret computes a later one.
+  The next secret is 256 bits from the initiator's CSPRNG, and its confidentiality on the wire is that of the wrapping key: against a party without the current secret, the current secret and the ephemeral exchange together; against a holder of the current secret who only records, the ephemeral exchange alone, the ~128-bit P-256 level [PROTOCOL.md](../spec/PROTOCOL.md#shared-secret-rotation) states for the derived secret.
+  So the "256 bits of entropy" of [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#token-format-and-entropy) becomes correct for every secret, and the ~128-bit bound becomes a statement about the transfer, not about the secret.
+- **The harvest-now-decrypt-later bound is kept.** The wrapping key derives from the session key, which mixes the current secret with the ECDH output, so a recorder who later solves the Diffie-Hellman but never held a secret cannot unwrap the next secret, and every later secret stays closed to them ([key-establishment-fips-boundary.md](key-establishment-fips-boundary.md#post-quantum-horizon)).
+  Deriving the next secret from the ECDH output alone would also be independent of the current secret, but would give that recorder every secret after the first run.
+- **An active adversary holding the current secret is unchanged.** It completes a handshake with each party under that secret and sends each a next secret of its choosing, where today it derives one with each; either way it holds every later secret until an out-of-band re-invite ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#key-agreement-design)).
+  SP 800-57 section 8.2.3.1 conditions re-keying on "the re-keying scheme itself" not being compromised.
+- **The next secret rests on one party's randomness.** Today both ephemeral keys decide it; under this design the initiator's CSPRNG alone does, as the inviter's alone decides an invitation secret.
+  A predictable CSPRNG on the initiator makes the next secret predictable to anyone, whether or not they hold the current secret.
 
 ## Proposed spec and documentation changes
 
 Each change lands with the stage that builds it, so the spec keeps describing the code.
 
-- **[PROTOCOL.md](../spec/PROTOCOL.md#p-256-authenticated-key-exchange)**, P-256 authenticated key exchange: the second tag and the history proof in message 2, the flag under message 3's tag, the abort's proof and notice, the trial verification and the constant work on both sides, the history-verifier label family in the label space, with distinct proof and notice labels per role and the count inside the notice's MAC input, and regenerated vectors. Shared-secret rotation: the previous secret, its confirmation, and the history append. WebRTC rendezvous peer-id derivation: both secrets' ids while a previous secret is held. Relay credential derivation, Registering the rotated relay key, and Enrolling at a default relay: the relay rules in [The relay](#the-relay).
+- **[PROTOCOL.md](../spec/PROTOCOL.md#p-256-authenticated-key-exchange)**, P-256 authenticated key exchange: the second tag and the history proof in message 2, the flag under message 3's tag, the abort's proof and notice, the trial verification and the constant work on both sides, the history-verifier label family in the label space, with distinct proof and notice labels per role and the count inside the notice's MAC input, the wrapped next secret in message 3 under its tag, `alcove-shared-secret-wrap-v2` in the label space in place of `alcove-shared-secret-rotation-v2`, and regenerated vectors that fix the next secret and record its wrapped bytes, which the independent generator computes with OpenSSL's `id-aes256-wrap`. Shared-secret rotation, rewritten: the initiator generates the next secret from a CSPRNG and sends it in message 3 under AES-KW (SP 800-38F) with a key derived from the session key, the responder unwraps it once message 3 verifies, the strength statement per [What changes in the threat model](#what-changes-in-the-threat-model), the "recompute it independently" paragraph, the previous secret, its confirmation, and the history append; `expires` enforcement's post-handshake check, which refuses to store a next secret the initiator has already sent. WebRTC rendezvous peer-id derivation: both secrets' ids while a previous secret is held. Relay credential derivation, Registering the rotated relay key, and Enrolling at a default relay: the relay rules in [The relay](#the-relay).
 - **[EXCHANGE_FILE.md](../spec/EXCHANGE_FILE.md#the-key-file-schema)**, the key file: the previous secret and its `expires`, the history, the rotation-in-flight marker's "no previous secret is kept", and the key the pending relay registration's retry is signed under.
 - **[MANAGED_EXCHANGE_RECORD.md](../spec/MANAGED_EXCHANGE_RECORD.md#the-secret-is-a-linear-resource)**: the linear-resource rule that neither party keeps the old secret, the single-owner invariant's "there is no grace window", the persist-before-success steps (the previous secret stored, the confirmation write), the rotation-in-flight marker, the key the pending relay registration's retry is signed under, the exception to derived-never-stored, the export artifact (history in, previous secret out) and its no-anti-rollback caveat, the import marker read beside a no-show, and the replace question stating an order.
-- **[SECURITY_DESIGN.md](../SECURITY_DESIGN.md#recurring-exchange-authentication)**: the one-sided write paragraph, the never-reused sentence, the compromise response's "valid until the next successful exchange", the primary controls, and the rollback section, each per [What changes in the threat model](#what-changes-in-the-threat-model).
+- **[SECURITY_DESIGN.md](../SECURITY_DESIGN.md#recurring-exchange-authentication)**: the one-sided write paragraph, the never-reused sentence, the compromise response's "valid until the next successful exchange", the primary controls, and the rollback section, each per [What changes in the threat model](#what-changes-in-the-threat-model); and, for the independent next secret, the "both parties independently derive the same replacement token" sentence, Token format and entropy, the one-shot web exchange's "derives the rotated replacement secret", and Key-agreement design's statement of the active adversary.
+- **[COMPLIANCE.md](../COMPLIANCE.md#nist-sp-800-53)**, the SC-12 row, a sentence the build makes true: rotation re-keys with a next shared secret generated independently of the current one (SP 800-57 Part 1 Rev. 5 section 8.2.3.1), transported under the authenticated session by AES-KW (SP 800-38F) with a key derived from the session key, beside the row's statement that no SP 800-56A scheme is claimed ([question 3](#open-questions)).
+- **[CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#authenticated-abort-marker)**, the abort marker's paragraph, which names `alcove-shared-secret-rotation-v2` among the labels its own is distinct from.
+- **[CONTAINER_IMAGES.md](../spec/CONTAINER_IMAGES.md#the-approved-algorithm-rows-behind-the-measured-call-shapes)**: an `AES-KW` row for the call shape the probe leg measures.
 - **[CLI.md](../CLI.md#out-of-sync-tokens)**, Out-of-sync tokens, and [MANAGED_EXCHANGE.md](../MANAGED_EXCHANGE.md#desync-detection-and-recovery): the heal, its message, and when re-invite is still the recovery.
 - **[managed-exchange-design.md](managed-exchange-design.md#the-grace-window)**: the grace window and single-device ownership sections point here.
 
@@ -296,10 +378,12 @@ Each change lands with the stage that builds it, so the spec keeps describing th
 Three items, the first ahead of the other two, which are independent of each other.
 
 1. **Core: the key exchange and the history.**
-   The message changes, the trial verification, the history verifier and its proofs and notice, the label and its label-space check, the regenerated key-exchange vectors, the key-file schema fields, and the relay-credential rule.
-   `authenticateConnection` takes the previous secret and the history and returns which secret each side used and what the peer proved.
-   Both apps adapt their call sites only, passing no previous secret and an empty history, so behavior is unchanged while the wire shape is new.
-   **Security review: required.** It changes the handshake and adds frames read before authentication; it is the one protocol review, and covers both mechanisms.
+   The message changes, the trial verification, the history verifier and its proofs and notice, the labels and their label-space check, the regenerated key-exchange vectors, the key-file schema fields, and the relay-credential rule.
+   The independent next secret: its generation, its AES-KW wrap in message 3 under the tag, the responder's unwrap and its failure path, the wrapping-key label in place of the rotation label, the vectors' fixed next secret and its wrapped bytes, and the browser vector run that measures Chromium's `AES-KW`.
+   A probe leg in `support/fips-probe/` for the `AES-KW` call, and the `COMPLIANCE.md` SC-12 sentence the construction makes true.
+   `authenticateConnection` takes the previous secret and the history and returns which secret each side used and what the peer proved, and returns the next secret where it returns the rotated secret.
+   Both apps adapt their call sites only, passing no previous secret and an empty history, so their behavior is unchanged while the wire shape and the next secret's construction are new.
+   **Security review: required.** It changes the handshake, adds frames read before authentication, and replaces how the next secret is made; it is the one protocol review, and covers all three mechanisms, the wrap and its key's derivation included.
 2. **Command line.**
    The key file's previous secret, its rotation and confirmation writes, the history append and pruning, both ids in the WebRTC attempt cycle, the relay registration and enrollment rules, the measurement of one-sided relay allocation against the reference relay, and the messages and exit codes.
    It tests the pending registration's retry under the previous secret's relay key against a registrar still holding that key and against one already holding the current key.
@@ -313,7 +397,7 @@ Each item lands its own spec changes, with its wording-change list, and the `SEC
 
 ## Open questions
 
-These are the maintainer's to decide; each gives a recommendation.
+Question 2 is decided; the others are the maintainer's to decide, and each gives a recommendation.
 
 1. **Recognizing a stale copy on WebRTC.**
    The design reports it only locally there.
@@ -321,6 +405,12 @@ These are the maintainer's to decide; each gives a recommendation.
    - (b) Derive the rendezvous from a value fixed at setup rather than from the current secret, so a stale copy reaches the handshake and the history proof fires. The coordination server could then link every run of a partnership by its ids, and any holder of any old copy could take the inviter's id first and keep the partner out until a re-invite.
    - (c) Have the current side also register under the ids of its last few retired secrets. Each adds a registration per attempt and links those rotations at the server.
 2. **Whether the previous secret is always accepted.**
-   - (a) Always, with no setting. Recommended: it is held only after a cut run and for one run, and every heal is reported.
+   Decided: (a), with (b) to be built if it becomes necessary.
+   - (a) Always, with no setting: it is held only after a cut run and for one run, and every heal is reported.
    - (b) On by default, with a per-exchange setting to refuse it, for an organization whose rotation policy forbids a second use of a credential.
    - (c) Off by default, with a setting to turn it on.
+3. **What the SC-12 row says about the wrapping key.**
+   SP 800-57 section 8.1.5.2.2.2 asks that a key-wrapping key be "established using a key-establishment scheme as defined in Section 8.1.5.2.3", which asks for approved key-agreement schemes, and the SC-12 row claims no SP 800-56A scheme for the session key the wrapping key derives from.
+   - (a) State it beside the re-keying sentence: the wrapping key comes from the same session key whose scheme the row already disclaims. Recommended: it is correct, and it adds no gap the row does not already disclose for every session key.
+   - (b) Say nothing about SP 800-57 section 8.2.3 in the row, leaving the build to meet a requirement no reader is shown.
+   - (c) Recast key establishment as an approved scheme, which [key-establishment-fips-boundary.md](key-establishment-fips-boundary.md#the-decision) weighed and set aside.
