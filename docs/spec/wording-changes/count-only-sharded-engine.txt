@@ -1,0 +1,15 @@
+# The sharded engine runs the PSI-C construction: its state stays on the
+# primary, the helpers mask in request order, and the primary reorders a
+# split answer under `pi`.
+- - -> **The [PSI-C](#psi-c) construction keeps its state on the primary.**
+- - -> The primary holds `pi`, `sigma`, the receiver's record count, the index table and the replay, so the receiver's count is the one an engine in process gives.
+- - -> Each helper is built in the identifier-revealing mode (`shardHelperMode`), which sets the same reveal flag, so it masks its part to the bytes the primary would, in request order; no helper is given `pi`, a pseudonym or a matched slot.
+- - -> Creating a request, the primary checks the whole set and records its record count, then masks only the first part.
+- - -> Where an answer is split, the primary draws `pi` on the exchange's first request or holds a later request's size to it, answers the first part and keeps it, the helpers answer the rest, and the primary joins the parts in request order and reorders the whole under `pi` before any part leaves it.
+- - -> The primary's part starts after every helper has its own, so a set or request the primary refuses fails the operation after the helpers' parts are sent.
+- - -> `shardedPsiEngine.test.ts` checks that a sharded sender draws one `sigma` and one `pi` in all, and `psiWorkerPool.test.ts` that a helper of such a pool answers its part in request order.
+# The identity and count tests extend to the PSI-C construction.
+- The merged request and response are byte-identical to one engine's under the same key. -> The merged request and response are byte-identical to one engine's under the same key, and in the [PSI-C](#psi-c) construction under the same `pi`.
+- - -> For the PSI-C construction, `shardedPsiEngine.test.ts` holds it at 1 to 5 engines on both backends with `pi` fixed for both engines, over sets of 2,100 to 5,172 elements at the shipped floor, so every engine takes a part.
+- - -> `psiWorkerPool.test.ts` holds its request over the worker program against an engine built from the pool's key, and checks that a split answer reorders every round under one `pi`.
+- - -> Through the sharded engine, the receiver's count over several rounds equals the in-process engine's, and the engine refuses as it does in process a malformed index table, a response that repeats an element, a request of another size, a count after a refused or stopped round, and a split operation after dispose (`packages/core/test/psi/psiEngineCountOnlyPermuted.test.ts`).

@@ -349,6 +349,48 @@ export interface PsiEngine {
   dispose(): void;
 }
 
+/**
+ * The operations a {@link ./shardedPsiEngine.ShardedPsiEngine} in the
+ * count-only-permuted mode runs on its primary, which masks the first part of
+ * a split operation while the helpers mask the rest. The primary keeps the
+ * mode's state: the receiver's record count, the round's failure and `pi`. No
+ * operation here returns a response that is not reordered under `pi`.
+ */
+export interface PermutedShardPrimary {
+  /**
+   * Checks `values`, the whole of a receiver's request, as
+   * {@link PsiEngine.createClientRequest} checks it, records it as the
+   * exchange's request, and masks only its first `partElements` values,
+   * returning that part as a request. Client role, count-only-permuted mode
+   * only.
+   */
+  createRequestFirstPart(
+    values: ReadonlyArray<string>,
+    partElements: number,
+  ): Promise<Uint8Array>;
+  /**
+   * Answers `partBytes`, the first part of the partner's request of
+   * `requestElements` elements, in request order, and holds the answer for
+   * {@link permuteAnsweredRequest}, returning nothing. `pi` is drawn here on
+   * the exchange's first request, and a request of another element count is
+   * refused as {@link PsiEngine.processClientRequest} refuses it. Server
+   * role, count-only-permuted mode only.
+   */
+  answerRequestFirstPart(
+    partBytes: Uint8Array,
+    requestElements: number,
+  ): Promise<void>;
+  /**
+   * Joins the held first part to `restParts`, the answers to the rest of the
+   * request in request order, reorders the whole under `pi`, and returns the
+   * serialized response {@link PsiEngine.processClientRequest} returns for
+   * the whole request. Server role, count-only-permuted mode only.
+   */
+  permuteAnsweredRequest(
+    restParts: ReadonlyArray<ReadonlyArray<Uint8Array>>,
+  ): Promise<Uint8Array>;
+}
+
 /** Settings for an {@link InProcessPsiEngine}; the worker entry points pass them through {@link ./psiWorkerEngine.servePsiWorker}. */
 export interface InProcessPsiEngineOptions {
   /**
@@ -400,7 +442,7 @@ const SETUP_CLIENT_INPUT_COUNT = -1;
  * policy); a set at or below the chunk floor takes one chunk and runs the
  * single call unchanged.
  */
-export class InProcessPsiEngine implements PsiEngine {
+export class InProcessPsiEngine implements PsiEngine, PermutedShardPrimary {
   private readonly library: PSILibrary;
   private readonly id: string;
   private readonly mode: PsiEngineMode;
@@ -423,6 +465,9 @@ export class InProcessPsiEngine implements PsiEngine {
   private senderRecords: number | undefined;
   #heldIndexTable: Int32Array | undefined;
   #replay: PermutedCountReplay | undefined;
+  // A sharded sender's own part of a split answer, in request order, until
+  // the rest arrives to be joined to it and reordered under `pi`.
+  #heldFirstResponsePart: Array<Uint8Array> | undefined;
   private countTaken = false;
   // Latched when a count-only-permuted receiver's round fails, on the
   // partner's input or here: the count over the rounds before it is not the
@@ -707,24 +752,30 @@ export class InProcessPsiEngine implements PsiEngine {
     });
   }
 
-  processClientRequest(requestBytes: Uint8Array): Promise<Uint8Array> {
-    const server = this.requireServer("processClientRequest");
-    this.requireUndisposed("processClientRequest");
+  // The partner's request, refused unless its reveal flag is this engine's.
+  // The request states the flag, and the library refuses to serve a request
+  // whose flag disagrees with the key this server was created under -- the
+  // wire-enforced mode agreement (docs/spec/PROTOCOL.md, PSI-C). The flag is
+  // read and both modes named here, rather than left to the library's
+  // refusal, which the frame boundary reports as a request that failed to
+  // decode.
+  private partnerRequest(requestBytes: Uint8Array): PSIRequest {
     const request = fromLibrary(() =>
       this.library.request.deserializeBinary(requestBytes),
     );
-    // The request states the reveal flag, and the library refuses to serve a
-    // request whose flag disagrees with the key this server was created
-    // under -- the wire-enforced mode agreement (docs/spec/PROTOCOL.md,
-    // PSI-C). Read the flag and name both modes here, rather than leave the
-    // library's refusal, which the frame boundary reports as a request that
-    // failed to decode.
     if (request.getRevealIntersection() !== this.revealFlag)
       throw partnerRequestModeError(
         this.id,
         request.getRevealIntersection(),
         this.mode,
       );
+    return request;
+  }
+
+  processClientRequest(requestBytes: Uint8Array): Promise<Uint8Array> {
+    const server = this.requireServer("processClientRequest");
+    this.requireUndisposed("processClientRequest");
+    const request = this.partnerRequest(requestBytes);
     const elements = request.getEncryptedElementsList().length;
     if (this.mode === "count-only-permuted")
       return Promise.resolve(this.permutedResponse(server, request, elements));
@@ -778,11 +829,29 @@ export class InProcessPsiEngine implements PsiEngine {
     request: PSIRequest,
     elements: number,
   ): Uint8Array {
+    const pi = this.permutationForRequest(elements);
+    return this.reorderedResponse(
+      pi,
+      this.answerInRequestOrder(server, request, elements),
+    );
+  }
+
+  // `pi`, drawn on the exchange's first request, which every later request
+  // is held to.
+  private permutationForRequest(elements: number): HeldPermutation {
     const pi = (this.#pi ??= HeldPermutation.draw(elements));
     if (pi.size !== elements)
       throw new PartnerProtocolRefusalError(
         `${this.id} protocol error: the partner's PSI request has ${String(elements)} elements where the exchange's first had ${String(pi.size)}`,
       );
+    return pi;
+  }
+
+  private answerInRequestOrder(
+    server: PSIServer,
+    request: PSIRequest,
+    elements: number,
+  ): Array<Uint8Array> {
     const ranges = this.rangesFor(elements, "processRequest");
     let inOrder: Array<Uint8Array>;
     if (ranges.length === 1) {
@@ -801,32 +870,122 @@ export class InProcessPsiEngine implements PsiEngine {
       throw new InternalConsistencyError(
         `${this.id}: the PSI engine answered ${String(inOrder.length)} of a request's ${String(elements)} elements`,
       );
-    const permuted = new Array<Uint8Array>(elements);
-    for (let slot = 0; slot < elements; slot += 1)
+    return inOrder;
+  }
+
+  // The serialized response whose slot `s` is `inOrder[pi(s)]`.
+  private reorderedResponse(
+    pi: HeldPermutation,
+    inOrder: ReadonlyArray<Uint8Array>,
+  ): Uint8Array {
+    if (inOrder.length !== pi.size)
+      throw new InternalConsistencyError(
+        `${this.id}: the PSI engine answered ${String(inOrder.length)} of a request's ${String(pi.size)} elements`,
+      );
+    const permuted = new Array<Uint8Array>(pi.size);
+    for (let slot = 0; slot < pi.size; slot += 1)
       permuted[slot] = inOrder[pi.at(slot)]!;
     return serializeResponse(this.library, permuted);
   }
 
+  answerRequestFirstPart(
+    partBytes: Uint8Array,
+    requestElements: number,
+  ): Promise<void> {
+    return settled(() => {
+      const server = this.requireServer("answerRequestFirstPart");
+      this.requireMode("answerRequestFirstPart", "count-only-permuted");
+      this.requireUndisposed("answerRequestFirstPart");
+      this.#heldFirstResponsePart = undefined;
+      const request = this.partnerRequest(partBytes);
+      const elements = request.getEncryptedElementsList().length;
+      if (elements > requestElements)
+        throw new InternalConsistencyError(
+          `${this.id}: the first part of a request has ${String(elements)} of its ${String(requestElements)} elements`,
+        );
+      this.permutationForRequest(requestElements);
+      this.#heldFirstResponsePart = this.answerInRequestOrder(
+        server,
+        request,
+        elements,
+      );
+    });
+  }
+
+  permuteAnsweredRequest(
+    restParts: ReadonlyArray<ReadonlyArray<Uint8Array>>,
+  ): Promise<Uint8Array> {
+    return settled(() => {
+      this.requireServer("permuteAnsweredRequest");
+      this.requireMode("permuteAnsweredRequest", "count-only-permuted");
+      this.requireUndisposed("permuteAnsweredRequest");
+      const first = this.#heldFirstResponsePart;
+      this.#heldFirstResponsePart = undefined;
+      const pi = this.#pi;
+      if (first === undefined || pi === undefined)
+        throw new InternalConsistencyError(
+          `${this.id}: permuteAnsweredRequest called before the request's first part was answered`,
+        );
+      return this.reorderedResponse(
+        pi,
+        concatChunkElements([first, ...restParts]),
+      );
+    });
+  }
+
   createClientRequest(values: ReadonlyArray<string>): Promise<Uint8Array> {
     const client = this.requireClient("createClientRequest");
-    if (this.mode === "count-only-permuted") {
-      this.refuseAfterFailedRound("createClientRequest");
-      this.assertDistinctValues("createClientRequest", values);
-      this.receiverRecords ??= values.length;
-      if (this.receiverRecords !== values.length)
-        throw new InternalConsistencyError(
-          `${this.id}: a count-only request has ${String(values.length)} values where the exchange's first had ${String(this.receiverRecords)}`,
-        );
-    }
+    if (this.mode === "count-only-permuted")
+      this.recordPermutedRequest("createClientRequest", values);
     const contributed =
       this.mode === "count-only"
         ? valuesContributedExactlyOnce(values)
         : values;
-    const ranges = this.rangesFor(contributed.length, "createRequest");
-    if (ranges.length === 1)
-      return Promise.resolve(
-        client.createRequest(contributed).serializeBinary(),
+    return Promise.resolve(this.maskRequest(client, contributed));
+  }
+
+  createRequestFirstPart(
+    values: ReadonlyArray<string>,
+    partElements: number,
+  ): Promise<Uint8Array> {
+    return settled(() => {
+      const client = this.requireClient("createRequestFirstPart");
+      this.requireMode("createRequestFirstPart", "count-only-permuted");
+      if (
+        !Number.isSafeInteger(partElements) ||
+        partElements < 0 ||
+        partElements > values.length
+      )
+        throw new InternalConsistencyError(
+          `${this.id}: the first part of a request cannot have ${String(partElements)} of its ${String(values.length)} values`,
+        );
+      this.recordPermutedRequest("createRequestFirstPart", values);
+      return this.maskRequest(client, values.slice(0, partElements));
+    });
+  }
+
+  // A count-only-permuted receiver's request: one distinct value per record,
+  // the same record count in every round.
+  private recordPermutedRequest(
+    operation: string,
+    values: ReadonlyArray<string>,
+  ): void {
+    this.refuseAfterFailedRound(operation);
+    this.assertDistinctValues(operation, values);
+    this.receiverRecords ??= values.length;
+    if (this.receiverRecords !== values.length)
+      throw new InternalConsistencyError(
+        `${this.id}: a count-only request has ${String(values.length)} values where the exchange's first had ${String(this.receiverRecords)}`,
       );
+  }
+
+  private maskRequest(
+    client: PSIClient,
+    values: ReadonlyArray<string>,
+  ): Uint8Array {
+    const ranges = this.rangesFor(values.length, "createRequest");
+    if (ranges.length === 1)
+      return client.createRequest(values).serializeBinary();
     // A request holds its elements in input order, so each chunk's masked
     // elements go straight into the outgoing message, with no list held
     // beside it to concatenate.
@@ -835,11 +994,11 @@ export class InProcessPsiEngine implements PsiEngine {
       appendChunkElements(
         request,
         client
-          .createRequest(contributed.slice(range.start, range.end))
+          .createRequest(values.slice(range.start, range.end))
           .getEncryptedElementsList_asU8(),
       ),
     );
-    return Promise.resolve(request.serializeBinary());
+    return request.serializeBinary();
   }
 
   receiveServerSetup(setupBytes: Uint8Array): Promise<void> {
@@ -1206,6 +1365,7 @@ export class InProcessPsiEngine implements PsiEngine {
     this.#pi = undefined;
     this.#sigma = undefined;
     this.#replay = undefined;
+    this.#heldFirstResponsePart = undefined;
     this.freeSetup();
     // The server / client objects hold the secret key in engine memory, which
     // garbage collection does not reclaim; only delete() frees it.

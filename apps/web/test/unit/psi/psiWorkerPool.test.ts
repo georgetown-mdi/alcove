@@ -654,6 +654,106 @@ describe("the PSI worker program's key handling", () => {
   });
 });
 
+describe("the PSI worker pool in the count-only-permuted mode", () => {
+  const mode: PsiEngineMode = "count-only-permuted";
+  const elementsOf = (bytes: Uint8Array): Array<string> =>
+    wasm.response
+      .deserializeBinary(bytes)
+      .getEncryptedElementsList_asU8()
+      .map((element) => Buffer.from(element).toString("hex"));
+  const inOrderStarter = (): InProcessPsiEngine =>
+    new InProcessPsiEngine(wasm, "starter", "server", "identifier-revealing", {
+      secretKey: KEY,
+    });
+
+  test("a joiner pool masks the request across its workers to one engine's bytes", async () => {
+    const library = keyLoggingLibrary({ generated: 0, given: [] });
+    const { spawn } = inProcessSpawner(() => loadOf(library));
+    const pool = joinerPool(spawn, mode, 3);
+    const single = engineUnderKey(mode);
+    try {
+      expect(await pool.createClientRequest(values(3072))).toEqual(
+        await single.createClientRequest(values(3072)),
+      );
+    } finally {
+      pool.dispose();
+      single.dispose();
+    }
+  }, 30_000);
+
+  test("a starter pool answers every round under one pi", async () => {
+    const library = keyLoggingLibrary({ generated: 0, given: [] });
+    const { spawn } = inProcessSpawner(() => loadOf(library));
+    const pool = startPsiWorkerPool(
+      spawn,
+      "starter",
+      "server",
+      mode,
+      3,
+      TIMEOUT_MS,
+    );
+    const partner = engineUnderKey(mode);
+    const inOrder = inOrderStarter();
+    try {
+      const pis: Array<Array<number>> = [];
+      for (const round of [0, 1]) {
+        const request = await partner.createClientRequest(
+          values(3072).map((value) => `${String(round)}:${value}`),
+        );
+        const expected = elementsOf(
+          await inOrder.processClientRequest(request),
+        );
+        const sent = elementsOf(await pool.processClientRequest(request));
+        pis.push(sent.map((element) => expected.indexOf(element)));
+      }
+      const identity = values(3072).map((_, index) => index);
+      expect([...pis[0]].sort((a, b) => a - b)).toEqual(identity);
+      expect(pis[0]).not.toEqual(identity);
+      expect(pis[1]).toEqual(pis[0]);
+    } finally {
+      pool.dispose();
+      partner.dispose();
+      inOrder.dispose();
+    }
+  }, 60_000);
+
+  test("a helper answers its part in request order, so it draws no pi", async () => {
+    const { scope, posted } = runProgram(
+      encodePsiWorkerInit({
+        role: "starter",
+        id: "server",
+        mode,
+        shard: "helper",
+      }),
+      loadOf(keyLoggingLibrary({ generated: 0, given: [] })),
+    );
+    const channel = new MessageChannel();
+    giveKeyPorts(scope, [channel.port2]);
+    channel.port1.postMessage(Uint8Array.from(KEY));
+    await vi.waitFor(() =>
+      expect(posted).toEqual([{ kind: "helper-setup", ready: true }]),
+    );
+    const partner = engineUnderKey(mode);
+    const inOrder = inOrderStarter();
+    try {
+      const request = await partner.createClientRequest(values(64));
+      const fromHelper = firstMessage(channel.port1);
+      channel.port1.postMessage({
+        id: 1,
+        body: { method: "processClientRequest", requestBytes: request },
+      });
+      expect(await fromHelper).toEqual({
+        id: 1,
+        ok: true,
+        result: await inOrder.processClientRequest(request),
+      });
+    } finally {
+      partner.dispose();
+      inOrder.dispose();
+    }
+  });
+});
+
 // A worker the test answers by hand.
 class FakeWorker implements PsiCryptoWorker {
   onmessage:
@@ -861,40 +961,20 @@ describe("the web exchange's PSI engine factory", () => {
     expect(workers[0].keyPorts[0]?.ports).toHaveLength(3);
   });
 
-  test("elsewhere runs the count-only-permuted joiner on one worker, with no helper", () => {
+  test("elsewhere runs the count-only-permuted joiner on the core count up to four, as the other modes", () => {
     const { spawn, workers } = fakeSpawner();
     createPooledBrowserPsiEngineFactory(spawn, linux)(
       "joiner",
       "client",
       "count-only-permuted",
     ).dispose();
+    const seed = { role: "joiner", id: "client", mode: "count-only-permuted" };
     expect(workers.map((worker) => worker.seed)).toEqual([
-      {
-        role: "joiner",
-        id: "client",
-        mode: "count-only-permuted",
-        shard: "primary",
-        helpers: 0,
-      },
+      { ...seed, shard: "primary", helpers: 3 },
+      { ...seed, shard: "helper" },
+      { ...seed, shard: "helper" },
+      { ...seed, shard: "helper" },
     ]);
-    expect(workers[0].keyPorts).toEqual([]);
-  });
-
-  test("a pool refuses the count-only-permuted mode before it spawns a worker", () => {
-    const spawn = vi.fn<SpawnPsiCryptoWorker>();
-    expect(() =>
-      startPsiWorkerPool(
-        spawn,
-        "joiner",
-        "client",
-        "count-only-permuted",
-        2,
-        TIMEOUT_MS,
-      ),
-    ).toThrow(
-      "client: a sharded PSI engine does not run the count-only-permuted mode",
-    );
-    expect(spawn).not.toHaveBeenCalled();
   });
 
   test("elsewhere runs the starter on one worker, which answers the request with no split", async () => {

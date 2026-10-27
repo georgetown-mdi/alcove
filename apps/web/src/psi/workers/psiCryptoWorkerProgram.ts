@@ -4,6 +4,7 @@ import {
   WorkerPsiEngine,
   psiEngineOptionsForBackend,
   servePsiEngine,
+  shardHelperMode,
 } from "@alcove/core";
 
 import {
@@ -33,7 +34,9 @@ import type {
 // port, and refuses every request the page sends it. The key is never posted
 // to the page. A split runs over the same ports: the primary sends each
 // helper its part and merges the answers itself, so the page sees only the
-// merged message.
+// merged message. A helper builds its engine in the helper mode of the
+// seed's, so a count-only-permuted pool's `pi` and receiver state stay on the
+// primary.
 
 /** The parts of a dedicated worker's global scope the program uses. */
 export interface PsiCryptoWorkerScope {
@@ -240,10 +243,13 @@ async function startHelper(
     ]);
     let engine: InProcessPsiEngine;
     try {
-      engine = new InProcessPsiEngine(library, seed.role, seed.id, seed.mode, {
-        ...psiEngineOptionsForBackend(backend),
-        secretKey: key,
-      });
+      engine = new InProcessPsiEngine(
+        library,
+        seed.role,
+        seed.id,
+        shardHelperMode(seed.mode),
+        { ...psiEngineOptionsForBackend(backend), secretKey: key },
+      );
     } finally {
       key.fill(0);
     }
