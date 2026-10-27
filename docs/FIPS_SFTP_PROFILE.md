@@ -124,7 +124,7 @@ In a container configured with an OpenSSL FIPS provider, the provider build deci
 
 ### The default offer measured inside the image
 
-On an Amazon Linux 2023 host with kernel FIPS mode enabled (`/proc/sys/crypto/fips_enabled` reads `1`), the FIPS variant image -- containing the AL2023 FIPS provider module `3.0.8-d694bfa693b76001`, under a fips-only OpenSSL configuration -- was dialed at a listener that answers the SSH version banner, decodes the client's first packet (`SSH_MSG_KEXINIT`), and drops the connection. No key exchange completed. The dial had no `algorithms` block, so what it offered is the default:
+On an Amazon Linux 2023 host with kernel FIPS mode enabled (`/proc/sys/crypto/fips_enabled` reads `1`), the FIPS variant image -- containing the AL2023 FIPS provider module it pinned when the capture was taken, `3.0.8-d694bfa693b76001`, under a fips-only OpenSSL configuration -- was dialed at a listener that answers the SSH version banner, decodes the client's first packet (`SSH_MSG_KEXINIT`), and drops the connection. No key exchange completed. The dial had no `algorithms` block, so what it offered is the default:
 
 | Negotiated | Offered by default from inside the FIPS image |
 |---|---|

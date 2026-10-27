@@ -174,7 +174,7 @@ In short: the algorithms the scoped claim names are on certificate 5438's approv
 
 #### Constraining the SSH layer is a separate, achievable control
 
-Restricting what an SFTP exchange's SSH transport will negotiate to approved algorithms is independent of everything above and is available today, whatever image is deployed; it is not a validated-module claim. The settings, and the default offer measured from the variant image on an Amazon Linux 2023 host in FIPS mode, are in [FIPS_SFTP_PROFILE.md](FIPS_SFTP_PROFILE.md#the-default-offer-measured-inside-the-image). A FIPS-configured image narrows that offer by itself, but not to approved algorithms alone: its key-exchange offer still includes `diffie-hellman-group-exchange-sha256`, whose modulus the server chooses, and the profile's `kex` list removes it.
+Restricting what an SFTP exchange's SSH transport will negotiate to approved algorithms is independent of everything above and is available today, whatever image is deployed; it is not a validated-module claim. The settings, and the default offer measured from the variant image on an Amazon Linux 2023 host in FIPS mode, are in [FIPS_SFTP_PROFILE.md](FIPS_SFTP_PROFILE.md#the-default-offer-measured-inside-the-image). A FIPS-configured image narrows that offer by itself, but not to approved algorithms alone: its key-exchange offer still includes `diffie-hellman-group-exchange-sha256`, whose modulus the server chooses, and the profile's `kex` list removes it. The host-key type is the partner server's to restrict.
 
 ### Section 508 and accessibility
 
