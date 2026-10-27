@@ -159,7 +159,7 @@
 - - -> The count is the size of the one-to-one cascade's association table in the permuted space, computed by the receiver's engine:
 - - -> **The round's pairs.**
 - - -> In round `k`, for each response slot `s` whose decrypted element equals the setup element at position `p`, the engine forms the pair (`s`, `T_k[p]`), `T_k` being that round's index table.
-- - -> Each party's elements in a round are distinct, so a slot or a pseudonym occurs in at most one of the round's pairs; a round whose pairs repeat either is refused as an internal fault.
+- - -> Each party's elements in a round are distinct, so a slot or a pseudonym occurs in at most one of the round's pairs; a round whose pairs repeat, which only a partner's response that repeats an element can cause, is refused as a protocol error.
 - - -> **The replay.**
 - - -> Two sets start empty: the accepted slots and the accepted pseudonyms.
 - - -> A round's pairs are disjoint, so their order within the round does not change the result.
@@ -197,7 +197,7 @@
 - - -> This is enforced: no frame the receiver sends it contains more.
 - - -> **That the receiver cannot attribute a match to a record rests on the sender's own software.**
 - - -> Only the sender draws `pi` and `sigma`, so a sender running this protocol protects its own records, and the receiver cannot tell whether a sender applied them.
-- - -> A receiver cannot weaken that protection from its own side.
+- - -> On the wire a receiver cannot undo `pi` or `sigma` from its own side; what its own inputs and key coverage let it learn is stated in the next bullet and under the threat-model scope below.
 - - -> **The receiver's software learns more than the count, from genuine inputs, and that is accepted.**
 - - -> Its engine keeps every round's pairs, so the receiver's software can derive, beyond the count: the number of matches on each key; the overlap between keys, how many slots matched on each combination of keys; and the pseudonymous pair table of slots against sender pseudonyms.
 - - -> And from its own records' key coverage: a slot that matched on a set of keys belongs to one of the receiver's records with a real value for every one of those keys, so where few of its records have that coverage the match narrows the slot to those records, or names one.
@@ -281,3 +281,7 @@
 - - -> A match in the round filtering the receiver's side narrows the slot to the receiver's own records with no valid value for the field, as its own coverage narrows any slot.
 - - -> Both are per-key results and coverage-based narrowing, the class the item above accepts, and neither is shown to the operator.
 - - -> Each party's set in every round has exactly its declared record count, which the terms exchange already states, so a frame's element count tells the partner nothing more, and in particular not how well a key covers the party's dataset, nor, in a round a missing-field condition filters, how many of the party's records lack the field.
+- Once the exchange is prepared and before the connection opens, a party on any channel whose terms run the cascade or the count-only algorithm counts the values its first round sends under its own within-round rule: every distinct value when its terms set `deduplicate` on a cascade, and otherwise only the values exactly one of its records holds (`assertFirstRoundWithinSetMaximum`, `packages/core/src/exchange/firstRoundCapacity.ts`). -> Once the exchange is prepared and before the connection opens, a party on any channel whose terms run the cascade or the count-only algorithm counts the values its first round sends under its own within-round rule: every distinct value when its terms set `deduplicate` on a cascade, and otherwise only the values exactly one of its records holds (`assertFirstRoundWithinSetMaximum`, `packages/core/src/exchange/firstRoundCapacity.ts`); for count-only that is the shipped build's rule, which the [PSI-C](#psi-c) construction replaces.
+- The response is fed in the chunk policy's element ranges, each cut at the byte offset its range takes in proportion, which is an element boundary in a conforming response and anywhere the engine accepts otherwise; the running count is reported between pieces, and a stop requested during the match, such as on a lost partner, takes effect at the next piece ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#a-connection-that-ends-during-a-round)). -> The response is fed in the chunk policy's element ranges, each cut at the byte offset its range takes in proportion, which is an element boundary in a conforming response and anywhere the engine accepts otherwise; the running count is reported between pieces (in the shipped count-only build; the [PSI-C](#psi-c) construction reports none), and a stop requested during the match, such as on a lost partner, takes effect at the next piece ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#a-connection-that-ends-during-a-round)).
+- - -> **Not yet built:** the matching-basis row and the `single-pass` paragraph below describe count-only over every agreed linkage key.
+- - -> The shipped build runs one key and refuses `single-pass` ([PROTOCOL.md, PSI-C](PROTOCOL.md#psi-c)).
