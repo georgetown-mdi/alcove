@@ -40,7 +40,7 @@
 - - -> Each socket sends the hello a run sends, and corrects an expired proof on the relay's clock as a run does.
 - - -> The relay sends nothing to an admitted hello until a partner arrives, and it checks the role only once the proof has verified ([WEBSOCKET_RELAY.md](WEBSOCKET_RELAY.md#the-hello)), so the second socket it admits is refused as role taken (4006).
 - - -> The check reads that refusal, or `paired` on either socket, as the admission.
-- - -> It closes both sockets once it has an answer, with 1000, as a run closes a socket on which it has not sent its start.
+- - -> It closes both sockets once it has an answer, with 1000, as a run closes a socket on which it has not sent its start, except a socket that received a frame the client does not take, which it closes with 4000, as a run abandons such a socket.
 - - -> Neither socket sends a start, so the check opens no relayed path and sends no exchange message.
 - - -> **The stated limit of the WebSocket relay request.**
 - - -> The check stops at admission.
