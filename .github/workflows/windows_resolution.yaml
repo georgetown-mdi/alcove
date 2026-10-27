@@ -6,7 +6,7 @@ name: Windows Path Resolution
 # DFS namespace -- had never been tested anywhere. This workflow tests them on a
 # throwaway windows-latest runner that serves itself the share.
 #
-# Two jobs, two contracts:
+# The jobs and their contracts:
 #
 #   test     Pester over the guide scripts' own functions, dot-sourced with
 #            -LoadFunctionsOnly: the setup script's path resolution against the
@@ -21,14 +21,19 @@ name: Windows Path Resolution
 #            repository script test keeps equal to them.
 #            It ASSERTS: a failed test fails the job. Runs on every pull request
 #            touching the paths below.
-#   measure  The original measurement harness, which asks whether the runner can
+#   clm      Both scripts run end to end in sessions a machine-wide policy has
+#            put in ConstrainedLanguage: the setup script's refusal and the
+#            launcher's typed folder prompts. Its own job because the policy
+#            reaches every PowerShell started while it is set. It ASSERTS, on
+#            the same pull requests as test.
+#   measure The original measurement harness, which asks whether the runner can
 #            host the rig at all and never fails. Kept for re-measuring, and run
 #            only on manual dispatch -- an edit to that harness is checked by
 #            dispatching this workflow, not by opening a pull request.
 #
 # The session reading a run can read check-run annotations and nothing else, so
-# both jobs report everything a reader needs as single-line annotations and
-# nothing as log-only. The test job emits one ::error per failed test, one
+# every job reports everything a reader needs as single-line annotations and
+# nothing as log-only. The test and clm jobs emit one ::error per failed test, one
 # ::notice summarising the counts and the Pester version, and one ::notice per
 # rig assumption, so an infrastructure failure is distinguishable from a script
 # that resolves a path wrongly. Read a run through its annotations:
@@ -36,8 +41,8 @@ name: Windows Path Resolution
 #   gh api repos/<owner>/<repo>/check-runs/<check-run-id>/annotations
 #
 # No same-repo gate, unlike the workflows that hold credentials: the runner is a
-# throwaway VM, the jobs read no secret, and the share and namespace they create
-# live and die inside that VM with nothing here elevated beyond what every
+# throwaway VM, the jobs read no secret, and the share, namespace and policy they
+# create live and die inside that VM with nothing here elevated beyond what every
 # windows-latest job already holds.
 on:
   pull_request:
@@ -47,6 +52,7 @@ on:
       - "support/windows-network-filedrop/Start-Alcove.ps1"
       - "support/maintainer-notes/Setup-AlcoveFileDrop.Tests.ps1"
       - "support/maintainer-notes/Start-Alcove.Tests.ps1"
+      - "support/maintainer-notes/ConstrainedLanguage.Tests.ps1"
       - "support/maintainer-notes/AcceptSheet.Tests.ps1"
       - "support/maintainer-notes/accept-sheet-commands.txt"
       - "support/maintainer-notes/DockerLines.Tests.ps1"
@@ -82,6 +88,19 @@ jobs:
       - name: Run the resolution suite
         shell: cmd
         run: powershell -NoProfile -ExecutionPolicy Bypass -File .\support\maintainer-notes\ci-resolution-tests.ps1
+
+  clm:
+    name: Scripts in constrained language mode
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      # The suite sets the policy itself, after the harness and Pester are
+      # loaded, so this session keeps FullLanguage and drives the runs.
+      - name: Run the constrained language suite
+        shell: cmd
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\support\maintainer-notes\ci-resolution-tests.ps1 -Suite ConstrainedLanguage
 
   measure:
     name: Measure drive and namespace resolution

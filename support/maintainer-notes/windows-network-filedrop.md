@@ -314,10 +314,81 @@ unmeasured is the same as everywhere else here: Windows, a real share, and the
 
 The folder picker, its typed fallback, the credential prompt itself and the
 paths that need a real engine and a real share were executed by the 17 September
-2026 pass below. Still unexecuted anywhere: the DFS offer, and the
-constrained-language branch, which is the one chosen from documentation rather
-than measurement -- the picker in a session whose language mode really is
-constrained is where the next pass should start.
+2026 pass below. Still unexecuted anywhere: the DFS offer.
+
+**Constrained language mode is driven in CI by a policy, measured on 27 October
+2026 (run 40505959607) to take effect.** `ConstrainedLanguage.Tests.ps1`,
+run alone by the workflow's `clm` job, sets the machine environment variable
+`__PSLockdownPolicy=4` and runs both scripts in new `powershell.exe` sessions
+against the stub engine. It asserts:
+
+- the setup script's preflight refusal, its pointer to the Command Prompt
+  script, exit 1, and no call reaching the engine;
+- the launcher's warning, its typed folder prompt in place of the picker, and a
+  folder on this PC reaching the console.
+
+A network folder typed into the launcher's prompt -- a mapped letter and a UNC
+path over the runner's loopback share -- is recorded as a `Measured_`
+annotation rather than asserted. That the variable puts a new session in
+ConstrainedLanguage with no restart is measured: the `Rig_clm` annotation of
+that run shows child sessions started by `-Command` and by `-File` in
+ConstrainedLanguage while the harness session stayed FullLanguage, and the
+suite passed 5 of 5. The suite's first test, and a harness check in
+`ci-resolution-tests.ps1`, fail the job when the sessions under test ran in any
+other mode. A real WDAC or AppLocker policy on a managed endpoint is not what
+this drives.
+
+What the `Measured_clm_*` annotations of that run show, against the stub engine:
+a mapped letter (`Y:\drop`) and a UNC path (`\\localhost\<share>\drop`) typed at
+the launcher's prompt under constrained language each start the console, with
+the typed path passed as a bind mount (`--volume Y:\drop:/rendezvous`, and
+`--volume \\localhost\<share>\drop:/rendezvous`) and no network-share volume
+created (`volume_create=false`).
+
+**What the GitHub-hosted Windows runner hosts, measured 27 October 2026 (run
+40505959607).** A probe job, since removed, asked each question below and
+reported one annotation per answer; the run's check-run annotations are the
+record.
+
+- P1, the lockdown policy: `__PSLockdownPolicy=4` was unset before. A new
+  process given the variable at process level alone was FullLanguage, so the
+  policy has to be set machine-wide. New sessions were FullLanguage again once
+  the variable was removed.
+- P3b, `schtasks` dates: under en-GB, `schtasks /SD 10/27/2026` is refused
+  ("Incorrect Start Date") and `03/04/2026` reads as 3 April. Under en-US,
+  `03/04/2026` reads as 4 March. The session's culture was en-US before the
+  probe changed it.
+- P4, the engine: the runner's Docker engine is the Windows engine (server
+  version 29.7.2), its service was running, and `docker` is at
+  `C:\Windows\system32\docker.exe`. `wsl.exe` is present and reports default
+  version 2.
+- P6, a created standard user: a standard local user was created and
+  `Start-Process -Credential` ran a child as it (exit 0, `whoami` returned the
+  user). `Get-SmbConnection` in that child was denied ("Access is denied").
+- P2, AppLocker: its service (`AppIDSvc`) is present with start type Manual,
+  was Stopped, and started to Running; the AppLocker cmdlets are present. No
+  policy was applied.
+- P3, `schtasks /Run`: a task created without `/RU` was created (exit 0) and
+  run (exit 0), and ran. It wrote a file as `runneradmin` with working folder
+  `C:\Windows\System32`, its logon mode was Interactive only, and its last
+  result was 0. The record has no answer for `/RU SYSTEM`.
+- P4b, the engine stopped: with the Docker service stopped, `docker run` exited
+  1 and its first line was "failed to connect to the docker API at
+  npipe:////./pipe/docker_engine; check if the path is correct and if the daemon
+  is running: open //./pipe/docker_engine: The system cannot find the file
+  specified." The service was Running again afterwards.
+- P7, elevation: the job runs as `runneradmin`, in the administrators role, at
+  high integrity.
+- P8, console input: text injected into a new console window (`AttachConsole`
+  and `WriteConsoleInput`, 8 records written) was read back as `abc` by cmd's
+  `set /p` and by PowerShell's prompt, and both windows exited.
+
+Two further questions were already answered by the `measure` job's dispatch of 26
+October 2026: the job's token passes the scripts' own `Test-Elevated` test
+(`Q0_runner`, `elevated=true`), and after a write through a DFS link and a
+letter mapped to it, an elevated `Get-SmbConnection` lists the target share by
+the server's own name beside the namespace share (`Q3_resolve`,
+`smb_connections`).
 
 The launcher's CIFS volume options are the setup script's -- since 5 August 2026
 literally, through `New-ShareVolume`, which the launcher calls with `-Engine`
