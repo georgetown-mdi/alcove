@@ -77,7 +77,7 @@ export interface WebSocketRelayConnectionOptions {
   closeFlushTimeoutMs?: number;
   /** Ends the dial early, closing the socket. */
   signal?: AbortSignal;
-  /** Tests only. */
+  /** Tests, and the relay check, which watches each socket's close through it. */
   socketFactory?: (url: string) => WebSocket;
   /** Tests only. */
   now?: () => Date;
@@ -128,7 +128,7 @@ const WEBSOCKET_CLOSING = 2;
 const WEBSOCKET_CLOSED = 3;
 
 /** The relay's close codes: docs/spec/WEBSOCKET_RELAY.md, Close codes. */
-const RELAY_CLOSE = {
+export const RELAY_CLOSE = {
   normal: 1000,
   goingAway: 1001,
   tooBig: 1009,

@@ -8,7 +8,7 @@ import {
   UNAVAILABLE_EXIT_CODE,
 } from "@alcove/cli-contract";
 import { redactPrivateKeyMaterial } from "@alcove/core";
-import type { RelayTransport } from "@alcove/core";
+import type { RelayTransport, WebSocketRelayCheckOutcome } from "@alcove/core";
 
 import { asciiSafeJsonLine } from "../util/jsonLine";
 
@@ -68,6 +68,10 @@ export type DoctorCheck = {
   registrar?: string;
   /** When that enrollment lapses, as the registrar stated it. */
   lapses_at?: string;
+  /** What a `relay` run's check of a WebSocket relay found there. */
+  outcome?: WebSocketRelayCheckOutcome;
+  /** The close the WebSocket relay refused the proof with, where it did. */
+  close_code?: number;
 };
 
 /**
@@ -199,6 +203,10 @@ export function verdictOf(report: DoctorReport): DoctorVerdict {
             : {}),
           ...(check.lapses_at !== undefined
             ? { lapses_at: check.lapses_at }
+            : {}),
+          ...(check.outcome !== undefined ? { outcome: check.outcome } : {}),
+          ...(check.close_code !== undefined
+            ? { close_code: check.close_code }
             : {}),
         }) satisfies DoctorCheck,
     ),

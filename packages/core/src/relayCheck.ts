@@ -7,10 +7,15 @@
 import type { WebRTCConnectionConfig } from "./config/connection.js";
 import { InternalConsistencyError } from "./errors.js";
 import {
+  allowedRelaysLeaveOutInvitationRelay,
   runEnrollsAtInvitationRegistrar,
   selectRunRelay,
 } from "./relayCredential.js";
-import type { RunRelayConnection, RunTurnServer } from "./relayCredential.js";
+import type {
+  RunRelayConnection,
+  RunTurnServer,
+  RunWebSocketRelay,
+} from "./relayCredential.js";
 
 /**
  * The one bound on the relay request: a relay that has given no relay
@@ -63,16 +68,25 @@ export interface RelayCheckRegistrar {
   url: string;
   /** `runEnrollsAtInvitationRegistrar` for the configuration. */
   contacted: boolean;
+  /** Why a run does not enroll there, where it does not. */
+  notContactedReason?: string;
 }
 
 /** What the check contacts, and what a run lists that it does not. */
 export interface RelayCheckPlan {
-  /** The first TURN url a run lists: the one it allocates on. */
-  contacted: RelayCheckContact;
+  /**
+   * The first TURN url a run lists: the one it allocates on. Absent where the
+   * run lists no TURN url and so allocates on none.
+   */
+  contacted?: RelayCheckContact;
   /** Every later TURN url a run lists, in its order; none is contacted. */
   notContacted: RunTurnServer[];
   /** Every TURN url `allowed_relays` left out; none is contacted. */
   leftOut: RunTurnServer[];
+  /** Every WebSocket relay a run dials, in its order; each is contacted. */
+  websocket: RunWebSocketRelay[];
+  /** Every WebSocket relay url `allowed_relays` left out; none is contacted. */
+  websocketLeftOut: RunWebSocketRelay[];
   /** Absent where the configuration's `invitation_relay` names no registrar. */
   registrar?: RelayCheckRegistrar;
 }
@@ -90,29 +104,67 @@ export function turnUrlTransport(url: string): RelayTransport {
 }
 
 /**
+ * Why a run of `connection` does not enroll at the registrar its
+ * `invitation_relay` names, for a connection whose run does not.
+ */
+function notEnrollingReason(connection: RunRelayConnection): string {
+  if (allowedRelaysLeaveOutInvitationRelay(connection))
+    return "connection.allowed_relays leaves out the relay it names";
+  const { turn, websocket } = selectRunRelay(connection);
+  const allocating = turn?.[0];
+  const clauses: string[] = [];
+  if (allocating !== undefined)
+    clauses.push(
+      allocating.credential !== undefined
+        ? "the relay it allocates on is sent its connection.turn entry's " +
+            "own credential"
+        : "the relay it allocates on is not one the invitation names",
+    );
+  const invitationWebSocket = connection.invitationRelay?.websocket;
+  if ((websocket ?? []).some((relay) => relay.url === invitationWebSocket))
+    clauses.push(
+      "it proves to the WebSocket relay the invitation names under the " +
+        "exchange id the invitation names",
+    );
+  else if (allocating === undefined)
+    clauses.push(
+      "the WebSocket relay it dials is not one the invitation names",
+    );
+  return clauses.join(", and ");
+}
+
+/**
  * What the check contacts for `connection`, as a run of it does: the first
- * TURN url the run lists, and the invitation's registrar where the run
- * enrolls there.
+ * TURN url the run lists, every WebSocket relay it dials, and the
+ * invitation's registrar where the run enrolls there.
  *
- * @throws {InternalConsistencyError} if the connection lists no TURN url,
- *   which the check refuses before it plans.
+ * @throws {InternalConsistencyError} if the connection lists neither a TURN
+ *   url nor a WebSocket relay, which the check refuses before it plans.
  */
 export function relayCheckPlan(connection: RunRelayConnection): RelayCheckPlan {
-  const { turn, turnLeftOut } = selectRunRelay(connection);
+  const { turn, turnLeftOut, websocket, websocketLeftOut } =
+    selectRunRelay(connection);
   const [first, ...rest] = turn ?? [];
-  if (first === undefined)
+  if (first === undefined && (websocket ?? []).length === 0)
     throw new InternalConsistencyError(
-      "relayCheckPlan: the relay check was given no TURN url",
+      "relayCheckPlan: the relay check was given no TURN url and no " +
+        "WebSocket relay",
     );
   const registrar = connection.invitationRelay?.registrar;
+  const enrolls = runEnrollsAtInvitationRegistrar(connection);
   return {
-    contacted: { server: first, transport: turnUrlTransport(first.url) },
+    ...(first !== undefined && {
+      contacted: { server: first, transport: turnUrlTransport(first.url) },
+    }),
     notContacted: rest,
     leftOut: turnLeftOut ?? [],
+    websocket: websocket ?? [],
+    websocketLeftOut: websocketLeftOut ?? [],
     ...(registrar !== undefined && {
       registrar: {
         url: registrar,
-        contacted: runEnrollsAtInvitationRegistrar(connection),
+        contacted: enrolls,
+        ...(!enrolls && { notContactedReason: notEnrollingReason(connection) }),
       },
     }),
   };
@@ -135,6 +187,9 @@ function sourceLabel(server: RunTurnServer): string {
 
 const REGISTRAR_NAMED = "The relay registrar your partner's invitation names";
 
+const RELAY_DISCLOSURE =
+  "Whoever runs that relay learns this machine's network address.";
+
 function capitalized(sentence: string): string {
   return sentence.charAt(0).toUpperCase() + sentence.slice(1);
 }
@@ -142,22 +197,27 @@ function capitalized(sentence: string): string {
 /**
  * Why a run of the configuration does not enroll at the registrar its
  * `invitation_relay` names, for a plan whose registrar is not contacted.
+ *
+ * @throws {InternalConsistencyError} for a plan whose registrar is contacted
+ *   or absent.
  */
 export function registrarNotContactedReason(plan: RelayCheckPlan): string {
-  const listed = [plan.contacted.server, ...plan.notContacted];
-  if (
-    plan.leftOut.some((server) => server.source === "invitation") &&
-    !listed.some((server) => server.source === "invitation")
-  )
-    return "connection.allowed_relays leaves out the relay it names";
-  return plan.contacted.server.credential !== undefined
-    ? "the relay it allocates on is sent its connection.turn entry's own " +
-        "credential"
-    : "the relay it allocates on is not one the invitation names";
+  const reason = plan.registrar?.notContactedReason;
+  if (reason === undefined)
+    throw new InternalConsistencyError(
+      "registrarNotContactedReason: the plan contacts its registrar or names none",
+    );
+  return reason;
 }
 
 function transportAndSource(server: RunTurnServer): string {
   return `over ${TRANSPORT_LABEL[turnUrlTransport(server.url)]}, ${sourceLabel(server)}`;
+}
+
+function webSocketSourceLabel(relay: RunWebSocketRelay): string {
+  return relay.source === "invitation"
+    ? "from your partner's invitation"
+    : "from connection.websocket_relay";
 }
 
 /** One host of the host statement, with the lines that explain it. */
@@ -186,17 +246,28 @@ export function relayHostStatement(
   connection: Pick<WebRTCConnectionConfig, "invitationRelay">,
 ): RelayHostStatement {
   const { contacted, notContacted, leftOut, registrar } = plan;
-  const contactedHosts: RelayHostStatementEntry[] = [
-    {
+  const contactedHosts: RelayHostStatementEntry[] = [];
+  if (contacted !== undefined)
+    contactedHosts.push({
       host: contacted.server.url,
       explanation: [
         `The relay a run allocates on, ${transportAndSource(contacted.server)}. ` +
           "The check asks it for a relay address, sending the credential a " +
           "run sends there.",
-        "Whoever runs that relay learns this machine's network address.",
+        RELAY_DISCLOSURE,
       ],
-    },
-  ];
+    });
+  for (const relay of plan.websocket)
+    contactedHosts.push({
+      host: relay.url,
+      explanation: [
+        `A WebSocket relay a run dials, ${webSocketSourceLabel(relay)}. ` +
+          "The check opens two connections to it, presents on each the " +
+          "proof a run presents there, and closes both once the relay " +
+          "answers.",
+        RELAY_DISCLOSURE,
+      ],
+    });
   if (registrar?.contacted === true)
     contactedHosts.push({
       host: registrar.url,
@@ -219,6 +290,13 @@ export function relayHostStatement(
       host: server.url,
       explanation: [
         `${capitalized(transportAndSource(server))}. ` +
+          `${capitalized(LEFT_OUT_BY_CONNECTION_ALLOWED_RELAYS)}.`,
+      ],
+    })),
+    ...plan.websocketLeftOut.map((relay) => ({
+      host: relay.url,
+      explanation: [
+        `A WebSocket relay, ${webSocketSourceLabel(relay)}. ` +
           `${capitalized(LEFT_OUT_BY_CONNECTION_ALLOWED_RELAYS)}.`,
       ],
     })),
@@ -320,6 +398,43 @@ export function invitationRelayNotEnrolledStatement(
   );
 }
 
+/** What the check found at a WebSocket relay a run dials. */
+export type WebSocketRelayCheckOutcome =
+  "admitted" | "not_admitted" | "not_reached" | "certificate_not_verified";
+
+/** The id of the check of the `position`-th WebSocket relay a run dials, from 1. */
+export function webSocketRelayCheckId(position: number): string {
+  return `websocket_${position}`;
+}
+
+// The closes the WebSocket relay refuses a hello with, each with what it
+// means for the check (docs/spec/WEBSOCKET_RELAY.md, Close codes). 4006, role
+// taken, is absent: the relay sends it only once the proof has verified.
+const WEBSOCKET_RELAY_REFUSALS: ReadonlyMap<number, string> = new Map([
+  [1001, "the relay is shutting down"],
+  [1009, "the relay refused a message this side sent"],
+  [1011, "the relay could not check the proof"],
+  [4001, "the relay refused a message this side sent"],
+  [4002, "the relay refused a message this side sent"],
+  [4003, "the relay holds no key for this exchange"],
+  [
+    4004,
+    "the relay holds a key for this exchange other than the one this " +
+      "side's shared secret derives",
+  ],
+  [4005, "the relay refused the proof as expired"],
+  [4007, "the relay did not receive the proof in time"],
+  [4008, "the relay is serving as many exchanges as it allows"],
+]);
+
+/**
+ * Whether `code` is a close the WebSocket relay refuses a hello with before
+ * it admits the proof, which the check reports as not admitted.
+ */
+export function isWebSocketRelayRefusal(code: number): boolean {
+  return WEBSOCKET_RELAY_REFUSALS.has(code);
+}
+
 /** The closed fields of one check of a `relay` verdict, as `--json` has them. */
 export interface RelayCheckFields {
   id: string;
@@ -328,6 +443,8 @@ export interface RelayCheckFields {
   transport?: RelayTransport;
   registrar?: string;
   lapses_at?: string;
+  outcome?: WebSocketRelayCheckOutcome;
+  close_code?: number;
 }
 
 /** What a headline adds to the verdict's fields, where its writer has it. */
@@ -342,9 +459,37 @@ export interface RelayCheckHeadlineOptions {
 }
 
 const TURN_CHECK_ID = /^turn_([1-9][0-9]*)$/;
+const WEBSOCKET_CHECK_ID = /^websocket_[1-9][0-9]*$/;
 
 function boundSeconds(boundMs: number): string {
   return `${Math.round(boundMs / 1000)} s`;
+}
+
+function webSocketRelayHeadline(
+  check: RelayCheckFields,
+  boundMs: number,
+): string | undefined {
+  const { status, url, transport, outcome, close_code: code } = check;
+  if (url === undefined || transport !== undefined) return undefined;
+  const heading = `${url}, a WebSocket relay a run dials`;
+  if (status === "ok")
+    return outcome === "admitted" && code === undefined
+      ? `${heading}: admitted; the relay accepted this exchange's proof.`
+      : undefined;
+  if (status !== "fail") return undefined;
+  if (outcome === "not_admitted") {
+    const refusal =
+      code === undefined ? undefined : WEBSOCKET_RELAY_REFUSALS.get(code);
+    return refusal === undefined
+      ? undefined
+      : `${heading}: not admitted; ${refusal} (close code ${code}).`;
+  }
+  if (code !== undefined) return undefined;
+  if (outcome === "not_reached")
+    return `${heading}: not reached within ${boundSeconds(boundMs)}.`;
+  if (outcome === "certificate_not_verified")
+    return `${heading}: not reached; its TLS certificate did not verify on this host.`;
+  return undefined;
 }
 
 /**
@@ -358,6 +503,14 @@ export function relayCheckHeadline(
   options: RelayCheckHeadlineOptions = {},
 ): string | undefined {
   const { id, status, url, transport, registrar } = check;
+  const boundMs = options.boundMs ?? RELAY_CHECK_BOUND_MS;
+  if (WEBSOCKET_CHECK_ID.test(id)) {
+    return check.registrar === undefined && check.lapses_at === undefined
+      ? webSocketRelayHeadline(check, boundMs)
+      : undefined;
+  }
+  if (check.outcome !== undefined || check.close_code !== undefined)
+    return undefined;
   if (id === RELAY_CHECK_ENROLLMENT_ID) {
     if (registrar === undefined) return undefined;
     try {
@@ -390,7 +543,7 @@ export function relayCheckHeadline(
   if (status === "fail")
     return (
       `${heading}: ${NO_RELAY_CANDIDATE_GATHERED} within ` +
-      `${boundSeconds(options.boundMs ?? RELAY_CHECK_BOUND_MS)}.`
+      `${boundSeconds(boundMs)}.`
     );
   return undefined;
 }

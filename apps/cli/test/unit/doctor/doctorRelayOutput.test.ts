@@ -11,6 +11,7 @@ import type { RTCIceServer } from "werift";
 import { checkRelay } from "../../../src/commands/doctor";
 import type { RelayCandidateGathering } from "../../../src/doctor/relay";
 import { verdictJson, verdictLines } from "../../../src/doctor/verdict";
+import type { WebSocketRelayAnswer } from "../../../src/doctor/websocketRelay";
 import { saveKeyFile } from "../../../src/keyFile";
 import { snapshotDiagnosticSinkAndLevel } from "../../loggingTestSupport";
 import {
@@ -48,6 +49,8 @@ const SECRET = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM";
 const OWN_TURN = "turn:own-relay.example.org:3478?transport=tcp";
 const STATIC_TURN = "turn:static-relay.example.org:3478";
 const INVITATION_TURN = "turns:relay.example.org:443?transport=tcp";
+const OWN_WEBSOCKET = "wss://own-relay.example.org/relay";
+const INVITATION_WEBSOCKET = "wss://relay.example.org/relay";
 const SECOND_INVITATION_TURN = "turn:relay-2.example.org:3478";
 const REGISTRAR = "https://registrar.example.org";
 const LAPSES_AT = "2026-01-01T01:10:00Z";
@@ -105,6 +108,7 @@ function gathering(reached: ReadonlyArray<string>): RelayCandidateGathering {
 async function printed(options: {
   registrarAnswers?: Response[];
   reached: ReadonlyArray<string>;
+  websocketAnswers?: Readonly<Record<string, WebSocketRelayAnswer>>;
 }): Promise<PrintedOutput> {
   const statement: string[] = [];
   const report = await checkRelay({
@@ -113,6 +117,11 @@ async function printed(options: {
     writeStatementLine: (line) => statement.push(line),
     fetch: fakeRegistrar(options.registrarAnswers ?? []).fetch,
     gather: gathering(options.reached),
+    askWebSocket: (dial) => {
+      const answer = options.websocketAnswers?.[dial.url];
+      if (answer === undefined) throw new Error(`no answer for ${dial.url}`);
+      return Promise.resolve(answer);
+    },
     now: new Date("2026-01-01T00:00:00Z"),
   });
   return { statement, lines: verdictLines(report), json: verdictJson(report) };
@@ -187,6 +196,56 @@ test.each([
     const output = await printed({
       registrarAnswers: [...registrarAnswers],
       reached,
+    });
+
+    expect(output).toEqual(RECORDED[name]);
+  },
+);
+
+test.each([
+  [
+    "websocketOnlyAdmitted",
+    { websocket_relay: OWN_WEBSOCKET },
+    [],
+    { [OWN_WEBSOCKET]: { outcome: "admitted" } },
+  ],
+  [
+    "turnReachedWebSocketNotAdmitted",
+    { turn: [{ url: OWN_TURN }], websocket_relay: OWN_WEBSOCKET },
+    [OWN_TURN],
+    { [OWN_WEBSOCKET]: { outcome: "not_admitted", closeCode: 4003 } },
+  ],
+  [
+    "invitationWebSocketNotReached",
+    {
+      invitation_relay: {
+        websocket: INVITATION_WEBSOCKET,
+        registrar: REGISTRAR,
+      },
+    },
+    [],
+    {
+      [INVITATION_WEBSOCKET]: {
+        outcome: "not_reached",
+        certificateNotChecked: false,
+      },
+    },
+  ],
+  [
+    "websocketCertificateNotVerified",
+    { turn: [{ url: OWN_TURN }], websocket_relay: OWN_WEBSOCKET },
+    [],
+    { [OWN_WEBSOCKET]: { outcome: "certificate_not_verified" } },
+  ],
+] as const)(
+  "doctor relay prints the recorded output for %s",
+  async (name, connection, reached, websocketAnswers) => {
+    writeConnection(connection);
+
+    const output = await printed({
+      registrarAnswers: [registrationAnswer(null, LAPSES_AT)],
+      reached,
+      websocketAnswers,
     });
 
     expect(output).toEqual(RECORDED[name]);

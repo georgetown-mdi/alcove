@@ -932,6 +932,7 @@ export {
   INVITATION_RELAY_ENROLLMENT_WAIT_MS,
   invitationRelayEnrolledNotice,
   invitationRelayNotEnrolledStatement,
+  isWebSocketRelayRefusal,
   LATER_TURN_URL_NOT_CONTACTED,
   LEFT_OUT_BY_CONNECTION_ALLOWED_RELAYS,
   NO_RELAY_CANDIDATE_GATHERED,
@@ -943,6 +944,7 @@ export {
   relayHostStatement,
   relayHostStatementLines,
   turnUrlTransport,
+  webSocketRelayCheckId,
 } from "./relayCheck";
 export type {
   RelayCheckContact,
@@ -953,6 +955,7 @@ export type {
   RelayHostStatement,
   RelayHostStatementEntry,
   RelayTransport,
+  WebSocketRelayCheckOutcome,
 } from "./relayCheck";
 export {
   enrollRelayKey,

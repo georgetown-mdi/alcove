@@ -22,18 +22,11 @@ const relayCheckBodySchema = z.strictObject({
 
 function offerEnvelope(offer: RelayCheckOffer): Record<string, unknown> {
   if (offer.kind === "unavailable")
-    return {
-      status: "unavailable",
-      reason: offer.reason,
-      ...(offer.websocketRelayNotChecked === true && {
-        websocketRelayNotChecked: true,
-      }),
-    };
+    return { status: "unavailable", reason: offer.reason };
   return {
     status: "available",
     configurationDigest: offer.configurationDigest,
     statement: offer.statement,
-    websocketRelayNotChecked: offer.websocketRelayNotChecked,
   };
 }
 

@@ -267,7 +267,7 @@ The review step offers no file-handling settings for a WebRTC exchange, and conn
 
 ### Checking the relay
 
-The console can run `alcove doctor relay` ([Checking the relay of a WebRTC exchange](CLI.md#checking-the-relay-of-a-webrtc-exchange)) over the `alcove.yaml` and `.alcove.key` in your working folder, to learn whether the TURN relay a run uses gives this container a relay address. It is offered in two places:
+The console can run `alcove doctor relay` ([Checking the relay of a WebRTC exchange](CLI.md#checking-the-relay-of-a-webrtc-exchange)) over the `alcove.yaml` and `.alcove.key` in your working folder, to learn whether the TURN relay a run uses gives this container a relay address, and whether each WebSocket relay a run dials admits it. It is offered in two places:
 
 - **Before a run**, under an open `webrtc` configuration that lists a TURN server.
 - **After an attempt that failed or that your partner did not join**, beside **Try again** and **Keep waiting**.
@@ -276,7 +276,7 @@ It is never offered while a run is in progress, and the console refuses to start
 
 - **Nothing is contacted until you start the check.** **Check the relay** first lists the hosts the check contacts, and the relays the configuration names that it does not contact and why, as `alcove doctor relay` prints them. **Start the check** then runs it. If `alcove.yaml` changed since the hosts were shown, the console contacts nothing and says so: review the hosts, then start the check again.
 - **The result is in the command line's words.** Each check is shown with what it found, what that means, and what to do, as `alcove doctor relay` prints them. Where the relay's registrar refused the key, the console says so without the registrar's own answer; run `alcove doctor relay` in the working folder to see it.
-- **The WebSocket relay is not checked.** Where the configuration names a WebSocket relay, the console says the check does not test it. A configuration whose only relay is a WebSocket relay is not offered the check.
+- **The WebSocket relay is checked too.** Where the configuration names a WebSocket relay, the check asks it whether it admits this exchange, as `alcove doctor relay` does, and shows its answer beside the TURN relay's. A configuration whose only relay is a WebSocket relay is offered the check after an attempt that failed, not before a run, since the offer before a run follows the TURN servers the configuration lists.
 - **A relay that does not answer is reported after 30 seconds.** A check still running after 45 seconds is stopped, and the console says so.
 
 The endpoint contract is in [SERVER_JOB_API.md](spec/SERVER_JOB_API.md#checking-the-relay).

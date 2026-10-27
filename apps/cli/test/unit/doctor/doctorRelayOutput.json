@@ -236,5 +236,105 @@
       "ALL CHECKS PASSED"
     ],
     "json": "{\"version\":1,\"mode\":\"relay\",\"overall\":\"ok\",\"checks\":[{\"id\":\"turn_1\",\"status\":\"ok\",\"url\":\"turn:own-relay.example.org:3478?transport=tcp\",\"transport\":\"tcp\"}]}"
+  },
+  "websocketOnlyAdmitted": {
+    "statement": [
+      "This check contacts these hosts, as a run of this configuration does:",
+      "  wss://own-relay.example.org/relay",
+      "    A WebSocket relay a run dials, from connection.websocket_relay. The check opens two connections to it, presents on each the proof a run presents there, and closes both once the relay answers.",
+      "    Whoever runs that relay learns this machine's network address.",
+      "It contacts nothing else.",
+      ""
+    ],
+    "lines": [
+      "OK: wss://own-relay.example.org/relay, a WebSocket relay a run dials: admitted; the relay accepted this exchange's proof.",
+      "",
+      "ALL CHECKS PASSED"
+    ],
+    "json": "{\"version\":1,\"mode\":\"relay\",\"overall\":\"ok\",\"checks\":[{\"id\":\"websocket_1\",\"status\":\"ok\",\"url\":\"wss://own-relay.example.org/relay\",\"outcome\":\"admitted\"}]}"
+  },
+  "turnReachedWebSocketNotAdmitted": {
+    "statement": [
+      "This check contacts these hosts, as a run of this configuration does:",
+      "  turn:own-relay.example.org:3478?transport=tcp",
+      "    The relay a run allocates on, over TCP, from connection.turn. The check asks it for a relay address, sending the credential a run sends there.",
+      "    Whoever runs that relay learns this machine's network address.",
+      "  wss://own-relay.example.org/relay",
+      "    A WebSocket relay a run dials, from connection.websocket_relay. The check opens two connections to it, presents on each the proof a run presents there, and closes both once the relay answers.",
+      "    Whoever runs that relay learns this machine's network address.",
+      "It contacts nothing else.",
+      ""
+    ],
+    "lines": [
+      "OK: turn:own-relay.example.org:3478?transport=tcp over TCP, the relay a run allocates on: reached; the relay gave a relay address.",
+      "FAIL: wss://own-relay.example.org/relay, a WebSocket relay a run dials: not admitted; the relay holds no key for this exchange (close code 4003).",
+      "MEANING: the relay holds no key for this exchange, so it refuses the proof a",
+      "         run presents until the exchange's relay key is enrolled there.",
+      "ACTION:  Enroll this exchange's relay key at the relay's registrar with",
+      "         alcove enroll-relay, then run this check again.",
+      "",
+      "NOT READY YET -- follow the ACTION lines above and run this again."
+    ],
+    "json": "{\"version\":1,\"mode\":\"relay\",\"overall\":\"fix_and_retry\",\"checks\":[{\"id\":\"turn_1\",\"status\":\"ok\",\"url\":\"turn:own-relay.example.org:3478?transport=tcp\",\"transport\":\"tcp\"},{\"id\":\"websocket_1\",\"status\":\"fail\",\"meaning\":\"the relay holds no key for this exchange, so it refuses the proof a run presents until the exchange's relay key is enrolled there.\",\"action\":\"Enroll this exchange's relay key at the relay's registrar with alcove enroll-relay, then run this check again.\",\"url\":\"wss://own-relay.example.org/relay\",\"outcome\":\"not_admitted\",\"close_code\":4003}]}"
+  },
+  "invitationWebSocketNotReached": {
+    "statement": [
+      "This check contacts these hosts, as a run of this configuration does:",
+      "  wss://relay.example.org/relay",
+      "    A WebSocket relay a run dials, from your partner's invitation. The check opens two connections to it, presents on each the proof a run presents there, and closes both once the relay answers.",
+      "    Whoever runs that relay learns this machine's network address.",
+      "  https://registrar.example.org",
+      "    The relay registrar your partner's invitation names. Before it asks the relay, the check enrolls this exchange's relay key there, as a run does just before it connects.",
+      "    Whoever runs that registrar learns this machine's network address.",
+      "It contacts nothing else.",
+      ""
+    ],
+    "lines": [
+      "OK: the relay registrar at https://registrar.example.org that your partner's invitation names enrolled this exchange, until 2026-01-01T01:10:00Z.",
+      "FAIL: wss://relay.example.org/relay, a WebSocket relay a run dials: not reached within 30 s.",
+      "MEANING: nothing on this host reached this url as an Alcove WebSocket relay:",
+      "         the network blocked it, nothing answered at that address and path,",
+      "         or the connection closed before the relay answered the proof.",
+      "ACTION:  Check that this host can reach the relay and that the url names its",
+      "         address and path, then run this check again.",
+      "",
+      "NOT READY YET -- follow the ACTION lines above and run this again."
+    ],
+    "json": "{\"version\":1,\"mode\":\"relay\",\"overall\":\"fix_and_retry\",\"checks\":[{\"id\":\"enrollment\",\"status\":\"ok\",\"registrar\":\"https://registrar.example.org\",\"lapses_at\":\"2026-01-01T01:10:00Z\"},{\"id\":\"websocket_1\",\"status\":\"fail\",\"meaning\":\"nothing on this host reached this url as an Alcove WebSocket relay: the network blocked it, nothing answered at that address and path, or the connection closed before the relay answered the proof.\",\"action\":\"Check that this host can reach the relay and that the url names its address and path, then run this check again.\",\"url\":\"wss://relay.example.org/relay\",\"outcome\":\"not_reached\"}]}"
+  },
+  "websocketCertificateNotVerified": {
+    "statement": [
+      "This check contacts these hosts, as a run of this configuration does:",
+      "  turn:own-relay.example.org:3478?transport=tcp",
+      "    The relay a run allocates on, over TCP, from connection.turn. The check asks it for a relay address, sending the credential a run sends there.",
+      "    Whoever runs that relay learns this machine's network address.",
+      "  wss://own-relay.example.org/relay",
+      "    A WebSocket relay a run dials, from connection.websocket_relay. The check opens two connections to it, presents on each the proof a run presents there, and closes both once the relay answers.",
+      "    Whoever runs that relay learns this machine's network address.",
+      "It contacts nothing else.",
+      ""
+    ],
+    "lines": [
+      "FAIL: turn:own-relay.example.org:3478?transport=tcp over TCP, the relay a run allocates on: no relay candidate gathered within 30 s.",
+      "MEANING: nothing on this host reached this relay, the relay refused the",
+      "         credential, or it presented a certificate this host does not trust;",
+      "         the reason is not reported, so the check cannot tell which. A relay",
+      "         that takes enrolled keys refuses the credential derived from the",
+      "         exchange's shared secret until the exchange's relay key is enrolled",
+      "         there with alcove enroll-relay.",
+      "ACTION:  Fix the relay, or arrange a direct path; waiting longer changes",
+      "         nothing.",
+      "FAIL: wss://own-relay.example.org/relay, a WebSocket relay a run dials: not reached; its TLS certificate did not verify on this host.",
+      "MEANING: the relay presented a TLS certificate that does not verify on this",
+      "         host, as one does where the network intercepts TLS.",
+      "ACTION:  If this network intercepts TLS, add its certificate authority to",
+      "         this machine's trust store, or name a file holding it in",
+      "         NODE_EXTRA_CA_CERTS, then run this check again. Otherwise ask the",
+      "         relay's operator whether its certificate is current and issued for",
+      "         its host.",
+      "",
+      "NOT READY YET -- follow the ACTION lines above and run this again."
+    ],
+    "json": "{\"version\":1,\"mode\":\"relay\",\"overall\":\"fix_and_retry\",\"checks\":[{\"id\":\"turn_1\",\"status\":\"fail\",\"meaning\":\"nothing on this host reached this relay, the relay refused the credential, or it presented a certificate this host does not trust; the reason is not reported, so the check cannot tell which. A relay that takes enrolled keys refuses the credential derived from the exchange's shared secret until the exchange's relay key is enrolled there with alcove enroll-relay.\",\"action\":\"Fix the relay, or arrange a direct path; waiting longer changes nothing.\",\"url\":\"turn:own-relay.example.org:3478?transport=tcp\",\"transport\":\"tcp\"},{\"id\":\"websocket_1\",\"status\":\"fail\",\"meaning\":\"the relay presented a TLS certificate that does not verify on this host, as one does where the network intercepts TLS.\",\"action\":\"If this network intercepts TLS, add its certificate authority to this machine's trust store, or name a file holding it in NODE_EXTRA_CA_CERTS, then run this check again. Otherwise ask the relay's operator whether its certificate is current and issued for its host.\",\"url\":\"wss://own-relay.example.org/relay\",\"outcome\":\"certificate_not_verified\"}]}"
   }
 }

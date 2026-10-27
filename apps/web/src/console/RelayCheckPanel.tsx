@@ -16,11 +16,9 @@ import {
   RELAY_CHECK_RUNNING,
   RELAY_CHECK_START_LABEL,
   RELAY_CHECK_UNREADABLE,
-  WEBSOCKET_RELAY_NOT_CHECKED,
   relayCheckLinesShown,
   relayCheckOutcomeText,
   relayCheckPanelState,
-  relayCheckShowsWebsocketNote,
   relayCheckStatusLabel,
   relayCheckUnavailableText,
   relayCheckVerdictSummary,
@@ -55,7 +53,7 @@ function HostList({ hosts }: { hosts: ReadonlyArray<RelayCheckHost> }) {
  * working folder's `alcove.yaml` and `.alcove.key`, read from the console
  * before any is contacted, then the check itself, run by the console's CLI
  * only when the operator starts it, and its verdict in the CLI's words.
- * Shows nothing where the files name no TURN relay to check.
+ * Shows nothing where the files name no relay to check.
  */
 export function RelayCheckPanel() {
   const [state, setState] = useState<RelayCheckPanelState>({ step: "reading" });
@@ -78,11 +76,7 @@ export function RelayCheckPanel() {
   async function start(offer: AvailableOffer): Promise<void> {
     setState({ step: "checking", offer });
     const outcome = await startRelayCheck(offer.configurationDigest);
-    setState({
-      step: "done",
-      outcome,
-      websocketNote: relayCheckShowsWebsocketNote(outcome, offer),
-    });
+    setState({ step: "done", outcome });
   }
 
   switch (state.step) {
@@ -114,9 +108,6 @@ export function RelayCheckPanel() {
       return (
         <Stack gap="xs" mt="xs">
           <Text size="sm">{relayCheckUnavailableText(state.offer.reason)}</Text>
-          {state.offer.websocketRelayNotChecked && (
-            <Text size="sm">{WEBSOCKET_RELAY_NOT_CHECKED}</Text>
-          )}
           <Group>
             <Button variant="default" onClick={() => void open()}>
               {RELAY_CHECK_AGAIN_LABEL}
@@ -140,9 +131,6 @@ export function RelayCheckPanel() {
             </>
           )}
           <Text size="sm">{statement.closing}</Text>
-          {offer.websocketRelayNotChecked && (
-            <Text size="sm">{WEBSOCKET_RELAY_NOT_CHECKED}</Text>
-          )}
           <Group>
             <Button loading={checking} onClick={() => void start(offer)}>
               {RELAY_CHECK_START_LABEL}
@@ -165,7 +153,7 @@ export function RelayCheckPanel() {
       );
     }
     case "done": {
-      const { outcome, websocketNote } = state;
+      const { outcome } = state;
       return (
         <Stack gap="xs" mt="xs">
           <div role="status">
@@ -193,9 +181,6 @@ export function RelayCheckPanel() {
               </>
             ) : (
               <Text size="sm">{relayCheckOutcomeText(outcome)}</Text>
-            )}
-            {websocketNote && (
-              <Text size="sm">{WEBSOCKET_RELAY_NOT_CHECKED}</Text>
             )}
           </div>
           <Group>

@@ -64,6 +64,7 @@ const STATIC_TURN = "turn:static-relay.example.org:3478";
 const INVITATION_TURN = "turns:relay.example.org:443?transport=tcp";
 const SECOND_INVITATION_TURN = "turn:relay-2.example.org:3478";
 const REGISTRAR = "https://registrar.example.org";
+const OWN_WEBSOCKET = "wss://own-relay.example.org/relay";
 
 const INVITATION_FIRST = {
   invitationRelay: {
@@ -162,6 +163,11 @@ describe("the hosts stated before a check", () => {
   test.each([
     ["enrolledAndReached", INVITATION_FIRST],
     ["ownFirstNotReached", OWN_FIRST],
+    ["websocketOnlyAdmitted", { websocketRelay: OWN_WEBSOCKET }],
+    [
+      "turnReachedWebSocketNotAdmitted",
+      { turn: [{ url: OWN_TURN }], websocketRelay: OWN_WEBSOCKET },
+    ],
   ] as const)(
     "for the configuration of %s are the CLI's own statement",
     (name, connection) => {
@@ -170,7 +176,7 @@ describe("the hosts stated before a check", () => {
       expect(relayHostStatementLines(offer.statement)).toEqual(
         CLI_PRINTED[name]?.statement,
       );
-      expect(offer.websocketRelayNotChecked).toBe(false);
+      expect(offer).not.toHaveProperty("websocketRelayNotChecked");
     },
   );
 
@@ -183,43 +189,43 @@ describe("the hosts stated before a check", () => {
     expect(fs.existsSync(argvFile)).toBe(false);
   });
 
-  test("say the WebSocket relay is not checked where a run lists one", () => {
+  test("offer the check where a run lists a WebSocket relay and every TURN url is left out", () => {
     const offer = available(
       relayCheckOffer(
         workingFolder({
           turn: [{ url: OWN_TURN }],
-          websocketRelay: "wss://relay.example.org/relay",
+          websocketRelay: OWN_WEBSOCKET,
+          allowedRelays: ["own-relay.example.org:443"],
         }),
       ),
     );
-    expect(offer.websocketRelayNotChecked).toBe(true);
+    expect(offer.statement.contacted.map((entry) => entry.host)).toEqual([
+      OWN_WEBSOCKET,
+    ]);
   });
 
   test.each([
+    ["no-relay", {}],
     [
-      "no-turn-url",
-      { websocketRelay: "wss://relay.example.org/relay" },
-      { websocketRelayNotChecked: true },
-    ],
-    ["no-turn-url", {}, {}],
-    [
-      "turn-urls-left-out",
+      "relays-left-out",
       {
         turn: [{ url: OWN_TURN }],
         allowedRelays: ["elsewhere.example.org:3478"],
       },
-      {},
     ],
-  ] as const)(
-    "offer no check where %s",
-    (reason, connection, extra: Record<string, unknown>) => {
-      expect(relayCheckOffer(workingFolder(connection))).toEqual({
-        kind: "unavailable",
-        reason,
-        ...extra,
-      });
-    },
-  );
+    [
+      "relays-left-out",
+      {
+        websocketRelay: OWN_WEBSOCKET,
+        allowedRelays: ["elsewhere.example.org"],
+      },
+    ],
+  ] as const)("offer no check where %s", (reason, connection) => {
+    expect(relayCheckOffer(workingFolder(connection))).toEqual({
+      kind: "unavailable",
+      reason,
+    });
+  });
 
   test("offer no check over a folder with no configuration, another channel, or no key file", () => {
     expect(relayCheckOffer(scratchDir("empty"))).toEqual({
@@ -246,19 +252,6 @@ describe("the hosts stated before a check", () => {
     expect(relayCheckOffer(unreadable)).toEqual({
       kind: "unavailable",
       reason: "configuration-refused",
-    });
-  });
-
-  test("say the WebSocket relay is not checked over a folder with no key file", () => {
-    const keyless = workingFolder({
-      turn: [{ url: OWN_TURN }],
-      websocketRelay: "wss://relay.example.org/relay",
-    });
-    fs.rmSync(path.join(keyless, ".alcove.key"));
-    expect(relayCheckOffer(keyless)).toEqual({
-      kind: "unavailable",
-      reason: "key-file",
-      websocketRelayNotChecked: true,
     });
   });
 });
@@ -304,10 +297,10 @@ describe("a started check", () => {
     expect(fs.existsSync(argvFile)).toBe(false);
   });
 
-  test("over a folder become unavailable says the WebSocket relay is not checked", async () => {
+  test("over a folder become unavailable spawns nothing and says why", async () => {
     const root = workingFolder({
       turn: [{ url: OWN_TURN }],
-      websocketRelay: "wss://relay.example.org/relay",
+      websocketRelay: OWN_WEBSOCKET,
     });
     const argvFile = path.join(scratchDir("argv"), "argv.json");
     const manager = managerFor(root, { STUB_ARGV_FILE: argvFile });
@@ -317,7 +310,6 @@ describe("a started check", () => {
     expect(await manager.checkRelay({ configurationDigest })).toEqual({
       kind: "unavailable",
       reason: "key-file",
-      websocketRelayNotChecked: true,
     });
     expect(fs.existsSync(argvFile)).toBe(false);
   });
@@ -451,6 +443,10 @@ describe("each outcome", () => {
     ["ownFirstNotReached", 78, "fix_and_retry"],
     ["staticFirstReached", 0, "ok"],
     ["noRegistrarNotReached", 78, "fix_and_retry"],
+    ["websocketOnlyAdmitted", 0, "ok"],
+    ["turnReachedWebSocketNotAdmitted", 78, "fix_and_retry"],
+    ["invitationWebSocketNotReached", 78, "fix_and_retry"],
+    ["websocketCertificateNotVerified", 78, "fix_and_retry"],
   ] as const)(
     "%s states each check in the CLI's words",
     (name, code, overall) => {
@@ -474,6 +470,25 @@ describe("each outcome", () => {
     expect(later?.meaning).toMatch(/^a run of this configuration does not/);
     expect(later?.action).toMatch(/^If this relay should be the one/);
   });
+
+  test.each([
+    ["turnReachedWebSocketNotAdmitted", /^Enroll this exchange's relay key/],
+    ["invitationWebSocketNotReached", /^Check that this host can reach/],
+    ["websocketCertificateNotVerified", /NODE_EXTRA_CA_CERTS/],
+  ] as const)(
+    "the WebSocket relay's line of %s crosses with the CLI's meaning and action",
+    (name, action) => {
+      const result = verdictOf(
+        reconcileRelayCheckExit(78, CLI_PRINTED[name]?.json),
+      );
+      const websocket = result.checks.find(
+        (check) => check.id === "websocket_1",
+      );
+      expect(websocket?.status).toBe("fail");
+      expect(websocket?.meaning).toMatch(/^(the relay|nothing on this host)/);
+      expect(websocket?.action).toMatch(action);
+    },
+  );
 
   test("a refused enrollment is a warning without the registrar's answer", () => {
     const result = verdictOf(
@@ -521,6 +536,12 @@ describe("each outcome", () => {
 
 describe("the verdict is held to closed sets at the boundary", () => {
   const turn = { id: "turn_1", status: "ok", url: OWN_TURN, transport: "tcp" };
+  const websocket = {
+    id: "websocket_1",
+    status: "ok",
+    url: OWN_WEBSOCKET,
+    outcome: "admitted",
+  };
   const verdictLine = (
     checks: Array<Record<string, unknown>>,
     overall = "ok",
@@ -544,11 +565,59 @@ describe("the verdict is held to closed sets at the boundary", () => {
       ],
     ],
     ["fields no check of doctor relay has", [{ ...turn, status: "warn" }]],
+    ["an unknown outcome", [{ ...websocket, outcome: "maybe" }]],
+    [
+      "a close code that is not a whole number",
+      [
+        {
+          ...websocket,
+          status: "fail",
+          outcome: "not_admitted",
+          close_code: "4003",
+        },
+      ],
+    ],
+    [
+      "a close code the relay does not refuse a proof with",
+      [
+        {
+          ...websocket,
+          status: "fail",
+          outcome: "not_admitted",
+          close_code: 4006,
+        },
+      ],
+    ],
+    [
+      "a WebSocket relay check with a transport",
+      [{ ...websocket, transport: "tls" }],
+    ],
+    ["a TURN check with an outcome", [{ ...turn, outcome: "admitted" }]],
     ["no checks", []],
   ])("%s is an error", (_label, checks) => {
     expect(parseRelayVerdict(verdictLine(checks), "ok")).toEqual({
       kind: "error",
     });
+  });
+
+  test("a member the verdict's closed fields do not name never crosses to the browser", () => {
+    const result = verdictOf(
+      parseRelayVerdict(
+        verdictLine([
+          { ...websocket, relayKey: "a".repeat(64), proof: "secret" },
+        ]),
+        "ok",
+      ),
+    );
+    expect(result.checks).toEqual([
+      {
+        id: "websocket_1",
+        status: "ok",
+        headline:
+          `${OWN_WEBSOCKET}, a WebSocket relay a run dials: admitted; the ` +
+          "relay accepted this exchange's proof.",
+      },
+    ]);
   });
 
   test("a verdict of another schema version or mode is an error", () => {

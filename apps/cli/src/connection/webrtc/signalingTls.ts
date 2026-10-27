@@ -20,12 +20,18 @@ import type { TLSSocket } from "node:tls";
 export const SIGNALING_TLS_PROBE_TIMEOUT_MS = 5_000;
 
 /**
+ * The endpoint a certificate check handshakes with: a signaling server's, or
+ * the WebSocket relay's `alcove doctor relay` asks about.
+ */
+export type TlsEndpoint = Pick<BrokerLocation, "host" | "port" | "secure">;
+
+/**
  * Answers what the certificate check said about a signaling endpoint: the
  * verification failure's code, or `undefined` when the certificate was not the
  * problem. `signal` releases the handshake, answering `undefined` at once.
  */
 export type SignalingCertificateProbe = (
-  location: BrokerLocation,
+  location: TlsEndpoint,
   signal?: AbortSignal,
 ) => Promise<string | undefined>;
 
@@ -100,7 +106,7 @@ export function environmentProxyingConfigured(): boolean {
  * signaling socket's dial including IDNA normalization, with an IPv6 literal's
  * brackets removed, since `tls.connect` would look "[::1]" up as a name.
  */
-function dialedHost(location: BrokerLocation): string | undefined {
+function dialedHost(location: TlsEndpoint): string | undefined {
   let parsed: URL;
   try {
     parsed = new URL(`wss://${location.host}`);
@@ -179,7 +185,7 @@ export const probeSignalingCertificate: SignalingCertificateProbe = (
  * the endpoint its dial did.
  */
 export async function askSignalingCertificate(
-  location: BrokerLocation,
+  location: TlsEndpoint,
   probe: SignalingCertificateProbe,
   signal?: AbortSignal,
 ): Promise<SignalingCertificateAnswer> {

@@ -42,7 +42,6 @@ const available = {
   status: "available",
   configurationDigest: DIGEST,
   statement: STATEMENT,
-  websocketRelayNotChecked: true,
 };
 
 describe("fetchRelayCheckOffer", () => {
@@ -54,17 +53,17 @@ describe("fetchRelayCheckOffer", () => {
         kind: "available",
         configurationDigest: DIGEST,
         statement: STATEMENT,
-        websocketRelayNotChecked: true,
       },
     ],
     [
-      "an unavailable offer with no WebSocket relay",
+      "an unavailable offer",
       answering({ status: "unavailable", reason: "key-file" }),
-      {
-        kind: "unavailable",
-        reason: "key-file",
-        websocketRelayNotChecked: false,
-      },
+      { kind: "unavailable", reason: "key-file" },
+    ],
+    [
+      "an offer naming no relay",
+      answering({ status: "unavailable", reason: "no-relay" }),
+      { kind: "unavailable", reason: "no-relay" },
     ],
   ])("%s parses to its value", async (_name, fetchImpl, expected) => {
     expect(await fetchRelayCheckOffer(fetchImpl)).toEqual(expected);
@@ -139,25 +138,13 @@ describe("startRelayCheck", () => {
     ],
     [
       "an unavailable answer",
-      answering({ status: "unavailable", reason: "turn-urls-left-out" }),
-      {
-        kind: "unavailable",
-        reason: "turn-urls-left-out",
-        websocketRelayNotChecked: false,
-      },
+      answering({ status: "unavailable", reason: "relays-left-out" }),
+      { kind: "unavailable", reason: "relays-left-out" },
     ],
     [
-      "an unavailable answer listing a WebSocket relay",
-      answering({
-        status: "unavailable",
-        reason: "key-file",
-        websocketRelayNotChecked: true,
-      }),
-      {
-        kind: "unavailable",
-        reason: "key-file",
-        websocketRelayNotChecked: true,
-      },
+      "an unavailable answer with a reason outside the closed set",
+      answering({ status: "unavailable", reason: "no-turn-url" }),
+      { kind: "error" },
     ],
     ["a 409 with no body", answering(undefined, 409), { kind: "busy" }],
     [
