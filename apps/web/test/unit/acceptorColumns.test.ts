@@ -214,6 +214,19 @@ describe("acceptor columns editor state", () => {
     ).toEqual([]);
   });
 
+  test("an HMIS PersonalID column starts as the identifier, not sent", () => {
+    const { metadata } = acceptorInitialColumnsState(
+      ["PersonalID", "FirstName", "LastName", "DOB"],
+      "psi",
+    );
+    const personalId = metadata.find((column) => column.name === "PersonalID");
+    if (personalId === undefined)
+      throw new Error("the seed lists no PersonalID column");
+    expect(personalId.type).toBe("identifier");
+    expect(disclosureOf(personalId)).toBe("identifier");
+    expect(acceptorDisclosedColumns(metadata)).toEqual([]);
+  });
+
   test("the effective standardization has one transformation per satisfiable field", () => {
     const { editorState } = editorFor(["first_name", "last_name"], nameTerms);
     expect(editorState.standardization.map((t) => t.output).sort()).toEqual([

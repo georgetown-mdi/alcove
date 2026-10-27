@@ -1,0 +1,1 @@
+- - -> So does a name whose lookup key is `clientid`, `personid`, or `personalid`, such as `ClientID` or the HMIS CSV export's `PersonalID`.
