@@ -102,6 +102,17 @@ test("an _id column ahead of a canonical id column: the _id column is the identi
   ]);
 });
 
+test("a ClientID column ahead of a canonical id column: ClientID is the identifier, id is left out", () => {
+  expect(inferMetadata(["ClientID", "id"], [])).toEqual([
+    {
+      name: "ClientID",
+      type: "identifier",
+      role: "identifier",
+      isPayload: false,
+    },
+  ]);
+});
+
 // --- inferMetadata: no-separator client and person ids ----------------------
 
 describe.each(["declaredOnly", "direct"] as const)(
