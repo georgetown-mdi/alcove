@@ -290,9 +290,9 @@ try {
     }
     if ($failed.Count -gt 0) { $failedJob = $true }
 
-    # Run in FullLanguage, the constrained suite would pass or fail on the
-    # scripts' other branches and establish nothing about this one; the same
-    # holds for the schedule suite's constrained block.
+    # Run in FullLanguage, the constrained suite and the schedule suite's
+    # constrained block would each pass or fail on FullLanguage behavior and
+    # establish nothing about ConstrainedLanguage.
     $modeFields = @{ ConstrainedLanguage = 'child_file'; ScheduleLines = 'child_encoded' }
     if ($modeFields.ContainsKey($Suite)) {
         $modeField = $modeFields[$Suite]

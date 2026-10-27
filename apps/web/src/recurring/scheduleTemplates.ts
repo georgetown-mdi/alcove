@@ -129,33 +129,39 @@ function powerShellString(text: string): string {
   return `"${escaped}"`;
 }
 
+/** Today at `hour`:`minute`, as a PowerShell expression. A daily or weekly
+ * trigger fires on the same days whatever its start date. */
+function powerShellToday(hour: number, minute: number): string {
+  const hours = hour === 0 ? "" : `.AddHours(${hour})`;
+  const minutes = minute === 0 ? "" : `.AddMinutes(${minute})`;
+  return `([datetime]::Today${hours}${minutes})`;
+}
+
 /** The New-ScheduledTaskTrigger options for `schedule`, or daily at 2am
- * without one. The first window is a date built from its parts, so no date
- * format is read. */
+ * without one. No date is written out as text, so no date format is read. */
 function powerShellTrigger(schedule: RunSchedule | undefined): string {
-  if (schedule === undefined)
-    return "-Daily -At ([datetime]::Today.AddHours(2))";
+  if (schedule === undefined) return `-Daily -At ${powerShellToday(2, 0)}`;
+  const { hour, minute, intervalDays } = schedule;
+  if (intervalDays === WEEK_DAYS)
+    return (
+      `-Weekly -DaysOfWeek ${WEEKDAY_NAMES[schedule.weekday]} ` +
+      `-At ${powerShellToday(hour, minute)}`
+    );
+  if (intervalDays === 1) return `-Daily -At ${powerShellToday(hour, minute)}`;
+  // The interval counts from the start date, so it is the first window's.
   const [year, month, day] = schedule.anchorDate.split("-").map(Number);
-  const firstRun =
-    `([datetime]::new(${year}, ${month}, ${day}, ` +
-    `${schedule.hour}, ${schedule.minute}, 0))`;
-  if (schedule.intervalDays === WEEK_DAYS)
-    return `-Weekly -DaysOfWeek ${WEEKDAY_NAMES[schedule.weekday]} -At ${firstRun}`;
-  const interval =
-    schedule.intervalDays === 1
-      ? ""
-      : ` -DaysInterval ${schedule.intervalDays}`;
-  return `-Daily${interval} -At ${firstRun}`;
+  return (
+    `-Daily -DaysInterval ${intervalDays} -At ` +
+    `([datetime]::new(${year}, ${month}, ${day}, ${hour}, ${minute}, 0))`
+  );
 }
 
 /**
  * The PowerShell command that registers a Windows Task Scheduler task running
  * `command` under cmd on `schedule` (daily at 2am without one), from the
  * folder holding the exchange's files. `command` is already quoted for cmd.
- *
- * Not a schtasks line: schtasks turns each single quote in `/TR` into a double
- * quote, which breaks the task for a folder whose name holds one, and reads a
- * `/SD` start date in the machine's own date format.
+ * Not a schtasks line, for the reasons docs/spec/MANAGED_EXCHANGE_RECORD.md
+ * gives under "The Task Scheduler line".
  */
 export function taskSchedulerLine(
   command: string,
@@ -186,8 +192,8 @@ export function scheduleDescription(schedule: RunSchedule | undefined): string {
 /**
  * What the operator checks before using lines composed from `schedule`: the
  * times are UTC, and, on an interval cron cannot state, how the cron line
- * counts days and the Task Scheduler start date. Undefined
- * without a schedule.
+ * counts days and the Task Scheduler start date. Undefined without a
+ * schedule.
  */
 export function scheduleNote(
   schedule: RunSchedule | undefined,

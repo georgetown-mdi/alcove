@@ -185,7 +185,7 @@ describe("what the panel gets to render", () => {
     );
     expect(lines.dockerTaskSchedulerLine).toContain(
       "New-ScheduledTaskTrigger -Weekly -DaysOfWeek Tuesday -At " +
-        "([datetime]::new(2026, 10, 6, 14, 30, 0))",
+        "([datetime]::Today.AddHours(14).AddMinutes(30))",
     );
     expect(state.fromAgreedSchedule).toBe(true);
     expect(lines.schedule).toBe("every Tuesday at 14:30 UTC");

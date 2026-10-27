@@ -1086,12 +1086,7 @@ The same rules apply under the Task Scheduler, with the account the task runs as
 schtasks /Create /TN "alcove exchange" /SC DAILY /ST 02:00 /TR "cmd /c cd /d C:\alcove\agency-b && alcove exchange input.csv ./"
 ```
 
-`schtasks` has two limits this line avoids:
-
-- It turns each single quote in `/TR` into a double quote, so a task whose folder or arguments hold a `'` runs a different command.
-- It reads a `/SD` start date in the machine's own date format, so a line giving one as month/day/year is refused, or starts on the wrong day, on a machine set to another format.
-
-For either, register the task from PowerShell with `Register-ScheduledTask`, as the web app's [command-line export](MANAGED_EXCHANGE.md#exporting-to-the-command-line) does, with any start date built from its parts.
+For a folder or arguments holding a `'`, or a task that needs a start date, register the task from PowerShell with `Register-ScheduledTask` instead, as the web app's [command-line export](MANAGED_EXCHANGE.md#exporting-to-the-command-line) does: `schtasks` stores a `'` in `/TR` as `"`, and reads a `/SD` date in the machine's own date format ([why](spec/MANAGED_EXCHANGE_RECORD.md#the-command-line-exports-scheduled-lines)).
 
 An exchange folder that lives on a Windows network location -- a mapped drive, a UNC path, or a DFS namespace -- is not bind-mountable into the container by its drive letter: the container reaches it through a CIFS volume instead, which the Windows shared-folder setup script provisions with the ownership the image needs (see [The user the image runs as](DEPLOYMENT.md#the-user-the-image-runs-as)).
 

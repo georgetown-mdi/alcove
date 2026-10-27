@@ -59,7 +59,7 @@ describe("the agreed schedule", () => {
     expect(cronIntervalGuard(schedule)).toBe("");
     expect(taskSchedulerLine(COMMAND, schedule)).toContain(
       "(New-ScheduledTaskTrigger -Daily -At " +
-        "([datetime]::new(2026, 10, 6, 14, 30, 0)))",
+        "([datetime]::Today.AddHours(14).AddMinutes(30)))",
     );
     expect(scheduleDescription(schedule)).toBe("daily at 14:30 UTC");
     expect(scheduleNote(schedule)).toMatch(/in UTC/);
@@ -71,7 +71,7 @@ describe("the agreed schedule", () => {
     expect(cronIntervalGuard(schedule)).toBe("");
     expect(taskSchedulerLine(COMMAND, schedule)).toContain(
       "(New-ScheduledTaskTrigger -Weekly -DaysOfWeek Tuesday -At " +
-        "([datetime]::new(2026, 10, 6, 14, 30, 0)))",
+        "([datetime]::Today.AddHours(14).AddMinutes(30)))",
     );
     expect(scheduleDescription(schedule)).toBe("every Tuesday at 14:30 UTC");
     expect(scheduleNote(schedule)).toMatch(/weekday/);
@@ -98,6 +98,28 @@ describe("the agreed schedule", () => {
         `${COMMAND}")`,
     );
   });
+
+  test.each([
+    ["2026-10-06T00:00:00.000Z", 1, "-Daily -At ([datetime]::Today))"],
+    [
+      "2026-10-06T00:15:00.000Z",
+      7,
+      "-Weekly -DaysOfWeek Tuesday -At ([datetime]::Today.AddMinutes(15)))",
+    ],
+    [
+      "2026-10-06T09:00:00.000Z",
+      1,
+      "-Daily -At ([datetime]::Today.AddHours(9)))",
+    ],
+  ])(
+    "a daily or weekly line opening at %s states no start date",
+    (anchor, intervalDays, trigger) => {
+      const schedule = runScheduleFor({ anchor, intervalDays });
+      expect(taskSchedulerLine(COMMAND, schedule)).toContain(
+        `(New-ScheduledTaskTrigger ${trigger}`,
+      );
+    },
+  );
 
   test("the PowerShell line keeps a dollar sign, backtick and quotes literal", () => {
     const schedule = runScheduleFor({ anchor: ANCHOR, intervalDays: 3 });

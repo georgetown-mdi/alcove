@@ -28,13 +28,14 @@ name: Windows Path Resolution
 #            the same pull requests as test.
 #   schedule The web app's Task Scheduler lines, each pasted into the shell the
 #            panel names under the en-US and en-GB cultures, the task it
-#            registers read back and run against a docker stand-in, then each
-#            line run once more in a session the machine-wide policy has put in
-#            ConstrainedLanguage, whose outcome it reports without asserting.
+#            registers read back and run against a docker stand-in; two lines
+#            registered under a time zone with daylight saving; then each line
+#            run once more in a session the machine-wide policy has put in
+#            ConstrainedLanguage, and the trigger it registers checked.
 #            The web unit tests keep the file holding those lines equal to
-#            their generator. Its own job because the culture and the policy it
-#            sets reach every process started meanwhile. It ASSERTS, on the
-#            same pull requests.
+#            their generator. Its own job because the culture, time zone and
+#            policy it sets reach every process started meanwhile. It ASSERTS,
+#            on the same pull requests.
 #   measure The original measurement harness, which asks whether the runner can
 #            host the rig at all and never fails. Kept for re-measuring, and run
 #            only on manual dispatch -- an edit to that harness is checked by

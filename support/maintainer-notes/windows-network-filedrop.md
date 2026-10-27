@@ -360,16 +360,21 @@ panel names, once under en-US and once under en-GB. It asserts:
   a space, `&`, `'` or `$`, and the folder's mount;
 - the two reasons no line is a `schtasks` line: under en-GB `schtasks` reads
   `/SD 03/04/2026` as 3 April, and it stores a single quote in `/TR` as a
-  double quote.
+  double quote;
+- under the Eastern time zone, which has daylight saving, the daily and
+  every-few-days tasks store a start boundary with no UTC offset, the form
+  Task Scheduler reads in the machine's own zone (a stored offset is reported
+  as a `Measured_schedule_zone` notice and the test skipped);
+- in a PowerShell put in ConstrainedLanguage, each line registers its
+  intended trigger class and interval, and the weekly line its weekday as the
+  Task Scheduler `DaysOfWeek` bitmask (Sunday 1, Monday 2, Tuesday 4, ...).
 
 **What `schtasks` stored for a folder holding a single quote, measured 27
 October 2026 (job 122258644280).** Daily and weekly `schtasks` lines for
 Command Prompt, run against that folder, each stored the action
 `/c cd /d "C:\alcove sched it"s 170dd646" && docker ...`: the folder's quote
 became a double quote, the `cd` failed, and the task ended with result 1
-without running docker. An earlier run of the same lines (job 122233904452)
-read result 267009, the task still running, at the 60 s mark; the record does
-not explain that.
+without running docker.
 
 **What the GitHub-hosted Windows runner hosts, measured 27 October 2026 (run
 40505959607).** A probe job, since removed, asked each question below and

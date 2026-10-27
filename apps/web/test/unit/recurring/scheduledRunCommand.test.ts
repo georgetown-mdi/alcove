@@ -376,12 +376,12 @@ describe("the Task Scheduler lines the Windows CI suite registers", () => {
     {
       args: ["--csv-delimiter=;", "--identity=Agency A"],
       intervalDays: 1,
-      trigger: "interval=1 time=14:30 weekday=- start=2026-10-06",
+      trigger: "interval=1 time=14:30 weekday=- start=-",
     },
     {
       args: ["--csv-delimiter=|", "--identity=Agency A & B"],
       intervalDays: 7,
-      trigger: "interval=7 time=14:30 weekday=Tuesday start=2026-10-06",
+      trigger: "interval=7 time=14:30 weekday=Tuesday start=-",
     },
     {
       args: ["--csv-delimiter=tab", "--identity=Agency A & B"],

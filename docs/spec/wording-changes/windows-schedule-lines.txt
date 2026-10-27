@@ -1,4 +1,6 @@
 - - -> **The Task Scheduler line.**
-- - -> A PowerShell `Register-ScheduledTask` command whose action runs the command under `cmd.exe`, its first run `anchor`'s UTC date and time built from their parts by `[datetime]::new`.
+- - -> A PowerShell `Register-ScheduledTask` command whose action runs the command under `cmd.exe`.
+- - -> A daily or weekly line starts at `anchor`'s UTC time on the day it is registered (`[datetime]::Today` plus the hour and minute), since its start date does not change which days it runs.
+- - -> Any other interval starts at `anchor`'s UTC date and time, built from their parts by `[datetime]::new`, since the interval counts from that date.
 - - -> It is not a `schtasks` command, since `schtasks` reads a `/SD` start date in the machine's own date format and turns each single quote in `/TR` into a double quote, which breaks the task for a folder whose name holds one.
 - Task Scheduler states it directly (`/SC DAILY /MO <intervalDays>`, with `anchor`'s UTC date as the start date, written month/day/year). -> Task Scheduler states it directly (`New-ScheduledTaskTrigger -Daily -DaysInterval <intervalDays>`).

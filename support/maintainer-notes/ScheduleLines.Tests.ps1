@@ -26,25 +26,28 @@
     that does not write it within 60 s fails with the task's stored action,
     the processes it left running, and the folder's files.
 
-    Last, it checks the two schtasks behaviors that are why the generator
-    writes no schtasks line: schtasks reads a /SD date in the culture's
-    format, and turns a single quote in /TR into a double quote.
-
-    Every task the suite creates is stopped and deleted and the culture
-    restored, test by test. The suite runs alone (the schedule job of
-    .github/workflows/windows_resolution.yaml), because the culture it sets
-    reaches every process started while it is set. Run it through
-    ci-resolution-tests.ps1 -Suite ScheduleLines.
+    It then checks the two schtasks behaviors that are why the generator
+    writes no schtasks line (windows-network-filedrop.md gives them). Under
+    the Eastern time zone, which has daylight saving, it registers a daily and
+    an every-few-days line and asserts that each task's start boundary has no
+    UTC offset, the form Task Scheduler reads in the machine's own zone; a
+    stored offset is reported as a notice and the test skipped.
 
     Last, each line is run once more in a new PowerShell an application-control
     policy has put in ConstrainedLanguage (the machine-wide
     __PSLockdownPolicy=4, set in that block's BeforeAll and cleared in its
-    AfterAll, as ConstrainedLanguage.Tests.ps1 does), under en-US. Whether
-    the task registers, and with what trigger, is measured rather than
-    asserted: each line is reported through $global:AlcoveMeasurements, which
-    ci-resolution-tests.ps1 turns into ::notice annotations, and fails the job
-    as a harness error when the session under test is not in
-    ConstrainedLanguage.
+    AfterAll, as ConstrainedLanguage.Tests.ps1 does), under en-US. The task
+    it registers is asserted: its trigger class, its interval, and for the
+    weekly line its weekday as the DaysOfWeek bitmask. Each outcome is also
+    reported through $global:AlcoveMeasurements, which ci-resolution-tests.ps1
+    turns into ::notice annotations, and that script fails the job as a
+    harness error when the session under test is not in ConstrainedLanguage.
+
+    Every task the suite creates is stopped and deleted, and the culture and
+    time zone restored, test by test. The suite runs alone (the schedule job
+    of .github/workflows/windows_resolution.yaml), because the culture, time
+    zone and policy it sets reach every process started while they are set.
+    Run it through ci-resolution-tests.ps1 -Suite ScheduleLines.
 #>
 
 BeforeDiscovery {
@@ -65,6 +68,11 @@ BeforeDiscovery {
             $current.Line = $text
         }
     }
+    $zoneLines = @(
+        @($entries | Where-Object { $_.Trigger -match '^interval=1 ' })[-1],
+        @($entries | Where-Object { $_.Trigger -notmatch '^interval=(1|7) ' })[0]
+    ) | ForEach-Object { @{ Trigger = $_.Trigger; Line = $_.Line } }
+    $zoneCases = @(@{ ZoneLines = @($zoneLines) })
     $constrainedCases = for ($index = 0; $index -lt $entries.Count; $index++) {
         @{ Number = $index + 1; Shell = $entries[$index].Shell; Trigger = $entries[$index].Trigger; Line = $entries[$index].Line }
     }
@@ -85,8 +93,9 @@ BeforeAll {
     $script:TaskName = 'alcove exchange'
     $script:Placeholder = 'C:\path\to\your\exchange-folder'
     $script:CultureBefore = (Get-Culture).Name
+    $script:ZoneBefore = (Get-TimeZone).Id
 
-    $global:AlcoveRigPremises = [ordered]@{ schedule = [ordered]@{ state = 'not_reached'; culture_before = $script:CultureBefore } }
+    $global:AlcoveRigPremises = [ordered]@{ schedule = [ordered]@{ state = 'not_reached'; culture_before = $script:CultureBefore; zone_before = $script:ZoneBefore } }
     $global:AlcoveMeasurements = [ordered]@{}
 
     # On the system drive rather than under the runner's profile, whose temp
@@ -139,12 +148,12 @@ public static class AlcoveScheduledDockerRecorder {
         $info.RedirectStandardError = $true
         $process = [System.Diagnostics.Process]::Start($info)
         $output = $process.StandardOutput.ReadToEndAsync()
-        $errors = $process.StandardError.ReadToEnd()
+        $errors = $process.StandardError.ReadToEndAsync()
         if (-not $process.WaitForExit(120000)) {
             $process.Kill()
             throw "the $Shell line did not finish within 120 s"
         }
-        return [ordered]@{ Exit = $process.ExitCode; Output = (($output.Result + ' ' + $errors) -replace '\s+', ' ').Trim() }
+        return [ordered]@{ Exit = $process.ExitCode; Output = (($output.Result + ' ' + $errors.Result) -replace '\s+', ' ').Trim() }
     }
 
     function Wait-ForRecorded {
@@ -192,6 +201,7 @@ public static class AlcoveScheduledDockerRecorder {
 AfterAll {
     Remove-TestTask
     Set-Culture -CultureInfo $script:CultureBefore
+    Set-TimeZone -Id $script:ZoneBefore
     Remove-Item -LiteralPath $script:Folder -Recurse -Force -ErrorAction SilentlyContinue
 }
 
@@ -283,6 +293,45 @@ Describe 'What schtasks does to a start date and a single quote' {
     }
 }
 
+Describe 'The Task Scheduler lines, registered under a time zone with daylight saving' {
+    It 'store a start boundary with no UTC offset, read as local time' -ForEach $zoneCases {
+        $zone = 'Eastern Standard Time'
+        $measurement = [ordered]@{ zone = $zone; zone_before = $script:ZoneBefore }
+        $starts = [ordered]@{}
+        Set-TimeZone -Id $zone
+        try {
+            foreach ($zoneLine in $ZoneLines) {
+                $expected = @{}
+                foreach ($pair in $zoneLine.Trigger -split ' ') {
+                    $name, $value = $pair -split '=', 2
+                    $expected[$name] = $value
+                }
+                Remove-TestTask
+                $run = Invoke-PastedLine -Shell 'PowerShell' -Line $zoneLine.Line.Replace($script:Placeholder, $script:Folder)
+                $task = Get-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue
+                $task | Should -Not -BeNullOrEmpty -Because "the interval $($expected.interval) line registered no task (exit $($run.Exit): $($run.Output))"
+                $start = [string] @($task.Triggers)[0].StartBoundary
+                $starts["interval_$($expected.interval)"] = $start
+                $measurement["start_interval_$($expected.interval)"] = $start
+                $start | Should -Match ('T' + $expected.time + ':00') -Because 'the task starts at the line''s time'
+                Remove-TestTask
+            }
+            $withOffset = @($starts.Keys | Where-Object { $starts[$_] -match '(Z|[+-]\d{2}:\d{2})$' })
+            $measurement['with_offset'] = $(if ($withOffset.Count -gt 0) { $withOffset -join ',' } else { 'none' })
+            if ($withOffset.Count -gt 0) {
+                Set-ItResult -Skipped -Because "the start boundary of $($withOffset -join ', ') has a UTC offset (see the Measured_schedule_zone notice)"
+            }
+            foreach ($key in $starts.Keys) {
+                $starts[$key] | Should -Match '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?$' -Because "$key is stored as local time"
+            }
+        } finally {
+            $global:AlcoveMeasurements['schedule_zone'] = $measurement
+            Remove-TestTask
+            Set-TimeZone -Id $script:ZoneBefore
+        }
+    }
+}
+
 Describe 'The Task Scheduler lines, pasted into a PowerShell in ConstrainedLanguage' {
     BeforeAll {
         # The ScheduledTasks module is loaded here, before the policy, so this
@@ -369,12 +418,17 @@ Describe 'The Task Scheduler lines, pasted into a PowerShell in ConstrainedLangu
         [string] $ExecutionContext.SessionState.LanguageMode | Should -Be 'FullLanguage' -Because $shape
     }
 
-    It 'line <Number> is run and what it registers is recorded' -ForEach $constrainedCases {
+    It 'line <Number> registers its trigger' -ForEach $constrainedCases {
         $expected = @{}
         foreach ($pair in $Trigger -split ' ') {
             $name, $value = $pair -split '=', 2
             $expected[$name] = $value
         }
+        $weekly = $expected.weekday -ne '-'
+        $intendedClass = if ($weekly) { 'MSFT_TaskWeeklyTrigger' } else { 'MSFT_TaskDailyTrigger' }
+        $intendedInterval = if ($weekly) { 1 } else { [int] $expected.interval }
+        # Task Scheduler's DaysOfWeek bitmask: Sunday 1, Monday 2, Tuesday 4, ...
+        $intendedDays = if ($weekly) { 1 -shl [int] [DayOfWeek] $expected.weekday } else { $null }
 
         Remove-TestTask
         Set-Culture -CultureInfo 'en-US'
@@ -387,23 +441,35 @@ Describe 'The Task Scheduler lines, pasted into a PowerShell in ConstrainedLangu
                 exit       = $run.Exit
                 timedout   = $run.TimedOut
             }
+            $start = $null
+            $class = $null
+            $interval = $null
+            $days = $null
             if ($task) {
                 $registered = @($task.Triggers)[0]
                 $start = [string] $registered.StartBoundary
                 $class = [string] $registered.CimClass.CimClassName
-                $interval = if ($class -eq 'MSFT_TaskWeeklyTrigger') { $registered.WeeksInterval } else { $registered.DaysInterval }
-                $asIntended = ($start -match ('T' + $expected.time + ':00')) -and
-                    (($expected.start -eq '-') -or ($start -match ('^' + $expected.start + 'T'))) -and
-                    ($interval -eq [int] $expected.interval) -and
-                    ($class -eq $(if ($expected.weekday -ne '-') { 'MSFT_TaskWeeklyTrigger' } else { 'MSFT_TaskDailyTrigger' }))
-                $measurement['as_intended'] = $asIntended
+                $interval = if ($class -eq 'MSFT_TaskWeeklyTrigger') { [int] $registered.WeeksInterval } else { [int] $registered.DaysInterval }
+                if ($class -eq 'MSFT_TaskWeeklyTrigger') { $days = [int] $registered.DaysOfWeek }
+                $measurement['as_intended'] = ($class -eq $intendedClass) -and ($interval -eq $intendedInterval) -and ($days -eq $intendedDays)
                 $measurement['start'] = $start
                 $measurement['trigger_class'] = $class
                 $measurement['interval'] = $interval
-                if ($class -eq 'MSFT_TaskWeeklyTrigger') { $measurement['days_of_week'] = [string] $registered.DaysOfWeek }
+                if ($null -ne $days) { $measurement['days_of_week'] = $days }
             }
             $measurement['output'] = $run.Output
             $global:AlcoveMeasurements["schedule_clm_line$Number"] = $measurement
+
+            $task | Should -Not -BeNullOrEmpty -Because "the line registered no task (exit $($run.Exit), timed out $($run.TimedOut): $($run.Output))"
+            $class | Should -Be $intendedClass
+            $interval | Should -Be $intendedInterval -Because 'a weekly trigger repeats every week, and a daily one every interval'
+            if ($weekly) {
+                $days | Should -Be $intendedDays -Because "the DaysOfWeek bitmask for $($expected.weekday) is $intendedDays"
+            }
+            $start | Should -Match ('T' + $expected.time + ':00') -Because 'the task starts at the line''s time'
+            if ($expected.start -ne '-') {
+                $start | Should -Match ('^' + $expected.start + 'T') -Because 'the start date is the first window''s'
+            }
         } finally {
             Remove-TestTask
             Set-Culture -CultureInfo $script:CultureBefore
