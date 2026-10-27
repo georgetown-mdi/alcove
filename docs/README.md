@@ -49,12 +49,12 @@ Step-by-step instructions for one reader's path through an exchange: agreeing th
 
 ### Overview (`docs/`)
 
-- [WEB_APP.md](WEB_APP.md) - running one exchange in the browser: creating or accepting an invitation, the results, the exchange record, and size limits
+- [WEB_APP.md](WEB_APP.md) - running one exchange in the browser: creating or accepting an invitation, the results, and the exchange record
 - [MANAGED_EXCHANGE.md](MANAGED_EXCHANGE.md) - running that exchange again on a schedule from the browser: saving, installing, the schedule, moving it, failed runs, the accounting of disclosures, and backups
 - [CLI.md](CLI.md) - IT staff running exchanges from the command line: a task index, a first recurring exchange, every command, scheduling, recovery, and exit codes
 - [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md) - every field of the exchange configuration file, `alcove.yaml`
 - [CONSOLE.md](CONSOLE.md) - running one exchange from the graphical console on your own machine: the container, its mounts and settings, and the hand-off to the command line
-- [DEPLOYMENT.md](DEPLOYMENT.md) - IT staff hosting Alcove: the supporting services, network requirements, and the command line app under Docker
+- [DEPLOYMENT.md](DEPLOYMENT.md) - IT staff hosting Alcove: the supporting services, network requirements, how large an exchange can be, and the command line app under Docker
 - [FIPS_SFTP_PROFILE.md](FIPS_SFTP_PROFILE.md) - the SFTP settings for an agency required to use FIPS-approved cryptography, what they exclude, and the host-key gap
 - [DESIGN.md](DESIGN.md) - the whole picture: what Alcove does, its architecture, the configuration in summary, and the user journey
 - [SECURITY_DESIGN.md](SECURITY_DESIGN.md) - the PSI privacy guarantee, the threat model, authentication, channel security, and key rotation

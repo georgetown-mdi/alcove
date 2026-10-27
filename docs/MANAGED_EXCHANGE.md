@@ -62,8 +62,8 @@ The list starts from the Allowed relays set on the review of the invitation you
 accepted or created. A backup holds it, the command-line export writes it as
 `connection.allowed_relays`, and an imported configuration keeps it as written.
 An empty list allows no relay server, so the runs connect without one, and the
-page says so. **Remove** deletes the list, so the runs use every relay they
-list.
+page says so. **Remove**, then saving, deletes the list, so the runs use every
+relay they list.
 
 ## How a scheduled run happens
 
@@ -360,8 +360,9 @@ sooner. One fires for each of these:
   confirmation (see [Telling a desync from an
   attack](#telling-a-desync-from-an-attack)).
 
-The seven conditions from the missing input file to the protocol failure recur at
-every window until you act, so none is offered as retryable.
+The six conditions from your partner's terms change to the protocol failure recur
+at every window until you act, so none is offered as retryable. A missing or
+rejected input file is: put the file in place, then try again.
 
 Each notification fires once, when its state begins, and a condition already
 reported is not repeated at later wakes. The app remembers what it last reported
@@ -656,10 +657,12 @@ Two things are not in the files:
 A recurring web exchange's configuration names no STUN server. In the browser
 its runs use the STUN servers this browser's relay settings or the exchange's
 invitation name, or the default where neither names one; on the command line
-they use the default, which then learns the scheduling machine's address instead
-of this browser's. The command line warns about it on every run only where the
-configuration lists no `turn` server either. Name a `stun` server in the
-exported `alcove.yaml` to replace the default ([STUN, and what it
+they use the STUN servers the exported `invitation_relay` names, or the default
+where it names none, which then learn the scheduling machine's address instead
+of this browser's. The command line warns about the default on every run only
+where the configuration lists no `turn` server either, or `allowed_relays` leaves
+out every one. Name a `stun` server in the exported `alcove.yaml` to replace the
+default ([STUN, and what it
 discloses](CLI.md#stun-and-what-it-discloses)).
 
 The two files are the command line's working copy, not a backup: every run there
@@ -988,7 +991,8 @@ the current input file. A different partner, or linkage terms this app does not
 edit, take a new exchange. Your own local acts are not changes of terms: the
 schedule, pausing, removing, or moving the exchange, dropping in the next
 extract, and your result file's own columns and matching-key column, the input's
-field separator, and the retention note. None of them changes what is sent.
+field separator, and the retention note. Apart from the extract (below), none of
+them changes what is sent.
 
 The input file can change what is sent without anyone editing the terms, because
 the set a run sends is resolved from the file's own columns. Before connecting,

@@ -21,7 +21,7 @@ An exchange specification has four top-level components:
 | `metadata` | no | Descriptions of input fields and their roles |
 | `standardization` | no | Data cleaning and standardizing transformations applied before linkage |
 
-Beside them sit the optional top-level blocks [`authentication`](#authentication), [`signing`](#signing), [`retention_disposition`](#retention_disposition), [`include_own_columns`](#include_own_columns), [`include_matching_key`](#include_matching_key) and [`csv_delimiter`](#csv_delimiter), and the terms enforcement record [`expected_partner_deduplicate`](#expected_partner_deduplicate). A key the configuration schema does not read is rejected when the configuration is read, at any level: at the top level, and inside any block, such as `linkage_terms`, a `linkage_fields` entry, `connection` and its `server` and `options`, `metadata`, `standardization`, `authentication`, and `signing`. The error names the key and the block holding it, and no exchange runs until it is corrected. `alcove invite`, `alcove update`, and `alcove verify-receipt --partner-terms` read only the blocks they use, so a key outside those is refused by the file's next whole-file read (`alcove exchange`, `alcove apply`). What this means when a file written by a newer web application is loaded by an older CLI: [EXCHANGE_FILE.md](spec/EXCHANGE_FILE.md#what-an-older-cli-does-with-a-newer-file).
+Beside them sit the optional top-level blocks [`authentication`](#authentication), [`signing`](#signing), [`retention_disposition`](#retention_disposition), [`include_own_columns`](#include_own_columns), [`include_matching_key`](#include_matching_key) and [`csv_delimiter`](#csv_delimiter), and the terms enforcement record [`expected_partner_deduplicate`](#expected_partner_deduplicate). A key the configuration schema does not read is rejected when the configuration is read, at any level: at the top level, and inside any block, such as `linkage_terms`, a `linkage_fields` entry, `connection` and its `server` and `options`, `metadata`, `standardization`, `authentication`, and `signing`, except the keys of `connection.provider_options`. The error names the key and the block holding it, and no exchange runs until it is corrected. `alcove invite`, `alcove update`, and `alcove verify-receipt --partner-terms` read only the blocks they use, so a key outside those is refused by the file's next whole-file read (`alcove exchange`, `alcove apply`). What this means when a file written by a newer web application is loaded by an older CLI: [EXCHANGE_FILE.md](spec/EXCHANGE_FILE.md#what-an-older-cli-does-with-a-newer-file).
 
 ## File references
 
@@ -769,7 +769,7 @@ An invite that stops after the call may leave a server the endpoint created and 
 *Required:* no  
 *Applies to:* `webrtc`
 
-Records this party as the inviter or acceptor for WebRTC peer addressing. It is independent of the PSI protocol roles, which [`linkage_terms.output`](#linkage_termsoutput) determines. For `sftp` and `filedrop` the field is not part of the schema and is dropped.
+Records this party as the inviter or acceptor for WebRTC peer addressing. It is independent of the PSI protocol roles, which [`linkage_terms.output`](#linkage_termsoutput) determines. For `sftp` and `filedrop` the field is not part of the schema and is refused as an unrecognized key.
 
 **Required on a `webrtc` connection the CLI runs, and the two parties must differ.** Each party's PeerJS peer ID is derived from the shared secret and its own label, and it dials the ID the other's label derives. A CLI configuration missing it is a usage error before anything is dialed, and two parties with the same value fail at the coordination server with an ID collision. It also fixes the key-exchange role (`acceptor` -> initiator, `inviter` -> responder), so do not edit it to fix a connection.
 
@@ -1005,7 +1005,7 @@ connection:
 *Type:* object  
 *Required:* no
 
-Channel-agnostic and channel-specific tuning parameters. A field specific to a channel other than the active one draws a configuration warning.
+Channel-agnostic and channel-specific tuning parameters. An SFTP-only field on a `filedrop` connection draws a configuration warning; an SFTP and shared-folder field on a `webrtc` connection is refused as an unrecognized key.
 
 #### Shared options
 
@@ -1451,7 +1451,7 @@ What a party sends is exactly what its metadata declares:
 
 **Column names read from the file:**
 
-- An empty column name, produced by a trailing, leading, or doubled delimiter in the header row, is refused when the file is read, in the CLI and in the web app's file steps. Name the column or remove the empty header field.
+- With no `metadata` block, an empty column name, produced by a trailing, leading, or doubled delimiter in the header row, is refused when the file is read, in the CLI and in the web app's file steps. Name the column or remove the empty header field.
 - Control and text-direction characters are removed from every header when it is read ([CSV header sanitation](spec/PARSED_INPUT_BOUNDS.md#csv-header-sanitation-at-ingestion)), and the app states which column positions changed. A header made only of them comes back empty and is refused as above, naming the removal as the cause. A `metadata`, `linkage_fields`, or `standardization` name must be written without those characters, as `alcove init` writes it, to name the column.
 - A declared name holding those characters is refused by the [name rule](#linkage-terms): the configuration fails to load, naming the field by its issue path (for example `metadata.0.name` from `alcove exchange`) and printing none of the value. A `standardization` `output` or `input` is outside the rule, since neither is sent, but is held to the same 256-character ceiling.
 - A transmitted column's name longer than the ceiling is refused during data preparation, before any credential, terms, or data are sent. Shorten the header, or set the column not to transmit (on a [quick exchange](CLI.md#quick-exchange), by writing a configuration with `alcove init URL INPUT_FILE`). A column used only for matching or ignored is not refused over its length, and neither is any column of a party whose partner is entitled to no result. An inferred `id` or `identifier` column is transmitted and so is bounded. The web app applies the same bound where columns are marked to send, and `alcove invite` refuses an over-long disclosed name (exit 64) before it prints the invitation or writes any file.
