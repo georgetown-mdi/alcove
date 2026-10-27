@@ -20,16 +20,6 @@ const SECONDS_PER_MINUTE = 60;
 /** The interval a weekly cron line or Task Scheduler trigger states. */
 const WEEK_DAYS = 7;
 
-const TASK_SCHEDULER_DAYS = [
-  "SUN",
-  "MON",
-  "TUE",
-  "WED",
-  "THU",
-  "FRI",
-  "SAT",
-] as const;
-
 const WEEKDAY_NAMES = [
   "Sunday",
   "Monday",
@@ -129,55 +119,6 @@ export function cronIntervalGuard(schedule: RunSchedule | undefined): string {
   );
 }
 
-/** The shell a Task Scheduler line is written for, as the panel names it. */
-export type TaskSchedulerShell = "Command Prompt" | "PowerShell";
-
-/** Whether `schedule` needs a start date: an interval other than a day or a
- * week, whose days are counted from the first window. */
-function needsStartDate(
-  schedule: RunSchedule | undefined,
-): schedule is RunSchedule {
-  return schedule !== undefined && !cronStatesInterval(schedule);
-}
-
-/**
- * The shell the Task Scheduler line for `schedule` is pasted into. schtasks
- * reads a `/SD` start date in the machine's own date format, so a schedule
- * needing one is registered from PowerShell with the date given by its parts.
- */
-export function taskSchedulerShell(
-  schedule: RunSchedule | undefined,
-): TaskSchedulerShell {
-  return needsStartDate(schedule) ? "PowerShell" : "Command Prompt";
-}
-
-/** The schtasks options stating `schedule`, or daily at 2am without one. */
-function schtasksTrigger(schedule: RunSchedule | undefined): string {
-  if (schedule === undefined) return "/SC DAILY /ST 02:00";
-  const time = timeOfDay(schedule);
-  if (schedule.intervalDays === WEEK_DAYS)
-    return `/SC WEEKLY /D ${TASK_SCHEDULER_DAYS[schedule.weekday]} /ST ${time}`;
-  return `/SC DAILY /ST ${time}`;
-}
-
-const CMD_OPERATOR = /[&|<>^]/;
-
-/**
- * `text` with a caret before each cmd operator that cmd reads outside its
- * quotes. cmd starts and ends a quoted run at every `"`, a `\"` included, so
- * the inside of a token schtasks reads as `\"...\"` is outside cmd's quotes.
- */
-function escapeCmdOperators(text: string): string {
-  let quoted = false;
-  let escaped = "";
-  for (const character of text) {
-    if (character === '"') quoted = !quoted;
-    else if (!quoted && CMD_OPERATOR.test(character)) escaped += "^";
-    escaped += character;
-  }
-  return escaped;
-}
-
 /** `text` as a PowerShell double-quoted string: each double quote doubled,
  * and a backtick before each character that would end or expand it, the
  * typographic double quotes PowerShell also reads as quotes included. */
@@ -188,41 +129,44 @@ function powerShellString(text: string): string {
   return `"${escaped}"`;
 }
 
-/** The PowerShell registration running `action` under cmd on an interval
- * `schedule`, its first window given as a date built from its parts. */
-function powerShellRegistration(action: string, schedule: RunSchedule): string {
+/** The New-ScheduledTaskTrigger options for `schedule`, or daily at 2am
+ * without one. The first window is a date built from its parts, so no date
+ * format is read. */
+function powerShellTrigger(schedule: RunSchedule | undefined): string {
+  if (schedule === undefined)
+    return "-Daily -At ([datetime]::Today.AddHours(2))";
   const [year, month, day] = schedule.anchorDate.split("-").map(Number);
   const firstRun =
-    `[datetime]::new(${year}, ${month}, ${day}, ` +
-    `${schedule.hour}, ${schedule.minute}, 0)`;
-  return (
-    "Register-ScheduledTask -TaskName 'alcove exchange' -Trigger " +
-    `(New-ScheduledTaskTrigger -Daily -DaysInterval ${schedule.intervalDays} ` +
-    `-At (${firstRun})) -Action (New-ScheduledTaskAction -Execute 'cmd.exe' ` +
-    `-Argument ${powerShellString(`/c ${action}`)})`
-  );
+    `([datetime]::new(${year}, ${month}, ${day}, ` +
+    `${schedule.hour}, ${schedule.minute}, 0))`;
+  if (schedule.intervalDays === WEEK_DAYS)
+    return `-Weekly -DaysOfWeek ${WEEKDAY_NAMES[schedule.weekday]} -At ${firstRun}`;
+  const interval =
+    schedule.intervalDays === 1
+      ? ""
+      : ` -DaysInterval ${schedule.intervalDays}`;
+  return `-Daily${interval} -At ${firstRun}`;
 }
 
 /**
- * The Windows Task Scheduler command that registers `command` on `schedule`
- * (daily at 2am without one) from the folder holding the exchange's files,
- * for the shell {@link taskSchedulerShell} names. `command` is already quoted
- * for `cmd`, which runs it.
+ * The PowerShell command that registers a Windows Task Scheduler task running
+ * `command` under cmd on `schedule` (daily at 2am without one), from the
+ * folder holding the exchange's files. `command` is already quoted for cmd.
  *
- * In the schtasks form the command is inside the `/TR "..."` argument, so each
- * double quote in it is escaped as `\"` for schtasks to keep, and each cmd
- * operator cmd would then read outside its quotes is escaped with a caret.
+ * Not a schtasks line: schtasks turns each single quote in `/TR` into a double
+ * quote, which breaks the task for a folder whose name holds one, and reads a
+ * `/SD` start date in the machine's own date format.
  */
 export function taskSchedulerLine(
   command: string,
   schedule?: RunSchedule,
 ): string {
-  const action = `cd /d "${WINDOWS_FOLDER_PLACEHOLDER}" && ${command}`;
-  if (needsStartDate(schedule)) return powerShellRegistration(action, schedule);
-  const taskRun = `"cmd /c ${action.replaceAll('"', '\\"')}"`;
+  const action = `/c cd /d "${WINDOWS_FOLDER_PLACEHOLDER}" && ${command}`;
   return (
-    `schtasks /Create /TN "alcove exchange" ${schtasksTrigger(schedule)} ` +
-    `/TR ${escapeCmdOperators(taskRun)}`
+    "Register-ScheduledTask -TaskName 'alcove exchange' -Trigger " +
+    `(New-ScheduledTaskTrigger ${powerShellTrigger(schedule)}) ` +
+    "-Action (New-ScheduledTaskAction -Execute 'cmd.exe' " +
+    `-Argument ${powerShellString(action)})`
   );
 }
 

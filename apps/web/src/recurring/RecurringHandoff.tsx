@@ -199,8 +199,8 @@ function ScheduleLines({ lines }: { lines: ShownRunLines }) {
       {taskSchedulerCommand !== undefined && (
         <>
           <p className={styles.small}>
-            Windows Task Scheduler (in {lines.taskSchedulerShell}), daily at
-            2am, running Alcove from its Docker image:
+            Windows Task Scheduler (in PowerShell), daily at 2am, running Alcove
+            from its Docker image:
           </p>
           <CopyableCode
             code={taskSchedulerCommand}

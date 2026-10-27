@@ -9,11 +9,10 @@ import {
   scheduleDescription,
   scheduleNote,
   taskSchedulerLine,
-  taskSchedulerShell,
 } from "@recurring/scheduleTemplates";
 
 // The schedule half of the lines both hand-off surfaces show. An operator copies
-// these verbatim into cron or schtasks, so what is checked here is the text they
+// these verbatim into cron or PowerShell, so what is checked here is the text they
 // paste: the agreed anchor and interval in the fields, the command run from the
 // folder the placeholder names, and the Windows registration surviving a
 // command that holds quotes of its own.
@@ -32,14 +31,13 @@ describe("with no agreed schedule", () => {
   });
 
   test("the Task Scheduler line registers the same run for Windows", () => {
-    const line = taskSchedulerLine(COMMAND);
-    expect(line).toContain('schtasks /Create /TN "alcove exchange"');
-    expect(line).toContain("/SC DAILY /ST 02:00");
-    expect(line).toContain(
-      '/TR "cmd /c cd /d \\"C:\\path\\to\\your\\exchange-folder\\" && ' +
-        `${COMMAND}"`,
+    expect(taskSchedulerLine(COMMAND)).toBe(
+      "Register-ScheduledTask -TaskName 'alcove exchange' -Trigger " +
+        "(New-ScheduledTaskTrigger -Daily -At ([datetime]::Today.AddHours(2))) " +
+        "-Action (New-ScheduledTaskAction -Execute 'cmd.exe' -Argument " +
+        '"/c cd /d ""C:\\path\\to\\your\\exchange-folder"" && ' +
+        `${COMMAND}")`,
     );
-    expect(taskSchedulerShell(undefined)).toBe("Command Prompt");
   });
 });
 
@@ -60,7 +58,8 @@ describe("the agreed schedule", () => {
     expect(cronScheduleFields(schedule)).toBe("30 14 * * *");
     expect(cronIntervalGuard(schedule)).toBe("");
     expect(taskSchedulerLine(COMMAND, schedule)).toContain(
-      "/SC DAILY /ST 14:30 /TR",
+      "(New-ScheduledTaskTrigger -Daily -At " +
+        "([datetime]::new(2026, 10, 6, 14, 30, 0)))",
     );
     expect(scheduleDescription(schedule)).toBe("daily at 14:30 UTC");
     expect(scheduleNote(schedule)).toMatch(/in UTC/);
@@ -71,7 +70,8 @@ describe("the agreed schedule", () => {
     expect(cronScheduleFields(schedule)).toBe("30 14 * * 2");
     expect(cronIntervalGuard(schedule)).toBe("");
     expect(taskSchedulerLine(COMMAND, schedule)).toContain(
-      "/SC WEEKLY /D TUE /ST 14:30 /TR",
+      "(New-ScheduledTaskTrigger -Weekly -DaysOfWeek Tuesday -At " +
+        "([datetime]::new(2026, 10, 6, 14, 30, 0)))",
     );
     expect(scheduleDescription(schedule)).toBe("every Tuesday at 14:30 UTC");
     expect(scheduleNote(schedule)).toMatch(/weekday/);
@@ -86,11 +86,9 @@ describe("the agreed schedule", () => {
     expect(scheduleNote(schedule)).toMatch(/start date/);
   });
 
-  test("another interval is registered from PowerShell with a date built from its parts", () => {
-    // schtasks reads /SD in the machine's date format, which refuses or
-    // misreads a month/day/year date on a machine set to another.
+  test("another interval is registered from its first window, a date built from its parts", () => {
+    // A date written out would be read in the machine's own date format.
     const schedule = runScheduleFor({ anchor: ANCHOR, intervalDays: 3 });
-    expect(taskSchedulerShell(schedule)).toBe("PowerShell");
     expect(taskSchedulerLine(COMMAND, schedule)).toBe(
       "Register-ScheduledTask -TaskName 'alcove exchange' -Trigger " +
         "(New-ScheduledTaskTrigger -Daily -DaysInterval 3 -At " +
@@ -100,15 +98,6 @@ describe("the agreed schedule", () => {
         `${COMMAND}")`,
     );
   });
-
-  test.each([1, 7])(
-    "a %i-day interval stays a Command Prompt line with no start date",
-    (intervalDays) => {
-      const schedule = runScheduleFor({ anchor: ANCHOR, intervalDays });
-      expect(taskSchedulerShell(schedule)).toBe("Command Prompt");
-      expect(taskSchedulerLine(COMMAND, schedule)).not.toContain("/SD");
-    },
-  );
 
   test("the PowerShell line keeps a dollar sign, backtick and quotes literal", () => {
     const schedule = runScheduleFor({ anchor: ANCHOR, intervalDays: 3 });
@@ -176,23 +165,14 @@ test.each([
   },
 );
 
-test("a command holding quotes keeps them inside the /TR argument", () => {
-  // Inside /TR "...", an unescaped double quote from the command would end that
-  // argument early and register a task that runs a truncated command. schtasks
-  // preserves a `\"` for the scheduled cmd to re-read, which is what a Direct
-  // invocation with a spaced label needs.
-  const quoted = 'alcove "--identity=Agency A" input.csv results.csv';
-  const line = taskSchedulerLine(quoted);
-  expect(line).toContain('\\"--identity=Agency A\\"');
-  // Two delimiters around the task name, two around the /TR argument, and none
-  // of the command's own: every quote in the line is accounted for.
-  expect(line.match(/(?<!\\)"/g)).toHaveLength(4);
-});
-
-test("a cmd operator inside a quoted token is escaped for the prompt", () => {
-  // cmd ends its quoted run at the `\"` before the token, so an operator in
-  // the token would split the schtasks line there without the caret.
-  const line = taskSchedulerLine('alcove "--csv-delimiter=|" "--identity=A&B"');
-  expect(line).toContain('\\"--csv-delimiter=^|\\" \\"--identity=A^&B\\"');
-  expect(line).toContain('\\" && alcove \\"');
+test("a command holding quotes, operators and single quotes keeps them in the -Argument string", () => {
+  // The task's cmd reads the argument as written, so each double quote is
+  // only doubled for PowerShell and nothing else is escaped.
+  const line = taskSchedulerLine(
+    `alcove "--csv-delimiter=|" "--identity=O'Brien & Co" input.csv ./`,
+  );
+  expect(line).toContain(
+    `&& alcove ""--csv-delimiter=|"" ""--identity=O'Brien & Co"" input.csv ./")`,
+  );
+  expect(line).not.toContain("^");
 });

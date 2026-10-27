@@ -349,10 +349,8 @@ created (`volume_create=false`).
 `ScheduleLines.Tests.ps1`, run alone by the workflow's `schedule` job, reads
 the lines from `schedule-lines.txt`, which a web unit test keeps equal to the
 generator. It replaces the folder placeholder with a folder whose name holds a
-space and a single quote, and pastes each line into the shell the panel names
-for it -- Command Prompt for the daily and weekly `schtasks` lines, PowerShell
-for the every-few-days line -- once under en-US and once under en-GB. It
-asserts:
+space and a single quote, and pastes each line into PowerShell, the shell the
+panel names, once under en-US and once under en-GB. It asserts:
 
 - the task registered, read back with `Get-ScheduledTask`: its time, its
   interval or weekday, the first window's start date where the line states
@@ -360,12 +358,18 @@ asserts:
 - the task run, against a docker stand-in in the folder, handing docker each
   intended argument whole: a `;`, `|` or `tab` delimiter, an identity holding
   a space, `&`, `'` or `$`, and the folder's mount;
-- that under en-GB `schtasks` reads `/SD 03/04/2026` as 3 April, the reason
-  the every-few-days line is not a `schtasks` line.
+- the two reasons no line is a `schtasks` line: under en-GB `schtasks` reads
+  `/SD 03/04/2026` as 3 April, and it stores a single quote in `/TR` as a
+  double quote.
 
-What it leaves undriven: a `schtasks` line pasted into PowerShell, which the
-panel does not offer, and a line as long as a full configuration gives, which
-`schtasks` may refuse past a `/TR` length limit (unmeasured).
+**What `schtasks` stored for a folder holding a single quote, measured 27
+October 2026 (job 122258644280).** Daily and weekly `schtasks` lines for
+Command Prompt, run against that folder, each stored the action
+`/c cd /d "C:\alcove sched it"s 170dd646" && docker ...`: the folder's quote
+became a double quote, the `cd` failed, and the task ended with result 1
+without running docker. An earlier run of the same lines (job 122233904452)
+read result 267009, the task still running, at the 60 s mark; the record does
+not explain that.
 
 **What the GitHub-hosted Windows runner hosts, measured 27 October 2026 (run
 40505959607).** A probe job, since removed, asked each question below and

@@ -146,13 +146,14 @@ describe("what the panel gets to render", () => {
       "0 2 * * * cd /path/to/your/exchange-folder && /path/to/alcove " +
         "exchange --log-file=exchange.log input.csv ./",
     );
-    expect(lines.dockerTaskSchedulerLine).toContain("/SC DAILY /ST 02:00 ");
     expect(lines.dockerTaskSchedulerLine).toContain(
-      'cmd /c cd /d \\"C:\\path\\to\\your\\exchange-folder\\" && docker run ' +
-        '--rm --mount \\"type=bind,src=C:\\path\\to\\your\\exchange-folder,' +
-        `dst=/work\\" ${IMAGE} exchange --log-file=exchange.log input.csv ./`,
+      "New-ScheduledTaskTrigger -Daily -At ([datetime]::Today.AddHours(2))",
     );
-    expect(lines.taskSchedulerShell).toBe("Command Prompt");
+    expect(lines.dockerTaskSchedulerLine).toContain(
+      '"/c cd /d ""C:\\path\\to\\your\\exchange-folder"" && docker run ' +
+        '--rm --mount ""type=bind,src=C:\\path\\to\\your\\exchange-folder,' +
+        `dst=/work"" ${IMAGE} exchange --log-file=exchange.log input.csv ./"`,
+    );
     expect(state.fromAgreedSchedule).toBe(false);
     expect(lines.schedule).toBe("daily at 2am");
     expect(lines.scheduleNote).toBeUndefined();
@@ -183,7 +184,8 @@ describe("what the panel gets to render", () => {
       /^30 14 \* \* 2 cd \/path\/to\/your\/exchange-folder && \/path\/to\/alcove /,
     );
     expect(lines.dockerTaskSchedulerLine).toContain(
-      "/SC WEEKLY /D TUE /ST 14:30 ",
+      "New-ScheduledTaskTrigger -Weekly -DaysOfWeek Tuesday -At " +
+        "([datetime]::new(2026, 10, 6, 14, 30, 0))",
     );
     expect(state.fromAgreedSchedule).toBe(true);
     expect(lines.schedule).toBe("every Tuesday at 14:30 UTC");
@@ -219,7 +221,6 @@ describe("what the panel gets to render", () => {
       "New-ScheduledTaskTrigger -Daily -DaysInterval 3 -At " +
         "([datetime]::new(2026, 10, 6, 14, 30, 0))",
     );
-    expect(lines.taskSchedulerShell).toBe("PowerShell");
   });
 
   test("the notice's schedule clause follows whether this copy has a schedule", () => {

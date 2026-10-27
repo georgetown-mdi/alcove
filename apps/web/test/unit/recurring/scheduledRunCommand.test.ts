@@ -15,11 +15,8 @@ import {
   unmountableBindPaths,
   workingFolderCommand,
 } from "@psi/dockerRunCommand";
-import {
-  runScheduleFor,
-  taskSchedulerShell,
-} from "@recurring/scheduleTemplates";
 import { parseHandoff } from "@psi/managed/recurringHandoff";
+import { runScheduleFor } from "@recurring/scheduleTemplates";
 
 import type { ScheduledRunSource } from "@psi/dockerRunCommand";
 
@@ -96,8 +93,8 @@ describe("the console hand-off's command lines", () => {
     const line = dockerTaskSchedulerLine(SOURCE);
     expect(line).toContain(
       "docker run --rm --mount " +
-        '\\"type=bind,src=C:\\path\\to\\your\\exchange-folder,dst=/work\\" ' +
-        `${IMAGE} exchange --log-file=exchange.log clients.csv ./"`,
+        '""type=bind,src=C:\\path\\to\\your\\exchange-folder,dst=/work"" ' +
+        `${IMAGE} exchange --log-file=exchange.log clients.csv ./")`,
     );
     expect(line).not.toContain("shared-directory");
   });
@@ -379,12 +376,12 @@ describe("the Task Scheduler lines the Windows CI suite registers", () => {
     {
       args: ["--csv-delimiter=;", "--identity=Agency A"],
       intervalDays: 1,
-      trigger: "interval=1 time=14:30 weekday=- start=-",
+      trigger: "interval=1 time=14:30 weekday=- start=2026-10-06",
     },
     {
       args: ["--csv-delimiter=|", "--identity=Agency A & B"],
       intervalDays: 7,
-      trigger: "interval=7 time=14:30 weekday=Tuesday start=-",
+      trigger: "interval=7 time=14:30 weekday=Tuesday start=2026-10-06",
     },
     {
       args: ["--csv-delimiter=tab", "--identity=Agency A & B"],
@@ -417,7 +414,7 @@ describe("the Task Scheduler lines the Windows CI suite registers", () => {
         mountBindPaths: false,
       }) ?? [];
     return [
-      `shell: ${taskSchedulerShell(schedule)}`,
+      "shell: PowerShell",
       `trigger: ${trigger}`,
       dockerTaskSchedulerLine(source, schedule) ?? "",
       ...tokens.slice(1).map((token) => `  [${token}]`),

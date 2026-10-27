@@ -16,16 +16,15 @@ import {
   cronIntervalGuard,
   cronScheduleFields,
   taskSchedulerLine,
-  taskSchedulerShell,
 } from "./scheduleTemplates";
 
-import type { RunSchedule, TaskSchedulerShell } from "./scheduleTemplates";
 import type {
   ScheduledRunSource,
   UnmountableBindPath,
   UnmountableReason,
 } from "@psi/dockerRunCommand";
 import type { HandoffBindPath } from "@jobContract/handoffBindPaths";
+import type { RunSchedule } from "./scheduleTemplates";
 
 /**
  * The command lines the recurring-run hand-offs show -- the console's and the
@@ -159,8 +158,6 @@ export interface ShownRunLines {
   dockerCronLine: string | undefined;
   /** Undefined where a path cannot be mounted. */
   dockerTaskSchedulerLine: string | undefined;
-  /** The shell the Task Scheduler line is pasted into. */
-  taskSchedulerShell: TaskSchedulerShell;
   installedCronLine: string;
   /** Why the Docker lines are not shown, where a path cannot be mounted. */
   dockerLinesNotice: string | undefined;
@@ -182,7 +179,6 @@ export function runLines(
     runCommand: dockerRunCommand(source) ?? installedRunCommand(source),
     dockerCronLine: dockerCronLine(source, schedule),
     dockerTaskSchedulerLine: dockerTaskSchedulerLine(source, schedule),
-    taskSchedulerShell: taskSchedulerShell(schedule),
     installedCronLine: installedCronLine(source, schedule),
     dockerLinesNotice:
       unmountable.length > 0

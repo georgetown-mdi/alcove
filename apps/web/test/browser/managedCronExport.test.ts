@@ -217,7 +217,7 @@ describe("the command-line export hands over two files", () => {
       .element(page.getByText("0 2 * * * /usr/bin/docker", { exact: false }))
       .toBeInTheDocument();
     await expect
-      .element(page.getByText("schtasks /Create", { exact: false }))
+      .element(page.getByText("Register-ScheduledTask", { exact: false }))
       .toBeInTheDocument();
   });
 });

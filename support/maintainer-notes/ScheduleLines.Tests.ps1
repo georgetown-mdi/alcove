@@ -24,7 +24,11 @@
     folder, which cmd finds in the task's working folder before the runner's
     own docker; it writes the arguments it received to a file there. A task
     that does not write it within 60 s fails with the task's stored action,
-    the processes it left running, and where cmd finds docker from the folder.
+    the processes it left running, and the folder's files.
+
+    Last, it checks the two schtasks behaviors that are why the generator
+    writes no schtasks line: schtasks reads a /SD date in the culture's
+    format, and turns a single quote in /TR into a double quote.
 
     Every task the suite creates is stopped and deleted and the culture
     restored, test by test. The suite runs alone (the schedule job of
@@ -141,8 +145,8 @@ public static class AlcoveScheduledDockerRecorder {
     function Get-TaskRunDiagnostics {
         <#  One line stating what the task stored and what it left running:
             its actions, the cmd processes the Task Scheduler service started
-            and their descendants, any docker or WerFault process, the folder's
-            files, and where cmd finds docker from the folder. #>
+            and their descendants, any docker or WerFault process, and the
+            folder's files. #>
         $parts = New-Object System.Collections.ArrayList
         $task = Get-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue
         foreach ($action in @($task.Actions)) {
@@ -167,9 +171,6 @@ public static class AlcoveScheduledDockerRecorder {
         }
         if ($shown.Count -eq 0) { [void] $parts.Add('process none from the Task Scheduler service') }
         [void] $parts.Add("folder holds [$((@(Get-ChildItem -LiteralPath $script:Folder -Name)) -join ', ')]")
-        [void] $parts.Add("NoDefaultCurrentDirectoryInExePath=[$env:NoDefaultCurrentDirectoryInExePath]")
-        $where = Invoke-PastedLine -Shell 'Command Prompt' -Line ('cd /d "' + $script:Folder + '" && where docker')
-        [void] $parts.Add("where docker from the folder (exit $($where.Exit)): $($where.Output)")
         return ($parts -join ' || ')
     }
 }
@@ -181,10 +182,10 @@ AfterAll {
 }
 
 Describe 'The Task Scheduler lines, pasted and run' {
-    It 'reads lines for both shells from the generated file' {
+    It 'reads PowerShell lines from the generated file' {
         $shells = @(Get-Content -LiteralPath (Join-Path $PSScriptRoot 'schedule-lines.txt') |
                 Where-Object { $_.StartsWith('shell: ') } | Sort-Object -Unique)
-        $shells | Should -Be @('shell: Command Prompt', 'shell: PowerShell')
+        $shells | Should -Be @('shell: PowerShell')
     }
 
     It 'under <Culture>, the <Shell> line registers <Trigger> and runs docker with its arguments' -ForEach $cases {
@@ -240,7 +241,7 @@ Describe 'The Task Scheduler lines, pasted and run' {
     }
 }
 
-Describe 'The month/day/year start date schtasks reads by culture' {
+Describe 'What schtasks does to a start date and a single quote' {
     It 'reads /SD 03/04/2026 as 3 April under en-GB' {
         Remove-TestTask
         Set-Culture -CultureInfo 'en-GB'
@@ -252,6 +253,18 @@ Describe 'The month/day/year start date schtasks reads by culture' {
         } finally {
             Remove-TestTask
             Set-Culture -CultureInfo $script:CultureBefore
+        }
+    }
+
+    It 'stores a single quote in /TR as a double quote' {
+        Remove-TestTask
+        try {
+            $run = Invoke-PastedLine -Shell 'Command Prompt' -Line ('schtasks /Create /TN "' + $script:TaskName + '" /SC DAILY /ST 14:30 /TR "cmd /c echo it''s"')
+            $task = Get-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue
+            $task | Should -Not -BeNullOrEmpty -Because "schtasks registered no task (exit $($run.Exit): $($run.Output))"
+            @($task.Actions)[0].Arguments | Should -Be '/c echo it"s'
+        } finally {
+            Remove-TestTask
         }
     }
 }
