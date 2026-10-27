@@ -26,6 +26,7 @@ declare function benchPartnerEngine(
 ): Promise<unknown>;
 
 const INPUT = "partner-input";
+const NOT_BENCHED = "the bench partner runs no count-only-permuted round";
 
 function nodeEngine(): PsiEngine {
   const withInput = async (bytes: Uint8Array, operation: string) => {
@@ -75,6 +76,10 @@ function nodeEngine(): PsiEngine {
         "computeIntersectionCardinality",
       )) as number;
     },
+    createPermutedSetup: () => Promise.reject(new Error(NOT_BENCHED)),
+    receiveIndexTable: () => Promise.reject(new Error(NOT_BENCHED)),
+    matchPermutedRound: () => Promise.reject(new Error(NOT_BENCHED)),
+    finishPermutedCount: () => Promise.reject(new Error(NOT_BENCHED)),
     dispose() {
       void benchPartnerEngine("dispose");
     },

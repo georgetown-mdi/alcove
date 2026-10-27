@@ -861,6 +861,42 @@ describe("the web exchange's PSI engine factory", () => {
     expect(workers[0].keyPorts[0]?.ports).toHaveLength(3);
   });
 
+  test("elsewhere runs the count-only-permuted joiner on one worker, with no helper", () => {
+    const { spawn, workers } = fakeSpawner();
+    createPooledBrowserPsiEngineFactory(spawn, linux)(
+      "joiner",
+      "client",
+      "count-only-permuted",
+    ).dispose();
+    expect(workers.map((worker) => worker.seed)).toEqual([
+      {
+        role: "joiner",
+        id: "client",
+        mode: "count-only-permuted",
+        shard: "primary",
+        helpers: 0,
+      },
+    ]);
+    expect(workers[0].keyPorts).toEqual([]);
+  });
+
+  test("a pool refuses the count-only-permuted mode before it spawns a worker", () => {
+    const spawn = vi.fn<SpawnPsiCryptoWorker>();
+    expect(() =>
+      startPsiWorkerPool(
+        spawn,
+        "joiner",
+        "client",
+        "count-only-permuted",
+        2,
+        TIMEOUT_MS,
+      ),
+    ).toThrow(
+      "client: a sharded PSI engine does not run the count-only-permuted mode",
+    );
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
   test("elsewhere runs the starter on one worker, which answers the request with no split", async () => {
     const { spawn, workers } = fakeSpawner();
     const engine = createPooledBrowserPsiEngineFactory(spawn, linux)(

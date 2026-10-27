@@ -1,7 +1,7 @@
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
 import { countDeclaredPsiElements } from "../connection/psiElementScan";
-import { markPsiLibraryFailure } from "../errors";
+import { InternalConsistencyError, markPsiLibraryFailure } from "../errors";
 import {
   appendChunkElements,
   buildRequest,
@@ -11,6 +11,7 @@ import {
   serializeResponse,
 } from "./psiChunks";
 import {
+  knownEngineMode,
   partnerRequestModeError,
   valuesContributedExactlyOnce,
 } from "./psiEngine";
@@ -134,6 +135,7 @@ class ShardProgressWatch {
 export class ShardedPsiEngine implements PsiEngine {
   private readonly library: PSILibrary;
   private readonly id: string;
+  private readonly mode: PsiEngineMode;
   private readonly revealsIdentifiers: boolean;
   private readonly engines: ReadonlyArray<PsiEngine>;
   private readonly minShardElements: number;
@@ -155,7 +157,14 @@ export class ShardedPsiEngine implements PsiEngine {
   ) {
     this.library = library;
     this.id = id;
-    this.revealsIdentifiers = mode === "identifier-revealing";
+    this.mode = knownEngineMode(mode);
+    // A permuted response is reordered under the one `pi` the exchange holds,
+    // which per-shard masking would not apply.
+    if (this.mode === "count-only-permuted")
+      throw new InternalConsistencyError(
+        `${id}: a sharded PSI engine does not run the count-only-permuted mode`,
+      );
+    this.revealsIdentifiers = this.mode === "identifier-revealing";
     this.engines = [primary, ...helpers];
     this.minShardElements = options.minShardElements ?? PSI_SHARD_MIN_ELEMENTS;
     this.shardProgressTimeoutMs = options.shardProgressTimeoutMs;
@@ -274,11 +283,7 @@ export class ShardedPsiEngine implements PsiEngine {
     // mode is refused here even if every shard would serve it.
     const revealFlag = request.getRevealIntersection();
     if (revealFlag !== this.revealsIdentifiers)
-      throw partnerRequestModeError(
-        this.id,
-        revealFlag,
-        this.revealsIdentifiers,
-      );
+      throw partnerRequestModeError(this.id, revealFlag, this.mode);
     const ranges = this.shardRangesFor(declared);
     if (ranges.length === 1)
       return this.primary.processClientRequest(requestBytes);
@@ -356,6 +361,24 @@ export class ShardedPsiEngine implements PsiEngine {
 
   computeIntersectionCardinality(responseBytes: Uint8Array): Promise<number> {
     return this.primary.computeIntersectionCardinality(responseBytes);
+  }
+
+  createPermutedSetup(
+    values: ReadonlyArray<string>,
+  ): Promise<{ setup: Uint8Array; indexTable: Int32Array }> {
+    return this.primary.createPermutedSetup(values);
+  }
+
+  receiveIndexTable(indexTable: Int32Array): Promise<void> {
+    return this.primary.receiveIndexTable(indexTable);
+  }
+
+  matchPermutedRound(responseBytes: Uint8Array): Promise<void> {
+    return this.primary.matchPermutedRound(responseBytes);
+  }
+
+  finishPermutedCount(): Promise<number> {
+    return this.primary.finishPermutedCount();
   }
 
   stopInFlight(): boolean {

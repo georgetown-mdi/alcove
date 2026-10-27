@@ -66,7 +66,11 @@ type PsiWorkerRequestBody =
   | { method: "completeServerSetup" }
   | { method: "discardServerSetup" }
   | { method: "computeAssociationTable"; responseBytes: Uint8Array }
-  | { method: "computeIntersectionCardinality"; responseBytes: Uint8Array };
+  | { method: "computeIntersectionCardinality"; responseBytes: Uint8Array }
+  | { method: "createPermutedSetup"; values: ReadonlyArray<string> }
+  | { method: "receiveIndexTable"; indexTable: Int32Array }
+  | { method: "matchPermutedRound"; responseBytes: Uint8Array }
+  | { method: "finishPermutedCount" };
 
 /** A host -> worker request: a {@link PsiWorkerRequestBody} tagged with an id. */
 export interface PsiWorkerRequest {
@@ -285,6 +289,24 @@ export class WorkerPsiEngine implements PsiEngine {
     });
   }
 
+  createPermutedSetup(
+    values: ReadonlyArray<string>,
+  ): Promise<{ setup: Uint8Array; indexTable: Int32Array }> {
+    return this.call({ method: "createPermutedSetup", values });
+  }
+
+  receiveIndexTable(indexTable: Int32Array): Promise<void> {
+    return this.call({ method: "receiveIndexTable", indexTable });
+  }
+
+  matchPermutedRound(responseBytes: Uint8Array): Promise<void> {
+    return this.call({ method: "matchPermutedRound", responseBytes });
+  }
+
+  finishPermutedCount(): Promise<number> {
+    return this.call({ method: "finishPermutedCount" });
+  }
+
   stopInFlight(): boolean {
     if (this.pending.size === 0 || this.stopFlag === undefined) return false;
     // Never cleared: a stop ends the engine's use, so a request posted after
@@ -360,6 +382,14 @@ export function servePsiEngine(
         return engine.computeAssociationTable(body.responseBytes);
       case "computeIntersectionCardinality":
         return engine.computeIntersectionCardinality(body.responseBytes);
+      case "createPermutedSetup":
+        return engine.createPermutedSetup(body.values);
+      case "receiveIndexTable":
+        return engine.receiveIndexTable(body.indexTable);
+      case "matchPermutedRound":
+        return engine.matchPermutedRound(body.responseBytes);
+      case "finishPermutedCount":
+        return engine.finishPermutedCount();
     }
   };
   return (request: PsiWorkerRequest): void => {
