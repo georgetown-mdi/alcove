@@ -28,10 +28,12 @@
 //
 // - The last reviewed head is the last of: a round row's `"head"`, a
 //   `"kind": "fix-review"` row's `"head"` when its `"from"` is the reviewed head
-//   or an ancestor of it, and a rebase-invariance `reattested` entry's `"to"`
-//   when its `"from"` is the reviewed head. A row dated FIX_REVIEW_RULE_DATE or
-//   later that records no head is refused; with no head recorded at all the
-//   rule is reported not checked.
+//   or an ancestor of it, and a `reattested` entry's `"to"` when its `"from"`
+//   is the reviewed head and its `"route"` names one of REATTESTATION_ROUTES,
+//   the mechanical verifiers. A row dated FIX_REVIEW_RULE_DATE or later that
+//   records no head is refused; with no head recorded at all the rule is
+//   reported not checked. `--print-base` prints that head, the `--base` a fix
+//   review takes.
 // - A product commit is one in `<reviewed head>..<PR head>`, merges excluded,
 //   touching a path matching `^(apps|packages)/` and not
 //   `^(apps|packages)/[^/]+/test/` (isProductPath). A base sync after the last
@@ -54,7 +56,8 @@
 // process was invoked from; name full shas, not a per-worktree ref.
 //
 // Exit 0 every held entry, the cap raises and the post-review fixes pass; 1 any
-// of them is refused, each reported on its own summary line; 2 usage, an
+// of them is refused, each reported on its own summary line, or `--print-base`
+// finds no reviewed head; 2 usage, an
 // unreadable ledger line or body, an invocation outside a git worktree, or a
 // git error.
 // Rationale: docs/notes/agent-hooks-and-scripts.md.
@@ -307,11 +310,21 @@ function resolveCommit(ref, git) {
 }
 
 /**
+ * The `reattested` routes that advance the last reviewed head: each names the
+ * `verify-<route>.mjs` verifier that re-attested the move.
+ */
+export const REATTESTATION_ROUTES = [
+  "rebase-invariance",
+  "nonexecutable-delta",
+  "additive-test-delta",
+];
+
+/**
  * The last head a review read, walking rows in order: a round's `head`, a
  * fix review's `head` when its `from` is that head or an ancestor of it, and a
- * rebase-invariance `reattested` entry's `to` when its `from` is that head.
- * Returns `{reviewed, problems, notes}`; `reviewed` is null when no row
- * records a head.
+ * `reattested` entry's `to` when its `from` is that head and its route is in
+ * REATTESTATION_ROUTES. Returns `{reviewed, problems, notes}`; `reviewed` is
+ * null when no row records a head.
  */
 export function lastReviewedHead({ rows, git }) {
   let reviewed = null;
@@ -348,7 +361,8 @@ export function lastReviewedHead({ rows, git }) {
       problems.push(`${label} records no "head"`);
     }
     for (const entry of Array.isArray(row.reattested) ? row.reattested : []) {
-      if (entry?.route !== "rebase-invariance" || reviewed === null) continue;
+      if (!REATTESTATION_ROUTES.includes(entry?.route) || reviewed === null)
+        continue;
       const to = resolveCommit(entry.to, git);
       if (resolveCommit(entry.from, git) === reviewed && to !== null)
         reviewed = to;
@@ -518,33 +532,38 @@ export function remapFixCommits({
 const USAGE =
   "Usage: node .claude/scripts/check-review-ledger-dispositions.mjs <ledger.jsonl> <head-sha> --body <pr-body-file | ->\n" +
   "       node .claude/scripts/check-review-ledger-dispositions.mjs --remap <ledger.jsonl> <pre-rebase-base> <pre-rebase-head> <post-rebase-base> <post-rebase-head>\n" +
+  "       node .claude/scripts/check-review-ledger-dispositions.mjs --print-base <ledger.jsonl>\n" +
   "The first form checks every fixed, deferred and limit entry against the PR head, and the\n" +
   "product commits after the last reviewed head against the PR body's Security review line\n" +
   "(`-` reads the body from stdin: gh pr view <n> --json body --jq .body | ... --body -). The second,\n" +
   "run at a rebase re-attestation with the four shas given to verify-rebase-invariance.mjs,\n" +
   "rewrites each fixed entry's commit in the ledger to the commit the rebase made from it.\n" +
+  "The third prints the last reviewed head, the sha a fix review's --base takes, or exits 1\n" +
+  "naming why the ledger records none.\n" +
   "Refs resolve in the git worktree this is run from; name full shas.\n";
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
   const remap = args[0] === "--remap";
+  const printBase = args[0] === "--print-base";
   const bodyAt = args.indexOf("--body");
   const bodyPath = bodyAt === -1 ? undefined : args[bodyAt + 1];
-  const positional = remap
-    ? args.slice(1)
-    : bodyAt === -1
-      ? args
-      : args.filter((_, i) => i !== bodyAt && i !== bodyAt + 1);
+  const positional =
+    remap || printBase
+      ? args.slice(1)
+      : bodyAt === -1
+        ? args
+        : args.filter((_, i) => i !== bodyAt && i !== bodyAt + 1);
   if (
-    positional.length !== (remap ? 5 : 2) ||
-    (remap ? bodyAt !== -1 : bodyPath === undefined)
+    positional.length !== (remap ? 5 : printBase ? 1 : 2) ||
+    (remap || printBase ? bodyAt !== -1 : bodyPath === undefined)
   ) {
     process.stderr.write(USAGE);
     process.exit(2);
   }
   const [ledgerPath, ...refs] = positional;
   let body;
-  if (!remap) {
+  if (!remap && !printBase) {
     try {
       body = readFileSync(bodyPath === "-" ? 0 : bodyPath, "utf8");
     } catch (error) {
@@ -596,6 +615,17 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
     for (const ref of refs)
       git(["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
+    if (printBase) {
+      const { reviewed, problems } = lastReviewedHead({ rows, git });
+      if (problems.length > 0 || reviewed === null) {
+        process.stderr.write(
+          `no reviewed head: ${problems.length > 0 ? problems.join("; ") : "no ledger row records the head it read"}\n`,
+        );
+        process.exit(1);
+      }
+      process.stdout.write(`${reviewed}\n`);
+      process.exit(0);
+    }
     if (remap) {
       const [oldBase, oldHead, newBase, newHead] = refs;
       const result = remapFixCommits({
@@ -620,7 +650,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.stdout.write(`worktree: ${worktree}\nhead: ${head}\n`);
     for (const { round, item, disposition, status, reason } of results) {
       process.stdout.write(
-        `  [${status.toUpperCase().padEnd(7)}] round ${round} ${disposition}: ${item}\n`,
+        `  [${status.toUpperCase().padEnd(7)}] ${round === undefined ? "a fix review" : `round ${round}`} ${disposition}: ${item}\n`,
       );
       if (status !== "ok") process.stdout.write(`            ${reason}\n`);
     }
@@ -648,7 +678,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       process.stdout.write(`  ${sha}  ${subject}\n`);
     process.stdout.write(
       fixes.status === "refused"
-        ? `post-review fixes: REFUSED -- ${fixes.reason}; run a fix review (/review-round --base), or, for an exact edit, write "${NOT_RE_REVIEWED}" on the Security review line\n`
+        ? `post-review fixes: REFUSED -- ${fixes.reason}${fixes.commits.length > 0 ? `; run a fix review (/review-round --base), or, for an exact edit, write "${NOT_RE_REVIEWED}" on the Security review line` : ""}\n`
         : `post-review fixes: ${fixes.status === "ok" ? "PASS" : "NOT CHECKED"} -- ${fixes.reason}\n`,
     );
     process.exit(

@@ -181,7 +181,9 @@ the branch is worse for leaving. Absent that line, state it and move on.
   triggers. A fix after the last review that changes `packages/` or `apps/`
   outside their `test/` trees and is judgment-shaped -- not a `haiku` exact-edit
   brief -- gets a FIX REVIEW before the PR is marked ready instead:
-  `/review-round --target <branch> --base <the last head the ledger records>`, a lens
+  `/review-round --target <branch> --base <sha>`, `<sha>` the last reviewed head
+  that `node .claude/scripts/check-review-ledger-dispositions.mjs --print-base
+  PRIMARY/scratch/review-rounds/<key>.jsonl` prints, a lens
   round over the fix commits' own diff, booked as a `fix-review` row and
   triaged here like any round. An exact-edit fix, or one changing only docs,
   tests or agent tooling, skips it, and the Security review line then says
@@ -349,7 +351,15 @@ that the narrowing path does not cover, the head takes Step 3's fix review, or
 "not re-reviewed" on the line for an exact-edit or non-product fix -- never a
 fresh full round as the reflex the act of fixing triggers.
 
-Each path is recorded on the checklist line naming both shas:
+Each path is recorded on the checklist line naming both shas. A path a
+checked-in verifier passed is also recorded in the branch's ledger: add to its
+last row, in place like the dispositions, a `reattested` array entry
+`{"route": "<route>", "from": "<attested sha>", "to": "<head sha>", "date": "<date -I>"}`,
+the route being the verifier's name without `verify-` and `.mjs`
+(`nonexecutable-delta`, `additive-test-delta`, or `rebase-invariance`). The
+merge-ready check follows an entry whose `from` is the last reviewed head (the
+sha `--print-base` prints), so the commits it re-attested need neither a fix
+review nor "not re-reviewed".
 
 - **An n/a line.** Re-run the security-scope enumeration against the new head's
   diff -- a scan, not a review round.
@@ -425,10 +435,9 @@ REBASING and re-attest it by the rebase path above, not by a base sync: the
 rebase-invariance verification costs no round, and a base sync costs a full
 standing-contract role round. A round runs after such a rebase only when that
 verifier refuses the move, and it is then the standing-contract round described
-below, run at the rebased head. Record the verification in the branch's ledger:
-add to its last row, in place like the dispositions, a `reattested` array entry
-`{"route": "rebase-invariance", "from": "<pre-rebase head sha>", "to": "<post-rebase head sha>", "date": "<date -I>"}`.
-Then re-record the fix commits the rebase re-authored: `node
+below, run at the rebased head. Record the verification in the branch's ledger
+as above, a `rebase-invariance` entry from the pre-rebase head to the
+post-rebase head. Then re-record the fix commits the rebase re-authored: `node
 .claude/scripts/check-review-ledger-dispositions.mjs --remap
 PRIMARY/scratch/review-rounds/<key>.jsonl` followed by the same four shas the
 verifier took. It rewrites each `fixed` entry's `commit` in place to the commit

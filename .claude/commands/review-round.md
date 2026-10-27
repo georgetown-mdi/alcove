@@ -29,7 +29,10 @@ before proceeding -- it holds the session rules this command's steps assume.
 - `--base <sha>`: a FIX REVIEW (`.claude/commands/assess-review.md`, Step 3): a
   lens round over `<sha>..<ref>`, the fix commits after the head the last round
   read, instead of `origin/staging...<ref>`. It takes one `--target` and no
-  `--role`, and the full sha is the `head` of the ledger's last row.
+  `--role`, and the sha is the last reviewed head that `node
+  .claude/scripts/check-review-ledger-dispositions.mjs --print-base
+  PRIMARY/scratch/review-rounds/<key>.jsonl` prints: it follows a rebase or
+  other re-attestation the ledger records, which the last row's `head` does not.
 - `[doc-file ...]`: optional paths to documentation relevant to these changes (e.g.
   `docs/spec/FILE_SYNC.md`). These are the remaining tokens in `$ARGUMENTS` after the
   flags above; call this list DOCS. There may be none.
