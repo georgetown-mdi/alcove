@@ -251,8 +251,9 @@ export interface PsiEngine {
    * Frees the partner's setup, whether its pieces are still arriving or it
    * awaits its match, so a round a refusal ends holds none past the refusal.
    * A no-op when no setup is held. In the count-only-permuted mode, discarding
-   * a setup ends the exchange's count: later round calls and the count
-   * refuse. Client role.
+   * a held setup ends the exchange's count: later round calls and the count
+   * refuse. With no setup held nothing is latched, so a caller ending the
+   * exchange between rounds must not ask for the count. Client role.
    */
   discardServerSetup(): Promise<void>;
   /**
@@ -304,8 +305,9 @@ export interface PsiEngine {
    * returning nothing: no pair, slot, pseudonym or per-round count leaves the
    * engine. A response that is not a list of 33-byte elements or that repeats
    * an element is refused as a protocol error before any element is matched,
-   * and one whose element count is not this party's request's after. Client
-   * role, count-only-permuted mode only.
+   * and one whose element count is not this party's request's after. A
+   * 33-byte element that is not a valid point is refused by the library
+   * during the match. Client role, count-only-permuted mode only.
    */
   matchPermutedRound(responseBytes: Uint8Array): Promise<void>;
   /**
@@ -313,7 +315,10 @@ export interface PsiEngine {
    * round is matched after it. Once a round call has failed, this and every
    * later round call refuse: as a protocol error where the engine refused the
    * partner's setup, index table or response, and as an internal fault
-   * otherwise. Client role, count-only-permuted mode only.
+   * otherwise. An exchange ended between rounds, with no setup held, latches
+   * nothing, and this still returns the count over the earlier rounds, so
+   * its caller must not ask for it then. Client role, count-only-permuted
+   * mode only.
    */
   finishPermutedCount(): Promise<number>;
   /**

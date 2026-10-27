@@ -124,8 +124,10 @@ const LITTLE_ENDIAN = new Uint8Array(Uint32Array.of(1).buffer)[0] === 1;
 /**
  * Refuses, as a protocol error naming `engineId`, a serialized PSI response
  * that is not a list of 33-byte elements or that holds one element twice. A
- * conforming response is such a list, every element distinct; a compressed
- * point has one 33-byte encoding, so a repeated point is a repeated element.
+ * conforming response is such a list, every element distinct. Only the
+ * framing is read: a 33-byte element that is not a valid point, one whose
+ * x-coordinate is not reduced below the field prime included, passes, and
+ * the library refuses it during the match.
  *
  * @internal
  */
