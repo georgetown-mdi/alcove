@@ -8,11 +8,11 @@
 // deliveries, and a delivery one of them mishandles is one the other does too.
 //
 // Nothing here exits or blocks. What an unreadable event means is the hook's own
-// answer -- most allow the call, require-clean-tree-for-review.mjs and
-// block-model-drop-sendmessage.mjs block -- so each states it at the call site.
-// The two unreadable shapes are reported apart for that reason: stdin holding
-// nothing parseable is null and every hook allows on it, while a JSON value that
-// is not an object is NOT_AN_EVENT, which the two that block refuse.
+// answer -- most allow the call, require-clean-tree-for-review.mjs blocks -- so
+// each states it at the call site. The two unreadable shapes are reported apart
+// for that reason: stdin holding nothing parseable is null and every hook allows
+// on it, while a JSON value that is not an object is NOT_AN_EVENT, which the one
+// that blocks refuses.
 
 import { readFileSync } from "node:fs";
 

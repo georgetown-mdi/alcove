@@ -345,9 +345,8 @@ while a bug that failed closed would block every edit in every tree.
 
 ### The override
 
-It follows the idiom of `block-model-drop-sendmessage.mjs`'s `[accept-model-drop]` marker.
-Edit and Write have no free-text field a marker could go in, so the opt-in is a file.
-Like that marker it is self-applicable: what it buys is an override that is named, visible in the tree, and reversible, not one that cannot be forged.
+Edit and Write have no free-text field a message marker could go in, so the opt-in is a file.
+It is self-applicable: what it buys is an override that is named, visible in the tree, and reversible, not one that cannot be forged.
 
 ### Limits
 
@@ -629,9 +628,9 @@ Measured on 2026-10-26, it does not, and the two runtimes answer differently.
   `resumeFromRunId` replays cached results for unchanged calls and runs any changed call as a fresh agent (the Workflow tool's own description and authoring reference).
   A panelist seated by the script therefore cannot be given the other answers, or new owner input, and revise its own answer in its own context.
 - Agent-tool runtime: an Opus `general-purpose` spawn answered a two-option design question with "POSITION: A".
-  A SendMessage carrying an opposing panelist's answer, with the `[accept-model-drop]` marker that `block-model-drop-sendmessage.mjs` requires, resumed it.
+  A SendMessage containing an opposing panelist's answer resumed it.
   It restated its first answer accurately, weighed the other, and kept A with a refinement.
-  Both turns ran on `claude-opus-5-5`, the session model; a panelist pinned to another tier moves to the session model on resumption (that hook's header).
+  Both turns ran on `claude-opus-5-5`; a resumed agent pinned to another tier keeps that tier (Retired SendMessage model guard, below).
   An Agent-tool spawn's output cannot be schema-forced.
 
 ### What is open
@@ -640,3 +639,13 @@ Under the Workflow runtime the round is fresh panelists reading the first round'
 A true deliberation on Agent-tool spawns, resuming the first round's panelists and giving up schema-forced output, is possible and not built.
 Whether to build it is open for a ruling.
 Panel independence is unchanged under either route: no agent merges the answers.
+
+## Retired SendMessage model guard
+
+`block-model-drop-sendmessage.mjs` refused a SendMessage that continued an agent, since on 2026-07-15 and 2026-07-16 a resumed agent's next turn ran on the session model rather than its pinned tier.
+Its removal criterion was a resumed turn keeping the recipient's pin.
+
+On 2026-10-26, under harness 2.1.310, a Sonnet-pinned agent spawned and then resumed by SendMessage from an Opus top-level session ran both turns on `claude-sonnet-5-5`.
+The model was read from each turn's `message.model` field in the agent's transcript, `~/.claude/projects/<project>/subagents/agent-<id>.jsonl`.
+That met the criterion, and the hook, its test and its settings entry were removed.
+The rule against continuing an agent by SendMessage keeps its own reasons, stated in `.claude/orchestration/ruleset.md`, Models and spawns.
