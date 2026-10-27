@@ -43,6 +43,10 @@ The screens, messages, and guides use the words below. Configuration keys, comma
 
 The documentation is organized in three tiers: this **overview** tier (`docs/`) of conceptual and operational documents; a **technical specification** tier ([`docs/spec/`](spec/README.md)) of wire formats, byte encodings, normative constants, and implementation-level design for implementors and auditors; and a **design notes** tier ([`docs/notes/`](notes/README.md)) of citeable, non-normative design records: the model behind a mechanism, the options weighed, and the decisions taken. The spec and notes tiers each have their own index.
 
+### Guides ([`docs/guides/`](guides/index.md))
+
+Step-by-step instructions for one reader's path through an exchange: agreeing the terms with a partner, then inviting, accepting, and scheduling in the web app, the console, or the command line. Each guide links into the overview documents below for depth.
+
 ### Overview (`docs/`)
 
 - [WEB_APP.md](WEB_APP.md) - running one exchange in the browser: creating or accepting an invitation, the results, the exchange record, and size limits

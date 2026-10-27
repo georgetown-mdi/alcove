@@ -9,6 +9,7 @@ import { dirname, posix, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { slugify } from "../../scripts/lib/headingSlug.mjs";
+import { guideMarkdown, guidePageData } from "./guides.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -185,8 +186,10 @@ export default {
       dropHtmlComments(md);
       linkRepositoryFiles(md);
       escapeTemplateDelimiters(md);
+      guideMarkdown(md);
     },
   },
+  transformPageData: guidePageData,
   themeConfig: {
     search: { provider: "local" },
     nav: [
@@ -197,6 +200,49 @@ export default {
     ],
     socialLinks: [{ icon: "github", link: REPOSITORY_URL }],
     sidebar: [
+      {
+        text: "Guides",
+        items: [
+          {
+            text: "Start",
+            items: [
+              page("Home", "docs/guides/index.md"),
+              page("Agree the terms", "docs/guides/agree-the-terms.md"),
+            ],
+          },
+          {
+            text: "Web app",
+            items: [
+              page("Invite with the web app", "docs/guides/web-invite.md"),
+              page("Accept with the web app", "docs/guides/web-accept.md"),
+              page("Run it on a schedule", "docs/guides/web-schedule.md"),
+            ],
+          },
+          {
+            text: "Console",
+            items: [
+              page("Start the console", "docs/guides/console-start.md"),
+              page("Invite from the console", "docs/guides/console-invite.md"),
+              page("Accept in the console", "docs/guides/console-accept.md"),
+              page("Move it to a schedule", "docs/guides/console-schedule.md"),
+            ],
+          },
+          {
+            text: "Command line",
+            items: [
+              page("Install and run", "docs/guides/cli-install.md"),
+              page("Invite a partner", "docs/guides/cli-invite.md"),
+              page("Accept an invitation", "docs/guides/cli-accept.md"),
+              page("Schedule it", "docs/guides/cli-schedule.md"),
+              page("Other ways to exchange", "docs/guides/cli-other.md"),
+            ],
+          },
+          {
+            text: "About",
+            items: [page("About", "docs/guides/about.md")],
+          },
+        ],
+      },
       {
         text: "Using Alcove",
         items: [
