@@ -654,7 +654,7 @@ test("an own relay naming the invitation's url is decided by the url, as the run
   expect(record.action).toMatch(/^Run this check again\. .*your partner/);
 });
 
-test("the invitation's relay under an exchange id the invitation names points at alcove enroll-relay, with no enrollment to blame", async () => {
+test("the invitation's relay under an exchange id the invitation names asks the partner to enroll it, with no enrollment to blame", async () => {
   writeConfig(
     webrtcConnection({
       invitation_relay: {
@@ -671,7 +671,57 @@ test("the invitation's relay under an exchange id the invitation names points at
 
   const record = only(report, "websocket_1");
   expect(record.meaning).not.toContain("failed enrollment");
-  expect(record.action).toContain("alcove enroll-relay");
+  expect(record.action).toBe(
+    "Ask your partner to enroll this exchange's relay key at their relay's " +
+      "registrar by running alcove enroll-relay with their relay-owner " +
+      "token, which this side does not hold, then run this check again.",
+  );
+});
+
+test("an own relay naming the invitation's url under the exchange id the invitation names is the partner's, decided by the url", async () => {
+  writeConfig(
+    webrtcConnection({
+      websocket_relay: INVITATION_WEBSOCKET,
+      invitation_relay: {
+        websocket: INVITATION_WEBSOCKET,
+        websocket_exchange_id: "named-exchange",
+      },
+    }),
+  );
+
+  const { report } = await check({
+    [INVITATION_WEBSOCKET]: { outcome: "not_admitted", closeCode: 4003 },
+  });
+
+  expect(only(report, "websocket_1").action).toMatch(
+    /^Ask your partner to enroll .* their relay-owner token/,
+  );
+});
+
+test("an own relay beside the invitation's, under an exchange id the invitation names, still points at alcove enroll-relay", async () => {
+  writeConfig(
+    webrtcConnection({
+      websocket_relay: OWN_WEBSOCKET,
+      invitation_relay: {
+        websocket: INVITATION_WEBSOCKET,
+        websocket_exchange_id: "named-exchange",
+        registrar: REGISTRAR,
+      },
+    }),
+  );
+
+  const { report } = await check({
+    [OWN_WEBSOCKET]: { outcome: "not_admitted", closeCode: 4003 },
+    [INVITATION_WEBSOCKET]: { outcome: "not_admitted", closeCode: 4003 },
+  });
+
+  expect(only(report, "websocket_1").action).toBe(
+    "Enroll this exchange's relay key at the relay's registrar with alcove " +
+      "enroll-relay, then run this check again.",
+  );
+  expect(only(report, "websocket_2").action).toMatch(
+    /^Ask your partner to enroll/,
+  );
 });
 
 test("a second expired refusal, of a proof made on the relay's clock, does not blame this computer's clock", async () => {

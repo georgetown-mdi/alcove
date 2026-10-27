@@ -11,6 +11,7 @@ import {
   runEnrollsAtInvitationRegistrar,
   selectRunRelay,
   webSocketRelayEnrollsAtInvitationRegistrar,
+  webSocketRelayIsPartnersUnderInvitationExchangeId,
 } from "./relayCredential.js";
 import type {
   RunRelayConnection,
@@ -85,6 +86,8 @@ export interface RelayCheckRegistrar {
 export interface RelayCheckWebSocketRelay extends RunWebSocketRelay {
   /** `webSocketRelayEnrollsAtInvitationRegistrar` for this relay. */
   enrollsAtInvitationRegistrar: boolean;
+  /** `webSocketRelayIsPartnersUnderInvitationExchangeId` for this relay. */
+  partnersUnderInvitationExchangeId: boolean;
 }
 
 /** What the check contacts, and what a run lists that it does not. */
@@ -179,6 +182,8 @@ export function relayCheckPlan(connection: RunRelayConnection): RelayCheckPlan {
         relay,
         connection,
       ),
+      partnersUnderInvitationExchangeId:
+        webSocketRelayIsPartnersUnderInvitationExchangeId(relay, connection),
     })),
     websocketLeftOut: websocketLeftOut ?? [],
     ...(registrar !== undefined && {

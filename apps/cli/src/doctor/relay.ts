@@ -405,8 +405,13 @@ function webSocketRefusalWords(
             "your partner whether the relay registrar their invitation " +
             "names is up, since either of you enrolling the exchange there " +
             "lets the relay admit it."
-          : "Enroll this exchange's relay key at the relay's registrar " +
-            `with alcove enroll-relay, ${WEBSOCKET_RELAY_RETRY}`,
+          : relay.partnersUnderInvitationExchangeId
+            ? "Ask your partner to enroll this exchange's relay key at " +
+              "their relay's registrar by running alcove enroll-relay with " +
+              "their relay-owner token, which this side does not hold, " +
+              WEBSOCKET_RELAY_RETRY
+            : "Enroll this exchange's relay key at the relay's registrar " +
+              `with alcove enroll-relay, ${WEBSOCKET_RELAY_RETRY}`,
       };
     }
     case 4004:

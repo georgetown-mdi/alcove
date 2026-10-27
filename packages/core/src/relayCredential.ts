@@ -405,6 +405,25 @@ export function webSocketRelayEnrollsAtInvitationRegistrar(
 }
 
 /**
+ * Whether a run dialing `relay` dials the invitation's WebSocket relay under
+ * the exchange id the invitation names, so the partner enrolled that id at
+ * their own registrar with a relay-owner token this side does not hold.
+ * Decided by the url, not the entry's `source`, as
+ * {@link runEnrollsAtInvitationRegistrar}.
+ */
+export function webSocketRelayIsPartnersUnderInvitationExchangeId(
+  relay: RunWebSocketRelay,
+  connection: Pick<RunRelayConnection, "invitationRelay">,
+): boolean {
+  const invitation = connection.invitationRelay;
+  return (
+    invitation?.websocket !== undefined &&
+    relay.url === invitation.websocket &&
+    relay.exchangeId !== undefined
+  );
+}
+
+/**
  * Mint the credential a run presents to every TURN url it lists that sets no
  * static credential, the invitation's urls and its own minted entries alike:
  * signed under the relay key derived from the run's current shared secret, for

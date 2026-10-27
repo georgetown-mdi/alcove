@@ -71,11 +71,13 @@ describe("relayCheckPlan", () => {
         source: "own",
         url: OWN_WEBSOCKET,
         enrollsAtInvitationRegistrar: false,
+        partnersUnderInvitationExchangeId: false,
       },
       {
         source: "invitation",
         url: INVITATION_WEBSOCKET,
         enrollsAtInvitationRegistrar: true,
+        partnersUnderInvitationExchangeId: false,
       },
     ]);
     expect(plan.websocketLeftOut).toEqual([]);
@@ -98,10 +100,60 @@ describe("relayCheckPlan", () => {
         source: "own",
         url: INVITATION_WEBSOCKET,
         enrollsAtInvitationRegistrar: true,
+        partnersUnderInvitationExchangeId: false,
       },
     ]);
     expect(plan.registrar?.contacted).toBe(true);
   });
+
+  test.each<
+    [
+      string,
+      { websocketRelay: string; exchangeId?: string },
+      { enrolls: boolean; partners: boolean },
+    ]
+  >([
+    [
+      "the invitation's relay under no exchange id: the run enrolls at the invitation's registrar",
+      { websocketRelay: INVITATION_WEBSOCKET },
+      { enrolls: true, partners: false },
+    ],
+    [
+      "the invitation's relay under the exchange id it names: the partner's",
+      { websocketRelay: INVITATION_WEBSOCKET, exchangeId: "named-exchange" },
+      { enrolls: false, partners: true },
+    ],
+    [
+      "another relay: this operator's own",
+      { websocketRelay: OWN_WEBSOCKET, exchangeId: "named-exchange" },
+      { enrolls: false, partners: false },
+    ],
+  ])(
+    "WebSocket relay flags, %s",
+    (_case, { websocketRelay, exchangeId }, flags) => {
+      const plan = relayCheckPlan(
+        connection({
+          websocketRelay,
+          invitationRelay: {
+            websocket: INVITATION_WEBSOCKET,
+            ...(exchangeId !== undefined && {
+              websocketExchangeId: exchangeId,
+            }),
+            registrar: REGISTRAR,
+          },
+        }),
+      );
+
+      expect(plan.websocket.map((relay) => relay.url)).toEqual(
+        websocketRelay === INVITATION_WEBSOCKET
+          ? [INVITATION_WEBSOCKET]
+          : [OWN_WEBSOCKET, INVITATION_WEBSOCKET],
+      );
+      const relay = plan.websocket[0];
+      expect(relay?.enrollsAtInvitationRegistrar).toBe(flags.enrolls);
+      expect(relay?.partnersUnderInvitationExchangeId).toBe(flags.partners);
+    },
+  );
 
   test("a WebSocket relay allowed_relays leaves out is not contacted", () => {
     const plan = relayCheckPlan(

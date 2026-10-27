@@ -921,6 +921,7 @@ export {
   runEnrollsAtInvitationRegistrar,
   selectRunRelay,
   webSocketRelayEnrollsAtInvitationRegistrar,
+  webSocketRelayIsPartnersUnderInvitationExchangeId,
 } from "./relayCredential";
 export type {
   RelayCredential,
