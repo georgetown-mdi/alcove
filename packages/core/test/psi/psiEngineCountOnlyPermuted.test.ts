@@ -828,6 +828,34 @@ describe("the count-only-permuted engine refuses", () => {
     }
   });
 
+  test.for([
+    ["in-process", inProcess],
+    ["worker-backed", workerBacked],
+  ] as const)(
+    "a count, or a later round, after a round's setup was discarded, %s",
+    async ([, create]) => {
+      const sender = create(wasm, "starter");
+      const receiver = create(wasm, "joiner");
+      try {
+        await runRound(sender, receiver, 0);
+        const { setup } = await sender.createPermutedSetup(roundSet(SENDER, 1));
+        await receiver.receiveServerSetup(setup);
+        await receiver.discardServerSetup();
+        // A worker reports an internal fault as a plain Error, so only the
+        // message is checked here.
+        await expect(receiver.finishPermutedCount()).rejects.toThrow(
+          /after a count-only round failed/,
+        );
+        await expect(receiver.receiveServerSetup(setup)).rejects.toThrow(
+          /after a count-only round failed/,
+        );
+      } finally {
+        sender.dispose();
+        receiver.dispose();
+      }
+    },
+  );
+
   test("a serialized response that is not a list of distinct 33-byte elements", () => {
     const field = (element: Uint8Array) => Uint8Array.of(0x0a, 33, ...element);
     const element = (lead: number, last: number) => {

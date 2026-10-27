@@ -250,7 +250,9 @@ export interface PsiEngine {
   /**
    * Frees the partner's setup, whether its pieces are still arriving or it
    * awaits its match, so a round a refusal ends holds none past the refusal.
-   * A no-op when no setup is held. Client role.
+   * A no-op when no setup is held. In the count-only-permuted mode, discarding
+   * a setup ends the exchange's count: later round calls and the count
+   * refuse. Client role.
    */
   discardServerSetup(): Promise<void>;
   /**
@@ -522,17 +524,22 @@ export class InProcessPsiEngine implements PsiEngine {
       return step();
     } catch (error) {
       if (this.mode === "count-only-permuted") {
-        this.failedRound ??=
+        this.latchFailedRound(
           error instanceof PartnerProtocolRefusalError ||
-          isPsiLibraryFailure(error)
+            isPsiLibraryFailure(error)
             ? "partner"
-            : "local";
-        this.#replay?.discard();
-        this.#replay = undefined;
-        this.freeSetup();
+            : "local",
+        );
       }
       throw error;
     }
+  }
+
+  private latchFailedRound(cause: "partner" | "local"): void {
+    this.failedRound ??= cause;
+    this.#replay?.discard();
+    this.#replay = undefined;
+    this.freeSetup();
   }
 
   // Refuses a set with a repeated value: each party's elements in a
@@ -847,7 +854,14 @@ export class InProcessPsiEngine implements PsiEngine {
   }
 
   discardServerSetup(): Promise<void> {
-    this.freeSetup();
+    // A discarded setup is a round that never completes, so in the
+    // count-only-permuted mode it latches as an aborted round would.
+    if (
+      this.mode === "count-only-permuted" &&
+      (this.receivingSetup !== undefined || this.heldSetup !== undefined)
+    )
+      this.latchFailedRound("local");
+    else this.freeSetup();
     return Promise.resolve();
   }
 
