@@ -178,7 +178,8 @@ stepping back on a repeat hotspot).
 steps above. When the instruction is to orchestrate:
 
 - **Delegate the writing.** Implementation goes to an `implementer` spawn with a
-  self-contained brief; fix rounds are fresh `implementer` spawns. That includes
+  self-contained brief; a fix round goes to an `implementer` too, either a fresh
+  spawn sized to its brief or the branch's own implementer continued. That includes
   /assess-review's own triage pass: you run the triage and make the calls, but
   the edits go to one implementer per branch, a small fix included as its exact
   text in the brief. The orchestrating session edits nothing on any branch.

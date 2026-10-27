@@ -547,7 +547,7 @@ The hook applies the same rule when the title is written.
 
 ### Why it exists
 
-The ruleset contains the rules for conducting an orchestration: the review contracts and round caps, how a fix is dispatched, the spawn and SendMessage mechanics, where a decision goes.
+The ruleset contains the rules for conducting an orchestration: the review contracts and round caps, how a fix is dispatched, the spawn mechanics, where a decision goes.
 A pointer in CLAUDE.md and the front doors its preamble lists load it, and nothing else confirms the session doing the conducting has it.
 A session that starts spawning without it runs the flow from whatever it remembers of an earlier one,
 and the rules it skips are the ones no later check catches: a round dispatched wrongly is a wasted round, not a red test.
@@ -656,4 +656,7 @@ Its removal criterion was a resumed turn keeping the recipient's pin.
 On 2026-10-26, under harness 2.1.310, a Sonnet-pinned agent spawned and then resumed by SendMessage from an Opus top-level session ran both turns on `claude-sonnet-5-5`.
 The model was read from each turn's `message.model` field in the agent's transcript, `~/.claude/projects/<project>/subagents/agent-<id>.jsonl`.
 That met the criterion, and the hook, its test and its settings entry were removed.
-The rule against continuing an agent by SendMessage keeps its own reasons, stated in `.claude/orchestration/ruleset.md`, Models and spawns.
+The owner ruled on 2026-10-27 that the ban on continuing an agent dated from when the mechanism was in preview, and that the session should use it intelligently, so the ruleset carries no rule for or against it.
+Continuing an agent or spawning a fresh one is a per-case choice.
+Continuing reuses what the agent already holds, which is cheap while its context is cached and the follow-up needs it.
+A fresh spawn is cheaper for a narrow follow-up against a large or expired context, and lets the brief set a cheaper tier.
