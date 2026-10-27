@@ -29,6 +29,8 @@ import {
   enabledKeys,
   highestPrecisionHeldWithoutRules,
   identifierProblem,
+  identifiersStoppedSending,
+  stoppedSendingNotice,
 } from "./inviterEditor";
 
 import {
@@ -307,6 +309,36 @@ export function spineProblems(
   return problems;
 }
 
+/** The sentence a live region speaks for the problems the work column lists
+ * above the step heading, read apart from that list. */
+export function problemsAboveAnnouncement(count: number): string {
+  return `${count === 1 ? "A problem" : `${count} problems`} above must be resolved before you can create.`;
+}
+
+/**
+ * What step 2's polite region says when the matching method changes: the
+ * identifier columns the change stopped sending, then, when it added problems,
+ * how many the work column now lists. Those problems render above the step
+ * heading and name a fix on another tab, out of view of the choice that raised
+ * them. `otherProblemCount` counts the listed problems `spineProblems` does not
+ * produce.
+ */
+export function methodChangeAnnouncement(
+  before: InviterEditor,
+  after: InviterEditor,
+  otherProblemCount: number,
+): string {
+  const stopped = stoppedSendingNotice(
+    identifiersStoppedSending(before.draft.metadata, after.draft.metadata),
+  );
+  const afterCount = spineProblems(after).length;
+  const raised =
+    afterCount > spineProblems(before).length
+      ? problemsAboveAnnouncement(afterCount + otherProblemCount)
+      : "";
+  return [stopped, raised].filter((part) => part !== "").join(" ");
+}
+
 /** What holds the create on the review step, in the reading order of the screen
  * itself: the blocker no edit here clears, then the transport's own setup, the
  * cards below it, and the spine's outstanding problems last. */
@@ -435,7 +467,7 @@ export function inviterCreateStatus(
   if (gates.problemCount > 0)
     return heldCreate(
       `Resolve ${gates.problemCount === 1 ? "the problem" : `the ${gates.problemCount} problems`} above to continue.`,
-      `${gates.problemCount === 1 ? "A problem" : `${gates.problemCount} problems`} above must be resolved before you can create.`,
+      problemsAboveAnnouncement(gates.problemCount),
     );
   return {
     ready: true,

@@ -45,9 +45,11 @@ import {
   editorWithTransport,
   enabledKeys,
   identifierProblem,
+  identifiersStoppedSending,
   keySatisfiabilityFor,
   resetToRecommended,
   sealEditor,
+  stoppedSendingNotice,
   unsealEditor,
 } from "@psi/inviterEditor";
 
@@ -57,6 +59,8 @@ import {
   inviterCleaningAttention,
   inviterCreateStatus,
   inviterRailFacts,
+  methodChangeAnnouncement,
+  problemsAboveAnnouncement,
   reviewValidation,
   spineProblems,
 } from "@psi/inviterModel";
@@ -1582,6 +1586,46 @@ describe("customize tabs", () => {
     ).editor;
     expect(reviewValidation(remarked).errors.payload).toMatch(
       /^A count-only exchange sends no data columns/,
+    );
+  });
+
+  test("a method change announces the identifier it stopped sending and the problems it raised", () => {
+    const withId: AcquiredCsv = {
+      ...csv,
+      columns: ["id", "first_name", "last_name", "dob"],
+      rawRows: [{ id: "1", first_name: "Ann", last_name: "Lee", dob: "x" }],
+    };
+    const seeded = editorFromCsv("Dana", withId);
+    const countOnly = editorWithAlgorithm(seeded, "psi-c");
+    expect(spineProblems(seeded)).toHaveLength(0);
+    expect(spineProblems(countOnly)).toHaveLength(1);
+
+    expect(methodChangeAnnouncement(seeded, countOnly, 0)).toBe(
+      `${isolatedColumnName("id")} is no longer sent to your partner. ` +
+        "A problem above must be resolved before you can create.",
+    );
+    // Problems the draft does not produce are counted in the total.
+    expect(methodChangeAnnouncement(seeded, countOnly, 1)).toContain(
+      "2 problems above must be resolved before you can create.",
+    );
+    // Switching back stops sending nothing and raises nothing, so the region
+    // clears.
+    expect(
+      methodChangeAnnouncement(
+        countOnly,
+        editorWithAlgorithm(countOnly, "psi"),
+        0,
+      ),
+    ).toBe("");
+  });
+
+  test("the method-change notices name several columns and problems", () => {
+    expect(problemsAboveAnnouncement(3)).toBe(
+      "3 problems above must be resolved before you can create.",
+    );
+    expect(identifiersStoppedSending([], [])).toEqual([]);
+    expect(stoppedSendingNotice(["a", "b"])).toBe(
+      `${isolatedColumnName("a")}, ${isolatedColumnName("b")} are no longer sent to your partner.`,
     );
   });
 

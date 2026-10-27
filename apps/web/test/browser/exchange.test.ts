@@ -722,6 +722,9 @@ describe("inviter screen", () => {
       .toHaveValue("both");
 
     await page
+      .getByLabelText(usedLabel("client_id"))
+      .selectOptions("identifier-sent");
+    await page
       .getByRole("radio", { name: "Reveal only the count (psi-c)" })
       .click();
     const ledger = document.querySelector(
@@ -730,6 +733,36 @@ describe("inviter screen", () => {
     await expect
       .poll(() => ledger.textContent)
       .toContain("How many records you have in common");
+
+    // The step's live region names the identifier the choice stopped sending
+    // and the problem it raised above the heading.
+    const politeText = () =>
+      Array.from(
+        document.querySelectorAll('p[aria-live="polite"]'),
+        (region) => region.textContent,
+      ).join("\n");
+    await expect
+      .poll(politeText)
+      .toContain(
+        `${isolatedColumnName("client_id")} is no longer sent to your partner. ` +
+          "A problem above must be resolved before you can create.",
+      );
+    await expect
+      .element(page.getByLabelText(usedLabel("client_id")))
+      .toHaveValue("identifier");
+    expect(
+      document.querySelector('section[aria-label="Problems"]'),
+    ).not.toBeNull();
+    // Switching back clears the notice rather than leaving it stale.
+    await page
+      .getByRole("radio", {
+        name: "Reveal the matched identifiers (standard)",
+      })
+      .click();
+    await expect.poll(politeText).not.toContain("no longer sent");
+    await page
+      .getByRole("radio", { name: "Reveal only the count (psi-c)" })
+      .click();
 
     await page
       .getByRole("button", { name: "Continue to review & create" })

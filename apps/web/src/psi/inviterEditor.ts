@@ -896,6 +896,37 @@ export function demotionNotice(demoted: ReadonlyArray<string>): string {
   return `${demoted.map(isolatedColumnName).join(", ")} changed to ignored - only one column can be the record identifier.`;
 }
 
+/** The record identifier columns `before` sends and `after` keeps but no
+ * longer sends: what choosing count-only stopped sending
+ * ({@link editorWithAlgorithm}). */
+export function identifiersStoppedSending(
+  before: Metadata,
+  after: Metadata,
+): Array<string> {
+  return after
+    .filter(
+      (column) =>
+        column.role === "identifier" &&
+        !column.isPayload &&
+        before.some(
+          (prior) =>
+            prior.name === column.name &&
+            prior.role === "identifier" &&
+            prior.isPayload,
+        ),
+    )
+    .map((column) => column.name);
+}
+
+/** What step 2's polite region says about {@link identifiersStoppedSending},
+ * the names isolated as {@link demotionNotice} isolates them. */
+export function stoppedSendingNotice(names: ReadonlyArray<string>): string {
+  if (names.length === 0) return "";
+  return `${names.map(isolatedColumnName).join(", ")} ${
+    names.length === 1 ? "is" : "are"
+  } no longer sent to your partner.`;
+}
+
 /** The linkage keys the draft currently authors, in order. */
 export function enabledKeys(draft: AdvancedInviteDraft): Array<LinkageKey> {
   return draft.keys.filter((entry) => entry.enabled).map((entry) => entry.key);

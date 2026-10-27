@@ -96,6 +96,7 @@ import {
   cleaningCoverageProblems,
   inviterCleaningAttention,
   inviterRailFacts,
+  methodChangeAnnouncement,
   reviewValidation,
   spineProblems,
 } from "@psi/inviterModel";
@@ -1281,6 +1282,23 @@ export function InviterScreen() {
     });
   }
 
+  function applyAlgorithm(
+    before: InviterEditor,
+    algorithm: InviterEditor["draft"]["algorithm"],
+  ) {
+    const next = editorWithAlgorithm(before, algorithm);
+    dispatch({
+      type: "column-edited",
+      editor: next,
+      announcement: methodChangeAnnouncement(
+        before,
+        next,
+        coverageProblems.length,
+      ),
+      editorAnnouncement: "",
+    });
+  }
+
   // The mint's input source, build-aware: the retained browser File on the hosted
   // build (re-parsed at the fail-closed parse boundary), or the console's profiled
   // columns bound directly (the console never reads the file in the browser, so the
@@ -1877,9 +1895,7 @@ export function InviterScreen() {
           acquired !== undefined && (
             <MatchingSharingSection
               algorithm={editor.draft.algorithm}
-              onAlgorithm={(algorithm) =>
-                applyEditor(editorWithAlgorithm(editor, algorithm))
-              }
+              onAlgorithm={(algorithm) => applyAlgorithm(editor, algorithm)}
               direction={editor.draft.outputDirection}
               onDirection={(direction) =>
                 applyEditor(editorWithOutputDirection(editor, direction))

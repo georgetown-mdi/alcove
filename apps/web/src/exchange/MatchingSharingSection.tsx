@@ -38,8 +38,8 @@ const SEMANTIC_TYPES = Object.keys(SEMANTIC_TYPE_LABELS) as Array<SemanticType>;
  * produces and for whom ({@link ExchangeProducesField}), then what each column
  * is and what it is used for, which together decide exactly what the partner
  * can ever see. Presentational over the host's draft; edits go up through the
- * callbacks and the single-identifier rule's demotions come back down as
- * `announcement`.
+ * callbacks, and the single-identifier rule's demotions and what a method
+ * change stopped sending or raised come back down as `announcement`.
  *
  * The grid's row headers and its two control labels, the chip list, the summary
  * its live region speaks, and the demotion `announcement` its caller composes all
@@ -99,8 +99,8 @@ export function MatchingSharingSection({
     withheld: MatchingKeyUnavailableReason | undefined;
   };
   onMatchingKey: (chosen: boolean) => void;
-  /** The demotion notice from the last edit, announced politely and rendered
-   * under the table; empty when the last edit displaced nothing. */
+  /** The notice from the last column or method edit, announced politely and
+   * rendered under the table; empty when that edit changed nothing else. */
   announcement: string;
   onContinue: () => void;
 }) {
@@ -143,7 +143,7 @@ export function MatchingSharingSection({
         direction={direction}
         onDirection={onDirection}
       />
-      <h2>Your columns</h2>
+      <h2>How each column is used</h2>
       <p>Confirm what each column is and what it is used for.</p>
       <div className={styles.tableScroll}>
         <table className={styles.dataTable}>
