@@ -22,6 +22,12 @@ export function WorkingFolderCommandLines({
     <div>
       <RunCommandLines lines={command} ariaLabel={ariaLabel} />
       <p className={styles.small}>
+        Runs as your own account, as <code>start-alcove.sh</code> runs the
+        console. If you started the console with <code>docker run</code> and no{" "}
+        <code>--user</code>, leave out <code>--user</code> so this command
+        writes files as the console does.
+      </p>
+      <p className={styles.small}>
         With rootless Podman, use this in place of the Linux/macOS command. It
         runs Alcove as you with {PODMAN_USER_NAMESPACE_FLAG}:
       </p>
