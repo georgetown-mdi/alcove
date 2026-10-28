@@ -1117,7 +1117,6 @@ const FileSyncOptionsSchema: z.ZodType<FileSyncOptions> = z
     connectionPerPoll: z.boolean().optional(),
     writeWithoutRenaming: z.boolean().optional(),
   })
-  .superRefine(checkPeerIdTemplate)
   .refine((opts) => !opts.peerId || opts.timestampInFilename === true, {
     message:
       "peer_id requires timestamp_in_filename: true; without it, a reused " +
@@ -1125,6 +1124,7 @@ const FileSyncOptionsSchema: z.ZodType<FileSyncOptions> = z
       "session, causing phantom message detection",
     path: ["peerId"],
   })
+  .superRefine(checkPeerIdTemplate)
   .refine(
     (opts) => {
       if (opts.peerId === undefined) return true;
