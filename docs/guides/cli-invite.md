@@ -192,7 +192,7 @@ alcove exchange input.csv ./
 alcove exchange input.csv ./
 ```
 
-Your partner's `alcove exchange` runs it if they accepted with `--no-run`, as [Accept an invitation](./cli-accept.md) has them do, or if you requested columns from them; otherwise their `alcove accept` runs the exchange as soon as they answer yes. Start yours at the agreed time, within 10 minutes of theirs.
+Your partner's `alcove exchange` runs it if they accepted with `--no-run`, as [Accept an invitation](./cli-accept.md) has them do, or if you requested a column their configuration does not send; otherwise their `alcove accept` runs the exchange as soon as they answer yes. Start yours at the agreed time, within 10 minutes of theirs.
 
 :::
 

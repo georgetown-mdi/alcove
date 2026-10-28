@@ -77,7 +77,7 @@ You should see: `wrote config to ./alcove.yaml` and `wrote key file to ./.alcove
 > alcove accept --no-run --identity "Riverside County CoC" @invitation.txt input.csv
 > ```
 >
-> Accepting then writes `alcove.yaml` and `.alcove.key` and stops, as on SFTP, so you can set your columns in step 3. An invitation that requests columns from you stops the same way without the flag, and names them. Otherwise, without `--no-run`, the terms open with `This acceptance runs the exchange itself`, the question reads `Accept this invitation and run the exchange now, through <server>?`, and answering `y` runs the exchange at once, with no chance to change the columns you send. Accept that way only at the agreed time, while your partner runs.
+> Accepting then writes `alcove.yaml` and `.alcove.key` and stops, as on SFTP, so you can set your columns in step 3. An invitation that requests a column `alcove.yaml` does not send stops the same way without the flag, and names it. Otherwise, without `--no-run`, the terms open with `This acceptance runs the exchange itself`, the question reads `Accept this invitation and run the exchange now, through <server>?`, and answering `y` runs the exchange at once, with no chance to change the columns you send. Accept that way only at the agreed time, while your partner runs.
 
 ### 3. Set your ID column, and the columns your partner asked for
 
@@ -90,7 +90,7 @@ You should see: `wrote config to ./alcove.yaml` and `wrote key file to ./.alcove
     is_payload: false
 ```
 
-**Columns your partner asked for.** Accepting wrote an entry in the `metadata` block for each column under `columns the inviting party requests from you`, and printed their names. An entry with `is_payload: false` is not sent. For each one you agreed to send, change it to `is_payload: true`:
+**Columns your partner asked for.** Accepting wrote an entry in the `metadata` block for each column under `columns the inviting party requests from you`, and printed the names of those it does not send. An entry with `is_payload: false` is not sent. For each one you agreed to send, change it to `is_payload: true`:
 
 ```yaml
   - name: Case_Manager_Phone_Number

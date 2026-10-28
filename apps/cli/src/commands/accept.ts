@@ -23,8 +23,10 @@ import type {
   ExchangeSpec,
   InvitationToken,
   LinkageTerms,
+  Metadata,
   PreparedExchange,
   ServerProvision,
+  Standardization,
   WebRTCConnectionConfig,
 } from "@alcove/core";
 
@@ -60,7 +62,6 @@ import {
   type ConsentSurfaceSink,
 } from "../invitationDisplay";
 import { runOrExit } from "../util/exit";
-import { openEventStream } from "../eventStream";
 import { assertNoUnknownOptions, csvDelimiterFlag } from "../util/flags";
 import {
   declarePositionals,
@@ -192,8 +193,8 @@ export function builder(cmd: Argv): Argv {
           "exchange when it has everything a run needs: an INPUT_FILE and a\n" +
           "connection, which is a webrtc coordination server the invitation\n" +
           "names (offline) or your URL (online). It stops instead under --no-run,\n" +
-          "or when the invitation requests columns from you: declare them in\n" +
-          "the config, then run 'alcove exchange'.",
+          "or when the config does not send a column the invitation requests\n" +
+          "from you: declare it in the config, then run 'alcove exchange'.",
       ),
     // --consent-to-terms records advance consent to this invitation's disclosed
     // terms, skipping the interactive prompt so accept can run unattended. It is
@@ -229,9 +230,10 @@ export function builder(cmd: Argv): Argv {
         "connection (a webrtc invitation, or a URL); use --no-run to write the " +
         "configuration and key file and stop without connecting. The " +
         "configuration's metadata block is the one inferred from INPUT_FILE, " +
-        "listing each column the inviting party requests with is_payload: " +
-        "false; set is_payload: true on each you agreed to send before " +
-        "running 'alcove exchange' at the agreed time.",
+        "listing each column the inviting party requests, with is_payload: " +
+        "false where inference does not send it; set is_payload: true on " +
+        "each you agreed to send before running 'alcove exchange' at the " +
+        "agreed time.",
     });
 }
 
@@ -366,8 +368,8 @@ type AcceptReady = {
   | {
       /**
        * An acceptance that writes its configuration and key file and stops:
-       * the offline form, and the online form under `--no-run` or a request
-       * for columns (see {@link AcceptStop}).
+       * the offline form, and the online form under `--no-run` or with a
+       * requested column unsent (see {@link AcceptStop}).
        */
       mode: "offline";
       token: InvitationToken;
@@ -385,8 +387,13 @@ type AcceptReady = {
        */
       endpointDirectories?: EndpointDirectories;
       dataSpec: ResolvedDataSpec;
-      /** The columns the invitation requests from this party, when any. */
-      requestedColumns: ReadonlyArray<string>;
+      /**
+       * The columns the invitation requests from this party that the
+       * configuration the next exchange runs from does not send: the one
+       * this acceptance writes, or the one it keeps. Empty where that
+       * configuration holds no metadata to read it from.
+       */
+      unsentRequestedColumns: ReadonlyArray<string>;
       /** Why an acceptance that had everything a run needs did not run. */
       stop?: AcceptStop;
     }
@@ -394,11 +401,52 @@ type AcceptReady = {
 
 /**
  * Why an acceptance that could run the exchange stops after writing its
- * files: the operator passed `--no-run`, or the invitation requests columns,
- * which the written configuration lists unsent, so a run would be refused by
- * the inviting party until the operator declares them.
+ * files: the operator passed `--no-run`, or the configuration the run would
+ * use does not send a column the invitation requests, so the inviting party
+ * would refuse the run until the operator declares it.
  */
 type AcceptStop = "noRun" | "requestedColumns";
+
+/** The stop an acceptance that could run takes, if any. */
+function acceptStop(
+  run: boolean,
+  unsentRequestedColumns: ReadonlyArray<string>,
+): AcceptStop | undefined {
+  if (!run) return "noRun";
+  return unsentRequestedColumns.length > 0 ? "requestedColumns" : undefined;
+}
+
+/**
+ * The columns of `requestedColumns` that `metadata` does not send, by the
+ * predicate a run transmits on, so a column inference already sends counts as
+ * sent. None where there is no metadata to read.
+ */
+function requestedColumnsNotSent(
+  requestedColumns: ReadonlyArray<string>,
+  metadata: Metadata | undefined,
+): Array<string> {
+  if (metadata === undefined) return [];
+  const sent = new Set(disclosedColumnNames(metadata));
+  return requestedColumns.filter((name) => !sent.has(name));
+}
+
+/**
+ * The data blocks of a kept configuration that governs what its exchanges
+ * send: its `metadata` and `standardization`, where it declares a `metadata`
+ * block. Undefined where it declares none, so the acceptance infers them from
+ * its input as `alcove exchange` would.
+ */
+function keptDataBlocks(
+  kept: ExchangeSpec | undefined,
+): { metadata: Metadata; standardization?: Standardization } | undefined {
+  if (kept?.metadata === undefined) return undefined;
+  return {
+    metadata: kept.metadata,
+    ...(kept.standardization !== undefined
+      ? { standardization: kept.standardization }
+      : {}),
+  };
+}
 
 /**
  * The endpoint-seeded connection with `--peer-timeout` and `--server-provision`
@@ -560,15 +608,14 @@ export async function validateAccept(params: {
   const myTerms: LinkageTerms = accepted.linkageTerms;
   // The columns the inviting party requests from this party: its own
   // `payload.receive`, mirrored. Every configuration written from an input
-  // file lists them unsent, so sending one is the operator's own edit, and an
-  // acceptance that would run stops instead, since the inviting party refuses
-  // a run that does not send them.
+  // file lists each of them, unsent where inference does not send it, so
+  // sending one is the operator's own edit, and an acceptance that would run
+  // with one unsent stops instead, since the inviting party refuses that run.
   const requestedColumns = myTerms.payload?.send?.map(({ name }) => name) ?? [];
-  const stop: AcceptStop | undefined = !run
-    ? "noRun"
-    : requestedColumns.length > 0
-      ? "requestedColumns"
-      : undefined;
+  // A kept configuration's own data blocks are what every exchange under it
+  // sends, so they are what this acceptance's run sends and its stop reads.
+  // A configuration at the path is either kept or refused below.
+  const keptBlocks = keptDataBlocks(keptConfig);
 
   if (resolved.mode === "online") {
     const { url, input, output } = resolved;
@@ -649,17 +696,26 @@ export async function validateAccept(params: {
       rows.columns,
       myTerms,
       INVITATION_PREFLIGHT_MESSAGING,
+      keptBlocks?.standardization,
+      keptBlocks?.metadata,
     );
     refuseRequestedColumnsTheInputLacks(requestedColumns, rows.columns);
     const dataSpec = {
-      ...buildDataSpec({
-        terms: myTerms,
-        identity: myIdentity,
-        rows,
-        listColumns: requestedColumns,
-      }),
+      ...(keptBlocks !== undefined
+        ? { linkageTerms: myTerms, ...keptBlocks }
+        : buildDataSpec({
+            terms: myTerms,
+            identity: myIdentity,
+            rows,
+            listColumns: requestedColumns,
+          })),
       ...delimiterSection,
     };
+    const unsentRequestedColumns = requestedColumnsNotSent(
+      requestedColumns,
+      dataSpec.metadata,
+    );
+    const stop = acceptStop(run, unsentRequestedColumns);
     // Fail closed on a count-only invitation this party's own columns would
     // transmit a column under: the algorithm has no payload in either
     // direction, so the marked columns are not dropped to bring the run into
@@ -690,7 +746,7 @@ export async function validateAccept(params: {
         connectionFromUrl: true,
         ...(endpointDirectories !== undefined ? { endpointDirectories } : {}),
         dataSpec,
-        requestedColumns,
+        unsentRequestedColumns,
         stop,
         reuseExistingConfig,
         ...keptAllowedRelays,
@@ -756,6 +812,28 @@ export async function validateAccept(params: {
           allowMemoryShortfall: options.allowMemoryShortfall,
         })
       : undefined;
+  if (rows !== undefined) {
+    checkLinkageSatisfiability(
+      rows.columns,
+      myTerms,
+      INVITATION_PREFLIGHT_MESSAGING,
+    );
+    refuseRequestedColumnsTheInputLacks(requestedColumns, rows.columns);
+  }
+  const dataSpec = {
+    ...buildDataSpec({
+      terms: myTerms,
+      identity: myIdentity,
+      rows,
+      listColumns: requestedColumns,
+    }),
+    ...delimiterSection,
+  };
+  const unsentRequestedColumns = requestedColumnsNotSent(
+    requestedColumns,
+    keptBlocks?.metadata ?? dataSpec.metadata,
+  );
+  const stop = acceptStop(run, unsentRequestedColumns);
   // The connection this acceptance can run the exchange on itself, rather than
   // writing a configuration for a later `alcove exchange`: only a webrtc
   // connection is self-contained (the invitation's endpoint is the coordination
@@ -813,23 +891,6 @@ export async function validateAccept(params: {
   // rather than drop it silently.
   if (resolved.output !== undefined && !runsExchange)
     log.warn(OUTPUT_FOLDER_UNUSED);
-  if (rows !== undefined) {
-    checkLinkageSatisfiability(
-      rows.columns,
-      myTerms,
-      INVITATION_PREFLIGHT_MESSAGING,
-    );
-    refuseRequestedColumnsTheInputLacks(requestedColumns, rows.columns);
-  }
-  const dataSpec = {
-    ...buildDataSpec({
-      terms: myTerms,
-      identity: myIdentity,
-      rows,
-      listColumns: requestedColumns,
-    }),
-    ...delimiterSection,
-  };
   // The offline half of the count-only metadata refusal above. A no-op when this
   // acceptance was given no input file, which leaves this party's transmitted set
   // unresolved rather than empty.
@@ -904,9 +965,7 @@ export async function validateAccept(params: {
     connectionFromUrl: false,
     ...(endpointDirectories !== undefined ? { endpointDirectories } : {}),
     dataSpec,
-    // Listed only where the configuration written holds a metadata block to
-    // list them in.
-    requestedColumns: rows !== undefined ? requestedColumns : [],
+    unsentRequestedColumns,
     ...(endpointCanRunExchange && stop !== undefined ? { stop } : {}),
     reuseExistingConfig,
     ...keptAllowedRelays,
@@ -1164,7 +1223,8 @@ function reconcileAcceptConfig(params: {
 // column onto a field whose type is absent), so it passes neither override to the
 // shared check and relies on name inference -- which matches the acceptor's
 // exchange-time satisfiability exactly. The override arguments exist for the
-// exchange path, whose committed config can hold a remap or an explicit type.
+// exchange path, whose committed config can hold a remap or an explicit type,
+// and for the URL-form acceptance that runs on a kept configuration's blocks.
 const INVITATION_PREFLIGHT_MESSAGING: LinkagePreflightMessaging = {
   source: "invitation",
   blockConsequence: RUN_BLOCK_CONSEQUENCE,
@@ -1204,31 +1264,43 @@ const RUN_EXCHANGE_NEXT =
   "Run 'alcove exchange' with your input file to conduct the exchange.";
 
 /**
- * The next step of an acceptance that wrote a configuration listing the
- * columns the inviting party requests: declare each agreed one sent, then run
- * `alcove exchange`. Where the request is what stopped an acceptance that
- * would have run, it says so first. Each name is the partner's, escaped here
- * at the log sink, one per line so a name holding a separator stays one.
+ * The next step of an acceptance whose configuration -- the one it wrote, or
+ * the one it kept -- does not send a column the inviting party requests: name
+ * each such column and the edit that sends it, then `alcove exchange`. Where
+ * that is what stopped an acceptance that would have run, it says so first.
+ * Each name is the partner's, escaped here at the log sink, one per line so a
+ * name holding a separator stays one.
  */
-function requestedColumnsNote(
-  requestedColumns: ReadonlyArray<string>,
-  configPath: string,
-  stoppedForThem: boolean,
-): string {
+function requestedColumnsNote(params: {
+  unsentRequestedColumns: ReadonlyArray<string>;
+  configPath: string;
+  stoppedForThem: boolean;
+  keptConfiguration: boolean;
+}): string {
+  const { unsentRequestedColumns, configPath, stoppedForThem } = params;
+  const configuration =
+    (params.keptConfiguration
+      ? "the existing configuration at "
+      : "the configuration written to ") +
+    redactAndRenderOperatorSuppliedText(operatorSuppliedText(configPath));
+  const edit = params.keptConfiguration
+    ? "In its metadata block, set is_payload: true on each one you agreed " +
+      "to send, with a role other than ignored, adding an entry with role: " +
+      "payload for one it does not list"
+    : "They are listed in its metadata block with is_payload: false. Set " +
+      "is_payload: true on each one you agreed to send";
   return (
     (stoppedForThem
-      ? "this acceptance did not run the exchange: the invitation requests " +
-        "columns from you, and your partner's run refuses an exchange that " +
-        "does not send them."
-      : "the invitation requests columns from you.") +
-    ` They are listed in the metadata block of ${redactAndRenderOperatorSuppliedText(
-      operatorSuppliedText(configPath),
-    )}:\n` +
-    requestedColumns
+      ? "this acceptance did not run the exchange: your partner's run " +
+        "refuses an exchange that does not send the columns it requests " +
+        `from you, and ${configuration} does not send these:\n`
+      : `the invitation requests columns from you that ${configuration} ` +
+        "does not send:\n") +
+    unsentRequestedColumns
       .map((name) => `  - ${redactAndSanitizeForDisplay(name)}\n`)
       .join("") +
-    "Set is_payload: true on each one you agreed to send, then run 'alcove " +
-    "exchange' with your input file at the agreed time."
+    `${edit}, then run 'alcove exchange' with your input file at the agreed ` +
+    "time."
   );
 }
 
@@ -1259,14 +1331,10 @@ export async function handler(argv: Arguments): Promise<void> {
       // before the invitation decode, any connection, or any file write.
       assertNoUnknownOptions(positionalsBeforeDoubleDash(argv, positionals));
       const resolved = resolveAcceptPositionals(positionals);
-      // An acceptance naming a URL runs an exchange, so its stream opens here,
-      // ahead of the invitation decode, the configuration load, and every
-      // other refusal past the arguments. One running at the invitation's own
-      // endpoint is known only from the decode, and opens it at the bootstrap.
-      const openedEventStream =
-        resolved.mode === "online"
-          ? openEventStream(options.eventStream)
-          : undefined;
+      // No event stream opens here: whether this acceptance runs an exchange
+      // is known only once the invitation decodes, the input is read, and the
+      // operator consents, so the bootstrap that runs it opens the stream and
+      // an acceptance that stops writes nothing to fd 3.
       const url = resolved.mode === "online" ? resolved.url : undefined;
       assertBootstrapUrlPasswordStorable(argv, url);
       warnIfCommandLineHoldsLiteralCredential(
@@ -1433,7 +1501,7 @@ export async function handler(argv: Arguments): Promise<void> {
           loggerName: "accept",
           logFile: options.logFile,
           writeRecord: options.record,
-          eventStream: openedEventStream ?? options.eventStream,
+          eventStream: options.eventStream,
           allowMemoryShortfall: options.allowMemoryShortfall,
           reuseExistingConfig: ready.reuseExistingConfig,
           provision: options.serverProvisionRead,
@@ -1534,7 +1602,7 @@ export async function handler(argv: Arguments): Promise<void> {
             operatorSuppliedText(configPath),
           )}, seeding the connection block from the ` +
             "invitation's endpoint; it needs no credentials of your own." +
-            (ready.requestedColumns.length === 0
+            (ready.unsentRequestedColumns.length === 0
               ? ` ${RUN_EXCHANGE_NEXT}`
               : ""),
         );
@@ -1543,7 +1611,7 @@ export async function handler(argv: Arguments): Promise<void> {
           `wrote config to ${redactAndRenderOperatorSuppliedText(
             operatorSuppliedText(configPath),
           )}, with the connection from the URL and your connection flags.` +
-            (ready.requestedColumns.length === 0
+            (ready.unsentRequestedColumns.length === 0
               ? ` ${RUN_EXCHANGE_NEXT}`
               : ""),
         );
@@ -1562,13 +1630,14 @@ export async function handler(argv: Arguments): Promise<void> {
           )}; fill in the connection block before ` +
             `running 'alcove exchange'. ${CONNECTION_BLOCK_NOTICE}`,
         );
-      if (!ready.reuseExistingConfig && ready.requestedColumns.length > 0)
+      if (ready.unsentRequestedColumns.length > 0)
         log.info(
-          requestedColumnsNote(
-            ready.requestedColumns,
+          requestedColumnsNote({
+            unsentRequestedColumns: ready.unsentRequestedColumns,
             configPath,
-            ready.stop === "requestedColumns",
-          ),
+            stoppedForThem: ready.stop === "requestedColumns",
+            keptConfiguration: ready.reuseExistingConfig,
+          }),
         );
       log.info(
         `wrote key file to ${redactAndRenderOperatorSuppliedText(

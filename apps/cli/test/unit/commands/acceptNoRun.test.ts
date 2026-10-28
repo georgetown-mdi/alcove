@@ -270,7 +270,7 @@ describe("validateAccept: a configuration written from an input file", () => {
         disclosedColumnNames(ready.dataSpec.metadata ?? []),
         label,
       ).toEqual(["id"]);
-      expect(ready.requestedColumns, label).toEqual([REQUESTED]);
+      expect(ready.unsentRequestedColumns, label).toEqual([REQUESTED]);
     }
   });
 
@@ -297,7 +297,7 @@ describe("validateAccept: a configuration written from an input file", () => {
     expect(ready.mode).toBe("offline");
     if (ready.mode !== "offline") return;
     expect(ready.dataSpec.metadata).toBeUndefined();
-    expect(ready.requestedColumns).toEqual([]);
+    expect(ready.unsentRequestedColumns).toEqual([]);
     expect(ready.stop).toBeUndefined();
   });
 
@@ -380,6 +380,38 @@ describe("validateAccept: whether the acceptance runs", () => {
     expect(sftp.mode).toBe("offline");
     if (sftp.mode !== "offline") return;
     expect(sftp.stop).toBeUndefined();
+  });
+
+  test("runs where the inferred configuration already sends every requested column", async () => {
+    const input = writeInput();
+    // Inference sends `id`, the record identifier.
+    const webrtc = await accept({ token: requestingToken(["id"]), input });
+    expect(webrtc.mode).toBe("endpointRun");
+    if (webrtc.mode !== "endpointRun") return;
+    expect(disclosedColumnNames(webrtc.prepared.metadata)).toEqual(["id"]);
+    const online = await accept({
+      token: requestingToken(["id"], undefined),
+      form: { mode: "online", url: sftpUrl(), input },
+    });
+    expect(online.mode).toBe("online");
+  });
+
+  test("stops where a requested column is not sent, on each form, naming only the unsent ones", async () => {
+    const input = writeInput();
+    const webrtc = await accept({
+      token: requestingToken(["id", REQUESTED]),
+      input,
+    });
+    const online = await accept({
+      token: requestingToken(["id", REQUESTED], undefined),
+      form: { mode: "online", url: sftpUrl(), input },
+    });
+    for (const ready of [webrtc, online]) {
+      expect(ready.mode).toBe("offline");
+      if (ready.mode !== "offline") return;
+      expect(ready.stop).toBe("requestedColumns");
+      expect(ready.unsentRequestedColumns).toEqual([REQUESTED]);
+    }
   });
 
   test("--no-run stops the webrtc form, writing the endpoint's connection", async () => {
@@ -478,6 +510,68 @@ describe("validateAccept: whether the acceptance runs", () => {
       await reported({ token: requestingToken([]), input, run: false }),
     ).toBe(false);
     expect(await reported({ token: requestingToken([]) })).toBe(false);
+  });
+});
+
+/**
+ * Options naming a configuration already at the path, as a `--no-run`
+ * acceptance over the sftp URL writes it from `input`, with the requested
+ * column sent or not.
+ */
+async function keptConfiguration(
+  sendsRequested: boolean,
+  input: string,
+): Promise<CommonBootstrapOptions> {
+  const fresh = await accept({
+    token: requestingToken([REQUESTED], undefined),
+    form: { mode: "online", url: sftpUrl(), input },
+    run: false,
+  });
+  if (fresh.mode !== "offline") throw new Error("expected an acceptance stop");
+  const options = testOptions();
+  saveConfig(options.configFile, {
+    connection: fresh.connection,
+    ...fresh.dataSpec,
+    metadata: (fresh.dataSpec.metadata ?? []).map((column) =>
+      column.name === REQUESTED
+        ? { ...column, isPayload: sendsRequested }
+        : column,
+    ),
+  });
+  return options;
+}
+
+describe("validateAccept: a kept configuration on the URL form", () => {
+  test("runs where it sends every requested column, sending what it declares", async () => {
+    const input = writeInput();
+    const options = await keptConfiguration(true, input);
+    const ready = await accept({
+      token: requestingToken([REQUESTED], undefined),
+      form: { mode: "online", url: sftpUrl(), input },
+      options,
+    });
+    expect(ready.reuseExistingConfig).toBe(true);
+    expect(ready.mode).toBe("online");
+    if (ready.mode !== "online") return;
+    expect(disclosedColumnNames(ready.prepared.metadata)).toEqual([
+      "id",
+      REQUESTED,
+    ]);
+  });
+
+  test("stops where it does not send one, naming it", async () => {
+    const input = writeInput();
+    const options = await keptConfiguration(false, input);
+    const ready = await accept({
+      token: requestingToken([REQUESTED], undefined),
+      form: { mode: "online", url: sftpUrl(), input },
+      options,
+    });
+    expect(ready.reuseExistingConfig).toBe(true);
+    expect(ready.mode).toBe("offline");
+    if (ready.mode !== "offline") return;
+    expect(ready.stop).toBe("requestedColumns");
+    expect(ready.unsentRequestedColumns).toEqual([REQUESTED]);
   });
 });
 
@@ -598,16 +692,18 @@ describe("handler: an acceptance that stops", () => {
     expect(runOnlineBootstrapMock).not.toHaveBeenCalled();
     expect(connectToBroker).not.toHaveBeenCalled();
     expect(stderr).toContain(
-      "this acceptance did not run the exchange: the invitation requests " +
-        "columns from you, and your partner's run refuses an exchange that " +
-        "does not send them. They are listed in the metadata block of ",
+      "this acceptance did not run the exchange: your partner's run refuses " +
+        "an exchange that does not send the columns it requests from you, " +
+        "and the configuration written to ",
     );
+    expect(stderr).toContain(" does not send these:\n");
     expect(stderr).toContain(`\n  - ${REQUESTED}\n`);
     expect(sanitizeForDisplay(hostile)).not.toBe(hostile);
     expect(stderr).toContain(`\n  - ${sanitizeForDisplay(hostile)}\n`);
     expect(stderr).not.toContain("\u200d");
     expect(stderr).toContain(
-      "Set is_payload: true on each one you agreed to send, then run 'alcove " +
+      "They are listed in its metadata block with is_payload: false. Set " +
+        "is_payload: true on each one you agreed to send, then run 'alcove " +
         "exchange' with your input file at the agreed time.",
     );
     expect(stderr).not.toContain("to conduct the exchange");
@@ -638,11 +734,112 @@ describe("handler: an acceptance that stops", () => {
     });
     const stderr = await runHandler(argv);
     expect(stderr).toContain(
-      "the invitation requests columns from you. They are listed in the " +
-        "metadata block of ",
+      "the invitation requests columns from you that the configuration " +
+        "written to ",
     );
+    expect(stderr).toContain(` does not send:\n  - ${REQUESTED}\n`);
     expect(stderr).not.toContain("did not run the exchange");
     expect(writtenSpec(argv).metadata).toContainEqual(REQUESTED_ENTRY);
+  });
+
+  test("names only the requested columns the configuration does not send", async () => {
+    const encoded = await encodeInvitation(requestingToken(["id", REQUESTED]));
+    const stderr = await runHandler(
+      handlerArgv([encoded, writeInput()], { "consent-to-terms": true }),
+    );
+    expect(runOnlineBootstrapMock).not.toHaveBeenCalled();
+    expect(stderr).toContain(` does not send these:\n  - ${REQUESTED}\nThey`);
+    expect(stderr).not.toContain("\n  - id\n");
+  });
+
+  test("a kept configuration that does not send a requested column stops, naming the kept file", async () => {
+    const input = writeInput();
+    const options = await keptConfiguration(false, input);
+    const encoded = await encodeInvitation(
+      requestingToken([REQUESTED], undefined),
+    );
+    const stderr = await runHandler(
+      handlerArgv(["sftp://host/drop", encoded, input], {
+        "consent-to-terms": true,
+        "config-file": options.configFile,
+        "key-file": options.keyFile,
+      }),
+    );
+    expect(runOnlineBootstrapMock).not.toHaveBeenCalled();
+    expect(stderr).toContain("reused the existing configuration at ");
+    expect(stderr).toContain(
+      "this acceptance did not run the exchange: your partner's run refuses " +
+        "an exchange that does not send the columns it requests from you, " +
+        "and the existing configuration at ",
+    );
+    expect(stderr).toContain(
+      `${options.configFile} does not send these:\n` +
+        `  - ${REQUESTED}\n` +
+        "In its metadata block, set is_payload: true on each one you agreed " +
+        "to send, with a role other than ignored, adding an entry with " +
+        "role: payload for one it does not list, then run 'alcove exchange' " +
+        "with your input file at the agreed time.",
+    );
+    expect(fs.existsSync(options.keyFile)).toBe(true);
+  });
+
+  test("an offline acceptance keeping a configuration names the requested columns it does not send", async () => {
+    const input = writeInput();
+    const encoded = await encodeInvitation(
+      requestingToken([REQUESTED], undefined),
+    );
+    const notSending = await keptConfiguration(false, input);
+    const stderr = await runHandler(
+      handlerArgv([encoded, input], {
+        "consent-to-terms": true,
+        "config-file": notSending.configFile,
+        "key-file": notSending.keyFile,
+      }),
+    );
+    expect(stderr).toContain(
+      "the invitation requests columns from you that the existing " +
+        `configuration at ${notSending.configFile} does not send:\n` +
+        `  - ${REQUESTED}\nIn its metadata block`,
+    );
+    expect(stderr).not.toContain("did not run the exchange");
+
+    const sending = await keptConfiguration(true, input);
+    const quiet = await runHandler(
+      handlerArgv([encoded, input], {
+        "consent-to-terms": true,
+        "config-file": sending.configFile,
+        "key-file": sending.keyFile,
+      }),
+    );
+    expect(quiet).toContain("reused the existing configuration at ");
+    expect(quiet).not.toContain("requests columns from you that");
+  });
+
+  test("a kept configuration that sends every requested column runs", async () => {
+    runOnlineBootstrapMock.mockResolvedValue({
+      outcome: "completed",
+      configWriteError: undefined,
+    });
+    const input = writeInput();
+    const options = await keptConfiguration(true, input);
+    const encoded = await encodeInvitation(
+      requestingToken([REQUESTED], undefined),
+    );
+    await runHandler(
+      handlerArgv(["sftp://host/drop", encoded, input], {
+        "consent-to-terms": true,
+        "config-file": options.configFile,
+        "key-file": options.keyFile,
+        "log-level": "silent",
+      }),
+    );
+    expect(runOnlineBootstrapMock).toHaveBeenCalledTimes(1);
+    const passed = runOnlineBootstrapMock.mock.calls[0][0];
+    expect(passed.reuseExistingConfig).toBe(true);
+    expect(disclosedColumnNames(passed.prepared.metadata)).toEqual([
+      "id",
+      REQUESTED,
+    ]);
   });
 
   test("leaves an acceptance with nothing requested running the exchange", async () => {
@@ -681,5 +878,58 @@ describe("handler: an acceptance that stops", () => {
     expect(disclosedColumnNames(writtenSpec(argv).metadata ?? [])).toEqual([
       "id",
     ]);
+  });
+
+  test("--event-stream: an acceptance that stops touches no event stream descriptor, on either form", async () => {
+    const fstat = vi.spyOn(fs, "fstatSync");
+    const write = vi.spyOn(fs, "writeSync");
+    try {
+      const webrtc = await encodeInvitation(requestingToken());
+      const online = await encodeInvitation(
+        requestingToken([REQUESTED], undefined),
+      );
+      for (const args of [
+        [webrtc, writeInput()],
+        ["sftp://host/drop", online, writeInput()],
+      ])
+        await runHandler(
+          handlerArgv(args, {
+            "consent-to-terms": true,
+            "event-stream": true,
+            "log-level": "silent",
+          }),
+        );
+      const touchedFd3 = [...fstat.mock.calls, ...write.mock.calls].filter(
+        ([fd]) => fd === 3,
+      );
+      expect(touchedFd3).toEqual([]);
+    } finally {
+      fstat.mockRestore();
+      write.mockRestore();
+    }
+    expect(runOnlineBootstrapMock).not.toHaveBeenCalled();
+  });
+
+  test("--event-stream: an acceptance that runs leaves the stream to the bootstrap, on either form", async () => {
+    runOnlineBootstrapMock.mockResolvedValue({
+      outcome: "completed",
+      configWriteError: undefined,
+    });
+    const webrtc = await encodeInvitation(requestingToken([]));
+    const online = await encodeInvitation(requestingToken([], undefined));
+    for (const args of [
+      [webrtc, writeInput()],
+      ["sftp://host/drop", online, writeInput()],
+    ])
+      await runHandler(
+        handlerArgv(args, {
+          "consent-to-terms": true,
+          "event-stream": true,
+          "log-level": "silent",
+        }),
+      );
+    expect(runOnlineBootstrapMock).toHaveBeenCalledTimes(2);
+    for (const [passed] of runOnlineBootstrapMock.mock.calls)
+      expect(passed.eventStream).toBe(true);
   });
 });

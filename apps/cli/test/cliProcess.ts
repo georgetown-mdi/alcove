@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { stopChild } from "./stopChild";
 
@@ -29,6 +29,11 @@ export interface FinishedCli {
   stderr: string;
   /** The run outlived its deadline and was killed rather than exiting. */
   timedOut: boolean;
+  /**
+   * Everything the run wrote to fd 3, where `startCli` was asked to wire it
+   * (`eventStream`); absent otherwise.
+   */
+  fd3?: string;
 }
 
 /** A running invocation. */
@@ -53,6 +58,10 @@ export interface RunningCli {
  * confirmation prompt resolves to "no" on end-of-input (`promptConfirm` races
  * the readline close), so closing the pipe behind the answer would race the
  * line against the EOF.
+ *
+ * `eventStream` wires fd 3 to a pipe and reports what the run wrote there.
+ * The run then loads tsx in its own process rather than through `tsx/cli`,
+ * which runs the entry point in a second process that does not inherit fd 3.
  */
 export function startCli(params: {
   args: string[];
@@ -60,15 +69,25 @@ export function startCli(params: {
   env?: NodeJS.ProcessEnv;
   stdin?: string;
   timeoutMs: number;
+  eventStream?: boolean;
 }): RunningCli {
-  const { args, cwd, env, stdin, timeoutMs } = params;
+  const { args, cwd, env, stdin, timeoutMs, eventStream = false } = params;
   const child = spawn(
     process.execPath,
-    [require.resolve("tsx/cli"), cliEntry, ...args],
+    eventStream
+      ? [
+          "--import",
+          pathToFileURL(require.resolve("tsx")).href,
+          cliEntry,
+          ...args,
+        ]
+      : [require.resolve("tsx/cli"), cliEntry, ...args],
     {
       cwd,
       env: { ...process.env, ...env },
-      stdio: ["pipe", "pipe", "pipe"],
+      stdio: eventStream
+        ? ["pipe", "pipe", "pipe", "pipe"]
+        : ["pipe", "pipe", "pipe"],
     },
   );
 
@@ -76,6 +95,11 @@ export function startCli(params: {
   let stderr = "";
   let timedOut = false;
   const stdoutWaiters: Array<() => void> = [];
+  const fd3: Buffer[] = [];
+  if (eventStream)
+    (child.stdio[3] as NodeJS.ReadableStream).on("data", (data: Buffer) => {
+      fd3.push(data);
+    });
 
   child.stdout?.on("data", (data: Buffer) => {
     stdout += data.toString();
@@ -106,7 +130,14 @@ export function startCli(params: {
       // failure this run is being asked about.
       setImmediate(() => {
         for (const notify of stdoutWaiters.splice(0)) notify();
-        resolve({ exitCode, signal, stdout, stderr, timedOut });
+        resolve({
+          exitCode,
+          signal,
+          stdout,
+          stderr,
+          timedOut,
+          ...(eventStream ? { fd3: Buffer.concat(fd3).toString("utf8") } : {}),
+        });
       });
     });
     child.once("error", (err: Error) => {

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import {
   afterAll,
@@ -37,7 +38,9 @@ import type { TlsBrokerFront } from "../../signaling/tlsBrokerFront";
  * its `alcove exchange` meets it. Every step is a real child process, so this
  * shows the invitation's rendezvous and expiry admit an exchange run after
  * the acceptance rather than inside it, and that the configuration the
- * acceptance writes lists the requested column, so one edit sends it.
+ * acceptance writes lists the requested column, so one edit sends it. Under
+ * `--event-stream`, an acceptance that stops writes nothing to fd 3, on
+ * either form, and one that runs ends the stream with one terminal event.
  *
  * The webrtc endpoint dials `wss://`, so the coordination server sits behind
  * the TLS front `oneCommandAcceptance.test.ts` uses, with the same
@@ -117,21 +120,35 @@ afterAll(async () => {
   }
 });
 
-function party(args: string[]): RunningCli {
+/** `eventStream` wires fd 3 and passes `--event-stream`. */
+function party(args: string[], eventStream = false): RunningCli {
   const running = startCli({
-    args,
+    args: eventStream ? [...args, "--event-stream"] : args,
     cwd: work,
     env: { NODE_EXTRA_CA_CERTS: certPath },
     timeoutMs: PARTY_DEADLINE_MS,
+    eventStream,
   });
   parties.push(running);
   return running;
 }
 
-async function runToExit(label: string, args: string[]): Promise<FinishedCli> {
-  const run = await party(args).finished;
+async function runToExit(
+  label: string,
+  args: string[],
+  eventStream = false,
+): Promise<FinishedCli> {
+  const run = await party(args, eventStream).finished;
   expect(run.exitCode, describeCliRun(label, run)).toBe(0);
   return run;
+}
+
+/** The events a run wrote to fd 3, one per line. */
+function streamEvents(run: FinishedCli): Array<Record<string, unknown>> {
+  return (run.fd3 ?? "")
+    .split("\n")
+    .filter((line) => line.length > 0)
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
 }
 
 /** Rewrite a YAML file through `edit`, as an operator's text editor would. */
@@ -209,29 +226,62 @@ liveTest(
     expect(loadKeyFile(inviteKey)?.expires).toBeDefined();
 
     // The acceptance has everything a run needs, but the invitation requests
-    // a column: it writes a configuration listing it, not sent, and stops.
-    const accept = await runToExit("the acceptance stopped by the request", [
-      "accept",
-      "--consent-to-terms",
-      invitation,
-      acceptInput,
-      "--config-file",
-      acceptConfig,
-      "--key-file",
-      acceptKey,
-      "--identity",
-      "accept",
-      "--log-level",
-      "info",
-    ]);
+    // a column inference does not send: it writes a configuration listing it,
+    // not sent, and stops, writing nothing to the event stream.
+    const accept = await runToExit(
+      "the acceptance stopped by the request",
+      [
+        "accept",
+        "--consent-to-terms",
+        invitation,
+        acceptInput,
+        "--config-file",
+        acceptConfig,
+        "--key-file",
+        acceptKey,
+        "--identity",
+        "accept",
+        "--log-level",
+        "info",
+      ],
+      true,
+    );
     expect(accept.stderr).not.toContain(
       "coordination server this invitation names",
     );
     expect(accept.stderr).toContain(
-      "this acceptance did not run the exchange: the invitation requests " +
-        "columns from you",
+      "this acceptance did not run the exchange: your partner's run refuses " +
+        "an exchange that does not send the columns it requests from you",
     );
     expect(accept.stderr).toContain(`\n  - ${REQUESTED_COLUMN}\n`);
+    expect(accept.fd3).toBe("");
+
+    // The URL form stops the same way, and writes nothing to the stream.
+    const share = path.join(work, "share");
+    fs.mkdirSync(share);
+    const urlAccept = await runToExit(
+      "the URL acceptance stopped by the request",
+      [
+        "accept",
+        "--consent-to-terms",
+        pathToFileURL(share).href,
+        invitation,
+        acceptInput,
+        "--config-file",
+        path.join(work, "accept-url.yaml"),
+        "--key-file",
+        path.join(work, "accept-url.key"),
+        "--identity",
+        "accept",
+        "--log-level",
+        "info",
+      ],
+      true,
+    );
+    expect(urlAccept.stderr).toContain(
+      "this acceptance did not run the exchange",
+    );
+    expect(urlAccept.fd3).toBe("");
     expect(fs.existsSync(acceptKey)).toBe(true);
     const written = parseExchangeSpec(
       YAML.parse(fs.readFileSync(acceptConfig, "utf8")),
@@ -347,19 +397,24 @@ liveTest(
     ]);
     const invitation = await inviter.firstStdoutLine(60_000);
 
-    await runToExit("the stopped acceptance", [
-      "accept",
-      "--consent-to-terms",
-      "--no-run",
-      invitation,
-      acceptInput,
-      "--config-file",
-      acceptConfig,
-      "--key-file",
-      acceptKey,
-      "--identity",
-      "accept",
-    ]);
+    const stopped = await runToExit(
+      "the stopped acceptance",
+      [
+        "accept",
+        "--consent-to-terms",
+        "--no-run",
+        invitation,
+        acceptInput,
+        "--config-file",
+        acceptConfig,
+        "--key-file",
+        acceptKey,
+        "--identity",
+        "accept",
+      ],
+      true,
+    );
+    expect(stopped.fd3).toBe("");
     editYaml(acceptConfig, (doc) => {
       const metadata = doc.get("metadata") as YAML.YAMLSeq<YAML.YAMLMap>;
       for (const entry of metadata.items)
@@ -395,6 +450,74 @@ liveTest(
     expect(loadKeyFile(acceptKey)?.sharedSecret).toBe(
       loadKeyFile(inviteKey)?.sharedSecret,
     );
+  },
+  240_000,
+);
+
+liveTest(
+  "an acceptance that runs the exchange ends its event stream with one terminal event",
+  async () => {
+    const inviteInput = path.join(work, "invite-input.csv");
+    fs.writeFileSync(inviteInput, INVITE_CSV);
+    const acceptInput = path.join(work, "accept-input.csv");
+    fs.writeFileSync(acceptInput, ACCEPT_CSV);
+    const inviteOut = path.join(work, "invite-out");
+    const acceptOut = path.join(work, "accept-out");
+
+    const inviter = party([
+      "invite",
+      `wss://${BROKER_HOST}:${front.port}${broker.path}`,
+      inviteInput,
+      inviteOut,
+      "--config-file",
+      path.join(work, "invite.yaml"),
+      "--key-file",
+      path.join(work, "invite.key"),
+      "--identity",
+      "invite",
+      "--accept-timeout",
+      "80s",
+      "--no-record",
+    ]);
+    const invitation = await inviter.firstStdoutLine(60_000);
+
+    // Nothing is requested, so the acceptance runs the exchange itself.
+    const [inviteRun, acceptRun] = await Promise.all([
+      inviter.finished,
+      party(
+        [
+          "accept",
+          "--consent-to-terms",
+          invitation,
+          acceptInput,
+          acceptOut,
+          "--config-file",
+          path.join(work, "accept.yaml"),
+          "--key-file",
+          path.join(work, "accept.key"),
+          "--identity",
+          "accept",
+          "--no-record",
+        ],
+        true,
+      ).finished,
+    ]);
+    expect(
+      inviteRun.exitCode,
+      describeCliRun("the online inviter", inviteRun),
+    ).toBe(0);
+    expect(
+      acceptRun.exitCode,
+      describeCliRun("the running acceptance", acceptRun),
+    ).toBe(0);
+    expect(resultTable(acceptOut).rows).toHaveLength(2);
+    const events = streamEvents(acceptRun);
+    const terminal = events.filter(
+      (event) => event.type === "result" || event.type === "error",
+    );
+    expect(terminal).toHaveLength(1);
+    expect(terminal[0].type).toBe("result");
+    expect(events.at(-1)).toBe(terminal[0]);
   },
   240_000,
 );
