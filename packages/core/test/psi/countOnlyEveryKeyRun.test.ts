@@ -30,6 +30,7 @@ import {
 } from "../../src/psi/psiWorkerEngine";
 import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
 import { loadNativeAddonOrSkip } from "../utils/nativeAddon";
+import { withEmptyUnknownField } from "../utils/paddedPsiRequest";
 
 // The count-only construction over every agreed key, run between two
 // in-memory parties through linkViaCountOnlyPSI (docs/spec/PROTOCOL.md,
@@ -157,24 +158,44 @@ function tapped(engine: PsiEngine, tap: Tap): PsiEngine {
   });
 }
 
+// A receiver running modified software: each request it builds holds one
+// record fewer than it should, and an empty unknown field stands in for it,
+// so a wire scan still counts the declared records.
+function padding(engine: PsiEngine): PsiEngine {
+  return new Proxy(engine, {
+    get(target, property) {
+      const member: unknown = Reflect.get(target, property, target);
+      if (typeof member !== "function") return member;
+      if (property !== "createClientRequest")
+        return (member as (...a: Array<unknown>) => unknown).bind(target);
+      return async (values: ReadonlyArray<string>) =>
+        withEmptyUnknownField(
+          await target.createClientRequest(values.slice(1)),
+        );
+    },
+  });
+}
+
 function participant(
   library: PSILibrary,
   role: "starter" | "joiner",
   tap: Tap = {},
   inWorker = false,
+  padRequests = false,
 ): PSIParticipant {
   const id = role === "starter" ? "server" : "client";
+  const tappedEngine = tapped(
+    inWorker
+      ? workerEngine(library, role, id)
+      : new InProcessPsiEngine(library, role, id, "count-only-permuted"),
+    tap,
+  );
   return new PSIParticipant(
     id,
     library,
     { role, verbose: -1 },
     UNBOUNDED_PSI_ELEMENTS,
-    tapped(
-      inWorker
-        ? workerEngine(library, role, id)
-        : new InProcessPsiEngine(library, role, id, "count-only-permuted"),
-      tap,
-    ),
+    padRequests ? padding(tappedEngine) : tappedEngine,
   );
 }
 
@@ -251,6 +272,7 @@ interface RunOptions {
   senderData?: Array<Array<string | undefined>>;
   receiverConn?: (conn: MessageConnection) => MessageConnection;
   inWorker?: boolean;
+  padReceiverRequests?: boolean;
 }
 
 interface RunOutcome {
@@ -295,6 +317,7 @@ async function run(
     "joiner",
     options.receiverTap,
     options.inWorker,
+    options.padReceiverRequests,
   );
   const settle = (
     conn: MessageConnection,
@@ -652,6 +675,62 @@ describe("a frame not of the declared shape is refused as a protocol error", () 
       /PSI request has 64 elements for its 65 declared records/,
     );
   });
+
+  test.for([
+    ["wasm", false],
+    ["native", false],
+    ["worker-backed", true],
+  ] as const)(
+    "a request padded with an empty unknown field is refused for its parsed count before pi is drawn or any response part is sent, on the %s engine",
+    async ([name, inWorker]) => {
+      const library = name === "native" ? native : wasm;
+      if (library === undefined) return;
+      const scanned = vi.fn();
+      const draw = vi.spyOn(HeldPermutation, "draw");
+      const baseline = await run(SENDER, RECEIVER, {
+        library,
+        inWorker,
+        senderDeclared: {
+          receiverRecords: RECEIVER.length + 1,
+          senderRecords: SENDER.length,
+        },
+      });
+      disposeBoth(baseline);
+      draw.mockClear();
+      const outcome = await run(SENDER, RECEIVER, {
+        library,
+        inWorker,
+        padReceiverRequests: true,
+        senderTap: {
+          processClientRequest: (bytes: Uint8Array) =>
+            scanned(
+              countDeclaredPsiElements(
+                bytes,
+                "request",
+                Number.MAX_SAFE_INTEGER,
+              ),
+            ),
+        } as Tap,
+      });
+      disposeBoth(outcome);
+
+      expect(scanned).toHaveBeenCalledWith(RECEIVER.length);
+      expectProtocolRefusal(
+        outcome,
+        "sender",
+        /PSI request has 63 elements for its 64 declared records/,
+      );
+      // The sender's setup and index table are all it sent before the request,
+      // as when the wire-scan bound refuses the request.
+      expect(outcome.senderSent).toHaveLength(baseline.senderSent.length);
+      // Only `sigma` (the sender's count) and the receiver's request order.
+      expect(
+        draw.mock.results
+          .map((result) => (result.value as HeldPermutation).size)
+          .sort((a, b) => a - b),
+      ).toEqual([SENDER.length, RECEIVER.length]);
+    },
+  );
 
   // The receiver's inbound frames start with round 0's setup, one part at
   // this size, then the round's index table.

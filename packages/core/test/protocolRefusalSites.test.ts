@@ -86,11 +86,14 @@ const RECORDED_SITES: Readonly<Record<string, readonly string[]>> = {
   "packages/core/src/psi/psiEngine.ts :: InProcessPsiEngine.matchStreamed": [
     PARTNER,
   ],
-  // A count-only-permuted round's partner frames: a request of another size
-  // than the exchange's first; an index table of the wrong length, another
+  // A count-only-permuted round's partner frames: a request whose parsed
+  // element count is not the declared record count, or of another size than
+  // the exchange's first; an index table of the wrong length, another
   // length than the first, or not a permutation; a response of the wrong
   // size, not a list of 33-byte elements, or repeating an element; and any
   // round call or count after one of those was refused.
+  "packages/core/src/psi/psiEngine.ts :: InProcessPsiEngine.processClientRequest":
+    [PARTNER],
   "packages/core/src/psi/psiEngine.ts :: InProcessPsiEngine.permutedResponse": [
     PARTNER,
   ],

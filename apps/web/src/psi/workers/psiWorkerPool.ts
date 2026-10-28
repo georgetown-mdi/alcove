@@ -160,9 +160,12 @@ export class PsiWorkerPoolEngine implements PsiEngine {
     return this.primary.createServerSetup(values);
   }
 
-  processClientRequest(requestBytes: Uint8Array): Promise<Uint8Array> {
+  processClientRequest(
+    requestBytes: Uint8Array,
+    declaredElements?: number,
+  ): Promise<Uint8Array> {
     return this.splitOnPrimary(() =>
-      this.primary.processClientRequest(requestBytes),
+      this.primary.processClientRequest(requestBytes, declaredElements),
     );
   }
 

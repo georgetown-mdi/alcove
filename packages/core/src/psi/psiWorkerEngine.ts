@@ -59,7 +59,11 @@ export interface PsiWorkerInit {
  */
 type PsiWorkerRequestBody =
   | { method: "createServerSetup"; values: ReadonlyArray<string> }
-  | { method: "processClientRequest"; requestBytes: Uint8Array }
+  | {
+      method: "processClientRequest";
+      requestBytes: Uint8Array;
+      declaredElements?: number;
+    }
   | { method: "createClientRequest"; values: ReadonlyArray<string> }
   | { method: "receiveServerSetup"; setupBytes: Uint8Array }
   | { method: "receiveServerSetupPiece"; piece: Uint8Array }
@@ -252,8 +256,15 @@ export class WorkerPsiEngine implements PsiEngine {
     return this.call({ method: "createServerSetup", values });
   }
 
-  processClientRequest(requestBytes: Uint8Array): Promise<Uint8Array> {
-    return this.call({ method: "processClientRequest", requestBytes });
+  processClientRequest(
+    requestBytes: Uint8Array,
+    declaredElements?: number,
+  ): Promise<Uint8Array> {
+    return this.call({
+      method: "processClientRequest",
+      requestBytes,
+      declaredElements,
+    });
   }
 
   createClientRequest(values: ReadonlyArray<string>): Promise<Uint8Array> {
@@ -367,7 +378,10 @@ export function servePsiEngine(
       case "createServerSetup":
         return engine.createServerSetup(body.values);
       case "processClientRequest":
-        return engine.processClientRequest(body.requestBytes);
+        return engine.processClientRequest(
+          body.requestBytes,
+          body.declaredElements,
+        );
       case "createClientRequest":
         return engine.createClientRequest(body.values);
       case "receiveServerSetup":

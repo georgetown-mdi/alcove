@@ -4,7 +4,11 @@ import type { Mock } from "vitest";
 import PSI from "@openmined/psi.js";
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
-import { InternalConsistencyError } from "../../src/errors";
+import { countDeclaredPsiElements } from "../../src/connection/psiElementScan";
+import {
+  InternalConsistencyError,
+  PartnerProtocolRefusalError,
+} from "../../src/errors";
 import {
   drawUniformPermutation,
   HeldPermutation,
@@ -18,6 +22,7 @@ import {
 } from "../../src/psi/shardedPsiEngine";
 import { fixedKeyPsiLibrary, psiTestKey } from "../utils/fixedKeyPsiLibrary";
 import { loadNativeAddonOrSkip } from "../utils/nativeAddon";
+import { withEmptyUnknownField } from "../utils/paddedPsiRequest";
 
 import type { PsiEngine, PsiEngineMode } from "../../src/psi/psiEngine";
 
@@ -239,7 +244,10 @@ describe.each([
         const request = await single.joiner.createClientRequest(
           values.receiver,
         );
-        const response = await single.starter.processClientRequest(request);
+        const response = await single.starter.processClientRequest(
+          request,
+          values.receiver.length,
+        );
 
         const drawsBefore = draws.mock.calls.length;
         expect(
@@ -248,9 +256,12 @@ describe.each([
         expect(
           await sharded.joiner.createClientRequest(values.receiver),
         ).toEqual(request);
-        expect(await sharded.starter.processClientRequest(request)).toEqual(
-          response,
-        );
+        expect(
+          await sharded.starter.processClientRequest(
+            request,
+            values.receiver.length,
+          ),
+        ).toEqual(response);
         // `sigma` and `pi`, each drawn once, on the primary.
         expect(draws.mock.calls.length - drawsBefore).toBe(2);
 
@@ -293,16 +304,23 @@ describe.each([
         const request = await joiner.createClientRequest(
           values.receiver.map((value) => `${String(round)}:${value}`),
         );
-        const expected = await single.processClientRequest(request);
+        const expected = await single.processClientRequest(
+          request,
+          values.receiver.length,
+        );
         const drawsBefore = draws.mock.calls.length;
-        expect(await sharded.processClientRequest(request)).toEqual(expected);
+        expect(
+          await sharded.processClientRequest(request, values.receiver.length),
+        ).toEqual(expected);
         shardedDraws += draws.mock.calls.length - drawsBefore;
       }
       expect(shardedDraws).toBe(1);
       const shorter = await shorterJoiner.createClientRequest(
         values.receiver.slice(1),
       );
-      await expect(sharded.processClientRequest(shorter)).rejects.toThrow(
+      await expect(
+        sharded.processClientRequest(shorter, values.receiver.length - 1),
+      ).rejects.toThrow(
         /has 3123 elements where the exchange's first had 3124/,
       );
     } finally {
@@ -352,11 +370,19 @@ describe("the sharded engine in the count-only-permuted mode", () => {
       );
       try {
         const request = await joiner.createClientRequest(serverValues);
-        expect(await permuted.sharded.processClientRequest(request)).toEqual(
-          await single.processClientRequest(request),
+        expect(
+          await permuted.sharded.processClientRequest(
+            request,
+            serverValues.length,
+          ),
+        ).toEqual(
+          await single.processClientRequest(request, serverValues.length),
         );
         expect(permuted.primaryAnswers).toHaveBeenCalledOnce();
-        expect(permuted.primaryAnswers).toHaveBeenCalledWith(request);
+        expect(permuted.primaryAnswers).toHaveBeenCalledWith(
+          request,
+          serverValues.length,
+        );
         for (const answer of permuted.helperAnswers)
           expect(answer).not.toHaveBeenCalled();
 
@@ -377,6 +403,29 @@ describe("the sharded engine in the count-only-permuted mode", () => {
       }
     },
   );
+
+  test("a request padded with an empty unknown field is refused for its parsed count, before pi is drawn", async () => {
+    const draws = fixEveryPermutation();
+    const sharded = shardedEngine(wasm, "starter", mode, 3);
+    const joiner = keyedEngine(wasm, "joiner", mode);
+    try {
+      const padded = withEmptyUnknownField(
+        await joiner.createClientRequest(serverValues.slice(1)),
+      );
+      expect(
+        countDeclaredPsiElements(padded, "request", Number.MAX_SAFE_INTEGER),
+      ).toBe(serverValues.length);
+      const refused = sharded.processClientRequest(padded, serverValues.length);
+      await expect(refused).rejects.toBeInstanceOf(PartnerProtocolRefusalError);
+      await expect(refused).rejects.toThrow(
+        `the partner's PSI request has ${String(serverValues.length - 1)} elements for its ${String(serverValues.length)} declared records`,
+      );
+      expect(draws).not.toHaveBeenCalled();
+    } finally {
+      sharded.dispose();
+      joiner.dispose();
+    }
+  });
 
   test("a value repeated across two parts is refused, as one engine refuses it", async () => {
     const sharded = shardedEngine(wasm, "joiner", mode, 3);

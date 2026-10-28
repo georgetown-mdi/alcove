@@ -888,7 +888,7 @@ export class PSIParticipant {
       elements,
       () =>
         decodePsiBinaryFrame(this.id, "request", () =>
-          this.engine.processClientRequest(request),
+          this.engine.processClientRequest(request, declared.receiverRecords),
         ),
     );
     await sendPsiSet(conn, response);
