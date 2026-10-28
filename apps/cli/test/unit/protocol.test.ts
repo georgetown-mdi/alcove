@@ -10,6 +10,9 @@ import type {
   BuiltExchangeRecord,
   DualSignedRecord,
   ExchangeRecord,
+  HandshakeRole,
+  ReleasableTermsRotation,
+  TermsRotation,
   VerificationKeys,
 } from "@alcove/core";
 
@@ -48,6 +51,16 @@ const mockState = vi.hoisted(() => ({
   // What each key file held just before its rotated-token save replaced it, so
   // a case can read the marker the save cleared.
   keyFileBeforeRotation: {} as Record<string, unknown>,
+  // The terms exchange's rotation step for a case that drives one other than
+  // a proceeding exchange, in place of the mocked runExchange's default; a
+  // throw from it ends that party's run there.
+  termsRotation: undefined as
+    | ((
+        role: HandshakeRole,
+        rotation: TermsRotation,
+        nextSecret: string,
+      ) => Promise<void>)
+    | undefined,
   // Whether the transport close reports the ceiling as reached, for the case
   // that reads the notice a run states about its own files. Every other test
   // gets the real close and its real outcome.
@@ -139,20 +152,21 @@ async function waitForBothKeysRotated(
   }
 }
 
-// Assert none of runProtocol's generic recovery-advisory lines was logged. A
-// marked (markStatesItsOwnNextStep) error must suppress each, since each would
-// contradict the error's own specific hint.
+// Assert none of runProtocol's rotation lines was logged: a marked
+// (markStatesItsOwnNextStep) error must suppress each, since each would
+// contradict the error's own specific hint, and a run that rotated nobody has
+// none to state.
 function expectNoGenericRecoveryAdvisory(errors: readonly string[]): void {
-  expect(errors.every((m) => !m.includes("key exchange was in progress"))).toBe(
-    true,
-  );
-  expect(errors.every((m) => !m.includes("rotated token was not saved"))).toBe(
-    true,
-  );
-  expect(errors.every((m) => !m.includes("already rotated and saved"))).toBe(
-    true,
-  );
+  for (const line of ROTATION_LINE_PHRASES)
+    expect(errors.filter((m) => m.includes(line))).toEqual([]);
 }
+
+/** A phrase of each rotation line runProtocol can state. */
+const ROTATION_LINE_PHRASES = [
+  "had not saved the next shared secret",
+  "already rotated and saved",
+  "rotated and saved, but a post-handshake",
+] as const;
 
 // Poll dropDir until B's rendezvous (-hello) file appears, then backdate every
 // entry's mtime by 3 s. Party B starts first; an older mtime forces B to be
@@ -256,6 +270,55 @@ vi.mock("../../src/transportTeardown", async (importActual) => {
 
 vi.mock("@alcove/core", async (importActual) => {
   const actual = await importActual<typeof import("@alcove/core")>();
+  const { deriveNextSecret } = await import("@alcove/core/testing");
+  // The real runExchange stores the next secret inside its terms exchange
+  // through `options.rotation`; every implementation this mock takes makes that
+  // store first, as a proceeding terms exchange does -- the responder reports
+  // that the initiator may hold the next secret, then each side stores -- with
+  // a fixed responder value so both parties store the same secret. A case that
+  // drives another terms exchange sets `mockState.termsRotation`.
+  const storeRotation = async (
+    role: unknown,
+    options: unknown,
+  ): Promise<void> => {
+    const rotation = (options as { rotation?: TermsRotation } | undefined)
+      ?.rotation;
+    if (rotation === undefined) return;
+    const { keyAgreementOutput, initiatorValue } = rotation.inputs;
+    const nextSecret = await deriveNextSecret(
+      keyAgreementOutput,
+      initiatorValue,
+      new Uint8Array(32),
+    );
+    if (mockState.termsRotation !== undefined) {
+      await mockState.termsRotation(
+        role as HandshakeRole,
+        rotation,
+        nextSecret,
+      );
+      return;
+    }
+    if (role === "responder") rotation.partnerMayHoldNextSecret?.(true);
+    await rotation.store(nextSecret);
+  };
+  const storingFirst =
+    (impl: (...args: unknown[]) => unknown) =>
+    async (...args: unknown[]): Promise<unknown> => {
+      await storeRotation(args[1], args[3]);
+      return impl(...args);
+    };
+  const runExchangeMock = vi.fn();
+  const setImplementation =
+    runExchangeMock.mockImplementation.bind(runExchangeMock);
+  const setImplementationOnce =
+    runExchangeMock.mockImplementationOnce.bind(runExchangeMock);
+  runExchangeMock.mockImplementation = (impl) =>
+    setImplementation(storingFirst(impl as (...args: unknown[]) => unknown));
+  runExchangeMock.mockImplementationOnce = (impl) =>
+    setImplementationOnce(
+      storingFirst(impl as (...args: unknown[]) => unknown),
+    );
+  runExchangeMock.mockImplementation(defaultRunExchange);
   return {
     ...actual,
     // Replace getLogger so that runProtocol's log.warn / log.error calls are
@@ -275,7 +338,7 @@ vi.mock("@alcove/core", async (importActual) => {
       debug: () => {},
       trace: () => {},
     }),
-    runExchange: vi.fn().mockImplementation(defaultRunExchange),
+    runExchange: runExchangeMock,
     authenticateConnection: vi.fn(actual.authenticateConnection),
     // The record a terminated run hands back on its error, and the predicate for
     // the case where one was owed and its build threw. Core marks the error
@@ -387,6 +450,7 @@ import {
   RoundSetLimitError,
   parseAgreedTerms,
   markStatesItsOwnNextStep,
+  statesItsOwnNextStep,
 } from "@alcove/core";
 import {
   InvitationTermDivergenceError,
@@ -548,6 +612,7 @@ beforeEach(() => {
   mockState.onRotationMarked = undefined;
   mockState.teardownGate = undefined;
   mockState.keyFileBeforeRotation = {};
+  mockState.termsRotation = undefined;
   mockState.expireTeardown = false;
   mockState.memoryReadings = undefined;
   fs.mkdirSync(dropDir);
@@ -3150,78 +3215,410 @@ test("an unauthenticated run with nothing matched warns and states that no secre
   expect(mockState.warnings).toStrictEqual(ZERO_MATCH_WARNINGS);
 }, 20_000);
 
-test("the key exchange marks each key file before the rotation and the rotated save clears it", async () => {
+/** Run B first and backdate its rendezvous file, so B is the responder and A
+ * the initiator. */
+async function runResponderBThenInitiatorA(
+  keyFileA: string,
+  keyFileB: string,
+  options: Partial<Parameters<typeof runProtocol>[0]> = {},
+): Promise<[PromiseSettledResult<unknown>, PromiseSettledResult<unknown>]> {
+  const run = (keyFilePath: string, loggerName: string) =>
+    runProtocol({
+      connection: {
+        channel: "filedrop",
+        path: dropDir,
+        options: TWO_PARTY_OPTIONS,
+      },
+      auth: { sharedSecret: TOKEN_A, keyFilePath },
+      prepared: minimalPrepared,
+      output: undefined,
+      verbosity: -1,
+      loggerName,
+      ...options,
+    });
+  const b = run(keyFileB, "test-b");
+  await backdateDropDirRendezvousFile(dropDir);
+  const a = run(keyFileA, "test-a");
+  const [resultA, resultB] = await Promise.allSettled([a, b]);
+  return [resultA, resultB];
+}
+
+test("the key exchange marks only the responder's key file before the rotation, and the rotated save clears it", async () => {
   const keyFileA = path.join(tmpDir, "a.key");
   const keyFileB = path.join(tmpDir, "b.key");
   saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
   saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
 
   const before = Date.now();
-  await Promise.all(
-    [keyFileA, keyFileB].map((keyFilePath, index) =>
-      runProtocol({
-        connection: {
-          channel: "filedrop",
-          path: dropDir,
-          options: TWO_PARTY_OPTIONS,
-        },
-        auth: { sharedSecret: TOKEN_A, keyFilePath },
-        prepared: minimalPrepared,
-        output: path.join(tmpDir, `out-${index}.csv`),
-        verbosity: -1,
-        loggerName: `test-${index}`,
-      }),
-    ),
-  );
+  const results = await runResponderBThenInitiatorA(keyFileA, keyFileB);
+  for (const result of results) expect(result.status).toBe("fulfilled");
 
+  const replacedA = mockState.keyFileBeforeRotation[keyFileA] as {
+    sharedSecret: string;
+    rotationInFlightSince?: string;
+  };
+  const replacedB = mockState.keyFileBeforeRotation[keyFileB] as {
+    sharedSecret: string;
+    rotationInFlightSince?: string;
+  };
+  // The initiator stores first, so only the responder can be left behind.
+  expect(replacedA).toEqual({ sharedSecret: TOKEN_A });
+  expect(replacedB.sharedSecret).toBe(TOKEN_A);
+  expect(
+    Date.parse(replacedB.rotationInFlightSince ?? ""),
+  ).toBeGreaterThanOrEqual(before - 1000);
   for (const keyFilePath of [keyFileA, keyFileB]) {
-    const replaced = mockState.keyFileBeforeRotation[keyFilePath] as {
-      sharedSecret: string;
-      rotationInFlightSince?: string;
-    };
-    expect(replaced.sharedSecret).toBe(TOKEN_A);
-    expect(
-      Date.parse(replaced.rotationInFlightSince ?? ""),
-    ).toBeGreaterThanOrEqual(before - 1000);
     const after = loadKeyFile(keyFilePath);
     expect(after?.sharedSecret).not.toBe(TOKEN_A);
     expect(after?.rotationInFlightSince).toBeUndefined();
   }
 }, 20_000);
 
-test("a run that stops between the handshake and the rotated save leaves its marker, and only on its side", async () => {
+test("a marker an earlier run left stays on an initiator until its rotated save", async () => {
+  const keyFileA = path.join(tmpDir, "a.key");
+  const keyFileB = path.join(tmpDir, "b.key");
+  const earlier = new Date(Date.now() - 86_400_000).toISOString();
+  saveKeyFile(keyFileA, {
+    sharedSecret: TOKEN_A,
+    rotationInFlightSince: earlier,
+  });
+  saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+
+  const results = await runResponderBThenInitiatorA(keyFileA, keyFileB);
+  for (const result of results) expect(result.status).toBe("fulfilled");
+  // The initiator wrote no marker of its own and kept the earlier one until
+  // the save superseded it.
+  expect(mockState.keyFileBeforeRotation[keyFileA]).toEqual({
+    sharedSecret: TOKEN_A,
+    rotationInFlightSince: earlier,
+  });
+  expect(loadKeyFile(keyFileA)?.rotationInFlightSince).toBeUndefined();
+}, 20_000);
+
+test("a responder that stops before its rotated save leaves its marker, and only on its side", async () => {
   const keyFileA = path.join(tmpDir, "a.key");
   const keyFileB = path.join(tmpDir, "b.key");
   saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
   saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
-  mockState.unwritableKeyFilePath = keyFileA;
+  mockState.unwritableKeyFilePath = keyFileB;
 
-  const [resultA] = await Promise.allSettled(
-    [keyFileA, keyFileB].map((keyFilePath, index) =>
-      runProtocol({
-        connection: {
-          channel: "filedrop",
-          path: dropDir,
-          options: TWO_PARTY_OPTIONS,
-        },
-        auth: { sharedSecret: TOKEN_A, keyFilePath },
-        prepared: minimalPrepared,
-        output: undefined,
-        verbosity: -1,
-        loggerName: `test-${index}`,
-      }),
-    ),
-  );
-  expect(resultA.status).toBe("rejected");
+  const [, resultB] = await runResponderBThenInitiatorA(keyFileA, keyFileB);
+  expect(resultB.status).toBe("rejected");
 
-  // This side still holds the secret the handshake replaced, marked; the
-  // partner saved the rotated secret, and its save cleared its own marker.
-  const stranded = loadKeyFile(keyFileA);
+  // The responder still holds the secret the handshake used, marked; the
+  // initiator saved the next secret, which has no marker.
+  const stranded = loadKeyFile(keyFileB);
   expect(stranded?.sharedSecret).toBe(TOKEN_A);
   expect(stranded?.rotationInFlightSince).toBeDefined();
-  const partner = loadKeyFile(keyFileB);
+  const partner = loadKeyFile(keyFileA);
   expect(partner?.sharedSecret).not.toBe(TOKEN_A);
   expect(partner?.rotationInFlightSince).toBeUndefined();
+}, 20_000);
+
+/**
+ * Drive each party's terms exchange through `steps`, its rotation step by
+ * role, once both parties have reached it: the first to end its run otherwise
+ * leaves an abort marker the other may read before it gets there.
+ */
+function driveTermsExchange(
+  steps: Record<
+    HandshakeRole,
+    (rotation: TermsRotation, nextSecret: string) => Promise<void>
+  >,
+): void {
+  let arrived = 0;
+  let bothArrived: () => void = () => {};
+  const both = new Promise<void>((resolve) => {
+    bothArrived = resolve;
+  });
+  mockState.termsRotation = async (role, rotation, nextSecret) => {
+    arrived += 1;
+    if (arrived === 2) bothArrived();
+    await both;
+    await steps[role](rotation, nextSecret);
+  };
+}
+
+/** The rotation lines runProtocol logged, from both parties. */
+function rotationLines(): string[] {
+  return mockState.errors.filter((m) =>
+    ROTATION_LINE_PHRASES.some((phrase) => m.includes(phrase)),
+  );
+}
+
+// The store order (docs/spec/PROTOCOL.md, "The rotation at the terms
+// exchange"): the responder sends its value only in an agreeing terms message
+// 2, the initiator stores before it sends proceed, and the responder stores on
+// reading proceed. A run refused at the terms exchange rotates nobody.
+test("a refusal by the responder at terms message 2 rotates nobody: no rotated-token line on either side, and the responder's marker is removed", async () => {
+  const keyFileA = path.join(tmpDir, "a.key");
+  const keyFileB = path.join(tmpDir, "b.key");
+  saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
+  saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+  const marked: string[] = [];
+  mockState.onRotationMarked = (keyFilePath) => marked.push(keyFilePath);
+  driveTermsExchange({
+    responder: () =>
+      Promise.reject(
+        new ProtocolRefusalError("linkage terms are incompatible: deduplicate"),
+      ),
+    initiator: () =>
+      Promise.reject(
+        new ProtocolRefusalError(
+          "Your partner stopped the exchange because the linkage terms differ",
+        ),
+      ),
+  });
+
+  const results = await runResponderBThenInitiatorA(keyFileA, keyFileB);
+
+  for (const result of results) {
+    expect(result.status).toBe("rejected");
+    // The refusal's own step rules out a retry unchanged; no line beneath it
+    // names a rotated token or a new invitation.
+    expect(
+      fixedNextStep((result as PromiseRejectedResult).reason),
+    ).toBeDefined();
+  }
+  expect(rotationLines()).toEqual([]);
+  expect(
+    [...mockState.errors, ...mockState.warnings].filter((m) =>
+      /rotated|new invitation/.test(m),
+    ),
+  ).toEqual([]);
+  expect(marked).toEqual([keyFileB]);
+  expect(loadKeyFile(keyFileA)).toEqual({ sharedSecret: TOKEN_A });
+  expect(loadKeyFile(keyFileB)).toEqual({ sharedSecret: TOKEN_A });
+}, 20_000);
+
+test("a refusal by the initiator at its proceed rotates nobody: no rotated-token line on either side, and the responder's marker is removed", async () => {
+  const keyFileA = path.join(tmpDir, "a.key");
+  const keyFileB = path.join(tmpDir, "b.key");
+  saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
+  saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+  driveTermsExchange({
+    // The responder sent its value, then read the initiator's abort, which the
+    // initiator sends before any store.
+    responder: (rotation) => {
+      rotation.partnerMayHoldNextSecret?.(true);
+      rotation.partnerMayHoldNextSecret?.(false);
+      return Promise.reject(
+        new ProtocolRefusalError(
+          "Your partner stopped the exchange at the linkage terms",
+        ),
+      );
+    },
+    initiator: () =>
+      Promise.reject(
+        new ProtocolRefusalError("linkage terms are incompatible: deduplicate"),
+      ),
+  });
+
+  const results = await runResponderBThenInitiatorA(keyFileA, keyFileB);
+
+  for (const result of results) expect(result.status).toBe("rejected");
+  expect(rotationLines()).toEqual([]);
+  expect(
+    [...mockState.errors, ...mockState.warnings].filter((m) =>
+      /rotated|new invitation/.test(m),
+    ),
+  ).toEqual([]);
+  expect(loadKeyFile(keyFileA)).toEqual({ sharedSecret: TOKEN_A });
+  expect(loadKeyFile(keyFileB)).toEqual({ sharedSecret: TOKEN_A });
+}, 20_000);
+
+test.each([
+  ["once its save has run", true],
+  ["once a run that saved nothing has ended", false],
+])(
+  "the rotation the run holds releases the next secret's inputs %s",
+  async (_case, proceeds) => {
+    const keyFileA = path.join(tmpDir, "a.key");
+    const keyFileB = path.join(tmpDir, "b.key");
+    saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
+    saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+    const held: Array<ReleasableTermsRotation> = [];
+    const step = async (
+      rotation: TermsRotation,
+      nextSecret: string,
+    ): Promise<void> => {
+      const releasable = rotation as ReleasableTermsRotation;
+      held.push(releasable);
+      expect(releasable.holdsInputs()).toBe(true);
+      if (!proceeds)
+        throw new ProtocolRefusalError("linkage terms are incompatible");
+      await rotation.store(nextSecret);
+      expect(releasable.holdsInputs()).toBe(false);
+    };
+    driveTermsExchange({ initiator: step, responder: step });
+
+    const results = await runResponderBThenInitiatorA(keyFileA, keyFileB);
+
+    for (const result of results)
+      expect(result.status).toBe(proceeds ? "fulfilled" : "rejected");
+    expect(held).toHaveLength(2);
+    for (const rotation of held) {
+      expect(rotation.holdsInputs()).toBe(false);
+      expect(() => rotation.inputs).toThrow(InternalConsistencyError);
+    }
+  },
+  20_000,
+);
+
+test.skipIf(process.platform === "win32")(
+  "a failed save on the initiator rotates nobody: its error names no rotated token on the partner's side and exits 69",
+  async () => {
+    // A directory at the temp path saveKeyFile writes through fails the
+    // initiator's save, as in the responder's save-failure case below.
+    const keyFileA = path.join(tmpDir, "a.key");
+    const keyFileB = path.join(tmpDir, "b.key");
+    fs.mkdirSync(`${keyFileA}.tmp.${process.pid}`);
+    saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+    driveTermsExchange({
+      initiator: (rotation, nextSecret) =>
+        Promise.resolve(rotation.store(nextSecret)),
+      // The responder sent its value, then read the initiator's abort in
+      // place of `proceed`.
+      responder: (rotation) => {
+        rotation.partnerMayHoldNextSecret?.(true);
+        rotation.partnerMayHoldNextSecret?.(false);
+        return Promise.reject(
+          new ProtocolRefusalError(
+            "Your partner stopped the exchange at the linkage terms",
+          ),
+        );
+      },
+    });
+
+    const [resultA, resultB] = await runResponderBThenInitiatorA(
+      keyFileA,
+      keyFileB,
+    );
+
+    expect(resultA.status).toBe("rejected");
+    expect(resultB.status).toBe("rejected");
+    const reason = (resultA as PromiseRejectedResult).reason as Error;
+    expect(reason.message).toContain(
+      "authentication succeeded, but the next shared secret could not be " +
+        "saved to ",
+    );
+    expect(reason.message).toContain(
+      "Your partner did not save it. Fix the key file's location or " +
+        "permissions, then run the same command again; if authentication " +
+        "fails on that run, ask your partner for a new invitation.",
+    );
+    expect(reason.message).not.toContain("rotated token");
+    expect(statesItsOwnNextStep(reason)).toBe(true);
+    expect(exitCodeForError(reason)).toBe(69);
+    expect(rotationLines()).toEqual([]);
+    expect(fs.existsSync(keyFileA)).toBe(false);
+    expect(loadKeyFile(keyFileB)).toEqual({ sharedSecret: TOKEN_A });
+  },
+  20_000,
+);
+
+test("a failure after the proceed: the initiator, which stored first, names a new invitation if the retry fails, and the responder that stored after it does not", async () => {
+  const keyFileA = path.join(tmpDir, "a.key");
+  const keyFileB = path.join(tmpDir, "b.key");
+  saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
+  saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+  const dropped = () =>
+    new ConnectionError("the exchange directory went away", "transport");
+  driveTermsExchange({
+    initiator: async (rotation, nextSecret) => {
+      await rotation.store(nextSecret);
+      throw dropped();
+    },
+    responder: async (rotation, nextSecret) => {
+      rotation.partnerMayHoldNextSecret?.(true);
+      await rotation.store(nextSecret);
+      throw dropped();
+    },
+  });
+
+  const results = await runResponderBThenInitiatorA(keyFileA, keyFileB);
+
+  for (const result of results) expect(result.status).toBe("rejected");
+  expect(rotationLines().sort()).toEqual([
+    "The shared secret was already rotated and saved before this error. " +
+      "Retry the exchange with the same key file; if authentication fails " +
+      "on retry, ask your partner for a new invitation.",
+    "The shared secret was already rotated and saved before this error. " +
+      "Your partner saved it too, so retry the exchange with the same key " +
+      "file.",
+  ]);
+}, 20_000);
+
+test("a failure after the proceed that the responder never read: it keeps its marker and names a new invitation if the retry fails, as does the initiator", async () => {
+  const keyFileA = path.join(tmpDir, "a.key");
+  const keyFileB = path.join(tmpDir, "b.key");
+  saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
+  saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+  const dropped = () =>
+    new ConnectionError("the exchange directory went away", "transport");
+  driveTermsExchange({
+    // The proceed is lost: the initiator stored, and both runs end on the
+    // transport.
+    initiator: async (rotation, nextSecret) => {
+      await rotation.store(nextSecret);
+      throw dropped();
+    },
+    responder: (rotation) => {
+      rotation.partnerMayHoldNextSecret?.(true);
+      return Promise.reject(dropped());
+    },
+  });
+
+  const results = await runResponderBThenInitiatorA(keyFileA, keyFileB);
+
+  for (const result of results) expect(result.status).toBe("rejected");
+  expect(rotationLines().sort()).toEqual([
+    "The shared secret was already rotated and saved before this error. " +
+      "Retry the exchange with the same key file; if authentication fails " +
+      "on retry, ask your partner for a new invitation.",
+    "This side had not saved the next shared secret when this error " +
+      "occurred, and your partner may already have saved it. Retry the " +
+      "exchange with the existing key file; if authentication fails on " +
+      "retry, ask your partner for a new invitation.",
+  ]);
+  const behind = loadKeyFile(keyFileB);
+  expect(behind?.sharedSecret).toBe(TOKEN_A);
+  expect(behind?.rotationInFlightSince).toBeDefined();
+  expect(loadKeyFile(keyFileA)?.sharedSecret).not.toBe(TOKEN_A);
+}, 20_000);
+
+test("a responder whose failure after its value rules out a retry states the token state without prescribing one", async () => {
+  const keyFileA = path.join(tmpDir, "a.key");
+  const keyFileB = path.join(tmpDir, "b.key");
+  saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
+  saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+  driveTermsExchange({
+    initiator: async (rotation, nextSecret) => {
+      await rotation.store(nextSecret);
+      throw new ConnectionError(
+        "the exchange directory went away",
+        "transport",
+      );
+    },
+    // Terms message 3 does not parse.
+    responder: (rotation) => {
+      rotation.partnerMayHoldNextSecret?.(true);
+      return Promise.reject(
+        new ConnectionError("the partner's decision did not parse", "protocol"),
+      );
+    },
+  });
+
+  const [, resultB] = await runResponderBThenInitiatorA(keyFileA, keyFileB);
+
+  expect(fixedNextStep((resultB as PromiseRejectedResult).reason)).toBe(
+    PARTNER_REFUSED_NEXT_STEP,
+  );
+  expect(rotationLines().filter((m) => m.includes("had not saved"))).toEqual([
+    "This side had not saved the next shared secret when this error " +
+      "occurred, and your partner may already have saved it, so the next " +
+      "run may need a new invitation from your partner.",
+  ]);
 }, 20_000);
 
 test("an exclusive rotated save refuses a key file already at the path and leaves it untouched", async () => {
@@ -3260,36 +3657,27 @@ test("an exclusive rotated save refuses a key file already at the path and leave
 test("a marker that cannot be written stops the run before the key exchange, the secret unchanged", async () => {
   const keyFileA = path.join(tmpDir, "a.key");
   saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
-  mockState.unmarkableKeyFilePath = keyFileA;
   const keyFileB = path.join(tmpDir, "b.key");
   saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+  mockState.unmarkableKeyFilePath = keyFileB;
 
-  const [resultA] = await Promise.allSettled(
-    [keyFileA, keyFileB].map((keyFilePath, index) =>
-      runProtocol({
-        connection: {
-          channel: "filedrop",
-          path: dropDir,
-          options: {
-            ...TWO_PARTY_OPTIONS,
-            peerTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
-            inactivityTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
-          },
-        },
-        auth: { sharedSecret: TOKEN_A, keyFilePath },
-        prepared: minimalPrepared,
-        output: undefined,
-        verbosity: -1,
-        loggerName: `test-${index}`,
-      }),
-    ),
-  );
-  expect(resultA.status).toBe("rejected");
-  const thrown = (resultA as PromiseRejectedResult).reason as Error;
+  const [, resultB] = await runResponderBThenInitiatorA(keyFileA, keyFileB, {
+    connection: {
+      channel: "filedrop",
+      path: dropDir,
+      options: {
+        ...TWO_PARTY_OPTIONS,
+        peerTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
+        inactivityTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
+      },
+    },
+  });
+  expect(resultB.status).toBe("rejected");
+  const thrown = (resultB as PromiseRejectedResult).reason as Error;
   expect(thrown.message).toContain("the key exchange did not start");
   expect(thrown.message).toContain("The shared secret is unchanged");
-  expect(loadKeyFile(keyFileA)).toEqual({ sharedSecret: TOKEN_A });
-  expect(mockState.keyFileBeforeRotation[keyFileA]).toBeUndefined();
+  expect(loadKeyFile(keyFileB)).toEqual({ sharedSecret: TOKEN_A });
+  expect(mockState.keyFileBeforeRotation[keyFileB]).toBeUndefined();
 }, 20_000);
 
 test("a marker whose write fails after the rename stops the run before the key exchange, the secret unchanged", async () => {
@@ -3311,30 +3699,22 @@ test("a marker whose write fails after the rename stops the run before the key e
     });
   let results: PromiseSettledResult<unknown>[];
   try {
-    results = await Promise.allSettled(
-      [keyFileA, keyFileB].map((keyFilePath, index) =>
-        runProtocol({
-          connection: {
-            channel: "filedrop",
-            path: dropDir,
-            options: {
-              ...TWO_PARTY_OPTIONS,
-              peerTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
-              inactivityTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
-            },
-          },
-          auth: { sharedSecret: TOKEN_A, keyFilePath },
-          prepared: minimalPrepared,
-          output: undefined,
-          verbosity: -1,
-          loggerName: `test-${index}`,
-        }),
-      ),
-    );
+    // A is the responder, the side that writes a marker.
+    results = await runResponderBThenInitiatorA(keyFileB, keyFileA, {
+      connection: {
+        channel: "filedrop",
+        path: dropDir,
+        options: {
+          ...TWO_PARTY_OPTIONS,
+          peerTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
+          inactivityTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
+        },
+      },
+    });
   } finally {
     renameSpy.mockRestore();
   }
-  const [resultA] = results;
+  const [, resultA] = results;
   expect(resultA.status).toBe("rejected");
   const thrown = (resultA as PromiseRejectedResult).reason as Error;
   expect(thrown.message).toContain("the key exchange did not start");
@@ -3432,9 +3812,19 @@ test("a key exchange the partner never answers leaves the marker set", async () 
   saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
   const keyFileB = path.join(tmpDir, "b.key");
   saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
-  // The partner stops before its key exchange, so this side's marked key
-  // exchange ends on the transport, not on a failed-closed handshake.
-  mockState.unmarkableKeyFilePath = keyFileB;
+  // The partner, the initiator, stops before its key exchange, so this side's
+  // marked key exchange ends on the transport, not on a failed-closed
+  // handshake.
+  const realAuthenticate = vi
+    .mocked(authenticateConnection)
+    .getMockImplementation()!;
+  vi.mocked(authenticateConnection).mockImplementation(
+    async (mc, authentication, role, requestEncryption) => {
+      if (role === "initiator")
+        throw new ConnectionError("the partner stopped", "transport");
+      return realAuthenticate(mc, authentication, role, requestEncryption);
+    },
+  );
   // The partner's close sweeps its hello; a partner that joined and closed
   // before this side next listed the directory would strand this side in the
   // rendezvous, short of its marker. Hold every close until this side's marker
@@ -3451,26 +3841,18 @@ test("a key exchange the partner never answers leaves the marker set", async () 
     }),
   ]);
 
-  const [resultA] = await Promise.allSettled(
-    [keyFileA, keyFileB].map((keyFilePath, index) =>
-      runProtocol({
-        connection: {
-          channel: "filedrop",
-          path: dropDir,
-          options: {
-            ...TWO_PARTY_OPTIONS,
-            peerTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
-            inactivityTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
-          },
-        },
-        auth: { sharedSecret: TOKEN_A, keyFilePath },
-        prepared: minimalPrepared,
-        output: undefined,
-        verbosity: -1,
-        loggerName: `test-${index}`,
-      }),
-    ),
-  );
+  // A is the responder, the side that writes a marker.
+  const [, resultA] = await runResponderBThenInitiatorA(keyFileB, keyFileA, {
+    connection: {
+      channel: "filedrop",
+      path: dropDir,
+      options: {
+        ...TWO_PARTY_OPTIONS,
+        peerTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
+        inactivityTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
+      },
+    },
+  });
   clearTimeout(backstop);
   expect(resultA.status).toBe("rejected");
   const left = loadKeyFile(keyFileA);
@@ -5106,6 +5488,8 @@ test("runProtocol marks the key-file path when the rotated token cannot be saved
   saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
   mockState.unwritableKeyFilePath = keyFileA;
 
+  // A starts first and is backdated, so it is the responder, whose save
+  // follows the initiator's.
   const pA = runProtocol({
     connection: {
       channel: "filedrop",
@@ -5118,6 +5502,7 @@ test("runProtocol marks the key-file path when the rotated token cannot be saved
     verbosity: -1,
     loggerName: "test-a",
   });
+  await backdateDropDirRendezvousFile(dropDir);
   const pB = runProtocol({
     connection: {
       channel: "filedrop",
@@ -5443,16 +5828,14 @@ test.each([
       ),
     code: 76,
     nextStep: PARTNER_REFUSED_NEXT_STEP,
-    advisory: "Authentication started but the rotated token was not saved",
-    absent: "Retry the exchange with the existing key file",
+    advisory: undefined,
   },
   {
     failure: "an internal fault",
     raise: () => new InternalConsistencyError("runKex: psk must be 32 bytes"),
     code: 70,
     nextStep: INTERNAL_FAULT_NEXT_STEP,
-    advisory: "Authentication started but the rotated token was not saved",
-    absent: "Retry the exchange with the existing key file",
+    advisory: undefined,
   },
   {
     failure: "an authentication failure",
@@ -5460,7 +5843,6 @@ test.each([
     code: 77,
     nextStep: undefined,
     advisory: "fails the same way. Ask your partner for a new invitation",
-    absent: "Retry the exchange with the existing key file",
   },
   {
     failure: "a transport failure",
@@ -5468,18 +5850,15 @@ test.each([
       new ConnectionError("the exchange directory went away", "transport"),
     code: 69,
     nextStep: undefined,
-    advisory: "Retry the exchange with the existing key file",
-    absent: "rotated token was not saved",
+    advisory: undefined,
   },
 ])(
-  "runProtocol gives the key-exchange advisory the exit code allows for $failure",
-  async ({ raise, code, nextStep, advisory, absent }) => {
-    // The failure lands after authentication started and before this side
-    // saved a rotated token, so the partner may hold one this side does not.
-    // A fixed step beneath the error rules out a retry, so the advisory states
-    // the token state without prescribing one. An authentication failure has
-    // no fixed step, and its advisory states the exit-77 step: no retry.
-    // Without a fixed step any other failure prescribes the retry.
+  "runProtocol states no rotated token after a key-exchange failure, only the step an authentication failure needs, for $failure",
+  async ({ raise, code, nextStep, advisory }) => {
+    // Both sides store the next secret at the terms exchange, which follows
+    // the key exchange, so a failure in the key exchange rotates nobody. An
+    // authentication failure has no fixed step, and its line states the
+    // exit-77 step: no retry.
     const keyFileA = path.join(tmpDir, "a.key");
     const keyFileB = path.join(tmpDir, "b.key");
     saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
@@ -5521,13 +5900,11 @@ test.each([
     const reason = (resultA as PromiseRejectedResult).reason;
     expect(exitCodeForError(reason)).toBe(code);
     expect(fixedNextStep(reason)).toBe(nextStep);
-    expect(mockState.errors.filter((m) => m.includes(advisory))).toHaveLength(
-      2,
-    );
-    expect(mockState.errors.some((m) => m.includes(absent))).toBe(false);
-    expect(
-      mockState.errors.some((m) => m.includes("already rotated and saved")),
-    ).toBe(false);
+    if (advisory !== undefined)
+      expect(mockState.errors.filter((m) => m.includes(advisory))).toHaveLength(
+        2,
+      );
+    expectNoGenericRecoveryAdvisory(mockState.errors);
   },
   20_000,
 );
@@ -8693,20 +9070,20 @@ test("a failed onAuthenticated hook under --event-stream emits a warning event b
     vi.mocked(fs.fstatSync).mockRestore();
   }
 
-  // The hook runs at the moment of acceptance, before the exchange proper, so
-  // its warning precedes even the stage list.
+  // The hook runs right after the rotated save, which the terms exchange
+  // makes, so its warning follows the stage list and precedes the rest.
   const lines = takeFd3Lines();
   expect(lines.map((l) => l.type)).toEqual([
-    "warning",
     "stages",
+    "warning",
     "metrics",
     "result",
   ]);
-  expect(lines[0].source).toBe("persistenceLoss");
-  expect(String(lines[0].message)).toContain("did not complete");
+  expect(lines[1].source).toBe("persistenceLoss");
+  expect(String(lines[1].message)).toContain("did not complete");
   // The cause stays on the human log, which the warning event does not repeat
   // (its own escape pass would double-escape rendered error text).
-  expect(String(lines[0].message)).not.toContain("simulated config write");
+  expect(String(lines[1].message)).not.toContain("simulated config write");
   expect(
     mockState.errors.some((m) => m.includes("simulated config write failure")),
   ).toBe(true);

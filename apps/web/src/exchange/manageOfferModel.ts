@@ -177,8 +177,8 @@ export interface ManagedDepositInputs {
    * the list committed on the review of the invitation this browser accepted
    * or created; `undefined` where none was set. */
   allowedRelays: ReadonlyArray<string> | undefined;
-  /** The shared secret the completed run's handshake rotated to, stored as the
-   * record's live secret. */
+  /** The next shared secret the completed run's terms exchange derived, stored
+   * as the record's live secret. */
   rotatedSecret: string;
   /** The operator's label, opt-in max-age policy, and retention note. */
   choices: ManageOfferChoices;

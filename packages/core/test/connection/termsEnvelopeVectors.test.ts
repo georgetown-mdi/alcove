@@ -15,7 +15,10 @@ import type { LinkageTerms } from "../../src/config/linkageTermsSchema";
 import type { MessageConnection } from "../../src/connection/messageConnection";
 import type { PresentedHostKey } from "../../src/connection/fileSyncConnection";
 import type { SigningCertificate } from "../../src/records/signingIdentity";
-import type { TermsExchangeResult } from "../../src/protocolSetup";
+import type {
+  TermsExchangeResult,
+  TermsRotation,
+} from "../../src/protocolSetup";
 
 /**
  * Conformance replay of test/vectors/terms-envelope-vectors.json: the field
@@ -48,6 +51,16 @@ interface PartyInputs {
   /** Index into the file's `signingCertificates`, absent for a party that will
    * not sign and so presents none. */
   certificate?: number;
+  /** Whether the party passes the file's fixed `rotation`, as an
+   * authenticated run does. */
+  rotates?: boolean;
+}
+
+interface RotationFixture {
+  sessionKeyHex: string;
+  keyAgreementOutputHex: string;
+  initiatorValueHex: string;
+  responderValueHex: string;
 }
 
 interface ReadBack {
@@ -71,6 +84,7 @@ interface EnvelopeVectors {
   /** Every field each slot's schema admits, whether or not a frame sends it. */
   envelopeFields: Record<string, Array<string>>;
   linkageTerms: Record<LinkageTermsFixture, LinkageTerms>;
+  rotation: RotationFixture;
   scenarios: Array<{
     name: string;
     description: string;
@@ -131,6 +145,25 @@ function readBack(result: TermsExchangeResult): ReadBack {
   };
 }
 
+function fromHex(hex: string): Uint8Array<ArrayBuffer> {
+  return Uint8Array.from(Buffer.from(hex, "hex"));
+}
+
+function rotationFor(side: PartyInputs): TermsRotation | undefined {
+  if (side.rotates !== true) return undefined;
+  const fixture = vectors.rotation;
+  return {
+    inputs: {
+      sessionKey: fromHex(fixture.sessionKeyHex),
+      keyAgreementOutput: fromHex(fixture.keyAgreementOutputHex),
+      initiatorValue: fromHex(fixture.initiatorValueHex),
+      expires: undefined,
+    },
+    store: () => {},
+    fixedResponderValue: fromHex(fixture.responderValueHex),
+  };
+}
+
 function drive(
   conn: MessageConnection,
   role: "initiator" | "responder",
@@ -149,6 +182,7 @@ function drive(
       : vectors.signingCertificates[side.certificate],
     undefined,
     side.receiveCeiling,
+    rotationFor(side),
   );
 }
 

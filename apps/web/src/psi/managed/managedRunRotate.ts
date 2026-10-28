@@ -5,9 +5,9 @@
  * half is {@link ./managedExchangeRun.ts}.
  *
  * Sequence: docs/spec/MANAGED_EXCHANGE_RECORD.md, "Persist-before-success
- * ordering". {@link runRotationCriticalSection} resolves the value the data
- * exchange needs only after the rotated secret persists, so the ordering is a
- * property of the control flow.
+ * ordering". {@link storeRotatedSecret} is the write core's terms exchange awaits
+ * at this side's point in the store order, so the ordering is a property of
+ * the control flow.
  */
 
 import { rotatedKeyExpires } from "@alcove/core";
@@ -18,7 +18,7 @@ import type {
 } from "./managedExchangeRecord";
 
 /**
- * The fields a successful handshake advances on the stored record, and nothing
+ * The fields a run's rotation advances on the stored record, and nothing
  * else, so a field-scoped write cannot overwrite a concurrent write with a
  * stale secret or document. `expires: null` clears a standing bound when no
  * policy is set, distinct from leaving it untouched.
@@ -107,14 +107,11 @@ export class RotationPersistError extends Error {
   }
 }
 
-/** The handshake and the durable persist, injected by the platform half. The
- * lock is the caller's and spans the whole run. */
-export interface ManagedRotationCriticalSection<THandshake> {
-  /** Run the authenticated handshake and yield the rotated secret plus what the
-   * data-exchange phase needs. A throw aborts the run before any persist. */
-  handshake: () => Promise<{ rotatedSecret: string; handshake: THandshake }>;
+/** The durable persist, injected by the platform half. The lock is the
+ * caller's and spans the whole run. */
+export interface ManagedRotationPersist {
   /** Durably persist the write-back and await the write. A throw means the
-   * secret did not persist and the data exchange must not begin. */
+   * secret did not persist. */
   persist: (writeBack: RotationWriteBack) => Promise<void>;
   /** The record's max-age policy, or `undefined` for no bound. */
   tokenMaxAgeDays: number | undefined;
@@ -122,28 +119,19 @@ export interface ManagedRotationCriticalSection<THandshake> {
   now: () => number;
 }
 
-/** The handshake's value, obtainable only once the rotated secret is durably
- * persisted. */
-interface ManagedRotationGate<THandshake> {
-  /** The handshake's value, for the data-exchange phase. */
-  handshake: THandshake;
-  /** The rotated secret the persist stored. */
-  rotatedSecret: string;
-}
-
 /**
- * Run the handshake, then persist the rotation write-back and await it.
- * Returns the {@link ManagedRotationGate} only after the persist commits.
+ * Persist the rotation write-back for the next secret the terms exchange
+ * derived, and await it: the write the terms exchange awaits at this side's
+ * point in the store order. Returns the secret it stored.
  *
  * @throws {RotationPersistError} if the rotation write-back fails to persist.
  */
-export async function runRotationCriticalSection<THandshake>(
-  section: ManagedRotationCriticalSection<THandshake>,
-): Promise<ManagedRotationGate<THandshake>> {
-  const { rotatedSecret, handshake } = await section.handshake();
-
+export async function storeRotatedSecret(
+  section: ManagedRotationPersist,
+  nextSecret: string,
+): Promise<string> {
   const writeBack = rotationWriteBack(
-    rotatedSecret,
+    nextSecret,
     section.tokenMaxAgeDays,
     section.now(),
   );
@@ -152,6 +140,5 @@ export async function runRotationCriticalSection<THandshake>(
   } catch (error) {
     throw new RotationPersistError(section.now(), error);
   }
-
-  return { handshake, rotatedSecret: writeBack.sharedSecret };
+  return writeBack.sharedSecret;
 }

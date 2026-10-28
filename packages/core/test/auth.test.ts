@@ -8,9 +8,10 @@ import {
   deriveAeadKey,
 } from "../src/auth";
 import { createMessagePipe } from "../src/connection/messageConnection";
-import { SHARED_SECRET_REGEX } from "../src/config/connection";
+import type { MessageConnection } from "../src/connection/messageConnection";
+import { EncryptedMessageConnection } from "../src/connection/encryptedMessageConnection";
 import type { Authentication } from "../src/config/connection";
-import { hkdfDerive, toBase64Url } from "../src/utils/crypto";
+import { toBase64Url } from "../src/utils/crypto";
 
 // A well-formed shared secret: 43 base64url characters whose final character is
 // in [AEIMQUYcgkosw048], so an expiry case turns on expiry alone.
@@ -142,7 +143,7 @@ function authenticateOverPipe(
   ]);
 }
 
-test("authenticateConnection returns an agreed session key, rotated secret, and encryption decision", async () => {
+test("authenticateConnection returns an agreed session key, the next secret's inputs, and the encryption decision", async () => {
   const [initiator, responder] = await authenticateOverPipe(
     SHARED_SECRET,
     SHARED_SECRET,
@@ -153,40 +154,101 @@ test("authenticateConnection returns an agreed session key, rotated secret, and 
 
   expect(initiator.value.sessionKey).toHaveLength(32);
   expect(initiator.value.sessionKey).toEqual(responder.value.sessionKey);
-  expect(initiator.value.rotatedSecret).toBe(responder.value.rotatedSecret);
-  // The rotated secret is persisted as the next exchange's shared secret, so it
-  // must satisfy the same format guard that credential is held to.
-  expect(SHARED_SECRET_REGEX.test(initiator.value.rotatedSecret)).toBe(true);
+  // Both sides hold the same inputs; the next secret itself is derived only at
+  // the terms exchange, once the responder's value arrives.
+  const mine = initiator.value.nextSecretInputs;
+  const theirs = responder.value.nextSecretInputs;
+  expect(mine.sessionKey).toEqual(initiator.value.sessionKey);
+  expect(mine.keyAgreementOutput).toEqual(theirs.keyAgreementOutput);
+  expect(mine.initiatorValue).toEqual(theirs.initiatorValue);
+  expect(mine.expires).toBeUndefined();
+  expect("rotatedSecret" in initiator.value).toBe(false);
   // Only the responder requested the encryption layer; the transcript-bound OR
   // turns it on for both.
   expect(initiator.value.applyEncryption).toBe(true);
   expect(responder.value.applyEncryption).toBe(true);
 });
 
-test("the rotated secret pins the alcove-shared-secret-rotation-v2 HKDF label", async () => {
+test("the next secret's inputs depend on neither the shared secret nor the session key", async () => {
+  // ka is the ECDH output and the initiator's value is drawn fresh, so neither
+  // equals any value derived from the session key the current secret feeds.
   const [initiator] = await authenticateOverPipe(SHARED_SECRET, SHARED_SECRET);
   if (initiator.status !== "fulfilled") {
     throw new Error("the handshake did not complete");
   }
-  const { sessionKey, rotatedSecret } = initiator.value;
-
-  // The session key is ephemeral, so the pin is the label rather than fixed
-  // bytes: re-deriving from the returned session key with the literal info
-  // string must reproduce the rotated secret. Any edit to the label -- including
-  // a swap to another live Alcove label -- breaks this equality.
-  expect(rotatedSecret).toBe(
-    toBase64Url(
-      await hkdfDerive(sessionKey, "alcove-shared-secret-rotation-v2", 32),
-    ),
-  );
-
-  // Domain separation against the other label derived from the same session key:
-  // a collision would make an AEAD key usable as the next shared secret.
+  const { sessionKey, nextSecretInputs } = initiator.value;
   for (const context of AEAD_CONTEXTS) {
-    expect(rotatedSecret).not.toBe(
-      toBase64Url(await deriveAeadKey(sessionKey, context)),
-    );
+    const aeadKey = await deriveAeadKey(sessionKey, context);
+    expect(nextSecretInputs.keyAgreementOutput).not.toEqual(aeadKey);
+    expect(nextSecretInputs.initiatorValue).not.toEqual(aeadKey);
   }
+  expect(nextSecretInputs.keyAgreementOutput).not.toEqual(sessionKey);
+});
+
+test("authenticateConnection passes the secret's expires to the terms exchange rather than checking it after the handshake", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(NOW_MS);
+  const expires = new Date(NOW_MS + 1).toISOString();
+  const [initiatorConn, responderConn] = createMessagePipe();
+  const both = Promise.all([
+    authenticateConnection(
+      initiatorConn,
+      { sharedSecret: SHARED_SECRET, expires },
+      "initiator",
+      true,
+    ),
+    authenticateConnection(
+      responderConn,
+      { sharedSecret: SHARED_SECRET, expires },
+      "responder",
+      true,
+    ),
+  ]);
+  // Lapses after the pre-handshake check: the handshake still completes.
+  vi.setSystemTime(NOW_MS + 10);
+  const [initiator, responder] = await both;
+  expect(initiator.nextSecretInputs.expires).toBe(expires);
+  expect(responder.nextSecretInputs.expires).toBe(expires);
+});
+
+test("the initiator reads the responder's abort on a failed message 3 as a security failure of the encrypted connection", async () => {
+  const [initiatorConn, responderConn] = createMessagePipe();
+  // A changed wrapped value in transit fails the initiator's tag at the
+  // responder, after the initiator has completed.
+  const tampering: MessageConnection = {
+    send: async (data) => {
+      const frame = data as Record<string, unknown>;
+      const value = String(frame.initiatorValue);
+      const changed = `${value.startsWith("A") ? "B" : "A"}${value.slice(1)}`;
+      await initiatorConn.send(
+        frame.kexMsg === "3" ? { ...frame, initiatorValue: changed } : frame,
+      );
+    },
+    receive: (timeoutMs) => initiatorConn.receive(timeoutMs),
+    close: () => initiatorConn.close(),
+  };
+  const responder = authenticateConnection(
+    responderConn,
+    { sharedSecret: SHARED_SECRET },
+    "responder",
+    true,
+  );
+  responder.catch(() => {});
+  const initiator = await authenticateConnection(
+    tampering,
+    { sharedSecret: SHARED_SECRET },
+    "initiator",
+    true,
+  );
+  await expect(responder).rejects.toThrow("key exchange authentication failed");
+  const secure = await EncryptedMessageConnection.create(
+    tampering,
+    initiator.sessionKey,
+    "initiator",
+  );
+  const err = await secure.receive(1_000).catch((e: unknown) => e);
+  expect(err).toBeInstanceOf(ConnectionError);
+  expect((err as ConnectionError).kind).toBe("security");
 });
 
 test("authenticateConnection propagates a failed key exchange as a security-kind ConnectionError", async () => {

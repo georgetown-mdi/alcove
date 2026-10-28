@@ -387,7 +387,8 @@ export const SHARED_SECRET_REGEX = /^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/;
  * {@link SHARED_SECRET_REGEX}. The single definition of secret generation,
  * shared by the CLI and web inviters. It is the 256-bit short-lived setup
  * secret the P-256 key exchange consumes, and in the web flow the seed for
- * the derived peer id, rotated to a persistent secret at first handshake.
+ * the derived peer id, rotated to a persistent secret at the first terms
+ * exchange.
  */
 export function generateSharedSecret(): string {
   return toBase64Url(randomBytes(32));

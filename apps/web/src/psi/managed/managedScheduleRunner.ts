@@ -679,11 +679,11 @@ interface ManagedScheduleWindowVerdict {
  * reachable only once the rendezvous has resolved
  * ({@link ./managedRunDriver.ts}); a partner who never arrives raises
  * {@link PartnerNoShowError} instead. A {@link RotationPersistError} is raised
- * only after that handshake has yielded the rotated secret
- * ({@link ./managedRunRotate.ts}, `runRotationCriticalSection`), and so is a
+ * only after that handshake succeeded and the terms exchange derived the next
+ * secret ({@link ./managedRunRotate.ts}, `storeRotatedSecret`), and so is a
  * {@link ManagedExchangeSecretChangedError}, the rotation write's safety
- * check. Any failure past the data-exchange phase boundary postdates all of
- * them.
+ * check. Any failure past the data-exchange phase boundary postdates the
+ * handshake.
  *
  * Every other failure the mapper classifies -- a lapsed bound, a stored copy
  * the run cannot use, an unusable input, a terms

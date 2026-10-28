@@ -14,7 +14,9 @@ import { RENDEZVOUS_ROLES } from "../src/rendezvous";
 // length-prefixed, so the space must be prefix-free; the three JSON-field
 // domains at the end are held to it as well.
 const SINGLE_LABELS: readonly string[] = [
-  "alcove-shared-secret-rotation-v2",
+  "alcove-shared-secret-wrap-v2",
+  "alcove-shared-secret-wrap-responder-v2",
+  "alcove-shared-secret-next-v2",
   "alcove-relay-key-v2",
   "alcove-relay-exchange-id-v2",
   "alcove-signed-receipt-content/v3",

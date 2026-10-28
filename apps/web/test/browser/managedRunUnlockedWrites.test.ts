@@ -2,6 +2,7 @@
 /// <reference types="vite/client" />
 
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
+
 import {
   deriveAcceptedLinkageTerms,
   generateSharedSecret,
@@ -47,6 +48,8 @@ import {
 import { reinviteManagedExchange } from "@psi/managed/managedReinviteDriver";
 import { runManagedExchange } from "@psi/managed/managedExchangeRun";
 import { runManagedRerun } from "@psi/managed/managedRun";
+
+import { rotatingDataExchange } from "../utils/rotatingDataExchange";
 
 import type { LinkageTerms, RelayRegistrar } from "@alcove/core";
 import type {
@@ -171,13 +174,13 @@ describe("an operator's terms write while a run holds the lock", () => {
       handshake: async (_input, markRotationInFlight, current) => {
         lockedTerms = current.exchangeFile.linkageTerms;
         await markRotationInFlight();
-        return { rotatedSecret: generateSharedSecret(), handshake: "carried" };
+        return "carried";
       },
-      dataExchange: async () => {
+      dataExchange: rotatingDataExchange(generateSharedSecret(), async () => {
         if (lockedTerms === undefined) throw new Error("no terms were read");
         await dataExchange({ id: record.id, linkageTerms: lockedTerms });
         return "exchanged";
-      },
+      }),
     });
   }
 
@@ -390,12 +393,11 @@ describe("the writes that take the run lock while a run holds it", () => {
           await markRotationInFlight();
           marked();
           await finished;
-          return {
-            rotatedSecret: generateSharedSecret(),
-            handshake: "carried",
-          };
+          return "carried";
         },
-        dataExchange: () => Promise.resolve("exchanged"),
+        dataExchange: rotatingDataExchange(generateSharedSecret(), () =>
+          Promise.resolve("exchanged"),
+        ),
       },
       { stop: new AbortController() },
     );

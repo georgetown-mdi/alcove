@@ -137,7 +137,7 @@ Both folders are partner-synced: keep them out of the working directory, and kee
 
 If you already run this exchange with `alcove` on the command line, choose **Open the configuration in my folder** on the first step. The console reads the `alcove.yaml` in your working folder (`JOB_DATA_ROOT`); nothing is uploaded from your browser, and no container path is shown.
 
-- **The run continues the exchange your configuration set up.** It uses the `.alcove.key` beside `alcove.yaml`, so no invitation is made and your partner runs their side as usual. The secret rotates at the handshake and is written back to that file; it never reaches your browser.
+- **The run continues the exchange your configuration set up.** It uses the `.alcove.key` beside `alcove.yaml`, so no invitation is made and your partner runs their side as usual. The secret rotates once the terms are agreed and is written back to that file; it never reaches your browser.
   - With no readable `.alcove.key` beside it, the console says which problem it is. Put the key file back and open the configuration again, or choose **Create an invitation from these settings** to start a new exchange with the same terms and connection.
   - An SFTP or shared-folder run uses the file as you opened it; if `alcove.yaml` changes afterwards, a warning names the file.
 - **Every step starts filled in**: connection, matching terms with your column roles and cleaning steps, file handling, connection tuning, field delimiter, receipts, retention note, and the inactivity limit. A setting the file omits keeps the console's default.

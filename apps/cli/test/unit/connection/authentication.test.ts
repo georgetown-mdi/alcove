@@ -7,7 +7,6 @@ import {
   FileSyncConnection,
   fromEventConnection,
   authenticateConnection,
-  SHARED_SECRET_REGEX,
   statesItsOwnNextStep,
 } from "@alcove/core";
 import { createMessagePipe } from "@alcove/core/testing";
@@ -90,7 +89,7 @@ function roles(
 
 // --- Token rotation ----------------------------------------------------------
 
-test("both parties derive the same rotated token over a real connection", async () => {
+test("both parties hold the same next-secret inputs over a real connection", async () => {
   const connA = makeConn();
   const connB = makeConn();
 
@@ -102,9 +101,13 @@ test("both parties derive the same rotated token over a real connection", async 
     authenticateConnection(mcB, { sharedSecret: TOKEN_A }, roleB, true),
   ]).finally(() => teardown(connA, connB));
 
-  expect(a.rotatedSecret).toBe(b.rotatedSecret);
-  expect(a.rotatedSecret).not.toBe(TOKEN_A);
-  expect(SHARED_SECRET_REGEX.test(a.rotatedSecret)).toBe(true);
+  // The next secret itself is derived at the terms exchange.
+  expect(a.nextSecretInputs.initiatorValue).toEqual(
+    b.nextSecretInputs.initiatorValue,
+  );
+  expect(a.nextSecretInputs.keyAgreementOutput).toEqual(
+    b.nextSecretInputs.keyAgreementOutput,
+  );
   // Both parties requested encryption, so both show the same wrap decision.
   expect(a.applyEncryption).toBe(true);
   expect(b.applyEncryption).toBe(true);
@@ -140,8 +143,10 @@ test("applyEncryption shows own-OR-peer through authenticateConnection across fl
     ]);
     expect(resA.applyEncryption).toBe(expected);
     expect(resB.applyEncryption).toBe(expected);
-    // The rotated secret still agrees regardless of the flag values.
-    expect(resA.rotatedSecret).toBe(resB.rotatedSecret);
+    // The next secret's inputs still agree regardless of the flag values.
+    expect(resA.nextSecretInputs.initiatorValue).toEqual(
+      resB.nextSecretInputs.initiatorValue,
+    );
   }
 });
 
@@ -285,16 +290,14 @@ test("a legacy SPAKE2-shaped reply fails a new initiator with a clean error", as
   await expect(newSide).rejects.toThrow("key exchange authentication failed");
 });
 
-// --- Post-handshake expiry ---------------------------------------------------
+// --- Expiry during the handshake ---------------------------------------------
 //
-// authenticateConnection checks `expires` twice: synchronously before the key
-// exchange starts, and again after runKex returns, to catch a secret that
-// expires *during* the round-trip. This test drives the post-handshake branch
-// by faking Date and advancing the clock past `expires` synchronously, between
-// starting both authenticateConnection calls and awaiting them -- strictly
-// after both pre-handshake checks and before both post-handshake checks.
+// authenticateConnection checks `expires` before the key exchange starts; a
+// secret that lapses during the round-trip is refused at the terms exchange,
+// before either side stores the next secret, so the handshake hands `expires`
+// on. The clock is advanced synchronously after both pre-handshake checks.
 
-test("authentication marks post-handshake-expiry errors as stating their own next step", async () => {
+test("a secret that lapses during the handshake completes it and is handed to the terms exchange", async () => {
   const expires = "2030-01-01T00:00:00.000Z";
   vi.useFakeTimers({
     toFake: ["Date"],
@@ -313,16 +316,8 @@ test("authentication marks post-handshake-expiry errors as stating their own nex
     "responder",
     true,
   );
-  // Advance past expires while the round-trip is in flight (see the block
-  // comment above for why a synchronous advance here is a reliable barrier).
   vi.setSystemTime(new Date("2030-01-01T00:00:01.000Z"));
-  const [resultA, resultB] = await Promise.allSettled([pA, pB]);
-  expect(resultA.status).toBe("rejected");
-  expect(resultB.status).toBe("rejected");
-  // Marked so the CLI shows a re-invite hint instead of the generic
-  // transport-failure advisory.
-  for (const result of [resultA, resultB] as PromiseRejectedResult[]) {
-    expect(result.reason.message).toContain("during the key exchange");
-    expect(statesItsOwnNextStep(result.reason, { ownOnly: true })).toBe(true);
-  }
+  const [resultA, resultB] = await Promise.all([pA, pB]);
+  expect(resultA.nextSecretInputs.expires).toBe(expires);
+  expect(resultB.nextSecretInputs.expires).toBe(expires);
 });

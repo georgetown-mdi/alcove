@@ -57,6 +57,12 @@ const RECORDED_SITES: Readonly<Record<string, readonly string[]>> = {
     PLAIN,
     PLAIN,
   ],
+  // The partner's value for the next shared secret: sent where no key exchange
+  // ran, or missing or unreadable on a proceeding terms message 2.
+  "packages/core/src/protocolSetup.ts :: nextSecretFromTermsReply": [
+    PARTNER,
+    PARTNER,
+  ],
   // The partner's own abort at the terms exchange.
   "packages/core/src/protocolSetup.ts :: partnerAbortError": [PLAIN, PLAIN],
   // The partner advertises another protocol version.

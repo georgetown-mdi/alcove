@@ -10,6 +10,7 @@ import {
   inferMetadata,
 } from "@alcove/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+
 import { validateCompatibility } from "@alcove/core/testing";
 
 import {
@@ -54,6 +55,8 @@ import {
   CLI_TERMS_UPDATE_LINKAGE_COLUMNS,
   CLI_TERMS_UPDATE_SECRET,
 } from "../utils/cliTermsUpdateFixture";
+import { rotatingDataExchange } from "../utils/rotatingDataExchange";
+
 import { expectConsole } from "./expectedConsole";
 
 import type * as ManagedExchangeStore from "@psi/managed/managedExchangeStore";
@@ -415,9 +418,11 @@ describe("a run's writes after it released its lock, a re-invite landing first",
       acquireInput: () => Promise.resolve(undefined),
       handshake: async (_input, markRotationInFlight) => {
         await markRotationInFlight();
-        return { rotatedSecret: generateSharedSecret(), handshake: "carried" };
+        return "carried";
       },
-      dataExchange: () => Promise.resolve("exchanged"),
+      dataExchange: rotatingDataExchange(generateSharedSecret(), () =>
+        Promise.resolve("exchanged"),
+      ),
     });
     const reinvited = (await reinviteManagedExchange(record.id, {})).record;
     const localBefore = await getManagedLocalState(record.id);

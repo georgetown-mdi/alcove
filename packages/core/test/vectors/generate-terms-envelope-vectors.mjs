@@ -99,6 +99,31 @@ const signingCertificates = JSON.parse(
   readFileSync(new URL("./signing-cert-vectors.json", import.meta.url), "utf8"),
 ).vectors.map((vector) => vector.certificate);
 
+// The rotation inputs a completed key exchange would leave both parties, and
+// the responder's value, fixed so its wrapped bytes are a known answer.
+const rotation = {
+  sessionKeyHex: "11".repeat(32),
+  keyAgreementOutputHex: "22".repeat(32),
+  initiatorValueHex: "33".repeat(32),
+  responderValueHex: "44".repeat(32),
+};
+const fromHex = (value) => Uint8Array.from(Buffer.from(value, "hex"));
+
+/** The rotation a party passes, or undefined for one that ran no handshake. */
+function rotationFor(side) {
+  if (side.rotates !== true) return undefined;
+  return {
+    inputs: {
+      sessionKey: fromHex(rotation.sessionKeyHex),
+      keyAgreementOutput: fromHex(rotation.keyAgreementOutputHex),
+      initiatorValue: fromHex(rotation.initiatorValueHex),
+      expires: undefined,
+    },
+    store: () => {},
+    fixedResponderValue: fromHex(rotation.responderValueHex),
+  };
+}
+
 // Fixtures for the two fail-soft advertisement fields. The fingerprints are the
 // canonical SHA256 shape at its real length; nothing here is a credential.
 const initiatorHostKey = {
@@ -168,6 +193,16 @@ const scenarios = [
       disclosesPayload: true,
       certificate: 1,
     },
+  },
+  {
+    name: "authenticated-run-rotates",
+    description:
+      "An authenticated run: the responder's proceeding message 2 carries " +
+      "its wrapped value for the next shared secret, `responderValue`, which " +
+      "no other frame does. The handshake's outputs and the responder's " +
+      "value are the fixed `rotation` inputs, so the wrapped bytes are pinned.",
+    initiator: { terms: "partyA", recordCount: 5, rotates: true },
+    responder: { terms: "partyB", recordCount: 6, rotates: true },
   },
   {
     name: "responder-carries-no-identity",
@@ -291,6 +326,7 @@ async function runScenario(scenario) {
         : signingCertificates[side.certificate],
       undefined,
       side.receiveCeiling,
+      rotationFor(side),
     );
 
   const [initiatorResult, responderResult] = await Promise.all([
@@ -371,8 +407,9 @@ const vectors = {
     "`linkageTerms` -- the record count, the receive ceiling, the declared " +
     "effective key count, the " +
     "protocol version, the save intent, the payload-intent flag, the " +
-    "observed host key, and the signing certificate a party that will sign " +
-    "presents -- and a partner reads each by name, so adding, " +
+    "observed host key, the signing certificate a party that will sign " +
+    "presents, and the responder's wrapped value for the next shared " +
+    "secret on an authenticated run -- and a partner reads each by name, so adding, " +
     "renaming, dropping, or re-ordering one is a wire-format delta. " +
     "`linkageTerms` is lifted out of each frame into the `linkageTerms` section " +
     "below and named per frame by party; the consuming suite rebuilds the full " +
@@ -394,6 +431,7 @@ const vectors = {
     "absent from the frame -- omitted, never sent as null.",
   linkageTerms,
   signingCertificates,
+  rotation,
   scenarios: [],
   abortFrames: [],
 };

@@ -500,10 +500,17 @@ export type {
 } from "./linkageTermsNegotiation";
 export {
   TermsChangeRefusedError,
+  releasableTermsRotation,
   termsDifferenceLocalKeys,
   termsDifferenceRefusedBy,
 } from "./protocolSetup";
-export type { TermsChange, TermsDifferenceRefusedBy } from "./protocolSetup";
+export type {
+  ReleasableTermsRotation,
+  TermsChange,
+  TermsDifferenceRefusedBy,
+  TermsRotation,
+} from "./protocolSetup";
+export type { NextSecretInputs } from "./nextSecret";
 export { termsDeltaSections } from "./termsDeltaDisplay";
 export type {
   CountOnlyShapeViolation,

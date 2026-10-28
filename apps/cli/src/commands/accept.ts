@@ -1521,7 +1521,8 @@ export async function handler(argv: Arguments): Promise<void> {
           prepared: ready.prepared,
           sharedSecret: ready.token.sharedSecret,
           // Pass the invitation's expiry through unchanged; authenticateConnection
-          // re-checks it before and after the key exchange.
+          // re-checks it before the key exchange, and the terms exchange before
+          // each side's store.
           expires: ready.token.expires,
           keyPath: options.keyFile,
           configPath: options.configFile,

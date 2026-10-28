@@ -3,10 +3,17 @@
 
 import {
   ConnectionError,
+  TermsChangeRefusedError,
   generateSharedSecret,
   getDefaultLinkageTerms,
   markStatesItsOwnNextStep,
 } from "@alcove/core";
+import {
+  PartnerProtocolRefusalError,
+  ProtocolRefusalError,
+  createMessagePipe,
+  exchangeTerms,
+} from "@alcove/core/testing";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import {
@@ -18,11 +25,16 @@ import {
   createManagedExchange,
   getManagedExchange,
 } from "@psi/managed/managedExchangeStore";
+import {
+  readManagedFailure,
+  rotationInFlightUnansweredAtLaunch,
+} from "@psi/managed/managedFailureTiers";
 import { ManagedExchangeExpiredError } from "@psi/managed/managedExpiry";
 import { PartnerNoShowError } from "@psi/transport/waitForConnection";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
-import { readManagedFailure } from "@psi/managed/managedFailureTiers";
 import { runManagedRerun } from "@psi/managed/managedRun";
+
+import { rotatingDataExchange } from "../utils/rotatingDataExchange";
 
 import type {
   ManagedExchangeRecord,
@@ -60,8 +72,9 @@ function newExchange(
 }
 
 /** The faked seams a launch drives without a broker or WASM: acquireInput returns a
- * trivial input, handshake yields a rotated secret and a carried marker, and
- * dataExchange returns a result. Records the order so the test can assert
+ * trivial input, handshake starts the key exchange and yields a carried marker,
+ * and dataExchange stores the rotated secret through the persist it is handed,
+ * then returns a result. Records the order so the test can assert
  * persist-before-success. */
 function fakeSeams(
   rotatedSecret: string,
@@ -79,13 +92,13 @@ function fakeSeams(
     ) => {
       await markRotationInFlight();
       order.push("handshake");
-      return { rotatedSecret, handshake: "carried" };
+      return "carried";
     },
-    dataExchange: async () => {
+    dataExchange: rotatingDataExchange(rotatedSecret, async () => {
       order.push("dataExchange");
       if (onDataExchange !== undefined) await onDataExchange();
       return "exchanged";
-    },
+    }),
   };
 }
 
@@ -230,14 +243,15 @@ describe("runManagedRerun: the runner's failure bookkeeping", () => {
     await expect(
       runManagedRerun(created, {
         acquireInput: () => Promise.resolve(undefined),
-        handshake: () => Promise.resolve({ rotatedSecret, handshake: "c" }),
-        dataExchange: () =>
+        handshake: () => Promise.resolve("c"),
+        dataExchange: rotatingDataExchange(rotatedSecret, () =>
           Promise.reject(new Error("data channel dropped mid-exchange")),
+        ),
       }),
     ).rejects.toThrow("data channel dropped mid-exchange");
 
     const stored = await getManagedExchange(created.id);
-    // The rotation is real (both parties rotated at handshake completion) and the
+    // The rotation is real (both parties stored it at the terms exchange) and the
     // failed outcome is recorded so the list does not keep showing a stale success.
     expect(stored?.sharedSecret).toBe(rotatedSecret);
     expect(stored?.lastRun?.outcome).toBe("failed");
@@ -284,8 +298,8 @@ describe("runManagedRerun: the runner's failure bookkeeping", () => {
       created,
       {
         acquireInput: () => Promise.resolve(undefined),
-        handshake: () => Promise.resolve({ rotatedSecret, handshake: "c" }),
-        dataExchange: async () => {
+        handshake: () => Promise.resolve("c"),
+        dataExchange: rotatingDataExchange(rotatedSecret, async () => {
           reachedExchange();
           await new Promise<void>((resolve) => {
             controller.signal.addEventListener("abort", () => resolve(), {
@@ -293,7 +307,7 @@ describe("runManagedRerun: the runner's failure bookkeeping", () => {
             });
           });
           throw new ConnectionError("connection closed", "closed");
-        },
+        }),
       },
       { aborted: () => controller.signal.aborted },
     );
@@ -364,12 +378,11 @@ describe("runManagedRerun: a rotation in flight across a crash", () => {
         handshake: async (_input, markRotationInFlight) => {
           await markRotationInFlight();
           storedAtKeyExchange = await getManagedExchange(created.id);
-          return {
-            rotatedSecret: generateSharedSecret(),
-            handshake: "carried",
-          };
+          return "carried";
         },
-        dataExchange: () => Promise.resolve("exchanged"),
+        dataExchange: rotatingDataExchange(generateSharedSecret(), () =>
+          Promise.resolve("exchanged"),
+        ),
       },
       { now: () => at },
     );
@@ -447,12 +460,11 @@ describe("runManagedRerun: a rotation in flight across a crash", () => {
         acquireInput: () => Promise.resolve({ input: true }),
         handshake: async (_input, markRotationInFlight) => {
           await markRotationInFlight();
-          return {
-            rotatedSecret: generateSharedSecret(),
-            handshake: "carried",
-          };
+          return "carried";
         },
-        dataExchange: () => Promise.resolve("exchanged"),
+        dataExchange: rotatingDataExchange(generateSharedSecret(), () =>
+          Promise.resolve("exchanged"),
+        ),
       },
       { now: () => doneAt },
     );
@@ -465,5 +477,173 @@ describe("runManagedRerun: a rotation in flight across a crash", () => {
         doneAt,
       ).tier,
     ).toBe("none");
+  });
+});
+
+/** The initiator's error where the responder refused the terms: annotated as
+ * the partner's refusal, as core raises it. */
+async function partnerRefusedTermsError(): Promise<unknown> {
+  const terms = getDefaultLinkageTerms("County Health Dept");
+  const [initiatorConn, responderConn] = createMessagePipe();
+  const [initiator] = await Promise.allSettled([
+    exchangeTerms(initiatorConn, "initiator", terms, 1),
+    exchangeTerms(
+      responderConn,
+      "responder",
+      { ...terms, algorithm: "psi-c" },
+      1,
+    ),
+  ]);
+  if (initiator.status !== "rejected")
+    throw new Error("expected the initiator's run to be refused");
+  return initiator.reason;
+}
+
+// Each refusal a responder's run can end in at the terms exchange with no side
+// able to have stored the next secret: `reports` is what core's terms exchange
+// reports of whether the initiator may hold one.
+const refusalsStoringNothing: Array<{
+  name: string;
+  reports: Array<boolean>;
+  error: () => Promise<unknown>;
+}> = [
+  {
+    name: "a terms change this side refused, before it sent its value",
+    reports: [],
+    error: () =>
+      Promise.resolve(
+        new TermsChangeRefusedError("linkage terms are incompatible", {
+          received: undefined,
+          sent: undefined,
+          partnerDeduplicate: undefined,
+          otherTerms: ["algorithm"],
+        }),
+      ),
+  },
+  {
+    name: "the partner's refusal of the terms, in place of proceed",
+    reports: [true, false],
+    error: partnerRefusedTermsError,
+  },
+  {
+    name: "a refusal of what the partner sent, before this side sent its value",
+    reports: [],
+    error: () =>
+      Promise.resolve(
+        new PartnerProtocolRefusalError(
+          "the partner's terms message did not follow the protocol",
+        ),
+      ),
+  },
+  {
+    name: "the initiator's abort in place of proceed",
+    reports: [true, false],
+    error: () =>
+      Promise.resolve(
+        new ProtocolRefusalError(
+          "Your partner stopped the exchange at the linkage terms",
+        ),
+      ),
+  },
+];
+
+/** A responder run that completes its key exchange, then ends at the terms
+ * exchange after `reports`, with `error`. */
+async function responderRunEndingAtTerms(
+  record: ManagedExchangeRecord,
+  at: number,
+  reports: Array<boolean>,
+  error: unknown,
+): Promise<unknown> {
+  return runManagedRerun(
+    record,
+    {
+      acquireInput: () => Promise.resolve({ input: true }),
+      handshake: async (_input, beginKeyExchange) => {
+        await beginKeyExchange();
+        return "carried";
+      },
+      dataExchange: (_carried, _persist, partnerMayHoldNextSecret) => {
+        for (const mayHold of reports) partnerMayHoldNextSecret(mayHold);
+        return Promise.reject(error);
+      },
+    },
+    { now: () => at },
+  ).then(
+    () => {
+      throw new Error("expected the run to fail");
+    },
+    (reason: unknown) => reason,
+  );
+}
+
+describe("runManagedRerun: a responder run that ends at the terms exchange", () => {
+  test.each(refusalsStoringNothing)(
+    "$name removes the marker it wrote",
+    async ({ reports, error }) => {
+      const created = await createManagedExchange(newExchange());
+      const at = Date.parse("2026-07-14T12:00:00.000Z");
+      const refusal = await error();
+
+      expect(
+        await responderRunEndingAtTerms(created, at, reports, refusal),
+      ).toBe(refusal);
+
+      const stored = await getManagedExchange(created.id);
+      expect(stored?.sharedSecret).toBe(created.sharedSecret);
+      expect(stored?.rotationInFlightSince).toBeUndefined();
+      expect(stored?.lastRun?.outcome).toBe("failed");
+    },
+  );
+
+  test("a run cut after the responder sent its value keeps the marker", async () => {
+    const created = await createManagedExchange(newExchange());
+    const at = Date.parse("2026-07-14T12:00:00.000Z");
+
+    await responderRunEndingAtTerms(
+      created,
+      at,
+      [true],
+      new ConnectionError("the channel closed", "transport"),
+    );
+
+    const stored = await getManagedExchange(created.id);
+    expect(stored?.sharedSecret).toBe(created.sharedSecret);
+    expect(stored?.rotationInFlightSince).toBe(new Date(at).toISOString());
+  });
+
+  test("a later no-show after a refusal that removed the marker is not read as a partial rotation", async () => {
+    const created = await createManagedExchange(newExchange());
+    const refusedAt = Date.parse("2026-07-14T12:00:00.000Z");
+    const refusal = await partnerRefusedTermsError();
+    await responderRunEndingAtTerms(created, refusedAt, [true, false], refusal);
+
+    const missedAt = refusedAt + 86_400_000;
+    const atLaunch = await getManagedExchange(created.id);
+    await expect(
+      runManagedRerun(
+        atLaunch as ManagedExchangeRecord,
+        {
+          acquireInput: () => Promise.resolve({ input: true }),
+          handshake: () =>
+            Promise.reject(new PartnerNoShowError("nobody arrived")),
+          dataExchange: () => Promise.resolve("never"),
+        },
+        { now: () => missedAt },
+      ),
+    ).rejects.toBeInstanceOf(PartnerNoShowError);
+
+    expect(
+      rotationInFlightUnansweredAtLaunch(atLaunch as ManagedExchangeRecord),
+    ).toBe(false);
+    const afterMiss = await getManagedExchange(created.id);
+    expect(afterMiss?.rotationInFlightSince).toBeUndefined();
+    expect(
+      readManagedFailure(
+        afterMiss as ManagedExchangeRecord,
+        undefined,
+        missedAt,
+      ),
+    ).toEqual({ tier: "missed", standing: false });
   });
 });

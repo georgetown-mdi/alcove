@@ -69,16 +69,6 @@ import type {
 import type { ManagedExchangeLockOptions } from "./managedExchangeLock";
 import type { ManagedExchangeRunResult } from "./managedExchangeRun";
 
-/** The handshake result a re-run's handshake phase yields: the rotated secret the
- * persist-before-success write advances, plus whatever the data-exchange phase
- * needs, passed through the lock. Generic over the handshake value so the
- * platform wiring names its own concrete type (the message connection, the PSI
- * library, the prepared exchange) and a test names a trivial one. */
-interface ManagedRerunHandshake<THandshake> {
-  rotatedSecret: string;
-  handshake: THandshake;
-}
-
 /** The platform operations a re-run injects, each the wiring the pure
  * orchestration cannot own. Split so the run's decisions and ordering are
  * testable without a broker, a database, or WASM. */
@@ -95,23 +85,31 @@ interface ManagedRerunSeams<TInput, THandshake, TExchange> {
   acquireInput: (current: RunnableManagedExchangeRecord) => Promise<TInput>;
   /**
    * Open the side-dispatched rendezvous, authenticate the partner, and yield the
-   * rotated secret plus the value the data exchange consumes. Receives the
-   * acquired input, the rotation-in-flight marker write to await once the
-   * partner has connected and before the key exchange starts, and the record as
-   * read inside the run+rotate lock, whose secret it authenticates with and
-   * whose side it dispatches on. The side
+   * value the data exchange consumes. Receives the acquired input, the start
+   * of the key exchange to await once the partner has connected and before the
+   * key exchange starts, whatever the run's role -- it ends a run a stop came
+   * first for, and writes a responder's rotation-in-flight marker -- and the
+   * record as read inside the run+rotate lock, whose secret it authenticates
+   * with and whose side it dispatches on. The side
    * dispatch and the fresh peer-id derivation live here (see
    * {@link ./managedRendezvous.ts}); this module only guarantees it runs after
    * the pre-connection checks and inside the run+rotate lock.
    */
   handshake: (
     input: TInput,
-    markRotationInFlight: () => Promise<void>,
+    beginKeyExchange: () => Promise<void>,
     current: RunnableManagedExchangeRecord,
-  ) => Promise<ManagedRerunHandshake<THandshake>>;
-  /** Run the data exchange -- reachable only after the durable persist resolves.
-   * Receives the handshake's output value. */
-  dataExchange: (handshake: THandshake) => Promise<TExchange>;
+  ) => Promise<THandshake>;
+  /** Run the data exchange. Receives the handshake's output value, the
+   * durable rotation write, which it hands core's terms exchange as the
+   * store of the next secret, and the report core's terms exchange makes of
+   * whether the partner may hold a next secret this side has not stored
+   * (`TermsRotation.partnerMayHoldNextSecret`). */
+  dataExchange: (
+    handshake: THandshake,
+    persistNextSecret: (nextSecret: string) => Promise<void>,
+    partnerMayHoldNextSecret: (mayHold: boolean) => void,
+  ) => Promise<TExchange>;
 }
 
 /** How a re-run launches, plus the clock. `attendance` is the run path (attended
@@ -198,7 +196,7 @@ export interface ManagedRerunOptions {
  *   another same-origin context.
  * @throws {RotationPersistError} if the rotation write fails after the handshake.
  * @throws {ManagedRunStoppedError} if a stop through `options.stop` ended the
- *   run before its rotation-in-flight marker; nothing is recorded.
+ *   run before its key exchange started; nothing is recorded.
  */
 export async function runManagedRerun<TInput, THandshake, TExchange>(
   record: ManagedExchangeRecord,
@@ -220,10 +218,8 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
   // it, since the bound the handshake enforced is that record's.
   let current: RunnableManagedExchangeRecord | undefined;
   // The secret the run last stored: the one it read under the lock, then the
-  // one its rotation stored once the data exchange began.
+  // one its rotation stored at the terms exchange.
   let storedSecret: string | undefined;
-  // The secret the handshake rotated to, stored once the data exchange began.
-  let rotatedSecret: string | undefined;
   // Whether the handshake phase began. A failure before it is this run's own,
   // a stop asked or not, unless it is the stop's own abort reason.
   const phase = { handshakeBegan: false };
@@ -245,20 +241,21 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
           throw new ManagedExchangeExpiredError(read.expires as string);
         return seams.acquireInput(read);
       },
-      handshake: async (input, markRotationInFlight, read) => {
+      handshake: async (input, beginKeyExchange, read) => {
         phase.handshakeBegan = true;
-        const handshake = await seams.handshake(
-          input,
-          markRotationInFlight,
-          read,
-        );
-        rotatedSecret = handshake.rotatedSecret;
-        return handshake;
+        return seams.handshake(input, beginKeyExchange, read);
       },
-      dataExchange: seams.dataExchange,
+      dataExchange: (handshake, persistNextSecret, partnerMayHoldNextSecret) =>
+        seams.dataExchange(
+          handshake,
+          async (nextSecret) => {
+            await persistNextSecret(nextSecret);
+            storedSecret = nextSecret;
+          },
+          partnerMayHoldNextSecret,
+        ),
       onDataExchangeStart: () => {
         dataExchangeStarted = true;
-        storedSecret = rotatedSecret;
         options.onDataExchangeStart?.();
       },
       ...(options.lock !== undefined ? { lock: options.lock } : {}),
@@ -395,8 +392,8 @@ function isPartnerRefusedSetAbort(error: unknown): boolean {
  *   write's safety check found the secret the run began from replaced, so the
  *   record is the replacing write's.
  * - {@link ManagedRunStoppedError}: unrecorded -- this window's re-invite or
- *   relay enrollment stopped the run before its rotation-in-flight marker,
- *   so nothing failed and the partner saw no key exchange.
+ *   relay enrollment stopped the run before its key exchange started, so
+ *   nothing failed and the partner saw no key exchange.
  * - {@link ManagedExchangeNotRunnableError}: records `custody-unreadable` --
  *   the stored copy the run would rotate could not be used, refused before
  *   the input or any connection, and it refuses the same way at the next run.

@@ -2,7 +2,19 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, test } from "vitest";
 
-import { runKex, computeKexKeys, noiseHkdf } from "../src/kex";
+import {
+  runKex,
+  computeKexKeys,
+  initiatorConfirmTag,
+  noiseHkdf,
+} from "../src/kex";
+import {
+  deriveNextSecret,
+  drawRotationValue,
+  importRotationValue,
+  unwrapRotationValue,
+  wrapRotationValue,
+} from "../src/nextSecret";
 import {
   toBase64Url,
   fromBase64Url,
@@ -209,10 +221,13 @@ interface KexCase {
   sessionKeyHex: string;
   initiatorConfirmHex: string;
   responderConfirmHex: string;
+  wrappedInitiatorValueHex: string;
+  wrappedResponderValueHex: string;
   wire: {
     msg1: { kexMsg: "1"; e: string; reqEnc: boolean };
     msg2: { kexMsg: "2"; e: string; confirm: string; reqEnc: boolean };
-    msg3: { kexMsg: "3"; confirm: string };
+    msg3: { kexMsg: "3"; confirm: string; initiatorValue: string };
+    termsResponderValue: string;
   };
 }
 
@@ -222,6 +237,8 @@ interface KexVectors {
     pskHex: string;
     initiatorEphemeralPrivateHex: string;
     responderEphemeralPrivateHex: string;
+    initiatorValueHex: string;
+    responderValueHex: string;
   };
   derived: {
     initiatorEphemeralPublicHex: string;
@@ -229,6 +246,8 @@ interface KexVectors {
     dhSharedSecretHex: string;
     chainingKeyHex: string;
     confirmKeyHex: string;
+    nextSecretHex: string;
+    nextSecret: string;
   };
   cases: KexCase[];
   externalAnchors: {
@@ -241,6 +260,31 @@ interface KexVectors {
       sharedSecretHex: string;
     };
     rfc5869TestCase3: { ikmHex: string; length: number; okmHex: string };
+    rfc3394Section4_6: {
+      kekHex: string;
+      keyDataHex: string;
+      ciphertextHex: string;
+    };
+  };
+}
+
+/** A conforming message 3 under `keys`, with a freshly drawn wrapped value. */
+async function msg3For(keys: {
+  sessionKey: Uint8Array<ArrayBuffer>;
+  confirmKey: Uint8Array<ArrayBuffer>;
+  handshakeHash: Uint8Array<ArrayBuffer>;
+}): Promise<{ kexMsg: "3"; confirm: string; initiatorValue: string }> {
+  const wrapped = await wrapRotationValue(
+    keys.sessionKey,
+    "initiator",
+    await drawRotationValue(),
+  );
+  return {
+    kexMsg: "3",
+    confirm: toBase64Url(
+      await initiatorConfirmTag(keys.confirmKey, keys.handshakeHash, wrapped),
+    ),
+    initiatorValue: toBase64Url(wrapped),
   };
 }
 
@@ -289,9 +333,139 @@ test("known-answer vector: computeKexKeys reproduces the session key, confirmati
     expect(toHex(k.confirmKey)).toBe(vectors.derived.confirmKeyHex);
     expect(toHex(k.handshakeHash)).toBe(c.handshakeHashHex);
     expect(toHex(k.sessionKey)).toBe(c.sessionKeyHex);
-    expect(toHex(k.initiatorConfirm)).toBe(c.initiatorConfirmHex);
     expect(toHex(k.responderConfirm)).toBe(c.responderConfirmHex);
+
+    const initiatorValue = await importRotationValue(
+      fromHex(vectors.inputs.initiatorValueHex),
+    );
+    const responderValue = await importRotationValue(
+      fromHex(vectors.inputs.responderValueHex),
+    );
+    const wrappedInitiator = await wrapRotationValue(
+      k.sessionKey,
+      "initiator",
+      initiatorValue,
+    );
+    const wrappedResponder = await wrapRotationValue(
+      k.sessionKey,
+      "responder",
+      responderValue,
+    );
+    expect(toHex(wrappedInitiator)).toBe(c.wrappedInitiatorValueHex);
+    expect(toHex(wrappedResponder)).toBe(c.wrappedResponderValueHex);
+    expect(
+      toHex(
+        await initiatorConfirmTag(
+          k.confirmKey,
+          k.handshakeHash,
+          wrappedInitiator,
+        ),
+      ),
+    ).toBe(c.initiatorConfirmHex);
+    expect(
+      toHex(
+        (await unwrapRotationValue(
+          k.sessionKey,
+          "initiator",
+          wrappedInitiator,
+        ))!,
+      ),
+    ).toBe(vectors.inputs.initiatorValueHex);
+    expect(
+      toHex(
+        (await unwrapRotationValue(
+          k.sessionKey,
+          "responder",
+          wrappedResponder,
+        ))!,
+      ),
+    ).toBe(vectors.inputs.responderValueHex);
   }
+});
+
+test("known-answer vector: the next secret is derived over dh and both values, in order", async () => {
+  const dh = fromHex(vectors.derived.dhSharedSecretHex);
+  const initiatorValue = fromHex(vectors.inputs.initiatorValueHex);
+  const responderValue = fromHex(vectors.inputs.responderValueHex);
+  const next = await deriveNextSecret(dh, initiatorValue, responderValue);
+  expect(next).toBe(vectors.derived.nextSecret);
+  expect(toHex(fromBase64Url(next))).toBe(vectors.derived.nextSecretHex);
+  expect(await deriveNextSecret(dh, responderValue, initiatorValue)).not.toBe(
+    next,
+  );
+});
+
+test("RFC 3394 section 4.6: crypto.subtle AES-KW reproduces the published wrap", async () => {
+  const anchor = vectors.externalAnchors.rfc3394Section4_6;
+  const kek = await crypto.subtle.importKey(
+    "raw",
+    fromHex(anchor.kekHex),
+    "AES-KW",
+    false,
+    ["wrapKey"],
+  );
+  const keyData = await importRotationValue(fromHex(anchor.keyDataHex));
+  expect(
+    toHex(
+      new Uint8Array(
+        await crypto.subtle.wrapKey("raw", keyData.key, kek, "AES-KW"),
+      ),
+    ),
+  ).toBe(anchor.ciphertextHex);
+});
+
+describe("the rotation wraps", () => {
+  const sessionKey = new Uint8Array(32).fill(7);
+  const otherSessionKey = new Uint8Array(32).fill(8);
+
+  test("each wrapped value is 40 bytes and unwraps only under its own label's key from its own session key", async () => {
+    const value = await drawRotationValue();
+    expect(value.bytes).toHaveLength(32);
+    const wrapped = await wrapRotationValue(sessionKey, "initiator", value);
+    expect(wrapped).toHaveLength(40);
+    expect(toBase64Url(wrapped)).toHaveLength(54);
+    expect(await unwrapRotationValue(sessionKey, "initiator", wrapped)).toEqual(
+      value.bytes,
+    );
+    expect(
+      await unwrapRotationValue(sessionKey, "responder", wrapped),
+    ).toBeUndefined();
+    expect(
+      await unwrapRotationValue(otherSessionKey, "initiator", wrapped),
+    ).toBeUndefined();
+  });
+
+  test("a flipped bit at the start, middle or end fails the unwrap", async () => {
+    const value = await drawRotationValue();
+    const wrapped = await wrapRotationValue(sessionKey, "responder", value);
+    for (const index of [0, 20, 39]) {
+      const tampered = Uint8Array.from(wrapped);
+      tampered[index] = (tampered[index] as number) ^ 1;
+      expect(
+        await unwrapRotationValue(sessionKey, "responder", tampered),
+      ).toBeUndefined();
+    }
+  });
+
+  test("a wrapped value of another length is refused before the unwrap", async () => {
+    for (const length of [0, 32, 39, 41, 48]) {
+      expect(
+        await unwrapRotationValue(
+          sessionKey,
+          "initiator",
+          new Uint8Array(length),
+        ),
+      ).toBeUndefined();
+    }
+  });
+
+  test("two draws differ", async () => {
+    const [a, b] = await Promise.all([
+      drawRotationValue(),
+      drawRotationValue(),
+    ]);
+    expect(toHex(a.bytes)).not.toBe(toHex(b.bytes));
+  });
 });
 
 test("known-answer vector: the recorded ephemeral public keys are pinned 65-byte uncompressed points", () => {
@@ -340,6 +514,12 @@ test("known-answer vector: the wire base64url encodings match", () => {
     expect(c.wire.msg2.reqEnc).toBe(c.responderRequestsEncryption);
     expect(toBase64Url(fromHex(c.initiatorConfirmHex))).toBe(
       c.wire.msg3.confirm,
+    );
+    expect(toBase64Url(fromHex(c.wrappedInitiatorValueHex))).toBe(
+      c.wire.msg3.initiatorValue,
+    );
+    expect(toBase64Url(fromHex(c.wrappedResponderValueHex))).toBe(
+      c.wire.termsResponderValue,
     );
   }
 });
@@ -507,6 +687,12 @@ test("both sides succeed and derive the same 32-byte session key with a matching
   expect(a.value.sessionKey).toBeInstanceOf(Uint8Array);
   expect(a.value.sessionKey.length).toBe(32);
   expect(a.value.sessionKey).toEqual(b.value.sessionKey);
+  // The responder unwraps the value the initiator drew, and both hold the
+  // same key-agreement output.
+  expect(a.value.initiatorValue).toHaveLength(32);
+  expect(a.value.initiatorValue).toEqual(b.value.initiatorValue);
+  expect(a.value.keyAgreementOutput).toHaveLength(32);
+  expect(a.value.keyAgreementOutput).toEqual(b.value.keyAgreementOutput);
 });
 
 test("the ephemeral public key on the wire is the pinned 65-byte uncompressed point", async () => {
@@ -700,7 +886,7 @@ test("a reflected confirmation (the initiator's own role label) does not verify"
   await connB.send({
     kexMsg: "2",
     e: toBase64Url(eRespPub),
-    confirm: toBase64Url(keys.initiatorConfirm),
+    confirm: (await msg3For(keys)).confirm,
     reqEnc: responderReqEnc,
   });
   await expect(initiator).rejects.toThrow(GENERIC_FAILURE);
@@ -756,10 +942,7 @@ test("substituting the initiator's public key breaks confirmation (responder sid
     false,
     msg2.reqEnc,
   );
-  await connA.send({
-    kexMsg: "3",
-    confirm: toBase64Url(keys.initiatorConfirm),
-  });
+  await connA.send(await msg3For(keys));
   await expect(responder).rejects.toThrow(GENERIC_FAILURE);
 });
 
@@ -785,6 +968,98 @@ test("the responder folds an explicit abort delivered as msg3 into a generic fai
   // The initiator aborts instead of confirming.
   await connA.send({ kexMsg: "abort" });
   await expect(responder).rejects.toThrow(GENERIC_FAILURE);
+  // An abort is not answered: the initiator has stopped.
+  await expect(connA.receive(50)).rejects.toThrow();
+});
+
+describe("the responder's checks on message 3", () => {
+  // A hand-rolled initiator up to message 3, with the keys a conforming one
+  // derives.
+  async function initiatorUpToMsg3() {
+    const [connA, connB] = createMessagePipe();
+    const responder = runKex(connB, "responder", PSK_A, false);
+    responder.catch(() => {});
+    const eph = await generateEphemeral();
+    await connA.send({
+      kexMsg: "1",
+      e: toBase64Url(eph.publicKey),
+      reqEnc: false,
+    });
+    const msg2 = (await connA.receive()) as { e: string; reqEnc: boolean };
+    const eRespPub = fromBase64Url(msg2.e);
+    const keys = await computeKexKeys(
+      PSK_A,
+      eph.publicKey,
+      eRespPub,
+      await ecdh(eph.privateKey, eRespPub),
+      false,
+      msg2.reqEnc,
+    );
+    return { connA, responder, keys };
+  }
+
+  async function expectRefusedWithAbort(
+    connA: MessageConnection,
+    responder: Promise<unknown>,
+  ): Promise<void> {
+    await expect(responder).rejects.toThrow(GENERIC_FAILURE);
+    expect(await connA.receive()).toEqual({ kexMsg: "abort" });
+  }
+
+  test("a conforming message 3 completes with the initiator's value", async () => {
+    const { connA, responder, keys } = await initiatorUpToMsg3();
+    const msg3 = await msg3For(keys);
+    await connA.send(msg3);
+    const result = (await responder) as { initiatorValue: Uint8Array };
+    expect(
+      await unwrapRotationValue(
+        keys.sessionKey,
+        "initiator",
+        fromBase64Url(msg3.initiatorValue),
+      ),
+    ).toEqual(result.initiatorValue);
+  });
+
+  test("a changed wrapped value fails the tag and is answered with an abort", async () => {
+    const { connA, responder, keys } = await initiatorUpToMsg3();
+    const msg3 = await msg3For(keys);
+    const wrapped = fromBase64Url(msg3.initiatorValue);
+    wrapped[0] = (wrapped[0] as number) ^ 1;
+    await connA.send({ ...msg3, initiatorValue: toBase64Url(wrapped) });
+    await expectRefusedWithAbort(connA, responder);
+  });
+
+  test("a value wrapped under another key fails the unwrap and is answered with an abort", async () => {
+    const { connA, responder, keys } = await initiatorUpToMsg3();
+    // The tag verifies over these bytes, so only the unwrap refuses them.
+    const wrapped = await wrapRotationValue(
+      new Uint8Array(32).fill(9),
+      "initiator",
+      await drawRotationValue(),
+    );
+    await connA.send({
+      kexMsg: "3",
+      confirm: toBase64Url(
+        await initiatorConfirmTag(keys.confirmKey, keys.handshakeHash, wrapped),
+      ),
+      initiatorValue: toBase64Url(wrapped),
+    });
+    await expectRefusedWithAbort(connA, responder);
+  });
+
+  test("a message 3 without the wrapped value fails the strict schema and is answered with an abort", async () => {
+    const { connA, responder, keys } = await initiatorUpToMsg3();
+    const { confirm } = await msg3For(keys);
+    await connA.send({ kexMsg: "3", confirm });
+    await expectRefusedWithAbort(connA, responder);
+  });
+
+  test("a wrapped value that is not base64url is answered with an abort", async () => {
+    const { connA, responder, keys } = await initiatorUpToMsg3();
+    const { confirm } = await msg3For(keys);
+    await connA.send({ kexMsg: "3", confirm, initiatorValue: "!" });
+    await expectRefusedWithAbort(connA, responder);
+  });
 });
 
 // --- Peer-share rejection over the wire --------------------------------------
@@ -918,10 +1193,8 @@ async function computeKexKeysUnderTag(
       "alcove-kex-v2:session",
       32,
     ),
-    initiatorConfirm: await hmacSha256(
-      confirmKey,
-      concatBytes(encoder.encode("alcove-kex-v2:initiator-confirm"), h),
-    ),
+    confirmKey,
+    handshakeHash: h,
     responderConfirm: await hmacSha256(
       confirmKey,
       concatBytes(encoder.encode("alcove-kex-v2:responder-confirm"), h),
@@ -953,7 +1226,8 @@ test("the tag-parameterized schedule reproduces computeKexKeys under the shipped
   );
   const actual = await computeKexKeys(psk, eInitPub, eRespPub, dh, true, false);
   expect(toHex(mirrored.sessionKey)).toBe(toHex(actual.sessionKey));
-  expect(toHex(mirrored.initiatorConfirm)).toBe(toHex(actual.initiatorConfirm));
+  expect(toHex(mirrored.confirmKey)).toBe(toHex(actual.confirmKey));
+  expect(toHex(mirrored.handshakeHash)).toBe(toHex(actual.handshakeHash));
   expect(toHex(mirrored.responderConfirm)).toBe(toHex(actual.responderConfirm));
 });
 
@@ -1074,10 +1348,7 @@ test("flipping the initiator's request-encryption flag on the wire fails the han
     true,
     msg2.reqEnc,
   );
-  await connA.send({
-    kexMsg: "3",
-    confirm: toBase64Url(keys.initiatorConfirm),
-  });
+  await connA.send(await msg3For(keys));
   await expect(responder).rejects.toThrow(GENERIC_FAILURE);
 });
 

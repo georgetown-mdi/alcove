@@ -1,5 +1,5 @@
 {
-  "description": "Known-answer vectors for the terms-exchange message envelope: the field set, field order, and values each frame slot puts on the wire, captured off a real exchangeTerms run rather than authored. Every piece of per-party, per-run role and bounds metadata rides this envelope beside `linkageTerms` -- the record count, the receive ceiling, the declared effective key count, the protocol version, the save intent, the payload-intent flag, the observed host key, and the signing certificate a party that will sign presents -- and a partner reads each by name, so adding, renaming, dropping, or re-ordering one is a wire-format delta. `linkageTerms` is lifted out of each frame into the `linkageTerms` section below and named per frame by party; the consuming suite rebuilds the full frame from `fields`, `envelope`, and `carriesLinkageTerms`. The terms document's own content is versioned by the operator-authored `linkage_terms.version` rather than by PROTOCOL_VERSION, so what this file pins is the envelope around it. `envelopeFields` is every field each slot ADMITS, read off the schemas; the frames below are what each slot EMITS, and the consuming suite holds their union to it so a field added to a schema cannot ride the wire with no frame pinning it. Replayed by packages/core/test/connection/termsEnvelopeVectors.test.ts; regenerate with generate-terms-envelope-vectors.mjs in this directory.",
+  "description": "Known-answer vectors for the terms-exchange message envelope: the field set, field order, and values each frame slot puts on the wire, captured off a real exchangeTerms run rather than authored. Every piece of per-party, per-run role and bounds metadata rides this envelope beside `linkageTerms` -- the record count, the receive ceiling, the declared effective key count, the protocol version, the save intent, the payload-intent flag, the observed host key, the signing certificate a party that will sign presents, and the responder's wrapped value for the next shared secret on an authenticated run -- and a partner reads each by name, so adding, renaming, dropping, or re-ordering one is a wire-format delta. `linkageTerms` is lifted out of each frame into the `linkageTerms` section below and named per frame by party; the consuming suite rebuilds the full frame from `fields`, `envelope`, and `carriesLinkageTerms`. The terms document's own content is versioned by the operator-authored `linkage_terms.version` rather than by PROTOCOL_VERSION, so what this file pins is the envelope around it. `envelopeFields` is every field each slot ADMITS, read off the schemas; the frames below are what each slot EMITS, and the consuming suite holds their union to it so a field added to a schema cannot ride the wire with no frame pinning it. Replayed by packages/core/test/connection/termsEnvelopeVectors.test.ts; regenerate with generate-terms-envelope-vectors.mjs in this directory.",
   "protocolVersion": 1,
   "envelopeFields": {
     "message 1": [
@@ -22,7 +22,8 @@
       "save",
       "disclosesPayload",
       "hostKey",
-      "certificate"
+      "certificate",
+      "responderValue"
     ],
     "message 3": ["decision", "abortReasons"]
   },
@@ -174,6 +175,12 @@
       "signature": "qzvJBS9wJbRKop32wkONNA3f9uG4uRtrRn3SY-ERe9IOiFcAX43RIiXYy3ihD9__VOTSwz6yw31q2yEeSW7htA"
     }
   ],
+  "rotation": {
+    "sessionKeyHex": "1111111111111111111111111111111111111111111111111111111111111111",
+    "keyAgreementOutputHex": "2222222222222222222222222222222222222222222222222222222222222222",
+    "initiatorValueHex": "3333333333333333333333333333333333333333333333333333333333333333",
+    "responderValueHex": "4444444444444444444444444444444444444444444444444444444444444444"
+  },
   "scenarios": [
     {
       "name": "every-optional-field-advertised",
@@ -507,6 +514,91 @@
             },
             "signature": "LB2wzmukLSBqxcFTZZ9Is9tAC9KZky_qtO7SEMR4AERDHuvDUeIhdjQ7ZP4DdQjyST-Oqj5sHdgF9KfcF0HJlQ"
           },
+          "partnerCertificateMalformed": false
+        }
+      }
+    },
+    {
+      "name": "authenticated-run-rotates",
+      "description": "An authenticated run: the responder's proceeding message 2 carries its wrapped value for the next shared secret, `responderValue`, which no other frame does. The handshake's outputs and the responder's value are the fixed `rotation` inputs, so the wrapped bytes are pinned.",
+      "initiator": {
+        "terms": "partyA",
+        "recordCount": 5,
+        "rotates": true
+      },
+      "responder": {
+        "terms": "partyB",
+        "recordCount": 6,
+        "rotates": true
+      },
+      "frames": [
+        {
+          "sender": "initiator",
+          "slot": "message 1",
+          "fields": [
+            "linkageTerms",
+            "recordCount",
+            "receiveCeiling",
+            "protocolVersion"
+          ],
+          "envelope": {
+            "recordCount": 5,
+            "receiveCeiling": 16777216,
+            "protocolVersion": 1
+          },
+          "carriesLinkageTerms": "partyA"
+        },
+        {
+          "sender": "responder",
+          "slot": "message 2",
+          "fields": [
+            "linkageTerms",
+            "decision",
+            "recordCount",
+            "receiveCeiling",
+            "protocolVersion",
+            "responderValue"
+          ],
+          "envelope": {
+            "decision": "proceed",
+            "recordCount": 6,
+            "receiveCeiling": 16777216,
+            "protocolVersion": 1,
+            "responderValue": "NDTiUoSeJa3U6m4DRpA40K7lK_FIMOj-ajgLJ5Xd8dLDV-P2CeG6kw"
+          },
+          "carriesLinkageTerms": "partyB"
+        },
+        {
+          "sender": "initiator",
+          "slot": "message 3",
+          "fields": ["decision"],
+          "envelope": {
+            "decision": "proceed"
+          },
+          "carriesLinkageTerms": null
+        }
+      ],
+      "reads": {
+        "initiator": {
+          "partnerIdentity": "Party B",
+          "partnerRecordCount": 6,
+          "partnerReceiveCeiling": 16777216,
+          "partnerSaveIntent": false,
+          "partnerDisclosesPayload": null,
+          "partnerHostKey": null,
+          "partnerHostKeyMalformed": false,
+          "partnerCertificate": null,
+          "partnerCertificateMalformed": false
+        },
+        "responder": {
+          "partnerIdentity": "Party A",
+          "partnerRecordCount": 5,
+          "partnerReceiveCeiling": 16777216,
+          "partnerSaveIntent": false,
+          "partnerDisclosesPayload": null,
+          "partnerHostKey": null,
+          "partnerHostKeyMalformed": false,
+          "partnerCertificate": null,
           "partnerCertificateMalformed": false
         }
       }

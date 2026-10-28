@@ -1578,6 +1578,23 @@ export function applyManagedExchangeRotationInFlight(
 }
 
 /**
+ * Remove a record's rotation-in-flight marker, producing a validated new
+ * record, for a responder run whose key exchange completed and which ended
+ * at the terms exchange with neither side able to have stored the next
+ * secret. Only the marker changes; the input record is not mutated.
+ *
+ * @throws {ZodError} if the result is not a valid record.
+ */
+export function applyManagedExchangeRotationInFlightCleared(
+  record: RunnableManagedExchangeRecord,
+): RunnableManagedExchangeRecord {
+  if (record.rotationInFlightSince === undefined) return record;
+  const next: ManagedExchangeRecord = { ...record };
+  delete next.rotationInFlightSince;
+  return runnableManagedExchangeOrRefuse(parseManagedExchangeRecord(next));
+}
+
+/**
  * Complete a configuration-only record with a record read from a command-line
  * `alcove.yaml` and its `.alcove.key`, producing a validated new record: the
  * document, `side`, max-age policy, key pair, relay registrar, and pending

@@ -8,7 +8,7 @@ import { prepareForExchange } from "@alcove/core";
 import type { LinkageTerms, PreparedExchange } from "@alcove/core";
 import { withCapturedLogs } from "@alcove/core/testing";
 
-import { saveKeyFile } from "../../../src/keyFile";
+import { loadKeyFile, saveKeyFile } from "../../../src/keyFile";
 import {
   runProtocol,
   type ProtocolConnectionConfig,
@@ -124,36 +124,42 @@ test("each party states a linkage strategy difference from its own side", async 
   }
 }, 30_000);
 
-test("a run whose configuration write failed names a fresh invitation as the step", async () => {
+// The configuration write runs with the key-file save, after the terms are
+// agreed, so a run the terms refuse reaches neither and keeps its secret. The
+// run passing that write states the online invitation's step.
+test("a run refused at the terms exchange runs no configuration write", async () => {
   const dropDir = fs.mkdtempSync(path.join(work, "drop-"));
-  const configurationWriteFails = (): void => {
-    throw new Error("the configuration directory is read-only");
+  let configurationWrites = 0;
+  const configurationWrite = (): void => {
+    configurationWrites += 1;
   };
-  const [[unwritten, configured]] = await withCapturedLogs(
+  const [[hooked, plain]] = await withCapturedLogs(
     () =>
       Promise.all([
         run(
-          "unwritten",
+          "hooked",
           dropDir,
           prepared("Cascade Co", "cascade"),
-          configurationWriteFails,
+          configurationWrite,
         ),
-        run("configured", dropDir, prepared("Single Pass Co", "single-pass")),
+        run("plain", dropDir, prepared("Single Pass Co", "single-pass")),
       ]),
     () => true,
   );
-  const unwrittenStep =
-    TERMS_REFUSAL_NEXT_STEPS["configuration-unwritten"]["this-party"];
-  expect(unwritten.endsWith(`\n${unwrittenStep}`)).toBe(true);
-  expect(unwritten).not.toContain("alcove update");
-  const configuredRefusedBy = configured.includes(
-    "linkage terms are incompatible: ",
-  )
+  expect(configurationWrites).toBe(0);
+  for (const name of ["hooked", "plain"])
+    expect(loadKeyFile(path.join(work, `${name}.key`))?.sharedSecret).toBe(
+      SHARED_SECRET,
+    );
+  expect(
+    hooked.endsWith(
+      `\n${TERMS_REFUSAL_NEXT_STEPS["online-invitation"]["this-party"]}`,
+    ),
+  ).toBe(true);
+  const plainRefusedBy = plain.includes("linkage terms are incompatible: ")
     ? "this-party"
     : "partner";
   expect(
-    configured.endsWith(
-      `\n${TERMS_REFUSAL_NEXT_STEPS.configured[configuredRefusedBy]}`,
-    ),
+    plain.endsWith(`\n${TERMS_REFUSAL_NEXT_STEPS.configured[plainRefusedBy]}`),
   ).toBe(true);
 }, 30_000);

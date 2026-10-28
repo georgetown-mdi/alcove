@@ -42,7 +42,11 @@ import { runOnlineBootstrap } from "../../src/onlineBootstrap";
 import type { CommonBootstrapOptions } from "../../src/optionDefinitions";
 import { loadKeyFile } from "../../src/keyFile";
 import { keysPathFor } from "../../src/recordFile";
-import { exitCodeForError } from "../../src/util/exit";
+import { TERMS_REFUSAL_NEXT_STEPS } from "../../src/termsRefusalRemedy";
+import {
+  exitCodeForError,
+  renderFailureForOperator,
+} from "../../src/util/exit";
 import { promptConfirm } from "../../src/util/prompt";
 import { captureStdio } from "../loggingTestSupport";
 import { localPath, remotePath, sftpServer } from "../sftpServer/testContext";
@@ -768,12 +772,13 @@ test("filedrop: a shared-secret mismatch aborts the handshake, persisting no con
   expect(fs.readdirSync(inviteOut)).toEqual([]);
   expect(fs.readdirSync(acceptOut)).toEqual([]);
 
-  // Each aborted handshake emits one recovery advisory at ERROR -- the only
-  // intended WARN/ERROR of this run -- and which one follows the side's exit
-  // code: an authentication failure (77) rules out a retry with the existing
-  // key file, while a responder that timed out (69) may retry with it.
-  // Asserting the captured set proves intent (each is the known advisory) and
-  // guards against a genuine, unexpected error being suppressed unseen.
+  // Each side whose handshake failed authentication (77) emits one advisory
+  // at ERROR -- the only intended WARN/ERROR of this run -- ruling out a
+  // retry with the existing key file. A responder that timed out (69) in the
+  // key exchange emits none: the next secret is stored only at the terms
+  // exchange that follows, so the run rotated nobody. Asserting the captured
+  // set proves intent (each is the known advisory) and guards against a
+  // genuine, unexpected error being suppressed unseen.
   const advisories = capturedLogs.map((l) => l.message);
   const authenticationFailures = [inviteOutcome, acceptOutcome].filter(
     (outcome) =>
@@ -781,22 +786,111 @@ test("filedrop: a shared-secret mismatch aborts the handshake, persisting no con
       exitCodeForError(outcome.reason) === AUTHENTICATION_FAILED_EXIT_CODE,
   ).length;
   expect(authenticationFailures).toBeGreaterThan(0);
-  expect(advisories).toHaveLength(2);
-  expect(
-    advisories.filter((message) =>
-      message.includes(
-        "Authentication failed, and a retry with this key file fails the " +
-          "same way. Ask your partner for a new invitation",
-      ),
-    ),
-  ).toHaveLength(authenticationFailures);
-  expect(
-    advisories.filter((message) =>
-      message.includes(
-        "The key exchange was in progress when this error occurred.",
-      ),
-    ),
-  ).toHaveLength(2 - authenticationFailures);
+  expect(advisories).toHaveLength(authenticationFailures);
+  for (const message of advisories)
+    expect(message).toContain(
+      "Authentication failed, and a retry with this key file fails the " +
+        "same way. Ask your partner for a new invitation",
+    );
+}, 60_000);
+
+test("filedrop: a terms refusal on an online invite and accept names a fresh invitation, persisting no config or key on either side", async () => {
+  const dropDir = fs.mkdtempSync(path.join(work, "drop-"));
+  const url = pathToFileURL(dropDir).href;
+  const inviteInput = path.join(work, "invite-input.csv");
+  fs.writeFileSync(inviteInput, INVITE_CSV);
+  const acceptInput = path.join(work, "accept-input.csv");
+  fs.writeFileSync(acceptInput, ACCEPT_CSV);
+
+  const inviteOptions = testOptions("invite");
+  const acceptOptions = testOptions("accept");
+
+  const inviteReady = await validateInvite({
+    resolved: resolveInvitePositionals([
+      url,
+      inviteInput,
+      outputFolder("invite"),
+    ]),
+    options: inviteOptions,
+    acceptTimeout: PEER_TIMEOUT_SECONDS,
+    log,
+  });
+  expect(inviteReady.mode).toBe("online");
+  if (inviteReady.mode !== "online") return;
+  const acceptReady = await validateAccept({
+    resolved: resolveAcceptPositionals([
+      url,
+      inviteReady.invitation,
+      acceptInput,
+      outputFolder("accept"),
+    ]),
+    options: acceptOptions,
+    log,
+  });
+  expect(acceptReady.mode).toBe("online");
+  if (acceptReady.mode !== "online") return;
+
+  // The inviter runs on a linkage strategy other than the one its invitation
+  // states, so the two parties' terms differ at the terms exchange.
+  const invitedTerms = inviteReady.prepared.linkageTerms;
+  const inviterPrepared = {
+    ...inviteReady.prepared,
+    linkageTerms: {
+      ...invitedTerms,
+      linkageStrategy:
+        invitedTerms.linkageStrategy === "cascade"
+          ? ("single-pass" as const)
+          : ("cascade" as const),
+    },
+  };
+
+  const [settled] = await withCapturedLogs(
+    () =>
+      Promise.allSettled([
+        runOnlineBootstrap({
+          connection: inviteReady.connection,
+          dataSpec: inviteReady.dataSpec,
+          prepared: inviterPrepared,
+          sharedSecret: inviteReady.sharedSecret,
+          expires: inviteReady.expires,
+          keyPath: inviteOptions.keyFile,
+          configPath: inviteOptions.configFile,
+          output: inviteReady.output,
+          verbosity: 0,
+          loggerName: "invite",
+          writePlainLine: () => {},
+          writeRecord: inviteOptions.record,
+        }),
+        runOnlineBootstrap({
+          connection: acceptReady.connection,
+          dataSpec: acceptReady.dataSpec,
+          prepared: acceptReady.prepared,
+          sharedSecret: acceptReady.token.sharedSecret,
+          expires: acceptReady.token.expires,
+          keyPath: acceptOptions.keyFile,
+          configPath: acceptOptions.configFile,
+          output: acceptReady.output,
+          verbosity: 0,
+          loggerName: "accept",
+          writePlainLine: () => {},
+          writeRecord: acceptOptions.record,
+          reuseExistingConfig: acceptReady.reuseExistingConfig,
+        }),
+      ]),
+    () => true,
+  );
+
+  const step = TERMS_REFUSAL_NEXT_STEPS["online-invitation"]["this-party"];
+  for (const outcome of settled) {
+    expect(outcome.status).toBe("rejected");
+    if (outcome.status !== "rejected") continue;
+    const rendered = renderFailureForOperator(outcome.reason);
+    expect(rendered).toContain("linkage strategy mismatch");
+    expect(rendered.endsWith(`\n${step}`)).toBe(true);
+    expect(rendered).not.toContain("configuration");
+  }
+  expectNoPersistedFiles(inviteOptions);
+  expectNoPersistedFiles(acceptOptions);
 }, 60_000);
 
 // --- Happy path: sftp ---------------------------------------------------------

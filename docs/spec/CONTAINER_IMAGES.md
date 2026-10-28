@@ -520,6 +520,25 @@ without security claimed), so there is no status either algorithm could hold
 under this certificate. That is a different statement from the one certificate
 4985 supports, whose Non-Approved, Not Allowed table names both.
 
+### The AES-KW row behind the rotation's wrap
+
+The shared-secret rotation draws each party's value as a 256-bit HMAC key with
+`crypto.subtle.generateKey` and wraps it with `crypto.subtle` AES-KW under a
+256-bit key HKDF derives
+([PROTOCOL.md](PROTOCOL.md#shared-secret-rotation)). The entrypoint probe
+records both call shapes, in its `rotation_value_draw` and
+`aes_kw_wrap_round_trip` legs, without gating on them, so the row below is a
+table placement until an engaged transcript shows those legs completing, and no
+document says the module performs the wrap or draws the values before then. It
+sits on Table 6 (p. 10):
+
+| Call shape | Table 6 row | CAVP certificates | Properties | Reference |
+| --- | --- | --- | --- | --- |
+| AES-KW, 256-bit key | `AES-KW` | A7438, A7442, A7443, A7492, A7493, A7494 | `Direction - Decrypt, Encrypt`; `Key Length - 128, 192, 256` | SP 800-38F |
+
+That `crypto.subtle`'s AES-KW, the RFC 3394 algorithm, is the KW this row
+names rests on the policy's labeling of the row: SP 800-38F itself was not read.
+
 ### The ECDSA rows, which no probe leg covers
 
 Receipt signing calls `crypto.subtle` ECDSA over P-256 with SHA-256, and the

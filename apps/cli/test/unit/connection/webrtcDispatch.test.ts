@@ -8,6 +8,7 @@ import type {
   ExchangeResult,
   MessageConnection,
   PreparedExchange,
+  TermsRotation,
 } from "@alcove/core";
 
 /**
@@ -55,6 +56,7 @@ vi.mock("@openmined/psi.js", () => ({
 // would otherwise need the WASM stack and a dataset.
 vi.mock("@alcove/core", async (importActual) => {
   const actual = await importActual<typeof import("@alcove/core")>();
+  const { deriveNextSecret } = await import("@alcove/core/testing");
   const stubLinkageTerms = actual.getDefaultLinkageTerms("Acceptor");
   return {
     ...actual,
@@ -92,8 +94,19 @@ vi.mock("@alcove/core", async (importActual) => {
           : result;
       },
     ),
-    runExchange: vi.fn(async (connection: unknown) => {
-      mockState.exchangeConnections.push(connection);
+    runExchange: vi.fn(async (...args: unknown[]) => {
+      mockState.exchangeConnections.push(args[0]);
+      // The real terms exchange stores the next secret through
+      // `options.rotation`; a fixed responder value makes both sides agree.
+      const rotation = (args[3] as { rotation?: TermsRotation }).rotation;
+      if (rotation !== undefined)
+        await rotation.store(
+          await deriveNextSecret(
+            rotation.inputs.keyAgreementOutput,
+            rotation.inputs.initiatorValue,
+            new Uint8Array(32),
+          ),
+        );
       return {
         associationTable: [[], []],
         intersectionCount: undefined,

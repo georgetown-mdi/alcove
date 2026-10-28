@@ -20,17 +20,31 @@
 // are flag-independent (the flag enters h only, via MixHash) and are recorded
 // once.
 //
+// The rotation fixes both parties' 32-byte values and records each wrapped
+// value and the next secret. The wraps are computed with OpenSSL's
+// id-aes256-wrap (RFC 3394, anchored on its section 4.6 vector) and the
+// next secret with node:crypto's HKDF, not with WebCrypto's AES-KW.
+//
 // Run:  node packages/core/test/vectors/generate-kex-vectors.mjs
 // It prints the JSON to stdout; redirect into kex-vectors.json to refresh,
 // then run `npm run format`.
 
-import { createECDH, createHash, createHmac, hkdfSync } from "node:crypto";
+import {
+  createCipheriv,
+  createECDH,
+  createHash,
+  createHmac,
+  hkdfSync,
+} from "node:crypto";
 
 const PROTOCOL_NAME = "alcove-kex-v3:NNpsk0_P256_SHA256";
 const SESSION_LABEL = "alcove-kex-v2:session";
 const CONFIRM_KEY_LABEL = "alcove-kex-v2:confirm";
 const INITIATOR_CONFIRM_LABEL = "alcove-kex-v2:initiator-confirm";
 const RESPONDER_CONFIRM_LABEL = "alcove-kex-v2:responder-confirm";
+const INITIATOR_WRAP_LABEL = "alcove-shared-secret-wrap-v2";
+const RESPONDER_WRAP_LABEL = "alcove-shared-secret-wrap-responder-v2";
+const NEXT_SECRET_LABEL = "alcove-shared-secret-next-v2";
 
 // The pinned wire encoding: SEC1 uncompressed, 0x04 || X || Y.
 const CURVE = "prime256v1";
@@ -49,6 +63,17 @@ const hkdfApp = (ikm, info, len) =>
   Buffer.from(
     hkdfSync("sha256", ikm, Buffer.alloc(32), Buffer.from(info, "utf8"), len),
   );
+
+// RFC 3394 key wrap under a 256-bit key, through OpenSSL's id-aes256-wrap
+// with the RFC's default initial value.
+const aesKeyWrap = (kek, keyData) => {
+  const cipher = createCipheriv(
+    "id-aes256-wrap",
+    kek,
+    Buffer.from("a6a6a6a6a6a6a6a6", "hex"),
+  );
+  return Buffer.concat([cipher.update(keyData), cipher.final()]);
+};
 
 function ecdhFor(privateKeyHex) {
   const e = createECDH(CURVE);
@@ -95,15 +120,33 @@ function computeKexKeys(psk, eInitPub, eRespPub, dh, iReq, rReq) {
   const master = Buffer.concat([ck, h]);
   const sessionKey = hkdfApp(master, SESSION_LABEL, 32);
   const confirmKey = hkdfApp(ck, CONFIRM_KEY_LABEL, 32);
-  const initiatorConfirm = hmac(
-    confirmKey,
-    Buffer.concat([Buffer.from(INITIATOR_CONFIRM_LABEL, "utf8"), h]),
-  );
   const responderConfirm = hmac(
     confirmKey,
     Buffer.concat([Buffer.from(RESPONDER_CONFIRM_LABEL, "utf8"), h]),
   );
-  return { ck, h, sessionKey, confirmKey, initiatorConfirm, responderConfirm };
+  return { ck, h, sessionKey, confirmKey, responderConfirm };
+}
+
+// Each party's value wrapped under the key its label derives from the session
+// key; the initiator's tag binds its wrapped value after h.
+function computeRotation(k, initiatorValue, responderValue) {
+  const wrappedInitiatorValue = aesKeyWrap(
+    hkdfApp(k.sessionKey, INITIATOR_WRAP_LABEL, 32),
+    initiatorValue,
+  );
+  const wrappedResponderValue = aesKeyWrap(
+    hkdfApp(k.sessionKey, RESPONDER_WRAP_LABEL, 32),
+    responderValue,
+  );
+  const initiatorConfirm = hmac(
+    k.confirmKey,
+    Buffer.concat([
+      Buffer.from(INITIATOR_CONFIRM_LABEL, "utf8"),
+      k.h,
+      wrappedInitiatorValue,
+    ]),
+  );
+  return { wrappedInitiatorValue, wrappedResponderValue, initiatorConfirm };
 }
 
 // --- External anchors --------------------------------------------------------
@@ -162,6 +205,21 @@ const tc3Out = Buffer.concat(
 ).subarray(0, 42);
 if (hex(tc3Out) !== TC3.okm) throw new Error("RFC 5869 TC3 self-check failed");
 
+// RFC 3394 section 4.6: 256 bits of key data wrapped under a 256-bit KEK.
+const RFC3394_4_6 = {
+  kekHex: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  keyDataHex:
+    "00112233445566778899aabbccddeeff000102030405060708090a0b0c0d0e0f",
+  ciphertextHex:
+    "28c9f404c4b810f4cbccb35cfb87f8263f5786e2d80ed326cbc7f0e71a99f43bfb988b9b7a02dd21",
+};
+if (
+  hex(
+    aesKeyWrap(fromHex(RFC3394_4_6.kekHex), fromHex(RFC3394_4_6.keyDataHex)),
+  ) !== RFC3394_4_6.ciphertextHex
+)
+  throw new Error("RFC 3394 section 4.6 self-check failed");
+
 // --- Known-answer vectors ----------------------------------------------------
 
 const psk = Buffer.alloc(32, 0x42);
@@ -179,6 +237,20 @@ const dh = eInit.computeSecret(eRespPub);
 const dhCheck = eResp.computeSecret(eInitPub);
 if (hex(dh) !== hex(dhCheck)) throw new Error("DH disagreement");
 
+// The two parties' rotation values, fixed. The next secret takes no flag or
+// session-key input, so it is recorded once.
+const initiatorValue = Buffer.from(
+  Array.from({ length: 32 }, (_, i) => 0x40 + i),
+);
+const responderValue = Buffer.from(
+  Array.from({ length: 32 }, (_, i) => 0x80 + i),
+);
+const nextSecret = hkdfApp(
+  Buffer.concat([dh, initiatorValue, responderValue]),
+  NEXT_SECRET_LABEL,
+  32,
+);
+
 // All four (initiator, responder) request-encryption combinations, so both flag
 // values are pinned at each position. applyEncryption is the OR both parties agree on.
 const FLAG_CASES = [
@@ -188,10 +260,17 @@ const FLAG_CASES = [
   { name: "both-request", initiator: true, responder: true },
 ];
 
-const computed = FLAG_CASES.map((c) => ({
-  c,
-  k: computeKexKeys(psk, eInitPub, eRespPub, dh, c.initiator, c.responder),
-}));
+const computed = FLAG_CASES.map((c) => {
+  const k = computeKexKeys(
+    psk,
+    eInitPub,
+    eRespPub,
+    dh,
+    c.initiator,
+    c.responder,
+  );
+  return { c, k, r: computeRotation(k, initiatorValue, responderValue) };
+});
 
 // The flag enters h only (MixHash), so the chaining key and the confirmation key
 // derived from it are flag-independent. Assert that here and record them once.
@@ -204,15 +283,17 @@ for (const { k } of computed) {
     );
 }
 
-const cases = computed.map(({ c, k }) => ({
+const cases = computed.map(({ c, k, r }) => ({
   name: c.name,
   initiatorRequestsEncryption: c.initiator,
   responderRequestsEncryption: c.responder,
   applyEncryption: c.initiator || c.responder,
   handshakeHashHex: hex(k.h),
   sessionKeyHex: hex(k.sessionKey),
-  initiatorConfirmHex: hex(k.initiatorConfirm),
+  initiatorConfirmHex: hex(r.initiatorConfirm),
   responderConfirmHex: hex(k.responderConfirm),
+  wrappedInitiatorValueHex: hex(r.wrappedInitiatorValue),
+  wrappedResponderValueHex: hex(r.wrappedResponderValue),
   wire: {
     msg1: { kexMsg: "1", e: b64url(eInitPub), reqEnc: c.initiator },
     msg2: {
@@ -221,7 +302,12 @@ const cases = computed.map(({ c, k }) => ({
       confirm: b64url(k.responderConfirm),
       reqEnc: c.responder,
     },
-    msg3: { kexMsg: "3", confirm: b64url(k.initiatorConfirm) },
+    msg3: {
+      kexMsg: "3",
+      confirm: b64url(r.initiatorConfirm),
+      initiatorValue: b64url(r.wrappedInitiatorValue),
+    },
+    termsResponderValue: b64url(r.wrappedResponderValue),
   },
 }));
 
@@ -232,8 +318,12 @@ const vector = {
     "confirmation + a per-party request-encryption flag bound into the " +
     "transcript). Fixes the pre-shared secret and both ephemeral P-256 private " +
     "keys, and records, for all four (initiator, responder) flag combinations, " +
-    "the handshake hash, session key, and both confirmation tags. computeKexKeys " +
-    "in packages/core/src/kex.ts reproduces them from these inputs; kex.test.ts " +
+    "the handshake hash, session key, and both confirmation tags. It also " +
+    "fixes both parties' rotation values and records, per combination, each " +
+    "value AES-KW-wrapped under its key from the session key, and once the " +
+    "next shared secret derived over dh and both values. computeKexKeys, " +
+    "initiatorConfirmTag and the rotation functions in packages/core/src " +
+    "reproduce them from these inputs; kex.test.ts " +
     "checks that on Node and apps/web's browser suite checks the same file " +
     "against the browser build in real Chromium. The chaining key and " +
     "confirmation key are flag-independent (the flag is MixHash'd into h only) " +
@@ -282,12 +372,24 @@ const vector = {
       "MixKey(eInitiatorPub), MixHash(initiatorFlagByte), MixHash(eResponderPub), " +
       "MixKey(eResponderPub), MixHash(responderFlagByte), MixKey(dh). sessionKey " +
       "= HKDF(ck||h, sessionLabel, 32); confirmKey = HKDF(ck, confirmKeyLabel, " +
-      "32); confirm tags = HMAC(confirmKey, label||h).",
+      "32); responder confirm = HMAC(confirmKey, label||h); initiator " +
+      "confirm = HMAC(confirmKey, label||h||wrappedInitiatorValue).",
+    initiatorWrapLabel: INITIATOR_WRAP_LABEL,
+    responderWrapLabel: RESPONDER_WRAP_LABEL,
+    nextSecretLabel: NEXT_SECRET_LABEL,
+    rotation:
+      "Each wrapped value = AES-KW (RFC 3394, default IV) of the party's " +
+      "32-byte value under HKDF(sessionKey, that party's wrap label, 32). " +
+      "nextSecret = HKDF(dh || initiatorValue || responderValue, " +
+      "nextSecretLabel, 32). The initiator's wrapped value travels in msg3, " +
+      "the responder's as the terms message 2 field responderValue.",
   },
   inputs: {
     pskHex: hex(psk),
     initiatorEphemeralPrivateHex: hex(eInitPriv),
     responderEphemeralPrivateHex: hex(eRespPriv),
+    initiatorValueHex: hex(initiatorValue),
+    responderValueHex: hex(responderValue),
   },
   derived: {
     initiatorEphemeralPublicHex: hex(eInitPub),
@@ -295,6 +397,8 @@ const vector = {
     dhSharedSecretHex: hex(dh),
     chainingKeyHex,
     confirmKeyHex,
+    nextSecretHex: hex(nextSecret),
+    nextSecret: b64url(nextSecret),
   },
   cases,
   externalAnchors: {
@@ -323,6 +427,13 @@ const vector = {
       note:
         "noiseHkdf(ck = 32 zero bytes, ikm, 2) truncated to 42 bytes equals " +
         "this OKM, anchoring the Noise chaining HKDF to standard HKDF.",
+    },
+    rfc3394Section4_6: {
+      ...RFC3394_4_6,
+      note:
+        "256 bits of key data wrapped under a 256-bit KEK, the shape of each " +
+        "rotation wrap. The generator's id-aes256-wrap and the module's " +
+        "crypto.subtle AES-KW both reproduce it.",
     },
   },
 };

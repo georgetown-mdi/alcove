@@ -34,11 +34,15 @@ import {
   ManagedInputError,
   managedInputFailureKind,
 } from "@psi/managed/managedInputGuard";
+import {
+  ManagedRunStoppedError,
+  managedWindowRunStage,
+  stopWaitingManagedWindowRun,
+} from "@psi/managed/managedWindowRuns";
 import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
 import { ManagedExchangeNotRunnableError } from "@psi/managed/managedExchangeRun";
 import { PartnerNoShowError } from "@psi/transport/waitForConnection";
 import { RotationPersistError } from "@psi/managed/managedRunRotate";
-import { stopWaitingManagedWindowRun } from "@psi/managed/managedWindowRuns";
 
 import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 
@@ -115,6 +119,22 @@ function record(
   };
 }
 
+/** A data exchange that stores `nextSecret` through the run's rotation write,
+ * as core's terms exchange does before any payload round, then yields what
+ * `exchange` does. */
+function rotatingExchange<T>(
+  exchange: () => Promise<T>,
+  nextSecret: string = generateSharedSecret(),
+): (
+  carried: string,
+  persistNextSecret: (nextSecret: string) => Promise<void>,
+) => Promise<T> {
+  return async (_carried, persistNextSecret) => {
+    await persistNextSecret(nextSecret);
+    return exchange();
+  };
+}
+
 /** Seams that fail loudly if reached: a run refused before the input is read
  * must never touch them. */
 const unreachableSeams = {
@@ -169,12 +189,9 @@ describe("runManagedRerun: pre-connection expiry of the stored record", () => {
         acquireInput: () => Promise.resolve("rows"),
         handshake: () => {
           handshakeRan = true;
-          return Promise.resolve({
-            rotatedSecret: generateSharedSecret(),
-            handshake: "carried",
-          });
+          return Promise.resolve("carried");
         },
-        dataExchange: () => Promise.resolve("exchanged"),
+        dataExchange: rotatingExchange(() => Promise.resolve("exchanged")),
       },
       { now: () => NOW },
     );
@@ -209,15 +226,11 @@ describe("runManagedRerun: the phase boundary reported to the caller", () => {
       record(),
       {
         acquireInput: () => Promise.resolve("rows"),
-        handshake: () =>
-          Promise.resolve({
-            rotatedSecret: generateSharedSecret(),
-            handshake: "carried",
-          }),
-        dataExchange: () => {
+        handshake: () => Promise.resolve("carried"),
+        dataExchange: rotatingExchange(() => {
           reportedWhenExchangeRan = boundaryReported;
           return Promise.resolve("exchanged");
-        },
+        }),
       },
       {
         onDataExchangeStart: () => {
@@ -263,7 +276,7 @@ describe("runManagedRerun: a partner who never arrives", () => {
   test("never reaches the rotation write, so the stored secret stands", async () => {
     // The invariant the carried-forward standing condition leans on: a condition
     // is cleared by a rotation write or the operator's own act, and a no-show
-    // raises before the handshake yields a rotated secret. The rotation persist is
+    // raises before the terms exchange derives a next secret. The rotation persist is
     // the only writer of `sharedSecret` and `expires`, so a run that never calls it
     // leaves both as the store holds them; the no-show stamp is its whole write.
     stubGrantingWebLocks();
@@ -343,6 +356,97 @@ describe("runManagedRerun: a stop asked before the handshake", () => {
   });
 });
 
+describe.each([
+  ["inviter", true],
+  ["acceptor", false],
+] as const)(
+  "runManagedRerun: the start of the key exchange, as the %s",
+  (side, writesMarker) => {
+    test("moves the run past every later stop, which it then refuses, and the run completes", async () => {
+      stubGrantingWebLocks();
+      storedRecord.value = record({ side });
+      const stop = new AbortController();
+      const stages: Array<string | undefined> = [];
+      const refusals: Array<string | undefined> = [];
+
+      const result = await runManagedRerun(
+        record({ side }),
+        {
+          acquireInput: () => Promise.resolve("rows"),
+          handshake: async (_input, beginKeyExchange) => {
+            stages.push(managedWindowRunStage("record-under-test"));
+            await beginKeyExchange();
+            stages.push(managedWindowRunStage("record-under-test"));
+            refusals.push(stopWaitingManagedWindowRun("record-under-test"));
+            return "carried";
+          },
+          dataExchange: rotatingExchange(() => {
+            refusals.push(stopWaitingManagedWindowRun("record-under-test"));
+            return Promise.resolve("exchanged");
+          }),
+        },
+        { stop },
+      );
+
+      expect(stages).toEqual(["waiting", "exchanging"]);
+      expect(refusals).toEqual(["exchanging", "exchanging"]);
+      expect(stop.signal.aborted).toBe(false);
+      expect(result.lastRun.outcome).toBe("succeeded");
+      expect(persistManagedExchangeRotation).toHaveBeenCalledTimes(1);
+    });
+
+    test(`${writesMarker ? "writes" : "writes no"} rotation-in-flight marker`, async () => {
+      stubGrantingWebLocks();
+      storedRecord.value = record({ side });
+
+      await runManagedRerun(record({ side }), {
+        acquireInput: () => Promise.resolve("rows"),
+        handshake: async (_input, beginKeyExchange) => {
+          await beginKeyExchange();
+          return "carried";
+        },
+        dataExchange: rotatingExchange(() => Promise.resolve("exchanged")),
+      });
+
+      expect(markManagedExchangeRotationInFlight).toHaveBeenCalledTimes(
+        writesMarker ? 1 : 0,
+      );
+    });
+
+    test("is refused where a stop came first, ending the run with nothing written", async () => {
+      stubGrantingWebLocks();
+      storedRecord.value = record({ side });
+      const stop = new AbortController();
+      let keyExchange = false;
+
+      const error = await runManagedRerun(
+        record({ side }),
+        {
+          acquireInput: () => Promise.resolve("rows"),
+          handshake: async (_input, beginKeyExchange) => {
+            expect(stopWaitingManagedWindowRun("record-under-test")).toBe(
+              "stopped",
+            );
+            await beginKeyExchange();
+            keyExchange = true;
+            return "carried";
+          },
+          dataExchange: () => {
+            throw new Error("the data exchange must not run");
+          },
+        },
+        { stop },
+      ).catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(ManagedRunStoppedError);
+      expect(keyExchange).toBe(false);
+      expect(markManagedExchangeRotationInFlight).not.toHaveBeenCalled();
+      expect(persistManagedExchangeRotation).not.toHaveBeenCalled();
+      expect(recordManagedExchangeLastRun).not.toHaveBeenCalled();
+    });
+  },
+);
+
 describe("runManagedRerun: the record a run uses", () => {
   test("a later run on a copy read before a rotation authenticates with the rotated secret", async () => {
     // Two runs launched from one copy of the record, as a window's attempts are
@@ -368,9 +472,12 @@ describe("runManagedRerun: the record a run uses", () => {
         acquireInput: () => Promise.resolve("rows"),
         handshake: (_input, _mark, current) => {
           authenticatedWith.push(current.sharedSecret);
-          return Promise.resolve({ rotatedSecret, handshake: "carried" });
+          return Promise.resolve("carried");
         },
-        dataExchange: () => Promise.resolve("exchanged"),
+        dataExchange: rotatingExchange(
+          () => Promise.resolve("exchanged"),
+          rotatedSecret,
+        ),
       });
 
     await runFromHeldCopy();
@@ -390,12 +497,8 @@ describe("runManagedRerun: the record a run uses", () => {
         inputCheckedAgainst = current;
         return Promise.resolve("rows");
       },
-      handshake: () =>
-        Promise.resolve({
-          rotatedSecret: generateSharedSecret(),
-          handshake: "carried",
-        }),
-      dataExchange: () => Promise.resolve("exchanged"),
+      handshake: () => Promise.resolve("carried"),
+      dataExchange: rotatingExchange(() => Promise.resolve("exchanged")),
     });
 
     expect(inputCheckedAgainst).toBe(edited);
@@ -896,18 +999,18 @@ describe("runManagedRerun: a store write that fails", () => {
   const storeAbort = () =>
     new DOMException("the transaction was aborted", "AbortError");
 
-  /** Seams for a run that reaches the data exchange, writing the
-   * rotation-in-flight marker the way the real handshake does. */
+  /** Seams for a run that reaches the data exchange, beginning the key
+   * exchange the way the real handshake does. */
   function completingSeams(): Parameters<
     typeof runManagedRerun<string, string, string>
   >[1] {
     return {
       acquireInput: () => Promise.resolve("rows"),
-      handshake: async (_input, markRotationInFlight) => {
-        await markRotationInFlight();
-        return { rotatedSecret: generateSharedSecret(), handshake: "carried" };
+      handshake: async (_input, beginKeyExchange) => {
+        await beginKeyExchange();
+        return "carried";
       },
-      dataExchange: () => Promise.resolve("exchanged"),
+      dataExchange: rotatingExchange(() => Promise.resolve("exchanged")),
     };
   }
 
@@ -1007,21 +1110,21 @@ describe("runManagedRerun: a store write that fails", () => {
     stubGrantingWebLocks();
     const changed = new ManagedExchangeSecretChangedError("record-under-test");
     vi.mocked(persistManagedExchangeRotation).mockRejectedValueOnce(changed);
-    let dataExchangeRan = false;
+    let payloadRan = false;
 
     const error = await runManagedRerun(record(), {
       ...completingSeams(),
-      dataExchange: () => {
-        dataExchangeRan = true;
+      dataExchange: rotatingExchange(() => {
+        payloadRan = true;
         return Promise.resolve("exchanged");
-      },
+      }),
     }).then(
       () => undefined,
       (reason: unknown) => reason,
     );
 
     expect(error).toBe(changed);
-    expect(dataExchangeRan).toBe(false);
+    expect(payloadRan).toBe(false);
     expect(recordManagedExchangeLastRun).not.toHaveBeenCalled();
     expect(
       rerunFailureLastRun(error, Date.now(), false, false),
@@ -1047,14 +1150,33 @@ describe("runManagedRerun: a store write that fails", () => {
 
     await runManagedRerun(storedRecord.value, {
       acquireInput: () => Promise.resolve("rows"),
-      handshake: () => Promise.resolve({ rotatedSecret, handshake: "carried" }),
-      dataExchange: () =>
-        Promise.reject(new Error("the partner's connection dropped")),
+      handshake: () => Promise.resolve("carried"),
+      dataExchange: rotatingExchange(
+        () => Promise.reject(new Error("the partner's connection dropped")),
+        rotatedSecret,
+      ),
     }).catch(() => undefined);
 
     const stamps = vi.mocked(recordManagedExchangeLastRun).mock.calls;
     expect(stamps).toHaveLength(1);
     expect(stamps[0]?.[3]).toBe(rotatedSecret);
+  });
+
+  test("the failure stamp after a terms exchange that ended before the store is made over the secret the run read", async () => {
+    stubGrantingWebLocks();
+    storedRecord.value = record({ sharedSecret: HELD_SECRET });
+
+    await runManagedRerun(storedRecord.value, {
+      acquireInput: () => Promise.resolve("rows"),
+      handshake: () => Promise.resolve("carried"),
+      dataExchange: () =>
+        Promise.reject(new Error("the partner refused the terms")),
+    }).catch(() => undefined);
+
+    expect(persistManagedExchangeRotation).not.toHaveBeenCalled();
+    const stamps = vi.mocked(recordManagedExchangeLastRun).mock.calls;
+    expect(stamps).toHaveLength(1);
+    expect(stamps[0]?.[3]).toBe(HELD_SECRET);
   });
 
   test("the storage stamp after a failed persist: the storage failure still reaches the caller", async () => {

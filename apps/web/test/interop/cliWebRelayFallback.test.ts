@@ -28,6 +28,7 @@ import {
   invitationFrom,
   pairsFromResultCsv,
   resultFileIn,
+  sharedSecretIn,
   startCli,
 } from "./cliParty";
 
@@ -247,6 +248,8 @@ describe.skipIf(loopbackTlsCert === null)(
         [0, 1],
         [1, 2],
       ]);
+      expect(webRun.value.nextSecret).toBe(sharedSecretIn(cliDir));
+      expect(webRun.value.nextSecret).not.toBe(setup.sharedSecret);
       expect(cliRun.value.output).toContain(
         "the exchange partner started the exchange on the WebSocket relay, " +
           "so this side starts it there and stops trying WebRTC",

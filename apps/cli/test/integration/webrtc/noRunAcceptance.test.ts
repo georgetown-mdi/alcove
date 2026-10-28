@@ -354,7 +354,7 @@ liveTest(
     expect(new Set(sent)).toEqual(new Set(["Burke", "Cruz"]));
     expect(resultTable(acceptOut).rows).toHaveLength(2);
 
-    // The handshake rotated the secret on both sides alike.
+    // The terms exchange rotated the secret on both sides alike.
     expect(loadKeyFile(acceptKey)?.sharedSecret).toBe(
       loadKeyFile(inviteKey)?.sharedSecret,
     );

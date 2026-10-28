@@ -1256,13 +1256,14 @@ The block is validated **strictly**, as the document's top level is: an unrecogn
 
 **Provisioning the key file from an invitation.** A configuration downloaded from the web application, like every `alcove.yaml`, holds no secret. Pass `--invitation CODE` to `alcove exchange` (the same invitation `alcove accept` takes) to write your key file from it and run the exchange in one command: the CLI validates the invitation (checksum, schema, and expiry), writes the key file with its shared secret and expiry, and then runs. Use the `@`-file form, `--invitation '@invitation.txt'`, to keep it out of shell history. A malformed or expired invitation fails before anything is written. `--invitation` is refused if a key file already exists at the key path, since the secret rotates after the first exchange; run without it, or re-invite. See [EXCHANGE_FILE.md](spec/EXCHANGE_FILE.md).
 
-**Rotation.** The shared secret rotates after each successful authentication handshake: both parties derive the replacement from the key-exchange session key using HKDF, with no extra round trip. The CLI persists it; a library consumer of `authenticateConnection` persists `rotatedSecret` from the returned `AuthResult` itself.
+**Rotation.** The shared secret rotates at the terms exchange that follows each successful authentication handshake, before the data exchange: both parties derive the replacement from the handshake's key agreement and a random value from each party, with no extra round trip, and save it one after the other ([The rotation at the terms exchange](spec/PROTOCOL.md#the-rotation-at-the-terms-exchange)). The CLI persists it; a library consumer of `runExchange` persists it through the `store` of its `rotation` option.
 
 | Failure point | State |
 | --- | --- |
-| Before a successful handshake | The existing secret stays valid |
-| After the handshake, during the data exchange | Both parties hold the rotated secret and can retry without re-inviting |
-| The rotated secret cannot be persisted (for example a disk-write error) | The parties may be out of sync; both must re-invite |
+| Before either party saves it (a failed handshake, or terms that are refused) | The existing secret stays valid |
+| After both parties saved it, during the data exchange | Both parties hold the rotated secret and can retry without re-inviting |
+| The first party to save cannot persist it (for example a disk-write error) | Normally neither party holds it, and the same command run again after the fix recovers ([Out-of-sync tokens](CLI.md#out-of-sync-tokens)) |
+| The second party cannot persist it, or the run stops between the two saves | The parties are out of sync; both must re-invite |
 
 Invitation tokens expire after 1 hour by default; a rotated secret's lifetime is governed by [`token_max_age_days`](#authenticationtoken_max_age_days). WebRTC peer addressing is configured in [`connection.role`](#connectionrole), not here.
 

@@ -2,6 +2,7 @@
 /// <reference types="vite/client" />
 
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
+
 import { generateSharedSecret, getDefaultLinkageTerms } from "@alcove/core";
 
 import {
@@ -29,6 +30,7 @@ import { ManagedInputError } from "@psi/managed/managedInputGuard";
 import { getManagedLocalState } from "@psi/managed/managedLocalState";
 import { runManagedExchange } from "@psi/managed/managedExchangeRun";
 
+import { rotatingDataExchange } from "../utils/rotatingDataExchange";
 import { waitFor } from "../utils/waitFor";
 
 import type {
@@ -302,13 +304,16 @@ describe("runManagedExchange: persist-before-success end to end", () => {
       acquireInput: () => Promise.resolve(undefined),
       handshake: () => {
         order.push("handshake");
-        return Promise.resolve({ rotatedSecret, handshake: "carried" });
+        return Promise.resolve("carried");
       },
-      dataExchange: async (carried: string) => {
-        order.push("dataExchange");
-        storedAtDataExchange = await getManagedExchange(created.id);
-        return `exchanged:${carried}`;
-      },
+      dataExchange: rotatingDataExchange(
+        rotatedSecret,
+        async (carried: string) => {
+          order.push("dataExchange");
+          storedAtDataExchange = await getManagedExchange(created.id);
+          return `exchanged:${carried}`;
+        },
+      ),
     });
 
     expect(order).toEqual(["handshake", "dataExchange"]);
@@ -345,8 +350,10 @@ describe("runManagedExchange: persist-before-success end to end", () => {
         record: created,
         runStartedAtMs: Date.now(),
         acquireInput: () => Promise.resolve(undefined),
-        handshake: () => Promise.resolve({ rotatedSecret, handshake: "c" }),
-        dataExchange: () => Promise.resolve("done"),
+        handshake: () => Promise.resolve("c"),
+        dataExchange: rotatingDataExchange(rotatedSecret, () =>
+          Promise.resolve("done"),
+        ),
       });
     } finally {
       IDBDatabase.prototype.transaction = realTransaction;
@@ -367,8 +374,10 @@ describe("runManagedExchange: persist-before-success end to end", () => {
       record: created,
       runStartedAtMs: Date.now(),
       acquireInput: () => Promise.resolve(undefined),
-      handshake: () => Promise.resolve({ rotatedSecret, handshake: "c" }),
-      dataExchange: () => Promise.resolve("done"),
+      handshake: () => Promise.resolve("c"),
+      dataExchange: rotatingDataExchange(rotatedSecret, () =>
+        Promise.resolve("done"),
+      ),
     });
     const stored = await getManagedExchange(created.id);
     // The rotation advanced only the secret; the document and label are intact.
@@ -387,8 +396,10 @@ describe("runManagedExchange: persist-before-success end to end", () => {
       record: created,
       runStartedAtMs: Date.now(),
       acquireInput: () => Promise.resolve(undefined),
-      handshake: () => Promise.resolve({ rotatedSecret, handshake: "c" }),
-      dataExchange: () => Promise.resolve("done"),
+      handshake: () => Promise.resolve("c"),
+      dataExchange: rotatingDataExchange(rotatedSecret, () =>
+        Promise.resolve("done"),
+      ),
       now: () => rotationAt,
     });
     const stored = await getManagedExchange(created.id);
@@ -406,8 +417,10 @@ describe("runManagedExchange: persist-before-success end to end", () => {
       record: created,
       runStartedAtMs: Date.now(),
       acquireInput: () => Promise.resolve(undefined),
-      handshake: () => Promise.resolve({ rotatedSecret, handshake: "c" }),
-      dataExchange: () => Promise.resolve("done"),
+      handshake: () => Promise.resolve("c"),
+      dataExchange: rotatingDataExchange(rotatedSecret, () =>
+        Promise.resolve("done"),
+      ),
     });
     // A record with no max-age policy must not keep a stale bound armed.
     expect((await getManagedExchange(created.id))?.expires).toBeUndefined();
@@ -452,11 +465,11 @@ describe("runManagedExchange: persist-before-success end to end", () => {
         record: created,
         runStartedAtMs: Date.now(),
         acquireInput: () => Promise.resolve(undefined),
-        handshake: () => Promise.resolve({ rotatedSecret, handshake: "c" }),
-        dataExchange: () => {
+        handshake: () => Promise.resolve("c"),
+        dataExchange: rotatingDataExchange(rotatedSecret, () => {
           dataExchangeRan = true;
           return Promise.resolve("done");
-        },
+        }),
       });
     } catch (reason) {
       error = reason;
@@ -509,11 +522,11 @@ describe("runManagedExchange: persist-before-success end to end", () => {
         record: created,
         runStartedAtMs: Date.now(),
         acquireInput: () => Promise.resolve(undefined),
-        handshake: () => Promise.resolve({ rotatedSecret, handshake: "c" }),
-        dataExchange: () => {
+        handshake: () => Promise.resolve("c"),
+        dataExchange: rotatingDataExchange(rotatedSecret, () => {
           dataExchangeRan = true;
           return Promise.resolve("done");
-        },
+        }),
       });
     } catch (reason) {
       error = reason;
@@ -573,12 +586,11 @@ describe("runManagedExchange: persist-before-success end to end", () => {
         acquireInput: () => Promise.reject(inputFailure),
         handshake: () => {
           handshakeRan = true;
-          return Promise.resolve({
-            rotatedSecret: generateSharedSecret(),
-            handshake: "c",
-          });
+          return Promise.resolve("c");
         },
-        dataExchange: () => Promise.resolve("done"),
+        dataExchange: rotatingDataExchange(generateSharedSecret(), () =>
+          Promise.resolve("done"),
+        ),
       });
     } catch (reason) {
       error = reason;
@@ -613,13 +625,12 @@ describe("runManagedExchange: persist-before-success end to end", () => {
       record: created,
       runStartedAtMs: Date.now(),
       acquireInput: () => Promise.resolve(undefined),
-      handshake: () =>
-        Promise.resolve({ rotatedSecret: firstRotated, handshake: "1" }),
-      dataExchange: async () => {
+      handshake: () => Promise.resolve("1"),
+      dataExchange: rotatingDataExchange(firstRotated, async () => {
         firstInExchange.resolve();
         await releaseFirst.promise;
         return "1";
-      },
+      }),
     });
 
     await firstInExchange.promise;
@@ -633,9 +644,10 @@ describe("runManagedExchange: persist-before-success end to end", () => {
         record: { id: created.id },
         runStartedAtMs: Date.now(),
         acquireInput: () => Promise.resolve(undefined),
-        handshake: () =>
-          Promise.resolve({ rotatedSecret: secondRotated, handshake: "2" }),
-        dataExchange: () => Promise.resolve("2"),
+        handshake: () => Promise.resolve("2"),
+        dataExchange: rotatingDataExchange(secondRotated, () =>
+          Promise.resolve("2"),
+        ),
       });
     } finally {
       // Unpark the first run even if an assertion above throws, so neither run
@@ -659,8 +671,10 @@ describe("runManagedExchange: persist-before-success end to end", () => {
       record: created,
       runStartedAtMs: Date.now(),
       acquireInput: () => Promise.resolve(undefined),
-      handshake: () => Promise.resolve({ rotatedSecret, handshake: "c" }),
-      dataExchange: () => Promise.reject(failure),
+      handshake: () => Promise.resolve("c"),
+      dataExchange: rotatingDataExchange(rotatedSecret, () =>
+        Promise.reject(failure),
+      ),
     }).then(
       () => {
         throw new Error(
@@ -675,7 +689,8 @@ describe("runManagedExchange: persist-before-success end to end", () => {
     expect(error).toBe(failure);
     const stored = await getManagedExchange(created.id);
     // The rotation is real even though the exchange then failed: both parties
-    // rotated at handshake completion, so the persisted secret must stay rotated.
+    // stored the next secret at the terms exchange, so the persisted secret
+    // must stay rotated.
     expect(stored?.sharedSecret).toBe(rotatedSecret);
     // No succeeded outcome was recorded; the failure bookkeeping is the runner's.
     expect(stored?.lastRun).toBeUndefined();
@@ -694,8 +709,10 @@ describe("runManagedExchange: persist-before-success end to end", () => {
       record: created,
       runStartedAtMs: Date.now(),
       acquireInput: () => Promise.resolve(undefined),
-      handshake: () => Promise.resolve({ rotatedSecret, handshake: "c" }),
-      dataExchange: () => Promise.resolve("done"),
+      handshake: () => Promise.resolve("c"),
+      dataExchange: rotatingDataExchange(rotatedSecret, () =>
+        Promise.resolve("done"),
+      ),
     });
 
     expect(result.exchange).toBe("done");
@@ -721,16 +738,12 @@ describe("runManagedExchange: persist-before-success end to end", () => {
       record: created,
       runStartedAtMs: Date.now(),
       acquireInput: () => Promise.resolve(undefined),
-      handshake: () =>
-        Promise.resolve({
-          rotatedSecret: generateSharedSecret(),
-          handshake: "1",
-        }),
-      dataExchange: async () => {
+      handshake: () => Promise.resolve("1"),
+      dataExchange: rotatingDataExchange(generateSharedSecret(), async () => {
         runInExchange.resolve();
         await releaseRun.promise;
         return "1";
-      },
+      }),
       now: () => earlierRunAt,
     });
 
@@ -769,12 +782,12 @@ describe("the lock spans the payload exchange", () => {
       record: { id },
       runStartedAtMs: Date.now(),
       acquireInput: () => Promise.resolve(undefined),
-      handshake: () => Promise.resolve({ rotatedSecret, handshake: "c" }),
-      dataExchange: async () => {
+      handshake: () => Promise.resolve("c"),
+      dataExchange: rotatingDataExchange(rotatedSecret, async () => {
         exchanging.resolve();
         await release.promise;
         return "exchanged";
-      },
+      }),
     });
     await exchanging.promise;
     return {
@@ -821,11 +834,11 @@ describe("the lock spans the payload exchange", () => {
       record: created,
       runStartedAtMs: Date.now(),
       acquireInput: () => Promise.resolve(undefined),
-      handshake: () => Promise.resolve({ rotatedSecret, handshake: "c" }),
-      dataExchange: async () => {
+      handshake: () => Promise.resolve("c"),
+      dataExchange: rotatingDataExchange(rotatedSecret, async () => {
         lockHeldAtExchange = !(await attendedRunCouldStart(created.id));
         return "exchanged";
-      },
+      }),
     });
 
     expect(lockHeldAtExchange).toBe(true);
@@ -846,12 +859,10 @@ describe("the lock spans the payload exchange", () => {
         record: created,
         runStartedAtMs: Date.now(),
         acquireInput: () => Promise.resolve(undefined),
-        handshake: () =>
-          Promise.resolve({
-            rotatedSecret: generateSharedSecret(),
-            handshake: "c",
-          }),
-        dataExchange: () => Promise.reject(failure),
+        handshake: () => Promise.resolve("c"),
+        dataExchange: rotatingDataExchange(generateSharedSecret(), () =>
+          Promise.reject(failure),
+        ),
       }),
     ).rejects.toBe(failure);
 
@@ -878,8 +889,10 @@ describe("the lock spans the payload exchange", () => {
       record: created,
       runStartedAtMs: Date.now(),
       acquireInput: () => Promise.resolve(undefined),
-      handshake: () => Promise.resolve({ rotatedSecret, handshake: "c" }),
-      dataExchange: () => Promise.resolve("exchanged"),
+      handshake: () => Promise.resolve("c"),
+      dataExchange: rotatingDataExchange(rotatedSecret, () =>
+        Promise.resolve("exchanged"),
+      ),
       lock: { ifAvailable: true },
     });
     expect((await getManagedExchange(created.id))?.sharedSecret).toBe(
@@ -984,12 +997,10 @@ describe("a failing run never overwrites a success stamped after it began", () =
       record: created,
       runStartedAtMs,
       acquireInput: () => Promise.resolve(undefined),
-      handshake: () =>
-        Promise.resolve({
-          rotatedSecret: generateSharedSecret(),
-          handshake: "carried",
-        }),
-      dataExchange: () => Promise.resolve("done"),
+      handshake: () => Promise.resolve("carried"),
+      dataExchange: rotatingDataExchange(generateSharedSecret(), () =>
+        Promise.resolve("done"),
+      ),
       now: () => completedAt,
     });
 

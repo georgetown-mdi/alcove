@@ -1,7 +1,8 @@
-import { hkdfDerive, toBase64Url, fromBase64Url } from "./utils/crypto.js";
+import { hkdfDerive, fromBase64Url } from "./utils/crypto.js";
 import { runKex } from "./kex.js";
 
 import type { HandshakeRole } from "./types.js";
+import type { NextSecretInputs } from "./nextSecret.js";
 import type { MessageConnection } from "./connection/messageConnection.js";
 import { SHARED_SECRET_REGEX } from "./config/connection.js";
 import type { Authentication } from "./config/connection.js";
@@ -27,11 +28,13 @@ export interface AuthResult {
    */
   sessionKey: Uint8Array<ArrayBuffer>;
   /**
-   * Rotated shared secret, a base64url 32-byte HKDF output both parties derive
-   * from `sessionKey`, with no expiration. The caller persists it to
-   * `.alcove.key` for the next exchange.
+   * What the terms exchange derives the next shared secret from. The caller
+   * passes it to `runExchange` as `rotation.inputs`, beside the write that
+   * stores the next secret, which the terms exchange awaits at this side's
+   * point in the store order (docs/spec/PROTOCOL.md, "Shared-secret
+   * rotation").
    */
-  rotatedSecret: string;
+  nextSecretInputs: NextSecretInputs;
   /**
    * Whether to wrap the connection in an application-encryption layer
    * ({@link KexResult.applyEncryption}): the transcript-bound OR of both
@@ -123,7 +126,7 @@ export async function deriveAbortToken(
  * Whether an ISO 8601 `expires` is at or before `now`. An unparseable value,
  * from a caller that bypassed key-file validation, counts as expired.
  */
-function isExpired(expires: string, now: number): boolean {
+export function isExpired(expires: string, now: number): boolean {
   const expiresMs = new Date(expires).getTime();
   return Number.isNaN(expiresMs) || expiresMs <= now;
 }
@@ -167,9 +170,10 @@ export function assertSharedSecretReadyForHandshake(
  * connection, before `runExchange`. Both parties must call it with the same
  * `sharedSecret`, or key confirmation fails and this throws.
  *
- * The secret is checked before any network activity, and expiry again after
- * the handshake (docs/spec/PROTOCOL.md, "Enforcement sites"). Those errors are
- * marked {@link markStatesItsOwnNextStep}; a key-exchange failure is not, its
+ * The secret is checked before any network activity; its expiry is checked
+ * again in the terms exchange, before each side's store
+ * (docs/spec/PROTOCOL.md, "Enforcement sites"). Those errors are marked
+ * {@link markStatesItsOwnNextStep}; a key-exchange failure is not, its
  * message generic by design.
  *
  * @param conn            An open, ready-to-use connection.
@@ -185,8 +189,7 @@ export function assertSharedSecretReadyForHandshake(
  *
  * @throws {Error} if `authentication.sharedSecret` is absent or not a
  *                 base64url-encoded 32-byte value, or if
- *                 `authentication.expires` passes before or during the
- *                 handshake.
+ *                 `authentication.expires` has passed.
  * @throws {AuthenticationError} (a `"security"`-kind ConnectionError,
  *                 propagated unwrapped from `runKex`) on a wrong shared secret
  *                 or tampered messages. Consumers classify on the class; the
@@ -202,29 +205,22 @@ export async function authenticateConnection(
   const { sharedSecret, expires } = authentication;
 
   // SHARED_SECRET_REGEX guarantees `sharedSecret` decodes to exactly 32 bytes.
-  const { sessionKey, applyEncryption } = await runKex(
-    conn,
-    handshakeRole,
-    fromBase64Url(sharedSecret),
-    requestEncryption,
-  );
-
-  // A secret that expired during the key-exchange round-trip.
-  if (expires !== undefined && isExpired(expires, Date.now())) {
-    throw markStatesItsOwnNextStep(
-      new Error(
-        `the shared secret expired at ${expires}, during the key exchange. ` +
-          NEW_INVITATION_REMEDY,
-      ),
+  const { sessionKey, applyEncryption, keyAgreementOutput, initiatorValue } =
+    await runKex(
+      conn,
+      handshakeRole,
+      fromBase64Url(sharedSecret),
+      requestEncryption,
     );
-  }
 
-  const rotatedSecretBytes = await hkdfDerive(
+  return {
     sessionKey,
-    "alcove-shared-secret-rotation-v2",
-    32,
-  );
-  const rotatedSecret = toBase64Url(rotatedSecretBytes);
-
-  return { sessionKey, rotatedSecret, applyEncryption };
+    applyEncryption,
+    nextSecretInputs: {
+      sessionKey,
+      keyAgreementOutput,
+      initiatorValue,
+      expires,
+    },
+  };
 }
