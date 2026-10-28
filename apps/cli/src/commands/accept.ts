@@ -456,29 +456,33 @@ function keptDataBlocks(
 }
 
 /**
- * The endpoint-seeded connection with `--peer-timeout` and `--server-provision`
- * applied, for the acceptance that runs the exchange itself. The timeout bounds
- * the partner's arrival at the rendezvous only; the channel opening and the
- * partner's silence after it keep their own budgets (see `webRtcDialFrom`).
+ * The endpoint-seeded connection with `--peer-timeout`, `--inactivity-timeout`
+ * and `--server-provision` applied, for the acceptance that runs the exchange
+ * itself. The peer timeout bounds the partner's arrival at the rendezvous and
+ * the inactivity timeout the partner's silence after it; the channel opening
+ * keeps its own budget (see `webRtcDialFrom`).
  *
  * The same object becomes the run's connection and the one the bootstrap
- * writes, so the live dial and the saved `connection.options.peer_timeout_ms`
- * hold the same arrival wait and a later unattended `alcove exchange` inherits
- * it; nothing else is recorded.
+ * writes, so the live dial and the saved `connection.options` hold the same
+ * two waits and a later unattended `alcove exchange` inherits them; nothing
+ * else is recorded.
  * An absent flag applies no override and leaves the transport on its own
  * defaults.
  *
  * The cast restores the narrowing {@link applyConnectionOverrides} widens to
  * `ConnectionConfig`; the override changes no channel.
  */
-function withRunPeerTimeout(
+function withRunTimeouts(
   connection: WebRTCConnectionConfig,
-  peerTimeoutSeconds: number | undefined,
+  timeouts: { peerTimeout?: number; inactivityTimeout?: number },
   provision: ServerProvision | undefined,
 ): WebRTCConnectionConfig {
   return applyConnectionOverrides(connection, {
     server: { provision },
-    options: { peerTimeout: peerTimeoutSeconds },
+    options: {
+      peerTimeout: timeouts.peerTimeout,
+      inactivityTimeout: timeouts.inactivityTimeout,
+    },
   }) as WebRTCConnectionConfig;
 }
 
@@ -870,9 +874,12 @@ export async function validateAccept(params: {
   if (!run && !endpointCanRunExchange) log.warn(NO_RUN_NO_EFFECT);
   const runnableConnection =
     endpointCanRunExchange && stop === undefined
-      ? withRunPeerTimeout(
+      ? withRunTimeouts(
           endpointRoleConnection,
-          options.peerTimeout,
+          {
+            peerTimeout: options.peerTimeout,
+            inactivityTimeout: options.inactivityTimeout,
+          },
           options.serverProvision,
         )
       : undefined;
@@ -885,11 +892,14 @@ export async function validateAccept(params: {
   const connection = runnableConnection ?? endpointRoleConnection;
   // The connection-options overrides (timeouts, --max-reconnect-attempts, the
   // file-sync toggles) are dropped the same way as the server block, except
-  // --peer-timeout on the acceptance that runs the exchange, applied above --
-  // so this warning waits until runsExchange is known. A separate diagnostic
-  // from the server block's because the two remedies differ.
+  // --peer-timeout and --inactivity-timeout on the acceptance that runs the
+  // exchange, applied above -- so this warning waits until runsExchange is
+  // known. A separate diagnostic from the server block's because the two
+  // remedies differ.
   warnOptionsOverridesIgnoredOffline(
-    runsExchange ? { ...options, peerTimeout: undefined } : options,
+    runsExchange
+      ? { ...options, peerTimeout: undefined, inactivityTimeout: undefined }
+      : options,
     log,
   );
   // Name the kept configuration as the reason a webrtc acceptance stops short of

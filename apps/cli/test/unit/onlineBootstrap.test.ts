@@ -581,6 +581,7 @@ const OFFLINE_IGNORED_OPTIONS_OVERRIDES: ReadonlyArray<{
 }> = [
   { flag: "--connection-timeout", option: { connectionTimeout: 30 } },
   { flag: "--peer-timeout", option: { peerTimeout: 60 } },
+  { flag: "--inactivity-timeout", option: { inactivityTimeout: 7200 } },
   { flag: "--polling-frequency", option: { pollingFrequencyMs: 100 } },
   { flag: "--max-reconnect-attempts", option: { maxReconnectAttempts: 5 } },
   { flag: "--lockless-rendezvous", option: { locklessRendezvous: true } },
@@ -913,9 +914,51 @@ describe("parseCommonBootstrapArgs", () => {
       $0: "alcove",
       "connection-timeout": "2m",
       "peer-timeout": "30s",
+      "inactivity-timeout": "2h",
     } as unknown as Arguments);
     expect(parsed.connectionTimeout).toBe(120);
     expect(parsed.peerTimeout).toBe(30);
+    expect(parsed.inactivityTimeout).toBe(7200);
+  });
+
+  test("an absent --inactivity-timeout leaves the field unset", () => {
+    const parsed = parseCommonBootstrapArgs({
+      _: [],
+      $0: "alcove",
+    } as unknown as Arguments);
+    expect(parsed.inactivityTimeout).toBeUndefined();
+    expect(connectionOverridesFrom(parsed).options?.inactivityTimeout).toBe(
+      undefined,
+    );
+  });
+
+  test("--inactivity-timeout reaches the connection overrides in seconds", () => {
+    const parsed = parseCommonBootstrapArgs({
+      _: [],
+      $0: "alcove",
+      "inactivity-timeout": "90m",
+    } as unknown as Arguments);
+    expect(connectionOverridesFrom(parsed).options?.inactivityTimeout).toBe(
+      5400,
+    );
+  });
+
+  test("a bare-integer, zero, malformed or repeated --inactivity-timeout is a flag-named usage error", () => {
+    for (const [value, fragment] of [
+      ["30", "30s"],
+      ["0s", "--inactivity-timeout"],
+      ["soon", "--inactivity-timeout"],
+      [["1h", "2h"], "--inactivity-timeout may be given only once"],
+    ] as const) {
+      const parse = () =>
+        parseCommonBootstrapArgs({
+          _: [],
+          $0: "alcove",
+          "inactivity-timeout": value,
+        } as unknown as Arguments);
+      expect(parse).toThrow(UsageError);
+      expect(parse).toThrow(fragment);
+    }
   });
 
   test("a bare-integer timeout is rejected with the suffixed equivalent", () => {
@@ -952,7 +995,11 @@ describe("parseCommonBootstrapArgs", () => {
     // value one minute past it (7d is a whole number of minutes) is rejected with a
     // flag-named, max-stating usage error.
     const justOver = `${MAX_TIMEOUT_SECONDS / 60 + 1}m`;
-    for (const flag of ["connection-timeout", "peer-timeout"] as const) {
+    for (const flag of [
+      "connection-timeout",
+      "peer-timeout",
+      "inactivity-timeout",
+    ] as const) {
       const parse = () =>
         parseCommonBootstrapArgs({
           _: [],
@@ -1064,9 +1111,11 @@ describe("parseCommonBootstrapArgs", () => {
       $0: "alcove",
       "connection-timeout": `${MAX_TIMEOUT_SECONDS / 86_400}d`,
       "peer-timeout": `${MAX_TIMEOUT_SECONDS / 86_400}d`,
+      "inactivity-timeout": `${MAX_TIMEOUT_SECONDS / 86_400}d`,
     } as unknown as Arguments);
     expect(parsed.connectionTimeout).toBe(MAX_TIMEOUT_SECONDS);
     expect(parsed.peerTimeout).toBe(MAX_TIMEOUT_SECONDS);
+    expect(parsed.inactivityTimeout).toBe(MAX_TIMEOUT_SECONDS);
   });
 });
 

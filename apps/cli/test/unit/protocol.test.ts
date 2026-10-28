@@ -614,6 +614,7 @@ test("peerSilenceGuidance names likely receiver-side causes without overclaiming
   expect(guidance).toContain("may have");
   // Notes the slow-large-dataset case so the timeout is not misread as a death.
   expect(guidance).toContain("inactivity_timeout_ms");
+  expect(guidance).toContain("--inactivity-timeout");
   expect(guidance).not.toContain("--peer-timeout");
   // An error that already names the setting gets it referred to, not repeated.
   expect(peerSilenceGuidance(true)).not.toContain("inactivity_timeout_ms");
@@ -2898,6 +2899,7 @@ test("a file-sync run hands its connection the guidance on raising the inactivit
   expect(guidance?.inactivityTimeoutGuidance).toContain(
     "raise that limit under connection.options",
   );
+  expect(guidance?.inactivityTimeoutGuidance).toContain("--inactivity-timeout");
 });
 
 test("the both-swept advice is absent from a flagged retain-mode run", async () => {
@@ -4062,7 +4064,12 @@ test(
     expect(mockState.runExchangeEntries).toBe(2);
 
     expect(
-      mockState.warnings.some((m) => m.includes(MISSING_RECEIPT_WARNING)),
+      mockState.warnings.some(
+        (m) =>
+          m.includes(MISSING_RECEIPT_WARNING) &&
+          m.includes("--inactivity-timeout") &&
+          m.includes("inactivity_timeout_ms"),
+      ),
     ).toBe(true);
   },
 );

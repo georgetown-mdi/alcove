@@ -420,6 +420,13 @@ test("createConnection filedrop: peerTimeout is converted to ms", () => {
   expect(result.options?.peerTimeoutMs).toBe(60_000);
 });
 
+test("createConnection filedrop: inactivityTimeout is converted to ms", () => {
+  const result = createConnection(platformFileUrl("/mnt/share/drop"), {
+    ...baseOptions,
+    inactivityTimeout: 7200,
+  });
+  expect(result.options?.inactivityTimeoutMs).toBe(7_200_000);
+});
 test("createConnection filedrop: connectionTimeout is converted to ms", () => {
   const result = createConnection(platformFileUrl("/mnt/share/drop"), {
     ...baseOptions,

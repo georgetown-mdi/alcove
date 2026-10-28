@@ -245,6 +245,20 @@ test("`--retain-files` help states that it turns the options it needs on", async
   }
 });
 
+test("every command taking --peer-timeout also takes --inactivity-timeout", async () => {
+  for (const command of [[], ["exchange"], ["invite"], ["accept"]]) {
+    const { stdout } = await parse([...command, "--help"]);
+    const flat = stdout.replace(/\s+/g, " ");
+    expect(flat).toContain("--peer-timeout");
+    expect(flat).toContain(
+      "--inactivity-timeout how long your partner may send nothing",
+    );
+    expect(flat).toContain(
+      "overrides connection.options.inactivity_timeout_ms",
+    );
+  }
+});
+
 test("`doctor probe --help` names the environment variables it reads", async () => {
   const { stdout } = await parse(["doctor", "probe", "--help"]);
   const flat = stdout.replace(/\s+/g, " ");
