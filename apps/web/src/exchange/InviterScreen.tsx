@@ -219,6 +219,7 @@ import { SamplePartnerFileStatus } from "./SamplePartnerFileStatus";
 import { SaveExchangeSection } from "./SaveExchangeSection";
 import { TopBar } from "./TopBar";
 import { YourFileSection } from "./YourFileSection";
+import { serverJobPeerWindowBody } from "./RunSurface";
 import { timelineSteps } from "./exchangeRun";
 import { useInviterExchange } from "./useInviterExchange";
 
@@ -2259,6 +2260,14 @@ export function InviterScreen() {
               jobId={jobId}
               reattached={reattached}
               reattaching={reattaching}
+              peerWindowBody={
+                chosenRunMode === "server-job" && transport !== "browser"
+                  ? serverJobPeerWindowBody(
+                      transport,
+                      runOptions?.peerTimeoutMs,
+                    )
+                  : undefined
+              }
               listeningUntil={listeningUntil}
               resumableAfterReload={keepsPendingInvitation}
               onTryAgain={tryAgain}

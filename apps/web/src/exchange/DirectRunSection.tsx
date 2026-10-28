@@ -13,7 +13,6 @@ import {
   RunDownloads,
   RunWarningsAlert,
   SERVER_JOB_KEEP_OPEN_BODY,
-  SERVER_JOB_PEER_WINDOW_BODY,
   recoveredExchangeHeading,
   untakenRecordConfirm,
 } from "./RunSurface";
@@ -51,6 +50,7 @@ export function DirectRunSection({
   outputs,
   failure,
   warnings,
+  peerWindowBody,
   jobId,
   reattached,
   reattaching,
@@ -62,6 +62,9 @@ export function DirectRunSection({
   outputs: RunOutputs | undefined;
   failure: RunFailure | undefined;
   warnings: ReadonlyArray<string>;
+  /** The callout shown while the run still waits for the partner
+   * (`serverJobPeerWindowBody` for the run's channel and peer timeout). */
+  peerWindowBody: string;
   /** The console job id of this run, once created. Threads the run's job to the
    * recurring hand-off panel; undefined before the job exists. */
   jobId: string | undefined;
@@ -194,9 +197,7 @@ export function DirectRunSection({
         <div className={styles.callout}>
           <p className={styles.calloutLead}>Keep this tab open.</p>
           <p className={styles.small}>{SERVER_JOB_KEEP_OPEN_BODY}</p>
-          {awaiting && (
-            <p className={styles.small}>{SERVER_JOB_PEER_WINDOW_BODY}</p>
-          )}
+          {awaiting && <p className={styles.small}>{peerWindowBody}</p>}
         </div>
       )}
       {outputs !== undefined && (

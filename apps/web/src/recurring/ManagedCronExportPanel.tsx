@@ -13,12 +13,12 @@ import { CopyableCode } from "@components/CopyableCode";
 import styles from "@styles/app.module.css";
 
 import {
-  CLI_BUILT_IN_STUN_URI,
   EXPORT_LEAVES_ACCOUNTING_NOTE,
   RUN_IN_FLIGHT_EXPORT_NOTE,
   invitationRegistrarExportLine,
   managedCronExportPanelState,
   runElsewhereNotice,
+  stunExportLine,
 } from "./managedCronExportModel";
 import { ScheduledRunLinesView } from "./ScheduledRunLinesView";
 
@@ -184,13 +184,10 @@ export function ManagedCronExportPanel({
             <h3 className={styles.handoffHeading}>Before you schedule it</h3>
             <ul className={styles.small}>
               <li>
-                This exchange names no STUN server, so every scheduled run uses
-                the built-in default ({CLI_BUILT_IN_STUN_URI}) to discover that
-                machine&apos;s public address. The address, and the fact that a
-                session is happening, are disclosed to that server; no exchange
-                content is. Each run warns about it. Add a stun entry to the
-                connection in {state.composed.config.fileName} to use your own
-                server instead.
+                {stunExportLine(
+                  state.composed.connection,
+                  state.composed.config.fileName,
+                )}
               </li>
               {invitationRegistrarLine !== undefined && (
                 <li>{invitationRegistrarLine}</li>

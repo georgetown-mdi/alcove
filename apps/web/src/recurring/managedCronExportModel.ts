@@ -68,6 +68,38 @@ import type { RunSchedule } from "./scheduleTemplates";
 export const CLI_BUILT_IN_STUN_URI = "stun:stun.l.google.com:19302";
 
 /**
+ * Which STUN servers a command-line run of `connection`, the connection the
+ * export writes, contacts and what they learn: the ones its `invitation_relay`
+ * names, which the partner chose and so are escaped, or the built-in default
+ * where it names none. The export writes no `stun` entry of its own.
+ */
+export function stunExportLine(
+  connection: ConnectionConfig,
+  configFileName: string,
+): string {
+  const named =
+    connection.channel === "webrtc"
+      ? (connection.invitationRelay?.stun ?? [])
+      : [];
+  if (named.length > 0)
+    return (
+      "A command-line run of this exchange uses the STUN servers the " +
+      `invitation names (${named.map((url) => sanitizeForDisplay(url)).join(", ")}) to ` +
+      "discover the public address of the machine it runs on. Each learns " +
+      "that address and that a session is happening; none learns exchange " +
+      "content."
+    );
+  return (
+    "This exchange names no STUN server, so a command-line run uses the " +
+    `built-in default (${CLI_BUILT_IN_STUN_URI}) to discover the public ` +
+    "address of the machine it runs on. That server learns the address and " +
+    "that a session is happening; it learns no exchange content. Add a " +
+    `stun entry to the connection in ${configFileName} to use your own ` +
+    "server instead."
+  );
+}
+
+/**
  * The line an export shows where `connection`, the connection the export
  * writes, has an `invitation_relay` naming a registrar: whether a
  * command-line run of it enrolls there, as the CLI decides it

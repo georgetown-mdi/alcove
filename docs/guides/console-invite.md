@@ -120,7 +120,6 @@ Send the text. A link on this screen that starts `http://127.0.0.1` opens only o
 ### 6. Both of you: run the exchange
 
 Your console starts waiting as soon as you create the invitation. It waits 1 hour over SFTP or a shared folder, 10 minutes over WebRTC, so agree the time.
-Over WebRTC the run screen says "about an hour", but the run stops after 10 minutes.
 Keep the console running. You can leave the page: the run keeps going, and the start page brings you back to it.
 The status panel shows **Getting ready**, **Checking settings match**, then **Matching records (key 1 of 30)** and on through each key.
 

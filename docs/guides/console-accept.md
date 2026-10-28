@@ -24,7 +24,6 @@ Review your partner's invitation, connect, and run the exchange from the console
 A command line invitation made without an address, such as `alcove invite --identity "State agency" input.csv`, stops with "This invitation does not include a connection endpoint this build can accept, so it cannot be run here."
 
 **Agree a time.** Both of you run at once. Your console waits 1 hour over SFTP or a shared folder, 10 minutes over WebRTC.
-Over WebRTC the run screen says "about an hour", but the run stops after 10 minutes.
 
 **For SFTP, have ready:** your username on your partner's server, your password or private key file, and the server's identity fingerprint from whoever runs the server. It starts with `SHA256:`.
 

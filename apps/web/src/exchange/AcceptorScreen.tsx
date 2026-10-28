@@ -1956,6 +1956,7 @@ function AcceptorInvitationScreen({
               runRecord={runRecord}
               runWarnings={runWarnings}
               serverJob={acceptServerJob}
+              peerTimeoutMs={launch?.options?.peerTimeoutMs}
               jobId={jobId}
               reattached={reattached}
               reattaching={reattaching}

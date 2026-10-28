@@ -20,6 +20,7 @@ import {
   CONNECTION_TUNING_DEFAULT,
   DIRECT_FILEDROP_CONNECTION_TUNING,
   DIRECT_SFTP_CONNECTION_TUNING,
+  connectionTuningOptions,
   withConnectionTuning,
 } from "@console/connectionTuningModel";
 import {
@@ -59,6 +60,7 @@ import { DirectRunSection } from "./DirectRunSection";
 import { DirectServerSection } from "./DirectServerSection";
 import { RecoveredExchangePanel } from "./RecoveredExchangePanel";
 import { TopBar } from "./TopBar";
+import { serverJobPeerWindowBody } from "./RunSurface";
 import { useDirectExchange } from "./useDirectExchange";
 
 import type { DirectStep, DirectTransport } from "./directExchangeModel";
@@ -189,6 +191,11 @@ export function DirectExchangeScreen() {
       ? { kind: "workFile", name: consoleSource.name }
       : undefined;
 
+  const directTuningCapabilities =
+    transport === "sftp"
+      ? DIRECT_SFTP_CONNECTION_TUNING
+      : DIRECT_FILEDROP_CONNECTION_TUNING;
+
   const {
     run,
     outputs,
@@ -212,9 +219,7 @@ export function DirectExchangeScreen() {
     options: withConnectionTuning(
       exchangeFilesOptions(exchangeFiles, ZERO_SETUP_EXCHANGE_FILES),
       connectionTuning,
-      transport === "sftp"
-        ? DIRECT_SFTP_CONNECTION_TUNING
-        : DIRECT_FILEDROP_CONNECTION_TUNING,
+      directTuningCapabilities,
     ),
     runDiagnostics: runDiagnosticsIntentFields(runDiagnostics),
   });
@@ -432,6 +437,13 @@ export function DirectExchangeScreen() {
             outputs={outputs}
             failure={failure}
             warnings={warnings}
+            peerWindowBody={serverJobPeerWindowBody(
+              transport,
+              connectionTuningOptions(
+                connectionTuning,
+                directTuningCapabilities,
+              )?.peerTimeoutMs,
+            )}
             jobId={jobId}
             reattached={reattached}
             reattaching={reattaching}

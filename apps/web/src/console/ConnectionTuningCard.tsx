@@ -25,6 +25,7 @@ import {
   connectionTuningSummary,
   defaultPlaceholder,
   durationUnitChoices,
+  peerTimeoutDefaultMs,
   pollIntervalDefaultMs,
 } from "./connectionTuningModel";
 
@@ -164,7 +165,7 @@ export function ConnectionTuningCard({
           label={PEER_TIMEOUT_LABEL}
           description="How long this side waits for the other to start its half before it gives up."
           units={DURATION_FIELD_UNITS.peerTimeout}
-          defaultMs={TUNING_DEFAULT_MS.peerTimeout}
+          defaultMs={peerTimeoutDefaultMs(capabilities)}
           value={draft.peerTimeout}
           onChange={(next) => set("peerTimeout", next)}
         />

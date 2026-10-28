@@ -5,6 +5,7 @@ import {
   DEFAULT_PEER_TIMEOUT_MS,
   DEFAULT_SERVER_CONNECT_TIMEOUT_MS,
   DEFAULT_SFTP_POLLING_FREQUENCY_MS,
+  DEFAULT_WEBRTC_PEER_TIMEOUT_MS,
   LOW_POLLING_FREQUENCY_WARN_MS,
   MAX_RECONNECT_ATTEMPTS,
   MAX_TIMEOUT_SECONDS,
@@ -538,15 +539,25 @@ export function defaultPlaceholder(
   return `default ${natural.magnitude} ${natural.unit}`;
 }
 
-/** Core's default for each duration field but the check interval, keyed by the
- * draft field it belongs to, so the card's placeholders show the values the run
- * actually applies rather than restating them. The check interval's default
- * differs by channel: {@link pollIntervalDefaultMs}. */
+/** Core's default for each duration field but the check interval and the peer
+ * timeout, keyed by the draft field it belongs to, so the card's placeholders
+ * show the values the run actually applies rather than restating them. The
+ * other two differ by channel: {@link pollIntervalDefaultMs} and
+ * {@link peerTimeoutDefaultMs}. */
 export const TUNING_DEFAULT_MS = {
-  peerTimeout: DEFAULT_PEER_TIMEOUT_MS,
   inactivityTimeout: DEFAULT_PEER_INACTIVITY_TIMEOUT_MS,
   serverConnectTimeout: DEFAULT_SERVER_CONNECT_TIMEOUT_MS,
 } as const;
+
+/** Core's peer-timeout default for the flow's channel, for the card's
+ * placeholder: a WebRTC run waits less than the file-sync channels. */
+export function peerTimeoutDefaultMs(
+  capabilities: ConnectionTuningCapabilities,
+): number {
+  return capabilities.channel === "webrtc"
+    ? DEFAULT_WEBRTC_PEER_TIMEOUT_MS
+    : DEFAULT_PEER_TIMEOUT_MS;
+}
 
 /** Core's check-interval default for the flow's channel, for the card's
  * placeholder. */
