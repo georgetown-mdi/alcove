@@ -18,8 +18,8 @@ import { captureStdio } from "../../loggingTestSupport";
 
 // What crosses on a quick exchange against a recurring one, driven end to end
 // over a filedrop rendezvous: the quick exchange sends every column of the
-// sender's file that is not a linkage key, its id columns included, while a
-// configuration with no metadata block sends only what inference recognizes.
+// sender's file that is neither a linkage key nor an id column, while a
+// configuration with no metadata block sends nothing.
 // Both parties run the real parser and handler in this process.
 
 const PEER_TIMEOUT_SECONDS = 30;
@@ -115,7 +115,7 @@ const commonFlags = [
   "silent",
 ];
 
-test("a quick exchange sends every column that is not a linkage key, and no linkage key", async () => {
+test("a quick exchange sends every column that is neither a linkage key nor an id column", async () => {
   const dropDir = fs.mkdtempSync(path.join(work, "drop-"));
   const url = pathToFileURL(dropDir).href;
   const senderInput = path.join(work, "sender.csv");
@@ -143,17 +143,20 @@ test("a quick exchange sends every column that is not a linkage key, and no link
   }
 
   // dob is a second date-of-birth column, so it is not sent, and the keys read
-  // the first; the sender's display names it, and the receiver has none.
+  // the first; the id columns are not sent either. The sender's display names
+  // them, and the receiver has none.
   const shown = stdio.stderrWrites.join("");
-  expect(shown).toContain("\n  held back (enforced): dob\n");
+  expect(shown).toContain(
+    "\n  held back (enforced): dob, case_id, household_id\n",
+  );
   expect(shown.match(/held back/g)).toHaveLength(1);
 
-  const sent = ["program_code", "case_id", "household_id"];
+  const sent = ["program_code"];
   expect(recordPayloadNames(senderOut, "payloadSent")).toEqual(sent);
   expect(recordPayloadNames(receiverOut, "payloadReceived")).toEqual(sent);
   const header = resultHeader(receiverOut);
   for (const column of sent) expect(header).toContain(column);
-  for (const column of LINKAGE_KEY_COLUMNS)
+  for (const column of [...LINKAGE_KEY_COLUMNS, "household_id"])
     expect(header).not.toContain(column);
 }, 90_000);
 

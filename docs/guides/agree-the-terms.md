@@ -43,9 +43,9 @@ Each of you sets a use for every column in your own file. The inviter does it on
 
 "Sent" means the values of matched records only, and only to a party that receives the result. A party that receives no result is sent no columns, whatever its partner's file sets.
 
-Alcove fills in each column's type and use from its name. It sends nothing by default, except a column named `id` or `identifier`, which starts as **Unique record identifier - sent to your partner**.
+Alcove fills in each column's type and use from its name. It sends nothing by default, your ID column included.
 
-**Your ID column.** Set your own ID column, whatever it is called, to **Unique record identifier - not sent**. Your result then starts each row with your own ID, and your partner never receives it. Alcove recognizes a column named `id`, `identifier`, `ClientID`, `PersonID`, or `PersonalID`, or one whose name ends in `_id` once spaces, dots, and dashes count as `_` (so `Client ID` counts); if several qualify, only the first starts as an ID. A column named `id` or `identifier` starts as sent to your partner; a column the app does not recognize starts as **Ignored**. With no column set as your ID, your result holds row numbers only, counting from 0. On the command line, set its `metadata` entry to `role: identifier` and `is_payload: false`.
+**Your ID column.** Set your own ID column, whatever it is called, to **Unique record identifier - not sent**. Your result then starts each row with your own ID, and your partner never receives it. Alcove recognizes a column named `id`, `identifier`, `ClientID`, `PersonID`, or `PersonalID`, or one whose name ends in `_id` once spaces, dots, and dashes count as `_` (so `Client ID` counts), and starts it as **Unique record identifier - not sent**; if several qualify, only the first starts as an ID. A column the app does not recognize starts as **Ignored**. With no column set as your ID, your result holds row numbers only, counting from 0. To send your ID for matched records, choose **Unique record identifier - sent to your partner**. On the command line, its `metadata` entry reads `role: identifier`, with `is_payload: false` to keep it or `is_payload: true` to send it.
 
 ## Who receives the result
 

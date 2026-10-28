@@ -645,7 +645,7 @@ describe("inviter screen", () => {
       .toBeLessThanOrEqual(400);
   });
 
-  test("a file with two identifier columns opens with the first as the record identifier", async () => {
+  test("a file with two identifier columns opens with the first as the record identifier, neither sent", async () => {
     app.render(createElement(InviterScreen));
 
     await expect.element(page.getByLabelText("Your name")).toBeInTheDocument();
@@ -670,7 +670,7 @@ describe("inviter screen", () => {
       .toMatchTextContent("Matching & sharing");
     await expect
       .element(page.getByLabelText(usedLabel("id")))
-      .toHaveValue("identifier-sent");
+      .toHaveValue("identifier");
     await expect
       .element(page.getByLabelText(usedLabel("identifier")))
       .toHaveValue("ignored");

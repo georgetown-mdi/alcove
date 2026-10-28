@@ -47,19 +47,86 @@ test("an inferred zip column and an unrecognized column are excluded from the di
 
 // --- inferMetadata: identifier column ----------------------------------------
 
-test("identifier canonical name: identifier role, not linkage", () => {
+test("identifier canonical name: identifier role, not linkage, not sent", () => {
   const [col] = inferMetadata(["identifier"], []);
   expect(col.type).toBe("identifier");
   expect(col.role).toBe("identifier");
-  expect(col.isPayload).toBe(true);
+  expect(col.isPayload).toBe(false);
 });
 
-test("identifier alias 'id': identifier role, not linkage", () => {
+test("identifier alias 'id': identifier role, not linkage, not sent", () => {
   const [col] = inferMetadata(["id"], []);
   expect(col.type).toBe("identifier");
   expect(col.role).toBe("identifier");
-  expect(col.isPayload).toBe(true);
+  expect(col.isPayload).toBe(false);
 });
+
+const IDENTIFIER_SPELLINGS = [
+  "id",
+  "identifier",
+  "case_id",
+  "Client ID",
+  "ClientID",
+  "PersonID",
+  "PersonalID",
+];
+
+test.each(IDENTIFIER_SPELLINGS)(
+  "declared-only inference sends nothing over an identifier column %j",
+  (name) => {
+    const metadata = inferMetadata([name, "first_name", "notes"], []);
+    expect(metadata).toEqual([
+      { name, type: "identifier", role: "identifier", isPayload: false },
+      {
+        name: "first_name",
+        type: "first_name",
+        role: "linkage",
+        isPayload: false,
+      },
+    ]);
+    expect(disclosedColumnNames(metadata)).toEqual([]);
+  },
+);
+
+test.each(IDENTIFIER_SPELLINGS)(
+  "direct inference declares an identifier column %j and does not send it, and sends an unrecognized column",
+  (name) => {
+    const metadata = inferMetadata([name, "first_name", "notes"], [], {
+      mode: "direct",
+    });
+    expect(metadata).toEqual([
+      { name, type: "identifier", role: "identifier", isPayload: false },
+      {
+        name: "first_name",
+        type: "first_name",
+        role: "linkage",
+        isPayload: false,
+      },
+      { name: "notes", type: "other", role: "payload", isPayload: true },
+    ]);
+    expect(disclosedColumnNames(metadata)).toEqual(["notes"]);
+  },
+);
+
+test.each(IDENTIFIER_SPELLINGS.filter((name) => name !== "case_id"))(
+  "direct inference declares a second identifier column %j ignored, not sent",
+  (name) => {
+    const metadata = inferMetadata(["case_id", name, "notes"], [], {
+      mode: "direct",
+    });
+    expect(metadata).toEqual([
+      {
+        name: "case_id",
+        type: "identifier",
+        role: "identifier",
+        isPayload: false,
+      },
+      { name, type: "identifier", role: "ignored", isPayload: false },
+      { name: "notes", type: "other", role: "payload", isPayload: true },
+    ]);
+    expect(disclosedColumnNames(metadata)).toEqual(["notes"]);
+  },
+);
 
 // --- inferMetadata: _id suffix ----------------------------------------------
 
@@ -87,7 +154,7 @@ test("multiple _id columns: the first is the identifier, the rest left out", () 
 
 test("canonical id column ahead of an _id column: id is the identifier, _id is left out", () => {
   expect(inferMetadata(["id", "client_id"], [])).toEqual([
-    { name: "id", type: "identifier", role: "identifier", isPayload: true },
+    { name: "id", type: "identifier", role: "identifier", isPayload: false },
   ]);
 });
 
@@ -149,7 +216,12 @@ describe.each(["declaredOnly", "direct"] as const)(
 
     test("an id column keeps its own inference", () => {
       expect(inferMetadata(["id"], [], { mode })).toEqual([
-        { name: "id", type: "identifier", role: "identifier", isPayload: true },
+        {
+          name: "id",
+          type: "identifier",
+          role: "identifier",
+          isPayload: false,
+        },
       ]);
     });
   },
@@ -191,7 +263,7 @@ test("two canonical identifier columns: only the first is the identifier", () =>
       name: "identifier",
       type: "identifier",
       role: "identifier",
-      isPayload: true,
+      isPayload: false,
     },
   ]);
   expect(
@@ -206,15 +278,15 @@ test("identifierTypedColumnNames lists the identifier-typed names in order and s
   expect(identifierTypedColumnNames([])).toEqual([]);
 });
 
-test("direct mode: a later identifier-typed column is sent as payload", () => {
+test("direct mode: a later identifier-typed column is declared ignored, not sent", () => {
   expect(inferMetadata(["client_id", "id"], [], { mode: "direct" })).toEqual([
     {
       name: "client_id",
       type: "identifier",
       role: "identifier",
-      isPayload: true,
+      isPayload: false,
     },
-    { name: "id", type: "identifier", role: "payload", isPayload: true },
+    { name: "id", type: "identifier", role: "ignored", isPayload: false },
   ]);
 });
 

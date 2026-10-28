@@ -484,9 +484,11 @@ function refusingTerms(): LinkageTerms {
 test("the disclosed set is resolved from the column names when no metadata is supplied", () => {
   // The helper resolves `metadata ?? inferMetadata(columnNames)` because that is
   // how `prepareForExchange` resolves it at run time; a caller holding an input's
-  // columns but no metadata for them must still get the warning the run's own
-  // refusal will match. Drive that argument pairing directly rather than through
-  // an accept invocation, which always resolves metadata for an input it read.
+  // columns but no metadata for them gets exactly what the run's own refusal
+  // will match: inference sends no column, an `id` column included, so there
+  // is nothing to warn about. Drive that argument pairing directly rather than
+  // through an accept invocation, which always resolves metadata for an input
+  // it read.
   const { log, warns } = makeLogger();
   const columnNames = ["dob", "id"];
   warnColumnsTheInvitationWillNotAccept({
@@ -496,9 +498,7 @@ test("the disclosed set is resolved from the column names when no metadata is su
     mode: "offline",
     log,
   });
-  expect(warns).toHaveLength(1);
-  expect(warns[0]).toContain("will accept no payload columns");
-  expect(warns[0]).toContain("\n  - id");
+  expect(warns).toEqual([]);
 
   // Same set, same message, whichever half of the pair holds it.
   const supplied = makeLogger();

@@ -366,7 +366,7 @@ async function markSent(column: string) {
 function seededWithUnrecognizedSent(
   columns: Array<string>,
 ): AcceptorColumnsState {
-  const seeded = acceptorInitialColumnsState(columns, "psi");
+  const seeded = acceptorInitialColumnsState(columns);
   return {
     ...seeded,
     metadata: seeded.metadata.map((column) =>
@@ -1184,10 +1184,12 @@ describe("acceptor screen: confirm your columns (verdict, mapper, launch)", () =
     // Inference promotes one identifier and the grid's edits demote the previous
     // one, so the grid is mounted on metadata declaring both `id` and
     // `identifier` as identifiers, as an authored metadata block can.
-    const twoIdentifiers = acceptorInitialColumnsState(
-      ["id", "identifier", "first_name", "last_name"],
-      "psi",
-    ).metadata.map((column) =>
+    const twoIdentifiers = acceptorInitialColumnsState([
+      "id",
+      "identifier",
+      "first_name",
+      "last_name",
+    ]).metadata.map((column) =>
       column.name === "identifier"
         ? { ...column, role: "identifier" as const, isPayload: true }
         : column,
@@ -2091,7 +2093,7 @@ describe("acceptor columns step: the single record identifier hint", () => {
   function mountStep(metadata: Metadata) {
     const rows = [Object.fromEntries(columns.map((c) => [c, "x"]))];
     const columnsState: AcceptorColumnsState = {
-      ...acceptorInitialColumnsState(columns, acceptorTerms.algorithm),
+      ...acceptorInitialColumnsState(columns),
       metadata,
     };
     const editorState = acceptorColumnsEditorState(
@@ -2121,10 +2123,7 @@ describe("acceptor columns step: the single record identifier hint", () => {
     // Inference promotes one identifier, so the second is declared here, as an
     // authored metadata block can.
     mountStep(
-      acceptorInitialColumnsState(
-        columns,
-        acceptorTerms.algorithm,
-      ).metadata.map((column) =>
+      acceptorInitialColumnsState(columns).metadata.map((column) =>
         column.name === "identifier"
           ? { ...column, role: "identifier" as const, isPayload: false }
           : column,
@@ -2141,9 +2140,7 @@ describe("acceptor columns step: the single record identifier hint", () => {
   });
 
   test("is absent with one record identifier", async () => {
-    mountStep(
-      acceptorInitialColumnsState(columns, acceptorTerms.algorithm).metadata,
-    );
+    mountStep(acceptorInitialColumnsState(columns).metadata);
     await expect
       .element(page.getByRole("button", { name: "Start the exchange" }))
       .toBeEnabled();

@@ -76,7 +76,7 @@ export async function acceptAsWebParty(params: {
   const { rawRows, columns } = await readCsv(inputCsvPath);
   const { edits } = acceptorLaunchPayload(
     acceptorColumnsEditorState(
-      acceptorInitialColumnsState(columns, decoded.linkageTerms.algorithm),
+      acceptorInitialColumnsState(columns),
       decoded.linkageTerms,
       rawRows,
     ),

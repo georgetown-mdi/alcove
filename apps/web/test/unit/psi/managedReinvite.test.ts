@@ -392,7 +392,12 @@ describe("composeManagedReinvite", () => {
       exchangeFile: composeManagedExchangeFile({
         connection: { channel: "webrtc", host: "signaling.example.org" },
         linkageTerms: getDefaultLinkageTerms("County Health Dept"),
-        metadata: inferMetadata(["first_name", "last_name", "dob", "id"], []),
+        metadata: inferMetadata(
+          ["first_name", "last_name", "dob", "id"],
+          [],
+        ).map((column) =>
+          column.name === "id" ? { ...column, isPayload: true } : column,
+        ),
       }),
     });
     const token = await decodeInvitation(

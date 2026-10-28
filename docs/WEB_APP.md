@@ -36,7 +36,7 @@ On the start page, choose **Create an invitation**. Three steps follow.
 
    Then, for each column, confirm its type and how it is used. A column sent to your partner is sent only for rows that match; your partner never receives the values in rows that do not match.
    - **Used to match - not sent**, or **used to match - sent to your partner.** Either way the column is used to match. A column set to **sent to your partner** instead is sent but is not used to match.
-   - **Unique record identifier - not sent**, or **unique record identifier - sent to your partner.** Either way your result file begins with this column, so you can find each matched record in your own data. A column named `id` or `identifier` starts as sent; choose **not sent** to keep it from your partner. Count-only terms, which send no column, set it to not sent. A record identifier column set to **sent to your partner** instead is sent but is not your identifier, and your result file then begins with each match's row position in your file.
+   - **Unique record identifier - not sent**, or **unique record identifier - sent to your partner.** Either way your result file begins with this column, so you can find each matched record in your own data. Your ID column starts as **not sent**, whatever it is called; choose **sent to your partner** to send it. Count-only terms, which send no column, set it to not sent. A record identifier column set to **sent to your partner** instead is sent but is not your identifier, and your result file then begins with each match's row position in your file.
    - **Sent to your partner.**
    - **Ignored.**
 

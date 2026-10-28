@@ -126,10 +126,7 @@ const acceptorTerms: LinkageTerms = {
 function mountAcceptorColumnsStep() {
   const columns = ["first_name", "last_name"];
   const rows = [Object.fromEntries(columns.map((column) => [column, "x"]))];
-  const columnsState = acceptorInitialColumnsState(
-    columns,
-    acceptorTerms.algorithm,
-  );
+  const columnsState = acceptorInitialColumnsState(columns);
   const editorState = acceptorColumnsEditorState(
     columnsState,
     acceptorTerms,

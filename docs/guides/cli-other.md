@@ -13,7 +13,7 @@ Run one exchange with no setup, or invite a partner who uses the web app.
 A quick exchange needs no invitation and keeps no configuration. Both of you point the same command at the same SFTP directory or shared folder.
 
 > [!WARNING]
-> For each matched record, a quick exchange sends your partner every column whose name Alcove does not recognize as a linkage key, ID columns included. It lists those columns before it connects: check them. With no shared secret, the exchange files are not encrypted on the server: anyone who administers the server or folder can read the columns sent for matched records, and could stand in for your partner.
+> For each matched record, a quick exchange sends your partner every column whose name Alcove does not recognize as a linkage key or an ID column. It lists those columns before it connects: check them. With no shared secret, the exchange files are not encrypted on the server: anyone who administers the server or folder can read the columns sent for matched records, and could stand in for your partner.
 
 ### 1. Both of you: run the same command
 
@@ -49,7 +49,7 @@ To choose the columns sent, set up an exchange with [Invite a partner](./cli-inv
 
 ## A partner in the browser
 
-This invites a partner who uses the web app at `https://psi.data-bridge.org/`. Alcove takes the terms from your file's columns. A column named `id` or `identifier` is sent to your partner for matched records. To keep it, rename it first so its name ends in `_id`, such as `client_id`, or to `ClientID`: Alcove then uses it as your ID and does not send it. To set the terms first, use [Invite a partner](./cli-invite.md) with its WebRTC tab instead: your partner pastes that invitation under **Have an invitation? Paste it here** in the web app.
+This invites a partner who uses the web app at `https://psi.data-bridge.org/`. Alcove takes the terms from your file's columns and sends your partner no column, your ID column included. To set the terms first, use [Invite a partner](./cli-invite.md) with its WebRTC tab instead: your partner pastes that invitation under **Have an invitation? Paste it here** in the web app.
 
 ### 1. Create the invitation and wait
 

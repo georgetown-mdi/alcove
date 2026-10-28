@@ -536,6 +536,35 @@ test("a count-only exchange whose input metadata would transmit a column is refu
   ).toThrow(/sends no data columns/);
 });
 
+test("a count-only exchange over identifier columns and no metadata block prepares, sending nothing", () => {
+  const columns = ["id", "first_name", "case_id", "ClientID"];
+  const { metadata, metadataInferred } = prepared(
+    "Initiator Co",
+    [{ id: "1", first_name: "Carol", case_id: "c-1", ClientID: "k-1" }],
+    { terms: { algorithm: "psi-c" }, columns },
+  );
+  expect(metadataInferred).toBe(true);
+  expect(metadata.filter((column) => column.isPayload)).toEqual([]);
+});
+
+test("a count-only exchange whose metadata declares id sent is refused at prepare", () => {
+  expect(() =>
+    prepared("Initiator Co", [{ id: "1", first_name: "Carol" }], {
+      terms: { algorithm: "psi-c" },
+      columns: ["id", "first_name"],
+      metadata: [
+        { name: "id", type: "identifier", role: "identifier", isPayload: true },
+        {
+          name: "first_name",
+          type: "first_name",
+          role: "linkage",
+          isPayload: false,
+        },
+      ],
+    }),
+  ).toThrow(/sends no data columns/);
+});
+
 test("a count-only run refuses an inbound payload column from a non-conforming partner", async () => {
   // docs/spec/PROTOCOL.md (PSI-C, Refusals) refuses payload in either
   // direction; the record's payload commitments are fixed present-and-empty

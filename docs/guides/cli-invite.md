@@ -88,7 +88,7 @@ Make each edit you agreed. What each one means: [Agree the terms](./agree-the-te
 
 A column with `is_payload: false`, or not listed, is not sent.
 
-**Your ID column.** Set your own ID column, whatever it is called, so it is not sent: its entry reads `role: identifier` and `is_payload: false`. Your result then starts each row with your own ID, and your partner never receives it. Alcove recognizes an ID column when it is named `id`, `identifier`, `ClientID`, `PersonID`, or `PersonalID`, or its name ends in `_id` once spaces, dots, and dashes count as `_` (so `Client ID` counts). `id` and `identifier` start with `is_payload: true`, which sends them; change it to `false`. A name Alcove does not recognize is listed commented out at the end of `metadata` with `is_payload: true`. Do not just remove the `#` marks from its listed entry: that entry sends it. Write its entry as below in place of the listed one, with your column's name. With no ID column, your result holds row numbers only, counting from 0.
+**Your ID column.** Set your own ID column, whatever it is called: its entry reads `role: identifier`. Your result then starts each row with your own ID. With `is_payload: false` your partner never receives it; to send it for matched records, change that to `is_payload: true`. Alcove recognizes an ID column when it is named `id`, `identifier`, `ClientID`, `PersonID`, or `PersonalID`, or its name ends in `_id` once spaces, dots, and dashes count as `_` (so `Client ID` counts), and writes its entry with `is_payload: false`. A name Alcove does not recognize is listed commented out at the end of `metadata` with `is_payload: true`. Do not just remove the `#` marks from its listed entry: that entry sends it. Write its entry as below in place of the listed one, with your column's name. With no ID column, your result holds row numbers only, counting from 0.
 
 ```yaml
   - name: Client_Number
@@ -234,7 +234,7 @@ Send the invitation text with [Accept with the web app](./web-accept.md) or [Acc
 
 ### 1. Invite a console partner with the server's address on the command
 
-This one command prints the invitation, waits for your partner to accept, and runs the exchange. It takes its terms from your file's columns, not from `alcove.yaml`: Broader matching, both of you receive the result, a list of matched records, and each column's use as Alcove infers it from its name. A column named `id` or `identifier` is sent to your partner for matched records. To keep it, rename it first so its name ends in `_id`, such as `client_id`, or to `ClientID`: Alcove then uses it as your ID and does not send it. Run it in a new folder holding only `input.csv` and `passwd`: it stops if `alcove.yaml` or `.alcove.key` is there.
+This one command prints the invitation, waits for your partner to accept, and runs the exchange. It takes its terms from your file's columns, not from `alcove.yaml`: Broader matching, both of you receive the result, a list of matched records, and each column's use as Alcove infers it from its name. No column is sent to your partner, your ID column included. Run it in a new folder holding only `input.csv` and `passwd`: it stops if `alcove.yaml` or `.alcove.key` is there.
 
 ::: tabs platform
 

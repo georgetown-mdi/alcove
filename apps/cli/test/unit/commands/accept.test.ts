@@ -15,6 +15,7 @@ import {
   encodeInvitation,
   getDiagnosticSink,
   getLogger,
+  inferMetadata,
   parseExchangeSpec,
   redactPrivateKeyMaterial,
   sanitizeErrorForDisplay,
@@ -1070,39 +1071,92 @@ function countOnlyToken(): InvitationToken {
   };
 }
 
+/** Save at `configFile` a configuration under `linkageTerms` whose metadata
+ * block declares the linkage columns and an `ID` record identifier sent. */
+function saveConfigSendingId(
+  configFile: string,
+  linkageTerms: LinkageTerms,
+): void {
+  saveConfig(configFile, {
+    connection: { channel: "filedrop", path: "/mnt/share" },
+    linkageTerms,
+    metadata: [
+      ...inferMetadata(LINKAGE_COLUMNS, []),
+      { name: "ID", type: "identifier", role: "identifier", isPayload: true },
+    ],
+  });
+}
+
 describe("the count-only shape, at the accept boundary", () => {
-  test("validateAccept: refuses a count-only invitation whose own columns would send one", async () => {
-    // The count-only rule this party's own metadata holds: `ID` is the row
-    // identifier, which inferMetadata marks for transmission, and a
-    // count-only exchange moves no data column in either direction. Refused at the
-    // accept boundary, naming what to clear -- not left to the algorithm gate,
-    // which says only that no count-only run path exists yet.
-    const { error, ready } = await acceptWarnings({
-      token: countOnlyToken(),
-      columns: [...LINKAGE_COLUMNS, "ID"],
-      loggerName: "accept-count-only-transmits",
+  test.each(["ID", "identifier", "case_id", "ClientID"])(
+    "validateAccept: a count-only acceptance over an inferred %s column sends nothing and is not refused",
+    async (identifierColumn) => {
+      // Inference sends no column, so a count-only invitation meets nothing to
+      // refuse over an identifier column of any spelling.
+      const { error, ready } = await acceptWarnings({
+        token: countOnlyToken(),
+        columns: [...LINKAGE_COLUMNS, identifierColumn],
+        loggerName: `accept-count-only-infers-${identifierColumn}`,
+      });
+      expect(error).toBeUndefined();
+      const { mode, dataSpec } = ready as Awaited<
+        ReturnType<typeof validateAccept>
+      >;
+      expect(mode).toBe("offline");
+      expect(
+        dataSpec.metadata?.find((column) => column.name === identifierColumn),
+      ).toMatchObject({ role: "identifier", isPayload: false });
+    },
+  );
+
+  test("validateAccept: refuses a count-only invitation over a kept configuration that declares a column sent", async () => {
+    // The count-only rule this party's own metadata holds: the kept block marks
+    // `ID` for transmission, and a count-only exchange moves no data column in
+    // either direction. Refused at the accept boundary, naming what to clear --
+    // not left to the algorithm gate, which says only that no count-only run
+    // path exists yet.
+    const options = testOptions();
+    const base = sampleTerms("Acceptor Org");
+    saveConfigSendingId(options.configFile, {
+      ...base,
+      algorithm: "psi-c",
+      linkageKeys: base.linkageKeys.slice(0, 1),
     });
-    expect(ready).toBeUndefined();
-    expect(error).toBeInstanceOf(UsageError);
-    expect((error as Error).message).toMatch(/sends no data columns/);
-    // Named by the rule rather than by the column, matching every other refusal
-    // composed beside a partner's document.
-    expect((error as Error).message).not.toContain("ID");
+    const stdio = captureStdio();
+    try {
+      const { error, ready } = await acceptWarnings({
+        token: countOnlyToken(),
+        columns: [...LINKAGE_COLUMNS, "ID"],
+        loggerName: "accept-count-only-transmits",
+        options,
+      });
+      expect(ready).toBeUndefined();
+      expect(error).toBeInstanceOf(UsageError);
+      expect((error as Error).message).toMatch(/sends no data columns/);
+      // Named by the rule rather than by the column, matching every other
+      // refusal composed beside a partner's document.
+      expect((error as Error).message).not.toContain("ID");
+      expect(fs.existsSync(options.keyFile)).toBe(false);
+    } finally {
+      stdio.restore();
+      fs.rmSync(options.configFile, { force: true });
+    }
   });
 
-  test("validateAccept: online refuses the same arrangement, writing nothing", async () => {
-    const options = testOptions();
-    const { error } = await acceptWarnings({
+  test("validateAccept: online prepares a count-only acceptance over identifier columns, sending nothing", async () => {
+    const { error, ready } = await acceptWarnings({
       token: countOnlyToken(),
-      columns: [...LINKAGE_COLUMNS, "ID"],
-      loggerName: "accept-count-only-transmits-online",
+      columns: [...LINKAGE_COLUMNS, "case_id", "PersonalID"],
+      loggerName: "accept-count-only-infers-online",
       mode: "online",
-      options,
     });
-    expect(error).toBeInstanceOf(UsageError);
-    expect((error as Error).message).toMatch(/sends no data columns/);
-    expect(fs.existsSync(options.configFile)).toBe(false);
-    expect(fs.existsSync(options.keyFile)).toBe(false);
+    expect(error).toBeUndefined();
+    const accepted = ready as Awaited<ReturnType<typeof validateAccept>>;
+    expect(accepted.mode).toBe("online");
+    if (accepted.mode !== "online") return;
+    expect(
+      accepted.prepared.metadata.filter((column) => column.isPayload),
+    ).toEqual([]);
   });
 
   test("validateAccept: a count-only invitation over a file that sends nothing is not refused here", async () => {
@@ -1137,53 +1191,90 @@ describe("the count-only shape, at the accept boundary", () => {
     expect((err as Error).message).toMatch(/linkage_strategy to "cascade"/);
   });
 
-  test("validateAccept: warns when the input discloses columns the invitation accepts none of", async () => {
-    // An explicit empty receive is the inviter declaring it takes no payload column,
-    // while inferMetadata marks the `id` column, the first identifier column,
-    // is_payload: true -- so the configuration this acceptance writes cannot run
-    // (prepareForExchange refuses it before any data is sent). One warning naming
-    // the sent column and both remedies, while the operator can still decline.
-    // A zero-width joiner rather than an ESC: this name comes from the CSV
-    // header, which the read strips every control character from, and the
-    // joiner is outside that class and still needs escaping wherever it is shown.
-    const hostile = `notes\u200d[0m`;
-    const { warnings, ready } = await acceptWarnings({
-      token: tokenDeclaringReceive([]),
-      columns: [...LINKAGE_COLUMNS, "id", "identifier", hostile],
-      loggerName: "accept-refused-disclosure-warn",
+  test("validateAccept: warns when a kept configuration discloses columns the invitation accepts none of", async () => {
+    // An explicit empty receive is the inviter declaring it takes no payload
+    // column, while the kept metadata block marks `ID` is_payload: true -- so
+    // the exchange this acceptance configures cannot run (prepareForExchange
+    // refuses it before any data is sent). One warning naming the sent column
+    // and both remedies, while the operator can still decline.
+    const options = testOptions();
+    saveConfigSendingId(options.configFile, {
+      ...sampleTerms("Acceptor Org"),
+      payload: { send: [] },
     });
-    expect((ready as { mode: string }).mode).toBe("offline");
-    const refused = refusedDisclosureWarning(warnings);
-    expect(refused).toContain("is_payload: false");
-    expect(refused).toContain("ask your partner for an invitation");
-    // One entry per line, the rendering both consent surfaces use, so a name
-    // holding the list separator is not misread as two entries.
-    expect(refused).toContain("\n  - id\n");
-    // A later identifier column is not the identifier, so it is not sent.
-    expect(refused).not.toContain("\n  - identifier");
-    // A column that inference does not recognize is not sent, so it is not listed.
-    expect(refused).not.toContain(sanitizeForDisplay(hostile));
-    expect(refused).not.toContain("\u200d");
-    // Offline acceptance completes, so it says where the refusal actually arrives.
-    expect(refused).toContain("alcove exchange");
+    const stdio = captureStdio();
+    try {
+      const { warnings, ready, error } = await acceptWarnings({
+        token: tokenDeclaringReceive([]),
+        columns: [...LINKAGE_COLUMNS, "ID", "notes"],
+        loggerName: "accept-refused-disclosure-warn",
+        options,
+      });
+      expect(error).toBeUndefined();
+      expect((ready as { mode: string }).mode).toBe("offline");
+      const refused = refusedDisclosureWarning(warnings);
+      expect(refused).toContain("is_payload: false");
+      expect(refused).toContain("ask your partner for an invitation");
+      // One entry per line, the rendering both consent surfaces use, so a name
+      // holding the list separator is not misread as two entries.
+      expect(refused).toContain("\n  - ID\n");
+      // A column the block does not declare is not sent, so it is not listed.
+      expect(refused).not.toContain("notes");
+      // Offline acceptance completes, so it says where the refusal actually
+      // arrives.
+      expect(refused).toContain("alcove exchange");
+    } finally {
+      stdio.restore();
+      fs.rmSync(options.configFile, { force: true });
+    }
   });
 
-  test("validateAccept: online states that the exchange it runs next meets the columns at the terms exchange", async () => {
+  test("validateAccept: online states that the exchange it runs next meets a kept configuration's columns at the terms exchange", async () => {
     // Nothing refuses the disclosed columns locally: this party's terms state
     // them, and the inviting party meets them as a change to its terms.
     const options = testOptions();
-    const { warnings, error } = await acceptWarnings({
-      token: tokenDeclaringReceive([]),
-      columns: [...LINKAGE_COLUMNS, "id"],
-      loggerName: "accept-refused-disclosure-online",
-      mode: "online",
-      options,
+    saveConfigSendingId(options.configFile, {
+      ...sampleTerms("Acceptor Org"),
+      payload: { send: [] },
     });
-    const refused = refusedDisclosureWarning(warnings);
-    expect(refused).toContain("runs that exchange next");
-    expect(refused).toContain("change to its terms");
-    expect(refused).not.toContain("alcove exchange");
-    expect(error).toBeUndefined();
+    const stdio = captureStdio();
+    try {
+      const { warnings, error } = await acceptWarnings({
+        token: tokenDeclaringReceive([]),
+        columns: [...LINKAGE_COLUMNS, "ID"],
+        loggerName: "accept-refused-disclosure-online",
+        mode: "online",
+        options,
+      });
+      expect(error).toBeUndefined();
+      const refused = refusedDisclosureWarning(warnings);
+      expect(refused).toContain("runs that exchange next");
+      expect(refused).toContain("change to its terms");
+      expect(refused).not.toContain("alcove exchange");
+    } finally {
+      stdio.restore();
+      fs.rmSync(options.configFile, { force: true });
+    }
+  });
+
+  test("validateAccept: an inferred metadata block discloses nothing, so an empty receive raises no warning", async () => {
+    // Inference sends no column, an `id` column and a column it does not
+    // recognize included, so there is nothing for the invitation to refuse.
+    // A zero-width joiner rather than an ESC: this name comes from the CSV
+    // header, which the read strips every control character from.
+    const hostile = `notes\u200d[0m`;
+    for (const mode of ["offline", "online"] as const) {
+      const { warnings, error } = await acceptWarnings({
+        token: tokenDeclaringReceive([]),
+        columns: [...LINKAGE_COLUMNS, "id", "identifier", hostile],
+        loggerName: `accept-refused-disclosure-inferred-${mode}`,
+        mode,
+      });
+      expect(error).toBeUndefined();
+      expect(warnings).not.toContainEqual(
+        expect.stringContaining(REFUSED_DISCLOSURE_CLAUSE),
+      );
+    }
   });
 
   test("validateAccept: stays silent where the disclosure and the invitation can agree", async () => {
@@ -3224,6 +3315,45 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
       expect(promptConfirmMock).not.toHaveBeenCalled();
       expect(fs.existsSync(configFile)).toBe(true);
       expect(fs.existsSync(keyFile)).toBe(true);
+    } finally {
+      exit.mockRestore();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("handler: an acceptance writes every inferred identifier column as not sent", async () => {
+    const { dir, configFile, keyFile } = offlineAcceptFixture();
+    const input = path.join(dir, "identifiers.csv");
+    fs.writeFileSync(
+      input,
+      "id,first_name,last_name,dob,ssn,case_id\n7,Alice,Smith,1990-01-02,123456789,c-1\n",
+    );
+    const exit = captureProcessExit();
+    try {
+      await acceptHandler({
+        _: [],
+        $0: "alcove",
+        identity: "Agency B",
+        args: [await encodeInvitation(sampleToken(FUTURE())), input],
+        "consent-to-terms": true,
+        "config-file": configFile,
+        "key-file": keyFile,
+        "log-level": "silent",
+        record: false,
+      } as unknown as Arguments);
+      expect(exit).not.toHaveBeenCalled();
+      const written = parseExchangeSpec(
+        YAML.parse(fs.readFileSync(configFile, "utf8")),
+      );
+      expect(written.metadata?.find((column) => column.name === "id")).toEqual({
+        name: "id",
+        type: "identifier",
+        role: "identifier",
+        isPayload: false,
+      });
+      expect(
+        written.metadata?.filter((column) => column.isPayload) ?? [],
+      ).toEqual([]);
     } finally {
       exit.mockRestore();
       fs.rmSync(dir, { recursive: true, force: true });

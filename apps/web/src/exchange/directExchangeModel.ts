@@ -126,17 +126,19 @@ export const DIRECT_DEDUPLICATE_SIDE_NOTICE =
 
 /**
  * What the confirm screen states of which columns a direct exchange sends: the
- * header names core's inference recognizes as linkage keys
+ * header names core's inference recognizes as linkage keys or id columns
  * (`columnNameLookupKey`) and keeps back, and that every other column is sent.
  */
 export const DIRECT_RECOGNIZED_COLUMNS_NOTICE =
   "A column whose header Alcove recognizes as a linkage key, such as " +
   "first_name, date_of_birth, ssn, phone, email, or zip, is never sent: it is " +
-  "matched on or kept back. Letter case and spaces at either end of a header " +
+  "matched on or kept back. An id column Alcove recognizes, such as id, " +
+  "case_id, or ClientID, is never sent either. Letter case and spaces at " +
+  "either end of a header " +
   "do not matter, and a space, hyphen, or dot between words counts the same " +
   "as an underscore, so First Name and Social Security Number are " +
-  "recognized. Every other column is sent, including id columns and a " +
-  "header Alcove does not recognize, such as E-mail.";
+  "recognized. Every other column is sent, including a header Alcove does " +
+  "not recognize, such as E-mail.";
 
 /** The rules a quick exchange runs, worded as the CLI's display before the run
  * words them. */
@@ -276,7 +278,8 @@ interface DirectTermsPreview {
    * hold ({@link overlongDisclosedColumnPositions}); non-empty means the run
    * would be refused at prepare time, so the confirm screen refuses it here
    * instead. This spine has no disclosure control -- the inferred metadata sends
-   * every column that is not a linkage key -- so the remedy is a shorter header. */
+   * every column that is neither a linkage key nor an id column -- so the remedy
+   * is a shorter header. */
   overlongDisclosedColumns: Array<number>;
   /** Why this file cannot be run under the previewed terms, or `undefined` when it
    * can. Derived from the same verdict the run boundary enforces, over the very

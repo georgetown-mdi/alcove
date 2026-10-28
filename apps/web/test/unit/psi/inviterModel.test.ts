@@ -1552,7 +1552,7 @@ describe("customize tabs", () => {
     expect(validation.terms).toBeUndefined();
   });
 
-  test("choosing count-only stops sending the seeded id column", () => {
+  test("choosing count-only stops sending an id column the operator set sent", () => {
     const withId: AcquiredCsv = {
       ...csv,
       columns: ["id", "first_name", "last_name", "dob"],
@@ -1563,10 +1563,20 @@ describe("customize tabs", () => {
       editor.draft.metadata.find((column) => column.name === "id");
     expect(idColumn(seeded)).toMatchObject({
       role: "identifier",
+      isPayload: false,
+    });
+    const sent = editorWithColumnDisclosure(
+      seeded,
+      withId,
+      "id",
+      "identifier-sent",
+    ).editor;
+    expect(idColumn(sent)).toMatchObject({
+      role: "identifier",
       isPayload: true,
     });
 
-    const countOnly = editorWithAlgorithm(seeded, "psi-c");
+    const countOnly = editorWithAlgorithm(sent, "psi-c");
     expect(idColumn(countOnly)).toMatchObject({
       role: "identifier",
       isPayload: false,
@@ -1595,7 +1605,12 @@ describe("customize tabs", () => {
       columns: ["id", "first_name", "last_name", "dob"],
       rawRows: [{ id: "1", first_name: "Ann", last_name: "Lee", dob: "x" }],
     };
-    const seeded = editorFromCsv("Dana", withId);
+    const seeded = editorWithColumnDisclosure(
+      editorFromCsv("Dana", withId),
+      withId,
+      "id",
+      "identifier-sent",
+    ).editor;
     const countOnly = editorWithAlgorithm(seeded, "psi-c");
     expect(spineProblems(seeded)).toHaveLength(0);
     expect(spineProblems(countOnly)).toHaveLength(1);
@@ -1604,6 +1619,11 @@ describe("customize tabs", () => {
       `${isolatedColumnName("id")} is no longer sent to your partner. ` +
         "A problem above must be resolved before you can create.",
     );
+    // Over the seed, which sends no column, the change stops sending nothing.
+    const fresh = editorFromCsv("Dana", withId);
+    expect(
+      methodChangeAnnouncement(fresh, editorWithAlgorithm(fresh, "psi-c"), 0),
+    ).toBe("A problem above must be resolved before you can create.");
     // Problems the draft does not produce are counted in the total.
     expect(methodChangeAnnouncement(seeded, countOnly, 1)).toContain(
       "2 problems above must be resolved before you can create.",
@@ -1653,7 +1673,7 @@ describe("customize tabs", () => {
       const terms = donorTerms("psi-c");
       expect(terms.algorithm).toBe("psi-c");
       const fresh = editorFromCsv("Dana", withId);
-      expect(idColumn(fresh)).toMatchObject({ isPayload: true });
+      expect(idColumn(fresh)).toMatchObject({ isPayload: false });
 
       const loaded = editorWithImportedTerms(fresh, withId, terms);
       expect(idColumn(loaded)).toMatchObject({
@@ -1682,7 +1702,7 @@ describe("customize tabs", () => {
       expect(validation.terms?.payload).toBeUndefined();
     });
 
-    test("pasting psi terms leaves the record identifier sent", () => {
+    test("pasting psi terms leaves the record identifier as the seed has it, not sent", () => {
       const fresh = editorFromCsv("Dana", withId);
       const { editor: loaded } = editorWithPastedConfiguration(
         fresh,
@@ -1693,7 +1713,24 @@ describe("customize tabs", () => {
       expect(loaded.draft.algorithm).toBe("psi");
       expect(idColumn(loaded)).toMatchObject({
         role: "identifier",
-        isPayload: true,
+        isPayload: false,
+      });
+    });
+
+    test("importing psi-c terms with a configuration that sends the record identifier sets it not sent", () => {
+      const fresh = editorFromCsv("Dana", withId);
+      const declared = fresh.seed.metadata.map((column) =>
+        column.name === "id" ? { ...column, isPayload: true } : column,
+      );
+      const loaded = editorWithImportedTerms(
+        fresh,
+        withId,
+        donorTerms("psi-c"),
+        declared,
+      );
+      expect(idColumn(loaded)).toMatchObject({
+        role: "identifier",
+        isPayload: false,
       });
     });
   });

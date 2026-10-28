@@ -119,9 +119,9 @@ const SFTP_ENDPOINT: ConnectionEndpoint = {
 const REQUESTED = "case_manager";
 
 /**
- * The acceptor's header: the linkage columns, an `id` inference sends as the
- * record identifier, the requested column, and a column inference leaves out
- * that nobody requests.
+ * The acceptor's header: the linkage columns, an `id` inference takes as the
+ * record identifier and does not send, the requested column, and a column
+ * inference leaves out that nobody requests.
  */
 const INPUT_COLUMNS = ["id", ...LINKAGE_COLUMNS, REQUESTED, "notes"];
 
@@ -296,7 +296,7 @@ describe("validateAccept: a configuration written from an input file", () => {
       expect(
         disclosedColumnNames(ready.dataSpec.metadata ?? []),
         label,
-      ).toEqual(["id"]);
+      ).toEqual([]);
       expect(ready.unsentRequestedColumns, label).toEqual([REQUESTED]);
     }
   });
@@ -409,21 +409,30 @@ describe("validateAccept: whether the acceptance runs", () => {
     expect(sftp.stop).toBeUndefined();
   });
 
-  test("runs where the inferred configuration already sends every requested column", async () => {
+  test("stops where the record identifier is requested, since inference does not send it", async () => {
     const input = writeInput();
-    // Inference sends `id`, the record identifier.
     const webrtc = await accept({ token: requestingToken(["id"]), input });
-    expect(webrtc.mode).toBe("endpointRun");
-    if (webrtc.mode !== "endpointRun") return;
-    expect(disclosedColumnNames(webrtc.prepared.metadata)).toEqual(["id"]);
     const online = await accept({
       token: requestingToken(["id"], undefined),
       form: { mode: "online", url: sftpUrl(), input },
     });
-    expect(online.mode).toBe("online");
+    for (const ready of [webrtc, online]) {
+      expect(ready.mode).toBe("offline");
+      if (ready.mode !== "offline") return;
+      expect(ready.stop).toBe("requestedColumns");
+      expect(ready.unsentRequestedColumns).toEqual(["id"]);
+      expect(
+        ready.dataSpec.metadata?.find((column) => column.name === "id"),
+      ).toEqual({
+        name: "id",
+        type: "identifier",
+        role: "identifier",
+        isPayload: false,
+      });
+    }
   });
 
-  test("stops where a requested column is not sent, on each form, naming only the unsent ones", async () => {
+  test("stops where requested columns are not sent, on each form, naming each", async () => {
     const input = writeInput();
     const webrtc = await accept({
       token: requestingToken(["id", REQUESTED]),
@@ -437,7 +446,7 @@ describe("validateAccept: whether the acceptance runs", () => {
       expect(ready.mode).toBe("offline");
       if (ready.mode !== "offline") return;
       expect(ready.stop).toBe("requestedColumns");
-      expect(ready.unsentRequestedColumns).toEqual([REQUESTED]);
+      expect(ready.unsentRequestedColumns).toEqual(["id", REQUESTED]);
     }
   });
 
@@ -485,14 +494,11 @@ describe("validateAccept: whether the acceptance runs", () => {
     });
     expect(warnings).not.toContain(NO_RUN_NO_EFFECT);
     expect(warnings.some((m) => m.includes("OUTPUT_FOLDER"))).toBe(true);
-    // The invitation accepts no payload column while `id` is sent: the warning
-    // states the exchange runs later, from the written configuration.
-    const refused = warnings.filter((m) =>
-      m.includes("will accept no payload columns"),
-    );
-    expect(refused).toHaveLength(1);
-    expect(refused[0]).toContain("when you run 'alcove exchange'");
-    expect(refused[0]).not.toContain("runs that exchange next");
+    // The invitation accepts no payload column, and the written configuration
+    // sends none, so nothing is refused.
+    expect(
+      warnings.filter((m) => m.includes("will accept no payload columns")),
+    ).toEqual([]);
   });
 
   test("--no-run is reported as having no effect where the acceptance runs no exchange anyway", async () => {
@@ -580,10 +586,7 @@ describe("validateAccept: a kept configuration on the URL form", () => {
     expect(ready.reuseExistingConfig).toBe(true);
     expect(ready.mode).toBe("online");
     if (ready.mode !== "online") return;
-    expect(disclosedColumnNames(ready.prepared.metadata)).toEqual([
-      "id",
-      REQUESTED,
-    ]);
+    expect(disclosedColumnNames(ready.prepared.metadata)).toEqual([REQUESTED]);
   });
 
   test("stops where it does not send one, naming it", async () => {
@@ -678,7 +681,7 @@ describe("handler: an acceptance that stops", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(fs.existsSync(argv["key-file"] as string)).toBe(true);
     const written = writtenSpec(argv);
-    expect(disclosedColumnNames(written.metadata ?? [])).toEqual(["id"]);
+    expect(disclosedColumnNames(written.metadata ?? [])).toEqual([]);
     expect(written.standardization).toBeDefined();
     expect(stderr).toContain(
       "it needs no credentials of your own. Run 'alcove exchange' with your " +
@@ -849,7 +852,7 @@ describe("handler: an acceptance that stops", () => {
     expect(stderr).not.toContain("to conduct the exchange");
     const written = writtenSpec(argv);
     expect(written.metadata).toContainEqual(REQUESTED_ENTRY);
-    expect(disclosedColumnNames(written.metadata ?? [])).toEqual(["id"]);
+    expect(disclosedColumnNames(written.metadata ?? [])).toEqual([]);
   });
 
   test("a request stops a URL acceptance the same way", async () => {
@@ -882,14 +885,15 @@ describe("handler: an acceptance that stops", () => {
     expect(writtenSpec(argv).metadata).toContainEqual(REQUESTED_ENTRY);
   });
 
-  test("names only the requested columns the configuration does not send", async () => {
+  test("names a requested record identifier among the columns the configuration does not send", async () => {
     const encoded = await encodeInvitation(requestingToken(["id", REQUESTED]));
     const stderr = await runHandler(
       handlerArgv([encoded, writeInput()], { "consent-to-terms": true }),
     );
     expect(runOnlineBootstrapMock).not.toHaveBeenCalled();
-    expect(stderr).toContain(` does not send these:\n  - ${REQUESTED}\nThey`);
-    expect(stderr).not.toContain("\n  - id\n");
+    expect(stderr).toContain(
+      ` does not send these:\n  - id\n  - ${REQUESTED}\nThey`,
+    );
   });
 
   test("a kept configuration that does not send a requested column stops, naming the kept file", async () => {
@@ -959,14 +963,9 @@ describe("handler: an acceptance that stops", () => {
     promptConfirmMock.mockResolvedValue("yes");
     const input = writeInput();
     const options = await keptConfiguration(true, input);
-    // Unlike inference, the kept file keeps `id` and does not send it.
-    const kept = parseExchangeSpec(
-      YAML.parse(fs.readFileSync(options.configFile, "utf8")),
-    );
-    const keptMetadata = (kept.metadata ?? []).map((column) =>
-      column.name === "id" ? { ...column, isPayload: false } : column,
-    );
-    saveConfig(options.configFile, { ...kept, metadata: keptMetadata });
+    const keptMetadata =
+      parseExchangeSpec(YAML.parse(fs.readFileSync(options.configFile, "utf8")))
+        .metadata ?? [];
     const token = requestingToken([REQUESTED], undefined);
 
     const ready = await accept({ token, input, options });
@@ -1010,10 +1009,7 @@ describe("handler: an acceptance that stops", () => {
     expect(runOnlineBootstrapMock).toHaveBeenCalledTimes(1);
     const passed = runOnlineBootstrapMock.mock.calls[0][0];
     expect(passed.reuseExistingConfig).toBe(true);
-    expect(disclosedColumnNames(passed.prepared.metadata)).toEqual([
-      "id",
-      REQUESTED,
-    ]);
+    expect(disclosedColumnNames(passed.prepared.metadata)).toEqual([REQUESTED]);
   });
 
   test("leaves an acceptance with nothing requested running the exchange", async () => {
@@ -1040,18 +1036,18 @@ describe("handler: an acceptance that stops", () => {
       "Accept this invitation and write configuration?",
     );
     const shown = surface.slice(surface.indexOf(OUTBOUND_SEND_LABEL));
-    // The label's own lines: up to the next entry at the outline's top level.
-    const shownList = shown.slice(0, 1 + shown.slice(1).search(/\n {2}\S/));
-    expect(shownList.split("\n").slice(1)).toEqual(["    - id"]);
+    // The label's own line: the written configuration sends no column, the
+    // record identifier included.
+    expect(shown.split("\n")[0]).toBe(
+      `${OUTBOUND_SEND_LABEL}: (none) -- only matched records`,
+    );
     // The requested column is named where the display already names it, as
     // asked for rather than sent.
     const requested = surface.slice(
       surface.indexOf("columns the inviting party requests from you"),
     );
     expect(requested.split("\n")[1]).toBe(`    - ${REQUESTED}`);
-    expect(disclosedColumnNames(writtenSpec(argv).metadata ?? [])).toEqual([
-      "id",
-    ]);
+    expect(disclosedColumnNames(writtenSpec(argv).metadata ?? [])).toEqual([]);
   });
 
   test("--event-stream: an acceptance that does not run opens no stream, on either form", async () => {

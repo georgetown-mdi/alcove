@@ -136,15 +136,20 @@ function mountStep(
   // Every other column that inference does not recognize, which the seed lists
   // as ignored, opens set to sent.
   unsent: ReadonlyArray<string> = [],
+  // Whether the record identifier, which the seed lists as not sent, opens set
+  // to sent.
+  identifierSent = false,
 ) {
   const rows = [Object.fromEntries(columns.map((c) => [c, "x"]))];
-  const inferred = acceptorInitialColumnsState(columns, linkageTerms.algorithm);
+  const inferred = acceptorInitialColumnsState(columns);
   const columnsState = {
     ...inferred,
     metadata: inferred.metadata.map((column) => {
       if (unsent.includes(column.name))
         return applyDisclosure(column, "ignored");
       if (column.role === "ignored") return applyDisclosure(column, "payload");
+      if (identifierSent && column.role === "identifier")
+        return applyDisclosure(column, "identifier-sent");
       return column;
     }),
   };
@@ -222,16 +227,16 @@ describe("acceptor columns step: a disagreeing non-empty declaration", () => {
   });
 
   test("informs, without holding the launch, when the file sends its record identifier and the invitation does not list it", async () => {
-    // The grid starts an `id` column sent. An invitation from an established
-    // exchange that lists only `notes` does not name it: the partner's run is
-    // offered it as a terms change before any data is sent, so the launch stays
-    // open.
-    mountStep({ ...acceptorTerms, payload: { receive: [{ name: "notes" }] } }, [
-      "id",
-      "first_name",
-      "last_name",
-      "notes",
-    ]);
+    // The operator set the `id` record identifier sent. An invitation from an
+    // established exchange that lists only `notes` does not name it: the
+    // partner's run is offered it as a terms change before any data is sent, so
+    // the launch stays open.
+    mountStep(
+      { ...acceptorTerms, payload: { receive: [{ name: "notes" }] } },
+      ["id", "first_name", "last_name", "notes"],
+      [],
+      true,
+    );
     await expect
       .element(
         page.getByText("Your partner's invitation does not list this column"),

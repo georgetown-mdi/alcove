@@ -26,9 +26,11 @@ import type { Algorithm, SemanticType } from "../types";
  * - `identifier` -- indexes this party's matched records in the output.
  * - `payload` -- transmitted to the partner for matched members.
  * - `ignored` -- never linked, never an identifier, never transmitted as
- *   payload, regardless of `isPayload`. {@link inferMetadata} never assigns
- *   it; {@link inferMetadataForEveryColumn} assigns it to each column that
- *   inference does not recognize, outside the `direct` mode.
+ *   payload, regardless of `isPayload`. {@link inferMetadata} assigns it only
+ *   under the `direct` mode, to an identifier-typed column after the first;
+ *   {@link inferMetadataForEveryColumn} assigns it to that column in both
+ *   modes, and to each column that inference does not recognize outside the
+ *   `direct` mode.
  *
  * Two independent axes, each checked explicitly rather than inferred from
  * `type` alone:
@@ -397,10 +399,10 @@ const DEFAULT_COLUMN_TYPES_AND_ALIASES: Array<TypeMeta> = [
   },
   /**
    * Identifier columns are also inferred from a name ending in `_id` or one of
-   * {@link UNSEPARATED_ID_LOOKUP_KEYS}, outside this table because the mode
-   * decides whether they are sent. See {@link inferMetadata}.
+   * {@link UNSEPARATED_ID_LOOKUP_KEYS}, which take this row's role and
+   * payload default. See {@link inferMetadata}.
    */
-  { type: "identifier", aliases: ["id"], role: "identifier", isPayload: true },
+  { type: "identifier", aliases: ["id"], role: "identifier", isPayload: false },
   {
     type: "phone_number",
     aliases: ["phonenumber", "phone"],
@@ -565,21 +567,21 @@ function assertColumnNamesNonEmpty(
 }
 
 /**
- * Which default inference gives the columns it recognizes by no alias:
+ * Which default inference gives the columns it does not recognize by name,
+ * and the identifier-typed columns after the first:
  *
  * - `declaredOnly` -- an invited or recurring exchange, and the default:
  *   such a column is left out, so it is not declared and never sent, and an
- *   `_id`, `ClientID`, `PersonID`, or `PersonalID` column is declared only as
- *   the identifier, unsent; an identifier-typed column that is not the
- *   identifier is left out too.
+ *   identifier-typed column that is not the record identifier is left out
+ *   too. Inference sends no column.
  * - `direct` -- a run on an input file with no invitation or configuration:
- *   such a column is declared `role: payload` and sent, and every
- *   identifier-typed column (`id`, `identifier`, a name ending in `_id`,
- *   `ClientID`, `PersonID`, `PersonalID`) is sent. Every column is declared,
- *   so none is undeclared.
+ *   such a column is declared `role: payload` and sent, and an
+ *   identifier-typed column that is not the record identifier is declared
+ *   `role: ignored`, so every column is declared and none is undeclared.
  *
- * A linkage-key alias infers alike under both and is never sent; it is
- * matched on only where a linkage key reads it.
+ * Under both, no identifier-typed column (`id`, `identifier`, a name ending
+ * in `_id`, `ClientID`, `PersonID`, `PersonalID`) is sent, and a linkage-key
+ * alias is never sent and is matched on only where a linkage key reads it.
  */
 export type MetadataInferenceMode = "declaredOnly" | "direct";
 
@@ -600,8 +602,9 @@ export interface InferMetadataOptions {
  * as payload and sent ({@link MetadataInferenceMode}).
  *
  * The first identifier-typed column in header order gets `role: identifier`,
- * used to index observations, whatever its name. Every later one is left out
- * under `declaredOnly` and declared `role: payload` under `direct`.
+ * used to index observations, whatever its name, and is not sent. Every later
+ * one is left out under `declaredOnly` and declared `role: ignored` under
+ * `direct`.
  *
  * `sanitizedPositions` are the 1-based positions the CSV parse removed
  * control characters from, so the empty-name refusal below can name the removal
@@ -624,21 +627,23 @@ export function inferMetadata(
   sanitizedPositions: ReadonlyArray<number>,
   options: InferMetadataOptions = {},
 ): Metadata {
-  return inferMetadataForEveryColumn(
+  const everyColumn = inferMetadataForEveryColumn(
     columnNames,
     sanitizedPositions,
     options,
-  ).filter((column) => column.role !== "ignored");
+  );
+  if (options.mode === "direct") return everyColumn;
+  return everyColumn.filter((column) => column.role !== "ignored");
 }
 
 /**
- * {@link inferMetadata} with an entry for every column, in header order:
- * under the default `declaredOnly` mode a column that inference does not
- * recognize, and every identifier-typed column but the identifier, gets
- * `role: ignored` and `isPayload: false` (`type: identifier` for an
- * identifier-typed name, `other` otherwise). For an editor that lists every input
- * column so the operator can declare one; a run resolves its metadata through
- * {@link inferMetadata}.
+ * {@link inferMetadata} with an entry for every column, in header order: a
+ * column that inference does not recognize gets `type: other`, `role:
+ * ignored` and `isPayload: false` under the default `declaredOnly` mode, and
+ * an identifier-typed column that is not the record identifier gets `role:
+ * ignored` and `isPayload: false` under both. For an editor that lists every
+ * input column so the operator can declare one; a run resolves its metadata
+ * through {@link inferMetadata}.
  *
  * @throws {UsageError} as {@link inferMetadata} does.
  */
@@ -651,18 +656,12 @@ export function inferMetadataForEveryColumn(
   const direct = (options.mode ?? "declaredOnly") === "direct";
 
   const result: Metadata = columnNames.map((name) => {
-    const lookupName = columnNameLookupKey(name);
-    // An own-property test: `in` also matches inherited names such as
-    // `constructor` and `__proto__`, which have no entry.
-    if (!Object.hasOwn(ALIAS_TYPE_META_MAP, lookupName)) {
-      const type = isUnlistedIdentifierLookupKey(lookupName)
-        ? "identifier"
-        : "other";
+    const typeMeta = recognizedTypeMeta(columnNameLookupKey(name));
+    if (typeMeta === undefined)
       return direct
-        ? { name, type, role: "payload", isPayload: true }
-        : { name, type, role: "ignored", isPayload: false };
-    }
-    const { type, role, isPayload } = ALIAS_TYPE_META_MAP[lookupName];
+        ? { name, type: "other", role: "payload", isPayload: true }
+        : { name, type: "other", role: "ignored", isPayload: false };
+    const { type, role, isPayload } = typeMeta;
     return { name, type, role, isPayload };
   });
 
@@ -670,12 +669,25 @@ export function inferMetadataForEveryColumn(
     (column) => column.type === "identifier",
   );
   return result.map((column, index): ColumnMetadata => {
-    if (column.type !== "identifier") return column;
-    if (index === identifierIndex) return { ...column, role: "identifier" };
-    return direct
-      ? { ...column, role: "payload", isPayload: true }
-      : { ...column, role: "ignored", isPayload: false };
+    if (column.type !== "identifier" || index === identifierIndex)
+      return column;
+    return { ...column, role: "ignored", isPayload: false };
   });
+}
+
+/**
+ * The type, role and payload default inference gives a lookup key, or
+ * `undefined` for a key it does not recognize. An identifier name outside
+ * {@link ALIAS_TYPE_META_MAP} takes the `identifier` row's.
+ */
+function recognizedTypeMeta(lookupName: string): TypeMetaMapped | undefined {
+  // An own-property test: `in` also matches inherited names such as
+  // `constructor` and `__proto__`, which have no entry.
+  if (Object.hasOwn(ALIAS_TYPE_META_MAP, lookupName))
+    return ALIAS_TYPE_META_MAP[lookupName];
+  return isUnlistedIdentifierLookupKey(lookupName)
+    ? ALIAS_TYPE_META_MAP.identifier
+    : undefined;
 }
 
 /**

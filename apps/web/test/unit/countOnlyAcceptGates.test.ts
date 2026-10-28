@@ -48,7 +48,7 @@ function editorFor(
   terms: LinkageTerms,
   sent: Array<string> = [],
 ) {
-  const seeded = acceptorInitialColumnsState(columns, terms.algorithm);
+  const seeded = acceptorInitialColumnsState(columns);
   const state = {
     ...seeded,
     metadata: sent.reduce(

@@ -81,7 +81,7 @@ You should see: `wrote config to ./alcove.yaml` and `wrote key file to ./.alcove
 
 ### 3. Set your ID column, and the columns your partner asked for
 
-**Your ID column.** Set your own ID column, whatever it is called, so it is not sent: its entry reads `role: identifier` and `is_payload: false`. Your result then starts each row with your own ID, and your partner never receives it. Alcove recognizes an ID column when it is named `id`, `identifier`, `ClientID`, `PersonID`, or `PersonalID`, or its name ends in `_id` once spaces, dots, and dashes count as `_` (so `Client ID` counts). `id` and `identifier` start with `is_payload: true`, which sends them; change it to `false`. Accepting writes no entry for a column Alcove does not recognize: add your ID column's entry at the end of the `metadata` block, as below, with your column's name. With no ID column, your result holds row numbers only, counting from 0.
+**Your ID column.** Set your own ID column, whatever it is called: its entry reads `role: identifier`. Your result then starts each row with your own ID. With `is_payload: false` your partner never receives it; to send it for matched records, change that to `is_payload: true`. Alcove recognizes an ID column when it is named `id`, `identifier`, `ClientID`, `PersonID`, or `PersonalID`, or its name ends in `_id` once spaces, dots, and dashes count as `_` (so `Client ID` counts), and writes its entry with `is_payload: false`. Accepting writes no entry for a column Alcove does not recognize: add your ID column's entry at the end of the `metadata` block, as below, with your column's name. With no ID column, your result holds row numbers only, counting from 0.
 
 ```yaml
   - name: Client_Number

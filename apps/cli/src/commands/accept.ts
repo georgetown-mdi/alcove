@@ -235,8 +235,8 @@ export function builder(cmd: Argv): Argv {
         "connection (a webrtc invitation, or a URL); use --no-run to write the " +
         "configuration and key file and stop without connecting. The " +
         "configuration's metadata block is the one inferred from INPUT_FILE, " +
-        "listing each column the inviting party requests, with is_payload: " +
-        "false where inference does not send it; set is_payload: true on " +
+        "listing each column the inviting party requests with is_payload: " +
+        "false, since inference sends no column; set is_payload: true on " +
         "each you agreed to send before running 'alcove exchange' at the " +
         "agreed time.",
     });
@@ -425,8 +425,8 @@ function acceptStop(
 
 /**
  * The columns of `requestedColumns` that `metadata` does not send, by the
- * predicate a run transmits on, so a column inference already sends counts as
- * sent. None where there is no metadata to read.
+ * predicate a run transmits on, so a column the metadata already sends counts
+ * as sent. None where there is no metadata to read.
  */
 function requestedColumnsNotSent(
   requestedColumns: ReadonlyArray<string>,

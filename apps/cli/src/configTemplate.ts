@@ -264,7 +264,8 @@ export const FIELD_DOCS: Array<{ path: Array<string>; lines: Array<string> }> =
       lines: [
         "Per-column description of your input CSV: semantic type and role",
         "(linkage / identifier / payload / ignored). Inferred from column names",
-        "when omitted.",
+        "when omitted. Inference sends no column, your ID column included: set",
+        "is_payload: true on a column to send it for matched records.",
       ],
     },
     {

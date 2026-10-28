@@ -78,7 +78,7 @@ describe("inference sends only what it recognizes", () => {
         role: "linkage",
         isPayload: false,
       },
-      { name: "id", type: "identifier", role: "identifier", isPayload: true },
+      { name: "id", type: "identifier", role: "identifier", isPayload: false },
       { name: "zip", type: "zip_code", role: "linkage", isPayload: false },
     ]);
   });
@@ -87,7 +87,12 @@ describe("inference sends only what it recognizes", () => {
     expect(inferMetadataForEveryColumn(["notes", "id", "case_id"], [])).toEqual(
       [
         { name: "notes", type: "other", role: "ignored", isPayload: false },
-        { name: "id", type: "identifier", role: "identifier", isPayload: true },
+        {
+          name: "id",
+          type: "identifier",
+          role: "identifier",
+          isPayload: false,
+        },
         {
           name: "case_id",
           type: "identifier",
@@ -295,9 +300,8 @@ describe("a standardization transform naming an undeclared column", () => {
       )?.column,
     ).toBe("surname");
     expect(prepared.dataset.getField("last_name")?.get(0)).toEqual(["LEE"]);
-    expect(preparePayload([row], prepared.metadata, [[0], [0]])).toMatchObject({
-      hasData: true,
-      columns: ["id"],
+    expect(preparePayload([row], prepared.metadata, [[0], [0]])).toEqual({
+      hasData: false,
     });
   });
 });
@@ -441,9 +445,8 @@ describe("this party's own result file", () => {
 
   test("the payload frame holds no undeclared column", () => {
     const prepared = prepareForExchange({}, "alice", [row], columns);
-    expect(preparePayload([row], prepared.metadata, [[0], [0]])).toMatchObject({
-      hasData: true,
-      columns: ["id"],
+    expect(preparePayload([row], prepared.metadata, [[0], [0]])).toEqual({
+      hasData: false,
     });
   });
 });
@@ -520,7 +523,7 @@ test("an input with no recognized column gets default terms with no key", () => 
   expect(undeclaredColumns).toEqual(["first_name|last_name|dob"]);
 });
 
-describe("direct-mode inference sends every column that is not a linkage key", () => {
+describe("direct-mode inference sends every column that is neither a linkage key nor an identifier", () => {
   const columns = [
     "first_name",
     "last_name",
@@ -555,33 +558,48 @@ describe("direct-mode inference sends every column that is not a linkage key", (
     "zip",
   ];
 
-  test("a non-key column and every _id column are sent; no linkage key is", () => {
+  test("a non-key column is sent; no _id column and no linkage key is", () => {
     const metadata = inferMetadata(columns, [], { mode: "direct" });
-    expect(disclosedColumnNames(metadata)).toEqual([
-      "notes",
-      "case_id",
-      "household_id",
-    ]);
+    expect(disclosedColumnNames(metadata)).toEqual(["notes"]);
     for (const name of linkageKeyColumns)
       expect(metadata.find((column) => column.name === name)).toMatchObject({
         role: "linkage",
         isPayload: false,
       });
+    expect(metadata.filter((column) => column.type === "identifier")).toEqual([
+      {
+        name: "case_id",
+        type: "identifier",
+        role: "identifier",
+        isPayload: false,
+      },
+      {
+        name: "household_id",
+        type: "identifier",
+        role: "ignored",
+        isPayload: false,
+      },
+    ]);
   });
 
-  test("several identifier columns are all sent, and id keeps the identifier role", () => {
+  test("several identifier columns are all declared and none is sent, and id keeps the identifier role", () => {
     expect(
       inferMetadata(["id", "case_id", "person_id", "dob"], [], {
         mode: "direct",
       }),
     ).toEqual([
-      { name: "id", type: "identifier", role: "identifier", isPayload: true },
-      { name: "case_id", type: "identifier", role: "payload", isPayload: true },
+      { name: "id", type: "identifier", role: "identifier", isPayload: false },
+      {
+        name: "case_id",
+        type: "identifier",
+        role: "ignored",
+        isPayload: false,
+      },
       {
         name: "person_id",
         type: "identifier",
-        role: "payload",
-        isPayload: true,
+        role: "ignored",
+        isPayload: false,
       },
       {
         name: "dob",
@@ -592,14 +610,14 @@ describe("direct-mode inference sends every column that is not a linkage key", (
     ]);
   });
 
-  test("a sole _id column is the identifier and is sent", () => {
+  test("a sole _id column is the identifier and is not sent", () => {
     expect(
       inferMetadata(["case_id", "dob"], [], { mode: "direct" }),
     ).toContainEqual({
       name: "case_id",
       type: "identifier",
       role: "identifier",
-      isPayload: true,
+      isPayload: false,
     });
   });
 
@@ -637,10 +655,10 @@ describe("direct-mode inference sends every column that is not a linkage key", (
     ];
     for (const header of headers) {
       expect(
-        inferMetadataForEveryColumn(header, [], { mode: "direct" }).map(
-          (column) => column.role,
+        inferMetadataForEveryColumn(header, [], { mode: "direct" }).filter(
+          (column) => column.role === "ignored" && column.type !== "identifier",
         ),
-      ).not.toContain("ignored");
+      ).toEqual([]);
       expect(
         undeclaredColumnNames(
           header,
@@ -667,10 +685,7 @@ describe("direct-mode inference sends every column that is not a linkage key", (
     );
     expect(prepared.undeclaredColumns).toEqual([]);
     const payload = preparePayload([row], prepared.metadata, [[0], [0]]);
-    expect(payload).toMatchObject({
-      hasData: true,
-      columns: ["notes", "case_id", "household_id"],
-    });
+    expect(payload).toMatchObject({ hasData: true, columns: ["notes"] });
   });
 
   test("the terms a direct run states name those columns as its send set", () => {
@@ -683,11 +698,7 @@ describe("direct-mode inference sends every column that is not a linkage key", (
     );
     expect(
       termsStatingDeclaredPayloadSend(linkageTerms, metadata).payload?.send,
-    ).toEqual([
-      { name: "notes" },
-      { name: "case_id" },
-      { name: "household_id" },
-    ]);
+    ).toEqual([{ name: "notes" }]);
   });
 });
 
@@ -702,16 +713,18 @@ describe("an invited or recurring run keeps the declared-only rule", () => {
     case_id: "c1",
   };
 
-  test("prepareForExchange by default withholds a column the metadata does not name", () => {
+  test("prepareForExchange by default withholds a column the metadata does not name, and sends no column", () => {
     const prepared = prepareForExchange({}, "alice", [row], columns);
     expect(prepared.undeclaredColumns).toEqual(["notes", "case_id"]);
-    expect(preparePayload([row], prepared.metadata, [[0], [0]])).toMatchObject({
-      hasData: true,
-      columns: ["id"],
+    expect(
+      prepared.metadata.find((column) => column.name === "id"),
+    ).toMatchObject({ role: "identifier", isPayload: false });
+    expect(preparePayload([row], prepared.metadata, [[0], [0]])).toEqual({
+      hasData: false,
     });
   });
 
-  test("a configuration with no metadata block states the same payload.send", () => {
+  test("a configuration with no metadata block states the same empty payload.send", () => {
     const { metadata, linkageTerms } = resolveExchangeInputs(
       {},
       "alice",
@@ -719,12 +732,41 @@ describe("an invited or recurring run keeps the declared-only rule", () => {
       [],
     );
     expect(
-      termsStatingDeclaredPayloadSend(linkageTerms, metadata).payload?.send,
-    ).toEqual([{ name: "id" }]);
+      termsStatingDeclaredPayloadSend(linkageTerms, metadata).payload?.send ??
+        [],
+    ).toEqual([]);
     expect(
       termsAsTheRunStatedThem(linkageTerms, {
         inputHeader: { columns, sanitizedColumnPositions: [] },
-      }).terms.payload?.send,
+      }).terms.payload?.send ?? [],
+    ).toEqual([]);
+  });
+
+  test("a metadata block that declares id sent still sends it", () => {
+    const metadata: Metadata = [
+      { name: "id", type: "identifier", role: "identifier", isPayload: true },
+      {
+        name: "first_name",
+        type: "first_name",
+        role: "linkage",
+        isPayload: false,
+      },
+      {
+        name: "last_name",
+        type: "last_name",
+        role: "linkage",
+        isPayload: false,
+      },
+      { name: "dob", type: "date_of_birth", role: "linkage", isPayload: false },
+    ];
+    const prepared = prepareForExchange({ metadata }, "alice", [row], columns);
+    expect(preparePayload([row], prepared.metadata, [[0], [0]])).toMatchObject({
+      hasData: true,
+      columns: ["id"],
+    });
+    expect(
+      termsStatingDeclaredPayloadSend(prepared.linkageTerms, prepared.metadata)
+        .payload?.send,
     ).toEqual([{ name: "id" }]);
   });
 

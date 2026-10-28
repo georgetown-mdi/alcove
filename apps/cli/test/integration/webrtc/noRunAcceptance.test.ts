@@ -295,20 +295,18 @@ liveTest(
       expect.objectContaining({ name: REQUESTED_COLUMN, isPayload: false }),
     );
     expect(written.metadata).toContainEqual(
-      expect.objectContaining({ name: "id", isPayload: true }),
+      expect.objectContaining({ name: "id", isPayload: false }),
     );
     expect(written.standardization).toBeDefined();
 
     // The operator's edit before the agreed time: the requested column is
-    // sent and the ID column is kept and not sent, so the send set is exactly
-    // what the inviting party requested.
+    // sent, and the ID column stays not sent, so the send set is exactly what
+    // the inviting party requested.
     editYaml(acceptConfig, (doc) => {
       const metadata = doc.get("metadata") as YAML.YAMLSeq<YAML.YAMLMap>;
-      for (const entry of metadata.items) {
-        if (entry.get("name") === "id") entry.set("is_payload", false);
+      for (const entry of metadata.items)
         if (entry.get("name") === REQUESTED_COLUMN)
           entry.set("is_payload", true);
-      }
     });
 
     const [inviteRun, acceptRun] = await Promise.all([
@@ -415,11 +413,6 @@ liveTest(
       true,
     );
     expect(stopped.fd3).toBe("");
-    editYaml(acceptConfig, (doc) => {
-      const metadata = doc.get("metadata") as YAML.YAMLSeq<YAML.YAMLMap>;
-      for (const entry of metadata.items)
-        if (entry.get("name") === "id") entry.set("is_payload", false);
-    });
 
     const [inviteRun, acceptRun] = await Promise.all([
       inviter.finished,

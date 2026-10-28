@@ -67,9 +67,9 @@ Screen: Step 2 of 3 - Matching & sharing
 | **Only you** | Your partner gets "Results withheld by the terms" | Only you need the matches. What your partner can still learn: [What each party learns](./agree-the-terms.md#what-each-party-learns). |
 | **Only your partner** | You get "Results withheld by the terms" | Only your partner needs them |
 
-Alcove fills in each column's type and use from its name. It sends nothing by default, except a column named `id` or `identifier`, which starts as **Unique record identifier - sent to your partner**.
+Alcove fills in each column's type and use from its name. It sends nothing by default, your ID column included.
 
-**Your ID column.** Set your own ID column, whatever it is called, to **Unique record identifier - not sent**. Your result then starts each row with your own ID, and your partner never receives it. Alcove recognizes a column named `id`, `identifier`, `ClientID`, `PersonID`, or `PersonalID`, or one whose name ends in `_id` once spaces, dots, and dashes count as `_` (so `Client ID` counts). A column named `id` or `identifier` starts as sent to your partner; a column the app does not recognize starts as **Ignored**. With no column set as your ID, your result holds row numbers only, counting from 0.
+**Your ID column.** Set your own ID column, whatever it is called, to **Unique record identifier - not sent**. Your result then starts each row with your own ID, and your partner never receives it. Alcove recognizes a column named `id`, `identifier`, `ClientID`, `PersonID`, or `PersonalID`, or one whose name ends in `_id` once spaces, dots, and dashes count as `_` (so `Client ID` counts), and starts it as **Unique record identifier - not sent**. To send your ID for matched records, choose **Unique record identifier - sent to your partner**. A column the app does not recognize starts as **Ignored**. With no column set as your ID, your result holds row numbers only, counting from 0.
 
 Change any other column's use only as you agreed ([What each of you sends](./agree-the-terms.md#what-each-of-you-sends)).
 

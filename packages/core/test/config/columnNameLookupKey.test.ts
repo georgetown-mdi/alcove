@@ -281,19 +281,19 @@ describe("the _id rule on the lookup key", () => {
     },
   );
 
-  test("Member ID is sent in direct mode, as member_id is", () => {
+  test("Member ID is not sent in direct mode, as member_id is not", () => {
     for (const header of ["Member ID", "member_id"])
       expect(inferMetadata([header], [], { mode: "direct" })).toEqual([
         {
           name: header,
           type: "identifier",
           role: "identifier",
-          isPayload: true,
+          isPayload: false,
         },
       ]);
   });
 
-  test("two folded _id columns are both sent in direct mode, the first the identifier", () => {
+  test("two folded _id columns are both declared and neither sent in direct mode, the first the identifier", () => {
     expect(
       inferMetadata(["Member ID", "case-id"], [], { mode: "direct" }),
     ).toEqual([
@@ -301,15 +301,25 @@ describe("the _id rule on the lookup key", () => {
         name: "Member ID",
         type: "identifier",
         role: "identifier",
-        isPayload: true,
+        isPayload: false,
       },
-      { name: "case-id", type: "identifier", role: "payload", isPayload: true },
+      {
+        name: "case-id",
+        type: "identifier",
+        role: "ignored",
+        isPayload: false,
+      },
     ]);
   });
 
   test("a folded id is the identifier ahead of an _id column", () => {
     expect(inferMetadata([" ID ", "case_id"], [])).toEqual([
-      { name: " ID ", type: "identifier", role: "identifier", isPayload: true },
+      {
+        name: " ID ",
+        type: "identifier",
+        role: "identifier",
+        isPayload: false,
+      },
     ]);
   });
 

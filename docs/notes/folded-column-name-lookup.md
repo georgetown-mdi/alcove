@@ -30,7 +30,7 @@ The fold makes a lookup key only; the column keeps its raw header as its name.
   The `field (column)` form of the pre-run display already names each column read as a key.
 
 Matching after the fold stays exact, never fuzzy or by substring, so `ssn_last4` is not read as `ssn`.
-A name ending in `_id` after the fold, such as `Member ID`, is an identifier column like `member_id`, which a quick exchange sends by design.
+A name ending in `_id` after the fold, such as `Member ID`, is an identifier column like `member_id`, which no exchange sends by default.
 
 ## Consequences for existing configurations
 
@@ -40,7 +40,7 @@ The fold only adds recognized headers, and each added header changes what a run 
 - **A quick exchange** keeps back a column the lowercase-only lookup sends.
   The partner receives one payload column fewer, and the pre-run display lists the column as matched on or held back.
 - **A configuration or invitation with no `metadata` block** declares a column the lowercase-only lookup leaves undeclared.
-  The column is not sent either way, except a header such as `ID ` whose key is `id` or `identifier`, which the table's `identifier` row sends, so the declared send set changes.
+  The column is not sent either way, so the declared send set does not change.
   Where the configuration also has no `linkage_terms`, the terms are inferred from the metadata, so a header such as `Date of Birth` adds a field and the keys that use it.
   The terms change at the next handshake.
 - **A configuration with explicit terms but no `metadata` block** can bind a field by its type to a header the fold recognizes, in place of a later column of that type or of no column.

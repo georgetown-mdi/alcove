@@ -243,7 +243,7 @@ async function acceptInBrowser(invitation: string) {
   const { rawRows, columns } = await readBrowserCsv(BROWSER_CSV);
   const { edits } = acceptorLaunchPayload(
     acceptorColumnsEditorState(
-      acceptorInitialColumnsState(columns, token.linkageTerms.algorithm),
+      acceptorInitialColumnsState(columns),
       token.linkageTerms,
       rawRows,
     ),
