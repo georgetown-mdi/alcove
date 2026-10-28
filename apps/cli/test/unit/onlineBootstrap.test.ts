@@ -12,6 +12,8 @@ import {
   getDiagnosticSink,
   getLogger,
   inferDateInputFormatFromSource,
+  inferMetadata,
+  inferMetadataForEveryColumn,
   InternalConsistencyError,
   LOW_POLLING_FREQUENCY_WARN_MS,
   MAX_RECONNECT_ATTEMPTS,
@@ -63,6 +65,7 @@ import {
   generateSharedSecret,
   loadInputRows,
   logOnlineBootstrapOutcome,
+  metadataListingColumns,
   looksLikeUrl,
   parseLinkageStrategyFlag,
   runOnlineBootstrap,
@@ -4951,5 +4954,63 @@ describe("runOnlineBootstrap: the server.provision wake call", () => {
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("metadataListingColumns", () => {
+  const columns = [
+    "client_id",
+    "first_name",
+    "dob",
+    "case_manager",
+    "other_id",
+    "notes",
+  ];
+  const everyColumn = inferMetadataForEveryColumn(columns, []);
+
+  test("with no named column, is inference's metadata", () => {
+    expect(metadataListingColumns(everyColumn, [])).toEqual(
+      inferMetadata(columns, []),
+    );
+  });
+
+  test("lists each named column inference leaves out, unsent, and changes nothing else", () => {
+    const listing = metadataListingColumns(everyColumn, [
+      "case_manager",
+      "dob",
+      "client_id",
+      "other_id",
+      "absent",
+    ]);
+    const inferred = inferMetadata(columns, []);
+    const byName = new Map(listing.map((column) => [column.name, column]));
+    // A column inference leaves out keeps its inferred type, as a payload
+    // that is not sent.
+    expect(byName.get("case_manager")).toEqual({
+      name: "case_manager",
+      type: "other",
+      role: "payload",
+      isPayload: false,
+    });
+    expect(byName.get("other_id")).toEqual({
+      name: "other_id",
+      type: "identifier",
+      role: "payload",
+      isPayload: false,
+    });
+    // A column inference declares is inference's, as is every other, so the
+    // columns sent are inference's; a name the header lacks adds nothing,
+    // and header order holds.
+    for (const name of ["dob", "client_id", "first_name"])
+      expect(byName.get(name)).toEqual(
+        inferred.find((column) => column.name === name),
+      );
+    expect(listing.map((column) => column.name)).toEqual([
+      "client_id",
+      "first_name",
+      "dob",
+      "case_manager",
+      "other_id",
+    ]);
   });
 });

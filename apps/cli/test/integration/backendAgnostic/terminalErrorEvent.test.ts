@@ -7,11 +7,12 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterEach, beforeEach, expect, test } from "vitest";
 
-import { prepareForExchange } from "@alcove/core";
+import { encodeInvitation, prepareForExchange } from "@alcove/core";
 import type { ConnectionConfig, ExchangeSpec } from "@alcove/core";
 
 import { saveConfig } from "../../../src/config";
 import { saveKeyFile } from "../../../src/keyFile";
+import { FUTURE, sampleToken } from "../../invitationDisplayTestSupport";
 
 /**
  * A failed run under --event-stream, as a supervisor sees it: the CLI as a
@@ -263,6 +264,61 @@ test(
     expect(run.status).toBe(64);
     const terminal = expectOneTerminalError(run, "alcove");
     expect(terminal.message).toContain("alcove.key");
+  },
+  RUN_DEADLINE_MS + 10_000,
+);
+
+/** Run a URL-form `alcove accept` that would run, unattended. */
+async function runUrlAccept(extra: Array<string>): Promise<FailedRun> {
+  const input = path.join(work, "accept-input.csv");
+  fs.writeFileSync(
+    input,
+    "first_name,last_name,dob,ssn\nAlice,Smith,1990-01-02,123456789\n",
+  );
+  return runCli([
+    "accept",
+    "--consent-to-terms",
+    "--identity",
+    "Agency B",
+    "sftp://127.0.0.1/drop",
+    await encodeInvitation(sampleToken(FUTURE())),
+    input,
+    "--config-file",
+    path.join(work, "accept.yaml"),
+    "--key-file",
+    path.join(work, "accept.key"),
+    ...extra,
+    "--event-stream",
+  ]);
+}
+
+test(
+  "an acceptance refused after consent, before its exchange, ends the stream",
+  async () => {
+    // An unpinned SFTP host with no terminal to ask at: refused after the
+    // stream opens at consent, before any connection. At `error` the terms
+    // display stays off stderr, whose tens of kilobytes a slow pipe reader
+    // can leave unwritten when the process exits.
+    const run = await runUrlAccept(["--log-level", "error"]);
+    expect(run.status).toBe(64);
+    const terminal = expectOneTerminalError(run, "accept");
+    expect(terminal.message).toContain("127.0.0.1");
+    expect(fs.existsSync(path.join(work, "accept.yaml"))).toBe(false);
+  },
+  RUN_DEADLINE_MS + 10_000,
+);
+
+test(
+  "an acceptance refused at its credential read, before consent, writes nothing to the stream",
+  async () => {
+    const run = await runUrlAccept([
+      "--server-password",
+      `@${path.join(work, "missing-password")}`,
+    ]);
+    expect(run.status).toBe(64);
+    expect(run.stderr).toContain("missing-password");
+    expect(run.stderr).not.toContain("--consent-to-terms given");
+    expect(run.events).toEqual([]);
   },
   RUN_DEADLINE_MS + 10_000,
 );
