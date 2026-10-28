@@ -5,6 +5,7 @@ import {
   COUNT_ONLY_SHAPE_REFUSALS,
   assertCountOnlyTermsShape,
   countOnlyShapeViolation,
+  runsSinglePassLink,
 } from "../../src/linkageTermsPolicy";
 import { deriveAcceptedLinkageTerms } from "../../src/linkageTermsNegotiation";
 import {
@@ -330,3 +331,15 @@ test("a count-only document already in shape passes every rule and the algorithm
   for (const { terms } of outOfShape)
     expect(() => assertAlgorithmImplemented(terms.algorithm)).not.toThrow();
 });
+
+test.each([
+  { algorithm: "psi", linkageStrategy: "single-pass", runs: true },
+  { algorithm: "psi", linkageStrategy: "cascade", runs: false },
+  { algorithm: "psi-c", linkageStrategy: "single-pass", runs: false },
+  { algorithm: "psi-c", linkageStrategy: "cascade", runs: false },
+] as const)(
+  "runsSinglePassLink is $runs for $algorithm under $linkageStrategy",
+  ({ algorithm, linkageStrategy, runs }) => {
+    expect(runsSinglePassLink({ algorithm, linkageStrategy })).toBe(runs);
+  },
+);

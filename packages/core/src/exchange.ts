@@ -15,6 +15,7 @@ import {
   countOnlyEveryKeyShapeViolation,
   COUNT_ONLY_SHAPE_REFUSALS,
   resolvedMatchingFromTerms,
+  runsSinglePassLink,
 } from "./linkageTermsPolicy.js";
 import { getDefaultLinkageTerms } from "./defaults/builtInLinkageTerms.js";
 import { quoteTermsValue } from "./config/compatibilityMessage.js";
@@ -319,8 +320,9 @@ export function assertTermsRunnable(
  * A pair naming different algorithms is refused as an
  * {@link AlgorithmDivergenceError} rather than resolved to either value.
  *
- * Under the `every-key` `construction` several linkage keys are admitted; a
- * key with a missing-field condition stays refused, as does every other rule.
+ * Under the `every-key` `construction` several linkage keys, a declared
+ * `single-pass` and a key with a missing-field condition are admitted; every
+ * other rule holds.
  */
 export function resolveCountOnlyRun(
   localTerms: LinkageTerms,
@@ -340,7 +342,7 @@ export function resolveCountOnlyRun(
       const violation = countOnlyEveryKeyShapeViolation(terms);
       if (violation !== undefined)
         throw new UsageError(COUNT_ONLY_SHAPE_REFUSALS[violation]);
-      assertKeyConditionsAdmitted(terms);
+      assertKeyConditionsAdmitted(terms, construction);
     }
   else {
     assertCountOnlyTermsShape(localTerms);
@@ -843,7 +845,7 @@ export function prepareForExchange(
     rawRows.length * localFanOutFactor(dataset.declaresFanOut);
 
   if (
-    linkageTerms.linkageStrategy === "single-pass" &&
+    runsSinglePassLink(linkageTerms) &&
     singlePassDatasetExceedsCap(effectiveKeyCount, declaredRecordCount)
   ) {
     throw new OperatorConfigError(
@@ -918,7 +920,9 @@ export interface ExchangeStageDefinition {
  * the encrypt/match stages it emits pass through the caller's onStage unlabeled.
  * Their ids -- which of them a party emits depends on the role the handshake
  * resolves, so no list can enumerate them here -- are `SINGLE_PASS_STAGE_IDS`
- * in psi/link.ts, for a caller that labels them.
+ * in psi/link.ts, for a caller that labels them. A count-only (`psi-c`) run
+ * declaring single-pass runs the cascade's rounds, so it has the cascade's
+ * stages.
  */
 export function describeExchangeStages(
   prepared: PreparedExchange,
@@ -927,8 +931,7 @@ export function describeExchangeStages(
     id: CONFIRMING_PROTOCOL_STAGE_ID,
     label: "Confirming protocol",
   };
-  if (prepared.linkageTerms.linkageStrategy === "single-pass")
-    return [confirming];
+  if (runsSinglePassLink(prepared.linkageTerms)) return [confirming];
   const keyCount = linkageRounds(prepared.linkageTerms.linkageKeys).length;
   return [
     confirming,
@@ -1448,8 +1451,11 @@ export async function runExchange(
   assertFanOutImplemented(linkageTerms);
 
   // Refuse a key condition the terms schema refuses, for a PreparedExchange whose
-  // terms were built without a parse. See assertKeyConditionsAdmitted.
-  assertKeyConditionsAdmitted(linkageTerms);
+  // terms were built without a parse, except one on count-only terms under the
+  // every-key construction. See assertKeyConditionsAdmitted.
+  const countOnlyConstruction =
+    options[COUNT_ONLY_CONSTRUCTION] ?? "single-key";
+  assertKeyConditionsAdmitted(linkageTerms, countOnlyConstruction);
 
   // Refuse a disclosed column whose name is too long to carry before anything goes
   // on the wire. prepareForExchange refuses it at prepare time; this holds for a
@@ -1652,8 +1658,6 @@ export async function runExchange(
   // is symmetric, so a count-only exchange outside the specified shape aborts BOTH
   // parties here -- before the bootstrap frame and the PSI round -- rather than
   // starting a round one side would refuse. See resolveCountOnlyRun.
-  const countOnlyConstruction =
-    options[COUNT_ONLY_CONSTRUCTION] ?? "single-key";
   const countOnly = resolveCountOnlyRun(
     linkageTerms,
     partnerTerms,
@@ -1789,9 +1793,7 @@ export async function runExchange(
     partnerRecordCount,
     localExpectsOutput: linkageTerms.output.expectsOutput,
     partnerAssociationTableWithheld:
-      linkageTerms.linkageStrategy === "single-pass" &&
-      isReceiver &&
-      withholdSenderTable,
+      runsSinglePassLink(linkageTerms) && isReceiver && withholdSenderTable,
   });
 
   const linkageKeyIterables = rounds.map((round) =>
@@ -1826,8 +1828,7 @@ export async function runExchange(
   // bounds the rest. This party's first round is held to the partner's stated
   // ceiling before this party builds a set; at the protocol's maximum, the
   // start-of-exchange check and each round's own refusal hold it already.
-  const roundsSentInParts =
-    linkageTerms.linkageStrategy !== "single-pass" || countOnly;
+  const roundsSentInParts = !runsSinglePassLink(linkageTerms);
   if (roundsSentInParts) {
     await assertPartnerRoundWithinCapacity(
       conn,

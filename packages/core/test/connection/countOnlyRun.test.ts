@@ -11,6 +11,7 @@ import PSI from "@openmined/psi.js";
 import { COUNT_ONLY_CONSTRUCTION } from "../../src/exchange/countOnlyConstruction";
 import { exchangeRecordFromFailure } from "../../src/exchange/failureRecords";
 import { resolveCountOnlyRun, runExchange } from "../../src/exchange";
+import { assertKeyConditionsAdmitted } from "../../src/linkageKeyCondition";
 import { receiveCountReport } from "../../src/protocolSetup";
 import { verifyCommitmentOpening } from "../../src/records/exchangeRecord";
 import {
@@ -770,20 +771,7 @@ describe("the every-key construction", () => {
 });
 
 describe("the agreed-terms run boundary under the every-key construction", () => {
-  test("several linkage keys are admitted only under every-key", () => {
-    const overBroadTerms = withSecondKey(agreedCountOnlyTerms);
-    expect(
-      resolveCountOnlyRun(overBroadTerms, overBroadTerms, "every-key"),
-    ).toBe(true);
-    expect(() =>
-      resolveCountOnlyRun(overBroadTerms, overBroadTerms, "single-key"),
-    ).toThrow(/exactly one linkage key/);
-    expect(() => resolveCountOnlyRun(overBroadTerms, overBroadTerms)).toThrow(
-      /exactly one linkage key/,
-    );
-  });
-
-  const conditionedTerms: LinkageTerms = {
+  const conditioned = (missingField: string): LinkageTerms => ({
     ...agreedCountOnlyTerms,
     linkageFields: [
       ...agreedCountOnlyTerms.linkageFields,
@@ -792,17 +780,65 @@ describe("the agreed-terms run boundary under the every-key construction", () =>
     linkageKeys: [
       {
         ...agreedCountOnlyTerms.linkageKeys[0]!,
-        condition: { missingField: "dateOfBirth" },
+        condition: { missingField },
       },
     ],
-  };
+  });
 
   test.each<[string, LinkageTerms, RegExp]>([
+    [
+      "several linkage keys",
+      withSecondKey(agreedCountOnlyTerms),
+      /exactly one linkage key/,
+    ],
     [
       "a declared single-pass",
       { ...agreedCountOnlyTerms, linkageStrategy: "single-pass" },
       /linkage_strategy to "cascade"/,
     ],
+  ])(
+    "%s is admitted only under every-key, whichever party's terms hold it",
+    (_label, admittedTerms, singleKeyRefusal) => {
+      for (const [local, partner] of [
+        [admittedTerms, agreedCountOnlyTerms],
+        [agreedCountOnlyTerms, admittedTerms],
+        [admittedTerms, admittedTerms],
+      ] as const) {
+        expect(resolveCountOnlyRun(local, partner, "every-key")).toBe(true);
+        expect(() => resolveCountOnlyRun(local, partner, "single-key")).toThrow(
+          singleKeyRefusal,
+        );
+        expect(() => resolveCountOnlyRun(local, partner)).toThrow(
+          singleKeyRefusal,
+        );
+      }
+    },
+  );
+
+  // Under single-key the run refuses this party's own condition before the
+  // terms exchange (assertKeyConditionsAdmitted in runExchange), and the
+  // terms-exchange parse refuses the partner's.
+  test("a key with a missing-field condition is admitted only under every-key, whichever party's terms hold it", () => {
+    const admittedTerms = conditioned("dateOfBirth");
+    for (const [local, partner] of [
+      [admittedTerms, agreedCountOnlyTerms],
+      [agreedCountOnlyTerms, admittedTerms],
+      [admittedTerms, admittedTerms],
+    ] as const)
+      expect(resolveCountOnlyRun(local, partner, "every-key")).toBe(true);
+
+    expect(() =>
+      assertKeyConditionsAdmitted(admittedTerms, "every-key"),
+    ).not.toThrow();
+    expect(() =>
+      assertKeyConditionsAdmitted(admittedTerms, "single-key"),
+    ).toThrow(/missing_field condition runs in two/);
+    expect(() => assertKeyConditionsAdmitted(admittedTerms)).toThrow(
+      /missing_field condition runs in two/,
+    );
+  });
+
+  test.each<[string, LinkageTerms, RegExp]>([
     [
       "deduplicate",
       { ...agreedCountOnlyTerms, deduplicate: true },
@@ -817,9 +853,9 @@ describe("the agreed-terms run boundary under the every-key construction", () =>
       /no payload columns/,
     ],
     [
-      "a key with a missing-field condition",
-      conditionedTerms,
-      /missing_field condition runs in two/,
+      "a missing-field condition naming no declared field",
+      conditioned("birthDate"),
+      /must name a declared linkage field/,
     ],
   ])(
     "%s stays refused whichever party's terms hold it",

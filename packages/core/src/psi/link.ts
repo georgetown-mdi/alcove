@@ -1782,7 +1782,8 @@ export type CountOnlyRounds =
  * @param data - The agreed linkage keys' local values. Under `single-key`,
  *   exactly one entry: a longer list is refused rather than narrowed to its
  *   first key, which would deliver a count the operator did not agree to.
- *   Under `every-key`, one entry per round, in round order.
+ *   Under `every-key`, one entry per round, in round order
+ *   (`linkageRounds`), a record the round is not built for holding no value.
  * @param reportCountToSender - Whether this round's count-report frame is
  *   exchanged (see {@link ./protocolSetup.reportsCountToSender}); both
  *   parties pass the same value.

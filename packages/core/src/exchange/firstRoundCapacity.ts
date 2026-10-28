@@ -1,7 +1,10 @@
 import { SPLIT_INPUT_REMEDY } from "../connection/fileSyncOutboundBound.js";
 import { MAX_PSI_DECODE_ELEMENTS } from "../connection/frameSize.js";
 import { RoundSetLimitError, UsageError } from "../errors.js";
-import { candidateSetIsImplementedForStrategy } from "../linkageTermsPolicy.js";
+import {
+  candidateSetIsImplementedForStrategy,
+  runsSinglePassLink,
+} from "../linkageTermsPolicy.js";
 import {
   PSI_SET_REFUSED_ABORT_REASON,
   PSI_SET_TOO_LARGE_ABORT_REASON,
@@ -97,8 +100,8 @@ const PARTNER_CEILING_REMEDY =
  * in the role this party resolves to, and every later round's set when it is
  * built (docs/spec/PROTOCOL.md, "The receive ceiling"). Where the round reads
  * one candidate per record, a record holding a candidate set raises the
- * round's own fan-out refusal rather than this one. A single-pass exchange is
- * not checked here: its dataset ceiling holds every set it sends
+ * round's own fan-out refusal rather than this one. A `psi` single-pass
+ * exchange is not checked here: its dataset ceiling holds every set it sends
  * (docs/spec/PROTOCOL.md, "The single-pass dataset ceiling").
  *
  * The count reports its progress through `options.onProgress`
@@ -216,7 +219,7 @@ async function assertFirstRoundFits(
   },
 ): Promise<void> {
   const { linkageTerms, dataset, rowCount } = prepared;
-  if (linkageTerms.linkageStrategy === "single-pass") return;
+  if (runsSinglePassLink(linkageTerms)) return;
   const rounds = linkageRounds(linkageTerms.linkageKeys);
   const firstRound = rounds.at(0);
   if (firstRound === undefined) return;
