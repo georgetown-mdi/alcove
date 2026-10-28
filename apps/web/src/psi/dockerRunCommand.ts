@@ -1,8 +1,13 @@
 import { imageReference, releaseVersion } from "@utils/alcoveImage";
 import { alcoveVersion } from "@utils/clientConfig";
 
+import {
+  OPERATOR_ACCOUNT_VALUE,
+  operatorAccountOption,
+} from "./containerAccount";
 import { shellJoinCommand } from "./managed/recurringHandoff";
 
+import type { ContainerEngine } from "./containerAccount";
 import type { HandoffBindPath } from "@jobContract/handoffBindPaths";
 
 /**
@@ -113,11 +118,22 @@ function mountOption(
 }
 
 /**
+ * A command's argv joined into one line for a POSIX shell, with the operator
+ * account value left for the shell to expand ({@link operatorAccountOption}).
+ */
+export function shellJoinRunArgv(argv: ReadonlyArray<string>): string {
+  return shellJoinCommand(argv, (token) => token === OPERATOR_ACCOUNT_VALUE);
+}
+
+/**
  * The `docker run` argv over `folder`: the folder mounted at the image's
  * working directory and, unless `mountBindPaths` is false, each bind path at
  * its own path, so every path the configuration names resolves inside the
  * container as it does outside. `interactive` gives the run a terminal.
- * Undefined when a bind path cannot be mounted ({@link unmountableBindPaths}).
+ * `operatorAccountFor` runs the container as the operator's own account under
+ * that engine, for a Linux host, whose mounted folder the image's own account
+ * cannot write. Undefined when a bind path cannot be mounted
+ * ({@link unmountableBindPaths}).
  */
 export function dockerRunArgv(
   { argv, bindPaths, image }: ScheduledRunSource,
@@ -126,7 +142,12 @@ export function dockerRunArgv(
   {
     interactive = false,
     mountBindPaths = true,
-  }: { interactive?: boolean; mountBindPaths?: boolean } = {},
+    operatorAccountFor,
+  }: {
+    interactive?: boolean;
+    mountBindPaths?: boolean;
+    operatorAccountFor?: ContainerEngine;
+  } = {},
 ): Array<string> | undefined {
   if (unmountableBindPaths(bindPaths).length > 0) return undefined;
   return [
@@ -134,6 +155,9 @@ export function dockerRunArgv(
     "run",
     "--rm",
     ...(interactive ? ["-it"] : []),
+    ...(operatorAccountFor !== undefined
+      ? operatorAccountOption(operatorAccountFor)
+      : []),
     ...mountOption(folder, CONTAINER_WORK_FOLDER, false),
     ...(mountBindPaths
       ? bindPaths.flatMap(({ path, readOnly }) =>

@@ -9,6 +9,7 @@ import {
   CONTAINER_WORK_FOLDER,
   alcoveArgs,
   dockerRunArgv,
+  shellJoinRunArgv,
   unmountableBindPaths,
 } from "@psi/dockerRunCommand";
 
@@ -23,6 +24,7 @@ import type {
   UnmountableBindPath,
   UnmountableReason,
 } from "@psi/dockerRunCommand";
+import type { ContainerEngine } from "@psi/containerAccount";
 import type { HandoffBindPath } from "@jobContract/handoffBindPaths";
 import type { RunSchedule } from "./scheduleTemplates";
 
@@ -46,8 +48,11 @@ export const EXCHANGE_FOLDER_PLACEHOLDER = "/path/to/your/exchange-folder";
 const WINDOWS_EXCHANGE_FOLDER_PLACEHOLDER =
   "C:\\path\\to\\your\\exchange-folder";
 
-/** Where the Docker client is installed on Linux. */
-const POSIX_DOCKER_PROGRAM = "/usr/bin/docker";
+/** Where each engine's client is installed on Linux. */
+const POSIX_ENGINE_PROGRAMS: Record<ContainerEngine, string> = {
+  docker: "/usr/bin/docker",
+  podman: "/usr/bin/podman",
+};
 
 /** The installed program's placeholder, for the line that runs it directly. */
 export const INSTALLED_ALCOVE_PLACEHOLDER = "/path/to/alcove";
@@ -60,14 +65,34 @@ function cronLine(command: string, schedule: RunSchedule | undefined): string {
   return `${cronScheduleFields(schedule)} ${guarded.replaceAll("%", "\\%")}`;
 }
 
-/** The command a person runs once by hand: the image over the exchange folder,
- * with `docker` as their shell finds it. Undefined when a bind path cannot be
- * mounted. */
+/** The command a person runs once by hand under `engine`: the image over the
+ * exchange folder, as the operator's own account, with the engine's program as
+ * their shell finds it. Undefined when a bind path cannot be mounted. */
+function engineRunCommand(
+  source: ScheduledRunSource,
+  engine: ContainerEngine,
+): string | undefined {
+  const argv = dockerRunArgv(source, engine, EXCHANGE_FOLDER_PLACEHOLDER, {
+    operatorAccountFor: engine,
+  });
+  return argv === undefined ? undefined : shellJoinRunArgv(argv);
+}
+
+/** The `docker run` command a person runs once by hand. Undefined when a bind
+ * path cannot be mounted. */
 export function dockerRunCommand(
   source: ScheduledRunSource,
 ): string | undefined {
-  const argv = dockerRunArgv(source, "docker", EXCHANGE_FOLDER_PLACEHOLDER);
-  return argv === undefined ? undefined : shellJoinCommand(argv);
+  return engineRunCommand(source, "docker");
+}
+
+/** The `podman run` command for rootless Podman, which maps the operator onto
+ * the image's account with a user namespace rather than `--user`. Undefined
+ * when a bind path cannot be mounted. */
+export function podmanRunCommand(
+  source: ScheduledRunSource,
+): string | undefined {
+  return engineRunCommand(source, "podman");
 }
 
 /** The command a person runs once by hand from the exchange folder with an
@@ -77,19 +102,40 @@ function installedRunCommand({ argv }: ScheduledRunSource): string {
 }
 
 /** The crontab line running the image over the exchange folder on
+ * `schedule` under `engine`, as the operator's own account. Undefined when a
+ * bind path cannot be mounted. */
+function engineCronLine(
+  source: ScheduledRunSource,
+  engine: ContainerEngine,
+  schedule: RunSchedule | undefined,
+): string | undefined {
+  const argv = dockerRunArgv(
+    source,
+    POSIX_ENGINE_PROGRAMS[engine],
+    EXCHANGE_FOLDER_PLACEHOLDER,
+    { operatorAccountFor: engine },
+  );
+  return argv === undefined
+    ? undefined
+    : cronLine(shellJoinRunArgv(argv), schedule);
+}
+
+/** The crontab line running the image with Docker over the exchange folder on
  * `schedule`. Undefined when a bind path cannot be mounted. */
 export function dockerCronLine(
   source: ScheduledRunSource,
   schedule?: RunSchedule,
 ): string | undefined {
-  const argv = dockerRunArgv(
-    source,
-    POSIX_DOCKER_PROGRAM,
-    EXCHANGE_FOLDER_PLACEHOLDER,
-  );
-  return argv === undefined
-    ? undefined
-    : cronLine(shellJoinCommand(argv), schedule);
+  return engineCronLine(source, "docker", schedule);
+}
+
+/** The crontab line running the image with rootless Podman over the exchange
+ * folder on `schedule`. Undefined when a bind path cannot be mounted. */
+export function podmanCronLine(
+  source: ScheduledRunSource,
+  schedule?: RunSchedule,
+): string | undefined {
+  return engineCronLine(source, "podman", schedule);
 }
 
 /** The crontab line running an installed `alcove` from the exchange folder on
@@ -154,8 +200,14 @@ export interface ShownRunLines {
   /** The command running it once: the image over the folder, or an installed
    * `alcove` where a path cannot be mounted. */
   runCommand: string;
+  /** The one-off command for rootless Podman; undefined where a path cannot
+   * be mounted. */
+  podmanRunCommand: string | undefined;
   /** Undefined where a path cannot be mounted. */
   dockerCronLine: string | undefined;
+  /** The cron line for rootless Podman; undefined where a path cannot be
+   * mounted. */
+  podmanCronLine: string | undefined;
   /** Undefined where a path cannot be mounted. */
   dockerTaskSchedulerLine: string | undefined;
   installedCronLine: string;
@@ -177,7 +229,9 @@ export function runLines(
   return {
     kind: "shown",
     runCommand: dockerRunCommand(source) ?? installedRunCommand(source),
+    podmanRunCommand: podmanRunCommand(source),
     dockerCronLine: dockerCronLine(source, schedule),
+    podmanCronLine: podmanCronLine(source, schedule),
     dockerTaskSchedulerLine: dockerTaskSchedulerLine(source, schedule),
     installedCronLine: installedCronLine(source, schedule),
     dockerLinesNotice:

@@ -137,7 +137,14 @@ describe("RecurringHandoff panel", () => {
     const text = () => app.container.textContent;
     // The command template, including the portable pin and the placeholder credential.
     expect(text()).toContain(
-      "docker run --rm --mount type=bind,src=/path/to/your/exchange-folder,dst=/work",
+      'docker run --rm --user "$(id -u):$(id -g)" --mount ' +
+        "type=bind,src=/path/to/your/exchange-folder,dst=/work",
+    );
+    // The same command for rootless Podman, which takes a user namespace
+    // where Docker takes --user.
+    expect(text()).toContain(
+      "podman run --rm --userns=keep-id:uid=1000,gid=1000 --mount " +
+        "type=bind,src=/path/to/your/exchange-folder,dst=/work",
     );
     expect(text()).toContain("sftp://sftp.example.gov:2222/exchange");
     expect(text()).toContain("--server-host-key-fingerprint=SHA256:");

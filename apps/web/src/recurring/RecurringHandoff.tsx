@@ -20,6 +20,7 @@ import {
   handoffInputName,
   runLines,
 } from "./scheduledRunCommand";
+import { PodmanLines } from "./PodmanLines";
 
 import type { JobHandoff } from "@jobContract/jobHandoff";
 import type { ScheduledRunSource } from "@psi/dockerRunCommand";
@@ -150,6 +151,7 @@ function HandoffBody({
       )}
 
       {shown !== undefined && <ScheduleLines lines={shown} />}
+      {shown !== undefined && <PodmanLines lines={shown} />}
 
       <Caveats
         handoff={handoff}

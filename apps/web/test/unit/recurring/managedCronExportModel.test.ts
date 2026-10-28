@@ -133,12 +133,18 @@ describe("what the panel gets to render", () => {
     );
     const lines = shownLines(state.lines);
     expect(lines.runCommand).toBe(
-      "docker run --rm --mount " +
+      'docker run --rm --user "$(id -u):$(id -g)" --mount ' +
         "type=bind,src=/path/to/your/exchange-folder,dst=/work " +
         `${IMAGE} exchange --log-file=exchange.log input.csv ./`,
     );
     expect(lines.dockerCronLine).toBe(
-      "0 2 * * * /usr/bin/docker run --rm --mount " +
+      '0 2 * * * /usr/bin/docker run --rm --user "$(id -u):$(id -g)" --mount ' +
+        "type=bind,src=/path/to/your/exchange-folder,dst=/work " +
+        `${IMAGE} exchange --log-file=exchange.log input.csv ./`,
+    );
+    expect(lines.podmanCronLine).toBe(
+      "0 2 * * * /usr/bin/podman run --rm " +
+        "--userns=keep-id:uid=1000,gid=1000 --mount " +
         "type=bind,src=/path/to/your/exchange-folder,dst=/work " +
         `${IMAGE} exchange --log-file=exchange.log input.csv ./`,
     );

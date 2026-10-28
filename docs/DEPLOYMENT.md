@@ -435,7 +435,15 @@ Both roles run unprivileged in both variants. Left alone they run as the image's
 A bind mount keeps its host directory's ownership inside the container, so every directory the container writes -- `/work` for the CLI, and the data, input, and rendezvous mounts for the console -- has to be writable by uid 1000, and every file it reads readable by it. The container engine decides which case applies:
 
 - **Docker Desktop**, on macOS, Windows, or Linux, presents a bind mount to whichever user the container runs as, so there is nothing to do.
-- **Docker Engine on Linux** passes the host directory's real ownership through. A directory created by an account that is itself uid 1000 is already owned by the container's account. Otherwise hand the working directory to that uid once, before the first run:
+- **Docker Engine on Linux** passes the host directory's real ownership through. Run the container as your own account, which needs no privilege and leaves everything Alcove writes owned by you:
+
+  ```sh
+  docker run --rm --user "$(id -u):$(id -g)" -v "${PWD}:/work" ghcr.io/georgetown-mdi/alcove exchange input.csv
+  ```
+
+  Rootless Podman takes `--userns=keep-id:uid=1000,gid=1000` in place of `--user`.
+
+  The alternative is to hand the working directory to uid 1000 once, before the first run. A directory created by an account that is itself uid 1000 is already owned by the container's account; otherwise:
 
   ```sh
   sudo chown 1000:1000 /host/work
@@ -453,13 +461,7 @@ A bind mount keeps its host directory's ownership inside the container, so every
 
 - **A CIFS network-share volume** -- the Docker volume the Windows shared-folder scripts create over `//server/share` -- presents the whole tree as owned by the volume's `uid=` and `gid=` mount options, and root when they name nothing. The volume must pin `uid=1000,gid=1000`, which is what `Setup-AlcoveFileDrop.ps1` and its Command Prompt counterpart create it with; a volume made by hand without them mounts and then refuses every write. The share's own access control still decides what the mount credential may do.
 
-**Running as your own account instead.** Where changing the directory's ownership is not an option, run the container as yourself:
-
-```sh
-docker run --rm --user "$(id -u):$(id -g)" -v "${PWD}:/work" ghcr.io/georgetown-mdi/alcove exchange input.csv
-```
-
-Alcove chooses no path under the home directory; it uses the home directory only to expand a `~` you wrote yourself, which in an ephemeral home is a different directory on every run, so write those paths out in full. The signing identity is written and read only where you name it (see [Mounting the signing identity](#mounting-the-signing-identity)).
+**When the container runs as your own account,** Alcove chooses no path under the home directory; it uses the home directory only to expand a `~` you wrote yourself, which in an ephemeral home is a different directory on every run, so write those paths out in full. The signing identity is written and read only where you name it (see [Mounting the signing identity](#mounting-the-signing-identity)).
 
 **The console takes the same route.** Its one container-internal write outside the mounts is the directory a pasted SFTP credential is written to, which the image creates under root-owned `/run` for its own account. Under `--user`, point `JOB_SFTP_CREDENTIAL_DIR` at a path that account can create:
 

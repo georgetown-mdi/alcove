@@ -197,7 +197,7 @@ describe("the command-line export hands over two files", () => {
       .element(
         page
           .getByText(
-            "docker run --rm --mount " +
+            'docker run --rm --user "$(id -u):$(id -g)" --mount ' +
               "type=bind,src=/path/to/your/exchange-folder,dst=/work",
             { exact: false },
           )

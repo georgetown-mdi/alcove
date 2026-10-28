@@ -5,6 +5,7 @@ import {
   EXCHANGE_FOLDER_PLACEHOLDER,
   INSTALLED_ALCOVE_PLACEHOLDER,
 } from "./scheduledRunCommand";
+import { PodmanLines } from "./PodmanLines";
 
 import type { ShownScheduledRunLines } from "./managedCronExportModel";
 
@@ -64,6 +65,7 @@ export function ScheduledRunLinesView({
           " A scheduled job does not use your shell's PATH, so check that " +
             "/usr/bin/docker is where Docker is installed (command -v docker)."}
       </p>
+      <PodmanLines lines={lines} />
       {lines.scheduleNote !== undefined && (
         <p className={styles.small}>{lines.scheduleNote}</p>
       )}
