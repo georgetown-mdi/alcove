@@ -1751,9 +1751,11 @@ export type CountOnlyRounds =
     };
 
 /**
- * The count-only (`psi-c`) counterpart to {@link linkViaPSI}: ONE PSI round over ONE
- * linkage key, resolving to the size of the intersection and to nothing that names a
- * match (docs/spec/PROTOCOL.md, PSI-C).
+ * The count-only (`psi-c`) counterpart to {@link linkViaPSI}, resolving to the size
+ * of the intersection and to nothing that names a match (docs/spec/PROTOCOL.md,
+ * PSI-C). Under the default `single-key` construction, which the rest of this
+ * description covers apart from `rounds`, it runs ONE PSI round over ONE linkage
+ * key.
  *
  * Returns the count this party holds at the end of the round, or
  * `undefined` when it holds none -- the sender of a run whose agreed terms
@@ -1773,13 +1775,14 @@ export type CountOnlyRounds =
  * library's cardinality operation reports the MULTISET intersection and
  * would otherwise over-count a repeated value.
  *
- * @param participant - Must have a resolved role and a count-only engine;
- *   the identifier-revealing engine refuses the cardinality operation
- *   rather than returning one.
- * @param data - The agreed linkage keys' local values, exactly one entry
- *   for a count-only run. A longer list is refused rather than narrowed to
- *   its first key, which would deliver a count the operator did not agree
- *   to.
+ * @param participant - Must have a resolved role. Under `single-key` its
+ *   engine must be count-only, since the identifier-revealing engine refuses
+ *   the cardinality operation rather than returning one; under `every-key`
+ *   it must be `count-only-permuted`.
+ * @param data - The agreed linkage keys' local values. Under `single-key`,
+ *   exactly one entry: a longer list is refused rather than narrowed to its
+ *   first key, which would deliver a count the operator did not agree to.
+ *   Under `every-key`, one entry per round, in round order.
  * @param reportCountToSender - Whether this round's count-report frame is
  *   exchanged (see {@link ./protocolSetup.reportsCountToSender}); both
  *   parties pass the same value.

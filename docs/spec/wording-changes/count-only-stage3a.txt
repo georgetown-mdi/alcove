@@ -1,5 +1,6 @@
 - **Not yet built:** this section specifies count-only over every agreed linkage key. -> **Not yet shipped:** this section specifies count-only over every agreed linkage key.
 - - -> Its rounds over keys with no missing-field condition are built in `linkViaCountOnlyPSI` (`packages/core/src/psi/link.ts`) behind a construction selector that only core's own tests set, so no run an operator starts reaches them.
+- - -> Under that selector terms declaring `single-pass` or a missing-field condition are still refused.
 - **One element per record, in record order.** -> **One element per record.**
 - The receiver's request lists its records in its own record order, the same order in every round, so position `i` of every round's request is the receiver's record `i`. -> The receiver's request lists its records in a request order it draws once for the exchange, a uniformly random permutation of its records from the platform's cryptographically secure random generator, so position `i` of every round's request holds the same receiver record in every round, and only the receiver knows which.
 - - -> The request order MUST NOT be sent, written to disk, or logged, and MUST be discarded when the exchange ends, whether it completes or fails; each run of an exchange draws its own.
