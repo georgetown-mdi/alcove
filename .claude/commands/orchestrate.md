@@ -1,6 +1,6 @@
 ---
 name: orchestrate
-description: Start or resume an orchestration session -- load the session rules and the newest continuation brief, then work the backlog on boards 9 and 10 until the owner names another state.
+description: Start or resume an orchestration session -- load the session rules and the newest continuation brief, then enter the state the brief records, by default working the backlog on boards 9 and 10, until the owner names another state.
 ---
 
     /orchestrate [the day's notes]
@@ -21,7 +21,7 @@ Add it to the continuation brief's owner notes, never replacing what is there, s
 2. When a continuation brief exists, read the newest:
    the line `ls -t scratch | grep -m1 '^continuation-.*\.md$'` prints in the primary checkout, newest by modification time.
    A brief whose first line begins `Closed out`, as the follow-ups pass leaves it, is history: start from the board, and keep this session's brief in a new file.
-   Any other brief is this session's own, resumed after a compaction or a rotation: keep writing it.
+   Any other brief is this session's own, resumed after a compaction or a rotation: keep writing it, and enter the state it records, as that state's command sets out; with none recorded, the state is Working.
    A new brief is `scratch/continuation-<date -I>.md`, with the next letter added (`b`, `c`) when that name is taken.
 3. If you have questions before you start, ask them now and wait for the answers.
 

@@ -34,7 +34,9 @@ It is the session's last step: the board alone holds the state afterwards.
    in PR bodies, review dispositions and agent reports, each confirmed review
    finding not fixed on a branch, each parked Decision item, each run still
    under way -- so none is left in prose alone. Each confirmed finding not
-   fixed on a branch joins the potential follow-ups. For each potential follow-up,
+   fixed on a branch joins the potential follow-ups, and so does each
+   shortlist candidate the continuation brief records as not taken: each is
+   a board item already, so step 5 weighs it for an update, never a filing. For each potential follow-up,
    form your own opinion on whether to
    file it, weighing its benefit to users and the product against its
    implementation and opportunity costs, as `.claude/product-principles.md`
