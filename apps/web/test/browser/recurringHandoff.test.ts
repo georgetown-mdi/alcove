@@ -198,7 +198,7 @@ describe("RecurringHandoff panel", () => {
         "dst=/path/to/your/shared-directory",
     );
     expect(text()).toContain(
-      "The Docker commands mount /path/to/your/shared-directory",
+      "The Docker commands for Linux and macOS mount /path/to/your/shared-directory",
     );
   });
 

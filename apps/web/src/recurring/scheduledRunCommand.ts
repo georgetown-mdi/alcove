@@ -308,10 +308,11 @@ export function bindPathsCaveat(
 ): string {
   const paths = bindPaths.map(({ path }) => path).join(", ");
   return (
-    `The Docker commands mount ${paths} at the same path inside the ` +
+    `The Docker commands for Linux and macOS mount ${paths} at the same path inside the ` +
     "container, so Alcove finds each where this hand-off names it. When you " +
     "set one of these paths, set it the same way in the Docker commands. The " +
-    "Task Scheduler line mounts only the exchange folder: for each path, add " +
+    "Windows command and the Task Scheduler line mount only the exchange " +
+    "folder: for each path, add " +
     "--mount type=bind,src=FILE,dst=PATH before the image name, with FILE " +
     "the folder or file on your machine and PATH the path named here."
   );
