@@ -40,7 +40,7 @@ agreed linkage transforms' regexes that standardize values before PSI key
 derivation, so the two parties' regex engines must behave byte-identically or
 the derived keys silently mismatch -- no error, just missed matches. The freeze
 covers it and every other external the core CJS build resolves from
-`node_modules` at runtime (`yaml`, `canonicalize`, ...), which
+`node_modules` at runtime (`yaml`, `zod`, ...), which
 their caret manifest ranges would otherwise leave free to re-resolve at image
 build time, letting two images of nominally the same release diverge. The
 vendored `@openmined/psi.js` tarball participates as the committed bytes in

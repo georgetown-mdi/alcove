@@ -486,8 +486,7 @@ Re-driven 2026-10-17 on npm 11.20.0, with the block present and not toggled.
   naming both.
 - Deleting those two `apps/web/node_modules` lockfile entries and running
   `npm install --package-lock-only` hoists 1.64.1 to the root and the check
-  passes, so deleting alone clears a split of that size on this release; the
-  remedy below is the route for a larger one.
+  passes.
 - Raising only the range in `apps/web/package.json` and running
   `npm install --package-lock-only` on the same bump hoists 1.64.1 to the root
   and nests nothing.
@@ -513,9 +512,9 @@ version: on #2466, a group bump that nested the new `vite`, `rolldown` and
 `rollup` copies under `apps/web`, `apps/cli` and `packages/core`, that route moved
 `rollup` to 4.65.1, past the version the bump set. Hoisting the bumped copies to
 the root first and then re-resolving left the result unchanged, which held the
-bumped versions. The `playwright` re-drive above, a split of one package and its
-companion, cleared by deleting alone, but the hoist is the measured route for a
-group bump. Two routes were measured not to work: `@dependabot rebase` and
+bumped versions. Deleting alone did clear the `playwright` split above; what
+decides whether it overshoots was not measured, so the hoist is the route either
+way. Two routes were measured not to work: `@dependabot rebase` and
 `@dependabot recreate` each reproduce the duplicate. A from-scratch resolve does
 hoist correctly and is still not the remedy, for the reason stated above of the
 same route: it moves hundreds of unrelated package versions, which is a far larger
