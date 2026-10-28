@@ -231,7 +231,8 @@ export function readConfigLinkageSource(
   // Read, then parse through the sensitive-file chokepoint. A read failure
   // holds only a path and errno (ENOENT means no config, not an error here); a
   // YAML parse can echo source bytes (an inline credential), so it routes through
-  // parseSensitiveYaml, which reports path-only (see sensitiveFile.ts).
+  // parseSensitiveYaml, which reports the path and the syntax error's position
+  // only (see sensitiveFile.ts).
   let source: string;
   try {
     source = fs.readFileSync(configPath, "utf8");

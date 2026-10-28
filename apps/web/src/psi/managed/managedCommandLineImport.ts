@@ -9,9 +9,10 @@
  *
  * The file is untrusted structured input and is read exactly as the artifact's
  * embedded document is: the shared sensitive-YAML chokepoint (bounded parse,
- * path-only errors), then the shared `@alcove/core` exchange-file schema. What
- * reaches storage is the schema's own parse result with two fields taken out of
- * it, so no key the schema does not name can ride into the record.
+ * errors naming the path and a syntax error's position), then the shared
+ * `@alcove/core` exchange-file schema. What reaches storage is the schema's own
+ * parse result with two fields taken out of it, so no key the schema does not
+ * name can ride into the record.
  *
  * A document that schema refuses is refused in this app's own words, naming the
  * fields as the file spells them: the operator writes this file by hand, so what

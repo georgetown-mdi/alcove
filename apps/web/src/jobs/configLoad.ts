@@ -497,10 +497,10 @@ function assertRecordsSurvive(document: ExchangeSpec): void {
 
 /**
  * The mounted file's bytes as a document, through the shared sensitive-parse
- * chokepoint (bounded parse, path-only errors). A file that is not YAML is
- * refused in the console's own words, with the line, column and kind of
- * error the chokepoint reports, and this reaches the operator as the reason
- * the load stopped.
+ * chokepoint (bounded parse; an error names the path, plus the line, column
+ * and kind of a syntax error). A file that is not YAML is refused in the
+ * console's own words, with the line, column and kind of error the chokepoint
+ * reports, and this reaches the operator as the reason the load stopped.
  */
 function parsedYaml(source: string): unknown {
   try {

@@ -642,7 +642,7 @@ On a console with no secrets mount the credential picker browses the working fol
 
 Each read replaces the configuration the server keeps as opened; a read that finds no file, or refuses the one it finds, keeps none (see [The recurring-run hand-off](#the-recurring-run-hand-off) for what a run does with it).
 
-The file is read through the shared sensitive-YAML chokepoint (bounded parse, path-only errors) and then core's own exchange-file schema, the same chain the web application's configuration import uses.
+The file is read through the shared sensitive-YAML chokepoint (bounded parse; an error names the path, plus the line, column and kind of a syntax error) and then core's own exchange-file schema, the same chain the web application's configuration import uses.
 
 ### The body
 
