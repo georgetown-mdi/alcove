@@ -1814,6 +1814,61 @@ describe("accepting and running a webrtc exchange in one command", () => {
     }
   });
 
+  test("validateAccept: --inactivity-timeout bounds the silence on the acceptance that runs the exchange", async () => {
+    const input = writeInputCSV(["first_name", "last_name", "dob", "ssn"]);
+    const messages: string[] = [];
+    try {
+      const encoded = await encodeInvitation(
+        sampleToken(FUTURE(), WEBRTC_ENDPOINT),
+      );
+      const ready = await validateAccept({
+        resolved: { mode: "offline", invitation: encoded, input },
+        options: testOptions({ inactivityTimeout: 7200 }),
+        log: recordingLog(messages),
+      });
+      expect(ready.mode).toBe("endpointRun");
+      if (ready.mode !== "endpointRun") return;
+      expect(ready.connection.options?.inactivityTimeoutMs).toBe(7_200_000);
+      expect(ready.connection.options).not.toHaveProperty("peerTimeoutMs");
+      expect(
+        messages.some((m) => m.includes("--inactivity-timeout")),
+        "the running acceptance reported the flag it just applied as ignored",
+      ).toBe(false);
+      const { options } = webRtcDialFrom(
+        ready.connection,
+        generateSharedSecret(),
+      );
+      expect(options.inactivityTimeoutMs).toBe(7_200_000);
+      expect(options).not.toHaveProperty("rendezvousTimeoutMs");
+    } finally {
+      fs.rmSync(input, { force: true });
+    }
+  });
+
+  test("validateAccept: --inactivity-timeout stays reported ignored on an acceptance that writes a configuration", async () => {
+    const messages: string[] = [];
+    const ready = await validateAccept({
+      resolved: {
+        mode: "offline",
+        invitation: await encodeInvitation(
+          sampleToken(FUTURE(), WEBRTC_ENDPOINT),
+        ),
+      },
+      options: testOptions({ inactivityTimeout: 7200 }),
+      log: recordingLog(messages),
+    });
+    expect(ready.mode).toBe("offline");
+    if (ready.mode !== "offline") return;
+    expect(ready.connection.options?.inactivityTimeoutMs).toBeUndefined();
+    expect(
+      messages.some(
+        (m) =>
+          m.includes("--inactivity-timeout") &&
+          m.includes("connection.options"),
+      ),
+    ).toBe(true);
+  });
+
   test("validateAccept: a webrtc invitation with no input file keeps the two-command shape", async () => {
     // No dataset, so there is no exchange to run: the acceptance writes the
     // configuration and key file, and `alcove exchange` conducts it later.
@@ -3639,7 +3694,7 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
     }
   });
 
-  test("handler: --peer-timeout reaches the run and the configuration it writes", async () => {
+  test("handler: --peer-timeout and --inactivity-timeout reach the run and the configuration it writes", async () => {
     // One connection is both the run's and the bootstrap's, so the value the
     // dial waits on is the peer_timeout_ms the written configuration holds and
     // a later unattended `alcove exchange` inherits. No run-only override is
@@ -3668,12 +3723,14 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
         "config-file": configFile,
         "key-file": keyFile,
         "peer-timeout": "10s",
+        "inactivity-timeout": "2h",
         "log-level": "silent",
         record: false,
       } as unknown as Arguments);
       expect(exit).not.toHaveBeenCalled();
       const passed = runOnlineBootstrapMock.mock.calls[0][0];
       expect(passed.connection.options?.peerTimeoutMs).toBe(10_000);
+      expect(passed.connection.options?.inactivityTimeoutMs).toBe(7_200_000);
       expect(passed.runOnlyPeerTimeoutSeconds).toBeUndefined();
     } finally {
       exit.mockRestore();

@@ -174,3 +174,21 @@ test("an online invite writes the operator's own --peer-timeout as the later bud
     DEFAULT_ACCEPT_TIMEOUT_SECONDS * 1000,
   );
 });
+
+test("an online invite applies --inactivity-timeout to its own run and the saved configuration", async () => {
+  // Unlike --peer-timeout, whose wait --accept-timeout replaces on this run,
+  // the silence budget bounds this run once the partner accepts, so the run
+  // and the later runs share the one value.
+  for (const url of [
+    "wss://peers.example.org/psi",
+    `file://${path.join(tmpdir(), "alcove-invite-inactivity")}`,
+  ]) {
+    const { saved, ran } = await inviteOnline(url, {
+      "inactivity-timeout": "2h",
+    });
+    expect(savedConnectionOptions(saved)?.["inactivity_timeout_ms"]).toBe(
+      7_200_000,
+    );
+    expect(ran.options?.inactivityTimeoutMs).toBe(7_200_000);
+  }
+});

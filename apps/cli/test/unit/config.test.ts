@@ -12,6 +12,7 @@ import {
   MAX_NAME_LENGTH,
   MAX_TEXT_LENGTH,
   MAX_NESTING_DEPTH,
+  MAX_TIMEOUT_SECONDS,
   NestingDepthExceededError,
   OperatorConfigError,
   parseExchangeSpec,
@@ -114,6 +115,54 @@ test("existing options are preserved when adding timeout overrides", () => {
   }) as SFTPConnectionConfig;
   expect(result.options?.pollIntervalMs).toBe(5000);
   expect(result.options?.peerTimeoutMs).toBe(20_000);
+});
+
+describe("inactivityTimeout", () => {
+  test("overrides the configured inactivity_timeout_ms, scaled to milliseconds", () => {
+    const base: ConnectionConfig = {
+      channel: "sftp",
+      server: { host: "sftp.example.org" },
+      options: { inactivityTimeoutMs: 60_000, peerTimeoutMs: 30_000 },
+    };
+    const result = applyConnectionOverrides(base, {
+      options: { inactivityTimeout: 7200 },
+    });
+    expect(result.options?.inactivityTimeoutMs).toBe(7_200_000);
+    expect(result.options?.peerTimeoutMs).toBe(30_000);
+  });
+
+  test("an absent override leaves the configured value", () => {
+    const base: ConnectionConfig = {
+      channel: "webrtc",
+      server: { host: "peer.example.org" },
+      options: { inactivityTimeoutMs: 60_000 },
+    };
+    const result = applyConnectionOverrides(base, {
+      options: { peerTimeout: 30 },
+    });
+    expect(result.options?.inactivityTimeoutMs).toBe(60_000);
+  });
+
+  test("applies on webrtc, whose options are the shared timeouts", () => {
+    const result = applyConnectionOverrides(baseWebRTC, {
+      options: { inactivityTimeout: 90 },
+    });
+    expect(result.options?.inactivityTimeoutMs).toBe(90_000);
+  });
+
+  test("core's schema bounds apply: zero and past the ceiling are refused", () => {
+    for (const seconds of [0, -1, MAX_TIMEOUT_SECONDS + 1])
+      expect(() =>
+        applyConnectionOverrides(baseSFTP, {
+          options: { inactivityTimeout: seconds },
+        }),
+      ).toThrow(UsageError);
+    expect(
+      applyConnectionOverrides(baseSFTP, {
+        options: { inactivityTimeout: MAX_TIMEOUT_SECONDS },
+      }).options?.inactivityTimeoutMs,
+    ).toBe(MAX_TIMEOUT_SECONDS * 1000);
+  });
 });
 
 // --- pollIntervalMs override (--polling-frequency) ---------------------------

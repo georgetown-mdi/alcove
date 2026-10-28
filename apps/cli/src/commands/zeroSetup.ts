@@ -256,6 +256,7 @@ export const ZERO_SETUP_OPTION_GROUPS: ReadonlyArray<
     [
       "connection-timeout",
       "peer-timeout",
+      "inactivity-timeout",
       "polling-frequency",
       "max-reconnect-attempts",
       "connection-per-poll",

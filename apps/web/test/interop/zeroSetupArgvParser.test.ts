@@ -110,6 +110,7 @@ function tunedOptionArgs(): Array<string> {
         ...CONNECTION_TUNING_DEFAULT,
         pollInterval: { magnitude: "10", unit: "m" },
         peerTimeout: { magnitude: "2", unit: "h" },
+        inactivityTimeout: { magnitude: "90", unit: "m" },
         serverConnectTimeout: { magnitude: "45", unit: "s" },
         maxReconnectAttempts: "12",
         connectionPerPoll: true,
@@ -336,6 +337,7 @@ describe(
       expect(optionArgs).toEqual([
         "--polling-frequency=600000ms",
         "--peer-timeout=7200s",
+        "--inactivity-timeout=5400s",
         "--connection-timeout=45s",
         "--max-reconnect-attempts=12",
         "--connection-per-poll",

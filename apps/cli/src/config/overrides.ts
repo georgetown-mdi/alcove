@@ -60,14 +60,15 @@ export interface ConnectionServerOverrides {
  * The tuning/toggle overrides {@link applyConnectionOverrides} writes into a
  * connection's `connection.options` block: SharedOptions timeouts/reconnect
  * bounds on every channel, and FileSyncOptions poll interval/toggles gated to
- * `sftp`/`filedrop`. `connectionTimeout`/`peerTimeout` are in seconds here and
- * scaled to the schema's milliseconds; `pollIntervalMs` is already in
- * milliseconds and applied verbatim. Paired with
+ * `sftp`/`filedrop`. `connectionTimeout`, `peerTimeout` and `inactivityTimeout`
+ * are in seconds here and scaled to the schema's milliseconds; `pollIntervalMs`
+ * is already in milliseconds and applied verbatim. Paired with
  * {@link ConnectionServerOverrides} inside {@link ConnectionOverrides}.
  */
 export interface ConnectionOptionsOverrides {
   connectionTimeout?: number;
   peerTimeout?: number;
+  inactivityTimeout?: number;
   /**
    * The `--polling-frequency` override, already in milliseconds, feeding the
    * connection's `pollIntervalMs`. A FileSyncOptions field, so it is applied only
@@ -196,6 +197,7 @@ export function applyConnectionOverrides(
 
   if (
     optionsOverrides.peerTimeout !== undefined ||
+    optionsOverrides.inactivityTimeout !== undefined ||
     optionsOverrides.connectionTimeout !== undefined ||
     optionsOverrides.maxReconnectAttempts !== undefined
   ) {
@@ -203,6 +205,9 @@ export function applyConnectionOverrides(
       ...result.options,
       ...(optionsOverrides.peerTimeout !== undefined && {
         peerTimeoutMs: optionsOverrides.peerTimeout * 1000,
+      }),
+      ...(optionsOverrides.inactivityTimeout !== undefined && {
+        inactivityTimeoutMs: optionsOverrides.inactivityTimeout * 1000,
       }),
       ...(optionsOverrides.connectionTimeout !== undefined && {
         serverConnectTimeoutMs: optionsOverrides.connectionTimeout * 1000,

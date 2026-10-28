@@ -107,10 +107,7 @@ const TUNING_OPTION_ROUTES: Record<
   peerTimeoutMs: { configKey: "peer_timeout_ms", flag: "--peer-timeout=7200s" },
   inactivityTimeoutMs: {
     configKey: "inactivity_timeout_ms",
-    flag: null,
-    because:
-      "a configuration-only setting with no CLI flag; the zero-setup arms " +
-      "refuse it rather than accept a choice the command line would drop",
+    flag: "--inactivity-timeout=5400s",
   },
   serverConnectTimeoutMs: {
     configKey: "server_connect_timeout_ms",
@@ -175,14 +172,9 @@ function maximalExchangeIntent(): JobSftpExchangeIntent {
 }
 
 /** An sftp zero-setup intent with every authorable field set. `unexpectedFiles`
- * and `inactivityTimeoutMs` are dropped: the zero-setup arms refuse both (see
- * {@link TUNING_OPTION_ROUTES}). */
+ * is dropped: the zero-setup arms refuse it (see {@link TUNING_OPTION_ROUTES}). */
 function maximalZeroSetupIntent(): JobZeroSetupSftpIntent {
-  const {
-    unexpectedFiles: _configOnly,
-    inactivityTimeoutMs: _alsoConfigOnly,
-    ...zeroSetupOptions
-  } = MAXIMAL_OPTIONS;
+  const { unexpectedFiles: _configOnly, ...zeroSetupOptions } = MAXIMAL_OPTIONS;
   return validZeroSetupSftpIntent({
     options: zeroSetupOptions,
     eventStream: true,
@@ -414,6 +406,7 @@ describe("every authorable option graduates into the hand-off", () => {
       "--peer-id=clinic-a",
       "--polling-frequency=600000ms",
       "--peer-timeout=7200s",
+      "--inactivity-timeout=5400s",
       "--connection-timeout=45s",
       "--max-reconnect-attempts=12",
       "--connection-per-poll",

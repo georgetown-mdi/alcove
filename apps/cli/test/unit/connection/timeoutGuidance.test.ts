@@ -3,13 +3,20 @@ import os from "node:os";
 import path from "node:path";
 
 import { afterEach, expect, test } from "vitest";
+import type { Arguments } from "yargs";
 import { FileSyncConnection, INACTIVITY_TIMEOUT_KEY } from "@alcove/core";
 
+import { applyConnectionOverrides } from "../../../src/config";
 import { LocalFSClient } from "../../../src/connection/localFSClient";
 import {
+  INACTIVITY_TIMEOUT_FLAG,
   INACTIVITY_TIMEOUT_GUIDANCE,
   inactivityTimeoutGuidance,
 } from "../../../src/connection/timeoutGuidance";
+import {
+  connectionOverridesFrom,
+  parseCommonBootstrapArgs,
+} from "../../../src/optionDefinitions";
 
 const occurrences = (text: string, key: string): number =>
   text.split(key).length - 1;
@@ -28,6 +35,30 @@ test("the guidance names the setting only when the message does not", () => {
   expect(inactivityTimeoutGuidance(false)).toContain(
     `raise ${INACTIVITY_TIMEOUT_KEY} under connection.options`,
   );
+});
+
+test("the guidance names the flag alongside the setting", () => {
+  for (const guidance of [
+    INACTIVITY_TIMEOUT_GUIDANCE,
+    inactivityTimeoutGuidance(false),
+  ])
+    expect(guidance).toContain(
+      "run again with a longer --inactivity-timeout, or raise",
+    );
+});
+
+test("the flag the guidance names is the one that sets the setting", () => {
+  const parsed = parseCommonBootstrapArgs({
+    _: [],
+    $0: "alcove",
+    [INACTIVITY_TIMEOUT_FLAG.replace(/^--/, "")]: "90s",
+  } as unknown as Arguments);
+  expect(
+    applyConnectionOverrides(
+      { channel: "filedrop", path: "/mnt/share/drop" },
+      connectionOverridesFrom(parsed),
+    ).options?.inactivityTimeoutMs,
+  ).toBe(90_000);
 });
 
 test("a file-sync timeout failure names inactivity_timeout_ms once", async () => {

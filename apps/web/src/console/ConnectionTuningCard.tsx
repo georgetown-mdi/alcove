@@ -170,16 +170,14 @@ export function ConnectionTuningCard({
           onChange={(next) => set("peerTimeout", next)}
         />
 
-        {capabilities.inactivityTimeout && (
-          <DurationRow
-            label="How long your partner may go quiet"
-            description="Once your partner has started, how long this side waits for each next step from them before it gives up. Raise it for a partner working through a large file."
-            units={DURATION_FIELD_UNITS.inactivityTimeout}
-            defaultMs={TUNING_DEFAULT_MS.inactivityTimeout}
-            value={draft.inactivityTimeout}
-            onChange={(next) => set("inactivityTimeout", next)}
-          />
-        )}
+        <DurationRow
+          label="How long your partner may go quiet"
+          description="Once your partner has started, how long this side waits for each next step from them before it gives up. Raise it for a partner working through a large file."
+          units={DURATION_FIELD_UNITS.inactivityTimeout}
+          defaultMs={TUNING_DEFAULT_MS.inactivityTimeout}
+          value={draft.inactivityTimeout}
+          onChange={(next) => set("inactivityTimeout", next)}
+        />
 
         <DurationRow
           label="How long to wait for each connection attempt"

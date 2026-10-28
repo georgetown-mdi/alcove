@@ -154,7 +154,7 @@ export function zeroSetupFiledropArgv(
  *
  * The durations are emitted in the units each flag's own grammar takes:
  * `--polling-frequency` accepts a millisecond suffix and holds the interval
- * verbatim, while the two coarse-duration flags take a second-or-coarser
+ * verbatim, while the three coarse-duration flags take a second-or-coarser
  * unit and so hold whole seconds -- exact, because the zero-setup arms
  * admit only a whole-second value for them.
  */
@@ -172,6 +172,8 @@ export function zeroSetupOptionsArgv(
     argv.push(`--polling-frequency=${options.pollIntervalMs}ms`);
   if (options.peerTimeoutMs !== undefined)
     argv.push(`--peer-timeout=${options.peerTimeoutMs / 1000}s`);
+  if (options.inactivityTimeoutMs !== undefined)
+    argv.push(`--inactivity-timeout=${options.inactivityTimeoutMs / 1000}s`);
   if (options.serverConnectTimeoutMs !== undefined)
     argv.push(`--connection-timeout=${options.serverConnectTimeoutMs / 1000}s`);
   if (options.maxReconnectAttempts !== undefined)

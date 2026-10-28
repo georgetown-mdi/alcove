@@ -59,6 +59,7 @@ import {
 } from "@alcove/cli-contract";
 
 import { LocalFSClient } from "./connection/localFSClient";
+import { raiseInactivityLimit } from "./connection/timeoutGuidance";
 import { markArrivalWait, type ArrivalWait } from "./failureRemedy";
 import { markTermsRefusalRun } from "./termsRefusalRemedy";
 import { SSH2SFTPClientAdapter } from "./connection/ssh2SftpAdapter";
@@ -2250,8 +2251,7 @@ export async function runProtocol(
           "is refused earlier, at the authenticated setup step, so check the " +
           "transport and the peer's own logs rather than the partner's " +
           "signing configuration. If the peer was still working when the " +
-          "exchange ended, raise inactivity_timeout_ms under " +
-          "connection.options in the configuration.",
+          `exchange ended, ${raiseInactivityLimit(false)}.`,
       );
 
     // The disclosure a terminated run already made outlives the failure that

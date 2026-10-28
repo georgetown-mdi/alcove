@@ -25,8 +25,6 @@ import {
 import {
   CONNECTION_PER_POLL_SHORT_INTERVAL_ADVISORY,
   CONNECTION_TUNING_DEFAULT,
-  DIRECT_FILEDROP_CONNECTION_TUNING,
-  DIRECT_SFTP_CONNECTION_TUNING,
   DURATION_FIELD_UNITS,
   FILEDROP_CONNECTION_TUNING,
   LOW_POLL_INTERVAL_ADVISORY,
@@ -158,30 +156,33 @@ describe("the authored draft becomes an option block", () => {
 describe("the silence wait", () => {
   const quiet = draft({ inactivityTimeout: { magnitude: "90", unit: "m" } });
 
-  test("is emitted on a flow that composes a configuration", () => {
+  test("is emitted, counted and checked on every channel's flow", () => {
     for (const capabilities of [
       SFTP_CONNECTION_TUNING,
       FILEDROP_CONNECTION_TUNING,
-    ])
+      WEBRTC_CONNECTION_TUNING,
+    ]) {
       expect(connectionTuningOptions(quiet, capabilities)).toEqual({
         inactivityTimeoutMs: 5_400_000,
       });
-  });
-
-  test("is withheld on a zero-setup flow, which has no flag to carry it", () => {
-    for (const capabilities of [
-      DIRECT_SFTP_CONNECTION_TUNING,
-      DIRECT_FILEDROP_CONNECTION_TUNING,
-    ]) {
-      expect(connectionTuningOptions(quiet, capabilities)).toBeUndefined();
-      expect(connectionTuningSummary(quiet, capabilities)).toBe("Default");
+      expect(connectionTuningSummary(quiet, capabilities)).toBe("Tuned");
       expect(
         connectionTuningProblems(
           draft({ inactivityTimeout: { magnitude: "x", unit: "m" } }),
           capabilities,
         ),
-      ).toEqual([]);
+      ).toHaveLength(1);
     }
+  });
+
+  test("reaches a quick exchange's command line as --inactivity-timeout", () => {
+    for (const capabilities of [
+      SFTP_CONNECTION_TUNING,
+      FILEDROP_CONNECTION_TUNING,
+    ])
+      expect(
+        zeroSetupOptionsArgv(connectionTuningOptions(quiet, capabilities)),
+      ).toEqual(["--inactivity-timeout=5400s"]);
   });
 
   test("is held to the same shape and seven-day ceiling as the partner wait", () => {
@@ -510,20 +511,14 @@ describe("the CLI's two advisories are raised at authoring time", () => {
 
   // A shared directory has no server to flood, and its own default is
   // sub-second, so the CLI raises no anti-flood warning there either.
-  test.each([
-    ["an invitation", FILEDROP_CONNECTION_TUNING],
-    ["a zero-setup run", DIRECT_FILEDROP_CONNECTION_TUNING],
-  ] as const)(
-    "a sub-second interval on a shared directory (%s) draws no anti-flood advisory",
-    (_flow, capabilities) => {
-      expect(
-        connectionTuningAdvisories(
-          draft({ pollInterval: { magnitude: "100", unit: "ms" } }),
-          capabilities,
-        ),
-      ).toEqual([]);
-    },
-  );
+  test("a sub-second interval on a shared directory draws no anti-flood advisory", () => {
+    expect(
+      connectionTuningAdvisories(
+        draft({ pollInterval: { magnitude: "100", unit: "ms" } }),
+        FILEDROP_CONNECTION_TUNING,
+      ),
+    ).toEqual([]);
+  });
 });
 
 describe("the collapsed summary counts only what the flow holds", () => {
@@ -572,20 +567,13 @@ describe("the placeholder shows core's own default in the chosen unit", () => {
     },
   );
 
-  test.each([
-    ["an invitation", FILEDROP_CONNECTION_TUNING],
-    ["a zero-setup run", DIRECT_FILEDROP_CONNECTION_TUNING],
-  ] as const)(
-    "a shared-directory flow (%s) shows the filedrop poll default",
-    (_flow, capabilities) => {
-      expect(pollIntervalDefaultMs(capabilities)).toBe(
-        DEFAULT_FILEDROP_POLLING_FREQUENCY_MS,
-      );
-      expect(
-        defaultPlaceholder(pollIntervalDefaultMs(capabilities), "ms"),
-      ).toBe(String(DEFAULT_FILEDROP_POLLING_FREQUENCY_MS));
-    },
-  );
+  test("a shared-directory flow shows the filedrop poll default", () => {
+    const defaultMs = pollIntervalDefaultMs(FILEDROP_CONNECTION_TUNING);
+    expect(defaultMs).toBe(DEFAULT_FILEDROP_POLLING_FREQUENCY_MS);
+    expect(defaultPlaceholder(defaultMs, "ms")).toBe(
+      String(DEFAULT_FILEDROP_POLLING_FREQUENCY_MS),
+    );
+  });
 
   test.each([
     ["sftp", SFTP_CONNECTION_TUNING, DEFAULT_PEER_TIMEOUT_MS],

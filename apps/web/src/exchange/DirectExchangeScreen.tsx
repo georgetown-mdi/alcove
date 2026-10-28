@@ -18,8 +18,8 @@ import {
 
 import {
   CONNECTION_TUNING_DEFAULT,
-  DIRECT_FILEDROP_CONNECTION_TUNING,
-  DIRECT_SFTP_CONNECTION_TUNING,
+  FILEDROP_CONNECTION_TUNING,
+  SFTP_CONNECTION_TUNING,
   connectionTuningOptions,
   withConnectionTuning,
 } from "@console/connectionTuningModel";
@@ -192,9 +192,7 @@ export function DirectExchangeScreen() {
       : undefined;
 
   const directTuningCapabilities =
-    transport === "sftp"
-      ? DIRECT_SFTP_CONNECTION_TUNING
-      : DIRECT_FILEDROP_CONNECTION_TUNING;
+    transport === "sftp" ? SFTP_CONNECTION_TUNING : FILEDROP_CONNECTION_TUNING;
 
   const {
     run,

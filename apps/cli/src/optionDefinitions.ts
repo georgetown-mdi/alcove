@@ -540,6 +540,17 @@ export function addCommonBootstrapOptions(
         `(maximum: ${MAX_TIMEOUT_SECONDS / 86_400}d). ` +
         DURATION_VALUE_HELP,
     })
+    .option("inactivity-timeout", {
+      type: "string",
+      describe:
+        "how long your partner may send nothing once it has arrived, and " +
+        "(on sftp and filedrop) one operation on the server or shared " +
+        "folder may go unanswered, " +
+        "before the exchange fails " +
+        `(maximum: ${MAX_TIMEOUT_SECONDS / 86_400}d); overrides ` +
+        "connection.options.inactivity_timeout_ms. " +
+        DURATION_VALUE_HELP,
+    })
     .option("polling-frequency", {
       type: "string",
       describe:
@@ -698,7 +709,8 @@ export interface CommonBootstrapOptions {
   serverProvisionRead?: ServerProvision;
   connectionTimeout?: number;
   peerTimeout?: number;
-  // The --polling-frequency override, in MILLISECONDS (not seconds like the two
+  inactivityTimeout?: number;
+  // The --polling-frequency override, in MILLISECONDS (not seconds like the
   // timeout fields above): the poll interval is millisecond-scaled and accepts a
   // sub-second value, so it keeps its native unit through to the connection's
   // pollIntervalMs without a lossy seconds round-trip.
@@ -775,6 +787,11 @@ export function parseCommonBootstrapArgs(
       MAX_TIMEOUT_SECONDS,
     ),
     peerTimeout: durationFlagSeconds(argv, "peer-timeout", MAX_TIMEOUT_SECONDS),
+    inactivityTimeout: durationFlagSeconds(
+      argv,
+      "inactivity-timeout",
+      MAX_TIMEOUT_SECONDS,
+    ),
     // Read in milliseconds (durationFlagMs, not durationFlagSeconds) so a
     // sub-second demo value survives.
     pollingFrequencyMs: durationFlagMs(argv, "polling-frequency"),
@@ -815,6 +832,7 @@ export type ConnectionOverrideOptions = Pick<
   CommonBootstrapOptions,
   | "connectionTimeout"
   | "peerTimeout"
+  | "inactivityTimeout"
   | "pollingFrequencyMs"
   | "maxReconnectAttempts"
   | "serverUsername"
@@ -861,6 +879,7 @@ export function connectionOverridesFrom(
     options: {
       connectionTimeout: options.connectionTimeout,
       peerTimeout: options.peerTimeout,
+      inactivityTimeout: options.inactivityTimeout,
       // Already in milliseconds -- fed straight into the connection's
       // pollIntervalMs by applyConnectionOverrides, with no seconds scaling.
       pollIntervalMs: options.pollingFrequencyMs,
@@ -1265,8 +1284,9 @@ export function warnServerOverridesIgnoredOffline(
  * subset of {@link CommonBootstrapOptions} (assignable to it) holding the
  * tuning/toggle flags {@link applyConnectionOverrides} writes into
  * `connection.options`: the SharedOptions timeouts/reconnect bound
- * (`--connection-timeout`, `--peer-timeout`, `--max-reconnect-attempts`), the
- * file-sync poll interval (`--polling-frequency`), and the file-sync toggles
+ * (`--connection-timeout`, `--peer-timeout`, `--inactivity-timeout`,
+ * `--max-reconnect-attempts`), the file-sync poll interval
+ * (`--polling-frequency`), and the file-sync toggles
  * (`--lockless-rendezvous`, `--peer-id`, `--retain-files`,
  * `--timestamp-in-filename`) -- HOW the exchange behaves, as opposed to the
  * server block's WHERE/credentials that {@link OfflineIgnoredServerOverrides}
@@ -1291,6 +1311,7 @@ export type OfflineIgnoredOptionsOverrides = Pick<
   CommonBootstrapOptions,
   | "connectionTimeout"
   | "peerTimeout"
+  | "inactivityTimeout"
   | "pollingFrequencyMs"
   | "maxReconnectAttempts"
   | "locklessRendezvous"
@@ -1303,10 +1324,10 @@ export type OfflineIgnoredOptionsOverrides = Pick<
 
 /**
  * Warn that the connection-OPTIONS overrides (`--connection-timeout`,
- * `--peer-timeout`, `--polling-frequency`, `--max-reconnect-attempts`,
- * `--lockless-rendezvous`, `--peer-id`, `--timestamp-in-filename`,
- * `--retain-files`, `--connection-per-poll`, `--write-without-renaming`) have
- * no effect on an
+ * `--peer-timeout`, `--inactivity-timeout`, `--polling-frequency`,
+ * `--max-reconnect-attempts`, `--lockless-rendezvous`, `--peer-id`,
+ * `--timestamp-in-filename`, `--retain-files`, `--connection-per-poll`,
+ * `--write-without-renaming`) have no effect on an
  * OFFLINE invite/accept. Like the server-block overrides those paths go through
  * {@link connectionFromEndpoint}, which applies no connection overrides, but
  * these target `connection.options` -- a block the offline placeholder does not
@@ -1333,6 +1354,8 @@ export function warnOptionsOverridesIgnoredOffline(
   if (options.connectionTimeout !== undefined)
     ignored.push("--connection-timeout");
   if (options.peerTimeout !== undefined) ignored.push("--peer-timeout");
+  if (options.inactivityTimeout !== undefined)
+    ignored.push("--inactivity-timeout");
   if (options.pollingFrequencyMs !== undefined)
     ignored.push("--polling-frequency");
   if (options.maxReconnectAttempts !== undefined)

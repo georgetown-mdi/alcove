@@ -741,6 +741,25 @@ test("applies peerTimeout override and converts to milliseconds", () => {
   expect(result.connection.options?.peerTimeoutMs).toBe(60_000);
 });
 
+test("an inactivityTimeout override takes precedence over the configured inactivity_timeout_ms", () => {
+  fs.writeFileSync(
+    configFile,
+    YAML.stringify({
+      ...minimalSFTPConfig,
+      connection: {
+        ...minimalSFTPConfig.connection,
+        options: { inactivity_timeout_ms: 60_000 },
+      },
+    }),
+  );
+  saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
+  expect(
+    loadConfig(baseOptions()).connection.options?.inactivityTimeoutMs,
+  ).toBe(60_000);
+  const result = loadConfig({ ...baseOptions(), inactivityTimeout: 7200 });
+  expect(result.connection.options?.inactivityTimeoutMs).toBe(7_200_000);
+});
+
 // --- filedrop channel --------------------------------------------------------
 
 test("filedrop config injects sharedSecret from key file", () => {

@@ -1339,6 +1339,7 @@ describe("zeroSetupOptionsArgv", () => {
       zeroSetupOptionsArgv({
         pollIntervalMs: 250,
         peerTimeoutMs: 7_200_000,
+        inactivityTimeoutMs: 5_400_000,
         serverConnectTimeoutMs: 45_000,
         maxReconnectAttempts: 12,
         connectionPerPoll: true,
@@ -1346,6 +1347,7 @@ describe("zeroSetupOptionsArgv", () => {
     ).toEqual([
       "--polling-frequency=250ms",
       "--peer-timeout=7200s",
+      "--inactivity-timeout=5400s",
       "--connection-timeout=45s",
       "--max-reconnect-attempts=12",
       "--connection-per-poll",
@@ -1669,17 +1671,26 @@ describe("the zero-setup arms admit only what their argv can hold", () => {
       expect(jobZeroSetupIntentSchema.safeParse(intent).success).toBe(false);
   });
 
-  test("refuses inactivityTimeoutMs, which has no CLI flag at all", () => {
-    for (const intent of [
-      validZeroSetupIntent({ options: { inactivityTimeoutMs: 60_000 } }),
-      validZeroSetupSftpIntent({ options: { inactivityTimeoutMs: 60_000 } }),
-    ])
-      expect(jobZeroSetupIntentSchema.safeParse(intent).success).toBe(false);
+  test("admits inactivityTimeoutMs on both arms, held to the peer timeout's bounds", () => {
+    for (const build of [validZeroSetupIntent, validZeroSetupSftpIntent]) {
+      for (const field of ["peerTimeoutMs", "inactivityTimeoutMs"] as const) {
+        const admits = (ms: number) =>
+          jobZeroSetupIntentSchema.safeParse(
+            build({ options: { [field]: ms } }),
+          ).success;
+        expect(admits(60_000)).toBe(true);
+        expect(admits(MAX_TIMEOUT_SECONDS * 1000)).toBe(true);
+        expect(admits((MAX_TIMEOUT_SECONDS + 1) * 1000)).toBe(false);
+        expect(admits(1500)).toBe(false);
+        expect(admits(0)).toBe(false);
+      }
+    }
   });
 
   test("refuses a timeout that is not a whole number of seconds", () => {
     for (const options of [
       { peerTimeoutMs: 1500 },
+      { inactivityTimeoutMs: 1500 },
       { serverConnectTimeoutMs: 45_500 },
     ])
       expect(
@@ -1724,6 +1735,7 @@ describe("the zero-setup arms admit only what their argv can hold", () => {
           options: {
             pollIntervalMs: 250,
             peerTimeoutMs: 7_200_000,
+            inactivityTimeoutMs: 5_400_000,
             serverConnectTimeoutMs: 45_000,
             maxReconnectAttempts: 12,
             connectionPerPoll: true,

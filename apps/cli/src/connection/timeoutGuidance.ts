@@ -1,15 +1,19 @@
-// The sentence a timed-out wait appends to say how to lengthen it.
-// inactivity_timeout_ms has no flag, so the failure message is the operator's
-// only pointer to it.
+// The sentence a timed-out wait appends to say how to lengthen it: the
+// --inactivity-timeout flag for the next run, or the configuration key it
+// overrides.
 
 import { INACTIVITY_TIMEOUT_KEY } from "@alcove/core";
+
+/** The flag that sets {@link INACTIVITY_TIMEOUT_KEY} for one run. */
+export const INACTIVITY_TIMEOUT_FLAG = "--inactivity-timeout";
 
 /**
  * What to raise for a slow partner. A message whose limit clause already names
  * the setting gets "that limit", so the setting is named once per message.
  */
 export const raiseInactivityLimit = (limitNamed: boolean): string =>
-  `raise ${limitNamed ? "that limit" : INACTIVITY_TIMEOUT_KEY} under ` +
+  `run again with a longer ${INACTIVITY_TIMEOUT_FLAG}, or raise ` +
+  `${limitNamed ? "that limit" : INACTIVITY_TIMEOUT_KEY} under ` +
   "connection.options in the configuration";
 
 /**
