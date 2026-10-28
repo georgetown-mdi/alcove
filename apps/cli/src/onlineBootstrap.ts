@@ -7,6 +7,7 @@ import {
   loadCSVFile,
   prepareForExchange,
   inferMetadata,
+  inferMetadataForEveryColumn,
   linkageDateOfBirthColumn,
   DEFAULT_LINKAGE_RULE_SET,
   linkageTermsFromRuleSet,
@@ -35,6 +36,7 @@ import type {
   FileSyncOptions,
   LinkageStrategy,
   LinkageTerms,
+  Metadata,
   PreparedExchange,
   ServerProvision,
   SFTPConnectionConfig,
@@ -680,6 +682,10 @@ export function singlePassDisclosureNotice(): string {
  * because its bounded read has no full row set to scan; the invite/accept paths
  * omit it and this function infers the format from their full `rawRows` exactly as
  * before -- so the parameter is additive and behavior-preserving for them.
+ *
+ * `sendColumns`, when given, names input columns the metadata declares sent
+ * on top of what inference sends ({@link metadataSendingColumns}). Every name
+ * must be a column of `rows`; the caller refuses one that is not.
  */
 export function buildDataSpec(args: {
   terms?: LinkageTerms;
@@ -695,6 +701,7 @@ export function buildDataSpec(args: {
   dateInputFormat?: string;
   linkageStrategy?: LinkageStrategy;
   ruleSet?: BuiltInLinkageRuleSet;
+  sendColumns?: ReadonlyArray<string>;
 }): ResolvedDataSpec {
   const { terms, identity, rows, linkageStrategy } = args;
   const ruleSet = args.ruleSet ?? DEFAULT_LINKAGE_RULE_SET;
@@ -711,7 +718,16 @@ export function buildDataSpec(args: {
     return { linkageTerms: terms };
   }
 
-  const metadata = inferMetadata(rows.columns, rows.sanitizedColumnPositions);
+  const metadata =
+    args.sendColumns === undefined
+      ? inferMetadata(rows.columns, rows.sanitizedColumnPositions)
+      : metadataSendingColumns(
+          inferMetadataForEveryColumn(
+            rows.columns,
+            rows.sanitizedColumnPositions,
+          ),
+          args.sendColumns,
+        );
   const linkageTerms =
     terms ??
     withLinkageStrategy(
@@ -730,6 +746,34 @@ export function buildDataSpec(args: {
     dateInputFormat,
   });
   return { linkageTerms, metadata, standardization };
+}
+
+/**
+ * The metadata {@link inferMetadata} gives, with each column named in
+ * `sendColumns` declared sent (`is_payload: true`). `everyColumn` is
+ * {@link inferMetadataForEveryColumn} over the same header: a named column
+ * inference leaves out keeps its inferred type and takes `role: payload`, a
+ * named column inference declares keeps its role, and every other column is
+ * exactly as inference has it. A name `everyColumn` does not hold adds nothing.
+ *
+ * @internal exported for testing
+ */
+export function metadataSendingColumns(
+  everyColumn: Metadata,
+  sendColumns: ReadonlyArray<string>,
+): Metadata {
+  const send = new Set(sendColumns);
+  return everyColumn.flatMap((column): Metadata => {
+    if (send.has(column.name))
+      return [
+        {
+          ...column,
+          role: column.role === "ignored" ? "payload" : column.role,
+          isPayload: true,
+        },
+      ];
+    return column.role === "ignored" ? [] : [column];
+  });
 }
 
 /** Build a {@link PreparedExchange} for an online run from a resolved spec. */

@@ -97,7 +97,7 @@ A column with `is_payload: false`, or not listed, is not sent.
     is_payload: false
 ```
 
-**Columns you ask your partner for.** Optional. On WebRTC, the command line cannot send requested columns for now, so if your partner accepts on the command line, request none. Under `linkage_terms`, add the columns your partner agreed to send, and your partner sees them as a request when accepting; if `linkage_terms` already has a `payload:` line, add `receive:` under it. Without the request, the first exchange records whichever columns your partner sends, and later runs refuse a different list. For example:
+**Columns you ask your partner for.** Optional. Under `linkage_terms`, add the columns your partner agreed to send, and your partner sees them as a request when accepting; if `linkage_terms` already has a `payload:` line, add `receive:` under it. Without the request, the first exchange records whichever columns your partner sends, and later runs refuse a different list. For example:
 
 ```yaml
   payload:
@@ -192,7 +192,7 @@ alcove exchange input.csv ./
 alcove exchange input.csv ./
 ```
 
-Your partner's `alcove accept` runs the exchange as soon as they answer yes, or their `alcove exchange` does if they accepted without their input file. Start yours at the agreed time, within 10 minutes of theirs.
+Your partner's `alcove exchange` runs it if they accepted with `--defer-exchange`, as [Accept an invitation](./cli-accept.md) has them do; without it, their `alcove accept` runs the exchange as soon as they answer yes. Start yours at the agreed time, within 10 minutes of theirs.
 
 :::
 

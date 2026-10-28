@@ -297,7 +297,7 @@ The refusal names the keys, the linkage fields they cost, and the configuration 
 
 **Identity.** Terms inferred from an `INPUT_FILE` require `--identity`. Terms from a configuration use its `linkage_terms.identity`, and an `--identity` given there is reported as having no effect. A configuration holding no identity is refused.
 
-**A `webrtc` configuration.** When the configuration's connection is `webrtc`, the invitation names its coordination server and relay as its [connection endpoint](#invitations), as an [online invitation over WebRTC](#inviting-over-webrtc) does: the `url` of each `turn` entry that sets no `username` or `credential`, and the `stun` list ([`invitation_relay`](EXCHANGE_REFERENCE.md#connectioninvitation_relay)). That block must be valid; another channel's block may still be a placeholder. A partner who accepts it with an `INPUT_FILE` runs the exchange at once ([Accepting and running a WebRTC exchange](#accepting-and-running-a-webrtc-exchange)), so run `alcove exchange` at the same time, or have them accept without an input file and agree when both of you run it.
+**A `webrtc` configuration.** When the configuration's connection is `webrtc`, the invitation names its coordination server and relay as its [connection endpoint](#invitations), as an [online invitation over WebRTC](#inviting-over-webrtc) does: the `url` of each `turn` entry that sets no `username` or `credential`, and the `stun` list ([`invitation_relay`](EXCHANGE_REFERENCE.md#connectioninvitation_relay)). That block must be valid; another channel's block may still be a placeholder. A partner who accepts it with an `INPUT_FILE` runs the exchange at once ([Accepting and running a WebRTC exchange](#accepting-and-running-a-webrtc-exchange)), so run `alcove exchange` at the same time, or have them accept with [`--defer-exchange`](#deferring-the-exchange) and agree when both of you run it.
 
 Given only an `INPUT_FILE`, the command writes the inferred linkage terms, metadata, and data standardizations to a configuration file, and tells you to fill in its connection block before exchanging.
 
@@ -361,7 +361,7 @@ The entries, in order:
 - **`personal data used`** (`enforced`) -- the categories of personal data the keys are computed over. Under each, **`declared data standards`** (`your partner's word`) lists the standards your partner commits that category to; Alcove does not apply them as filters.
 - **`linkage keys`** (`enforced`) -- each key: the fields it matches on and how broadly, the elements it combines, the declared field behind each, every value transform with its parameters, any approximate-match setting, and any swap. A key built only from first name, last name, and date of birth ends its `matches on:` line with `(less certain)`, and a line under the keys says how to leave such keys out: ask your partner for an invitation without them, or on [`alcove apply`](#applying-an-update), do not apply the update ([Rules marked less certain](EXCHANGE_REFERENCE.md#rules-marked-less-certain)). Where the keys are exactly the built-in "highest precision" or "broader matching" keys, in their order, and the fields those keys read are the built-in fields, the display says so.
 - **`columns you will receive`** (`your partner's word`, then the column count) -- the columns your partner's terms say it sends, or `(none)`. Absent where the invitation declares nothing (your first exchange then takes the columns your partner's run states: [Your partner's first payload columns](#your-partners-first-payload-columns)) and where you receive no result. Accepting records the set as `linkage_terms.payload.receive`, and every exchange compares it with the columns your partner's run states, before any key or data moves: a difference stops the run, or at a terminal is shown as a [terms change](#when-your-partners-terms-change). Your side does not check the columns again on arrival.
-- **`columns the inviting party requests from you`** (`your partner's word`, then the column count) -- a request, not what you send. `(none)` means your partner's run refuses an exchange in which yours states any column. Absent when the invitation makes no request.
+- **`columns the inviting party requests from you`** (`your partner's word`, then the column count) -- a request, not what you send; an acceptance with [`--defer-exchange`](#deferring-the-exchange) sends each of them, and `columns you will send` lists them. `(none)` means your partner's run refuses an exchange in which yours states any column. Absent when the invitation makes no request.
 - **`legal agreement`** (`your partner's word`) -- the reference, the stated purpose, and the valid-through date. The reference and the date are byte-compared against your own copy before data moves; the text is your partner's.
 - **`expires`** (`enforced`) -- the instant past which the invitation is refused, when the token holds one.
 
@@ -424,13 +424,24 @@ The endpoint passes the same checks as a connection you author yourself. A host 
 
 `--peer-timeout` bounds how long this run waits for the partner to arrive at the rendezvous; a partner who never arrives ends the command with exit 69 ([Exit codes](#exit-codes)) instead of after the ten-minute default. It does not bound the data channel opening, which has a fixed ceiling, or the partner's silence on the open channel, held to the one-hour default of [`inactivity_timeout_ms`](EXCHANGE_REFERENCE.md#shared-options). The value is recorded as `connection.options.peer_timeout_ms` in the written configuration, so every later `alcove exchange` from it waits the same until the field is edited.
 
-Three cases keep the two-command shape, and each is reported:
+Four cases keep the two-command shape, and each is reported:
 
+- **`--defer-exchange`.** Acceptance writes the configuration and key file and stops ([Deferring the exchange](#deferring-the-exchange)).
 - **No `INPUT_FILE`.** Acceptance writes the configuration and key file; run `alcove exchange` with your input afterward.
 - **An invitation holding no WebRTC endpoint.** An `sftp` or `filedrop` endpoint, or none, leaves a connection block whose credentials you supply.
 - **A reused configuration.** The configuration at the path governs its own exchange, so acceptance writes the key file and stops.
 
 In these, `--peer-timeout` and the other connection-options overrides are reported as having no effect; put them under `connection.options` in the file. Both parties then run `alcove exchange` at their convenience.
+
+### Deferring the exchange
+
+`--defer-exchange` makes an acceptance that would run the exchange at the invitation's WebRTC endpoint write its configuration and key file and stop instead, so you can review the columns you send before the exchange. It contacts no coordination server, relay, or relay registrar.
+
+- **What the configuration holds.** The connection block, seeded from the endpoint as a running acceptance seeds it, and the `metadata` and `standardization` blocks Alcove infers from `INPUT_FILE`. The `metadata` block also sends each column under `columns the inviting party requests from you`: a column inference leaves out is added with `role: payload`, and one it lists keeps its role. Edit the block before the agreed time, for example to set your ID column to `is_payload: false`.
+- **What the display shows.** `columns you will send` lists the columns the written `metadata` block sends, requested columns included, so you consent to what the later `alcove exchange` sends. A run whose send set differs from what your partner requested reaches your partner as a [change to your terms](#when-your-partners-terms-change).
+- **A requested column your file lacks.** Acceptance stops with a usage error (exit 64) naming it, before the terms are displayed, and writes nothing. Add the column to your file, or ask your partner for an invitation that does not request it.
+- **Where it applies.** A [URL](#online-acceptance) with the flag is a usage error (exit 64), since that acceptance connects and runs the exchange. On an acceptance that runs no exchange anyway -- no `INPUT_FILE`, an endpoint on another channel, or a reused configuration -- the flag is reported as having no effect.
+- **Your partner's side.** Both of you then run `alcove exchange` at the agreed time, before the invitation's `expires`. Your partner needs a configuration and key file to run it from: an [offline invitation](#offline-invitation) from a `webrtc` configuration leaves both. An [online invitation over WebRTC](#inviting-over-webrtc) saves them only when you meet it, so accept that one without the flag, while it waits.
 
 ## Online invitation
 

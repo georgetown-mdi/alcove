@@ -4,6 +4,7 @@ import type { Argv, Arguments } from "yargs";
 
 import {
   assertCountOnlyTransmitsNoColumn,
+  compatibilityMessage,
   CONNECTION_BLOCK_NOTICE,
   disclosedColumnNames,
   getLogger,
@@ -12,6 +13,7 @@ import {
   keepOperatorSuppliedText,
   messageWithOperatorText,
   operatorSuppliedText,
+  quoteTermsValueList,
   redactAndRenderOperatorSuppliedText,
   redactAndSanitizeForDisplay,
   UsageError,
@@ -133,6 +135,24 @@ export const ACCEPT_NEEDS_TERMINAL =
   "accept asks you to confirm the invitation's terms, and standard input is " +
   `not a terminal to ask at. ${ACCEPT_CONSENT_REMEDY}`;
 
+/**
+ * The refusal of `--defer-exchange` beside a server URL, whose acceptance
+ * connects and runs the exchange.
+ */
+export const DEFER_EXCHANGE_WITH_URL =
+  "--defer-exchange cannot be used with a server URL: an acceptance given a " +
+  "URL connects and runs the exchange. Leave out the URL to write the " +
+  "configuration and key file without connecting, or leave out " +
+  "--defer-exchange.";
+
+/**
+ * The notice that `--defer-exchange` changed nothing, on an acceptance that
+ * writes its files and runs no exchange without it.
+ */
+export const DEFER_EXCHANGE_NO_EFFECT =
+  "--defer-exchange has no effect on this acceptance: it writes the " +
+  "configuration and key file and runs no exchange either way.";
+
 const ACCEPT_OFFLINE_USAGE =
   "--identity IDENTITY INVITATION [INPUT_FILE] [OUTPUT_FOLDER]";
 const ACCEPT_ONLINE_USAGE =
@@ -174,8 +194,8 @@ export function builder(cmd: Argv): Argv {
           "reference to a file containing it. Offline: show its terms, ask you\n" +
           "to confirm, and write config and key files; an invitation naming a\n" +
           "webrtc coordination server, given an INPUT_FILE, also runs the\n" +
-          "exchange it accepts. Online: connect, complete the handshake, and\n" +
-          "run the exchange.",
+          "exchange it accepts, unless --defer-exchange is given. Online:\n" +
+          "connect, complete the handshake, and run the exchange.",
       ),
     // --consent-to-terms records advance consent to this invitation's disclosed
     // terms, skipping the interactive prompt so accept can run unattended. It is
@@ -184,23 +204,37 @@ export function builder(cmd: Argv): Argv {
     // bypassing the checkpoint takes an explicit token, and accept's
     // `unknown-options-as-args` (which lets a `-`-leading invitation positional
     // through) would make a single-letter flag ambiguous besides.
-  ).option("consent-to-terms", {
-    type: "boolean",
-    default: false,
-    describe:
-      "consent in advance to this invitation's disclosed terms, skipping the " +
-      "interactive confirmation, so accept can run unattended or in a script. " +
-      "This BYPASSES the one human checkpoint before the configuration and " +
-      "linkage key are written from the partner-supplied invitation; on an " +
-      "invitation carrying a webrtc endpoint, given an INPUT_FILE, that same " +
-      "checkpoint is the last one before this command connects to the " +
-      "coordination server the invitation names and runs the exchange, so the " +
-      "flag also authorizes connecting and transmitting unattended. Review the " +
-      "terms before using it; it does not affect SSH host-key verification. It " +
-      "also frees standard input, so INPUT_FILE may be `-` to read the CSV " +
-      "from stdin. Without it, accept refuses to run (exit 64) when standard " +
-      "input is not a terminal.",
-  });
+  )
+    .option("consent-to-terms", {
+      type: "boolean",
+      default: false,
+      describe:
+        "consent in advance to this invitation's disclosed terms, skipping the " +
+        "interactive confirmation, so accept can run unattended or in a script. " +
+        "This BYPASSES the one human checkpoint before the configuration and " +
+        "linkage key are written from the partner-supplied invitation; on an " +
+        "invitation carrying a webrtc endpoint, given an INPUT_FILE, that same " +
+        "checkpoint is the last one before this command connects to the " +
+        "coordination server the invitation names and runs the exchange " +
+        "(unless --defer-exchange is given), so the flag also authorizes " +
+        "connecting and transmitting unattended. Review the terms before " +
+        "using it; it does not affect SSH host-key verification. It also " +
+        "frees standard input, so INPUT_FILE may be `-` to read the CSV from " +
+        "stdin. Without it, accept refuses to run (exit 64) when standard " +
+        "input is not a terminal.",
+    })
+    .option("defer-exchange", {
+      type: "boolean",
+      default: false,
+      describe:
+        "on an invitation naming a webrtc coordination server, given an " +
+        "INPUT_FILE, write the configuration and key file and stop instead of " +
+        "running the exchange, contacting no server. The configuration's " +
+        "metadata block is the one inferred from INPUT_FILE, also sending " +
+        "each column the inviting party requests; edit it before running " +
+        "'alcove exchange' at the agreed time. Refused (exit 64) with a " +
+        "server URL.",
+    });
 }
 
 // --- Positional parsing ------------------------------------------------------
@@ -421,6 +455,12 @@ export async function validateAccept(params: {
    * {@link csvDelimiterForRun}).
    */
   csvDelimiter?: string;
+  /**
+   * The operator passed `--defer-exchange`: an acceptance that would run the
+   * exchange at the invitation's own webrtc endpoint writes its configuration
+   * and key file and stops instead, with the requested columns declared sent.
+   */
+  deferExchange?: boolean;
 }): Promise<AcceptReady> {
   const {
     resolved,
@@ -429,7 +469,11 @@ export async function validateAccept(params: {
     consentToTerms = false,
     askIdentity,
     csvDelimiter: csvDelimiterArg,
+    deferExchange = false,
   } = params;
+
+  if (deferExchange && resolved.mode === "online")
+    throw new UsageError(DEFER_EXCHANGE_WITH_URL);
 
   // Validate (checksum, schema, expiry) first, so the user is never prompted for
   // an invalid invitation. A pre-existing key file remains a hard conflict on
@@ -670,10 +714,14 @@ export async function validateAccept(params: {
   // the exchange: `alcove exchange` resolves that file's own connection block
   // (its `@path` references, `server.key`, `secure`) and dials what it says,
   // which may differ from the endpoint-built connection here.
-  const runnableConnection =
+  const endpointCanRunExchange =
     endpointRoleConnection.channel === "webrtc" &&
     !reuseExistingConfig &&
-    rows !== undefined
+    rows !== undefined;
+  if (deferExchange && !endpointCanRunExchange)
+    log.warn(DEFER_EXCHANGE_NO_EFFECT);
+  const runnableConnection =
+    endpointCanRunExchange && !deferExchange
       ? withRunPeerTimeout(
           endpointRoleConnection,
           options.peerTimeout,
@@ -681,6 +729,13 @@ export async function validateAccept(params: {
         )
       : undefined;
   const runsExchange = runnableConnection !== undefined;
+  // The exchange this acceptance defers runs from the configuration it writes,
+  // so that configuration sends what the inviting party requests: its terms
+  // exchange refuses a run stating any other set.
+  const requestedColumns =
+    endpointCanRunExchange && deferExchange
+      ? myTerms.payload?.send?.map(({ name }) => name)
+      : undefined;
   if (!runsExchange)
     warnServerOverridesIgnoredOffline(
       { serverProvision: options.serverProvision },
@@ -723,8 +778,15 @@ export async function validateAccept(params: {
       myTerms,
       INVITATION_PREFLIGHT_MESSAGING,
     );
+  if (requestedColumns !== undefined && rows !== undefined)
+    refuseRequestedColumnsTheInputLacks(requestedColumns, rows.columns);
   const dataSpec = {
-    ...buildDataSpec({ terms: myTerms, identity: myIdentity, rows }),
+    ...buildDataSpec({
+      terms: myTerms,
+      identity: myIdentity,
+      rows,
+      sendColumns: requestedColumns,
+    }),
     ...delimiterSection,
   };
   // The offline half of the count-only metadata refusal above. A no-op when this
@@ -1065,6 +1127,32 @@ const INVITATION_PREFLIGHT_MESSAGING: LinkagePreflightMessaging = {
   termsStanding: "agreed",
 };
 
+/**
+ * Refuse, before the terms are displayed, an acceptance whose input file lacks
+ * a column the inviting party requests: the configuration it writes cannot
+ * send that column, and the inviting party's terms exchange refuses a run
+ * stating a send set without it. The names are the partner's, so each is
+ * delimited ({@link quoteTermsValueList}) and the message is a
+ * {@link UsageError}, not an `OperatorConfigError`, whose category promises
+ * text of the operator's own.
+ *
+ * @internal exported for testing
+ */
+export function refuseRequestedColumnsTheInputLacks(
+  requestedColumns: ReadonlyArray<string>,
+  inputColumns: ReadonlyArray<string>,
+): void {
+  const held = new Set(inputColumns);
+  const missing = requestedColumns.filter((name) => !held.has(name));
+  if (missing.length === 0) return;
+  const shown = quoteTermsValueList(missing);
+  throw new UsageError(
+    missing.length > 1
+      ? compatibilityMessage`the invitation requests columns your input file does not have ([${shown}]), and your partner's exchange refuses a run that does not send them. Add them to your input file and accept again, or ask your partner for an invitation that does not request them.`
+      : compatibilityMessage`the invitation requests a column your input file does not have ([${shown}]), and your partner's exchange refuses a run that does not send it. Add it to your input file and accept again, or ask your partner for an invitation that does not request it.`,
+  );
+}
+
 const ACCEPT_PROVISIONING_COMMAND: OfflineProvisioningCommand = {
   writingFor: "this acceptance",
   rerun: "accept the invitation again",
@@ -1126,6 +1214,7 @@ export async function handler(argv: Arguments): Promise<void> {
         options,
         consentToTerms,
         csvDelimiter,
+        deferExchange: argv["defer-exchange"] === true,
         log,
         // The identity question is asked exactly where the consent question is:
         // at a terminal, and only where --consent-to-terms has not declared the
@@ -1364,8 +1453,13 @@ export async function handler(argv: Arguments): Promise<void> {
           `wrote config to ${redactAndRenderOperatorSuppliedText(
             operatorSuppliedText(configPath),
           )}, seeding the connection block from the ` +
-            "invitation's endpoint; it needs no credentials of your own. Run " +
-            "'alcove exchange' with your input file to conduct the exchange.",
+            "invitation's endpoint; it needs no credentials of your own. " +
+            (ready.dataSpec.metadata !== undefined
+              ? "Its metadata block sets the columns you send; edit it if " +
+                "needed, then run 'alcove exchange' with your input file at " +
+                "the agreed time."
+              : "Run 'alcove exchange' with your input file to conduct the " +
+                "exchange."),
         );
       else if (ready.seeded)
         log.info(
