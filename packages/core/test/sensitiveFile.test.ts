@@ -1,4 +1,4 @@
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import YAML from "yaml";
 
 import { UsageError } from "../src/errors";
@@ -15,6 +15,8 @@ import {
   parseSensitiveYaml,
   editSensitiveYamlDocument,
   parseSensitiveJson,
+  SensitiveYamlParseError,
+  describeYamlSyntaxPosition,
 } from "../src/sensitiveFile";
 
 // A distinctive credential value that must never appear in a displayed
@@ -213,4 +215,103 @@ test("a JSON document over the structural bound keeps the bound error as its cau
   }
   expect(malformed).toBeInstanceOf(UsageError);
   expect((malformed as Error).cause).toBeUndefined();
+});
+
+// Driven against the real parser: each row puts the credential on the line the
+// parser stops at, and the failure names the line, column and kind from the
+// parser's structured fields while quoting none of the source.
+const syntaxPositions: Array<{
+  name: string;
+  source: string;
+  line: number;
+  column: number;
+  kind: string;
+}> = [
+  {
+    name: "a duplicate key",
+    source: `server:\n  host: h\n  password: ${SECRET}\n  password: ${SECRET}\n`,
+    line: 4,
+    column: 3,
+    kind: "a duplicate key",
+  },
+  {
+    name: "an under-indented key",
+    source: `server:\n  host: h\n password: ${SECRET}\n`,
+    line: 3,
+    column: 1,
+    kind: "bad indentation or an unclosed bracket",
+  },
+  {
+    name: "a tab used for indentation",
+    source: `server:\n\tpassword: ${SECRET}\n`,
+    line: 2,
+    column: 1,
+    kind: "a tab used for indentation",
+  },
+  {
+    name: "an unclosed quote",
+    source: `server:\n  password: "${SECRET}\n`,
+    line: 3,
+    column: 1,
+    kind: "an unclosed quote or bracket",
+  },
+  {
+    name: "a code with no plain-words kind",
+    source: `password: &a &b ${SECRET}\n`,
+    line: 1,
+    column: 14,
+    kind: "a YAML syntax error",
+  },
+];
+
+describe.each([
+  [
+    "parseSensitiveYaml",
+    (source: string, label: string) => parseSensitiveYaml(source, label),
+  ],
+  [
+    "editSensitiveYamlDocument",
+    (source: string, label: string) =>
+      editSensitiveYamlDocument(source, label, () => {}),
+  ],
+])("%s names the position of a syntax error", (_name, parse) => {
+  test.each(syntaxPositions)("$name", ({ source, line, column, kind }) => {
+    let caught: unknown;
+    try {
+      parse(source, LABEL);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(SensitiveYamlParseError);
+    expect(caught).toBeInstanceOf(UsageError);
+    expect((caught as SensitiveYamlParseError).position).toEqual({
+      line,
+      column,
+      kind,
+    });
+    expect((caught as Error).message).toBe(
+      `${LABEL} could not be parsed as YAML: ${kind} at line ${line}, column ${column}`,
+    );
+    expect(sanitizeErrorForDisplay(caught)).not.toContain(SECRET);
+  });
+});
+
+test("an unresolved alias has no position and keeps the path-only message", () => {
+  let caught: unknown;
+  try {
+    parseSensitiveYaml(`password: *${SECRET}\n`, LABEL);
+  } catch (err) {
+    caught = err;
+  }
+  expect(caught).toBeInstanceOf(SensitiveYamlParseError);
+  expect((caught as SensitiveYamlParseError).position).toBeUndefined();
+  expect((caught as Error).message).toBe(
+    `${LABEL} could not be parsed as YAML`,
+  );
+});
+
+test("describeYamlSyntaxPosition writes the kind, then the line and column", () => {
+  expect(
+    describeYamlSyntaxPosition({ line: 3, column: 7, kind: "a duplicate key" }),
+  ).toBe("a duplicate key at line 3, column 7");
 });

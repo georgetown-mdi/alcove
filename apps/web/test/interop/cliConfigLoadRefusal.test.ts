@@ -80,6 +80,18 @@ test("a configuration that is not YAML reaches the console as a config event", a
   expect(String(terminal.message)).toContain("could not be parsed as YAML");
 });
 
+test("a duplicate credential key reaches the console by position, never the credential", async () => {
+  const secret = "S3cr3tSFTPPassw0rd";
+  const run = await driveExchange(
+    `connection:\n  channel: sftp\n  server:\n    password: ${secret}\n    password: ${secret}\n`,
+  );
+  const terminal = expectConfigTerminal(run);
+  expect(String(terminal.message)).toContain(
+    "could not be parsed as YAML: a duplicate key at line 5, column 5",
+  );
+  expect(JSON.stringify(run)).not.toContain(secret);
+});
+
 test("a configuration the schema refuses reaches the console as a config event", async () => {
   const run = await driveExchange("connection:\n  channel: carrier-pigeon\n");
   const terminal = expectConfigTerminal(run);

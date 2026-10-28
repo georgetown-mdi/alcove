@@ -1052,6 +1052,23 @@ describe("what the load refuses", () => {
     }
     expect(message).toContain("could not be read as YAML");
   });
+
+  test("a duplicate credential key, by line, column and kind, never the credential", () => {
+    const SECRET = "S3cr3tSFTPPassw0rd";
+    let message = "";
+    try {
+      readMountedConfiguration(
+        `connection:\n  channel: sftp\n  server:\n    password: ${SECRET}\n    password: ${SECRET}\n`,
+      );
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toBe(
+      "The alcove.yaml in your working folder could not be read as YAML: " +
+        "a duplicate key at line 5, column 5. " +
+        "Check the file for a formatting mistake, then open it again.",
+    );
+  });
 });
 
 describe("what the load reads and does not adopt", () => {

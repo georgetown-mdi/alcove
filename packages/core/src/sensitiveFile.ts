@@ -1,4 +1,4 @@
-import YAML, { type Document } from "yaml";
+import YAML, { type Document, type ErrorCode, YAMLParseError } from "yaml";
 
 import { UsageError } from "./errors.js";
 import {
@@ -16,7 +16,8 @@ import {
 // operator's alcove.yaml (inline SFTP credentials), the .alcove.key shared
 // secret, the signing identity's private key, and a linkage-terms document the
 // web app imports. The content of such a document must never reach an error
-// message, log, or stderr; only a caller-supplied path-only label may.
+// message, log, or stderr; only a caller-supplied path-only label may, with
+// the line, column and kind of a YAML syntax error.
 //
 // Browser-safe and shared by both apps. An ESLint ban forbids the raw parsers
 // across packages/core/src (this module exempt), apps/web/src, apps/cli/src
@@ -28,7 +29,8 @@ import {
 //
 //   1. YAML.parse throws a YAMLParseError on a syntax error and a
 //      ReferenceError on an unresolved alias, both embedding a source snippet.
-//      The caught error is never interpolated.
+//      The caught error is never interpolated; only a YAMLParseError's `code`
+//      and `linePos` are read.
 //   2. YAML.parseDocument collects syntax errors in doc.errors, and an
 //      unresolved alias throws only when the document is materialized
 //      (toString / toJS). Both are guarded here.
@@ -56,6 +58,82 @@ const SAFE_YAML_OPTIONS = { logLevel: "error", maxAliasCount: 100 } as const;
  */
 export type SensitiveFileLabel = string | MessageWithOperatorText;
 
+/**
+ * Where a YAML syntax error is and what kind it is, taken from the parser's
+ * `code` and `linePos` fields, never its source-bearing `message`.
+ */
+export interface YamlSyntaxPosition {
+  /** The 1-based line the parser reported. */
+  readonly line: number;
+  /** The 1-based column the parser reported. */
+  readonly column: number;
+  /** The kind of error in plain words, such as "a duplicate key". */
+  readonly kind: string;
+}
+
+const YAML_SYNTAX_ERROR_KINDS: ReadonlyMap<ErrorCode, string> = new Map([
+  ["DUPLICATE_KEY", "a duplicate key"],
+  ["TAB_AS_INDENT", "a tab used for indentation"],
+  ["BAD_INDENT", "bad indentation or an unclosed bracket"],
+  ["BLOCK_AS_IMPLICIT_KEY", "a key nested on one line or bad indentation"],
+  ["MULTILINE_IMPLICIT_KEY", "a missing colon or a key split across lines"],
+  ["MISSING_CHAR", "an unclosed quote or bracket"],
+  ["UNEXPECTED_TOKEN", "an unexpected character"],
+  ["MULTIPLE_DOCS", "more than one document"],
+  ["BAD_SCALAR_START", "a value starting with a reserved character"],
+  ["BLOCK_IN_FLOW", "a malformed list or map inside brackets or braces"],
+  ["BAD_DQ_ESCAPE", "a bad escape sequence in a double-quoted value"],
+  ["KEY_OVER_1024_CHARS", "a key longer than 1024 characters"],
+]);
+
+const GENERIC_YAML_SYNTAX_ERROR_KIND = "a YAML syntax error";
+
+/**
+ * The position of a {@link YAMLParseError}, or `undefined` for any other
+ * error (an unresolved alias or the alias cap throws a ReferenceError with
+ * no position).
+ */
+function yamlSyntaxPositionOf(error: unknown): YamlSyntaxPosition | undefined {
+  if (!(error instanceof YAMLParseError)) return undefined;
+  const start = error.linePos?.[0];
+  if (
+    start === undefined ||
+    !Number.isSafeInteger(start.line) ||
+    !Number.isSafeInteger(start.col) ||
+    start.line < 1 ||
+    start.col < 1
+  )
+    return undefined;
+  return {
+    line: start.line,
+    column: start.col,
+    kind:
+      YAML_SYNTAX_ERROR_KINDS.get(error.code) ?? GENERIC_YAML_SYNTAX_ERROR_KIND,
+  };
+}
+
+/** `position` as a user reads it: "a duplicate key at line 3, column 1". */
+export function describeYamlSyntaxPosition(
+  position: YamlSyntaxPosition,
+): string {
+  return `${position.kind} at line ${position.line}, column ${position.column}`;
+}
+
+/**
+ * The {@link UsageError} a sensitive YAML parse throws, with the parser's
+ * {@link YamlSyntaxPosition} where it reported one.
+ */
+export class SensitiveYamlParseError extends UsageError {
+  /** Where the parser stopped, or `undefined` when it reported no position. */
+  readonly position: YamlSyntaxPosition | undefined;
+
+  constructor(message: string, position: YamlSyntaxPosition | undefined) {
+    super(message);
+    this.name = "SensitiveYamlParseError";
+    this.position = position;
+  }
+}
+
 /** Reason appended after the caller's path-only label; never the parser message. */
 function labelledFailure(
   fileLabel: SensitiveFileLabel,
@@ -69,13 +147,26 @@ function labelledFailure(
   );
 }
 
-function yamlParseFailure(fileLabel: SensitiveFileLabel): UsageError {
-  return labelledFailure(fileLabel, "could not be parsed as YAML");
+function yamlParseFailure(
+  fileLabel: SensitiveFileLabel,
+  parserError: unknown,
+): SensitiveYamlParseError {
+  const position = yamlSyntaxPositionOf(parserError);
+  const reason =
+    position === undefined
+      ? "could not be parsed as YAML"
+      : `could not be parsed as YAML: ${describeYamlSyntaxPosition(position)}`;
+  const message = messageWithOperatorText`${fileLabel} ${reason}`;
+  return keepOperatorSuppliedText(
+    new SensitiveYamlParseError(message.text, position),
+    message,
+  );
 }
 
 /**
  * Parse YAML that may contain secrets. On any failure throws a
- * {@link UsageError} naming `fileLabel` only.
+ * {@link SensitiveYamlParseError} naming `fileLabel` and, for a syntax error,
+ * its line, column and kind.
  */
 export function parseSensitiveYaml(
   source: string,
@@ -83,8 +174,8 @@ export function parseSensitiveYaml(
 ): unknown {
   try {
     return YAML.parse(source, SAFE_YAML_OPTIONS);
-  } catch {
-    throw yamlParseFailure(fileLabel);
+  } catch (parserError) {
+    throw yamlParseFailure(fileLabel, parserError);
   }
 }
 
@@ -104,10 +195,10 @@ export function editSensitiveYamlDocument(
   let doc: Document;
   try {
     doc = YAML.parseDocument(source, SAFE_YAML_OPTIONS);
-  } catch {
-    throw yamlParseFailure(fileLabel);
+  } catch (parserError) {
+    throw yamlParseFailure(fileLabel, parserError);
   }
-  if (doc.errors.length > 0) throw yamlParseFailure(fileLabel);
+  if (doc.errors.length > 0) throw yamlParseFailure(fileLabel, doc.errors[0]);
   edit(doc);
   let edited: string;
   try {

@@ -2601,6 +2601,42 @@ test("handler: --invitation --event-stream on a webrtc config with no role ends 
   expect(fs.existsSync(keyFile)).toBe(false);
 });
 
+test("handler: --event-stream on a config with a duplicate credential key names its position on stderr and in the event, never the credential", async () => {
+  const SECRET = "S3cr3tSFTPPassw0rd";
+  fs.writeFileSync(
+    configFile,
+    `connection:\n  channel: sftp\n  server:\n    password: ${SECRET}\n    password: ${SECRET}\n`,
+  );
+  saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
+  const input = path.join(dir, "in.csv");
+  fs.writeFileSync(input, "ssn\n123456789\n");
+  const position =
+    "could not be parsed as YAML: a duplicate key at line 5, column 5";
+  const { lines } = await captureFd3(() =>
+    expectExchangeExit(
+      {
+        _: [],
+        $0: "alcove",
+        input,
+        "config-file": configFile,
+        "key-file": keyFile,
+        "log-level": "silent",
+        "event-stream": true,
+      } as unknown as Arguments,
+      64,
+    ),
+  );
+  expect(lines.at(-1)).toMatchObject({
+    type: "error",
+    category: "config",
+    message: expect.stringContaining(position),
+  });
+  expect(JSON.stringify(lines)).not.toContain(SECRET);
+  const reported = mockState.errors.join("\n");
+  expect(reported).toContain(position);
+  expect(reported).not.toContain(SECRET);
+});
+
 // --- handler: the exit code each error boundary reports ----------------------
 // Each boundary below routes its caught error through the one exitCodeForError
 // (src/util/exit.ts): one error per class it distinguishes, planted at the

@@ -8,5 +8,7 @@ export {
   parseSensitiveYaml,
   editSensitiveYamlDocument,
   parseSensitiveJson,
+  SensitiveYamlParseError,
+  describeYamlSyntaxPosition,
 } from "@alcove/core";
 export type { SensitiveFileLabel } from "@alcove/core";
