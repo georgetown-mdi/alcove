@@ -40,10 +40,14 @@ export default {
   // Per-mutant test selection from the dry-run coverage, rather than the whole
   // suite per mutant.
   coverageAnalysis: "perTest",
-  // The core suite runs in seconds; a mutant that reaches two minutes is a
-  // hang, not a slow test.
+  // A mutant's covering tests run in seconds; a mutant that reaches two
+  // minutes is a hang, not a slow test.
   timeoutMS: 120000,
   timeoutFactor: 3,
+  // The dry run is the whole suite under perTest coverage, which measures
+  // about five minutes in CI, Stryker's default cap for it. The cap is three
+  // times that, the factor timeoutFactor applies per mutant.
+  dryRunTimeoutMinutes: 15,
   reporters: ["clear-text", "progress", "html", "json"],
   // No `thresholds.break`: Stryker's thresholds are whole-run, and the gate
   // here is per file. scripts/stryker-security.mjs enforces scoreFloors against

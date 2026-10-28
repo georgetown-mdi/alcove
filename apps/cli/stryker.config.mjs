@@ -27,5 +27,8 @@ export default {
   coverageAnalysis: "perTest",
   timeoutMS: 120000,
   timeoutFactor: 3,
+  // As in the core configuration: three times Stryker's five-minute default,
+  // which the core suite's dry run outgrew.
+  dryRunTimeoutMinutes: 15,
   reporters: ["clear-text", "progress", "html", "json"],
 };
