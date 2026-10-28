@@ -12,7 +12,12 @@ import { commitAcceptance } from "@psi/acceptConsent";
 
 import { isolatedColumnName } from "@components/ColumnName";
 
-import { COUNT_ONLY_RECEIVE_ROW_VALUE, settledReceiveValue } from "@psi/ledger";
+import {
+  COUNT_ONLY_RECEIVE_ROW_VALUE,
+  ONLY_PARTNER_RECEIVES_COUNT,
+  ONLY_PARTNER_RECEIVES_RESULTS,
+  settledReceiveValue,
+} from "@psi/ledger";
 import { dateTimeLabel } from "@psi/formatting";
 
 import {
@@ -21,7 +26,11 @@ import {
 } from "@psi/transportChooser";
 import { acceptedSignalingServer } from "@console/signalingServerModel";
 
-import type { InvitationToken, LinkageTerms, Metadata } from "@alcove/core";
+import type {
+  InvitationSummary,
+  InvitationToken,
+  Metadata,
+} from "@alcove/core";
 import type { LedgerOutcome } from "@psi/ledger";
 
 import type { RailFact, RailStepState } from "@psi/rail";
@@ -127,14 +136,14 @@ export function acceptorRailFacts(attention?: string): Array<RailFact> {
 }
 
 /**
- * Result direction phrased from the ACCEPTOR's seat, mirroring the inviter's
- * `output`: `expectsOutput` is whether the inviter receives, `shareWithPartner`
- * whether the acceptor (its partner) receives -- so from the acceptor's side the
- * two roles swap.
+ * Result direction phrased from the ACCEPTOR's seat, read from the shared
+ * invitation summary: `inviterReceivesOutput` is whether the inviter receives,
+ * `inviterSharesResult` whether the acceptor (its partner) receives -- so from
+ * the acceptor's side the two roles swap.
  */
-function acceptorResultsGoTo(output: LinkageTerms["output"]): string {
-  const acceptorReceives = output.shareWithPartner;
-  const inviterReceives = output.expectsOutput;
+function acceptorResultsGoTo(summary: InvitationSummary): string {
+  const acceptorReceives = summary.inviterSharesResult;
+  const inviterReceives = summary.inviterReceivesOutput;
   if (acceptorReceives && inviterReceives) return "You and your partner";
   if (acceptorReceives) return "Only you";
   if (inviterReceives) return "Only your partner";
@@ -198,6 +207,39 @@ export function acceptorLedgerTag(invitingParty: string): string {
   return `Proposed by ${invitingParty}`;
 }
 
+/** The acceptor's "You will receive" row, read from the invitation's result
+ * direction and algorithm and from the inviter's send list. */
+function acceptorReceiveRow(
+  summary: InvitationSummary,
+  received: ReadonlyArray<string>,
+): AcceptorLedgerRow {
+  const label = "You will receive";
+  const countOnly = summary.algorithm === "psi-c";
+  if (!summary.inviterSharesResult) {
+    if (summary.inviterReceivesOutput)
+      return {
+        label,
+        muted: countOnly
+          ? ONLY_PARTNER_RECEIVES_COUNT
+          : ONLY_PARTNER_RECEIVES_RESULTS,
+      };
+    return {
+      label,
+      muted: countOnly
+        ? "Nothing - neither party receives the count"
+        : "Nothing - neither party receives the matched results",
+    };
+  }
+  if (countOnly) return { label, value: COUNT_ONLY_RECEIVE_ROW_VALUE };
+  return {
+    label,
+    value:
+      received.length > 0
+        ? `Matched rows + ${received.join(", ")}`
+        : "Matched rows",
+  };
+}
+
 /**
  * The acceptor's disclosure ledger: the receive/matched-on/expiry/results/agreement/
  * transport rows read from the decoded invitation (every partner string sanitized by
@@ -222,15 +264,7 @@ export function acceptorLedgerRows(
     metadata === undefined ? undefined : disclosedColumnNames(metadata);
   return [
     acceptorSendRow("You will send", disclosure),
-    {
-      label: "You will receive",
-      value:
-        summary.algorithm === "psi-c"
-          ? COUNT_ONLY_RECEIVE_ROW_VALUE
-          : received.length > 0
-            ? `Matched rows + ${received.join(", ")}`
-            : "Matched rows",
-    },
+    acceptorReceiveRow(summary, received),
     summary.linkageKeys.length > 0
       ? {
           label: "Matched on",
@@ -250,7 +284,7 @@ export function acceptorLedgerRows(
     },
     {
       label: "Results go to",
-      value: acceptorResultsGoTo(token.linkageTerms.output),
+      value: acceptorResultsGoTo(summary),
     },
     summary.legalAgreement !== undefined
       ? { label: "Agreement", value: summary.legalAgreement.reference }
@@ -312,7 +346,7 @@ export function acceptorDoneLedgerRows(
       : { label: "Matched on", muted: "No keys", shareBar: true },
     {
       label: "Results went to",
-      value: acceptorResultsGoTo(token.linkageTerms.output),
+      value: acceptorResultsGoTo(summary),
     },
     summary.legalAgreement !== undefined
       ? { label: "Agreement", value: summary.legalAgreement.reference }

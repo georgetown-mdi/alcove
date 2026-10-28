@@ -112,6 +112,15 @@ function countOnlyLedgerValue(
  */
 export const COUNT_ONLY_RECEIVE_ROW_VALUE = `How many records you have in common - ${COUNT_ONLY_NO_TABLE}`;
 
+/** The receive row's value when the terms send the count to the partner alone. */
+export const ONLY_PARTNER_RECEIVES_COUNT =
+  "Nothing - only your partner receives the count";
+
+/** The receive row's value when the terms send the matched results to the
+ * partner alone. */
+export const ONLY_PARTNER_RECEIVES_RESULTS =
+  "Nothing - only your partner receives the matched results";
+
 /**
  * The receive row's value for a matched run whose row count never reached this
  * browser -- the console holds the result file and counts none of its rows.
@@ -188,8 +197,8 @@ export function inviterLedgerRows(
     editor.draft.outputDirection === "partner"
       ? {
           muted: countOnly
-            ? "Nothing - only your partner receives the count"
-            : "Nothing - only your partner receives the matched results",
+            ? ONLY_PARTNER_RECEIVES_COUNT
+            : ONLY_PARTNER_RECEIVES_RESULTS,
         }
       : {
           value: countOnly
