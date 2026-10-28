@@ -138,7 +138,7 @@ In `alcove.yaml`, this is configured in a top-level `authentication` block, a si
 
 #### Token format and entropy
 
-The shared secret is a 32-byte value holding 256 bits of entropy, whether drawn from a CSPRNG for an invitation or derived from the key-exchange session key by rotation. Rotation derives the replacement deterministically from the session key both parties already hold, so it needs no extra round-trip, and the secret is never reused. The on-disk encoding and the rotation-derivation construction are in [PROTOCOL.md](spec/PROTOCOL.md#shared-secret-rotation).
+The shared secret is a 32-byte value. An invitation's secret is drawn from a CSPRNG and holds 256 bits of entropy. A rotated secret is derived from the key-exchange session key: it holds the full 32-byte value against an outsider, and about 128 bits (the P-256 level) against a holder of the superseded secret, as the [Rotation tokens](spec/PROTOCOL.md#shared-secret-rotation) bullet states. Rotation derives the replacement deterministically from the session key both parties already hold, so it needs no extra round-trip, and the secret is never reused. The on-disk encoding and the rotation-derivation construction are in [PROTOCOL.md](spec/PROTOCOL.md#shared-secret-rotation).
 
 #### Invitation contents and confidentiality
 
