@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import { MAX_PSI_DECODE_ELEMENTS } from "../../src/connection/frameSize";
 import {
@@ -6,9 +6,11 @@ import {
   UsageError,
   statesItsOwnNextStep,
 } from "../../src/errors";
+import { COUNT_ONLY_CONSTRUCTION } from "../../src/exchange/countOnlyConstruction";
 import {
   assertFirstRoundWithinSetMaximum,
   roundOneSetOverMaximumMessage,
+  type FirstRoundCheckOptions,
 } from "../../src/exchange/firstRoundCapacity";
 import { sanitizeErrorForDisplay } from "../../src/utils/sanitizeErrorForDisplay";
 import { DISPLAY_TRUNCATION_MARKER } from "../../src/utils/sanitizeForDisplay";
@@ -17,8 +19,13 @@ import {
   StandardizedField,
 } from "../../src/standardization";
 
+import type { PreparedExchange } from "../../src/exchange";
 import type { CSVRow } from "../../src/file";
-import { distinctFirstName, preparedFirstNames } from "../utils/support";
+import {
+  distinctFirstName,
+  prepared,
+  preparedFirstNames,
+} from "../utils/support";
 
 // The first-round check every channel runs reads the prepared dataset,
 // before any connection. The per-set maximum is lowered so the boundary is
@@ -100,6 +107,105 @@ test("the check leaves a single-pass exchange to its dataset ceiling", async () 
   expect(await refusalOf(preparedFirstNames(rows), 10)).toBeInstanceOf(
     RoundSetLimitError,
   );
+});
+
+describe("under the every-key count-only construction", () => {
+  // Every round sends one value per record, so the check weighs the record
+  // count, whatever share of the records hold a value only they hold.
+  const everyKey = { [COUNT_ONLY_CONSTRUCTION]: "every-key" } as const;
+  const countOnly = (rows: Array<string>) =>
+    prepared(
+      "Tester",
+      rows.map((name) => ({ first_name: name })),
+      { terms: { algorithm: "psi-c" } },
+    );
+  const refusalUnder = async (
+    exchange: PreparedExchange,
+    options: FirstRoundCheckOptions,
+  ): Promise<unknown> => {
+    try {
+      await assertFirstRoundWithinSetMaximum(exchange, options);
+    } catch (err) {
+      return err;
+    }
+    return undefined;
+  };
+  // Twenty distinct values and the rest one value every record shares: the
+  // shipped round sends twenty values, the every-key round one per record.
+  const rows = (count: number) =>
+    Array.from({ length: count }, (_unused, i) =>
+      i < 20 ? distinctFirstName(i) : distinctFirstName(500),
+    );
+
+  test("the check refuses a record count one over the bound and admits it at the bound", async () => {
+    expect(
+      await refusalUnder(countOnly(rows(300)), { maxValues: 300, ...everyKey }),
+    ).toBeUndefined();
+    const refusal = await refusalUnder(countOnly(rows(301)), {
+      maxValues: 300,
+      ...everyKey,
+    });
+    expect(refusal).toBeInstanceOf(RoundSetLimitError);
+    expect((refusal as RoundSetLimitError).reason).toBe("over-set-maximum");
+    expect(statesItsOwnNextStep(refusal, { ownOnly: true })).toBe(true);
+    expect((refusal as Error).message).toBe(
+      roundOneSetOverMaximumMessage(301, 300, true),
+    );
+    expect((refusal as Error).message).toMatch(
+      /^Too large to send: a count-only exchange sends 301 values for every linkage key, over the 300 one PSI set can hold\. Nothing was sent\. Split the input/,
+    );
+
+    // The shipped construction counts the twenty values, and admits it.
+    expect(
+      await refusalUnder(countOnly(rows(301)), { maxValues: 300 }),
+    ).toBeUndefined();
+  });
+
+  test("the check weighs the record count without reading a record", async () => {
+    const reports: Array<unknown> = [];
+    const exchange = withThrowingRows(
+      countOnly(rows(30)),
+      MAX_PSI_DECODE_ELEMENTS,
+      new Error("a record was read"),
+    );
+    expect(
+      await refusalUnder(exchange, {
+        ...everyKey,
+        onProgress: (report) => void reports.push(report),
+      }),
+    ).toBeUndefined();
+    const over = await refusalUnder(
+      { ...exchange, rowCount: MAX_PSI_DECODE_ELEMENTS + 1 },
+      everyKey,
+    );
+    expect(over).toBeInstanceOf(RoundSetLimitError);
+    expect((over as RoundSetLimitError).reason).toBe("over-set-maximum");
+    expect(reports).toEqual([]);
+  });
+
+  test("a psi exchange is counted as before under the selector", async () => {
+    const psi = preparedFirstNames(rows(301));
+    expect(
+      await refusalUnder(psi, { maxValues: 300, ...everyKey }),
+    ).toBeUndefined();
+  });
+
+  test("the every-key refusal survives the display boundary whole at the real bound", () => {
+    const shown = sanitizeErrorForDisplay(
+      new RoundSetLimitError(
+        roundOneSetOverMaximumMessage(
+          MAX_PSI_DECODE_ELEMENTS * 10,
+          MAX_PSI_DECODE_ELEMENTS,
+          true,
+        ),
+        "over-set-maximum",
+      ),
+    );
+    expect(shown).not.toContain(DISPLAY_TRUNCATION_MARKER);
+    expect(shown).toContain(
+      "Split the input into smaller files and run one exchange for each.",
+    );
+  });
 });
 
 /**

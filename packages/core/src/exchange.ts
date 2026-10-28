@@ -1358,6 +1358,10 @@ export { PARTNER_SET_OVER_CAPACITY_ABORT_REASON };
  * per-element cap, so a sender whose agreed or local cleaning fans out can
  * realize up to the declared width per declared record. Its local cleaning is
  * not in the agreed terms, so no sender partner is weighed narrower.
+ *
+ * Count-only terms declare no candidate set, so for them the figure is the
+ * partner's declared record count, which under the every-key construction is
+ * the size of the partner's set in every round.
  */
 export function partnerRoundValues(
   partnerRecordCount: number,
@@ -1825,7 +1829,8 @@ export async function runExchange(
 
   // A cascade or count-only round exchanges one key's sets at a time, sent in
   // parts, each held to the receive ceilings; the single-pass dataset ceiling
-  // bounds the rest. This party's first round is held to the partner's stated
+  // bounds the rest. This party's first round, and under the every-key
+  // count-only construction every round, is held to the partner's stated
   // ceiling before this party builds a set; at the protocol's maximum, the
   // start-of-exchange check and each round's own refusal hold it already.
   const roundsSentInParts = !runsSinglePassLink(linkageTerms);
@@ -1842,6 +1847,7 @@ export async function runExchange(
         isReceiver,
         partnerReceiveCeiling,
         options.onPsiProgress,
+        countOnlyConstruction,
       );
   }
 
