@@ -2297,14 +2297,15 @@ export async function runProtocol(
     };
   } catch (err) {
     markArrivalWait(err, arrivalWait);
-    // A failed post-auth hook is the online invite or accept's config write.
+    // Only the online invite and accept pass a post-authentication hook: their
+    // configuration write.
     markTermsRefusalRun(
       err,
       auth === null
         ? "quick-exchange"
-        : run.onAuthenticatedError === undefined
+        : onAuthenticated === undefined
           ? "configured"
-          : "configuration-unwritten",
+          : "online-invitation",
     );
     // The rotation line below states what the store order leaves the two
     // parties holding (rotationStanding), at error level because the

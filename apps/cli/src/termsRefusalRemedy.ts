@@ -1,10 +1,10 @@
 // The next step the CLI states beneath a refusal over a difference in the
 // linkage terms (core's `termsDifferenceRefusedBy`), by which party refused and
 // by the kind of run: a run from a configuration and key file, which settles
-// terms through `alcove update` and `alcove apply`; an online invite or accept
-// that saved its key file but wrote no configuration, which only a fresh
-// invitation sets up again; or a quick exchange, whose terms each party infers
-// from its own input file.
+// terms through `alcove update` and `alcove apply`; an online invite or accept,
+// which writes its configuration and key file only once the terms are agreed,
+// so a fresh invitation sets it up again; or a quick exchange, whose terms each
+// party infers from its own input file.
 
 import {
   CONTACT_AND_LOCATION_FIELD_TYPES,
@@ -23,21 +23,17 @@ import type {
 } from "@alcove/core";
 
 /**
- * The kind of run a terms refusal ended: `configured` for a run holding a
- * configuration and key file (`alcove exchange`, and the online `alcove
- * invite` and `alcove accept`, which write both before the terms exchange),
- * `configuration-unwritten` for an online `alcove invite` or `alcove accept`
- * whose configuration write failed after the handshake saved its key file,
- * and `quick-exchange` for a run with no shared secret.
+ * The kind of run a terms refusal ended: `configured` for a run from a
+ * configuration and key file (`alcove exchange`), `online-invitation` for an
+ * online `alcove invite` or `alcove accept`, and `quick-exchange` for a run
+ * with no shared secret.
  */
 export type TermsRefusalRun =
-  "configured" | "configuration-unwritten" | "quick-exchange";
+  "configured" | "online-invitation" | "quick-exchange";
 
-const CONFIGURATION_UNWRITTEN_NEXT_STEP =
-  "This run saved its key file but wrote no configuration. Agree the " +
-  "linkage terms with your partner, move or remove that key file, then set " +
-  "the exchange up again from a fresh invitation with alcove invite or " +
-  "alcove accept.";
+const ONLINE_INVITATION_NEXT_STEP =
+  "Agree the linkage terms with your partner, then set the exchange up " +
+  "again from a fresh invitation with alcove invite or alcove accept.";
 
 const QUICK_EXCHANGE_NEXT_STEP =
   "Agree with your partner on the columns your input files share and " +
@@ -69,9 +65,9 @@ export const TERMS_REFUSAL_NEXT_STEPS: {
       "with alcove apply, or change your configuration to match theirs, then " +
       "run the same command again.",
   },
-  "configuration-unwritten": {
-    "this-party": CONFIGURATION_UNWRITTEN_NEXT_STEP,
-    partner: CONFIGURATION_UNWRITTEN_NEXT_STEP,
+  "online-invitation": {
+    "this-party": ONLINE_INVITATION_NEXT_STEP,
+    partner: ONLINE_INVITATION_NEXT_STEP,
   },
   "quick-exchange": {
     "this-party": QUICK_EXCHANGE_NEXT_STEP,

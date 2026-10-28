@@ -125,15 +125,15 @@ test("each party states a linkage strategy difference from its own side", async 
 }, 30_000);
 
 // The configuration write runs with the key-file save, after the terms are
-// agreed, so a run the terms refuse reaches neither: it keeps its secret, and
-// states the configured run's step.
+// agreed, so a run the terms refuse reaches neither and keeps its secret. The
+// run passing that write states the online invitation's step.
 test("a run refused at the terms exchange runs no configuration write", async () => {
   const dropDir = fs.mkdtempSync(path.join(work, "drop-"));
   let configurationWrites = 0;
   const configurationWrite = (): void => {
     configurationWrites += 1;
   };
-  const [rendered] = await withCapturedLogs(
+  const [[hooked, plain]] = await withCapturedLogs(
     () =>
       Promise.all([
         run(
@@ -151,12 +151,15 @@ test("a run refused at the terms exchange runs no configuration write", async ()
     expect(loadKeyFile(path.join(work, `${name}.key`))?.sharedSecret).toBe(
       SHARED_SECRET,
     );
-  for (const side of rendered) {
-    const refusedBy = side.includes("linkage terms are incompatible: ")
-      ? "this-party"
-      : "partner";
-    expect(
-      side.endsWith(`\n${TERMS_REFUSAL_NEXT_STEPS.configured[refusedBy]}`),
-    ).toBe(true);
-  }
+  expect(
+    hooked.endsWith(
+      `\n${TERMS_REFUSAL_NEXT_STEPS["online-invitation"]["this-party"]}`,
+    ),
+  ).toBe(true);
+  const plainRefusedBy = plain.includes("linkage terms are incompatible: ")
+    ? "this-party"
+    : "partner";
+  expect(
+    plain.endsWith(`\n${TERMS_REFUSAL_NEXT_STEPS.configured[plainRefusedBy]}`),
+  ).toBe(true);
 }, 30_000);
