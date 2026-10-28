@@ -1502,8 +1502,8 @@ export async function handler(argv: Arguments): Promise<void> {
       // result, and every consent record below) is written identically.
       if (ready.mode === "online" || ready.mode === "endpointRun") {
         // Opened at the decision to run, ahead of every step that can fail
-        // from here (the credential reads included), so each such failure
-        // ends the stream with its terminal event.
+        // from here, so each such failure ends the stream with its terminal
+        // event.
         const eventStream = openEventStream(options.eventStream);
         const { outcome, configWriteError } = await runOnlineBootstrap({
           connection: ready.connection,

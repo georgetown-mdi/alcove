@@ -21,7 +21,7 @@ If `--event-stream` is given but fd 3 is not open for writing (the process was s
 Where each exchange-running command runs the check:
 
 - `alcove exchange`, the quick exchange, and an online `invite` run it first, once the command line has parsed and the `--log-file` is open. The configuration load, the `--invitation` decode, the input read, and every other refusal come after it.
-- An `accept`, on either form, is known to run an exchange only once the invitation decodes, the input is read, and the operator consents. It runs the check at that decision, ahead of every later step, the credential reads included; the invitation decode, the configuration load, the input read, and the consent prompt come before it.
+- An `accept`, on either form, is known to run an exchange only once the invitation decodes, the input is read, and the operator consents. It runs the check at that decision, ahead of every later step; the invitation decode, the configuration load, the credential reads, the input read, and the consent prompt come before it.
 
 Every exchange-running command raises the `undeclaredColumns` warning before SSH host-key trust, which opens an SSH connection of its own to read the server's key: `alcove exchange` with the lifecycle's other local prepare checks, before the wake call a `connection.server.provision` block states; the online `invite`/`accept` immediately before the host-key step. Zero-setup raises none, since its direct-mode inference declares every input column ([DEFAULT_STANDARDIZATION.md](DEFAULT_STANDARDIZATION.md#type-inference-from-column-names)).
 
