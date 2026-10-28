@@ -25,13 +25,16 @@ before proceeding -- its Session lifecycle section defines this state.
 1. Change nothing about the work: agents in flight keep running, nothing
    stops, and no branch, fix round or spawn starts as part of the preparation.
 2. At the next point where no step of your own is half done, bring the
-   continuation brief current.
+   continuation brief current. Record in it the state the session is in --
+   Working, Wind-down, or another state the ruleset's Session lifecycle
+   names -- and the latest shortlist's candidates the session has not taken.
 3. Print two messages, each a few lines that keep only what the next context
    needs:
    - The argument for `/compact`: the brief's path, the task ids of agents
      still running, and any decision presentation that is open.
    - The resume message: `/orchestrate`, followed by what the owner said he
-     will do in between and where its result will be. It names no brief:
-     `/orchestrate` reads the newest one itself.
-4. Keep working until the owner compacts; afterwards the session is in the
-   Working state again.
+     will do in between and where its result will be. It names no brief and
+     no state: `/orchestrate` reads the newest brief and enters the state it
+     records.
+4. Carry on in the recorded state until the owner compacts. A state the
+   owner names before then is written to the brief in that turn.
