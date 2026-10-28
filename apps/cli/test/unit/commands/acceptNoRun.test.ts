@@ -51,6 +51,14 @@ vi.mock("../../../src/connection/webrtc/websocketRelayDial", async () => {
   >("../../../src/connection/webrtc/websocketRelayDial");
   return { ...actual, webSocketRelayDialsFor: vi.fn() };
 });
+// Where the handler opens the event stream; the descriptor itself is the
+// integration suite's (terminalErrorEvent.test.ts, noRunAcceptance.test.ts).
+vi.mock("../../../src/eventStream", async () => {
+  const actual = await vi.importActual<
+    typeof import("../../../src/eventStream")
+  >("../../../src/eventStream");
+  return { ...actual, openEventStream: vi.fn() };
+});
 
 import {
   NO_RUN_NO_EFFECT,
@@ -62,6 +70,8 @@ import { connectToBroker } from "../../../src/connection/webrtc/brokerClient";
 import { webSocketRelayDialsFor } from "../../../src/connection/webrtc/websocketRelayDial";
 import { enrollAtInvitationRelay } from "../../../src/invitationRelayEnrollment";
 import { loadKeyFile } from "../../../src/keyFile";
+import { openEventStream } from "../../../src/eventStream";
+import type { EventStreamEmitter } from "../../../src/eventStream";
 import { runOnlineBootstrap } from "../../../src/onlineBootstrap";
 import type { CommonBootstrapOptions } from "../../../src/optionDefinitions";
 import { exitCodeForError } from "../../../src/util/exit";
@@ -121,6 +131,7 @@ afterEach(() => {
   vi.mocked(connectToBroker).mockReset();
   vi.mocked(enrollAtInvitationRelay).mockReset();
   vi.mocked(webSocketRelayDialsFor).mockReset();
+  vi.mocked(openEventStream).mockReset();
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -815,6 +826,40 @@ describe("handler: an acceptance that stops", () => {
     expect(quiet).not.toContain("requests columns from you that");
   });
 
+  test("an offline acceptance keeping a configuration shows the kept file's columns as sent", async () => {
+    promptConfirmMock.mockResolvedValue("yes");
+    const input = writeInput();
+    const options = await keptConfiguration(true, input);
+    // Unlike inference, the kept file keeps `id` and does not send it.
+    const kept = parseExchangeSpec(
+      YAML.parse(fs.readFileSync(options.configFile, "utf8")),
+    );
+    const keptMetadata = (kept.metadata ?? []).map((column) =>
+      column.name === "id" ? { ...column, isPayload: false } : column,
+    );
+    saveConfig(options.configFile, { ...kept, metadata: keptMetadata });
+    const token = requestingToken([REQUESTED], undefined);
+
+    const ready = await accept({ token, input, options });
+    expect(ready.reuseExistingConfig).toBe(true);
+    expect(ready.mode).toBe("offline");
+    if (ready.mode !== "offline") return;
+    expect(ready.dataSpec.metadata).toEqual(keptMetadata);
+    expect(ready.unsentRequestedColumns).toEqual([]);
+
+    fs.rmSync(options.keyFile, { force: true });
+    const surface = await runHandler(
+      handlerArgv([await encodeInvitation(token), input], {
+        "config-file": options.configFile,
+        "key-file": options.keyFile,
+      }),
+    );
+    const shown = surface.slice(surface.indexOf(OUTBOUND_SEND_LABEL));
+    const shownList = shown.slice(0, 1 + shown.slice(1).search(/\n {2}\S/));
+    expect(shownList.split("\n").slice(1)).toEqual([`    - ${REQUESTED}`]);
+    expect(surface).not.toContain("requests columns from you that");
+  });
+
   test("a kept configuration that sends every requested column runs", async () => {
     runOnlineBootstrapMock.mockResolvedValue({
       outcome: "completed",
@@ -880,37 +925,42 @@ describe("handler: an acceptance that stops", () => {
     ]);
   });
 
-  test("--event-stream: an acceptance that stops touches no event stream descriptor, on either form", async () => {
-    const fstat = vi.spyOn(fs, "fstatSync");
-    const write = vi.spyOn(fs, "writeSync");
-    try {
-      const webrtc = await encodeInvitation(requestingToken());
-      const online = await encodeInvitation(
-        requestingToken([REQUESTED], undefined),
-      );
-      for (const args of [
-        [webrtc, writeInput()],
+  test("--event-stream: an acceptance that does not run opens no stream, on either form", async () => {
+    promptConfirmMock.mockResolvedValue("no");
+    const webrtc = await encodeInvitation(requestingToken());
+    const online = await encodeInvitation(
+      requestingToken([REQUESTED], undefined),
+    );
+    const nothingRequested = await encodeInvitation(requestingToken([]));
+    for (const [args, extra] of [
+      // Stopped for the request, on each form.
+      [[webrtc, writeInput()], { "consent-to-terms": true }],
+      [
         ["sftp://host/drop", online, writeInput()],
-      ])
-        await runHandler(
-          handlerArgv(args, {
-            "consent-to-terms": true,
-            "event-stream": true,
-            "log-level": "silent",
-          }),
-        );
-      const touchedFd3 = [...fstat.mock.calls, ...write.mock.calls].filter(
-        ([fd]) => fd === 3,
+        { "consent-to-terms": true },
+      ],
+      // --no-run, no INPUT_FILE, and a decline.
+      [
+        [nothingRequested, writeInput()],
+        { "consent-to-terms": true, run: false },
+      ],
+      [[nothingRequested], { "consent-to-terms": true }],
+      [[nothingRequested, writeInput()], {}],
+    ] as Array<[string[], Record<string, unknown>]>)
+      await runHandler(
+        handlerArgv(args, {
+          ...extra,
+          "event-stream": true,
+          "log-level": "silent",
+        }),
       );
-      expect(touchedFd3).toEqual([]);
-    } finally {
-      fstat.mockRestore();
-      write.mockRestore();
-    }
+    expect(openEventStream).not.toHaveBeenCalled();
     expect(runOnlineBootstrapMock).not.toHaveBeenCalled();
   });
 
-  test("--event-stream: an acceptance that runs leaves the stream to the bootstrap, on either form", async () => {
+  test("--event-stream: an acceptance that runs opens the stream at consent and hands it to the bootstrap, on either form", async () => {
+    const emitter = { result: vi.fn() } as unknown as EventStreamEmitter;
+    vi.mocked(openEventStream).mockReturnValue(emitter);
     runOnlineBootstrapMock.mockResolvedValue({
       outcome: "completed",
       configWriteError: undefined,
@@ -928,8 +978,13 @@ describe("handler: an acceptance that stops", () => {
           "log-level": "silent",
         }),
       );
+    expect(vi.mocked(openEventStream).mock.calls).toEqual([[true], [true]]);
     expect(runOnlineBootstrapMock).toHaveBeenCalledTimes(2);
-    for (const [passed] of runOnlineBootstrapMock.mock.calls)
-      expect(passed.eventStream).toBe(true);
+    runOnlineBootstrapMock.mock.calls.forEach(([passed], index) => {
+      expect(passed.eventStream).toBe(emitter);
+      expect(
+        vi.mocked(openEventStream).mock.invocationCallOrder[index],
+      ).toBeLessThan(runOnlineBootstrapMock.mock.invocationCallOrder[index]);
+    });
   });
 });

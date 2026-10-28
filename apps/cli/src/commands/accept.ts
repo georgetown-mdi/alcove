@@ -62,6 +62,7 @@ import {
   type ConsentSurfaceSink,
 } from "../invitationDisplay";
 import { runOrExit } from "../util/exit";
+import { openEventStream } from "../eventStream";
 import { assertNoUnknownOptions, csvDelimiterFlag } from "../util/flags";
 import {
   declarePositionals,
@@ -613,7 +614,8 @@ export async function validateAccept(params: {
   // with one unsent stops instead, since the inviting party refuses that run.
   const requestedColumns = myTerms.payload?.send?.map(({ name }) => name) ?? [];
   // A kept configuration's own data blocks are what every exchange under it
-  // sends, so they are what this acceptance's run sends and its stop reads.
+  // sends, so on both forms they are what this acceptance shows as sent,
+  // what its run sends, and what its stop reads.
   // A configuration at the path is either kept or refused below.
   const keptBlocks = keptDataBlocks(keptConfig);
 
@@ -817,21 +819,25 @@ export async function validateAccept(params: {
       rows.columns,
       myTerms,
       INVITATION_PREFLIGHT_MESSAGING,
+      keptBlocks?.standardization,
+      keptBlocks?.metadata,
     );
     refuseRequestedColumnsTheInputLacks(requestedColumns, rows.columns);
   }
   const dataSpec = {
-    ...buildDataSpec({
-      terms: myTerms,
-      identity: myIdentity,
-      rows,
-      listColumns: requestedColumns,
-    }),
+    ...(keptBlocks !== undefined
+      ? { linkageTerms: myTerms, ...keptBlocks }
+      : buildDataSpec({
+          terms: myTerms,
+          identity: myIdentity,
+          rows,
+          listColumns: requestedColumns,
+        })),
     ...delimiterSection,
   };
   const unsentRequestedColumns = requestedColumnsNotSent(
     requestedColumns,
-    keptBlocks?.metadata ?? dataSpec.metadata,
+    dataSpec.metadata,
   );
   const stop = acceptStop(run, unsentRequestedColumns);
   // The connection this acceptance can run the exchange on itself, rather than
@@ -1224,7 +1230,7 @@ function reconcileAcceptConfig(params: {
 // shared check and relies on name inference -- which matches the acceptor's
 // exchange-time satisfiability exactly. The override arguments exist for the
 // exchange path, whose committed config can hold a remap or an explicit type,
-// and for the URL-form acceptance that runs on a kept configuration's blocks.
+// and for an acceptance that keeps a configuration declaring those blocks.
 const INVITATION_PREFLIGHT_MESSAGING: LinkagePreflightMessaging = {
   source: "invitation",
   blockConsequence: RUN_BLOCK_CONSEQUENCE,
@@ -1333,8 +1339,8 @@ export async function handler(argv: Arguments): Promise<void> {
       const resolved = resolveAcceptPositionals(positionals);
       // No event stream opens here: whether this acceptance runs an exchange
       // is known only once the invitation decodes, the input is read, and the
-      // operator consents, so the bootstrap that runs it opens the stream and
-      // an acceptance that stops writes nothing to fd 3.
+      // operator consents, so the stream opens at that decision below and an
+      // acceptance that stops writes nothing to fd 3.
       const url = resolved.mode === "online" ? resolved.url : undefined;
       assertBootstrapUrlPasswordStorable(argv, url);
       warnIfCommandLineHoldsLiteralCredential(
@@ -1483,6 +1489,10 @@ export async function handler(argv: Arguments): Promise<void> {
       // validateAccept. Everything from here (the config, key file, record,
       // result, and every consent record below) is written identically.
       if (ready.mode === "online" || ready.mode === "endpointRun") {
+        // Opened at the decision to run, ahead of every step that can fail
+        // from here (the credential reads included), so each such failure
+        // ends the stream with its terminal event.
+        const eventStream = openEventStream(options.eventStream);
         const { outcome, configWriteError } = await runOnlineBootstrap({
           connection: ready.connection,
           dataSpec: ready.dataSpec,
@@ -1501,7 +1511,7 @@ export async function handler(argv: Arguments): Promise<void> {
           loggerName: "accept",
           logFile: options.logFile,
           writeRecord: options.record,
-          eventStream: options.eventStream,
+          eventStream,
           allowMemoryShortfall: options.allowMemoryShortfall,
           reuseExistingConfig: ready.reuseExistingConfig,
           provision: options.serverProvisionRead,

@@ -7,11 +7,12 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterEach, beforeEach, expect, test } from "vitest";
 
-import { prepareForExchange } from "@alcove/core";
+import { encodeInvitation, prepareForExchange } from "@alcove/core";
 import type { ConnectionConfig, ExchangeSpec } from "@alcove/core";
 
 import { saveConfig } from "../../../src/config";
 import { saveKeyFile } from "../../../src/keyFile";
+import { FUTURE, sampleToken } from "../../invitationDisplayTestSupport";
 
 /**
  * A failed run under --event-stream, as a supervisor sees it: the CLI as a
@@ -263,6 +264,41 @@ test(
     expect(run.status).toBe(64);
     const terminal = expectOneTerminalError(run, "alcove");
     expect(terminal.message).toContain("alcove.key");
+  },
+  RUN_DEADLINE_MS + 10_000,
+);
+
+test(
+  "an acceptance refused after consent, at its credential read, ends the stream",
+  async () => {
+    // The URL form reads an `@path` credential only once the operator has
+    // consented and the acceptance is going to run; the invitation's own
+    // endpoint form reads none there.
+    const input = path.join(work, "accept-input.csv");
+    fs.writeFileSync(
+      input,
+      "first_name,last_name,dob,ssn\nAlice,Smith,1990-01-02,123456789\n",
+    );
+    const missing = path.join(work, "missing-password");
+    const run = await runCli([
+      "accept",
+      "--consent-to-terms",
+      "--identity",
+      "Agency B",
+      "sftp://127.0.0.1/drop",
+      await encodeInvitation(sampleToken(FUTURE())),
+      input,
+      "--config-file",
+      path.join(work, "accept.yaml"),
+      "--key-file",
+      path.join(work, "accept.key"),
+      "--server-password",
+      `@${missing}`,
+      "--event-stream",
+    ]);
+    expect(run.status).toBe(64);
+    const terminal = expectOneTerminalError(run, "accept");
+    expect(terminal.message).toContain("missing-password");
   },
   RUN_DEADLINE_MS + 10_000,
 );
