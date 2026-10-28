@@ -4,7 +4,7 @@ title: "Rotation Hardening Design"
 
 # Rotation hardening: recognizing a stale copy, and healing a one-sided rotation
 
-_Status: design only, not built, and proposed for the maintainer's ratification; the maintainer chose to always accept the previous secret, to keep the WebRTC stale-copy limit, and to send a random value from the responder after key confirmation, and two questions are left open ([Open questions](#open-questions)).
+_Status: design only, not built, and proposed for the maintainer's ratification; the maintainer chose to always accept the previous secret, to keep the WebRTC stale-copy limit, and to send a random value from the responder after key confirmation; the SC-12 wording of question 3 was decided by a review of the options whose positions converged on (a), which the maintainer did not object to, and is confirmed by this note's ratification; and two questions are left open ([Open questions](#open-questions)).
 Nothing here is normative.
 The rotation and the key exchange are specified in [PROTOCOL.md](../spec/PROTOCOL.md#shared-secret-rotation), the browser record in [MANAGED_EXCHANGE_RECORD.md](../spec/MANAGED_EXCHANGE_RECORD.md#the-secret-is-a-linear-resource), the key file in [EXCHANGE_FILE.md](../spec/EXCHANGE_FILE.md#the-key-file-schema), and the threat model this changes in [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#rollback-at-rest-copies-can-silently-resurrect).
 The spec changes the design implies are listed in [Proposed spec and documentation changes](#proposed-spec-and-documentation-changes), to be made with the stage that builds each.
@@ -172,7 +172,7 @@ The store order, for a run under a secret `X`:
 
 Why this order:
 
-- **The responder-value frame proves the responder stored**, so the initiator never needs a previous secret: when it stores, the partner already holds the same next secret.
+- **The responder-value frame proves the responder stored**, so the initiator's store keeps no previous secret: when it stores, the partner already holds the same next secret.
 - **Each side checks `expires` at the last point before it commits**, the initiator before message 3 and the responder before its store, so an expired secret leaves nothing stored on either side.
   Once it has sent message 3, the initiator stores the next secret whatever its clock reads, since the responder may already hold it.
 
@@ -190,12 +190,16 @@ The cut points.
 Every row leaves each side either rotated or holding `X`, which the next run accepts.
 Only the third row leaves the two sides on different current secrets, and any cut between the responder's store and the initiator's store reaches it, not only a lost responder-value frame.
 
-A heal run is a run under `X` like any other, so the same rows apply to it, with one difference: a side that was ahead keeps its unshared secret beside `X` until its own store in that run.
-If the heal run stops in the third row with the formerly ahead side as initiator, that side holds its unshared secret and `X`, and the responder holds a new next secret and `X`, so the run after it again finds `X`.
+A heal run is a run under `X` like any other, so the same rows apply to it, with one difference: a side that was ahead keeps its unshared secret beside `X` until its own store in that run, whichever role it takes.
+If the heal run stops in the third row with the formerly ahead side as initiator, that side has made no store in it and still holds its unshared secret and `X` from the cut run, where it responded, and the responder holds a new next secret and `X`, so the run after it again finds `X`.
 A side drops `X` only once the partner is shown to hold the next secret: the initiator at its store, after the responder-value frame, and the responder when the initiator's frame arrives.
 So no sequence of cut runs leaves the two sides without a common secret, within the durability limits fact 4 states; [What does not heal](#what-does-not-heal) lists the rest.
 
-Under this order only a responder keeps a previous secret, and only an initiator can be left behind.
+Which side holds a previous secret follows from this order.
+A side keeps one only when it stored as the responder of the run that rotated; a store made as initiator keeps none, and drops any previous or unshared secret the side held.
+In a cut run the side left behind is that run's initiator and the side left ahead its responder.
+The ahead side may take either role in the next run: on `sftp` and `filedrop` the role follows arrival order (`packages/core/src/connection/fileSyncRendezvous.ts`), so it swaps from run to run, and a heal run can have the ahead side as initiator, as above.
+On `webrtc` the roles are fixed, the inviter always the responder ([WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#roles)), so there only the inviter ever holds a previous secret.
 
 The other order would have the responder store only after a frame from the initiator, with the initiator storing, and keeping `X` as its previous secret, before it sends that frame.
 A lost responder-value frame would then leave nothing stored on either side, but the responder could not store until that further frame arrived, a second added message, and the initiator would keep the previous secret instead.
@@ -222,7 +226,8 @@ Every cut heals under either order; this note proposes the first, for its one ad
 The responder's rotation write keeps the secret the handshake used as the **previous secret**, beside the next one ([the store order](#what-it-does-to-the-one-sided-rotation)).
 The responder drops the previous secret as soon as the AEAD layer opens the initiator's first frame after the responder-value frame, in a write made before the run ends.
 By fact 4 that frame proves the initiator stored the next secret, so the previous secret is no longer needed.
-The initiator keeps none: it stores only after the responder-value frame has shown that the responder stored.
+The initiator's store keeps none: it is made only after the responder-value frame has shown that the responder stored.
+So a side holds a previous secret only after a run in which it stored as the responder, and it may take either role in the next run ([the store order](#what-it-does-to-the-one-sided-rotation)).
 
 The previous secret therefore stays at rest only on the responder of a run that ended between the responder's store and the initiator's first frame.
 That window is the responder-value frame's transit, the initiator's unwrap and rotation write, and one transit back, and it is exactly the window a one-sided rotation comes from.
@@ -247,7 +252,7 @@ Rules that bound it:
 
 The rotation-in-flight marker stays as it is.
 It says this side may be behind; a previous secret says this side may be ahead.
-Under the store order the side that may be behind is an initiator and the side that may be ahead a responder.
+Under the store order the side that may be behind was the initiator of the cut run, and the side that may be ahead its responder.
 
 ### Which secret a handshake uses
 
@@ -276,7 +281,7 @@ The behind side appends the verifier of the secret it retires, the same one, so 
 ### Meeting on WebRTC
 
 On `webrtc` the ahead side must also be found at the peer ids of its previous secret, because the behind side knows no others (fact 1).
-Only a responder keeps a previous secret, and on `webrtc` the responder is always the inviter ([WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#roles)), so the ahead side there is always the inviter:
+A side keeps a previous secret only when it stored as the responder of the run that rotated, and on `webrtc` the responder is always the inviter ([WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#roles)), so the ahead side there is always the inviter:
 
 - **The inviter**, which listens, registers under the inviter peer id of both secrets in every connection attempt while it holds a previous secret.
 - **The acceptor**, which dials, never holds a previous secret on `webrtc`, and offers to the inviter peer id of its current secret as today.
@@ -299,7 +304,7 @@ So the relay key and the handshake secret are decoupled:
   A registrar still holding that key verifies the proof and takes the rotation; one already holding the current key, because the rotation landed and only its answer was lost, takes the request as a renewal, which it accepts under a proof made under the key it replaced ([PROTOCOL.md](../spec/PROTOCOL.md#the-registrar-request-proof), Verification).
   Neither the wire nor the registrar changes.
   A party holding no previous secret retries as today.
-  That includes every initiator, which never keeps one ([the store order](#what-it-does-to-the-one-sided-rotation)): an initiator stopped between its store and its registrar's answer ends its next run with the re-enrollment step, as any party stopped there does today.
+  That includes a side whose last store it made as initiator, since that store keeps no previous secret ([the store order](#what-it-does-to-the-one-sided-rotation)): a side stopped between such a store and its registrar's answer ends its next run with the re-enrollment step, as any party stopped there does today.
 - **Its registration after a heal run** is signed under the key its registrar holds, the key of the current secret at the run's start, and not under the key of the secret the handshake used.
   Both apps already sign with the secret held at the run's start: the command line with the secret it loaded (`registerRotatedRelayKey` in `apps/cli/src/relayKeyRotation.ts`), the browser with its copy of the record read inside the run+rotate lock ([PROTOCOL.md](../spec/PROTOCOL.md#the-invitations-relay-locator), The run credential).
   The build keeps that true when the handshake used the previous secret.
@@ -512,6 +517,7 @@ Three items, the first ahead of the other two, which are independent of each oth
      A probe leg in `support/fips-probe/` for the `AES-KW` call and for whether the call that draws the two values in the FIPS image draws from the module's DRBG; until it shows that, no document says either value comes from the module.
      The `COMPLIANCE.md` SC-12 sentence the construction makes true.
      Both apps pass their rotation write and are otherwise unchanged.
+     Until stage 3 and the app items give the responder a previous secret, a cut between the responder's store and the initiator's store (a lost or unopenable responder-value frame included) is not healed and needs a re-invite, as a lost message 3 does today.
      **Security review: required.** It changes the handshake, adds a frame, and replaces how the next secret is made: the two wraps, their keys' derivation, the responder value and the next secret's derivation.
    - **Stage 3, the previous secret and the history.**
      The message changes, the trial verification, the history verifier and its proofs and notice, the labels and their label-space check, the regenerated key-exchange vectors, the key-file schema fields, and the relay-credential rule.
@@ -550,7 +556,7 @@ Questions 1 to 4 are decided; questions 5 and 6 are open, the maintainer's to de
    SP 800-57 section 8.1.5.2.2.2 asks that "a key-wrapping key shall be generated and distributed in accordance with Sections 8.1.5.2.1 and 8.1.5.2.2 or established using a key-establishment scheme as defined in Section 8.1.5.2.3".
    The wrapping keys are not generated and distributed but derived from the session key the handshake establishes, so the second alternative is the one that reaches them, and Section 8.1.5.2.3 asks for approved key-agreement schemes; the SC-12 row claims no SP 800-56A scheme for the session key the wrapping keys derive from.
    The next secret's derivation takes the key-agreement output, in the hybrid form SP 800-56C Rev. 2 admits but without the scheme that form presumes.
-   Decided with this note's ratification: (a), widened to state every gap.
+   Decided: (a), widened to state every gap, by a review of the options whose positions converged on it, with no maintainer ruling and no objection from the maintainer; this note's ratification confirms it.
    The row states rotation as value independence, not key update, and states the gaps: the wrapping keys and the next secret rest on the key establishment it disclaims, so section 8.1.5.2.3 is not met; the SP 800-56C hybrid form is used without its scheme; and whether the module performs the AES-KW calls, and the random values' source, are unmeasured until the probe leg measures them.
    It makes no flat claim of conformance to section 8.2.3.1; the sentence is in [Proposed spec and documentation changes](#proposed-spec-and-documentation-changes).
    - (a) State it beside the rotation sentence: the wrapping keys come from the same session key, and the next secret from the same key-agreement output, whose scheme the row already disclaims.
