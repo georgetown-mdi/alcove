@@ -71,13 +71,13 @@ The `inviting party` name is your partner's own word; Alcove has not verified it
 You should see: `wrote config to ./alcove.yaml` and `wrote key file to ./.alcove.key`.
 
 > [!NOTE]
-> On a WebRTC invitation from [Invite a partner](./cli-invite.md), add `--defer-exchange`:
+> On a WebRTC invitation from [Invite a partner](./cli-invite.md), add `--no-run`:
 >
 > ```sh
-> alcove accept --defer-exchange --identity "Riverside County CoC" @invitation.txt input.csv
+> alcove accept --no-run --identity "Riverside County CoC" @invitation.txt input.csv
 > ```
 >
-> Accepting then writes `alcove.yaml` and `.alcove.key` and stops, as on SFTP, so you can set your columns in step 3. Without `--defer-exchange`, the terms open with `This acceptance runs the exchange itself`, the question reads `Accept this invitation and run the exchange now, through <server>?`, and answering `y` runs the exchange at once, with no chance to change the columns you send. Accept that way only at the agreed time, while your partner runs.
+> Accepting then writes `alcove.yaml` and `.alcove.key` and stops, as on SFTP, so you can set your columns in step 3. An invitation that requests columns from you stops the same way without the flag, and names them. Otherwise, without `--no-run`, the terms open with `This acceptance runs the exchange itself`, the question reads `Accept this invitation and run the exchange now, through <server>?`, and answering `y` runs the exchange at once, with no chance to change the columns you send. Accept that way only at the agreed time, while your partner runs.
 
 ### 3. Set your ID column, and the columns your partner asked for
 
@@ -90,7 +90,7 @@ You should see: `wrote config to ./alcove.yaml` and `wrote key file to ./.alcove
     is_payload: false
 ```
 
-**Columns your partner asked for.** On WebRTC, accepting with `--defer-exchange` already wrote an entry for each column under `columns the inviting party requests from you`, with `is_payload: false`, which does not send it. For each one you agreed to send, change it to `is_payload: true`. If your file has no column of that name, accepting stops instead and names it: add the column to your file, or ask your partner for a new invitation. On SFTP or a shared folder, for each column under `columns the inviting party requests from you` that you agreed to send, add an entry at the end of the `metadata` block in `alcove.yaml`:
+**Columns your partner asked for.** Accepting wrote an entry in the `metadata` block for each column under `columns the inviting party requests from you`, and printed their names. An entry with `is_payload: false` is not sent. For each one you agreed to send, change it to `is_payload: true`:
 
 ```yaml
   - name: Case_Manager_Phone_Number
@@ -99,7 +99,7 @@ You should see: `wrote config to ./alcove.yaml` and `wrote key file to ./.alcove
     is_payload: true
 ```
 
-A column not listed in `metadata`, or listed with `is_payload: false`, is not sent.
+If your file has no column of that name, accepting stops instead and names it: add the column to your file, or ask your partner for a new invitation. A column not listed in `metadata`, or listed with `is_payload: false`, is not sent.
 
 A column you do not use, such as `Program`, prints a warning at every run. To stop the warning, give it an entry with `type: other`, `role: ignored` and `is_payload: false`.
 
@@ -145,7 +145,7 @@ Nothing to fill in: accepting wrote the connection.
 
 ### 5. Both of you: run the first exchange
 
-On WebRTC, accepting without `--defer-exchange` in step 2 already ran the first exchange: skip this step.
+On WebRTC, if accepting in step 2 ran the exchange, the first exchange is done: skip this step.
 
 At the agreed time, while your partner runs the same command:
 

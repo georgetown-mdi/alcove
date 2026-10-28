@@ -29,14 +29,15 @@ import type { BrokerProcess } from "../../signaling/brokerProcess";
 import type { TlsBrokerFront } from "../../signaling/tlsBrokerFront";
 
 /**
- * The deferred acceptance of a webrtc invitation: the inviting CLI mints an
- * invitation from a `channel: webrtc` configuration and stops, the accepting
- * CLI accepts it with `--defer-exchange` and stops, and later both run
- * `alcove exchange` from what they wrote. Every step is a real child process,
- * so this shows the invitation's rendezvous and expiry admit an exchange run
- * after the acceptance rather than inside it, and that the configuration the
- * acceptance writes lists the column the inviting party requested, so one
- * edit sends it.
+ * A webrtc acceptance that writes its configuration and stops, then runs
+ * `alcove exchange`. The inviting CLI mints an invitation requesting a column
+ * from a `channel: webrtc` configuration, the accepting CLI stops for that
+ * request, and later both run `alcove exchange` from what they wrote; or the
+ * inviting CLI waits online while the acceptance stops under `--no-run` and
+ * its `alcove exchange` meets it. Every step is a real child process, so this
+ * shows the invitation's rendezvous and expiry admit an exchange run after
+ * the acceptance rather than inside it, and that the configuration the
+ * acceptance writes lists the requested column, so one edit sends it.
  *
  * The webrtc endpoint dials `wss://`, so the coordination server sits behind
  * the TLS front `oneCommandAcceptance.test.ts` uses, with the same
@@ -44,7 +45,7 @@ import type { TlsBrokerFront } from "../../signaling/tlsBrokerFront";
  */
 if (loopbackTlsCert === null && prerequisitesAreRequired(process.env))
   throw new Error(
-    "no loopback TLS certificate could be minted here, so the deferred " +
+    "no loopback TLS certificate could be minted here, so the no-run " +
       "webrtc acceptance would silently skip in an environment that is " +
       "supposed to supply one. Install `openssl`, or set " +
       `${ALLOW_MISSING_PREREQUISITES_ENV}=1 to skip the leg.`,
@@ -83,7 +84,7 @@ const parties: Array<RunningCli> = [];
 
 beforeAll(async () => {
   if (loopbackTlsCert === null) return;
-  suiteDir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-deferred-suite-"));
+  suiteDir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-no-run-suite-"));
   certPath = path.join(suiteDir, "broker-front.pem");
   fs.writeFileSync(certPath, loopbackTlsCert.cert);
   broker = await startBrokerProcess();
@@ -91,7 +92,7 @@ beforeAll(async () => {
 }, 90_000);
 
 beforeEach(() => {
-  work = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-deferred-"));
+  work = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-no-run-"));
 });
 
 afterEach(async () => {
@@ -156,7 +157,7 @@ function resultTable(folder: string): { header: string; rows: string[] } {
 }
 
 liveTest(
-  "a deferred acceptance writes a configuration a later alcove exchange runs once the operator sends the requested column",
+  "an acceptance stopped by a request writes a configuration a later alcove exchange runs once the operator sends the requested column",
   async () => {
     const inviteInput = path.join(work, "invite-input.csv");
     fs.writeFileSync(inviteInput, INVITE_CSV);
@@ -207,12 +208,11 @@ liveTest(
     // which is what a later exchange's handshake is checked against.
     expect(loadKeyFile(inviteKey)?.expires).toBeDefined();
 
-    // The deferred acceptance: no exchange, no result, and a configuration
-    // listing the requested column, not sent.
-    const accept = await runToExit("the deferred acceptance", [
+    // The acceptance has everything a run needs, but the invitation requests
+    // a column: it writes a configuration listing it, not sent, and stops.
+    const accept = await runToExit("the acceptance stopped by the request", [
       "accept",
       "--consent-to-terms",
-      "--defer-exchange",
       invitation,
       acceptInput,
       "--config-file",
@@ -227,6 +227,11 @@ liveTest(
     expect(accept.stderr).not.toContain(
       "coordination server this invitation names",
     );
+    expect(accept.stderr).toContain(
+      "this acceptance did not run the exchange: the invitation requests " +
+        "columns from you",
+    );
+    expect(accept.stderr).toContain(`\n  - ${REQUESTED_COLUMN}\n`);
     expect(fs.existsSync(acceptKey)).toBe(true);
     const written = parseExchangeSpec(
       YAML.parse(fs.readFileSync(acceptConfig, "utf8")),
@@ -302,6 +307,91 @@ liveTest(
     expect(resultTable(acceptOut).rows).toHaveLength(2);
 
     // The handshake rotated the secret on both sides alike.
+    expect(loadKeyFile(acceptKey)?.sharedSecret).toBe(
+      loadKeyFile(inviteKey)?.sharedSecret,
+    );
+  },
+  240_000,
+);
+
+liveTest(
+  "an online inviter still waiting meets the alcove exchange a stopped acceptance runs",
+  async () => {
+    const inviteInput = path.join(work, "invite-input.csv");
+    fs.writeFileSync(inviteInput, INVITE_CSV);
+    const acceptInput = path.join(work, "accept-input.csv");
+    fs.writeFileSync(acceptInput, ACCEPT_CSV);
+    const inviteConfig = path.join(work, "invite.yaml");
+    const inviteKey = path.join(work, "invite.key");
+    const acceptConfig = path.join(work, "accept.yaml");
+    const acceptKey = path.join(work, "accept.key");
+    const inviteOut = path.join(work, "invite-out");
+    const acceptOut = path.join(work, "accept-out");
+
+    // The online inviter: it prints the invitation and waits at the
+    // rendezvous, saving its configuration only once a partner meets it.
+    const inviter = party([
+      "invite",
+      `wss://${BROKER_HOST}:${front.port}${broker.path}`,
+      inviteInput,
+      inviteOut,
+      "--config-file",
+      inviteConfig,
+      "--key-file",
+      inviteKey,
+      "--identity",
+      "invite",
+      "--accept-timeout",
+      "80s",
+      "--no-record",
+    ]);
+    const invitation = await inviter.firstStdoutLine(60_000);
+
+    await runToExit("the stopped acceptance", [
+      "accept",
+      "--consent-to-terms",
+      "--no-run",
+      invitation,
+      acceptInput,
+      "--config-file",
+      acceptConfig,
+      "--key-file",
+      acceptKey,
+      "--identity",
+      "accept",
+    ]);
+    editYaml(acceptConfig, (doc) => {
+      const metadata = doc.get("metadata") as YAML.YAMLSeq<YAML.YAMLMap>;
+      for (const entry of metadata.items)
+        if (entry.get("name") === "id") entry.set("is_payload", false);
+    });
+
+    const [inviteRun, acceptRun] = await Promise.all([
+      inviter.finished,
+      party([
+        "exchange",
+        "--config-file",
+        acceptConfig,
+        "--key-file",
+        acceptKey,
+        "--peer-timeout",
+        PARTY_PEER_TIMEOUT,
+        "--no-record",
+        acceptInput,
+        acceptOut,
+      ]).finished,
+    ]);
+    expect(
+      inviteRun.exitCode,
+      describeCliRun("the online inviter", inviteRun),
+    ).toBe(0);
+    expect(
+      acceptRun.exitCode,
+      describeCliRun("the accepting party's exchange", acceptRun),
+    ).toBe(0);
+    expect(resultTable(inviteOut).rows).toHaveLength(2);
+    expect(resultTable(acceptOut).rows).toHaveLength(2);
+    expect(fs.existsSync(inviteConfig)).toBe(true);
     expect(loadKeyFile(acceptKey)?.sharedSecret).toBe(
       loadKeyFile(inviteKey)?.sharedSecret,
     );
