@@ -6,7 +6,6 @@ import {
   ACCEPTOR_NAME_CONTROL_CHAR_PROBLEM,
   ACCEPTOR_NAME_PRIVATE_KEY_PROBLEM,
   ACCEPTOR_NAME_TEXT_DIRECTION_PROBLEM,
-  ACCEPTOR_RECEIVES_NOTHING,
   ACCEPTOR_SEND_FORWARD_REFERENCE,
   acceptUnsupported,
   acceptorConsentName,
@@ -262,69 +261,75 @@ describe("acceptor ledger rows", () => {
     );
   });
 
-  test.each([
-    { name: "with a payload send list", payload: baseTerms.payload },
+  describe.each([
     {
-      name: "without a payload send list",
-      payload: { send: [], receive: [] },
+      algorithm: "psi" as const,
+      name: "psi, with a payload send list",
+      terms: { payload: baseTerms.payload },
+      shared: "Matched rows + enrollment_date, program_code",
+      onlyPartner: "Nothing - only your partner receives the matched results",
+      neither: "Nothing - neither party receives the matched results",
     },
-  ])(
-    "the receive row promises a result only when the terms share it ($name)",
-    ({ payload }) => {
-      const shared = acceptorLedgerRows(
-        makeToken({
-          output: { expectsOutput: true, shareWithPartner: true },
-          payload,
-        }),
-        HOW_IT_RUNS,
-      );
-      expect(rowValue(shared, "You will receive")).toBe(
-        (payload?.send?.length ?? 0) > 0
-          ? "Matched rows + enrollment_date, program_code"
-          : "Matched rows",
-      );
-      expect(rowMuted(shared, "You will receive")).toBeUndefined();
-
-      const withheld = acceptorLedgerRows(
-        makeToken({
-          output: { expectsOutput: true, shareWithPartner: false },
-          payload,
-        }),
-        HOW_IT_RUNS,
-      );
-      expect(rowValue(withheld, "You will receive")).toBeUndefined();
-      expect(rowMuted(withheld, "You will receive")).toBe(
-        ACCEPTOR_RECEIVES_NOTHING,
-      );
-      expect(rowValue(withheld, "Results go to")).toBe("Only your partner");
+    {
+      algorithm: "psi" as const,
+      name: "psi, without a payload send list",
+      terms: { payload: { send: [], receive: [] } },
+      shared: "Matched rows",
+      onlyPartner: "Nothing - only your partner receives the matched results",
+      neither: "Nothing - neither party receives the matched results",
     },
-  );
-
-  test("the receive row states no result when neither party receives one", () => {
-    const rows = acceptorLedgerRows(
-      makeToken({ output: { expectsOutput: false, shareWithPartner: false } }),
-      HOW_IT_RUNS,
-    );
-    expect(rowMuted(rows, "You will receive")).toBe(ACCEPTOR_RECEIVES_NOTHING);
-    expect(rowValue(rows, "Results go to")).toBe("Neither party");
-  });
-
-  test("a count-only receive row is unchanged whichever way the terms point", () => {
-    for (const shareWithPartner of [true, false]) {
-      const rows = acceptorLedgerRows(
-        makeToken({
-          algorithm: "psi-c",
-          linkageKeys: [baseTerms.linkageKeys[0]],
-          payload: { send: [], receive: [] },
-          output: { expectsOutput: true, shareWithPartner },
-        }),
-        HOW_IT_RUNS,
-      );
-      expect(rowValue(rows, "You will receive")).toBe(
+    {
+      algorithm: "psi-c" as const,
+      name: "psi-c",
+      terms: {
+        linkageKeys: [baseTerms.linkageKeys[0]],
+        payload: { send: [], receive: [] },
+      },
+      shared:
         "How many records you have in common - no matched rows and no shared " +
-          "columns",
+        "columns",
+      onlyPartner: "Nothing - only your partner receives the count",
+      neither: "Nothing - neither party receives the count",
+    },
+  ])("the receive row beside the results row ($name)", (kase) => {
+    const rowsFor = (
+      expectsOutput: boolean,
+      shareWithPartner: boolean,
+    ): ReturnType<typeof acceptorLedgerRows> =>
+      acceptorLedgerRows(
+        makeToken({
+          ...kase.terms,
+          algorithm: kase.algorithm,
+          output: { expectsOutput, shareWithPartner },
+        }),
+        HOW_IT_RUNS,
       );
-    }
+
+    test("the acceptor receives", () => {
+      const rows = rowsFor(true, true);
+      expect(rowValue(rows, "You will receive")).toBe(kase.shared);
+      expect(rowMuted(rows, "You will receive")).toBeUndefined();
+      expect(rowValue(rows, "Results go to")).toBe("You and your partner");
+
+      const acceptorOnly = rowsFor(false, true);
+      expect(rowValue(acceptorOnly, "You will receive")).toBe(kase.shared);
+      expect(rowMuted(acceptorOnly, "You will receive")).toBeUndefined();
+      expect(rowValue(acceptorOnly, "Results go to")).toBe("Only you");
+    });
+
+    test("only the inviter receives", () => {
+      const rows = rowsFor(true, false);
+      expect(rowValue(rows, "You will receive")).toBeUndefined();
+      expect(rowMuted(rows, "You will receive")).toBe(kase.onlyPartner);
+      expect(rowValue(rows, "Results go to")).toBe("Only your partner");
+    });
+
+    test("neither party receives", () => {
+      const rows = rowsFor(false, false);
+      expect(rowValue(rows, "You will receive")).toBeUndefined();
+      expect(rowMuted(rows, "You will receive")).toBe(kase.neither);
+      expect(rowValue(rows, "Results go to")).toBe("Neither party");
+    });
   });
 
   test("from the columns step on, the send row names the disclosed metadata columns, isolated", () => {

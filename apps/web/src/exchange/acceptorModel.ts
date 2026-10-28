@@ -12,7 +12,12 @@ import { commitAcceptance } from "@psi/acceptConsent";
 
 import { isolatedColumnName } from "@components/ColumnName";
 
-import { COUNT_ONLY_RECEIVE_ROW_VALUE, settledReceiveValue } from "@psi/ledger";
+import {
+  COUNT_ONLY_RECEIVE_ROW_VALUE,
+  ONLY_PARTNER_RECEIVES_COUNT,
+  ONLY_PARTNER_RECEIVES_RESULTS,
+  settledReceiveValue,
+} from "@psi/ledger";
 import { dateTimeLabel } from "@psi/formatting";
 
 import {
@@ -134,8 +139,7 @@ export function acceptorRailFacts(attention?: string): Array<RailFact> {
  * Result direction phrased from the ACCEPTOR's seat, read from the shared
  * invitation summary: `inviterReceivesOutput` is whether the inviter receives,
  * `inviterSharesResult` whether the acceptor (its partner) receives -- so from
- * the acceptor's side the two roles swap. The receive row reads the same
- * `inviterSharesResult`, so the two rows cannot disagree.
+ * the acceptor's side the two roles swap.
  */
 function acceptorResultsGoTo(summary: InvitationSummary): string {
   const acceptorReceives = summary.inviterSharesResult;
@@ -203,23 +207,30 @@ export function acceptorLedgerTag(invitingParty: string): string {
   return `Proposed by ${invitingParty}`;
 }
 
-/** The receive row when the terms give the acceptor no result. */
-export const ACCEPTOR_RECEIVES_NOTHING =
-  "No matched rows and no columns from your partner";
-
-/** The acceptor's "You will receive" row. It reads the fact the "Results go to"
- * row reads ({@link acceptorResultsGoTo}), so terms that give the acceptor no
- * result never promise matched rows or columns. A count-only run keeps the
- * count-only wording whichever way the terms point. */
+/** The acceptor's "You will receive" row, read from the invitation's result
+ * direction and algorithm and from the inviter's send list. */
 function acceptorReceiveRow(
   summary: InvitationSummary,
   received: ReadonlyArray<string>,
 ): AcceptorLedgerRow {
   const label = "You will receive";
-  if (summary.algorithm === "psi-c")
-    return { label, value: COUNT_ONLY_RECEIVE_ROW_VALUE };
-  if (!summary.inviterSharesResult)
-    return { label, muted: ACCEPTOR_RECEIVES_NOTHING };
+  const countOnly = summary.algorithm === "psi-c";
+  if (!summary.inviterSharesResult) {
+    if (summary.inviterReceivesOutput)
+      return {
+        label,
+        muted: countOnly
+          ? ONLY_PARTNER_RECEIVES_COUNT
+          : ONLY_PARTNER_RECEIVES_RESULTS,
+      };
+    return {
+      label,
+      muted: countOnly
+        ? "Nothing - neither party receives the count"
+        : "Nothing - neither party receives the matched results",
+    };
+  }
+  if (countOnly) return { label, value: COUNT_ONLY_RECEIVE_ROW_VALUE };
   return {
     label,
     value:
