@@ -50,10 +50,11 @@ jobs:
   mutation:
     name: Core security-file mutation score
     runs-on: ubuntu-26.04
-    # Upper bound on a hung run. The work fits well under this: the corpus
-    # measures around two minutes plus install and the core build, and any
-    # single mutant that reaches two minutes is failed as a timeout by the
-    # Stryker configuration rather than left to run.
+    # Upper bound on a hung run. The work fits well under this: the dry run
+    # measures about five minutes and the mutants about eight, plus install
+    # and the core build, and any single mutant that reaches two minutes is
+    # failed as a timeout by the Stryker configuration rather than left to
+    # run.
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7

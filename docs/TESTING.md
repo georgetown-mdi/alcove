@@ -1068,10 +1068,11 @@ npm run test:mutation
 ```
 
 It runs against an installed tree (`npm ci` plus the core build). On the
-nightly's Ubuntu runner, at the 4 test runners Stryker picks there, the
-three files' 366 mutants take 2.5 to 6.5 minutes, about 2.5 of them the initial
-run of the whole core unit tier. Stryker is not a repository dependency by
-design -- it drags in a second copy of Vitest and its own TypeScript -- so
+nightly's Ubuntu runner, at the 4 test runners Stryker picks there, the three
+files' 413 mutants take about 13 minutes, about 5 of them the initial run of the
+whole core unit tier, which the configuration caps at 15
+(`dryRunTimeoutMinutes`). Stryker is not a repository dependency by design -- it
+drags in a second copy of Vitest and its own TypeScript -- so
 `scripts/stryker-security.mjs` installs it into a private prefix under the work
 directory: `$RUNNER_TEMP` in CI, the system temp directory locally, and
 `ALCOVE_STRYKER_WORK_DIR` overrides both. The HTML and JSON reports are written
