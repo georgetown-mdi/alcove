@@ -23,7 +23,9 @@
 // every answer of a round after the first reports `changed: false`, or once
 // `extraRounds` rounds have run since the first round or the latest input
 // round. An input file for the next round starts it again. `next` names the
-// round to run or why the panel stopped.
+// round to run or why the panel stopped. Printing a seat's message appends
+// `{seat, round}` to relayed.jsonl in <dir>, so a round sent once that
+// produced no answer file stops the panel rather than being sent again.
 //
 // Exits 0 with the text on stdout; 1 when the round is refused, with the
 // reason; 2 on a usage error or a directory that is not a panel's.
@@ -36,6 +38,7 @@ import {
   FIRST_ROUND_KEYS,
   LATER_ROUND_KEYS,
   answerFileName,
+  appendRelayLog,
   inputFileName,
   readAnswerDir,
   readPanel,
@@ -99,7 +102,9 @@ function writeClause(state, seat, round) {
     round === 1
       ? `exactly the keys ${keyList(FIRST_ROUND_KEYS)}, each non-empty text`
       : `exactly the keys ${keyList(LATER_ROUND_KEYS)}: \`changed\` is true when your position differs from your latest answer, and \`movedBy\` names the argument that moved you and the seat that made it, or is empty text when \`changed\` is false`;
-  return `Your structured result is a file, not your reply. With the Write tool, write one JSON object with ${fields}, to ${path}, and write no other file. Then run \`${checkCommand(state, path)}\`, the one script you run, and fix the file until it prints ok; once it has, do not change the file. Reply with the one line \`WROTE ${path}\`. Do not spawn or message any agent.`;
+  return `The briefing's rule to read only under ${state.base} and run no builds or tests has one exception, this panel's answer directory ${state.dir}: you write your own answer file there, read the other panelists' answers there when a round names them, and run the answer-check script below.
+
+Your structured result is a file, not your reply. With the Write tool, write one JSON object with ${fields}, to ${path}, and write no other file. Then run \`${checkCommand(state, path)}\`, the one script you run, and fix the file until it prints ok; once it has, do not change the file. Reply with the one line \`WROTE ${path}\`. Do not spawn or message any agent.`;
 }
 
 /** The latest answer of each seat from rounds before `round`, by seat. */
@@ -148,11 +153,23 @@ export function roundRefusal(state, round) {
   return null;
 }
 
-/** `round <N>` for the round to run next, or `stop <reason>`. */
+/**
+ * `round <N>` for the round to run next, or `stop <reason>`. N is one past the
+ * last round with an answer file, so a round already sent whose seats wrote
+ * no file would come up again: it stops instead, naming the seats sent.
+ */
 export function nextStep(state) {
   const last = Math.max(0, ...state.answers.map((entry) => entry.round));
-  const refusal = roundRefusal(state, last + 1);
-  return refusal === null ? `round ${last + 1}` : `stop ${refusal}`;
+  const round = last + 1;
+  const sent = state.relayed.get(round);
+  if (sent !== undefined) {
+    const seats = state.seats
+      .map((seat) => seat.name)
+      .filter((name) => sent.has(name));
+    return `stop empty: round ${round} was sent to ${seats.join(", ")} and no seat wrote an answer file`;
+  }
+  const refusal = roundRefusal(state, round);
+  return refusal === null ? `round ${round}` : `stop ${refusal}`;
 }
 
 /**
@@ -242,6 +259,7 @@ async function main(argv) {
     const text = retry
       ? retryFor(state, first, round)
       : messageFor(state, first, round);
+    if (!retry) appendRelayLog(state.dir, first, round);
     process.stdout.write(`${text}\n`);
   } catch (error) {
     fail(1, error.message);

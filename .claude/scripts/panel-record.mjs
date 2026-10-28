@@ -230,6 +230,13 @@ export function assemble(state) {
 export function hashProblems(state) {
   const problems = [];
   const recorded = readHashLog(state.dir);
+  for (const line of recorded) {
+    if (line.unreadable !== undefined) {
+      problems.push(
+        `written.jsonl holds a line that is not a recorded check: ${line.unreadable}`,
+      );
+    }
+  }
   const names = state.seats.map((seat) => seat.name);
   for (const entry of state.answers) {
     if (!names.includes(entry.seat)) {

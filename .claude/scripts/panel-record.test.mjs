@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 
+import { appendRelayLog } from "./lib/panelAnswers.mjs";
 import {
   answer,
   panelDir,
@@ -193,6 +194,19 @@ describe("a deliberation the chair relayed as printed", () => {
     });
     expect(run([dir, "--chair", chairPath]).status).toBe(0);
   });
+
+  it("keeps the rounds that produced answers and names an empty round in `next`", async () => {
+    const dir = panelDir();
+    for (const seat of NAMES) writeAnswer(dir, seat, 1);
+    for (const seat of NAMES) appendRelayLog(dir, seat, 2);
+    const result = run([dir]);
+    const next =
+      "stop empty: round 2 was sent to failure-modes, design-ux, two-party-state and no seat wrote an answer file";
+    expect(result.stdout).toContain(`\n${next}\n`);
+    const record = recordOf(dir);
+    expect(record.next).toBe(next);
+    expect(record.rounds.map((round) => round.round)).toEqual([1]);
+  });
 });
 
 describe("each check fails on a tampered fixture", () => {
@@ -224,6 +238,15 @@ describe("each check fails on a tampered fixture", () => {
     expect(problems).toContain(
       "failure-modes-r1.json was never recorded as passing the check",
     );
+  });
+
+  it("(a) a written.jsonl line that does not parse, reported rather than thrown", async () => {
+    const problems = await problemsOf(({ dir }) => {
+      appendFileSync(join(dir, "written.jsonl"), "{not json\n");
+    });
+    expect(problems).toEqual([
+      "written.jsonl holds a line that is not a recorded check: {not json",
+    ]);
   });
 
   it("(a) an answer file no Write of its own panelist made", async () => {

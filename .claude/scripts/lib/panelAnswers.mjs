@@ -6,8 +6,10 @@
 // panel Workflow takes them and `extraRounds` the cap on rounds after the first
 // round or an input round (default 2). Each panelist writes its answer for
 // round N to `<seat>-r<N>.json`; the check appends `{file, sha256}` to
-// `written.jsonl` each time an answer passes; the owner's new input for round
-// N is `input-r<N>.md`; the assembler writes `record.json`.
+// `written.jsonl` each time an answer passes; panel-relay.mjs appends
+// `{seat, round}` to `relayed.jsonl` each time it prints a seat's message; the
+// owner's new input for round N is `input-r<N>.md`; the assembler writes
+// `record.json`.
 //
 // Only node builtins are imported: panelists run the check from the panel's
 // base checkout, which has no node_modules.
@@ -24,6 +26,7 @@ export const LATER_ROUND_KEYS = [...FIRST_ROUND_KEYS, "changed", "movedBy"];
 
 export const PANEL_FILE = "panel.json";
 export const HASH_LOG = "written.jsonl";
+export const RELAY_LOG = "relayed.jsonl";
 export const RECORD_FILE = "record.json";
 export const DEFAULT_EXTRA_ROUNDS = 2;
 const MAX_EXTRA_ROUNDS = 5;
@@ -184,14 +187,25 @@ export function readPanel(dir) {
   return { ...panel, extraRounds };
 }
 
-/** Every `{file, sha256}` the check recorded in `dir`, in order. */
+/**
+ * Every `{file, sha256}` the check recorded in `dir`, in order; a line that is
+ * not one is `{file: null, sha256: null, unreadable}` with the line's text.
+ */
 export function readHashLog(dir) {
   const path = join(dir, HASH_LOG);
   if (!existsSync(path)) return [];
   return readFileSync(path, "utf8")
     .split("\n")
     .filter((line) => line.trim() !== "")
-    .map((line) => JSON.parse(line));
+    .map((line) => {
+      try {
+        const parsed = JSON.parse(line);
+        if (parsed !== null && typeof parsed === "object") return parsed;
+      } catch {
+        // An unparseable line is reported by panel-record, not thrown.
+      }
+      return { file: null, sha256: null, unreadable: line };
+    });
 }
 
 /** Record that `file` in `dir` passed the check with the text it now has. */
@@ -202,10 +216,40 @@ export function appendHashLog(dir, file, hash) {
   );
 }
 
+/** Record that panel-relay.mjs printed `seat`'s message for `round`. */
+export function appendRelayLog(dir, seat, round) {
+  appendFileSync(join(dir, RELAY_LOG), `${JSON.stringify({ seat, round })}\n`);
+}
+
+/**
+ * The seats panel-relay.mjs printed a message for, by round. A line that is
+ * not a `{seat, round}` record is skipped.
+ */
+export function readRelayLog(dir) {
+  const path = join(dir, RELAY_LOG);
+  const relayed = new Map();
+  if (!existsSync(path)) return relayed;
+  for (const line of readFileSync(path, "utf8").split("\n")) {
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (typeof entry?.seat !== "string" || !Number.isInteger(entry.round)) {
+      continue;
+    }
+    if (!relayed.has(entry.round)) relayed.set(entry.round, new Set());
+    relayed.get(entry.round).add(entry.seat);
+  }
+  return relayed;
+}
+
 /**
  * What `dir` holds: `answers`, every answer file as `{file, seat, round, text,
- * sha256, answer, problems}` (answer null when it fails the check), and
- * `inputRounds`, the rounds with an input file.
+ * sha256, answer, problems}` (answer null when it fails the check),
+ * `inputRounds`, the rounds with an input file, and `relayed`, the seats sent
+ * a message in each round (readRelayLog).
  */
 export function readAnswerDir(dir) {
   const answers = [];
@@ -229,5 +273,5 @@ export function readAnswerDir(dir) {
       problems,
     });
   }
-  return { answers, inputRounds };
+  return { answers, inputRounds, relayed: readRelayLog(dir) };
 }

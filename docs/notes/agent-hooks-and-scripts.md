@@ -640,7 +640,12 @@ The owner ruled on 2026-10-26 to build resumed panelists with a chair in place o
   `resumeFromRunId` replays cached results for unchanged calls and runs any changed call as a fresh agent (the Workflow tool's own description and authoring reference).
   A Workflow agent also has no Agent tool, so it cannot spawn panelists of its own.
 - Agent-tool runtime: a subagent can spawn agents and resume them with SendMessage.
-  On 2026-10-26 an Opus `general-purpose` spawn answered a two-option design question, was resumed with an opposing panelist's answer, restated its first answer, weighed the other, and kept its position with a refinement.
+  On 2026-10-28, under harness 2.1.311, a Sonnet `general-purpose` subagent spawned a Haiku `general-purpose` agent with the Agent tool.
+  The call returned a launch notice with an agent id, not the child's text, and the child's result arrived later as a completion notification.
+  The subagent loaded SendMessage through ToolSearch and resumed the child by that id, and the child's second result arrived as a second completion notification.
+  Both transcripts were written flat in one directory, `~/.claude/projects/<project>/<session>/subagents/agent-<id>.jsonl`, the child's named by the id its launch returned, and `CLAUDE_CODE_SESSION_ID` in the subagent was the top-level session's id, a component of both paths.
+  So the chair waits for each panelist's completion notification rather than reading the launch notice as its answer, and `panel-record.mjs` finds the panelists' transcripts beside the chair's.
+  The resumed answer itself was measured on 2026-10-26, on a spawn the top-level session made and resumed: an Opus `general-purpose` spawn answered a two-option design question, was resumed with an opposing panelist's answer, restated its first answer, weighed the other, and kept its position with a refinement.
   Both turns ran on `claude-opus-5-5`; a resumed agent pinned to another tier keeps that tier (Retired SendMessage model guard, below).
 - So the chair is a pinned Agent-tool definition, and the first round of a deliberating panel runs there too, since the panelists it resumes must be its own spawns.
   The session, not the chair, judges a split: relaying every panelist reply through the session instead would wake it about a dozen times per panel.
@@ -660,6 +665,8 @@ An Agent-tool spawn's output cannot be schema-forced, so the shape and the prove
 The chair stops when every seat in a round reports `changed: false`, or after two rounds past the first.
 The cap bounds the crossing seen in 2026-09-28's later round, where every seat moved and the split did not close; every round is kept in the record, so a crossing is visible rather than averaged away.
 New owner input starts a round of its own, and the cap counts again from it.
+A round sent to its seats that produced no answer file ends the deliberation: the relay logs each message it prints, and without that log the next round would be that same round again, sent without end.
+A round where only some seats answered moves on, the silent seats asked again from their latest answer, so the cap bounds it.
 
 ## Retired SendMessage model guard
 

@@ -34,6 +34,11 @@ afterAll(removeFixtures);
 const NAMES = ["failure-modes", "design-ux", "two-party-state"];
 const CHECK = `node ${BASE}/.claude/scripts/panel-answer-check.mjs`;
 
+// The briefing tells a panelist to read only under the base and run nothing;
+// the answer directory is the stated exception to it.
+const exception = (dir) =>
+  `The briefing's rule to read only under ${BASE} and run no builds or tests has one exception, this panel's answer directory ${dir}: you write your own answer file there, read the other panelists' answers there when a round names them, and run the answer-check script below.`;
+
 // The prompt the panel Workflow gives each seat, driven here on its own, so
 // round 1's text is held to the Workflow's briefing rather than to the relay's
 // reading of it.
@@ -71,6 +76,7 @@ describe("round 1 text", () => {
       const text = messageFor(state, seat, 1);
       expect(text.startsWith(`${prompts[seat]}\n\n`), seat).toBe(true);
       const clause = text.slice(prompts[seat].length + 2);
+      expect(clause.startsWith(exception(dir)), seat).toBe(true);
       expect(clause).toContain(
         "exactly the keys `position`, `rationale` and `keyRisk`",
       );
@@ -136,6 +142,7 @@ describe("later round text", () => {
       "exactly the keys `position`, `rationale`, `keyRisk`, `changed` and `movedBy`",
     );
     expect(text).toContain("do not split the difference");
+    expect(text).toContain(exception(dir));
     expect(text).toContain(`\`WROTE ${join(dir, "design-ux-r2.json")}\``);
   });
 
@@ -282,6 +289,8 @@ describe("panel-relay.mjs", () => {
   it("prints a seat's text, the seats of a round, and the next step", async () => {
     const dir = afterFirstRound();
     const state = await loadPanel(dir);
+    expect(run(dir, "next").stdout).toBe("round 2\n");
+    expect(run(dir, "seats", "2").stdout).toBe(`${NAMES.join("\n")}\n`);
     expect(run(dir, "design-ux", "2")).toMatchObject({
       status: 0,
       stdout: `${messageFor(state, "design-ux", 2)}\n`,
@@ -289,8 +298,6 @@ describe("panel-relay.mjs", () => {
     expect(run(dir, "design-ux", "2", "--retry").stdout).toBe(
       `${retryFor(state, "design-ux", 2)}\n`,
     );
-    expect(run(dir, "seats", "2").stdout).toBe(`${NAMES.join("\n")}\n`);
-    expect(run(dir, "next").stdout).toBe("round 2\n");
   });
 
   it("refuses a round past a stop with exit 1", () => {
@@ -300,6 +307,65 @@ describe("panel-relay.mjs", () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(/^Round 3 does not run: unchanged/);
     expect(run(dir, "pragmatics", "1").status).toBe(1);
+  });
+
+  /** Print every asked seat's message for `round`, as the chair does. */
+  const sendRound = (dir, round) => {
+    for (const seat of run(dir, "seats", String(round))
+      .stdout.split("\n")
+      .filter(Boolean)) {
+      expect(run(dir, seat, String(round)).status).toBe(0);
+    }
+  };
+
+  it("stops at the next `next` when no seat wrote an answer file for a round it sent", () => {
+    const dir = afterFirstRound();
+    expect(run(dir, "next").stdout).toBe("round 2\n");
+    expect(run(dir, "next").stdout).toBe("round 2\n");
+    sendRound(dir, 2);
+    expect(run(dir, "next")).toMatchObject({
+      status: 0,
+      stdout:
+        "stop empty: round 2 was sent to failure-modes, design-ux, two-party-state and no seat wrote an answer file\n",
+    });
+  });
+
+  it("names only the seats sent in an empty round", () => {
+    const dir = afterFirstRound();
+    sendRound(dir, 2);
+    writeAnswer(
+      dir,
+      "design-ux",
+      2,
+      answer("design-ux", 2, { changed: true, movedBy: "failure-modes: x" }),
+    );
+    expect(run(dir, "next").stdout).toBe("round 3\n");
+    run(dir, "design-ux", "3");
+    expect(run(dir, "next").stdout).toBe(
+      "stop empty: round 3 was sent to design-ux and no seat wrote an answer file\n",
+    );
+  });
+
+  it("moves on, and stops at the cap, when only some seats of a sent round answer", () => {
+    const dir = afterFirstRound();
+    const moved = { changed: true, movedBy: "failure-modes: the stall" };
+    for (const round of [2, 3]) {
+      sendRound(dir, round);
+      writeAnswer(dir, "design-ux", round, answer("design-ux", round, moved));
+      if (round === 2) {
+        expect(run(dir, "next").stdout).toBe("round 3\n");
+        expect(run(dir, "seats", "3").stdout).toBe(`${NAMES.join("\n")}\n`);
+      }
+    }
+    expect(run(dir, "next").stdout).toBe(
+      "stop cap: round 3 was the last of 2 after round 1\n",
+    );
+  });
+
+  it("records no round for a re-ask", () => {
+    const dir = afterFirstRound();
+    expect(run(dir, "design-ux", "2", "--retry").status).toBe(0);
+    expect(run(dir, "next").stdout).toBe("round 2\n");
   });
 
   it("exits 2 on a usage error or a directory with no panel", () => {
