@@ -2,8 +2,8 @@
  * The account a container runs Alcove as on a Linux host. The image runs as
  * user 1000, so a mounted folder owned by anyone else refuses its first write;
  * the options below run it as the operator instead, which the recurring-run
- * hand-offs' Linux and macOS lines and the accept kit use. The console's
- * one-off working-folder commands do not.
+ * hand-offs' Linux and macOS lines, the console's one-off working-folder
+ * commands, and the accept kit use.
  */
 
 /** The container engines the commands name. */

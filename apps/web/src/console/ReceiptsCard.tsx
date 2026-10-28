@@ -47,8 +47,10 @@ import { DisclosureSection } from "../components/DisclosureSection";
 
 import { IN_PLACE_IDENTITY_WRITTEN_NOTICE } from "./mountedConfiguration";
 import { SigningIdentityLocationField } from "./SigningIdentityLocationField";
+import { WorkingFolderCommandLines } from "./WorkingFolderCommandLines";
 
 import type { ReceiptsDraft, ReceiptsSigningMode } from "@psi/receiptsModel";
+import type { WorkingFolderCommandLines as CommandLines } from "@psi/dockerRunCommand";
 import type { InPlaceSigningIdentityShown } from "./mountedConfiguration";
 import type { JobRendezvousConfig } from "@psi/jobClient/workInputClient";
 import type { SigningFingerprintOutcome } from "@psi/jobClient/signingIdentityClient";
@@ -90,64 +92,92 @@ const MODE_CHOICES: ReadonlyArray<{
 function fingerprintFailureMessage(
   outcome: Exclude<SigningFingerprintOutcome, { kind: "ok" }>,
   identityLocationPicked: boolean,
-): string {
+): FingerprintFailure {
   switch (outcome.kind) {
     case "absent":
-      return (
-        "There is no signing identity at the file you picked. The console " +
-        "reads that location and creates no key there, except a file removed " +
-        "between this check and the read that follows it. So create the " +
-        "identity yourself at the command line - " +
-        fingerprintCommand(true, ["--identity", "NAME"]) +
-        ", with NAME your name and FILE the file you picked - then show the " +
-        "fingerprint again. Or pick the file that already holds your " +
-        "identity."
-      );
+      return {
+        message:
+          "There is no signing identity at the file you picked. The console " +
+          "reads that location and creates no key there, except a file " +
+          "removed between this check and the read that follows it. So " +
+          "create the identity yourself at the command line with the command " +
+          "below for your system, with NAME your name and FILE the file you " +
+          "picked, then show the fingerprint again. Or pick the file that " +
+          "already holds your identity.",
+        command: fingerprintCommand(true, ["--identity", "NAME"]),
+      };
     case "refused":
       return identityLocationPicked
-        ? "Your signing identity could not be read from the file you picked. " +
-            "It may be unreadable, or not a signing identity. Check that file at " +
-            "the location you picked, or pick another one. Check too that any " +
-            "alcove.yaml in your working folder is valid YAML. If that " +
-            "folder is also the one your partner syncs into, the alcove.yaml " +
-            "may be theirs, so read it before changing your own setup. An " +
-            "alcove.yaml your partner wrote cannot move where your key is read " +
-            "from or change whose name it binds, because both are passed " +
-            "explicitly here. Fix what you find and try again - running " +
-            fingerprintCommand(true) +
-            ", with FILE the file you picked, prints the reason."
-        : "Your signing identity could not be created or read in your " +
-            "working folder. Check that the folder is writable, that any signing " +
-            "identity already in it is intact, and that any alcove.yaml there " +
-            "is valid YAML. If that folder is also the one your partner syncs " +
-            "into, the alcove.yaml may be theirs, so read it before changing " +
-            "your own setup. An alcove.yaml your partner wrote cannot move " +
-            "where your key is written or change whose name it binds, because " +
-            "both are passed explicitly here. Fix what you find and try again " +
-            `- running ${fingerprintCommand(false)} prints the reason.`;
+        ? {
+            message:
+              "Your signing identity could not be read from the file you " +
+              "picked. It may be unreadable, or not a signing identity. Check " +
+              "that file at the location you picked, or pick another one. " +
+              "Check too that any alcove.yaml in your working folder is valid " +
+              "YAML. If that folder is also the one your partner syncs into, " +
+              "the alcove.yaml may be theirs, so read it before changing your " +
+              "own setup. An alcove.yaml your partner wrote cannot move where " +
+              "your key is read from or change whose name it binds, because " +
+              "both are passed explicitly here. Fix what you find and try " +
+              "again. The command below for your system, with FILE the file " +
+              "you picked, prints the reason.",
+            command: fingerprintCommand(true),
+          }
+        : {
+            message:
+              "Your signing identity could not be created or read in your " +
+              "working folder. Check that the folder is writable, that any " +
+              "signing identity already in it is intact, and that any " +
+              "alcove.yaml there is valid YAML. If that folder is also the " +
+              "one your partner syncs into, the alcove.yaml may be theirs, so " +
+              "read it before changing your own setup. An alcove.yaml your " +
+              "partner wrote cannot move where your key is written or change " +
+              "whose name it binds, because both are passed explicitly here. " +
+              "Fix what you find and try again. The command below for your " +
+              "system prints the reason.",
+            command: fingerprintCommand(false),
+          };
     case "syncing":
-      return (
-        "A shared-folder exchange is still open on this console, and it syncs " +
-        "the folder your signing identity would be written into. Wait for that " +
-        "exchange to finish, discard it, then create your identity. Or give " +
-        "the shared folder a mount of its own (JOB_RENDEZVOUS_DIR) so your key " +
-        "is never in it."
-      );
+      return {
+        message:
+          "A shared-folder exchange is still open on this console, and it " +
+          "syncs the folder your signing identity would be written into. " +
+          "Wait for that exchange to finish, discard it, then create your " +
+          "identity. Or give the shared folder a mount of its own " +
+          "(JOB_RENDEZVOUS_DIR) so your key is never in it.",
+      };
     case "invalid":
-      return outcome.message;
+      return { message: outcome.message };
     case "busy":
-      return "Another fingerprint request is still running. Try again in a moment.";
+      return {
+        message:
+          "Another fingerprint request is still running. Try again in a moment.",
+      };
     case "timeout":
-      return identityLocationPicked
-        ? "Reading the signing identity took too long and was stopped. Try again."
-        : "Creating the signing identity took too long and was stopped. Try again.";
+      return {
+        message: identityLocationPicked
+          ? "Reading the signing identity took too long and was stopped. Try again."
+          : "Creating the signing identity took too long and was stopped. Try again.",
+      };
     case "disabled":
-      return "This build does not run exchanges here, so it has no signing identity to create.";
+      return {
+        message:
+          "This build does not run exchanges here, so it has no signing identity to create.",
+      };
     case "error":
-      return identityLocationPicked
-        ? "The signing identity could not be read. Try again."
-        : "The signing identity could not be created or read. Try again.";
+      return {
+        message: identityLocationPicked
+          ? "The signing identity could not be read. Try again."
+          : "The signing identity could not be created or read. Try again.",
+      };
   }
+}
+
+/** Why a fingerprint request produced no value, and the command its message
+ * points to, where it names one. */
+interface FingerprintFailure {
+  message: string;
+  command?: CommandLines;
 }
 
 /**
@@ -203,7 +233,7 @@ export function ReceiptsCard({
   const requestProblemId = useId();
   const [open, setOpen] = useState(false);
   const [resolving, setResolving] = useState(false);
-  const [failure, setFailure] = useState<string>();
+  const [failure, setFailure] = useState<FingerprintFailure>();
   const [locationPickerOpen, setLocationPickerOpen] = useState(false);
   const [exportCertificate, setExportCertificate] = useState(false);
   const [exportedName, setExportedName] = useState<string>();
@@ -243,6 +273,9 @@ export function ReceiptsCard({
   const pinStatement = partnerPinStatement(draft);
   const cadenceNote = maxAgeCadenceNote(draft);
   const divergent = signingIdentityDivergence(draft, identity) !== undefined;
+  const regenerationNotice = identityRegenerationNotice(
+    draft.identityLocation !== undefined,
+  );
   const set = <TField extends keyof ReceiptsDraft>(
     field: TField,
     value: ReceiptsDraft[TField],
@@ -428,9 +461,17 @@ export function ReceiptsCard({
                 </>
               )}
               {failure !== undefined && (
-                <Text role="alert" c="red" size="sm">
-                  {failure}
-                </Text>
+                <>
+                  <Text role="alert" c="red" size="sm">
+                    {failure.message}
+                  </Text>
+                  {failure.command !== undefined && (
+                    <WorkingFolderCommandLines
+                      command={failure.command}
+                      ariaLabel="fingerprint command"
+                    />
+                  )}
+                </>
               )}
             </Stack>
 
@@ -456,7 +497,11 @@ export function ReceiptsCard({
               icon={<IconInfoCircle aria-hidden />}
               title="About your signing identity"
             >
-              {identityRegenerationNotice(draft.identityLocation !== undefined)}
+              <Text size="sm">{regenerationNotice.message}</Text>
+              <WorkingFolderCommandLines
+                command={regenerationNotice.command}
+                ariaLabel="command replacing your signing identity"
+              />
             </Alert>
           </>
         )}
@@ -511,7 +556,15 @@ export function ReceiptsCard({
           >
             <ul>
               {warnings.map((advisory) => (
-                <li key={advisory.message}>{advisory.message}</li>
+                <li key={advisory.message}>
+                  {advisory.message}
+                  {advisory.command !== undefined && (
+                    <WorkingFolderCommandLines
+                      command={advisory.command}
+                      ariaLabel="command creating your signing identity"
+                    />
+                  )}
+                </li>
               ))}
             </ul>
           </Alert>
@@ -525,7 +578,15 @@ export function ReceiptsCard({
           >
             <ul>
               {notices.map((advisory) => (
-                <li key={advisory.message}>{advisory.message}</li>
+                <li key={advisory.message}>
+                  {advisory.message}
+                  {advisory.command !== undefined && (
+                    <WorkingFolderCommandLines
+                      command={advisory.command}
+                      ariaLabel="command creating your signing identity"
+                    />
+                  )}
+                </li>
               ))}
             </ul>
           </Alert>

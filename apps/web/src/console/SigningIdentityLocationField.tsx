@@ -4,13 +4,17 @@ import { Button, Group, Stack, Text } from "@mantine/core";
 
 import { sanitizeForDisplay } from "@alcove/core";
 
-import { fingerprintCommand, identityLocationLabel } from "@psi/receiptsModel";
+import {
+  PICKED_IDENTITY_CREATE_COMMAND,
+  identityLocationLabel,
+} from "@psi/receiptsModel";
 import { SIGNING_IDENTITY_BROWSE_PURPOSE } from "@jobContract/mountBrowsePurpose";
 
 import styles from "@styles/app.module.css";
 
 import { IN_PLACE_IDENTITY_FILE_NOTICE } from "./mountedConfiguration";
 import { SecretsFilePicker } from "./SecretsFilePicker";
+import { WorkingFolderCommandLines } from "./WorkingFolderCommandLines";
 
 import type { JobSigningIdentityLocation } from "@jobContract/intentSchemas";
 
@@ -102,10 +106,13 @@ export function SigningIdentityLocationField({
                   This console has no separate secrets folder to browse, so your
                   signing identity stays in your folder. To keep it somewhere
                   else, mount a separate folder as JOB_SECRETS_DIR, create your
-                  identity file there with{" "}
-                  {fingerprintCommand(true, ["--identity", "NAME"])}, with NAME
-                  your name and FILE the file&apos;s name, and restart the
-                  console.
+                  identity file there with the command below for your system,
+                  with NAME your name and FILE the file&apos;s name, and restart
+                  the console.
+                  <WorkingFolderCommandLines
+                    command={PICKED_IDENTITY_CREATE_COMMAND}
+                    ariaLabel="command creating your signing identity"
+                  />
                 </>
               }
               onSelect={(subPath) => {

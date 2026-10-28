@@ -24,8 +24,10 @@ import {
   mountedConfigurationNotices,
   mountedConfigurationOfferable,
 } from "./mountedConfiguration";
+import { WorkingFolderCommandLines } from "./WorkingFolderCommandLines";
 
 import type {
+  EditedTermsWarning,
   MountedConfigurationState,
   RunDisclosure,
 } from "./mountedConfiguration";
@@ -102,7 +104,11 @@ function NoticesAlert({
  * that step itself can raise it, so the polite region announces its title when
  * it appears; the visible Alert holds the warning.
  */
-export function EditedTermsNotice({ warning }: { warning?: string }) {
+export function EditedTermsNotice({
+  warning,
+}: {
+  warning?: EditedTermsWarning;
+}) {
   const announcement = useDeferredAnnouncement(
     warning === undefined ? "" : EDITED_TERMS_TITLE,
   );
@@ -111,10 +117,22 @@ export function EditedTermsNotice({ warning }: { warning?: string }) {
       <VisuallyHidden role="status" aria-live="polite" aria-atomic="true">
         {announcement}
       </VisuallyHidden>
-      <NoticesAlert
-        notices={warning === undefined ? [] : [warning]}
-        title={EDITED_TERMS_TITLE}
-      />
+      {warning !== undefined && (
+        <Alert
+          color="yellow"
+          role="presentation"
+          icon={<IconAlertTriangle aria-hidden />}
+          title={EDITED_TERMS_TITLE}
+        >
+          <Stack gap={4}>
+            <Text size="sm">{warning.message}</Text>
+            <WorkingFolderCommandLines
+              command={warning.command}
+              ariaLabel="terms update command"
+            />
+          </Stack>
+        </Alert>
+      )}
     </>
   );
 }

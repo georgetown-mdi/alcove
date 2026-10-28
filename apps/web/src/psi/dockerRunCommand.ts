@@ -5,7 +5,10 @@ import {
   OPERATOR_ACCOUNT_VALUE,
   operatorAccountOption,
 } from "./containerAccount";
-import { shellJoinCommand } from "./managed/recurringHandoff";
+import {
+  shellJoinCommand,
+  windowsJoinCommand,
+} from "./managed/recurringHandoff";
 
 import type { ContainerEngine } from "./containerAccount";
 import type { HandoffBindPath } from "@jobContract/handoffBindPaths";
@@ -143,10 +146,13 @@ export function dockerRunArgv(
     interactive = false,
     mountBindPaths = true,
     operatorAccountFor,
+    bindPathSource = (path) => path,
   }: {
     interactive?: boolean;
     mountBindPaths?: boolean;
     operatorAccountFor?: ContainerEngine;
+    /** The host side of a bind path's mount, its own path unless given. */
+    bindPathSource?: (path: string) => string;
   } = {},
 ): Array<string> | undefined {
   if (unmountableBindPaths(bindPaths).length > 0) return undefined;
@@ -161,7 +167,7 @@ export function dockerRunArgv(
     ...mountOption(folder, CONTAINER_WORK_FOLDER, false),
     ...(mountBindPaths
       ? bindPaths.flatMap(({ path, readOnly }) =>
-          mountOption(path, path, readOnly),
+          mountOption(bindPathSource(path), path, readOnly),
         )
       : []),
     image,
@@ -169,12 +175,48 @@ export function dockerRunArgv(
   ];
 }
 
+/** A folder a working-folder command mounts besides the working folder: a
+ * placeholder, mounted at its own path on Linux and macOS, and from
+ * `windowsPath` on Windows. */
+export interface WorkingFolderBindPath extends HandoffBindPath {
+  windowsPath: string;
+}
+
+/** The console's working folder placeholder on Windows. */
+export const WINDOWS_WORKING_FOLDER_PLACEHOLDER =
+  "C:\\path\\to\\your\\working-folder";
+
+/** The console's secrets folder placeholder on Windows. */
+export const WINDOWS_SECRETS_FOLDER_PLACEHOLDER =
+  "C:\\path\\to\\your\\secrets-folder";
+
+/**
+ * A one-off command over the operator's working folder, per shell: Docker on
+ * Linux and macOS, as the operator's own account; Docker Desktop on Windows in
+ * PowerShell, which takes no account option; and rootless Podman.
+ */
+export interface WorkingFolderCommandLines {
+  runCommand: string;
+  windowsRunCommand: string;
+  podmanRunCommand: string;
+}
+
+/**
+ * Whether PowerShell needs `token` quoted though cmd would not: a `--mount`
+ * value, whose commas PowerShell reads as an array, and a leading `@`, which
+ * it reads as splatting.
+ */
+function powerShellQuotes(token: string): boolean {
+  return token.startsWith("type=bind,") || token.startsWith("@");
+}
+
 /**
  * The command running `alcove` with `args` once from the image over the
  * operator's working folder, as the console's copy names a command-line step:
  * the folder mounted at the image's working directory, so a file name in
- * `args` is read from it, and each of `bindPaths` at its own path. `interactive`
- * gives the run a terminal, for a command that asks before it writes.
+ * `args` is read from it, and each of `bindPaths` at its own path inside the
+ * container. `interactive` gives the run a terminal, for a command that asks
+ * before it writes.
  */
 export function workingFolderCommand(
   args: ReadonlyArray<string>,
@@ -184,17 +226,40 @@ export function workingFolderCommand(
     image = buildImageReference(),
   }: {
     interactive?: boolean;
-    bindPaths?: ReadonlyArray<HandoffBindPath>;
+    bindPaths?: ReadonlyArray<WorkingFolderBindPath>;
     image?: string;
   } = {},
-): string {
-  const argv = dockerRunArgv(
-    { argv: ["alcove", ...args], bindPaths, image },
-    "docker",
-    WORKING_FOLDER_PLACEHOLDER,
-    { interactive },
+): WorkingFolderCommandLines {
+  const source: ScheduledRunSource = {
+    argv: ["alcove", ...args],
+    bindPaths,
+    image,
+  };
+  const windowsPaths = new Map(
+    bindPaths.map(({ path, windowsPath }) => [path, windowsPath]),
   );
-  if (argv === undefined)
+  const posix = dockerRunArgv(source, "docker", WORKING_FOLDER_PLACEHOLDER, {
+    interactive,
+    operatorAccountFor: "docker",
+  });
+  const podman = dockerRunArgv(source, "podman", WORKING_FOLDER_PLACEHOLDER, {
+    interactive,
+    operatorAccountFor: "podman",
+  });
+  const windows = dockerRunArgv(
+    source,
+    "docker",
+    WINDOWS_WORKING_FOLDER_PLACEHOLDER,
+    {
+      interactive,
+      bindPathSource: (path) => windowsPaths.get(path) ?? path,
+    },
+  );
+  if (posix === undefined || podman === undefined || windows === undefined)
     throw new Error("a working-folder command names an unmountable path");
-  return shellJoinCommand(argv);
+  return {
+    runCommand: shellJoinRunArgv(posix),
+    windowsRunCommand: windowsJoinCommand(windows, powerShellQuotes),
+    podmanRunCommand: shellJoinRunArgv(podman),
+  };
 }

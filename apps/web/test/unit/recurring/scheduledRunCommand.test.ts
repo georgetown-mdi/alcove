@@ -360,37 +360,89 @@ describe("a hand-off whose argv is not an alcove command line", () => {
 });
 
 describe("a command-line step the console's copy names", () => {
-  test("runs the image once over the operator's working folder", () => {
-    expect(workingFolderCommand(["update"], { image: IMAGE })).toBe(
-      "docker run --rm --mount " +
-        "type=bind,src=/path/to/your/working-folder,dst=/work " +
-        `${IMAGE} update`,
-    );
+  const WORKING_FOLDER_MOUNT =
+    "--mount type=bind,src=/path/to/your/working-folder,dst=/work";
+  const WINDOWS_WORKING_FOLDER_MOUNT =
+    '--mount "type=bind,src=C:\\path\\to\\your\\working-folder,dst=/work"';
+
+  test("runs the image once over the operator's working folder, as the operator, in each shell", () => {
+    expect(workingFolderCommand(["update"], { image: IMAGE })).toEqual({
+      runCommand: `docker run --rm ${DOCKER_USER} ${WORKING_FOLDER_MOUNT} ${IMAGE} update`,
+      windowsRunCommand: `docker run --rm ${WINDOWS_WORKING_FOLDER_MOUNT} ${IMAGE} update`,
+      podmanRunCommand: `podman run --rm ${PODMAN_USER} ${WORKING_FOLDER_MOUNT} ${IMAGE} update`,
+    });
   });
 
-  test("one that asks before it writes gets a terminal", () => {
+  test("one that asks before it writes gets a terminal, and PowerShell gets its @ argument quoted", () => {
     expect(
       workingFolderCommand(["apply", "@run/alcove.proposed-terms"], {
         image: IMAGE,
         interactive: true,
       }),
-    ).toBe(
-      "docker run --rm -it --mount " +
-        "type=bind,src=/path/to/your/working-folder,dst=/work " +
+    ).toEqual({
+      runCommand:
+        `docker run --rm -it ${DOCKER_USER} ${WORKING_FOLDER_MOUNT} ` +
         `${IMAGE} apply @run/alcove.proposed-terms`,
-    );
+      windowsRunCommand:
+        `docker run --rm -it ${WINDOWS_WORKING_FOLDER_MOUNT} ` +
+        `${IMAGE} apply "@run/alcove.proposed-terms"`,
+      podmanRunCommand:
+        `podman run --rm -it ${PODMAN_USER} ${WORKING_FOLDER_MOUNT} ` +
+        `${IMAGE} apply @run/alcove.proposed-terms`,
+    });
   });
 
-  test("a folder outside the working folder is mounted at its own path", () => {
-    expect(
-      workingFolderCommand(["fingerprint"], {
+  test("a folder outside the working folder is mounted at its own path, from its Windows path on Windows", () => {
+    const lines = workingFolderCommand(
+      ["fingerprint", "--identity-file", "/path/to/your/secrets-folder/FILE"],
+      {
         image: IMAGE,
-        bindPaths: [{ path: "/path/to/your/secrets-folder", readOnly: false }],
-      }),
-    ).toContain(
-      "--mount type=bind,src=/path/to/your/secrets-folder," +
-        "dst=/path/to/your/secrets-folder ",
+        bindPaths: [
+          {
+            path: "/path/to/your/secrets-folder",
+            windowsPath: "C:\\path\\to\\your\\secrets-folder",
+            readOnly: true,
+          },
+        ],
+      },
     );
+    const mount =
+      "--mount type=bind,src=/path/to/your/secrets-folder," +
+      "dst=/path/to/your/secrets-folder,readonly";
+    const args =
+      "fingerprint --identity-file /path/to/your/secrets-folder/FILE";
+    expect(lines).toEqual({
+      runCommand: `docker run --rm ${DOCKER_USER} ${WORKING_FOLDER_MOUNT} ${mount} ${IMAGE} ${args}`,
+      windowsRunCommand:
+        `docker run --rm ${WINDOWS_WORKING_FOLDER_MOUNT} ` +
+        '--mount "type=bind,src=C:\\path\\to\\your\\secrets-folder,' +
+        `dst=/path/to/your/secrets-folder,readonly" ${IMAGE} ${args}`,
+      podmanRunCommand: `podman run --rm ${PODMAN_USER} ${WORKING_FOLDER_MOUNT} ${mount} ${IMAGE} ${args}`,
+    });
+  });
+
+  test("the Windows line carries no account option and nothing for a POSIX shell to expand", () => {
+    const { windowsRunCommand } = workingFolderCommand(["update"], {
+      image: IMAGE,
+      interactive: true,
+    });
+    expect(windowsRunCommand).not.toContain("--user");
+    expect(windowsRunCommand).not.toContain("--userns");
+    expect(windowsRunCommand).not.toContain("$(");
+  });
+
+  test("the shell expands the account to the operator's own ids, as one argument", () => {
+    const { runCommand } = workingFolderCommand(["update"], { image: IMAGE });
+    const tokens = execFileSync(
+      "/bin/sh",
+      ["-c", `printf '%s\\n' ${runCommand}`],
+      { encoding: "utf8" },
+    ).split("\n");
+    const operator =
+      `${execFileSync("id", ["-u"], { encoding: "utf8" }).trim()}:` +
+      execFileSync("id", ["-g"], { encoding: "utf8" }).trim();
+    expect(tokens.slice(0, 4)).toEqual(["docker", "run", "--rm", "--user"]);
+    expect(tokens[4]).toBe(operator);
   });
 });
 
