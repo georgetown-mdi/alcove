@@ -24,7 +24,6 @@ updates:
       cryptographic:
         patterns:
           - "@openmined/psi.js"
-          - "@noble/curves"
           - "node-forge"
           - "ssh2"
           - "ssh2-sftp-client"
@@ -65,7 +64,6 @@ updates:
           - "patch"
         exclude-patterns:
           - "@openmined/psi.js"
-          - "@noble/curves"
           - "node-forge"
           - "ssh2"
           - "ssh2-sftp-client"

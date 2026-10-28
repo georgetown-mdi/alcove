@@ -723,7 +723,7 @@ describe("the real repository configuration", () => {
     expect(groupExclusionViolations(groups())).toEqual([]);
   });
 
-  it.each(["@noble/curves", "@openmined/psi.js", "node-forge"])(
+  it.each(["@openmined/psi.js", "node-forge", "ssh2"])(
     "fails when %s is dropped from non-critical's exclude-patterns, and passes restored",
     (name) => {
       const withoutExclusion = groups().map((candidate) =>

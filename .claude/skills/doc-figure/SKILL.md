@@ -48,7 +48,7 @@ A recipe states its figure's SVG and the doc section that embeds it, its altitud
 A component-level diagram of Alcove: the minimum set of components, the open-source libraries they build on, and how they connect. Use for requests like "diagram the components", "show how the pieces connect", or "update the architecture diagram".
 
 - File: docs/img/architecture.svg, referenced from the System architecture section at the end of docs/README.md.
-- Altitude: the workspaces, their major components, the boundaries (interfaces core defines and apps implement), and the external/trust boundary. Name a library on a node only when it is correctness- or security-critical (docs/spec/DEPENDENCY_PINS.md is the roster; @openmined/psi.js, @noble/curves, re2js, ssh2-sftp-client, PeerJS rank; yargs does not).
+- Altitude: the workspaces, their major components, the boundaries (interfaces core defines and apps implement), and the external/trust boundary. Name a library on a node only when it is correctness- or security-critical (docs/spec/DEPENDENCY_PINS.md is the roster; @openmined/psi.js, re2js, ssh2-sftp-client, PeerJS rank; yargs does not).
 - Classes of error: deployment groupings (what actually ships together); decorator/wrapper layer order (who wraps whom -- read the constructor, not the prose); library attributions on crypto and parsing nodes.
 - Why hand layout: the apps are a hub with core on one side and the external world on the other, and one cross-cluster edge wrecks an auto-layout's ranking.
 - Layout: three lanes, CORE LIBRARY | APPLICATIONS - THIS MACHINE | EXTERNAL. Apps in the middle; call edges go left into core, channel edges go right to the outside. The counterparty is one tall dashed column labeled "same stack, mirrored", never a duplicated stack.

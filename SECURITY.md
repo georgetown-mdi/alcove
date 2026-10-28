@@ -1,7 +1,7 @@
 ---
 title: "Security Policy"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-08-28"
+last_reviewed: "2026-10-28"
 ---
 
 # Security Policy
@@ -82,6 +82,4 @@ Alcove's security properties depend on several upstream cryptographic components
 | ------------------- | ------------------------------------------- | ------------------------------------------------------------------- |
 | `@openmined/psi.js` | PSI primitive (vendored WASM)               | [OpenMined/PSI](https://github.com/OpenMined/PSI)                   |
 | Web Crypto API      | P-256 ECDH keygen and key agreement, P-256 ECDSA receipt signing, SHA-256, HMAC-SHA-256, HKDF | Platform-provided; report to browser/runtime vendor    |
-
-`@noble/curves` is a declared dependency of `@alcove/core` that no code path
-reaches: every cryptographic operation runs through the Web Crypto API.
+| `werift` (CLI only) | WebRTC DTLS beneath the exchange's AEAD; its DTLS key exchange uses its own `@noble/curves`   | [shinyoshiaki/werift-webrtc](https://github.com/shinyoshiaki/werift-webrtc) |

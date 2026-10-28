@@ -19,7 +19,7 @@ const pkg = require("./package.json");
 const ALWAYS_BUNDLED = new Set(["@openmined/psi.js", "canonicalize"]);
 
 // Returns an `external` predicate that matches bare package names and their
-// subpath exports (e.g. both "@noble/curves" and "@noble/curves/p256").
+// subpath exports (e.g. both "yaml" and "yaml/util").
 function makeExternal(bundled: Set<string>) {
   const allDeps = Object.keys(pkg.dependencies as Record<string, string>);
   const externalRoots = allDeps.filter((name) => !bundled.has(name));

@@ -90,10 +90,12 @@ const describeSplit = ({ installedAs, nested, root }) =>
   `${installedAs} is split across the workspace boundary: ${describeCopy(nested)} while ${describeCopy(root)}.`;
 
 const REMEDY = [
-  `Delete the duplicated entries from package-lock.json and re-resolve with`,
-  `\`npm install --package-lock-only\`, the route measured to work:`,
-  `\`@dependabot rebase\` and \`@dependabot recreate\` each reproduce the split,`,
-  `and a from-scratch resolve drifts far past the bump being landed. Where a`,
+  `Hoist the bumped copies to the root of package-lock.json, drop the nested`,
+  `entries, and re-resolve with \`npm install --package-lock-only\`, the route`,
+  `measured to work. Deleting the nested entries alone can resolve past the`,
+  `bumped version. \`@dependabot rebase\` and \`@dependabot recreate\` each`,
+  `reproduce the split, and a from-scratch resolve drifts far past the bump`,
+  `being landed. Where a`,
   `split is meant to stand -- a workspace that cannot take the version the rest`,
   `of the tree resolves -- record it in NESTED_BY_DESIGN in ${SCRIPT} with the`,
   `reason. Background: docs/spec/DEPENDENCY_PINS.md, "What a root overrides`,

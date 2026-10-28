@@ -60,7 +60,7 @@ Security review applies if this PR touches any of -- do it and record the type, 
 - credential or secret handling: the key file, signing identity, result CSV, or config @path resolution
 - authentication, fingerprint / certificate pinning, or token expiry / token_max_age_days
 - what is disclosed: data sent, logged, displayed, or written to disk, or what the result reveals (cardinality, linkage terms, consent-surfaced fields)
-- a security-relevant dependency: @openmined/psi.js, @noble/curves, any AEAD / key-agreement / KDF library, or the SFTP stack (ssh2 / ssh2-sftp-client)
+- a security-relevant dependency: @openmined/psi.js, any AEAD / key-agreement / KDF library, or the SFTP stack (ssh2 / ssh2-sftp-client)
 Modifying an existing control counts, not only adding one. Full list: CONTRIBUTING Dependency Policy.
 The sha on this line is the commit the review read, and CI compares only the sha to the PR head: a push turns the PR red until the sha is updated, and updating it without reviewing that head states a review that did not happen, which the check cannot see. An n/a states a sha too -- "none of the above touched" is a statement about a particular diff, and the next push can make it false.
 -->

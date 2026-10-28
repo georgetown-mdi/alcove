@@ -307,7 +307,7 @@ Alcove is licensed under [Apache 2.0](LICENSE.md); add third-party dependencies 
 
 On a dependency-bump pull request, scope the review by the changed (`+`/`-`) manifest lines against this policy, and treat a green check on a PR opened days ago as stale until it is re-run against the current `staging` (`@dependabot rebase`).
 
-**Cryptographic dependencies** - `@openmined/psi.js`, `@noble/curves`, and any AEAD, key-agreement, or key-derivation library - require explicit security review and maintainer approval before merging. These libraries underpin the privacy and integrity guarantees of every exchange. Dependency upgrades driven by security advisories take priority over feature work.
+**Cryptographic dependencies** - `@openmined/psi.js` and any AEAD, key-agreement, or key-derivation library - require explicit security review and maintainer approval before merging. These libraries underpin the privacy and integrity guarantees of every exchange. Dependency upgrades driven by security advisories take priority over feature work.
 
 **The SFTP stack (`ssh2` / `ssh2-sftp-client`), the WebRTC stack (`peerjs` / `peerjs-js-binarypack`), and the CLI WebRTC peer (`werift`)** are reached past their public APIs into internals, so each is exact-pinned (in `apps/cli/package.json`, `apps/web/package.json`, and `apps/cli/package.json` respectively). Every bump is a deliberate, security-reviewed edit -- never an `npm audit fix` that slips in unreviewed -- and must re-verify the internal assumptions first. Why they are pinned, the assumptions, and the per-stack upgrade checklist: [docs/spec/DEPENDENCY_PINS.md](docs/spec/DEPENDENCY_PINS.md).
 
