@@ -596,11 +596,11 @@ random value from each party, each sent AES-KW wrapped under a key derived from
 the session key, so no input depends on the current secret's value. It claims
 that value independence and not conformance to section 8.2.3.1's re-keying,
 whose key-establishment method rests on the scheme this note leaves
-unclaimed; the SC-12 sentence the build writes states the gaps. The harvest-now-decrypt-later bound
-above is kept, because the wrapping keys still mix the pre-shared secret with
-the ECDH output, so a recorder who solves the Diffie-Hellman alone cannot
-unwrap either value. The design is not built; it is in
-[rotation-hardening.md](rotation-hardening.md#the-next-secret-independent-of-the-current-one),
+unclaimed; the SC-12 sentence the build writes states the gaps. The
+harvest-now-decrypt-later bound above is kept, because the wrapping keys still
+mix the pre-shared secret with the ECDH output, so a recorder who solves the
+Diffie-Hellman alone cannot unwrap either value. The design is not built; it
+is in [rotation-hardening.md](rotation-hardening.md#the-next-secret-independent-of-the-current-one),
 with the row's wording in its open questions.
 
 ## Open questions

@@ -269,10 +269,11 @@ Rules that bound it:
   The previous secret exists to heal the run that was cut on the device that ran it; keeping it out of files keeps it on that device.
   The cost: a copy moved right after a cut run cannot heal it, and recovers by re-invite as today.
 
-The rotation-in-flight marker keeps its meaning.
-It says this side may be behind; a previous secret says this side may be ahead.
-Under the store order the side that may be ahead was the initiator of the cut run.
-A marker left standing on the initiator means it stopped before its store, when the responder cannot have stored; one left on the responder means the initiator may have, as a lost message 3 leaves it today ([EXCHANGE_FILE.md](../spec/EXCHANGE_FILE.md#the-rotation-in-flight-marker)).
+The rotation-in-flight marker says this side may be behind; a previous secret says this side may be ahead.
+Under the store order the side that may be ahead was the initiator of the cut run, and only its responder can be behind: before the initiator's store the responder cannot have stored, and after it the initiator holds the newer secret.
+So a side writes the marker only when it is the responder of the run, a role known when the marker is written, after the transport opens and before the key exchange.
+A marker left standing on the responder means the initiator may have stored, as a lost message 3 leaves it today ([EXCHANGE_FILE.md](../spec/EXCHANGE_FILE.md#the-rotation-in-flight-marker)).
+A marker already present from an earlier run stays until a recorded outcome supersedes it, whichever role this run takes.
 
 ### Which secret a handshake uses
 
@@ -524,10 +525,12 @@ The stages are those of [The build split and its reviews](#the-build-split-and-i
   - Core stage 3: the initiator's previous secret, its drop, and the history append.
 - **[PROTOCOL.md](../spec/PROTOCOL.md#webrtc-rendezvous-peer-id-derivation)**, WebRTC rendezvous peer-id derivation, with the command-line and web items: the acceptor's offer to the inviter id of both secrets while it holds a previous secret.
   Relay credential derivation, Registering the rotated relay key, and Enrolling at a default relay: the relay rules in [The relay](#the-relay), the credential rule with core stage 3 and the registration and enrollment rules with the app items.
-- **[EXCHANGE_FILE.md](../spec/EXCHANGE_FILE.md#the-key-file-schema)**, the key file, with core stage 3: the previous secret and its `expires`, the history, the rotation-in-flight marker's "no previous secret is kept", and the key the pending relay registration's retry is signed under.
+- **[EXCHANGE_FILE.md](../spec/EXCHANGE_FILE.md#the-key-file-schema)**, the key file.
+  With core stage 2, for the command line: the rotation-in-flight marker's Write order, where a run writes the marker only as the responder and a marker already present stays until a recorded outcome supersedes it, and its What it means, since only a responder's marker records that the partner may have saved a secret this file does not hold ([Keeping the previous secret until the partner confirms](#keeping-the-previous-secret-until-the-partner-confirms)).
+  With core stage 3: the previous secret and its `expires`, the history, the rotation-in-flight marker's "no previous secret is kept", and the key the pending relay registration's retry is signed under.
   With the command-line item: the marker's supersession by a refusal before either store, and the online provisioning paths, per [What the operator is told](#what-the-operator-is-told).
 - **[MANAGED_EXCHANGE_RECORD.md](../spec/MANAGED_EXCHANGE_RECORD.md#the-secret-is-a-linear-resource)**.
-  Core stage 2: the persist-before-success steps, where the initiator's rotation write lands before it sends `proceed` and the responder's on reading it.
+  Core stage 2: the persist-before-success steps, where the initiator's rotation write lands before it sends `proceed` and the responder's on reading it; and the rotation-in-flight marker's Written rule, where a run writes the marker only as the responder and a marker already present stays until a recorded outcome supersedes it.
   The web item: the linear-resource rule that neither party keeps the old secret, the single-owner invariant's "there is no grace window", the persist-before-success steps for the previous secret (stored by the initiator, then the confirmation write), the rotation-in-flight marker and the `"terms-change"` failure kind among the outcomes that remove it, the key the pending relay registration's retry is signed under, the exception to derived-never-stored, the export artifact (history in, previous secret out) and its no-anti-rollback caveat, the import marker read beside a no-show, and the replace question stating an order.
 - **[SECURITY_DESIGN.md](../SECURITY_DESIGN.md#recurring-exchange-authentication)**.
   Core stage 2, for the independent next secret: the "both parties independently derive the same replacement token" sentence; in Token format and entropy, the sentence that rotation derives the replacement deterministically from the session key with no extra round-trip, while the rotated secret's strength sentence stays as it reads; the one-shot web exchange's "derives the rotated replacement secret"; and Key-agreement design's statement of the active adversary.
@@ -553,7 +556,9 @@ Three items, the first ahead of the other two, which are independent of each oth
      A probe leg in `support/fips-probe/` for the `AES-KW` call and for whether the call that draws the two values in the FIPS image draws from the module's DRBG; until it shows that, no document says either value comes from the module.
      The `COMPLIANCE.md` SC-12 sentence the construction makes true.
      Both apps pass their rotation write; an app step tied to the write's place, such as the online flows' configuration hook, moves with it, and the command-line and web items give each its final form.
+     Both apps write the rotation-in-flight marker only as the run's responder.
      Until stage 3 and the app items give the initiator a previous secret, a cut between the initiator's store and the responder's store (a lost `proceed` included) is not healed and needs a re-invite, as a lost message 3 does today.
+     Until the command-line and web items land, a run refused at the terms exchange leaves the marker standing, so the warning it raises at the next run is a false one.
      **Security review: required.** It changes the handshake and the terms exchange, and replaces how the next secret is made: the two wraps, their keys' derivation, the responder value and the next secret's derivation; its scope names the terms exchange.
    - **Stage 3, the previous secret and the history.**
      The message changes, the trial verification, the history verifier and its proofs and notice, the labels and their label-space check, the regenerated key-exchange vectors, the key-file schema fields, the initiator's drop after the terms exchange with its test per exchange mode, and the relay-credential rule.
@@ -603,7 +608,7 @@ Questions 1 to 4, 7 and 8 are decided; questions 5 and 6 each carry a recommenda
    - (c) Recast key establishment as an approved scheme, which [key-establishment-fips-boundary.md](key-establishment-fips-boundary.md#the-decision) weighed and set aside, and the research above looks at again.
 4. **Whether a predictable initiator may expose the next secret.**
    With the next secret derived from the key-agreement output and the initiator's value alone, an outsider who can predict the initiator's randomness computes every next secret, which the shipped derivation does not allow.
-   Decided: (c), on the maintainer's ruling, "OK, do option 3 then.", with `N_R` placed in terms message 2 rather than a frame of its own by a later ruling, "Switch the note to (A) for now, but let's figure out the other open questions on the issue."; built in core stage 2, and [The construction](#the-construction) and [What it does to the one-sided rotation](#what-it-does-to-the-one-sided-rotation) are written for it.
+   Decided: (c), on the maintainer's ruling, "OK, do option 3 then.", with `N_R` placed in terms message 2 rather than a frame of its own by a later ruling of the maintainer; built in core stage 2, and [The construction](#the-construction) and [What it does to the one-sided rotation](#what-it-does-to-the-one-sided-rotation) are written for it.
    - (a) Accept it and state it.
    - (b) A responder value `N_R` in key-exchange message 2, wrapped under the session key, with the next secret derived over both values, the Noise pattern. A one-sided randomness failure then stays harmless, but the responder sends keying material under a key it has not yet confirmed, against the literal reading of SP 800-57 section 8.1.5.2.3 the construction relies on.
    - (c) `N_R` sent after key confirmation, in terms message 2, with the next secret derived over both parties' values. This is both compliant and robust, and changes when each side stores the next secret, so the one-sided heal is re-derived for it.
