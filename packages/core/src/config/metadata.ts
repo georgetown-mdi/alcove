@@ -26,9 +26,11 @@ import type { Algorithm, SemanticType } from "../types";
  * - `identifier` -- indexes this party's matched records in the output.
  * - `payload` -- transmitted to the partner for matched members.
  * - `ignored` -- never linked, never an identifier, never transmitted as
- *   payload, regardless of `isPayload`. {@link inferMetadata} never assigns
- *   it; {@link inferMetadataForEveryColumn} assigns it to each column that
- *   inference does not recognize, outside the `direct` mode.
+ *   payload, regardless of `isPayload`. {@link inferMetadata} assigns it only
+ *   under the `direct` mode, to an identifier-typed column after the first;
+ *   {@link inferMetadataForEveryColumn} assigns it to that column in both
+ *   modes, and to each column that inference does not recognize outside the
+ *   `direct` mode.
  *
  * Two independent axes, each checked explicitly rather than inferred from
  * `type` alone:
