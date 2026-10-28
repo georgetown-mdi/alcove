@@ -31,8 +31,8 @@ function workingFolderCommandBlocks(
 /** Asserts that `container` shows the working-folder command ending on `args`
  * for each shell: as the operator on Linux and macOS and with rootless Podman,
  * and with no account option and nothing for a POSIX shell to expand in
- * PowerShell, and the note on when to leave out `--user`. `interactive` expects the terminal a command that asks before
- * it writes runs with. */
+ * PowerShell, then the note on when to leave out `--user`. `interactive`
+ * expects the terminal a command that asks before it writes runs with. */
 export function expectWorkingFolderCommandPerShell(
   container: HTMLElement,
   args: string,
@@ -61,8 +61,9 @@ export function expectWorkingFolderCommandPerShell(
     "Windows (in PowerShell), running Alcove from its Docker image:",
   );
   expect(container.textContent).toContain(
-    "Runs as your own account, as start-alcove.sh runs the console. " +
-      "If you started the console with docker run and no --user, " +
+    "The Linux and macOS command runs as your own account, as start-alcove.sh runs the console. " +
+      "If the console runs as the account built into the image (started with docker run and no --user, " +
+      "or with start-alcove.sh from a root login), " +
       "leave out --user so this command writes files as the console does.",
   );
   expect(container.textContent).toContain(
