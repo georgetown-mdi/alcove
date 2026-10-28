@@ -3,6 +3,8 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { spawn } from "node:child_process";
 
+import { parseSensitiveJson } from "@alcove/core";
+
 /**
  * The built `alcove` entry this suite drives. The CLI is a separate workspace
  * apps/web may not import, so the interop party on that side of the wire is the
@@ -169,6 +171,17 @@ export function resultFileIn(folder: string): string {
       `expected one result file in ${folder}, found ${results.length}`,
     );
   return path.join(folder, results[0]);
+}
+
+/** The shared secret the `.alcove.key` in `folder` holds. */
+export function sharedSecretIn(folder: string): string {
+  const parsed = parseSensitiveJson(
+    readFileSync(path.join(folder, ".alcove.key"), "utf8"),
+    "key file",
+  ) as { sharedSecret?: unknown };
+  if (typeof parsed.sharedSecret !== "string")
+    throw new Error(`${folder} holds no shared secret`);
+  return parsed.sharedSecret;
 }
 
 /** The matched (own row, partner row) pairs a party's result CSV holds. */

@@ -16,6 +16,7 @@ import {
   namesFileDrop,
   pairsFromResultCsv,
   resultFileIn,
+  sharedSecretIn,
   startCli,
 } from "./cliParty";
 
@@ -177,7 +178,11 @@ describe("a CLI party and a web party complete one live exchange", () => {
       peerTimeoutMs: COMPLETING_PEER_TIMEOUT_MS,
     });
 
-    expectBothPartiesLinked({ cli, web });
+    expectBothPartiesLinked({
+      cli,
+      web,
+      webSharedSecret: webSetup.sharedSecret,
+    });
   });
 
   test("the web app mints the invitation and the real CLI accepts it", async () => {
@@ -218,17 +223,24 @@ describe("a CLI party and a web party complete one live exchange", () => {
       peerTimeoutMs: COMPLETING_PEER_TIMEOUT_MS,
     });
 
-    expectBothPartiesLinked({ cli, web });
+    expectBothPartiesLinked({
+      cli,
+      web,
+      webSharedSecret: minted.sharedSecret,
+    });
   });
 });
 
 /** Both parties finished, the web party naming the CLI's declared identity off
  * the agreed terms, and each resolved the same intersection from its own side --
- * at the offsets its own file holds, which differ between the two. */
+ * at the offsets its own file holds, which differ between the two -- and both
+ * stored the same next shared secret, in place of the invitation's. */
 function expectBothPartiesLinked(settled: {
   cli: PromiseSettledResult<CliRun>;
   web: PromiseSettledResult<WebPartyOutcome>;
+  webSharedSecret: string;
 }): void {
+  const { webSharedSecret } = settled;
   if (settled.web.status === "rejected") throw settled.web.reason;
   if (settled.cli.status === "rejected") throw settled.cli.reason;
   expectCliSucceeded(settled.cli.value, "exchange");
@@ -239,4 +251,6 @@ function expectBothPartiesLinked(settled: {
   expect(pairsFromResultCsv(resultFileIn(workspace.cliOutput))).toEqual(
     CLI_PAIRS,
   );
+  expect(web.nextSecret).toBe(sharedSecretIn(workspace.cliDir));
+  expect(web.nextSecret).not.toBe(webSharedSecret);
 }

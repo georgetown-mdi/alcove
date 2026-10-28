@@ -149,6 +149,8 @@ export interface WebPartyOutcome {
   partnerIdentity: string | undefined;
   /** The matched (own row, partner row) pairs, ascending by own row. */
   pairs: Array<[number, number]>;
+  /** The next shared secret the terms exchange stored, base64url. */
+  nextSecret: string | undefined;
 }
 
 /** The matched pairs an exchange result holds, ordered so two parties'
@@ -220,7 +222,7 @@ export async function exchangeOver(
   handshakeRole: HandshakeRole,
   setup: WebPartySetup,
 ): Promise<WebPartyOutcome> {
-  const { connection: secure } = await authenticateExchange(
+  const { connection: secure, nextSecretInputs } = await authenticateExchange(
     transport,
     handshakeRole,
     setup.sharedSecret,
@@ -230,12 +232,22 @@ export async function exchangeOver(
     { loadWasm: () => PSI() as Promise<PSILibrary> },
     { isNode: false },
   );
+  // The rotation every authenticated web run passes (runExchangeLifecycle,
+  // managedRunDriver), holding the next secret in memory as a one-shot run does.
+  let nextSecret: string | undefined;
   const result = await runExchange(secure, handshakeRole, setup.prepared, {
     psiLibrary: library,
     verbosity: -1,
+    rotation: {
+      inputs: nextSecretInputs,
+      store: (stored) => {
+        nextSecret = stored;
+      },
+    },
   });
   return {
     partnerIdentity: result.partnerTerms.identity,
     pairs: matchedPairs(result.associationTable),
+    nextSecret,
   };
 }

@@ -4,7 +4,6 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   readdirSync,
   rmSync,
   writeFileSync,
@@ -14,8 +13,6 @@ import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-
-import { parseSensitiveJson } from "@alcove/core";
 
 import {
   EXCHANGE_FOLDER_PLACEHOLDER,
@@ -38,6 +35,7 @@ import {
   fillInFileDropConnection,
   invitationFrom,
   pairsFromResultCsv,
+  sharedSecretIn,
   startCli,
 } from "./cliParty";
 
@@ -122,16 +120,6 @@ afterEach(() => {
   for (const manager of managers.splice(0)) manager.shutdown();
   rmSync(workspace.root, { recursive: true, force: true });
 });
-
-function sharedSecretIn(folder: string): string {
-  const parsed = parseSensitiveJson(
-    readFileSync(path.join(folder, ".alcove.key"), "utf8"),
-    "key file",
-  ) as { sharedSecret?: unknown };
-  if (typeof parsed.sharedSecret !== "string")
-    throw new Error(`${folder} holds no shared secret`);
-  return parsed.sharedSecret;
-}
 
 /** The partner's `alcove invite`, accepted on the command line into the
  * console's folder, with both connection blocks naming the shared folder. */

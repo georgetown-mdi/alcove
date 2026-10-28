@@ -1044,13 +1044,33 @@ function rotationLineAfterFailure(
   }
 }
 
-/** What {@link authenticateRun} states ahead of the key file it could not save. */
+/**
+ * What {@link authenticateRun} states ahead of the key file it could not save
+ * as the responder, which stores after the initiator did.
+ */
 const ROTATED_TOKEN_SAVE_PREAMBLE =
   "authentication succeeded and the shared token was rotated, but the " +
   "updated token could not be saved to ";
 
 /** What {@link authenticateRun} states behind that key file and the failure. */
 const ROTATED_TOKEN_SAVE_REMEDY = ` Your partner may already hold the rotated token. ${NEW_INVITATION_REMEDY}`;
+
+/**
+ * What {@link authenticateRun} states ahead of the key file it could not save
+ * as the initiator, which stores first, so its partner stored nothing.
+ */
+const FIRST_STORE_SAVE_PREAMBLE =
+  "authentication succeeded, but the next shared secret could not be saved to ";
+
+/**
+ * What {@link authenticateRun} states behind that key file and the failure. A
+ * directory flush that fails after the rename leaves the next secret in this
+ * side's key file, which the authentication-failure fallback covers.
+ */
+const FIRST_STORE_SAVE_REMEDY =
+  " Your partner did not save it. Fix the key file's location or " +
+  "permissions, then run the same command again; if authentication fails on " +
+  "that run, ask your partner for a new invitation.";
 
 /**
  * The run's authentication stage: run the key exchange, set the rotation the
@@ -1173,21 +1193,23 @@ async function authenticateRun(params: {
       });
       run.tokenRotated = true;
     } catch (err) {
-      // "may already hold": the responder's save follows the initiator's, so a
-      // responder whose save fails leaves the initiator holding the next
-      // secret. The message is the same for both roles, so "may" covers both.
-      //
-      // The wrapped error already holds the full recovery hint specific
-      // to this failure mode. Marked as stating its own next step, the
-      // runProtocol catch below skips its generic authStarted advisory
-      // and the user sees one coherent recovery message.
-      //
-      // It exits with the authentication code rather than 69: the parties'
-      // secrets may now differ, so a retry fails the key exchange instead of
-      // recovering.
+      // Marked as stating its own next step, so runProtocol prints no rotation
+      // line beneath it. The step follows the store order (rotationStanding):
+      // an initiator's failed store aborts before the responder's, so a retry
+      // recovers (exit 69); a responder stores after the initiator did, so
+      // the secrets now differ and a retry fails the key exchange (exit 77).
+      const reason = err instanceof Error ? err.message : String(err);
+      if (role === "initiator") {
+        const message = messageWithOperatorText`${FIRST_STORE_SAVE_PREAMBLE}${operatorSuppliedText(
+          keyFilePath,
+        )}: ${reason}${FIRST_STORE_SAVE_REMEDY}`;
+        throw markStatesItsOwnNextStep(
+          keepOperatorSuppliedText(new Error(message.text), message),
+        );
+      }
       const message = messageWithOperatorText`${ROTATED_TOKEN_SAVE_PREAMBLE}${operatorSuppliedText(
         keyFilePath,
-      )}: ${err instanceof Error ? err.message : String(err)}${ROTATED_TOKEN_SAVE_REMEDY}`;
+      )}: ${reason}${ROTATED_TOKEN_SAVE_REMEDY}`;
       throw markStatesItsOwnNextStep(
         withExitCode(
           keepOperatorSuppliedText(new Error(message.text), message),

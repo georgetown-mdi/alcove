@@ -449,6 +449,7 @@ import {
   RoundSetLimitError,
   parseAgreedTerms,
   markStatesItsOwnNextStep,
+  statesItsOwnNextStep,
 } from "@alcove/core";
 import {
   InvitationTermDivergenceError,
@@ -3423,6 +3424,58 @@ test("a refusal by the initiator at its proceed rotates nobody: no rotated-token
   expect(loadKeyFile(keyFileB)).toEqual({ sharedSecret: TOKEN_A });
 }, 20_000);
 
+test.skipIf(process.platform === "win32")(
+  "a failed save on the initiator rotates nobody: its error names no rotated token on the partner's side and exits 69",
+  async () => {
+    // A directory at the temp path saveKeyFile writes through fails the
+    // initiator's save, as in the responder's save-failure case below.
+    const keyFileA = path.join(tmpDir, "a.key");
+    const keyFileB = path.join(tmpDir, "b.key");
+    fs.mkdirSync(`${keyFileA}.tmp.${process.pid}`);
+    saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+    driveTermsExchange({
+      initiator: (rotation, nextSecret) =>
+        Promise.resolve(rotation.store(nextSecret)),
+      // The responder sent its value, then read the initiator's abort in
+      // place of `proceed`.
+      responder: (rotation) => {
+        rotation.partnerMayHoldNextSecret?.(true);
+        rotation.partnerMayHoldNextSecret?.(false);
+        return Promise.reject(
+          new ProtocolRefusalError(
+            "Your partner stopped the exchange at the linkage terms",
+          ),
+        );
+      },
+    });
+
+    const [resultA, resultB] = await runResponderBThenInitiatorA(
+      keyFileA,
+      keyFileB,
+    );
+
+    expect(resultA.status).toBe("rejected");
+    expect(resultB.status).toBe("rejected");
+    const reason = (resultA as PromiseRejectedResult).reason as Error;
+    expect(reason.message).toContain(
+      "authentication succeeded, but the next shared secret could not be " +
+        "saved to ",
+    );
+    expect(reason.message).toContain(
+      "Your partner did not save it. Fix the key file's location or " +
+        "permissions, then run the same command again; if authentication " +
+        "fails on that run, ask your partner for a new invitation.",
+    );
+    expect(reason.message).not.toContain("rotated token");
+    expect(statesItsOwnNextStep(reason)).toBe(true);
+    expect(exitCodeForError(reason)).toBe(69);
+    expect(rotationLines()).toEqual([]);
+    expect(fs.existsSync(keyFileA)).toBe(false);
+    expect(loadKeyFile(keyFileB)).toEqual({ sharedSecret: TOKEN_A });
+  },
+  20_000,
+);
+
 test("a failure after the proceed: the initiator, which stored first, names a new invitation if the retry fails, and the responder that stored after it does not", async () => {
   const keyFileA = path.join(tmpDir, "a.key");
   const keyFileB = path.join(tmpDir, "b.key");
@@ -5389,6 +5442,8 @@ test("runProtocol marks the key-file path when the rotated token cannot be saved
   saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
   mockState.unwritableKeyFilePath = keyFileA;
 
+  // A starts first and is backdated, so it is the responder, whose save
+  // follows the initiator's.
   const pA = runProtocol({
     connection: {
       channel: "filedrop",
@@ -5401,6 +5456,7 @@ test("runProtocol marks the key-file path when the rotated token cannot be saved
     verbosity: -1,
     loggerName: "test-a",
   });
+  await backdateDropDirRendezvousFile(dropDir);
   const pB = runProtocol({
     connection: {
       channel: "filedrop",
