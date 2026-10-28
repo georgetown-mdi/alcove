@@ -6,7 +6,10 @@ import {
   dockerCronLine,
   dockerRunCommand,
   dockerTaskSchedulerLine,
+  dockerWindowsRunCommand,
   handoffInputName,
+  podmanCronLine,
+  podmanRunCommand,
   runLines,
   unmountableBindPathsNotice,
 } from "@recurring/scheduledRunCommand";
@@ -35,6 +38,9 @@ const SOURCE: ScheduledRunSource = {
   image: IMAGE,
 };
 
+const DOCKER_USER = '--user "$(id -u):$(id -g)"';
+const PODMAN_USER = "--userns=keep-id:uid=1000,gid=1000";
+
 const MOUNTS =
   "--mount type=bind,src=/path/to/your/exchange-folder,dst=/work " +
   "--mount type=bind,src=/path/to/your/shared-directory," +
@@ -56,20 +62,56 @@ function sourceBinding(path: string): ScheduledRunSource {
 }
 
 describe("the console hand-off's command lines", () => {
-  test("the one-off command runs the image over the folder with a per-run result", () => {
+  test("the one-off command runs the image as the operator over the folder", () => {
     expect(dockerRunCommand(SOURCE)).toBe(
-      `docker run --rm ${MOUNTS} ${IMAGE} exchange --log-file=exchange.log ` +
-        "clients.csv ./",
+      `docker run --rm ${DOCKER_USER} ${MOUNTS} ${IMAGE} exchange ` +
+        "--log-file=exchange.log clients.csv ./",
     );
   });
 
-  test("the cron line names docker by path and needs no shell expansion or escape", () => {
+  test("the cron line names docker by path and runs it as the operator", () => {
     const line = dockerCronLine(SOURCE);
     expect(line).toBe(
-      `0 2 * * * /usr/bin/docker run --rm ${MOUNTS} ${IMAGE} exchange ` +
+      `0 2 * * * /usr/bin/docker run --rm ${DOCKER_USER} ${MOUNTS} ${IMAGE} ` +
+        "exchange --log-file=exchange.log clients.csv ./",
+    );
+    expect(line).not.toMatch(/[%`\\]/);
+  });
+
+  test("the Podman command and cron line map the operator with a user namespace, not --user", () => {
+    expect(podmanRunCommand(SOURCE)).toBe(
+      `podman run --rm ${PODMAN_USER} ${MOUNTS} ${IMAGE} exchange ` +
         "--log-file=exchange.log clients.csv ./",
     );
-    expect(line).not.toMatch(/[$%`\\]/);
+    expect(podmanCronLine(SOURCE)).toBe(
+      `0 2 * * * /usr/bin/podman run --rm ${PODMAN_USER} ${MOUNTS} ${IMAGE} ` +
+        "exchange --log-file=exchange.log clients.csv ./",
+    );
+    expect(podmanRunCommand(SOURCE)).not.toContain("--user ");
+    expect(podmanCronLine(SOURCE)).not.toContain("--user ");
+  });
+
+  test("the shell expands the account to the operator's own ids, as one argument", () => {
+    const command = dockerRunCommand(SOURCE);
+    if (command === undefined) throw new Error("no docker command");
+    const tokens = execFileSync(
+      "/bin/sh",
+      ["-c", `printf '%s\\n' ${command}`],
+      { encoding: "utf8" },
+    ).split("\n");
+    const operator =
+      `${execFileSync("id", ["-u"], { encoding: "utf8" }).trim()}:` +
+      execFileSync("id", ["-g"], { encoding: "utf8" }).trim();
+    expect(tokens.slice(0, 4)).toEqual(["docker", "run", "--rm", "--user"]);
+    expect(tokens[4]).toBe(operator);
+  });
+
+  test("the lines carry both engines' forms where the Docker lines are shown", () => {
+    const lines = shownLines(SOURCE);
+    expect(lines.runCommand).toBe(dockerRunCommand(SOURCE));
+    expect(lines.dockerCronLine).toBe(dockerCronLine(SOURCE));
+    expect(lines.podmanRunCommand).toBe(podmanRunCommand(SOURCE));
+    expect(lines.podmanCronLine).toBe(podmanCronLine(SOURCE));
   });
 
   test("the installed-program cron line runs from the exchange folder", () => {
@@ -97,6 +139,28 @@ describe("the console hand-off's command lines", () => {
         `${IMAGE} exchange --log-file=exchange.log clients.csv ./")`,
     );
     expect(line).not.toContain("shared-directory");
+    expect(line).not.toContain("--user");
+    expect(line).not.toContain("--userns");
+  });
+
+  test("the run command is shown for each shell: the operator's account on macOS and Linux, none on Windows", () => {
+    const lines = shownLines(SOURCE);
+    expect(lines.runCommand).toContain(DOCKER_USER);
+    expect(lines.windowsRunCommand).toBe(dockerWindowsRunCommand(SOURCE));
+    expect(lines.windowsRunCommand).toBe(
+      "docker run --rm --mount " +
+        '"type=bind,src=C:\\path\\to\\your\\exchange-folder,dst=/work" ' +
+        `${IMAGE} exchange --log-file=exchange.log clients.csv ./`,
+    );
+    expect(lines.windowsRunCommand).not.toContain("--user");
+    expect(lines.windowsRunCommand).not.toContain("$(");
+    expect(lines.windowsRunCommand).not.toContain("shared-directory");
+  });
+
+  test("no Windows run command is shown where a path cannot be mounted", () => {
+    const lines = shownLines(sourceBinding("/srv/a,b"));
+    expect(lines.windowsRunCommand).toBeUndefined();
+    expect(lines.runCommand).not.toContain("docker");
   });
 
   test("the input name is the positional before the output", () => {
@@ -352,6 +416,45 @@ describe("the docker run argv", () => {
     expect(
       dockerRunArgv(source, "docker", "/folder", { interactive: true }),
     ).toEqual(["docker", "run", "--rm", "-it", ...tail]);
+  });
+
+  test("runs as the operator under the engine asked for, before the mounts", () => {
+    const source: ScheduledRunSource = {
+      argv: ["alcove", "update"],
+      bindPaths: [],
+      image: IMAGE,
+    };
+    const tail = [
+      "--mount",
+      "type=bind,src=/folder,dst=/work",
+      IMAGE,
+      "update",
+    ];
+    expect(
+      dockerRunArgv(source, "docker", "/folder", {
+        operatorAccountFor: "docker",
+      }),
+    ).toEqual([
+      "docker",
+      "run",
+      "--rm",
+      "--user",
+      '"$(id -u):$(id -g)"',
+      ...tail,
+    ]);
+    expect(
+      dockerRunArgv(source, "podman", "/folder", {
+        operatorAccountFor: "podman",
+        interactive: true,
+      }),
+    ).toEqual([
+      "podman",
+      "run",
+      "--rm",
+      "-it",
+      "--userns=keep-id:uid=1000,gid=1000",
+      ...tail,
+    ]);
   });
 });
 

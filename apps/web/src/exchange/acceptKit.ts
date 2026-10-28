@@ -45,6 +45,8 @@
  */
 import { PLACEHOLDER_SSH_USERNAME } from "@alcove/core";
 
+import { OPERATOR_USER_FLAG } from "@psi/containerAccount";
+
 import { imageReference, releaseVersion } from "@utils/alcoveImage";
 
 export type AcceptKitEndpoint =
@@ -506,7 +508,7 @@ function opening(
     "To fix it, add this flag to every command on this sheet, straight",
     "after the word run:",
     "",
-    '  --user "$(id -u):$(id -g)"',
+    `  ${OPERATOR_USER_FLAG}`,
     "",
     "That runs Alcove as you. Every folder you can use, it can use:",
     ...(endpoint.channel !== "filedrop"

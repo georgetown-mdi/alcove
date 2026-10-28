@@ -255,10 +255,16 @@ function isCommandArgv(argv: unknown): argv is Array<string> {
  * multi-word `--identity=` label survives the copy intact. A token with no such
  * character is emitted bare. The tokens are server-composed and secret-free (the
  * connection URL, portable flags, and placeholders), so this is display shaping,
- * not a security boundary.
+ * not a security boundary. A token `verbatim` accepts is emitted as it stands,
+ * for a value the shell is meant to expand.
  */
-export function shellJoinCommand(argv: ReadonlyArray<string>): string {
-  return argv.map(shellQuoteToken).join(" ");
+export function shellJoinCommand(
+  argv: ReadonlyArray<string>,
+  verbatim: (token: string) => boolean = () => false,
+): string {
+  return argv
+    .map((token) => (verbatim(token) ? token : shellQuoteToken(token)))
+    .join(" ");
 }
 
 const SHELL_SAFE_TOKEN = /^[A-Za-z0-9_@%+=:,./-]+$/;

@@ -89,7 +89,7 @@ At a time agreed with your partner, run the exchange once from a terminal on the
 
 == Windows
 
-The panel's **Run the exchange** command is written for macOS and Linux. In PowerShell, run it with your exchange folder and the credential mount from step 3, keeping the panel's arguments after the image name:
+The panel shows the **Run the exchange** command for Windows too, labeled **Windows (in PowerShell)**. Run it with your exchange folder and the credential mount from step 3, keeping the panel's arguments after the image name:
 
 ```powershell
 docker run --rm --mount "type=bind,src=C:\alcove\state-county,dst=/work" --mount "type=bind,src=C:\alcove\secrets\sftp-password.txt,dst=/secrets/sftp-password.txt,readonly" ghcr.io/georgetown-mdi/alcove:latest exchange --log-file=exchange.log alcove-sample-partner.csv ./
@@ -99,11 +99,11 @@ Use your input file's name from the panel in place of `alcove-sample-partner.csv
 
 == macOS
 
-Run the command under **Run the exchange**, with the paths you set in step 3.
+Run the **Linux/macOS** command under **Run the exchange**, with the paths you set in step 3.
 
 == Linux
 
-Run the command under **Run the exchange**, with the paths you set in step 3, and add `--user "$(id -u):$(id -g)"` after `docker run`. With rootless Podman, run it as `podman run` with `--userns=keep-id:uid=1000,gid=1000` instead of `--user`.
+Run the **Linux/macOS** command under **Run the exchange**, with the paths you set in step 3. It runs Alcove as your own account, so it can write your folder. With rootless Podman, run the Podman command printed after the schedule lines instead.
 
 :::
 
@@ -111,7 +111,7 @@ You should see: a new `alcove-results-<time>.csv` in the exchange folder, and th
 
 ### 5. Schedule it at your cadence
 
-Under **Schedule it (set the time you agreed with your partner)**, the panel gives two lines, both daily at 2am:
+Under **Schedule it (set the time you agreed with your partner)**, the panel gives two Docker lines, both daily at 2am:
 
 - **cron (Linux/macOS), daily at 2am, running Alcove from its Docker image**
 - **Windows Task Scheduler (in PowerShell), daily at 2am, running Alcove from its Docker image**
@@ -119,7 +119,7 @@ Under **Schedule it (set the time you agreed with your partner)**, the panel giv
 It offers no other cadence. For weekly, monthly or quarterly, replace the cron `0 2 * * *` with the row for your cadence in [Cadences](./cli-schedule.md#cadences). Your partner uses the same row and time.
 In the Task Scheduler command, for weekly on Mondays replace `-Daily` with `-Weekly -DaysOfWeek Monday`. It has no monthly option: for monthly or quarterly, write a `schtasks` line instead, as [Schedule it](./cli-schedule.md#1-write-the-schedule-line) shows.
 Add the cron line with `crontab -e`, or run the Task Scheduler command once in PowerShell.
-On Linux and macOS, the cron line names `/usr/bin/docker`. A scheduled job does not use your shell's PATH, so check where Docker is with `command -v docker` and correct the line if it differs. On Linux, add `--user "$(id -u):$(id -g)"` after `docker run` in the cron line, or the Podman form, as in step 4.
+On Linux and macOS, the cron line names `/usr/bin/docker`. A scheduled job does not use your shell's PATH, so check where Docker is with `command -v docker` and correct the line if it differs. With rootless Podman, use the Podman cron line printed after the schedule lines, and check `command -v podman` the same way.
 
 The configuration the console writes sets no inactivity limit on the secret, so a missed run does not end the exchange.
 

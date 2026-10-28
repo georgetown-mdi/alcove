@@ -94,6 +94,29 @@ describe("the surface of an imported configuration", () => {
     ).toBe(null);
   });
 
+  test("shows the run command for macOS and Linux and for Windows", async () => {
+    const created = await createManagedExchange(configurationOnly());
+
+    app.render(createElement(ManagedRunSurface, { id: created.id }));
+
+    await expect
+      .element(page.getByText("Windows (in PowerShell), running Alcove"))
+      .toBeInTheDocument();
+
+    // The run command is shown for Windows as well, with no account option.
+    const runBlocks = Array.from(app.container.querySelectorAll("pre")).map(
+      (block) => block.textContent,
+    );
+    const posixRun = runBlocks.find((code) => code.startsWith("docker run"));
+    const windowsRun = runBlocks.find(
+      (code) => code.startsWith("docker run") && code.includes("C:\\"),
+    );
+    expect(posixRun).toContain('--user "$(id -u):$(id -g)"');
+    expect(windowsRun).toContain("docker run --rm --mount ");
+    expect(windowsRun).not.toContain("--user");
+    expect(windowsRun).not.toContain("$(");
+  });
+
   test("downloads the alcove.yaml the command line loads", async () => {
     const created = await createManagedExchange(configurationOnly());
     const downloads = captureDownloads();

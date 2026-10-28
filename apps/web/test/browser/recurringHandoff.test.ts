@@ -137,8 +137,25 @@ describe("RecurringHandoff panel", () => {
     const text = () => app.container.textContent;
     // The command template, including the portable pin and the placeholder credential.
     expect(text()).toContain(
-      "docker run --rm --mount type=bind,src=/path/to/your/exchange-folder,dst=/work",
+      'docker run --rm --user "$(id -u):$(id -g)" --mount ' +
+        "type=bind,src=/path/to/your/exchange-folder,dst=/work",
     );
+    // The same command for rootless Podman, which takes a user namespace
+    // where Docker takes --user.
+    expect(text()).toContain(
+      "podman run --rm --userns=keep-id:uid=1000,gid=1000 --mount " +
+        "type=bind,src=/path/to/your/exchange-folder,dst=/work",
+    );
+    // The Windows form of the command takes no account option.
+    const windowsRun = Array.from(app.container.querySelectorAll("pre"))
+      .map((block) => block.textContent)
+      .find((code) => code.startsWith("docker run") && code.includes("C:\\"));
+    expect(windowsRun).toContain(
+      'docker run --rm --mount "type=bind,src=C:\\path\\to\\your\\exchange-folder,dst=/work"',
+    );
+    expect(windowsRun).not.toContain("--user");
+    expect(windowsRun).not.toContain("$(");
+    expect(text()).toContain("Windows (in PowerShell), running Alcove");
     expect(text()).toContain("sftp://sftp.example.gov:2222/exchange");
     expect(text()).toContain("--server-host-key-fingerprint=SHA256:");
     expect(text()).toContain(
@@ -181,7 +198,7 @@ describe("RecurringHandoff panel", () => {
         "dst=/path/to/your/shared-directory",
     );
     expect(text()).toContain(
-      "The Docker commands mount /path/to/your/shared-directory",
+      "The Docker commands for Linux and macOS mount /path/to/your/shared-directory",
     );
   });
 
