@@ -319,8 +319,9 @@ export function assertTermsRunnable(
  * A pair naming different algorithms is refused as an
  * {@link AlgorithmDivergenceError} rather than resolved to either value.
  *
- * Under the `every-key` `construction` several linkage keys are admitted; a
- * key with a missing-field condition stays refused, as does every other rule.
+ * Under the `every-key` `construction` several linkage keys, a declared
+ * `single-pass` and a key with a missing-field condition are admitted; every
+ * other rule holds.
  */
 export function resolveCountOnlyRun(
   localTerms: LinkageTerms,
@@ -340,7 +341,7 @@ export function resolveCountOnlyRun(
       const violation = countOnlyEveryKeyShapeViolation(terms);
       if (violation !== undefined)
         throw new UsageError(COUNT_ONLY_SHAPE_REFUSALS[violation]);
-      assertKeyConditionsAdmitted(terms);
+      assertKeyConditionsAdmitted(terms, construction);
     }
   else {
     assertCountOnlyTermsShape(localTerms);
@@ -809,6 +810,8 @@ export function prepareForExchange(
   // Applies to either role: the ceiling is symmetric (a receiver holds both
   // encrypted sets resident, bounded exactly as the sender's), so this
   // party's own count predicts an abort regardless of which side it plays.
+  // A count-only run declaring single-pass runs the cascade's rounds and is
+  // not held to the ceiling (docs/spec/PROTOCOL.md, PSI-C).
   //
   // Ordered behind the fan-out refusal above, so a fan-out a strategy cannot
   // match is refused for that rather than for size. An OperatorConfigError
@@ -844,6 +847,7 @@ export function prepareForExchange(
 
   if (
     linkageTerms.linkageStrategy === "single-pass" &&
+    linkageTerms.algorithm !== "psi-c" &&
     singlePassDatasetExceedsCap(effectiveKeyCount, declaredRecordCount)
   ) {
     throw new OperatorConfigError(
@@ -918,7 +922,9 @@ export interface ExchangeStageDefinition {
  * the encrypt/match stages it emits pass through the caller's onStage unlabeled.
  * Their ids -- which of them a party emits depends on the role the handshake
  * resolves, so no list can enumerate them here -- are `SINGLE_PASS_STAGE_IDS`
- * in psi/link.ts, for a caller that labels them.
+ * in psi/link.ts, for a caller that labels them. A count-only (`psi-c`) run
+ * declaring single-pass runs the cascade's rounds, so it has the cascade's
+ * stages.
  */
 export function describeExchangeStages(
   prepared: PreparedExchange,
@@ -927,7 +933,10 @@ export function describeExchangeStages(
     id: CONFIRMING_PROTOCOL_STAGE_ID,
     label: "Confirming protocol",
   };
-  if (prepared.linkageTerms.linkageStrategy === "single-pass")
+  if (
+    prepared.linkageTerms.linkageStrategy === "single-pass" &&
+    prepared.linkageTerms.algorithm !== "psi-c"
+  )
     return [confirming];
   const keyCount = linkageRounds(prepared.linkageTerms.linkageKeys).length;
   return [
@@ -1448,8 +1457,11 @@ export async function runExchange(
   assertFanOutImplemented(linkageTerms);
 
   // Refuse a key condition the terms schema refuses, for a PreparedExchange whose
-  // terms were built without a parse. See assertKeyConditionsAdmitted.
-  assertKeyConditionsAdmitted(linkageTerms);
+  // terms were built without a parse, except one on count-only terms under the
+  // every-key construction. See assertKeyConditionsAdmitted.
+  const countOnlyConstruction =
+    options[COUNT_ONLY_CONSTRUCTION] ?? "single-key";
+  assertKeyConditionsAdmitted(linkageTerms, countOnlyConstruction);
 
   // Refuse a disclosed column whose name is too long to carry before anything goes
   // on the wire. prepareForExchange refuses it at prepare time; this holds for a
@@ -1652,8 +1664,6 @@ export async function runExchange(
   // is symmetric, so a count-only exchange outside the specified shape aborts BOTH
   // parties here -- before the bootstrap frame and the PSI round -- rather than
   // starting a round one side would refuse. See resolveCountOnlyRun.
-  const countOnlyConstruction =
-    options[COUNT_ONLY_CONSTRUCTION] ?? "single-key";
   const countOnly = resolveCountOnlyRun(
     linkageTerms,
     partnerTerms,
@@ -1790,6 +1800,7 @@ export async function runExchange(
     localExpectsOutput: linkageTerms.output.expectsOutput,
     partnerAssociationTableWithheld:
       linkageTerms.linkageStrategy === "single-pass" &&
+      !countOnly &&
       isReceiver &&
       withholdSenderTable,
   });

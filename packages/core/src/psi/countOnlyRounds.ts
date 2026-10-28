@@ -56,8 +56,11 @@ const NO_VALUE = -1;
  * One count-only round's set, `source` being this party's records in record
  * order and `round` the round's 0-based position: one element per record, the
  * round value `round:value` where the record has a value for the key that no
- * other record has, and a fresh dummy otherwise. A record holding a candidate
- * set is refused, as every round matching one value per record refuses it.
+ * other record has, and a fresh dummy otherwise. A record the round is not
+ * built for, on the side a missing-field condition filters, comes with no
+ * value (`roundKeyIterable`), so it has a dummy and repeats no value. A
+ * record holding a candidate set is refused, as every round matching one value
+ * per record refuses it.
  * `records` is this party's declared record count; a source holding another
  * number of records is an internal fault.
  *

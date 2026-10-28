@@ -8,6 +8,7 @@ import type {
   LinkageKey,
   LinkageTerms,
 } from "./config/linkageTermsSchema.js";
+import type { CountOnlyConstruction } from "./exchange/countOnlyConstruction.js";
 
 /** The linkage-field types a missing-field condition may name. */
 export type MissingFieldConditionType = "date_of_birth";
@@ -64,6 +65,26 @@ export interface KeyConditionRefusal {
 export function keyConditionRefusal(
   terms: Pick<LinkageTerms, "algorithm" | "linkageFields" | "linkageKeys">,
 ): KeyConditionRefusal | undefined {
+  return conditionRefusal(terms, false);
+}
+
+/**
+ * {@link keyConditionRefusal} with a condition admitted under count-only: the
+ * rules the agreed-terms run boundary holds the `every-key` count-only
+ * construction to.
+ *
+ * @internal
+ */
+export function countOnlyEveryKeyConditionRefusal(
+  terms: Pick<LinkageTerms, "algorithm" | "linkageFields" | "linkageKeys">,
+): KeyConditionRefusal | undefined {
+  return conditionRefusal(terms, true);
+}
+
+function conditionRefusal(
+  terms: Pick<LinkageTerms, "algorithm" | "linkageFields" | "linkageKeys">,
+  admitsCountOnly: boolean,
+): KeyConditionRefusal | undefined {
   const typeByName = new Map(
     terms.linkageFields.map((field) => [field.name, field.type]),
   );
@@ -82,20 +103,26 @@ export function keyConditionRefusal(
       key.elements.some((element) => element.field === condition.missingField)
     )
       return refused("readsField");
-    if (terms.algorithm === "psi-c") return refused("countOnly");
+    if (!admitsCountOnly && terms.algorithm === "psi-c")
+      return refused("countOnly");
   }
   return undefined;
 }
 
 /**
  * Refuse key conditions outside {@link keyConditionRefusal}'s rules, for terms
- * built or mutated without a parse. A {@link UsageError}: on the accept side
- * the terms are the partner's.
+ * built or mutated without a parse, or under the `every-key` count-only
+ * `construction` outside {@link countOnlyEveryKeyConditionRefusal}'s. A
+ * {@link UsageError}: on the accept side the terms are the partner's.
  */
 export function assertKeyConditionsAdmitted(
   terms: Pick<LinkageTerms, "algorithm" | "linkageFields" | "linkageKeys">,
+  construction: CountOnlyConstruction = "single-key",
 ): void {
-  const refusal = keyConditionRefusal(terms);
+  const refusal =
+    construction === "every-key"
+      ? countOnlyEveryKeyConditionRefusal(terms)
+      : keyConditionRefusal(terms);
   if (refusal !== undefined) throw new UsageError(refusal.message);
 }
 

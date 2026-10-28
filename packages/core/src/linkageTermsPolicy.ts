@@ -80,9 +80,9 @@ export function countOnlyShapeViolation(
 }
 
 /**
- * {@link countOnlyShapeViolation} with several linkage keys admitted: the rules
- * the agreed-terms run boundary holds the `every-key` count-only construction
- * to.
+ * {@link countOnlyShapeViolation} with several linkage keys and a declared
+ * `single-pass` admitted: the rules the agreed-terms run boundary holds the
+ * `every-key` count-only construction to.
  *
  * @internal
  */
@@ -94,11 +94,12 @@ export function countOnlyEveryKeyShapeViolation(
 
 function shapeViolation(
   terms: LinkageTerms,
-  admitsSeveralKeys: boolean,
+  everyKey: boolean,
 ): CountOnlyShapeViolation | undefined {
   if (terms.algorithm !== "psi-c") return undefined;
-  if (!admitsSeveralKeys && terms.linkageKeys.length > 1) return "linkageKeys";
-  if (terms.linkageStrategy !== "cascade") return "linkageStrategy";
+  if (!everyKey && terms.linkageKeys.length > 1) return "linkageKeys";
+  if (!everyKey && terms.linkageStrategy !== "cascade")
+    return "linkageStrategy";
   if (terms.deduplicate) return "deduplicate";
   if (
     (terms.payload?.send?.length ?? 0) > 0 ||

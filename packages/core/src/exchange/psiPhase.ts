@@ -106,9 +106,11 @@ export async function runPsiPhase(p: {
         "count its own rounds",
     );
 
-  // Single-pass is allowlisted; any other value (including the default) runs the
-  // cascade. No mismatch guard needed here -- validateCompatibility already
-  // aborted upstream if the two parties' strategies differ. Single-pass takes the
+  // A count-only run takes its own rounds whichever strategy its terms declare
+  // (docs/spec/PROTOCOL.md, PSI-C). Otherwise single-pass is allowlisted, and
+  // any other value (including the default) runs the cascade. No mismatch guard
+  // needed here -- validateCompatibility already aborted upstream if the two
+  // parties' strategies differ. Single-pass takes the
   // exchanged bounds too: the partner's record count and both parties' effective
   // key counts derive the per-exchange frame cap, the abort-if-over-ceiling gate,
   // and the index-table layout, identically on both parties (see
