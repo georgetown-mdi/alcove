@@ -831,6 +831,77 @@ Describe 'The credential a pair of folders on one server takes' {
 }
 
 Describe 'A run of the checks the engine stopped during' {
+    BeforeAll {
+        # What `alcove doctor --json` prints for each outcome below, recorded
+        # from the checks themselves: apps/cli/src/doctor/probe.ts and mount.ts
+        # run against a server and a folder that answer that way, the line
+        # written by verdict.ts. One check to a line here, joined back into the
+        # single line the image prints.
+        $script:VerdictPortClosed = -join @(
+            '{"version":1,"mode":"probe","overall":"fix_and_retry","checks":[',
+            '{"id":"name_resolution","status":"ok"},',
+            '{"id":"tcp_445","status":"fail","meaning":"this container reaches the network through its runtime''s address translation, so to the file server it looks like a different machine than Windows does. A VPN that routes only the Windows side, a host firewall rule, or a server-side address restriction blocks it while File Explorer keeps working.","action":"if you are on a VPN, that is the likely cause. See the troubleshooting page, ''The container cannot reach the server''."},',
+            '{"id":"smbclient_available","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
+            '{"id":"authentication","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
+            '{"id":"share_open","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
+            '{"id":"subdirectory","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
+            '{"id":"free_space","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
+            '{"id":"write","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
+            '{"id":"rename","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
+            '{"id":"delete","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
+            '{"id":"marker","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."}',
+            ']}')
+        $script:VerdictWriteDenied = -join @(
+            '{"version":1,"mode":"probe","overall":"fix_and_retry","checks":[',
+            '{"id":"name_resolution","status":"ok"},',
+            '{"id":"tcp_445","status":"ok"},',
+            '{"id":"smbclient_available","status":"ok"},',
+            '{"id":"authentication","status":"ok"},',
+            '{"id":"share_open","status":"ok"},',
+            '{"id":"subdirectory","status":"ok"},',
+            '{"id":"free_space","status":"warn","meaning":"that is little enough that a large exchange could exhaust it.","action":"ask for more quota if your input files are large."},',
+            '{"id":"write","status":"fail","meaning":"this account can read the folder but not write to it.","action":"ask whoever administers the share for write permission on this folder. Mount options such as file_mode cannot grant it -- they only change how permissions look inside the container, not what the server allows."},',
+            '{"id":"rename","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
+            '{"id":"delete","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
+            '{"id":"marker","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."}',
+            ']}')
+        $script:VerdictSignInRefused = -join @(
+            '{"version":1,"mode":"probe","overall":"fix_and_retry","checks":[',
+            '{"id":"name_resolution","status":"ok"},',
+            '{"id":"tcp_445","status":"ok"},',
+            '{"id":"smbclient_available","status":"ok"},',
+            '{"id":"authentication","status":"fail","meaning":"the username, password, or domain is wrong. This is the one status that really does mean bad credentials.","action":"if this is a domain account, give its domain -- answer the setup script''s Domain prompt, or set SMB_DOMAIN if you are running this image yourself. If the folder opens in File Explorer WITHOUT ever asking for a password, Windows is signing you in with Kerberos and there may be no password that works here; see the troubleshooting page, ''The share never asks for a password''. Do not work through passwords one at a time -- each run is one failed sign-in against the account, and a handful of those locks it out."},',
+            '{"id":"share_open","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
+            '{"id":"subdirectory","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
+            '{"id":"free_space","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
+            '{"id":"write","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
+            '{"id":"rename","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
+            '{"id":"delete","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
+            '{"id":"marker","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."}',
+            ']}')
+        $script:VerdictMountUnreadable = -join @(
+            '{"version":1,"mode":"mount","overall":"fatal","checks":[',
+            '{"id":"mount_readable","status":"fail","meaning":"the folder the exchange runs in is not there, or is not a directory this process can list. Nothing about the share itself has been established.","action":"check that the volume is mounted at this path and that the container was started with it attached."},',
+            '{"id":"marker","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
+            '{"id":"write_rename","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
+            '{"id":"exclusive_create","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
+            '{"id":"rename_onto_existing","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."}',
+            ']}')
+
+        function Get-LauncherScreen {
+            <#  The lines a battery or a loop of them put on the screen, as one
+                text to compare whole, so a change to a word of it fails the
+                comparison. Write-Host output only: a function's return value
+                travels the same merged stream and is not on the screen. #>
+            param($Output)
+
+            return (@($Output | Where-Object { $_ -is [System.Management.Automation.InformationRecord] } |
+                        ForEach-Object { ([string] $_).TrimEnd() }) -join "`n")
+        }
+
+        $script:LauncherTroubleshootingUrl = 'https://github.com/georgetown-mdi/alcove/blob/main/support/windows-network-filedrop/troubleshooting.md'
+    }
+
     BeforeEach {
         $script:AlcoveEngine = 'docker'
     }
@@ -851,6 +922,10 @@ Describe 'A run of the checks the engine stopped during' {
         $said | Should -BeLike '*Start Docker Desktop again*' -Because $said
         $said | Should -Not -BeLike '*launcher published*' -Because $said
         $said | Should -Not -BeLike '*could not be started*' -Because $said
+        (Get-LauncherScreen $output) | Should -BeExactly (@(
+                '  FAIL  The container engine (docker) stopped answering, so the checks did not finish.',
+                '        Start Docker Desktop again and wait for the whale icon to stop',
+                '        animating, then run this script again.') -join "`n")
     }
 
     It 'names the stopped engine when the run ended in the engine''s own range' {
@@ -879,15 +954,124 @@ Describe 'A run of the checks the engine stopped during' {
     }
 
     It 'keeps the verdict message while the engine still answers' {
+        # A refused input is what the doctor answers this way: exit 64, and
+        # nothing on standard output (docs/spec/CLI_DOCTOR.md, Exit codes).
         function Invoke-EngineCapture { return @{ Ran = $true; Output = ''; ExitCode = 64 } }
         function Invoke-EngineQuiet { return @{ Ran = $true; Output = 'Server: Docker Engine'; ExitCode = 0 } }
 
-        $said = @(Invoke-DoctorBattery -EngineArgs @('--volume', 'C:\data:/rz') `
-                -BatteryArgs @('doctor', 'mount', '/rz') 6>&1 |
-                Where-Object { $_ -isnot [hashtable] } | ForEach-Object { [string] $_ }) -join ' '
+        $output = @(Invoke-DoctorBattery -EngineArgs @('--volume', 'C:\data:/rz') `
+                -BatteryArgs @('doctor', 'mount', '/rz') 6>&1)
+        $said = @($output | Where-Object { $_ -isnot [hashtable] } | ForEach-Object { [string] $_ }) -join ' '
 
         $said | Should -BeLike '*the checks printed no verdict*' -Because $said
         $said | Should -Not -BeLike '*stopped answering*' -Because $said
+        (Get-LauncherScreen $output) | Should -BeExactly (@(
+                '  FAIL  The checks did not produce a verdict this launcher can read: the checks printed no verdict.',
+                '        Use the launcher published with the image you are running.') -join "`n")
+    }
+
+    It 'names the engine''s own failure to start a container, not the folder' {
+        # Docker's range, with the engine still answering: the checks never
+        # ran, and what the engine printed reached the window above this.
+        function Invoke-EngineCapture { return @{ Ran = $true; Output = ''; ExitCode = 125 } }
+        function Invoke-EngineQuiet { return @{ Ran = $true; Output = 'Server: Docker Engine'; ExitCode = 0 } }
+
+        $output = @(Invoke-DoctorBattery -EngineArgs @('--volume', 'C:\data:/rz') `
+                -BatteryArgs @('doctor', 'mount', '/rz') 6>&1)
+        $result = @($output | Where-Object { $_ -is [hashtable] })[0]
+
+        $result.Established | Should -BeFalse
+        (Get-LauncherScreen $output) | Should -BeExactly (@(
+                '  FAIL  The container could not be started (exit 125).',
+                '        Nothing about your folder was tested. The message the engine',
+                '        printed above is the one to read. A first run also fetches the',
+                '        image, which needs a network that can reach the registry.') -join "`n")
+    }
+
+    It 'shows a failed battery''s failures and leaves its SKIP block off the screen' {
+        # Only the checks to act on are shown: the run's skipped checks carry
+        # no ACTION, and the retry runs them again.
+        function Invoke-EngineCapture { return @{ Ran = $true; Output = $script:VerdictPortClosed; ExitCode = 78 } }
+        function Invoke-EngineQuiet { return @{ Ran = $true; Output = 'Server: Docker Engine'; ExitCode = 0 } }
+
+        $output = @(Invoke-DoctorBattery -EngineArgs @('--env', 'SMB_SERVER') `
+                -BatteryArgs @('doctor', 'probe') 6>&1)
+        $result = @($output | Where-Object { $_ -is [hashtable] })[0]
+
+        $result.Established | Should -BeTrue
+        $result.Overall | Should -Be 'fix_and_retry'
+        (@($result.Failed) -join ' ') | Should -Be 'tcp_445'
+        (Get-LauncherScreen $output) | Should -BeExactly (@(
+                '',
+                '  FAIL  tcp_445',
+                '        MEANING: this container reaches the network through its runtime''s address translation, so to the file server it looks like a different machine than Windows does. A VPN that routes only the Windows side, a host firewall rule, or a server-side address restriction blocks it while File Explorer keeps working.',
+                '        ACTION:  if you are on a VPN, that is the likely cause. See the troubleshooting page, ''The container cannot reach the server''.',
+                '',
+                'Do what the ACTION lines say, then run the checks again.') -join "`n")
+    }
+
+    It 'shows a warning beside a failure, in the order the checks ran' {
+        function Invoke-EngineCapture { return @{ Ran = $true; Output = $script:VerdictWriteDenied; ExitCode = 78 } }
+        function Invoke-EngineQuiet { return @{ Ran = $true; Output = 'Server: Docker Engine'; ExitCode = 0 } }
+
+        $output = @(Invoke-DoctorBattery -EngineArgs @('--env', 'SMB_SERVER') `
+                -BatteryArgs @('doctor', 'probe') 6>&1)
+
+        (Get-LauncherScreen $output) | Should -BeExactly (@(
+                '',
+                '  WARN  free_space',
+                '        MEANING: that is little enough that a large exchange could exhaust it.',
+                '        ACTION:  ask for more quota if your input files are large.',
+                '  FAIL  write',
+                '        MEANING: this account can read the folder but not write to it.',
+                '        ACTION:  ask whoever administers the share for write permission on this folder. Mount options such as file_mode cannot grant it -- they only change how permissions look inside the container, not what the server allows.',
+                '',
+                'Do what the ACTION lines say, then run the checks again.') -join "`n")
+    }
+
+    It 'shows checks that could not run under the screen that says nothing was established' {
+        function Invoke-EngineCapture { return @{ Ran = $true; Output = $script:VerdictMountUnreadable; ExitCode = 69 } }
+        function Invoke-EngineQuiet { return @{ Ran = $true; Output = 'Server: Docker Engine'; ExitCode = 0 } }
+
+        $output = @(Invoke-DoctorBattery -EngineArgs @('--volume', 'C:\data:/rz') `
+                -BatteryArgs @('doctor', 'mount', '/rz') 6>&1)
+        $result = @($output | Where-Object { $_ -is [hashtable] })[0]
+
+        $result.Established | Should -BeTrue
+        $result.Overall | Should -Be 'fatal'
+        (Get-LauncherScreen $output) | Should -BeExactly (@(
+                '',
+                '  FAIL  mount_readable',
+                '        MEANING: the folder the exchange runs in is not there, or is not a directory this process can list. Nothing about the share itself has been established.',
+                '        ACTION:  check that the volume is mounted at this path and that the container was started with it attached.',
+                '',
+                '  FAIL  The checks could not be run, so nothing was established.',
+                '        There is no ACTION to follow: the checks that would have',
+                '        produced one never ran.',
+                "        See $script:LauncherTroubleshootingUrl") -join "`n")
+    }
+
+    It 'offers the credentials again after a refused sign-in, and stops when the retry is declined' {
+        function Invoke-EngineCapture { return @{ Ran = $true; Output = $script:VerdictSignInRefused; ExitCode = 78 } }
+        function Invoke-EngineQuiet { return @{ Ran = $true; Output = 'Server: Docker Engine'; ExitCode = 0 } }
+        function Read-YesNo { param([string] $Prompt, [switch] $DefaultYes) return $false }
+
+        $output = @(Invoke-DoctorLoop -EngineArgs @('--env', 'SMB_PASS') -BatteryArgs @('doctor', 'probe') `
+                -AskCredentialAfterSignInFailure 6>&1)
+
+        (@($output | Where-Object { $_ -is [bool] }) -join ' ') | Should -Be 'False'
+        (Get-LauncherScreen $output) | Should -BeExactly (@(
+                '',
+                '  FAIL  authentication',
+                '        MEANING: the username, password, or domain is wrong. This is the one status that really does mean bad credentials.',
+                '        ACTION:  if this is a domain account, give its domain -- answer the setup script''s Domain prompt, or set SMB_DOMAIN if you are running this image yourself. If the folder opens in File Explorer WITHOUT ever asking for a password, Windows is signing you in with Kerberos and there may be no password that works here; see the troubleshooting page, ''The share never asks for a password''. Do not work through passwords one at a time -- each run is one failed sign-in against the account, and a handful of those locks it out.',
+                '',
+                'Do what the ACTION lines say, then run the checks again.',
+                '',
+                '        If the user name or password was wrong, enter them again.',
+                '        Press Enter at Username to keep the ones you gave.',
+                '',
+                '        Stopping without starting the console.') -join "`n")
     }
 
     It 'asks nothing of the engine after a verdict it can read' {
@@ -1854,5 +2038,53 @@ Describe 'The launcher flow, driven against a stub engine' {
 
         $output | Should -BeLike '*cleartext*' -Because $shape
         $output | Should -BeLike "*volume rm $volumeName*" -Because $shape
+    }
+
+    It 'shows the elevated-window refusal for a drive letter it cannot see' {
+        # The launcher reaches the refusal through the setup script beside it,
+        # so that copy answers the elevation question: this suite cannot put a
+        # run in an elevated window.
+        $elevatedRoot = Join-Path $script:FlowRoot 'elevated'
+        $elevatedStub = Join-Path $elevatedRoot 'stub'
+        New-Item -ItemType Directory -Path $elevatedStub -Force | Out-Null
+        $elevatedLauncher = Join-Path $elevatedRoot 'Start-Alcove.ps1'
+        Copy-Item -LiteralPath $script:FlowLauncher -Destination $elevatedLauncher
+        $setupSource = Get-Content -Raw -LiteralPath (Join-Path (Split-Path -Parent $launcherScript) 'Setup-AlcoveFileDrop.ps1')
+        $guardLine = "if (`$LoadFunctionsOnly) { return }"
+        $patched = $setupSource.Replace($guardLine,
+            'function Test-Elevated { return $true }' + [Environment]::NewLine + $guardLine)
+        if ($patched -eq $setupSource) { throw 'the setup script no longer carries the guard line this suite patches' }
+        [IO.File]::WriteAllText((Join-Path $elevatedRoot 'Setup-AlcoveFileDrop.ps1'), $patched)
+
+        $letter = @('Y', 'X', 'W', 'V', 'U', 'T', 'S', 'R') | Where-Object {
+            -not (Test-Path -LiteralPath "${_}:\" -ErrorAction SilentlyContinue) -and
+            -not (Get-PSDrive -Name $_ -ErrorAction SilentlyContinue)
+        } | Select-Object -First 1
+        $letter | Should -Not -BeNullOrEmpty -Because 'the refusal needs a letter nothing holds'
+
+        $run = Invoke-LauncherFlow -Launcher $elevatedLauncher -StubDir $elevatedStub `
+            -Arguments @(
+                '-DataRoot', "`"$script:FlowData`"",
+                '-RendezvousDir', "${letter}:\Exchange",
+                '-Port', $script:FlowPort,
+                '-NoBrowser') `
+            -TimeoutSeconds 90
+        $shape = Get-FlowShape -Run $run
+
+        $run.TimedOut | Should -BeFalse -Because $shape
+        $run.Exit | Should -Be 1 -Because $shape
+        $expected = @(
+            "  FAIL  Could not use ${letter}:\Exchange.",
+            '',
+            '        This window is running as Administrator, and an elevated session',
+            "        cannot see the drive letters you mapped as yourself -- ${letter}: is",
+            '        invisible here even if File Explorer shows it. Close this window,',
+            '        open PowerShell normally, and run the script again. If you were',
+            '        told to elevate in order to resolve a DFS path, you no longer need',
+            '        to: see the troubleshooting page, ''Reading the real path from',
+            '        Windows''.')
+        $lines = @(([string] $run.Output).TrimEnd() -split '\r?\n' | ForEach-Object { $_.TrimEnd() })
+        (@($lines | Select-Object -Last $expected.Count) -join "`n") |
+            Should -BeExactly ($expected -join "`n") -Because $shape
     }
 }

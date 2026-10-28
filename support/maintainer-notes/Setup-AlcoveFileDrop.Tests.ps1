@@ -25,7 +25,9 @@
         by path to one function or put ahead of the PATH so a whole run of the
         flow reaches it. That second form is what lets a test read back which
         calls the flow made -- and, for the image-capability question, which it
-        did not go on to make.
+        did not go on to make. The same engine replays what the image's checks
+        print for each failure, so every screen the flow puts under them is
+        compared line for line.
       - Rig-backed: a share the runner serves itself over loopback, a drive
         letter mapped to it, and a standalone DFS namespace with a link into
         that share. Built the way support/maintainer-notes/ci-resolution-rig.ps1
@@ -977,6 +979,26 @@ Describe 'The setup flow, driven against a stub engine' {
                 Calls    = $calls
             }
         }
+
+        function Assert-SetupEndsWith {
+            <#  That a run ended where it should, on exactly the lines given: the
+                last lines of the window, each compared whole, so a change to a
+                word of the screen fails here. Trailing spaces are dropped on
+                both sides, because an empty Write-Info leaves its indent behind
+                and nobody reading the window sees it. #>
+            param($Run, [int] $Exit, [string[]] $Screen)
+
+            $output = [string] $Run.Output
+            $shape = "timedout=$($Run.TimedOut) exit=$($Run.Exit) calls=$($Run.Calls) tail=" +
+                (($output.Substring([Math]::Max(0, $output.Length - 200))) -replace '\s+', ' ')
+            $Run.TimedOut | Should -BeFalse -Because $shape
+            $Run.Exit | Should -Be $Exit -Because $shape
+
+            $lines = @($output.TrimEnd() -split '\r?\n' | ForEach-Object { $_.TrimEnd() })
+            $expected = @($Screen | ForEach-Object { $_.TrimEnd() })
+            (@($lines | Select-Object -Last $expected.Count) -join "`n") |
+                Should -BeExactly ($expected -join "`n") -Because $shape
+        }
     }
 
     AfterAll {
@@ -1180,14 +1202,22 @@ Describe 'The setup flow, driven against a stub engine' {
         $run = Invoke-SetupWithEngine -EngineRoot $script:CapableEngineRoot `
             -SetupScript $script:ElevatedSetupScript `
             -ScriptArguments @('-DropPath', "${letter}:\Exchange") -TimeoutSeconds 60
-        $output = [string] $run.Output
-        $shape = "timedout=$($run.TimedOut) exit=$($run.Exit) tail=" +
-            (($output.Substring([Math]::Max(0, $output.Length - 200))) -replace '\s+', ' ')
 
-        $run.TimedOut | Should -BeFalse -Because $shape
-        $run.Exit | Should -Be 1 -Because $shape
-        $output | Should -Match 'running as Administrator' -Because $shape
-        $output | Should -Not -Match 'Enter it as a drive letter path' -Because $shape
+        # The refusal is the last thing on the screen, with no retype advice
+        # under it.
+        Assert-SetupEndsWith -Run $run -Exit 1 -Screen @(
+            ('=' * 72),
+            'Part 1: locating the file drop',
+            ('=' * 72),
+            '  FAIL  Could not use that path.',
+            '',
+            '        This window is running as Administrator, and an elevated session',
+            "        cannot see the drive letters you mapped as yourself -- ${letter}: is",
+            '        invisible here even if File Explorer shows it. Close this window,',
+            '        open PowerShell normally, and run the script again. If you were',
+            '        told to elevate in order to resolve a DFS path, you no longer need',
+            '        to: see the troubleshooting page, ''Reading the real path from',
+            '        Windows''.')
     }
 
     It 'keeps the retype advice for a reason that a different path would answer' {
@@ -1201,6 +1231,315 @@ Describe 'The setup flow, driven against a stub engine' {
         $run.Exit | Should -Be 1 -Because $shape
         $output | Should -Match 'Could not interpret' -Because $shape
         $output | Should -Match 'Enter it as a drive letter path' -Because $shape
+    }
+
+    Context 'what the checks printed, replayed through each screen' {
+        BeforeAll {
+            # What `alcove doctor` prints for each outcome below, recorded from
+            # the checks themselves: apps/cli/src/doctor/probe.ts and mount.ts
+            # run against a server and a folder that answer that way, rendered
+            # by verdict.ts. The 64 lines are the CLI's own refusal of an
+            # input, from smbEnvironment.ts, timestamp and all.
+            $script:ProbePortClosed = @(
+                'OK: resolved to 10.20.30.40.',
+                'FAIL: cannot reach fs-04.agency.gov:445.',
+                'MEANING: this container reaches the network through its runtime''s address',
+                '         translation, so to the file server it looks like a different',
+                '         machine than Windows does. A VPN that routes only the Windows side,',
+                '         a host firewall rule, or a server-side address restriction blocks',
+                '         it while File Explorer keeps working.',
+                'ACTION:  if you are on a VPN, that is the likely cause. See the',
+                '         troubleshooting page, ''The container cannot reach the server''.',
+                'SKIP: finding smbclient in this image -- not run.',
+                'SKIP: signing in to the server -- not run.',
+                'SKIP: opening the share -- not run.',
+                'SKIP: opening the folder inside the share -- not run.',
+                'SKIP: reading the free space on the share -- not run.',
+                'SKIP: creating a file -- not run.',
+                'SKIP: renaming a file -- not run.',
+                'SKIP: deleting a file -- not run.',
+                'SKIP: leaving the cross-check file for `alcove doctor mount` -- not run.',
+                'MEANING: an earlier check failed and stopped the run, so nothing was',
+                '         established either way about what did not run.',
+                '',
+                'NOT READY YET -- follow the ACTION lines above and run this again.')
+            $script:ProbeNoSmbclient = @(
+                'OK: resolved to 10.20.30.40.',
+                'OK: port 445 is open.',
+                'FAIL: smbclient is not in the image these checks are running in.',
+                'MEANING: this copy of the Alcove image predates the checks. Nothing has been',
+                '         established about the credentials, the share, the folder, or write',
+                '         access; the name and reachability checks above stand.',
+                'ACTION:  pull a current Alcove image and run this again.',
+                'SKIP: signing in to the server -- not run.',
+                'SKIP: opening the share -- not run.',
+                'SKIP: opening the folder inside the share -- not run.',
+                'SKIP: reading the free space on the share -- not run.',
+                'SKIP: creating a file -- not run.',
+                'SKIP: renaming a file -- not run.',
+                'SKIP: deleting a file -- not run.',
+                'SKIP: leaving the cross-check file for `alcove doctor mount` -- not run.',
+                'MEANING: an earlier check failed and stopped the run, so nothing was',
+                '         established either way about what did not run.',
+                '',
+                'COULD NOT RUN THE CHECKS -- nothing was established either way.')
+            $script:ProbeRefusedServer = @(
+                '[2026-10-28T17:21:06.949Z] [ERROR] [doctor-probe] alcove doctor cannot run with the environment it was given: SMB_SERVER must not contain a path separator')
+            $script:MountWriteDenied = @(
+                'OK: /rz is readable.',
+                'OK: the mount and the network checks agree on this folder.',
+                'FAIL: could not write and rename in this folder (EACCES).',
+                'MEANING: the mount reached a folder but Alcove cannot write in it. Either',
+                '         the account this container runs as does not own the folder, or it',
+                '         can open the folder but not create files in it, or the share is out',
+                '         of space.',
+                'ACTION:  see the troubleshooting page, ''The folder cannot be written to''.',
+                'SKIP: refusing to create a file twice -- not run.',
+                'SKIP: renaming onto an existing file -- not run.',
+                'MEANING: an earlier check failed and stopped the run, so nothing was',
+                '         established either way about what did not run.',
+                '',
+                'NOT READY YET -- follow the ACTION lines above and run this again.')
+            $script:MountUnreadable = @(
+                'FAIL: /rz could not be read (ENOENT).',
+                'MEANING: the folder the exchange runs in is not there, or is not a directory',
+                '         this process can list. Nothing about the share itself has been',
+                '         established.',
+                'ACTION:  check that the volume is mounted at this path and that the',
+                '         container was started with it attached.',
+                'SKIP: matching the file the network checks left behind -- not run.',
+                'SKIP: writing a file and renaming it into place -- not run.',
+                'SKIP: refusing to create a file twice -- not run.',
+                'SKIP: renaming onto an existing file -- not run.',
+                'MEANING: an earlier check failed and stopped the run, so nothing was',
+                '         established either way about what did not run.',
+                '',
+                'COULD NOT RUN THE CHECKS -- nothing was established either way.')
+            $script:MountRefusedToken = @(
+                '[2026-10-28T17:21:15.721Z] [ERROR] [doctor-mount] alcove doctor cannot run with the environment it was given: SMB_TOKEN must be letters, digits, dash, or underscore')
+
+            $script:ReplayRoot = Join-Path $env:TEMP ('alcove-flow-replay-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+            New-Item -ItemType Directory -Path $script:ReplayRoot -Force | Out-Null
+
+            # The credential prompt answered, for the reason the launcher's flow
+            # suite gives: it reads the console rather than the redirected
+            # standard input, so nothing past it could be reached otherwise.
+            $script:AnsweredSetupScript = Join-Path $script:ReplayRoot 'Setup-AlcoveFileDrop.ps1'
+            $replaySource = Get-Content -Raw -LiteralPath $setupScript
+            $replayGuard = "if (`$LoadFunctionsOnly) { return }"
+            $answeredCredential = @(
+                'function Read-ShareCredential {',
+                '    param([string] $Username, [string] $Domain, [switch] $DomainSupplied)',
+                "    return @{ Username = 'alcoveci'; Domain = ''; Password = 'hunter2' }",
+                '}',
+                '') -join [Environment]::NewLine
+            $patchedReplay = $replaySource.Replace($replayGuard, $answeredCredential + $replayGuard)
+            if ($patchedReplay -eq $replaySource) { throw 'the setup script no longer carries the guard line this suite patches' }
+            [IO.File]::WriteAllText($script:AnsweredSetupScript, $patchedReplay)
+
+            function New-ReplayEngine {
+                <#  An engine that answers preflight and `doctor --help` as a
+                    current image does, makes every volume asked of it, and
+                    answers each battery with the lines and exit code given,
+                    written to standard error, where the image writes them. The
+                    lines go through a file and `type` rather than `echo`, which
+                    would read the parentheses and backticks in them. #>
+                param(
+                    [Parameter(Mandatory = $true)][string] $Name,
+                    [string[]] $ProbeLines = @(),
+                    [int] $ProbeExit = 0,
+                    [string[]] $MountLines = @(),
+                    [int] $MountExit = 0
+                )
+
+                $root = Join-Path $script:ReplayRoot $Name
+                New-Item -ItemType Directory -Path $root -Force | Out-Null
+                $probeFile = Join-Path $root 'probe.txt'
+                $mountFile = Join-Path $root 'mount.txt'
+                [IO.File]::WriteAllText($probeFile, (@($ProbeLines | ForEach-Object { "$_`r`n" }) -join ''))
+                [IO.File]::WriteAllText($mountFile, (@($MountLines | ForEach-Object { "$_`r`n" }) -join ''))
+                Set-Content -LiteralPath (Join-Path $root 'docker.cmd') -Encoding Ascii -Value @(
+                    '@echo off',
+                    '>>"%ALCOVE_STUB_LOG%" echo %*',
+                    'echo %*| findstr /C:"version --format" >nul',
+                    'if not errorlevel 1 goto engineversion',
+                    'echo %*| findstr /C:"image inspect" >nul',
+                    'if not errorlevel 1 goto succeed',
+                    'echo %*| findstr /C:"doctor --help" >nul',
+                    'if not errorlevel 1 goto doctorhelp',
+                    'echo %*| findstr /C:"doctor probe" >nul',
+                    'if not errorlevel 1 goto doctorprobe',
+                    'echo %*| findstr /C:"doctor mount" >nul',
+                    'if not errorlevel 1 goto doctormount',
+                    'echo %*| findstr /C:"volume " >nul',
+                    'if not errorlevel 1 goto succeed',
+                    'echo unexpected engine call: %*',
+                    'exit /b 99',
+                    ':engineversion',
+                    'echo linux 27.1.1',
+                    'exit /b 0',
+                    ':succeed',
+                    'exit /b 0',
+                    ':doctorhelp',
+                    'echo Usage: alcove doctor probe or doctor mount DIRECTORY',
+                    'exit /b 0',
+                    ':doctorprobe',
+                    "type `"$probeFile`" 1>&2",
+                    "exit /b $ProbeExit",
+                    ':doctormount',
+                    "type `"$mountFile`" 1>&2",
+                    "exit /b $MountExit")
+                return $root
+            }
+
+            function Invoke-ReplayRun {
+                param([Parameter(Mandatory = $true)][string] $EngineRoot, [string] $Server = 'fs-04.agency.gov')
+
+                return (Invoke-SetupWithEngine -EngineRoot $EngineRoot -SetupScript $script:AnsweredSetupScript `
+                        -ScriptArguments @('-Server', $Server, '-Share', 'exchange', '-SubPath', 'dropbox'))
+            }
+
+            # Where part 3 leaves off and the checks' own lines begin, and where
+            # part 4 does.
+            $script:ProbeLead = @(
+                'Running the checks against the server. They take a moment, and',
+                'everything they found is printed together when they finish.',
+                '')
+            $script:MountLead = @('Mounting it and running the checks over it...', '')
+            $script:TroubleshootingUrl = 'https://github.com/georgetown-mdi/alcove/blob/main/support/windows-network-filedrop/troubleshooting.md'
+        }
+
+        AfterAll {
+            Remove-Item -LiteralPath $script:ReplayRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
+
+        It 'shows a failed battery whole, its SKIP block included, under the not-ready screen' {
+            $run = Invoke-ReplayRun -EngineRoot (New-ReplayEngine -Name 'probe-78' `
+                    -ProbeLines $script:ProbePortClosed -ProbeExit 78)
+
+            Assert-SetupEndsWith -Run $run -Exit 78 -Screen ($script:ProbeLead + $script:ProbePortClosed + @(
+                    '',
+                    ('=' * 72),
+                    'Not ready yet',
+                    ('=' * 72),
+                    '  FAIL  The file drop is not usable from Docker. Follow the ACTION above.',
+                    '',
+                    '        The troubleshooting page explains every one of these in more detail:',
+                    "        $script:TroubleshootingUrl"))
+        }
+
+        It 'shows checks that could not run under the screen that says nothing was established' {
+            $run = Invoke-ReplayRun -EngineRoot (New-ReplayEngine -Name 'probe-69' `
+                    -ProbeLines $script:ProbeNoSmbclient -ProbeExit 69)
+
+            Assert-SetupEndsWith -Run $run -Exit 69 -Screen ($script:ProbeLead + $script:ProbeNoSmbclient + @(
+                    '',
+                    ('=' * 72),
+                    'Could not run the checks',
+                    ('=' * 72),
+                    '  FAIL  The checks could not run, so nothing was established either way.',
+                    '        There is no ACTION above to follow: the check that would have',
+                    '        produced one never ran.'))
+        }
+
+        It 'points a refused value back at what the operator typed' {
+            # -Server is forwarded as typed, which is how a path separator in it
+            # reaches the checks and is refused there.
+            $run = Invoke-ReplayRun -Server 'fs-04.agency.gov/exchange' -EngineRoot (New-ReplayEngine -Name 'probe-64' `
+                    -ProbeLines $script:ProbeRefusedServer -ProbeExit 64)
+
+            Assert-SetupEndsWith -Run $run -Exit 64 -Screen ($script:ProbeLead + $script:ProbeRefusedServer + @(
+                    '',
+                    ('=' * 72),
+                    'Could not run the checks',
+                    ('=' * 72),
+                    '  FAIL  The checks refused the values they were given. Nothing was tested.',
+                    '        Check what you passed: a path separator in -Server ''fs-04.agency.gov/exchange'' or',
+                    '        -Share ''exchange'' (a subfolder belongs in -SubPath instead), a',
+                    '        leading ''-'', or a stray control character is refused before',
+                    '        anything is tested.',
+                    '',
+                    '        If those look right, this is a defect in Setup-AlcoveFileDrop.ps1;',
+                    '        please report it, with the message above and the command you ran.'))
+        }
+
+        It 'tells a container that never started apart from a verdict' {
+            # Docker's own message, not the checks', is what precedes this
+            # screen, so the engine here prints none.
+            $run = Invoke-ReplayRun -EngineRoot (New-ReplayEngine -Name 'probe-125' -ProbeExit 125)
+
+            Assert-SetupEndsWith -Run $run -Exit 125 -Screen ($script:ProbeLead + @(
+                    '',
+                    '',
+                    ('=' * 72),
+                    'Could not run the checks',
+                    ('=' * 72),
+                    '  FAIL  Docker could not start the container (exit 125).',
+                    '        Nothing was tested. This is Docker itself failing, not a verdict',
+                    '        about your file drop -- so there is no ACTION above to follow.',
+                    '        The message Docker printed is the one to read.'))
+        }
+
+        It 'reads an exit code the checks never give as a newer image' {
+            $run = Invoke-ReplayRun -EngineRoot (New-ReplayEngine -Name 'probe-3' -ProbeExit 3)
+
+            Assert-SetupEndsWith -Run $run -Exit 3 -Screen @(
+                ('=' * 72),
+                'Could not run the checks',
+                ('=' * 72),
+                '  FAIL  The checks answered with an exit code this script does not know (3).',
+                '        Nothing has been established about your file drop, and nothing',
+                '        is wrong with your share: this script does not recognise what',
+                '        the checks answered. The likeliest cause is an image newer',
+                '        than this script.',
+                '',
+                '        Look for a newer copy of this script wherever you downloaded',
+                '        it.')
+        }
+
+        It 'shows a failed battery over the volume whole, its SKIP block included' {
+            $run = Invoke-ReplayRun -EngineRoot (New-ReplayEngine -Name 'mount-78' `
+                    -MountLines $script:MountWriteDenied -MountExit 78)
+
+            Assert-SetupEndsWith -Run $run -Exit 9 -Screen ($script:MountLead + $script:MountWriteDenied + @(
+                    '  FAIL  The volume mounted, but the folder is not usable for an exchange.',
+                    '        The share was reached, so this is not a mount or a dialect',
+                    '        problem and -Dialect will not change it. Follow the ACTION above.',
+                    '',
+                    '        The troubleshooting page explains every one of these in more detail:',
+                    "        $script:TroubleshootingUrl"))
+        }
+
+        It 'shows checks over the volume that could not run' {
+            $run = Invoke-ReplayRun -EngineRoot (New-ReplayEngine -Name 'mount-69' `
+                    -MountLines $script:MountUnreadable -MountExit 69)
+
+            Assert-SetupEndsWith -Run $run -Exit 9 -Screen ($script:MountLead + $script:MountUnreadable + @(
+                    '  FAIL  The checks could not run over the volume.',
+                    '        Nothing was established about the folder either way, so there is',
+                    '        no ACTION above to follow.'))
+        }
+
+        It 'blames itself for a value the checks over the volume refused' {
+            $run = Invoke-ReplayRun -EngineRoot (New-ReplayEngine -Name 'mount-64' `
+                    -MountLines $script:MountRefusedToken -MountExit 64)
+
+            Assert-SetupEndsWith -Run $run -Exit 9 -Screen ($script:MountLead + $script:MountRefusedToken + @(
+                    '  FAIL  The checks refused the values this script gave them.',
+                    '        Nothing was established about the folder. This is a defect in',
+                    '        Setup-AlcoveFileDrop.ps1; please report it, with the message',
+                    '        above and the command you ran.'))
+        }
+
+        It 'reads an exit code the checks over the volume never give as a newer image' {
+            $run = Invoke-ReplayRun -EngineRoot (New-ReplayEngine -Name 'mount-3' -MountExit 3)
+
+            Assert-SetupEndsWith -Run $run -Exit 9 -Screen @(
+                '  FAIL  The checks answered with an exit code this script does not know (3).',
+                '        Nothing has been established about the folder either way. The',
+                '        likeliest cause is an image newer than this script -- look for a',
+                '        newer copy of this script wherever you downloaded it.')
+        }
     }
 }
 
