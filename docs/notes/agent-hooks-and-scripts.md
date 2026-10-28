@@ -620,33 +620,46 @@ An edit whose value equals the stored one, ignoring trailing newlines, makes no 
 and an edit that runs is re-fetched and compared with what was sent, so an unchanged write cannot report success.
 Iteration and other field types are reported as unsupported rather than guessed at.
 
-## Panel second round
+## Panel deliberation
 
-[`.claude/scripts/panel-workflow.mjs`](../../.claude/scripts/panel-workflow.mjs)
+[`.claude/agents/panel-chair.md`](../../.claude/agents/panel-chair.md),
+[`.claude/scripts/panel-relay.mjs`](../../.claude/scripts/panel-relay.mjs),
+[`.claude/scripts/panel-answer-check.mjs`](../../.claude/scripts/panel-answer-check.mjs),
+[`.claude/scripts/panel-record.mjs`](../../.claude/scripts/panel-record.mjs)
 
-### Why it is a second round and not a deliberation
+### Why the same panelists, resumed
 
-The panel's optional later round re-runs one panelist per lens that answered, handing it the first round's answers.
-It was first named a deliberation, which implies each panelist revises its own answer in its own context.
-Measured on 2026-10-26, it does not, and the two runtimes answer differently.
+A deliberation means each panelist revises its own answer in its own context.
+A panelist re-seated fresh with the first round's answers does not: it reads an answer it is told is its own.
+The only later round in the panel record as of 2026-10-26, run on 2026-09-28, re-seated three panelists; all three changed position, and the 2-1 split crossed over rather than closing.
+The owner ruled on 2026-10-26 to build resumed panelists with a chair in place of the fresh second round, with no pilot first.
 
-### What the two runtimes do
+### Why the chair is an Agent-tool spawn
 
 - Workflow runtime: an `agent()` call returns its final text, or its schema-validated object, and exposes no handle to continue the agent.
   `resumeFromRunId` replays cached results for unchanged calls and runs any changed call as a fresh agent (the Workflow tool's own description and authoring reference).
-  A panelist seated by the script therefore cannot be given the other answers, or new owner input, and revise its own answer in its own context.
-- Agent-tool runtime: an Opus `general-purpose` spawn answered a two-option design question with "POSITION: A".
-  A SendMessage containing an opposing panelist's answer resumed it.
-  It restated its first answer accurately, weighed the other, and kept A with a refinement.
+  A Workflow agent also has no Agent tool, so it cannot spawn panelists of its own.
+- Agent-tool runtime: a subagent can spawn agents and resume them with SendMessage.
+  On 2026-10-26 an Opus `general-purpose` spawn answered a two-option design question, was resumed with an opposing panelist's answer, restated its first answer, weighed the other, and kept its position with a refinement.
   Both turns ran on `claude-opus-5-5`; a resumed agent pinned to another tier keeps that tier (Retired SendMessage model guard, below).
-  An Agent-tool spawn's output cannot be schema-forced.
+- So the chair is a pinned Agent-tool definition, and the first round of a deliberating panel runs there too, since the panelists it resumes must be its own spawns.
+  The session, not the chair, judges a split: relaying every panelist reply through the session instead would wake it about a dozen times per panel.
 
-### What is open
+### Why checks replace the schema
 
-Under the Workflow runtime the round is fresh panelists reading the first round's answers, so it is named a second round, and its result records each lens's `first` and `second` positions.
-A true deliberation on Agent-tool spawns, resuming the first round's panelists and giving up schema-forced output, is possible and not built.
-Whether to build it is open for a ruling.
-Panel independence is unchanged under either route: no agent merges the answers.
+An Agent-tool spawn's output cannot be schema-forced, so the shape and the provenance of each answer are checked instead:
+
+- Shape: each panelist writes its answer as a JSON file and runs the answer check before it replies; the chair runs it again.
+- Content stays with its author: messages carry only paths, every message is text `panel-relay.mjs` prints, and the chair never reads an answer.
+  Round 1's text is the Workflow script's own prompt, taken by running the script with an `agent` that records it, because a Workflow script can import nothing and so cannot share a template file.
+- Provenance: `panel-record.mjs` compares each answer file with the hash recorded when it passed the check, each chair message with the relay's text, and each turn's model with the Opus pin, and flags a panelist's write outside the answer directory.
+  A write made through Bash is not seen in a transcript; the hash check still catches a changed answer file.
+
+### Why the stop rule
+
+The chair stops when every seat in a round reports `changed: false`, or after two rounds past the first.
+The cap bounds the crossing seen in 2026-09-28's later round, where every seat moved and the split did not close; every round is kept in the record, so a crossing is visible rather than averaged away.
+New owner input starts a round of its own, and the cap counts again from it.
 
 ## Retired SendMessage model guard
 

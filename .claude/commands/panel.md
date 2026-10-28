@@ -1,6 +1,6 @@
 ---
 name: panel
-description: Convene a bounded expert panel on one settle-able design question -- independent schema-forced panelists seated to suit the question, reading a clean staging checkout, one Workflow, no agent merging their answers, and an opt-in single second round. Whether to convene at all, and what its outcome decides, is the deferred-decision rule in `.claude/orchestration/ruleset.md`, Decisions, briefs and reporting (measure first; stakes gate); this command only runs a convened panel correctly.
+description: Convene a bounded expert panel on one settle-able design question -- independent panelists seated to suit the question, reading a clean staging checkout, no agent merging their answers, and an opt-in deliberation in which the same panelists revise their own answers. Whether to convene at all, and what its outcome decides, is the deferred-decision rule in `.claude/orchestration/ruleset.md`, Decisions, briefs and reporting (measure first; stakes gate); this command only runs a convened panel correctly.
 ---
 
 You are CONVENING a panel, not sitting on it. You do not answer the question
@@ -14,7 +14,7 @@ before proceeding -- it holds the session rules this command's steps assume.
 
 ## Input
 
-    /panel "<question>" [context-file ...] --seats <seat> ... [--second-round]
+    /panel "<question>" [context-file ...] --seats <seat> ... [--deliberate]
 
 - `<question>`: one settle-able question of technical judgment, phrased
   neutrally -- no candidate answer, no hint of which way you or the issue lean.
@@ -37,10 +37,11 @@ before proceeding -- it holds the session rules this command's steps assume.
   - For a lens no named seat covers, state it as
     `{"name": "<short-name>", "lens": "<one paragraph>"}`, phrased as
     neutrally as the question.
-- `--second-round`: opt in to one second round should the panel not
-  converge (Step 3): fresh panelists, each reading the first round's answers
-  (not the first round's own agents, so the script seats every panelist itself). Without it, a
-  split panel goes straight to the owner.
+- `--deliberate`: opt in to deliberation should the panel not converge
+  (Step 3): a `panel-chair` agent runs the first round, and on a split resumes
+  the same panelists, each reading the others' latest answers and revising its
+  own. Without it, the first round is the panel Workflow, and a split panel
+  goes straight to the owner.
 
 Whether a panel should run at all, and whether its outcome settles the
 question or goes to the owner, is not this command's call: the deferred-decision
@@ -97,9 +98,10 @@ remove the first one's checkout while its panelists read it.
 The base has no `node_modules`: anything that needs code RUN rather than
 read is measured in the step before, never by a panelist.
 
-## Step 2 -- Run the panel Workflow
+## Step 2 -- Run the first round
 
-Invoke the Workflow tool with `scriptPath` set to the ABSOLUTE path of
+Without `--deliberate`, invoke the Workflow tool with `scriptPath` set to the
+ABSOLUTE path of
 `.claude/scripts/panel-workflow.mjs` in this repository (`git rev-parse --show-toplevel`
 gives the root) -- the bare relative spelling fails the call with "script file
 not found" -- and `args` set to
@@ -115,6 +117,29 @@ where `positions` holds each panelist that answered as
 `{seat, position, rationale, keyRisk}`; every one was formed before any
 panelist saw another's.
 
+With `--deliberate`, the panel chair runs the first round on the same
+briefing: `.claude/scripts/panel-relay.mjs` takes each seat's prompt from the
+Workflow script itself, and adds only where to write the answer.
+
+1. Make the panel's answer directory with `mktemp -d`; call the path it
+   printed `<dir>`. With the Write tool, write `<dir>/panel.json` holding the
+   values the Workflow would take,
+   `{"question": "<the question>", "base": "<base>", "docs": [<DOCS>], "seats": [<SEATS>]}`,
+   plus `"extraRounds": <n>` only when the owner asked for a cap other than
+   two rounds after the first.
+2. Run `node <repo>/.claude/scripts/panel-relay.mjs <dir> next`, `<repo>` the
+   repository root: it prints `round 1`, or names what `panel.json` gets wrong.
+3. Spawn one background Agent with subagent_type `panel-chair` (its definition
+   pins Opus) and the prompt
+   `Answer directory: <dir>. Repository root: <repo>. Run the first round.`
+   Keep its agent id for Step 3.
+4. Its report names `<dir>/record.json`, which `panel-record.mjs` wrote. The
+   record's `panelists` holds each seat's `first` and `final` answer, the same
+   after the first round, and `rounds` every round's answers. A `problem:`
+   line in the report means the record failed a check that it is the
+   panelists' own work: that is contamination evidence (Step 3), and the
+   problems go to the owner with the positions.
+
 ## Step 3 -- Read the verdicts and close
 
 1. Every position aligned: converged. Whether that settles the question or
@@ -126,40 +151,50 @@ panelist saw another's.
    NOT re-run the panel -- a re-run is for contamination evidence only (a
    panelist read a candidate edit or was told a preferred answer), never for
    disagreement, and never because agreement came quickly. The one exception is
-   the second round, and only when `--second-round` was given: before going to the owner,
-   invoke the Workflow once more, same `scriptPath`, with `args` set to
-   `{"secondRound": <the first round's result, verbatim>}`. The script seats a
-   fresh panelist for each seat that answered; it reads that seat's first answer
-   and the others' and answers once more. The
-   result, `{round: "second", note, question, base, docs, seats, panelists}`,
-   holds each seat's `first` and `second` positions side by side
-   (`second` is null where that panelist failed). The script refuses anything
-   but a first round's result, so a second round cannot be followed by a third;
-   run it at most once per panel. Take the question to the owner with both
-   positions per seat: a converged second round informs the owner and
-   settles nothing.
-3. A panelist that returned null exhausted its schema retries and is missing
-   from `positions`; its analysis is usually intact in the rejected attempts in
-   its transcript -- salvage it. Two or more surviving panelists that all
+   deliberation, and only when `--deliberate` was given: before going to the
+   owner, send the chair one SendMessage, `Run the later rounds.` It resumes
+   the same panelists, each reading the paths of the others' latest answers
+   and writing `{position, rationale, keyRisk, changed, movedBy}`, until every
+   seat reports `changed: false` or two rounds have run. Its report names the
+   record again. Take the question to the owner with each seat's `first` and
+   `final` position from the record's `panelists` and the record's path: a
+   converged deliberation informs the owner and settles nothing.
+3. A Workflow panelist that returned null exhausted its schema retries and is
+   missing from `positions`; its analysis is usually intact in the rejected
+   attempts in its transcript -- salvage it. A deliberating seat with no
+   answer in a round is in the record's `rounds` with the reason, and its
+   `final` is its latest answer. Two or more surviving panelists that all
    agree still converge; otherwise treat the round as split.
-4. Remove the worktree: `git worktree remove <base>`.
+4. Copy a deliberating panel's `<dir>/record.json` into `scratch/panels/`.
+   Remove the worktree, `git worktree remove <base>`, once the question is
+   closed: a deliberating panel's base stays until the owner has answered,
+   since new input resumes its panelists on it.
 
-The second round is a decision taken, opt-in and bounded as above: a
-split panel may be missing a consideration only one panelist
-raised, and independence holds because every first position is formed and
-recorded before any panelist sees another's.
+Deliberation is a decision taken, opt-in and bounded as above: a split panel
+may be missing a consideration only one panelist raised, and independence
+holds because every first position is formed and recorded before any
+panelist sees another's, every later one is the panelist's own file, and
+`panel-record.mjs` checks the chair relayed only what `panel-relay.mjs`
+prints.
 
 ## New input for a panel already run
 
-When the owner asks to feed new input to a panel already run, the session puts
-the route to the owner and does not choose one: a new panel whose question or
-docs carry the input, or building a second round that takes it, since the
-second round as built reads the first round's answers alone. The session runs
-neither until the owner answers.
+When the owner asks to feed new input to a deliberating panel whose `<dir>`
+and `<base>` are still on disk, write the input, as the owner gave it and
+phrased as neutrally as the question, to `<dir>/input-r<N>.md`, N one past the
+last of the record's `rounds`, and send the chair one SendMessage,
+`Run the later rounds.` It resumes the same panelists, who read the input
+with the others' latest answers; up to two more rounds follow it, and the
+record holds them all.
+
+For a Workflow panel, or a deliberating one whose directory is gone, the
+session puts the route to the owner -- a new panel whose question or docs
+carry the input -- and runs it only once the owner answers.
 
 ## What you do NOT do
 
 - Do not vote yourself, and do not weight verdicts by which you prefer.
 - Do not tell panelists your view or the issue's lean, and do not pass one
-  panelist's answer to another outside the second round.
+  panelist's answer to another: in a deliberation the chair sends only the
+  paths `panel-relay.mjs` prints.
 - Do not use a panel's output to satisfy any review obligation.
