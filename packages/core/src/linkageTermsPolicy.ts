@@ -208,6 +208,16 @@ export function candidateSetIsImplementedForStrategy(
 }
 
 /**
+ * Whether an exchange on these terms runs the single-pass link. A count-only
+ * (`psi-c`) run declaring `single-pass` runs the count-only rounds instead.
+ */
+export function runsSinglePassLink(
+  terms: Pick<LinkageTerms, "algorithm" | "linkageStrategy">,
+): boolean {
+  return terms.linkageStrategy === "single-pass" && terms.algorithm !== "psi-c";
+}
+
+/**
  * The refusal for a candidate set declared under `psi-c` or a strategy that
  * resolves none, or `undefined`
  * (docs/spec/PROTOCOL.md#the-combinations-that-stay-unsupported).

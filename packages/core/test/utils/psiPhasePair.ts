@@ -18,6 +18,7 @@ import {
   declaredKeyWidth,
 } from "../../src/fanOutFunctions";
 import { linkageRounds } from "../../src/linkageKeyCondition";
+import { runsSinglePassLink } from "../../src/linkageTermsPolicy";
 import { InProcessPsiEngine, type PsiEngine } from "../../src/psi/psiEngine";
 import { roundKeyIterable } from "../../src/standardization";
 
@@ -123,7 +124,7 @@ export async function runPsiPhasePair(
       verbosity: 0,
       elementBounds,
       onPsiProgress: undefined,
-      roundsSentInParts: terms.linkageStrategy !== "single-pass" || countOnly,
+      roundsSentInParts: !runsSinglePassLink(terms),
       localReceiveCeiling: MAX_PSI_DECODE_ELEMENTS,
       partnerReceiveCeiling: MAX_PSI_DECODE_ELEMENTS,
       linkageKeyIterables: rounds.map((round) =>

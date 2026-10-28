@@ -15,6 +15,7 @@ import {
   countOnlyEveryKeyShapeViolation,
   COUNT_ONLY_SHAPE_REFUSALS,
   resolvedMatchingFromTerms,
+  runsSinglePassLink,
 } from "./linkageTermsPolicy.js";
 import { getDefaultLinkageTerms } from "./defaults/builtInLinkageTerms.js";
 import { quoteTermsValue } from "./config/compatibilityMessage.js";
@@ -810,8 +811,6 @@ export function prepareForExchange(
   // Applies to either role: the ceiling is symmetric (a receiver holds both
   // encrypted sets resident, bounded exactly as the sender's), so this
   // party's own count predicts an abort regardless of which side it plays.
-  // A count-only run declaring single-pass runs the cascade's rounds and is
-  // not held to the ceiling (docs/spec/PROTOCOL.md, PSI-C).
   //
   // Ordered behind the fan-out refusal above, so a fan-out a strategy cannot
   // match is refused for that rather than for size. An OperatorConfigError
@@ -846,8 +845,7 @@ export function prepareForExchange(
     rawRows.length * localFanOutFactor(dataset.declaresFanOut);
 
   if (
-    linkageTerms.linkageStrategy === "single-pass" &&
-    linkageTerms.algorithm !== "psi-c" &&
+    runsSinglePassLink(linkageTerms) &&
     singlePassDatasetExceedsCap(effectiveKeyCount, declaredRecordCount)
   ) {
     throw new OperatorConfigError(
@@ -933,11 +931,7 @@ export function describeExchangeStages(
     id: CONFIRMING_PROTOCOL_STAGE_ID,
     label: "Confirming protocol",
   };
-  if (
-    prepared.linkageTerms.linkageStrategy === "single-pass" &&
-    prepared.linkageTerms.algorithm !== "psi-c"
-  )
-    return [confirming];
+  if (runsSinglePassLink(prepared.linkageTerms)) return [confirming];
   const keyCount = linkageRounds(prepared.linkageTerms.linkageKeys).length;
   return [
     confirming,
@@ -1799,10 +1793,7 @@ export async function runExchange(
     partnerRecordCount,
     localExpectsOutput: linkageTerms.output.expectsOutput,
     partnerAssociationTableWithheld:
-      linkageTerms.linkageStrategy === "single-pass" &&
-      !countOnly &&
-      isReceiver &&
-      withholdSenderTable,
+      runsSinglePassLink(linkageTerms) && isReceiver && withholdSenderTable,
   });
 
   const linkageKeyIterables = rounds.map((round) =>
@@ -1837,8 +1828,7 @@ export async function runExchange(
   // bounds the rest. This party's first round is held to the partner's stated
   // ceiling before this party builds a set; at the protocol's maximum, the
   // start-of-exchange check and each round's own refusal hold it already.
-  const roundsSentInParts =
-    linkageTerms.linkageStrategy !== "single-pass" || countOnly;
+  const roundsSentInParts = !runsSinglePassLink(linkageTerms);
   if (roundsSentInParts) {
     await assertPartnerRoundWithinCapacity(
       conn,

@@ -10,6 +10,7 @@ import {
 } from "../psi/link.js";
 import { connectionEndReader } from "../connection/messageConnection.js";
 import { InternalConsistencyError } from "../errors.js";
+import { runsSinglePassLink } from "../linkageTermsPolicy.js";
 import { linkageRounds, roundMatchedKeyName } from "../linkageKeyCondition.js";
 import { getLogger } from "../utils/logger.js";
 import { sanitizeErrorForDisplay } from "../utils/sanitizeErrorForDisplay.js";
@@ -108,13 +109,13 @@ export async function runPsiPhase(p: {
 
   // A count-only run takes its own rounds whichever strategy its terms declare
   // (docs/spec/PROTOCOL.md, PSI-C). Otherwise single-pass is allowlisted, and
-  // any other value (including the default) runs the cascade. No mismatch guard
-  // needed here -- validateCompatibility already aborted upstream if the two
-  // parties' strategies differ. Single-pass takes the
-  // exchanged bounds too: the partner's record count and both parties' effective
-  // key counts derive the per-exchange frame cap, the abort-if-over-ceiling gate,
-  // and the index-table layout, identically on both parties (see
-  // linkViaSinglePassPSI and frameSize.ts).
+  // any other value (including the default) runs the cascade. No mismatch
+  // guard needed here -- validateCompatibility already aborted upstream if the
+  // two parties' strategies differ. Single-pass takes the exchanged bounds
+  // too: the partner's record count and both parties' effective key counts
+  // derive the per-exchange frame cap, the abort-if-over-ceiling gate, and the
+  // index-table layout, identically on both parties (see linkViaSinglePassPSI
+  // and frameSize.ts).
   //
   // The engine is built before the disposing try, so a throw in the
   // PSIParticipant constructor still reaches the finally that terminates its
@@ -211,38 +212,37 @@ export async function runPsiPhase(p: {
           : { construction: "single-key" },
       );
     else
-      associationTable =
-        linkageTerms.linkageStrategy === "single-pass"
-          ? await linkViaSinglePassPSI(
-              { cardinality },
-              participant,
-              conn,
-              linkageKeyIterables,
-              singlePassBounds,
-              withholdSenderTable,
-              verbosity,
-              onStage,
-              (summary) => {
-                entityClusters = summary;
-              },
-            )
-          : await linkViaPSI(
-              { cardinality },
-              participant,
-              conn,
-              linkageKeyIterables,
-              singlePassBounds,
-              verbosity,
-              onStage,
-              (summary) => {
-                entityClusters = summary;
-              },
-              reportMatchedKeys
-                ? (rounds) => {
-                    roundOfPair = rounds;
-                  }
-                : undefined,
-            );
+      associationTable = runsSinglePassLink(linkageTerms)
+        ? await linkViaSinglePassPSI(
+            { cardinality },
+            participant,
+            conn,
+            linkageKeyIterables,
+            singlePassBounds,
+            withholdSenderTable,
+            verbosity,
+            onStage,
+            (summary) => {
+              entityClusters = summary;
+            },
+          )
+        : await linkViaPSI(
+            { cardinality },
+            participant,
+            conn,
+            linkageKeyIterables,
+            singlePassBounds,
+            verbosity,
+            onStage,
+            (summary) => {
+              entityClusters = summary;
+            },
+            reportMatchedKeys
+              ? (rounds) => {
+                  roundOfPair = rounds;
+                }
+              : undefined,
+          );
   } finally {
     // Dispose the crypto engine once the PSI phase is done (or has thrown); the
     // participant is not used past this point. Disposing the participant frees its
