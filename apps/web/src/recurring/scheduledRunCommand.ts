@@ -152,15 +152,15 @@ function installedCronLine(
 }
 
 /**
- * The Task Scheduler registration running the image over the exchange folder.
- * It mounts the folder alone, since a Windows path cannot be mounted at the
- * same path inside the container; the panel names each bind path to mount by
- * hand. The mount naming the folder is quoted, so a folder path with a space
- * stays one argument. Undefined when a bind path cannot be mounted.
+ * The `docker run` command a person runs once by hand on Windows, which
+ * Docker Desktop runs without an account option. It mounts the folder alone,
+ * since a Windows path cannot be mounted at the same path inside the
+ * container; the panel names each bind path to mount by hand. The mount naming
+ * the folder is quoted, so a folder path with a space stays one argument.
+ * Undefined when a bind path cannot be mounted.
  */
-export function dockerTaskSchedulerLine(
+export function dockerWindowsRunCommand(
   source: ScheduledRunSource,
-  schedule?: RunSchedule,
 ): string | undefined {
   const argv = dockerRunArgv(
     source,
@@ -170,12 +170,22 @@ export function dockerTaskSchedulerLine(
   );
   return argv === undefined
     ? undefined
-    : taskSchedulerLine(
-        windowsJoinCommand(argv, (token) =>
-          token.includes(WINDOWS_EXCHANGE_FOLDER_PLACEHOLDER),
-        ),
-        schedule,
+    : windowsJoinCommand(argv, (token) =>
+        token.includes(WINDOWS_EXCHANGE_FOLDER_PLACEHOLDER),
       );
+}
+
+/** The Task Scheduler registration running the image over the exchange folder
+ * ({@link dockerWindowsRunCommand}). Undefined when a bind path cannot be
+ * mounted. */
+export function dockerTaskSchedulerLine(
+  source: ScheduledRunSource,
+  schedule?: RunSchedule,
+): string | undefined {
+  const command = dockerWindowsRunCommand(source);
+  return command === undefined
+    ? undefined
+    : taskSchedulerLine(command, schedule);
 }
 
 /**
@@ -197,9 +207,12 @@ export interface WithheldRunLines {
 /** The lines are shown ({@link RunLines}). */
 export interface ShownRunLines {
   kind: "shown";
-  /** The command running it once: the image over the folder, or an installed
-   * `alcove` where a path cannot be mounted. */
+  /** The command running it once on macOS and Linux: the image over the
+   * folder, or an installed `alcove` where a path cannot be mounted. */
   runCommand: string;
+  /** The image command for Windows, which carries no account option; undefined
+   * where a path cannot be mounted. */
+  windowsRunCommand: string | undefined;
   /** The one-off command for rootless Podman; undefined where a path cannot
    * be mounted. */
   podmanRunCommand: string | undefined;
@@ -229,6 +242,7 @@ export function runLines(
   return {
     kind: "shown",
     runCommand: dockerRunCommand(source) ?? installedRunCommand(source),
+    windowsRunCommand: dockerWindowsRunCommand(source),
     podmanRunCommand: podmanRunCommand(source),
     dockerCronLine: dockerCronLine(source, schedule),
     podmanCronLine: podmanCronLine(source, schedule),

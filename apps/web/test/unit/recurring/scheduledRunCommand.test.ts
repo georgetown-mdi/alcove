@@ -6,6 +6,7 @@ import {
   dockerCronLine,
   dockerRunCommand,
   dockerTaskSchedulerLine,
+  dockerWindowsRunCommand,
   handoffInputName,
   podmanCronLine,
   podmanRunCommand,
@@ -140,6 +141,26 @@ describe("the console hand-off's command lines", () => {
     expect(line).not.toContain("shared-directory");
     expect(line).not.toContain("--user");
     expect(line).not.toContain("--userns");
+  });
+
+  test("the run command is shown for each shell: the operator's account on macOS and Linux, none on Windows", () => {
+    const lines = shownLines(SOURCE);
+    expect(lines.runCommand).toContain(DOCKER_USER);
+    expect(lines.windowsRunCommand).toBe(dockerWindowsRunCommand(SOURCE));
+    expect(lines.windowsRunCommand).toBe(
+      "docker run --rm --mount " +
+        '"type=bind,src=C:\\path\\to\\your\\exchange-folder,dst=/work" ' +
+        `${IMAGE} exchange --log-file=exchange.log clients.csv ./`,
+    );
+    expect(lines.windowsRunCommand).not.toContain("--user");
+    expect(lines.windowsRunCommand).not.toContain("$(");
+    expect(lines.windowsRunCommand).not.toContain("shared-directory");
+  });
+
+  test("no Windows run command is shown where a path cannot be mounted", () => {
+    const lines = shownLines(sourceBinding("/srv/a,b"));
+    expect(lines.windowsRunCommand).toBeUndefined();
+    expect(lines.runCommand).not.toContain("docker");
   });
 
   test("the input name is the positional before the output", () => {

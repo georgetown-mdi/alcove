@@ -3,7 +3,6 @@ import { useMemo, useState } from "react";
 import { Alert, Button, Checkbox, NumberInput, TextInput } from "@mantine/core";
 import { Link } from "@tanstack/react-router";
 
-import { CopyableCode } from "@components/CopyableCode";
 import { DisclosureSection } from "@components/DisclosureSection";
 import { triggerBlobDownload } from "@components/blobDownload";
 
@@ -39,6 +38,7 @@ import {
 import { ConfigRowItem } from "./ManagedExchangeDetail";
 import { DeleteExchangeButton } from "./SavedExchanges";
 import { LocalDocumentFields } from "./LocalDocumentFields";
+import { RunCommandLines } from "./RunCommandLines";
 import { ScheduledRunLinesView } from "./ScheduledRunLinesView";
 import { commandLineRunListsRelay } from "./localDocumentFieldsModel";
 import { useLocalFieldsDraft } from "./useLocalFieldsDraft";
@@ -241,7 +241,7 @@ function ConfigurationExportPanel({
           {lines.dockerLinesNotice !== undefined && (
             <p className={styles.small}>{lines.dockerLinesNotice}</p>
           )}
-          <CopyableCode code={lines.runCommand} ariaLabel="exchange command" />
+          <RunCommandLines lines={lines} ariaLabel="exchange command" />
           <DisclosureSection
             label={
               state.fromAgreedSchedule

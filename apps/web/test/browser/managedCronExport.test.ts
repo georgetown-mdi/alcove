@@ -204,6 +204,18 @@ describe("the command-line export hands over two files", () => {
           .first(),
       )
       .toBeInTheDocument();
+    // The run command is shown for Windows as well, with no account option.
+    const runBlocks = Array.from(app.container.querySelectorAll("pre")).map(
+      (block) => block.textContent,
+    );
+    const posixRun = runBlocks.find((code) => code.startsWith("docker run"));
+    const windowsRun = runBlocks.find(
+      (code) => code.startsWith("docker run") && code.includes("C:\\"),
+    );
+    expect(posixRun).toContain('--user "$(id -u):$(id -g)"');
+    expect(windowsRun).toContain("docker run --rm --mount ");
+    expect(windowsRun).not.toContain("--user");
+    expect(windowsRun).not.toContain("$(");
     await expect
       .element(
         page

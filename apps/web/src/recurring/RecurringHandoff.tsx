@@ -21,6 +21,7 @@ import {
   runLines,
 } from "./scheduledRunCommand";
 import { PodmanLines } from "./PodmanLines";
+import { RunCommandLines } from "./RunCommandLines";
 
 import type { JobHandoff } from "@jobContract/jobHandoff";
 import type { ScheduledRunSource } from "@psi/dockerRunCommand";
@@ -133,7 +134,7 @@ function HandoffBody({
       {handoff.template.kind === "config" ? (
         <ConfigSteps
           yaml={handoff.template.yaml}
-          command={shown?.runCommand}
+          lines={shown}
           inputName={inputName}
           usedKeyFile={handoff.usedKeyFile}
           keyFileBesideConfiguration={handoff.keyFileBesideConfiguration}
@@ -142,12 +143,12 @@ function HandoffBody({
         />
       ) : handoff.template.kind === "workingFolder" ? (
         <WorkingFolderSteps
-          command={shown?.runCommand}
+          lines={shown}
           inputName={inputName}
           usedSigningIdentity={handoff.usedSigningIdentity}
         />
       ) : (
-        <CommandSteps command={shown?.runCommand} inputName={inputName} />
+        <CommandSteps lines={shown} inputName={inputName} />
       )}
 
       {shown !== undefined && <ScheduleLines lines={shown} />}
@@ -240,7 +241,7 @@ function ScheduleLines({ lines }: { lines: ShownRunLines }) {
  * the exchange command. */
 function ConfigSteps({
   yaml,
-  command,
+  lines,
   inputName,
   usedKeyFile,
   keyFileBesideConfiguration,
@@ -248,7 +249,7 @@ function ConfigSteps({
   runFolder,
 }: {
   yaml: string;
-  command: string | undefined;
+  lines: ShownRunLines | undefined;
   inputName: string;
   usedKeyFile: boolean;
   keyFileBesideConfiguration: boolean;
@@ -303,10 +304,13 @@ function ConfigSteps({
           </p>
         </li>
       )}
-      {command !== undefined && (
+      {lines !== undefined && (
         <li>
           <p className={styles.handoffStepLabel}>Run the exchange</p>
-          <CopyableCode code={command} ariaLabel="recurring exchange command" />
+          <RunCommandLines
+            lines={lines}
+            ariaLabel="recurring exchange command"
+          />
           {usedSigningIdentity && (
             <p className={styles.small}>
               Each scheduled run writes its own timestamped receipt into the
@@ -324,11 +328,11 @@ function ConfigSteps({
  * which the run wrote and the CLI keeps current, and run the exchange command
  * on them. */
 function WorkingFolderSteps({
-  command,
+  lines,
   inputName,
   usedSigningIdentity,
 }: {
-  command: string | undefined;
+  lines: ShownRunLines | undefined;
   inputName: string;
   usedSigningIdentity: boolean;
 }) {
@@ -374,10 +378,13 @@ function WorkingFolderSteps({
           </p>
         </li>
       )}
-      {command !== undefined && (
+      {lines !== undefined && (
         <li>
           <p className={styles.handoffStepLabel}>Run the exchange</p>
-          <CopyableCode code={command} ariaLabel="recurring exchange command" />
+          <RunCommandLines
+            lines={lines}
+            ariaLabel="recurring exchange command"
+          />
           {usedSigningIdentity && (
             <p className={styles.small}>
               Each scheduled run writes its own timestamped receipt into the
@@ -409,10 +416,10 @@ function InputStep({ inputName }: { inputName: string }) {
 /** The zero-setup (Direct) steps: put the input in place and run the single
  * command; no key file. */
 function CommandSteps({
-  command,
+  lines,
   inputName,
 }: {
-  command: string | undefined;
+  lines: ShownRunLines | undefined;
   inputName: string;
 }) {
   return (
@@ -425,13 +432,13 @@ function CommandSteps({
         </li>
         <InputStep inputName={inputName} />
       </ol>
-      {command !== undefined && (
+      {lines !== undefined && (
         <>
           <h3 className={styles.handoffHeading}>
             Run this command on the scheduling machine
           </h3>
-          <CopyableCode
-            code={command}
+          <RunCommandLines
+            lines={lines}
             ariaLabel="recurring quick exchange command"
           />
         </>

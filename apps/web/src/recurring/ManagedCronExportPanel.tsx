@@ -9,7 +9,6 @@ import { exportManagedCronFiles } from "@psi/managed/managedExchangeExport";
 import { getManagedExchange } from "@psi/managed/managedExchangeStore";
 import { readOwnRelaySetting } from "@psi/transport/ownRelaySetting";
 
-import { CopyableCode } from "@components/CopyableCode";
 import styles from "@styles/app.module.css";
 
 import {
@@ -20,6 +19,7 @@ import {
   managedCronExportPanelState,
   runElsewhereNotice,
 } from "./managedCronExportModel";
+import { RunCommandLines } from "./RunCommandLines";
 import { ScheduledRunLinesView } from "./ScheduledRunLinesView";
 
 import type { RunnableManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
@@ -246,7 +246,7 @@ function ShownRunSteps({
         {lines.dockerLinesNotice !== undefined && (
           <p className={styles.small}>{lines.dockerLinesNotice}</p>
         )}
-        <CopyableCode code={lines.runCommand} ariaLabel="exchange command" />
+        <RunCommandLines lines={lines} ariaLabel="exchange command" />
       </li>
       <li>
         <p className={styles.handoffStepLabel}>
