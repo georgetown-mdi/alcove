@@ -125,7 +125,7 @@ export interface AcceptorColumnsState {
  * {@link inferMetadataForEveryColumn} over the file's columns, so a column
  * inference does not recognize is listed as ignored for the operator to declare,
  * normalized for the editor so the collapsed disclosure control is faithful (see
- * {@link normalizeForEditor}). An inferred record identifier starts sent,
+ * {@link normalizeForEditor}). Every inferred identifier column starts sent,
  * except under a count-only `algorithm`, which sends no column
  * ({@link withIdentifiersNotSent}). "Reset to defaults" restores exactly
  * this, and the override layers start empty.

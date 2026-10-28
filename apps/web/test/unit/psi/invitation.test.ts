@@ -1473,7 +1473,7 @@ describe("generateInvitation", () => {
     const disclosed = disclosedColumnNames(
       inferMetadata(DISCLOSING_COLUMNS, []),
     );
-    expect(disclosed).toEqual(["id"]);
+    expect(disclosed).toEqual(["id", "member_id"]);
 
     const { encoded, linkageTerms } = await generateInvitation({
       allowedRelays: undefined,
@@ -1591,7 +1591,10 @@ describe("generateInvitation", () => {
       file: csvStream(DISCLOSING_CSV),
       location,
     });
-    expect(linkageTerms.payload?.send?.map((c) => c.name)).toEqual(["id"]);
+    expect(linkageTerms.payload?.send?.map((c) => c.name)).toEqual([
+      "id",
+      "member_id",
+    ]);
 
     // A lazy acceptor declares no payload.receive expectation (it does not know it
     // will receive these columns), so the reconcile takes whatever the inviter

@@ -567,10 +567,11 @@ describe("inviter screen", () => {
       Array.from(ledger().querySelectorAll(`.${styles.ledgerRow}`)).find(
         (row) => row.querySelector("dt")?.childNodes[0].textContent === label,
       );
+    // client_id is inferred as the record identifier and starts sent;
     // program_code is not recognized, so the seed lists it as not sent.
-    expect(
-      ledgerRow("You will send")?.querySelector("dd")?.textContent,
-    ).not.toContain("program_code");
+    expect(ledgerRow("You will send")?.querySelector("dd")?.textContent).toBe(
+      isolatedColumnName("client_id"),
+    );
     expect(ledgerRow("Expires")?.querySelector("dd")?.textContent).toBe(
       "1 hour after you share",
     );
@@ -591,6 +592,12 @@ describe("inviter screen", () => {
     await expect
       .element(page.getByLabelText(usedLabel("program_code")))
       .toBeInTheDocument();
+
+    // Keeps the record identifier back, so the send set below is the marked
+    // column alone.
+    await page
+      .getByLabelText(usedLabel("client_id"))
+      .selectOptions("identifier");
 
     // Marks the column sent, then undiscloses it again: the ledger and the
     // empty-state inset track each edit.
@@ -645,7 +652,7 @@ describe("inviter screen", () => {
       .toBeLessThanOrEqual(400);
   });
 
-  test("a file with two identifier columns opens with the first as the record identifier", async () => {
+  test("a file with two identifier columns opens with the first as the record identifier and both sent", async () => {
     app.render(createElement(InviterScreen));
 
     await expect.element(page.getByLabelText("Your name")).toBeInTheDocument();
@@ -673,7 +680,7 @@ describe("inviter screen", () => {
       .toHaveValue("identifier-sent");
     await expect
       .element(page.getByLabelText(usedLabel("identifier")))
-      .toHaveValue("ignored");
+      .toHaveValue("payload");
     expect(document.querySelector('section[aria-label="Problems"]')).toBeNull();
   });
 

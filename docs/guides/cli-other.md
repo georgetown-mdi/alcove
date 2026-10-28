@@ -49,7 +49,7 @@ To choose the columns sent, set up an exchange with [Invite a partner](./cli-inv
 
 ## A partner in the browser
 
-This invites a partner who uses the web app at `https://psi.data-bridge.org/`. Alcove takes the terms from your file's columns. A column named `id` or `identifier` is sent to your partner for matched records. To keep it, rename it first so its name ends in `_id`, such as `client_id`, or to `ClientID`: Alcove then uses it as your ID and does not send it. To set the terms first, use [Invite a partner](./cli-invite.md) with its WebRTC tab instead: your partner pastes that invitation under **Have an invitation? Paste it here** in the web app.
+This invites a partner who uses the web app at `https://psi.data-bridge.org/`. Alcove takes the terms from your file's columns. Every column Alcove recognizes as an ID column ([Your ID column](./agree-the-terms.md#what-each-of-you-sends)) is sent to your partner for matched records. To keep one back, or to set the terms first, use [Invite a partner](./cli-invite.md) with its WebRTC tab instead: your partner pastes that invitation under **Have an invitation? Paste it here** in the web app.
 
 ### 1. Create the invitation and wait
 

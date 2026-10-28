@@ -85,6 +85,8 @@ import { signingIdentityDivergence } from "@psi/receiptsModel";
 // apps/web/test/unit/components/columnNameDisplay.test.ts.
 import { isolatedColumnName } from "@components/ColumnName";
 
+import { disclosureOf } from "@psi/metadataEditing";
+
 import {
   REFERENCE_STANDARDIZATION_YAML,
   referenceConfigurationYaml,
@@ -103,7 +105,7 @@ const RLO = "\u202e";
 
 // Headers chosen from inferMetadata's exact-match alias table: four linkage
 // types (enough to back several default keys), one _id-suffixed identifier,
-// and one unrecognized column, which the seed lists as not sent.
+// which the seed sends, and one unrecognized column, which it does not.
 const csv: AcquiredCsv = {
   fileName: "clients.csv",
   sizeBytes: Math.round(8.4 * 1024 ** 2),
@@ -173,8 +175,8 @@ function seededSending(identity: string, file: AcquiredCsv, column: string) {
 describe("spine derivation from the read file", () => {
   test("seeding derives default keys, and a marked column joins the send set", () => {
     const seeded = editorFromCsv("Dana Okafor", csv);
-    expect(ledgerValue(seeded, "You will send").muted).toBe(
-      "Nothing - matching only",
+    expect(ledgerValue(seeded, "You will send").value).toBe(
+      isolatedColumnName("client_id"),
     );
 
     const editor = seededSending("Dana Okafor", csv, "program_code");
@@ -182,7 +184,9 @@ describe("spine derivation from the read file", () => {
     expect(editor.draft.identity).toBe("Dana Okafor");
 
     const send = ledgerValue(editor, "You will send");
-    expect(send.value).toBe(isolatedColumnName("program_code"));
+    expect(send.value).toBe(
+      `${isolatedColumnName("client_id")}, ${isolatedColumnName("program_code")}`,
+    );
 
     const matchedOn = ledgerValue(editor, "Matched on");
     expect(Array.isArray(matchedOn.value)).toBe(true);
@@ -217,7 +221,9 @@ describe("spine derivation from the read file", () => {
     };
     const editor = seededSending("Dana", bidiCsv, bidiColumn);
     const send = ledgerValue(editor, "You will send");
-    expect(send.value).toBe(isolatedColumnName(bidiColumn));
+    expect(send.value).toBe(
+      `${isolatedColumnName("client_id")}, ${isolatedColumnName(bidiColumn)}`,
+    );
     expect(send.value).toContain(RLO);
   });
 
@@ -296,13 +302,13 @@ describe("spine derivation from the read file", () => {
 });
 
 describe("ledger tracks step-2 edits", () => {
-  test("undisclosing the sent column empties the send row", () => {
+  test("keeping back the sent record identifier empties the send row", () => {
     const seeded = editorFromCsv("Dana", csv);
     const { editor } = editorWithColumnDisclosure(
       seeded,
       csv,
-      "program_code",
-      "ignored",
+      "client_id",
+      "identifier",
     );
     const send = ledgerValue(editor, "You will send");
     expect(send.value).toBeUndefined();
@@ -533,7 +539,7 @@ describe("review and create", () => {
     expect(byLabel.get("Your name or agency")?.changeTarget).toBe("file");
     expect(byLabel.get("Your file")?.value).toBe("clients.csv - 1 rows");
     expect(byLabel.get("Columns shared")?.value).toBe(
-      isolatedColumnName("program_code"),
+      `${isolatedColumnName("client_id")}, ${isolatedColumnName("program_code")}`,
     );
     expect(byLabel.get("Columns shared")?.changeTarget).toBe("columns");
     expect(byLabel.get("Cleaning")?.value).toMatch(
@@ -1617,6 +1623,44 @@ describe("customize tabs", () => {
         0,
       ),
     ).toBe("");
+  });
+
+  test("choosing count-only stops sending every seeded identifier column, and names each", () => {
+    const withIds: AcquiredCsv = {
+      ...csv,
+      columns: ["case_id", "Client ID", "first_name", "last_name", "dob"],
+      rawRows: [
+        {
+          case_id: "1",
+          "Client ID": "2",
+          first_name: "Ann",
+          last_name: "Lee",
+          dob: "x",
+        },
+      ],
+    };
+    const seeded = editorFromCsv("Dana", withIds);
+    const choices = (editor: typeof seeded) =>
+      editor.draft.metadata
+        .filter((column) => column.type === "identifier")
+        .map((column) => [column.name, disclosureOf(column)]);
+    expect(choices(seeded)).toEqual([
+      ["case_id", "identifier-sent"],
+      ["Client ID", "payload"],
+    ]);
+
+    const countOnly = editorWithAlgorithm(seeded, "psi-c");
+    expect(choices(countOnly)).toEqual([
+      ["case_id", "identifier"],
+      ["Client ID", "ignored"],
+    ]);
+    expect(reviewValidation(countOnly).errors.payload).toBeUndefined();
+    expect(
+      identifiersStoppedSending(
+        seeded.draft.metadata,
+        countOnly.draft.metadata,
+      ),
+    ).toEqual(["case_id", "Client ID"]);
   });
 
   test("the method-change notices name several columns and problems", () => {

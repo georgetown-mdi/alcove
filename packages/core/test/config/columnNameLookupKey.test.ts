@@ -262,14 +262,14 @@ describe.each(MODES)("under %s", (mode) => {
 
 describe("the _id rule on the lookup key", () => {
   test.each(["Member ID", "member-id", "Member.Id", " member _ ID "])(
-    "%j is the sole identifier, unsent when declared-only",
+    "%j is the sole identifier, sent when declared-only",
     (header) => {
       expect(inferMetadata([header, "dob"], [])).toEqual([
         {
           name: header,
           type: "identifier",
           role: "identifier",
-          isPayload: false,
+          isPayload: true,
         },
         {
           name: "dob",
@@ -307,9 +307,10 @@ describe("the _id rule on the lookup key", () => {
     ]);
   });
 
-  test("a folded id is the identifier ahead of an _id column", () => {
+  test("a folded id is the identifier ahead of an _id column, both sent", () => {
     expect(inferMetadata([" ID ", "case_id"], [])).toEqual([
       { name: " ID ", type: "identifier", role: "identifier", isPayload: true },
+      { name: "case_id", type: "identifier", role: "payload", isPayload: true },
     ]);
   });
 
@@ -319,8 +320,9 @@ describe("the _id rule on the lookup key", () => {
         name: "Record ID",
         type: "identifier",
         role: "identifier",
-        isPayload: false,
+        isPayload: true,
       },
+      { name: "case_id", type: "identifier", role: "payload", isPayload: true },
       { name: "ssn", type: "ssn", role: "linkage", isPayload: false },
     ]);
   });
@@ -331,7 +333,13 @@ describe("the _id rule on the lookup key", () => {
         name: "case_id",
         type: "identifier",
         role: "identifier",
-        isPayload: false,
+        isPayload: true,
+      },
+      {
+        name: "Record ID",
+        type: "identifier",
+        role: "payload",
+        isPayload: true,
       },
       { name: "ssn", type: "ssn", role: "linkage", isPayload: false },
     ]);

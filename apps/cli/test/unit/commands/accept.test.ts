@@ -1159,8 +1159,8 @@ describe("the count-only shape, at the accept boundary", () => {
     // One entry per line, the rendering both consent surfaces use, so a name
     // holding the list separator is not misread as two entries.
     expect(refused).toContain("\n  - id\n");
-    // A later identifier column is not the identifier, so it is not sent.
-    expect(refused).not.toContain("\n  - identifier");
+    // A later identifier column is sent too, as payload.
+    expect(refused).toContain("\n  - identifier\n");
     // A column that inference does not recognize is not sent, so it is not listed.
     expect(refused).not.toContain(sanitizeForDisplay(hostile));
     expect(refused).not.toContain("\u200d");

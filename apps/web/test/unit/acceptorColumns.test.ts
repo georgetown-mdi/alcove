@@ -57,6 +57,7 @@ import {
   disclosureOf,
   setColumnDisclosure,
   setColumnTypeForMatching,
+  withIdentifiersNotSent,
 } from "@psi/metadataEditing";
 import { cleaningSettingsOf } from "@psi/standardizationAuthoring";
 
@@ -214,7 +215,7 @@ describe("acceptor columns editor state", () => {
     ).toEqual([]);
   });
 
-  test("an HMIS PersonalID column starts as the identifier, not sent", () => {
+  test("an HMIS PersonalID column starts as the identifier, sent", () => {
     const { metadata } = acceptorInitialColumnsState(
       ["PersonalID", "FirstName", "LastName", "DOB"],
       "psi",
@@ -223,8 +224,42 @@ describe("acceptor columns editor state", () => {
     if (personalId === undefined)
       throw new Error("the seed lists no PersonalID column");
     expect(personalId.type).toBe("identifier");
-    expect(disclosureOf(personalId)).toBe("identifier");
-    expect(acceptorDisclosedColumns(metadata)).toEqual([]);
+    expect(disclosureOf(personalId)).toBe("identifier-sent");
+    expect(acceptorDisclosedColumns(metadata)).toEqual(["PersonalID"]);
+  });
+
+  test("every inferred identifier column starts sent, the first as the identifier, and none under a count-only invitation", () => {
+    const columns = [
+      "case_id",
+      "Client ID",
+      "first_name",
+      "last_name",
+      "notes",
+    ];
+    const { metadata } = acceptorInitialColumnsState(columns, "psi");
+    expect(
+      metadata.map((column) => [column.name, disclosureOf(column)]),
+    ).toEqual([
+      ["case_id", "identifier-sent"],
+      ["Client ID", "payload"],
+      ["first_name", "match"],
+      ["last_name", "match"],
+      ["notes", "ignored"],
+    ]);
+    expect(acceptorDisclosedColumns(metadata)).toEqual([
+      "case_id",
+      "Client ID",
+    ]);
+    const countOnly = acceptorInitialColumnsState(columns, "psi-c").metadata;
+    expect(
+      countOnly
+        .filter((column) => column.type === "identifier")
+        .map((column) => [column.name, disclosureOf(column)]),
+    ).toEqual([
+      ["case_id", "identifier"],
+      ["Client ID", "ignored"],
+    ]);
+    expect(acceptorDisclosedColumns(countOnly)).toEqual([]);
   });
 
   test("the effective standardization has one transformation per satisfiable field", () => {
@@ -1126,10 +1161,19 @@ describe("a marked column whose name is too long to include", () => {
 describe("the invitation's declared payload set against the marks", () => {
   // A file covering both keys plus one unrecognized column marked to send -- so
   // the file discloses exactly one column and every other gate is clear.
-  // `record_id` infers to the identifier role (unsent, unmatched), so marking it
-  // adds a disclosure without costing a key -- which lets an open launch be
-  // pinned beside each conflict without the linkage clause firing.
+  // `record_id` infers to the identifier role and is set back to not sent
+  // ({@link keptBack}), so marking it adds a disclosure without costing a key --
+  // which lets an open launch be pinned beside each conflict without the
+  // linkage clause firing.
   const columns = ["first_name", "last_name", "notes", "record_id"];
+
+  /** The seed with the record identifier set to not sent: the operator's own
+   * choice each test here starts from, since inference starts it sent. */
+  function keptBack(fileColumns: Array<string>): Metadata {
+    return withIdentifiersNotSent(
+      acceptorInitialColumnsState(fileColumns, "psi").metadata,
+    );
+  }
 
   /** Every invitation shape this describe drives, named once. The equivalence
    * test below reads this table rather than a copy of it, so a shape added here
@@ -1161,7 +1205,11 @@ describe("the invitation's declared payload set against the marks", () => {
     return { ...nameTerms, ...shapes[shape] };
   }
 
-  const notesSent = seededWithSent(columns, ["notes"]);
+  const notesSent = setColumnDisclosure(
+    keptBack(columns),
+    "notes",
+    "payload",
+  ).metadata;
 
   /** The mark states every shape is driven in. The base marks disclose one
    * column, so a declaration can only omit that one or name others; the second
@@ -1417,7 +1465,7 @@ describe("the invitation's declared payload set against the marks", () => {
 
   test("a declared column the file keeps as its record identifier is offered too, and stays the identifier", () => {
     // The same offer over a column that is neither matched on nor sent: `record_id`
-    // infers to the identifier role, so `inFile` is read from the metadata whatever
+    // is the identifier, kept back, so `inFile` is read from the metadata whatever
     // use the column currently has, and the offer sends it as the identifier, so
     // the file's own result still begins with it.
     const identifierColumns = ["first_name", "last_name", "record_id"];
@@ -1425,7 +1473,9 @@ describe("the invitation's declared payload set against the marks", () => {
       ...nameTerms,
       payload: { receive: [{ name: "record_id" }] },
     };
-    const { state, editorState } = editorFor(identifierColumns, terms);
+    const { state, editorState } = editorFor(identifierColumns, terms, {
+      metadata: keptBack(identifierColumns),
+    });
     expect(
       editorState.metadata.find((column) => column.name === "record_id")?.role,
     ).toBe("identifier");
@@ -1452,7 +1502,9 @@ describe("the invitation's declared payload set against the marks", () => {
       ...nameTerms,
       payload: { receive: [{ name: "record_id" }, { name: "notes" }] },
     };
-    const { state } = editorFor(columns, terms);
+    const { state } = editorFor(columns, terms, {
+      metadata: keptBack(columns),
+    });
     const widened = acceptorWidenedMetadata(terms, state.metadata);
     expect(
       widened
@@ -1472,7 +1524,9 @@ describe("the invitation's declared payload set against the marks", () => {
       ...nameTerms,
       payload: { receive: [{ name: "record_id" }, { name: "first_name" }] },
     };
-    const { state } = editorFor(columns, terms);
+    const { state } = editorFor(columns, terms, {
+      metadata: keptBack(columns),
+    });
     const keys = satisfiableKeysAroundOffer(columns, terms, state);
     expect(keys.before).toBeGreaterThan(0);
     expect(keys.after).toBe(keys.before);
@@ -1492,7 +1546,9 @@ describe("the invitation's declared payload set against the marks", () => {
         ],
       },
     };
-    const { state } = editorFor(columns, terms);
+    const { state } = editorFor(columns, terms, {
+      metadata: keptBack(columns),
+    });
     expect(acceptorWideningOfferSentence(terms, state.metadata)).toBe(
       ` To send them, set your record identifier to "${DISCLOSURE_LABELS["identifier-sent"]}", the column used to match to "${DISCLOSURE_LABELS["match-sent"]}", and the other column to "${DISCLOSURE_LABELS.payload}" below.`,
     );
@@ -1506,7 +1562,9 @@ describe("the invitation's declared payload set against the marks", () => {
       ...nameTerms,
       payload: { receive: [{ name: "record_id" }, { name: "record_id" }] },
     };
-    const { state, editorState } = editorFor(identifierColumns, terms);
+    const { state, editorState } = editorFor(identifierColumns, terms, {
+      metadata: keptBack(identifierColumns),
+    });
     expect(
       acceptorPayloadDeclarationConflict(terms, editorState.metadata)
         ?.declaredButNotSent,
@@ -1741,7 +1799,11 @@ describe("the invitation's declared payload set against the marks", () => {
       expect(safeParseLinkageTerms(offer.terms).success, offer.use).toBe(true);
       const state: AcceptorColumnsState = {
         ...acceptorInitialColumnsState(offer.columns, offer.terms.algorithm),
-        metadata: seededWithSent(offer.columns, offer.sent),
+        metadata: offer.sent.reduce(
+          (metadata, name) =>
+            setColumnDisclosure(metadata, name, "payload").metadata,
+          keptBack(offer.columns),
+        ),
       };
       const before = acceptorColumnsEditorState(state, offer.terms, offer.rows);
       // What taking the offer does, in full: the declared columns this file has are

@@ -45,27 +45,33 @@ describe("inference sends only what it recognizes", () => {
     expect(disclosedColumnNames(metadata)).toEqual([]);
   });
 
-  test("a sole _id column is the identifier and is not sent", () => {
+  test("a sole _id column is the identifier and is sent", () => {
     expect(inferMetadata(["case_id", "dob"], [])).toContainEqual({
       name: "case_id",
       type: "identifier",
       role: "identifier",
-      isPayload: false,
+      isPayload: true,
     });
   });
 
-  test("an _id column beside an id column is left out", () => {
+  test("an _id column beside an id column is sent", () => {
     const metadata = inferMetadata(["id", "case_id"], []);
-    expect(metadata.map((column) => column.name)).toEqual(["id"]);
+    expect(disclosedColumnNames(metadata)).toEqual(["id", "case_id"]);
   });
 
-  test("of two _id columns, the first is the identifier and the second is left out", () => {
+  test("of two _id columns, the first is the identifier and both are sent", () => {
     expect(inferMetadata(["case_id", "person_id"], [])).toEqual([
       {
         name: "case_id",
         type: "identifier",
         role: "identifier",
-        isPayload: false,
+        isPayload: true,
+      },
+      {
+        name: "person_id",
+        type: "identifier",
+        role: "payload",
+        isPayload: true,
       },
     ]);
   });
@@ -91,8 +97,8 @@ describe("inference sends only what it recognizes", () => {
         {
           name: "case_id",
           type: "identifier",
-          role: "ignored",
-          isPayload: false,
+          role: "payload",
+          isPayload: true,
         },
       ],
     );
@@ -110,7 +116,6 @@ describe("the undeclared-column list", () => {
     const columns = ["first_name", "notes", "id", "case_id", "amount"];
     expect(undeclaredColumnNames(columns, inferMetadata(columns, []))).toEqual([
       "notes",
-      "case_id",
       "amount",
     ]);
   });
@@ -233,16 +238,16 @@ describe("the undeclared-column list", () => {
       "last_name",
       "dob",
       "notes",
-      "case_id",
-      "person_id",
+      "program",
+      "site",
     ];
     const row = {
       first_name: "Ann",
       last_name: "Lee",
       dob: "1980-01-02",
       notes: "x",
-      case_id: "c1",
-      person_id: "p1",
+      program: "c1",
+      site: "p1",
     };
     const prepared = prepareForExchange({}, "alice", [row], columns);
     expect(preparePayload([row], prepared.metadata, [[0], [0]])).toEqual({
@@ -303,14 +308,14 @@ describe("a standardization transform naming an undeclared column", () => {
 });
 
 describe("this party's own result file", () => {
-  const columns = ["id", "first_name", "last_name", "dob", "notes", "case_id"];
+  const columns = ["id", "first_name", "last_name", "dob", "notes", "program"];
   const row = {
     id: "r1",
     first_name: "Ann",
     last_name: "Lee",
     dob: "1980-01-02",
     notes: "x",
-    case_id: "c1",
+    program: "c1",
   };
   const noPartnerPayload = { columns: [], rowIndices: [], rows: [] };
   const linkageColumns: Metadata = [
@@ -327,7 +332,7 @@ describe("this party's own result file", () => {
   test("`all` over inferred metadata writes an undeclared column after the declared ones", () => {
     const prepared = prepareForExchange({}, "alice", [row], columns);
     expect(prepared.metadataInferred).toBe(true);
-    expect(prepared.undeclaredColumns).toEqual(["notes", "case_id"]);
+    expect(prepared.undeclaredColumns).toEqual(["notes", "program"]);
     const { headers, rows } = buildOutputTable(
       [[0], [0]],
       prepared.rawRows,
@@ -343,7 +348,7 @@ describe("this party's own result file", () => {
       "last_name",
       "dob",
       "notes",
-      "case_id",
+      "program",
     ]);
     expect(rows).toEqual([["r1", "0", "Ann", "Lee", "1980-01-02", "x", "c1"]]);
   });
@@ -367,7 +372,7 @@ describe("this party's own result file", () => {
     ];
     const prepared = prepareForExchange({ metadata }, "alice", [row], columns);
     expect(prepared.metadataInferred).toBe(false);
-    expect(prepared.undeclaredColumns).toEqual(["notes", "case_id"]);
+    expect(prepared.undeclaredColumns).toEqual(["notes", "program"]);
     expect(undeclaredColumnsForOwnResult(prepared)).toEqual([]);
     const { headers } = buildOutputTable(
       [[0], [0]],
@@ -702,12 +707,12 @@ describe("an invited or recurring run keeps the declared-only rule", () => {
     case_id: "c1",
   };
 
-  test("prepareForExchange by default withholds a column the metadata does not name", () => {
+  test("prepareForExchange by default withholds a column the metadata does not name, and sends every identifier", () => {
     const prepared = prepareForExchange({}, "alice", [row], columns);
-    expect(prepared.undeclaredColumns).toEqual(["notes", "case_id"]);
+    expect(prepared.undeclaredColumns).toEqual(["notes"]);
     expect(preparePayload([row], prepared.metadata, [[0], [0]])).toMatchObject({
       hasData: true,
-      columns: ["id"],
+      columns: ["id", "case_id"],
     });
   });
 
@@ -720,12 +725,12 @@ describe("an invited or recurring run keeps the declared-only rule", () => {
     );
     expect(
       termsStatingDeclaredPayloadSend(linkageTerms, metadata).payload?.send,
-    ).toEqual([{ name: "id" }]);
+    ).toEqual([{ name: "id" }, { name: "case_id" }]);
     expect(
       termsAsTheRunStatedThem(linkageTerms, {
         inputHeader: { columns, sanitizedColumnPositions: [] },
       }).terms.payload?.send,
-    ).toEqual([{ name: "id" }]);
+    ).toEqual([{ name: "id" }, { name: "case_id" }]);
   });
 
   test("an authored metadata block is used as written in direct mode too", () => {

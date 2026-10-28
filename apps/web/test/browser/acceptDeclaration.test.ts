@@ -131,7 +131,8 @@ async function expectLaunchOpen() {
 function mountStep(
   linkageTerms: LinkageTerms,
   columns: Array<string>,
-  // Columns the step opens with set to "Not used", the state a column has to be in
+  // Columns the step opens with set to "Not used", or for the record identifier
+  // to "Unique record identifier - not sent": the state a column has to be in
   // to sit in the declared-but-not-sent half while the file still contains it.
   // Every other column that inference does not recognize, which the seed lists
   // as ignored, opens set to sent.
@@ -143,7 +144,10 @@ function mountStep(
     ...inferred,
     metadata: inferred.metadata.map((column) => {
       if (unsent.includes(column.name))
-        return applyDisclosure(column, "ignored");
+        return applyDisclosure(
+          column,
+          column.role === "identifier" ? "identifier" : "ignored",
+        );
       if (column.role === "ignored") return applyDisclosure(column, "payload");
       return column;
     }),
@@ -368,13 +372,14 @@ describe("acceptor columns step: a disagreeing non-empty declaration", () => {
   });
 
   test("offers to send a column the file keeps as its record identifier as that identifier", async () => {
-    // `record_id` is this file's record identifier, so it is neither matched on
-    // nor sent. Setting it to "Sent to your partner" would drop it as the
-    // identifier, so the offer names the identifier's own sending choice.
+    // `record_id` is this file's record identifier, kept back, so it is neither
+    // matched on nor sent. Setting it to "Sent to your partner" would drop it as
+    // the identifier, so the offer names the identifier's own sending choice.
     const identifierColumns = ["first_name", "last_name", "record_id"];
     mountStep(
       { ...acceptorTerms, payload: { receive: [{ name: "record_id" }] } },
       identifierColumns,
+      ["record_id"],
     );
     await expect
       .element(
@@ -457,8 +462,8 @@ describe("acceptor columns step: a disagreeing non-empty declaration", () => {
       (_, index) => `absent_${index}`,
     );
     // Two columns this file does have, at the two uses the offer covers: one it
-    // matches on and one it keeps as its record identifier. The sentence names
-    // each column's choice.
+    // matches on and one it keeps back as its record identifier. The sentence
+    // names each column's choice.
     const held = ["first_name", "record_id"];
     mountStep(
       {
@@ -468,6 +473,7 @@ describe("acceptor columns step: a disagreeing non-empty declaration", () => {
         },
       },
       ["first_name", "last_name", "record_id"],
+      ["record_id"],
     );
     await expect
       .element(

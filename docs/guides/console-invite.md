@@ -41,9 +41,9 @@ Set the two choices at the top:
 | **Who receives the matched results**: **You and your partner** | Both of you get the result | Usual ([Who receives the result](./agree-the-terms.md#who-receives-the-result)) |
 | **Only you** or **Only your partner** | One of you gets it. The other still contributes records and sees **Results withheld by the terms** ([What each party learns](./agree-the-terms.md#what-each-party-learns)) | You agreed one side only |
 
-Alcove fills in each column's type and use from its name. It sends nothing by default, except a column named `id` or `identifier`, which starts as **Unique record identifier - sent to your partner**.
+Alcove fills in each column's type and use from its name. It sends nothing by default except your ID columns: the first starts as **Unique record identifier - sent to your partner**, and any other as **Sent to your partner**.
 
-**Your ID column.** Set your own ID column, whatever it is called, to **Unique record identifier - not sent**. Your result then starts each row with your own ID, and your partner never receives it. Alcove recognizes a column named `id`, `identifier`, `ClientID`, `PersonID`, or `PersonalID`, or one whose name ends in `_id` once spaces, dots, and dashes count as `_` (so `Client ID` counts). A column named `id` or `identifier` starts as sent to your partner; a column the app does not recognize starts as **Ignored**. With no column set as your ID, your result holds row numbers only, counting from 0.
+**Your ID column.** Alcove recognizes an ID column named `id`, `identifier`, `ClientID`, `PersonID`, or `PersonalID`, or one whose name ends in `_id` once spaces, dots, and dashes count as `_` (so `Client ID` counts). Every one it recognizes starts as sent to your partner, and the first is your record identifier: your result starts each row with it. To keep your record identifier from your partner, set it to **Unique record identifier - not sent**; to keep another ID column back, set it to **Ignored**. A column the app does not recognize, an ID column under another name included, starts as **Ignored**: to use it as your ID, set it to a **Unique record identifier** choice. With no column set as your ID, your result holds row numbers only, counting from 0.
 
 Change **How it is used** only as you agreed ([What each of you sends](./agree-the-terms.md#what-each-of-you-sends)):
 
@@ -51,8 +51,8 @@ Change **How it is used** only as you agreed ([What each of you sends](./agree-t
 | --- | --- | --- |
 | **Used to match - not sent** | Matches on the column and never sends it | Usual: names, date of birth, SSN, ZIP code |
 | **Used to match - sent to your partner** | Matches on it, and sends its value for matched records | Your partner agreed to receive this column |
-| **Unique record identifier - not sent** | Starts each row of your result with your own ID | Usual: your own ID column, whatever it is called |
-| **Unique record identifier - sent to your partner** | Does the same, and sends the ID for matched records | Your partner agreed to receive your IDs |
+| **Unique record identifier - not sent** | Starts each row of your result with your own ID | Your partner does not need your IDs |
+| **Unique record identifier - sent to your partner** | Does the same, and sends the ID for matched records | Your partner agreed to receive your IDs. The default for the first ID column Alcove recognizes |
 | **Sent to your partner** | Sends the value for matched records; not used to match | Your partner agreed to receive this column |
 | **Ignored** | Neither matches on it nor sends it | Usual: every other column |
 

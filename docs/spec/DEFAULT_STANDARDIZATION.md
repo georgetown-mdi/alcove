@@ -2096,7 +2096,8 @@ Each multi-word type also lists its no-separator spelling, since the lookup key
 keeps words apart, so a single-token column export (`firstname`, `dateofbirth`)
 infers as well as a separated one.
 
-Two rules sit outside the table, and each depends on the inference mode.
+Two rules sit outside the table, and only the second depends on the inference
+mode.
 Direct mode is a run on an input file with no invitation and no
 configuration: the CLI's zero-setup run and the console's quick exchange.
 Every other inference is declared-only: a configuration with no `metadata`
@@ -2106,25 +2107,22 @@ block, and an invitation composed from an input file.
   `case_id` or `Member ID`, infers `type: identifier`.
   So does a name whose lookup key is `clientid`, `personid`, or `personalid`,
   such as `ClientID` or the HMIS CSV export's `PersonalID`.
-  Declared-only, it infers `is_payload: false` and has a role only if the
-  second pass below makes it the identifier. In direct mode it infers
-  `role: payload` and `is_payload: true`, and the second pass may still make it
-  the identifier, sent.
+  In both modes it infers what the table's `identifier` row infers.
 - Any other name absent from the table infers nothing when declared-only, and
   `type: other`, `role: payload`, `is_payload: true` in direct mode.
 
 A second pass then decides which column indexes this party's own records: the
 first `identifier`-typed column in header order is promoted to
 `role: identifier` whatever its name. Every later `identifier`-typed column,
-whichever row typed it, infers nothing when declared-only, and `role: payload`,
-`is_payload: true` in direct mode.
+whichever row typed it, infers `role: payload`, `is_payload: true` in both
+modes, so every `identifier`-typed column is sent.
 
 A column that ends the second pass with no role is undeclared, which only
 declared-only inference leaves: the inferred
 metadata has no entry for it, so the run does not index by it or send it, and
 matches on it only when a standardization transform names it as its `input`. What a party sends is exactly what its metadata declares.
-Declared-only, the table's `identifier` row is the one inferred entry with
-`is_payload: true`; in direct mode every column the table does not list is sent
+Declared-only, the `identifier`-typed columns are the only inferred entries
+with `is_payload: true`; in direct mode every column the table does not list is sent
 as well, and every linkage-key row still infers `is_payload: false`.
 A column is a linkage key only when its lookup key is a name in the table,
 so in direct mode a linkage column under any other name, such as `Given Name`

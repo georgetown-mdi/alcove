@@ -63,10 +63,10 @@ test("identifier alias 'id': identifier role, not linkage", () => {
 
 // --- inferMetadata: _id suffix ----------------------------------------------
 
-test("column ending in _id: inferred as identifier type, isPayload false", () => {
+test("column ending in _id: inferred as identifier type, isPayload true", () => {
   const [col] = inferMetadata(["client_id"], []);
   expect(col.type).toBe("identifier");
-  expect(col.isPayload).toBe(false);
+  expect(col.isPayload).toBe(true);
 });
 
 test("single _id column: promoted to identifier role", () => {
@@ -74,42 +74,83 @@ test("single _id column: promoted to identifier role", () => {
   expect(col.role).toBe("identifier");
 });
 
-test("multiple _id columns: the first is the identifier, the rest left out", () => {
+test.each([
+  "id",
+  "identifier",
+  "ClientID",
+  "PersonID",
+  "PersonalID",
+  "case_id",
+  "Client ID",
+])(
+  "declared-only inference sends the identifier column %j, with every other spelling",
+  (name) => {
+    const metadata = inferMetadata([name, "first_name", "notes"], []);
+    expect(metadata).toEqual([
+      { name, type: "identifier", role: "identifier", isPayload: true },
+      {
+        name: "first_name",
+        type: "first_name",
+        role: "linkage",
+        isPayload: false,
+      },
+    ]);
+    expect(disclosedColumnNames(metadata)).toEqual([name]);
+  },
+);
+
+test("declared-only inference does not send a column it does not recognize", () => {
+  expect(
+    inferMetadataForEveryColumn(["notes", "MemberID"], []).map((column) => ({
+      role: column.role,
+      sent: disclosedColumnNames([column]).length > 0,
+    })),
+  ).toEqual([
+    { role: "ignored", sent: false },
+    { role: "ignored", sent: false },
+  ]);
+});
+
+test("multiple _id columns: the first is the identifier, every one is sent", () => {
   expect(inferMetadata(["client_id", "member_id"], [])).toEqual([
     {
       name: "client_id",
       type: "identifier",
       role: "identifier",
-      isPayload: false,
+      isPayload: true,
     },
+    { name: "member_id", type: "identifier", role: "payload", isPayload: true },
   ]);
 });
 
-test("canonical id column ahead of an _id column: id is the identifier, _id is left out", () => {
+test("canonical id column ahead of an _id column: id is the identifier, both are sent", () => {
   expect(inferMetadata(["id", "client_id"], [])).toEqual([
     { name: "id", type: "identifier", role: "identifier", isPayload: true },
+    { name: "client_id", type: "identifier", role: "payload", isPayload: true },
   ]);
 });
 
-test("an _id column ahead of a canonical id column: the _id column is the identifier, id is left out", () => {
+test("an _id column ahead of a canonical id column: the _id column is the identifier, both are sent", () => {
   expect(inferMetadata(["client_id", "id"], [])).toEqual([
     {
       name: "client_id",
       type: "identifier",
       role: "identifier",
-      isPayload: false,
+      isPayload: true,
     },
+    { name: "id", type: "identifier", role: "payload", isPayload: true },
   ]);
 });
 
-test("a ClientID column ahead of a canonical id column: ClientID is the identifier, id is left out", () => {
+test("a ClientID column ahead of a canonical id column: ClientID is the identifier, both are sent", () => {
   expect(inferMetadata(["ClientID", "id"], [])).toEqual([
     {
       name: "ClientID",
       type: "identifier",
       role: "identifier",
-      isPayload: false,
+      isPayload: true,
     },
+    { name: "id", type: "identifier", role: "payload", isPayload: true },
   ]);
 });
 
@@ -155,13 +196,13 @@ describe.each(["declaredOnly", "direct"] as const)(
   },
 );
 
-test("PersonalID is the identifier, unsent, by default", () => {
+test("PersonalID is the identifier, sent, by default", () => {
   expect(inferMetadata(["PersonalID", "FirstName", "notes"], [])).toEqual([
     {
       name: "PersonalID",
       type: "identifier",
       role: "identifier",
-      isPayload: false,
+      isPayload: true,
     },
     {
       name: "FirstName",
@@ -185,7 +226,7 @@ test("ClientID, PersonID and PersonalID are not entries of the alias table", () 
     expect(Object.hasOwn(ALIAS_TYPE_META_MAP, key)).toBe(false);
 });
 
-test("two canonical identifier columns: only the first is the identifier", () => {
+test("two canonical identifier columns: only the first is the identifier, both are sent", () => {
   expect(inferMetadata(["identifier", "id"], [])).toEqual([
     {
       name: "identifier",
@@ -193,10 +234,11 @@ test("two canonical identifier columns: only the first is the identifier", () =>
       role: "identifier",
       isPayload: true,
     },
+    { name: "id", type: "identifier", role: "payload", isPayload: true },
   ]);
   expect(
     inferMetadataForEveryColumn(["identifier", "id"], []).map((c) => c.role),
-  ).toEqual(["identifier", "ignored"]);
+  ).toEqual(["identifier", "payload"]);
 });
 
 test("identifierTypedColumnNames lists the identifier-typed names in order and skips an empty one", () => {

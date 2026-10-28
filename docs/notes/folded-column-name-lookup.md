@@ -40,7 +40,7 @@ The fold only adds recognized headers, and each added header changes what a run 
 - **A quick exchange** keeps back a column the lowercase-only lookup sends.
   The partner receives one payload column fewer, and the pre-run display lists the column as matched on or held back.
 - **A configuration or invitation with no `metadata` block** declares a column the lowercase-only lookup leaves undeclared.
-  The column is not sent either way, except a header such as `ID ` whose key is `id` or `identifier`, which the table's `identifier` row sends, so the declared send set changes.
+  The column is not sent either way, except an identifier header such as `ID ` or `Client ID`, which inference sends, so the declared send set changes.
   Where the configuration also has no `linkage_terms`, the terms are inferred from the metadata, so a header such as `Date of Birth` adds a field and the keys that use it.
   The terms change at the next handshake.
 - **A configuration with explicit terms but no `metadata` block** can bind a field by its type to a header the fold recognizes, in place of a later column of that type or of no column.

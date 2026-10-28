@@ -11,6 +11,7 @@ import {
   authoredLinkageFields,
   derivedFieldSteps,
   getDefaultLinkageTerms,
+  isDisclosedToPartner,
   precisionFloorLabel,
 } from "@alcove/core";
 
@@ -482,7 +483,7 @@ export function editorWithLegalAgreement(
  * on, for a caller holding roles the file's headers alone do not give -- a
  * configuration opened from the console's mount. The seed's own inference is
  * the default, and stays the grid's reset anchor either way. Count-only terms
- * open the draft with the record identifier not sent
+ * open the draft with every identifier column not sent
  * ({@link withIdentifiersNotSent}). */
 export function editorWithImportedTerms(
   editor: InviterEditor,
@@ -659,8 +660,8 @@ export function editorWithFieldAdded(
 /** Set the matching algorithm. Ungated -- the exchange honors both members -- so
  * the built terms hold it as authored; a count-only draft outside the shape a
  * count-only run admits blocks generation at {@link validateAdvancedInvite}.
- * Choosing count-only sets the record identifier not sent
- * ({@link withIdentifiersNotSent}), and choosing `psi` again leaves it not
+ * Choosing count-only sets every identifier column not sent
+ * ({@link withIdentifiersNotSent}), and choosing `psi` again leaves them not
  * sent; any other column still marked to send blocks generation. */
 export function editorWithAlgorithm(
   editor: InviterEditor,
@@ -896,9 +897,8 @@ export function demotionNotice(demoted: ReadonlyArray<string>): string {
   return `${demoted.map(isolatedColumnName).join(", ")} changed to ignored - only one column can be the record identifier.`;
 }
 
-/** The record identifier columns `before` sends and `after` keeps but no
- * longer sends: what choosing count-only stopped sending
- * ({@link editorWithAlgorithm}). */
+/** The identifier columns `before` sends and `after` no longer sends: what
+ * choosing count-only stopped sending ({@link editorWithAlgorithm}). */
 export function identifiersStoppedSending(
   before: Metadata,
   after: Metadata,
@@ -906,13 +906,10 @@ export function identifiersStoppedSending(
   return after
     .filter(
       (column) =>
-        column.role === "identifier" &&
-        !column.isPayload &&
+        column.type === "identifier" &&
+        !isDisclosedToPartner(column) &&
         before.some(
-          (prior) =>
-            prior.name === column.name &&
-            prior.role === "identifier" &&
-            prior.isPayload,
+          (prior) => prior.name === column.name && isDisclosedToPartner(prior),
         ),
     )
     .map((column) => column.name);

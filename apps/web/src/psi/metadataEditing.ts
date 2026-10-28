@@ -147,8 +147,8 @@ export function applyDisclosure(
  * The grid's starting metadata for a file just read: every column's
  * `isPayload` re-derived from its choice, so a `payload` or `ignored` column
  * sends exactly when its role does. A linkage or identifier column keeps the
- * `isPayload` it has, so an inferred `id` record identifier starts sent, as
- * a configuration or invitation with no metadata block sends it.
+ * `isPayload` it has, so an inferred record identifier starts sent, as a
+ * configuration or invitation with no metadata block sends it.
  */
 export function normalizeForEditor(metadata: Metadata): Metadata {
   return metadata.map((column) =>
@@ -284,15 +284,18 @@ export function hasMultipleIdentifiers(metadata: Metadata): boolean {
   return metadata.filter((column) => column.role === "identifier").length > 1;
 }
 
-/** `metadata` with every record identifier column set not sent, its role
- * kept. The grid's seed starts an inferred identifier sent, and a count-only
- * exchange sends no column, so a count-only grid starts from this. */
+/** `metadata` with every identifier column set not sent: the record
+ * identifier keeps its role, and another identifier sent as payload is set to
+ * ignored. The grid's seed starts every inferred identifier sent, and a
+ * count-only exchange sends no column, so a count-only grid starts from this. */
 export function withIdentifiersNotSent(metadata: Metadata): Metadata {
-  return metadata.map((column) =>
-    column.role === "identifier"
-      ? applyDisclosure(column, "identifier")
-      : column,
-  );
+  return metadata.map((column) => {
+    if (column.role === "identifier")
+      return applyDisclosure(column, "identifier");
+    if (column.type === "identifier" && column.role === "payload")
+      return applyDisclosure(column, "ignored");
+    return column;
+  });
 }
 
 /**

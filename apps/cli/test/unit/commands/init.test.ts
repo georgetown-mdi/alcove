@@ -313,20 +313,29 @@ test("renderConfigTemplate: with an identifier, the undeclared columns are not o
   expect(template).not.toContain("record identifier");
 });
 
-test("renderConfigTemplate: with an identifier and another id column undeclared, the comment says how to use the other", async () => {
+test("renderConfigTemplate: two id columns are both declared and sent, the first the identifier", async () => {
   const dir = scratchDir();
   const file = path.join(dir, "in.csv");
   fs.writeFileSync(
     file,
-    "case_id,Record ID,first_name,dob\n7,8,A,1990-01-02\n",
+    "case_id,Record ID,first_name,last_name,dob,score\n7,8,A,B,1990-01-02,5\n",
   );
   const data = await buildTemplateData(file, "Org");
-  expect(data.undeclaredColumns).toEqual(["Record ID"]);
+  expect(data.undeclaredColumns).toEqual(["score"]);
   const template = renderConfigTemplate(data);
-  expect(template).toContain(
-    "case_id above is your record identifier, the first id column\n  # in the file. To use Record ID instead,\n  # uncomment its entry, set its role to identifier (and is_payload to\n  # false to keep it from your partner), and set the role of\n  # case_id above to ignored.",
-  );
-  expect(template).not.toContain("No column above");
+  const active = parseExchangeSpec(YAML.parse(template));
+  expect(
+    active.metadata?.filter((column) => column.type === "identifier"),
+  ).toEqual([
+    {
+      name: "case_id",
+      type: "identifier",
+      role: "identifier",
+      isPayload: true,
+    },
+    { name: "Record ID", type: "identifier", role: "payload", isPayload: true },
+  ]);
+  expect(template).not.toContain("record identifier");
 });
 
 test("renderConfigTemplate: no input file lists no undeclared columns", async () => {
