@@ -76,8 +76,28 @@ export const COUNT_ONLY_SHAPE_REFUSALS: Readonly<
 export function countOnlyShapeViolation(
   terms: LinkageTerms,
 ): CountOnlyShapeViolation | undefined {
+  return shapeViolation(terms, false);
+}
+
+/**
+ * {@link countOnlyShapeViolation} with several linkage keys admitted: the rules
+ * the agreed-terms run boundary holds the `every-key` count-only construction
+ * to.
+ *
+ * @internal
+ */
+export function countOnlyEveryKeyShapeViolation(
+  terms: LinkageTerms,
+): CountOnlyShapeViolation | undefined {
+  return shapeViolation(terms, true);
+}
+
+function shapeViolation(
+  terms: LinkageTerms,
+  admitsSeveralKeys: boolean,
+): CountOnlyShapeViolation | undefined {
   if (terms.algorithm !== "psi-c") return undefined;
-  if (terms.linkageKeys.length > 1) return "linkageKeys";
+  if (!admitsSeveralKeys && terms.linkageKeys.length > 1) return "linkageKeys";
   if (terms.linkageStrategy !== "cascade") return "linkageStrategy";
   if (terms.deduplicate) return "deduplicate";
   if (

@@ -8,6 +8,7 @@ import { describe, expect, test } from "vitest";
 
 import PSI from "@openmined/psi.js";
 
+import { COUNT_ONLY_CONSTRUCTION } from "../../src/exchange/countOnlyConstruction";
 import { exchangeRecordFromFailure } from "../../src/exchange/failureRecords";
 import { resolveCountOnlyRun, runExchange } from "../../src/exchange";
 import { receiveCountReport } from "../../src/protocolSetup";
@@ -22,7 +23,11 @@ import { withHostilePayload } from "../utils/hostilePayload";
 import { createMessagePipe } from "../../src/connection/messageConnection";
 
 import type { MessageConnection } from "../../src/connection/messageConnection";
-import type { ExchangeResult, PreparedExchange } from "../../src/exchange";
+import type {
+  ExchangeResult,
+  PreparedExchange,
+  RunExchangeOptions,
+} from "../../src/exchange";
 import type { Algorithm } from "../../src/types";
 import type { LinkageTerms, Output } from "../../src/config/linkageTermsSchema";
 import { prepared, withSentNote } from "../utils/support";
@@ -647,4 +652,184 @@ describe("a hostile count-report frame", () => {
       maxCount,
     );
   });
+});
+
+// --- The every-key construction through runExchange ---------------------------
+// The construction over every agreed key, selected by the run option only core's
+// tests set (docs/spec/PROTOCOL.md, PSI-C). A two-party run here holds one-key
+// terms, since the terms-exchange parse still refuses several keys under
+// count-only; the multi-key rounds are driven in
+// packages/core/test/psi/countOnlyEveryKeyRun.test.ts.
+
+const everyKey: Partial<RunExchangeOptions> = {
+  [COUNT_ONLY_CONSTRUCTION]: "every-key",
+};
+
+async function runBothEveryKey(
+  initiatorOutput: Output,
+  responderOutput: Output,
+  datasets: Datasets = initiatorHoldsSmallerDataset,
+): Promise<RunOutcome> {
+  const [connInitiator, connResponder] = createMessagePipe();
+  const initiatorSent: Array<unknown> = [];
+  const responderSent: Array<unknown> = [];
+  const [initiator, responder] = await Promise.all([
+    runExchange(
+      recording(connInitiator, initiatorSent),
+      "initiator",
+      prepared("Initiator Co", datasets.initiator, {
+        terms: { algorithm: "psi-c", output: initiatorOutput },
+      }),
+      { psiLibrary, ...everyKey },
+    ),
+    runExchange(
+      recording(connResponder, responderSent),
+      "responder",
+      prepared("Responder Co", datasets.responder, {
+        terms: { algorithm: "psi-c", output: responderOutput },
+      }),
+      { psiLibrary, ...everyKey },
+    ),
+  ]);
+  return { initiator, responder, initiatorSent, responderSent };
+}
+
+describe("the every-key construction", () => {
+  test.each([
+    ["the initiator", initiatorHoldsSmallerDataset, "initiator"],
+    ["the responder", responderHoldsSmallerDataset, "responder"],
+  ] as const)(
+    "both entitled, %s receiving: the count reaches both parties over one count-report frame",
+    async (_label, datasets, receiverSeat) => {
+      const outcome = await runBothEveryKey(both, both, datasets);
+      const senderSeat =
+        receiverSeat === "initiator" ? "responder" : "initiator";
+
+      expect(outcome[receiverSeat].resolvedRole).toBe("receiver");
+      expect(outcome.initiator.intersectionCount).toBe(expectedCount);
+      expect(outcome.responder.intersectionCount).toBe(expectedCount);
+      expect(outcome.initiator.associationTable).toBeUndefined();
+      expect(outcome.responder.associationTable).toBeUndefined();
+      expect(countReports(outcome[`${receiverSeat}Sent`])).toEqual([
+        { intersectionCount: expectedCount },
+      ]);
+      expect(countReports(outcome[`${senderSeat}Sent`])).toEqual([]);
+    },
+  );
+
+  test.each([
+    ["the initiator", receives, helps, "initiator"],
+    ["the responder", helps, receives, "responder"],
+  ] as const)(
+    "one-sided, %s entitled: no count-report frame either way",
+    async (_label, initiatorOutput, responderOutput, receiverSeat) => {
+      const outcome = await runBothEveryKey(initiatorOutput, responderOutput);
+      const senderSeat =
+        receiverSeat === "initiator" ? "responder" : "initiator";
+
+      expect(outcome[receiverSeat].resolvedRole).toBe("receiver");
+      expect(outcome[receiverSeat].intersectionCount).toBe(expectedCount);
+      expect(outcome[senderSeat].intersectionCount).toBeUndefined();
+      expect(countReports(outcome.initiatorSent)).toEqual([]);
+      expect(countReports(outcome.responderSent)).toEqual([]);
+    },
+  );
+
+  test("the count equals the shipped construction's and a psi run's on the same key and data", async () => {
+    const counted = await runBothEveryKey(both, both);
+    const shipped = await runBoth(both, both);
+    const matched = await runBoth(both, both, "psi");
+
+    expect(counted.initiator.intersectionCount).toBe(
+      shipped.initiator.intersectionCount,
+    );
+    expect(counted.initiator.intersectionCount).toBe(
+      matched.initiator.associationTable?.[0].length,
+    );
+
+    // The constructions differ on the wire: the sender (the responder here)
+    // sends its setup in one part under both, then under every-key the
+    // round's index table, one entry per record, before the rest.
+    const everyKeyFrames = psiFrames(
+      counted.responderSent,
+    ) as Array<Uint8Array>;
+    expect(everyKeyFrames).toHaveLength(
+      psiFrames(shipped.responderSent).length + 1,
+    );
+    expect(everyKeyFrames[1]!.byteLength).toBe(4 * responderRows.length);
+  });
+
+  test("the record attests a count-only run", async () => {
+    const { initiator, responder } = await runBothEveryKey(both, both);
+    for (const record of [initiator.audit!.record, responder.audit!.record]) {
+      expect(record.governance.algorithm).toBe("psi-c");
+      expect(record.resultSize).toBe(expectedCount);
+      expect(record.commitments.associationTable).toBeUndefined();
+    }
+  });
+});
+
+describe("the agreed-terms run boundary under the every-key construction", () => {
+  test("several linkage keys are admitted only under every-key", () => {
+    const overBroadTerms = withSecondKey(agreedCountOnlyTerms);
+    expect(
+      resolveCountOnlyRun(overBroadTerms, overBroadTerms, "every-key"),
+    ).toBe(true);
+    expect(() =>
+      resolveCountOnlyRun(overBroadTerms, overBroadTerms, "single-key"),
+    ).toThrow(/exactly one linkage key/);
+    expect(() => resolveCountOnlyRun(overBroadTerms, overBroadTerms)).toThrow(
+      /exactly one linkage key/,
+    );
+  });
+
+  const conditionedTerms: LinkageTerms = {
+    ...agreedCountOnlyTerms,
+    linkageFields: [
+      ...agreedCountOnlyTerms.linkageFields,
+      { name: "dateOfBirth", type: "date_of_birth" },
+    ],
+    linkageKeys: [
+      {
+        ...agreedCountOnlyTerms.linkageKeys[0]!,
+        condition: { missingField: "dateOfBirth" },
+      },
+    ],
+  };
+
+  test.each<[string, LinkageTerms, RegExp]>([
+    [
+      "a declared single-pass",
+      { ...agreedCountOnlyTerms, linkageStrategy: "single-pass" },
+      /linkage_strategy to "cascade"/,
+    ],
+    [
+      "deduplicate",
+      { ...agreedCountOnlyTerms, deduplicate: true },
+      /deduplicate to false/,
+    ],
+    [
+      "a payload column",
+      {
+        ...agreedCountOnlyTerms,
+        payload: { send: [{ name: "note" }], receive: [] },
+      } as LinkageTerms,
+      /no payload columns/,
+    ],
+    [
+      "a key with a missing-field condition",
+      conditionedTerms,
+      /missing_field condition runs in two/,
+    ],
+  ])(
+    "%s stays refused whichever party's terms hold it",
+    (_label, refusedTerms, message) => {
+      expect(() =>
+        resolveCountOnlyRun(refusedTerms, agreedCountOnlyTerms, "every-key"),
+      ).toThrow(message);
+      expect(() =>
+        resolveCountOnlyRun(agreedCountOnlyTerms, refusedTerms, "every-key"),
+      ).toThrow(message);
+    },
+  );
 });

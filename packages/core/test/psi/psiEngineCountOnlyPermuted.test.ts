@@ -33,6 +33,7 @@ import {
 } from "../../src/psi/shardedPsiEngine";
 import { fixedKeyPsiLibrary, psiTestKey } from "../utils/fixedKeyPsiLibrary";
 import { loadNativeAddonOrSkip } from "../utils/nativeAddon";
+import { withEmptyUnknownField } from "../utils/paddedPsiRequest";
 
 // The count-only-permuted engine mode at the PsiEngine boundary
 // (docs/spec/PROTOCOL.md, PSI-C: the sender's permutation, the index table,
@@ -213,7 +214,10 @@ async function runRound(
   await receiver.receiveServerSetup(setup);
   await receiver.receiveIndexTable(indexTable);
   const request = await receiver.createClientRequest(receiverValues);
-  const response = await sender.processClientRequest(request);
+  const response = await sender.processClientRequest(
+    request,
+    receiverValues.length,
+  );
   await receiver.matchPermutedRound(response);
   return { senderValues, receiverValues, setup, indexTable, request, response };
 }
@@ -597,7 +601,7 @@ describe("the count-only-permuted engine refuses", () => {
           "b",
         ]);
         await expect(
-          Promise.resolve().then(() => sender.processClientRequest(request)),
+          Promise.resolve().then(() => sender.processClientRequest(request, 2)),
         ).rejects.toThrow(
           /the partner's PSI request ran the count-only mode, where this exchange runs count-only-permuted/,
         );
@@ -886,6 +890,7 @@ describe("the count-only-permuted engine refuses", () => {
         await receiver.receiveIndexTable(indexTable);
         const response = await sender.processClientRequest(
           await receiver.createClientRequest(roundSet(RECEIVER, 1)),
+          RECEIVER.length,
         );
         stopRequested = true;
         await expect(receiver.matchPermutedRound(response)).rejects.toThrow(
@@ -992,7 +997,7 @@ describe("the count-only-permuted engine refuses", () => {
           roundSet(RECEIVER.slice(1), 1),
         );
         const refused = Promise.resolve().then(() =>
-          sender.processClientRequest(request),
+          sender.processClientRequest(request, RECEIVER.length - 1),
         );
         await expect(refused).rejects.toBeInstanceOf(
           PartnerProtocolRefusalError,
@@ -1004,6 +1009,58 @@ describe("the count-only-permuted engine refuses", () => {
         sender.dispose();
         receiver.dispose();
         shorterReceiver.dispose();
+      }
+    },
+  );
+
+  test.for(refusingEngines)(
+    "a request whose parsed element count is not the declared count, however many fields it holds, %s",
+    async ([, create]) => {
+      const sender = create(wasm, "starter");
+      const receiver = create(wasm, "joiner");
+      const draw = vi.spyOn(HeldPermutation, "draw");
+      try {
+        await sender.createPermutedSetup(roundSet(SENDER, 0));
+        draw.mockClear();
+        const padded = withEmptyUnknownField(
+          await receiver.createClientRequest(roundSet(RECEIVER.slice(1), 0)),
+        );
+        const refused = Promise.resolve().then(() =>
+          sender.processClientRequest(padded, RECEIVER.length),
+        );
+        await expect(refused).rejects.toBeInstanceOf(
+          PartnerProtocolRefusalError,
+        );
+        await expect(refused).rejects.toThrow(
+          /PSI request has 63 elements for its 64 declared records/,
+        );
+        expect(draw).not.toHaveBeenCalled();
+      } finally {
+        sender.dispose();
+        receiver.dispose();
+      }
+    },
+  );
+
+  test.for(refusingEngines)(
+    "a request given no declared count, %s",
+    async ([, create]) => {
+      const sender = create(wasm, "starter");
+      const receiver = create(wasm, "joiner");
+      const draw = vi.spyOn(HeldPermutation, "draw");
+      try {
+        await sender.createPermutedSetup(roundSet(SENDER, 0));
+        draw.mockClear();
+        const request = await receiver.createClientRequest(
+          roundSet(RECEIVER, 0),
+        );
+        await expect(
+          Promise.resolve().then(() => sender.processClientRequest(request)),
+        ).rejects.toThrow(InternalConsistencyError);
+        expect(draw).not.toHaveBeenCalled();
+      } finally {
+        sender.dispose();
+        receiver.dispose();
       }
     },
   );
@@ -1099,7 +1156,7 @@ describe("what the count-only-permuted engine reports and keeps", () => {
         );
         ticks.length = 0;
         await receiver.matchPermutedRound(
-          await sender.processClientRequest(request),
+          await sender.processClientRequest(request, receiverRecords.length),
         );
         return { ticks, count: await receiver.finishPermutedCount() };
       } finally {

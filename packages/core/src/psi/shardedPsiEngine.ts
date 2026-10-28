@@ -308,10 +308,16 @@ export class ShardedPsiEngine implements PsiEngine {
       );
   }
 
-  async processClientRequest(requestBytes: Uint8Array): Promise<Uint8Array> {
+  async processClientRequest(
+    requestBytes: Uint8Array,
+    declaredElements?: number,
+  ): Promise<Uint8Array> {
     this.requireUndisposed("processClientRequest");
     if (this.permutedPrimary !== undefined)
-      return this.permutedPrimary.processClientRequest(requestBytes);
+      return this.permutedPrimary.processClientRequest(
+        requestBytes,
+        declaredElements,
+      );
     let declared: number;
     try {
       declared = countDeclaredPsiElements(

@@ -214,8 +214,16 @@ export interface PsiEngine {
    * count-only-permuted engine reorders the response under `pi`, drawn on the
    * first request, so slot `s` answers request position `pi(s)`; a later
    * request with another element count is refused as a protocol error.
+   *
+   * `declaredElements` is the record count the partner declared. A
+   * count-only-permuted engine requires it and refuses, as a protocol error
+   * and before it draws `pi`, a request whose element count as the library
+   * parsed it differs; the other modes ignore it.
    */
-  processClientRequest(requestBytes: Uint8Array): Promise<Uint8Array>;
+  processClientRequest(
+    requestBytes: Uint8Array,
+    declaredElements?: number,
+  ): Promise<Uint8Array>;
   /**
    * Encrypts this party's values once under the client key. Client role. A
    * count-only engine contributes only the values occurring exactly once in
@@ -734,7 +742,10 @@ export class InProcessPsiEngine implements PsiEngine, PermutedShardPrimary {
     });
   }
 
-  processClientRequest(requestBytes: Uint8Array): Promise<Uint8Array> {
+  processClientRequest(
+    requestBytes: Uint8Array,
+    declaredElements?: number,
+  ): Promise<Uint8Array> {
     const server = this.requireServer("processClientRequest");
     this.requireUndisposed("processClientRequest");
     const request = fromLibrary(() =>
@@ -753,8 +764,17 @@ export class InProcessPsiEngine implements PsiEngine, PermutedShardPrimary {
         this.mode,
       );
     const elements = request.getEncryptedElementsList().length;
-    if (this.mode === "count-only-permuted")
+    if (this.mode === "count-only-permuted") {
+      if (declaredElements === undefined)
+        throw new InternalConsistencyError(
+          `${this.id}: processClientRequest in the count-only-permuted mode needs the partner's declared record count`,
+        );
+      if (elements !== declaredElements)
+        throw new PartnerProtocolRefusalError(
+          `${this.id} protocol error: the partner's PSI request has ${String(elements)} elements for its ${String(declaredElements)} declared records`,
+        );
       return Promise.resolve(this.permutedResponse(server, request, elements));
+    }
     const ranges = this.rangesFor(elements, "processRequest");
     // One chunk is the single call: the partner's request is re-encrypted as
     // the library deserialized it, so nothing materializes its element list.

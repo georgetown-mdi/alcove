@@ -744,7 +744,7 @@ describe("the PSI worker pool in the count-only-permuted mode", () => {
         const expected = elementsOf(
           await inOrder.processClientRequest(request),
         );
-        const sent = elementsOf(await pool.processClientRequest(request));
+        const sent = elementsOf(await pool.processClientRequest(request, 3072));
         pis.push(sent.map((element) => expected.indexOf(element)));
       }
       const identity = values(3072).map((_, index) => index);
@@ -806,6 +806,7 @@ describe("the PSI worker pool in the count-only-permuted mode", () => {
       const response = wasm.response.deserializeBinary(
         await sender.processClientRequest(
           await pool.createClientRequest(values(3072)),
+          3072,
         ),
       );
       const elements = response.getEncryptedElementsList_asU8();
@@ -836,6 +837,7 @@ describe("the PSI worker pool in the count-only-permuted mode", () => {
       await pool.receiveIndexTable(indexTable);
       const response = await sender.processClientRequest(
         await pool.createClientRequest(values(64)),
+        64,
       );
       pool.dispose();
       const posted = toWorkers.length;

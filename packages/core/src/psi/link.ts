@@ -100,6 +100,10 @@ import {
 } from "../utils/eventLoop";
 import { MAX_MAP_SHARD_ENTRIES } from "./shardedMap";
 import { receiveCountReport, sendCountReport } from "../protocolSetup";
+import {
+  runCountOnlyRounds,
+  type CountOnlyDeclaredCounts,
+} from "./countOnlyRounds";
 
 import { getLoggerForVerbosity } from "../utils/logger";
 
@@ -1734,9 +1738,24 @@ export async function linkViaPSI(
 }
 
 /**
- * The count-only (`psi-c`) counterpart to {@link linkViaPSI}: ONE PSI round over ONE
- * linkage key, resolving to the size of the intersection and to nothing that names a
- * match (docs/spec/PROTOCOL.md, PSI-C).
+ * The count-only construction {@link linkViaCountOnlyPSI} runs: `single-key`,
+ * one round over one key under the library's cardinality mode, or
+ * `every-key`, every agreed key's round under the sender's permutation, with
+ * the record counts the terms exchange stated.
+ */
+export type CountOnlyRounds =
+  | { readonly construction: "single-key" }
+  | {
+      readonly construction: "every-key";
+      readonly declared: CountOnlyDeclaredCounts;
+    };
+
+/**
+ * The count-only (`psi-c`) counterpart to {@link linkViaPSI}, resolving to the size
+ * of the intersection and to nothing that names a match (docs/spec/PROTOCOL.md,
+ * PSI-C). Under the default `single-key` construction, which the rest of this
+ * description covers apart from `rounds`, it runs ONE PSI round over ONE linkage
+ * key.
  *
  * Returns the count this party holds at the end of the round, or
  * `undefined` when it holds none -- the sender of a run whose agreed terms
@@ -1756,18 +1775,25 @@ export async function linkViaPSI(
  * library's cardinality operation reports the MULTISET intersection and
  * would otherwise over-count a repeated value.
  *
- * @param participant - Must have a resolved role and a count-only engine;
- *   the identifier-revealing engine refuses the cardinality operation
- *   rather than returning one.
- * @param data - The agreed linkage keys' local values, exactly one entry
- *   for a count-only run. A longer list is refused rather than narrowed to
- *   its first key, which would deliver a count the operator did not agree
- *   to.
+ * @param participant - Must have a resolved role. Under `single-key` its
+ *   engine must be count-only, since the identifier-revealing engine refuses
+ *   the cardinality operation rather than returning one; under `every-key`
+ *   it must be `count-only-permuted`.
+ * @param data - The agreed linkage keys' local values. Under `single-key`,
+ *   exactly one entry: a longer list is refused rather than narrowed to its
+ *   first key, which would deliver a count the operator did not agree to.
+ *   Under `every-key`, one entry per round, in round order.
  * @param reportCountToSender - Whether this round's count-report frame is
  *   exchanged (see {@link ./protocolSetup.reportsCountToSender}); both
  *   parties pass the same value.
  * @param maxCount - The largest legitimate count, for bounding the reported figure
  *   on the sender: the smaller of the two exchanged record counts.
+ * @param rounds - Which construction runs. `single-key` is the one above.
+ *   `every-key` runs one round for each entry of `data`, in order, each set
+ *   holding one element per record, under the sender's permutation
+ *   (docs/spec/PROTOCOL.md, PSI-C, The count-only rounds); the participant's
+ *   engine must be built `count-only-permuted`, and `declared` holds the record
+ *   counts the terms exchange stated.
  */
 export async function linkViaCountOnlyPSI(
   participant: PSIParticipant,
@@ -1777,31 +1803,44 @@ export async function linkViaCountOnlyPSI(
   maxCount: number,
   verbosity: number = 0,
   setStage?: (id: string) => void,
+  rounds: CountOnlyRounds = { construction: "single-key" },
 ): Promise<number | undefined> {
   if (participant.config.role === "either")
     throw new InternalConsistencyError("the participant's role is unresolved");
-  if (data.length !== 1)
-    throw new UsageError(COUNT_ONLY_SHAPE_REFUSALS.linkageKeys);
-
-  const log = getLoggerForVerbosity("link", verbosity);
   setStage = setStage ?? (() => {});
-  setStage("stage 1 / 1");
 
-  const {
-    set: [values],
-  } = await buildRoundSet(
-    data[0],
-    requireSingleCandidate,
-    false,
-    undefined,
-    new EventLoopPacer(connectionEndReader(conn)),
-  );
-  log.debug(
-    `${participant.id}: counting the intersection over 1 key: ` +
-      `${values.length} unique value(s)`,
-  );
+  let count: number | undefined;
+  if (rounds.construction === "every-key")
+    count = await runCountOnlyRounds(
+      participant,
+      conn,
+      data,
+      rounds.declared,
+      setStage,
+    );
+  else {
+    if (data.length !== 1)
+      throw new UsageError(COUNT_ONLY_SHAPE_REFUSALS.linkageKeys);
 
-  const count = await participant.countIntersection(conn, values);
+    const log = getLoggerForVerbosity("link", verbosity);
+    setStage("stage 1 / 1");
+
+    const {
+      set: [values],
+    } = await buildRoundSet(
+      data[0],
+      requireSingleCandidate,
+      false,
+      undefined,
+      new EventLoopPacer(connectionEndReader(conn)),
+    );
+    log.debug(
+      `${participant.id}: counting the intersection over 1 key: ` +
+        `${values.length} unique value(s)`,
+    );
+
+    count = await participant.countIntersection(conn, values);
+  }
 
   if (!reportCountToSender) return count;
   // The receiver holds the count and reports it; the sender awaits exactly the frame

@@ -115,6 +115,52 @@ export function assertIndexTableIsPermutation(
   }
 }
 
+const INDEX_TABLE_ENTRY_BYTES = 4;
+
+/**
+ * A count-only round's index table as its frame sends it: one little-endian
+ * `Int32` per setup position (docs/spec/PROTOCOL.md, PSI-C).
+ *
+ * @internal
+ */
+export function encodeIndexTable(indexTable: Int32Array): Uint8Array {
+  const bytes = new Uint8Array(indexTable.length * INDEX_TABLE_ENTRY_BYTES);
+  const view = new DataView(bytes.buffer);
+  for (let position = 0; position < indexTable.length; position += 1)
+    view.setInt32(
+      position * INDEX_TABLE_ENTRY_BYTES,
+      indexTable[position]!,
+      true,
+    );
+  return bytes;
+}
+
+/**
+ * Decodes a partner's index-table frame, refusing as a protocol error naming
+ * `engineId` a frame that is not `entries` little-endian `Int32` values. Whether
+ * the table is a permutation is the engine's check.
+ *
+ * @internal
+ */
+export function decodeIndexTable(
+  engineId: string,
+  frame: Uint8Array,
+  entries: number,
+): Int32Array {
+  if (frame.byteLength !== entries * INDEX_TABLE_ENTRY_BYTES)
+    throw new PartnerProtocolRefusalError(
+      `${engineId} protocol error: the partner's index table is ${String(frame.byteLength)} bytes where its ${String(entries)} declared records take ${String(entries * INDEX_TABLE_ENTRY_BYTES)}`,
+    );
+  const indexTable = new Int32Array(entries);
+  const view = new DataView(frame.buffer, frame.byteOffset, frame.byteLength);
+  for (let position = 0; position < entries; position += 1)
+    indexTable[position] = view.getInt32(
+      position * INDEX_TABLE_ENTRY_BYTES,
+      true,
+    );
+  return indexTable;
+}
+
 // A response element's protobuf field header: field 1, length-delimited, and
 // the length of a compressed curve point.
 const RESPONSE_ELEMENT_TAG = 0x0a;

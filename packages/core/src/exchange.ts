@@ -12,6 +12,7 @@ import {
   assertCountOnlyTermsShape,
   assertDeduplicateImplemented,
   candidateSetIsImplementedForStrategy,
+  countOnlyEveryKeyShapeViolation,
   COUNT_ONLY_SHAPE_REFUSALS,
   resolvedMatchingFromTerms,
 } from "./linkageTermsPolicy.js";
@@ -136,6 +137,10 @@ import {
 } from "./exchange/termsRefusals.js";
 import { buildOwedExchangeRecord } from "./exchange/owedRecord.js";
 import { runPsiPhase } from "./exchange/psiPhase.js";
+import {
+  COUNT_ONLY_CONSTRUCTION,
+  type CountOnlyConstruction,
+} from "./exchange/countOnlyConstruction.js";
 import type {
   DualSignedRecord,
   ReceiptContent,
@@ -313,10 +318,14 @@ export function assertTermsRunnable(
  * the lockstep round -- the same shape as {@link resolveLinkageCardinality}.
  * A pair naming different algorithms is refused as an
  * {@link AlgorithmDivergenceError} rather than resolved to either value.
+ *
+ * Under the `every-key` `construction` several linkage keys are admitted; a
+ * key with a missing-field condition stays refused, as does every other rule.
  */
 export function resolveCountOnlyRun(
   localTerms: LinkageTerms,
   partnerTerms: LinkageTerms,
+  construction: CountOnlyConstruction = "single-key",
 ): boolean {
   assertAlgorithmImplemented(localTerms.algorithm);
   assertAlgorithmImplemented(partnerTerms.algorithm);
@@ -326,8 +335,17 @@ export function resolveCountOnlyRun(
         `partner's use "${partnerTerms.algorithm}". Agree on one algorithm ` +
         "with your partner and run again.",
     );
-  assertCountOnlyTermsShape(localTerms);
-  assertCountOnlyTermsShape(partnerTerms);
+  if (construction === "every-key")
+    for (const terms of [localTerms, partnerTerms]) {
+      const violation = countOnlyEveryKeyShapeViolation(terms);
+      if (violation !== undefined)
+        throw new UsageError(COUNT_ONLY_SHAPE_REFUSALS[violation]);
+      assertKeyConditionsAdmitted(terms);
+    }
+  else {
+    assertCountOnlyTermsShape(localTerms);
+    assertCountOnlyTermsShape(partnerTerms);
+  }
   return localTerms.algorithm === "psi-c";
 }
 
@@ -1123,6 +1141,13 @@ export interface RunExchangeOptions {
     mode: PsiEngineMode,
   ) => PsiEngine;
   /**
+   * The count-only construction a `psi-c` run builds, `single-key` where
+   * omitted. Under `every-key` the agreed-terms run boundary admits several
+   * linkage keys, and the engine is built `count-only-permuted`. Set only by
+   * core's own tests: the key is exported from no package entry point.
+   */
+  [COUNT_ONLY_CONSTRUCTION]?: CountOnlyConstruction;
+  /**
    * Called at the start of each protocol stage. The `id` values match those
    * returned by {@link describeExchangeStages}.
    */
@@ -1627,7 +1652,13 @@ export async function runExchange(
   // is symmetric, so a count-only exchange outside the specified shape aborts BOTH
   // parties here -- before the bootstrap frame and the PSI round -- rather than
   // starting a round one side would refuse. See resolveCountOnlyRun.
-  const countOnly = resolveCountOnlyRun(linkageTerms, partnerTerms);
+  const countOnlyConstruction =
+    options[COUNT_ONLY_CONSTRUCTION] ?? "single-key";
+  const countOnly = resolveCountOnlyRun(
+    linkageTerms,
+    partnerTerms,
+    countOnlyConstruction,
+  );
 
   // Resolve what each party discloses to the other, at the same point and for
   // the same reason as the cardinality above: the resolution is symmetric and
@@ -1824,6 +1855,7 @@ export async function runExchange(
     psiEngineFactory: options.psiEngineFactory,
     isReceiver,
     countOnly,
+    countOnlyConstruction,
     verbosity,
     elementBounds,
     onPsiProgress: options.onPsiProgress,
@@ -1834,6 +1866,7 @@ export async function runExchange(
     linkageTerms,
     partnerTerms,
     rowCount,
+    declaredRecordCount,
     partnerRecordCount,
     cardinality,
     singlePassBounds,
