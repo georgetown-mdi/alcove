@@ -6,12 +6,16 @@
 // No ES module parser accepts a top-level return, which is why eslint.config.mjs
 // excludes this file; .claude/scripts/panel-script.test.mjs compiles it as a
 // function body and drives it.
+//
+// It is also the briefing a deliberating panel's first round reads:
+// panel-relay.mjs runs this body with an `agent` that only records each
+// prompt, so the chair's panelists get the same text this script's do.
 
 export const meta = {
   name: "panel",
   description:
-    "Independent schema-forced panelists on one design question, with an opt-in single second round",
-  phases: [{ title: "Panel" }, { title: "Second round" }],
+    "Independent schema-forced panelists on one design question, one round",
+  phases: [{ title: "Panel" }],
 };
 
 const SCHEMA = {
@@ -33,19 +37,6 @@ const SCHEMA = {
   },
 };
 
-const SECOND_ROUND_SCHEMA = {
-  type: "object",
-  required: [...SCHEMA.required, "changed"],
-  properties: {
-    ...SCHEMA.properties,
-    changed: {
-      type: "boolean",
-      description:
-        "Whether your position differs from the first-round answer for your lens.",
-    },
-  },
-};
-
 // The seats a caller may name. A caller may instead state a lens of its own as
 // {name, lens}; a call that names no seats is refused.
 const SEATS = {
@@ -55,9 +46,6 @@ const SEATS = {
   "design-ux":
     "design and user experience -- the user-facing flows, the states a user can reach, the copy, and what the operator sees and does at each step",
 };
-
-const SECOND_ROUND_NOTE =
-  "A converged second round informs the owner and settles nothing: the question goes to the owner with every seat's first and second-round positions.";
 
 // The harness may hand a script its arguments as JSON text rather than as the
 // object the caller passed. Any other delivery -- an array, a bare scalar, null,
@@ -161,81 +149,17 @@ function resolveDocs(docs) {
 const firstAnswer = (answer) =>
   Object.fromEntries(SCHEMA.required.map((key) => [key, answer[key]]));
 
-// A second-round call passes back the first round's result verbatim. Anything
-// else -- a second round's own result above all -- is refused, so a
-// second round cannot be chained into a third.
-function resolveFirstRound(first) {
-  if (
-    !isObject(first) ||
-    first.round !== "first" ||
-    !isText(first.question) ||
-    !isText(first.base) ||
-    !Array.isArray(first.seats) ||
-    !Array.isArray(first.positions)
-  ) {
-    throw new Error(
-      "secondRound takes the first round's result exactly as the panel returned it.",
-    );
-  }
-  const seats = resolveSeats(
-    first.seats.map((seat) =>
-      isObject(seat) && Object.hasOwn(SEATS, seat.name) ? seat.name : seat,
-    ),
-  );
-  const names = seats.map((seat) => seat.name);
-  const answered = new Set();
-  for (const answer of first.positions) {
-    if (
-      !isObject(answer) ||
-      !names.includes(answer.seat) ||
-      answered.has(answer.seat) ||
-      !SCHEMA.required.every((key) => typeof answer[key] === "string")
-    ) {
-      throw new Error(
-        `secondRound holds a position that is not one of the first round's: ${JSON.stringify(answer)}.`,
-      );
-    }
-    answered.add(answer.seat);
-  }
-  if (answered.size < 2) {
-    throw new Error(
-      "A second round needs at least two first positions; take the question to the owner as it stands.",
-    );
-  }
-  return {
-    question: first.question,
-    base: resolveBase(first.base),
-    docs: resolveDocs(first.docs),
-    seats,
-    positions: first.positions.map((answer) => ({
-      seat: answer.seat,
-      ...firstAnswer(answer),
-    })),
-  };
-}
-
 const input = resolveWorkflowArgs(args);
 
-const isSecondRound = input.secondRound !== undefined;
-if (
-  isSecondRound &&
-  ["question", "base", "docs", "seats"].some((key) => input[key] !== undefined)
-) {
-  throw new Error(
-    "A second-round call passes secondRound alone: its question, base, docs, and seats come from the first round's result.",
-  );
-}
-if (!isSecondRound && !isText(input.question)) {
+if (!isText(input.question)) {
   throw new Error("question is the non-empty text of the panel's question.");
 }
-const panel = isSecondRound
-  ? resolveFirstRound(input.secondRound)
-  : {
-      question: input.question,
-      base: resolveBase(input.base),
-      docs: resolveDocs(input.docs),
-      seats: resolveSeats(input.seats),
-    };
+const panel = {
+  question: input.question,
+  base: resolveBase(input.base),
+  docs: resolveDocs(input.docs),
+  seats: resolveSeats(input.seats),
+};
 
 const docsClause = panel.docs.length
   ? `Read these first for context: ${panel.docs.map((d) => `${panel.base}/${d}`).join(", ")}.\n\n`
@@ -253,74 +177,25 @@ ${docsClause}Weigh the question primarily through this lens: ${lens}. Then answe
 The question:
 ${panel.question}`;
 
-const lensOf = (name) => panel.seats.find((seat) => seat.name === name).lens;
-
-if (!isSecondRound) {
-  const answers = await parallel(
-    panel.seats.map(
-      (seat) => () =>
-        agent(`${briefing(seat.lens)}\n\n${requiredKeysClause(SCHEMA)}`, {
-          label: `panelist: ${seat.name}`,
-          phase: "Panel",
-          schema: SCHEMA,
-          model: "opus",
-          effort: "high",
-        }),
-    ),
-  );
-  return {
-    round: "first",
-    question: panel.question,
-    base: panel.base,
-    docs: panel.docs,
-    seats: panel.seats,
-    positions: panel.seats.flatMap((seat, i) =>
-      answers[i] ? [{ seat: seat.name, ...firstAnswer(answers[i]) }] : [],
-    ),
-  };
-}
-
-const secondRoundPrompt = (own) => `${briefing(lensOf(own.seat))}
-
-This is the panel's one second round, seated fresh: you did not give the first answer below, you are reading it. Every panelist first answered on its own, and the panelists did not converge. The first-round answer for your lens was:
-${JSON.stringify(firstAnswer(own), null, 1)}
-
-The other panelists' first answers, each with the lens it was weighed through:
-${JSON.stringify(
-  panel.positions
-    .filter((other) => other.seat !== own.seat)
-    .map((other) => ({ lens: lensOf(other.seat), ...firstAnswer(other) })),
-  null,
-  1,
-)}
-
-Answer the question again, still through your own lens, having read the first-round answers. Keep the first-round position for your lens where the other answers do not move you and change it where one does; do not split the difference between positions. This is the last answer on the question.
-
-${requiredKeysClause(SECOND_ROUND_SCHEMA)}`;
-
-const secondAnswers = await parallel(
-  panel.positions.map(
-    (own) => () =>
-      agent(secondRoundPrompt(own), {
-        label: `panelist: ${own.seat} (second round)`,
-        phase: "Second round",
-        schema: SECOND_ROUND_SCHEMA,
+const answers = await parallel(
+  panel.seats.map(
+    (seat) => () =>
+      agent(`${briefing(seat.lens)}\n\n${requiredKeysClause(SCHEMA)}`, {
+        label: `panelist: ${seat.name}`,
+        phase: "Panel",
+        schema: SCHEMA,
         model: "opus",
         effort: "high",
       }),
   ),
 );
-
 return {
-  round: "second",
-  note: SECOND_ROUND_NOTE,
+  round: "first",
   question: panel.question,
   base: panel.base,
   docs: panel.docs,
   seats: panel.seats,
-  panelists: panel.positions.map((own, i) => ({
-    seat: own.seat,
-    first: firstAnswer(own),
-    second: secondAnswers[i] ?? null,
-  })),
+  positions: panel.seats.flatMap((seat, i) =>
+    answers[i] ? [{ seat: seat.name, ...firstAnswer(answers[i]) }] : [],
+  ),
 };

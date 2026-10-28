@@ -25,17 +25,13 @@ function compileScript() {
 
 const script = compileScript();
 const parallel = (thunks) => Promise.all(thunks.map((thunk) => thunk()));
-// Every convening call names the clean checkout it was given; a second round
-// takes it from the first round's result instead.
+// Every convening call names the clean checkout it was given.
 const BASE = "/tmp/tmp.panelBase";
 // A convening call also names its seats: the script has no default. A case that
 // passes a `seats` key of its own, even undefined, is delivered as it is.
 const TEST_SEATS = ["failure-modes", "architecture", "pragmatics"];
 const withBase = (args) =>
-  args !== null &&
-  typeof args === "object" &&
-  !Array.isArray(args) &&
-  !Object.hasOwn(args, "secondRound")
+  args !== null && typeof args === "object" && !Array.isArray(args)
     ? {
         ...(Object.hasOwn(args, "base") ? {} : { base: BASE }),
         ...(Object.hasOwn(args, "seats") ? {} : { seats: TEST_SEATS }),
@@ -313,147 +309,6 @@ describe.each(SHAPES)("panel seats ($shape args)", ({ deliver }) => {
       await expect(run({ question, docs: [] }, mustNotSpawn)).rejects.toThrow(
         /question is the non-empty text/,
       );
-    }
-  });
-});
-
-describe.each(SHAPES)("panel second round ($shape args)", ({ deliver }) => {
-  const run = runner(deliver);
-  const firstRound = () =>
-    run(
-      {
-        question: QUESTION,
-        docs: ["docs/DESIGN.md"],
-        seats: ["failure-modes", "design-ux", "pragmatics"],
-      },
-      answerFor,
-    );
-
-  it("asks for every first position before any panelist sees another's", async () => {
-    const asked = [];
-    await run(
-      { question: QUESTION, seats: ["failure-modes", "design-ux"] },
-      (prompt, options) => {
-        asked.push(prompt);
-        return answerFor(prompt, options);
-      },
-    );
-    for (const prompt of asked) {
-      expect(prompt).not.toContain("position of");
-      expect(prompt).not.toContain("second round");
-    }
-  });
-
-  it("shows each panelist its own first answer and the others', and records first and second-round answers side by side", async () => {
-    const first = await firstRound();
-    const spawned = [];
-    const result = await run({ secondRound: first }, (prompt, options) => {
-      spawned.push({ prompt, options });
-      return { ...answerFor(prompt, options), changed: false };
-    });
-
-    expect(spawned.map(({ options }) => options.label)).toEqual([
-      "panelist: failure-modes (second round)",
-      "panelist: design-ux (second round)",
-      "panelist: pragmatics (second round)",
-    ]);
-    for (const { prompt, options } of spawned) {
-      expect(prompt).toContain(QUESTION);
-      expect(prompt).toContain(`${BASE}/docs/DESIGN.md`);
-      for (const seat of ["failure-modes", "design-ux", "pragmatics"]) {
-        expect(prompt, options.label).toContain(`position of ${seat}`);
-      }
-      expect(options.schema.required).toContain("changed");
-      for (const key of options.schema.required) {
-        expect(prompt, options.label).toContain(`\`${key}\``);
-      }
-      expect(options.model).toBe("opus");
-    }
-
-    expect(result.round).toBe("second");
-    expect(result.note).toMatch(/informs the owner and settles nothing/);
-    expect(result.panelists).toEqual(
-      first.positions.map((own) => ({
-        seat: own.seat,
-        first: {
-          position: own.position,
-          rationale: own.rationale,
-          keyRisk: own.keyRisk,
-        },
-        second: {
-          ...answer(`position of ${own.seat} (second round)`),
-          changed: false,
-        },
-      })),
-    );
-  });
-
-  it("leaves out a panelist with no first position, and records a failed second-round answer as null", async () => {
-    const first = await run(
-      { question: QUESTION, seats: NAMED_SEATS },
-      (prompt, options) =>
-        options.label === "panelist: architecture"
-          ? null
-          : answerFor(prompt, options),
-    );
-    const spawned = [];
-    const result = await run({ secondRound: first }, (prompt, options) => {
-      spawned.push(prompt);
-      return options.label === "panelist: pragmatics (second round)"
-        ? null
-        : { ...answerFor(prompt, options), changed: true };
-    });
-    expect(spawned).toHaveLength(3);
-    for (const prompt of spawned) {
-      expect(prompt).not.toContain("position of architecture");
-    }
-    expect(result.panelists.map((p) => p.seat)).toEqual([
-      "failure-modes",
-      "pragmatics",
-      "design-ux",
-    ]);
-    expect(result.panelists[1].second).toBeNull();
-  });
-
-  it("refuses a second round over anything but one first round's result", async () => {
-    const first = await firstRound();
-    const secondRoundResult = await run(
-      { secondRound: first },
-      (prompt, options) => ({
-        ...answerFor(prompt, options),
-        changed: false,
-      }),
-    );
-    const extra = { seat: "architecture", ...answer("an extra") };
-    const refused = [
-      [{ secondRound: secondRoundResult }, /exactly as the panel returned it/],
-      [{ secondRound: true }, /exactly as the panel returned it/],
-      [{ secondRound: first, question: QUESTION }, /secondRound alone/],
-      [{ secondRound: first, base: BASE }, /secondRound alone/],
-      [
-        { secondRound: { ...first, base: undefined } },
-        /exactly as the panel returned it/,
-      ],
-      [
-        { secondRound: { ...first, positions: first.positions.slice(0, 1) } },
-        /at least two first positions/,
-      ],
-      [
-        { secondRound: { ...first, positions: [...first.positions, extra] } },
-        /not one of the first round's/,
-      ],
-      [
-        {
-          secondRound: {
-            ...first,
-            positions: [...first.positions, first.positions[0]],
-          },
-        },
-        /not one of the first round's/,
-      ],
-    ];
-    for (const [delivered, message] of refused) {
-      await expect(run(delivered, mustNotSpawn)).rejects.toThrow(message);
     }
   });
 });

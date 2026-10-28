@@ -83,6 +83,13 @@ push:
   session's lines and the closing list into those either lens flags, which are
   presented, and those both score uncontroversial, which are not. Its arguments
   and result are in `.claude/commands/docket.md`, Build the list.
+- the deliberating panel's scripts (`/panel --deliberate`), run by the
+  `panel-chair` agent and its panelists in an answer directory whose layout
+  `lib/panelAnswers.mjs` states: `panel-answer-check.mjs`, the check every
+  answer file passes; `panel-relay.mjs`, which prints every message the chair
+  sends a panelist and the round to run next; and `panel-record.mjs`, which
+  writes the panel's record and checks the answers are the panelists' own.
+  `lib/panelFixture.mjs` builds the answer directories their suites drive
 - `retro/`, the spend kit a retro runs over the Claude Code transcript stores.
   `aggregate.mjs` reads one store into per-session usage, owner turns,
   denials and PR mentions over a window; `cost.mjs` prices the aggregates
