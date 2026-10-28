@@ -804,6 +804,19 @@ async function fileTerminatedDisclosure(
   }
 }
 
+/** `carried`'s next-secret inputs, removed from it: the rotation the data
+ * exchange builds from them is then their one holder, and it releases them
+ * once its store has run or the exchange has ended. */
+function takeNextSecretInputs(carried: ManagedRerunCarried): NextSecretInputs {
+  const inputs = carried.nextSecretInputs;
+  if (inputs === undefined)
+    throw new InternalConsistencyError(
+      "the next shared secret's inputs were taken twice in one run",
+    );
+  delete carried.nextSecretInputs;
+  return inputs;
+}
+
 /**
  * Tear down the run's live resources: release the transport (on the PeerJS
  * path, free the broker id), then drain and close the message connection.
@@ -825,19 +838,6 @@ async function fileTerminatedDisclosure(
  * `RTCPeerConnection.close()`, which discards buffered outbound data and would
  * drop that frame.
  */
-/** `carried`'s next-secret inputs, removed from it: the rotation the data
- * exchange builds from them is then their one holder, and it releases them
- * once its store has run or the exchange has ended. */
-function takeNextSecretInputs(carried: ManagedRerunCarried): NextSecretInputs {
-  const inputs = carried.nextSecretInputs;
-  if (inputs === undefined)
-    throw new InternalConsistencyError(
-      "the next shared secret's inputs were taken twice in one run",
-    );
-  delete carried.nextSecretInputs;
-  return inputs;
-}
-
 async function teardown(
   runConnection: RunConnection,
   mc: MessageConnection,
