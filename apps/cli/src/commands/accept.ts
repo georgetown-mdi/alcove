@@ -61,7 +61,10 @@ import {
   renderDialedBroker,
   type ConsentSurfaceSink,
 } from "../invitationDisplay";
-import { readConnectionCredentials } from "../util/atSignRefs";
+import {
+  readConnectionCredentials,
+  type ResolvedConnectionCredentials,
+} from "../util/atSignRefs";
 import { runOrExit } from "../util/exit";
 import { openEventStream } from "../eventStream";
 import { assertNoUnknownOptions, csvDelimiterFlag } from "../util/flags";
@@ -344,6 +347,8 @@ type AcceptReady = {
       endpointDirectories?: EndpointDirectories;
       dataSpec: ResolvedDataSpec;
       prepared: PreparedExchange;
+      /** The values behind `connection`'s `@path` credential references. */
+      credentials: ResolvedConnectionCredentials;
     }
   | {
       /**
@@ -736,12 +741,14 @@ export async function validateAccept(params: {
       mode: stop === undefined ? "online" : "offline",
       log,
     });
+    // The connection's `@path` credentials, read once for a stop and a run
+    // alike, so an unreadable one is refused before the terms are displayed
+    // and is never written into a configuration. A run hands the values to
+    // its bootstrap, which then reads nothing again.
+    const credentials = readConnectionCredentials(connection);
     // A stop writes the connection the URL and flags built, as the run's
-    // handshake would have, and contacts nothing. Its `@path` credentials are
-    // read here, where the run's bootstrap reads them, so one that cannot be
-    // read is refused rather than written into the configuration.
+    // handshake would have, and contacts nothing.
     if (stop !== undefined) {
-      readConnectionCredentials(connection);
       if (output !== undefined) log.warn(OUTPUT_FOLDER_UNUSED);
       return {
         mode: "offline",
@@ -777,6 +784,7 @@ export async function validateAccept(params: {
       ...(endpointDirectories !== undefined ? { endpointDirectories } : {}),
       dataSpec,
       prepared,
+      credentials,
       reuseExistingConfig,
       ...keptAllowedRelays,
     };
@@ -1519,6 +1527,9 @@ export async function handler(argv: Arguments): Promise<void> {
           allowMemoryShortfall: options.allowMemoryShortfall,
           reuseExistingConfig: ready.reuseExistingConfig,
           provision: options.serverProvisionRead,
+          ...(ready.mode === "online"
+            ? { credentials: ready.credentials }
+            : {}),
           // Asked where the acceptance was: at a terminal, and not under
           // --consent-to-terms, which declares the run unattended.
           interactive: process.stdin.isTTY === true && !consentToTerms,

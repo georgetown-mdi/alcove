@@ -63,6 +63,16 @@ vi.mock("../../../src/eventStream", async () => {
   >("../../../src/eventStream");
   return { ...actual, openEventStream: vi.fn() };
 });
+// The credential reader, spied on and left reading.
+vi.mock("../../../src/util/atSignRefs", async () => {
+  const actual = await vi.importActual<
+    typeof import("../../../src/util/atSignRefs")
+  >("../../../src/util/atSignRefs");
+  return {
+    ...actual,
+    readConnectionCredentials: vi.fn(actual.readConnectionCredentials),
+  };
+});
 
 import {
   NO_RUN_NO_EFFECT,
@@ -137,6 +147,7 @@ afterEach(() => {
   vi.mocked(enrollAtInvitationRelay).mockReset();
   vi.mocked(webSocketRelayDialsFor).mockReset();
   vi.mocked(openEventStream).mockReset();
+  vi.mocked(readConnectionCredentials).mockClear();
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -698,7 +709,7 @@ describe("handler: an acceptance that stops", () => {
     );
   });
 
-  test("a URL acceptance that stops refuses an unreadable @path credential as a run's read does, writing nothing", async () => {
+  test("a URL acceptance refuses an unreadable @path credential before the terms, stopped or running, writing nothing", async () => {
     const missing = path.join(dir, "missing-password");
     // What the run's bootstrap raises for the same connection.
     let runRefusal: unknown;
@@ -712,17 +723,24 @@ describe("handler: an acceptance that stops", () => {
     }
     expect(exitCodeForError(runRefusal)).toBe(64);
 
+    promptConfirmMock.mockResolvedValue("yes");
     for (const [token, extra] of [
-      [requestingToken([], undefined), { run: false }],
-      [requestingToken([REQUESTED], undefined), {}],
+      // Stopped by --no-run, and by the request.
+      [
+        requestingToken([], undefined),
+        { "consent-to-terms": true, run: false },
+      ],
+      [requestingToken([REQUESTED], undefined), { "consent-to-terms": true }],
+      // Running, unattended under --event-stream, and at the prompt.
+      [
+        requestingToken([], undefined),
+        { "consent-to-terms": true, "event-stream": true },
+      ],
+      [requestingToken([], undefined), {}],
     ] as Array<[InvitationToken, Record<string, unknown>]>) {
       const argv = handlerArgv(
         ["sftp://host/drop", await encodeInvitation(token), writeInput()],
-        {
-          "consent-to-terms": true,
-          "server-password": `@${missing}`,
-          ...extra,
-        },
+        { "server-password": `@${missing}`, ...extra },
       );
       const exit = captureProcessExit();
       const stdio = captureStdio();
@@ -735,11 +753,48 @@ describe("handler: an acceptance that stops", () => {
         exit.mockRestore();
       }
       expect(exitCalls).toEqual([[exitCodeForError(runRefusal)]]);
-      expect(stdio.stderrWrites.join("")).toContain("missing-password");
+      const stderr = stdio.stderrWrites.join("");
+      expect(stderr).toContain("missing-password");
+      expect(stderr).not.toContain(OUTBOUND_SEND_LABEL);
       expect(fs.existsSync(argv["config-file"] as string)).toBe(false);
       expect(fs.existsSync(argv["key-file"] as string)).toBe(false);
     }
+    expect(promptConfirmMock).not.toHaveBeenCalled();
+    expect(openEventStream).not.toHaveBeenCalled();
     expect(runOnlineBootstrapMock).not.toHaveBeenCalled();
+  });
+
+  test("a URL acceptance that runs reads a readable @path credential once and hands it to the bootstrap", async () => {
+    runOnlineBootstrapMock.mockResolvedValue({
+      outcome: "completed",
+      configWriteError: undefined,
+    });
+    const passwordFile = path.join(dir, "password");
+    fs.writeFileSync(passwordFile, "not-a-real-password\n");
+    await runHandler(
+      handlerArgv(
+        [
+          "sftp://host/drop",
+          await encodeInvitation(requestingToken([], undefined)),
+          writeInput(),
+        ],
+        {
+          "consent-to-terms": true,
+          "server-password": `@${passwordFile}`,
+          "log-level": "silent",
+        },
+      ),
+    );
+    const reader = vi.mocked(readConnectionCredentials);
+    expect(reader).toHaveBeenCalledTimes(1);
+    expect(runOnlineBootstrapMock).toHaveBeenCalledTimes(1);
+    const passed = runOnlineBootstrapMock.mock.calls[0][0];
+    // Handed over, so the bootstrap's own `credentials ?? read` reads nothing.
+    expect(passed.credentials).toBe(reader.mock.results[0].value);
+    expect(passed.credentials?.password).toBeDefined();
+    expect(passed.connection).toMatchObject({
+      server: { password: `@${passwordFile}` },
+    });
   });
 
   test("a URL acceptance that stops writes a readable @path credential as its reference", async () => {
