@@ -61,6 +61,7 @@ import {
   renderDialedBroker,
   type ConsentSurfaceSink,
 } from "../invitationDisplay";
+import { readConnectionCredentials } from "../util/atSignRefs";
 import { runOrExit } from "../util/exit";
 import { openEventStream } from "../eventStream";
 import { assertNoUnknownOptions, csvDelimiterFlag } from "../util/flags";
@@ -736,8 +737,11 @@ export async function validateAccept(params: {
       log,
     });
     // A stop writes the connection the URL and flags built, as the run's
-    // handshake would have, and contacts nothing.
+    // handshake would have, and contacts nothing. Its `@path` credentials are
+    // read here, where the run's bootstrap reads them, so one that cannot be
+    // read is refused rather than written into the configuration.
     if (stop !== undefined) {
+      readConnectionCredentials(connection);
       if (output !== undefined) log.warn(OUTPUT_FOLDER_UNUSED);
       return {
         mode: "offline",

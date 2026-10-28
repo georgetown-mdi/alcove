@@ -14,7 +14,11 @@ import {
   sanitizeForDisplay,
   UsageError,
 } from "@alcove/core";
-import type { ConnectionEndpoint, InvitationToken } from "@alcove/core";
+import type {
+  ConnectionConfig,
+  ConnectionEndpoint,
+  InvitationToken,
+} from "@alcove/core";
 
 vi.mock("../../../src/util/prompt", async () => {
   const actual = await vi.importActual<
@@ -74,9 +78,10 @@ import { openEventStream } from "../../../src/eventStream";
 import type { EventStreamEmitter } from "../../../src/eventStream";
 import { runOnlineBootstrap } from "../../../src/onlineBootstrap";
 import type { CommonBootstrapOptions } from "../../../src/optionDefinitions";
+import { readConnectionCredentials } from "../../../src/util/atSignRefs";
 import { exitCodeForError } from "../../../src/util/exit";
 import { promptConfirmOrClosed } from "../../../src/util/prompt";
-import { captureProcessExit } from "../../exitCapture";
+import { captureProcessExit, runToExit } from "../../exitCapture";
 import {
   FUTURE,
   LINKAGE_COLUMNS,
@@ -608,13 +613,16 @@ function handlerArgv(
 async function runHandler(argv: Arguments): Promise<string> {
   const exit = captureProcessExit();
   const stdio = captureStdio();
+  // Read before the restore, which clears the recorded calls.
+  let exitCalls: unknown[][];
   try {
     await acceptHandler(argv);
   } finally {
+    exitCalls = [...exit.mock.calls];
     stdio.restore();
     exit.mockRestore();
   }
-  expect(exit).not.toHaveBeenCalled();
+  expect(exitCalls).toEqual([]);
   return stdio.stderrWrites.join("");
 }
 
@@ -688,6 +696,72 @@ describe("handler: an acceptance that stops", () => {
       "with the connection from the URL and your connection flags. Run " +
         "'alcove exchange' with your input file to conduct the exchange.",
     );
+  });
+
+  test("a URL acceptance that stops refuses an unreadable @path credential as a run's read does, writing nothing", async () => {
+    const missing = path.join(dir, "missing-password");
+    // What the run's bootstrap raises for the same connection.
+    let runRefusal: unknown;
+    try {
+      readConnectionCredentials({
+        channel: "sftp",
+        server: { host: "host", path: "/drop", password: `@${missing}` },
+      } as ConnectionConfig);
+    } catch (err) {
+      runRefusal = err;
+    }
+    expect(exitCodeForError(runRefusal)).toBe(64);
+
+    for (const [token, extra] of [
+      [requestingToken([], undefined), { run: false }],
+      [requestingToken([REQUESTED], undefined), {}],
+    ] as Array<[InvitationToken, Record<string, unknown>]>) {
+      const argv = handlerArgv(
+        ["sftp://host/drop", await encodeInvitation(token), writeInput()],
+        {
+          "consent-to-terms": true,
+          "server-password": `@${missing}`,
+          ...extra,
+        },
+      );
+      const exit = captureProcessExit();
+      const stdio = captureStdio();
+      let exitCalls: unknown[][];
+      try {
+        await runToExit(() => acceptHandler(argv));
+      } finally {
+        exitCalls = [...exit.mock.calls];
+        stdio.restore();
+        exit.mockRestore();
+      }
+      expect(exitCalls).toEqual([[exitCodeForError(runRefusal)]]);
+      expect(stdio.stderrWrites.join("")).toContain("missing-password");
+      expect(fs.existsSync(argv["config-file"] as string)).toBe(false);
+      expect(fs.existsSync(argv["key-file"] as string)).toBe(false);
+    }
+    expect(runOnlineBootstrapMock).not.toHaveBeenCalled();
+  });
+
+  test("a URL acceptance that stops writes a readable @path credential as its reference", async () => {
+    const passwordFile = path.join(dir, "password");
+    fs.writeFileSync(passwordFile, "not-a-real-password\n");
+    const argv = handlerArgv(
+      [
+        "sftp://host/drop",
+        await encodeInvitation(requestingToken([], undefined)),
+        writeInput(),
+      ],
+      {
+        "consent-to-terms": true,
+        "server-password": `@${passwordFile}`,
+        run: false,
+      },
+    );
+    await runHandler(argv);
+    expect(writtenSpec(argv).connection).toMatchObject({
+      channel: "sftp",
+      server: { password: `@${passwordFile}` },
+    });
   });
 
   test("a request stops a webrtc acceptance, naming the columns to declare", async () => {
