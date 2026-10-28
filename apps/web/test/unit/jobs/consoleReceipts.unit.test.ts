@@ -98,6 +98,7 @@ import type { CertificateBody, LinkageTerms } from "@alcove/core";
 import type { JobRendezvousConfig } from "@psi/jobClient/workInputClient";
 import type { JobSigningPaths } from "@jobContract/intentSchemas";
 import type { ReceiptsDraft } from "@psi/receiptsModel";
+import type { WorkingFolderCommandLines } from "@psi/dockerRunCommand";
 
 // The console's receipt-signing and retention authoring surface, end to end: what
 // the boundary schema admits, what the two composers emit per mode, what the
@@ -179,21 +180,66 @@ const problemsFor = (authored: ReceiptsDraft): Array<string> =>
 
 /** `alcove fingerprint` on the console's default identity, as the image's
  * command over the operator's working folder. */
-const DEFAULT_IDENTITY_COMMAND =
-  "docker run --rm --mount " +
-  "type=bind,src=/path/to/your/working-folder,dst=/work " +
-  `${buildImageReference()} fingerprint --identity-file ` +
-  ".alcove-signing-identity.json";
+const DEFAULT_IDENTITY_COMMAND: WorkingFolderCommandLines = {
+  runCommand:
+    'docker run --rm --user "$(id -u):$(id -g)" --mount ' +
+    "type=bind,src=/path/to/your/working-folder,dst=/work " +
+    `${buildImageReference()} fingerprint --identity-file ` +
+    ".alcove-signing-identity.json",
+  windowsRunCommand:
+    "docker run --rm --mount " +
+    '"type=bind,src=C:\\path\\to\\your\\working-folder,dst=/work" ' +
+    `${buildImageReference()} fingerprint --identity-file ` +
+    ".alcove-signing-identity.json",
+  podmanRunCommand:
+    "podman run --rm --userns=keep-id:uid=1000,gid=1000 --mount " +
+    "type=bind,src=/path/to/your/working-folder,dst=/work " +
+    `${buildImageReference()} fingerprint --identity-file ` +
+    ".alcove-signing-identity.json",
+};
 
-/** The same on the file picked in the secrets folder, mounted at its own
- * path. */
-const PICKED_IDENTITY_COMMAND =
-  "docker run --rm --mount " +
-  "type=bind,src=/path/to/your/working-folder,dst=/work --mount " +
-  "type=bind,src=/path/to/your/secrets-folder," +
-  "dst=/path/to/your/secrets-folder " +
-  `${buildImageReference()} fingerprint --identity-file ` +
-  "/path/to/your/secrets-folder/FILE";
+/** The same on the file picked in the secrets folder, mounted writable at its
+ * own path, from its Windows path on Windows. */
+const PICKED_IDENTITY_COMMAND: WorkingFolderCommandLines = {
+  runCommand:
+    'docker run --rm --user "$(id -u):$(id -g)" --mount ' +
+    "type=bind,src=/path/to/your/working-folder,dst=/work --mount " +
+    "type=bind,src=/path/to/your/secrets-folder," +
+    "dst=/path/to/your/secrets-folder " +
+    `${buildImageReference()} fingerprint --identity-file ` +
+    "/path/to/your/secrets-folder/FILE",
+  windowsRunCommand:
+    "docker run --rm --mount " +
+    '"type=bind,src=C:\\path\\to\\your\\working-folder,dst=/work" --mount ' +
+    '"type=bind,src=C:\\path\\to\\your\\secrets-folder,' +
+    'dst=/path/to/your/secrets-folder" ' +
+    `${buildImageReference()} fingerprint --identity-file ` +
+    "/path/to/your/secrets-folder/FILE",
+  podmanRunCommand:
+    "podman run --rm --userns=keep-id:uid=1000,gid=1000 --mount " +
+    "type=bind,src=/path/to/your/working-folder,dst=/work --mount " +
+    "type=bind,src=/path/to/your/secrets-folder," +
+    "dst=/path/to/your/secrets-folder " +
+    `${buildImageReference()} fingerprint --identity-file ` +
+    "/path/to/your/secrets-folder/FILE",
+};
+
+/** `command` with `args` appended in every shell. */
+function withArgs(
+  command: WorkingFolderCommandLines,
+  args: string,
+): WorkingFolderCommandLines {
+  return {
+    runCommand: `${command.runCommand} ${args}`,
+    windowsRunCommand: `${command.windowsRunCommand} ${args}`,
+    podmanRunCommand: `${command.podmanRunCommand} ${args}`,
+  };
+}
+
+/** Where a divergence statement sends the operator for the re-key command. */
+const REKEY_POINTER =
+  "with the command under 'About your signing identity' in Receipts and " +
+  "record keeping, NAME being that name";
 
 describe("the intent boundary admits only a mode an exchange honors", () => {
   test("certificate mode with a canonical pin parses", () => {
@@ -1581,39 +1627,62 @@ describe("the receipts card's model", () => {
     expect(IDENTITY_AT_REST_NOTICE).toMatch(/secrets folder/);
     expect(IDENTITY_PICKED_LOCATION_NOTICE).toMatch(/creates no key there/);
     expect(IDENTITY_PICKED_LOCATION_NOTICE).toContain(
-      `${PICKED_IDENTITY_COMMAND} --identity NAME, with NAME your name and ` +
+      "with the command below for your system, with NAME your name and " +
         "FILE the file you picked",
     );
     expect(IDENTITY_PICKED_LOCATION_NOTICE).toMatch(/your partner syncs/);
+    for (const rendezvous of [SEPARATE_RENDEZVOUS, SHARED_RENDEZVOUS]) {
+      const notice = receiptsAdvisories(
+        {
+          ...draft({ mode: "certificate" }),
+          identityLocation: { mount: "secrets", subPath: ["identity.json"] },
+        },
+        rendezvous,
+      ).find(({ message }) => message.includes("creates no key there"));
+      expect(notice?.command).toEqual(
+        withArgs(PICKED_IDENTITY_COMMAND, "--identity NAME"),
+      );
+    }
   });
 
   test("a picked-identity command mounts the secrets folder writable only to create or replace", () => {
-    const readOnlyMount =
-      "type=bind,src=/path/to/your/secrets-folder," +
-      "dst=/path/to/your/secrets-folder,readonly ";
-    expect(fingerprintCommand(true)).toBe(
-      PICKED_IDENTITY_COMMAND.replace(
+    expect(fingerprintCommand(true)).toEqual({
+      runCommand: PICKED_IDENTITY_COMMAND.runCommand.replace(
         "dst=/path/to/your/secrets-folder ",
         "dst=/path/to/your/secrets-folder,readonly ",
       ),
+      windowsRunCommand: PICKED_IDENTITY_COMMAND.windowsRunCommand.replace(
+        'dst=/path/to/your/secrets-folder" ',
+        'dst=/path/to/your/secrets-folder,readonly" ',
+      ),
+      podmanRunCommand: PICKED_IDENTITY_COMMAND.podmanRunCommand.replace(
+        "dst=/path/to/your/secrets-folder ",
+        "dst=/path/to/your/secrets-folder,readonly ",
+      ),
+    });
+    expect(fingerprintCommand(true, ["--identity", "NAME"])).toEqual(
+      withArgs(PICKED_IDENTITY_COMMAND, "--identity NAME"),
     );
-    expect(fingerprintCommand(true)).toContain(readOnlyMount);
-    expect(fingerprintCommand(true, ["--identity", "NAME"])).toBe(
-      `${PICKED_IDENTITY_COMMAND} --identity NAME`,
-    );
-    expect(fingerprintCommand(true, ["--force", "--identity", "NAME"])).toBe(
-      `${PICKED_IDENTITY_COMMAND} --force --identity NAME`,
+    expect(fingerprintCommand(true, ["--force", "--identity", "NAME"])).toEqual(
+      withArgs(PICKED_IDENTITY_COMMAND, "--force --identity NAME"),
     );
   });
 
   test("re-keying is named as the image's command over the operator's folders", () => {
-    expect(identityRegenerationNotice(false)).toContain(
-      `- ${DEFAULT_IDENTITY_COMMAND} --force --identity NAME, with NAME ` +
-        "your name - because",
+    const folder = identityRegenerationNotice(false);
+    expect(folder.message).toContain(
+      "with the command below for your system and NAME your name, because",
     );
-    expect(identityRegenerationNotice(true)).toContain(
-      `- ${PICKED_IDENTITY_COMMAND} --force --identity NAME, with NAME ` +
-        "your name and FILE the file you picked - because",
+    expect(folder.command).toEqual(
+      withArgs(DEFAULT_IDENTITY_COMMAND, "--force --identity NAME"),
+    );
+    const picked = identityRegenerationNotice(true);
+    expect(picked.message).toContain(
+      "with the command below for your system and NAME your name and FILE " +
+        "the file you picked, because",
+    );
+    expect(picked.command).toEqual(
+      withArgs(PICKED_IDENTITY_COMMAND, "--force --identity NAME"),
     );
   });
 
@@ -1721,16 +1790,15 @@ describe("the signing identity's bound name against the agreed terms", () => {
     // key invalidates every fingerprint a partner has pinned.
     expect(statement).toMatch(/this run is refused before it connects/);
     expect(statement).toMatch(/set 'Your name or agency' for this exchange/);
-    expect(statement).toContain(
-      `${DEFAULT_IDENTITY_COMMAND} --force --identity NAME, with NAME that name`,
-    );
+    expect(statement).toContain(REKEY_POINTER);
+    expect(statement).not.toContain("docker");
     expect(statement).toMatch(/new fingerprint/);
     // The console's own words, not the configuration keys the CLI states them in.
     expect(statement).not.toContain("linkage_terms.identity");
     expect(statement).not.toContain("signing.mode");
   });
 
-  test("a diverging identity at a picked location names the re-key on that file", () => {
+  test("a diverging identity at a picked location points at the note naming the re-key on that file", () => {
     const statement = signingIdentityDivergence(
       {
         ...resolved("County Registrar"),
@@ -1738,11 +1806,11 @@ describe("the signing identity's bound name against the agreed terms", () => {
       },
       THIS_PARTY,
     );
-    expect(statement).toContain(
-      `${PICKED_IDENTITY_COMMAND} --force --identity NAME, with NAME that ` +
-        "name and FILE the file you picked",
-    );
+    expect(statement).toContain(REKEY_POINTER);
     expect(statement).not.toContain("identity.json");
+    expect(identityRegenerationNotice(true).command).toEqual(
+      withArgs(PICKED_IDENTITY_COMMAND, "--force --identity NAME"),
+    );
   });
 
   test("signing with no identity resolved yet states no divergence", () => {

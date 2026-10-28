@@ -22,6 +22,7 @@ import type { ReceiptsDraft, ReceiptsSigningMode } from "@psi/receiptsModel";
 import type { InPlaceSigningIdentity } from "@jobContract/disclosedConfiguration";
 import type { LoadedAuthoringState } from "./loadedConfig";
 import type { WebRTCEndpoint } from "@alcove/core";
+import type { WorkingFolderCommandLines } from "@psi/dockerRunCommand";
 
 /**
  * The console's offer to open the command-line configuration sitting in its
@@ -409,6 +410,13 @@ export const EDITED_TERMS_TITLE = "Your partner holds the terms you opened";
  * partner runs Alcove is theirs. */
 const TERMS_UPDATE_COMMAND = workingFolderCommand(["update"]);
 
+/** The edited-terms warning ({@link editedTermsWarning}): what it says, and
+ * the `alcove update` command its message points to. */
+export interface EditedTermsWarning {
+  message: string;
+  command: WorkingFolderCommandLines;
+}
+
 /**
  * What the review step says when the terms the draft builds are not the terms
  * the opened configuration built (`termsEditedSinceOpened`): the partner holds
@@ -426,29 +434,34 @@ export function editedTermsWarning(
     termsEdited,
     continuesOpenedExchange,
   }: { termsEdited: boolean; continuesOpenedExchange: boolean },
-): string | undefined {
+): EditedTermsWarning | undefined {
   if (state.status !== "opened" || !termsEdited) return undefined;
   const changed =
     "You changed the matching terms of the configuration you opened, and " +
     "your partner still holds its terms as they were. ";
   if (!continuesOpenedExchange) return undefined;
   if (state.runsInPlace === true)
-    return (
+    return {
+      message:
+        changed +
+        "Starting the exchange saves these terms to alcove.yaml, and your " +
+        "partner refuses the run until they apply them. To keep the terms " +
+        "your partner holds, undo the change before you start. To change " +
+        "them, start, then run the alcove update command below for your " +
+        "system and send what it prints to your partner to apply with " +
+        "alcove apply.",
+      command: TERMS_UPDATE_COMMAND,
+    };
+  return {
+    message:
       changed +
-      "Starting the exchange saves these terms to alcove.yaml, and your " +
-      "partner refuses the run until they apply them. To keep the terms " +
-      "your partner holds, undo the change before you start. To change " +
-      `them, start, then run ${TERMS_UPDATE_COMMAND} and send what it ` +
-      "prints to your partner to apply with alcove apply."
-    );
-  return (
-    changed +
-    "This run is refused wherever the two differ. To run the terms your " +
-    "partner holds, undo the change, or close the configuration and open it " +
-    "again. To change the terms, edit alcove.yaml, run " +
-    `${TERMS_UPDATE_COMMAND}, and send what it prints to your partner to ` +
-    "apply with alcove apply."
-  );
+      "This run is refused wherever the two differ. To run the terms your " +
+      "partner holds, undo the change, or close the configuration and open " +
+      "it again. To change the terms, edit alcove.yaml, run the alcove " +
+      "update command below for your system, and send what it prints to " +
+      "your partner to apply with alcove apply.",
+    command: TERMS_UPDATE_COMMAND,
+  };
 }
 
 /** The label of the control that converts an opened configuration to the

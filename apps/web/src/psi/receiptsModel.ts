@@ -13,6 +13,7 @@ import {
 } from "@jobContract/intentSchemas";
 import {
   SECRETS_FOLDER_PLACEHOLDER,
+  WINDOWS_SECRETS_FOLDER_PLACEHOLDER,
   workingFolderCommand,
 } from "@psi/dockerRunCommand";
 
@@ -23,6 +24,7 @@ import type {
   JobSigningIdentityLocation,
 } from "@jobContract/intentSchemas";
 import type { JobRendezvousConfig } from "./jobClient/workInputClient";
+import type { WorkingFolderCommandLines } from "@psi/dockerRunCommand";
 
 /**
  * The pure model behind the console's "Receipts and record keeping" card:
@@ -316,7 +318,7 @@ const PICKED_IDENTITY_FILE_PLACEHOLDER = `${SECRETS_FOLDER_PLACEHOLDER}/FILE`;
 export function fingerprintCommand(
   picked: boolean,
   args: ReadonlyArray<string> = [],
-): string {
+): WorkingFolderCommandLines {
   return picked
     ? workingFolderCommand(
         [
@@ -329,6 +331,7 @@ export function fingerprintCommand(
           bindPaths: [
             {
               path: SECRETS_FOLDER_PLACEHOLDER,
+              windowsPath: WINDOWS_SECRETS_FOLDER_PLACEHOLDER,
               readOnly: !args.some(
                 (arg) => arg === "--identity" || arg === "--force",
               ),
@@ -344,26 +347,24 @@ export function fingerprintCommand(
       ]);
 }
 
+/** A sentence about the signing identity, and the command it points to. */
+export interface IdentityCommandNotice {
+  message: string;
+  command: WorkingFolderCommandLines;
+}
+
 /** The arguments that make a new identity under the name NAME stands for. */
 const NEW_IDENTITY_ARGS = ["--identity", "NAME"];
 
-/** What the placeholders in a command creating an identity stand for. */
-function newIdentityPlaceholders(picked: boolean): string {
-  return picked
-    ? "with NAME that name and FILE the file you picked"
-    : "with NAME that name";
-}
-
 /**
- * The command replacing the signing identity under a new name, and what its
- * placeholders stand for.
+ * Where a divergence statement finds the re-key command: the card's note on
+ * the signing identity ({@link identityRegenerationNotice}), which shows it for
+ * each system. The statement sits beside the start control, where a block of
+ * commands has no room.
  */
-function rekeyCommand(picked: boolean): string {
-  return (
-    fingerprintCommand(picked, ["--force", ...NEW_IDENTITY_ARGS]) +
-    `, ${newIdentityPlaceholders(picked)}`
-  );
-}
+const REKEY_COMMAND_POINTER =
+  "with the command under 'About your signing identity' in Receipts and " +
+  "record keeping, NAME being that name";
 
 /**
  * The two ways out of an ordinary divergence, in the order the CLI offers them:
@@ -372,25 +373,22 @@ function rekeyCommand(picked: boolean): string {
  * command-line action here as it does everywhere else on this card
  * ({@link identityRegenerationNotice}).
  */
-function divergenceReconcileGuidance(picked: boolean): string {
-  return (
-    "Make the two match: set 'Your name or agency' for this exchange to the name the " +
-    "identity is bound to, or create a new signing identity under the name " +
-    `these terms state at the command line - ${rekeyCommand(picked)} - ` +
-    "which gives you a new fingerprint every partner who pinned the old one " +
-    "must be sent before their verification works again."
-  );
-}
+const DIVERGENCE_RECONCILE_GUIDANCE =
+  "Make the two match: set 'Your name or agency' for this exchange to the " +
+  "name the identity is bound to, or create a new signing identity under " +
+  `the name these terms state at the command line, ${REKEY_COMMAND_POINTER}. ` +
+  "That gives you a new fingerprint every partner who pinned the old one " +
+  "must be sent before their verification works again.";
 
 /**
  * The re-key remedy, for the two divergences the 'Your name or agency' edit cannot
  * reconcile. `boundTo` names what to bind the new identity to, the whole
  * difference between them; the rest is one action with one consequence.
  */
-function rekeyGuidance(boundTo: string, picked: boolean): string {
+function rekeyGuidance(boundTo: string): string {
   return (
-    `Create a new signing identity ${boundTo} at the command line - ` +
-    `${rekeyCommand(picked)} - then send every partner who pinned the old ` +
+    `Create a new signing identity ${boundTo} at the command line, ` +
+    `${REKEY_COMMAND_POINTER}. Then send every partner who pinned the old ` +
     "fingerprint the new one before their verification works again."
   );
 }
@@ -490,7 +488,6 @@ export function signingIdentityDivergence(
   if (bound === undefined || identity.length === 0 || bound === identity)
     return undefined;
   const termsName = redactAndDisplayPartyIdentity(identity);
-  const picked = draft.identityLocation !== undefined;
   const unstatable = reasonTermsCannotStateIdentity(bound);
   if (unstatable !== undefined)
     return (
@@ -498,7 +495,7 @@ export function signingIdentityDivergence(
       `state - ${unstatable} - so it differs from the "${termsName}" this ` +
       "exchange names you by, and no change to 'Your name or agency' can bring the two " +
       `into agreement. ${DIVERGENCE_CONSEQUENCE} ` +
-      rekeyGuidance(DIVERGENCE_REKEY_UNDER_ADMITTED_NAME, picked)
+      rekeyGuidance(DIVERGENCE_REKEY_UNDER_ADMITTED_NAME)
     );
   const fieldCannotState = reasonNameFieldCannotStateIdentity(bound);
   if (fieldCannotState !== undefined)
@@ -506,13 +503,13 @@ export function signingIdentityDivergence(
       "Your signing identity is bound to a name 'Your name or agency' cannot be set " +
       `to - ${fieldCannotState} - so it differs from the "${termsName}" ` +
       `this exchange names you by. ${DIVERGENCE_CONSEQUENCE} ` +
-      rekeyGuidance(DIVERGENCE_REKEY_UNDER_TERMS_NAME, picked)
+      rekeyGuidance(DIVERGENCE_REKEY_UNDER_TERMS_NAME)
     );
   return (
     `Your signing identity is bound to "${redactAndDisplayPartyIdentity(
       bound,
     )}", and this exchange names you "${termsName}". ` +
-    `${DIVERGENCE_CONSEQUENCE} ${divergenceReconcileGuidance(picked)}`
+    `${DIVERGENCE_CONSEQUENCE} ${DIVERGENCE_RECONCILE_GUIDANCE}`
   );
 }
 
@@ -680,11 +677,17 @@ const IDENTITY_PICKED_LOCATION_READ_NOTICE =
   "and the console creates no key there, with one exception: showing your " +
   "fingerprint checks that the file is there and then reads it, so a file " +
   "removed between those two steps is created again at that path. Create it " +
-  "once at the command line - " +
-  fingerprintCommand(true, NEW_IDENTITY_ARGS) +
-  ", with NAME your name and FILE the file you picked - and mount the " +
-  "folder read-only afterwards, which closes that case too. Keep it out of " +
-  "every folder your partner syncs.";
+  "once at the command line with the command below for your system, with " +
+  "NAME your name and FILE the file you picked, and mount the folder " +
+  "read-only afterwards, which closes that case too. Keep it out of every " +
+  "folder your partner syncs.";
+
+/** The command the picked-location notice names, creating the identity at the
+ * picked file ({@link IDENTITY_PICKED_LOCATION_READ_NOTICE}). */
+export const PICKED_IDENTITY_CREATE_COMMAND = fingerprintCommand(
+  true,
+  NEW_IDENTITY_ARGS,
+);
 
 /**
  * What the console says about a key created earlier at the console's default
@@ -778,18 +781,21 @@ export const IDENTITY_SHARED_MOUNT_REFUSAL_ADVISORY =
  * own -- stays open. `picked` names the identity at the location the operator
  * picked rather than the console's default.
  */
-export function identityRegenerationNotice(picked: boolean): string {
-  return (
-    "Your signing identity is long-lived: the same key signs every exchange " +
-    "with every partner, which is what lets a fingerprint stay pinned. " +
-    "Replacing it is a command-line action - " +
-    fingerprintCommand(picked, ["--force", ...NEW_IDENTITY_ARGS]) +
-    ", with NAME your name" +
-    (picked ? " and FILE the file you picked" : "") +
-    " - because the new key has a new fingerprint, and every partner who " +
-    "pinned the old one must be sent the new one before their verification " +
-    "works again."
-  );
+export function identityRegenerationNotice(
+  picked: boolean,
+): IdentityCommandNotice {
+  return {
+    message:
+      "Your signing identity is long-lived: the same key signs every " +
+      "exchange with every partner, which is what lets a fingerprint stay " +
+      "pinned. Replacing it is a command-line action, with the command below " +
+      "for your system and NAME your name" +
+      (picked ? " and FILE the file you picked" : "") +
+      ", because the new key has a new fingerprint, and every partner who " +
+      "pinned the old one must be sent the new one before their " +
+      "verification works again.",
+    command: fingerprintCommand(picked, ["--force", ...NEW_IDENTITY_ARGS]),
+  };
 }
 
 /**
@@ -878,10 +884,12 @@ export function maxAgeCadenceNote(draft: ReceiptsDraft): string | undefined {
  */
 type ReceiptsAdvisorySeverity = "warning" | "info";
 
-/** One non-blocking advisory, with the weight it is shown at. */
+/** One non-blocking advisory, with the weight it is shown at and the command
+ * its message points to, where it names one. */
 interface ReceiptsAdvisory {
   message: string;
   severity: ReceiptsAdvisorySeverity;
+  command?: WorkingFolderCommandLines;
 }
 
 /**
@@ -949,6 +957,7 @@ export function receiptsAdvisories(
           ? IDENTITY_PICKED_LOCATION_NOTICE
           : IDENTITY_PICKED_LOCATION_READ_NOTICE,
         severity: "info",
+        command: PICKED_IDENTITY_CREATE_COMMAND,
       },
       { message: RECEIPT_LOCATION_NOTICE, severity: "info" },
     ];

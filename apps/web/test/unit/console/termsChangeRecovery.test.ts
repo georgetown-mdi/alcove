@@ -7,10 +7,17 @@ import {
 import { applyJobTermsProposal } from "@psi/jobClient/termsProposalClient";
 import { buildImageReference } from "@psi/dockerRunCommand";
 import { failureFor } from "@exchange/useInviterExchange";
-import { termsApplyOutcomeText } from "@console/termsChangeRecoveryModel";
+import { termsApplyOutcomeMessage } from "@console/termsChangeRecoveryModel";
 import { termsChangeView } from "@psi/termsChangeView";
 
 import type { RelayEvent } from "@jobContract/relayEvent";
+
+/** The sentence an apply outcome shows, without its command. */
+function termsApplyOutcomeText(
+  ...args: Parameters<typeof termsApplyOutcomeMessage>
+): string {
+  return termsApplyOutcomeMessage(...args).message;
+}
 
 /** A run id, the name of its folder in the working folder. */
 const JOB_ID = "3f2b8c1e-0d4a-4c6e-9a51-7e2f0b9c4d13";
@@ -161,27 +168,56 @@ describe("applying the proposal from the run step", () => {
     );
   });
 
-  test("names the apply as the docker command over the working folder, on this run's proposal", () => {
-    const command =
-      "docker run --rm -it --mount " +
-      "type=bind,src=/path/to/your/working-folder,dst=/work " +
-      `${buildImageReference()} apply @${JOB_ID}/alcove.proposed-terms`;
-    for (const outcome of ["run-terms-differ", "unavailable", "error"] as const)
-      expect(termsApplyOutcomeText(outcome, RUN_FOLDER)).toContain(command);
-    expect(termsApplyOutcomeText("refused", RUN_FOLDER)).not.toContain(
-      "docker",
-    );
+  test("names the apply as the command over the working folder for each system, on this run's proposal", () => {
+    const image = buildImageReference();
+    for (const outcome of [
+      "run-terms-differ",
+      "unavailable",
+      "error",
+    ] as const) {
+      const message = termsApplyOutcomeMessage(outcome, RUN_FOLDER);
+      expect(message.message).toContain("the command below for your system");
+      expect(message.command).toEqual({
+        runCommand:
+          'docker run --rm -it --user "$(id -u):$(id -g)" --mount ' +
+          "type=bind,src=/path/to/your/working-folder,dst=/work " +
+          `${image} apply @${JOB_ID}/alcove.proposed-terms`,
+        windowsRunCommand:
+          "docker run --rm -it --mount " +
+          '"type=bind,src=C:\\path\\to\\your\\working-folder,dst=/work" ' +
+          `${image} apply "@${JOB_ID}/alcove.proposed-terms"`,
+        podmanRunCommand:
+          "podman run --rm -it --userns=keep-id:uid=1000,gid=1000 --mount " +
+          "type=bind,src=/path/to/your/working-folder,dst=/work " +
+          `${image} apply @${JOB_ID}/alcove.proposed-terms`,
+      });
+    }
+    for (const outcome of [
+      "busy",
+      "configuration-changed",
+      "refused",
+    ] as const) {
+      const message = termsApplyOutcomeMessage(outcome, RUN_FOLDER);
+      expect(message.command).toBeUndefined();
+      expect(message.message).not.toContain("command below");
+    }
   });
 
   test("names the proposal beside the working folder's alcove.yaml for a run of that file", () => {
-    const command =
-      "docker run --rm -it --mount " +
-      "type=bind,src=/path/to/your/working-folder,dst=/work " +
-      `${buildImageReference()} apply alcove.proposed-terms.`;
+    const image = buildImageReference();
     for (const outcome of ["unavailable", "error"] as const) {
-      const text = termsApplyOutcomeText(outcome, WORKING_FOLDER);
-      expect(text).toContain(command);
-      expect(text).not.toContain("@");
+      const { command } = termsApplyOutcomeMessage(outcome, WORKING_FOLDER);
+      expect(command?.runCommand).toBe(
+        'docker run --rm -it --user "$(id -u):$(id -g)" --mount ' +
+          "type=bind,src=/path/to/your/working-folder,dst=/work " +
+          `${image} apply alcove.proposed-terms`,
+      );
+      expect(command?.windowsRunCommand).toBe(
+        "docker run --rm -it --mount " +
+          '"type=bind,src=C:\\path\\to\\your\\working-folder,dst=/work" ' +
+          `${image} apply alcove.proposed-terms`,
+      );
+      expect(Object.values(command ?? {}).join(" ")).not.toContain("@");
     }
     expect(
       termsApplyOutcomeText("configuration-changed", WORKING_FOLDER),

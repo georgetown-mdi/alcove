@@ -12,6 +12,7 @@ import { APPLY_TERMS_LABEL } from "@console/termsChangeRecoveryModel";
 import { TermsChangeRecovery } from "@console/TermsChangeRecovery";
 
 import { createAppMount } from "./renderApp";
+import { expectWorkingFolderCommandPerShell } from "./workingFolderCommandBlocks";
 
 const JOB_ID = "job-1";
 
@@ -38,7 +39,7 @@ function stubApplyRunTermsDiffer(): void {
 }
 
 describe("TermsChangeRecovery: applying the change from the command line", () => {
-  test("names the apply as a docker run with a terminal", async () => {
+  test("names the apply as a run with a terminal, for each shell", async () => {
     stubApplyRunTermsDiffer();
     app.render(
       createElement(TermsChangeRecovery, {
@@ -67,12 +68,17 @@ describe("TermsChangeRecovery: applying the change from the command line", () =>
         }),
       )
       .toBeInTheDocument();
-    expect(app.container.textContent).toContain(
-      "docker run --rm -it --mount " +
-        "type=bind,src=/path/to/your/working-folder,dst=/work ",
+    const blocks = expectWorkingFolderCommandPerShell(
+      app.container,
+      `apply @${JOB_ID}/alcove.proposed-terms`,
+      { interactive: true },
     );
-    expect(app.container.textContent).toContain(
-      ` apply @${JOB_ID}/alcove.proposed-terms`,
+    expect(blocks.windows).toMatch(
+      new RegExp(` apply "@${JOB_ID}/alcove\\.proposed-terms"$`),
+    );
+    // The announced sentence stays the sentence alone.
+    expect(page.getByRole("status").element().textContent).not.toContain(
+      "docker",
     );
   });
 
@@ -106,7 +112,11 @@ describe("TermsChangeRecovery: applying the change from the command line", () =>
         }),
       )
       .toBeInTheDocument();
-    expect(app.container.textContent).toContain(" apply alcove.proposed-terms");
+    expectWorkingFolderCommandPerShell(
+      app.container,
+      " apply alcove.proposed-terms",
+      { interactive: true },
+    );
     expect(app.container.textContent).not.toContain(`@${JOB_ID}/`);
   });
 });

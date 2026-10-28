@@ -72,10 +72,20 @@ const HAND_BACK: JobConfigurationHandBack = {
 };
 
 /** The terms update the operator runs: the image over their working folder. */
-const UPDATE_COMMAND =
-  "docker run --rm --mount " +
-  "type=bind,src=/path/to/your/working-folder,dst=/work " +
-  `${buildImageReference()} update`;
+const UPDATE_COMMAND = {
+  runCommand:
+    'docker run --rm --user "$(id -u):$(id -g)" --mount ' +
+    "type=bind,src=/path/to/your/working-folder,dst=/work " +
+    `${buildImageReference()} update`,
+  windowsRunCommand:
+    "docker run --rm --mount " +
+    '"type=bind,src=C:\\path\\to\\your\\working-folder,dst=/work" ' +
+    `${buildImageReference()} update`,
+  podmanRunCommand:
+    "podman run --rm --userns=keep-id:uid=1000,gid=1000 --mount " +
+    "type=bind,src=/path/to/your/working-folder,dst=/work " +
+    `${buildImageReference()} update`,
+};
 
 const FINGERPRINT = "SHA256:BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBA";
 
@@ -836,10 +846,15 @@ describe("a webrtc configuration stating no relay settings", () => {
       termsEdited: true,
       continuesOpenedExchange: true,
     });
-    expect(warning).toContain("Starting the exchange saves these terms");
-    expect(warning).toContain("undo the change before you start");
-    expect(warning).toContain(`start, then run ${UPDATE_COMMAND}`);
-    expect(warning).not.toMatch(/close the configuration/);
+    expect(warning?.message).toContain(
+      "Starting the exchange saves these terms",
+    );
+    expect(warning?.message).toContain("undo the change before you start");
+    expect(warning?.message).toContain(
+      "start, then run the alcove update command below for your system",
+    );
+    expect(warning?.message).not.toMatch(/close the configuration/);
+    expect(warning?.command).toEqual(UPDATE_COMMAND);
   });
 });
 
@@ -968,10 +983,13 @@ describe("the terms of an opened configuration changed here", () => {
       termsEdited: true,
       continuesOpenedExchange: true,
     });
-    expect(warning).toMatch(/still holds its terms as they were/);
-    expect(warning).toMatch(/This run is refused/);
-    expect(warning).toContain(`run ${UPDATE_COMMAND}, and send`);
-    expect(warning).toContain("to apply with alcove apply.");
+    expect(warning?.message).toMatch(/still holds its terms as they were/);
+    expect(warning?.message).toMatch(/This run is refused/);
+    expect(warning?.message).toContain(
+      "run the alcove update command below for your system, and send",
+    );
+    expect(warning?.message).toContain("to apply with alcove apply.");
+    expect(warning?.command).toEqual(UPDATE_COMMAND);
   });
 
   test("unchanged terms raise nothing", () => {

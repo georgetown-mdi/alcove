@@ -2,6 +2,7 @@ import { TERMS_PROPOSAL_FILE_NAME } from "@jobContract/intentSchemas";
 import { workingFolderCommand } from "@psi/dockerRunCommand";
 
 import type { TermsProposalApplyOutcome } from "@psi/jobClient/termsProposalClient";
+import type { WorkingFolderCommandLines } from "@psi/dockerRunCommand";
 
 /** The label of the control that applies the partner's changed terms. */
 export const APPLY_TERMS_LABEL = "Apply to alcove.yaml";
@@ -24,7 +25,9 @@ export type TermsProposalLocation =
  * operator's working folder. It asks before it writes, so it runs with a
  * terminal.
  */
-function termsApplyCommand(proposal: TermsProposalLocation): string {
+function termsApplyCommand(
+  proposal: TermsProposalLocation,
+): WorkingFolderCommandLines {
   return workingFolderCommand(
     [
       "apply",
@@ -36,42 +39,61 @@ function termsApplyCommand(proposal: TermsProposalLocation): string {
   );
 }
 
+/** What the run step says after an apply that did not write the file, and
+ * the `alcove apply` command its message points to, where it names one. */
+export interface TermsApplyOutcomeMessage {
+  message: string;
+  command?: WorkingFolderCommandLines;
+}
+
 /**
  * What the run step says after an apply of a run's proposal that did not
  * write the file, by outcome. Each states what happened and what to do.
  */
-export function termsApplyOutcomeText(
+export function termsApplyOutcomeMessage(
   outcome: Exclude<TermsProposalApplyOutcome, "applied">,
   proposal: TermsProposalLocation,
-): string {
+): TermsApplyOutcomeMessage {
   switch (outcome) {
     case "busy":
-      return "The console is still finishing the run. Try again in a moment.";
+      return {
+        message:
+          "The console is still finishing the run. Try again in a moment.",
+      };
     case "configuration-changed":
-      return "jobId" in proposal
-        ? "The alcove.yaml in your working folder changed after you opened " +
-            "it, so nothing was applied. Start over to open it again."
-        : "The alcove.yaml in your working folder changed after this run " +
-            "started, so nothing was applied. Start over to open it again.";
+      return {
+        message:
+          "jobId" in proposal
+            ? "The alcove.yaml in your working folder changed after you " +
+              "opened it, so nothing was applied. Start over to open it again."
+            : "The alcove.yaml in your working folder changed after this " +
+              "run started, so nothing was applied. Start over to open it " +
+              "again.",
+      };
     case "run-terms-differ":
-      return (
-        "This run used terms you changed in the console, not the ones in " +
-        "the alcove.yaml in your working folder, so nothing was applied. " +
-        "Apply the change from the command line with " +
-        `${termsApplyCommand(proposal)}, or start over to open the ` +
-        "configuration again and run it."
-      );
+      return {
+        message:
+          "This run used terms you changed in the console, not the ones in " +
+          "the alcove.yaml in your working folder, so nothing was applied. " +
+          "Apply the change from the command line with the command below " +
+          "for your system, or start over to open the configuration again " +
+          "and run it.",
+        command: termsApplyCommand(proposal),
+      };
     case "refused":
-      return (
-        "The command-line tool refused the change and alcove.yaml was not " +
-        "changed. Start over, or ask your partner about the change."
-      );
+      return {
+        message:
+          "The command-line tool refused the change and alcove.yaml was not " +
+          "changed. Start over, or ask your partner about the change.",
+      };
     case "unavailable":
     case "error":
-      return (
-        "The change could not be applied and alcove.yaml was not changed. " +
-        "Start over, or apply it from the command line with " +
-        `${termsApplyCommand(proposal)}.`
-      );
+      return {
+        message:
+          "The change could not be applied and alcove.yaml was not changed. " +
+          "Start over, or apply it from the command line with the command " +
+          "below for your system.",
+        command: termsApplyCommand(proposal),
+      };
   }
 }

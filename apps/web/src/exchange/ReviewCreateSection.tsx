@@ -90,6 +90,7 @@ import type { Transport } from "@psi/transportChooser";
 
 import type {
   ConfigurationSaveState,
+  EditedTermsWarning,
   InPlaceSigningIdentityShown,
 } from "@console/mountedConfiguration";
 import type { ConnectionTuningDraft } from "@console/connectionTuningModel";
@@ -203,7 +204,7 @@ export function ReviewCreateSection({
   /** The warning that the opened configuration's terms were changed here,
    * which the partner does not hold (`editedTermsWarning`). Undefined where
    * there is nothing to warn of. */
-  editedTermsWarning?: string;
+  editedTermsWarning?: EditedTermsWarning;
   /** Why the file-handling and connection-tuning cards take no edits, standing
    * in for them: the opened configuration's connection block is saved as the
    * file states it (`connectionSettingsHeldNotice`). Undefined where the

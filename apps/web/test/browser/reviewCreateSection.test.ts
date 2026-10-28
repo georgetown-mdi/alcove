@@ -34,10 +34,14 @@ import {
 } from "@psi/transport/coordinationServerSetting";
 import { COORDINATION_SERVER_UNREADABLE_AT_INVITE } from "@exchange/CoordinationServerSection";
 
+import { workingFolderCommand } from "@psi/dockerRunCommand";
+
 import { createAppMount } from "./renderApp";
+import { expectWorkingFolderCommandPerShell } from "./workingFolderCommandBlocks";
 
 import type { AcquiredCsv, InviterEditor } from "@psi/inviterEditor";
 import type { AdvancedInviteDraft } from "@psi/authoring/advancedInvite";
+import type { EditedTermsWarning } from "@console/mountedConfiguration";
 
 const INERT_COALESCE_NOTICE_NAME = "A default value will not be substituted";
 
@@ -64,7 +68,7 @@ function render(
   opened: {
     continuesOpenedExchange?: boolean;
     runWithheld?: string;
-    editedTermsWarning?: string;
+    editedTermsWarning?: EditedTermsWarning;
   } = {},
 ) {
   app.render(
@@ -317,10 +321,15 @@ describe("ReviewCreateSection: a run of an opened configuration", () => {
   test("changed terms are warned of, and the run can still start", async () => {
     render(editorFromCsv("Dana Okafor", csv), {
       continuesOpenedExchange: true,
-      editedTermsWarning: WARNING,
+      editedTermsWarning: {
+        message: WARNING,
+        command: workingFolderCommand(["update"]),
+      },
     });
 
     await expect.element(page.getByText(WARNING)).toBeInTheDocument();
+    // The alcove update command it names, for each shell.
+    expectWorkingFolderCommandPerShell(app.container, " update");
     await expect
       .element(page.getByText(EDITED_TERMS_TITLE).first())
       .toBeInTheDocument();

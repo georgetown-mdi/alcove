@@ -9,11 +9,31 @@ import {
   APPLY_TERMS_LABEL,
   REVIEW_APPLIED_TERMS_LABEL,
   TERMS_APPLIED_TEXT,
-  termsApplyOutcomeText,
+  termsApplyOutcomeMessage,
 } from "./termsChangeRecoveryModel";
+import { WorkingFolderCommandLines } from "./WorkingFolderCommandLines";
 
 import type { RelayedTermsChange } from "@psi/jobClient/serverJobExchangeDriver";
+import type { TermsApplyOutcomeMessage } from "./termsChangeRecoveryModel";
 import type { TermsProposalApplyOutcome } from "@psi/jobClient/termsProposalClient";
+
+/** Why an apply wrote nothing, announced, and the command it names after the
+ * announced sentence, so the region reads the sentence alone. */
+function ApplyFailure({ outcome }: { outcome: TermsApplyOutcomeMessage }) {
+  return (
+    <>
+      <Text size="sm" mt="xs" role="status">
+        {outcome.message}
+      </Text>
+      {outcome.command !== undefined && (
+        <WorkingFolderCommandLines
+          command={outcome.command}
+          ariaLabel="terms apply command"
+        />
+      )}
+    </>
+  );
+}
 
 type ApplyState =
   | { status: "idle" }
@@ -78,12 +98,12 @@ export function TermsChangeRecovery({
         </Group>
       )}
       {state.status === "failed" && jobId !== undefined && (
-        <Text size="sm" mt="xs" role="status">
-          {termsApplyOutcomeText(
+        <ApplyFailure
+          outcome={termsApplyOutcomeMessage(
             state.outcome,
             inWorkingFolder ? { inWorkingFolder: true } : { jobId },
           )}
-        </Text>
+        />
       )}
       {state.status === "applied" && (
         <>
