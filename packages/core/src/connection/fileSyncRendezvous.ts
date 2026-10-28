@@ -436,15 +436,18 @@ function peerIdPairRefusal(
 }
 
 // True when `name` is a peer's hello (`<peerId>-hello-<byteCount>.json`): it
-// recovers a non-empty id (peerIdFromControlName), and that id is not the
-// querying party's own. The single definition of "a peer hello", shared by the
+// recovers a non-empty id (peerIdFromControlName), and that id is not one the
+// querying party writes (isOwnId: its own id, or under a peer_id holding
+// fields, any run's). The single definition of "a peer hello", shared by the
 // entry guard and the in-flight lock/lockless scans: a bare `-hello-<n>.json`
-// (empty id) is never a peer hello, whether present at entry or injected
-// mid-rendezvous.
+// (empty id) is never a peer hello, at entry or injected mid-rendezvous.
 /** @internal */
-export function isPeerHelloName(name: string, selfId: string): boolean {
+export function isPeerHelloName(
+  name: string,
+  isOwnId: (id: string) => boolean,
+): boolean {
   const id = peerIdFromControlName(name, "hello");
-  return id !== undefined && id !== selfId;
+  return id !== undefined && !isOwnId(id);
 }
 
 // True when `name` is a peer's joining sentinel
@@ -453,9 +456,12 @@ export function isPeerHelloName(name: string, selfId: string): boolean {
 // never treated as a real joiner arrival and never starts the lock-path
 // joiner-recovery (joinerRecoveryMs) window.
 /** @internal */
-export function isPeerJoiningName(name: string, selfId: string): boolean {
+export function isPeerJoiningName(
+  name: string,
+  isOwnId: (id: string) => boolean,
+): boolean {
   const id = peerIdFromControlName(name, "joining");
-  return id !== undefined && id !== selfId;
+  return id !== undefined && !isOwnId(id);
 }
 
 // The writer id of a hello or joining sentinel a scan has already matched by
@@ -731,6 +737,9 @@ export interface RendezvousDeps {
   foreignFileSnapshot: Set<string>;
   client: () => FileTransportClient;
   id: () => string;
+  // Whether an id is one this party's configuration writes on any run: its
+  // own id, or with a peer_id holding fields, any expansion of it.
+  isOwnId: (id: string) => boolean;
   role: () => string;
   outbound: () => string | undefined;
   log: () => ReturnType<typeof getLoggerForVerbosity>;
@@ -1232,7 +1241,7 @@ export class FileSyncRendezvous {
     // is not silently reclassified.
     let peerHellos = files.filter(
       (file) =>
-        !ignored.has(file.name) && isPeerHelloName(file.name, deps.id()),
+        !ignored.has(file.name) && isPeerHelloName(file.name, deps.isOwnId),
     );
 
     // Recognize-and-sweep leftover authenticated abort markers, mirroring
@@ -1296,7 +1305,7 @@ export class FileSyncRendezvous {
       .filter(
         (file) =>
           !ignored.has(file.name) &&
-          !isPeerHelloName(file.name, deps.id()) &&
+          !isPeerHelloName(file.name, deps.isOwnId) &&
           isProtocolGrammarName(file.name),
       )
       .map((file) => ({ file, dir: inboundPath }));
@@ -1767,7 +1776,7 @@ export class FileSyncRendezvous {
           // (empty id) injected after entry, which would otherwise be
           // adopted as peerId="".
           const peerHellos = currentFiles.filter((file) =>
-            isPeerHelloName(file.name, deps.id()),
+            isPeerHelloName(file.name, deps.isOwnId),
           );
 
           if (peerHellos.length === 0) {
@@ -1984,7 +1993,7 @@ export class FileSyncRendezvous {
         // (empty id) injected after entry, which would otherwise slice to
         // peerId="" at the role-commit sites below.
         const otherFiles = currentFiles.filter((file) =>
-          isPeerHelloName(file.name, deps.id()),
+          isPeerHelloName(file.name, deps.isOwnId),
         );
         const theseFiles = currentFiles.filter(
           (file) => file.name === this.ownControlName("hello"),
@@ -2002,7 +2011,7 @@ export class FileSyncRendezvous {
         // planted empty-id sentinel does not start the joiner-recovery
         // (joinerRecoveryMs) window below.
         const joiningFiles = currentFiles.filter((file) =>
-          isPeerJoiningName(file.name, deps.id()),
+          isPeerJoiningName(file.name, deps.isOwnId),
         );
 
         if (otherFiles.length === 0) {

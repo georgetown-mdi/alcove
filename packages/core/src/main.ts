@@ -374,6 +374,17 @@ export {
   withRetainModeImplications,
 } from "./config/connection";
 export {
+  PEER_ID_RANDOM_HEX_LENGTH,
+  expandPeerIdTemplate,
+  parsePeerIdTemplate,
+} from "./config/peerIdTemplate";
+export type {
+  PeerIdField,
+  PeerIdFieldSource,
+  PeerIdParse,
+  PeerIdPart,
+} from "./config/peerIdTemplate";
+export {
   KEY_FILE_FIELD_SCHEMAS,
   KEY_FILE_SHARED_SECRET_FORMAT_MESSAGE,
   KeyFileSchema,

@@ -233,7 +233,7 @@ The deadline is armed strictly inside the peer budget or not at all: arming requ
 
 **Attribution.** Because the lock path commits role/peerId with no observation attributable to a live peer, the connection states the fact it does hold: `unconfirmedEntryPeerHello` names the entry-present hello until the first such observation clears it (the peer's ack of this party's own hello, or a peer message delivered to the application). A consumer that would otherwise attribute a later silence to the peer -- the CLI's peer-silence guidance -- reads it first and names the leftover and the local recovery instead, rather than sending the operator to a partner that may never have been there.
 
-**A configured `peer_id` sidesteps all of this**: the leftover then holds this party's own id, so it is a self-hello the entry guard refuses immediately (exit 64) naming the file, before any wait. Being filename-based, that refusal is unaffected by a torn body. When an operator should set it is in [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#connectionoptions).
+**A configured `peer_id` sidesteps all of this**, with or without [fields](#per-run-peer-id) in it: the leftover then holds an id this party recognizes as its own, so it is a self-hello the entry guard refuses immediately (exit 64) naming the file, before any wait. Being filename-based, that refusal is unaffected by a torn body. When an operator should set it is in [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#connectionoptions).
 
 ### Phase 2 -- message loop, delete mode
 
@@ -382,7 +382,40 @@ These operator-level requirements are part of the model: violating any of them s
 - **Matching builds.** The file-sync control-file (hello) schema has no `protocol_version` field; both parties run compatible builds and the payload schema is a hard contract. A payload-schema change (e.g. adding hello flags) is a flag-day that both sides must deploy together. This precondition is about the hello control file; the transport-agnostic terms exchange separately includes a build-level `protocolVersion` that fail-closes with an actionable message on a mismatch, and a foreign message-envelope version byte is named as a likely version mismatch (see the [message body format](#the-single-critical-invariant-the-filename-grammar) above and [PROTOCOL.md](PROTOCOL.md#protocol-version-reconcile-at-the-terms-exchange)).
 - **Identical bilateral flags.** `lockless_rendezvous` and `retain_files` must match on both sides.
 - **Fresh directory in retain mode.** Retain mode never deletes, so a reused directory leaves a prior exchange's files: a stale message would be mis-consumed against the `recvSeq` counter and a stale ack marker could prematurely release the sender's gate, corrupting or stalling the exchange with no error. The entry guard (site 1) rejects a non-clean start in both modes, which is what protects retain specifically -- so this is advisory-unless-the-retain-guard-is-passed: `--sweep-exchange-files --force-retain-sweep` lets a non-clean retain start proceed by wiping the prior transcript first. Without that explicit escalation the guard still rejects, so the precondition holds for any normal invocation. In a [split configuration](#split-inboundoutbound-directories) the check runs on **both** the inbound and the outbound directory.
-- **Distinct, non-prefix peer ids.** When `peer_id` is configured, the two ids must be distinct, and neither may be the other extended by `-` (e.g. `site` / `site-2`), which would break message prefix-routing. UUIDs (the default) satisfy this automatically.
+- **Distinct, non-prefix peer ids.** When `peer_id` is configured, the two ids must be distinct, and neither may be the other extended by `-` (e.g. `site` / `site-2`), which would break message prefix-routing. UUIDs (the default) satisfy this automatically. Under a `peer_id` holding fields the rule applies to each run's full id, and a partner id that matches this party's `peer_id` with its fields filled in is a further conflict ([Per-run peer id](#per-run-peer-id)).
+
+## Per-run peer id
+
+A `peer_id` may hold fields filled in each time the connection opens, giving each run its own id for a transfer system that never passes a file name twice (operator reference: [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#fields-in-peer_id)). The grammar and expansion are `packages/core/src/config/peerIdTemplate.ts`. A `peer_id` with no `%` is used as written, exactly as without this section.
+
+**The effective id.** `open()` sets the party id to `peer_id` with its fields filled in, once per call; every name this party writes, the hello, joining sentinel, lock, messages, acks and abort marker, is built from that id, and the partner adopts it from the hello name as it does any id. The configured `peer_id` is kept beside it as written. Nothing else fills the fields in: a configuration read, validated, disclosed to the console's browser or written back holds the text as written. The text before the first field starts every name this party writes, the lock aside, which starts with whichever id sorts first.
+
+**The fields.** Every field fills in a fixed number of ASCII characters, so a `peer_id` has one expanded length:
+
+| Field | Fills in | Characters |
+| --- | --- | --- |
+| `%Y` | UTC year, zero-padded | 4 |
+| `%m`, `%d`, `%H`, `%M`, `%S` | UTC month, day, hour, minute, second, zero-padded | 2 each |
+| `%K` | lowercase hex of 8 bytes from the platform's cryptographic random source, fresh per field | 16 |
+| `%%` | a literal `%` | 1 |
+
+The clock is read once per expansion. A clock outside the years 0000-9999 refuses the expansion rather than write a five-digit `%Y` past the length the configuration was checked at. `%K` is a letter neither POSIX `strftime` nor GNU `date` defines (coreutils 9.1 prints `date +%K` as `%K`), so no `date` format string gives it another meaning.
+
+**The random field's size.** 64 bits keeps the ids of one configuration distinct across a long schedule. One run a minute for ten years is n = 60 x 24 x 365.25 x 10 = 5,259,600 runs. By the birthday bound, the chance that any two of n uniformly random 64-bit values are equal is at most n(n - 1) / 2^65, about 7.5 x 10^-7 for that n: near one in a million, from `%K` alone, before the date and time fields separate runs further. A `peer_id` with only date and time fields gives two runs started within the same second the same id.
+
+**The load-time refusals.** `FileSyncOptionsSchema` refuses, under the `peer_id` path, each with a message naming the problem and what to change:
+
+- a `%` followed by anything but one of the fields above, and a single `%` at the end;
+- an expansion over `MAX_PEER_ID_BYTES` (211) UTF-8 bytes, the cap that keeps the longest two-id name within the 255-byte limit beside a one-byte partner id ([site 5](#the-five-enforcement-sites));
+- an expansion that is the reserved id `temp`, which only a `peer_id` with no field can be.
+
+Core admits every character in `peer_id`, and the fields fill in digits and hex, so no expansion holds a character the id does not admit and core has no character refusal for them. The console's job-intent boundary holds a `peer_id` with fields to its own party-name shape at every expansion ([SERVER_JOB_API.md](SERVER_JOB_API.md#the-exchange-intent)).
+
+**The leftover check.** The rendezvous classifies a hello or joining sentinel by whether its id is one this party writes: its current id, or any expansion of its `peer_id` (each literal exactly, each date or time field as digits of its width, `%K` as lowercase hex of its width; a linear, anchored match on a partner-written name). The entry scan therefore refuses an earlier run's hello as this party's own (exit 64, naming the file), as it does an exact self-hello, and the in-flight lock and lockless scans skip such a name as they skip this party's own hello. A joining sentinel at entry is refused whatever its id, and in split mode every protocol file in the outbound directory is refused whatever its id, so neither depends on the match.
+
+**The partner-facing id checks.** `peerIdLengthRefusal` and `peerIdPrefixRefusal` run on the two effective ids, each read from the other's hello name, so both parties reach the same verdict: an effective id that is the partner's id followed by `-` and more text (`site-%Y%m%d` against a partner `site`) is refused by both.
+
+**Limit -- a partner id in this party's own format.** A partner whose id matches this party's `peer_id` with its fields filled in (both parties configured with the same `peer_id`, say) is taken for this party's own earlier run. Present at entry, its hello is refused as a leftover; arriving later, it is skipped, and the run reaches the ordinary peer timeout. `--sweep-exchange-files` deletes such a hello as this party's own, without first reading it for the partner's retain setting as it does a partner's hello. The partner, which cannot see this party's `peer_id`, sees an ordinary hello and waits likewise. The prefix refusal does not catch it, since neither id is the other followed by `-`. The two parties' ids must not match each other in this way, as they must not be equal without fields.
 
 ## Round set size limits
 

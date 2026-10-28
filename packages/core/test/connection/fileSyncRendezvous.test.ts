@@ -183,29 +183,31 @@ describe("HelloEnvelopeSchema", () => {
 });
 
 describe("isPeerHelloName / isPeerJoiningName", () => {
+  const isSelf0 = (id: string) => id === "self-0";
+
   test("accepts a genuine peer hello and joining sentinel", () => {
-    expect(isPeerHelloName("peer-1-hello-48.json", "self-0")).toBe(true);
-    expect(isPeerJoiningName("peer-1-joining-48.json", "self-0")).toBe(true);
+    expect(isPeerHelloName("peer-1-hello-48.json", isSelf0)).toBe(true);
+    expect(isPeerJoiningName("peer-1-joining-48.json", isSelf0)).toBe(true);
   });
 
   test("excludes this party's own id", () => {
-    expect(isPeerHelloName("self-0-hello-48.json", "self-0")).toBe(false);
-    expect(isPeerJoiningName("self-0-joining-48.json", "self-0")).toBe(false);
+    expect(isPeerHelloName("self-0-hello-48.json", isSelf0)).toBe(false);
+    expect(isPeerJoiningName("self-0-joining-48.json", isSelf0)).toBe(false);
   });
 
   test("rejects a bare empty-id control name", () => {
-    expect(isPeerHelloName("-hello-48.json", "self-0")).toBe(false);
-    expect(isPeerJoiningName("-joining-48.json", "self-0")).toBe(false);
+    expect(isPeerHelloName("-hello-48.json", isSelf0)).toBe(false);
+    expect(isPeerJoiningName("-joining-48.json", isSelf0)).toBe(false);
   });
 
   test("rejects a name that does not match the type", () => {
-    expect(isPeerHelloName("peer-1-joining-48.json", "self-0")).toBe(false);
-    expect(isPeerJoiningName("peer-1-hello-48.json", "self-0")).toBe(false);
+    expect(isPeerHelloName("peer-1-joining-48.json", isSelf0)).toBe(false);
+    expect(isPeerJoiningName("peer-1-hello-48.json", isSelf0)).toBe(false);
   });
 
   test("rejects a name with no byte count", () => {
-    expect(isPeerHelloName("peer-1-hello.json", "self-0")).toBe(false);
-    expect(isPeerJoiningName("peer-1-joining.json", "self-0")).toBe(false);
+    expect(isPeerHelloName("peer-1-hello.json", isSelf0)).toBe(false);
+    expect(isPeerJoiningName("peer-1-joining.json", isSelf0)).toBe(false);
   });
 });
 
@@ -804,6 +806,7 @@ function makeParty(
     foreignFileSnapshot: state.foreignFileSnapshot,
     client: () => client,
     id: () => id,
+    isOwnId: (other) => other === id,
     role: () => state.role,
     outbound: () => undefined,
     log: () => log,

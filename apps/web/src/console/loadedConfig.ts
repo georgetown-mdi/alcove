@@ -192,6 +192,9 @@ export function exchangeFilesFromOptions(
     timestampInFilename: fileSyncToggle(stated.timestampInFilename),
     locklessRendezvous: fileSyncToggle(stated.locklessRendezvous),
     peerId: stated.peerId ?? EXCHANGE_FILES_DEFAULT.peerId,
+    ...(stated.peerId?.includes("%") === true
+      ? { loadedPeerIdTemplate: stated.peerId }
+      : {}),
     unexpectedFiles:
       stated.unexpectedFiles ?? EXCHANGE_FILES_DEFAULT.unexpectedFiles,
     writeWithoutRenaming:

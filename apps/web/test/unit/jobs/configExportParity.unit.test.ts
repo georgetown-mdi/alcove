@@ -26,9 +26,11 @@ import {
 import {
   CONFIG_EXCHANGE_FILES,
   exchangeFilesOptions,
+  exchangeFilesProblems,
 } from "@console/exchangeFilesModel";
 import { authoringStateFromDocument } from "@console/loadedConfig";
 import { composeConfigDocument } from "@jobs/intentConfig";
+import { jobCreateIntentSchema } from "@jobContract/intentSchemas";
 
 import {
   TEST_HOST_KEY_FINGERPRINT,
@@ -560,6 +562,54 @@ describe("the settings a loaded configuration keeps in the export", () => {
         "connection.options.write_without_renaming",
       ),
     ).toBe(true);
+  });
+
+  test("a peer_id holding fields survives the load, the run and the hand-off as written", () => {
+    const fileOptions = {
+      timestampInFilename: true,
+      peerId: "clinic-a_%Y%m%d-%H%M%S-%K",
+    };
+    const document = openedThroughTheConsole(
+      {},
+      {
+        connection: {
+          channel: "filedrop",
+          path: MOUNTED_RENDEZVOUS_PATH,
+          options: fileOptions,
+        },
+      },
+    );
+    expect(carriedThroughFields(document)).toEqual([]);
+    const { exchangeFiles } = authoringStateFromDocument(
+      disclosedDocument(document),
+    );
+    expect(exchangeFilesProblems(exchangeFiles, CONFIG_EXCHANGE_FILES)).toEqual(
+      [],
+    );
+    const options = exchangeFilesOptions(exchangeFiles, CONFIG_EXCHANGE_FILES);
+    expect(options).toEqual(fileOptions);
+    expect(
+      jobCreateIntentSchema.safeParse(
+        validIntent({ linkageTerms: validLinkageTerms(), options }),
+      ).success,
+    ).toBe(true);
+
+    const run = parseExchangeSpec(
+      parseSensitiveYaml(
+        composeConfigDocument(
+          validIntent({ linkageTerms: validLinkageTerms(), options }),
+          "/data/rendezvous",
+        ),
+        "run composition",
+      ),
+    );
+    expect(run.connection).toMatchObject({ options: fileOptions });
+    expect(
+      exportedValue(
+        exportOver(document, { options }),
+        "connection.options.peer_id",
+      ),
+    ).toBe("clinic-a_%Y%m%d-%H%M%S-%K");
   });
 
   test("a shared secret in the document reaches no export", () => {
