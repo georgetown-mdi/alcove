@@ -230,10 +230,10 @@ export function builder(cmd: Argv): Argv {
         "on an invitation naming a webrtc coordination server, given an " +
         "INPUT_FILE, write the configuration and key file and stop instead of " +
         "running the exchange, contacting no server. The configuration's " +
-        "metadata block is the one inferred from INPUT_FILE, also sending " +
-        "each column the inviting party requests; edit it before running " +
-        "'alcove exchange' at the agreed time. Refused (exit 64) with a " +
-        "server URL.",
+        "metadata block is the one inferred from INPUT_FILE, also listing " +
+        "each column the inviting party requests with is_payload: false; set " +
+        "is_payload: true on each you agreed to send before running 'alcove " +
+        "exchange' at the agreed time. Refused (exit 64) with a server URL.",
     });
 }
 
@@ -458,7 +458,7 @@ export async function validateAccept(params: {
   /**
    * The operator passed `--defer-exchange`: an acceptance that would run the
    * exchange at the invitation's own webrtc endpoint writes its configuration
-   * and key file and stops instead, with the requested columns declared sent.
+   * and key file and stops instead, listing the requested columns, not sent.
    */
   deferExchange?: boolean;
 }): Promise<AcceptReady> {
@@ -730,8 +730,9 @@ export async function validateAccept(params: {
       : undefined;
   const runsExchange = runnableConnection !== undefined;
   // The exchange this acceptance defers runs from the configuration it writes,
-  // so that configuration sends what the inviting party requests: its terms
-  // exchange refuses a run stating any other set.
+  // so that configuration lists each column the inviting party requests, not
+  // sent: sending one is the operator's edit (docs/CLI.md, Deferring the
+  // exchange).
   const requestedColumns =
     endpointCanRunExchange && deferExchange
       ? myTerms.payload?.send?.map(({ name }) => name)
@@ -785,7 +786,7 @@ export async function validateAccept(params: {
       terms: myTerms,
       identity: myIdentity,
       rows,
-      sendColumns: requestedColumns,
+      listColumns: requestedColumns,
     }),
     ...delimiterSection,
   };
@@ -1130,7 +1131,7 @@ const INVITATION_PREFLIGHT_MESSAGING: LinkagePreflightMessaging = {
 /**
  * Refuse, before the terms are displayed, an acceptance whose input file lacks
  * a column the inviting party requests: the configuration it writes cannot
- * send that column, and the inviting party's terms exchange refuses a run
+ * list that column to send, and the inviting party's terms exchange refuses a run
  * stating a send set without it. The names are the partner's, so each is
  * delimited ({@link quoteTermsValueList}) and the message is a
  * {@link UsageError}, not an `OperatorConfigError`, whose category promises
@@ -1455,8 +1456,9 @@ export async function handler(argv: Arguments): Promise<void> {
           )}, seeding the connection block from the ` +
             "invitation's endpoint; it needs no credentials of your own. " +
             (ready.dataSpec.metadata !== undefined
-              ? "Its metadata block sets the columns you send; edit it if " +
-                "needed, then run 'alcove exchange' with your input file at " +
+              ? "Its metadata block sets the columns you send: set " +
+                "is_payload: true on each requested column you agreed to " +
+                "send, then run 'alcove exchange' with your input file at " +
                 "the agreed time."
               : "Run 'alcove exchange' with your input file to conduct the " +
                 "exchange."),

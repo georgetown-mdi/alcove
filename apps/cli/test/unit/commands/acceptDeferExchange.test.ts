@@ -176,7 +176,7 @@ async function accept(params: {
 }
 
 describe("validateAccept: --defer-exchange", () => {
-  test("writes the blocks inference gives the same file, with the requested column sent", async () => {
+  test("writes the blocks inference gives the same file, listing the requested column unsent", async () => {
     const input = writeInput();
     const token = requestingToken();
     const run = await accept({ token, input });
@@ -191,7 +191,8 @@ describe("validateAccept: --defer-exchange", () => {
     expect(deferred.mode).toBe("offline");
     if (deferred.mode !== "offline") return;
     // The standardization is exactly inference's, and the metadata is
-    // inference's with one entry added: the requested column, sent.
+    // inference's with one entry added: the requested column, listed and not
+    // sent, so sending it is the operator's one edit of `is_payload`.
     expect(deferred.dataSpec.standardization).toEqual(
       run.dataSpec.standardization,
     );
@@ -204,11 +205,13 @@ describe("validateAccept: --defer-exchange", () => {
       name: REQUESTED,
       type: "other",
       role: "payload",
-      isPayload: true,
+      isPayload: false,
     });
+    expect(disclosedColumnNames(deferred.dataSpec.metadata ?? [])).toEqual(
+      disclosedColumnNames(run.dataSpec.metadata ?? []),
+    );
     expect(disclosedColumnNames(deferred.dataSpec.metadata ?? [])).toEqual([
       "id",
-      REQUESTED,
     ]);
     // It writes the webrtc block the run would have dialed, and applies none
     // of the run's overrides to it.
@@ -219,7 +222,7 @@ describe("validateAccept: --defer-exchange", () => {
     });
   });
 
-  test("sends a requested column inference already declares, keeping its role", async () => {
+  test("leaves a requested column inference already declares as inference has it", async () => {
     const input = writeInput();
     const ready = await accept({
       token: requestingToken(["ssn"]),
@@ -232,7 +235,7 @@ describe("validateAccept: --defer-exchange", () => {
       name: "ssn",
       type: "ssn",
       role: "linkage",
-      isPayload: true,
+      isPayload: false,
     });
     expect(ready.dataSpec.metadata?.map((c) => c.name)).not.toContain(
       REQUESTED,
@@ -423,15 +426,16 @@ describe("handler: --defer-exchange", () => {
     const written = parseExchangeSpec(
       YAML.parse(fs.readFileSync(configFile, "utf8")),
     );
-    expect(disclosedColumnNames(written.metadata ?? [])).toEqual([
-      "id",
-      REQUESTED,
-    ]);
+    expect(disclosedColumnNames(written.metadata ?? [])).toEqual(["id"]);
+    expect(written.metadata).toContainEqual(
+      expect.objectContaining({ name: REQUESTED, isPayload: false }),
+    );
     expect(written.standardization).toBeDefined();
     const stderr = stdio.stderrWrites.join("");
     expect(stderr).toContain(
-      "Its metadata block sets the columns you send; edit it if needed, then " +
-        "run 'alcove exchange' with your input file at the agreed time.",
+      "Its metadata block sets the columns you send: set is_payload: true on " +
+        "each requested column you agreed to send, then run 'alcove " +
+        "exchange' with your input file at the agreed time.",
     );
     expect(stderr).not.toContain("to conduct the exchange");
   });
@@ -479,16 +483,16 @@ describe("handler: --defer-exchange", () => {
     const shown = surface.slice(surface.indexOf(OUTBOUND_SEND_LABEL));
     // The label's own lines: up to the next entry at the outline's top level.
     const shownList = shown.slice(0, 1 + shown.slice(1).search(/\n {2}\S/));
-    expect(shownList.split("\n").slice(1)).toEqual([
-      "    - id",
-      `    - ${REQUESTED}`,
-    ]);
+    expect(shownList.split("\n").slice(1)).toEqual(["    - id"]);
+    // The requested column is named where the display already names it, as
+    // asked for rather than sent.
+    const requested = surface.slice(
+      surface.indexOf("columns the inviting party requests from you"),
+    );
+    expect(requested.split("\n")[1]).toBe(`    - ${REQUESTED}`);
     const written = parseExchangeSpec(
       YAML.parse(fs.readFileSync(argv["config-file"] as string, "utf8")),
     );
-    expect(disclosedColumnNames(written.metadata ?? [])).toEqual([
-      "id",
-      REQUESTED,
-    ]);
+    expect(disclosedColumnNames(written.metadata ?? [])).toEqual(["id"]);
   });
 });

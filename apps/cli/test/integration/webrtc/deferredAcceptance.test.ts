@@ -35,7 +35,8 @@ import type { TlsBrokerFront } from "../../signaling/tlsBrokerFront";
  * `alcove exchange` from what they wrote. Every step is a real child process,
  * so this shows the invitation's rendezvous and expiry admit an exchange run
  * after the acceptance rather than inside it, and that the configuration the
- * acceptance writes sends the columns the inviting party requested.
+ * acceptance writes lists the column the inviting party requested, so one
+ * edit sends it.
  *
  * The webrtc endpoint dials `wss://`, so the coordination server sits behind
  * the TLS front `oneCommandAcceptance.test.ts` uses, with the same
@@ -155,7 +156,7 @@ function resultTable(folder: string): { header: string; rows: string[] } {
 }
 
 liveTest(
-  "a deferred acceptance writes a configuration a later alcove exchange runs, sending the requested column",
+  "a deferred acceptance writes a configuration a later alcove exchange runs once the operator sends the requested column",
   async () => {
     const inviteInput = path.join(work, "invite-input.csv");
     fs.writeFileSync(inviteInput, INVITE_CSV);
@@ -207,7 +208,7 @@ liveTest(
     expect(loadKeyFile(inviteKey)?.expires).toBeDefined();
 
     // The deferred acceptance: no exchange, no result, and a configuration
-    // holding the requested column as sent.
+    // listing the requested column, not sent.
     const accept = await runToExit("the deferred acceptance", [
       "accept",
       "--consent-to-terms",
@@ -236,19 +237,23 @@ liveTest(
       server: { host: BROKER_HOST, port: front.port, path: broker.path },
     });
     expect(written.metadata).toContainEqual(
-      expect.objectContaining({ name: REQUESTED_COLUMN, isPayload: true }),
+      expect.objectContaining({ name: REQUESTED_COLUMN, isPayload: false }),
     );
     expect(written.metadata).toContainEqual(
       expect.objectContaining({ name: "id", isPayload: true }),
     );
     expect(written.standardization).toBeDefined();
 
-    // The operator's edit before the agreed time: the ID column is kept and
-    // not sent, so the send set is exactly what the inviting party requested.
+    // The operator's edit before the agreed time: the requested column is
+    // sent and the ID column is kept and not sent, so the send set is exactly
+    // what the inviting party requested.
     editYaml(acceptConfig, (doc) => {
       const metadata = doc.get("metadata") as YAML.YAMLSeq<YAML.YAMLMap>;
-      for (const entry of metadata.items)
+      for (const entry of metadata.items) {
         if (entry.get("name") === "id") entry.set("is_payload", false);
+        if (entry.get("name") === REQUESTED_COLUMN)
+          entry.set("is_payload", true);
+      }
     });
 
     const [inviteRun, acceptRun] = await Promise.all([

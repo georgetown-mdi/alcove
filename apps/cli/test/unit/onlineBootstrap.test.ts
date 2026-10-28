@@ -65,7 +65,7 @@ import {
   generateSharedSecret,
   loadInputRows,
   logOnlineBootstrapOutcome,
-  metadataSendingColumns,
+  metadataListingColumns,
   looksLikeUrl,
   parseLinkageStrategyFlag,
   runOnlineBootstrap,
@@ -4957,7 +4957,7 @@ describe("runOnlineBootstrap: the server.provision wake call", () => {
   });
 });
 
-describe("metadataSendingColumns", () => {
+describe("metadataListingColumns", () => {
   const columns = [
     "client_id",
     "first_name",
@@ -4969,13 +4969,13 @@ describe("metadataSendingColumns", () => {
   const everyColumn = inferMetadataForEveryColumn(columns, []);
 
   test("with no named column, is inference's metadata", () => {
-    expect(metadataSendingColumns(everyColumn, [])).toEqual(
+    expect(metadataListingColumns(everyColumn, [])).toEqual(
       inferMetadata(columns, []),
     );
   });
 
-  test("sends each named column and changes nothing else", () => {
-    const sending = metadataSendingColumns(everyColumn, [
+  test("lists each named column inference leaves out, unsent, and changes nothing else", () => {
+    const listing = metadataListingColumns(everyColumn, [
       "case_manager",
       "dob",
       "client_id",
@@ -4983,32 +4983,29 @@ describe("metadataSendingColumns", () => {
       "absent",
     ]);
     const inferred = inferMetadata(columns, []);
-    const byName = new Map(sending.map((column) => [column.name, column]));
-    // A column inference leaves out keeps its inferred type, as a payload.
+    const byName = new Map(listing.map((column) => [column.name, column]));
+    // A column inference leaves out keeps its inferred type, as a payload
+    // that is not sent.
     expect(byName.get("case_manager")).toEqual({
       name: "case_manager",
       type: "other",
       role: "payload",
-      isPayload: true,
+      isPayload: false,
     });
     expect(byName.get("other_id")).toEqual({
       name: "other_id",
       type: "identifier",
       role: "payload",
-      isPayload: true,
+      isPayload: false,
     });
-    // A column inference declares keeps its role.
-    for (const name of ["dob", "client_id"])
-      expect(byName.get(name)).toEqual({
-        ...inferred.find((column) => column.name === name),
-        isPayload: true,
-      });
-    // The rest are inference's, a name the header lacks adds nothing, and
-    // header order holds.
-    expect(byName.get("first_name")).toEqual(
-      inferred.find((column) => column.name === "first_name"),
-    );
-    expect(sending.map((column) => column.name)).toEqual([
+    // A column inference declares is inference's, as is every other, so the
+    // columns sent are inference's; a name the header lacks adds nothing,
+    // and header order holds.
+    for (const name of ["dob", "client_id", "first_name"])
+      expect(byName.get(name)).toEqual(
+        inferred.find((column) => column.name === name),
+      );
+    expect(listing.map((column) => column.name)).toEqual([
       "client_id",
       "first_name",
       "dob",
