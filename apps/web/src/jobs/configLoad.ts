@@ -48,6 +48,8 @@
 import { isDeepStrictEqual } from "node:util";
 
 import {
+  SensitiveYamlParseError,
+  describeYamlSyntaxPosition,
   getDefaultLinkageTerms,
   parseExchangeSpec,
   parseSensitiveYaml,
@@ -496,16 +498,20 @@ function assertRecordsSurvive(document: ExchangeSpec): void {
 /**
  * The mounted file's bytes as a document, through the shared sensitive-parse
  * chokepoint (bounded parse, path-only errors). A file that is not YAML is
- * refused in the console's own words rather than by the parser's: the parser's
- * message locates a byte offset the operator cannot act on, and this reaches
- * them as the reason the load stopped.
+ * refused in the console's own words, with the line, column and kind of
+ * error the chokepoint reports, and this reaches the operator as the reason
+ * the load stopped.
  */
 function parsedYaml(source: string): unknown {
   try {
     return parseSensitiveYaml(source, "mounted exchange configuration");
-  } catch {
+  } catch (error) {
+    const position =
+      error instanceof SensitiveYamlParseError && error.position !== undefined
+        ? `: ${describeYamlSyntaxPosition(error.position)}`
+        : "";
     throw new ConfigurationLoadRefusedError(
-      "The alcove.yaml in your working folder could not be read as YAML. " +
+      `The alcove.yaml in your working folder could not be read as YAML${position}. ` +
         "Check the file for a formatting mistake, then open it again.",
     );
   }

@@ -318,11 +318,14 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
     file: "apps/cli/src/commands/exchange.ts",
     anchor: "readConfigDocument",
     raises: "OperatorConfigError",
-    interpolates: ["configFile"],
+    interpolates: ["configFile", "position"],
     provenance:
-      "`configFile` is the operator's own path, as above. The rest is fixed " +
-      "prose: the sensitive-parse chokepoint's refusal is caught and never " +
-      "quoted, so no byte of the document reaches the message.",
+      "`configFile` is the operator's own path, as above. `position` is " +
+      "the parser's line and column numbers of the operator's own " +
+      "configuration and a fixed phrase chosen by its error code " +
+      "(describeYamlSyntaxPosition in core's sensitiveFile.ts); the " +
+      "chokepoint's refusal message is never quoted, so no byte of the " +
+      "document reaches the message.",
   },
   {
     file: "apps/cli/src/commands/exchange.ts",

@@ -5466,7 +5466,7 @@ test("the sensitive-parse failure names the path as the operator typed it", () =
   const err = refusalFrom(() => readConfigLinkageSource(configPath));
 
   expect((err as Error).message).toBe(
-    `config file ${configPath} could not be parsed as YAML`,
+    `config file ${configPath} could not be parsed as YAML: a tab used for indentation at line 2, column 1`,
   );
   expectNamesPathAsTyped(err, configPath);
 });

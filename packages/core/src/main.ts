@@ -1006,5 +1006,7 @@ export {
   parseSensitiveYaml,
   editSensitiveYamlDocument,
   parseSensitiveJson,
+  SensitiveYamlParseError,
+  describeYamlSyntaxPosition,
 } from "./sensitiveFile";
-export type { SensitiveFileLabel } from "./sensitiveFile";
+export type { SensitiveFileLabel, YamlSyntaxPosition } from "./sensitiveFile";

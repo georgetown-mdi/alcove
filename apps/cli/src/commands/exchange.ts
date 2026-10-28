@@ -73,7 +73,11 @@ import {
   reportPayloadReceiveFill,
   termsChangeHandler,
 } from "../termsChange";
-import { parseSensitiveYaml } from "../sensitiveFile";
+import {
+  describeYamlSyntaxPosition,
+  parseSensitiveYaml,
+  SensitiveYamlParseError,
+} from "../sensitiveFile";
 import { resolveAtSignRefs, resolveExchangeSpecRefs } from "../util/atSignRefs";
 import { runOrExit } from "../util/exit";
 import { declarePositionals } from "../util/positionals";
@@ -450,8 +454,9 @@ function readConfigDocument(configFile: string): unknown {
   // fail with an errno (ENOENT, EACCES, EISDIR) -- a path plus code, no config
   // content -- so it is reported; ENOENT gets the create-a-config guidance. The
   // YAML parse can echo source bytes (an inline credential), so it routes through
-  // parseSensitiveYaml, which reports path-only (see sensitiveFile.ts). Invalid
-  // caller configuration is a UsageError (exit 64), not a transport failure (69).
+  // parseSensitiveYaml, which reports the path and position only (see
+  // sensitiveFile.ts). Invalid caller configuration is a UsageError (exit 64),
+  // not a transport failure (69).
   let source: string;
   try {
     source = fs.readFileSync(configFile, "utf8");
@@ -482,12 +487,16 @@ function readConfigDocument(configFile: string): unknown {
       messageWithOperatorText`config file ${operatorSuppliedText(configFile)}`,
     );
   } catch (err) {
-    // The chokepoint's refusal names the path only, never the parser's
-    // source-bearing message; rethrown as the configuration fault it is.
+    // The chokepoint's refusal names the path and the parser's position only,
+    // never its source-bearing message; rethrown as the configuration fault it is.
     if (!(err instanceof UsageError)) throw err;
+    const position =
+      err instanceof SensitiveYamlParseError && err.position !== undefined
+        ? `: ${describeYamlSyntaxPosition(err.position)}`
+        : "";
     const message = messageWithOperatorText`config file ${operatorSuppliedText(
       configFile,
-    )} could not be parsed as YAML`;
+    )} could not be parsed as YAML${position}`;
     throw keepOperatorSuppliedText(
       new OperatorConfigError(message.text),
       message,
