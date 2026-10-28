@@ -294,6 +294,16 @@ describe("the engagement probe the image ships", () => {
     expect(summary.operations.x25519_derive_bits).toBeDefined();
     expect(summary.failures.some((f) => f.includes("X25519"))).toBe(false);
   });
+
+  it("records the rotation's draw and AES-KW wrap without gating on them", () => {
+    // No document claims the module performs either yet, so neither decides
+    // the verdict; outside the image both run through the default provider.
+    for (const leg of ["rotation_value_draw", "aes_kw_wrap_round_trip"])
+      expect(summary.operations[leg]).toEqual({ ok: true, error: null });
+    expect(summary.failures.some((f) => /AES-KW|drawn value/.test(f))).toBe(
+      false,
+    );
+  });
 });
 
 // The tarball fetched in Dockerfile.fips's nodebase stage is checked against a

@@ -115,6 +115,22 @@ function record(
   };
 }
 
+/** A data exchange that stores `nextSecret` through the run's rotation write,
+ * as core's terms exchange does before any payload round, then yields what
+ * `exchange` does. */
+function rotatingExchange<T>(
+  exchange: () => Promise<T>,
+  nextSecret: string = generateSharedSecret(),
+): (
+  carried: string,
+  persistNextSecret: (nextSecret: string) => Promise<void>,
+) => Promise<T> {
+  return async (_carried, persistNextSecret) => {
+    await persistNextSecret(nextSecret);
+    return exchange();
+  };
+}
+
 /** Seams that fail loudly if reached: a run refused before the input is read
  * must never touch them. */
 const unreachableSeams = {
@@ -169,12 +185,9 @@ describe("runManagedRerun: pre-connection expiry of the stored record", () => {
         acquireInput: () => Promise.resolve("rows"),
         handshake: () => {
           handshakeRan = true;
-          return Promise.resolve({
-            rotatedSecret: generateSharedSecret(),
-            handshake: "carried",
-          });
+          return Promise.resolve("carried");
         },
-        dataExchange: () => Promise.resolve("exchanged"),
+        dataExchange: rotatingExchange(() => Promise.resolve("exchanged")),
       },
       { now: () => NOW },
     );
@@ -209,15 +222,11 @@ describe("runManagedRerun: the phase boundary reported to the caller", () => {
       record(),
       {
         acquireInput: () => Promise.resolve("rows"),
-        handshake: () =>
-          Promise.resolve({
-            rotatedSecret: generateSharedSecret(),
-            handshake: "carried",
-          }),
-        dataExchange: () => {
+        handshake: () => Promise.resolve("carried"),
+        dataExchange: rotatingExchange(() => {
           reportedWhenExchangeRan = boundaryReported;
           return Promise.resolve("exchanged");
-        },
+        }),
       },
       {
         onDataExchangeStart: () => {
@@ -368,9 +377,12 @@ describe("runManagedRerun: the record a run uses", () => {
         acquireInput: () => Promise.resolve("rows"),
         handshake: (_input, _mark, current) => {
           authenticatedWith.push(current.sharedSecret);
-          return Promise.resolve({ rotatedSecret, handshake: "carried" });
+          return Promise.resolve("carried");
         },
-        dataExchange: () => Promise.resolve("exchanged"),
+        dataExchange: rotatingExchange(
+          () => Promise.resolve("exchanged"),
+          rotatedSecret,
+        ),
       });
 
     await runFromHeldCopy();
@@ -390,12 +402,8 @@ describe("runManagedRerun: the record a run uses", () => {
         inputCheckedAgainst = current;
         return Promise.resolve("rows");
       },
-      handshake: () =>
-        Promise.resolve({
-          rotatedSecret: generateSharedSecret(),
-          handshake: "carried",
-        }),
-      dataExchange: () => Promise.resolve("exchanged"),
+      handshake: () => Promise.resolve("carried"),
+      dataExchange: rotatingExchange(() => Promise.resolve("exchanged")),
     });
 
     expect(inputCheckedAgainst).toBe(edited);
@@ -905,9 +913,9 @@ describe("runManagedRerun: a store write that fails", () => {
       acquireInput: () => Promise.resolve("rows"),
       handshake: async (_input, markRotationInFlight) => {
         await markRotationInFlight();
-        return { rotatedSecret: generateSharedSecret(), handshake: "carried" };
+        return "carried";
       },
-      dataExchange: () => Promise.resolve("exchanged"),
+      dataExchange: rotatingExchange(() => Promise.resolve("exchanged")),
     };
   }
 
@@ -1007,21 +1015,21 @@ describe("runManagedRerun: a store write that fails", () => {
     stubGrantingWebLocks();
     const changed = new ManagedExchangeSecretChangedError("record-under-test");
     vi.mocked(persistManagedExchangeRotation).mockRejectedValueOnce(changed);
-    let dataExchangeRan = false;
+    let payloadRan = false;
 
     const error = await runManagedRerun(record(), {
       ...completingSeams(),
-      dataExchange: () => {
-        dataExchangeRan = true;
+      dataExchange: rotatingExchange(() => {
+        payloadRan = true;
         return Promise.resolve("exchanged");
-      },
+      }),
     }).then(
       () => undefined,
       (reason: unknown) => reason,
     );
 
     expect(error).toBe(changed);
-    expect(dataExchangeRan).toBe(false);
+    expect(payloadRan).toBe(false);
     expect(recordManagedExchangeLastRun).not.toHaveBeenCalled();
     expect(
       rerunFailureLastRun(error, Date.now(), false, false),
@@ -1047,14 +1055,33 @@ describe("runManagedRerun: a store write that fails", () => {
 
     await runManagedRerun(storedRecord.value, {
       acquireInput: () => Promise.resolve("rows"),
-      handshake: () => Promise.resolve({ rotatedSecret, handshake: "carried" }),
-      dataExchange: () =>
-        Promise.reject(new Error("the partner's connection dropped")),
+      handshake: () => Promise.resolve("carried"),
+      dataExchange: rotatingExchange(
+        () => Promise.reject(new Error("the partner's connection dropped")),
+        rotatedSecret,
+      ),
     }).catch(() => undefined);
 
     const stamps = vi.mocked(recordManagedExchangeLastRun).mock.calls;
     expect(stamps).toHaveLength(1);
     expect(stamps[0]?.[3]).toBe(rotatedSecret);
+  });
+
+  test("the failure stamp after a terms exchange that ended before the store is made over the secret the run read", async () => {
+    stubGrantingWebLocks();
+    storedRecord.value = record({ sharedSecret: HELD_SECRET });
+
+    await runManagedRerun(storedRecord.value, {
+      acquireInput: () => Promise.resolve("rows"),
+      handshake: () => Promise.resolve("carried"),
+      dataExchange: () =>
+        Promise.reject(new Error("the partner refused the terms")),
+    }).catch(() => undefined);
+
+    expect(persistManagedExchangeRotation).not.toHaveBeenCalled();
+    const stamps = vi.mocked(recordManagedExchangeLastRun).mock.calls;
+    expect(stamps).toHaveLength(1);
+    expect(stamps[0]?.[3]).toBe(HELD_SECRET);
   });
 
   test("the storage stamp after a failed persist: the storage failure still reaches the caller", async () => {

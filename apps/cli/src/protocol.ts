@@ -49,6 +49,7 @@ import type {
   ExchangeStageDefinition,
   SigningIdentity,
   TermsChange,
+  TermsRotation,
 } from "@alcove/core";
 
 import {
@@ -460,6 +461,8 @@ async function runExchangeStage(params: {
       signingIdentity: signing?.identity,
       partnerFingerprint: signing?.partnerFingerprint,
       sessionKey: signing !== null ? run.sessionKeyForReceipt : undefined,
+      // Set by authenticateRun on the authenticated path only.
+      rotation: run.rotation,
       // Record the adopted pin into the configuration this exchange was
       // given, at the moment of adoption and before anything is disclosed, so
       // a run that pins and then fails mid-round does not re-pin blind on the
@@ -969,10 +972,11 @@ const ROTATED_TOKEN_SAVE_PREAMBLE =
 const ROTATED_TOKEN_SAVE_REMEDY = ` Your partner may already hold the rotated token. ${NEW_INVITATION_REMEDY}`;
 
 /**
- * The run's authentication stage: run the key exchange, persist the rotated
- * token, fire the caller's post-handshake hook, wrap the transport in the
- * negotiated AEAD layer, and arm the cross-party abort marker. Runs only on the
- * authenticated path; the unauthenticated one has no acceptance step at all.
+ * The run's authentication stage: run the key exchange, set the rotation the
+ * terms exchange makes -- the rotated-token save and the caller's
+ * post-handshake hook after it -- wrap the transport in the negotiated AEAD
+ * layer, and arm the cross-party abort marker. Runs only on the authenticated
+ * path; the unauthenticated one has no acceptance step at all.
  *
  * The rotated-token save and the flag recording it are one synchronous step, so
  * a signal handler reading the lifecycle sees both the pre-save state or both
@@ -1004,11 +1008,14 @@ async function authenticateRun(params: {
   // trimmedKeyFilePath is set whenever auth is set; they are populated
   // together in the pre-flight branch above.
   const keyFilePath = build.trimmedKeyFilePath!;
-  // Before the key exchange can rotate anything: a run that stops between the
-  // handshake and the rotated-key save leaves this marker for the next run to
-  // report. A failed write stops the run here, with the secret unchanged.
+  // Before the key exchange can rotate anything, and only as the responder:
+  // the initiator stores first, so only a responder can be left behind by a
+  // run that stops partway. A marker an earlier run left stays until a
+  // recorded outcome supersedes it. A failed write stops the run here, with
+  // the secret unchanged.
   try {
-    markRotationInFlight(keyFilePath, auth.sharedSecret, Date.now());
+    if (role === "responder")
+      markRotationInFlight(keyFilePath, auth.sharedSecret, Date.now());
   } catch (err) {
     const message = messageWithOperatorText`${ROTATION_MARK_PREAMBLE}${operatorSuppliedText(
       keyFilePath,
@@ -1025,8 +1032,9 @@ async function authenticateRun(params: {
   // sessionKey (32 bytes, both parties derive the same value) keys the
   // per-direction AEAD encryption set up below, so every PSI frame
   // after this point is opaque on the wire to a file-sync admin and to
-  // the webrtc coordination server. rotatedSecret is the new shared
-  // secret persisted to disk. requestEncryption is what this party asks
+  // the webrtc coordination server. nextSecretInputs is what the terms
+  // exchange derives the next shared secret from, which it hands the save
+  // below to persist to disk. requestEncryption is what this party asks
   // for; applyEncryption is the negotiated OR both parties agree on,
   // gating the EncryptedMessageConnection wrap below.
   //
@@ -1035,7 +1043,7 @@ async function authenticateRun(params: {
   // so DTLS alone does not keep content from it; it cannot complete this
   // handshake. See docs/spec/CHANNEL_SECURITY.md.
   const requestEncryption = true;
-  const { rotatedSecret, sessionKey, applyEncryption } =
+  const { nextSecretInputs, sessionKey, applyEncryption } =
     await authenticateConnection(mc, authParams, role, requestEncryption).catch(
       (err: unknown) => {
         if (isTrustBoundaryFailure(classifyFailure(err)))
@@ -1051,108 +1059,109 @@ async function authenticateRun(params: {
   // binder from it); only the authenticated path reaches here, so the no-auth
   // path leaves it undefined and runExchange's signing step stays skipped.
   run.sessionKeyForReceipt = sessionKey;
-  // buildRotatedKeyFile stamps `expires` = now + tokenMaxAgeDays days
-  // when the operator set a max-age policy, computed here at the
-  // moment of rotation rather than at config-parse time. Built before
-  // the try/catch below so its input-validation guard (a non-positive
-  // or non-integer tokenMaxAgeDays, reachable only by a caller
-  // bypassing the config schema) propagates as the UsageError it is
-  // (exit 64) rather than being caught and re-wrapped as a
-  // "could not be saved" failure (exit 77).
-  const rotatedAt = Date.now();
-  const rotatedKeyFile: KeyFile = {
-    ...buildRotatedKeyFile(rotatedSecret, auth.tokenMaxAgeDays, rotatedAt),
-    ...(relayRegistrationFollows === true && {
-      relayRegistrationPendingSince: new Date(rotatedAt).toISOString(),
-    }),
+  // The save, and the hook tied to it, run inside the terms exchange at this
+  // side's point in the store order: the initiator's before it sends
+  // `proceed`, the responder's on reading it.
+  run.rotation = {
+    inputs: nextSecretInputs,
+    store: (nextSecret) => saveNextSecret(nextSecret),
   };
-  try {
-    // saveKeyFile is synchronous; the assignment below runs in the same
-    // microtask tick, so no signal can interleave between them. A
-    // signal handler that reads tokenRotated sees either both pre-save
-    // state (false) or both post-save state (true). Maintain this: do
-    // not insert an await between saveKeyFile and the assignment.
-    saveKeyFile(keyFilePath, rotatedKeyFile, {
-      exclusive: saveKeyFileExclusively === true,
-    });
-    run.tokenRotated = true;
-  } catch (err) {
-    // "may already hold": both parties independently derive
-    // rotatedSecret from the session key, but either party's disk
-    // write can fail, and we cannot know whether the partner's save
-    // succeeded, so "may" is intentionally conservative.
-    //
-    // The wrapped error already holds the full recovery hint specific
-    // to this failure mode. Marked as stating its own next step, the
-    // runProtocol catch below skips its generic authStarted advisory
-    // and the user sees one coherent recovery message.
-    //
-    // It exits with the authentication code rather than 69: the parties'
-    // secrets may now differ, so a retry fails the key exchange instead of
-    // recovering.
-    const message = messageWithOperatorText`${ROTATED_TOKEN_SAVE_PREAMBLE}${operatorSuppliedText(
-      keyFilePath,
-    )}: ${err instanceof Error ? err.message : String(err)}${ROTATED_TOKEN_SAVE_REMEDY}`;
-    throw markStatesItsOwnNextStep(
-      withExitCode(
-        keepOperatorSuppliedText(new Error(message.text), message),
-        AUTHENTICATION_FAILED_EXIT_CODE,
-      ),
-    );
-  }
-
-  // The handshake has succeeded and the rotated token is now persisted
-  // to the key file. Fire the optional post-handshake hook here --
-  // exactly at acceptance, after the key save and before encryption
-  // setup and the data exchange -- so a caller (online invite/accept)
-  // can persist its configuration at this point. Runs only on the
-  // authenticated path, exactly once, and is awaited.
-  //
-  // Unlike the other interruptible awaits, this one has no preceding
-  // `signalReceived` guard: the gap since the last guarded await
-  // (authenticateConnection) is synchronous, so no signal can have
-  // arrived yet. A signal firing during an async hook lets that write
-  // finish by design; the check after
-  // EncryptedMessageConnection.create then bails before the exchange.
-  //
-  // A hook failure is non-fatal: logged at error level and the
-  // exchange proceeds, since the data exchange must not be aborted by
-  // a failure to persist recoverable config.
-  if (onAuthenticated !== undefined) {
+  async function saveNextSecret(rotatedSecret: string): Promise<void> {
+    // buildRotatedKeyFile stamps `expires` = now + tokenMaxAgeDays days
+    // when the operator set a max-age policy, computed here at the
+    // moment of rotation rather than at config-parse time. Built before
+    // the try/catch below so its input-validation guard (a non-positive
+    // or non-integer tokenMaxAgeDays, reachable only by a caller
+    // bypassing the config schema) propagates as the UsageError it is
+    // (exit 64) rather than being caught and re-wrapped as a
+    // "could not be saved" failure (exit 77).
+    const rotatedAt = Date.now();
+    const rotatedKeyFile: KeyFile = {
+      ...buildRotatedKeyFile(rotatedSecret, auth.tokenMaxAgeDays, rotatedAt),
+      ...(relayRegistrationFollows === true && {
+        relayRegistrationPendingSince: new Date(rotatedAt).toISOString(),
+      }),
+    };
     try {
-      await onAuthenticated();
-    } catch (hookErr) {
-      // The caller distinguishes a hook failure from success by the
-      // presence of this value, so it must be truthy even when the hook
-      // threw a falsy value (`undefined`, `null`, `0`, `""`, `false`,
-      // `NaN`) -- `undefined` is the success sentinel, so coerce any
-      // falsy throw to an Error: a failure can never masquerade as a
-      // clean write.
-      run.onAuthenticatedError = hookErr
-        ? hookErr
-        : new Error(
-            "the post-authentication hook threw a falsy value: " +
-              String(hookErr),
-          );
-      log.error(
-        "the post-authentication hook failed after the handshake " +
-          "succeeded and the rotated key was saved; the exchange will " +
-          "continue, but any persistence the hook performs (e.g. writing " +
-          "the configuration) did not complete: " +
-          sanitizeErrorForDisplay(hookErr),
+      // saveKeyFile is synchronous; the assignment below runs in the same
+      // microtask tick, so no signal can interleave between them. A
+      // signal handler that reads tokenRotated sees either both pre-save
+      // state (false) or both post-save state (true). Maintain this: do
+      // not insert an await between saveKeyFile and the assignment.
+      saveKeyFile(keyFilePath, rotatedKeyFile, {
+        exclusive: saveKeyFileExclusively === true,
+      });
+      run.tokenRotated = true;
+    } catch (err) {
+      // "may already hold": the responder's save follows the initiator's, so a
+      // responder whose save fails leaves the initiator holding the next
+      // secret. The message is the same for both roles, so "may" covers both.
+      //
+      // The wrapped error already holds the full recovery hint specific
+      // to this failure mode. Marked as stating its own next step, the
+      // runProtocol catch below skips its generic authStarted advisory
+      // and the user sees one coherent recovery message.
+      //
+      // It exits with the authentication code rather than 69: the parties'
+      // secrets may now differ, so a retry fails the key exchange instead of
+      // recovering.
+      const message = messageWithOperatorText`${ROTATED_TOKEN_SAVE_PREAMBLE}${operatorSuppliedText(
+        keyFilePath,
+      )}: ${err instanceof Error ? err.message : String(err)}${ROTATED_TOKEN_SAVE_REMEDY}`;
+      throw markStatesItsOwnNextStep(
+        withExitCode(
+          keepOperatorSuppliedText(new Error(message.text), message),
+          AUTHENTICATION_FAILED_EXIT_CODE,
+        ),
       );
-      // A supervisor that discards stderr on a run that completes would
-      // otherwise have nothing to tell it the setup is half
-      // provisioned -- the exchange runs and its result is written, but
-      // what the hook persists is not on disk. Reported on both machine
-      // channels at the loss itself. The message holds the same hedge
-      // as the line above rather than naming the caller's own artifact.
-      reportPersistenceLoss(
-        "the post-authentication persistence step (writing the " +
-          "configuration) did not complete; the exchange continued and " +
-          "the rotated key is saved",
-        eventStream,
-      );
+    }
+
+    // The rotated token is now persisted to the key file. Fire the optional
+    // post-handshake hook here, right after the key save and before the data
+    // exchange, so a caller (online invite/accept) can persist its
+    // configuration at this point. Runs only on the authenticated path,
+    // exactly once, and is awaited. A signal firing during an async hook lets
+    // that write finish by design.
+    //
+    // A hook failure is non-fatal: logged at error level and the
+    // exchange proceeds, since the data exchange must not be aborted by
+    // a failure to persist recoverable config.
+    if (onAuthenticated !== undefined) {
+      try {
+        await onAuthenticated();
+      } catch (hookErr) {
+        // The caller distinguishes a hook failure from success by the
+        // presence of this value, so it must be truthy even when the hook
+        // threw a falsy value (`undefined`, `null`, `0`, `""`, `false`,
+        // `NaN`) -- `undefined` is the success sentinel, so coerce any
+        // falsy throw to an Error: a failure can never masquerade as a
+        // clean write.
+        run.onAuthenticatedError = hookErr
+          ? hookErr
+          : new Error(
+              "the post-authentication hook threw a falsy value: " +
+                String(hookErr),
+            );
+        log.error(
+          "the post-authentication hook failed after the handshake " +
+            "succeeded and the rotated key was saved; the exchange will " +
+            "continue, but any persistence the hook performs (e.g. writing " +
+            "the configuration) did not complete: " +
+            sanitizeErrorForDisplay(hookErr),
+        );
+        // A supervisor that discards stderr on a run that completes would
+        // otherwise have nothing to tell it the setup is half
+        // provisioned -- the exchange runs and its result is written, but
+        // what the hook persists is not on disk. Reported on both machine
+        // channels at the loss itself. The message holds the same hedge
+        // as the line above rather than naming the caller's own artifact.
+        reportPersistenceLoss(
+          "the post-authentication persistence step (writing the " +
+            "configuration) did not complete; the exchange continued and " +
+            "the rotated key is saved",
+          eventStream,
+        );
+      }
     }
   }
 
@@ -1170,8 +1179,7 @@ async function authenticateRun(params: {
   // decorator holds only CryptoKey objects). The signalReceived check
   // below mirrors the post-open and post-synchronize guards, bailing
   // before runExchange so the encrypted stream never starts against an
-  // already-closed mc; it runs after the wrap is created, since a
-  // signal may also have arrived during the onAuthenticated hook above.
+  // already-closed mc.
   if (!applyEncryption) {
     throw new ConnectionError(
       "the key exchange completed without the application-layer encryption " +
@@ -1244,6 +1252,12 @@ interface RunLifecycle {
   authStarted: boolean;
   /** Set only after this side's own rotated-token save succeeded. */
   tokenRotated: boolean;
+  /**
+   * The rotation the terms exchange makes, set once the key exchange
+   * completes: its inputs and the key-file save it awaits at this side's point
+   * in the store order. Undefined on the unauthenticated path.
+   */
+  rotation: TermsRotation | undefined;
   /**
    * Set once the two-party exchange returned, so a failure in the local
    * output stage that follows writes no cross-party abort marker.
@@ -1810,6 +1824,7 @@ export async function runProtocol(
     sessionKeyForReceipt: undefined,
     authStarted: false,
     tokenRotated: false,
+    rotation: undefined,
     exchangeComplete: false,
     outputsWritten: false,
     signalReceived: undefined,

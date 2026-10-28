@@ -2,6 +2,7 @@
 /// <reference types="vite/client" />
 
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
+
 import {
   decodeInvitation,
   deriveRelayKey,
@@ -46,6 +47,8 @@ import { managedRunFailureFromRecord } from "@recurring/managedRunLaunchModel";
 import { reinviteManagedExchange } from "@psi/managed/managedReinviteDriver";
 import { relayRegistrationPendingLine } from "@recurring/savedExchangesModel";
 import { runManagedExchange } from "@psi/managed/managedExchangeRun";
+
+import { rotatingDataExchange } from "../utils/rotatingDataExchange";
 
 import { expectConsole } from "./expectedConsole";
 
@@ -325,9 +328,11 @@ describe("a re-invite while a run holds the run+rotate lock", () => {
       acquireInput: () => Promise.resolve(undefined),
       handshake: async (_input, markRotationInFlight) => {
         await markRotationInFlight();
-        return { rotatedSecret, handshake: "carried" };
+        return "carried";
       },
-      dataExchange: () => Promise.resolve("exchanged"),
+      dataExchange: rotatingDataExchange(rotatedSecret, () =>
+        Promise.resolve("exchanged"),
+      ),
     });
 
     const { record: reinvited } = await reinviteManagedExchange(pageCopy.id);

@@ -58,7 +58,7 @@ import {
   resolveRole,
   sendAbort,
 } from "./protocolSetup.js";
-import type { TermsChange } from "./protocolSetup.js";
+import type { TermsChange, TermsRotation } from "./protocolSetup.js";
 import { reconcileHostKeyFingerprints } from "./hostKeyReconciliation.js";
 import { withholdsSenderAssociationTable } from "./psi/link.js";
 import type { LinkageCardinality } from "./psi/link.js";
@@ -1341,6 +1341,13 @@ export interface RunExchangeOptions {
    * leaves the step un-runnable, so the caller threads them together or not at all.
    */
   sessionKey?: Uint8Array<ArrayBuffer>;
+  /**
+   * The shared-secret rotation an authenticated run makes at its terms
+   * exchange, which awaits `rotation.store` at this side's point in the store
+   * order ({@link TermsRotation}). Passed on every authenticated run and on no
+   * other.
+   */
+  rotation?: TermsRotation;
   verbosity?: number;
 }
 
@@ -1569,6 +1576,7 @@ export async function runExchange(
             },
     },
     localReceiveCeiling,
+    options.rotation,
   );
   for (const warning of warnings) onWarning(warning);
   linkageTerms = agreedLocalTerms;

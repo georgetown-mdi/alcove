@@ -2,6 +2,7 @@
 /// <reference types="vite/client" />
 
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
+
 import { generateSharedSecret, getDefaultLinkageTerms } from "@alcove/core";
 
 import {
@@ -19,6 +20,8 @@ import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 import { listReadableManagedLocalState } from "@psi/managed/managedLocalState";
 import { runManagedRerun } from "@psi/managed/managedRun";
 import { tickManagedSchedules } from "@psi/managed/managedScheduleRunner";
+
+import { rotatingDataExchange } from "../utils/rotatingDataExchange";
 
 import type {
   ManagedScheduleTickEntry,
@@ -92,8 +95,11 @@ async function recordWithOpenWindow(): Promise<ManagedExchangeRecord> {
  * `delay` the pacing between attempts, which a refused attempt waits out. */
 function scheduleTickSeams(
   attempt: {
-    handshake: () => Promise<{ rotatedSecret: string; handshake: string }>;
-    dataExchange: () => Promise<string>;
+    handshake: () => Promise<string>;
+    dataExchange: (
+      carried: string,
+      persistNextSecret: (nextSecret: string) => Promise<void>,
+    ) => Promise<string>;
   },
   delay: () => Promise<void> = () => Promise.resolve(),
 ): ManagedScheduleTickSeams {
@@ -142,12 +148,11 @@ describe("an attended Run exchanging when a scheduled attempt is due", () => {
       created,
       {
         acquireInput: () => Promise.resolve(undefined),
-        handshake: () =>
-          Promise.resolve({ rotatedSecret, handshake: "attended" }),
-        dataExchange: async () => {
+        handshake: () => Promise.resolve("attended"),
+        dataExchange: rotatingDataExchange(rotatedSecret, async () => {
           await releaseExchange.promise;
           return "exchanged";
-        },
+        }),
       },
       { lock: { ifAvailable: true }, onDataExchangeStart: exchanging.resolve },
     );
@@ -158,12 +163,11 @@ describe("an attended Run exchanging when a scheduled attempt is due", () => {
         {
           handshake: () => {
             scheduledHandshakes += 1;
-            return Promise.resolve({
-              rotatedSecret: generateSharedSecret(),
-              handshake: "scheduled",
-            });
+            return Promise.resolve("scheduled");
           },
-          dataExchange: () => Promise.resolve("scheduled"),
+          dataExchange: rotatingDataExchange(generateSharedSecret(), () =>
+            Promise.resolve("scheduled"),
+          ),
         },
         // The Run completes while the refused attempt waits out its pacing.
         async () => {
@@ -194,13 +198,12 @@ describe("a scheduled attempt exchanging when the operator runs by hand", () => 
 
     const tick = tickManagedSchedules(
       scheduleTickSeams({
-        handshake: () =>
-          Promise.resolve({ rotatedSecret, handshake: "scheduled" }),
-        dataExchange: async () => {
+        handshake: () => Promise.resolve("scheduled"),
+        dataExchange: rotatingDataExchange(rotatedSecret, async () => {
           exchanging.resolve();
           await releaseExchange.promise;
           return "scheduled";
-        },
+        }),
       }),
     );
     await exchanging.promise;
@@ -251,16 +254,16 @@ describe("two app windows' scheduled runtimes ticking one exchange", () => {
             handshakes += 1;
             holding += 1;
             mostHolding = Math.max(mostHolding, holding);
-            return Promise.resolve({
-              rotatedSecret: generateSharedSecret(),
-              handshake: "scheduled",
-            });
+            return Promise.resolve("scheduled");
           },
-          dataExchange: async () => {
-            await releaseExchange.promise;
-            holding -= 1;
-            return "scheduled";
-          },
+          dataExchange: rotatingDataExchange(
+            generateSharedSecret(),
+            async () => {
+              await releaseExchange.promise;
+              holding -= 1;
+              return "scheduled";
+            },
+          ),
         },
         // The refused window's pacing outlasts the other window's whole tick,
         // as a minute's pacing outlasts a stamp and an advance.

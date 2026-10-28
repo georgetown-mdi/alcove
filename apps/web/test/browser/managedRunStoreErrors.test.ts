@@ -1,6 +1,7 @@
 /// <reference types="@vitest/browser-playwright/context" />
 
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+
 import { generateSharedSecret, getDefaultLinkageTerms } from "@alcove/core";
 
 import { page } from "vitest/browser";
@@ -21,6 +22,8 @@ import { ManagedRunSurface } from "@recurring/ManagedRunSurface";
 import { RUN_OUTCOME_UNSAVED_NOTE } from "@recurring/managedRunLaunchModel";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 import { succeededRun } from "@psi/managed/managedRunRotate";
+
+import { rotatingDataExchange } from "../utils/rotatingDataExchange";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 
@@ -72,15 +75,12 @@ vi.mock("@psi/managed/managedRunDriver", async (importOriginal) => {
           acquireInput: () => Promise.resolve(undefined),
           handshake: async (_input, markRotationInFlight) => {
             await markRotationInFlight();
-            return {
-              rotatedSecret: generateSharedSecret(),
-              handshake: undefined,
-            };
+            return undefined;
           },
-          dataExchange: () => {
+          dataExchange: rotatingDataExchange(generateSharedSecret(), () => {
             if (stub.faultStamp) storeFault.armedFor = config.record.id;
             return Promise.resolve(WITHHELD);
-          },
+          }),
         });
       stub.started?.();
       await stub.hold;

@@ -69,16 +69,6 @@ import type {
 import type { ManagedExchangeLockOptions } from "./managedExchangeLock";
 import type { ManagedExchangeRunResult } from "./managedExchangeRun";
 
-/** The handshake result a re-run's handshake phase yields: the rotated secret the
- * persist-before-success write advances, plus whatever the data-exchange phase
- * needs, passed through the lock. Generic over the handshake value so the
- * platform wiring names its own concrete type (the message connection, the PSI
- * library, the prepared exchange) and a test names a trivial one. */
-interface ManagedRerunHandshake<THandshake> {
-  rotatedSecret: string;
-  handshake: THandshake;
-}
-
 /** The platform operations a re-run injects, each the wiring the pure
  * orchestration cannot own. Split so the run's decisions and ordering are
  * testable without a broker, a database, or WASM. */
@@ -95,11 +85,11 @@ interface ManagedRerunSeams<TInput, THandshake, TExchange> {
   acquireInput: (current: RunnableManagedExchangeRecord) => Promise<TInput>;
   /**
    * Open the side-dispatched rendezvous, authenticate the partner, and yield the
-   * rotated secret plus the value the data exchange consumes. Receives the
-   * acquired input, the rotation-in-flight marker write to await once the
-   * partner has connected and before the key exchange starts, and the record as
-   * read inside the run+rotate lock, whose secret it authenticates with and
-   * whose side it dispatches on. The side
+   * value the data exchange consumes. Receives the acquired input, the
+   * rotation-in-flight marker write to await, as the run's responder only,
+   * once the partner has connected and before the key exchange starts, and the
+   * record as read inside the run+rotate lock, whose secret it authenticates
+   * with and whose side it dispatches on. The side
    * dispatch and the fresh peer-id derivation live here (see
    * {@link ./managedRendezvous.ts}); this module only guarantees it runs after
    * the pre-connection checks and inside the run+rotate lock.
@@ -108,10 +98,14 @@ interface ManagedRerunSeams<TInput, THandshake, TExchange> {
     input: TInput,
     markRotationInFlight: () => Promise<void>,
     current: RunnableManagedExchangeRecord,
-  ) => Promise<ManagedRerunHandshake<THandshake>>;
-  /** Run the data exchange -- reachable only after the durable persist resolves.
-   * Receives the handshake's output value. */
-  dataExchange: (handshake: THandshake) => Promise<TExchange>;
+  ) => Promise<THandshake>;
+  /** Run the data exchange. Receives the handshake's output value and the
+   * durable rotation write, which it hands core's terms exchange as the
+   * store of the next secret. */
+  dataExchange: (
+    handshake: THandshake,
+    persistNextSecret: (nextSecret: string) => Promise<void>,
+  ) => Promise<TExchange>;
 }
 
 /** How a re-run launches, plus the clock. `attendance` is the run path (attended
@@ -220,10 +214,8 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
   // it, since the bound the handshake enforced is that record's.
   let current: RunnableManagedExchangeRecord | undefined;
   // The secret the run last stored: the one it read under the lock, then the
-  // one its rotation stored once the data exchange began.
+  // one its rotation stored at the terms exchange.
   let storedSecret: string | undefined;
-  // The secret the handshake rotated to, stored once the data exchange began.
-  let rotatedSecret: string | undefined;
   // Whether the handshake phase began. A failure before it is this run's own,
   // a stop asked or not, unless it is the stop's own abort reason.
   const phase = { handshakeBegan: false };
@@ -247,18 +239,15 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
       },
       handshake: async (input, markRotationInFlight, read) => {
         phase.handshakeBegan = true;
-        const handshake = await seams.handshake(
-          input,
-          markRotationInFlight,
-          read,
-        );
-        rotatedSecret = handshake.rotatedSecret;
-        return handshake;
+        return seams.handshake(input, markRotationInFlight, read);
       },
-      dataExchange: seams.dataExchange,
+      dataExchange: (handshake, persistNextSecret) =>
+        seams.dataExchange(handshake, async (nextSecret) => {
+          await persistNextSecret(nextSecret);
+          storedSecret = nextSecret;
+        }),
       onDataExchangeStart: () => {
         dataExchangeStarted = true;
-        storedSecret = rotatedSecret;
         options.onDataExchangeStart?.();
       },
       ...(options.lock !== undefined ? { lock: options.lock } : {}),

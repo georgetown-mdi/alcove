@@ -6,7 +6,12 @@ import { describe, expect, test } from "vitest";
 import {
   computeKexKeys,
   createMessagePipe,
+  deriveNextSecret,
+  importRotationValue,
+  initiatorConfirmTag,
   runKex,
+  unwrapRotationValue,
+  wrapRotationValue,
 } from "@alcove/core/testing";
 
 import vectorsRaw from "../../../../packages/core/test/vectors/kex-vectors.json?raw";
@@ -33,6 +38,8 @@ interface KexCase {
   sessionKeyHex: string;
   initiatorConfirmHex: string;
   responderConfirmHex: string;
+  wrappedInitiatorValueHex: string;
+  wrappedResponderValueHex: string;
 }
 
 interface KexVectors {
@@ -41,6 +48,8 @@ interface KexVectors {
     pskHex: string;
     initiatorEphemeralPrivateHex: string;
     responderEphemeralPrivateHex: string;
+    initiatorValueHex: string;
+    responderValueHex: string;
   };
   derived: {
     initiatorEphemeralPublicHex: string;
@@ -48,6 +57,7 @@ interface KexVectors {
     dhSharedSecretHex: string;
     chainingKeyHex: string;
     confirmKeyHex: string;
+    nextSecret: string;
   };
   cases: Array<KexCase>;
   externalAnchors: {
@@ -190,10 +200,64 @@ describe("key exchange in the browser", () => {
       expect(toHex(keys.confirmKey)).toBe(vectors.derived.confirmKeyHex);
       expect(toHex(keys.handshakeHash)).toBe(kexCase.handshakeHashHex);
       expect(toHex(keys.sessionKey)).toBe(kexCase.sessionKeyHex);
-      expect(toHex(keys.initiatorConfirm)).toBe(kexCase.initiatorConfirmHex);
       expect(toHex(keys.responderConfirm)).toBe(kexCase.responderConfirmHex);
     },
   );
+
+  // Chromium's AES-KW, under keys HKDF derives straight to AES-KW, against
+  // the wraps OpenSSL's id-aes256-wrap computed for the vectors.
+  test.each(vectors.cases)(
+    "$name: the browser build reproduces both wrapped values and the initiator's tag",
+    async (kexCase: KexCase) => {
+      const keys = await computeKexKeys(
+        fromHex(vectors.inputs.pskHex),
+        fromHex(vectors.derived.initiatorEphemeralPublicHex),
+        fromHex(vectors.derived.responderEphemeralPublicHex),
+        fromHex(vectors.derived.dhSharedSecretHex),
+        kexCase.initiatorRequestsEncryption,
+        kexCase.responderRequestsEncryption,
+      );
+      const wrappedInitiator = await wrapRotationValue(
+        keys.sessionKey,
+        "initiator",
+        await importRotationValue(fromHex(vectors.inputs.initiatorValueHex)),
+      );
+      const wrappedResponder = await wrapRotationValue(
+        keys.sessionKey,
+        "responder",
+        await importRotationValue(fromHex(vectors.inputs.responderValueHex)),
+      );
+      expect(toHex(wrappedInitiator)).toBe(kexCase.wrappedInitiatorValueHex);
+      expect(toHex(wrappedResponder)).toBe(kexCase.wrappedResponderValueHex);
+      expect(
+        toHex(
+          await initiatorConfirmTag(
+            keys.confirmKey,
+            keys.handshakeHash,
+            wrappedInitiator,
+          ),
+        ),
+      ).toBe(kexCase.initiatorConfirmHex);
+      const unwrapped = await unwrapRotationValue(
+        keys.sessionKey,
+        "responder",
+        fromHex(kexCase.wrappedResponderValueHex),
+      );
+      expect(unwrapped && toHex(unwrapped)).toBe(
+        vectors.inputs.responderValueHex,
+      );
+    },
+  );
+
+  test("the browser build derives the checked-in next secret over the 96-byte input", async () => {
+    expect(
+      await deriveNextSecret(
+        fromHex(vectors.derived.dhSharedSecretHex),
+        fromHex(vectors.inputs.initiatorValueHex),
+        fromHex(vectors.inputs.responderValueHex),
+      ),
+    ).toBe(vectors.derived.nextSecret);
+  });
 
   test("the browser reproduces the published P-256 anchor", async () => {
     const a = vectors.externalAnchors.p256ScalarMultiplicationAndEcdh;
@@ -263,6 +327,9 @@ describe("key exchange in the browser", () => {
     ]);
     expect(initiator.sessionKey.length).toBe(32);
     expect(toHex(initiator.sessionKey)).toBe(toHex(responder.sessionKey));
+    expect(toHex(initiator.initiatorValue)).toBe(
+      toHex(responder.initiatorValue),
+    );
     expect(initiator.applyEncryption).toBe(true);
     expect(responder.applyEncryption).toBe(true);
   });

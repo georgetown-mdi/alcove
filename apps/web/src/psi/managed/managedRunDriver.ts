@@ -18,8 +18,8 @@
  *
  * The PSI/handshake role is the side's, mirroring the one-shot flows: the inviter
  * is the responder (it listens), the acceptor the initiator (it dials). The
- * rotated secret the persist-before-success write advances is the handshake's
- * {@link AuthResult.rotatedSecret}; the current stored secret is what authenticates
+ * next secret the persist-before-success write advances is the one core's
+ * terms exchange derives; the current stored secret is what authenticates
  * and derives the rendezvous id, fresh this run.
  */
 
@@ -84,6 +84,7 @@ import type {
   HandshakeRole,
   LinkageTerms,
   MessageConnection,
+  NextSecretInputs,
   RelayRegistrar,
   ResolvedMatching,
   TermsChange,
@@ -130,9 +131,13 @@ interface ManagedRerunCarried {
   relayRegistration?: {
     registrar: RelayRegistrar;
     preRotationSecret: string;
-    rotatedSecret: string;
     maxAgeDays: number | null;
   };
+  /** What the terms exchange derives the next secret from. */
+  nextSecretInputs: NextSecretInputs;
+  /** The next secret, once the terms exchange has stored it: a run that
+   * stopped before its store registers no rotated relay key. */
+  rotatedSecret?: string;
   /** The terms the run read when it took the lock, which its own terms writes
    * compare the stored terms with. */
   linkageTerms: LinkageTerms;
@@ -403,12 +408,13 @@ export function runManagedExchangeInBrowser(
           // this party on the retired secret while the partner holds the new
           // one. Inbound frames wait in the message connection meanwhile.
           const psiLibrary = await psiPromise;
-          // Durable before the key exchange can rotate anything, so a run cut
-          // between the handshake and the rotation write leaves the marker the
+          // Durable before the key exchange can rotate anything, and only as
+          // the responder: the initiator stores first, so only a responder can
+          // be left behind by a run cut partway, and the marker is what the
           // next visit reads.
-          await markRotationInFlight();
-          // current.expires stays enforced at the handshake (core's pre- and
-          // post-handshake guards), covering a bound that lapses between the
+          if (exchangeRole === "responder") await markRotationInFlight();
+          // current.expires stays enforced at the handshake and at the terms
+          // exchange's commit points, covering a bound that lapses between the
           // pre-connection expiry check and here; the orchestration re-maps that
           // failure to the benign expiry state (see runManagedRerun).
           const auth = await authenticateExchange(
@@ -430,16 +436,16 @@ export function runManagedExchangeInBrowser(
             exchangeRole,
             csvDelimiter: current.exchangeFile.csvDelimiter,
             linkageTerms: current.exchangeFile.linkageTerms,
+            nextSecretInputs: auth.nextSecretInputs,
             ...(runRegistrar !== undefined && {
               relayRegistration: {
                 registrar: runRegistrar,
                 preRotationSecret: current.sharedSecret,
-                rotatedSecret: auth.rotatedSecret,
                 maxAgeDays: current.tokenMaxAgeDays ?? null,
               },
             }),
           };
-          return { rotatedSecret: auth.rotatedSecret, handshake: carried };
+          return carried;
         } catch (error) {
           // The handshake failed after the channel opened but before the data
           // exchange: tear down so a failed run never leaks a registered peer or
@@ -451,11 +457,12 @@ export function runManagedExchangeInBrowser(
           throw error;
         }
       },
-      // After the durable persist: run the PSI exchange, file the disclosure on
-      // either exit, build the outputs, and tear down regardless of outcome.
-      // The rotated relay key is registered on either exit too, while the run
-      // still holds the lock and the pre-rotation secret.
-      dataExchange: async (carried) => {
+      // Run the PSI exchange, whose terms exchange makes the durable rotation
+      // write, file the disclosure on either exit, build the outputs, and tear
+      // down regardless of outcome. A rotated relay key is registered on either
+      // exit too, once stored, while the run still holds the lock and the
+      // pre-rotation secret.
+      dataExchange: async (carried, persistNextSecret) => {
         const termsTakenOnRef: { current: boolean } = { current: false };
         const expected: ManagedRunRecordExpectation = {
           id: record.id,
@@ -469,6 +476,13 @@ export function runManagedExchangeInBrowser(
             {
               psiLibrary: carried.psiLibrary,
               psiEngineFactory: browserPsiEngineFactory(),
+              rotation: {
+                inputs: carried.nextSecretInputs,
+                store: async (nextSecret) => {
+                  await persistNextSecret(nextSecret);
+                  carried.rotatedSecret = nextSecret;
+                },
+              },
               // What the agreed terms resolved to, reported here as for every
               // other seat: a re-run is where an unnoticed widening of the match
               // matters most, since the terms are a standing record. The
@@ -583,9 +597,17 @@ export function runManagedExchangeInBrowser(
   async function registerRotatedKey(
     carried: ManagedRerunCarried,
   ): Promise<void> {
-    if (carried.relayRegistration === undefined) return;
+    if (
+      carried.relayRegistration === undefined ||
+      carried.rotatedSecret === undefined
+    )
+      return;
     const result = await registerRotatedManagedRelayKey(
-      { id: record.id, ...carried.relayRegistration },
+      {
+        id: record.id,
+        ...carried.relayRegistration,
+        rotatedSecret: carried.rotatedSecret,
+      },
       { cancel: signal },
     );
     if (result.kind === "failed") {

@@ -1,4 +1,5 @@
 import {
+  InternalConsistencyError,
   LinkageTermsUnsatisfiableError,
   OperatorConfigError,
   classifyFailure,
@@ -305,10 +306,10 @@ export type ExchangeOutputs =
   ReceivedExchangeOutputs | WithheldExchangeOutputs | CountOnlyExchangeOutputs;
 
 /** What a completed in-browser run hands its owner beside the outputs: the
- * shared secret the run's handshake rotated to, which both parties derived from
- * the session key and which replaces the invitation's secret for any later run
- * of the same partnership. A one-shot owner that saves nothing drops it with the
- * run; the hand-off to a managed exchange deposits it. */
+ * next shared secret the run's terms exchange derived, which both parties hold
+ * and which replaces the invitation's secret for any later run of the same
+ * partnership. A one-shot owner that saves nothing drops it with the run; the
+ * hand-off to a managed exchange deposits it. */
 export interface RunCompletion {
   rotatedSecret: string;
 }
@@ -585,13 +586,22 @@ export async function runExchangeLifecycle<
       expires,
     );
     secure = authenticated.connection;
-    const { rotatedSecret } = authenticated;
+    // A one-shot run stores nothing: the next secret the terms exchange
+    // derives is held here for the owner, which deposits it only where the
+    // operator keeps the exchange.
+    let rotatedSecret: string | undefined;
     // Resolves before runExchange: instant for the initiator (it loaded the
     // library during acquire), the real WASM wait for the responder, overlapping
     // the wait for the peer's first PSI frame.
     const psiLibrary = await psi;
     const result = await runExchange(secure, exchangeRole, prepared, {
       psiLibrary,
+      rotation: {
+        inputs: authenticated.nextSecretInputs,
+        store: (nextSecret) => {
+          rotatedSecret = nextSecret;
+        },
+      },
       // Run the PSI masking in Web Workers off the UI thread, so the tab stays
       // responsive and the WebRTC peer keepalives keep firing during a round.
       // runExchange disposes this engine on every exchange-end path
@@ -640,6 +650,11 @@ export async function runExchangeLifecycle<
       });
       return;
     }
+    // Every authenticated run that returns has stored its next secret.
+    if (rotatedSecret === undefined)
+      throw new InternalConsistencyError(
+        "the exchange completed without a next shared secret",
+      );
     emitResult(outputs, { rotatedSecret });
   } catch (error) {
     const record = recordFromFailure(error);

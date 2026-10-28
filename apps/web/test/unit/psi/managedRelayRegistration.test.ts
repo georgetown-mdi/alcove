@@ -241,21 +241,30 @@ describe("which runs register", () => {
   });
 });
 
+/** A run's seams whose data exchange stores `nextSecret` through the rotation
+ * write, as core's terms exchange does. */
+function rotatingSeams(nextSecret: string = generateSharedSecret()) {
+  return {
+    acquireInput: () => Promise.resolve("rows"),
+    handshake: () => Promise.resolve("carried"),
+    dataExchange: async (
+      _carried: string,
+      persistNextSecret: (secret: string) => Promise<void>,
+    ) => {
+      await persistNextSecret(nextSecret);
+      return "exchanged";
+    },
+  };
+}
+
 describe("the rotation write", () => {
   test("stores the pending registration beside the rotated secret on a record that names a registrar, whether or not the run registers", async () => {
     stubGrantingWebLocks();
     storedRecord.value = record({ relayRegistrar: REGISTRAR });
     const rotatedSecret = generateSharedSecret();
-    await runManagedRerun(
-      storedRecord.value,
-      {
-        acquireInput: () => Promise.resolve("rows"),
-        handshake: () =>
-          Promise.resolve({ rotatedSecret, handshake: "carried" }),
-        dataExchange: () => Promise.resolve("exchanged"),
-      },
-      { now: () => NOW.getTime() },
-    );
+    await runManagedRerun(storedRecord.value, rotatingSeams(rotatedSecret), {
+      now: () => NOW.getTime(),
+    });
     expect(persistManagedExchangeRotation).toHaveBeenCalledWith(
       "record-under-test",
       storedRecord.value.sharedSecret,
@@ -274,19 +283,9 @@ describe("the rotation write", () => {
       side: "acceptor",
       exchangeFile: partnerRelayedExchange(),
     });
-    await runManagedRerun(
-      storedRecord.value,
-      {
-        acquireInput: () => Promise.resolve("rows"),
-        handshake: () =>
-          Promise.resolve({
-            rotatedSecret: generateSharedSecret(),
-            handshake: "carried",
-          }),
-        dataExchange: () => Promise.resolve("exchanged"),
-      },
-      { now: () => NOW.getTime() },
-    );
+    await runManagedRerun(storedRecord.value, rotatingSeams(), {
+      now: () => NOW.getTime(),
+    });
     const rotation = vi.mocked(persistManagedExchangeRotation).mock
       .calls[0]?.[2];
     expect(rotation).toHaveProperty(
@@ -298,15 +297,7 @@ describe("the rotation write", () => {
   test("stores none on an exchange that names no registrar", async () => {
     stubGrantingWebLocks();
     storedRecord.value = record({});
-    await runManagedRerun(storedRecord.value, {
-      acquireInput: () => Promise.resolve("rows"),
-      handshake: () =>
-        Promise.resolve({
-          rotatedSecret: generateSharedSecret(),
-          handshake: "carried",
-        }),
-      dataExchange: () => Promise.resolve("exchanged"),
-    });
+    await runManagedRerun(storedRecord.value, rotatingSeams());
     const rotation = vi.mocked(persistManagedExchangeRotation).mock
       .calls[0]?.[2];
     expect(rotation).not.toHaveProperty("relayRegistrationPendingSince");
@@ -330,15 +321,7 @@ describe("the rotation write", () => {
   test("stores none on a record that names no registrar", async () => {
     stubGrantingWebLocks();
     storedRecord.value = record();
-    await runManagedRerun(storedRecord.value, {
-      acquireInput: () => Promise.resolve("rows"),
-      handshake: () =>
-        Promise.resolve({
-          rotatedSecret: generateSharedSecret(),
-          handshake: "carried",
-        }),
-      dataExchange: () => Promise.resolve("exchanged"),
-    });
+    await runManagedRerun(storedRecord.value, rotatingSeams());
     const rotation = vi.mocked(persistManagedExchangeRotation).mock
       .calls[0]?.[2];
     expect(rotation).not.toHaveProperty("relayRegistrationPendingSince");

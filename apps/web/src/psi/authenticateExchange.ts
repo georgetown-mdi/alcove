@@ -39,7 +39,8 @@ export interface AuthenticatedExchange extends AuthResult {
  * before any PSI frame, requesting application-layer encryption, and wrap the
  * connection in core's {@link EncryptedMessageConnection} keyed from the
  * session key (docs/spec/CHANNEL_SECURITY.md, "Which channels request it"). It
- * neither persists nor rotates the returned secret.
+ * neither derives nor stores the next secret: core's terms exchange does both,
+ * from the returned `nextSecretInputs`.
  *
  * A trust failure -- a wrong secret, a malformed or expired credential, or a
  * `protocol` error from the peer -- is re-tagged as a `security`
@@ -53,7 +54,8 @@ export interface AuthenticatedExchange extends AuthResult {
  * @param exchangeRole  This party's role, the same one passed to `runExchange`.
  * @param sharedSecret  The invitation's base64url shared secret.
  * @param expires       The invitation's `expires` (ISO 8601); core checks it
- *                      before and after the handshake. Omit when unbounded.
+ *                      before the handshake and again at the terms
+ *                      exchange, before each store. Omit when unbounded.
  * @returns The {@link AuthenticatedExchange}; both peers derive the same
  *          `sessionKey`.
  * @throws {ConnectionError} of kind `"security"` on a trust failure; of kind

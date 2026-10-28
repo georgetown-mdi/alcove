@@ -5,16 +5,16 @@ import {
   RotationPersistError,
   failedRun,
   rotationWriteBack,
-  runRotationCriticalSection,
   storageFailureRun,
+  storeRotatedSecret,
   succeededRun,
 } from "@psi/managed/managedRunRotate";
 
-import type { ManagedRotationCriticalSection } from "@psi/managed/managedRunRotate";
+import type { RotationWriteBack } from "@psi/managed/managedRunRotate";
 
 // The pure ordering and decision half of the run+rotate critical section, tested
-// in Node without a database or a real Web Lock: the persist-before-data-exchange
-// sequence (with the persist and lock boundaries faked), the `expires` restamp from the
+// in Node without a database or a real Web Lock: the rotation write core's terms
+// exchange awaits (with the persist and lock boundaries faked), the `expires` restamp from the
 // max-age policy, and the `lastRun` bookkeeping. The strict-durability transaction,
 // the single-writer lock, and the no-steal property are the platform half, tested
 // against real Chromium in test/browser/managedExchangeRun.test.ts.
@@ -87,106 +87,70 @@ describe("lastRun bookkeeping builders", () => {
   });
 });
 
-/** A locked critical section whose phases record the order they fire into
- * `order`, so a test can assert the persist ran strictly after the handshake. The
- * persist and handshake outcomes are configurable to drive the failure paths. */
-function tracedSection(
-  order: Array<string>,
-  overrides: Partial<ManagedRotationCriticalSection<string>> = {},
-): ManagedRotationCriticalSection<string> {
-  const rotatedSecret = generateSharedSecret();
-  return {
-    handshake: () => {
-      order.push("handshake");
-      return Promise.resolve({ rotatedSecret, handshake: "carried" });
-    },
-    persist: () => {
-      order.push("persist");
-      return Promise.resolve();
-    },
-    tokenMaxAgeDays: undefined,
-    now: () => ROTATION_AT,
-    ...overrides,
-  };
-}
-
-describe("runRotationCriticalSection: persist-before-gate ordering", () => {
-  test("persists the rotation and resolves the gate only after the persist", async () => {
+describe("storeRotatedSecret: the write the terms exchange awaits", () => {
+  test("persists the next secret's write-back and resolves only once it commits", async () => {
     const order: Array<string> = [];
-    const gate = await runRotationCriticalSection(tracedSection(order));
-
-    // The gate the data exchange consumes is resolved strictly after the persist,
-    // so a caller cannot begin the data exchange before the secret is durable.
-    expect(order).toEqual(["handshake", "persist"]);
-    expect(gate.handshake).toBe("carried");
+    const nextSecret = generateSharedSecret();
+    let commit: () => void = () => {};
+    const stored = storeRotatedSecret(
+      {
+        persist: () => {
+          order.push("persist");
+          return new Promise<void>((resolve) => {
+            commit = resolve;
+          });
+        },
+        tokenMaxAgeDays: undefined,
+        now: () => ROTATION_AT,
+      },
+      nextSecret,
+    ).then((secret) => {
+      order.push("resolved");
+      return secret;
+    });
+    await Promise.resolve();
+    expect(order).toEqual(["persist"]);
+    commit();
+    expect(await stored).toBe(nextSecret);
+    expect(order).toEqual(["persist", "resolved"]);
   });
 
   test("the persist receives the restamped write-back when a policy is set", async () => {
-    const order: Array<string> = [];
-    const seen: Array<{ sharedSecret: string; expires: string | null }> = [];
-    const rotatedSecret = generateSharedSecret();
-    await runRotationCriticalSection(
-      tracedSection(order, {
-        tokenMaxAgeDays: 30,
-        handshake: () => {
-          order.push("handshake");
-          return Promise.resolve({ rotatedSecret, handshake: "carried" });
-        },
+    const seen: Array<RotationWriteBack> = [];
+    const nextSecret = generateSharedSecret();
+    await storeRotatedSecret(
+      {
         persist: (writeBack) => {
-          order.push("persist");
           seen.push(writeBack);
           return Promise.resolve();
         },
-      }),
+        tokenMaxAgeDays: 30,
+        now: () => ROTATION_AT,
+      },
+      nextSecret,
     );
-    expect(seen).toHaveLength(1);
-    expect(seen[0].sharedSecret).toBe(rotatedSecret);
-    expect(seen[0].expires).toBe(
-      new Date(ROTATION_AT + 30 * MS_PER_DAY).toISOString(),
-    );
+    expect(seen).toEqual([
+      {
+        sharedSecret: nextSecret,
+        expires: new Date(ROTATION_AT + 30 * MS_PER_DAY).toISOString(),
+      },
+    ]);
   });
 
-  test("a persist failure aborts the section and records storage bookkeeping", async () => {
-    const order: Array<string> = [];
-    const section = tracedSection(order, {
-      persist: () => {
-        order.push("persist");
-        return Promise.reject(new Error("quota exceeded"));
+  test("a persist failure raises the storage bookkeeping with its cause", async () => {
+    const error: unknown = await storeRotatedSecret(
+      {
+        persist: () => Promise.reject(new Error("quota exceeded")),
+        tokenMaxAgeDays: undefined,
+        now: () => ROTATION_AT,
       },
-    });
+      generateSharedSecret(),
+    ).catch((reason: unknown) => reason);
 
-    const error: unknown = await runRotationCriticalSection(section).then(
-      () => {
-        throw new Error(
-          "the section should have rejected on the persist failure",
-        );
-      },
-      (reason: unknown) => reason,
-    );
-
-    // The section rejects at the persist: no gate is resolved, so the data
-    // exchange the caller would run next is unreachable.
-    expect(order).toEqual(["handshake", "persist"]);
     expect(error).toBeInstanceOf(RotationPersistError);
     expect((error as RotationPersistError).lastRun).toEqual(
       storageFailureRun(ROTATION_AT),
     );
-    // The original cause is preserved for diagnostics.
     expect((error as RotationPersistError).cause).toBeInstanceOf(Error);
-  });
-
-  test("a handshake failure aborts before any persist", async () => {
-    const order: Array<string> = [];
-    const section = tracedSection(order, {
-      handshake: () => {
-        order.push("handshake");
-        return Promise.reject(new Error("handshake failed closed"));
-      },
-    });
-
-    await expect(runRotationCriticalSection(section)).rejects.toThrow(
-      "handshake failed closed",
-    );
-    expect(order).toEqual(["handshake"]);
   });
 });

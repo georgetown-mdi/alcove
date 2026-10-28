@@ -30,7 +30,17 @@ import {
   MAX_PSI_DECODE_ELEMENTS,
   MAX_RECORD_COUNT,
 } from "./connection/frameSize";
-import { randomBytes, toBase64Url } from "./utils/crypto";
+import { fromBase64Url, randomBytes, toBase64Url } from "./utils/crypto";
+import { NEW_INVITATION_REMEDY, isExpired } from "./auth";
+import {
+  WRAPPED_ROTATION_VALUE_BYTES,
+  deriveNextSecret,
+  drawRotationValue,
+  importRotationValue,
+  unwrapRotationValue,
+  wrapRotationValue,
+} from "./nextSecret";
+import type { NextSecretInputs } from "./nextSecret";
 import { rawDecodeErrorDescription } from "./utils/describeDecodeError";
 import { redactPrivateKeyMaterial } from "./utils/sanitizeErrorForDisplay";
 import {
@@ -39,7 +49,12 @@ import {
 } from "./utils/partnerOriginText";
 import type { PartnerOriginTextList } from "./utils/partnerOriginText";
 import { boundedArray } from "./utils/boundedArray";
-import { PartnerProtocolRefusalError, ProtocolRefusalError } from "./errors";
+import {
+  ConnectionError,
+  PartnerProtocolRefusalError,
+  ProtocolRefusalError,
+  markStatesItsOwnNextStep,
+} from "./errors";
 import type { OlderVersionSide } from "./errors";
 import { annotate, annotationKey, annotationOf } from "./failureAnnotation";
 import {
@@ -298,6 +313,9 @@ const termsWithDecisionMessage = z.object({
   disclosesPayload: z.boolean().optional(), // per-party payload-intent; see termsMessage
   hostKey: hostKeyField,
   certificate: certificateField,
+  // Read as unknown so a missing or malformed value is answered with an abort
+  // rather than failing the parse (see nextSecretFromTermsReply).
+  responderValue: z.unknown().optional(),
 });
 
 const decisionMessage = z.object({
@@ -486,6 +504,44 @@ export interface TermsChange {
    * which only this party's own review of the change can take on.
    */
   continuable: boolean;
+}
+
+/**
+ * The abort reason a party sends when the current shared secret expired before
+ * it stored the next one, at its last point before a store that would leave the
+ * partner behind. A fixed literal: the frame is a disclosure to the partner.
+ */
+export const SHARED_SECRET_EXPIRED_ABORT_REASON =
+  "the partner's shared secret expired before the next one was saved";
+
+/**
+ * The abort reason a party sends when its write of the next shared secret
+ * failed. A fixed literal, as {@link SHARED_SECRET_EXPIRED_ABORT_REASON}.
+ */
+export const NEXT_SECRET_STORE_FAILED_ABORT_REASON =
+  "the partner could not save the next shared secret";
+
+/**
+ * The rotation an authenticated run makes at its terms exchange: the next
+ * secret is derived from {@link inputs} and the responder's value, and
+ * {@link store} is awaited at this side's point in the store order -- the
+ * initiator's before it sends `proceed`, the responder's on reading it
+ * (docs/spec/PROTOCOL.md, "Shared-secret rotation"). A throw from the store
+ * sends the partner {@link NEXT_SECRET_STORE_FAILED_ABORT_REASON} and ends the
+ * run with that throw.
+ */
+export interface TermsRotation {
+  /** From `authenticateConnection`'s `nextSecretInputs`. */
+  inputs: NextSecretInputs;
+  /** Durably store the next shared secret, base64url. */
+  store: (nextSecret: string) => void | Promise<void>;
+  /**
+   * A fixed responder value in place of a fresh one.
+   *
+   * @internal for the terms-envelope conformance vectors only: a fixed value
+   * makes the next secret predictable.
+   */
+  fixedResponderValue?: Uint8Array<ArrayBuffer>;
 }
 
 /** How {@link exchangeTerms} treats partner terms that differ from its own. */
@@ -800,6 +856,112 @@ async function settleTermsChange(params: {
 }
 
 /**
+ * Refuse with {@link SHARED_SECRET_EXPIRED_ABORT_REASON} where the current
+ * secret has expired: each side checks at its last point before a store that
+ * would leave the partner behind. `abortTerms` as for {@link sendAbort}.
+ */
+async function refuseIfSecretExpired(
+  conn: MessageConnection,
+  expires: string | undefined,
+  abortTerms: LinkageTerms | undefined,
+): Promise<void> {
+  if (expires === undefined || !isExpired(expires, Date.now())) return;
+  await sendAbort(conn, [SHARED_SECRET_EXPIRED_ABORT_REASON], abortTerms);
+  throw markStatesItsOwnNextStep(
+    new Error(
+      `the shared secret expired at ${expires}, before the next one was ` +
+        `saved. ${NEW_INVITATION_REMEDY}`,
+    ),
+  );
+}
+
+/** Await `rotation.store`, telling the partner when it fails. */
+async function storeNextSecret(
+  conn: MessageConnection,
+  rotation: TermsRotation,
+  nextSecret: string,
+  abortTerms: LinkageTerms | undefined,
+): Promise<void> {
+  try {
+    await rotation.store(nextSecret);
+  } catch (err) {
+    await sendAbort(conn, [NEXT_SECRET_STORE_FAILED_ABORT_REASON], abortTerms);
+    throw err;
+  }
+}
+
+/**
+ * The initiator's reading of the responder's value on a proceeding terms
+ * message 2: the next secret where this run rotates, `undefined` where it does
+ * not. Every refusal sends an abort, before anything is stored.
+ */
+async function nextSecretFromTermsReply(
+  conn: MessageConnection,
+  responderValue: unknown,
+  rotation: TermsRotation | undefined,
+): Promise<string | undefined> {
+  if (rotation === undefined) {
+    if (responderValue === undefined) return undefined;
+    await sendAbort(conn, [
+      "partner sent a next-secret value on an exchange with no key exchange",
+    ]);
+    throw new PartnerProtocolRefusalError(
+      "the partner sent a value for a next shared secret on an exchange that " +
+        "ran no key exchange",
+    );
+  }
+  let wrapped: Uint8Array<ArrayBuffer> | undefined;
+  try {
+    if (typeof responderValue === "string")
+      wrapped = fromBase64Url(responderValue);
+  } catch {
+    wrapped = undefined;
+  }
+  if (wrapped?.length !== WRAPPED_ROTATION_VALUE_BYTES) {
+    await sendAbort(conn, ["partner omitted a readable next-secret value"]);
+    throw new PartnerProtocolRefusalError(
+      "the partner's reply to the terms did not include a readable value for " +
+        "the next shared secret",
+    );
+  }
+  const { sessionKey, keyAgreementOutput, initiatorValue } = rotation.inputs;
+  const value = await unwrapRotationValue(sessionKey, "responder", wrapped);
+  if (value === undefined) {
+    await sendAbort(conn, ["partner's next-secret value failed to unwrap"]);
+    throw new ConnectionError(
+      "the partner's value for the next shared secret failed its integrity " +
+        "check",
+      "security",
+    );
+  }
+  return deriveNextSecret(keyAgreementOutput, initiatorValue, value);
+}
+
+/**
+ * The responder's value and the next secret, drawn once it has agreed the
+ * terms and its secret has not expired.
+ */
+async function responderNextSecret(
+  rotation: TermsRotation,
+): Promise<{ nextSecret: string; wrapped: string }> {
+  const { sessionKey, keyAgreementOutput, initiatorValue } = rotation.inputs;
+  const value =
+    rotation.fixedResponderValue === undefined
+      ? await drawRotationValue()
+      : await importRotationValue(rotation.fixedResponderValue);
+  return {
+    nextSecret: await deriveNextSecret(
+      keyAgreementOutput,
+      initiatorValue,
+      value.bytes,
+    ),
+    wrapped: toBase64Url(
+      await wrapRotationValue(sessionKey, "responder", value),
+    ),
+  };
+}
+
+/**
  * Exchange {@link LinkageTerms} with a partner over an established
  * connection, validate compatibility, and obtain agreement from both parties to
  * proceed.
@@ -849,6 +1011,11 @@ async function settleTermsChange(params: {
  * a caller that will sign refuses on. `localCertificate` is passed only by a
  * party that will sign a receipt on this run, so a party that will not sign
  * puts no certificate on the wire.
+ *
+ * `rotation` is passed on an authenticated run, and only there: the responder
+ * then sends its wrapped value on a proceeding message 2, and each side stores
+ * the next secret at its point in the store order ({@link TermsRotation}).
+ * Without it the initiator refuses a message 2 holding that value.
  */
 export async function exchangeTerms(
   conn: MessageConnection,
@@ -861,6 +1028,7 @@ export async function exchangeTerms(
   localCertificate?: SigningCertificate,
   termsChange?: TermsChangeOptions,
   localReceiveCeiling: number = MAX_PSI_DECODE_ELEMENTS,
+  rotation?: TermsRotation,
 ): Promise<TermsExchangeResult> {
   // Spread into the outgoing terms frame only when this party is saving, so a
   // non-save exchange sends no `save` field at all.
@@ -944,6 +1112,12 @@ export async function exchangeTerms(
       );
     }
 
+    const nextSecret = await nextSecretFromTermsReply(
+      conn,
+      msg.responderValue,
+      rotation,
+    );
+
     let partnerTerms: LinkageTerms;
     try {
       partnerTerms = parseLinkageTerms(msg.linkageTerms);
@@ -990,6 +1164,13 @@ export async function exchangeTerms(
         options: termsChange,
         abortTerms: undefined,
       });
+
+    // The initiator stores first: `proceed` then proves it holds the next
+    // secret, and every refusal above came before the store.
+    if (rotation !== undefined && nextSecret !== undefined) {
+      await refuseIfSecretExpired(conn, rotation.inputs.expires, undefined);
+      await storeNextSecret(conn, rotation, nextSecret, undefined);
+    }
 
     await conn.send({ decision: "proceed" });
 
@@ -1086,6 +1267,12 @@ export async function exchangeTerms(
         abortTerms: localTerms,
       });
 
+    let rotationReply: { nextSecret: string; wrapped: string } | undefined;
+    if (rotation !== undefined) {
+      await refuseIfSecretExpired(conn, rotation.inputs.expires, localTerms);
+      rotationReply = await responderNextSecret(rotation);
+    }
+
     await conn.send({
       linkageTerms: agreed.terms,
       decision: "proceed",
@@ -1096,11 +1283,24 @@ export async function exchangeTerms(
       ...disclosesPayloadField,
       ...hostKeyField,
       ...certificateFieldSpread,
+      ...(rotationReply !== undefined && {
+        responderValue: rotationReply.wrapped,
+      }),
     });
 
     const msg = await receiveParsed(conn, decisionMessage);
     if (msg.decision === "abort")
       throw partnerAbortError(msg.abortReasons, agreed.terms, partnerTerms!);
+
+    // `proceed` shows the initiator already holds the next secret, so this
+    // store runs with no expiry check, whatever this side's clock reads.
+    if (rotation !== undefined && rotationReply !== undefined)
+      await storeNextSecret(
+        conn,
+        rotation,
+        rotationReply.nextSecret,
+        undefined,
+      );
 
     return {
       partnerTerms: partnerTerms!,

@@ -1337,8 +1337,8 @@ the scheduled runtime, or by the operator on an attended run.
 
 The persisted `sharedSecret` is the single most consequential field, because it
 is not an ordinary cache entry: it is a **linear resource**. After a successful
-run, both parties independently derive the same replacement secret from the
-key-exchange session key and the old secret is retired; there is exactly one live
+run, both parties derive the same replacement secret at the terms exchange
+that follows the key exchange, and the old secret is retired; there is exactly one live
 secret shared between the two parties at any time, and neither party keeps the
 old one. Two consequences follow, and both are normative:
 
@@ -1466,34 +1466,36 @@ run another window or tab, or the installed app, holds is only described.
 
 ### Persist-before-success ordering
 
-The rotated secret must be durably persisted **before** this party begins the
-data exchange -- the first peer-visible act after the handshake. The protocol
-has no discrete peer-visible success signal to gate on: both sides rotate at
-handshake completion, and the exchange's terminal act is a fire-and-forget final
-send, so the data exchange itself is what the persist must precede. Concretely,
+The rotated secret must be durably persisted **before** this party's next
+message of the terms exchange that follows the handshake, so before any payload
+round. The terms exchange fixes each side's point: the initiator stores before
+it sends terms message 3 `proceed`, and the responder on reading it
+([PROTOCOL.md](PROTOCOL.md#the-rotation-at-the-terms-exchange)). Concretely,
 within a single run:
 
 1. Once the partner has connected, and before the key exchange starts, the
    [rotation-in-flight marker](#the-rotation-in-flight-marker) is written in a
-   strict-durability transaction awaited to `complete`.
+   strict-durability transaction awaited to `complete`, by the responder only.
 2. The handshake completes and yields the `AuthResult`
-   (`{ sessionKey, rotatedSecret, applyEncryption }`; see
-   [PROTOCOL.md](PROTOCOL.md#shared-secret-rotation)).
-3. `sharedSecret` (and `expires`, refreshed from `tokenMaxAgeDays` when a
-   policy is set) is written, and the marker removed, in one write to
-   IndexedDB in a transaction opened with **`{ durability: "strict" }`**, and the
-   write is awaited to the transaction's `complete` event, before step 4. Strict
+   (`{ sessionKey, nextSecretInputs, applyEncryption }`; see
+   [PROTOCOL.md](PROTOCOL.md#shared-secret-rotation)), and the run hands
+   `nextSecretInputs` and its rotation write to the terms exchange.
+3. At this side's point in the terms exchange, `sharedSecret` (and `expires`,
+   refreshed from `tokenMaxAgeDays` when a policy is set) is written, and the
+   marker removed, in one write to IndexedDB in a transaction opened with
+   **`{ durability: "strict" }`**, and the terms exchange awaits the write to
+   the transaction's `complete` event, before step 4. Strict
    durability requests OS writeback before `complete` fires; the default
    (relaxed) durability fires `complete` once the write is visible in-process,
    **before** OS writeback -- surviving a tab or renderer crash but not an OS
    crash or power loss. Strict narrows that gap without closing it (it is
    honored variably across engines and is still not a forced media flush).
-4. Only then does the party begin the data exchange and, on completion, mark
-   `lastRun.outcome = "succeeded"`.
+4. Only then does the party send its next message and go on to the payload
+   rounds, and, on completion, mark `lastRun.outcome = "succeeded"`.
 
 This is the browser analog of the CLI's persist-then-exchange ordering, where the
-key file is written (through an atomic, fsync-durable path) immediately after the
-handshake rotates the secret and before the data exchange runs (see
+key file is written (through an atomic, fsync-durable path) at the same point
+of the terms exchange, before any payload round (see
 [CREDENTIAL_STORAGE.md](CREDENTIAL_STORAGE.md#posix-write-discipline)). Its
 guarantee is precisely scoped: it eliminates **this party's contribution** to
 the desync window and provides renderer-crash consistency. It does not cover the
@@ -1507,8 +1509,8 @@ residual is covered by fast re-invite, not a stronger at-rest guarantee.
 ### The rotation-in-flight marker
 
 The persist-before-success ordering cannot close the one-sided window between
-the handshake and the rotation write: a tab killed there leaves the partner on
-the rotated secret and this device on the old one, and on WebRTC the rendezvous
+the initiator's rotation write and the responder's: a responder's tab killed
+there leaves the partner on the rotated secret and this device on the old one, and on WebRTC the rendezvous
 ids and the relay key both derive from the secret, so each side then records a
 no-show at every window. The `rotationInFlightSince` marker makes that window
 visible after the fact. It changes nothing about the secret: the record still
@@ -1518,9 +1520,12 @@ holds exactly one live `sharedSecret`, and no previous secret is kept.
   connected and before the key exchange starts
   (`markManagedExchangeRotationInFlight`,
   `apps/web/src/psi/managed/managedExchangeStore.ts`), as a strict-durability,
-  field-scoped write awaited to `complete`. A marker already present keeps its
-  first instant. A no-show never reaches it, and a write that fails stops the
-  run before the key exchange, with nothing rotated.
+  field-scoped write awaited to `complete`, and only when the run is the
+  responder: the initiator stores the next secret first, so only the responder
+  can be left behind. A marker already present keeps its first instant, and
+  stays until a recorded outcome supersedes it, whichever role this run takes.
+  A no-show never reaches it, and a write that fails stops the run before the
+  key exchange, with nothing rotated.
 - **Removed** by the rotation write that stores the rotated secret -- the run's
   own and a re-invite's -- in the same transaction. A recorded outcome supersedes it: the bookkeeping write
   that records a key exchange reaching a verdict at or after the marker -- a

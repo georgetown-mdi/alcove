@@ -2,6 +2,7 @@
 /// <reference types="vite/client" />
 
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
+
 import {
   assembleExchangeSpec,
   connectionFromLocator,
@@ -28,6 +29,8 @@ import { ManagedInputError } from "@psi/managed/managedInputGuard";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 import { runManagedExchange } from "@psi/managed/managedExchangeRun";
 import { storedWorkingDirectoryUsable } from "@psi/managed/managedWorkingDirectory";
+
+import { rotatingDataExchange } from "../utils/rotatingDataExchange";
 
 import type { ExchangeSpec, WebRTCExchangeLocator } from "@alcove/core";
 import type {
@@ -528,12 +531,11 @@ describe("run seam composition: the input guard gates the handshake", () => {
         }),
       handshake: () => {
         handshakeRan = true;
-        return Promise.resolve({
-          rotatedSecret: generateSharedSecret(),
-          handshake: "c",
-        });
+        return Promise.resolve("c");
       },
-      dataExchange: () => Promise.resolve("done"),
+      dataExchange: rotatingDataExchange(generateSharedSecret(), () =>
+        Promise.resolve("done"),
+      ),
     }).then(
       () => {
         throw new Error("the run should have rejected on the missing input");
@@ -570,12 +572,11 @@ describe("run seam composition: the input guard gates the handshake", () => {
         }),
       handshake: () => {
         handshakeRan = true;
-        return Promise.resolve({
-          rotatedSecret: generateSharedSecret(),
-          handshake: "c",
-        });
+        return Promise.resolve("c");
       },
-      dataExchange: () => Promise.resolve("done"),
+      dataExchange: rotatingDataExchange(generateSharedSecret(), () =>
+        Promise.resolve("done"),
+      ),
     }).then(
       () => {
         throw new Error("the run should have rejected on the drifted columns");
@@ -616,9 +617,11 @@ describe("run seam composition: the input guard gates the handshake", () => {
         }),
       handshake: (input) => {
         handshakeColumns = input.columns;
-        return Promise.resolve({ rotatedSecret, handshake: "c" });
+        return Promise.resolve("c");
       },
-      dataExchange: () => Promise.resolve("done"),
+      dataExchange: rotatingDataExchange(rotatedSecret, () =>
+        Promise.resolve("done"),
+      ),
     });
 
     expect(handshakeColumns?.[0]).toBe("ssn");

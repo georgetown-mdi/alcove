@@ -2,6 +2,7 @@
 /// <reference types="vite/client" />
 
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
+
 import { generateSharedSecret, getDefaultLinkageTerms } from "@alcove/core";
 
 import {
@@ -34,6 +35,8 @@ import { listReadableManagedLocalState } from "@psi/managed/managedLocalState";
 import { reinviteManagedExchange } from "@psi/managed/managedReinviteDriver";
 import { runManagedRerun } from "@psi/managed/managedRun";
 import { tickManagedSchedules } from "@psi/managed/managedScheduleRunner";
+
+import { rotatingDataExchange } from "../utils/rotatingDataExchange";
 
 import type {
   ManagedExchangeRecord,
@@ -214,12 +217,11 @@ describe("a stop asked while the run waits for its partner", () => {
           await proceed.promise;
           await markRotationInFlight();
           keyExchange = true;
-          return {
-            rotatedSecret: generateSharedSecret(),
-            handshake: "carried",
-          };
+          return "carried";
         },
-        dataExchange: () => Promise.resolve("exchanged"),
+        dataExchange: rotatingDataExchange(generateSharedSecret(), () =>
+          Promise.resolve("exchanged"),
+        ),
       },
       { stop },
     ).catch((error: unknown) => error);
@@ -359,9 +361,11 @@ describe("a stop asked once the run is past its marker", () => {
           await markRotationInFlight();
           marked.resolve();
           await finish.promise;
-          return { rotatedSecret, handshake: "carried" };
+          return "carried";
         },
-        dataExchange: () => Promise.resolve("exchanged"),
+        dataExchange: rotatingDataExchange(rotatedSecret, () =>
+          Promise.resolve("exchanged"),
+        ),
       },
       { stop },
     );
@@ -424,12 +428,11 @@ describe("a scheduled attempt stopped for a re-invite", () => {
                 return await waitForPartner(stop.signal);
               }
               await markRotationInFlight();
-              return {
-                rotatedSecret: generateSharedSecret(),
-                handshake: "carried",
-              };
+              return "carried";
             },
-            dataExchange: () => Promise.resolve("exchanged"),
+            dataExchange: rotatingDataExchange(generateSharedSecret(), () =>
+              Promise.resolve("exchanged"),
+            ),
           },
           {
             lock: { ifAvailable: true },
@@ -585,12 +588,11 @@ describe("two exchanges' runs in flight at once", () => {
                   waitForPartner(stop.signal),
                 ]);
                 await markRotationInFlight();
-                return {
-                  rotatedSecret: generateSharedSecret(),
-                  handshake: "carried",
-                };
+                return "carried";
               },
-              dataExchange: () => Promise.resolve("exchanged"),
+              dataExchange: rotatingDataExchange(generateSharedSecret(), () =>
+                Promise.resolve("exchanged"),
+              ),
             },
             {
               lock: { ifAvailable: true },
@@ -659,12 +661,11 @@ describe("a scheduled attempt stopped for a relay enrollment", () => {
                 return await waitForPartner(stop.signal);
               }
               await markRotationInFlight();
-              return {
-                rotatedSecret: generateSharedSecret(),
-                handshake: "carried",
-              };
+              return "carried";
             },
-            dataExchange: () => Promise.resolve("exchanged"),
+            dataExchange: rotatingDataExchange(generateSharedSecret(), () =>
+              Promise.resolve("exchanged"),
+            ),
           },
           {
             lock: { ifAvailable: true },

@@ -656,12 +656,17 @@ that began and has not saved its rotated secret.
 - **Write order.** `runProtocol` (`apps/cli/src/protocol.ts`) writes it through
   `markRotationInFlight` (`apps/cli/src/keyFile.ts`) after the transport to the
   partner is open and before the key exchange starts, under the same
-  owner-only, atomic-rename write as the rotation itself. The rotated-secret
-  write that follows the handshake (`buildRotatedKeyFile`) holds no marker, so
-  the one atomic write that stores the new secret removes it. A marker already
-  present keeps its first instant. A write that fails stops the run before the
-  key exchange, with the shared secret unchanged; the file may still hold the
-  marker, since the write renames into place before it flushes the directory.
+  owner-only, atomic-rename write as the rotation itself, and only when the run
+  is the responder: the initiator stores the next secret first, so only the
+  responder can be left behind
+  ([PROTOCOL.md](PROTOCOL.md#the-rotation-at-the-terms-exchange)). The
+  rotated-secret write the terms exchange makes (`buildRotatedKeyFile`) holds
+  no marker, so the one atomic write that stores the new secret removes it. A
+  marker already present keeps its first instant, and stays until a recorded
+  outcome supersedes it, whichever role this run takes. A write that fails
+  stops the run before the key exchange, with the shared secret unchanged; the
+  file may still hold the marker, since the write renames into place before it
+  flushes the directory.
 - **What supersedes it.** A recorded outcome supersedes the marker: a key
   exchange that fails closed (a `"security"`-kind `ConnectionError`) removes
   it through the same write before the run reports that failure, while a
@@ -670,8 +675,9 @@ that began and has not saved its rotated secret.
   secret the run authenticates with, so the online `invite` and `accept`,
   whose key file is written after the handshake, write none.
 - **What it means.** A key file still holding it at the next run records a run
-  that stopped between the start of its key exchange and its save: the partner
-  may have completed the handshake and saved a secret this file does not hold.
+  that stopped, as the responder, between the start of its key exchange and its
+  save: the partner, which stores first, may have saved a secret this file does
+  not hold.
   `alcove exchange` states that at load, as a warning naming the instant, the
   re-invite remedy, and the confirm-first step for an authentication failure
   neither party's interruption explains. It is evidence for the benign desync

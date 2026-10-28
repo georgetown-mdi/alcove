@@ -65,6 +65,11 @@ import { parkWebSocketRelayConnection } from "../../../src/psi/transport/websock
 import { persistManagedRunPayloadReceiveFill } from "../../../src/psi/managed/managedExchangeStore.js";
 import { runManagedRerun } from "../../../src/psi/managed/managedRun.js";
 
+import {
+  MOCKED_NEXT_SECRET,
+  MOCKED_NEXT_SECRET_INPUTS,
+  storeRotationFirst,
+} from "../../utils/rotationStoringRunExchange.js";
 import { aeadWrappedPipe } from "../../utils/aeadWrappedPipe.js";
 
 import type { ManagedInputSource } from "../../../src/psi/managed/managedInputHandle.js";
@@ -114,6 +119,11 @@ const OUTPUTS: RunOutputs = vi.hoisted(() => ({
 /** The rotation-in-flight marker write the mocked orchestration hands the
  * handshake, so a case can place it among the wiring's other calls. */
 const markRotationInFlight = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+/** The durable rotation write the mocked orchestration hands the data
+ * exchange, which the run passes core's terms exchange as its store. */
+const persistNextSecret = vi.hoisted(() =>
+  vi.fn((_nextSecret: string) => Promise.resolve()),
+);
 // The record the stubbed orchestration hands the phases as its in-lock read;
 // unset, it hands back the record the driver was given.
 const lockedRead = vi.hoisted((): { record: unknown } => ({
@@ -133,18 +143,21 @@ vi.mock("../../../src/psi/managed/managedRun.js", async (importOriginal) => ({
           input: unknown,
           mark: () => Promise<void>,
           current: unknown,
-        ) => Promise<{ handshake: unknown }>;
-        dataExchange: (carried: unknown) => Promise<unknown>;
+        ) => Promise<unknown>;
+        dataExchange: (
+          carried: unknown,
+          persistNextSecret: (nextSecret: string) => Promise<void>,
+        ) => Promise<unknown>;
       },
     ) => {
       const current = lockedRead.record ?? record;
       const input = await seams.acquireInput(current);
-      const { handshake } = await seams.handshake(
+      const handshake = await seams.handshake(
         input,
         markRotationInFlight,
         current,
       );
-      const exchange = await seams.dataExchange(handshake);
+      const exchange = await seams.dataExchange(handshake, persistNextSecret);
       return { exchange, lastRun: { at: 0, outcome: "succeeded" } };
     },
   ),
@@ -230,7 +243,7 @@ vi.mock("../../../src/psi/authenticateExchange.js", () => ({
   authenticateExchange: vi.fn((connection: MessageConnection) =>
     Promise.resolve({
       sessionKey: new Uint8Array(32),
-      rotatedSecret: "next",
+      nextSecretInputs: MOCKED_NEXT_SECRET_INPUTS,
       applyEncryption: true,
       connection,
     }),
@@ -285,6 +298,7 @@ const mockedRendezvous = vi.mocked(beginManagedRendezvous);
 const mockedRecordFromFailure = vi.mocked(exchangeRecordFromFailure);
 const mockedRecordOwedButUnbuilt = vi.mocked(exchangeRecordOwedButUnbuilt);
 const mockedRunExchange = vi.mocked(runExchange);
+storeRotationFirst(mockedRunExchange);
 const mockedOpen = vi.mocked(openPeerMessageConnection);
 const mockedWaitForIncoming = vi.mocked(waitForIncomingConnection);
 
@@ -388,7 +402,7 @@ function makeStalledExchangeMc() {
 function wrappedHandshake(connection: MessageConnection) {
   return {
     sessionKey: new Uint8Array(32),
-    rotatedSecret: "next",
+    nextSecretInputs: MOCKED_NEXT_SECRET_INPUTS,
     applyEncryption: true,
     connection,
   };
@@ -555,13 +569,23 @@ describe("runManagedExchangeInBrowser", () => {
     );
   });
 
-  test("marks the rotation in flight once the channel opens and before the key exchange", async () => {
+  test("as the responder, marks the rotation in flight once the channel opens and before the key exchange", async () => {
     const { mc } = makeParkedCloseMc();
     mockedOpen.mockResolvedValue(mc);
-    acquireResources();
+    acquireResources("inviter");
 
-    await runDriver(new AbortController().signal);
+    await runDriver(
+      new AbortController().signal,
+      undefined,
+      recordForSide("inviter"),
+    );
 
+    expect(mockedAuthenticate).toHaveBeenCalledWith(
+      mc,
+      "responder",
+      expect.anything(),
+      undefined,
+    );
     expect(markRotationInFlight).toHaveBeenCalledTimes(1);
     const markedAt = markRotationInFlight.mock.invocationCallOrder[0];
     expect(mockedOpen.mock.invocationCallOrder[0]).toBeLessThan(markedAt);
@@ -570,15 +594,47 @@ describe("runManagedExchangeInBrowser", () => {
     );
   });
 
-  test("a marker that cannot be written stops the run before the key exchange", async () => {
+  test("as the initiator, writes no marker: it stores first, so it is never left behind", async () => {
+    const { mc } = makeParkedCloseMc();
+    mockedOpen.mockResolvedValue(mc);
+    acquireResources("acceptor");
+
+    await runDriver(new AbortController().signal);
+
+    expect(mockedAuthenticate).toHaveBeenCalledWith(
+      mc,
+      "initiator",
+      expect.anything(),
+      undefined,
+    );
+    expect(markRotationInFlight).not.toHaveBeenCalled();
+  });
+
+  test("hands core's terms exchange the durable rotation write as its store", async () => {
     const { mc } = makeParkedCloseMc();
     mockedOpen.mockResolvedValue(mc);
     acquireResources();
+
+    await runDriver(new AbortController().signal);
+
+    const options = mockedRunExchange.mock.calls[0][3];
+    expect(options.rotation?.inputs).toBe(MOCKED_NEXT_SECRET_INPUTS);
+    expect(persistNextSecret).toHaveBeenCalledWith(MOCKED_NEXT_SECRET);
+  });
+
+  test("a marker that cannot be written stops the run before the key exchange", async () => {
+    const { mc } = makeParkedCloseMc();
+    mockedOpen.mockResolvedValue(mc);
+    acquireResources("inviter");
     markRotationInFlight.mockRejectedValueOnce(new Error("quota exceeded"));
 
-    await expect(runDriver(new AbortController().signal)).rejects.toThrow(
-      "quota exceeded",
-    );
+    await expect(
+      runDriver(
+        new AbortController().signal,
+        undefined,
+        recordForSide("inviter"),
+      ),
+    ).rejects.toThrow("quota exceeded");
     expect(mockedAuthenticate).not.toHaveBeenCalled();
   });
 
@@ -2084,7 +2140,7 @@ describe("the relay registrations of a run whose allowed relays leave its own re
       expect.objectContaining({
         registrar: REGISTRAR,
         preRotationSecret: RECORD.sharedSecret,
-        rotatedSecret: "next",
+        rotatedSecret: MOCKED_NEXT_SECRET,
       }),
       expect.anything(),
     );

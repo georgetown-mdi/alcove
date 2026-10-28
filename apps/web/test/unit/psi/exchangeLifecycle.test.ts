@@ -39,6 +39,10 @@ import { authenticateExchange } from "../../../src/psi/authenticateExchange.js";
 import { openPeerMessageConnection } from "../../../src/psi/transport/peerMessageConnection.js";
 import { openWebSocketRelayConnection } from "../../../src/psi/transport/websocketRelayConnection.js";
 
+import {
+  MOCKED_NEXT_SECRET_INPUTS,
+  storeRotationFirst,
+} from "../../utils/rotationStoringRunExchange.js";
 import { aeadWrappedPipe } from "../../utils/aeadWrappedPipe.js";
 
 import type {
@@ -119,6 +123,7 @@ vi.mock("@alcove/core", async (importOriginal) => {
 const mockedOpen = vi.mocked(openPeerMessageConnection);
 const mockedAuthenticate = vi.mocked(authenticateExchange);
 const mockedRunExchange = vi.mocked(runExchange);
+storeRotationFirst(mockedRunExchange);
 const mockedRecordFromFailure = vi.mocked(exchangeRecordFromFailure);
 
 /** A record pair the lifecycle forwards without reading. */
@@ -217,7 +222,7 @@ function authenticatedOver(
 ): AuthenticatedExchange {
   return {
     sessionKey: new Uint8Array(32),
-    rotatedSecret: "rotated",
+    nextSecretInputs: MOCKED_NEXT_SECRET_INPUTS,
     applyEncryption: true,
     connection,
   };
@@ -287,7 +292,7 @@ describe("runExchangeLifecycle", () => {
     mockedRunExchange.mockResolvedValue(STUB_EXCHANGE_RESULT);
   });
 
-  test("success: reports the result with the handshake's rotated secret, then tears down", async () => {
+  test("success: reports the result with the next secret the terms exchange stored, then tears down", async () => {
     const { mc, close } = makeFakeMc();
     mockedOpen.mockResolvedValue(mc);
     const { acquire, peer } = makeResources();

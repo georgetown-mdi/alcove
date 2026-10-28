@@ -213,6 +213,70 @@ async function ecdhP256DeriveBits() {
   }
 }
 
+// The rotation's call shapes (packages/core/src/nextSecret.ts): a 32-byte value
+// drawn as an extractable HMAC key, and its AES-KW wrap and unwrap under a key
+// HKDF derives straight to a non-extractable AES-KW key. Recorded and not
+// gating until a document claims the module performs them.
+async function rotationValueDraw() {
+  const value = await crypto.subtle.generateKey(
+    { name: "HMAC", hash: "SHA-256", length: 256 },
+    true,
+    ["sign"],
+  );
+  const bytes = await crypto.subtle.exportKey("raw", value);
+  if (bytes.byteLength !== 32) {
+    throw new Error("the drawn value was not 32 bytes");
+  }
+  return value;
+}
+
+async function aesKwWrapRoundTrip() {
+  const base = await crypto.subtle.importKey(
+    "raw",
+    new Uint8Array(HKDF_IKM_BYTES).fill(0x5c),
+    { name: "HKDF" },
+    false,
+    ["deriveKey"],
+  );
+  const wrappingKey = (usage) =>
+    crypto.subtle.deriveKey(
+      {
+        name: "HKDF",
+        hash: "SHA-256",
+        salt: new Uint8Array(HKDF_SALT_BYTES),
+        info: encoder.encode(HKDF_INFO),
+      },
+      base,
+      { name: "AES-KW", length: 256 },
+      false,
+      [usage],
+    );
+  const value = await rotationValueDraw();
+  const wrapped = await crypto.subtle.wrapKey(
+    "raw",
+    value,
+    await wrappingKey("wrapKey"),
+    "AES-KW",
+  );
+  if (wrapped.byteLength !== 40) {
+    throw new Error("AES-KW returned an unexpected wrapped length");
+  }
+  const unwrapped = await crypto.subtle.unwrapKey(
+    "raw",
+    wrapped,
+    await wrappingKey("unwrapKey"),
+    "AES-KW",
+    { name: "HMAC", hash: "SHA-256", length: 256 },
+    true,
+    ["sign"],
+  );
+  const before = new Uint8Array(await crypto.subtle.exportKey("raw", value));
+  const after = new Uint8Array(await crypto.subtle.exportKey("raw", unwrapped));
+  if (!before.every((byte, index) => byte === after[index])) {
+    throw new Error("the AES-KW round trip returned other bytes");
+  }
+}
+
 async function rsaKeygenBelowFipsMinimum() {
   await crypto.subtle.generateKey(
     {
@@ -269,6 +333,11 @@ export async function measureEngagement() {
   // outcome is what decides whether the SSH key exchange has anything to
   // negotiate.
   operations.x25519_derive_bits = await attempt(x25519DeriveBits);
+  // The rotation's draw and wrap, read off an ENGAGED transcript, in which the
+  // default provider is unreachable, before any document says the module
+  // performs them.
+  operations.rotation_value_draw = await attempt(rotationValueDraw);
+  operations.aes_kw_wrap_round_trip = await attempt(aesKwWrapRoundTrip);
 
   const failures = [];
   for (const [key, description] of productLegs) {

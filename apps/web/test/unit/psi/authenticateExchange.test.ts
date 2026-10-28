@@ -8,10 +8,7 @@ import {
   runKex,
 } from "@alcove/core/testing";
 
-import {
-  authenticateExchange,
-  hasRecoveryHint,
-} from "../../../src/psi/authenticateExchange.js";
+import { authenticateExchange } from "../../../src/psi/authenticateExchange.js";
 
 import type * as AlcoveCore from "@alcove/core";
 import type { MessageConnection } from "@alcove/core";
@@ -356,13 +353,12 @@ describe("authenticateExchange", () => {
     expect(sent).toHaveLength(0);
   });
 
-  test("a secret that expires during the round-trip fails closed post-handshake as security", async () => {
-    // Drive the post-handshake branch by faking only Date: start the clock just
-    // before `expires`, run both ends over an in-memory pipe (real timers, so the
-    // handshake still completes), then advance past `expires` while the
-    // round-trip is in flight, so the post-handshake checks see the secret as
-    // expired. The advance runs synchronously, before either promise is
-    // awaited, since each pre-handshake check runs before any frame is sent.
+  test("a secret that expires during the round-trip completes the handshake and is handed to the terms exchange", async () => {
+    // Faking only Date: start the clock just before `expires`, run both ends
+    // over an in-memory pipe (real timers, so the handshake still completes),
+    // then advance past `expires` while the round-trip is in flight. Core
+    // checks it again at the terms exchange, before either store, so the
+    // handshake passes it on.
     const expires = "2030-01-01T00:00:00.000Z";
     vi.useFakeTimers({
       toFake: ["Date"],
@@ -382,27 +378,10 @@ describe("authenticateExchange", () => {
       expires,
     );
     vi.setSystemTime(new Date("2030-01-01T00:00:01.000Z"));
-    const [initiator, responder] = await Promise.allSettled([
-      pInitiator,
-      pResponder,
-    ]);
+    const [initiator, responder] = await Promise.all([pInitiator, pResponder]);
 
-    expect(initiator.status).toBe("rejected");
-    expect(responder.status).toBe("rejected");
-    if (initiator.status !== "rejected" || responder.status !== "rejected")
-      return;
-
-    for (const reason of [initiator.reason, responder.reason]) {
-      expect(reason).toBeInstanceOf(ConnectionError);
-      // Re-tagged as the non-retryable trust failure, not a transport drop.
-      expect((reason as ConnectionError).kind).toBe("security");
-      // The original cause's message (holding the round-trip wording) survives
-      // the re-wrap, as does its recovery-hint mark.
-      expect((reason as ConnectionError).message).toContain(
-        "during the key exchange",
-      );
-      expect(hasRecoveryHint(reason)).toBe(true);
-    }
+    expect(initiator.nextSecretInputs.expires).toBe(expires);
+    expect(responder.nextSecretInputs.expires).toBe(expires);
   });
 
   test("a not-yet-expired invitation proceeds: both ends derive the same session key", async () => {

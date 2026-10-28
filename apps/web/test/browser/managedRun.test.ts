@@ -24,6 +24,8 @@ import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 import { readManagedFailure } from "@psi/managed/managedFailureTiers";
 import { runManagedRerun } from "@psi/managed/managedRun";
 
+import { rotatingDataExchange } from "../utils/rotatingDataExchange";
+
 import type {
   ManagedExchangeRecord,
   NewManagedExchange,
@@ -79,13 +81,13 @@ function fakeSeams(
     ) => {
       await markRotationInFlight();
       order.push("handshake");
-      return { rotatedSecret, handshake: "carried" };
+      return "carried";
     },
-    dataExchange: async () => {
+    dataExchange: rotatingDataExchange(rotatedSecret, async () => {
       order.push("dataExchange");
       if (onDataExchange !== undefined) await onDataExchange();
       return "exchanged";
-    },
+    }),
   };
 }
 
@@ -230,9 +232,10 @@ describe("runManagedRerun: the runner's failure bookkeeping", () => {
     await expect(
       runManagedRerun(created, {
         acquireInput: () => Promise.resolve(undefined),
-        handshake: () => Promise.resolve({ rotatedSecret, handshake: "c" }),
-        dataExchange: () =>
+        handshake: () => Promise.resolve("c"),
+        dataExchange: rotatingDataExchange(rotatedSecret, () =>
           Promise.reject(new Error("data channel dropped mid-exchange")),
+        ),
       }),
     ).rejects.toThrow("data channel dropped mid-exchange");
 
@@ -284,8 +287,8 @@ describe("runManagedRerun: the runner's failure bookkeeping", () => {
       created,
       {
         acquireInput: () => Promise.resolve(undefined),
-        handshake: () => Promise.resolve({ rotatedSecret, handshake: "c" }),
-        dataExchange: async () => {
+        handshake: () => Promise.resolve("c"),
+        dataExchange: rotatingDataExchange(rotatedSecret, async () => {
           reachedExchange();
           await new Promise<void>((resolve) => {
             controller.signal.addEventListener("abort", () => resolve(), {
@@ -293,7 +296,7 @@ describe("runManagedRerun: the runner's failure bookkeeping", () => {
             });
           });
           throw new ConnectionError("connection closed", "closed");
-        },
+        }),
       },
       { aborted: () => controller.signal.aborted },
     );
@@ -364,12 +367,11 @@ describe("runManagedRerun: a rotation in flight across a crash", () => {
         handshake: async (_input, markRotationInFlight) => {
           await markRotationInFlight();
           storedAtKeyExchange = await getManagedExchange(created.id);
-          return {
-            rotatedSecret: generateSharedSecret(),
-            handshake: "carried",
-          };
+          return "carried";
         },
-        dataExchange: () => Promise.resolve("exchanged"),
+        dataExchange: rotatingDataExchange(generateSharedSecret(), () =>
+          Promise.resolve("exchanged"),
+        ),
       },
       { now: () => at },
     );
@@ -447,12 +449,11 @@ describe("runManagedRerun: a rotation in flight across a crash", () => {
         acquireInput: () => Promise.resolve({ input: true }),
         handshake: async (_input, markRotationInFlight) => {
           await markRotationInFlight();
-          return {
-            rotatedSecret: generateSharedSecret(),
-            handshake: "carried",
-          };
+          return "carried";
         },
-        dataExchange: () => Promise.resolve("exchanged"),
+        dataExchange: rotatingDataExchange(generateSharedSecret(), () =>
+          Promise.resolve("exchanged"),
+        ),
       },
       { now: () => doneAt },
     );

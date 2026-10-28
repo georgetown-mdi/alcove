@@ -5,8 +5,8 @@
  * logic in {@link ./managedRunRotate.ts} drives. The runner passes its
  * input-guard, handshake, and data-exchange phases in; the input guard gates
  * the handshake (its result is the handshake's argument), and the
- * data-exchange phase is a callback this module invokes only after the
- * durable persist resolves.
+ * data-exchange phase is handed the durable persist, which core's terms
+ * exchange awaits at this side's point in the store order.
  *
  * Four invariants this module owns (normative in
  * docs/spec/MANAGED_EXCHANGE_RECORD.md; docs/notes/managed-exchange-design.md
@@ -40,17 +40,17 @@
  *   where the stored secret is not that one
  *   ({@link ManagedExchangeSecretChangedError}): a safety check.
  *
- * - **Persist-before-success.** A rotation-in-flight marker is written
- *   durably before the key exchange starts, and the rotated secret is written
- *   durably (a strict-durability transaction awaited to `complete`, which
- *   removes the marker) before the data exchange begins.
- *   {@link runRotationCriticalSection} enforces the ordering, resolving the
- *   gate the data exchange needs only after the persist commits;
- *   {@link persistManagedExchangeRotation} is the durable, field-scoped write
- *   it awaits.
+ * - **Persist-before-success.** On the responder only, a rotation-in-flight
+ *   marker is written durably before the key exchange starts. The next secret
+ *   is written durably (a strict-durability transaction awaited to
+ *   `complete`, which removes the marker) inside the terms exchange: the
+ *   initiator's before it sends `proceed`, the responder's on reading it,
+ *   both before any payload round. {@link storeRotatedSecret} is the write the
+ *   terms exchange awaits; {@link persistManagedExchangeRotation} is the
+ *   durable, field-scoped write beneath it.
  */
 
-import { getLogger } from "@alcove/core";
+import { InternalConsistencyError, getLogger } from "@alcove/core";
 
 import {
   ManagedExchangeSecretChangedError,
@@ -62,7 +62,7 @@ import {
 import { ManagedInputError, managedInputLastRun } from "./managedInputGuard";
 import {
   RotationPersistError,
-  runRotationCriticalSection,
+  storeRotatedSecret,
   succeededRun,
 } from "./managedRunRotate";
 import { enterManagedWindowRun } from "./managedWindowRuns";
@@ -97,8 +97,8 @@ export class ManagedExchangeNotRunnableError extends Error {
 
 /** The input, handshake, and data-exchange phases the runner supplies to
  * {@link runManagedExchange}. The persist and lock are this module's; the runner
- * cannot reach the data exchange before the persist resolves, nor the handshake
- * before the input is acquired and validated. */
+ * cannot reach the handshake before the input is acquired and validated, and
+ * stores the next secret only through the persist this module hands it. */
 interface ManagedExchangeRunPhases<TInput, THandshake, TExchange> {
   /** The record whose secret this run rotates. Its `id` keys the lock, the
    * read of the record the run uses, and the field-scoped store writes. */
@@ -125,23 +125,28 @@ interface ManagedExchangeRunPhases<TInput, THandshake, TExchange> {
    * lock, whose terms the input is validated against.
    */
   acquireInput: (current: RunnableManagedExchangeRecord) => Promise<TInput>;
-  /** Run the authenticated handshake and yield the rotated secret (from the
-   * `AuthResult`) plus whatever the data exchange needs. Runs inside the lock, after
+  /** Run the authenticated handshake and yield whatever the data exchange
+   * needs, the next secret's inputs among them. Runs inside the lock, after
    * the input guard passed; receives the acquired input, the durable
-   * rotation-in-flight marker write it must await after the partner connects
-   * and before the key exchange starts, and the record as read inside the lock,
-   * whose secret it authenticates with. */
+   * rotation-in-flight marker write it must await, as the run's responder
+   * only, after the partner connects and before the key exchange starts, and
+   * the record as read inside the lock, whose secret it authenticates with. */
   handshake: (
     input: TInput,
     markRotationInFlight: () => Promise<void>,
     current: RunnableManagedExchangeRecord,
-  ) => Promise<{ rotatedSecret: string; handshake: THandshake }>;
-  /** Begin and complete the data exchange -- reachable only after the durable
-   * persist resolves. Receives the value the handshake produced. */
-  dataExchange: (handshake: THandshake) => Promise<TExchange>;
+  ) => Promise<THandshake>;
+  /** Begin and complete the data exchange. Receives the value the handshake
+   * produced and the durable rotation write, which the data exchange hands
+   * core's terms exchange as its store; it resolves only once the next secret
+   * is committed. */
+  dataExchange: (
+    handshake: THandshake,
+    persistNextSecret: (nextSecret: string) => Promise<void>,
+  ) => Promise<TExchange>;
   /** Invoked once, synchronously, at the instant the data exchange begins
-   * (after the persist resolves, immediately before {@link dataExchange},
-   * with the lock still held). Marks the phase boundary a failure classifier
+   * (immediately before {@link dataExchange}, with the lock still held).
+   * Marks the phase boundary a failure classifier
    * reads to tell a pre-data-exchange failure from one that could postdate
    * the first peer-visible payload: a `security`-kind error before this
    * fires is the handshake failing closed, one after it can arise on a
@@ -186,11 +191,12 @@ export interface ManagedExchangeRunResult<TExchange> {
  * Run a managed exchange's run+rotate critical section (the module header
  * states the four invariants this enforces). The single-writer lock covers
  * "begin this run" through the success stamp, so the payload exchange runs
- * inside it; the data exchange still cannot begin before the persist resolves.
+ * inside it; no payload round begins before the persist resolves, since the
+ * terms exchange awaits it.
  *
  * The read of the record the run uses, then the input guard, run first inside
  * the lock and refuse before any connection is opened, the guard recording the
- * benign input `lastRun`. A persist failure after rotation records a
+ * benign input `lastRun`. A persist failure records a
  * `storage`-kind `lastRun`; a handshake or data-exchange failure propagates
  * unchanged for the runner to classify. Every bookkeeping write states
  * `runStartedAtMs`, so the store's write rules
@@ -266,64 +272,74 @@ export async function runManagedExchange<TInput, THandshake, TExchange>(
       }
       throw error;
     }
-    // A persist failure after rotation is the one failure this section
-    // records itself: the `storage` bookkeeping steers the next handshake
-    // failure to the benign tier. Every other failure is the runner's to
-    // classify and record.
-    const gate = await runRotationCriticalSection<THandshake>({
-      handshake: () =>
-        phases.handshake(
-          input,
-          async () => {
-            passMarker?.();
-            await markManagedExchangeRotationInFlight(
-              record.id,
-              new Date(now()).toISOString(),
-            );
-          },
-          current,
-        ),
-      persist: (writeBack: RotationWriteBack) =>
-        persistRotation(
+    const handshake = await phases.handshake(
+      input,
+      async () => {
+        passMarker?.();
+        await markManagedExchangeRotationInFlight(
           record.id,
-          current.sharedSecret,
-          writeBack,
-          current.relayRegistrar !== undefined
-            ? new Date(now()).toISOString()
-            : undefined,
-        ),
-      tokenMaxAgeDays: current.tokenMaxAgeDays,
-      now,
-    }).catch(async (error: unknown) => {
-      // The safety check refused the rotation: the record is the replacing
-      // write's, so this run stamps nothing on it.
-      if (
-        error instanceof RotationPersistError &&
-        error.cause instanceof ManagedExchangeSecretChangedError
-      )
-        throw error.cause;
-      if (error instanceof RotationPersistError) {
-        // Best-effort: the storage subsystem that just failed the rotation
-        // persist may fail this write too, and a second storage rejection must
-        // never replace the RotationPersistError -- the runner's instanceof
-        // classification, and the storage lastRun the error itself holds,
-        // depend on the original propagating.
-        try {
-          await recordLastRun(record.id, error.lastRun, runStartedAtMs);
-        } catch {
-          // Swallowed: error.lastRun still reaches the runner on the rethrow.
-        }
-      }
-      throw error;
-    });
+          new Date(now()).toISOString(),
+        );
+      },
+      current,
+    );
+    let rotatedSecret: string | undefined;
+    const persistNextSecret = async (nextSecret: string): Promise<void> => {
+      rotatedSecret = await storeRotatedSecret(
+        {
+          persist: (writeBack: RotationWriteBack) =>
+            persistRotation(
+              record.id,
+              current.sharedSecret,
+              writeBack,
+              current.relayRegistrar !== undefined
+                ? new Date(now()).toISOString()
+                : undefined,
+            ),
+          tokenMaxAgeDays: current.tokenMaxAgeDays,
+          now,
+        },
+        nextSecret,
+      );
+    };
     // The peer-visible data exchange and the success stamp run inside the
     // single-writer window, so no second context can exchange against the
     // partner for this record while this one is. The boundary is marked
     // before the first peer-visible payload, so a classifier can tell a
     // handshake failure from one that could postdate it.
     phases.onDataExchangeStart?.();
-    const exchange = await phases.dataExchange(gate.handshake);
-    const { rotatedSecret } = gate;
+    // A persist failure is the one failure this section records itself: the
+    // `storage` bookkeeping steers the next handshake failure to the benign
+    // tier. Every other failure is the runner's to classify and record.
+    const exchange = await phases
+      .dataExchange(handshake, persistNextSecret)
+      .catch(async (error: unknown) => {
+        // The safety check refused the rotation: the record is the replacing
+        // write's, so this run stamps nothing on it.
+        if (
+          error instanceof RotationPersistError &&
+          error.cause instanceof ManagedExchangeSecretChangedError
+        )
+          throw error.cause;
+        if (error instanceof RotationPersistError) {
+          // Best-effort: the storage subsystem that just failed the rotation
+          // persist may fail this write too, and a second storage rejection
+          // must never replace the RotationPersistError -- the runner's
+          // instanceof classification, and the storage lastRun the error
+          // itself holds, depend on the original propagating.
+          try {
+            await recordLastRun(record.id, error.lastRun, runStartedAtMs);
+          } catch {
+            // Swallowed: error.lastRun still reaches the runner on the rethrow.
+          }
+        }
+        throw error;
+      });
+    // Every authenticated run that completes stored its next secret.
+    if (rotatedSecret === undefined)
+      throw new InternalConsistencyError(
+        `managed exchange ${record.id}: the exchange completed without storing a next secret`,
+      );
     const lastRun = succeededRun(now());
     try {
       await recordLastRun(record.id, lastRun, runStartedAtMs);

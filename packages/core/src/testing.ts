@@ -39,7 +39,13 @@ export {
 // checked-in known-answer vectors through the browser build the way the Node
 // suite runs them through the Node build. It stays out of the main entry point:
 // callers conduct a handshake with runKex, never by composing the schedule.
-export { computeKexKeys } from "./kex.js";
+export { computeKexKeys, initiatorConfirmTag } from "./kex.js";
+export {
+  deriveNextSecret,
+  importRotationValue,
+  unwrapRotationValue,
+  wrapRotationValue,
+} from "./nextSecret.js";
 
 // The cross-party host-key fingerprint comparison, so each app's test tree can
 // hold the warning it composes to that app's own display budget. It stays out

@@ -19,6 +19,11 @@ import {
   InternalConsistencyError,
   markPeerWaitTimeout,
 } from "./errors.js";
+import {
+  drawRotationValue,
+  unwrapRotationValue,
+  wrapRotationValue,
+} from "./nextSecret.js";
 
 // The authenticated key exchange that produces the exchange session key: an
 // ephemeral P-256 Diffie-Hellman pinned to the Noise NNpsk0 pattern plus an
@@ -139,12 +144,14 @@ const KexMsg2Schema: z.ZodType<KexMsg2> = z
 interface KexMsg3 {
   kexMsg: "3";
   confirm: string;
+  initiatorValue: string;
 }
 
 const KexMsg3Schema: z.ZodType<KexMsg3> = z
   .object({
     kexMsg: z.literal("3"),
     confirm: z.string(),
+    initiatorValue: z.string(),
   })
   .strict();
 
@@ -300,7 +307,6 @@ export async function computeKexKeys(
 ): Promise<{
   sessionKey: Uint8Array<ArrayBuffer>;
   confirmKey: Uint8Array<ArrayBuffer>;
-  initiatorConfirm: Uint8Array<ArrayBuffer>;
   responderConfirm: Uint8Array<ArrayBuffer>;
   handshakeHash: Uint8Array<ArrayBuffer>;
   chainingKey: Uint8Array<ArrayBuffer>;
@@ -334,10 +340,6 @@ export async function computeKexKeys(
   // explicitly in the HMAC message, so the tags are fully transcript-bound
   // without h also entering the key.
   const confirmKey = await hkdfDerive(s.ck, CONFIRM_KEY_LABEL, 32);
-  const initiatorConfirm = await hmacSha256(
-    confirmKey,
-    concatBytes(enc.encode(INITIATOR_CONFIRM_LABEL), s.h),
-  );
   const responderConfirm = await hmacSha256(
     confirmKey,
     concatBytes(enc.encode(RESPONDER_CONFIRM_LABEL), s.h),
@@ -345,11 +347,33 @@ export async function computeKexKeys(
   return {
     sessionKey,
     confirmKey,
-    initiatorConfirm,
     responderConfirm,
     handshakeHash: s.h,
     chainingKey: s.ck,
   };
+}
+
+/**
+ * The initiator's confirmation tag, which binds the wrapped initiator value
+ * after `h`, so a changed byte of either fails the tag. The wrapped value is not
+ * mixed into `h`: its wrapping key derives from the session key, which `h`
+ * feeds.
+ *
+ * @internal exported only for the known-answer-vector tests.
+ */
+export async function initiatorConfirmTag(
+  confirmKey: Uint8Array<ArrayBuffer>,
+  handshakeHash: Uint8Array<ArrayBuffer>,
+  wrappedInitiatorValue: Uint8Array<ArrayBuffer>,
+): Promise<Uint8Array<ArrayBuffer>> {
+  return hmacSha256(
+    confirmKey,
+    concatBytes(
+      enc.encode(INITIATOR_CONFIRM_LABEL),
+      handshakeHash,
+      wrappedInitiatorValue,
+    ),
+  );
 }
 
 // --- P-256 ECDH --------------------------------------------------------------
@@ -452,12 +476,17 @@ async function receiveHandshake(conn: MessageConnection): Promise<unknown> {
  *
  * `sessionKey` is a 32-byte key suitable for passing to `deriveAeadKey`
  * (exported from `./auth.ts`) to derive channel encryption keys, and to the
- * token-rotation HKDF. Both parties hold the same value after a successful
- * handshake.
+ * rotation's wrapping keys. Both parties hold the same value after a
+ * successful handshake.
  */
 interface KexResult {
   /** 32-byte session key. */
   sessionKey: Uint8Array<ArrayBuffer>;
+  /** The key-agreement output the next secret is derived over: `dh`. */
+  keyAgreementOutput: Uint8Array<ArrayBuffer>;
+  /** The initiator's 32-byte rotation value: drawn by the initiator, unwrapped
+   * from message 3 by the responder. */
+  initiatorValue: Uint8Array<ArrayBuffer>;
   /**
    * The negotiated decision to wrap the post-handshake connection in an
    * additional application-encryption layer, identical on both ends. The
@@ -551,7 +580,7 @@ export async function runKex(
     // responder's (msg2.reqEnc) is the responder flag. Binding both into the
     // transcript means a tampered responder flag yields a responder tag we
     // will reject below.
-    const { sessionKey, initiatorConfirm, responderConfirm } =
+    const { sessionKey, confirmKey, responderConfirm, handshakeHash } =
       await computeKexKeys(
         psk,
         myPublic,
@@ -574,13 +603,29 @@ export async function runKex(
       throw new AuthenticationError(GENERIC_FAILURE);
     }
 
+    // Drawn and sent only now: the initiator holds key confirmation once the
+    // responder's tag verifies, and sends no keying material before it.
+    const initiatorValue = await drawRotationValue();
+    const wrapped = await wrapRotationValue(
+      sessionKey,
+      "initiator",
+      initiatorValue,
+    );
+    const initiatorConfirm = await initiatorConfirmTag(
+      confirmKey,
+      handshakeHash,
+      wrapped,
+    );
     await conn.send({
       kexMsg: "3",
       confirm: toBase64Url(initiatorConfirm),
+      initiatorValue: toBase64Url(wrapped),
     } satisfies KexMsg3);
 
     return {
       sessionKey,
+      keyAgreementOutput: dh,
+      initiatorValue: initiatorValue.bytes,
       applyEncryption: requestEncryption || msg2.data.reqEnc,
     };
   } else {
@@ -607,7 +652,7 @@ export async function runKex(
     // initiator's flag (msg1.reqEnc) is the initiator flag and ours is the
     // responder flag; both are bound into the transcript before the tags are
     // computed, so the confirm we send below already commits to both flags.
-    const { sessionKey, initiatorConfirm, responderConfirm } =
+    const { sessionKey, confirmKey, responderConfirm, handshakeHash } =
       await computeKexKeys(
         psk,
         peerPublic,
@@ -624,31 +669,55 @@ export async function runKex(
       reqEnc: requestEncryption,
     } satisfies KexMsg2);
 
-    // Message 3: receive and verify the initiator's confirmation (or abort). No
-    // abort is sent on failure: msg3 is the last message, so the initiator has
-    // already moved on regardless of the outcome here.
-    const msg3 = z
-      .union([KexMsg3Schema, KexAbortSchema])
-      .safeParse(await receiveHandshake(conn));
+    // Message 3: receive and verify the initiator's confirmation (or abort).
     // A legitimate abort (the initiator rejected our tag, e.g. on a psk
     // mismatch) folds into the same generic failure as a malformed or wrong
     // msg3: from the responder's side it is an authentication failure either
-    // way, and the initiator has already moved on. This trades operator
-    // diagnosability for a single non-oracular outcome.
+    // way. This trades operator diagnosability for a single non-oracular
+    // outcome. Every other failure sends an abort: the initiator has wrapped
+    // the connection and waits for terms message 2, so it reads the cleartext
+    // abort as a `security` failure of the AEAD layer at once.
+    const msg3 = z
+      .union([KexMsg3Schema, KexAbortSchema])
+      .safeParse(await receiveHandshake(conn));
+    if (msg3.success && msg3.data.kexMsg === "abort") {
+      throw new AuthenticationError(GENERIC_FAILURE);
+    }
     if (!msg3.success || msg3.data.kexMsg !== "3") {
+      await sendAbort(conn);
       throw new AuthenticationError(GENERIC_FAILURE);
     }
     // No explicit tag length check: bytesEqual is total (see msg2 above).
+    const wrapped = decodeBase64Url(msg3.data.initiatorValue);
     const receivedConfirm = decodeBase64Url(msg3.data.confirm);
     if (
+      wrapped === undefined ||
       receivedConfirm === undefined ||
-      !bytesEqual(receivedConfirm, initiatorConfirm)
+      !bytesEqual(
+        receivedConfirm,
+        await initiatorConfirmTag(confirmKey, handshakeHash, wrapped),
+      )
     ) {
+      await sendAbort(conn);
+      throw new AuthenticationError(GENERIC_FAILURE);
+    }
+    // A consistency check rather than a second defense: the tag already covers
+    // the wrapped bytes, so only a holder of the pre-shared secret that wrapped
+    // under another key reaches a failure here.
+    const initiatorValue = await unwrapRotationValue(
+      sessionKey,
+      "initiator",
+      wrapped,
+    );
+    if (initiatorValue === undefined) {
+      await sendAbort(conn);
       throw new AuthenticationError(GENERIC_FAILURE);
     }
 
     return {
       sessionKey,
+      keyAgreementOutput: dh,
+      initiatorValue,
       applyEncryption: msg1.data.reqEnc || requestEncryption,
     };
   }

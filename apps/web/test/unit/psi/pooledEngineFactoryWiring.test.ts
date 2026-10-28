@@ -62,7 +62,12 @@ vi.mock("../../../src/psi/authenticateExchange.js", () => ({
   authenticateExchange: vi.fn((connection: MessageConnection) =>
     Promise.resolve({
       sessionKey: new Uint8Array(32),
-      rotatedSecret: "next",
+      nextSecretInputs: {
+        sessionKey: new Uint8Array(32),
+        keyAgreementOutput: new Uint8Array(32),
+        initiatorValue: new Uint8Array(32),
+        expires: undefined,
+      },
       applyEncryption: true,
       connection,
     }),
@@ -79,17 +84,22 @@ vi.mock("../../../src/psi/managed/managedRun.js", async (importOriginal) => ({
           input: unknown,
           mark: () => Promise<void>,
           current: unknown,
-        ) => Promise<{ handshake: unknown }>;
-        dataExchange: (carried: unknown, rotated: unknown) => Promise<unknown>;
+        ) => Promise<unknown>;
+        dataExchange: (
+          carried: unknown,
+          persistNextSecret: (nextSecret: string) => Promise<void>,
+        ) => Promise<unknown>;
       },
     ) => {
       const input = await seams.acquireInput(record);
-      const { handshake } = await seams.handshake(
+      const handshake = await seams.handshake(
         input,
         () => Promise.resolve(),
         record,
       );
-      const exchange = await seams.dataExchange(handshake, record);
+      const exchange = await seams.dataExchange(handshake, () =>
+        Promise.resolve(),
+      );
       return { exchange, lastRun: { at: 0, outcome: "succeeded" } };
     },
   ),
