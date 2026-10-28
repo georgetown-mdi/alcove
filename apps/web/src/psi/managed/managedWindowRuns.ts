@@ -6,14 +6,15 @@
  * installed app holds is not listed here, and nothing signals across windows.
  *
  * The run decides whether a stop lands, not the page. A stop is honored only
- * before the run writes its rotation-in-flight marker, and the run checks for
- * one inside the lock at that point ({@link ManagedWindowRun.passMarker}).
+ * before the run starts its key exchange, where a responder run writes its
+ * rotation-in-flight marker, and the run checks for one inside the lock at
+ * that point ({@link ManagedWindowRun.enterKeyExchange}), whatever its role.
  * Both the check and the stop are synchronous, so a stop asked before the
  * check ends the run and one asked after it is refused.
  */
 
-/** Raised by a run a stop ended before it wrote its rotation-in-flight
- * marker: nothing was rotated, and the partner saw no key exchange. */
+/** Raised by a run a stop ended before it started its key exchange: nothing
+ * was rotated, and the partner saw no key exchange. */
 export class ManagedRunStoppedError extends Error {
   constructor(id: string) {
     super(
@@ -23,9 +24,9 @@ export class ManagedRunStoppedError extends Error {
   }
 }
 
-/** Where a run of this window stands: `"waiting"` before its
- * rotation-in-flight marker, when a stop is honored, and `"exchanging"`
- * after it, when none is. */
+/** Where a run of this window stands: `"waiting"` before its key exchange
+ * starts, when a stop is honored, and `"exchanging"` from then on, when none
+ * is. */
 export type ManagedWindowRunStage = "waiting" | "exchanging";
 
 interface WindowRunState {
@@ -39,11 +40,12 @@ const windowRuns = new Map<string, WindowRunState>();
 /** A run's entry in this window's list, from taking the lock to releasing it. */
 export interface ManagedWindowRun {
   /**
-   * Called immediately before the rotation-in-flight marker is written: throws
-   * {@link ManagedRunStoppedError} where a stop was asked, and otherwise moves
-   * the run to `"exchanging"`, so no later stop is honored.
+   * Called immediately before the key exchange starts, ahead of a responder's
+   * rotation-in-flight marker: throws {@link ManagedRunStoppedError} where a
+   * stop was asked, and otherwise moves the run to `"exchanging"`, so no later
+   * stop is honored.
    */
-  passMarker: () => void;
+  enterKeyExchange: () => void;
   /** Drop the entry; called as the run releases the lock. */
   release: () => void;
 }
@@ -64,7 +66,7 @@ export function enterManagedWindowRun(
   };
   windowRuns.set(id, state);
   return {
-    passMarker: () => {
+    enterKeyExchange: () => {
       if (state.stopRequested) throw new ManagedRunStoppedError(id);
       state.stage = "exchanging";
     },

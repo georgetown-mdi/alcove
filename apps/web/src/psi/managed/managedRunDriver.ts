@@ -321,7 +321,7 @@ export function runManagedExchangeInBrowser(
       },
       // Inside the lock: open the side-dispatched rendezvous, authenticate the
       // partner, and yield the rotated secret plus the held exchange resources.
-      handshake: async (input, markRotationInFlight, current) => {
+      handshake: async (input, beginKeyExchange, current) => {
         const exchangeRole = handshakeRoleForRendezvousRole(current.side);
         assertManagedRendezvousPossible(current);
         // A registration the registrar did not confirm is retried after every
@@ -408,11 +408,10 @@ export function runManagedExchangeInBrowser(
           // this party on the retired secret while the partner holds the new
           // one. Inbound frames wait in the message connection meanwhile.
           const psiLibrary = await psiPromise;
-          // Durable before the key exchange can rotate anything, and only as
-          // the responder: the initiator stores first, so only a responder can
-          // be left behind by a run cut partway, and the marker is what the
-          // next visit reads.
-          if (exchangeRole === "responder") await markRotationInFlight();
+          // Past this point no stop is honored, whatever the role, and a
+          // responder's rotation-in-flight marker is durable before the key
+          // exchange can rotate anything.
+          await beginKeyExchange();
           // current.expires stays enforced at the handshake and at the terms
           // exchange's commit points, covering a bound that lapses between the
           // pre-connection expiry check and here; the orchestration re-maps that

@@ -768,12 +768,13 @@ test("filedrop: a shared-secret mismatch aborts the handshake, persisting no con
   expect(fs.readdirSync(inviteOut)).toEqual([]);
   expect(fs.readdirSync(acceptOut)).toEqual([]);
 
-  // Each aborted handshake emits one recovery advisory at ERROR -- the only
-  // intended WARN/ERROR of this run -- and which one follows the side's exit
-  // code: an authentication failure (77) rules out a retry with the existing
-  // key file, while a responder that timed out (69) may retry with it.
-  // Asserting the captured set proves intent (each is the known advisory) and
-  // guards against a genuine, unexpected error being suppressed unseen.
+  // Each side whose handshake failed authentication (77) emits one advisory
+  // at ERROR -- the only intended WARN/ERROR of this run -- ruling out a
+  // retry with the existing key file. A responder that timed out (69) in the
+  // key exchange emits none: the next secret is stored only at the terms
+  // exchange that follows, so the run rotated nobody. Asserting the captured
+  // set proves intent (each is the known advisory) and guards against a
+  // genuine, unexpected error being suppressed unseen.
   const advisories = capturedLogs.map((l) => l.message);
   const authenticationFailures = [inviteOutcome, acceptOutcome].filter(
     (outcome) =>
@@ -781,22 +782,12 @@ test("filedrop: a shared-secret mismatch aborts the handshake, persisting no con
       exitCodeForError(outcome.reason) === AUTHENTICATION_FAILED_EXIT_CODE,
   ).length;
   expect(authenticationFailures).toBeGreaterThan(0);
-  expect(advisories).toHaveLength(2);
-  expect(
-    advisories.filter((message) =>
-      message.includes(
-        "Authentication failed, and a retry with this key file fails the " +
-          "same way. Ask your partner for a new invitation",
-      ),
-    ),
-  ).toHaveLength(authenticationFailures);
-  expect(
-    advisories.filter((message) =>
-      message.includes(
-        "The key exchange was in progress when this error occurred.",
-      ),
-    ),
-  ).toHaveLength(2 - authenticationFailures);
+  expect(advisories).toHaveLength(authenticationFailures);
+  for (const message of advisories)
+    expect(message).toContain(
+      "Authentication failed, and a retry with this key file fails the " +
+        "same way. Ask your partner for a new invitation",
+    );
 }, 60_000);
 
 // --- Happy path: sftp ---------------------------------------------------------

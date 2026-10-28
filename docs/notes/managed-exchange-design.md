@@ -218,7 +218,7 @@ Letting them land during a run made every write the run makes after it takes the
 Held to the lock, neither lands inside a run's locked section, so the run's rotation and its relay registration need none of that.
 The cost is a wait: a re-invite or an enrollment is refused for as long as a run holds the exchange, up to a scheduled window.
 A run in the same app window that is still waiting for its partner can be stopped from the refused control, and the operation then goes through.
-The run decides whether the stop lands, checking for it inside the lock immediately before it writes its rotation-in-flight marker, so a stop never cuts a key exchange the partner has begun.
+The run decides whether the stop lands, checking for it inside the lock immediately before its key exchange starts, where a responder run writes its rotation-in-flight marker, so a stop never cuts a key exchange the partner has begun.
 The operation then requests the lock queued rather than with `ifAvailable`, and Web Locks grants queued requests in the order they were made, so the scheduled window's next attempt, which asks for its turn only once the stopped attempt has unwound, comes after the operation and runs on the secret it stored.
 A browser test measures that order on real Web Locks rather than assuming it.
 A run another window or the installed app holds gets no signal, since nothing reaches across windows; the refusal says how to end it, by closing that window or turning the schedule off.

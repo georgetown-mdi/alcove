@@ -85,9 +85,10 @@ interface ManagedRerunSeams<TInput, THandshake, TExchange> {
   acquireInput: (current: RunnableManagedExchangeRecord) => Promise<TInput>;
   /**
    * Open the side-dispatched rendezvous, authenticate the partner, and yield the
-   * value the data exchange consumes. Receives the acquired input, the
-   * rotation-in-flight marker write to await, as the run's responder only,
-   * once the partner has connected and before the key exchange starts, and the
+   * value the data exchange consumes. Receives the acquired input, the start
+   * of the key exchange to await once the partner has connected and before the
+   * key exchange starts, whatever the run's role -- it ends a run a stop came
+   * first for, and writes a responder's rotation-in-flight marker -- and the
    * record as read inside the run+rotate lock, whose secret it authenticates
    * with and whose side it dispatches on. The side
    * dispatch and the fresh peer-id derivation live here (see
@@ -96,7 +97,7 @@ interface ManagedRerunSeams<TInput, THandshake, TExchange> {
    */
   handshake: (
     input: TInput,
-    markRotationInFlight: () => Promise<void>,
+    beginKeyExchange: () => Promise<void>,
     current: RunnableManagedExchangeRecord,
   ) => Promise<THandshake>;
   /** Run the data exchange. Receives the handshake's output value and the
@@ -192,7 +193,7 @@ export interface ManagedRerunOptions {
  *   another same-origin context.
  * @throws {RotationPersistError} if the rotation write fails after the handshake.
  * @throws {ManagedRunStoppedError} if a stop through `options.stop` ended the
- *   run before its rotation-in-flight marker; nothing is recorded.
+ *   run before its key exchange started; nothing is recorded.
  */
 export async function runManagedRerun<TInput, THandshake, TExchange>(
   record: ManagedExchangeRecord,
@@ -237,9 +238,9 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
           throw new ManagedExchangeExpiredError(read.expires as string);
         return seams.acquireInput(read);
       },
-      handshake: async (input, markRotationInFlight, read) => {
+      handshake: async (input, beginKeyExchange, read) => {
         phase.handshakeBegan = true;
-        return seams.handshake(input, markRotationInFlight, read);
+        return seams.handshake(input, beginKeyExchange, read);
       },
       dataExchange: (handshake, persistNextSecret) =>
         seams.dataExchange(handshake, async (nextSecret) => {
@@ -384,8 +385,8 @@ function isPartnerRefusedSetAbort(error: unknown): boolean {
  *   write's safety check found the secret the run began from replaced, so the
  *   record is the replacing write's.
  * - {@link ManagedRunStoppedError}: unrecorded -- this window's re-invite or
- *   relay enrollment stopped the run before its rotation-in-flight marker,
- *   so nothing failed and the partner saw no key exchange.
+ *   relay enrollment stopped the run before its key exchange started, so
+ *   nothing failed and the partner saw no key exchange.
  * - {@link ManagedExchangeNotRunnableError}: records `custody-unreadable` --
  *   the stored copy the run would rotate could not be used, refused before
  *   the input or any connection, and it refuses the same way at the next run.

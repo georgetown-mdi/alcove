@@ -669,8 +669,13 @@ that began and has not saved its rotated secret.
   flushes the directory.
 - **What supersedes it.** A recorded outcome supersedes the marker: a key
   exchange that fails closed (a `"security"`-kind `ConnectionError`) removes
-  it through the same write before the run reports that failure, while a
-  crash, a stopped process, or a dropped connection leaves it.
+  it through the same write before the run reports that failure, and so does
+  a run that completed its key exchange and ended at the terms exchange with
+  neither side able to have stored the next secret -- before the responder
+  sent terms message 2, or on the initiator's abort in place of `proceed`,
+  which the initiator sends before any store. A crash, or a run that ends
+  before its key exchange completes or after terms message 2 on anything but
+  that abort, leaves it.
 - **Where it is not written.** It is written only over a key file holding the
   secret the run authenticates with, so the online `invite` and `accept`,
   whose key file is written after the handshake, write none.

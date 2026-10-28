@@ -938,15 +938,15 @@ const ROTATION_MARK_REMEDY =
   "exchange again.";
 
 /**
- * Remove the rotation-in-flight marker after a key exchange that failed closed:
- * this side did not rotate (the partner may have, which the authentication
- * failure's confirm-first guidance covers), and the failure is what the
- * operator reads, so the next run
- * does not treat it as a rotation that stopped partway. A crash or a dropped
- * connection never reaches here and leaves the marker. A write failure is
- * logged rather than thrown, so it cannot replace the authentication failure.
+ * Remove the rotation-in-flight marker after a run whose recorded outcome
+ * leaves nothing for the next run to report: a key exchange that failed
+ * closed, whose failure is what the operator reads, or a responder's run that
+ * ended at the terms exchange with neither side able to have stored the next
+ * secret ({@link rotationStanding}). Every other run, a crash among them,
+ * leaves the marker. A write failure is logged rather than
+ * thrown, so it cannot replace the run's own failure.
  */
-function clearRotationInFlightAfterFailedHandshake(
+function clearRotationInFlightMarker(
   keyFilePath: string,
   sharedSecret: string,
   log: ReturnType<typeof getLogger>,
@@ -960,6 +960,87 @@ function clearRotationInFlightAfterFailedHandshake(
       )} still records this key exchange as in flight, because removing ` +
         `that record failed: ${sanitizeErrorForDisplay(err)}`,
     );
+  }
+}
+
+/**
+ * Where a run's rotation left the two parties, read from how far it got in the
+ * store order (docs/spec/PROTOCOL.md, "The rotation at the terms exchange"):
+ * - `unchanged`: neither side can have stored the next secret.
+ * - `partner-may-lead`: this side, the responder, holds the secret the run
+ *   authenticated with, and the initiator may hold the next one.
+ * - `partner-may-lag`: this side, the initiator, stored the next secret, and
+ *   the responder may not have.
+ * - `both-stored`: both sides hold the next secret.
+ */
+type RotationStanding =
+  "unchanged" | "partner-may-lead" | "partner-may-lag" | "both-stored";
+
+/**
+ * The {@link RotationStanding} of `run`. The initiator stores first, so before
+ * its own store the responder cannot have stored; one whose store failed sent
+ * the abort that keeps the responder from storing. The responder stores only
+ * on reading `proceed`, which shows the initiator stored.
+ */
+function rotationStanding(run: RunLifecycle): RotationStanding {
+  if (run.handshakeRole === "responder") {
+    if (run.tokenRotated) return "both-stored";
+    return run.partnerMayHoldNextSecret || run.rotationStoreBegan
+      ? "partner-may-lead"
+      : "unchanged";
+  }
+  return run.tokenRotated ? "partner-may-lag" : "unchanged";
+}
+
+/**
+ * The rotation line printed beneath a failure, for a run whose standing is
+ * `standing`, or `undefined` where there is nothing to state: a run that
+ * rotated nobody leaves the existing secret valid on both sides. Where the
+ * failure's own next step rules out a retry (`retryRuledOut`), the line states
+ * the token state without prescribing one.
+ */
+function rotationLineAfterFailure(
+  standing: RotationStanding,
+  retryRuledOut: boolean,
+  postHandshakeStepFailed: boolean,
+): string | undefined {
+  const saved =
+    "The shared secret was already rotated and saved before this error.";
+  const behind =
+    "This side had not saved the next shared secret when this error " +
+    "occurred, and your partner may already have saved it";
+  switch (standing) {
+    case "unchanged":
+      return undefined;
+    case "partner-may-lead":
+      return retryRuledOut
+        ? `${behind}, so the next run may need a new invitation from your ` +
+            "partner."
+        : `${behind}. Retry the exchange with the existing key file; if ` +
+            "authentication fails on retry, ask your partner for a new " +
+            "invitation.";
+    case "partner-may-lag":
+    case "both-stored":
+      // No line beneath a step that rules out a retry: a responder's partner
+      // stored too, and an initiator does not track the responder's first
+      // frame after `proceed`, which shows the responder stored, so a line
+      // would name a new invitation a retry may not need.
+      if (retryRuledOut) return undefined;
+      // The post-handshake hook's own failure was logged when it happened, and
+      // what it writes -- e.g. the online invite/accept configuration -- may
+      // be what a retry would run against.
+      if (postHandshakeStepFailed)
+        return (
+          "The shared secret was rotated and saved, but a post-handshake " +
+          "persistence step failed earlier (logged above); resolve that " +
+          "before retrying, as the retry may have nothing to run against."
+        );
+      return standing === "partner-may-lag"
+        ? `${saved} Retry the exchange with the same key file; if ` +
+            "authentication fails on retry, ask your partner for a new " +
+            "invitation."
+        : `${saved} Your partner saved it too, so retry the exchange with ` +
+            "the same key file.";
   }
 }
 
@@ -1024,11 +1105,10 @@ async function authenticateRun(params: {
       keepOperatorSuppliedText(new Error(message.text), message),
     );
   }
-  // Set synchronously before the await so a signal arriving during the
-  // key-exchange round-trip or before saveKeyFile runs can distinguish the
-  // "handshake may have completed on the partner side" case from the
-  // "handshake never started" case.
+  // Set synchronously before the await, so a signal arriving during the key
+  // exchange reads this run's role in the store order.
   run.authStarted = true;
+  run.handshakeRole = role;
   // sessionKey (32 bytes, both parties derive the same value) keys the
   // per-direction AEAD encryption set up below, so every PSI frame
   // after this point is opaque on the wire to a file-sync admin and to
@@ -1047,11 +1127,7 @@ async function authenticateRun(params: {
     await authenticateConnection(mc, authParams, role, requestEncryption).catch(
       (err: unknown) => {
         if (isTrustBoundaryFailure(classifyFailure(err)))
-          clearRotationInFlightAfterFailedHandshake(
-            keyFilePath,
-            auth.sharedSecret,
-            log,
-          );
+          clearRotationInFlightMarker(keyFilePath, auth.sharedSecret, log);
         throw err;
       },
     );
@@ -1065,6 +1141,9 @@ async function authenticateRun(params: {
   run.rotation = {
     inputs: nextSecretInputs,
     store: (nextSecret) => saveNextSecret(nextSecret),
+    partnerMayHoldNextSecret: (mayHold) => {
+      run.partnerMayHoldNextSecret = mayHold;
+    },
   };
   async function saveNextSecret(rotatedSecret: string): Promise<void> {
     // buildRotatedKeyFile stamps `expires` = now + tokenMaxAgeDays days
@@ -1088,6 +1167,7 @@ async function authenticateRun(params: {
       // signal handler that reads tokenRotated sees either both pre-save
       // state (false) or both post-save state (true). Maintain this: do
       // not insert an await between saveKeyFile and the assignment.
+      run.rotationStoreBegan = true;
       saveKeyFile(keyFilePath, rotatedKeyFile, {
         exclusive: saveKeyFileExclusively === true,
       });
@@ -1244,12 +1324,18 @@ interface RunLifecycle {
    * signed-receipt step derives its replay binder from.
    */
   sessionKeyForReceipt: Uint8Array<ArrayBuffer> | undefined;
-  /**
-   * Set immediately before the key exchange is awaited. The partner may have
-   * completed and persisted a rotated token even where this side did not, so
-   * this is the weaker of the two rotation signals.
-   */
+  /** Set immediately before the key exchange is awaited. */
   authStarted: boolean;
+  /** This side's role in the key exchange, set with {@link authStarted}. */
+  handshakeRole: HandshakeRole | undefined;
+  /**
+   * Set as a responder sends its value at the terms exchange, after which the
+   * initiator may store the next secret, and cleared where the initiator's
+   * abort shows it stored nothing (`TermsRotation.partnerMayHoldNextSecret`).
+   */
+  partnerMayHoldNextSecret: boolean;
+  /** Set immediately before this side's rotated-token save begins. */
+  rotationStoreBegan: boolean;
   /** Set only after this side's own rotated-token save succeeded. */
   tokenRotated: boolean;
   /**
@@ -1823,6 +1909,9 @@ export async function runProtocol(
     secure: undefined,
     sessionKeyForReceipt: undefined,
     authStarted: false,
+    handshakeRole: undefined,
+    partnerMayHoldNextSecret: false,
+    rotationStoreBegan: false,
     tokenRotated: false,
     rotation: undefined,
     exchangeComplete: false,
@@ -1888,29 +1977,32 @@ export async function runProtocol(
   // and that a rejection from doCleanup (an uncaught throw added later)
   // never appears as an unhandled promise rejection, which
   // process.on("SIGINT") would otherwise silently discard.
-  // Three states share one message helper so SIGINT, SIGTERM, and the catch
-  // block stay consistent:
-  // - tokenRotated: our saveKeyFile completed; the partner also derived the
-  //   same new token but their save status is unknown.
-  // - authStarted && !tokenRotated: the key exchange may have completed on either side;
-  //   the partner may have persisted a rotated token even though we did not.
-  // - !authStarted: handshake never began; the existing token is still valid.
+  // SIGINT and SIGTERM share one helper, reading the same standing the catch
+  // block reads (rotationStanding); a run that rotated nobody states nothing.
   function logRotationStateOnInterrupt(reason: string): void {
-    if (run.tokenRotated) {
-      log.warn(
-        `The shared secret was already rotated and saved before ${reason}. ` +
-          "Retry with the same key file; if authentication fails on " +
-          "retry, ask your partner for a new invitation.",
-      );
-    } else if (run.authStarted) {
-      log.warn(
-        `The key exchange was in progress when ${reason}. Depending on ` +
-          "how far the handshake had progressed, the partner may have " +
-          "already completed it and saved the rotated token even though " +
-          "this side did not. Retry the exchange with the existing key " +
-          "file; if authentication fails on retry, ask your partner for a " +
-          "new invitation.",
-      );
+    const saved = `The shared secret was already rotated and saved before ${reason}.`;
+    switch (rotationStanding(run)) {
+      case "unchanged":
+        return;
+      case "partner-may-lead":
+        log.warn(
+          `This side had not saved the next shared secret when ${reason}, ` +
+            "and your partner may already have saved it. Retry the exchange " +
+            "with the existing key file; if authentication fails on retry, " +
+            "ask your partner for a new invitation.",
+        );
+        return;
+      case "partner-may-lag":
+        log.warn(
+          `${saved} Retry with the same key file; if authentication fails ` +
+            "on retry, ask your partner for a new invitation.",
+        );
+        return;
+      case "both-stored":
+        log.warn(
+          `${saved} Your partner saved it too, so retry with the same key file.`,
+        );
+        return;
     }
   }
   const psiWorkerExitWait: PsiWorkerExitWaitOptions = {
@@ -2192,34 +2284,21 @@ export async function runProtocol(
           ? "configured"
           : "configuration-unwritten",
     );
-    // tokenRotated=true means this party's saveKeyFile succeeded; the
-    // partner independently derived the same new token from the session
-    // key, but their disk write cannot be verified from here. "Retry
-    // without re-inviting" is the correct first step: if the partner also
-    // saved, retry succeeds; if their save failed, retry shows a
-    // shared-secret mismatch and both parties re-invite. Neither "both
-    // parties hold" (overstates certainty) nor "may already hold"
-    // (understates -- this party definitely saved) is said.
-    //
-    // authStarted && !tokenRotated handles the looser window: the key
-    // exchange may have completed on the partner side even though our own
-    // save did not run. Raised at error level (rather than warn) because
-    // the user's exchange is failing and needs the recovery hint shown
-    // prominently. An error marked as stating its own next step
-    // (statesItsOwnNextStep) already states the step for its fault, so
-    // the generic advisory is skipped rather than printed beneath a step
-    // it contradicts. Marked wherever that holds: the saveKeyFile-failure
-    // path below, authenticateConnection's own validation errors (token
-    // format, pre- and post-handshake expiry -- see auth.ts), and core's
-    // terminal transport refusals. For an unmarked internal fault or
-    // partner refusal the command boundary shows its fixed step
-    // (fixedNextStep), which rules out a retry, so that step replaces the
-    // post-rotation lines, both of which prescribe one. The authStarted
-    // line still prints for them, in a form that states the token state
-    // without prescribing a retry: a partner that may hold a rotated token
-    // is what the operator needs whatever the next step says. An
-    // authentication failure (exit 77) rules out a retry too, but no fixed
-    // step prints beneath it, so its authStarted line states the step.
+    // The rotation line below states what the store order leaves the two
+    // parties holding (rotationStanding), at error level because the
+    // exchange is failing. A new invitation is named only where the two may
+    // now hold different secrets; a run that rotated nobody states nothing.
+    // An error marked as stating its own next step (statesItsOwnNextStep)
+    // already states the step for its fault, so the line is skipped rather
+    // than printed beneath a step it contradicts. Marked wherever that
+    // holds: the saveKeyFile-failure path, authenticateConnection's own
+    // validation errors and the terms exchange's expiry refusal (see
+    // auth.ts and protocolSetup.ts), and core's terminal transport
+    // refusals. For an unmarked internal fault or partner refusal the
+    // command boundary shows its fixed step (fixedNextStep), which rules
+    // out a retry, so the line states the token state without prescribing
+    // one. An authentication failure (exit 77) rules out a retry too, but no
+    // fixed step prints beneath it, so its line states the step.
 
     // Walks the `cause` chain for a PeerAbortError, so the echo gate below
     // still recognizes one even behind a future wrap. The critical
@@ -2316,13 +2395,10 @@ export async function runProtocol(
     // distinguish the two, but it is not a peer-wait timeout and is never
     // tagged.
     //
-    // Emitted before the generic advisory below rather than instead of
-    // it. On the key-exchange side the `authStarted` advisory also fires;
-    // the two are compatible (both prescribe a retry) and the token-state
-    // context it holds -- the partner may have rotated and saved while
-    // this side did not -- is what the operator needs if the retry then
-    // fails authentication. Ordering puts the specific likely cause
-    // first.
+    // Emitted before the rotation line below rather than instead of it. A
+    // peer-wait or key-exchange timeout comes before either side can store,
+    // so no rotation line follows it today; the order puts the specific
+    // likely cause first if one does.
     if (
       connection.channel !== "webrtc" &&
       fileSyncRuntime.sweepExchangeFiles === true &&
@@ -2338,50 +2414,36 @@ export async function runProtocol(
       hintAlreadyEmitted ||
       authenticationFailed ||
       fixedNextStep(err) !== undefined;
-    if (run.tokenRotated) {
-      if (retryRuledOut) {
-        // No post-rotation line: each prescribes the retry ruled out.
-      } else if (run.onAuthenticatedError === undefined) {
-        log.error(
-          "The shared secret was already rotated and saved before this error. " +
-            "Retry the exchange with the same key file; if authentication " +
-            "fails on retry, ask your partner for a new invitation.",
-        );
-      } else {
-        // The rotated key is on disk, but the post-handshake persistence hook
-        // failed (onAuthenticatedError is set), so whatever it would have
-        // written -- e.g. the online invite/accept config -- is not on disk. A
-        // plain "retry the exchange without re-inviting" is misleading here:
-        // `alcove exchange` may have no config to run against. The specific
-        // hook failure was already logged at error level when it happened, so
-        // emit a corrected advisory rather than the clean-retry one, which would
-        // point the user at a recovery path that cannot succeed.
-        log.error(
-          "The shared secret was rotated and saved, but a post-handshake " +
-            "persistence step failed earlier (logged above); resolve that " +
-            "before retrying, as the retry may have nothing to run against.",
-        );
-      }
-    } else if (run.authStarted && !hintAlreadyEmitted) {
-      log.error(
-        authenticationFailed
-          ? "Authentication failed, and a retry with this key file fails " +
-              `the same way. ${NEW_INVITATION_REMEDY} ` +
-              "If the SFTP server's host key is not the pinned one, " +
-              "confirm the server's key with its administrator and pin " +
-              "that key instead."
-          : retryRuledOut
-            ? "Authentication started but the rotated token was not saved: " +
-              "your partner may already hold a rotated token, so the next " +
-              "run after the step above may need a fresh invitation from " +
-              "both sides."
-            : "The key exchange was in progress when this error occurred. " +
-              "Depending on how far the handshake had progressed, the " +
-              "partner may have already completed it and saved the rotated " +
-              "token even though this side did not. Retry the exchange " +
-              "with the existing key file; if authentication fails on " +
-              "retry, ask your partner for a new invitation.",
+    const standing = rotationStanding(run);
+    // A responder that wrote its marker and then reached the terms exchange,
+    // where the run ended with neither side able to have stored, has nothing
+    // for the next run to report.
+    if (
+      standing === "unchanged" &&
+      run.handshakeRole === "responder" &&
+      run.rotation !== undefined &&
+      auth !== null &&
+      build.trimmedKeyFilePath !== undefined
+    )
+      clearRotationInFlightMarker(
+        build.trimmedKeyFilePath,
+        auth.sharedSecret,
+        log,
       );
+    if (!hintAlreadyEmitted) {
+      const rotationLine =
+        standing === "unchanged" && run.authStarted && authenticationFailed
+          ? "Authentication failed, and a retry with this key file fails " +
+            `the same way. ${NEW_INVITATION_REMEDY} ` +
+            "If the SFTP server's host key is not the pinned one, " +
+            "confirm the server's key with its administrator and pin " +
+            "that key instead."
+          : rotationLineAfterFailure(
+              standing,
+              retryRuledOut,
+              run.onAuthenticatedError !== undefined,
+            );
+      if (rotationLine !== undefined) log.error(rotationLine);
     }
     // If a signal handler is mid-cleanup, it owns the exit code (130/143).
     // Swallowing the error here resolves runProtocol normally so the CLI

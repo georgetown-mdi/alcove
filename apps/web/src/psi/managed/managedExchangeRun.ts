@@ -30,7 +30,7 @@
  *   re-invite, relay enrollment and its stop, and an import replace take this
  *   lock, so none of them lands while an exchange is in flight. A run of
  *   this window is listed while it holds the lock ({@link ./managedWindowRuns.ts}),
- *   and a stop asked before its rotation-in-flight marker ends it.
+ *   and a stop asked before its key exchange starts ends it.
  *
  * - **A run uses the record as stored when it takes the lock.** The input
  *   guard and the handshake are handed the record read inside the locked
@@ -50,7 +50,11 @@
  *   durable, field-scoped write beneath it.
  */
 
-import { InternalConsistencyError, getLogger } from "@alcove/core";
+import {
+  InternalConsistencyError,
+  getLogger,
+  handshakeRoleForRendezvousRole,
+} from "@alcove/core";
 
 import {
   ManagedExchangeSecretChangedError,
@@ -127,13 +131,15 @@ interface ManagedExchangeRunPhases<TInput, THandshake, TExchange> {
   acquireInput: (current: RunnableManagedExchangeRecord) => Promise<TInput>;
   /** Run the authenticated handshake and yield whatever the data exchange
    * needs, the next secret's inputs among them. Runs inside the lock, after
-   * the input guard passed; receives the acquired input, the durable
-   * rotation-in-flight marker write it must await, as the run's responder
-   * only, after the partner connects and before the key exchange starts, and
-   * the record as read inside the lock, whose secret it authenticates with. */
+   * the input guard passed; receives the acquired input, the start of the key
+   * exchange it must await after the partner connects and before the key
+   * exchange starts, whatever its role, and the record as read inside the
+   * lock, whose secret it authenticates with. The start refuses a run a stop
+   * came first for, moves it past every later stop, and on a responder run
+   * writes the durable rotation-in-flight marker. */
   handshake: (
     input: TInput,
-    markRotationInFlight: () => Promise<void>,
+    beginKeyExchange: () => Promise<void>,
     current: RunnableManagedExchangeRecord,
   ) => Promise<THandshake>;
   /** Begin and complete the data exchange. Receives the value the handshake
@@ -155,8 +161,9 @@ interface ManagedExchangeRunPhases<TInput, THandshake, TExchange> {
   /** Lock acquisition discipline (queue vs. fail-fast). */
   lock?: ManagedExchangeLockOptions;
   /** The run's own controller. Given, the run is listed in this window's runs
-   * while it holds the lock ({@link enterManagedWindowRun}), and the marker
-   * write refuses with `ManagedRunStoppedError` where a stop came first. */
+   * while it holds the lock ({@link enterManagedWindowRun}), and the start of
+   * the key exchange refuses with `ManagedRunStoppedError` where a stop came
+   * first. */
   stop?: AbortController;
   /** The clock, injected so a test can pin the rotation and bookkeeping stamps.
    * Defaults to `Date.now`. */
@@ -219,8 +226,8 @@ export interface ManagedExchangeRunResult<TExchange> {
  *   never replaces this error.
  * @throws {ManagedExchangeSecretChangedError} if the rotation write's safety
  *   check finds the stored secret replaced; nothing is written or recorded.
- * @throws {ManagedRunStoppedError} from the marker write, where a stop through
- *   `stop` came first; nothing is written.
+ * @throws {ManagedRunStoppedError} from the start of the key exchange, where a
+ *   stop through `stop` came first; nothing is written.
  */
 export async function runManagedExchange<TInput, THandshake, TExchange>(
   phases: ManagedExchangeRunPhases<TInput, THandshake, TExchange>,
@@ -236,7 +243,7 @@ export async function runManagedExchange<TInput, THandshake, TExchange>(
           ? undefined
           : enterManagedWindowRun(record.id, phases.stop);
       try {
-        return await runLocked(listed?.passMarker);
+        return await runLocked(listed?.enterKeyExchange);
       } finally {
         listed?.release();
       }
@@ -245,7 +252,7 @@ export async function runManagedExchange<TInput, THandshake, TExchange>(
   );
 
   async function runLocked(
-    passMarker: (() => void) | undefined,
+    enterKeyExchange: (() => void) | undefined,
   ): Promise<ManagedExchangeRunResult<TExchange>> {
     const current = await readRecordToRun(record.id);
     // The input guard runs before the handshake opens any connection. A benign
@@ -275,11 +282,14 @@ export async function runManagedExchange<TInput, THandshake, TExchange>(
     const handshake = await phases.handshake(
       input,
       async () => {
-        passMarker?.();
-        await markManagedExchangeRotationInFlight(
-          record.id,
-          new Date(now()).toISOString(),
-        );
+        enterKeyExchange?.();
+        // The initiator stores the next secret first, so only a responder can
+        // be left behind by a run cut partway.
+        if (handshakeRoleForRendezvousRole(current.side) === "responder")
+          await markManagedExchangeRotationInFlight(
+            record.id,
+            new Date(now()).toISOString(),
+          );
       },
       current,
     );

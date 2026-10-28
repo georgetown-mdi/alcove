@@ -536,6 +536,15 @@ export interface TermsRotation {
   /** Durably store the next shared secret, base64url. */
   store: (nextSecret: string) => void | Promise<void>;
   /**
+   * Called on the responder only, with whether the initiator may now hold a
+   * next secret this side has not stored: `true` as it sends terms message 2
+   * with its value, after which the initiator may store at any point, and
+   * `false` on reading an abort in place of `proceed`, which the initiator
+   * sends before any store. A caller reads it to tell a run that rotated
+   * nobody from one that may have left this side behind.
+   */
+  partnerMayHoldNextSecret?: (mayHold: boolean) => void;
+  /**
    * A fixed responder value in place of a fresh one.
    *
    * @internal for the terms-envelope conformance vectors only: a fixed value
@@ -1271,6 +1280,7 @@ export async function exchangeTerms(
     if (rotation !== undefined) {
       await refuseIfSecretExpired(conn, rotation.inputs.expires, localTerms);
       rotationReply = await responderNextSecret(rotation);
+      rotation.partnerMayHoldNextSecret?.(true);
     }
 
     await conn.send({
@@ -1289,8 +1299,11 @@ export async function exchangeTerms(
     });
 
     const msg = await receiveParsed(conn, decisionMessage);
-    if (msg.decision === "abort")
+    if (msg.decision === "abort") {
+      // The initiator sends its abort before any store of its own.
+      rotation?.partnerMayHoldNextSecret?.(false);
       throw partnerAbortError(msg.abortReasons, agreed.terms, partnerTerms!);
+    }
 
     // `proceed` shows the initiator already holds the next secret, so this
     // store runs with no expiry check, whatever this side's clock reads.

@@ -34,11 +34,15 @@ import {
   ManagedInputError,
   managedInputFailureKind,
 } from "@psi/managed/managedInputGuard";
+import {
+  ManagedRunStoppedError,
+  managedWindowRunStage,
+  stopWaitingManagedWindowRun,
+} from "@psi/managed/managedWindowRuns";
 import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
 import { ManagedExchangeNotRunnableError } from "@psi/managed/managedExchangeRun";
 import { PartnerNoShowError } from "@psi/transport/waitForConnection";
 import { RotationPersistError } from "@psi/managed/managedRunRotate";
-import { stopWaitingManagedWindowRun } from "@psi/managed/managedWindowRuns";
 
 import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 
@@ -351,6 +355,97 @@ describe("runManagedRerun: a stop asked before the handshake", () => {
     ]);
   });
 });
+
+describe.each([
+  ["inviter", true],
+  ["acceptor", false],
+] as const)(
+  "runManagedRerun: the start of the key exchange, as the %s",
+  (side, writesMarker) => {
+    test("moves the run past every later stop, which it then refuses, and the run completes", async () => {
+      stubGrantingWebLocks();
+      storedRecord.value = record({ side });
+      const stop = new AbortController();
+      const stages: Array<string | undefined> = [];
+      const refusals: Array<string | undefined> = [];
+
+      const result = await runManagedRerun(
+        record({ side }),
+        {
+          acquireInput: () => Promise.resolve("rows"),
+          handshake: async (_input, beginKeyExchange) => {
+            stages.push(managedWindowRunStage("record-under-test"));
+            await beginKeyExchange();
+            stages.push(managedWindowRunStage("record-under-test"));
+            refusals.push(stopWaitingManagedWindowRun("record-under-test"));
+            return "carried";
+          },
+          dataExchange: rotatingExchange(() => {
+            refusals.push(stopWaitingManagedWindowRun("record-under-test"));
+            return Promise.resolve("exchanged");
+          }),
+        },
+        { stop },
+      );
+
+      expect(stages).toEqual(["waiting", "exchanging"]);
+      expect(refusals).toEqual(["exchanging", "exchanging"]);
+      expect(stop.signal.aborted).toBe(false);
+      expect(result.lastRun.outcome).toBe("succeeded");
+      expect(persistManagedExchangeRotation).toHaveBeenCalledTimes(1);
+    });
+
+    test(`${writesMarker ? "writes" : "writes no"} rotation-in-flight marker`, async () => {
+      stubGrantingWebLocks();
+      storedRecord.value = record({ side });
+
+      await runManagedRerun(record({ side }), {
+        acquireInput: () => Promise.resolve("rows"),
+        handshake: async (_input, beginKeyExchange) => {
+          await beginKeyExchange();
+          return "carried";
+        },
+        dataExchange: rotatingExchange(() => Promise.resolve("exchanged")),
+      });
+
+      expect(markManagedExchangeRotationInFlight).toHaveBeenCalledTimes(
+        writesMarker ? 1 : 0,
+      );
+    });
+
+    test("is refused where a stop came first, ending the run with nothing written", async () => {
+      stubGrantingWebLocks();
+      storedRecord.value = record({ side });
+      const stop = new AbortController();
+      let keyExchange = false;
+
+      const error = await runManagedRerun(
+        record({ side }),
+        {
+          acquireInput: () => Promise.resolve("rows"),
+          handshake: async (_input, beginKeyExchange) => {
+            expect(stopWaitingManagedWindowRun("record-under-test")).toBe(
+              "stopped",
+            );
+            await beginKeyExchange();
+            keyExchange = true;
+            return "carried";
+          },
+          dataExchange: () => {
+            throw new Error("the data exchange must not run");
+          },
+        },
+        { stop },
+      ).catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(ManagedRunStoppedError);
+      expect(keyExchange).toBe(false);
+      expect(markManagedExchangeRotationInFlight).not.toHaveBeenCalled();
+      expect(persistManagedExchangeRotation).not.toHaveBeenCalled();
+      expect(recordManagedExchangeLastRun).not.toHaveBeenCalled();
+    });
+  },
+);
 
 describe("runManagedRerun: the record a run uses", () => {
   test("a later run on a copy read before a rotation authenticates with the rotated secret", async () => {
@@ -904,15 +999,15 @@ describe("runManagedRerun: a store write that fails", () => {
   const storeAbort = () =>
     new DOMException("the transaction was aborted", "AbortError");
 
-  /** Seams for a run that reaches the data exchange, writing the
-   * rotation-in-flight marker the way the real handshake does. */
+  /** Seams for a run that reaches the data exchange, beginning the key
+   * exchange the way the real handshake does. */
   function completingSeams(): Parameters<
     typeof runManagedRerun<string, string, string>
   >[1] {
     return {
       acquireInput: () => Promise.resolve("rows"),
-      handshake: async (_input, markRotationInFlight) => {
-        await markRotationInFlight();
+      handshake: async (_input, beginKeyExchange) => {
+        await beginKeyExchange();
         return "carried";
       },
       dataExchange: rotatingExchange(() => Promise.resolve("exchanged")),

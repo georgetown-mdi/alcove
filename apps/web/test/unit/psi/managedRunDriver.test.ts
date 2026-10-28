@@ -116,9 +116,9 @@ const OUTPUTS: RunOutputs = vi.hoisted(() => ({
   resultsUrl: "blob:results",
 }));
 
-/** The rotation-in-flight marker write the mocked orchestration hands the
+/** The start of the key exchange the mocked orchestration hands the
  * handshake, so a case can place it among the wiring's other calls. */
-const markRotationInFlight = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+const beginKeyExchange = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 /** The durable rotation write the mocked orchestration hands the data
  * exchange, which the run passes core's terms exchange as its store. */
 const persistNextSecret = vi.hoisted(() =>
@@ -141,7 +141,7 @@ vi.mock("../../../src/psi/managed/managedRun.js", async (importOriginal) => ({
         acquireInput: (current: unknown) => Promise<unknown>;
         handshake: (
           input: unknown,
-          mark: () => Promise<void>,
+          beginKeyExchange: () => Promise<void>,
           current: unknown,
         ) => Promise<unknown>;
         dataExchange: (
@@ -152,11 +152,7 @@ vi.mock("../../../src/psi/managed/managedRun.js", async (importOriginal) => ({
     ) => {
       const current = lockedRead.record ?? record;
       const input = await seams.acquireInput(current);
-      const handshake = await seams.handshake(
-        input,
-        markRotationInFlight,
-        current,
-      );
+      const handshake = await seams.handshake(input, beginKeyExchange, current);
       const exchange = await seams.dataExchange(handshake, persistNextSecret);
       return { exchange, lastRun: { at: 0, outcome: "succeeded" } };
     },
@@ -569,46 +565,36 @@ describe("runManagedExchangeInBrowser", () => {
     );
   });
 
-  test("as the responder, marks the rotation in flight once the channel opens and before the key exchange", async () => {
-    const { mc } = makeParkedCloseMc();
-    mockedOpen.mockResolvedValue(mc);
-    acquireResources("inviter");
+  test.each([
+    ["inviter", "responder"],
+    ["acceptor", "initiator"],
+  ] as const)(
+    "as the %s, begins the key exchange once the channel opens and before authenticating as the %s",
+    async (side, role) => {
+      const { mc } = makeParkedCloseMc();
+      mockedOpen.mockResolvedValue(mc);
+      acquireResources(side);
 
-    await runDriver(
-      new AbortController().signal,
-      undefined,
-      recordForSide("inviter"),
-    );
+      await runDriver(
+        new AbortController().signal,
+        undefined,
+        recordForSide(side),
+      );
 
-    expect(mockedAuthenticate).toHaveBeenCalledWith(
-      mc,
-      "responder",
-      expect.anything(),
-      undefined,
-    );
-    expect(markRotationInFlight).toHaveBeenCalledTimes(1);
-    const markedAt = markRotationInFlight.mock.invocationCallOrder[0];
-    expect(mockedOpen.mock.invocationCallOrder[0]).toBeLessThan(markedAt);
-    expect(markedAt).toBeLessThan(
-      mockedAuthenticate.mock.invocationCallOrder[0],
-    );
-  });
-
-  test("as the initiator, writes no marker: it stores first, so it is never left behind", async () => {
-    const { mc } = makeParkedCloseMc();
-    mockedOpen.mockResolvedValue(mc);
-    acquireResources("acceptor");
-
-    await runDriver(new AbortController().signal);
-
-    expect(mockedAuthenticate).toHaveBeenCalledWith(
-      mc,
-      "initiator",
-      expect.anything(),
-      undefined,
-    );
-    expect(markRotationInFlight).not.toHaveBeenCalled();
-  });
+      expect(mockedAuthenticate).toHaveBeenCalledWith(
+        mc,
+        role,
+        expect.anything(),
+        undefined,
+      );
+      expect(beginKeyExchange).toHaveBeenCalledTimes(1);
+      const begunAt = beginKeyExchange.mock.invocationCallOrder[0];
+      expect(mockedOpen.mock.invocationCallOrder[0]).toBeLessThan(begunAt);
+      expect(begunAt).toBeLessThan(
+        mockedAuthenticate.mock.invocationCallOrder[0],
+      );
+    },
+  );
 
   test("hands core's terms exchange the durable rotation write as its store", async () => {
     const { mc } = makeParkedCloseMc();
@@ -622,11 +608,11 @@ describe("runManagedExchangeInBrowser", () => {
     expect(persistNextSecret).toHaveBeenCalledWith(MOCKED_NEXT_SECRET);
   });
 
-  test("a marker that cannot be written stops the run before the key exchange", async () => {
+  test("a key exchange start that fails, such as a marker that cannot be written, stops the run before the key exchange", async () => {
     const { mc } = makeParkedCloseMc();
     mockedOpen.mockResolvedValue(mc);
     acquireResources("inviter");
-    markRotationInFlight.mockRejectedValueOnce(new Error("quota exceeded"));
+    beginKeyExchange.mockRejectedValueOnce(new Error("quota exceeded"));
 
     await expect(
       runDriver(
@@ -638,7 +624,7 @@ describe("runManagedExchangeInBrowser", () => {
     expect(mockedAuthenticate).not.toHaveBeenCalled();
   });
 
-  test("a partner who never arrives leaves no marker to write", async () => {
+  test("a partner who never arrives leaves the key exchange unbegun", async () => {
     acquireResources("inviter");
     mockedWaitForIncoming.mockRejectedValue(
       new PartnerNoShowError("nobody arrived"),
@@ -650,7 +636,7 @@ describe("runManagedExchangeInBrowser", () => {
       recordForSide("inviter"),
     ).catch(() => undefined);
 
-    expect(markRotationInFlight).not.toHaveBeenCalled();
+    expect(beginKeyExchange).not.toHaveBeenCalled();
   });
 
   test("a partner who never arrives reaches the classifier unchanged", async () => {

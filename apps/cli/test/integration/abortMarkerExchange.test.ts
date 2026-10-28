@@ -141,9 +141,9 @@ interface AbortScenarioOptions {
   /** Distinguishes one attempt's output CSVs from the next attempt's. */
   tag?: string;
   /**
-   * Runs against the key files exactly as the previous attempt left them --
-   * still holding the token it rotated, which is what "retry without
-   * re-inviting" means. A first attempt provisions the pair from
+   * Runs against the key files exactly as the previous attempt left them,
+   * which is what "retry without re-inviting" means. A first attempt
+   * provisions the pair from
    * INITIAL_SECRET instead.
    */
   reuseKeyFiles?: boolean;
@@ -174,8 +174,8 @@ async function runAbortScenario(
     b: path.join(work, `${tag}b-out`),
   };
 
-  // The faulting party's catch emits an ERROR recovery advisory (its token
-  // rotated before the fault). Run the parties under withCapturedLogs so that
+  // The faulting party's catch may emit an ERROR rotation line (see
+  // expectFastPeerAbort). Run the parties under withCapturedLogs so that
   // intended line is captured for assertion below rather than printed to the
   // suite console; both per-party loggers are created (by name) inside this
   // wrapped call, so they bind to the capture's interceptor.
@@ -247,20 +247,26 @@ function expectFastPeerAbort(outcome: AbortScenarioOutcome): void {
   // repaired) and was not echoed by the waiting peer.
   expect(outcome.markerCount).toBe(1);
 
-  // Exactly one intended WARN/ERROR fired: the faulting party's recovery
-  // advisory (its token rotated before the synthetic fault, so it tells the
-  // operator to retry without re-inviting). The waiting peer's PeerAbortError is
-  // hint-marked and emits none. Asserting the captured set proves intent and
-  // guards against a different, genuine error slipping through unsuppressed.
-  expect(outcome.capturedLogs).toHaveLength(1);
-  expect(outcome.capturedLogs[0]).toContain(
-    "The shared secret was already rotated and saved before this error.",
-  );
+  // At most one intended WARN/ERROR fired, the faulting party's rotation
+  // line. The fault is that party's first send of the terms exchange, before
+  // either side stores the next secret: an initiator faulting on terms message
+  // 1 rotated nobody and states nothing, while a responder faulting on terms
+  // message 2 had sent its value, so it states that its partner may have
+  // saved the next secret. The waiting peer's PeerAbortError is hint-marked
+  // and emits none. Asserting the captured set proves intent and guards
+  // against a different, genuine error slipping through unsuppressed.
+  expect(outcome.capturedLogs.length).toBeLessThanOrEqual(1);
+  for (const line of outcome.capturedLogs)
+    expect(line).toContain(
+      "This side had not saved the next shared secret when this error " +
+        "occurred, and your partner may already have saved it. Retry the " +
+        "exchange with the existing key file",
+    );
 }
 
 // Measures the recovery the faulting party's advisory prescribes: a plain retry
 // in the same directory, no re-invite, both parties holding the token the
-// failed attempt rotated. Both parties draw fresh ids on the retry, so the
+// failed attempt left unrotated. Both parties draw fresh ids on the retry, so the
 // marker the failure left is named by neither of them and by neither hello; the
 // entry sweep clears it and the exchange runs to completion.
 async function expectPlainRetryToComplete(

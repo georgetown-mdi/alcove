@@ -60,8 +60,9 @@ function handshakeInputs(expires?: string): NextSecretInputs {
   };
 }
 
-/** A side's rotation, recording every next secret its store was handed and
- * what the side had sent when the store ran. */
+/** A side's rotation, recording every next secret its store was handed, what
+ * the side had sent when the store ran, and each report of whether the
+ * partner may hold a next secret this side has not stored. */
 function storing(
   inputs: NextSecretInputs,
   sent: Array<Record<string, unknown>>,
@@ -69,6 +70,7 @@ function storing(
 ) {
   const stored: string[] = [];
   const sentAtStore: number[] = [];
+  const partnerMayHold: boolean[] = [];
   const rotation: TermsRotation = {
     inputs,
     store: async (nextSecret) => {
@@ -76,8 +78,11 @@ function storing(
       if (fail !== undefined) throw fail;
       stored.push(nextSecret);
     },
+    partnerMayHoldNextSecret: (mayHold) => {
+      partnerMayHold.push(mayHold);
+    },
   };
-  return { rotation, stored, sentAtStore };
+  return { rotation, stored, sentAtStore, partnerMayHold };
 }
 
 /** A connection whose outgoing frames pass through `rewrite` first; a frame
@@ -487,6 +492,74 @@ describe("an expired secret at each commit point", () => {
       "fulfilled",
     ]);
     expect(run.responder.stored).toEqual(run.initiator.stored);
+  });
+});
+
+describe("whether the initiator may hold a next secret the responder has not stored", () => {
+  test("the responder reports it as it sends its value, and the initiator never does", async () => {
+    const run = await runRotating({});
+    expect(run.responder.partnerMayHold).toEqual([true]);
+    expect(run.initiator.partnerMayHold).toEqual([]);
+  });
+
+  test("a responder that refuses before terms message 2 never reports it", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW_MS);
+    const inputs = handshakeInputs(new Date(NOW_MS).toISOString());
+    const run = await runRotating({
+      initiatorInputs: { ...inputs, expires: undefined },
+      responderInputs: inputs,
+    });
+    expect(run.settled[1].status).toBe("rejected");
+    expect(run.responder.partnerMayHold).toEqual([]);
+  });
+
+  test("the initiator's abort in place of proceed withdraws it", async () => {
+    const run = await runRotating({
+      initiatorStoreFails: new Error("disk full"),
+    });
+    expect(rejection(run.settled[1])).toBeInstanceOf(ProtocolRefusalError);
+    expect(run.responder.partnerMayHold).toEqual([true, false]);
+  });
+
+  test("a lost proceed leaves it reported", async () => {
+    const [rawA, rawB] = createMessagePipe();
+    const inputs = handshakeInputs();
+    const initiator = storing(inputs, []);
+    const responder = storing(inputs, []);
+    const lost = rewriting(rawA, (frame) =>
+      frame.decision === "proceed" ? undefined : frame,
+    );
+    const responderRun = exchangeTerms(
+      rawB,
+      "responder",
+      terms,
+      1,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      responder.rotation,
+    );
+    responderRun.catch(() => {});
+    await exchangeTerms(
+      lost,
+      "initiator",
+      terms,
+      1,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      initiator.rotation,
+    );
+    await rawA.close();
+    await expect(responderRun).rejects.toThrow();
+    expect(responder.partnerMayHold).toEqual([true]);
   });
 });
 
