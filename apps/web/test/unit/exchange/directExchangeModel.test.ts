@@ -276,7 +276,7 @@ describe("previewInferredTerms", () => {
       ),
     ).toEqual([]);
     expect(DIRECT_RECOGNIZED_COLUMNS_NOTICE).toContain(
-      "An id column, such as id, case_id, or ClientID, is never sent",
+      "An id column Alcove recognizes, such as id, case_id, or ClientID, is never sent",
     );
   });
 

@@ -132,8 +132,9 @@ export const DIRECT_DEDUPLICATE_SIDE_NOTICE =
 export const DIRECT_RECOGNIZED_COLUMNS_NOTICE =
   "A column whose header Alcove recognizes as a linkage key, such as " +
   "first_name, date_of_birth, ssn, phone, email, or zip, is never sent: it is " +
-  "matched on or kept back. An id column, such as id, case_id, or ClientID, " +
-  "is never sent either. Letter case and spaces at either end of a header " +
+  "matched on or kept back. An id column Alcove recognizes, such as id, " +
+  "case_id, or ClientID, is never sent either. Letter case and spaces at " +
+  "either end of a header " +
   "do not matter, and a space, hyphen, or dot between words counts the same " +
   "as an underscore, so First Name and Social Security Number are " +
   "recognized. Every other column is sent, including a header Alcove does " +

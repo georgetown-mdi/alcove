@@ -124,12 +124,12 @@ export const QUICK_EXCHANGE_USAGE =
   "is not a linkage key or an id column. Columns whose names Alcove\n" +
   "recognizes as linkage keys (such as first_name, date_of_birth, ssn,\n" +
   "phone, email, zip) are never sent: the ones a built-in key uses are\n" +
-  "matched on and the rest are held back. Id columns (such as id,\n" +
-  "case_id, ClientID) are held back too. A column under another name\n" +
-  "is sent. The display shown before the run lists the columns it\n" +
-  "sends and the ones it holds back. Each step waits up to one poll\n" +
-  "interval (--polling-frequency), so even a small practice run takes a\n" +
-  "minute or more.";
+  "matched on and the rest are held back. Columns it recognizes as ids\n" +
+  "(such as id, case_id, ClientID) are held back too. A column under\n" +
+  "another name is sent. The display shown before the run lists the\n" +
+  "columns it sends and the ones it holds back. Each step waits up to\n" +
+  "one poll interval (--polling-frequency), so even a small practice\n" +
+  "run takes a minute or more.";
 
 /** Logged when a quick exchange starts. */
 export const QUICK_EXCHANGE_TRUST_NOTICE =
@@ -160,14 +160,14 @@ export function builder(cmd: Argv): Argv {
               "linkage key or an id column. Columns whose names Alcove\n" +
               "recognizes as linkage keys (such as first_name, date_of_birth, ssn,\n" +
               "phone, email, zip) are never sent: the ones a built-in key uses\n" +
-              "are matched on and the rest are held back. Id columns (such as id,\n" +
-              "case_id, ClientID) are held back too. A column under another\n" +
-              "name is sent. The display shown before the run lists the columns\n" +
-              "it sends and the ones it holds back. To choose the columns sent,\n" +
-              "write a configuration with 'alcove init URL INPUT_FILE' and run\n" +
-              "'alcove exchange'. Each step waits up to one poll interval\n" +
-              "(--polling-frequency), so even a small practice run takes a minute\n" +
-              "or more.\n" +
+              "are matched on and the rest are held back. Columns it recognizes\n" +
+              "as ids (such as id, case_id, ClientID) are held back too. A column\n" +
+              "under another name is sent. The display shown before the run lists\n" +
+              "the columns it sends and the ones it holds back. To choose the\n" +
+              "columns sent, write a configuration with\n" +
+              "'alcove init URL INPUT_FILE' and run 'alcove exchange'. Each step\n" +
+              "waits up to one poll interval (--polling-frequency), so even a\n" +
+              "small practice run takes a minute or more.\n" +
               "There is no shared secret, so anyone who administers the server or\n" +
               "shared folder could stand in for your partner; set up a recurring\n" +
               "exchange with 'alcove invite' and 'alcove accept' for one protected\n" +
