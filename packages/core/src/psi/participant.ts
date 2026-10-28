@@ -28,7 +28,9 @@ import {
   PSI_SET_TOO_LARGE_ABORT_REASON,
   receiveAfterTerms,
 } from "../partnerAbortFrame";
-import { decodePsiBinaryFrame } from "./psiBinaryFrame";
+import { decodeIndexTable, encodeIndexTable } from "./countOnlyPermutation";
+import type { CountOnlyDeclaredCounts } from "./countOnlyRounds";
+import { decodePsiBinaryFrame, receivePsiBinaryFrame } from "./psiBinaryFrame";
 import { InProcessPsiEngine, type PsiEngine } from "./psiEngine";
 import { PsiOperationStoppedError } from "./psiWorkerEngine";
 import {
@@ -248,6 +250,7 @@ export class PSIParticipant {
   private runningOperation:
     { operation: PsiOperation; elements: number } | undefined;
   private stopReason: () => Error | undefined = () => undefined;
+  private permutedRoundsMatched = 0;
 
   constructor(
     id: string,
@@ -515,12 +518,13 @@ export class PSIParticipant {
   }
 
   // A failure after some parts reached the engine frees the partial setup
-  // there; a failure to free it does not replace the original error.
+  // there; a failure to free it does not replace the original error. Returns
+  // the setup's element count.
   private async receiveServerSetupInParts(
     conn: MessageConnection,
-  ): Promise<void> {
+  ): Promise<number> {
     try {
-      await this.receiveServerSetupPieces(conn);
+      return await this.receiveServerSetupPieces(conn);
     } catch (error) {
       await this.engine.discardServerSetup().catch(() => undefined);
       throw error;
@@ -534,7 +538,7 @@ export class PSIParticipant {
   // the setup completes only once its last part has passed both.
   private async receiveServerSetupPieces(
     conn: MessageConnection,
-  ): Promise<void> {
+  ): Promise<number> {
     const limits = this.partnerSetLimits(this.elementBounds.setup);
     const ceiling = this.inboundElementCeiling(
       "serverSetup",
@@ -566,12 +570,13 @@ export class PSIParticipant {
         `${this.id}: a PSI setup was received with no part`,
       );
     const completedScan = scan;
-    this.assertScanWithinCeiling("serverSetup", ceiling, () =>
+    const elements = this.assertScanWithinCeiling("serverSetup", ceiling, () =>
       completedScan.end(),
     );
     await decodePsiBinaryFrame(this.id, "serverSetup", () =>
       this.engine.completeServerSetup(),
     );
+    return elements;
   }
 
   // Report one crypto operation's element count and duration around the engine
@@ -823,6 +828,122 @@ export class PSIParticipant {
       `${this.id}: receiving server data encrypted by both server and client`,
     );
     return this.computeIntersectionCardinality(serverResponse);
+  }
+
+  /**
+   * Runs one round of the count-only construction over every agreed key
+   * (docs/spec/PROTOCOL.md, PSI-C, The frames of one round): the sender's
+   * setup and index table, the receiver's request, the sender's permuted
+   * response. `set` has one element per record of this party, the receiver's
+   * in its request order. Each partner set is held to the record count
+   * `declared` states for it, and a refusal is a protocol error raised before
+   * the round goes on. The round returns nothing on either party: the
+   * receiver's engine keeps its pairs, and {@link finishPermutedCount}
+   * returns the count after the last round. Requires a participant whose
+   * engine was built `count-only-permuted`.
+   */
+  public async countPermutedRound(
+    conn: MessageConnection,
+    set: ReadonlyArray<string>,
+    declared: CountOnlyDeclaredCounts,
+  ): Promise<void> {
+    const isSender = this.config.role === "starter";
+    const ownRecords = isSender
+      ? declared.senderRecords
+      : declared.receiverRecords;
+    if (set.length !== ownRecords)
+      throw new InternalConsistencyError(
+        `${this.id}: a count-only round set has ${String(set.length)} elements for ${String(ownRecords)} declared records`,
+      );
+    if (isSender) await this.sendPermutedRound(conn, set, declared);
+    else await this.receivePermutedRound(conn, set, declared);
+  }
+
+  private async sendPermutedRound(
+    conn: MessageConnection,
+    set: ReadonlyArray<string>,
+    declared: CountOnlyDeclaredCounts,
+  ): Promise<void> {
+    await this.refuseOwnSetOverDecodeCap(conn, set.length);
+    const { setup, indexTable } = await this.reportProgress(
+      "createServerSetup",
+      set.length,
+      () => this.engine.createPermutedSetup(set),
+    );
+    await sendPsiSet(conn, setup);
+    await conn.send(encodeIndexTable(indexTable));
+
+    const request = await this.receiveRoundSet(conn, "request");
+    const elements = this.assertInboundElementBound(
+      "request",
+      request,
+      this.elementBounds.request,
+    );
+    if (elements !== declared.receiverRecords)
+      throw new PartnerProtocolRefusalError(
+        `${this.id} protocol error: the partner's PSI request has ${String(elements)} elements for its ${String(declared.receiverRecords)} declared records`,
+      );
+    const response = await this.reportProgress(
+      "processClientRequest",
+      elements,
+      () =>
+        decodePsiBinaryFrame(this.id, "request", () =>
+          this.engine.processClientRequest(request),
+        ),
+    );
+    await sendPsiSet(conn, response);
+  }
+
+  private async receivePermutedRound(
+    conn: MessageConnection,
+    set: ReadonlyArray<string>,
+    declared: CountOnlyDeclaredCounts,
+  ): Promise<void> {
+    const setupElements = await this.receiveServerSetupInParts(conn);
+    try {
+      if (setupElements !== declared.senderRecords)
+        throw new PartnerProtocolRefusalError(
+          `${this.id} protocol error: the partner's PSI setup has ${String(setupElements)} elements for its ${String(declared.senderRecords)} declared records`,
+        );
+      const frame = await receivePsiBinaryFrame(conn, this.id, "index table");
+      await this.engine.receiveIndexTable(
+        decodeIndexTable(this.id, frame, declared.senderRecords),
+      );
+    } catch (error) {
+      await this.engine.discardServerSetup().catch(() => undefined);
+      throw error;
+    }
+
+    await this.refuseOwnSetOverDecodeCap(conn, set.length);
+    const request = await this.createClientRequest(set);
+    await sendPsiSet(conn, request);
+
+    const response = await this.receiveRoundSet(conn, "response");
+    const elements = this.assertResponseWithinRequest(response);
+    await this.reportProgress("computeIntersectionCardinality", elements, () =>
+      decodePsiBinaryFrame(this.id, "response", () =>
+        this.engine.matchPermutedRound(response),
+      ),
+    );
+    this.permutedRoundsMatched += 1;
+  }
+
+  /**
+   * The count over every round {@link countPermutedRound} matched, from the
+   * receiver's engine. Refused as an internal fault unless exactly `rounds`
+   * rounds were matched, so an exchange ended before its last round yields no
+   * count. Receiver only.
+   */
+  public async finishPermutedCount(rounds: number): Promise<number> {
+    if (this.config.role !== "joiner")
+      throw new InternalConsistencyError(
+        `${this.id}: only the receiver holds a count-only count`,
+      );
+    if (this.permutedRoundsMatched !== rounds)
+      throw new InternalConsistencyError(
+        `${this.id}: the count was asked for after ${String(this.permutedRoundsMatched)} of the exchange's ${String(rounds)} count-only rounds`,
+      );
+    return this.engine.finishPermutedCount();
   }
 
   /**

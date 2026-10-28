@@ -107,6 +107,16 @@ const RECORDED_SITES: Readonly<Record<string, readonly string[]>> = {
   ],
   "packages/core/src/psi/countOnlyPermutation.ts :: assertResponseElementsDistinct > refusal":
     [PARTNER],
+  // A count-only round's partner set or index table is not of the record
+  // count the partner declared.
+  "packages/core/src/psi/countOnlyPermutation.ts :: decodeIndexTable": [
+    PARTNER,
+  ],
+  "packages/core/src/psi/participant.ts :: PSIParticipant.sendPermutedRound": [
+    PARTNER,
+  ],
+  "packages/core/src/psi/participant.ts :: PSIParticipant.receivePermutedRound":
+    [PARTNER],
   // The partner's PSI setup is not Raw, or not in ascending order.
   "packages/core/src/psi/psiWasmBudget.ts :: setupNotRawError": [PARTNER],
   "packages/core/src/psi/psiWasmBudget.ts :: setupNotStrictlyAscendingError": [
