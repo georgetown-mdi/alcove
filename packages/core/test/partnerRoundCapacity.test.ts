@@ -16,6 +16,7 @@ import {
   partnerRoundValues,
   runExchange,
 } from "../src/exchange";
+import { COUNT_ONLY_CONSTRUCTION } from "../src/exchange/countOnlyConstruction";
 import { roundOneSetOverPartnerCeilingMessage } from "../src/exchange/firstRoundCapacity";
 import {
   PSI_SET_REFUSED_ABORT_REASON,
@@ -36,6 +37,7 @@ import type {
   LinkageStrategy,
 } from "../src/config/linkageTermsSchema";
 import type { PreparedExchange, RunExchangeOptions } from "../src/exchange";
+import type { Algorithm } from "../src/types";
 import { prepared } from "./utils/support";
 
 // The checks a party makes once the terms are exchanged and before any PSI set
@@ -59,6 +61,7 @@ function preparedRows(
   linkageStrategy: LinkageStrategy = "cascade",
   swapped = false,
   sharedRows = 0,
+  algorithm: Algorithm = "psi",
 ): PreparedExchange {
   // The last `sharedRows` rows repeat the ones before them, so the round
   // drops each such value and sends `rowCount - 2 * sharedRows`.
@@ -74,6 +77,7 @@ function preparedRows(
     })),
     {
       terms: {
+        algorithm,
         linkageStrategy,
         linkageFields: [
           { name: "firstName", type: "first_name" },
@@ -115,6 +119,9 @@ async function runPair(params: {
   strategy?: LinkageStrategy;
   swapped?: boolean;
   options?: Partial<RunExchangeOptions>;
+  /** Both parties' algorithm, with the run options both parties take. */
+  algorithm?: Algorithm;
+  bothOptions?: Partial<RunExchangeOptions>;
 }) {
   const [local, partner] = createMessagePipe();
   const sent: Array<unknown> = [];
@@ -128,8 +135,10 @@ async function runPair(params: {
         params.localRows,
         params.strategy,
         params.swapped,
+        0,
+        params.algorithm,
       ),
-      { psiLibrary, ...params.options },
+      { psiLibrary, ...params.bothOptions, ...params.options },
     ),
     runExchange(
       withCeiling(partner, undefined, partnerSent),
@@ -140,8 +149,9 @@ async function runPair(params: {
         params.strategy,
         params.swapped,
         params.partnerSharedRows,
+        params.algorithm,
       ),
-      { psiLibrary },
+      { psiLibrary, ...params.bothOptions },
     ),
   ]);
   return { local: outcomes[0], partner: outcomes[1], sent, partnerSent };
@@ -525,4 +535,105 @@ test("a failure of the capacity check other than a capacity refusal propagates a
   expect(sent).not.toContainEqual(
     expect.objectContaining({ decision: "abort" }),
   );
+});
+
+describe("under the every-key count-only construction", () => {
+  // Every round's set holds one value per record (docs/spec/PROTOCOL.md,
+  // PSI-C), so a party is weighed at its record count however many of its
+  // values the shipped round would drop.
+  const countOnly = (everyKey: boolean) => ({
+    algorithm: "psi-c" as const,
+    bothOptions: everyKey
+      ? { [COUNT_ONLY_CONSTRUCTION]: "every-key" as const }
+      : {},
+  });
+
+  test("the partner's round is its record count", () => {
+    const terms = preparedRows("Partner Co", 12, "cascade", false, 4, "psi-c");
+    expect(partnerRoundValues(12, terms.linkageTerms)).toBe(12);
+  });
+
+  test("a sender partner over this party's ceiling is refused for its record count, before either party sends a set", async () => {
+    // 12 records, 8 of them sharing 4 values: the shipped round sends the 4
+    // values only one record holds, the every-key round 12.
+    const shipped = await runPair({
+      localRows: 5,
+      partnerRows: 12,
+      partnerSharedRows: 4,
+      ceiling: 11,
+      ...countOnly(false),
+    });
+    expect(shipped.local.status).toBe("fulfilled");
+    expect(shipped.partner.status).toBe("fulfilled");
+
+    const { local, partner, sent, partnerSent } = await runPair({
+      localRows: 5,
+      partnerRows: 12,
+      partnerSharedRows: 4,
+      ceiling: 11,
+      ...countOnly(true),
+    });
+    const refusal = (partner as PromiseRejectedResult).reason as Error;
+    expect(refusal).toBeInstanceOf(RoundSetLimitError);
+    expect((refusal as RoundSetLimitError).reason).toBe("over-partner-ceiling");
+    expect(statesItsOwnNextStep(refusal, { ownOnly: true })).toBe(true);
+    expect(refusal.message).toBe(
+      roundOneSetOverPartnerCeilingMessage(12, 11, true),
+    );
+    expect(refusal.message).toMatch(
+      /^Too large for your partner: a count-only exchange sends 12 values for every linkage key, one for each of your records, over the 11 your partner can receive in one PSI set,/,
+    );
+    expect(binaryFrames(partnerSent)).toEqual([]);
+    expect(binaryFrames(sent)).toEqual([]);
+    expect(partnerSent.at(-1)).toEqual({
+      decision: "abort",
+      abortReasons: [PSI_SET_TOO_LARGE_ABORT_REASON],
+    });
+    expect(
+      ((local as PromiseRejectedResult).reason as PeerAbortError).partnerReason,
+    ).toBe(PSI_SET_TOO_LARGE_ABORT_REASON);
+  });
+
+  test("a receiver partner over this party's ceiling is refused for its record count", async () => {
+    // The partner has fewer records, so it resolves to the PSI receiver.
+    const { partner, partnerSent } = await runPair({
+      localRows: 12,
+      partnerRows: 5,
+      partnerSharedRows: 1,
+      ceiling: 4,
+      ...countOnly(true),
+    });
+    expect(((partner as PromiseRejectedResult).reason as Error).message).toBe(
+      roundOneSetOverPartnerCeilingMessage(5, 4, true),
+    );
+    expect(binaryFrames(partnerSent)).toEqual([]);
+  });
+
+  test("a partner at this party's ceiling runs to completion", async () => {
+    const { local, partner } = await runPair({
+      localRows: 5,
+      partnerRows: 12,
+      partnerSharedRows: 4,
+      ceiling: 12,
+      ...countOnly(true),
+    });
+    expect(local.status).toBe("fulfilled");
+    expect(partner.status).toBe("fulfilled");
+  });
+
+  test("the caller's capacity check is handed the partner's record count", async () => {
+    const seen: Array<number> = [];
+    const { local, partner } = await runPair({
+      localRows: 5,
+      partnerRows: 12,
+      partnerSharedRows: 4,
+      ...countOnly(true),
+      options: {
+        checkPartnerRoundCapacity: (values) => void seen.push(values),
+      },
+    });
+    expect(seen).toEqual([12]);
+    expect(local.status).toBe("fulfilled");
+    expect(partner.status).toBe("fulfilled");
+  });
 });
