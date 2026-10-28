@@ -130,6 +130,9 @@ export const FIELD_DOCS: Array<{ path: Array<string>; lines: Array<string> }> =
         "For a scheduled run, also set a stable peer_id naming this party, so a",
         "file a killed run left behind stops the next run with the file named:",
         "  peer_id: agency-a",
+        "If the partner's file transfer refuses a file name it has passed",
+        "before, add fields Alcove fills in for each run, such as the UTC",
+        "date and time in agency-a_%Y%m%d-%H%M%S.",
       ],
     },
     {

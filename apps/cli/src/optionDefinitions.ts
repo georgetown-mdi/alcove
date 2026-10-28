@@ -602,9 +602,10 @@ export function addCommonBootstrapOptions(
       type: "string",
       describe:
         describe["peer-id"] ??
-        "stable identifier for this party; appears in filenames and logs. " +
-          "Requires timestamp_in_filename: true. Both parties must use " +
-          "distinct ids",
+        "identifier for this party; appears in filenames and logs. " +
+          "%Y %m %d %H %M %S (UTC), %K (16 random hex characters) and %% " +
+          "are filled in for each run. Requires timestamp_in_filename: " +
+          "true. Both parties must use distinct ids",
     })
     .option("timestamp-in-filename", {
       type: "boolean",

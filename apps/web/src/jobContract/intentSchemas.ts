@@ -20,13 +20,16 @@ import {
   MAX_TRANSFORM_PATTERN_LENGTH,
   MetadataSchema,
   OwnColumnSelectionSchema,
+  PEER_ID_RANDOM_HEX_LENGTH,
   SHARED_SECRET_REGEX,
   StandardizationSchema,
   csvDelimiterRefusal,
+  expandPeerIdTemplate,
   holdsPrivateKeyMaterial,
   isCsvDelimiterChoice,
   maxCodeUnits,
   normalizeCsvDelimiter,
+  parsePeerIdTemplate,
   relayLocatorSchema,
   safeParseFileSyncOptions,
 } from "@alcove/core";
@@ -41,6 +44,7 @@ import type {
   LinkageTerms,
   Metadata,
   OwnColumnSelection,
+  PeerIdFieldSource,
   RelayLocator,
   SigningConfig,
   Standardization,
@@ -111,6 +115,39 @@ export const PEER_ID_SHAPE_MESSAGE =
   "The party name must be a single label of ASCII letters (A-Z, a-z), digits, " +
   "spaces, '-', or '_', beginning and ending with a letter or digit. Write an " +
   "accented or non-Latin name in ASCII instead.";
+
+// Every field fills in digits or hex of a fixed width, so one expansion has
+// the shape and length of all of them.
+const SAMPLE_FIELD_SOURCE: PeerIdFieldSource = {
+  nowMs: () => 0,
+  randomHex: () => "0".repeat(PEER_ID_RANDOM_HEX_LENGTH),
+};
+
+/**
+ * Whether `value` is a `peer_id` holding fields (core's `peer_id` grammar)
+ * whose expansions are all admissible party names ({@link isAdmissiblePeerId}).
+ * The console's name control takes no fields: a value with fields reaches a
+ * console run only from a mounted configuration, and an exchange intent admits
+ * it there. Contract: docs/spec/SERVER_JOB_API.md, "The exchange intent".
+ */
+export function isAdmissiblePeerIdTemplate(value: string): boolean {
+  if (!value.includes("%")) return false;
+  const parsed = parsePeerIdTemplate(value);
+  if (!parsed.ok || parsed.parts.every((part) => "literal" in part))
+    return false;
+  return isAdmissiblePeerId(
+    expandPeerIdTemplate(parsed.parts, SAMPLE_FIELD_SOURCE),
+  );
+}
+
+/** The refusal the console guard reports for a mounted configuration's
+ * `peer_id` holding fields that fails {@link isAdmissiblePeerIdTemplate}. */
+export const PEER_ID_TEMPLATE_SHAPE_MESSAGE =
+  "peer_id in the configuration file holds fields. With them filled in it " +
+  "must be a single label of at most 64 ASCII letters (A-Z, a-z), digits, " +
+  "spaces, '-', or '_', beginning and ending with a letter or digit, and " +
+  "its fields must be ones Alcove fills in. Change peer_id in the file, or " +
+  "run this configuration with Alcove on the command line.";
 
 /** The control characters a retention note may not contain: C0, DEL and C1,
  * except the tab, LF and CR a multi-line note may hold. Contract:
@@ -183,10 +220,19 @@ const jobExchangeOptionsFields = {
   writeWithoutRenaming: z.boolean().optional(),
 };
 
-// Neither has a CLI flag, so only a configured run admits them.
+// Neither has a CLI flag, so only a configured run admits them. A configured
+// run's peer_id may also hold fields, from a mounted configuration; a
+// zero-setup run's comes from the console's own name control, which takes none.
 const configuredOnlyOptionsFields = {
   inactivityTimeoutMs: z.number().int().positive().optional(),
   unexpectedFiles: z.enum(["error", "warn", "ignore"]).optional(),
+  peerId: z
+    .string()
+    .refine(
+      (value) => isAdmissiblePeerId(value) || isAdmissiblePeerIdTemplate(value),
+      { message: PEER_ID_SHAPE_MESSAGE },
+    )
+    .optional(),
 };
 
 const jobExchangeOptionsSchema: z.ZodType<JobExchangeOptions> = z

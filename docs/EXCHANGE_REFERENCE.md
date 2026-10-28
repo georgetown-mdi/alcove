@@ -1035,10 +1035,39 @@ These options apply to both `sftp` and `filedrop` channels.
 | `poll_interval_ms` | integer | 5000 on `sftp`, 250 on `filedrop` | Milliseconds between checks for the partner's uploaded file. A positive integer no greater than 2147483647. Every wait for the partner's next file costs up to one interval, and an exchange makes many; on a small exchange it sets the pace, six to ten intervals per linking key ([FILE_SYNC.md](spec/FILE_SYNC.md#poll-interval-and-step-pace)). The `sftp` default stays within SFTP servers' anti-flood limits; lower it (for example to 100 ms) for CI or a demo against a controlled server. The `filedrop` default is shorter because a shared folder has no server to flood. The `--polling-frequency` CLI flag overrides it for a run and accepts a sub-second value such as `100ms` (see [CLI configuration](CLI.md#configuration)). |
 | `timestamp_in_filename` | boolean | false | When `true`, each outgoing message filename also encodes a UTC timestamp and a per-session sequence number (see [Message filenames](#message-filenames)), for filename-based logging where a sync tool stamps files with the transfer time. |
 | `lockless_rendezvous` | boolean | false | When `true`, the rendezvous uses an ack-handshake barrier (`<id>-hello-<bytes>.json` plus a zero-length [acknowledgment marker](#acknowledgment-markers) `<myId>-<peerId>-hello-<bytes>-ack.json`) instead of the default atomic lock-file race (`<id>-hello-<bytes>.json` + `<peer1>-<peer2>-lock.json`). Required on sync-mediated transports that lack atomic exclusive-create or deletion visibility, such as a cloud sync service reconciling two local mirrors. Both parties must set it identically; the setting is advertised in the hello, and a mismatch fails at rendezvous naming each side's setting ([FILE_SYNC.md](spec/FILE_SYNC.md#bilateral-configuration-detect-and-fail-never-negotiate)). The sync glob in lockless mode is `<myId>-*` (upload) / `<partnerId>-*` (download), which excludes in-flight `temp-*.tmp` writes. |
-| `peer_id` | string | - | A stable, readable identifier for this party, in every filename it writes and so in server-side logs and transcripts; a stable id also makes this party's runs linkable to each other in the partner's logs. Unset, a UUID is generated per run. **Recommended for unattended and scheduled runs**: a killed run's leftover is then refused at start-up by name (see [Directory exclusivity](#directory-exclusivity)). Requires `timestamp_in_filename: true`. The two parties' ids must differ, and neither may be the other's id extended by `-` (`"site"` and `"site-2"` are rejected at rendezvous; see [FILE_SYNC.md preconditions](spec/FILE_SYNC.md#preconditions-for-a-correct-exchange)). Spaces and `-` are permitted. At most 211 bytes of UTF-8, and the two ids together must keep every file name within 255 bytes. `"temp"` is reserved. Filesystem-unsafe characters (`/` and NUL everywhere; `<`, `>`, `:`, `"`, `\`, `|`, `?`, `*` on Windows NTFS) are not validated and may fail at the transport layer. |
+| `peer_id` | string | - | A stable, readable identifier for this party, in every filename it writes and so in server-side logs and transcripts; a stable id also makes this party's runs linkable to each other in the partner's logs. Unset, a UUID is generated per run. **Recommended for unattended and scheduled runs**: a killed run's leftover is then refused at start-up by name (see [Directory exclusivity](#directory-exclusivity)). Requires `timestamp_in_filename: true`. The two parties' ids must differ, and neither may be the other's id extended by `-` (`"site"` and `"site-2"` are rejected at rendezvous; see [FILE_SYNC.md preconditions](spec/FILE_SYNC.md#preconditions-for-a-correct-exchange)). Spaces and `-` are permitted. At most 211 bytes of UTF-8, and the two ids together must keep every file name within 255 bytes. `"temp"` is reserved. Filesystem-unsafe characters (`/` and NUL everywhere; `<`, `>`, `:`, `"`, `\`, `|`, `?`, `*` on Windows NTFS) are not validated and may fail at the transport layer. It may hold fields Alcove fills in for each run (`%Y`, `%m`, `%d`, `%H`, `%M`, `%S` from the UTC date and time, `%K` for 16 random hex characters, `%%` for a literal `%`), for a partner's file transfer that never passes the same file name twice; the rules above then apply to each run's id. See [Fields in `peer_id`](#fields-in-peer_id). |
 | `retain_files` | boolean | false | When `true`, no exchange file is deleted as a protocol step: the receiver writes an [acknowledgment marker](#acknowledgment-markers) for each message it consumes, the sender gates its next write on that marker, and the shared folder becomes a permanent transcript. For a transport that does not propagate deletions, or for an auditable record of what flowed each way. Mechanics: [FILE_SYNC.md](spec/FILE_SYNC.md#two-orthogonal-mode-axes); what to set beside it: [below](#setting-retain_files). |
 | `unexpected_files` | enum | mode-coupled (see description) | How to handle a file that appears in the shared folder *during* the message loop and is neither part of this exchange nor its own in-flight temporary write - another process sharing the directory, or a sync tool's conflict copy or partial download (see [Directory exclusivity](#directory-exclusivity)). One of `error` (fail with a usage error, exit 64, naming the file and directory), `warn` (log once per distinct file name and continue), or `ignore`. A local setting: the two parties may use different values. Unset, it is `error` on ordinary `sftp`/`filedrop` and `warn` when `retain_files` or `lockless_rendezvous` is set. A malformed *protocol* file (a peer-prefixed, message-shaped name a correct peer cannot produce) is always reported. |
 | `write_without_renaming` | boolean | false | When `true`, this party writes every exchange file directly under its final name, instead of writing a temporary `temp-*.tmp` file and renaming it into place. For a server that does not allow renames. Safe only where the shared folder never passes a file to your partner while it is still being written; see [below](#setting-write_without_renaming). The `--write-without-renaming` CLI flag sets it for one run. |
+
+#### Fields in `peer_id`
+
+Some file-transfer systems between two organizations route files by a fixed name prefix and drop any file whose name they have passed before. With a stable `peer_id`, the hello and abort files of every run have the same names, so from the second run on the partner never sees them. Fields in `peer_id` give each run its own id, while the text you write before the first field starts every file name this party writes, so a prefix rule on that text matches them all.
+
+**The fields.** Everything else in `peer_id` is written as is, and a `peer_id` with no `%` is used exactly as written.
+
+| Field | Fills in |
+| --- | --- |
+| `%Y` | the four-digit year |
+| `%m`, `%d` | the two-digit month and day |
+| `%H`, `%M`, `%S` | the two-digit hour, minute and second |
+| `%K` | 16 random lowercase hex characters |
+| `%%` | a literal `%` |
+
+The date and time are UTC whatever the machine's time zone, read once when the connection opens. Alcove fills the fields in only then, never when it reads or writes the configuration, so a saved `alcove.yaml` keeps `peer_id` as you wrote it. No other `%` field is accepted; there are no environment variables, user names or host names.
+
+**Examples.**
+
+- `peer_id: agency-a_%Y%m%d-%H%M%S` gives ids such as `agency-a_20261028-020000`. Two runs that start within the same second get the same id.
+- `peer_id: agency-a_%Y%m%d-%K` gives ids such as `agency-a_20261028-3f9a0c1d2b4e5f60`. The random field alone keeps about 5 million runs (one a minute for ten years) apart, with about a one-in-a-million chance that any two share an id; the derivation is in [FILE_SYNC.md](spec/FILE_SYNC.md#per-run-peer-id).
+
+In `alcove.yaml`, quote a `peer_id` that starts with `%`: YAML refuses an unquoted value that does. On the command line, `--peer-id` takes the same fields; a crontab line writes each `%` as `\%`, since cron reads a bare `%` as a line break.
+
+**What is checked when the configuration loads.** The run is refused (exit 64), naming the problem, when `peer_id` holds a `%` field not in the table or a single `%` at the end, or is longer than 211 bytes with its fields filled in. The console's own name field takes no fields; a configuration it opens may hold them, and is then refused if the filled-in name would not fit that field: more than 64 characters, or a character other than ASCII letters, digits, spaces, `-` and `_`.
+
+**A killed run's hello.** This party still recognizes its own leftover hello at start-up, because it knows its `peer_id`: a hello whose id matches `peer_id` with any values in its fields is refused as this party's own, as with a stable `peer_id` (see [Directory exclusivity](#directory-exclusivity)). A partner whose id matches your `peer_id` that way is taken for your own earlier run, so give the two parties ids that do not start alike.
+
+**The partner's view.** The partner sees, logs and adopts the full id of each run. The id-pair rules apply to the full ids: if your id is the partner's id followed by `-` and more text, both parties refuse the pair at rendezvous, as with any two ids. The text before the first field links your runs in the partner's logs, as a stable `peer_id` does.
 
 #### Setting `retain_files`
 
@@ -1149,7 +1178,7 @@ Both flags are CLI-only and apply to one invocation; they are not `connection.op
 - **Default (lock) rendezvous.** The run fails in the key exchange, naming the leftover as the likely cause, and consumes it; re-run.
 - **`lockless_rendezvous` (and therefore `retain_files`).** The run fails well inside the peer timeout, naming the file, and never deletes it. Re-run first: a slow partner completes the re-run, while residue fails it again. Then delete the named file or pass `--sweep-exchange-files`. With a `peer_timeout_ms` under about 30 seconds, or a handful of poll intervals, the check does not arm and the run reports the ordinary peer timeout ([FILE_SYNC.md](spec/FILE_SYNC.md#phase-1----entry-present-peer-hello)).
 
-Setting `peer_id` avoids this for unattended and scheduled runs: the leftover then holds your own id and is refused at start-up by name. Do not put `--sweep-exchange-files` on a schedule; an unattended run cannot assert on every invocation that no other session is using the directory.
+Setting `peer_id` avoids this for unattended and scheduled runs: the leftover then holds your own id and is refused at start-up by name, with or without [fields](#fields-in-peer_id) in it. Do not put `--sweep-exchange-files` on a schedule; an unattended run cannot assert on every invocation that no other session is using the directory.
 
 #### Filename grammar
 
@@ -1775,7 +1804,7 @@ The cells:
 | `connection.options.retain_files` | authored | authored | not applicable |
 | `connection.options.timestamp_in_filename` | authored | authored | not applicable |
 | `connection.options.lockless_rendezvous` | authored | authored | not applicable |
-| `connection.options.peer_id` | authored | authored | not applicable |
+| `connection.options.peer_id` | authored | authored (a value holding [fields](#fields-in-peer_id) opens and is carried; the name control takes none) | not applicable |
 | `connection.options.unexpected_files` | carried | authored | not applicable |
 | `connection.options.connection_per_poll` | authored | authored | not applicable |
 | `connection.options.write_without_renaming` | authored | authored | not applicable |

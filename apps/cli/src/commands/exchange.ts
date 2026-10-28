@@ -184,9 +184,11 @@ export function builder(cmd: Argv): Argv {
           "unattended run connect without the interactive trust prompt; a " +
           "server presenting a different key still fails closed",
         "peer-id":
-          "stable identifier for this party; appears in filenames and logs. " +
-          "Overrides connection.options.peer_id in config. Requires " +
-          "timestamp_in_filename: true. Both parties must use distinct ids",
+          "identifier for this party; appears in filenames and logs. " +
+          "%Y %m %d %H %M %S (UTC), %K (16 random hex characters) and %% " +
+          "are filled in for each run. Overrides connection.options.peer_id " +
+          "in config. Requires timestamp_in_filename: true. Both parties " +
+          "must use distinct ids",
         "outbound-path":
           "set the outbound (self-written) directory, overriding " +
           "connection.outbound_path in the config; the config supplies the " +

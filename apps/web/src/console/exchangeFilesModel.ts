@@ -5,7 +5,9 @@ import {
 
 import {
   PEER_ID_SHAPE_MESSAGE,
+  PEER_ID_TEMPLATE_SHAPE_MESSAGE,
   isAdmissiblePeerId,
+  isAdmissiblePeerIdTemplate,
 } from "@jobContract/intentSchemas";
 
 import type { JobExchangeOptions } from "@jobContract/intentSchemas";
@@ -44,12 +46,15 @@ export type FileSyncToggle = "auto" | "on" | "off";
 export type UnexpectedFilesChoice = "auto" | "error" | "warn" | "ignore";
 
 /** The operator's authored file-handling choices for one exchange. `peerId` is
- * held as the raw field text; blank means unset. */
+ * held as the raw field text; blank means unset. `loadedPeerIdTemplate` is a
+ * mounted configuration's `peer_id` when it holds fields, which the name
+ * control does not take: while `peerId` still equals it, the card admits it. */
 export interface ExchangeFilesDraft {
   retainFiles: boolean;
   timestampInFilename: FileSyncToggle;
   locklessRendezvous: FileSyncToggle;
   peerId: string;
+  loadedPeerIdTemplate?: string;
   unexpectedFiles: UnexpectedFilesChoice;
   writeWithoutRenaming: boolean;
 }
@@ -177,8 +182,11 @@ export function exchangeFilesProblems(
   capabilities: ExchangeFilesCapabilities = { unexpectedFiles: true },
 ): Array<string> {
   const peerId = draft.peerId.trim();
-  if (peerId !== "" && !isAdmissiblePeerId(peerId))
-    return [PEER_ID_SHAPE_MESSAGE];
+  if (peerId !== "" && !isAdmissiblePeerId(peerId)) {
+    if (peerId !== draft.loadedPeerIdTemplate) return [PEER_ID_SHAPE_MESSAGE];
+    if (!isAdmissiblePeerIdTemplate(peerId))
+      return [PEER_ID_TEMPLATE_SHAPE_MESSAGE];
+  }
   const options = exchangeFilesOptions(draft, capabilities);
   if (options === undefined) return [];
   const validation = safeParseFileSyncOptions(options);

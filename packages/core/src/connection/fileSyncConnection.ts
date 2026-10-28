@@ -16,6 +16,14 @@ import type {
   SFTPConnectionConfig,
   FileDropConnectionConfig,
 } from "../config/connection";
+import {
+  SYSTEM_PEER_ID_FIELD_SOURCE,
+  expandPeerIdTemplate,
+  fixedPeerId,
+  matchesPeerIdTemplate,
+  parsePeerIdTemplate,
+  type PeerIdFieldSource,
+} from "../config/peerIdTemplate";
 import type { HandshakeRole } from "../types";
 import {
   AuthenticationError,
@@ -212,6 +220,9 @@ interface Options {
   // The remedy sentence a refused rename of this party's own temp ends on.
   // Unset names the configuration key (DEFAULT_RENAME_REFUSED_GUIDANCE).
   renameRefusedGuidance?: string;
+  // The clock and random source open() fills a peer_id's fields from. Not in
+  // the public config; tests pin it to name the files a run writes.
+  peerIdFieldSource: PeerIdFieldSource;
 }
 
 const getDefaultOptions = (): Options => {
@@ -225,6 +236,7 @@ const getDefaultOptions = (): Options => {
     forceRetainSweep: false,
     joinerRecoveryMs: DEFAULT_JOINER_RECOVERY_MS,
     writeWithoutRenaming: false,
+    peerIdFieldSource: SYSTEM_PEER_ID_FIELD_SOURCE,
   };
 };
 
@@ -342,6 +354,9 @@ export interface FileTransportClient {
 export class FileSyncConnection extends EventEmitter<Events, never> {
   private client: FileTransportClient;
   id: string;
+  // Matches every id this configuration writes on any run (any expansion of a
+  // peer_id holding fields); unset otherwise, where `id` is the only one.
+  private ownIdFormat: ((id: string) => boolean) | undefined;
   role: string;
   options: Options;
   log: ReturnType<typeof getLoggerForVerbosity>;
@@ -503,6 +518,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
       foreignFileSnapshot: this.foreignFileSnapshot,
       client: () => this.client,
       id: () => this.id,
+      isOwnId: (id) => id === this.id || (this.ownIdFormat?.(id) ?? false),
       role: () => this.role,
       outbound: () => this.outbound,
       log: () => this.log,
@@ -703,6 +719,17 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
     if (config.options?.peerId !== undefined) {
       this.options.peerId = config.options.peerId;
       this.id = config.options.peerId;
+      this.ownIdFormat = undefined;
+      if (config.options.peerId.includes("%")) {
+        const parsed = parsePeerIdTemplate(config.options.peerId);
+        if (!parsed.ok) throw new UsageError(parsed.problem);
+        this.id = expandPeerIdTemplate(
+          parsed.parts,
+          this.options.peerIdFieldSource,
+        );
+        if (fixedPeerId(parsed.parts) === undefined)
+          this.ownIdFormat = (id) => matchesPeerIdTemplate(parsed.parts, id);
+      }
       this.log = getLoggerForVerbosity(
         `filesync-${this.id.substring(0, 8)}`,
         this.options.verbose,

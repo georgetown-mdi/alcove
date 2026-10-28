@@ -7,6 +7,11 @@ import { maxCodeUnits } from "../utils/maxCodeUnits.js";
 import { boundedArray } from "../utils/boundedArray.js";
 import { MAX_TIMER_MS } from "../utils/promise.js";
 import { SftpPortSchema } from "./sftpUrl.js";
+import {
+  fixedPeerId,
+  parsePeerIdTemplate,
+  peerIdTemplateBytes,
+} from "./peerIdTemplate.js";
 import { isRelayRegistrarExchangeId } from "../relayRegistrarProof.js";
 
 // --- HTTP service authentication ---------------------------------------------
@@ -940,6 +945,14 @@ export interface FileSyncOptions extends SharedOptions {
    * otherwise permitted; `"temp"` is reserved. Filesystem-unsafe characters
    * (`/` and NUL everywhere; `<>:"\|?*` on Windows NTFS) are not validated but
    * may error at the transport layer.
+   *
+   * The value may hold fields filled in each time the connection opens, for a
+   * partner's file-transfer system that never passes the same file name
+   * twice: `%Y`, `%m`, `%d`, `%H`, `%M` and `%S` from the UTC date and time,
+   * `%K` as 16 random lowercase hex characters, and `%%` for a literal `%`.
+   * The rules above then apply to each run's id, and the longest expansion is
+   * held to {@link MAX_PEER_ID_BYTES}. A value with no `%` is used as written.
+   * Grammar: config/peerIdTemplate.ts.
    */
   peerId?: string;
   /**
@@ -1055,12 +1068,40 @@ export const LOW_POLLING_FREQUENCY_WARN_MS = 1000;
  */
 export const CONNECTION_PER_POLL_SHORT_INTERVAL_WARN_MS = 60_000;
 
-// The longest `peer_id`, in UTF-8 bytes: the id that, with a one-byte partner
-// id, makes the longest name the exchange writes -- the retain-mode ack of a
-// timestamped message -- exactly the 255-byte file name limit. A longer id fits
-// no partner.
+// The longest `peer_id`, in UTF-8 bytes, with its fields filled in: the id
+// that, with a one-byte partner id, makes the longest name the exchange writes
+// -- the retain-mode ack of a timestamped message -- exactly the 255-byte file
+// name limit. A longer id fits no partner.
 /** @internal */
 export const MAX_PEER_ID_BYTES = 211;
+
+// The fields a `peer_id` may hold and the byte cap on its longest expansion.
+// Core admits every character in `peer_id`, and the fields expand to ASCII
+// digits and hex, so no expansion holds a character the id does not admit.
+function checkPeerIdTemplate(
+  opts: { peerId?: string },
+  ctx: z.RefinementCtx,
+): void {
+  if (opts.peerId === undefined) return;
+  const issue = (message: string) =>
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message, path: ["peerId"] });
+  const parsed = parsePeerIdTemplate(opts.peerId);
+  if (!parsed.ok) {
+    issue(parsed.problem);
+    return;
+  }
+  const bytes = peerIdTemplateBytes(parsed.parts);
+  if (bytes <= MAX_PEER_ID_BYTES) return;
+  issue(
+    fixedPeerId(parsed.parts) !== undefined
+      ? `peer_id must be at most ${MAX_PEER_ID_BYTES} bytes of UTF-8; the ` +
+          "file names built from it would exceed the 255-byte limit"
+      : `peer_id comes to ${bytes} bytes of UTF-8 once its fields are ` +
+          `filled in, over the ${MAX_PEER_ID_BYTES}-byte limit that keeps ` +
+          "file names holding both parties' ids within 255 bytes. Shorten " +
+          "peer_id or use fewer fields.",
+  );
+}
 
 const FileSyncOptionsSchema: z.ZodType<FileSyncOptions> = z
   .object({
@@ -1076,6 +1117,7 @@ const FileSyncOptionsSchema: z.ZodType<FileSyncOptions> = z
     connectionPerPoll: z.boolean().optional(),
     writeWithoutRenaming: z.boolean().optional(),
   })
+  .superRefine(checkPeerIdTemplate)
   .refine((opts) => !opts.peerId || opts.timestampInFilename === true, {
     message:
       "peer_id requires timestamp_in_filename: true; without it, a reused " +
@@ -1084,22 +1126,18 @@ const FileSyncOptionsSchema: z.ZodType<FileSyncOptions> = z
     path: ["peerId"],
   })
   .refine(
-    (opts) =>
-      opts.peerId === undefined ||
-      new TextEncoder().encode(opts.peerId).length <= MAX_PEER_ID_BYTES,
+    (opts) => {
+      if (opts.peerId === undefined) return true;
+      const parsed = parsePeerIdTemplate(opts.peerId);
+      return !parsed.ok || fixedPeerId(parsed.parts) !== "temp";
+    },
     {
       message:
-        `peer_id must be at most ${MAX_PEER_ID_BYTES} bytes of UTF-8; the ` +
-        "file names built from it would exceed the 255-byte limit",
+        "peer_id 'temp' is reserved; the lockless rendezvous upload glob " +
+        "('<myId>-*') would capture in-flight 'temp-*.tmp' writes",
       path: ["peerId"],
     },
   )
-  .refine((opts) => opts.peerId !== "temp", {
-    message:
-      "peer_id 'temp' is reserved; the lockless rendezvous upload glob " +
-      "('<myId>-*') would capture in-flight 'temp-*.tmp' writes",
-    path: ["peerId"],
-  })
   .refine((opts) => !opts.retainFiles || opts.timestampInFilename === true, {
     message:
       "retain_files requires timestamp_in_filename: true; without it, every " +

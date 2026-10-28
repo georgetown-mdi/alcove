@@ -13,9 +13,13 @@ import { zeroSetupOptionsArgv } from "@jobs/intentArgv";
 
 import { composeConfigDocument } from "@jobs/intentConfig";
 
-import { PEER_ID_SHAPE_MESSAGE } from "@jobContract/intentSchemas";
+import {
+  PEER_ID_SHAPE_MESSAGE,
+  PEER_ID_TEMPLATE_SHAPE_MESSAGE,
+  jobCreateIntentSchema,
+} from "@jobContract/intentSchemas";
 
-import { validIntent } from "../../utils/jobFixtures";
+import { validIntent, validZeroSetupSftpIntent } from "../../utils/jobFixtures";
 
 import type { ExchangeFilesDraft } from "@console/exchangeFilesModel";
 
@@ -183,5 +187,66 @@ describe("an inadmissible combination is a form problem, not a failed job", () =
     expect(
       exchangeFilesProblems(draft({ retainFiles: true, peerId: "clinic-a" })),
     ).toEqual([]);
+  });
+});
+
+describe("a mounted configuration's peer_id holding fields", () => {
+  const TEMPLATE = "clinic-a_%Y%m%d-%H%M%S";
+  const loaded = (peerId: string) =>
+    draft({
+      peerId,
+      loadedPeerIdTemplate: peerId,
+      timestampInFilename: "on",
+    });
+  const intentAdmits = (options: ReturnType<typeof exchangeFilesOptions>) =>
+    jobCreateIntentSchema.safeParse(validIntent({ options })).success;
+
+  test("reaches the composed config as written", () => {
+    expect(composedOptions(loaded(TEMPLATE))).toMatchObject({
+      peer_id: TEMPLATE,
+    });
+  });
+
+  test.each([TEMPLATE, "%Y%m%d-clinic-a", "clinic a %K", "clinic-a-%K"])(
+    "%s is admitted while unchanged",
+    (peerId) => {
+      expect(exchangeFilesProblems(loaded(peerId))).toEqual([]);
+      expect(intentAdmits(exchangeFilesOptions(loaded(peerId)))).toBe(true);
+    },
+  );
+
+  test("the name control does not take fields typed into it", () => {
+    expect(
+      exchangeFilesProblems(
+        draft({ peerId: TEMPLATE, timestampInFilename: "on" }),
+      ),
+    ).toEqual([PEER_ID_SHAPE_MESSAGE]);
+    expect(
+      exchangeFilesProblems({ ...loaded(TEMPLATE), peerId: "clinic-b_%Y" }),
+    ).toEqual([PEER_ID_SHAPE_MESSAGE]);
+  });
+
+  test("a zero-setup intent does not admit fields", () => {
+    expect(
+      jobCreateIntentSchema.safeParse(
+        validZeroSetupSftpIntent({
+          options: { peerId: TEMPLATE, timestampInFilename: true },
+        }),
+      ).success,
+    ).toBe(false);
+  });
+
+  test.each([
+    ["a literal percent sign", "clinic%%a-%K"],
+    ["a dot", "clinic.a-%K"],
+    ["a path separator", "clinic/a-%K"],
+    ["a trailing dash", "clinic-a_%Y-"],
+    ["an unknown field", "clinic-a_%q"],
+    ["more than 64 characters filled in", `${"c".repeat(49)}%K`],
+  ])("with %s is refused by shape", (_label, peerId) => {
+    expect(exchangeFilesProblems(loaded(peerId))).toEqual([
+      PEER_ID_TEMPLATE_SHAPE_MESSAGE,
+    ]);
+    expect(intentAdmits(exchangeFilesOptions(loaded(peerId)))).toBe(false);
   });
 });
