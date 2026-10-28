@@ -30,7 +30,6 @@ import {
   RunDownloads,
   RunWarningsAlert,
   SERVER_JOB_KEEP_OPEN_BODY,
-  SERVER_JOB_PEER_WINDOW_BODY,
   browserListeningBody,
   leftBehindConfirm,
   recoveredExchangeHeading,
@@ -81,6 +80,7 @@ export function InviterExchangeSection({
   jobId,
   reattached,
   reattaching,
+  peerWindowBody,
   listeningUntil,
   resumableAfterReload = false,
   resumed = false,
@@ -153,6 +153,10 @@ export function InviterExchangeSection({
    * and shows a reconnecting notice, before it resolves to the recovery view or
    * the run's alert. */
   reattaching: boolean;
+  /** The peer-window callout a server-job run shows while it waits for the
+   * partner (`serverJobPeerWindowBody` for the run's channel and peer timeout);
+   * undefined on a browser run, which has no such callout. */
+  peerWindowBody?: string;
   /** When this browser stops waiting for the partner, once it is listening;
    * undefined before then and on a server-job run. */
   listeningUntil?: Date;
@@ -476,8 +480,8 @@ export function InviterExchangeSection({
                 ? browserListeningBody(listeningUntil, resumableAfterReload)
                 : BROWSER_RUN_KEEP_OPEN_BODY}
           </p>
-          {serverJob && phase === "share" && (
-            <p className={styles.small}>{SERVER_JOB_PEER_WINDOW_BODY}</p>
+          {serverJob && phase === "share" && peerWindowBody !== undefined && (
+            <p className={styles.small}>{peerWindowBody}</p>
           )}
         </div>
       )}

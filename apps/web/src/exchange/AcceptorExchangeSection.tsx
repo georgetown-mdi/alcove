@@ -16,10 +16,9 @@ import {
   RunDownloads,
   RunWarningsAlert,
   SERVER_JOB_KEEP_OPEN_BODY,
-  SERVER_JOB_PEER_WINDOW_BODY,
-  SERVER_JOB_WEBRTC_PEER_WINDOW_BODY,
   leftBehindConfirm,
   recoveredExchangeHeading,
+  serverJobPeerWindowBody,
   untakenRecordConfirm,
   useDownloadsLeftBehind,
 } from "./RunSurface";
@@ -66,6 +65,7 @@ export function AcceptorExchangeSection({
   runRecord,
   runWarnings,
   serverJob,
+  peerTimeoutMs,
   jobId,
   reattached,
   reattaching,
@@ -91,6 +91,9 @@ export function AcceptorExchangeSection({
    * exchange while the tab stays open, so the keep-open callout names the running
    * exchange the tab is holding. */
   serverJob: boolean;
+  /** The peer timeout the operator set for this run, or undefined for the
+   * channel's default; the peer-window callout states it. */
+  peerTimeoutMs: number | undefined;
   /** The console job id of a server-job accept, once created. Threads the run's
    * job to the recurring hand-off panel; undefined on a browser accept. */
   jobId: string | undefined;
@@ -281,9 +284,10 @@ export function AcceptorExchangeSection({
             <>
               <p className={styles.small}>{SERVER_JOB_KEEP_OPEN_BODY}</p>
               <p className={styles.small}>
-                {invitation.endpoint.channel === "webrtc"
-                  ? SERVER_JOB_WEBRTC_PEER_WINDOW_BODY
-                  : SERVER_JOB_PEER_WINDOW_BODY}
+                {serverJobPeerWindowBody(
+                  invitation.endpoint.channel,
+                  peerTimeoutMs,
+                )}
               </p>
             </>
           ) : (

@@ -6,8 +6,10 @@ import {
   CONNECTION_PER_POLL_SHORT_INTERVAL_WARN_MS,
   DEFAULT_FILEDROP_POLLING_FREQUENCY_MS,
   DEFAULT_MAX_RECONNECT_ATTEMPTS,
+  DEFAULT_PEER_TIMEOUT_MS,
   DEFAULT_SERVER_CONNECT_TIMEOUT_MS,
   DEFAULT_SFTP_POLLING_FREQUENCY_MS,
+  DEFAULT_WEBRTC_PEER_TIMEOUT_MS,
   LOW_POLLING_FREQUENCY_WARN_MS,
   MAX_RECONNECT_ATTEMPTS,
   MAX_TIMEOUT_SECONDS,
@@ -29,6 +31,7 @@ import {
   FILEDROP_CONNECTION_TUNING,
   LOW_POLL_INTERVAL_ADVISORY,
   SFTP_CONNECTION_TUNING,
+  WEBRTC_CONNECTION_TUNING,
   connectionTuningAdvisories,
   connectionTuningOptions,
   connectionTuningProblems,
@@ -36,6 +39,7 @@ import {
   defaultPlaceholder,
   durationFieldForMs,
   durationUnitChoices,
+  peerTimeoutDefaultMs,
   pollIntervalDefaultMs,
   withConnectionTuning,
 } from "@console/connectionTuningModel";
@@ -580,6 +584,17 @@ describe("the placeholder shows core's own default in the chosen unit", () => {
       expect(
         defaultPlaceholder(pollIntervalDefaultMs(capabilities), "ms"),
       ).toBe(String(DEFAULT_FILEDROP_POLLING_FREQUENCY_MS));
+    },
+  );
+
+  test.each([
+    ["sftp", SFTP_CONNECTION_TUNING, DEFAULT_PEER_TIMEOUT_MS],
+    ["filedrop", FILEDROP_CONNECTION_TUNING, DEFAULT_PEER_TIMEOUT_MS],
+    ["webrtc", WEBRTC_CONNECTION_TUNING, DEFAULT_WEBRTC_PEER_TIMEOUT_MS],
+  ] as const)(
+    "the %s peer timeout placeholder shows that channel's default",
+    (_channel, capabilities, expected) => {
+      expect(peerTimeoutDefaultMs(capabilities)).toBe(expected);
     },
   );
 

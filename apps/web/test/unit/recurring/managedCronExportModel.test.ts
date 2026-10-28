@@ -11,6 +11,14 @@ import {
 } from "@alcove/core";
 
 import {
+  CLI_BUILT_IN_STUN_URI,
+  invitationRegistrarExportLine,
+  managedConfigurationExportState,
+  managedCronExportPanelState,
+  runElsewhereNotice,
+  stunExportLine,
+} from "@recurring/managedCronExportModel";
+import {
   CRON_EXPORT_CONFIG_MIME,
   CRON_EXPORT_KEY_MIME,
 } from "@psi/managed/managedCronExport";
@@ -19,12 +27,6 @@ import {
   composeManagedExchangeFile,
   runnableManagedExchangeOrRefuse,
 } from "@psi/managed/managedExchangeRecord";
-import {
-  invitationRegistrarExportLine,
-  managedConfigurationExportState,
-  managedCronExportPanelState,
-  runElsewhereNotice,
-} from "@recurring/managedCronExportModel";
 
 import type { ExchangeLocator, WebRTCExchangeLocator } from "@alcove/core";
 import type {
@@ -353,6 +355,68 @@ describe("the line naming the invitation relay's registrar", () => {
     expect(
       invitationRegistrarExportLine(managedRecord().exchangeFile.connection),
     ).toBeUndefined();
+  });
+});
+
+describe("the line naming the STUN servers a command-line run contacts", () => {
+  function withInvitationStun(
+    stun: Array<string>,
+  ): RunnableManagedExchangeRecord {
+    const record = managedRecord();
+    const connection = record.exchangeFile.connection;
+    if (connection.channel !== "webrtc") throw new Error("expected webrtc");
+    return {
+      ...record,
+      exchangeFile: {
+        ...record.exchangeFile,
+        connection: {
+          ...connection,
+          invitationRelay: {
+            turn: ["turns:relay.partner.example.org:443"],
+            stun,
+          },
+        },
+      },
+    };
+  }
+
+  test("names the built-in default and what it learns where the invitation names no STUN server", () => {
+    const { composed } = exportableState(managedRecord());
+    expect(stunExportLine(composed.connection, composed.config.fileName)).toBe(
+      "This exchange names no STUN server, so a command-line run uses the " +
+        `built-in default (${CLI_BUILT_IN_STUN_URI}) to discover the public ` +
+        "address of the machine it runs on. That server learns the address " +
+        "and that a session is happening; it learns no exchange content. " +
+        "Add a stun entry to the connection in alcove.yaml to use your own " +
+        "server instead.",
+    );
+  });
+
+  test("names the servers the invitation lists, not the default", () => {
+    const { composed } = exportableState(
+      withInvitationStun([
+        "stun:stun.partner.example.org:3478",
+        "stun:stun2.partner.example.org:3478",
+      ]),
+    );
+    const line = stunExportLine(composed.connection, composed.config.fileName);
+    expect(line).toBe(
+      "A command-line run of this exchange uses the STUN servers the " +
+        "invitation names (stun:stun.partner.example.org:3478, " +
+        "stun:stun2.partner.example.org:3478) to discover the public " +
+        "address of the machine it runs on. Each learns that address and " +
+        "that a session is happening; none learns exchange content.",
+    );
+    expect(line).not.toContain(CLI_BUILT_IN_STUN_URI);
+  });
+
+  test("escapes the control characters a partner-named server holds", () => {
+    const { composed } = exportableState(
+      withInvitationStun(["stun:host.example.org\u001b[2J‮"]),
+    );
+    expect(
+      stunExportLine(composed.connection, composed.config.fileName),
+    ).not.toMatch(/[\p{Cc}‮]/u);
   });
 });
 

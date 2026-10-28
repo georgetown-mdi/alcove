@@ -97,6 +97,7 @@ import {
   FILEDROP_CONNECTION_TUNING,
   SFTP_CONNECTION_TUNING,
   WEBRTC_CONNECTION_TUNING,
+  connectionTuningOptions,
   connectionTuningProblems,
   withConnectionTuning,
 } from "@console/connectionTuningModel";
@@ -1956,6 +1957,10 @@ function AcceptorInvitationScreen({
               runRecord={runRecord}
               runWarnings={runWarnings}
               serverJob={acceptServerJob}
+              peerTimeoutMs={
+                connectionTuningOptions(connectionTuning, tuningCapabilities)
+                  ?.peerTimeoutMs
+              }
               jobId={jobId}
               reattached={reattached}
               reattaching={reattaching}

@@ -13,6 +13,7 @@ import { Link } from "@tanstack/react-router";
 
 import {
   DEFAULT_PEER_TIMEOUT_MS,
+  DEFAULT_WEBRTC_PEER_TIMEOUT_MS,
   describeEntityClusters,
   formatCount,
   replaceControlCharactersForDisplay,
@@ -74,9 +75,8 @@ export function browserListeningBody(
 
 /**
  * Format a peer-timeout duration as the human phrase the copy embeds ("an hour"
- * at the one-hour default). Derived so {@link SERVER_JOB_PEER_WINDOW_BODY} tracks
- * `DEFAULT_PEER_TIMEOUT_MS` rather than restating it, and a copy-pin test asserts
- * the two agree. Exported for that test.
+ * at the file-sync default, "10 minutes" at the WebRTC default). Exported for
+ * the copy-pin test.
  *
  * @internal
  */
@@ -92,26 +92,44 @@ export function peerWindowDurationPhrase(ms: number): string {
 
 /**
  * The peer-coordination callout body for a server-job run: the exchange needs
- * both consoles running their halves at once, and the console waits only
- * about the peer-timeout window before it stops. Its duration is derived
- * from core's `DEFAULT_PEER_TIMEOUT_MS` so the copy cannot drift from the
- * CLI default. The console never sets `peerTimeoutMs`, so this is the
- * window every console-composed exchange actually runs under.
+ * both sides running their halves at once, and this side waits only the peer
+ * timeout before it stops. The wait is the run's configured peer timeout when
+ * the screen has one, else the channel's default: core's
+ * `DEFAULT_WEBRTC_PEER_TIMEOUT_MS` for WebRTC, `DEFAULT_PEER_TIMEOUT_MS` for
+ * SFTP and a shared folder. A WebRTC partner runs the web app or the
+ * command-line tool, so its body names them.
  */
-export const SERVER_JOB_PEER_WINDOW_BODY =
-  "Your partner's console must run its half while yours is running. Yours " +
-  `waits about ${peerWindowDurationPhrase(DEFAULT_PEER_TIMEOUT_MS)} for the ` +
-  "partner before the exchange stops; if it stops, coordinate a time and run " +
-  "it again.";
+export function serverJobPeerWindowBody(
+  channel: "sftp" | "filedrop" | "webrtc",
+  configuredPeerTimeoutMs?: number,
+): string {
+  const waitMs =
+    configuredPeerTimeoutMs ??
+    (channel === "webrtc"
+      ? DEFAULT_WEBRTC_PEER_TIMEOUT_MS
+      : DEFAULT_PEER_TIMEOUT_MS);
+  const wait = peerWindowDurationPhrase(waitMs);
+  if (channel === "webrtc") {
+    return (
+      "Your partner's side must be open while yours runs: their Alcove web " +
+      `app page or their alcove command. Yours waits about ${wait} for them ` +
+      "before the exchange stops; if it stops, agree a time with your " +
+      "partner and run it again."
+    );
+  }
+  return (
+    "Your partner's console must run its half while yours is running. Yours " +
+    `waits about ${wait} for the partner before the exchange stops; if it ` +
+    "stops, coordinate a time and run it again."
+  );
+}
 
-/** {@link SERVER_JOB_PEER_WINDOW_BODY} for a console WebRTC accept, whose
- * inviting partner runs the web app or the command-line tool. */
+/** The peer-window body of an SFTP or shared-folder run at the default wait. */
+export const SERVER_JOB_PEER_WINDOW_BODY = serverJobPeerWindowBody("sftp");
+
+/** The peer-window body of a WebRTC run at the default wait. */
 export const SERVER_JOB_WEBRTC_PEER_WINDOW_BODY =
-  "Your partner's side must be open while yours runs: their Alcove web app " +
-  "page or their alcove command. Yours waits about " +
-  `${peerWindowDurationPhrase(DEFAULT_PEER_TIMEOUT_MS)} for them before the ` +
-  "exchange stops; if it stops, agree a time with your partner and run it " +
-  "again.";
+  serverJobPeerWindowBody("webrtc");
 
 const PREVIEW_EDGE_CHARS = 8;
 const COPY_STATUS_CLEAR_MS = 2000;

@@ -40,7 +40,7 @@ const CLAIM_TEXTS = [
   { file: "docs/CLI.md", stated: true },
   { file: "docs/spec/DEPENDENCY_PINS.md", stated: true },
   { file: "docs/notes/cli-webrtc-stack.md", stated: true },
-  { file: "apps/web/src/recurring/ManagedCronExportPanel.tsx", stated: false },
+  { file: "apps/web/src/recurring/managedCronExportModel.ts", stated: false },
 ];
 
 /**

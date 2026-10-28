@@ -186,8 +186,8 @@ describe("the command-line export hands over two files", () => {
     await expect
       .element(page.getByRole("link", { name: "Key file security" }))
       .toBeInTheDocument();
-    // A managed connection configures no ICE server, so every scheduled run falls
-    // back to the CLI's built-in default and discloses the host's public address.
+    // This invitation's relay names no STUN server, so a scheduled run falls back
+    // to the CLI's built-in default and discloses the host's public address.
     await expect
       .element(page.getByText(CLI_BUILT_IN_STUN_URI, { exact: false }))
       .toBeInTheDocument();

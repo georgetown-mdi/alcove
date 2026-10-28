@@ -14,7 +14,7 @@ const read = (file) => readFileSync(resolve(root, file), "utf8");
 
 const SOURCE_FILE = "apps/cli/src/connection/webrtc/weriftPeer.ts";
 const WEB_COPY_FILE = "apps/web/src/recurring/managedCronExportModel.ts";
-const PANEL_FILE = "apps/web/src/recurring/ManagedCronExportPanel.tsx";
+const PANEL_COPY_FILE = "apps/web/src/recurring/managedCronExportModel.ts";
 const DOCS = [
   "docs/CLI.md",
   "docs/spec/DEPENDENCY_PINS.md",
@@ -39,11 +39,11 @@ describe("STUN default claim check", () => {
     }
   });
 
-  it("catches an endpoint written back into the export panel's copy", () => {
-    // The panel interpolates the constant, so its prose holds no endpoint of its
+  it("catches an endpoint written back into the export panel's copy (its model)", () => {
+    // The panel line interpolates the constant, so its prose holds no endpoint of its
     // own; a literal put back into that sentence is what this scan exists for,
     // since a hard-coded copy leaves the constant tie unused.
-    const panel = read(PANEL_FILE);
+    const panel = read(PANEL_COPY_FILE);
     expect(panel).toContain("CLI_BUILT_IN_STUN_URI");
     expect(builtInDefaultClaims(panel)).toEqual([]);
     expect(
