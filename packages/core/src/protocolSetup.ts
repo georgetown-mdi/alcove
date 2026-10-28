@@ -51,6 +51,7 @@ import type { PartnerOriginTextList } from "./utils/partnerOriginText";
 import { boundedArray } from "./utils/boundedArray";
 import {
   ConnectionError,
+  InternalConsistencyError,
   PartnerProtocolRefusalError,
   ProtocolRefusalError,
   markStatesItsOwnNextStep,
@@ -551,6 +552,55 @@ export interface TermsRotation {
    * makes the next secret predictable.
    */
   fixedResponderValue?: Uint8Array<ArrayBuffer>;
+}
+
+/**
+ * A {@link TermsRotation} that drops its reference to the next secret's inputs
+ * -- the key-agreement output and the session key among them -- once its
+ * store has run, resolved or thrown, or on {@link release} for a run that
+ * ended without a store. Reading `inputs` after either throws.
+ */
+export interface ReleasableTermsRotation extends TermsRotation {
+  /** Drop the inputs. Idempotent. */
+  release: () => void;
+  /** Whether the inputs are still held. */
+  holdsInputs: () => boolean;
+}
+
+/**
+ * Wrap `rotation` so its inputs are released as {@link ReleasableTermsRotation}
+ * states. The terms exchange reads them only before its store.
+ */
+export function releasableTermsRotation(
+  rotation: TermsRotation,
+): ReleasableTermsRotation {
+  const held: { inputs: NextSecretInputs | undefined } = {
+    inputs: rotation.inputs,
+  };
+  const { store, partnerMayHoldNextSecret, fixedResponderValue } = rotation;
+  const release = (): void => {
+    held.inputs = undefined;
+  };
+  return {
+    get inputs(): NextSecretInputs {
+      if (held.inputs === undefined)
+        throw new InternalConsistencyError(
+          "the next shared secret's inputs were read after they were released",
+        );
+      return held.inputs;
+    },
+    store: async (nextSecret) => {
+      try {
+        await store(nextSecret);
+      } finally {
+        release();
+      }
+    },
+    ...(partnerMayHoldNextSecret !== undefined && { partnerMayHoldNextSecret }),
+    ...(fixedResponderValue !== undefined && { fixedResponderValue }),
+    release,
+    holdsInputs: () => held.inputs !== undefined,
+  };
 }
 
 /** How {@link exchangeTerms} treats partner terms that differ from its own. */

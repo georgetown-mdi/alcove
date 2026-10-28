@@ -489,10 +489,12 @@ export type {
 } from "./linkageTermsNegotiation";
 export {
   TermsChangeRefusedError,
+  releasableTermsRotation,
   termsDifferenceLocalKeys,
   termsDifferenceRefusedBy,
 } from "./protocolSetup";
 export type {
+  ReleasableTermsRotation,
   TermsChange,
   TermsDifferenceRefusedBy,
   TermsRotation,

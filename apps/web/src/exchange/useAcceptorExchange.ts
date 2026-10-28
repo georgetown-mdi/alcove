@@ -346,8 +346,8 @@ export function useAcceptorExchange({
 }): {
   run: ExchangeRun;
   outputs: RunOutputs | undefined;
-  /** The shared secret the completed in-browser run's handshake rotated to,
-   * the one a hand-off to a managed exchange deposits; undefined before the run
+  /** The next shared secret the completed in-browser run's terms exchange
+   * derived, the one a hand-off to a managed exchange deposits; undefined before the run
    * completes and on a console-conducted run. */
   rotatedSecret: string | undefined;
   failure: RunFailure | undefined;

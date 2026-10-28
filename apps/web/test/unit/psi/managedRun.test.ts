@@ -276,7 +276,7 @@ describe("runManagedRerun: a partner who never arrives", () => {
   test("never reaches the rotation write, so the stored secret stands", async () => {
     // The invariant the carried-forward standing condition leans on: a condition
     // is cleared by a rotation write or the operator's own act, and a no-show
-    // raises before the handshake yields a rotated secret. The rotation persist is
+    // raises before the terms exchange derives a next secret. The rotation persist is
     // the only writer of `sharedSecret` and `expires`, so a run that never calls it
     // leaves both as the store holds them; the no-show stamp is its whole write.
     stubGrantingWebLocks();

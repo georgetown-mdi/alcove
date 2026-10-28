@@ -689,7 +689,8 @@ describe("runManagedExchange: persist-before-success end to end", () => {
     expect(error).toBe(failure);
     const stored = await getManagedExchange(created.id);
     // The rotation is real even though the exchange then failed: both parties
-    // rotated at handshake completion, so the persisted secret must stay rotated.
+    // stored the next secret at the terms exchange, so the persisted secret
+    // must stay rotated.
     expect(stored?.sharedSecret).toBe(rotatedSecret);
     // No succeeded outcome was recorded; the failure bookkeeping is the runner's.
     expect(stored?.lastRun).toBeUndefined();

@@ -635,8 +635,9 @@ file, and each party provisions its own `.alcove.key` from the code:
   the encoded invitation code, over a trusted out-of-band channel.
 - **The three provisioning paths.** An offline `alcove invite` writes the
   inviter's key file (secret plus expiry), while an online `invite` writes it
-  only once the partner's handshake succeeds, holding the rotated token with no
-  expiry; `alcove accept` writes the acceptor's copy (secret, with the invitation
+  only at the terms exchange that follows the partner's handshake, once the
+  terms are agreed, holding the rotated token with no expiry; `alcove accept`
+  writes the acceptor's copy (secret, with the invitation
   expiry stripped); and
   `alcove exchange --invitation CODE` provisions the key file for the party that
   composed the exchange in the web app and downloaded a secret-free config,
@@ -678,7 +679,7 @@ that began and has not saved its rotated secret.
   that abort, leaves it.
 - **Where it is not written.** It is written only over a key file holding the
   secret the run authenticates with, so the online `invite` and `accept`,
-  whose key file is written after the handshake, write none.
+  whose key file is written at the terms exchange, write none.
 - **What it means.** A key file still holding it at the next run records a run
   that stopped, as the responder, between the start of its key exchange and its
   save: the partner, which stores first, may have saved a secret this file does

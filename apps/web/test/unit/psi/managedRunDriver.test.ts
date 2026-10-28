@@ -4,6 +4,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
   ConnectionError,
+  InternalConsistencyError,
   RoundSetLimitError,
   assertFirstRoundWithinSetMaximum,
   deriveRelayKey,
@@ -68,6 +69,7 @@ import { runManagedRerun } from "../../../src/psi/managed/managedRun.js";
 import {
   MOCKED_NEXT_SECRET,
   MOCKED_NEXT_SECRET_INPUTS,
+  inputsReadAtStore,
   storeRotationFirst,
 } from "../../utils/rotationStoringRunExchange.js";
 import { aeadWrappedPipe } from "../../utils/aeadWrappedPipe.js";
@@ -85,6 +87,7 @@ import type {
   HandshakeRole,
   MessageConnection,
   PsiBackendSelection,
+  ReleasableTermsRotation,
   RendezvousRole,
 } from "@alcove/core";
 
@@ -124,10 +127,17 @@ const beginKeyExchange = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 const persistNextSecret = vi.hoisted(() =>
   vi.fn((_nextSecret: string) => Promise.resolve()),
 );
+/** The report of whether the partner may hold a next secret this side has
+ * not stored, which the mocked orchestration hands the data exchange. */
+const partnerMayHoldNextSecret = vi.hoisted(() =>
+  vi.fn((_mayHold: boolean) => undefined),
+);
 // The record the stubbed orchestration hands the phases as its in-lock read;
-// unset, it hands back the record the driver was given.
-const lockedRead = vi.hoisted((): { record: unknown } => ({
+// unset, it hands back the record the driver was given. `carried` is the value
+// the handshake phase last handed the data exchange.
+const lockedRead = vi.hoisted((): { record: unknown; carried: unknown } => ({
   record: undefined,
+  carried: undefined,
 }));
 
 // The rest of the module stays real: the launch surface's classification reads
@@ -147,13 +157,19 @@ vi.mock("../../../src/psi/managed/managedRun.js", async (importOriginal) => ({
         dataExchange: (
           carried: unknown,
           persistNextSecret: (nextSecret: string) => Promise<void>,
+          partnerMayHoldNextSecret: (mayHold: boolean) => void,
         ) => Promise<unknown>;
       },
     ) => {
       const current = lockedRead.record ?? record;
       const input = await seams.acquireInput(current);
       const handshake = await seams.handshake(input, beginKeyExchange, current);
-      const exchange = await seams.dataExchange(handshake, persistNextSecret);
+      lockedRead.carried = handshake;
+      const exchange = await seams.dataExchange(
+        handshake,
+        persistNextSecret,
+        partnerMayHoldNextSecret,
+      );
       return { exchange, lastRun: { at: 0, outcome: "succeeded" } };
     },
   ),
@@ -448,6 +464,7 @@ function reportCloseOutcome(outcome: PeerCloseOutcome) {
 afterEach(() => {
   vi.clearAllMocks();
   lockedRead.record = undefined;
+  lockedRead.carried = undefined;
 });
 
 describe("runManagedExchangeInBrowser", () => {
@@ -603,9 +620,26 @@ describe("runManagedExchangeInBrowser", () => {
 
     await runDriver(new AbortController().signal);
 
-    const options = mockedRunExchange.mock.calls[0][3];
-    expect(options.rotation?.inputs).toBe(MOCKED_NEXT_SECRET_INPUTS);
+    const rotation = mockedRunExchange.mock.calls[0][3].rotation;
+    if (rotation === undefined) throw new Error("the run handed no rotation");
+    expect(inputsReadAtStore(rotation)).toBe(MOCKED_NEXT_SECRET_INPUTS);
     expect(persistNextSecret).toHaveBeenCalledWith(MOCKED_NEXT_SECRET);
+    rotation.partnerMayHoldNextSecret?.(true);
+    expect(partnerMayHoldNextSecret).toHaveBeenCalledWith(true);
+  });
+
+  test("holds the next secret's inputs nowhere once the store has run", async () => {
+    const { mc } = makeParkedCloseMc();
+    mockedOpen.mockResolvedValue(mc);
+    acquireResources();
+
+    await runDriver(new AbortController().signal);
+
+    expect(lockedRead.carried).toBeDefined();
+    expect(lockedRead.carried).not.toHaveProperty("nextSecretInputs");
+    const rotation = mockedRunExchange.mock.calls[0][3].rotation;
+    expect((rotation as ReleasableTermsRotation).holdsInputs()).toBe(false);
+    expect(() => rotation?.inputs).toThrow(InternalConsistencyError);
   });
 
   test("a key exchange start that fails, such as a marker that cannot be written, stops the run before the key exchange", async () => {
@@ -1044,9 +1078,9 @@ describe("runManagedExchangeInBrowser", () => {
     await expect(running).resolves.toMatchObject({ exchange: OUTPUTS });
   });
 
-  test("a PSI library that fails to load stops the run before the handshake rotates", async () => {
-    // Both parties rotate on the handshake's completion, so a load failing
-    // after it would strand this party on the retired secret.
+  test("a PSI library that fails to load stops the run before the handshake", async () => {
+    // The terms exchange after the handshake can rotate both parties, so a
+    // load failing after it could strand this party on the retired secret.
     const { mc } = makeParkedCloseMc();
     mockedOpen.mockResolvedValue(mc);
     acquireResources();

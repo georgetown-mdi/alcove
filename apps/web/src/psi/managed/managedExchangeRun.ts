@@ -47,7 +47,9 @@
  *   initiator's before it sends `proceed`, the responder's on reading it,
  *   both before any payload round. {@link storeRotatedSecret} is the write the
  *   terms exchange awaits; {@link persistManagedExchangeRotation} is the
- *   durable, field-scoped write beneath it.
+ *   durable, field-scoped write beneath it. A responder run that ends at the
+ *   terms exchange with neither side able to have stored removes the marker
+ *   ({@link clearManagedExchangeRotationInFlight}).
  */
 
 import {
@@ -58,6 +60,7 @@ import {
 
 import {
   ManagedExchangeSecretChangedError,
+  clearManagedExchangeRotationInFlight,
   getManagedExchange,
   markManagedExchangeRotationInFlight,
   persistManagedExchangeRotation,
@@ -143,12 +146,15 @@ interface ManagedExchangeRunPhases<TInput, THandshake, TExchange> {
     current: RunnableManagedExchangeRecord,
   ) => Promise<THandshake>;
   /** Begin and complete the data exchange. Receives the value the handshake
-   * produced and the durable rotation write, which the data exchange hands
-   * core's terms exchange as its store; it resolves only once the next secret
-   * is committed. */
+   * produced, the durable rotation write, which the data exchange hands
+   * core's terms exchange as its store and which resolves only once the next
+   * secret is committed, and the callback it hands core's terms exchange as
+   * `TermsRotation.partnerMayHoldNextSecret`, which decides whether a failed
+   * responder run removes its rotation-in-flight marker. */
   dataExchange: (
     handshake: THandshake,
     persistNextSecret: (nextSecret: string) => Promise<void>,
+    partnerMayHoldNextSecret: (mayHold: boolean) => void,
   ) => Promise<TExchange>;
   /** Invoked once, synchronously, at the instant the data exchange begins
    * (immediately before {@link dataExchange}, with the lock still held).
@@ -279,13 +285,15 @@ export async function runManagedExchange<TInput, THandshake, TExchange>(
       }
       throw error;
     }
+    // The initiator stores the next secret first, so only a responder can be
+    // left behind by a run cut partway.
+    const marksRotationInFlight =
+      handshakeRoleForRendezvousRole(current.side) === "responder";
     const handshake = await phases.handshake(
       input,
       async () => {
         enterKeyExchange?.();
-        // The initiator stores the next secret first, so only a responder can
-        // be left behind by a run cut partway.
-        if (handshakeRoleForRendezvousRole(current.side) === "responder")
+        if (marksRotationInFlight)
           await markManagedExchangeRotationInFlight(
             record.id,
             new Date(now()).toISOString(),
@@ -294,7 +302,11 @@ export async function runManagedExchange<TInput, THandshake, TExchange>(
       current,
     );
     let rotatedSecret: string | undefined;
+    // How far the terms exchange got in the store order, which decides
+    // whether a failed responder run leaves its marker.
+    const storeOrder = { partnerMayHoldNextSecret: false, storeBegan: false };
     const persistNextSecret = async (nextSecret: string): Promise<void> => {
+      storeOrder.storeBegan = true;
       rotatedSecret = await storeRotatedSecret(
         {
           persist: (writeBack: RotationWriteBack) =>
@@ -322,7 +334,9 @@ export async function runManagedExchange<TInput, THandshake, TExchange>(
     // `storage` bookkeeping steers the next handshake failure to the benign
     // tier. Every other failure is the runner's to classify and record.
     const exchange = await phases
-      .dataExchange(handshake, persistNextSecret)
+      .dataExchange(handshake, persistNextSecret, (mayHold) => {
+        storeOrder.partnerMayHoldNextSecret = mayHold;
+      })
       .catch(async (error: unknown) => {
         // The safety check refused the rotation: the record is the replacing
         // write's, so this run stamps nothing on it.
@@ -343,6 +357,16 @@ export async function runManagedExchange<TInput, THandshake, TExchange>(
             // Swallowed: error.lastRun still reaches the runner on the rethrow.
           }
         }
+        // A responder whose key exchange completed and whose run ended with
+        // neither side able to have stored -- before it sent its value, or on
+        // the initiator's abort in place of `proceed` -- has nothing for the
+        // next run to report.
+        if (
+          marksRotationInFlight &&
+          !storeOrder.partnerMayHoldNextSecret &&
+          !storeOrder.storeBegan
+        )
+          await clearRotationInFlight(record.id, current.sharedSecret);
         throw error;
       });
     // Every authenticated run that completes stored its next secret.
@@ -404,6 +428,21 @@ async function persistRotation(
       relayRegistrationPendingSince,
     }),
   });
+}
+
+/** Remove a responder run's rotation-in-flight marker. Best-effort: a failed
+ * write is logged, and the run's own failure is what propagates. */
+async function clearRotationInFlight(
+  id: string,
+  sharedSecret: string,
+): Promise<void> {
+  try {
+    await clearManagedExchangeRotationInFlight(id, sharedSecret);
+  } catch (error) {
+    log.warn(
+      `managed exchange ${id}: the record still marks this key exchange as in flight (${describeStoreError(error)})`,
+    );
+  }
 }
 
 function errorName(error: unknown): string {

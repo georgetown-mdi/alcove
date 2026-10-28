@@ -37,6 +37,7 @@ import {
   statesItsOwnNextStep,
   classifyFailure,
   isTrustBoundaryFailure,
+  releasableTermsRotation,
 } from "@alcove/core";
 import type {
   Authentication,
@@ -48,8 +49,8 @@ import type {
   ExchangeBootstrapResult,
   ExchangeStageDefinition,
   SigningIdentity,
+  ReleasableTermsRotation,
   TermsChange,
-  TermsRotation,
 } from "@alcove/core";
 
 import {
@@ -660,7 +661,8 @@ async function runExchangeStage(params: {
         }
       },
     },
-  );
+    // A run that ended without its store drops the next secret's inputs here.
+  ).finally(() => run.rotation?.release());
 }
 
 /**
@@ -1158,13 +1160,13 @@ async function authenticateRun(params: {
   // The save, and the hook tied to it, run inside the terms exchange at this
   // side's point in the store order: the initiator's before it sends
   // `proceed`, the responder's on reading it.
-  run.rotation = {
+  run.rotation = releasableTermsRotation({
     inputs: nextSecretInputs,
     store: (nextSecret) => saveNextSecret(nextSecret),
     partnerMayHoldNextSecret: (mayHold) => {
       run.partnerMayHoldNextSecret = mayHold;
     },
-  };
+  });
   async function saveNextSecret(rotatedSecret: string): Promise<void> {
     // buildRotatedKeyFile stamps `expires` = now + tokenMaxAgeDays days
     // when the operator set a max-age policy, computed here at the
@@ -1363,9 +1365,10 @@ interface RunLifecycle {
   /**
    * The rotation the terms exchange makes, set once the key exchange
    * completes: its inputs and the key-file save it awaits at this side's point
-   * in the store order. Undefined on the unauthenticated path.
+   * in the store order. Undefined on the unauthenticated path. Its inputs are
+   * released once the save has run or the exchange has ended without it.
    */
-  rotation: TermsRotation | undefined;
+  rotation: ReleasableTermsRotation | undefined;
   /**
    * Set once the two-party exchange returned, so a failure in the local
    * output stage that follows writes no cross-party abort marker.
@@ -2437,6 +2440,7 @@ export async function runProtocol(
       hintAlreadyEmitted ||
       authenticationFailed ||
       fixedNextStep(err) !== undefined;
+    run.rotation?.release();
     const standing = rotationStanding(run);
     // A responder that wrote its marker and then reached the terms exchange,
     // where the run ended with neither side able to have stored, has nothing

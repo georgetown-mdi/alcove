@@ -337,7 +337,7 @@ test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     // root bypasses mode bits, so the read-open would succeed there instead.
     // A 0o300 (write+execute, no read) parent passes the write probe but would
     // fail saveKeyFile's post-rename fsyncParentDir, which opens the parent for
-    // READ -- after the handshake has rotated the secret. The pre-flight must
+    // READ -- at the terms exchange's store of the next secret. The pre-flight must
     // reject it up front. Locks the (C) fix.
     const { log } = makeLogger();
     const noReadDir = path.join(dir, "write-exec-no-read");

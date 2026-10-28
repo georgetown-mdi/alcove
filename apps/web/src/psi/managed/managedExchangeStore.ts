@@ -33,6 +33,7 @@ import {
   applyManagedExchangeRelayRegistrationConfirmed,
   applyManagedExchangeRotation,
   applyManagedExchangeRotationInFlight,
+  applyManagedExchangeRotationInFlightCleared,
   applyManagedExchangeScheduleAdvance,
   applyManagedExchangeSentColumns,
   applyManagedExchangeStandingConditionCleared,
@@ -952,9 +953,9 @@ function refuseChangedSecret(
 /**
  * Mark the stored record's rotation as in flight at `since`, before the key
  * exchange that may rotate its secret, in a strict-durability transaction
- * awaited to `complete` -- the marker must be on disk before the handshake can
- * change anything, or a crash between the handshake and the rotation write
- * would leave no trace. Field-scoped through
+ * awaited to `complete` -- the marker must be on disk before the terms exchange
+ * can rotate anything, or a crash between this side sending its value and its
+ * rotation write would leave no trace. Field-scoped through
  * {@link applyManagedExchangeRotationInFlight}, which keeps a marker already
  * present; the rotation write ({@link persistManagedExchangeRotation}) removes
  * it (docs/spec/MANAGED_EXCHANGE_RECORD.md, "Persist-before-success ordering").
@@ -974,6 +975,36 @@ export async function markManagedExchangeRotationInFlight(
       runnableManagedExchangeOrRefuse(parseManagedExchangeRecord(stored)),
       since,
     );
+  });
+}
+
+/**
+ * Remove the stored record's rotation-in-flight marker after a responder run
+ * that completed its key exchange and ended at the terms exchange with neither
+ * side able to have stored the next secret
+ * ({@link applyManagedExchangeRotationInFlightCleared}). Writes nothing where
+ * the stored secret is not `sharedSecret`, the one the run authenticated with.
+ *
+ * @throws {Error} if no record with `id` exists, or it holds a configuration
+ *   only.
+ * @throws {ZodError} if the stored value or the resulting record is invalid.
+ */
+export async function clearManagedExchangeRotationInFlight(
+  id: string,
+  sharedSecret: string,
+): Promise<void> {
+  await readModifyWriteRecord(id, (stored) => {
+    if (stored === undefined)
+      throw new Error(`no managed exchange with id ${id}`);
+    const existing = runnableManagedExchangeOrRefuse(
+      parseManagedExchangeRecord(stored),
+    );
+    if (
+      existing.sharedSecret !== sharedSecret ||
+      existing.rotationInFlightSince === undefined
+    )
+      return { unwritten: existing };
+    return applyManagedExchangeRotationInFlightCleared(existing);
   });
 }
 

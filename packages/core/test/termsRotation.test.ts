@@ -4,8 +4,12 @@ import {
   NEXT_SECRET_STORE_FAILED_ABORT_REASON,
   SHARED_SECRET_EXPIRED_ABORT_REASON,
   exchangeTerms,
+  releasableTermsRotation,
 } from "../src/protocolSetup";
-import type { TermsRotation } from "../src/protocolSetup";
+import type {
+  ReleasableTermsRotation,
+  TermsRotation,
+} from "../src/protocolSetup";
 import {
   deriveNextSecret,
   drawRotationValue,
@@ -19,6 +23,7 @@ import type { MessageConnection } from "../src/connection/messageConnection";
 import { receiveAfterTerms } from "../src/partnerAbortFrame";
 import {
   ConnectionError,
+  InternalConsistencyError,
   PartnerProtocolRefusalError,
   PeerAbortError,
   ProtocolRefusalError,
@@ -121,6 +126,7 @@ async function runRotating(options: {
   rewriteResponder?: (frame: Record<string, unknown>) => unknown;
   rewriteInitiator?: (frame: Record<string, unknown>) => unknown;
   closeWhenInitiatorStops?: boolean;
+  releasable?: boolean;
 }) {
   const inputs = handshakeInputs();
   const [rawA, rawB] = createMessagePipe();
@@ -140,6 +146,10 @@ async function runRotating(options: {
     b.sent,
     options.responderStoreFails,
   );
+  if (options.releasable === true) {
+    initiator.rotation = releasableTermsRotation(initiator.rotation);
+    responder.rotation = releasableTermsRotation(responder.rotation);
+  }
   const initiatorRun = exchangeTerms(
     a.conn,
     "initiator",
@@ -650,5 +660,71 @@ describe("the store order's cut points", () => {
     await expect(responderRun).rejects.toThrow();
     expect(initiator.stored).toHaveLength(1);
     expect(responder.stored).toEqual([]);
+  });
+});
+
+describe("a releasable rotation", () => {
+  function released(rotation: TermsRotation): ReleasableTermsRotation {
+    return rotation as ReleasableTermsRotation;
+  }
+
+  test("each side holds no inputs once its store has run", async () => {
+    const run = await runRotating({ releasable: true });
+    expect(run.settled.map((s) => s.status)).toEqual([
+      "fulfilled",
+      "fulfilled",
+    ]);
+    expect(run.responder.stored).toEqual(run.initiator.stored);
+    for (const side of [run.initiator, run.responder]) {
+      expect(released(side.rotation).holdsInputs()).toBe(false);
+      expect(() => side.rotation.inputs).toThrow(InternalConsistencyError);
+    }
+  });
+
+  test("a store that throws still releases the inputs", async () => {
+    const run = await runRotating({
+      releasable: true,
+      initiatorStoreFails: new Error("disk full"),
+    });
+    expect(run.settled[0].status).toBe("rejected");
+    expect(released(run.initiator.rotation).holdsInputs()).toBe(false);
+  });
+
+  test("a run that ends before its store keeps them until released", async () => {
+    const run = await runRotating({
+      releasable: true,
+      rewriteResponder: rewriteTermsReply(
+        ({ responderValue: _dropped, ...rest }) => rest,
+      ),
+    });
+    expect(run.initiator.stored).toEqual([]);
+    const initiatorRotation = released(run.initiator.rotation);
+    expect(initiatorRotation.holdsInputs()).toBe(true);
+    initiatorRotation.release();
+    expect(initiatorRotation.holdsInputs()).toBe(false);
+    expect(() => initiatorRotation.inputs).toThrow(InternalConsistencyError);
+  });
+
+  test("the wrapper passes the store, the report, and a fixed value through", async () => {
+    const stored: string[] = [];
+    const reports: boolean[] = [];
+    const fixed = randomBytes(32);
+    const inputs = handshakeInputs();
+    const rotation = releasableTermsRotation({
+      inputs,
+      store: (nextSecret) => {
+        stored.push(nextSecret);
+      },
+      partnerMayHoldNextSecret: (mayHold) => {
+        reports.push(mayHold);
+      },
+      fixedResponderValue: fixed,
+    });
+    expect(rotation.inputs).toBe(inputs);
+    expect(rotation.fixedResponderValue).toBe(fixed);
+    rotation.partnerMayHoldNextSecret?.(true);
+    await rotation.store("next");
+    expect(stored).toEqual(["next"]);
+    expect(reports).toEqual([true]);
   });
 });

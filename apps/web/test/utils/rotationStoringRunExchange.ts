@@ -14,10 +14,21 @@ export const MOCKED_NEXT_SECRET_INPUTS: NextSecretInputs = {
   expires: undefined,
 };
 
+const inputsReadBeforeStore = new WeakMap<TermsRotation, NextSecretInputs>();
+
+/** The inputs a mocked runExchange read off `rotation` before its store, as
+ * the real terms exchange reads them for the derivation. */
+export function inputsReadAtStore(
+  rotation: TermsRotation,
+): NextSecretInputs | undefined {
+  return inputsReadBeforeStore.get(rotation);
+}
+
 /**
  * Make every implementation a mocked runExchange takes store
  * {@link MOCKED_NEXT_SECRET} through `options.rotation` first, as the real
- * terms exchange does before any payload round. Patches the mock's
+ * terms exchange does before any payload round, reading its inputs before the
+ * store ({@link inputsReadAtStore}). Patches the mock's
  * `mockImplementation` and `mockImplementationOnce`, which its
  * `mockResolvedValue` and `mockRejectedValue` families call.
  */
@@ -27,7 +38,10 @@ export function storeRotationFirst(mock: Mock): void {
     async (...args: Array<unknown>): Promise<unknown> => {
       const rotation = (args[3] as { rotation?: TermsRotation } | undefined)
         ?.rotation;
-      if (rotation !== undefined) await rotation.store(MOCKED_NEXT_SECRET);
+      if (rotation !== undefined) {
+        inputsReadBeforeStore.set(rotation, rotation.inputs);
+        await rotation.store(MOCKED_NEXT_SECRET);
+      }
       return impl(...args);
     };
   const setImplementation = mock.mockImplementation.bind(mock);

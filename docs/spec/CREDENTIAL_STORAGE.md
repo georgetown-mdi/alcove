@@ -57,7 +57,7 @@ Create-if-absent is what every file written where none should exist takes: a
 signing identity being created for the first time; a key file provisioned from
 an invitation by `exchange --invitation`, or by an offline `invite`, an offline
 `accept`, or a zero-setup `--save`; the key file an online `invite` or `accept`
-saves at its first handshake; a configuration those commands and an online
+saves at its first terms exchange; a configuration those commands and an online
 `invite` or `accept` write fresh; and an `alcove init` config the operator asked
 to create rather than replace. Each of those commands checks the paths before
 it starts, and the create-if-absent write refuses a file that appeared after
@@ -343,8 +343,8 @@ write (`ls -le` to inspect, `chmod -N` to clear) is in
 ## Writable-and-readable-parent pre-flight
 
 Before a recurring exchange's handshake, Alcove validates that the key file can
-be written, because a write that fails after the handshake has rotated the
-shared secret can desynchronize the two parties' tokens and force a
+be written, because a write of the rotated shared secret that fails at the
+terms exchange can desynchronize the two parties' tokens and force a
 re-invitation. On POSIX the key file's parent directory must be both writable
 and readable by the owner: the post-write parent-directory `fsync` opens the
 parent for reading, so a write-only (mode `0o300`) parent that passes a naive

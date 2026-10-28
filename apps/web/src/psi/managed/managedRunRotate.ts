@@ -18,7 +18,7 @@ import type {
 } from "./managedExchangeRecord";
 
 /**
- * The fields a successful handshake advances on the stored record, and nothing
+ * The fields a run's rotation advances on the stored record, and nothing
  * else, so a field-scoped write cannot overwrite a concurrent write with a
  * stale secret or document. `expires: null` clears a standing bound when no
  * policy is set, distinct from leaving it untouched.

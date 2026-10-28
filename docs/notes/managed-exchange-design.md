@@ -155,17 +155,17 @@ That property makes the ordering of persistence and success critical.
 
 ### Persist-before-success
 
-Within a run, the rotated secret is written durably to the browser store, and the write is awaited to completion, **before** this party begins the data exchange, the first peer-visible act after the handshake.
-The protocol has no discrete "success" signal to hold back.
-Both sides rotate at handshake completion, and the exchange's terminal act is a fire-and-forget final send, so the data exchange itself is what the persist must precede.
+Within a run, the rotated secret is written durably to the browser store, and the write is awaited to completion, **before** this party sends or reads any payload round.
+The protocol has no discrete "success" signal to hold back, and the exchange's terminal act is a fire-and-forget final send, so the data exchange itself is what the persist must precede.
+The write is made inside the terms exchange that follows the handshake, at this side's point in the store order: the initiator's before it confirms the terms, the responder's once it reads that confirmation ([The rotation at the terms exchange](../spec/PROTOCOL.md#the-rotation-at-the-terms-exchange)).
 
 The order is:
 handshake completes,
-rotated secret persisted and the write awaited,
+terms agreed and the rotated secret persisted, the write awaited,
 data exchange proceeds,
 local success recorded.
 
-This is the browser analog of the CLI's write-then-exchange ordering, where the key file is written through an atomic, fsync-durable path right after the handshake rotates the secret and before the data exchange runs (see [Key file security](../SECURITY_DESIGN.md#key-file-security)).
+This is the browser analog of the CLI's write-then-exchange ordering, where the key file is written through an atomic, fsync-durable path at the terms exchange and before the data exchange runs (see [Key file security](../SECURITY_DESIGN.md#key-file-security)).
 The step sequence and the store transaction it awaits are in [MANAGED_EXCHANGE_RECORD.md](../spec/MANAGED_EXCHANGE_RECORD.md#persist-before-success-ordering).
 
 What the ordering buys is scoped: it removes **this party's contribution** to the desync window.
@@ -263,7 +263,7 @@ Refusing them instead would keep the operator from a backup for the whole of a s
 Bringing the exchange back here is the same import with the newer files.
 The files from a run elsewhere hold a secret the copy here does not, so the secret alone cannot find it; the agreed terms and side do, and the import asks.
 The answer that brings the exchange back replaces the copy here in place rather than adding a second entry: its `id` keys the accounting of disclosures, the parked results and the local state, so keeping the `id` keeps them, and the operator has one entry to look after rather than an older one to remember to remove.
-The import does not decide which copy is the newer, because nothing in the record can: there is no rotation epoch (the no-anti-rollback caveat below), and the run history orders runs, not rotations -- a missed window or a run that failed before its handshake rotates nothing, and each copy's stamps come from its own device's clock.
+The import does not decide which copy is the newer, because nothing in the record can: there is no rotation epoch (the no-anti-rollback caveat below), and the run history orders runs, not rotations -- a missed window or a run that failed before its terms exchange stored anything rotates nothing, and each copy's stamps come from its own device's clock.
 So the operator chooses between replacing and keeping, and the rule is in [Replacing a saved copy](../spec/MANAGED_EXCHANGE_RECORD.md#replacing-a-saved-copy).
 No state records that an exchange left, so none has to be cleared for it to come back, and nothing refuses a run or an import on it.
 

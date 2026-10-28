@@ -4,14 +4,14 @@
  * out of the same building blocks the one-shot flows compose -- the
  * rendezvous, the peer message connection, the authenticated handshake,
  * core's `runExchange`, and the run-outputs builder -- with the durable
- * rotate-and-persist interposed between the handshake and the data exchange
- * (the persist-before-success ordering {@link runManagedRerun} inherits from
- * {@link runManagedExchange}).
+ * rotation persist handed to core's terms exchange as its store, before any
+ * payload round (the persist-before-success ordering {@link runManagedRerun}
+ * inherits from {@link runManagedExchange}).
  *
  * It reuses the one-shot flows' primitives rather than their hooks: the one-shot
  * `runExchangeLifecycle` bundles the handshake and the data exchange into one
- * unit with no call site to persist the rotated secret between them, so a
- * managed re-run cannot drive it directly. The shared primitives it composes
+ * unit and stores the next secret only in memory, so a managed re-run cannot
+ * drive it directly. The shared primitives it composes
  * ({@link openPeerRunConnection}, {@link authenticateExchange},
  * {@link runExchange}, {@link buildRunOutputs}) are standalone, so this composes
  * them with the rotation interposed and the one-shot flows are untouched.
@@ -27,6 +27,7 @@
 import PSI from "@openmined/psi.js/psi_wasm_web";
 
 import {
+  InternalConsistencyError,
   TermsChangeRefusedError,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
   assertFirstRoundWithinSetMaximum,
@@ -38,6 +39,7 @@ import {
   loadPsiBackend,
   payloadReceiveFilledNotice,
   projectPairTable,
+  releasableTermsRotation,
   runExchange,
   sanitizeForDisplay,
 } from "@alcove/core";
@@ -133,8 +135,10 @@ interface ManagedRerunCarried {
     preRotationSecret: string;
     maxAgeDays: number | null;
   };
-  /** What the terms exchange derives the next secret from. */
-  nextSecretInputs: NextSecretInputs;
+  /** What the terms exchange derives the next secret from, until the data
+   * exchange takes it into the rotation it hands core
+   * ({@link takeNextSecretInputs}). */
+  nextSecretInputs?: NextSecretInputs;
   /** The next secret, once the terms exchange has stored it: a run that
    * stopped before its store registers no rotated relay key. */
   rotatedSecret?: string;
@@ -403,10 +407,11 @@ export function runManagedExchangeInBrowser(
           // listener above with nothing yet to close, and an aborted signal
           // never fires it again, so the state is read once here.
           if (signal.aborted) cutRunOnCancel();
-          // Awaited before the handshake: both parties rotate once it
-          // completes, so a library that failed to load after it would leave
-          // this party on the retired secret while the partner holds the new
-          // one. Inbound frames wait in the message connection meanwhile.
+          // Awaited before the handshake: the terms exchange that follows it
+          // can rotate both parties, so a library that failed to load after
+          // it could leave this party on the retired secret while the partner
+          // holds the new one. Inbound frames wait in the message connection
+          // meanwhile.
           const psiLibrary = await psiPromise;
           // Past this point no stop is honored, whatever the role, and a
           // responder's rotation-in-flight marker is durable before the key
@@ -461,12 +466,24 @@ export function runManagedExchangeInBrowser(
       // down regardless of outcome. A rotated relay key is registered on either
       // exit too, once stored, while the run still holds the lock and the
       // pre-rotation secret.
-      dataExchange: async (carried, persistNextSecret) => {
+      dataExchange: async (
+        carried,
+        persistNextSecret,
+        partnerMayHoldNextSecret,
+      ) => {
         const termsTakenOnRef: { current: boolean } = { current: false };
         const expected: ManagedRunRecordExpectation = {
           id: record.id,
           linkageTerms: carried.linkageTerms,
         };
+        const rotation = releasableTermsRotation({
+          inputs: takeNextSecretInputs(carried),
+          store: async (nextSecret) => {
+            await persistNextSecret(nextSecret);
+            carried.rotatedSecret = nextSecret;
+          },
+          partnerMayHoldNextSecret,
+        });
         try {
           const result = await runExchange(
             carried.mc,
@@ -475,13 +492,7 @@ export function runManagedExchangeInBrowser(
             {
               psiLibrary: carried.psiLibrary,
               psiEngineFactory: browserPsiEngineFactory(),
-              rotation: {
-                inputs: carried.nextSecretInputs,
-                store: async (nextSecret) => {
-                  await persistNextSecret(nextSecret);
-                  carried.rotatedSecret = nextSecret;
-                },
-              },
+              rotation,
               // What the agreed terms resolved to, reported here as for every
               // other seat: a re-run is where an unnoticed widening of the match
               // matters most, since the terms are a standing record. The
@@ -566,6 +577,7 @@ export function runManagedExchangeInBrowser(
             ? new ManagedTermsChangeTakenOnError({ cause: error })
             : error;
         } finally {
+          rotation.release();
           // Started, not awaited: the clean close inside it waits for the peer
           // to take the final frame, up to its ceiling. Awaiting it would
           // withhold this run's outputs -- and the success bookkeeping behind
@@ -813,6 +825,19 @@ async function fileTerminatedDisclosure(
  * `RTCPeerConnection.close()`, which discards buffered outbound data and would
  * drop that frame.
  */
+/** `carried`'s next-secret inputs, removed from it: the rotation the data
+ * exchange builds from them is then their one holder, and it releases them
+ * once its store has run or the exchange has ended. */
+function takeNextSecretInputs(carried: ManagedRerunCarried): NextSecretInputs {
+  const inputs = carried.nextSecretInputs;
+  if (inputs === undefined)
+    throw new InternalConsistencyError(
+      "the next shared secret's inputs were taken twice in one run",
+    );
+  delete carried.nextSecretInputs;
+  return inputs;
+}
+
 async function teardown(
   runConnection: RunConnection,
   mc: MessageConnection,

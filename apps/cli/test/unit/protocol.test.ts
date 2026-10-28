@@ -11,6 +11,7 @@ import type {
   DualSignedRecord,
   ExchangeRecord,
   HandshakeRole,
+  ReleasableTermsRotation,
   TermsRotation,
   VerificationKeys,
 } from "@alcove/core";
@@ -3423,6 +3424,44 @@ test("a refusal by the initiator at its proceed rotates nobody: no rotated-token
   expect(loadKeyFile(keyFileA)).toEqual({ sharedSecret: TOKEN_A });
   expect(loadKeyFile(keyFileB)).toEqual({ sharedSecret: TOKEN_A });
 }, 20_000);
+
+test.each([
+  ["once its save has run", true],
+  ["once a run that saved nothing has ended", false],
+])(
+  "the rotation the run holds releases the next secret's inputs %s",
+  async (_case, proceeds) => {
+    const keyFileA = path.join(tmpDir, "a.key");
+    const keyFileB = path.join(tmpDir, "b.key");
+    saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
+    saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+    const held: Array<ReleasableTermsRotation> = [];
+    const step = async (
+      rotation: TermsRotation,
+      nextSecret: string,
+    ): Promise<void> => {
+      const releasable = rotation as ReleasableTermsRotation;
+      held.push(releasable);
+      expect(releasable.holdsInputs()).toBe(true);
+      if (!proceeds)
+        throw new ProtocolRefusalError("linkage terms are incompatible");
+      await rotation.store(nextSecret);
+      expect(releasable.holdsInputs()).toBe(false);
+    };
+    driveTermsExchange({ initiator: step, responder: step });
+
+    const results = await runResponderBThenInitiatorA(keyFileA, keyFileB);
+
+    for (const result of results)
+      expect(result.status).toBe(proceeds ? "fulfilled" : "rejected");
+    expect(held).toHaveLength(2);
+    for (const rotation of held) {
+      expect(rotation.holdsInputs()).toBe(false);
+      expect(() => rotation.inputs).toThrow(InternalConsistencyError);
+    }
+  },
+  20_000,
+);
 
 test.skipIf(process.platform === "win32")(
   "a failed save on the initiator rotates nobody: its error names no rotated token on the partner's side and exits 69",

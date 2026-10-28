@@ -26,6 +26,7 @@ import {
   applyManagedExchangeReinviteRotation,
   applyManagedExchangeRotation,
   applyManagedExchangeRotationInFlight,
+  applyManagedExchangeRotationInFlightCleared,
   applyManagedExchangeScheduleAdvance,
   applyManagedExchangeStandingConditionCleared,
   applyManagedExchangeWorkingDirectory,
@@ -2333,6 +2334,15 @@ describe("the rotation-in-flight marker", () => {
       signalingServer: { host: "signaling.example.org" },
     });
     expect(reinvited).not.toHaveProperty("rotationInFlightSince");
+  });
+
+  test("a run that ended with nobody able to have stored removes it and nothing else", () => {
+    const record = runnableRecord();
+    const marked = applyManagedExchangeRotationInFlight(record, MARKED_AT);
+    const cleared = applyManagedExchangeRotationInFlightCleared(marked);
+    expect(cleared).not.toHaveProperty("rotationInFlightSince");
+    expect(cleared).toEqual(record);
+    expect(applyManagedExchangeRotationInFlightCleared(record)).toBe(record);
   });
 
   test("a run's bookkeeping leaves it standing", () => {

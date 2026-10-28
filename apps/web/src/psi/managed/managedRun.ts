@@ -100,12 +100,15 @@ interface ManagedRerunSeams<TInput, THandshake, TExchange> {
     beginKeyExchange: () => Promise<void>,
     current: RunnableManagedExchangeRecord,
   ) => Promise<THandshake>;
-  /** Run the data exchange. Receives the handshake's output value and the
+  /** Run the data exchange. Receives the handshake's output value, the
    * durable rotation write, which it hands core's terms exchange as the
-   * store of the next secret. */
+   * store of the next secret, and the report core's terms exchange makes of
+   * whether the partner may hold a next secret this side has not stored
+   * (`TermsRotation.partnerMayHoldNextSecret`). */
   dataExchange: (
     handshake: THandshake,
     persistNextSecret: (nextSecret: string) => Promise<void>,
+    partnerMayHoldNextSecret: (mayHold: boolean) => void,
   ) => Promise<TExchange>;
 }
 
@@ -242,11 +245,15 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
         phase.handshakeBegan = true;
         return seams.handshake(input, beginKeyExchange, read);
       },
-      dataExchange: (handshake, persistNextSecret) =>
-        seams.dataExchange(handshake, async (nextSecret) => {
-          await persistNextSecret(nextSecret);
-          storedSecret = nextSecret;
-        }),
+      dataExchange: (handshake, persistNextSecret, partnerMayHoldNextSecret) =>
+        seams.dataExchange(
+          handshake,
+          async (nextSecret) => {
+            await persistNextSecret(nextSecret);
+            storedSecret = nextSecret;
+          },
+          partnerMayHoldNextSecret,
+        ),
       onDataExchangeStart: () => {
         dataExchangeStarted = true;
         options.onDataExchangeStart?.();

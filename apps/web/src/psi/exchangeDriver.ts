@@ -34,8 +34,8 @@ export interface ExchangeDriverEvents<
   /** Activate a stage by id as the run advances through it. */
   onStage: (stageId: string) => void;
   /** The run succeeded: the owner-widened outputs and, from the in-browser
-   * driver, the {@link RunCompletion} holding the secret its handshake rotated
-   * to. A console-conducted run passes none: the command line keeps that
+   * driver, the {@link RunCompletion} holding the next secret its terms
+   * exchange derived. A console-conducted run passes none: the command line keeps that
    * secret. */
   onResult: (outputs: TOutputs, completion?: RunCompletion) => void;
   /** The run failed, tagged with the category that decides the consumer's
