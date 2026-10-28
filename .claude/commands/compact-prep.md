@@ -25,9 +25,10 @@ before proceeding -- its Session lifecycle section defines this state.
 1. Change nothing about the work: agents in flight keep running, nothing
    stops, and no branch, fix round or spawn starts as part of the preparation.
 2. At the next point where no step of your own is half done, bring the
-   continuation brief current. Record in it the state the session is in --
-   Working, Wind-down, or another state the ruleset's Session lifecycle
-   names -- and the latest shortlist's candidates the session has not taken.
+   continuation brief current. Record in it the state the session was in
+   before this preparation -- Working, Wind-down, or another state the
+   ruleset's Session lifecycle names, never Compact-prep itself -- and the
+   latest shortlist's candidates the session has not taken.
 3. Print two messages, each a few lines that keep only what the next context
    needs:
    - The argument for `/compact`: the brief's path, the task ids of agents
@@ -36,5 +37,4 @@ before proceeding -- its Session lifecycle section defines this state.
      will do in between and where its result will be. It names no brief and
      no state: `/orchestrate` reads the newest brief and enters the state it
      records.
-4. Carry on in the recorded state until the owner compacts. A state the
-   owner names before then is written to the brief in that turn.
+4. Carry on in the recorded state until the owner compacts.
