@@ -39,7 +39,7 @@ import type { PsiProgressReporter } from "../psi/participant.js";
 function valuesToSend(elementCount: number, everyRound: boolean): string {
   return everyRound
     ? `a count-only exchange sends ${elementCount} values for every ` +
-        "linkage key, one for each of your records"
+        "linkage key"
     : `the first linkage key gives you at least ${elementCount} values to send`;
 }
 
@@ -122,10 +122,10 @@ const PARTNER_CEILING_REMEDY =
  * exchange is not checked here: its dataset ceiling holds every set it sends
  * (docs/spec/PROTOCOL.md, "The single-pass dataset ceiling").
  *
- * Under the every-key count-only construction a `psi-c` exchange's every
- * round, whatever its declared strategy, sends one value for each of this
- * party's declared records, in either role (docs/spec/PROTOCOL.md, PSI-C), so
- * that figure is checked for every round without reading the input.
+ * Under the every-key count-only construction every round of a `psi-c`
+ * exchange sends one value for each of this party's declared records, in
+ * either role (docs/spec/PROTOCOL.md, PSI-C), so that figure is checked for
+ * every round without reading the input.
  *
  * The count reports its progress through `options.onProgress`
  * ({@link FirstRoundCheckOptions}) and yields to the event loop as it goes,

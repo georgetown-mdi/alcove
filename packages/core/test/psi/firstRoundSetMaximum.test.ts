@@ -152,7 +152,7 @@ describe("under the every-key count-only construction", () => {
       roundOneSetOverMaximumMessage(301, 300, true),
     );
     expect((refusal as Error).message).toMatch(
-      /^Too large to send: a count-only exchange sends 301 values for every linkage key, one for each of your records, over the 300 one PSI set can hold\. Nothing was sent\. Split the input/,
+      /^Too large to send: a count-only exchange sends 301 values for every linkage key, over the 300 one PSI set can hold\. Nothing was sent\. Split the input/,
     );
 
     // The shipped construction counts the twenty values, and admits it.

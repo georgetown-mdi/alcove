@@ -581,7 +581,7 @@ describe("under the every-key count-only construction", () => {
       roundOneSetOverPartnerCeilingMessage(12, 11, true),
     );
     expect(refusal.message).toMatch(
-      /^Too large for your partner: a count-only exchange sends 12 values for every linkage key, one for each of your records, over the 11 your partner can receive in one PSI set,/,
+      /^Too large for your partner: a count-only exchange sends 12 values for every linkage key, over the 11 your partner can receive in one PSI set,/,
     );
     expect(binaryFrames(partnerSent)).toEqual([]);
     expect(binaryFrames(sent)).toEqual([]);

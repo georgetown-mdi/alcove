@@ -2,7 +2,7 @@
 - - -> **Under the PSI-C construction every round is counted.**
 - - -> In an exchange running the [PSI-C](#psi-c) construction every round's set has one element for each of the party's declared records, in either role and whatever a key's coverage.
 - - -> Both counts, at the start and against the partner's receive ceiling, therefore weigh the party's declared record count, without reading its records.
-- - -> That figure is the exact size of every round's set, so one check covers every round of the exchange, whatever the declared `linkage_strategy`.
+- - -> That figure is the exact size of every round's set, so one check covers every round of the exchange.
 - - -> The refusal states that a count-only exchange sends that many values for every linkage key.
 - A later round is held to the ceiling here alone: its set is known only once the earlier rounds have matched. -> A later round of a cascade is held to the ceiling here alone: its set is known only once the earlier rounds have matched.
 - - -> Under the [PSI-C](#psi-c) construction every round's set is the declared record count the checks before the first round already weighed ([Under the PSI-C construction every round is counted](#the-memory-ceiling-and-the-csv-intake-cap)).
