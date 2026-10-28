@@ -21,7 +21,11 @@ import {
 } from "@psi/transportChooser";
 import { acceptedSignalingServer } from "@console/signalingServerModel";
 
-import type { InvitationToken, LinkageTerms, Metadata } from "@alcove/core";
+import type {
+  InvitationSummary,
+  InvitationToken,
+  Metadata,
+} from "@alcove/core";
 import type { LedgerOutcome } from "@psi/ledger";
 
 import type { RailFact, RailStepState } from "@psi/rail";
@@ -127,14 +131,15 @@ export function acceptorRailFacts(attention?: string): Array<RailFact> {
 }
 
 /**
- * Result direction phrased from the ACCEPTOR's seat, mirroring the inviter's
- * `output`: `expectsOutput` is whether the inviter receives, `shareWithPartner`
- * whether the acceptor (its partner) receives -- so from the acceptor's side the
- * two roles swap.
+ * Result direction phrased from the ACCEPTOR's seat, read from the shared
+ * invitation summary: `inviterReceivesOutput` is whether the inviter receives,
+ * `inviterSharesResult` whether the acceptor (its partner) receives -- so from
+ * the acceptor's side the two roles swap. The receive row reads the same
+ * `inviterSharesResult`, so the two rows cannot disagree.
  */
-function acceptorResultsGoTo(output: LinkageTerms["output"]): string {
-  const acceptorReceives = output.shareWithPartner;
-  const inviterReceives = output.expectsOutput;
+function acceptorResultsGoTo(summary: InvitationSummary): string {
+  const acceptorReceives = summary.inviterSharesResult;
+  const inviterReceives = summary.inviterReceivesOutput;
   if (acceptorReceives && inviterReceives) return "You and your partner";
   if (acceptorReceives) return "Only you";
   if (inviterReceives) return "Only your partner";
@@ -198,6 +203,32 @@ export function acceptorLedgerTag(invitingParty: string): string {
   return `Proposed by ${invitingParty}`;
 }
 
+/** The receive row when the terms give the acceptor no result. */
+export const ACCEPTOR_RECEIVES_NOTHING =
+  "No matched rows and no columns from your partner";
+
+/** The acceptor's "You will receive" row. It reads the fact the "Results go to"
+ * row reads ({@link acceptorResultsGoTo}), so terms that give the acceptor no
+ * result never promise matched rows or columns. A count-only run keeps the
+ * count-only wording whichever way the terms point. */
+function acceptorReceiveRow(
+  summary: InvitationSummary,
+  received: ReadonlyArray<string>,
+): AcceptorLedgerRow {
+  const label = "You will receive";
+  if (summary.algorithm === "psi-c")
+    return { label, value: COUNT_ONLY_RECEIVE_ROW_VALUE };
+  if (!summary.inviterSharesResult)
+    return { label, muted: ACCEPTOR_RECEIVES_NOTHING };
+  return {
+    label,
+    value:
+      received.length > 0
+        ? `Matched rows + ${received.join(", ")}`
+        : "Matched rows",
+  };
+}
+
 /**
  * The acceptor's disclosure ledger: the receive/matched-on/expiry/results/agreement/
  * transport rows read from the decoded invitation (every partner string sanitized by
@@ -222,15 +253,7 @@ export function acceptorLedgerRows(
     metadata === undefined ? undefined : disclosedColumnNames(metadata);
   return [
     acceptorSendRow("You will send", disclosure),
-    {
-      label: "You will receive",
-      value:
-        summary.algorithm === "psi-c"
-          ? COUNT_ONLY_RECEIVE_ROW_VALUE
-          : received.length > 0
-            ? `Matched rows + ${received.join(", ")}`
-            : "Matched rows",
-    },
+    acceptorReceiveRow(summary, received),
     summary.linkageKeys.length > 0
       ? {
           label: "Matched on",
@@ -250,7 +273,7 @@ export function acceptorLedgerRows(
     },
     {
       label: "Results go to",
-      value: acceptorResultsGoTo(token.linkageTerms.output),
+      value: acceptorResultsGoTo(summary),
     },
     summary.legalAgreement !== undefined
       ? { label: "Agreement", value: summary.legalAgreement.reference }
@@ -312,7 +335,7 @@ export function acceptorDoneLedgerRows(
       : { label: "Matched on", muted: "No keys", shareBar: true },
     {
       label: "Results went to",
-      value: acceptorResultsGoTo(token.linkageTerms.output),
+      value: acceptorResultsGoTo(summary),
     },
     summary.legalAgreement !== undefined
       ? { label: "Agreement", value: summary.legalAgreement.reference }
