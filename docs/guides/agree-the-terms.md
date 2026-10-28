@@ -36,16 +36,16 @@ Each of you sets a use for every column in your own file. The inviter does it on
 | --- | --- | --- |
 | **Used to match - not sent** | Builds the matching keys. The value never leaves your machine. | Usual: names, date of birth, SSN and other identifiers. |
 | **Used to match - sent to your partner** | Builds the keys, and sends the value to your partner for matched records. | Your partner agreed to receive that identifier. |
-| **Unique record identifier - not sent** | Labels your own records in your result file. | Your partner does not need your ID. |
-| **Unique record identifier - sent to your partner** | Labels your records, and sends the ID to your partner for matched records. | Your partner needs your ID to follow up on each match. The default for the first ID column Alcove recognizes. |
+| **Unique record identifier - not sent** | Labels your own records in your result file. | Usual: your own ID column, whatever it is called. |
+| **Unique record identifier - sent to your partner** | Labels your records, and sends the ID to your partner for matched records. | Your partner needs your ID to follow up on each match. |
 | **Sent to your partner** | Not matched on. Sent to your partner for matched records. | Your partner agreed to receive that column, such as an enrollment date. |
 | **Ignored** | Not matched on and not sent. | Usual: every other column. |
 
 "Sent" means the values of matched records only, and only to a party that receives the result. A party that receives no result is sent no columns, whatever its partner's file sets.
 
-Alcove fills in each column's type and use from its name. It sends nothing by default except your ID columns: the first starts as **Unique record identifier - sent to your partner**, and any other as **Sent to your partner**.
+Alcove fills in each column's type and use from its name. It sends nothing by default, your ID column included.
 
-**Your ID column.** Alcove recognizes an ID column named `id`, `identifier`, `ClientID`, `PersonID`, or `PersonalID`, or one whose name ends in `_id` once spaces, dots, and dashes count as `_` (so `Client ID` counts). Every one it recognizes starts as sent to your partner, and the first is your record identifier: your result starts each row with it. To keep your record identifier from your partner, set it to **Unique record identifier - not sent**; to keep another ID column back, set it to **Ignored**. A column the app does not recognize, an ID column under another name included, starts as **Ignored**. With no column set as your ID, your result holds row numbers only, counting from 0. On the command line, the record identifier's `metadata` entry reads `role: identifier`, with `is_payload: false` to keep it back.
+**Your ID column.** Set your own ID column, whatever it is called, to **Unique record identifier - not sent**. Your result then starts each row with your own ID, and your partner never receives it. Alcove recognizes a column named `id`, `identifier`, `ClientID`, `PersonID`, or `PersonalID`, or one whose name ends in `_id` once spaces, dots, and dashes count as `_` (so `Client ID` counts), and starts it as **Unique record identifier - not sent**; if several qualify, only the first starts as an ID. A column the app does not recognize starts as **Ignored**. With no column set as your ID, your result holds row numbers only, counting from 0. To send your ID for matched records, choose **Unique record identifier - sent to your partner**. On the command line, its `metadata` entry reads `role: identifier`, with `is_payload: false` to keep it or `is_payload: true` to send it.
 
 ## Who receives the result
 

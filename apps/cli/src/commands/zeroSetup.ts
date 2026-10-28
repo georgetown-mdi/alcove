@@ -121,10 +121,11 @@ export const QUICK_EXCHANGE_USAGE =
   "command, alcove runs a quick exchange through the server or shared\n" +
   "folder at URL; the options below are the quick exchange's. For each\n" +
   "matched record, a quick exchange sends your partner every column that\n" +
-  "is not a linkage key, id columns included. Columns whose names Alcove\n" +
+  "is not a linkage key or an id column. Columns whose names Alcove\n" +
   "recognizes as linkage keys (such as first_name, date_of_birth, ssn,\n" +
   "phone, email, zip) are never sent: the ones a built-in key uses are\n" +
-  "matched on and the rest are held back. A column under another name\n" +
+  "matched on and the rest are held back. Id columns (such as id,\n" +
+  "case_id, ClientID) are held back too. A column under another name\n" +
   "is sent. The display shown before the run lists the columns it\n" +
   "sends and the ones it holds back. Each step waits up to one poll\n" +
   "interval (--polling-frequency), so even a small practice run takes a\n" +
@@ -156,10 +157,11 @@ export function builder(cmd: Argv): Argv {
               "Linkage terms are inferred from each party's input file. No\n" +
               "configuration files are required or written unless --save is given.\n" +
               "For each matched record it sends every column that is not a\n" +
-              "linkage key, id columns included. Columns whose names Alcove\n" +
+              "linkage key or an id column. Columns whose names Alcove\n" +
               "recognizes as linkage keys (such as first_name, date_of_birth, ssn,\n" +
               "phone, email, zip) are never sent: the ones a built-in key uses\n" +
-              "are matched on and the rest are held back. A column under another\n" +
+              "are matched on and the rest are held back. Id columns (such as id,\n" +
+              "case_id, ClientID) are held back too. A column under another\n" +
               "name is sent. The display shown before the run lists the columns\n" +
               "it sends and the ones it holds back. To choose the columns sent,\n" +
               "write a configuration with 'alcove init URL INPUT_FILE' and run\n" +

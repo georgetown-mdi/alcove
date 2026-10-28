@@ -1228,11 +1228,7 @@ test("handler: a quick exchange declares every column, so no undeclared-columns 
     const prepared = vi.mocked(prepareForExchange).mock.results[0]
       .value as PreparedExchange;
     expect(prepared.undeclaredColumns).toEqual([]);
-    expect(disclosedColumnNames(prepared.metadata)).toEqual([
-      "notes",
-      "case_id",
-      "household_id",
-    ]);
+    expect(disclosedColumnNames(prepared.metadata)).toEqual(["notes"]);
     expect(vi.mocked(warnUndeclaredColumns)).not.toHaveBeenCalled();
     expect(
       optionsArg(vi.mocked(runProtocol).mock.calls[0]).undeclaredColumnsWarned,
@@ -1671,10 +1667,11 @@ async function zeroSetupRunOutput(
   }
 }
 
-/** A CSV whose `id` column inference marks as sent: a zero-setup run has no
- * metadata of its own, so the inferred set is the set it transmits. */
+/** A CSV whose `notes` column inference marks as sent and whose `id` column it
+ * holds back: a zero-setup run has no metadata of its own, so the inferred set
+ * is the set it transmits. */
 const CSV_WITH_TRANSMITTED_COLUMN =
-  "first_name,last_name,date_of_birth,id\nBob,Jones,1990-01-02,1\n";
+  "first_name,last_name,date_of_birth,id,notes\nBob,Jones,1990-01-02,1,x\n";
 
 test("handler: the run states what it transmits and what it matches on", async () => {
   const { stderr } = await zeroSetupRunOutput(CSV_WITH_TRANSMITTED_COLUMN);
@@ -1683,9 +1680,11 @@ test("handler: the run states what it transmits and what it matches on", async (
     "What this exchange sends and matches on. Nothing has been sent yet:",
   );
   // The column the inference marks as sent, which is the point of the
-  // display: an operator who did not mean to send `id` learns it here.
+  // display: an operator who did not mean to send `notes` learns it here.
   expect(stderr).toContain("columns you will send");
-  expect(stderr).toContain("- id");
+  expect(stderr).toContain("- notes");
+  expect(stderr).not.toContain("- id");
+  expect(stderr).toContain("held back (enforced): id");
   expect(stderr).toContain("you will receive the result");
   expect(stderr).toContain("your partner will receive the result");
   expect(stderr).toContain("PSI algorithm");
@@ -1759,11 +1758,12 @@ test("handler: a run transmitting no column of its own says so", async () => {
   expect(stderr).not.toContain("- diagnosis");
 });
 
-test("handler: the display lists every column that is not a linkage key, and no linkage key", async () => {
+test("handler: the display lists every column that is neither a linkage key nor an id column, and holds back each id column", async () => {
   const { stderr } = await zeroSetupRunOutput(
     "first_name,last_name,date_of_birth,ssn,diagnosis,case_id,household_id\n" +
       "Bob,Jones,1990-01-02,123456789,x,c1,h1\n",
   );
+  expect(stderr).toContain("held back (enforced): case_id, household_id");
 
   const lines = stderr.split(/\r?\n/);
   const labelIndex = lines.findIndex((line) =>
@@ -1776,8 +1776,41 @@ test("handler: the display lists every column that is not a linkage key, and no 
     if (listed === null) break;
     sent.push(listed[1]);
   }
-  expect(sent).toEqual(["diagnosis", "case_id", "household_id"]);
+  expect(sent).toEqual(["diagnosis"]);
 });
+
+test.each([
+  "id",
+  "identifier",
+  "case_id",
+  "Client ID",
+  "ClientID",
+  "PersonID",
+  "PersonalID",
+])(
+  "handler: a quick exchange holds back an id column %j and a second id column, and sends an unrecognized one",
+  async (name) => {
+    const { stderr } = await zeroSetupRunOutput(
+      `${name},first_name,last_name,date_of_birth,notes,household_id\n` +
+        "1,Bob,Jones,1990-01-02,x,h1\n",
+    );
+    const lines = stderr.split(/\r?\n/);
+    const labelIndex = lines.findIndex((line) =>
+      line.includes("columns you will send"),
+    );
+    const sent: string[] = [];
+    for (const line of lines.slice(labelIndex + 1)) {
+      const listed = /^ {4}- (.*)$/.exec(line);
+      if (listed === null) break;
+      sent.push(listed[1]);
+    }
+    expect(sent).toEqual(["notes"]);
+    expect(stderr).toContain(`held back (enforced): ${name}, household_id`);
+    expect(stderr).toContain(
+      `record identifier: ${name}, the first id column in your file`,
+    );
+  },
+);
 
 test("handler: the whole display reaches the operator before the server is contacted", async () => {
   // The disclosure is worth nothing after the fact, and on an sftp URL the
@@ -1794,7 +1827,7 @@ test("handler: the whole display reaches the operator before the server is conta
   expect(atFirstContact).toContain(
     "What this exchange sends and matches on. Nothing has been sent yet:",
   );
-  expect(atFirstContact).toContain("- id");
+  expect(atFirstContact).toContain("- notes");
   // The keys are the last block the display renders, so their presence is what
   // establishes that it finished rather than started.
   expect(atFirstContact).toContain("linkage keys");

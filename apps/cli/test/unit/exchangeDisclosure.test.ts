@@ -538,8 +538,8 @@ test("a quick exchange names the first id column as the record identifier, above
     )}`,
   );
   expect(lines[at + 1]).toMatch(/^ {2}rules selected: /);
-  expect(lines).toContain("    - case_id");
-  expect(lines).toContain("    - id");
+  expect(lines).not.toContain("    - case_id");
+  expect(lines).not.toContain("    - id");
 });
 
 test("a quick exchange with no id column says the result numbers rows by position", () => {
@@ -951,6 +951,7 @@ function renderedForHeader(
 test("recognized columns no key uses are listed as held back", () => {
   // phone and email infer as linkage keys, so they are not sent, and no key of
   // these terms reads them, so the matched-on line does not name them either.
+  // The id column is the record identifier, which is not sent either.
   const lines = renderedForHeader([
     "id",
     "first_name",
@@ -959,11 +960,11 @@ test("recognized columns no key uses are listed as held back", () => {
     "email",
     "notes",
   ]);
-  expect(lines).toContain("  held back (enforced): phone, email");
+  expect(lines).toContain("  held back (enforced): id, phone, email");
   const shown = lines.join("\n");
-  expect(shown).toContain("\n    - id\n    - notes");
+  expect(shown).toContain("columns you will send (enforced):\n    - notes\n");
   expect(shown).toContain("matched on (enforced): first name, last name");
-  expect(lines.indexOf("  held back (enforced): phone, email")).toBe(
+  expect(lines.indexOf("  held back (enforced): id, phone, email")).toBe(
     lines.findIndex((line) => line.startsWith("  matched on")) + 1,
   );
 });
@@ -1012,7 +1013,7 @@ test("the matched-on line names a column whose name differs from the field label
   expect(lines).toContain(
     "  matched on (enforced): first name, date of birth (dob)",
   );
-  expect(lines).toContain("  held back (enforced): date_of_birth");
+  expect(lines).toContain("  held back (enforced): id, date_of_birth");
 });
 
 test("a date-of-birth column only a key condition reads is matched on, marked as read for presence", () => {
@@ -1090,14 +1091,21 @@ test("headers recognized after folding are matched on or held back under their r
   expect(lines).toContain(
     "  matched on (enforced): first name, last name (last.name)",
   );
-  expect(lines).toContain("  held back (enforced):  ssn");
-  expect(shown).toContain("\n    - id\n    - Given Name");
+  expect(lines).toContain("  held back (enforced): id,  ssn");
+  expect(shown).toContain(
+    "columns you will send (enforced):\n    - Given Name\n",
+  );
   expect(shown).not.toContain("- First Name");
 });
 
 test("a file whose recognized columns all feed a key states no held-back line", () => {
-  const lines = renderedForHeader(["id", "first_name", "last_name", "notes"]);
+  const lines = renderedForHeader(["first_name", "last_name", "notes"]);
   expect(lines.join("\n")).not.toContain("held back");
+});
+
+test("an inferred id column is held back", () => {
+  const lines = renderedForHeader(["id", "first_name", "last_name", "notes"]);
+  expect(lines).toContain("  held back (enforced): id");
 });
 
 test("a candidate set beside this party's own grouping states what it groups", () => {

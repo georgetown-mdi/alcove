@@ -242,23 +242,6 @@ export function assertCountOnlyTransmitsNoColumn(
 }
 
 /**
- * `metadata` with every identifier column set not sent: the record identifier
- * keeps its role, and another identifier-typed column sent as payload is set
- * to `role: ignored`. Inference sends every identifier column and a count-only
- * exchange sends none, so metadata inferred under count-only terms starts from
- * this; a block the operator authored is checked as written
- * ({@link assertCountOnlyTransmitsNoColumn}).
- */
-export function withIdentifiersNotSent(metadata: Metadata): Metadata {
-  return metadata.map((column): ColumnMetadata => {
-    if (column.role === "identifier") return { ...column, isPayload: false };
-    if (column.type === "identifier" && column.role === "payload")
-      return { ...column, role: "ignored", isPayload: false };
-    return column;
-  });
-}
-
-/**
  * The 1-based metadata positions of the DISCLOSED columns whose name is
  * longer than {@link MAX_NAME_LENGTH}, in metadata order -- empty when
  * every disclosed name fits. The single predicate behind every gate on
@@ -417,7 +400,7 @@ const DEFAULT_COLUMN_TYPES_AND_ALIASES: Array<TypeMeta> = [
    * {@link UNSEPARATED_ID_LOOKUP_KEYS}, which take this row's role and
    * payload default. See {@link inferMetadata}.
    */
-  { type: "identifier", aliases: ["id"], role: "identifier", isPayload: true },
+  { type: "identifier", aliases: ["id"], role: "identifier", isPayload: false },
   {
     type: "phone_number",
     aliases: ["phonenumber", "phone"],
@@ -582,18 +565,21 @@ function assertColumnNamesNonEmpty(
 }
 
 /**
- * Which default inference gives the columns it does not recognize by name:
+ * Which default inference gives the columns it does not recognize by name,
+ * and the identifier-typed columns after the first:
  *
  * - `declaredOnly` -- an invited or recurring exchange, and the default:
- *   such a column is left out, so it is not declared and never sent.
+ *   such a column is left out, so it is not declared and never sent, and an
+ *   identifier-typed column that is not the record identifier is left out
+ *   too. Inference sends no column.
  * - `direct` -- a run on an input file with no invitation or configuration:
- *   such a column is declared `role: payload` and sent, so every column is
- *   declared and none is undeclared.
+ *   such a column is declared `role: payload` and sent, and an
+ *   identifier-typed column that is not the record identifier is declared
+ *   `role: ignored`, so every column is declared and none is undeclared.
  *
- * A recognized column infers alike under both. Every identifier-typed column
- * (`id`, `identifier`, a name ending in `_id`, `ClientID`, `PersonID`,
- * `PersonalID`) is sent; a linkage-key alias is never sent, and is matched on
- * only where a linkage key reads it.
+ * Under both, no identifier-typed column (`id`, `identifier`, a name ending
+ * in `_id`, `ClientID`, `PersonID`, `PersonalID`) is sent, and a linkage-key
+ * alias is never sent and is matched on only where a linkage key reads it.
  */
 export type MetadataInferenceMode = "declaredOnly" | "direct";
 
@@ -614,8 +600,9 @@ export interface InferMetadataOptions {
  * as payload and sent ({@link MetadataInferenceMode}).
  *
  * The first identifier-typed column in header order gets `role: identifier`,
- * used to index observations, whatever its name, and every later one
- * `role: payload`. Each of them is sent.
+ * used to index observations, whatever its name, and is not sent. Every later
+ * one is left out under `declaredOnly` and declared `role: ignored` under
+ * `direct`.
  *
  * `sanitizedPositions` are the 1-based positions the CSV parse removed
  * control characters from, so the empty-name refusal below can name the removal
@@ -638,19 +625,23 @@ export function inferMetadata(
   sanitizedPositions: ReadonlyArray<number>,
   options: InferMetadataOptions = {},
 ): Metadata {
-  return inferMetadataForEveryColumn(
+  const everyColumn = inferMetadataForEveryColumn(
     columnNames,
     sanitizedPositions,
     options,
-  ).filter((column) => column.role !== "ignored");
+  );
+  if (options.mode === "direct") return everyColumn;
+  return everyColumn.filter((column) => column.role !== "ignored");
 }
 
 /**
- * {@link inferMetadata} with an entry for every column, in header order:
- * under the default `declaredOnly` mode a column that inference does not
- * recognize gets `type: other`, `role: ignored` and `isPayload: false`. For an
- * editor that lists every input column so the operator can declare one; a run
- * resolves its metadata through {@link inferMetadata}.
+ * {@link inferMetadata} with an entry for every column, in header order: a
+ * column that inference does not recognize gets `type: other`, `role:
+ * ignored` and `isPayload: false` under the default `declaredOnly` mode, and
+ * an identifier-typed column that is not the record identifier gets `role:
+ * ignored` and `isPayload: false` under both. For an editor that lists every
+ * input column so the operator can declare one; a run resolves its metadata
+ * through {@link inferMetadata}.
  *
  * @throws {UsageError} as {@link inferMetadata} does.
  */
@@ -678,7 +669,7 @@ export function inferMetadataForEveryColumn(
   return result.map((column, index): ColumnMetadata => {
     if (column.type !== "identifier" || index === identifierIndex)
       return column;
-    return { ...column, role: "payload", isPayload: true };
+    return { ...column, role: "ignored", isPayload: false };
   });
 }
 

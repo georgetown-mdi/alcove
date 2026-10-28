@@ -144,14 +144,12 @@ describe("inviter sharing summary: one column name in both voices", () => {
     // Every name the step shows is a <bdi> the browser actually isolates --
     // asserted through the computed style, so a <bdi> the engine does not
     // isolate fails here rather than passing on the element name alone. In
-    // document order: one grid row header per column, then one chip per
-    // disclosed column, the inferred record identifier first. Each holds the
-    // operator's own header verbatim, so what they select and copy is that
-    // header and nothing more.
+    // document order: one grid row header per column, then the disclosed
+    // column's chip. Each holds the operator's own header verbatim, so what
+    // they select and copy is that header and nothing more.
     const isolates = [...app.container.querySelectorAll("bdi")];
     expect(isolates.map((element) => element.textContent)).toEqual([
       ...csv.columns,
-      "client_id",
       bidiColumn,
     ]);
     for (const element of isolates) {
@@ -164,7 +162,7 @@ describe("inviter sharing summary: one column name in both voices", () => {
     await expect
       .poll(() => liveRegionTexts(), { timeout: 3_000 })
       .toContain(
-        `Columns sent to your partner: ${isolatedColumnName("client_id")}, ${isolatedColumnName(bidiColumn)}.`,
+        `Columns sent to your partner: ${isolatedColumnName(bidiColumn)}.`,
       );
 
     // Nothing on the step shows the escaped form -- the whole step, not one

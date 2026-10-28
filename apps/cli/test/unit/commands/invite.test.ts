@@ -987,10 +987,10 @@ test("persistedPeerBudgetNotice: names the recorded budget when one was written"
 
 test("validateInvite: online states the disclosed columns in the token and its terms' payload.send", async () => {
   // An input with non-linkage columns: `id` infers as the row identifier, which
-  // is transmitted, while `notes` is not recognized and so is left out; the
+  // is not transmitted, and `notes` is not recognized and so is left out; the
   // name/dob/ssn linkage columns are not transmitted. The token and its terms
-  // state exactly that set, so the acceptor's mirrored payload.receive holds
-  // what the payload step transmits.
+  // state exactly that empty set, so the acceptor's mirrored payload.receive
+  // holds what the payload step transmits.
   const dir = fs.mkdtempSync(path.join(tmpdir(), "alcove-invite-disc-"));
   const input = path.join(dir, "input.csv");
   fs.writeFileSync(
@@ -1013,10 +1013,10 @@ test("validateInvite: online states the disclosed columns in the token and its t
       ),
     ),
   );
-  expect(token.linkageTerms.payload?.send).toEqual([{ name: "id" }]);
+  expect(token.linkageTerms.payload?.send).toEqual([]);
   expect(
     deriveAcceptedLinkageTerms(token.linkageTerms, "Agency B").payload?.receive,
-  ).toEqual([{ name: "id" }]);
+  ).toEqual([]);
   if (ready.mode !== "online") throw new Error("expected online mode");
   expect(ready.dataSpec.linkageTerms).toEqual(token.linkageTerms);
 });
@@ -1036,7 +1036,7 @@ test("validateInvite: offline infer-from-input states the disclosed columns in t
     log: silentLog,
   });
   const token = await decodeInvitation(ready.invitation);
-  expect(token.linkageTerms.payload?.send).toEqual([{ name: "id" }]);
+  expect(token.linkageTerms.payload?.send).toEqual([]);
   if (ready.mode !== "offline") throw new Error("expected offline mode");
   expect(ready.dataSpec.linkageTerms).toEqual(token.linkageTerms);
 });
@@ -3568,9 +3568,7 @@ test("handler: offline infer-from-input writes the stated payload.send into the 
     } as unknown as Arguments);
     expect(exit).not.toHaveBeenCalledWith(64);
     expect(fs.existsSync(configFile)).toBe(true);
-    expect(payloadSendOf(fs.readFileSync(configFile, "utf8"))).toEqual([
-      { name: "id" },
-    ]);
+    expect(payloadSendOf(fs.readFileSync(configFile, "utf8"))).toEqual([]);
   } finally {
     logSpy.mockRestore();
     exit.mockRestore();

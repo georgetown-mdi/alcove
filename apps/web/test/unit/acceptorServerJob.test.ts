@@ -316,7 +316,7 @@ describe("the accepting party's cleaning settings in the composed configuration"
     const columns = ["first_name", "last_name"];
     const editorState = acceptorColumnsEditorState(
       {
-        ...acceptorInitialColumnsState(columns, inviterTerms.algorithm),
+        ...acceptorInitialColumnsState(columns),
         settingsOverrides,
       },
       inviterTerms,

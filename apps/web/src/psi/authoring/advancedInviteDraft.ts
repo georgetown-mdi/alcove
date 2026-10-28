@@ -207,10 +207,11 @@ export function seedAdvancedInvite(
   rawRows: ReadonlyArray<CSVRow> = [],
   dateInputFormats?: ProfiledDateInputFormats,
 ): { draft: AdvancedInviteDraft; seed: AdvancedInviteSeed } {
-  // Normalized so the collapsed disclosure control opens on a faithful
-  // diagonal. Normalization only re-derives isPayload from role, so the
-  // offerable key set -- which getDefaultLinkageTerms derives from the
-  // `role: linkage` column TYPES -- is unchanged by it.
+  // Normalized so the collapsed disclosure control opens on a faithful diagonal
+  // (an inferred identifier column is not silently disclosed). Normalization only
+  // re-derives isPayload from role, so the offerable key set -- which
+  // getDefaultLinkageTerms derives from the `role: linkage` column TYPES -- is
+  // unchanged by it.
   const metadata = normalizeForEditor(inferMetadataForEveryColumn(columns, []));
   const terms = getDefaultLinkageTerms(identity, metadata);
   return {

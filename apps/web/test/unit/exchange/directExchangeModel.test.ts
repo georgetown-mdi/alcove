@@ -184,8 +184,8 @@ describe("previewInferredTerms", () => {
   });
 
   test("disclosed columns match core's disclosure predicate and back the display send", () => {
-    // Every column that is not a linkage key is sent, each identifier column
-    // among them; no linkage-key column is.
+    // Every column that is neither a linkage key nor an identifier column is
+    // sent; no linkage-key or identifier column is.
     const columns = [...LINKABLE_COLUMNS, "id", "case_id"];
     const preview = previewInferredTerms(
       columns,
@@ -200,15 +200,48 @@ describe("previewInferredTerms", () => {
     // payload.send is authored from the disclosed set so the terms panel's "columns
     // sent" display is accurate rather than empty (the default terms hold no payload).
     expect(sentColumns(preview)).toEqual(disclosed);
-    expect(sentColumns(preview)).toEqual(["program_code", "id", "case_id"]);
-    for (const linkageColumn of [
-      "ssn",
-      "first_name",
-      "last_name",
-      "date_of_birth",
-    ])
-      expect(sentColumns(preview)).not.toContain(linkageColumn);
+    expect(sentColumns(preview)).toEqual(["program_code"]);
+    expect(
+      preview.metadata.filter((column) => column.type === "identifier"),
+    ).toEqual([
+      { name: "id", type: "identifier", role: "identifier", isPayload: false },
+      {
+        name: "case_id",
+        type: "identifier",
+        role: "ignored",
+        isPayload: false,
+      },
+    ]);
   });
+
+  test.each([
+    "id",
+    "identifier",
+    "case_id",
+    "Client ID",
+    "ClientID",
+    "PersonID",
+    "PersonalID",
+  ])(
+    "the preview declares an id column %j and a second id column, sending neither",
+    (name) => {
+      const preview = previewInferredTerms(
+        [...LINKABLE_COLUMNS, name, "household_id"],
+        DEFAULT_PREVIEW_IDENTITY,
+        DIRECT_LINKAGE_STRATEGY_DEFAULT,
+        DIRECT_DEDUPLICATE_DEFAULT,
+      );
+      expect(sentColumns(preview)).toEqual(["program_code"]);
+      expect(
+        preview.metadata
+          .filter((column) => column.type === "identifier")
+          .map(({ name: column, role }) => [column, role]),
+      ).toEqual([
+        [name, "identifier"],
+        ["household_id", "ignored"],
+      ]);
+    },
+  );
 
   test("a linkage key under a folded header is kept back, and an unlisted name is sent", () => {
     const preview = previewInferredTerms(
@@ -217,7 +250,7 @@ describe("previewInferredTerms", () => {
       DIRECT_LINKAGE_STRATEGY_DEFAULT,
       DIRECT_DEDUPLICATE_DEFAULT,
     );
-    expect(sentColumns(preview)).toEqual(["Given Name", "id"]);
+    expect(sentColumns(preview)).toEqual(["Given Name"]);
     expect(preview.refusal).toBeUndefined();
   });
 
@@ -237,6 +270,14 @@ describe("previewInferredTerms", () => {
       "a header Alcove does not recognize, such as E-mail",
     );
     expect(DIRECT_RECOGNIZED_COLUMNS_NOTICE).not.toMatch(/ignored/);
+    expect(
+      disclosedColumnNames(
+        inferMetadata(["id", "case_id", "ClientID"], [], { mode: "direct" }),
+      ),
+    ).toEqual([]);
+    expect(DIRECT_RECOGNIZED_COLUMNS_NOTICE).toContain(
+      "An id column, such as id, case_id, or ClientID, is never sent",
+    );
   });
 
   test("names the rule selection in core's words, as the CLI display does", () => {
@@ -280,7 +321,8 @@ describe("previewInferredTerms", () => {
 
   test("an unrecognized header past the ceiling is sent, so it closes the run gate", () => {
     // This spine has no disclosure control, so inference alone decides what is
-    // sent, and it sends every column that is not a linkage key.
+    // sent, and it sends every column that is neither a linkage key nor an id
+    // column.
     const past = "a".repeat(MAX_NAME_LENGTH + 1);
     const preview = previewInferredTerms(
       [...LINKABLE_COLUMNS, past],

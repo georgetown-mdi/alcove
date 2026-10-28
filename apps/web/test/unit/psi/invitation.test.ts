@@ -1451,10 +1451,10 @@ describe("generateInvitation", () => {
   });
 
   // A linkable CSV (ssn + names + dob give satisfiable keys) that ALSO contains
-  // a column the quick path discloses: the `id` alias infers as the record
-  // identifier with isPayload set, so it is transmitted. `notes` is not
-  // recognized and `member_id` is an identifier column after `id`, so inference
-  // leaves both out and they are not sent.
+  // id columns and a column inference does not recognize: the `id` alias infers
+  // as the record identifier, not sent, and `notes` and `member_id`, an
+  // identifier column after `id`, are left out, so the quick path sends none of
+  // them.
   const DISCLOSING_COLUMNS = [
     "ssn",
     "first_name",
@@ -1468,12 +1468,12 @@ describe("generateInvitation", () => {
     "ssn,first_name,last_name,dob,notes,id,member_id\n" +
     "123456789,Alice,Smith,1990-01-02,vip,7,M001\n";
 
-  test("quick path authors payload.send equal to the inferred metadata's disclosed columns", async () => {
+  test("quick path authors payload.send equal to the inferred metadata's disclosed columns, which hold no id column", async () => {
     const inviterName = "County Health Dept";
     const disclosed = disclosedColumnNames(
       inferMetadata(DISCLOSING_COLUMNS, []),
     );
-    expect(disclosed).toEqual(["id", "member_id"]);
+    expect(disclosed).toEqual([]);
 
     const { encoded, linkageTerms } = await generateInvitation({
       allowedRelays: undefined,
@@ -1566,9 +1566,12 @@ describe("generateInvitation", () => {
   });
 
   test("advanced path states the disclosed columns for authored terms that leave the send unset", async () => {
-    const metadata = inferMetadata(DISCLOSING_COLUMNS, []);
+    // The operator set the record identifier sent, so it is sent.
+    const metadata = inferMetadata(DISCLOSING_COLUMNS, []).map((column) =>
+      column.name === "id" ? { ...column, isPayload: true } : column,
+    );
     const disclosed = disclosedColumnNames(metadata);
-    expect(disclosed.length).toBeGreaterThan(0);
+    expect(disclosed).toEqual(["id"]);
     const authored = getDefaultLinkageTerms("Authored Org", metadata);
     const { encoded } = await generateInvitation({
       allowedRelays: undefined,
@@ -1591,10 +1594,7 @@ describe("generateInvitation", () => {
       file: csvStream(DISCLOSING_CSV),
       location,
     });
-    expect(linkageTerms.payload?.send?.map((c) => c.name)).toEqual([
-      "id",
-      "member_id",
-    ]);
+    expect(linkageTerms.payload?.send).toEqual([]);
 
     // A lazy acceptor declares no payload.receive expectation (it does not know it
     // will receive these columns), so the reconcile takes whatever the inviter

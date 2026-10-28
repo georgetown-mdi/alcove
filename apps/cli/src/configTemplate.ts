@@ -10,6 +10,7 @@ import {
   DEFAULT_PEER_TIMEOUT_MS,
   defaultPollingFrequencyMs,
   DEFAULT_SERVER_CONNECT_TIMEOUT_MS,
+  identifierTypedColumnNames,
   PLACEHOLDER_SFTP_HOST,
   PLACEHOLDER_SSH_USERNAME,
   POLL_INTERVAL_LINES,
@@ -260,7 +261,8 @@ export const FIELD_DOCS: Array<{ path: Array<string>; lines: Array<string> }> =
       lines: [
         "Per-column description of your input CSV: semantic type and role",
         "(linkage / identifier / payload / ignored). Inferred from column names",
-        "when omitted.",
+        "when omitted. Inference sends no column, your ID column included: set",
+        "is_payload: true on a column to send it for matched records.",
       ],
     },
     {
@@ -503,31 +505,48 @@ export const INFERRED_SECTIONS_HINT = `# metadata and standardization are inferr
 /**
  * The comment written after an inferred metadata block naming the input
  * columns it does not declare, each as a commented entry that sends the
- * column once uncommented. Inference declares every identifier-typed column,
- * so none is listed; when the block declares no `role: identifier` column the
- * comment names how to make a listed column the record identifier.
+ * column once uncommented. `identifier` is the name of the block's
+ * `role: identifier` column, if it declares one: without one the comment names
+ * how to declare one, and with one it names how to use an identifier-typed
+ * undeclared column instead.
  */
 function undeclaredColumnsComment(
   undeclaredColumns: ReadonlyArray<string>,
-  hasIdentifier: boolean,
+  identifier: string | undefined,
 ): string {
   const entries = undeclaredColumns.flatMap((name) =>
     YAML.stringify([{ name, type: "other", role: "payload", is_payload: true }])
       .trimEnd()
       .split("\n"),
   );
+  const otherIdentifiers =
+    identifier === undefined
+      ? []
+      : identifierTypedColumnNames(undeclaredColumns);
   return commentBlock([
     "Input columns not declared above, and so not sent to your partner.",
     "Uncomment an entry to send that column for matched records, or set its",
     "role to ignored to leave it out without a notice at each run.",
-    ...(hasIdentifier
-      ? []
-      : [
+    ...(identifier === undefined
+      ? [
           "No column above is your record identifier. To use one of the",
           "columns listed below as your record identifier, uncomment its entry",
           "and set its role to identifier; set is_payload to false as well to",
           "keep it from your partner.",
-        ]),
+        ]
+      : otherIdentifiers.length === 0
+        ? []
+        : [
+            `${identifier} above is your record identifier, the first id column`,
+            "in the file. To use " +
+              (otherIdentifiers.length > 1
+                ? `one of ${otherIdentifiers.join(", ")}`
+                : otherIdentifiers[0]!) +
+              " instead,",
+            "uncomment its entry, set its role to identifier (and is_payload to",
+            "false to keep it from your partner), and set the role of",
+            `${identifier} above to ignored.`,
+          ]),
     ...entries,
   ]);
 }
@@ -584,7 +603,7 @@ export function renderConfigTemplate(
   )
     metadataNode.comment = undeclaredColumnsComment(
       data.undeclaredColumns,
-      data.metadata?.some((column) => column.role === "identifier") ?? false,
+      data.metadata?.find((column) => column.role === "identifier")?.name,
     );
 
   const sections = [doc.toString().trimEnd()];

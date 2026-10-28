@@ -9,7 +9,6 @@ import {
   runPipeline,
   safeParseLinkageTerms,
   sanitizeForDisplay,
-  withIdentifiersNotSent,
 } from "@alcove/core";
 
 import {
@@ -129,7 +128,7 @@ function rows(columns: Array<string>): Array<CSVRow> {
 function seededWithSent(columns: Array<string>, sent: Array<string>): Metadata {
   return sent.reduce(
     (metadata, name) => setColumnDisclosure(metadata, name, "payload").metadata,
-    acceptorInitialColumnsState(columns, "psi").metadata,
+    acceptorInitialColumnsState(columns).metadata,
   );
 }
 
@@ -141,7 +140,7 @@ function editorFor(
   overrides: Partial<AcceptorColumnsState> = {},
 ) {
   const state: AcceptorColumnsState = {
-    ...acceptorInitialColumnsState(columns, terms.algorithm),
+    ...acceptorInitialColumnsState(columns),
     ...overrides,
   };
   return {
@@ -176,7 +175,7 @@ function seedWithSecondIdentifier(
   columns: Array<string>,
   isPayload = true,
 ): Metadata {
-  return acceptorInitialColumnsState(columns, "psi").metadata.map((column) =>
+  return acceptorInitialColumnsState(columns).metadata.map((column) =>
     column.name === "identifier"
       ? { ...column, role: "identifier", isPayload }
       : column,
@@ -185,10 +184,7 @@ function seedWithSecondIdentifier(
 
 describe("acceptor columns editor state", () => {
   test("seeds metadata from the file's columns and starts with empty override layers", () => {
-    const state = acceptorInitialColumnsState(
-      ["first_name", "last_name"],
-      "psi",
-    );
+    const state = acceptorInitialColumnsState(["first_name", "last_name"]);
     expect(state.metadata.map((c) => c.name)).toEqual([
       "first_name",
       "last_name",
@@ -197,69 +193,50 @@ describe("acceptor columns editor state", () => {
     expect(state.stepOverrides.size).toBe(0);
   });
 
-  test("an inferred id column starts sent, and unsent under a count-only invitation", () => {
-    const columns = ["id", "first_name", "last_name"];
-    const idChoice = (algorithm: "psi" | "psi-c") => {
-      const id = acceptorInitialColumnsState(columns, algorithm).metadata.find(
-        (column) => column.name === "id",
-      );
-      if (id === undefined) throw new Error("the seed lists no id column");
-      return disclosureOf(id);
-    };
-    expect(idChoice("psi")).toBe("identifier-sent");
-    expect(idChoice("psi-c")).toBe("identifier");
-    expect(
-      acceptorDisclosedColumns(
-        acceptorInitialColumnsState(columns, "psi-c").metadata,
-      ),
-    ).toEqual([]);
-  });
+  test.each([
+    "id",
+    "identifier",
+    "case_id",
+    "Client ID",
+    "ClientID",
+    "PersonID",
+    "PersonalID",
+  ])(
+    "an inferred %j column starts as the record identifier, not sent, and a second id column starts ignored",
+    (name) => {
+      const { metadata } = acceptorInitialColumnsState([
+        name,
+        "first_name",
+        "last_name",
+        "household_id",
+        "notes",
+      ]);
+      expect(
+        metadata.map((column) => [column.name, disclosureOf(column)]),
+      ).toEqual([
+        [name, "identifier"],
+        ["first_name", "match"],
+        ["last_name", "match"],
+        ["household_id", "ignored"],
+        ["notes", "ignored"],
+      ]);
+      expect(acceptorDisclosedColumns(metadata)).toEqual([]);
+    },
+  );
 
-  test("an HMIS PersonalID column starts as the identifier, sent", () => {
-    const { metadata } = acceptorInitialColumnsState(
-      ["PersonalID", "FirstName", "LastName", "DOB"],
-      "psi",
-    );
+  test("an HMIS PersonalID column starts as the identifier, not sent", () => {
+    const { metadata } = acceptorInitialColumnsState([
+      "PersonalID",
+      "FirstName",
+      "LastName",
+      "DOB",
+    ]);
     const personalId = metadata.find((column) => column.name === "PersonalID");
     if (personalId === undefined)
       throw new Error("the seed lists no PersonalID column");
     expect(personalId.type).toBe("identifier");
-    expect(disclosureOf(personalId)).toBe("identifier-sent");
-    expect(acceptorDisclosedColumns(metadata)).toEqual(["PersonalID"]);
-  });
-
-  test("every inferred identifier column starts sent, the first as the identifier, and none under a count-only invitation", () => {
-    const columns = [
-      "case_id",
-      "Client ID",
-      "first_name",
-      "last_name",
-      "notes",
-    ];
-    const { metadata } = acceptorInitialColumnsState(columns, "psi");
-    expect(
-      metadata.map((column) => [column.name, disclosureOf(column)]),
-    ).toEqual([
-      ["case_id", "identifier-sent"],
-      ["Client ID", "payload"],
-      ["first_name", "match"],
-      ["last_name", "match"],
-      ["notes", "ignored"],
-    ]);
-    expect(acceptorDisclosedColumns(metadata)).toEqual([
-      "case_id",
-      "Client ID",
-    ]);
-    const countOnly = acceptorInitialColumnsState(columns, "psi-c").metadata;
-    expect(
-      countOnly
-        .filter((column) => column.type === "identifier")
-        .map((column) => [column.name, disclosureOf(column)]),
-    ).toEqual([
-      ["case_id", "identifier"],
-      ["Client ID", "ignored"],
-    ]);
-    expect(acceptorDisclosedColumns(countOnly)).toEqual([]);
+    expect(disclosureOf(personalId)).toBe("identifier");
+    expect(acceptorDisclosedColumns(metadata)).toEqual([]);
   });
 
   test("the effective standardization has one transformation per satisfiable field", () => {
@@ -348,7 +325,7 @@ describe("the acceptor's date-of-birth format follows the bound column", () => {
       { dob: "12/25/1985", birth_date: "1985-12-25" },
     ];
     const formats = dateInputFormatsForColumns(columns, csvRows);
-    const seed = acceptorInitialColumnsState(columns, "psi");
+    const seed = acceptorInitialColumnsState(columns);
     const retyped: AcceptorColumnsState = {
       ...seed,
       metadata: setColumnTypeForMatching(
@@ -538,7 +515,7 @@ describe("acceptor quick-fix mapper", () => {
     // Both columns infer to role: payload (unrecognized). setColumnTypeForMatching
     // must re-role the chosen column to linkage, not merely retype it.
     const columns = ["alpha", "beta"];
-    const seed = acceptorInitialColumnsState(columns, "psi");
+    const seed = acceptorInitialColumnsState(columns);
     // Sanity: a bare retype path is exactly what setColumnTypeForMatching guards
     // against; here we assert the matching helper produces a role: linkage column.
     const remapped = setColumnTypeForMatching(
@@ -657,7 +634,7 @@ describe("acceptor launch gates", () => {
       linkageKeys: [{ name: "d", elements: [{ field: "dob" }] }],
     };
     const columns = ["date_of_birth"];
-    const seed = acceptorInitialColumnsState(columns, "psi");
+    const seed = acceptorInitialColumnsState(columns);
     const base = acceptorColumnsEditorState(seed, dobTerms, rows(columns));
     const dobTransform = base.standardization[0];
     // Author an invalid parse_date (empty inputFormat) against the same input.
@@ -1161,19 +1138,10 @@ describe("a marked column whose name is too long to include", () => {
 describe("the invitation's declared payload set against the marks", () => {
   // A file covering both keys plus one unrecognized column marked to send -- so
   // the file discloses exactly one column and every other gate is clear.
-  // `record_id` infers to the identifier role and is set back to not sent
-  // ({@link keptBack}), so marking it adds a disclosure without costing a key --
-  // which lets an open launch be pinned beside each conflict without the
-  // linkage clause firing.
+  // `record_id` infers to the identifier role (unsent, unmatched), so marking it
+  // adds a disclosure without costing a key -- which lets an open launch be
+  // pinned beside each conflict without the linkage clause firing.
   const columns = ["first_name", "last_name", "notes", "record_id"];
-
-  /** The seed with the record identifier set to not sent: the operator's own
-   * choice each test here starts from, since inference starts it sent. */
-  function keptBack(fileColumns: Array<string>): Metadata {
-    return withIdentifiersNotSent(
-      acceptorInitialColumnsState(fileColumns, "psi").metadata,
-    );
-  }
 
   /** Every invitation shape this describe drives, named once. The equivalence
    * test below reads this table rather than a copy of it, so a shape added here
@@ -1205,11 +1173,7 @@ describe("the invitation's declared payload set against the marks", () => {
     return { ...nameTerms, ...shapes[shape] };
   }
 
-  const notesSent = setColumnDisclosure(
-    keptBack(columns),
-    "notes",
-    "payload",
-  ).metadata;
+  const notesSent = seededWithSent(columns, ["notes"]);
 
   /** The mark states every shape is driven in. The base marks disclose one
    * column, so a declaration can only omit that one or name others; the second
@@ -1465,7 +1429,7 @@ describe("the invitation's declared payload set against the marks", () => {
 
   test("a declared column the file keeps as its record identifier is offered too, and stays the identifier", () => {
     // The same offer over a column that is neither matched on nor sent: `record_id`
-    // is the identifier, kept back, so `inFile` is read from the metadata whatever
+    // infers to the identifier role, so `inFile` is read from the metadata whatever
     // use the column currently has, and the offer sends it as the identifier, so
     // the file's own result still begins with it.
     const identifierColumns = ["first_name", "last_name", "record_id"];
@@ -1473,9 +1437,7 @@ describe("the invitation's declared payload set against the marks", () => {
       ...nameTerms,
       payload: { receive: [{ name: "record_id" }] },
     };
-    const { state, editorState } = editorFor(identifierColumns, terms, {
-      metadata: keptBack(identifierColumns),
-    });
+    const { state, editorState } = editorFor(identifierColumns, terms);
     expect(
       editorState.metadata.find((column) => column.name === "record_id")?.role,
     ).toBe("identifier");
@@ -1502,9 +1464,7 @@ describe("the invitation's declared payload set against the marks", () => {
       ...nameTerms,
       payload: { receive: [{ name: "record_id" }, { name: "notes" }] },
     };
-    const { state } = editorFor(columns, terms, {
-      metadata: keptBack(columns),
-    });
+    const { state } = editorFor(columns, terms);
     const widened = acceptorWidenedMetadata(terms, state.metadata);
     expect(
       widened
@@ -1524,9 +1484,7 @@ describe("the invitation's declared payload set against the marks", () => {
       ...nameTerms,
       payload: { receive: [{ name: "record_id" }, { name: "first_name" }] },
     };
-    const { state } = editorFor(columns, terms, {
-      metadata: keptBack(columns),
-    });
+    const { state } = editorFor(columns, terms);
     const keys = satisfiableKeysAroundOffer(columns, terms, state);
     expect(keys.before).toBeGreaterThan(0);
     expect(keys.after).toBe(keys.before);
@@ -1546,9 +1504,7 @@ describe("the invitation's declared payload set against the marks", () => {
         ],
       },
     };
-    const { state } = editorFor(columns, terms, {
-      metadata: keptBack(columns),
-    });
+    const { state } = editorFor(columns, terms);
     expect(acceptorWideningOfferSentence(terms, state.metadata)).toBe(
       ` To send them, set your record identifier to "${DISCLOSURE_LABELS["identifier-sent"]}", the column used to match to "${DISCLOSURE_LABELS["match-sent"]}", and the other column to "${DISCLOSURE_LABELS.payload}" below.`,
     );
@@ -1562,9 +1518,7 @@ describe("the invitation's declared payload set against the marks", () => {
       ...nameTerms,
       payload: { receive: [{ name: "record_id" }, { name: "record_id" }] },
     };
-    const { state, editorState } = editorFor(identifierColumns, terms, {
-      metadata: keptBack(identifierColumns),
-    });
+    const { state, editorState } = editorFor(identifierColumns, terms);
     expect(
       acceptorPayloadDeclarationConflict(terms, editorState.metadata)
         ?.declaredButNotSent,
@@ -1577,10 +1531,9 @@ describe("the invitation's declared payload set against the marks", () => {
   test.each([{ receive: ["identifier"] }, { receive: ["id", "identifier"] }])(
     "with two record identifiers, the offer sends the unsent one of $receive as payload and changes no other column",
     ({ receive }) => {
-      // The grid's own default: `id` starts sent, and the second identifier is
-      // seeded unsent, so the file has no one record identifier. The offer marks
-      // no column identifier-and-sent, demotes no identifier, and leaves the
-      // already-sent `id` as it is.
+      // `id` set sent and a second identifier unsent, so the file has no one
+      // record identifier. The offer marks no column identifier-and-sent,
+      // demotes no identifier, and leaves the already-sent `id` as it is.
       const twoIdentifierColumns = [
         "id",
         "identifier",
@@ -1592,7 +1545,10 @@ describe("the invitation's declared payload set against the marks", () => {
         payload: { receive: receive.map((name) => ({ name })) },
       };
       const { state } = editorFor(twoIdentifierColumns, terms, {
-        metadata: seedWithSecondIdentifier(twoIdentifierColumns, false),
+        metadata: seedWithSecondIdentifier(twoIdentifierColumns, false).map(
+          (column) =>
+            column.name === "id" ? { ...column, isPayload: true } : column,
+        ),
       });
       expect(
         state.metadata
@@ -1798,12 +1754,8 @@ describe("the invitation's declared payload set against the marks", () => {
     for (const offer of offers) {
       expect(safeParseLinkageTerms(offer.terms).success, offer.use).toBe(true);
       const state: AcceptorColumnsState = {
-        ...acceptorInitialColumnsState(offer.columns, offer.terms.algorithm),
-        metadata: offer.sent.reduce(
-          (metadata, name) =>
-            setColumnDisclosure(metadata, name, "payload").metadata,
-          keptBack(offer.columns),
-        ),
+        ...acceptorInitialColumnsState(offer.columns),
+        metadata: seededWithSent(offer.columns, offer.sent),
       };
       const before = acceptorColumnsEditorState(state, offer.terms, offer.rows);
       // What taking the offer does, in full: the declared columns this file has are
@@ -2017,7 +1969,7 @@ describe("the acceptor's shared-value limit and last-name rule", () => {
 
   test("the settings stay when the field reads another column", () => {
     const twoNames = ["first_name", "nickname", "last_name"];
-    const seed = acceptorInitialColumnsState(twoNames, "psi");
+    const seed = acceptorInitialColumnsState(twoNames);
     const { editorState } = editorFor(twoNames, nameTerms, {
       metadata: setColumnTypeForMatching(
         seed.metadata,
@@ -2182,7 +2134,7 @@ describe("acceptor columns editor state: input-override layer", () => {
   const columns = ["given_name", "nickname"];
 
   test("a live input override rebinds the field to the target column", () => {
-    const seed = acceptorInitialColumnsState(columns, "psi");
+    const seed = acceptorInitialColumnsState(columns);
     const bothLinkage = setColumnTypeForMatching(
       setColumnTypeForMatching(seed.metadata, "given_name", "first_name"),
       "nickname",
@@ -2205,7 +2157,7 @@ describe("acceptor columns editor state: input-override layer", () => {
   });
 
   test("a stale input override (target no longer role: linkage of that type) is dropped", () => {
-    const seed = acceptorInitialColumnsState(columns, "psi");
+    const seed = acceptorInitialColumnsState(columns);
     // Only given_name is role: linkage; nickname is left at its inferred role
     // (payload, an unrecognized header), so an override pointing at it is stale.
     const onlyGivenNameLinkage = setColumnTypeForMatching(
@@ -2223,7 +2175,7 @@ describe("acceptor columns editor state: input-override layer", () => {
   });
 
   test("layering order: an input rebind stales a step override authored against the old input", () => {
-    const seed = acceptorInitialColumnsState(columns, "psi");
+    const seed = acceptorInitialColumnsState(columns);
     const bothLinkage = setColumnTypeForMatching(
       setColumnTypeForMatching(seed.metadata, "given_name", "first_name"),
       "nickname",

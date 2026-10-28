@@ -6,7 +6,6 @@ import {
   isDisclosedToPartner,
   linkageDateOfBirthColumn,
   undeclaredColumnNames,
-  withIdentifiersNotSent,
 } from "./config/metadata.js";
 import {
   assertBothSidedDeduplicateImplemented,
@@ -573,8 +572,6 @@ export function resolveLinkageCardinality(
  * ({@link MetadataInferenceMode}): `direct` for a run on an input file with
  * no invitation or configuration, and the `declaredOnly` default for every
  * other exchange. It does not apply to a spec that holds a `metadata` block.
- * Under count-only (`psi-c`) terms the inferred metadata sends no identifier
- * column ({@link withIdentifiersNotSent}).
  *
  * Also resolves the input columns the metadata does not declare
  * ({@link undeclaredColumnNames}), which the run does not send, and refuses
@@ -594,23 +591,18 @@ export function resolveExchangeInputs(
   undeclaredColumns: Array<string>;
 } {
   const metadataInferred = exchangeDataSpec.metadata === undefined;
-  const declaredOrInferred =
+  const metadata =
     exchangeDataSpec.metadata ??
     inferMetadata(columnNames, sanitizedColumnPositions, {
       mode: inferenceMode,
     });
-  const linkageTerms =
-    exchangeDataSpec.linkageTerms ??
-    getDefaultLinkageTerms(identity, declaredOrInferred);
-  const metadata =
-    metadataInferred && linkageTerms.algorithm === "psi-c"
-      ? withIdentifiersNotSent(declaredOrInferred)
-      : declaredOrInferred;
   assertDeclaredPayloadColumnsPresent(metadata, columnNames);
   return {
     metadata,
     metadataInferred,
-    linkageTerms,
+    linkageTerms:
+      exchangeDataSpec.linkageTerms ??
+      getDefaultLinkageTerms(identity, metadata),
     undeclaredColumns: undeclaredColumnNames(columnNames, metadata),
   };
 }

@@ -50,7 +50,7 @@ function editsFor(metadata: Metadata): AcceptorDataEdits {
 }
 
 // The file-derived seed metadata the columns step starts from.
-const seedMetadata = acceptorInitialColumnsState(columns, "psi").metadata;
+const seedMetadata = acceptorInitialColumnsState(columns).metadata;
 
 describe("prepareAcceptorExchange", () => {
   const baseEdits = editsFor(seedMetadata);
@@ -218,7 +218,7 @@ describe("the shared-SSN screen in the prepared exchange", () => {
         linkageTerms: ssnTerms,
         acceptorName: "Sam Alvarez",
         edits: acceptorColumnsEditorState(
-          acceptorInitialColumnsState(ssnColumns, ssnTerms.algorithm),
+          acceptorInitialColumnsState(ssnColumns),
           ssnTerms,
           ssnRows,
         ),

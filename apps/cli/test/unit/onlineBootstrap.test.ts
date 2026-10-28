@@ -4992,10 +4992,16 @@ describe("metadataListingColumns", () => {
       role: "payload",
       isPayload: false,
     });
+    expect(byName.get("other_id")).toEqual({
+      name: "other_id",
+      type: "identifier",
+      role: "payload",
+      isPayload: false,
+    });
     // A column inference declares is inference's, as is every other, so the
     // columns sent are inference's; a name the header lacks adds nothing,
     // and header order holds.
-    for (const name of ["dob", "client_id", "other_id", "first_name"])
+    for (const name of ["dob", "client_id", "first_name"])
       expect(byName.get(name)).toEqual(
         inferred.find((column) => column.name === name),
       );

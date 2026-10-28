@@ -2061,15 +2061,9 @@ header as its name in its metadata, its transform `input`, the run's display
 and the result. Every name in the table is its own lookup key, and no two names
 in it share one.
 
-The fold has three limits. The console's quick-exchange confirm screen states
+The fold has two limits. The console's quick-exchange confirm screen states
 the rule and lists the columns sent; only the command line's pre-run display
-lists the names a quick exchange holds back. A header recognized as an
-identifier only once folded, such as `ID ` with a trailing space, is declared
-and sent on a configuration with no `metadata` block when it is the header's
-first `identifier`-typed column, and a partner whose
-`payload.receive` is unset takes that wider set on its first run as it takes
-any first-run set
-([An unset `payload.receive` is filled on the first run](EXCHANGE_FILE.md#an-unset-payloadreceive-is-filled-on-the-first-run)).
+lists the names a quick exchange holds back.
 A header recognized after trimming is shown as written, so on the display a
 whitespace-padded name such as ` ssn` differs from the bare `ssn` only by that
 whitespace.
@@ -2081,7 +2075,7 @@ whitespace.
 | `first_name` | `first_name`, `firstname`, `fname` | `linkage` | `false` |
 | `last_name` | `last_name`, `lastname`, `lname` | `linkage` | `false` |
 | `date_of_birth` | `date_of_birth`, `dateofbirth`, `dob` | `linkage` | `false` |
-| `identifier` | `identifier`, `id` | `identifier` | `true` |
+| `identifier` | `identifier`, `id` | `identifier` | `false` |
 | `phone_number` | `phone_number`, `phonenumber`, `phone` | `linkage` | `false` |
 | `email_address` | `email_address`, `emailaddress`, `email` | `linkage` | `false` |
 | `street_number` | `street_number`, `streetnumber`, `street_no`, `street_num`, `house_number`, `housenumber`, `house_no`, `house_num`, `address_number`, `addressnumber` | `linkage` | `false` |
@@ -2096,8 +2090,7 @@ Each multi-word type also lists its no-separator spelling, since the lookup key
 keeps words apart, so a single-token column export (`firstname`, `dateofbirth`)
 infers as well as a separated one.
 
-Two rules sit outside the table, and only the second depends on the inference
-mode.
+Two rules sit outside the table, and only the second depends on the inference mode.
 Direct mode is a run on an input file with no invitation and no
 configuration: the CLI's zero-setup run and the console's quick exchange.
 Every other inference is declared-only: a configuration with no `metadata`
@@ -2114,24 +2107,15 @@ block, and an invitation composed from an input file.
 A second pass then decides which column indexes this party's own records: the
 first `identifier`-typed column in header order is promoted to
 `role: identifier` whatever its name. Every later `identifier`-typed column,
-whichever row typed it, infers `role: payload`, `is_payload: true` in both
-modes, so every `identifier`-typed column is sent.
-Under count-only (`psi-c`) terms, which send no column, the inferred metadata
-instead sets every `identifier`-typed column not sent: the record identifier
-keeps `role: identifier` with `is_payload: false`, and every later one is
-`role: ignored`, `is_payload: false` (`withIdentifiersNotSent`,
-`packages/core/src/config/metadata.ts`).
-An authored `metadata` block is read as written, and one that sends a column
-under count-only is refused
-([PROTOCOL.md](PROTOCOL.md#refusals-under-count-only)).
+whichever row typed it, infers nothing when declared-only, and `role: ignored`,
+`is_payload: false` in direct mode, so no `identifier`-typed column is sent in either mode.
 
 A column that ends the second pass with no role is undeclared, which only
 declared-only inference leaves: the inferred
 metadata has no entry for it, so the run does not index by it or send it, and
 matches on it only when a standardization transform names it as its `input`. What a party sends is exactly what its metadata declares.
-Declared-only, the `identifier`-typed columns are the only inferred entries
-with `is_payload: true`; in direct mode every column the table does not list is sent
-as well, and every linkage-key row still infers `is_payload: false`.
+Declared-only, every inferred entry has `is_payload: false`, so the run sends no column until a `metadata` block declares one sent.
+In direct mode a column is sent when neither the table nor the `identifier` rule above types it, and every other column infers `is_payload: false`.
 A column is a linkage key only when its lookup key is a name in the table,
 so in direct mode a linkage column under any other name, such as `Given Name`
 or `Birthdate`, infers `role: payload` and is sent. The

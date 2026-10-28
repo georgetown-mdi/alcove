@@ -85,18 +85,25 @@ describe("normalizeForEditor seeds the grid's choices", () => {
     }
   });
 
-  test("an inferred id identifier starts sent, until it is chosen as not sent", () => {
+  test("an inferred id identifier starts not sent, until it is chosen as sent", () => {
     const normalized = normalizeForEditor(
       inferMetadata(["id", "first_name", "notes"], []),
     );
     const idCol = normalized.find((c) => c.name === "id")!;
-    expect(disclosureOf(idCol)).toBe("identifier-sent");
-    expect(disclosedColumnNames(normalized)).toEqual(["id"]);
+    expect(disclosureOf(idCol)).toBe("identifier");
+    expect(disclosedColumnNames(normalized)).toEqual([]);
     expect(
       disclosedColumnNames(
-        setColumnDisclosure(normalized, "id", "identifier").metadata,
+        setColumnDisclosure(normalized, "id", "identifier-sent").metadata,
       ),
-    ).toEqual([]);
+    ).toEqual(["id"]);
+  });
+
+  test("a declared sent identifier stays sent", () => {
+    const normalized = normalizeForEditor([
+      { name: "id", type: "identifier", role: "identifier", isPayload: true },
+    ]);
+    expect(disclosedColumnNames(normalized)).toEqual(["id"]);
   });
 
   test("a role: identifier, is_payload: true column keeps its choice through the grid", () => {
@@ -165,13 +172,12 @@ describe("disclosedColumnNames mirrors what is sent", () => {
 });
 
 describe("quickInviteDisclosedColumns mirrors the quick path's wire", () => {
-  // A representative inviter file: a linkage column (not sent), the `id` row
-  // identifier (inferred as sent), and an unrecognized column inference leaves
-  // out (not sent).
+  // A representative inviter file: a linkage column, the `id` row identifier,
+  // and an unrecognized column inference leaves out, none of them sent.
   const columns = ["first_name", "id", "notes"];
 
-  test("lists exactly the disclosed columns (the `id` identifier, not the linkage or unrecognized column)", () => {
-    expect(quickInviteDisclosedColumns(columns)).toEqual(["id"]);
+  test("lists no column, the `id` identifier included", () => {
+    expect(quickInviteDisclosedColumns(columns)).toEqual([]);
   });
 
   test("is empty when the quick path would send nothing", () => {
@@ -199,15 +205,18 @@ describe("quickInviteDisclosedColumns mirrors the quick path's wire", () => {
       [0],
       [0],
     ]);
-    expect(sent.hasData).toBe(true);
-    if (sent.hasData)
-      expect(sent.columns).toEqual(quickInviteDisclosedColumns(columns));
+    expect(sent).toEqual({ hasData: false });
+    expect(quickInviteDisclosedColumns(columns)).toEqual([]);
   });
 });
 
 describe("payloadSendForMetadata authors the shared send declaration", () => {
   test("send equals disclosedColumnNames; receive is never authored", () => {
-    const metadata = inferMetadata(["first_name", "id", "notes"], []);
+    const metadata = setColumnDisclosure(
+      normalizeForEditor(inferMetadata(["first_name", "id", "notes"], [])),
+      "id",
+      "identifier-sent",
+    ).metadata;
     const payload = payloadSendForMetadata(metadata);
     expect(disclosedColumnNames(metadata)).toEqual(["id"]);
     expect(payload?.send?.map((c) => c.name)).toEqual(

@@ -210,7 +210,7 @@ describe("what the acceptor discloses", () => {
     expect(disclosedBy(state)).not.toContain("program_code");
   });
 
-  test("the seed sends the id column unless the decoded invitation is count-only", () => {
+  test("the seed sends no column, the id column included, whatever the decoded invitation's algorithm", () => {
     const withId: AcceptorAcquiredCsv = {
       ...csv,
       columns: ["id", ...csv.columns],
@@ -242,7 +242,7 @@ describe("what the acceptor discloses", () => {
         acceptorDisclosedColumns(state.columnsState?.metadata ?? []),
       );
     };
-    expect(seededUnder("psi")).toEqual([["id"], ["id"]]);
+    expect(seededUnder("psi")).toEqual([[], []]);
     expect(seededUnder("psi-c")).toEqual([[], []]);
   });
 
