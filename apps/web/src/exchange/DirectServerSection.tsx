@@ -6,8 +6,8 @@ import { IconAlertCircle, IconAlertTriangle } from "@tabler/icons-react";
 import { runDiagnosticsProblems } from "@psi/runDiagnosticsModel";
 
 import {
-  DIRECT_FILEDROP_CONNECTION_TUNING,
-  DIRECT_SFTP_CONNECTION_TUNING,
+  FILEDROP_CONNECTION_TUNING,
+  SFTP_CONNECTION_TUNING,
   connectionTuningProblems,
 } from "@console/connectionTuningModel";
 import {
@@ -95,9 +95,7 @@ export function DirectServerSection({
   // The SFTP session mode applies only where a session exists, so the tuning card
   // withholds it on the shared-directory transport.
   const tuningCapabilities =
-    transport === "sftp"
-      ? DIRECT_SFTP_CONNECTION_TUNING
-      : DIRECT_FILEDROP_CONNECTION_TUNING;
+    transport === "sftp" ? SFTP_CONNECTION_TUNING : FILEDROP_CONNECTION_TUNING;
   // The rendezvous and the retain-mode toggle are settled on separate cards here,
   // so the split precondition is re-asked at the step's exit, where both are
   // known, rather than only inside the authoring form the operator has already

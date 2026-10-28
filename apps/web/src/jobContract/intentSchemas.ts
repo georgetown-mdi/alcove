@@ -159,8 +159,8 @@ export const NOTE_CONTROL_CHAR_PATTERN =
 /**
  * The tuning settings a client may set on a job: numeric, boolean, enum and
  * bounded-label {@link FileSyncOptions}, never a path, host, credential or
- * command. `connectionPerPoll` is sftp-only; `inactivityTimeoutMs` and
- * `unexpectedFiles` have no CLI flag, so the zero-setup arms refuse them.
+ * command. `connectionPerPoll` is sftp-only; `unexpectedFiles` has no CLI
+ * flag, so the zero-setup arms refuse it.
  * Contract: docs/spec/SERVER_JOB_API.md, "The exchange intent".
  */
 export interface JobExchangeOptions {
@@ -203,6 +203,7 @@ function checkAgainstCoreFileSyncOptions(
 const jobExchangeOptionsFields = {
   pollIntervalMs: z.number().int().positive().optional(),
   peerTimeoutMs: z.number().int().positive().optional(),
+  inactivityTimeoutMs: z.number().int().positive().optional(),
   serverConnectTimeoutMs: z.number().int().positive().optional(),
   maxReconnectAttempts: z
     .number()
@@ -220,11 +221,11 @@ const jobExchangeOptionsFields = {
   writeWithoutRenaming: z.boolean().optional(),
 };
 
-// Neither has a CLI flag, so only a configured run admits them. A configured
-// run's peer_id may also hold fields, from a mounted configuration; a
-// zero-setup run's comes from the console's own name control, which takes none.
+// unexpected_files has no CLI flag, so only a configured run admits it. A
+// configured run's peer_id may also hold fields, from a mounted configuration;
+// a zero-setup run's comes from the console's own name control, which takes
+// none.
 const configuredOnlyOptionsFields = {
-  inactivityTimeoutMs: z.number().int().positive().optional(),
   unexpectedFiles: z.enum(["error", "warn", "ignore"]).optional(),
   peerId: z
     .string()
@@ -258,7 +259,7 @@ const jobSftpExchangeOptionsSchema: z.ZodType<JobExchangeOptions> = z
 const jobWebrtcExchangeOptionsSchema: z.ZodType<JobExchangeOptions> = z
   .object({
     peerTimeoutMs: jobExchangeOptionsFields.peerTimeoutMs,
-    inactivityTimeoutMs: configuredOnlyOptionsFields.inactivityTimeoutMs,
+    inactivityTimeoutMs: jobExchangeOptionsFields.inactivityTimeoutMs,
     serverConnectTimeoutMs: jobExchangeOptionsFields.serverConnectTimeoutMs,
     maxReconnectAttempts: jobExchangeOptionsFields.maxReconnectAttempts,
   })
@@ -295,6 +296,7 @@ function wholeSecondFlagMs(field: string) {
 const jobZeroSetupOptionsFields = {
   ...jobExchangeOptionsFields,
   peerTimeoutMs: wholeSecondFlagMs("peerTimeoutMs"),
+  inactivityTimeoutMs: wholeSecondFlagMs("inactivityTimeoutMs"),
   serverConnectTimeoutMs: wholeSecondFlagMs("serverConnectTimeoutMs"),
 };
 

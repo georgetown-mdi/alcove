@@ -33,7 +33,7 @@ import type { Transport } from "@psi/transportChooser";
  * The unit a duration field is authored in. The sets offered per field mirror the
  * CLI's own duration grammars: the poll interval takes the sub-second-capable set
  * (`--polling-frequency` accepts a millisecond suffix, because a demo against a
- * controlled server legitimately polls fast), the two timeouts the coarse set
+ * controlled server legitimately polls fast), the timeouts the coarse set
  * their flags accept.
  */
 export type DurationUnit = "ms" | "s" | "m" | "h";
@@ -168,17 +168,15 @@ export const CONNECTION_TUNING_DEFAULT: ConnectionTuningDraft = {
 
 /** Which of the card's controls the calling flow can hold. The SFTP session mode
  * is an sftp-only dialing choice -- a filedrop client holds no socket -- so the
- * intent's filedrop arms refuse it and the card withholds it there. The silence
- * wait has no command-line flag, so a zero-setup run, which reaches the CLI
- * through flags alone, cannot hold it and its intent arms refuse it. A webrtc
+ * intent's filedrop arms refuse it and the card withholds it there. A webrtc
  * run checks no folder, so its intent arm refuses the check interval. The
  * channel decides the check interval's default and whether the anti-flood
- * advisory applies, which it does only against an SFTP server. */
+ * advisory applies, which it does only against an SFTP server. A zero-setup
+ * run offers the same controls as a configured run on its channel. */
 export interface ConnectionTuningCapabilities {
   channel: "sftp" | "filedrop" | "webrtc";
   pollInterval: boolean;
   connectionPerPoll: boolean;
-  inactivityTimeout: boolean;
 }
 
 /** The capabilities of an sftp flow: every control the card offers applies. */
@@ -186,7 +184,6 @@ export const SFTP_CONNECTION_TUNING: ConnectionTuningCapabilities = {
   channel: "sftp",
   pollInterval: true,
   connectionPerPoll: true,
-  inactivityTimeout: true,
 };
 
 /** The capabilities of a shared-directory (filedrop) flow, whose connectionless
@@ -195,7 +192,6 @@ export const FILEDROP_CONNECTION_TUNING: ConnectionTuningCapabilities = {
   channel: "filedrop",
   pollInterval: true,
   connectionPerPoll: false,
-  inactivityTimeout: true,
 };
 
 /** The capabilities of a webrtc flow, which has no folder to check. */
@@ -203,7 +199,6 @@ export const WEBRTC_CONNECTION_TUNING: ConnectionTuningCapabilities = {
   channel: "webrtc",
   pollInterval: false,
   connectionPerPoll: false,
-  inactivityTimeout: true,
 };
 
 /** The capabilities of an invitation flow over `transport`. */
@@ -214,23 +209,6 @@ export function connectionTuningCapabilitiesFor(
   if (transport === "webrtc") return WEBRTC_CONNECTION_TUNING;
   return FILEDROP_CONNECTION_TUNING;
 }
-
-/** The capabilities of a zero-setup sftp exchange, which composes no
- * configuration for the silence wait to be written into. */
-export const DIRECT_SFTP_CONNECTION_TUNING: ConnectionTuningCapabilities = {
-  channel: "sftp",
-  pollInterval: true,
-  connectionPerPoll: true,
-  inactivityTimeout: false,
-};
-
-/** The capabilities of a zero-setup shared-directory exchange. */
-export const DIRECT_FILEDROP_CONNECTION_TUNING: ConnectionTuningCapabilities = {
-  channel: "filedrop",
-  pollInterval: true,
-  connectionPerPoll: false,
-  inactivityTimeout: false,
-};
 
 /**
  * The value a duration field states, in milliseconds -- the unit the job intent
@@ -250,11 +228,11 @@ function durationMs(field: DurationField): number | undefined | null {
 
 /**
  * The longest wait a timeout field may state: core's seven-day
- * {@link MAX_TIMEOUT_SECONDS}, in the milliseconds the job intent speaks. Two
- * fields ride the CLI's `--peer-timeout` / `--connection-timeout` on a
- * zero-setup run, where the same ceiling is a usage error (exit 64); a
- * larger value here would create a job whose child exits immediately. The
- * silence wait's schema holds the same ceiling.
+ * {@link MAX_TIMEOUT_SECONDS}, in the milliseconds the job intent speaks. On a
+ * zero-setup run each timeout is passed as the CLI's `--peer-timeout`,
+ * `--inactivity-timeout` or `--connection-timeout`, where the same ceiling is
+ * a usage error (exit 64); a larger value here would create a job whose child
+ * exits immediately.
  */
 const MAX_TIMEOUT_MS = MAX_TIMEOUT_SECONDS * 1000;
 
@@ -311,9 +289,7 @@ export function connectionTuningOptions(
     ? pollIntervalMsOf(draft.pollInterval)
     : undefined;
   const peerTimeoutMs = timeoutMs(draft.peerTimeout);
-  const inactivityTimeoutMs = capabilities.inactivityTimeout
-    ? timeoutMs(draft.inactivityTimeout)
-    : undefined;
+  const inactivityTimeoutMs = timeoutMs(draft.inactivityTimeout);
   const serverConnectTimeoutMs = timeoutMs(draft.serverConnectTimeout);
   const maxReconnectAttempts = reconnectAttempts(draft.maxReconnectAttempts);
   const stated: JobExchangeOptions = {
@@ -413,12 +389,10 @@ export function connectionTuningProblems(
     "The wait for your partner",
   );
   if (peerProblem !== undefined) problems.push(peerProblem);
-  const silenceProblem = capabilities.inactivityTimeout
-    ? timeoutProblem(
-        draft.inactivityTimeout,
-        "The wait while your partner is quiet",
-      )
-    : undefined;
+  const silenceProblem = timeoutProblem(
+    draft.inactivityTimeout,
+    "The wait while your partner is quiet",
+  );
   if (silenceProblem !== undefined) problems.push(silenceProblem);
   const connectProblem = timeoutProblem(
     draft.serverConnectTimeout,
@@ -512,8 +486,7 @@ export function connectionTuningSummary(
   const touched =
     (capabilities.pollInterval && draft.pollInterval.magnitude.trim() !== "") ||
     draft.peerTimeout.magnitude.trim() !== "" ||
-    (capabilities.inactivityTimeout &&
-      draft.inactivityTimeout.magnitude.trim() !== "") ||
+    draft.inactivityTimeout.magnitude.trim() !== "" ||
     draft.serverConnectTimeout.magnitude.trim() !== "" ||
     draft.maxReconnectAttempts.trim() !== "" ||
     (capabilities.connectionPerPoll && draft.connectionPerPoll);

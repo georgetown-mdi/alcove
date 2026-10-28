@@ -544,7 +544,8 @@ export function addCommonBootstrapOptions(
       type: "string",
       describe:
         "how long your partner may send nothing once it has arrived, and " +
-        "one operation on the server or shared folder may go unanswered, " +
+        "(on sftp and filedrop) one operation on the server or shared " +
+        "folder may go unanswered, " +
         "before the exchange fails " +
         `(maximum: ${MAX_TIMEOUT_SECONDS / 86_400}d); overrides ` +
         "connection.options.inactivity_timeout_ms. " +
