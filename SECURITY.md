@@ -1,7 +1,7 @@
 ---
 title: "Security Policy"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-08-28"
+last_reviewed: "2026-10-28"
 ---
 
 # Security Policy
