@@ -9,6 +9,7 @@ import {
   runPipeline,
   safeParseLinkageTerms,
   sanitizeForDisplay,
+  withIdentifiersNotSent,
 } from "@alcove/core";
 
 import {
@@ -57,7 +58,6 @@ import {
   disclosureOf,
   setColumnDisclosure,
   setColumnTypeForMatching,
-  withIdentifiersNotSent,
 } from "@psi/metadataEditing";
 import { cleaningSettingsOf } from "@psi/standardizationAuthoring";
 

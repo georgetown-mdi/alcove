@@ -1663,6 +1663,30 @@ describe("customize tabs", () => {
     ).toEqual(["case_id", "Client ID"]);
   });
 
+  test("count-only names a record identifier typed other that it stops sending", () => {
+    const withKey: AcquiredCsv = {
+      ...csv,
+      columns: ["record_key", "first_name", "last_name", "dob"],
+      rawRows: [
+        { record_key: "1", first_name: "Ann", last_name: "Lee", dob: "x" },
+      ],
+    };
+    const { editor: sent } = editorWithColumnDisclosure(
+      editorFromCsv("Dana", withKey),
+      withKey,
+      "record_key",
+      "identifier-sent",
+    );
+    expect(
+      sent.draft.metadata.find((column) => column.name === "record_key"),
+    ).toMatchObject({ type: "other", role: "identifier", isPayload: true });
+
+    const countOnly = editorWithAlgorithm(sent, "psi-c");
+    expect(
+      identifiersStoppedSending(sent.draft.metadata, countOnly.draft.metadata),
+    ).toEqual(["record_key"]);
+  });
+
   test("the method-change notices name several columns and problems", () => {
     expect(problemsAboveAnnouncement(3)).toBe(
       "3 problems above must be resolved before you can create.",

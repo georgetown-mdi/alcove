@@ -24,6 +24,7 @@ import {
   redactAndRenderOperatorSuppliedText,
   safeParseConnectionConfig,
   UsageError,
+  withIdentifiersNotSent,
 } from "@alcove/core";
 import type {
   BuiltInLinkageRuleSet,
@@ -659,7 +660,9 @@ export function singlePassDisclosureNotice(): string {
  *   standardization over both; the spec includes all three. A linkage field the
  *   input columns cannot bind simply gets no transformation, and naming those
  *   fields to the operator belongs to the satisfiability pre-flight
- *   (`checkLinkageSatisfiability`), which runs before this.
+ *   (`checkLinkageSatisfiability`), which runs before this. Under count-only
+ *   (`psi-c`) `terms` the inferred metadata sends no identifier column
+ *   (`withIdentifiersNotSent`).
  * - Without input rows (accept with no input file): `terms` is required and the
  *   spec is just those terms.
  *
@@ -718,7 +721,7 @@ export function buildDataSpec(args: {
     return { linkageTerms: terms };
   }
 
-  const metadata =
+  const inferred =
     args.listColumns === undefined
       ? inferMetadata(rows.columns, rows.sanitizedColumnPositions)
       : metadataListingColumns(
@@ -728,6 +731,8 @@ export function buildDataSpec(args: {
           ),
           args.listColumns,
         );
+  const metadata =
+    terms?.algorithm === "psi-c" ? withIdentifiersNotSent(inferred) : inferred;
   const linkageTerms =
     terms ??
     withLinkageStrategy(

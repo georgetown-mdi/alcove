@@ -15,6 +15,7 @@ import type { LinkageTerms } from "../../src/config/linkageTermsSchema";
 import {
   assertCountOnlyTransmitsNoColumn,
   countOnlyTransmitsColumn,
+  withIdentifiersNotSent,
 } from "../../src/config/metadata";
 import type { Metadata } from "../../src/config/metadata";
 import {
@@ -294,6 +295,38 @@ test("the metadata rule is a no-op on psi and on an unresolved metadata block", 
   expect(() =>
     assertCountOnlyTransmitsNoColumn("psi-c", undefined),
   ).not.toThrow();
+});
+
+test("withIdentifiersNotSent sets every identifier column not sent and nothing else", () => {
+  const metadata: Metadata = [
+    {
+      name: "case_id",
+      type: "identifier",
+      role: "identifier",
+      isPayload: true,
+    },
+    { name: "ClientID", type: "identifier", role: "payload", isPayload: true },
+    { name: "record_key", type: "other", role: "identifier", isPayload: true },
+    {
+      name: "first_name",
+      type: "first_name",
+      role: "linkage",
+      isPayload: true,
+    },
+    { name: "risk_score", type: "other", role: "payload", isPayload: true },
+  ];
+  expect(withIdentifiersNotSent(metadata)).toEqual([
+    {
+      name: "case_id",
+      type: "identifier",
+      role: "identifier",
+      isPayload: false,
+    },
+    { name: "ClientID", type: "identifier", role: "ignored", isPayload: false },
+    { name: "record_key", type: "other", role: "identifier", isPayload: false },
+    metadata[3],
+    metadata[4],
+  ]);
 });
 
 // --- Scope -------------------------------------------------------------------

@@ -2116,6 +2116,14 @@ first `identifier`-typed column in header order is promoted to
 `role: identifier` whatever its name. Every later `identifier`-typed column,
 whichever row typed it, infers `role: payload`, `is_payload: true` in both
 modes, so every `identifier`-typed column is sent.
+Under count-only (`psi-c`) terms, which send no column, the inferred metadata
+instead sets every `identifier`-typed column not sent: the record identifier
+keeps `role: identifier` with `is_payload: false`, and every later one is
+`role: ignored`, `is_payload: false` (`withIdentifiersNotSent`,
+`packages/core/src/config/metadata.ts`).
+An authored `metadata` block is read as written, and one that sends a column
+under count-only is refused
+([PROTOCOL.md](PROTOCOL.md#refusals-under-count-only)).
 
 A column that ends the second pass with no role is undeclared, which only
 declared-only inference leaves: the inferred

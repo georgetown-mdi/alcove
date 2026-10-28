@@ -5,6 +5,7 @@ import {
   inferMetadataForEveryColumn,
   overlongDisclosedColumnPositions,
   sanitizeForDisplay,
+  withIdentifiersNotSent,
 } from "@alcove/core";
 
 import { CSV_DELIMITER_SINGLE_COLUMN_REMEDY } from "@components/csvDelimiterChoice";
@@ -17,7 +18,6 @@ import {
   hasMultipleIdentifiers,
   normalizeForEditor,
   setColumnDisclosure,
-  withIdentifiersNotSent,
 } from "@psi/metadataEditing";
 
 import {

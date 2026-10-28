@@ -242,6 +242,23 @@ export function assertCountOnlyTransmitsNoColumn(
 }
 
 /**
+ * `metadata` with every identifier column set not sent: the record identifier
+ * keeps its role, and another identifier-typed column sent as payload is set
+ * to `role: ignored`. Inference sends every identifier column and a count-only
+ * exchange sends none, so metadata inferred under count-only terms starts from
+ * this; a block the operator authored is checked as written
+ * ({@link assertCountOnlyTransmitsNoColumn}).
+ */
+export function withIdentifiersNotSent(metadata: Metadata): Metadata {
+  return metadata.map((column): ColumnMetadata => {
+    if (column.role === "identifier") return { ...column, isPayload: false };
+    if (column.type === "identifier" && column.role === "payload")
+      return { ...column, role: "ignored", isPayload: false };
+    return column;
+  });
+}
+
+/**
  * The 1-based metadata positions of the DISCLOSED columns whose name is
  * longer than {@link MAX_NAME_LENGTH}, in metadata order -- empty when
  * every disclosed name fits. The single predicate behind every gate on

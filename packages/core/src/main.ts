@@ -616,6 +616,7 @@ export {
   safeParseMetadata,
   safeParseMetadataTheReaderWrote,
   undeclaredColumnNames,
+  withIdentifiersNotSent,
 } from "./config/metadata";
 export type {
   ColumnMetadata,

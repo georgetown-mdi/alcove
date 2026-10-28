@@ -535,6 +535,67 @@ test("a count-only exchange whose input metadata would transmit a column is refu
   ).toThrow(/sends no data columns/);
 });
 
+describe("metadata inferred for a count-only exchange", () => {
+  const identifierColumns = ["case_id", "first_name", "ClientID"];
+  const identifierRows = [
+    { case_id: "c-1", first_name: "Carol", ClientID: "k-1" },
+  ];
+
+  test("sends no identifier column, so the preparation is not refused", () => {
+    const { metadata, metadataInferred } = prepared(
+      "Initiator Co",
+      identifierRows,
+      { terms: { algorithm: "psi-c" }, columns: identifierColumns },
+    );
+    expect(metadataInferred).toBe(true);
+    expect(
+      metadata.map(({ name, role, isPayload }) => ({ name, role, isPayload })),
+    ).toEqual([
+      { name: "case_id", role: "identifier", isPayload: false },
+      { name: "first_name", role: "linkage", isPayload: false },
+      { name: "ClientID", role: "ignored", isPayload: false },
+    ]);
+  });
+
+  test("a declared block sending an identifier column is still refused", () => {
+    expect(() =>
+      prepared("Initiator Co", identifierRows, {
+        terms: { algorithm: "psi-c" },
+        columns: identifierColumns,
+        metadata: [
+          {
+            name: "case_id",
+            type: "identifier",
+            role: "identifier",
+            isPayload: true,
+          },
+          {
+            name: "first_name",
+            type: "first_name",
+            role: "linkage",
+            isPayload: false,
+          },
+        ],
+      }),
+    ).toThrow(/sends no data columns/);
+  });
+
+  test("under psi every inferred identifier column is sent", () => {
+    const { metadata } = prepared("Initiator Co", identifierRows, {
+      terms: { algorithm: "psi" },
+      columns: identifierColumns,
+    });
+    expect(
+      metadata
+        .filter((column) => column.type === "identifier")
+        .map(({ name, isPayload }) => ({ name, isPayload })),
+    ).toEqual([
+      { name: "case_id", isPayload: true },
+      { name: "ClientID", isPayload: true },
+    ]);
+  });
+});
+
 test("a count-only run refuses an inbound payload column from a non-conforming partner", async () => {
   // docs/spec/PROTOCOL.md (PSI-C, Refusals) refuses payload in either
   // direction; the record's payload commitments are fixed present-and-empty

@@ -15,6 +15,7 @@ import {
   encodeInvitation,
   getDiagnosticSink,
   getLogger,
+  inferMetadata,
   parseExchangeSpec,
   redactPrivateKeyMaterial,
   sanitizeErrorForDisplay,
@@ -1071,38 +1072,101 @@ function countOnlyToken(): InvitationToken {
 }
 
 describe("the count-only shape, at the accept boundary", () => {
-  test("validateAccept: refuses a count-only invitation whose own columns would send one", async () => {
-    // The count-only rule this party's own metadata holds: `ID` is the row
-    // identifier, which inferMetadata marks for transmission, and a
-    // count-only exchange moves no data column in either direction. Refused at the
-    // accept boundary, naming what to clear -- not left to the algorithm gate,
-    // which says only that no count-only run path exists yet.
+  test.each(["case_id", "ClientID", "ID"])(
+    "validateAccept: a count-only acceptance over a %s column infers it not sent",
+    async (identifierColumn) => {
+      // Inference sends every identifier column, and a count-only exchange
+      // sends none, so metadata inferred under count-only terms starts with
+      // each identifier column not sent rather than being refused.
+      const { error, ready } = await acceptWarnings({
+        token: countOnlyToken(),
+        columns: [...LINKAGE_COLUMNS, identifierColumn],
+        loggerName: `accept-count-only-infers-${identifierColumn}`,
+      });
+      expect(error).toBeUndefined();
+      const { mode, dataSpec } = ready as Awaited<
+        ReturnType<typeof validateAccept>
+      >;
+      expect(mode).toBe("offline");
+      expect(
+        dataSpec.metadata?.find((column) => column.name === identifierColumn),
+      ).toMatchObject({ role: "identifier", isPayload: false });
+    },
+  );
+
+  test("validateAccept: online prepares a count-only acceptance over an inferred identifier column", async () => {
     const { error, ready } = await acceptWarnings({
       token: countOnlyToken(),
-      columns: [...LINKAGE_COLUMNS, "ID"],
-      loggerName: "accept-count-only-transmits",
+      columns: [...LINKAGE_COLUMNS, "case_id", "PersonalID"],
+      loggerName: "accept-count-only-infers-online",
+      mode: "online",
     });
-    expect(ready).toBeUndefined();
-    expect(error).toBeInstanceOf(UsageError);
-    expect((error as Error).message).toMatch(/sends no data columns/);
-    // Named by the rule rather than by the column, matching every other refusal
-    // composed beside a partner's document.
-    expect((error as Error).message).not.toContain("ID");
+    expect(error).toBeUndefined();
+    const accepted = ready as Awaited<ReturnType<typeof validateAccept>>;
+    expect(accepted.mode).toBe("online");
+    if (accepted.mode !== "online") return;
+    expect(
+      accepted.prepared.metadata
+        .filter((column) => column.type === "identifier")
+        .map(({ name, role, isPayload }) => ({ name, role, isPayload })),
+    ).toEqual([
+      { name: "case_id", role: "identifier", isPayload: false },
+      { name: "PersonalID", role: "ignored", isPayload: false },
+    ]);
   });
 
-  test("validateAccept: online refuses the same arrangement, writing nothing", async () => {
+  test("validateAccept: a kept configuration that declares an identifier sent under count-only is refused", async () => {
+    // The rule changes only inferred columns: a metadata block the operator
+    // wrote is checked as written, refused at the accept boundary, naming what
+    // to clear rather than the column.
     const options = testOptions();
-    const { error } = await acceptWarnings({
-      token: countOnlyToken(),
-      columns: [...LINKAGE_COLUMNS, "ID"],
-      loggerName: "accept-count-only-transmits-online",
-      mode: "online",
-      options,
+    const base = sampleTerms("Acceptor Org");
+    saveConfig(options.configFile, {
+      connection: { channel: "filedrop", path: "/mnt/share" },
+      linkageTerms: {
+        ...base,
+        algorithm: "psi-c",
+        linkageKeys: base.linkageKeys.slice(0, 1),
+      },
+      metadata: [
+        ...inferMetadata(LINKAGE_COLUMNS, []),
+        { name: "ID", type: "identifier", role: "identifier", isPayload: true },
+      ],
     });
-    expect(error).toBeInstanceOf(UsageError);
-    expect((error as Error).message).toMatch(/sends no data columns/);
-    expect(fs.existsSync(options.configFile)).toBe(false);
-    expect(fs.existsSync(options.keyFile)).toBe(false);
+    const stdio = captureStdio();
+    try {
+      const { error, ready } = await acceptWarnings({
+        token: countOnlyToken(),
+        columns: [...LINKAGE_COLUMNS, "ID"],
+        loggerName: "accept-count-only-declared-sent",
+        options,
+      });
+      expect(ready).toBeUndefined();
+      expect(error).toBeInstanceOf(UsageError);
+      expect((error as Error).message).toMatch(/sends no data columns/);
+      expect((error as Error).message).not.toContain("ID");
+    } finally {
+      stdio.restore();
+      fs.rmSync(options.configFile, { force: true });
+    }
+  });
+
+  test("validateAccept: a psi acceptance still sends every inferred identifier column", async () => {
+    const { error, ready } = await acceptWarnings({
+      token: sampleToken(FUTURE()),
+      columns: [...LINKAGE_COLUMNS, "case_id", "ClientID"],
+      loggerName: "accept-psi-sends-identifiers",
+    });
+    expect(error).toBeUndefined();
+    const { dataSpec } = ready as Awaited<ReturnType<typeof validateAccept>>;
+    expect(
+      dataSpec.metadata
+        ?.filter((column) => column.type === "identifier")
+        .map(({ name, isPayload }) => ({ name, isPayload })),
+    ).toEqual([
+      { name: "case_id", isPayload: true },
+      { name: "ClientID", isPayload: true },
+    ]);
   });
 
   test("validateAccept: a count-only invitation over a file that sends nothing is not refused here", async () => {
@@ -3224,6 +3288,40 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
       expect(promptConfirmMock).not.toHaveBeenCalled();
       expect(fs.existsSync(configFile)).toBe(true);
       expect(fs.existsSync(keyFile)).toBe(true);
+    } finally {
+      exit.mockRestore();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("handler: a count-only acceptance writes an inferred identifier column as not sent", async () => {
+    const { dir, configFile, keyFile } = offlineAcceptFixture();
+    const input = path.join(dir, "identifiers.csv");
+    fs.writeFileSync(
+      input,
+      "case_id,first_name,last_name,dob,ssn\nc-1,Alice,Smith,1990-01-02,123456789\n",
+    );
+    const exit = captureProcessExit();
+    try {
+      await acceptHandler({
+        _: [],
+        $0: "alcove",
+        identity: "Agency B",
+        args: [await encodeInvitation(countOnlyToken()), input],
+        "consent-to-terms": true,
+        "config-file": configFile,
+        "key-file": keyFile,
+        "log-level": "silent",
+        record: false,
+      } as unknown as Arguments);
+      expect(exit).not.toHaveBeenCalled();
+      const written = YAML.parse(fs.readFileSync(configFile, "utf8"));
+      expect(written.linkage_terms.algorithm).toBe("psi-c");
+      expect(
+        written.metadata.find(
+          (column: { name: string }) => column.name === "case_id",
+        ),
+      ).toMatchObject({ role: "identifier", is_payload: false });
     } finally {
       exit.mockRestore();
       fs.rmSync(dir, { recursive: true, force: true });

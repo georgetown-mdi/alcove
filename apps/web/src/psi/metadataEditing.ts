@@ -284,20 +284,6 @@ export function hasMultipleIdentifiers(metadata: Metadata): boolean {
   return metadata.filter((column) => column.role === "identifier").length > 1;
 }
 
-/** `metadata` with every identifier column set not sent: the record
- * identifier keeps its role, and another identifier sent as payload is set to
- * ignored. The grid's seed starts every inferred identifier sent, and a
- * count-only exchange sends no column, so a count-only grid starts from this. */
-export function withIdentifiersNotSent(metadata: Metadata): Metadata {
-  return metadata.map((column) => {
-    if (column.role === "identifier")
-      return applyDisclosure(column, "identifier");
-    if (column.type === "identifier" && column.role === "payload")
-      return applyDisclosure(column, "ignored");
-    return column;
-  });
-}
-
 /**
  * The columns the quick (name-only) invite path sends to the partner for a
  * file with these column names. Composes the same two primitives the

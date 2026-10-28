@@ -13,6 +13,7 @@ import {
   getDefaultLinkageTerms,
   isDisclosedToPartner,
   precisionFloorLabel,
+  withIdentifiersNotSent,
 } from "@alcove/core";
 
 import { isolatedColumnName } from "@components/ColumnName";
@@ -38,7 +39,6 @@ import {
   hasMultipleIdentifiers,
   setColumnDisclosure,
   setColumnType,
-  withIdentifiersNotSent,
 } from "./metadataEditing";
 import { transformationWithCleaningSettings } from "./standardizationAuthoring";
 
@@ -906,7 +906,7 @@ export function identifiersStoppedSending(
   return after
     .filter(
       (column) =>
-        column.type === "identifier" &&
+        (column.type === "identifier" || column.role === "identifier") &&
         !isDisclosedToPartner(column) &&
         before.some(
           (prior) => prior.name === column.name && isDisclosedToPartner(prior),

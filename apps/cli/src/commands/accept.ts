@@ -730,6 +730,8 @@ export async function validateAccept(params: {
     // the count-only shape. This is the one count-only shape rule no
     // linkage-terms document holds -- the other four are refused as the
     // invitation is decoded, and again by deriveAcceptedLinkageTerms above.
+    // Metadata inferred under count-only sends no column (buildDataSpec), so
+    // only a kept configuration's own metadata block can be refused here.
     // Ahead of the prepare below, whose algorithm gate would report only that
     // no count-only run path exists, and ahead of the consent surface, which
     // states the same fact with no account of what to change.
