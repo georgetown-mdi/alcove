@@ -418,10 +418,12 @@ deadline for systems in its categories.
   ([PROTOCOL.md](../spec/PROTOCOL.md#signing-identity-and-certificate-pinning)),
   and a new key is a new fingerprint, which invalidates every pin a partner
   has recorded for the old one.
-- **Not established here.** Whether `crypto.subtle` offers ML-DSA or SLH-DSA on
-  both platforms has not been measured.
+- **Measured.** ML-DSA-65 through `crypto.subtle` passes in Node and
+  Chromium and fails in the `-fips` image's validated module, Firefox, and
+  Safari ([measurement](#ml-kem-and-ml-dsa-through-web-crypto-measured-2026-10-28)).
+  SLH-DSA has not been measured.
 
-Whether a signature plan is wanted is part of the open decision below.
+The signature plan is part of the open decision below.
 
 ### The private set intersection's group: P-256
 
@@ -450,8 +452,13 @@ force
 
 **What stays unestablished.** The spec does not state the cipher's algebra: it
 does not say that an element is the hashed value's curve point multiplied by
-the party's scalar. So it does not establish that solving the discrete log on
-P-256 recovers a party's scalar from the elements a transcript contains. If it
+the party's scalar. The algorithm inventory in
+[COMPLIANCE.md](../COMPLIANCE.md#cryptographic-algorithm-inventory) describes
+that construction, and its note 1 states that the hash to the curve is read
+from the engine's C++ source, not measured on the shipped binary: a reading
+of source, not a statement of the spec. So the spec does not establish that
+solving the discrete log on P-256 recovers a party's scalar from the elements
+a transcript contains. If it
 does, removing the scalars leaves the hashed values, which a dictionary search
 over candidate identifiers matches: the brute force a weak linkage key is
 already open to, extended to every linkage key. That chain is a stated limit,
@@ -504,9 +511,79 @@ key exchange.
   DTLS therefore sits beneath the application-layer wrap on every WebRTC
   exchange and is never the only protection.
 
+### ML-KEM and ML-DSA through Web Crypto, measured 2026-10-28
+
+Reasons 1 and 5 above bind any replacement primitive to `crypto.subtle` in
+both applications. So a hybrid key exchange and dual signing need ML-KEM-768
+and ML-DSA-65 through Web Crypto in every runtime Alcove runs on, and, in the
+`-fips` image, served by the validated module.
+
+Each runtime was driven through the same calls:
+
+- ML-KEM-768: `generateKey`, `encapsulateBits`, `decapsulateBits`, and a check
+  that both sides' shared secrets are equal.
+- ML-DSA-65: `generateKey`, `sign`, `verify`, and a check that `verify`
+  rejects a changed message.
+
+A runtime passes an algorithm only if every call for it passes. Results:
+
+| Runtime | Version | ML-KEM-768 | ML-DSA-65 |
+|---------|---------|------------|-----------|
+| Node | v26.12.1 | Pass | Pass |
+| Chromium | 156 | Pass | Pass |
+| `-fips` image, its own fips-only configuration | Node v26.12.1 with OpenSSL 3.5.9; Amazon Linux 2023 FIPS provider 3.2.2, package `openssl-fips-provider-certified-so-3.2.2-1.amzn2023`; linux/amd64 and linux/arm64 | Fail: `generateKey` throws `NotSupportedError: Unrecognized algorithm name` | Fail: the same |
+| `-fips` image, default provider in place of the module | The same image | Pass | Pass |
+| Firefox | 159.0 | Fail: `generateKey` throws `NotSupportedError: Operation is not supported` | Fail: the same |
+| Safari | 26.6.2, on macOS 26.6.2 | Fail: `generateKey` throws `TypeError: Type error` | Fail: `generateKey` throws `NotSupportedError: The operation is not supported.` |
+
+What each row rests on:
+
+- **Node and Chromium** were measured in the development container on
+  2026-10-27 and 2026-10-28.
+- **The `-fips` image** was built from staging at commit 71c09caab, for both
+  architectures, which gave the same result. Under the image's own
+  configuration the module was engaged: MD5 and a 1024-bit RSA key were
+  refused, and the module's library was loaded. The module's algorithm
+  listing names no ML-KEM or ML-DSA. With the default provider configured
+  instead, every call passed. The image's Node can perform both algorithms;
+  the validated module cannot.
+- **Firefox 159.0** was the latest release Mozilla listed on 2026-10-28. It
+  ran on macOS with a fresh profile and default preferences.
+- **Safari 26.6.2** is not the newest Safari: Software Update offered Safari
+  27.2, which was not installed and so was not measured.
+
+### The dated wait
+
+As of 2026-10-28, the hybrid key exchange and dual signing wait on three
+runtimes. Each wait ends on its own trigger:
+
+- **The `-fips` image's validated module.** The trigger is a FIPS provider the
+  image can ship whose validation covers ML-KEM-768 and ML-DSA-65. Whether the
+  wait also holds where the image's Node can make the calls outside the
+  validated module is not decided.
+- **Firefox.** The trigger is a Firefox release whose Web Crypto supports
+  ML-KEM-768 and ML-DSA-65.
+- **Safari.** The trigger is a Safari release whose Web Crypto supports
+  ML-KEM-768 and ML-DSA-65. Safari 27.2 was offered and not measured, so the
+  next check starts there.
+
+When a trigger fires, that runtime is measured again with the calls above.
+The hybrid key exchange and dual signing are reconsidered once every runtime
+passes.
+
 ### The open decision
 
-The plan is an open decision for the owner.
+The measurement does not choose a plan. The maintainer's direction for each use,
+before the measurement, was:
+
+- **Key agreement.** Measure first, then decide on a hybrid P-256 and
+  ML-KEM-768 exchange. The measurement is above, and the decision has not
+  been taken.
+- **Signatures.** Dual-sign with ECDSA and ML-DSA before release if ML-DSA
+  works everywhere; otherwise a dated plan after the hybrid, before 2031.
+  ML-DSA does not work everywhere, so the second branch applies. This note
+  records that branch as the standing direction, not as a new decision; the
+  plan and its date are not written yet.
 
 ## Rotation moves to an independent secret
 
