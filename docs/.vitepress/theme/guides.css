@@ -193,7 +193,11 @@ body:has(.guide-site) {
 }
 .guide-site .rail {
   position: sticky;
-  top: 84px;
+  top: 80px;
+  max-height: calc(100vh - 84px);
+  overflow-y: auto;
+  padding: 4px;
+  margin: -4px;
   display: grid;
   gap: 22px;
 }
@@ -264,6 +268,8 @@ body:has(.guide-site) {
 .guide-site .guide-ledger {
   position: sticky;
   top: 84px;
+  max-height: calc(100vh - 84px);
+  overflow-y: auto;
   border-top: 2px solid var(--ink);
   font-size: 14px;
 }
