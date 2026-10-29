@@ -571,6 +571,41 @@ When a trigger fires, that runtime is measured again with the calls above.
 The hybrid key exchange and dual signing are reconsidered once every runtime
 passes.
 
+The signal to watch, as of 2026-10-29, is the
+[WebKit blog feed](https://webkit.org/feed/). Its "WebKit Features for Safari"
+post for each release would name ML-KEM or ML-DSA in Web Crypto. Safari is the
+runtime furthest behind: no WebKit Bugzilla bug for either algorithm existed on
+2026-10-29. When a post names them, the re-evaluation starts.
+
+The other sources are read during that re-evaluation and on the periodic check,
+not followed:
+
+- **The `-fips` image's validated module.** CMVP sends no notification, so two
+  pages are re-read by hand: the
+  [certificate 5438 page](https://csrc.nist.gov/projects/cryptographic-module-validation-program/certificate/5438)
+  for a change to its approved algorithms, and the
+  [Modules In Process list](https://csrc.nist.gov/projects/cryptographic-module-validation-program/modules-in-process/modules-in-process-list)
+  for a newer Amazon Linux 2023 OpenSSL FIPS Provider entering review. On
+  2026-10-29 that list had no such entry. The
+  [openssl-announce list](https://groups.google.com/a/openssl.org/g/openssl-announce/)
+  carries the OpenSSL project's own announcements, which concern a different
+  module from certificate 5438's, and the
+  [Amazon Linux 2023 repository](https://github.com/amazonlinux/amazon-linux-2023)
+  is the one channel from the image's base that was found.
+- **Firefox.** Bugzilla bug 2084912, ML-DSA support
+  (<https://bugzilla.mozilla.org/show_bug.cgi?id=2084912>), carries the
+  milestone flags that show the release, and bug 1981476, the meta bug for
+  modern algorithms in Web Crypto
+  (<https://bugzilla.mozilla.org/show_bug.cgi?id=1981476>), tracks the rest.
+- **The shared specification tracker.** Issues and pull requests in the
+  [WICG `webcrypto-modern-algos` repository](https://github.com/WICG/webcrypto-modern-algos),
+  which holds the specification every browser implements, move all the browser
+  triggers.
+
+These sources are re-checked quarterly, the maintainer's choice of 2026-10-29.
+That check is a backstop to the WebKit feed and matters chiefly for the
+validated module, which publishes no notifications.
+
 ### The open decision
 
 The measurement does not choose a plan. The maintainer's direction for each use,
