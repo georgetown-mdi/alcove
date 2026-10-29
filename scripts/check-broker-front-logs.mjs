@@ -46,9 +46,9 @@ const SETTLE_MS = 1500;
 // Over the template's proxy_read_timeout of 300 s, so the timed-out upstream
 // request is answered by nginx and not cut off here.
 const RESPONSE_DEADLINE_MS = 330_000;
-// nginx's default client_body_buffer_size on a 64-bit host: a request whose
-// body is larger is buffered to a file under /tmp.
-const CLIENT_BODY_BUFFER_BYTES = 16384;
+// nginx's default client_body_buffer_size on x86-64, two 4 KiB memory pages: a
+// request whose body is larger is buffered to a file under /tmp.
+const CLIENT_BODY_BUFFER_BYTES = 8192;
 
 /** The header values a request sends, each with the marker that finds it in a log line. */
 const FIELDS = [

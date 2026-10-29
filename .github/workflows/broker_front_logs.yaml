@@ -2,8 +2,9 @@ name: Broker Front Logs
 
 # Drives each kind of failed request through the broker's TLS front, rendered
 # from infra/broker/nginx.conf.tmpl in the image infra/broker/Dockerfile pins,
-# and fails if any log line contains a request's query string or the access
-# log does not tell the failure kinds apart
+# and fails if any log line contains a request's query string, a request
+# writes an error-log line, or the access log does not tell the failure kinds
+# apart
 # (scripts/check-broker-front-logs.mjs). It needs Docker, which the dev
 # container lacks.
 #

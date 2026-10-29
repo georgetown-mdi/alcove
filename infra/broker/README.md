@@ -133,7 +133,7 @@ All three services write to the host's journal, under the retention the relay's 
   | the broker closed or reset it before answering | 502 | 502 | a time | |
   | the broker did not answer within 300 s (`proxy_read_timeout`) | 504 | 504 | a time | |
   | the body is over 1 MiB (`client_max_body_size`), refused before reaching the broker | 413 | `-` | `-` | |
-  | a body over 16 KiB (`client_body_buffer_size`), buffered to a file under `/tmp` | | | | over 16384, headers included |
+  | a body over the default `client_body_buffer_size` (two memory pages, 8 KiB on x86-64), buffered to a file under `/tmp` | | | | over 8192, headers included |
 
   [`scripts/check-broker-front-logs.mjs`](../../scripts/check-broker-front-logs.mjs), run by `broker_front_logs.yaml` on a pull request that changes the template or the image, drives each of these through the pinned image and fails if any log line holds a request's query string, if any of them writes an error-log line, or if a failure's access-log line does not match its row.
 
