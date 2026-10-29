@@ -1,7 +1,7 @@
 // @ts-check
 // The layout of the guides under docs/guides/: a top bar, the rail of guide
 // pages, the page on its sheet and the page ledger beside it. The menus list
-// the guides only; docs/.vitepress/guides.mjs writes the page markup and the
+// the guides and, under About, one link to the documentation; docs/.vitepress/guides.mjs writes the page markup and the
 // ledger's HTML, and config.mjs passes the menu as `themeConfig.guideSections`.
 
 import { Content, useData, useRouter } from "vitepress";
@@ -11,6 +11,14 @@ import { computed, defineComponent, h } from "vue";
  * @typedef {{ title: string, link: string, stem: string }} GuidePage
  * @typedef {{ group: string, topNav: boolean, pages: GuidePage[] }} GuideSection
  */
+
+/** The link to the reference documentation, listed last in the About group. */
+const DOCUMENTATION_LINK = { title: "Documentation", link: "/docs/" };
+
+/** @param {GuideSection} section */
+function hasDocumentationLink(section) {
+  return section.group === "About";
+}
 
 /** @param {string} href @param {string} text */
 function externalLink(href, text) {
@@ -72,9 +80,8 @@ export default defineComponent({
         sections.value.map((section) =>
           h("div", { class: "group" }, [
             h("h2", section.group),
-            h(
-              "ul",
-              section.pages.map((page) =>
+            h("ul", [
+              ...section.pages.map((page) =>
                 h("li", [
                   h(
                     "a",
@@ -87,7 +94,21 @@ export default defineComponent({
                   ),
                 ]),
               ),
-            ),
+              ...(hasDocumentationLink(section)
+                ? [
+                    h("li", [
+                      h(
+                        "a",
+                        {
+                          href: DOCUMENTATION_LINK.link,
+                          "aria-current": "false",
+                        },
+                        DOCUMENTATION_LINK.title,
+                      ),
+                    ]),
+                  ]
+                : []),
+            ]),
           ]),
         ),
       );
@@ -110,16 +131,27 @@ export default defineComponent({
             h(
               "optgroup",
               { label: section.group },
-              section.pages.map((page) =>
-                h(
-                  "option",
-                  {
-                    value: page.link,
-                    selected: page.stem === guide.value.stem,
-                  },
-                  page.title,
+              [
+                ...section.pages.map((page) =>
+                  h(
+                    "option",
+                    {
+                      value: page.link,
+                      selected: page.stem === guide.value.stem,
+                    },
+                    page.title,
+                  ),
                 ),
-              ),
+                ...(hasDocumentationLink(section)
+                  ? [
+                      h(
+                        "option",
+                        { value: DOCUMENTATION_LINK.link, selected: false },
+                        DOCUMENTATION_LINK.title,
+                      ),
+                    ]
+                  : []),
+              ],
             ),
           ),
         ),
