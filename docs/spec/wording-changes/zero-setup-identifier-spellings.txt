@@ -1,5 +1,5 @@
 - So does a name whose lookup key is `clientid`, `personid`, or `personalid`, such as `ClientID` or the HMIS CSV export's `PersonalID`. -> So does a name whose lookup key is `clientid`, `personid`, `personalid`, `patientid`, `recordid`, `memberid`, or `mrn`, such as `ClientID`, the HMIS CSV export's `PersonalID`, or `MRN`.
-- - -> So does a record number: a name whose lookup key ends in `_number`, `_no`, or `number` after at least one other character, such as `case_number`, `Record No`, or `CaseNumber`, or whose header, less any separators at its end, ends in a lowercase letter followed by `No`, such as `RecordNo`.
+- - -> So does a record number: a name whose lookup key ends in `_number`, `_no`, or `number` after at least one other character, such as `case_number`, `Record No`, or `CaseNumber`, or whose header, less any punctuation at its end, ends in a lowercase letter followed by `No`, such as `RecordNo`.
 - - -> A header ending in a lowercase `no`, such as `Casino`, is not a record number.
 - - -> The record-number rule has two limits:
 - - -> An all-capitals or all-lowercase header with an unseparated `no`, such as `RECORDNO` or `recordno`, is not a record number and is sent in direct mode; a `metadata` block that declares it holds it back.
@@ -17,8 +17,11 @@
 - The lookup is on the column name's lookup key, which folds the whole name in three steps: -> The lookup is on the column name's lookup key, which folds the whole name in four steps:
 - Trim whitespace from both ends. -> -
 - - -> Replace each `#` with the word `number`, set off by a `_` on each side.
-- - -> Drop a `_` left at either end.
-- Only whitespace is trimmed, so `_ssn` and `ssn_` do not infer either. -> A separator at either end is dropped, so `ssn`, `tel`, and `ssn_no` are the keys of `ssn.`, `Tel.`, and `SSN No.`.
+- - -> Drop any punctuation left at either end.
+- Only whitespace is trimmed, so `_ssn` and `ssn_` do not infer either. -> -
+- - -> Punctuation at either end is dropped, so `ssn.`, `(ssn)` and `ssn:` have the key `ssn`, and `Tel.`
+- - -> and `SSN No.`
+- - -> have `tel` and `ssn_no`.
 - - -> A `#` is read as `number`, so `SSN #` and `SS#` have the keys `ssn_number` and `ss_number`, and `Case #` is the record number `case_number`.
-- - -> Other punctuation stays in the key, so `(ssn)` does not infer.
+- - -> Punctuation inside a name, other than `#` and the separators above, stays in the key.
 - A header recognized after trimming is shown as written, so on the display a whitespace-padded name such as ` ssn` differs from the bare `ssn` only by that whitespace. -> A header recognized after folding is shown as written, so on the display a whitespace-padded name such as ` ssn` differs from the bare `ssn` only by that whitespace.

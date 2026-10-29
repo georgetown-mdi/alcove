@@ -2052,16 +2052,17 @@ steps:
 1. Lowercase it.
 2. Replace each `#` with the word `number`, set off by a `_` on each side.
 3. Collapse each run of whitespace, `.`, `_` and `-` to one `_`.
-4. Drop a `_` left at either end.
+4. Drop any punctuation left at either end.
 
 The key is an exact match against the table below, never a substring or prefix
 test, so `First Name`, ` ssn` and `Date-of-Birth` infer but `zip_area` and
 `ssn_last4` do not.
-A separator at either end is dropped, so `ssn`, `tel`, and `ssn_no` are the keys
-of `ssn.`, `Tel.`, and `SSN No.`.
+Punctuation at either end is dropped, so `ssn.`, `(ssn)` and `ssn:` have the key
+`ssn`, and `Tel.` and `SSN No.` have `tel` and `ssn_no`.
 A `#` is read as `number`, so `SSN #` and `SS#` have the keys `ssn_number` and
 `ss_number`, and `Case #` is the record number `case_number`.
-Other punctuation stays in the key, so `(ssn)` does not infer.
+Punctuation inside a name, other than `#` and the separators above, stays in
+the key.
 The key is used only for the lookup: the column keeps its raw
 header as its name in its metadata, its transform `input`, the run's display
 and the result. Every name in the table is its own lookup key, and no two names
@@ -2112,7 +2113,7 @@ block, and an invitation composed from an input file.
   CSV export's `PersonalID`, or `MRN`.
   So does a record number: a name whose lookup key ends in `_number`, `_no`, or
   `number` after at least one other character, such as `case_number`,
-  `Record No`, or `CaseNumber`, or whose header, less any separators at its
+  `Record No`, or `CaseNumber`, or whose header, less any punctuation at its
   end, ends in a lowercase letter followed by `No`, such as `RecordNo`.
   In both modes it infers what the table's `identifier` row infers.
   A header ending in a lowercase `no`, such as `Casino`, is not a record number.

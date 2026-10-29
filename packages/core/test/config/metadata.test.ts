@@ -329,6 +329,9 @@ const RECORD_IDENTIFIER_SPELLINGS = [
   "Case#",
   "Record No.",
   "RecordNo.",
+  "Case #:",
+  "(RecordNo)",
+  "RecordNo:",
 ];
 
 describe.each(["declaredOnly", "direct"] as const)(
@@ -475,6 +478,9 @@ const SSN_SPELLINGS = [
   "Soc. Sec. No.",
   "SSN #",
   "SS#",
+  "(ssn)",
+  "ssn:",
+  "SSN:",
 ];
 
 const PHONE_SPELLINGS = [
@@ -512,6 +518,7 @@ const PHONE_SPELLINGS = [
   "Phone #",
   "Cell #",
   "Tel.",
+  "[Phone #]",
 ];
 
 describe.each(["declaredOnly", "direct"] as const)(
@@ -563,10 +570,10 @@ test("a file whose only number columns are SSN or phone numbers has no record id
   expect(disclosedColumnNames(metadata)).toEqual(["notes"]);
 });
 
-// --- inferMetadata: separators at either end of a header --------------------
+// --- inferMetadata: punctuation at either end of a header -------------------
 
 describe.each(["declaredOnly", "direct"] as const)(
-  "%s mode: a header with a separator at either end infers as without it",
+  "%s mode: a header with punctuation at either end infers as without it",
   (mode) => {
     test.each([
       [".id", "id"],
@@ -577,6 +584,11 @@ describe.each(["declaredOnly", "direct"] as const)(
       [" .dob. ", "dob"],
       ["RecordNo.", "RecordNo"],
       ["notes.", "notes"],
+      ["(notes):", "notes"],
+      ["(client_id)", "client_id"],
+      ["[ssn]", "ssn"],
+      ["...", "notes"],
+      ["()", "notes"],
     ])("%j infers as %j", (header, bare) => {
       const inferredRoles = (first: string) =>
         inferMetadataForEveryColumn([first, "first_name", "comments"], [], {
@@ -586,6 +598,18 @@ describe.each(["declaredOnly", "direct"] as const)(
     });
   },
 );
+
+test("a header of only punctuation folds to an empty key and is an unrecognized name", () => {
+  expect(
+    inferMetadataForEveryColumn(["()", "..."], [], { mode: "direct" }),
+  ).toEqual([
+    { name: "()", type: "other", role: "payload", isPayload: true },
+    { name: "...", type: "other", role: "payload", isPayload: true },
+  ]);
+  expect(inferMetadata(["()", "..."], [], { mode: "declaredOnly" })).toEqual(
+    [],
+  );
+});
 
 // --- inferMetadata: choosing the record identifier ---------------------------
 

@@ -65,6 +65,11 @@ const FOLDED_HEADERS: Array<
   ["outer separator", ".dob", "date_of_birth"],
   ["outer separator", "Tel.", "phone_number"],
   ["outer separator", "SSN No.", "ssn"],
+  ["outer punctuation", "(ssn)", "ssn"],
+  ["outer punctuation", "ssn:", "ssn"],
+  ["outer punctuation", "SSN:", "ssn"],
+  ["outer punctuation", "[Phone #]", "phone_number"],
+  ["outer punctuation", '"ssn"', "ssn"],
   ["#", "SSN#", "ssn"],
   ["#", "SSN #", "ssn"],
   ["#", "Phone #", "phone_number"],
@@ -72,8 +77,8 @@ const FOLDED_HEADERS: Array<
 ];
 
 // Headers that stay unrecognized: the lookup is a whole-name match on the
-// folded key, never a substring, prefix or edit-distance test, and only a
-// separator is dropped from either end.
+// folded key, never a substring, prefix or edit-distance test, and only
+// punctuation is dropped from either end.
 const UNRECOGNIZED_HEADERS = [
   "ssn_last4",
   "ssn last 4",
@@ -86,8 +91,6 @@ const UNRECOGNIZED_HEADERS = [
   "f name",
   "s.s.n",
   "first/name",
-  "(ssn)",
-  "ssn:",
   "#",
   // An address line is typed by the operator, never inferred.
   "address",
@@ -135,12 +138,15 @@ describe("columnNameLookupKey", () => {
     ["# between words", "SS#No", "ss_number_no"],
     ["# alone", " # ", "number"],
     ["separators alone", " _-. ", ""],
+    ["punctuation alone", "(): ", ""],
+    ["outer punctuation", "[(ssn):]", "ssn"],
+    ["letters of other scripts", "(Número)", "número"],
   ])("folds %s", (_step, header, key) => {
     expect(columnNameLookupKey(header)).toBe(key);
   });
 
-  test("keeps other punctuation in the key", () => {
-    expect(columnNameLookupKey("(ssn):")).toBe("(ssn):");
+  test("keeps punctuation inside a name in the key", () => {
+    expect(columnNameLookupKey("(s(s)n):")).toBe("s(s)n");
   });
 
   test("every listed name is its own lookup key", () => {
