@@ -604,7 +604,7 @@ the digest freeze pins the base either way.
 The variant installs far more OS packages than the default image, is larger
 than the Alpine image on both architectures, and has more packages with a
 GPL-3.0 or LGPL-3.0 term; the counts and sizes, measured on the shipped build at
-the pins above, are in
+the pins above except the x86_64 image size, which dates from an earlier base, are in
 [CONTAINER_IMAGES.md](../spec/CONTAINER_IMAGES.md#the-fips-reference-builds-inventory).
 The v3 terms are the samba client stack that the default image already pays
 for, plus a GPLv3 base userland Alpine's busybox and musl do not have (`bash`,
@@ -646,7 +646,7 @@ under the Node.js releasers in `nodejs/node`'s README. The signature verified as
 `nodejs/release-keys` repository on GitHub, run on a GitHub-hosted runner; both
 hashes also match `sha256sum` over the tarballs that runner downloaded, and both
 architectures' image builds passed the committed `sha256sum -c` on 2026-10-29.
-`keys.openpgp.org` was not consulted, so this record also has one channel.
+`keys.openpgp.org` was not consulted, so this record has one channel.
 
 The pair before it, v26.12.1, was checked on 2026-10-25. Its
 `SHASUMS256.txt.sig` is an EdDSA signature made 2026-10-21 by
