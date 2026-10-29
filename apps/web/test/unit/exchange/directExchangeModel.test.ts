@@ -269,7 +269,7 @@ describe("previewInferredTerms", () => {
     expect(DIRECT_RECOGNIZED_COLUMNS_NOTICE).toBe(
       "Alcove never sends a column it recognizes as a linkage key or an id, " +
         "such as ssn, phone, id, or case_number. Every other column is sent " +
-        "for each matched record, and the terms above list them.",
+        "for each matched record.",
     );
     const metadata = inferMetadata(
       ["ssn", "phone", "id", "case_number", "notes"],

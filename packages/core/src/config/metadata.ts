@@ -344,8 +344,8 @@ type TypeMetaMapped = Omit<TypeMeta, "aliases">;
 /**
  * The key a column name is looked up by in {@link ALIAS_TYPE_META_MAP}: the
  * name lowercased, each `#` read as the word `number`, each run of
- * whitespace, `_`, `-` and `.` collapsed to one `_`, and any punctuation left
- * at either end dropped, so `First Name`, ` first_name.` and `FIRST-NAME` share
+ * whitespace, `_`, `-` and `.` collapsed to one `_`, and every character left
+ * at either end that is not a letter or digit dropped, so `First Name`, ` first_name.` and `FIRST-NAME` share
  * the key `first_name`, and `SSN #` has the key `ssn_number`. A lookup key
  * only: a column keeps its raw header as its name.
  */
@@ -397,7 +397,7 @@ function numberSuffixPrefix(lookupName: string): string | undefined {
 /**
  * Whether a column name ends in a record-number suffix: its lookup key ends in
  * `_number`, `_no` or `number` after a character other than `_`, or the raw
- * `name`, less the punctuation at its end, ends in `No` written in camel case
+ * `name`, less any characters that are not letters or digits at its end, ends in `No` written in camel case
  * (`RecordNo`), which keeps a word that ends in `no`, such as `Casino`, out.
  */
 function hasRecordNumberSuffix(name: string, lookupName: string): boolean {

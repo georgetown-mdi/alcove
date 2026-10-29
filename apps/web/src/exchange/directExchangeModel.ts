@@ -132,7 +132,7 @@ export const DIRECT_DEDUPLICATE_SIDE_NOTICE =
 export const DIRECT_RECOGNIZED_COLUMNS_NOTICE =
   "Alcove never sends a column it recognizes as a linkage key or an id, " +
   "such as ssn, phone, id, or case_number. Every other column is sent for " +
-  "each matched record, and the terms above list them.";
+  "each matched record.";
 
 /** The rules a quick exchange runs, worded as the CLI's display before the run
  * words them. */

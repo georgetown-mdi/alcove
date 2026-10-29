@@ -2052,12 +2052,12 @@ steps:
 1. Lowercase it.
 2. Replace each `#` with the word `number`, set off by a `_` on each side.
 3. Collapse each run of whitespace, `.`, `_` and `-` to one `_`.
-4. Drop any punctuation left at either end.
+4. Drop every character that is not a letter or digit from either end.
 
 The key is an exact match against the table below, never a substring or prefix
 test, so `First Name`, ` ssn` and `Date-of-Birth` infer but `zip_area` and
 `ssn_last4` do not.
-Punctuation at either end is dropped, so `ssn.`, `(ssn)` and `ssn:` have the key
+A character that is not a letter or digit at either end is dropped, so `ssn.`, `(ssn)` and `ssn:` have the key
 `ssn`, and `Tel.` and `SSN No.` have `tel` and `ssn_no`.
 A `#` is read as `number`, so `SSN #` and `SS#` have the keys `ssn_number` and
 `ss_number`, and `Case #` is the record number `case_number`.
@@ -2068,8 +2068,8 @@ header as its name in its metadata, its transform `input`, the run's display
 and the result. Every name in the table is its own lookup key, and no two names
 in it share one.
 
-The fold has two limits. The console's quick-exchange confirm screen states
-the rule and lists the columns sent; only the command line's pre-run display
+The fold has two limits. The console's quick-exchange confirm screen gives
+examples of the columns never sent and lists the columns sent; only the command line's pre-run display
 lists the names a quick exchange holds back.
 A header recognized after folding is shown as written, so on the display a
 whitespace-padded name such as ` ssn` differs from the bare `ssn` only by that
@@ -2113,7 +2113,7 @@ block, and an invitation composed from an input file.
   CSV export's `PersonalID`, or `MRN`.
   So does a record number: a name whose lookup key ends in `_number`, `_no`, or
   `number` after at least one other character, such as `case_number`,
-  `Record No`, or `CaseNumber`, or whose header, less any punctuation at its
+  `Record No`, or `CaseNumber`, or whose header, less any characters that are not letters or digits at its
   end, ends in a lowercase letter followed by `No`, such as `RecordNo`.
   In both modes it infers what the table's `identifier` row infers.
   A header ending in a lowercase `no`, such as `Casino`, is not a record number.
