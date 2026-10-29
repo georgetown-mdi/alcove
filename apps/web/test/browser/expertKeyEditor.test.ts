@@ -283,6 +283,19 @@ describe("ExpertKeyEditor: a key element's split", () => {
     const toggle = page.getByRole("button", { name: KEY_NAME, exact: true });
     await userEvent.click(toggle);
     await expect.element(toggle).toHaveAttribute("aria-expanded", "true");
+    // Wait until the card body has finished opening. A click while it still
+    // grows scrolls the clipped body to bring its control into view; the body
+    // unwinds that scroll as it opens, moving the control, so the press and the
+    // release can land on different elements and no click fires.
+    const panel = document.getElementById(
+      toggle.element().getAttribute("aria-controls")!,
+    )!.firstElementChild as HTMLElement;
+    await expect
+      .element(panel)
+      .toSatisfy(
+        (el: HTMLElement) =>
+          el.clientHeight > 0 && el.clientHeight === el.scrollHeight,
+      );
   }
 
   test.each(["cascade", "single-pass"] as const)(
