@@ -6,8 +6,11 @@ title: "The Web Application's WebSocket Transport Path"
 
 _Status: the relay path is built and turned on in both applications: the relay proof derivation, the relay service and its deployment, both clients, the wrap on the web side, the relay locator and settings, and the automatic fallback; its disclosure documents and its stress-tier run remain ([Implementation items implied, not filed](#implementation-items-implied-not-filed)). The browser SFTP path is design only.
 The maintainer ruled on the seven forks on 2026-10-09 ([The forks and their rulings](#the-forks-and-their-rulings)).
-What remains open is the spikes S2, S4, S7 and S8, none of which has run, and S1's open parts, S1 having run in a narrower form with its decisive part met; S3, S5 and S6 passed with Node and Chromium parties on 2026-10-18, S6 through the 443 front on a host run (each [below](#the-spikes)).
-Also open is what the rulings left conditional or open: the credential for a scheduled browser SFTP run waits on S8.
+What remains open is the spikes S2 and S4, neither of which has run, and S1's open parts, S1 having run in a narrower form with its decisive part met; S3, S5 and S6 passed with Node and Chromium parties on 2026-10-18, S6 through the 443 front on a host run (each [below](#the-spikes)).
+The browser SFTP spikes ran on 2026-10-29.
+S7 found no off-the-shelf raw relay, of the three tried, that both refuses by `Origin` and holds backpressure in both directions.
+S8's PASS line was met by `@microsoft/dev-tunnels-ssh` with three additions in the spike's own code, and by `ssh2` bundled for the browser only against a server that also offers an ECDSA host key.
+Which relay and which client the browser SFTP path builds on is open for the maintainer: fork 5 assumed an off-the-shelf relay S7 did not find, and fork 7's condition, the scheduled-run credential, is met for those two clients as S8 records.
 The hosted relay admits one-shot exchanges, as part of the production default, by the maintainer's ruling of 2026-10-15 ([fork 1](#the-forks-and-their-rulings)).
 The public web application is the consumer of both paths and the console ships neither, by the maintainer's ruling.
 The note recommends a WebSocket relay for networks whose inspection stops TURN as the first thing to build, answers whether that relay and the browser SFTP proxy are one component, re-answers the browser SFTP note's open choices under the ruling, and ends with the sequence, the spikes, and the forks with the maintainer's rulings on them.
@@ -259,11 +262,12 @@ The rest, each against the earlier note's answer and under the relay design abov
    The bound the earlier note stated is kept in its stronger form: the browser dials the proxy and the proxy dials its fixed target, so nothing in the invitation chooses where a TCP connection opens.
 7. **The browser SSH client: none until a spike, unchanged**, and second in the sequence after the relay work rather than first.
    The spike adds one requirement: the client must take an external signer, for fork 8.
+   S8 has run, and its result names the clients that passed and what each needed; choosing one is the maintainer's.
 8. **Credentials for recurring browser exchanges: changed, to a key the browser never holds in the clear.**
    The earlier note left stored-versus-entered open.
    The better answer for a scheduled run is a key pair generated in the browser as a non-extractable WebCrypto key (ECDSA P-256, which SSH takes as `ecdsa-sha2-nistp256`): the public key goes to the SFTP server's operator at onboarding, the private key never leaves the browser's key store, and the at-rest threat model gains an unexportable signing key rather than a password ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#hosted-at-rest-threat-model-for-managed-exchanges)).
    A one-off exchange enters a password or key for the run and stores nothing.
-   Whether a browser SSH client can delegate the signature to WebCrypto is unverified, and is what the client spike tests.
+   S8 tested whether a browser SSH client can delegate the signature to WebCrypto: two clients signed with a non-extractable key, under the limits [S8](#the-spikes) records.
 
 ## Question 4: the sequence
 
@@ -451,9 +455,81 @@ Each is an experiment with a PASS a reviewer can read off the result, run before
   Measured while preparing its harness (2026-10-18, Chromium 156 in the development container): a browser `WebSocket` has no ping method, and Chromium answered each ping the relay sent its socket; the keepalive in [The WebSocket relay, as recommended](#the-websocket-relay-as-recommended) is amended to match.
 - **S7. The raw SFTP relay.**
   From the earlier note: a candidate proxy in front of the SFTP test server, backpressure, close mapping and the `Origin` refusal ([browser-sftp-proxy.md](browser-sftp-proxy.md#framing)), run only after the relay work above.
+  **Result (2026-10-29): no relay tried passed every check.**
+  websockify refuses by `Origin` and maps closes, but keeps reading from the browser while the SFTP server reads nothing; websocat holds backpressure both ways and maps closes, but has no `Origin` check; the npm port of websockify exits on its first upgrade.
+
+  The run was in the development container (Node 26.11.1, linux/arm64).
+  Each relay sat between a Node client on `ws` 8.22.0 and either the SFTP test server's native backend (`startNativeSshdServer` in `apps/cli/test/sftpServer/nativeSshdServer.ts`, baseline profile, OpenSSH 9.2p1) or a loopback TCP target the harness controlled.
+  The relays, each installed outside the repository:
+  - **websockify 0.13.0**, tag `v0.13.0` of `novnc/websockify` (commit e81894751365), run from its source with Python 3.11.2 and none of its optional packages: `python3 -m websockify --auth-plugin websockify.auth_plugins.ExpectOrigin --auth-source <origin> <listen> <target>`.
+  - **websocat 1.14.1**, the release binary `websocat.aarch64-unknown-linux-musl` (SHA-256 `711a69576a2ff473fb01a90ffafb571c2ed019e55479d7ae71b12c2eadeb7011`): `websocat --binary -E ws-l:<listen> tcp:<target>`.
+  - **websockify 0.7.1** from npm, the Node port.
+
+  | Check | websockify 0.13.0 | websocat 1.14.1 |
+  | --- | --- | --- |
+  | SSH and SFTP through the relay | PASS | PASS |
+  | `Origin` refusal | PASS | fail: every upgrade accepted |
+  | Backpressure, SFTP server to browser | PASS | PASS |
+  | Backpressure, browser to SFTP server | fail: 280 MB taken in 20 s, no plateau | PASS |
+  | Close mapping | PASS | PASS |
+
+  - **SSH and SFTP.** An `ssh2` 1.17.0 client over `createWebSocketStream`, its host key pinned, wrote 8 MiB over SFTP and read it back unchanged; S8's Chromium page also ran through websockify.
+  - **`Origin` refusal.** Six upgrades against a target that counted its connections: the application's origin, another origin, `null`, the application's origin with a suffix (`http://app.test:8080.evil.example`), the application's origin with a path, and no `Origin` header.
+    websockify upgraded the first alone and answered each other with 403 `Invalid Origin`, opening no connection to the target; configured for another origin, it refused S8's Chromium page, whose `Origin` the browser set.
+    websocat upgraded all six and connected each to the target; its `--help=full` lists `--origin` only as a client option.
+  - **Backpressure, SFTP server to browser.** The target wrote 1 MiB chunks as fast as its socket drained while the client held its socket paused (`ws` `pause()`) for 20 s.
+    websockify stopped reading: the target's writes stopped at 24 MB and 44 MB in two runs, within the loopback socket buffers (`tcp_rmem` up to 32 MiB here), and the relay's resident set, its per-connection child included, stayed flat at 54 to 74 MB from 20 MB idle.
+    websocat stopped the target at 5.2 MB, its resident set flat at 2.4 MB.
+    Each delivered every byte on resume.
+  - **Backpressure, browser to SFTP server.** The client sent 64 KiB messages whenever its `bufferedAmount` was under 4 MiB while the target held its socket paused for 20 s.
+    websockify kept reading: it took 280 MB from the client, its resident set rising steadily from 20 MB to 308 MB, and delivered it all on resume.
+    websocat stopped at 5.6 MB taken, its resident set flat at 2.5 MB.
+  - **Close mapping.** Four cases: the client's close with code 1000, the client's socket destroyed with no close frame, the target's FIN, and the target's reset.
+    Each relay ended the other side within 6 ms in every case.
+    The client saw websockify's close as 1000, 1006, 1000 (`Target closed`) and 1006, and websocat's as 1006, 1006, 1005 and 1006, websocat completing no close handshake.
+  - **websockify 0.7.1 from npm** exited with `TypeError: protocols.indexOf is not a function` on the first upgrade that named a subprotocol, its `ws` dependency range having installed `ws` 8.22.0; its `--help` lists no `Origin` option, and it was not run further.
+
+  What it leaves for [fork 5](#the-forks-and-their-rulings), whose reading is an `Origin` check on an off-the-shelf relay: websocat behind a front that checks `Origin` (not tested), websockify with the browser-to-server direction bounded, or the first-party relay [Question 2](#question-2-one-component-or-two) kept for the case that no relay qualifies.
+
+  The harness is throwaway and kept outside the repository; it starts the native backend through Node's type stripping of `nativeSshdServer.ts`: `node s7.mjs --relay websockify --leg sftp`, with `--relay websocat` or `--relay node-websockify`, and `--leg origin`, `--leg bp-down --seconds 20`, `--leg bp-up --seconds 20` or `--leg close`.
 - **S8. The browser SSH client with an external signer.**
   A candidate client through the raw relay from the browser suite, authenticating with a non-extractable WebCrypto P-256 key.
   PASS: the client authenticates, exposes the host-key blob before authentication, and completes a file write and read; the key never leaves WebCrypto.
+  **Result (2026-10-29): PASS for `@microsoft/dev-tunnels-ssh` 3.12.42 with three additions in the spike's code; `ssh2` 1.17.0 bundled for the browser passed only against a server that also offers an ECDSA host key; `@verdigris/libssh2.js` 0.1.9 failed.**
+
+  The page ran in the browser suite's browser, Playwright 1.64.1's headless Chromium 156.0.8078.4 (`chrome-headless-shell`, linux/arm64), driven by a throwaway script rather than the suite's vitest project.
+  It was served from `http://127.0.0.1:<port>` and dialed S7's websockify, its `ExpectOrigin` set to the page's origin, in front of the native backend's baseline profile, whose one host key is ed25519.
+  A second arm ran the same baseline directives in an sshd the spike started with an ECDSA P-256 host key beside the ed25519 one.
+  Each candidate and its additions were installed and bundled in a project outside the repository.
+  - **The key.** The page made an ECDSA P-256 pair with `crypto.subtle.generateKey(..., false, ["sign", "verify"])`; its private key's `extractable` was false and `exportKey` threw `InvalidAccessError` in `pkcs8` and in `jwk`.
+    The harness appended its `ecdsa-sha2-nistp256` public key to the server's authorized keys.
+  - **Host key before authentication.** The client's callback received the host key blob, and the page compared its SHA-256 fingerprint with the pin before any authentication request; with a wrong pin each passing client ended the run with no signature made.
+  - **Authentication.** The run's one signature was `crypto.subtle.sign` on the non-extractable key, counted by wrapping it.
+  - **Write and read.** 1 MiB or 8 MiB of random bytes written over SFTP and read back; the page's SHA-256 of each matched the other and the file on the server's disk.
+
+  | Candidate | The harness, ed25519 host key only | With an ECDSA host key too |
+  | --- | --- | --- |
+  | `@microsoft/dev-tunnels-ssh` 3.12.42, unchanged | fail: `Failed PublicKey negotiation: Server (ssh-ed25519) Client (rsa-sha2-512, rsa-sha2-256, ecdsa-sha2-nistp384, ecdsa-sha2-nistp256)` | PASS with additions 2 and 3, one 8 MiB run |
+  | `@microsoft/dev-tunnels-ssh` with additions 1 to 3 | PASS in 9 runs, 8 of them of 8 MiB | Not run |
+  | `ssh2` 1.17.0, bundled | fail: `Handshake failed: no matching host key format` | PASS in 12 of 13 runs |
+  | `@verdigris/libssh2.js` 0.1.9 | fail: no host-key function and no signer | Not run |
+
+  - **`@microsoft/dev-tunnels-ssh`, the additions.**
+    1. A verify-only `ssh-ed25519` public-key algorithm on WebCrypto's Ed25519, about 70 lines, added to `SshSessionConfiguration.publicKeyAlgorithms`, whose default list named the four algorithms in the error above.
+    2. The page's non-extractable key assigned to the `privateKey` field of the library's WebCrypto ECDSA key pair after `setPublicKeyBytes`, a field its type declarations do not list. The pair's own `generate()` made an extractable key, whose `exportParameters()` returned the private scalar.
+    3. An SFTP version 3 client, about 120 lines (init, open, write, read and close), over a session channel's `sftp` subsystem request, since the package exports no SFTP client.
+
+    Its session crypto ran on WebCrypto: ECDH key exchange and AES-GCM, counted by wrapping `crypto.subtle`.
+    8 MiB was written in about 1.1 s and read in 0.3 s.
+  - **`ssh2`, bundled** with esbuild 0.28.1 and node-stdlib-browser 1.3.1's polyfills, plus: stubs that throw for `net`, `fs`, `dns`, `tls` and `child_process`; native addons resolved to a module that throws; `__dirname` defined; Node's `zlib.constants` and `crypto.getCurves()` added to the polyfills; and Node's per-encoding Buffer methods (`latin1Slice` and the like) added to the `buffer` polyfill.
+    The signer is a `BaseAgent` subclass whose `sign` returns the SSH ECDSA signature (`mpint r`, `mpint s`) built from WebCrypto's; the same agent in Node, through websockify to the harness, passed.
+    Its session crypto ran in the JavaScript polyfills, not WebCrypto: `ecdh-sha2-nistp256` and `aes128-gcm@openssh.com`; 8 MiB was written in 2.1 s and read in 1.9 s.
+    Against the harness it would need an ed25519 host key verifier in its crypto polyfill, which the polyfill lacks; that was not attempted.
+    The one failed run, the first, refused a host key matching neither pin; the twelve runs after it passed, and the cause was not found.
+  - **`@verdigris/libssh2.js`**, libssh2 compiled to WebAssembly: instantiated in the page, its module exports C functions (`_ssh2_*`) whose authentication entries are `password`, `publickey_fromfile` and `publickey_frommemory` (a private key held in memory), and no host-key or known-hosts function; it was not driven past that.
+    It would need a build exporting libssh2's host-key call and its callback form of public-key authentication, with a bridge from libssh2's synchronous callback to WebCrypto's promise, which is unverified.
+
+  Harness: `node run.mjs --candidate devtunnels --ed25519-patch --bytes 8388608`; `--candidate ssh2 --host-keys ed25519+ecdsa`; `--wrong-pin` for the refused host key; `--origin <other origin>` for S7's refusal from the page; and `node node-ssh2-agent.mjs inner` for the Node agent.
 
 ### Implementation items implied, not filed
 
@@ -555,6 +631,7 @@ The reading after a ruling is how this note applies the ruling to the fork, not 
    Recommendation: `Origin` only, with the proof as a later option for a deployment that asks ([Question 3](#question-3-the-browser-sftp-forks-under-the-ruling), fork 5).
    Ruling (2026-10-09): "Use your recommendation for this item."
    Reading: an `Origin` check only, with an off-the-shelf relay; a first-party proxy that checks a proof is a later option for a deployment that asks.
+   S7 (2026-10-29) found no single off-the-shelf relay, of three tried, that refuses by `Origin` and holds backpressure in both directions, so how the reading is met is open for the maintainer ([S7](#the-spikes)).
 6. **The proxy on the invitation**: the SFTP endpoint names the proxy, or the browser-local setting alone.
    Recommendation: the endpoint names it, with the browser-local override ([Question 3](#question-3-the-browser-sftp-forks-under-the-ruling), fork 6).
    Ruling (2026-10-09): "Use your recommendation for this item."
@@ -563,3 +640,4 @@ The reading after a ruling is how this note applies the ruling to the fork, not 
    Recommendation: the key pair, conditional on S8 ([Question 3](#question-3-the-browser-sftp-forks-under-the-ruling), fork 8).
    Ruling (2026-10-09): "OK, use WebCrypto then."
    Reading: a non-extractable WebCrypto P-256 key pair, conditional on S8; a one-off exchange enters its credential at each run.
+   S8 (2026-10-29) met the condition with `@microsoft/dev-tunnels-ssh` and the spike's additions, and with `ssh2` bundled only against a server that also offers an ECDSA host key; no client is chosen yet ([S8](#the-spikes)).
