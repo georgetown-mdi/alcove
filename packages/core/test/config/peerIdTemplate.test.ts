@@ -1,4 +1,7 @@
-import { afterEach, describe, expect, test } from "vitest";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+import { describe, expect, test } from "vitest";
 
 import {
   MAX_PEER_ID_BYTES,
@@ -30,6 +33,10 @@ const pinned = (
   nowMs = PINNED_MS,
   randomHex = "0123456789abcdef",
 ): PeerIdFieldSource => ({ nowMs: () => nowMs, randomHex: () => randomHex });
+
+const ZONE_PROBE = fileURLToPath(
+  new URL("./peerIdTemplateZone.probe.ts", import.meta.url),
+);
 
 const options = (peerId: string) =>
   safeParseFileSyncOptions({ timestampInFilename: true, peerId });
@@ -94,21 +101,21 @@ describe("expandPeerIdTemplate", () => {
   });
 
   describe("UTC whatever the process time zone", () => {
-    const savedTz = process.env.TZ;
-    afterEach(() => {
-      if (savedTz === undefined) delete process.env.TZ;
-      else process.env.TZ = savedTz;
-    });
-
     for (const zone of ["Pacific/Kiritimati", "America/Los_Angeles"]) {
       test(zone, () => {
-        process.env.TZ = zone;
-        // The zone took effect: local time is on another day or hour.
-        const local = new Date(PINNED_MS);
-        expect(`${local.getDate()} ${local.getHours()}`).not.toBe("28 23");
-        expect(expandPeerIdTemplate(parts("%Y%m%d%H%M%S"), pinned())).toBe(
-          "20261028233005",
+        const out = execFileSync(
+          process.execPath,
+          ["--import", "tsx", ZONE_PROBE, "%Y%m%d%H%M%S", String(PINNED_MS)],
+          {
+            encoding: "utf8",
+            env: { ...process.env, TZ: zone },
+            timeout: 10_000,
+          },
         );
+        const result = JSON.parse(out) as { local: string; expanded: string };
+        // The zone took effect: local time is on another day or hour.
+        expect(result.local).not.toBe("28 23");
+        expect(result.expanded).toBe("20261028233005");
       });
     }
   });
