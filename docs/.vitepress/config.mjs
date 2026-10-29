@@ -220,6 +220,8 @@ export default {
       { text: "Web app", link: WEB_APP_URL },
     ],
     socialLinks: [{ icon: "github", link: REPOSITORY_URL }],
+    repositoryUrl: REPOSITORY_URL,
+    webAppUrl: WEB_APP_URL,
     // The guides' own menu, drawn by theme/GuideLayout.mjs.
     guideSections: GUIDE_SECTIONS.map(({ group, topNav = true, pages }) => ({
       group,

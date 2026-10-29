@@ -7,9 +7,6 @@
 import { Content, useData, useRouter } from "vitepress";
 import { computed, defineComponent, h } from "vue";
 
-const REPOSITORY_URL = "https://github.com/georgetown-mdi/alcove";
-const WEB_APP_URL = "https://psi.data-bridge.org/";
-
 /**
  * @typedef {{ title: string, link: string, stem: string }} GuidePage
  * @typedef {{ group: string, topNav: boolean, pages: GuidePage[] }} GuideSection
@@ -58,7 +55,7 @@ export default defineComponent({
             "a",
             {
               class: "btn fill",
-              href: WEB_APP_URL,
+              href: theme.value.webAppUrl,
               target: "_blank",
               rel: "noopener",
             },
@@ -130,6 +127,7 @@ export default defineComponent({
     }
 
     function footer() {
+      const REPOSITORY_URL = theme.value.repositoryUrl;
       return h("footer", { class: "foot" }, [
         h(
           "span",
