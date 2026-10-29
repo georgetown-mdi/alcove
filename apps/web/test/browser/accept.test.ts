@@ -13,6 +13,7 @@ import "@mantine/core/styles.css";
 
 import {
   CONSENT_FACTS,
+  NEXT_SECRET_STORE_FAILED_ABORT_REASON,
   PSI_SET_REFUSED_ABORT_REASON,
   PSI_SET_TOO_LARGE_ABORT_REASON,
   PeerAbortError,
@@ -50,9 +51,11 @@ import {
 } from "@psi/transport/relayRestriction";
 import {
   PARTNER_REFUSED_SET_TITLE,
+  PARTNER_SECRET_NOT_SAVED_TITLE,
   PARTNER_SET_TOO_LARGE_TITLE,
 } from "@psi/managed/managedFailureCopy";
 import { NonEmptyRateController } from "@psi/workers/nonEmptyAggregateController";
+import { PartnerSecretNotSavedError } from "@psi/partnerSecretNotSaved";
 import { dialAsAcceptor } from "@psi/transport/rendezvous";
 import { writeOwnRelaySetting } from "@psi/transport/ownRelaySetting";
 
@@ -2881,6 +2884,33 @@ describe("acceptor screen: run and completion", () => {
     });
 
     await expectFreshInvitationOnly(PARTNER_REFUSED_SET_TITLE);
+  });
+
+  test("a partner that could not save the new secret: nothing changed here, ask for a new invitation, no retry", async () => {
+    expectConsole("error", /^PartnerSecretNotSavedError: /);
+    await reachRun();
+    lifecycleCall(0).onStage("waiting for peer");
+    lifecycleCall(0).onError({
+      category: "config",
+      error: new PartnerSecretNotSavedError({
+        cause: new PeerAbortError(
+          undefined,
+          NEXT_SECRET_STORE_FAILED_ABORT_REASON,
+        ),
+        keptNextSecret: false,
+      }),
+    });
+
+    await expectFreshInvitationOnly(PARTNER_SECRET_NOT_SAVED_TITLE);
+    await expect
+      .element(
+        page.getByText(
+          "Your partner could not save the new secret, so the exchange " +
+            "stopped. Nothing changed on this side. Ask your partner to send " +
+            "you a new invitation.",
+        ),
+      )
+      .toBeInTheDocument();
   });
 
   test("a partner's abort over this browser's ceiling offers start-over, not the columns step", async () => {

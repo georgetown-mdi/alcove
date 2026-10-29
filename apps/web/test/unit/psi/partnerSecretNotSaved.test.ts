@@ -53,17 +53,18 @@ import type {
 } from "@psi/managed/managedExchangeRecord";
 import type { ManagedRunFailure } from "@recurring/managedRunLaunchModel";
 
-// A browser initiator whose partner could not save the next shared secret this
-// side stored: the two hold different secrets, so every surface says so, names
-// a fresh invitation, and offers no retry; every other abort reads as before.
+// A browser initiator whose partner could not save the next shared secret: a
+// managed run, which kept it, holds a different secret from the partner's and
+// says so; a one-shot run, which kept none, says nothing changed. Both name a
+// new invitation and offer no retry; every other abort reads as before.
 
 const NOW = Date.parse("2026-07-14T12:00:00.000Z");
 const RUN_AT = "2026-07-14T09:00:00.000Z";
 
 const storeFailure = () =>
   new PeerAbortError(undefined, NEXT_SECRET_STORE_FAILED_ABORT_REASON);
-const notSaved = () =>
-  new PartnerSecretNotSavedError({ cause: storeFailure() });
+const notSaved = (keptNextSecret = true) =>
+  new PartnerSecretNotSavedError({ cause: storeFailure(), keptNextSecret });
 
 function record(
   overrides: Partial<ManagedExchangeRecord> = {},
@@ -90,16 +91,20 @@ const stamped: ManagedExchangeLastRun = {
 };
 
 describe("withPartnerSecretNotSaved", () => {
-  test("names the partner's store-failure abort on an initiator that stored", () => {
-    const abort = storeFailure();
-    const named = withPartnerSecretNotSaved(abort, "initiator", true);
-    expect(named).toBeInstanceOf(PartnerSecretNotSavedError);
-    expect((named as Error).cause).toBe(abort);
-  });
+  test.each([true, false])(
+    "names the partner's store-failure abort on an initiator, recording kept %s",
+    (kept) => {
+      const abort = storeFailure();
+      const named = withPartnerSecretNotSaved(abort, "initiator", kept);
+      if (!(named instanceof PartnerSecretNotSavedError))
+        throw new Error("expected the partner's failed save");
+      expect(named.cause).toBe(abort);
+      expect(named.keptNextSecret).toBe(kept);
+    },
+  );
 
   test.each([
     ["on a responder", storeFailure(), "responder", true],
-    ["on an initiator that stored nothing", storeFailure(), "initiator", false],
     [
       "for another abort reason",
       new PeerAbortError(undefined, PSI_SET_REFUSED_ABORT_REASON),
@@ -121,10 +126,30 @@ describe("withPartnerSecretNotSaved", () => {
 });
 
 describe("a one-shot exchange", () => {
-  test("says the partner could not save the new secret, that this side took it, and to get a fresh invitation, with no retry", () => {
+  test("where this side kept none, says the partner could not save it, that nothing changed here, and to ask for a new invitation, with no retry", () => {
     const failure = failureFor(
       "exchange",
-      notSaved(),
+      notSaved(false),
+      undefined,
+      undefined,
+      "acceptor",
+    );
+    expect(failure.category).toBe("config");
+    expect(failure.title).toBe(PARTNER_SECRET_NOT_SAVED_TITLE);
+    expect(failure.message).toBe(
+      "Your partner could not save the new secret, so the exchange stopped. " +
+        "Nothing changed on this side. Ask your partner to send you a new " +
+        "invitation.",
+    );
+    expect(failure.reportedCause).toBeUndefined();
+    expect(failure.retry).toBe("withheld");
+    expect(failure.settingsCannotResolve).toBe(true);
+  });
+
+  test("where this side kept the new secret, keeps the different-secrets copy", () => {
+    const failure = failureFor(
+      "exchange",
+      notSaved(true),
       undefined,
       undefined,
       "acceptor",

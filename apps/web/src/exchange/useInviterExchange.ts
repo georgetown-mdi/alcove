@@ -318,6 +318,28 @@ export const PARTNER_SECRET_NOT_SAVED_REMEDY: Record<ExchangeSeat, string> = {
     "fresh invitation to accept it.",
 };
 
+/**
+ * The whole alert, by seat, after a partner could not save the new secret
+ * where this side kept none, as a one-shot run does: both still hold the
+ * invitation's secret. The inviter sends the new invitation, so the acceptor
+ * asks for it.
+ *
+ * @internal exported for testing
+ */
+export const PARTNER_SECRET_NOT_SAVED_UNCHANGED_MESSAGE: Record<
+  ExchangeSeat,
+  string
+> = {
+  inviter:
+    "Your partner could not save the new secret, so the exchange stopped. " +
+    "Nothing changed on this side. Start over with a fresh invitation and " +
+    "send it to your partner.",
+  acceptor:
+    "Your partner could not save the new secret, so the exchange stopped. " +
+    "Nothing changed on this side. Ask your partner to send you a new " +
+    "invitation.",
+};
+
 function failureContentFor(
   category: ExchangeErrorCategory,
   error: unknown,
@@ -665,17 +687,19 @@ function failureContentFor(
       message: sanitizedFailureMessage(error),
       settingsCannotResolve: true,
     };
-  // The partner could not save the new secret this side took, so the two hold
-  // different secrets. Classified `config` with no settings change to make: a
-  // retry on this invitation cannot reconnect them, and a fresh one can.
+  // The partner could not save the new secret. Classified `config` with no
+  // settings change to make, so the alert offers a fresh invitation. Where this
+  // side kept the new secret the two now hold different ones; a one-shot run
+  // keeps none, so nothing changed here.
   if (error instanceof PartnerSecretNotSavedError)
     return {
       category: "config",
       title: PARTNER_SECRET_NOT_SAVED_TITLE,
-      message:
-        `The exchange stopped because ${PARTNER_SECRET_NOT_SAVED_PROBLEM}. ` +
-        "Running it again on this invitation cannot reconnect you. " +
-        PARTNER_SECRET_NOT_SAVED_REMEDY[seat],
+      message: error.keptNextSecret
+        ? `The exchange stopped because ${PARTNER_SECRET_NOT_SAVED_PROBLEM}. ` +
+          "Running it again on this invitation cannot reconnect you. " +
+          PARTNER_SECRET_NOT_SAVED_REMEDY[seat]
+        : PARTNER_SECRET_NOT_SAVED_UNCHANGED_MESSAGE[seat],
       settingsCannotResolve: true,
     };
   if (error instanceof PeerAbortError) {

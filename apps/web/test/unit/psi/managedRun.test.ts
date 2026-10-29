@@ -355,8 +355,10 @@ describe("runManagedRerun: a partner that could not save the next secret", () =>
   test("an initiator that stored records it as its own kind and raises the error naming it", async () => {
     const abort = storeFailure();
     const { error, failureKinds } = await runEndingIn("acceptor", true, abort);
-    expect(error).toBeInstanceOf(PartnerSecretNotSavedError);
-    expect((error as Error).cause).toBe(abort);
+    if (!(error instanceof PartnerSecretNotSavedError))
+      throw new Error("expected the partner's failed save");
+    expect(error.cause).toBe(abort);
+    expect(error.keptNextSecret).toBe(true);
     expect(failureKinds).toEqual(["partner-storage"]);
     expect(benignRerunOutcome(error, true)).toBe("partner-storage");
   });

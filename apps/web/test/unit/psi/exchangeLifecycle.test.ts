@@ -703,7 +703,7 @@ describe("runExchangeLifecycle", () => {
     expect(s.onResult).not.toHaveBeenCalled();
   });
 
-  test("an initiator whose partner could not save the next secret it stored reports that, keeping the record core attached", async () => {
+  test("an initiator whose partner could not save the next secret reports that it kept none, keeping the record core attached", async () => {
     const { mc } = makeFakeMc();
     mockedOpen.mockResolvedValue(mc);
     const abort = new PeerAbortError(
@@ -727,8 +727,10 @@ describe("runExchangeLifecycle", () => {
       error: unknown;
       record: unknown;
     };
-    expect(reported.error).toBeInstanceOf(PartnerSecretNotSavedError);
-    expect((reported.error as Error).cause).toBe(abort);
+    if (!(reported.error instanceof PartnerSecretNotSavedError))
+      throw new Error("expected the partner's failed save");
+    expect(reported.error.cause).toBe(abort);
+    expect(reported.error.keptNextSecret).toBe(false);
     expect(reported.record).toBe(STUB_RECORD);
   });
 

@@ -720,6 +720,7 @@ describe("a window whose run raised a standing condition", () => {
               undefined,
               NEXT_SECRET_STORE_FAILED_ABORT_REASON,
             ),
+            keptNextSecret: true,
           }),
         },
       ],

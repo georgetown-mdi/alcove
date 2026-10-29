@@ -226,7 +226,7 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
   // one its rotation stored at the terms exchange.
   let storedSecret: string | undefined;
   // Whether this run's rotation stored the next secret at the terms exchange.
-  let rotationStored = false;
+  const rotation = { stored: false };
   // Whether the handshake phase began. A failure before it is this run's own,
   // a stop asked or not, unless it is the stop's own abort reason.
   const phase = { handshakeBegan: false };
@@ -258,7 +258,7 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
           async (nextSecret) => {
             await persistNextSecret(nextSecret);
             storedSecret = nextSecret;
-            rotationStored = true;
+            rotation.stored = true;
           },
           partnerMayHoldNextSecret,
         ),
@@ -272,14 +272,15 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
     });
   } catch (caught) {
     // The side read under the lock dispatched the run, so it names this
-    // side's role in the store order.
+    // side's role in the store order. Only a run that saved the next secret
+    // reports the partner's failed save; any other reads the abort as it is.
     const error =
-      current === undefined
+      current === undefined || !rotation.stored
         ? caught
         : withPartnerSecretNotSaved(
             caught,
             handshakeRoleForRendezvousRole(current.side),
-            rotationStored,
+            true,
           );
     // A stop is honored only before the rotation-in-flight marker, so a
     // failure from the handshake phase after one is the stop's, whatever the
