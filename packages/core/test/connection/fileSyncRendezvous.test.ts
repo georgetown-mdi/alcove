@@ -2648,7 +2648,7 @@ describe("FileSyncRendezvous across connection-per-poll session boundaries", () 
     const rejected = makeParty("aaa", flags, atEntry);
     await expect(rejected.rdv.run(rejected.scope)).rejects.toMatchObject({
       name: "UsageError",
-      message: expect.stringContaining("unexpected protocol file"),
+      message: expect.stringContaining("fits this party's own peer_id"),
     });
 
     const files = new Map<string, Buffer>();
@@ -3292,7 +3292,7 @@ describe("FileSyncRendezvous entry-present peer hello window", () => {
     );
 
     expect(err).toBeInstanceOf(UsageError);
-    expect((err as Error).message).toContain("unexpected protocol file");
+    expect((err as Error).message).toContain("fits this party's own peer_id");
     expect(Date.now() - started).toBeLessThan(1000);
     expect(files.has(`${DIR}/${helloName("site-a", flags)}`)).toBe(true);
   });

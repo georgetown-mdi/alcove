@@ -45,7 +45,12 @@ import {
   markStatesItsOwnNextStep,
   errorMessage,
 } from "../errors";
-import { failureCauseError } from "../failureCause";
+import {
+  failureCauseError,
+  failureCauseSentence,
+  markFailureCause,
+  type FailureCause,
+} from "../failureCause";
 import {
   ADVERTISE_HELLO_RETRY_ATTEMPTS,
   cancellableDelay,
@@ -464,6 +469,22 @@ export function isPeerJoiningName(
   return id !== undefined && !isOwnId(id);
 }
 
+// True when `name` is a hello whose non-empty id is one this party writes:
+// its own leftover, or a partner whose id fits this party's peer_id, which no
+// scan can tell apart.
+function isOwnPatternHelloName(
+  name: string,
+  isOwnId: (id: string) => boolean,
+): boolean {
+  const id = peerIdFromControlName(name, "hello");
+  return id !== undefined && isOwnId(id);
+}
+
+const SHARED_PEER_ID_LIKELY_CAUSE =
+  "The likely cause is that both parties set the same peer_id: set a " +
+  "different peer_id on one side, changing its text rather than only its " +
+  "% fields.";
+
 // The writer id of a hello or joining sentinel a scan has already matched by
 // name, so it parses.
 const controlWriterId = (name: string): string =>
@@ -712,12 +733,29 @@ export interface RendezvousOptions {
   renameRefusedGuidance?: string;
 }
 
-const partnerNeverArrived = (deps: RendezvousDeps): Error =>
-  failureCauseError({
+// With `ignoredOwnPatternHello`, the catalog sentence is followed by the hello
+// the wait skipped as this party's own and the likely cause, under the same
+// cause tag, so the error's class and the apps' remedy are unchanged.
+const partnerNeverArrived = (
+  deps: RendezvousDeps,
+  ignoredOwnPatternHello: string | undefined,
+): Error => {
+  const cause: FailureCause = {
     kind: "partner-never-arrived",
     channel: deps.channel(),
     waitedMs: deps.arrivalBudgetMs(),
-  });
+  };
+  if (ignoredOwnPatternHello === undefined) return failureCauseError(cause);
+  return markFailureCause(
+    new Error(
+      `${failureCauseSentence(cause)} This run ignored a hello file whose ` +
+        "id fits its own peer_id, taking it for its own leftover. " +
+        `${SHARED_PEER_ID_LIKELY_CAUSE} The ignored file: ` +
+        redactPrivateKeyMaterial(ignoredOwnPatternHello),
+    ),
+    cause,
+  );
+};
 
 // The connection-owned state the coordinator reads and writes across this
 // boundary. Three kinds:
@@ -1377,12 +1415,27 @@ export class FileSyncRendezvous {
       // Default strict-empty entry guard: only a single peer hello and the
       // snapshotted foreign files are tolerated; any other protocol file is a
       // terminal usage error pointing at the opt-in sweep.
+      // An own-pattern hello in the outbound half of a split scope can only
+      // be this party's own, so only the inbound half is checked.
+      const holdsOwnPatternHello = unexpectedProtocol.some(
+        ({ file, dir }) =>
+          dir === inboundPath && isOwnPatternHelloName(file.name, deps.isOwnId),
+      );
       if (unexpectedProtocol.length > 0)
         throw entryGuardRefusal(
-          "the exchange directory must be empty except for a single peer " +
-            "hello, but holds unexpected protocol files. Remove them after " +
-            "confirming no other session is using this path, or re-run with " +
-            "--sweep-exchange-files to clear every protocol file.",
+          holdsOwnPatternHello
+            ? "the exchange directory holds a hello file whose id fits this " +
+                "party's own peer_id, so this run takes it for its own " +
+                `leftover. ${SHARED_PEER_ID_LIKELY_CAUSE} If instead the ` +
+                "listed files are left over from an earlier run of this " +
+                "party, remove them after confirming no other session is " +
+                "using this path, or re-run with --sweep-exchange-files to " +
+                "clear every protocol file."
+            : "the exchange directory must be empty except for a single " +
+                "peer hello, but holds unexpected protocol files. Remove them " +
+                "after confirming no other session is using this path, or " +
+                "re-run with --sweep-exchange-files to clear every protocol " +
+                "file.",
           "unexpected protocol file(s)",
           // dirsDisplay names both halves in split mode: unexpectedProtocol
           // can hold outbound leftovers as well as inbound ones, so
@@ -1741,6 +1794,20 @@ export class FileSyncRendezvous {
     let lockPath: string | undefined;
     let ackPath: string | undefined;
     let ackedPeerHelloName: string | undefined;
+    // The first hello the wait skipped as this party's own, other than the
+    // hello this run wrote; the peer timeout then names it. In a shared
+    // directory a partner hello with this run's exact name cannot be told
+    // from its own, so only a split scope counts that name.
+    let ignoredOwnPatternHello: string | undefined;
+    const noteOwnPatternHello = (files: ReadonlyArray<FileInfo>): void => {
+      if (ignoredOwnPatternHello !== undefined) return;
+      const ownHello = this.ownControlName("hello");
+      ignoredOwnPatternHello = files.find(
+        (file) =>
+          (scope.split || file.name !== ownHello) &&
+          isOwnPatternHelloName(file.name, deps.isOwnId),
+      )?.name;
+    };
 
     // Deadline for the bounded recovery window on an entry-present peer hello,
     // armed only when one predated this run (see run()) and the remaining
@@ -1778,6 +1845,7 @@ export class FileSyncRendezvous {
           const peerHellos = currentFiles.filter((file) =>
             isPeerHelloName(file.name, deps.isOwnId),
           );
+          noteOwnPatternHello(currentFiles);
 
           if (peerHellos.length === 0) {
             deps.log().trace(`[${deps.role()}] no peer hello found; polling`);
@@ -1965,7 +2033,9 @@ export class FileSyncRendezvous {
         // never arrived, where hello-filename order may make this party the
         // joiner, so the role is indeterminate here.
         deps.log().debug("synchronization has timed out");
-        throw markPeerWaitTimeout(partnerNeverArrived(deps));
+        throw markPeerWaitTimeout(
+          partnerNeverArrived(deps, ignoredOwnPatternHello),
+        );
       }
 
       // Lock path.
@@ -1995,6 +2065,7 @@ export class FileSyncRendezvous {
         const otherFiles = currentFiles.filter((file) =>
           isPeerHelloName(file.name, deps.isOwnId),
         );
+        noteOwnPatternHello(currentFiles);
         const theseFiles = currentFiles.filter(
           (file) => file.name === this.ownControlName("hello"),
         );
@@ -2504,7 +2575,9 @@ export class FileSyncRendezvous {
         );
       }
       deps.log().debug("[starter] synchronization has timed out");
-      throw markPeerWaitTimeout(partnerNeverArrived(deps));
+      throw markPeerWaitTimeout(
+        partnerNeverArrived(deps, ignoredOwnPatternHello),
+      );
     };
     try {
       await waitForPeer();

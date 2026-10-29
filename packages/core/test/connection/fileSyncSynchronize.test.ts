@@ -3714,6 +3714,33 @@ test("synchronize() (split): an accepted entry sweeps the orphaned temps in both
   expect(files.has(outTemp)).toBe(false);
 });
 
+test("synchronize() (split): a partner hello with this run's own name in the INBOUND directory is named at the peer timeout", async () => {
+  // In a split scope this party's hello is written to outbound only, so a
+  // hello in inbound with its exact name is a partner using the same peer_id.
+  const { client, files } = makeMockClient();
+  const conn = makeSplitConn(client, "me", "/in", "/out", 300);
+  const sync = conn.synchronize().then(
+    () => undefined,
+    (e: unknown) => e,
+  );
+  let ownHello: string | undefined;
+  await vi.waitFor(() => {
+    ownHello = [...files.keys()].find(
+      (path) => path.startsWith("/out/me-hello-") && path.endsWith(".json"),
+    );
+    expect(ownHello).toBeDefined();
+  });
+  const name = ownHello!.slice("/out/".length);
+  files.set(`/in/${name}`, files.get(ownHello!)!);
+
+  const err = await sync;
+  expect(err).not.toBeInstanceOf(UsageError);
+  expect(isPeerWaitTimeout(err)).toBe(true);
+  const message = (err as Error).message;
+  expect(message).toContain("both parties set the same peer_id");
+  expect(message.endsWith(`The ignored file: ${name}`)).toBe(true);
+});
+
 test("synchronize() (split): a configured outbound without retain mode is rejected", async () => {
   // Library-level defense-in-depth: the config schema rejects split-without-
   // retain, but a direct caller that sets conn.outbound without retainFiles must

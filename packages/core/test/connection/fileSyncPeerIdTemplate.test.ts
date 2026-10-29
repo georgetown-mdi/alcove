@@ -18,7 +18,8 @@ import {
   peerIdLengthRefusal,
   peerIdPrefixRefusal,
 } from "../../src/connection/fileSyncRendezvous";
-import { UsageError } from "../../src/errors";
+import { UsageError, isPeerWaitTimeout } from "../../src/errors";
+import { failureCauseOf } from "../../src/failureCause";
 import { sanitizeErrorForDisplay } from "../../src/utils/sanitizeErrorForDisplay";
 import { helloName, joiningName } from "../utils/fileSyncConnectionFixture";
 import { makeMockClient } from "../utils/support";
@@ -58,6 +59,7 @@ async function openParty(
   files: Map<string, Buffer>,
   options: FileSyncOptions,
   source?: PeerIdFieldSource,
+  timeToLiveMs = 10_000,
 ): Promise<{ conn: FileSyncConnection; written: Set<string> }> {
   const { client } = makeMockClient({ files });
   const written = new Set<string>();
@@ -74,7 +76,7 @@ async function openParty(
   };
   const conn = new FileSyncConnection(recording, {
     pollingFrequency: 5,
-    timeToLive: new Date(Date.now() + 10_000),
+    timeToLive: new Date(Date.now() + timeToLiveMs),
     verbose: -1,
     ...(source !== undefined ? { peerIdFieldSource: source } : {}),
   });
@@ -241,6 +243,121 @@ describe("the leftover-hello check at entry under a peer_id with fields", () => 
       expect(b.conn.peerId).toBe(a.conn.id);
       await Promise.all([a.conn.close(), b.conn.close()]);
     });
+});
+
+describe("a partner id that fits this party's peer_id", () => {
+  const SHARED_CAUSE =
+    "The likely cause is that both parties set the same peer_id: set a " +
+    "different peer_id on one side, changing its text rather than only its " +
+    "% fields.";
+  const NEVER_ARRIVED =
+    "Your partner did not arrive in the shared folder in the time this run " +
+    "waited.";
+
+  for (const shape of [
+    { name: "the same peer_id", own: "site", partnerId: "site" },
+    {
+      name: "the same peer_id with fields",
+      own: TEMPLATE,
+      partnerId: "site_20261028-020000-89abcdef01234567",
+    },
+  ])
+    test(`the start-up refusal of its hello names the shared peer_id before any removal (${shape.name})`, async () => {
+      const partnerHello = helloName(shape.partnerId);
+      const files = new Map<string, Buffer>([
+        [`${DIR}/${partnerHello}`, Buffer.from("{}")],
+      ]);
+      const { conn } = await openParty(
+        files,
+        configured(shape.own),
+        pinned(T0, "0123456789abcdef"),
+      );
+      const err = await rejectionOf(conn.synchronize());
+      expect(err).toBeInstanceOf(UsageError);
+      const message = (err as Error).message;
+      expect(message).toBe(
+        "the exchange directory holds a hello file whose id fits this " +
+          "party's own peer_id, so this run takes it for its own leftover. " +
+          `${SHARED_CAUSE} If instead the listed files are left over from ` +
+          "an earlier run of this party, remove them after confirming no " +
+          "other session is using this path, or re-run with " +
+          "--sweep-exchange-files to clear every protocol file.",
+      );
+      expect(message.indexOf(SHARED_CAUSE)).toBeLessThan(
+        message.indexOf("remove them"),
+      );
+      expect(sanitizeErrorForDisplay(err)).toContain(partnerHello);
+      expect(files.has(`${DIR}/${partnerHello}`)).toBe(true);
+    });
+
+  test("the start-up refusal of unrelated leftover files is unchanged", async () => {
+    const lockName = "partner-site-lock.json";
+    const files = new Map<string, Buffer>([
+      [`${DIR}/${lockName}`, Buffer.from("{}")],
+    ]);
+    const { conn } = await openParty(files, configured("site"));
+    const err = await rejectionOf(conn.synchronize());
+    expect(err).toBeInstanceOf(UsageError);
+    expect((err as Error).message).toBe(
+      "the exchange directory must be empty except for a single peer " +
+        "hello, but holds unexpected protocol files. Remove them after " +
+        "confirming no other session is using this path, or re-run with " +
+        "--sweep-exchange-files to clear every protocol file.",
+    );
+    expect(sanitizeErrorForDisplay(err)).toContain(lockName);
+  });
+
+  for (const mode of [
+    { name: "lock rendezvous", extra: {} },
+    { name: "lockless rendezvous", extra: { locklessRendezvous: true } },
+  ])
+    test(`the peer timeout after skipping its hello names the shared peer_id (${mode.name})`, async () => {
+      const files = new Map<string, Buffer>();
+      const options = configured(TEMPLATE, mode.extra);
+      const a = await openParty(
+        files,
+        options,
+        pinned(T0, "0123456789abcdef"),
+        300,
+      );
+      const b = await openParty(
+        files,
+        options,
+        pinned(T0, "fedcba9876543210"),
+        300,
+      );
+      // Both enter before either hello exists, so each skips the other's
+      // hello in the wait and reaches its peer timeout.
+      const [errA, errB] = await Promise.all([
+        rejectionOf(a.conn.synchronize()),
+        rejectionOf(b.conn.synchronize()),
+      ]);
+      for (const [err, other] of [
+        [errA, b.conn.id],
+        [errB, a.conn.id],
+      ] as const) {
+        expect(err).toBeInstanceOf(Error);
+        expect(err).not.toBeInstanceOf(UsageError);
+        expect(isPeerWaitTimeout(err)).toBe(true);
+        expect(failureCauseOf(err)?.kind).toBe("partner-never-arrived");
+        const message = (err as Error).message;
+        expect(message.startsWith(`${NEVER_ARRIVED} This run ignored a`)).toBe(
+          true,
+        );
+        expect(message).toContain(SHARED_CAUSE);
+        expect(message).toMatch(
+          new RegExp(`The ignored file: ${other}-hello-\\d+\\.json$`),
+        );
+      }
+    });
+
+  test("a peer timeout with only this run's own hello in the folder is unchanged", async () => {
+    const files = new Map<string, Buffer>();
+    const { conn } = await openParty(files, configured("site"), undefined, 80);
+    const err = await rejectionOf(conn.synchronize());
+    expect(isPeerWaitTimeout(err)).toBe(true);
+    expect((err as Error).message).toBe(NEVER_ARRIVED);
+  });
 });
 
 describe("the partner-facing id refusals on the filled-in ids", () => {

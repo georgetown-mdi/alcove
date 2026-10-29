@@ -4214,6 +4214,9 @@ test.each(entryPreconditionCells)(
       expect(err instanceof Error ? err.message : "").not.toContain(
         "must be empty except for a single peer hello",
       );
+      expect(err instanceof Error ? err.message : "").not.toContain(
+        "fits this party's own peer_id",
+      );
     }
   },
 );
