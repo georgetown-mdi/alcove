@@ -1,0 +1,6 @@
+- - -> **Limit -- an own leftover reads as a shared `peer_id` first.**
+- - -> The start-up refusal for a hello that fits this party's own `peer_id` names a shared `peer_id` as the likely cause before it names a leftover from an earlier run of this party.
+- - -> A genuine leftover from a killed run in a shared directory gets the same refusal, with its remedy second; nothing local tells the two apart.
+- - -> **Limit -- the console shows the plain timeout.**
+- - -> The shared-`peer_id` explanation is part of the CLI's own peer-timeout message only.
+- - -> The failure cause the CLI emits stays a plain partner-never-arrived, so the console, and both apps' remedy lines, show the generic timeout and remedy.

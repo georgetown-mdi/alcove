@@ -1067,10 +1067,10 @@ In `alcove.yaml`, quote a `peer_id` that starts with `%`: YAML refuses an unquot
 
 **A killed run's hello.** This party still recognizes its own leftover hello at start-up, because it knows its `peer_id`: a hello whose id matches `peer_id` with any values in its fields is refused as this party's own, as with a stable `peer_id` (see [Directory exclusivity](#directory-exclusivity)).
 
-**The two parties' ids.** Neither party's id may fit the other's pattern: the other's `peer_id` with any values in its fields, or the `peer_id` as written when it has none. Usually this happens when both parties set the same `peer_id`. Each party then takes the other's hello for its own leftover, and the exchange cannot start:
+**The two parties' ids.** Neither party's id may fit the other's pattern: the other's `peer_id` with any values in its fields, or the `peer_id` as written when it has none. That usually comes from both parties setting the same `peer_id`. Each party then takes the other's hello for its own leftover, and the exchange cannot start:
 
 - A run that finds the partner's hello at start-up refuses it (exit 64). The message names a shared `peer_id` as the likely cause before it suggests removing files.
-- A run that sees the partner's hello arrive later skips it and stops at the peer timeout. The timeout message names the skipped file and the same cause.
+- A run that sees the partner's hello arrive later under a file name different from its own skips it and stops at the peer timeout. The timeout message names the skipped file and the same cause. When both parties write the same file name (the same `peer_id` with no fields, both starting before either hello exists), the partner's hello looks like this run's own and the timeout message is the plain one.
 
 Give one side a `peer_id` with different text, not only different fields. Removing the hello or re-running with `--sweep-exchange-files` deletes the partner's hello and leaves the two ids matching.
 
