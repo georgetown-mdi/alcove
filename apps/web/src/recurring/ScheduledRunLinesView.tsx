@@ -2,7 +2,9 @@ import { CopyableCode } from "@components/CopyableCode";
 import styles from "@styles/app.module.css";
 
 import {
+  CRONTAB_ACCOUNT_NOTE,
   EXCHANGE_FOLDER_PLACEHOLDER,
+  FOLDER_OWNED_BY_IMAGE_ACCOUNT_NOTE,
   INSTALLED_ALCOVE_PLACEHOLDER,
 } from "./scheduledRunCommand";
 import { PodmanLines } from "./PodmanLines";
@@ -60,10 +62,11 @@ export function ScheduledRunLinesView({
       <p className={styles.small}>
         Set {EXCHANGE_FOLDER_PLACEHOLDER} to the folder you saved the files in,
         and {INSTALLED_ALCOVE_PLACEHOLDER} to where Alcove is installed. Each
-        run adds to exchange.log in that folder.
+        run adds to exchange.log in that folder. {CRONTAB_ACCOUNT_NOTE}
         {dockerShown &&
           " A scheduled job does not use your shell's PATH, so check that " +
-            "/usr/bin/docker is where Docker is installed (command -v docker)."}
+            "/usr/bin/docker is where Docker is installed (command -v docker). " +
+            FOLDER_OWNED_BY_IMAGE_ACCOUNT_NOTE}
       </p>
       <PodmanLines lines={lines} />
       {lines.scheduleNote !== undefined && (

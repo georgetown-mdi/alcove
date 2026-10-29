@@ -9,6 +9,10 @@ import { createElement } from "react";
 // Load Mantine's stylesheet so components render with their real geometry.
 import "@mantine/core/styles.css";
 
+import {
+  CRONTAB_ACCOUNT_NOTE,
+  FOLDER_OWNED_BY_IMAGE_ACCOUNT_NOTE,
+} from "@recurring/scheduledRunCommand";
 import { RecurringHandoff } from "@recurring/RecurringHandoff";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
@@ -138,13 +142,13 @@ describe("RecurringHandoff panel", () => {
     // The command template, including the portable pin and the placeholder credential.
     expect(text()).toContain(
       'docker run --rm --user "$(id -u):$(id -g)" --mount ' +
-        "type=bind,src=/path/to/your/exchange-folder,dst=/work",
+        '"type=bind,src=/path/to/your/exchange-folder,dst=/work"',
     );
     // The same command for rootless Podman, which takes a user namespace
     // where Docker takes --user.
     expect(text()).toContain(
       "podman run --rm --userns=keep-id:uid=1000,gid=1000 --mount " +
-        "type=bind,src=/path/to/your/exchange-folder,dst=/work",
+        '"type=bind,src=/path/to/your/exchange-folder,dst=/work"',
     );
     // The Windows form of the command takes no account option.
     const windowsRun = Array.from(app.container.querySelectorAll("pre"))
@@ -168,8 +172,12 @@ describe("RecurringHandoff panel", () => {
     expect(text()).toContain("0 2 * * * /usr/bin/docker run");
     expect(text()).toContain("Register-ScheduledTask");
     expect(text()).toContain(
-      "cd /path/to/your/exchange-folder && /path/to/alcove",
+      'cd "/path/to/your/exchange-folder" && "/path/to/alcove"',
     );
+    // Which crontab the line goes in, and the account option a folder handed
+    // to the image's account leaves out.
+    expect(text()).toContain(CRONTAB_ACCOUNT_NOTE);
+    expect(text()).toContain(FOLDER_OWNED_BY_IMAGE_ACCOUNT_NOTE);
     // The input file the command reads is named as one to put in the folder.
     expect(text()).toContain("Put your input file in that folder as input.csv");
 
@@ -194,8 +202,8 @@ describe("RecurringHandoff panel", () => {
     // The shared folder is mounted at its own path, and named to mount by hand
     // on Windows.
     expect(text()).toContain(
-      "--mount type=bind,src=/path/to/your/shared-directory," +
-        "dst=/path/to/your/shared-directory",
+      '--mount "type=bind,src=/path/to/your/shared-directory,' +
+        'dst=/path/to/your/shared-directory"',
     );
     expect(text()).toContain(
       "The Docker commands for Linux and macOS mount /path/to/your/shared-directory",
@@ -337,8 +345,10 @@ describe("RecurringHandoff panel", () => {
     expect(text()).not.toContain("Register-ScheduledTask");
     expect(text()).toContain("'--identity=Agency A' input.csv ./");
     expect(text()).toContain(
-      "cd /path/to/your/exchange-folder && /path/to/alcove",
+      'cd "/path/to/your/exchange-folder" && "/path/to/alcove"',
     );
+    expect(text()).toContain(CRONTAB_ACCOUNT_NOTE);
+    expect(text()).not.toContain(FOLDER_OWNED_BY_IMAGE_ACCOUNT_NOTE);
   });
 
   test.each([

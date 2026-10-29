@@ -5,7 +5,12 @@ import {
 } from "@alcove/core";
 
 import {
+  HANDOFF_CREDENTIAL_PATH_PLACEHOLDER,
+  HANDOFF_INBOUND_DIRECTORY_PLACEHOLDER,
   HANDOFF_LOG_FILE_NAME,
+  HANDOFF_OUTBOUND_DIRECTORY_PLACEHOLDER,
+  HANDOFF_PASSPHRASE_PATH_PLACEHOLDER,
+  HANDOFF_SHARED_DIRECTORY_PLACEHOLDER,
   HANDOFF_SIGNING_IDENTITY_PLACEHOLDER,
   bindPathsIn,
   credentialBindPaths,
@@ -46,39 +51,20 @@ import type {
 import type { HandoffBindPath } from "@jobContract/handoffBindPaths";
 import type { JobSftpServerEntry } from "@jobContract/sftpConnection";
 
-export { HANDOFF_SIGNING_IDENTITY_PLACEHOLDER };
-
-/** The placeholder a container-internal credential `@path` is shown as. The
- * operator replaces it with the path to their own credential file. */
-export const HANDOFF_CREDENTIAL_PATH_PLACEHOLDER =
-  "@/path/to/your/credential-file";
-
-/** The placeholder a container-internal private-key passphrase `@path` is shown
- * as, kept distinct from the primary credential so the two files read clearly. */
-export const HANDOFF_PASSPHRASE_PATH_PLACEHOLDER =
-  "@/path/to/your/passphrase-file";
-
-/** The placeholder the filedrop shared folder is shown as in the exchange
- * config's `connection.path`. */
-export const HANDOFF_SHARED_DIRECTORY_PLACEHOLDER =
-  "/path/to/your/shared-directory";
+export {
+  HANDOFF_CREDENTIAL_PATH_PLACEHOLDER,
+  HANDOFF_INBOUND_DIRECTORY_PLACEHOLDER,
+  HANDOFF_OUTBOUND_DIRECTORY_PLACEHOLDER,
+  HANDOFF_PASSPHRASE_PATH_PLACEHOLDER,
+  HANDOFF_SHARED_DIRECTORY_PLACEHOLDER,
+  HANDOFF_SIGNING_IDENTITY_PLACEHOLDER,
+};
 
 /** The placeholder the filedrop shared folder is shown as in a zero-setup
  * command's `file://` locator (the CLI requires the three-slash URL form for a
  * filedrop positional). */
 export const HANDOFF_SHARED_DIRECTORY_URL_PLACEHOLDER =
   "file:///path/to/your/shared-directory";
-
-/** The placeholder a split console's INBOUND (peer-written) rendezvous mount is
- * shown as, in the exchange config's `connection.inbound_path`. Named for the
- * direction rather than "shared": the two folders are not one. */
-export const HANDOFF_INBOUND_DIRECTORY_PLACEHOLDER =
-  "/path/to/your/inbound-directory";
-
-/** The placeholder a split console's OUTBOUND (self-written) rendezvous mount is
- * shown as, in `connection.outbound_path` and on `--outbound-path`. */
-export const HANDOFF_OUTBOUND_DIRECTORY_PLACEHOLDER =
-  "/path/to/your/outbound-directory";
 
 /** The placeholder the inbound mount is shown as in a zero-setup command's
  * `file://` locator, the split counterpart to

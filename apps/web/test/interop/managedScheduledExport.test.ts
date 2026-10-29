@@ -309,7 +309,7 @@ describe("the managed exchange's command-line export, run as given", () => {
     expect(dockerArgv?.slice(8)).toEqual(state.composed.argv.slice(1));
     expect(state.lines.dockerCronLine).toContain(
       '/usr/bin/docker run --rm --user "$(id -u):$(id -g)" --mount ' +
-        `type=bind,src=${EXCHANGE_FOLDER_PLACEHOLDER},dst=/work`,
+        `"type=bind,src=${EXCHANGE_FOLDER_PLACEHOLDER},dst=/work"`,
     );
   });
 });

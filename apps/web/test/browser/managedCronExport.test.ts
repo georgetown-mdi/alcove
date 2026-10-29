@@ -19,6 +19,10 @@ import {
   runElsewhereNotice,
 } from "@recurring/managedCronExportModel";
 import {
+  CRONTAB_ACCOUNT_NOTE,
+  FOLDER_OWNED_BY_IMAGE_ACCOUNT_NOTE,
+} from "@recurring/scheduledRunCommand";
+import {
   clearManagedExchanges,
   createManagedExchange,
   getManagedExchange,
@@ -198,7 +202,7 @@ describe("the command-line export hands over two files", () => {
         page
           .getByText(
             'docker run --rm --user "$(id -u):$(id -g)" --mount ' +
-              "type=bind,src=/path/to/your/exchange-folder,dst=/work",
+              '"type=bind,src=/path/to/your/exchange-folder,dst=/work"',
             { exact: false },
           )
           .first(),
@@ -231,6 +235,10 @@ describe("the command-line export hands over two files", () => {
     await expect
       .element(page.getByText("Register-ScheduledTask", { exact: false }))
       .toBeInTheDocument();
+    expect(app.container.textContent).toContain(CRONTAB_ACCOUNT_NOTE);
+    expect(app.container.textContent).toContain(
+      FOLDER_OWNED_BY_IMAGE_ACCOUNT_NOTE,
+    );
   });
 });
 

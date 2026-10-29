@@ -136,22 +136,22 @@ describe("what the panel gets to render", () => {
     const lines = shownLines(state.lines);
     expect(lines.runCommand).toBe(
       'docker run --rm --user "$(id -u):$(id -g)" --mount ' +
-        "type=bind,src=/path/to/your/exchange-folder,dst=/work " +
+        '"type=bind,src=/path/to/your/exchange-folder,dst=/work" ' +
         `${IMAGE} exchange --log-file=exchange.log input.csv ./`,
     );
     expect(lines.dockerCronLine).toBe(
       '0 2 * * * /usr/bin/docker run --rm --user "$(id -u):$(id -g)" --mount ' +
-        "type=bind,src=/path/to/your/exchange-folder,dst=/work " +
+        '"type=bind,src=/path/to/your/exchange-folder,dst=/work" ' +
         `${IMAGE} exchange --log-file=exchange.log input.csv ./`,
     );
     expect(lines.podmanCronLine).toBe(
       "0 2 * * * /usr/bin/podman run --rm " +
         "--userns=keep-id:uid=1000,gid=1000 --mount " +
-        "type=bind,src=/path/to/your/exchange-folder,dst=/work " +
+        '"type=bind,src=/path/to/your/exchange-folder,dst=/work" ' +
         `${IMAGE} exchange --log-file=exchange.log input.csv ./`,
     );
     expect(lines.installedCronLine).toBe(
-      "0 2 * * * cd /path/to/your/exchange-folder && /path/to/alcove " +
+      '0 2 * * * cd "/path/to/your/exchange-folder" && "/path/to/alcove" ' +
         "exchange --log-file=exchange.log input.csv ./",
     );
     expect(lines.dockerTaskSchedulerLine).toContain(
@@ -189,7 +189,7 @@ describe("what the panel gets to render", () => {
       /^30 14 \* \* 2 \/usr\/bin\/docker run --rm /,
     );
     expect(lines.installedCronLine).toMatch(
-      /^30 14 \* \* 2 cd \/path\/to\/your\/exchange-folder && \/path\/to\/alcove /,
+      /^30 14 \* \* 2 cd "\/path\/to\/your\/exchange-folder" && "\/path\/to\/alcove" /,
     );
     expect(lines.dockerTaskSchedulerLine).toContain(
       "New-ScheduledTaskTrigger -Weekly -DaysOfWeek Tuesday -At " +
@@ -221,8 +221,8 @@ describe("what the panel gets to render", () => {
     const anchorDay = Math.floor(Date.parse(SCHEDULE.anchor) / 86_400_000);
     expect(lines.installedCronLine).toBe(
       "30 14 * * * [ $(( (($(date +\\%s) - 9000) / 86400 - " +
-        `${anchorDay}) \\% 3 )) -eq 0 ] && cd /path/to/your/exchange-folder ` +
-        "&& /path/to/alcove exchange --log-file=exchange.log " +
+        `${anchorDay}) \\% 3 )) -eq 0 ] && cd "/path/to/your/exchange-folder" ` +
+        '&& "/path/to/alcove" exchange --log-file=exchange.log ' +
         "--peer-timeout=1h input.csv ./",
     );
     expect(lines.dockerTaskSchedulerLine).toContain(
@@ -514,7 +514,7 @@ describe("a configuration naming paths outside the export folder", () => {
     expect(lines.dockerLinesNotice).toContain("contains a comma");
     expect(lines.bindPathsCaveat).toBeUndefined();
     expect(lines.installedCronLine).toContain(
-      "cd /path/to/your/exchange-folder && /path/to/alcove exchange",
+      'cd "/path/to/your/exchange-folder" && "/path/to/alcove" exchange',
     );
   });
 

@@ -1,8 +1,15 @@
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
 
 import {
+  CRONTAB_ACCOUNT_NOTE,
+  EXCHANGE_FOLDER_PLACEHOLDER,
+  FOLDER_OWNED_BY_IMAGE_ACCOUNT_NOTE,
+  INSTALLED_ALCOVE_PLACEHOLDER,
   dockerCronLine,
   dockerRunCommand,
   dockerTaskSchedulerLine,
@@ -18,6 +25,7 @@ import {
   unmountableBindPaths,
   workingFolderCommand,
 } from "@psi/dockerRunCommand";
+import { HANDOFF_PATH_PLACEHOLDERS } from "@jobContract/handoffBindPaths";
 import { parseHandoff } from "@psi/managed/recurringHandoff";
 import { runScheduleFor } from "@recurring/scheduleTemplates";
 
@@ -42,11 +50,11 @@ const DOCKER_USER = '--user "$(id -u):$(id -g)"';
 const PODMAN_USER = "--userns=keep-id:uid=1000,gid=1000";
 
 const MOUNTS =
-  "--mount type=bind,src=/path/to/your/exchange-folder,dst=/work " +
-  "--mount type=bind,src=/path/to/your/shared-directory," +
-  "dst=/path/to/your/shared-directory " +
-  "--mount type=bind,src=/path/to/your/signing-identity.json," +
-  "dst=/path/to/your/signing-identity.json,readonly";
+  '--mount "type=bind,src=/path/to/your/exchange-folder,dst=/work" ' +
+  '--mount "type=bind,src=/path/to/your/shared-directory,' +
+  'dst=/path/to/your/shared-directory" ' +
+  '--mount "type=bind,src=/path/to/your/signing-identity.json,' +
+  'dst=/path/to/your/signing-identity.json,readonly"';
 
 /** The lines for `source`, failing the test where they are withheld. */
 function shownLines(source: ScheduledRunSource) {
@@ -60,6 +68,20 @@ function shownLines(source: ScheduledRunSource) {
 function sourceBinding(path: string): ScheduledRunSource {
   return { ...SOURCE, bindPaths: [{ path, readOnly: false }] };
 }
+
+describe("the scheduled-run panels' notes", () => {
+  test("name the crontab to use and the account option to leave out", () => {
+    expect(CRONTAB_ACCOUNT_NOTE).toBe(
+      "Add a cron line with crontab -e as the account that will run the " +
+        "schedule, not with sudo: a line in root's crontab runs Alcove as root.",
+    );
+    expect(FOLDER_OWNED_BY_IMAGE_ACCOUNT_NOTE).toBe(
+      "If the exchange folder belongs to user 1000 (you ran chown 1000:1000 " +
+        'on it), leave out --user "$(id -u):$(id -g)" from the Docker command ' +
+        "and cron line.",
+    );
+  });
+});
 
 describe("the console hand-off's command lines", () => {
   test("the one-off command runs the image as the operator over the folder", () => {
@@ -117,7 +139,7 @@ describe("the console hand-off's command lines", () => {
   test("the installed-program cron line runs from the exchange folder", () => {
     const line = shownLines(SOURCE).installedCronLine;
     expect(line).toBe(
-      "0 2 * * * cd /path/to/your/exchange-folder && /path/to/alcove " +
+      '0 2 * * * cd "/path/to/your/exchange-folder" && "/path/to/alcove" ' +
         "exchange --log-file=exchange.log clients.csv ./",
     );
     expect(line).not.toMatch(/[$%`\\]/);
@@ -234,7 +256,7 @@ describe("the console hand-off's command lines", () => {
         "alcove exchange --log-file=exchange.log clients.csv ./",
       );
       expect(lines.installedCronLine).toContain(
-        "cd /path/to/your/exchange-folder && /path/to/alcove exchange",
+        'cd "/path/to/your/exchange-folder" && "/path/to/alcove" exchange',
       );
       expect(lines.dockerLinesNotice).toBe(
         unmountableBindPathsNotice([{ path, reason }]),
@@ -332,6 +354,147 @@ describe("the console hand-off's command lines", () => {
       "--mount type=bind,src=/srv/b,dst=/srv/b",
     );
   });
+});
+
+describe("a path with a space and a single quote put in place of each placeholder", () => {
+  const FOLDER_NAME = "it's my folder";
+  const SHELLS = ["/bin/sh", "/bin/bash"];
+  const PLACEHOLDERS = [
+    EXCHANGE_FOLDER_PLACEHOLDER,
+    INSTALLED_ALCOVE_PLACEHOLDER,
+    ...HANDOFF_PATH_PLACEHOLDERS,
+  ];
+
+  /** `text` with each placeholder replaced by a path holding a space and a
+   * single quote. */
+  function replaced(text: string): string {
+    return PLACEHOLDERS.reduce(
+      (current, placeholder) =>
+        current.replaceAll(
+          placeholder,
+          `/srv/it's my ${placeholder.split("/").at(-1) ?? ""}`,
+        ),
+      text,
+    );
+  }
+
+  /** An argv naming each hand-off placeholder in a flag or locator, as the
+   * hand-off composes them, and mounting each. */
+  const PLACEHOLDER_SOURCE: ScheduledRunSource = {
+    argv: [
+      "alcove",
+      "file:///path/to/your/shared-directory",
+      "--server-password=@/path/to/your/credential-file",
+      "--server-private-key-passphrase=@/path/to/your/passphrase-file",
+      "--outbound-path=/path/to/your/outbound-directory",
+      "--log-file=exchange.log",
+      "clients.csv",
+      "./",
+    ],
+    bindPaths: HANDOFF_PATH_PLACEHOLDERS.map((path) => ({
+      path,
+      readOnly: false,
+    })),
+    image: IMAGE,
+  };
+
+  /** The operator's own ids, as the shell expands the account option. */
+  function operatorAccount(): string {
+    return (
+      `${execFileSync("id", ["-u"], { encoding: "utf8" }).trim()}:` +
+      execFileSync("id", ["-g"], { encoding: "utf8" }).trim()
+    );
+  }
+
+  test.each(SHELLS)(
+    "leaves every argument of each Docker and Podman line whole under %s",
+    (shell) => {
+      const lines = shownLines(PLACEHOLDER_SOURCE);
+      for (const [engine, program, command] of [
+        ["docker", "docker", lines.runCommand],
+        ["podman", "podman", lines.podmanRunCommand],
+        ["docker", "/usr/bin/docker", cronCommand(lines.dockerCronLine)],
+        ["podman", "/usr/bin/podman", cronCommand(lines.podmanCronLine)],
+      ] as const) {
+        const argv =
+          dockerRunArgv(
+            PLACEHOLDER_SOURCE,
+            program,
+            EXCHANGE_FOLDER_PLACEHOLDER,
+            { operatorAccountFor: engine },
+          ) ?? [];
+        expect(shellWords(shell, replaced(command ?? ""))).toEqual(
+          argv.map((token) =>
+            token === '"$(id -u):$(id -g)"'
+              ? operatorAccount()
+              : replaced(token),
+          ),
+        );
+      }
+    },
+  );
+
+  test.each(SHELLS)(
+    "leaves every argument of the installed program's lines whole under %s",
+    (shell) => {
+      const command = cronCommand(
+        shownLines(PLACEHOLDER_SOURCE).installedCronLine,
+      );
+      const run = command.slice(command.indexOf(" && ") + 4);
+      expect(shellWords(shell, replaced(run))).toEqual(
+        [INSTALLED_ALCOVE_PLACEHOLDER, ...PLACEHOLDER_SOURCE.argv.slice(1)].map(
+          replaced,
+        ),
+      );
+      const unmountable = shownLines({
+        ...PLACEHOLDER_SOURCE,
+        bindPaths: [{ path: "/srv/a,b", readOnly: false }],
+      });
+      expect(shellWords(shell, replaced(unmountable.runCommand))).toEqual(
+        PLACEHOLDER_SOURCE.argv.map(replaced),
+      );
+    },
+  );
+
+  /** The words `shell` splits `command` into. */
+  function shellWords(shell: string, command: string): Array<string> {
+    return execFileSync(shell, ["-c", `printf '%s\\n' ${command}`], {
+      encoding: "utf8",
+    })
+      .split("\n")
+      .slice(0, -1);
+  }
+
+  /** The command of a cron line with no interval guard, as cron hands it to
+   * the shell. */
+  function cronCommand(line: string | undefined): string {
+    if (line === undefined) throw new Error("no cron line");
+    return line.replace(/^(\S+ ){5}/, "").replaceAll("\\%", "%");
+  }
+
+  let root: string | undefined;
+  afterEach(() => {
+    if (root !== undefined) rmSync(root, { recursive: true, force: true });
+    root = undefined;
+  });
+
+  test.each(SHELLS)(
+    "is the folder the installed cron line changes to under %s",
+    (shell) => {
+      root = mkdtempSync(join(tmpdir(), "alcove-scheduled-run-"));
+      const folder = join(root, FOLDER_NAME);
+      mkdirSync(folder);
+      const line = shownLines(SOURCE).installedCronLine;
+      const changeFolder = cronCommand(line)
+        .slice(0, cronCommand(line).indexOf(" && "))
+        .replace(EXCHANGE_FOLDER_PLACEHOLDER, folder);
+      expect(changeFolder).toBe(`cd "${folder}"`);
+      const reached = execFileSync(shell, ["-c", `${changeFolder} && pwd -P`], {
+        encoding: "utf8",
+      });
+      expect(reached).toBe(`${realpathSync(folder)}\n`);
+    },
+  );
 });
 
 describe("a hand-off whose argv is not an alcove command line", () => {

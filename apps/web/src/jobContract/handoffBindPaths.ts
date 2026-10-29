@@ -34,6 +34,44 @@ export const HANDOFF_LOG_FILE_NAME = "exchange.log";
 export const HANDOFF_SIGNING_IDENTITY_PLACEHOLDER =
   "/path/to/your/signing-identity.json";
 
+/** The placeholder a container-internal credential `@path` is shown as. The
+ * operator replaces it with the path to their own credential file. */
+export const HANDOFF_CREDENTIAL_PATH_PLACEHOLDER =
+  "@/path/to/your/credential-file";
+
+/** The placeholder a container-internal private-key passphrase `@path` is shown
+ * as, kept distinct from the primary credential so the two files read clearly. */
+export const HANDOFF_PASSPHRASE_PATH_PLACEHOLDER =
+  "@/path/to/your/passphrase-file";
+
+/** The placeholder the filedrop shared folder is shown as in the exchange
+ * config's `connection.path`. */
+export const HANDOFF_SHARED_DIRECTORY_PLACEHOLDER =
+  "/path/to/your/shared-directory";
+
+/** The placeholder a split console's INBOUND (peer-written) rendezvous mount is
+ * shown as, in the exchange config's `connection.inbound_path`. Named for the
+ * direction rather than "shared": the two folders are not one. */
+export const HANDOFF_INBOUND_DIRECTORY_PLACEHOLDER =
+  "/path/to/your/inbound-directory";
+
+/** The placeholder a split console's OUTBOUND (self-written) rendezvous mount is
+ * shown as, in `connection.outbound_path` and on `--outbound-path`. */
+export const HANDOFF_OUTBOUND_DIRECTORY_PLACEHOLDER =
+  "/path/to/your/outbound-directory";
+
+/** The host paths a hand-off names as placeholders, which the operator
+ * replaces with paths on the scheduling machine: each bind path the
+ * composition writes in place of a path of its own. */
+export const HANDOFF_PATH_PLACEHOLDERS: ReadonlyArray<string> = [
+  HANDOFF_SIGNING_IDENTITY_PLACEHOLDER,
+  HANDOFF_CREDENTIAL_PATH_PLACEHOLDER.slice(1),
+  HANDOFF_PASSPHRASE_PATH_PLACEHOLDER.slice(1),
+  HANDOFF_SHARED_DIRECTORY_PLACEHOLDER,
+  HANDOFF_INBOUND_DIRECTORY_PLACEHOLDER,
+  HANDOFF_OUTBOUND_DIRECTORY_PLACEHOLDER,
+];
+
 /**
  * The absolute paths `handoffSpec` names outside the folder the run starts in
  * (`JobHandoff.bindPaths` in `./jobHandoff`): each sftp credential `@path`, each
