@@ -55,19 +55,19 @@ it directly** (`gh project item-create`), then report: the board, the item URL, 
 one-line summary, and any unresolved points you logged. Unanswered questions do
 **not** block a capture -- a full-tier draft holds them in its **Open
 questions** section (an accurate draft with open choices is fine) and a light-tier
-draft states them in its summary sentence. How many items you may file, and
-what lifts that limit, is `.claude/pm/ruleset.md`, Filing and updating items;
-what it does not let you file, draft in your report and leave to the owner's
-word. Also run the ruleset's epic/order
-step: set both fields autonomously when an existing epic clearly fits, and note
+draft states them in its summary sentence. When an item may be filed is
+`.claude/pm/ruleset.md`, Filing and updating items; an item it holds back,
+draft in your report for the caller to list as a potential follow-up. Also
+run the ruleset's epic/order step: set both fields autonomously when an
+existing epic clearly fits, and note
 the parenting in your report; when the fit is unclear, leave them unset and say
 so.
 
 **APPENDED** -- the concern belongs on the board, but a standing sweep item
 already owns its class (a coverage sweep, an accounting settle-up). Read that
 item's stored body, add the concern to it with `edit-issue.mjs`, and report the
-item, its URL, and the line you appended. It creates no item, so it does not
-count against the ruleset's filing limit.
+item, its URL, and the line you appended. It creates no item, so the ruleset's
+hold on filing before the follow-ups pass does not apply to it.
 
 **DECLINED** -- the concern is real but is not worth an item of its own. Name
 where it is recorded instead -- a limits line in the governing `docs/spec/` file

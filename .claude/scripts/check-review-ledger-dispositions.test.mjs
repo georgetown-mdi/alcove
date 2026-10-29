@@ -202,7 +202,55 @@ describe("deferred entries", () => {
       oldHead,
     );
     expect(result.status).toBe("refused");
-    expect(result.reason).toMatch(/neither a "board" item nor a "limitsLine"/);
+    expect(result.reason).toMatch(
+      /names no "board" item, "followUp", or "limitsLine"/,
+    );
+  });
+
+  it("passes a deferral to a held follow-up named by its slug", () => {
+    const { fixture, oldHead } = branchWithFix();
+    const results = check(
+      fixture,
+      row([
+        { item: "a", disposition: "deferred", followUp: "quote-cron-percent" },
+        { item: "b", disposition: "deferred", followUp: "tz2" },
+      ]),
+      oldHead,
+    );
+    expect(results.map((r) => `${r.item}:${r.status}`)).toEqual([
+      "a:ok",
+      "b:ok",
+    ]);
+  });
+
+  it("refuses a malformed held follow-up, naming the slug shape", () => {
+    const { fixture, oldHead } = branchWithFix();
+    const results = check(
+      fixture,
+      row(
+        [
+          "Quote cron percent",
+          "quote_cron",
+          "quote--cron",
+          "-quote",
+          "quote-",
+          "continuation-2026-10-29.md#3",
+          "",
+          7,
+          null,
+        ].map((followUp, i) => ({
+          item: `f${i}`,
+          disposition: "deferred",
+          followUp,
+        })),
+      ),
+      oldHead,
+    );
+    expect(results).toHaveLength(9);
+    for (const result of results) {
+      expect(result.status).toBe("refused");
+      expect(result.reason).toMatch(/^"followUp" is .*, not a "<slug>"/);
+    }
   });
 
   it("passes a board item or a limits line the head holds, and refuses a malformed or absent one", () => {
@@ -408,6 +456,24 @@ describe("legacy rows", () => {
       check(fixture, ledger, oldHead).map((r) => `${r.item}:${r.status}`),
     ).toEqual([
       "new limit:pre-rule",
+      "old fix:refused",
+      "old deferral:refused",
+      "old limit:pre-rule",
+    ]);
+  });
+
+  it("counts a deferral's follow-up as a field a later row is held to", () => {
+    const { fixture, oldHead } = branchWithFix();
+    const ledger = [
+      row([{ item: "held", disposition: "deferred", followUp: "held-one" }], {
+        date: "2026-09-02",
+      }),
+      legacyRow("2026-09-03"),
+    ].join("\n");
+    expect(
+      check(fixture, ledger, oldHead).map((r) => `${r.item}:${r.status}`),
+    ).toEqual([
+      "held:ok",
       "old fix:refused",
       "old deferral:refused",
       "old limit:pre-rule",

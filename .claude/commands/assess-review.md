@@ -286,9 +286,11 @@ holds this only for rounds dated the limit-rule date the check's header names
 or later; a limit in an earlier round stays ledger-only.
 
 A `deferred` entry names where the finding went: a board item,
-as `"board": "<board>/<itemId>"`, or a spec limits line on the branch, as
+as `"board": "<board>/<itemId>"`, a held follow-up, as `"followUp": "<slug>"`
+in the shape `.claude/pm/ruleset.md`, Filing and updating items, states, or a
+spec limits line on the branch, as
 `"limitsLine": "docs/spec/<path>#<anchor or \"quoted phrase\">"`. A finding
-with neither is recorded as `limit` with its `note`, not `deferred`. A
+with none of these is recorded as `limit` with its `note`, not `deferred`. A
 follow-on line in the pull request description alone does not satisfy this:
 it is invisible to every later session once the PR merges. A board item made
 to give a deferral a home is filed under `.claude/pm/ruleset.md`, Filing and
@@ -323,8 +325,8 @@ PRIMARY/scratch/review-rounds/<key>.jsonl <PR head sha> --body -` against the
 PR head. It refuses product commits after the last reviewed head that have
 neither a fix review nor "not re-reviewed" on the line (Step 3), and it refuses a `fixed` entry whose commit is not contained in the head -- as an
 ancestor, or as a commit with the same patch after a rebase -- and a `deferred`
-entry that names neither a board item nor a limits line the head holds, and a
-`limit` entry on a reachable surface without a limits line the head holds, and
+entry that names no board item, held follow-up, or limits line the head
+holds, and a `limit` entry on a reachable surface without a limits line the head holds, and
 a second cap raise with no step-back record (Step 2); its header states which
 older rows it skips. A refusal gates readiness: an unreviewed product fix
 takes its fix review, a fix that

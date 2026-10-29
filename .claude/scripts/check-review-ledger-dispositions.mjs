@@ -8,11 +8,14 @@
 // - a `fixed` entry whose `"commit": "<sha>"` is not contained in the head: not
 //   an ancestor, and no head commit with the same patch identity as
 //   `git cherry` decides it;
-// - a `deferred` entry naming neither `"board": "<board>/<itemId>"` nor
+// - a `deferred` entry naming none of `"board": "<board>/<itemId>"`,
+//   `"followUp": "<slug>"` (a held follow-up, `.claude/pm/ruleset.md`, Filing
+//   and updating items), and
 //   `"limitsLine": "docs/spec/<path>#<anchor or \"quoted phrase\">"`, a board
-//   value not of that shape, a limits file absent at the head, or a quoted
-//   phrase that file does not hold (an anchor is not resolved, a board item is
-//   checked for shape only);
+//   or follow-up value not of its shape, a limits file absent at the head, or a
+//   quoted phrase that file does not hold (an anchor is not resolved; a board
+//   item and a follow-up are checked for shape only, the follow-up because the
+//   continuation brief listing it is host-local and gitignored);
 // - a `limit` entry whose `"surface"` is `"reachable"` or absent and which names
 //   no `limitsLine` passing the `deferred` rules, or whose `surface` is any
 //   value other than those two. `"surface": "internal"` passes.
@@ -49,8 +52,8 @@
 // squashed or reworded stays unpaired and keeps its old id.
 //
 // A row is skipped as legacy when its `date` is before LEGACY_CUTOFF_DATE, no
-// `fixed` entry in it has a `commit`, no `deferred` entry a `board` or
-// `limitsLine`, no `limit` entry a `surface` or `limitsLine`, and no earlier
+// `fixed` entry in it has a `commit`, no `deferred` entry a `board`,
+// `followUp` or `limitsLine`, no `limit` entry a `surface` or `limitsLine`, and no earlier
 // row in the ledger has any of those fields. A row dated before
 // LIMIT_RULE_DATE is exempt from the `limit` rule. Git runs in the worktree the
 // process was invoked from; name full shas, not a per-worktree ref.
@@ -84,7 +87,9 @@ export function rowUsesDispositionFields(row) {
     (entry) =>
       (entry.disposition === "fixed" && entry.commit !== undefined) ||
       (entry.disposition === "deferred" &&
-        (entry.board !== undefined || entry.limitsLine !== undefined)) ||
+        (entry.board !== undefined ||
+          entry.followUp !== undefined ||
+          entry.limitsLine !== undefined)) ||
       (entry.disposition === "limit" &&
         (entry.surface !== undefined || entry.limitsLine !== undefined)),
   );
@@ -139,6 +144,9 @@ export function fixNotContainedReason({ commit, head, git }) {
 
 const BOARD_SHAPE = /^[^/\s]+\/[^/\s]+$/;
 
+/** A held follow-up's slug: lowercase letter and digit runs joined by single hyphens. */
+export const FOLLOW_UP_SHAPE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
 /** Why a deferred entry names no valid home, or null where it names one. */
 export function deferralHomeReason({ entry, head, git }) {
   if (entry.board !== undefined) {
@@ -146,8 +154,16 @@ export function deferralHomeReason({ entry, head, git }) {
       return null;
     return `"board" is ${JSON.stringify(entry.board)}, not "<board>/<itemId>"`;
   }
+  if (entry.followUp !== undefined) {
+    if (
+      typeof entry.followUp === "string" &&
+      FOLLOW_UP_SHAPE.test(entry.followUp)
+    )
+      return null;
+    return `"followUp" is ${JSON.stringify(entry.followUp)}, not a "<slug>" of lowercase letters and digits joined by single hyphens`;
+  }
   if (entry.limitsLine === undefined)
-    return 'a deferred entry names neither a "board" item nor a "limitsLine"';
+    return 'a deferred entry names no "board" item, "followUp", or "limitsLine"';
   return limitsLineReason({ limitsLine: entry.limitsLine, head, git });
 }
 
@@ -661,7 +677,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.stdout.write(
       refused === 0
         ? `\ndispositions: PASS -- ${results.length - skipped - preRule} checked, ${skipped} skipped as legacy${preRule === 0 ? "" : `, ${preRule} limits before the limit rule`}\n`
-        : `\ndispositions: REFUSED -- ${refused} entr${refused === 1 ? "y" : "ies"} fail; record the fix commit that reached the head; give a deferral a board item or limits line, or record it as a limit; write a reachable limit's spec limits line, or mark it "surface": "internal"\n`,
+        : `\ndispositions: REFUSED -- ${refused} entr${refused === 1 ? "y" : "ies"} fail; record the fix commit that reached the head; give a deferral a board item, held follow-up, or limits line, or record it as a limit; write a reachable limit's spec limits line, or mark it "surface": "internal"\n`,
     );
     process.stdout.write(
       caps.reason === null
