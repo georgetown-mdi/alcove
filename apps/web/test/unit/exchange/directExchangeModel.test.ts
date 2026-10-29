@@ -265,63 +265,18 @@ describe("previewInferredTerms", () => {
     expect(preview.refusal).toBeUndefined();
   });
 
-  test("the confirm notice's examples are recognized, and its unrecognized example is sent", () => {
-    const metadata = inferMetadata(
-      ["First Name", "Social Security Number", "E-mail"],
-      [],
-      {
-        mode: "direct",
-      },
-    );
-    expect(disclosedColumnNames(metadata)).toEqual(["E-mail"]);
-    expect(DIRECT_RECOGNIZED_COLUMNS_NOTICE).toContain(
-      "First Name and Social Security Number are recognized",
-    );
-    expect(DIRECT_RECOGNIZED_COLUMNS_NOTICE).toContain(
-      "a header Alcove does not recognize, such as E-mail",
-    );
-    expect(DIRECT_RECOGNIZED_COLUMNS_NOTICE).not.toMatch(/ignored/);
-  });
-
-  test("every id name the confirm notice states is held back, and its exception is sent", () => {
-    const named = [
-      "id",
-      "identifier",
-      "MRN",
-      "ClientID",
-      "PersonID",
-      "PersonalID",
-      "PatientID",
-      "RecordID",
-      "MemberID",
-      "case_number",
-      "record_no",
-      "RecordNo",
-      "zip_no",
-    ];
-    expect(DIRECT_RECOGNIZED_COLUMNS_NOTICE).toContain(
-      "An id column is never sent either: a header named id, identifier, " +
-        "MRN, ClientID, PersonID, PersonalID, PatientID, RecordID, or " +
-        "MemberID, or one ending in _id, number, or _no, such as case_number " +
-        "or record_no, or in No after a lowercase letter, such as RecordNo. " +
-        "A linkage key header such as ssn_number or StreetNo counts as a " +
-        "linkage key, not an id.",
+  test("the confirm notice names examples that are never sent, and states no rule", () => {
+    expect(DIRECT_RECOGNIZED_COLUMNS_NOTICE).toBe(
+      "Alcove never sends a column it recognizes as a linkage key or an id, " +
+        "such as ssn, phone, id, or case_number. Every other column is sent " +
+        "for each matched record, and the terms above list them.",
     );
     const metadata = inferMetadata(
-      [...named, "StreetNo", "ssn_number", "yes_no", "RECORDNO", "phone_no"],
+      ["ssn", "phone", "id", "case_number", "notes"],
       [],
       { mode: "direct" },
     );
-    expect(
-      metadata
-        .filter((column) => column.type === "identifier")
-        .map((column) => column.name),
-    ).toEqual(named);
-    expect(disclosedColumnNames(metadata)).toEqual(["yes_no", "RECORDNO"]);
-    expect(DIRECT_RECOGNIZED_COLUMNS_NOTICE).toContain(
-      "Letter case and spaces at either end of a header do not matter, " +
-        "except in that No,",
-    );
+    expect(disclosedColumnNames(metadata)).toEqual(["notes"]);
   });
 
   test("names the rule selection in core's words, as the CLI display does", () => {

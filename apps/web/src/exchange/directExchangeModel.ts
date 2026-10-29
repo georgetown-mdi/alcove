@@ -125,23 +125,14 @@ export const DIRECT_DEDUPLICATE_SIDE_NOTICE =
   "runs.";
 
 /**
- * What the confirm screen states of which columns a direct exchange sends: the
- * header names core's inference recognizes as linkage keys or id columns
- * (`columnNameLookupKey`) and keeps back, and that every other column is sent.
+ * What the confirm screen states of which columns a direct exchange sends:
+ * none that core's inference recognizes as a linkage key or an id, and every
+ * other one. The full rule is in the spec, not here.
  */
 export const DIRECT_RECOGNIZED_COLUMNS_NOTICE =
-  "A column whose header Alcove recognizes as a linkage key, such as " +
-  "first_name, date_of_birth, ssn, phone, email, or zip, is never sent: it is " +
-  "matched on or kept back. An id column is never sent either: a header " +
-  "named id, identifier, MRN, ClientID, PersonID, PersonalID, PatientID, " +
-  "RecordID, or MemberID, or one ending in _id, number, or _no, such as " +
-  "case_number or record_no, or in No after a lowercase letter, such as " +
-  "RecordNo. A linkage key header such as ssn_number or StreetNo counts as " +
-  "a linkage key, not an id. Letter case and spaces at either end of a " +
-  "header do not matter, except in that No, and a space, hyphen, or dot " +
-  "between words counts the same as an underscore, so First Name and " +
-  "Social Security Number are recognized. Every other column is sent, " +
-  "including a header Alcove does not recognize, such as E-mail.";
+  "Alcove never sends a column it recognizes as a linkage key or an id, " +
+  "such as ssn, phone, id, or case_number. Every other column is sent for " +
+  "each matched record, and the terms above list them.";
 
 /** The rules a quick exchange runs, worded as the CLI's display before the run
  * words them. */

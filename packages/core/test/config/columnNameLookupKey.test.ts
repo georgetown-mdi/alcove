@@ -58,11 +58,22 @@ const FOLDED_HEADERS: Array<
   ["separator", "zip._-5", "zip_code"],
   ["separator", "Zip-Code", "zip_code"],
   ["every step", "  Social_-_Security . Number ", "ssn"],
+  ["outer separator", "_ssn", "ssn"],
+  ["outer separator", "-ssn", "ssn"],
+  ["outer separator", "ssn.", "ssn"],
+  ["outer separator", "ssn_", "ssn"],
+  ["outer separator", ".dob", "date_of_birth"],
+  ["outer separator", "Tel.", "phone_number"],
+  ["outer separator", "SSN No.", "ssn"],
+  ["#", "SSN#", "ssn"],
+  ["#", "SSN #", "ssn"],
+  ["#", "Phone #", "phone_number"],
+  ["#", "Apt #", "unit"],
 ];
 
 // Headers that stay unrecognized: the lookup is a whole-name match on the
-// folded key, never a substring, prefix or edit-distance test, and only
-// whitespace is trimmed.
+// folded key, never a substring, prefix or edit-distance test, and only a
+// separator is dropped from either end.
 const UNRECOGNIZED_HEADERS = [
   "ssn_last4",
   "ssn last 4",
@@ -75,12 +86,9 @@ const UNRECOGNIZED_HEADERS = [
   "f name",
   "s.s.n",
   "first/name",
-  "_ssn",
-  "-ssn",
-  "ssn.",
-  "ssn_",
-  ".dob",
-  "SSN#",
+  "(ssn)",
+  "ssn:",
+  "#",
   // An address line is typed by the operator, never inferred.
   "address",
   "Address",
@@ -120,12 +128,19 @@ describe("columnNameLookupKey", () => {
     ["hyphen run", "first--name", "first_name"],
     ["dot run", "first..name", "first_name"],
     ["mixed separator run", "first _-. name", "first_name"],
+    ["outer separators", " -ssn. ", "ssn"],
+    ["# after a word", "SSN#", "ssn_number"],
+    ["# after a space", "Case #", "case_number"],
+    ["# before a word", "#ssn", "number_ssn"],
+    ["# between words", "SS#No", "ss_number_no"],
+    ["# alone", " # ", "number"],
+    ["separators alone", " _-. ", ""],
   ])("folds %s", (_step, header, key) => {
     expect(columnNameLookupKey(header)).toBe(key);
   });
 
-  test("trims only whitespace, so an outer separator stays in the key", () => {
-    expect(columnNameLookupKey(" -ssn. ")).toBe("_ssn_");
+  test("keeps other punctuation in the key", () => {
+    expect(columnNameLookupKey("(ssn):")).toBe("(ssn):");
   });
 
   test("every listed name is its own lookup key", () => {

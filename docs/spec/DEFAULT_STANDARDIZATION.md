@@ -2046,17 +2046,23 @@ date-of-birth screens are the per-value ones its pipeline lists.
 
 When an exchange specification has no `metadata` block, each input column's
 semantic type, role, and payload default are inferred from its name. The
-lookup is on the column name's lookup key, which folds the whole name in three
+lookup is on the column name's lookup key, which folds the whole name in four
 steps:
 
-1. Trim whitespace from both ends.
-2. Lowercase it.
+1. Lowercase it.
+2. Replace each `#` with the word `number`, set off by a `_` on each side.
 3. Collapse each run of whitespace, `.`, `_` and `-` to one `_`.
+4. Drop a `_` left at either end.
 
 The key is an exact match against the table below, never a substring or prefix
 test, so `First Name`, ` ssn` and `Date-of-Birth` infer but `zip_area` and
-`ssn_last4` do not. Only whitespace is trimmed, so `_ssn` and `ssn_` do not
-infer either. The key is used only for the lookup: the column keeps its raw
+`ssn_last4` do not.
+A separator at either end is dropped, so `ssn`, `tel`, and `ssn_no` are the keys
+of `ssn.`, `Tel.`, and `SSN No.`.
+A `#` is read as `number`, so `SSN #` and `SS#` have the keys `ssn_number` and
+`ss_number`, and `Case #` is the record number `case_number`.
+Other punctuation stays in the key, so `(ssn)` does not infer.
+The key is used only for the lookup: the column keeps its raw
 header as its name in its metadata, its transform `input`, the run's display
 and the result. Every name in the table is its own lookup key, and no two names
 in it share one.
@@ -2064,7 +2070,7 @@ in it share one.
 The fold has two limits. The console's quick-exchange confirm screen states
 the rule and lists the columns sent; only the command line's pre-run display
 lists the names a quick exchange holds back.
-A header recognized after trimming is shown as written, so on the display a
+A header recognized after folding is shown as written, so on the display a
 whitespace-padded name such as ` ssn` differs from the bare `ssn` only by that
 whitespace.
 
@@ -2106,8 +2112,8 @@ block, and an invitation composed from an input file.
   CSV export's `PersonalID`, or `MRN`.
   So does a record number: a name whose lookup key ends in `_number`, `_no`, or
   `number` after at least one other character, such as `case_number`,
-  `Record No`, or `CaseNumber`, or whose header ends in a lowercase letter
-  followed by `No`, such as `RecordNo`.
+  `Record No`, or `CaseNumber`, or whose header, less any separators at its
+  end, ends in a lowercase letter followed by `No`, such as `RecordNo`.
   In both modes it infers what the table's `identifier` row infers.
   A header ending in a lowercase `no`, such as `Casino`, is not a record number.
   Nor is a name whose lookup key is `yes_no` or `yesno`.

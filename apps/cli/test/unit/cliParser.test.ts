@@ -235,55 +235,22 @@ test.each(COMMAND_NAMES)(
   },
 );
 
-test("top-level help states the id rule, and inference holds back each name it states", async () => {
+test("top-level help names examples that are never sent, and states no rule", async () => {
+  const usage =
+    "A quick exchange never sends a column Alcove recognizes as a linkage " +
+    "key or an id, such as ssn, phone, id, or case_number. It sends your " +
+    "partner every other column for each matched record. The display before " +
+    "the run lists the columns sent and the ones held back.";
   const { stdout } = await parse(["--help"]);
   const flat = stdout.replace(/\s+/g, " ");
-  expect(flat).toContain(
-    "An id column is held back too: one named id, identifier, MRN, " +
-      "ClientID, PersonID, PersonalID, PatientID, RecordID, or MemberID, or " +
-      "one ending in _id, number, or _no (case_number, record_no), or in No " +
-      "after a lowercase letter (RecordNo). A linkage key name such as " +
-      "ssn_number or StreetNo counts as a linkage key, not an id. A space, " +
-      "hyphen, or dot in a name counts as _.",
-  );
-  expect(flat).not.toContain("such as id, case_id, ClientID");
-  const named = [
-    "id",
-    "identifier",
-    "MRN",
-    "ClientID",
-    "PersonID",
-    "PersonalID",
-    "PatientID",
-    "RecordID",
-    "MemberID",
-    "case_id",
-    "Member ID",
-    "case_number",
-    "record_no",
-    "Record No",
-    "RecordNo",
-    "state_number",
-  ];
+  expect(flat.split(usage)).toHaveLength(3);
+  expect(flat).not.toMatch(/ends? in|ending in|counts as _/);
   const metadata = inferMetadata(
-    [...named, "StreetNo", "yes_no", "RECORDNO", "phone_no", "ssn_number"],
+    ["ssn", "phone", "id", "case_number", "notes"],
     [],
     { mode: "direct" },
   );
-  expect(
-    metadata
-      .filter((column) => column.type === "identifier")
-      .map((column) => column.name),
-  ).toEqual(named);
-  expect(disclosedColumnNames(metadata)).toEqual(["yes_no", "RECORDNO"]);
-  expect(
-    metadata
-      .filter((column) => ["StreetNo", "ssn_number"].includes(column.name))
-      .map((column) => [column.name, column.type, column.role]),
-  ).toEqual([
-    ["StreetNo", "street_number", "linkage"],
-    ["ssn_number", "ssn", "linkage"],
-  ]);
+  expect(disclosedColumnNames(metadata)).toEqual(["notes"]);
 });
 
 test("`--retain-files` help states that it turns the options it needs on", async () => {

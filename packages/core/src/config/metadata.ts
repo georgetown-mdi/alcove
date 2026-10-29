@@ -343,16 +343,18 @@ type TypeMetaMapped = Omit<TypeMeta, "aliases">;
 
 /**
  * The key a column name is looked up by in {@link ALIAS_TYPE_META_MAP}: the
- * name trimmed, lowercased, and with each run of whitespace, `_`, `-` and `.`
- * collapsed to one `_`, so `First Name`, ` first_name` and `FIRST-NAME` share
- * the key `first_name`. A lookup key only: a column keeps its raw header as
- * its name.
+ * name lowercased, each `#` read as the word `number`, each run of
+ * whitespace, `_`, `-` and `.` collapsed to one `_`, and a `_` left at either
+ * end dropped, so `First Name`, ` first_name.` and `FIRST-NAME` share the key
+ * `first_name`, and `SSN #` has the key `ssn_number`. A lookup key only: a
+ * column keeps its raw header as its name.
  */
 export function columnNameLookupKey(name: string): string {
   return name
-    .trim()
     .toLowerCase()
-    .replace(/[\s_.-]+/g, "_");
+    .replaceAll("#", "_number_")
+    .replace(/[\s_.-]+/g, "_")
+    .replace(/^_|_$/g, "");
 }
 
 /**
@@ -395,13 +397,13 @@ function numberSuffixPrefix(lookupName: string): string | undefined {
 /**
  * Whether a column name ends in a record-number suffix: its lookup key ends in
  * `_number`, `_no` or `number` after a character other than `_`, or the raw
- * `name` ends in `No` written in camel case (`RecordNo`), which keeps a word
- * that ends in `no`, such as `Casino`, out.
+ * `name`, less the separators at its end, ends in `No` written in camel case
+ * (`RecordNo`), which keeps a word that ends in `no`, such as `Casino`, out.
  */
 function hasRecordNumberSuffix(name: string, lookupName: string): boolean {
   const prefix = numberSuffixPrefix(lookupName);
   if (prefix !== undefined) return /[^_]/.test(prefix);
-  return /[a-z]No$/.test(name.trim());
+  return /[a-z]No[\s_.-]*$/.test(name);
 }
 
 /**

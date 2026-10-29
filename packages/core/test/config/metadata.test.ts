@@ -325,6 +325,10 @@ const RECORD_IDENTIFIER_SPELLINGS = [
   "estate_no",
   "state_number",
   "hotel_number",
+  "Case #",
+  "Case#",
+  "Record No.",
+  "RecordNo.",
 ];
 
 describe.each(["declaredOnly", "direct"] as const)(
@@ -467,6 +471,10 @@ const SSN_SPELLINGS = [
   "SSNumber",
   "SS_No",
   "ss_nbr",
+  "SSN No.",
+  "Soc. Sec. No.",
+  "SSN #",
+  "SS#",
 ];
 
 const PHONE_SPELLINGS = [
@@ -500,6 +508,10 @@ const PHONE_SPELLINGS = [
   "primaryphonenumber",
   "alternate_phone",
   "contact_phone_number",
+  "Phone No.",
+  "Phone #",
+  "Cell #",
+  "Tel.",
 ];
 
 describe.each(["declaredOnly", "direct"] as const)(
@@ -550,6 +562,30 @@ test("a file whose only number columns are SSN or phone numbers has no record id
   );
   expect(disclosedColumnNames(metadata)).toEqual(["notes"]);
 });
+
+// --- inferMetadata: separators at either end of a header --------------------
+
+describe.each(["declaredOnly", "direct"] as const)(
+  "%s mode: a header with a separator at either end infers as without it",
+  (mode) => {
+    test.each([
+      [".id", "id"],
+      ["client_id.", "client_id"],
+      ["_client_id_", "client_id"],
+      ["-ssn", "ssn"],
+      ["ssn.", "ssn"],
+      [" .dob. ", "dob"],
+      ["RecordNo.", "RecordNo"],
+      ["notes.", "notes"],
+    ])("%j infers as %j", (header, bare) => {
+      const inferredRoles = (first: string) =>
+        inferMetadataForEveryColumn([first, "first_name", "comments"], [], {
+          mode,
+        }).map(({ type, role, isPayload }) => ({ type, role, isPayload }));
+      expect(inferredRoles(header)).toEqual(inferredRoles(bare));
+    });
+  },
+);
 
 // --- inferMetadata: choosing the record identifier ---------------------------
 
