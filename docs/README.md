@@ -45,7 +45,7 @@ The documentation is organized in three tiers: this **overview** tier (`docs/`) 
 
 ### Guides ([`docs/guides/`](guides/index.md))
 
-Step-by-step instructions for one reader's path through an exchange: agreeing on the terms with a partner, then inviting, accepting, and scheduling in the web app, the console, or the command line. Each guide links into the overview documents below for depth.
+Step-by-step instructions for one reader's path through an exchange: agreeing the terms with a partner, then inviting, accepting, and scheduling in the web app, the console, or the command line. Each guide links into the overview documents below for depth.
 
 ### Overview (`docs/`)
 
