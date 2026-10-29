@@ -526,11 +526,15 @@ The shared-secret rotation draws each party's value as a 256-bit HMAC key with
 `crypto.subtle.generateKey` and wraps it with `crypto.subtle` AES-KW under a
 256-bit key HKDF derives
 ([PROTOCOL.md](PROTOCOL.md#shared-secret-rotation)). The entrypoint probe
-records both call shapes, in its `rotation_value_draw` and
-`aes_kw_wrap_round_trip` legs, without gating on them, so the row below is a
-table placement until an engaged transcript shows those legs completing, and no
-document says the module performs the wrap or draws the values before then. It
-sits on Table 6 (p. 10):
+makes both calls, in its `rotation_value_draw` and `aes_kw_wrap_round_trip`
+legs, and either leg failing fails its verdict. Image Smoke run 40777437348,
+at commit 06b94e091 under the image's shipped `fips-only.cnf`, recorded both
+legs completing in an ENGAGED transcript, with `fips.so` mapped and the MD5
+digest refused. On that measurement the module performs the wrap and the unwrap
+at the call shape the row below lists. The draw's leg shows that the call
+completes with the default provider unreachable, not which generator produced
+the bytes, so no document says the values come from the module's generator.
+The AES-KW row sits on Table 6 (p. 10):
 
 | Call shape | Table 6 row | CAVP certificates | Properties | Reference |
 | --- | --- | --- | --- | --- |
