@@ -854,9 +854,9 @@ partner sent. Scheduled runs keep running afterwards, but none can reach the
 partner: each side's meeting point derives from the secret it holds, so a later
 window finds no partner, and one that does meet fails at the handshake. A no-show
 does not replace the report, which stays until a re-invite. A handshake that
-fails closed is a new failure with its own reading: it takes the confirmation
-below, because the partner's report is the other side's claim and not local
-evidence.
+fails closed replaces the report as the standing condition and takes the
+confirmation below, because the partner's report is the other side's claim and
+not local evidence.
 
 A no-show's run entry replaces the previous one, but a save failure on either
 side or a failed-closed handshake is also kept as a standing condition, which a
@@ -872,10 +872,12 @@ Each is kept as a **standing condition** beside the run history,
 which a later run's entry does not replace, so the recurring list, the
 exchange's page, and a later run all read it until it is cleared. A later
 failure of the same kind leaves the first in place, and the message you forward
-names both, so the partner checks their logs for both. A handshake that fails
-closed after a save failure this device recorded is read as that save failure,
-which explains it. After a save failure your partner reported, it is an
-unexplained failure.
+names both, so the partner checks their logs for both. The exception is a
+handshake that fails closed after a save failure your partner reported: this
+device's own failed handshake replaces that report, because the report is the
+other side's claim and not local evidence. A handshake that fails closed after a
+save failure this device recorded is read as that save failure, which explains
+it.
 
 Three things clear a standing condition, and nothing else does:
 

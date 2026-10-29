@@ -147,10 +147,8 @@ export function managedStandingConditionTier(
 /**
  * Read a record's failure tier and its source as of `now`. The standing
  * condition supplies the tier where the last run shows no failure or a no-show
- * (so later stamps do not hide it), and where a persist failure on this device
- * explains an `"unexplained"` reading. The partner's reported save failure does
- * not: it is the other side's claim, so a failed handshake beside it keeps the
- * confirm-first reading. It never displaces a recorded benign cause, which is
+ * (so later stamps do not hide it), and where a persist failure explains an
+ * `"unexplained"` reading. It never displaces a recorded benign cause, which is
  * this run's own actionable state.
  */
 export function readManagedFailure(

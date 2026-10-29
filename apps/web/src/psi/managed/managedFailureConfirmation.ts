@@ -85,13 +85,8 @@ export function composeConfirmationMessage(
     record.label === "" ? "our recurring data exchange" : `"${record.label}"`;
   // The standing condition's instant first: where one stands, the handshake the
   // operator is asking about is the one that raised it, and `lastRun` may since
-  // hold a no-show or a success that is not what they are confirming. A
-  // partner-reported save failure is not a handshake failure, so beside one the
-  // handshake being confirmed is the last run's.
-  const standing = raisedStandingCondition(record);
-  const at =
-    (standing?.kind === "partner-storage" ? undefined : standing?.since) ??
-    record.lastRun?.at;
+  // hold a no-show or a success that is not what they are confirming.
+  const at = raisedStandingCondition(record)?.since ?? record.lastRun?.at;
   const when = at !== undefined ? dateTimeLabel(new Date(at)) : undefined;
   const recurrence = laterFailureOfSameKind(record);
   const again =

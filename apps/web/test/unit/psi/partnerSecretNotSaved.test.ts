@@ -279,6 +279,8 @@ describe("a managed exchange", () => {
 describe("the windows after the partner's failed save, until a re-invite", () => {
   const LATER = "2026-07-21T09:00:00.000Z";
   const LATER_MS = Date.parse(LATER);
+  const LATER_2 = "2026-07-28T09:00:00.000Z";
+  const LATER_2_MS = Date.parse(LATER_2);
 
   /** The record as the store holds it once the partner-storage stop landed. */
   function afterStop(): ManagedExchangeRecord {
@@ -392,11 +394,37 @@ describe("the windows after the partner's failed save, until a re-invite", () =>
       expect(notice?.kind).toBe("unexplained");
     });
 
-    test("leaves the partner's report standing for the re-invite", () => {
-      expect(raisedStandingCondition(later())?.kind).toBe("partner-storage");
+    test("replaces the partner's report as the standing condition", () => {
+      expect(raisedStandingCondition(later())).toEqual({
+        since: LATER,
+        kind: "auth",
+      });
       const view = managedStandingConditionView(later(), undefined);
-      expect(view?.tier).toBe("partner-storage");
-      expect(view?.clearance).toBe("acknowledge");
+      expect(view?.tier).toBe("unexplained");
+      expect(view?.clearance).toBe("confirmation");
+    });
+
+    test("keeps the confirmation across a no-show window after it", () => {
+      const afterNoShow = applyManagedExchangeLastRun(
+        later(),
+        { at: LATER_2, outcome: "missed" },
+        LATER_2_MS,
+        LATER_2_MS,
+      );
+      expect(readManagedFailure(afterNoShow, undefined, NOW + 1)).toEqual({
+        tier: "unexplained",
+        standing: true,
+      });
+      const failure = managedRunFailureFromRecord(
+        afterNoShow,
+        undefined,
+        NOW + 1,
+      );
+      expect(failure?.kind).toBe("unexplained");
+      expect(failure && managedRunReinvites(failure)).toBe(false);
+      const view = managedStandingConditionView(afterNoShow, undefined);
+      expect(view?.tier).toBe("unexplained");
+      expect(view?.clearance).toBe("confirmation");
     });
 
     test("reads as unexplained on a live run, with no retry", () => {
@@ -412,11 +440,30 @@ describe("the windows after the partner's failed save, until a re-invite", () =>
       expect(managedRunReinvites(failure)).toBe(false);
     });
 
-    test("dates the confirmation message by that handshake, not the partner's report", () => {
-      const message = composeConfirmationMessage(later());
-      expect(message).toContain(dateTimeLabel(new Date(LATER)));
+    test("dates the confirmation message by the first failed handshake", () => {
+      const twice = applyManagedExchangeLastRun(
+        later(),
+        { ...failedHandshake, at: LATER_2 },
+        LATER_2_MS,
+        LATER_2_MS,
+      );
+      const message = composeConfirmationMessage(twice);
+      expect(message).toContain(
+        `on ${dateTimeLabel(new Date(LATER))}, and again on ${dateTimeLabel(new Date(LATER_2))}.`,
+      );
       expect(message).not.toContain(dateTimeLabel(new Date(RUN_AT)));
     });
+  });
+
+  test("windows that are only no-shows keep the partner's failed save and its re-invite", () => {
+    const twice = applyManagedExchangeLastRun(
+      afterLaterWindow(noShow),
+      { at: LATER_2, outcome: "missed" },
+      LATER_2_MS,
+      LATER_2_MS,
+    );
+    expect(raisedStandingCondition(twice)?.kind).toBe("partner-storage");
+    expectReinvite(managedRunFailureFromRecord(twice, undefined, NOW + 1));
   });
 
   test.each(["auth", "storage"] as const)(

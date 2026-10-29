@@ -1905,12 +1905,20 @@ export function standingCompromiseResponse(
 /** Raise a standing condition on a record, unless one already stands or there is
  * none to raise. First raise wins: the standing condition is the one the operator
  * has yet to answer, and answering it is a single act over everything that stood
- * before it. The input record is not mutated. */
+ * before it. The one exception is an `auth` raise over a standing
+ * `partner-storage` condition: this device's own failed handshake is local
+ * evidence, the partner's report is a claim, and the claim must not hide the
+ * confirmation the handshake calls for. The input record is not mutated. */
 function withStandingCondition(
   record: ManagedExchangeRecord,
   condition: ManagedStandingCondition | undefined,
 ): ManagedExchangeRecord {
-  if (condition === undefined || raisedStandingCondition(record) !== undefined)
+  if (condition === undefined) return record;
+  const standing = raisedStandingCondition(record);
+  if (
+    standing !== undefined &&
+    !(standing.kind === "partner-storage" && condition.kind === "auth")
+  )
     return record;
   return { ...record, standingCondition: condition };
 }

@@ -717,8 +717,10 @@ replaces `lastRun` with an entry that records no failure kind at all. The
 **Raised** by any `lastRun` entry whose `failureKind` is `"auth"`, `"storage"`, or
 `"partner-storage"`, at that entry's own instant. The first raise stands: a later condition leaves the
 standing one as it is, since answering is a single act over everything that stood
-before it, and the earlier evidence is the one still unanswered. It is raised at
-two sites, and needs both:
+before it, and the earlier evidence is the one still unanswered. The one
+exception is an `"auth"` raise over a standing `"partner-storage"` condition,
+which replaces it: this device's own failed handshake is local evidence, and the
+partner's report is a claim. It is raised at two sites, and needs both:
 
 - the `lastRun` write above, which every runner records through; and
 - the [schedule advance](#catch-up-on-wake), which carries the condition its
@@ -768,12 +770,14 @@ A recorded benign cause is not displaced by either rule: it is the run's own
 actionable state, and the condition stands until something clears it.
 
 A `"partner-storage"` condition supplies its tier only where the last run
-records no failure or a no-show. A recorded unexplained handshake failure beside
-one stays the unexplained tier and takes the Tier 2 confirmation: the partner's
-reported save failure is the other side's claim, which anyone holding the
-current secret can send, so it is not local evidence. The condition is raised
+records no failure or a no-show. A handshake that fails closed after one raises an
+`"auth"` condition in its place, which takes the Tier 2 confirmation across the
+windows after it: the partner's reported save failure is the other side's claim,
+which anyone holding the current secret can send, so it is not local evidence.
+The condition is raised
 only by the partner's abort read on the channel its handshake authenticated.
-No condition holds a window: the scheduled runner opens each one as before, and
+
+No condition of either kind holds a window: the scheduled runner opens each one as before, and
 since each party derives its rendezvous from the secret it holds
 ([Derived, never stored](#derived-never-stored)), a window after a one-sided
 persist failure finds no partner, recorded as a no-show, or fails closed at the
