@@ -272,15 +272,16 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
     });
   } catch (caught) {
     // The side read under the lock dispatched the run, so it names this
-    // side's role in the store order. Only a run that saved the next secret
-    // reports the partner's failed save; any other reads the abort as it is.
+    // side's role in the store order. A managed run's store is its save, so
+    // what it stored it also kept.
     const error =
-      current === undefined || !rotation.stored
+      current === undefined
         ? caught
         : withPartnerSecretNotSaved(
             caught,
             handshakeRoleForRendezvousRole(current.side),
-            true,
+            rotation.stored,
+            rotation.stored,
           );
     // A stop is honored only before the rotation-in-flight marker, so a
     // failure from the handshake phase after one is the stop's, whatever the

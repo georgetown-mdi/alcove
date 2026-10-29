@@ -332,12 +332,12 @@ export const PARTNER_SECRET_NOT_SAVED_UNCHANGED_MESSAGE: Record<
 > = {
   inviter:
     "Your partner could not save the new secret, so the exchange stopped. " +
-    "Nothing changed on this side. Start over with a fresh invitation and " +
-    "send it to your partner.",
+    "Nothing changed on this side. " +
+    PARTNER_SECRET_NOT_SAVED_REMEDY.inviter,
   acceptor:
     "Your partner could not save the new secret, so the exchange stopped. " +
-    "Nothing changed on this side. Ask your partner to send you a new " +
-    "invitation.",
+    "Nothing changed on this side. " +
+    PARTNER_SECRET_NOT_SAVED_REMEDY.acceptor,
 };
 
 function failureContentFor(

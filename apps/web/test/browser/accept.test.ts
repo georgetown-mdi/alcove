@@ -2906,8 +2906,9 @@ describe("acceptor screen: run and completion", () => {
       .element(
         page.getByText(
           "Your partner could not save the new secret, so the exchange " +
-            "stopped. Nothing changed on this side. Ask your partner to send " +
-            "you a new invitation.",
+            "stopped. Nothing changed on this side. Ask your partner for a " +
+            "new invitation, then choose Start over with a fresh invitation " +
+            "to accept it.",
         ),
       )
       .toBeInTheDocument();

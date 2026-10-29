@@ -734,6 +734,33 @@ describe("runExchangeLifecycle", () => {
     expect(reported.record).toBe(STUB_RECORD);
   });
 
+  test("an initiator that never stored the next secret reads the same abort as any partner abort", async () => {
+    const { mc } = makeFakeMc();
+    mockedOpen.mockResolvedValue(mc);
+    const abort = new PeerAbortError(
+      undefined,
+      NEXT_SECRET_STORE_FAILED_ABORT_REASON,
+    );
+    // Every mocked runExchange stores first, so the abort is raised ahead of
+    // it, where no store has run.
+    mockedAuthenticate.mockRejectedValueOnce(abort);
+    const { acquire } = makeResources();
+    const s = seams();
+
+    await runExchangeLifecycle({
+      acquire,
+      exchangeRole: "initiator",
+      signal: new AbortController().signal,
+      ...s,
+    });
+
+    expect(mockedRunExchange).not.toHaveBeenCalled();
+    expect(s.onError).toHaveBeenCalledExactlyOnceWith({
+      category: "exchange",
+      error: abort,
+    });
+  });
+
   test("a responder reading the same abort reports the abort itself", async () => {
     const { mc } = makeFakeMc();
     mockedOpen.mockResolvedValue(mc);

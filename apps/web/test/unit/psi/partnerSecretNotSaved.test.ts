@@ -92,10 +92,10 @@ const stamped: ManagedExchangeLastRun = {
 
 describe("withPartnerSecretNotSaved", () => {
   test.each([true, false])(
-    "names the partner's store-failure abort on an initiator, recording kept %s",
+    "names the partner's store-failure abort on an initiator that stored, recording kept %s",
     (kept) => {
       const abort = storeFailure();
-      const named = withPartnerSecretNotSaved(abort, "initiator", kept);
+      const named = withPartnerSecretNotSaved(abort, "initiator", true, kept);
       if (!(named instanceof PartnerSecretNotSavedError))
         throw new Error("expected the partner's failed save");
       expect(named.cause).toBe(abort);
@@ -105,6 +105,7 @@ describe("withPartnerSecretNotSaved", () => {
 
   test.each([
     ["on a responder", storeFailure(), "responder", true],
+    ["on an initiator that stored nothing", storeFailure(), "initiator", false],
     [
       "for another abort reason",
       new PeerAbortError(undefined, PSI_SET_REFUSED_ABORT_REASON),
@@ -120,7 +121,9 @@ describe("withPartnerSecretNotSaved", () => {
   ] as const)(
     "leaves the failure as it is %s",
     (_case, error, role, stored) => {
-      expect(withPartnerSecretNotSaved(error, role, stored)).toBe(error);
+      expect(withPartnerSecretNotSaved(error, role, stored, stored)).toBe(
+        error,
+      );
     },
   );
 });
@@ -138,8 +141,9 @@ describe("a one-shot exchange", () => {
     expect(failure.title).toBe(PARTNER_SECRET_NOT_SAVED_TITLE);
     expect(failure.message).toBe(
       "Your partner could not save the new secret, so the exchange stopped. " +
-        "Nothing changed on this side. Ask your partner to send you a new " +
-        "invitation.",
+        "Nothing changed on this side. Ask your partner for a new " +
+        "invitation, then choose Start over with a fresh invitation to " +
+        "accept it.",
     );
     expect(failure.reportedCause).toBeUndefined();
     expect(failure.retry).toBe("withheld");

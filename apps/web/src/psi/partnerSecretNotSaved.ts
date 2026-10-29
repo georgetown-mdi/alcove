@@ -38,16 +38,20 @@ export class PartnerSecretNotSavedError extends Error {
 
 /**
  * `error` as a {@link PartnerSecretNotSavedError} where it is the partner's
- * store-failure abort ({@link isPartnerNextSecretStoreFailure}) read by this
- * side as the initiator, recording `keptNextSecret`; `error` itself otherwise,
- * so any other failure reports as it does without this.
+ * store-failure abort ({@link isPartnerNextSecretStoreFailure}) and this side,
+ * the initiator, stored the next secret this run (`storedNextSecret`),
+ * recording `keptNextSecret`; `error` itself otherwise, so a side that stored
+ * nothing reads that reason as any partner abort.
  */
 export function withPartnerSecretNotSaved(
   error: unknown,
   role: HandshakeRole,
+  storedNextSecret: boolean,
   keptNextSecret: boolean,
 ): unknown {
-  return role === "initiator" && isPartnerNextSecretStoreFailure(error)
+  return role === "initiator" &&
+    storedNextSecret &&
+    isPartnerNextSecretStoreFailure(error)
     ? new PartnerSecretNotSavedError({ cause: error, keptNextSecret })
     : error;
 }
