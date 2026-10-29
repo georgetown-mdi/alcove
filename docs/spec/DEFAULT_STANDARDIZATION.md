@@ -2112,12 +2112,26 @@ block, and an invitation composed from an input file.
   listing a number spelling (`ssn`, `phone_number`, `street_number`, `unit`),
   the part of such a spelling before its suffix (`phone` of `phone_number`,
   `social_security` of `social_security_number`), either written with or
-  without `_`, or `telephone`, `mobile`, `cell`, `fax`, `tel`, or `yes`:
-  `phone_no`, `Home Phone Number`, `SocialSecurityNumber`, and `yes_no` infer
-  as any other name absent from the table, while `warehouse_number` and
-  `state_number` are record numbers.
+  without `_`, or `telephone`, `mobile`, `cell`, `fax`, `tel`, or `yes`;
+  `warehouse_number` and `state_number` are record numbers.
+  Such a name whose words are of the `ssn` or `phone_number` type or a phone
+  word, such as `ssn_number`, `SocialSecurityNumber`, or `PhoneNo`, is an SSN
+  or phone number: it infers nothing when declared-only, and `type: other`,
+  `role: ignored`, `is_payload: false` in direct mode, so it is never sent,
+  matched on, or the record identifier.
+  Any other such name, such as `StreetNo` or `yes_no`, infers as any other
+  name absent from the table.
 - Any other name absent from the table infers nothing when declared-only, and
   `type: other`, `role: payload`, `is_payload: true` in direct mode.
+
+The record-number rule has two limits:
+
+- An all-capitals or all-lowercase header with an unseparated `no`, such as
+  `RECORDNO` or `recordno`, is not a record number and is sent in direct mode;
+  a `metadata` block that declares it holds it back.
+- The camel-case split can find a guard word inside a compound word:
+  `WareHouseNumber` splits into `ware_house`, whose `house` exempts it, so it
+  is sent in direct mode while `warehouse_number` is held back.
 
 A second pass then decides which column indexes this party's own records: the
 first `identifier`-typed column in header order that is not a record number is
@@ -2132,7 +2146,7 @@ declared-only inference leaves: the inferred
 metadata has no entry for it, so the run does not index by it or send it, and
 matches on it only when a standardization transform names it as its `input`. What a party sends is exactly what its metadata declares.
 Declared-only, every inferred entry has `is_payload: false`, so the run sends no column until a `metadata` block declares one sent.
-In direct mode a column is sent when neither the table nor the `identifier` rule above types it, and every other column infers `is_payload: false`.
+In direct mode a column is sent when neither the table nor the `identifier` rule above types it and it is not an SSN or phone number under such a name, and every other column infers `is_payload: false`.
 A column is a linkage key only when its lookup key is a name in the table,
 so in direct mode a linkage column under any other name, such as `Given Name`
 or `Birthdate`, infers `role: payload` and is sent. The

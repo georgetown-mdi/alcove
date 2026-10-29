@@ -371,19 +371,33 @@ const NAMED_IDENTIFIER_LOOKUP_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Words that, as the last word before a `number` or `no` suffix, mark the
- * number of something other than a record, beyond the words read from the
- * inference table ({@link recordNumberGuardWords}): phone kinds and a yes/no
- * answer.
+ * Phone kinds that, as the last word before a `number` or `no` suffix, mark a
+ * phone number, beyond the words read from the inference table
+ * ({@link recordNumberGuardWords}).
  */
-const NON_RECORD_NUMBER_WORDS: ReadonlyArray<string> = [
+const PHONE_NUMBER_WORDS: ReadonlyArray<string> = [
   "telephone",
   "mobile",
   "cell",
   "fax",
   "tel",
-  "yes",
 ];
+
+/**
+ * Words that, as the last word before a `number` or `no` suffix, mark the
+ * number of something other than a record that is not sensitive either,
+ * beyond the words read from the inference table: a yes/no answer.
+ */
+const NON_RECORD_NUMBER_WORDS: ReadonlyArray<string> = ["yes"];
+
+/**
+ * The inference-table types whose number spellings the table does not list are
+ * held back rather than sent: an SSN or a phone number under any name.
+ */
+const HELD_BACK_NUMBER_TYPES: ReadonlySet<string> = new Set([
+  "ssn",
+  "phone_number",
+]);
 
 /**
  * The part of a lookup key before a `_number`, `_no` or `number` suffix, or
@@ -419,17 +433,26 @@ function columnNameWords(name: string): string {
   );
 }
 
+/** The two sets of {@link recordNumberGuardWords}. */
+interface RecordNumberGuardWords {
+  /** Words whose number is an SSN or a phone number, held back. */
+  heldBack: ReadonlySet<string>;
+  /** Words whose number is an address part or no number at all, unchanged. */
+  exempt: ReadonlySet<string>;
+}
+
 /**
  * The words whose number is not a record number, in lookup-key form and also
  * with `_` removed: every name of each inference-table type that lists a
- * number spelling (`ssn`, `phone_number`, `street_number`, `unit`), the
+ * number spelling (`ssn`, `phone_number`, `street_number`, `unit`), and the
  * part of each such spelling before its suffix (`phone` of `phone_number`,
- * `social_security` of `social_security_number`), and
- * {@link NON_RECORD_NUMBER_WORDS}.
+ * `social_security` of `social_security_number`). Those of the
+ * {@link HELD_BACK_NUMBER_TYPES}, with {@link PHONE_NUMBER_WORDS}, are
+ * `heldBack`; the rest, with {@link NON_RECORD_NUMBER_WORDS}, are `exempt`.
  */
 function recordNumberGuardWords(
   table: Readonly<Record<string, TypeMetaMapped>>,
-): ReadonlySet<string> {
+): RecordNumberGuardWords {
   const entries = Object.entries(table).filter(
     ([, { type }]) => type !== "identifier",
   );
@@ -438,16 +461,18 @@ function recordNumberGuardWords(
       .filter(([key]) => numberSuffixPrefix(key) !== undefined)
       .map(([, { type }]) => type),
   );
-  const words = new Set(NON_RECORD_NUMBER_WORDS);
+  const heldBack = new Set(PHONE_NUMBER_WORDS);
+  const exempt = new Set(NON_RECORD_NUMBER_WORDS);
   for (const [key, { type }] of entries) {
     if (!numberedTypes.has(type)) continue;
+    const words = HELD_BACK_NUMBER_TYPES.has(type) ? heldBack : exempt;
     for (const word of [key, numberSuffixPrefix(key)])
       if (word !== undefined) {
         words.add(word);
         words.add(word.replaceAll("_", ""));
       }
   }
-  return words;
+  return { heldBack, exempt };
 }
 
 /**
@@ -462,19 +487,33 @@ function isNamedIdentifierLookupKey(lookupName: string): boolean {
 }
 
 /**
- * Whether a column infers `type: identifier` as a record number: it ends in a
- * record-number suffix ({@link hasRecordNumberSuffix}), and the last word
- * before the suffix ({@link columnNameWords}) is none of
- * {@link RECORD_NUMBER_GUARD_WORDS}, compared as whole words. The guard
- * keeps `PhoneNo`, `Home Phone Number` and `SocialSecurityNumber` out, and
- * lets `warehouse_number` and `hotel_no` in.
+ * What a column with a record-number suffix ({@link hasRecordNumberSuffix}) is
+ * the number of, read from the words before the suffix ({@link columnNameWords})
+ * against {@link RECORD_NUMBER_GUARD_WORDS} as whole words: `heldBack` for an
+ * SSN or phone number (`ssn_number`, `HomePhoneNumber`), `exempt` for an
+ * address part or a yes/no answer (`StreetNo`, `yes_no`), `record` for any
+ * other (`case_number`, `warehouse_number`), and `undefined` without the
+ * suffix.
+ */
+function numberColumnKind(
+  name: string,
+  lookupName: string,
+): "record" | "heldBack" | "exempt" | undefined {
+  if (!hasRecordNumberSuffix(name, lookupName)) return undefined;
+  const words = columnNameWords(name).replace(/_?(?:number|no)$/, "");
+  const endsInOneOf = (guard: ReadonlySet<string>) =>
+    [...guard].some((word) => words === word || words.endsWith(`_${word}`));
+  if (endsInOneOf(RECORD_NUMBER_GUARD_WORDS.heldBack)) return "heldBack";
+  if (endsInOneOf(RECORD_NUMBER_GUARD_WORDS.exempt)) return "exempt";
+  return "record";
+}
+
+/**
+ * Whether a column infers `type: identifier` as a record number
+ * ({@link numberColumnKind}).
  */
 function isRecordNumberColumn(name: string, lookupName: string): boolean {
-  if (!hasRecordNumberSuffix(name, lookupName)) return false;
-  const words = columnNameWords(name).replace(/_?(?:number|no)$/, "");
-  return ![...RECORD_NUMBER_GUARD_WORDS].some(
-    (word) => words === word || words.endsWith(`_${word}`),
-  );
+  return numberColumnKind(name, lookupName) === "record";
 }
 
 /**
@@ -703,8 +742,10 @@ function assertColumnNamesNonEmpty(
  *   `role: ignored`, so every column is declared and none is undeclared.
  *
  * Under both, no identifier-typed column (`id`, `identifier`, or a name
- * {@link isUnlistedIdentifierColumn} accepts) is sent, and a linkage-key
- * alias is never sent and is matched on only where a linkage key reads it.
+ * {@link isUnlistedIdentifierColumn} accepts) is sent, a linkage-key alias is
+ * never sent and is matched on only where a linkage key reads it, and an SSN or
+ * phone number under a name the table does not list (`numberColumnKind`
+ * `heldBack`) is `type: other`, `role: ignored`, and never sent.
  */
 export type MetadataInferenceMode = "declaredOnly" | "direct";
 
@@ -722,7 +763,8 @@ export interface InferMetadataOptions {
  * name. Under the default `declaredOnly` mode every other column is left
  * out, so it is not declared and never sent
  * ({@link undeclaredColumnNames} lists them); under `direct` it is declared
- * as payload and sent ({@link MetadataInferenceMode}).
+ * as payload and sent, unless it is an SSN or phone number the table does not
+ * list ({@link MetadataInferenceMode}).
  *
  * The first identifier-typed column in header order that is not only a record
  * number ({@link isRecordNumberColumn}) gets `role: identifier`, used to index
@@ -782,6 +824,11 @@ export function inferMetadataForEveryColumn(
 
   const result: Metadata = columnNames.map((name) => {
     const typeMeta = recognizedTypeMeta(name);
+    if (
+      typeMeta === undefined &&
+      numberColumnKind(name, columnNameLookupKey(name)) === "heldBack"
+    )
+      return { name, type: "other", role: "ignored", isPayload: false };
     if (typeMeta === undefined)
       return direct
         ? { name, type: "other", role: "payload", isPayload: true }

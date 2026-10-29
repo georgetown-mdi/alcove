@@ -295,25 +295,37 @@ describe("previewInferredTerms", () => {
       "RecordID",
       "MemberID",
       "case_number",
+      "record_no",
       "RecordNo",
       "zip_no",
     ];
     expect(DIRECT_RECOGNIZED_COLUMNS_NOTICE).toContain(
       "An id column is never sent either: a header named id, identifier, " +
         "MRN, ClientID, PersonID, PersonalID, PatientID, RecordID, or " +
-        "MemberID, or one ending in _id, number, or no as a word of its own, " +
-        "such as case_number or RecordNo, except a phone, SSN, or street " +
-        "address number, such as phone_no.",
+        "MemberID, or one ending in _id, number, or _no, such as case_number " +
+        "or record_no, or in No with a capital N after a lowercase letter, such " +
+        "as RecordNo, except a street address or unit number or a yes/no " +
+        "answer, such as StreetNo or yes_no.",
     );
-    const metadata = inferMetadata([...named, "phone_no"], [], {
-      mode: "direct",
-    });
+    const metadata = inferMetadata(
+      [...named, "StreetNo", "yes_no", "RECORDNO", "phone_no"],
+      [],
+      { mode: "direct" },
+    );
     expect(
       metadata
         .filter((column) => column.type === "identifier")
         .map((column) => column.name),
     ).toEqual(named);
-    expect(disclosedColumnNames(metadata)).toEqual(["phone_no"]);
+    expect(disclosedColumnNames(metadata)).toEqual([
+      "StreetNo",
+      "yes_no",
+      "RECORDNO",
+    ]);
+    expect(DIRECT_RECOGNIZED_COLUMNS_NOTICE).toContain(
+      "Letter case and spaces at either end of a header do not matter, " +
+        "except in that No,",
+    );
   });
 
   test("names the rule selection in core's words, as the CLI display does", () => {

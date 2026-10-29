@@ -134,10 +134,12 @@ export const DIRECT_RECOGNIZED_COLUMNS_NOTICE =
   "first_name, date_of_birth, ssn, phone, email, or zip, is never sent: it is " +
   "matched on or kept back. An id column is never sent either: a header " +
   "named id, identifier, MRN, ClientID, PersonID, PersonalID, PatientID, " +
-  "RecordID, or MemberID, or one ending in _id, number, or no as a word of " +
-  "its own, such as case_number or RecordNo, except a phone, SSN, or street " +
-  "address number, such as phone_no. Letter case and spaces at either end " +
-  "of a header do not matter, and a space, hyphen, or dot between words " +
+  "RecordID, or MemberID, or one ending in _id, number, or _no, such as " +
+  "case_number or record_no, or in No with a capital N after a lowercase " +
+  "letter, such as RecordNo, except a street address or unit number or a " +
+  "yes/no answer, such as StreetNo or yes_no. Letter case and spaces at " +
+  "either end of a header do not matter, except in that No, and a space, " +
+  "hyphen, or dot between words " +
   "counts the same as an underscore, so First Name and Social Security " +
   "Number are recognized. Every other column is sent, including a header " +
   "Alcove does not recognize, such as E-mail.";

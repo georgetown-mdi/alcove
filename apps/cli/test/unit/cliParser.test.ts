@@ -241,9 +241,10 @@ test("top-level help states the id rule, and inference holds back each name it s
   expect(flat).toContain(
     "An id column is held back too: one named id, identifier, MRN, " +
       "ClientID, PersonID, PersonalID, PatientID, RecordID, or MemberID, or " +
-      "one ending in _id, number, or no as a word of its own (case_number, " +
-      "RecordNo), except a phone, SSN, or street address number (phone_no, " +
-      "ssn_number). A space, hyphen, or dot in a name counts as _.",
+      "one ending in _id, number, or _no (case_number, record_no), or in No " +
+      "with a capital N after a lowercase letter (RecordNo), except a street " +
+      "address or unit number or a yes/no answer (StreetNo, yes_no). A space, " +
+      "hyphen, or dot in a name counts as _.",
   );
   expect(flat).not.toContain("such as id, case_id, ClientID");
   const named = [
@@ -259,18 +260,26 @@ test("top-level help states the id rule, and inference holds back each name it s
     "case_id",
     "Member ID",
     "case_number",
+    "record_no",
+    "Record No",
     "RecordNo",
     "state_number",
   ];
-  const metadata = inferMetadata([...named, "phone_no", "ssn_number"], [], {
-    mode: "direct",
-  });
+  const metadata = inferMetadata(
+    [...named, "StreetNo", "yes_no", "RECORDNO", "phone_no", "ssn_number"],
+    [],
+    { mode: "direct" },
+  );
   expect(
     metadata
       .filter((column) => column.type === "identifier")
       .map((column) => column.name),
   ).toEqual(named);
-  expect(disclosedColumnNames(metadata)).toEqual(["phone_no", "ssn_number"]);
+  expect(disclosedColumnNames(metadata)).toEqual([
+    "StreetNo",
+    "yes_no",
+    "RECORDNO",
+  ]);
 });
 
 test("`--retain-files` help states that it turns the options it needs on", async () => {

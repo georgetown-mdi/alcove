@@ -366,25 +366,13 @@ const NUMBER_SUFFIX_FALSE_MATCHES: Array<[name: string, type: SemanticType]> = [
   ["apartment_number", "unit"],
   ["apt_no", "unit"],
   ["apt_number", "unit"],
-  ["phone_no", "other"],
-  ["PhoneNo", "other"],
-  ["Home Phone Number", "other"],
-  ["HomePhoneNumber", "other"],
-  ["telephone_number", "other"],
-  ["mobile_number", "other"],
-  ["CellNumber", "other"],
-  ["fax_no", "other"],
-  ["tel_no", "other"],
-  ["SocialSecurityNumber", "other"],
-  ["social_security_no", "other"],
-  ["ssn_number", "other"],
-  ["SSN No", "other"],
+  ["ssn", "ssn"],
+  ["SSN", "ssn"],
+  ["social", "ssn"],
+  ["SOCIAL_SECURITY_NUMBER", "ssn"],
   ["StreetNo", "other"],
   ["HouseNo", "other"],
   ["AptNo", "other"],
-  ["cell_no", "other"],
-  ["CellNo", "other"],
-  ["socialsecuritynumber", "other"],
   ["Casino", "other"],
   ["casino", "other"],
   ["CASINO", "other"],
@@ -422,6 +410,81 @@ describe.each(["declaredOnly", "direct"] as const)(
     });
   },
 );
+
+// --- inferMetadata: SSN and phone numbers under unlisted names ---------------
+
+// An SSN or phone number under a name the table does not list is held back in
+// both modes: declared `role: ignored` with an entry of its own under direct
+// inference, left out under declared-only inference, and never the record
+// identifier.
+const HELD_BACK_NUMBER_SPELLINGS = [
+  "ssn_number",
+  "ssn_no",
+  "SSNNumber",
+  "SSN No",
+  "SocialSecurityNumber",
+  "socialsecuritynumber",
+  "social_security_no",
+  "Social Security No",
+  "social_no",
+  "telephone_number",
+  "phone_no",
+  "PhoneNo",
+  "Home Phone Number",
+  "HomePhoneNumber",
+  "mobile_number",
+  "cell_no",
+  "CellNo",
+  "CellNumber",
+  "fax_no",
+  "tel_no",
+];
+
+describe.each(["declaredOnly", "direct"] as const)(
+  "%s mode: an SSN or phone number under an unlisted name is held back",
+  (mode) => {
+    test.each(HELD_BACK_NUMBER_SPELLINGS)("%j", (name) => {
+      expect(inferMetadataForEveryColumn([name], [], { mode })).toEqual([
+        { name, type: "other", role: "ignored", isPayload: false },
+      ]);
+      const metadata = inferMetadata([name, "first_name", "notes"], [], {
+        mode,
+      });
+      expect(disclosedColumnNames(metadata)).toEqual(
+        mode === "direct" ? ["notes"] : [],
+      );
+      expect(metadata.some((column) => column.role === "identifier")).toBe(
+        false,
+      );
+      expect(identifierTypedColumnNames([name])).toEqual([]);
+    });
+
+    test.each([
+      [["ssn_number", "case_number"]],
+      [["case_number", "ssn_number"]],
+      [["HomePhoneNumber", "case_number", "cell_no"]],
+    ])("%j picks case_number as the record identifier", (columns) => {
+      expect(
+        inferMetadataForEveryColumn(columns, [], { mode })
+          .filter((column) => column.role === "identifier")
+          .map((column) => column.name),
+      ).toEqual(["case_number"]);
+    });
+  },
+);
+
+test("a file whose only number columns are SSN or phone numbers has no record identifier", () => {
+  const metadata = inferMetadata(
+    ["ssn_number", "PhoneNo", "first_name", "notes"],
+    [],
+    { mode: "direct" },
+  );
+  expect(metadata.some((column) => column.role === "identifier")).toBe(false);
+  expect(inferredRecordIdentifierStatement(metadata)).toBe(
+    NO_IDENTIFIER_STATEMENT,
+  );
+  expect(disclosedColumnNames(metadata)).toEqual(["notes"]);
+});
 
 // --- inferMetadata: choosing the record identifier ---------------------------
 
