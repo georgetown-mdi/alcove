@@ -45,12 +45,13 @@ It is the session's last step: the board alone holds the state afterwards.
    that holds the list, your opinion on each, the consequences of the docket's
    rulings, and the owner's instruction above quoted verbatim. The quoted
    instruction is the owner's delegation for the batch: relayed verbatim in
-   the spawn prompt, it licenses filing every item you and the PM agree on,
-   so the one-autonomous-filing cap in `.claude/pm/ruleset.md`, Filing and
-   updating items, does not return agreed drafts to the owner.
+   the spawn prompt, it licenses filing every item you and the PM agree on
+   (`.claude/pm/ruleset.md`, Filing and updating items).
 4. File only what you and the PM both agree on, each with an epic and an
-   implementation order. Raise a disagreement with the owner rather than
-   settling it. One side conceding on evidence the other verified in the
+   implementation order. Write every held follow-up's outcome on its line in
+   the continuation brief, and for one a ledger entry names by slug, also in
+   that entry, as the PM ruleset's same section states. Raise a disagreement with the owner rather
+   than settling it. One side conceding on evidence the other verified in the
    repository is agreement, not a disagreement to raise. A PM question that
    blocks nothing is carried in the filed item's Open questions and named in
    the report, never put to the owner mid-pass.

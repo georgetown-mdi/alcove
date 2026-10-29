@@ -202,7 +202,122 @@ describe("deferred entries", () => {
       oldHead,
     );
     expect(result.status).toBe("refused");
-    expect(result.reason).toMatch(/neither a "board" item nor a "limitsLine"/);
+    expect(result.reason).toMatch(
+      /names no "board" item, "followUp", or "limitsLine"/,
+    );
+  });
+
+  it("passes a deferral to a held follow-up that is also internal or has a limits line the head holds", () => {
+    const { fixture, oldHead } = branchWithFix();
+    const results = check(
+      fixture,
+      row([
+        {
+          item: "a",
+          disposition: "deferred",
+          followUp: "quote-cron-percent",
+          surface: "internal",
+        },
+        {
+          item: "b",
+          disposition: "deferred",
+          followUp: "tz2",
+          limitsLine: 'docs/spec/LIMITS.md#"skips blank rows"',
+        },
+      ]),
+      oldHead,
+    );
+    expect(results.map((r) => `${r.item}:${r.status}`)).toEqual([
+      "a:ok",
+      "b:ok",
+    ]);
+  });
+
+  it("refuses a held follow-up that is not internal and has no limits line the head holds", () => {
+    const { fixture, oldHead } = branchWithFix();
+    const results = check(
+      fixture,
+      row([
+        { item: "a", disposition: "deferred", followUp: "quote-cron-percent" },
+        {
+          item: "b",
+          disposition: "deferred",
+          followUp: "tz2",
+          limitsLine: 'docs/spec/LIMITS.md#"skips every row"',
+        },
+      ]),
+      oldHead,
+    );
+    expect(results.map((r) => `${r.item}:${r.status}`)).toEqual([
+      "a:refused",
+      "b:refused",
+    ]);
+    expect(results[0].reason).toBe(
+      'held follow-up "quote-cron-percent" also needs what a limit does, in case the follow-ups pass declines it: a limit on a reachable surface names no "limitsLine"; write the spec line, or mark the entry "surface": "internal"',
+    );
+    expect(results[1].reason).toMatch(
+      /^held follow-up "tz2" .*quotes a phrase docs\/spec\/LIMITS\.md does not hold/,
+    );
+  });
+
+  it("passes an entry naming both a board item and a follow-up, and a limit still carrying its follow-up", () => {
+    const { fixture, oldHead } = branchWithFix();
+    const results = check(
+      fixture,
+      row(
+        [
+          {
+            item: "a",
+            disposition: "deferred",
+            board: "3/254",
+            followUp: "quote-cron-percent",
+          },
+          {
+            item: "b",
+            disposition: "limit",
+            surface: "internal",
+            followUp: "tz2",
+            note: "declined",
+          },
+        ],
+        { date: LIMIT_DATE },
+      ),
+      oldHead,
+    );
+    expect(results.map((r) => `${r.item}:${r.status}`)).toEqual([
+      "a:ok",
+      "b:ok",
+    ]);
+  });
+
+  it("refuses a malformed held follow-up, naming the slug shape", () => {
+    const { fixture, oldHead } = branchWithFix();
+    const results = check(
+      fixture,
+      row(
+        [
+          "Quote cron percent",
+          "quote_cron",
+          "quote--cron",
+          "-quote",
+          "quote-",
+          "continuation-2026-10-29.md#3",
+          "",
+          7,
+          null,
+        ].map((followUp, i) => ({
+          item: `f${i}`,
+          disposition: "deferred",
+          followUp,
+        })),
+      ),
+      oldHead,
+    );
+    expect(results).toHaveLength(9);
+    for (const result of results) {
+      expect(result.status).toBe("refused");
+      expect(result.reason).toMatch(/^"followUp" is .*, not a "<slug>"/);
+    }
   });
 
   it("passes a board item or a limits line the head holds, and refuses a malformed or absent one", () => {
@@ -408,6 +523,32 @@ describe("legacy rows", () => {
       check(fixture, ledger, oldHead).map((r) => `${r.item}:${r.status}`),
     ).toEqual([
       "new limit:pre-rule",
+      "old fix:refused",
+      "old deferral:refused",
+      "old limit:pre-rule",
+    ]);
+  });
+
+  it("counts a deferral's follow-up as a field a later row is held to", () => {
+    const { fixture, oldHead } = branchWithFix();
+    const ledger = [
+      row(
+        [
+          {
+            item: "held",
+            disposition: "deferred",
+            followUp: "held-one",
+            surface: "internal",
+          },
+        ],
+        { date: "2026-09-02" },
+      ),
+      legacyRow("2026-09-03"),
+    ].join("\n");
+    expect(
+      check(fixture, ledger, oldHead).map((r) => `${r.item}:${r.status}`),
+    ).toEqual([
+      "held:ok",
       "old fix:refused",
       "old deferral:refused",
       "old limit:pre-rule",

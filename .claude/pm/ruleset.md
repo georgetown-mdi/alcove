@@ -238,16 +238,29 @@ the first. In order:
   from them.
 - Declining to file is a legitimate outcome. Say what the concern is worth and
   where it should live instead.
-- At most one work item is filed autonomously per session. Past that, draft
-  the rest and hand them to the caller for the owner's word. The cap counts
-  AUTONOMOUS filings: an owner delegation the caller relays, quoted verbatim in
-  the spawn prompt, licenses the batch it covers, and the report names the
-  delegation it filed under. A Decision item is a question, not work, and is
-  exempt from the cap.
-- Work the cap holds back is a potential follow-up: the session lists it in
-  its continuation brief, and the owner-triggered triage at the end of the
-  session (`.claude/commands/follow-ups.md`) decides it with a PM consult.
-  That command relays the owner's delegation verbatim.
+- A session files NO work item before its follow-ups pass. It lists each as a
+  potential follow-up in its continuation brief, and that owner-triggered pass
+  at the end of the session (`.claude/commands/follow-ups.md`) decides it with
+  a PM consult, relaying the owner's delegation verbatim. Two filings are not
+  held: one the owner asks for -- his own word, or a delegation the caller
+  relays quoted verbatim in the spawn prompt, which licenses the batch it
+  covers and which the report names -- and a Decision item, a question rather
+  than work.
+- A review finding deferred to a held follow-up names it in its ledger entry
+  as `"followUp": "<slug>"`, the slug lowercase letters and digits joined by
+  single hyphens, and the continuation brief lists it on a line starting
+  `Potential follow-up <slug>:`, so the pull request does not wait on a
+  filing. The brief is gitignored and host-local, so
+  `check-review-ledger-dispositions.mjs` checks the slug's shape only, never
+  that the brief lists it; the follow-ups pass resolves it. A deferral to a
+  held follow-up also carries `"surface": "internal"` or a limits line on the
+  branch, so a follow-up the pass declines leaves no reachable limit
+  undocumented. The pass records each held follow-up's outcome on its brief
+  line, and for one a ledger entry names by `followUp`, also in that entry: a
+  filed one gains `"board": "<board>/<itemId>"` beside its slug; a declined one
+  becomes `"disposition": "limit"` with the decline's reason as its `note` (the
+  surface or limits line above is already there). Ledgers are the record
+  retros read.
 - When a review fails to converge -- a step-back trigger fires
   (`.claude/commands/assess-review.md`, Step 2) -- the session offers the
   owner two things together: an immediate step-back on the churning area, and
@@ -255,8 +268,9 @@ the first. In order:
   owner's word.
 
 The board is the only queue, for work and decisions alike. Anything not
-settled in the session that raised it becomes an item -- filed under the cap
-above, or listed as a potential follow-up for the end-of-session triage --
+settled in the session that raised it becomes an item -- listed as a
+potential follow-up for the follow-ups pass, or filed where the rules above
+let it be --
 and a decision becomes an item in Decision status. None is held only in a PR
 follow-on line, a report tail, or a chat aside.
 Before drafting a Decision item, run
