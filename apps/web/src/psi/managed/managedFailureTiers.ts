@@ -147,10 +147,11 @@ export function managedStandingConditionTier(
 /**
  * Read a record's failure tier and its source as of `now`. The standing
  * condition supplies the tier where the last run shows no failure or a no-show
- * (so later stamps do not hide it), and where a persist failure on either side
- * explains an `"unexplained"` reading: each leaves the two parties on different
- * secrets, so the handshakes after it fail closed. It never displaces a
- * recorded benign cause, which is this run's own actionable state.
+ * (so later stamps do not hide it), and where a persist failure on this device
+ * explains an `"unexplained"` reading. The partner's reported save failure does
+ * not: it is the other side's claim, so a failed handshake beside it keeps the
+ * confirm-first reading. It never displaces a recorded benign cause, which is
+ * this run's own actionable state.
  */
 export function readManagedFailure(
   record: ManagedExchangeRecord,
@@ -173,11 +174,8 @@ export function readManagedFailure(
       tier: managedStandingConditionTier(condition, local),
       standing: true,
     };
-  if (
-    recorded === "unexplained" &&
-    (condition.kind === "storage" || condition.kind === "partner-storage")
-  )
-    return { tier: condition.kind, standing: true };
+  if (recorded === "unexplained" && condition.kind === "storage")
+    return { tier: "storage", standing: true };
   return { tier: recorded, standing: false };
 }
 

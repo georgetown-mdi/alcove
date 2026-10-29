@@ -852,8 +852,11 @@ The run history, the recurring list, and a notification state the same. The
 partner's report is matched against a fixed reason and never shown as text the
 partner sent. Scheduled runs keep running afterwards, but none can reach the
 partner: each side's meeting point derives from the secret it holds, so a later
-window finds no partner, and one that does meet fails at the handshake. Neither
-replaces the report, which stays until a re-invite.
+window finds no partner, and one that does meet fails at the handshake. A no-show
+does not replace the report, which stays until a re-invite. A handshake that
+fails closed is a new failure with its own reading: it takes the confirmation
+below, because the partner's report is the other side's claim and not local
+evidence.
 
 A no-show's run entry replaces the previous one, but a save failure on either
 side or a failed-closed handshake is also kept as a standing condition, which a
@@ -870,16 +873,17 @@ which a later run's entry does not replace, so the recurring list, the
 exchange's page, and a later run all read it until it is cleared. A later
 failure of the same kind leaves the first in place, and the message you forward
 names both, so the partner checks their logs for both. A handshake that fails
-closed after either save failure is read as that save failure, which explains
-it, not as an unexplained failure.
+closed after a save failure this device recorded is read as that save failure,
+which explains it. After a save failure your partner reported, it is an
+unexplained failure.
 
 Three things clear a standing condition, and nothing else does:
 
 - **Your explicit acknowledgement**, on the exchange's page. For an unexplained
   handshake failure, that is the two-outcome gate below. Where the record
-  already holds the explanation (a save failure on either side, or a restore
-  since the last success), the page states the condition and its re-invite recovery, and a
-  short acknowledgement clears it.
+  already holds the explanation (a save failure, or a restore since the last
+  success), or your partner reported a save failure, the page states the
+  condition and its re-invite recovery, and a short acknowledgement clears it.
 - **A re-invite**, which installs a fresh secret.
 - **Removing the exchange.**
 
@@ -892,13 +896,15 @@ holds, so you face the full confirmation only when nothing else explains the
 failure. A failure from a scheduled run is reported the same way at your next
 visit.
 
-**Tier 1: local evidence explains the failure.** A recorded save failure on
-either side (the last run's `failureKind`, or the standing condition it
-raised), a restore or import since the last successful run,
+**Tier 1: local evidence explains the failure.** A save failure this device
+recorded (the last run's `failureKind`, or the standing condition it raised), a
+restore or import since the last successful run,
 or an expired shared secret (see [Expiry is its own
 state](#expiry-is-its-own-state-never-routed-through-attack-framing)) shows as
 that state, with the re-invite as its recovery and **without** the attack
-checklist.
+checklist. A save failure your partner reported does not excuse a later failed
+handshake from the confirmation, because the other side's claim is not local
+evidence.
 
 **Tier 2: no local explanation.** A handshake failure with no recorded benign
 cause gets the full out-of-band confirmation: a **pre-filled message** you send

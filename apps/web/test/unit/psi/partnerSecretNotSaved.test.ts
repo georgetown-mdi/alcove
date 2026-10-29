@@ -43,6 +43,8 @@ import {
 import { PARTNER_SECRET_NOT_SAVED_TITLE } from "@psi/managed/managedFailureCopy";
 import { PartnerNoShowError } from "@psi/transport/waitForConnection";
 import { betweenVisitNotice } from "@psi/managed/betweenVisitNotice";
+import { composeConfirmationMessage } from "@psi/managed/managedFailureConfirmation";
+import { dateTimeLabel } from "@psi/formatting";
 import { failureFor } from "@exchange/useInviterExchange";
 import { managedStandingConditionView } from "@recurring/managedStandingConditionModel";
 import { savedExchangeRow } from "@recurring/savedExchangesModel";
@@ -322,58 +324,119 @@ describe("the windows after the partner's failed save, until a re-invite", () =>
     });
   });
 
-  test.each([
-    ["a handshake that failed closed", failedHandshake],
-    ["a no-show", noShow],
-  ])(
-    "%s after it keeps the re-invite, never the unexplained checklist",
-    (_case, lastRun) => {
-      const later = afterLaterWindow(lastRun);
-      expect(later.lastRun).toEqual(lastRun);
-      expect(raisedStandingCondition(later)?.kind).toBe("partner-storage");
-      expect(readManagedFailure(later, undefined, NOW + 1)).toEqual({
-        tier: "partner-storage",
-        standing: true,
-      });
-      expectReinvite(managedRunFailureFromRecord(later, undefined, NOW + 1));
-      expect(savedExchangeRow(later, undefined, NOW + 1).status).toMatch(
-        /^Your partner could not save the new secret \(.*\); no run can reach them until you re-invite$/,
-      );
-      const view = managedStandingConditionView(later, undefined);
-      expect(view?.tier).toBe("partner-storage");
-      expect(view?.title).toBe(PARTNER_SECRET_NOT_SAVED_TITLE);
-      expect(view?.clearance).toBe("acknowledge");
-      const notice = betweenVisitNotice({
-        record: later,
+  test("a no-show after it keeps the re-invite, never the unexplained checklist", () => {
+    const later = afterLaterWindow(noShow);
+    expect(later.lastRun).toEqual(noShow);
+    expect(raisedStandingCondition(later)?.kind).toBe("partner-storage");
+    expect(readManagedFailure(later, undefined, NOW + 1)).toEqual({
+      tier: "partner-storage",
+      standing: true,
+    });
+    expectReinvite(managedRunFailureFromRecord(later, undefined, NOW + 1));
+    expect(savedExchangeRow(later, undefined, NOW + 1).status).toMatch(
+      /^Your partner could not save the new secret \(.*\); no run can reach them until you re-invite$/,
+    );
+    const view = managedStandingConditionView(later, undefined);
+    expect(view?.tier).toBe("partner-storage");
+    expect(view?.title).toBe(PARTNER_SECRET_NOT_SAVED_TITLE);
+    expect(view?.clearance).toBe("acknowledge");
+    const notice = betweenVisitNotice({
+      record: later,
+      local: undefined,
+      caughtUpMisses: 0,
+      disposition: "missed",
+      now: NOW + 1,
+    });
+    expect(notice?.kind).toBe("partner-storage");
+    expect(notice?.tag).toBe(
+      betweenVisitNotice({
+        record: afterStop(),
         local: undefined,
         caughtUpMisses: 0,
-        disposition: lastRun.outcome === "missed" ? "missed" : "failed",
+        disposition: "failed",
+        now: NOW,
+      })?.tag,
+    );
+  });
+
+  // The partner's report is the other side's claim, which anyone holding the
+  // current secret can send, so it does not excuse a later failed handshake
+  // from the out-of-band confirmation.
+  describe("a handshake that failed closed after it", () => {
+    const later = () => afterLaterWindow(failedHandshake);
+
+    test("reads as the unexplained failure the confirmation answers", () => {
+      expect(later().lastRun).toEqual(failedHandshake);
+      expect(readManagedFailure(later(), undefined, NOW + 1)).toEqual({
+        tier: "unexplained",
+        standing: false,
+      });
+      const failure = managedRunFailureFromRecord(later(), undefined, NOW + 1);
+      expect(failure?.kind).toBe("unexplained");
+      expect(failure?.recovery).toBe("confirm");
+      expect(failure && managedRunRetryable(failure)).toBe(false);
+      expect(failure && managedRunReinvites(failure)).toBe(false);
+      expect(savedExchangeRow(later(), undefined, NOW + 1).status).not.toMatch(
+        /partner could not save/i,
+      );
+    });
+
+    test("is notified as the unexplained failure, not the partner's failed save", () => {
+      const notice = betweenVisitNotice({
+        record: later(),
+        local: undefined,
+        caughtUpMisses: 0,
+        disposition: "failed",
         now: NOW + 1,
       });
-      expect(notice?.kind).toBe("partner-storage");
-      expect(notice?.tag).toBe(
-        betweenVisitNotice({
-          record: afterStop(),
-          local: undefined,
-          caughtUpMisses: 0,
-          disposition: "failed",
-          now: NOW,
-        })?.tag,
+      expect(notice?.kind).toBe("unexplained");
+    });
+
+    test("leaves the partner's report standing for the re-invite", () => {
+      expect(raisedStandingCondition(later())?.kind).toBe("partner-storage");
+      const view = managedStandingConditionView(later(), undefined);
+      expect(view?.tier).toBe("partner-storage");
+      expect(view?.clearance).toBe("acknowledge");
+    });
+
+    test("reads as unexplained on a live run, with no retry", () => {
+      const failure = classifyManagedRunFailure(
+        new ConnectionError("could not verify the partner", "security"),
+        { atLaunch: afterStop(), afterRun: later() },
+        undefined,
+        NOW + 1,
+        false,
       );
+      expect(failure.kind).toBe("unexplained");
+      expect(managedRunRetryable(failure)).toBe(false);
+      expect(managedRunReinvites(failure)).toBe(false);
+    });
+
+    test("dates the confirmation message by that handshake, not the partner's report", () => {
+      const message = composeConfirmationMessage(later());
+      expect(message).toContain(dateTimeLabel(new Date(LATER)));
+      expect(message).not.toContain(dateTimeLabel(new Date(RUN_AT)));
+    });
+  });
+
+  test.each(["auth", "storage"] as const)(
+    "the partner's report never replaces a standing %s condition",
+    (kind) => {
+      const held = record({
+        standingCondition: { since: "2026-07-10T09:00:00.000Z", kind },
+      });
+      const reported = applyManagedExchangeLastRun(
+        held,
+        stamped,
+        Date.parse(RUN_AT),
+        Date.parse(RUN_AT),
+      );
+      expect(raisedStandingCondition(reported)).toEqual({
+        since: "2026-07-10T09:00:00.000Z",
+        kind,
+      });
     },
   );
-
-  test("a live run whose handshake fails closed reads as the partner's failed save", () => {
-    const failure = classifyManagedRunFailure(
-      new ConnectionError("could not verify the partner", "security"),
-      { atLaunch: afterStop(), afterRun: afterLaterWindow(failedHandshake) },
-      undefined,
-      NOW + 1,
-      false,
-    );
-    expectReinvite(failure);
-    expect(failure.reportedCause).toBeUndefined();
-  });
 
   test("the re-invite that replaces the secret clears it", () => {
     const later = runnableManagedExchangeOrRefuse(

@@ -757,23 +757,27 @@ show, and they phrase it as the standing state it is rather than as a reading of
 the last run, which may since be a no-show or a success.
 
 It supplies the tier in one further place: a recorded unexplained handshake
-failure standing beside a `"storage"` or `"partner-storage"` condition is
-treated as that condition's tier, since the persist failure explains that
-handshake -- a one-sided persist failure, on either side, leaves the two parties
-on different secrets, and the handshakes after it fail closed. No condition
-holds a window: the scheduled runner opens each one as before, and since each
-party derives its rendezvous from the secret it holds
-([Derived, never stored](#derived-never-stored)), a window after a one-sided
-persist failure finds no partner, recorded as a no-show, or fails closed at the
-handshake where the two do meet; the condition's tier stands over both. A
-`"partner-storage"` condition is raised only by the partner's abort read on the
-channel its handshake authenticated, so only the partner can raise it. It is
-the Tier 1 reading ("the record holds a benign explanation") made
+failure standing beside a `"storage"` condition is treated as the storage tier,
+since the persist failure explains that handshake -- a one-sided persist failure
+leaves the two parties on different secrets, and the handshakes after it fail
+closed. It is the Tier 1 reading ("the record holds a benign explanation") made
 durable rather than a rule of its own, and the rationale for that tiering,
 including what an adversary gains by provoking the benign reading, is [Telling a
 desync from an attack](../notes/managed-exchange-design.md#telling-a-desync-from-an-attack).
 A recorded benign cause is not displaced by either rule: it is the run's own
 actionable state, and the condition stands until something clears it.
+
+A `"partner-storage"` condition supplies its tier only where the last run
+records no failure or a no-show. A recorded unexplained handshake failure beside
+one stays the unexplained tier and takes the Tier 2 confirmation: the partner's
+reported save failure is the other side's claim, which anyone holding the
+current secret can send, so it is not local evidence. The condition is raised
+only by the partner's abort read on the channel its handshake authenticated.
+No condition holds a window: the scheduled runner opens each one as before, and
+since each party derives its rendezvous from the secret it holds
+([Derived, never stored](#derived-never-stored)), a window after a one-sided
+persist failure finds no partner, recorded as a no-show, or fails closed at the
+handshake where the two do meet.
 
 #### The operator's response to it
 
