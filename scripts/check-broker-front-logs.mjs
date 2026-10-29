@@ -1,19 +1,28 @@
 #!/usr/bin/env node
-// Measures which request headers the broker's TLS front writes into its error
-// log, for PRIVACY.md's TLS front error-log bullet.
+// Drives each kind of failed request through the broker's TLS front and checks
+// what its two logs write, for PRIVACY.md's TLS front bullets and
+// infra/broker/README.md, Logging.
 //
-//   node scripts/measure-broker-error-log.mjs
+//   node scripts/check-broker-front-logs.mjs
 //
 // Needs docker, openssl and free ports 8443 and 9411 on the loopback, so it
-// runs from broker_front_error_log.yaml on a hosted runner. It renders
+// runs from broker_front_logs.yaml on a hosted runner. It renders
 // infra/broker/nginx.conf.tmpl with render-config.sh, runs the image
 // infra/broker/Dockerfile pins as alcove-broker-tls.service runs it (host
 // network, read-only root, tmpfs /tmp), and stands in for the broker on
 // 127.0.0.1:9411. Each request sends its own Host, Referer, User-Agent and
 // Origin values and query string, and the run prints, for each error-log and
 // access-log line the request wrote, which of those values the line contains.
-// It exits 1 when the front does not start or a request gets no response; what
-// the lines contain is reported, not judged.
+//
+// Before the cases it runs a positive control: the same template with its
+// error_log level changed from crit to warn, which must write an error-log line
+// holding the refused case's query string, so an unread error log fails the run.
+//
+// It exits 1 when the front does not start, the control fails, a request gets
+// no response or no access-log line, any log line (including one after the last
+// request) contains a request's query string, a request or the time after the
+// last one writes an error-log line, or a failure kind's access-log line does
+// not show the fields README.md, Logging, says identify it.
 
 import { spawn, spawnSync } from "node:child_process";
 import {
@@ -42,6 +51,9 @@ const SETTLE_MS = 1500;
 // Over the template's proxy_read_timeout of 300 s, so the timed-out upstream
 // request is answered by nginx and not cut off here.
 const RESPONSE_DEADLINE_MS = 330_000;
+// nginx's default client_body_buffer_size on x86-64, two 4 KiB memory pages: a
+// request whose body is larger is buffered to a file under /tmp.
+const CLIENT_BODY_BUFFER_BYTES = 8192;
 
 /** The header values a request sends, each with the marker that finds it in a log line. */
 const FIELDS = [
@@ -87,11 +99,21 @@ const request = (
     "",
   ].join("\r\n") + body;
 
-/** Each request, the upstream behavior it meets, and what it is expected to provoke. */
+const yesNo = (present) => (present ? "yes" : "no");
+
+/** The access-log fields README.md, Logging, says tell one failure kind from another. */
+const identity = (status, upstreamStatus, connected, bodyBuffered) =>
+  `status=${status} upstream_status=${upstreamStatus} connected=${yesNo(connected)} body_buffered=${yesNo(bodyBuffered)}`;
+
+/**
+ * Each request, the upstream behavior it meets, and for a failure kind the
+ * access-log identity that names it.
+ */
 const CASES = [
   {
     id: "refused",
     title: "WebSocket upgrade, upstream refuses the connection",
+    identifiedBy: identity("502", "502", false, false),
     upstream: "none",
     bytes: request("refused", {
       extra: [
@@ -105,12 +127,14 @@ const CASES = [
   {
     id: "closed",
     title: "GET, upstream closes before answering",
+    identifiedBy: identity("502", "502", true, false),
     upstream: "close",
     bytes: request("closed", { extra: ["Connection: close"] }),
   },
   {
     id: "buffered",
     title: "POST with a 20000-byte body, upstream refuses the connection",
+    identifiedBy: identity("502", "502", false, true),
     upstream: "none",
     bytes: request("buffered", {
       method: "POST",
@@ -121,6 +145,7 @@ const CASES = [
   {
     id: "toolarge",
     title: "POST declaring a body over client_max_body_size",
+    identifiedBy: identity("413", "-", false, false),
     upstream: "none",
     bytes: request("toolarge", {
       method: "POST",
@@ -161,13 +186,14 @@ const CASES = [
   {
     id: "timedout",
     title: "GET, upstream accepts and never answers (proxy_read_timeout)",
+    identifiedBy: identity("504", "504", true, false),
     upstream: "hang",
     bytes: request("timedout", { extra: ["Connection: close"] }),
   },
 ];
 
 const fail = (message) => {
-  console.error(`measure-broker-error-log: ${message}`);
+  console.error(`check-broker-front-logs: ${message}`);
   process.exitCode = 1;
 };
 
@@ -262,13 +288,127 @@ const contains = (line, id) => ({
   "client IP": /\bclient: 127\.0\.0\.1\b/.test(line),
 });
 
-const yesNo = (present) => (present ? "yes" : "no");
+/** The status and the `name=value` fields of a line the template's access-log format writes. */
+const accessFields = (line) => ({
+  status: /" (\d{3}) /.exec(line)?.[1],
+  ...Object.fromEntries(
+    [...line.matchAll(/ (\w+)=(\S*)/g)].map(([, name, value]) => [name, value]),
+  ),
+});
+
+const observedIdentity = (line) => {
+  const fields = accessFields(line);
+  return identity(
+    fields.status,
+    fields.upstream_status,
+    /^\d/.test(fields.upstream_connect ?? ""),
+    Number(fields.request_bytes) > CLIENT_BODY_BUFFER_BYTES,
+  );
+};
 
 /** The error-log message without its timestamp, level, pid and request fields. */
 const message = (line) =>
   line
     .replace(/^\S+ \S+ \[(\w+)\] \d+#\d+: (\*\d+ )?/, "[$1] ")
     .replace(/, client: .*$/, "");
+
+/**
+ * Runs the image with one rendered configuration and collects what its two
+ * log streams write, each line tagged with the stream it came from.
+ */
+const startFront = (image, confPath, work) => {
+  spawnSync("docker", ["rm", "-f", CONTAINER], { stdio: "ignore" });
+  const container = spawn("docker", [
+    "run",
+    "--rm",
+    "--name",
+    CONTAINER,
+    "--network",
+    "host",
+    "--read-only",
+    "--tmpfs",
+    "/tmp",
+    "-v",
+    `${confPath}:/etc/nginx/nginx.conf:ro`,
+    "-v",
+    `${work}:/etc/nginx/tls:ro`,
+    image,
+  ]);
+  const front = { lines: [], exited: false };
+  container.on("exit", () => (front.exited = true));
+  const closed = [container.stdout, container.stderr].map(
+    (stream) => new Promise((done) => stream.on("close", done)),
+  );
+  for (const [stream, log] of [
+    [container.stdout, "access"],
+    [container.stderr, "error"],
+  ]) {
+    let partial = "";
+    stream.on("data", (chunk) => {
+      const parts = (partial + chunk.toString("utf8")).split("\n");
+      partial = parts.pop();
+      for (const text of parts)
+        if (text.trim()) front.lines.push({ log, text });
+    });
+  }
+  /** Removes the container, then waits for both log streams to close, up to 5 s. */
+  front.stop = async () => {
+    spawnSync("docker", ["rm", "-f", CONTAINER], { stdio: "ignore" });
+    await Promise.race([Promise.all(closed), delay(5000)]);
+  };
+  return front;
+};
+
+/**
+ * Renders the template with its error log at warn and drives the refused case
+ * through it. The run fails unless the error log's stream is captured and the
+ * query-string detector flags a line, so a real run's empty error log means
+ * nothing was written and not that nothing was read.
+ */
+const runErrorLogControl = async (image, work, rendered) => {
+  const controlRendered = rendered.replace(
+    /^(error_log\s+\S+\s+)crit;/m,
+    "$1warn;",
+  );
+  if (controlRendered === rendered) {
+    fail("control: the rendered template has no error_log line at crit");
+    return undefined;
+  }
+  const controlConf = join(work, "nginx.control.conf");
+  writeFileSync(controlConf, controlRendered);
+  const testCase = CASES.find(({ id }) => id === "refused");
+  const front = startFront(image, controlConf, work);
+  try {
+    if (!(await waitForFront(() => front.exited))) {
+      fail("control: the front did not accept a TLS connection");
+      return undefined;
+    }
+    await delay(SETTLE_MS);
+    front.lines.splice(0);
+    const upstream = await startUpstream(testCase.upstream);
+    await send(testCase.bytes);
+    await delay(SETTLE_MS);
+    await upstream?.close();
+  } finally {
+    await front.stop();
+  }
+  const errors = front.lines.filter(({ log }) => log === "error");
+  const flagged = errors.filter(
+    ({ text }) => contains(text, testCase.id)["query string"],
+  );
+  console.log(
+    `control: error_log at warn, ${testCase.id} case wrote ${errors.length} error-log lines, ${flagged.length} holding its query string\n`,
+  );
+  if (!errors.length) {
+    fail("control: no error-log line was captured with the error log at warn");
+    return undefined;
+  }
+  if (!flagged.length) {
+    fail("control: no captured error-log line holds the case's query string");
+    return undefined;
+  }
+  return `Positive control: with error_log at warn, the ${testCase.id} case wrote ${errors.length} error-log lines, ${flagged.length} holding its query string.`;
+};
 
 const main = async () => {
   const image = readFileSync(join(BROKER, "Dockerfile"), "utf8").match(
@@ -279,12 +419,10 @@ const main = async () => {
   const envFile = join(work, "broker.env");
   const conf = join(work, "nginx.conf");
   writeFileSync(envFile, `ALCOVE_BROKER_NAME=${BROKER_NAME}\n`);
-  writeFileSync(
-    conf,
-    run("bash", [join(BROKER, "render-config.sh")], {
-      env: { ...process.env, ALCOVE_BROKER_ENV_FILE: envFile },
-    }).stdout,
-  );
+  const rendered = run("bash", [join(BROKER, "render-config.sh")], {
+    env: { ...process.env, ALCOVE_BROKER_ENV_FILE: envFile },
+  }).stdout;
+  writeFileSync(conf, rendered);
   run("openssl", [
     "req",
     "-x509",
@@ -311,53 +449,27 @@ const main = async () => {
   ]).stderr.trim();
   console.log(`image: ${image}\n${version}\n`);
 
-  const lines = [];
-  spawnSync("docker", ["rm", "-f", CONTAINER], { stdio: "ignore" });
-  const front = spawn("docker", [
-    "run",
-    "--rm",
-    "--name",
-    CONTAINER,
-    "--network",
-    "host",
-    "--read-only",
-    "--tmpfs",
-    "/tmp",
-    "-v",
-    `${conf}:/etc/nginx/nginx.conf:ro`,
-    "-v",
-    `${work}:/etc/nginx/tls:ro`,
-    image,
-  ]);
-  let exited = false;
-  front.on("exit", () => (exited = true));
-  for (const [stream, log] of [
-    [front.stdout, "access"],
-    [front.stderr, "error"],
-  ]) {
-    let partial = "";
-    stream.on("data", (chunk) => {
-      const parts = (partial + chunk.toString("utf8")).split("\n");
-      partial = parts.pop();
-      for (const text of parts) if (text.trim()) lines.push({ log, text });
-    });
-  }
-
   const results = [];
+  let startup = [];
+  let controlSummary;
+  let front;
   try {
-    if (!(await waitForFront(() => exited))) {
+    controlSummary = await runErrorLogControl(image, work, rendered);
+    if (!controlSummary) return;
+    front = startFront(image, conf, work);
+    if (!(await waitForFront(() => front.exited))) {
       await delay(SETTLE_MS);
       console.log("front output before it stopped:");
-      for (const { text } of lines.splice(0)) console.log(`  ${text}`);
+      for (const { text } of front.lines.splice(0)) console.log(`  ${text}`);
       console.log();
       return fail(
-        exited
+        front.exited
           ? "the front exited before it accepted a TLS connection"
           : "the front did not accept a TLS connection within 30 s",
       );
     }
     await delay(SETTLE_MS);
-    const startup = lines.splice(0);
+    startup = front.lines.splice(0);
     if (startup.length) {
       console.log("lines before the first request:");
       for (const { text } of startup) console.log(`  start-up: ${text}`);
@@ -368,7 +480,7 @@ const main = async () => {
       const status = await send(testCase.bytes);
       await delay(SETTLE_MS);
       await upstream?.close();
-      const written = lines.splice(0);
+      const written = front.lines.splice(0);
       results.push({ testCase, status, written });
       console.log(`== ${testCase.id}: ${testCase.title}`);
       console.log(`response: ${status ?? "(none)"}`);
@@ -384,55 +496,71 @@ const main = async () => {
       }
       console.log();
       if (!status) fail(`${testCase.id}: no response from the front`);
-      if (exited) return fail("the front exited during the run");
+      if (front.exited) return fail("the front exited during the run");
     }
+    await delay(SETTLE_MS);
   } finally {
-    spawnSync("docker", ["rm", "-f", CONTAINER], { stdio: "ignore" });
+    await front?.stop();
     rmSync(work, { recursive: true, force: true });
   }
 
-  const columns = [
-    "Host",
-    "Referer",
-    "User-Agent",
-    "Origin",
-    "query string",
-    "client IP",
-  ];
+  const trailing = front.lines.splice(0);
+  if (trailing.length) {
+    console.log("lines after the last request:");
+    for (const { log, text } of trailing) console.log(`  ${log} log: ${text}`);
+    console.log();
+  }
+  for (const { log } of trailing) {
+    if (log === "error")
+      fail("error log: a line arrived after the last request");
+  }
+
+  for (const { log, text } of [
+    ...startup,
+    ...results.flatMap(({ written }) => written),
+    ...trailing,
+  ]) {
+    const leaked = CASES.find(({ id }) => text.includes(queryMarker(id)));
+    if (leaked) fail(`${log} log: a line contains ${leaked.id}'s query string`);
+  }
+
   const table = [
-    `Error log, ${version}, error_log level as in nginx.conf.tmpl.`,
+    `${version}, with nginx.conf.tmpl as rendered.`,
     "",
-    `| Request | Response | Error-log line | ${columns.join(" | ")} |`,
-    `|${" --- |".repeat(columns.length + 3)}`,
+    controlSummary,
+    "",
+    "| Request | Response | Access-log identity | Error-log lines |",
+    "| --- | --- | --- | --- |",
   ];
+  const identities = new Map();
   for (const { testCase, status, written } of results) {
     const errors = written.filter(({ log }) => log === "error");
+    const accesses = written.filter(({ log }) => log === "access");
+    if (errors.length) {
+      fail(`${testCase.id}: ${errors.length} error-log lines, not none`);
+    }
+    if (!accesses.length) fail(`${testCase.id}: no access-log line`);
+    const observed =
+      accesses.length === 1 ? observedIdentity(accesses[0].text) : undefined;
+    if (testCase.identifiedBy) {
+      if (accesses.length !== 1) {
+        fail(`${testCase.id}: ${accesses.length} access-log lines, not 1`);
+      } else if (observed !== testCase.identifiedBy) {
+        fail(
+          `${testCase.id}: access log shows ${observed}, not ${testCase.identifiedBy}`,
+        );
+      }
+      const twin = identities.get(observed);
+      if (observed && twin) {
+        fail(`${testCase.id} and ${twin} have one access-log identity`);
+      }
+      identities.set(observed, testCase.id);
+    }
     const response = status?.replace(/^HTTP\/\S+ /, "") ?? "none";
-    if (!errors.length) {
-      table.push(
-        `| ${testCase.title} | ${response} | none |${" - |".repeat(columns.length)}`,
-      );
-    }
-    for (const { text } of errors) {
-      const found = contains(text, testCase.id);
-      table.push(
-        `| ${testCase.title} | ${response} | ${message(text)} | ${columns.map((column) => yesNo(found[column])).join(" | ")} |`,
-      );
-    }
+    table.push(
+      `| ${testCase.title} | ${response} | ${observed ?? "-"} | ${errors.length ? errors.map(({ text }) => message(text)).join("<br>") : "none"} |`,
+    );
   }
-  const accessHits = results.flatMap(({ testCase, written }) =>
-    written
-      .filter(({ log }) => log === "access")
-      .flatMap(({ text }) =>
-        Object.entries(contains(text, testCase.id))
-          .filter(([field, present]) => present && field !== "client IP")
-          .map(([field]) => `${testCase.id}: ${field}`),
-      ),
-  );
-  table.push(
-    "",
-    `Access log: ${accessHits.length ? `contains ${accessHits.join(", ")}` : "no line contains a sent Host, Referer, User-Agent or Origin value or the query string"}.`,
-  );
   console.log(table.join("\n"));
   if (process.env.GITHUB_STEP_SUMMARY)
     appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${table.join("\n")}\n`);

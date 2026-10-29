@@ -121,7 +121,21 @@ All three services write to the host's journal, under the retention the relay's 
 - **The front's access log names the request path and never its query string.**
   A signaling URL's query contains the rendezvous identifier and the client token, so the log format writes `$request_method $uri $server_protocol`, not `$request`.
   [`scripts/broker-front.test.mjs`](../../scripts/broker-front.test.mjs) fails if a log format in the template writes any variable outside the documented fields, or if the template drops the `http`-level access log and so falls back to nginx's built-in format, which writes the query string.
-- **The front's error log** is at `warn`, and the test fails below `warn`. A request line in one of its lines can include the query string ([PRIVACY.md](../../PRIVACY.md)).
+- **The front's error log** is at `crit`, and the test fails below `crit`.
+  At `warn`, nginx writes a line about a refused, reset, timed-out, too-large or buffered request, and at `error` about each of them but the buffered one; the line holds the request line with its query string and the client's address.
+  At `crit` none of those requests writes a line ([PRIVACY.md](../../PRIVACY.md)).
+- **The access log shows what became of a request passed to the broker**, in place of the error log: `request_bytes` (`$request_length`), `upstream_status`, `upstream_connect` (the time to connect to the broker, `-` when no connection was made) and `upstream_dur`.
+  Each failure has its own reading:
+
+  | failure | status | `upstream_status` | `upstream_connect` | `request_bytes` |
+  | --- | --- | --- | --- | --- |
+  | the broker refused the connection | 502 | 502 | `-` | |
+  | the broker closed or reset it before answering | 502 | 502 | a time | |
+  | the broker did not answer within 300 s (`proxy_read_timeout`) | 504 | 504 | a time | |
+  | the body is over 1 MiB (`client_max_body_size`), refused before reaching the broker | 413 | `-` | `-` | |
+  | a body over the default `client_body_buffer_size` (two memory pages, 8 KiB on x86-64), buffered to a file under `/tmp` | | | | over 8192, headers included |
+
+  [`scripts/check-broker-front-logs.mjs`](../../scripts/check-broker-front-logs.mjs), run by `broker_front_logs.yaml` on a pull request that changes the template or the image, drives each of these through the pinned image and fails if any log line holds a request's query string, if any of them writes an error-log line, or if a failure's access-log line does not match its row.
 
 The front closes a WebSocket idle for 300 s (`proxy_read_timeout`); the PeerJS client sends a heartbeat every 5 s by default (`pingInterval = 5000` in `node_modules/peerjs/dist/peerjs.js`, peerjs 1.5.5, not overridden in `apps/` or `packages/`), so a live connection stays open.
 

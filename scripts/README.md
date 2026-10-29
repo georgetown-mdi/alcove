@@ -24,6 +24,7 @@ check off it. Beside them:
 - the packer of the core files the signaling broker runs, which
   `broker_core_build.yaml` archives, signs, and publishes;
 - the relay host's deployment check `nightly_relay_deployment.yaml` runs;
+- the check of the broker's TLS front logs `broker_front_logs.yaml` runs;
 - the helper modules the checks import, in [`lib/`](lib).
 
 A check's test sits beside it; a guard that asserts a workflow, Dockerfile or

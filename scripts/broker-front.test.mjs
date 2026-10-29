@@ -27,6 +27,15 @@ const TEMPLATE = join(BROKER, "nginx.conf.tmpl");
 const TMPFILES_SOURCE = resolve(here, "..", "infra/tmpfiles.d");
 const BASH = existsSync("/bin/bash") ? "/bin/bash" : "bash";
 
+// With the error log at crit, these are what tell one broker failure from
+// another, so the access log must write each of them.
+const UPSTREAM_LOG_VARIABLES = [
+  "request_length",
+  "upstream_status",
+  "upstream_connect_time",
+  "upstream_response_time",
+];
+
 // The fields PRIVACY.md lists for the front's access log. A signaling URL's
 // query string contains the rendezvous identifier and the client token, so no
 // variable that includes it ($request, $request_uri, $args, $query_string,
@@ -43,6 +52,7 @@ const ALLOWED_LOG_VARIABLES = [
   "http_upgrade",
   "bytes_sent",
   "request_time",
+  ...UPSTREAM_LOG_VARIABLES,
 ];
 
 /** Directives of an nginx configuration, each with the blocks enclosing it. */
@@ -129,11 +139,21 @@ describe("nginx.conf.tmpl logging", () => {
     }
   });
 
-  it("keeps the error log at warnings and above", () => {
+  it("writes the upstream fields into every access log format", () => {
+    for (const variables of logFormatVariables(template())) {
+      for (const variable of UPSTREAM_LOG_VARIABLES) {
+        expect(variables, `$${variable}`).toContain(variable);
+      }
+    }
+  });
+
+  // nginx writes the request line into its error and warn lines about a
+  // request; check-broker-front-logs.mjs drives that against the image.
+  it("keeps the error log at crit and above, at the main level too", () => {
     const errorLogs = template().filter(({ name }) => name === "error_log");
-    expect(errorLogs.length).toBeGreaterThan(0);
+    expect(errorLogs.some(({ context }) => context.length === 0)).toBe(true);
     for (const { args } of errorLogs) {
-      expect(["warn", "error", "crit", "alert", "emerg"]).toContain(args[1]);
+      expect(["crit", "alert", "emerg"]).toContain(args[1]);
     }
   });
 });

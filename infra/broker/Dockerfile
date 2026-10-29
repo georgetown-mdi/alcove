@@ -6,5 +6,4 @@
 # Registry-qualified and pinned to the multi-arch index digest, as
 # infra/relay/Dockerfile pins coturn; the docker ecosystem entry for
 # /infra/broker in .github/dependabot.yml raises a bump.
-# nginx 1.29.8 (the 1.29-alpine tag's index digest, read 2026-10-08).
 FROM docker.io/library/nginx:1.31-alpine@sha256:df221db836e1754089190208cee7eeda94f233197056426eda74a43ab1abeac2

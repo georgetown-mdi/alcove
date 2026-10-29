@@ -41,8 +41,8 @@ const HUB_THROUGH_SCRIPT = new Map([
     "scripts/relay-turn-secret-schema.test.mjs runs the coturn image infra/relay/Dockerfile pins",
   ],
   [
-    "broker_front_error_log.yaml measure Measure",
-    "scripts/measure-broker-error-log.mjs runs the nginx image infra/broker/Dockerfile pins",
+    "broker_front_logs.yaml check Check",
+    "scripts/check-broker-front-logs.mjs runs the nginx image infra/broker/Dockerfile pins",
   ],
 ]);
 

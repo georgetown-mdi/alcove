@@ -1,15 +1,24 @@
-name: Broker Front Error Log
+name: Broker Front Logs
 
-# Measurement harness behind PRIVACY.md's TLS front error-log bullet: it runs
-# the broker's TLS front, rendered from infra/broker/nginx.conf.tmpl in the
-# image infra/broker/Dockerfile pins, and prints which request header values
-# and query strings its error-log and access-log lines contain
-# (scripts/measure-broker-error-log.mjs). It needs Docker, which the dev
+# Drives each kind of failed request through the broker's TLS front, rendered
+# from infra/broker/nginx.conf.tmpl in the image infra/broker/Dockerfile pins,
+# and fails if any log line contains a request's query string, a request
+# writes an error-log line, or the access log does not tell the failure kinds
+# apart
+# (scripts/check-broker-front-logs.mjs). It needs Docker, which the dev
 # container lacks.
 #
-# Manual only. The answer moves when the template or the image changes, and one
-# request waits out the template's 300 s proxy_read_timeout.
+# Runs on a pull request that can change the answer, a dependabot bump of the
+# image included. Not a merge gate: one request waits out the template's 300 s
+# proxy_read_timeout.
 on:
+  pull_request:
+    paths:
+      - "infra/broker/nginx.conf.tmpl"
+      - "infra/broker/Dockerfile"
+      - "infra/broker/render-config.sh"
+      - "scripts/check-broker-front-logs.mjs"
+      - ".github/workflows/broker_front_logs.yaml"
   workflow_dispatch:
 
 concurrency:
@@ -20,8 +29,8 @@ permissions:
   contents: read
 
 jobs:
-  measure:
-    name: Measure the TLS front's error log
+  check:
+    name: Check the TLS front's logs
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     env:
@@ -46,5 +55,5 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Measure
-        run: node scripts/measure-broker-error-log.mjs
+      - name: Check
+        run: node scripts/check-broker-front-logs.mjs
