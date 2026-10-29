@@ -14,10 +14,15 @@
 // Origin values and query string, and the run prints, for each error-log and
 // access-log line the request wrote, which of those values the line contains.
 //
-// It exits 1 when the front does not start, a request gets no response, any
-// log line contains a request's query string, a request writes an error-log
-// line, or a failure kind's access-log line does not show the fields
-// README.md, Logging, says identify it.
+// Before the cases it runs a positive control: the same template with its
+// error_log level changed from crit to warn, which must write an error-log line
+// holding the refused case's query string, so an unread error log fails the run.
+//
+// It exits 1 when the front does not start, the control fails, a request gets
+// no response or no access-log line, any log line (including one after the last
+// request) contains a request's query string, a request or the time after the
+// last one writes an error-log line, or a failure kind's access-log line does
+// not show the fields README.md, Logging, says identify it.
 
 import { spawn, spawnSync } from "node:child_process";
 import {
@@ -307,6 +312,104 @@ const message = (line) =>
     .replace(/^\S+ \S+ \[(\w+)\] \d+#\d+: (\*\d+ )?/, "[$1] ")
     .replace(/, client: .*$/, "");
 
+/**
+ * Runs the image with one rendered configuration and collects what its two
+ * log streams write, each line tagged with the stream it came from.
+ */
+const startFront = (image, confPath, work) => {
+  spawnSync("docker", ["rm", "-f", CONTAINER], { stdio: "ignore" });
+  const container = spawn("docker", [
+    "run",
+    "--rm",
+    "--name",
+    CONTAINER,
+    "--network",
+    "host",
+    "--read-only",
+    "--tmpfs",
+    "/tmp",
+    "-v",
+    `${confPath}:/etc/nginx/nginx.conf:ro`,
+    "-v",
+    `${work}:/etc/nginx/tls:ro`,
+    image,
+  ]);
+  const front = { lines: [], exited: false };
+  container.on("exit", () => (front.exited = true));
+  const closed = [container.stdout, container.stderr].map(
+    (stream) => new Promise((done) => stream.on("close", done)),
+  );
+  for (const [stream, log] of [
+    [container.stdout, "access"],
+    [container.stderr, "error"],
+  ]) {
+    let partial = "";
+    stream.on("data", (chunk) => {
+      const parts = (partial + chunk.toString("utf8")).split("\n");
+      partial = parts.pop();
+      for (const text of parts)
+        if (text.trim()) front.lines.push({ log, text });
+    });
+  }
+  /** Removes the container, then waits for both log streams to close, up to 5 s. */
+  front.stop = async () => {
+    spawnSync("docker", ["rm", "-f", CONTAINER], { stdio: "ignore" });
+    await Promise.race([Promise.all(closed), delay(5000)]);
+  };
+  return front;
+};
+
+/**
+ * Renders the template with its error log at warn and drives the refused case
+ * through it. The run fails unless the error log's stream is captured and the
+ * query-string detector flags a line, so a real run's empty error log means
+ * nothing was written and not that nothing was read.
+ */
+const runErrorLogControl = async (image, work, rendered) => {
+  const controlRendered = rendered.replace(
+    /^(error_log\s+\S+\s+)crit;/m,
+    "$1warn;",
+  );
+  if (controlRendered === rendered) {
+    fail("control: the rendered template has no error_log line at crit");
+    return undefined;
+  }
+  const controlConf = join(work, "nginx.control.conf");
+  writeFileSync(controlConf, controlRendered);
+  const testCase = CASES.find(({ id }) => id === "refused");
+  const front = startFront(image, controlConf, work);
+  try {
+    if (!(await waitForFront(() => front.exited))) {
+      fail("control: the front did not accept a TLS connection");
+      return undefined;
+    }
+    await delay(SETTLE_MS);
+    front.lines.splice(0);
+    const upstream = await startUpstream(testCase.upstream);
+    await send(testCase.bytes);
+    await delay(SETTLE_MS);
+    await upstream?.close();
+  } finally {
+    await front.stop();
+  }
+  const errors = front.lines.filter(({ log }) => log === "error");
+  const flagged = errors.filter(
+    ({ text }) => contains(text, testCase.id)["query string"],
+  );
+  console.log(
+    `control: error_log at warn, ${testCase.id} case wrote ${errors.length} error-log lines, ${flagged.length} holding its query string\n`,
+  );
+  if (!errors.length) {
+    fail("control: no error-log line was captured with the error log at warn");
+    return undefined;
+  }
+  if (!flagged.length) {
+    fail("control: no captured error-log line holds the case's query string");
+    return undefined;
+  }
+  return `Positive control: with error_log at warn, the ${testCase.id} case wrote ${errors.length} error-log lines, ${flagged.length} holding its query string.`;
+};
+
 const main = async () => {
   const image = readFileSync(join(BROKER, "Dockerfile"), "utf8").match(
     /^FROM (\S+)$/m,
@@ -316,12 +419,10 @@ const main = async () => {
   const envFile = join(work, "broker.env");
   const conf = join(work, "nginx.conf");
   writeFileSync(envFile, `ALCOVE_BROKER_NAME=${BROKER_NAME}\n`);
-  writeFileSync(
-    conf,
-    run("bash", [join(BROKER, "render-config.sh")], {
-      env: { ...process.env, ALCOVE_BROKER_ENV_FILE: envFile },
-    }).stdout,
-  );
+  const rendered = run("bash", [join(BROKER, "render-config.sh")], {
+    env: { ...process.env, ALCOVE_BROKER_ENV_FILE: envFile },
+  }).stdout;
+  writeFileSync(conf, rendered);
   run("openssl", [
     "req",
     "-x509",
@@ -348,54 +449,27 @@ const main = async () => {
   ]).stderr.trim();
   console.log(`image: ${image}\n${version}\n`);
 
-  const lines = [];
-  spawnSync("docker", ["rm", "-f", CONTAINER], { stdio: "ignore" });
-  const front = spawn("docker", [
-    "run",
-    "--rm",
-    "--name",
-    CONTAINER,
-    "--network",
-    "host",
-    "--read-only",
-    "--tmpfs",
-    "/tmp",
-    "-v",
-    `${conf}:/etc/nginx/nginx.conf:ro`,
-    "-v",
-    `${work}:/etc/nginx/tls:ro`,
-    image,
-  ]);
-  let exited = false;
-  front.on("exit", () => (exited = true));
-  for (const [stream, log] of [
-    [front.stdout, "access"],
-    [front.stderr, "error"],
-  ]) {
-    let partial = "";
-    stream.on("data", (chunk) => {
-      const parts = (partial + chunk.toString("utf8")).split("\n");
-      partial = parts.pop();
-      for (const text of parts) if (text.trim()) lines.push({ log, text });
-    });
-  }
-
   const results = [];
   let startup = [];
+  let controlSummary;
+  let front;
   try {
-    if (!(await waitForFront(() => exited))) {
+    controlSummary = await runErrorLogControl(image, work, rendered);
+    if (!controlSummary) return;
+    front = startFront(image, conf, work);
+    if (!(await waitForFront(() => front.exited))) {
       await delay(SETTLE_MS);
       console.log("front output before it stopped:");
-      for (const { text } of lines.splice(0)) console.log(`  ${text}`);
+      for (const { text } of front.lines.splice(0)) console.log(`  ${text}`);
       console.log();
       return fail(
-        exited
+        front.exited
           ? "the front exited before it accepted a TLS connection"
           : "the front did not accept a TLS connection within 30 s",
       );
     }
     await delay(SETTLE_MS);
-    startup = lines.splice(0);
+    startup = front.lines.splice(0);
     if (startup.length) {
       console.log("lines before the first request:");
       for (const { text } of startup) console.log(`  start-up: ${text}`);
@@ -406,7 +480,7 @@ const main = async () => {
       const status = await send(testCase.bytes);
       await delay(SETTLE_MS);
       await upstream?.close();
-      const written = lines.splice(0);
+      const written = front.lines.splice(0);
       results.push({ testCase, status, written });
       console.log(`== ${testCase.id}: ${testCase.title}`);
       console.log(`response: ${status ?? "(none)"}`);
@@ -422,16 +496,29 @@ const main = async () => {
       }
       console.log();
       if (!status) fail(`${testCase.id}: no response from the front`);
-      if (exited) return fail("the front exited during the run");
+      if (front.exited) return fail("the front exited during the run");
     }
+    await delay(SETTLE_MS);
   } finally {
-    spawnSync("docker", ["rm", "-f", CONTAINER], { stdio: "ignore" });
+    await front?.stop();
     rmSync(work, { recursive: true, force: true });
+  }
+
+  const trailing = front.lines.splice(0);
+  if (trailing.length) {
+    console.log("lines after the last request:");
+    for (const { log, text } of trailing) console.log(`  ${log} log: ${text}`);
+    console.log();
+  }
+  for (const { log } of trailing) {
+    if (log === "error")
+      fail("error log: a line arrived after the last request");
   }
 
   for (const { log, text } of [
     ...startup,
     ...results.flatMap(({ written }) => written),
+    ...trailing,
   ]) {
     const leaked = CASES.find(({ id }) => text.includes(queryMarker(id)));
     if (leaked) fail(`${log} log: a line contains ${leaked.id}'s query string`);
@@ -439,6 +526,8 @@ const main = async () => {
 
   const table = [
     `${version}, with nginx.conf.tmpl as rendered.`,
+    "",
+    controlSummary,
     "",
     "| Request | Response | Access-log identity | Error-log lines |",
     "| --- | --- | --- | --- |",
@@ -450,6 +539,7 @@ const main = async () => {
     if (errors.length) {
       fail(`${testCase.id}: ${errors.length} error-log lines, not none`);
     }
+    if (!accesses.length) fail(`${testCase.id}: no access-log line`);
     const observed =
       accesses.length === 1 ? observedIdentity(accesses[0].text) : undefined;
     if (testCase.identifiedBy) {

@@ -122,7 +122,7 @@ All three services write to the host's journal, under the retention the relay's 
   A signaling URL's query contains the rendezvous identifier and the client token, so the log format writes `$request_method $uri $server_protocol`, not `$request`.
   [`scripts/broker-front.test.mjs`](../../scripts/broker-front.test.mjs) fails if a log format in the template writes any variable outside the documented fields, or if the template drops the `http`-level access log and so falls back to nginx's built-in format, which writes the query string.
 - **The front's error log** is at `crit`, and the test fails below `crit`.
-  At `error` and `warn`, nginx writes a line about a refused, reset, timed-out, too-large or buffered request, and the line holds the request line with its query string and the client's address.
+  At `warn`, nginx writes a line about a refused, reset, timed-out, too-large or buffered request, and at `error` about each of them but the buffered one; the line holds the request line with its query string and the client's address.
   At `crit` none of those requests writes a line ([PRIVACY.md](../../PRIVACY.md)).
 - **The access log shows what became of a request passed to the broker**, in place of the error log: `request_bytes` (`$request_length`), `upstream_status`, `upstream_connect` (the time to connect to the broker, `-` when no connection was made) and `upstream_dur`.
   Each failure has its own reading:
