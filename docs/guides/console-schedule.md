@@ -111,7 +111,7 @@ You should see: a new `alcove-results-<time>.csv` in the exchange folder, and th
 
 ### 5. Schedule it at your cadence
 
-Under **Schedule it (set the time you agreed with your partner)**, the panel gives two Docker lines, both daily at 2am:
+Under **Schedule it (set the time you agreed on with your partner)**, the panel gives two Docker lines, both daily at 2am:
 
 - **cron (Linux/macOS), daily at 2am, running Alcove from its Docker image**
 - **Windows Task Scheduler (in PowerShell), daily at 2am, running Alcove from its Docker image**
