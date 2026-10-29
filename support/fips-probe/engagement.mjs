@@ -29,15 +29,20 @@
 //     each at the parameter shape Alcove itself passes. On their own they
 //     prove nothing: every one of them succeeds through the default provider
 //     too, and looks identical.
+//   the rotation legs -- the shared-secret rotation's value draw and its AES-KW
+//     wrap and unwrap. They gate like the product legs, but the draw's leg
+//     shows only that the call completes: it does not measure which generator
+//     produced the bytes.
 //   md5, rsa1024 -- an MD5 digest and an RSA keygen below the FIPS minimum
 //     modulus both FAIL in that same process. No FIPS provider serves either,
 //     whatever its build, so either one succeeding means the default provider
-//     is still reachable and the product legs are unattributable.
+//     is still reachable and the product and rotation legs are unattributable.
 //
-// ENGAGED requires all of them. The product legs are the ones that decide which
-// primitives a "dispatches into the validated module" claim may name, so a leg
-// is added here when such a claim is made of a primitive, not the other way
-// round.
+// ENGAGED requires all of them: the five product legs, the two rotation legs,
+// the mapping and both refusals. The product legs are the ones that decide
+// which primitives the scoped "dispatches into the validated module" claim may
+// name, so a leg is added here when such a claim is made of a primitive, not
+// the other way round.
 
 import { createHash, getFips } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -215,8 +220,7 @@ async function ecdhP256DeriveBits() {
 
 // The rotation's call shapes (packages/core/src/nextSecret.ts): a 32-byte value
 // drawn as an extractable HMAC key, and its AES-KW wrap and unwrap under a key
-// HKDF derives straight to a non-extractable AES-KW key. Recorded and not
-// gating until a document claims the module performs them.
+// HKDF derives straight to a non-extractable AES-KW key.
 async function rotationValueDraw() {
   const value = await crypto.subtle.generateKey(
     { name: "HMAC", hash: "SHA-256", length: 256 },
@@ -333,14 +337,20 @@ export async function measureEngagement() {
   // outcome is what decides whether the SSH key exchange has anything to
   // negotiate.
   operations.x25519_derive_bits = await attempt(x25519DeriveBits);
-  // The rotation's draw and wrap, read off an ENGAGED transcript, in which the
-  // default provider is unreachable, before any document says the module
-  // performs them.
-  operations.rotation_value_draw = await attempt(rotationValueDraw);
-  operations.aes_kw_wrap_round_trip = await attempt(aesKwWrapRoundTrip);
+  const rotationLegs = [
+    ["rotation_value_draw", "the rotation value draw", rotationValueDraw],
+    [
+      "aes_kw_wrap_round_trip",
+      "the AES-KW wrap round trip",
+      aesKwWrapRoundTrip,
+    ],
+  ];
+  for (const [key, , operation] of rotationLegs) {
+    operations[key] = await attempt(operation);
+  }
 
   const failures = [];
-  for (const [key, description] of productLegs) {
+  for (const [key, description] of [...productLegs, ...rotationLegs]) {
     if (operations[key].ok) continue;
     failures.push(
       `${description} failed (${operations[key].error}), so this configuration does not serve Alcove's own call`,

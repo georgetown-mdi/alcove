@@ -8,7 +8,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 // The three runtime checks the FIPS variant image rests on, each driven against
@@ -221,8 +221,8 @@ for (const [shell, label] of SHELLS) {
 // being no FIPS provider to load. The cases below are therefore written against
 // the decision rule rather than against a fixed verdict -- each asserts that the
 // failure list, the verdict and the exit status agree with the legs actually
-// measured, which holds whatever the host serves. Whether Alcove's five call
-// shapes survive the certified module is CI's to measure against a real build.
+// measured, which holds whatever the host serves. Whether Alcove's call shapes
+// survive the certified module is CI's to measure against a real build.
 describe("the engagement probe the image ships", () => {
   const result = spawnSync(process.execPath, [PROBE], {
     encoding: "utf8",
@@ -295,15 +295,75 @@ describe("the engagement probe the image ships", () => {
     expect(summary.failures.some((f) => f.includes("X25519"))).toBe(false);
   });
 
-  it("records the rotation's draw and AES-KW wrap without gating on them", () => {
-    // No document claims the module performs either yet, so neither decides
-    // the verdict; outside the image both run through the default provider.
-    for (const leg of ["rotation_value_draw", "aes_kw_wrap_round_trip"])
-      expect(summary.operations[leg]).toEqual({ ok: true, error: null });
-    expect(summary.failures.some((f) => /AES-KW|drawn value/.test(f))).toBe(
-      false,
-    );
+  // docs/COMPLIANCE.md states what an engaged transcript showed of these two
+  // legs, which holds only while a failure of either fails the run.
+  const ROTATION_LEGS = [
+    ["rotation_value_draw", "the rotation value draw failed"],
+    ["aes_kw_wrap_round_trip", "the AES-KW wrap round trip failed"],
+  ];
+
+  it.each(ROTATION_LEGS)("completes the rotation's %s call shape", (leg) => {
+    expect(summary.operations[leg]).toEqual({ ok: true, error: null });
   });
+
+  it("fails the run for every rotation call that did not complete", () => {
+    for (const [leg, phrase] of ROTATION_LEGS) {
+      expect(summary.failures.some((f) => f.startsWith(phrase))).toBe(
+        !summary.operations[leg].ok,
+      );
+    }
+  });
+
+  // Outside the image both legs complete, so the case above never sees one
+  // fail. These make the call refuse in the probe's own process, through a
+  // module preloaded with --import, and run the committed probe unchanged.
+  const REFUSALS = [
+    [
+      "the draw",
+      "rotation_value_draw",
+      `const generateKey = crypto.subtle.generateKey.bind(crypto.subtle);
+crypto.subtle.generateKey = async (algorithm, ...rest) => {
+  if (algorithm?.name === "HMAC") throw new Error("stubbed draw refusal");
+  return generateKey(algorithm, ...rest);
+};`,
+    ],
+    [
+      "the AES-KW wrap",
+      "aes_kw_wrap_round_trip",
+      `crypto.subtle.wrapKey = async () => {
+  throw new Error("stubbed AES-KW refusal");
+};`,
+    ],
+  ];
+
+  it.each(REFUSALS)(
+    "fails the run when %s is refused",
+    (_label, leg, preload) => {
+      workdir = mkdtempSync(join(tmpdir(), "fips-rotation-leg-"));
+      const preloadPath = join(workdir, "refuse.mjs");
+      writeFileSync(preloadPath, `${preload}\n`);
+
+      const refused = spawnSync(
+        process.execPath,
+        ["--import", pathToFileURL(preloadPath).href, PROBE],
+        { encoding: "utf8", cwd: repoRoot },
+      );
+      const refusedLine = refused.stdout
+        .split("\n")
+        .find((l) => l.startsWith("IMAGE_ENGAGEMENT_JSON: "));
+      const refusedSummary = JSON.parse(
+        refusedLine.slice("IMAGE_ENGAGEMENT_JSON: ".length),
+      );
+      const phrase = ROTATION_LEGS.find(([key]) => key === leg)[1];
+
+      expect(refusedSummary.operations[leg].ok).toBe(false);
+      expect(refusedSummary.failures.some((f) => f.startsWith(phrase))).toBe(
+        true,
+      );
+      expect(refusedSummary.verdict).toBe("NOT ENGAGED");
+      expect(refused.status).not.toBe(0);
+    },
+  );
 });
 
 // The tarball fetched in Dockerfile.fips's nodebase stage is checked against a

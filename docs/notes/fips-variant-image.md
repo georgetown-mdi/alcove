@@ -362,9 +362,10 @@ though no configuration existed.
 The per-run report is the same question asked of the running container, and it
 is asked of the right consumer. The image ships the engagement probe and its
 entrypoint runs it before dispatching: a Node process under the image's own
-configuration, making Alcove's five call shapes and requiring `fips.so` mapped
-into that process beside an MD5 digest and a below-minimum RSA keygen that both
-fail. The preamble reads the probe's exit status and nothing else, and parses no
+configuration, making Alcove's five call shapes and the rotation's value draw
+and AES-KW wrap, requiring every one of them to complete, and requiring
+`fips.so` mapped into that process beside an MD5 digest and a below-minimum RSA
+keygen that both fail. The preamble reads the probe's exit status and nothing else, and parses no
 text at all. That is by design rather than incidental. Reading `openssl list
 -providers` back with awk is the obvious way to write this line and it is wrong
 twice over: `openssl` on this base is the Amazon Linux CLI, a **different
@@ -396,8 +397,12 @@ image over a shared volume, which is the only end-to-end run either image gets.
 The probe's product legs are what a "dispatches into the validated module"
 claim may name, and no more: AES-256-GCM, HKDF-SHA-256, HMAC-SHA-256, SHA-256
 and P-256 ECDH, each at the parameter shape `packages/core/src` passes. Naming a
-primitive in such a claim means adding its leg first. That the five are calls
-the committed probe actually makes and completes is driven in
+primitive in such a claim means adding its leg first. The rotation's value draw
+and AES-KW wrap are legs too, and gate the verdict as the five do, but the
+claim does not name them; what they measure is in
+[CONTAINER_IMAGES.md](../spec/CONTAINER_IMAGES.md#the-aes-kw-row-behind-the-rotations-wrap).
+That all seven are calls the committed probe actually makes and completes, and
+that a failure of either rotation leg fails the run, is driven in
 `scripts/docker-entrypoint-fips.test.mjs`, so a leg silently dropped or
 misparameterised reddens there; that the claim in
 [COMPLIANCE.md](../COMPLIANCE.md#fips-140) names those five and no others is
