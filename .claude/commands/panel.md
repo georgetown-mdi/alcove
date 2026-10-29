@@ -157,9 +157,8 @@ Workflow script itself, and adds only where to write the answer.
    and writing `{position, rationale, keyRisk, changed, movedBy}`, until every
    seat reports `changed: false` or `extraRounds` rounds past the first have run
    (two unless `panel.json` sets another whole number, with no upper bound).
-   A panel with no consensus after those rounds is inconclusive: report it as
-   such rather than running more. Its report names the
-   record again. Take the question to the owner with each seat's `first` and
+   Its report names the record again, and calls a panel with no consensus
+   after those rounds inconclusive. Take the question to the owner with each seat's `first` and
    `final` position from the record's `panelists` and the record's path: a
    converged deliberation informs the owner and settles nothing.
 3. A Workflow panelist that returned null exhausted its schema retries and is
