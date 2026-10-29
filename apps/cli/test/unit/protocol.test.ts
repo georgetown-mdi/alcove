@@ -168,13 +168,17 @@ const ROTATION_LINE_PHRASES = [
   "rotated and saved, but a post-handshake",
 ] as const;
 
-// Poll dropDir until B's rendezvous (-hello) file appears, then backdate every
-// entry's mtime by 3 s. Party B starts first; an older mtime forces B to be
-// the responder even on coarse-mtime filesystems (FAT/some NFS), where
-// same-bucket timestamps fall back to UUID comparison and could assign roles
-// unexpectedly. The ENOENT tolerance covers a file deleted by B's synchronize
-// before this loop reaches it. The wait shares the peer-wait safety check.
-async function backdateDropDirRendezvousFile(dropDir: string): Promise<void> {
+// A party's rendezvous hello, `<id>-hello-<byteCount>.json`. The party writes
+// it as a `temp-hello-<uuid>.tmp` first and renames it into place, so the temp
+// is not yet a hello the other party can read.
+const RENDEZVOUS_HELLO_NAME = /-hello-\d+\.json$/;
+
+// Poll dropDir until the first party's hello is in place, so the party started
+// next finds it on its entry scan and joins as the initiator. Starting the
+// second party any earlier lets both write a hello, and the hello filenames,
+// which hold random ids, then decide the roles. The wait shares the peer-wait
+// safety check.
+async function waitForFirstPartyHello(dropDir: string): Promise<void> {
   const deadline = Date.now() + PEER_WAIT_HANG_BACKSTOP_MS;
   for (;;) {
     let entries: string[];
@@ -182,24 +186,14 @@ async function backdateDropDirRendezvousFile(dropDir: string): Promise<void> {
       entries = fs.readdirSync(dropDir);
     } catch (e) {
       throw new Error(
-        `dropDir became unavailable while polling B's rendezvous: ` +
+        `dropDir became unavailable while polling for the first party's hello: ` +
           (e as Error).message,
       );
     }
-    if (entries.length > 0) {
-      const past = new Date(Date.now() - 3_000);
-      for (const f of entries) {
-        try {
-          fs.utimesSync(path.join(dropDir, f), past, past);
-        } catch (e) {
-          if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
-        }
-      }
-      return;
-    }
+    if (entries.some((name) => RENDEZVOUS_HELLO_NAME.test(name))) return;
     if (Date.now() > deadline)
-      throw new Error("timed out waiting for B to write its rendezvous file");
-    await new Promise<void>((r) => setTimeout(r, 5));
+      throw new Error("timed out waiting for the first party's hello");
+    await new Promise<void>((r) => setTimeout(r, 1));
   }
 }
 
@@ -3215,8 +3209,8 @@ test("an unauthenticated run with nothing matched warns and states that no secre
   expect(mockState.warnings).toStrictEqual(ZERO_MATCH_WARNINGS);
 }, 20_000);
 
-/** Run B first and backdate its rendezvous file, so B is the responder and A
- * the initiator. */
+/** Run B first and start A once B's hello is in place, so B is the responder
+ * and A the initiator. */
 async function runResponderBThenInitiatorA(
   keyFileA: string,
   keyFileB: string,
@@ -3237,7 +3231,7 @@ async function runResponderBThenInitiatorA(
       ...options,
     });
   const b = run(keyFileB, "test-b");
-  await backdateDropDirRendezvousFile(dropDir);
+  await waitForFirstPartyHello(dropDir);
   const a = run(keyFileA, "test-a");
   const [resultA, resultB] = await Promise.allSettled([a, b]);
   return [resultA, resultB];
@@ -5488,8 +5482,8 @@ test("runProtocol marks the key-file path when the rotated token cannot be saved
   saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
   mockState.unwritableKeyFilePath = keyFileA;
 
-  // A starts first and is backdated, so it is the responder, whose save
-  // follows the initiator's.
+  // A starts first and B only once A's hello is in place, so A is the
+  // responder, whose save follows the initiator's.
   const pA = runProtocol({
     connection: {
       channel: "filedrop",
@@ -5502,7 +5496,7 @@ test("runProtocol marks the key-file path when the rotated token cannot be saved
     verbosity: -1,
     loggerName: "test-a",
   });
-  await backdateDropDirRendezvousFile(dropDir);
+  await waitForFirstPartyHello(dropDir);
   const pB = runProtocol({
     connection: {
       channel: "filedrop",
@@ -6073,8 +6067,8 @@ test.skipIf(process.platform === "win32")(
       loggerName: "test-b",
     });
 
-    // Wait for B to register its hello file so role assignment is deterministic.
-    await backdateDropDirRendezvousFile(dropDir);
+    // Wait for B's hello so A joins as the initiator.
+    await waitForFirstPartyHello(dropDir);
 
     const aPromise = runProtocol({
       connection: {
