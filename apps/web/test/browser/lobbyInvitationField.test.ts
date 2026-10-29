@@ -277,7 +277,7 @@ describe("the site footer", () => {
     ["hosted", false],
     ["console", true],
   ])(
-    "the %s build names who builds Alcove, links its project pages on the project site and its source code on GitHub",
+    "the %s build names who builds Alcove, links its project pages on the project site in order and its source code on GitHub",
     async (_name, isConsole) => {
       build.console = isConsole;
       app.render(createElement(Lobby));
@@ -292,13 +292,20 @@ describe("the site footer", () => {
         .toHaveAttribute("href", "https://mdi.georgetown.edu/pets/");
       await expect.element(institute).toHaveAttribute("target", "_blank");
       await expect.element(institute).toHaveAttribute("rel", "noreferrer");
-      for (const [name, href] of [
+      const expected = [
         ["Documentation", "https://data-bridge.org/docs/"],
+        [
+          "Instructions",
+          isConsole
+            ? "https://data-bridge.org/console-start"
+            : "https://data-bridge.org/",
+        ],
         ["Privacy", "https://data-bridge.org/PRIVACY"],
         ["Security", "https://data-bridge.org/SECURITY"],
         ["Support", "https://data-bridge.org/SUPPORT"],
-        ["Source code on GitHub", "https://github.com/georgetown-mdi/alcove"],
-      ] as const) {
+        ["Source code", "https://github.com/georgetown-mdi/alcove"],
+      ] as const;
+      for (const [name, href] of expected) {
         const link = footer.getByRole("link", {
           name: `${name} (opens in a new tab)`,
           exact: true,
@@ -306,9 +313,13 @@ describe("the site footer", () => {
         await expect.element(link).toHaveAttribute("href", href);
         await expect.element(link).toHaveAttribute("target", "_blank");
       }
-      await expect
-        .element(footer.getByText("More about Alcove:", { exact: true }))
-        .toBeInTheDocument();
+      const row = footer.element().querySelector("p + div");
+      const projectLinks = Array.from(row?.querySelectorAll("a") ?? []);
+      expect(projectLinks.map((a) => a.getAttribute("href"))).toEqual(
+        expected.map(([, href]) => href),
+      );
+      expect(footer.element().textContent).not.toMatch(/more about alcove/i);
+      expect(footer.element().textContent).not.toMatch(/on github/i);
     },
   );
 });
