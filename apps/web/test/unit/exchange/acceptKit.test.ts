@@ -895,6 +895,15 @@ describe("accept kit, lockless rendezvous", () => {
 });
 
 describe("accept kit invariants", () => {
+  test.each(ENDPOINTS)(
+    "closes on the command-line reference on the project site (%o)",
+    (endpoint) => {
+      expect(sheet(endpoint)).toContain(
+        "  Command-line reference:\n    https://data-bridge.org/docs/CLI\n",
+      );
+    },
+  );
+
   const location: InvitationLocation = {
     origin: "https://example.org:8443",
     signaling: {
@@ -976,8 +985,11 @@ describe("accept kit invariants", () => {
     // mount points in the commands it gives them.
     for (const endpoint of [FILEDROP, SFTP]) {
       const text = sheet(endpoint);
-      expect(text).not.toContain("/data");
-      expect(text).not.toContain("/app");
+      // A web address is not a container path: the project site's host name
+      // begins "data-".
+      const withoutAddresses = text.replace(/https?:\/\/\S+/g, "");
+      expect(withoutAddresses).not.toContain("/data");
+      expect(withoutAddresses).not.toContain("/app");
       expect(text).not.toContain("alcove.yaml.tmp");
       // The mount points the partner types are present and fixed.
       expect(text).toContain('-v "${PWD}:/work"');

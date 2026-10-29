@@ -45,6 +45,8 @@
  */
 import { PLACEHOLDER_SSH_USERNAME } from "@alcove/core";
 
+import { PROJECT_SITE_URL } from "@components/projectLinks";
+
 import { OPERATOR_USER_FLAG } from "@psi/containerAccount";
 
 import { imageReference, releaseVersion } from "@utils/alcoveImage";
@@ -117,8 +119,7 @@ interface AcceptKitInput extends AcceptKitExchange {
 const ALCOVE_RELEASES_URL = "https://github.com/georgetown-mdi/alcove/releases";
 
 /** The command-line reference the sheet closes on. */
-const ALCOVE_CLI_DOC_URL =
-  "https://github.com/georgetown-mdi/alcove/blob/main/docs/CLI.md";
+const ALCOVE_CLI_DOC_URL = `${PROJECT_SITE_URL}/docs/CLI`;
 
 /** The placeholder the partner replaces with the invitation string. The sheet
  * holds this and never a token: the invitation travels separately, so a

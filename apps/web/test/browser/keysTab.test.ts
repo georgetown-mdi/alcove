@@ -555,7 +555,7 @@ describe("KeysTab: the built-in rule choice and the less certain mark", () => {
       .element(link)
       .toHaveAttribute(
         "href",
-        "https://github.com/georgetown-mdi/alcove/blob/main/docs/EXCHANGE_REFERENCE.md#choosing-the-built-in-rules",
+        "https://data-bridge.org/docs/EXCHANGE_REFERENCE#choosing-the-built-in-rules",
       );
     await expect.element(link).toHaveAttribute("target", "_blank");
     await expect.element(link).toHaveAttribute("rel", "noreferrer");

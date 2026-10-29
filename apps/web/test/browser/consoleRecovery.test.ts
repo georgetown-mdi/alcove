@@ -266,6 +266,12 @@ describe("console inputs disabled state", () => {
     await expect
       .element(page.getByText("JOB_DATA_ROOT", { exact: false }))
       .toBeInTheDocument();
+    await expect
+      .element(page.getByRole("link", { name: "Running the container" }))
+      .toHaveAttribute(
+        "href",
+        "https://data-bridge.org/docs/CONSOLE#running-the-container",
+      );
     // The transient red fault must not be what shows for an intentional 404. The
     // ServerFilePicker notice title is the anchor: it belongs to the error branch
     // alone, where a fragment of the body would have to match a longer sentence.

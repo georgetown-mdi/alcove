@@ -145,8 +145,8 @@ describe("RelaySettingsScreen", () => {
     await expect
       .element(page.getByRole("link", { name: /^Learn more about relay/ }))
       .toHaveAttribute("href", RELAY_SETTINGS_GUIDE_URL);
-    expect(RELAY_SETTINGS_GUIDE_URL).toMatch(
-      /docs\/WEB_APP\.md#relay-settings$/,
+    expect(RELAY_SETTINGS_GUIDE_URL).toBe(
+      "https://data-bridge.org/docs/WEB_APP#relay-settings",
     );
   });
 

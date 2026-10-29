@@ -184,6 +184,13 @@ describe("RecurringHandoff panel", () => {
     // A Direct run has no key file to copy.
     expect(text()).toContain("no shared secret");
     expect(text()).not.toContain(".alcove.key");
+
+    await expect
+      .element(page.getByRole("link", { name: "recurring exchange reference" }))
+      .toHaveAttribute(
+        "href",
+        "https://data-bridge.org/docs/CLI#recurring-exchange",
+      );
   });
 
   test("quotes a spaced Direct label POSIX for cron and cmd-style for Windows", async () => {

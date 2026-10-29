@@ -54,7 +54,7 @@ import {
 } from "./directExchangeModel";
 import { WorkShell } from "./WorkShell";
 
-import { CONSOLE_GUIDE_URL } from "./userGuide";
+import { CONSOLE_INSTRUCTIONS_URL } from "./userGuide";
 import { DirectConfirmSection } from "./DirectConfirmSection";
 import { DirectRunSection } from "./DirectRunSection";
 import { DirectServerSection } from "./DirectServerSection";
@@ -302,12 +302,12 @@ export function DirectExchangeScreen() {
             Quick exchanges run in the self-hosted Alcove console or the
             command-line tool. See the{" "}
             <Anchor
-              href={CONSOLE_GUIDE_URL}
+              href={CONSOLE_INSTRUCTIONS_URL}
               target="_blank"
               rel="noreferrer"
               inherit
             >
-              console guide
+              instructions for starting the console
             </Anchor>
             , or go{" "}
             <Anchor component={Link} to="/" inherit>

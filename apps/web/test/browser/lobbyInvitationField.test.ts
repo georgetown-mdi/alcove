@@ -11,6 +11,7 @@ import "@mantine/core/styles.css";
 import { encodeInvitation, generateSharedSecret } from "@alcove/core";
 
 import { PASTE_INVITATION_FIELD_ID, deepLinkFor } from "@psi/invitation";
+import { DirectExchangeScreen } from "@exchange/DirectExchangeScreen";
 import { Lobby } from "@exchange/Lobby";
 
 import { createAppMount } from "./renderApp";
@@ -168,13 +169,53 @@ describe.each([
   });
 });
 
+describe("lobby link to the step-by-step instructions", () => {
+  test.each([
+    ["hosted", false, "https://data-bridge.org/"],
+    ["console", true, "https://data-bridge.org/console-start"],
+  ])(
+    "the %s build links its instructions on the project site",
+    async (_name, isConsole, href) => {
+      build.console = isConsole;
+      runtime.installed = false;
+      app.render(createElement(Lobby));
+      await expect
+        .element(page.getByText(/^First time here\?/))
+        .toHaveTextContent(
+          "First time here? Follow the step-by-step instructions (opens in a " +
+            "new tab) to run an exchange.",
+        );
+      const link = page.getByRole("link", {
+        name: "step-by-step instructions (opens in a new tab)",
+        exact: true,
+      });
+      await expect.element(link).toHaveAttribute("href", href);
+      await expect.element(link).toHaveAttribute("target", "_blank");
+      await expect.element(link).toHaveAttribute("rel", "noreferrer");
+    },
+  );
+
+  test("the hosted quick exchange page links the instructions for starting the console", async () => {
+    build.console = false;
+    app.render(createElement(DirectExchangeScreen));
+    const link = page.getByRole("link", {
+      name: "instructions for starting the console",
+      exact: true,
+    });
+    await expect
+      .element(link)
+      .toHaveAttribute("href", "https://data-bridge.org/console-start");
+    await expect.element(link).toHaveAttribute("target", "_blank");
+  });
+});
+
 describe("lobby pointer to the other ways to use Alcove", () => {
   const line =
     "For SFTP, a shared folder, or scheduled runs on your own servers, see " +
-    "the other ways to use Alcove (on GitHub) (opens in a new tab).";
+    "the instructions for the other ways to use Alcove (opens in a new tab).";
   const pointer = () => page.getByText(/^For SFTP, a shared folder/);
 
-  test("the hosted build in a browser tab shows it and links the README", async () => {
+  test("the hosted build in a browser tab shows it and links the instructions home", async () => {
     build.console = false;
     runtime.installed = false;
     app.render(createElement(Lobby));
@@ -200,15 +241,12 @@ describe("lobby pointer to the other ways to use Alcove", () => {
     ).toBeTruthy();
     expect(headingEl.nextElementSibling).toBe(pointerEl);
     const link = page.getByRole("link", {
-      name: "other ways to use Alcove (on GitHub) (opens in a new tab)",
+      name: "instructions for the other ways to use Alcove (opens in a new tab)",
       exact: true,
     });
     await expect
       .element(link)
-      .toHaveAttribute(
-        "href",
-        "https://github.com/georgetown-mdi/alcove/blob/main/README.md#three-ways-to-use-alcove",
-      );
+      .toHaveAttribute("href", "https://data-bridge.org/");
     await expect.element(link).toHaveAttribute("target", "_blank");
     await expect.element(link).toHaveAttribute("rel", "noreferrer");
   });
@@ -239,7 +277,7 @@ describe("the site footer", () => {
     ["hosted", false],
     ["console", true],
   ])(
-    "the %s build names who builds Alcove and links its project pages on GitHub",
+    "the %s build names who builds Alcove, links its project pages on the project site in order and its source code on GitHub",
     async (_name, isConsole) => {
       build.console = isConsole;
       app.render(createElement(Lobby));
@@ -254,13 +292,20 @@ describe("the site footer", () => {
         .toHaveAttribute("href", "https://mdi.georgetown.edu/pets/");
       await expect.element(institute).toHaveAttribute("target", "_blank");
       await expect.element(institute).toHaveAttribute("rel", "noreferrer");
-      const repository = "https://github.com/georgetown-mdi/alcove";
-      for (const [name, href] of [
-        ["Privacy", `${repository}/blob/main/PRIVACY.md`],
-        ["Security", `${repository}/blob/main/SECURITY.md`],
-        ["Support", `${repository}/blob/main/SUPPORT.md`],
-        ["Source code", repository],
-      ] as const) {
+      const expected = [
+        ["Documentation", "https://data-bridge.org/docs/"],
+        [
+          "Instructions",
+          isConsole
+            ? "https://data-bridge.org/console-start"
+            : "https://data-bridge.org/",
+        ],
+        ["Privacy", "https://data-bridge.org/PRIVACY"],
+        ["Security", "https://data-bridge.org/SECURITY"],
+        ["Support", "https://data-bridge.org/SUPPORT"],
+        ["Source code", "https://github.com/georgetown-mdi/alcove"],
+      ] as const;
+      for (const [name, href] of expected) {
         const link = footer.getByRole("link", {
           name: `${name} (opens in a new tab)`,
           exact: true,
@@ -268,9 +313,13 @@ describe("the site footer", () => {
         await expect.element(link).toHaveAttribute("href", href);
         await expect.element(link).toHaveAttribute("target", "_blank");
       }
-      await expect
-        .element(footer.getByText("On GitHub:", { exact: true }))
-        .toBeInTheDocument();
+      const row = footer.element().querySelector("p + div");
+      const projectLinks = Array.from(row?.querySelectorAll("a") ?? []);
+      expect(projectLinks.map((a) => a.getAttribute("href"))).toEqual(
+        expected.map(([, href]) => href),
+      );
+      expect(footer.element().textContent).not.toMatch(/more about alcove/i);
+      expect(footer.element().textContent).not.toMatch(/on github/i);
     },
   );
 });

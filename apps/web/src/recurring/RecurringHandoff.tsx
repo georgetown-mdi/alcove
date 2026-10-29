@@ -9,6 +9,7 @@ import {
 
 import { CopyableCode } from "@components/CopyableCode";
 import { DisclosureSection } from "@components/DisclosureSection";
+import { PROJECT_SITE_URL } from "@components/projectLinks";
 import styles from "@styles/app.module.css";
 
 import { HANDOFF_SIGNING_IDENTITY_PLACEHOLDER } from "@jobContract/handoffBindPaths";
@@ -30,8 +31,7 @@ import type { ScheduledRunSource } from "@psi/dockerRunCommand";
 import type { ShownRunLines } from "./scheduledRunCommand";
 
 /** The full CLI reference the panel points at for the recurring-run details. */
-const RECURRING_EXCHANGE_DOC_URL =
-  "https://github.com/georgetown-mdi/alcove/blob/main/docs/CLI.md#recurring-exchange";
+const RECURRING_EXCHANGE_DOC_URL = `${PROJECT_SITE_URL}/docs/CLI#recurring-exchange`;
 
 /**
  * The recurring-run hand-off panel, available on every console server-job seat

@@ -10,6 +10,7 @@ import {
 } from "@mantine/core";
 import { IconAlertCircle, IconRefresh } from "@tabler/icons-react";
 
+import { PROJECT_SITE_URL } from "@components/projectLinks";
 import { alertRoleFor } from "@theme";
 
 import type { ReactNode } from "react";
@@ -87,10 +88,9 @@ export function MountLoading({ message }: { message: string }) {
   );
 }
 
-/** The console guide's section on starting the container with a folder
+/** The console documentation's section on starting the container with a folder
  * mounted. */
-export const RUNNING_THE_CONTAINER_URL =
-  "https://github.com/georgetown-mdi/alcove/blob/main/docs/CONSOLE.md#running-the-container";
+export const RUNNING_THE_CONTAINER_URL = `${PROJECT_SITE_URL}/docs/CONSOLE#running-the-container`;
 
 /** The one-folder start command the notice below shows, with the folder left
  * for the operator to fill in. */

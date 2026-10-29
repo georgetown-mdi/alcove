@@ -52,7 +52,6 @@ import {
   PARTNER_REFUSED_SET_TITLE,
   PARTNER_SET_TOO_LARGE_TITLE,
 } from "@psi/managed/managedFailureCopy";
-import { ALLOWED_RELAYS_GUIDE_URL } from "@exchange/userGuide";
 import { NonEmptyRateController } from "@psi/workers/nonEmptyAggregateController";
 import { dialAsAcceptor } from "@psi/transport/rendezvous";
 import { writeOwnRelaySetting } from "@psi/transport/ownRelaySetting";
@@ -3503,7 +3502,10 @@ describe("AcceptorScreen: the review's Allowed relays", () => {
       .toHaveAccessibleDescription(ALLOWED_RELAYS_FIELD_DESCRIPTION);
     await expect
       .element(page.getByRole("link", { name: "More about Allowed relays" }))
-      .toHaveAttribute("href", ALLOWED_RELAYS_GUIDE_URL);
+      .toHaveAttribute(
+        "href",
+        "https://data-bridge.org/docs/WEB_APP#allowed-relays",
+      );
   });
 
   test("once set, shows the list as one line, which Change opens and Remove clears", async () => {

@@ -535,6 +535,16 @@ async function awaitStraightThroughRecovery(label: string): Promise<void> {
 }
 
 describe("console inviter file picker states", () => {
+  test("Help opens the instructions for starting the console", async () => {
+    stubJobApi({ listing: { configured: true, files: [] } });
+    app.render(createElement(InviterScreen));
+    const help = page.getByRole("link", { name: "Help" });
+    await expect
+      .element(help)
+      .toHaveAttribute("href", "https://data-bridge.org/console-start");
+    await expect.element(help).toHaveAttribute("target", "_blank");
+  });
+
   test("an empty listing shows the no-usable-files state", async () => {
     stubJobApi({ listing: { configured: true, files: [] } });
     app.render(createElement(InviterScreen));

@@ -189,7 +189,10 @@ describe("the command-line export hands over two files", () => {
     // The credential-at-rest posture is cited, not restated.
     await expect
       .element(page.getByRole("link", { name: "Key file security" }))
-      .toBeInTheDocument();
+      .toHaveAttribute(
+        "href",
+        "https://data-bridge.org/docs/SECURITY_DESIGN#key-file-security",
+      );
     // This invitation's relay names no STUN server, so a scheduled run falls back
     // to the CLI's built-in default and discloses the host's public address.
     await expect
