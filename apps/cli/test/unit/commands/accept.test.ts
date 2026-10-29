@@ -1088,7 +1088,19 @@ function saveConfigSendingId(
 }
 
 describe("the count-only shape, at the accept boundary", () => {
-  test.each(["ID", "identifier", "case_id", "ClientID"])(
+  test.each([
+    "ID",
+    "identifier",
+    "case_id",
+    "ClientID",
+    "MRN",
+    "PatientID",
+    "RecordID",
+    "MemberID",
+    "case_number",
+    "record_no",
+    "RecordNo",
+  ])(
     "validateAccept: a count-only acceptance over an inferred %s column sends nothing and is not refused",
     async (identifierColumn) => {
       // Inference sends no column, so a count-only invitation meets nothing to

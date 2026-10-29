@@ -7,6 +7,8 @@ import {
   inferMetadataForEveryColumn,
   METADATA_NAME_SHAPE_MESSAGE,
   ALIAS_TYPE_META_MAP,
+  NAMED_IDENTIFIER_LOOKUP_KEYS,
+  NOT_RECORD_NUMBER_LOOKUP_KEYS,
   ownResultColumnNames,
   safeParseMetadata,
   disclosedColumnNames,
@@ -15,6 +17,7 @@ import { UsageError } from "../../src/errors";
 import { buildOutputTable } from "../../src/payloadExchange";
 
 import type { Metadata } from "../../src/config/metadata";
+import type { SemanticType } from "../../src/types";
 
 // --- inferMetadata: linkage columns ------------------------------------------
 
@@ -246,15 +249,429 @@ test("PersonalID is the identifier, unsent, by default", () => {
 
 test("other no-separator id spellings are not identifiers", () => {
   expect(
-    inferMetadataForEveryColumn(["memberid", "caseid", "personalidx"], []).map(
-      (column) => column.type,
-    ),
-  ).toEqual(["other", "other", "other"]);
+    inferMetadataForEveryColumn(
+      ["caseid", "personalidx", "patientids", "mrns"],
+      [],
+    ).map((column) => column.type),
+  ).toEqual(["other", "other", "other", "other"]);
 });
 
-test("ClientID, PersonID and PersonalID are not entries of the alias table", () => {
-  for (const key of ["clientid", "personid", "personalid"])
+test("the named identifier spellings are not entries of the alias table", () => {
+  for (const key of [
+    "clientid",
+    "personid",
+    "personalid",
+    "patientid",
+    "recordid",
+    "memberid",
+    "mrn",
+  ])
     expect(Object.hasOwn(ALIAS_TYPE_META_MAP, key)).toBe(false);
+});
+
+test("no alias table key is a key the identifier or not-a-record-number lists hold", () => {
+  const tableKeys = Object.keys(ALIAS_TYPE_META_MAP);
+  const listKeys = [
+    ...NAMED_IDENTIFIER_LOOKUP_KEYS,
+    ...NOT_RECORD_NUMBER_LOOKUP_KEYS,
+  ];
+  expect(tableKeys.filter((key) => listKeys.includes(key))).toEqual([]);
+  expect(
+    [...NOT_RECORD_NUMBER_LOOKUP_KEYS].filter((key) =>
+      NAMED_IDENTIFIER_LOOKUP_KEYS.has(key),
+    ),
+  ).toEqual([]);
+  expect(
+    tableKeys.filter(
+      (key) =>
+        key.endsWith("_id") && ALIAS_TYPE_META_MAP[key].type !== "identifier",
+    ),
+  ).toEqual([]);
+});
+
+// --- inferMetadata: MRN, run-together ids and record numbers ----------------
+
+const RECORD_IDENTIFIER_SPELLINGS = [
+  "MRN",
+  "mrn",
+  " Mrn ",
+  "PatientID",
+  "patientid",
+  "RecordID",
+  "recordId",
+  "MemberID",
+  "MEMBERID",
+  "case_number",
+  "Case Number",
+  "CaseNumber",
+  "casenumber",
+  "CASE_NUMBER",
+  "record_number",
+  "RecordNumber",
+  "record_no",
+  "Record No",
+  "Record-No",
+  "RECORD_NO",
+  "RecordNo",
+  "recordNo",
+  "CaseNo",
+  "case_no",
+  "account_number",
+  "PolicyNo",
+  "zip_no",
+  "ethnicity_number",
+  "warehouse_number",
+  "WareHouseNumber",
+  "estate_no",
+  "state_number",
+  "hotel_number",
+  "Case #",
+  "Case#",
+  "Record No.",
+  "RecordNo.",
+  "Case #:",
+  "(RecordNo)",
+  "RecordNo:",
+];
+
+describe.each(["declaredOnly", "direct"] as const)(
+  "%s mode: a record identifier spelling infers as a client_id column does",
+  (mode) => {
+    const inferredAlone = (name: string) =>
+      inferMetadataForEveryColumn([name], [], { mode }).map((column) => ({
+        ...column,
+        name: "client_id",
+      }));
+
+    test.each(RECORD_IDENTIFIER_SPELLINGS)("%j", (name) => {
+      expect(inferredAlone(name)).toEqual(inferredAlone("client_id"));
+      const metadata = inferMetadata([name, "first_name", "notes"], [], {
+        mode,
+      });
+      expect(metadata[0]).toEqual({
+        name,
+        type: "identifier",
+        role: "identifier",
+        isPayload: false,
+      });
+      expect(disclosedColumnNames(metadata)).toEqual(
+        mode === "direct" ? ["notes"] : [],
+      );
+    });
+  },
+);
+
+test.each(RECORD_IDENTIFIER_SPELLINGS)(
+  "declared-only and direct inference type %j the same way",
+  (name) => {
+    const typesIn = (mode: "declaredOnly" | "direct") =>
+      inferMetadataForEveryColumn(["id", name], [], { mode }).map(
+        ({ type, role, isPayload }) => ({ type, role, isPayload }),
+      );
+    expect(typesIn("declaredOnly")).toEqual(typesIn("direct"));
+    expect(typesIn("direct")[1]).toEqual({
+      type: "identifier",
+      role: "ignored",
+      isPayload: false,
+    });
+  },
+);
+
+// The alias table is looked up before the record-number rule, so a name it
+// lists keeps its type, and a name on the not-a-record-number list, or ending
+// as no record number does, infers as any name the table does not list: type
+// `other`, sent under direct inference.
+const NUMBER_SUFFIX_FALSE_MATCHES: Array<[name: string, type: SemanticType]> = [
+  ["phone_number", "phone_number"],
+  ["Phone Number", "phone_number"],
+  ["PhoneNumber", "phone_number"],
+  ["social_security_number", "ssn"],
+  ["Social Security Number", "ssn"],
+  ["street_no", "street_number"],
+  ["StreetNumber", "street_number"],
+  ["StreetNo", "street_number"],
+  ["STREETNO", "street_number"],
+  ["street_nbr", "street_number"],
+  ["house_number", "street_number"],
+  ["house_no", "street_number"],
+  ["HouseNo", "street_number"],
+  ["address_number", "street_number"],
+  ["AddressNo", "street_number"],
+  ["unit_no", "unit"],
+  ["unit_number", "unit"],
+  ["UnitNo", "unit"],
+  ["apartment_number", "unit"],
+  ["ApartmentNo", "unit"],
+  ["apt_no", "unit"],
+  ["apt_number", "unit"],
+  ["AptNo", "unit"],
+  ["ssn", "ssn"],
+  ["SSN", "ssn"],
+  ["social", "ssn"],
+  ["SOCIAL_SECURITY_NUMBER", "ssn"],
+  ["Casino", "other"],
+  ["casino", "other"],
+  ["CASINO", "other"],
+  ["Piano", "other"],
+  ["volcano", "other"],
+  ["yes_no", "other"],
+  ["Yes No", "other"],
+  ["YesNo", "other"],
+  ["YESNO", "other"],
+  ["number", "other"],
+  ["Number", "other"],
+  ["No", "other"],
+  ["no", "other"],
+  ["_number", "other"],
+  ["_no", "other"],
+];
+
+describe.each(["declaredOnly", "direct"] as const)(
+  "%s mode: a name ending in number or no that is not a record number keeps its inference",
+  (mode) => {
+    test.each(NUMBER_SUFFIX_FALSE_MATCHES)("%j", (name, type) => {
+      const [column] = inferMetadataForEveryColumn([name], [], { mode });
+      if (type !== "other") {
+        expect(column).toEqual({
+          name,
+          type,
+          role: "linkage",
+          isPayload: false,
+        });
+        return;
+      }
+      expect(column).toEqual(
+        mode === "direct"
+          ? { name, type: "other", role: "payload", isPayload: true }
+          : { name, type: "other", role: "ignored", isPayload: false },
+      );
+    });
+  },
+);
+
+// --- inferMetadata: SSN and phone spellings ---------------------------------
+
+const SSN_SPELLINGS = [
+  "ssn_number",
+  "ssn_no",
+  "ssnno",
+  "SSNNO",
+  "SSNNumber",
+  "SSN No",
+  "SSN Num",
+  "SocialSecurityNumber",
+  "socialsecuritynumber",
+  "SOCIALSECURITYNO",
+  "social_security_no",
+  "Social Security No",
+  "Social Security",
+  "social_no",
+  "socialno",
+  "SocSecNo",
+  "soc_sec_no",
+  "Soc Sec Number",
+  "ss_number",
+  "SSNumber",
+  "SS_No",
+  "ss_nbr",
+  "SSN No.",
+  "Soc. Sec. No.",
+  "SSN #",
+  "SS#",
+  "(ssn)",
+  "ssn:",
+  "SSN:",
+];
+
+const PHONE_SPELLINGS = [
+  "telephone_number",
+  "Telephone",
+  "tel",
+  "tel_no",
+  "phone_no",
+  "PhoneNo",
+  "PHONENO",
+  "phoneno",
+  "Phone Num",
+  "cell",
+  "cell_no",
+  "CellNo",
+  "CELLNO",
+  "CellNumber",
+  "Cell Phone",
+  "cell_phone",
+  "cellphonenumber",
+  "mobile",
+  "mobile_number",
+  "Mobile Phone No",
+  "home_phone",
+  "Home Phone Number",
+  "HomePhoneNumber",
+  "homephonenumber",
+  "HOMEPHONENUMBER",
+  "work_phone",
+  "workphonenumber",
+  "primaryphonenumber",
+  "alternate_phone",
+  "contact_phone_number",
+  "Phone No.",
+  "Phone #",
+  "Cell #",
+  "Tel.",
+  "[Phone #]",
+];
+
+describe.each(["declaredOnly", "direct"] as const)(
+  "%s mode: an SSN or phone spelling is a linkage name, never sent",
+  (mode) => {
+    test.each([
+      ...SSN_SPELLINGS.map((name) => [name, "ssn"] as const),
+      ...PHONE_SPELLINGS.map((name) => [name, "phone_number"] as const),
+    ])("%j infers %s", (name, type) => {
+      expect(inferMetadataForEveryColumn([name], [], { mode })).toEqual([
+        { name, type, role: "linkage", isPayload: false },
+      ]);
+      const metadata = inferMetadata([name, "first_name", "notes"], [], {
+        mode,
+      });
+      expect(disclosedColumnNames(metadata)).toEqual(
+        mode === "direct" ? ["notes"] : [],
+      );
+      expect(metadata.some((column) => column.role === "identifier")).toBe(
+        false,
+      );
+      expect(identifierTypedColumnNames([name])).toEqual([]);
+    });
+
+    test.each([
+      [["ssn_number", "case_number"]],
+      [["case_number", "ssn_number"]],
+      [["HomePhoneNumber", "case_number", "cell_no"]],
+    ])("%j picks case_number as the record identifier", (columns) => {
+      expect(
+        inferMetadataForEveryColumn(columns, [], { mode })
+          .filter((column) => column.role === "identifier")
+          .map((column) => column.name),
+      ).toEqual(["case_number"]);
+    });
+  },
+);
+
+test("a file whose only number columns are SSN or phone numbers has no record identifier", () => {
+  const metadata = inferMetadata(
+    ["ssn_number", "PhoneNo", "first_name", "notes"],
+    [],
+    { mode: "direct" },
+  );
+  expect(metadata.some((column) => column.role === "identifier")).toBe(false);
+  expect(inferredRecordIdentifierStatement(metadata)).toBe(
+    NO_IDENTIFIER_STATEMENT,
+  );
+  expect(disclosedColumnNames(metadata)).toEqual(["notes"]);
+});
+
+// --- inferMetadata: punctuation at either end of a header -------------------
+
+describe.each(["declaredOnly", "direct"] as const)(
+  "%s mode: a header with punctuation at either end infers as without it",
+  (mode) => {
+    test.each([
+      [".id", "id"],
+      ["client_id.", "client_id"],
+      ["_client_id_", "client_id"],
+      ["-ssn", "ssn"],
+      ["ssn.", "ssn"],
+      [" .dob. ", "dob"],
+      ["RecordNo.", "RecordNo"],
+      ["notes.", "notes"],
+      ["(notes):", "notes"],
+      ["(client_id)", "client_id"],
+      ["[ssn]", "ssn"],
+      ["...", "notes"],
+      ["()", "notes"],
+    ])("%j infers as %j", (header, bare) => {
+      const inferredRoles = (first: string) =>
+        inferMetadataForEveryColumn([first, "first_name", "comments"], [], {
+          mode,
+        }).map(({ type, role, isPayload }) => ({ type, role, isPayload }));
+      expect(inferredRoles(header)).toEqual(inferredRoles(bare));
+    });
+  },
+);
+
+test("a header of only punctuation folds to an empty key and is an unrecognized name", () => {
+  expect(
+    inferMetadataForEveryColumn(["()", "..."], [], { mode: "direct" }),
+  ).toEqual([
+    { name: "()", type: "other", role: "payload", isPayload: true },
+    { name: "...", type: "other", role: "payload", isPayload: true },
+  ]);
+  expect(inferMetadata(["()", "..."], [], { mode: "declaredOnly" })).toEqual(
+    [],
+  );
+});
+
+// --- inferMetadata: choosing the record identifier ---------------------------
+
+const recordIdentifierOf = (
+  columns: Array<string>,
+  mode: "declaredOnly" | "direct",
+) =>
+  inferMetadataForEveryColumn(columns, [], { mode })
+    .filter((column) => column.role === "identifier")
+    .map((column) => column.name);
+
+describe.each(["declaredOnly", "direct"] as const)(
+  "%s mode: a record number does not outrank an id recognized by name",
+  (mode) => {
+    test.each([
+      [["Visit Number", "client_id", "first_name"], "client_id"],
+      [["case_number", "client_id"], "client_id"],
+      [["case_number", "MRN"], "MRN"],
+      [["RecordNo", "id"], "id"],
+      [["visit_no", "PersonalID", "Member ID"], "PersonalID"],
+      [["case_number", "visit_no"], "case_number"],
+      [["visit_no", "case_number", "notes"], "visit_no"],
+    ])("%j picks %j", (columns, expected) => {
+      expect(recordIdentifierOf(columns, mode)).toEqual([expected]);
+      const everyColumn = inferMetadataForEveryColumn(columns, [], { mode });
+      for (const column of everyColumn)
+        if (column.type === "identifier") expect(column.isPayload).toBe(false);
+    });
+  },
+);
+
+test("a record number passed over for the record identifier is held back", () => {
+  expect(
+    inferMetadata(["Visit Number", "client_id", "first_name"], []).map(
+      (column) => column.name,
+    ),
+  ).toEqual(["client_id", "first_name"]);
+  expect(
+    inferMetadata(["Visit Number", "client_id", "first_name", "notes"], [], {
+      mode: "direct",
+    }),
+  ).toEqual([
+    {
+      name: "Visit Number",
+      type: "identifier",
+      role: "ignored",
+      isPayload: false,
+    },
+    {
+      name: "client_id",
+      type: "identifier",
+      role: "identifier",
+      isPayload: false,
+    },
+    {
+      name: "first_name",
+      type: "first_name",
+      role: "linkage",
+      isPayload: false,
+    },
+    { name: "notes", type: "other", role: "payload", isPayload: true },
+  ]);
 });
 
 test("two canonical identifier columns: only the first is the identifier", () => {
@@ -928,6 +1345,27 @@ test.each([
     ]);
   },
 );
+
+test("inferredRecordIdentifierStatement says a record number ahead of the identifier was passed over", () => {
+  const columns = ["case_number", "client_id", "ssn"];
+  const metadata = inferMetadata(columns, [], { mode: "direct" });
+  expect(inferredRecordIdentifierStatement(metadata)).toBe(
+    "client_id, the first id column in your file that is not a record number",
+  );
+  const rows = [0, 1, 2].map((index) =>
+    Object.fromEntries(columns.map((name) => [name, `${name}-${index}`])),
+  );
+  expect(resultFirstColumn(metadata, rows)).toEqual([
+    "client_id",
+    "client_id-1",
+    "client_id-2",
+  ]);
+  expect(
+    inferredRecordIdentifierStatement(
+      inferMetadata(["case_number", "visit_no"], [], { mode: "direct" }),
+    ),
+  ).toBe("case_number, the first id column in your file");
+});
 
 test("inferredRecordIdentifierStatement with no id column says the result numbers rows from 0", () => {
   const columns = ["ssn", "dob", "notes"];

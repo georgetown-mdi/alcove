@@ -185,7 +185,7 @@ The lobby's "Skip the invitation" card opens a quick exchange, for when both par
 - **Trust rests entirely on the transport.** There is no shared secret and no application-layer encryption, so the SSH connection or the shared folder's access controls protect the exchange ([Bootstrapping a shared secret](SECURITY_DESIGN.md#bootstrapping-a-shared-secret)).
 - **Each party still writes its own self-attested exchange record.**
 
-The confirm step names your record identifier: the first column whose name Alcove treats as an identifier (such as `id`, `client_id`, or `Client ID`). With none, the result's first column is `row_id`, numbering rows from 0 ([The result file](CLI.md#the-result-file)). The intent and argv: [SERVER_JOB_API.md](spec/SERVER_JOB_API.md#the-zero-setup-intent).
+The confirm step names your record identifier: the first column whose name Alcove treats as an identifier (such as `id`, `client_id`, or `Client ID`), a record number such as `case_number` only when no id column of another kind follows it. With none, the result's first column is `row_id`, numbering rows from 0 ([The result file](CLI.md#the-result-file)). The intent and argv: [SERVER_JOB_API.md](spec/SERVER_JOB_API.md#the-zero-setup-intent).
 
 ## Authoring the SFTP connection
 

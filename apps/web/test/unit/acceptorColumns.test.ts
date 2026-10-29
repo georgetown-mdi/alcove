@@ -201,9 +201,20 @@ describe("acceptor columns editor state", () => {
     "ClientID",
     "PersonID",
     "PersonalID",
+    "MRN",
+    "PatientID",
+    "RecordID",
+    "MemberID",
+    "case_number",
+    "record_no",
+    "RecordNo",
   ])(
     "an inferred %j column starts as the record identifier, not sent, and a second id column starts ignored",
     (name) => {
+      // A record number gives way to the named id column after it.
+      const recordNumber = ["case_number", "record_no", "RecordNo"].includes(
+        name,
+      );
       const { metadata } = acceptorInitialColumnsState([
         name,
         "first_name",
@@ -214,10 +225,10 @@ describe("acceptor columns editor state", () => {
       expect(
         metadata.map((column) => [column.name, disclosureOf(column)]),
       ).toEqual([
-        [name, "identifier"],
+        [name, recordNumber ? "ignored" : "identifier"],
         ["first_name", "match"],
         ["last_name", "match"],
-        ["household_id", "ignored"],
+        ["household_id", recordNumber ? "identifier" : "ignored"],
         ["notes", "ignored"],
       ]);
       expect(acceptorDisclosedColumns(metadata)).toEqual([]);

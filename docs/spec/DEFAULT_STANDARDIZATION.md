@@ -2046,41 +2046,48 @@ date-of-birth screens are the per-value ones its pipeline lists.
 
 When an exchange specification has no `metadata` block, each input column's
 semantic type, role, and payload default are inferred from its name. The
-lookup is on the column name's lookup key, which folds the whole name in three
+lookup is on the column name's lookup key, which folds the whole name in four
 steps:
 
-1. Trim whitespace from both ends.
-2. Lowercase it.
+1. Lowercase it.
+2. Replace each `#` with the word `number`, set off by a `_` on each side.
 3. Collapse each run of whitespace, `.`, `_` and `-` to one `_`.
+4. Drop every character that is not a letter or digit from either end.
 
 The key is an exact match against the table below, never a substring or prefix
 test, so `First Name`, ` ssn` and `Date-of-Birth` infer but `zip_area` and
-`ssn_last4` do not. Only whitespace is trimmed, so `_ssn` and `ssn_` do not
-infer either. The key is used only for the lookup: the column keeps its raw
+`ssn_last4` do not.
+A character that is not a letter or digit at either end is dropped, so `ssn.`, `(ssn)` and `ssn:` have the key
+`ssn`, and `Tel.` and `SSN No.` have `tel` and `ssn_no`.
+A `#` is read as `number`, so `SSN #` and `SS#` have the keys `ssn_number` and
+`ss_number`, and `Case #` is the record number `case_number`.
+Punctuation inside a name, other than `#` and the separators above, stays in
+the key.
+The key is used only for the lookup: the column keeps its raw
 header as its name in its metadata, its transform `input`, the run's display
 and the result. Every name in the table is its own lookup key, and no two names
 in it share one.
 
-The fold has two limits. The console's quick-exchange confirm screen states
-the rule and lists the columns sent; only the command line's pre-run display
+The fold has two limits. The console's quick-exchange confirm screen gives
+examples of the columns never sent and lists the columns sent; only the command line's pre-run display
 lists the names a quick exchange holds back.
-A header recognized after trimming is shown as written, so on the display a
+A header recognized after folding is shown as written, so on the display a
 whitespace-padded name such as ` ssn` differs from the bare `ssn` only by that
 whitespace.
 
 | Semantic type | Column names that infer it | `role` | `is_payload` |
 | ------------- | -------------------------- | ------ | ------------ |
-| `ssn` | `ssn`, `social_security_number`, `social` | `linkage` | `false` |
+| `ssn` | `ssn`, `social`, `social_security`, `socialsecurity`, `soc_sec`, `socsec`, `ssn_number`, `ssnnumber`, `ssn_no`, `ssnno`, `ssn_num`, `ssnnum`, `ssn_nbr`, `ssnnbr`, `ss_number`, `ssnumber`, `ss_no`, `ssno`, `ss_num`, `ssnum`, `ss_nbr`, `ssnbr`, `social_number`, `socialnumber`, `social_no`, `socialno`, `social_num`, `socialnum`, `social_nbr`, `socialnbr`, `social_security_number`, `socialsecuritynumber`, `social_security_no`, `socialsecurityno`, `social_security_num`, `socialsecuritynum`, `social_security_nbr`, `socialsecuritynbr`, `soc_sec_number`, `socsecnumber`, `soc_sec_no`, `socsecno`, `soc_sec_num`, `socsecnum`, `soc_sec_nbr`, `socsecnbr` | `linkage` | `false` |
 | `ssn4` | `ssn4` | `linkage` | `false` |
 | `first_name` | `first_name`, `firstname`, `fname` | `linkage` | `false` |
 | `last_name` | `last_name`, `lastname`, `lname` | `linkage` | `false` |
 | `date_of_birth` | `date_of_birth`, `dateofbirth`, `dob` | `linkage` | `false` |
 | `identifier` | `identifier`, `id` | `identifier` | `false` |
-| `phone_number` | `phone_number`, `phonenumber`, `phone` | `linkage` | `false` |
+| `phone_number` | `phone_number`, `phone`, `telephone`, `tel`, `cell`, `cell_phone`, `cellphone`, `mobile`, `mobile_phone`, `mobilephone`, `home_phone`, `homephone`, `work_phone`, `workphone`, `business_phone`, `businessphone`, `office_phone`, `officephone`, `day_phone`, `dayphone`, `evening_phone`, `eveningphone`, `primary_phone`, `primaryphone`, `alt_phone`, `altphone`, `alternate_phone`, `alternatephone`, `contact_phone`, `contactphone`, `phonenumber`, `phone_no`, `phoneno`, `phone_num`, `phonenum`, `phone_nbr`, `phonenbr`, `telephone_number`, `telephonenumber`, `telephone_no`, `telephoneno`, `telephone_num`, `telephonenum`, `telephone_nbr`, `telephonenbr`, `tel_number`, `telnumber`, `tel_no`, `telno`, `tel_num`, `telnum`, `tel_nbr`, `telnbr`, `cell_number`, `cellnumber`, `cell_no`, `cellno`, `cell_num`, `cellnum`, `cell_nbr`, `cellnbr`, `cell_phone_number`, `cellphonenumber`, `cell_phone_no`, `cellphoneno`, `cell_phone_num`, `cellphonenum`, `cell_phone_nbr`, `cellphonenbr`, `mobile_number`, `mobilenumber`, `mobile_no`, `mobileno`, `mobile_num`, `mobilenum`, `mobile_nbr`, `mobilenbr`, `mobile_phone_number`, `mobilephonenumber`, `mobile_phone_no`, `mobilephoneno`, `mobile_phone_num`, `mobilephonenum`, `mobile_phone_nbr`, `mobilephonenbr`, `home_phone_number`, `homephonenumber`, `home_phone_no`, `homephoneno`, `home_phone_num`, `homephonenum`, `home_phone_nbr`, `homephonenbr`, `work_phone_number`, `workphonenumber`, `work_phone_no`, `workphoneno`, `work_phone_num`, `workphonenum`, `work_phone_nbr`, `workphonenbr`, `business_phone_number`, `businessphonenumber`, `business_phone_no`, `businessphoneno`, `business_phone_num`, `businessphonenum`, `business_phone_nbr`, `businessphonenbr`, `office_phone_number`, `officephonenumber`, `office_phone_no`, `officephoneno`, `office_phone_num`, `officephonenum`, `office_phone_nbr`, `officephonenbr`, `day_phone_number`, `dayphonenumber`, `day_phone_no`, `dayphoneno`, `day_phone_num`, `dayphonenum`, `day_phone_nbr`, `dayphonenbr`, `evening_phone_number`, `eveningphonenumber`, `evening_phone_no`, `eveningphoneno`, `evening_phone_num`, `eveningphonenum`, `evening_phone_nbr`, `eveningphonenbr`, `primary_phone_number`, `primaryphonenumber`, `primary_phone_no`, `primaryphoneno`, `primary_phone_num`, `primaryphonenum`, `primary_phone_nbr`, `primaryphonenbr`, `alt_phone_number`, `altphonenumber`, `alt_phone_no`, `altphoneno`, `alt_phone_num`, `altphonenum`, `alt_phone_nbr`, `altphonenbr`, `alternate_phone_number`, `alternatephonenumber`, `alternate_phone_no`, `alternatephoneno`, `alternate_phone_num`, `alternatephonenum`, `alternate_phone_nbr`, `alternatephonenbr`, `contact_phone_number`, `contactphonenumber`, `contact_phone_no`, `contactphoneno`, `contact_phone_num`, `contactphonenum`, `contact_phone_nbr`, `contactphonenbr` | `linkage` | `false` |
 | `email_address` | `email_address`, `emailaddress`, `email` | `linkage` | `false` |
-| `street_number` | `street_number`, `streetnumber`, `street_no`, `street_num`, `house_number`, `housenumber`, `house_no`, `house_num`, `address_number`, `addressnumber` | `linkage` | `false` |
+| `street_number` | `street_number`, `streetnumber`, `street_no`, `streetno`, `street_num`, `streetnum`, `street_nbr`, `streetnbr`, `house_number`, `housenumber`, `house_no`, `houseno`, `house_num`, `housenum`, `house_nbr`, `housenbr`, `address_number`, `addressnumber`, `address_no`, `addressno`, `address_num`, `addressnum`, `address_nbr`, `addressnbr` | `linkage` | `false` |
 | `street_name` | `street_name`, `streetname` | `linkage` | `false` |
-| `unit` | `unit`, `unit_number`, `unitnumber`, `unit_no`, `unit_num`, `apartment`, `apartment_number`, `apartmentnumber`, `apt`, `apt_no`, `apt_num`, `apt_number` | `linkage` | `false` |
+| `unit` | `unit`, `apartment`, `apt`, `unit_number`, `unitnumber`, `unit_no`, `unitno`, `unit_num`, `unitnum`, `unit_nbr`, `unitnbr`, `apartment_number`, `apartmentnumber`, `apartment_no`, `apartmentno`, `apartment_num`, `apartmentnum`, `apartment_nbr`, `apartmentnbr`, `apt_number`, `aptnumber`, `apt_no`, `aptno`, `apt_num`, `aptnum`, `apt_nbr`, `aptnbr` | `linkage` | `false` |
 | `city` | `city`, `city_name`, `cityname` | `linkage` | `false` |
 | `zip_code` | `zip_code`, `zipcode`, `zip`, `zip5`, `zip_5` | `linkage` | `false` |
 | `state` | `state`, `state_code`, `statecode`, `state_name`, `statename` | `linkage` | `false` |
@@ -2089,6 +2096,9 @@ whitespace.
 Each multi-word type also lists its no-separator spelling, since the lookup key
 keeps words apart, so a single-token column export (`firstname`, `dateofbirth`)
 infers as well as a separated one.
+The `ssn`, `phone_number`, `street_number`, and `unit` rows also list each of
+their words with the endings `number`, `no`, `num`, and `nbr`, separated by `_`
+and run together, such as `ssn_no`, `homephonenumber`, and `streetno`.
 
 Two rules sit outside the table, and only the second depends on the inference mode.
 Direct mode is a run on an input file with no invitation and no
@@ -2098,15 +2108,35 @@ block, and an invitation composed from an input file.
 
 - A name whose lookup key is absent from the table but ends in `_id`, such as
   `case_id` or `Member ID`, infers `type: identifier`.
-  So does a name whose lookup key is `clientid`, `personid`, or `personalid`,
-  such as `ClientID` or the HMIS CSV export's `PersonalID`.
+  So does a name whose lookup key is `clientid`, `personid`, `personalid`,
+  `patientid`, `recordid`, `memberid`, or `mrn`, such as `ClientID`, the HMIS
+  CSV export's `PersonalID`, or `MRN`.
+  So does a record number: a name whose lookup key ends in `_number`, `_no`, or
+  `number` after at least one other character, such as `case_number`,
+  `Record No`, or `CaseNumber`, or whose header, less any characters that are not letters or digits at its
+  end, ends in a lowercase letter followed by `No`, such as `RecordNo`.
   In both modes it infers what the table's `identifier` row infers.
+  A header ending in a lowercase `no`, such as `Casino`, is not a record number.
+  Nor is a name whose lookup key is `yes_no` or `yesno`.
+  The table is looked up first, so a name it lists, such as `ssn_number` or
+  `StreetNo`, keeps its table type and is not a record number.
 - Any other name absent from the table infers nothing when declared-only, and
   `type: other`, `role: payload`, `is_payload: true` in direct mode.
 
+The record-number rule has two limits:
+
+- An all-capitals or all-lowercase header with an unseparated `no`, such as
+  `RECORDNO` or `recordno`, is not a record number and is sent in direct mode;
+  a `metadata` block that declares it holds it back.
+- A name ending in a record-number suffix that the table does not list is a
+  record number whatever its column holds, such as `fax_number`: it is not
+  sent, and it can index the records as any record number can.
+
 A second pass then decides which column indexes this party's own records: the
-first `identifier`-typed column in header order is promoted to
-`role: identifier` whatever its name. Every later `identifier`-typed column,
+first `identifier`-typed column in header order that is not a record number is
+promoted to `role: identifier`, and with none, the first record number is.
+A record number is often not unique to one record, so it never outranks an
+`identifier`-typed column of another kind. Every other `identifier`-typed column,
 whichever row typed it, infers nothing when declared-only, and `role: ignored`,
 `is_payload: false` in direct mode, so no `identifier`-typed column is sent in either mode.
 

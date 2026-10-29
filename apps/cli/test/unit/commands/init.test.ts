@@ -324,9 +324,24 @@ test("renderConfigTemplate: with an identifier and another id column undeclared,
   expect(data.undeclaredColumns).toEqual(["Record ID"]);
   const template = renderConfigTemplate(data);
   expect(template).toContain(
-    "case_id above is your record identifier, the first id column\n  # in the file. To use Record ID instead,\n  # uncomment its entry, set its role to identifier (and is_payload to\n  # false to keep it from your partner), and set the role of\n  # case_id above to ignored.",
+    "case_id above is your record identifier. To use Record ID instead,\n  # uncomment its entry, set its role to identifier (and is_payload to\n  # false to keep it from your partner), and set the role of\n  # case_id above to ignored.",
   );
   expect(template).not.toContain("No column above");
+});
+
+test("renderConfigTemplate: a record number ahead of an id column is offered as the other identifier", async () => {
+  const dir = scratchDir();
+  const file = path.join(dir, "in.csv");
+  fs.writeFileSync(
+    file,
+    "case_number,client_id,first_name,dob\n7,8,A,1990-01-02\n",
+  );
+  const data = await buildTemplateData(file, "Org");
+  expect(data.undeclaredColumns).toEqual(["case_number"]);
+  const template = renderConfigTemplate(data);
+  expect(template).toContain(
+    "client_id above is your record identifier. To use case_number instead,",
+  );
 });
 
 test("renderConfigTemplate: no input file lists no undeclared columns", async () => {

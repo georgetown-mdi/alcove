@@ -222,9 +222,20 @@ describe("previewInferredTerms", () => {
     "ClientID",
     "PersonID",
     "PersonalID",
+    "MRN",
+    "PatientID",
+    "RecordID",
+    "MemberID",
+    "case_number",
+    "record_no",
+    "RecordNo",
   ])(
     "the preview declares an id column %j and a second id column, sending neither",
     (name) => {
+      // A record number gives way to the named id column after it.
+      const recordNumber = ["case_number", "record_no", "RecordNo"].includes(
+        name,
+      );
       const preview = previewInferredTerms(
         [...LINKABLE_COLUMNS, name, "household_id"],
         DEFAULT_PREVIEW_IDENTITY,
@@ -237,8 +248,8 @@ describe("previewInferredTerms", () => {
           .filter((column) => column.type === "identifier")
           .map(({ name: column, role }) => [column, role]),
       ).toEqual([
-        [name, "identifier"],
-        ["household_id", "ignored"],
+        [name, recordNumber ? "ignored" : "identifier"],
+        ["household_id", recordNumber ? "identifier" : "ignored"],
       ]);
     },
   );
@@ -254,30 +265,18 @@ describe("previewInferredTerms", () => {
     expect(preview.refusal).toBeUndefined();
   });
 
-  test("the confirm notice's examples are recognized, and its unrecognized example is sent", () => {
+  test("the confirm notice names examples that are never sent, and states no rule", () => {
+    expect(DIRECT_RECOGNIZED_COLUMNS_NOTICE).toBe(
+      "Alcove never sends a column it recognizes as a linkage key or an id, " +
+        "such as ssn, phone, id, or case_number. Every other column is sent " +
+        "for each matched record.",
+    );
     const metadata = inferMetadata(
-      ["First Name", "Social Security Number", "E-mail"],
+      ["ssn", "phone", "id", "case_number", "notes"],
       [],
-      {
-        mode: "direct",
-      },
+      { mode: "direct" },
     );
-    expect(disclosedColumnNames(metadata)).toEqual(["E-mail"]);
-    expect(DIRECT_RECOGNIZED_COLUMNS_NOTICE).toContain(
-      "First Name and Social Security Number are recognized",
-    );
-    expect(DIRECT_RECOGNIZED_COLUMNS_NOTICE).toContain(
-      "a header Alcove does not recognize, such as E-mail",
-    );
-    expect(DIRECT_RECOGNIZED_COLUMNS_NOTICE).not.toMatch(/ignored/);
-    expect(
-      disclosedColumnNames(
-        inferMetadata(["id", "case_id", "ClientID"], [], { mode: "direct" }),
-      ),
-    ).toEqual([]);
-    expect(DIRECT_RECOGNIZED_COLUMNS_NOTICE).toContain(
-      "An id column Alcove recognizes, such as id, case_id, or ClientID, is never sent",
-    );
+    expect(disclosedColumnNames(metadata)).toEqual(["notes"]);
   });
 
   test("names the rule selection in core's words, as the CLI display does", () => {

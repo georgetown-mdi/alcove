@@ -119,17 +119,13 @@ export const QUICK_EXCHANGE_USAGE =
   "  $0 [--save] [options] URL INPUT_FILE [OUTPUT_FOLDER]\n\n" +
   "Run 'alcove COMMAND --help' for a command's own options. Without a\n" +
   "command, alcove runs a quick exchange through the server or shared\n" +
-  "folder at URL; the options below are the quick exchange's. For each\n" +
-  "matched record, a quick exchange sends your partner every column that\n" +
-  "is not a linkage key or an id column. Columns whose names Alcove\n" +
-  "recognizes as linkage keys (such as first_name, date_of_birth, ssn,\n" +
-  "phone, email, zip) are never sent: the ones a built-in key uses are\n" +
-  "matched on and the rest are held back. Columns it recognizes as ids\n" +
-  "(such as id, case_id, ClientID) are held back too. A column under\n" +
-  "another name is sent. The display shown before the run lists the\n" +
-  "columns it sends and the ones it holds back. Each step waits up to\n" +
-  "one poll interval (--polling-frequency), so even a small practice\n" +
-  "run takes a minute or more.";
+  "folder at URL; the options below are the quick exchange's. A quick\n" +
+  "exchange never sends a column Alcove recognizes as a linkage key or\n" +
+  "an id, such as ssn, phone, id, or case_number. It sends your partner\n" +
+  "every other column for each matched record. The display before the\n" +
+  "run lists the columns sent and the ones held back. Each step waits\n" +
+  "up to one poll interval (--polling-frequency), so even a small\n" +
+  "practice run takes a minute or more.";
 
 /** Logged when a quick exchange starts. */
 export const QUICK_EXCHANGE_TRUST_NOTICE =
@@ -156,15 +152,11 @@ export function builder(cmd: Argv): Argv {
               "Both parties run the quick exchange against the same server URL.\n" +
               "Linkage terms are inferred from each party's input file. No\n" +
               "configuration files are required or written unless --save is given.\n" +
-              "For each matched record it sends every column that is not a\n" +
-              "linkage key or an id column. Columns whose names Alcove\n" +
-              "recognizes as linkage keys (such as first_name, date_of_birth, ssn,\n" +
-              "phone, email, zip) are never sent: the ones a built-in key uses\n" +
-              "are matched on and the rest are held back. Columns it recognizes\n" +
-              "as ids (such as id, case_id, ClientID) are held back too. A column\n" +
-              "under another name is sent. The display shown before the run lists\n" +
-              "the columns it sends and the ones it holds back. To choose the\n" +
-              "columns sent, write a configuration with\n" +
+              "A quick exchange never sends a column Alcove recognizes as a\n" +
+              "linkage key or an id, such as ssn, phone, id, or case_number. It\n" +
+              "sends your partner every other column for each matched record.\n" +
+              "The display before the run lists the columns sent and the ones\n" +
+              "held back. To choose the columns sent, write a configuration with\n" +
               "'alcove init URL INPUT_FILE' and run 'alcove exchange'. Each step\n" +
               "waits up to one poll interval (--polling-frequency), so even a\n" +
               "small practice run takes a minute or more.\n" +

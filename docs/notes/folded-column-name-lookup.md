@@ -52,6 +52,7 @@ The fold only adds recognized headers, and each added header changes what a run 
 The promotion had needed exactly one identifier-typed column, so `case_id` beside `Record ID` left the run with no identifier.
 Three rules were weighed: keep that and ask for a `metadata` block, prefer the column whose raw header ends in `_id`, or take the first identifier-typed column in file order.
 The maintainer ruled for file order: no header spelling is a better identifier than another, so the rule does not rank `record_id` above `Record ID`.
+One exception, on the maintainer's ruling "For the item, rank ids above numbers." (2026-10-29): an id-named column (`id`, `identifier`, a name ending in `_id`, or a listed ID name) is chosen ahead of a record-number column, with file order deciding within each group ([DEFAULT_STANDARDIZATION.md, Type inference from column names](../spec/DEFAULT_STANDARDIZATION.md#type-inference-from-column-names)).
 A run whose metadata still has no identifier, because no column is identifier-typed, is told how to declare one: the undeclared-columns notice and the `alcove init` comments name `role: identifier`.
 
 A changed set of terms meets a partner on a build with the lowercase-only lookup, which still infers the old terms, and the run stops with a terms mismatch before any record is compared.

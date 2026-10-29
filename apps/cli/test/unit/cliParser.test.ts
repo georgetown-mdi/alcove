@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import * as path from "node:path";
 
 import { afterEach, expect, test, vi } from "vitest";
+import { disclosedColumnNames, inferMetadata } from "@alcove/core";
 
 import { buildCli } from "../../src/cliParser";
 import { ZERO_SETUP_OPTION_GROUPS } from "../../src/commands/zeroSetup";
@@ -233,6 +234,24 @@ test.each(COMMAND_NAMES)(
     expect(description).not.toMatch(/^(Positionals|Options|Commands):/);
   },
 );
+
+test("top-level help names examples that are never sent, and states no rule", async () => {
+  const usage =
+    "A quick exchange never sends a column Alcove recognizes as a linkage " +
+    "key or an id, such as ssn, phone, id, or case_number. It sends your " +
+    "partner every other column for each matched record. The display before " +
+    "the run lists the columns sent and the ones held back.";
+  const { stdout } = await parse(["--help"]);
+  const flat = stdout.replace(/\s+/g, " ");
+  expect(flat.split(usage)).toHaveLength(3);
+  expect(flat).not.toMatch(/ends? in|ending in|counts as _/);
+  const metadata = inferMetadata(
+    ["ssn", "phone", "id", "case_number", "notes"],
+    [],
+    { mode: "direct" },
+  );
+  expect(disclosedColumnNames(metadata)).toEqual(["notes"]);
+});
 
 test("`--retain-files` help states that it turns the options it needs on", async () => {
   for (const command of [[], ["exchange"], ["invite"], ["accept"]]) {

@@ -1683,9 +1683,7 @@ const CSV_WITH_TRANSMITTED_COLUMN =
 test("handler: the run states what it transmits and what it matches on", async () => {
   const { stderr } = await zeroSetupRunOutput(CSV_WITH_TRANSMITTED_COLUMN);
 
-  expect(stderr).toContain(
-    "What this exchange sends and matches on. Nothing has been sent yet:",
-  );
+  expect(stderr).toContain("What this exchange sends and matches on:");
   // The column the inference marks as sent, which is the point of the
   // display: an operator who did not mean to send `notes` learns it here.
   expect(stderr).toContain("columns you will send");
@@ -1794,9 +1792,20 @@ test.each([
   "ClientID",
   "PersonID",
   "PersonalID",
+  "MRN",
+  "PatientID",
+  "RecordID",
+  "MemberID",
+  "case_number",
+  "record_no",
+  "RecordNo",
 ])(
   "handler: a quick exchange holds back an id column %j and a second id column, and sends an unrecognized one",
   async (name) => {
+    // A record number gives way to the named id column after it.
+    const recordNumber = ["case_number", "record_no", "RecordNo"].includes(
+      name,
+    );
     const { stderr } = await zeroSetupRunOutput(
       `${name},first_name,last_name,date_of_birth,notes,household_id\n` +
         "1,Bob,Jones,1990-01-02,x,h1\n",
@@ -1814,7 +1823,10 @@ test.each([
     expect(sent).toEqual(["notes"]);
     expect(stderr).toContain(`held back (enforced): ${name}, household_id`);
     expect(stderr).toContain(
-      `record identifier: ${name}, the first id column in your file`,
+      recordNumber
+        ? "record identifier: household_id, the first id column in your " +
+            "file that is not a record number"
+        : `record identifier: ${name}, the first id column in your file`,
     );
   },
 );
@@ -1831,9 +1843,7 @@ test("handler: the whole display reaches the operator before the server is conta
   // A display read from a step that never ran would be an empty string passing
   // no assertion at all, so pin that this URL took the host-key path.
   expect(contacted).toBe(true);
-  expect(atFirstContact).toContain(
-    "What this exchange sends and matches on. Nothing has been sent yet:",
-  );
+  expect(atFirstContact).toContain("What this exchange sends and matches on:");
   expect(atFirstContact).toContain("- notes");
   // The keys are the last block the display renders, so their presence is what
   // establishes that it finished rather than started.

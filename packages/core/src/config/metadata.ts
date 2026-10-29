@@ -127,23 +127,31 @@ export function disclosedColumnNames(metadata: Metadata): Array<string> {
  * quick exchange displays word it: the CLI's display before the run and the
  * console's confirm step. Reads the `role: identifier` column the result's
  * first column takes its value from ({@link buildOutputTable}); inference gives
- * that role to the first identifier-typed column in header order
- * ({@link inferMetadata}). With none, the result heads its first column
- * `row_id` and writes each record's 0-based row index there.
+ * that role to the first identifier-typed column in header order, passing over
+ * a record number while an id named otherwise follows ({@link inferMetadata}).
+ * With none, the result heads its first column `row_id` and writes each
+ * record's 0-based row index there.
  *
  * The column name is redacted and escaped here. Starts lowercase, for use
  * after a label.
  */
 export function inferredRecordIdentifierStatement(metadata: Metadata): string {
-  const identifier = metadata.find((column) => column.role === "identifier");
-  if (identifier === undefined)
+  const identifierIndex = metadata.findIndex(
+    (column) => column.role === "identifier",
+  );
+  if (identifierIndex === -1)
     return (
       "none found; the result's row_id column identifies your rows by " +
       "their position in the file, counting from 0"
     );
+  const passedOver = metadata
+    .slice(0, identifierIndex)
+    .some((column) => column.type === "identifier");
   return (
-    `${redactAndSanitizeForDisplay(identifier.name)}, ` +
-    "the first id column in your file"
+    `${redactAndSanitizeForDisplay(metadata[identifierIndex].name)}, ` +
+    (passedOver
+      ? "the first id column in your file that is not a record number"
+      : "the first id column in your file")
   );
 }
 
@@ -335,46 +343,177 @@ type TypeMetaMapped = Omit<TypeMeta, "aliases">;
 
 /**
  * The key a column name is looked up by in {@link ALIAS_TYPE_META_MAP}: the
- * name trimmed, lowercased, and with each run of whitespace, `_`, `-` and `.`
- * collapsed to one `_`, so `First Name`, ` first_name` and `FIRST-NAME` share
- * the key `first_name`. A lookup key only: a column keeps its raw header as
- * its name.
+ * name lowercased, each `#` read as the word `number`, each run of
+ * whitespace, `_`, `-` and `.` collapsed to one `_`, and every character left
+ * at either end that is not a letter or digit dropped, so `First Name`, ` first_name.` and `FIRST-NAME` share
+ * the key `first_name`, and `SSN #` has the key `ssn_number`. A lookup key
+ * only: a column keeps its raw header as its name.
  */
 export function columnNameLookupKey(name: string): string {
   return name
-    .trim()
     .toLowerCase()
-    .replace(/[\s_.-]+/g, "_");
+    .replaceAll("#", "_number_")
+    .replace(/[\s_.-]+/g, "_")
+    .replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
 }
 
 /**
- * Lookup keys of no-separator identifier names, which do not end in `_id` but
- * infer as a name that does. `personalid` is the client column of the HMIS
- * CSV export.
+ * Lookup keys of identifier names that do not end in `_id` but infer as a
+ * name that does. `personalid` is the client column of the HMIS CSV export,
+ * and `mrn` a medical record number.
+ *
+ * @internal
  */
-const UNSEPARATED_ID_LOOKUP_KEYS: ReadonlySet<string> = new Set([
+export const NAMED_IDENTIFIER_LOOKUP_KEYS: ReadonlySet<string> = new Set([
   "clientid",
   "personid",
   "personalid",
+  "patientid",
+  "recordid",
+  "memberid",
+  "mrn",
 ]);
 
 /**
- * Whether a lookup key absent from {@link ALIAS_TYPE_META_MAP} infers
- * `type: identifier`: it ends in `_id`, or is one of
- * {@link UNSEPARATED_ID_LOOKUP_KEYS}.
+ * Lookup keys that end in a record-number suffix but name no record number,
+ * so they infer as any other name absent from the table: a yes/no answer.
+ *
+ * @internal
  */
-function isUnlistedIdentifierLookupKey(lookupName: string): boolean {
+export const NOT_RECORD_NUMBER_LOOKUP_KEYS: ReadonlySet<string> = new Set([
+  "yes_no",
+  "yesno",
+]);
+
+/**
+ * The part of a lookup key before a `_number`, `_no` or `number` suffix, or
+ * `undefined` when it has none.
+ */
+function numberSuffixPrefix(lookupName: string): string | undefined {
+  return (/^(.+?)_?number$/.exec(lookupName) ??
+    /^(.+)_no$/.exec(lookupName))?.[1];
+}
+
+/**
+ * Whether a column name ends in a record-number suffix: its lookup key ends in
+ * `_number`, `_no` or `number` after a character other than `_`, or the raw
+ * `name`, less any characters that are not letters or digits at its end, ends in `No` written in camel case
+ * (`RecordNo`), which keeps a word that ends in `no`, such as `Casino`, out.
+ */
+function hasRecordNumberSuffix(name: string, lookupName: string): boolean {
+  const prefix = numberSuffixPrefix(lookupName);
+  if (prefix !== undefined) return /[^_]/.test(prefix);
+  return /[a-z]No[^\p{L}\p{N}]*$/u.test(name);
+}
+
+/**
+ * Whether a column absent from {@link ALIAS_TYPE_META_MAP} infers
+ * `type: identifier` by name: its lookup key ends in `_id` or is one of
+ * {@link NAMED_IDENTIFIER_LOOKUP_KEYS}.
+ */
+function isNamedIdentifierLookupKey(lookupName: string): boolean {
   return (
-    lookupName.endsWith("_id") || UNSEPARATED_ID_LOOKUP_KEYS.has(lookupName)
+    lookupName.endsWith("_id") || NAMED_IDENTIFIER_LOOKUP_KEYS.has(lookupName)
   );
 }
+
+/**
+ * Whether a column absent from {@link ALIAS_TYPE_META_MAP} infers
+ * `type: identifier` as a record number: its name has a record-number suffix
+ * ({@link hasRecordNumberSuffix}) and its lookup key is not one of
+ * {@link NOT_RECORD_NUMBER_LOOKUP_KEYS}.
+ */
+function isRecordNumberColumn(name: string, lookupName: string): boolean {
+  return (
+    !NOT_RECORD_NUMBER_LOOKUP_KEYS.has(lookupName) &&
+    hasRecordNumberSuffix(name, lookupName)
+  );
+}
+
+/**
+ * Whether a column absent from {@link ALIAS_TYPE_META_MAP} infers
+ * `type: identifier`: by name ({@link isNamedIdentifierLookupKey}) or as a
+ * record number ({@link isRecordNumberColumn}).
+ */
+function isUnlistedIdentifierColumn(name: string, lookupName: string): boolean {
+  return (
+    isNamedIdentifierLookupKey(lookupName) ||
+    isRecordNumberColumn(name, lookupName)
+  );
+}
+
+/** The endings the table's number spellings take ({@link numberSpellings}). */
+const NUMBER_ENDINGS: ReadonlyArray<string> = ["number", "no", "num", "nbr"];
+
+/**
+ * The lookup keys of each of `words` followed by each of
+ * {@link NUMBER_ENDINGS}, separated by `_` and run together: `home_phone`
+ * gives `home_phone_no` and `homephoneno`.
+ */
+function numberSpellings(words: ReadonlyArray<string>): Array<string> {
+  return words.flatMap((word) =>
+    NUMBER_ENDINGS.flatMap((ending) => [
+      `${word}_${ending}`,
+      `${word.replaceAll("_", "")}${ending}`,
+    ]),
+  );
+}
+
+/** Each of `words` as written and with `_` removed. */
+function wordSpellings(words: ReadonlyArray<string>): Array<string> {
+  return words.flatMap((word) => [word, word.replaceAll("_", "")]);
+}
+
+/**
+ * The aliases of `type` among `spellings`, each once: every spelling but the
+ * type name, which the table lists as a name of its own.
+ */
+function aliasesOf(type: string, spellings: ReadonlyArray<string>): string[] {
+  return [...new Set(spellings)].filter((spelling) => spelling !== type);
+}
+
+/** Words whose number spellings the `ssn` row lists. */
+const SSN_WORDS: ReadonlyArray<string> = [
+  "ssn",
+  "ss",
+  "social",
+  "social_security",
+  "soc_sec",
+];
+
+/**
+ * Names of a phone column the `phone_number` row lists, each also with its
+ * number spellings.
+ */
+const PHONE_WORDS: ReadonlyArray<string> = [
+  "phone",
+  "telephone",
+  "tel",
+  "cell",
+  "cell_phone",
+  "mobile",
+  "mobile_phone",
+  "home_phone",
+  "work_phone",
+  "business_phone",
+  "office_phone",
+  "day_phone",
+  "evening_phone",
+  "primary_phone",
+  "alt_phone",
+  "alternate_phone",
+  "contact_phone",
+];
 
 // The lookup key joins words with `_`, so a no-separator spelling such as
 // `firstname` is a key of its own and is listed as an alias.
 const DEFAULT_COLUMN_TYPES_AND_ALIASES: Array<TypeMeta> = [
   {
     type: "ssn",
-    aliases: ["social_security_number", "social"],
+    aliases: aliasesOf("ssn", [
+      ...wordSpellings(["social", "social_security", "soc_sec"]),
+      ...numberSpellings(SSN_WORDS),
+    ]),
     role: "linkage",
     isPayload: false,
   },
@@ -398,14 +537,17 @@ const DEFAULT_COLUMN_TYPES_AND_ALIASES: Array<TypeMeta> = [
     isPayload: false,
   },
   /**
-   * Identifier columns are also inferred from a name ending in `_id` or one of
-   * {@link UNSEPARATED_ID_LOOKUP_KEYS}, which take this row's role and
-   * payload default. See {@link inferMetadata}.
+   * Identifier columns are also inferred from the names
+   * {@link isUnlistedIdentifierColumn} accepts, which take this row's role
+   * and payload default. See {@link inferMetadata}.
    */
   { type: "identifier", aliases: ["id"], role: "identifier", isPayload: false },
   {
     type: "phone_number",
-    aliases: ["phonenumber", "phone"],
+    aliases: aliasesOf("phone_number", [
+      ...wordSpellings(PHONE_WORDS),
+      ...numberSpellings(PHONE_WORDS),
+    ]),
     role: "linkage",
     isPayload: false,
   },
@@ -419,17 +561,10 @@ const DEFAULT_COLUMN_TYPES_AND_ALIASES: Array<TypeMeta> = [
   // `street_address`) is typed `street_number` explicitly by the operator.
   {
     type: "street_number",
-    aliases: [
-      "streetnumber",
-      "street_no",
-      "street_num",
-      "house_number",
-      "housenumber",
-      "house_no",
-      "house_num",
-      "address_number",
-      "addressnumber",
-    ],
+    aliases: aliasesOf(
+      "street_number",
+      numberSpellings(["street", "house", "address"]),
+    ),
     role: "linkage",
     isPayload: false,
   },
@@ -444,19 +579,11 @@ const DEFAULT_COLUMN_TYPES_AND_ALIASES: Array<TypeMeta> = [
   // or a PO box instead of a unit.
   {
     type: "unit",
-    aliases: [
-      "unit_number",
-      "unitnumber",
-      "unit_no",
-      "unit_num",
+    aliases: aliasesOf("unit", [
       "apartment",
-      "apartment_number",
-      "apartmentnumber",
       "apt",
-      "apt_no",
-      "apt_num",
-      "apt_number",
-    ],
+      ...numberSpellings(["unit", "apartment", "apt"]),
+    ]),
     role: "linkage",
     isPayload: false,
   },
@@ -579,9 +706,9 @@ function assertColumnNamesNonEmpty(
  *   identifier-typed column that is not the record identifier is declared
  *   `role: ignored`, so every column is declared and none is undeclared.
  *
- * Under both, no identifier-typed column (`id`, `identifier`, a name ending
- * in `_id`, `ClientID`, `PersonID`, `PersonalID`) is sent, and a linkage-key
- * alias is never sent and is matched on only where a linkage key reads it.
+ * Under both, no identifier-typed column (`id`, `identifier`, or a name
+ * {@link isUnlistedIdentifierColumn} accepts) is sent, and a linkage-key alias
+ * is never sent and is matched on only where a linkage key reads it.
  */
 export type MetadataInferenceMode = "declaredOnly" | "direct";
 
@@ -594,17 +721,19 @@ export interface InferMetadataOptions {
 /**
  * Assigns default roles to the columns inference recognizes by name: a name
  * whose {@link columnNameLookupKey} is a key of {@link ALIAS_TYPE_META_MAP},
- * or ends in `_id` or is `clientid`, `personid`, or `personalid`, which may
- * become this party's identifier. Each column keeps its raw header as its
+ * or a name {@link isUnlistedIdentifierColumn} accepts, which may become
+ * this party's identifier. Each column keeps its raw header as its
  * name. Under the default `declaredOnly` mode every other column is left
  * out, so it is not declared and never sent
  * ({@link undeclaredColumnNames} lists them); under `direct` it is declared
  * as payload and sent ({@link MetadataInferenceMode}).
  *
- * The first identifier-typed column in header order gets `role: identifier`,
- * used to index observations, whatever its name, and is not sent. Every later
- * one is left out under `declaredOnly` and declared `role: ignored` under
- * `direct`.
+ * The first identifier-typed column in header order that is not only a record
+ * number ({@link isRecordNumberColumn}) gets `role: identifier`, used to index
+ * observations, and is not sent; with none, the first record number does. A
+ * record number is often not unique to one record, so it never outranks a
+ * column recognized as an id by name. Every other identifier-typed column is
+ * left out under `declaredOnly` and declared `role: ignored` under `direct`.
  *
  * `sanitizedPositions` are the 1-based positions the CSV parse removed
  * control characters from, so the empty-name refusal below can name the removal
@@ -656,7 +785,7 @@ export function inferMetadataForEveryColumn(
   const direct = (options.mode ?? "declaredOnly") === "direct";
 
   const result: Metadata = columnNames.map((name) => {
-    const typeMeta = recognizedTypeMeta(columnNameLookupKey(name));
+    const typeMeta = recognizedTypeMeta(name);
     if (typeMeta === undefined)
       return direct
         ? { name, type: "other", role: "payload", isPayload: true }
@@ -665,9 +794,14 @@ export function inferMetadataForEveryColumn(
     return { name, type, role, isPayload };
   });
 
-  const identifierIndex = result.findIndex(
-    (column) => column.type === "identifier",
+  const namedIdentifierIndex = result.findIndex(
+    (column) =>
+      column.type === "identifier" && !isRecordNumberOnly(column.name),
   );
+  const identifierIndex =
+    namedIdentifierIndex !== -1
+      ? namedIdentifierIndex
+      : result.findIndex((column) => column.type === "identifier");
   return result.map((column, index): ColumnMetadata => {
     if (column.type !== "identifier" || index === identifierIndex)
       return column;
@@ -676,16 +810,30 @@ export function inferMetadataForEveryColumn(
 }
 
 /**
- * The type, role and payload default inference gives a lookup key, or
- * `undefined` for a key it does not recognize. An identifier name outside
+ * Whether a column infers `type: identifier` only as a record number
+ * ({@link isRecordNumberColumn}), not by an identifier name.
+ */
+function isRecordNumberOnly(name: string): boolean {
+  const lookupName = columnNameLookupKey(name);
+  return (
+    !Object.hasOwn(ALIAS_TYPE_META_MAP, lookupName) &&
+    !isNamedIdentifierLookupKey(lookupName) &&
+    isRecordNumberColumn(name, lookupName)
+  );
+}
+
+/**
+ * The type, role and payload default inference gives a column name, or
+ * `undefined` for a name it does not recognize. An identifier name outside
  * {@link ALIAS_TYPE_META_MAP} takes the `identifier` row's.
  */
-function recognizedTypeMeta(lookupName: string): TypeMetaMapped | undefined {
+function recognizedTypeMeta(name: string): TypeMetaMapped | undefined {
+  const lookupName = columnNameLookupKey(name);
   // An own-property test: `in` also matches inherited names such as
   // `constructor` and `__proto__`, which have no entry.
   if (Object.hasOwn(ALIAS_TYPE_META_MAP, lookupName))
     return ALIAS_TYPE_META_MAP[lookupName];
-  return isUnlistedIdentifierLookupKey(lookupName)
+  return isUnlistedIdentifierColumn(name, lookupName)
     ? ALIAS_TYPE_META_MAP.identifier
     : undefined;
 }
@@ -706,8 +854,8 @@ export function undeclaredColumnNames(
 
 /**
  * The names among `columnNames`, in order, that infer `type: identifier`
- * (`id`, `identifier`, a name ending in `_id`, `ClientID`, `PersonID`, or
- * `PersonalID`). An empty name is skipped: inference refuses it, and a run's
+ * (`id`, `identifier`, or a name {@link isUnlistedIdentifierColumn}
+ * accepts). An empty name is skipped: inference refuses it, and a run's
  * intake has refused it already.
  */
 export function identifierTypedColumnNames(

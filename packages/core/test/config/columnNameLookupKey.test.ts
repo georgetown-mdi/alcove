@@ -58,11 +58,27 @@ const FOLDED_HEADERS: Array<
   ["separator", "zip._-5", "zip_code"],
   ["separator", "Zip-Code", "zip_code"],
   ["every step", "  Social_-_Security . Number ", "ssn"],
+  ["outer separator", "_ssn", "ssn"],
+  ["outer separator", "-ssn", "ssn"],
+  ["outer separator", "ssn.", "ssn"],
+  ["outer separator", "ssn_", "ssn"],
+  ["outer separator", ".dob", "date_of_birth"],
+  ["outer separator", "Tel.", "phone_number"],
+  ["outer separator", "SSN No.", "ssn"],
+  ["outer punctuation", "(ssn)", "ssn"],
+  ["outer punctuation", "ssn:", "ssn"],
+  ["outer punctuation", "SSN:", "ssn"],
+  ["outer punctuation", "[Phone #]", "phone_number"],
+  ["outer punctuation", '"ssn"', "ssn"],
+  ["#", "SSN#", "ssn"],
+  ["#", "SSN #", "ssn"],
+  ["#", "Phone #", "phone_number"],
+  ["#", "Apt #", "unit"],
 ];
 
 // Headers that stay unrecognized: the lookup is a whole-name match on the
 // folded key, never a substring, prefix or edit-distance test, and only
-// whitespace is trimmed.
+// punctuation is dropped from either end.
 const UNRECOGNIZED_HEADERS = [
   "ssn_last4",
   "ssn last 4",
@@ -75,12 +91,7 @@ const UNRECOGNIZED_HEADERS = [
   "f name",
   "s.s.n",
   "first/name",
-  "_ssn",
-  "-ssn",
-  "ssn.",
-  "ssn_",
-  ".dob",
-  "SSN#",
+  "#",
   // An address line is typed by the operator, never inferred.
   "address",
   "Address",
@@ -120,12 +131,22 @@ describe("columnNameLookupKey", () => {
     ["hyphen run", "first--name", "first_name"],
     ["dot run", "first..name", "first_name"],
     ["mixed separator run", "first _-. name", "first_name"],
+    ["outer separators", " -ssn. ", "ssn"],
+    ["# after a word", "SSN#", "ssn_number"],
+    ["# after a space", "Case #", "case_number"],
+    ["# before a word", "#ssn", "number_ssn"],
+    ["# between words", "SS#No", "ss_number_no"],
+    ["# alone", " # ", "number"],
+    ["separators alone", " _-. ", ""],
+    ["punctuation alone", "(): ", ""],
+    ["outer punctuation", "[(ssn):]", "ssn"],
+    ["letters of other scripts", "(Número)", "número"],
   ])("folds %s", (_step, header, key) => {
     expect(columnNameLookupKey(header)).toBe(key);
   });
 
-  test("trims only whitespace, so an outer separator stays in the key", () => {
-    expect(columnNameLookupKey(" -ssn. ")).toBe("_ssn_");
+  test("keeps punctuation inside a name in the key", () => {
+    expect(columnNameLookupKey("(s(s)n):")).toBe("s(s)n");
   });
 
   test("every listed name is its own lookup key", () => {
@@ -138,8 +159,28 @@ describe("columnNameLookupKey", () => {
 });
 
 describe("the recognized names", () => {
-  test("are exactly the listed ones", () => {
-    expect(Object.keys(ALIAS_TYPE_META_MAP).sort()).toEqual(
+  // The SSN, phone, street number and unit rows list each word with every
+  // number ending, which the inference-table check in
+  // defaultStandardizationDoc.test.ts pins name by name against the spec.
+  const NUMBER_SPELLED_TYPES: ReadonlySet<string> = new Set([
+    "ssn",
+    "phone_number",
+    "street_number",
+    "unit",
+  ]);
+  const keysOf = (type: SemanticType) =>
+    Object.keys(ALIAS_TYPE_META_MAP).filter(
+      (key) => ALIAS_TYPE_META_MAP[key].type === type,
+    );
+
+  test("are exactly the listed ones outside the number-spelled types", () => {
+    expect(
+      Object.keys(ALIAS_TYPE_META_MAP)
+        .filter(
+          (key) => !NUMBER_SPELLED_TYPES.has(ALIAS_TYPE_META_MAP[key].type),
+        )
+        .sort(),
+    ).toEqual(
       [
         "date_of_birth",
         "dateofbirth",
@@ -155,12 +196,6 @@ describe("the recognized names", () => {
         "last_name",
         "lastname",
         "lname",
-        "phone",
-        "phone_number",
-        "phonenumber",
-        "social",
-        "social_security_number",
-        "ssn",
         "ssn4",
         "county",
         "county_name",
@@ -170,6 +205,39 @@ describe("the recognized names", () => {
         "state_name",
         "statecode",
         "statename",
+        "street_name",
+        "streetname",
+        "city",
+        "city_name",
+        "cityname",
+        "zip",
+        "zip5",
+        "zip_5",
+        "zip_code",
+        "zipcode",
+      ].sort(),
+    );
+  });
+
+  test.each([
+    [
+      "ssn",
+      [
+        "ssn",
+        "social",
+        "social_security_number",
+        "ssn_no",
+        "ssnno",
+        "socsecno",
+      ],
+    ],
+    [
+      "phone_number",
+      ["phone", "phone_number", "phonenumber", "cell_phone", "homephonenumber"],
+    ],
+    [
+      "street_number",
+      [
         "address_number",
         "addressnumber",
         "house_no",
@@ -180,8 +248,13 @@ describe("the recognized names", () => {
         "street_num",
         "street_number",
         "streetnumber",
-        "street_name",
-        "streetname",
+        "streetno",
+        "houseno",
+      ],
+    ],
+    [
+      "unit",
+      [
         "unit",
         "unit_number",
         "unitnumber",
@@ -194,16 +267,12 @@ describe("the recognized names", () => {
         "apt_no",
         "apt_num",
         "apt_number",
-        "city",
-        "city_name",
-        "cityname",
-        "zip",
-        "zip5",
-        "zip_5",
-        "zip_code",
-        "zipcode",
-      ].sort(),
-    );
+        "unitno",
+        "aptno",
+      ],
+    ],
+  ] as const)("%s includes %j", (type, names) => {
+    expect(keysOf(type)).toEqual(expect.arrayContaining([...names]));
   });
 
   test.each(MODES)("infer as before under %s, in any letter case", (mode) => {
@@ -347,9 +416,9 @@ describe("the _id rule on the lookup key", () => {
     ]);
   });
 
-  test("MemberID, with no separator, is not an identifier", () => {
-    expect(inferMetadata(["MemberID"], [], { mode: "direct" })).toEqual([
-      { name: "MemberID", type: "other", role: "payload", isPayload: true },
+  test("CaseID, with no separator, is not an identifier", () => {
+    expect(inferMetadata(["CaseID"], [], { mode: "direct" })).toEqual([
+      { name: "CaseID", type: "other", role: "payload", isPayload: true },
     ]);
   });
 });

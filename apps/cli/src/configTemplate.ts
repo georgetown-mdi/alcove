@@ -540,8 +540,7 @@ function undeclaredColumnsComment(
       : otherIdentifiers.length === 0
         ? []
         : [
-            `${identifier} above is your record identifier, the first id column`,
-            "in the file. To use " +
+            `${identifier} above is your record identifier. To use ` +
               (otherIdentifiers.length > 1
                 ? `one of ${otherIdentifiers.join(", ")}`
                 : otherIdentifiers[0]!) +
