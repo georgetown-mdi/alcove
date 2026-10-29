@@ -13,6 +13,8 @@ import {
   unmountableBindPaths,
 } from "@psi/dockerRunCommand";
 
+import { OPERATOR_USER_FLAG } from "@psi/containerAccount";
+
 import {
   cronIntervalGuard,
   cronScheduleFields,
@@ -44,9 +46,27 @@ import type { RunSchedule } from "./scheduleTemplates";
 /** The exchange folder placeholder on a POSIX scheduling machine. */
 export const EXCHANGE_FOLDER_PLACEHOLDER = "/path/to/your/exchange-folder";
 
+/** Whether a POSIX line's token names the exchange folder, which is
+ * double-quoted so the folder the operator puts in its place may hold a space
+ * or a single quote. */
+function holdsExchangeFolder(token: string): boolean {
+  return token.includes(EXCHANGE_FOLDER_PLACEHOLDER);
+}
+
 /** The exchange folder placeholder on a Windows scheduling machine. */
 const WINDOWS_EXCHANGE_FOLDER_PLACEHOLDER =
   "C:\\path\\to\\your\\exchange-folder";
+
+/** The panels' sentence naming the crontab the cron lines go in. */
+export const CRONTAB_ACCOUNT_NOTE =
+  "Add a cron line with crontab -e as the account that will run the " +
+  "schedule, not with sudo: a line in root's crontab runs Alcove as root.";
+
+/** The panels' sentence on the Docker lines' account option, for a folder
+ * handed to the image's own account. */
+export const FOLDER_OWNED_BY_IMAGE_ACCOUNT_NOTE =
+  "If the exchange folder belongs to user 1000 (you ran chown 1000:1000 on " +
+  `it), leave out ${OPERATOR_USER_FLAG} from the Docker command and cron line.`;
 
 /** Where each engine's client is installed on Linux. */
 const POSIX_ENGINE_PROGRAMS: Record<ContainerEngine, string> = {
@@ -75,7 +95,9 @@ function engineRunCommand(
   const argv = dockerRunArgv(source, engine, EXCHANGE_FOLDER_PLACEHOLDER, {
     operatorAccountFor: engine,
   });
-  return argv === undefined ? undefined : shellJoinRunArgv(argv);
+  return argv === undefined
+    ? undefined
+    : shellJoinRunArgv(argv, holdsExchangeFolder);
 }
 
 /** The `docker run` command a person runs once by hand. Undefined when a bind
@@ -117,7 +139,7 @@ function engineCronLine(
   );
   return argv === undefined
     ? undefined
-    : cronLine(shellJoinRunArgv(argv), schedule);
+    : cronLine(shellJoinRunArgv(argv, holdsExchangeFolder), schedule);
 }
 
 /** The crontab line running the image with Docker over the exchange folder on
@@ -145,7 +167,12 @@ function installedCronLine(
   schedule?: RunSchedule,
 ): string {
   return cronLine(
-    `cd ${EXCHANGE_FOLDER_PLACEHOLDER} && ` +
+    shellJoinCommand(
+      ["cd", EXCHANGE_FOLDER_PLACEHOLDER],
+      () => false,
+      holdsExchangeFolder,
+    ) +
+      " && " +
       shellJoinCommand([INSTALLED_ALCOVE_PLACEHOLDER, ...alcoveArgs(argv)]),
     schedule,
   );

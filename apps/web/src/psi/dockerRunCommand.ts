@@ -122,10 +122,18 @@ function mountOption(
 
 /**
  * A command's argv joined into one line for a POSIX shell, with the operator
- * account value left for the shell to expand ({@link operatorAccountOption}).
+ * account value left for the shell to expand ({@link operatorAccountOption})
+ * and each token `alwaysQuote` accepts double-quoted ({@link shellJoinCommand}).
  */
-export function shellJoinRunArgv(argv: ReadonlyArray<string>): string {
-  return shellJoinCommand(argv, (token) => token === OPERATOR_ACCOUNT_VALUE);
+export function shellJoinRunArgv(
+  argv: ReadonlyArray<string>,
+  alwaysQuote?: (token: string) => boolean,
+): string {
+  return shellJoinCommand(
+    argv,
+    (token) => token === OPERATOR_ACCOUNT_VALUE,
+    alwaysQuote,
+  );
 }
 
 /**

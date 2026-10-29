@@ -256,14 +256,22 @@ function isCommandArgv(argv: unknown): argv is Array<string> {
  * character is emitted bare. The tokens are server-composed and secret-free (the
  * connection URL, portable flags, and placeholders), so this is display shaping,
  * not a security boundary. A token `verbatim` accepts is emitted as it stands,
- * for a value the shell is meant to expand.
+ * for a value the shell is meant to expand. A token `alwaysQuote` accepts is
+ * double-quoted whatever it holds: a token holding a placeholder the operator
+ * replaces with a path, which stays one argument with a space or a single
+ * quote in it.
  */
 export function shellJoinCommand(
   argv: ReadonlyArray<string>,
   verbatim: (token: string) => boolean = () => false,
+  alwaysQuote: (token: string) => boolean = () => false,
 ): string {
   return argv
-    .map((token) => (verbatim(token) ? token : shellQuoteToken(token)))
+    .map((token) => {
+      if (verbatim(token)) return token;
+      if (alwaysQuote(token)) return shellDoubleQuoteToken(token);
+      return shellQuoteToken(token);
+    })
     .join(" ");
 }
 
@@ -272,6 +280,13 @@ const SHELL_SAFE_TOKEN = /^[A-Za-z0-9_@%+=:,./-]+$/;
 function shellQuoteToken(token: string): string {
   if (token.length > 0 && SHELL_SAFE_TOKEN.test(token)) return token;
   return `'${token.replace(/'/g, "'\\''")}'`;
+}
+
+/** The characters a POSIX shell still reads inside double quotes. */
+const SHELL_DOUBLE_QUOTE_SPECIAL = /["$`\\]/g;
+
+function shellDoubleQuoteToken(token: string): string {
+  return `"${token.replace(SHELL_DOUBLE_QUOTE_SPECIAL, "\\$&")}"`;
 }
 
 /**
