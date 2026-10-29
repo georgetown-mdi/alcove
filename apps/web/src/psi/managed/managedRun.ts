@@ -27,12 +27,17 @@ import {
   RoundCapacityError,
   TermsChangeRefusedError,
   classifyFailure,
+  handshakeRoleForRendezvousRole,
   isPartnerProtocolRefusal,
   isSetTooLargeError,
   isTrustBoundaryFailure,
   termsDifferenceRefusedBy,
 } from "@alcove/core";
 
+import {
+  PartnerSecretNotSavedError,
+  withPartnerSecretNotSaved,
+} from "../partnerSecretNotSaved";
 import { PartnerNoShowError } from "../transport/waitForConnection";
 import { hasRecoveryHint } from "../authenticateExchange";
 
@@ -220,6 +225,8 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
   // The secret the run last stored: the one it read under the lock, then the
   // one its rotation stored at the terms exchange.
   let storedSecret: string | undefined;
+  // Whether this run's rotation stored the next secret at the terms exchange.
+  const rotation = { stored: false };
   // Whether the handshake phase began. A failure before it is this run's own,
   // a stop asked or not, unless it is the stop's own abort reason.
   const phase = { handshakeBegan: false };
@@ -251,6 +258,7 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
           async (nextSecret) => {
             await persistNextSecret(nextSecret);
             storedSecret = nextSecret;
+            rotation.stored = true;
           },
           partnerMayHoldNextSecret,
         ),
@@ -262,7 +270,19 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
       ...(options.stop !== undefined ? { stop: options.stop } : {}),
       now,
     });
-  } catch (error) {
+  } catch (caught) {
+    // The side read under the lock dispatched the run, so it names this
+    // side's role in the store order. A managed run's store is its save, so
+    // what it stored it also kept.
+    const error =
+      current === undefined
+        ? caught
+        : withPartnerSecretNotSaved(
+            caught,
+            handshakeRoleForRendezvousRole(current.side),
+            rotation.stored,
+            rotation.stored,
+          );
     // A stop is honored only before the rotation-in-flight marker, so a
     // failure from the handshake phase after one is the stop's, whatever the
     // teardown raised. Before that phase only the stop's own reason is.
@@ -415,7 +435,10 @@ function isPartnerRefusedSetAbort(error: unknown): boolean {
  * `refusedInRound`, since this browser's setup may have been sent by then. The
  * partner's abort in place of its first set refused for any other cause records
  * `partner-refused-set` with `refusedInRound` for the same reason. The same
- * partner input refuses identically at every window. The partner's refusal of
+ * partner input refuses identically at every window. The partner's abort
+ * stating that it could not save the next secret this side stored
+ * ({@link PartnerSecretNotSavedError}) records `partner-storage`: the two hold
+ * different secrets until a re-invite. The partner's refusal of
  * this exchange's terms at the terms exchange ({@link termsDifferenceRefusedBy}
  * `"partner"`) records `partner-refused-terms`: the same terms refuse
  * identically until the two parties agree on them. `aborted` then records
@@ -476,6 +499,8 @@ export function rerunFailureLastRun(
       ...failedRun(at, "failed", "partner-refused-set"),
       refusedInRound: true,
     };
+  if (error instanceof PartnerSecretNotSavedError)
+    return failedRun(at, "failed", "partner-storage");
   if (termsDifferenceRefusedBy(error) === "partner")
     return failedRun(at, "failed", "partner-refused-terms");
   if (aborted) return failedRun(at, "failed", "cancelled");
@@ -489,8 +514,9 @@ export function rerunFailureLastRun(
 /** The benign outcomes a surface classifies without attack framing. The first
  * five are read before any connection is attempted; `"missed"` is read after a
  * connection attempt found no partner, `"too-large"` before connecting or
- * after the terms exchange, `"partner-set-too-large"` and
- * `"partner-refused-set"` after the terms exchange, `"partner-refused-terms"`
+ * after the terms exchange, `"partner-set-too-large"`,
+ * `"partner-refused-set"` and `"partner-storage"` after the terms exchange,
+ * `"partner-refused-terms"`
  * at the terms exchange, `"partner-protocol-refusal"` at any point after the
  * handshake, `"relay-registration"` before connecting, once the registrar
  * did not confirm a pending registration, and `"stopped"` before the
@@ -506,6 +532,7 @@ type BenignRerunOutcome =
   | "too-large"
   | "partner-set-too-large"
   | "partner-refused-set"
+  | "partner-storage"
   | "partner-refused-terms"
   | "partner-protocol-refusal"
   | "relay-registration"
@@ -570,6 +597,7 @@ export function benignRerunOutcome(
   if (error instanceof RoundCapacityError || isPartnerOverCeilingAbort(error))
     return "partner-set-too-large";
   if (isPartnerRefusedSetAbort(error)) return "partner-refused-set";
+  if (error instanceof PartnerSecretNotSavedError) return "partner-storage";
   if (termsDifferenceRefusedBy(error) === "partner")
     return "partner-refused-terms";
   if (isPartnerProtocolRefusal(error)) return "partner-protocol-refusal";

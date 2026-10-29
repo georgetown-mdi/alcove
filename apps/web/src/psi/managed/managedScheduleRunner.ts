@@ -57,6 +57,8 @@ import {
   isTrustBoundaryFailure,
 } from "@alcove/core";
 
+import { PartnerSecretNotSavedError } from "../partnerSecretNotSaved";
+
 import {
   DEFAULT_PEER_WAIT_TIMEOUT_MS,
   PartnerNoShowError,
@@ -682,8 +684,9 @@ interface ManagedScheduleWindowVerdict {
  * only after that handshake succeeded and the terms exchange derived the next
  * secret ({@link ./managedRunRotate.ts}, `storeRotatedSecret`), and so is a
  * {@link ManagedExchangeSecretChangedError}, the rotation write's safety
- * check. Any failure past the data-exchange phase boundary postdates the
- * handshake.
+ * check, and a {@link PartnerSecretNotSavedError}, the partner's abort read
+ * after this side stored that rotation. Any failure past the data-exchange
+ * phase boundary postdates the handshake.
  *
  * Every other failure the mapper classifies -- a lapsed bound, a stored copy
  * the run cannot use, an unusable input, a terms
@@ -699,6 +702,7 @@ function attemptProvesContact(
     dataExchangeStarted ||
     error instanceof RotationPersistError ||
     error instanceof ManagedExchangeSecretChangedError ||
+    error instanceof PartnerSecretNotSavedError ||
     isTrustBoundaryFailure(classifyFailure(error))
   );
 }
@@ -720,7 +724,8 @@ function attemptProvesContact(
  * refused saved signaling address, an unusable input, a terms shortfall, a
  * refused disclosure, a relay key registration the registrar refused, a
  * failed rotation persist, a rotation the safety check refused over a
- * replaced secret, or a handshake that failed closed -- reproduces
+ * replaced secret, a partner that could not save the secret this side saved,
+ * or a handshake that failed closed -- reproduces
  * identically on the next attempt, so it ends the window's occupancy where it
  * happened. Such a refusal counts no partner miss on its own, but a window
  * that already found the partner absent still folds to `"missed"` (see
@@ -747,6 +752,13 @@ function managedScheduleWindowVerdict(
       retryable: false,
       provesContact,
       standing: "storage",
+    };
+  if (error instanceof PartnerSecretNotSavedError)
+    return {
+      disposition: "failed",
+      retryable: false,
+      provesContact,
+      standing: "partner-storage",
     };
   if (isTrustBoundaryFailure(classifyFailure(error)))
     return {

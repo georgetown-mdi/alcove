@@ -3,6 +3,7 @@ import {
   ConnectionError,
   InternalConsistencyError,
   LinkageTermsUnsatisfiableError,
+  NEXT_SECRET_STORE_FAILED_ABORT_REASON,
   PeerAbortError,
   generateSharedSecret,
   getDefaultLinkageTerms,
@@ -42,6 +43,7 @@ import {
 import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
 import { ManagedExchangeNotRunnableError } from "@psi/managed/managedExchangeRun";
 import { PartnerNoShowError } from "@psi/transport/waitForConnection";
+import { PartnerSecretNotSavedError } from "@psi/partnerSecretNotSaved";
 import { RotationPersistError } from "@psi/managed/managedRunRotate";
 
 import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
@@ -309,6 +311,75 @@ describe("runManagedRerun: a partner who never arrives", () => {
       ],
     ]);
   });
+});
+
+describe("runManagedRerun: a partner that could not save the next secret", () => {
+  const at = Date.parse("2026-07-14T12:00:00.000Z");
+  const storeFailure = () =>
+    new PeerAbortError(undefined, NEXT_SECRET_STORE_FAILED_ABORT_REASON);
+
+  /** Run a record of `side` whose data exchange stores the next secret when
+   * `stores`, then reads `abort` as the partner's first frame past the terms
+   * exchange; resolves to the run's rejection and the failure kinds it
+   * stamped. */
+  async function runEndingIn(
+    side: "inviter" | "acceptor",
+    stores: boolean,
+    abort: unknown,
+  ): Promise<{ error: unknown; failureKinds: Array<unknown> }> {
+    stubGrantingWebLocks();
+    storedRecord.value = record({ side });
+    const error = await runManagedRerun(
+      record({ side }),
+      {
+        acquireInput: () => Promise.resolve("rows"),
+        handshake: () => Promise.resolve("carried"),
+        dataExchange: async (_carried, persistNextSecret) => {
+          if (stores) await persistNextSecret(generateSharedSecret());
+          throw abort;
+        },
+      },
+      { now: () => at },
+    ).then(
+      () => {
+        throw new Error("the run should have rejected");
+      },
+      (reason: unknown) => reason,
+    );
+    const failureKinds = vi
+      .mocked(recordManagedExchangeLastRun)
+      .mock.calls.map(([, lastRun]) => lastRun.failureKind);
+    return { error, failureKinds };
+  }
+
+  test("an initiator that stored records it as its own kind and raises the error naming it", async () => {
+    const abort = storeFailure();
+    const { error, failureKinds } = await runEndingIn("acceptor", true, abort);
+    if (!(error instanceof PartnerSecretNotSavedError))
+      throw new Error("expected the partner's failed save");
+    expect(error.cause).toBe(abort);
+    expect(error.keptNextSecret).toBe(true);
+    expect(failureKinds).toEqual(["partner-storage"]);
+    expect(benignRerunOutcome(error, true)).toBe("partner-storage");
+  });
+
+  test.each([
+    ["a responder that stored", "inviter", true, storeFailure()],
+    ["an initiator that stored nothing", "acceptor", false, storeFailure()],
+    [
+      "an initiator that stored, for another abort",
+      "acceptor",
+      true,
+      new PeerAbortError(),
+    ],
+  ] as const)(
+    "%s keeps the partner's abort and its transport record",
+    async (_case, side, stores, abort) => {
+      const { error, failureKinds } = await runEndingIn(side, stores, abort);
+      expect(error).toBe(abort);
+      expect(failureKinds).toEqual(["transport"]);
+    },
+  );
 });
 
 describe("runManagedRerun: a stop asked before the handshake", () => {

@@ -13,6 +13,7 @@ import {
 import { authenticateExchange } from "./authenticateExchange";
 import { browserPsiEngineFactory } from "./workers/psiCryptoWorkerClient";
 import { openPeerRunConnection } from "./transport/runConnection";
+import { withPartnerSecretNotSaved } from "./partnerSecretNotSaved";
 
 import type { DataConnection } from "peerjs";
 import type Peer from "peerjs";
@@ -566,6 +567,10 @@ export async function runExchangeLifecycle<
   };
   signal.addEventListener("abort", onAbort, { once: true });
 
+  // A one-shot run stores nothing: the next secret the terms exchange derives
+  // is held here for the owner, which deposits it only where the operator
+  // keeps the exchange.
+  let rotatedSecret: string | undefined;
   try {
     // Authenticate the peer before any PSI frame is sent: the P-256 key exchange
     // fails closed on a wrong secret or tampered/malformed frame, so an
@@ -586,10 +591,6 @@ export async function runExchangeLifecycle<
       expires,
     );
     secure = authenticated.connection;
-    // A one-shot run stores nothing: the next secret the terms exchange
-    // derives is held here for the owner, which deposits it only where the
-    // operator keeps the exchange.
-    let rotatedSecret: string | undefined;
     // Resolves before runExchange: instant for the initiator (it loaded the
     // library during acquire), the real WASM wait for the responder, overlapping
     // the wait for the peer's first PSI frame.
@@ -656,8 +657,16 @@ export async function runExchangeLifecycle<
         "the exchange completed without a next shared secret",
       );
     emitResult(outputs, { rotatedSecret });
-  } catch (error) {
-    const record = recordFromFailure(error);
+  } catch (caught) {
+    const record = recordFromFailure(caught);
+    // A failed run hands its owner no next secret, so this side kept none
+    // even where the terms exchange stored one here.
+    const error = withPartnerSecretNotSaved(
+      caught,
+      exchangeRole,
+      rotatedSecret !== undefined,
+      false,
+    );
     emitError({
       category: classifyExchangeFailure(error, "run"),
       error,

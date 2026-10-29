@@ -1,6 +1,8 @@
 import {
   AuthenticationError,
   ConnectionError,
+  NEXT_SECRET_STORE_FAILED_ABORT_REASON,
+  PeerAbortError,
   generateSharedSecret,
   getDefaultLinkageTerms,
 } from "@alcove/core";
@@ -36,6 +38,7 @@ import { ManagedInputError } from "@psi/managed/managedInputGuard";
 import { ManagedRunStoppedError } from "@psi/managed/managedWindowRuns";
 import { ManagedSignalingEndpointRefusedError } from "@psi/managed/managedRendezvous";
 import { PartnerNoShowError } from "@psi/transport/waitForConnection";
+import { PartnerSecretNotSavedError } from "@psi/partnerSecretNotSaved";
 import { RotationPersistError } from "@psi/managed/managedRunRotate";
 import { managedScheduleWindow } from "@psi/managed/managedSchedule";
 import { partitionReadableManagedLocalState } from "@psi/managed/managedLocalStateShape";
@@ -701,6 +704,35 @@ describe("a window whose run raised a standing condition", () => {
     expect(runner.stored.get(record.id)?.standingCondition).toEqual({
       since: "2026-01-06T14:00:00.000Z",
       kind: "storage",
+    });
+  });
+
+  test("a partner that could not save the secret this side saved is recorded the same way, and ends the window", async () => {
+    const record = recordWith();
+    const runner = harness({
+      records: [record],
+      startAt: "2026-01-06T14:00:00.000Z",
+      script: [
+        {
+          kind: "fail",
+          error: new PartnerSecretNotSavedError({
+            cause: new PeerAbortError(
+              undefined,
+              NEXT_SECRET_STORE_FAILED_ABORT_REASON,
+            ),
+            keptNextSecret: true,
+          }),
+        },
+      ],
+    });
+
+    const [entry] = await tickManagedSchedules(runner.seams);
+
+    expect(entry.attempts).toBe(1);
+    expect(entry.disposition).toBe("failed");
+    expect(runner.stored.get(record.id)?.standingCondition).toEqual({
+      since: "2026-01-06T14:00:00.000Z",
+      kind: "partner-storage",
     });
   });
 

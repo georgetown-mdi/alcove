@@ -37,6 +37,8 @@ import {
   PARTNER_REFUSED_SET_REMEDY,
   PARTNER_REFUSED_SET_TITLE,
   PARTNER_REFUSED_TERMS_REMEDY,
+  PARTNER_SECRET_NOT_SAVED_PROBLEM,
+  PARTNER_SECRET_NOT_SAVED_TITLE,
   PARTNER_SET_TOO_LARGE_PROBLEM,
   PARTNER_SET_TOO_LARGE_REMEDY,
   PARTNER_SET_TOO_LARGE_TITLE,
@@ -79,6 +81,7 @@ export type BetweenVisitNoticeKind =
   | "too-large"
   | "partner-set-too-large"
   | "partner-refused-set"
+  | "partner-storage"
   | "partner-refused-terms"
   | "partner-protocol-refusal"
   | "terms-change"
@@ -136,6 +139,7 @@ const NOTICE_TITLES: Record<
   "terms-change": TERMS_CHANGE_FAILURE_TITLE,
   "partner-set-too-large": PARTNER_SET_TOO_LARGE_TITLE,
   "partner-refused-set": PARTNER_REFUSED_SET_TITLE,
+  "partner-storage": PARTNER_SECRET_NOT_SAVED_TITLE,
   "partner-refused-terms": TERMS_DIFFERENCE_TITLE,
   "partner-protocol-refusal": PARTNER_PROTOCOL_REFUSAL_TITLE,
   unexplained: UNEXPLAINED_FAILURE_TITLE,
@@ -150,6 +154,7 @@ const NOTIFIED_FAILURE_TIERS: ReadonlySet<ManagedFailureTier> = new Set([
   "terms-change",
   "partner-set-too-large",
   "partner-refused-set",
+  "partner-storage",
   "partner-refused-terms",
   "partner-protocol-refusal",
   "unexplained",
@@ -207,8 +212,13 @@ export function betweenVisitNotice(
     }
   }
   if (disposition !== "missed" && caughtUpMisses === 0) return undefined;
-  if (readManagedFailure(record, local, now).tier === "partial-rotation")
-    return partialRotationNotice(record, name);
+  const { tier } = readManagedFailure(record, local, now);
+  if (tier === "partial-rotation") return partialRotationNotice(record, name);
+  // The partner's failed save stands beside these misses: the windows after it
+  // cannot meet a partner on the other secret, so the notice names the
+  // re-invite under the tag that state already fired, never another wait.
+  if (tier === "partner-storage")
+    return failureNotice(record, local, now, name);
   return missNotice(record, name);
 }
 
@@ -348,6 +358,16 @@ function failureNotice(
         `later window stops the same way until your partner fixes the cause. ` +
         PARTNER_REFUSED_SET_REMEDY,
       tag: noticeTag(record.id, "partner-refused-set"),
+    };
+  if (tier === "partner-storage")
+    return {
+      kind: "partner-storage",
+      title: NOTICE_TITLES["partner-storage"],
+      body:
+        `${name} stopped because ${PARTNER_SECRET_NOT_SAVED_PROBLEM}. ` +
+        `Scheduled runs keep running but cannot reach your partner until you ` +
+        `re-invite them. Open this app and re-invite your partner.`,
+      tag: noticeTag(record.id, "partner-storage"),
     };
   if (tier === "partner-refused-terms")
     return {

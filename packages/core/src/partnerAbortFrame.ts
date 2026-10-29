@@ -35,10 +35,23 @@ export const PARTNER_SET_OVER_CAPACITY_ABORT_REASON =
   "the partner cannot process a set as large as the one you send for a " +
   "linkage key";
 
-const ROUND_ABORT_REASONS: ReadonlyArray<string> = [
+/**
+ * The abort reason a party sends when its write of the next shared secret
+ * failed: the initiator as terms message 3, and the responder as its first
+ * frame after it, which the initiator reads past the terms exchange
+ * (docs/spec/PROTOCOL.md, "The rotation at the terms exchange"). A fixed
+ * literal, as every abort reason must be (see `sendAbort`).
+ */
+export const NEXT_SECRET_STORE_FAILED_ABORT_REASON =
+  "the partner could not save the next shared secret";
+
+// The fixed reasons a partner's abort past the terms exchange is matched
+// against: those a PSI round sends, and the responder's failed store.
+const KEPT_ABORT_REASONS: ReadonlyArray<string> = [
   PSI_SET_TOO_LARGE_ABORT_REASON,
   PSI_SET_REFUSED_ABORT_REASON,
   PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
+  NEXT_SECRET_STORE_FAILED_ABORT_REASON,
 ];
 
 /**
@@ -53,24 +66,24 @@ function isPartnerAbortFrame(frame: unknown): boolean {
   );
 }
 
-// The one fixed round abort reason an abort frame states, as this build's own
+// The one kept abort reason an abort frame states, as this build's own
 // constant, or undefined for any other frame: the frame's text is never kept.
-function roundAbortReasonOf(frame: unknown): string | undefined {
+function keptAbortReasonOf(frame: unknown): string | undefined {
   const reasons = (frame as { abortReasons?: unknown }).abortReasons;
   if (!Array.isArray(reasons) || reasons.length !== 1) return undefined;
-  return ROUND_ABORT_REASONS.find((reason) => reason === reasons[0]);
+  return KEPT_ABORT_REASONS.find((reason) => reason === reasons[0]);
 }
 
 /**
  * Raises {@link PeerAbortError} where `frame` is the partner's abort decision,
  * and returns otherwise. The abort's reasons are partner-written text, compared
- * only against the fixed reasons a PSI round sends; the error's
- * `partnerReason` holds this build's own constant where one matches, so the
- * error holds no partner byte.
+ * only against {@link KEPT_ABORT_REASONS}; the error's `partnerReason` holds
+ * this build's own constant where one matches, so the error holds no partner
+ * byte.
  */
 export function throwIfPartnerAbort(frame: unknown): void {
   if (isPartnerAbortFrame(frame))
-    throw new PeerAbortError(undefined, roundAbortReasonOf(frame));
+    throw new PeerAbortError(undefined, keptAbortReasonOf(frame));
 }
 
 /**

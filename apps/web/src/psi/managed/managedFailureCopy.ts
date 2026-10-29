@@ -225,6 +225,19 @@ export const PARTNER_REFUSED_SET_REMEDY =
   "Their run reported why it refused; ask your partner to fix the cause " +
   "on their side.";
 
+/** The title over a run stopped because the partner could not save the new
+ * shared secret this side had saved; shared by the one-shot exchange, a
+ * managed run's alert, and the between-visit notification. */
+export const PARTNER_SECRET_NOT_SAVED_TITLE =
+  "Your partner could not save the new secret";
+
+/** What stopped such a run and what it left, completing a sentence that ends
+ * "stopped because". */
+export const PARTNER_SECRET_NOT_SAVED_PROBLEM =
+  "your partner could not save the exchange's new shared secret, and this " +
+  "side had already taken it, so you and your partner now hold different " +
+  "secrets";
+
 /** The title of the alert for a refusal over a difference in the linkage
  * terms; shared by the one-shot exchange, a managed run's alert, and the
  * between-visit notification. */

@@ -34,6 +34,8 @@ import type { ManagedLocalState } from "./managedLocalStateShape";
  *   match (the command-line application, or the partner splits their input).
  * - `"partner-refused-set"` -- the partner's run refused to send its set for a
  *   cause other than size (ask the partner).
+ * - `"partner-storage"` -- the partner could not save the next secret this
+ *   device saved, so the two hold different secrets (re-invite).
  * - `"partner-refused-terms"` -- the partner's run refused this exchange's
  *   linkage terms as differing from its own, before any key or data moved
  *   (terms agreed on with the partner through a terms update).
@@ -65,6 +67,7 @@ export type ManagedFailureTier =
   | "terms-change"
   | "partner-set-too-large"
   | "partner-refused-set"
+  | "partner-storage"
   | "partner-refused-terms"
   | "partner-protocol-refusal"
   | "custody-unreadable"
@@ -126,7 +129,8 @@ export interface ManagedFailureReading {
 }
 
 /** The tiers a standing condition can resolve to. */
-export type ManagedStandingTier = "storage" | "imported" | "unexplained";
+export type ManagedStandingTier =
+  "storage" | "partner-storage" | "imported" | "unexplained";
 
 /** The tier a standing condition resolves to, the same reading
  * {@link deriveManagedFailureTier} makes of the equivalent `lastRun` entry, so a
@@ -136,6 +140,7 @@ export function managedStandingConditionTier(
   local: ManagedLocalState | undefined,
 ): ManagedStandingTier {
   if (condition.kind === "storage") return "storage";
+  if (condition.kind === "partner-storage") return "partner-storage";
   return importedSinceLastSuccess(local) ? "imported" : "unexplained";
 }
 
@@ -206,6 +211,7 @@ function recordedFailureTier(
     return "partner-set-too-large";
   if (lastRun.failureKind === "partner-refused-set")
     return "partner-refused-set";
+  if (lastRun.failureKind === "partner-storage") return "partner-storage";
   if (lastRun.failureKind === "partner-refused-terms")
     return "partner-refused-terms";
   if (lastRun.failureKind === "partner-protocol-refusal")

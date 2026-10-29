@@ -17,6 +17,10 @@
  * so it is unit-testable in Node and the component stays thin over it.
  */
 
+import {
+  PARTNER_SECRET_NOT_SAVED_PROBLEM,
+  PARTNER_SECRET_NOT_SAVED_TITLE,
+} from "@psi/managed/managedFailureCopy";
 import { managedStandingConditionTier } from "@psi/managed/managedFailureTiers";
 import { raisedStandingCondition } from "@psi/managed/managedExchangeRecord";
 
@@ -91,6 +95,16 @@ export function managedStandingConditionView(
           `A run on ${when} changed this exchange's secret and could not save ` +
           "the change, so your partner may hold a secret this device does not. " +
           `Re-invite your partner to reconnect. ${STANDS_UNTIL}`,
+        clearance: "acknowledge",
+      };
+    case "partner-storage":
+      return {
+        tier,
+        title: PARTNER_SECRET_NOT_SAVED_TITLE,
+        message:
+          `A run on ${when} stopped because ${PARTNER_SECRET_NOT_SAVED_PROBLEM}. ` +
+          "Scheduled runs keep running but cannot reach your partner, and " +
+          `running the exchange again cannot either. Re-invite your partner to reconnect. ${STANDS_UNTIL}`,
         clearance: "acknowledge",
       };
     case "imported":

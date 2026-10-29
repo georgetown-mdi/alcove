@@ -330,6 +330,8 @@ const FAILURE_KIND_LABELS: Record<
   "terms-shortfall": "your input file does not cover every agreed key",
   "partner-set-too-large": "your partner's set is too large for this browser",
   "partner-refused-set": "your partner's run refused to send its set",
+  "partner-storage":
+    "your partner could not save the new secret, so this exchange needs a fresh invitation",
   "partner-refused-terms": "your partner's run refused your linkage terms",
   "partner-protocol-refusal":
     "your partner's data did not follow the exchange protocol",
@@ -398,6 +400,8 @@ const OUTCOME_UNCERTAIN = `The run did not complete. ${DELIVERY_NOT_RECORDED}; c
  * place of its set, or this browser's refusal of a set's first part, after
  * sets of this party's may have moved), `"partner-refused-set"` (the
  * partner's abort in place of its set, at the same point),
+ * `"partner-storage"` (the partner's abort after the terms exchange, which
+ * this party may have answered with a set first),
  * `"partner-protocol-refusal"` (this browser's refusal of partner data at any
  * point after the handshake), `"cancelled"`, and
  * a missing kind -- cannot prove it.

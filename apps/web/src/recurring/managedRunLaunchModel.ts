@@ -24,6 +24,8 @@ import {
   PARTNER_REFUSED_SET_REMEDY,
   PARTNER_REFUSED_SET_TITLE,
   PARTNER_REFUSED_TERMS_REMEDY,
+  PARTNER_SECRET_NOT_SAVED_PROBLEM,
+  PARTNER_SECRET_NOT_SAVED_TITLE,
   PARTNER_SET_TOO_LARGE_PROBLEM,
   PARTNER_SET_TOO_LARGE_REMEDY,
   PARTNER_SET_TOO_LARGE_TITLE,
@@ -148,6 +150,7 @@ export interface ManagedRunFailure {
     | "too-large"
     | "partner-set-too-large"
     | "partner-refused-set"
+    | "partner-storage"
     | "partner-refused-terms"
     | "partner-protocol-refusal"
     | "terms-change"
@@ -575,6 +578,24 @@ const PARTNER_REFUSED_SET_FAILURE: ManagedRunFailure = {
   recovery: "ask-partner",
 };
 
+/** The Tier-1 state of a run stopped because the partner could not save the
+ * new secret this device had saved, so the two now hold different secrets. A
+ * live launch and the record read back show the same copy, which names the
+ * re-invite and offers no retry: a run under this device's secret cannot meet
+ * a partner holding the one before it. The record's standing condition keeps
+ * this state across the no-shows and failed handshakes of the runs after it,
+ * so the copy names "a run" rather than the last one. */
+const PARTNER_STORAGE_FAILURE: ManagedRunFailure = {
+  kind: "partner-storage",
+  title: PARTNER_SECRET_NOT_SAVED_TITLE,
+  message:
+    `A run stopped because ${PARTNER_SECRET_NOT_SAVED_PROBLEM}. Scheduled ` +
+    "runs keep running but cannot reach your partner, and running the " +
+    "exchange again cannot either; it needs a fresh invitation, which keeps " +
+    "your terms and gives the exchange a new secret.",
+  recovery: "reinvite",
+};
+
 /** The benign state of a run stopped because the partner's run refused this
  * exchange's linkage terms as differing from its own, at the terms exchange
  * before any linkage key or data moved. The same copy as the one-shot
@@ -804,6 +825,8 @@ export function managedRunTierFailure(
       return RECORDED_PARTNER_SET_TOO_LARGE_FAILURE;
     case "partner-refused-set":
       return PARTNER_REFUSED_SET_FAILURE;
+    case "partner-storage":
+      return PARTNER_STORAGE_FAILURE;
     case "partner-refused-terms":
       return PARTNER_REFUSED_TERMS_FAILURE;
     case "partner-protocol-refusal":
@@ -841,6 +864,7 @@ export function managedRunTierFailure(
 const MISSED_OUTRANKED_BY: ReadonlyArray<ManagedFailureTier> = [
   "expired",
   "storage",
+  "partner-storage",
   "partial-rotation",
   "imported",
 ];
@@ -910,6 +934,7 @@ export const MANAGED_RUN_NON_DISCLOSURE_ATTESTATION: Readonly<
   "terms-change": "none",
   "partner-set-too-large": "none",
   "partner-refused-set": "none",
+  "partner-storage": "none",
   "partner-refused-terms": "alert-copy",
   "partner-protocol-refusal": "none",
   expired: "none",
@@ -981,6 +1006,7 @@ const MANAGED_RUN_CAUSE_PLACEMENT: Record<
   "saved-address-refused": "withheld",
   "partner-set-too-large": "withheld",
   "partner-refused-set": "withheld",
+  "partner-storage": "withheld",
   "terms-change": "withheld",
   "already-running": "withheld",
   stopped: "withheld",
@@ -1101,6 +1127,7 @@ function classifyLaunchState(
   if (benign === "partner-set-too-large")
     return partnerSetTooLargeFailure(error);
   if (benign === "partner-refused-set") return PARTNER_REFUSED_SET_FAILURE;
+  if (benign === "partner-storage") return PARTNER_STORAGE_FAILURE;
   if (benign === "partner-refused-terms") return PARTNER_REFUSED_TERMS_FAILURE;
   if (benign === "partner-protocol-refusal")
     return partnerProtocolRefusalFailure(partnerProtocolRefusalCopy(error));

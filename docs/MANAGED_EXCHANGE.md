@@ -353,6 +353,9 @@ sooner. One fires for each of these:
   large for this browser](#a-partners-set-too-large-for-this-browser)).
 - **The partner's run refused to send its set** (see [A partner's run that
   refuses to send its set](#a-partners-run-that-refuses-to-send-its-set)).
+- **Your partner could not save the new secret** that this device saved, so the
+  exchange needs a fresh invitation (see [A missed window is neither desync nor
+  attack](#a-missed-window-is-neither-desync-nor-attack)).
 - **The partner's data did not follow the exchange protocol** (see [Partner data
   that does not follow the
   protocol](#partner-data-that-does-not-follow-the-protocol)).
@@ -360,8 +363,9 @@ sooner. One fires for each of these:
   confirmation (see [Telling a desync from an
   attack](#telling-a-desync-from-an-attack)).
 
-The six conditions from your partner's terms change to the protocol failure recur
-at every window until you act, so none is offered as retryable. A missing or
+The seven conditions from your partner's terms change to the protocol failure recur
+at every window until you act, or, for your partner's failed save, leave every
+window unable to reach your partner, so none is offered as retryable. A missing or
 rejected input file is offered as retryable: put the file in place, or replace
 a rejected one with a file whose columns satisfy the terms, then try again.
 
@@ -840,28 +844,48 @@ marker](spec/MANAGED_EXCHANGE_RECORD.md#the-rotation-in-flight-marker)). A
 no-show after it reads as a probable partial rotation, with the re-invite
 recovery and no attack checklist.
 
-A no-show's run entry replaces the previous one, but a one-sided save failure or
-a failed-closed handshake is also kept as a standing condition, which a no-show
-does not replace (below).
+The other side of that rotation is reported too. This device saves the new
+secret first when it accepted the invitation; when the partner's run then
+reports that it could not save the new secret, this run says so, says that this
+device already holds the new one, and names a fresh invitation, with no retry.
+The run history, the recurring list, and a notification state the same. The
+partner's report is matched against a fixed reason and never shown as text the
+partner sent. Scheduled runs keep running afterwards, but none can reach the
+partner: each side's meeting point derives from the secret it holds, so a later
+window finds no partner, and one that does meet fails at the handshake. A no-show
+does not replace the report. A handshake that
+fails closed replaces the report as the standing condition and takes the
+confirmation below, because the partner's report is the other side's claim and
+not local evidence. A report that holds a compromise response stays in place.
+
+A no-show's run entry replaces the previous one, but a save failure on either
+side or a failed-closed handshake is also kept as a standing condition, which a
+no-show does not replace (below).
 
 ### A standing condition outlives the run that raised it
 
-Two failures need a remedy carried out with your partner rather than on this
+Three failures need a remedy carried out with your partner rather than on this
 device: a rotation this device could not save, which may have left the two
-parties on different secrets, and a handshake that failed closed with nothing to
-explain it. Either is kept as a **standing condition** beside the run history,
+parties on different secrets; a rotation your partner reported it could not
+save, which did; and a handshake that failed closed with nothing to explain it.
+Each is kept as a **standing condition** beside the run history,
 which a later run's entry does not replace, so the recurring list, the
 exchange's page, and a later run all read it until it is cleared. A later
 failure of the same kind leaves the first in place, and the message you forward
-names both, so the partner checks their logs for both.
+names both, so the partner checks their logs for both. The exception is a
+handshake that fails closed after a save failure your partner reported: this
+device's own failed handshake replaces that report, because the report is the
+other side's claim and not local evidence. A handshake that fails closed after a
+save failure this device recorded is read as that save failure, which explains
+it.
 
 Three things clear a standing condition, and nothing else does:
 
 - **Your explicit acknowledgement**, on the exchange's page. For an unexplained
   handshake failure, that is the two-outcome gate below. Where the record
   already holds the explanation (a save failure, or a restore since the last
-  success), the page states the condition and its re-invite recovery, and a
-  short acknowledgement clears it.
+  success), or your partner reported a save failure, the page states the
+  condition and its re-invite recovery, and a short acknowledgement clears it.
 - **A re-invite**, which installs a fresh secret.
 - **Removing the exchange.**
 
@@ -874,12 +898,15 @@ holds, so you face the full confirmation only when nothing else explains the
 failure. A failure from a scheduled run is reported the same way at your next
 visit.
 
-**Tier 1: local evidence explains the failure.** A recorded save failure on the
-last run (its `failureKind`), a restore or import since the last successful run,
+**Tier 1: local evidence explains the failure.** A save failure this device
+recorded (the last run's `failureKind`, or the standing condition it raised), a
+restore or import since the last successful run,
 or an expired shared secret (see [Expiry is its own
 state](#expiry-is-its-own-state-never-routed-through-attack-framing)) shows as
 that state, with the re-invite as its recovery and **without** the attack
-checklist.
+checklist. A save failure your partner reported does not excuse a later failed
+handshake from the confirmation, because the other side's claim is not local
+evidence.
 
 **Tier 2: no local explanation.** A handshake failure with no recorded benign
 cause gets the full out-of-band confirmation: a **pre-filled message** you send
