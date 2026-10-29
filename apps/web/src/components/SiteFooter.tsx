@@ -3,6 +3,7 @@ import { Anchor, VisuallyHidden } from "@mantine/core";
 import styles from "@styles/app.module.css";
 
 import {
+  DOCUMENTATION_URL,
   MDI_PETS_URL,
   PRIVACY_URL,
   SECURITY_URL,
@@ -11,15 +12,17 @@ import {
 } from "./projectLinks";
 
 const FOOTER_LINKS: ReadonlyArray<{ label: string; href: string }> = [
+  { label: "Documentation", href: DOCUMENTATION_URL },
   { label: "Privacy", href: PRIVACY_URL },
   { label: "Security", href: SECURITY_URL },
   { label: "Support", href: SUPPORT_URL },
-  { label: "Source code", href: SOURCE_CODE_URL },
+  { label: "Source code on GitHub", href: SOURCE_CODE_URL },
 ];
 
 /**
- * The site footer: who builds Alcove, and its privacy, security, support and
- * source pages, all on GitHub. `wide` matches the console lobby column.
+ * The site footer: who builds Alcove, its documentation, privacy, security and
+ * support pages on the project site, and its source code on GitHub. `wide`
+ * matches the console lobby column.
  */
 export function SiteFooter({ wide = false }: { wide?: boolean }) {
   return (
@@ -39,7 +42,7 @@ export function SiteFooter({ wide = false }: { wide?: boolean }) {
         .
       </p>
       <div className={styles.siteFooterLinks}>
-        <span>On GitHub:</span>
+        <span>More about Alcove:</span>
         {FOOTER_LINKS.map(({ label, href }) => (
           <Anchor
             key={label}

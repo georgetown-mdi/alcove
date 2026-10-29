@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { Alert, Anchor, Button } from "@mantine/core";
 
 import { DisclosureSection } from "@components/DisclosureSection";
+import { PROJECT_SITE_URL } from "@components/projectLinks";
 import { triggerBlobDownload } from "@components/blobDownload";
 
 import { exportManagedCronFiles } from "@psi/managed/managedExchangeExport";
@@ -26,8 +27,7 @@ import type { RunnableManagedExchangeRecord } from "@psi/managed/managedExchange
 import type { ShownScheduledRunLines } from "./managedCronExportModel";
 
 /** The key file's custody rules, cited rather than restated here. */
-const KEY_FILE_SECURITY_DOC_URL =
-  "https://github.com/georgetown-mdi/alcove/blob/main/docs/SECURITY_DESIGN.md#key-file-security";
+const KEY_FILE_SECURITY_DOC_URL = `${PROJECT_SITE_URL}/docs/SECURITY_DESIGN#key-file-security`;
 
 /**
  * The command-line export panel on a managed exchange's detail surface, beside the

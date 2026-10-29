@@ -27,7 +27,7 @@ import { sampleInputsFailure } from "@console/ConsoleSampleData";
 import styles from "@styles/app.module.css";
 
 import { HOME_HEADLINE, HOME_TAGLINE } from "./homeCopy";
-import { OTHER_WAYS_TO_USE_ALCOVE_URL, userGuideUrl } from "./userGuide";
+import { INSTRUCTIONS_URL, userGuideUrl } from "./userGuide";
 import { HOSTED_FILE_ASSURANCE } from "./fileAssurance";
 import { SampleCsvLinks } from "./SampleCsvLinks";
 
@@ -217,17 +217,17 @@ export function Lobby() {
           )}
         </div>
         <p className={`${styles.sub} ${styles.small}`}>
-          First time here? The{" "}
+          First time here? Follow the{" "}
           <Anchor
             inherit
             href={userGuideUrl()}
             target="_blank"
             rel="noreferrer"
           >
-            user guide (on GitHub)
+            step-by-step instructions
             <VisuallyHidden> (opens in a new tab)</VisuallyHidden>
           </Anchor>{" "}
-          walks through running an exchange step by step.
+          to run an exchange.
         </p>
         <p className={`${styles.sub} ${styles.small}`}>
           <Anchor
@@ -281,11 +281,11 @@ export function Lobby() {
             see the{" "}
             <Anchor
               inherit
-              href={OTHER_WAYS_TO_USE_ALCOVE_URL}
+              href={INSTRUCTIONS_URL}
               target="_blank"
               rel="noreferrer"
             >
-              other ways to use Alcove (on GitHub)
+              instructions for the other ways to use Alcove
               <VisuallyHidden> (opens in a new tab)</VisuallyHidden>
             </Anchor>
             .

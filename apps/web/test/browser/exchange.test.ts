@@ -35,8 +35,6 @@ import { InviterScreen } from "@exchange/InviterScreen";
 import { stagesFor } from "@exchange/exchangeRun";
 import styles from "@styles/app.module.css";
 
-import { WEB_APP_GUIDE_URL } from "@exchange/userGuide";
-
 // The ledger and demotion-notice expectations derive their form from this
 // function, so they pin that those sinks have the same form step 2's chips do,
 // not what that form is; the literal FSI/PDI expectations live in
@@ -59,6 +57,9 @@ import type {
   PreparedExchange,
   TransformStep,
 } from "@alcove/core";
+
+// The hosted build's instructions link, written out so a changed target fails.
+const INSTRUCTIONS_HOME_URL = "https://data-bridge.org/";
 
 // The grid's control labels isolate the header they name (the treatment
 // MatchingSharingSection applies), so selectors derive the label from the
@@ -382,10 +383,10 @@ describe("quick path", () => {
     expect(setUpLink?.getAttribute("href")).toBe("/exchange");
 
     const guide = page.getByRole("link", {
-      name: "user guide (on GitHub) (opens in a new tab)",
+      name: "step-by-step instructions (opens in a new tab)",
       exact: true,
     });
-    await expect.element(guide).toHaveAttribute("href", WEB_APP_GUIDE_URL);
+    await expect.element(guide).toHaveAttribute("href", INSTRUCTIONS_HOME_URL);
     await expect.element(guide).toHaveAttribute("target", "_blank");
 
     await expect.element(page.getByLabelText("Invitation")).toBeInTheDocument();
@@ -484,7 +485,7 @@ describe("inviter screen", () => {
       .element(page.getByRole("link", { name: "Alcove home" }))
       .toHaveAttribute("href", "/");
     const help = page.getByRole("link", { name: "Help" });
-    await expect.element(help).toHaveAttribute("href", WEB_APP_GUIDE_URL);
+    await expect.element(help).toHaveAttribute("href", INSTRUCTIONS_HOME_URL);
     await expect.element(help).toHaveAttribute("target", "_blank");
 
     // The step indicators share the button's text content, so the current
@@ -3407,7 +3408,7 @@ describe("exchange screen at a narrow viewport", () => {
     await reachMatchingSharingNarrow();
 
     const help = page.getByRole("link", { name: "Help" });
-    await expect.element(help).toHaveAttribute("href", WEB_APP_GUIDE_URL);
+    await expect.element(help).toHaveAttribute("href", INSTRUCTIONS_HOME_URL);
     await expect.element(help).toHaveAttribute("target", "_blank");
     expect(
       document.querySelector('nav[aria-label="Exchange setup"] a[href]'),

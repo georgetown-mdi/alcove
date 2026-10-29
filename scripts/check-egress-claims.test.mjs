@@ -542,6 +542,8 @@ describe("allowlist matching", () => {
       "https://github.com/georgetown-mdi/alcove",
       "https://github.com/georgetown-mdi/alcove#readme",
       "https://github.com/georgetown-mdi/alcove/blob/main/docs/CLI.md#recurring-exchange",
+      "https://data-bridge.org",
+      "https://data-bridge.org/docs/CLI#recurring-exchange",
     ];
     for (const url of ok) expect(allowlistEntryFor(url)).toBeDefined();
 
@@ -550,6 +552,8 @@ describe("allowlist matching", () => {
       "https://github.com/georgetown-mdi/alcove.evil.example/x",
       "https://github.com/georgetown-mdi/other/blob/main/README.md",
       "https://gitlab.example/georgetown-mdi/alcove/x",
+      "https://data-bridge.org.evil.example/x",
+      "https://signal.data-bridge.org/x",
     ];
     for (const url of rejected) expect(allowlistEntryFor(url)).toBeUndefined();
   });

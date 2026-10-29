@@ -78,8 +78,9 @@ function StepStrip({ steps }: { steps: ReadonlyArray<RailStep> }) {
   );
 }
 
-/** The user guide link: in the {@link TopBar} on a wide layout, below the ledger
- * on a narrow one ({@link WorkShell}). Opens in a new tab. */
+/** The link to the step-by-step instructions: in the {@link TopBar} on a wide
+ * layout, below the ledger on a narrow one ({@link WorkShell}). Opens in a new
+ * tab. */
 export function HelpLink() {
   return (
     <a

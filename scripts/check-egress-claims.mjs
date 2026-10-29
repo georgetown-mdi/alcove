@@ -142,6 +142,12 @@ export const ALLOWLIST = [
       "operator-clicked hyperlinks into this project's own repository documentation: user navigation, not app-initiated egress; a prefix because UI work adds these routinely, scoped to this repository so a link to any other host still fails",
   },
   {
+    url: "https://data-bridge.org",
+    match: "prefix",
+    reason:
+      "the base of operator-clicked hyperlinks into the project site's instructions and documentation, opened in a new tab: user navigation, not app-initiated egress; a prefix scoped to this host so a subdomain or any other host still fails",
+  },
+  {
     url: "https://mdi.georgetown.edu/pets/",
     match: "exact",
     reason:

@@ -40,7 +40,6 @@ import {
   UNDESCRIBABLE_RECORD_LEAD,
 } from "@exchange/RecordDownload";
 import { AcceptorScreen } from "@exchange/AcceptorScreen";
-import { CONSOLE_ALLOWED_RELAYS_GUIDE_URL } from "@exchange/userGuide";
 import { COORDINATION_SERVER_CHANGED_REFUSAL } from "@jobContract/jobCreateRefusal";
 import { RETAIN_MODE_BILATERAL_NOTICE } from "@console/exchangeFilesModel";
 import { SPLIT_RENDEZVOUS_RETAIN_REQUIREMENT } from "@console/filedropRendezvousChoice";
@@ -438,7 +437,10 @@ describe("console acceptor of a webrtc invitation", () => {
       .toHaveAccessibleDescription(ALLOWED_RELAYS_FIELD_DESCRIPTION);
     await expect
       .element(page.getByRole("link", { name: "More about Allowed relays" }))
-      .toHaveAttribute("href", CONSOLE_ALLOWED_RELAYS_GUIDE_URL);
+      .toHaveAttribute(
+        "href",
+        "https://data-bridge.org/docs/EXCHANGE_REFERENCE#connectionallowed_relays",
+      );
 
     await userEvent.fill(allowedField(), "turn:partner.example.net");
     const refusal = page.getByText(/^Line 1: enter /);
