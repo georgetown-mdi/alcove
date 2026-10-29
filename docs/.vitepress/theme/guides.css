@@ -1,252 +1,896 @@
-/* The guides under docs/guides/: every rule is scoped to the page class
-   docs/.vitepress/guides.mjs gives them, and uses the default theme's colors. */
+/* The guides under docs/guides/, drawn by GuideLayout.mjs: a warm ground
+   holding the page on a ruled sheet, the rail of pages on the left and the
+   page ledger on the right. Every rule is scoped to .guide-site, so the
+   reference pages keep the default theme; the default theme's reset still
+   applies here, and the rules below restore what the guides rely on. */
 
-.guide-page .vp-doc :not(pre) > code {
-  overflow-wrap: anywhere;
+.guide-site {
+  --surface: #f6f5f1;
+  --column: #ffffff;
+  --ink: #1a1c1a;
+  --secondary: #565b57;
+  --faint: #6d726a;
+  --accent: #0c7a8a;
+  --accent-ink: #0b6470;
+  --accent-bg: #e3eef0;
+  --rule: #d4d1c6;
+  --rule-soft: #e5e2d8;
+  --code-bg: #efede4;
+  --stripe: #4fa2af;
+  --warn: #8a5b06;
+  --warn-bg: #f6eedc;
+  --ok: #2e6e45;
+  --on-accent: #ffffff;
+  --plate: #041e42;
+  --shadow: 0 1px 3px rgba(26, 28, 26, 0.1);
+  --serif: "Source Serif 4 Variable", "Iowan Old Style", Georgia, serif;
+  --sans: "Public Sans Variable", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, sans-serif;
+  --mono: "Inconsolata Variable", Consolas, "Lucida Console", ui-monospace,
+    monospace;
+  color-scheme: light;
+}
+.dark .guide-site {
+  --surface: #131512;
+  --column: #1b1e1b;
+  --ink: #e8eae4;
+  --secondary: #a3a89f;
+  --faint: #878d83;
+  --accent: #3fb6c9;
+  --accent-ink: #3fb6c9;
+  --accent-bg: #102a2f;
+  --rule: #31342e;
+  --rule-soft: #272a24;
+  --code-bg: #171a14;
+  --stripe: #2e8c9c;
+  --warn: #d9a860;
+  --warn-bg: #2b2213;
+  --ok: #7cc79a;
+  --on-accent: #0b2a30;
+  --plate: #0d1f33;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  color-scheme: dark;
+}
+body:has(.guide-site) {
+  background: #f6f5f1;
+}
+.dark body:has(.guide-site) {
+  background: #131512;
 }
 
-.guide-page .vp-doc p.guide-lede {
-  font-size: 18px;
-  line-height: 1.55;
-  color: var(--vp-c-text-2);
+.guide-site {
+  min-height: 100vh;
+  background: var(--surface);
+  color: var(--ink);
+  font: 400 16.5px/1.6 var(--sans);
+  text-rendering: auto;
 }
-
-/* The front-matter rows under the title */
-.guide-page .vp-doc .guide-ledger {
-  margin: 24px 0 8px;
-  border-top: 2px solid var(--vp-c-text-1);
-  font-size: 14px;
-  line-height: 1.55;
-}
-.guide-page .vp-doc .guide-ledger-row {
-  display: grid;
-  grid-template-columns: 10rem minmax(0, 1fr);
-  gap: 4px 16px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--vp-c-divider);
-}
-.guide-page .vp-doc .guide-ledger dt {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--vp-c-text-3);
-  padding-top: 1px;
-}
-.guide-page .vp-doc .guide-ledger dd {
-  margin: 0;
-}
-@media (max-width: 640px) {
-  .guide-page .vp-doc .guide-ledger-row {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-/* Steps: a timeline of square marks; the mark shows which party acts */
-.guide-page .vp-doc .guide-step {
-  display: flow-root;
-  position: relative;
-  padding: 24px 0 0 34px;
-}
-.guide-page .vp-doc .guide-step > h3 {
-  position: relative;
-  margin-top: 0;
-}
-.guide-page .vp-doc .guide-step > h3 .header-anchor {
-  display: none;
-}
-.guide-page .vp-doc .guide-step > h3::before,
-.guide-page .vp-doc .guide-mark {
+.guide-site * {
   box-sizing: border-box;
-  width: 15px;
-  height: 15px;
-  border: 2px solid var(--vp-c-brand-1);
-  background: var(--vp-c-bg);
 }
-.guide-page .vp-doc .guide-step > h3::before {
-  content: "";
-  position: absolute;
-  left: -30px;
-  top: 7px;
-  z-index: 1;
+.guide-site ::before,
+.guide-site ::after {
+  box-sizing: content-box;
 }
-.guide-page .vp-doc .guide-step::after {
-  content: "";
-  position: absolute;
-  left: 11px;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background: var(--vp-c-divider);
+.guide-site a {
+  color: var(--accent-ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
-.guide-page .vp-doc .guide-step.first::after {
-  top: 31px;
+.guide-site strong,
+.guide-site b {
+  font-weight: bolder;
 }
-.guide-page .vp-doc .guide-step.first.has-screen::after {
-  top: 55px;
+.guide-site ul {
+  list-style: disc;
 }
-.guide-page .vp-doc .guide-step.last::after {
-  bottom: auto;
-  height: 31px;
+.guide-site ol {
+  list-style: decimal;
 }
-.guide-page .vp-doc .guide-step.last.has-screen::after {
-  height: 55px;
+.guide-site img {
+  display: inline;
 }
-.guide-page .vp-doc .guide-step.first.last::after {
-  display: none;
+.guide-site :focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
 }
-.guide-page .vp-doc .guide-step[data-party="a"] > h3::before,
-.guide-page .vp-doc .guide-mark[data-party="a"] {
-  background: var(--vp-c-brand-1);
-}
-.guide-page .vp-doc .guide-step[data-party="both"] > h3::before,
-.guide-page .vp-doc .guide-mark[data-party="both"] {
-  background: linear-gradient(
-    135deg,
-    var(--vp-c-brand-1) 0 50%,
-    var(--vp-c-bg) 50%
+.guide-site .stripe {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--accent) 0 10px,
+    var(--stripe) 10px 20px
   );
 }
-@media (max-width: 639px) {
-  /* A code block bleeds to the right edge only, clear of the timeline. */
-  .guide-page .vp-doc .guide-step div[class*="language-"] {
-    margin-left: 0;
-  }
+.guide-site .visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
-.guide-page .vp-doc .guide-num {
-  font-family: var(--vp-font-family-mono);
-  font-weight: 700;
-  color: var(--vp-c-brand-1);
-  margin-right: 8px;
+
+/* Top bar */
+.guide-site .top {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--column);
+  border-bottom: 1px solid var(--rule);
 }
-.guide-page .vp-doc p.guide-party-key {
+.guide-site .top .band {
+  height: 3px;
+}
+.guide-site .top .inner {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px 18px;
-  margin: 20px 0 0;
-  font-size: 13px;
-  line-height: 20px;
-  color: var(--vp-c-text-2);
-}
-.guide-page .vp-doc .guide-party-key span {
-  display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 24px;
+  min-height: 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  max-width: 1360px;
+  margin: 0 auto;
 }
-.guide-page .vp-doc .guide-mark {
-  display: inline-block;
+.guide-site .wordmark {
+  font: 700 15px var(--mono);
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.guide-site .wordmark .mark {
+  width: 11px;
+  height: 11px;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+.guide-site .topnav {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.guide-site .topnav a {
+  font: 650 14.5px var(--sans);
+  color: var(--secondary);
+  text-decoration: none;
+}
+.guide-site .topnav a[aria-current="true"] {
+  color: var(--ink);
+}
+.guide-site .top .spacer {
+  flex: 1;
+}
+.guide-site .btn {
+  font: 650 14px var(--sans);
+  border-radius: 4px;
+  padding: 7px 14px;
+  border: 1px solid var(--accent);
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.guide-site .btn.fill {
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
-/* The product's own screen header over a step */
-.guide-page .vp-doc p.guide-screen {
-  margin: 0 0 6px;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 18px;
-  letter-spacing: 0.06em;
+/* Frame */
+.guide-site .frame {
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr) 224px;
+  gap: 32px;
+  max-width: 1360px;
+  margin: 0 auto;
+  padding-block: 28px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  align-items: start;
+}
+.guide-site .frame.wide {
+  grid-template-columns: 248px minmax(0, 1fr);
+}
+.guide-site .rail {
+  position: sticky;
+  top: 84px;
+  display: grid;
+  gap: 22px;
+}
+.guide-site .rail .group h2 {
+  font: 650 12px var(--sans);
   text-transform: uppercase;
-  color: var(--vp-c-text-3);
+  letter-spacing: 0.09em;
+  color: var(--faint);
+  margin: 0 0 6px;
+}
+.guide-site .rail ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.guide-site .rail a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 14px;
+  color: var(--secondary);
+  text-decoration: none;
+}
+.guide-site .rail a::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border: 1px solid var(--rule);
+}
+.guide-site .rail a[aria-current="page"] {
+  color: var(--ink);
+  font-weight: 650;
+}
+.guide-site .rail a[aria-current="page"]::before {
+  border: 2px solid var(--accent);
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+.guide-site .picker {
+  display: none;
 }
 
-/* Checkpoint and More detail lines */
-.guide-page .vp-doc p.guide-checkpoint,
-.guide-page .vp-doc p.guide-more {
+.guide-site .sheet {
+  background: var(--column);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 40px 48px;
+  min-width: 0;
+}
+.guide-site .eyebrow,
+.guide-site .guide-eyebrow {
+  font: 650 12px var(--sans);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--secondary);
+  margin: 0 0 8px;
+}
+
+/* Page ledger */
+.guide-site .ledger-col {
+  align-self: stretch;
+}
+.guide-site .guide-ledger {
+  position: sticky;
+  top: 84px;
+  border-top: 2px solid var(--ink);
+  font-size: 14px;
+}
+.guide-site .guide-ledger h2 {
+  font: 650 13px var(--sans);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 10px 0 6px;
+}
+.guide-site .guide-ledger dl {
+  margin: 0;
+}
+.guide-site .guide-ledger-row {
+  border-top: 1px solid var(--rule);
+  padding: 8px 0;
+}
+.guide-site .guide-ledger dt {
+  font: 650 11.5px var(--sans);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--faint);
+}
+.guide-site .guide-ledger dd {
+  margin: 2px 0 0;
+}
+.guide-site .guide-ledger .guide-toc {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 4px;
+}
+.guide-site .guide-ledger .guide-toc a {
+  font-size: 13px;
+  color: var(--secondary);
+  text-decoration: none;
+}
+
+/* Document typography. Content renders the page inside a div of its own,
+   so the page's own blocks are the grandchildren of .doc. */
+.guide-site .doc {
+  max-width: 760px;
+  position: static !important;
+}
+.guide-site .doc > div > * {
+  max-width: 68ch;
+}
+.guide-site .doc h1,
+.guide-site .doc h2,
+.guide-site .doc h3,
+.guide-site .doc h4 {
+  scroll-margin-top: 80px;
+}
+.guide-site .doc h1 {
+  font: 600 36px/1.15 var(--serif);
+  letter-spacing: -0.01em;
+  margin: 0 0 14px;
+  text-wrap: balance;
+}
+.guide-site .doc h2 {
+  font: 600 24px/1.3 var(--serif);
+  margin: 44px 0 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--rule);
+  text-wrap: balance;
+}
+.guide-site .doc h3 {
+  font: 650 17px/1.4 var(--sans);
+  margin: 28px 0 8px;
+}
+.guide-site .doc h4 {
+  font: 650 12px var(--sans);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--secondary);
+  margin: 24px 0 6px;
+}
+.guide-site .doc p,
+.guide-site .doc li {
+  margin: 0 0 12px;
+}
+.guide-site .doc ul,
+.guide-site .doc ol {
+  padding-left: 22px;
+  margin: 0 0 14px;
+}
+.guide-site .doc li > ul,
+.guide-site .doc li > ol {
+  margin: 0;
+}
+.guide-site .doc .guide-lede {
+  font-size: 18px;
+  line-height: 1.5;
+  color: var(--secondary);
+}
+.guide-site .doc code {
+  font: 500 0.94em var(--mono);
+  background: var(--code-bg);
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+.guide-site .doc a code {
+  color: inherit;
+}
+.guide-site .doc :not(pre) > code {
+  overflow-wrap: anywhere;
+}
+.guide-site .doc img {
+  max-width: 100%;
+}
+.guide-site .doc .header-anchor {
+  display: none;
+}
+
+/* Code blocks, as VitePress writes them: the language and the Copy button
+   over the block, highlighting left out. */
+.guide-site .doc div[class*="language-"] {
+  position: relative;
+  max-width: none;
+  margin: 0 0 16px;
+  background: var(--code-bg);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+}
+.guide-site .doc div[class*="language-"] > span.lang {
+  position: absolute;
+  top: 6px;
+  left: 14px;
+  font: 650 11px var(--sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.guide-site .doc div[class*="language-"] > button.copy {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  z-index: 1;
+  font: 500 12px var(--mono);
+  background: transparent;
+  color: var(--secondary);
+  border: 1px solid transparent;
+  border-radius: 2px;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+.guide-site .doc div[class*="language-"] > button.copy::before {
+  content: "Copy";
+}
+.guide-site .doc div[class*="language-"] > button.copy.copied::before {
+  content: "Copied";
+}
+.guide-site .doc div[class*="language-"] > button.copy:hover {
+  border-color: var(--rule);
+}
+.guide-site .doc div[class*="language-"] > pre {
+  margin: 0;
+  padding: 28px 18px 14px;
+  overflow-x: auto;
+  background: none;
+  font: 400 15px/1.55 var(--mono);
+}
+.guide-site .doc div[class*="language-"] > pre code {
+  background: none;
+  padding: 0;
+  font: inherit;
+}
+.guide-site .doc .vp-code span {
+  color: inherit;
+}
+
+/* Tables */
+.guide-site .doc .guide-table {
+  max-width: none;
+  overflow-x: auto;
+  margin: 0 0 18px;
+}
+.guide-site .doc table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 14.5px;
+  line-height: 1.45;
+}
+.guide-site .doc th {
+  font: 650 11.5px var(--sans);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--secondary);
+  text-align: left;
+  padding: 8px 12px 8px 0;
+  border-bottom: 1px solid var(--ink);
+}
+.guide-site .doc td {
+  padding: 8px 12px 8px 0;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+}
+.guide-site .doc td:first-child code {
+  font-weight: 600;
+}
+
+/* Callouts, as VitePress writes a GitHub alert */
+.guide-site .doc .custom-block {
+  border: 2px solid var(--warn);
+  background: var(--warn-bg);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin: 0 0 16px;
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+.guide-site .doc .custom-block a,
+.guide-site .doc .custom-block code {
+  color: inherit;
+}
+.guide-site .doc .custom-block a,
+.guide-site .doc .custom-block a:hover {
+  color: var(--accent-ink);
+  font-weight: inherit;
+  opacity: 1;
+}
+.guide-site .doc .custom-block code {
+  background: var(--code-bg);
+}
+.guide-site .doc .custom-block p {
+  margin: 0 0 12px;
+  line-height: inherit;
+}
+.guide-site .doc .custom-block p.custom-block-title {
+  font: 650 13px var(--sans);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--warn);
+  margin: 0 0 4px;
+}
+.guide-site .doc .custom-block p:last-child {
+  margin-bottom: 0;
+}
+.guide-site .doc .custom-block:not(.warning, .caution, .danger) {
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--accent-ink);
+  background: var(--column);
+}
+.guide-site
+  .doc
+  .custom-block:not(.warning, .caution, .danger)
+  p.custom-block-title {
+  color: var(--accent-ink);
+}
+.guide-site .doc .guide-more {
   position: relative;
   padding-left: 16px;
-  font-size: 15px;
-  color: var(--vp-c-text-2);
+  font-size: 14.5px;
+  color: var(--secondary);
 }
-.guide-page .vp-doc p.guide-checkpoint::before,
-.guide-page .vp-doc p.guide-more::before {
+.guide-site .doc .guide-more::before {
   content: "";
   position: absolute;
   left: 0;
   top: 4px;
   bottom: 4px;
-  width: 4px;
-}
-.guide-page .vp-doc p.guide-checkpoint::before {
-  background: var(--vp-c-success-1);
-}
-.guide-page .vp-doc p.guide-checkpoint > strong:first-child {
-  color: var(--vp-c-success-1);
-}
-.guide-page .vp-doc p.guide-more::before {
+  width: 6px;
   background: repeating-linear-gradient(
     45deg,
-    var(--vp-c-brand-1) 0 4px,
-    var(--vp-c-brand-soft) 4px 8px
+    var(--accent) 0 4px,
+    var(--stripe) 4px 8px
+  );
+}
+.guide-site .doc .guide-more a {
+  color: var(--ink);
+}
+
+/* Steps: a timeline of square markers; the marker shows which party acts */
+.guide-site .guide-step {
+  position: relative;
+  display: flow-root;
+  padding-left: 34px;
+  max-width: 68ch;
+}
+.guide-site .guide-step > h3 {
+  position: relative;
+}
+.guide-site .guide-step > h3::before {
+  content: "";
+  position: absolute;
+  left: -30px;
+  top: 6px;
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--accent);
+  background: var(--column);
+  z-index: 1;
+}
+.guide-site .guide-step::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 47px;
+  bottom: -34px;
+  width: 1px;
+  background: var(--rule);
+}
+.guide-site .guide-step.next-screen::after {
+  bottom: -56px;
+}
+.guide-site .guide-step.last::after {
+  display: none;
+}
+.guide-site .guide-step[data-party="a"] > h3::before {
+  background: var(--accent);
+}
+.guide-site .guide-step[data-party="both"] > h3::before {
+  background: linear-gradient(
+    135deg,
+    var(--accent) 0 50%,
+    var(--column) 50%
+  );
+}
+.guide-site .guide-step h3 .guide-num {
+  font: 700 15px var(--mono);
+  color: var(--accent-ink);
+  margin-right: 6px;
+}
+.guide-site .doc .guide-party-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--secondary);
+  margin: 0 0 18px;
+  max-width: none;
+}
+.guide-site .guide-party-key span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.guide-site .guide-mark {
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--accent);
+  display: inline-block;
+}
+.guide-site .guide-mark[data-party="a"] {
+  background: var(--accent);
+}
+.guide-site .guide-mark[data-party="both"] {
+  background: linear-gradient(
+    135deg,
+    var(--accent) 0 50%,
+    var(--column) 50%
   );
 }
 
-/* Choice table and "What you get" table */
-.guide-page .vp-doc .guide-choice tr.guide-usual td {
-  background: var(--vp-c-brand-soft);
-}
-.guide-page .vp-doc .guide-choice tr.guide-usual td:first-child {
-  box-shadow: inset 3px 0 0 var(--vp-c-brand-1);
-}
-.guide-page .vp-doc .guide-badge {
-  display: inline-block;
-  margin-right: 6px;
-  padding: 0 5px;
-  border: 1px solid var(--vp-c-brand-1);
-  border-radius: 2px;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 16px;
-  letter-spacing: 0.06em;
+/* Screen header over a step, matching the product's own step header */
+.guide-site .guide-step .guide-screen {
+  font: 650 11.5px var(--sans);
   text-transform: uppercase;
-  color: var(--vp-c-brand-1);
+  letter-spacing: 0.07em;
+  color: var(--faint);
+  margin: 30px 0 -22px;
+}
+.guide-site .guide-step .guide-screen + h3 {
+  margin-top: 24px;
+}
+.guide-site .guide-step:has(> .guide-screen)::after {
+  top: 69px;
+}
+/* Checkpoint line */
+.guide-site .doc .guide-checkpoint {
+  position: relative;
+  padding-left: 16px;
+  font-size: 14.5px;
+  color: var(--secondary);
+}
+.guide-site .doc .guide-checkpoint::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 6px;
+  background: var(--ok);
+}
+.guide-site .doc .guide-checkpoint strong:first-child {
+  color: var(--ok);
+}
+/* Choice table and file table */
+.guide-site .doc .guide-choice tr.guide-usual td {
+  background: var(--accent-bg);
+}
+.guide-site .doc .guide-choice tr.guide-usual td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent);
+  padding-left: 10px;
+}
+.guide-site .guide-badge {
+  display: inline-block;
+  font: 650 10.5px var(--sans);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--accent-ink);
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  padding: 0 5px;
+  margin-right: 6px;
   vertical-align: 1px;
 }
-.guide-page .vp-doc .guide-files td.guide-private {
-  color: var(--vp-c-warning-1);
-  font-weight: 600;
+.guide-site .doc .guide-files td.guide-private {
+  color: var(--warn);
+  font-weight: 650;
 }
-
+.guide-site .doc .guide-files td:first-child code {
+  overflow-wrap: anywhere;
+}
 /* Platform and channel switcher */
-.guide-page .vp-doc .guide-tabs {
-  margin: 16px 0;
+.guide-site .doc .guide-tabs {
+  max-width: none;
+  margin: 0 0 18px;
 }
-.guide-page .vp-doc .guide-tabs [role="tablist"] {
+.guide-site .guide-tabs [role="tablist"] {
   display: flex;
   flex-wrap: wrap;
-  border-bottom: 1px solid var(--vp-c-divider);
+  gap: 0;
+  border-bottom: 1px solid var(--rule);
+  margin: 0 0 14px;
 }
-.guide-page .vp-doc .guide-tabs [role="tab"] {
-  margin-bottom: -1px;
-  padding: 8px 14px 6px;
+.guide-site .guide-tabs [role="tab"] {
+  font: 650 13.5px var(--sans);
+  color: var(--secondary);
+  background: none;
+  border: 0;
   border-bottom: 2px solid transparent;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--vp-c-text-2);
+  padding: 7px 14px 6px;
+  margin-bottom: -1px;
   cursor: pointer;
 }
-.guide-page .vp-doc .guide-tabs [role="tab"]:hover {
-  color: var(--vp-c-text-1);
+.guide-site .guide-tabs [role="tab"][aria-selected="true"] {
+  color: var(--ink);
+  border-bottom-color: var(--accent);
 }
-.guide-page .vp-doc .guide-tabs [role="tab"][aria-selected="true"] {
-  border-bottom-color: var(--vp-c-brand-1);
-  color: var(--vp-c-text-1);
+.guide-site .guide-tabs [role="tabpanel"] > * {
+  max-width: 68ch;
 }
-.guide-page .vp-doc .guide-tabs [role="tab"]:focus-visible {
-  outline: 2px solid var(--vp-c-brand-1);
-  outline-offset: -2px;
+.guide-site .guide-tabs [role="tabpanel"] > div[class*="language-"],
+.guide-site .guide-tabs [role="tabpanel"] > .guide-table {
+  max-width: none;
+}
+/* Home chooser */
+.guide-site .doc .guide-chooser {
+  margin: 4px 0 0;
+}
+.guide-site .doc .guide-chooser table {
+  font-size: 15px;
+}
+.guide-site .doc .guide-chooser td:first-child {
+  color: var(--secondary);
+}
+.guide-site .doc .guide-chooser td:first-child strong {
+  color: var(--ink);
+  display: block;
+}
+.guide-site .doc .guide-chooser th:nth-child(n + 2) {
+  width: 30%;
+}
+.guide-site .doc .guide-chooser td a {
+  font-weight: 600;
+}
+.guide-site .guide-ledger dd a {
+  color: var(--accent-ink);
+}
+
+/* Landing */
+.guide-site .guide-landing {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 4fr);
+  gap: 36px;
+  align-items: start;
+  margin-bottom: 28px;
+}
+.guide-site .doc .guide-landing h1 {
+  font: 600 40px/1.1 var(--serif);
+  letter-spacing: -0.01em;
+  margin: 0 0 16px;
+  text-wrap: balance;
+}
+.guide-site .doc .guide-landing .guide-lede {
+  font-size: 18px;
+  line-height: 1.5;
+  color: var(--secondary);
+  margin: 0 0 22px;
+}
+.guide-site .doc > div > .guide-landing {
+  max-width: none;
+}
+.guide-site .guide-figure {
+  margin: 0;
+}
+.guide-site .guide-figure svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.guide-site .doc .guide-ledger h2 {
+  font: 650 13px var(--sans);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 10px 0 6px;
+  padding: 0;
+  border: 0;
+}
+.guide-site .doc .guide-ledger li {
+  margin: 0;
+}
+.guide-site .doc .guide-inline-ledger {
+  display: none;
+  max-width: none;
+  margin: 0 0 20px;
+}
+.guide-site .doc .guide-figure figcaption {
+  font-size: 14px;
+  color: var(--secondary);
+  margin-top: 10px;
 }
 
 /* About */
-.guide-about .vp-doc img[src*="mdi-logo"] {
-  box-sizing: content-box;
-  width: 220px;
+.guide-site .about .guide-logo-plate {
+  display: inline-block;
+  background: var(--plate);
   padding: 14px 22px;
   border-radius: 2px;
-  background: #041e42;
+  margin: 0 0 18px;
 }
-.guide-about .vp-doc h3 + p > img {
+.guide-site .about .guide-logo-plate img {
+  width: 220px;
+  display: block;
+}
+.guide-site .guide-person {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 20px;
+  padding: 20px 0;
+  border-top: 1px solid var(--rule);
+  max-width: 68ch;
+}
+.guide-site .guide-person:last-of-type {
+  border-bottom: 1px solid var(--rule);
+}
+.guide-site .guide-person img {
   width: 112px;
   height: 112px;
   object-fit: cover;
-  border: 1px solid var(--vp-c-divider);
+  border: 1px solid var(--rule);
   border-radius: 2px;
+}
+.guide-site .doc .guide-person h3 {
+  font: 600 20px var(--serif);
+  margin: 0 0 4px;
+}
+.guide-site .doc .guide-person p {
+  font-size: 15.5px;
+}
+
+.guide-site .foot {
+  border-top: 1px solid var(--rule);
+  margin-top: 48px;
+  padding-top: 14px;
+  font-size: 13.5px;
+  color: var(--secondary);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  max-width: none;
+}
+
+@media (max-width: 1100px) {
+  .guide-site .frame {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+  .guide-site .ledger-col {
+    display: none;
+  }
+  .guide-site .doc .guide-inline-ledger {
+    display: block;
+  }
+}
+@media (max-width: 860px) {
+  .guide-site .frame,
+  .guide-site .frame.wide {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+    padding-block: 16px 48px;
+  }
+  .guide-site .rail {
+    display: none;
+  }
+  .guide-site .picker {
+    display: block;
+  }
+  .guide-site .picker select {
+    width: 100%;
+    font: 400 15px var(--sans);
+    padding: 8px;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    background: var(--column);
+    color: var(--ink);
+    appearance: auto;
+  }
+  .guide-site .sheet {
+    padding: 24px 18px;
+    border-radius: 0;
+  }
+  .guide-site .guide-landing {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .guide-site .doc .guide-landing h1 {
+    font-size: 34px;
+  }
+  .guide-site .topnav {
+    display: none;
+  }
+  .guide-site .guide-person {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+  .guide-site .guide-person img {
+    width: 72px;
+    height: 72px;
+  }
 }
