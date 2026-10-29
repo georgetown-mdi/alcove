@@ -917,7 +917,7 @@ describe("managed exchange detail schedule entry", () => {
     // An imported or hand-edited record can hold a width and an anchor at a
     // finer resolution than the fields hold. Both must survive an edit to some
     // other field, and the width the operator reads has to be the one their
-    // partner agreed rather than a round number standing in for it.
+    // partner agreed on rather than a round number standing in for it.
     const stored: ManagedExchangeSchedule = {
       anchor: new Date(2026, 7, 4, 9, 0, 30, 500).toISOString(),
       intervalDays: 7,
@@ -968,7 +968,7 @@ describe("managed exchange detail schedule entry", () => {
     // The widget's own clamp is what this turns off: a NumberInput with bounds
     // rewrites a value outside them when it loses focus, so an operator who
     // merely tabbed through the width field on their way to the label would
-    // push the floor into the save and change the width their partner agreed.
+    // push the floor into the save and change the width their partner agreed on.
     // The bounds are the entry model's, which states them at the field rather
     // than editing the value under the operator.
     const stored: ManagedExchangeSchedule = {

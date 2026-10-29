@@ -2050,7 +2050,7 @@ describe("handler", () => {
     expect(exits).toEqual([]);
     expect(stdout).toContain("agreed-terms hash: re-derives and matches");
     expect(stdout).toContain(
-      "agreed-terms hash: matches the terms this exchange agreed",
+      "agreed-terms hash: matches the terms this exchange agreed on",
     );
     expect(stdout).toMatch(/^VERIFIED/);
     expect(stdout).toContain("SIGNED RECEIPT VERIFIED");
@@ -2161,7 +2161,7 @@ describe("handler", () => {
     };
     const carried = await runVerify(shared);
     expect(carried.stdout).toContain(
-      "agreed-terms hash: matches the terms this exchange agreed",
+      "agreed-terms hash: matches the terms this exchange agreed on",
     );
     const supplied = await runVerify({
       ...shared,
@@ -2174,7 +2174,7 @@ describe("handler", () => {
     });
     expect(supplied.exits).toEqual([]);
     expect(supplied.stdout).toContain(
-      "agreed-terms hash: DOES NOT MATCH the terms this exchange agreed",
+      "agreed-terms hash: DOES NOT MATCH the terms this exchange agreed on",
     );
     expect(supplied.exitCode).toBe(RECEIPT_VERIFICATION_FAILED_EXIT_CODE);
   });

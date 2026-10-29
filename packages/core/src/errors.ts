@@ -98,7 +98,7 @@ export class AlgorithmDivergenceError extends ConnectionError {
  * terms declare no column for (`resolveDirectionDisclosesPayload`).
  *
  * A {@link ConnectionError} of kind `protocol`, not {@link UsageError}: the
- * assertion is held against a pair of documents both parties agreed, so the
+ * assertion is held against a pair of documents both parties agreed on, so the
  * contradiction is a process disclosing against the terms it agreed under --
  * the classification `assertNoPayloadReceived` gives the same pair
  * when the column arrives (CLI exit 76, not 64). The constructor takes no

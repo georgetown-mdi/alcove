@@ -151,7 +151,7 @@ The measurement is one image on one host, and it is what the client offers, not 
 
 ## What to ask of the partner's server
 
-Alcove enforces none of the following; it constrains only what this side offers and accepts. Agree these server-side settings with your partner out of band, alongside the exchange directory and account access ([DEPLOYMENT.md](DEPLOYMENT.md#sftp-server)):
+Alcove enforces none of the following; it constrains only what this side offers and accepts. Agree on these server-side settings with your partner out of band, alongside the exchange directory and account access ([DEPLOYMENT.md](DEPLOYMENT.md#sftp-server)):
 
 - Restrict `KexAlgorithms`, `Ciphers`, and `MACs` to the same approved sets. A server restricted this way and a client running this profile fail closed toward each other.
 - Restrict `HostKeyAlgorithms` to exclude `ssh-rsa`, and offer an `ecdsa-sha2-nistp256` or `rsa-sha2-256`/`rsa-sha2-512` host key. This is the only place the SHA-1 host-key signature can be closed.

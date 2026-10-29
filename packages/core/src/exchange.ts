@@ -444,7 +444,7 @@ function assertDeclaredWidthMatchesStrategy(
       `${effectiveKeyCount} candidate value slot(s) per record across ` +
       `${keyCount} linkage key(s), but their linkage_strategy matches one ` +
       "value per record. Remove the expanding step, the fuzzy comparison, or " +
-      "the swapped key order from the key's elements, or agree terms " +
+      "the swapped key order from the key's elements, or agree on terms " +
       "whose linkage_strategy matches several candidates.",
   );
 }
@@ -1506,7 +1506,7 @@ export async function runExchange(
   const localDisclosesPayload = prepared.metadata.some(isDisclosedToPartner);
 
   // The per-round candidate widths the agreed terms declare, and their sum. Both
-  // parties derive them from terms they have both agreed, so nothing about width
+  // parties derive them from terms they have both agreed on, so nothing about width
   // rides the wire and neither party reads the other's declaration.
   const rounds = linkageRounds(linkageTerms.linkageKeys);
   const keyWidths = rounds.map(({ key, keyIndex }) =>
@@ -1630,10 +1630,11 @@ export async function runExchange(
   }
 
   // A run that will sign a receipt needs both parties named and its own
-  // certificate bound to the name it agreed terms under. Both are decided the
-  // moment the partner's terms arrive, so both are held here, at the same point
-  // and for the same reason as the deduplicate check above: before the bootstrap
-  // frame, before any linkage key, and before any payload row moves. The
+  // certificate bound to the name under which it agreed on the terms. Both are
+  // decided the moment the partner's terms arrive, so both are held here, at
+  // the same point and for the same reason as the deduplicate check above:
+  // before the bootstrap frame, before any linkage key, and before any payload
+  // row moves. The
   // signature swap holds the same pair again at the point of use. See
   // assertReceiptBindingsOrAbort.
   // The partner's certificate is resolved against the pin at the same point,

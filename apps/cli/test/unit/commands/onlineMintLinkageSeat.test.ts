@@ -113,7 +113,7 @@ test("the online mint states a draft shortfall without claiming an agreement", a
   );
   // Nobody has agreed to these terms and nobody has seen them, so the refusal
   // may neither call them agreed nor send the operator to renegotiate.
-  expect(rendered).not.toContain("agree linkage terms");
+  expect(rendered).not.toContain("agree on linkage terms");
   expect(rendered).not.toContain("agreed");
   expect(rendered).not.toContain("your partner");
   expect(rendered).not.toContain("out of band");
@@ -212,6 +212,6 @@ test("the run boundary keeps the agreed seat's words for the same grading", asyn
     "this input cannot satisfy every linkage key the agreed terms declare",
   );
   expect(rendered).toContain("agreed linkage keys");
-  expect(rendered).toContain("Agree new terms with your partner");
+  expect(rendered).toContain("Agree on new terms with your partner");
   expect(rendered).toContain("an input file that satisfies the current terms");
 });

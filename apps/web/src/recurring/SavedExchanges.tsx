@@ -171,7 +171,7 @@ function DelayedLoader() {
 /**
  * The managed-exchange list, the canonical always-list route at `/saved`. It lists the
  * recurring exchanges stored in this browser -- label, side, a one-line last-run
- * status, the schedule's due-ness where one is agreed, and the derived backup state
+ * status, the schedule's due-ness where one is agreed on, and the derived backup state
  * -- each with a run action that opens the attended re-run surface, above a standing
  * entry into the quick (invite/accept) path.
  *

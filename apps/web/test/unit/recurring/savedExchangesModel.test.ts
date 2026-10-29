@@ -335,7 +335,7 @@ describe("savedExchangeRow schedule lines", () => {
 
   test("a lapsed secret keeps its window line beside the lapse", () => {
     // The two states compose rather than one suppressing the other: a lapse is
-    // recovered by a re-invite, which keeps the cadence the partnership agreed, so
+    // recovered by a re-invite, which keeps the cadence the partnership agreed on, so
     // the row names the lapse AND where the recurrence stands.
     const row = savedExchangeRow(
       record({ expires: "2026-07-01T00:00:00.000Z", schedule: daily }),

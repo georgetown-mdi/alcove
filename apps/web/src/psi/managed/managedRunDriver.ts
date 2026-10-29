@@ -198,13 +198,13 @@ export interface ManagedRunDriverConfig {
    * exactly once, and a notice from the teardown's close can arrive after it. */
   onWarning?: (message: string) => void;
   /** What the two parties' agreed `deduplicate` values resolved to, reported
-   * once the terms are agreed and before the first round. It states the run's
+   * once the terms are agreed on and before the first round. It states the run's
    * own terms rather than raising a notice, so an attended re-run shows it as
    * run status. Optional: an unattended run has nobody reading it as it goes
    * and omits it, and its own record holds the same three afterwards. */
   onResolvedMatching?: (matching: ResolvedMatching) => void;
   /** The two record counts this run declared at the terms exchange, reported once
-   * the terms are agreed and before the first round, and only where the agreed
+   * the terms are agreed on and before the first round, and only where the agreed
    * cardinality makes the pair table their product (`projectPairTable` in
    * `@alcove/core`). An unattended run keeps them beside what it leaves, so the
    * next visit can project how large a result a further run on these terms would
@@ -549,7 +549,7 @@ export function runManagedExchangeInBrowser(
               ),
             },
           );
-          // Terms agreed with the partner leave nothing a kept proposal could
+          // Terms agreed on with the partner leave nothing a kept proposal could
           // still take on. Best-effort: a proposal left behind is one the
           // operator can still decline.
           await declineManagedTermsProposal(record.id).catch(() => undefined);

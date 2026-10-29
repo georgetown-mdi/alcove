@@ -2,7 +2,7 @@
  * The pure model behind the saved-exchanges affordance: turning a stored managed
  * record and its local sibling state into the small, accurate summary the lobby's run
  * list shows -- the label, this party's side, a one-line last-run status, the
- * schedule's due-ness where one is agreed, and the derived backup state. No
+ * schedule's due-ness where one is agreed on, and the derived backup state. No
  * React, no IndexedDB: the store reads and the actions live
  * in the components, so the display derivation is unit-testable in Node.
  */
@@ -186,7 +186,7 @@ function tierStatus(
     case "partner-refused-set":
       return `Last run stopped: your partner's run refused to send its set (${at}); ask your partner`;
     case "partner-refused-terms":
-      return `Last run stopped: your partner's run refused your linkage terms (${at}); agree the terms through a terms update`;
+      return `Last run stopped: your partner's run refused your linkage terms (${at}); agree on the terms through a terms update`;
     case "partner-protocol-refusal":
       return `Last run stopped: your partner's data did not follow the exchange protocol (${at}); check your Alcove versions with your partner`;
     case "custody-unreadable":

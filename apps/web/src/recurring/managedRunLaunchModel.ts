@@ -276,9 +276,9 @@ const MISSED_FAILURE: ManagedRunFailure = {
   message:
     "This run waited for your partner and they never connected, so nothing was " +
     "exchanged and nothing left this device. That is not a fault on this " +
-    "device: agree a time with your partner over your usual channel, and run " +
+    "device: agree on a time with your partner over your usual channel, and run " +
     `this exchange again when they are ready. ${RAN_ELSEWHERE_IMPORT_REMEDY} ` +
-    "If they were running their side at a time you agreed and this keeps " +
+    "If they were running their side at a time you agreed on and this keeps " +
     "happening, re-invite your partner to reconnect; the exchange keeps your " +
     "terms, gets a new secret, and uses the coordination server the new " +
     "invitation names.",
@@ -359,7 +359,7 @@ function inputFailure(error: unknown): ManagedRunFailure {
  * connecting. Fixed and non-oracular like the input state's: the shortfall
  * names partner-authored keys and fields, and the copy states the condition
  * instead. Not the retry state -- the same file refuses identically, so the
- * only ways forward are a conforming file or terms agreed with the partner.
+ * only ways forward are a conforming file or terms agreed on with the partner.
  * The recorded tier reaches it too, so an unattended run's shortfall is
  * classified here rather than through the input state's re-pick. */
 const TERMS_SHORTFALL_FAILURE: ManagedRunFailure = {
@@ -390,7 +390,7 @@ export const TERMS_CHANGE_FAILURE: ManagedRunFailure = {
     "Your partner's linkage terms changed since this exchange last ran, and " +
     "this run did not take them on. Running it again stops the same way " +
     "until you apply the change to this exchange or your partner goes back " +
-    "to the terms you agreed.",
+    "to the terms you agreed on.",
   recovery: "none",
 };
 

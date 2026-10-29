@@ -177,14 +177,14 @@ describe("isRecognizedLoopFile", () => {
 
   // Any own-prefixed name with a numeric terminal is admitted as an own
   // message, so the exact-name match is pinned on the peer's prefix.
-  test("hellos match the names rendezvous agreed only", () => {
+  test("hellos match the names rendezvous agreed on only", () => {
     expect(recognized("alice-hello-48.json")).toBe(true);
     expect(recognized("bob-hello-47.json")).toBe(true);
     expect(recognized("bob-hello-48.json")).toBe(false);
     expect(recognized("bob-x-hello-48.json")).toBe(false);
   });
 
-  test("before rendezvous agrees names, no hello or sentinel is recognized", () => {
+  test("before rendezvous agrees on names, no hello or sentinel is recognized", () => {
     for (const name of ["bob-hello-47.json", "bob-joining-47.json"])
       expect(isRecognizedLoopFile(name, self, peer, new Set(), undefined)).toBe(
         false,

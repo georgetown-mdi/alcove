@@ -137,7 +137,7 @@ Both folders are partner-synced: keep them out of the working directory, and kee
 
 If you already run this exchange with `alcove` on the command line, choose **Open the configuration in my folder** on the first step. The console reads the `alcove.yaml` in your working folder (`JOB_DATA_ROOT`); nothing is uploaded from your browser, and no container path is shown.
 
-- **The run continues the exchange your configuration set up.** It uses the `.alcove.key` beside `alcove.yaml`, so no invitation is made and your partner runs their side as usual. The secret rotates once the terms are agreed and is written back to that file; it never reaches your browser.
+- **The run continues the exchange your configuration set up.** It uses the `.alcove.key` beside `alcove.yaml`, so no invitation is made and your partner runs their side as usual. The secret rotates once the terms are agreed on and is written back to that file; it never reaches your browser.
   - With no readable `.alcove.key` beside it, the console says which problem it is. Put the key file back and open the configuration again, or choose **Create an invitation from these settings** to start a new exchange with the same terms and connection.
   - An SFTP or shared-folder run uses the file as you opened it; if `alcove.yaml` changes afterwards, a warning names the file.
 - **Every step starts filled in**: connection, matching terms with your column roles and cleaning steps, file handling, connection tuning, field delimiter, receipts, retention note, and the inactivity limit. A setting the file omits keeps the console's default.
@@ -170,7 +170,7 @@ The console runs `alcove` with no terminal, so a run whose partner changed its t
 - **For a run of a configuration you opened**, **Apply to alcove.yaml** runs `alcove apply --consent-to-terms` on the kept terms, against the `alcove.yaml` and `.alcove.key` in your folder; choosing Apply is your consent ([Applying an update](CLI.md#applying-an-update)). The command line writes the file and its exit code tells the console whether it applied. **Review the updated terms** then reopens the configuration at the review step.
   - Apply is refused, and nothing is written, when `alcove.yaml` changed after you opened it (for `webrtc`, after the run started), or when the run used terms you changed on these pages. Apply from the command line, or start over.
   - **Start over** leaves `alcove.yaml` as it was; the next run stops the same way until your partner returns to the agreed terms.
-- **For any other run** there is no file to apply the change to: agree the terms with your partner and start over.
+- **For any other run** there is no file to apply the change to: agree on the terms with your partner and start over.
 
 The endpoint contract is in [SERVER_JOB_API.md](spec/SERVER_JOB_API.md#applying-a-partners-terms-change).
 

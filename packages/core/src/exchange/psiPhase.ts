@@ -128,7 +128,7 @@ export async function runPsiPhase(p: {
   // chosen when the result is read: a count-only engine refuses the
   // operations that would name a match, and an identifier-revealing one
   // refuses to report a cardinality, so a round cannot resolve to the
-  // disclosure the other mode's terms agreed. It also rides the receiver's
+  // disclosure the other mode's terms agreed on. It also rides the receiver's
   // request on the wire, where the partner's sender enforces agreement.
   const everyKey = countOnly && countOnlyConstruction === "every-key";
   const engineMode: PsiEngineMode = !countOnly

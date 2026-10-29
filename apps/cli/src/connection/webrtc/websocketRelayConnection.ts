@@ -283,14 +283,14 @@ export function relayRefusalError(
     case RELAY_CLOSE.partnerAbnormal:
       return withNextStep(
         "the exchange partner left the WebSocket relay before the exchange " +
-          "started. Agree a time with your partner, and run the exchange " +
+          "started. Agree on a time with your partner, and run the exchange " +
           "again.",
         "transport",
       );
     case RELAY_CLOSE.idle:
       return withNextStep(
         `${relay} closed the connection because nothing crossed it within ` +
-          "its idle limit. Agree a time with your partner, and run the " +
+          "its idle limit. Agree on a time with your partner, and run the " +
           "exchange again.",
         "transport",
       );
@@ -733,7 +733,7 @@ class ParkedRelay implements ParkedWebSocketRelay {
       current?.phase === "awaiting-pair"
         ? withNextStep(
             "the exchange partner did not reach the WebSocket relay at " +
-              `${this.url} in time. Agree a time with your partner, and run ` +
+              `${this.url} in time. Agree on a time with your partner, and run ` +
               "the exchange again.",
             "transport",
           )

@@ -818,7 +818,7 @@ test("the refusal names the shortfall and the out-of-band remedy", () => {
   expect(raised).toBeInstanceOf(UsageError);
   const rendered = sanitizeErrorForDisplay(raised);
   expect(rendered).toContain("1 of the 2 agreed linkage keys");
-  expect(rendered).toContain("Agree new terms with your partner");
+  expect(rendered).toContain("Agree on new terms with your partner");
   // The names ride cause links of their own, so both the unsatisfied field and
   // the key it collapses are reachable in the rendered chain.
   expect(rendered).toContain("lastName (last_name)");

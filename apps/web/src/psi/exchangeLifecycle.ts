@@ -389,7 +389,7 @@ interface RunExchangeLifecycleOptions<
    * that one. */
   onWarning?: (message: string) => void;
   /** What the two parties' agreed `deduplicate` values resolved to, reported
-   * once the terms are agreed and before the first round -- the earliest point
+   * once the terms are agreed on and before the first round -- the earliest point
    * that can name it, since each party's value comes from its own document. It
    * is a neutral statement of the run's own terms rather than a notice, so it
    * goes to its own slot and the owner states it as run status. Optional: an

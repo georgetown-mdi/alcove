@@ -185,15 +185,16 @@ const UNNAMED_PARTY_ABORT_REASON =
   "a signed receipt names both parties and one side's agreed terms name no " +
   "identity";
 const CERTIFICATE_DIVERGENCE_ABORT_REASON =
-  "a signing certificate does not authorize the identity its holder agreed " +
-  "terms under";
+  "a signing certificate does not authorize the identity under which its " +
+  "holder agreed on the terms";
 
 /**
  * Hold the two receipt bindings that follow from the agreed terms alone --
  * both parties named ({@link assertSignedReceiptNamesBothParties}) and
- * this party's own certificate authorizing the name it agreed terms under
- * ({@link assertLocalCertificateAuthorizesAgreedIdentity}) -- sending the
- * partner a best-effort abort before either refusal propagates. Applied at
+ * this party's own certificate authorizing the name under which it agreed on
+ * the terms ({@link assertLocalCertificateAuthorizesAgreedIdentity}) --
+ * sending the partner a best-effort abort before either refusal propagates.
+ * Applied at
  * the terms exchange and again at the signature swap, over the same three
  * values, so the two points cannot drift into different predicates or
  * abort reasons. Returns the two names.
@@ -290,7 +291,7 @@ const PARTNER_CERTIFICATE_REFUSALS = {
   unauthorizedIdentity: {
     abortReason:
       "a party presented a signing certificate that does not authorize the " +
-      "identity its holder agreed terms under",
+      "identity under which its holder agreed on the terms",
     message:
       "your partner's signing certificate is bound to a name other than the " +
       "identity in their agreed linkage terms, so nothing was pinned. The " +
@@ -398,8 +399,8 @@ export interface PartnerCertificateResolution {
   partnerCertificateMalformed: boolean;
   /** The configured `signing.partner_fingerprint`, absent on a first contact. */
   pinnedFingerprint: string | undefined;
-  /** The identity the partner agreed terms under, which a certificate adopted
-   * on a first contact has to authorize: the swap verifies the presented
+  /** The identity under which the partner agreed on the terms, which a
+   * certificate adopted on a first contact has to authorize: the swap verifies the presented
    * certificate against this same name, so a fingerprint pinned against any
    * other one names a party whose receipts this exchange refuses. */
   partnerAgreedIdentity: string;
@@ -425,8 +426,8 @@ export interface PartnerCertificateResolution {
  * its own waits out its peer-inactivity budget. A certificate the wire format
  * does not admit, no certificate at all, a certificate that on a first contact
  * either does not verify under its own key or does not authorize the identity
- * the partner agreed terms under, and a certificate diverging from the pin are
- * each a {@link ReceiptVerificationError}: the disagreeing value is the
+ * under which the partner agreed on the terms, and a certificate diverging
+ * from the pin are each a {@link ReceiptVerificationError}: the disagreeing value is the
  * partner's, not this party's config. All five fire at the terms exchange,
  * before the bootstrap frame and before any linkage key or payload row moves.
  *
@@ -470,7 +471,7 @@ export async function resolvePartnerCertificateOrAbort(
   if (!(await verifyCertificateSelfSignature(partnerCertificate))) {
     throw await refusePartnerCertificate(conn, "unverified");
   }
-  // The certificate also has to name the party that agreed these terms: the
+  // The certificate also has to name the party that agreed on these terms: the
   // swap authorizes it against that same name, so adopting the fingerprint of
   // a certificate bound elsewhere would write a pin every later run refuses --
   // this one included, after its keys, payload and receipt had gone out.

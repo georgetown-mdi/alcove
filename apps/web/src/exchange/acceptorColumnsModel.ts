@@ -456,7 +456,7 @@ export function acceptorLaunchBlockedReason(
     if (verdict.satisfiableKeyCount < verdict.totalKeys)
       return (
         "Cover the remaining agreed linkage keys above before you can start, " +
-        "or agree terms with your partner over the keys both files can supply."
+        "or agree on terms with your partner over the keys both files can supply."
       );
     return (
       "Ask your partner for a corrected invitation before you can start: " +

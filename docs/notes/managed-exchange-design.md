@@ -39,7 +39,7 @@ What managed **adds**:
 - A **managed exchange record** in the browser (IndexedDB, origin-isolated) that survives runs, crashes, and restarts.
 - A **rotating shared secret at rest** in that record, in place of the one-shot discard.
 - **Scheduled, unattended runs** as the design goal.
-  Once an exchange is managed and a schedule agreed, runs happen with nobody present, on the platforms that can support it.
+  Once an exchange is managed and a schedule agreed on, runs happen with nobody present, on the platforms that can support it.
   An attended one-action re-run is the named degradation (see [The automation goal and its platform envelope](#the-automation-goal-and-its-platform-envelope)).
 - **The results of those runs kept for the next visit**, since nobody is present to download them.
   That puts linkage results at rest in the browser, bounded by a stated retention, by a size above which nothing is kept, by a control that clears them now, and by deleting the exchange (see [Where a scheduled run's results go](../MANAGED_EXCHANGE.md#where-a-scheduled-runs-results-go)).
@@ -60,7 +60,7 @@ What managed does **not** add:
 
 ## The automation goal and its platform envelope
 
-The design goal is a **fully automated recurring exchange**: once an exchange is managed and its schedule agreed with the partner, runs happen unattended.
+The design goal is a **fully automated recurring exchange**: once an exchange is managed and its schedule agreed on with the partner, runs happen unattended.
 Browser automation is a compromise against installed software, and the compromises are accepted.
 What is not accepted is settling for an attended flow where the platform can support an unattended one.
 
@@ -91,7 +91,7 @@ A reschedule is neither a terms change nor a credential, so the schedule is a lo
 Nothing about the schedule is sent to a server or to the partner over the wire; there is no server-side coordination anywhere in the design.
 
 The cost of local-only entry is that each side types the same values by hand, so a mistyped cadence or window on one side produces windows that never overlap.
-That failure is benign and announces itself as mutual missed windows, which the operators resolve out-of-band where they agreed the schedule in the first place.
+That failure is benign and announces itself as mutual missed windows, which the operators resolve out-of-band where they agreed on the schedule in the first place.
 
 ## Retry and repeated misses
 
@@ -100,7 +100,7 @@ Whoever showed up records the miss.
 
 That bookkeeping is **one-sided by construction**.
 The escalating surface fires on the party that keeps showing up, the party positioned to reach out, while a persistently absent party's runtime may never be awake to see anything.
-The asymmetry is accepted because reconciliation needs only one side to raise it, over the channel where the schedule was agreed.
+The asymmetry is accepted because reconciliation needs only one side to raise it, over the channel where the schedule was agreed on.
 The absent side is not left permanently ignorant either.
 A runtime that wakes to find windows fully elapsed counts each one as a miss and lands on the next live window (the catch-up rule; see [MANAGED_EXCHANGE_RECORD.md](../spec/MANAGED_EXCHANGE_RECORD.md#catch-up-on-wake)), so its own repeated-miss surface fires at that wake.
 It learns late, but it does learn.
@@ -161,7 +161,7 @@ The write is made inside the terms exchange that follows the handshake, at this 
 
 The order is:
 handshake completes,
-terms agreed and the rotated secret persisted, the write awaited,
+terms agreed on and the rotated secret persisted, the write awaited,
 data exchange proceeds,
 local success recorded.
 

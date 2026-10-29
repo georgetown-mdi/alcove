@@ -365,7 +365,7 @@ function importedSide(
     throw new ManagedConfigurationRefusedError(
       "This configuration does not say which side of the exchange you take. " +
         "Add role: inviter or role: acceptor to its connection - whichever " +
-        "you agreed with your partner - and import it again.",
+        "you agreed on with your partner - and import it again.",
     );
   return role;
 }

@@ -2,7 +2,7 @@
 // linkage terms (core's `termsDifferenceRefusedBy`), by which party refused and
 // by the kind of run: a run from a configuration and key file, which settles
 // terms through `alcove update` and `alcove apply`; an online invite or accept,
-// which writes its configuration and key file only once the terms are agreed,
+// which writes its configuration and key file only once the terms are agreed on,
 // so a fresh invitation sets it up again; or a quick exchange, whose terms each
 // party infers from its own input file.
 
@@ -32,7 +32,7 @@ export type TermsRefusalRun =
   "configured" | "online-invitation" | "quick-exchange";
 
 const ONLINE_INVITATION_NEXT_STEP =
-  "Agree the linkage terms with your partner, then set the exchange up " +
+  "Agree on the linkage terms with your partner, then set the exchange up " +
   "again from a fresh invitation with alcove invite or alcove accept.";
 
 const QUICK_EXCHANGE_NEXT_STEP =
@@ -40,7 +40,7 @@ const QUICK_EXCHANGE_NEXT_STEP =
   "the --linkage-strategy you both pass, then run again. A phone, email, " +
   "street number, ZIP, state, or county column in only one of the two files " +
   "makes the terms differ: the party whose file has it removes that " +
-  "column, or you agree the terms through an invitation (alcove invite, " +
+  "column, or you agree on the terms through an invitation (alcove invite, " +
   "then alcove accept).";
 
 /**
@@ -55,12 +55,12 @@ export const TERMS_REFUSAL_NEXT_STEPS: {
 } = {
   configured: {
     "this-party":
-      "Agree the linkage terms with your partner: to take on theirs, ask " +
+      "Agree on the linkage terms with your partner: to take on theirs, ask " +
       "them for an update made with alcove update and apply it with alcove " +
       "apply, or change your configuration to match theirs, then run the same " +
       "command again.",
     partner:
-      "Agree the linkage terms with your partner: to have them take on " +
+      "Agree on the linkage terms with your partner: to have them take on " +
       "yours, send them an update made with alcove update for them to apply " +
       "with alcove apply, or change your configuration to match theirs, then " +
       "run the same command again.",
@@ -182,7 +182,7 @@ export function quickExchangeContactColumnsLine(
     `Your file's ${one ? "column" : "columns"} ${list} ` +
     `${one ? "is" : "are"} matched on. Where your partner's file has no ` +
     `such column, remove ${one ? "it" : "that column"} from your file and ` +
-    "run again, or agree the terms through an invitation (alcove invite, " +
+    "run again, or agree on the terms through an invitation (alcove invite, " +
     "then alcove accept)."
   );
 }

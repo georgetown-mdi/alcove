@@ -671,7 +671,7 @@ function LocalFieldsEditor({
       />
       <Checkbox
         label="Run this exchange on an agreed schedule"
-        description="Off by default. Enter the cadence and window you agreed with your partner; each of you enters it on your own machine, and nothing about it is sent anywhere."
+        description="Off by default. Enter the cadence and window you agreed on with your partner; each of you enters it on your own machine, and nothing about it is sent anywhere."
         checked={scheduleEnabled}
         onChange={(event) => {
           setScheduleEnabled(event.currentTarget.checked);
@@ -788,7 +788,7 @@ function LocalFieldsEditor({
  * {@link ./scheduleEntryModel.ts}).
  *
  * The date and time are native inputs rather than a date picker: the value is a
- * cadence agreed with a partner and read off a message, and typing it back is
+ * cadence agreed on with a partner and read off a message, and typing it back is
  * the shortest path from that message to the field. Where the message is the
  * partner's own copy of the schedule, pasting it fills every field at once; a
  * text that is not one is refused at the paste field and the fields keep what
@@ -875,7 +875,7 @@ function ScheduleEntryFieldset({
       )}
       <TextInput
         label="First agreed run window (date)"
-        description="The date of the first window you and your partner agreed, on your own calendar."
+        description="The date, on your own calendar, of the first window you and your partner agreed on."
         type="date"
         value={fields.firstWindowDate}
         error={errors.firstWindowDate}
@@ -925,8 +925,8 @@ function ScheduleEntryFieldset({
       />
       {resolved !== undefined && (
         <p className={`${styles.small} ${styles.sub}`}>
-          The first window opens {resolved}. Check that against what you agreed:
-          your partner enters the same moment on their own clock, and every
+          The first window opens {resolved}. Check that against what you agreed
+          on: your partner enters the same moment on their own clock, and every
           later window is counted from it.
         </p>
       )}
@@ -1089,7 +1089,7 @@ function RunSchedule({ record }: { record: ManagedExchangeRecord }) {
         </p>
       )}
       <p className={`${styles.small} ${styles.sub}`}>
-        This schedule is what you and your partner agreed out of band; it is
+        This schedule is what you and your partner agreed on out of band; it is
         kept only in this browser and is never sent anywhere. Change it under
         Local settings below.
       </p>

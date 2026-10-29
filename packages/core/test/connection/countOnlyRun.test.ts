@@ -416,7 +416,7 @@ test.each([
 
     // The abort lands before any engine work reaches the wire: neither party's setup
     // nor request frame was sent, so no masked value of either dataset crossed under
-    // an algorithm the two had not agreed.
+    // an algorithm the two had not agreed on.
     expect(psiFrames(initiatorSent)).toEqual([]);
     expect(psiFrames(responderSent)).toEqual([]);
   },

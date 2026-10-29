@@ -326,7 +326,7 @@ export function InviterExchangeSection({
               {retryable
                 ? "Your invitation can still be accepted until " +
                   dateTimeLabel(new Date(invitation.expires)) +
-                  ". Agree a time with your partner, then choose Keep waiting."
+                  ". Agree on a time with your partner, then choose Keep waiting."
                 : "Your invitation has expired. Start over with a fresh " +
                   "invitation and send it to your partner."}
             </p>

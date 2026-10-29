@@ -119,7 +119,7 @@ describe("the console's copy states the cause and a step the operator holds", ()
     expect(byKind.unreadable).toMatch(/'No receipt'/);
     expect(byKind.absent).toMatch(/'No receipt'/);
     expect(byKind.unverified).toMatch(/alcove fingerprint/);
-    expect(byKind.unauthorizedIdentity).toMatch(/agree terms under/);
+    expect(byKind.unauthorizedIdentity).toMatch(/agree on terms under/);
     expect(byKind.divergent).toMatch(/your partner's fingerprint/);
     expect(byKind.divergent).toMatch(/channel you trust/);
   });

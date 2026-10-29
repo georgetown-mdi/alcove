@@ -1309,7 +1309,7 @@ export async function recordManagedExchangeLastRun(
  * Made only while the stored record holds the terms `expected` names. Where an
  * operator's terms write moved it past them, nothing is written and nothing is
  * thrown: the operator's write is kept, and the run goes on under the terms it
- * agreed with the partner.
+ * agreed on with the partner.
  *
  * @returns the record written, or `undefined` where nothing was.
  * @throws {Error} if no record with the id exists, or its terms already

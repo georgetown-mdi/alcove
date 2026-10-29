@@ -37,7 +37,7 @@ const standingColumns = ["ssn", "first_name", "last_name", "date_of_birth"];
 
 /** A managed exchange-file document whose standing terms are the metadata-aware
  * defaults for {@link standingColumns} -- the terms an exchange over that file
- * agreed -- so a conforming input satisfies every declared key and a drifted one
+ * agreed on -- so a conforming input satisfies every declared key and a drifted one
  * falls short of at least one. The same document the record persists. */
 function standingExchangeFile(): ExchangeSpec {
   return assembleExchangeSpec({

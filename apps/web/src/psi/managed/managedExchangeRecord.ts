@@ -257,7 +257,7 @@ export type ManagedExchangeRunOutcome =
  * partner's, whose own run reported the cause. A `"partner-refused-terms"`
  * stop (the partner's abort named linkage terms that differ from its own) is
  * met at the terms exchange, before any linkage key or data moves, and is
- * benign too: its remedy is terms agreed with the partner through a terms
+ * benign too: its remedy is terms agreed on with the partner through a terms
  * update. A `"partner-protocol-refusal"` stop (this party refused what the
  * partner sent as not following the exchange protocol) can be met at any point
  * after the handshake, after sets of this party's may have moved, and is
@@ -918,7 +918,7 @@ export interface ManagedExchangeFileComposition {
    * composed from. No credential is representable (see
    * {@link WebRTCExchangeLocator}). */
   connection: WebRTCExchangeLocator;
-  /** The validated linkage terms both parties agreed. */
+  /** The validated linkage terms both parties agreed on. */
   linkageTerms: ExchangeSpec["linkageTerms"];
   /** This party's column metadata, when authored. */
   metadata?: ExchangeSpec["metadata"];

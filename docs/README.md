@@ -37,7 +37,7 @@ The screens, messages, and guides use the words below. Configuration keys, comma
 | coordination server | The server two parties connect through to start a WebRTC exchange; it passes setup messages and never sees exchange data | `connection.channel: webrtc` with `connection.server`; for the web app, `VITE_SIGNALING_SERVER_URL` ([DEPLOYMENT.md](DEPLOYMENT.md#coordination-server)). Code and the package name call it the broker |
 | working folder | The one folder the console mounts, holding an exchange's configuration, key file, input, and results. Console screens call it "your folder" | `JOB_DATA_ROOT` ([CONSOLE.md](CONSOLE.md)) |
 | exchange record | The file each party keeps of what its exchange disclosed, `alcove-record-<time>.json`, with its verification keys | Written by default; `--no-record` turns it off |
-| signed receipt | The file both parties sign at the end of an exchange, `alcove-receipt-<time>.json`: the evidence of the terms both agreed and the data that flowed | [`signing.mode: certificate`](EXCHANGE_REFERENCE.md#signingmode) |
+| signed receipt | The file both parties sign at the end of an exchange, `alcove-receipt-<time>.json`: the evidence of the terms both agreed on and the data that flowed | [`signing.mode: certificate`](EXCHANGE_REFERENCE.md#signingmode) |
 
 ## Document inventory
 

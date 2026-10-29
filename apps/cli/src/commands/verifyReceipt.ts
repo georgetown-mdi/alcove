@@ -652,9 +652,9 @@ function signedTermsWord(
   status: TermsHashStatus,
   supplied: SuppliedVerificationInputs,
 ): string {
-  if (status === "verified") return "matches the terms this exchange agreed";
+  if (status === "verified") return "matches the terms this exchange agreed on";
   if (status === "mismatch")
-    return "DOES NOT MATCH the terms this exchange agreed";
+    return "DOES NOT MATCH the terms this exchange agreed on";
   // The exchange record holds the hash outright, so it is the shorter route to
   // this check than restating both parties' terms.
   return `not checked (pass the exchange record, or ${termsRemediation(supplied)})`;

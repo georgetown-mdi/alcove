@@ -11,7 +11,7 @@ This guide covers one exchange: creating an invitation, accepting one you were s
 ## Before you start
 
 - **A CSV file** with a header row and identifier columns, such as names, date of birth, or SSN. Files up to 200 MiB are accepted. Larger exchanges, and how long they take: [How large an exchange can be](DEPLOYMENT.md#how-large-an-exchange-can-be).
-- **A partner** with their own CSV and a browser. Agree with them beforehand what you will match on and which columns, if any, each of you will send.
+- **A partner** with their own CSV and a browser. Agree with them beforehand on what you will match on and which columns, if any, each of you will send.
 - **A trusted way to send the invitation**, such as secure email. The invitation holds a one-time secret: anyone who has it can take your partner's place.
 - **Time with the page open.** Both browsers must be open while the exchange runs.
 
@@ -47,7 +47,7 @@ The next screen, **Your invitation is ready**, shows the invitation as a link, a
 
 If the page you created it on runs on your own computer or inside your network, the screen warns that the link works only there. It recognizes loopback and private-range addresses and the common internal name endings, such as `.local`, `.lan`, and `.corp`. It gives no warning for another internal name, so check that your partner can open that address before you send the link.
 
-**Keep this tab open.** Your browser waits for your partner to accept, and the screen says until what time: about 10 minutes, or until the invitation expires if that is sooner. Closing the tab cancels the invitation. Agree a time with your partner so that both of you are at your computers.
+**Keep this tab open.** Your browser waits for your partner to accept, and the screen says until what time: about 10 minutes, or until the invitation expires if that is sooner. Closing the tab cancels the invitation. Agree on a time with your partner so that both of you are at your computers.
 
 - **If your partner has not connected by then**, the screen says so. Choose **Keep waiting** to wait again while the invitation is still valid, or **Start over with a fresh invitation** once it has expired.
 - **If you reload the page**, the first step offers the invitation back while it is still valid: choose the same file again to keep waiting, or discard the invitation. The file must have the same columns, in the same order, and the same number of rows. Alcove keeps the invitation in this tab's session storage for this, with your file's column names and row count but never its rows, and removes it when the exchange completes, when you discard it or start over, and when the invitation expires. An expired invitation is never offered.

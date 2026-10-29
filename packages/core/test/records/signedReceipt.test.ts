@@ -651,8 +651,8 @@ describe("exchangeSignedReceipt (two-party over the pipe)", () => {
       await connAborting.send({
         decision: "abort",
         abortReasons: [
-          "a signing certificate does not authorize the identity its holder " +
-            "agreed terms under",
+          "a signing certificate does not authorize the identity under which its " +
+            "holder agreed on the terms",
         ],
       });
       // The parked receive reports the partner's termination -- with no

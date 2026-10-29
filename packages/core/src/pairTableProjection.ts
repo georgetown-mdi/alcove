@@ -192,7 +192,7 @@ function describePairTableProjection(projection: PairTableProjection): string {
     `${formatCount(PAIR_TABLE_ADVISORY_MAX_PAIRS)} pairs. Nothing refuses on ` +
     "the projection and the exchange continues, but the result has one " +
     "row per pair, so expect a large result and a long run. To bring it down, " +
-    "reduce either side's record count or agree terms that do not keep both " +
+    "reduce either side's record count or agree on terms that do not keep both " +
     "sides' duplicates."
   );
 }

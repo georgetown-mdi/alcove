@@ -281,7 +281,7 @@ describe("an unattended run", () => {
     const applied = readSpec(setup.config);
     expect(receivedColumns(applied)).toEqual(["notes", "county"]);
 
-    // A re-run agrees terms with the partner with nothing left to take on.
+    // A re-run agrees on terms with the partner with nothing left to take on.
     const [connA, connB] = createMessagePipe();
     const ownTerms = termsStatingDeclaredPayloadSend(
       applied.linkageTerms,

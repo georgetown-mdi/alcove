@@ -783,7 +783,7 @@ export class PSIParticipant {
    *
    * Requires a participant whose engine was built count-only: the identifier-
    * revealing engine refuses the cardinality operation rather than returning one, so
-   * a round mis-built for the disclosure its terms agreed aborts instead of
+   * a round mis-built for the disclosure its terms agreed on aborts instead of
    * resolving to the other mode's answer.
    */
   public async countIntersection(

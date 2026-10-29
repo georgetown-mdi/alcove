@@ -94,7 +94,7 @@ export function repeatedMissCoordination(
       `${happened}; nothing has been paused, and the schedule stands. ` +
       `Ask your partner for their copy of the schedule and compare its ` +
       `next window in UTC, repeat, and window length with yours below, ` +
-      `paste theirs under Local settings if it is the one you agreed, and ` +
+      `paste theirs under Local settings if it is the one you agreed on, and ` +
       `check this device's clock. ${RAN_ELSEWHERE_IMPORT_REMEDY}`,
   };
 }
@@ -251,7 +251,7 @@ export const TERMS_DIFFERENCE_PROBLEM: Record<
  * the words the next-visit alert and the between-visit notification both
  * state it in. */
 export const PARTNER_REFUSED_TERMS_REMEDY =
-  "Agree the linkage terms with your partner: to have them take on yours, " +
+  "Agree on the linkage terms with your partner: to have them take on yours, " +
   "choose Make a terms update under Change terms on this exchange's page " +
   "and send it to them to apply, or apply an update they make with theirs, " +
   "then run the exchange again.";

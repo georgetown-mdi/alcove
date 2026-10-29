@@ -84,7 +84,7 @@ to get that. An exchange with no working folder in this browser says so in
 either, since nothing can read the input with nobody present.
 
 **An unattended run takes two parties.** Both parties' apps must be awake in the
-same window, so you agree the schedule with your partner, the way you agreed the
+same window, so you agree on the schedule with your partner, the way you agreed on the
 terms (see [The schedule and its run
 windows](#the-schedule-and-its-run-windows)). A partner who does not arrive in a
 window is retried at the next one (see [A missed window is neither desync nor
@@ -186,13 +186,13 @@ traffic passes through it, and no exchange work happens in it.
 
 Both parties' apps must be awake at the same time, and neither can reach a
 server to learn when the other is ready. The schedule is a recurrence and a
-window width both parties agree once, out of band; each app then runs against
+window width both parties agree on once, out of band; each app then runs against
 its own clock.
 
-### Where the schedule is agreed, and where it lives
+### Where the schedule is agreed on, and where it lives
 
-The two operators agree a cadence and a window over their trusted channel, as
-they agreed the terms, and each enters it under **Local settings** on the
+The two operators agree on a cadence and a window over their trusted channel,
+as they agreed on the terms, and each enters it under **Local settings** on the
 exchange's page: the date and time of the first window on their own clock, how
 often a window opens, and how long it stays open. Scheduling is off until
 someone enters one, and turning it off returns the exchange to attended runs
@@ -478,7 +478,7 @@ reported separately (see [An input that has not changed since the last
 run](#an-input-that-has-not-changed-since-the-last-run)). The shortfall is its
 own state, with its own `failureKind`, distinct from an unreadable file, so an
 unattended run that met it shows the two ways forward at the next visit: a file
-covering every agreed key, or new terms agreed with the partner over the keys
+covering every agreed key, or new terms agreed on with the partner over the keys
 both files supply. The run control stays enabled. The message names no key or
 field, since that detail is partner-authored.
 
@@ -1091,7 +1091,7 @@ decline or a scheduled run stops
 Where your partner's run refuses your terms instead, your run stops at the same
 point and the exchange states that your partner refused your linkage terms. No
 retry is offered, since your partner refuses the same terms at every window:
-agree the terms through a terms update, then run the exchange again.
+agree on the terms through a terms update, then run the exchange again.
 
 Each successful run produces the same self-attested exchange record a one-shot
 exchange does ([EXCHANGE_RECORD.md](spec/EXCHANGE_RECORD.md)), filed in the

@@ -543,7 +543,7 @@ describe("scheduleView", () => {
 
   test("a lapsed stored secret keeps the schedule section standing", () => {
     // The lapse and the schedule compose: a re-invite recovers the secret and the
-    // partnership goes on meeting at the cadence it agreed, so the section states
+    // partnership goes on meeting at the cadence it agreed on, so the section states
     // where that cadence stands rather than disappearing with the secret.
     const lapsed = record("inviter", {
       schedule: daily,

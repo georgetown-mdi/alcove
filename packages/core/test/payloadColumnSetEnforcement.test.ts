@@ -20,7 +20,7 @@ import type { MessageConnection } from "../src/connection/messageConnection";
 
 // Both parties run the full exchange over an in-process pipe; one party's
 // outbound payload frame is rewritten before the other reads it, so the
-// receiver sees a column set other than the one the terms agreed.
+// receiver sees a column set other than the one the terms agreed on.
 
 const psiLibrary = await PSI();
 

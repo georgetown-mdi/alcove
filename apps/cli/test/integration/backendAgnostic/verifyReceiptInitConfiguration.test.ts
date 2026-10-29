@@ -18,7 +18,7 @@ import { captureProcessExit } from "../../exitCapture";
 // lists at the 95% floor, narrowed to that file. Two such configurations
 // exchange, as written and with the 95% keys deleted to run only the 99%
 // rules, and verify-receipt given the configuration re-derives the terms
-// the run agreed, so the record verifies.
+// the run agreed on, so the record verifies.
 //
 // filedrop only, like verifyReceiptDefaultExchange.test.ts beside it.
 

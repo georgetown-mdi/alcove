@@ -297,7 +297,7 @@ export function nextManagedScheduleWindowAfter(
  * inside, or the next one when it sits in the gap after one closed. This is the
  * window a schedule ENTERED at `atMs` plans first -- writing the anchor's own
  * window instead would hand the catch-up walk a run of windows that elapsed
- * before the operator agreed the cadence, and count each of them a miss.
+ * before the operator agreed on the cadence, and count each of them a miss.
  *
  * @throws {RangeError} if the schedule's lattice is unusable (see
  *   {@link managedScheduleWindow}).

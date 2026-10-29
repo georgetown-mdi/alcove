@@ -588,7 +588,7 @@ describe("acceptor launch gates", () => {
     expect(verdict.fullySatisfied).toBe(false);
     expect(acceptorLaunchBlockedReason(verdict, editorState, nameTerms)).toBe(
       "Cover the remaining agreed linkage keys above before you can start, " +
-        "or agree terms with your partner over the keys both files can supply.",
+        "or agree on terms with your partner over the keys both files can supply.",
     );
   });
 
@@ -1308,7 +1308,7 @@ describe("the invitation's declared payload set against the marks", () => {
       ),
     ).toBe(
       "Cover the remaining agreed linkage keys above before you can start, " +
-        "or agree terms with your partner over the keys both files can supply.",
+        "or agree on terms with your partner over the keys both files can supply.",
     );
 
     const cleared = setColumnDisclosure(partly, "first_name", "match").metadata;
@@ -1423,7 +1423,7 @@ describe("the invitation's declared payload set against the marks", () => {
       ),
     ).toBe(
       "Cover the remaining agreed linkage keys above before you can start, " +
-        "or agree terms with your partner over the keys both files can supply.",
+        "or agree on terms with your partner over the keys both files can supply.",
     );
   });
 

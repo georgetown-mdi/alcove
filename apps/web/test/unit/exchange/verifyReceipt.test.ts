@@ -933,7 +933,7 @@ describe("verifySignedRecord: both certificates anchored", () => {
     for (const party of view.parties)
       for (const row of party.rows) expect(row.tone).toBe("verified");
     expect(view.termsHash.status).toBe(
-      "Matches the terms this exchange agreed",
+      "Matches the terms this exchange agreed on",
     );
     // The record loaded beside the receipt holds the same run's binder, so the
     // pairing is part of what this verdict rests on.
@@ -1398,7 +1398,7 @@ describe("signedVerdictViewModel: over a report built by hand", () => {
       partnerTerms: true,
     });
     expect(view.termsHash.status).toBe(
-      "Matches the terms this exchange agreed",
+      "Matches the terms this exchange agreed on",
     );
     expect(view.termsHash.explanation).toBeUndefined();
   });

@@ -36,7 +36,7 @@ import type { ManagedLocalState } from "./managedLocalStateShape";
  *   cause other than size (ask the partner).
  * - `"partner-refused-terms"` -- the partner's run refused this exchange's
  *   linkage terms as differing from its own, before any key or data moved
- *   (terms agreed with the partner through a terms update).
+ *   (terms agreed on with the partner through a terms update).
  * - `"partner-protocol-refusal"` -- this party refused what the partner sent
  *   as not following the exchange protocol (the two parties compare their
  *   versions of Alcove).

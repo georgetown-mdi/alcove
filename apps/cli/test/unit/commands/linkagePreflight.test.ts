@@ -371,7 +371,7 @@ test("terms declaring no linkage key at all are refused", () => {
     "the invitation's linkage terms declare no linkage key",
   );
   expect(remedyOf(links)).toBe(
-    `To fix: agree linkage terms declaring at least one linkage key, ${messaging.blockRemedy}`,
+    `To fix: agree on linkage terms declaring at least one linkage key, ${messaging.blockRemedy}`,
   );
 });
 

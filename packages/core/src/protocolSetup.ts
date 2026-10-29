@@ -659,7 +659,7 @@ export interface TermsExchangeResult {
    * Whether the partner advertised zero-setup `--save` intent on this terms
    * exchange. `false` outside the save flow (the partner omitted the field).
    * The caller uses it to decide whether to establish a shared secret and which
-   * post-exchange notice to emit; it never affects whether the terms are agreed.
+   * post-exchange notice to emit; it never affects whether the terms are agreed on.
    */
   partnerSaveIntent: boolean;
   /**
@@ -997,7 +997,7 @@ async function nextSecretFromTermsReply(
 }
 
 /**
- * The responder's value and the next secret, drawn once it has agreed the
+ * The responder's value and the next secret, drawn once it has agreed on the
  * terms and its secret has not expired.
  */
 async function responderNextSecret(
@@ -1044,7 +1044,7 @@ async function responderNextSecret(
  * further messages.
  *
  * Each optional argument below is a per-party envelope advertisement, none of
- * which affects whether the terms are agreed. Passing `undefined` omits the
+ * which affects whether the terms are agreed on. Passing `undefined` omits the
  * field entirely rather than sending a default, so a party with nothing to
  * advertise leaves the wire format unchanged. What each one is consumed for:
  * docs/spec/PROTOCOL.md ("The counts ride the terms exchange" for
@@ -1487,7 +1487,7 @@ function pickRole(
  *
  * A pure local computation with no connection I/O: both parties' declared
  * counts ride the terms exchange (see {@link exchangeTerms}), so once terms
- * are agreed each party holds its own count and the partner's, and the
+ * are agreed on, each party holds its own count and the partner's, and the
  * role follows without a further message.
  *
  * The rule both branches implement is docs/spec/PROTOCOL.md ("Role resolution

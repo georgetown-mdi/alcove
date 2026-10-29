@@ -125,14 +125,14 @@ export function DirectExchangeScreen() {
   const [sftpInfo, setSftpInfo] = useState<SftpConnectionInfo>();
   const [rendezvous, setRendezvous] = useState<JobRendezvousConfig>();
   const [identity, setIdentity] = useState("");
-  // The strategy the linkage keys run under, agreed out of band like the server
-  // itself: both parties infer their own terms here, so the two must select the
-  // same value or the exchange aborts when they meet.
+  // The strategy the linkage keys run under, agreed on out of band like the
+  // server itself: both parties infer their own terms here, so the two must
+  // select the same value or the exchange aborts when they meet.
   const [linkageStrategy, setLinkageStrategy] = useState<LinkageStrategy>(
     DIRECT_LINKAGE_STRATEGY_DEFAULT,
   );
   // This party's own side of the matching cardinality, authored beside the
-  // strategy. Unlike the strategy the two parties need not agree it: each
+  // strategy. Unlike the strategy the two parties need not agree on it: each
   // declares its own, and neither run reads the other's.
   const [deduplicate, setDeduplicate] = useState(DIRECT_DEDUPLICATE_DEFAULT);
   const [affirmed, setAffirmed] = useState(false);

@@ -804,8 +804,8 @@ const ASSERTED_IDENTITY_COPY: Record<AssertedIdentityStatus, RowCopy> = {
 };
 
 const SIGNED_TERMS_COPY: Record<TermsHashStatus, RowCopy> = {
-  verified: { status: "Matches the terms this exchange agreed" },
-  mismatch: { status: "Does not match the terms this exchange agreed" },
+  verified: { status: "Matches the terms this exchange agreed on" },
+  mismatch: { status: "Does not match the terms this exchange agreed on" },
   // The not-checked explanation is composed per run rather than fixed here: it
   // names the terms document the run is short of, which the status alone does
   // not say. See signedTermsNotCheckedExplanation.

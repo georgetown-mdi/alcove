@@ -107,7 +107,7 @@ export interface ManagedRunState {
    * beside the failure of a run that stopped after raising one. */
   warnings: ReadonlyArray<Displayable>;
   /** What the agreed `deduplicate` values resolved to, reported once the terms
-   * are agreed, so the running copy can state the pair. */
+   * are agreed on, so the running copy can state the pair. */
   matching: ResolvedMatching | undefined;
   termsChangeQuestion: ManagedTermsChangeQuestion | undefined;
 }

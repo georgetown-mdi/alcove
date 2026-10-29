@@ -384,7 +384,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   private arrivalBudgetMs: number | undefined;
 
   peerId: string | undefined;
-  // The two hello names rendezvous agreed, committed with peerId: the poll
+  // The two hello names rendezvous agreed on, committed with peerId: the poll
   // loop recognizes these and the files named after them by exact name.
   /** @internal */
   helloNames: AgreedHelloNames | undefined;

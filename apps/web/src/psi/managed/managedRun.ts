@@ -418,7 +418,7 @@ function isPartnerRefusedSetAbort(error: unknown): boolean {
  * partner input refuses identically at every window. The partner's refusal of
  * this exchange's terms at the terms exchange ({@link termsDifferenceRefusedBy}
  * `"partner"`) records `partner-refused-terms`: the same terms refuse
- * identically until the two parties agree them. `aborted` then records
+ * identically until the two parties agree on them. `aborted` then records
  * `cancelled`, before this party's refusal of what the partner sent
  * ({@link isPartnerProtocolRefusal}), which records
  * `partner-protocol-refusal`: a stopped run's teardown can cut a frame short

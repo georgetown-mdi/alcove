@@ -125,7 +125,7 @@ export const peerIdFromControlName = (
 };
 
 /**
- * The two hello names rendezvous agreed: this party's own and the peer's it
+ * The two hello names rendezvous agreed on: this party's own and the peer's it
  * read. The poll loop recognizes these, and the joining sentinels and hello
  * acks named after them, by exact name.
  */

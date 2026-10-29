@@ -278,7 +278,7 @@ describe("the inviting seat's wait for its partner", () => {
     );
     await expect
       .element(alert)
-      .toMatchTextContent(containing("Agree a time with your partner"));
+      .toMatchTextContent(containing("Agree on a time with your partner"));
     // The link stays on screen: the invitation is still good.
     await expect
       .element(page.getByRole("heading", { name: "Share this invitation" }))

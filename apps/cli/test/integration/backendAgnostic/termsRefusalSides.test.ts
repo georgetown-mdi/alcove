@@ -125,7 +125,7 @@ test("each party states a linkage strategy difference from its own side", async 
 }, 30_000);
 
 // The configuration write runs with the key-file save, after the terms are
-// agreed, so a run the terms refuse reaches neither and keeps its secret. The
+// agreed on, so a run the terms refuse reaches neither and keeps its secret. The
 // run passing that write states the online invitation's step.
 test("a run refused at the terms exchange runs no configuration write", async () => {
   const dropDir = fs.mkdtempSync(path.join(work, "drop-"));

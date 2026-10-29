@@ -109,7 +109,7 @@ Column names are the operator's own file's headers, shown verbatim inside a bidi
 The Cleaning tab, reached from the accept ledger's Customize row, is the inviter's cleaning editor: an ordered, editable list of steps with a live before-and-after preview over a sample of the operator's rows. Two whole-file checks catch failures the sample cannot show:
 
 - a per-field coverage alarm when a transform leaves the field with no value for any row, a failure that otherwise looks like a genuine non-match. The alarm informs and does not block;
-- a terms-derived advisory when a linkage key's own cleaning can never produce a value (for example a `parse_date` whose input format omits a component). The launch is closed while it stands, and the remedy is to agree terms over keys and fields both files can supply.
+- a terms-derived advisory when a linkage key's own cleaning can never produce a value (for example a `parse_date` whose input format omits a component). The launch is closed while it stands, and the remedy is to agree on terms over keys and fields both files can supply.
 
 Constraint violations are reported but not enforced. What blocks launching from this step is a malformed or incomplete cleaning step or shared-value limit, alongside the satisfiability and single-identifier checks, the same gate applied on the inviter's side.
 

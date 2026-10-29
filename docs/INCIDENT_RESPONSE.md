@@ -111,7 +111,7 @@ Every milestone below is a message the reporter should not have to ask for.
 | Draft advisory       | Before publication            | The text, the credit line as it will read, and a chance to correct both        |
 | Publication          | Same day                      | The advisory link, the CVE, and the released version with the fix          |
 
-The 90-day window in [SECURITY.md](../SECURITY.md#response-timeline) runs from confirmation, and reporters are asked to hold disclosure until the advisory or that date, whichever is first. If the window is going to be missed, raise it with the reporter well before it elapses and agree what happens next.
+The 90-day window in [SECURITY.md](../SECURITY.md#response-timeline) runs from confirmation, and reporters are asked to hold disclosure until the advisory or that date, whichever is first. If the window is going to be missed, raise it with the reporter well before it elapses and agree on what happens next.
 
 ## 7. Close out
 
