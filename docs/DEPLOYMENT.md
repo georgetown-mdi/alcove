@@ -313,12 +313,13 @@ The demo site, at `demo.data-bridge.org`, is a second deployment of the web appl
 
 The project site, at `data-bridge.org`, publishes the Markdown under `docs/` and the repository's top-level changelog, contributing guide, license, privacy statement, security policy, and support page. [VitePress](https://vitepress.dev/) builds it, configured by `docs/.vitepress/config.mjs`, and a Cloudflare Pages project of its own serves it, declared in the same [OpenTofu root](../infra/hosted/README.md).
 
-- **Two sections:** the step-by-step guides under `docs/guides/` are served at the site root, the guides' home page at `/` and each guide at `/<file name without .md>`, in a layout of their own (`docs/.vitepress/theme/GuideLayout.mjs`) whose menus list only the guides. Every other page is reference documentation, served at its repository path in VitePress's default theme, with its own navigation and one link back to the guides; the overview, `docs/index.md`, is at `/docs/overview`.
+- **Two sections:** the step-by-step guides under `docs/guides/` are served at the site root, the guides' home page at `/` and each guide at `/<file name without .md>`, in a layout of their own (`docs/.vitepress/theme/GuideLayout.mjs`) whose menus list the guides and, under About, one link to the documentation. Every other page is reference documentation, served at its repository path in VitePress's default theme, with its own navigation and one link back to the guides; the overview, `docs/index.md`, is at `/docs/overview`.
 - **Fonts:** the guides' fonts are npm packages (`@fontsource-variable/*`) built into the site, so a page makes no request to a font service or any other third-party host.
 - **Building it:** `npm run site:build` writes `docs/.vitepress/dist/`, and `npm run site:dev` serves the site locally. A relative link to a page the site publishes becomes that page's address, and one to any other file in the repository points at the file on GitHub. The build fails on a relative link to a Markdown page that does not exist; `npm run linkcheck` checks every other relative link and each `#anchor`.
 - **When it runs:** [`site_deploy.yaml`](../.github/workflows/site_deploy.yaml) builds the site on a pull request and on a push to `main` or `staging` that changes a source the build reads, and uploads it on the push or on a manual dispatch on either branch. `main` is the production deployment; `staging` is a preview on the site project's `staging` branch alias.
 - **Upload:** as for the web application, using the same environments and secrets, plus `CLOUDFLARE_SITE_PAGES_PROJECT`, the site project's name, a variable set on both environments.
 - **Headers:** the build writes no `_headers` file, so Pages serves the site with its default headers and the zone settings above.
+- **Redirects:** the build's `_redirects` file (`docs/.vitepress/public/_redirects`) sends `/instructions` and `/instructions/*` to the root.
 
 ## Diagnosing web connection failures
 
