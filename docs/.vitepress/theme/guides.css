@@ -109,6 +109,31 @@ body:has(.guide-site) {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+.guide-site .skip-link:not(:focus) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.guide-site .skip-link:focus {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 10;
+  padding: 0 16px;
+  line-height: 32px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--accent-ink);
+  background: var(--column);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+.guide-site .sheet:focus {
+  outline: none;
+}
 
 /* Top bar */
 .guide-site .top {
@@ -266,12 +291,14 @@ body:has(.guide-site) {
   align-self: stretch;
 }
 .guide-site .guide-ledger {
+  border-top: 2px solid var(--ink);
+  font-size: 14px;
+}
+.guide-site .ledger-col .guide-ledger {
   position: sticky;
   top: 84px;
   max-height: calc(100vh - 84px);
   overflow-y: auto;
-  border-top: 2px solid var(--ink);
-  font-size: 14px;
 }
 .guide-site .guide-ledger h2 {
   font: 650 13px var(--sans);

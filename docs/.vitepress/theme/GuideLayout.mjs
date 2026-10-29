@@ -175,10 +175,19 @@ export default defineComponent({
     return () => {
       const ledger = guide.value.ledger;
       return h("div", { class: "guide-site" }, [
+        h(
+          "a",
+          {
+            class: "skip-link",
+            href: "#guide-main",
+            onClick: () => document.getElementById("guide-main")?.focus(),
+          },
+          "Skip to content",
+        ),
         topBar(),
         h("div", { class: ledger ? "frame" : "frame wide" }, [
           rail(),
-          h("main", { class: "sheet" }, [
+          h("main", { class: "sheet", id: "guide-main", tabindex: -1 }, [
             picker(),
             h(Content, {
               class: ["doc", guide.value.stem === "about" ? "about" : ""],

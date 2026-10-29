@@ -162,7 +162,7 @@ function dropHtmlComments(md) {
 function page(text, path) {
   if (!isSitePage(path)) {
     throw new Error(
-      `docs/.vitepress/config.mjs names ${path} in the sidebar, which is not a page the site renders. Correct the path or remove the entry.`,
+      `docs/.vitepress/config.mjs names ${path} in a menu, which is not a page the site renders. Correct the path or remove the entry.`,
     );
   }
   return { text, link: siteAddress(path) };
