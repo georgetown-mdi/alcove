@@ -684,8 +684,9 @@ interface ManagedScheduleWindowVerdict {
  * only after that handshake succeeded and the terms exchange derived the next
  * secret ({@link ./managedRunRotate.ts}, `storeRotatedSecret`), and so is a
  * {@link ManagedExchangeSecretChangedError}, the rotation write's safety
- * check. Any failure past the data-exchange phase boundary postdates the
- * handshake.
+ * check, and a {@link PartnerSecretNotSavedError}, the partner's abort read
+ * after this side stored that rotation. Any failure past the data-exchange
+ * phase boundary postdates the handshake.
  *
  * Every other failure the mapper classifies -- a lapsed bound, a stored copy
  * the run cannot use, an unusable input, a terms
@@ -701,6 +702,7 @@ function attemptProvesContact(
     dataExchangeStarted ||
     error instanceof RotationPersistError ||
     error instanceof ManagedExchangeSecretChangedError ||
+    error instanceof PartnerSecretNotSavedError ||
     isTrustBoundaryFailure(classifyFailure(error))
   );
 }
@@ -751,6 +753,13 @@ function managedScheduleWindowVerdict(
       provesContact,
       standing: "storage",
     };
+  if (error instanceof PartnerSecretNotSavedError)
+    return {
+      disposition: "failed",
+      retryable: false,
+      provesContact,
+      standing: "partner-storage",
+    };
   if (isTrustBoundaryFailure(classifyFailure(error)))
     return {
       disposition: "failed",
@@ -768,7 +777,6 @@ function managedScheduleWindowVerdict(
     error instanceof ManagedInputError ||
     error instanceof LinkageTermsUnsatisfiableError ||
     error instanceof ManagedExchangeSecretChangedError ||
-    error instanceof PartnerSecretNotSavedError ||
     (error instanceof ManagedRelayRegistrationError &&
       error.outcome.kind !== "unavailable")
   )

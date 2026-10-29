@@ -212,8 +212,13 @@ export function betweenVisitNotice(
     }
   }
   if (disposition !== "missed" && caughtUpMisses === 0) return undefined;
-  if (readManagedFailure(record, local, now).tier === "partial-rotation")
-    return partialRotationNotice(record, name);
+  const { tier } = readManagedFailure(record, local, now);
+  if (tier === "partial-rotation") return partialRotationNotice(record, name);
+  // The partner's failed save stands beside these misses: the windows after it
+  // cannot meet a partner on the other secret, so the notice names the
+  // re-invite under the tag that state already fired, never another wait.
+  if (tier === "partner-storage")
+    return failureNotice(record, local, now, name);
   return missNotice(record, name);
 }
 
@@ -359,9 +364,9 @@ function failureNotice(
       kind: "partner-storage",
       title: NOTICE_TITLES["partner-storage"],
       body:
-        `${name} stopped because ${PARTNER_SECRET_NOT_SAVED_PROBLEM}, and ` +
-        `every later window fails the same way. Open this app and re-invite ` +
-        `your partner to reconnect.`,
+        `${name} stopped because ${PARTNER_SECRET_NOT_SAVED_PROBLEM}. ` +
+        `Scheduled runs keep running but cannot reach your partner until you ` +
+        `re-invite them. Open this app and re-invite your partner.`,
       tag: noticeTag(record.id, "partner-storage"),
     };
   if (tier === "partner-refused-terms")

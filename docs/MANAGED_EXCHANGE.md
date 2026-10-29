@@ -364,7 +364,8 @@ sooner. One fires for each of these:
   attack](#telling-a-desync-from-an-attack)).
 
 The seven conditions from your partner's terms change to the protocol failure recur
-at every window until you act, so none is offered as retryable. A missing or
+at every window until you act, or, for your partner's failed save, leave every
+window unable to reach your partner, so none is offered as retryable. A missing or
 rejected input file is offered as retryable: put the file in place, or replace
 a rejected one with a file whose columns satisfy the terms, then try again.
 
@@ -849,30 +850,35 @@ reports that it could not save the new secret, this run says so, says that this
 device already holds the new one, and names a fresh invitation, with no retry.
 The run history, the recurring list, and a notification state the same. The
 partner's report is matched against a fixed reason and never shown as text the
-partner sent. A later no-show's entry replaces this one, as it replaces any
-run's, though the run history keeps it.
+partner sent. Scheduled runs keep running afterwards, but none can reach the
+partner: each side's meeting point derives from the secret it holds, so a later
+window finds no partner, and one that does meet fails at the handshake. Neither
+replaces the report, which stays until a re-invite.
 
-A no-show's run entry replaces the previous one, but a one-sided save failure or
-a failed-closed handshake is also kept as a standing condition, which a no-show
-does not replace (below).
+A no-show's run entry replaces the previous one, but a save failure on either
+side or a failed-closed handshake is also kept as a standing condition, which a
+no-show does not replace (below).
 
 ### A standing condition outlives the run that raised it
 
-Two failures need a remedy carried out with your partner rather than on this
+Three failures need a remedy carried out with your partner rather than on this
 device: a rotation this device could not save, which may have left the two
-parties on different secrets, and a handshake that failed closed with nothing to
-explain it. Either is kept as a **standing condition** beside the run history,
+parties on different secrets; a rotation your partner reported it could not
+save, which did; and a handshake that failed closed with nothing to explain it.
+Each is kept as a **standing condition** beside the run history,
 which a later run's entry does not replace, so the recurring list, the
 exchange's page, and a later run all read it until it is cleared. A later
 failure of the same kind leaves the first in place, and the message you forward
-names both, so the partner checks their logs for both.
+names both, so the partner checks their logs for both. A handshake that fails
+closed after either save failure is read as that save failure, which explains
+it, not as an unexplained failure.
 
 Three things clear a standing condition, and nothing else does:
 
 - **Your explicit acknowledgement**, on the exchange's page. For an unexplained
   handshake failure, that is the two-outcome gate below. Where the record
-  already holds the explanation (a save failure, or a restore since the last
-  success), the page states the condition and its re-invite recovery, and a
+  already holds the explanation (a save failure on either side, or a restore
+  since the last success), the page states the condition and its re-invite recovery, and a
   short acknowledgement clears it.
 - **A re-invite**, which installs a fresh secret.
 - **Removing the exchange.**
@@ -886,8 +892,9 @@ holds, so you face the full confirmation only when nothing else explains the
 failure. A failure from a scheduled run is reported the same way at your next
 visit.
 
-**Tier 1: local evidence explains the failure.** A recorded save failure on the
-last run (its `failureKind`), a restore or import since the last successful run,
+**Tier 1: local evidence explains the failure.** A recorded save failure on
+either side (the last run's `failureKind`, or the standing condition it
+raised), a restore or import since the last successful run,
 or an expired shared secret (see [Expiry is its own
 state](#expiry-is-its-own-state-never-routed-through-attack-framing)) shows as
 that state, with the re-invite as its recovery and **without** the attack

@@ -129,7 +129,8 @@ export interface ManagedFailureReading {
 }
 
 /** The tiers a standing condition can resolve to. */
-export type ManagedStandingTier = "storage" | "imported" | "unexplained";
+export type ManagedStandingTier =
+  "storage" | "partner-storage" | "imported" | "unexplained";
 
 /** The tier a standing condition resolves to, the same reading
  * {@link deriveManagedFailureTier} makes of the equivalent `lastRun` entry, so a
@@ -139,15 +140,17 @@ export function managedStandingConditionTier(
   local: ManagedLocalState | undefined,
 ): ManagedStandingTier {
   if (condition.kind === "storage") return "storage";
+  if (condition.kind === "partner-storage") return "partner-storage";
   return importedSinceLastSuccess(local) ? "imported" : "unexplained";
 }
 
 /**
  * Read a record's failure tier and its source as of `now`. The standing
  * condition supplies the tier where the last run shows no failure or a no-show
- * (so later stamps do not hide it), and where a persist failure explains an
- * `"unexplained"` reading. It never displaces a recorded benign cause, which is
- * this run's own actionable state.
+ * (so later stamps do not hide it), and where a persist failure on either side
+ * explains an `"unexplained"` reading: each leaves the two parties on different
+ * secrets, so the handshakes after it fail closed. It never displaces a
+ * recorded benign cause, which is this run's own actionable state.
  */
 export function readManagedFailure(
   record: ManagedExchangeRecord,
@@ -170,8 +173,11 @@ export function readManagedFailure(
       tier: managedStandingConditionTier(condition, local),
       standing: true,
     };
-  if (recorded === "unexplained" && condition.kind === "storage")
-    return { tier: "storage", standing: true };
+  if (
+    recorded === "unexplained" &&
+    (condition.kind === "storage" || condition.kind === "partner-storage")
+  )
+    return { tier: condition.kind, standing: true };
   return { tier: recorded, standing: false };
 }
 

@@ -582,14 +582,17 @@ const PARTNER_REFUSED_SET_FAILURE: ManagedRunFailure = {
  * new secret this device had saved, so the two now hold different secrets. A
  * live launch and the record read back show the same copy, which names the
  * re-invite and offers no retry: a run under this device's secret cannot meet
- * a partner holding the one before it. */
+ * a partner holding the one before it. The record's standing condition keeps
+ * this state across the no-shows and failed handshakes of the runs after it,
+ * so the copy names "a run" rather than the last one. */
 const PARTNER_STORAGE_FAILURE: ManagedRunFailure = {
   kind: "partner-storage",
   title: PARTNER_SECRET_NOT_SAVED_TITLE,
   message:
-    `The last run stopped because ${PARTNER_SECRET_NOT_SAVED_PROBLEM}. ` +
-    "Running the exchange again cannot reconnect you; it needs a fresh " +
-    "invitation, which keeps your terms and gives the exchange a new secret.",
+    `A run stopped because ${PARTNER_SECRET_NOT_SAVED_PROBLEM}. Scheduled ` +
+    "runs keep running but cannot reach your partner, and running the " +
+    "exchange again cannot either; it needs a fresh invitation, which keeps " +
+    "your terms and gives the exchange a new secret.",
   recovery: "reinvite",
 };
 

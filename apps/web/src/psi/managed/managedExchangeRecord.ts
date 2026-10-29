@@ -258,7 +258,8 @@ export type ManagedExchangeRunOutcome =
  * (the partner's abort stated that it could not save the next secret this side
  * had stored) is met after the terms exchange, after sets of this party's may
  * have moved, and leaves the two parties on different secrets: its remedy is
- * a re-invite, never a retry. A `"partner-refused-terms"`
+ * a re-invite, never a retry, and it raises a standing condition, since no run
+ * after it can reach the partner. A `"partner-refused-terms"`
  * stop (the partner's abort named linkage terms that differ from its own) is
  * met at the terms exchange, before any linkage key or data moves, and is
  * benign too: its remedy is terms agreed on with the partner through a terms
@@ -331,10 +332,12 @@ export type TooLargeReading = Pick<
 
 /** The failure kinds that raise a standing condition: a rotation this device
  * could not save (`"storage"`, which may have left the two parties on different
- * secrets) and a handshake that failed closed (`"auth"`). A strict subset of
+ * secrets), a rotation the partner could not save (`"partner-storage"`, which
+ * did), and a handshake that failed closed (`"auth"`). A strict subset of
  * {@link ManagedExchangeFailureKind}: every other kind is answered by an act on
  * this device, so `lastRun` accounts for it whole. */
-export type ManagedStandingConditionKind = "auth" | "storage";
+export type ManagedStandingConditionKind =
+  "auth" | "storage" | "partner-storage";
 
 /** Evidence that this device's secret may no longer be the partnership's, raised
  * by a run and unanswered since. It stands BESIDE `lastRun` rather than inside
@@ -373,8 +376,8 @@ export interface ManagedStandingResponse {
  * a reader never has to tell that state from a record written by something that
  * did not know the field. */
 export interface ManagedStandingConditionNone {
-  /** The closed enum's unset member; a raised condition takes `"auth"` or
-   * `"storage"`, with the instant that raised it. */
+  /** The closed enum's unset member; a raised condition takes one of the
+   * {@link ManagedStandingConditionKind}s, with the instant that raised it. */
   kind: "none";
 }
 
@@ -486,7 +489,8 @@ export interface ManagedExchangeRecord {
    * holds. Absent beside the marker, a registration signed under the current
    * key can confirm it. */
   relayRegistrationPendingReason?: ManagedRelayRegistrationPendingReason;
-  /** The unanswered standing condition an `auth` or `storage` failure raised, or
+  /** The unanswered standing condition an `auth`, `storage`, or
+   * `partner-storage` failure raised, or
    * {@link NO_STANDING_CONDITION} while none stands. Cleared by the operator's
    * explicit clear-and-acknowledge, by a re-invite, or with the record itself --
    * never by a no-show and never by a successful run alone. */
@@ -579,7 +583,7 @@ export const standingResponseSchema: ZodType<ManagedStandingResponse> = z
 export const standingConditionSchema: ZodType<ManagedStandingCondition> = z
   .object({
     since: z.iso.datetime(),
-    kind: z.enum(["auth", "storage"]),
+    kind: z.enum(["auth", "storage", "partner-storage"]),
     response: standingResponseSchema.optional(),
   })
   .strict();
@@ -1874,7 +1878,8 @@ export function standingConditionFrom(
   lastRun: ManagedExchangeLastRun,
 ): ManagedStandingCondition | undefined {
   const kind = lastRun.failureKind;
-  if (kind !== "auth" && kind !== "storage") return undefined;
+  if (kind !== "auth" && kind !== "storage" && kind !== "partner-storage")
+    return undefined;
   return { since: lastRun.at, kind };
 }
 
