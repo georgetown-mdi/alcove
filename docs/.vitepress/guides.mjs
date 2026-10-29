@@ -28,7 +28,7 @@ export const GUIDE_SECTIONS = [
     topNav: false,
     pages: [
       ["index", "Home"],
-      ["agree-the-terms", "Agree the terms"],
+      ["agree-on-terms", "Agree on terms"],
     ],
   },
   {

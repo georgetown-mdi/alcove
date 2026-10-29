@@ -1,7 +1,7 @@
 ---
 reader: An analyst who invites a partner to an exchange
 needs: A CSV file with a header row, up to 200 MB; a partner who uses the web app; a trusted channel such as secure email
-before: "[Agree the terms](./agree-the-terms.md)"
+before: "[Agree on terms](./agree-on-terms.md)"
 partner: "[Accept with the web app](./web-accept.md)"
 timing: The invitation lasts 1 hour unless you choose longer. Your page waits 10 minutes for your partner each time it listens. Measured runs, both browsers on one computer - sample files of 100 and 200 rows took 6 to 10 seconds; 10,000 records a side took 4 minutes 44 seconds.
 next: "[Run it on a schedule](./web-schedule.md)"
@@ -57,21 +57,21 @@ Choose **Continue to matching & sharing**.
 
 Screen: Step 2 of 3 - Matching & sharing
 
-**Matching method**: leave **Reveal the matched identifiers (standard)** for a list of matched records. For a count only, choose **Reveal only the count (psi-c)**, then untick every key but one on **Matching keys** (step 3 below; [A list or only a count](./agree-the-terms.md#a-list-or-only-a-count)).
+**Matching method**: leave **Reveal the matched identifiers (standard)** for a list of matched records. For a count only, choose **Reveal only the count (psi-c)**, then untick every key but one on **Matching keys** (step 3 below; [A list or only a count](./agree-on-terms.md#a-list-or-only-a-count)).
 
-**Who receives the matched results** ([Who receives the result](./agree-the-terms.md#who-receives-the-result)):
+**Who receives the matched results** ([Who receives the result](./agree-on-terms.md#who-receives-the-result)):
 
 | Option | What it does | Pick it when |
 | --- | --- | --- |
 | **You and your partner** | Both of you get the result | Usual: both of you need the matches |
-| **Only you** | Your partner gets "Results withheld by the terms" | Only you need the matches. What your partner can still learn: [What each party learns](./agree-the-terms.md#what-each-party-learns). |
+| **Only you** | Your partner gets "Results withheld by the terms" | Only you need the matches. What your partner can still learn: [What each party learns](./agree-on-terms.md#what-each-party-learns). |
 | **Only your partner** | You get "Results withheld by the terms" | Only your partner needs them |
 
 Alcove fills in each column's type and use from its name. It sends nothing by default, your ID column included.
 
 **Your ID column.** Set your own ID column, whatever it is called, to **Unique record identifier - not sent**. Your result then starts each row with your own ID, and your partner never receives it. Alcove recognizes a column named `id`, `identifier`, `ClientID`, `PersonID`, or `PersonalID`, or one whose name ends in `_id` once spaces, dots, and dashes count as `_` (so `Client ID` counts), and starts it as **Unique record identifier - not sent**. To send your ID for matched records, choose **Unique record identifier - sent to your partner**. A column the app does not recognize starts as **Ignored**. With no column set as your ID, your result holds row numbers only, counting from 0.
 
-Change any other column's use only as you agreed ([What each of you sends](./agree-the-terms.md#what-each-of-you-sends)).
+Change any other column's use only as you agreed ([What each of you sends](./agree-on-terms.md#what-each-of-you-sends)).
 
 | Option | What it does | Pick it when |
 | --- | --- | --- |
@@ -94,12 +94,12 @@ Change any other column's use only as you agreed ([What each of you sends](./agr
 
 Choose **Continue to review & create**.
 
-### 3. Matching keys, if you agreed other than the default
+### 3. Matching keys, if you agreed on something other than the default
 
 In the side panel, under **Customize**, choose **Matching keys**. The **Matching keys** screen opens.
 
-- **Built-in rules**: **Broader matching** is the default; **Highest precision** keeps only the most precise keys. Untick any key you agreed to leave out ([What you match on](./agree-the-terms.md#what-you-match-on)).
-- For a count only, untick every key but one. Keep the first key in the list whose columns both files fill for most records ([A list or only a count](./agree-the-terms.md#a-list-or-only-a-count)).
+- **Built-in rules**: **Broader matching** is the default; **Highest precision** keeps only the most precise keys. Untick any key you agreed to leave out ([What you match on](./agree-on-terms.md#what-you-match-on)).
+- For a count only, untick every key but one. Keep the first key in the list whose columns both files fill for most records ([A list or only a count](./agree-on-terms.md#a-list-or-only-a-count)).
 
 Choose **Back to Review & create**.
 
@@ -111,8 +111,8 @@ Screen: Step 3 of 3 - Review & create
 
 | Option | What it does | Pick it when |
 | --- | --- | --- |
-| **1 hour** | The invitation expires 1 hour after you create it | Usual: you have agreed a time with your partner |
-| **6 hours**, **1 day**, **7 days**, **30 days**, **1 year** | The invitation lasts that long | You cannot agree a time within the hour |
+| **1 hour** | The invitation expires 1 hour after you create it | Usual: you have agreed on a time with your partner |
+| **6 hours**, **1 day**, **7 days**, **30 days**, **1 year** | The invitation lasts that long | You cannot agree on a time within the hour |
 
 **How will this exchange run?**:
 
@@ -141,7 +141,7 @@ Send your partner this page's companion too: [Accept with the web app](./web-acc
 ### 6. Your partner: open the link while your page waits
 
 The page waits 10 minutes for your partner and shows the time it stops, as "This page waits until 10:24 AM for your partner to connect".
-If your partner has not connected by then, the page shows **Your partner did not connect**. Agree a time, then choose **Keep waiting** to listen again.
+If your partner has not connected by then, the page shows **Your partner did not connect**. Agree on a time, then choose **Keep waiting** to listen again.
 Once the invitation has expired, choose **Start over with a fresh invitation** and send the new one.
 If you reload the page, it shows **Your invitation is still open**: choose **Choose the file again** and pick the same file to keep waiting.
 

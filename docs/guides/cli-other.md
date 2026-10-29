@@ -73,7 +73,7 @@ You should see: `exchange complete: 10 records matched, result written to` a fil
 
 If your partner does not accept within 15 minutes, the invitation lapses. Run the command again for a new link.
 
-Later runs use `alcove exchange input.csv ./` from the same folder, at a time you both agree.
+Later runs use `alcove exchange input.csv ./` from the same folder, at a time you both agree on.
 
 > [!NOTE]
 > With no `stun` set in `alcove.yaml`, a WebRTC run asks `stun.l.google.com` for this machine's public address, which discloses that address and the fact of a session to that server, not the exchange's content.

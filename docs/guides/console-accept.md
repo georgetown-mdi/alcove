@@ -1,7 +1,7 @@
 ---
 reader: A console user who was sent an invitation
 needs: The console running ([Start the console](./console-start.md)), the invitation as text, your CSV file in your working folder, and for SFTP your own account on your partner's server with its password or key file
-before: "[Agree the terms](./agree-the-terms.md)"
+before: "[Agree on terms](./agree-on-terms.md)"
 partner: "[Invite from the console](./console-invite.md), [Invite a partner](./cli-invite.md) on the command line, or [Invite with the web app](./web-invite.md)"
 timing: The invitation lasts 1 hour unless your partner chose longer. Your console waits for your partner 1 hour over SFTP or a shared folder, 10 minutes over WebRTC, unless you set **How long to wait for your partner**. Measured - sample files of 100 and 200 records, 30 keys, over SFTP - 15.5 minutes from **Start the exchange** to the result.
 next: "[Move it to a schedule](./console-schedule.md)"
@@ -18,12 +18,12 @@ Review your partner's invitation, connect, and run the exchange from the console
 | Your partner uses | Ask them for |
 | --- | --- |
 | The console | Any invitation, sent as text |
-| The command line | An invitation on the WebRTC channel, made as [If your partner uses the console or the web app](./cli-invite.md#if-your-partner-uses-the-console-or-the-web-app) shows. Over their SFTP server or shared folder, invite them yourself from [Invite from the console](./console-invite.md), using an account they make for you. If you agreed the default terms, the same command line section has their command for an SFTP invitation. |
+| The command line | An invitation on the WebRTC channel, made as [If your partner uses the console or the web app](./cli-invite.md#if-your-partner-uses-the-console-or-the-web-app) shows. Over their SFTP server or shared folder, invite them yourself from [Invite from the console](./console-invite.md), using an account they make for you. If you agreed on the default terms, the same command line section has their command for an SFTP invitation. |
 | The web app | An invitation made with **Live, in this browser**, sent as the link or the message |
 
 A command line invitation made without an address, such as `alcove invite --identity "State agency" input.csv`, stops with "This invitation does not include a connection endpoint this build can accept, so it cannot be run here."
 
-**Agree a time.** Both of you run at once. Your console waits 1 hour over SFTP or a shared folder, 10 minutes over WebRTC.
+**Agree on a time.** Both of you run at once. Your console waits 1 hour over SFTP or a shared folder, 10 minutes over WebRTC.
 
 **For SFTP, have ready:** your username on your partner's server, your password or private key file, and the server's identity fingerprint from whoever runs the server. It starts with `SHA256:`.
 
@@ -44,15 +44,15 @@ On the start page, paste the invitation text under **Have an invitation? Paste i
 Screen: Step 1 of 3 - Invitation from (your partner's name)
 
 Alcove does not verify the name shown: your partner typed it.
-Read each section against what you agreed:
+Read each section against what you agreed on:
 
 - **What you will send to your partner**: confirmed in step 4, from your own file.
-- **Matching method**: a list of matched records, or a count only ([A list or only a count](./agree-the-terms.md#a-list-or-only-a-count)).
-- **Result sharing**: "You will receive the matched result" and "Your partner (the inviter) will receive the result", each Yes or No ([Who receives the result](./agree-the-terms.md#who-receives-the-result)).
-- **Matching strategies**: the fields you match on. Keys marked less certain are listed there ([What you match on](./agree-the-terms.md#what-you-match-on)).
+- **Matching method**: a list of matched records, or a count only ([A list or only a count](./agree-on-terms.md#a-list-or-only-a-count)).
+- **Result sharing**: "You will receive the matched result" and "Your partner (the inviter) will receive the result", each Yes or No ([Who receives the result](./agree-on-terms.md#who-receives-the-result)).
+- **Matching strategies**: the fields you match on. Keys marked less certain are listed there ([What you match on](./agree-on-terms.md#what-you-match-on)).
 - **How it runs**, in the panel beside the steps, such as "SFTP (command-line tool)": the console runs the command line tool for you, so this is expected. For WebRTC, **How this console connects** names your partner's coordination server.
 
-If anything differs from what you agreed, stop and ask your partner for a new invitation. Otherwise choose **Continue: consent & your file**.
+If anything differs from what you agreed on, stop and ask your partner for a new invitation. Otherwise choose **Continue: consent & your file**.
 
 ### 3. Consent & your file
 
@@ -74,7 +74,7 @@ Alcove fills in each column's type and use from its name. It sends nothing by de
 
 **Your ID column.** Set your own ID column, whatever it is called, to **Unique record identifier - not sent**. Your result then starts each row with your own ID, and your partner never receives it. Alcove recognizes a column named `id`, `identifier`, `ClientID`, `PersonID`, or `PersonalID`, or one whose name ends in `_id` once spaces, dots, and dashes count as `_` (so `Client ID` counts), and starts it as **Unique record identifier - not sent**. To send your ID for matched records, choose **Unique record identifier - sent to your partner**. A column the app does not recognize starts as **Ignored**. With no column set as your ID, your result holds row numbers only, counting from 0.
 
-Change **How it is used** only as you agreed ([What each of you sends](./agree-the-terms.md#what-each-of-you-sends)):
+Change **How it is used** only as you agreed ([What each of you sends](./agree-on-terms.md#what-each-of-you-sends)):
 
 | Option | What it does | Pick it when |
 | --- | --- | --- |
@@ -130,7 +130,7 @@ The result screen offers the downloads. The same files are in this run's folder 
 | File | What it holds | Share or keep |
 | --- | --- | --- |
 | `alcove-results-<time>.csv` (**Download result**) | One row per matched record: your record ID, your partner's row number, and any columns your partner sends | Keep private |
-| `alcove-record-<time>.json` (**Download record (safe to share)**) | What you agreed and what matched, for your disclosure log | Keep; not secret |
+| `alcove-record-<time>.json` (**Download record (safe to share)**) | What you agreed on and what matched, for your disclosure log | Keep; not secret |
 | `alcove-record-<time>.keys.json` (**Download verification keys**, marked keep private) | The keys that check the record against your files | Keep private |
 | `alcove-record-<time>.terms.json` | Both parties' agreed terms | Keep; not secret |
 | `alcove.yaml` | The configuration the console wrote for this run | Keep; not secret |

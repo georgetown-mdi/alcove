@@ -1,7 +1,7 @@
 ---
 reader: A console user who creates the invitation
-needs: The console running ([Start the console](./console-start.md)), your CSV file in your working folder, the terms you agreed, and the SFTP server, shared folder or coordination server you agreed on
-before: "[Agree the terms](./agree-the-terms.md)"
+needs: The console running ([Start the console](./console-start.md)), your CSV file in your working folder, the terms you agreed on, and the SFTP server, shared folder or coordination server you agreed on
+before: "[Agree on terms](./agree-on-terms.md)"
 partner: "[Accept in the console](./console-accept.md), [Accept an invitation](./cli-accept.md) on the command line, or [Accept with the web app](./web-accept.md)"
 timing: The invitation lasts 1 hour unless you choose longer. Your console waits for your partner 1 hour over SFTP or a shared folder, 10 minutes over WebRTC, unless you set **How long to wait for your partner**. Measured - sample files of 100 and 200 records, 30 keys, over SFTP - 15.5 minutes from your partner's start to the result.
 next: "[Move it to a schedule](./console-schedule.md)"
@@ -37,15 +37,15 @@ Set the two choices at the top:
 | Option | What it does | Pick it when |
 | --- | --- | --- |
 | **Matching method**: **Reveal the matched identifiers (standard)** | Matches records and writes a result file | Usual |
-| **Reveal only the count (psi-c)** | Reports only how many records you have in common | You agreed a count only ([A list or only a count](./agree-the-terms.md#a-list-or-only-a-count)) |
-| **Who receives the matched results**: **You and your partner** | Both of you get the result | Usual ([Who receives the result](./agree-the-terms.md#who-receives-the-result)) |
-| **Only you** or **Only your partner** | One of you gets it. The other still contributes records and sees **Results withheld by the terms** ([What each party learns](./agree-the-terms.md#what-each-party-learns)) | You agreed one side only |
+| **Reveal only the count (psi-c)** | Reports only how many records you have in common | You agreed on a count only ([A list or only a count](./agree-on-terms.md#a-list-or-only-a-count)) |
+| **Who receives the matched results**: **You and your partner** | Both of you get the result | Usual ([Who receives the result](./agree-on-terms.md#who-receives-the-result)) |
+| **Only you** or **Only your partner** | One of you gets it. The other still contributes records and sees **Results withheld by the terms** ([What each party learns](./agree-on-terms.md#what-each-party-learns)) | You agreed on one side only |
 
 Alcove fills in each column's type and use from its name. It sends nothing by default, your ID column included.
 
 **Your ID column.** Set your own ID column, whatever it is called, to **Unique record identifier - not sent**. Your result then starts each row with your own ID, and your partner never receives it. Alcove recognizes a column named `id`, `identifier`, `ClientID`, `PersonID`, or `PersonalID`, or one whose name ends in `_id` once spaces, dots, and dashes count as `_` (so `Client ID` counts), and starts it as **Unique record identifier - not sent**. To send your ID for matched records, choose **Unique record identifier - sent to your partner**. A column the app does not recognize starts as **Ignored**. With no column set as your ID, your result holds row numbers only, counting from 0.
 
-Change **How it is used** only as you agreed ([What each of you sends](./agree-the-terms.md#what-each-of-you-sends)):
+Change **How it is used** only as you agreed ([What each of you sends](./agree-on-terms.md#what-each-of-you-sends)):
 
 | Option | What it does | Pick it when |
 | --- | --- | --- |
@@ -68,7 +68,7 @@ Screen: Step 3 of 3 - Review & create
 | **Invitation duration**: **1 hour** | Your partner must accept within 1 hour | Usual: your partner is ready to accept now |
 | **Invitation duration**: **6 hours**, **1 day**, **7 days**, **30 days** or **1 year** | Gives your partner longer to accept | Your partner accepts later |
 
-If you agreed a count only, other built-in rules, or a different strategy, choose **Change** beside **Matching keys** under **Exchange proposal**. That opens **Matching keys**, with **Built-in rules** (default **Broader matching**) and **Linkage strategy** (default **Cascade**). For a count only, untick every key but one. Choose **Back to Review & create** when done. What each one means: [Agree the terms](./agree-the-terms.md#where-each-decision-is-set).
+If you agreed on a count only, other built-in rules, or a different strategy, choose **Change** beside **Matching keys** under **Exchange proposal**. That opens **Matching keys**, with **Built-in rules** (default **Broader matching**) and **Linkage strategy** (default **Cascade**). For a count only, untick every key but one. Choose **Back to Review & create** when done. What each one means: [Agree on terms](./agree-on-terms.md#where-each-decision-is-set).
 
 Under **How will this exchange run?**, choose your channel:
 
@@ -119,7 +119,7 @@ Send the text. A link on this screen that starts `http://127.0.0.1` opens only o
 
 ### 6. Both of you: run the exchange
 
-Your console starts waiting as soon as you create the invitation. It waits 1 hour over SFTP or a shared folder, 10 minutes over WebRTC, so agree the time.
+Your console starts waiting as soon as you create the invitation. It waits 1 hour over SFTP or a shared folder, 10 minutes over WebRTC, so agree on the time.
 Keep the console running. You can leave the page: the run keeps going, and the start page brings you back to it.
 The status panel shows **Getting ready**, **Checking settings match**, then **Matching records (key 1 of 30)** and on through each key.
 
@@ -135,7 +135,7 @@ The result screen offers the downloads. The same files are in this run's folder 
 | File | What it holds | Share or keep |
 | --- | --- | --- |
 | `alcove-results-<time>.csv` (**Download result**) | One row per matched record: your record ID, your partner's row number, and any columns your partner sends | Keep private |
-| `alcove-record-<time>.json` (**Download record (safe to share)**) | What you agreed and what matched, for your disclosure log | Keep; not secret |
+| `alcove-record-<time>.json` (**Download record (safe to share)**) | What you agreed on and what matched, for your disclosure log | Keep; not secret |
 | `alcove-record-<time>.keys.json` (**Download verification keys**, marked keep private) | The keys that check the record against your files | Keep private |
 | `alcove-record-<time>.terms.json` | Both parties' agreed terms | Keep; not secret |
 | `alcove.yaml` | The configuration the console wrote for this run | Keep; not secret |
