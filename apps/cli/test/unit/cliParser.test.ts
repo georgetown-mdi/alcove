@@ -242,7 +242,7 @@ test("top-level help states the id rule, and inference holds back each name it s
     "An id column is held back too: one named id, identifier, MRN, " +
       "ClientID, PersonID, PersonalID, PatientID, RecordID, or MemberID, or " +
       "one ending in _id, number, or no as a word of its own (case_number, " +
-      "RecordNo), except the number of a phone or a linkage key (phone_no, " +
+      "RecordNo), except a phone, SSN, or street address number (phone_no, " +
       "ssn_number). A space, hyphen, or dot in a name counts as _.",
   );
   expect(flat).not.toContain("such as id, case_id, ClientID");
@@ -260,6 +260,7 @@ test("top-level help states the id rule, and inference holds back each name it s
     "Member ID",
     "case_number",
     "RecordNo",
+    "state_number",
   ];
   const metadata = inferMetadata([...named, "phone_no", "ssn_number"], [], {
     mode: "direct",

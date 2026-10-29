@@ -1802,6 +1802,10 @@ test.each([
 ])(
   "handler: a quick exchange holds back an id column %j and a second id column, and sends an unrecognized one",
   async (name) => {
+    // A record number gives way to the named id column after it.
+    const recordNumber = ["case_number", "record_no", "RecordNo"].includes(
+      name,
+    );
     const { stderr } = await zeroSetupRunOutput(
       `${name},first_name,last_name,date_of_birth,notes,household_id\n` +
         "1,Bob,Jones,1990-01-02,x,h1\n",
@@ -1819,7 +1823,10 @@ test.each([
     expect(sent).toEqual(["notes"]);
     expect(stderr).toContain(`held back (enforced): ${name}, household_id`);
     expect(stderr).toContain(
-      `record identifier: ${name}, the first id column in your file`,
+      recordNumber
+        ? "record identifier: household_id, the first id column in your " +
+            "file that is not a record number"
+        : `record identifier: ${name}, the first id column in your file`,
     );
   },
 );

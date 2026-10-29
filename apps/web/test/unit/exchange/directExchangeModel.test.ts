@@ -232,6 +232,10 @@ describe("previewInferredTerms", () => {
   ])(
     "the preview declares an id column %j and a second id column, sending neither",
     (name) => {
+      // A record number gives way to the named id column after it.
+      const recordNumber = ["case_number", "record_no", "RecordNo"].includes(
+        name,
+      );
       const preview = previewInferredTerms(
         [...LINKABLE_COLUMNS, name, "household_id"],
         DEFAULT_PREVIEW_IDENTITY,
@@ -244,8 +248,8 @@ describe("previewInferredTerms", () => {
           .filter((column) => column.type === "identifier")
           .map(({ name: column, role }) => [column, role]),
       ).toEqual([
-        [name, "identifier"],
-        ["household_id", "ignored"],
+        [name, recordNumber ? "ignored" : "identifier"],
+        ["household_id", recordNumber ? "identifier" : "ignored"],
       ]);
     },
   );
@@ -292,13 +296,14 @@ describe("previewInferredTerms", () => {
       "MemberID",
       "case_number",
       "RecordNo",
+      "zip_no",
     ];
     expect(DIRECT_RECOGNIZED_COLUMNS_NOTICE).toContain(
       "An id column is never sent either: a header named id, identifier, " +
         "MRN, ClientID, PersonID, PersonalID, PatientID, RecordID, or " +
         "MemberID, or one ending in _id, number, or no as a word of its own, " +
-        "such as case_number or RecordNo, except the number of a phone or a " +
-        "linkage key, such as phone_no.",
+        "such as case_number or RecordNo, except a phone, SSN, or street " +
+        "address number, such as phone_no.",
     );
     const metadata = inferMetadata([...named, "phone_no"], [], {
       mode: "direct",

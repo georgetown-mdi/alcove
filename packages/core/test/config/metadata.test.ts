@@ -296,6 +296,12 @@ const RECORD_IDENTIFIER_SPELLINGS = [
   "case_no",
   "account_number",
   "PolicyNo",
+  "zip_no",
+  "ethnicity_number",
+  "warehouse_number",
+  "estate_no",
+  "state_number",
+  "hotel_number",
 ];
 
 describe.each(["declaredOnly", "direct"] as const)(
@@ -376,7 +382,9 @@ const NUMBER_SUFFIX_FALSE_MATCHES: Array<[name: string, type: SemanticType]> = [
   ["StreetNo", "other"],
   ["HouseNo", "other"],
   ["AptNo", "other"],
-  ["zip_no", "other"],
+  ["cell_no", "other"],
+  ["CellNo", "other"],
+  ["socialsecuritynumber", "other"],
   ["Casino", "other"],
   ["casino", "other"],
   ["CASINO", "other"],
@@ -414,6 +422,68 @@ describe.each(["declaredOnly", "direct"] as const)(
     });
   },
 );
+
+// --- inferMetadata: choosing the record identifier ---------------------------
+
+const recordIdentifierOf = (
+  columns: Array<string>,
+  mode: "declaredOnly" | "direct",
+) =>
+  inferMetadataForEveryColumn(columns, [], { mode })
+    .filter((column) => column.role === "identifier")
+    .map((column) => column.name);
+
+describe.each(["declaredOnly", "direct"] as const)(
+  "%s mode: a record number does not outrank an id recognized by name",
+  (mode) => {
+    test.each([
+      [["Visit Number", "client_id", "first_name"], "client_id"],
+      [["case_number", "MRN"], "MRN"],
+      [["RecordNo", "id"], "id"],
+      [["visit_no", "PersonalID", "Member ID"], "PersonalID"],
+      [["case_number", "visit_no"], "case_number"],
+      [["visit_no", "case_number", "notes"], "visit_no"],
+    ])("%j picks %j", (columns, expected) => {
+      expect(recordIdentifierOf(columns, mode)).toEqual([expected]);
+      const everyColumn = inferMetadataForEveryColumn(columns, [], { mode });
+      for (const column of everyColumn)
+        if (column.type === "identifier") expect(column.isPayload).toBe(false);
+    });
+  },
+);
+
+test("a record number passed over for the record identifier is held back", () => {
+  expect(
+    inferMetadata(["Visit Number", "client_id", "first_name"], []).map(
+      (column) => column.name,
+    ),
+  ).toEqual(["client_id", "first_name"]);
+  expect(
+    inferMetadata(["Visit Number", "client_id", "first_name", "notes"], [], {
+      mode: "direct",
+    }),
+  ).toEqual([
+    {
+      name: "Visit Number",
+      type: "identifier",
+      role: "ignored",
+      isPayload: false,
+    },
+    {
+      name: "client_id",
+      type: "identifier",
+      role: "identifier",
+      isPayload: false,
+    },
+    {
+      name: "first_name",
+      type: "first_name",
+      role: "linkage",
+      isPayload: false,
+    },
+    { name: "notes", type: "other", role: "payload", isPayload: true },
+  ]);
+});
 
 test("two canonical identifier columns: only the first is the identifier", () => {
   expect(inferMetadata(["identifier", "id"], [])).toEqual([
@@ -1086,6 +1156,27 @@ test.each([
     ]);
   },
 );
+
+test("inferredRecordIdentifierStatement says a record number ahead of the identifier was passed over", () => {
+  const columns = ["case_number", "client_id", "ssn"];
+  const metadata = inferMetadata(columns, [], { mode: "direct" });
+  expect(inferredRecordIdentifierStatement(metadata)).toBe(
+    "client_id, the first id column in your file that is not a record number",
+  );
+  const rows = [0, 1, 2].map((index) =>
+    Object.fromEntries(columns.map((name) => [name, `${name}-${index}`])),
+  );
+  expect(resultFirstColumn(metadata, rows)).toEqual([
+    "client_id",
+    "client_id-1",
+    "client_id-2",
+  ]);
+  expect(
+    inferredRecordIdentifierStatement(
+      inferMetadata(["case_number", "visit_no"], [], { mode: "direct" }),
+    ),
+  ).toBe("case_number, the first id column in your file");
+});
 
 test("inferredRecordIdentifierStatement with no id column says the result numbers rows from 0", () => {
   const columns = ["ssn", "dob", "notes"];

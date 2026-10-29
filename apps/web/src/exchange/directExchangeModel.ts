@@ -135,8 +135,8 @@ export const DIRECT_RECOGNIZED_COLUMNS_NOTICE =
   "matched on or kept back. An id column is never sent either: a header " +
   "named id, identifier, MRN, ClientID, PersonID, PersonalID, PatientID, " +
   "RecordID, or MemberID, or one ending in _id, number, or no as a word of " +
-  "its own, such as case_number or RecordNo, except the number of a phone " +
-  "or a linkage key, such as phone_no. Letter case and spaces at either end " +
+  "its own, such as case_number or RecordNo, except a phone, SSN, or street " +
+  "address number, such as phone_no. Letter case and spaces at either end " +
   "of a header do not matter, and a space, hyphen, or dot between words " +
   "counts the same as an underscore, so First Name and Social Security " +
   "Number are recognized. Every other column is sent, including a header " +

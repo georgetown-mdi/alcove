@@ -2107,18 +2107,23 @@ block, and an invitation composed from an input file.
   followed by `No`, such as `RecordNo`.
   In both modes it infers what the table's `identifier` row infers.
   A header ending in a lowercase `no`, such as `Casino`, is not a record number.
-  Nor is a name whose lookup key, before the suffix and with `_` removed, ends
-  in a table name of any type but `identifier`, in the part of such a name
-  before its own suffix (`phone` of `phone_number`, `socialsecurity` of
-  `social_security_number`), or in `mobile`, `cell`, `fax`, `tel`, or `yes`:
+  Nor is a name whose words before the suffix, a camel-case boundary counting
+  as a word break, end in a whole word or words that are a name of a table type
+  listing a number spelling (`ssn`, `phone_number`, `street_number`, `unit`),
+  the part of such a spelling before its suffix (`phone` of `phone_number`,
+  `social_security` of `social_security_number`), either written with or
+  without `_`, or `telephone`, `mobile`, `cell`, `fax`, `tel`, or `yes`:
   `phone_no`, `Home Phone Number`, `SocialSecurityNumber`, and `yes_no` infer
-  as any other name absent from the table.
+  as any other name absent from the table, while `warehouse_number` and
+  `state_number` are record numbers.
 - Any other name absent from the table infers nothing when declared-only, and
   `type: other`, `role: payload`, `is_payload: true` in direct mode.
 
 A second pass then decides which column indexes this party's own records: the
-first `identifier`-typed column in header order is promoted to
-`role: identifier` whatever its name. Every later `identifier`-typed column,
+first `identifier`-typed column in header order that is not a record number is
+promoted to `role: identifier`, and with none, the first record number is.
+A record number is often not unique to one record, so it never outranks an
+`identifier`-typed column of another kind. Every other `identifier`-typed column,
 whichever row typed it, infers nothing when declared-only, and `role: ignored`,
 `is_payload: false` in direct mode, so no `identifier`-typed column is sent in either mode.
 

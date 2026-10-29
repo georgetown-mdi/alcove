@@ -127,23 +127,31 @@ export function disclosedColumnNames(metadata: Metadata): Array<string> {
  * quick exchange displays word it: the CLI's display before the run and the
  * console's confirm step. Reads the `role: identifier` column the result's
  * first column takes its value from ({@link buildOutputTable}); inference gives
- * that role to the first identifier-typed column in header order
- * ({@link inferMetadata}). With none, the result heads its first column
- * `row_id` and writes each record's 0-based row index there.
+ * that role to the first identifier-typed column in header order, passing over
+ * a record number while an id named otherwise follows ({@link inferMetadata}).
+ * With none, the result heads its first column `row_id` and writes each
+ * record's 0-based row index there.
  *
  * The column name is redacted and escaped here. Starts lowercase, for use
  * after a label.
  */
 export function inferredRecordIdentifierStatement(metadata: Metadata): string {
-  const identifier = metadata.find((column) => column.role === "identifier");
-  if (identifier === undefined)
+  const identifierIndex = metadata.findIndex(
+    (column) => column.role === "identifier",
+  );
+  if (identifierIndex === -1)
     return (
       "none found; the result's row_id column identifies your rows by " +
       "their position in the file, counting from 0"
     );
+  const passedOver = metadata
+    .slice(0, identifierIndex)
+    .some((column) => column.type === "identifier");
   return (
-    `${redactAndSanitizeForDisplay(identifier.name)}, ` +
-    "the first id column in your file"
+    `${redactAndSanitizeForDisplay(metadata[identifierIndex].name)}, ` +
+    (passedOver
+      ? "the first id column in your file that is not a record number"
+      : "the first id column in your file")
   );
 }
 
@@ -363,12 +371,13 @@ const NAMED_IDENTIFIER_LOOKUP_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Words that, ending the part of a name before a `number` or `no` suffix, mark
- * the number of something other than a record, beyond the words read from the
+ * Words that, as the last word before a `number` or `no` suffix, mark the
+ * number of something other than a record, beyond the words read from the
  * inference table ({@link recordNumberGuardWords}): phone kinds and a yes/no
  * answer.
  */
 const NON_RECORD_NUMBER_WORDS: ReadonlyArray<string> = [
+  "telephone",
   "mobile",
   "cell",
   "fax",
@@ -377,58 +386,107 @@ const NON_RECORD_NUMBER_WORDS: ReadonlyArray<string> = [
 ];
 
 /**
- * The part of a lookup key before a record-number suffix, or `undefined` when
- * it has none: `_number`, `_no` or `number` after at least one character, or
- * `No` written in camel case at the end of the raw `name` (`RecordNo`), which
- * keeps a word that ends in `no`, such as `Casino`, out.
+ * The part of a lookup key before a `_number`, `_no` or `number` suffix, or
+ * `undefined` when it has none.
  */
-function recordNumberPrefix(
-  name: string,
-  lookupName: string,
-): string | undefined {
-  const suffix =
-    /^(.+?)_?number$/.exec(lookupName) ?? /^(.+)_no$/.exec(lookupName);
-  if (suffix !== null) return suffix[1];
-  if (/[a-z]No$/.test(name.trim())) return lookupName.slice(0, -"no".length);
-  return undefined;
+function numberSuffixPrefix(lookupName: string): string | undefined {
+  return (/^(.+?)_?number$/.exec(lookupName) ??
+    /^(.+)_no$/.exec(lookupName))?.[1];
 }
 
 /**
- * The words whose number is not a record number, with `_` removed: every
- * non-identifier key of the inference table, the part before the suffix of
- * each such key that has one (`phone` of `phone_number`, `socialsecurity` of
- * `social_security_number`), and {@link NON_RECORD_NUMBER_WORDS}.
+ * Whether a column name ends in a record-number suffix: its lookup key ends in
+ * `_number`, `_no` or `number` after a character other than `_`, or the raw
+ * `name` ends in `No` written in camel case (`RecordNo`), which keeps a word
+ * that ends in `no`, such as `Casino`, out.
+ */
+function hasRecordNumberSuffix(name: string, lookupName: string): boolean {
+  const prefix = numberSuffixPrefix(lookupName);
+  if (prefix !== undefined) return /[^_]/.test(prefix);
+  return /[a-z]No$/.test(name.trim());
+}
+
+/**
+ * The words of `name` joined by `_`, a camel-case boundary counting as one
+ * (`HomePhoneNumber` gives `home_phone_number`, `SSNNumber` gives
+ * `ssn_number`).
+ */
+function columnNameWords(name: string): string {
+  return columnNameLookupKey(
+    name
+      .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+      .replace(/([A-Z])([A-Z][a-z])/g, "$1_$2"),
+  );
+}
+
+/**
+ * The words whose number is not a record number, in lookup-key form and also
+ * with `_` removed: every name of each inference-table type that lists a
+ * number spelling (`ssn`, `phone_number`, `street_number`, `unit`), the
+ * part of each such spelling before its suffix (`phone` of `phone_number`,
+ * `social_security` of `social_security_number`), and
+ * {@link NON_RECORD_NUMBER_WORDS}.
  */
 function recordNumberGuardWords(
   table: Readonly<Record<string, TypeMetaMapped>>,
-): ReadonlyArray<string> {
+): ReadonlySet<string> {
+  const entries = Object.entries(table).filter(
+    ([, { type }]) => type !== "identifier",
+  );
+  const numberedTypes = new Set(
+    entries
+      .filter(([key]) => numberSuffixPrefix(key) !== undefined)
+      .map(([, { type }]) => type),
+  );
   const words = new Set(NON_RECORD_NUMBER_WORDS);
-  for (const [key, { type }] of Object.entries(table)) {
-    if (type === "identifier") continue;
-    words.add(key.replaceAll("_", ""));
-    const prefix = recordNumberPrefix(key, key);
-    if (prefix !== undefined) words.add(prefix.replaceAll("_", ""));
+  for (const [key, { type }] of entries) {
+    if (!numberedTypes.has(type)) continue;
+    for (const word of [key, numberSuffixPrefix(key)])
+      if (word !== undefined) {
+        words.add(word);
+        words.add(word.replaceAll("_", ""));
+      }
   }
-  return [...words];
+  return words;
 }
 
 /**
  * Whether a column absent from {@link ALIAS_TYPE_META_MAP} infers
- * `type: identifier`: its lookup key ends in `_id` or is one of
- * {@link NAMED_IDENTIFIER_LOOKUP_KEYS}, or it ends in a record-number suffix
- * ({@link recordNumberPrefix}) whose prefix, with `_` removed, does not end in
- * one of {@link RECORD_NUMBER_GUARD_WORDS}. The guard keeps `PhoneNo`,
- * `Home Phone Number` and `SocialSecurityNumber` out.
+ * `type: identifier` by name: its lookup key ends in `_id` or is one of
+ * {@link NAMED_IDENTIFIER_LOOKUP_KEYS}.
+ */
+function isNamedIdentifierLookupKey(lookupName: string): boolean {
+  return (
+    lookupName.endsWith("_id") || NAMED_IDENTIFIER_LOOKUP_KEYS.has(lookupName)
+  );
+}
+
+/**
+ * Whether a column infers `type: identifier` as a record number: it ends in a
+ * record-number suffix ({@link hasRecordNumberSuffix}), and the last word
+ * before the suffix ({@link columnNameWords}) is none of
+ * {@link RECORD_NUMBER_GUARD_WORDS}, compared as whole words. The guard
+ * keeps `PhoneNo`, `Home Phone Number` and `SocialSecurityNumber` out, and
+ * lets `warehouse_number` and `hotel_no` in.
+ */
+function isRecordNumberColumn(name: string, lookupName: string): boolean {
+  if (!hasRecordNumberSuffix(name, lookupName)) return false;
+  const words = columnNameWords(name).replace(/_?(?:number|no)$/, "");
+  return ![...RECORD_NUMBER_GUARD_WORDS].some(
+    (word) => words === word || words.endsWith(`_${word}`),
+  );
+}
+
+/**
+ * Whether a column absent from {@link ALIAS_TYPE_META_MAP} infers
+ * `type: identifier`: by name ({@link isNamedIdentifierLookupKey}) or as a
+ * record number ({@link isRecordNumberColumn}).
  */
 function isUnlistedIdentifierColumn(name: string, lookupName: string): boolean {
-  if (
-    lookupName.endsWith("_id") ||
-    NAMED_IDENTIFIER_LOOKUP_KEYS.has(lookupName)
-  )
-    return true;
-  const prefix = recordNumberPrefix(name, lookupName)?.replaceAll("_", "");
-  if (prefix === undefined || prefix.length === 0) return false;
-  return !RECORD_NUMBER_GUARD_WORDS.some((word) => prefix.endsWith(word));
+  return (
+    isNamedIdentifierLookupKey(lookupName) ||
+    isRecordNumberColumn(name, lookupName)
+  );
 }
 
 // The lookup key joins words with `_`, so a no-separator spelling such as
@@ -666,10 +724,12 @@ export interface InferMetadataOptions {
  * ({@link undeclaredColumnNames} lists them); under `direct` it is declared
  * as payload and sent ({@link MetadataInferenceMode}).
  *
- * The first identifier-typed column in header order gets `role: identifier`,
- * used to index observations, whatever its name, and is not sent. Every later
- * one is left out under `declaredOnly` and declared `role: ignored` under
- * `direct`.
+ * The first identifier-typed column in header order that is not only a record
+ * number ({@link isRecordNumberColumn}) gets `role: identifier`, used to index
+ * observations, and is not sent; with none, the first record number does. A
+ * record number is often not unique to one record, so it never outranks a
+ * column recognized as an id by name. Every other identifier-typed column is
+ * left out under `declaredOnly` and declared `role: ignored` under `direct`.
  *
  * `sanitizedPositions` are the 1-based positions the CSV parse removed
  * control characters from, so the empty-name refusal below can name the removal
@@ -730,14 +790,32 @@ export function inferMetadataForEveryColumn(
     return { name, type, role, isPayload };
   });
 
-  const identifierIndex = result.findIndex(
-    (column) => column.type === "identifier",
+  const namedIdentifierIndex = result.findIndex(
+    (column) =>
+      column.type === "identifier" && !isRecordNumberOnly(column.name),
   );
+  const identifierIndex =
+    namedIdentifierIndex !== -1
+      ? namedIdentifierIndex
+      : result.findIndex((column) => column.type === "identifier");
   return result.map((column, index): ColumnMetadata => {
     if (column.type !== "identifier" || index === identifierIndex)
       return column;
     return { ...column, role: "ignored", isPayload: false };
   });
+}
+
+/**
+ * Whether a column infers `type: identifier` only as a record number
+ * ({@link isRecordNumberColumn}), not by an identifier name.
+ */
+function isRecordNumberOnly(name: string): boolean {
+  const lookupName = columnNameLookupKey(name);
+  return (
+    !Object.hasOwn(ALIAS_TYPE_META_MAP, lookupName) &&
+    !isNamedIdentifierLookupKey(lookupName) &&
+    isRecordNumberColumn(name, lookupName)
+  );
 }
 
 /**
