@@ -599,8 +599,9 @@ whose key-establishment method rests on the scheme this note leaves
 unclaimed; the SC-12 sentence the build writes states the gaps. The
 harvest-now-decrypt-later bound above is kept, because the wrapping keys still
 mix the pre-shared secret with the ECDH output, so a recorder who solves the
-Diffie-Hellman alone cannot unwrap either value. The design is not built; it
-is in [rotation-hardening.md](rotation-hardening.md#the-next-secret-independent-of-the-current-one),
+Diffie-Hellman alone cannot unwrap either value. The design is built, as
+specified in [PROTOCOL.md](../spec/PROTOCOL.md#shared-secret-rotation); its
+record is in [rotation-hardening.md](rotation-hardening.md#the-next-secret-independent-of-the-current-one),
 with the row's wording in its open questions.
 
 ## An approved key-agreement scheme, researched 2026-10-29
