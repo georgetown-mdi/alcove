@@ -853,10 +853,10 @@ partner's report is matched against a fixed reason and never shown as text the
 partner sent. Scheduled runs keep running afterwards, but none can reach the
 partner: each side's meeting point derives from the secret it holds, so a later
 window finds no partner, and one that does meet fails at the handshake. A no-show
-does not replace the report, which stays until a re-invite. A handshake that
+does not replace the report. A handshake that
 fails closed replaces the report as the standing condition and takes the
 confirmation below, because the partner's report is the other side's claim and
-not local evidence.
+not local evidence. A report that holds a compromise response stays in place.
 
 A no-show's run entry replaces the previous one, but a save failure on either
 side or a failed-closed handshake is also kept as a standing condition, which a

@@ -719,7 +719,7 @@ replaces `lastRun` with an entry that records no failure kind at all. The
 standing one as it is, since answering is a single act over everything that stood
 before it, and the earlier evidence is the one still unanswered. The one
 exception is an `"auth"` raise over a standing `"partner-storage"` condition,
-which replaces it: this device's own failed handshake is local evidence, and the
+which replaces it only while it holds no response: this device's own failed handshake is local evidence, and the
 partner's report is a claim. It is raised at two sites, and needs both:
 
 - the `lastRun` write above, which every runner records through; and
@@ -774,10 +774,9 @@ records no failure or a no-show. A handshake that fails closed after one raises 
 `"auth"` condition in its place, which takes the Tier 2 confirmation across the
 windows after it: the partner's reported save failure is the other side's claim,
 which anyone holding the current secret can send, so it is not local evidence.
-The condition is raised
-only by the partner's abort read on the channel its handshake authenticated.
+A `"partner-storage"` condition is raised only by the partner's abort read on the channel its handshake authenticated.
 
-No condition of either kind holds a window: the scheduled runner opens each one as before, and
+No standing condition holds a window: the scheduled runner opens each one as before, and
 since each party derives its rendezvous from the secret it holds
 ([Derived, never stored](#derived-never-stored)), a window after a one-sided
 persist failure finds no partner, recorded as a no-show, or fails closed at the

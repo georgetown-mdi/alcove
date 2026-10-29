@@ -485,6 +485,27 @@ describe("the windows after the partner's failed save, until a re-invite", () =>
     },
   );
 
+  test("a failed handshake never replaces a partner's report the operator has answered", () => {
+    const response = {
+      kind: "compromise" as const,
+      at: "2026-07-20T09:00:00.000Z",
+    };
+    const answered = record({
+      standingCondition: { since: RUN_AT, kind: "partner-storage", response },
+    });
+    const later = applyManagedExchangeLastRun(
+      answered,
+      failedHandshake,
+      LATER_MS,
+      LATER_MS,
+    );
+    expect(raisedStandingCondition(later)).toEqual({
+      since: RUN_AT,
+      kind: "partner-storage",
+      response,
+    });
+  });
+
   test("the re-invite that replaces the secret clears it", () => {
     const later = runnableManagedExchangeOrRefuse(
       afterLaterWindow(failedHandshake),
