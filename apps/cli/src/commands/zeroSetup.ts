@@ -127,10 +127,10 @@ export const QUICK_EXCHANGE_USAGE =
   "matched on and the rest are held back. An id column is held back\n" +
   "too: one named id, identifier, MRN, ClientID, PersonID, PersonalID,\n" +
   "PatientID, RecordID, or MemberID, or one ending in _id, number, or\n" +
-  "_no (case_number, record_no), or in No with a capital N after a\n" +
-  "lowercase letter (RecordNo), except a street address or unit number\n" +
-  "or a yes/no answer (StreetNo, yes_no). A space, hyphen, or dot in a\n" +
-  "name counts as _. A column under another name is sent.\n" +
+  "_no (case_number, record_no), or in No after a lowercase letter\n" +
+  "(RecordNo). A linkage key name such as ssn_number or StreetNo counts\n" +
+  "as a linkage key, not an id. A space, hyphen, or dot in a name\n" +
+  "counts as _. A column under another name is sent.\n" +
   "The display shown before the run lists the columns it sends and the\n" +
   "ones it holds back. Each step waits up to one poll interval\n" +
   "(--polling-frequency), so even a small practice run takes a minute\n" +
@@ -168,10 +168,10 @@ export function builder(cmd: Argv): Argv {
               "are matched on and the rest are held back. An id column is held\n" +
               "back too: one named id, identifier, MRN, ClientID, PersonID,\n" +
               "PersonalID, PatientID, RecordID, or MemberID, or one ending in _id,\n" +
-              "number, or _no (case_number, record_no), or in No with a capital N\n" +
-              "after a lowercase letter (RecordNo), except a street address or unit\n" +
-              "number or a yes/no answer (StreetNo, yes_no). A space, hyphen, or\n" +
-              "dot in a name counts as _. A column under another name is sent.\n" +
+              "number, or _no (case_number, record_no), or in No after a lowercase\n" +
+              "letter (RecordNo). A linkage key name such as ssn_number or StreetNo\n" +
+              "counts as a linkage key, not an id. A space, hyphen, or dot in a\n" +
+              "name counts as _. A column under another name is sent.\n" +
               "The display shown before the run lists the columns\n" +
               "it sends and the ones it holds back. To choose the\n" +
               "columns sent, write a configuration with\n" +

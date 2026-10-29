@@ -2070,17 +2070,17 @@ whitespace.
 
 | Semantic type | Column names that infer it | `role` | `is_payload` |
 | ------------- | -------------------------- | ------ | ------------ |
-| `ssn` | `ssn`, `social_security_number`, `social` | `linkage` | `false` |
+| `ssn` | `ssn`, `social`, `social_security`, `socialsecurity`, `soc_sec`, `socsec`, `ssn_number`, `ssnnumber`, `ssn_no`, `ssnno`, `ssn_num`, `ssnnum`, `ssn_nbr`, `ssnnbr`, `ss_number`, `ssnumber`, `ss_no`, `ssno`, `ss_num`, `ssnum`, `ss_nbr`, `ssnbr`, `social_number`, `socialnumber`, `social_no`, `socialno`, `social_num`, `socialnum`, `social_nbr`, `socialnbr`, `social_security_number`, `socialsecuritynumber`, `social_security_no`, `socialsecurityno`, `social_security_num`, `socialsecuritynum`, `social_security_nbr`, `socialsecuritynbr`, `soc_sec_number`, `socsecnumber`, `soc_sec_no`, `socsecno`, `soc_sec_num`, `socsecnum`, `soc_sec_nbr`, `socsecnbr` | `linkage` | `false` |
 | `ssn4` | `ssn4` | `linkage` | `false` |
 | `first_name` | `first_name`, `firstname`, `fname` | `linkage` | `false` |
 | `last_name` | `last_name`, `lastname`, `lname` | `linkage` | `false` |
 | `date_of_birth` | `date_of_birth`, `dateofbirth`, `dob` | `linkage` | `false` |
 | `identifier` | `identifier`, `id` | `identifier` | `false` |
-| `phone_number` | `phone_number`, `phonenumber`, `phone` | `linkage` | `false` |
+| `phone_number` | `phone_number`, `phone`, `telephone`, `tel`, `cell`, `cell_phone`, `cellphone`, `mobile`, `mobile_phone`, `mobilephone`, `home_phone`, `homephone`, `work_phone`, `workphone`, `business_phone`, `businessphone`, `office_phone`, `officephone`, `day_phone`, `dayphone`, `evening_phone`, `eveningphone`, `primary_phone`, `primaryphone`, `alt_phone`, `altphone`, `alternate_phone`, `alternatephone`, `contact_phone`, `contactphone`, `phonenumber`, `phone_no`, `phoneno`, `phone_num`, `phonenum`, `phone_nbr`, `phonenbr`, `telephone_number`, `telephonenumber`, `telephone_no`, `telephoneno`, `telephone_num`, `telephonenum`, `telephone_nbr`, `telephonenbr`, `tel_number`, `telnumber`, `tel_no`, `telno`, `tel_num`, `telnum`, `tel_nbr`, `telnbr`, `cell_number`, `cellnumber`, `cell_no`, `cellno`, `cell_num`, `cellnum`, `cell_nbr`, `cellnbr`, `cell_phone_number`, `cellphonenumber`, `cell_phone_no`, `cellphoneno`, `cell_phone_num`, `cellphonenum`, `cell_phone_nbr`, `cellphonenbr`, `mobile_number`, `mobilenumber`, `mobile_no`, `mobileno`, `mobile_num`, `mobilenum`, `mobile_nbr`, `mobilenbr`, `mobile_phone_number`, `mobilephonenumber`, `mobile_phone_no`, `mobilephoneno`, `mobile_phone_num`, `mobilephonenum`, `mobile_phone_nbr`, `mobilephonenbr`, `home_phone_number`, `homephonenumber`, `home_phone_no`, `homephoneno`, `home_phone_num`, `homephonenum`, `home_phone_nbr`, `homephonenbr`, `work_phone_number`, `workphonenumber`, `work_phone_no`, `workphoneno`, `work_phone_num`, `workphonenum`, `work_phone_nbr`, `workphonenbr`, `business_phone_number`, `businessphonenumber`, `business_phone_no`, `businessphoneno`, `business_phone_num`, `businessphonenum`, `business_phone_nbr`, `businessphonenbr`, `office_phone_number`, `officephonenumber`, `office_phone_no`, `officephoneno`, `office_phone_num`, `officephonenum`, `office_phone_nbr`, `officephonenbr`, `day_phone_number`, `dayphonenumber`, `day_phone_no`, `dayphoneno`, `day_phone_num`, `dayphonenum`, `day_phone_nbr`, `dayphonenbr`, `evening_phone_number`, `eveningphonenumber`, `evening_phone_no`, `eveningphoneno`, `evening_phone_num`, `eveningphonenum`, `evening_phone_nbr`, `eveningphonenbr`, `primary_phone_number`, `primaryphonenumber`, `primary_phone_no`, `primaryphoneno`, `primary_phone_num`, `primaryphonenum`, `primary_phone_nbr`, `primaryphonenbr`, `alt_phone_number`, `altphonenumber`, `alt_phone_no`, `altphoneno`, `alt_phone_num`, `altphonenum`, `alt_phone_nbr`, `altphonenbr`, `alternate_phone_number`, `alternatephonenumber`, `alternate_phone_no`, `alternatephoneno`, `alternate_phone_num`, `alternatephonenum`, `alternate_phone_nbr`, `alternatephonenbr`, `contact_phone_number`, `contactphonenumber`, `contact_phone_no`, `contactphoneno`, `contact_phone_num`, `contactphonenum`, `contact_phone_nbr`, `contactphonenbr` | `linkage` | `false` |
 | `email_address` | `email_address`, `emailaddress`, `email` | `linkage` | `false` |
-| `street_number` | `street_number`, `streetnumber`, `street_no`, `street_num`, `house_number`, `housenumber`, `house_no`, `house_num`, `address_number`, `addressnumber` | `linkage` | `false` |
+| `street_number` | `street_number`, `streetnumber`, `street_no`, `streetno`, `street_num`, `streetnum`, `street_nbr`, `streetnbr`, `house_number`, `housenumber`, `house_no`, `houseno`, `house_num`, `housenum`, `house_nbr`, `housenbr`, `address_number`, `addressnumber`, `address_no`, `addressno`, `address_num`, `addressnum`, `address_nbr`, `addressnbr` | `linkage` | `false` |
 | `street_name` | `street_name`, `streetname` | `linkage` | `false` |
-| `unit` | `unit`, `unit_number`, `unitnumber`, `unit_no`, `unit_num`, `apartment`, `apartment_number`, `apartmentnumber`, `apt`, `apt_no`, `apt_num`, `apt_number` | `linkage` | `false` |
+| `unit` | `unit`, `apartment`, `apt`, `unit_number`, `unitnumber`, `unit_no`, `unitno`, `unit_num`, `unitnum`, `unit_nbr`, `unitnbr`, `apartment_number`, `apartmentnumber`, `apartment_no`, `apartmentno`, `apartment_num`, `apartmentnum`, `apartment_nbr`, `apartmentnbr`, `apt_number`, `aptnumber`, `apt_no`, `aptno`, `apt_num`, `aptnum`, `apt_nbr`, `aptnbr` | `linkage` | `false` |
 | `city` | `city`, `city_name`, `cityname` | `linkage` | `false` |
 | `zip_code` | `zip_code`, `zipcode`, `zip`, `zip5`, `zip_5` | `linkage` | `false` |
 | `state` | `state`, `state_code`, `statecode`, `state_name`, `statename` | `linkage` | `false` |
@@ -2089,6 +2089,9 @@ whitespace.
 Each multi-word type also lists its no-separator spelling, since the lookup key
 keeps words apart, so a single-token column export (`firstname`, `dateofbirth`)
 infers as well as a separated one.
+The `ssn`, `phone_number`, `street_number`, and `unit` rows also list each of
+their words with the endings `number`, `no`, `num`, and `nbr`, separated by `_`
+and run together, such as `ssn_no`, `homephonenumber`, and `streetno`.
 
 Two rules sit outside the table, and only the second depends on the inference mode.
 Direct mode is a run on an input file with no invitation and no
@@ -2107,20 +2110,9 @@ block, and an invitation composed from an input file.
   followed by `No`, such as `RecordNo`.
   In both modes it infers what the table's `identifier` row infers.
   A header ending in a lowercase `no`, such as `Casino`, is not a record number.
-  Nor is a name whose words before the suffix, a camel-case boundary counting
-  as a word break, end in a whole word or words that are a name of a table type
-  listing a number spelling (`ssn`, `phone_number`, `street_number`, `unit`),
-  the part of such a spelling before its suffix (`phone` of `phone_number`,
-  `social_security` of `social_security_number`), either written with or
-  without `_`, or `telephone`, `mobile`, `cell`, `fax`, `tel`, or `yes`;
-  `warehouse_number` and `state_number` are record numbers.
-  Such a name whose words are of the `ssn` or `phone_number` type or a phone
-  word, such as `ssn_number`, `SocialSecurityNumber`, or `PhoneNo`, is an SSN
-  or phone number: it infers nothing when declared-only, and `type: other`,
-  `role: ignored`, `is_payload: false` in direct mode, so it is never sent,
-  matched on, or the record identifier.
-  Any other such name, such as `StreetNo` or `yes_no`, infers as any other
-  name absent from the table.
+  Nor is a name whose lookup key is `yes_no` or `yesno`.
+  The table is looked up first, so a name it lists, such as `ssn_number` or
+  `StreetNo`, keeps its table type and is not a record number.
 - Any other name absent from the table infers nothing when declared-only, and
   `type: other`, `role: payload`, `is_payload: true` in direct mode.
 
@@ -2129,9 +2121,9 @@ The record-number rule has two limits:
 - An all-capitals or all-lowercase header with an unseparated `no`, such as
   `RECORDNO` or `recordno`, is not a record number and is sent in direct mode;
   a `metadata` block that declares it holds it back.
-- The camel-case split can find a guard word inside a compound word:
-  `WareHouseNumber` splits into `ware_house`, whose `house` exempts it, so it
-  is sent in direct mode while `warehouse_number` is held back.
+- A name ending in a record-number suffix that the table does not list is a
+  record number whatever its column holds, such as `fax_number`: it is not
+  sent, and it can index the records as any record number can.
 
 A second pass then decides which column indexes this party's own records: the
 first `identifier`-typed column in header order that is not a record number is
@@ -2146,7 +2138,7 @@ declared-only inference leaves: the inferred
 metadata has no entry for it, so the run does not index by it or send it, and
 matches on it only when a standardization transform names it as its `input`. What a party sends is exactly what its metadata declares.
 Declared-only, every inferred entry has `is_payload: false`, so the run sends no column until a `metadata` block declares one sent.
-In direct mode a column is sent when neither the table nor the `identifier` rule above types it and it is not an SSN or phone number under such a name, and every other column infers `is_payload: false`.
+In direct mode a column is sent when neither the table nor the `identifier` rule above types it, and every other column infers `is_payload: false`.
 A column is a linkage key only when its lookup key is a name in the table,
 so in direct mode a linkage column under any other name, such as `Given Name`
 or `Birthdate`, infers `role: payload` and is sent. The

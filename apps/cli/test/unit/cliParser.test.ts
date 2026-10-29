@@ -242,8 +242,8 @@ test("top-level help states the id rule, and inference holds back each name it s
     "An id column is held back too: one named id, identifier, MRN, " +
       "ClientID, PersonID, PersonalID, PatientID, RecordID, or MemberID, or " +
       "one ending in _id, number, or _no (case_number, record_no), or in No " +
-      "with a capital N after a lowercase letter (RecordNo), except a street " +
-      "address or unit number or a yes/no answer (StreetNo, yes_no). A space, " +
+      "after a lowercase letter (RecordNo). A linkage key name such as " +
+      "ssn_number or StreetNo counts as a linkage key, not an id. A space, " +
       "hyphen, or dot in a name counts as _.",
   );
   expect(flat).not.toContain("such as id, case_id, ClientID");
@@ -275,10 +275,14 @@ test("top-level help states the id rule, and inference holds back each name it s
       .filter((column) => column.type === "identifier")
       .map((column) => column.name),
   ).toEqual(named);
-  expect(disclosedColumnNames(metadata)).toEqual([
-    "StreetNo",
-    "yes_no",
-    "RECORDNO",
+  expect(disclosedColumnNames(metadata)).toEqual(["yes_no", "RECORDNO"]);
+  expect(
+    metadata
+      .filter((column) => ["StreetNo", "ssn_number"].includes(column.name))
+      .map((column) => [column.name, column.type, column.role]),
+  ).toEqual([
+    ["StreetNo", "street_number", "linkage"],
+    ["ssn_number", "ssn", "linkage"],
   ]);
 });
 

@@ -7,6 +7,8 @@ import {
   inferMetadataForEveryColumn,
   METADATA_NAME_SHAPE_MESSAGE,
   ALIAS_TYPE_META_MAP,
+  NAMED_IDENTIFIER_LOOKUP_KEYS,
+  NOT_RECORD_NUMBER_LOOKUP_KEYS,
   ownResultColumnNames,
   safeParseMetadata,
   disclosedColumnNames,
@@ -267,6 +269,26 @@ test("the named identifier spellings are not entries of the alias table", () => 
     expect(Object.hasOwn(ALIAS_TYPE_META_MAP, key)).toBe(false);
 });
 
+test("no alias table key is a key the identifier or not-a-record-number lists hold", () => {
+  const tableKeys = Object.keys(ALIAS_TYPE_META_MAP);
+  const listKeys = [
+    ...NAMED_IDENTIFIER_LOOKUP_KEYS,
+    ...NOT_RECORD_NUMBER_LOOKUP_KEYS,
+  ];
+  expect(tableKeys.filter((key) => listKeys.includes(key))).toEqual([]);
+  expect(
+    [...NOT_RECORD_NUMBER_LOOKUP_KEYS].filter((key) =>
+      NAMED_IDENTIFIER_LOOKUP_KEYS.has(key),
+    ),
+  ).toEqual([]);
+  expect(
+    tableKeys.filter(
+      (key) =>
+        key.endsWith("_id") && ALIAS_TYPE_META_MAP[key].type !== "identifier",
+    ),
+  ).toEqual([]);
+});
+
 // --- inferMetadata: MRN, run-together ids and record numbers ----------------
 
 const RECORD_IDENTIFIER_SPELLINGS = [
@@ -299,6 +321,7 @@ const RECORD_IDENTIFIER_SPELLINGS = [
   "zip_no",
   "ethnicity_number",
   "warehouse_number",
+  "WareHouseNumber",
   "estate_no",
   "state_number",
   "hotel_number",
@@ -347,9 +370,10 @@ test.each(RECORD_IDENTIFIER_SPELLINGS)(
   },
 );
 
-// A name ending the same way that is not a record number keeps the inference it
-// would have without the record-number rule: a listed name its type, any other
-// name type `other`, sent under direct inference.
+// The alias table is looked up before the record-number rule, so a name it
+// lists keeps its type, and a name on the not-a-record-number list, or ending
+// as no record number does, infers as any name the table does not list: type
+// `other`, sent under direct inference.
 const NUMBER_SUFFIX_FALSE_MATCHES: Array<[name: string, type: SemanticType]> = [
   ["phone_number", "phone_number"],
   ["Phone Number", "phone_number"],
@@ -358,28 +382,35 @@ const NUMBER_SUFFIX_FALSE_MATCHES: Array<[name: string, type: SemanticType]> = [
   ["Social Security Number", "ssn"],
   ["street_no", "street_number"],
   ["StreetNumber", "street_number"],
+  ["StreetNo", "street_number"],
+  ["STREETNO", "street_number"],
+  ["street_nbr", "street_number"],
   ["house_number", "street_number"],
   ["house_no", "street_number"],
+  ["HouseNo", "street_number"],
   ["address_number", "street_number"],
+  ["AddressNo", "street_number"],
   ["unit_no", "unit"],
   ["unit_number", "unit"],
+  ["UnitNo", "unit"],
   ["apartment_number", "unit"],
+  ["ApartmentNo", "unit"],
   ["apt_no", "unit"],
   ["apt_number", "unit"],
+  ["AptNo", "unit"],
   ["ssn", "ssn"],
   ["SSN", "ssn"],
   ["social", "ssn"],
   ["SOCIAL_SECURITY_NUMBER", "ssn"],
-  ["StreetNo", "other"],
-  ["HouseNo", "other"],
-  ["AptNo", "other"],
   ["Casino", "other"],
   ["casino", "other"],
   ["CASINO", "other"],
   ["Piano", "other"],
   ["volcano", "other"],
   ["yes_no", "other"],
-  ["Consent Yes No", "other"],
+  ["Yes No", "other"],
+  ["YesNo", "other"],
+  ["YESNO", "other"],
   ["number", "other"],
   ["Number", "other"],
   ["No", "other"],
@@ -411,41 +442,75 @@ describe.each(["declaredOnly", "direct"] as const)(
   },
 );
 
-// --- inferMetadata: SSN and phone numbers under unlisted names ---------------
+// --- inferMetadata: SSN and phone spellings ---------------------------------
 
-// An SSN or phone number under a name the table does not list is held back in
-// both modes: declared `role: ignored` with an entry of its own under direct
-// inference, left out under declared-only inference, and never the record
-// identifier.
-const HELD_BACK_NUMBER_SPELLINGS = [
+const SSN_SPELLINGS = [
   "ssn_number",
   "ssn_no",
+  "ssnno",
+  "SSNNO",
   "SSNNumber",
   "SSN No",
+  "SSN Num",
   "SocialSecurityNumber",
   "socialsecuritynumber",
+  "SOCIALSECURITYNO",
   "social_security_no",
   "Social Security No",
+  "Social Security",
   "social_no",
+  "socialno",
+  "SocSecNo",
+  "soc_sec_no",
+  "Soc Sec Number",
+  "ss_number",
+  "SSNumber",
+  "SS_No",
+  "ss_nbr",
+];
+
+const PHONE_SPELLINGS = [
   "telephone_number",
+  "Telephone",
+  "tel",
+  "tel_no",
   "phone_no",
   "PhoneNo",
-  "Home Phone Number",
-  "HomePhoneNumber",
-  "mobile_number",
+  "PHONENO",
+  "phoneno",
+  "Phone Num",
+  "cell",
   "cell_no",
   "CellNo",
+  "CELLNO",
   "CellNumber",
-  "fax_no",
-  "tel_no",
+  "Cell Phone",
+  "cell_phone",
+  "cellphonenumber",
+  "mobile",
+  "mobile_number",
+  "Mobile Phone No",
+  "home_phone",
+  "Home Phone Number",
+  "HomePhoneNumber",
+  "homephonenumber",
+  "HOMEPHONENUMBER",
+  "work_phone",
+  "workphonenumber",
+  "primaryphonenumber",
+  "alternate_phone",
+  "contact_phone_number",
 ];
 
 describe.each(["declaredOnly", "direct"] as const)(
-  "%s mode: an SSN or phone number under an unlisted name is held back",
+  "%s mode: an SSN or phone spelling is a linkage name, never sent",
   (mode) => {
-    test.each(HELD_BACK_NUMBER_SPELLINGS)("%j", (name) => {
+    test.each([
+      ...SSN_SPELLINGS.map((name) => [name, "ssn"] as const),
+      ...PHONE_SPELLINGS.map((name) => [name, "phone_number"] as const),
+    ])("%j infers %s", (name, type) => {
       expect(inferMetadataForEveryColumn([name], [], { mode })).toEqual([
-        { name, type: "other", role: "ignored", isPayload: false },
+        { name, type, role: "linkage", isPayload: false },
       ]);
       const metadata = inferMetadata([name, "first_name", "notes"], [], {
         mode,
@@ -501,6 +566,7 @@ describe.each(["declaredOnly", "direct"] as const)(
   (mode) => {
     test.each([
       [["Visit Number", "client_id", "first_name"], "client_id"],
+      [["case_number", "client_id"], "client_id"],
       [["case_number", "MRN"], "MRN"],
       [["RecordNo", "id"], "id"],
       [["visit_no", "PersonalID", "Member ID"], "PersonalID"],

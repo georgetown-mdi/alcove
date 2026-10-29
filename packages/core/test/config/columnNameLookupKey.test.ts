@@ -138,8 +138,28 @@ describe("columnNameLookupKey", () => {
 });
 
 describe("the recognized names", () => {
-  test("are exactly the listed ones", () => {
-    expect(Object.keys(ALIAS_TYPE_META_MAP).sort()).toEqual(
+  // The SSN, phone, street number and unit rows list each word with every
+  // number ending, which the inference-table check in
+  // defaultStandardizationDoc.test.ts pins name by name against the spec.
+  const NUMBER_SPELLED_TYPES: ReadonlySet<string> = new Set([
+    "ssn",
+    "phone_number",
+    "street_number",
+    "unit",
+  ]);
+  const keysOf = (type: SemanticType) =>
+    Object.keys(ALIAS_TYPE_META_MAP).filter(
+      (key) => ALIAS_TYPE_META_MAP[key].type === type,
+    );
+
+  test("are exactly the listed ones outside the number-spelled types", () => {
+    expect(
+      Object.keys(ALIAS_TYPE_META_MAP)
+        .filter(
+          (key) => !NUMBER_SPELLED_TYPES.has(ALIAS_TYPE_META_MAP[key].type),
+        )
+        .sort(),
+    ).toEqual(
       [
         "date_of_birth",
         "dateofbirth",
@@ -155,12 +175,6 @@ describe("the recognized names", () => {
         "last_name",
         "lastname",
         "lname",
-        "phone",
-        "phone_number",
-        "phonenumber",
-        "social",
-        "social_security_number",
-        "ssn",
         "ssn4",
         "county",
         "county_name",
@@ -170,6 +184,39 @@ describe("the recognized names", () => {
         "state_name",
         "statecode",
         "statename",
+        "street_name",
+        "streetname",
+        "city",
+        "city_name",
+        "cityname",
+        "zip",
+        "zip5",
+        "zip_5",
+        "zip_code",
+        "zipcode",
+      ].sort(),
+    );
+  });
+
+  test.each([
+    [
+      "ssn",
+      [
+        "ssn",
+        "social",
+        "social_security_number",
+        "ssn_no",
+        "ssnno",
+        "socsecno",
+      ],
+    ],
+    [
+      "phone_number",
+      ["phone", "phone_number", "phonenumber", "cell_phone", "homephonenumber"],
+    ],
+    [
+      "street_number",
+      [
         "address_number",
         "addressnumber",
         "house_no",
@@ -180,8 +227,13 @@ describe("the recognized names", () => {
         "street_num",
         "street_number",
         "streetnumber",
-        "street_name",
-        "streetname",
+        "streetno",
+        "houseno",
+      ],
+    ],
+    [
+      "unit",
+      [
         "unit",
         "unit_number",
         "unitnumber",
@@ -194,16 +246,12 @@ describe("the recognized names", () => {
         "apt_no",
         "apt_num",
         "apt_number",
-        "city",
-        "city_name",
-        "cityname",
-        "zip",
-        "zip5",
-        "zip_5",
-        "zip_code",
-        "zipcode",
-      ].sort(),
-    );
+        "unitno",
+        "aptno",
+      ],
+    ],
+  ] as const)("%s includes %j", (type, names) => {
+    expect(keysOf(type)).toEqual(expect.arrayContaining([...names]));
   });
 
   test.each(MODES)("infer as before under %s, in any letter case", (mode) => {
