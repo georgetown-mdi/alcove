@@ -13,7 +13,8 @@ import {
   unmountableBindPaths,
 } from "@psi/dockerRunCommand";
 
-import { OPERATOR_USER_FLAG } from "@psi/containerAccount";
+import { IMAGE_ACCOUNT_ID, OPERATOR_USER_FLAG } from "@psi/containerAccount";
+import { HANDOFF_PATH_PLACEHOLDERS } from "@jobContract/handoffBindPaths";
 
 import {
   cronIntervalGuard,
@@ -46,13 +47,6 @@ import type { RunSchedule } from "./scheduleTemplates";
 /** The exchange folder placeholder on a POSIX scheduling machine. */
 export const EXCHANGE_FOLDER_PLACEHOLDER = "/path/to/your/exchange-folder";
 
-/** Whether a POSIX line's token names the exchange folder, which is
- * double-quoted so the folder the operator puts in its place may hold a space
- * or a single quote. */
-function holdsExchangeFolder(token: string): boolean {
-  return token.includes(EXCHANGE_FOLDER_PLACEHOLDER);
-}
-
 /** The exchange folder placeholder on a Windows scheduling machine. */
 const WINDOWS_EXCHANGE_FOLDER_PLACEHOLDER =
   "C:\\path\\to\\your\\exchange-folder";
@@ -65,8 +59,9 @@ export const CRONTAB_ACCOUNT_NOTE =
 /** The panels' sentence on the Docker lines' account option, for a folder
  * handed to the image's own account. */
 export const FOLDER_OWNED_BY_IMAGE_ACCOUNT_NOTE =
-  "If the exchange folder belongs to user 1000 (you ran chown 1000:1000 on " +
-  `it), leave out ${OPERATOR_USER_FLAG} from the Docker command and cron line.`;
+  `If the exchange folder belongs to user ${IMAGE_ACCOUNT_ID} (you ran chown ` +
+  `${IMAGE_ACCOUNT_ID}:${IMAGE_ACCOUNT_ID} on it), leave out ` +
+  `${OPERATOR_USER_FLAG} from the Docker command and cron line.`;
 
 /** Where each engine's client is installed on Linux. */
 const POSIX_ENGINE_PROGRAMS: Record<ContainerEngine, string> = {
@@ -76,6 +71,22 @@ const POSIX_ENGINE_PROGRAMS: Record<ContainerEngine, string> = {
 
 /** The installed program's placeholder, for the line that runs it directly. */
 export const INSTALLED_ALCOVE_PLACEHOLDER = "/path/to/alcove";
+
+/** The path placeholders a POSIX line names, which the operator replaces. */
+const POSIX_PATH_PLACEHOLDERS: ReadonlyArray<string> = [
+  EXCHANGE_FOLDER_PLACEHOLDER,
+  INSTALLED_ALCOVE_PLACEHOLDER,
+  ...HANDOFF_PATH_PLACEHOLDERS,
+];
+
+/** Whether a POSIX line's token holds a path placeholder, which is
+ * double-quoted so the path the operator puts in its place may hold a space
+ * or a single quote. */
+function holdsPathPlaceholder(token: string): boolean {
+  return POSIX_PATH_PLACEHOLDERS.some((placeholder) =>
+    token.includes(placeholder),
+  );
+}
 
 /** A crontab line running `command` on `schedule` (daily at 2am without
  * one). cron ends a command at an unescaped `%` and passes the rest as its
@@ -97,7 +108,7 @@ function engineRunCommand(
   });
   return argv === undefined
     ? undefined
-    : shellJoinRunArgv(argv, holdsExchangeFolder);
+    : shellJoinRunArgv(argv, holdsPathPlaceholder);
 }
 
 /** The `docker run` command a person runs once by hand. Undefined when a bind
@@ -120,7 +131,11 @@ export function podmanRunCommand(
 /** The command a person runs once by hand from the exchange folder with an
  * installed `alcove`. */
 function installedRunCommand({ argv }: ScheduledRunSource): string {
-  return shellJoinCommand(["alcove", ...alcoveArgs(argv)]);
+  return shellJoinCommand(
+    ["alcove", ...alcoveArgs(argv)],
+    () => false,
+    holdsPathPlaceholder,
+  );
 }
 
 /** The crontab line running the image over the exchange folder on
@@ -139,7 +154,7 @@ function engineCronLine(
   );
   return argv === undefined
     ? undefined
-    : cronLine(shellJoinRunArgv(argv, holdsExchangeFolder), schedule);
+    : cronLine(shellJoinRunArgv(argv, holdsPathPlaceholder), schedule);
 }
 
 /** The crontab line running the image with Docker over the exchange folder on
@@ -166,14 +181,12 @@ function installedCronLine(
   { argv }: ScheduledRunSource,
   schedule?: RunSchedule,
 ): string {
+  const join = (tokens: ReadonlyArray<string>) =>
+    shellJoinCommand(tokens, () => false, holdsPathPlaceholder);
   return cronLine(
-    shellJoinCommand(
-      ["cd", EXCHANGE_FOLDER_PLACEHOLDER],
-      () => false,
-      holdsExchangeFolder,
-    ) +
+    join(["cd", EXCHANGE_FOLDER_PLACEHOLDER]) +
       " && " +
-      shellJoinCommand([INSTALLED_ALCOVE_PLACEHOLDER, ...alcoveArgs(argv)]),
+      join([INSTALLED_ALCOVE_PLACEHOLDER, ...alcoveArgs(argv)]),
     schedule,
   );
 }

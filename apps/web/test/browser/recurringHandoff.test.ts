@@ -172,7 +172,7 @@ describe("RecurringHandoff panel", () => {
     expect(text()).toContain("0 2 * * * /usr/bin/docker run");
     expect(text()).toContain("Register-ScheduledTask");
     expect(text()).toContain(
-      'cd "/path/to/your/exchange-folder" && /path/to/alcove',
+      'cd "/path/to/your/exchange-folder" && "/path/to/alcove"',
     );
     // Which crontab the line goes in, and the account option a folder handed
     // to the image's account leaves out.
@@ -202,8 +202,8 @@ describe("RecurringHandoff panel", () => {
     // The shared folder is mounted at its own path, and named to mount by hand
     // on Windows.
     expect(text()).toContain(
-      "--mount type=bind,src=/path/to/your/shared-directory," +
-        "dst=/path/to/your/shared-directory",
+      '--mount "type=bind,src=/path/to/your/shared-directory,' +
+        'dst=/path/to/your/shared-directory"',
     );
     expect(text()).toContain(
       "The Docker commands for Linux and macOS mount /path/to/your/shared-directory",
@@ -345,7 +345,7 @@ describe("RecurringHandoff panel", () => {
     expect(text()).not.toContain("Register-ScheduledTask");
     expect(text()).toContain("'--identity=Agency A' input.csv ./");
     expect(text()).toContain(
-      'cd "/path/to/your/exchange-folder" && /path/to/alcove',
+      'cd "/path/to/your/exchange-folder" && "/path/to/alcove"',
     );
     expect(text()).toContain(CRONTAB_ACCOUNT_NOTE);
     expect(text()).not.toContain(FOLDER_OWNED_BY_IMAGE_ACCOUNT_NOTE);

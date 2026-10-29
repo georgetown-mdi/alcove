@@ -10,7 +10,7 @@
 export type ContainerEngine = "docker" | "podman";
 
 /** The account the published image runs as unless told otherwise. */
-const IMAGE_ACCOUNT_ID = 1000;
+export const IMAGE_ACCOUNT_ID = 1000;
 
 /**
  * The `--user` value naming the operator's own account, written for the

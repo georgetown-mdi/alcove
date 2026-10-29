@@ -229,7 +229,9 @@ describe("buildJobHandoff composes a portable, secret-free template", () => {
     const lines = runLines(rootSource);
     if (lines.kind !== "shown") throw new Error(lines.notice);
     expect(lines.runCommand).toBe("alcove exchange in.csv out.csv");
-    expect(lines.installedCronLine).toContain("alcove exchange in.csv");
+    expect(lines.installedCronLine).toContain(
+      '"/path/to/alcove" exchange in.csv',
+    );
   });
 
   test("an sftp exchange placeholders a private-key passphrase distinctly", () => {
