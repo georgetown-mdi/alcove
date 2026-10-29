@@ -417,6 +417,10 @@ Core admits every character in `peer_id`, and the fields fill in digits and hex,
 
 **Limit -- a partner id in this party's own format.** A partner whose id matches this party's `peer_id` with its fields filled in (both parties configured with the same `peer_id`, say) is taken for this party's own earlier run. Present at entry, its hello is refused as a leftover; arriving later, it is skipped, and the run reaches the ordinary peer timeout. `--sweep-exchange-files` deletes such a hello as this party's own, without first reading it for the partner's retain setting as it does a partner's hello. The partner, which cannot see this party's `peer_id`, sees an ordinary hello and waits likewise. The prefix refusal does not catch it, since neither id is the other followed by `-`. The two parties' ids must not match each other in this way, as they must not be equal without fields.
 
+**Limit -- an own leftover reads as a shared `peer_id` first.** The start-up refusal for a hello that fits this party's own `peer_id` names a shared `peer_id` as the likely cause before it names a leftover from an earlier run of this party. A genuine leftover from a killed run in a shared directory gets the same refusal, with its remedy second; nothing local tells the two apart.
+
+**Limit -- the console shows the plain timeout.** The shared-`peer_id` explanation is part of the CLI's own peer-timeout message only. The failure cause the CLI emits stays a plain partner-never-arrived, so the console, and both apps' remedy lines, show the generic timeout and remedy.
+
 ## Round set size limits
 
 A linkage key round sends its set of values as one PSI message, in as many message files as the set needs ([PROTOCOL.md, A PSI set is sent in parts](PROTOCOL.md#a-psi-set-is-sent-in-parts)). One bound caps how many values the first round's set can hold on the file-sync channels. It is not configurable.
