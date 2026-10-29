@@ -141,8 +141,9 @@ export async function readBrowserCsv(
   return { rawRows: parsed.data, columns: parsed.meta.fields ?? [] };
 }
 
-/** Authenticate over an opened connection and run the PSI rounds, leaving the
- * authenticated connection open for the caller's close. */
+/** Authenticate over an opened connection and run the PSI rounds with the
+ * shared-secret rotation, leaving the authenticated connection open for the
+ * caller's close. Throws when the run stored no fresh next secret. */
 async function authenticateAndRun(params: {
   mc: MessageConnection;
   role: RendezvousRole;
@@ -155,16 +156,29 @@ async function authenticateAndRun(params: {
   pairs: Array<MatchedPair>;
 }> {
   const handshakeRole = handshakeRoleForRendezvousRole(params.role);
-  const { connection } = await authenticateExchange(
+  const { connection, nextSecretInputs } = await authenticateExchange(
     params.mc,
     handshakeRole,
     params.sharedSecret,
     params.expires,
   );
   const psiLibrary = await (PSI() as Promise<PSILibrary>);
+  // The rotation every authenticated web run passes (runExchangeLifecycle,
+  // managedRunDriver), holding the next secret in memory as a one-shot run does.
+  let nextSecret: string | undefined;
   const result = await runExchange(connection, handshakeRole, params.prepared, {
     psiLibrary,
+    rotation: {
+      inputs: nextSecretInputs,
+      store: (stored) => {
+        nextSecret = stored;
+      },
+    },
   });
+  if (nextSecret === undefined)
+    throw new Error("the exchange completed without a next shared secret");
+  if (nextSecret === params.sharedSecret)
+    throw new Error("the next shared secret repeats the invitation's");
   return {
     connection,
     partnerIdentity: result.partnerTerms.identity,
