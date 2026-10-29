@@ -29,7 +29,6 @@ export const HASH_LOG = "written.jsonl";
 export const RELAY_LOG = "relayed.jsonl";
 export const RECORD_FILE = "record.json";
 export const DEFAULT_EXTRA_ROUNDS = 2;
-const MAX_EXTRA_ROUNDS = 5;
 
 // A seat name becomes part of a file name, so it is held to this shape.
 const SEAT_NAME = /^[A-Za-z0-9][A-Za-z0-9-]*$/;
@@ -158,13 +157,9 @@ export function readPanel(dir) {
     throw new Error(`${path} is not one JSON object.`);
   }
   const extraRounds = panel.extraRounds ?? DEFAULT_EXTRA_ROUNDS;
-  if (
-    !Number.isInteger(extraRounds) ||
-    extraRounds < 1 ||
-    extraRounds > MAX_EXTRA_ROUNDS
-  ) {
+  if (!Number.isInteger(extraRounds) || extraRounds < 1) {
     throw new Error(
-      `extraRounds in ${path} is a whole number from 1 to ${MAX_EXTRA_ROUNDS}; got ${JSON.stringify(panel.extraRounds)}.`,
+      `extraRounds in ${path} is a whole number of at least 1; got ${JSON.stringify(panel.extraRounds)}.`,
     );
   }
   const names = Array.isArray(panel.seats)

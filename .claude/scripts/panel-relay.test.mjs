@@ -118,6 +118,18 @@ describe("round 1 text", () => {
       /extraRounds/,
     );
   });
+
+  it("accepts any whole number of extra rounds from 1 up, and names no upper bound", async () => {
+    expect((await loadPanel(panelDir({ extraRounds: 6 }))).extraRounds).toBe(6);
+    expect((await loadPanel(panelDir({ extraRounds: 50 }))).extraRounds).toBe(
+      50,
+    );
+    for (const bad of [0, -1, 1.5, "3"]) {
+      await expect(loadPanel(panelDir({ extraRounds: bad }))).rejects.toThrow(
+        /whole number of at least 1/,
+      );
+    }
+  });
 });
 
 describe("later round text", () => {
