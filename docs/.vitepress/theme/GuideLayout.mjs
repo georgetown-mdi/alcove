@@ -167,11 +167,8 @@ export default defineComponent({
         ),
         h("a", { href: "/about" }, "About"),
         externalLink(REPOSITORY_URL, "GitHub"),
-        externalLink(`${REPOSITORY_URL}/blob/main/CHANGELOG.md`, "Changelog"),
-        externalLink(
-          `${REPOSITORY_URL}/blob/main/LICENSE.md`,
-          "Apache License 2.0",
-        ),
+        h("a", { href: "/CHANGELOG" }, "Changelog"),
+        h("a", { href: "/LICENSE" }, "Apache License 2.0"),
       ]);
     }
 
