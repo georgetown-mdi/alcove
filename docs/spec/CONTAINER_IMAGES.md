@@ -463,7 +463,8 @@ around.
 
 ### The approved-algorithm rows behind the measured call shapes
 
-The variant's entrypoint probe makes five call shapes, and those five are what a
+The variant's entrypoint probe makes five call shapes beside the rotation's two
+below, every one of them gating its verdict, and those five are what a
 "dispatches into the validated module" claim may name
 ([fips-variant-image.md](../notes/fips-variant-image.md)). Each is on Table 6
 (Approved Algorithms, pp. 9-13), under the row name and CAVP certificate ids the

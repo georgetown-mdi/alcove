@@ -289,9 +289,10 @@ jobs:
       # variant's entrypoint runs at every container start -- against the amd64
       # candidate loaded above, and it fails unless fips.so is mapped into the
       # process, the five Alcove call shapes (AES-256-GCM, HKDF-SHA-256,
-      # HMAC-SHA-256, SHA-256, P-256 ECDH) all succeed, and both an MD5 digest
-      # and a below-minimum RSA keygen -- which no FIPS provider serves -- fail
-      # beside them. docs/COMPLIANCE.md frames that engagement as measured
+      # HMAC-SHA-256, SHA-256, P-256 ECDH) and the rotation's value draw and
+      # AES-KW wrap all succeed, and both an MD5 digest and a below-minimum RSA
+      # keygen -- which no FIPS provider serves -- fail beside them.
+      # docs/COMPLIANCE.md frames that engagement as measured
       # rather than assumed, and image_smoke.yaml measures a pull request's
       # build: without this step nothing measures the artifact a tag publishes.
       #

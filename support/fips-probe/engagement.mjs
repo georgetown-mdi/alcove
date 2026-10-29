@@ -36,12 +36,13 @@
 //   md5, rsa1024 -- an MD5 digest and an RSA keygen below the FIPS minimum
 //     modulus both FAIL in that same process. No FIPS provider serves either,
 //     whatever its build, so either one succeeding means the default provider
-//     is still reachable and the product legs are unattributable.
+//     is still reachable and the product and rotation legs are unattributable.
 //
-// ENGAGED requires all of them. The product legs are the ones that decide which
-// primitives a "dispatches into the validated module" claim may name, so a leg
-// is added here when such a claim is made of a primitive, not the other way
-// round.
+// ENGAGED requires all of them: the five product legs, the two rotation legs,
+// the mapping and both refusals. The product legs are the ones that decide
+// which primitives the scoped "dispatches into the validated module" claim may
+// name, so a leg is added here when such a claim is made of a primitive, not
+// the other way round.
 
 import { createHash, getFips } from "node:crypto";
 import { readFileSync } from "node:fs";
