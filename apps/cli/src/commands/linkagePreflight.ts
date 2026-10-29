@@ -153,7 +153,7 @@ export function checkLinkageSatisfiability(
       `To fix: ${
         messaging.keylessRemedyLead ??
         (messaging.termsStanding === "agreed"
-          ? "agree linkage terms declaring at least one linkage key"
+          ? "agree on linkage terms declaring at least one linkage key"
           : "declare at least one linkage key in these terms")
       }, ${messaging.blockRemedy}`,
     ];

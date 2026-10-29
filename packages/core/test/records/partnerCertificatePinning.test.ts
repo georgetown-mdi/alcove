@@ -59,7 +59,8 @@ const identityB = await generateSigningIdentity("Responder Co", {
     d: "yM3S19zh5uvw9fr_BAkOExgdIicsMTY7QEVKT1RZXmM",
   },
 });
-// A valid signing identity bound to a party neither seat agrees terms under.
+// A valid signing identity bound to a party under which neither seat agrees
+// on the terms.
 const identityElsewhere = await generateSigningIdentity("Elsewhere Co");
 const fingerprintA = await computeCertificateFingerprint(identityA.certificate);
 const fingerprintB = await computeCertificateFingerprint(identityB.certificate);
@@ -326,9 +327,9 @@ describe("a certificate that does not verify under its own key is not adopted", 
 });
 
 describe("a certificate bound away from the partner's agreed terms is not adopted", () => {
-  // The swap authorizes the presented certificate against the identity the
-  // partner agreed terms under, so a fingerprint adopted from a certificate
-  // bound to any other name is a pin every later run refuses. The partner here
+  // The swap authorizes the presented certificate against the identity under
+  // which the partner agreed on the terms, so a fingerprint adopted from a
+  // certificate bound to any other name is a pin every later run refuses. The partner here
   // presents a valid self-signed certificate for a party it is not: the
   // self-signature check passes and the binding check is what refuses.
   for (const refusingRole of ["initiator", "responder"] as const) {
@@ -376,7 +377,7 @@ describe("a certificate bound away from the partner's agreed terms is not adopte
       expect(disclosingFrames(refusingSide.sent)).toEqual([]);
       expect(abortReasons(refusingSide.sent)).toEqual([
         expect.stringMatching(
-          /does not authorize the identity its holder agreed terms under/,
+          /does not authorize the identity under which its holder agreed on the terms/,
         ),
       ]);
 

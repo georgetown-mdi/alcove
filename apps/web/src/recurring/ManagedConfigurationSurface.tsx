@@ -152,8 +152,8 @@ function ConfigurationRows({ record }: { record: ManagedExchangeRecord }) {
       ))}
       <p className={`${styles.small} ${styles.sub}`}>
         These agreed terms are fixed for this partnership and are not editable
-        here. To exchange on different terms, agree them with your partner and
-        set the exchange up again.
+        here. To exchange on different terms, agree on them with your partner
+        and set the exchange up again.
       </p>
     </div>
   );

@@ -1061,7 +1061,7 @@ describe("verify receipt screen", { timeout: 40_000 }, () => {
     await mountVerifyScreen();
 
     // The exchange record states who this exchange was between and what terms
-    // it agreed, which the signature checks are held against.
+    // it agreed on, which the signature checks are held against.
     await uploadAt(0, jsonFile("rec.json", serializeExchangeRecord(record)));
     await uploadAt(
       1,

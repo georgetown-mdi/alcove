@@ -1176,7 +1176,7 @@ export function assertLinkageTermsSatisfiable(
         "nothing to match on. Nothing was sent. " +
         singleColumnDelimiterClause(columns.length) +
         "Run it with an input whose columns can supply at " +
-        "least one linkage key, or agree terms declaring one with your " +
+        "least one linkage key, or agree on terms declaring one with your " +
         "partner and run the exchange under those.",
     );
 
@@ -1212,7 +1212,7 @@ export function assertLinkageTermsSatisfiable(
     `this input cannot satisfy every linkage key the agreed terms declare: ` +
       `${summarizeLinkageShortfall(verdict, "agreed")}. ` +
       singleColumnDelimiterClause(columns.length) +
-      "Nothing was sent. Agree new terms with your partner over the keys " +
+      "Nothing was sent. Agree on new terms with your partner over the keys " +
       "and fields both files can supply, or run with an input file that " +
       "satisfies the current terms.",
     details.length > 0

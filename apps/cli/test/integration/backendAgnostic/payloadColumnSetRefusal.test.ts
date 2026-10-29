@@ -21,7 +21,7 @@ import {
 import { firstNameTerms } from "../../support";
 
 // Two CLI parties run a real file-drop exchange. The sending party's metadata
-// is switched once the PSI round begins, after both parties agreed terms
+// is switched once the PSI round begins, after both parties agreed on terms
 // under the original columns, so the payload it sends names a different
 // column set than its agreed `payload.send`. The receiving party's run ends
 // on a protocol refusal whose message names no column.

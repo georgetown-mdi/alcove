@@ -599,7 +599,7 @@ describe("verifyDualSignedRecord", () => {
     expect(report.initiator.certificateBinding).toBe("verified");
   });
 
-  test("a certificate bound to an identity this exchange did not agree is a distinct failure", async () => {
+  test("a certificate bound to an identity this exchange did not agree on is a distinct failure", async () => {
     const report = await verifyDualSignedRecord(await signedRecord(), {
       ...fullyAnchored,
       expectedIdentities: ["Party A", "Party Z"],

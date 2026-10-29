@@ -60,7 +60,7 @@ describe("a terms refusal at each seat", () => {
     "Your partner stopped this exchange because your linkage terms differ " +
     "from theirs, before any linkage key or data was sent.";
   const INVITER_STEP =
-    "Agree the terms with your partner, then choose Start over with a fresh " +
+    "Agree on the terms with your partner, then choose Start over with a fresh " +
     "invitation and send your partner the new invitation.";
   const ACCEPTOR_STEP =
     "Ask your partner for a new invitation with the terms you agree on, " +

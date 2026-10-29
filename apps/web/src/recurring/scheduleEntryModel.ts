@@ -64,7 +64,7 @@ export { MAX_SCHEDULE_INTERVAL_DAYS };
 /** The cadence as the operator types it. The two instants are strings because a
  * date or time input reports a partial value while it is being edited, and an
  * invalid state has to be representable so it can block the save rather than be
- * coerced into a cadence nobody agreed. */
+ * coerced into a cadence nobody agreed on. */
 export interface ScheduleEntryFields {
   /** The first agreed window's local calendar date, `YYYY-MM-DD`. */
   firstWindowDate: string;
@@ -392,12 +392,12 @@ export const PARTNER_SCHEDULE_NOT_A_SCHEDULE =
 /** Why a pasted schedule filled nothing: its window opens on a second the time
  * field cannot hold. */
 export const PARTNER_SCHEDULE_HAS_SECONDS =
-  "That schedule's window opens at a time with seconds, which these fields cannot hold. Agree a window that opens on a whole minute with your partner and enter it below.";
+  "That schedule's window opens at a time with seconds, which these fields cannot hold. Agree on a window that opens on a whole minute with your partner and enter it below.";
 
 /** Why a pasted schedule filled nothing: its next few windows each fall in an
  * hour this device's clock shows twice, so no wall-clock time names them. */
 export const PARTNER_SCHEDULE_REPEATED_HOUR =
-  "That schedule's windows open in an hour your clock shows twice, so these fields cannot name them. Agree a different time with your partner and enter it below.";
+  "That schedule's windows open in an hour your clock shows twice, so these fields cannot name them. Agree on a different time with your partner and enter it below.";
 
 /** What a pasted partner schedule fills: the entry fields, or the one-line
  * reason it filled nothing. */

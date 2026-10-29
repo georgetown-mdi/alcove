@@ -439,7 +439,7 @@ describe("every authorable option graduates into the hand-off", () => {
 
   test("the linkage strategy graduates on the exchange mode inside the terms", () => {
     // The exchange mode has no `--linkage-strategy` of its own: the strategy is
-    // part of the linkage terms both parties agreed, and the template holds
+    // part of the linkage terms both parties agreed on, and the template holds
     // them as they ran.
     // Without the matched-key column, which single-pass terms refuse.
     const { includeMatchingKey: _matchingKey, ...maximal } =

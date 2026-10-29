@@ -1933,7 +1933,7 @@ describe("assertFanOutImplemented", () => {
   });
 
   test("the refusal names the strategy rule and the two ways out of it", () => {
-    // What an operator does about it: agree terms whose strategy matches a
+    // What an operator does about it: agree on terms whose strategy matches a
     // candidate set, or drop the step. Neither remedy is derivable from the
     // function name alone, so both are pinned rather than left to the message's
     // shape.
@@ -1942,7 +1942,7 @@ describe("assertFanOutImplemented", () => {
       /matches one value per record/,
     );
     expect(() => assertFanOutImplemented(terms)).toThrow(
-      /Agree linkage terms whose linkage_strategy matches several candidates/,
+      /Agree on linkage terms whose linkage_strategy matches several candidates/,
     );
     expect(() => assertFanOutImplemented(terms)).toThrow(
       /remove the "split_on" step/,
@@ -3504,7 +3504,7 @@ describe("assertLinkageTermsSatisfiable", () => {
     // terms' names, which are partner-authored on every accept path.
     expect(raised).not.toBeInstanceOf(OperatorConfigError);
     const rendered = sanitizeErrorForDisplay(raised);
-    expect(rendered).toContain("Agree new terms with your partner");
+    expect(rendered).toContain("Agree on new terms with your partner");
     expect(rendered).toContain("SSN");
     expect(rendered).toContain("ssn (ssn)");
   });
@@ -3572,7 +3572,7 @@ describe("assertLinkageTermsSatisfiable", () => {
       raised = err;
     }
     const rendered = sanitizeErrorForDisplay(raised);
-    expect(rendered).toContain("Agree new terms with your partner");
+    expect(rendered).toContain("Agree on new terms with your partner");
     expect(rendered).toContain("unsatisfied linkage fields (1)");
   });
 

@@ -30,7 +30,7 @@ describe("serverJobPeerWindowBody", () => {
       "Your partner's side must be open while yours runs: their Alcove web " +
         "app page or their alcove command. Yours waits about " +
         `${peerWindowDurationPhrase(DEFAULT_WEBRTC_PEER_TIMEOUT_MS)} for them before ` +
-        "the exchange stops; if it stops, agree a time with your partner and " +
+        "the exchange stops; if it stops, agree on a time with your partner and " +
         "run it again.",
     );
     expect(SERVER_JOB_WEBRTC_PEER_WINDOW_BODY).toBe(

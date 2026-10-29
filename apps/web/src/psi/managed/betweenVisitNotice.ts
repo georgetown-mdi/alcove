@@ -356,7 +356,7 @@ function failureNotice(
       body:
         `${name} stopped because your partner's run refused your linkage ` +
         `terms, which differ from theirs, and every later window stops the ` +
-        `same way until you agree them. ${PARTNER_REFUSED_TERMS_REMEDY}`,
+        `same way until you agree on them. ${PARTNER_REFUSED_TERMS_REMEDY}`,
       tag: noticeTag(record.id, "partner-refused-terms"),
     };
   if (tier === "partner-protocol-refusal")

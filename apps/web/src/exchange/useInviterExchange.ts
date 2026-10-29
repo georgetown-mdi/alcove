@@ -292,7 +292,7 @@ function partnerRefusalCopy(
  */
 export const TERMS_DIFFERENCE_REMEDY: Record<ExchangeSeat, string> = {
   inviter:
-    "Agree the terms with your partner, then choose Start over with a fresh " +
+    "Agree on the terms with your partner, then choose Start over with a fresh " +
     "invitation and send your partner the new invitation.",
   acceptor:
     "Ask your partner for a new invitation with the terms you agree on, " +
@@ -753,7 +753,7 @@ function failureContentFor(
       category: "config",
       title: "Your partner refused this exchange",
       message:
-        "Your partner, or the terms you both agreed, stopped this exchange, " +
+        "Your partner, or the terms you both agreed on, stopped this exchange, " +
         "and running it again stops the same way. Contact your partner " +
         "before running it again.",
       settingsCannotResolve: true,

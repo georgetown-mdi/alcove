@@ -113,7 +113,7 @@ export function serverJobPeerWindowBody(
     return (
       "Your partner's side must be open while yours runs: their Alcove web " +
       `app page or their alcove command. Yours waits about ${wait} for them ` +
-      "before the exchange stops; if it stops, agree a time with your " +
+      "before the exchange stops; if it stops, agree on a time with your " +
       "partner and run it again."
     );
   }

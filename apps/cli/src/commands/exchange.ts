@@ -338,7 +338,7 @@ const MATCHING_KEY_FLAG_REFUSALS: Record<MatchingKeyUnavailableReason, string> =
     "single-pass":
       "--include-matching-key is set on a single-pass exchange, where the " +
       "party that sends its records first is not told which key matched. " +
-      "Remove --include-matching-key, or agree the cascade linkage " +
+      "Remove --include-matching-key, or agree on the cascade linkage " +
       "strategy with your partner.",
     "no-output":
       "--include-matching-key is set, but by your linkage terms you receive " +

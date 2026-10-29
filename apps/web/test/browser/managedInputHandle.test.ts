@@ -54,7 +54,7 @@ const webrtcLocator: WebRTCExchangeLocator = {
   path: "/api/",
 };
 
-// The standing terms an exchange over CONFORMING_HEADER's columns agreed: derived
+// The standing terms an exchange over CONFORMING_HEADER's columns agreed on: derived
 // WITH that metadata, so the declared keys are the ones those columns support. The
 // guard holds an input to every declared key, so terms derived without metadata
 // (which keep the whole built-in set) would refuse the conforming file too.

@@ -48,7 +48,7 @@ What it holds and what can later be opened are separate questions, and the secon
 The field is a mechanical two-way predicate over what the run observed about that certificate, not a cause or a step. It is `true` on exactly three findings, each of them the run holding the presented certificate body and refusing it:
 
 - its fingerprint is not the pinned one;
-- it does not authorize the identity its holder agreed terms under;
+- it does not authorize the identity under which its holder agreed on the terms;
 - its self-signature does not verify.
 
 It is `false` everywhere else, which is four kinds of run besides the one that compared a certificate against a pin and found it matched:
@@ -176,7 +176,7 @@ The block's own members, and the presence rule for each:
 | `payloadSent`, `payloadReceived` | always, `[]` where nothing was disclosed | entries of `name` and an optional `description` |
 | `matching` | always | `localDeduplicate`, `partnerDeduplicate`, `cardinality` |
 
-`expirationDate` is a date with no time of day and no zone: `YYYY-MM-DD`, held to the calendar, so `2026-02-30` is refused and so is a datetime such as `2026-02-01T00:00:00Z` -- unlike the record's own `createdAt`, which is a datetime and nothing else. The agreement's three members are copied out of the terms one by one, so the record holds its own values and states the agreement as the run agreed it.
+`expirationDate` is a date with no time of day and no zone: `YYYY-MM-DD`, held to the calendar, so `2026-02-30` is refused and so is a datetime such as `2026-02-01T00:00:00Z` -- unlike the record's own `createdAt`, which is a datetime and nothing else. The agreement's three members are copied out of the terms one by one, so the record holds its own values and states the agreement as the run agreed on it.
 
 **The two absence conventions sit side by side here.** `legalAgreement` states "no agreement was named" by an absent member, while the payload lists and `matchingBasis` state "nothing was disclosed" and "no field was matched on" as an empty array. A reader must not read one convention as the other: an absent `payloadSent` is not an empty one, and it is not a record this format admits.
 
@@ -198,7 +198,7 @@ The governance block records what the two parties' agreed [`deduplicate`](../EXC
 
 **It is the run's own resolution, not a re-derivation.** The record derives the triple from the same function the run boundary resolves the cardinality with (`resolvedMatchingFromTerms`, `packages/core/src/linkageTermsPolicy.ts`), over the two terms documents that boundary already admitted, so a record cannot name a cardinality its run did not match under. The values are inside the agreed-terms hash already -- each party's `deduplicate` is part of the terms document that hash covers -- so recording them readably adds a reading rather than a new claim.
 
-**Where it is read.** The CLI and a browser seat state the same sentence, composed in core (`describeResolvedMatching`, `packages/core/src/pairTableProjection.ts`): the CLI on its run log at `info`, its default level, once the terms are agreed and beside the resolved role; and a browser seat conducting the exchange on its running screen at that same point, until the run completes. No completion panel states it, and a console seat, which watches a CLI run, states no sentence for the pair; the CLI's [`result` event](CLI_EVENTS.md#result) includes the three. The record holds the three on every run whatever the log level, including the one-to-one pair no [cardinality notice](PROTOCOL.md#deduplicating-cardinalities-many-to-x-matching) is raised for, because a party's own document states only its own value and nothing before the terms exchange holds the pair.
+**Where it is read.** The CLI and a browser seat state the same sentence, composed in core (`describeResolvedMatching`, `packages/core/src/pairTableProjection.ts`): the CLI on its run log at `info`, its default level, once the terms are agreed on and beside the resolved role; and a browser seat conducting the exchange on its running screen at that same point, until the run completes. No completion panel states it, and a console seat, which watches a CLI run, states no sentence for the pair; the CLI's [`result` event](CLI_EVENTS.md#result) includes the three. The record holds the three on every run whatever the log level, including the one-to-one pair no [cardinality notice](PROTOCOL.md#deduplicating-cardinalities-many-to-x-matching) is raised for, because a party's own document states only its own value and nothing before the terms exchange holds the pair.
 
 ## Retention and disposition pointer
 
@@ -316,11 +316,11 @@ The record's own per-exchange [binding nonce](#record-fields) is not this value 
 
 The receipt is a separate artifact from the record and binds neither the record, nor its commitments, nor its result-size field -- for a [count-only run](#count-only-psi-c-records) or any other. Its content is the agreed-terms hash, the two directional payload MACs, and the per-exchange binder, and nothing else. For a count-only run those three resolve as follows.
 
-- The agreed-terms hash binds `algorithm: psi-c` along with the rest of the agreed terms, the algorithm being a mandatory-consistency term both parties fold into the same hash. The receipt is therefore third-party-verifiable evidence that this exchange was agreed and conducted as count-only.
+- The agreed-terms hash binds `algorithm: psi-c` along with the rest of the agreed terms, the algorithm being a mandatory-consistency term both parties fold into the same hash. The receipt is therefore third-party-verifiable evidence that this exchange was agreed on and conducted as count-only.
 - Both directional payload MACs are taken over the empty committed payload, computed and recorded exactly as a populated direction's would be. A holder without the session key cannot distinguish an empty direction from a populated one, so the receipt does not disclose that no payload flowed.
 - The count itself is not part of the receipt content and is not added to it. The content admits only facts both parties derive byte-identically, and the count is not one: in a one-sided run only the receiver holds it, and in a both-entitled run the sender holds it as the receiver's report rather than as its own derivation. The same rule already excludes the association-table pairing.
 
-A count-only receipt therefore attests what was agreed and that an exchange occurred under it -- not what the count was. A party that needs the count itself third-party-attested has no artifact here that supplies it.
+A count-only receipt therefore attests what was agreed on and that an exchange occurred under it -- not what the count was. A party that needs the count itself third-party-attested has no artifact here that supplies it.
 
 ## Record and verification-keys files
 

@@ -48,23 +48,23 @@ async function bothRefusals(): Promise<{ refused: Error; partner: Error }> {
 }
 
 const CONFIGURED_REFUSED =
-  "Agree the linkage terms with your partner: to take on theirs, ask them " +
+  "Agree on the linkage terms with your partner: to take on theirs, ask them " +
   "for an update made with alcove update and apply it with alcove apply, or " +
   "change your configuration to match theirs, then run the same command again.";
 const CONFIGURED_PARTNER =
-  "Agree the linkage terms with your partner: to have them take on yours, " +
+  "Agree on the linkage terms with your partner: to have them take on yours, " +
   "send them an update made with alcove update for them to apply with alcove " +
   "apply, or change your configuration to match theirs, then run the " +
   "same command again.";
 const ONLINE_INVITATION =
-  "Agree the linkage terms with your partner, then set the exchange up " +
+  "Agree on the linkage terms with your partner, then set the exchange up " +
   "again from a fresh invitation with alcove invite or alcove accept.";
 const QUICK =
   "Agree with your partner on the columns your input files share and the " +
   "--linkage-strategy you both pass, then run again. A phone, email, street " +
   "number, ZIP, state, or county column in only one of the two files makes " +
   "the terms differ: the party whose file has it removes that column, or " +
-  "you agree the terms through an invitation (alcove invite, then alcove " +
+  "you agree on the terms through an invitation (alcove invite, then alcove " +
   "accept).";
 
 describe("the next step beneath a terms refusal", () => {
@@ -196,7 +196,7 @@ describe("the next step beneath a terms refusal", () => {
         QUICK,
         `Your file's column "ZIP Code" (ZIP code) is matched on. Where your ` +
           "partner's file has no such column, remove it from your file and " +
-          "run again, or agree the terms through an invitation (alcove " +
+          "run again, or agree on the terms through an invitation (alcove " +
           "invite, then alcove accept).",
       ]);
       expect(marked(lacksZip).endsWith(`\n${QUICK}`)).toBe(true);
@@ -212,7 +212,7 @@ describe("the next step beneath a terms refusal", () => {
     expect(marked(hasGeography).split("\n").at(-1)).toBe(
       `Your file's columns "State" (state) and "County Name" (county) are ` +
         "matched on. Where your partner's file has no such column, remove " +
-        "that column from your file and run again, or agree the terms " +
+        "that column from your file and run again, or agree on the terms " +
         "through an invitation (alcove invite, then alcove accept).",
     );
     expect(marked(lacksGeography).endsWith(`\n${QUICK}`)).toBe(true);
@@ -227,7 +227,7 @@ describe("the next step beneath a terms refusal", () => {
     expect(marked(hasStreetNumber).split("\n").at(-1)).toBe(
       `Your file's column "House Number" (street number) is matched on. ` +
         "Where your partner's file has no such column, remove it from your " +
-        "file and run again, or agree the terms through an invitation " +
+        "file and run again, or agree on the terms through an invitation " +
         "(alcove invite, then alcove accept).",
     );
     expect(marked(lacksStreetNumber).endsWith(`\n${QUICK}`)).toBe(true);

@@ -103,7 +103,7 @@ export function singlePassDatasetExceedsCap(
  */
 export const SINGLE_PASS_LOCAL_REMEDY =
   "Reduce the record count or split the dataset into smaller batches, or " +
-  "agree new terms with fewer linkage keys with your partner.";
+  "agree on new terms with fewer linkage keys with your partner.";
 
 /**
  * Which side of an exchange breached the single-pass ceiling, named from the point

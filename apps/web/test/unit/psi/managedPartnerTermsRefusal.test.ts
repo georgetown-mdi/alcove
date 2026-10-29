@@ -244,7 +244,7 @@ describe("a managed exchange whose partner refused its linkage terms", () => {
     expect(notice?.body).toContain("every later window stops the same way");
     expect(notice?.body.endsWith(PARTNER_REFUSED_TERMS_REMEDY)).toBe(true);
     expect(savedExchangeRow(stored, undefined, NOW).status).toMatch(
-      /^Last run stopped: your partner's run refused your linkage terms \(.*\); agree the terms through a terms update$/,
+      /^Last run stopped: your partner's run refused your linkage terms \(.*\); agree on the terms through a terms update$/,
     );
     const [entry] = runHistoryEntries({ lastRun: stamped });
     expect(entry.failure).toBe("your partner's run refused your linkage terms");

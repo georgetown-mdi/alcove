@@ -50,12 +50,13 @@ const CONSOLE_REFUSAL_COPY: Record<PartnerCertificateRefusalKind, string> = {
     "'alcove fingerprint' and send you the identity it produces, then run " +
     "the exchange again.",
   unauthorizedIdentity:
-    "Your partner's signing certificate does not cover the name they agreed " +
-    "terms under, so nothing was pinned, and the exchange stopped and sent " +
-    "none of your data: a certificate bound to another party could never sign " +
-    "a receipt this exchange would accept. Ask your partner to present the " +
-    "certificate bound to the name they agree terms under, or to agree terms " +
-    "under the name their certificate holds, then run the exchange again.",
+    "Your partner's signing certificate does not cover the name under which " +
+    "they agreed on the terms, so nothing was pinned, and the exchange stopped " +
+    "and sent none of your data: a certificate bound to another party could " +
+    "never sign a receipt this exchange would accept. Ask your partner to " +
+    "present the certificate bound to the name under which they agree on the " +
+    "terms, or to agree on terms under the name their certificate holds, then " +
+    "run the exchange again.",
   divergent:
     "Your partner presented a signing certificate that is not the one you " +
     "pinned, so the exchange stopped and sent none of your data, and the " +

@@ -2785,7 +2785,7 @@ export const TERMS_PROPOSAL_REFUSAL =
 export const TERMS_CHANGE_REFUSAL =
   "Your partner's linkage terms differ from the terms this run was given, " +
   "so it stopped before any linkage key or data moved. Review the change " +
-  "below, agree the terms with your partner, and start over.";
+  "below, agree on the terms with your partner, and start over.";
 
 /**
  * Replace the CLI's refusal of a partner terms change it wrote as a proposal,

@@ -636,7 +636,7 @@ file, and each party provisions its own `.alcove.key` from the code:
 - **The three provisioning paths.** An offline `alcove invite` writes the
   inviter's key file (secret plus expiry), while an online `invite` writes it
   only at the terms exchange that follows the partner's handshake, once the
-  terms are agreed, holding the rotated token with no expiry; `alcove accept`
+  terms are agreed on, holding the rotated token with no expiry; `alcove accept`
   writes the acceptor's copy (secret, with the invitation
   expiry stripped); and
   `alcove exchange --invitation CODE` provisions the key file for the party that

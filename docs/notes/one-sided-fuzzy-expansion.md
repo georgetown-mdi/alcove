@@ -26,7 +26,7 @@ Symmetry is the intuitive reading and it is wrong on three counts.
 
 None of this applies to the deletion neighbourhood, where the second party's expansion is what makes the first party's reach anything at all.
 
-## Which party, and why that does not have to be agreed
+## Which party, and why that does not have to be agreed on
 
 The expanding party is the resolved PSI receiver -- the role both parties already determine from the record counts they exchanged, with no new negotiation, no term, and no wire byte. The `swap` directive has been keyed on that same role since it was specified, so this extends a precedent rather than setting one.
 

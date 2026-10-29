@@ -516,8 +516,8 @@ export const PARTNER_CERTIFICATE_MISMATCH_OBSERVED = {
   unpinned: false,
   /** The presented certificate's self-signature does not verify. */
   unverified: true,
-  /** The presented certificate does not authorize the identity its holder
-   * agreed terms under. */
+  /** The presented certificate does not authorize the identity under which
+   * its holder agreed on the terms. */
   unauthorizedIdentity: true,
   /** The presented certificate's fingerprint is not the pinned one. */
   divergent: true,

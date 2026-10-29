@@ -302,7 +302,7 @@ export async function recordManagedExchangeTermsProposal(
 
 /**
  * Drop the pending terms proposal for a record, leaving every other sibling
- * marker as it is: the operator applied or declined it, or a later run agreed
+ * marker as it is: the operator applied or declined it, or a later run agreed on
  * terms with the partner and so has nothing left to take on.
  */
 export async function clearManagedExchangeTermsProposal(

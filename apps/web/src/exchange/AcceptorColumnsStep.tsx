@@ -358,8 +358,8 @@ export function AcceptorColumnsStep({
               Some linkage keys cannot be satisfied by your columns, and an
               exchange runs the keys both parties agreed on - so it will refuse
               to run on these terms with this file. Map more columns below to
-              cover the missing keys, or agree terms with your partner over the
-              keys both files can supply.
+              cover the missing keys, or agree on terms with your partner over
+              the keys both files can supply.
               {verdict.delimiterRemedy !== "" && ` ${verdict.delimiterRemedy}`}
             </Alert>
           ) : (

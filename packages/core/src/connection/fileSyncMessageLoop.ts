@@ -167,7 +167,7 @@ export function resolveUnexpectedFilesPolicy(options: {
 // True when `name` is a file legitimately present during the message loop
 // (Phase 2), judged against the two known party ids and the filename grammar.
 // Recognized: an in-flight `temp-<uuidv4()>.tmp` write; the two hellos
-// rendezvous agreed (`helloNames`; none before it commits) and the lock
+// rendezvous agreed on (`helloNames`; none before it commits) and the lock
 // tiebreaker, matched by exact name (each has exactly one legal form); and,
 // for the unbounded-name cases, anything matching the terminal grammar
 // token -- a message byte count (own writes only; a peer message is taken by

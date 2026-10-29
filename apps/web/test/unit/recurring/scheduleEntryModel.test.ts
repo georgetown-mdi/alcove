@@ -66,7 +66,7 @@ describe("what an entry has to hold", () => {
 
   test("a partial date or time blocks the save rather than resolving to something", () => {
     // A date or time input reports a partial value while it is being edited, and
-    // resolving one would write a cadence nobody agreed.
+    // resolving one would write a cadence nobody agreed on.
     for (const fields of [
       entry({ firstWindowDate: "" }),
       entry({ firstWindowDate: "2026-07" }),
@@ -240,7 +240,7 @@ describe("resolving a local cadence to its stored anchor", () => {
 describe("the window an entered cadence plans first", () => {
   test("a cadence anchored in the past plans a live window, not the anchor's", () => {
     // Writing the anchor's own window would hand the catch-up walk every window
-    // that elapsed before the operator agreed the cadence, and count each one a
+    // that elapsed before the operator agreed on the cadence, and count each one a
     // miss the partnership never had.
     const schedule = withTimeZone("UTC", () =>
       buildScheduleFromEntry(
@@ -270,7 +270,7 @@ describe("the window an entered cadence plans first", () => {
   });
 
   test("a cadence entered while a window is open plans that window, not the next", () => {
-    // The operator can agree a cadence mid-window and have this run meet it.
+    // The operator can agree on a cadence mid-window and have this run meet it.
     const schedule = withTimeZone("UTC", () =>
       buildScheduleFromEntry(
         entry({ firstWindowDate: "2026-07-14", firstWindowTime: "11:00" }),
@@ -386,7 +386,7 @@ describe("a stored schedule the entry form did not write", () => {
   test("a width below the entry floor displays as itself, not silently rewritten", () => {
     // An imported record can hold a width the schema admits and entry does not.
     // Showing it is what lets the operator see it; rewriting it would change what
-    // their partner agreed without telling them.
+    // their partner agreed on without telling them.
     const stored = belowTheEntryFloor();
     const fields = scheduleEntryFieldsFrom(stored);
     expect(fields.windowHours).toBe(60 / 3600);
@@ -426,7 +426,7 @@ describe("a stored schedule the entry form did not write", () => {
   test("a width the hour field cannot express displays exactly, never rounded", () => {
     // The rounded reading is the silent rewrite this guards: shown as 2, a save
     // of any other field writes 7200 seconds over the 5400 the partnership
-    // agreed.
+    // agreed on.
     const stored = finerThanTheFields();
     const fields = scheduleEntryFieldsFrom(stored);
     expect(fields.windowHours).toBe(1.5);

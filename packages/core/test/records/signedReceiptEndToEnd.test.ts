@@ -264,7 +264,7 @@ test("an unnamed party refuses at terms agreement rather than signing", async ()
   // A certificate is trusted by the identity its holder used in the AGREED TERMS,
   // and `linkage_terms.identity` is optional -- so a party that named itself none
   // has nothing for the pin to authorize. Both sides refuse the moment the terms
-  // are agreed, and each refusal names the side that is unnamed rather than
+  // are agreed on, and each refusal names the side that is unnamed rather than
   // reaching for a substitute.
   const [connInitiator, connResponder] = createMessagePipe();
   const unnamed = prepareForExchange(
@@ -463,7 +463,7 @@ describe("a signing party refuses an unnamed partner before its own data moves",
 
 describe("a fingerprint-pin mismatch ends the run at the terms exchange", () => {
   // The certificate rides the terms envelope, so a partner certificate that is
-  // not the pinned one is refused the moment the terms are agreed -- before the
+  // not the pinned one is refused the moment the terms are agreed on -- before the
   // bootstrap frame, any linkage key, and any payload row. Driven from both
   // handshake seats: the value compared is fixed the moment the partner's terms
   // arrive, so neither role reaches the rounds.
@@ -727,8 +727,8 @@ describe("the receipt bindings held at the signature swap", () => {
       {
         decision: "abort",
         abortReasons: [
-          "a signing certificate does not authorize the identity its holder " +
-            "agreed terms under",
+          "a signing certificate does not authorize the identity under which its " +
+            "holder agreed on the terms",
         ],
       },
     ]);

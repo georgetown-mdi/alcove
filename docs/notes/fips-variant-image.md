@@ -407,7 +407,7 @@ The ECDH leg is the whole handshake chain rather than the agreement alone: an
 ephemeral keygen, a raw export of the share that goes on the wire, a raw import
 of the peer's, and then `deriveBits`. `kex.ts` pins the 65-byte SEC 1 Ver. 2.0
 uncompressed encoding and folds the wire bytes into the transcript, so a
-provider that agreed a key while exporting or admitting a different encoding of
+provider that agreed on a key while exporting or admitting a different encoding of
 the same point would break the handshake as completely as one that refused the
 curve.
 

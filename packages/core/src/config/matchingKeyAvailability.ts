@@ -43,7 +43,7 @@ export const MATCHING_KEY_CONFIG_REFUSALS: Record<
   "single-pass":
     "include_matching_key is set on a single-pass exchange, where the party " +
     "that sends its records first is not told which key matched. Remove " +
-    "include_matching_key, or agree the cascade linkage strategy with your " +
+    "include_matching_key, or agree on the cascade linkage strategy with your " +
     "partner.",
   "no-output":
     "include_matching_key is set, but by your linkage terms you receive no " +

@@ -95,7 +95,7 @@ const NO_PARTY_EXPECTS_OUTPUT_REFUSAL =
   "Neither you nor your partner expects a result from these terms, so this " +
   "run stops at the terms exchange, before any linkage data is sent. Set " +
   "expects_output to true if the result is yours to receive, or " +
-  "share_with_partner to true if it is your partner's, and agree the " +
+  "share_with_partner to true if it is your partner's, and agree on the " +
   "matching value with your partner.";
 
 /**

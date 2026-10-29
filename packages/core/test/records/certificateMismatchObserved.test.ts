@@ -162,8 +162,8 @@ describe("a record states the certificate mismatch its run observed", () => {
 
   test("a pinned certificate that does not authorize the agreed identity", async () => {
     // The pin and the self-signature both pass; the certificate is bound to a
-    // name other than the one its holder agreed terms under, so it is not the
-    // identity this run pinned for that partner.
+    // name other than the one under which its holder agreed on the terms, so
+    // it is not the identity this run pinned for that partner.
     const refusal = await swapRefusal(
       await receiptInputs(identityA, fingerprintB, "Party B"),
       await receiptInputs(identityB, fingerprintA, "Not Party A"),

@@ -616,9 +616,9 @@ async function refuseEachDial(
 test.each([
   [4003, false, "holds no key for this exchange", "alcove enroll-relay"],
   [4006, false, "already holds a connection in this side's role", "role"],
-  [4000, true, "partner left the WebSocket relay", "Agree a time"],
-  [1000, true, "partner left the WebSocket relay", "Agree a time"],
-  [4009, true, "within its idle limit", "Agree a time"],
+  [4000, true, "partner left the WebSocket relay", "Agree on a time"],
+  [1000, true, "partner left the WebSocket relay", "Agree on a time"],
+  [4009, true, "within its idle limit", "Agree on a time"],
   [
     1006,
     false,

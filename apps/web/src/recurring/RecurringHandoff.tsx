@@ -188,7 +188,7 @@ function ScheduleLines({ lines }: { lines: ShownRunLines }) {
   return (
     <>
       <h3 className={styles.handoffHeading}>
-        Schedule it (set the time you agreed with your partner)
+        Schedule it (set the time you agreed on with your partner)
       </h3>
       {cronCommand !== undefined && (
         <>
