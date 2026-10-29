@@ -347,9 +347,9 @@ describe("the _id rule on the lookup key", () => {
     ]);
   });
 
-  test("MemberID, with no separator, is not an identifier", () => {
-    expect(inferMetadata(["MemberID"], [], { mode: "direct" })).toEqual([
-      { name: "MemberID", type: "other", role: "payload", isPayload: true },
+  test("CaseID, with no separator, is not an identifier", () => {
+    expect(inferMetadata(["CaseID"], [], { mode: "direct" })).toEqual([
+      { name: "CaseID", type: "other", role: "payload", isPayload: true },
     ]);
   });
 });

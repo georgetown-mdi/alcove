@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import * as path from "node:path";
 
 import { afterEach, expect, test, vi } from "vitest";
+import { disclosedColumnNames, inferMetadata } from "@alcove/core";
 
 import { buildCli } from "../../src/cliParser";
 import { ZERO_SETUP_OPTION_GROUPS } from "../../src/commands/zeroSetup";
@@ -233,6 +234,43 @@ test.each(COMMAND_NAMES)(
     expect(description).not.toMatch(/^(Positionals|Options|Commands):/);
   },
 );
+
+test("top-level help states the id rule, and inference holds back each name it states", async () => {
+  const { stdout } = await parse(["--help"]);
+  const flat = stdout.replace(/\s+/g, " ");
+  expect(flat).toContain(
+    "An id column is held back too: one named id, identifier, MRN, " +
+      "ClientID, PersonID, PersonalID, PatientID, RecordID, or MemberID, or " +
+      "one ending in _id, number, or no as a word of its own (case_number, " +
+      "RecordNo), except the number of a phone or a linkage key (phone_no, " +
+      "ssn_number). A space, hyphen, or dot in a name counts as _.",
+  );
+  expect(flat).not.toContain("such as id, case_id, ClientID");
+  const named = [
+    "id",
+    "identifier",
+    "MRN",
+    "ClientID",
+    "PersonID",
+    "PersonalID",
+    "PatientID",
+    "RecordID",
+    "MemberID",
+    "case_id",
+    "Member ID",
+    "case_number",
+    "RecordNo",
+  ];
+  const metadata = inferMetadata([...named, "phone_no", "ssn_number"], [], {
+    mode: "direct",
+  });
+  expect(
+    metadata
+      .filter((column) => column.type === "identifier")
+      .map((column) => column.name),
+  ).toEqual(named);
+  expect(disclosedColumnNames(metadata)).toEqual(["phone_no", "ssn_number"]);
+});
 
 test("`--retain-files` help states that it turns the options it needs on", async () => {
   for (const command of [[], ["exchange"], ["invite"], ["accept"]]) {

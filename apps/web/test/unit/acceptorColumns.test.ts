@@ -201,6 +201,13 @@ describe("acceptor columns editor state", () => {
     "ClientID",
     "PersonID",
     "PersonalID",
+    "MRN",
+    "PatientID",
+    "RecordID",
+    "MemberID",
+    "case_number",
+    "record_no",
+    "RecordNo",
   ])(
     "an inferred %j column starts as the record identifier, not sent, and a second id column starts ignored",
     (name) => {

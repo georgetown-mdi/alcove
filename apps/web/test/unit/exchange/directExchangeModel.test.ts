@@ -222,6 +222,13 @@ describe("previewInferredTerms", () => {
     "ClientID",
     "PersonID",
     "PersonalID",
+    "MRN",
+    "PatientID",
+    "RecordID",
+    "MemberID",
+    "case_number",
+    "record_no",
+    "RecordNo",
   ])(
     "the preview declares an id column %j and a second id column, sending neither",
     (name) => {
@@ -270,14 +277,38 @@ describe("previewInferredTerms", () => {
       "a header Alcove does not recognize, such as E-mail",
     );
     expect(DIRECT_RECOGNIZED_COLUMNS_NOTICE).not.toMatch(/ignored/);
-    expect(
-      disclosedColumnNames(
-        inferMetadata(["id", "case_id", "ClientID"], [], { mode: "direct" }),
-      ),
-    ).toEqual([]);
+  });
+
+  test("every id name the confirm notice states is held back, and its exception is sent", () => {
+    const named = [
+      "id",
+      "identifier",
+      "MRN",
+      "ClientID",
+      "PersonID",
+      "PersonalID",
+      "PatientID",
+      "RecordID",
+      "MemberID",
+      "case_number",
+      "RecordNo",
+    ];
     expect(DIRECT_RECOGNIZED_COLUMNS_NOTICE).toContain(
-      "An id column Alcove recognizes, such as id, case_id, or ClientID, is never sent",
+      "An id column is never sent either: a header named id, identifier, " +
+        "MRN, ClientID, PersonID, PersonalID, PatientID, RecordID, or " +
+        "MemberID, or one ending in _id, number, or no as a word of its own, " +
+        "such as case_number or RecordNo, except the number of a phone or a " +
+        "linkage key, such as phone_no.",
     );
+    const metadata = inferMetadata([...named, "phone_no"], [], {
+      mode: "direct",
+    });
+    expect(
+      metadata
+        .filter((column) => column.type === "identifier")
+        .map((column) => column.name),
+    ).toEqual(named);
+    expect(disclosedColumnNames(metadata)).toEqual(["phone_no"]);
   });
 
   test("names the rule selection in core's words, as the CLI display does", () => {

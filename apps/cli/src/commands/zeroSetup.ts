@@ -124,12 +124,16 @@ export const QUICK_EXCHANGE_USAGE =
   "is not a linkage key or an id column. Columns whose names Alcove\n" +
   "recognizes as linkage keys (such as first_name, date_of_birth, ssn,\n" +
   "phone, email, zip) are never sent: the ones a built-in key uses are\n" +
-  "matched on and the rest are held back. Columns it recognizes as ids\n" +
-  "(such as id, case_id, ClientID) are held back too. A column under\n" +
-  "another name is sent. The display shown before the run lists the\n" +
-  "columns it sends and the ones it holds back. Each step waits up to\n" +
-  "one poll interval (--polling-frequency), so even a small practice\n" +
-  "run takes a minute or more.";
+  "matched on and the rest are held back. An id column is held back\n" +
+  "too: one named id, identifier, MRN, ClientID, PersonID, PersonalID,\n" +
+  "PatientID, RecordID, or MemberID, or one ending in _id, number, or\n" +
+  "no as a word of its own (case_number, RecordNo), except the number\n" +
+  "of a phone or a linkage key (phone_no, ssn_number). A space, hyphen,\n" +
+  "or dot in a name counts as _. A column under another name is sent.\n" +
+  "The display shown before the run lists the columns it sends and the\n" +
+  "ones it holds back. Each step waits up to one poll interval\n" +
+  "(--polling-frequency), so even a small practice run takes a minute\n" +
+  "or more.";
 
 /** Logged when a quick exchange starts. */
 export const QUICK_EXCHANGE_TRUST_NOTICE =
@@ -160,10 +164,14 @@ export function builder(cmd: Argv): Argv {
               "linkage key or an id column. Columns whose names Alcove\n" +
               "recognizes as linkage keys (such as first_name, date_of_birth, ssn,\n" +
               "phone, email, zip) are never sent: the ones a built-in key uses\n" +
-              "are matched on and the rest are held back. Columns it recognizes\n" +
-              "as ids (such as id, case_id, ClientID) are held back too. A column\n" +
-              "under another name is sent. The display shown before the run lists\n" +
-              "the columns it sends and the ones it holds back. To choose the\n" +
+              "are matched on and the rest are held back. An id column is held\n" +
+              "back too: one named id, identifier, MRN, ClientID, PersonID,\n" +
+              "PersonalID, PatientID, RecordID, or MemberID, or one ending in _id,\n" +
+              "number, or no as a word of its own (case_number, RecordNo), except\n" +
+              "the number of a phone or a linkage key (phone_no, ssn_number). A\n" +
+              "space, hyphen, or dot in a name counts as _. A column under another\n" +
+              "name is sent. The display shown before the run lists the columns\n" +
+              "it sends and the ones it holds back. To choose the\n" +
               "columns sent, write a configuration with\n" +
               "'alcove init URL INPUT_FILE' and run 'alcove exchange'. Each step\n" +
               "waits up to one poll interval (--polling-frequency), so even a\n" +

@@ -48,14 +48,13 @@ import type {
 } from "@alcove/core";
 
 /**
- * The heading the display leads with. It states what has been sent so far and
- * nothing about connection order: this display runs before an unpinned SFTP
- * configuration establishes first-use host-key trust over a credential-free
- * probe, so a heading promising that nothing has connected would go stale
- * moments later.
+ * The heading the display leads with. It states nothing about timing: the
+ * display asks nothing and the run goes on without a pause, so a note that
+ * nothing has been sent yet would suggest a chance to stop that the run does
+ * not offer, and one promising that nothing has connected would go stale once
+ * an unpinned SFTP configuration probes for first-use host-key trust.
  */
-const DISCLOSURE_HEADING =
-  "What this exchange sends and matches on. Nothing has been sent yet:";
+const DISCLOSURE_HEADING = "What this exchange sends and matches on:";
 
 /**
  * The line the display ends with on a file-sync run writing without

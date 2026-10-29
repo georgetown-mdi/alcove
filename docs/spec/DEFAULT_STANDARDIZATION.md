@@ -2098,9 +2098,21 @@ block, and an invitation composed from an input file.
 
 - A name whose lookup key is absent from the table but ends in `_id`, such as
   `case_id` or `Member ID`, infers `type: identifier`.
-  So does a name whose lookup key is `clientid`, `personid`, or `personalid`,
-  such as `ClientID` or the HMIS CSV export's `PersonalID`.
+  So does a name whose lookup key is `clientid`, `personid`, `personalid`,
+  `patientid`, `recordid`, `memberid`, or `mrn`, such as `ClientID`, the HMIS
+  CSV export's `PersonalID`, or `MRN`.
+  So does a record number: a name whose lookup key ends in `_number`, `_no`, or
+  `number` after at least one other character, such as `case_number`,
+  `Record No`, or `CaseNumber`, or whose header ends in a lowercase letter
+  followed by `No`, such as `RecordNo`.
   In both modes it infers what the table's `identifier` row infers.
+  A header ending in a lowercase `no`, such as `Casino`, is not a record number.
+  Nor is a name whose lookup key, before the suffix and with `_` removed, ends
+  in a table name of any type but `identifier`, in the part of such a name
+  before its own suffix (`phone` of `phone_number`, `socialsecurity` of
+  `social_security_number`), or in `mobile`, `cell`, `fax`, `tel`, or `yes`:
+  `phone_no`, `Home Phone Number`, `SocialSecurityNumber`, and `yes_no` infer
+  as any other name absent from the table.
 - Any other name absent from the table infers nothing when declared-only, and
   `type: other`, `role: payload`, `is_payload: true` in direct mode.
 

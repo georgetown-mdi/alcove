@@ -55,8 +55,7 @@ const TEST_CONNECTION: ProtocolConnectionConfig = {
   path: "/tmp/alcove-test-exchange",
 };
 
-const DISCLOSURE_HEADING =
-  "What this exchange sends and matches on. Nothing has been sent yet:";
+const DISCLOSURE_HEADING = "What this exchange sends and matches on:";
 
 /** Terms of the shape two parties author from their own files: no invitation
  * between them, so nothing here was adopted from a partner's proposal. */

@@ -15,6 +15,7 @@ import { UsageError } from "../../src/errors";
 import { buildOutputTable } from "../../src/payloadExchange";
 
 import type { Metadata } from "../../src/config/metadata";
+import type { SemanticType } from "../../src/types";
 
 // --- inferMetadata: linkage columns ------------------------------------------
 
@@ -246,16 +247,173 @@ test("PersonalID is the identifier, unsent, by default", () => {
 
 test("other no-separator id spellings are not identifiers", () => {
   expect(
-    inferMetadataForEveryColumn(["memberid", "caseid", "personalidx"], []).map(
-      (column) => column.type,
-    ),
-  ).toEqual(["other", "other", "other"]);
+    inferMetadataForEveryColumn(
+      ["caseid", "personalidx", "patientids", "mrns"],
+      [],
+    ).map((column) => column.type),
+  ).toEqual(["other", "other", "other", "other"]);
 });
 
-test("ClientID, PersonID and PersonalID are not entries of the alias table", () => {
-  for (const key of ["clientid", "personid", "personalid"])
+test("the named identifier spellings are not entries of the alias table", () => {
+  for (const key of [
+    "clientid",
+    "personid",
+    "personalid",
+    "patientid",
+    "recordid",
+    "memberid",
+    "mrn",
+  ])
     expect(Object.hasOwn(ALIAS_TYPE_META_MAP, key)).toBe(false);
 });
+
+// --- inferMetadata: MRN, run-together ids and record numbers ----------------
+
+const RECORD_IDENTIFIER_SPELLINGS = [
+  "MRN",
+  "mrn",
+  " Mrn ",
+  "PatientID",
+  "patientid",
+  "RecordID",
+  "recordId",
+  "MemberID",
+  "MEMBERID",
+  "case_number",
+  "Case Number",
+  "CaseNumber",
+  "casenumber",
+  "CASE_NUMBER",
+  "record_number",
+  "RecordNumber",
+  "record_no",
+  "Record No",
+  "Record-No",
+  "RECORD_NO",
+  "RecordNo",
+  "recordNo",
+  "CaseNo",
+  "case_no",
+  "account_number",
+  "PolicyNo",
+];
+
+describe.each(["declaredOnly", "direct"] as const)(
+  "%s mode: a record identifier spelling infers as a client_id column does",
+  (mode) => {
+    const inferredAlone = (name: string) =>
+      inferMetadataForEveryColumn([name], [], { mode }).map((column) => ({
+        ...column,
+        name: "client_id",
+      }));
+
+    test.each(RECORD_IDENTIFIER_SPELLINGS)("%j", (name) => {
+      expect(inferredAlone(name)).toEqual(inferredAlone("client_id"));
+      const metadata = inferMetadata([name, "first_name", "notes"], [], {
+        mode,
+      });
+      expect(metadata[0]).toEqual({
+        name,
+        type: "identifier",
+        role: "identifier",
+        isPayload: false,
+      });
+      expect(disclosedColumnNames(metadata)).toEqual(
+        mode === "direct" ? ["notes"] : [],
+      );
+    });
+  },
+);
+
+test.each(RECORD_IDENTIFIER_SPELLINGS)(
+  "declared-only and direct inference type %j the same way",
+  (name) => {
+    const typesIn = (mode: "declaredOnly" | "direct") =>
+      inferMetadataForEveryColumn(["id", name], [], { mode }).map(
+        ({ type, role, isPayload }) => ({ type, role, isPayload }),
+      );
+    expect(typesIn("declaredOnly")).toEqual(typesIn("direct"));
+    expect(typesIn("direct")[1]).toEqual({
+      type: "identifier",
+      role: "ignored",
+      isPayload: false,
+    });
+  },
+);
+
+// A name ending the same way that is not a record number keeps the inference it
+// would have without the record-number rule: a listed name its type, any other
+// name type `other`, sent under direct inference.
+const NUMBER_SUFFIX_FALSE_MATCHES: Array<[name: string, type: SemanticType]> = [
+  ["phone_number", "phone_number"],
+  ["Phone Number", "phone_number"],
+  ["PhoneNumber", "phone_number"],
+  ["social_security_number", "ssn"],
+  ["Social Security Number", "ssn"],
+  ["street_no", "street_number"],
+  ["StreetNumber", "street_number"],
+  ["house_number", "street_number"],
+  ["house_no", "street_number"],
+  ["address_number", "street_number"],
+  ["unit_no", "unit"],
+  ["unit_number", "unit"],
+  ["apartment_number", "unit"],
+  ["apt_no", "unit"],
+  ["apt_number", "unit"],
+  ["phone_no", "other"],
+  ["PhoneNo", "other"],
+  ["Home Phone Number", "other"],
+  ["HomePhoneNumber", "other"],
+  ["telephone_number", "other"],
+  ["mobile_number", "other"],
+  ["CellNumber", "other"],
+  ["fax_no", "other"],
+  ["tel_no", "other"],
+  ["SocialSecurityNumber", "other"],
+  ["social_security_no", "other"],
+  ["ssn_number", "other"],
+  ["SSN No", "other"],
+  ["StreetNo", "other"],
+  ["HouseNo", "other"],
+  ["AptNo", "other"],
+  ["zip_no", "other"],
+  ["Casino", "other"],
+  ["casino", "other"],
+  ["CASINO", "other"],
+  ["Piano", "other"],
+  ["volcano", "other"],
+  ["yes_no", "other"],
+  ["Consent Yes No", "other"],
+  ["number", "other"],
+  ["Number", "other"],
+  ["No", "other"],
+  ["no", "other"],
+  ["_number", "other"],
+  ["_no", "other"],
+];
+
+describe.each(["declaredOnly", "direct"] as const)(
+  "%s mode: a name ending in number or no that is not a record number keeps its inference",
+  (mode) => {
+    test.each(NUMBER_SUFFIX_FALSE_MATCHES)("%j", (name, type) => {
+      const [column] = inferMetadataForEveryColumn([name], [], { mode });
+      if (type !== "other") {
+        expect(column).toEqual({
+          name,
+          type,
+          role: "linkage",
+          isPayload: false,
+        });
+        return;
+      }
+      expect(column).toEqual(
+        mode === "direct"
+          ? { name, type: "other", role: "payload", isPayload: true }
+          : { name, type: "other", role: "ignored", isPayload: false },
+      );
+    });
+  },
+);
 
 test("two canonical identifier columns: only the first is the identifier", () => {
   expect(inferMetadata(["identifier", "id"], [])).toEqual([

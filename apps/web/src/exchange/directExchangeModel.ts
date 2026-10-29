@@ -132,13 +132,15 @@ export const DIRECT_DEDUPLICATE_SIDE_NOTICE =
 export const DIRECT_RECOGNIZED_COLUMNS_NOTICE =
   "A column whose header Alcove recognizes as a linkage key, such as " +
   "first_name, date_of_birth, ssn, phone, email, or zip, is never sent: it is " +
-  "matched on or kept back. An id column Alcove recognizes, such as id, " +
-  "case_id, or ClientID, is never sent either. Letter case and spaces at " +
-  "either end of a header " +
-  "do not matter, and a space, hyphen, or dot between words counts the same " +
-  "as an underscore, so First Name and Social Security Number are " +
-  "recognized. Every other column is sent, including a header Alcove does " +
-  "not recognize, such as E-mail.";
+  "matched on or kept back. An id column is never sent either: a header " +
+  "named id, identifier, MRN, ClientID, PersonID, PersonalID, PatientID, " +
+  "RecordID, or MemberID, or one ending in _id, number, or no as a word of " +
+  "its own, such as case_number or RecordNo, except the number of a phone " +
+  "or a linkage key, such as phone_no. Letter case and spaces at either end " +
+  "of a header do not matter, and a space, hyphen, or dot between words " +
+  "counts the same as an underscore, so First Name and Social Security " +
+  "Number are recognized. Every other column is sent, including a header " +
+  "Alcove does not recognize, such as E-mail.";
 
 /** The rules a quick exchange runs, worded as the CLI's display before the run
  * words them. */
