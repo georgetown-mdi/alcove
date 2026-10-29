@@ -56,6 +56,7 @@ export type {
 export {
   classifyFailure,
   firstLinkBehindTransportWraps,
+  isPartnerNextSecretStoreFailure,
   isPartnerProtocolRefusal,
   isTrustBoundaryFailure,
   olderVersionOf,
@@ -69,6 +70,7 @@ export type {
   PsiProgressReporter,
 } from "./psi/participant";
 export {
+  NEXT_SECRET_STORE_FAILED_ABORT_REASON,
   PSI_SET_REFUSED_ABORT_REASON,
   PSI_SET_TOO_LARGE_ABORT_REASON,
 } from "./partnerAbortFrame";

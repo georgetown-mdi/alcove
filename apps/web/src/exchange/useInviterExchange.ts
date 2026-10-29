@@ -83,6 +83,7 @@ import { whenDiagnostic } from "@utils/diagnostics";
 
 import { undeclaredColumnsRunNotice } from "@psi/runWarnings";
 
+import { PartnerSecretNotSavedError } from "@psi/partnerSecretNotSaved";
 import { buildRunOutputs } from "@psi/runOutputs";
 import { invitationUsable } from "@psi/formatting";
 import { selectExchangeDriver } from "@psi/exchangeDriverSelection";
@@ -92,6 +93,8 @@ import {
   PARTNER_REFUSED_SET_PROBLEM,
   PARTNER_REFUSED_SET_REMEDY,
   PARTNER_REFUSED_SET_TITLE,
+  PARTNER_SECRET_NOT_SAVED_PROBLEM,
+  PARTNER_SECRET_NOT_SAVED_TITLE,
   PARTNER_SET_TOO_LARGE_PROBLEM,
   PARTNER_SET_TOO_LARGE_REMEDY,
   PARTNER_SET_TOO_LARGE_TITLE,
@@ -297,6 +300,22 @@ export const TERMS_DIFFERENCE_REMEDY: Record<ExchangeSeat, string> = {
   acceptor:
     "Ask your partner for a new invitation with the terms you agree on, " +
     "then choose Start over with a fresh invitation to accept it.",
+};
+
+/**
+ * The next step after a partner could not save the new secret, by seat: a
+ * fresh invitation, sent by the inviter and asked for by the acceptor. Each
+ * names the control its seat's alert offers.
+ *
+ * @internal exported for testing
+ */
+export const PARTNER_SECRET_NOT_SAVED_REMEDY: Record<ExchangeSeat, string> = {
+  inviter:
+    "Choose Start over with a fresh invitation and send your partner the new " +
+    "invitation.",
+  acceptor:
+    "Ask your partner for a new invitation, then choose Start over with a " +
+    "fresh invitation to accept it.",
 };
 
 function failureContentFor(
@@ -644,6 +663,19 @@ function failureContentFor(
       category: "config",
       title: PARTNER_SET_TOO_LARGE_TITLE,
       message: sanitizedFailureMessage(error),
+      settingsCannotResolve: true,
+    };
+  // The partner could not save the new secret this side took, so the two hold
+  // different secrets. Classified `config` with no settings change to make: a
+  // retry on this invitation cannot reconnect them, and a fresh one can.
+  if (error instanceof PartnerSecretNotSavedError)
+    return {
+      category: "config",
+      title: PARTNER_SECRET_NOT_SAVED_TITLE,
+      message:
+        `The exchange stopped because ${PARTNER_SECRET_NOT_SAVED_PROBLEM}. ` +
+        "Running it again on this invitation cannot reconnect you. " +
+        PARTNER_SECRET_NOT_SAVED_REMEDY[seat],
       settingsCannotResolve: true,
     };
   if (error instanceof PeerAbortError) {

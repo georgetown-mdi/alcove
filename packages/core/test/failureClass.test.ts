@@ -12,9 +12,14 @@ import {
 import {
   classifyFailure,
   firstLinkBehindTransportWraps,
+  isPartnerNextSecretStoreFailure,
   isTrustBoundaryFailure,
   type FailureClass,
 } from "../src/failureClass";
+import {
+  NEXT_SECRET_STORE_FAILED_ABORT_REASON,
+  PSI_SET_TOO_LARGE_ABORT_REASON,
+} from "../src/partnerAbortFrame";
 import { ReceiptVerificationError } from "../src/records/signedReceipt";
 import { MAX_ERROR_CAUSE_DEPTH } from "../src/utils/sanitizeErrorForDisplay";
 
@@ -184,5 +189,36 @@ describe("isTrustBoundaryFailure", () => {
         e instanceof ConnectionError && e.kind === "security",
       );
     }
+  });
+});
+
+describe("isPartnerNextSecretStoreFailure", () => {
+  const storeFailure = () =>
+    new PeerAbortError(undefined, NEXT_SECRET_STORE_FAILED_ABORT_REASON);
+
+  test("holds for the partner's store-failure abort, bare or behind transport wraps", () => {
+    expect(isPartnerNextSecretStoreFailure(storeFailure())).toBe(true);
+    expect(
+      isPartnerNextSecretStoreFailure(behindTransportWraps(2, storeFailure())),
+    ).toBe(true);
+  });
+
+  test.each([
+    [
+      "a round's abort reason",
+      () => new PeerAbortError(undefined, PSI_SET_TOO_LARGE_ABORT_REASON),
+    ],
+    ["an abort with no kept reason", () => new PeerAbortError()],
+    [
+      "another error holding the reason as its message",
+      () => new Error(NEXT_SECRET_STORE_FAILED_ABORT_REASON),
+    ],
+    [
+      "a security failure wrapping the abort",
+      () =>
+        new ConnectionError("tampered", "security", { cause: storeFailure() }),
+    ],
+  ])("does not hold for %s", (_name, err) => {
+    expect(isPartnerNextSecretStoreFailure(err())).toBe(false);
   });
 });

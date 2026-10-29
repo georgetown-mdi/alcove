@@ -12,6 +12,7 @@ import {
   UsageError,
 } from "./errors";
 import type { OlderVersionSide } from "./errors";
+import { NEXT_SECRET_STORE_FAILED_ABORT_REASON } from "./partnerAbortFrame";
 import { ReceiptVerificationError } from "./records/signedReceipt";
 import { MAX_ERROR_CAUSE_DEPTH } from "./utils/sanitizeErrorForDisplay";
 
@@ -100,6 +101,23 @@ export function isTrustBoundaryFailure(failureClass: FailureClass): boolean {
 export function isPartnerProtocolRefusal(err: unknown): boolean {
   return (
     firstLinkBehindTransportWraps(err) instanceof PartnerProtocolRefusalError
+  );
+}
+
+/**
+ * Whether `err` is the partner's abort stating that it could not save the next
+ * shared secret: {@link firstLinkBehindTransportWraps} of it is a
+ * {@link PeerAbortError} whose `partnerReason` is
+ * {@link NEXT_SECRET_STORE_FAILED_ABORT_REASON}. Only a responder sends it past
+ * the terms exchange, after the initiator stored, so a caller reads it as
+ * leaving the two parties on different secrets only where its own side stored
+ * the next one this run.
+ */
+export function isPartnerNextSecretStoreFailure(err: unknown): boolean {
+  const link = firstLinkBehindTransportWraps(err);
+  return (
+    link instanceof PeerAbortError &&
+    link.partnerReason === NEXT_SECRET_STORE_FAILED_ABORT_REASON
   );
 }
 

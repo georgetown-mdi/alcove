@@ -36,6 +36,7 @@ import {
   markStatesItsOwnNextStep,
   statesItsOwnNextStep,
   classifyFailure,
+  isPartnerNextSecretStoreFailure,
   isTrustBoundaryFailure,
   releasableTermsRotation,
 } from "@alcove/core";
@@ -1074,6 +1075,51 @@ const FIRST_STORE_SAVE_REMEDY =
   " Your partner did not save it. Fix the key file's location or " +
   "permissions, then run the same command again; if authentication fails on " +
   "that run, ask your partner for a new invitation.";
+
+/**
+ * What an initiator states ahead of its key file when the partner's abort
+ * says it could not save the next shared secret this side had saved.
+ */
+const PARTNER_SAVE_FAILURE_PREAMBLE =
+  "Your partner could not save the new shared secret, so the exchange " +
+  "stopped. This side had already saved it to ";
+
+/** What follows that key file: the two now hold different secrets. */
+const PARTNER_SAVE_FAILURE_REMEDY =
+  ", so you and your partner now hold different secrets, and running the " +
+  `exchange again cannot reconnect you. ${NEW_INVITATION_REMEDY} It is ` +
+  'described under "Out-of-sync tokens" in docs/CLI.md.';
+
+/**
+ * The failure an initiator reports in place of the partner's abort stating
+ * that it could not save the next shared secret
+ * ({@link isPartnerNextSecretStoreFailure}), where this side saved it: exit
+ * 77, as the responder's own failed save, since every later run fails
+ * authentication until a new invitation. `undefined` for every other failure,
+ * and where this side saved nothing, which report as themselves.
+ */
+function partnerSaveFailure(
+  err: unknown,
+  run: RunLifecycle,
+  keyFilePath: string | undefined,
+): Error | undefined {
+  if (
+    run.handshakeRole !== "initiator" ||
+    !run.tokenRotated ||
+    keyFilePath === undefined ||
+    !isPartnerNextSecretStoreFailure(err)
+  )
+    return undefined;
+  const message = messageWithOperatorText`${PARTNER_SAVE_FAILURE_PREAMBLE}${operatorSuppliedText(
+    keyFilePath,
+  )}${PARTNER_SAVE_FAILURE_REMEDY}`;
+  return markStatesItsOwnNextStep(
+    withExitCode(
+      keepOperatorSuppliedText(new Error(message.text), message),
+      AUTHENTICATION_FAILED_EXIT_CODE,
+    ),
+  );
+}
 
 /**
  * The run's authentication stage: run the key exchange, set the rotation the
@@ -2300,6 +2346,10 @@ export async function runProtocol(
       onAuthenticatedError: run.onAuthenticatedError,
     };
   } catch (err) {
+    // What the run reports and exits on. The partner's abort stays `err` for
+    // what reads the abort itself: the echo gate and the disclosed record.
+    const reported =
+      partnerSaveFailure(err, run, build.trimmedKeyFilePath) ?? err;
     markArrivalWait(err, arrivalWait);
     // Only the online invite and accept pass a post-authentication hook: their
     // configuration write.
@@ -2433,13 +2483,13 @@ export async function runProtocol(
     )
       log.error(BOTH_SWEPT_GUIDANCE);
 
-    const hintAlreadyEmitted = statesItsOwnNextStep(err);
+    const hintAlreadyEmitted = statesItsOwnNextStep(reported);
     const authenticationFailed =
-      exitCodeForError(err) === AUTHENTICATION_FAILED_EXIT_CODE;
+      exitCodeForError(reported) === AUTHENTICATION_FAILED_EXIT_CODE;
     const retryRuledOut =
       hintAlreadyEmitted ||
       authenticationFailed ||
-      fixedNextStep(err) !== undefined;
+      fixedNextStep(reported) !== undefined;
     run.rotation?.release();
     const standing = rotationStanding(run);
     // A responder that wrote its marker and then reached the terms exchange,
@@ -2531,7 +2581,7 @@ export async function runProtocol(
     if (run.signalReceived !== undefined) {
       log.error(
         `error in flight when ${run.signalReceived} arrived: ` +
-          sanitizeErrorForDisplay(err),
+          sanitizeErrorForDisplay(reported),
       );
       // The run was cut short by a signal and the process is exiting.
       // Preserve onAuthenticatedError so a hook failure recorded before
@@ -2566,7 +2616,7 @@ export async function runProtocol(
     // interrupt paths do, rather than propagating: it must not displace the
     // original fault.
     emitMetrics();
-    emit((e) => e.error(err, terminalPhase));
+    emit((e) => e.error(reported, terminalPhase));
     try {
       await doCleanup();
     } catch (cleanupErr: unknown) {
@@ -2583,7 +2633,7 @@ export async function runProtocol(
     // boundaries map their class to 76. The `output` category on the
     // terminal event stays the finer-grained discriminator for a
     // supervisor that reads fd 3, covering the whole stage either way.
-    throw err;
+    throw reported;
   } finally {
     await doCleanup();
   }

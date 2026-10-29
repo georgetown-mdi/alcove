@@ -57,6 +57,8 @@ import {
   isTrustBoundaryFailure,
 } from "@alcove/core";
 
+import { PartnerSecretNotSavedError } from "../partnerSecretNotSaved";
+
 import {
   DEFAULT_PEER_WAIT_TIMEOUT_MS,
   PartnerNoShowError,
@@ -720,7 +722,8 @@ function attemptProvesContact(
  * refused saved signaling address, an unusable input, a terms shortfall, a
  * refused disclosure, a relay key registration the registrar refused, a
  * failed rotation persist, a rotation the safety check refused over a
- * replaced secret, or a handshake that failed closed -- reproduces
+ * replaced secret, a partner that could not save the secret this side saved,
+ * or a handshake that failed closed -- reproduces
  * identically on the next attempt, so it ends the window's occupancy where it
  * happened. Such a refusal counts no partner miss on its own, but a window
  * that already found the partner absent still folds to `"missed"` (see
@@ -765,6 +768,7 @@ function managedScheduleWindowVerdict(
     error instanceof ManagedInputError ||
     error instanceof LinkageTermsUnsatisfiableError ||
     error instanceof ManagedExchangeSecretChangedError ||
+    error instanceof PartnerSecretNotSavedError ||
     (error instanceof ManagedRelayRegistrationError &&
       error.outcome.kind !== "unavailable")
   )

@@ -64,7 +64,10 @@ import {
   type MessageConnection,
 } from "./connection/messageConnection";
 import { boundedWireCertificateSchema } from "./records/signingIdentity";
-import { receiveAfterTerms } from "./partnerAbortFrame";
+import {
+  NEXT_SECRET_STORE_FAILED_ABORT_REASON,
+  receiveAfterTerms,
+} from "./partnerAbortFrame";
 
 import type { SigningCertificate } from "./records/signingIdentity";
 
@@ -514,13 +517,6 @@ export interface TermsChange {
  */
 export const SHARED_SECRET_EXPIRED_ABORT_REASON =
   "the partner's shared secret expired before the next one was saved";
-
-/**
- * The abort reason a party sends when its write of the next shared secret
- * failed. A fixed literal, as {@link SHARED_SECRET_EXPIRED_ABORT_REASON}.
- */
-export const NEXT_SECRET_STORE_FAILED_ABORT_REASON =
-  "the partner could not save the next shared secret";
 
 /**
  * The rotation an authenticated run makes at its terms exchange: the next

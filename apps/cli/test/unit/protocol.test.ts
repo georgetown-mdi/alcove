@@ -421,6 +421,8 @@ import {
   exchangeRecordFromFailure,
   exchangeRecordOwedButUnbuilt,
   AuthenticationError,
+  NEXT_SECRET_STORE_FAILED_ABORT_REASON,
+  PSI_SET_REFUSED_ABORT_REASON,
   PeerAbortError,
   ConnectionError,
   causeChainSome,
@@ -3513,6 +3515,106 @@ test.skipIf(process.platform === "win32")(
     expect(rotationLines()).toEqual([]);
     expect(fs.existsSync(keyFileA)).toBe(false);
     expect(loadKeyFile(keyFileB)).toEqual({ sharedSecret: TOKEN_A });
+  },
+  20_000,
+);
+
+test("a failed save on the responder: the initiator, which saved first, reports that its partner could not save the new secret, names a new invitation, and exits 77", async () => {
+  const keyFileA = path.join(tmpDir, "a.key");
+  const keyFileB = path.join(tmpDir, "b.key");
+  saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
+  saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+  mockState.unwritableKeyFilePath = keyFileB;
+  driveTermsExchange({
+    // The initiator stored, sent proceed, and read the responder's abort as
+    // its first frame past the terms exchange.
+    initiator: async (rotation, nextSecret) => {
+      await rotation.store(nextSecret);
+      throw new PeerAbortError(
+        undefined,
+        NEXT_SECRET_STORE_FAILED_ABORT_REASON,
+      );
+    },
+    responder: async (rotation, nextSecret) => {
+      rotation.partnerMayHoldNextSecret?.(true);
+      await rotation.store(nextSecret);
+    },
+  });
+
+  const [resultA, resultB] = await runResponderBThenInitiatorA(
+    keyFileA,
+    keyFileB,
+  );
+
+  expect(resultA.status).toBe("rejected");
+  expect(resultB.status).toBe("rejected");
+  const reason = (resultA as PromiseRejectedResult).reason as Error;
+  expect(reason).not.toBeInstanceOf(PeerAbortError);
+  expect(reason.message).toContain(
+    "Your partner could not save the new shared secret, so the exchange " +
+      "stopped. This side had already saved it to ",
+  );
+  expect(reason.message).toContain(
+    "so you and your partner now hold different secrets, and running the " +
+      "exchange again cannot reconnect you. Ask your partner for a new " +
+      "invitation, or create one with 'alcove invite' and have your partner " +
+      "accept it.",
+  );
+  expect(reason.message).not.toMatch(/retry|run the same command again/i);
+  expect(statesItsOwnNextStep(reason)).toBe(true);
+  expect(fixedNextStep(reason)).toBeUndefined();
+  expect(exitCodeForError(reason)).toBe(77);
+  // The responder's own failed save names the same remedy and exit.
+  expect(
+    exitCodeForError((resultB as PromiseRejectedResult).reason as Error),
+  ).toBe(77);
+  expect(rotationLines()).toEqual([]);
+  expect(loadKeyFile(keyFileA)?.sharedSecret).not.toBe(TOKEN_A);
+  expect(loadKeyFile(keyFileB)?.sharedSecret).toBe(TOKEN_A);
+}, 20_000);
+
+test.each([
+  [
+    "another abort reason, on an initiator that saved",
+    "initiator",
+    PSI_SET_REFUSED_ABORT_REASON,
+  ],
+  [
+    "the store-failure reason, on a responder",
+    "responder",
+    NEXT_SECRET_STORE_FAILED_ABORT_REASON,
+  ],
+] as const)(
+  "a partner abort with %s reads as before: the partner stopped the exchange, exit 76",
+  async (_case, aborted, partnerReason) => {
+    const keyFileA = path.join(tmpDir, "a.key");
+    const keyFileB = path.join(tmpDir, "b.key");
+    saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
+    saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+    driveTermsExchange({
+      initiator: async (rotation, nextSecret) => {
+        await rotation.store(nextSecret);
+        if (aborted === "initiator")
+          throw new PeerAbortError(undefined, partnerReason);
+        throw new ConnectionError("the partner went away", "transport");
+      },
+      responder: async (rotation, nextSecret) => {
+        rotation.partnerMayHoldNextSecret?.(true);
+        await rotation.store(nextSecret);
+        if (aborted === "responder")
+          throw new PeerAbortError(undefined, partnerReason);
+        throw new ConnectionError("the partner went away", "transport");
+      },
+    });
+
+    const results = await runResponderBThenInitiatorA(keyFileA, keyFileB);
+
+    const reason = (
+      results[aborted === "initiator" ? 0 : 1] as PromiseRejectedResult
+    ).reason as Error;
+    expect(reason).toBeInstanceOf(PeerAbortError);
+    expect(reason.message).toMatch(/^Your partner stopped the exchange/);
+    expect(exitCodeForError(reason)).toBe(76);
   },
   20_000,
 );

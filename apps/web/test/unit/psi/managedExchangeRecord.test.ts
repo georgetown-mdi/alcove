@@ -2405,6 +2405,7 @@ describe("the rotation-in-flight marker", () => {
     "too-large": false,
     "partner-set-too-large": false,
     "partner-refused-set": false,
+    "partner-storage": false,
     "partner-refused-terms": false,
     "partner-protocol-refusal": false,
     "terms-change": false,

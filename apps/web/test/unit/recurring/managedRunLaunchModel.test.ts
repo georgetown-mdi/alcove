@@ -1548,6 +1548,7 @@ describe("the launch error a classified state shows", () => {
     "saved-address-refused": "withheld",
     "partner-set-too-large": "withheld",
     "partner-refused-set": "withheld",
+    "partner-storage": "withheld",
     "terms-change": "withheld",
     "already-running": "withheld",
     stopped: "withheld",

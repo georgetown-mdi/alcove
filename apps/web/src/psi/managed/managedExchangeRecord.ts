@@ -254,7 +254,11 @@ export type ManagedExchangeRunOutcome =
  * smaller input on the partner's side. A `"partner-refused-set"` stop (the
  * partner's run refused to send its first set for a cause other than its size)
  * is met at the same point and is benign the same way: its remedy is the
- * partner's, whose own run reported the cause. A `"partner-refused-terms"`
+ * partner's, whose own run reported the cause. A `"partner-storage"` stop
+ * (the partner's abort stated that it could not save the next secret this side
+ * had stored) is met after the terms exchange, after sets of this party's may
+ * have moved, and leaves the two parties on different secrets: its remedy is
+ * a re-invite, never a retry. A `"partner-refused-terms"`
  * stop (the partner's abort named linkage terms that differ from its own) is
  * met at the terms exchange, before any linkage key or data moves, and is
  * benign too: its remedy is terms agreed on with the partner through a terms
@@ -272,6 +276,7 @@ export type ManagedExchangeFailureKind =
   | "too-large"
   | "partner-set-too-large"
   | "partner-refused-set"
+  | "partner-storage"
   | "partner-refused-terms"
   | "partner-protocol-refusal"
   | "terms-change"
@@ -543,6 +548,7 @@ export const lastRunSchema: ZodType<ManagedExchangeLastRun> = z.object({
       "too-large",
       "partner-set-too-large",
       "partner-refused-set",
+      "partner-storage",
       "partner-refused-terms",
       "partner-protocol-refusal",
       "terms-change",

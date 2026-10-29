@@ -6,7 +6,9 @@ import {
   AuthenticationError,
   ConnectionError,
   LinkageTermsUnsatisfiableError,
+  NEXT_SECRET_STORE_FAILED_ABORT_REASON,
   OperatorConfigError,
+  PeerAbortError,
   UsageError,
   describeResolvedRunShape,
   exchangeRecordFromFailure,
@@ -35,6 +37,7 @@ import {
   WEBRTC_ENDPOINT_PATH_REFUSED,
   dialAsAcceptor,
 } from "../../../src/psi/transport/rendezvous.js";
+import { PartnerSecretNotSavedError } from "../../../src/psi/partnerSecretNotSaved.js";
 import { authenticateExchange } from "../../../src/psi/authenticateExchange.js";
 import { openPeerMessageConnection } from "../../../src/psi/transport/peerMessageConnection.js";
 import { openWebSocketRelayConnection } from "../../../src/psi/transport/websocketRelayConnection.js";
@@ -698,6 +701,59 @@ describe("runExchangeLifecycle", () => {
       record: STUB_RECORD,
     });
     expect(s.onResult).not.toHaveBeenCalled();
+  });
+
+  test("an initiator whose partner could not save the next secret it stored reports that, keeping the record core attached", async () => {
+    const { mc } = makeFakeMc();
+    mockedOpen.mockResolvedValue(mc);
+    const abort = new PeerAbortError(
+      undefined,
+      NEXT_SECRET_STORE_FAILED_ABORT_REASON,
+    );
+    attachedRecords.set(abort, STUB_RECORD);
+    mockedRunExchange.mockRejectedValue(abort);
+    const { acquire } = makeResources();
+    const s = seams();
+
+    await runExchangeLifecycle({
+      acquire,
+      exchangeRole: "initiator",
+      signal: new AbortController().signal,
+      ...s,
+    });
+
+    expect(s.onError).toHaveBeenCalledTimes(1);
+    const reported = s.onError.mock.calls[0]?.[0] as {
+      error: unknown;
+      record: unknown;
+    };
+    expect(reported.error).toBeInstanceOf(PartnerSecretNotSavedError);
+    expect((reported.error as Error).cause).toBe(abort);
+    expect(reported.record).toBe(STUB_RECORD);
+  });
+
+  test("a responder reading the same abort reports the abort itself", async () => {
+    const { mc } = makeFakeMc();
+    mockedOpen.mockResolvedValue(mc);
+    const abort = new PeerAbortError(
+      undefined,
+      NEXT_SECRET_STORE_FAILED_ABORT_REASON,
+    );
+    mockedRunExchange.mockRejectedValue(abort);
+    const { acquire } = makeResources();
+    const s = seams();
+
+    await runExchangeLifecycle({
+      acquire,
+      exchangeRole: "responder",
+      signal: new AbortController().signal,
+      ...s,
+    });
+
+    expect(s.onError).toHaveBeenCalledExactlyOnceWith({
+      category: "exchange",
+      error: abort,
+    });
   });
 
   test("a run failure with no record attached reports none", async () => {

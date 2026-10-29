@@ -353,6 +353,9 @@ sooner. One fires for each of these:
   large for this browser](#a-partners-set-too-large-for-this-browser)).
 - **The partner's run refused to send its set** (see [A partner's run that
   refuses to send its set](#a-partners-run-that-refuses-to-send-its-set)).
+- **Your partner could not save the new secret** that this device saved, so the
+  exchange needs a fresh invitation (see [A missed window is neither desync nor
+  attack](#a-missed-window-is-neither-desync-nor-attack)).
 - **The partner's data did not follow the exchange protocol** (see [Partner data
   that does not follow the
   protocol](#partner-data-that-does-not-follow-the-protocol)).
@@ -360,7 +363,7 @@ sooner. One fires for each of these:
   confirmation (see [Telling a desync from an
   attack](#telling-a-desync-from-an-attack)).
 
-The six conditions from your partner's terms change to the protocol failure recur
+The seven conditions from your partner's terms change to the protocol failure recur
 at every window until you act, so none is offered as retryable. A missing or
 rejected input file is offered as retryable: put the file in place, or replace
 a rejected one with a file whose columns satisfy the terms, then try again.
@@ -839,6 +842,15 @@ it behind ([the rotation-in-flight
 marker](spec/MANAGED_EXCHANGE_RECORD.md#the-rotation-in-flight-marker)). A
 no-show after it reads as a probable partial rotation, with the re-invite
 recovery and no attack checklist.
+
+The other side of that rotation is reported too. This device saves the new
+secret first when it accepted the invitation; when the partner's run then
+reports that it could not save the new secret, this run says so, says that this
+device already holds the new one, and names a fresh invitation, with no retry.
+The run history, the recurring list, and a notification state the same. The
+partner's report is matched against a fixed reason and never shown as text the
+partner sent. A later no-show's entry replaces this one, as it replaces any
+run's, though the run history keeps it.
 
 A no-show's run entry replaces the previous one, but a one-sided save failure or
 a failed-closed handshake is also kept as a standing condition, which a no-show

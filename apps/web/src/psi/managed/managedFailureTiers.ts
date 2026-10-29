@@ -34,6 +34,8 @@ import type { ManagedLocalState } from "./managedLocalStateShape";
  *   match (the command-line application, or the partner splits their input).
  * - `"partner-refused-set"` -- the partner's run refused to send its set for a
  *   cause other than size (ask the partner).
+ * - `"partner-storage"` -- the partner could not save the next secret this
+ *   device saved, so the two hold different secrets (re-invite).
  * - `"partner-refused-terms"` -- the partner's run refused this exchange's
  *   linkage terms as differing from its own, before any key or data moved
  *   (terms agreed on with the partner through a terms update).
@@ -65,6 +67,7 @@ export type ManagedFailureTier =
   | "terms-change"
   | "partner-set-too-large"
   | "partner-refused-set"
+  | "partner-storage"
   | "partner-refused-terms"
   | "partner-protocol-refusal"
   | "custody-unreadable"
@@ -206,6 +209,7 @@ function recordedFailureTier(
     return "partner-set-too-large";
   if (lastRun.failureKind === "partner-refused-set")
     return "partner-refused-set";
+  if (lastRun.failureKind === "partner-storage") return "partner-storage";
   if (lastRun.failureKind === "partner-refused-terms")
     return "partner-refused-terms";
   if (lastRun.failureKind === "partner-protocol-refusal")

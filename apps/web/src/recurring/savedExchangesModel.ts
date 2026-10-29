@@ -185,6 +185,8 @@ function tierStatus(
       return `Last run stopped: your partner's set is too large for this browser (${at}); use the command-line application`;
     case "partner-refused-set":
       return `Last run stopped: your partner's run refused to send its set (${at}); ask your partner`;
+    case "partner-storage":
+      return `Last run stopped: your partner could not save the new secret (${at}); re-invite to reconnect`;
     case "partner-refused-terms":
       return `Last run stopped: your partner's run refused your linkage terms (${at}); agree on the terms through a terms update`;
     case "partner-protocol-refusal":

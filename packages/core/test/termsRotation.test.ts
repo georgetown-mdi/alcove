@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
-  NEXT_SECRET_STORE_FAILED_ABORT_REASON,
   SHARED_SECRET_EXPIRED_ABORT_REASON,
   exchangeTerms,
   releasableTermsRotation,
@@ -20,7 +19,11 @@ import type { NextSecretInputs } from "../src/nextSecret";
 import { SHARED_SECRET_REGEX } from "../src/config/connection";
 import { createMessagePipe } from "../src/connection/messageConnection";
 import type { MessageConnection } from "../src/connection/messageConnection";
-import { receiveAfterTerms } from "../src/partnerAbortFrame";
+import {
+  NEXT_SECRET_STORE_FAILED_ABORT_REASON,
+  receiveAfterTerms,
+} from "../src/partnerAbortFrame";
+import { isPartnerNextSecretStoreFailure } from "../src/failureClass";
 import {
   ConnectionError,
   InternalConsistencyError,
@@ -432,9 +435,14 @@ describe("a failed store", () => {
       decision: "abort",
       abortReasons: [NEXT_SECRET_STORE_FAILED_ABORT_REASON],
     });
-    await expect(
-      receiveAfterTerms(run.rawA, { parse: (v: unknown) => v }),
-    ).rejects.toBeInstanceOf(PeerAbortError);
+    const abort: unknown = await receiveAfterTerms(run.rawA, {
+      parse: (v: unknown) => v,
+    }).catch((err: unknown) => err);
+    expect(abort).toBeInstanceOf(PeerAbortError);
+    expect((abort as PeerAbortError).partnerReason).toBe(
+      NEXT_SECRET_STORE_FAILED_ABORT_REASON,
+    );
+    expect(isPartnerNextSecretStoreFailure(abort)).toBe(true);
   });
 });
 
