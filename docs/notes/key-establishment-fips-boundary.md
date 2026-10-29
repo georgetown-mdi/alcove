@@ -599,9 +599,219 @@ whose key-establishment method rests on the scheme this note leaves
 unclaimed; the SC-12 sentence the build writes states the gaps. The
 harvest-now-decrypt-later bound above is kept, because the wrapping keys still
 mix the pre-shared secret with the ECDH output, so a recorder who solves the
-Diffie-Hellman alone cannot unwrap either value. The design is not built; it
-is in [rotation-hardening.md](rotation-hardening.md#the-next-secret-independent-of-the-current-one),
+Diffie-Hellman alone cannot unwrap either value. The design is built, as
+specified in [PROTOCOL.md](../spec/PROTOCOL.md#shared-secret-rotation); its
+record is in [rotation-hardening.md](rotation-hardening.md#the-next-secret-independent-of-the-current-one),
 with the row's wording in its open questions.
+
+## An approved key-agreement scheme, researched 2026-10-29
+
+The SC-12 row ([COMPLIANCE.md](../COMPLIANCE.md#nist-sp-800-53)) claims no
+SP 800-56A Rev. 3 scheme and lists the gaps that follow. This section weighs
+each scheme in that publication that could fit Alcove's two-party exchange
+against the handshake in
+[PROTOCOL.md](../spec/PROTOCOL.md#p-256-authenticated-key-exchange). Every
+section and page cited from SP 800-56A Rev. 3, SP 800-56C Rev. 2, SP 800-57
+Part 1 Rev. 5 and the FIPS 140-3 implementation guidance was read from the
+publication; anything else is labeled unverified.
+
+### The gaps a scheme could close
+
+From the SC-12 row:
+
+- **G1, the scheme.** Key establishment conforms to no approved scheme, while
+  SP 800-57 Part 1 Rev. 5 section 8.1.5.2.3 states "Only approved
+  key-agreement schemes shall be used" (p. 101). Section 8.2.3.1 re-keying
+  rests on it: the replacement "shall be accomplished using one of the
+  key-establishment methods discussed in Section 8.1.5" (p. 108).
+- **G2, the hybrid form.** The next secret's derivation takes SP 800-56C
+  Rev. 2's `Z || T` form without the scheme that form presumes.
+- **G3, key confirmation.** The confirmation round is modelled on SP 800-56A
+  section 5.9.2 and does not conform to it.
+- **G4, the random source.** Which generator the rotation's two values come
+  from is unmeasured.
+
+No scheme closes G4, and none changes the composition disclosure: the schedule
+stays application code above `crypto.subtle` calls
+([above](#what-a-scoped-fips-claim-may-and-may-not-say-about-key-establishment)).
+
+### What bounds every candidate
+
+- **Primitives.** The `crypto.subtle` services
+  [reason 1](#why-the-schedule-stays) lists include ECDH and no finite-field
+  Diffie-Hellman or MQV, so of the
+  fourteen schemes in Table 8 (section 6, pp. 65-66) only the five ECC CDH
+  schemes can be built. The FFC schemes, Full MQV and One-Pass MQV are out.
+- **The pre-shared secret can stay in the derivation.** Section 5.8.2 lists
+  "pre-shared secrets" among the context FixedInfo may include (p. 54; also
+  SuppPrivInfo, p. 56), and section 7 states FixedInfo "may include pre-shared
+  secrets" while leaving them out of its security analysis (p. 112). SP 800-56C
+  Rev. 2 allows the extraction salt to be "secret or non-secret", for example
+  "a value already shared by the protocol participants" (section 5.1, p. 18).
+  With the secret in the derivation, a recorder who solves the Diffie-Hellman
+  without holding it derives no key, under every scheme below; without it, no
+  scheme below keeps that protection.
+- **The derivation.** Section 5.8 requires an approved key-derivation method,
+  and Z "shall be used only by an approved key-derivation method ... and shall
+  not be used for any other purpose", treated as a critical security parameter
+  and destroyed immediately after use (p. 53). The Diffie-Hellman is a
+  `deriveBits` call, which returns Z to application memory. Unverified: whether
+  a `deriveKey` from ECDH to a non-extractable HKDF key keeps Z inside the
+  platform on every runtime. SP 800-56C Rev. 2 states that RFC 5869 "specifies a version of" its
+  extract-then-expand procedure (section 5.1, p. 20), and certificate 5438
+  approves `KDA HKDF Sp800-56Cr1`
+  ([CONTAINER_IMAGES.md](../spec/CONTAINER_IMAGES.md#what-certificate-5438-attests)).
+  Unverified: whether an HKDF call with a secret salt is within that row's
+  tested parameters. SP 800-108, which governs the expansion step, was not
+  read.
+- **The certificates test one scheme.** Certificate 5438's `KAS-ECC-SSC
+  Sp800-56Ar3` row lists `Scheme - ephemeralUnified` alone
+  ([CONTAINER_IMAGES.md](../spec/CONTAINER_IMAGES.md#what-certificate-5438-attests)),
+  as 4985's does ([above](#what-the-primary-sources-actually-say)). FIPS 140-3
+  IG D.F, Scenario 2, path (1), annotates a shared-secret computation "in one
+  or more of the key agreement schemes in Section 6" (p. 172). Unverified:
+  whether CMVP treats an `ephemeralUnified` row as covering a static-key
+  scheme's computation.
+- **A static key is its own key.** A digital-signature key pair "is not to be
+  used for key establishment or vice versa" (section 5.6.3.2, item 5, p. 47),
+  so the ECDSA signing identity cannot serve, and a static-key scheme adds an
+  ECDH key pair per party.
+- **The browser.** It makes the same calls with no module beneath them
+  ([reason 5](#why-the-schedule-stays)). Under every scheme it can conform to
+  the publication and nothing it runs is validated, as today.
+
+### (Cofactor) Ephemeral Unified Model, C(2e, 0s, ECC CDH)
+
+Section 6.1.2.2 (pp. 80-81). The handshake's Diffie-Hellman is already this
+scheme's shared-secret computation.
+
+- **Keys.** An ephemeral P-256 pair per party per run, and the pre-shared
+  secret, as today.
+- **Handshake and key file.** The schedule becomes one approved key derivation
+  over Z, with the pre-shared secret as salt or in FixedInfo and the transcript
+  in FixedInfo, yielding the session key, the confirmation key and the
+  rotation's input at once. The rotation stops taking `ka`, since section 5.8
+  confines Z to that derivation. The protocol-version tag changes; the key file
+  does not.
+- **Recorded traffic.** The protection survives, with the secret in the
+  derivation.
+- **Browser.** No change from today.
+- **SC-12.** Closes G1 and G2. Whether the rotation then meets section 8.2.3.1
+  turns on reading its derivation as part of that key establishment, which
+  this section does not decide. G3 stays: section 6.1.2.3 does not incorporate
+  key confirmation into this category, because "Without a trusted association
+  with an identifier of either party, key confirmation cannot achieve the
+  expected purposes" (p. 81). The round stays a protocol step, about whose
+  adequacy section 6 "makes no statement" (p. 64). The scheme alone assures
+  neither party of the other's identity (section 7.2, p. 114; Table 23,
+  p. 121), which SP 800-57 section 8.1.5.2.3 lets the protocol supply (p. 101):
+  here, the pre-shared secret.
+
+Open: whether the existing `MixKey(dh)` step, an HKDF extract of Z under a
+salt derived from the pre-shared secret, can already be treated as this
+scheme's key derivation. The rotation's use of `ka` departs from section 5.8
+either way.
+
+### (Cofactor) Full Unified Model, C(2e, 2s, ECC CDH)
+
+Section 6.1.1.2 (pp. 70-71): Z is the ephemeral and static computations
+concatenated.
+
+- **Keys.** Each party adds a static P-256 ECDH pair and holds the partner's
+  static public key, received "in a trusted manner" (section 6.1.1, assumption
+  5, p. 68), beside the ephemerals and the pre-shared secret.
+- **Handshake and key file.** Two ECDH calls per party and the one derivation
+  above. The key file, or a file beside it, holds the party's own static
+  private key, which does not rotate, and the partner's pinned public key. The
+  invitation can hold the inviter's public key, and the acceptor's can reach
+  the inviter at first contact under the setup secret, as a signing pin does.
+  Each party also needs assurance that the partner holds the static private key
+  (assumption 6; section 5.6.2.2.3, p. 40). Obtained directly from the
+  partner, conformance requires a One-Pass Unified Model or One-Pass
+  Diffie-Hellman transaction with key confirmation, the recipient as party U
+  (section 5.6.2.2.3.2, p. 41). C(2e, 2s) is not on that list, so each party
+  runs one such transaction per partner key, or relies on a trusted third
+  party, which the pinned self-signed model does not have.
+- **Recorded traffic.** Survives only with the pre-shared secret kept in the
+  derivation.
+- **Browser.** It must keep a static private key across runs in browser
+  storage, a long-lived secret the web application does not hold today: its
+  exchanges pass no signing identity to the receipt step
+  ([PROTOCOL.md](../spec/PROTOCOL.md#the-signed-receipt-step)), and its at-rest
+  posture is the weaker one
+  ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#why-the-browser-at-rest-secret-is-weaker-than-the-cli-on-disk-key)).
+  A one-shot exchange has nowhere to keep it.
+- **SC-12.** Closes G1, G2 and G3, since section 5.9.2 key confirmation
+  applies (p. 61), with the certificates' tested-scheme question above open.
+
+### The one-pass and static schemes
+
+Each needs the Full Unified Model's static-key provisioning and browser
+storage, and keeps the recorded-traffic protection only with the pre-shared
+secret in the derivation. Each gives up forward secrecy against a static key's
+compromise (Table 23, p. 121), which the key-agreement design keeps
+([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#key-agreement-design)).
+
+- **One-Pass Unified Model, C(1e, 2s, ECC CDH)** (section 6.2.1.2, pp. 85-88).
+  - Keys: party U static and ephemeral, party V static only.
+  - Handshake: V sends no ephemeral, and needs a nonce in the derivation to
+    receive key confirmation (section 6.2.1.5, p. 92).
+  - Recorded traffic: compromising V's static key may expose its past and
+    future shared secrets (section 7.3, p. 116).
+  - SC-12: closes G1, G2 and G3.
+  - Its place in Alcove would be the possession-assurance transaction above,
+    not the run's key agreement.
+- **One-Pass Diffie-Hellman, C(1e, 1s, ECC CDH)** (section 6.2.2, pp. 96-97).
+  - Keys: party U ephemeral only, party V static only.
+  - Handshake: V sends no ephemeral, and V has no assurance of U's identifier
+    (section 7.4, p. 117).
+  - Recorded traffic: as the one-pass unified model, for V's key (p. 117).
+  - SC-12: closes G1 and G2; key confirmation runs from V to U only
+    (section 5.9.1, p. 61), so G3 stays open in one direction.
+- **Static Unified Model, C(0e, 2s, ECC CDH)** (section 6.3, pp. 102-104).
+  - Keys: both parties static only; U sends a nonce for the derivation
+    (section 6.3, p. 102).
+  - Handshake: no ephemeral keys at all.
+  - Recorded traffic: Z is the same in every transaction between the two
+    parties (section 7.5, p. 118), so a compromised static key exposes them
+    all, past and future (p. 119).
+  - SC-12: closes G1, G2 and G3.
+
+### SP 800-56B
+
+Not read: it is not in the reference library. Whether one of its RSA schemes
+fits the exchange, and what the browser could do with one, is unverified.
+
+### How this relates to the rejected recast
+
+[The decision](#the-decision) rejected a recast that fed the handshake's
+shared secret to SP 800-56C's two-step derivation with the pre-shared secret as
+`T` in `Z || T`. Reasons 1 and 2 turn on the `KDA TwoStep` service; a
+derivation over the HKDF row the schedule already lands on (reason 4) does not
+call it. Reasons 3, 5 and 6 stand for the Ephemeral Unified Model as for that
+recast: the composition stays unattested, the browser has no module, and the
+schedule and transcript binding are rewritten. This section adds that the
+derivation is not the only gap: the rotation's use of `ka` departs from
+section 5.8 under either form.
+
+### Recommendation
+
+Do not adopt a static-key scheme. The Full Unified Model also closes G3, but
+it adds a non-rotating private key per party in both applications, a
+possession-assurance transaction per partner key or a trusted third party, a
+long-lived key in browser storage, and a computation outside the certificates'
+tested scheme, while the pre-shared secret still has to stay. The one-pass and
+static schemes give up forward secrecy.
+
+The Ephemeral Unified Model is the scheme the exchange fits. Claiming it
+closes G1 and G2 with no new key material, on the scheme the certificates
+test, and leaves G3 and G4. It is a build -- the derivation, the rotation's
+input, a new protocol-version tag and its vectors -- so taking it is a
+decision for the maintainer. Three questions above bear on its size: whether
+`MixKey(dh)` can already be treated as the scheme's key derivation, which
+would leave the rotation's input and FixedInfo; whether Z can stay inside the
+platform; and whether an HKDF call with a secret salt is within the
+certificate's tested parameters.
 
 ## Open questions
 
