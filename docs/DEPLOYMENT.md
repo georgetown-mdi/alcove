@@ -319,7 +319,7 @@ The project site, at `data-bridge.org`, publishes the Markdown under `docs/` and
 - **When it runs:** [`site_deploy.yaml`](../.github/workflows/site_deploy.yaml) builds the site on a pull request and on a push to `main` or `staging` that changes a source the build reads, and uploads it on the push or on a manual dispatch on either branch. `main` is the production deployment; `staging` is a preview on the site project's `staging` branch alias.
 - **Upload:** as for the web application, using the same environments and secrets, plus `CLOUDFLARE_SITE_PAGES_PROJECT`, the site project's name, a variable set on both environments.
 - **Headers:** the build writes no `_headers` file, so Pages serves the site with its default headers and the zone settings above.
-- **Redirects:** the build's `_redirects` file (`docs/.vitepress/public/_redirects`) sends `/instructions` and `/instructions/*` to the root.
+- **Redirects:** the build's `_redirects` file (`docs/.vitepress/public/_redirects`) sends `/instructions` to the root and `/instructions/<page>` to `/<page>`.
 
 ## Diagnosing web connection failures
 
