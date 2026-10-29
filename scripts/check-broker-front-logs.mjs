@@ -1,19 +1,23 @@
 #!/usr/bin/env node
-// Measures which request headers the broker's TLS front writes into its error
-// log, for PRIVACY.md's TLS front error-log bullet.
+// Drives each kind of failed request through the broker's TLS front and checks
+// what its two logs write, for PRIVACY.md's TLS front bullets and
+// infra/broker/README.md, Logging.
 //
-//   node scripts/measure-broker-error-log.mjs
+//   node scripts/check-broker-front-logs.mjs
 //
 // Needs docker, openssl and free ports 8443 and 9411 on the loopback, so it
-// runs from broker_front_error_log.yaml on a hosted runner. It renders
+// runs from broker_front_logs.yaml on a hosted runner. It renders
 // infra/broker/nginx.conf.tmpl with render-config.sh, runs the image
 // infra/broker/Dockerfile pins as alcove-broker-tls.service runs it (host
 // network, read-only root, tmpfs /tmp), and stands in for the broker on
 // 127.0.0.1:9411. Each request sends its own Host, Referer, User-Agent and
 // Origin values and query string, and the run prints, for each error-log and
 // access-log line the request wrote, which of those values the line contains.
-// It exits 1 when the front does not start or a request gets no response; what
-// the lines contain is reported, not judged.
+//
+// It exits 1 when the front does not start, a request gets no response, any
+// log line contains a request's query string, a request writes an error-log
+// line, or a failure kind's access-log line does not show the fields
+// README.md, Logging, says identify it.
 
 import { spawn, spawnSync } from "node:child_process";
 import {
@@ -42,6 +46,9 @@ const SETTLE_MS = 1500;
 // Over the template's proxy_read_timeout of 300 s, so the timed-out upstream
 // request is answered by nginx and not cut off here.
 const RESPONSE_DEADLINE_MS = 330_000;
+// nginx's default client_body_buffer_size on a 64-bit host: a request whose
+// body is larger is buffered to a file under /tmp.
+const CLIENT_BODY_BUFFER_BYTES = 16384;
 
 /** The header values a request sends, each with the marker that finds it in a log line. */
 const FIELDS = [
@@ -87,11 +94,21 @@ const request = (
     "",
   ].join("\r\n") + body;
 
-/** Each request, the upstream behavior it meets, and what it is expected to provoke. */
+const yesNo = (present) => (present ? "yes" : "no");
+
+/** The access-log fields README.md, Logging, says tell one failure kind from another. */
+const identity = (status, upstreamStatus, connected, bodyBuffered) =>
+  `status=${status} upstream_status=${upstreamStatus} connected=${yesNo(connected)} body_buffered=${yesNo(bodyBuffered)}`;
+
+/**
+ * Each request, the upstream behavior it meets, and for a failure kind the
+ * access-log identity that names it.
+ */
 const CASES = [
   {
     id: "refused",
     title: "WebSocket upgrade, upstream refuses the connection",
+    identifiedBy: identity("502", "502", false, false),
     upstream: "none",
     bytes: request("refused", {
       extra: [
@@ -105,12 +122,14 @@ const CASES = [
   {
     id: "closed",
     title: "GET, upstream closes before answering",
+    identifiedBy: identity("502", "502", true, false),
     upstream: "close",
     bytes: request("closed", { extra: ["Connection: close"] }),
   },
   {
     id: "buffered",
     title: "POST with a 20000-byte body, upstream refuses the connection",
+    identifiedBy: identity("502", "502", false, true),
     upstream: "none",
     bytes: request("buffered", {
       method: "POST",
@@ -121,6 +140,7 @@ const CASES = [
   {
     id: "toolarge",
     title: "POST declaring a body over client_max_body_size",
+    identifiedBy: identity("413", "-", false, false),
     upstream: "none",
     bytes: request("toolarge", {
       method: "POST",
@@ -161,13 +181,14 @@ const CASES = [
   {
     id: "timedout",
     title: "GET, upstream accepts and never answers (proxy_read_timeout)",
+    identifiedBy: identity("504", "504", true, false),
     upstream: "hang",
     bytes: request("timedout", { extra: ["Connection: close"] }),
   },
 ];
 
 const fail = (message) => {
-  console.error(`measure-broker-error-log: ${message}`);
+  console.error(`check-broker-front-logs: ${message}`);
   process.exitCode = 1;
 };
 
@@ -262,7 +283,23 @@ const contains = (line, id) => ({
   "client IP": /\bclient: 127\.0\.0\.1\b/.test(line),
 });
 
-const yesNo = (present) => (present ? "yes" : "no");
+/** The status and the `name=value` fields of a line the template's access-log format writes. */
+const accessFields = (line) => ({
+  status: /" (\d{3}) /.exec(line)?.[1],
+  ...Object.fromEntries(
+    [...line.matchAll(/ (\w+)=(\S*)/g)].map(([, name, value]) => [name, value]),
+  ),
+});
+
+const observedIdentity = (line) => {
+  const fields = accessFields(line);
+  return identity(
+    fields.status,
+    fields.upstream_status,
+    /^\d/.test(fields.upstream_connect ?? ""),
+    Number(fields.request_bytes) > CLIENT_BODY_BUFFER_BYTES,
+  );
+};
 
 /** The error-log message without its timestamp, level, pid and request fields. */
 const message = (line) =>
@@ -344,6 +381,7 @@ const main = async () => {
   }
 
   const results = [];
+  let startup = [];
   try {
     if (!(await waitForFront(() => exited))) {
       await delay(SETTLE_MS);
@@ -357,7 +395,7 @@ const main = async () => {
       );
     }
     await delay(SETTLE_MS);
-    const startup = lines.splice(0);
+    startup = lines.splice(0);
     if (startup.length) {
       console.log("lines before the first request:");
       for (const { text } of startup) console.log(`  start-up: ${text}`);
@@ -391,48 +429,48 @@ const main = async () => {
     rmSync(work, { recursive: true, force: true });
   }
 
-  const columns = [
-    "Host",
-    "Referer",
-    "User-Agent",
-    "Origin",
-    "query string",
-    "client IP",
-  ];
+  for (const { log, text } of [
+    ...startup,
+    ...results.flatMap(({ written }) => written),
+  ]) {
+    const leaked = CASES.find(({ id }) => text.includes(queryMarker(id)));
+    if (leaked) fail(`${log} log: a line contains ${leaked.id}'s query string`);
+  }
+
   const table = [
-    `Error log, ${version}, error_log level as in nginx.conf.tmpl.`,
+    `${version}, with nginx.conf.tmpl as rendered.`,
     "",
-    `| Request | Response | Error-log line | ${columns.join(" | ")} |`,
-    `|${" --- |".repeat(columns.length + 3)}`,
+    "| Request | Response | Access-log identity | Error-log lines |",
+    "| --- | --- | --- | --- |",
   ];
+  const identities = new Map();
   for (const { testCase, status, written } of results) {
     const errors = written.filter(({ log }) => log === "error");
+    const accesses = written.filter(({ log }) => log === "access");
+    if (errors.length) {
+      fail(`${testCase.id}: ${errors.length} error-log lines, not none`);
+    }
+    const observed =
+      accesses.length === 1 ? observedIdentity(accesses[0].text) : undefined;
+    if (testCase.identifiedBy) {
+      if (accesses.length !== 1) {
+        fail(`${testCase.id}: ${accesses.length} access-log lines, not 1`);
+      } else if (observed !== testCase.identifiedBy) {
+        fail(
+          `${testCase.id}: access log shows ${observed}, not ${testCase.identifiedBy}`,
+        );
+      }
+      const twin = identities.get(observed);
+      if (observed && twin) {
+        fail(`${testCase.id} and ${twin} have one access-log identity`);
+      }
+      identities.set(observed, testCase.id);
+    }
     const response = status?.replace(/^HTTP\/\S+ /, "") ?? "none";
-    if (!errors.length) {
-      table.push(
-        `| ${testCase.title} | ${response} | none |${" - |".repeat(columns.length)}`,
-      );
-    }
-    for (const { text } of errors) {
-      const found = contains(text, testCase.id);
-      table.push(
-        `| ${testCase.title} | ${response} | ${message(text)} | ${columns.map((column) => yesNo(found[column])).join(" | ")} |`,
-      );
-    }
+    table.push(
+      `| ${testCase.title} | ${response} | ${observed ?? "-"} | ${errors.length ? errors.map(({ text }) => message(text)).join("<br>") : "none"} |`,
+    );
   }
-  const accessHits = results.flatMap(({ testCase, written }) =>
-    written
-      .filter(({ log }) => log === "access")
-      .flatMap(({ text }) =>
-        Object.entries(contains(text, testCase.id))
-          .filter(([field, present]) => present && field !== "client IP")
-          .map(([field]) => `${testCase.id}: ${field}`),
-      ),
-  );
-  table.push(
-    "",
-    `Access log: ${accessHits.length ? `contains ${accessHits.join(", ")}` : "no line contains a sent Host, Referer, User-Agent or Origin value or the query string"}.`,
-  );
   console.log(table.join("\n"));
   if (process.env.GITHUB_STEP_SUMMARY)
     appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${table.join("\n")}\n`);
