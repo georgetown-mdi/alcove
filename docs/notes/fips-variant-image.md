@@ -604,7 +604,7 @@ the digest freeze pins the base either way.
 The variant installs far more OS packages than the default image, is larger
 than the Alpine image on both architectures, and has more packages with a
 GPL-3.0 or LGPL-3.0 term; the counts and sizes, measured on the shipped build at
-the pins above, are in
+the pins above except the x86_64 image size, which dates from an earlier base, are in
 [CONTAINER_IMAGES.md](../spec/CONTAINER_IMAGES.md#the-fips-reference-builds-inventory).
 The v3 terms are the samba client stack that the default image already pays
 for, plus a GPLv3 base userland Alpine's busybox and musl do not have (`bash`,
@@ -638,7 +638,17 @@ key the base image holds.
 trust was placed in the bytes at pin time, so the signature is checked by hand
 when the values are resolved. No build runs any of this.
 
-The committed pair is v26.12.1, checked on 2026-10-25. Its
+The committed pair is v26.13.0, checked on 2026-10-29. Its
+`SHASUMS256.txt.sig` is an RSA signature made 2026-10-28 by
+`C82FA3AE1CBEDC6BE46B9360C43CEC45C17AB93C` (Richard Lau), a fingerprint listed
+under the Node.js releasers in `nodejs/node`'s README. The signature verified as
+`Good signature` under `gpgv` against the `gpg/pubring.kbx` keyring of the
+`nodejs/release-keys` repository on GitHub, run on a GitHub-hosted runner; both
+hashes also match `sha256sum` over the tarballs that runner downloaded, and both
+architectures' image builds passed the committed `sha256sum -c` on 2026-10-29.
+`keys.openpgp.org` was not consulted, so this record has one channel.
+
+The pair before it, v26.12.1, was checked on 2026-10-25. Its
 `SHASUMS256.txt.sig` is an EdDSA signature made 2026-10-21 by
 `5BE8A3F6C8A5C01D106C0AD820B1A390B168D356` (Antoine du Hamel), a fingerprint
 listed under the Node.js releasers in `nodejs/node`'s README. The key came from
@@ -649,7 +659,7 @@ committed `sha256sum -c` on 2026-10-25.
 `keys.openpgp.org` was not reachable from where the check ran, so this record
 also has one channel.
 
-The pair before it, v26.12.0, was checked on 2026-10-19. Its
+The pair before that, v26.12.0, was checked on 2026-10-19. Its
 `SHASUMS256.txt.sig` is an RSA signature made 2026-10-14 by
 `C82FA3AE1CBEDC6BE46B9360C43CEC45C17AB93C` (Richard Lau), a fingerprint listed
 under the Node.js releasers in `nodejs/node`'s README. The key came from the
@@ -659,7 +669,7 @@ over the downloaded tarballs, and both architectures' image builds passed the
 committed `sha256sum -c`. `keys.openpgp.org` was not reachable from where the
 check ran, so this record also has one channel.
 
-The pair before that, v26.10.0, was checked on 2026-10-17. Its
+The pair before v26.12.0, v26.10.0, was checked on 2026-10-17. Its
 `SHASUMS256.txt.sig` is an EdDSA signature made 2026-09-22 by the same key as
 below, `5BE8A3F6C8A5C01D106C0AD820B1A390B168D356` (Antoine du Hamel). The key
 came from the `nodejs/release-keys` repository on GitHub and the signature

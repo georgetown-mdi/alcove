@@ -328,7 +328,7 @@ const DEFAULT_BASE =
 // The variant's base rootfs is coupled to the release snapshot its dnf lines
 // pin: the two are the same Amazon Linux release, not merely compatible ones.
 const FIPS_BASE =
-  "public.ecr.aws/amazonlinux/amazonlinux@sha256:8272aee6146a36222baaf71d72ab6799770957414ac63b1e940cec58c9197188";
+  "public.ecr.aws/amazonlinux/amazonlinux@sha256:d9c9967b3d895c4c423f54b6562fbf5d18a5b68f5df54908c29e88cba4efcc04";
 
 // Each image's whole OS-package surface, frozen by literal the way the .npmrc
 // COPY above is. The npm tree is copied from the builder and resolves nothing,
@@ -1311,8 +1311,8 @@ describe("Dockerfile.fips Node runtime pins", () => {
   // The sha256 of each architecture's official nodejs.org tarball, keyed by the
   // node_arch the `case` selects beside it.
   const EXPECTED_TARBALL_SHA256 = {
-    x64: "6170b2d474e1c626f43cff3adc118df9fe3b573258a4fc3d850c8dbc6b079bbd",
-    arm64: "42aa04922591ee5d4dbc7740d452621acf28508239daa512f5ee8c47ee224fdb",
+    x64: "d28a96af6c38596f6d9d97c0ee531c13d238d757742387d1928de822d959e997",
+    arm64: "406fe3fbde1c054adff8b297c16fdb5af6659db327c1ac8acd46b56ef1af9a92",
   };
 
   const nodeFetch = image.instructions.find(
