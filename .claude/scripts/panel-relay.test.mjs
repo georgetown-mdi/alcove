@@ -118,6 +118,16 @@ describe("round 1 text", () => {
       /extraRounds/,
     );
   });
+
+  it("accepts one or two extra rounds and refuses any other value", async () => {
+    expect((await loadPanel(panelDir({ extraRounds: 1 }))).extraRounds).toBe(1);
+    expect((await loadPanel(panelDir({ extraRounds: 2 }))).extraRounds).toBe(2);
+    for (const bad of [0, 3, 6, -1, 1.5, "2"]) {
+      await expect(loadPanel(panelDir({ extraRounds: bad }))).rejects.toThrow(
+        /whole number from 1 to 2/,
+      );
+    }
+  });
 });
 
 describe("later round text", () => {

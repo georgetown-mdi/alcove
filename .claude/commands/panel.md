@@ -125,8 +125,8 @@ Workflow script itself, and adds only where to write the answer.
    printed `<dir>`. With the Write tool, write `<dir>/panel.json` holding the
    values the Workflow would take,
    `{"question": "<the question>", "base": "<base>", "docs": [<DOCS>], "seats": [<SEATS>]}`,
-   plus `"extraRounds": <n>` only when the owner asked for a cap other than
-   two rounds after the first.
+   plus `"extraRounds": 1` only when the owner asked for one round after the
+   first instead of two.
 2. Run `node <repo>/.claude/scripts/panel-relay.mjs <dir> next`, `<repo>` the
    repository root: it prints `round 1`, or names what `panel.json` gets wrong.
 3. Spawn one background Agent with subagent_type `panel-chair` (its definition
@@ -156,8 +156,9 @@ Workflow script itself, and adds only where to write the answer.
    the same panelists, each reading the paths of the others' latest answers
    and writing `{position, rationale, keyRisk, changed, movedBy}`, until every
    seat reports `changed: false` or `extraRounds` rounds past the first have run
-   (two unless `panel.json` sets another). Its report names the
-   record again. Take the question to the owner with each seat's `first` and
+   (two, or one when `panel.json` sets it; never more than two). Its report
+   names the record again, and calls a panel with no consensus after those
+   rounds inconclusive. Take the question to the owner with each seat's `first` and
    `final` position from the record's `panelists` and the record's path: a
    converged deliberation informs the owner and settles nothing.
 3. A Workflow panelist that returned null exhausted its schema retries and is
