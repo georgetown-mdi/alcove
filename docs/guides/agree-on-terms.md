@@ -5,7 +5,7 @@ timing: "An invitation lasts 1 hour unless you choose longer. Each side waits 10
 next: "[Invite with the web app](./web-invite.md), [Invite from the console](./console-invite.md) or [Invite a partner](./cli-invite.md)"
 ---
 
-# Agree the terms
+# Agree on terms
 
 Settle these decisions with your partner before anyone creates an invitation.
 
@@ -168,10 +168,10 @@ More detail: [Which settings each app can change](../EXCHANGE_REFERENCE.md#where
 
 ## A checklist for your partner
 
-Copy this into an email to your partner, and agree each line before anyone creates the invitation.
+Copy this into an email to your partner, and agree on each line before anyone creates the invitation.
 
 ```
-Before I create the Alcove invitation, let's agree:
+Before I create the Alcove invitation, let's agree on:
 
 1. App: which Alcove app each of us uses (web app, console, or command line).
 2. Channel: our SFTP server, a shared folder, or WebRTC (the web app runs WebRTC only).

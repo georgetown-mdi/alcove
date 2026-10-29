@@ -12,7 +12,7 @@ Alcove is open-source software that two organizations each run on their own mach
 | **Console** A screen on your own machine, from the Docker image. For trying one exchange before moving it to the command line. | [Invite from the console](./console-invite.md) | [Accept in the console](./console-accept.md) |
 | **Command line** A Docker or Podman container, run from cron or the Windows Task Scheduler. For recurring exchanges in a data pipeline. | [Invite a partner](./cli-invite.md) | [Accept an invitation](./cli-accept.md) |
 
-Before anyone creates an invitation, settle with your partner what you match on, what each of you sends and who receives the result: [Agree the terms](./agree-the-terms.md).
+Before anyone creates an invitation, settle with your partner what you match on, what each of you sends and who receives the result: [Agree on terms](./agree-on-terms.md).
 
 ## Your partner uses a different app
 
@@ -35,7 +35,7 @@ You and your partner do not have to use the same app. The inviter makes the kind
 1. The inviter creates an invitation: the agreed terms and a one-time secret.
 2. The inviter sends it to the partner over a trusted channel, such as encrypted email, as a file or a link.
 3. The partner reviews the terms and accepts.
-4. You both run the exchange at the same time. Whoever starts first waits for the other: [how long each app waits](./agree-the-terms.md#timing).
+4. You both run the exchange at the same time. Whoever starts first waits for the other: [how long each app waits](./agree-on-terms.md#timing).
 5. Each of you keeps your own result, if the terms give you one, and an exchange record. Neither file leaves its owner.
 
 A recurring exchange needs no new invitation: the two of you keep a shared secret that changes after every run.

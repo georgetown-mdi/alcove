@@ -1,6 +1,6 @@
 ---
 reader: A console user whose exchange worked and who wants it to run on a schedule
-needs: A finished console run whose result screen is still open, and the cadence and time you agreed with your partner
+needs: A finished console run whose result screen is still open, and the cadence and time you agreed on with your partner
 before: "[Invite from the console](./console-invite.md) or [Accept in the console](./console-accept.md)"
 partner: "[Schedule it](./cli-schedule.md) on the command line, or [Run it on a schedule](./web-schedule.md) in the web app"
 timing: Each scheduled run waits 1 hour for your partner over SFTP or a shared folder, 10 minutes over WebRTC. Measured - sample files of 100 and 200 records, 30 keys, over SFTP - 15.5 minutes a run.
@@ -9,7 +9,7 @@ next: "[Schedule it](./cli-schedule.md) on the command line, for cadences, failu
 
 # Move it to a schedule
 
-Copy the exchange from the console to the command line, and have cron or the Windows Task Scheduler run it at the time you agreed with your partner.
+Copy the exchange from the console to the command line, and have cron or the Windows Task Scheduler run it at the time you agreed on with your partner.
 
 ## The scheduling machine
 
@@ -83,7 +83,7 @@ Replace `/path/to/your/exchange-folder` in each command with your exchange folde
 
 ### 4. Both of you: run it once by hand
 
-At a time agreed with your partner, run the exchange once from a terminal on the scheduling machine.
+At a time agreed on with your partner, run the exchange once from a terminal on the scheduling machine.
 
 ::: tabs platform
 

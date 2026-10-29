@@ -12,7 +12,7 @@ Run the exchange on a cadence from cron or the Windows Task Scheduler, and act o
 
 - **A run by hand succeeded**, for both of you.
 - **On SFTP, pin the host key.** The first run by hand saves it in `alcove.yaml`. A scheduled run with none exits 64 rather than ask.
-- **Agree the time with your partner.** Both of you schedule the same start. Each run waits 1 hour for the other (10 minutes on WebRTC), so your two starts must fall within that time. cron and the Task Scheduler use the machine's local time zone.
+- **Agree on the time with your partner.** Both of you schedule the same start. Each run waits 1 hour for the other (10 minutes on WebRTC), so your two starts must fall within that time. cron and the Task Scheduler use the machine's local time zone.
 - **This machine must be** on and awake at that hour, with Docker running.
 - **The scheduling account** must own the folder and the key file, and must find `docker`: give its full path, or put it on that account's `PATH`.
 - **The shared secret does not expire between runs**, however long the gap, unless `authentication.token_max_age_days` is set in `alcove.yaml`. If you set it, make it longer than two intervals.
@@ -132,7 +132,7 @@ Alcove does not stop a second run of the same exchange from starting. Two runs a
 
 ## Exit codes
 
-Act on the exit code alone. A `69` that comes quickly (the server or folder was not reached) can be retried up to a small fixed cap while your partner is still waiting; a `69` after the full wait means your partner never arrived and their run has ended too: agree a time and both run by hand. Retry `66` once the input lands. Then alert a person.
+Act on the exit code alone. A `69` that comes quickly (the server or folder was not reached) can be retried up to a small fixed cap while your partner is still waiting; a `69` after the full wait means your partner never arrived and their run has ended too: agree on a time and both run by hand. Retry `66` once the input lands. Then alert a person.
 
 | Code | Windows | Meaning | What to do |
 | --- | --- | --- | --- |

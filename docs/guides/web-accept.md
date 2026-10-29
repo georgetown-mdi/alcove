@@ -1,7 +1,7 @@
 ---
 reader: An analyst who was sent an invitation to an exchange in the web app
 needs: The invitation link from your partner; a CSV file with a header row, up to 200 MB; a time when your partner's page is open
-before: "[Agree the terms](./agree-the-terms.md)"
+before: "[Agree on terms](./agree-on-terms.md)"
 partner: "[Invite with the web app](./web-invite.md)"
 timing: Your partner's page waits 10 minutes for you each time it listens, and their invitation lasts 1 hour unless they chose longer. Measured runs, both browsers on one computer - sample files of 100 and 200 rows took 6 to 10 seconds; 10,000 records a side took 4 minutes 44 seconds.
 next: "[Run it on a schedule](./web-schedule.md)"
@@ -14,8 +14,8 @@ Review your partner's invitation at [psi.data-bridge.org](https://psi.data-bridg
 ## Before you open the link
 
 - **Ask your partner for a web app invitation.** The web app accepts an invitation your partner created with **Live, in this browser**, or a WebRTC invitation from the console or the command line ([If your partner uses the console or the web app](./cli-invite.md#if-your-partner-uses-the-console-or-the-web-app)). Any other invitation stops with "This invitation does not include a connection endpoint this build can accept, so it cannot be run here." Which app accepts what: [Your partner uses a different app](./index.md#your-partner-uses-a-different-app).
-- **Agree a time.** Your partner's page must be open while you accept and run. It waits 10 minutes, and your partner can choose **Keep waiting** to listen again.
-- **Know what you agreed.** Check each term against [Agree the terms](./agree-the-terms.md) as you go.
+- **Agree on a time.** Your partner's page must be open while you accept and run. It waits 10 minutes, and your partner can choose **Keep waiting** to listen again.
+- **Know what you agreed on.** Check each term against [Agree on terms](./agree-on-terms.md) as you go.
 
 To practice first with sample data, follow [Practice with sample data](./web-invite.md#practice-with-sample-data): you play both parties.
 
@@ -31,15 +31,15 @@ If your partner sent the invitation as text rather than a link, or the link arri
 Screen: Step 1 of 3 - Invitation from (your partner's name)
 
 Alcove does not verify the name shown: your partner typed it. If the invitation names a legal agreement, check it against the one you signed.
-Read each section against what you agreed:
+Read each section against what you agreed on:
 
 - **What you will send to your partner**: the columns that leave your file, for matched records only.
-- **Matching method**: a list of matched records, or "Only the number of records you have in common is revealed" for a count only ([A list or only a count](./agree-the-terms.md#a-list-or-only-a-count)).
-- **Result sharing**: "You will receive the matched result" and "Your partner (the inviter) will receive the result", each Yes or No ([Who receives the result](./agree-the-terms.md#who-receives-the-result)).
-- **Matching strategies**: the fields you match on. If the screen says some keys are marked less certain, open **Matching strategies** to see which ([What you match on](./agree-the-terms.md#what-you-match-on)).
+- **Matching method**: a list of matched records, or "Only the number of records you have in common is revealed" for a count only ([A list or only a count](./agree-on-terms.md#a-list-or-only-a-count)).
+- **Result sharing**: "You will receive the matched result" and "Your partner (the inviter) will receive the result", each Yes or No ([Who receives the result](./agree-on-terms.md#who-receives-the-result)).
+- **Matching strategies**: the fields you match on. If the screen says some keys are marked less certain, open **Matching strategies** to see which ([What you match on](./agree-on-terms.md#what-you-match-on)).
 
-Open **Other details** and leave **Let several of my records match one of my partner's** unticked unless you agreed otherwise. **Other details** also lists the personal data used, any allowed-character rules your partner set, and notes on fields with several values per record: ask your partner about anything you did not agree.
-If anything differs from what you agreed, stop and ask your partner for a new invitation. Otherwise choose **Continue: consent & your file**.
+Open **Other details** and leave **Let several of my records match one of my partner's** unticked unless you agreed otherwise. **Other details** also lists the personal data used, any allowed-character rules your partner set, and notes on fields with several values per record: ask your partner about anything you did not agree on.
+If anything differs from what you agreed on, stop and ask your partner for a new invitation. Otherwise choose **Continue: consent & your file**.
 
 ### 3. Consent & your file
 

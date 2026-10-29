@@ -9,7 +9,13 @@ import { dirname, posix, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { slugify } from "../../scripts/lib/headingSlug.mjs";
-import { guideMarkdown, guidePageData } from "./guides.mjs";
+import {
+  GUIDE_SECTIONS,
+  GUIDES_DIR,
+  guideMarkdown,
+  guidePageData,
+  guideRewrites,
+} from "./guides.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -34,10 +40,12 @@ const srcExclude = readdirSync(repoRoot, { withFileTypes: true })
   .map((entry) => (entry.isDirectory() ? `${entry.name}/**` : entry.name))
   .concat(["**/node_modules/**", "docs/.vitepress/**"]);
 
-// The landing page is served at the site root, and each directory's README at
-// the directory's own address.
+// The guides are served at the site root, the overview beside the
+// documentation index, and each directory's README at the directory's own
+// address.
 const REWRITES = {
-  "docs/index.md": "index.md",
+  ...guideRewrites(),
+  "docs/index.md": "docs/overview.md",
   "docs/README.md": "docs/index.md",
   "docs/spec/README.md": "docs/spec/index.md",
   "docs/notes/README.md": "docs/notes/index.md",
@@ -154,7 +162,7 @@ function dropHtmlComments(md) {
 function page(text, path) {
   if (!isSitePage(path)) {
     throw new Error(
-      `docs/.vitepress/config.mjs names ${path} in the sidebar, which is not a page the site renders. Correct the path or remove the entry.`,
+      `docs/.vitepress/config.mjs names ${path} in a menu, which is not a page the site renders. Correct the path or remove the entry.`,
     );
   }
   return { text, link: siteAddress(path) };
@@ -172,12 +180,13 @@ export default {
   cleanUrls: true,
   lastUpdated: false,
   // Without JavaScript the guide switchers cannot change pane, so every pane
-  // is shown under its name.
+  // is shown under its name, and a narrow screen shows the rail of pages in
+  // place of the page picker.
   head: [
     [
       "noscript",
       {},
-      '<style>html .guide-page .vp-doc .guide-tabs [role="tablist"]{display:none}.guide-tabs [role="tabpanel"][hidden]{display:block}.guide-tabs [role="tabpanel"]::before{content:attr(data-name);display:block;margin-top:16px;font-weight:600}</style>',
+      '<style>html .guide-site .guide-tabs [role="tablist"]{display:none}html .guide-site .guide-tabs [role="tabpanel"][hidden]{display:block}html .guide-site .guide-tabs [role="tabpanel"]::before{content:attr(data-name);display:block;margin-top:16px;font-weight:650}@media (max-width:860px){html .guide-site .rail{display:grid;position:static}html .guide-site .picker{display:none}}</style>',
     ],
   ],
   // With srcDir at the repository root, the default public directory would be
@@ -201,57 +210,29 @@ export default {
   transformPageData: guidePageData,
   themeConfig: {
     search: { provider: "local" },
+    // The reference pages' title leads to the documentation index; the nav's
+    // Guides entry is their one link to the guides.
+    logoLink: "/docs/",
     nav: [
-      { text: "Guides", link: "/docs/" },
+      { text: "Guides", link: "/" },
       { text: "Changelog", link: "/CHANGELOG" },
       { text: "Security", link: "/SECURITY" },
       { text: "Web app", link: WEB_APP_URL },
     ],
     socialLinks: [{ icon: "github", link: REPOSITORY_URL }],
+    repositoryUrl: REPOSITORY_URL,
+    webAppUrl: WEB_APP_URL,
+    // The guides' own menu, drawn by theme/GuideLayout.mjs.
+    guideSections: GUIDE_SECTIONS.map(({ group, topNav = true, pages }) => ({
+      group,
+      topNav,
+      pages: pages.map(([stem, title]) => ({
+        stem,
+        title,
+        link: page(title, `${GUIDES_DIR}${stem}.md`).link,
+      })),
+    })),
     sidebar: [
-      {
-        text: "Guides",
-        items: [
-          {
-            text: "Start",
-            items: [
-              page("Home", "docs/guides/index.md"),
-              page("Agree the terms", "docs/guides/agree-the-terms.md"),
-            ],
-          },
-          {
-            text: "Web app",
-            items: [
-              page("Invite with the web app", "docs/guides/web-invite.md"),
-              page("Accept with the web app", "docs/guides/web-accept.md"),
-              page("Run it on a schedule", "docs/guides/web-schedule.md"),
-            ],
-          },
-          {
-            text: "Console",
-            items: [
-              page("Start the console", "docs/guides/console-start.md"),
-              page("Invite from the console", "docs/guides/console-invite.md"),
-              page("Accept in the console", "docs/guides/console-accept.md"),
-              page("Move it to a schedule", "docs/guides/console-schedule.md"),
-            ],
-          },
-          {
-            text: "Command line",
-            items: [
-              page("Install and run", "docs/guides/cli-install.md"),
-              page("Invite a partner", "docs/guides/cli-invite.md"),
-              page("Accept an invitation", "docs/guides/cli-accept.md"),
-              page("Schedule it", "docs/guides/cli-schedule.md"),
-              page("Other ways to exchange", "docs/guides/cli-other.md"),
-            ],
-          },
-          {
-            text: "About",
-            items: [page("About", "docs/guides/about.md")],
-          },
-        ],
-      },
       {
         text: "Using Alcove",
         items: [

@@ -1,7 +1,7 @@
 ---
 reader: An IT engineer whose organization creates the invitation
-needs: "[Alcove installed](./cli-install.md), your input CSV, the terms you agreed, and an SFTP directory, shared folder or WebRTC"
-before: "[Agree the terms](./agree-the-terms.md)"
+needs: "[Alcove installed](./cli-install.md), your input CSV, the terms you agreed on, and an SFTP directory, shared folder or WebRTC"
+before: "[Agree on terms](./agree-on-terms.md)"
 partner: "[Accept an invitation](./cli-accept.md)"
 timing: "The invitation lasts 1 hour unless you set --expires-in, up to 365d. Each side waits 1 hour for the other, 10 minutes on WebRTC. A 20-record test run takes about 1 minute over a shared folder and about 14 minutes over SFTP."
 next: "[Schedule it](./cli-schedule.md)"
@@ -75,9 +75,9 @@ You should see: `wrote a configuration template to ./alcove.yaml`.
 
 ### 3. Set the terms in alcove.yaml
 
-Make each edit you agreed. What each one means: [Agree the terms](./agree-the-terms.md).
+Make each edit you agreed on. What each one means: [Agree on terms](./agree-on-terms.md).
 
-**Columns you send** ([What each of you sends](./agree-the-terms.md#what-each-of-you-sends)). Columns `alcove init` did not recognize are listed, commented out, at the end of the `metadata` block. Remove the `#` marks from each one you agreed to send:
+**Columns you send** ([What each of you sends](./agree-on-terms.md#what-each-of-you-sends)). Columns `alcove init` did not recognize are listed, commented out, at the end of the `metadata` block. Remove the `#` marks from each one you agreed to send:
 
 ```yaml
   - name: Renewal.Date
@@ -105,17 +105,17 @@ A column with `is_payload: false`, or not listed, is not sent.
       - name: Case_Manager_Phone_Number
 ```
 
-**Keys** ([What you match on](./agree-the-terms.md#what-you-match-on)). `linkage_terms.linkage_keys` holds the Broader matching keys your file supports. To leave out the three less certain keys, delete the entries named `LN + FN + DOB`, `swap(LN, FN) + DOB` and `split(LN) + FN + DOB`, each with every line under it. The comment above `linkage_keys` that begins "To run the highest-precision rules only" names the further keys to delete.
+**Keys** ([What you match on](./agree-on-terms.md#what-you-match-on)). `linkage_terms.linkage_keys` holds the Broader matching keys your file supports. To leave out the three less certain keys, delete the entries named `LN + FN + DOB`, `swap(LN, FN) + DOB` and `split(LN) + FN + DOB`, each with every line under it. The comment above `linkage_keys` that begins "To run the highest-precision rules only" names the further keys to delete.
 
-**Who receives the result** ([Who receives the result](./agree-the-terms.md#who-receives-the-result)). Set `linkage_terms.output`:
+**Who receives the result** ([Who receives the result](./agree-on-terms.md#who-receives-the-result)). Set `linkage_terms.output`:
 
 | Option | What it does | Pick it when |
 | --- | --- | --- |
 | **`expects_output: true`, `share_with_partner: true`** | Both of you get a results file. | Usual: both of you act on the matches. |
-| **`expects_output: true`, `share_with_partner: false`** | Only you get one. You send no columns. | Only you need the list. Your partner sees no list, and no count outside a debug log ([A list or only a count](./agree-the-terms.md#a-list-or-only-a-count)). |
+| **`expects_output: true`, `share_with_partner: false`** | Only you get one. You send no columns. | Only you need the list. Your partner sees no list, and no count outside a debug log ([A list or only a count](./agree-on-terms.md#a-list-or-only-a-count)). |
 | **`expects_output: false`, `share_with_partner: true`** | Only your partner gets one. Your partner sends no columns, so leave out `payload.receive`. | Only your partner needs the list. |
 
-**A list or only a count** ([A list or only a count](./agree-the-terms.md#a-list-or-only-a-count)). For a count, set `algorithm: psi-c`, delete every key in `linkage_keys` but one, set every column to `is_payload: false`, and add no `payload.receive`.
+**A list or only a count** ([A list or only a count](./agree-on-terms.md#a-list-or-only-a-count)). For a count, set `algorithm: psi-c`, delete every key in `linkage_keys` but one, set every column to `is_payload: false`, and add no `payload.receive`.
 
 ### 4. Create the invitation
 
@@ -228,7 +228,7 @@ The console and the web app run an invitation only if it names where the exchang
 | Channel | Your partner uses the web app | Your partner uses the console |
 | --- | --- | --- |
 | WebRTC | Steps 1 to 6, WebRTC tab | Steps 1 to 6, WebRTC tab |
-| SFTP or a shared folder | Not possible: the web app runs WebRTC only | Your partner invites from the console ([Invite from the console](./console-invite.md)), and you accept with [Accept an invitation](./cli-accept.md). Or, on SFTP, if the default terms are what you agreed, invite with the server's address on the command, below. |
+| SFTP or a shared folder | Not possible: the web app runs WebRTC only | Your partner invites from the console ([Invite from the console](./console-invite.md)), and you accept with [Accept an invitation](./cli-accept.md). Or, on SFTP, if the default terms are what you agreed on, invite with the server's address on the command, below. |
 
 Send the invitation text with [Accept with the web app](./web-accept.md) or [Accept in the console](./console-accept.md). In the web app, your partner pastes it under **Have an invitation? Paste it here**.
 

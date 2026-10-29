@@ -33,9 +33,9 @@ You should see: "Saved as a recurring exchange."
 
 From then on, the start page opens on **Recurring exchanges**. Choose **Run** (or **Open**) beside the label to open the exchange's page.
 
-### 2. Both of you: agree the schedule
+### 2. Both of you: agree on the schedule
 
-Agree four values over your usual channel: the date and time of the first window, how many days apart windows open, and how many hours each stays open.
+Agree on four values over your usual channel: the date and time of the first window, how many days apart windows open, and how many hours each stays open.
 A window is counted in days from the first one, not by the calendar:
 
 | Cadence | **A window opens every (days)** |
@@ -120,7 +120,7 @@ Each scheduled run that succeeds writes into the folder:
 
 A run you start yourself writes the results file only, and offers **Download updated backup**: choose it.
 
-The first run may show **The exchange reported a warning** about which columns your partner sends. It records that list, and later runs refuse a different one. Nothing to do if the list is what you agreed.
+The first run may show **The exchange reported a warning** about which columns your partner sends. It records that list, and later runs refuse a different one. Nothing to do if the list is what you agreed on.
 
 If the folder could not be written, the exchange's page says "Results ready to download" and keeps the results in this browser for 30 days.
 
@@ -130,7 +130,7 @@ If the folder could not be written, the exchange's page says "Results ready to d
 
 If you cannot install the app or keep the computer on, run each period by hand. You need not tick **Run this exchange on an agreed schedule**.
 Once, at the top of the exchange's page, under "Choose this exchange's folder.", choose **Choose folder**. **Run exchange** stays greyed out until a folder is chosen.
-Each period, agree a time with your partner, put the new `input.csv` in the folder, and each of you choose **Run exchange** on the exchange's page.
+Each period, agree on a time with your partner, put the new `input.csv` in the folder, and each of you choose **Run exchange** on the exchange's page.
 
 You should see: **Run complete**, the downloads, and a line naming the results file written to the folder you chose.
 
@@ -138,7 +138,7 @@ You should see: **Run complete**, the downloads, and a line naming the results f
 
 "Your partner did not arrive" means nothing was exchanged and nothing left your computer. The app tries again at the next window, and no sooner: for a quarterly exchange, that is 91 days later.
 
-To run before then, agree a time with your partner and each choose **Run exchange** on the exchange's page, once a folder is chosen.
+To run before then, agree on a time with your partner and each choose **Run exchange** on the exchange's page, once a folder is chosen.
 If misses repeat, compare the two schedules line by line, using the UTC time in **Copy this schedule for your partner**, and check this computer's clock.
 If your partner was running in the window and misses continue, choose **Re-invite with the same terms**: the exchange keeps its terms and gets a new shared secret. Your partner accepts the new invitation ([Accept with the web app](./web-accept.md)), saves it as a recurring exchange, sets the schedule and folder again, and removes the old one under **Recurring exchanges**: the new one is a separate entry.
 

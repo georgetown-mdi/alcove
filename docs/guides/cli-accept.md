@@ -65,7 +65,7 @@ The `inviting party` name is your partner's own word; Alcove has not verified it
 
 | Option | What it does | Pick it when |
 | --- | --- | --- |
-| **y** | Writes `alcove.yaml` and `.alcove.key`. | The terms match what you agreed. |
+| **y** | Writes `alcove.yaml` and `.alcove.key`. | The terms match what you agreed on. |
 | **N** | Prints `invitation declined; no files were written`. | Anything differs. Ask your partner for a new invitation: the terms cannot be changed here. |
 
 You should see: `wrote config to ./alcove.yaml` and `wrote key file to ./.alcove.key`.
