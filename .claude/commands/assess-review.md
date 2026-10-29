@@ -287,7 +287,8 @@ or later; a limit in an earlier round stays ledger-only.
 
 A `deferred` entry names where the finding went: a board item,
 as `"board": "<board>/<itemId>"`, a held follow-up, as `"followUp": "<slug>"`
-in the shape `.claude/pm/ruleset.md`, Filing and updating items, states, or a
+in the shape `.claude/pm/ruleset.md`, Filing and updating items, states (with
+`"surface": "internal"` or a `limitsLine` beside it), or a
 spec limits line on the branch, as
 `"limitsLine": "docs/spec/<path>#<anchor or \"quoted phrase\">"`. A finding
 with none of these is recorded as `limit` with its `note`, not `deferred`. A

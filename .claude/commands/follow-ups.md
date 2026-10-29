@@ -48,9 +48,9 @@ It is the session's last step: the board alone holds the state afterwards.
    the spawn prompt, it licenses filing every item you and the PM agree on
    (`.claude/pm/ruleset.md`, Filing and updating items).
 4. File only what you and the PM both agree on, each with an epic and an
-   implementation order. Write each held follow-up's outcome on its
-   `Potential follow-up <slug>:` line in the continuation brief, as the PM
-   ruleset's same section states. Raise a disagreement with the owner rather
+   implementation order. Write every held follow-up's outcome on its line in
+   the continuation brief, and for one a ledger entry names by slug, also in
+   that entry, as the PM ruleset's same section states. Raise a disagreement with the owner rather
    than settling it. One side conceding on evidence the other verified in the
    repository is agreement, not a disagreement to raise. A PM question that
    blocks nothing is carried in the filed item's Open questions and named in

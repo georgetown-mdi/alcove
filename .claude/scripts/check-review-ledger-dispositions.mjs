@@ -15,7 +15,10 @@
 //   or follow-up value not of its shape, a limits file absent at the head, or a
 //   quoted phrase that file does not hold (an anchor is not resolved; a board
 //   item and a follow-up are checked for shape only, the follow-up because the
-//   continuation brief listing it is host-local and gitignored);
+//   continuation brief listing it is host-local and gitignored). A follow-up
+//   also needs what a `limit` entry does, `"surface": "internal"` or a
+//   `limitsLine` the head holds, so a follow-up the pass declines leaves no
+//   reachable limit undocumented;
 // - a `limit` entry whose `"surface"` is `"reachable"` or absent and which names
 //   no `limitsLine` passing the `deferred` rules, or whose `surface` is any
 //   value other than those two. `"surface": "internal"` passes.
@@ -158,8 +161,11 @@ export function deferralHomeReason({ entry, head, git }) {
     if (
       typeof entry.followUp === "string" &&
       FOLLOW_UP_SHAPE.test(entry.followUp)
-    )
-      return null;
+    ) {
+      const limit = limitHomeReason({ entry, head, git });
+      if (limit === null) return null;
+      return `held follow-up "${entry.followUp}" also needs what a limit does, in case the follow-ups pass declines it: ${limit}`;
+    }
     return `"followUp" is ${JSON.stringify(entry.followUp)}, not a "<slug>" of lowercase letters and digits joined by single hyphens`;
   }
   if (entry.limitsLine === undefined)

@@ -254,7 +254,8 @@ Common to both:
    `limit`, or `deferred` as it disposes of each, and a row still holding `open` after
    triage is a finding nobody decided. Triage adds fields as it disposes: a `fixed`
    entry gains `"commit": "<sha>"`, and a `deferred` entry gains `"board":
-   "<board>/<itemId>"`, `"followUp": "<slug>"`, or
+   "<board>/<itemId>"`, `"followUp": "<slug>"` (with `"surface": "internal"`
+   or a `limitsLine`), or
    `"limitsLine": "docs/spec/<path>#<anchor or phrase>"`. A
    `limit` entry gains `"surface": "internal"` when no user or partner can reach what
    it limits (an internal surface or a test guard); an entry without `surface` is

@@ -252,9 +252,15 @@ the first. In order:
   `Potential follow-up <slug>:`, so the pull request does not wait on a
   filing. The brief is gitignored and host-local, so
   `check-review-ledger-dispositions.mjs` checks the slug's shape only, never
-  that the brief lists it; the follow-ups pass resolves it. The pass leaves the
-  ledger entry as written and records the outcome -- the filed item's
-  `<board>/<itemId>`, or declined -- on the slug's line in the brief.
+  that the brief lists it; the follow-ups pass resolves it. A deferral to a
+  held follow-up also carries `"surface": "internal"` or a limits line on the
+  branch, so a follow-up the pass declines leaves no reachable limit
+  undocumented. The pass records each held follow-up's outcome on its brief
+  line, and for one a ledger entry names by `followUp`, also in that entry: a
+  filed one gains `"board": "<board>/<itemId>"` beside its slug; a declined one
+  becomes `"disposition": "limit"` with the decline's reason as its `note` (the
+  surface or limits line above is already there). Ledgers are the record
+  retros read.
 - When a review fails to converge -- a step-back trigger fires
   (`.claude/commands/assess-review.md`, Step 2) -- the session offers the
   owner two things together: an immediate step-back on the churning area, and
