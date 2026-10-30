@@ -52,7 +52,7 @@
     "luxon": "^3.7.2",
     "papaparse": "^5.7.0",
     "peerjs-js-binarypack": "2.1.0",
-    "re2js": "^2.9.0",
+    "re2js": "^2.8.8",
     "uuid": "^14.0.3",
     "yaml": "^2.9.1",
     "zod": "^4.6.7"
