@@ -1077,7 +1077,7 @@ describe("the review step of an opened configuration's run", () => {
     );
     await continueToReview.click();
     await expect
-      .element(page.getByText(/dst=\/work \S+ update/).first())
+      .element(page.getByText(/dst=\/work" \S+ update/).first())
       .toBeInTheDocument();
     await expect
       .element(page.getByText(EDITED_TERMS_TITLE).first())
