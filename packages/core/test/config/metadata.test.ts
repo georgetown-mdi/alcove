@@ -8,8 +8,9 @@ import {
   METADATA_NAME_SHAPE_MESSAGE,
   ALIAS_TYPE_META_MAP,
   NAMED_IDENTIFIER_LOOKUP_KEYS,
-  NOT_RECORD_NUMBER_LOOKUP_KEYS,
+  NOT_RECORD_NUMBER_LOOKUP_KEY_ENDINGS,
   ownResultColumnNames,
+  RUN_TOGETHER_RECORD_NUMBER_LOOKUP_KEYS,
   safeParseMetadata,
   disclosedColumnNames,
 } from "../../src/config/metadata";
@@ -269,18 +270,21 @@ test("the named identifier spellings are not entries of the alias table", () => 
     expect(Object.hasOwn(ALIAS_TYPE_META_MAP, key)).toBe(false);
 });
 
-test("no alias table key is a key the identifier or not-a-record-number lists hold", () => {
+test("no alias table key is a key the identifier or record-number lists hold", () => {
   const tableKeys = Object.keys(ALIAS_TYPE_META_MAP);
   const listKeys = [
     ...NAMED_IDENTIFIER_LOOKUP_KEYS,
-    ...NOT_RECORD_NUMBER_LOOKUP_KEYS,
+    ...RUN_TOGETHER_RECORD_NUMBER_LOOKUP_KEYS,
   ];
   expect(tableKeys.filter((key) => listKeys.includes(key))).toEqual([]);
   expect(
-    [...NOT_RECORD_NUMBER_LOOKUP_KEYS].filter((key) =>
+    [...RUN_TOGETHER_RECORD_NUMBER_LOOKUP_KEYS].filter((key) =>
       NAMED_IDENTIFIER_LOOKUP_KEYS.has(key),
     ),
   ).toEqual([]);
+  const endsAsNoRecordNumber = (key: string) =>
+    NOT_RECORD_NUMBER_LOOKUP_KEY_ENDINGS.some((ending) => key.endsWith(ending));
+  expect([...tableKeys, ...listKeys].filter(endsAsNoRecordNumber)).toEqual([]);
   expect(
     tableKeys.filter(
       (key) =>
@@ -332,7 +336,81 @@ const RECORD_IDENTIFIER_SPELLINGS = [
   "Case #:",
   "(RecordNo)",
   "RecordNo:",
+  "fax_no",
+  "fax_number",
+  "phone2_number",
+  "Visits (#)",
 ];
+
+// One header for each run-together record-number list entry.
+const RUN_TOGETHER_RECORD_NUMBER_HEADERS = [
+  "RECORDNO",
+  "recordno",
+  "CASENO",
+  "caseno",
+  "CLIENTNO",
+  "PATIENTNO",
+  "MEMBERNO",
+  "MEMBERSHIPNO",
+  "ACCOUNTNO",
+  "ACCTNO",
+  "PERSONNO",
+  "PARTICIPANTNO",
+  "SUBJECTNO",
+  "CUSTOMERNO",
+  "STUDENTNO",
+  "EMPLOYEENO",
+  "HOUSEHOLDNO",
+  "CLAIMNO",
+  "POLICYNO",
+  "FILENO",
+  "REFNO",
+  "REFERENCENO",
+  "CHARTNO",
+  "MRNO",
+  "IDNO",
+  "ENCOUNTERNO",
+  "ADMISSIONNO",
+  "ENROLLMENTNO",
+  "REGISTRATIONNO",
+  "ORDERNO",
+  "INVOICENO",
+  "TICKETNO",
+  "SERIALNO",
+];
+
+test("each run-together record-number list entry has a header below", () => {
+  expect(
+    new Set(
+      RUN_TOGETHER_RECORD_NUMBER_HEADERS.map((name) => name.toLowerCase()),
+    ),
+  ).toEqual(RUN_TOGETHER_RECORD_NUMBER_LOOKUP_KEYS);
+});
+
+describe.each(["declaredOnly", "direct"] as const)(
+  "%s mode: a run-together record number is held back and ranks as a record number",
+  (mode) => {
+    test.each(RUN_TOGETHER_RECORD_NUMBER_HEADERS)("%j", (name) => {
+      const metadata = inferMetadata([name, "first_name", "notes"], [], {
+        mode,
+      });
+      expect(metadata[0]).toEqual({
+        name,
+        type: "identifier",
+        role: "identifier",
+        isPayload: false,
+      });
+      expect(disclosedColumnNames(metadata)).toEqual(
+        mode === "direct" ? ["notes"] : [],
+      );
+      expect(
+        inferMetadataForEveryColumn([name, "client_id"], [], { mode })
+          .filter((column) => column.role === "identifier")
+          .map((column) => column.name),
+      ).toEqual(["client_id"]);
+    });
+  },
+);
 
 describe.each(["declaredOnly", "direct"] as const)(
   "%s mode: a record identifier spelling infers as a client_id column does",
@@ -418,6 +496,15 @@ const NUMBER_SUFFIX_FALSE_MATCHES: Array<[name: string, type: SemanticType]> = [
   ["Yes No", "other"],
   ["YesNo", "other"],
   ["YESNO", "other"],
+  ["Consent Yes No", "other"],
+  ["consent_yes_no", "other"],
+  ["ConsentYesNo", "other"],
+  ["CONSENT_YESNO", "other"],
+  ["consentyesno", "other"],
+  ["Smoker (Yes/No)", "other"],
+  ["VISITNO", "other"],
+  ["visitno", "other"],
+  ["ROOMNO", "other"],
   ["number", "other"],
   ["Number", "other"],
   ["No", "other"],
@@ -481,6 +568,21 @@ const SSN_SPELLINGS = [
   "(ssn)",
   "ssn:",
   "SSN:",
+  "SocialSecurity Number",
+  "socialsecurity_number",
+  "Social SecurityNumber",
+  "social_securityno",
+  "SocialSecurity No",
+  "SocialSecurity",
+  "SocSec No",
+  "socsec_number",
+  "Soc SecNo",
+  "Social Sec",
+  "social_sec_no",
+  "SocialSec Number",
+  "Soc Security",
+  "SocSecurity Number",
+  "soc_security_num",
 ];
 
 const PHONE_SPELLINGS = [
@@ -519,7 +621,62 @@ const PHONE_SPELLINGS = [
   "Cell #",
   "Tel.",
   "[Phone #]",
+  "HomePhone Number",
+  "homephone_no",
+  "Home PhoneNo",
+  "home_phonenumber",
+  "CellPhone Number",
+  "cellphone_no",
+  "MobilePhone No",
+  "WorkPhone #",
+  "AltPhone Number",
+  "Main Phone",
+  "MainPhone No",
+  "Daytime Phone",
+  "Personal Phone",
+  "Secondary Phone",
+  "Cellular",
+  "Cellular Phone",
+  "CellularPhone Number",
+  "Landline",
+  "Land Line",
+  "LandLine Number",
+  "Home Telephone",
+  "HomeTelephone No",
+  "Work Telephone",
+  "Home Tel",
+  "Work Tel",
+  "Cell Tel",
+  "Mobile Tel",
+  "Phone Home",
+  "Phone Work",
+  "Phone Cell",
+  "Phone Mobile",
+  "PhoneHome No",
 ];
+
+// Spellings left out of the SSN and phone rows because they also name a
+// column that holds no SSN or phone number of the record's person.
+const SSN_AND_PHONE_NEAR_MISSES = [
+  "SOC",
+  "SS",
+  "pH",
+  "Contact",
+  "Home",
+  "Phone Type",
+  "Phone Ext",
+  "Emergency Phone",
+  "Fax",
+];
+
+test.each(SSN_AND_PHONE_NEAR_MISSES)(
+  "%j is not an SSN or phone column",
+  (name) => {
+    expect(inferMetadataForEveryColumn([name], [])).toEqual([
+      { name, type: "other", role: "ignored", isPayload: false },
+    ]);
+  },
+);
 
 describe.each(["declaredOnly", "direct"] as const)(
   "%s mode: an SSN or phone spelling is a linkage name, never sent",

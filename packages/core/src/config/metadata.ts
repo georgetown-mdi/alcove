@@ -375,15 +375,58 @@ export const NAMED_IDENTIFIER_LOOKUP_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Lookup keys that end in a record-number suffix but name no record number,
- * so they infer as any other name absent from the table: a yes/no answer.
+ * Endings of a lookup key that ends in a record-number suffix but names no
+ * record number, so it infers as any other name absent from the table: a
+ * yes/no answer, such as `consent_yes_no`.
  *
  * @internal
  */
-export const NOT_RECORD_NUMBER_LOOKUP_KEYS: ReadonlySet<string> = new Set([
+export const NOT_RECORD_NUMBER_LOOKUP_KEY_ENDINGS: ReadonlyArray<string> = [
   "yes_no",
   "yesno",
-]);
+];
+
+/**
+ * Lookup keys of record numbers that run `no` into the word before it, which
+ * an all-capitals or all-lowercase header such as `RECORDNO` leaves no
+ * suffix to find. Each names a record, never a yes/no answer or a count.
+ *
+ * @internal
+ */
+export const RUN_TOGETHER_RECORD_NUMBER_LOOKUP_KEYS: ReadonlySet<string> =
+  new Set([
+    "recordno",
+    "caseno",
+    "clientno",
+    "patientno",
+    "memberno",
+    "membershipno",
+    "accountno",
+    "acctno",
+    "personno",
+    "participantno",
+    "subjectno",
+    "customerno",
+    "studentno",
+    "employeeno",
+    "householdno",
+    "claimno",
+    "policyno",
+    "fileno",
+    "refno",
+    "referenceno",
+    "chartno",
+    "mrno",
+    "idno",
+    "encounterno",
+    "admissionno",
+    "enrollmentno",
+    "registrationno",
+    "orderno",
+    "invoiceno",
+    "ticketno",
+    "serialno",
+  ]);
 
 /**
  * The part of a lookup key before a `_number`, `_no` or `number` suffix, or
@@ -419,14 +462,17 @@ function isNamedIdentifierLookupKey(lookupName: string): boolean {
 
 /**
  * Whether a column absent from {@link ALIAS_TYPE_META_MAP} infers
- * `type: identifier` as a record number: its name has a record-number suffix
- * ({@link hasRecordNumberSuffix}) and its lookup key is not one of
- * {@link NOT_RECORD_NUMBER_LOOKUP_KEYS}.
+ * `type: identifier` as a record number: its lookup key is one of
+ * {@link RUN_TOGETHER_RECORD_NUMBER_LOOKUP_KEYS}, or its name has a
+ * record-number suffix ({@link hasRecordNumberSuffix}) and its lookup key ends
+ * in none of {@link NOT_RECORD_NUMBER_LOOKUP_KEY_ENDINGS}.
  */
 function isRecordNumberColumn(name: string, lookupName: string): boolean {
+  if (RUN_TOGETHER_RECORD_NUMBER_LOOKUP_KEYS.has(lookupName)) return true;
   return (
-    !NOT_RECORD_NUMBER_LOOKUP_KEYS.has(lookupName) &&
-    hasRecordNumberSuffix(name, lookupName)
+    !NOT_RECORD_NUMBER_LOOKUP_KEY_ENDINGS.some((ending) =>
+      lookupName.endsWith(ending),
+    ) && hasRecordNumberSuffix(name, lookupName)
   );
 }
 
@@ -446,22 +492,37 @@ function isUnlistedIdentifierColumn(name: string, lookupName: string): boolean {
 const NUMBER_ENDINGS: ReadonlyArray<string> = ["number", "no", "num", "nbr"];
 
 /**
- * The lookup keys of each of `words` followed by each of
- * {@link NUMBER_ENDINGS}, separated by `_` and run together: `home_phone`
- * gives `home_phone_no` and `homephoneno`.
+ * Every spelling of the `_`-separated parts of `word` with each `_` kept or
+ * dropped: `soc_sec_no` gives `soc_sec_no`, `soc_secno`, `socsec_no` and
+ * `socsecno`.
  */
-function numberSpellings(words: ReadonlyArray<string>): Array<string> {
-  return words.flatMap((word) =>
-    NUMBER_ENDINGS.flatMap((ending) => [
-      `${word}_${ending}`,
-      `${word.replaceAll("_", "")}${ending}`,
-    ]),
+function joinings(word: string): Array<string> {
+  const [first, ...rest] = word.split("_");
+  return rest.reduce(
+    (spellings, part) =>
+      spellings.flatMap((spelling) => [
+        `${spelling}_${part}`,
+        `${spelling}${part}`,
+      ]),
+    [first],
   );
 }
 
-/** Each of `words` as written and with `_` removed. */
+/**
+ * The lookup keys of each of `words` followed by each of
+ * {@link NUMBER_ENDINGS}, with each `_` kept or dropped ({@link joinings}):
+ * `home_phone` gives `home_phone_no`, `homephone_no`, `home_phoneno` and
+ * `homephoneno`.
+ */
+function numberSpellings(words: ReadonlyArray<string>): Array<string> {
+  return words.flatMap((word) =>
+    NUMBER_ENDINGS.flatMap((ending) => joinings(`${word}_${ending}`)),
+  );
+}
+
+/** Each of `words` with each `_` kept or dropped ({@link joinings}). */
 function wordSpellings(words: ReadonlyArray<string>): Array<string> {
-  return words.flatMap((word) => [word, word.replaceAll("_", "")]);
+  return words.flatMap(joinings);
 }
 
 /**
@@ -479,6 +540,8 @@ const SSN_WORDS: ReadonlyArray<string> = [
   "social",
   "social_security",
   "soc_sec",
+  "social_sec",
+  "soc_security",
 ];
 
 /**
@@ -503,6 +566,23 @@ const PHONE_WORDS: ReadonlyArray<string> = [
   "alt_phone",
   "alternate_phone",
   "contact_phone",
+  "main_phone",
+  "daytime_phone",
+  "personal_phone",
+  "secondary_phone",
+  "cellular",
+  "cellular_phone",
+  "land_line",
+  "home_telephone",
+  "work_telephone",
+  "home_tel",
+  "work_tel",
+  "cell_tel",
+  "mobile_tel",
+  "phone_home",
+  "phone_work",
+  "phone_cell",
+  "phone_mobile",
 ];
 
 // The lookup key joins words with `_`, so a no-separator spelling such as
@@ -511,7 +591,13 @@ const DEFAULT_COLUMN_TYPES_AND_ALIASES: Array<TypeMeta> = [
   {
     type: "ssn",
     aliases: aliasesOf("ssn", [
-      ...wordSpellings(["social", "social_security", "soc_sec"]),
+      ...wordSpellings([
+        "social",
+        "social_security",
+        "soc_sec",
+        "social_sec",
+        "soc_security",
+      ]),
       ...numberSpellings(SSN_WORDS),
     ]),
     role: "linkage",
