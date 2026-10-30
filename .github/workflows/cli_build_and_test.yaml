@@ -56,13 +56,16 @@ jobs:
           # material), so a change confined to them re-runs the suites too, and
           # the CLI depends on packages/cli-contract, whose own unit suite runs
           # beside the CLI's. The WebSocket relay's suite runs on this gate
-          # too (its leg below says why), so its workspace is in scope.
+          # too (its leg below says why), so its workspace is in scope, and so
+          # is the SFTP relay's, whose checks against the SFTP test server are
+          # in the integration suite.
           paths: |
             apps/cli/**
             packages/core/**
             lib/**
             packages/peerjs-broker/**
             packages/websocket-relay/**
+            packages/sftp-relay/**
             packages/testkit/**
             packages/cli-contract/**
             package-lock.json
@@ -152,6 +155,12 @@ jobs:
           # checks each proof with core's code, which this gate's scope covers.
           - suite: websocket relay
             command: npm run test:unit -w packages/websocket-relay
+          # The SFTP relay (packages/sftp-relay): its options and its runner
+          # as a process. Its checks against the SFTP test server are in the
+          # integration suite (test/integration/sftpRelay.test.ts), so they run
+          # on every SFTP backend leg.
+          - suite: sftp relay
+            command: npm run test:unit -w packages/sftp-relay
           # A second run of the same suite against a native OpenSSH sshd, so the
           # adapter is also exercised against a real server.
           - suite: native sshd

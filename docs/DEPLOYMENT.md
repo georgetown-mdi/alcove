@@ -133,7 +133,51 @@ A relay forwards the encrypted WebRTC channel without terminating it. The same r
 
 ## WebSocket-to-TCP proxy
 
-A WebSocket-to-TCP proxy is required only when a browser-based party needs to reach an SFTP server, because browser runtimes cannot open raw TCP connections (see [COMMUNICATION.md#websocket-to-tcp-proxy](COMMUNICATION.md#websocket-to-tcp-proxy)). The CLI does not need this proxy. No reference configuration is provided in this release; deployment guidance is targeted for the 1.1 release (see [ROADMAP.md](ROADMAP.md)).
+A WebSocket-to-TCP proxy is required only when a browser-based party needs to reach an SFTP server, because browser runtimes cannot open raw TCP connections (see [COMMUNICATION.md#websocket-to-tcp-proxy](COMMUNICATION.md#websocket-to-tcp-proxy)). The CLI does not need this proxy.
+
+The SFTP relay (`packages/sftp-relay`) is that proxy. The operator of an SFTP server runs it in front of that one server: it forwards each WebSocket from an allowed web application to the server, and SSH runs end to end through it. No browser SFTP client uses it yet. Its wire, close codes and bounds are in [SFTP_RELAY.md](spec/SFTP_RELAY.md).
+
+### The relay's reference configuration
+
+Three settings make a deployment:
+
+- **The target.** `--target host:port` names the SFTP server as the relay's host reaches it. Every connection goes there, and nothing a browser sends changes it. A second SFTP server needs a second relay.
+- **The allowlist.** `--allowed-origin` names the origin of a web application whose pages may use the relay, once for each, such as `https://alcove.example.org`. An upgrade from any other origin, or with none, is refused before the relay opens a connection to the server. The relay refuses to start on an entry not written as a browser sends it, and names the form it expects.
+- **TLS in front.** The relay terminates no TLS. Put it behind a reverse proxy that does, on 443, so a browser dials `wss://`.
+
+The image is not yet published, so build it from a checkout and run it with the two settings:
+
+```sh
+docker build -f packages/sftp-relay/Dockerfile -t alcove-sftp-relay .
+docker run -d --name alcove-sftp-relay --restart unless-stopped \
+  -p 127.0.0.1:8080:8080 \
+  alcove-sftp-relay \
+  --target sftp.internal.example.org:22 \
+  --allowed-origin https://alcove.example.org
+```
+
+The `-p` binding publishes the relay on the host's loopback only, for the reverse proxy beside it. The relay prints `alcove-sftp-relay 8080` once it is listening, and exits 64 on a missing or malformed setting.
+
+The reverse proxy forwards the `/sftp` upgrade, passing the browser's `Origin` header through unchanged, as nginx does by default:
+
+```nginx
+# server{} context, inside the TLS server block for the relay's name.
+location = /sftp {
+    proxy_pass          http://127.0.0.1:8080;
+    proxy_http_version  1.1;
+    proxy_set_header    Upgrade    $http_upgrade;
+    proxy_set_header    Connection "upgrade";
+    proxy_set_header    Host       $host;
+}
+```
+
+What the `Origin` check does and does not do:
+
+- **It stops other pages.** A page from another origin cannot use the relay from a visitor's browser.
+- **It is not authentication.** A client that is not a browser can send any `Origin`, so the relay exposes the SSH port to anyone who can reach the relay, about as widely as publishing that port would. The SFTP server's own authentication is the gate.
+- **Per-address limits are the front's.** Behind the reverse proxy the relay sees only the proxy's address, so a limit on connections from one address belongs at the proxy, as for the [coordination server](#hardening-the-coordination-server).
+
+The relay's container needs to reach the SFTP server and nothing else; [Restricting the container's outbound network access](#restricting-the-containers-outbound-network-access) shows how to hold a container to one endpoint.
 
 ## Coordination server
 

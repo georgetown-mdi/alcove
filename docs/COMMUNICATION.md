@@ -212,7 +212,7 @@ The relay forwards the exchange's messages and stores none of them. All of them 
 
 ### WebSocket-to-TCP proxy
 
-No WebSocket-to-TCP proxy is built, and no connection setting names one: the browser conducts WebRTC exchanges only, and a CLI party, including one the console runs, opens its SFTP socket itself ([DEPLOYMENT.md](DEPLOYMENT.md#websocket-to-tcp-proxy)).
+The SFTP relay (`packages/sftp-relay`) is a WebSocket-to-TCP proxy an SFTP server's operator runs in front of that server ([DEPLOYMENT.md](DEPLOYMENT.md#websocket-to-tcp-proxy)). No client uses it yet, and no connection setting names one: the browser conducts WebRTC exchanges only, and a CLI party, including one the console runs, opens its SFTP socket itself.
 
 ### Coordination server
 

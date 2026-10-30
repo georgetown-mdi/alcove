@@ -30,6 +30,7 @@ export const SCANNED_ROOTS = [
   "packages/cli-contract/src",
   "packages/peerjs-broker/src",
   "packages/websocket-relay/src",
+  "packages/sftp-relay/src",
   "apps/web/public",
   "apps/web/server",
 ];
@@ -40,6 +41,7 @@ export const SCANNED_FILES = [
   "docker-entrypoint.sh",
   "Dockerfile.fips",
   "docker-entrypoint-fips.sh",
+  "packages/sftp-relay/Dockerfile",
   "support/fips-probe/engagement.mjs",
   "support/fips-probe/image-engagement.mjs",
 ];

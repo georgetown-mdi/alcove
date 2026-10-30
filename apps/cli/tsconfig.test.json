@@ -5,11 +5,14 @@
   // test/ -- the bundler emits, and vitest transpiles with esbuild without type
   // checking. This config closes that gap: `tsc -p tsconfig.test.json` checks
   // src + test together with no emit. (`@alcove/core` resolves via node_modules
-  // like it does at test runtime, so build core first.)
+  // like it does at test runtime, so build core first.) A source-only
+  // workspace the tests import, such as @alcove/sftp-relay, names its own
+  // modules with their `.ts` extension, which this check then reads.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "composite": false,
-    "noEmit": true
+    "noEmit": true,
+    "allowImportingTsExtensions": true
   },
   "include": ["src", "test"]
 }

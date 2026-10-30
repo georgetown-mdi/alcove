@@ -67,6 +67,11 @@ export const GUARDED_TSCONFIGS = [
     sourceDirectory: "packages/websocket-relay/src",
     options: { strict: true },
   },
+  {
+    tsconfig: "packages/sftp-relay/tsconfig.json",
+    sourceDirectory: "packages/sftp-relay/src",
+    options: { strict: true },
+  },
 ];
 
 /**
@@ -85,6 +90,7 @@ export const GUARDED_VITEST_CONFIGS = [
       "@alcove/core (unit)",
       "@alcove/cli-contract (unit)",
       "@alcove/websocket-relay (unit)",
+      "@alcove/sftp-relay (unit)",
       "alcove (unit)",
       "alcove-web (unit)",
       "harness",
@@ -96,6 +102,7 @@ export const GUARDED_VITEST_CONFIGS = [
   { directory: "packages/core", projects: ["unit", "stress"] },
   { directory: "packages/cli-contract", projects: ["unit"] },
   { directory: "packages/websocket-relay", projects: ["unit"] },
+  { directory: "packages/sftp-relay", projects: ["unit"] },
   {
     directory: "apps/cli",
     projects: ["unit", "integration", "webrtc", "backend-agnostic", "stress"],

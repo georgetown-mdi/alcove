@@ -705,8 +705,13 @@ export default tseslint.config(
     // `./websocket-relay` subpath, as the broker is held to its own: the
     // package root reaches every dependency core declares, the subpath none of
     // them. The measured closure, and the scan of the relay's source behind
-    // the ban: packages/websocket-relay/test/coreReach.test.ts.
-    files: ["packages/websocket-relay/src/**/*.ts"],
+    // the ban: packages/websocket-relay/test/coreReach.test.ts. The SFTP relay
+    // takes the same block: it also listens for any browser, and reaches core
+    // through the same subpath.
+    files: [
+      "packages/websocket-relay/src/**/*.ts",
+      "packages/sftp-relay/src/**/*.ts",
+    ],
     linterOptions: { reportUnusedDisableDirectives: "error" },
     rules: {
       "no-restricted-syntax": [

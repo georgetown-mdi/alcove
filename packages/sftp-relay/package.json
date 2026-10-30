@@ -1,0 +1,37 @@
+{
+  "name": "@alcove/sftp-relay",
+  "version": "0.1.0",
+  "description": "Alcove's SFTP relay: forwards each WebSocket from an allowed browser origin to one SFTP server fixed at deployment",
+  "license": "Apache-2.0",
+  "author": "Vincent Dorie <vdorie@gmail.com>",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/relay.ts",
+    "./protocol": "./src/protocol.ts",
+    "./standaloneOptions": "./src/standaloneOptions.ts"
+  },
+  "scripts": {
+    "start": "tsx src/standalone.ts",
+    "build": "rollup -c rollup.config.mjs",
+    "test": "vitest run --project unit",
+    "test:unit": "vitest run --project unit"
+  },
+  "files": [
+    "src"
+  ],
+  "dependencies": {
+    "@alcove/core": "file:../../packages/core",
+    "@alcove/peerjs-broker": "file:../../packages/peerjs-broker",
+    "@alcove/websocket-relay": "file:../../packages/websocket-relay",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^29.0.3",
+    "@rollup/plugin-node-resolve": "^16.0.1",
+    "@types/ws": "^8.18.2",
+    "rollup": "^4.64.12",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3"
+  }
+}

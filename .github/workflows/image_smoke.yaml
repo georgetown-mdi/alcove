@@ -10,6 +10,9 @@ name: Image Smoke
 # runner's Docker so it can run it -- faster and simpler than the release job's
 # multi-arch build+push, since nothing is published here.
 #
+# The SFTP relay's image, which release.yaml does not yet publish, is built and
+# smoked by a job of its own.
+#
 # A second job drives the restricted-egress recipe docs/DEPLOYMENT.md hands the
 # operator. It needs Docker and root on the same machine, which is what puts it
 # here rather than anywhere else, and its own comment carries the rest.
@@ -1001,6 +1004,142 @@ jobs:
           && (steps.image_scan_upload.outcome != 'success'
           || steps.vulnerability_scan.outcome == 'failure') }}
         run: cat trivy-image.sarif
+
+  # The SFTP relay's image (packages/sftp-relay/Dockerfile), which an SFTP
+  # server's operator runs in front of that server (docs/DEPLOYMENT.md,
+  # WebSocket-to-TCP proxy). Built and run here as the smoke job does the
+  # default image: its account, no package manager, a refused start, the
+  # Origin refusal and a forwarded message through the built image, and the
+  # vulnerability scan. Its behavior against the SFTP test server is the CLI
+  # integration suite's (apps/cli/test/integration/sftpRelay.test.ts).
+  sftp_relay:
+    name: Build and smoke the SFTP relay image
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    env:
+      DOCKERHUB_LOGIN: ${{ secrets.DOCKERHUB_TOKEN != '' }}
+      IMAGE: alcove-sftp-relay:smoke
+    steps:
+      - uses: actions/checkout@v7
+
+      # The smoke's client is Node's own WebSocket, so no install is needed.
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+
+      - name: Verify vendored native tarball integrity
+        run: sha256sum -c lib/openmined-psi.js-*.tgz.sha256
+
+      - name: Log in to Docker Hub
+        if: ${{ env.DOCKERHUB_LOGIN == 'true' }}
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Compute the layer cache week
+        id: cache_week
+        run: echo "week=$(date -u +%G-W%V)" >>"$GITHUB_OUTPUT"
+
+      - name: Build image (amd64, load into local Docker)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: packages/sftp-relay/Dockerfile
+          load: true
+          push: false
+          tags: ${{ env.IMAGE }}
+          cache-from: type=gha,scope=sftp-relay-${{ steps.cache_week.outputs.week }}
+          cache-to: type=gha,mode=max,scope=sftp-relay-${{ steps.cache_week.outputs.week }}
+
+      - name: Smoke the container's identity
+        run: |
+          set -euo pipefail
+          uid=$(docker run --rm --entrypoint id "$IMAGE" -u)
+          echo "the image runs as uid $uid"
+          test "$uid" = 1000
+
+      - name: Assert the image ships no package manager
+        run: |
+          set -euo pipefail
+          for tool in npm npx corepack yarn yarnpkg; do
+            if docker run --rm --entrypoint sh "$IMAGE" -c "command -v $tool"; then
+              echo "$tool resolves inside the SFTP relay image; take it out in packages/sftp-relay/Dockerfile" >&2
+              exit 1
+            fi
+          done
+
+      - name: Assert the relay refuses to start with no target
+        run: |
+          set -uo pipefail
+          code=0
+          docker run --rm "$IMAGE" --allowed-origin http://app.test || code=$?
+          echo "exited $code"
+          test "$code" = 64
+
+      # A loopback echo server stands in for the SFTP server, run from the same
+      # image, on a network of its own.
+      - name: Forward an allowed origin's message and refuse another origin
+        run: |
+          set -euo pipefail
+          docker network create sftp-relay-smoke
+          docker run -d --name sftp-relay-target --network sftp-relay-smoke \
+            --entrypoint node "$IMAGE" \
+            -e "require('node:net').createServer((s) => s.pipe(s)).listen(2222)"
+          docker run -d --name sftp-relay --network sftp-relay-smoke \
+            -p 127.0.0.1:18080:8080 "$IMAGE" \
+            --target sftp-relay-target:2222 --allowed-origin http://app.test
+          for _ in $(seq 1 50); do
+            if docker logs sftp-relay 2>/dev/null | grep -qx 'alcove-sftp-relay 8080'; then break; fi
+            sleep 0.2
+          done
+          node --input-type=module -e '
+            const url = "ws://127.0.0.1:18080/sftp";
+            const open = (origin) => new WebSocket(url, { headers: { origin } });
+            const refused = await new Promise((resolve) => {
+              const socket = open("http://other.test");
+              socket.onopen = () => resolve(false);
+              socket.onerror = () => resolve(true);
+            });
+            if (!refused) throw new Error("the relay upgraded another origin");
+            const echoed = await new Promise((resolve, reject) => {
+              const socket = open("http://app.test");
+              socket.binaryType = "arraybuffer";
+              socket.onopen = () => socket.send(new TextEncoder().encode("SSH-2.0-smoke\r\n"));
+              socket.onmessage = (event) => {
+                resolve(new TextDecoder().decode(event.data));
+                socket.close();
+              };
+              socket.onerror = () => reject(new Error("the relay refused the allowed origin"));
+            });
+            if (echoed !== "SSH-2.0-smoke\r\n") throw new Error(`echoed ${JSON.stringify(echoed)}`);
+            console.log("refused another origin and forwarded the allowed one to its target");
+          '
+          docker stop sftp-relay
+          code=$(docker inspect -f '{{.State.ExitCode}}' sftp-relay)
+          echo "the relay exited $code on stop"
+          test "$code" = 0
+
+      - name: Show the relay's log
+        if: ${{ !cancelled() }}
+        run: docker logs sftp-relay || true
+
+      - name: Scan the image for vulnerable packages
+        if: ${{ !cancelled() }}
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.IMAGE }}
+          scanners: vuln
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          trivyignores: .github/trivyignore.yaml
+          exit-code: "1"
 
   # docs/DEPLOYMENT.md hands the operator a restricted-egress recipe for the
   # containerized roles -- a dedicated network with a subnet they pin, an
