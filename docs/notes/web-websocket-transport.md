@@ -11,7 +11,7 @@ The browser SFTP spikes ran on 2026-10-29.
 S7 found no off-the-shelf raw relay, of the three tried, that both refuses by `Origin` and holds backpressure in both directions.
 S8's PASS line was met by `@microsoft/dev-tunnels-ssh` with three additions in the spike's own code, and by `ssh2` bundled for the browser only against a server that also offers an ECDSA host key.
 The relay is built first-party, its own package and image, by the maintainer's ruling of 2026-10-29 ([fork 5](#the-forks-and-their-rulings)); fork 5's earlier reading, an off-the-shelf relay S7 did not find, is superseded.
-Which client the browser SFTP path builds on is open for the maintainer: fork 7's condition, the scheduled-run credential, is met for those two clients as S8 records.
+The client the browser SFTP path builds on was chosen by the maintainer on 2026-10-29, on the conditions [browser-sftp-proxy.md](browser-sftp-proxy.md#the-chosen-client-dependency-check-and-sizing) records.
 The hosted relay admits one-shot exchanges, as part of the production default, by the maintainer's ruling of 2026-10-15 ([fork 1](#the-forks-and-their-rulings)).
 The public web application is the consumer of both paths and the console ships neither, by the maintainer's ruling.
 The note recommends a WebSocket relay for networks whose inspection stops TURN as the first thing to build, answers whether that relay and the browser SFTP proxy are one component, re-answers the browser SFTP note's open choices under the ruling, and ends with the sequence, the spikes, and the forks with the maintainer's rulings on them.
@@ -255,7 +255,8 @@ The rest, each against the earlier note's answer and under the relay design abov
 4. **How the target is chosen: fixed per endpoint, unchanged**, and strengthened by Question 2: no first-party service of the project's can be told a target by a browser.
 5. **How the browser authenticates: the `Origin` check, and no token by default.**
    The hosted application's origin is public, so the check stops other pages from using the proxy from a visitor's browser and nothing more; the SSH server's authentication is the real gate, as it is for the SSH port itself.
-   A per-exchange proof under the relay key would be the stronger option, but an off-the-shelf proxy cannot check it, and building a first-party proxy to carry it is the cost Question 2 declined; it stays open for a deployment that wants it.
+   A per-exchange proof under the relay key would be the stronger option.
+   The earlier reading here, that an off-the-shelf proxy cannot check it and that building a first-party proxy to carry it is the cost Question 2 declined, is superseded by the ruling of 2026-10-29 that builds the proxy first-party ([Question 2](#question-2-one-component-or-two)); the proof stays open for a deployment that wants it.
 6. **Where the proxy setting lives: changed.**
    The earlier note put it in a browser-local setting and kept proxies out of invitations.
    Under the ruling the partner who runs the SFTP server also runs the proxy, so the invitation's SFTP endpoint should name it -- host and path, no scheme, the browser taking `wss` from its page -- as the WebRTC endpoint names the signaling host today under the same delimiter rules ([WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#broker-socket)).
@@ -264,7 +265,7 @@ The rest, each against the earlier note's answer and under the relay design abov
    The bound the earlier note stated is kept in its stronger form: the browser dials the proxy and the proxy dials its fixed target, so nothing in the invitation chooses where a TCP connection opens.
 7. **The browser SSH client: none until a spike, unchanged**, and second in the sequence after the relay work rather than first.
    The spike adds one requirement: the client must take an external signer, for fork 8.
-   S8 has run, and its result names the clients that passed and what each needed; choosing one is the maintainer's.
+   S8 has run, and its result names the clients that passed and what each needed; the maintainer chose one on 2026-10-29 ([browser-sftp-proxy.md](browser-sftp-proxy.md#the-chosen-client-dependency-check-and-sizing)).
 8. **Credentials for recurring browser exchanges: changed, to a key the browser never holds in the clear.**
    The earlier note left stored-versus-entered open.
    The better answer for a scheduled run is a key pair generated in the browser as a non-extractable WebCrypto key (ECDSA P-256, which SSH takes as `ecdsa-sha2-nistp256`): the public key goes to the SFTP server's operator at onboarding, the private key never leaves the browser's key store, and the at-rest threat model gains an unexportable signing key rather than a password ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#hosted-at-rest-threat-model-for-managed-exchanges)).

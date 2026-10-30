@@ -77,6 +77,8 @@
 - - -> Toward the target the bound is in memory, not only in payload bytes, for messages of any size: a message behind the write in flight is copied into the pending buffer and has no write of its own, so a flood of 1-byte messages stops at the high mark like one of 64 KiB messages.
 - - -> **No termination.**
 - - -> A source held this way waits on its own TCP window and is not disconnected.
+- - -> **A close while held.**
+- - -> A close the browser sends while the relay is holding it is not read until the target drains or a ping to the browser fails, up to about one ping interval plus the close wait, and until then the connection counts toward the connection cap.
 - - -> Closing
 - - -> Event | What the relay does
 - - -> The browser closes, with any code | Ends the TCP connection behind every byte already written to it
