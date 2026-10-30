@@ -22,7 +22,7 @@ ARG NODE_VERSION=v26.13.0
 # still served by every snapshot since they first appeared -- so pinning the
 # snapshot as well as the package NVR is what makes the provider layer
 # reproducible rather than a function of the build date.
-ARG AL2023_RELEASEVER=2023.12.20261028
+ARG AL2023_RELEASEVER=2023.12.20261029
 
 # CMVP certificate 5438. The package and version pin which build is installed;
 # the module version string is what the module itself reports. Many NVRs share

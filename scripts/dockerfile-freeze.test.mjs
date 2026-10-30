@@ -328,7 +328,7 @@ const DEFAULT_BASE =
 // The variant's base rootfs is coupled to the release snapshot its dnf lines
 // pin: the two are the same Amazon Linux release, not merely compatible ones.
 const FIPS_BASE =
-  "public.ecr.aws/amazonlinux/amazonlinux@sha256:d9c9967b3d895c4c423f54b6562fbf5d18a5b68f5df54908c29e88cba4efcc04";
+  "public.ecr.aws/amazonlinux/amazonlinux@sha256:28a08196a0bbf69de31f481c74aebbfdc2c70a39b4a2002a4b30662ca5548062";
 
 // Each image's whole OS-package surface, frozen by literal the way the .npmrc
 // COPY above is. The npm tree is copied from the builder and resolves nothing,
