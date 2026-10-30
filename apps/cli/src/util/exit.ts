@@ -10,6 +10,7 @@ import {
   PERSISTENCE_LOSS_EXIT_CODE,
   RECEIPT_VERIFICATION_FAILED_EXIT_CODE,
   RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE,
+  STALE_KEY_FILE_EXIT_CODE,
   UNAVAILABLE_EXIT_CODE,
   UNCAUGHT_ERROR_EXIT_CODE,
   USAGE_EXIT_CODE,
@@ -21,6 +22,7 @@ import {
   classifyFailure,
   firstLinkBehindTransportWraps,
   getLogger,
+  LocalCopyBehindError,
   sanitizeErrorForDisplay,
   statesItsOwnNextStep,
 } from "@alcove/core";
@@ -195,10 +197,12 @@ function exitCodeForFailureClass(
 
 /**
  * The process exit code a caught command error reports:
- * {@link INPUT_NOT_FOUND_EXIT_CODE} (66) for an {@link InputNotFoundError},
- * bare or behind `transport`-kind wraps ({@link firstLinkBehindTransportWraps});
- * else the code of core's class for it ({@link classifyFailure}): EX_USAGE (64)
- * for `usage-error`, {@link INTERNAL_FAULT_EXIT_CODE} (70) for
+ * {@link INPUT_NOT_FOUND_EXIT_CODE} (66) for an {@link InputNotFoundError}
+ * and {@link STALE_KEY_FILE_EXIT_CODE} (65) for core's
+ * `LocalCopyBehindError`, each bare or behind `transport`-kind wraps
+ * ({@link firstLinkBehindTransportWraps}); else the code of core's class for
+ * it ({@link classifyFailure}): EX_USAGE (64) for `usage-error`,
+ * {@link INTERNAL_FAULT_EXIT_CODE} (70) for
  * `internal-fault`, {@link PARTNER_REFUSED_EXIT_CODE} (76) for
  * `partner-refused` and `receipt-not-verified`, and
  * {@link AUTHENTICATION_FAILED_EXIT_CODE} (77) for `authentication-failed`;
@@ -210,8 +214,10 @@ function exitCodeForFailureClass(
  * result file did not reach disk `PERSISTENCE_LOSS_EXIT_CODE` (73).
  */
 export function exitCodeForError(err: unknown): number {
-  if (firstLinkBehindTransportWraps(err) instanceof InputNotFoundError)
-    return INPUT_NOT_FOUND_EXIT_CODE;
+  const firstLink = firstLinkBehindTransportWraps(err);
+  if (firstLink instanceof InputNotFoundError) return INPUT_NOT_FOUND_EXIT_CODE;
+  if (firstLink instanceof LocalCopyBehindError)
+    return STALE_KEY_FILE_EXIT_CODE;
   const classCode = exitCodeForFailureClass(classifyFailure(err));
   if (classCode !== undefined) return classCode;
   return annotatedExitCode(err) ?? UNAVAILABLE_EXIT_CODE;

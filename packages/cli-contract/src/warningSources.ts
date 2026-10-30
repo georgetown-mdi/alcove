@@ -30,6 +30,7 @@ export const WARNING_SOURCES = [
   "memoryShortfall",
   "writeWithoutRenaming",
   "invitationRelayEnrollment",
+  "rotationHeal",
 ] as const;
 
 /** One {@link WARNING_SOURCES} value; see that list. */

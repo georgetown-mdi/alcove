@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
+  deriveHistoryVerifier,
   encodeInvitation,
   getDefaultLinkageTerms,
   UsageError,
@@ -12,10 +13,13 @@ import {
   buildRotatedKeyFile,
   checkKeyFileExpiry,
   clearRotationInFlight,
+  dropPreviousSecret,
   loadKeyFile,
   keyFileFromInvitation,
   markRotationInFlight,
+  prunedRotationHistory,
   rotationInFlightNotice,
+  rotationWriteContents,
   saveInvitedKeyFile,
   saveKeyFile,
 } from "../../src/keyFile";
@@ -554,4 +558,164 @@ test("a field the key file schema does not know is read past and dropped by the 
       '  "rotationInFlightSince": "2026-03-01T12:00:00.000Z"\n' +
       "}\n",
   );
+});
+
+// --- The previous secret and the rotation history ---------------------------
+
+// A third distinct secret: the one a rotation stores.
+const NEXT_SECRET = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
+const ROTATED_AT = Date.parse("2026-06-01T00:00:00Z");
+const LATER = "2026-09-01T00:00:00.000Z";
+const EARLIER = "2026-03-01T00:00:00.000Z";
+
+test("an initiator's rotation write keeps the secret its handshake used, with its expires, and adds its verifier to the history", async () => {
+  const written = await rotationWriteContents({
+    rotatedSecret: NEXT_SECRET,
+    tokenMaxAgeDays: undefined,
+    now: ROTATED_AT,
+    role: "initiator",
+    usedPrevious: false,
+    atRunStart: { sharedSecret: TOKEN, expires: LATER },
+  });
+  expect(written).toEqual({
+    sharedSecret: NEXT_SECRET,
+    previousSharedSecret: TOKEN,
+    previousExpires: LATER,
+    rotationHistory: [
+      { verifier: await deriveHistoryVerifier(TOKEN), expires: LATER },
+    ],
+  });
+});
+
+test("a responder's rotation write keeps no previous secret and drops one the file held", async () => {
+  const written = await rotationWriteContents({
+    rotatedSecret: NEXT_SECRET,
+    tokenMaxAgeDays: 30,
+    now: ROTATED_AT,
+    role: "responder",
+    usedPrevious: false,
+    atRunStart: {
+      sharedSecret: TOKEN,
+      previousSharedSecret: INVITE_SECRET,
+      rotationHistory: [
+        { verifier: await deriveHistoryVerifier(INVITE_SECRET) },
+      ],
+    },
+  });
+  expect(written.previousSharedSecret).toBeUndefined();
+  expect(written.previousExpires).toBeUndefined();
+  expect(written.expires).toBe(
+    buildRotatedKeyFile(NEXT_SECRET, 30, ROTATED_AT).expires,
+  );
+  expect(written.rotationHistory).toEqual([
+    { verifier: await deriveHistoryVerifier(TOKEN) },
+    { verifier: await deriveHistoryVerifier(INVITE_SECRET) },
+  ]);
+});
+
+test.each(["initiator", "responder"] as const)(
+  "a %s's write after a handshake under the previous secret adds nothing to the history and discards the unshared current secret",
+  async (role) => {
+    const history = [
+      { verifier: await deriveHistoryVerifier(INVITE_SECRET), expires: LATER },
+    ];
+    const written = await rotationWriteContents({
+      rotatedSecret: NEXT_SECRET,
+      tokenMaxAgeDays: undefined,
+      now: ROTATED_AT,
+      role,
+      usedPrevious: true,
+      atRunStart: {
+        sharedSecret: TOKEN,
+        previousSharedSecret: INVITE_SECRET,
+        previousExpires: LATER,
+        rotationHistory: history,
+      },
+    });
+    expect(written.rotationHistory).toEqual(history);
+    expect(JSON.stringify(written)).not.toContain(TOKEN);
+    if (role === "initiator") {
+      expect(written.previousSharedSecret).toBe(INVITE_SECRET);
+      expect(written.previousExpires).toBe(LATER);
+    } else {
+      expect(written.previousSharedSecret).toBeUndefined();
+    }
+  },
+);
+
+test("the history drops expired entries at its oldest end only, and keeps the 64 newest", () => {
+  const entry = (n: number, expires?: string) => ({
+    verifier: TOKEN.slice(0, 40) + String(n).padStart(2, "0") + "A",
+    ...(expires !== undefined && { expires }),
+  });
+  // An expired entry with a live one older than it keeps its place, so each
+  // later position still counts rotations.
+  const middle = [entry(1, LATER), entry(2, EARLIER), entry(3)];
+  expect(prunedRotationHistory(middle, ROTATED_AT)).toEqual(middle);
+  const tail = [
+    entry(1),
+    entry(2, LATER),
+    entry(3, EARLIER),
+    entry(4, EARLIER),
+  ];
+  expect(prunedRotationHistory(tail, ROTATED_AT)).toEqual(tail.slice(0, 2));
+  const long = Array.from({ length: 70 }, (_, n) => entry(n));
+  expect(prunedRotationHistory(long, ROTATED_AT)).toEqual(long.slice(0, 64));
+});
+
+test("a rotation write over a full history keeps the 64 newest verifiers", async () => {
+  const full = Array.from({ length: 64 }, (_, n) => ({
+    verifier: TOKEN.slice(0, 40) + String(n).padStart(2, "0") + "A",
+  }));
+  const written = await rotationWriteContents({
+    rotatedSecret: NEXT_SECRET,
+    tokenMaxAgeDays: undefined,
+    now: ROTATED_AT,
+    role: "responder",
+    usedPrevious: false,
+    atRunStart: { sharedSecret: TOKEN, rotationHistory: full },
+  });
+  expect(written.rotationHistory).toHaveLength(64);
+  expect(written.rotationHistory?.[0]?.verifier).toBe(
+    await deriveHistoryVerifier(TOKEN),
+  );
+  expect(written.rotationHistory?.[63]).toEqual(full[62]);
+});
+
+test("the confirmation write drops the previous secret and its expires, and keeps the rest", () => {
+  const keyPath = path.join(dir, ".alcove.key");
+  const history = [{ verifier: INVITE_SECRET }];
+  saveKeyFile(keyPath, {
+    sharedSecret: NEXT_SECRET,
+    previousSharedSecret: TOKEN,
+    previousExpires: LATER,
+    relayRegistrationPendingSince: EARLIER,
+    rotationHistory: history,
+  });
+  dropPreviousSecret(keyPath, NEXT_SECRET);
+  expect(loadKeyFile(keyPath)).toEqual({
+    sharedSecret: NEXT_SECRET,
+    relayRegistrationPendingSince: EARLIER,
+    rotationHistory: history,
+  });
+});
+
+test("the confirmation write leaves a file holding another secret alone", () => {
+  const keyPath = path.join(dir, ".alcove.key");
+  const held = { sharedSecret: TOKEN, previousSharedSecret: INVITE_SECRET };
+  saveKeyFile(keyPath, held);
+  dropPreviousSecret(keyPath, NEXT_SECRET);
+  expect(loadKeyFile(keyPath)).toEqual(held);
+});
+
+test("a re-invite's key file holds no previous secret and no history", async () => {
+  const keyPath = path.join(dir, ".alcove.key");
+  const keyFile = await keyFileFromInvitation(
+    await encodeInvitation(inviteToken()),
+    keyPath,
+  );
+  saveInvitedKeyFile(keyPath, keyFile);
+  const written = loadKeyFile(keyPath);
+  expect(written?.previousSharedSecret).toBeUndefined();
+  expect(written?.rotationHistory).toBeUndefined();
 });

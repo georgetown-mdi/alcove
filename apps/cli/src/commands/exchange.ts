@@ -755,6 +755,15 @@ function readExchangeConfig(
     sharedSecret: keyData.sharedSecret,
     expires: keyData.expires,
     keyFilePath: options.keyFile,
+    ...(keyData.previousSharedSecret !== undefined && {
+      previousSharedSecret: keyData.previousSharedSecret,
+    }),
+    ...(keyData.previousExpires !== undefined && {
+      previousExpires: keyData.previousExpires,
+    }),
+    ...(keyData.rotationHistory !== undefined && {
+      rotationHistory: keyData.rotationHistory,
+    }),
   };
   // The channel guard above throws on any channel runProtocol cannot run, so
   // the discriminated union narrows `connection` to ProtocolConnectionConfig
@@ -1361,6 +1370,7 @@ export async function handler(argv: Arguments): Promise<void> {
             registrar: relayRegistrar,
             keyFilePath: authentication.keyFilePath,
             sharedSecret: authentication.sharedSecret,
+            previousSharedSecret: authentication.previousSharedSecret,
             maxAgeDays: relayMaxAgeDays,
           });
           log.info(relayRegistrationNotice(relayRegistrar, confirmed));

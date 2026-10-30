@@ -690,9 +690,9 @@ that began and has not saved its rotated secret.
   reading only beside the authentication failure or no-show it predicts, and
   it changes no exit code and refuses nothing.
 - **What it does not change.** The marker holds an instant only, and the
-  handshake does not read it. The command line keeps no previous secret
-  beside it ([The previous secret and the rotation
-  history](#the-previous-secret-and-the-rotation-history)).
+  handshake does not read it. A responder's file holds no previous secret
+  beside it, since only the initiator's store keeps one ([The previous
+  secret and the rotation history](#the-previous-secret-and-the-rotation-history)).
 - **Across applications.** The console's check of a mounted key file admits
   the field, and the CLI run it starts reads the marker as above. A key file
   imported into a managed exchange beside an `alcove.yaml` is admitted and its
@@ -713,11 +713,15 @@ been confirmed at the relay registrar a run registers at
   registration the registrar confirms removes it through
   `clearRelayRegistrationPending` (`apps/cli/src/keyFile.ts`), under the same
   owner-only, atomic-rename write; so does `alcove enroll-relay`.
-- **What it holds.** An instant only. The pre-rotation secret and every key
-  derived from either secret stay out of the file.
+- **What it holds.** An instant only. Every key derived from either secret
+  stays out of the file, and so does the pre-rotation secret, except as the
+  initiator's `previousSharedSecret` ([The previous secret and the rotation
+  history](#the-previous-secret-and-the-rotation-history)).
 - **What it means.** A key file still holding it at the next run records a
-  registration that run confirms before it dials; a refusal there ends the run
-  with exit 77 and the re-enrollment step, with the secret unchanged.
+  registration that run confirms before it dials, signed under the relay key
+  of `previousSharedSecret` while the file holds one and under the current
+  key otherwise; a refusal there ends the run with exit 77 and the
+  re-enrollment step, with the secret unchanged.
 - **What supersedes it.** A run that does not register -- its connection names
   no registrar -- leaves the field, and its own rotation write, which stores
   none, drops it.
@@ -747,13 +751,31 @@ previous secret and rotation history
   field is refused.
 
 A file whose field breaks its format is refused at load, as a malformed
-`expires` is. The command line writes and reads none of these fields for a run:
-it passes the handshake no previous secret and an empty history. The web
-application keeps a rotation history on its managed record and no previous
-secret: its import of a command-line key file reads `rotationHistory` onto the
-record and names `previousSharedSecret` and `previousExpires` among the fields
-it drops, and its command-line export writes the record's history as the key
-file's `rotationHistory`
+`expires` is. `alcove exchange` passes the handshake the previous secret and
+history it read, and the rotation write (`rotationWriteContents` in
+`apps/cli/src/keyFile.ts`) sets them:
+
+- **The previous secret.** The initiator's write keeps the secret its
+  handshake used, with that secret's `expires`, as `previousSharedSecret` and
+  `previousExpires`; the responder's write holds neither. Once the responder's
+  confirmation arrives, `dropPreviousSecret` removes both through the same
+  owner-only, atomic-rename write, and a failed removal ends the run with exit
+  69, the file still holding them. An online `invite` or `accept` run that
+  initiates keeps the invitation's secret this way.
+- **The history.** Each rotation write adds the verifier of the secret the
+  file held as current at the start of the run, with its `expires`, at the
+  front, unless the handshake used the previous secret, whose verifier the
+  history already holds. A write keeps at most 64 entries and drops expired
+  ones from the oldest end only, since the handshake counts rotations by an
+  entry's position.
+- **A new invitation.** A key file written from an invitation holds neither
+  field.
+
+The web application keeps a rotation history on its managed record and no
+previous secret: its import of a command-line key file reads `rotationHistory`
+onto the record and names `previousSharedSecret` and `previousExpires` among
+the fields it drops, and its command-line export writes the record's history as
+the key file's `rotationHistory`
 ([MANAGED_EXCHANGE_RECORD.md](MANAGED_EXCHANGE_RECORD.md#what-the-exports-write)).
 
 ### `exchange --invitation` fail-closed ordering

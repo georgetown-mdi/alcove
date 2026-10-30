@@ -37,6 +37,38 @@ const REGISTRAR: RelayRegistrar = {
 const NOW = new Date("2026-01-01T00:00:00Z");
 const noSleep = async (): Promise<void> => {};
 
+/**
+ * A registrar holding the relay key of `heldSecret` for {@link REGISTRAR}'s
+ * exchange, answering a `PUT` by the verification rule of
+ * docs/spec/PROTOCOL.md, "The registrar request proof": a body naming the key
+ * it holds is a renewal; otherwise the proof must verify under the key it
+ * holds, and the body's key replaces it; anything else is 409.
+ */
+async function verifyingRegistrar(heldSecret: string): Promise<{
+  fetch: typeof globalThis.fetch;
+  held: () => string;
+}> {
+  let held = await deriveRelayKey(heldSecret);
+  const fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    const body = typeof init?.body === "string" ? init.body : "";
+    const authorization = new Headers(init?.headers).get("Authorization") ?? "";
+    const ts = Number(/ts=(\d+)/.exec(authorization)?.[1]);
+    const key = (JSON.parse(body) as { key: string }).key;
+    const expected = await relayRegistrarAuthorization({
+      relayKey: held,
+      method: "PUT",
+      exchangeId: REGISTRAR.exchangeId,
+      body,
+      now: new Date(ts * 1000),
+    });
+    if (key !== held && authorization !== expected)
+      return jsonResponse(409, { error: "the proof does not verify" });
+    held = key;
+    return registrationAnswer(30);
+  }) as typeof globalThis.fetch;
+  return { fetch, held: () => held };
+}
+
 let dir: string;
 let keyFile: string;
 
@@ -347,6 +379,60 @@ describe("retryPendingRelayRegistration", () => {
     expect((failure as Error).message).toContain(
       "alcove enroll-relay --replace-relay-key",
     );
+    expect(loadKeyFile(keyFile)).toEqual(pending);
+  });
+
+  test.each([
+    [
+      "still holds the previous secret's key, and takes the rotation",
+      PRE_ROTATION,
+    ],
+    ["already holds the current key, and takes a renewal", ROTATED],
+  ])(
+    "while a previous secret is held, the retry is signed under its relay key: a registrar that %s",
+    async (_case, heldSecret) => {
+      saveKeyFile(keyFile, {
+        sharedSecret: ROTATED,
+        previousSharedSecret: PRE_ROTATION,
+        relayRegistrationPendingSince: NOW.toISOString(),
+      });
+      const registrar = await verifyingRegistrar(heldSecret);
+      await retryPendingRelayRegistration(
+        {
+          registrar: REGISTRAR,
+          keyFilePath: keyFile,
+          sharedSecret: ROTATED,
+          previousSharedSecret: PRE_ROTATION,
+          maxAgeDays: 30,
+        },
+        { fetch: registrar.fetch, now: () => NOW },
+      );
+      expect(registrar.held()).toBe(await deriveRelayKey(ROTATED));
+      expect(loadKeyFile(keyFile)).toEqual({
+        sharedSecret: ROTATED,
+        previousSharedSecret: PRE_ROTATION,
+      });
+    },
+  );
+
+  test("with no previous secret held, a registrar still holding the key before the rotation refuses the retry", async () => {
+    const pending = {
+      sharedSecret: ROTATED,
+      relayRegistrationPendingSince: NOW.toISOString(),
+    };
+    saveKeyFile(keyFile, pending);
+    const registrar = await verifyingRegistrar(PRE_ROTATION);
+    const failure = await retryPendingRelayRegistration(
+      {
+        registrar: REGISTRAR,
+        keyFilePath: keyFile,
+        sharedSecret: ROTATED,
+        maxAgeDays: 30,
+      },
+      { fetch: registrar.fetch, now: () => NOW, sleep: noSleep },
+    ).catch((err: unknown) => err);
+    expect(exitCodeForError(failure)).toBe(77);
+    expect(registrar.held()).toBe(await deriveRelayKey(PRE_ROTATION));
     expect(loadKeyFile(keyFile)).toEqual(pending);
   });
 

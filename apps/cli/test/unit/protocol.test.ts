@@ -3543,7 +3543,7 @@ test.skipIf(process.platform === "win32")(
   20_000,
 );
 
-test("a failed save on the responder: the initiator, which saved first, reports that its partner could not save the new secret, names a new invitation, and exits 77", async () => {
+test("a failed save on the responder: the initiator, which saved first and kept the secret the run used, reports that its partner could not save the new secret, and both exit 69", async () => {
   const keyFileA = path.join(tmpDir, "a.key");
   const keyFileB = path.join(tmpDir, "b.key");
   saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
@@ -3579,21 +3579,24 @@ test("a failed save on the responder: the initiator, which saved first, reports 
       "stopped. This side had already saved it to ",
   );
   expect(reason.message).toContain(
-    "so you and your partner now hold different secrets, and running the " +
-      "exchange again cannot reconnect you. Ask your partner for a new " +
-      "invitation, or create one with 'alcove invite' and have your partner " +
-      "accept it.",
+    ", and kept the secret this run used, so the next run can use that one. " +
+      "Run the exchange again once your partner has fixed what stopped " +
+      "their save.",
   );
-  expect(reason.message).not.toMatch(/retry|run the same command again/i);
   expect(statesItsOwnNextStep(reason)).toBe(true);
   expect(fixedNextStep(reason)).toBeUndefined();
-  expect(exitCodeForError(reason)).toBe(77);
-  // The responder's own failed save names the same remedy and exit.
-  expect(
-    exitCodeForError((resultB as PromiseRejectedResult).reason as Error),
-  ).toBe(77);
+  expect(exitCodeForError(reason)).toBe(69);
+  // The responder's own failed save: the initiator kept the secret the run
+  // used, so a retry heals.
+  const responderReason = (resultB as PromiseRejectedResult).reason as Error;
+  expect(responderReason.message).toContain(
+    "Your partner saved the new token and kept the one this run used",
+  );
+  expect(exitCodeForError(responderReason)).toBe(69);
   expect(rotationLines()).toEqual([]);
-  expect(loadKeyFile(keyFileA)?.sharedSecret).not.toBe(TOKEN_A);
+  const ahead = loadKeyFile(keyFileA);
+  expect(ahead?.sharedSecret).not.toBe(TOKEN_A);
+  expect(ahead?.previousSharedSecret).toBe(TOKEN_A);
   expect(loadKeyFile(keyFileB)?.sharedSecret).toBe(TOKEN_A);
 }, 20_000);
 
@@ -5603,7 +5606,7 @@ test("runProtocol suppresses the generic advisory when a marked error is wrapped
   expectNoGenericRecoveryAdvisory(mockState.errors);
 }, 20_000);
 
-test("runProtocol marks the key-file path when the rotated token cannot be saved, and maps to exit 77", async () => {
+test("runProtocol marks the key-file path when the rotated token cannot be saved, and maps to exit 69", async () => {
   // The refusal names the operator's own key file, so it marks that path and
   // the display sink shows it as they typed it rather than doubling every
   // separator. The fixture path holds backslashes off Windows too, where a
@@ -5658,14 +5661,14 @@ test("runProtocol marks the key-file path when the rotated token cannot be saved
       .map((span) => span.text),
   ).toContain(keyFileA);
 
-  // The secrets may now differ, so the refusal exits with the authentication
-  // code a retry cannot clear, through the real command exit mapper.
+  // The initiator kept the secret the run used, so the refusal exits with the
+  // code a retry clears, through the real command exit mapper.
   const exitSpy = captureProcessExit();
   try {
     await expect(
       runOrExit("test-a", () => Promise.reject(thrown)),
-    ).rejects.toThrow("exit:77");
-    expect(exitSpy).toHaveBeenCalledWith(77);
+    ).rejects.toThrow("exit:69");
+    expect(exitSpy).toHaveBeenCalledWith(69);
   } finally {
     exitSpy.mockRestore();
   }
@@ -6226,7 +6229,9 @@ test.skipIf(process.platform === "win32")(
     expect(msg).toContain(
       "authentication succeeded and the shared token was rotated",
     );
-    expect(msg).toContain("Your partner may already hold the rotated token");
+    expect(msg).toContain(
+      "Your partner saved the new token and kept the one this run used",
+    );
     // Neither generic catch-block advisory must fire: both would contradict the
     // wrapped error message.
     expectNoGenericRecoveryAdvisory(mockState.errors);
