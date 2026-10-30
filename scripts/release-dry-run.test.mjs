@@ -21,7 +21,7 @@ const document = workflowDocument(repoRoot, RELEASE_WORKFLOW);
 
 const TAG_PUSH_ONLY = "${{ github.event_name == 'push' }}";
 const DISPATCH_ONLY = "${{ github.event_name == 'workflow_dispatch' }}";
-const PUBLISHING_JOBS = ["publish", "launchers"];
+const PUBLISHING_JOBS = ["publish", "launchers", "dockerhub"];
 const DRY_RUN_JOB = "dry-run";
 
 const PUBLISHING_ACTIONS = [
@@ -33,6 +33,7 @@ const PUBLISHING_COMMANDS = [
   /\bcosign\s+sign(?![-\w])/,
   /\bcosign\s+verify(?![-\w])/,
   /\bdocker\s+push\b/,
+  /\bimagetools\s+create\b/,
   /\bgh\s+release\b/,
   /\bgh\s+api\b.*(-X|--method)[\s=]*['"]?(POST|PUT|PATCH|DELETE)\b/i,
   /\bgh\s+api\b.*\s(-f|-F|--field|--raw-field|--input)\b/,

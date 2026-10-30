@@ -70,6 +70,7 @@ jobs:
       attestations: write
       # The image push: the login step below authenticates to ghcr.io with
       # this job's own token, so no long-lived registry credential is held.
+      # The Docker Hub copy runs in the dockerhub job, under a token of its own.
       packages: write
     env:
       # A step's `if:` is not given the secrets context, so whether the Docker
@@ -78,8 +79,9 @@ jobs:
     outputs:
       # The manifest-list digest, carried to the launcher job so the reference it
       # stamps and the reference cosign signs below are the same value. The
-      # launchers run the default image alone, so only its digest travels.
+      # launchers run the default image alone; the dockerhub job copies both.
       digest: ${{ steps.build.outputs.digest }}
+      fips_digest: ${{ steps.build_fips.outputs.digest }}
     steps:
       - uses: actions/checkout@v7
 
@@ -543,6 +545,89 @@ jobs:
               --title "Alcove $ALCOVE_TAG" --notes ''
           fi
           gh release upload "$ALCOVE_TAG" launcher-assets/* --clobber
+
+  # Docker Hub serves the same two images for a network that refuses ghcr.io's
+  # layer host. Each is copied from the manifest ghcr.io received, by the digest
+  # the publish job signed and attested, never rebuilt. A job of its own, so a
+  # failed copy is re-run without rebuilding or moving the ghcr.io tags.
+  dockerhub:
+    name: Copy both images to Docker Hub
+    needs: publish
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-24.04
+    # Read access to the ghcr.io package alone: the copy writes to Docker Hub
+    # under that registry's own token, and nothing here writes to GitHub.
+    permissions:
+      packages: read
+    env:
+      GHCR_REPOSITORY: ghcr.io/georgetown-mdi/alcove
+      DOCKERHUB_REPOSITORY: docker.io/gumdi/alcove
+    steps:
+      - name: Log in to the GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The publishing token, scoped to write. The DOCKERHUB_TOKEN the other
+      # jobs pull with is read-only and is not used here.
+      - name: Log in to Docker Hub to publish
+        uses: docker/login-action@v4
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_PUBLISH_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PUBLISH_TOKEN }}
+
+      # Each image's version tag on ghcr.io and all three of its tags on Docker
+      # Hub are read back after the copy, and any that names a digest other than
+      # the one the publish job signed fails the release.
+      - name: Copy both images by digest and compare the digests read back
+        env:
+          ALCOVE_TAG: ${{ github.ref_name }}
+          DEFAULT_DIGEST: ${{ needs.publish.outputs.digest }}
+          FIPS_DIGEST: ${{ needs.publish.outputs.fips_digest }}
+        run: |
+          set -euo pipefail
+          version="${ALCOVE_TAG#v}"
+          {
+            echo "## Docker Hub copy"
+            echo
+            echo "| Reference | Digest |"
+            echo "| --- | --- |"
+          } >>"$GITHUB_STEP_SUMMARY"
+
+          copy_and_compare() {
+            digest="$1"
+            suffix="$2"
+            if ! [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::the publish job's digest output for the ${version}${suffix} image is empty or not sha256: followed by 64 lowercase hex characters" >&2
+              exit 1
+            fi
+            tags=("${version}${suffix}" "${version%.*}${suffix}" "latest${suffix}")
+            tag_args=()
+            references=("${GHCR_REPOSITORY}:${tags[0]}")
+            for tag in "${tags[@]}"; do
+              tag_args+=(--tag "${DOCKERHUB_REPOSITORY}:${tag}")
+              references+=("${DOCKERHUB_REPOSITORY}:${tag}")
+            done
+
+            docker buildx imagetools create "${tag_args[@]}" \
+              "${GHCR_REPOSITORY}@${digest}"
+
+            for reference in "${references[@]}"; do
+              read_back=$(docker buildx imagetools inspect "${reference}" \
+                --format '{{json .Manifest}}' | jq -r '.digest')
+              if [ "${read_back}" != "${digest}" ]; then
+                echo "::error::${reference} names ${read_back}, not ${digest}, the digest the publish job signed. Do not publish the release until the two agree: see docs/RELEASES.md, step 8." >&2
+                exit 1
+              fi
+              echo "| \`${reference}\` | \`${read_back}\` |" >>"$GITHUB_STEP_SUMMARY"
+            done
+          }
+
+          copy_and_compare "${DEFAULT_DIGEST}" ""
+          copy_and_compare "${FIPS_DIGEST}" "-fips"
 
   # A dispatch can come from any branch, so this job holds no write permission
   # by design.

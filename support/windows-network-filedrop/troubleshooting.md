@@ -176,6 +176,21 @@ These messages were seen with podman 5.1 and Docker Desktop 4.93 on a Mac.
 Neither engine has been tried behind such a proxy on Windows, so if the wording
 on your screen differs, trust your screen.
 
+If IT cannot allow the second host, the same image is also published on Docker
+Hub as `docker.io/gumdi/alcove`, under the same tags and the same digest. A
+network that allows Docker Hub can download it from there:
+
+```text
+docker pull docker.io/gumdi/alcove:latest
+```
+
+The launcher and the setup scripts download from `ghcr.io` only, so a Docker
+Hub download does not get them past this. It does work for the `docker run`
+commands on this page: write `docker.io/gumdi/alcove:latest` where they have
+`ghcr.io/georgetown-mdi/alcove:latest`. To confirm it is the released image,
+compare its digest against the release notes, as described in
+[Verifying a Release](../../docs/RELEASES.md#verifying-a-release).
+
 ## An image file from your partner does not replace the download
 
 If your partner can download the image, they can save it to a file with
