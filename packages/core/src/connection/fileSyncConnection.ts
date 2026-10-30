@@ -147,6 +147,12 @@ export const TERMINAL_FRAME_DRAIN_TIMEOUT_MS = 1000 * 60;
 // config setting. See docs/spec/FILE_SYNC.md#phase-3----cleanup-and-close.
 /** @internal */
 export const CONNECTION_CLOSE_TIMEOUT_MS = 1000 * 30;
+// Teardown bound on close()'s wait for a rendezvous write still in flight,
+// applied as min(this, inactivityTimeoutMs); a write landing after it is not
+// swept. Not a config setting. See
+// docs/spec/FILE_SYNC.md#phase-3----cleanup-and-close.
+/** @internal */
+export const RENDEZVOUS_WRITE_SETTLE_TIMEOUT_MS = 1000 * 30;
 /**
  * The `sftp` channel's poll interval, in milliseconds, when `pollIntervalMs` is
  * unset. Not sub-second: a faster cadence can trip an SFTP server's anti-flood
@@ -400,6 +406,9 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   // mid-rendezvous cannot wipe a concurrent close()'s abort.
   private abortController = new AbortController();
   private responsibleFiles: Set<string>;
+  // The rendezvous writes in flight, each with the tracking of what it leaves
+  // on disk; close() lets them settle before cleanup().
+  private readonly pendingRendezvousWrites = new Set<Promise<unknown>>();
   // Grammar-failing names present at synchronize() entry, which the poll loop
   // tolerates; the new-foreign-file warning counts only later arrivals. Rebuilt
   // at each entry and not cleared by resetSessionState(). See
@@ -516,6 +525,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
     this.rendezvous = new FileSyncRendezvous({
       responsibleFiles: this.responsibleFiles,
       foreignFileSnapshot: this.foreignFileSnapshot,
+      pendingWrites: this.pendingRendezvousWrites,
       client: () => this.client,
       id: () => this.id,
       isOwnId: (id) => id === this.id || (this.ownIdFormat?.(id) ?? false),
@@ -950,11 +960,12 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   }
 
   /**
-   * Tears the connection down: stops the poll loop, drains the last sent
-   * frame, sweeps this side's files, then ends the client. The poller stops
-   * first so no cycle runs against a dead client, and cleanup deletes through
-   * the client so it runs before end(). The drain and end() waits use the short
-   * teardown bounds. Idempotent, and safe on a connection never opened. See
+   * Tears the connection down: stops the poll loop, lets an in-flight
+   * rendezvous write settle, drains the last sent frame, sweeps this side's
+   * files, then ends the client. The poller stops first so no cycle runs
+   * against a dead client, and cleanup deletes through the client so it runs
+   * before end(). The settle, drain and end() waits use the short teardown
+   * bounds. Idempotent, and safe on a connection never opened. See
    * docs/spec/FILE_SYNC.md#phase-3----cleanup-and-close.
    */
   async close() {
@@ -978,6 +989,12 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
     // the exit-69 classification depends on it.
     this.abortController.abort(
       new ConnectionClosedError("connection closed during wait"),
+    );
+    // After the abort, which stops the rendezvous starting another write, and
+    // before cleanup(), so a write that lands now is tracked and swept.
+    await withTransportBudgetVoid(
+      Promise.allSettled([...this.pendingRendezvousWrites]).then(() => {}),
+      Math.min(RENDEZVOUS_WRITE_SETTLE_TIMEOUT_MS, this.inactivityBudgetMs()),
     );
 
     if (this.path !== undefined) {

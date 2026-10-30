@@ -773,6 +773,9 @@ const partnerNeverArrived = (
 export interface RendezvousDeps {
   responsibleFiles: Set<string>;
   foreignFileSnapshot: Set<string>;
+  // The connection's set of rendezvous writes in flight, which close() lets
+  // settle before cleanup(); shared by reference like responsibleFiles.
+  pendingWrites: Set<Promise<unknown>>;
   client: () => FileTransportClient;
   id: () => string;
   // Whether an id is one this party's configuration writes on any run: its
@@ -878,6 +881,23 @@ export class FileSyncRendezvous {
       await this.rendezvousAsLockJoiner(scope, peerHellos[0], helloPath);
     } else {
       await this.rendezvousViaHelloExchange(scope, helloPath, entryPeerHello);
+    }
+  }
+
+  // Runs `write`, which ends by tracking what it left on disk, as one unit
+  // close() waits for before cleanup(): a write still in flight when the
+  // sweep runs would otherwise land after it, untracked. Refuses to start once
+  // close() has aborted the session, since close() waits only for the writes
+  // already in flight.
+  private async settledBeforeClose(write: () => Promise<void>): Promise<void> {
+    const { deps } = this;
+    if (deps.signal().aborted) throw deps.signal().reason;
+    const pending = write();
+    deps.pendingWrites.add(pending);
+    try {
+      await pending;
+    } finally {
+      deps.pendingWrites.delete(pending);
     }
   }
 
@@ -1661,46 +1681,52 @@ export class FileSyncRendezvous {
       // fully-valid `<id>-hello-<n>.json` the peer reads through its gate; the
       // peer itself matches the sentinel by name existence and never reads
       // it. Written temp-then-rename like the hello.
-      await this.writeHello(scope.inboundPath, joiningName, true);
-      // Track the sentinel only until the peer hello is deleted: before that
-      // point a failure leaves the peer hello intact, so cleanup() may safely
-      // sweep the sentinel (the peer is no worse off than if we never
-      // started). The add follows the put with no throwable statement between,
-      // matching the hello write in the else branch.
-      if (!deps.options().retainFiles) deps.responsibleFiles.add(joiningName);
+      await this.settledBeforeClose(async () => {
+        await this.writeHello(scope.inboundPath, joiningName, true);
+        // Track the sentinel only until the peer hello is deleted: before that
+        // point a failure leaves the peer hello intact, so cleanup() may safely
+        // sweep the sentinel (the peer is no worse off than if we never
+        // started). The add follows the put with no throwable statement
+        // between, matching the hello write in the else branch.
+        if (!deps.options().retainFiles) deps.responsibleFiles.add(joiningName);
+      });
 
-      await deps.client().delete(otherPath);
+      // One unit from the peer hello's delete to this party's hello, so a
+      // close() arriving between them still finds the hello tracked and
+      // sweeps it, rather than a sentinel the next run refuses.
+      await this.settledBeforeClose(async () => {
+        await deps.client().delete(otherPath);
+        // The peer hello is now gone, so the sentinel is the peer's recovery
+        // signal and must survive a subsequent failure. Release it from
+        // responsibleFiles so a failure-path cleanup() leaves it on disk for
+        // the peer's bounded-window recovery, and, if this process dies, for
+        // the next run's Phase 0 guard to reject. A crashed joiner cannot
+        // clean up after itself; this is the "best-effort partial-state
+        // cleanup" contract.
+        if (!deps.options().retainFiles)
+          deps.responsibleFiles.delete(joiningName);
 
-      // The peer hello is now gone, so the sentinel is the peer's recovery
-      // signal and must survive a subsequent failure. Release it from
-      // responsibleFiles so a failure-path cleanup() leaves it on disk for
-      // the peer's bounded-window recovery, and, if this process dies, for
-      // the next run's Phase 0 guard to reject. A crashed joiner cannot
-      // clean up after itself; this is the "best-effort partial-state
-      // cleanup" contract.
-      if (!deps.options().retainFiles)
-        deps.responsibleFiles.delete(joiningName);
-
-      if (deps.options().writeWithoutRenaming) {
-        // The hello is written beside the sentinel (pre-tracked, so a put
-        // that throws leaves it to cleanup() while the untracked sentinel
-        // stays as the peer's recovery signal), and only then is the
-        // sentinel deleted. The peer tolerates its sentinel beside its hello
-        // (waitForPeer) and in its message loop (isRecognizedLoopFile).
-        await this.writeHello(scope.outboundPath, helloName, true);
-        await this.deleteOwnSentinel(joiningPath, joiningName);
-      } else {
-        await renameOwnTemp(
-          deps.client(),
-          joiningPath,
-          helloPath,
-          helloName,
-          deps.options().renameRefusedGuidance,
-        );
-      }
-      // The sentinel is now our hello: stop tracking the (gone) sentinel name
-      // and own the hello so cleanup() sweeps it at close().
-      if (!deps.options().retainFiles) deps.responsibleFiles.add(helloName);
+        if (deps.options().writeWithoutRenaming) {
+          // The hello is written beside the sentinel (pre-tracked, so a put
+          // that throws leaves it to cleanup() while the untracked sentinel
+          // stays as the peer's recovery signal), and only then is the
+          // sentinel deleted. The peer tolerates its sentinel beside its
+          // hello (waitForPeer) and in its message loop (isRecognizedLoopFile).
+          await this.writeHello(scope.outboundPath, helloName, true);
+          await this.deleteOwnSentinel(joiningPath, joiningName);
+        } else {
+          await renameOwnTemp(
+            deps.client(),
+            joiningPath,
+            helloPath,
+            helloName,
+            deps.options().renameRefusedGuidance,
+          );
+        }
+        // The sentinel is now our hello: stop tracking the (gone) sentinel
+        // name and own the hello so cleanup() sweeps it at close().
+        if (!deps.options().retainFiles) deps.responsibleFiles.add(helloName);
+      });
     } catch (err: unknown) {
       // No resetSessionState() here: this.role, this.peerId,
       // this.handshakeRole, and the sequence counters are all committed only
@@ -1783,14 +1809,16 @@ export class FileSyncRendezvous {
       .debug(
         `[${deps.role()}] creating initial ${this.ownControlName("hello")}`,
       );
-    await this.writeHello(outboundPath, this.ownControlName("hello"), true);
-    // Tracked after the durable rename (delete mode only), with no throwable
-    // statement between it and the rename inside writeHello, exactly as the
-    // ack write does: the final name only appears at that atomic step, so there
-    // is no orphan window a pre-track would cover (I4a). A direct write is
-    // pre-tracked inside writeHello instead.
-    if (!deps.options().retainFiles)
-      deps.responsibleFiles.add(this.ownControlName("hello"));
+    await this.settledBeforeClose(async () => {
+      await this.writeHello(outboundPath, this.ownControlName("hello"), true);
+      // Tracked after the durable rename (delete mode only), with no throwable
+      // statement between it and the rename inside writeHello, exactly as the
+      // ack write does: the final name only appears at that atomic step, so
+      // there is no orphan window a pre-track would cover (I4a). A direct write
+      // is pre-tracked inside writeHello instead.
+      if (!deps.options().retainFiles)
+        deps.responsibleFiles.add(this.ownControlName("hello"));
+    });
     let lockPath: string | undefined;
     let ackPath: string | undefined;
     let ackedPeerHelloName: string | undefined;
