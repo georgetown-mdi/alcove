@@ -77,6 +77,7 @@ vi.mock("@alcove/core", async (importActual) => {
         params: Parameters<typeof actual.authenticateConnection>[1],
         role: Parameters<typeof actual.authenticateConnection>[2],
         requestEncryption: boolean,
+        rotationState: Parameters<typeof actual.authenticateConnection>[4],
       ) => {
         // The linked pair below hands each party its own connection object, so
         // identity is what attributes a captured handshake to the side that ran
@@ -88,6 +89,7 @@ vi.mock("@alcove/core", async (importActual) => {
           params,
           role,
           requestEncryption,
+          rotationState,
         );
         return mockState.reportEncryptionOff
           ? { ...result, applyEncryption: false }

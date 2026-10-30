@@ -426,10 +426,13 @@ export function webSocketRelayIsPartnersUnderInvitationExchangeId(
 /**
  * Mint the credential a run presents to every TURN url it lists that sets no
  * static credential, the invitation's urls and its own minted entries alike:
- * signed under the relay key derived from the run's current shared secret, for
- * {@link RELAY_CREDENTIAL_MAX_TTL_SECONDS}, labelled
- * {@link RUN_RELAY_CREDENTIAL_LABEL}. Nothing is stored; the next run mints
- * again from the secret it then holds.
+ * signed under the relay key derived from the run's stored current shared
+ * secret, for {@link RELAY_CREDENTIAL_MAX_TTL_SECONDS}, labelled
+ * {@link RUN_RELAY_CREDENTIAL_LABEL}. A caller passes that secret even where
+ * the handshake may complete under a previous one, since the relay key the
+ * party's registrar holds is the current secret's (docs/spec/PROTOCOL.md,
+ * "Relay credential derivation"). Nothing is stored; the next run mints again
+ * from the secret it then holds.
  *
  * @throws {Error} if `sharedSecret` is not a base64url-encoded 32-byte value
  *   or `now` is not a valid date.

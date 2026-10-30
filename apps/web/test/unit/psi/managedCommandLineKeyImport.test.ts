@@ -893,6 +893,28 @@ describe("the relay key registration across the command-line files", () => {
     expect(result.unreadKeyFileFields).toEqual(["extra"]);
   });
 
+  test("a pair import whose key file holds a previous secret and a rotation history lands without them and names both, never a value", async () => {
+    const { record, configuration } = exportedPair();
+    const previous = generateSharedSecret();
+    const result = await importManagedCommandLinePair(
+      configuration,
+      commandLineKeyText({
+        sharedSecret: record.sharedSecret,
+        previousSharedSecret: previous,
+        rotationHistory: [{ verifier: generateSharedSecret() }],
+      }),
+      recordingDeps(),
+    );
+    expect(result.record.sharedSecret).toBe(record.sharedSecret);
+    expect(result.record).not.toHaveProperty("previousSharedSecret");
+    expect(result.record).not.toHaveProperty("rotationHistory");
+    expect(result.unreadKeyFileFields).toEqual([
+      "previousSharedSecret",
+      "rotationHistory",
+    ]);
+    expect(JSON.stringify(result.unreadKeyFileFields)).not.toContain(previous);
+  });
+
   test("a pair import whose key file holds only fields it reads names none", async () => {
     const { configuration, key } = exportedPair();
     const result = await importManagedCommandLinePair(

@@ -25,6 +25,11 @@
 // id-aes256-wrap (RFC 3394, anchored on its section 4.6 vector) and the
 // next secret with node:crypto's HKDF, not with WebCrypto's AES-KW.
 //
+// Each case also records the schedule under a fixed previous secret, with the
+// initiator's tag over the used-previous flag set. The history block records
+// both secrets' verifiers, each role's history proof under the current
+// secret's verifier, and each role's behind notice under the previous one.
+//
 // Run:  node packages/core/test/vectors/generate-kex-vectors.mjs
 // It prints the JSON to stdout; redirect into kex-vectors.json to refresh,
 // then run `npm run format`.
@@ -45,6 +50,7 @@ const RESPONDER_CONFIRM_LABEL = "alcove-kex-v2:responder-confirm";
 const INITIATOR_WRAP_LABEL = "alcove-shared-secret-wrap-v2";
 const RESPONDER_WRAP_LABEL = "alcove-shared-secret-wrap-responder-v2";
 const NEXT_SECRET_LABEL = "alcove-shared-secret-next-v2";
+const HISTORY_LABEL_PREFIX = "alcove-rotation-history-v2:";
 
 // The pinned wire encoding: SEC1 uncompressed, 0x04 || X || Y.
 const CURVE = "prime256v1";
@@ -120,16 +126,25 @@ function computeKexKeys(psk, eInitPub, eRespPub, dh, iReq, rReq) {
   const master = Buffer.concat([ck, h]);
   const sessionKey = hkdfApp(master, SESSION_LABEL, 32);
   const confirmKey = hkdfApp(ck, CONFIRM_KEY_LABEL, 32);
-  const responderConfirm = hmac(
-    confirmKey,
-    Buffer.concat([Buffer.from(RESPONDER_CONFIRM_LABEL, "utf8"), h]),
-  );
-  return { ck, h, sessionKey, confirmKey, responderConfirm };
+  return { ck, h, sessionKey, confirmKey };
 }
 
+// The responder's tag binds after h the byte of the message 2 field it is sent
+// in: 0 for confirm (the current secret), 1 for previousConfirm.
+const responderConfirmTag = (k, previousSchedule) =>
+  hmac(
+    k.confirmKey,
+    Buffer.concat([
+      Buffer.from(RESPONDER_CONFIRM_LABEL, "utf8"),
+      k.h,
+      flagByte(previousSchedule),
+    ]),
+  );
+
 // Each party's value wrapped under the key its label derives from the session
-// key; the initiator's tag binds its wrapped value after h.
-function computeRotation(k, initiatorValue, responderValue) {
+// key; the initiator's tag binds the previous-secret flag and its wrapped value
+// after h.
+function computeRotation(k, initiatorValue, responderValue, usedPrevious) {
   const wrappedInitiatorValue = aesKeyWrap(
     hkdfApp(k.sessionKey, INITIATOR_WRAP_LABEL, 32),
     initiatorValue,
@@ -143,11 +158,28 @@ function computeRotation(k, initiatorValue, responderValue) {
     Buffer.concat([
       Buffer.from(INITIATOR_CONFIRM_LABEL, "utf8"),
       k.h,
+      flagByte(usedPrevious),
       wrappedInitiatorValue,
     ]),
   );
   return { wrappedInitiatorValue, wrappedResponderValue, initiatorConfirm };
 }
+
+// The rotation history: a verifier per secret, and the proofs and behind
+// notices keyed by HKDF(verifier || dh) under a label naming the sender's role.
+const historyLabel = (use) => HISTORY_LABEL_PREFIX + use;
+const historyVerifier = (secret) =>
+  hkdfApp(secret, historyLabel("verifier"), 32);
+const historyMac = (verifier, use, prefix) =>
+  hmac(
+    hkdfApp(Buffer.concat([verifier, dh]), historyLabel(use), 32),
+    Buffer.concat([prefix, eInitPub, eRespPub]),
+  );
+const countBytes = (count) => {
+  const out = Buffer.alloc(4);
+  out.writeUInt32BE(count);
+  return out;
+};
 
 // --- External anchors --------------------------------------------------------
 
@@ -260,6 +292,11 @@ const FLAG_CASES = [
   { name: "both-request", initiator: true, responder: true },
 ];
 
+// A second secret both parties hold as their previous one. Each case records
+// the schedule under it too: its responder tag is message 2's previousConfirm,
+// and a handshake that completes under it sets the flag in the initiator's tag.
+const previousPsk = Buffer.alloc(32, 0x43);
+
 const computed = FLAG_CASES.map((c) => {
   const k = computeKexKeys(
     psk,
@@ -269,8 +306,46 @@ const computed = FLAG_CASES.map((c) => {
     c.initiator,
     c.responder,
   );
-  return { c, k, r: computeRotation(k, initiatorValue, responderValue) };
+  const p = computeKexKeys(
+    previousPsk,
+    eInitPub,
+    eRespPub,
+    dh,
+    c.initiator,
+    c.responder,
+  );
+  return {
+    c,
+    k: { ...k, responderConfirm: responderConfirmTag(k, false) },
+    p: { ...p, responderConfirm: responderConfirmTag(p, true) },
+    r: computeRotation(k, initiatorValue, responderValue, false),
+    rp: computeRotation(p, initiatorValue, responderValue, true),
+  };
 });
+
+// The history values, flag-independent: they take only the verifier, dh and
+// the two shares. The notices are made under the previous secret's verifier,
+// as a side that retired it three rotations ago makes them.
+const NOTICE_COUNT = 3;
+const verifier = historyVerifier(psk);
+const previousVerifier = historyVerifier(previousPsk);
+const history = {
+  verifierHex: hex(verifier),
+  previousVerifierHex: hex(previousVerifier),
+  initiatorProofHex: hex(
+    historyMac(verifier, "proof-initiator", Buffer.alloc(0)),
+  ),
+  responderProofHex: hex(
+    historyMac(verifier, "proof-responder", Buffer.alloc(0)),
+  ),
+  noticeCount: NOTICE_COUNT,
+  initiatorNoticeHex: hex(
+    historyMac(previousVerifier, "notice-initiator", countBytes(NOTICE_COUNT)),
+  ),
+  responderNoticeHex: hex(
+    historyMac(previousVerifier, "notice-responder", countBytes(NOTICE_COUNT)),
+  ),
+};
 
 // The flag enters h only (MixHash), so the chaining key and the confirmation key
 // derived from it are flag-independent. Assert that here and record them once.
@@ -283,7 +358,7 @@ for (const { k } of computed) {
     );
 }
 
-const cases = computed.map(({ c, k, r }) => ({
+const cases = computed.map(({ c, k, p, r, rp }) => ({
   name: c.name,
   initiatorRequestsEncryption: c.initiator,
   responderRequestsEncryption: c.responder,
@@ -294,18 +369,29 @@ const cases = computed.map(({ c, k, r }) => ({
   responderConfirmHex: hex(k.responderConfirm),
   wrappedInitiatorValueHex: hex(r.wrappedInitiatorValue),
   wrappedResponderValueHex: hex(r.wrappedResponderValue),
+  underPrevious: {
+    handshakeHashHex: hex(p.h),
+    sessionKeyHex: hex(p.sessionKey),
+    confirmKeyHex: hex(p.confirmKey),
+    responderConfirmHex: hex(p.responderConfirm),
+    wrappedInitiatorValueHex: hex(rp.wrappedInitiatorValue),
+    initiatorConfirmHex: hex(rp.initiatorConfirm),
+  },
   wire: {
     msg1: { kexMsg: "1", e: b64url(eInitPub), reqEnc: c.initiator },
     msg2: {
       kexMsg: "2",
       e: b64url(eRespPub),
       confirm: b64url(k.responderConfirm),
+      previousConfirm: b64url(p.responderConfirm),
+      historyProof: b64url(Buffer.from(history.responderProofHex, "hex")),
       reqEnc: c.responder,
     },
     msg3: {
       kexMsg: "3",
       confirm: b64url(r.initiatorConfirm),
       initiatorValue: b64url(r.wrappedInitiatorValue),
+      usedPrevious: false,
     },
     termsResponderValue: b64url(r.wrappedResponderValue),
   },
@@ -321,9 +407,14 @@ const vector = {
     "the handshake hash, session key, and both confirmation tags. It also " +
     "fixes both parties' rotation values and records, per combination, each " +
     "value AES-KW-wrapped under its key from the session key, and once the " +
-    "next shared secret derived over dh and both values. computeKexKeys, " +
-    "initiatorConfirmTag and the rotation functions in packages/core/src " +
-    "reproduce them from these inputs; kex.test.ts " +
+    "next shared secret derived over dh and both values. Each case also " +
+    "records the schedule under a fixed previous secret, whose responder tag " +
+    "is message 2's second tag, with the initiator's tag for a handshake " +
+    "completed under it; and the history verifiers, both history proofs and " +
+    "both behind notices are recorded once. computeKexKeys, " +
+    "responderConfirmTag, initiatorConfirmTag, the rotation functions and " +
+    "the history functions " +
+    "in packages/core/src reproduce them from these inputs; kex.test.ts " +
     "checks that on Node and apps/web's browser suite checks the same file " +
     "against the browser build in real Chromium. The chaining key and " +
     "confirmation key are flag-independent (the flag is MixHash'd into h only) " +
@@ -372,8 +463,12 @@ const vector = {
       "MixKey(eInitiatorPub), MixHash(initiatorFlagByte), MixHash(eResponderPub), " +
       "MixKey(eResponderPub), MixHash(responderFlagByte), MixKey(dh). sessionKey " +
       "= HKDF(ck||h, sessionLabel, 32); confirmKey = HKDF(ck, confirmKeyLabel, " +
-      "32); responder confirm = HMAC(confirmKey, label||h); initiator " +
-      "confirm = HMAC(confirmKey, label||h||wrappedInitiatorValue).",
+      "32); responder confirm = HMAC(confirmKey, label||h||scheduleByte), " +
+      "scheduleByte 0x00 for msg2's confirm (the current secret) and 0x01 " +
+      "for its previousConfirm (the previous secret); initiator " +
+      "confirm = HMAC(confirmKey, label||h||usedPreviousByte||" +
+      "wrappedInitiatorValue), usedPreviousByte 0x01 when the initiator " +
+      "completed under its previous secret, else 0x00.",
     initiatorWrapLabel: INITIATOR_WRAP_LABEL,
     responderWrapLabel: RESPONDER_WRAP_LABEL,
     nextSecretLabel: NEXT_SECRET_LABEL,
@@ -383,9 +478,18 @@ const vector = {
       "nextSecret = HKDF(dh || initiatorValue || responderValue, " +
       "nextSecretLabel, 32). The initiator's wrapped value travels in msg3, " +
       "the responder's as the terms message 2 field responderValue.",
+    historyLabelPrefix: HISTORY_LABEL_PREFIX,
+    history:
+      "verifier = HKDF(secret, prefix + 'verifier', 32). A proof = " +
+      "HMAC(HKDF(verifier || dh, prefix + 'proof-<sender role>', 32), " +
+      "eInitiatorPub || eResponderPub), under the verifier of the sender's " +
+      "current secret. A behind notice = HMAC(HKDF(verifier || dh, prefix + " +
+      "'notice-<sender role>', 32), u32be(count) || eInitiatorPub || " +
+      "eResponderPub), under the verifier of the peer's secret.",
   },
   inputs: {
     pskHex: hex(psk),
+    previousPskHex: hex(previousPsk),
     initiatorEphemeralPrivateHex: hex(eInitPriv),
     responderEphemeralPrivateHex: hex(eRespPriv),
     initiatorValueHex: hex(initiatorValue),
@@ -400,6 +504,7 @@ const vector = {
     nextSecretHex: hex(nextSecret),
     nextSecret: b64url(nextSecret),
   },
+  history,
   cases,
   externalAnchors: {
     note:

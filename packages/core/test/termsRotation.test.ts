@@ -713,9 +713,10 @@ describe("a releasable rotation", () => {
     expect(() => initiatorRotation.inputs).toThrow(InternalConsistencyError);
   });
 
-  test("the wrapper passes the store, the report, and a fixed value through", async () => {
+  test("the wrapper passes the store, the report, the drop, and a fixed value through", async () => {
     const stored: string[] = [];
     const reports: boolean[] = [];
+    let dropped = 0;
     const fixed = randomBytes(32);
     const inputs = handshakeInputs();
     const rotation = releasableTermsRotation({
@@ -726,13 +727,18 @@ describe("a releasable rotation", () => {
       partnerMayHoldNextSecret: (mayHold) => {
         reports.push(mayHold);
       },
+      partnerStored: () => {
+        dropped += 1;
+      },
       fixedResponderValue: fixed,
     });
     expect(rotation.inputs).toBe(inputs);
     expect(rotation.fixedResponderValue).toBe(fixed);
     rotation.partnerMayHoldNextSecret?.(true);
     await rotation.store("next");
+    await rotation.partnerStored?.();
     expect(stored).toEqual(["next"]);
     expect(reports).toEqual([true]);
+    expect(dropped).toBe(1);
   });
 });

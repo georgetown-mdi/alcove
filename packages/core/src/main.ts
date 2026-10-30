@@ -904,7 +904,15 @@ export {
   NEW_INVITATION_REMEDY,
   deriveAbortToken,
 } from "./auth";
-export type { AuthResult } from "./auth";
+export type { AuthResult, HandshakeSecretKind, RotationState } from "./auth";
+// The rotation history and the failures its proofs report, for an application
+// that keeps a previous secret and a history.
+export {
+  deriveHistoryVerifier,
+  ROTATION_HISTORY_MAX_ENTRIES,
+} from "./rotationHistory";
+export type { RotationHistoryEntry } from "./rotationHistory";
+export { LocalCopyBehindError, PartnerCopyBehindError } from "./errors";
 export {
   authorityMovingSignalingField,
   bareSignalingAuthority,

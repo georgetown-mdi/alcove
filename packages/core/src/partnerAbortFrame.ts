@@ -45,13 +45,23 @@ export const PARTNER_SET_OVER_CAPACITY_ABORT_REASON =
 export const NEXT_SECRET_STORE_FAILED_ABORT_REASON =
   "the partner could not save the next shared secret";
 
+/**
+ * The abort reason an initiator sends when its drop of the previous shared
+ * secret (`TermsRotation.partnerStored`) failed. The next secret is saved by
+ * then, so it is not {@link NEXT_SECRET_STORE_FAILED_ABORT_REASON}. A fixed
+ * literal, as every abort reason must be (see `sendAbort`).
+ */
+export const PREVIOUS_SECRET_DROP_FAILED_ABORT_REASON =
+  "the partner could not remove its previous shared secret";
+
 // The fixed reasons a partner's abort past the terms exchange is matched
-// against: those a PSI round sends, and the responder's failed store.
+// against: those a PSI round sends, and the two failed saves of a rotation.
 const KEPT_ABORT_REASONS: ReadonlyArray<string> = [
   PSI_SET_TOO_LARGE_ABORT_REASON,
   PSI_SET_REFUSED_ABORT_REASON,
   PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
   NEXT_SECRET_STORE_FAILED_ABORT_REASON,
+  PREVIOUS_SECRET_DROP_FAILED_ABORT_REASON,
 ];
 
 /**
@@ -101,6 +111,50 @@ export function parseAfterTerms<T>(
 ): T {
   throwIfPartnerAbort(frame);
   return parseOrProtocolError(schema, frame);
+}
+
+// Every member of MessageConnection, so a member added there and not forwarded
+// by afterFirstFrameNotAbort fails to compile here.
+const FORWARDED_CONNECTION_MEMBERS = {
+  send: true,
+  receive: true,
+  close: true,
+  terminated: true,
+  setInboundFrameCap: true,
+  inboundPollIntervalMs: true,
+  outboundWebRtcFrameBound: true,
+  outboundFileSyncFrameBound: true,
+  inboundPsiSetElementCeiling: true,
+  outboundFrameOverheadBytes: true,
+} as const satisfies Record<keyof MessageConnection, true>;
+
+/**
+ * `conn` with `hook` awaited once, when the first received frame that is not
+ * a partner's abort decision arrives, before that frame is returned. Every
+ * other member is forwarded unchanged. A throw from `hook` rejects that
+ * receive.
+ */
+export function afterFirstFrameNotAbort(
+  conn: MessageConnection,
+  hook: () => void | Promise<void>,
+): MessageConnection {
+  let pending = true;
+  const forwarded: Record<string, unknown> = {};
+  for (const name of Object.keys(FORWARDED_CONNECTION_MEMBERS)) {
+    const member = (conn as unknown as Record<string, unknown>)[name];
+    if (typeof member === "function") forwarded[name] = member.bind(conn);
+  }
+  return {
+    ...(forwarded as unknown as MessageConnection),
+    receive: async (timeoutMs?: number) => {
+      const frame = await conn.receive(timeoutMs);
+      if (pending && !isPartnerAbortFrame(frame)) {
+        pending = false;
+        await hook();
+      }
+      return frame;
+    },
+  };
 }
 
 /**

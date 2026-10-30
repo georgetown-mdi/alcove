@@ -1192,14 +1192,15 @@ async function authenticateRun(params: {
   // so DTLS alone does not keep content from it; it cannot complete this
   // handshake. See docs/spec/CHANNEL_SECURITY.md.
   const requestEncryption = true;
+  // The key file keeps no previous secret or history, so none is offered.
   const { nextSecretInputs, sessionKey, applyEncryption } =
-    await authenticateConnection(mc, authParams, role, requestEncryption).catch(
-      (err: unknown) => {
-        if (isTrustBoundaryFailure(classifyFailure(err)))
-          clearRotationInFlightMarker(keyFilePath, auth.sharedSecret, log);
-        throw err;
-      },
-    );
+    await authenticateConnection(mc, authParams, role, requestEncryption, {
+      history: [],
+    }).catch((err: unknown) => {
+      if (isTrustBoundaryFailure(classifyFailure(err)))
+        clearRotationInFlightMarker(keyFilePath, auth.sharedSecret, log);
+      throw err;
+    });
   // Capture the session key for the signed-receipt step (it derives the replay
   // binder from it); only the authenticated path reaches here, so the no-auth
   // path leaves it undefined and runExchange's signing step stays skipped.

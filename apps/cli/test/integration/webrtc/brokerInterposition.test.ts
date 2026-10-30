@@ -67,9 +67,13 @@ vi.mock("@alcove/core", async (importActual) => {
   return {
     ...actual,
     authenticateConnection: (
-      ...[connection, params, role, requestEncryption]: Parameters<
-        typeof actual.authenticateConnection
-      >
+      ...[
+        connection,
+        params,
+        role,
+        requestEncryption,
+        rotationState,
+      ]: Parameters<typeof actual.authenticateConnection>
     ) => {
       mockState.requested.push(requestEncryption);
       return actual.authenticateConnection(
@@ -77,6 +81,7 @@ vi.mock("@alcove/core", async (importActual) => {
         params,
         role,
         mockState.forceRequestEncryptionOff ? false : requestEncryption,
+        rotationState,
       );
     },
   };

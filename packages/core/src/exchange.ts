@@ -49,7 +49,11 @@ import {
 import { rawDecodeErrorDescription } from "./utils/describeDecodeError.js";
 import { snakeizeKey } from "./utils/camelizeKeys.js";
 import type { CSVRow } from "./file.js";
-import { PARTNER_SET_OVER_CAPACITY_ABORT_REASON } from "./partnerAbortFrame.js";
+import {
+  PREVIOUS_SECRET_DROP_FAILED_ABORT_REASON,
+  PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
+  afterFirstFrameNotAbort,
+} from "./partnerAbortFrame.js";
 import type { PsiProgressReporter } from "./psi/participant.js";
 import type { PsiEngine, PsiEngineMode } from "./psi/psiEngine.js";
 import {
@@ -1582,6 +1586,20 @@ export async function runExchange(
     localReceiveCeiling,
     options.rotation,
   );
+  // The initiator that stored drops its previous secret on the responder's
+  // first frame past the terms exchange that is not an abort.
+  const partnerStored = options.rotation?.partnerStored;
+  if (handshakeRole === "initiator" && partnerStored !== undefined) {
+    const termsConn = conn;
+    conn = afterFirstFrameNotAbort(termsConn, async () => {
+      try {
+        await partnerStored();
+      } catch (err) {
+        await sendAbort(termsConn, [PREVIOUS_SECRET_DROP_FAILED_ABORT_REASON]);
+        throw err;
+      }
+    });
+  }
   for (const warning of warnings) onWarning(warning);
   linkageTerms = agreedLocalTerms;
   // A partner that proceeded past a declared receive list other than the

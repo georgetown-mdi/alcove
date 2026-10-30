@@ -257,6 +257,7 @@ vi.mock("../../../src/psi/authenticateExchange.js", () => ({
       sessionKey: new Uint8Array(32),
       nextSecretInputs: MOCKED_NEXT_SECRET_INPUTS,
       applyEncryption: true,
+      secretUsed: { local: "current", partner: "current" },
       connection,
     }),
   ),
@@ -416,6 +417,7 @@ function wrappedHandshake(connection: MessageConnection) {
     sessionKey: new Uint8Array(32),
     nextSecretInputs: MOCKED_NEXT_SECRET_INPUTS,
     applyEncryption: true,
+    secretUsed: { local: "current", partner: "current" } as const,
     connection,
   };
 }

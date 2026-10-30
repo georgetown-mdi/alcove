@@ -8,6 +8,7 @@ import { z } from "zod";
 import { MS_PER_DAY } from "../utils/msPerDay";
 import { NEW_INVITATION_REMEDY } from "../auth";
 import { SHARED_SECRET_REGEX } from "./connection";
+import type { RotationHistoryEntry } from "../rotationHistory";
 
 /** Contents of a `.alcove.key` file. */
 export interface KeyFile {
@@ -30,6 +31,16 @@ export interface KeyFile {
    * registration that run retries before it dials.
    */
   relayRegistrationPendingSince?: string;
+  /**
+   * The secret a rotation this side stored as initiator replaced, kept until
+   * the partner's frame shows it stored the same next secret, so a run cut
+   * between the two stores heals at the next run.
+   */
+  previousSharedSecret?: string;
+  /** The `expires` {@link previousSharedSecret} had as the current secret. */
+  previousExpires?: string;
+  /** The verifiers of the secrets this file retired, newest first. */
+  rotationHistory?: RotationHistoryEntry[];
 }
 
 /** The rule a key file's `sharedSecret` is held to, stated without its value. */
@@ -51,6 +62,30 @@ export const KEY_FILE_FIELD_SCHEMAS = {
   expires: z.iso.datetime().optional(),
   rotationInFlightSince: z.iso.datetime().optional(),
   relayRegistrationPendingSince: z.iso.datetime().optional(),
+  previousSharedSecret: z
+    .string()
+    .regex(
+      SHARED_SECRET_REGEX,
+      "previousSharedSecret must be a base64url-encoded 32-byte value",
+    )
+    .optional(),
+  previousExpires: z.iso.datetime().optional(),
+  rotationHistory: z
+    .array(
+      z
+        .object({
+          verifier: z
+            .string()
+            .regex(
+              SHARED_SECRET_REGEX,
+              "each rotationHistory verifier must be a base64url-encoded " +
+                "32-byte value",
+            ),
+          expires: z.iso.datetime().optional(),
+        })
+        .strict(),
+    )
+    .optional(),
 } as const;
 
 /** The key file's validator. A field outside {@link KeyFile} is dropped. */
@@ -70,17 +105,21 @@ const SECRET_SHAPED_RUN = /[A-Za-z0-9_-]{32,}/;
 /**
  * The names of the top-level fields of a parsed key file that
  * {@link KeyFileSchema} does not read and so drops, in the file's order, for a
- * reader to name to the operator. Returns names only: a value may be the
- * secret. A name containing a run of 32 or more base64url characters, which
- * may be all or most of a secret, is replaced by
+ * reader to name to the operator. A reader that keeps only some of the schema's
+ * fields passes them as `keptFields`, so the rest are named too. Returns names
+ * only: a value may be the secret. A name containing a run of 32 or more
+ * base64url characters, which may be all or most of a secret, is replaced by
  * {@link KEY_FILE_REDACTED_FIELD_NAME}. Empty for anything other than a plain
  * object.
  */
-export function keyFileUnreadFieldNames(document: unknown): Array<string> {
+export function keyFileUnreadFieldNames(
+  document: unknown,
+  keptFields: ReadonlySet<string> = KEY_FILE_FIELD_NAMES,
+): Array<string> {
   if (typeof document !== "object" || document === null) return [];
   if (Array.isArray(document)) return [];
   return Object.keys(document)
-    .filter((name) => !KEY_FILE_FIELD_NAMES.has(name))
+    .filter((name) => !keptFields.has(name))
     .map((name) =>
       SECRET_SHAPED_RUN.test(name) ? KEY_FILE_REDACTED_FIELD_NAME : name,
     );

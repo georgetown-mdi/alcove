@@ -139,6 +139,7 @@ async function authenticated(
       { sharedSecret: secret },
       handshakeRole,
       true,
+      { history: [] },
     );
     expect(applyEncryption).toBe(true);
     return EncryptedMessageConnection.create(

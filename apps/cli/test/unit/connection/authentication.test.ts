@@ -97,8 +97,12 @@ test("both parties hold the same next-secret inputs over a real connection", asy
   const [roleA, roleB] = roles(connA, connB);
 
   const [a, b] = await Promise.all([
-    authenticateConnection(mcA, { sharedSecret: TOKEN_A }, roleA, true),
-    authenticateConnection(mcB, { sharedSecret: TOKEN_A }, roleB, true),
+    authenticateConnection(mcA, { sharedSecret: TOKEN_A }, roleA, true, {
+      history: [],
+    }),
+    authenticateConnection(mcB, { sharedSecret: TOKEN_A }, roleB, true, {
+      history: [],
+    }),
   ]).finally(() => teardown(connA, connB));
 
   // The next secret itself is derived at the terms exchange.
@@ -133,12 +137,14 @@ test("applyEncryption shows own-OR-peer through authenticateConnection across fl
         { sharedSecret: TOKEN_A },
         "initiator",
         reqInit,
+        { history: [] },
       ),
       authenticateConnection(
         b,
         { sharedSecret: TOKEN_A },
         "responder",
         reqResp,
+        { history: [] },
       ),
     ]);
     expect(resA.applyEncryption).toBe(expected);
@@ -160,6 +166,7 @@ test("authentication throws for an expired token without opening a connection", 
       { sharedSecret: TOKEN_A, expires: "2000-01-01T00:00:00.000Z" },
       "initiator",
       true,
+      { history: [] },
     ),
   ).rejects.toThrow("shared secret expired");
 });
@@ -175,6 +182,7 @@ test("authentication marks a pre-handshake-expiry error as stating its own next 
     { sharedSecret: TOKEN_A, expires: "2000-01-01T00:00:00.000Z" },
     "initiator",
     true,
+    { history: [] },
   ).catch((e: unknown) => e);
   expect(statesItsOwnNextStep(err, { ownOnly: true })).toBe(true);
 });
@@ -182,7 +190,13 @@ test("authentication marks a pre-handshake-expiry error as stating its own next 
 test("authentication throws for a token that is not 43 base64url characters", async () => {
   const mc = fromEventConnection(makeConn());
   await expect(
-    authenticateConnection(mc, { sharedSecret: "tooshort" }, "initiator", true),
+    authenticateConnection(
+      mc,
+      { sharedSecret: "tooshort" },
+      "initiator",
+      true,
+      { history: [] },
+    ),
   ).rejects.toThrow(
     "the key file's sharedSecret must be a base64url-encoded 32-byte value",
   );
@@ -193,7 +207,9 @@ test("authentication throws for a token containing non-base64url characters", as
   // 43 chars but contains '=' (standard base64 padding, not valid base64url)
   const badToken = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
   await expect(
-    authenticateConnection(mc, { sharedSecret: badToken }, "initiator", true),
+    authenticateConnection(mc, { sharedSecret: badToken }, "initiator", true, {
+      history: [],
+    }),
   ).rejects.toThrow(
     "the key file's sharedSecret must be a base64url-encoded 32-byte value",
   );
@@ -206,7 +222,9 @@ test("authentication throws for a token with valid base64url characters but wron
   // 2 zero padding bits for a 32-byte value.
   const badToken = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB";
   await expect(
-    authenticateConnection(mc, { sharedSecret: badToken }, "initiator", true),
+    authenticateConnection(mc, { sharedSecret: badToken }, "initiator", true, {
+      history: [],
+    }),
   ).rejects.toThrow(
     "the key file's sharedSecret must be a base64url-encoded 32-byte value",
   );
@@ -222,6 +240,7 @@ test("authentication marks a malformed-secret error as stating its own next step
     { sharedSecret: "tooshort" },
     "initiator",
     true,
+    { history: [] },
   ).catch((e: unknown) => e);
   expect(statesItsOwnNextStep(err, { ownOnly: true })).toBe(true);
 });
@@ -236,8 +255,12 @@ test("authentication throws when tokens differ", async () => {
   const [roleA, roleB] = roles(connA, connB);
 
   const [resultA, resultB] = await Promise.allSettled([
-    authenticateConnection(mcA, { sharedSecret: TOKEN_A }, roleA, true),
-    authenticateConnection(mcB, { sharedSecret: TOKEN_B }, roleB, true),
+    authenticateConnection(mcA, { sharedSecret: TOKEN_A }, roleA, true, {
+      history: [],
+    }),
+    authenticateConnection(mcB, { sharedSecret: TOKEN_B }, roleB, true, {
+      history: [],
+    }),
   ]).finally(() => teardown(connA, connB));
 
   expect(resultA.status).toBe("rejected");
@@ -268,6 +291,7 @@ test("a legacy SPAKE2-shaped first message fails a new responder with a clean er
     { sharedSecret: TOKEN_A },
     "responder",
     true,
+    { history: [] },
   );
   // `b` is the legacy client: it opens with a SPAKE2 message-1 shape.
   await b.send({ pakeMsg: "1", point: TOKEN_A });
@@ -282,6 +306,7 @@ test("a legacy SPAKE2-shaped reply fails a new initiator with a clean error", as
     { sharedSecret: TOKEN_A },
     "initiator",
     true,
+    { history: [] },
   );
   // `b` is the legacy responder: it consumes the initiator's frame and replies
   // with a SPAKE2 message-2 shape, which the new initiator cannot parse.
@@ -309,12 +334,14 @@ test("a secret that lapses during the handshake completes it and is handed to th
     { sharedSecret: TOKEN_A, expires },
     "initiator",
     true,
+    { history: [] },
   );
   const pB = authenticateConnection(
     b,
     { sharedSecret: TOKEN_A, expires },
     "responder",
     true,
+    { history: [] },
   );
   vi.setSystemTime(new Date("2030-01-01T00:00:01.000Z"));
   const [resultA, resultB] = await Promise.all([pA, pB]);

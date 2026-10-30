@@ -121,6 +121,15 @@ export const MAX_CONFIGURATION_IMPORT_BYTES = 1_000_000;
  * instant, so anything larger is not the file the operator meant to choose. */
 export const MAX_KEY_FILE_IMPORT_BYTES = 10_000;
 
+/** The key-file fields an import reads; the record keeps no previous secret or
+ * rotation history, so the import names those among the fields it drops. */
+const KEY_FILE_FIELDS_IMPORTED: ReadonlySet<string> = new Set([
+  "sharedSecret",
+  "expires",
+  "rotationInFlightSince",
+  "relayRegistrationPendingSince",
+] satisfies Array<keyof ManagedExchangeKeyFields>);
+
 /** The label a file-name-free import starts the record at. The operator names
  * the exchange in the settings editor; an empty label is what every surface
  * already renders as an unnamed exchange. */
@@ -653,7 +662,10 @@ function readManagedCommandLineKeyFileFields(
   if (result.success)
     return {
       fields: result.data,
-      unreadFieldNames: keyFileUnreadFieldNames(parsed),
+      unreadFieldNames: keyFileUnreadFieldNames(
+        parsed,
+        KEY_FILE_FIELDS_IMPORTED,
+      ),
     };
   throw keyFileRefusal(keyPairProblems(result.error, parsed));
 }

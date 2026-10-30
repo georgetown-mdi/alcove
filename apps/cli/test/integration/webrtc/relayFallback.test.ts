@@ -156,6 +156,7 @@ async function exchangeOverWrap(
       { sharedSecret: secret },
       handshakeRole,
       true,
+      { history: [] },
     );
     expect(applyEncryption).toBe(true);
     return EncryptedMessageConnection.create(

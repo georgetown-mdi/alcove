@@ -17,6 +17,8 @@ import {
 import {
   AuthenticationError,
   InternalConsistencyError,
+  LocalCopyBehindError,
+  PartnerCopyBehindError,
   markPeerWaitTimeout,
 } from "./errors.js";
 import {
@@ -24,15 +26,24 @@ import {
   unwrapRotationValue,
   wrapRotationValue,
 } from "./nextSecret.js";
+import {
+  BEHIND_NOTICE_MAX_COUNT,
+  behindNotice,
+  historyProof,
+  historyVerifierBytes,
+  matchHistoryProof,
+  type CheckedHistory,
+  type HandshakeShares,
+} from "./rotationHistory.js";
 
 // The authenticated key exchange that produces the exchange session key: an
 // ephemeral P-256 Diffie-Hellman pinned to the Noise NNpsk0 pattern plus an
 // explicit, role-asymmetric mutual key confirmation. Only the NNpsk0 glue --
-// key-schedule mixing and the two confirmation tags -- is written here; every
-// cryptographic operation is a crypto.subtle call, and the full Noise
-// framework is not implemented. Construction, key schedule, wire format, and
-// what the vectors pin: docs/spec/PROTOCOL.md ("P-256 authenticated key
-// exchange"). Decision and module boundary: docs/SECURITY_DESIGN.md
+// key-schedule mixing, the confirmation tags, and their trial verification
+// under a previous secret -- is written here; every cryptographic operation is
+// a crypto.subtle call, and the full Noise framework is not implemented.
+// Construction, key schedule, wire format, and what the vectors pin:
+// docs/spec/PROTOCOL.md ("P-256 authenticated key exchange"). Decision and module boundary: docs/SECURITY_DESIGN.md
 // ("Key-agreement design") and
 // docs/notes/key-establishment-fips-boundary.md.
 
@@ -129,6 +140,8 @@ interface KexMsg2 {
   kexMsg: "2";
   e: string;
   confirm: string;
+  previousConfirm: string;
+  historyProof: string;
   reqEnc: boolean;
 }
 
@@ -137,6 +150,8 @@ const KexMsg2Schema: z.ZodType<KexMsg2> = z
     kexMsg: z.literal("2"),
     e: z.string(),
     confirm: z.string(),
+    previousConfirm: z.string(),
+    historyProof: z.string(),
     reqEnc: z.boolean(),
   })
   .strict();
@@ -145,6 +160,7 @@ interface KexMsg3 {
   kexMsg: "3";
   confirm: string;
   initiatorValue: string;
+  usedPrevious: boolean;
 }
 
 const KexMsg3Schema: z.ZodType<KexMsg3> = z
@@ -152,16 +168,32 @@ const KexMsg3Schema: z.ZodType<KexMsg3> = z
     kexMsg: z.literal("3"),
     confirm: z.string(),
     initiatorValue: z.string(),
+    usedPrevious: z.boolean(),
   })
   .strict();
 
+interface BehindNotice {
+  count: number;
+  tag: string;
+}
+
 interface KexAbort {
   kexMsg: "abort";
+  historyProof?: string;
+  behindNotice?: BehindNotice;
 }
 
 const KexAbortSchema: z.ZodType<KexAbort> = z
   .object({
     kexMsg: z.literal("abort"),
+    historyProof: z.string().optional(),
+    behindNotice: z
+      .object({
+        count: z.number().int().min(1).max(BEHIND_NOTICE_MAX_COUNT),
+        tag: z.string(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -188,10 +220,11 @@ function decodeBase64Url(value: string): Uint8Array<ArrayBuffer> | undefined {
   }
 }
 
-// Canonical single-byte encoding of a party's request-encryption flag for the
-// transcript hash: 0x01 when the party requests the additional
-// application-encryption layer, 0x00 otherwise. Both implementations (this one
-// and the independent vector generator) must agree on these bytes.
+// Canonical single-byte encoding of a flag for the transcript hash and the
+// confirmation tags: 0x01 when it is set (a party requests the additional
+// application-encryption layer, or a tag is made under the previous
+// schedule), 0x00 otherwise. Both implementations (this one and the
+// independent vector generator) must agree on these bytes.
 function flagByte(requested: boolean): Uint8Array<ArrayBuffer> {
   return Uint8Array.of(requested ? 1 : 0);
 }
@@ -307,7 +340,6 @@ export async function computeKexKeys(
 ): Promise<{
   sessionKey: Uint8Array<ArrayBuffer>;
   confirmKey: Uint8Array<ArrayBuffer>;
-  responderConfirm: Uint8Array<ArrayBuffer>;
   handshakeHash: Uint8Array<ArrayBuffer>;
   chainingKey: Uint8Array<ArrayBuffer>;
 }> {
@@ -336,34 +368,53 @@ export async function computeKexKeys(
   const sessionKey = await hkdfDerive(master, SESSION_LABEL, 32);
   // Confirmation key is derived from ck alone under a distinct label, so it is
   // independent of the session key. It does not fold in h the way the session
-  // key (ck||h) does: the confirmation tags below bind the transcript hash h
+  // key (ck||h) does: the confirmation tags bind the transcript hash h
   // explicitly in the HMAC message, so the tags are fully transcript-bound
   // without h also entering the key.
   const confirmKey = await hkdfDerive(s.ck, CONFIRM_KEY_LABEL, 32);
-  const responderConfirm = await hmacSha256(
-    confirmKey,
-    concatBytes(enc.encode(RESPONDER_CONFIRM_LABEL), s.h),
-  );
   return {
     sessionKey,
     confirmKey,
-    responderConfirm,
     handshakeHash: s.h,
     chainingKey: s.ck,
   };
 }
 
 /**
- * The initiator's confirmation tag, which binds the wrapped initiator value
- * after `h`, so a changed byte of either fails the tag. The wrapped value is not
- * mixed into `h`: its wrapping key derives from the session key, which `h`
- * feeds.
+ * The responder's confirmation tag, which binds after `h` a byte naming the
+ * message 2 field the tag is sent in: 0 for `confirm`, made under the current
+ * secret, and 1 for `previousConfirm`, made under the previous secret or the
+ * value drawn in its place. A tag moved to the other field fails.
+ *
+ * @internal exported only for the known-answer-vector tests.
+ */
+export async function responderConfirmTag(
+  confirmKey: Uint8Array<ArrayBuffer>,
+  handshakeHash: Uint8Array<ArrayBuffer>,
+  previousSchedule: boolean,
+): Promise<Uint8Array<ArrayBuffer>> {
+  return hmacSha256(
+    confirmKey,
+    concatBytes(
+      enc.encode(RESPONDER_CONFIRM_LABEL),
+      handshakeHash,
+      flagByte(previousSchedule),
+    ),
+  );
+}
+
+/**
+ * The initiator's confirmation tag, which binds the previous-secret flag and
+ * the wrapped initiator value after `h`, so a changed byte of any fails the
+ * tag. Neither is mixed into `h`: the wrapping key derives from the session
+ * key, which `h` feeds.
  *
  * @internal exported only for the known-answer-vector tests.
  */
 export async function initiatorConfirmTag(
   confirmKey: Uint8Array<ArrayBuffer>,
   handshakeHash: Uint8Array<ArrayBuffer>,
+  usedPrevious: boolean,
   wrappedInitiatorValue: Uint8Array<ArrayBuffer>,
 ): Promise<Uint8Array<ArrayBuffer>> {
   return hmacSha256(
@@ -371,6 +422,7 @@ export async function initiatorConfirmTag(
     concatBytes(
       enc.encode(INITIATOR_CONFIRM_LABEL),
       handshakeHash,
+      flagByte(usedPrevious),
       wrappedInitiatorValue,
     ),
   );
@@ -446,9 +498,12 @@ async function deriveSharedSecret(
 // telling them to give up shortens their recovery from the handshake
 // timeout to immediately. A failure to send the abort is non-fatal -- the peer
 // will time out on its own -- so the send error is swallowed.
-async function sendAbort(conn: MessageConnection): Promise<void> {
+async function sendAbort(
+  conn: MessageConnection,
+  abort: KexAbort = { kexMsg: "abort" },
+): Promise<void> {
   try {
-    await conn.send({ kexMsg: "abort" } satisfies KexAbort);
+    await conn.send(abort);
   } catch {
     // Peer will hit the handshake timeout if abort delivery fails.
   }
@@ -495,6 +550,179 @@ interface KexResult {
    * ("Request-encryption flag").
    */
   applyEncryption: boolean;
+  /** Whether this side completed under its previous secret. */
+  localUsedPrevious: boolean;
+  /** Whether the peer completed under its previous secret. */
+  partnerUsedPrevious: boolean;
+}
+
+/**
+ * The secrets beyond the current one a handshake may complete under, and the
+ * history it checks a peer's proof against (docs/spec/PROTOCOL.md, "Which
+ * secret a handshake uses").
+ */
+export interface KexCandidates {
+  /** The raw 32-byte previous secret, kept until the partner confirms the
+   * next one; omitted when this side holds none. */
+  previous?: Uint8Array<ArrayBuffer>;
+  /** The verifiers of the secrets this side retired, newest first. */
+  history: CheckedHistory;
+}
+
+type KexSchedule = Awaited<ReturnType<typeof computeKexKeys>>;
+
+// Both schedules, the previous one under a value drawn on every run so the
+// work does not depend on whether a previous secret is held.
+async function computeBothSchedules(
+  psk: Uint8Array<ArrayBuffer>,
+  candidates: KexCandidates,
+  shares: HandshakeShares,
+  initiatorRequestsEncryption: boolean,
+  responderRequestsEncryption: boolean,
+): Promise<[KexSchedule, KexSchedule]> {
+  const placeholder = (await drawRotationValue()).bytes;
+  const schedule = (secret: Uint8Array<ArrayBuffer>) =>
+    computeKexKeys(
+      secret,
+      shares.initiatorShare,
+      shares.responderShare,
+      shares.dh,
+      initiatorRequestsEncryption,
+      responderRequestsEncryption,
+    );
+  return [
+    await schedule(psk),
+    await schedule(candidates.previous ?? placeholder),
+  ];
+}
+
+// Reads the reply a responder makes to an abort holding a proof, within the
+// per-message bound: a behind notice that verifies under this side's current
+// verifier is a LocalCopyBehindError, and anything else, silence included, the
+// generic failure.
+async function failOnResponderReply(
+  conn: MessageConnection,
+  verifier: Uint8Array<ArrayBuffer>,
+  shares: HandshakeShares,
+): Promise<never> {
+  let reply: unknown;
+  try {
+    reply = await conn.receive(handshakeReceiveTimeoutMs(conn));
+  } catch {
+    throw new AuthenticationError(GENERIC_FAILURE);
+  }
+  const parsed = KexAbortSchema.safeParse(reply);
+  if (parsed.success && parsed.data.behindNotice !== undefined) {
+    const { count, tag } = parsed.data.behindNotice;
+    const received = decodeBase64Url(tag);
+    if (
+      received !== undefined &&
+      bytesEqual(
+        received,
+        await behindNotice(verifier, "responder", count, shares),
+      )
+    )
+      throw new LocalCopyBehindError();
+  }
+  throw new AuthenticationError(GENERIC_FAILURE);
+}
+
+// The abort an initiator sends when neither of the responder's tags verifies:
+// its own proof, and a behind notice where the responder's proof matched this
+// side's history. Throws the failure the run ends with.
+async function initiatorFailsWithHistory(
+  conn: MessageConnection,
+  psk: Uint8Array<ArrayBuffer>,
+  candidates: KexCandidates,
+  responderProof: string,
+  shares: HandshakeShares,
+): Promise<never> {
+  const peerProof = decodeBase64Url(responderProof);
+  const matchedAt =
+    peerProof === undefined
+      ? undefined
+      : await matchHistoryProof(
+          candidates.history,
+          peerProof,
+          "responder",
+          shares,
+        );
+  const verifier = await historyVerifierBytes(psk);
+  const abort: KexAbort = {
+    kexMsg: "abort",
+    historyProof: toBase64Url(
+      await historyProof(verifier, "initiator", shares),
+    ),
+  };
+  if (matchedAt !== undefined) {
+    abort.behindNotice = {
+      count: matchedAt,
+      tag: toBase64Url(
+        await behindNotice(
+          candidates.history[matchedAt - 1]!,
+          "initiator",
+          matchedAt,
+          shares,
+        ),
+      ),
+    };
+  }
+  await sendAbort(conn, abort);
+  if (matchedAt !== undefined) throw new PartnerCopyBehindError(matchedAt);
+  return failOnResponderReply(conn, verifier, shares);
+}
+
+// A responder's answer to an abort in place of message 3. An abort holding a
+// proof is answered, with a behind notice where the proof matched this side's
+// history; then the run ends on what the two showed, or the generic failure.
+async function responderFailsOnAbort(
+  conn: MessageConnection,
+  abort: KexAbort,
+  verifier: Uint8Array<ArrayBuffer>,
+  candidates: KexCandidates,
+  shares: HandshakeShares,
+): Promise<never> {
+  if (abort.historyProof === undefined)
+    throw new AuthenticationError(GENERIC_FAILURE);
+  const peerProof = decodeBase64Url(abort.historyProof);
+  const matchedAt =
+    peerProof === undefined
+      ? undefined
+      : await matchHistoryProof(
+          candidates.history,
+          peerProof,
+          "initiator",
+          shares,
+        );
+  const reply: KexAbort = { kexMsg: "abort" };
+  if (matchedAt !== undefined) {
+    reply.behindNotice = {
+      count: matchedAt,
+      tag: toBase64Url(
+        await behindNotice(
+          candidates.history[matchedAt - 1]!,
+          "responder",
+          matchedAt,
+          shares,
+        ),
+      ),
+    };
+  }
+  await sendAbort(conn, reply);
+  if (matchedAt !== undefined) throw new PartnerCopyBehindError(matchedAt);
+  if (abort.behindNotice !== undefined) {
+    const { count, tag } = abort.behindNotice;
+    const received = decodeBase64Url(tag);
+    if (
+      received !== undefined &&
+      bytesEqual(
+        received,
+        await behindNotice(verifier, "initiator", count, shares),
+      )
+    )
+      throw new LocalCopyBehindError();
+  }
+  throw new AuthenticationError(GENERIC_FAILURE);
 }
 
 // --- Protocol ----------------------------------------------------------------
@@ -533,16 +761,26 @@ interface KexResult {
  *   application-encryption layer. Sent on this party's handshake message and
  *   bound into the transcript; the negotiated decision is returned as
  *   {@link KexResult.applyEncryption}.
+ * @param candidates  This side's previous secret, if it holds one, and its
+ *   rotation history. With no secret in common, a peer whose proof matches
+ *   the history fails as {@link PartnerCopyBehindError}, and a behind notice
+ *   from the peer that verifies fails this side as
+ *   {@link LocalCopyBehindError}; both are {@link AuthenticationError}s.
  */
 export async function runKex(
   conn: MessageConnection,
   handshakeRole: HandshakeRole,
   psk: Uint8Array<ArrayBuffer>,
   requestEncryption: boolean,
+  candidates: KexCandidates = { history: [] },
 ): Promise<KexResult> {
-  if (psk.length !== PSK_LEN) {
+  if (
+    psk.length !== PSK_LEN ||
+    (candidates.previous !== undefined &&
+      candidates.previous.length !== PSK_LEN)
+  ) {
     throw new InternalConsistencyError(
-      `runKex: psk must be ${PSK_LEN} bytes, got ${psk.length}`,
+      `runKex: each secret must be ${PSK_LEN} bytes`,
     );
   }
 
@@ -576,32 +814,68 @@ export async function runKex(
       await sendAbort(conn);
       throw new AuthenticationError(GENERIC_FAILURE);
     }
+    const shares: HandshakeShares = {
+      initiatorShare: myPublic,
+      responderShare: peerPublic,
+      dh,
+    };
     // We are the initiator, so our flag is the initiator flag and the
     // responder's (msg2.reqEnc) is the responder flag. Binding both into the
     // transcript means a tampered responder flag yields a responder tag we
     // will reject below.
-    const { sessionKey, confirmKey, responderConfirm, handshakeHash } =
-      await computeKexKeys(
-        psk,
-        myPublic,
-        peerPublic,
-        dh,
-        requestEncryption,
-        msg2.data.reqEnc,
-      );
+    const schedules = await computeBothSchedules(
+      psk,
+      candidates,
+      shares,
+      requestEncryption,
+      msg2.data.reqEnc,
+    );
 
-    // No explicit length check on the decoded tag: bytesEqual is total and
-    // returns false on any length mismatch (unlike the public key above, whose
-    // encoding must be the pinned 65-byte uncompressed point before it feeds
-    // the DH).
-    const receivedConfirm = decodeBase64Url(msg2.data.confirm);
-    if (
-      receivedConfirm === undefined ||
-      !bytesEqual(receivedConfirm, responderConfirm)
-    ) {
-      await sendAbort(conn);
-      throw new AuthenticationError(GENERIC_FAILURE);
+    // Trial verification: every own schedule against both received tags, each
+    // expected tag made with the byte of the field it is compared at, all
+    // four compared whatever matches, then the first match in the order
+    // current-own then previous-own, each against the responder's current tag
+    // first. bytesEqual is total, so a tag that does not decode to 32 bytes
+    // simply fails to match.
+    const receivedTags = [msg2.data.confirm, msg2.data.previousConfirm].map(
+      (tag) => decodeBase64Url(tag) ?? EMPTY,
+    );
+    const matches: boolean[][] = [];
+    for (const schedule of schedules) {
+      const row: boolean[] = [];
+      for (const [peer, tag] of receivedTags.entries()) {
+        row.push(
+          bytesEqual(
+            tag,
+            await responderConfirmTag(
+              schedule.confirmKey,
+              schedule.handshakeHash,
+              peer === 1,
+            ),
+          ),
+        );
+      }
+      matches.push(row);
     }
+    const ownChoices: number[] =
+      candidates.previous === undefined ? [0] : [0, 1];
+    let chosen: { own: number; peer: number } | undefined;
+    for (const own of ownChoices) {
+      for (const peer of [0, 1]) {
+        if (chosen === undefined && matches[own]![peer]!)
+          chosen = { own, peer };
+      }
+    }
+    if (chosen === undefined)
+      return initiatorFailsWithHistory(
+        conn,
+        psk,
+        candidates,
+        msg2.data.historyProof,
+        shares,
+      );
+    const { sessionKey, confirmKey, handshakeHash } = schedules[chosen.own]!;
+    const usedPrevious = chosen.own === 1;
 
     // Drawn and sent only now: the initiator holds key confirmation once the
     // responder's tag verifies, and sends no keying material before it.
@@ -614,12 +888,14 @@ export async function runKex(
     const initiatorConfirm = await initiatorConfirmTag(
       confirmKey,
       handshakeHash,
+      usedPrevious,
       wrapped,
     );
     await conn.send({
       kexMsg: "3",
       confirm: toBase64Url(initiatorConfirm),
       initiatorValue: toBase64Url(wrapped),
+      usedPrevious,
     } satisfies KexMsg3);
 
     return {
@@ -627,6 +903,8 @@ export async function runKex(
       keyAgreementOutput: dh,
       initiatorValue: initiatorValue.bytes,
       applyEncryption: requestEncryption || msg2.data.reqEnc,
+      localUsedPrevious: usedPrevious,
+      partnerUsedPrevious: chosen.peer === 1,
     };
   } else {
     // Message 1: receive initiator's ephemeral public key.
@@ -648,59 +926,104 @@ export async function runKex(
       await sendAbort(conn);
       throw new AuthenticationError(GENERIC_FAILURE);
     }
+    const shares: HandshakeShares = {
+      initiatorShare: peerPublic,
+      responderShare: myPublic,
+      dh,
+    };
     // peerPublic is the initiator's e; myPublic is the responder's e. The
     // initiator's flag (msg1.reqEnc) is the initiator flag and ours is the
     // responder flag; both are bound into the transcript before the tags are
-    // computed, so the confirm we send below already commits to both flags.
-    const { sessionKey, confirmKey, responderConfirm, handshakeHash } =
-      await computeKexKeys(
-        psk,
-        peerPublic,
-        myPublic,
-        dh,
-        msg1.data.reqEnc,
-        requestEncryption,
-      );
+    // computed, so the confirms we send below already commit to both flags.
+    // Both schedules and the proof are computed on every run, so the work and
+    // message 2's shape do not depend on whether a previous secret is held.
+    const schedules = await computeBothSchedules(
+      psk,
+      candidates,
+      shares,
+      msg1.data.reqEnc,
+      requestEncryption,
+    );
+    const verifier = await historyVerifierBytes(psk);
+    const proof = await historyProof(verifier, "responder", shares);
 
     await conn.send({
       kexMsg: "2",
       e: toBase64Url(myPublic),
-      confirm: toBase64Url(responderConfirm),
+      confirm: toBase64Url(
+        await responderConfirmTag(
+          schedules[0].confirmKey,
+          schedules[0].handshakeHash,
+          false,
+        ),
+      ),
+      previousConfirm: toBase64Url(
+        await responderConfirmTag(
+          schedules[1].confirmKey,
+          schedules[1].handshakeHash,
+          true,
+        ),
+      ),
+      historyProof: toBase64Url(proof),
       reqEnc: requestEncryption,
     } satisfies KexMsg2);
 
     // Message 3: receive and verify the initiator's confirmation (or abort).
-    // A legitimate abort (the initiator rejected our tag, e.g. on a psk
-    // mismatch) folds into the same generic failure as a malformed or wrong
-    // msg3: from the responder's side it is an authentication failure either
-    // way. This trades operator diagnosability for a single non-oracular
-    // outcome. Every other failure sends an abort: the initiator has wrapped
-    // the connection and waits for terms message 2, so it reads the cleartext
+    // An abort holding a proof is answered (responderFailsOnAbort); a plain
+    // abort folds into the same generic failure as a malformed or wrong msg3.
+    // Every other failure sends an abort: the initiator has wrapped the
+    // connection and waits for terms message 2, so it reads the cleartext
     // abort as a `security` failure of the AEAD layer at once.
     const msg3 = z
       .union([KexMsg3Schema, KexAbortSchema])
       .safeParse(await receiveHandshake(conn));
     if (msg3.success && msg3.data.kexMsg === "abort") {
-      throw new AuthenticationError(GENERIC_FAILURE);
+      return responderFailsOnAbort(
+        conn,
+        msg3.data,
+        verifier,
+        candidates,
+        shares,
+      );
     }
     if (!msg3.success || msg3.data.kexMsg !== "3") {
       await sendAbort(conn);
       throw new AuthenticationError(GENERIC_FAILURE);
     }
-    // No explicit tag length check: bytesEqual is total (see msg2 above).
+    const { usedPrevious } = msg3.data;
     const wrapped = decodeBase64Url(msg3.data.initiatorValue);
     const receivedConfirm = decodeBase64Url(msg3.data.confirm);
-    if (
-      wrapped === undefined ||
-      receivedConfirm === undefined ||
-      !bytesEqual(
-        receivedConfirm,
-        await initiatorConfirmTag(confirmKey, handshakeHash, wrapped),
-      )
-    ) {
+    if (wrapped === undefined || receivedConfirm === undefined) {
       await sendAbort(conn);
       throw new AuthenticationError(GENERIC_FAILURE);
     }
+    // Both expected tags are computed and compared whatever matches; the
+    // previous schedule completes only where a previous secret is held. No
+    // explicit tag length check: bytesEqual is total.
+    const tagMatches: boolean[] = [];
+    for (const schedule of schedules) {
+      tagMatches.push(
+        bytesEqual(
+          receivedConfirm,
+          await initiatorConfirmTag(
+            schedule.confirmKey,
+            schedule.handshakeHash,
+            usedPrevious,
+            wrapped,
+          ),
+        ),
+      );
+    }
+    const completedOwn = tagMatches[0]
+      ? 0
+      : tagMatches[1] && candidates.previous !== undefined
+        ? 1
+        : undefined;
+    if (completedOwn === undefined) {
+      await sendAbort(conn);
+      throw new AuthenticationError(GENERIC_FAILURE);
+    }
+    const { sessionKey } = schedules[completedOwn];
     // A consistency check rather than a second defense: the tag already covers
     // the wrapped bytes, so only a holder of the pre-shared secret that wrapped
     // under another key reaches a failure here.
@@ -719,6 +1042,8 @@ export async function runKex(
       keyAgreementOutput: dh,
       initiatorValue,
       applyEncryption: msg1.data.reqEnc || requestEncryption,
+      localUsedPrevious: completedOwn === 1,
+      partnerUsedPrevious: usedPrevious,
     };
   }
 }

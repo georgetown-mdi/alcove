@@ -8,6 +8,7 @@ import { describe, expect, test } from "vitest";
 import { ABORT_TOKEN_ROLES, AEAD_CONTEXTS } from "../src/auth";
 import { TERMS_UPDATE_DERIVATIONS } from "../src/config/termsUpdate";
 import { RENDEZVOUS_ROLES } from "../src/rendezvous";
+import { ROTATION_HISTORY_DERIVATIONS } from "../src/rotationHistory";
 
 // The domain-separation label space of docs/spec/PROTOCOL.md ("The
 // domain-separation label space"). The HKDF info strings are not
@@ -45,6 +46,7 @@ const LABEL_FAMILIES: ReadonlyMap<string, readonly string[]> = new Map<
   ],
   ["alcove-signed-receipt-binder-v2:", ["initiator", "responder"]],
   ["alcove-terms-update-v2:", TERMS_UPDATE_DERIVATIONS],
+  ["alcove-rotation-history-v2:", ROTATION_HISTORY_DERIVATIONS],
 ]);
 
 // alcove- strings in core's source outside the label space: the key

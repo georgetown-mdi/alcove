@@ -542,6 +542,15 @@ export interface TermsRotation {
    */
   partnerMayHoldNextSecret?: (mayHold: boolean) => void;
   /**
+   * Called on the initiator only, once, by `runExchange` when the responder's
+   * first frame after terms message 3 that is not an abort has arrived through
+   * the connection, and awaited before that frame is read: the responder stores
+   * before it sends any such frame, so the initiator drops the previous secret
+   * it kept (docs/spec/PROTOCOL.md, "The previous secret"). The
+   * frame proves it only where the AEAD layer opened it. A throw ends the run.
+   */
+  partnerStored?: () => void | Promise<void>;
+  /**
    * A fixed responder value in place of a fresh one.
    *
    * @internal for the terms-envelope conformance vectors only: a fixed value
@@ -573,7 +582,12 @@ export function releasableTermsRotation(
   const held: { inputs: NextSecretInputs | undefined } = {
     inputs: rotation.inputs,
   };
-  const { store, partnerMayHoldNextSecret, fixedResponderValue } = rotation;
+  const {
+    store,
+    partnerMayHoldNextSecret,
+    partnerStored,
+    fixedResponderValue,
+  } = rotation;
   const release = (): void => {
     held.inputs = undefined;
   };
@@ -593,6 +607,7 @@ export function releasableTermsRotation(
       }
     },
     ...(partnerMayHoldNextSecret !== undefined && { partnerMayHoldNextSecret }),
+    ...(partnerStored !== undefined && { partnerStored }),
     ...(fixedResponderValue !== undefined && { fixedResponderValue }),
     release,
     holdsInputs: () => held.inputs !== undefined,

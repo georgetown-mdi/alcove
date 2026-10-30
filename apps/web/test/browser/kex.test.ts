@@ -4,11 +4,15 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  behindNotice,
   computeKexKeys,
   createMessagePipe,
   deriveNextSecret,
+  historyProof,
+  historyVerifierBytes,
   importRotationValue,
   initiatorConfirmTag,
+  responderConfirmTag,
   runKex,
   unwrapRotationValue,
   wrapRotationValue,
@@ -46,6 +50,7 @@ interface KexVectors {
   construction: { protocolName: string };
   inputs: {
     pskHex: string;
+    previousPskHex: string;
     initiatorEphemeralPrivateHex: string;
     responderEphemeralPrivateHex: string;
     initiatorValueHex: string;
@@ -60,6 +65,15 @@ interface KexVectors {
     nextSecret: string;
   };
   cases: Array<KexCase>;
+  history: {
+    verifierHex: string;
+    previousVerifierHex: string;
+    initiatorProofHex: string;
+    responderProofHex: string;
+    noticeCount: number;
+    initiatorNoticeHex: string;
+    responderNoticeHex: string;
+  };
   externalAnchors: {
     p256ScalarMultiplicationAndEcdh: {
       generatorXHex: string;
@@ -200,7 +214,11 @@ describe("key exchange in the browser", () => {
       expect(toHex(keys.confirmKey)).toBe(vectors.derived.confirmKeyHex);
       expect(toHex(keys.handshakeHash)).toBe(kexCase.handshakeHashHex);
       expect(toHex(keys.sessionKey)).toBe(kexCase.sessionKeyHex);
-      expect(toHex(keys.responderConfirm)).toBe(kexCase.responderConfirmHex);
+      expect(
+        toHex(
+          await responderConfirmTag(keys.confirmKey, keys.handshakeHash, false),
+        ),
+      ).toBe(kexCase.responderConfirmHex);
     },
   );
 
@@ -234,6 +252,7 @@ describe("key exchange in the browser", () => {
           await initiatorConfirmTag(
             keys.confirmKey,
             keys.handshakeHash,
+            false,
             wrappedInitiator,
           ),
         ),
@@ -257,6 +276,47 @@ describe("key exchange in the browser", () => {
         fromHex(vectors.inputs.responderValueHex),
       ),
     ).toBe(vectors.derived.nextSecret);
+  });
+
+  test("the browser build derives the checked-in history verifiers, proofs and behind notices", async () => {
+    const shares = {
+      initiatorShare: fromHex(vectors.derived.initiatorEphemeralPublicHex),
+      responderShare: fromHex(vectors.derived.responderEphemeralPublicHex),
+      dh: fromHex(vectors.derived.dhSharedSecretHex),
+    };
+    const h = vectors.history;
+    const verifier = await historyVerifierBytes(fromHex(vectors.inputs.pskHex));
+    const previousVerifier = await historyVerifierBytes(
+      fromHex(vectors.inputs.previousPskHex),
+    );
+    expect(toHex(verifier)).toBe(h.verifierHex);
+    expect(toHex(previousVerifier)).toBe(h.previousVerifierHex);
+    expect(toHex(await historyProof(verifier, "initiator", shares))).toBe(
+      h.initiatorProofHex,
+    );
+    expect(toHex(await historyProof(verifier, "responder", shares))).toBe(
+      h.responderProofHex,
+    );
+    expect(
+      toHex(
+        await behindNotice(
+          previousVerifier,
+          "initiator",
+          h.noticeCount,
+          shares,
+        ),
+      ),
+    ).toBe(h.initiatorNoticeHex);
+    expect(
+      toHex(
+        await behindNotice(
+          previousVerifier,
+          "responder",
+          h.noticeCount,
+          shares,
+        ),
+      ),
+    ).toBe(h.responderNoticeHex);
   });
 
   test("the browser reproduces the published P-256 anchor", async () => {
@@ -357,6 +417,8 @@ describe("key exchange in the browser", () => {
       kexMsg: "2",
       e: toBase64Url(share),
       confirm: toBase64Url(new Uint8Array(32)),
+      previousConfirm: toBase64Url(new Uint8Array(32)),
+      historyProof: toBase64Url(new Uint8Array(32)),
       reqEnc: false,
     });
     await expect(initiator).rejects.toThrow(GENERIC_FAILURE);

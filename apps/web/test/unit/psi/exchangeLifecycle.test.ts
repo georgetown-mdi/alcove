@@ -227,6 +227,7 @@ function authenticatedOver(
     sessionKey: new Uint8Array(32),
     nextSecretInputs: MOCKED_NEXT_SECRET_INPUTS,
     applyEncryption: true,
+    secretUsed: { local: "current", partner: "current" },
     connection,
   };
 }
