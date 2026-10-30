@@ -608,7 +608,7 @@ An exchange prints what it will disclose before any credential, terms, or data a
 - the columns you send your partner for matched records, resolved from your input as the exchange transmits them;
 - which of you receives the result;
 - what a partner entitled to no result still learns about its own records, and where the exchange withholds even that;
-- the PSI algorithm and the linkage strategy, each with what it discloses;
+- the PSI algorithm and the linkage strategy, each with what it discloses; under `psi-c`, the count-only lines an acceptance shows beneath the algorithm ([What the display shows, in order](#what-the-display-shows-in-order));
 - whether several of your records may match one of your partner's, and what that grouping tells your partner;
 - the fields matched on, each with its column in parentheses where the names differ (`date of birth (dob)`, or `date of birth (dob; only whether it is present)` for a missing-field condition), and the linkage keys. A key built only from first name, last name, and date of birth is marked `(less certain)`, with how to leave such keys out: on `alcove exchange`, delete them from `linkage_keys`, run [`alcove update`](#changing-the-terms-of-an-established-partnership), and have your partner apply it; a quick exchange always uses them ([Rules marked less certain](EXCHANGE_REFERENCE.md#rules-marked-less-certain));
 - the input columns neither sent nor matched on, as held back, in input order;

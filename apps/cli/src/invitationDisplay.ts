@@ -582,6 +582,42 @@ function displayLinkageFields(
 }
 
 /**
+ * The count-only (`psi-c`) tier, printed beneath the algorithm line by the
+ * accept display and by the run disclosure of `alcove exchange`, so an
+ * operator reads the same facts whether the terms came from an invitation or
+ * a configuration file. `bothPartiesReceive` is whether both parties are
+ * entitled to the count.
+ */
+export function logCountOnlyTier(
+  emit: ConsentSurfaceSink,
+  bothPartiesReceive: boolean,
+): void {
+  emit(`    ${COUNT_ONLY_DISCLOSURE_STATEMENT}`);
+  emit(`    ${CONSENT_FACTS.countOnlyResult.note}`);
+  emit(
+    `  ${marked("what a count-only exchange still discloses", "countOnlyRoundDisclosures")}:`,
+  );
+  emit(`    ${CONSENT_FACTS.countOnlyRoundDisclosures.note}`);
+  // Only where both parties are entitled to the count does one of them hold a
+  // number it did not compute: where exactly one is entitled, that party is the
+  // receiver by the role rule and computes its own, so the line would name a
+  // report no run makes.
+  if (bothPartiesReceive) {
+    emit(
+      `  ${marked("how the count reaches each of you", "countOnlyReportedCount")}:`,
+    );
+    emit(`    ${CONSENT_FACTS.countOnlyReportedCount.note}`);
+  }
+  // Last of the tier and never omitted: it is the bound on the guarantee the
+  // headline states, and a reader who takes "only a number" for the safe option
+  // is the reader this line is for.
+  emit(
+    `  ${marked("what a count-only exchange does not bound", "countOnlyInputChoice")}:`,
+  );
+  emit(`    ${CONSENT_FACTS.countOnlyInputChoice.note}`);
+}
+
+/**
  * @internal exported for testing
  *
  * The facts the acceptance decision turns on, printed by this one function
@@ -670,31 +706,11 @@ export function logDecisionFacts(
   // `COUNT_ONLY_DISCLOSURE_STATEMENT` is shared wording, not shared
   // placement: the web screen uses it as the matching-method headline,
   // this prompt prints it beneath the algorithm name.
-  if (countOnly) {
-    emit(`    ${COUNT_ONLY_DISCLOSURE_STATEMENT}`);
-    emit(`    ${CONSENT_FACTS.countOnlyResult.note}`);
-    emit(
-      `  ${marked("what a count-only exchange still discloses", "countOnlyRoundDisclosures")}:`,
+  if (countOnly)
+    logCountOnlyTier(
+      emit,
+      summary.inviterReceivesOutput && summary.inviterSharesResult,
     );
-    emit(`    ${CONSENT_FACTS.countOnlyRoundDisclosures.note}`);
-    // Only where both parties are entitled to the count does one of them hold a
-    // number it did not compute: where exactly one is entitled, that party is the
-    // receiver by the role rule and computes its own, so the line would name a
-    // report no run makes.
-    if (summary.inviterReceivesOutput && summary.inviterSharesResult) {
-      emit(
-        `  ${marked("how the count reaches each of you", "countOnlyReportedCount")}:`,
-      );
-      emit(`    ${CONSENT_FACTS.countOnlyReportedCount.note}`);
-    }
-    // Last of the tier and never omitted: it is the bound on the guarantee the
-    // headline states, and a reader who takes "only a number" for the safe option
-    // is the reader this line is for.
-    emit(
-      `  ${marked("what a count-only exchange does not bound", "countOnlyInputChoice")}:`,
-    );
-    emit(`    ${CONSENT_FACTS.countOnlyInputChoice.note}`);
-  }
 
   // What outlives the run: an acceptor is agreeing to a permanent
   // transcript at the rendezvous location, so this belongs in the decision

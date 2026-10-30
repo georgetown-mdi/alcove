@@ -16,4 +16,4 @@
 - The shipped build runs one key and refuses `single-pass` ([PROTOCOL.md, PSI-C](PROTOCOL.md#psi-c)). -> -
 # The missing-field condition line under count-only, in PROTOCOL.md.
 - The terms review and consent surfaces state this for the key, in one line whichever round matched (`missingFieldConditionStatement`, `packages/core/src/consent/consentFacts.ts`). -> The terms review and consent surfaces of a `psi` exchange state this for the key, in one line whichever round matched (`missingFieldConditionStatement`, `packages/core/src/consent/consentFacts.ts`).
-- - -> On a count-only exchange the same line states, in place of both facts, that a party's rounds do not tell the partner how many of its records lack the field.
+- - -> On a count-only exchange the same line states, in place of both facts, that a party's rounds do not tell the partner how many of its records lack the field, and that the software of the party computing the count learns, for each match through the key, which of the two records had none.

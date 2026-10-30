@@ -11,7 +11,6 @@ import logLibrary from "loglevel";
 
 import {
   CONSENT_FACTS,
-  COUNT_ONLY_DISCLOSURE_STATEMENT,
   DEDUPLICATE_PARTNER_DECLARED_DISCLOSURE_STATEMENT,
   DEDUPLICATE_PARTNER_DECLARED_SIDE_NOTE,
   DEFAULT_PRECISION_FLOOR_SELECTION,
@@ -32,6 +31,7 @@ import {
   consentSurfaceSink,
   displayLessCertainNote,
   LESS_CERTAIN_REMEDY,
+  logCountOnlyTier,
   marked,
   type ConsentSurfaceSink,
 } from "./invitationDisplay";
@@ -239,7 +239,10 @@ export function renderExchangeDisclosure(
 
   emit(`  ${marked("PSI algorithm", "algorithm")}: ${linkageTerms.algorithm}`);
   if (linkageTerms.algorithm === "psi-c")
-    emit(`    ${COUNT_ONLY_DISCLOSURE_STATEMENT}`);
+    logCountOnlyTier(
+      emit,
+      linkageTerms.output.expectsOutput && linkageTerms.output.shareWithPartner,
+    );
   emit(
     `  ${marked("linkage strategy", "linkageStrategy")}: ` +
       linkageTerms.linkageStrategy,

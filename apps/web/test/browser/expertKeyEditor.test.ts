@@ -400,7 +400,7 @@ describe("ExpertKeyEditor: the missing-field control's description", () => {
     ["psi", KEY_CONDITION_CONTROL.description],
     ["psi-c", KEY_CONDITION_CONTROL.countOnlyDescription],
   ] as const)(
-    "on %s terms states what a match discloses only where a result is written",
+    "on %s terms states what a match discloses, and to whom",
     async (algorithm, description) => {
       const { draft } = seedAdvancedInvite("County Health Dept", ALL_COLUMNS);
       app.render(
@@ -426,10 +426,14 @@ describe("ExpertKeyEditor: the missing-field control's description", () => {
       await expect
         .element(page.getByText(description, { exact: true }).first())
         .toBeVisible();
-      if (algorithm === "psi-c")
+      if (algorithm === "psi-c") {
         expect(document.body.textContent).not.toContain(
           "tells whoever receives the result",
         );
+        expect(description).toContain(
+          "The software of the party that computes the count learns",
+        );
+      }
     },
   );
 });

@@ -182,6 +182,47 @@ describe("the linkage-term consent classification", () => {
     expect(buildFromBothLevels).toThrow("pins its copy per shape");
   });
 
+  test("refuses a shape forbidding copy without pinning any", () => {
+    const shape = (
+      forbiddenVariantCopy: Array<string>,
+    ): ConsentRelevantTerm => ({
+      classification: "consent-relevant",
+      reason: "A fixture entry, classified to exercise the guard alone.",
+      shapes: [{ name: "representation only", forbiddenVariantCopy }],
+      vary: (terms) => ({ ...terms, identity: "Probe State Education Agency" }),
+    });
+
+    expect(() =>
+      consentRepresentationProbes({ identity: shape([]) }),
+    ).not.toThrow();
+    expect(() =>
+      consentRepresentationProbes({
+        identity: shape(["A sentence nothing reads."]),
+      }),
+    ).toThrow("declares forbidden copy and no required copy");
+  });
+
+  test("measures each field a count-only document newly admits on a count-only base", () => {
+    const countOnlyPaths = consentRepresentationProbes()
+      .filter(
+        (probe) =>
+          probe.base.algorithm === "psi-c" &&
+          probe.variant.algorithm === "psi-c",
+      )
+      .map((probe) => probe.path);
+    expect(countOnlyPaths).toEqual(
+      expect.arrayContaining([
+        "linkageStrategy",
+        "linkageKeys[].name",
+        "linkageKeys[].elements[].field",
+        "linkageKeys[].condition.missingField",
+      ]),
+    );
+    for (const probe of consentRepresentationProbes())
+      if (probe.base.algorithm === "psi-c")
+        expect(probe.base.linkageKeys.length, probe.label).toBeGreaterThan(1);
+  });
+
   test("pins a field measured under several shapes to a distinct label each", () => {
     // The label is what a failing surface assertion names, and what the two
     // shapes of one field are told apart by. Two probes sharing one would report

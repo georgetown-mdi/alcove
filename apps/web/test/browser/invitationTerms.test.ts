@@ -2938,10 +2938,10 @@ describe("InvitationTerms: a qualifying sentence sits at its headline's visibili
         : undefined,
     );
     await expect.element(toggle("Other details")).toBeInTheDocument();
-    // Every required and forbidden copy here belongs to the deduplicate term,
-    // which sits inside "Other details" (see the co-hidden test above), so
-    // waiting for that panel's content to commit is enough to read the whole
-    // container safely.
+    // The deduplicate term's copy sits inside "Other details" (see the
+    // co-hidden test above), and the strategy and missing-field lines in the
+    // always-rendered matching tier, so waiting for that panel's content to
+    // commit is enough to read the whole container safely.
     await readyPanel("Other details");
   };
 

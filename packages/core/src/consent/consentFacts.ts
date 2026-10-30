@@ -968,8 +968,11 @@ export const LESS_CERTAIN_KEY_COPY = {
  * match tells a party receiving the result which record lacked the field, and
  * the element count of the round built only for your records lacking it tells
  * the partner how many of them are still unmatched. A `psi-c` round has one
- * element per record and names no pair (docs/spec/PROTOCOL.md, Keys with a
- * missing-field condition, and PSI-C, What the rounds disclose).
+ * element per record, so its count tells the partner nothing, but the software
+ * of the party computing the count learns, for each match through the key,
+ * which of the two records lacked the field (docs/spec/PROTOCOL.md, Keys with
+ * a missing-field condition, and PSI-C, What each party learns, and on what
+ * basis).
  * `field` names the field's type in lowercase words
  * (`MISSING_FIELD_CONDITION_TYPE_WORDS`, linkageKeyCondition.ts). `keyCount`
  * above 1 words it for one line naming that many keys together.
@@ -986,8 +989,11 @@ export function missingFieldConditionStatement(
   if (algorithm === "psi-c")
     return (
       `${matches} In a count-only exchange you send one encrypted value for ` +
-      "each of your records in every round, so your partner cannot tell from " +
-      `what you send how many of your records have no valid ${field}.`
+      "each of your records in every round, so what you send does not tell " +
+      `your partner how many of your records have no valid ${field}. The ` +
+      "software of the party that computes the count does learn, for each " +
+      `match through ${several ? "one of these keys" : "this key"}, which of ` +
+      "the two records had none."
     );
   return (
     `${matches} A match through ` +

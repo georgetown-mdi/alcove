@@ -310,7 +310,7 @@ describe("the built-in contact rules without a date of birth", () => {
     );
   });
 
-  test("are stated without the psi disclosure on count-only terms", () => {
+  test("are stated on count-only terms with what the computing party's software learns", () => {
     const summary = summarizeInvitation({
       linkageTerms: { ...termsFor(DATED_COLUMNS), algorithm: "psi-c" },
     });
@@ -318,8 +318,16 @@ describe("the built-in contact rules without a date of birth", () => {
     expect(statement).toBe(
       "Matches only where one of the two records has no valid date of birth. " +
         "In a count-only exchange you send one encrypted value for each of " +
-        "your records in every round, so your partner cannot tell from what " +
-        "you send how many of your records have no valid date of birth.",
+        "your records in every round, so what you send does not tell your " +
+        "partner how many of your records have no valid date of birth. The " +
+        "software of the party that computes the count does learn, for each " +
+        "match through this key, which of the two records had none.",
+    );
+    expect(
+      missingFieldConditionStatement("date of birth", "psi-c", 5),
+    ).toContain(
+      "for each match through one of these keys, which of the two records " +
+        "had none.",
     );
     for (const rule of CONTACT_RULES)
       expect(
@@ -336,7 +344,7 @@ describe("the built-in contact rules without a date of birth", () => {
       ...summary.conditionLines.map((line) => line.statement),
     ];
     for (const line of lines) {
-      expect(line).not.toMatch(/which of the two records had none/);
+      expect(line).not.toMatch(/tells a party receiving the result/);
       expect(line).not.toMatch(/Your partner also learns/);
     }
   });
