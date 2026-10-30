@@ -77,9 +77,12 @@ jobs:
               digest="$(docker buildx imagetools inspect "${BASE_REPOSITORY}:${tag}" --format '{{json .Manifest}}' | jq -r .digest)"
               marker=""
               if [ "${digest}" = "${DIGEST}" ]; then marker=" <- committed"; fi
+              # rpm -q exits non-zero when a named package is not installed,
+              # which is a reading here; the status line records it.
+              status=0
               packages="$(docker run --rm --platform linux/amd64 "${BASE_REPOSITORY}@${digest}" \
-                rpm -q system-release ca-certificates openssl openssl-libs openssl-fips-provider-latest | tr '\n' ' ')"
-              echo "${tag} ${digest}${marker} amd64: ${packages}"
+                rpm -q system-release ca-certificates openssl openssl-libs openssl-fips-provider-latest 2>&1)" || status=$?
+              echo "${tag} ${digest}${marker} amd64 (rpm -q exit ${status}): $(printf '%s' "${packages}" | tr '\n' ' ')"
             done
             echo "=== END TAG DIGESTS ==="
             echo "=== BEGIN COMMITTED INDEX ${DIGEST} ==="
@@ -161,9 +164,15 @@ jobs:
           set -euo pipefail
           mkdir -p measure
           digest="$(sed -n -E 's#^FROM public\.ecr\.aws/amazonlinux/amazonlinux@(sha256:[0-9a-f]{64}) AS nodebase$#\1#p' Dockerfile.fips)"
-          [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::no base digest read from Dockerfile.fips"; exit 1; }
+          docker pull --platform "linux/${ARCH}" "${BASE_REPOSITORY}@${digest}"
+          # rpm -q exits non-zero when a named package is not installed,
+          # which is a reading here; the status line records it.
+          status=0
           docker run --rm --platform "linux/${ARCH}" "${BASE_REPOSITORY}@${digest}" \
-            rpm -q system-release ca-certificates openssl openssl-libs openssl-fips-provider-latest | tee "measure/base-rootfs-${ARCH}.txt"
+            rpm -q system-release ca-certificates openssl openssl-libs openssl-fips-provider-latest > "measure/base-rootfs-${ARCH}.txt" 2>&1 || status=$?
+          echo "rpm -q exit ${status}" >> "measure/base-rootfs-${ARCH}.txt"
+          cat "measure/base-rootfs-${ARCH}.txt"
 
       - name: Build without a layer cache
         run: |
@@ -214,7 +223,9 @@ jobs:
             echo "date: $(date -u +%F)"
             echo "size: $(docker image inspect --format '{{.Size}}' alcove:fips-measure)"
             docker run --rm --platform "linux/${ARCH}" --entrypoint cat alcove:fips-measure /etc/os-release | grep -E '^(VERSION_ID|VERSION)='
-            docker run --rm --platform "linux/${ARCH}" --entrypoint rpm alcove:fips-measure -q system-release ca-certificates openssl-libs openssl openssl-fips-provider-certified openssl-fips-provider-certified-so
+            status=0
+            docker run --rm --platform "linux/${ARCH}" --entrypoint rpm alcove:fips-measure -q system-release ca-certificates openssl-libs openssl openssl-fips-provider-certified openssl-fips-provider-certified-so openssl-fips-provider-latest || status=$?
+            echo "rpm -q exit ${status} (non-zero names a package not installed)"
             echo "node version: $(docker run --rm --platform "linux/${ARCH}" --entrypoint node alcove:fips-measure --version)"
             echo "node openssl: $(docker run --rm --platform "linux/${ARCH}" --entrypoint node alcove:fips-measure -p process.versions.openssl)"
             echo "openssl version: $(docker run --rm --platform "linux/${ARCH}" --entrypoint openssl alcove:fips-measure version)"
