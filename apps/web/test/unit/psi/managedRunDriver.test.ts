@@ -492,6 +492,7 @@ describe("runManagedExchangeInBrowser", () => {
         handshakeRole,
         RECORD.sharedSecret,
         undefined,
+        undefined,
       );
     },
   );
@@ -549,10 +550,12 @@ describe("runManagedExchangeInBrowser", () => {
     const lockedExchangeFile = {
       csvDelimiter: ";",
     } as RunnableManagedExchangeRecord["exchangeFile"];
+    const lockedHistory = [{ verifier: "locked-history-verifier" }];
     lockedRead.record = {
       ...RECORD,
       sharedSecret: "rotated-secret",
       exchangeFile: lockedExchangeFile,
+      rotationHistory: lockedHistory,
     };
 
     await runDriver(new AbortController().signal, undefined, {
@@ -573,6 +576,7 @@ describe("runManagedExchangeInBrowser", () => {
       "initiator",
       "rotated-secret",
       undefined,
+      lockedHistory,
     );
     // The outputs are built with the delimiter read inside the lock, not the
     // one on the record the driver was handed before it.
@@ -604,6 +608,7 @@ describe("runManagedExchangeInBrowser", () => {
         mc,
         role,
         expect.anything(),
+        undefined,
         undefined,
       );
       expect(beginKeyExchange).toHaveBeenCalledTimes(1);

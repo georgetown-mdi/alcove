@@ -50,6 +50,8 @@ import type { ManagedRelayRegistrationStore } from "@psi/managed/managedRelayReg
 import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
 import type { RelayRegistrar } from "@alcove/core";
 
+const TEST_RETIRED = { verifier: "A".repeat(43), at: 0 };
+
 // The browser's relay key registration: which runs register, the rotation
 // write that stores the registration as pending, the registration signed with
 // the pre-rotation key after a run, the retry before a run connects, and the
@@ -309,11 +311,15 @@ describe("the rotation write", () => {
       relayRegistrationPendingSince: PENDING_SINCE,
       relayRegistrationPendingReason: "reinvite",
     });
-    const rotated = applyManagedExchangeRotation(stored, {
-      sharedSecret: generateSharedSecret(),
-      expires: null,
-      relayRegistrationPendingSince: NOW.toISOString(),
-    });
+    const rotated = applyManagedExchangeRotation(
+      stored,
+      {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+        relayRegistrationPendingSince: NOW.toISOString(),
+      },
+      TEST_RETIRED,
+    );
     expect(rotated.relayRegistrationPendingSince).toBe(NOW.toISOString());
     expect(rotated.relayRegistrationPendingReason).toBe("reinvite");
   });
@@ -333,11 +339,15 @@ describe("the rotation write", () => {
       relayRegistrationPendingSince: PENDING_SINCE,
     });
     expect(
-      applyManagedExchangeRotation(stored, {
-        sharedSecret: generateSharedSecret(),
-        expires: null,
-        relayRegistrationPendingSince: NOW.toISOString(),
-      }).relayRegistrationPendingSince,
+      applyManagedExchangeRotation(
+        stored,
+        {
+          sharedSecret: generateSharedSecret(),
+          expires: null,
+          relayRegistrationPendingSince: NOW.toISOString(),
+        },
+        TEST_RETIRED,
+      ).relayRegistrationPendingSince,
     ).toBe(NOW.toISOString());
   });
 
@@ -352,11 +362,11 @@ describe("the rotation write", () => {
       signalingServer: { host: "signaling.example.org" },
     };
     expect(
-      applyManagedExchangeRotation(stored, rotation)
+      applyManagedExchangeRotation(stored, rotation, TEST_RETIRED)
         .relayRegistrationPendingSince,
     ).toBe(PENDING_SINCE);
     expect(
-      applyManagedExchangeReinviteRotation(stored, rotation)
+      applyManagedExchangeReinviteRotation(stored, rotation, TEST_RETIRED)
         .relayRegistrationPendingSince,
     ).toBe(PENDING_SINCE);
   });
@@ -369,8 +379,8 @@ describe("the rotation write", () => {
       signalingServer: { host: "signaling.example.org" },
     };
     for (const rotated of [
-      applyManagedExchangeRotation(stored, rotation),
-      applyManagedExchangeReinviteRotation(stored, rotation),
+      applyManagedExchangeRotation(stored, rotation, TEST_RETIRED),
+      applyManagedExchangeReinviteRotation(stored, rotation, TEST_RETIRED),
     ]) {
       expect(rotated.relayRegistrar).toBeUndefined();
       expect(rotated.relayRegistrationPendingSince).toBe(PENDING_SINCE);
@@ -389,8 +399,8 @@ describe("the rotation write", () => {
       signalingServer: { host: "signaling.example.org" },
     };
     for (const rotated of [
-      applyManagedExchangeRotation(stored, rotation),
-      applyManagedExchangeReinviteRotation(stored, rotation),
+      applyManagedExchangeRotation(stored, rotation, TEST_RETIRED),
+      applyManagedExchangeReinviteRotation(stored, rotation, TEST_RETIRED),
     ]) {
       expect(rotated.relayRegistrationPendingSince).toBe(PENDING_SINCE);
       expect(rotated.relayRegistrationPendingReason).toBe("reinvite");
@@ -585,13 +595,17 @@ describe("the registration a re-invite makes", () => {
     written: RunnableManagedExchangeRecord;
   } {
     const replaced = record({ relayRegistrar: REGISTRAR, tokenMaxAgeDays: 30 });
-    const written = applyManagedExchangeReinviteRotation(replaced, {
-      sharedSecret: generateSharedSecret(),
-      expires: null,
-      signalingServer: { host: "signaling.example.org" },
-      relayRegistrationPendingSince: NOW.toISOString(),
-      relayRegistrationPendingReason: "reinvite",
-    });
+    const written = applyManagedExchangeReinviteRotation(
+      replaced,
+      {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+        signalingServer: { host: "signaling.example.org" },
+        relayRegistrationPendingSince: NOW.toISOString(),
+        relayRegistrationPendingReason: "reinvite",
+      },
+      TEST_RETIRED,
+    );
     return { replaced, written };
   }
 

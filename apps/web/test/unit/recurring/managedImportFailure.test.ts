@@ -402,6 +402,81 @@ describe("what a backup import says about an exchange already listed", () => {
   });
 });
 
+describe("an import question where the rotation histories order the copies", () => {
+  test("one saved copy: the backup states the order found and the matching way on", () => {
+    const newer = liveCopyImportReason([
+      {
+        id: "a",
+        label: "Riverbend",
+        state: "runs-here",
+        order: "import-newer",
+      },
+    ]);
+    expect(newer).toBe(
+      '"Riverbend" has the same terms and the same side as this backup, with ' +
+        "a different secret. Nothing was imported. This backup is newer than " +
+        "the saved copy: replace the saved copy with it, and the saved copy's " +
+        "run history and accounting of disclosures are kept. If this is a " +
+        "separate exchange with the same terms, add the backup as a new " +
+        "exchange.",
+    );
+    const older = liveCopyImportReason([
+      {
+        id: "a",
+        label: "Riverbend",
+        state: "runs-here",
+        order: "import-older",
+      },
+    ]);
+    expect(older).toMatch(
+      /This backup is older than the saved copy, so keep the saved copy\./,
+    );
+    for (const text of [newer, older]) {
+      expect(text).not.toMatch(/If the exchange ran on another device/);
+      expect(text).toMatch(/add the backup as a new exchange\.$/);
+    }
+  });
+
+  test("one saved copy: the files state the order found and the matching way on", () => {
+    const newer = storedCopyImportReason([
+      { id: "a", label: "", state: "runs-here", order: "import-newer" },
+    ]);
+    const older = storedCopyImportReason([
+      { id: "a", label: "", state: "runs-here", order: "import-older" },
+    ]);
+    expect(newer).toMatch(
+      /These files are newer than the saved copy: replace the saved copy with them/,
+    );
+    expect(older).toMatch(
+      /These files are older than the saved copy, so cancel to keep the saved copy\./,
+    );
+    for (const text of [newer, older]) {
+      expect(text).not.toMatch(/If the exchange ran from these files/);
+      expect(text).toMatch(/add these files as a new one\.$/);
+    }
+  });
+
+  test("several saved copies: each order found is named, and a copy with none says nothing", () => {
+    const copies = [
+      {
+        id: "a",
+        label: "Riverbend",
+        state: "runs-here",
+        order: "import-newer",
+      },
+      { id: "b", label: "", state: "runs-here", order: "import-older" },
+      { id: "c", label: "Weekly", state: "runs-here" },
+    ] as const;
+    const backup = liveCopyImportReason(copies);
+    expect(backup).toContain('This backup is newer than "Riverbend".');
+    expect(backup).toContain("This backup is older than listed exchange 2.");
+    expect(backup).not.toMatch(/than "Weekly"/);
+    expect(storedCopyImportReason(copies)).toContain(
+      'These files are newer than "Riverbend".',
+    );
+  });
+});
+
 describe("what a pair import says about a stored exchange it may belong to", () => {
   test("names the one exchange, what it is, and each way on", () => {
     const reason = storedCopyImportReason([

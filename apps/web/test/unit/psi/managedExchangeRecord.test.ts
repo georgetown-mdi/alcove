@@ -1,6 +1,7 @@
 import {
   CSV_DELIMITER_DETECT,
   KeyFileSchema,
+  ROTATION_HISTORY_MAX_ENTRIES,
   assembleExchangeSpec,
   connectionFromLocator,
   generateSharedSecret,
@@ -38,6 +39,7 @@ import {
   parseManagedExchangeRecord,
   partitionReadableManagedExchanges,
   recentRunsOf,
+  rotationHistoryAfterRetiring,
   runnableManagedExchange,
   runnableManagedExchangeOrRefuse,
   safeParseManagedExchangeRecord,
@@ -60,6 +62,8 @@ import type {
   NewManagedExchange,
   RunnableManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
+
+const TEST_RETIRED = { verifier: "A".repeat(43), at: 0 };
 
 const linkageTerms = getDefaultLinkageTerms("County Health Dept");
 
@@ -797,29 +801,41 @@ describe("applyManagedExchangeRotation", () => {
   test("a string expires sets the bound; the secret advances", () => {
     const record = runnableRecord();
     const rotatedSecret = generateSharedSecret();
-    const rotated = applyManagedExchangeRotation(record, {
-      sharedSecret: rotatedSecret,
-      expires: "2026-10-06T14:00:00.000Z",
-    });
+    const rotated = applyManagedExchangeRotation(
+      record,
+      {
+        sharedSecret: rotatedSecret,
+        expires: "2026-10-06T14:00:00.000Z",
+      },
+      TEST_RETIRED,
+    );
     expect(rotated.sharedSecret).toBe(rotatedSecret);
     expect(rotated.expires).toBe("2026-10-06T14:00:00.000Z");
   });
 
   test("a null expires deletes the key, not merely sets it undefined", () => {
     const record = runnableRecord({ expires: "2026-04-06T14:00:00.000Z" });
-    const rotated = applyManagedExchangeRotation(record, {
-      sharedSecret: generateSharedSecret(),
-      expires: null,
-    });
+    const rotated = applyManagedExchangeRotation(
+      record,
+      {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+      },
+      TEST_RETIRED,
+    );
     expect(rotated).not.toHaveProperty("expires");
   });
 
   test("touches only the rotation fields; everything else survives", () => {
     const record = runnableRecord({ tokenMaxAgeDays: 90, schedule });
-    const rotated = applyManagedExchangeRotation(record, {
-      sharedSecret: generateSharedSecret(),
-      expires: null,
-    });
+    const rotated = applyManagedExchangeRotation(
+      record,
+      {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+      },
+      TEST_RETIRED,
+    );
     expect(rotated.id).toBe(record.id);
     expect(rotated.label).toBe(record.label);
     expect(rotated.exchangeFile).toEqual(record.exchangeFile);
@@ -831,22 +847,159 @@ describe("applyManagedExchangeRotation", () => {
   test("rejects a malformed rotated secret at this pure layer", () => {
     const record = runnableRecord();
     expect(() =>
-      applyManagedExchangeRotation(record, {
-        sharedSecret: "not-a-secret",
-        expires: null,
-      }),
+      applyManagedExchangeRotation(
+        record,
+        {
+          sharedSecret: "not-a-secret",
+          expires: null,
+        },
+        TEST_RETIRED,
+      ),
     ).toThrow();
   });
 
   test("does not mutate the input record", () => {
     const record = runnableRecord({ expires: "2026-04-06T14:00:00.000Z" });
     const originalSecret = record.sharedSecret;
-    applyManagedExchangeRotation(record, {
-      sharedSecret: generateSharedSecret(),
-      expires: null,
-    });
+    applyManagedExchangeRotation(
+      record,
+      {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+      },
+      TEST_RETIRED,
+    );
     expect(record.sharedSecret).toBe(originalSecret);
     expect(record.expires).toBe("2026-04-06T14:00:00.000Z");
+  });
+});
+
+describe("the rotation history", () => {
+  const AT = Date.parse("2026-07-14T12:00:00.000Z");
+  const PAST = "2026-07-01T00:00:00.000Z";
+  const FUTURE = "2026-12-31T00:00:00.000Z";
+  const entry = (expires?: string) => ({
+    verifier: generateSharedSecret(),
+    ...(expires !== undefined ? { expires } : {}),
+  });
+  const retired = (verifier = generateSharedSecret()) => ({
+    verifier,
+    at: AT,
+  });
+
+  test("a run's rotation puts the retired secret's entry, with its expires, at the head", () => {
+    const older = entry(FUTURE);
+    const record = runnableRecord({
+      expires: FUTURE,
+      rotationHistory: [older],
+    });
+    const verifier = generateSharedSecret();
+    const rotated = applyManagedExchangeRotation(
+      record,
+      { sharedSecret: generateSharedSecret(), expires: null },
+      retired(verifier),
+    );
+    expect(rotated.rotationHistory).toEqual([
+      { verifier, expires: FUTURE },
+      older,
+    ]);
+  });
+
+  test("a re-invite puts the retired secret's entry at the head", () => {
+    const record = runnableRecord();
+    const verifier = generateSharedSecret();
+    const reinvited = applyManagedExchangeReinviteRotation(
+      record,
+      {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+        signalingServer: { host: "signaling.example.org" },
+      },
+      retired(verifier),
+    );
+    expect(reinvited.rotationHistory).toEqual([{ verifier }]);
+  });
+
+  test("keeps at most the newest entries the bound allows", () => {
+    const full = Array.from({ length: ROTATION_HISTORY_MAX_ENTRIES }, () =>
+      entry(),
+    );
+    const record = runnableRecord({ rotationHistory: full });
+    const verifier = generateSharedSecret();
+    const history = rotationHistoryAfterRetiring(record, retired(verifier));
+    expect(history).toHaveLength(ROTATION_HISTORY_MAX_ENTRIES);
+    expect(history[0]).toEqual({ verifier });
+    expect(history.slice(1)).toEqual(full.slice(0, -1));
+  });
+
+  test("removes the oldest entries whose expires has passed", () => {
+    const kept = entry(FUTURE);
+    const record = runnableRecord({
+      rotationHistory: [kept, entry(PAST), entry(PAST)],
+    });
+    expect(rotationHistoryAfterRetiring(record, retired()).slice(1)).toEqual([
+      kept,
+    ]);
+  });
+
+  test("an expired entry newer than one in force keeps its place, so each position still counts rotations", () => {
+    const expired = entry(PAST);
+    const inForce = entry();
+    const record = runnableRecord({ rotationHistory: [expired, inForce] });
+    expect(rotationHistoryAfterRetiring(record, retired()).slice(1)).toEqual([
+      expired,
+      inForce,
+    ]);
+  });
+
+  test("a retired secret already expired at the write is removed with it, leaving no history", () => {
+    const record = runnableRecord({ expires: PAST });
+    const rotated = applyManagedExchangeRotation(
+      record,
+      { sharedSecret: generateSharedSecret(), expires: null },
+      retired(),
+    );
+    expect(rotated).not.toHaveProperty("rotationHistory");
+  });
+
+  test("the record refuses a history longer than the bound, or a malformed verifier", () => {
+    expect(() =>
+      runnableRecord({
+        rotationHistory: Array.from(
+          { length: ROTATION_HISTORY_MAX_ENTRIES + 1 },
+          () => entry(),
+        ),
+      }),
+    ).toThrow();
+    expect(() =>
+      runnableRecord({ rotationHistory: [{ verifier: "not-a-verifier" }] }),
+    ).toThrow();
+  });
+
+  test("an empty history is stored as none", () => {
+    expect(runnableRecord({ rotationHistory: [] })).not.toHaveProperty(
+      "rotationHistory",
+    );
+  });
+
+  test("a configuration-only record holds no history", () => {
+    const { sharedSecret: _sharedSecret, ...configuration } = newExchange();
+    expect(() =>
+      buildManagedExchangeRecord({
+        ...configuration,
+        rotationHistory: [entry()],
+      }),
+    ).toThrow(/rotationHistory/);
+  });
+
+  test("an import replace takes the import's history", () => {
+    const history = [entry()];
+    const replaced = applyManagedExchangeImportReplace(
+      runnableRecord({ rotationHistory: [entry()] }),
+      runnableRecord({ rotationHistory: history }),
+      "backup",
+    );
+    expect(replaced.rotationHistory).toEqual(history);
   });
 });
 
@@ -860,11 +1013,15 @@ describe("applyManagedExchangeReinviteRotation", () => {
   test("rotates the secret AND drops the consumed lastRun", () => {
     const record = runnableRecord({ lastRun: authFailure });
     const rotatedSecret = generateSharedSecret();
-    const rotated = applyManagedExchangeReinviteRotation(record, {
-      sharedSecret: rotatedSecret,
-      expires: null,
-      signalingServer: { host: "signaling.example.org" },
-    });
+    const rotated = applyManagedExchangeReinviteRotation(
+      record,
+      {
+        sharedSecret: rotatedSecret,
+        expires: null,
+        signalingServer: { host: "signaling.example.org" },
+      },
+      TEST_RETIRED,
+    );
     expect(rotated.sharedSecret).toBe(rotatedSecret);
     // The failure the re-invite recovers from must not re-derive at the next visit.
     expect(rotated).not.toHaveProperty("lastRun");
@@ -872,11 +1029,15 @@ describe("applyManagedExchangeReinviteRotation", () => {
 
   test("clears lastRun even when there was none (a no-op drop)", () => {
     const record = runnableRecord();
-    const rotated = applyManagedExchangeReinviteRotation(record, {
-      sharedSecret: generateSharedSecret(),
-      expires: null,
-      signalingServer: { host: "signaling.example.org" },
-    });
+    const rotated = applyManagedExchangeReinviteRotation(
+      record,
+      {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+        signalingServer: { host: "signaling.example.org" },
+      },
+      TEST_RETIRED,
+    );
     expect(rotated).not.toHaveProperty("lastRun");
   });
 
@@ -886,15 +1047,19 @@ describe("applyManagedExchangeReinviteRotation", () => {
       schedule,
       lastRun: authFailure,
     });
-    const rotated = applyManagedExchangeReinviteRotation(record, {
-      sharedSecret: generateSharedSecret(),
-      expires: "2026-10-06T14:00:00.000Z",
-      signalingServer: {
-        host: "signaling.example.org",
-        port: 3000,
-        path: "/api/",
+    const rotated = applyManagedExchangeReinviteRotation(
+      record,
+      {
+        sharedSecret: generateSharedSecret(),
+        expires: "2026-10-06T14:00:00.000Z",
+        signalingServer: {
+          host: "signaling.example.org",
+          port: 3000,
+          path: "/api/",
+        },
       },
-    });
+      TEST_RETIRED,
+    );
     expect(rotated.expires).toBe("2026-10-06T14:00:00.000Z");
     expect(rotated.exchangeFile).toEqual(record.exchangeFile);
     expect(rotated.tokenMaxAgeDays).toBe(90);
@@ -909,11 +1074,15 @@ describe("applyManagedExchangeReinviteRotation", () => {
         allowedRelays: ["relay.example.org"],
       }),
     });
-    const rotated = applyManagedExchangeReinviteRotation(record, {
-      sharedSecret: generateSharedSecret(),
-      expires: null,
-      signalingServer: { host: "coordination.agency.example", port: 443 },
-    });
+    const rotated = applyManagedExchangeReinviteRotation(
+      record,
+      {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+        signalingServer: { host: "coordination.agency.example", port: 443 },
+      },
+      TEST_RETIRED,
+    );
     expect(rotated.exchangeFile.connection).toEqual({
       channel: "webrtc",
       server: { host: "coordination.agency.example", port: 443 },
@@ -926,11 +1095,15 @@ describe("applyManagedExchangeReinviteRotation", () => {
 
   test("does not mutate the input record", () => {
     const record = runnableRecord({ lastRun: authFailure });
-    applyManagedExchangeReinviteRotation(record, {
-      sharedSecret: generateSharedSecret(),
-      expires: null,
-      signalingServer: { host: "signaling.example.org" },
-    });
+    applyManagedExchangeReinviteRotation(
+      record,
+      {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+        signalingServer: { host: "signaling.example.org" },
+      },
+      TEST_RETIRED,
+    );
     expect(record.lastRun).toEqual(authFailure);
   });
 });
@@ -1601,11 +1774,15 @@ describe("the recent runs list", () => {
     const stored = runnableManagedExchangeOrRefuse(
       applyStamped(record(), run(1, { failureKind: "auth" })),
     );
-    const rotated = applyManagedExchangeReinviteRotation(stored, {
-      sharedSecret: generateSharedSecret(),
-      expires: null,
-      signalingServer: { host: "signaling.example.org" },
-    });
+    const rotated = applyManagedExchangeReinviteRotation(
+      stored,
+      {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+        signalingServer: { host: "signaling.example.org" },
+      },
+      TEST_RETIRED,
+    );
     expect(rotated).not.toHaveProperty("lastRun");
     expect(rotated.recentRuns).toEqual([run(1, { failureKind: "auth" })]);
   });
@@ -1902,20 +2079,28 @@ describe("the standing condition across the bookkeeping writes", () => {
   });
 
   test("a re-invite drops it with the run bookkeeping", () => {
-    const reinvited = applyManagedExchangeReinviteRotation(withCondition(), {
-      sharedSecret: generateSharedSecret(),
-      expires: null,
-      signalingServer: { host: "signaling.example.org" },
-    });
+    const reinvited = applyManagedExchangeReinviteRotation(
+      withCondition(),
+      {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+        signalingServer: { host: "signaling.example.org" },
+      },
+      TEST_RETIRED,
+    );
     expect(reinvited.standingCondition).toEqual(NO_STANDING_CONDITION);
     expect(reinvited).not.toHaveProperty("lastRun");
   });
 
   test("a run's own rotation does not drop it: only the re-invite recovery does", () => {
-    const rotated = applyManagedExchangeRotation(withCondition(), {
-      sharedSecret: generateSharedSecret(),
-      expires: null,
-    });
+    const rotated = applyManagedExchangeRotation(
+      withCondition(),
+      {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+      },
+      TEST_RETIRED,
+    );
     expect(rotated.standingCondition).toEqual(standing);
   });
 
@@ -2109,11 +2294,15 @@ describe("the operator's compromise response", () => {
     const cleared = applyManagedExchangeStandingConditionCleared(answered);
     expect(cleared.standingCondition).toEqual(NO_STANDING_CONDITION);
     expect(standingCompromiseResponse(cleared)).toBeUndefined();
-    const reinvited = applyManagedExchangeReinviteRotation(answered, {
-      sharedSecret: generateSharedSecret(),
-      expires: null,
-      signalingServer: { host: "signaling.example.org" },
-    });
+    const reinvited = applyManagedExchangeReinviteRotation(
+      answered,
+      {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+        signalingServer: { host: "signaling.example.org" },
+      },
+      TEST_RETIRED,
+    );
     expect(reinvited.standingCondition).toEqual(NO_STANDING_CONDITION);
   });
 
@@ -2121,10 +2310,14 @@ describe("the operator's compromise response", () => {
     const answered = runnableManagedExchangeOrRefuse(
       applyManagedExchangeCompromiseResponse(withCondition(), answeredAt),
     );
-    const rotated = applyManagedExchangeRotation(answered, {
-      sharedSecret: generateSharedSecret(),
-      expires: null,
-    });
+    const rotated = applyManagedExchangeRotation(
+      answered,
+      {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+      },
+      TEST_RETIRED,
+    );
     expect(standingCompromiseResponse(rotated)).toEqual({
       kind: "compromise",
       at: answeredAt,
@@ -2213,12 +2406,14 @@ describe("the configuration-only record", () => {
       applyManagedExchangeRotation(
         runnableManagedExchangeOrRefuse(stored),
         rotation,
+        TEST_RETIRED,
       ),
     ).toThrow(/configuration only/);
     expect(() =>
       applyManagedExchangeReinviteRotation(
         runnableManagedExchangeOrRefuse(stored),
         rotation,
+        TEST_RETIRED,
       ),
     ).toThrow(/configuration only/);
     expect(stored.sharedSecret).toBeUndefined();
@@ -2316,10 +2511,14 @@ describe("the rotation-in-flight marker", () => {
       runnableRecord(),
       MARKED_AT,
     );
-    const rotated = applyManagedExchangeRotation(marked, {
-      sharedSecret: generateSharedSecret(),
-      expires: null,
-    });
+    const rotated = applyManagedExchangeRotation(
+      marked,
+      {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+      },
+      TEST_RETIRED,
+    );
     expect(rotated).not.toHaveProperty("rotationInFlightSince");
   });
 
@@ -2328,11 +2527,15 @@ describe("the rotation-in-flight marker", () => {
       runnableRecord(),
       MARKED_AT,
     );
-    const reinvited = applyManagedExchangeReinviteRotation(marked, {
-      sharedSecret: generateSharedSecret(),
-      expires: null,
-      signalingServer: { host: "signaling.example.org" },
-    });
+    const reinvited = applyManagedExchangeReinviteRotation(
+      marked,
+      {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+        signalingServer: { host: "signaling.example.org" },
+      },
+      TEST_RETIRED,
+    );
     expect(reinvited).not.toHaveProperty("rotationInFlightSince");
   });
 

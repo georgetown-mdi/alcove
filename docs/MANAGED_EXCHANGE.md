@@ -844,6 +844,12 @@ marker](spec/MANAGED_EXCHANGE_RECORD.md#the-rotation-in-flight-marker)). A
 no-show after it reads as a probable partial rotation, with the re-invite
 recovery and no attack checklist.
 
+A restore is detected by the import marker, which a successful run clears
+([the import
+marker](spec/MANAGED_EXCHANGE_RECORD.md#the-backup-and-import-markers-local-siblings-never-in-the-artifact)).
+A no-show after an import reads as a possibly out-of-date restored copy, with
+two recoveries: import the newest copy of the exchange, or re-invite.
+
 The other side of that rotation is reported too. This device saves the new
 secret first when it accepted the invitation; when the partner's run then
 reports that it could not save the new secret, this run says so, says that this
@@ -1368,7 +1374,9 @@ names them all and offers three answers:
 - **Add as a new exchange**, when the backup is a separate exchange with the
   same terms.
 
-Nothing in the files says which copy is newer, so you choose ([the
+Each copy keeps a record of the secrets it replaced, so where one copy replaced
+the other's secret, the question says which is newer. Where neither did, it
+cannot tell. Either way you choose ([the
 rule](spec/MANAGED_EXCHANGE_RECORD.md#replacing-a-saved-copy)). Replacing a copy
 with an older backup leaves it holding a secret your partner has moved past, and
 its next run fails to connect; import the newer backup or re-invite. Importing

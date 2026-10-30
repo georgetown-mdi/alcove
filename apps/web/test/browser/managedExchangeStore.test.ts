@@ -2,7 +2,11 @@
 /// <reference types="vite/client" />
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { generateSharedSecret, getDefaultLinkageTerms } from "@alcove/core";
+import {
+  deriveHistoryVerifier,
+  generateSharedSecret,
+  getDefaultLinkageTerms,
+} from "@alcove/core";
 
 import {
   IDB_VERSION,
@@ -659,6 +663,27 @@ describe("the secret writes compare the secret they replace", () => {
     ).rejects.toBeInstanceOf(ManagedExchangeSecretChangedError);
     expect(await getManagedExchange(created.id)).toEqual(before);
     expect(before?.sharedSecret).toBe(rotated);
+  });
+
+  test("a rotation and then a re-invite each put the secret it retired at the head of the history", async () => {
+    const created = await createRunnableExchange(newExchange());
+    const rotated = generateSharedSecret();
+    await persistManagedExchangeRotation(created.id, created.sharedSecret, {
+      sharedSecret: rotated,
+      expires: "2099-01-01T00:00:00.000Z",
+    });
+    await persistManagedExchangeReinvite(
+      created.id,
+      rotated,
+      reinviteRotation(generateSharedSecret()),
+    );
+    expect((await getManagedExchange(created.id))?.rotationHistory).toEqual([
+      {
+        verifier: await deriveHistoryVerifier(rotated),
+        expires: "2099-01-01T00:00:00.000Z",
+      },
+      { verifier: await deriveHistoryVerifier(created.sharedSecret) },
+    ]);
   });
 });
 

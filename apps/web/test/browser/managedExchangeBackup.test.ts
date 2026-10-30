@@ -716,7 +716,7 @@ describe("a backup replaces the saved copy it is chosen for", () => {
     expect(await listManagedExchanges()).toEqual(after);
   });
 
-  test("an older backup is asked about exactly as a newer one, since the record cannot order them", async () => {
+  test("an older backup is asked about as the older one when the saved copy's history holds its secret", async () => {
     const { stale: live, bytes: newer } = await staleCopyAndNewerBackup();
     // A backup taken before the saved copy rotated here: the older one.
     const older = serializeManagedExchangeArtifact(
@@ -736,13 +736,30 @@ describe("a backup replaces the saved copy it is chosen for", () => {
     );
     expect(olderAsked).toBeInstanceOf(ManagedImportLiveCopyError);
     expect(newerAsked).toBeInstanceOf(ManagedImportLiveCopyError);
-    expect((olderAsked as ManagedImportLiveCopyError).copies).toEqual(
-      (newerAsked as ManagedImportLiveCopyError).copies,
-    );
+    expect((olderAsked as ManagedImportLiveCopyError).copies).toEqual([
+      expect.objectContaining({ id: live.id, order: "import-older" }),
+    ]);
+    // The newer backup's secret is one the saved copy never held, so the
+    // record cannot order it.
+    const newerCopies = (newerAsked as ManagedImportLiveCopyError).copies;
+    expect(newerCopies).toEqual([expect.objectContaining({ id: live.id })]);
+    expect(newerCopies[0]).not.toHaveProperty("order");
 
     // Keeping the saved copy is answering nothing: it stands as it was.
     expect(await getManagedExchange(live.id)).toEqual(kept);
     expect(await getManagedLocalState(live.id)).toBeUndefined();
+  });
+
+  test("a backup neither copy's history can order against the saved one is asked about with no order", async () => {
+    const { stale: live, bytes: unrelated } = await staleCopyAndNewerBackup();
+    const asked = await importManagedExchange(unrelated).catch(
+      (error: unknown) => error,
+    );
+
+    expect(asked).toBeInstanceOf(ManagedImportLiveCopyError);
+    const copies = (asked as ManagedImportLiveCopyError).copies;
+    expect(copies).toEqual([expect.objectContaining({ id: live.id })]);
+    expect(copies[0]).not.toHaveProperty("order");
   });
 
   test("a replace while the exchange's run holds its lock writes nothing", async () => {

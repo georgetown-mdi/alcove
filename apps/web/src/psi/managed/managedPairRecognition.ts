@@ -14,6 +14,7 @@
 import { findRecordsByTermsAndSide } from "./managedLiveCopyMatch";
 import { runnableManagedExchange } from "./managedExchangeRecord";
 
+import type { ManagedCopyOrder } from "./managedCopyOrder";
 import type { ManagedExchangeRecord } from "./managedExchangeRecord";
 
 /** What a stored record an import may land in holds: a configuration only, or
@@ -26,6 +27,9 @@ export interface ManagedStoredCopy {
   id: string;
   label: string;
   state: ManagedStoredCopyState;
+  /** Which copy is newer, where the two rotation histories decide it
+   * ({@link ./managedCopyOrder.ts}); absent where they do not. */
+  order?: ManagedCopyOrder;
 }
 
 /** What a pair import asks of the reconciliation beyond the pair itself: the

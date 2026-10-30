@@ -2,14 +2,17 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   KeyFileSchema,
+  ROTATION_HISTORY_MAX_ENTRIES,
   generateSharedSecret,
   getDefaultLinkageTerms,
+  serializeKeyFile,
   snakeizeKeys,
 } from "@alcove/core";
 
 import { stringify as stringifyYaml } from "yaml";
 
 import {
+  MAX_KEY_FILE_IMPORT_BYTES,
   ManagedConfigurationRefusedError,
   ManagedKeyFileRefusedError,
   readManagedCommandLineConfiguration,
@@ -893,26 +896,114 @@ describe("the relay key registration across the command-line files", () => {
     expect(result.unreadKeyFileFields).toEqual(["extra"]);
   });
 
-  test("a pair import whose key file holds a previous secret and a rotation history lands without them and names both, never a value", async () => {
+  test("a pair import whose key file holds a previous secret lands without it and names it, never a value, and keeps the rotation history", async () => {
     const { record, configuration } = exportedPair();
     const previous = generateSharedSecret();
+    const rotationHistory = [
+      { verifier: generateSharedSecret(), expires: "2026-12-31T00:00:00.000Z" },
+      { verifier: generateSharedSecret() },
+    ];
     const result = await importManagedCommandLinePair(
       configuration,
       commandLineKeyText({
         sharedSecret: record.sharedSecret,
         previousSharedSecret: previous,
-        rotationHistory: [{ verifier: generateSharedSecret() }],
+        previousExpires: "2026-12-31T00:00:00.000Z",
+        rotationHistory,
       }),
       recordingDeps(),
     );
     expect(result.record.sharedSecret).toBe(record.sharedSecret);
     expect(result.record).not.toHaveProperty("previousSharedSecret");
-    expect(result.record).not.toHaveProperty("rotationHistory");
+    expect(result.record).not.toHaveProperty("previousExpires");
+    expect(result.record.rotationHistory).toEqual(rotationHistory);
     expect(result.unreadKeyFileFields).toEqual([
       "previousSharedSecret",
-      "rotationHistory",
+      "previousExpires",
     ]);
     expect(JSON.stringify(result.unreadKeyFileFields)).not.toContain(previous);
+  });
+
+  test("a pair import keeps the newest entries of a rotation history longer than the record holds", async () => {
+    const { record, configuration } = exportedPair();
+    const rotationHistory = Array.from(
+      { length: ROTATION_HISTORY_MAX_ENTRIES + 3 },
+      () => ({ verifier: generateSharedSecret() }),
+    );
+    const result = await importManagedCommandLinePair(
+      configuration,
+      commandLineKeyText({
+        sharedSecret: record.sharedSecret,
+        rotationHistory,
+      }),
+      recordingDeps(),
+    );
+    expect(result.record.rotationHistory).toEqual(
+      rotationHistory.slice(0, ROTATION_HISTORY_MAX_ENTRIES),
+    );
+  });
+
+  test("a key file holding the longest history and every field, as the command line writes it, is under the import cap", () => {
+    const entry = {
+      verifier: generateSharedSecret(),
+      expires: "2026-12-31T00:00:00.000Z",
+    };
+    const text = serializeKeyFile({
+      sharedSecret: generateSharedSecret(),
+      expires: entry.expires,
+      rotationInFlightSince: entry.expires,
+      relayRegistrationPendingSince: entry.expires,
+      previousSharedSecret: generateSharedSecret(),
+      previousExpires: entry.expires,
+      rotationHistory: Array.from(
+        { length: ROTATION_HISTORY_MAX_ENTRIES },
+        () => entry,
+      ),
+    });
+    expect(new TextEncoder().encode(text).byteLength).toBeLessThan(
+      MAX_KEY_FILE_IMPORT_BYTES,
+    );
+    expect(readManagedCommandLineKeyFile(text).rotationHistory).toHaveLength(
+      ROTATION_HISTORY_MAX_ENTRIES,
+    );
+  });
+
+  test("the command-line export writes the rotation history and no previous secret, and the pair import reads the history back", async () => {
+    const rotationHistory = [
+      { verifier: generateSharedSecret(), expires: "2026-12-31T00:00:00.000Z" },
+      { verifier: generateSharedSecret() },
+    ];
+    const { configuration, key } = exportedPair({ rotationHistory });
+    const written = KeyFileSchema.parse(JSON.parse(key));
+    expect(written.rotationHistory).toEqual(rotationHistory);
+    expect(written).not.toHaveProperty("previousSharedSecret");
+    expect(written).not.toHaveProperty("previousExpires");
+    const result = await importManagedCommandLinePair(
+      configuration,
+      key,
+      recordingDeps(),
+    );
+    expect(result.record.rotationHistory).toEqual(rotationHistory);
+    expect(result).not.toHaveProperty("unreadKeyFileFields");
+  });
+
+  test("a key file whose rotation history is not the list Alcove writes is refused, naming the field and never a value", async () => {
+    const { record, configuration } = exportedPair();
+    const notAVerifier = "not-a-verifier-but-a-value-to-keep-out";
+    const refusal = await importManagedCommandLinePair(
+      configuration,
+      commandLineKeyText({
+        sharedSecret: record.sharedSecret,
+        rotationHistory: [{ verifier: notAVerifier }],
+      }),
+      recordingDeps(),
+    ).catch((error: unknown) => error);
+    expect(refusal).toBeInstanceOf(ManagedKeyFileRefusedError);
+    expect(errorText(refusal)).toContain(
+      "its rotationHistory is not the list Alcove writes",
+    );
+    expect(errorText(refusal)).not.toContain(notAVerifier);
+    expect(errorText(refusal)).not.toContain(record.sharedSecret);
   });
 
   test("a pair import whose key file holds only fields it reads names none", async () => {

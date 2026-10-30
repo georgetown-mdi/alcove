@@ -692,6 +692,49 @@ describe("betweenVisitNotice: a missed window after an interrupted key exchange"
   });
 });
 
+describe("betweenVisitNotice: a missed window after a restore", () => {
+  const restored: ManagedLocalState = {
+    imported: { importedAt: "2026-07-13T00:00:00.000Z" },
+  };
+
+  function missedAfterImport(consecutiveMisses: number): ManagedExchangeRecord {
+    return record({
+      schedule: schedule({ consecutiveMisses }),
+      lastRun: { at: RUN_AT, outcome: "missed" },
+    });
+  }
+
+  test("names the possibly stale copy, the newest copy and the re-invite, under the alert's title", () => {
+    const notice = betweenVisitNotice({
+      record: missedAfterImport(1),
+      local: restored,
+      caughtUpMisses: 0,
+      disposition: "missed",
+      now: NOW,
+    });
+
+    expect(notice?.kind).toBe("imported");
+    expect(notice?.title).toBe(alertTitle("imported"));
+    expect(notice?.body).toContain("Riverbend quarterly");
+    expect(notice?.body).toContain("restored from a backup or key file");
+    expect(notice?.body).toContain("import it");
+    expect(notice?.body).toContain("re-invite your partner");
+  });
+
+  test("holds every later miss to one notice: the tag is the standing state", () => {
+    const tagAt = (consecutiveMisses: number) =>
+      betweenVisitNotice({
+        record: missedAfterImport(consecutiveMisses),
+        local: restored,
+        caughtUpMisses: 0,
+        disposition: "missed",
+        now: NOW,
+      })?.tag;
+
+    expect(tagAt(1)).toBe(tagAt(3));
+  });
+});
+
 describe("betweenVisitNotice: a partner terms change the run did not take on", () => {
   const stored: ManagedLocalState = {
     termsProposal: {

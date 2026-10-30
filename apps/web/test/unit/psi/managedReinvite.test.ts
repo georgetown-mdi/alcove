@@ -37,6 +37,8 @@ import type {
 import type { InvitationLocation } from "@psi/invitation";
 import type Peer from "peerjs";
 
+const TEST_RETIRED = { verifier: "A".repeat(43), at: 0 };
+
 vi.mock("@utils/clientConfig", async (importOriginal) =>
   (await import("../../utils/clientConfigMock")).clientConfigMock(
     importOriginal,
@@ -181,6 +183,7 @@ describe("composeManagedReinvite", () => {
     const repointed = applyManagedExchangeReinviteRotation(
       record,
       reinvite.rotation,
+      TEST_RETIRED,
     );
     expect(() => assertManagedRendezvousPossible(repointed)).not.toThrow();
   });
@@ -476,6 +479,7 @@ describe("the coordination server a re-invite names", () => {
       reinvited: applyManagedExchangeReinviteRotation(
         record,
         reinvite.rotation,
+        TEST_RETIRED,
       ),
     };
   }

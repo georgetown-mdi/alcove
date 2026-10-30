@@ -55,6 +55,8 @@ import type {
 } from "@psi/managed/managedExchangeRecord";
 import type { ManagedRunFailure } from "@recurring/managedRunLaunchModel";
 
+const TEST_RETIRED = { verifier: "A".repeat(43), at: 0 };
+
 // A browser initiator whose partner could not save the next shared secret: a
 // managed run, which kept it, holds a different secret from the partner's and
 // says so; a one-shot run, which kept none, says nothing changed. Both name a
@@ -510,11 +512,15 @@ describe("the windows after the partner's failed save, until a re-invite", () =>
     const later = runnableManagedExchangeOrRefuse(
       afterLaterWindow(failedHandshake),
     );
-    const reinvited = applyManagedExchangeReinviteRotation(later, {
-      sharedSecret: generateSharedSecret(),
-      expires: null,
-      signalingServer: { host: "signaling.example.org" },
-    });
+    const reinvited = applyManagedExchangeReinviteRotation(
+      later,
+      {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+        signalingServer: { host: "signaling.example.org" },
+      },
+      TEST_RETIRED,
+    );
     expect(reinvited.standingCondition).toEqual(NO_STANDING_CONDITION);
     expect(deriveManagedFailureTier(reinvited, undefined, NOW + 1)).toBe(
       "none",

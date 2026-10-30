@@ -54,7 +54,9 @@ again. It is **not** a saved copy of the exchange's inputs or outputs:
 - **It holds exactly one live shared secret at a time.** The secret is a linear
   resource (see [The secret is a linear
   resource](#the-secret-is-a-linear-resource)); the record stores the current
-  rotated value and no history of prior values.
+  rotated value and no prior value. Of each secret it retired it keeps only a
+  history verifier, from which the secret cannot be recovered
+  (`rotationHistory`).
 
 ## Record shape
 
@@ -109,13 +111,17 @@ are the standing definition of the managed exchange.
 | `lastRun` | object or absent | Run bookkeeping the backup state and the tiered desync UX read (see [MANAGED_EXCHANGE.md](../MANAGED_EXCHANGE.md)): `at` (ISO 8601 UTC), `outcome` (`"succeeded"` \| `"failed"` \| `"desynced"` \| `"missed"` \| `"skipped"`), and, for a non-succeeded outcome, an optional `failureKind` (`"auth"` \| `"transport"` \| `"storage"` \| `"custody-unreadable"` \| `"input"` \| `"terms-shortfall"` \| `"too-large"` \| `"partner-set-too-large"` \| `"partner-refused-set"` \| `"partner-storage"` \| `"partner-refused-terms"` \| `"partner-protocol-refusal"` \| `"terms-change"` \| `"cancelled"`). A `"terms-change"` failure records a partner's changed linkage terms the run did not take on, refused at the terms exchange before any linkage key or data moved; its remedy is the operator's decision on the change, never a retry ([A refused terms change](#a-refused-terms-change)). A `"missed"` outcome records a no-show: the wait for the other party's runner spent its whole budget with nobody arriving, so no handshake ran. A scheduled run reaches it when an agreed window passes without a completed handshake; an attended run reaches it when its own wait for the partner expires. It has no `failureKind` -- the outcome is the whole account, and it is held apart from `"transport"` (a connection that was made and broke, whose remedy is retrying the connection) and from `"cancelled"` (the operator stopped the run). It is benign, retried at the next window or whenever the operator runs the exchange again, and never routed through the desync/attack framing (see [MANAGED_EXCHANGE.md](../MANAGED_EXCHANGE.md#a-missed-window-is-neither-desync-nor-attack)). A `"skipped"` outcome records an agreed window the scheduled runner declined to open because the operator's [compromise response](#the-operators-response-to-it) stood on the record: nothing connected and nothing rotated, so it is neither a run nor a no-show, it has no `failureKind`, and it leaves the miss count where it stood (see [A due window under the operator's compromise response](#a-due-window-under-the-operators-compromise-response)). An `"input"` failure records a benign pre-run acquisition problem -- the handle's file missing, moved, or unreadable at run start -- detected before any connection, likewise never routed through that framing; putting the file back clears it, so its surface offers the run again. A `"terms-shortfall"` failure records the other benign pre-run input state, held apart from it because its remedy is not another attempt: the file was read and cannot satisfy every linkage key the standing terms declare, so the run is refused before connecting (by the run-start input guard, or by the run boundary's own `assertLinkageTermsSatisfiable` inside the pre-connection prepare), and the same file refuses identically at the next window. Its remedy is a file covering every agreed key, or terms re-agreed with the partner out of band -- never a retry or a bare re-pick. A `"terms-shortfall"` entry additionally holds `singleColumnInput`, admitted only as `true` and omitted rather than written `false`, when the file the run-start input guard read came out as ONE column -- the shape a file separated by something other than this record's `csvDelimiter` comes out as. The reading is what tells the delimiter remedy apart from a real shortfall of the agreed keys, and by the next visit the launch error that held it is gone, so the next visit's summary and the between-visit notification read it off the entry: where it is set both state the delimiter remedy, and where it is absent both state the agreed-keys copy. A `"custody-unreadable"` failure records the third pre-connection refusal: the record itself failing the runnable check at the run's read inside the run+rotate lock -- gone, not a valid record, or holding a configuration only -- which stops the run before reading the input file and before connecting, and rotates nothing. It is held apart from `"storage"` because the two leave different states behind -- a `"storage"` failure rotated a secret it could not save, which can leave the two parties holding different ones and is recovered by re-inviting, while this refusal precedes the handshake and rotates nothing, so nothing here is a desync and a fresh secret would replace one nothing moved. A `"too-large"` failure records a refusal to send a PSI set of this party's own over the most values its partner stated it can receive, or over the most any receiver admits ([PROTOCOL.md](PROTOCOL.md#the-receive-ceiling)): the first-round check, before connecting against the most any receiver admits and after the terms exchange against the partner's figure, which refuses before any set is sent, including a set whose size that check could not count; and a later round, which refuses its set before sending any of it. It is benign and outside the desync/attack framing. The entry holds no size, as no entry holds a count: the next visit and the between-visit notification state the remedy, and the bound where the entry names one, and only a live launch shows the refusal's own message, with the size where the check counted one. The set over the bound is this party's own, so both surfaces state one remedy: split your input into smaller exchanges. An entry an earlier build wrote may also hold `tooLargeSetOwner` (`"local"` \| `"partner"`); a reader drops it and states that same remedy. A `"too-large"` entry also holds `tooLargeBound` (`"partner-ceiling"` \| `"webrtc-message"`), which bound the refusal found the set over: the most values the partner stated it can receive, or, in an entry an earlier build wrote, the bytes one WebRTC message holds. Both surfaces name that bound, and its figure for the second; an entry without it names no bound. Where the first-round check could not count the set at all, the entry holds `setUncounted` instead, admitted only as `true` and omitted rather than written `false`: no bound was found crossed, so both surfaces say the set could not be counted and name no bound, and a reader states that even beside a `tooLargeBound`. Why the count failed is in the live launch's message only, as no entry holds free text. A `"partner-set-too-large"` failure records a run stopped over a partner's set for a linkage key with more values than `BROWSER_PSI_SET_MAX_ELEMENTS` ([PROTOCOL.md](PROTOCOL.md#the-receive-ceiling)), at one of two points, both after sets of this party's may have been sent -- its sets of earlier rounds, and a sender's setup for the same round: the partner's abort in place of its set, stating the fixed reason "a PSI set is too large to send", or this browser's refusal at the first part of the partner's set inside a round. An entry an earlier build wrote may record a refusal at the terms exchange, before any linkage key moved. Both current cases hold `refusedInRound`, admitted only as `true` and omitted rather than written `false`; the run history states that nothing was disclosed for an entry without it, and for an entry with it states that the run did not complete and that whether any data reached the partner is not recorded. It is benign and outside the desync/attack framing, and the entry holds no count: both surfaces state the cause and the remedy, the command-line application or a smaller input on the partner's side. A `"partner-refused-set"` failure records the partner's abort in place of its first set stating the fixed reason "a PSI set was refused before sending": the partner's run refused the set for a cause other than its size. It is met at the same point, after sets of this party's may have been sent, so it always holds `refusedInRound` and the run history states the uncertain line. It is benign and outside the desync/attack framing; the reason names no cause, so both surfaces say the partner's run refused and to ask the partner. A `"partner-storage"` failure records the partner's abort stating the fixed reason "the partner could not save the next shared secret" on a run that stored the next secret itself, which only the initiator does before it ([PROTOCOL.md](PROTOCOL.md#the-rotation-at-the-terms-exchange)), so the two parties now hold different secrets. It is met after the terms exchange, after sets of this party's may have been sent, so the run history states the uncertain line. Both surfaces say that the partner could not save the new secret, that this device holds it, and that the exchange needs a fresh invitation, and offer the re-invite. It raises a [standing condition](#the-standing-condition), which keeps that state past the runs after it. A `"partner-refused-terms"` failure records the partner's abort at the terms exchange naming linkage terms that differ from the partner's own (`termsDifferenceRefusedBy` reading `"partner"`, [PROTOCOL.md](PROTOCOL.md#a-terms-change-at-the-terms-exchange)), before any linkage key or data moved. It is benign and outside the desync/attack framing, and the run history states that nothing was disclosed. Both surfaces state the refusal and its remedy, terms agreed on with the partner through a [terms update](#a-terms-update) made or applied on the exchange's page, and only a live launch shows the terms that differ, as no entry holds free text. An entry an earlier build wrote for the same refusal holds `"transport"` and reads as the transport state. A `"partner-protocol-refusal"` failure records this party's refusal of what the partner sent as not following the exchange protocol (`isPartnerProtocolRefusal`, `packages/core/src/failureClass.ts`): a `PartnerProtocolRefusalError`, which only the sites refusing the partner's frames raise, such as a PSI setup out of ascending order, an unreadable response, a terms message missing a required field, or another protocol version ([PROTOCOL.md](PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute)). The partner's own abort, a refusal over the linkage terms, and a refusal whose fault could be either party's are not among them. It can be met at any point after the handshake, after sets of this party's may have been sent, so the run history states the uncertain line. It is benign and outside the desync/attack framing. The entry does not hold whether the refusal was over a version mismatch, so both surfaces state that the partner's data did not follow the exchange protocol and that the two parties check which version each runs, the one running the older version updating; only a live launch shows what was refused, and for a version mismatch which party runs the older version where the partner's version is an integer, as no entry holds free text. An entry an earlier build wrote for the same refusal holds `"transport"` and reads as the transport state. An attended run refused for its saved signaling address is recorded as a `"transport"` failure, with no kind of its own; the refusal alert, which offers no retry, is shown only in the run that met it, and a later visit shows the generic transport alert. `"terms-shortfall"`, `"too-large"`, `"partner-set-too-large"`, `"partner-refused-set"`, `"partner-storage"`, `"partner-refused-terms"`, `"partner-protocol-refusal"`, and `"custody-unreadable"` are the failure kinds a surface must **not** present as retryable: the same input falls the same way short of the same keys and builds the same too-large set, the same partner input is refused at the same ceiling, the partner's run refuses its set the same way, the partner holds a secret this device's runs cannot meet until a re-invite, the partner refuses the same terms until the two parties agree on them, the partner's run sends the same nonconforming data, and a run reads the same unusable stored copy every time, so the remedy is the operator's, not another attempt's. A record written before a value was added to either enum still reads -- an entry with `"input"` for a shortfall loads and tiers as the generic input state; the converse is the reader-rejects-unknown rule's consequence, an artifact with an outcome or kind this reader does not know being refused whole rather than read with the value dropped. Widening either enum therefore leaves `schemaVersion` where it is: the version moves for a member an older build would read past and lose state by, not for a value it refuses, and not for `singleColumnInput`, `tooLargeBound`, or `setUncounted`, whose absence is the copy every build states (the agreed-keys copy, and a too-large set with no bound named): a build that does not know one gives worse advice rather than reading a state wrongly. `refusedInRound` is outside that reasoning: a build that does not know it reads past it and states that nothing was disclosed. A **re-invite clears `lastRun`** in the same rotation transaction that advances the fresh secret: the re-invite is the recovery for the failure the entry recorded, so leaving it would re-derive a consumed tier at the next visit -- and once the import marker is cleared alongside, a stale `"auth"` failure would re-derive as the attack tier rather than the benign import one. A successful run instead advances `lastRun` to `"succeeded"`; two recoveries drop it: the re-invite, and an apply of a partner's terms change, which drops a `"terms-change"` entry for the same reason ([A refused terms change](#a-refused-terms-change)). Which of two runs' entries the store keeps is [Recording a run outcome](#recording-a-run-outcome). |
 | `recentRuns` | array or absent | The outcomes `lastRun` has held, at most 10 (`MAX_RECENT_RUNS`): each entry has exactly the shape of a `lastRun` entry and is validated by the same schema, so it holds no free text. Every write that lands a `lastRun` entry puts that entry at the head and drops the oldest beyond the bound ([Recording a run outcome](#recording-a-run-outcome)). Entries are kept in the order recorded, most recently recorded first: the monotonic check compares a new entry with the stored `lastRun` only, so after `lastRun` is cleared (a re-invite, a terms decision) a later-recorded entry with an earlier timestamp sits above entries stamped after it. An exchange artifact that carries a `recentRuns` member is refused on import (the local block is strict), not ignored; an entry either write rule drops joins neither field. A write to a record holding a `lastRun` but no `recentRuns` -- one stored before this field -- starts the list from that `lastRun`. Nothing that removes `lastRun` (a re-invite, a terms decision) touches it, since it records what happened rather than a state to recover from. It is read only by the exchange's page, which lists it as the run history; no run, failure tier, gate, or notice reads it, so `lastRun` stays the bookkeeping. A list longer than the bound or holding an entry the `lastRun` schema refuses is refused whole at read. Absent in a [configuration-only record](#the-configuration-only-record), and never in the export artifact or the command-line export: an imported record starts it again from the `lastRun` the artifact holds. **`schemaVersion` does not move for it**, as it did not for `relayRegistrar`: a build that predates the field reads past it and drops it at its next write, losing only past entries of a display list, never a fact any run or gate reads. |
 | `rotationInFlightSince` | string (ISO 8601, UTC `Z`) or absent | The instant a run began a key exchange that has not saved its rotated secret: written durably after the partner connects and before the key exchange starts, by a responder run only, and removed by the rotation write that stores the rotated secret, so a record still holding it outside a run records a key exchange that stopped between the two. What writes and reads it: [The rotation-in-flight marker](#the-rotation-in-flight-marker). Absent in a [configuration-only record](#the-configuration-only-record), and never in the export artifact or the command-line key file this app writes. |
+| `rotationHistory` | array or absent | The [history verifiers](PROTOCOL.md#the-rotation-history) of the secrets this record retired, newest first, at most 64 (`ROTATION_HISTORY_MAX_ENTRIES`): each entry holds `verifier`, 32 bytes as 43 base64url characters, and the retired secret's own `expires` where it had one, the entry shape of the key file's `rotationHistory` ([EXCHANGE_FILE.md](EXCHANGE_FILE.md#the-previous-secret-and-the-rotation-history)). A run's rotation write and a re-invite each put the entry of the secret they replace at the head, in the strict-durability transaction that stores the new secret, under the run+rotate lock; the verifier is derived before that transaction opens, and the write's check that the stored secret is the one it replaces makes it that secret's. The same write keeps the 64 newest entries and then removes, from the oldest end only, the entries whose `expires` has passed, so an expired entry newer than one still in force keeps its place and each position still counts the rotations since its secret was retired, as the handshake reads it. The entry the write just put at the head is no exception: a retired secret already past its own `expires` leaves with the expired entries behind it, so a re-invite of a lapsed exchange can leave no history. Every run passes the list to the handshake, which checks a peer's history proof against it; over WebRTC two copies on different secrets derive different peer ids and never meet, so in this app the list chiefly orders two copies of one exchange at an import ([Replacing a saved copy](#replacing-a-saved-copy)). Absent while the record has retired no secret, and in a [configuration-only record](#the-configuration-only-record). The export artifact's `key` block and the command-line key file this app writes hold it under the same name, and a pair import reads it from the key file ([What the exports write](#what-the-exports-write)). **`schemaVersion` does not move for it**: a build that predates the field reads past it and drops it at its next write, which loses information and misstates nothing. The list the next rotation starts again is still a run of the newest retirements, so no position overstates a count, and a copy with no history orders nothing at an import and matches no proof, as before the field. |
 | `relayRegistrar` | object or absent | The relay registrar this browser enrolled the exchange at: `url`, the registrar's `https://` address, and `exchangeId`, the id it holds the exchange's relay key under, validated as the command line's [`connection.relay_registrar`](../EXCHANGE_REFERENCE.md#connectionrelay_registrar) is. It holds no credential: the relay-owner token is asked for at enrollment and written nowhere. Written by an enrollment once the registrar has confirmed it holds the relay key derived from the record's current secret; by a pair import whose configuration names a registrar; and by a backup restore holding one. A pair import or restore writes it whether or not that registrar confirmed the current key, and the key file's or backup's `relayRegistrationPendingSince` beside it records a registration it has not confirmed. Removed when the operator stops registering. A run registers there only when it relays through this browser's own relay ([PROTOCOL.md](PROTOCOL.md#registering-the-rotated-relay-key)). Absent in a [configuration-only record](#the-configuration-only-record). The export artifact holds it in its `local` block, and the command-line export writes it as `connection.relay_registrar` ([What the exports write](#what-the-exports-write)). |
 | `relayRegistrationPendingSince` | string (ISO 8601, UTC `Z`) or absent | The instant the secret the record holds was rotated to, while the relay registrar has not confirmed that it holds the relay key derived from it. What writes and reads it: [The pending relay registration](#the-pending-relay-registration). Absent in a [configuration-only record](#the-configuration-only-record). The export artifact's `key` block and the command-line key file this app writes hold it under the same name ([What the exports write](#what-the-exports-write)). |
 | `relayRegistrationPendingReason` | `"reinvite"` or absent | Why no run can confirm the registration `relayRegistrationPendingSince` records, held only beside it and `relayRegistrar`, so a record or backup holding it without either is refused whole: `"reinvite"` when a re-invite replaced the secret and the registrar did not confirm the fresh secret's key, so the key it holds is derived from a secret the record no longer holds. Absent beside the marker, a registration signed under the current key can confirm it. What writes and reads it: [The pending relay registration](#the-pending-relay-registration). The export artifact holds it in its `local` block; it has no key-file form, so the command-line export refuses a record holding it ([What the exports write](#what-the-exports-write)). |
 | `standingCondition` | object | The unanswered **standing condition**: evidence that this device's secret may no longer be the partnership's, raised by a run and not answered since. It holds one of two forms, neither with free text: a raised condition, `since` (ISO 8601 UTC, the instant of the run that raised it) and `kind` (`"auth"` \| `"storage"` \| `"partner-storage"`), the three `failureKind`s whose remedy is out-of-band rather than an act on this device; or `{"kind": "none"}` while none stands. A raised condition additionally holds the operator's `response` where one has been given -- `kind` (`"compromise"`) and `at` (ISO 8601 UTC, the instant they answered) -- nested inside the condition it answers rather than beside it, so the acts that clear the condition clear the response with it (see [The standing condition](#the-standing-condition)). The field is **required**, so a reader never has to tell a record holding none from one written without the field: a record stored under `alcove-managed-exchange/v1`, which has no such field, is rejected whole and re-established by re-invite, as is one under `alcove-managed-exchange/v2`, whose condition cannot hold a response (see [Versioning](#versioning-an-app-upgrade-can-invalidate-a-stored-record)). It stands BESIDE `lastRun` rather than inside it because `lastRun` holds one run: the next run's stamp replaces it, so a no-show or a later success would otherwise carry the evidence off with the entry that held it and the operator would never again be asked for the confirmation the design requires (see [A standing condition outlives the run that raised it](../MANAGED_EXCHANGE.md#a-standing-condition-outlives-the-run-that-raised-it)). What raises and clears it is [The standing condition](#the-standing-condition). |
 
 Everything in this table except `sharedSecret` is non-secret but not
-non-sensitive. Together the persisted fields disclose the partnership's
+non-sensitive. The `rotationHistory` verifiers are derived from retired
+secrets and authenticate nothing ([PROTOCOL.md](PROTOCOL.md#the-rotation-history),
+What a verifier grants), and they travel only where the secret beside them
+does. Together the persisted fields disclose the partnership's
 existence and shape to any reader of the store: who links with whom, over which
 field categories, on what agreed schedule, whatever the document's
 operator-authored free-text fields hold (see the `exchangeFile` row), and, when
@@ -232,25 +238,29 @@ than two files are refused before either is read. The code:
 accepts it, and a key file holding exactly what Alcove writes there: a JSON
 object with a `sharedSecret` matching `SHARED_SECRET_REGEX`, an optional ISO
 8601 `expires`, the command line's optional
-[rotation-in-flight marker](#the-rotation-in-flight-marker), and its optional
-[pending relay registration](#the-pending-relay-registration). A field outside
+[rotation-in-flight marker](#the-rotation-in-flight-marker), its optional
+[pending relay registration](#the-pending-relay-registration), and its optional
+`rotationHistory`, whose 64 newest entries the record keeps. A field outside
 these is read past and dropped, as the command line drops it
 ([EXCHANGE_FILE.md](EXCHANGE_FILE.md#the-key-file-schema)), so a key file a
-later command line wrote still imports. The landed import's notice names each
+later command line wrote still imports. The command line's previous secret,
+`previousSharedSecret` and `previousExpires`, is among the fields dropped: the
+record holds no previous secret. The landed import's notice names each
 dropped field to the operator, by name only and never its value.
 The key file is validated on its own -- the configuration's schema parse never
 sees it -- through the sensitive-JSON chokepoint and the shared key-file schema
 (`KeyFileSchema`), under the key file's own size cap
 (`MAX_KEY_FILE_IMPORT_BYTES`), applied before the file is read. The export artifact's key half is read against the key-pair schema
 (`keyPairFieldsSchema`) instead, which admits the pending relay registration
-and no rotation-in-flight marker.
+and the rotation history, and no rotation-in-flight marker or previous secret.
 
 **What it refuses**, with nothing written:
 
 - A key file over the cap, one that is not JSON, one that is not an object, and
   one whose `sharedSecret` is absent or not an Alcove shared secret, whose
   `expires`, rotation-in-flight marker or pending relay registration is not an
-  ISO 8601 date and time. The refusal names each problem in fixed words and
+  ISO 8601 date and time, or whose `rotationHistory` is not the list the key
+  file schema admits. The refusal names each problem in fixed words and
   states no byte of the file: no field value, no parser message.
 - A configuration this app does not run -- on `sftp` or `filedrop`, or stating
   a `signing` block whose mode is not `none` -- with its key file. The record schema holds a secret only
@@ -1665,6 +1675,15 @@ The code: `encodeManagedExchangeArtifact` and `reconstructRecordFromArtifact`
   three, and the record schema refuses a reason without the marker. The `artifactVersion`
   literal does not move for them: an older build's strict schemas refuse the
   file whole.
+- **The rotation history leaves with the exchange too.** The artifact's `key`
+  block and the command-line key file hold the record's `rotationHistory`
+  under the key file's own name, so a moved or restored copy can still be
+  ordered against an older one at an import. Neither holds a previous secret,
+  which the record never has; the `key` block's strict schema refuses
+  `previousSharedSecret` and `previousExpires` as unknown fields. A restore and
+  a pair import read the history onto the record, the pair import its 64
+  newest entries. The `artifactVersion` literal does not move for it, for the
+  reason above.
 - **The command-line export** writes the registrar as
   `connection.relay_registrar`, and the marker as the key file's
   `relayRegistrationPendingSince`, which the command line's next run retries
@@ -1735,6 +1754,10 @@ and there is no second value to keep consistent with it:
   `sharedSecret` by the persist-before-success step above; the derivation itself
   is core's.
 
+The rule has one exception, the `rotationHistory` verifiers. Each is derived
+from a secret the record no longer holds, so it cannot be derived again and no
+stored value has to be kept consistent with it.
+
 The managed record introduces no new KDF, info string, or salt: it persists the
 same 32-byte secret the invitation and rotation already define, and every
 derived value uses the labels those constructions hold. The record's own at-rest hygiene
@@ -1784,8 +1807,9 @@ is refused on the literal rather than migrated, the superseded
 (below). `exchangeDocument` embeds the exchange-file document as a
 valid `alcove.yaml` (the snake_case YAML the CLI loads, serialized through the
 same discipline the mint layer applies to a validated spec). `key` is the
-`.alcove.key` pair (`sharedSecret`, `expires` when a bound is in force, and
-`relayRegistrationPendingSince` when a relay key registration is pending).
+`.alcove.key` pair (`sharedSecret`, `expires` when a bound is in force,
+`relayRegistrationPendingSince` when a relay key registration is pending, and
+`rotationHistory` when the record has one).
 And `local` holds the record fields the two CLI artifacts do not (`label`,
 `side`, `schedule`, `lastRun`, `standingCondition`, `tokenMaxAgeDays`,
 `relayRegistrar`, `relayRegistrationPendingReason`, and the two held-grant
@@ -1846,8 +1870,8 @@ either imports with the answer or is refused entire. The artifact's own
 - **CLI-separable format.** The record is the CLI's config-plus-key pair kept
   as one browser object, and its export stays consumable by the CLI toolchain
   rather than becoming a third format. The embedded `exchangeDocument` is a
-  valid `alcove.yaml`. The `key` block's `sharedSecret`, `expires`, and
-  `relayRegistrationPendingSince` map onto a valid `.alcove.key`, and can be
+  valid `alcove.yaml`. The `key` block's `sharedSecret`, `expires`,
+  `relayRegistrationPendingSince`, and `rotationHistory` map onto a valid `.alcove.key`, and can be
   lifted out verbatim, since the field names already match the key file's.
   The `local` block's fields are cleanly separable and ignorable. This is a
   format-compatibility commitment, not a claim the embedded exchange runs
@@ -1869,15 +1893,17 @@ either imports with the answer or is refused entire. The artifact's own
   months -- so the response to a lost or copied artifact is the [compromise
   response](../SECURITY_DESIGN.md#compromise-response) (notify the partner
   out-of-band, re-invite), not quiet deletion.
-- **No anti-rollback.** The record has no rotation epoch and no history, and
-  the handshake gives the partner no way to recognize a superseded copy, so a
-  restored artifact (or a browser-profile/VM snapshot) silently re-arms whatever
-  secret it holds: still-current (the captured-credential case above) or
-  rotated-past (a guaranteed desync at the next run). Keeping one copy running
-  is an operator-cooperation property, not a cryptographic one. Recognizing a
-  superseded copy in the handshake is proposed, together with the grace window,
-  in [rotation-hardening.md](../notes/rotation-hardening.md), and neither is
-  built (see
+- **No anti-rollback.** A restored artifact (or a browser-profile/VM snapshot)
+  silently re-arms whatever secret it holds: still-current (the
+  captured-credential case above) or rotated-past (a guaranteed desync at the
+  next run). Keeping one copy running is an operator-cooperation property, not
+  a cryptographic one. The record's `rotationHistory` recognizes a superseded
+  copy only where the two copies meet: at an import, which states the order it
+  found ([Replacing a saved copy](#replacing-a-saved-copy)), and in a
+  handshake, which over WebRTC two copies on different secrets never reach. A
+  restored copy's no-shows are read beside its import marker instead
+  ([The backup and import markers](#the-backup-and-import-markers-local-siblings-never-in-the-artifact)).
+  Nothing refuses the older copy (see
   [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#rollback-at-rest-copies-can-silently-resurrect)).
 
 ### The backup and import markers: local siblings, never in the artifact
@@ -1993,7 +2019,14 @@ decision on a partner's changed terms. The three:
   attack](../notes/managed-exchange-design.md#telling-a-desync-from-an-attack)). A restored
   copy can hold a secret the partnership has rotated past, so a handshake
   failure while this marker stands is the benign import tier (recovery:
-  re-invite), not the attack path. "Since the last successful run" is enforced
+  re-invite), not the attack path. Over WebRTC such a copy derives peer ids its
+  partner no longer listens at and never reaches a handshake, so the marker is
+  also read beside a no-show: a `"missed"` `lastRun` stamped after `importedAt`,
+  with no standing condition and no [rotation-in-flight
+  marker](#the-rotation-in-flight-marker) before it, is the import tier, a
+  possibly stale restored copy whose recovery is the newest copy or a
+  re-invite. A `"missed"` entry stamped before the import, which the file
+  itself brought in, is not read with it. "Since the last successful run" is enforced
   **structurally**, not by comparing timestamps, by two write-side rules that mirror
   the backup marker's:
   - **Import stamps it.** A fresh install stamps `importedAt` as of the import
@@ -2173,8 +2206,9 @@ entry for the exchange afterwards. The code:
 The replaced record holds:
 
 - **From the import**: the document, `side`, `sharedSecret`, `expires`, the
-  max-age policy, and the relay registrar and pending registration, each absent
-  where the import states none; from a backup also its schedule.
+  max-age policy, the relay registrar and pending registration, and the
+  rotation history, each absent where the import states none; from a backup
+  also its schedule.
 - **From the stored record**: the `id`, the label, and the working-folder
   grant, which the artifact never holds; from a pair import also the schedule,
   which a pair has no field for.
@@ -2206,12 +2240,20 @@ answered, so the compare refuses a re-invite landing between that
 reconciliation and the replace taking the lock.
 Completing a configuration-only record takes no lock, since no run holds one.
 
-**Which copy is the newer is the operator's call.** Nothing in a record orders
-a backup and the saved copy of one exchange ([No
-anti-rollback](#export-artifact); the reasoning is in the [design
-note](../notes/managed-exchange-design.md#exportimport-is-migration-not-sync)),
-so the question offers replace, keep, and install beside, and states when each
-fits.
+**Which copy is the newer is the operator's call, and the question states
+what the rotation histories show.** A copy whose `rotationHistory` holds the
+verifier of the other's secret retired that secret, so it is the newer: the
+saved copy's holding the import's means the import is older, and the import's
+holding the saved copy's means it is newer. Where neither holds the other's,
+or both do, nothing orders them ([No anti-rollback](#export-artifact); the
+reasoning is in the [design
+note](../notes/managed-exchange-design.md#exportimport-is-migration-not-sync)).
+The question offers replace, keep, and install beside either way: it states
+the order for each saved copy the histories order, and otherwise states when
+each answer fits. The order is read from a second read of each saved copy
+after the reconciliation, outside its transaction, and adds to the question
+only; the replace the operator chooses re-checks the record it writes, as
+below. The code: `orderManagedStoredCopies` (`managedCopyOrder.ts`).
 Replacing a copy with an older import leaves it holding a secret the partner
 has rotated past: its next run fails to connect, as any stale copy does, and
 the remedy is the newer import or a re-invite.
@@ -2228,6 +2270,9 @@ Stated limit: a re-invite landing while the replace question is on screen is
 not refused. The secret the replace compares with is the one the reconciliation
 on the resubmitted import reads, after the operator answered, not the one the
 question was asked over, so the replace writes over the re-invite's secret.
+The same holds for a run's rotation in that window, and the question's
+statement of which copy is newer is read when the question is shown, so it can
+name a copy newer that a rotation has since moved past.
 
 ## The accounting of disclosures
 

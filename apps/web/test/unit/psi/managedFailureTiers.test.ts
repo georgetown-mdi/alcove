@@ -289,6 +289,57 @@ describe("deriveManagedFailureTier: the import/restore tier", () => {
     ).toBe("transport");
   });
 
+  test("a no-show after the import reads as the restored copy", () => {
+    expect(
+      readManagedFailure(
+        record({ lastRun: { at: RUN_AT, outcome: "missed" } }),
+        imported,
+        NOW,
+      ),
+    ).toEqual({ tier: "imported", standing: false });
+  });
+
+  test("a no-show the imported file brought in, before the import, is still a no-show", () => {
+    expect(
+      readManagedFailure(
+        record({
+          lastRun: { at: "2026-07-12T09:00:00.000Z", outcome: "missed" },
+        }),
+        imported,
+        NOW,
+      ).tier,
+    ).toBe("missed");
+  });
+
+  test("a no-show after an interrupted key exchange since the import reads as the partial rotation", () => {
+    expect(
+      readManagedFailure(
+        record({
+          lastRun: { at: RUN_AT, outcome: "missed" },
+          rotationInFlightSince: "2026-07-13T09:00:00.000Z",
+        }),
+        imported,
+        NOW,
+      ).tier,
+    ).toBe("partial-rotation");
+  });
+
+  test("a standing condition beside a no-show after the import keeps its own reading", () => {
+    expect(
+      readManagedFailure(
+        record({
+          lastRun: { at: RUN_AT, outcome: "missed" },
+          standingCondition: {
+            since: "2026-07-13T08:00:00.000Z",
+            kind: "storage",
+          },
+        }),
+        imported,
+        NOW,
+      ),
+    ).toEqual({ tier: "storage", standing: true });
+  });
+
   test("importedSinceLastSuccess reads the marker's presence alone", () => {
     // The marker is cleared on the first rotation after an import (a completed
     // handshake proves sync), so its mere presence is the "restored and not yet

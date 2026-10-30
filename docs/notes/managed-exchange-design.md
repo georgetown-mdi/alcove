@@ -263,8 +263,9 @@ Refusing them instead would keep the operator from a backup for the whole of a s
 Bringing the exchange back here is the same import with the newer files.
 The files from a run elsewhere hold a secret the copy here does not, so the secret alone cannot find it; the agreed terms and side do, and the import asks.
 The answer that brings the exchange back replaces the copy here in place rather than adding a second entry: its `id` keys the accounting of disclosures, the parked results and the local state, so keeping the `id` keeps them, and the operator has one entry to look after rather than an older one to remember to remove.
-The import does not decide which copy is the newer, because nothing in the record can: there is no rotation epoch (the no-anti-rollback caveat below), and the run history orders runs, not rotations -- a missed window or a run that failed before its terms exchange stored anything rotates nothing, and each copy's stamps come from its own device's clock.
-So the operator chooses between replacing and keeping, and the rule is in [Replacing a saved copy](../spec/MANAGED_EXCHANGE_RECORD.md#replacing-a-saved-copy).
+The import does not decide which copy is the newer. The run history cannot: it orders runs, not rotations -- a missed window or a run that failed before its terms exchange stored anything rotates nothing, and each copy's stamps come from its own device's clock.
+The rotation history can, where one copy retired the other's secret, and the question then states that order ([rotation-hardening.md](rotation-hardening.md#web-a-restored-copys-no-show-and-which-copy-is-newer)); a copy with no history, or two copies that each moved on from a common secret, leave it unstated.
+So the operator chooses between replacing and keeping either way, and the rule is in [Replacing a saved copy](../spec/MANAGED_EXCHANGE_RECORD.md#replacing-a-saved-copy).
 No state records that an exchange left, so none has to be cleared for it to come back, and nothing refuses a run or an import on it.
 
 The artifact is a **plaintext credential file in the operator's custody**.

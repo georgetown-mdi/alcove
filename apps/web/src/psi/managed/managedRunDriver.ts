@@ -426,6 +426,7 @@ export function runManagedExchangeInBrowser(
             exchangeRole,
             current.sharedSecret,
             current.expires,
+            current.rotationHistory,
           );
           // From here the run uses the AEAD-wrapped connection: the exchange
           // runs on it, and a cancel or teardown closes it, which closes the

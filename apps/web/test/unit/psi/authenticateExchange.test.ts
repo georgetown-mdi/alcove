@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { ConnectionError, EncryptedMessageConnection } from "@alcove/core";
+import {
+  ConnectionError,
+  EncryptedMessageConnection,
+  PartnerCopyBehindError,
+  causeChainSome,
+  deriveHistoryVerifier,
+} from "@alcove/core";
 
 import {
   AEAD_ENVELOPE_VERSION,
@@ -399,5 +405,44 @@ describe("authenticateExchange", () => {
     if (initiator.status !== "fulfilled" || responder.status !== "fulfilled")
       return;
     expect(initiator.value.sessionKey).toEqual(responder.value.sessionKey);
+  });
+
+  test("checks a peer on a retired secret against the history it is given", async () => {
+    // The responder rotated from SECRET_A to SECRET_B; a peer still on SECRET_A
+    // fails as a partner copy behind, not as a bare mismatch.
+    const [connA, connB] = createMessagePipe();
+    const [, responder] = await Promise.allSettled([
+      authenticateExchange(connA, "initiator", SECRET_A),
+      authenticateExchange(connB, "responder", SECRET_B, undefined, [
+        { verifier: await deriveHistoryVerifier(SECRET_A) },
+      ]),
+    ]);
+
+    expect(responder.status).toBe("rejected");
+    if (responder.status !== "rejected") return;
+    expect((responder.reason as ConnectionError).kind).toBe("security");
+    expect(
+      causeChainSome(
+        responder.reason,
+        (link) => link instanceof PartnerCopyBehindError,
+      ),
+    ).toBe(true);
+  });
+
+  test("with no history given, a peer on a retired secret is a bare mismatch", async () => {
+    const [connA, connB] = createMessagePipe();
+    const [, responder] = await Promise.allSettled([
+      authenticateExchange(connA, "initiator", SECRET_A),
+      authenticateExchange(connB, "responder", SECRET_B),
+    ]);
+
+    expect(responder.status).toBe("rejected");
+    if (responder.status !== "rejected") return;
+    expect(
+      causeChainSome(
+        responder.reason,
+        (link) => link instanceof PartnerCopyBehindError,
+      ),
+    ).toBe(false);
   });
 });

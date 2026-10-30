@@ -150,10 +150,12 @@ interface ManagedExchangeArtifact {
 
 /**
  * Derive the `.alcove.key` pair from a record: the current shared secret, the
- * `expires` it lapses at when a bound is in force, and the pending relay key
- * registration when one is recorded. The one place a record's secret half
- * becomes the key file's fields, shared by the artifact's `key` block and the
- * CLI cron export's key file so neither can grow a field the other lacks. An
+ * `expires` it lapses at when a bound is in force, the pending relay key
+ * registration when one is recorded, and the rotation history when the record
+ * has one. The one place a record's secret half becomes the key file's fields,
+ * shared by the artifact's `key` block and the CLI cron export's key file so
+ * neither can grow a field the other lacks; its type
+ * ({@link ManagedExchangeKeyPair}) has no field for a previous secret. An
  * absent field is an omitted key, never an explicit `undefined` a serialize
  * step would render.
  */
@@ -165,6 +167,9 @@ export function keyFileFieldsFromRecord(
     ...(record.expires !== undefined ? { expires: record.expires } : {}),
     ...(record.relayRegistrationPendingSince !== undefined
       ? { relayRegistrationPendingSince: record.relayRegistrationPendingSince }
+      : {}),
+    ...(record.rotationHistory !== undefined
+      ? { rotationHistory: [...record.rotationHistory] }
       : {}),
   };
 }
@@ -379,6 +384,9 @@ export function reconstructRecordFromArtifact(
           relayRegistrationPendingReason:
             artifact.local.relayRegistrationPendingReason,
         }
+      : {}),
+    ...(artifact.key.rotationHistory !== undefined
+      ? { rotationHistory: artifact.key.rotationHistory }
       : {}),
   });
 }

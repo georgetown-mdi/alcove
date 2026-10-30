@@ -841,3 +841,81 @@ describe("the relay key registration", () => {
     ).toThrow(ManagedConfigurationRefusedError);
   });
 });
+
+describe("the rotation history", () => {
+  const history = [
+    { verifier: `${"a".repeat(42)}A`, expires: "2026-04-06T14:00:00.000Z" },
+    { verifier: `${"b".repeat(42)}E` },
+  ];
+
+  test("rides the key block, which still reads as a key file", () => {
+    const record = runnableRecord(newExchange({ rotationHistory: history }));
+    const artifact = encodeManagedExchangeArtifact(record);
+    expect(artifact.key.rotationHistory).toEqual(history);
+    expect(KeyFileSchema.parse(artifact.key).rotationHistory).toEqual(history);
+    expect(artifact.local).not.toHaveProperty("rotationHistory");
+  });
+
+  test("round-trips through the bytes, newest first", () => {
+    const record = runnableRecord(newExchange({ rotationHistory: history }));
+    const { record: restored } = importManagedExchangeArtifact(
+      serializeManagedExchangeArtifact(encodeManagedExchangeArtifact(record)),
+    );
+    expect(restored.rotationHistory).toEqual(history);
+    expect(
+      buildManagedExchangeRecord(
+        managedInstallFields(runnableManagedExchangeOrRefuse(restored)),
+      ).rotationHistory,
+    ).toEqual(history);
+  });
+
+  test("a record with none writes none and restores none", () => {
+    const artifact = encodeManagedExchangeArtifact(
+      runnableRecord(newExchange()),
+    );
+    expect(artifact.key).not.toHaveProperty("rotationHistory");
+    expect(reconstructRecordFromArtifact(artifact)).not.toHaveProperty(
+      "rotationHistory",
+    );
+  });
+
+  test.each([
+    ["previousSharedSecret", generateSharedSecret()],
+    ["previousExpires", "2026-04-06T14:00:00.000Z"],
+  ])(
+    "a key block holding %s is refused as an unknown field",
+    (field, value) => {
+      const artifact = JSON.parse(
+        serializeManagedExchangeArtifact(
+          encodeManagedExchangeArtifact(runnableRecord(newExchange())),
+        ),
+      );
+      artifact.key[field] = value;
+      expect(() =>
+        parseManagedExchangeArtifact(JSON.stringify(artifact)),
+      ).toThrow(
+        expect.objectContaining({
+          issues: [
+            expect.objectContaining({
+              code: "unrecognized_keys",
+              keys: [field],
+              path: ["key"],
+            }),
+          ],
+        }),
+      );
+    },
+  );
+
+  test("a key block holding a malformed history entry is refused", () => {
+    const artifact = JSON.parse(
+      serializeManagedExchangeArtifact(
+        encodeManagedExchangeArtifact(runnableRecord(newExchange())),
+      ),
+    );
+    artifact.key.rotationHistory = [{ verifier: "not-a-verifier" }];
+    expect(() =>
+      parseManagedExchangeArtifact(JSON.stringify(artifact)),
+    ).toThrow();
+  });
+});

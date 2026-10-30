@@ -168,6 +168,18 @@ export const TOO_LARGE_REMEDY =
 export const PARTIAL_ROTATION_FAILURE_TITLE =
   "This exchange is probably out of sync with your partner";
 
+/** The title over the restored-copy failure tier. */
+export const IMPORTED_FAILURE_TITLE =
+  "This exchange was restored from a backup or key file";
+
+/** The restored-copy tier's remedy, in the words the next-visit alert and the
+ * between-visit notification both state it in: a restored copy may hold a
+ * secret the partnership has rotated past, recovered by the newest copy or a
+ * re-invite. */
+export const IMPORTED_FAILURE_REMEDY =
+  "If you have a newer backup or key file of this exchange, import it; " +
+  "otherwise re-invite your partner";
+
 /** The title over the Tier-2 unexplained failure tier. */
 export const UNEXPLAINED_FAILURE_TITLE =
   "This run failed and needs you to check with your partner";
