@@ -55,4 +55,4 @@ Prior to joining Georgetown, O'Hara was a senior executive at the U.S. Census Bu
 
 - Questions and bug reports: [GitHub issues](https://github.com/georgetown-mdi/alcove/issues)
 - Security reports: see the [security policy](https://github.com/georgetown-mdi/alcove/blob/main/SECURITY.md)
-- MDI: [mdi.georgetown.edu/connect](https://mdi.georgetown.edu/connect/)
+- [Reach out about collaborating](mailto:eric.giannella@georgetown.edu)
