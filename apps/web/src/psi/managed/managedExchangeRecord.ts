@@ -641,16 +641,10 @@ export type ManagedExchangeKeyPair = Omit<
 /** The rotation history's validator, for the record and the artifact's key
  * block: the key file's entry shape, at most
  * {@link ROTATION_HISTORY_MAX_ENTRIES} entries. */
-export const rotationHistorySchema: ZodType<Array<RotationHistoryEntry>> = z
-  .array(
-    z
-      .object({
-        verifier: z.string().regex(SHARED_SECRET_REGEX),
-        expires: z.iso.datetime().optional(),
-      })
-      .strict(),
-  )
-  .max(ROTATION_HISTORY_MAX_ENTRIES);
+export const rotationHistorySchema: ZodType<Array<RotationHistoryEntry>> =
+  KEY_FILE_FIELD_SCHEMAS.rotationHistory
+    .unwrap()
+    .max(ROTATION_HISTORY_MAX_ENTRIES);
 
 /**
  * The key pair's validator, for the export artifact's key block:

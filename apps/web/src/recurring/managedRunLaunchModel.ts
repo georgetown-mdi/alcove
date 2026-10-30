@@ -704,9 +704,9 @@ const IMPORTED_FAILURE: ManagedRunFailure = {
   message:
     "This exchange was restored from a backup or key file, and no run has " +
     "succeeded since, so it may be one you and your partner have already " +
-    `moved past. ${IMPORTED_FAILURE_REMEDY} to reconnect; the exchange keeps ` +
-    "your terms, gets a new secret, and uses the coordination server the new " +
-    "invitation names.",
+    `moved past. ${IMPORTED_FAILURE_REMEDY} to reconnect. After a re-invite, ` +
+    "the exchange keeps your terms, gets a new secret, and uses the " +
+    "coordination server the new invitation names.",
   recovery: "reinvite",
 };
 
