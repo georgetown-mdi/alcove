@@ -72,11 +72,14 @@ jobs:
       # Other relative links and anchors are checked by `npm run linkcheck`.
       - name: Build the site
         run: npm run site:build
+      # Hidden files carry .well-known/security.txt, the build's one hidden
+      # entry.
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: ${{ env.ARTIFACT_NAME }}
           path: docs/.vitepress/dist
+          include-hidden-files: true
           retention-days: 1
           if-no-files-found: error
       - name: Output artifact name

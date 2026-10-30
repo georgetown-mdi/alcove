@@ -155,11 +155,16 @@ jobs:
           # The default WebSocket relay, set only beside the two above.
           VITE_DEFAULT_RELAY_WEBSOCKET_URL: ${{ vars.VITE_DEFAULT_RELAY_WEBSOCKET_URL }}
         run: npm run build -w apps/web
+      # Hidden files carry .well-known/security.txt. The one other hidden
+      # entry, .vite/manifest.json, is a test input, not a served file.
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: ${{env.ARTIFACT_NAME}}
-          path: apps/web/dist/hosted
+          path: |
+            apps/web/dist/hosted
+            !apps/web/dist/hosted/.vite
+          include-hidden-files: true
           retention-days: 1
           if-no-files-found: error
       # The demo site's build (docs/DEPLOYMENT.md, "The demo site"). It rebuilds
@@ -177,7 +182,10 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{env.DEMO_ARTIFACT_NAME}}
-          path: apps/web/dist/hosted
+          path: |
+            apps/web/dist/hosted
+            !apps/web/dist/hosted/.vite
+          include-hidden-files: true
           retention-days: 1
           if-no-files-found: error
       - name: Output artifact names

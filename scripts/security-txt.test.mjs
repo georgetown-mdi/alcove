@@ -3,6 +3,12 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
+import {
+  BUILD_OUTPUT,
+  SITE_DEPLOY_WORKFLOW,
+} from "./check-deploy-trigger-graph.mjs";
+import { WORKFLOW_DIR, workflowDocument } from "./lib/workflows.mjs";
+
 // The security.txt files (RFC 9116) the web app's build and the project site's
 // serve. A hand-set Expires lapses with nothing to report it, so this fails
 // RENEW_DAYS ahead of the date; it runs only when CI does, so a stretch with no
@@ -14,6 +20,26 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SECURITY_TXT_FILES = [
   "apps/web/public/.well-known/security.txt",
   "docs/.vitepress/public/.well-known/security.txt",
+];
+
+/**
+ * The artifact uploads that carry each site's build to its deploy job. The
+ * web app and the demo site upload the same build output, rebuilt between the
+ * two. `excluded` names the hidden entries of the build left out.
+ */
+const SITE_UPLOADS = [
+  {
+    workflow: `${WORKFLOW_DIR}/web_build_and_test.yaml`,
+    output: BUILD_OUTPUT,
+    uploads: 2,
+    excluded: [".vite"],
+  },
+  {
+    workflow: SITE_DEPLOY_WORKFLOW,
+    output: "docs/.vitepress/dist",
+    uploads: 1,
+    excluded: [],
+  },
 ];
 
 const GITHUB_REPORTING =
@@ -134,4 +160,31 @@ describe("the served security.txt files", () => {
     expect(expires).toHaveLength(1);
     expect(expiresProblem(expires[0][1], new Date())).toBeNull();
   });
+});
+
+// actions/upload-artifact leaves out every file under a directory whose name
+// starts with "." unless include-hidden-files is set, so without it no site's
+// artifact holds .well-known.
+describe("each site's artifact upload", () => {
+  it.each(SITE_UPLOADS)(
+    "in $workflow carries hidden files",
+    ({ workflow, output, uploads, excluded }) => {
+      const steps = Object.values(
+        workflowDocument(repoRoot, workflow).jobs,
+      ).flatMap((job) => job.steps ?? []);
+      const siteUploads = steps.filter(
+        (step) =>
+          (step.uses ?? "").startsWith("actions/upload-artifact@") &&
+          step.with.path.split("\n")[0] === output,
+      );
+      expect(siteUploads).toHaveLength(uploads);
+      for (const upload of siteUploads) {
+        expect(upload.with["include-hidden-files"]).toBe(true);
+        expect(upload.with.path.split("\n").filter(Boolean)).toEqual([
+          output,
+          ...excluded.map((entry) => `!${output}/${entry}`),
+        ]);
+      }
+    },
+  );
 });

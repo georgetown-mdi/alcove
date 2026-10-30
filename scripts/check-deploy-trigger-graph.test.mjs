@@ -455,7 +455,7 @@ describe("wiring", () => {
     const upload = packager.steps.find((step) =>
       (step.uses ?? "").startsWith("actions/upload-artifact@"),
     );
-    expect(upload.with.path).toBe(BUILD_OUTPUT);
+    expect(upload.with.path.split("\n")[0]).toBe(BUILD_OUTPUT);
     expect(
       packager.steps.some((step) => (step.run ?? "").includes(BUILD_COMMAND)),
     ).toBe(true);
@@ -513,7 +513,7 @@ describe("wiring", () => {
       packager.steps.filter(usesStep("actions/upload-artifact@"));
     expect(extraBuilds).toEqual([]);
     expect(extraArtifacts).toEqual([]);
-    expect(demoArtifact.with.path).toBe(BUILD_OUTPUT);
+    expect(demoArtifact.with.path.split("\n")[0]).toBe(BUILD_OUTPUT);
     expect(demoArtifact.with.name).toBe("${{env.DEMO_ARTIFACT_NAME}}");
     expect(Object.keys(demoBuild.env).sort()).toEqual([
       "VITE_DEFAULT_RELAY_MODE",
