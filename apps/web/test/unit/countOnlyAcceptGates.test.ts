@@ -24,8 +24,8 @@ import type { CSVRow, LinkageTerms } from "@alcove/core";
 // invitation decode), and marked columns refused at the launch gate -- a rule
 // no linkage-terms document holds. Both rules read the algorithm alone.
 
-/** An invitation in exactly the count-only shape the specification admits: one
- * linkage key, cascade, no deduplication, no payload in either direction. */
+/** An invitation in the count-only shape the specification admits: no
+ * deduplication and no payload in either direction. */
 const countOnlyTerms: LinkageTerms = {
   version: "1.0.0",
   identity: "County Health Department",
@@ -173,26 +173,6 @@ describe("the import door refuses a count-only document outside the shape", () =
   // are stated once and this pins that they reach the operator intact.
   test.each([
     {
-      rule: "more than one linkage key",
-      terms: {
-        ...countOnlyTerms,
-        linkageFields: [
-          ...countOnlyTerms.linkageFields,
-          { name: "lastName", type: "last_name" },
-        ],
-        linkageKeys: [
-          ...countOnlyTerms.linkageKeys,
-          { name: "last", elements: [{ field: "lastName" }] },
-        ],
-      },
-      expected: /exactly one linkage key/,
-    },
-    {
-      rule: "single-pass",
-      terms: { ...countOnlyTerms, linkageStrategy: "single-pass" },
-      expected: /linkage_strategy to "cascade"/,
-    },
-    {
       rule: "deduplicate",
       terms: { ...countOnlyTerms, deduplicate: true },
       expected: /set deduplicate to false/,
@@ -209,8 +189,28 @@ describe("the import door refuses a count-only document outside the shape", () =
     expect(result.error).toMatch(expected);
   });
 
-  test("a document already in the count-only shape imports", () => {
-    const result = importLinkageTerms(JSON.stringify(countOnlyTerms));
+  test.each([
+    { shape: "the count-only shape", terms: countOnlyTerms },
+    {
+      shape: "several linkage keys",
+      terms: {
+        ...countOnlyTerms,
+        linkageFields: [
+          ...countOnlyTerms.linkageFields,
+          { name: "lastName", type: "last_name" },
+        ],
+        linkageKeys: [
+          ...countOnlyTerms.linkageKeys,
+          { name: "last", elements: [{ field: "lastName" }] },
+        ],
+      },
+    },
+    {
+      shape: "single-pass",
+      terms: { ...countOnlyTerms, linkageStrategy: "single-pass" },
+    },
+  ])("a count-only document declaring $shape imports", ({ terms }) => {
+    const result = importLinkageTerms(JSON.stringify(terms));
     expect(result.success).toBe(true);
   });
 });

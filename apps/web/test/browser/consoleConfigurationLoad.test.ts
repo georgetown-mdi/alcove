@@ -34,6 +34,7 @@ import {
   REOPEN_CONFIGURATION_LABEL,
   START_OPENED_EXCHANGE_LABEL,
 } from "@console/mountedConfiguration";
+import { CONSOLE_ALGORITHM_GUIDE_URL } from "@exchange/userGuide";
 import { InviterScreen } from "@exchange/InviterScreen";
 import { isolatedColumnName } from "@components/ColumnName";
 
@@ -1070,6 +1071,14 @@ describe("the review step of an opened configuration's run", () => {
         page.getByRole("radio", { name: "Reveal only the count (psi-c)" }),
       )
       .toBeInTheDocument();
+    // The count-only choice links to the configuration key it is written into.
+    await expect
+      .element(
+        page.getByRole("link", {
+          name: "In a configuration file, this is algorithm: psi-c.",
+        }),
+      )
+      .toHaveAttribute("href", CONSOLE_ALGORITHM_GUIDE_URL);
     const opened = (direction.element() as HTMLSelectElement).value;
     await userEvent.selectOptions(
       direction,

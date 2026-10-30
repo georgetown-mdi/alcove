@@ -207,8 +207,8 @@ export const FIELD_DOCS: Array<{ path: Array<string>; lines: Array<string> }> =
     {
       path: ["linkage_terms", "algorithm"],
       lines: [
-        "psi reveals matched ids; psi-c reveals only the match count. psi-c runs",
-        "one key in one round under cascade and sends no payload columns.",
+        "psi reveals matched ids; psi-c reveals only the match count, counted",
+        "across every key, and sends no payload columns. psi-c is for research.",
       ],
     },
     {
@@ -216,6 +216,7 @@ export const FIELD_DOCS: Array<{ path: Array<string>; lines: Array<string> }> =
       lines: [
         "cascade (one PSI round per key) or single-pass (all keys in one round,",
         "fewer round-trips, but discloses your full per-key value structure).",
+        "psi-c runs the cascade's rounds under either and reveals the same.",
       ],
     },
     {

@@ -13,12 +13,14 @@ import { IconArrowDown, IconArrowUp } from "@tabler/icons-react";
 
 import {
   CONTACT_AND_LOCATION_FIELD_TYPES,
+  COUNT_ONLY_DECLARED_STRATEGY_STATEMENT,
   DEFAULT_PRECISION_FLOOR_SELECTION,
   LESS_CERTAIN_KEY_COPY,
   LinkageStrategySchema,
   PRECISION_FLOORS,
   linkageKeyIsLessCertain,
   precisionFloorLabel,
+  runsSinglePassLink,
   sanitizeForDisplay,
 } from "@alcove/core";
 
@@ -408,17 +410,25 @@ export function KeysTab({
         <Radio
           value="cascade"
           label={LINKAGE_STRATEGY_OPTION_COPY.cascade.label}
-          description={LINKAGE_STRATEGY_OPTION_COPY.cascade.description}
+          description={
+            editor.draft.algorithm === "psi-c"
+              ? undefined
+              : LINKAGE_STRATEGY_OPTION_COPY.cascade.description
+          }
           mt="xs"
         />
         <Radio
           value="single-pass"
           label={LINKAGE_STRATEGY_OPTION_COPY["single-pass"].label}
-          description={LINKAGE_STRATEGY_OPTION_COPY["single-pass"].description}
+          description={
+            editor.draft.algorithm === "psi-c"
+              ? undefined
+              : LINKAGE_STRATEGY_OPTION_COPY["single-pass"].description
+          }
           mt="xs"
         />
       </Radio.Group>
-      {editor.draft.linkageStrategy === "single-pass" && (
+      {runsSinglePassLink(editor.draft) && (
         <Alert
           color="yellow"
           title={SINGLE_PASS_DISCLOSURE_TITLE}
@@ -428,6 +438,11 @@ export function KeysTab({
           mt="sm"
         >
           {SINGLE_PASS_DISCLOSURE_BODY}
+        </Alert>
+      )}
+      {editor.draft.algorithm === "psi-c" && (
+        <Alert variant="light" color="gray" role="note" mt="sm">
+          {COUNT_ONLY_DECLARED_STRATEGY_STATEMENT}
         </Alert>
       )}
       {/* The accepting party's own side of the cardinality is not this control's

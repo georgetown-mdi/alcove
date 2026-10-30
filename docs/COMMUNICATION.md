@@ -52,7 +52,7 @@ Every part of the default terms is adjustable in place; there is no separate adv
 
 Per-field data cleaning is set in a Cleaning tab: the inviter authors each field's cleaning steps, raw regular-expression steps included (each marked "advanced"), and chooses which column feeds it. A whole-file coverage warning is shown, and a malformed step blocks creation, as in the acceptor's cleaning editor (below).
 
-The matching algorithm is selectable, `psi` or count-only `psi-c`; a count-only draft outside the one-key, cascade, no-payload shape a count-only run admits blocks generation and names what to change. Deduplication is selectable and declares the inviting party's own side alone; generation is blocked only under the linkage strategy that cannot match it. Fuzzy comparison is chosen per element in an expert key (below).
+The matching algorithm is selectable, `psi` or count-only `psi-c`; a count-only draft that deduplicates, sends columns, or keeps a key matching several values per record blocks generation and names what to change, and the count-only choice carries a caveat stating that the party computing the count can learn more than the count. Deduplication is selectable and declares the inviting party's own side alone; generation is blocked only under the linkage strategy that cannot match it. Fuzzy comparison is chosen per element in an expert key (below).
 
 ### Expert authoring and import/export
 

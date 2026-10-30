@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import {
   builtInRuleChoiceStatement,
   CONSENT_FACTS,
+  COUNT_ONLY_DECLARED_STRATEGY_STATEMENT,
   DEFAULT_LINKAGE_RULE_SET,
   DEDUPLICATE_ACCEPTOR_SIDE_NOTE,
   DEDUPLICATE_SHARED_RESULT_DISCLOSURE_STATEMENT,
@@ -689,6 +690,30 @@ describe("displayInvitation: the declared terms it discloses (columns, built-in 
     expect(singlePass).toContain("linkage strategy (enforced): single-pass");
     expect(singlePass).toContain("consented disclosure tradeoff");
     expect(singlePass).toContain("docs/EXCHANGE_REFERENCE.md");
+    expect(singlePass).not.toContain(COUNT_ONLY_DECLARED_STRATEGY_STATEMENT);
+  });
+
+  test("displayInvitation: count-only terms declaring single-pass state it without the single-pass disclosure", () => {
+    // A count-only run takes the cascade's rounds whichever strategy its terms
+    // name (docs/spec/PROTOCOL.md, PSI-C).
+    const log = getLogger("accept-display-count-only-strategy-test");
+    log.setLevel("silent");
+    const shown = renderDisplayInvitation(log, {
+      ...sampleToken(FUTURE()),
+      linkageTerms: {
+        ...COUNT_ONLY_PROBE_TERMS,
+        linkageStrategy: "single-pass",
+      },
+    });
+    expect(shown).toContain("linkage strategy (enforced): single-pass");
+    expect(shown).toContain(`    ${COUNT_ONLY_DECLARED_STRATEGY_STATEMENT}`);
+    expect(shown).not.toContain("consented disclosure tradeoff");
+    expect(shown).toContain(
+      missingFieldConditionStatement("date of birth", "psi-c"),
+    );
+    expect(shown).not.toContain(
+      missingFieldConditionStatement("date of birth", "psi"),
+    );
   });
 
   test("displayInvitation: states what a splitting key does, in the register its strategy puts it in", () => {
@@ -1654,8 +1679,10 @@ const COUNT_ONLY_INPUT_CHOICE_BOUND =
   "which records to ask about. A count-only exchange bounds what Alcove " +
   "hands your partner, not what its choice of records reveals. A crafted " +
   "list, or a second run differing by one record, turns a count into an " +
-  "answer about one person, and Alcove does not check what your partner " +
-  "contributes.";
+  "answer about one person. A partner that computes the count can also " +
+  "leave a different set of fields blank on each of its records and " +
+  "learn, in one run, which of them are in your data. Alcove does not " +
+  "check what your partner contributes.";
 
 /**
  * The five tier sentences, read from the shared table by this surface and by the
@@ -2127,7 +2154,7 @@ describe("displayInvitation: linkage-key detail, heading order, and the repeated
         "date of birth (only whether it is present) (less certain)",
     );
     expect(lines[keyAt + 2]).toBe(
-      `      ${missingFieldConditionStatement("date of birth")}`,
+      `      ${missingFieldConditionStatement("date of birth", "psi")}`,
     );
     expect(lines[keyAt + 2]).toContain(
       "Your partner also learns how many of your records not yet matched " +

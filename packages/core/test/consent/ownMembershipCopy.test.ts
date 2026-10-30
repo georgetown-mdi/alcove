@@ -185,6 +185,37 @@ describe("the own-membership consent pair", () => {
     ).toBe(false);
   });
 
+  test("withholds no table on count-only terms declaring single-pass", () => {
+    // A count-only run takes the cascade's rounds and has no association
+    // table to withhold, so every seat's verdict is false on the shape that
+    // is true under psi.
+    const shape = {
+      linkageStrategy: "single-pass" as const,
+      payload: { send: [], receive: [] },
+    };
+    const acceptorHelper = {
+      ...acceptorIsTheHelper(shape),
+      algorithm: "psi-c" as const,
+    };
+    const inviterHelper = {
+      ...inviterIsTheHelper(shape),
+      algorithm: "psi-c" as const,
+    };
+    expect(withholdsAcceptorAssociationTable(acceptorIsTheHelper(shape))).toBe(
+      true,
+    );
+    expect(withholdsAcceptorAssociationTable(acceptorHelper)).toBe(false);
+    expect(withholdsPartnerAssociationTable(acceptorHelper)).toBe(false);
+    expect(withholdsInviterAssociationTable(inviterHelper)).toBe(false);
+    expect(
+      summarizeInvitation({ linkageTerms: acceptorHelper })
+        .acceptorTableWithheld,
+    ).toBe(false);
+    expect(
+      summarizeInvitation({ linkageTerms: inviterHelper }).inviterTableWithheld,
+    ).toBe(false);
+  });
+
   test("reads this party's own send out of the verdict at that seat", () => {
     // A document sharing no result with the partner sends nothing whatever it
     // declares, so its own send cannot decide whether the PARTNER's half is

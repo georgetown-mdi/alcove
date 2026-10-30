@@ -1260,14 +1260,6 @@ const linkageTermsSchema = (
     // ExchangeSpecSchema. The verdict comes from the one shared reading
     // (countOnlyShapeViolation) rather than a second copy of the rule, so
     // schema and asserts cannot diverge.
-    .refine((a) => countOnlyShapeViolation(a) !== "linkageKeys", {
-      message: COUNT_ONLY_SHAPE_REFUSALS.linkageKeys,
-      path: ["linkageKeys"],
-    })
-    .refine((a) => countOnlyShapeViolation(a) !== "linkageStrategy", {
-      message: COUNT_ONLY_SHAPE_REFUSALS.linkageStrategy,
-      path: ["linkageStrategy"],
-    })
     .refine((a) => countOnlyShapeViolation(a) !== "deduplicate", {
       message: COUNT_ONLY_SHAPE_REFUSALS.deduplicate,
       path: ["deduplicate"],

@@ -456,6 +456,7 @@ export {
   assertBothSidedDeduplicateImplemented,
   assertDeduplicateImplemented,
   countOnlyShapeViolation,
+  runsSinglePassLink,
   swapPairTransformsDiffer,
 } from "./linkageTermsPolicy";
 export {
@@ -724,6 +725,7 @@ export type {
 export {
   CONSENT_BASIS_MARKERS,
   CONSENT_FACTS,
+  COUNT_ONLY_DECLARED_STRATEGY_STATEMENT,
   COUNT_ONLY_DISCLOSURE_STATEMENT,
   DEDUPLICATE_ACCEPTOR_SETTABLE_SIDE_NOTE,
   DEDUPLICATE_ACCEPTOR_SIDE_NOTE,

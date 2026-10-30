@@ -15,13 +15,16 @@
 // Each half covers what the other cannot.
 
 import { parseLinkageTerms } from "../config/linkageTermsSchema.js";
+import { MISSING_FIELD_CONDITION_TYPE_WORDS } from "../linkageKeyCondition.js";
 import {
   CONSENT_FACTS,
+  COUNT_ONLY_DECLARED_STRATEGY_STATEMENT,
   DEDUPLICATE_ACCEPTOR_SETTABLE_SIDE_NOTE,
   DEDUPLICATE_ACCEPTOR_SIDE_NOTE,
   DEDUPLICATE_SHARED_RESULT_DISCLOSURE_STATEMENT,
   DEDUPLICATE_SOLE_RECEIVER_DISCLOSURE_STATEMENT,
   describeDeduplicatePair,
+  missingFieldConditionStatement,
 } from "./consentFacts.js";
 
 import type {
@@ -157,9 +160,13 @@ interface ConsentProbeShape {
   /**
    * Copy both acceptance surfaces MUST render for this shape's variant and MUST
    * NOT render for its base, exactly as
-   * {@link ConsentRelevantTerm.requiredVariantCopy}.
+   * {@link ConsentRelevantTerm.requiredVariantCopy}. Absent for a shape
+   * measured for representation alone, whose variant owes no sentence both
+   * surfaces word alike. The surfaces read forbidden copy only beside
+   * required copy, so {@link consentRepresentationProbes} refuses a shape
+   * declaring forbidden copy without it.
    */
-  requiredVariantCopy: ReadonlyArray<string>;
+  requiredVariantCopy?: ReadonlyArray<string>;
   /**
    * Copy those surfaces MUST NOT render for this shape's variant: the sentence
    * another shape of the same field owes, which this one's run does not make.
@@ -168,7 +175,7 @@ interface ConsentProbeShape {
    * does not make -- which apps/web's invitationTerms.test.ts and apps/cli's
    * accept.test.ts hold each rendered surface to.
    */
-  forbiddenVariantCopy: ReadonlyArray<string>;
+  forbiddenVariantCopy?: ReadonlyArray<string>;
 }
 
 /**
@@ -329,12 +336,11 @@ export const CONSENT_PROBE_TERMS: LinkageTerms = {
 
 /**
  * {@link CONSENT_PROBE_TERMS} stripped to what a count-only exchange
- * accepts, `psi` still: no payload in either direction, the base's first
- * key alone, since a psi-c document declares one key and no key condition,
- * and that key declaring no candidate set -- neither the swapped order nor
- * the fuzzy expansion it declares, both of which a psi-c document is
- * refused for (docs/spec/PROTOCOL.md, PSI-C). Its cascade strategy and its
- * `deduplicate: false` come from the base and need no stripping.
+ * accepts, `psi` still: no payload in either direction, and no key declaring
+ * a candidate set -- neither the swapped order nor the fuzzy expansion the
+ * base declares, both of which a psi-c document is refused for
+ * (docs/spec/PROTOCOL.md, PSI-C). Every key and its missing-field condition
+ * stay, as do the cascade strategy and `deduplicate: false`.
  *
  * It is the `algorithm` entry's `prepare` below, so the count-only pair
  * is built on it: varied against the base as it stands, the psi-c side
@@ -344,7 +350,6 @@ export const CONSENT_PROBE_TERMS: LinkageTerms = {
 function countOnlyAdmissibleBase(terms: LinkageTerms): LinkageTerms {
   return edited(terms, (draft) => {
     draft.payload = { send: [], receive: [] };
-    draft.linkageKeys = draft.linkageKeys.slice(0, 1);
     for (const key of draft.linkageKeys) {
       delete key.swap;
       for (const element of key.elements)
@@ -369,6 +374,33 @@ export const COUNT_ONLY_PROBE_TERMS: LinkageTerms = {
   ...countOnlyAdmissibleBase(CONSENT_PROBE_TERMS),
   algorithm: "psi-c",
 };
+
+/** The shape of a probe pair measured as the base declares it, under `psi`. */
+const IDENTIFIER_REVEALING_SHAPE_NAME = "identifier-revealing";
+
+/**
+ * The shape of a probe pair moved onto the count-only tier: both sides
+ * stripped by {@link countOnlyAdmissibleBase} and set to `psi-c`, so a field
+ * a count-only document admits -- several keys, `single-pass`, a missing-field
+ * condition -- is measured where a count-only acceptor reads it too.
+ */
+const COUNT_ONLY_SHAPE_NAME = "count-only";
+
+function countOnlyShape(terms: LinkageTerms): LinkageTerms {
+  return { ...countOnlyAdmissibleBase(terms), algorithm: "psi-c" };
+}
+
+/** The probe base's missing-field condition line under each algorithm. */
+const PSI_MISSING_DATE_STATEMENT = missingFieldConditionStatement(
+  MISSING_FIELD_CONDITION_TYPE_WORDS.date_of_birth,
+  "psi",
+);
+
+/** @internal */
+const COUNT_ONLY_MISSING_DATE_STATEMENT = missingFieldConditionStatement(
+  MISSING_FIELD_CONDITION_TYPE_WORDS.date_of_birth,
+  "psi-c",
+);
 
 /**
  * @internal
@@ -482,9 +514,8 @@ export const LINKAGE_TERM_CONSENT_CLASSIFICATION: Record<
     reason:
       "Decides whether the exchange reveals the matched identifiers (`psi`) or " +
       "only their count (`psi-c`) -- and with the count, each party's record " +
-      "count and the number of key values occurring exactly once in its " +
-      "file, which the count-only tier states and a surface omitting the " +
-      "tier does not.",
+      "count and what the receiver's software derives beside it, which the " +
+      "count-only tier states and a surface omitting the tier does not.",
     // A count-only exchange accepts neither a payload nor a candidate set, so
     // the pair is built on a base declaring neither -- countOnlyAdmissibleBase
     // above states what it strips and why. Both sides are that same stripped
@@ -500,7 +531,20 @@ export const LINKAGE_TERM_CONSENT_CLASSIFICATION: Record<
     reason:
       "`single-pass` hands the receiver the full per-key value structure in one " +
       "batch, so it observes matches on less precise keys a cascade would have " +
-      "filtered out first.",
+      "filtered out first. A count-only run takes the cascade's rounds " +
+      "whichever strategy its terms name, which its surfaces state instead.",
+    // The single-pass disclosure each surface words for itself under `psi`, so
+    // that shape is measured for representation alone; the count-only line is
+    // one sentence from core, pinned on both acceptance surfaces.
+    shapes: [
+      { name: IDENTIFIER_REVEALING_SHAPE_NAME },
+      {
+        name: COUNT_ONLY_SHAPE_NAME,
+        shape: countOnlyShape,
+        requiredVariantCopy: [COUNT_ONLY_DECLARED_STRATEGY_STATEMENT],
+        forbiddenVariantCopy: [],
+      },
+    ],
     vary: (terms) =>
       edited(terms, (draft) => {
         draft.linkageStrategy = "single-pass";
@@ -771,6 +815,12 @@ export const LINKAGE_TERM_CONSENT_CLASSIFICATION: Record<
     reason:
       "Names the matching round the acceptor is agreeing to, and anchors the " +
       "per-key rules each surface lists under it.",
+    // Measured on a count-only document of several keys too, since each of
+    // its keys is a round of the count.
+    shapes: [
+      { name: IDENTIFIER_REVEALING_SHAPE_NAME },
+      { name: COUNT_ONLY_SHAPE_NAME, shape: countOnlyShape },
+    ],
     vary: (terms) =>
       edited(terms, (draft) => {
         draft.linkageKeys[0].name = "given name and family name";
@@ -781,6 +831,10 @@ export const LINKAGE_TERM_CONSENT_CLASSIFICATION: Record<
     reason:
       "Which declared field a key element matches on, and so which PII the " +
       "intersection is computed over.",
+    shapes: [
+      { name: IDENTIFIER_REVEALING_SHAPE_NAME },
+      { name: COUNT_ONLY_SHAPE_NAME, shape: countOnlyShape },
+    ],
     vary: (terms) =>
       edited(terms, (draft) => {
         draft.linkageKeys[0].elements[2].field = "family_name";
@@ -859,10 +913,31 @@ export const LINKAGE_TERM_CONSENT_CLASSIFICATION: Record<
     reason:
       "Runs the key only where one side's record has no valid value for the " +
       "field, so a match through it tells a party receiving the result which " +
-      "of the two records had none.",
-    vary: (terms) =>
+      "of the two records had none -- or, on a count-only exchange, tells the " +
+      "software of the party computing the count.",
+    // The pair is built on a base with the condition removed and the variant
+    // adding it back, so the condition line each algorithm owes is required of
+    // the variant and absent from the base.
+    prepare: (terms) =>
       edited(terms, (draft) => {
         delete draft.linkageKeys[1].condition;
+      }),
+    shapes: [
+      {
+        name: IDENTIFIER_REVEALING_SHAPE_NAME,
+        requiredVariantCopy: [PSI_MISSING_DATE_STATEMENT],
+        forbiddenVariantCopy: [COUNT_ONLY_MISSING_DATE_STATEMENT],
+      },
+      {
+        name: COUNT_ONLY_SHAPE_NAME,
+        shape: countOnlyShape,
+        requiredVariantCopy: [COUNT_ONLY_MISSING_DATE_STATEMENT],
+        forbiddenVariantCopy: [PSI_MISSING_DATE_STATEMENT],
+      },
+    ],
+    vary: (terms) =>
+      edited(terms, (draft) => {
+        draft.linkageKeys[1].condition = { missingField: "birth_date" };
       }),
   },
   "payload.send[].name": {
@@ -1035,6 +1110,15 @@ export function consentRepresentationProbes(
     const shapes: ReadonlyArray<ConsentProbeShape | undefined> =
       entry.shapes ?? [undefined];
     for (const shape of shapes) {
+      if (
+        shape?.requiredVariantCopy === undefined &&
+        (shape?.forbiddenVariantCopy ?? []).length > 0
+      )
+        throw new InternalConsistencyError(
+          `${path} (${shape?.name}) declares forbidden copy and no required ` +
+            `copy: the surfaces check forbidden copy only on a shape that ` +
+            `pins required copy, so it would go unmeasured.`,
+        );
       const shaped = shape?.shape?.(prepared) ?? prepared;
       const requiredVariantCopy =
         shape?.requiredVariantCopy ?? entry.requiredVariantCopy;

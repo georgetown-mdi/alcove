@@ -130,6 +130,7 @@ describe("the missing-field control's choices", () => {
     for (const copy of [
       KEY_CONDITION_CONTROL.label,
       KEY_CONDITION_CONTROL.description,
+      KEY_CONDITION_CONTROL.countOnlyDescription,
       KEY_CONDITION_CONTROL.placeholder,
     ])
       expect(copy).not.toMatch(/_|missingField|condition/);
@@ -274,24 +275,14 @@ describe("Generate is held where core refuses, in the web app's words", () => {
     expect(message).not.toMatch(SCHEMA_WORDS);
   });
 
-  test("for a count-only draft", () => {
+  test("admits a condition on a count-only draft", () => {
     const { draft, seed } = draftWithNamesAndSsn4();
     const authored = updateKeyAt(
       behindAKeyThatIsOff({ ...draft, algorithm: "psi-c" }),
       1,
       (key) => withKeyCondition(key, "date_of_birth"),
     );
-    const refusal = expectedRefusal(authored);
-    expect(refusal.rule).toBe("countOnly");
-    const message = validateAdvancedInvite(authored, seed).errors.keys;
-    expect(message).toBe(keyConditionRefusalMessage(refusal, authored.keys));
-    expect(message).toBe(
-      "A count-only exchange runs its one linkage key in one round, but a " +
-        'key set to "Match only where a field is missing" runs in two. Clear ' +
-        'the choice on Key 2, or set Matching method to "Reveal the matched ' +
-        'identifiers (standard)" on Matching & sharing.',
-    );
-    expect(message).not.toMatch(SCHEMA_WORDS);
+    expect(validateAdvancedInvite(authored, seed).errors.keys).toBeUndefined();
   });
 
   test("names no key where the refusal does not locate one", () => {
@@ -303,10 +294,10 @@ describe("Generate is held where core refuses, in the web app's words", () => {
     ).toMatch(/^A linkage key is set to /);
     expect(
       keyConditionRefusalMessage(
-        { rule: "countOnly", message: "", path: ["linkageKeys", 3] },
+        { rule: "readsField", message: "", path: ["linkageKeys", 3] },
         [],
       ),
-    ).toMatch(/Clear the choice, or set Matching method/);
+    ).toMatch(/^A linkage key matches on a date of birth/);
   });
 });
 

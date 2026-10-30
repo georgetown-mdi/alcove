@@ -115,7 +115,7 @@ A column with `is_payload: false`, or not listed, is not sent.
 | **`expects_output: true`, `share_with_partner: false`** | Only you get one. You send no columns. | Only you need the list. Your partner sees no list, and no count outside a debug log ([A list or only a count](./agree-on-terms.md#a-list-or-only-a-count)). |
 | **`expects_output: false`, `share_with_partner: true`** | Only your partner gets one. Your partner sends no columns, so leave out `payload.receive`. | Only your partner needs the list. |
 
-**A list or only a count** ([A list or only a count](./agree-on-terms.md#a-list-or-only-a-count)). For a count, set `algorithm: psi-c`, delete every key in `linkage_keys` but one, set every column to `is_payload: false`, and add no `payload.receive`.
+**A list or only a count** ([A list or only a count](./agree-on-terms.md#a-list-or-only-a-count)). For a count, set `algorithm: psi-c`, set every column to `is_payload: false`, add no `payload.receive`, and delete each key in `linkage_keys` that matches several values per record: one with a `split_on` step, `generate_fuzzy_comparisons`, or `swap`, such as `swap(LN, FN) + DOB` and `split(LN) + FN + DOB` in the written configuration.
 
 ### 4. Create the invitation
 

@@ -386,10 +386,13 @@ describe("the terms schema", () => {
     ).toContain(KEY_CONDITION_REFUSALS.readsField);
   });
 
-  test("refuses a condition under the count-only algorithm", () => {
+  test("admits a condition under the count-only algorithm", () => {
     expect(
-      refusal({ ...(withKeys(NO_DATE_KEY) as object), algorithm: "psi-c" }),
-    ).toContain(KEY_CONDITION_REFUSALS.countOnly);
+      safeParseLinkageTerms({
+        ...(withKeys(NO_DATE_KEY) as object),
+        algorithm: "psi-c",
+      }).success,
+    ).toBe(true);
   });
 
   test("counts the condition's field among the fields the keys read", () => {

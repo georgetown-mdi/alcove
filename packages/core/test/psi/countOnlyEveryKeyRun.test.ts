@@ -255,12 +255,7 @@ async function run(
         options.senderData ?? roundsOf(sender),
         report,
         maxCount,
-        0,
-        undefined,
-        {
-          construction: "every-key",
-          declared: options.senderDeclared ?? declared,
-        },
+        options.senderDeclared ?? declared,
       ),
     ),
     settle(
@@ -271,12 +266,7 @@ async function run(
         roundsOf(receiver),
         report,
         maxCount,
-        0,
-        undefined,
-        {
-          construction: "every-key",
-          declared: options.receiverDeclared ?? declared,
-        },
+        options.receiverDeclared ?? declared,
       ),
     ),
   ]);

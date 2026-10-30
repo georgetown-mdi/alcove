@@ -6,7 +6,6 @@ import {
   UsageError,
   statesItsOwnNextStep,
 } from "../../src/errors";
-import { COUNT_ONLY_CONSTRUCTION } from "../../src/exchange/countOnlyConstruction";
 import {
   assertFirstRoundWithinSetMaximum,
   roundOneSetOverMaximumMessage,
@@ -109,10 +108,10 @@ test("the check leaves a single-pass exchange to its dataset ceiling", async () 
   );
 });
 
-describe("under the every-key count-only construction", () => {
+describe("in a count-only exchange", () => {
   // Every round sends one value per record, so the check weighs the record
-  // count, whatever share of the records hold a value only they hold.
-  const everyKey = { [COUNT_ONLY_CONSTRUCTION]: "every-key" } as const;
+  // count, whatever share of the records hold a value only they hold. The
+  // check takes the construction from the terms alone, as the run does.
   const countOnly = (rows: Array<string>) =>
     prepared(
       "Tester",
@@ -130,8 +129,8 @@ describe("under the every-key count-only construction", () => {
     }
     return undefined;
   };
-  // Twenty distinct values and the rest one value every record shares: the
-  // shipped round sends twenty values, the every-key round one per record.
+  // Twenty distinct values and the rest one value every record shares: a
+  // cascade round sends twenty values, a count-only round one per record.
   const rows = (count: number) =>
     Array.from({ length: count }, (_unused, i) =>
       i < 20 ? distinctFirstName(i) : distinctFirstName(500),
@@ -139,11 +138,10 @@ describe("under the every-key count-only construction", () => {
 
   test("the check refuses a record count one over the bound and admits it at the bound", async () => {
     expect(
-      await refusalUnder(countOnly(rows(300)), { maxValues: 300, ...everyKey }),
+      await refusalUnder(countOnly(rows(300)), { maxValues: 300 }),
     ).toBeUndefined();
     const refusal = await refusalUnder(countOnly(rows(301)), {
       maxValues: 300,
-      ...everyKey,
     });
     expect(refusal).toBeInstanceOf(RoundSetLimitError);
     expect((refusal as RoundSetLimitError).reason).toBe("over-set-maximum");
@@ -154,11 +152,6 @@ describe("under the every-key count-only construction", () => {
     expect((refusal as Error).message).toMatch(
       /^Too large to send: a count-only exchange sends 301 values for every linkage key, over the 300 one PSI set can hold\. Nothing was sent\. Split the input/,
     );
-
-    // The shipped construction counts the twenty values, and admits it.
-    expect(
-      await refusalUnder(countOnly(rows(301)), { maxValues: 300 }),
-    ).toBeUndefined();
   });
 
   test("the check weighs the record count without reading a record", async () => {
@@ -170,27 +163,24 @@ describe("under the every-key count-only construction", () => {
     );
     expect(
       await refusalUnder(exchange, {
-        ...everyKey,
         onProgress: (report) => void reports.push(report),
       }),
     ).toBeUndefined();
     const over = await refusalUnder(
       { ...exchange, rowCount: MAX_PSI_DECODE_ELEMENTS + 1 },
-      everyKey,
+      {},
     );
     expect(over).toBeInstanceOf(RoundSetLimitError);
     expect((over as RoundSetLimitError).reason).toBe("over-set-maximum");
     expect(reports).toEqual([]);
   });
 
-  test("a psi exchange is counted as before under the selector", async () => {
+  test("a psi exchange over the same rows counts its values", async () => {
     const psi = preparedFirstNames(rows(301));
-    expect(
-      await refusalUnder(psi, { maxValues: 300, ...everyKey }),
-    ).toBeUndefined();
+    expect(await refusalUnder(psi, { maxValues: 300 })).toBeUndefined();
   });
 
-  test("the every-key refusal survives the display boundary whole at the real bound", () => {
+  test("the count-only refusal survives the display boundary whole at the real bound", () => {
     const shown = sanitizeErrorForDisplay(
       new RoundSetLimitError(
         roundOneSetOverMaximumMessage(

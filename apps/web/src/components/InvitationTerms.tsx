@@ -17,6 +17,7 @@ import { useReducedMotion } from "@mantine/hooks";
 
 import {
   CONSENT_FACTS,
+  COUNT_ONLY_DECLARED_STRATEGY_STATEMENT,
   COUNT_ONLY_DISCLOSURE_STATEMENT,
   DEDUPLICATE_ACCEPTOR_SETTABLE_SIDE_NOTE,
   DEDUPLICATE_ACCEPTOR_SIDE_NOTE,
@@ -31,6 +32,7 @@ import {
   UNRECOGNIZED_TRANSFORM_NOTE,
   builtInRuleChoiceStatement,
   describeDeduplicatePair,
+  runsSinglePassLink,
   summarizeInvitation,
   turnUrlIsAllowed,
   unshownDeclaredNamesLine,
@@ -1211,21 +1213,29 @@ export function InvitationTerms({
             for single-pass (cascade is the baseline that discloses less).
             Viewer-neutral, since which party becomes the disclosing sender is
             settled at exchange time. Mirrors the inviter's Alert and the CLI's
-            singlePassDisclosureNotice. */}
+            linkageStrategyNote: count-only terms declaring single-pass run the
+            cascade's rounds, so they state the strategy as written without the
+            single-pass disclosure (docs/spec/PROTOCOL.md, PSI-C). */}
         {summary.linkageStrategy === "single-pass" && (
           // No emphasis tag on the lead: the Term's bold "Linkage strategy"
           // caption already anchors the block, so a second bold restating it would
           // double up for screen readers and visual scanning alike.
           <Term label="Linkage strategy">
-            <Text size="sm">
-              This exchange matches in a single pass. That means one of you
-              sends the other everything it prepared for every linkage key at
-              once, so that party also sees matches on the weaker keys, not only
-              the strongest. Which of you sends is decided when the exchange
-              runs, so it may be you. Both parties must agree to single-pass.
-              The matched result is the same either way; what differs is how
-              much your partner can observe while it runs.
-            </Text>
+            {runsSinglePassLink(summary) ? (
+              <Text size="sm">
+                This exchange matches in a single pass. That means one of you
+                sends the other everything it prepared for every linkage key at
+                once, so that party also sees matches on the weaker keys, not
+                only the strongest. Which of you sends is decided when the
+                exchange runs, so it may be you. Both parties must agree to
+                single-pass. The matched result is the same either way; what
+                differs is how much your partner can observe while it runs.
+              </Text>
+            ) : (
+              <Text size="sm">
+                Single-pass. {COUNT_ONLY_DECLARED_STRATEGY_STATEMENT}
+              </Text>
+            )}
           </Term>
         )}
 

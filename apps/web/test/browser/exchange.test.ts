@@ -30,6 +30,7 @@ import {
 
 import { Lobby } from "@exchange/Lobby";
 
+import { COUNT_ONLY_CHOICE_CAVEAT } from "@psi/formatting";
 import { InvitationFileError } from "@psi/invitation";
 import { InviterScreen } from "@exchange/InviterScreen";
 import { stagesFor } from "@exchange/exchangeRun";
@@ -721,6 +722,12 @@ describe("inviter screen", () => {
     await expect
       .element(page.getByLabelText("Who receives the matched results"))
       .toHaveValue("both");
+    // The count-only choice states its caveats where it is made.
+    await expect
+      .element(
+        page.getByRole("radio", { name: "Reveal only the count (psi-c)" }),
+      )
+      .toHaveAccessibleDescription(COUNT_ONLY_CHOICE_CAVEAT);
 
     await page
       .getByLabelText(usedLabel("client_id"))

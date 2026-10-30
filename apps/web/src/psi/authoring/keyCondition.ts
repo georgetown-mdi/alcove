@@ -22,13 +22,21 @@ import type {
 } from "@alcove/core";
 import type { DraftKey } from "./advancedInviteTypes";
 
-/** The control's label, description and empty-choice placeholder. */
+/** The control's label, description and empty-choice placeholder. Under
+ * `psi` a match tells whoever receives the result which record lacked the
+ * field; a count-only exchange writes no result, but the software computing
+ * the count learns the same (docs/spec/PROTOCOL.md, PSI-C, What each party
+ * learns, and on what basis). */
 export const KEY_CONDITION_CONTROL = {
   label: "Match only where a field is missing",
   description:
     "Use this key only for pairs where one side's record has no valid value " +
     "for the field you choose. A match through it tells whoever receives the " +
     "result which record had none.",
+  countOnlyDescription:
+    "Use this key only for pairs where one side's record has no valid value " +
+    "for the field you choose. The software of the party that computes the " +
+    "count learns, for each match through it, which record had none.",
   placeholder: "Every record",
 } as const;
 
@@ -115,11 +123,6 @@ const KEY_CONDITION_REFUSAL_MESSAGES: Readonly<
     "to match only where that date of birth is missing, so it can never " +
     `match. ${OPEN_THE_KEY} and remove the date of birth element, or clear ` +
     "the choice.",
-  countOnly: (key) =>
-    "A count-only exchange runs its one linkage key in one round, but a " +
-    `key set to "${KEY_CONDITION_CONTROL.label}" runs in two. Clear the ` +
-    `choice${key === undefined ? "" : ` on ${key}`}, or ` +
-    REVEAL_IDENTIFIERS_INSTEAD,
 };
 
 /**

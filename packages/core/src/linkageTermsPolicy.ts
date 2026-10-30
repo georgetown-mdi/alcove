@@ -23,8 +23,7 @@ import type { LinkageCardinality } from "./psi/link.js";
  * input metadata lives in `config/metadata.ts`
  * ({@link countOnlyTransmitsColumn}).
  */
-export type CountOnlyShapeViolation =
-  "linkageKeys" | "linkageStrategy" | "deduplicate" | "payload";
+export type CountOnlyShapeViolation = "deduplicate" | "payload";
 
 /**
  * The refusal message per count-only shape rule, read by every enforcement
@@ -38,14 +37,6 @@ export const COUNT_ONLY_SHAPE_REFUSALS: Readonly<
     string
   >
 > = {
-  linkageKeys:
-    'count-only ("psi-c") linkage terms must declare exactly one linkage ' +
-    "key. Declare a single linkage key, or set algorithm to " +
-    '"psi" to match on several.',
-  linkageStrategy:
-    'count-only ("psi-c") linkage terms must set linkage_strategy to ' +
-    '"cascade". Set linkage_strategy to "cascade", or set algorithm ' +
-    'to "psi".',
   deduplicate:
     'count-only ("psi-c") linkage terms must set deduplicate to false, ' +
     "because a count-only exchange pairs no records. Set deduplicate to " +
@@ -76,30 +67,7 @@ export const COUNT_ONLY_SHAPE_REFUSALS: Readonly<
 export function countOnlyShapeViolation(
   terms: LinkageTerms,
 ): CountOnlyShapeViolation | undefined {
-  return shapeViolation(terms, false);
-}
-
-/**
- * {@link countOnlyShapeViolation} with several linkage keys and a declared
- * `single-pass` admitted: the rules the agreed-terms run boundary holds the
- * `every-key` count-only construction to.
- *
- * @internal
- */
-export function countOnlyEveryKeyShapeViolation(
-  terms: LinkageTerms,
-): CountOnlyShapeViolation | undefined {
-  return shapeViolation(terms, true);
-}
-
-function shapeViolation(
-  terms: LinkageTerms,
-  everyKey: boolean,
-): CountOnlyShapeViolation | undefined {
   if (terms.algorithm !== "psi-c") return undefined;
-  if (!everyKey && terms.linkageKeys.length > 1) return "linkageKeys";
-  if (!everyKey && terms.linkageStrategy !== "cascade")
-    return "linkageStrategy";
   if (terms.deduplicate) return "deduplicate";
   if (
     (terms.payload?.send?.length ?? 0) > 0 ||

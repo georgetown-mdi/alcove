@@ -8,6 +8,7 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import {
   CONSENT_FACTS,
   getLogger,
+  COUNT_ONLY_DECLARED_STRATEGY_STATEMENT,
   COUNT_ONLY_DISCLOSURE_STATEMENT,
   DEDUPLICATE_PARTNER_DECLARED_DISCLOSURE_STATEMENT,
   DEDUPLICATE_PARTNER_DECLARED_SIDE_NOTE,
@@ -16,8 +17,10 @@ import {
   LESS_CERTAIN_KEY_COPY,
   missingFieldConditionStatement,
   setDiagnosticSink,
+  summarizeInvitation,
 } from "@alcove/core";
 import {
+  COUNT_ONLY_PROBE_TERMS,
   SELF_AUTHORED_EXCHANGE_FACTS,
   consentRepresentationProbes,
 } from "@alcove/core/testing";
@@ -39,7 +42,10 @@ import {
   lastRecordedDisclosureDigest,
   renderExchangeDisclosure,
 } from "../../src/exchangeDisclosure";
-import { LESS_CERTAIN_REMEDY } from "../../src/invitationDisplay";
+import {
+  LESS_CERTAIN_REMEDY,
+  logDecisionFacts,
+} from "../../src/invitationDisplay";
 import type { ProtocolConnectionConfig } from "../../src/protocol";
 import { configureLogFile } from "../../src/util/logging";
 import {
@@ -604,9 +610,10 @@ const lessCertainTerms: LinkageTerms = {
   ],
 };
 
-test("a key with a missing-date condition states, beneath it, the line every review surface states", () => {
-  const lines = rendered({
+const missingDateTerms = (algorithm: LinkageTerms["algorithm"]) =>
+  rendered({
     ...lessCertainTerms,
+    algorithm,
     linkageFields: [
       ...lessCertainTerms.linkageFields,
       { name: "last4", type: "ssn4" },
@@ -623,13 +630,16 @@ test("a key with a missing-date condition states, beneath it, the line every rev
       },
     ],
   });
-  const keyAt = lines.indexOf(
-    "    - no date: first name - last name - SSN (last 4) - " +
-      "date of birth (only whether it is present)",
-  );
+const MISSING_DATE_KEY_LINE =
+  "    - no date: first name - last name - SSN (last 4) - " +
+  "date of birth (only whether it is present)";
+
+test("a key with a missing-date condition states, beneath it, the line every review surface states", () => {
+  const lines = missingDateTerms("psi");
+  const keyAt = lines.indexOf(MISSING_DATE_KEY_LINE);
   expect(keyAt).toBeGreaterThanOrEqual(0);
   expect(lines[keyAt + 1]).toBe(
-    `      ${missingFieldConditionStatement("date of birth")}`,
+    `      ${missingFieldConditionStatement("date of birth", "psi")}`,
   );
   expect(lines[keyAt + 1]).toContain(
     "tells a party receiving the result which of the two records had none",
@@ -637,6 +647,18 @@ test("a key with a missing-date condition states, beneath it, the line every rev
   expect(lines[keyAt + 1]).toContain(
     "Your partner also learns how many of your records not yet matched " +
       "have no valid date of birth.",
+  );
+});
+
+test("on count-only terms the missing-date line states what the rounds disclose, not the psi disclosure", () => {
+  const lines = missingDateTerms("psi-c");
+  const keyAt = lines.indexOf(MISSING_DATE_KEY_LINE);
+  expect(keyAt).toBeGreaterThanOrEqual(0);
+  expect(lines[keyAt + 1]).toBe(
+    `      ${missingFieldConditionStatement("date of birth", "psi-c")}`,
+  );
+  expect(lines.join("\n")).not.toContain(
+    "tells a party receiving the result which of the two records had none",
   );
 });
 
@@ -792,6 +814,72 @@ test("a count-only run keeps that account whichever party the count goes to", ()
   );
   expect(lines).toContain("so this run stops before it starts");
 });
+
+// --- The count-only tier -------------------------------------------------------
+
+// The count-only shapes a configuration file can run: several keys, one with a
+// missing-field condition, under either strategy, the count going to both
+// parties or to this one alone.
+const countOnlyRunShapes = (["cascade", "single-pass"] as const).flatMap(
+  (linkageStrategy) =>
+    [true, false].map((shareWithPartner) => ({
+      label: `${linkageStrategy}, ${shareWithPartner ? "both parties receive" : "this party alone receives"}`,
+      terms: {
+        ...COUNT_ONLY_PROBE_TERMS,
+        linkageStrategy,
+        output: { expectsOutput: true, shareWithPartner },
+      } satisfies LinkageTerms,
+    })),
+);
+
+test("the count-only probe terms hold several keys and a missing-field condition", () => {
+  expect(COUNT_ONLY_PROBE_TERMS.linkageKeys.length).toBeGreaterThan(1);
+  expect(
+    COUNT_ONLY_PROBE_TERMS.linkageKeys.some(
+      (key) => key.condition !== undefined,
+    ),
+  ).toBe(true);
+});
+
+test.each(countOnlyRunShapes)(
+  "a count-only run states the tier the accept display states ($label)",
+  ({ terms }) => {
+    const lines = rendered(terms);
+    // The accept display's own lines for the same terms, from the algorithm
+    // line down to the input-choice note, appear here unbroken.
+    const accepted: string[] = [];
+    logDecisionFacts(
+      (line) => accepted.push(line),
+      summarizeInvitation({ linkageTerms: terms }),
+      [],
+    );
+    const tierStart = accepted.indexOf("  PSI algorithm (enforced): psi-c");
+    const tierEnd = accepted.indexOf(
+      `    ${CONSENT_FACTS.countOnlyInputChoice.note}`,
+    );
+    expect(tierStart).toBeGreaterThanOrEqual(0);
+    expect(tierEnd).toBeGreaterThan(tierStart);
+    const tier = accepted.slice(tierStart, tierEnd + 1);
+    const at = lines.indexOf(tier[0]);
+    expect(at).toBeGreaterThanOrEqual(0);
+    expect(lines.slice(at, at + tier.length)).toEqual(tier);
+
+    expect(tier).toEqual(
+      expect.arrayContaining([
+        `    ${COUNT_ONLY_DISCLOSURE_STATEMENT}`,
+        `    ${CONSENT_FACTS.countOnlyResult.note}`,
+        `    ${CONSENT_FACTS.countOnlyRoundDisclosures.note}`,
+        `    ${CONSENT_FACTS.countOnlyInputChoice.note}`,
+      ]),
+    );
+    expect(
+      tier.includes(`    ${CONSENT_FACTS.countOnlyReportedCount.note}`),
+    ).toBe(terms.output.shareWithPartner);
+    expect(lines.join("\n")).toContain(
+      missingFieldConditionStatement("date of birth", "psi-c"),
+    );
+  },
+);
 
 // --- What a partner entitled to no result still learns -------------------------
 
@@ -1150,6 +1238,20 @@ test("single-pass linkage states the disclosure it trades for its round trip", (
   }).join("\n");
   expect(lines).toContain("linkage strategy (enforced): single-pass");
   expect(lines).toContain("single-pass linkage means one of you sends");
+  expect(lines).not.toContain(COUNT_ONLY_DECLARED_STRATEGY_STATEMENT);
+});
+
+test("count-only terms declaring single-pass state it without the single-pass disclosure", () => {
+  // A count-only run takes the cascade's rounds whichever strategy its terms
+  // name (docs/spec/PROTOCOL.md, PSI-C).
+  const lines = rendered({
+    ...localTerms,
+    algorithm: "psi-c",
+    linkageStrategy: "single-pass",
+  }).join("\n");
+  expect(lines).toContain("linkage strategy (enforced): single-pass");
+  expect(lines).toContain(`    ${COUNT_ONLY_DECLARED_STRATEGY_STATEMENT}`);
+  expect(lines).not.toContain("single-pass linkage means one of you sends");
 });
 
 // --- The facts this seat alone can state --------------------------------------

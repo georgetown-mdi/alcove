@@ -136,7 +136,7 @@ Measured with 20 records on each side and 27 linkage keys, both parties on one m
 | SFTP | about 14 minutes | 5 seconds (default) |
 | WebRTC | 3 to 5 seconds | none |
 
-On SFTP and a shared folder, each linkage key takes several rounds, and each round waits up to one check interval for your partner's file. The number of keys and the interval set the pace, far more than the record count. A count-only exchange uses 1 key and took 4 seconds over a shared folder.
+On SFTP and a shared folder, each linkage key takes several rounds, and each round waits up to one check interval for your partner's file. The number of keys and the interval set the pace, far more than the record count.
 
 To shorten an SFTP test run, add `--polling-frequency 1s` to `alcove exchange`, on a server you control: a shorter interval can trip a server's limit on rapid requests. With it, the same SFTP run took 4 minutes.
 

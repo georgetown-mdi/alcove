@@ -16,6 +16,10 @@ export const ALLOWED_RELAYS_GUIDE_URL = `${PROJECT_SITE_URL}/docs/WEB_APP#allowe
 /** What each setting on the Relay server page does. */
 export const RELAY_SETTINGS_GUIDE_URL = `${PROJECT_SITE_URL}/docs/WEB_APP#relay-settings`;
 
+/** The `linkage_terms.algorithm` key the console writes the matching method
+ * into. */
+export const CONSOLE_ALGORITHM_GUIDE_URL = `${PROJECT_SITE_URL}/docs/EXCHANGE_REFERENCE#linkage_termsalgorithm`;
+
 /** The `connection.allowed_relays` key the console writes a run's Allowed
  * relays into. */
 export const CONSOLE_ALLOWED_RELAYS_GUIDE_URL = `${PROJECT_SITE_URL}/docs/EXCHANGE_REFERENCE#connectionallowed_relays`;

@@ -16,7 +16,6 @@ import {
   partnerRoundValues,
   runExchange,
 } from "../src/exchange";
-import { COUNT_ONLY_CONSTRUCTION } from "../src/exchange/countOnlyConstruction";
 import { roundOneSetOverPartnerCeilingMessage } from "../src/exchange/firstRoundCapacity";
 import {
   PSI_SET_REFUSED_ABORT_REASON,
@@ -119,9 +118,8 @@ async function runPair(params: {
   strategy?: LinkageStrategy;
   swapped?: boolean;
   options?: Partial<RunExchangeOptions>;
-  /** Both parties' algorithm, with the run options both parties take. */
+  /** Both parties' algorithm. */
   algorithm?: Algorithm;
-  bothOptions?: Partial<RunExchangeOptions>;
 }) {
   const [local, partner] = createMessagePipe();
   const sent: Array<unknown> = [];
@@ -138,7 +136,7 @@ async function runPair(params: {
         0,
         params.algorithm,
       ),
-      { psiLibrary, ...params.bothOptions, ...params.options },
+      { psiLibrary, ...params.options },
     ),
     runExchange(
       withCeiling(partner, undefined, partnerSent),
@@ -151,7 +149,7 @@ async function runPair(params: {
         params.partnerSharedRows,
         params.algorithm,
       ),
-      { psiLibrary, ...params.bothOptions },
+      { psiLibrary },
     ),
   ]);
   return { local: outcomes[0], partner: outcomes[1], sent, partnerSent };
@@ -537,16 +535,11 @@ test("a failure of the capacity check other than a capacity refusal propagates a
   );
 });
 
-describe("under the every-key count-only construction", () => {
+describe("in a count-only exchange", () => {
   // Every round's set holds one value per record (docs/spec/PROTOCOL.md,
   // PSI-C), so a party is weighed at its record count however many of its
-  // values the shipped round would drop.
-  const countOnly = (everyKey: boolean) => ({
-    algorithm: "psi-c" as const,
-    bothOptions: everyKey
-      ? { [COUNT_ONLY_CONSTRUCTION]: "every-key" as const }
-      : {},
-  });
+  // records share a value.
+  const countOnly = { algorithm: "psi-c" as const };
 
   test("the partner's round is its record count", () => {
     const terms = preparedRows("Partner Co", 12, "cascade", false, 4, "psi-c");
@@ -554,24 +547,14 @@ describe("under the every-key count-only construction", () => {
   });
 
   test("a sender partner over this party's ceiling is refused for its record count, before either party sends a set", async () => {
-    // 12 records, 8 of them sharing 4 values: the shipped round sends the 4
-    // values only one record holds, the every-key round 12.
-    const shipped = await runPair({
-      localRows: 5,
-      partnerRows: 12,
-      partnerSharedRows: 4,
-      ceiling: 11,
-      ...countOnly(false),
-    });
-    expect(shipped.local.status).toBe("fulfilled");
-    expect(shipped.partner.status).toBe("fulfilled");
-
+    // 12 records, 8 of them sharing 4 values: a cascade round would send the
+    // 4 values only one record holds, a count-only round 12.
     const { local, partner, sent, partnerSent } = await runPair({
       localRows: 5,
       partnerRows: 12,
       partnerSharedRows: 4,
       ceiling: 11,
-      ...countOnly(true),
+      ...countOnly,
     });
     const refusal = (partner as PromiseRejectedResult).reason as Error;
     expect(refusal).toBeInstanceOf(RoundSetLimitError);
@@ -601,7 +584,7 @@ describe("under the every-key count-only construction", () => {
       partnerRows: 5,
       partnerSharedRows: 1,
       ceiling: 4,
-      ...countOnly(true),
+      ...countOnly,
     });
     expect(((partner as PromiseRejectedResult).reason as Error).message).toBe(
       roundOneSetOverPartnerCeilingMessage(5, 4, true),
@@ -615,7 +598,7 @@ describe("under the every-key count-only construction", () => {
       partnerRows: 12,
       partnerSharedRows: 4,
       ceiling: 12,
-      ...countOnly(true),
+      ...countOnly,
     });
     expect(local.status).toBe("fulfilled");
     expect(partner.status).toBe("fulfilled");
@@ -627,7 +610,7 @@ describe("under the every-key count-only construction", () => {
       localRows: 5,
       partnerRows: 12,
       partnerSharedRows: 4,
-      ...countOnly(true),
+      ...countOnly,
       options: {
         checkPartnerRoundCapacity: (values) => void seen.push(values),
       },

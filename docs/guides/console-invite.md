@@ -68,7 +68,7 @@ Screen: Step 3 of 3 - Review & create
 | **Invitation duration**: **1 hour** | Your partner must accept within 1 hour | Usual: your partner is ready to accept now |
 | **Invitation duration**: **6 hours**, **1 day**, **7 days**, **30 days** or **1 year** | Gives your partner longer to accept | Your partner accepts later |
 
-If you agreed on a count only, other built-in rules, or a different strategy, choose **Change** beside **Matching keys** under **Exchange proposal**. That opens **Matching keys**, with **Built-in rules** (default **Broader matching**) and **Linkage strategy** (default **Cascade**). For a count only, untick every key but one. Choose **Back to Review & create** when done. What each one means: [Agree on terms](./agree-on-terms.md#where-each-decision-is-set).
+If you agreed on a count only, other built-in rules, or a different strategy, choose **Change** beside **Matching keys** under **Exchange proposal**. That opens **Matching keys**, with **Built-in rules** (default **Broader matching**) and **Linkage strategy** (default **Cascade**). For a count only, untick each key with a name containing `split(`, `swap(`, `+/-` or `day/month exchanged`. Choose **Back to Review & create** when done. What each one means: [Agree on terms](./agree-on-terms.md#where-each-decision-is-set).
 
 Under **How will this exchange run?**, choose your channel:
 

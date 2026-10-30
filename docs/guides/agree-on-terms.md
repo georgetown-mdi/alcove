@@ -67,20 +67,22 @@ Choose under **Matching method**, at the top of **Matching & sharing**.
 | Option | What it does | Pick it when |
 | --- | --- | --- |
 | **Reveal the matched identifiers (standard)** | Matches records and writes a result file of matched records. | Usual: you will act on the matched records. |
-| **Reveal only the count (psi-c)** | Reports how many records you have in common. No records are matched to each other and no columns are sent either way. | You only need the size of the overlap, such as to decide whether a data sharing agreement is worth making. |
+| **Reveal only the count (psi-c)** | Reports how many records you have in common across every key. Neither of you is shown which records matched, and no columns are sent either way. | You only need the size of the overlap, such as to decide whether a data sharing agreement is worth making. |
 
 This choice is the same for both of you: Alcove cannot give one of you a list and the other only a count. Under **Only you**, your partner sees neither a list nor a count (a command line debug log shows the count); if you agreed to tell them how many matched, tell them yourself.
 
-A count-only exchange matches on one key, so turn off all keys but one. It also needs **Linkage strategy** at **Cascade**, every column set so it is not sent, and **Allow several of your records to match one partner record** cleared.
+A count-only exchange counts across every key you keep, each record once. It needs every column set so it is not sent, **Allow several of your records to match one partner record** cleared, and no key that matches several values per record: turn off each key with a name containing `split(`, `swap(`, `+/-` or `day/month exchanged`.
 
-A count only is the choice for a question such as "how many of our clients are also your members": neither of you can work out which of your records matched. Keep one key that both files fill for most people. The keys are listed most precise first, so keep the first one whose columns both of you hold for most records. If many records have no SSN, an SSN key misses them; `LN + FN + DOB` reaches more people but is less certain, so the count may include some pairs of different people.
+A count only is the choice for a question such as "how many of our clients are also your members", and it is intended only for research. The count is the number of records the same keys would link, so keep the keys you would use for a list. A less certain key such as `LN + FN + DOB` reaches more people, so the count may include some pairs of different people.
 
 Only one of you computes the count. Under **You and your partner**, the other is sent that number, which Alcove does not check.
 
-> [!WARNING]
-> Your partner can learn whether one person is in your data by choosing which records to ask about. A crafted list, or a second run differing by one record, turns a count into an answer about one person. Alcove does not check what your partner contributes.
+The party that computes the count learns more than the count. Its copy of Alcove learns how many records matched on each key and how the keys overlap. From which keys its own records have values for, it can narrow a match to a few of its own records, or to one, and so learn that the other party holds that record. Alcove does not show this to that party.
 
-Against a partner that contributes its real file, a count only reveals neither side's matched records.
+> [!WARNING]
+> Your partner can learn whether one person is in your data by choosing which records to ask about. A crafted list, or a second run differing by one record, turns a count into an answer about one person. A partner that computes the count can also leave a different set of fields blank on each of its records and learn, in one run, which of them are in your data. Alcove does not check what your partner contributes.
+
+Against a partner that contributes its real file, a count only shows neither of you which records matched.
 
 ## What each party learns
 
@@ -89,22 +91,22 @@ Each row is what one party can work out about the other's file from the exchange
 | What a party can work out about the other's file, under Cascade | List, receives the result | List, does not receive | Count only |
 | --- | --- | --- | --- |
 | How many records the file holds | Yes | Yes | Yes, both parties |
-| Which of its own records are also in the other's file | Yes | Yes, though Alcove shows it nothing | No |
-| How many records matched | Yes | Yes, in total and for each key, though Alcove shows it only in a debug log | Only a party that receives the count |
+| Which of its own records are also in the other's file | Yes | Yes, though Alcove shows it nothing | Sometimes, for the party that computes the count, though Alcove shows it nothing |
+| How many records matched | Yes | Yes, in total and for each key, though Alcove shows it only in a debug log | Only a party that receives the count; the party that computes it, also for each key, though Alcove shows it only the total |
 | The other's row number for each matched record | Yes | No | No |
 | The columns the other set to send, for matched records | Yes | No | No; none are sent |
 | The other's identifiers, such as names or SSNs | Only those set to a use ending "sent to your partner" | No | No |
-| For each key, how many of the other's records have a value for it | Yes | Yes | Yes, for the one key |
+| For each key, how many of the other's records have a value for it | Yes | Yes | No |
 | Anything else about the other's unmatched records, except as listed below | No | No | No |
 
 In the last but one row, counted are values that appear once in their file and are not yet matched.
 
 The defaults suit most exchanges. These notes matter only if you change a setting or a key.
 
-- **Linkage strategy.** Leave it at **Cascade**. With **Single-pass**, every key is matched against every record, so the receiving side observes matches on weaker keys that the cascade would have filtered out.
+- **Linkage strategy.** Leave it at **Cascade**. With **Single-pass**, every key is matched against every record, so the receiving side observes matches on weaker keys that the cascade would have filtered out. A count-only exchange runs the same rounds under either strategy, so the choice changes nothing it discloses.
 - **Single-pass and one receiver.** With **Single-pass**, a party that receives no result can work out which of its own records matched if it sends columns, and cannot if the terms say it sends none.
 - **Duplicate matches.** **Allow several of your records to match one partner record** is off by default. Turning it on lets more of the accepting party's records match, and each match discloses that record's membership and any columns it sends.
-- **Keys that run only where a date of birth is missing.** Five Broader matching rules match a name with a phone number or email only where one record has no valid date of birth. A match through one of these keys tells whoever receives the result which of the two records had none, and your partner can work out how many of your unmatched records have no valid date of birth.
+- **Keys that run only where a date of birth is missing.** Five Broader matching rules match a name with a phone number or email only where one record has no valid date of birth. A match through one of these keys tells whoever receives the result which of the two records had none, and your partner can work out how many of your unmatched records have no valid date of birth. A count-only exchange writes no result, and its rounds do not tell your partner how many of your records have no valid date of birth, but the software of the party that computes the count learns, for each match through one of these keys, which of the two records had none.
 
 The coordination server, the STUN server (Google's, unless your settings or the invitation name another) and any relay or relay registrar of a WebRTC exchange see both parties' network addresses and connection times, never the exchange's content. A relay also sees how much traffic it carries. The SFTP server or shared folder of an invited exchange sees the exchange's data only encrypted, and sees when each file is written. None of them sees the identifiers you match on. In the web app, the site's host (Cloudflare) also sees your network address when it serves the page.
 
@@ -123,7 +125,7 @@ The wait is how long a running side waits for the other to start. On the console
 
 Both of you run at the same time, on every channel. One of you can start first; the other must start before the first one's wait runs out. In the web app, both of you keep the page open until the run ends.
 
-A run's length grows with the number of keys, since each key is one round between you. It also grows with the channel's checking interval (250 milliseconds on a shared folder, 5 seconds on SFTP) and with the record count. A count-only run is one round.
+A run's length grows with the number of keys, since each key is one round between you. It also grows with the channel's checking interval (250 milliseconds on a shared folder, 5 seconds on SFTP) and with the record count. A count-only run takes a round for each key as well, and sends one value for every record in each.
 
 Measured with 20 records a side and 27 keys, both parties on one machine:
 

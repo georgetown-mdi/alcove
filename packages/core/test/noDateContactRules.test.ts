@@ -273,7 +273,7 @@ describe("the built-in contact rules without a date of birth", () => {
     const summary = summarizeInvitation({
       linkageTerms: termsFor(DATED_COLUMNS),
     });
-    const statement = missingFieldConditionStatement("date of birth");
+    const statement = missingFieldConditionStatement("date of birth", "psi");
     expect(statement).toMatch(/which of the two records had none/);
     expect(statement).toContain(
       "Your partner also learns how many of your records not yet matched " +
@@ -298,7 +298,7 @@ describe("the built-in contact rules without a date of birth", () => {
     expect(summary.conditionLines).toStrictEqual([
       {
         keyNames: CONTACT_RULES,
-        statement: missingFieldConditionStatement("date of birth", 5),
+        statement: missingFieldConditionStatement("date of birth", "psi", 5),
       },
     ]);
     expect(summary.conditionLines[0].statement).toBe(
@@ -308,5 +308,44 @@ describe("the built-in contact rules without a date of birth", () => {
         "learns how many of your records not yet matched have no valid date " +
         "of birth.",
     );
+  });
+
+  test("are stated on count-only terms with what the computing party's software learns", () => {
+    const summary = summarizeInvitation({
+      linkageTerms: { ...termsFor(DATED_COLUMNS), algorithm: "psi-c" },
+    });
+    const statement = missingFieldConditionStatement("date of birth", "psi-c");
+    expect(statement).toBe(
+      "Matches only where one of the two records has no valid date of birth. " +
+        "In a count-only exchange you send one encrypted value for each of " +
+        "your records in every round, so what you send does not tell your " +
+        "partner how many of your records have no valid date of birth. The " +
+        "software of the party that computes the count does learn, for each " +
+        "match through this key, which of the two records had none.",
+    );
+    expect(
+      missingFieldConditionStatement("date of birth", "psi-c", 5),
+    ).toContain(
+      "for each match through one of these keys, which of the two records " +
+        "had none.",
+    );
+    for (const rule of CONTACT_RULES)
+      expect(
+        summary.linkageKeys.find((key) => key.name === rule)?.condition,
+      ).toBe(statement);
+    expect(summary.conditionLines).toStrictEqual([
+      {
+        keyNames: CONTACT_RULES,
+        statement: missingFieldConditionStatement("date of birth", "psi-c", 5),
+      },
+    ]);
+    const lines = [
+      ...summary.linkageKeys.flatMap((key) => key.condition ?? []),
+      ...summary.conditionLines.map((line) => line.statement),
+    ];
+    for (const line of lines) {
+      expect(line).not.toMatch(/tells a party receiving the result/);
+      expect(line).not.toMatch(/Your partner also learns/);
+    }
   });
 });

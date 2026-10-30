@@ -31,11 +31,17 @@ import { reviewValidation } from "@psi/inviterModel";
 
 import {
   CONTACT_AND_LOCATION_FIELD_TYPES,
+  COUNT_ONLY_DECLARED_STRATEGY_STATEMENT,
   LESS_CERTAIN_KEY_COPY,
   linkageKeyIsLessCertain,
   precisionFloorLabel,
 } from "@alcove/core";
 
+import {
+  LINKAGE_STRATEGY_OPTION_COPY,
+  SINGLE_PASS_DISCLOSURE_BODY,
+  SINGLE_PASS_DISCLOSURE_TITLE,
+} from "@psi/linkageStrategyChoice";
 import {
   USE_BUILT_IN_RULES_LABEL,
   addKey,
@@ -53,7 +59,7 @@ import { disclosureToggle, openDisclosure } from "./collapsePanels";
 import { createAppMount } from "./renderApp";
 
 import type { AcquiredCsv, InviterEditor } from "@psi/inviterEditor";
-import type { LinkageField } from "@alcove/core";
+import type { LinkageField, LinkageStrategy } from "@alcove/core";
 import type { MountedConfigurationState } from "@console/mountedConfiguration";
 
 // A minimal file with a date_of_birth column, so the seeded default keys
@@ -1254,4 +1260,89 @@ describe("KeysTab: a key element's split left unfinished", () => {
     await userEvent.clear(delimiter);
     await expect.element(unfinished).toBeInTheDocument();
   });
+});
+
+describe("KeysTab: the notes beside the strategy choice", () => {
+  function renderSinglePass(
+    algorithm: "psi" | "psi-c",
+    linkageStrategy: LinkageStrategy = "single-pass",
+  ) {
+    const seeded = editorFromCsv("Dana Okafor", csv);
+    const editor: InviterEditor = {
+      ...seeded,
+      draft: { ...seeded.draft, algorithm, linkageStrategy },
+    };
+    app.render(
+      createElement(KeysTab, {
+        editor,
+        csv,
+        expertMode: false,
+        onExpertMode: () => undefined,
+        onPrecisionFloorSelection: () => undefined,
+        onUseBuiltInRules: () => undefined,
+        onKeyEnabled: () => undefined,
+        onKeyMoved: () => undefined,
+        onAuthoredDraft: () => undefined,
+        onStrategy: () => undefined,
+        onDeduplicate: () => undefined,
+        onImport: () => [],
+        keysError: undefined,
+        announce: () => undefined,
+        onBack: () => undefined,
+      }),
+    );
+  }
+
+  test("shows on psi terms choosing single-pass", async () => {
+    renderSinglePass("psi");
+    await expect
+      .element(page.getByText(SINGLE_PASS_DISCLOSURE_TITLE))
+      .toBeInTheDocument();
+  });
+
+  test("is withheld on count-only terms, which run the cascade's rounds", async () => {
+    renderSinglePass("psi-c");
+    await expect
+      .element(page.getByRole("heading", { name: "Matching settings" }))
+      .toBeInTheDocument();
+    expect(document.body.textContent).not.toContain(
+      SINGLE_PASS_DISCLOSURE_TITLE,
+    );
+    expect(document.body.textContent).not.toContain(
+      SINGLE_PASS_DISCLOSURE_BODY,
+    );
+  });
+
+  test.each(["single-pass", "cascade"] as const)(
+    "states on count-only terms with %s that the strategy changes nothing",
+    async (linkageStrategy) => {
+      renderSinglePass("psi-c", linkageStrategy);
+      await expect
+        .element(page.getByText(COUNT_ONLY_DECLARED_STRATEGY_STATEMENT))
+        .toBeInTheDocument();
+      for (const { description } of Object.values(
+        LINKAGE_STRATEGY_OPTION_COPY,
+      )) {
+        expect(document.body.textContent).not.toContain(description);
+      }
+    },
+  );
+
+  test.each(["single-pass", "cascade"] as const)(
+    "states no count-only line on psi terms with %s",
+    async (linkageStrategy) => {
+      renderSinglePass("psi", linkageStrategy);
+      await expect
+        .element(page.getByRole("heading", { name: "Matching settings" }))
+        .toBeInTheDocument();
+      expect(document.body.textContent).not.toContain(
+        COUNT_ONLY_DECLARED_STRATEGY_STATEMENT,
+      );
+      for (const { description } of Object.values(
+        LINKAGE_STRATEGY_OPTION_COPY,
+      )) {
+        expect(document.body.textContent).toContain(description);
+      }
+    },
+  );
 });

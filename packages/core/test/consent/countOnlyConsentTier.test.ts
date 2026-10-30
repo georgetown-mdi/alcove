@@ -27,19 +27,18 @@ import type {
  * acceptor.
  */
 const SPEC_ASSIGNED_BASIS: Partial<Record<ConsentFactId, ConsentFactBasis>> = {
-  // "A party's own count-only outcome is enforced", and "a party's view of what
-  // its PARTNER receives is enforced at the wire": neither asks for the partner's
-  // cooperation or its honesty.
+  // "A party's own count-only outcome is enforced": it asks for neither the
+  // partner's cooperation nor its honesty.
   countOnlyResult: "enforced",
-  // "What the rounds still disclose": the record count on the terms exchange and
-  // the element count on the frame are disclosed however either party behaves.
+  // "What the rounds disclose" and "The receiver's software learns more than
+  // the count, from genuine inputs": disclosed however either party behaves.
   countOnlyRoundDisclosures: "enforced",
   // "The sender's knowledge of the count is trust-contingent": in the
   // both-entitled case the number it holds is the receiver's report.
   countOnlyReportedCount: "trust-contingent",
   // The threat-model scope: the claim protects a party against a partner that
-  // contributes a genuine dataset, and a crafted or differenced input set is
-  // accepted rather than prevented.
+  // contributes a genuine dataset, and a crafted pattern, a crafted set, or a
+  // differenced input set is accepted rather than prevented.
   countOnlyInputChoice: "trust-contingent",
   // The refusals: payload in either direction is refused at authoring, at prepare,
   // and at the agreed-terms run boundary, fail-closed at all three.
@@ -79,12 +78,18 @@ describe("the count-only consent tier", () => {
   });
 
   test("is measured by the consent-coverage probe on terms a count-only run accepts", () => {
-    // The algorithm probe's psi-c side is the shape psi-c admits -- one linkage
-    // key, cascade, no deduplication, and no payload in either direction -- so
-    // what the coverage check measures each surface on is the count-only tier and
-    // not a document the algorithm refuses.
+    // The algorithm probe's psi-c side is the shape psi-c admits -- several
+    // keys, one with a missing-field condition, no candidate set, no
+    // deduplication, and no payload in either direction -- so what the coverage
+    // check measures each surface on is the count-only tier and not a document
+    // the algorithm refuses.
     expect(COUNT_ONLY_PROBE_TERMS.algorithm).toBe("psi-c");
-    expect(COUNT_ONLY_PROBE_TERMS.linkageKeys).toHaveLength(1);
+    expect(COUNT_ONLY_PROBE_TERMS.linkageKeys).toHaveLength(2);
+    expect(
+      COUNT_ONLY_PROBE_TERMS.linkageKeys.some(
+        (key) => key.condition !== undefined,
+      ),
+    ).toBe(true);
     expect(COUNT_ONLY_PROBE_TERMS.linkageStrategy).toBe("cascade");
     expect(COUNT_ONLY_PROBE_TERMS.deduplicate).toBe(false);
     expect(COUNT_ONLY_PROBE_TERMS.payload?.send).toEqual([]);

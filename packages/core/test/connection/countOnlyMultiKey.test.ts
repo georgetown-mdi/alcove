@@ -48,7 +48,7 @@ function countOnlyParticipant(
   );
 }
 
-// The count both parties hold after an every-key count-only run, `sender`
+// The count both parties hold after a count-only run, `sender`
 // the PSI sender; the receiver reports it to the sender.
 async function countOnlyCount(
   library: PSILibrary,
@@ -56,13 +56,10 @@ async function countOnlyCount(
   receiver: Records,
 ): Promise<number> {
   const [senderConn, receiverConn] = createMessagePipe();
-  const rounds = {
-    construction: "every-key",
-    declared: {
-      receiverRecords: receiver.length,
-      senderRecords: sender.length,
-    },
-  } as const;
+  const declared = {
+    receiverRecords: receiver.length,
+    senderRecords: sender.length,
+  };
   const maxCount = Math.min(sender.length, receiver.length);
   const senderParty = countOnlyParticipant(library, "starter");
   const receiverParty = countOnlyParticipant(library, "joiner");
@@ -80,9 +77,7 @@ async function countOnlyCount(
           roundsOf(records),
           true,
           maxCount,
-          0,
-          undefined,
-          rounds,
+          declared,
         ).catch((error: unknown) => {
           conn.close();
           throw error;

@@ -11,7 +11,6 @@ import logLibrary from "loglevel";
 
 import {
   CONSENT_FACTS,
-  COUNT_ONLY_DISCLOSURE_STATEMENT,
   DEDUPLICATE_PARTNER_DECLARED_DISCLOSURE_STATEMENT,
   DEDUPLICATE_PARTNER_DECLARED_SIDE_NOTE,
   DEFAULT_PRECISION_FLOOR_SELECTION,
@@ -32,10 +31,11 @@ import {
   consentSurfaceSink,
   displayLessCertainNote,
   LESS_CERTAIN_REMEDY,
+  logCountOnlyTier,
   marked,
   type ConsentSurfaceSink,
 } from "./invitationDisplay";
-import { singlePassDisclosureNotice } from "./onlineBootstrap";
+import { linkageStrategyNote } from "./onlineBootstrap";
 import { logFileLinePattern, readLogFileTail } from "./util/logging";
 
 import type { ProtocolConnectionConfig } from "./protocol";
@@ -239,13 +239,16 @@ export function renderExchangeDisclosure(
 
   emit(`  ${marked("PSI algorithm", "algorithm")}: ${linkageTerms.algorithm}`);
   if (linkageTerms.algorithm === "psi-c")
-    emit(`    ${COUNT_ONLY_DISCLOSURE_STATEMENT}`);
+    logCountOnlyTier(
+      emit,
+      linkageTerms.output.expectsOutput && linkageTerms.output.shareWithPartner,
+    );
   emit(
     `  ${marked("linkage strategy", "linkageStrategy")}: ` +
       linkageTerms.linkageStrategy,
   );
-  if (linkageTerms.linkageStrategy === "single-pass")
-    emit(`    ${singlePassDisclosureNotice()}`);
+  const strategyNote = linkageStrategyNote(linkageTerms);
+  if (strategyNote !== undefined) emit(`    ${strategyNote}`);
 
   emit(
     `  ${marked("duplicate matches", "duplicateMatches")}: ` +

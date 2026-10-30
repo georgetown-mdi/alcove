@@ -84,8 +84,7 @@ function recording(
 
 /**
  * Runs `receiver` and `sender` against each other through runPsiPhase over
- * `terms`, both parties' agreed terms, under the `every-key` count-only
- * construction where `terms` are `psi-c`. A party that fails closes its end,
+ * `terms`, both parties' agreed terms. A party that fails closes its end,
  * so the other is not left waiting.
  */
 export async function runPsiPhasePair(
@@ -120,7 +119,6 @@ export async function runPsiPhasePair(
         recordingSets(new InProcessPsiEngine(psiLibrary, role, id, mode), sets),
       isReceiver,
       countOnly,
-      countOnlyConstruction: "every-key",
       verbosity: 0,
       elementBounds,
       onPsiProgress: undefined,

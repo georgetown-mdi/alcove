@@ -580,18 +580,15 @@ describe("the accepting party's own deduplicate at the seat", () => {
     // shape over the INVITATION's own terms, before this party's value is
     // applied: the closed default meets it too, so no control at this seat
     // clears it and it blocks the accept rather than pointing at one.
-    const countOnlyOffCascade: LinkageTerms = {
+    const countOnlySending: LinkageTerms = {
       ...invitationTerms,
       algorithm: "psi-c",
-      linkageStrategy: "single-pass",
+      payload: { send: [{ name: "notes" }] },
     };
     for (const deduplicate of [false, true]) {
-      const refusal = acceptorDeduplicateRefusal(
-        countOnlyOffCascade,
-        deduplicate,
-      );
+      const refusal = acceptorDeduplicateRefusal(countOnlySending, deduplicate);
       expect(refusal?.scope).toBe("terms");
-      expect(refusal?.message).toContain("must set linkage_strategy to");
+      expect(refusal?.message).toContain("must declare no payload columns");
     }
   });
 
