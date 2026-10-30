@@ -3297,9 +3297,39 @@ test("a responder that stops before its rotated save leaves its marker, and only
   saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
   saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
   mockState.unwritableKeyFilePath = keyFileB;
+  const marked: string[] = [];
+  mockState.onRotationMarked = (keyFilePath) => marked.push(keyFilePath);
+  // The store order: the initiator stores before the responder's store, which
+  // fails here.
+  const stores: string[] = [];
+  let initiatorStored: () => void = () => {};
+  const initiatorStore = new Promise<void>((resolve) => {
+    initiatorStored = resolve;
+  });
+  driveTermsExchange({
+    initiator: async (rotation, nextSecret) => {
+      stores.push("initiator");
+      try {
+        await rotation.store(nextSecret);
+      } finally {
+        initiatorStored();
+      }
+    },
+    responder: async (rotation, nextSecret) => {
+      await initiatorStore;
+      rotation.partnerMayHoldNextSecret?.(true);
+      stores.push("responder");
+      await rotation.store(nextSecret);
+    },
+  });
 
   const [, resultB] = await runResponderBThenInitiatorA(keyFileA, keyFileB);
   expect(resultB.status).toBe("rejected");
+  // B ran as the responder: only a responder writes the marker, so with the
+  // roles the other way round B would hold no marker for a reason other than
+  // the one under test.
+  expect(marked).toEqual([keyFileB]);
+  expect(stores).toEqual(["initiator", "responder"]);
 
   // The responder still holds the secret the handshake used, marked; the
   // initiator saved the next secret, which has no marker.
