@@ -10,6 +10,10 @@ The owner's instruction this command stands for:
 > plain language, options and their tradeoffs, and recommendations. Save
 > executing decisions until I say so.
 
+The owner revised its last sentence on 2026-10-29: "When I make a decision mid
+orchestration, I'm doing so so that it can be acted on." A ruling is therefore
+acted on when given, and only its board writes wait.
+
 The bare command is that whole instruction, so the owner never types it out. A
 note after the command -- a merge report, a handoff result path -- is acted on
 first, as the same note sent alone would be. To land the work in flight and
@@ -31,7 +35,8 @@ Run only when the owner invokes this command; never start the docket unasked.
    docket, its survey filings included (`.claude/orchestration/ruleset.md`,
    Session lifecycle). The column trends toward zero across dockets and is
    not drained in one: the rest stay in it for a later docket. Every item the
-   steps below keep is presented. Leave out each
+   steps below keep is presented, and when they leave fewer than that floor,
+   collect the next ripest until they keep it. Leave out each
    potential follow-up -- a question of whether to file or update a board item;
    those wait for `/follow-ups` -- and each ratification of a judgment a branch
    already took, which the scoring below filters. Leave out each operation
