@@ -89,8 +89,8 @@ test("two missing-field condition blocks are each one group, set further apart t
   await readyDisclosures(app.container);
 
   const blocks = [
-    missingFieldConditionStatement("date of birth"),
-    missingFieldConditionStatement("SSN"),
+    missingFieldConditionStatement("date of birth", "psi"),
+    missingFieldConditionStatement("SSN", "psi"),
   ].map(conditionBlock);
 
   for (const { list, statementLine, wrapper } of blocks) {

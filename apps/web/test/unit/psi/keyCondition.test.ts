@@ -130,6 +130,7 @@ describe("the missing-field control's choices", () => {
     for (const copy of [
       KEY_CONDITION_CONTROL.label,
       KEY_CONDITION_CONTROL.description,
+      KEY_CONDITION_CONTROL.countOnlyDescription,
       KEY_CONDITION_CONTROL.placeholder,
     ])
       expect(copy).not.toMatch(/_|missingField|condition/);

@@ -8,6 +8,7 @@
 
 import { precisionFloorSelectionStatement } from "../defaults/builtInLinkageTerms.js";
 import type { PrecisionFloor } from "../defaults/builtInLinkageTerms.js";
+import type { Algorithm } from "../types.js";
 
 /**
  * Whether the exchange holds a consent fact itself, or the fact is the inviting
@@ -963,24 +964,47 @@ export const LESS_CERTAIN_KEY_COPY = {
 /**
  * The one line every terms review and consent surface shows for a key with a
  * missing-field condition, whichever of its two rounds a match comes from:
- * which pairs the key matches, what a match tells a party receiving the
- * result, since each round sends only one side's records lacking the field,
- * and what the partner learns from the element count of the round that sends
- * only yours.
+ * which pairs the key matches and what the rounds disclose. Under `psi`, a
+ * match tells a party receiving the result which record lacked the field, and
+ * the element count of the round built only for your records lacking it tells
+ * the partner how many of them are still unmatched. A `psi-c` round has one
+ * element per record and names no pair (docs/spec/PROTOCOL.md, Keys with a
+ * missing-field condition, and PSI-C, What the rounds disclose).
  * `field` names the field's type in lowercase words
  * (`MISSING_FIELD_CONDITION_TYPE_WORDS`, linkageKeyCondition.ts). `keyCount`
  * above 1 words it for one line naming that many keys together.
  */
 export function missingFieldConditionStatement(
   field: string,
+  algorithm: Algorithm,
   keyCount = 1,
 ): string {
   const several = keyCount > 1;
-  return (
+  const matches =
     `${several ? "Each matches" : "Matches"} only where one of the two ` +
-    `records has no valid ${field}. A match through ` +
+    `records has no valid ${field}.`;
+  if (algorithm === "psi-c")
+    return (
+      `${matches} In a count-only exchange you send one encrypted value for ` +
+      "each of your records in every round, so your partner cannot tell from " +
+      `what you send how many of your records have no valid ${field}.`
+    );
+  return (
+    `${matches} A match through ` +
     `${several ? "one of these keys" : "this key"} tells a party receiving ` +
     "the result which of the two records had none. Your partner also " +
     `learns how many of your records not yet matched have no valid ${field}.`
   );
 }
+
+/**
+ * The line beside a count-only (`psi-c`) exchange's `single-pass` strategy,
+ * in place of the single-pass disclosure note: the run takes the cascade's
+ * rounds whichever strategy the terms name, so the strategy changes nothing
+ * either party learns (docs/spec/PROTOCOL.md, A declared `single-pass` runs
+ * the same rounds).
+ */
+export const COUNT_ONLY_DECLARED_STRATEGY_STATEMENT =
+  "A count-only exchange runs the same rounds whichever linkage strategy its " +
+  "terms name, so this setting changes neither the count nor what either of " +
+  "you learns.";

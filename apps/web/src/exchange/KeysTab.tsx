@@ -19,6 +19,7 @@ import {
   PRECISION_FLOORS,
   linkageKeyIsLessCertain,
   precisionFloorLabel,
+  runsSinglePassLink,
   sanitizeForDisplay,
 } from "@alcove/core";
 
@@ -418,7 +419,7 @@ export function KeysTab({
           mt="xs"
         />
       </Radio.Group>
-      {editor.draft.linkageStrategy === "single-pass" && (
+      {runsSinglePassLink(editor.draft) && (
         <Alert
           color="yellow"
           title={SINGLE_PASS_DISCLOSURE_TITLE}

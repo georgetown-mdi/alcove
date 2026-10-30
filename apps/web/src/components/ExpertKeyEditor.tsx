@@ -660,7 +660,11 @@ export function ExpertKeyEditor({
                       </Group>
                       <Select
                         label={KEY_CONDITION_CONTROL.label}
-                        description={KEY_CONDITION_CONTROL.description}
+                        description={
+                          draft.algorithm === "psi-c"
+                            ? KEY_CONDITION_CONTROL.countOnlyDescription
+                            : KEY_CONDITION_CONTROL.description
+                        }
                         placeholder={KEY_CONDITION_CONTROL.placeholder}
                         data={keyConditionOptions(declaredFields, key)}
                         value={key.condition?.missingField ?? null}

@@ -9,6 +9,7 @@ import {
   ConnectionError,
   DEFAULT_FILEDROP_POLLING_FREQUENCY_MS,
   getDefaultLinkageTerms,
+  COUNT_ONLY_DECLARED_STRATEGY_STATEMENT,
   getDiagnosticSink,
   getLogger,
   inferDateInputFormatFromSource,
@@ -69,6 +70,7 @@ import {
   looksLikeUrl,
   parseLinkageStrategyFlag,
   runOnlineBootstrap,
+  linkageStrategyNote,
   singlePassDisclosureNotice,
   warnSanitizedColumns,
 } from "../../src/onlineBootstrap";
@@ -4800,6 +4802,20 @@ describe("singlePassDisclosureNotice", () => {
     expect(note).toContain("docs/EXCHANGE_REFERENCE.md");
     expect(note).not.toContain("one-sided-disclosure");
   });
+});
+
+describe("linkageStrategyNote", () => {
+  test.each([
+    ["psi", "single-pass", singlePassDisclosureNotice()],
+    ["psi-c", "single-pass", COUNT_ONLY_DECLARED_STRATEGY_STATEMENT],
+    ["psi", "cascade", undefined],
+    ["psi-c", "cascade", undefined],
+  ] as const)(
+    "on %s terms declaring %s is the note for the run the terms make",
+    (algorithm, linkageStrategy, note) => {
+      expect(linkageStrategyNote({ algorithm, linkageStrategy })).toBe(note);
+    },
+  );
 });
 
 // --- the server.provision wake call ------------------------------------------

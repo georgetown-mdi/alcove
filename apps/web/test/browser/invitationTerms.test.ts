@@ -8,6 +8,7 @@ import { createElement } from "react";
 
 import {
   CONSENT_FACTS,
+  COUNT_ONLY_DECLARED_STRATEGY_STATEMENT,
   DEDUPLICATE_ACCEPTOR_SETTABLE_SIDE_NOTE,
   DEDUPLICATE_ACCEPTOR_SIDE_NOTE,
   DEDUPLICATE_SHARED_RESULT_DISCLOSURE_STATEMENT,
@@ -772,7 +773,7 @@ describe("InvitationTerms: a key with a missing-field condition", () => {
         )
         .toBeVisible();
       const list = conditionList(
-        missingFieldConditionStatement("date of birth"),
+        missingFieldConditionStatement("date of birth", "psi"),
       );
       await expect.element(list).toBeVisible();
       expect(rowsOf(list)).toEqual(["SSN + LN"]);
@@ -785,7 +786,7 @@ describe("InvitationTerms: a key with a missing-field condition", () => {
       .filter((key) => key.condition !== undefined)
       .map((key) => key.name);
     expect(conditioned).toHaveLength(5);
-    const grouped = missingFieldConditionStatement("date of birth", 5);
+    const grouped = missingFieldConditionStatement("date of birth", "psi", 5);
     await renderTerms(defaults, { perspective: "review" });
     await expect
       .element(toggle("Matching strategies"))
@@ -828,7 +829,7 @@ describe("InvitationTerms: a key with a missing-field condition", () => {
       { perspective: "review" },
     );
     const list = conditionList(
-      missingFieldConditionStatement("date of birth", 2),
+      missingFieldConditionStatement("date of birth", "psi", 2),
     );
     await expect.element(list).toBeVisible();
     expect(rowsOf(list)).toEqual(["X, FN + PHONE", "LN + FN + PHONE"]);
@@ -2613,6 +2614,46 @@ describe("InvitationTerms: the linkage strategy is shown at the consent point", 
     await expect.element(toggle("Other details")).toBeInTheDocument();
     expect(app.container.textContent).toContain(
       "This exchange matches in a single pass.",
+    );
+  });
+
+  test("count-only terms declaring single-pass state it without the single-pass disclosure", async () => {
+    // A count-only run takes the cascade's rounds whichever strategy its terms
+    // name, so the strategy is stated as written and the psi single-pass
+    // disclosure is not (docs/spec/PROTOCOL.md, PSI-C).
+    await renderTerms({
+      ...COUNT_ONLY_PROBE_TERMS,
+      linkageStrategy: "single-pass",
+    });
+    await expect.element(toggle("Other details")).toBeInTheDocument();
+    expect(app.container.textContent).toContain(
+      `Single-pass. ${COUNT_ONLY_DECLARED_STRATEGY_STATEMENT}`,
+    );
+    expect(app.container.textContent).not.toContain("matches in a single pass");
+    expect(app.container.textContent).not.toContain("so it may be you");
+  });
+});
+
+describe("InvitationTerms: the missing-field condition under each algorithm", () => {
+  test("count-only terms state what their rounds disclose, not the psi disclosure", async () => {
+    await renderTerms(COUNT_ONLY_PROBE_TERMS);
+    await expect.element(toggle("Other details")).toBeInTheDocument();
+    expect(app.container.textContent).toContain(
+      missingFieldConditionStatement("date of birth", "psi-c"),
+    );
+    expect(app.container.textContent).not.toContain(
+      missingFieldConditionStatement("date of birth", "psi"),
+    );
+  });
+
+  test("psi terms state the psi disclosure", async () => {
+    await renderTerms({ ...COUNT_ONLY_PROBE_TERMS, algorithm: "psi" });
+    await expect.element(toggle("Other details")).toBeInTheDocument();
+    expect(app.container.textContent).toContain(
+      missingFieldConditionStatement("date of birth", "psi"),
+    );
+    expect(app.container.textContent).not.toContain(
+      missingFieldConditionStatement("date of birth", "psi-c"),
     );
   });
 });

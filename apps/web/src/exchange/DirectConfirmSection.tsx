@@ -14,7 +14,11 @@ import {
 import { IconAlertCircle } from "@tabler/icons-react";
 import { Link } from "@tanstack/react-router";
 
-import { LinkageStrategySchema, holdsPrivateKeyMaterial } from "@alcove/core";
+import {
+  LinkageStrategySchema,
+  holdsPrivateKeyMaterial,
+  runsSinglePassLink,
+} from "@alcove/core";
 
 import { InvitationTerms } from "@components/InvitationTerms";
 import { unlinkableFileAlert } from "@components/UnlinkableFileAlert";
@@ -256,7 +260,7 @@ export function DirectConfirmSection({
             mt="xs"
           />
         </Radio.Group>
-        {linkageStrategy === "single-pass" && (
+        {runsSinglePassLink(preview.linkageTerms) && (
           <Alert
             color="yellow"
             title={SINGLE_PASS_DISCLOSURE_TITLE}

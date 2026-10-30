@@ -18,6 +18,7 @@ import {
   seedAdvancedInvite,
   updateKeyAt,
 } from "@psi/authoring/advancedInvite";
+import { KEY_CONDITION_CONTROL } from "@psi/authoring/keyCondition";
 import { REMOVE_ALL_KEYS_STATEMENT } from "@psi/inviterEditor";
 
 import { ExpertKeyEditor } from "@components/ExpertKeyEditor";
@@ -392,4 +393,43 @@ describe("ExpertKeyEditor: the per-key badges", () => {
       )
       .toMatchTextContent("your file supplies it");
   });
+});
+
+describe("ExpertKeyEditor: the missing-field control's description", () => {
+  test.each([
+    ["psi", KEY_CONDITION_CONTROL.description],
+    ["psi-c", KEY_CONDITION_CONTROL.countOnlyDescription],
+  ] as const)(
+    "on %s terms states what a match discloses only where a result is written",
+    async (algorithm, description) => {
+      const { draft } = seedAdvancedInvite("County Health Dept", ALL_COLUMNS);
+      app.render(
+        createElement(ExpertKeyEditor, {
+          draft: { ...draft, algorithm },
+          declaredFields: authoredLinkageFields(
+            draft.metadata,
+            draft.standardization,
+          ),
+          keyVerdict: (): KeyVerdict => ({ fitness: "satisfiable" }),
+          onChange: () => undefined,
+          announce: () => undefined,
+        }),
+      );
+      await expect
+        .element(page.getByRole("list", { name: "Linkage keys" }))
+        .toBeInTheDocument();
+      const firstKey = app.container.querySelector<HTMLElement>(
+        '[aria-controls^="key-body-"]',
+      );
+      expect(firstKey).not.toBeNull();
+      await userEvent.click(firstKey!);
+      await expect
+        .element(page.getByText(description, { exact: true }).first())
+        .toBeVisible();
+      if (algorithm === "psi-c")
+        expect(document.body.textContent).not.toContain(
+          "tells whoever receives the result",
+        );
+    },
+  );
 });

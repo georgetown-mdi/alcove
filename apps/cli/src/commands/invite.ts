@@ -128,7 +128,7 @@ import {
   parseLinkageStrategyFlag,
   prepareForOnlineExchange,
   runOnlineBootstrap,
-  singlePassDisclosureNotice,
+  linkageStrategyNote,
   type ResolvedDataSpec,
 } from "../onlineBootstrap";
 import {
@@ -797,7 +797,11 @@ export async function validateInvite(params: {
       builtDataSpec.standardization,
       builtDataSpec.metadata,
     );
-    noteSinglePassSelection(linkageStrategy, log);
+    noteLinkageStrategySelection(
+      linkageStrategy,
+      builtDataSpec.linkageTerms,
+      log,
+    );
 
     // The metadata this party's disclosure is read from: the same one
     // prepareForExchange uses (dataSpec.metadata, or inferred from the input
@@ -1103,7 +1107,11 @@ export async function validateInvite(params: {
     ...buildDataSpec({ identity, rows, linkageStrategy }),
     ...delimiterSection,
   };
-  noteSinglePassSelection(linkageStrategy, log);
+  noteLinkageStrategySelection(
+    linkageStrategy,
+    builtDataSpec.linkageTerms,
+    log,
+  );
 
   // The metadata the inferred terms (and the eventual exchange) read this party's
   // disclosure from.
@@ -1396,18 +1404,22 @@ function specWithPlaceholderConnection(
 }
 
 /**
- * Show the single-pass disclosure-tradeoff note at the point of selection, when
- * the operator's `--linkage-strategy single-pass` was applied to the authored
- * terms. A no-op for `cascade` or an absent selection. Called only from the two
- * paths where the flag is actually applied (online and infer-from-input) -- not
- * the config-as-source path, where the flag is reported as ignored and the note
- * would misrepresent what was used.
+ * Show the note for the authored terms' strategy at the point of selection
+ * (`linkageStrategyNote`), when the operator's `--linkage-strategy` was
+ * applied to them: the single-pass disclosure-tradeoff note only for a run
+ * that is single-pass in fact. A no-op for `cascade` or an absent selection.
+ * Called only from the two paths where the flag is actually applied (online
+ * and infer-from-input) -- not the config-as-source path, where the flag is
+ * reported as ignored and the note would misrepresent what was used.
  */
-function noteSinglePassSelection(
+function noteLinkageStrategySelection(
   strategy: LinkageStrategy | undefined,
+  terms: LinkageTerms,
   log: ReturnType<typeof getLogger>,
 ): void {
-  if (strategy === "single-pass") log.info(singlePassDisclosureNotice());
+  if (strategy === undefined) return;
+  const note = linkageStrategyNote(terms);
+  if (note !== undefined) log.info(note);
 }
 
 /**

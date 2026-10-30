@@ -43,6 +43,7 @@ import {
   candidateSetIsImplementedForStrategy,
   declaresNoPayloadColumn,
   deduplicateIsImplementedForStrategy,
+  runsSinglePassLink,
 } from "../linkageTermsPolicy.js";
 import { deriveAcceptedLinkageTerms } from "../linkageTermsNegotiation.js";
 import { termsDeclareCandidateSet } from "../fanOutFunctions.js";
@@ -998,21 +999,24 @@ function missingFieldConditionWords(
  */
 function missingFieldConditionLine(
   words: string,
+  algorithm: Algorithm,
   keyCount: number,
 ): Displayable {
   return redactAndSanitizeForDisplay(
-    missingFieldConditionStatement(words, keyCount),
+    missingFieldConditionStatement(words, algorithm, keyCount),
     { maxLength: 4 * DEFAULT_MAX_DISPLAY_LENGTH },
   );
 }
 
 /**
  * The summary's {@link InvitationConditionLine}s: the conditioned keys grouped
- * by the words their statement names the field with, which alone set it.
+ * by the words their statement names the field with, which with the terms'
+ * one algorithm alone set it.
  */
 function summarizeConditionLines(
   keys: ReadonlyArray<LinkageKey>,
   fieldByName: Map<string, LinkageField["type"]>,
+  algorithm: Algorithm,
 ): Array<InvitationConditionLine> {
   const keyNamesByWords = new Map<string, Array<Displayable>>();
   for (const key of keys) {
@@ -1024,7 +1028,7 @@ function summarizeConditionLines(
   }
   return [...keyNamesByWords].map(([words, keyNames]) => ({
     keyNames,
-    statement: missingFieldConditionLine(words, keyNames.length),
+    statement: missingFieldConditionLine(words, algorithm, keyNames.length),
   }));
 }
 
@@ -1039,6 +1043,7 @@ function summarizeKey(
   fields: ReadonlyArray<LinkageField>,
   fieldByName: Map<string, LinkageField["type"]>,
   fanOutMatches: boolean,
+  algorithm: Algorithm,
 ): InvitationKeySummary {
   const labelForField = (fieldName: string): Displayable => {
     const type = fieldByName.get(fieldName);
@@ -1165,7 +1170,7 @@ function summarizeKey(
   const condition =
     conditionWords === undefined
       ? undefined
-      : missingFieldConditionLine(conditionWords, 1);
+      : missingFieldConditionLine(conditionWords, algorithm, 1);
 
   return {
     id: key.name,
@@ -1195,9 +1200,10 @@ function summarizeKey(
  * Asks {@link withholdsSenderAssociationTable} about the reading of the
  * invitation's terms that puts the accepting party on the withheld side:
  *
- * - The strategy is `single-pass`; a cascade's rounds carry each party's
- *   matched positions as they go (docs/spec/PROTOCOL.md, Withholding the
- *   sender's table from a blind helper).
+ * - The run is single-pass (`runsSinglePassLink`); a cascade's rounds carry
+ *   each party's matched positions as they go (docs/spec/PROTOCOL.md,
+ *   Withholding the sender's table from a blind helper), and a count-only run
+ *   has no association table to withhold.
  * - The inviter is entitled to output and the accepting party is not, which
  *   makes the accepting party the sender (pinned against `resolveRole` in
  *   `test/consent/invitationSummary.test.ts`).
@@ -1213,7 +1219,7 @@ function summarizeKey(
 export function withholdsAcceptorAssociationTable(
   terms: LinkageTerms,
 ): boolean {
-  if (terms.linkageStrategy !== "single-pass") return false;
+  if (!runsSinglePassLink(terms)) return false;
   if (!terms.output.expectsOutput) return false;
   if (!terms.output.shareWithPartner && (terms.payload?.send?.length ?? 0) > 0)
     return false;
@@ -1229,7 +1235,7 @@ export function withholdsAcceptorAssociationTable(
  * table: the mirror of {@link withholdsAcceptorAssociationTable}, with the
  * inviter as the sender. Conditions:
  *
- * - The strategy is `single-pass`.
+ * - The run is single-pass (`runsSinglePassLink`).
  * - The accepting party is entitled to output and the inviter is not.
  * - The invitation declares an empty `payload.send`, which binds the inviter to
  *   disclosing no column (`assertPayloadSendDisclosed`). An absent `send` binds
@@ -1242,7 +1248,7 @@ export function withholdsAcceptorAssociationTable(
  * (docs/spec/PROTOCOL.md, Where the "one" party receives no output).
  */
 export function withholdsInviterAssociationTable(terms: LinkageTerms): boolean {
-  if (terms.linkageStrategy !== "single-pass") return false;
+  if (!runsSinglePassLink(terms)) return false;
   if (terms.output.expectsOutput) return false;
   if (!terms.output.shareWithPartner) return false;
   const disclosesNoPayload = declaresNoPayloadColumn(terms.payload?.send);
@@ -1260,7 +1266,7 @@ export function withholdsInviterAssociationTable(terms: LinkageTerms): boolean {
  * the partner's, and `payload.receive` what this party takes from the partner.
  * Conditions:
  *
- * - The strategy is `single-pass`.
+ * - The run is single-pass (`runsSinglePassLink`).
  * - This party is entitled to output and the partner is not;
  *   `validateCompatibility` keeps the two documents from disagreeing on that.
  * - This party declares an empty `payload.receive`, which binds the partner to
@@ -1273,7 +1279,7 @@ export function withholdsInviterAssociationTable(terms: LinkageTerms): boolean {
  * (`resolveDirectionDisclosesPayload`, exchange/termsRefusals.ts).
  */
 export function withholdsPartnerAssociationTable(terms: LinkageTerms): boolean {
-  if (terms.linkageStrategy !== "single-pass") return false;
+  if (!runsSinglePassLink(terms)) return false;
   if (!terms.output.expectsOutput) return false;
   const requestsNoPayload = declaresNoPayloadColumn(terms.payload?.receive);
   return withholdsSenderAssociationTable(
@@ -1413,9 +1419,19 @@ export function summarizeInvitation(
     acceptorTableWithheld: withholdsAcceptorAssociationTable(terms),
     inviterTableWithheld: withholdsInviterAssociationTable(terms),
     linkageKeys: terms.linkageKeys.map((key) =>
-      summarizeKey(key, terms.linkageFields, fieldByName, fanOutMatches),
+      summarizeKey(
+        key,
+        terms.linkageFields,
+        fieldByName,
+        fanOutMatches,
+        terms.algorithm,
+      ),
     ),
-    conditionLines: summarizeConditionLines(terms.linkageKeys, fieldByName),
+    conditionLines: summarizeConditionLines(
+      terms.linkageKeys,
+      fieldByName,
+      terms.algorithm,
+    ),
     matchedFields,
     linkageFields,
     // Narrowed to the one value a surface may state, over both grounds for

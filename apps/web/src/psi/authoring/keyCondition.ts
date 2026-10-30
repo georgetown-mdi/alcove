@@ -22,13 +22,18 @@ import type {
 } from "@alcove/core";
 import type { DraftKey } from "./advancedInviteTypes";
 
-/** The control's label, description and empty-choice placeholder. */
+/** The control's label, description and empty-choice placeholder. The
+ * description names what a match discloses only under `psi`: a count-only
+ * exchange writes no result (docs/spec/PROTOCOL.md, PSI-C). */
 export const KEY_CONDITION_CONTROL = {
   label: "Match only where a field is missing",
   description:
     "Use this key only for pairs where one side's record has no valid value " +
     "for the field you choose. A match through it tells whoever receives the " +
     "result which record had none.",
+  countOnlyDescription:
+    "Use this key only for pairs where one side's record has no valid value " +
+    "for the field you choose.",
   placeholder: "Every record",
 } as const;
 

@@ -216,6 +216,7 @@ export const FIELD_DOCS: Array<{ path: Array<string>; lines: Array<string> }> =
       lines: [
         "cascade (one PSI round per key) or single-pass (all keys in one round,",
         "fewer round-trips, but discloses your full per-key value structure).",
+        "psi-c runs the cascade's rounds under either and reveals the same.",
       ],
     },
     {

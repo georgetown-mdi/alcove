@@ -37,6 +37,10 @@ import {
 } from "@alcove/core";
 
 import {
+  SINGLE_PASS_DISCLOSURE_BODY,
+  SINGLE_PASS_DISCLOSURE_TITLE,
+} from "@psi/linkageStrategyChoice";
+import {
   USE_BUILT_IN_RULES_LABEL,
   addKey,
   buildAdvancedTerms,
@@ -1253,5 +1257,54 @@ describe("KeysTab: a key element's split left unfinished", () => {
 
     await userEvent.clear(delimiter);
     await expect.element(unfinished).toBeInTheDocument();
+  });
+});
+
+describe("KeysTab: the single-pass disclosure note", () => {
+  function renderSinglePass(algorithm: "psi" | "psi-c") {
+    const seeded = editorFromCsv("Dana Okafor", csv);
+    const editor: InviterEditor = {
+      ...seeded,
+      draft: { ...seeded.draft, algorithm, linkageStrategy: "single-pass" },
+    };
+    app.render(
+      createElement(KeysTab, {
+        editor,
+        csv,
+        expertMode: false,
+        onExpertMode: () => undefined,
+        onPrecisionFloorSelection: () => undefined,
+        onUseBuiltInRules: () => undefined,
+        onKeyEnabled: () => undefined,
+        onKeyMoved: () => undefined,
+        onAuthoredDraft: () => undefined,
+        onStrategy: () => undefined,
+        onDeduplicate: () => undefined,
+        onImport: () => [],
+        keysError: undefined,
+        announce: () => undefined,
+        onBack: () => undefined,
+      }),
+    );
+  }
+
+  test("shows on psi terms choosing single-pass", async () => {
+    renderSinglePass("psi");
+    await expect
+      .element(page.getByText(SINGLE_PASS_DISCLOSURE_TITLE))
+      .toBeInTheDocument();
+  });
+
+  test("is withheld on count-only terms, which run the cascade's rounds", async () => {
+    renderSinglePass("psi-c");
+    await expect
+      .element(page.getByRole("heading", { name: "Matching settings" }))
+      .toBeInTheDocument();
+    expect(document.body.textContent).not.toContain(
+      SINGLE_PASS_DISCLOSURE_TITLE,
+    );
+    expect(document.body.textContent).not.toContain(
+      SINGLE_PASS_DISCLOSURE_BODY,
+    );
   });
 });

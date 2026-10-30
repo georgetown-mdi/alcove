@@ -35,7 +35,7 @@ import {
   marked,
   type ConsentSurfaceSink,
 } from "./invitationDisplay";
-import { singlePassDisclosureNotice } from "./onlineBootstrap";
+import { linkageStrategyNote } from "./onlineBootstrap";
 import { logFileLinePattern, readLogFileTail } from "./util/logging";
 
 import type { ProtocolConnectionConfig } from "./protocol";
@@ -244,8 +244,8 @@ export function renderExchangeDisclosure(
     `  ${marked("linkage strategy", "linkageStrategy")}: ` +
       linkageTerms.linkageStrategy,
   );
-  if (linkageTerms.linkageStrategy === "single-pass")
-    emit(`    ${singlePassDisclosureNotice()}`);
+  const strategyNote = linkageStrategyNote(linkageTerms);
+  if (strategyNote !== undefined) emit(`    ${strategyNote}`);
 
   emit(
     `  ${marked("duplicate matches", "duplicateMatches")}: ` +

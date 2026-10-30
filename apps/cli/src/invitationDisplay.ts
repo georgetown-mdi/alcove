@@ -24,7 +24,7 @@ import {
   KEPT_BY_ALLOWED_RELAYS,
   LEFT_OUT_BY_ALLOWED_RELAYS,
 } from "./allowedRelays";
-import { singlePassDisclosureNotice } from "./onlineBootstrap";
+import { linkageStrategyNote } from "./onlineBootstrap";
 import type { EndpointDirectories } from "./onlineBootstrap";
 import { logFileSeparateFromStderr } from "./util/logging";
 import { writePromptLine } from "./util/prompt";
@@ -834,16 +834,18 @@ export function displayInvitation(params: {
   }
   // The linkage strategy is a mandatory-consistency term like the
   // algorithm, and single-pass is disclosure-affecting -- the critical
-  // thing the acceptor consents to here -- so show it plainly plus, for
-  // single-pass, the disclosure-tradeoff note. The value is a schema enum,
-  // not partner free text; the note is shared with the inviter's selection
+  // thing the acceptor consents to here -- so show it as written plus the
+  // note for what the run does with it: the disclosure-tradeoff note for a
+  // single-pass run, never for count-only terms, which run the cascade's
+  // rounds (docs/spec/PROTOCOL.md, PSI-C). The value is a schema enum, not
+  // partner free text; the note is shared with the inviter's selection
   // surface so both parties read identical framing.
   emit(
     `  ${marked("linkage strategy", "linkageStrategy")}: ` +
       summary.linkageStrategy,
   );
-  if (summary.linkageStrategy === "single-pass")
-    emit(`    ${singlePassDisclosureNotice()}`);
+  const strategyNote = linkageStrategyNote(summary);
+  if (strategyNote !== undefined) emit(`    ${strategyNote}`);
   // Stated from the accepting party's perspective: YOU receive iff the
   // inviter shares, and the inviter receives iff its terms expect output --
   // so a one-sided invitation tells the acceptor plainly whether it gets a

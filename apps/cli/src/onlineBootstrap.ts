@@ -1,6 +1,7 @@
 import type { Arguments } from "yargs";
 
 import {
+  COUNT_ONLY_DECLARED_STRATEGY_STATEMENT,
   endpointRequiresRetainedFiles,
   getLogger,
   InternalConsistencyError,
@@ -22,6 +23,7 @@ import {
   PLACEHOLDER_SFTP_HOST,
   PLACEHOLDER_SSH_USERNAME,
   redactAndRenderOperatorSuppliedText,
+  runsSinglePassLink,
   safeParseConnectionConfig,
   UsageError,
 } from "@alcove/core";
@@ -649,6 +651,21 @@ export function singlePassDisclosureNotice(): string {
     "https://github.com/georgetown-mdi/alcove/blob/main/docs/" +
     "EXCHANGE_REFERENCE.md (linkage_terms.linkage_strategy)."
   );
+}
+
+/**
+ * The note a consent surface prints under the linkage strategy: the
+ * single-pass disclosure note for a run that is single-pass in fact
+ * (`runsSinglePassLink`), the count-only statement for `psi-c` terms declaring
+ * single-pass, which run the cascade's rounds, and none for a cascade.
+ */
+export function linkageStrategyNote(
+  terms: Pick<LinkageTerms, "algorithm" | "linkageStrategy">,
+): string | undefined {
+  if (runsSinglePassLink(terms)) return singlePassDisclosureNotice();
+  if (terms.linkageStrategy === "single-pass")
+    return COUNT_ONLY_DECLARED_STRATEGY_STATEMENT;
+  return undefined;
 }
 
 /**

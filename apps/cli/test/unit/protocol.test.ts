@@ -2243,6 +2243,58 @@ test("a single-pass run's stages event names every stage id it emits", async () 
   expect(ended).toEqual(emitted);
 }, 20_000);
 
+test("a count-only run declaring single-pass lists the cascade's stages and no single-pass stage", async () => {
+  // A count-only run takes the cascade's rounds whichever strategy its terms
+  // name, so the stages event is core's list alone (describeExchangeStages).
+  const actual =
+    await vi.importActual<typeof import("@alcove/core")>("@alcove/core");
+  vi.mocked(describeExchangeStages).mockImplementation(
+    actual.describeExchangeStages,
+  );
+  const countOnlySinglePass = {
+    ...minimalPrepared,
+    linkageTerms: {
+      ...minimalPrepared.linkageTerms,
+      algorithm: "psi-c" as const,
+      linkageStrategy: "single-pass" as const,
+    },
+  };
+
+  mockFd3Open();
+  try {
+    await Promise.all(
+      ["test-a", "test-b"].map((loggerName) =>
+        runProtocol({
+          connection: {
+            channel: "filedrop",
+            path: dropDir,
+            options: TWO_PARTY_OPTIONS,
+          },
+          auth: null,
+          prepared: countOnlySinglePass,
+          output: undefined,
+          verbosity: -1,
+          loggerName,
+          fileSyncRuntime: { eventStream: loggerName === "test-a" },
+        }),
+      ),
+    );
+  } finally {
+    vi.mocked(fs.fstatSync).mockRestore();
+    vi.mocked(describeExchangeStages).mockReturnValue([]);
+  }
+
+  const listed = (takeFd3Lines()[0].stages as Array<{ id: string }>).map(
+    (s) => s.id,
+  );
+  expect(listed).toEqual(
+    actual.describeExchangeStages(countOnlySinglePass).map((s) => s.id),
+  );
+  expect(listed.length).toBeGreaterThan(1);
+  for (const id of Object.values(actual.SINGLE_PASS_STAGE_IDS))
+    expect(listed).not.toContain(id);
+}, 20_000);
+
 // --- One-sided result withholding via runProtocol ----------------------------
 
 test("writes no result file for a non-receiving party when the exchange withholds the table", async () => {

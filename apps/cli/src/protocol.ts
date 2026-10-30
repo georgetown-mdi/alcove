@@ -6,6 +6,7 @@ import {
   describeExchangeStages,
   InternalConsistencyError,
   runExchange,
+  runsSinglePassLink,
   SINGLE_PASS_STAGE_IDS,
   exchangeRecordFromFailure,
   exchangeRecordOwedButUnbuilt,
@@ -422,7 +423,7 @@ async function runExchangeStage(params: {
   } = params;
   const stageDefinitions = [
     ...describeExchangeStages(prepared),
-    ...(prepared.linkageTerms.linkageStrategy === "single-pass"
+    ...(runsSinglePassLink(prepared.linkageTerms)
       ? SINGLE_PASS_STAGE_DEFINITIONS
       : []),
   ];
