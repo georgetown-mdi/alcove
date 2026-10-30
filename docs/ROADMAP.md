@@ -16,17 +16,11 @@ Work required before the 1.0 release.
 - Accessibility assessment against WCAG 2.1 Level AA and Section 508 for the web application; publication of a VPAT
 - One-time EAR ENC notification to BIS and NSA before public 1.0 distribution
 - Public website with documentation
-- Linkage rule sets for different operating contexts: bundles of matching rules tuned to the fields a context shares and to its precision and recall needs (for example, a set that relies on no Social Security number and uses addresses); the built-in rule-set registry and picker are the first steps
-
-## Version 1.0
-
-- SSH channel as a lower-latency alternative to SFTP polling
-- Parallelizing the commutative-encryption step
 
 ## Version 1.1
 
 - PSI-Sum
-- Synchronous protocol execution for the CLI (the web WebRTC path is already synchronous; this eliminates file-based polling latency where the channel allows)
+- Browser SFTP in the public web application, after 1.0 unless there is time before it (the first-party relay it needs is built; the browser client is not)
 - Provisioning of supporting services (peer coordination, STUN/TURN, SFTP, WebSocket-to-TCP proxy)
 - Reference configurations and deployment guides for each supporting service; the section pointers in [DEPLOYMENT.md](DEPLOYMENT.md) will be replaced with concrete guidance
 - Metadata classification
@@ -37,7 +31,7 @@ Captured in [DESIGN.md#possible-extensions](DESIGN.md#possible-extensions). Thes
 
 - Threshold and weighted scoring via secure multi-party computation
 - Brute-force protection through input-size controls
-- WebSocket relay as a WebRTC fallback
+- Post-quantum hybrid key establishment and dual signing, an open decision recorded only in [key-establishment-fips-boundary.md](notes/key-establishment-fips-boundary.md#post-quantum-horizon), not in DESIGN.md
 - Electron desktop distribution of the web application. The progressive-web-app half is built: the hosted application is installable and its shell renders offline (see [MANAGED_EXCHANGE.md](MANAGED_EXCHANGE.md#installing-the-app))
 
 ## See also

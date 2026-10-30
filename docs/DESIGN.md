@@ -88,6 +88,8 @@ As mentioned in the threat model, brute-force attacks are possible for simple ke
 
 Communication over SFTP requires polling for messages, which adds latency. Where both parties can reach a shared SSH server, SSH channels - bidirectional byte streams that need no polling - could replace it: the parties would establish order through the server's SFTP subsystem, or through a shell primitive such as `mkdir` where remote commands are permitted, then pass messages over SSH channels. Such a transport must satisfy the message-delivery contract in [COMMUNICATION.md](COMMUNICATION.md#message-delivery-and-teardown).
 
+This is not pursued: on real data sets latency is not the bulk of the time, and polling faster trips servers' attack prevention. A CLI exchange that needs no polling runs over WebRTC.
+
 ## WebSocket relay
 
 A WebSocket relay is built. It carries a WebRTC exchange for two parties whose network blocks the WebRTC connection and TURN but passes a WebSocket on port 443: each party opens one `wss://` connection to the relay, which pairs the two connections of one exchange and forwards their messages. The relay terminates TLS and reads the WebSocket frames; the application-layer encryption both applications apply keeps the exchange's contents from it, apart from the key-exchange handshake frames that set that encryption up. When a run uses the relay and what admits a party are in [COMMUNICATION.md](COMMUNICATION.md#websocket-relay), and what its operator can observe in [PRIVACY.md](../PRIVACY.md#what-supporting-services-can-observe).

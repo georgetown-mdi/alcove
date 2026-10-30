@@ -5,7 +5,9 @@ title: "The Browser SFTP Path and its WebSocket-to-TCP Proxy"
 # The browser SFTP path, and the WebSocket-to-TCP proxy it needs
 
 _Status: design; the proxy is built as the SFTP relay ([SFTP_RELAY.md](../spec/SFTP_RELAY.md)), and the rulings on the forks are in [web-websocket-transport.md](web-websocket-transport.md#the-forks-and-their-rulings).
-The browser SSH client is chosen on two conditions, measured on 2026-10-30: the licence check passes, the maintenance check does not, and the client is sized ([The chosen client](#the-chosen-client-dependency-check-and-sizing)).
+The relay is first-party and fixed-target, by the maintainer's ruling of 2026-10-29 on fork 5, after spike S7 found no off-the-shelf relay, of three tried, that both refuses by `Origin` and holds backpressure in both directions.
+Spike S8 drove three browser SSH clients: `@microsoft/dev-tunnels-ssh` passed with three additions in the spike's own code, `ssh2` bundled for the browser passed only against a server that also offers an ECDSA host key, and `@verdigris/libssh2.js` failed.
+The browser SSH client is `@microsoft/dev-tunnels-ssh`, chosen by the maintainer on 2026-10-29 and conditional on a dependency check and a sizing, measured on 2026-10-30: the licence check passes, the maintenance check does not, and the client is sized ([The chosen client](#the-chosen-client-dependency-check-and-sizing)).
 The note frames what a browser SFTP path would need, recommends where it can, and lists the choices left open for the maintainer.
 Nothing here is normative: the channel-security rules are in
 [CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#which-channels-request-it),
@@ -62,12 +64,14 @@ Two facts bear on it:
   It removes the browser SSH client at the cost under [Channel security](#channel-security).
 
 The recommendation is the raw byte relay with a fixed target, so that the proxy is a TCP forwarder and a standard one can be deployed.
-Whether any standard proxy qualifies is unverified, and turns on two behaviors:
+Whether a standard proxy qualified turned on two behaviors, and spike S7 (2026-10-29) found none of the three it tried did: websockify refuses by `Origin` but keeps reading from the browser while the SFTP server reads nothing, websocat holds backpressure both ways but has no `Origin` check, and the npm port of websockify exits on its first upgrade ([web-websocket-transport.md](web-websocket-transport.md#the-spikes)).
+The maintainer ruled on 2026-10-29 that the relay is built first-party, as a fixed-target relay ([SFTP_RELAY.md](../spec/SFTP_RELAY.md)).
+The two behaviors:
 
 - **Backpressure.** The proxy pauses reading from TCP while its WebSocket send buffer is full, and the reverse; without it a slow browser makes the proxy buffer without bound.
 - **Close mapping.** A close or reset on either side ends the other, so a stalled side is caught by the browser client's liveness bounds rather than hanging.
 
-What would verify it: run a candidate proxy in front of the SFTP test server from [TESTING.md](../TESTING.md#integration-tests), drive an SSH client through it, and check both behaviors and the `Origin` refusal below.
+S7 ran each candidate in front of the SFTP test server from [TESTING.md](../TESTING.md#integration-tests), drove an SSH client through it, and checked both behaviors and the `Origin` refusal below.
 
 ### Authentication of the browser to the proxy
 
@@ -159,13 +163,16 @@ The recommendation is the browser-local setting: the value sits where its only r
 ### The SSH client in the browser
 
 The client must speak SSH and SFTP over a WebSocket-backed byte stream and implement core's `FileTransportClient` (`packages/core/src/connection/fileSyncConnection.ts`), so the file-sync stack above it runs unchanged.
-Candidates, none verified in the browser:
+Candidates, and what spike S8 found of each in the browser on 2026-10-29 ([web-websocket-transport.md](web-websocket-transport.md#the-spikes)):
 
-- **`ssh2` bundled for the browser**, given a WebSocket-backed duplex through its `sock` option (named in `packages/core/src/connection/sftpConnect.ts`); whether it runs in a browser bundle given its Node API use is unverified.
-- **A C SSH library compiled to WebAssembly**; which libraries build, their SFTP coverage, and how they take a WebSocket stream are unverified.
-- **Another JavaScript SSH client**; whether one exists with SFTP support, a host-key callback before authentication, and acceptable maintenance is unverified.
+- **`ssh2` bundled for the browser**, given a WebSocket-backed duplex through its `sock` option (named in `packages/core/src/connection/sftpConnect.ts`).
+  S8: it passed only against a server that also offers an ECDSA host key, running its session crypto in JavaScript polyfills; against an ed25519-only server it failed.
+- **A C SSH library compiled to WebAssembly.**
+  S8 tried `@verdigris/libssh2.js` 0.1.9, which failed: it exports no host-key function and no signer callback.
+- **Another JavaScript SSH client.**
+  S8 tried `@microsoft/dev-tunnels-ssh` 3.12.42, which passed with three additions in the spike's own code: an Ed25519 host-key verifier, the non-extractable key set on an undeclared field, and an SFTP client, since the package exports none.
 
-Spike S8 drove three clients from the browser ([web-websocket-transport.md](web-websocket-transport.md#the-spikes)), and the maintainer chose `@microsoft/dev-tunnels-ssh` on 2026-10-29, on the conditions [below](#the-chosen-client-dependency-check-and-sizing).
+The maintainer chose `@microsoft/dev-tunnels-ssh` on 2026-10-29, conditional on the dependency check and sizing [below](#the-chosen-client-dependency-check-and-sizing).
 It is a new security-relevant dependency under [CONTRIBUTING.md](../../CONTRIBUTING.md#dependency-policy), shipped to every browser that loads the app.
 
 The CLI adapter's transport [memory](../spec/TRANSPORT_BOUNDS.md) and [liveness](../spec/TRANSPORT_LIVENESS.md) bounds live in `apps/cli`, not core, so a browser client needs its own counterpart of each.
@@ -333,7 +340,7 @@ Each is left open for the maintainer; the linked section carries the argument.
 2. **Where the proxy runs**: console container, project-hosted, or operator-run.
    Operator-run, if the public app gets the path ([Where the proxy runs](#where-the-proxy-runs)).
 3. **What the proxy speaks**: raw byte relay, framed protocol, or terminating proxy.
-   Raw byte relay; that a standard proxy serves is unverified until the backpressure and close-mapping spike ([Framing](#framing)).
+   Raw byte relay; S7 found no standard proxy that serves, so the relay is first-party ([Framing](#framing)).
 4. **How the target is chosen**: fixed per endpoint, or per request against an allowlist.
    Fixed per endpoint ([How the target is chosen and restricted](#how-the-target-is-chosen-and-restricted)).
 5. **How the browser authenticates to the proxy**: origin check, static token, or per-exchange credential.
