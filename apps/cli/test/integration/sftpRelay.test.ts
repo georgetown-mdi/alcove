@@ -1,7 +1,10 @@
 import { createHash, randomBytes } from "node:crypto";
 import { once } from "node:events";
 import { createServer as createHttpServer } from "node:http";
-import { createServer as createTcpServer } from "node:net";
+import {
+  connect as connectTcp,
+  createServer as createTcpServer,
+} from "node:net";
 import type { AddressInfo, Server as TcpServer, Socket } from "node:net";
 
 import { Client } from "ssh2";
@@ -11,7 +14,7 @@ import { WebSocket, createWebSocketStream } from "ws";
 
 import { attachSftpRelay } from "@alcove/sftp-relay";
 import type {
-  SftpRelayConnectionSockets,
+  SftpRelayObservedConnection,
   SftpRelayOptions,
   SftpRelayTarget,
 } from "@alcove/sftp-relay";
@@ -46,9 +49,16 @@ const PRESSURE_MS = 2_000;
 // Far above what the loopback socket buffers and the relay's bound hold
 // between them, and far below what an unbounded relay takes in PRESSURE_MS.
 const TAKEN_CEILING_BYTES = 64 * 1024 * 1024;
-// A client frame of one MESSAGE_BYTES message (RFC 6455, 5.2): two bytes, an
-// 8-byte length and a 4-byte mask ahead of the payload.
-const MESSAGE_FRAME_BYTES = MESSAGE_BYTES + 14;
+
+/** The size of a client frame holding `payloadBytes` (RFC 6455, 5.2): two
+ * bytes, a 2- or 8-byte extended length when the payload needs one, and a
+ * 4-byte mask ahead of the payload. */
+function clientFrameBytes(payloadBytes: number): number {
+  let extendedLength = 0;
+  if (payloadBytes > 0xffff) extendedLength = 8;
+  else if (payloadBytes > 125) extendedLength = 2;
+  return 2 + extendedLength + 4 + payloadBytes;
+}
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -80,31 +90,38 @@ async function startTarget(onSocket?: (socket: Socket) => void) {
 }
 
 /**
- * One connection as the relay holds it, and the most bytes it has held for
- * each direction: read from the source's socket and not yet written into the
- * destination's. Toward the target the count assumes the browser sends only
- * MESSAGE_BYTES binary messages.
+ * One connection as the relay holds it, and the most it has held for each
+ * direction: toward the target, the memory the relay holds for bytes read from
+ * the browser's socket and not yet written into the target's; toward the
+ * browser, those bytes. The count assumes the browser sends no control frame.
  */
-interface RelayConnection extends SftpRelayConnectionSockets {
+interface RelayConnection extends SftpRelayObservedConnection {
   forwardedToTarget: number;
-  peaks: { toTarget: number; toBrowser: number };
+  peaks: { toTarget: number; toBrowser: number; writesInFlight: number };
   /** Read the held bytes now, as well as after each read. */
   sample(): void;
 }
 
-function trackConnection(sockets: SftpRelayConnectionSockets): RelayConnection {
-  const { browserSocket, browser, target } = sockets;
+function trackConnection(
+  observed: SftpRelayObservedConnection,
+): RelayConnection {
+  const { browserSocket, browser, target } = observed;
   let readFromBrowser = 0;
+  let parsedFromBrowser = 0;
   const connection: RelayConnection = {
-    ...sockets,
+    ...observed,
     forwardedToTarget: 0,
-    peaks: { toTarget: 0, toBrowser: 0 },
+    peaks: { toTarget: 0, toBrowser: 0, writesInFlight: 0 },
     sample() {
-      const unparsed =
-        readFromBrowser - connection.forwardedToTarget * MESSAGE_FRAME_BYTES;
+      const towardTarget = observed.towardTarget();
+      const unparsed = readFromBrowser - parsedFromBrowser;
       connection.peaks.toTarget = Math.max(
         connection.peaks.toTarget,
-        browserSocket.readableLength + unparsed + target.writableLength,
+        browserSocket.readableLength + unparsed + towardTarget.allocatedBytes,
+      );
+      connection.peaks.writesInFlight = Math.max(
+        connection.peaks.writesInFlight,
+        towardTarget.writesInFlight,
       );
       connection.peaks.toBrowser = Math.max(
         connection.peaks.toBrowser,
@@ -114,8 +131,9 @@ function trackConnection(sockets: SftpRelayConnectionSockets): RelayConnection {
   };
   // Registered after the relay's own listeners, so each runs once the relay
   // has forwarded what it read.
-  browser.on("message", () => {
+  browser.on("message", (data: Buffer) => {
     connection.forwardedToTarget += 1;
+    parsedFromBrowser += clientFrameBytes(data.length);
   });
   browserSocket.on("data", (chunk: Buffer) => {
     readFromBrowser += chunk.length;
@@ -149,7 +167,7 @@ async function startRelay(
     testing: {
       ...testing,
       observer: {
-        connection: (sockets) => connections.push(trackConnection(sockets)),
+        connection: (observed) => connections.push(trackConnection(observed)),
       },
     },
   });
@@ -179,6 +197,76 @@ function browser(
   socket.on("error", () => {});
   cleanups.push(() => socket.terminate());
   return socket;
+}
+
+/**
+ * A browser's WebSocket written by hand over TCP, for floods of frames that
+ * `ws` would queue one write each in this process. What the relay sends it is
+ * dropped.
+ */
+async function rawBrowser(url: string): Promise<Socket> {
+  const { hostname, port, pathname } = new URL(url);
+  const socket = connectTcp({ host: hostname, port: Number(port) });
+  socket.on("error", () => {});
+  cleanups.push(() => {
+    socket.destroy();
+  });
+  await once(socket, "connect");
+  socket.write(
+    [
+      `GET ${pathname} HTTP/1.1`,
+      `Host: ${hostname}:${port}`,
+      "Upgrade: websocket",
+      "Connection: Upgrade",
+      `Sec-WebSocket-Key: ${randomBytes(16).toString("base64")}`,
+      "Sec-WebSocket-Version: 13",
+      `Origin: ${APP_ORIGIN}`,
+      "",
+      "",
+    ].join("\r\n"),
+  );
+  const [response] = (await once(socket, "data")) as [Buffer];
+  expect(response.toString("latin1")).toMatch(/^HTTP\/1\.1 101 /);
+  socket.on("data", () => {});
+  return socket;
+}
+
+/** A client's binary frame holding `payload` (RFC 6455, 5.2), under a zero
+ * mask so the payload is written as is. */
+function binaryFrame(payload: Buffer): Buffer {
+  const header = Buffer.alloc(
+    clientFrameBytes(payload.length) - payload.length,
+  );
+  header[0] = 0x82;
+  if (payload.length > 0xffff) {
+    header[1] = 0x80 | 127;
+    header.writeBigUInt64BE(BigInt(payload.length), 2);
+  } else if (payload.length > 125) {
+    header[1] = 0x80 | 126;
+    header.writeUInt16BE(payload.length, 2);
+  } else {
+    header[1] = 0x80 | payload.length;
+  }
+  return Buffer.concat([header, payload]);
+}
+
+/**
+ * Send `connection` messages from `send`, one at a time, until a write to the
+ * target does not complete: the target reads nothing, so its socket buffers
+ * are full.
+ */
+async function fillTargetSocket(
+  connection: RelayConnection,
+  send: () => void,
+): Promise<void> {
+  for (let sent = 0; connection.target.writableLength === 0; sent += 1) {
+    if (sent * MESSAGE_BYTES > TAKEN_CEILING_BYTES) {
+      throw new Error("the target's socket never queued a byte");
+    }
+    const forwarded = once(connection.browser, "message");
+    send();
+    await forwarded;
+  }
 }
 
 /** The status an upgrade was answered with: 101 when it opened. */
@@ -414,6 +502,105 @@ describe("backpressure", () => {
     },
     CASE_TIMEOUT_MS,
   );
+
+  it(
+    "holds a flood of 1-byte messages at the high mark behind one write to a target that reads nothing",
+    async () => {
+      const { target } = await startTarget((socket) => socket.pause());
+      const relay = await startRelay(target);
+      const raw = await rawBrowser(relay.url);
+      await waitFor(() => relay.connections.length === 1, {
+        timeoutMs: 5_000,
+        what: "the relay's connection",
+      });
+      const [connection] = relay.connections;
+      const largeFrame = binaryFrame(randomBytes(MESSAGE_BYTES));
+      await fillTargetSocket(connection, () => raw.write(largeFrame));
+
+      const floodFrames = Buffer.concat(
+        Array.from({ length: 4096 }, () => binaryFrame(Buffer.of(0x5a))),
+      );
+      const deadline = performance.now() + PRESSURE_MS;
+      while (performance.now() < deadline) {
+        for (
+          let writes = 0;
+          writes < 64 && raw.writableLength < BROWSER_WINDOW_BYTES;
+          writes += 1
+        ) {
+          raw.write(floodFrames);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        connection.sample();
+      }
+
+      expect(connection.browser.isPaused).toBe(true);
+      expect(connection.peaks.writesInFlight).toBe(1);
+      expect(connection.peaks.toTarget).toBeGreaterThan(
+        SFTP_RELAY_SEND_BUFFER_HIGH_BYTES,
+      );
+      expect(connection.peaks.toTarget).toBeLessThanOrEqual(
+        SFTP_RELAY_BUFFERED_BOUND_BYTES,
+      );
+    },
+    CASE_TIMEOUT_MS,
+  );
+});
+
+describe("order and integrity", () => {
+  const finishes: Array<[string, (socket: WebSocket) => void]> = [
+    ["a browser close", (socket) => socket.close(1000)],
+    ["a text message", (socket) => socket.send("SSH-2.0-text")],
+  ];
+
+  it.each(finishes)(
+    "writes small and large messages to the target byte for byte and in order, ending after them on %s",
+    async (_finish, finish) => {
+      const received: Buffer[] = [];
+      const { target, sockets } = await startTarget((tcp) => {
+        tcp.pause();
+        tcp.on("data", (chunk: Buffer) => received.push(chunk));
+      });
+      const relay = await startRelay(target);
+      const socket = browser(relay.url);
+      expect(await upgradeStatus(socket)).toBe(101);
+      const [connection] = relay.connections;
+      const sent: Buffer[] = [];
+      const send = (message: Buffer): void => {
+        sent.push(message);
+        socket.send(message);
+      };
+      await fillTargetSocket(connection, () =>
+        send(randomBytes(MESSAGE_BYTES)),
+      );
+
+      // Under the high mark with the write in flight, so the relay reads the
+      // close behind them while they wait.
+      const forwardedBefore = connection.forwardedToTarget;
+      let mixed = 0;
+      for (let index = 0; index < 400; index += 1) {
+        const size =
+          index % 40 === 0 ? MESSAGE_BYTES - index : 1 + (index % 97);
+        send(randomBytes(size));
+        mixed += 1;
+      }
+      await waitFor(
+        () => connection.forwardedToTarget === forwardedBefore + mixed,
+        { timeoutMs: 5_000, what: `the ${mixed} mixed messages at the relay` },
+      );
+      expect(connection.towardTarget().pendingBytes).toBeGreaterThan(0);
+
+      const relayClosed = once(connection.browser, "close");
+      finish(socket);
+      await relayClosed;
+      expect(connection.target.writableEnded).toBe(true);
+
+      const ended = once(sockets[0], "end");
+      sockets[0].resume();
+      await ended;
+      expect(Buffer.concat(received).equals(Buffer.concat(sent))).toBe(true);
+    },
+    CASE_TIMEOUT_MS,
+  );
 });
 
 describe("close mapping", () => {
@@ -554,14 +741,7 @@ describe("close mapping", () => {
       const message = randomBytes(MESSAGE_BYTES);
       // One message at a time, so the relay is never held and reads the
       // close below.
-      for (let sent = 0; connection.target.writableLength === 0; sent += 1) {
-        if (sent * MESSAGE_BYTES > TAKEN_CEILING_BYTES) {
-          throw new Error("the target's socket never queued a byte");
-        }
-        const forwarded = once(connection.browser, "message");
-        socket.send(message);
-        await forwarded;
-      }
+      await fillTargetSocket(connection, () => socket.send(message));
       expect(connection.target.writableLength).toBeLessThanOrEqual(
         SFTP_RELAY_SEND_BUFFER_HIGH_BYTES,
       );

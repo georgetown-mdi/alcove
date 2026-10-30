@@ -46,7 +46,8 @@ Any other request is answered `403` and closed before the relay opens a TCP conn
 
 ## Forwarding
 
-- **Unread.** The relay writes each binary message to the target as it arrives, and sends each read from the target to the browser as one binary message. Message boundaries carry no meaning.
+- **Unread.** The relay writes the bytes of each binary message to the target in the order they arrive, and sends each read from the target to the browser as one binary message. Message boundaries carry no meaning.
+- **One write at a time.** The relay has at most one write to the target in flight. Messages that arrive meanwhile are copied into one pending buffer, written as one write once the write in flight completes; a close of either side writes the pending bytes before it ends the TCP connection.
 - **Binary only.** A text message closes the WebSocket with 1003 and ends the TCP connection.
 - **The per-message cap.** 65,536 bytes (`SFTP_RELAY_MAX_MESSAGE_BYTES`): an SSH packet of the 35,000 bytes RFC 4253 requires a peer to take, rounded up. A message above it is refused with 1009 before its payload is read.
 - **Before the target accepts.** Messages that arrive while the TCP connection is opening are queued for it and count toward its send buffer.
@@ -55,11 +56,11 @@ Any other request is answered `403` and closed before the relay opens a TCP conn
 
 Each direction stops reading from its source while its destination's send buffer is above 1 MiB (`SFTP_RELAY_SEND_BUFFER_HIGH_BYTES`), and reads again once that buffer is at or below 256 KiB (`SFTP_RELAY_SEND_BUFFER_LOW_BYTES`), the WebSocket relay's window ([WEBSOCKET_RELAY.md](WEBSOCKET_RELAY.md#forwarding)).
 
-- **A slow target.** While the TCP connection's unwritten bytes are above the window, the relay reads nothing from the WebSocket.
+- **A slow target.** Toward the target the send buffer is the write in flight and the pending buffer. While their bytes are above the window, the relay reads nothing from the WebSocket.
 - **A slow browser.** While the WebSocket's `bufferedAmount` is above the window, the relay reads nothing from the TCP connection. The forwarding toward the browser is the WebSocket relay's own (`sendWithinWindow` in `packages/websocket-relay/src/forwarding.ts`).
-- **The bound.** The relay holds at most 1,310,734 bytes for each direction of each connection, read from the source and not yet written into the destination's socket (`SFTP_RELAY_BUFFERED_BOUND_BYTES`). Toward the target that is the high mark, a partly read message with its 14-byte frame header, the 64 KiB read that crossed the mark, and what the paused source socket reads ahead: under Node's 64 KiB high-water mark, plus one 64 KiB read. Toward the browser it is at most 1,245,194 bytes: the high mark, the 64 KiB read that crossed it with its 10-byte frame header, and the same read-ahead.
+- **The bound.** The relay holds at most 1,441,806 bytes of memory for each direction of each connection, for bytes read from the source and not yet written into the destination's socket (`SFTP_RELAY_BUFFERED_BOUND_BYTES`). Toward the target that is the high mark, a partly read message with its 14-byte frame header, the 64 KiB read that crossed the mark, the unused capacity of the write in flight and of the pending buffer, each under the 64 KiB step the pending buffer grows in (`SFTP_RELAY_PENDING_GROWTH_BYTES`), and what the paused source socket reads ahead: under Node's 64 KiB high-water mark, plus one 64 KiB read. Toward the browser it is at most 1,245,194 bytes: the high mark, the 64 KiB read that crossed it with its 10-byte frame header, and the same read-ahead.
+- **Any message size.** Toward the target the bound is in memory, not only in payload bytes, for messages of any size: a message behind the write in flight is copied into the pending buffer and has no write of its own, so a flood of 1-byte messages stops at the high mark like one of 64 KiB messages.
 - **No termination.** A source held this way waits on its own TCP window and is not disconnected.
-
 ## Closing
 
 | Event | What the relay does |
@@ -114,7 +115,7 @@ The image (`packages/sftp-relay/Dockerfile`) runs the runner with `--host 0.0.0.
 
 ## Tests
 
-- **Against the SFTP test server.** `apps/cli/test/integration/sftpRelay.test.ts` writes and reads a file over SFTP through the relay, and drives each `Origin` case, the fixed target, backpressure each way, each row of the close table but the connect timeout, the 1009 close, the close wait of a TCP end, the connection cap, and the pings. It measures each direction's held bytes, read and not yet written, after each read and every 5 milliseconds, against the bound above. It runs in the CLI integration suite, on each SFTP backend.
+- **Against the SFTP test server.** `apps/cli/test/integration/sftpRelay.test.ts` writes and reads a file over SFTP through the relay, and drives each `Origin` case, the fixed target, backpressure each way, each row of the close table but the connect timeout, the 1009 close, the close wait of a TCP end, the connection cap, and the pings. It measures what each direction holds for bytes read and not yet written, after each read and every 5 milliseconds, against the bound above, under messages of 64 KiB and under a flood of 1-byte messages, and checks that a flood leaves one write in flight. It checks that small and large messages reach the target byte for byte and in order ahead of a browser close and of a text message. It runs in the CLI integration suite, on each SFTP backend.
 - **The connect timeout.** `packages/sftp-relay/test/relay.test.ts` drives the 4001 close of a target that does not accept in time in process, giving the relay a socket that never connects in place of its connection to the target: no loopback target leaves a TCP handshake incomplete reliably.
 - **The runner.** `packages/sftp-relay/test/standaloneOptions.test.ts` and `standalone.test.ts` hold the flag parsing and the runner as a process.
 - **The image.** `.github/workflows/image_smoke.yaml` builds the image and forwards a message through it.

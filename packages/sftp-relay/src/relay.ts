@@ -12,6 +12,7 @@ import {
   SFTP_RELAY_MAX_CONNECTIONS,
   SFTP_RELAY_MAX_MESSAGE_BYTES,
   SFTP_RELAY_PATH,
+  SFTP_RELAY_PENDING_GROWTH_BYTES,
   SFTP_RELAY_PING_INTERVAL_MS,
   SFTP_RELAY_SEND_BUFFER_HIGH_BYTES,
   SFTP_RELAY_SEND_BUFFER_LOW_BYTES,
@@ -29,15 +30,23 @@ export interface SftpRelayTarget {
 }
 
 /** @internal */
-export interface SftpRelayConnectionSockets {
+export interface SftpRelayTowardTarget {
+  writesInFlight: number;
+  pendingBytes: number;
+  allocatedBytes: number;
+}
+
+/** @internal */
+export interface SftpRelayObservedConnection {
   browserSocket: Duplex;
   browser: WebSocket;
   target: Socket;
+  towardTarget(): SftpRelayTowardTarget;
 }
 
 /** @internal */
 export interface SftpRelayObserver {
-  connection?(sockets: SftpRelayConnectionSockets): void;
+  connection?(connection: SftpRelayObservedConnection): void;
 }
 
 /** What {@link attachSftpRelay} needs. */
@@ -73,10 +82,22 @@ interface Connection {
   connected: boolean;
   browserHeld: boolean;
   targetHeld: boolean;
+  /** Writes to the target not yet completed: one, or two once `endTarget`
+   * has written the pending bytes behind it. */
+  writesInFlight: number;
+  inFlightBytes: number;
+  /** The memory the writes in flight keep, their unused capacity included. */
+  inFlightAllocatedBytes: number;
+  /** Browser bytes accepted while a write is in flight, the first
+   * `pendingBytes` of it, written as one write once that write completes. */
+  pending: Buffer;
+  pendingBytes: number;
   /** Sockets of the two not yet closed. */
   open: number;
   targetCloseTimer: ReturnType<typeof setTimeout> | undefined;
 }
+
+const NO_PENDING = Buffer.alloc(0);
 
 function requestPath(url: string | undefined): string {
   if (url === undefined) return "";
@@ -193,12 +214,15 @@ export function attachSftpRelay(
     connection.browser.close(code);
   }
 
-  // Ends the TCP connection behind every byte already written to it, and
+  // Ends the TCP connection behind every byte already accepted for it, and
   // drops it if the target has not closed within the close wait. What the
   // target sends after this is read and dropped, so its close is seen.
   function endTarget(connection: Connection): void {
     const { target } = connection;
     if (target.destroyed || target.writableEnded) return;
+    if (connection.pendingBytes > 0) {
+      writeToTarget(connection, takePending(connection));
+    }
     target.end();
     releaseTarget(connection);
     connection.targetCloseTimer = setTimeout(
@@ -208,6 +232,53 @@ export function attachSftpRelay(
     connection.targetCloseTimer.unref();
   }
 
+  function heldForTarget(connection: Connection): number {
+    return connection.inFlightBytes + connection.pendingBytes;
+  }
+
+  function takePending(connection: Connection): Buffer {
+    const bytes = connection.pending.subarray(0, connection.pendingBytes);
+    connection.pending = NO_PENDING;
+    connection.pendingBytes = 0;
+    return bytes;
+  }
+
+  // A copy, so the memory held is the bytes and not a queue entry, a view
+  // and a callback for each message.
+  function appendPending(connection: Connection, data: Buffer): void {
+    const pendingBytes = connection.pendingBytes + data.length;
+    if (pendingBytes > connection.pending.length) {
+      const steps = Math.ceil(pendingBytes / SFTP_RELAY_PENDING_GROWTH_BYTES);
+      const grown = Buffer.allocUnsafe(steps * SFTP_RELAY_PENDING_GROWTH_BYTES);
+      connection.pending.copy(grown, 0, 0, connection.pendingBytes);
+      connection.pending = grown;
+    }
+    data.copy(connection.pending, connection.pendingBytes);
+    connection.pendingBytes = pendingBytes;
+  }
+
+  function writeToTarget(connection: Connection, bytes: Buffer): void {
+    const { target } = connection;
+    const allocated = bytes.buffer.byteLength;
+    connection.writesInFlight += 1;
+    connection.inFlightBytes += bytes.length;
+    connection.inFlightAllocatedBytes += allocated;
+    target.write(bytes, () => {
+      connection.writesInFlight -= 1;
+      connection.inFlightBytes -= bytes.length;
+      connection.inFlightAllocatedBytes -= allocated;
+      if (connection.pendingBytes > 0) {
+        const pending = takePending(connection);
+        if (!target.destroyed) writeToTarget(connection, pending);
+      }
+      if (heldForTarget(connection) <= window.lowBytes) {
+        releaseBrowser(connection);
+      }
+    });
+  }
+
+  // One write to the target at a time: what arrives while it is in flight
+  // waits in the pending buffer.
   function toTarget(
     connection: Connection,
     data: Buffer,
@@ -219,10 +290,9 @@ export function attachSftpRelay(
       closeBrowser(connection, SftpRelayCloseCode.textMessage);
       return endTarget(connection);
     }
-    target.write(data, () => {
-      if (target.writableLength <= window.lowBytes) releaseBrowser(connection);
-    });
-    if (target.writableLength > window.highBytes) holdBrowser(connection);
+    if (connection.writesInFlight > 0) appendPending(connection, data);
+    else writeToTarget(connection, data);
+    if (heldForTarget(connection) > window.highBytes) holdBrowser(connection);
   }
 
   function toBrowser(connection: Connection, data: Buffer): void {
@@ -246,6 +316,11 @@ export function attachSftpRelay(
       connected: false,
       browserHeld: false,
       targetHeld: false,
+      writesInFlight: 0,
+      inFlightBytes: 0,
+      inFlightAllocatedBytes: 0,
+      pending: NO_PENDING,
+      pendingBytes: 0,
       open: 2,
       targetCloseTimer: undefined,
     };
@@ -287,7 +362,17 @@ export function attachSftpRelay(
       endTarget(connection);
       closed(connection);
     });
-    observer.connection?.({ browserSocket, browser, target: tcp });
+    observer.connection?.({
+      browserSocket,
+      browser,
+      target: tcp,
+      towardTarget: () => ({
+        writesInFlight: connection.writesInFlight,
+        pendingBytes: connection.pendingBytes,
+        allocatedBytes:
+          connection.inFlightAllocatedBytes + connection.pending.length,
+      }),
+    });
   }
 
   const onUpgrade = (

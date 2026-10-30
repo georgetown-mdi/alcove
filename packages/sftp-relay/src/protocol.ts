@@ -16,17 +16,24 @@ export const SFTP_RELAY_SEND_BUFFER_HIGH_BYTES = 1024 * 1024;
  * from that direction's source again. */
 export const SFTP_RELAY_SEND_BUFFER_LOW_BYTES = 256 * 1024;
 
+/** The step, in bytes, in which the buffer of browser bytes waiting behind a
+ * write to the target grows, so its unused capacity stays under one step. */
+export const SFTP_RELAY_PENDING_GROWTH_BYTES = 64 * 1024;
+
 /**
- * The most bytes the relay holds for one direction of one connection, read and
- * not yet written, toward the target: the high mark, a partly read message and
- * its 14-byte frame header, the 64 KiB read that crossed the mark, and the
- * paused source socket's read-ahead, under 64 KiB plus one 64 KiB read. Toward
- * the browser it is less: one read and its 10-byte frame header, no message.
+ * The most memory the relay holds for one direction of one connection, for
+ * bytes read and not yet written, toward the target: the high mark, a partly
+ * read message and its 14-byte frame header, the 64 KiB read that crossed the
+ * mark, the unused capacity of the write in flight and of the pending buffer,
+ * each under one growth step, and the paused source socket's read-ahead, under
+ * 64 KiB plus one 64 KiB read. Toward the browser it is less: one read and its
+ * 10-byte frame header, no message, no pending buffer.
  */
 export const SFTP_RELAY_BUFFERED_BOUND_BYTES =
   SFTP_RELAY_SEND_BUFFER_HIGH_BYTES +
   (SFTP_RELAY_MAX_MESSAGE_BYTES + 14) +
   64 * 1024 +
+  2 * SFTP_RELAY_PENDING_GROWTH_BYTES +
   2 * 64 * 1024;
 
 /** The most connections the relay holds at once, each a WebSocket and its
