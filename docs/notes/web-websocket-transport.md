@@ -4,13 +4,14 @@ title: "The Web Application's WebSocket Transport Path"
 
 # The web application's WebSocket transport path: a relay for networks that stop TURN, and the browser SFTP proxy
 
-_Status: the relay path is built and turned on in both applications: the relay proof derivation, the relay service and its deployment, both clients, the wrap on the web side, the relay locator and settings, and the automatic fallback; its disclosure documents and its stress-tier run remain ([Implementation items implied, not filed](#implementation-items-implied-not-filed)). The browser SFTP path is design only.
+_Status: the relay path is built and turned on in both applications: the relay proof derivation, the relay service and its deployment, both clients, the wrap on the web side, the relay locator and settings, and the automatic fallback; its disclosure documents and its stress-tier run remain ([Implementation items implied, not filed](#implementation-items-implied-not-filed)). The browser SFTP path is design only but for its relay ([SFTP_RELAY.md](../spec/SFTP_RELAY.md)).
 The maintainer ruled on the seven forks on 2026-10-09 ([The forks and their rulings](#the-forks-and-their-rulings)).
 What remains open is the spikes S2 and S4, neither of which has run, and S1's open parts, S1 having run in a narrower form with its decisive part met; S3, S5 and S6 passed with Node and Chromium parties on 2026-10-18, S6 through the 443 front on a host run (each [below](#the-spikes)).
 The browser SFTP spikes ran on 2026-10-29.
 S7 found no off-the-shelf raw relay, of the three tried, that both refuses by `Origin` and holds backpressure in both directions.
 S8's PASS line was met by `@microsoft/dev-tunnels-ssh` with three additions in the spike's own code, and by `ssh2` bundled for the browser only against a server that also offers an ECDSA host key.
-Which relay and which client the browser SFTP path builds on is open for the maintainer: fork 5 assumed an off-the-shelf relay S7 did not find, and fork 7's condition, the scheduled-run credential, is met for those two clients as S8 records.
+The relay is built first-party, its own package and image, by the maintainer's ruling of 2026-10-29 ([fork 5](#the-forks-and-their-rulings)); fork 5's earlier reading, an off-the-shelf relay S7 did not find, is superseded.
+Which client the browser SFTP path builds on is open for the maintainer: fork 7's condition, the scheduled-run credential, is met for those two clients as S8 records.
 The hosted relay admits one-shot exchanges, as part of the production default, by the maintainer's ruling of 2026-10-15 ([fork 1](#the-forks-and-their-rulings)).
 The public web application is the consumer of both paths and the console ships neither, by the maintainer's ruling.
 The note recommends a WebSocket relay for networks whose inspection stops TURN as the first thing to build, answers whether that relay and the browser SFTP proxy are one component, re-answers the browser SFTP note's open choices under the ruling, and ends with the sequence, the spikes, and the forks with the maintainer's rulings on them.
@@ -222,7 +223,7 @@ Everything else about them differs:
 | Reads | Nothing of the exchange past the hello | Nothing: SSH runs end to end |
 | Authentication | Per-exchange proof, both sides | `Origin` check, and the SSH server's own authentication behind it |
 | Operator | The project for the hosted app, or a party | The party whose SFTP server it fronts, at its edge |
-| Code | First-party: the pairing and the proof exist nowhere else | An off-the-shelf raw relay with a reference configuration, if the spike finds one that backpressures and maps closes ([browser-sftp-proxy.md](browser-sftp-proxy.md#framing)) |
+| Code | First-party: the pairing and the proof exist nowhere else | First-party, by the ruling of 2026-10-29 ([fork 5](#the-forks-and-their-rulings)); the off-the-shelf raw relay first assumed here, if the spike found one that backpressures and maps closes ([browser-sftp-proxy.md](browser-sftp-proxy.md#framing)), is superseded |
 
 What each sharing choice costs:
 
@@ -233,11 +234,12 @@ What each sharing choice costs:
 - **Two services, one shared library.**
   Security: the relay has no code path that dials TCP at all, so "the browser cannot choose a target" is true by absence rather than by refusal, and the proxy's fixed target is a property of a configuration file at the operator's edge.
   Operations: each operator runs the one they need.
-  Code: the relay is first-party; the proxy is a reference configuration of an existing tool, if the spike qualifies one, and first-party only if none qualifies -- in which case it shares the upgrade bounds and nothing more.
+  Code: both are first-party, the proxy by the maintainer's ruling of 2026-10-29 once S7 qualified no existing tool; the earlier reading, a reference configuration of an existing tool sharing only the upgrade bounds if built first-party, is superseded.
+  The two share the broker's pre-upgrade bounds, the relay's forwarding toward a WebSocket within its send window (`sendWithinWindow`), its fault-report latch, and core's redaction of that report, and nothing else: the proxy has no pairing and no proof, and the relay dials no TCP.
 
 **Recommendation: two.**
 The relay has no mode that opens an outbound connection, and the SFTP proxy stays an operator-run fixed-target forwarder with no pairing in it.
-The one piece written once is the pre-upgrade hardening, which already lives in the broker package for the web servers to import.
+The pieces written once are the pre-upgrade hardening, which lives in the broker package for the web servers to import, and the forwarding and fault latch the proxy imports from the relay's package.
 
 ## Question 3: the browser SFTP forks under the ruling
 
@@ -632,7 +634,9 @@ The reading after a ruling is how this note applies the ruling to the fork, not 
    Recommendation: `Origin` only, with the proof as a later option for a deployment that asks ([Question 3](#question-3-the-browser-sftp-forks-under-the-ruling), fork 5).
    Ruling (2026-10-09): "Use your recommendation for this item."
    Reading: an `Origin` check only, with an off-the-shelf relay; a first-party proxy that checks a proof is a later option for a deployment that asks.
-   S7 (2026-10-29) found no single off-the-shelf relay, of three tried, that refuses by `Origin` and holds backpressure in both directions, so how the reading is met is open for the maintainer ([S7](#the-spikes)).
+   S7 (2026-10-29) found no single off-the-shelf relay, of three tried, that refuses by `Origin` and holds backpressure in both directions ([S7](#the-spikes)).
+   Ruling (2026-10-29), on how the reading is met: "No, I'm willing to build it. Maybe I'm off base, but I just wouldn't expect a lot of mature choices to choose from in this space."
+   Reading: a small first-party relay with the `Origin` check only, its own package and image (`packages/sftp-relay`, [SFTP_RELAY.md](../spec/SFTP_RELAY.md)); the off-the-shelf relay of the earlier reading is superseded.
 6. **The proxy on the invitation**: the SFTP endpoint names the proxy, or the browser-local setting alone.
    Recommendation: the endpoint names it, with the browser-local override ([Question 3](#question-3-the-browser-sftp-forks-under-the-ruling), fork 6).
    Ruling (2026-10-09): "Use your recommendation for this item."

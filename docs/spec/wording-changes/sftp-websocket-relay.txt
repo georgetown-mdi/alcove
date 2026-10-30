@@ -66,7 +66,9 @@
 - - -> While the WebSocket's `bufferedAmount` is above the window, the relay reads nothing from the TCP connection.
 - - -> The forwarding toward the browser is the WebSocket relay's own (`sendWithinWindow` in `packages/websocket-relay/src/forwarding.ts`).
 - - -> **The bound.**
-- - -> The relay holds at most 1,245,184 bytes for each direction of each connection (`SFTP_RELAY_BUFFERED_BOUND_BYTES`): the high mark, plus what was already read when reading stopped, which is one TCP read of 64 KiB toward the browser and, toward the target, one read and one partly read message.
+- - -> The relay holds at most 1,310,734 bytes for each direction of each connection, read from the source and not yet written into the destination's socket (`SFTP_RELAY_BUFFERED_BOUND_BYTES`).
+- - -> Toward the target that is the high mark, a partly read message with its 14-byte frame header, the 64 KiB read that crossed the mark, and what the paused source socket reads ahead: under Node's 64 KiB high-water mark, plus one 64 KiB read.
+- - -> Toward the browser it is at most 1,245,194 bytes: the high mark, the 64 KiB read that crossed it with its 10-byte frame header, and the same read-ahead.
 - - -> **No termination.**
 - - -> A source held this way waits on its own TCP window and is not disconnected.
 - - -> Closing
@@ -118,9 +120,12 @@
 - - -> The image (`packages/sftp-relay/Dockerfile`) runs the runner with `--host 0.0.0.0 --port 8080`, as the unprivileged `node` account, from one bundled file.
 - - -> Tests
 - - -> **Against the SFTP test server.**
-- - -> `apps/cli/test/integration/sftpRelay.test.ts` writes and reads a file over SFTP through the relay, and drives each `Origin` case, the fixed target, backpressure each way against the bound above, and each row of the close table.
+- - -> `apps/cli/test/integration/sftpRelay.test.ts` writes and reads a file over SFTP through the relay, and drives each `Origin` case, the fixed target, backpressure each way, each row of the close table but the connect timeout, the 1009 close, the close wait of a TCP end, the connection cap, and the pings.
+- - -> It measures each direction's held bytes, read and not yet written, after each read and every 5 milliseconds, against the bound above.
 - - -> It runs in the CLI integration suite, on each SFTP backend.
+- - -> **The connect timeout.**
+- - -> `packages/sftp-relay/test/relay.test.ts` drives the 4001 close of a target that does not accept in time in process, giving the relay a socket that never connects in place of its connection to the target: no loopback target leaves a TCP handshake incomplete reliably.
 - - -> **The runner.**
-- - -> `packages/sftp-relay/test/` holds the flag parsing and the runner as a process.
+- - -> `packages/sftp-relay/test/standaloneOptions.test.ts` and `standalone.test.ts` hold the flag parsing and the runner as a process.
 - - -> **The image.**
 - - -> `.github/workflows/image_smoke.yaml` builds the image and forwards a message through it.

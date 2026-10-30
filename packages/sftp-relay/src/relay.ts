@@ -28,13 +28,16 @@ export interface SftpRelayTarget {
   port: number;
 }
 
-/** Which way bytes cross the relay. */
-export type SftpRelayDirection = "toTarget" | "toBrowser";
+/** @internal */
+export interface SftpRelayConnectionSockets {
+  browserSocket: Duplex;
+  browser: WebSocket;
+  target: Socket;
+}
 
 /** @internal */
 export interface SftpRelayObserver {
-  /** After each forward, the bytes the relay holds for that direction. */
-  buffered?(direction: SftpRelayDirection, bytes: number): void;
+  connection?(sockets: SftpRelayConnectionSockets): void;
 }
 
 /** What {@link attachSftpRelay} needs. */
@@ -48,12 +51,11 @@ export interface SftpRelayOptions {
   reportFault: (message: string) => void;
   /** @internal */
   testing?: {
-    sendBufferHighBytes?: number;
-    sendBufferLowBytes?: number;
     maxConnections?: number;
     connectTimeoutMs?: number;
     closeWaitMs?: number;
     pingIntervalMs?: number;
+    connectTarget?: (target: Readonly<SftpRelayTarget>) => Socket;
     observer?: SftpRelayObserver;
   };
 }
@@ -125,14 +127,17 @@ export function attachSftpRelay(
   });
   const allowedOrigins: ReadonlySet<string> = new Set(options.allowedOrigins);
   const window = Object.freeze({
-    highBytes: testing.sendBufferHighBytes ?? SFTP_RELAY_SEND_BUFFER_HIGH_BYTES,
-    lowBytes: testing.sendBufferLowBytes ?? SFTP_RELAY_SEND_BUFFER_LOW_BYTES,
+    highBytes: SFTP_RELAY_SEND_BUFFER_HIGH_BYTES,
+    lowBytes: SFTP_RELAY_SEND_BUFFER_LOW_BYTES,
   });
   const maxConnections = testing.maxConnections ?? SFTP_RELAY_MAX_CONNECTIONS;
   const connectTimeoutMs =
     testing.connectTimeoutMs ?? SFTP_RELAY_CONNECT_TIMEOUT_MS;
   const closeWaitMs = testing.closeWaitMs ?? SFTP_RELAY_CLOSE_WAIT_MS;
   const pingIntervalMs = testing.pingIntervalMs ?? SFTP_RELAY_PING_INTERVAL_MS;
+  const connectTarget =
+    testing.connectTarget ??
+    (({ host, port }: Readonly<SftpRelayTarget>) => connect({ host, port }));
   const observer = testing.observer ?? {};
   const unreachableReports = createFaultLatch(
     SFTP_RELAY_FAULT_REPORT_WINDOW_MS,
@@ -218,7 +223,6 @@ export function attachSftpRelay(
       if (target.writableLength <= window.lowBytes) releaseBrowser(connection);
     });
     if (target.writableLength > window.highBytes) holdBrowser(connection);
-    observer.buffered?.("toTarget", target.writableLength);
   }
 
   function toBrowser(connection: Connection, data: Buffer): void {
@@ -231,12 +235,11 @@ export function attachSftpRelay(
       () => holdTarget(connection),
       () => releaseTarget(connection),
     );
-    observer.buffered?.("toBrowser", browser.bufferedAmount);
   }
 
-  function onConnection(browser: WebSocket): void {
+  function onConnection(browser: WebSocket, browserSocket: Duplex): void {
     // The one connection the relay opens, always to the target fixed above.
-    const tcp = connect({ host: target.host, port: target.port });
+    const tcp = connectTarget(target);
     const connection: Connection = {
       browser,
       target: tcp,
@@ -266,11 +269,8 @@ export function attachSftpRelay(
     tcp.on("close", (hadError: boolean) => {
       clearTimeout(connection.targetCloseTimer);
       let code: number = SftpRelayCloseCode.targetClosed;
-      if (hadError) {
-        code = connection.connected
-          ? SftpRelayCloseCode.targetFailed
-          : SftpRelayCloseCode.targetUnreachable;
-      }
+      if (!connection.connected) code = SftpRelayCloseCode.targetUnreachable;
+      else if (hadError) code = SftpRelayCloseCode.targetFailed;
       closeBrowser(connection, code);
       closed(connection);
     });
@@ -287,6 +287,7 @@ export function attachSftpRelay(
       endTarget(connection);
       closed(connection);
     });
+    observer.connection?.({ browserSocket, browser, target: tcp });
   }
 
   const onUpgrade = (
@@ -306,7 +307,9 @@ export function attachSftpRelay(
     if (connections.size >= maxConnections) {
       return refuseUpgrade(socket, "503 Service Unavailable");
     }
-    socketServer.handleUpgrade(request, socket, head, onConnection);
+    socketServer.handleUpgrade(request, socket, head, (browser) =>
+      onConnection(browser, socket),
+    );
   };
   server.on("upgrade", onUpgrade);
 
