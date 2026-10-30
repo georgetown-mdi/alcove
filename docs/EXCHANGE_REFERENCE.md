@@ -141,14 +141,15 @@ Date these linkage terms were last modified. A mismatch produces a warning indic
 *Consistency:* mandatory
 
 - `psi` -- reveals the intersection (matched records and their identifiers). Intended for operational data exchange.
-- `psi-c` -- reveals only the cardinality of the intersection (how many records match).
+- `psi-c` -- reveals only the cardinality of the intersection (how many records match). Intended only for research.
 
-A count-only exchange is one round over one key, so `psi-c` narrows what the rest of the document may say. Terms setting it are refused, naming what to change, when they declare any of:
+A count-only exchange runs every agreed key in order and counts each matched record once, so the count is the size of the linkage the same keys would make. Terms declaring `single-pass` run the same rounds. What the party computing the count learns beside it, and what a partner choosing its own records can learn, is in [Count-only exchanges](SECURITY_DESIGN.md#count-only-exchanges-and-the-pre-agreement-assumption).
 
-- more than one entry in `linkage_keys`;
-- `linkage_strategy: single-pass`;
+`psi-c` narrows what the rest of the document may say. Terms setting it are refused, naming what to change, when they declare any of:
+
 - `deduplicate: true`;
-- payload in either direction -- a non-empty `payload.send` or `payload.receive`, or [input metadata](#input-metadata) that would transmit a column (`is_payload: true` on a column whose `role` is not `ignored`).
+- payload in either direction -- a non-empty `payload.send` or `payload.receive`, or [input metadata](#input-metadata) that would transmit a column (`is_payload: true` on a column whose `role` is not `ignored`);
+- a key matching on several values per record: a `split_on` step, `generate_fuzzy_comparisons`, or `swap` ([Fan-out (multi-value fields)](#fan-out-multi-value-fields)).
 
 The refusal happens where the terms are authored, where an invitation over them is created, and where a received invitation is parsed or accepted. It is never resolved by narrowing the document to the count-only shape or by running it as `psi`; the reasoning is in [PROTOCOL.md](spec/PROTOCOL.md#psi-c). None of this constrains `psi` terms.
 
@@ -447,7 +448,7 @@ linkage_terms:
 - **How it runs.** As two rounds, in each of which one side sends only its records without a date and the other sends all of its records. It is one key in the terms, the consent display, and the review, and it costs two candidate values per record toward the [`single-pass`](#linkage_termslinkage_strategy) dataset ceiling.
 - **What it tells the partner.** A party receiving the result learns, for each pair matched through the key, which record had no valid date of birth. Whatever its role, your partner also learns how many of your records not yet matched at the key have no valid date of birth. Both parties' displays state both, and where no other key matches on the date of birth they list it as `date of birth (only whether it is present)`.
 - **An input with no column for the field.** The key runs with every record counted as having no valid date of birth. A date-of-birth column whose name Alcove does not recognize ([the column names it infers from](spec/DEFAULT_STANDARDIZATION.md#type-inference-from-column-names)), such as `birth_dt`, counts as no column; declare it in the [input metadata](#input-metadata) with `type: date_of_birth` and `role: linkage`. A column your `standardization` or `metadata` names that the file does not have is refused.
-- **What is refused.** The terms are rejected when they are decoded if `missing_field` names a field not in `linkage_fields`, a field that is not a `date_of_birth`, or a field one of the key's own elements matches on, and when `algorithm` is `psi-c`.
+- **What is refused.** The terms are rejected when they are decoded if `missing_field` names a field not in `linkage_fields`, a field that is not a `date_of_birth`, or a field one of the key's own elements matches on.
 
 The specification is in [PROTOCOL.md](spec/PROTOCOL.md#keys-with-a-missing-field-condition).
 

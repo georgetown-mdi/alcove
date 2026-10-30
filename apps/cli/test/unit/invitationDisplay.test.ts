@@ -1654,8 +1654,10 @@ const COUNT_ONLY_INPUT_CHOICE_BOUND =
   "which records to ask about. A count-only exchange bounds what Alcove " +
   "hands your partner, not what its choice of records reveals. A crafted " +
   "list, or a second run differing by one record, turns a count into an " +
-  "answer about one person, and Alcove does not check what your partner " +
-  "contributes.";
+  "answer about one person. A partner that computes the count can also " +
+  "leave a different set of fields blank on each of its records and " +
+  "learn, in one run, which of them are in your data. Alcove does not " +
+  "check what your partner contributes.";
 
 /**
  * The five tier sentences, read from the shared table by this surface and by the

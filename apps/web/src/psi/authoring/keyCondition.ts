@@ -115,11 +115,6 @@ const KEY_CONDITION_REFUSAL_MESSAGES: Readonly<
     "to match only where that date of birth is missing, so it can never " +
     `match. ${OPEN_THE_KEY} and remove the date of birth element, or clear ` +
     "the choice.",
-  countOnly: (key) =>
-    "A count-only exchange runs its one linkage key in one round, but a " +
-    `key set to "${KEY_CONDITION_CONTROL.label}" runs in two. Clear the ` +
-    `choice${key === undefined ? "" : ` on ${key}`}, or ` +
-    REVEAL_IDENTIFIERS_INSTEAD,
 };
 
 /**

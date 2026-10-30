@@ -18,10 +18,6 @@ import {
 } from "../standardization.js";
 import { linkageRounds } from "../linkageKeyCondition.js";
 import { yieldToEventLoop } from "../utils/eventLoop.js";
-import {
-  COUNT_ONLY_CONSTRUCTION,
-  type CountOnlyConstruction,
-} from "./countOnlyConstruction.js";
 
 import type { LinkageRound } from "../linkageKeyCondition.js";
 import type { MessageConnection } from "../connection/messageConnection.js";
@@ -30,9 +26,9 @@ import type { PsiProgressReporter } from "../psi/participant.js";
 
 // The first-round capacity checks: the count of the values this party's first
 // round sends, held to one PSI set's maximum before contact and to the
-// partner's stated receive ceiling after the terms exchange. Under the
-// every-key count-only construction every round's set is this party's
-// declared record count, so the checks hold every round to that figure.
+// partner's stated receive ceiling after the terms exchange. In a
+// count-only exchange every round's set is this party's declared record
+// count, so the checks hold every round to that figure.
 
 // What a refusal states this party sends: at least `elementCount` values for
 // the first key, or, where `everyRound`, exactly that many for every key.
@@ -48,7 +44,7 @@ function valuesToSend(elementCount: number, everyRound: boolean): string {
  * holds more values than one PSI set can hold: `elementCount` is the fewest
  * values that round sends, `maxValues` the protocol's per-set maximum.
  * `everyRound` states that every round sends exactly `elementCount` values,
- * as under the every-key count-only construction.
+ * as in a count-only exchange.
  */
 export function roundOneSetOverMaximumMessage(
   elementCount: number,
@@ -103,7 +99,7 @@ const PARTNER_CEILING_REMEDY =
  * channel, once {@link prepareForExchange} has returned and before the
  * connection opens.
  *
- * It counts the values the first cascade or count-only round sends under this
+ * It counts the values the first cascade round sends under this
  * party's own within-round rule ({@link RoundSetCounter}): every distinct
  * value when its terms set `deduplicate` on a cascade, else only the values
  * exactly one record holds. A first key with a missing-field condition runs
@@ -122,10 +118,10 @@ const PARTNER_CEILING_REMEDY =
  * exchange is not checked here: its dataset ceiling holds every set it sends
  * (docs/spec/PROTOCOL.md, "The single-pass dataset ceiling").
  *
- * Under the every-key count-only construction every round of a `psi-c`
- * exchange sends one value for each of this party's declared records, in
- * either role (docs/spec/PROTOCOL.md, PSI-C), so that figure is checked for
- * every round without reading the input.
+ * Every round of a count-only (`psi-c`) exchange sends one value for each
+ * of this party's declared records, in either role (docs/spec/PROTOCOL.md,
+ * PSI-C), so that figure is checked for every round without reading the
+ * input.
  *
  * The count reports its progress through `options.onProgress`
  * ({@link FirstRoundCheckOptions}) and yields to the event loop as it goes,
@@ -180,18 +176,12 @@ export interface FirstRoundCheckOptions {
    * with `signal.reason` and reports nothing further, not even a settle.
    */
   signal?: AbortSignal;
-  /**
-   * The count-only construction the exchange runs, `single-key` where
-   * omitted. Set only by core's own tests, as the run option of the same key
-   * is.
-   */
-  [COUNT_ONLY_CONSTRUCTION]?: CountOnlyConstruction;
 }
 
 // Hold this party's first round to the partner's stated receive ceiling, after
 // the terms exchange and before this party builds a set: counted as the
 // start-of-exchange check counts, in the role this party resolved to, and
-// under the every-key count-only construction every round with it. Every
+// in a count-only exchange every round with it. Every
 // refusal sends the partner an abort before it propagates, its reason stating
 // only that the set was too large or that it was refused.
 export async function assertFirstRoundWithinPartnerCeiling(
@@ -200,12 +190,8 @@ export async function assertFirstRoundWithinPartnerCeiling(
   isReceiver: boolean,
   partnerReceiveCeiling: number,
   onProgress: PsiProgressReporter | undefined,
-  construction: CountOnlyConstruction = "single-key",
 ): Promise<void> {
-  const options: FirstRoundCheckOptions = {
-    onProgress,
-    [COUNT_ONLY_CONSTRUCTION]: construction,
-  };
+  const options: FirstRoundCheckOptions = { onProgress };
   try {
     await assertFirstRoundFits(input, options, [isReceiver], {
       exceeds: (elementCount) => elementCount > partnerReceiveCeiling,
@@ -259,10 +245,7 @@ async function assertFirstRoundFits(
   },
 ): Promise<void> {
   const { linkageTerms, dataset, rowCount } = prepared;
-  if (
-    linkageTerms.algorithm === "psi-c" &&
-    options[COUNT_ONLY_CONSTRUCTION] === "every-key"
-  ) {
+  if (linkageTerms.algorithm === "psi-c") {
     const declaredRecords =
       rowCount * localFanOutFactor(dataset.declaresFanOut);
     if (bound.exceeds(declaredRecords))
@@ -290,13 +273,12 @@ async function assertFirstRoundFits(
   // The round's single-candidate rule, applied here so a candidate set the
   // round would refuse raises the round's refusal, which names the cause,
   // rather than this check's.
-  const readsSingleCandidate =
-    linkageTerms.algorithm === "psi-c" ||
-    !candidateSetIsImplementedForStrategy(linkageTerms.linkageStrategy);
+  const readsSingleCandidate = !candidateSetIsImplementedForStrategy(
+    linkageTerms.linkageStrategy,
+  );
   // This party's own term decides whether it keeps a value several of its
-  // records hold; a count-only round never does.
-  const keepsDuplicates =
-    linkageTerms.deduplicate && linkageTerms.algorithm !== "psi-c";
+  // records hold.
+  const keepsDuplicates = linkageTerms.deduplicate;
   const report = options.onProgress;
   const progressIntervalMs =
     options.progressIntervalMs ?? FIRST_ROUND_COUNT_PROGRESS_MS;

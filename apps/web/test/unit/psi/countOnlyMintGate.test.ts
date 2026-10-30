@@ -11,10 +11,10 @@ import { seedAdvancedInvite } from "@psi/authoring/advancedInviteDraft";
 import { setColumnDisclosure } from "@psi/metadataEditing";
 import { validateAdvancedInvite } from "@psi/authoring/advancedInviteValidation";
 
+import type { LinkageKey, LinkageStrategy } from "@alcove/core";
 import type { AdvancedInviteDraft } from "@psi/authoring/advancedInviteTypes";
-import type { LinkageStrategy } from "@alcove/core";
 
-// The count-only shape gate at the web AUTHORING boundary. Each of the five rules
+// The count-only shape gate at the web AUTHORING boundary. Each of its rules
 // is reached through `buildAdvancedTerms`; the rules themselves read the
 // algorithm and the document.
 // The accept and import gates are the same rules at the other two boundaries, in
@@ -23,9 +23,23 @@ import type { LinkageStrategy } from "@alcove/core";
 const LINKAGE_COLUMNS = ["ssn", "first_name", "last_name", "dob"];
 const NOW = new Date("2026-01-01T00:00:00Z");
 
-/** A count-only draft in exactly the shape the specification admits: the seeded
- * draft narrowed to one enabled linkage key, which is the only one of the five
- * rules the defaults break. */
+/** Whether a seeded key declares a candidate set: a swap, a fuzzy
+ * comparison, or a step that splits a value. */
+function declaresCandidateSet(key: LinkageKey): boolean {
+  return (
+    key.swap !== undefined ||
+    key.elements.some(
+      (element) =>
+        element.generateFuzzyComparisons !== undefined ||
+        (element.transform ?? []).some((step) =>
+          FAN_OUT_FUNCTION_NAMES.includes(step.function),
+        ),
+    )
+  );
+}
+
+/** A count-only draft in the shape the specification admits: the seeded
+ * draft narrowed to its first linkage key, which declares no candidate set. */
 function countOnlyDraft(columns: Array<string> = LINKAGE_COLUMNS) {
   const { draft, seed } = seedAdvancedInvite("Org", columns);
   return {
@@ -56,28 +70,38 @@ describe("the count-only shape gate at the Generate boundary", () => {
     expect(result.canGenerate).toBe(true);
   });
 
+  test("a count-only draft with every key that declares no candidate set, under single-pass, can be generated", () => {
+    const { draft, seed } = countOnlyDraft();
+    const everyKey: AdvancedInviteDraft = {
+      ...draft,
+      linkageStrategy: "single-pass",
+      keys: draft.keys.map((entry) => ({
+        ...entry,
+        enabled: !declaresCandidateSet(entry.key),
+      })),
+    };
+    const result = validateAdvancedInvite(everyKey, seed, NOW);
+    expect(result.errors).toEqual({});
+    expect(result.terms?.linkageKeys.length).toBeGreaterThan(1);
+    expect(result.terms?.linkageStrategy).toBe("single-pass");
+  });
+
+  test("the seeded count-only draft with every key on is refused for its candidate sets alone", () => {
+    const { draft, seed } = countOnlyDraft();
+    const result = validateAdvancedInvite(
+      {
+        ...draft,
+        keys: draft.keys.map((entry) => ({ ...entry, enabled: true })),
+      },
+      seed,
+      NOW,
+    );
+    expect(result.canGenerate).toBe(false);
+    expect(Object.keys(result.errors)).toEqual(["keys"]);
+    expect(result.errors.keys).toMatch(/matches one value per record/);
+  });
+
   test.each([
-    {
-      rule: "more than one linkage key",
-      edit: (draft: AdvancedInviteDraft): AdvancedInviteDraft => ({
-        ...draft,
-        keys: draft.keys.map((entry, index) => ({
-          ...entry,
-          enabled: index < 2,
-        })),
-      }),
-      field: "keys" as const,
-      expected: /single linkage key/,
-    },
-    {
-      rule: "single-pass",
-      edit: (draft: AdvancedInviteDraft): AdvancedInviteDraft => ({
-        ...draft,
-        linkageStrategy: "single-pass",
-      }),
-      field: "keys" as const,
-      expected: /Set Linkage strategy to Cascade/,
-    },
     {
       rule: "duplicate matches",
       edit: (draft: AdvancedInviteDraft): AdvancedInviteDraft => ({
@@ -119,9 +143,8 @@ describe("the count-only shape gate at the Generate boundary", () => {
 
   test("under psi the identical draft generates, so every refusal above was the count-only rules'", () => {
     // Every rule above is the count-only algorithm's: under psi the same draft
-    // keeps its several keys, its single-pass strategy, its deduplicating term
-    // and its marked column, and generates. Nothing here was a rule the
-    // identifier-revealing algorithm holds too.
+    // keeps its deduplicating term and its marked column, and generates.
+    // Nothing here was a rule the identifier-revealing algorithm holds too.
     const { draft, seed } = countOnlyDraft([...LINKAGE_COLUMNS, "notes"]);
     const asPsi: AdvancedInviteDraft = {
       ...draft,

@@ -329,12 +329,11 @@ export const CONSENT_PROBE_TERMS: LinkageTerms = {
 
 /**
  * {@link CONSENT_PROBE_TERMS} stripped to what a count-only exchange
- * accepts, `psi` still: no payload in either direction, the base's first
- * key alone, since a psi-c document declares one key and no key condition,
- * and that key declaring no candidate set -- neither the swapped order nor
- * the fuzzy expansion it declares, both of which a psi-c document is
- * refused for (docs/spec/PROTOCOL.md, PSI-C). Its cascade strategy and its
- * `deduplicate: false` come from the base and need no stripping.
+ * accepts, `psi` still: no payload in either direction, and no key declaring
+ * a candidate set -- neither the swapped order nor the fuzzy expansion the
+ * base declares, both of which a psi-c document is refused for
+ * (docs/spec/PROTOCOL.md, PSI-C). Every key and its missing-field condition
+ * stay, as do the cascade strategy and `deduplicate: false`.
  *
  * It is the `algorithm` entry's `prepare` below, so the count-only pair
  * is built on it: varied against the base as it stands, the psi-c side
@@ -344,7 +343,6 @@ export const CONSENT_PROBE_TERMS: LinkageTerms = {
 function countOnlyAdmissibleBase(terms: LinkageTerms): LinkageTerms {
   return edited(terms, (draft) => {
     draft.payload = { send: [], receive: [] };
-    draft.linkageKeys = draft.linkageKeys.slice(0, 1);
     for (const key of draft.linkageKeys) {
       delete key.swap;
       for (const element of key.elements)
@@ -482,9 +480,8 @@ export const LINKAGE_TERM_CONSENT_CLASSIFICATION: Record<
     reason:
       "Decides whether the exchange reveals the matched identifiers (`psi`) or " +
       "only their count (`psi-c`) -- and with the count, each party's record " +
-      "count and the number of key values occurring exactly once in its " +
-      "file, which the count-only tier states and a surface omitting the " +
-      "tier does not.",
+      "count and what the receiver's software derives beside it, which the " +
+      "count-only tier states and a surface omitting the tier does not.",
     // A count-only exchange accepts neither a payload nor a candidate set, so
     // the pair is built on a base declaring neither -- countOnlyAdmissibleBase
     // above states what it strips and why. Both sides are that same stripped

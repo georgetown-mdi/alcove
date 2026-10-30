@@ -19,7 +19,6 @@ import {
   webrtcFrameExceedsBound,
 } from "../../src/connection/webrtcOutboundBound";
 import { RoundCapacityError, RoundSetLimitError } from "../../src/errors";
-import { COUNT_ONLY_CONSTRUCTION } from "../../src/exchange/countOnlyConstruction";
 import { assertFirstRoundWithinSetMaximum } from "../../src/exchange/firstRoundCapacity";
 import { encodeIndexTable } from "../../src/psi/countOnlyPermutation";
 import { linkViaCountOnlyPSI } from "../../src/psi/link";
@@ -44,18 +43,17 @@ test("the start-of-exchange check admits a count-only sender at most the per-set
   const exchange = prepared("Sender Co", [{ first_name: "ann" }], {
     terms: { algorithm: "psi-c" },
   });
-  const everyKey = { [COUNT_ONLY_CONSTRUCTION]: "every-key" } as const;
   await expect(
-    assertFirstRoundWithinSetMaximum(
-      { ...exchange, rowCount: MAX_PSI_DECODE_ELEMENTS },
-      everyKey,
-    ),
+    assertFirstRoundWithinSetMaximum({
+      ...exchange,
+      rowCount: MAX_PSI_DECODE_ELEMENTS,
+    }),
   ).resolves.toBeUndefined();
   await expect(
-    assertFirstRoundWithinSetMaximum(
-      { ...exchange, rowCount: MAX_PSI_DECODE_ELEMENTS + 1 },
-      everyKey,
-    ),
+    assertFirstRoundWithinSetMaximum({
+      ...exchange,
+      rowCount: MAX_PSI_DECODE_ELEMENTS + 1,
+    }),
   ).rejects.toBeInstanceOf(RoundSetLimitError);
 });
 
@@ -119,7 +117,7 @@ function observed(conn: MessageConnection): {
   };
 }
 
-// One every-key round of one key between a sender of `senderRecords` and a
+// One count-only round of one key between a sender of `senderRecords` and a
 // receiver of 3, under the given ceilings; each party's outcome, settled.
 async function oneRound(
   senderRecords: number,
@@ -130,25 +128,17 @@ async function oneRound(
   const senderSide = observed(senderEnd);
   const receiverSide = observed(receiverEnd);
   const declared = { receiverRecords: 3, senderRecords };
-  const rounds = { construction: "every-key", declared } as const;
   const run = (
     side: ReturnType<typeof observed>,
     party: PSIParticipant,
     values: Array<string>,
   ) =>
-    linkViaCountOnlyPSI(
-      party,
-      side.conn,
-      [values],
-      false,
-      3,
-      0,
-      undefined,
-      rounds,
-    ).catch((error: unknown) => {
-      side.conn.close();
-      throw error;
-    });
+    linkViaCountOnlyPSI(party, side.conn, [values], false, 3, declared).catch(
+      (error: unknown) => {
+        side.conn.close();
+        throw error;
+      },
+    );
   const senderParty = participant("starter", sender);
   const receiverParty = participant("joiner", receiver);
   const [senderOutcome, receiverOutcome] = await Promise.allSettled([

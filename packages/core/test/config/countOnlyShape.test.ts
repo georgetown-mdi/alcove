@@ -33,8 +33,8 @@ import { encodeRawInvitation } from "../utils/support";
 // both. The algorithm gate is separate: it admits `psi-c` whatever the
 // shape, so shape enforcement is these rules' job alone (last block below).
 
-/** A count-only document in exactly the shape the specification admits: one
- * linkage key, cascade, no deduplication, and no payload in either direction. */
+/** A count-only document in the shape the specification admits: no
+ * deduplication and no payload in either direction. */
 const inShapeCountOnly: LinkageTerms = {
   version: "1.0.0",
   identity: "Inviting Org",
@@ -50,25 +50,11 @@ const inShapeCountOnly: LinkageTerms = {
   linkageKeys: [{ name: "SSN", elements: [{ field: "ssn" }] }],
 };
 
-/** The four rules the terms hold, each as the minimal edit that breaks it. */
+/** The two rules the terms hold, each as the minimal edit that breaks it. */
 const outOfShape: ReadonlyArray<{
-  rule: "linkageKeys" | "linkageStrategy" | "deduplicate" | "payload";
+  rule: "deduplicate" | "payload";
   terms: LinkageTerms;
 }> = [
-  {
-    rule: "linkageKeys",
-    terms: {
-      ...inShapeCountOnly,
-      linkageKeys: [
-        ...inShapeCountOnly.linkageKeys,
-        { name: "DOB", elements: [{ field: "dob" }] },
-      ],
-    },
-  },
-  {
-    rule: "linkageStrategy",
-    terms: { ...inShapeCountOnly, linkageStrategy: "single-pass" },
-  },
   { rule: "deduplicate", terms: { ...inShapeCountOnly, deduplicate: true } },
   {
     rule: "payload",
@@ -184,15 +170,68 @@ test.each(outOfShape)(
 );
 
 test("the accept refusal is fail-closed: nothing is derived and nothing is narrowed", () => {
-  const [multiKey] = outOfShape;
-  const before = structuredClone(multiKey.terms);
+  const sending = outOfShape.find(({ rule }) => rule === "payload")!;
+  const before = structuredClone(sending.terms);
   expect(() =>
-    deriveAcceptedLinkageTerms(multiKey.terms, "Accepting Org"),
+    deriveAcceptedLinkageTerms(sending.terms, "Accepting Org"),
   ).toThrow(UsageError);
   // The refused document is returned to no caller in a narrowed form, and the
-  // input it read stays untouched: refusing does not trim to the first key.
-  expect(multiKey.terms).toEqual(before);
+  // input it read stays untouched: refusing does not drop the payload.
+  expect(sending.terms).toEqual(before);
 });
+
+// --- Admitted shapes ---------------------------------------------------------
+
+/** What a count-only document may declare: several linkage keys, a declared
+ * `single-pass`, and a key with a missing-field condition. */
+const admitted: ReadonlyArray<{ shape: string; terms: LinkageTerms }> = [
+  {
+    shape: "several linkage keys",
+    terms: {
+      ...inShapeCountOnly,
+      linkageKeys: [
+        ...inShapeCountOnly.linkageKeys,
+        { name: "DOB", elements: [{ field: "dob" }] },
+      ],
+    },
+  },
+  {
+    shape: "single-pass",
+    terms: { ...inShapeCountOnly, linkageStrategy: "single-pass" },
+  },
+  {
+    shape: "a missing-field condition",
+    terms: {
+      ...inShapeCountOnly,
+      linkageKeys: [
+        {
+          name: "SSN",
+          elements: [{ field: "ssn" }],
+          condition: { missingField: "dob" },
+        },
+      ],
+    },
+  },
+];
+
+test.each(admitted)(
+  "a count-only document declaring $shape is admitted at parse, mint, decode, and accept",
+  async ({ terms }) => {
+    expect(countOnlyShapeViolation(terms)).toBeUndefined();
+    expect(() => assertCountOnlyTermsShape(terms)).not.toThrow();
+    expect(() => parseLinkageTerms(terms)).not.toThrow();
+    const token = await encodeInvitation({
+      version: "1",
+      linkageTerms: terms,
+      sharedSecret: VALID_SECRET,
+    });
+    const decoded = await decodeInvitation(token);
+    expect(decoded.linkageTerms.linkageKeys).toEqual(terms.linkageKeys);
+    expect(
+      deriveAcceptedLinkageTerms(terms, "Accepting Org").linkageKeys,
+    ).toEqual(terms.linkageKeys);
+  },
+);
 
 test("an inviter's payload REQUEST is refused too, not only what it sends", async () => {
   // The mirror turns the inviter's `receive` into the acceptor's `send`, so a

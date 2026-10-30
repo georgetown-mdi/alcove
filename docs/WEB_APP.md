@@ -31,7 +31,7 @@ On the start page, choose **Create an invitation**. Three steps follow.
 
 1. **Your file.** Enter your name or your organization's name, which your partner sees on the invitation, and choose your CSV.
 2. **Matching & sharing.** The step opens with **What the exchange produces**:
-   - **Matching method.** Choose **reveal the matched identifiers (standard)**, or **reveal only the count (psi-c)** to learn how many records you have in common and not which ones. A count-only exchange matches on one key and sends no columns ([`linkage_terms.algorithm`](EXCHANGE_REFERENCE.md#linkage_termsalgorithm)).
+   - **Matching method.** Choose **reveal the matched identifiers (standard)**, or **reveal only the count (psi-c)** to learn how many records you have in common and not which ones. A count-only exchange counts across every matching key, each record once, sends no columns, and is intended only for research ([`linkage_terms.algorithm`](EXCHANGE_REFERENCE.md#linkage_termsalgorithm)). The choice states what the party that computes the count can learn beside it; in the console it also links to the configuration key it is written into.
    - **Who receives the matched results**: you and your partner, only you, or only your partner.
 
    Then, for each column, confirm its type and how it is used. A column sent to your partner is sent only for rows that match; your partner never receives the values in rows that do not match.

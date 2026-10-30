@@ -1185,7 +1185,7 @@ describe("the count-only shape, at the accept boundary", () => {
   });
 
   test("validateAccept: a crafted count-only invitation outside the shape is refused at the decode", async () => {
-    // The four rules the terms hold, on the partner's document: minting one is
+    // The rules the terms hold, on the partner's document: minting one is
     // refused by the same schema, so it reaches this party only as a crafted token
     // -- and the decode is where the acceptance meets it, before the prompt.
     const base = countOnlyToken();
@@ -1193,14 +1193,14 @@ describe("the count-only shape, at the accept boundary", () => {
       ...base,
       linkageTerms: {
         ...base.linkageTerms,
-        linkageStrategy: "single-pass",
+        deduplicate: true,
       },
     });
     const err = await decodeAndValidateInvitation(crafted).catch(
       (e: unknown) => e,
     );
     expect(err).toBeInstanceOf(UsageError);
-    expect((err as Error).message).toMatch(/linkage_strategy to "cascade"/);
+    expect((err as Error).message).toMatch(/set deduplicate to false/);
   });
 
   test("validateAccept: warns when a kept configuration discloses columns the invitation accepts none of", async () => {

@@ -57,7 +57,7 @@ Choose **Continue to matching & sharing**.
 
 Screen: Step 2 of 3 - Matching & sharing
 
-**Matching method**: leave **Reveal the matched identifiers (standard)** for a list of matched records. For a count only, choose **Reveal only the count (psi-c)**, then untick every key but one on **Matching keys** (step 3 below; [A list or only a count](./agree-on-terms.md#a-list-or-only-a-count)).
+**Matching method**: leave **Reveal the matched identifiers (standard)** for a list of matched records. For a count only, choose **Reveal only the count (psi-c)**, then untick the keys that match several values per record on **Matching keys** (step 3 below; [A list or only a count](./agree-on-terms.md#a-list-or-only-a-count)).
 
 **Who receives the matched results** ([Who receives the result](./agree-on-terms.md#who-receives-the-result)):
 
@@ -99,7 +99,7 @@ Choose **Continue to review & create**.
 In the side panel, under **Customize**, choose **Matching keys**. The **Matching keys** screen opens.
 
 - **Built-in rules**: **Broader matching** is the default; **Highest precision** keeps only the most precise keys. Untick any key you agreed to leave out ([What you match on](./agree-on-terms.md#what-you-match-on)).
-- For a count only, untick every key but one. Keep the first key in the list whose columns both files fill for most records ([A list or only a count](./agree-on-terms.md#a-list-or-only-a-count)).
+- For a count only, untick each key with a name containing `split(`, `swap(`, `+/-` or `day/month exchanged`. The count is taken across every key left ([A list or only a count](./agree-on-terms.md#a-list-or-only-a-count)).
 
 Choose **Back to Review & create**.
 

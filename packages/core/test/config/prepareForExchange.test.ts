@@ -306,20 +306,14 @@ describe("prepareForExchange: count-only (psi-c) is admitted in shape", () => {
   });
 
   test("an out-of-shape psi-c spec is refused before connecting", () => {
-    // A count-only run is one round over one key, so a second key is a shape the
-    // specification does not admit. Refuse it before any connection -- never narrow
-    // it to the first key -- with the UsageError (CLI exit 64) that names what to
-    // change.
-    const twoKeys: LinkageTerms = {
-      ...psiCTerms,
-      linkageKeys: [
-        ...psiCTerms.linkageKeys,
-        { name: "FN", elements: [{ field: "first_name" }] },
-      ],
-    };
+    // A count-only run pairs no records, so deduplication is a shape the
+    // specification does not admit. Refuse it before any connection -- never
+    // run it without the term -- with the UsageError (CLI exit 64) that names
+    // what to change.
+    const deduplicating: LinkageTerms = { ...psiCTerms, deduplicate: true };
     expect(() =>
       prepareForExchange(
-        { linkageTerms: twoKeys, metadata },
+        { linkageTerms: deduplicating, metadata },
         "Tester",
         rawRows,
         columns,
@@ -327,12 +321,29 @@ describe("prepareForExchange: count-only (psi-c) is admitted in shape", () => {
     ).toThrow(UsageError);
     expect(() =>
       prepareForExchange(
-        { linkageTerms: twoKeys, metadata },
+        { linkageTerms: deduplicating, metadata },
         "Tester",
         rawRows,
         columns,
       ),
     ).toThrow(/psi-c/);
+  });
+
+  test("a psi-c spec over several keys prepares every key", () => {
+    const twoKeys: LinkageTerms = {
+      ...psiCTerms,
+      linkageKeys: [
+        ...psiCTerms.linkageKeys,
+        { name: "FN", elements: [{ field: "first_name" }] },
+      ],
+    };
+    const exchange = prepareForExchange(
+      { linkageTerms: twoKeys, metadata },
+      "Tester",
+      rawRows,
+      columns,
+    );
+    expect(exchange.linkageTerms.linkageKeys).toEqual(twoKeys.linkageKeys);
   });
 });
 
@@ -1260,16 +1271,9 @@ const refusalCases: Array<{
   },
   {
     what: "a count-only document outside the shape psi-c admits",
-    says: /must declare exactly one linkage key/,
+    says: /must set deduplicate to false/,
     spec: {
-      linkageTerms: {
-        ...terms,
-        algorithm: "psi-c",
-        linkageKeys: [
-          ...terms.linkageKeys,
-          { name: "FN", elements: [{ field: "first_name" }] },
-        ],
-      },
+      linkageTerms: { ...terms, algorithm: "psi-c", deduplicate: true },
       metadata,
     },
     errorClass: UsageError,

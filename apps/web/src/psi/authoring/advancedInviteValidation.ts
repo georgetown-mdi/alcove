@@ -242,12 +242,10 @@ const UNENCODABLE_TERMS_MESSAGE =
   "parties agree on. Import them again from a corrected document, or rebuild the " +
   "key list from your columns.";
 
-/** The control each count-only shape rule reports against. Every rule but the
- * payload one is a property of the matching arrangement the key list holds, which
- * is also where the satisfiability messages land. */
+/** The control each count-only shape rule reports against. The deduplicate
+ * rule is a property of the matching arrangement the key list holds, which is
+ * also where the satisfiability messages land. */
 const COUNT_ONLY_FIELDS: Record<CountOnlyShapeViolation, AdvancedField> = {
-  linkageKeys: "keys",
-  linkageStrategy: "keys",
   deduplicate: "keys",
   payload: "payload",
 };
@@ -259,12 +257,6 @@ const COUNT_ONLY_FIELDS: Record<CountOnlyShapeViolation, AdvancedField> = {
  * only the wording lives here, and each message names the control that holds
  * the setting it asks about. */
 const COUNT_ONLY_MESSAGES: Record<CountOnlyShapeViolation, string> = {
-  linkageKeys:
-    "A count-only exchange matches on a single linkage key. Turn off all but " +
-    `one key, or ${REVEAL_IDENTIFIERS_INSTEAD}`,
-  linkageStrategy:
-    "A count-only exchange runs one key at a time. Set Linkage strategy to " +
-    `Cascade, or ${REVEAL_IDENTIFIERS_INSTEAD}`,
   deduplicate:
     "A count-only exchange reports how many records match and hands neither " +
     "party a record-by-record result, so several of your records cannot match " +

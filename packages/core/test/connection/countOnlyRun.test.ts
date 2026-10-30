@@ -8,7 +8,6 @@ import { describe, expect, test } from "vitest";
 
 import PSI from "@openmined/psi.js";
 
-import { COUNT_ONLY_CONSTRUCTION } from "../../src/exchange/countOnlyConstruction";
 import { exchangeRecordFromFailure } from "../../src/exchange/failureRecords";
 import { resolveCountOnlyRun, runExchange } from "../../src/exchange";
 import { assertKeyConditionsAdmitted } from "../../src/linkageKeyCondition";
@@ -19,16 +18,11 @@ import {
   AlgorithmDivergenceError,
   ConnectionError,
 } from "../../src/errors";
-import { sanitizeErrorForDisplay } from "../../src/utils/sanitizeErrorForDisplay";
 import { withHostilePayload } from "../utils/hostilePayload";
 import { createMessagePipe } from "../../src/connection/messageConnection";
 
 import type { MessageConnection } from "../../src/connection/messageConnection";
-import type {
-  ExchangeResult,
-  PreparedExchange,
-  RunExchangeOptions,
-} from "../../src/exchange";
+import type { ExchangeResult, PreparedExchange } from "../../src/exchange";
 import type { Algorithm } from "../../src/types";
 import type { LinkageTerms, Output } from "../../src/config/linkageTermsSchema";
 import { prepared, withSentNote } from "../utils/support";
@@ -219,7 +213,7 @@ test("one-sided: no count-report frame either, with the initiator receiving", as
   expect(countReports(responderSent)).toEqual([]);
 });
 
-test("the count equals what a single-key psi run over the same key and data matches", async () => {
+test("the count equals what a psi run over the same key and data matches", async () => {
   // The comparability rule: with each party contributing the values it holds exactly
   // once, the count IS the size of the table the identifier-revealing run produces
   // over the same key and data. Run both algorithms over the same rows and compare
@@ -338,8 +332,8 @@ test("one-sided: the receiver holds a count its own record does not contain", as
   expect(responder.audit!.record.governance.algorithm).toBe("psi-c");
 });
 
-// A second key over the same field: the shape rule an over-broad count-only terms
-// document breaks first (docs/spec/PROTOCOL.md, PSI-C: one key, one round).
+// A second key over the same field, so every record the first key matches
+// matches again on it.
 const secondKey = {
   name: "firstNameAgain",
   elements: [{ field: "firstName" }],
@@ -350,32 +344,74 @@ const withSecondKey = (terms: LinkageTerms): LinkageTerms => ({
   linkageKeys: [...terms.linkageKeys, secondKey],
 });
 
-test("an over-broad count-only run is refused before any round, never narrowed", async () => {
-  // Both parties hold the same out-of-shape terms, mutated past their own
-  // prepare step. Each copy still travels to the other party on the terms
-  // exchange, whose parse applies these same shape rules, so that parse is what
-  // refuses a live two-party round -- upstream of the agreed-terms boundary,
-  // which sees a partner's terms only once they have passed it. The round is
-  // refused whole rather than narrowed to the first of the two keys.
-  const refusal = await runBoth(both, both, "psi-c", (p) => {
-    p.linkageTerms = withSecondKey(p.linkageTerms);
-  }).then(
-    () => undefined,
-    (error: unknown) => error,
-  );
-
-  expect(refusal).toBeInstanceOf(Error);
-  // Read off the rendered chain: on the party that hears the abort, the reason
-  // its partner stated is a labelled cause link, not message text.
-  const rendered = sanitizeErrorForDisplay(refusal);
-  expect(rendered).toContain("failed to parse");
-  expect(rendered).toMatch(/exactly one linkage key/);
-});
-
 // The PSI round's frames are the only binary ones a run puts on the wire: the terms
 // exchange, the count-report leg, and the payload exchange all send plain objects.
 const psiFrames = (frames: Array<unknown>): Array<unknown> =>
   frames.filter((frame) => frame instanceof Uint8Array);
+
+test("a count over two keys runs both and counts a record matched on both once", async () => {
+  const addSecondKey = (p: PreparedExchange) => {
+    p.linkageTerms = withSecondKey(p.linkageTerms);
+  };
+  const counted = await runBoth(both, both, "psi-c", addSecondKey);
+  const oneKey = await runBoth(both, both);
+  const matched = await runBoth(both, both, "psi", addSecondKey);
+
+  expect(counted.initiator.intersectionCount).toBe(expectedCount);
+  expect(counted.responder.intersectionCount).toBe(expectedCount);
+  expect(counted.initiator.intersectionCount).toBe(
+    matched.initiator.associationTable?.[0].length,
+  );
+  // The second key's round adds the sender's setup, index table and response,
+  // and the receiver's request.
+  expect(psiFrames(counted.responderSent)).toHaveLength(
+    psiFrames(oneKey.responderSent).length + 3,
+  );
+  expect(psiFrames(counted.initiatorSent)).toHaveLength(
+    psiFrames(oneKey.initiatorSent).length + 1,
+  );
+});
+
+test("the sender sends the round's index table, one entry per record, after its setup", async () => {
+  const { responderSent } = await runBoth(both, both);
+  const frames = psiFrames(responderSent) as Array<Uint8Array>;
+  expect(frames[1]!.byteLength).toBe(4 * responderRows.length);
+});
+
+test("an out-of-shape count-only run is refused before any round, never narrowed", async () => {
+  // Both parties hold the same out-of-shape terms, mutated past their own
+  // prepare step. The run is refused whole rather than run without the term.
+  const initiatorSent: Array<unknown> = [];
+  const responderSent: Array<unknown> = [];
+  const [connInitiator, connResponder] = createMessagePipe();
+  const deduplicating = (name: string, rows: Array<Record<string, string>>) => {
+    const exchange = prepared(name, rows, {
+      terms: { algorithm: "psi-c", output: both },
+    });
+    exchange.linkageTerms = { ...exchange.linkageTerms, deduplicate: true };
+    return exchange;
+  };
+  const outcomes = await Promise.allSettled([
+    runExchange(
+      recording(connInitiator, initiatorSent),
+      "initiator",
+      deduplicating("Initiator Co", initiatorRows),
+      { psiLibrary },
+    ),
+    runExchange(
+      recording(connResponder, responderSent),
+      "responder",
+      deduplicating("Responder Co", responderRows),
+      { psiLibrary },
+    ),
+  ]);
+  expect(outcomes.map((outcome) => outcome.status)).toEqual([
+    "rejected",
+    "rejected",
+  ]);
+  expect(psiFrames(initiatorSent)).toEqual([]);
+  expect(psiFrames(responderSent)).toEqual([]);
+});
 
 test.each([
   { initiator: "psi-c" as Algorithm, responder: "psi" as Algorithm },
@@ -511,16 +547,19 @@ test("an unimplemented algorithm is refused whichever party's terms name it", ()
 
 test("an out-of-shape count-only pair is refused whichever party's terms hold it", () => {
   // The shape rules over the agreed pair, in both orientations: a pair holding
-  // an out-of-shape document is refused here rather than run over the first of
-  // its two keys, whether the document is this party's own or the partner's.
-  const overBroadTerms = withSecondKey(agreedCountOnlyTerms);
+  // an out-of-shape document is refused here rather than run without the term,
+  // whether the document is this party's own or the partner's.
+  const deduplicating: LinkageTerms = {
+    ...agreedCountOnlyTerms,
+    deduplicate: true,
+  };
 
   expect(() =>
-    resolveCountOnlyRun(overBroadTerms, agreedCountOnlyTerms),
-  ).toThrow(/exactly one linkage key/);
+    resolveCountOnlyRun(deduplicating, agreedCountOnlyTerms),
+  ).toThrow(/deduplicate to false/);
   expect(() =>
-    resolveCountOnlyRun(agreedCountOnlyTerms, overBroadTerms),
-  ).toThrow(/exactly one linkage key/);
+    resolveCountOnlyRun(agreedCountOnlyTerms, deduplicating),
+  ).toThrow(/deduplicate to false/);
 });
 
 test("a count-only exchange whose input metadata would transmit a column is refused at prepare", async () => {
@@ -684,122 +723,7 @@ describe("a hostile count-report frame", () => {
   });
 });
 
-// --- The every-key construction through runExchange ---------------------------
-// The construction over every agreed key, selected by the run option only core's
-// tests set (docs/spec/PROTOCOL.md, PSI-C). A two-party run here holds one-key
-// terms, since the terms-exchange parse still refuses several keys under
-// count-only; the multi-key rounds are driven in
-// packages/core/test/psi/countOnlyEveryKeyRun.test.ts.
-
-const everyKey: Partial<RunExchangeOptions> = {
-  [COUNT_ONLY_CONSTRUCTION]: "every-key",
-};
-
-async function runBothEveryKey(
-  initiatorOutput: Output,
-  responderOutput: Output,
-  datasets: Datasets = initiatorHoldsSmallerDataset,
-): Promise<RunOutcome> {
-  const [connInitiator, connResponder] = createMessagePipe();
-  const initiatorSent: Array<unknown> = [];
-  const responderSent: Array<unknown> = [];
-  const [initiator, responder] = await Promise.all([
-    runExchange(
-      recording(connInitiator, initiatorSent),
-      "initiator",
-      prepared("Initiator Co", datasets.initiator, {
-        terms: { algorithm: "psi-c", output: initiatorOutput },
-      }),
-      { psiLibrary, ...everyKey },
-    ),
-    runExchange(
-      recording(connResponder, responderSent),
-      "responder",
-      prepared("Responder Co", datasets.responder, {
-        terms: { algorithm: "psi-c", output: responderOutput },
-      }),
-      { psiLibrary, ...everyKey },
-    ),
-  ]);
-  return { initiator, responder, initiatorSent, responderSent };
-}
-
-describe("the every-key construction", () => {
-  test.each([
-    ["the initiator", initiatorHoldsSmallerDataset, "initiator"],
-    ["the responder", responderHoldsSmallerDataset, "responder"],
-  ] as const)(
-    "both entitled, %s receiving: the count reaches both parties over one count-report frame",
-    async (_label, datasets, receiverSeat) => {
-      const outcome = await runBothEveryKey(both, both, datasets);
-      const senderSeat =
-        receiverSeat === "initiator" ? "responder" : "initiator";
-
-      expect(outcome[receiverSeat].resolvedRole).toBe("receiver");
-      expect(outcome.initiator.intersectionCount).toBe(expectedCount);
-      expect(outcome.responder.intersectionCount).toBe(expectedCount);
-      expect(outcome.initiator.associationTable).toBeUndefined();
-      expect(outcome.responder.associationTable).toBeUndefined();
-      expect(countReports(outcome[`${receiverSeat}Sent`])).toEqual([
-        { intersectionCount: expectedCount },
-      ]);
-      expect(countReports(outcome[`${senderSeat}Sent`])).toEqual([]);
-    },
-  );
-
-  test.each([
-    ["the initiator", receives, helps, "initiator"],
-    ["the responder", helps, receives, "responder"],
-  ] as const)(
-    "one-sided, %s entitled: no count-report frame either way",
-    async (_label, initiatorOutput, responderOutput, receiverSeat) => {
-      const outcome = await runBothEveryKey(initiatorOutput, responderOutput);
-      const senderSeat =
-        receiverSeat === "initiator" ? "responder" : "initiator";
-
-      expect(outcome[receiverSeat].resolvedRole).toBe("receiver");
-      expect(outcome[receiverSeat].intersectionCount).toBe(expectedCount);
-      expect(outcome[senderSeat].intersectionCount).toBeUndefined();
-      expect(countReports(outcome.initiatorSent)).toEqual([]);
-      expect(countReports(outcome.responderSent)).toEqual([]);
-    },
-  );
-
-  test("the count equals the shipped construction's and a psi run's on the same key and data", async () => {
-    const counted = await runBothEveryKey(both, both);
-    const shipped = await runBoth(both, both);
-    const matched = await runBoth(both, both, "psi");
-
-    expect(counted.initiator.intersectionCount).toBe(
-      shipped.initiator.intersectionCount,
-    );
-    expect(counted.initiator.intersectionCount).toBe(
-      matched.initiator.associationTable?.[0].length,
-    );
-
-    // The constructions differ on the wire: the sender (the responder here)
-    // sends its setup in one part under both, then under every-key the
-    // round's index table, one entry per record, before the rest.
-    const everyKeyFrames = psiFrames(
-      counted.responderSent,
-    ) as Array<Uint8Array>;
-    expect(everyKeyFrames).toHaveLength(
-      psiFrames(shipped.responderSent).length + 1,
-    );
-    expect(everyKeyFrames[1]!.byteLength).toBe(4 * responderRows.length);
-  });
-
-  test("the record attests a count-only run", async () => {
-    const { initiator, responder } = await runBothEveryKey(both, both);
-    for (const record of [initiator.audit!.record, responder.audit!.record]) {
-      expect(record.governance.algorithm).toBe("psi-c");
-      expect(record.resultSize).toBe(expectedCount);
-      expect(record.commitments.associationTable).toBeUndefined();
-    }
-  });
-});
-
-describe("the agreed-terms run boundary under the every-key construction", () => {
+describe("the agreed-terms run boundary", () => {
   const conditioned = (missingField: string): LinkageTerms => ({
     ...agreedCountOnlyTerms,
     linkageFields: [
@@ -814,58 +738,25 @@ describe("the agreed-terms run boundary under the every-key construction", () =>
     ],
   });
 
-  test.each<[string, LinkageTerms, RegExp]>([
-    [
-      "several linkage keys",
-      withSecondKey(agreedCountOnlyTerms),
-      /exactly one linkage key/,
-    ],
+  test.each<[string, LinkageTerms]>([
+    ["several linkage keys", withSecondKey(agreedCountOnlyTerms)],
     [
       "a declared single-pass",
       { ...agreedCountOnlyTerms, linkageStrategy: "single-pass" },
-      /linkage_strategy to "cascade"/,
     ],
+    ["a key with a missing-field condition", conditioned("dateOfBirth")],
   ])(
-    "%s is admitted only under every-key, whichever party's terms hold it",
-    (_label, admittedTerms, singleKeyRefusal) => {
+    "%s is admitted, whichever party's terms hold it",
+    (_label, admittedTerms) => {
       for (const [local, partner] of [
         [admittedTerms, agreedCountOnlyTerms],
         [agreedCountOnlyTerms, admittedTerms],
         [admittedTerms, admittedTerms],
-      ] as const) {
-        expect(resolveCountOnlyRun(local, partner, "every-key")).toBe(true);
-        expect(() => resolveCountOnlyRun(local, partner, "single-key")).toThrow(
-          singleKeyRefusal,
-        );
-        expect(() => resolveCountOnlyRun(local, partner)).toThrow(
-          singleKeyRefusal,
-        );
-      }
+      ] as const)
+        expect(resolveCountOnlyRun(local, partner)).toBe(true);
+      expect(() => assertKeyConditionsAdmitted(admittedTerms)).not.toThrow();
     },
   );
-
-  // Under single-key the run refuses this party's own condition before the
-  // terms exchange (assertKeyConditionsAdmitted in runExchange), and the
-  // terms-exchange parse refuses the partner's.
-  test("a key with a missing-field condition is admitted only under every-key, whichever party's terms hold it", () => {
-    const admittedTerms = conditioned("dateOfBirth");
-    for (const [local, partner] of [
-      [admittedTerms, agreedCountOnlyTerms],
-      [agreedCountOnlyTerms, admittedTerms],
-      [admittedTerms, admittedTerms],
-    ] as const)
-      expect(resolveCountOnlyRun(local, partner, "every-key")).toBe(true);
-
-    expect(() =>
-      assertKeyConditionsAdmitted(admittedTerms, "every-key"),
-    ).not.toThrow();
-    expect(() =>
-      assertKeyConditionsAdmitted(admittedTerms, "single-key"),
-    ).toThrow(/missing_field condition runs in two/);
-    expect(() => assertKeyConditionsAdmitted(admittedTerms)).toThrow(
-      /missing_field condition runs in two/,
-    );
-  });
 
   test.each<[string, LinkageTerms, RegExp]>([
     [
@@ -890,10 +781,10 @@ describe("the agreed-terms run boundary under the every-key construction", () =>
     "%s stays refused whichever party's terms hold it",
     (_label, refusedTerms, message) => {
       expect(() =>
-        resolveCountOnlyRun(refusedTerms, agreedCountOnlyTerms, "every-key"),
+        resolveCountOnlyRun(refusedTerms, agreedCountOnlyTerms),
       ).toThrow(message);
       expect(() =>
-        resolveCountOnlyRun(agreedCountOnlyTerms, refusedTerms, "every-key"),
+        resolveCountOnlyRun(agreedCountOnlyTerms, refusedTerms),
       ).toThrow(message);
     },
   );

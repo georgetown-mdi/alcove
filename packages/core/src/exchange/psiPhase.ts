@@ -20,7 +20,6 @@ import type { LinkageTerms } from "../config/linkageTermsSchema.js";
 import type { PsiElementBounds } from "../connection/frameSize.js";
 import type { MessageConnection } from "../connection/messageConnection.js";
 import type { RunExchangeOptions } from "../exchange.js";
-import type { CountOnlyConstruction } from "./countOnlyConstruction.js";
 import type { EntityClusterSummary } from "../psi/entityClosure.js";
 import type {
   LinkageCardinality,
@@ -48,7 +47,6 @@ export async function runPsiPhase(p: {
   psiEngineFactory: RunExchangeOptions["psiEngineFactory"];
   isReceiver: boolean;
   countOnly: boolean;
-  countOnlyConstruction: CountOnlyConstruction;
   verbosity: number;
   elementBounds: PsiElementBounds;
   onPsiProgress: RunExchangeOptions["onPsiProgress"];
@@ -78,7 +76,6 @@ export async function runPsiPhase(p: {
     psiEngineFactory,
     isReceiver,
     countOnly,
-    countOnlyConstruction,
     verbosity,
     elementBounds,
     onPsiProgress,
@@ -125,17 +122,13 @@ export async function runPsiPhase(p: {
   const psiId = isReceiver ? "client" : "server";
   // The disclosure this round is built for, fixed once from the agreed
   // algorithm and generated into the engine's key material rather than
-  // chosen when the result is read: a count-only engine refuses the
-  // operations that would name a match, and an identifier-revealing one
-  // refuses to report a cardinality, so a round cannot resolve to the
-  // disclosure the other mode's terms agreed on. It also rides the receiver's
-  // request on the wire, where the partner's sender enforces agreement.
-  const everyKey = countOnly && countOnlyConstruction === "every-key";
-  const engineMode: PsiEngineMode = !countOnly
-    ? "identifier-revealing"
-    : everyKey
-      ? "count-only-permuted"
-      : "count-only";
+  // chosen when the result is read: a count-only engine returns only the
+  // count and refuses the operations that would name a match, and an
+  // identifier-revealing one refuses the count-only rounds, so a round cannot
+  // resolve to the disclosure the other mode's terms agreed on.
+  const engineMode: PsiEngineMode = countOnly
+    ? "count-only-permuted"
+    : "identifier-revealing";
   const engine =
     psiEngineFactory?.(psiRole, psiId, engineMode) ??
     new InProcessPsiEngine(psiLibrary, psiRole, psiId, engineMode);
@@ -195,21 +188,13 @@ export async function runPsiPhase(p: {
           partnerTerms.output.expectsOutput,
         ),
         Math.min(rowCount, partnerRecordCount),
-        verbosity,
+        {
+          receiverRecords: isReceiver
+            ? declaredRecordCount
+            : partnerRecordCount,
+          senderRecords: isReceiver ? partnerRecordCount : declaredRecordCount,
+        },
         onStage,
-        everyKey
-          ? {
-              construction: "every-key",
-              declared: {
-                receiverRecords: isReceiver
-                  ? declaredRecordCount
-                  : partnerRecordCount,
-                senderRecords: isReceiver
-                  ? partnerRecordCount
-                  : declaredRecordCount,
-              },
-            }
-          : { construction: "single-key" },
       );
     else
       associationTable = runsSinglePassLink(linkageTerms)

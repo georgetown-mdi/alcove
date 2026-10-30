@@ -83,39 +83,46 @@ export const CONSENT_FACTS = {
   countOnlyResult: {
     basis: "enforced",
     reason:
-      "The two halves docs/spec/PROTOCOL.md assigns to the run rather than to " +
-      "the partner. A party's own count-only outcome: its base function is " +
-      "constructed with the library's reveal-intersection flag cleared, and the " +
-      "operations returning the matched positions or the association table throw " +
-      "with it cleared, so its own software cannot produce a pairing. And its " +
-      "view of what the PARTNER receives: a request whose flag disagrees with " +
-      "the sender's is refused rather than served, in both orientations, so a " +
-      "round that completes at all is one both parties ran count-only. Neither " +
-      "half asks for the partner's cooperation or its honesty. What this basis " +
-      "does not reach is the partner's choice of contributed values, which is a " +
-      "fact of its own below.",
+      "The half docs/spec/PROTOCOL.md assigns to the run rather than to the " +
+      "partner: a party's own count-only outcome. Its engine is built " +
+      "count-only, keeps every round's matches inside the engine and returns " +
+      "only the count, and the operations returning matched positions or an " +
+      "association table throw in that mode, so its own software cannot " +
+      "produce a pairing; the sender computes no match at all. A partner whose " +
+      "terms name the identifier-revealing algorithm is refused before any " +
+      "round. None of this asks for the partner's cooperation or its honesty. " +
+      "What it does not reach is what the partner's software derives beside " +
+      "the count and the partner's choice of contributed values, each a fact " +
+      "of its own below.",
     note:
-      "Neither party is handed a matched identifier or a record-by-record " +
-      "pairing, and Alcove enforces this. A partner asking for a revealing " +
-      "round is refused, whatever software it runs.",
+      "Alcove shows each of you only the count, never a matched identifier " +
+      "or a record-by-record pairing.",
   },
   countOnlyRoundDisclosures: {
     basis: "enforced",
     reason:
-      "What a count-only run discloses beside the count, and it discloses both " +
-      "however either party behaves. Each party's raw record count is sent in " +
-      "the terms exchange that opens every exchange, and each party's round " +
-      "frame holds one encrypted element per value it contributes: the key " +
-      "values that appear exactly once in its file. " +
-      "Neither figure is the intersection and the count-only mode hides " +
-      "neither, so this sits in the run's register rather than the partner's -- " +
-      "the same one as the own-membership disclosure a one-sided `psi` " +
-      "exchange carries.",
+      "What a count-only run discloses beside the count, however either party " +
+      "behaves. Each party's raw record count is sent in the terms exchange " +
+      "that opens every exchange, and every round's frame holds one encrypted " +
+      "element per record, a value or a random dummy, so the frames add " +
+      "nothing to it. The receiver's software also derives, from genuine " +
+      "inputs, the number of matches on each key, the overlap between keys, " +
+      "and a table pairing its own request slots with sender pseudonyms; " +
+      "with its own records' key coverage, a slot that matched on a set of " +
+      "keys narrows to the receiver's records holding values for all of " +
+      "them, or names one (docs/spec/PROTOCOL.md, PSI-C, What each party " +
+      "learns). None of it needs a deviation from the protocol and none of it " +
+      "is shown to the operator, so this sits in the run's register rather " +
+      "than the partner's -- the same one as the own-membership disclosure a " +
+      "one-sided `psi` exchange carries.",
     note:
-      "Your partner also learns how many records you hold, and how many " +
-      "values you contribute for the key being matched on, which are the " +
-      "values that appear exactly once in your file. Neither number is your " +
-      "overlap, and a count-only exchange hides neither.",
+      "Your partner learns how many records you hold. Each round sends one " +
+      "encrypted value for every record, so it does not learn how many of " +
+      "your records have a value for a key. The party that computes the " +
+      "count also has software that learns how many records matched on each " +
+      "key and how the keys overlap, and from which keys its own records " +
+      "have values for, it can narrow a match to a few of its own records, " +
+      "or name one. Alcove does not show this to that party's operator.",
   },
   countOnlyReportedCount: {
     basis: "trust-contingent",
@@ -142,18 +149,23 @@ export const CONSENT_FACTS = {
       "contributed values -- one live candidate padded with values it knows this " +
       "party cannot hold, or two runs differing in a single value -- reads that " +
       "value's membership off the count, and nothing on the wire distinguishes a " +
-      "crafted set from a genuine one. Both routes are accepted rather than " +
-      "prevented, so the protection they bound rests on the partner's conduct " +
-      "even though the round itself is enforced. This matters most here: a " +
-      "count-only exchange is the one run before the agreement the " +
-      "honest-but-curious model leans on exists.",
+      "crafted set from a genuine one. A receiver has a cheaper route still: " +
+      "it gives each of its records its own pattern of keys with a value and " +
+      "keys left blank, and reads the membership of most matched records " +
+      "from one run with unmodified software. All three are accepted rather " +
+      "than prevented, so the protection they bound rests on the partner's " +
+      "conduct even though the round itself is enforced. This matters most " +
+      "here: a count-only exchange is the one " +
+      "run before the agreement the honest-but-curious model leans on exists.",
     note:
       "Your partner can learn whether one person is in your data by choosing " +
       "which records to ask about. A count-only exchange bounds what Alcove " +
       "hands your partner, not what its choice of records reveals. A crafted " +
       "list, or a second run differing by one record, turns a count into an " +
-      "answer about one person, and Alcove does not check what your partner " +
-      "contributes.",
+      "answer about one person. A partner that computes the count can also " +
+      "leave a different set of fields blank on each of its records and " +
+      "learn, in one run, which of them are in your data. Alcove does not " +
+      "check what your partner contributes.",
   },
   countOnlyNoPayload: {
     basis: "enforced",

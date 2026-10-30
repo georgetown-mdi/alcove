@@ -68,9 +68,9 @@ const ENGINE_SETUP_INCOMPLETE = "server setup is incomplete";
  *
  * - `identifier-revealing` -- the `psi` construction: the round resolves to
  *   matched positions and an association table.
- * - `count-only` -- the shipped psi-c construction: the library's cardinality
- *   mode, the round resolving to the intersection cardinality alone, and the
- *   operations that would name the matches refuse.
+ * - `count-only` -- the library's cardinality mode, over one round: the round
+ *   resolving to the intersection cardinality alone, and the operations that
+ *   would name the matches refuse. A psi-c run builds `count-only-permuted`.
  * - `count-only-permuted` -- the psi-c construction over every agreed key
  *   (docs/spec/PROTOCOL.md, PSI-C): the library's revealing mode, the sender
  *   reordering every response under one permutation it holds for the

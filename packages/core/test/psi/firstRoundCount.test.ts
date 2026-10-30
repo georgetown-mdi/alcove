@@ -2,9 +2,11 @@ import { afterEach, expect, test, vi } from "vitest";
 
 import { RoundSetLimitError, UsageError } from "../../src/errors";
 import { prepareForExchange } from "../../src/exchange";
-import { assertFirstRoundWithinSetMaximum } from "../../src/exchange/firstRoundCapacity";
 import {
-  fanOutReachedMatchingRefusal,
+  assertFirstRoundWithinSetMaximum,
+  roundOneSetOverMaximumMessage,
+} from "../../src/exchange/firstRoundCapacity";
+import {
   StandardizedDataset,
   StandardizedField,
   StandardizedKeyIterable,
@@ -157,7 +159,7 @@ test("the first-round count yields to the event loop as it reports", async () =>
   expect(progressAfterTimer).toBe(true);
 });
 
-test("the first-round check raises the fan-out refusal for a candidate set a count-only round refuses", async () => {
+test("the first-round check weighs a count-only exchange at its record count, leaving a candidate set to its round", async () => {
   const split = [{ function: "split_on", params: { delimiter: " " } }];
   const cascade = prepareForExchange(
     {
@@ -196,7 +198,10 @@ test("the first-round check raises the fan-out refusal for a candidate set a cou
   ).rejects.toThrow(RoundSetLimitError);
   await expect(
     assertFirstRoundWithinSetMaximum(countOnly, { maxValues }),
-  ).rejects.toThrow(fanOutReachedMatchingRefusal().message);
+  ).rejects.toThrow(roundOneSetOverMaximumMessage(200, maxValues, true));
+  await expect(
+    assertFirstRoundWithinSetMaximum(countOnly, { maxValues: 200 }),
+  ).resolves.toBeUndefined();
 });
 
 /**

@@ -140,8 +140,6 @@ Where no opened pairing stands behind the figure it is reported as **unchecked**
 
 ## Count-only (`psi-c`) records
 
-> **Not yet built:** the matching-basis row and the `single-pass` paragraph below describe count-only over every agreed linkage key. The shipped build runs one key and refuses `single-pass` ([PROTOCOL.md, PSI-C](PROTOCOL.md#psi-c)).
-
 A count-only exchange ([PROTOCOL.md](PROTOCOL.md#psi-c)) writes a record of the same shape as a `psi` exchange. Five of its rows are fixed by what a count-only run does and does not produce.
 
 **`algorithm` is `psi-c`.** The record then attests that this exchange disclosed a count and no identifier -- the disclosure an auditor reads off the field. As under `psi`, the value is bound to what the run did rather than to the terms value alone.

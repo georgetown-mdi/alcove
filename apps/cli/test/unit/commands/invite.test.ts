@@ -2275,28 +2275,42 @@ test("validateInvite: offline config-source refuses a standardization that contr
   }
 });
 
-test("validateInvite: offline config-source mints a conforming psi-c config", async () => {
-  // The mint boundary mirrors the run: the exchange conducts a count-only run, so a
-  // config in the count-only SHAPE (one key, cascade, no deduplication, no payload)
-  // reaches a token rather than the algorithm gate. What the shape rules refuse
-  // instead is covered by the cases below. No input is passed, so this exercises the
-  // mint-boundary checks in isolation.
-  const terms: LinkageTerms = countOnlyTerms();
-  const { dir, configPath, keyPath } = withConfig(terms);
-  try {
-    const minted = await validateInvite({
-      resolved: { mode: "offline" },
-      options: testOptions({ configFile: configPath, keyFile: keyPath }),
-      acceptTimeout: 900,
-      log: silentLog,
-    });
-    if (minted.mode !== "offlineFromConfig")
-      throw new Error(`expected an offline config mint, got ${minted.mode}`);
-    expect(minted.linkageTerms.algorithm).toBe("psi-c");
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
+test.each([
+  { shape: "one key", edit: (terms: LinkageTerms) => terms },
+  {
+    shape: "two keys under single-pass",
+    edit: (terms: LinkageTerms): LinkageTerms => ({
+      ...terms,
+      linkageStrategy: "single-pass",
+      linkageKeys: defaultTerms().linkageKeys.slice(0, 2),
+    }),
+  },
+])(
+  "validateInvite: offline config-source mints a conforming psi-c config over $shape",
+  async ({ edit }) => {
+    // The mint boundary mirrors the run: the exchange conducts a count-only run, so a
+    // config in the count-only SHAPE (no deduplication, no payload, no candidate
+    // set) reaches a token rather than the algorithm gate. What the shape rules
+    // refuse instead is covered by the cases below. No input is passed, so this
+    // exercises the mint-boundary checks in isolation.
+    const terms: LinkageTerms = edit(countOnlyTerms());
+    const { dir, configPath, keyPath } = withConfig(terms);
+    try {
+      const minted = await validateInvite({
+        resolved: { mode: "offline" },
+        options: testOptions({ configFile: configPath, keyFile: keyPath }),
+        acceptTimeout: 900,
+        log: silentLog,
+      });
+      if (minted.mode !== "offlineFromConfig")
+        throw new Error(`expected an offline config mint, got ${minted.mode}`);
+      expect(minted.linkageTerms.algorithm).toBe("psi-c");
+      expect(minted.linkageTerms.linkageKeys).toEqual(terms.linkageKeys);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
 
 test("validateInvite: offline config-source refuses an algorithm with no run path before minting", async () => {
   // The mint-boundary counterpart of the exchange-time gate: an algorithm no run
@@ -2333,28 +2347,12 @@ test("validateInvite: offline config-source refuses an algorithm with no run pat
   }
 });
 
-// The count-only shape refusals at the CLI's authoring boundary. The four
+// The count-only shape refusals at the CLI's authoring boundary. The two
 // rules the terms alone state are refused as the config's linkage terms are
 // read (the shared schema), which is before the token is minted and is where
-// the operator meets them; the fifth reads this party's own metadata, which no
+// the operator meets them; the third reads this party's own metadata, which no
 // linkage-terms document states, so it is refused at the mint boundary itself.
 test.each([
-  {
-    rule: "more than one linkage key",
-    edit: (terms: LinkageTerms): LinkageTerms => ({
-      ...terms,
-      linkageKeys: defaultTerms().linkageKeys.slice(0, 2),
-    }),
-    expected: /exactly one linkage key/,
-  },
-  {
-    rule: "linkage_strategy: single-pass",
-    edit: (terms: LinkageTerms): LinkageTerms => ({
-      ...terms,
-      linkageStrategy: "single-pass",
-    }),
-    expected: /linkage_strategy to "cascade"/,
-  },
   {
     rule: "deduplicate: true",
     edit: (terms: LinkageTerms): LinkageTerms => ({

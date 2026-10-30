@@ -135,7 +135,7 @@ test("run boundary: a psi-c run whose metadata transmits a column is refused bef
 test("terms exchange: an out-of-shape psi-c document is refused on receipt, rejecting both parties' runs with no linkage and no record", async () => {
   // The same override, minus the metadata rule: rows and columns holding
   // only the linkage column transmit nothing, so the out-of-shape document
-  // (two linkage keys) reaches the wire, where the terms exchange parses the
+  // (a deduplicating one) reaches the wire, where the terms exchange parses the
   // PARTNER's terms under the schema's count-only shape rules -- upstream of
   // the agreed-terms boundary that countOnlyRun.test.ts drives directly.
   // Both parties hold the same document, so both sides refuse, unnarrowed.
@@ -150,10 +150,7 @@ test("terms exchange: an out-of-shape psi-c document is refused on receipt, reje
     spec.linkageTerms = {
       ...spec.linkageTerms,
       algorithm: "psi-c",
-      linkageKeys: [
-        ...spec.linkageTerms.linkageKeys,
-        { name: "firstNameAgain", elements: [{ field: "firstName" }] },
-      ],
+      deduplicate: true,
     };
     return spec;
   };
@@ -198,7 +195,7 @@ test("terms exchange: an out-of-shape psi-c document is refused on receipt, reje
     // Read off the rendered chain: the partner's stated reason reaches the
     // aborting party as a labelled cause link, not as message text.
     const rendered = sanitizeErrorForDisplay(refusal);
-    expect(rendered).toMatch(/exactly one linkage key/);
+    expect(rendered).toMatch(/must set deduplicate to false/);
     expect(rendered).not.toMatch(/PSI library/);
   }
 });

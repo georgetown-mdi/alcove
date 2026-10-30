@@ -124,3 +124,12 @@ export const MATCHING_METHOD_LABELS: Record<Algorithm, string> = {
   psi: "Reveal the matched identifiers (standard)",
   "psi-c": "Reveal only the count (psi-c)",
 };
+
+/** What choosing the count-only method does and what it still discloses, shown
+ * beside the choice (docs/spec/PROTOCOL.md, PSI-C). */
+export const COUNT_ONLY_CHOICE_CAVEAT =
+  "Counts the records you have in common across every matching key, each " +
+  "record once, and sends no data columns. Intended only for research: the " +
+  "party that computes the count can learn more than the count, and a " +
+  "partner that chooses its records can learn whether one person is in " +
+  "your data.";

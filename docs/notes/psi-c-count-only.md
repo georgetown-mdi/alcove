@@ -4,7 +4,7 @@ title: "Count-Only Linkage (PSI-C): Construction, Provenance, and Reporting"
 
 # Count-only linkage: why psi-c counts every key under one permutation
 
-*Status: directed by the maintainer's rulings of 2026-10-26 and 2026-10-27; specified, not built. The construction is normatively specified in [PROTOCOL.md](../spec/PROTOCOL.md#psi-c) and its record rows in [EXCHANGE_RECORD.md](../spec/EXCHANGE_RECORD.md#count-only-psi-c-records). The shipped build runs the earlier one-key construction, which the spec names at the head of its section, until this one lands. This note records why the construction has its shape, how the one-key construction came about, the alternatives weighed, and which key shapes the maintainer ruled count-only admits. See [docs/notes/README.md](README.md).*
+*Status: directed by the maintainer's rulings of 2026-10-26 and 2026-10-27; built. The construction is normatively specified in [PROTOCOL.md](../spec/PROTOCOL.md#psi-c) and its record rows in [EXCHANGE_RECORD.md](../spec/EXCHANGE_RECORD.md#count-only-psi-c-records). This note records why the construction has its shape, how the one-key construction came about, the alternatives weighed, and which key shapes the maintainer ruled count-only admits. See [docs/notes/README.md](README.md).*
 
 This is design rationale. Nothing here binds an implementation; the normative rows live in the two spec documents linked above, and this note does not restate them.
 
