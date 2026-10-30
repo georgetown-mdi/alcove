@@ -155,8 +155,8 @@ jobs:
           # The default WebSocket relay, set only beside the two above.
           VITE_DEFAULT_RELAY_WEBSOCKET_URL: ${{ vars.VITE_DEFAULT_RELAY_WEBSOCKET_URL }}
         run: npm run build -w apps/web
-      # Hidden files carry .well-known/security.txt. The one other hidden
-      # entry, .vite/manifest.json, is a test input, not a served file.
+      # Hidden files carry .well-known/security.txt; .vite/manifest.json is a
+      # test input, not a served file.
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:

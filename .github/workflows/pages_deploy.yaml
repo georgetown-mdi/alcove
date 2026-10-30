@@ -141,7 +141,7 @@ jobs:
           DEPLOYMENT_URL: ${{ needs.deploy.outputs.siteUrl }}
         run: node scripts/check-served-security-txt.mjs
       - name: Check the demo site
-        if: needs.deploy.outputs.demoOutcome == 'success'
+        if: ${{ !cancelled() && needs.deploy.outputs.demoOutcome == 'success' }}
         env:
           DEPLOYMENT_URL: ${{ needs.deploy.outputs.demoUrl }}
         run: node scripts/check-served-security-txt.mjs

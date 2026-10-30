@@ -72,8 +72,7 @@ jobs:
       # Other relative links and anchors are checked by `npm run linkcheck`.
       - name: Build the site
         run: npm run site:build
-      # Hidden files carry .well-known/security.txt, the build's one hidden
-      # entry.
+      # Hidden files carry .well-known/security.txt.
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
