@@ -26,11 +26,13 @@ Each release produces:
 
 | Artifact       | Published to                   | Tag / name                                                               |
 | -------------- | ------------------------------ | ------------------------------------------------------------------------ |
-| Docker image   | GitHub Container Registry (`ghcr.io/georgetown-mdi/alcove`) | `ghcr.io/georgetown-mdi/alcove:X.Y.Z`, `ghcr.io/georgetown-mdi/alcove:X.Y`, `ghcr.io/georgetown-mdi/alcove:latest` |
-| FIPS variant image | GitHub Container Registry (`ghcr.io/georgetown-mdi/alcove`) | `ghcr.io/georgetown-mdi/alcove:X.Y.Z-fips`, `ghcr.io/georgetown-mdi/alcove:X.Y-fips`, `ghcr.io/georgetown-mdi/alcove:latest-fips` |
+| Docker image   | GitHub Container Registry (`ghcr.io/georgetown-mdi/alcove`) and Docker Hub (`docker.io/gumdi/alcove`) | `ghcr.io/georgetown-mdi/alcove:X.Y.Z`, `ghcr.io/georgetown-mdi/alcove:X.Y`, `ghcr.io/georgetown-mdi/alcove:latest`, and the same three tags at `docker.io/gumdi/alcove` |
+| FIPS variant image | GitHub Container Registry (`ghcr.io/georgetown-mdi/alcove`) and Docker Hub (`docker.io/gumdi/alcove`) | `ghcr.io/georgetown-mdi/alcove:X.Y.Z-fips`, `ghcr.io/georgetown-mdi/alcove:X.Y-fips`, `ghcr.io/georgetown-mdi/alcove:latest-fips`, and the same three tags at `docker.io/gumdi/alcove` |
 | GitHub Release | GitHub Releases                | Tag `vX.Y.Z`                                                             |
 | Launchers      | GitHub Release assets          | `start-alcove.sh`, `Start-Alcove.ps1`, `Setup-AlcoveFileDrop.ps1`     |
 | Build provenance | GitHub attestation store     | Subject `ghcr.io/georgetown-mdi/alcove`, one attestation per released manifest digest |
+
+Each image is the same manifest on both registries, under one digest: the release copies the manifest ghcr.io received to Docker Hub rather than building it again. ghcr.io is the registry the launchers, the Windows file-drop setup scripts, and the web app's accept kit name; the Docker Hub copy is for a network that refuses ghcr.io's download host.
 
 Each image contains both the CLI and the console; which role it runs is decided by its first argument (see [DEPLOYMENT.md](DEPLOYMENT.md#docker-deployment)). Both images run unprivileged ([The user the image runs as](DEPLOYMENT.md#the-user-the-image-runs-as)), take the same arguments, and speak the same protocol, so a partner on one can exchange with a partner on the other.
 
@@ -205,7 +207,7 @@ git push origin vX.Y.Z
 
 ### 8. Build and publish the container image `[CI]`
 
-The `vX.Y.Z` tag push in step 7 triggers `.github/workflows/release.yaml`, which builds both multi-platform images and pushes them to the GitHub Container Registry, signs each with Cosign, attests each one's build provenance (see [Build provenance](#build-provenance)), and then stamps and attaches the launchers (see [Stamped launchers](#stamped-launchers)). The FIPS variant's three tags are the default image's three with `-fips` appended, derived from the pushed tag in the workflow itself. The push authenticates with the workflow's own `GITHUB_TOKEN` under `packages: write`, so no registry secret is configured; the package's settings on ghcr.io must grant this repository the Write role under "Manage Actions access", which the maintainer sets once. The Dockerfile's `org.opencontainers.image.source` label does not grant that access: for an organization package it is metadata only.
+The `vX.Y.Z` tag push in step 7 triggers `.github/workflows/release.yaml`, which builds both multi-platform images and pushes them to the GitHub Container Registry, signs each with Cosign, attests each one's build provenance (see [Build provenance](#build-provenance)), and then stamps and attaches the launchers (see [Stamped launchers](#stamped-launchers)) and copies both images to Docker Hub (see [The Docker Hub copy](#the-docker-hub-copy) below). The FIPS variant's three tags are the default image's three with `-fips` appended, derived from the pushed tag in the workflow itself. The ghcr.io push authenticates with the workflow's own `GITHUB_TOKEN` under `packages: write`, so no ghcr.io secret is configured; the package's settings on ghcr.io must grant this repository the Write role under "Manage Actions access", which the maintainer sets once. The Dockerfile's `org.opencontainers.image.source` label does not grant that access: for an organization package it is metadata only.
 
 The default image's base and the builder and QEMU images come from Docker Hub, which limits anonymous pulls per source IP. The release jobs, like every CI job that pulls from the Hub, log in first with a read-only Docker Hub access token held in the `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` secrets (in both the Actions and the Dependabot secret stores). Without the secrets the jobs pull anonymously and can fail with `429 Too Many Requests`. The token has an expiry: once it lapses, the "Log in to Docker Hub" step fails in every job that has it, a release included, until a new token replaces the `DOCKERHUB_TOKEN` value in both stores.
 
@@ -221,6 +223,18 @@ The publish sequence signs each image immediately after its own push, verifies t
 
 If you must build and push by hand -- for a workflow outage or a local test -- follow the multi-platform buildx instructions in `apps/cli/README.md` (creating `multiarch-builder` and running `docker buildx build --push` from the repository root; the variant adds `-f Dockerfile.fips` and the `-fips` tags). A hand-built push bypasses the [image vulnerability scan](#image-vulnerability-scan) and Cosign: scan the image yourself before pushing it, at the threshold the workflow sets, and expect a hand-pushed tag to fail the verification commands below.
 
+#### The Docker Hub copy
+
+Once the publish job has finished, the `dockerhub` job copies both images to `docker.io/gumdi/alcove` with `docker buildx imagetools create`. The source is the digest the publish job pushed to ghcr.io, signed, and attested, and the Docker Hub tags are the same three each image has on ghcr.io. The job then reads back each image's version tag on ghcr.io and all three of its tags on Docker Hub, and fails the release if any of them names a digest other than the signed one. The run's summary page lists each reference with the digest read back.
+
+The job logs in to Docker Hub with secrets of its own, `DOCKERHUB_PUBLISH_USERNAME` and `DOCKERHUB_PUBLISH_TOKEN`, in the repository's Actions secrets:
+
+- The token is a Docker Hub personal access token with Read & Write access, created on the `vdorie` account, because the free `gumdi` organization offers no organization tokens.
+- It expires on 2027-10-30. Replace the `DOCKERHUB_PUBLISH_TOKEN` value before then, or the "Log in to Docker Hub to publish" step fails every release.
+- The read-only `DOCKERHUB_TOKEN` pull token above is not used for the copy, and is not given write access.
+
+The copy runs in its own job, so a failure there leaves both images published, signed, and attested on ghcr.io and the launchers attached. Once the cause is fixed, re-run the failed job (`gh run rerun <run-id> --failed`): it copies the same digests again without rebuilding. If the job reports a Docker Hub tag naming a different digest, that tag is not the signed image: do not publish the release in step 10 until a copy by digest from ghcr.io reads back the signed digest on every Docker Hub tag. If it reports the ghcr.io version tag naming a different digest, something pushed to that tag after the publish job signed it, and re-running the copy does not change that: find what pushed it, and do not publish the release until the tag names the signed digest again.
+
 ### 9. Generate and attach the SBOM
 
 From the workspace root:
@@ -235,7 +249,7 @@ If the command refuses on a peer conflict, do not use `@cyclonedx/cyclonedx-npm 
 
 ### 10. Publish the GitHub Release
 
-Step 8 leaves a draft release for tag `vX.Y.Z` with the stamped launchers. Open it, copy the CHANGELOG section for this version as the release body, attach `alcove-X.Y.Z.cdx.json`, record both Docker image digests from step 8 in the release notes -- the default image's and the FIPS variant's, each beside its tag -- and publish. Leave the launcher assets in place: they are the copy an operator downloads.
+Step 8 leaves a draft release for tag `vX.Y.Z` with the stamped launchers. Open it, copy the CHANGELOG section for this version as the release body, attach `alcove-X.Y.Z.cdx.json`, record both Docker image digests from step 8 in the release notes -- the default image's and the FIPS variant's, each beside its tag -- and publish. Publish only once the `dockerhub` job has passed. Each digest is the same on ghcr.io and on Docker Hub, as that job's summary shows, so each is recorded once and names the image at both `ghcr.io/georgetown-mdi/alcove` and `docker.io/gumdi/alcove`. Leave the launcher assets in place: they are the copy an operator downloads.
 
 ### 11. Merge back to staging
 
@@ -268,6 +282,12 @@ docker inspect --format '{{index .RepoDigests 0}}' ghcr.io/georgetown-mdi/alcove
 ```
 
 Compare the digest against the value in the release notes. The FIPS variant is verified the same way, at `ghcr.io/georgetown-mdi/alcove:X.Y.Z-fips`; every command in this section takes either reference.
+
+**An image pulled from Docker Hub.** `docker.io/gumdi/alcove` has the same images under the same tags and the same digests. The Cosign signature and the build provenance attestation are recorded against `ghcr.io/georgetown-mdi/alcove` only, so a Docker Hub pull is verified by its digest:
+
+1. Read the digest with the two commands above, naming `docker.io/gumdi/alcove:X.Y.Z` (or `X.Y.Z-fips`).
+2. Compare it against the value in the release notes.
+3. Run the `cosign verify` and `gh attestation verify` commands below against `ghcr.io/georgetown-mdi/alcove@sha256:...`, with that digest. Cosign reads the signature from ghcr.io, so where ghcr.io cannot be reached, run both from any machine that can: the signature and the attestation are recorded against the digest, which is the same on both registries.
 
 Each release image is also signed with Cosign, keylessly through Sigstore. The signature includes a short-lived certificate Fulcio issued against the release workflow's OIDC identity, and it is recorded in Rekor's public transparency log. There is no project-held signing key and no public key to fetch: what a verifier pins is the workflow that produced the signature ([cosign-keyless-signing.md](notes/cosign-keyless-signing.md)).
 
