@@ -74,6 +74,7 @@ import {
   singlePassDisclosureNotice,
   warnSanitizedColumns,
 } from "../../src/onlineBootstrap";
+import { markNoHealSaveFailure } from "../../src/protocol";
 import { openInputSource } from "../../src/util/dataIo";
 import { exitCodeForError, runOrExit, withExitCode } from "../../src/util/exit";
 import { MAX_TIMEOUT_SECONDS } from "../../src/util/flags";
@@ -101,6 +102,8 @@ vi.mock("../../src/protocol", async (importActual) => {
   return {
     preflightRun: vi.fn(actual.preflightRun),
     runProtocol: vi.fn(),
+    markNoHealSaveFailure: actual.markNoHealSaveFailure,
+    isNoHealSaveFailure: actual.isNoHealSaveFailure,
   };
 });
 
@@ -2545,6 +2548,80 @@ describe("runOnlineBootstrap", () => {
       expect(line).toContain(configPath);
       expect(line).toContain(params.keyPath);
       expect(line).not.toContain(configPath.replaceAll("\\", "\\\\"));
+    } finally {
+      errorSink.mockRestore();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    [
+      "an initiator told its partner could not save the rotated secret",
+      "Your partner could not save the new shared secret, so the exchange stopped.",
+    ],
+    [
+      "a responder whose own save of the rotated secret failed",
+      "the next shared secret could not be saved: Your partner may already hold the rotated token.",
+    ],
+  ])("logs no recovery note and fails 77 for %s", async (_label, message) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
+    const configPath = path.join(dir, "alcove.yaml");
+    vi.mocked(runProtocol).mockImplementation((async (
+      ...callArgs: unknown[]
+    ) => {
+      const onAuthenticated = onAuthenticatedArg(callArgs);
+      await onAuthenticated();
+      throw markNoHealSaveFailure(withExitCode(new Error(message), 77));
+    }) as never);
+
+    const params = onlineBootstrapParams(configPath);
+    const errors: string[] = [];
+    const errorSink = vi
+      .spyOn(getLogger(params.loggerName), "error")
+      .mockImplementation((...args: unknown[]) => {
+        errors.push(args.map(String).join(" "));
+      });
+    try {
+      const thrown = await runOnlineBootstrap(params).then(
+        () => undefined,
+        (err: unknown) => err,
+      );
+      expect((thrown as Error).message).toBe(message);
+      expect(exitCodeForError(thrown)).toBe(77);
+      expect(errors.filter((entry) => entry.includes("are on disk"))).toEqual(
+        [],
+      );
+    } finally {
+      errorSink.mockRestore();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("still logs the recovery note for an ordinary failure after the handshake", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
+    const configPath = path.join(dir, "alcove.yaml");
+    vi.mocked(runProtocol).mockImplementation((async (
+      ...callArgs: unknown[]
+    ) => {
+      const onAuthenticated = onAuthenticatedArg(callArgs);
+      await onAuthenticated();
+      throw withExitCode(new Error("data exchange failed"), 77);
+    }) as never);
+
+    const params = onlineBootstrapParams(configPath);
+    const errors: string[] = [];
+    const errorSink = vi
+      .spyOn(getLogger(params.loggerName), "error")
+      .mockImplementation((...args: unknown[]) => {
+        errors.push(args.map(String).join(" "));
+      });
+    try {
+      await expect(runOnlineBootstrap(params)).rejects.toThrow(
+        "data exchange failed",
+      );
+      expect(
+        errors.filter((entry) => entry.includes("are on disk")),
+      ).toHaveLength(1);
     } finally {
       errorSink.mockRestore();
       fs.rmSync(dir, { recursive: true, force: true });

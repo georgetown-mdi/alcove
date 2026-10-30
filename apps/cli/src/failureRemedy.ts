@@ -23,13 +23,29 @@ export type ArrivalWait = "exchange" | "online-invitation";
 /** What a remedy needs to know about the run beyond the cause's own facts. */
 export interface RemedyContext {
   readonly arrivalWait: ArrivalWait;
+  /**
+   * The run authenticated with a key file an earlier run or a provisioning
+   * command wrote, which may be an older copy than the partner's.
+   */
+  readonly fromKeyFile?: boolean;
 }
 
 const DEFAULT_CONTEXT: RemedyContext = { arrivalWait: "exchange" };
 
+/**
+ * What a webrtc no-show from a key file adds: two parties on different
+ * secrets derive different rendezvous ids and never meet, so an older copy of
+ * the key file is reported only here (docs/CLI.md, "Out-of-sync tokens").
+ */
+export const OLDER_KEY_FILE_NO_SHOW_REMEDY =
+  "If your partner did start, one of you may be running from an older copy " +
+  "of the key file, such as one restored from a backup or copied from " +
+  "another machine: run from the newest copy, or ask your partner for a new " +
+  "invitation.";
+
 const partnerNeverArrived = (
   { channel }: FailureCauseOfKind<"partner-never-arrived">,
-  { arrivalWait }: RemedyContext,
+  { arrivalWait, fromKeyFile }: RemedyContext,
 ): string => {
   if (arrivalWait === "online-invitation")
     return (
@@ -42,7 +58,10 @@ const partnerNeverArrived = (
       : channel === "sftp"
         ? "Check that you and your partner use the same server and folder"
         : "Check that your partner has started their side";
-  return `${check}, then run again; --peer-timeout sets how long to wait.`;
+  const remedy = `${check}, then run again; --peer-timeout sets how long to wait.`;
+  return channel === "webrtc" && fromKeyFile === true
+    ? `${remedy} ${OLDER_KEY_FILE_NO_SHOW_REMEDY}`
+    : remedy;
 };
 
 /**
@@ -94,20 +113,28 @@ export function remedyForCause(
 }
 
 const ARRIVAL_WAIT = annotationKey<ArrivalWait>("arrival wait");
+const FROM_KEY_FILE = annotationKey<true>("run from a key file");
 
 /**
  * Record on `err` which flag bounded this run's wait for the partner, so the
- * command boundary that renders it names that flag. Only an error carrying the
- * partner-never-arrived cause is annotated; any other error is returned
- * unchanged.
+ * command boundary that renders it names that flag, and whether the run
+ * authenticated with a key file ({@link RemedyContext.fromKeyFile}). Only an
+ * error carrying the partner-never-arrived cause is annotated; any other
+ * error is returned unchanged.
  */
-export function markArrivalWait<E>(err: E, arrivalWait: ArrivalWait): E {
+export function markArrivalWait<E>(
+  err: E,
+  arrivalWait: ArrivalWait,
+  options: { fromKeyFile?: boolean } = {},
+): E {
   if (
     typeof err === "object" &&
     err !== null &&
     failureCauseOf(err)?.kind === "partner-never-arrived"
-  )
+  ) {
     annotate(err, ARRIVAL_WAIT, arrivalWait);
+    if (options.fromKeyFile === true) annotate(err, FROM_KEY_FILE, true);
+  }
   return err;
 }
 
@@ -124,5 +151,8 @@ export function failureRemedy(err: unknown): string | undefined {
   const cause = failureCauseOf(err);
   return cause === undefined || !Object.hasOwn(CLI_FAILURE_REMEDIES, cause.kind)
     ? undefined
-    : remedyForCause(cause, { arrivalWait: arrivalWaitOf(err) });
+    : remedyForCause(cause, {
+        arrivalWait: arrivalWaitOf(err),
+        fromKeyFile: annotationOf(err, FROM_KEY_FILE) === true,
+      });
 }

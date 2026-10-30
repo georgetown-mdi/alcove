@@ -67,6 +67,7 @@ import { checkInputFitsMainThreadHeap } from "./inputHeapCheck";
 import { openInputSource } from "./util/dataIo";
 import { singleValue } from "./util/flags";
 import {
+  isNoHealSaveFailure,
   preflightRun,
   runProtocol,
   type AuthPersist,
@@ -1253,8 +1254,10 @@ export async function runOnlineBootstrap(params: {
     // `keyPersisted`, since a pre-handshake failure never saves the rotated key
     // (onlineBootstrap.test.ts, "runOnlineBootstrap with reuseExistingConfig
     // does not log a recovery note when the handshake fails before the key is
-    // saved").
-    logRecoveryNoteIfOnDisk();
+    // saved"). A rotated secret that could not be saved on one side leaves
+    // the two sides with different secrets, so the note would give the wrong
+    // step: the error states the new invitation instead.
+    if (!isNoHealSaveFailure(err)) logRecoveryNoteIfOnDisk();
     throw err;
   }
 }

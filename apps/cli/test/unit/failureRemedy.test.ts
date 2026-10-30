@@ -11,6 +11,7 @@ import {
   CLI_FAILURE_REMEDIES,
   failureRemedy,
   markArrivalWait,
+  OLDER_KEY_FILE_NO_SHOW_REMEDY,
   remedyForCause,
   type ArrivalWait,
 } from "../../src/failureRemedy";
@@ -98,6 +99,36 @@ test("a file-drop no-show on alcove exchange names --peer-timeout only", () => {
       "Check that you and your partner use the same folder and that it is " +
       "syncing, then run again; --peer-timeout sets how long to wait.",
   );
+});
+
+test("a WebRTC no-show from a key file names an older copy of the key file among its causes", () => {
+  const [, , webrtc] = SAMPLES["partner-never-arrived"];
+  const err = markFailureCause(
+    new Error(failureCauseSentence(webrtc!)),
+    webrtc!,
+  );
+  markArrivalWait(err, "exchange", { fromKeyFile: true });
+  expect(renderFailureForOperator(err)).toContain(
+    "Check that your partner has started their side, then run again; " +
+      "--peer-timeout sets how long to wait. " +
+      OLDER_KEY_FILE_NO_SHOW_REMEDY,
+  );
+  expect(OLDER_KEY_FILE_NO_SHOW_REMEDY).toContain("restored from a backup");
+  // A run with no key file of its own, and the file-sync channels, where two
+  // copies meet in the key exchange, do not name it.
+  expect(rendered(webrtc!, "exchange")).not.toContain(
+    OLDER_KEY_FILE_NO_SHOW_REMEDY,
+  );
+  for (const fileSync of SAMPLES["partner-never-arrived"].slice(0, 2)) {
+    const e = markFailureCause(
+      new Error(failureCauseSentence(fileSync)),
+      fileSync,
+    );
+    markArrivalWait(e, "exchange", { fromKeyFile: true });
+    expect(renderFailureForOperator(e)).not.toContain(
+      OLDER_KEY_FILE_NO_SHOW_REMEDY,
+    );
+  }
 });
 
 test("an SFTP no-show names the server and --peer-timeout only", () => {

@@ -41,6 +41,13 @@ export const AUTHENTICATION_FAILED_EXIT_CODE = 77;
 export const RECEIPT_VERIFICATION_FAILED_EXIT_CODE = 65;
 
 /**
+ * `EX_DATAERR` (65): `alcove exchange` ran from a key file older than its
+ * partner's copy, which the partner showed with a behind notice (core's
+ * `LocalCopyBehindError`).
+ */
+export const STALE_KEY_FILE_EXIT_CODE = 65;
+
+/**
  * `EX_NOINPUT` (66): `alcove verify-receipt` found nothing wrong but could not
  * run a check for want of an input.
  */

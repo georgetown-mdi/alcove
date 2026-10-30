@@ -1,7 +1,10 @@
 import fs from "node:fs";
 import {
+  deriveHistoryVerifier,
+  InternalConsistencyError,
   KEY_FILE_SHARED_SECRET_FORMAT_MESSAGE,
   KeyFileSchema,
+  ROTATION_HISTORY_MAX_ENTRIES,
   keepOperatorSuppliedText,
   messageWithOperatorText,
   MS_PER_DAY,
@@ -23,7 +26,11 @@ import {
 import { decodeAndValidateInvitation } from "./invitationDecode";
 import { parseSensitiveJson } from "./sensitiveFile";
 
-import type { KeyFile } from "@alcove/core";
+import type {
+  HandshakeRole,
+  KeyFile,
+  RotationHistoryEntry,
+} from "@alcove/core";
 
 export type { KeyFile } from "@alcove/core";
 
@@ -93,6 +100,120 @@ export function buildRotatedKeyFile(
     throw err;
   }
   return { sharedSecret: rotatedSecret, expires };
+}
+
+/** What a key file held at the start of the run whose rotation replaces it. */
+export type KeyFileAtRunStart = Pick<
+  KeyFile,
+  "sharedSecret" | "expires" | "previousSharedSecret" | "previousExpires"
+> & { rotationHistory?: ReadonlyArray<RotationHistoryEntry> };
+
+/**
+ * The `rotationHistory` a rotation write stores: `history` less the expired
+ * entries at its oldest end, and at most the
+ * {@link ROTATION_HISTORY_MAX_ENTRIES} newest. An expired entry with a newer
+ * entry still live after it is kept, since the handshake counts rotations by
+ * position (docs/spec/PROTOCOL.md, "The rotation history").
+ */
+export function prunedRotationHistory(
+  history: ReadonlyArray<RotationHistoryEntry>,
+  now: number,
+): RotationHistoryEntry[] {
+  const kept = history.slice(0, ROTATION_HISTORY_MAX_ENTRIES);
+  let end = kept.length;
+  while (end > 0) {
+    const expires = kept[end - 1]!.expires;
+    if (expires === undefined || new Date(expires).getTime() > now) break;
+    end -= 1;
+  }
+  return kept.slice(0, end);
+}
+
+/**
+ * The `.alcove.key` contents a rotation write stores, given what the file held
+ * when the run started (docs/spec/EXCHANGE_FILE.md, "The previous secret and
+ * the rotation history"):
+ *
+ * - the next secret, with the `expires` {@link buildRotatedKeyFile} stamps;
+ * - on the initiator, the secret the handshake used and its `expires` as the
+ *   previous secret, kept until the partner's frame shows it stored too; the
+ *   responder's store keeps none;
+ * - the history, with the verifier of the retired current secret added at its
+ *   newest end, then pruned ({@link prunedRotationHistory}). A handshake
+ *   completed under the previous secret adds nothing: that secret's verifier
+ *   was added when it was retired, and the current secret it replaces was
+ *   never shared.
+ *
+ * @throws {UsageError} as {@link buildRotatedKeyFile} does.
+ */
+export async function rotationWriteContents(params: {
+  rotatedSecret: string;
+  tokenMaxAgeDays: number | undefined;
+  now: number;
+  role: HandshakeRole;
+  usedPrevious: boolean;
+  atRunStart: KeyFileAtRunStart;
+}): Promise<KeyFile> {
+  const { rotatedSecret, tokenMaxAgeDays, now, role, usedPrevious } = params;
+  const { atRunStart } = params;
+  const rotated = buildRotatedKeyFile(rotatedSecret, tokenMaxAgeDays, now);
+  if (usedPrevious && atRunStart.previousSharedSecret === undefined)
+    throw new InternalConsistencyError(
+      "rotationWriteContents: the handshake used a previous secret the key " +
+        "file did not hold",
+    );
+  const used = usedPrevious
+    ? {
+        sharedSecret: atRunStart.previousSharedSecret!,
+        expires: atRunStart.previousExpires,
+      }
+    : { sharedSecret: atRunStart.sharedSecret, expires: atRunStart.expires };
+  const history = atRunStart.rotationHistory ?? [];
+  const retired: RotationHistoryEntry[] = usedPrevious
+    ? []
+    : [
+        {
+          verifier: await deriveHistoryVerifier(atRunStart.sharedSecret),
+          ...(atRunStart.expires !== undefined && {
+            expires: atRunStart.expires,
+          }),
+        },
+      ];
+  const rotationHistory = prunedRotationHistory([...retired, ...history], now);
+  return {
+    ...rotated,
+    ...(role === "initiator" && {
+      previousSharedSecret: used.sharedSecret,
+      ...(used.expires !== undefined && { previousExpires: used.expires }),
+    }),
+    ...(rotationHistory.length > 0 && { rotationHistory }),
+  };
+}
+
+/**
+ * Remove the previous secret from the key file at `keyFilePath` once the
+ * partner's first frame after the terms exchange shows it stored the next
+ * secret, through the same atomic owner-only write the rotation used. Nothing
+ * is written when the file holds a secret other than `sharedSecret` or no
+ * previous secret.
+ */
+export function dropPreviousSecret(
+  keyFilePath: string,
+  sharedSecret: string,
+): void {
+  const current = loadKeyFile(keyFilePath, { warnOnPermissive: false });
+  if (current === undefined || current.sharedSecret !== sharedSecret) return;
+  if (
+    current.previousSharedSecret === undefined &&
+    current.previousExpires === undefined
+  )
+    return;
+  const {
+    previousSharedSecret: _secret,
+    previousExpires: _expires,
+    ...confirmed
+  } = current;
+  saveKeyFile(keyFilePath, confirmed);
 }
 
 /** Result of {@link checkKeyFileExpiry}. */

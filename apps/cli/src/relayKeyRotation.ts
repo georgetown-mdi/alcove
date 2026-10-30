@@ -209,18 +209,23 @@ export function logRotatedRelayKey(
 
 /**
  * Before a run dials: when the key file records a rotation the registrar did
- * not confirm, register the key derived from `sharedSecret` again. The key
- * the registrar held before that rotation was dropped with the run that made
- * it, so this is a renewal signed with the current key, which the registrar
- * takes only if it already holds that key -- a rotation whose answer was lost.
- * A confirmed renewal drops the marker; anything else throws the classified
- * failure ({@link relayRegistrationError}, stage `pending`).
+ * not confirm, register the key derived from `sharedSecret` again. While the
+ * key file holds a previous secret, the request is signed under that secret's
+ * relay key, the request the rotation would have sent: a registrar still
+ * holding that key takes the rotation, and one already holding the current
+ * key takes it as a renewal. Otherwise the secret before the rotation left
+ * with the run that made it, so the request is a renewal signed with the
+ * current key, which the registrar takes only if it already holds that key --
+ * a rotation whose answer was lost. A confirmed registration drops the
+ * marker; anything else throws the classified failure
+ * ({@link relayRegistrationError}, stage `pending`).
  */
 export async function retryPendingRelayRegistration(
   params: {
     registrar: RelayRegistrar;
     keyFilePath: string;
     sharedSecret: string;
+    previousSharedSecret?: string;
     maxAgeDays: number | null;
   },
   env: RelayRegistrationEnvironment = {},
@@ -229,7 +234,7 @@ export async function retryPendingRelayRegistration(
   const outcome = await registerRelayKey(
     {
       registrar,
-      signingSecret: sharedSecret,
+      signingSecret: params.previousSharedSecret ?? sharedSecret,
       registeredSecret: sharedSecret,
       maxAgeDays,
     },
