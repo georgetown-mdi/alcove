@@ -60,8 +60,9 @@ Each direction stops reading from its source while its destination's send buffer
 - **A slow browser.** While the WebSocket's `bufferedAmount` is above the window, the relay reads nothing from the TCP connection. The forwarding toward the browser is the WebSocket relay's own (`sendWithinWindow` in `packages/websocket-relay/src/forwarding.ts`).
 - **The bound.** The relay holds at most 1,441,806 bytes of memory for each direction of each connection, for bytes read from the source and not yet written into the destination's socket (`SFTP_RELAY_BUFFERED_BOUND_BYTES`). Toward the target that is the high mark, a partly read message with its 14-byte frame header, the 64 KiB read that crossed the mark, the unused capacity of the write in flight and of the pending buffer, each under the 64 KiB step the pending buffer grows in (`SFTP_RELAY_PENDING_GROWTH_BYTES`), and what the paused source socket reads ahead: under Node's 64 KiB high-water mark, plus one 64 KiB read. Toward the browser it is at most 1,245,194 bytes: the high mark, the 64 KiB read that crossed it with its 10-byte frame header, and the same read-ahead.
 - **Any message size.** Toward the target the bound is in memory, not only in payload bytes, for messages of any size: a message behind the write in flight is copied into the pending buffer and has no write of its own, so a flood of 1-byte messages stops at the high mark like one of 64 KiB messages.
+- **A message in fragments.** The bound does not cover a message the browser sends in WebSocket fragments while `ws` assembles it, before the relay sees it. `ws` bounds that assembly by the per-message cap and by its default of 16,384 fragments a message, above which it closes the WebSocket with 1008. A message of 1-byte fragments held about 2 MB for each connection while it was assembled, measured on the standalone runner.
 - **No termination.** A source held this way waits on its own TCP window and is not disconnected.
-- **A close while held.** A close the browser sends while the relay is holding it is not read until the target drains or a ping to the browser fails, up to about one ping interval plus the close wait, and until then the connection counts toward the connection cap.
+- **A close while held.** A close the browser sends while the relay is holding it is not read until the target drains, or until the browser's TCP connection drops and the relay's next ping to it fails: no relay timer reads it. Until then the connection counts toward the connection cap, as it would had the browser sent no close.
 ## Closing
 
 | Event | What the relay does |
@@ -84,6 +85,7 @@ Each direction stops reading from its source while its destination's send buffer
 | 1000 | `targetClosed` | The target ended its connection normally. |
 | 1001 | `goingAway` | The relay is shutting down. |
 | 1003 | `textMessage` | The browser sent a text message. |
+| 1008 | `tooManyFragments` | A message in more fragments than `ws` allows, closed by `ws`. |
 | 1009 | `messageTooBig` | A message above the per-message cap, closed by `ws`. |
 | 4000 | `targetFailed` | The target's connection failed after it was accepted. |
 | 4001 | `targetUnreachable` | The target refused the connection or did not accept it in time. |

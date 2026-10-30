@@ -62,6 +62,8 @@ export const SftpRelayCloseCode = Object.freeze({
   goingAway: 1001,
   /** A text message: the relay forwards binary messages only. */
   textMessage: 1003,
+  /** A message in more fragments than `ws` allows, closed by `ws`. */
+  tooManyFragments: 1008,
   /** A message above {@link SFTP_RELAY_MAX_MESSAGE_BYTES}, closed by `ws`. */
   messageTooBig: 1009,
   /** The target's connection failed after it was accepted. */

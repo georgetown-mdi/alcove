@@ -45,6 +45,8 @@ const CASE_TIMEOUT_MS = 30_000;
 const SETTLE_MS = 200;
 const MESSAGE_BYTES = 64 * 1024;
 const BROWSER_WINDOW_BYTES = 4 * 1024 * 1024;
+// The fragments a message may have before ws closes the WebSocket with 1008.
+const WS_MAX_FRAGMENTS = 16_384;
 const PRESSURE_MS = 2_000;
 // Far above what the loopback socket buffers and the relay's bound hold
 // between them, and far below what an unbounded relay takes in PRESSURE_MS.
@@ -711,6 +713,36 @@ describe("close mapping", () => {
       const code = closeCode(socket);
       socket.send(Buffer.alloc(SFTP_RELAY_MAX_MESSAGE_BYTES + 1));
       expect(await code).toBe(SftpRelayCloseCode.messageTooBig);
+      await ended;
+    },
+    CASE_TIMEOUT_MS,
+  );
+
+  it(
+    "closes the WebSocket with 1008 on a message in more fragments than ws allows and ends the TCP connection",
+    async () => {
+      const { socket, tcp } = await connected();
+      tcp.resume();
+      const ended = once(tcp, "end");
+      const code = closeCode(socket);
+      let closed = false;
+      void code.then(() => {
+        closed = true;
+      });
+      for (
+        let fragment = 0;
+        fragment < WS_MAX_FRAGMENTS + 1 && !closed;
+        fragment++
+      ) {
+        const last = fragment === WS_MAX_FRAGMENTS;
+        if (socket.readyState !== WebSocket.OPEN) break;
+        socket.send(Buffer.from([fragment & 0xff]), {
+          binary: true,
+          fin: last,
+        });
+        if (fragment % 1024 === 1023) await new Promise(setImmediate);
+      }
+      expect(await code).toBe(SftpRelayCloseCode.tooManyFragments);
       await ended;
     },
     CASE_TIMEOUT_MS,
