@@ -71,11 +71,14 @@ export async function authenticateExchange(
 ): Promise<AuthenticatedExchange> {
   let result: AuthResult;
   try {
+    // The browser record keeps no previous secret or history, so none is
+    // offered.
     result = await authenticateConnection(
       mc,
       { sharedSecret, expires },
       exchangeRole,
       true,
+      { history: [] },
     );
   } catch (error) {
     // An unrecognized failure is treated as a trust failure: fail closed.

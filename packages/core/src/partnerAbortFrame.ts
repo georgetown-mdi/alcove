@@ -103,6 +103,50 @@ export function parseAfterTerms<T>(
   return parseOrProtocolError(schema, frame);
 }
 
+// Every member of MessageConnection, so a member added there and not forwarded
+// by afterFirstFrameNotAbort fails to compile here.
+const FORWARDED_CONNECTION_MEMBERS = {
+  send: true,
+  receive: true,
+  close: true,
+  terminated: true,
+  setInboundFrameCap: true,
+  inboundPollIntervalMs: true,
+  outboundWebRtcFrameBound: true,
+  outboundFileSyncFrameBound: true,
+  inboundPsiSetElementCeiling: true,
+  outboundFrameOverheadBytes: true,
+} as const satisfies Record<keyof MessageConnection, true>;
+
+/**
+ * `conn` with `hook` awaited once, when the first received frame that is not
+ * a partner's abort decision arrives, before that frame is returned. Every
+ * other member is forwarded unchanged. A throw from `hook` rejects that
+ * receive.
+ */
+export function afterFirstFrameNotAbort(
+  conn: MessageConnection,
+  hook: () => void | Promise<void>,
+): MessageConnection {
+  let pending = true;
+  const forwarded: Record<string, unknown> = {};
+  for (const name of Object.keys(FORWARDED_CONNECTION_MEMBERS)) {
+    const member = (conn as unknown as Record<string, unknown>)[name];
+    if (typeof member === "function") forwarded[name] = member.bind(conn);
+  }
+  return {
+    ...(forwarded as unknown as MessageConnection),
+    receive: async (timeoutMs?: number) => {
+      const frame = await conn.receive(timeoutMs);
+      if (pending && !isPartnerAbortFrame(frame)) {
+        pending = false;
+        await hook();
+      }
+      return frame;
+    },
+  };
+}
+
 /**
  * Receives the next frame past the terms exchange and parses it as
  * {@link parseAfterTerms} does.

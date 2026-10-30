@@ -689,8 +689,10 @@ that began and has not saved its rotated secret.
   neither party's interruption explains. It is evidence for the benign desync
   reading only beside the authentication failure or no-show it predicts, and
   it changes no exit code and refuses nothing.
-- **What it does not change.** The file still holds exactly one live secret;
-  no previous secret is kept and the handshake is unchanged.
+- **What it does not change.** The marker holds an instant only, and the
+  handshake does not read it. The command line keeps no previous secret
+  beside it ([The previous secret and the rotation
+  history](#the-previous-secret-and-the-rotation-history)).
 - **Across applications.** The console's check of a mounted key file admits
   the field, and the CLI run it starts reads the marker as above. A key file
   imported into a managed exchange beside an `alcove.yaml` is admitted and its
@@ -727,6 +729,29 @@ been confirmed at the relay registrar a run registers at
   and its command-line export writes the field from a record's own pending
   registration, so the first command-line run retries it
   ([MANAGED_EXCHANGE_RECORD.md](MANAGED_EXCHANGE_RECORD.md#what-the-exports-write)).
+
+### The previous secret and the rotation history
+
+The key file schema admits three more optional fields, for the handshake's
+previous secret and rotation history
+([PROTOCOL.md](PROTOCOL.md#the-previous-secret)):
+
+- **`previousSharedSecret`**: the secret a rotation this side stored as the
+  initiator replaced, in the `sharedSecret` format, kept until the partner's
+  first frame after the terms exchange shows it stored the same next secret.
+- **`previousExpires`**: the ISO 8601 `expires` that secret had as the current
+  one.
+- **`rotationHistory`**: the history verifiers of the secrets the file retired,
+  newest first, each an object holding `verifier`, 32 bytes as 43 base64url
+  characters, and that secret's optional `expires`. An entry holding any other
+  field is refused.
+
+A file whose field breaks its format is refused at load, as a malformed
+`expires` is. No application writes or reads these fields for a run: the
+command line passes the handshake no previous secret and an empty history, and
+the web application's import of a command-line key file names
+`previousSharedSecret`, `previousExpires` and `rotationHistory` among the
+fields it drops.
 
 ### `exchange --invitation` fail-closed ordering
 

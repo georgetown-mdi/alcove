@@ -647,6 +647,50 @@ export class AuthenticationError extends ConnectionError {
   }
 }
 
+/**
+ * The key exchange failed because the peer connected with an older copy of
+ * this exchange's secrets: its history proof matched the verifier of a secret
+ * this side retired (docs/spec/PROTOCOL.md, "The rotation history"). The
+ * match bounds how old the peer's copy is and proves nothing more.
+ */
+export class PartnerCopyBehindError extends AuthenticationError {
+  /** The position of the matched verifier: the peer's copy is at most this
+   * many rotations behind this side's. */
+  readonly rotationsBehindAtMost: number;
+
+  constructor(rotationsBehindAtMost: number) {
+    super(
+      "The other side connected with an older copy of this exchange, no " +
+        `more than ${rotationsBehindAtMost} ` +
+        (rotationsBehindAtMost === 1 ? "rotation" : "rotations") +
+        " behind yours, such as an older copy of your partner's key file or " +
+        "saved exchange. Ask your partner to run from their newest copy; if " +
+        "they did not restore or copy one, treat this as a compromise and " +
+        "re-invite.",
+    );
+    this.name = "PartnerCopyBehindError";
+    this.rotationsBehindAtMost = rotationsBehindAtMost;
+    annotate(this, STATES_OWN_NEXT_STEP, true);
+  }
+}
+
+/**
+ * The key exchange failed and the peer showed, with a behind notice made under
+ * the verifier of this side's current secret, that it holds a newer copy of
+ * this exchange: one that retired the secret this side runs on.
+ */
+export class LocalCopyBehindError extends AuthenticationError {
+  constructor() {
+    super(
+      "This copy of the exchange is older than the one on the other side. " +
+        "Run from your newest copy of this exchange, or ask your partner for " +
+        "a new invitation.",
+    );
+    this.name = "LocalCopyBehindError";
+    annotate(this, STATES_OWN_NEXT_STEP, true);
+  }
+}
+
 const PEER_WAIT_TIMED_OUT = annotationKey<true>("peer wait timed out");
 
 /**

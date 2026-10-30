@@ -1,7 +1,7 @@
 ---
 title: "Alcove Security Design"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-10-28"
+last_reviewed: "2026-10-30"
 ---
 
 # Alcove security
@@ -188,6 +188,8 @@ Neither flow sends the secret, the terms, or the input data to a server. For the
 Recurring exchanges derive their session key from an ephemeral P-256 key exchange, keyed together with the pre-shared secret and an explicit mutual confirmation. It provides forward secrecy and mutual authentication. A leaked secret permits active impersonation until it is rotated out, and forward secrecy means a recorded transcript stays confidential if the secret later leaks. An active adversary holding the current secret can run one handshake with each party and learn the next secret each stores, but each is derived over that leg's own key agreement, so the two parties store different secrets and the adversary must stay in the middle for every later run until a re-invite; a run it misses fails, or on WebRTC the parties do not meet. A password-authenticated key exchange (PAKE) is not used; the comparison is in [key-establishment-fips-boundary.md](notes/key-establishment-fips-boundary.md).
 
 The construction follows the Noise NNpsk0 pattern over P-256 -- a curve the Noise Protocol Framework does not itself specify, so what is followed is the pattern rather than a conformant instantiation -- with an added explicit, role-asymmetric key confirmation modelled on NIST SP 800-56A Rev. 3 without being conformant to it. Every cryptographic operation is a platform `crypto.subtle` call. The wire-level specification is in [PROTOCOL.md](spec/PROTOCOL.md#p-256-authenticated-key-exchange), and the decision record, with the alternatives weighed, is [key-establishment-fips-boundary.md](notes/key-establishment-fips-boundary.md). The CLI and the web application run the same handshake, and two peers on different version discriminants fail closed rather than negotiating.
+
+The handshake accepts a previous secret, kept by the side that stored first in a run cut before its partner stored, so the next run can complete under it; and where no secret matches, each side proves which retired secrets its copy holds, so a copy of this partnership that is a few rotations old is reported as such rather than as a generic failure ([PROTOCOL.md](spec/PROTOCOL.md#the-previous-secret)). So the frames sent before authentication say more: message 2 always holds a second confirmation tag and a history proof, and an abort can hold a proof and a behind notice. None of them verifies for a party holding no copy of this partnership's secrets, and message 2's fields are sent on every handshake and the abort's proof on every failed one, so neither tells the outcome; a notice goes only to a party that proved it holds an old copy. Neither application keeps a previous secret or a history, so each run offers the current secret alone and an older copy gets the generic failure.
 
 The pre-shared secret is the baseline authentication anchor. A certificate-chain, authority-backed mode is left open by that same version discriminant (see [Pinned self-signed trust model](#pinned-self-signed-trust-model)). On approval:
 

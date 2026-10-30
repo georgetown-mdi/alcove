@@ -1,5 +1,5 @@
 {
-  "description": "Known-answer vectors for the alcove-kex-v3 P-256 authenticated key exchange (Noise NNpsk0 over P-256 ECDH + explicit role-asymmetric key confirmation + a per-party request-encryption flag bound into the transcript). Fixes the pre-shared secret and both ephemeral P-256 private keys, and records, for all four (initiator, responder) flag combinations, the handshake hash, session key, and both confirmation tags. It also fixes both parties' rotation values and records, per combination, each value AES-KW-wrapped under its key from the session key, and once the next shared secret derived over dh and both values. computeKexKeys, initiatorConfirmTag and the rotation functions in packages/core/src reproduce them from these inputs; kex.test.ts checks that on Node and apps/web's browser suite checks the same file against the browser build in real Chromium. The chaining key and confirmation key are flag-independent (the flag is MixHash'd into h only) and recorded once under derived. The key-schedule mix chain is faithful Noise NNpsk0 (PSK mode: each e token is MixHash + MixKey; each message's flag is the MixHash'd handshake payload), but the overall handshake is pinned by this file and is NOT wire-compatible with generic Noise: the protocol name differs (so the initial h differs) and, instead of Noise Split(), the session key uses a custom KDF over ck||h with an added explicit confirmation round. So no end-to-end Noise vector corresponds. What does correspond is checked separately: the P-256 scalar multiplication and ECDH against published values, and the Noise-style chaining HKDF against RFC 5869 test case 3 (see externalAnchors and kex.test.ts).",
+  "description": "Known-answer vectors for the alcove-kex-v3 P-256 authenticated key exchange (Noise NNpsk0 over P-256 ECDH + explicit role-asymmetric key confirmation + a per-party request-encryption flag bound into the transcript). Fixes the pre-shared secret and both ephemeral P-256 private keys, and records, for all four (initiator, responder) flag combinations, the handshake hash, session key, and both confirmation tags. It also fixes both parties' rotation values and records, per combination, each value AES-KW-wrapped under its key from the session key, and once the next shared secret derived over dh and both values. Each case also records the schedule under a fixed previous secret, whose responder tag is message 2's second tag, with the initiator's tag for a handshake completed under it; and the history verifiers, both history proofs and both behind notices are recorded once. computeKexKeys, initiatorConfirmTag, the rotation functions and the history functions in packages/core/src reproduce them from these inputs; kex.test.ts checks that on Node and apps/web's browser suite checks the same file against the browser build in real Chromium. The chaining key and confirmation key are flag-independent (the flag is MixHash'd into h only) and recorded once under derived. The key-schedule mix chain is faithful Noise NNpsk0 (PSK mode: each e token is MixHash + MixKey; each message's flag is the MixHash'd handshake payload), but the overall handshake is pinned by this file and is NOT wire-compatible with generic Noise: the protocol name differs (so the initial h differs) and, instead of Noise Split(), the session key uses a custom KDF over ck||h with an added explicit confirmation round. So no end-to-end Noise vector corresponds. What does correspond is checked separately: the P-256 scalar multiplication and ECDH against published values, and the Noise-style chaining HKDF against RFC 5869 test case 3 (see externalAnchors and kex.test.ts).",
   "construction": {
     "pattern": "Noise NNpsk0 over P-256",
     "protocolName": "alcove-kex-v3:NNpsk0_P256_SHA256",
@@ -13,14 +13,17 @@
     "initiatorConfirmLabel": "alcove-kex-v2:initiator-confirm",
     "responderConfirmLabel": "alcove-kex-v2:responder-confirm",
     "requestEncryptionFlag": "Single byte (0x01 if the party requests the additional application-encryption layer, else 0x00), MixHash'd as that message's handshake payload right after the party's e token. MixHash only.",
-    "note": "h0 = SHA-256(protocolName); ck0 = h0. Tokens (PSK mode -- each e is MixHash then MixKey; each flag is MixHash'd as the message payload): MixHash(''), MixKeyAndHash(psk), MixHash(eInitiatorPub), MixKey(eInitiatorPub), MixHash(initiatorFlagByte), MixHash(eResponderPub), MixKey(eResponderPub), MixHash(responderFlagByte), MixKey(dh). sessionKey = HKDF(ck||h, sessionLabel, 32); confirmKey = HKDF(ck, confirmKeyLabel, 32); responder confirm = HMAC(confirmKey, label||h); initiator confirm = HMAC(confirmKey, label||h||wrappedInitiatorValue).",
+    "note": "h0 = SHA-256(protocolName); ck0 = h0. Tokens (PSK mode -- each e is MixHash then MixKey; each flag is MixHash'd as the message payload): MixHash(''), MixKeyAndHash(psk), MixHash(eInitiatorPub), MixKey(eInitiatorPub), MixHash(initiatorFlagByte), MixHash(eResponderPub), MixKey(eResponderPub), MixHash(responderFlagByte), MixKey(dh). sessionKey = HKDF(ck||h, sessionLabel, 32); confirmKey = HKDF(ck, confirmKeyLabel, 32); responder confirm = HMAC(confirmKey, label||h); initiator confirm = HMAC(confirmKey, label||h||usedPreviousByte||wrappedInitiatorValue), usedPreviousByte 0x01 when the initiator completed under its previous secret, else 0x00.",
     "initiatorWrapLabel": "alcove-shared-secret-wrap-v2",
     "responderWrapLabel": "alcove-shared-secret-wrap-responder-v2",
     "nextSecretLabel": "alcove-shared-secret-next-v2",
-    "rotation": "Each wrapped value = AES-KW (RFC 3394, default IV) of the party's 32-byte value under HKDF(sessionKey, that party's wrap label, 32). nextSecret = HKDF(dh || initiatorValue || responderValue, nextSecretLabel, 32). The initiator's wrapped value travels in msg3, the responder's as the terms message 2 field responderValue."
+    "rotation": "Each wrapped value = AES-KW (RFC 3394, default IV) of the party's 32-byte value under HKDF(sessionKey, that party's wrap label, 32). nextSecret = HKDF(dh || initiatorValue || responderValue, nextSecretLabel, 32). The initiator's wrapped value travels in msg3, the responder's as the terms message 2 field responderValue.",
+    "historyLabelPrefix": "alcove-rotation-history-v2:",
+    "history": "verifier = HKDF(secret, prefix + 'verifier', 32). A proof = HMAC(HKDF(verifier || dh, prefix + 'proof-<sender role>', 32), eInitiatorPub || eResponderPub), under the verifier of the sender's current secret. A behind notice = HMAC(HKDF(verifier || dh, prefix + 'notice-<sender role>', 32), u32be(count) || eInitiatorPub || eResponderPub), under the verifier of the peer's secret."
   },
   "inputs": {
     "pskHex": "4242424242424242424242424242424242424242424242424242424242424242",
+    "previousPskHex": "4343434343434343434343434343434343434343434343434343434343434343",
     "initiatorEphemeralPrivateHex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
     "responderEphemeralPrivateHex": "fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0efeeedecebeae9e8e7e6e5e4e3e2e1e0",
     "initiatorValueHex": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
@@ -35,6 +38,15 @@
     "nextSecretHex": "c16fa65a022ec85ba9484229eafd0089515d72907c6f088ebf5920e1d2792e52",
     "nextSecret": "wW-mWgIuyFupSEIp6v0AiVFdcpB8bwiOv1kg4dJ5LlI"
   },
+  "history": {
+    "verifierHex": "b80f970cccd2ff0d4526cd95d74bd0909c33a65cb19ae4f3870175e8e506b269",
+    "previousVerifierHex": "d524de05756cdb8278f2f107e2da9770afe051e48271d29a278f0ffeb002a61a",
+    "initiatorProofHex": "784b8da1ef375fd6e9b62cc2536a7c7a2f48afc487e2899089ef9c57c5c83a0e",
+    "responderProofHex": "461eba06606c721651a919d388811b41d6be396d8598767f16769748a67913ee",
+    "noticeCount": 3,
+    "initiatorNoticeHex": "db4186771f4968ae48bfa82c7af59eb0229747aeba5d57d25801aef32c47ad85",
+    "responderNoticeHex": "61d5d1d93d0b230c7fd0f6706246d93bcfef8af65dcfc2239b2a936532e4edfe"
+  },
   "cases": [
     {
       "name": "neither-requests",
@@ -43,10 +55,18 @@
       "applyEncryption": false,
       "handshakeHashHex": "31367655865e1dd3b0ccff530d578b3d0e8d2f0eeed6c489551e33bdd8be1587",
       "sessionKeyHex": "5d39902bd35ec8349d056c68966d7dd5e5440b847b83f23fa3f2b983657a11b2",
-      "initiatorConfirmHex": "2151e5ad115bfb88074502a8e9d3f59b33521f5da687c0e5378cb85a178846c8",
+      "initiatorConfirmHex": "fb6d3cff473f41a0b827e902b86ddad8e73c15227aaadeb4e425071a5549af1b",
       "responderConfirmHex": "12b4fd9b07a8b2b1ac86a4a12d96cdc7b576a916eb7366699983e854ac6bb7fe",
       "wrappedInitiatorValueHex": "d21f084de236b7fc58526411f849856119599f2ae5d8d22e7005a389f868df0f007cff9dc98e61e9",
       "wrappedResponderValueHex": "fb42ecfda5a76b8e2140e152faeeba147f70959582e6ada0ca71253f5a58ce1939b13e6be199fb07",
+      "underPrevious": {
+        "handshakeHashHex": "c96823c12aa4cc512a934540c817e6b42c42af420d3dbce1026ad9974ebb24e3",
+        "sessionKeyHex": "4743922932c93d380a9548c30b5e70f71c8bac6e3e823fada117a3f89387a97a",
+        "confirmKeyHex": "d45f76f427a9e4e309188662ee04750ccf33c63ab47a3e8b0380a51d7b2e808c",
+        "responderConfirmHex": "77a0707d31acdbd9916db72ec39441363f72712dc6a78ad2512792513a65ac66",
+        "wrappedInitiatorValueHex": "26b8b57a21792f0b53ea15be61aa1035ce973f583cbf149a4915c588fbc851ac0206399b829dfe11",
+        "initiatorConfirmHex": "2c177369d4b7a9c2dcaa91b0fba6b5a9ccb354e261b2c4ac2c5454b1ecc4204d"
+      },
       "wire": {
         "msg1": {
           "kexMsg": "1",
@@ -57,12 +77,15 @@
           "kexMsg": "2",
           "e": "BOaSk5b9ebEYn_b0v9M_4JtSwvlDQ13DD8ww46Mh8m_KFUvK4DqTAEjRiRWqkqaGqY1HxJ6Gv3Y2Fl32M0NJ5tg",
           "confirm": "ErT9mweosrGshqShLZbNx7V2qRbrc2ZpmYPoVKxrt_4",
+          "previousConfirm": "d6BwfTGs29mRbbcuw5RBNj9ycS3Gp4rSUSeSUTplrGY",
+          "historyProof": "Rh66BmBschZRqRnTiIEbQda-OW2FmHZ_FnaXSKZ5E-4",
           "reqEnc": false
         },
         "msg3": {
           "kexMsg": "3",
-          "confirm": "IVHlrRFb-4gHRQKo6dP1mzNSH12mh8DlN4y4WheIRsg",
-          "initiatorValue": "0h8ITeI2t_xYUmQR-EmFYRlZnyrl2NIucAWjifho3w8AfP-dyY5h6Q"
+          "confirm": "-208_0c_QaC4J-kCuG3a2Oc8FSJ6qt605CUHGlVJrxs",
+          "initiatorValue": "0h8ITeI2t_xYUmQR-EmFYRlZnyrl2NIucAWjifho3w8AfP-dyY5h6Q",
+          "usedPrevious": false
         },
         "termsResponderValue": "-0Ls_aWna44hQOFS-u66FH9wlZWC5q2gynElP1pYzhk5sT5r4Zn7Bw"
       }
@@ -74,10 +97,18 @@
       "applyEncryption": true,
       "handshakeHashHex": "84705a48914e8b3497a9938198236a4588f317f0adefa8b0fbe8fcb49873e88e",
       "sessionKeyHex": "25918113ce55736221e7bbd589de7808d9cb02e264262f16313c9c887f2f6df2",
-      "initiatorConfirmHex": "2eafe5c0d5503e31a5d2c8e2475c408c007bee2ab08e39ee8384c63c9905d95c",
+      "initiatorConfirmHex": "c7f0552c5a7b893c7dc3383cc2b4f007bb73af2a40d64f72c1803390a5029855",
       "responderConfirmHex": "943d5ebe9f8f392d49ebb23f6ea22eeb7e9e0aff6789f326f7007860ad27b8f9",
       "wrappedInitiatorValueHex": "523219a2630ef30d0b333e9541e3fb7ae5ddf6f2cee2daa2074a8219ea77b0603bc49ea6746f1db7",
       "wrappedResponderValueHex": "fb49688ff9cb1247aaf1a0a8409467e5116715f828a361790e32d8f538e0ae9891ad3182b703880d",
+      "underPrevious": {
+        "handshakeHashHex": "20ff1e8632a3e3acaa1d59c1800ea319dc4ed6c90c3e709b6b195e33aca4ad1e",
+        "sessionKeyHex": "f025c3f7ae2082100ad5f676413d4d3d1328d98ad874ead7835f48723bc22008",
+        "confirmKeyHex": "d45f76f427a9e4e309188662ee04750ccf33c63ab47a3e8b0380a51d7b2e808c",
+        "responderConfirmHex": "4f3fc515762deef1d4a20fe7be6eb5654daecfb60e742599e63ea547e24bd88d",
+        "wrappedInitiatorValueHex": "97e4622ae1b25eacd2210144ba0ccd3e6b95819796398ff45877d4122c5270c1a49a9b593d059779",
+        "initiatorConfirmHex": "c65d1ff8c68eb26fbfbbce2b004e46430a36ac17566572943062e7c841c7fc2f"
+      },
       "wire": {
         "msg1": {
           "kexMsg": "1",
@@ -88,12 +119,15 @@
           "kexMsg": "2",
           "e": "BOaSk5b9ebEYn_b0v9M_4JtSwvlDQ13DD8ww46Mh8m_KFUvK4DqTAEjRiRWqkqaGqY1HxJ6Gv3Y2Fl32M0NJ5tg",
           "confirm": "lD1evp-POS1J67I_bqIu636eCv9nifMm9wB4YK0nuPk",
+          "previousConfirm": "Tz_FFXYt7vHUog_nvm61ZU2uz7YOdCWZ5j6lR-JL2I0",
+          "historyProof": "Rh66BmBschZRqRnTiIEbQda-OW2FmHZ_FnaXSKZ5E-4",
           "reqEnc": false
         },
         "msg3": {
           "kexMsg": "3",
-          "confirm": "Lq_lwNVQPjGl0sjiR1xAjAB77iqwjjnug4TGPJkF2Vw",
-          "initiatorValue": "UjIZomMO8w0LMz6VQeP7euXd9vLO4tqiB0qCGep3sGA7xJ6mdG8dtw"
+          "confirm": "x_BVLFp7iTx9wzg8wrTwB7tzrypA1k9ywYAzkKUCmFU",
+          "initiatorValue": "UjIZomMO8w0LMz6VQeP7euXd9vLO4tqiB0qCGep3sGA7xJ6mdG8dtw",
+          "usedPrevious": false
         },
         "termsResponderValue": "-0loj_nLEkeq8aCoQJRn5RFnFfgoo2F5DjLY9TjgrpiRrTGCtwOIDQ"
       }
@@ -105,10 +139,18 @@
       "applyEncryption": true,
       "handshakeHashHex": "977f41ef44dd718bd4567fc04276b790a9b9c18a998e519dbc80042c2a73f8a8",
       "sessionKeyHex": "a299b580d472ebe3fbace20cf1ac670ce9700da67f13b9bd228d0839048ceb8d",
-      "initiatorConfirmHex": "c0473ac6e0be5f88e6009d65b691d721d56d879369485be29fbedafd790b89df",
+      "initiatorConfirmHex": "fe3e6f299ccc8fa553c8470fd5dfd4cbd54346557ce8d081783616479c2bd887",
       "responderConfirmHex": "648e691252f1a1583da2d7a60381eeb4402ea917c804388f9372b80a5cbf7d2b",
       "wrappedInitiatorValueHex": "93fe97aa615131167da64b580720bb14885f12fea1a609e0d02eb84e92062f817f4188cf954a0423",
       "wrappedResponderValueHex": "e048e597db6be4847647a5da55e9628f09f1ce2f1d0d0ffca36a2ade243b2b3dc250e3972c76b520",
+      "underPrevious": {
+        "handshakeHashHex": "ad64f433ca5005c69650b7223160aa670de96148cd6d40067446fa161288bcbc",
+        "sessionKeyHex": "8db3a3a0faccc9385ac712deabc10ed0746afa821989c05352ef7ad8d4321dcc",
+        "confirmKeyHex": "d45f76f427a9e4e309188662ee04750ccf33c63ab47a3e8b0380a51d7b2e808c",
+        "responderConfirmHex": "4b6e42f48e0f6f5392e8cd1d5ce18b91bae77f64edb876c1d210a7d3e2308883",
+        "wrappedInitiatorValueHex": "0ac617b1ef94c0c2175a8635f3714277fc1a8f5d2b6534c451715711f298919981fb5d8c6752d1e5",
+        "initiatorConfirmHex": "09685b11fd57458c0688a913c7556a6e88249f997824901c915a6be9247699ec"
+      },
       "wire": {
         "msg1": {
           "kexMsg": "1",
@@ -119,12 +161,15 @@
           "kexMsg": "2",
           "e": "BOaSk5b9ebEYn_b0v9M_4JtSwvlDQ13DD8ww46Mh8m_KFUvK4DqTAEjRiRWqkqaGqY1HxJ6Gv3Y2Fl32M0NJ5tg",
           "confirm": "ZI5pElLxoVg9otemA4HutEAuqRfIBDiPk3K4Cly_fSs",
+          "previousConfirm": "S25C9I4Pb1OS6M0dXOGLkbrnf2TtuHbB0hCn0-IwiIM",
+          "historyProof": "Rh66BmBschZRqRnTiIEbQda-OW2FmHZ_FnaXSKZ5E-4",
           "reqEnc": true
         },
         "msg3": {
           "kexMsg": "3",
-          "confirm": "wEc6xuC-X4jmAJ1ltpHXIdVth5NpSFvin77a_XkLid8",
-          "initiatorValue": "k_6XqmFRMRZ9pktYByC7FIhfEv6hpgng0C64TpIGL4F_QYjPlUoEIw"
+          "confirm": "_j5vKZzMj6VTyEcP1d_Uy9VDRlV86NCBeDYWR5wr2Ic",
+          "initiatorValue": "k_6XqmFRMRZ9pktYByC7FIhfEv6hpgng0C64TpIGL4F_QYjPlUoEIw",
+          "usedPrevious": false
         },
         "termsResponderValue": "4Ejll9tr5IR2R6XaVelijwnxzi8dDQ_8o2oq3iQ7Kz3CUOOXLHa1IA"
       }
@@ -136,10 +181,18 @@
       "applyEncryption": true,
       "handshakeHashHex": "7a1e451a19131adfde0e680d5a11445a6664847e6248412fb4423e0b7fbca332",
       "sessionKeyHex": "c0ca2e0b59207e28be0b403c95a82ed92d94497925b1db9f6d148d44f69ceca3",
-      "initiatorConfirmHex": "fc6417fede528a7b5a3055608ef0c5f4d5a1b8839545fd03df7bd60efee5dde4",
+      "initiatorConfirmHex": "8de57dca289f317aea7bc0ba24c4e4fd1983d66414f25aa63e5b464a37063ac8",
       "responderConfirmHex": "1d82cd92f412ab043214f36b7ac06a44c6b69a78e0f5d9c2a1b0c2bfc4c57ac7",
       "wrappedInitiatorValueHex": "e17d670b9b0a6be9c7e3e13f91eaf5ce387a09ad20d97499a1d57de635d650432871066d251668ea",
       "wrappedResponderValueHex": "353cb2d8c703b6bc38fb8372709cd0ee6a24f40db5dc9c0414e63853fa13d8f8b8953c6746151cc3",
+      "underPrevious": {
+        "handshakeHashHex": "5a4a4f0c6434dbbdc29b50372de1a259ae5205072c69f1449bcd240a3f2a7647",
+        "sessionKeyHex": "063c1885caf74fccc382761cff378505cc6cb92b3216b2a576888a22e04fb11d",
+        "confirmKeyHex": "d45f76f427a9e4e309188662ee04750ccf33c63ab47a3e8b0380a51d7b2e808c",
+        "responderConfirmHex": "d89cb086ac678c35c1f5104074dc5c840db7eacdaac630d84c78e569b7482927",
+        "wrappedInitiatorValueHex": "2a94b3bc74224542d1bf8864c5f322a7739ebea6ce8e8911f8d668c670d24039e396f0228e1b167b",
+        "initiatorConfirmHex": "9445838703e6a4dcd204e9f9a17fc24c95c3e1bac4698f64c9c8fa38bb6578f9"
+      },
       "wire": {
         "msg1": {
           "kexMsg": "1",
@@ -150,12 +203,15 @@
           "kexMsg": "2",
           "e": "BOaSk5b9ebEYn_b0v9M_4JtSwvlDQ13DD8ww46Mh8m_KFUvK4DqTAEjRiRWqkqaGqY1HxJ6Gv3Y2Fl32M0NJ5tg",
           "confirm": "HYLNkvQSqwQyFPNresBqRMa2mnjg9dnCobDCv8TFesc",
+          "previousConfirm": "2JywhqxnjDXB9RBAdNxchA236s2qxjDYTHjlabdIKSc",
+          "historyProof": "Rh66BmBschZRqRnTiIEbQda-OW2FmHZ_FnaXSKZ5E-4",
           "reqEnc": true
         },
         "msg3": {
           "kexMsg": "3",
-          "confirm": "_GQX_t5SintaMFVgjvDF9NWhuIOVRf0D33vWDv7l3eQ",
-          "initiatorValue": "4X1nC5sKa-nH4-E_ker1zjh6Ca0g2XSZodV95jXWUEMocQZtJRZo6g"
+          "confirm": "jeV9yiifMXrqe8C6JMTk_RmD1mQU8lqmPltGSjcGOsg",
+          "initiatorValue": "4X1nC5sKa-nH4-E_ker1zjh6Ca0g2XSZodV95jXWUEMocQZtJRZo6g",
+          "usedPrevious": false
         },
         "termsResponderValue": "NTyy2McDtrw4-4NycJzQ7mok9A213JwEFOY4U_oT2Pi4lTxnRhUcww"
       }

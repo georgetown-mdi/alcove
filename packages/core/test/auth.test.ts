@@ -133,12 +133,14 @@ function authenticateOverPipe(
       { sharedSecret: initiatorSecret },
       "initiator",
       false,
+      { history: [] },
     ),
     authenticateConnection(
       responderConn,
       { sharedSecret: responderSecret },
       "responder",
       true,
+      { history: [] },
     ),
   ]);
 }
@@ -196,12 +198,14 @@ test("authenticateConnection passes the secret's expires to the terms exchange r
       { sharedSecret: SHARED_SECRET, expires },
       "initiator",
       true,
+      { history: [] },
     ),
     authenticateConnection(
       responderConn,
       { sharedSecret: SHARED_SECRET, expires },
       "responder",
       true,
+      { history: [] },
     ),
   ]);
   // Lapses after the pre-handshake check: the handshake still completes.
@@ -232,6 +236,7 @@ test("the initiator reads the responder's abort on a failed message 3 as a secur
     { sharedSecret: SHARED_SECRET },
     "responder",
     true,
+    { history: [] },
   );
   responder.catch(() => {});
   const initiator = await authenticateConnection(
@@ -239,6 +244,7 @@ test("the initiator reads the responder's abort on a failed message 3 as a secur
     { sharedSecret: SHARED_SECRET },
     "initiator",
     true,
+    { history: [] },
   );
   await expect(responder).rejects.toThrow("key exchange authentication failed");
   const secure = await EncryptedMessageConnection.create(
@@ -278,7 +284,9 @@ test("authenticateConnection refuses a malformed secret before touching the conn
   );
 
   await expect(
-    authenticateConnection(conn, { sharedSecret: "" }, "initiator", false),
+    authenticateConnection(conn, { sharedSecret: "" }, "initiator", false, {
+      history: [],
+    }),
   ).rejects.toThrow(/base64url-encoded 32-byte value/);
   expect(peerReceived).toBe(false);
 

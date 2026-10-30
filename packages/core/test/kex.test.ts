@@ -16,6 +16,12 @@ import {
   wrapRotationValue,
 } from "../src/nextSecret";
 import {
+  behindNotice,
+  deriveHistoryVerifier,
+  historyProof,
+  historyVerifierBytes,
+} from "../src/rotationHistory";
+import {
   toBase64Url,
   fromBase64Url,
   hkdfDerive,
@@ -223,10 +229,30 @@ interface KexCase {
   responderConfirmHex: string;
   wrappedInitiatorValueHex: string;
   wrappedResponderValueHex: string;
+  underPrevious: {
+    handshakeHashHex: string;
+    sessionKeyHex: string;
+    confirmKeyHex: string;
+    responderConfirmHex: string;
+    wrappedInitiatorValueHex: string;
+    initiatorConfirmHex: string;
+  };
   wire: {
     msg1: { kexMsg: "1"; e: string; reqEnc: boolean };
-    msg2: { kexMsg: "2"; e: string; confirm: string; reqEnc: boolean };
-    msg3: { kexMsg: "3"; confirm: string; initiatorValue: string };
+    msg2: {
+      kexMsg: "2";
+      e: string;
+      confirm: string;
+      previousConfirm: string;
+      historyProof: string;
+      reqEnc: boolean;
+    };
+    msg3: {
+      kexMsg: "3";
+      confirm: string;
+      initiatorValue: string;
+      usedPrevious: boolean;
+    };
     termsResponderValue: string;
   };
 }
@@ -235,6 +261,7 @@ interface KexVectors {
   construction: { protocolName: string };
   inputs: {
     pskHex: string;
+    previousPskHex: string;
     initiatorEphemeralPrivateHex: string;
     responderEphemeralPrivateHex: string;
     initiatorValueHex: string;
@@ -248,6 +275,15 @@ interface KexVectors {
     confirmKeyHex: string;
     nextSecretHex: string;
     nextSecret: string;
+  };
+  history: {
+    verifierHex: string;
+    previousVerifierHex: string;
+    initiatorProofHex: string;
+    responderProofHex: string;
+    noticeCount: number;
+    initiatorNoticeHex: string;
+    responderNoticeHex: string;
   };
   cases: KexCase[];
   externalAnchors: {
@@ -269,11 +305,19 @@ interface KexVectors {
 }
 
 /** A conforming message 3 under `keys`, with a freshly drawn wrapped value. */
-async function msg3For(keys: {
-  sessionKey: Uint8Array<ArrayBuffer>;
-  confirmKey: Uint8Array<ArrayBuffer>;
-  handshakeHash: Uint8Array<ArrayBuffer>;
-}): Promise<{ kexMsg: "3"; confirm: string; initiatorValue: string }> {
+async function msg3For(
+  keys: {
+    sessionKey: Uint8Array<ArrayBuffer>;
+    confirmKey: Uint8Array<ArrayBuffer>;
+    handshakeHash: Uint8Array<ArrayBuffer>;
+  },
+  usedPrevious = false,
+): Promise<{
+  kexMsg: "3";
+  confirm: string;
+  initiatorValue: string;
+  usedPrevious: boolean;
+}> {
   const wrapped = await wrapRotationValue(
     keys.sessionKey,
     "initiator",
@@ -282,10 +326,31 @@ async function msg3For(keys: {
   return {
     kexMsg: "3",
     confirm: toBase64Url(
-      await initiatorConfirmTag(keys.confirmKey, keys.handshakeHash, wrapped),
+      await initiatorConfirmTag(
+        keys.confirmKey,
+        keys.handshakeHash,
+        usedPrevious,
+        wrapped,
+      ),
     ),
     initiatorValue: toBase64Url(wrapped),
+    usedPrevious,
   };
+}
+
+// The message 2 fields a hand-rolled responder sends beside its own tag: a
+// second tag and a history proof that verify under nothing the initiator holds.
+const MSG2_ADDED_FIELDS = {
+  previousConfirm: toBase64Url(new Uint8Array(32).fill(7)),
+  historyProof: toBase64Url(new Uint8Array(32).fill(8)),
+};
+
+/** Read the initiator's abort, which holds its history proof when no tag
+ * verified, and answer it as a responder with no history does. */
+async function answerAbort(conn: MessageConnection): Promise<unknown> {
+  const abort = await conn.receive();
+  await conn.send({ kexMsg: "abort" });
+  return abort;
 }
 
 const vectors: KexVectors = JSON.parse(
@@ -358,6 +423,7 @@ test("known-answer vector: computeKexKeys reproduces the session key, confirmati
         await initiatorConfirmTag(
           k.confirmKey,
           k.handshakeHash,
+          false,
           wrappedInitiator,
         ),
       ),
@@ -381,6 +447,89 @@ test("known-answer vector: computeKexKeys reproduces the session key, confirmati
       ),
     ).toBe(vectors.inputs.responderValueHex);
   }
+});
+
+test("known-answer vector: the schedule under the previous secret gives message 2's second tag and the flagged initiator tag", async () => {
+  const eInitPub = fromHex(vectors.derived.initiatorEphemeralPublicHex);
+  const eRespPub = fromHex(vectors.derived.responderEphemeralPublicHex);
+  const dh = fromHex(vectors.derived.dhSharedSecretHex);
+  for (const c of vectors.cases) {
+    const p = await computeKexKeys(
+      fromHex(vectors.inputs.previousPskHex),
+      eInitPub,
+      eRespPub,
+      dh,
+      c.initiatorRequestsEncryption,
+      c.responderRequestsEncryption,
+    );
+    expect(toHex(p.handshakeHash)).toBe(c.underPrevious.handshakeHashHex);
+    expect(toHex(p.sessionKey)).toBe(c.underPrevious.sessionKeyHex);
+    expect(toHex(p.confirmKey)).toBe(c.underPrevious.confirmKeyHex);
+    expect(toHex(p.responderConfirm)).toBe(c.underPrevious.responderConfirmHex);
+    expect(c.wire.msg2.previousConfirm).toBe(toBase64Url(p.responderConfirm));
+    const wrapped = await wrapRotationValue(
+      p.sessionKey,
+      "initiator",
+      await importRotationValue(fromHex(vectors.inputs.initiatorValueHex)),
+    );
+    expect(toHex(wrapped)).toBe(c.underPrevious.wrappedInitiatorValueHex);
+    const flagged = await initiatorConfirmTag(
+      p.confirmKey,
+      p.handshakeHash,
+      true,
+      wrapped,
+    );
+    expect(toHex(flagged)).toBe(c.underPrevious.initiatorConfirmHex);
+    // The flag is bound: the same schedule and wrap without it is another tag.
+    expect(
+      toHex(
+        await initiatorConfirmTag(
+          p.confirmKey,
+          p.handshakeHash,
+          false,
+          wrapped,
+        ),
+      ),
+    ).not.toBe(c.underPrevious.initiatorConfirmHex);
+  }
+});
+
+test("known-answer vector: the history verifiers, both proofs and both behind notices", async () => {
+  const shares = {
+    initiatorShare: fromHex(vectors.derived.initiatorEphemeralPublicHex),
+    responderShare: fromHex(vectors.derived.responderEphemeralPublicHex),
+    dh: fromHex(vectors.derived.dhSharedSecretHex),
+  };
+  const h = vectors.history;
+  const verifier = await historyVerifierBytes(fromHex(vectors.inputs.pskHex));
+  const previousVerifier = await historyVerifierBytes(
+    fromHex(vectors.inputs.previousPskHex),
+  );
+  expect(toHex(verifier)).toBe(h.verifierHex);
+  expect(toHex(previousVerifier)).toBe(h.previousVerifierHex);
+  expect(
+    await deriveHistoryVerifier(toBase64Url(fromHex(vectors.inputs.pskHex))),
+  ).toBe(toBase64Url(verifier));
+  expect(toHex(await historyProof(verifier, "initiator", shares))).toBe(
+    h.initiatorProofHex,
+  );
+  expect(toHex(await historyProof(verifier, "responder", shares))).toBe(
+    h.responderProofHex,
+  );
+  expect(
+    toHex(
+      await behindNotice(previousVerifier, "initiator", h.noticeCount, shares),
+    ),
+  ).toBe(h.initiatorNoticeHex);
+  expect(
+    toHex(
+      await behindNotice(previousVerifier, "responder", h.noticeCount, shares),
+    ),
+  ).toBe(h.responderNoticeHex);
+  for (const c of vectors.cases)
+    expect(c.wire.msg2.historyProof).toBe(
+      toBase64Url(fromHex(h.responderProofHex)),
+    );
 });
 
 test("known-answer vector: the next secret is derived over dh and both values, in order", async () => {
@@ -803,7 +952,7 @@ test("runKex rejects when the psk is not 32 bytes", async () => {
   const [connA] = createMessagePipe();
   await expect(
     runKex(connA, "initiator", new Uint8Array(31), false),
-  ).rejects.toThrow("psk must be 32 bytes");
+  ).rejects.toThrow("each secret must be 32 bytes");
 });
 
 // --- Abort propagation on malformed peer messages ----------------------------
@@ -833,6 +982,7 @@ test("initiator sends abort when the responder's msg2 is malformed", async () =>
   expect(msg1.kexMsg).toBe("1");
   await connB.send({
     kexMsg: "2",
+    ...MSG2_ADDED_FIELDS,
     e: "not-base64url!!",
     confirm: "AA",
     reqEnc: false,
@@ -885,10 +1035,12 @@ test("a reflected confirmation (the initiator's own role label) does not verify"
   // two confirm labels are role-asymmetric, this must not verify.
   await connB.send({
     kexMsg: "2",
+    ...MSG2_ADDED_FIELDS,
     e: toBase64Url(eRespPub),
     confirm: (await msg3For(keys)).confirm,
     reqEnc: responderReqEnc,
   });
+  await answerAbort(connB);
   await expect(initiator).rejects.toThrow(GENERIC_FAILURE);
 });
 
@@ -905,10 +1057,12 @@ test("substituting the responder's public key on the wire breaks confirmation (i
   const other = await generateEphemeral();
   await connB.send({
     kexMsg: "2",
+    ...MSG2_ADDED_FIELDS,
     e: toBase64Url(other.publicKey),
     confirm: toBase64Url(keys.responderConfirm),
     reqEnc: responderReqEnc,
   });
+  await answerAbort(connB);
   await expect(initiator).rejects.toThrow(GENERIC_FAILURE);
 });
 
@@ -1040,9 +1194,15 @@ describe("the responder's checks on message 3", () => {
     await connA.send({
       kexMsg: "3",
       confirm: toBase64Url(
-        await initiatorConfirmTag(keys.confirmKey, keys.handshakeHash, wrapped),
+        await initiatorConfirmTag(
+          keys.confirmKey,
+          keys.handshakeHash,
+          false,
+          wrapped,
+        ),
       ),
       initiatorValue: toBase64Url(wrapped),
+      usedPrevious: false,
     });
     await expectRefusedWithAbort(connA, responder);
   });
@@ -1078,6 +1238,7 @@ describe("a peer share that is not a canonically-encoded valid point is rejected
     expect(((await connB.receive()) as { kexMsg: string }).kexMsg).toBe("1");
     await connB.send({
       kexMsg: "2",
+      ...MSG2_ADDED_FIELDS,
       e: toBase64Url(share),
       confirm: toBase64Url(new Uint8Array(32)),
       reqEnc: false,
@@ -1277,18 +1438,21 @@ test("a peer on the superseded protocol-version tag fails the handshake closed",
 
   await connB.send({
     kexMsg: "2",
+    ...MSG2_ADDED_FIELDS,
     e: toBase64Url(eph.publicKey),
     confirm: toBase64Url(stale.responderConfirm),
     reqEnc: false,
   });
 
+  // The shipped side aborts rather than sending its own confirmation, so the
+  // stale peer never receives a tag it could complete against either.
+  const abort = await answerAbort(connB);
+  expect(abort).toMatchObject({ kexMsg: "abort" });
+  expect(abort).not.toHaveProperty("confirm");
   const err = await initiator.catch((e: unknown) => e);
   expect(err).toBeInstanceOf(AuthenticationError);
   expect((err as ConnectionError).kind).toBe("security");
   expect((err as ConnectionError).message).toBe(GENERIC_FAILURE);
-  // The shipped side aborts rather than sending its own confirmation, so the
-  // stale peer never receives a tag it could complete against either.
-  expect(await connB.receive()).toEqual({ kexMsg: "abort" });
 });
 
 // --- Request-encryption flag negotiation -------------------------------------
@@ -1369,10 +1533,12 @@ test("flipping the responder's request-encryption flag on the wire fails the han
   // false flag, diverging from the responder's, so the tag mismatches.
   await connB.send({
     kexMsg: "2",
+    ...MSG2_ADDED_FIELDS,
     e: toBase64Url(eRespPub),
     confirm: toBase64Url(keys.responderConfirm),
     reqEnc: false,
   });
+  await answerAbort(connB);
   await expect(initiator).rejects.toThrow(GENERIC_FAILURE);
 });
 
@@ -1402,6 +1568,7 @@ test("a msg2 missing the request-encryption flag is rejected by the strict schem
   // A flag-unaware responder replies with no reqEnc field.
   await connB.send({
     kexMsg: "2",
+    ...MSG2_ADDED_FIELDS,
     e: toBase64Url(eph.publicKey),
     confirm: toBase64Url(new Uint8Array(32)),
   });

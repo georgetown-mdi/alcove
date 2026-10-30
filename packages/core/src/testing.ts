@@ -46,6 +46,11 @@ export {
   unwrapRotationValue,
   wrapRotationValue,
 } from "./nextSecret.js";
+export {
+  behindNotice,
+  historyProof,
+  historyVerifierBytes,
+} from "./rotationHistory.js";
 
 // The cross-party host-key fingerprint comparison, so each app's test tree can
 // hold the warning it composes to that app's own display budget. It stays out

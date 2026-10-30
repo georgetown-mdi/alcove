@@ -3915,10 +3915,16 @@ test("a key exchange the partner never answers leaves the marker set", async () 
     .mocked(authenticateConnection)
     .getMockImplementation()!;
   vi.mocked(authenticateConnection).mockImplementation(
-    async (mc, authentication, role, requestEncryption) => {
+    async (mc, authentication, role, requestEncryption, rotationState) => {
       if (role === "initiator")
         throw new ConnectionError("the partner stopped", "transport");
-      return realAuthenticate(mc, authentication, role, requestEncryption);
+      return realAuthenticate(
+        mc,
+        authentication,
+        role,
+        requestEncryption,
+        rotationState,
+      );
     },
   );
   // The partner's close sweeps its hello; a partner that joined and closed
@@ -8780,7 +8786,9 @@ test("a mismatched shared secret under --event-stream emits category security an
     const roleB = connB.handshakeRole;
     if (roleB === undefined) throw new Error("party B resolved no role");
     const mcB = fromEventConnection(connB, { inactivityTimeoutMs: 2000 });
-    return authenticateConnection(mcB, { sharedSecret: TOKEN_B }, roleB, true);
+    return authenticateConnection(mcB, { sharedSecret: TOKEN_B }, roleB, true, {
+      history: [],
+    });
   })();
 
   mockFd3Open();

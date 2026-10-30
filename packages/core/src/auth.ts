@@ -3,6 +3,10 @@ import { runKex } from "./kex.js";
 
 import type { HandshakeRole } from "./types.js";
 import type { NextSecretInputs } from "./nextSecret.js";
+import {
+  ROTATION_HISTORY_MAX_ENTRIES,
+  type RotationHistoryEntry,
+} from "./rotationHistory.js";
 import type { MessageConnection } from "./connection/messageConnection.js";
 import { SHARED_SECRET_REGEX } from "./config/connection.js";
 import type { Authentication } from "./config/connection.js";
@@ -42,6 +46,32 @@ export interface AuthResult {
    * and an `EncryptedMessageConnection` wrap.
    */
   applyEncryption: boolean;
+  /**
+   * Which of its secrets each side completed the handshake under. A side that
+   * completed under its previous secret, or whose partner did, is in a heal
+   * run, which both sides report (docs/spec/PROTOCOL.md, "Which secret a
+   * handshake uses").
+   */
+  secretUsed: {
+    local: HandshakeSecretKind;
+    partner: HandshakeSecretKind;
+  };
+}
+
+/** The secret a side completed a handshake under. */
+export type HandshakeSecretKind = "current" | "previous";
+
+/**
+ * What a side holds besides its current secret: the previous secret it keeps
+ * until the partner confirms the next one, and its rotation history
+ * (docs/spec/PROTOCOL.md, "Which secret a handshake uses" and "The rotation
+ * history").
+ */
+export interface RotationState {
+  /** The previous secret and its own `expires`; omitted when none is held. */
+  previous?: { sharedSecret: string; expires?: string };
+  /** The verifiers of the secrets this side retired, newest first. */
+  history: ReadonlyArray<RotationHistoryEntry>;
 }
 
 /**
@@ -186,32 +216,76 @@ export function assertSharedSecretReadyForHandshake(
  *                        {@link AuthResult.applyEncryption}
  *                        (docs/spec/CHANNEL_SECURITY.md, "Which channels
  *                        request it").
+ * @param rotationState   The previous secret, if this side holds one, and its
+ *                        rotation history. A previous secret whose `expires`
+ *                        has passed, or equal to the current one, is not
+ *                        offered; a history entry whose `expires` has passed
+ *                        is not checked, and only the
+ *                        {@link ROTATION_HISTORY_MAX_ENTRIES} newest are.
  *
  * @throws {Error} if `authentication.sharedSecret` is absent or not a
  *                 base64url-encoded 32-byte value, or if
  *                 `authentication.expires` has passed.
+ * @throws {InternalConsistencyError} if the previous secret or a history
+ *                 verifier is not a base64url-encoded 32-byte value.
  * @throws {AuthenticationError} (a `"security"`-kind ConnectionError,
  *                 propagated unwrapped from `runKex`) on a wrong shared secret
  *                 or tampered messages. Consumers classify on the class; the
- *                 message stays generic.
+ *                 message stays generic, except for the two subclasses that
+ *                 name an older copy: {@link PartnerCopyBehindError} and
+ *                 {@link LocalCopyBehindError}.
  */
 export async function authenticateConnection(
   conn: MessageConnection,
   authentication: Authentication,
   handshakeRole: HandshakeRole,
   requestEncryption: boolean,
+  rotationState: RotationState,
 ): Promise<AuthResult> {
   assertSharedSecretReadyForHandshake(authentication);
   const { sharedSecret, expires } = authentication;
+  const now = Date.now();
 
-  // SHARED_SECRET_REGEX guarantees `sharedSecret` decodes to exactly 32 bytes.
-  const { sessionKey, applyEncryption, keyAgreementOutput, initiatorValue } =
-    await runKex(
-      conn,
-      handshakeRole,
-      fromBase64Url(sharedSecret),
-      requestEncryption,
-    );
+  const offeredPrevious = offerablePrevious(
+    rotationState.previous,
+    sharedSecret,
+    now,
+  );
+  // An expired entry keeps its place, so each later position still counts
+  // rotations.
+  const history = rotationState.history
+    .slice(0, ROTATION_HISTORY_MAX_ENTRIES)
+    .map((entry) => {
+      if (!SHARED_SECRET_REGEX.test(entry.verifier))
+        throw new InternalConsistencyError(
+          "authenticateConnection: a rotation history verifier is not a " +
+            "base64url-encoded 32-byte value",
+        );
+      return entry.expires !== undefined && isExpired(entry.expires, now)
+        ? undefined
+        : fromBase64Url(entry.verifier);
+    });
+
+  // SHARED_SECRET_REGEX guarantees each secret decodes to exactly 32 bytes.
+  const {
+    sessionKey,
+    applyEncryption,
+    keyAgreementOutput,
+    initiatorValue,
+    localUsedPrevious,
+    partnerUsedPrevious,
+  } = await runKex(
+    conn,
+    handshakeRole,
+    fromBase64Url(sharedSecret),
+    requestEncryption,
+    {
+      ...(offeredPrevious !== undefined && {
+        previous: fromBase64Url(offeredPrevious.sharedSecret),
+      }),
+      history,
+    },
+  );
 
   return {
     sessionKey,
@@ -220,7 +294,30 @@ export async function authenticateConnection(
       sessionKey,
       keyAgreementOutput,
       initiatorValue,
-      expires,
+      expires: localUsedPrevious ? offeredPrevious?.expires : expires,
+    },
+    secretUsed: {
+      local: localUsedPrevious ? "previous" : "current",
+      partner: partnerUsedPrevious ? "previous" : "current",
     },
   };
+}
+
+// The previous secret the handshake offers: none when it has expired or is the
+// current secret itself.
+function offerablePrevious(
+  previous: RotationState["previous"],
+  currentSecret: string,
+  now: number,
+): RotationState["previous"] {
+  if (previous === undefined) return undefined;
+  if (!SHARED_SECRET_REGEX.test(previous.sharedSecret))
+    throw new InternalConsistencyError(
+      "authenticateConnection: the previous shared secret is not a " +
+        "base64url-encoded 32-byte value",
+    );
+  if (previous.sharedSecret === currentSecret) return undefined;
+  if (previous.expires !== undefined && isExpired(previous.expires, now))
+    return undefined;
+  return previous;
 }
