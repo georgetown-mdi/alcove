@@ -410,13 +410,21 @@ export function KeysTab({
         <Radio
           value="cascade"
           label={LINKAGE_STRATEGY_OPTION_COPY.cascade.label}
-          description={LINKAGE_STRATEGY_OPTION_COPY.cascade.description}
+          description={
+            editor.draft.algorithm === "psi-c"
+              ? undefined
+              : LINKAGE_STRATEGY_OPTION_COPY.cascade.description
+          }
           mt="xs"
         />
         <Radio
           value="single-pass"
           label={LINKAGE_STRATEGY_OPTION_COPY["single-pass"].label}
-          description={LINKAGE_STRATEGY_OPTION_COPY["single-pass"].description}
+          description={
+            editor.draft.algorithm === "psi-c"
+              ? undefined
+              : LINKAGE_STRATEGY_OPTION_COPY["single-pass"].description
+          }
           mt="xs"
         />
       </Radio.Group>

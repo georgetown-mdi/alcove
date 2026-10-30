@@ -1004,11 +1004,13 @@ export function missingFieldConditionStatement(
 }
 
 /**
- * The line beside a count-only (`psi-c`) exchange's `single-pass` strategy,
- * in place of the single-pass disclosure note: the run takes the cascade's
- * rounds whichever strategy the terms name, so the strategy changes nothing
- * either party learns (docs/spec/PROTOCOL.md, A declared `single-pass` runs
- * the same rounds).
+ * The line beside a count-only (`psi-c`) exchange's linkage strategy: on the
+ * terms a party accepts, beside a declared `single-pass` in place of the
+ * single-pass disclosure note, and in authoring, beside the strategy choice in
+ * place of each option's description. The run takes the cascade's rounds
+ * whichever strategy the terms name, so the strategy changes nothing either
+ * party learns (docs/spec/PROTOCOL.md, A declared `single-pass` runs the same
+ * rounds).
  */
 export const COUNT_ONLY_DECLARED_STRATEGY_STATEMENT =
   "A count-only exchange runs the same rounds whichever linkage strategy its " +

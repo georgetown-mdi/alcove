@@ -38,6 +38,7 @@ import {
 } from "@alcove/core";
 
 import {
+  LINKAGE_STRATEGY_OPTION_COPY,
   SINGLE_PASS_DISCLOSURE_BODY,
   SINGLE_PASS_DISCLOSURE_TITLE,
 } from "@psi/linkageStrategyChoice";
@@ -1319,6 +1320,11 @@ describe("KeysTab: the notes beside the strategy choice", () => {
       await expect
         .element(page.getByText(COUNT_ONLY_DECLARED_STRATEGY_STATEMENT))
         .toBeInTheDocument();
+      for (const { description } of Object.values(
+        LINKAGE_STRATEGY_OPTION_COPY,
+      )) {
+        expect(document.body.textContent).not.toContain(description);
+      }
     },
   );
 
@@ -1332,6 +1338,11 @@ describe("KeysTab: the notes beside the strategy choice", () => {
       expect(document.body.textContent).not.toContain(
         COUNT_ONLY_DECLARED_STRATEGY_STATEMENT,
       );
+      for (const { description } of Object.values(
+        LINKAGE_STRATEGY_OPTION_COPY,
+      )) {
+        expect(document.body.textContent).toContain(description);
+      }
     },
   );
 });
