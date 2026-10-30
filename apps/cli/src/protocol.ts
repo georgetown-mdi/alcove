@@ -2,6 +2,9 @@ import path from "node:path";
 
 import {
   EncryptedMessageConnection,
+  annotate,
+  annotationKey,
+  annotationOf,
   getLogger,
   describeExchangeStages,
   InternalConsistencyError,
@@ -1082,6 +1085,25 @@ const ROTATED_TOKEN_SAVE_REMEDY =
 /** {@link ROTATED_TOKEN_SAVE_REMEDY} where the next run cannot heal. */
 const ROTATED_TOKEN_SAVE_REMEDY_NO_HEAL = ` Your partner may already hold the rotated token. ${NEW_INVITATION_REMEDY}`;
 
+const NO_HEAL_SAVE_FAILURE = annotationKey<true>("no-heal save failure");
+
+/**
+ * `failure`, marked as a rotated-secret save failure after which the two
+ * sides hold different secrets and the remedy is a new invitation.
+ */
+export function markNoHealSaveFailure<E extends object>(failure: E): E {
+  return annotate(failure, NO_HEAL_SAVE_FAILURE, true);
+}
+
+/**
+ * Whether `err`, or any link in its `cause` chain, is a rotated-secret save
+ * failure that {@link markNoHealSaveFailure} marked: a retry of the same
+ * command cannot recover it.
+ */
+export function isNoHealSaveFailure(err: unknown): boolean {
+  return annotationOf(err, NO_HEAL_SAVE_FAILURE) === true;
+}
+
 /**
  * Whether the next run with the same partner can heal a run cut between the
  * two stores. Over SFTP and a shared folder the two sides meet whatever secret
@@ -1128,7 +1150,8 @@ const PARTNER_SAVE_FAILURE_REMEDY =
   ", and kept the secret this run used, so the next run can use that one. " +
   "Run the exchange again once your partner has fixed what stopped their " +
   "save. If authentication then fails, or the run never meets your " +
-  `partner, the two copies cannot reconnect. ${NEW_INVITATION_REMEDY} It is ` +
+  "partner, you and your partner hold different secrets. " +
+  `${NEW_INVITATION_REMEDY} It is ` +
   'described under "Out-of-sync tokens" in docs/CLI.md.';
 
 /** {@link PARTNER_SAVE_FAILURE_REMEDY} where the next run cannot heal. */
@@ -1166,7 +1189,9 @@ function partnerSaveFailure(
   return markStatesItsOwnNextStep(
     nextRunHeals
       ? failure
-      : withExitCode(failure, AUTHENTICATION_FAILED_EXIT_CODE),
+      : markNoHealSaveFailure(
+          withExitCode(failure, AUTHENTICATION_FAILED_EXIT_CODE),
+        ),
   );
 }
 
@@ -1431,7 +1456,9 @@ async function authenticateRun(params: {
       );
       throw markStatesItsOwnNextStep(
         responderCannotHeal
-          ? withExitCode(failure, AUTHENTICATION_FAILED_EXIT_CODE)
+          ? markNoHealSaveFailure(
+              withExitCode(failure, AUTHENTICATION_FAILED_EXIT_CODE),
+            )
           : failure,
       );
     }

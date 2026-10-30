@@ -466,6 +466,7 @@ import type {
   ResolvedRunShape,
 } from "@alcove/core/testing";
 import {
+  isNoHealSaveFailure,
   runProtocol,
   type RunProtocolResult,
   type SigningPersist,
@@ -3583,7 +3584,7 @@ test("a failed save on the responder: the initiator, which saved first and kept 
     ", and kept the secret this run used, so the next run can use that one. " +
       "Run the exchange again once your partner has fixed what stopped " +
       "their save. If authentication then fails, or the run never meets your " +
-      `partner, the two copies cannot reconnect. ${NEW_INVITATION_REMEDY} `,
+      `partner, you and your partner hold different secrets. ${NEW_INVITATION_REMEDY} `,
   );
   expect(statesItsOwnNextStep(reason)).toBe(true);
   expect(fixedNextStep(reason)).toBeUndefined();
@@ -3595,6 +3596,8 @@ test("a failed save on the responder: the initiator, which saved first and kept 
     "Your partner saved the new token and kept the one this run used",
   );
   expect(exitCodeForError(responderReason)).toBe(69);
+  expect(isNoHealSaveFailure(reason)).toBe(false);
+  expect(isNoHealSaveFailure(responderReason)).toBe(false);
   expect(rotationLines()).toEqual([]);
   const ahead = loadKeyFile(keyFileA);
   expect(ahead?.sharedSecret).not.toBe(TOKEN_A);
@@ -3654,6 +3657,7 @@ test("a failed save on an online invite or accept responder, which holds no key 
     "kept the secret this run used",
   );
   expect(exitCodeForError(initiatorReason)).toBe(77);
+  expect(isNoHealSaveFailure(initiatorReason)).toBe(true);
   const responderReason = (resultB as PromiseRejectedResult).reason as Error;
   expect(responderReason.message).toContain(
     ` Your partner may already hold the rotated token. ${NEW_INVITATION_REMEDY}`,
@@ -3661,6 +3665,7 @@ test("a failed save on an online invite or accept responder, which holds no key 
   expect(responderReason.message).not.toContain("kept the one this run used");
   expect(statesItsOwnNextStep(responderReason)).toBe(true);
   expect(exitCodeForError(responderReason)).toBe(77);
+  expect(isNoHealSaveFailure(responderReason)).toBe(true);
 }, 20_000);
 
 test.each([
