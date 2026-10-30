@@ -6,9 +6,10 @@ import { WORKFLOW_DIR, workflowDocument } from "./lib/workflows.mjs";
 
 // The release workflow publishes on a pushed version tag; a manual dispatch,
 // from any branch, runs the dry-run job instead. This holds the shape that
-// keeps a dispatch from holding a write permission: the publishing jobs run on
-// a tag push only, and the dry-run job has read access alone, no publishing
-// step, and builds with a literal `push: false`.
+// keeps a dispatch from holding a write permission: the publishing jobs and the
+// hosted app's production deploy run on a tag push only, and the dry-run job
+// has read access alone, no publishing step, and builds with a literal
+// `push: false`.
 //
 // What this cannot see: a `run` that publishes through a script file, such as
 // `run: ./publish.sh`, since only the step's own text is read.
@@ -23,6 +24,8 @@ const TAG_PUSH_ONLY = "${{ github.event_name == 'push' }}";
 const DISPATCH_ONLY = "${{ github.event_name == 'workflow_dispatch' }}";
 const PUBLISHING_JOBS = ["publish", "launchers", "dockerhub"];
 const DRY_RUN_JOB = "dry-run";
+const HOSTED_APP_DEPLOY_JOB = "pages";
+const HOSTED_APP_JOBS = ["web", HOSTED_APP_DEPLOY_JOB];
 
 const PUBLISHING_ACTIONS = [
   /(^|\/)login-action@/,
@@ -88,6 +91,20 @@ describe("the release workflow's dry run", () => {
       expect(document.jobs[job]?.if).toBe(TAG_PUSH_ONLY);
     });
   }
+
+  // The production deploy of the hosted app follows the published images, so
+  // a tag the publish job refuses deploys nothing.
+  for (const job of HOSTED_APP_JOBS) {
+    it(`runs the ${job} job on a tag push only`, () => {
+      expect(document.jobs[job]?.if).toBe(TAG_PUSH_ONLY);
+    });
+  }
+
+  it("deploys the hosted app only after the publish job succeeds", () => {
+    const deploy = document.jobs[HOSTED_APP_DEPLOY_JOB];
+    expect([deploy?.needs].flat()).toContain("publish");
+    expect(deploy?.environment).toBe("Production");
+  });
 
   it("runs the dry-run job on a manual dispatch only", () => {
     expect(dryRun?.if).toBe(DISPATCH_ONLY);

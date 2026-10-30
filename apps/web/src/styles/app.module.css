@@ -1292,6 +1292,10 @@
   row-gap: 4px;
 }
 
+.siteFooter p.siteFooterBuild {
+  margin: 6px auto 0 auto;
+}
+
 /* ---------- responsive ---------- */
 
 @media (max-width: 1080px) {

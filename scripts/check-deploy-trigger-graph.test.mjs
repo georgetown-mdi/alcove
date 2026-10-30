@@ -11,6 +11,7 @@ import {
   DEPLOY_WORKFLOW,
   RECORDER_MODULE,
   RECORD_ENV,
+  RELEASE_WORKFLOW,
   REQUIRED_GRAPH_ROOTS,
   SITE_DEPLOY_WORKFLOW,
   classifyGraph,
@@ -38,6 +39,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..");
 const readRepo = (path) => readFileSync(resolve(repoRoot, path), "utf8");
 const GATE_WORKFLOW = ".github/workflows/web_build_and_test.yaml";
+// The staging and the production upload of the hosted app.
+const APP_DEPLOY_WORKFLOWS = [DEPLOY_WORKFLOW, RELEASE_WORKFLOW];
 const gateScope = () =>
   pathScope(workflowDocument(repoRoot, GATE_WORKFLOW), GATE_WORKFLOW);
 
@@ -411,130 +414,140 @@ describe("wiring", () => {
   // The Pages deploy job holds the Cloudflare token, so it runs after the web
   // suite, builds nothing and checks nothing out: it uploads the site the gate
   // built and tested, which is the build this check reads.
-  it("uploads to Pages the site the gate built, from a job that checks nothing out", () => {
-    const workflow = workflowDocument(repoRoot, DEPLOY_WORKFLOW);
-    const jobs = Object.entries(workflow.jobs);
-    const deployers = jobs.filter(([, job]) =>
-      (job.steps ?? []).some((step) =>
-        (step.uses ?? "").startsWith("cloudflare/wrangler-action@"),
-      ),
-    );
-    expect(deployers).toHaveLength(1);
-    const [, deploy] = deployers[0];
-    const gate = jobs.find(([, job]) => job.uses === `./${GATE_WORKFLOW}`)?.[0];
-    expect(gate).toBeDefined();
-    expect([deploy.needs].flat()).toContain(gate);
-    expect(
-      jobs.filter(([, job]) =>
+  it.each(APP_DEPLOY_WORKFLOWS)(
+    "%s uploads to Pages the site the gate built, from a job that checks nothing out",
+    (deployWorkflow) => {
+      const workflow = workflowDocument(repoRoot, deployWorkflow);
+      const jobs = Object.entries(workflow.jobs);
+      const deployers = jobs.filter(([, job]) =>
         (job.steps ?? []).some((step) =>
-          (step.run ?? "").includes(BUILD_COMMAND),
+          (step.uses ?? "").startsWith("cloudflare/wrangler-action@"),
         ),
-      ),
-    ).toEqual([]);
-    expect(
-      deploy.steps.every(
-        (step) =>
-          step.run === undefined &&
-          !(step.uses ?? "").startsWith("actions/checkout@"),
-      ),
-    ).toBe(true);
-    const download = deploy.steps.find((step) =>
-      (step.uses ?? "").startsWith("actions/download-artifact@"),
-    );
-    expect(download.with.name).toBe(
-      `\${{ needs.${gate}.outputs.artifactName }}`,
-    );
-
-    const gateWorkflow = workflowDocument(repoRoot, GATE_WORKFLOW);
-    const output =
-      gateWorkflow.on.workflow_call.outputs.artifactName.value.match(
-        /^\$\{\{\s*jobs\.([\w-]+)\.outputs\.artifactName\s*\}\}$/,
       );
-    expect(output).not.toBeNull();
-    const packager = gateWorkflow.jobs[output[1]];
-    const upload = packager.steps.find((step) =>
-      (step.uses ?? "").startsWith("actions/upload-artifact@"),
-    );
-    expect(upload.with.path.split("\n")[0]).toBe(BUILD_OUTPUT);
-    expect(
-      packager.steps.some((step) => (step.run ?? "").includes(BUILD_COMMAND)),
-    ).toBe(true);
-  });
+      expect(deployers).toHaveLength(1);
+      const [, deploy] = deployers[0];
+      const gate = jobs.find(
+        ([, job]) => job.uses === `./${GATE_WORKFLOW}`,
+      )?.[0];
+      expect(gate).toBeDefined();
+      expect([deploy.needs].flat()).toContain(gate);
+      expect(
+        jobs.filter(([, job]) =>
+          (job.steps ?? []).some((step) =>
+            (step.run ?? "").includes(BUILD_COMMAND),
+          ),
+        ),
+      ).toEqual([]);
+      expect(
+        deploy.steps.every(
+          (step) =>
+            step.run === undefined &&
+            !(step.uses ?? "").startsWith("actions/checkout@"),
+        ),
+      ).toBe(true);
+      const download = deploy.steps.find((step) =>
+        (step.uses ?? "").startsWith("actions/download-artifact@"),
+      );
+      expect(download.with.name).toBe(
+        `\${{ needs.${gate}.outputs.artifactName }}`,
+      );
+
+      const gateWorkflow = workflowDocument(repoRoot, GATE_WORKFLOW);
+      const output =
+        gateWorkflow.on.workflow_call.outputs.artifactName.value.match(
+          /^\$\{\{\s*jobs\.([\w-]+)\.outputs\.artifactName\s*\}\}$/,
+        );
+      expect(output).not.toBeNull();
+      const packager = gateWorkflow.jobs[output[1]];
+      const upload = packager.steps.find((step) =>
+        (step.uses ?? "").startsWith("actions/upload-artifact@"),
+      );
+      expect(upload.with.path.split("\n")[0]).toBe(BUILD_OUTPUT);
+      expect(
+        packager.steps.some((step) => (step.run ?? "").includes(BUILD_COMMAND)),
+      ).toBe(true);
+    },
+  );
 
   // The demo upload follows the site's own upload in the one deploy job, so a
   // failed demo upload leaves the site deployed, and the packaging job rebuilds
   // BUILD_OUTPUT for the demo only after uploading the site from it.
-  it("uploads the demo site's build after the site, built with the default relay on", () => {
-    const workflow = workflowDocument(repoRoot, DEPLOY_WORKFLOW);
-    const jobs = Object.entries(workflow.jobs);
-    const gate = jobs.find(([, job]) => job.uses === `./${GATE_WORKFLOW}`)?.[0];
-    const [, deploy] = jobs.find(([, job]) =>
-      (job.steps ?? []).some((step) =>
-        (step.uses ?? "").startsWith(DEPLOY_ACTION),
-      ),
-    );
-    const usesStep = (prefix) => (step) => (step.uses ?? "").startsWith(prefix);
-    const [siteUpload, demoUpload, ...extraUploads] = deploy.steps.filter(
-      usesStep(DEPLOY_ACTION),
-    );
-    const [siteDownload, demoDownload, ...extraDownloads] = deploy.steps.filter(
-      usesStep("actions/download-artifact@"),
-    );
-    expect(extraUploads).toEqual([]);
-    expect(extraDownloads).toEqual([]);
-    expect(siteUpload.if).toBeUndefined();
-    expect(siteUpload.with.command).toContain(
-      `pages deploy ${siteDownload.with.path} --project-name=\${{ vars.CLOUDFLARE_PAGES_PROJECT }} `,
-    );
-    expect(demoDownload.with.name).toBe(
-      `\${{ needs.${gate}.outputs.demoArtifactName }}`,
-    );
-    expect(demoUpload.with.command).toContain(
-      `pages deploy ${demoDownload.with.path} --project-name=\${{ vars.CLOUDFLARE_DEMO_PAGES_PROJECT }} `,
-    );
-    for (const step of [demoDownload, demoUpload]) {
-      expect(step.if).toBe("vars.CLOUDFLARE_DEMO_PAGES_PROJECT != ''");
-    }
-    const order = (step) => deploy.steps.indexOf(step);
-    expect(order(siteUpload)).toBeLessThan(order(demoDownload));
-    expect(order(demoDownload)).toBeLessThan(order(demoUpload));
-
-    const gateWorkflow = workflowDocument(repoRoot, GATE_WORKFLOW);
-    const output =
-      gateWorkflow.on.workflow_call.outputs.demoArtifactName.value.match(
-        /^\$\{\{\s*jobs\.([\w-]+)\.outputs\.demoArtifactName\s*\}\}$/,
+  it.each(APP_DEPLOY_WORKFLOWS)(
+    "%s uploads the demo site's build after the site, built with the default relay on",
+    (deployWorkflow) => {
+      const workflow = workflowDocument(repoRoot, deployWorkflow);
+      const jobs = Object.entries(workflow.jobs);
+      const gate = jobs.find(
+        ([, job]) => job.uses === `./${GATE_WORKFLOW}`,
+      )?.[0];
+      const [, deploy] = jobs.find(([, job]) =>
+        (job.steps ?? []).some((step) =>
+          (step.uses ?? "").startsWith(DEPLOY_ACTION),
+        ),
       );
-    expect(output).not.toBeNull();
-    const packager = gateWorkflow.jobs[output[1]];
-    const [siteBuild, demoBuild, ...extraBuilds] = packager.steps.filter(
-      (step) => (step.run ?? "").includes(BUILD_COMMAND),
-    );
-    const [siteArtifact, demoArtifact, ...extraArtifacts] =
-      packager.steps.filter(usesStep("actions/upload-artifact@"));
-    expect(extraBuilds).toEqual([]);
-    expect(extraArtifacts).toEqual([]);
-    expect(demoArtifact.with.path.split("\n")[0]).toBe(BUILD_OUTPUT);
-    expect(demoArtifact.with.name).toBe("${{env.DEMO_ARTIFACT_NAME}}");
-    expect(Object.keys(demoBuild.env).sort()).toEqual([
-      "VITE_DEFAULT_RELAY_MODE",
-      "VITE_DEFAULT_RELAY_REGISTRAR_URL",
-      "VITE_DEFAULT_RELAY_TURN_URL",
-      "VITE_DEFAULT_RELAY_WEBSOCKET_URL",
-      "VITE_SIGNALING_SERVER_URL",
-    ]);
-    // The demo site turns the default relay on; the site leaves the mode
-    // unset, so it offers the relay switched off.
-    expect(demoBuild.env.VITE_DEFAULT_RELAY_MODE).toBe("on");
-    expect(siteBuild.env).not.toHaveProperty("VITE_DEFAULT_RELAY_MODE");
-    for (const name of Object.keys(demoBuild.env)) {
-      if (name === "VITE_DEFAULT_RELAY_MODE") continue;
-      expect(demoBuild.env[name], name).toBe(siteBuild.env[name]);
-    }
-    const built = (step) => packager.steps.indexOf(step);
-    expect(built(siteBuild)).toBeLessThan(built(siteArtifact));
-    expect(built(siteArtifact)).toBeLessThan(built(demoBuild));
-    expect(built(demoBuild)).toBeLessThan(built(demoArtifact));
-  });
+      const usesStep = (prefix) => (step) =>
+        (step.uses ?? "").startsWith(prefix);
+      const [siteUpload, demoUpload, ...extraUploads] = deploy.steps.filter(
+        usesStep(DEPLOY_ACTION),
+      );
+      const [siteDownload, demoDownload, ...extraDownloads] =
+        deploy.steps.filter(usesStep("actions/download-artifact@"));
+      expect(extraUploads).toEqual([]);
+      expect(extraDownloads).toEqual([]);
+      expect(siteUpload.if).toBeUndefined();
+      expect(siteUpload.with.command).toContain(
+        `pages deploy ${siteDownload.with.path} --project-name=\${{ vars.CLOUDFLARE_PAGES_PROJECT }} `,
+      );
+      expect(demoDownload.with.name).toBe(
+        `\${{ needs.${gate}.outputs.demoArtifactName }}`,
+      );
+      expect(demoUpload.with.command).toContain(
+        `pages deploy ${demoDownload.with.path} --project-name=\${{ vars.CLOUDFLARE_DEMO_PAGES_PROJECT }} `,
+      );
+      for (const step of [demoDownload, demoUpload]) {
+        expect(step.if).toBe("vars.CLOUDFLARE_DEMO_PAGES_PROJECT != ''");
+      }
+      const order = (step) => deploy.steps.indexOf(step);
+      expect(order(siteUpload)).toBeLessThan(order(demoDownload));
+      expect(order(demoDownload)).toBeLessThan(order(demoUpload));
+
+      const gateWorkflow = workflowDocument(repoRoot, GATE_WORKFLOW);
+      const output =
+        gateWorkflow.on.workflow_call.outputs.demoArtifactName.value.match(
+          /^\$\{\{\s*jobs\.([\w-]+)\.outputs\.demoArtifactName\s*\}\}$/,
+        );
+      expect(output).not.toBeNull();
+      const packager = gateWorkflow.jobs[output[1]];
+      const [siteBuild, demoBuild, ...extraBuilds] = packager.steps.filter(
+        (step) => (step.run ?? "").includes(BUILD_COMMAND),
+      );
+      const [siteArtifact, demoArtifact, ...extraArtifacts] =
+        packager.steps.filter(usesStep("actions/upload-artifact@"));
+      expect(extraBuilds).toEqual([]);
+      expect(extraArtifacts).toEqual([]);
+      expect(demoArtifact.with.path.split("\n")[0]).toBe(BUILD_OUTPUT);
+      expect(demoArtifact.with.name).toBe("${{env.DEMO_ARTIFACT_NAME}}");
+      expect(Object.keys(demoBuild.env).sort()).toEqual([
+        "VITE_DEFAULT_RELAY_MODE",
+        "VITE_DEFAULT_RELAY_REGISTRAR_URL",
+        "VITE_DEFAULT_RELAY_TURN_URL",
+        "VITE_DEFAULT_RELAY_WEBSOCKET_URL",
+        "VITE_SIGNALING_SERVER_URL",
+      ]);
+      // The demo site turns the default relay on; the site leaves the mode
+      // unset, so it offers the relay switched off.
+      expect(demoBuild.env.VITE_DEFAULT_RELAY_MODE).toBe("on");
+      expect(siteBuild.env).not.toHaveProperty("VITE_DEFAULT_RELAY_MODE");
+      for (const name of Object.keys(demoBuild.env)) {
+        if (name === "VITE_DEFAULT_RELAY_MODE") continue;
+        expect(demoBuild.env[name], name).toBe(siteBuild.env[name]);
+      }
+      const built = (step) => packager.steps.indexOf(step);
+      expect(built(siteBuild)).toBeLessThan(built(siteArtifact));
+      expect(built(siteArtifact)).toBeLessThan(built(demoBuild));
+      expect(built(demoBuild)).toBeLessThan(built(demoArtifact));
+    },
+  );
 
   // The check reads the deploy filter, so a pull request editing only that file
   // has to reach the workflow that runs the check.
@@ -561,10 +574,26 @@ describe("the deploy-credential rule", () => {
     path: DEPLOY_WORKFLOW,
     document: { jobs: { gate: { uses: "./gate.yaml" }, deploy: job } },
   });
+  const releaseWorkflow = () => ({
+    path: RELEASE_WORKFLOW,
+    document: {
+      jobs: {
+        publish: { steps: [{ run: "cosign sign" }] },
+        web: { uses: "./gate.yaml" },
+        pages: uploadJob({ needs: ["web", "publish"] }),
+      },
+    },
+  });
   const siteWorkflow = () => ({
     path: SITE_DEPLOY_WORKFLOW,
     document: { jobs: { build: { steps: [] }, deploy: uploadJob() } },
   });
+  // The three deploy workflows, the staging upload job given as `job`.
+  const deployWorkflows = (job = uploadJob()) => [
+    deployWorkflow(job),
+    releaseWorkflow(),
+    siteWorkflow(),
+  ];
   const other = (jobs, extra = {}) => ({
     path: ".github/workflows/other.yaml",
     document: { jobs, ...extra },
@@ -575,23 +604,25 @@ describe("the deploy-credential rule", () => {
   });
 
   it("passes one credential-free upload job in each deploy workflow", () => {
-    expect(
-      deployCredentialFindings([deployWorkflow(), siteWorkflow()]),
-    ).toEqual([]);
+    expect(deployCredentialFindings(deployWorkflows())).toEqual([]);
   });
 
   it("refuses a deploy workflow with no upload job", () => {
-    expect(deployCredentialFindings([deployWorkflow()]).join("\n")).toMatch(
-      /Exactly one job in .*site_deploy\.yaml.*found 0/,
-    );
+    const findings = deployCredentialFindings([deployWorkflow()]).join("\n");
+    expect(findings).toMatch(/Exactly one job in .*site_deploy\.yaml.*found 0/);
+    expect(findings).toMatch(/Exactly one job in .*release\.yaml.*found 0/);
   });
 
   it("refuses a second upload job in a deploy workflow", () => {
-    const site = siteWorkflow();
-    site.document.jobs.second = uploadJob();
+    const release = releaseWorkflow();
+    release.document.jobs.second = uploadJob();
     expect(
-      deployCredentialFindings([deployWorkflow(), site]).join("\n"),
-    ).toMatch(/Exactly one job in .*site_deploy\.yaml.*found 2/);
+      deployCredentialFindings([
+        deployWorkflow(),
+        release,
+        siteWorkflow(),
+      ]).join("\n"),
+    ).toMatch(/Exactly one job in .*release\.yaml.*found 2/);
   });
 
   it.each([
@@ -603,8 +634,7 @@ describe("the deploy-credential rule", () => {
     ["a GitHub environment", { environment: "Staging", steps: [] }],
   ])("refuses a job outside the deploy workflows holding %s", (_label, job) => {
     const findings = deployCredentialFindings([
-      deployWorkflow(),
-      siteWorkflow(),
+      ...deployWorkflows(),
       other({ leak: job }),
     ]);
     expect(findings).toContainEqual(
@@ -630,26 +660,22 @@ describe("the deploy-credential rule", () => {
   ])("refuses the upload job carrying %s", (_label, step, message) => {
     const job = uploadJob();
     job.steps = [step, ...job.steps];
-    expect(
-      deployCredentialFindings([deployWorkflow(job), siteWorkflow()]).join(
-        "\n",
-      ),
-    ).toMatch(message);
+    expect(deployCredentialFindings(deployWorkflows(job)).join("\n")).toMatch(
+      message,
+    );
   });
 
   it("refuses the upload job calling a workflow", () => {
     expect(
-      deployCredentialFindings([
-        deployWorkflow({ uses: "./x.yaml", environment: "Production" }),
-        siteWorkflow(),
-      ]).join("\n"),
+      deployCredentialFindings(
+        deployWorkflows({ uses: "./x.yaml", environment: "Production" }),
+      ).join("\n"),
     ).toMatch(/calls \.\/x\.yaml/);
   });
 
   it("refuses secrets: inherit, toJSON(secrets) and a workflow-level secret", () => {
     const findings = deployCredentialFindings([
-      deployWorkflow(),
-      siteWorkflow(),
+      ...deployWorkflows(),
       other(
         {
           a: { uses: "./x.yaml", secrets: "inherit" },

@@ -3,7 +3,9 @@ name: Deploy to Cloudflare Pages
 # Uploads the hosted static build (apps/web/dist/hosted) to the Cloudflare
 # Pages project by direct upload. A push to main is the production deployment;
 # a push to staging is a preview deployment on the `staging` branch alias. The
-# demo site's build goes to the demo site's Pages project the same way.
+# demo site's build goes to the demo site's Pages project the same way. A
+# release tag also redeploys production, from release.yaml, once the release
+# images are published.
 # The secrets and variables it reads:
 # docs/DEPLOYMENT.md, "Deploying to Cloudflare Pages".
 on:

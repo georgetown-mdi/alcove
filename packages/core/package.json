@@ -4,6 +4,7 @@
   "description": "Alcove core library: record linkage with private set intersection",
   "license": "Apache-2.0",
   "author": "Vincent Dorie <vdorie@gmail.com>",
+  "private": true,
   "type": "module",
   "main": "./dist/core.cjs",
   "module": "./dist/core.esm.js",

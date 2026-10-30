@@ -4,6 +4,11 @@ import { defineConfig } from "vite";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 
+import {
+  gitHeadCommit,
+  hostedBuildIdentity,
+  hostedBuildIdentityDefines,
+} from "./hosted/buildIdentity.ts";
 import { requireHostedSignalingServer, srcAliases } from "./vite.config.ts";
 import { clientModuleGraphGuard } from "./hosted/moduleGraphGuard.ts";
 import { deployGraphRecorderFromEnv } from "./hosted/deployGraphRecorder.ts";
@@ -65,9 +70,15 @@ const hostedConfig = {
  * (hosted/headersFile.ts), the published coordination server
  * (hosted/signalingDiscoveryFile.ts) and no server. The build fails if the
  * page's or a worker's module graph reaches a server-only module
- * (hosted/moduleGraphGuard.ts).
+ * (hosted/moduleGraphGuard.ts). The page names the release tag or commit it
+ * was built from (hosted/buildIdentity.ts).
  */
 export default defineConfig((configEnv) => {
   requireHostedSignalingServer(configEnv);
-  return hostedConfig;
+  return {
+    ...hostedConfig,
+    define: hostedBuildIdentityDefines(
+      hostedBuildIdentity(process.env, () => gitHeadCommit(appRoot)),
+    ),
+  };
 });

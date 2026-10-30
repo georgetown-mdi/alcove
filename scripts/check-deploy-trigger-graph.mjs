@@ -9,7 +9,9 @@
 //     action, no called workflow); and no workflow passes `secrets: inherit`
 //     or `toJSON(secrets)`.
 //   - Every tracked source the hosted static build reads matches a push filter of
-//     pages_deploy.yaml. The graph is the module ids rolldown resolves in the page
+//     pages_deploy.yaml; release.yaml's production redeploy runs on every
+//     release tag, with no filter. The graph is the module ids
+//     rolldown resolves in the page
 //     and worker bundles of a real `npm run build -w apps/web`, recorded by
 //     RECORDER_MODULE under RECORD_ENV. It must reach every REQUIRED_GRAPH_ROOTS
 //     tree, and an untracked entry must sit under a BUILD_PRODUCTS prefix whose
@@ -42,11 +44,20 @@ import {
 /** The workflow whose push filter decides when a deploy runs. */
 export const DEPLOY_WORKFLOW = `${WORKFLOW_DIR}/pages_deploy.yaml`;
 
+/** The workflow that redeploys the hosted app's production from a release tag. */
+export const RELEASE_WORKFLOW = `${WORKFLOW_DIR}/release.yaml`;
+
 /** The workflow that uploads the project site built from docs/. */
 export const SITE_DEPLOY_WORKFLOW = `${WORKFLOW_DIR}/site_deploy.yaml`;
 
 /** The workflows each allowed one job holding the deploy credentials. */
-export const CREDENTIAL_WORKFLOWS = [DEPLOY_WORKFLOW, SITE_DEPLOY_WORKFLOW];
+export const CREDENTIAL_WORKFLOWS = [
+  DEPLOY_WORKFLOW,
+  RELEASE_WORKFLOW,
+  SITE_DEPLOY_WORKFLOW,
+];
+
+const credentialWorkflowList = `${CREDENTIAL_WORKFLOWS.slice(0, -1).join(", ")} and ${CREDENTIAL_WORKFLOWS.at(-1)}`;
 
 /** The build output the deploy uploads. */
 export const BUILD_OUTPUT = "apps/web/dist/hosted";
@@ -188,7 +199,7 @@ export function deployCredentialFindings(workflows) {
   );
   if (outside.length > 0) {
     findings.push(
-      `No job outside ${CREDENTIAL_WORKFLOWS.join(" and ")} may ${holding}; found ${named(outside).join(", ")}.`,
+      `No job outside ${credentialWorkflowList} may ${holding}; found ${named(outside).join(", ")}.`,
     );
   }
   for (const { path, id, job, steps } of holders) {
@@ -499,6 +510,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.exit(1);
   }
   console.log(
-    `Deploy trigger coverage check passed: all ${graph.length} repository sources the deployed build reads match one of ${filter.patterns.length} push filters in ${DEPLOY_WORKFLOW}, and the upload jobs of ${CREDENTIAL_WORKFLOWS.join(" and ")} are the only jobs holding the deploy credentials.`,
+    `Deploy trigger coverage check passed: all ${graph.length} repository sources the deployed build reads match one of ${filter.patterns.length} push filters in ${DEPLOY_WORKFLOW}, and the upload jobs of ${credentialWorkflowList} are the only jobs holding the deploy credentials.`,
   );
 }

@@ -10,6 +10,7 @@ describe("parseClientConfig", () => {
       LOG_LEVEL: "INFO",
       DEPLOYMENT_PROFILE: "hosted",
       ALCOVE_VERSION: "",
+      BUILD_COMMIT: "",
       SIGNALING_SERVER_URL: undefined,
       DEFAULT_RELAY_TURN_URL: "",
       DEFAULT_RELAY_REGISTRAR_URL: "",
@@ -25,6 +26,7 @@ describe("parseClientConfig", () => {
         LOG_LEVEL: "DEBUG",
         DEPLOYMENT_PROFILE: "console",
         ALCOVE_VERSION: "1.2.3",
+        BUILD_COMMIT: "0123abc",
         SIGNALING_SERVER_URL: "wss://signaling.example.org:8443/broker/",
       }),
     ).toEqual({
@@ -32,6 +34,7 @@ describe("parseClientConfig", () => {
       LOG_LEVEL: "DEBUG",
       DEPLOYMENT_PROFILE: "console",
       ALCOVE_VERSION: "1.2.3",
+      BUILD_COMMIT: "0123abc",
       SIGNALING_SERVER_URL: {
         secure: true,
         host: "signaling.example.org",
@@ -84,6 +87,15 @@ describe("parseClientConfig", () => {
       /VITE_PEERJS_DEBUG_LEVEL/,
     );
   });
+
+  test.each(["012345", "0123ABC", "0123abc ", "g123abc"])(
+    "refuses BUILD_COMMIT %j",
+    (input) => {
+      expect(() => parseClientConfig({ BUILD_COMMIT: input })).toThrow(
+        /VITE_BUILD_COMMIT/,
+      );
+    },
+  );
 
   test.each(["", "Console", "appliance"])(
     "refuses DEPLOYMENT_PROFILE %j",

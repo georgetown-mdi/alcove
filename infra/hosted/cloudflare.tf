@@ -49,10 +49,11 @@ resource "cloudflare_zone_setting" "hsts" {
   }
 }
 
-# Direct upload: the project has no Git source, and pages_deploy.yaml uploads
-# each build with wrangler. A deployment to the production branch is the
-# production deployment; one to any other branch, staging included, is a
-# preview on that branch's alias.
+# Direct upload: the project has no Git source, and the workflows upload each
+# build with wrangler, pages_deploy.yaml from main and staging and
+# release.yaml from a release tag to the production branch. A deployment to the production
+# branch is the production deployment; one to any other branch, staging
+# included, is a preview on that branch's alias.
 resource "cloudflare_pages_project" "hosted" {
   account_id        = var.cloudflare_account_id
   name              = var.pages_project_name
@@ -117,7 +118,7 @@ resource "cloudflare_pages_domain" "site" {
 }
 
 # The demo site, a second deployment of the web app, in a Pages project of its
-# own. Direct upload, as above: pages_deploy.yaml uploads the demo build, a
+# own. Direct upload, as above: the same jobs upload the demo build, a
 # deployment to main is the production one, and one to staging is a preview on
 # that branch's alias.
 resource "cloudflare_pages_project" "demo" {
