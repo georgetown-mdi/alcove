@@ -609,7 +609,13 @@ Ratified by the owner:
 
 Drafted, pending the owner's ratification:
 
-None at present.
+- **Browser SFTP** (board 9) -- Done is: a party in the hosted web app completes
+  an SFTP exchange with a CLI partner, one-off and scheduled, through the
+  first-party WebSocket-to-TCP relay, which refuses every `Origin` outside its
+  allowlist and every target but its fixed one; the browser verifies a pinned
+  host key before presenting a credential held as a non-extractable WebCrypto
+  key; and the browser SSH dependency is pinned and has passed the dependency
+  policy's check.
 
 ## What the PM does NOT do
 

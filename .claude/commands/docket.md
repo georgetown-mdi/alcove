@@ -1,6 +1,6 @@
 ---
 name: docket
-description: Present the decision docket to the owner -- at most a handful of open decisions that are not potential follow-ups, the session's parked ones and the ripest in the Decision column -- one decision per message, and record each ruling without executing it.
+description: Present the decision docket to the owner -- every open decision on its list that is not a potential follow-up, the session's parked ones and the ripest in the Decision column, at least as many as the session filed there -- one decision per message, and record each ruling and act on it when given.
 ---
 
 The owner's instruction this command stands for:
@@ -24,10 +24,14 @@ before proceeding -- its decision rules are the ones this command applies.
 
 Run only when the owner invokes this command; never start the docket unasked.
 
-1. Collect at most a handful of open decisions: those the session parked, and
-   the ripest of the items already in the Decision column of boards 9 and 10
-   (`node .claude/scripts/list-issues.mjs --status Decision <board>`). The rest
-   stay in the column for a later docket. Leave out each
+1. Collect the open decisions from the Decision column of boards 9 and 10
+   (`node .claude/scripts/list-issues.mjs --status Decision <board>`): those
+   the session parked, then the ripest of the rest, until the list holds at
+   least as many items as the session filed in the column since the last
+   docket, its survey filings included (`.claude/orchestration/ruleset.md`,
+   Session lifecycle). The column trends toward zero across dockets and is
+   not drained in one: the rest stay in it for a later docket. Every item the
+   steps below keep is presented. Leave out each
    potential follow-up -- a question of whether to file or update a board item;
    those wait for `/follow-ups` -- and each ratification of a judgment a branch
    already took, which the scoring below filters. Leave out each operation
@@ -120,19 +124,20 @@ option lacks it is not presented until it has one.
 Never open the item with AskUserQuestion, and never put a follow-up filing in a
 docket message.
 
-## Record, do not execute
+## Record and act on each ruling
 
 Record each ruling verbatim as the owner gives it, in the session's own
 record -- `scratch/docket-<date -I>/rulings.md` and the continuation
 brief -- then present the next item. A
 question the owner asks is not a ruling: answer it, say the decision is still
 open, and end the turn; record a ruling only when the owner's words pick an
-option. Execute nothing, and write nothing to the board, until the owner says
-so. When no item is left, say so in one line.
+option. A ruling is acted on when given, from that record, as the ruleset says
+of a mid-day docket (`.claude/orchestration/ruleset.md`, Session lifecycle);
+only its board writes wait. When no item is left, say so in one line.
 
-When the owner says so, the rulings' consequences -- status moves, each ruling
-recorded in its item's body, epic and order placement -- go to the boards in
-one pass with the filings you and the PM agree on, the pass
+The rulings' board consequences -- status moves, each ruling recorded in its
+item's body, epic and order placement -- go to the boards in one pass with the
+filings you and the PM agree on, the follow-ups pass
 `.claude/commands/follow-ups.md`, Steps, makes. A ruling goes into a body
 through `edit-issue.mjs --body-file`, which replaces the stored body with the
 file: before the call, check that the file is non-empty and holds the whole
