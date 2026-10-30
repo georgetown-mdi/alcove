@@ -72,11 +72,13 @@ jobs:
       # Other relative links and anchors are checked by `npm run linkcheck`.
       - name: Build the site
         run: npm run site:build
+      # Hidden files carry .well-known/security.txt.
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: ${{ env.ARTIFACT_NAME }}
           path: docs/.vitepress/dist
+          include-hidden-files: true
           retention-days: 1
           if-no-files-found: error
       - name: Output artifact name
@@ -95,6 +97,8 @@ jobs:
     timeout-minutes: 10
     environment: ${{ github.ref == 'refs/heads/main' && 'Production' || 'Staging' }}
     permissions: {}
+    outputs:
+      siteUrl: ${{ steps.deploy.outputs.deployment-url }}
     steps:
       - name: Download the site
         uses: actions/download-artifact@v8
@@ -106,9 +110,30 @@ jobs:
       # branch is main or staging under the job's gate, and the sha is hex, so
       # none can add an argument. Pinned to the same commit and wrangler.
       - name: Deploy
+        id: deploy
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: "4.147.0"
           command: pages deploy site --project-name=${{ vars.CLOUDFLARE_SITE_PAGES_PROJECT }} --branch=${{ github.ref_name }} --commit-hash=${{ github.sha }}
+
+  # As in pages_deploy.yaml: a job of its own, since it runs repository code,
+  # and no retry.
+  check-security-txt:
+    name: Check the served security.txt
+    needs: deploy
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - name: Check the site
+        env:
+          DEPLOYMENT_URL: ${{ needs.deploy.outputs.siteUrl }}
+        run: node scripts/check-served-security-txt.mjs
