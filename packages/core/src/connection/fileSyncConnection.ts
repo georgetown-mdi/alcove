@@ -147,12 +147,12 @@ export const TERMINAL_FRAME_DRAIN_TIMEOUT_MS = 1000 * 60;
 // config setting. See docs/spec/FILE_SYNC.md#phase-3----cleanup-and-close.
 /** @internal */
 export const CONNECTION_CLOSE_TIMEOUT_MS = 1000 * 30;
-// Teardown bound on close()'s wait for a rendezvous write still in flight,
+// Teardown bound on close()'s wait for an in-flight synchronize() to settle,
 // applied as min(this, inactivityTimeoutMs); a write landing after it is not
 // swept. Not a config setting. See
 // docs/spec/FILE_SYNC.md#phase-3----cleanup-and-close.
 /** @internal */
-export const RENDEZVOUS_WRITE_SETTLE_TIMEOUT_MS = 1000 * 30;
+export const RENDEZVOUS_SETTLE_TIMEOUT_MS = 1000 * 30;
 /**
  * The `sftp` channel's poll interval, in milliseconds, when `pollIntervalMs` is
  * unset. Not sub-second: a faster cadence can trip an SFTP server's anti-flood
@@ -406,9 +406,9 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   // mid-rendezvous cannot wipe a concurrent close()'s abort.
   private abortController = new AbortController();
   private responsibleFiles: Set<string>;
-  // The rendezvous writes in flight, each with the tracking of what it leaves
-  // on disk; close() lets them settle before cleanup().
-  private readonly pendingRendezvousWrites = new Set<Promise<unknown>>();
+  // The rendezvous synchronize() started, which close() lets settle before
+  // cleanup() so a write it has in flight lands tracked.
+  private rendezvousInFlight: Promise<void> | undefined;
   // Grammar-failing names present at synchronize() entry, which the poll loop
   // tolerates; the new-foreign-file warning counts only later arrivals. Rebuilt
   // at each entry and not cleared by resetSessionState(). See
@@ -525,7 +525,6 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
     this.rendezvous = new FileSyncRendezvous({
       responsibleFiles: this.responsibleFiles,
       foreignFileSnapshot: this.foreignFileSnapshot,
-      pendingWrites: this.pendingRendezvousWrites,
       client: () => this.client,
       id: () => this.id,
       isOwnId: (id) => id === this.id || (this.ownIdFormat?.(id) ?? false),
@@ -961,7 +960,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
 
   /**
    * Tears the connection down: stops the poll loop, lets an in-flight
-   * rendezvous write settle, drains the last sent frame, sweeps this side's
+   * rendezvous settle, drains the last sent frame, sweeps this side's
    * files, then ends the client. The poller stops first so no cycle runs
    * against a dead client, and cleanup deletes through the client so it runs
    * before end(). The settle, drain and end() waits use the short teardown
@@ -990,12 +989,13 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
     this.abortController.abort(
       new ConnectionClosedError("connection closed during wait"),
     );
-    // After the abort, which stops the rendezvous starting another write, and
-    // before cleanup(), so a write that lands now is tracked and swept.
-    await withTransportBudgetVoid(
-      Promise.allSettled([...this.pendingRendezvousWrites]).then(() => {}),
-      Math.min(RENDEZVOUS_WRITE_SETTLE_TIMEOUT_MS, this.inactivityBudgetMs()),
-    );
+    // After the abort, which stops the rendezvous at its next step, and before
+    // cleanup(), so a write that lands now is tracked and swept.
+    if (this.rendezvousInFlight !== undefined)
+      await withTransportBudgetVoid(
+        this.rendezvousInFlight.catch(() => {}),
+        Math.min(RENDEZVOUS_SETTLE_TIMEOUT_MS, this.inactivityBudgetMs()),
+      );
 
     if (this.path !== undefined) {
       // Re-establish a session released for the idle gap before the drain clock
@@ -1113,7 +1113,8 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
    */
   async synchronize() {
     const scope = this.validateSynchronizeEntry();
-    return this.rendezvous.run(scope);
+    this.rendezvousInFlight = this.rendezvous.run(scope);
+    return this.rendezvousInFlight;
   }
 
   // The entry guards for synchronize(); returns the directory scope the

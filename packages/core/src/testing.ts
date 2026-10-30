@@ -87,7 +87,7 @@ export {
 // a caller sends a message and the connection frames it.
 export {
   CONNECTION_CLOSE_TIMEOUT_MS,
-  RENDEZVOUS_WRITE_SETTLE_TIMEOUT_MS,
+  RENDEZVOUS_SETTLE_TIMEOUT_MS,
   TERMINAL_FRAME_DRAIN_TIMEOUT_MS,
 } from "./connection/fileSyncConnection.js";
 export {

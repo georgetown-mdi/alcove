@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 
 import {
   CONNECTION_CLOSE_TIMEOUT_MS,
-  RENDEZVOUS_WRITE_SETTLE_TIMEOUT_MS,
+  RENDEZVOUS_SETTLE_TIMEOUT_MS,
   TERMINAL_FRAME_DRAIN_TIMEOUT_MS,
 } from "@alcove/core/testing";
 import type { ConnectionConfig } from "@alcove/core";
@@ -57,7 +57,7 @@ test.each(["sftp", "filedrop"] as const)(
   "%s's ceiling stands above every close() wait together",
   (channel) => {
     expect(transportTeardownCeilingMs(channel)).toBeGreaterThan(
-      RENDEZVOUS_WRITE_SETTLE_TIMEOUT_MS +
+      RENDEZVOUS_SETTLE_TIMEOUT_MS +
         TERMINAL_FRAME_DRAIN_TIMEOUT_MS +
         CONNECTION_CLOSE_TIMEOUT_MS,
     );

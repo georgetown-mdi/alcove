@@ -804,7 +804,6 @@ function makeParty(
   const deps: RendezvousDeps = {
     responsibleFiles: state.responsibleFiles,
     foreignFileSnapshot: state.foreignFileSnapshot,
-    pendingWrites: new Set(),
     client: () => client,
     id: () => id,
     isOwnId: (other) => other === id,
