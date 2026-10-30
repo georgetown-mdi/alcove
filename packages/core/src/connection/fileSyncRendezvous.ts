@@ -227,6 +227,9 @@ export async function readControlFileWithGate(
   // that exhausts the budget before reaching this call). Without this a fully-
   // present file would produce a spurious "timed out" error.
   do {
+    // Here and after the read, so once close() has aborted no read starts and
+    // no step follows one.
+    signal.throwIfAborted();
     let raw: Buffer<ArrayBufferLike>;
     try {
       // Bounded by the count the name states, already refused above when
@@ -256,6 +259,7 @@ export async function readControlFileWithGate(
       await cancellableDelay(pollingFrequency, signal);
       continue;
     }
+    signal.throwIfAborted();
     if (raw.length > declaredSize) throw sizeMismatch(raw.length);
     if (raw.length < declaredSize) {
       // Partial write or sync: not all the declared bytes have arrived yet.
@@ -853,6 +857,9 @@ export class FileSyncRendezvous {
     // unexpected protocol files, then delete the recognized leftovers once
     // entry is accepted). Yields the at-most-one tolerated peer hello.
     const peerHellos = await this.scanEntryDirectory(scope);
+    // close() waits for the whole rendezvous, so each step checks its abort
+    // before starting: an operation in flight lands, and nothing follows it.
+    deps.signal().throwIfAborted();
 
     // This party's own hello is a self-write, so it goes to the outbound
     // directory; the peer reads it from its inbound (which is this outbound). In
@@ -1669,6 +1676,9 @@ export class FileSyncRendezvous {
       // matching the hello write in the else branch.
       if (!deps.options().retainFiles) deps.responsibleFiles.add(joiningName);
 
+      // The last check: from the peer hello's delete, the steps run through to
+      // this party's hello, tracked, so close() sweeps the hello.
+      deps.signal().throwIfAborted();
       await deps.client().delete(otherPath);
 
       // The peer hello is now gone, so the sentinel is the peer's recovery
@@ -1831,6 +1841,7 @@ export class FileSyncRendezvous {
         // open() set timeToLive before synchronize() can run, so the
         // non-null assertion is safe here.
         while (Date.now() <= deps.options().timeToLive!.getTime()) {
+          deps.signal().throwIfAborted();
           const currentFiles = await deps.client().list(scope.inboundPath);
           const fileNames = currentFiles.map((file) => file.name);
           if (!deps.options().retainFiles)
@@ -2051,6 +2062,7 @@ export class FileSyncRendezvous {
       // open() set timeToLive before synchronize() can run, so the non-null
       // assertion is safe here.
       while (Date.now() <= deps.options().timeToLive!.getTime()) {
+        deps.signal().throwIfAborted();
         const currentFiles = await deps.client().list(scope.inboundPath);
         const fileNames = currentFiles.map((file) => file.name);
         if (!deps.options().retainFiles)

@@ -90,12 +90,13 @@ export {
 } from "./protocolSetup.js";
 
 // The framing bytes of the file-sync message envelope, the AEAD envelope's
-// version marker, and the terminal-frame drain and connection-close budgets, so
-// a suite can build a frame byte for byte, drive a foreign version through the
-// reader, and hold a teardown ceiling above those budgets. They stay out of the
-// main entry point: a caller sends a message and the connection frames it.
+// version marker, and the close() teardown budgets, so a suite can build a
+// frame byte for byte, drive a foreign version through the reader, and hold a
+// teardown ceiling above those budgets. They stay out of the main entry point:
+// a caller sends a message and the connection frames it.
 export {
   CONNECTION_CLOSE_TIMEOUT_MS,
+  RENDEZVOUS_SETTLE_TIMEOUT_MS,
   TERMINAL_FRAME_DRAIN_TIMEOUT_MS,
 } from "./connection/fileSyncConnection.js";
 export {

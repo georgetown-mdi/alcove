@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 
 import {
   CONNECTION_CLOSE_TIMEOUT_MS,
+  RENDEZVOUS_SETTLE_TIMEOUT_MS,
   TERMINAL_FRAME_DRAIN_TIMEOUT_MS,
 } from "@alcove/core/testing";
 import type { ConnectionConfig } from "@alcove/core";
@@ -48,14 +49,17 @@ test.each(CHANNEL_CEILINGS)(
   },
 );
 
-// docs/spec/FILE_SYNC.md states the file-based ceiling sits above the drain
-// and the transport close together, which the per-channel row above does not
-// reach: it compares against the drain alone.
+// docs/spec/FILE_SYNC.md states the file-based ceiling sits above the
+// rendezvous write settle, the drain and the transport close together, which
+// the per-channel row above does not reach: it compares against the drain
+// alone.
 test.each(["sftp", "filedrop"] as const)(
-  "%s's ceiling stands above the drain and the transport close together",
+  "%s's ceiling stands above every close() wait together",
   (channel) => {
     expect(transportTeardownCeilingMs(channel)).toBeGreaterThan(
-      TERMINAL_FRAME_DRAIN_TIMEOUT_MS + CONNECTION_CLOSE_TIMEOUT_MS,
+      RENDEZVOUS_SETTLE_TIMEOUT_MS +
+        TERMINAL_FRAME_DRAIN_TIMEOUT_MS +
+        CONNECTION_CLOSE_TIMEOUT_MS,
     );
   },
 );
