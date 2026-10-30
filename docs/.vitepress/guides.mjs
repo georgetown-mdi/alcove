@@ -88,7 +88,6 @@ const LEDGER_ROWS = [
   ["needs", "You need"],
   ["before", "Before this"],
   ["partner", "Your partner reads"],
-  ["timing", "Timing"],
 ];
 
 const PARTIES = {

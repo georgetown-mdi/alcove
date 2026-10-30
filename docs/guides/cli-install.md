@@ -1,7 +1,6 @@
 ---
 reader: An IT engineer at either party, comfortable with a shell and a container engine
 needs: Docker Desktop, Docker Engine or Podman, and your input CSV
-timing: "A test run of 20 records takes about 1 minute over a shared folder, about 14 minutes over SFTP, and 3 to 5 seconds over WebRTC."
 next: "[Invite a partner](./cli-invite.md) or [Accept an invitation](./cli-accept.md)"
 ---
 
@@ -128,17 +127,9 @@ You should see, for `alcove --version`: a version number, such as `0.1.0`.
 
 Both of you run at the same time. Each side waits up to 1 hour for the other over SFTP or a shared folder, and 10 minutes over WebRTC.
 
-Measured with 20 records on each side and 27 linkage keys, both parties on one machine, the SFTP server too:
+On SFTP and a shared folder, each linkage key takes several rounds, and each round waits up to one check interval for your partner's file: 250 milliseconds on a shared folder and 5 seconds on SFTP by default. The number of keys and the interval set the pace, far more than the record count.
 
-| Channel | Run length | Check interval |
-| --- | --- | --- |
-| Shared folder | 1 minute | 250 milliseconds (default) |
-| SFTP | about 14 minutes | 5 seconds (default) |
-| WebRTC | 3 to 5 seconds | none |
-
-On SFTP and a shared folder, each linkage key takes several rounds, and each round waits up to one check interval for your partner's file. The number of keys and the interval set the pace, far more than the record count.
-
-To shorten an SFTP test run, add `--polling-frequency 1s` to `alcove exchange`, on a server you control: a shorter interval can trip a server's limit on rapid requests. With it, the same SFTP run took 4 minutes.
+To shorten an SFTP test run, add `--polling-frequency 1s` to `alcove exchange`, on a server you control: a shorter interval can trip a server's limit on rapid requests.
 
 Set any outer timeout, such as a scheduler's, above the run length.
 

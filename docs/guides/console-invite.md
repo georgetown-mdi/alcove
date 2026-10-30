@@ -3,7 +3,6 @@ reader: A console user who creates the invitation
 needs: The console running ([Start the console](./console-start.md)), your CSV file in your working folder, the terms you agreed on, and the SFTP server, shared folder or coordination server you agreed on
 before: "[Agree on terms](./agree-on-terms.md)"
 partner: "[Accept in the console](./console-accept.md), [Accept an invitation](./cli-accept.md) on the command line, or [Accept with the web app](./web-accept.md)"
-timing: The invitation lasts 1 hour unless you choose longer. Your console waits for your partner 1 hour over SFTP or a shared folder, 10 minutes over WebRTC, unless you set **How long to wait for your partner**. Measured - sample files of 100 and 200 records, 30 keys, over SFTP - 15.5 minutes from your partner's start to the result.
 next: "[Move it to a schedule](./console-schedule.md)"
 ---
 

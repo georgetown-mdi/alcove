@@ -1,7 +1,6 @@
 ---
 reader: An IT engineer at either party who has run the exchange once by hand
 needs: "A first exchange that succeeded, from [Invite a partner](./cli-invite.md) or [Accept an invitation](./cli-accept.md)"
-timing: "Each side waits 1 hour for the other, 10 minutes on WebRTC. A 20-record run takes about 1 minute over a shared folder and about 14 minutes over SFTP."
 ---
 
 # Schedule it
