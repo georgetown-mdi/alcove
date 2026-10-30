@@ -17,7 +17,7 @@ Alcove uses [semantic versioning](https://semver.org/) (MAJOR.MINOR.PATCH):
 Alcove has one product version, held in `apps/cli/package.json`, the canonical release version:
 
 - **The images:** the Docker image tags and the GitHub Release tag name it, the CLI reports it, and the console baked into each image (`apps/web`, run via `serve`) shows it.
-- **The hosted web application:** its production deployment is built from the release tag and shows that tag's version in the page footer. Any hosted build not made from a release tag, such as a `staging` preview, shows the short commit hash it was built from instead.
+- **The hosted web application:** a release tag redeploys production from the tag's commit, and that deployment shows the tag's version in the page footer. A push to `main` also deploys production, and the next one replaces the release's deployment; a build from a push to `main` or `staging` shows the short commit hash it was built from instead, and its commands name the `latest` image.
 - **Everything else:** the workspace packages under `packages/` are internal. Each is private, none is published, and none has a release version of its own. The root and `apps/web` `package.json` versions are workspace markers and are not independently meaningful.
 
 Compatibility between the CLI and its core dependency is recorded by the lockfile and embedded in the Docker image; no separate compatibility matrix is maintained.
@@ -35,13 +35,13 @@ Each release produces:
 | GitHub Release | GitHub Releases                | Tag `vX.Y.Z`                                                             |
 | Launchers      | GitHub Release assets          | `start-alcove.sh`, `Start-Alcove.ps1`, `Setup-AlcoveFileDrop.ps1`     |
 | Build provenance | GitHub attestation store     | Subject `ghcr.io/georgetown-mdi/alcove`, one attestation per released manifest digest |
-| Hosted web application | Cloudflare Pages, with the demo site | The production deployment of tag `vX.Y.Z`, its footer showing `Version X.Y.Z` |
+| Hosted web application | Cloudflare Pages, with the demo site | The production deployment of tag `vX.Y.Z`, its footer showing `Version X.Y.Z`, until the next push to `main` replaces it |
 
 Each image is the same manifest on both registries, under one digest: the release copies the manifest ghcr.io received to Docker Hub rather than building it again. ghcr.io is the registry the launchers, the Windows file-drop setup scripts, and the web app's accept kit name; the Docker Hub copy is for a network that refuses ghcr.io's download host.
 
 Each image contains both the CLI and the console; which role it runs is decided by its first argument (see [DEPLOYMENT.md](DEPLOYMENT.md#docker-deployment)). Both images run unprivileged ([The user the image runs as](DEPLOYMENT.md#the-user-the-image-runs-as)), take the same arguments, and speak the same protocol, so a partner on one can exchange with a partner on the other.
 
-The hosted web deployment (`apps/web`) is not this image. The release workflow deploys it from the same tag, after both images are published ([step 8](#8-build-and-publish-the-container-image-ci)).
+The hosted web deployment (`apps/web`) is not this image. The release workflow redeploys production from the same tag, after both images are published ([step 8](#8-build-and-publish-the-container-image-ci)).
 
 ## Which image has which posture
 
@@ -223,7 +223,7 @@ The default image's base and the builder and QEMU images come from Docker Hub, w
 
 The publish sequence signs each image immediately after its own push, verifies that signature with the same command and the same two `--certificate-` arguments this document publishes under [Verifying a Release](#verifying-a-release), and attests its build provenance, all before the next image is built. A signature the published command cannot verify stops the release there. A failure between the two pushes leaves the default tags moved while the `-fips` tags sit at the previous release, or are absent on the first; everything published is scanned, signed, and attested, but the floating tag pair diverges until the run is repaired. The variant's multi-arch build runs only at release time and in a dry run. Recover by re-running the failed publish job once the cause is fixed; it rebuilds both images from the same commit and re-pushes the same tags.
 
-**The hosted web application's production deployment.** The same workflow builds the hosted web application and the demo site from the tag and runs the web suites a `staging` deploy runs. Once the publish job has finished, it uploads both as the production deployment of their Pages projects ([DEPLOYMENT.md](DEPLOYMENT.md#deploying-to-cloudflare-pages)). A tag the publish job refuses deploys nothing, and a push to `main` does not deploy the hosted application.
+**The hosted web application's production deployment.** The same workflow builds the hosted web application and the demo site from the tag and runs the web suites a `staging` deploy runs. Once the publish job has finished, it uploads both as the production deployment of their Pages projects ([DEPLOYMENT.md](DEPLOYMENT.md#deploying-to-cloudflare-pages)). A tag the publish job refuses deploys nothing. A push to `main` also deploys production, from `pages_deploy.yaml`, so the next push replaces the tag's deployment.
 
 **Dry run.** Dispatching the workflow from a branch (`gh workflow run release.yaml --ref <branch>`, or "Run workflow" on the Actions page) runs the test job and a separate dry-run job, and skips the publish, launchers, and hosted application jobs. The dry-run job holds read access to the repository and nothing else: it verifies the vendored tarball, then builds both images for both platforms under fixed local tags without pushing them. Apart from the Docker Hub pull login above, it runs no scan, FIPS probe, launcher stamp, login, signature, or release step. Use it to prove a runner-image or action change to the build before a tag depends on it; `scripts/release-dry-run.test.mjs` checks that the publish and launchers jobs run on a tag push only and that the dry-run job holds no write permission or publishing step.
 

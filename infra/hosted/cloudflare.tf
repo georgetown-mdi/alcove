@@ -50,8 +50,8 @@ resource "cloudflare_zone_setting" "hsts" {
 }
 
 # Direct upload: the project has no Git source, and the workflows upload each
-# build with wrangler, release.yaml from a release tag to the production
-# branch and pages_deploy.yaml from staging. A deployment to the production
+# build with wrangler, pages_deploy.yaml from main and staging and
+# release.yaml from a release tag to the production branch. A deployment to the production
 # branch is the production deployment; one to any other branch, staging
 # included, is a preview on that branch's alias.
 resource "cloudflare_pages_project" "hosted" {

@@ -908,12 +908,12 @@ Reading the JSON and the config source would be a second implementation of two r
 
 ### Why it is a check
 
-`pages_deploy.yaml` redeploys the hosted site's staging preview on a push whose changed paths match a hand-written filter, narrower than the trees it names:
+`pages_deploy.yaml` redeploys the hosted site on a push whose changed paths match a hand-written filter, narrower than the trees it names:
 `packages/peerjs-broker/src/contrib/**`, for one, omits the sibling `src/standalone.ts` on the assumption that the broker's own entry is in no deployed import graph.
 An assumption like that is invisible when it breaks.
-Let an unfiltered source into the deployed site and edits to it stop triggering a deploy: staging serves the previous build and no run goes red.
+Let an unfiltered source into the deployed site and edits to it stop triggering a deploy: production serves the previous build and no run goes red.
 So every source the deployed build reads has to match the filter that redeploys it.
-Production is outside this half: `release.yaml` deploys it from every release tag, with no filter.
+A release tag also redeploys production, from `release.yaml`, with no filter.
 
 The deploy holds a Cloudflare token able to replace the public site, and a job holding it that also ran repository code would hand that token to whatever a pull request merged into that code.
 So the upload job checks nothing out and only uploads the artifact the gate built, and no other job, in any workflow, holds the token or runs in the GitHub environments the token is set on.

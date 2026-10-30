@@ -9,8 +9,8 @@
 //     action, no called workflow); and no workflow passes `secrets: inherit`
 //     or `toJSON(secrets)`.
 //   - Every tracked source the hosted static build reads matches a push filter of
-//     pages_deploy.yaml, the staging deploy; release.yaml's production deploy
-//     runs on every release tag, with no filter. The graph is the module ids
+//     pages_deploy.yaml; release.yaml's production redeploy runs on every
+//     release tag, with no filter. The graph is the module ids
 //     rolldown resolves in the page
 //     and worker bundles of a real `npm run build -w apps/web`, recorded by
 //     RECORDER_MODULE under RECORD_ENV. It must reach every REQUIRED_GRAPH_ROOTS
@@ -41,10 +41,10 @@ import {
   workflowDocument,
 } from "./lib/workflows.mjs";
 
-/** The workflow whose push filter decides when a staging deploy runs. */
+/** The workflow whose push filter decides when a deploy runs. */
 export const DEPLOY_WORKFLOW = `${WORKFLOW_DIR}/pages_deploy.yaml`;
 
-/** The workflow that deploys the hosted app's production from a release tag. */
+/** The workflow that redeploys the hosted app's production from a release tag. */
 export const RELEASE_WORKFLOW = `${WORKFLOW_DIR}/release.yaml`;
 
 /** The workflow that uploads the project site built from docs/. */

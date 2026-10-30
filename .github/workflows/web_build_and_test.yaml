@@ -12,8 +12,8 @@ name: Build and Test the Web App
 # fails this file carrying a path filter under on.pull_request.
 on:
   # Pull-request validation. Deploys build through workflow_call, from
-  # pages_deploy.yaml for staging and release.yaml for production, so there is
-  # no standalone push trigger here -- it would
+  # pages_deploy.yaml for a push to main or staging and release.yaml for a
+  # release tag, so there is no standalone push trigger here -- it would
   # double-run with the pull_request event on a feature branch that already has
   # an open PR.
   pull_request:
@@ -127,10 +127,11 @@ jobs:
     needs: scope
     if: needs.scope.outputs.run == 'true'
     runs-on: ubuntu-26.04
-    # Bound the job: release.yaml gates its deploy on this workflow through
-    # workflow_call, so a stalled install or build here holds a production
-    # deploy rather than only a pull request. 15 min sits far above a normal
-    # run (install + the web build) yet cuts a true hang short.
+    # Bound the job: pages_deploy.yaml and release.yaml gate their deploys on
+    # this workflow through workflow_call, so a stalled install or build here
+    # holds a production deploy rather than only a pull request. 15 min sits
+    # far above a normal run (install + the web build) yet cuts a true hang
+    # short.
     timeout-minutes: 15
     outputs:
       artifactName: ${{steps.artifact-name.outputs.artifactName}}
@@ -217,9 +218,9 @@ jobs:
     # live WebRTC exchange through a spawned dev server -- workloads that can
     # wedge in ways the suite's own 60s timeouts do not all catch (a stuck browser
     # or teardown, a stalled data channel). Without this the default 6h timeout
-    # applies, and since release.yaml gates its deploy on this workflow via
-    # workflow_call, a hang would also stall a production deploy. 30 min sits far
-    # above a normal leg yet cuts a true hang short. It must also clear the worst
+    # applies, and since pages_deploy.yaml and release.yaml gate their deploys on
+    # this workflow via workflow_call, a hang would also stall a production
+    # deploy. 30 min sits far above a normal leg yet cuts a true hang short. It must also clear the worst
     # case the browser provisioning step below is allowed: its 25 min plus the few
     # minutes the rest of that leg measures, so an upstream stall there ends on
     # that step's own named failure rather than on this cap, which GitHub reports
