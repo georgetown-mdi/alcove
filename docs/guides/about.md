@@ -15,9 +15,9 @@ Alcove grew out of a community of practice to enable bidirectional sharing betwe
 
 Senior Fellow, Massive Data Institute. [Profile](https://mdi.georgetown.edu/profiles/vincent-dorie/)
 
-Vince built Alcove and is the technical architect for its roadmap. Vince also rebuilt MDI's Secure Query System, which enables evaluation of program outcomes through privacy-preserving queries of IRS data.
+Vince is the architect and primary developer of Alcove. At MDI, Vince also built and maintains the linkage back-end for the Secure Query System, which enables evaluation of program outcomes through queries of IRS data.
 
-Before MDI, he spent five years as Principal Data Scientist at Code for America, linking records across safety net programs (he coauthored the Summer EBT Playbook) and building tools for impact estimation and outreach. At the California Department of Justice's OpenJustice initiative he built tools to de-identify data for public release, and at Columbia and NYU he wrote software for Bayesian machine learning that won the Atlantic Causal Inference competition several times and is still widely used in R. He has written privacy-preserving data sharing tools in JavaScript, C++, Python and R for safety net, health care, justice and tax data.
+Before Georgetown, he spent five years as Principal Data Scientist at Code for America, linking records across safety net programs (he coauthored the Summer EBT Playbook) and building tools for impact estimation and outreach. At the California Department of Justice's OpenJustice initiative he built tools to de-identify data for public release, and at Columbia and NYU he wrote software for Bayesian machine learning that won the Atlantic Causal Inference competition several times and is still widely used in R. He has written privacy-preserving data sharing tools in JavaScript, C++, Python and R for safety net, health care, justice and tax data.
 
 ### Eric Giannella
 
@@ -25,7 +25,7 @@ Before MDI, he spent five years as Principal Data Scientist at Code for America,
 
 Associate Research Professor, Massive Data Institute. [Profile](https://mdi.georgetown.edu/profiles/eric-giannella/)
 
-Eric leads pilot deployments of Alcove with California homeless Continuum of Care Leads and their health plan partners. Providing technical help through these operational pilots has been a source of numerous improvements to Alcove's usability and functionality. Outside of data sharing, he develops open source modeling tools and provides technical assistance around SNAP payment error reduction. He regularly advises academic, nonprofit and government organizations on data analytics, governance, and privacy.
+Eric leads pilot deployments of Alcove with California homeless Continuum of Care Leads and their health plan partners. Providing technical help through these operational pilots has been a source of numerous improvements to Alcove's usability and functionality. His other work at Georgetown includes developing open source modeling tools for SNAP payment error reduction. He regularly advises academic, nonprofit and government organizations on data analytics, governance, and privacy.
 
 Prior to Georgetown, Eric was Senior Director of Data Science at Code for America, a nonprofit where he spent six years building capacity for data analysis, quantitative research, and rigorous experimentation. As an individual contributor, his work focused on identifying barriers to access, setting up data analytics infrastructure for understanding outcomes, and building linkage and outreach pipelines across safety net programs.
 
@@ -37,7 +37,7 @@ Senior Fellow, Massive Data Institute. [Profile](https://mdi.georgetown.edu/prof
 
 Bethanne's work focuses on the policies, governance practices, and institutional conditions that enable government agencies to responsibly use sensitive data for operational, enforcement, and evidence-building purposes. She works on practical approaches to data access and use that protect privacy while enabling effective government operations and evidence development.
 
-As former Director of the Division of Data and Improvement - essentially the Chief Data Officer - at HHS's Administration for Children and Families (ACF), she architected ACF's comprehensive data strategy, established a data governance structure, provided technical assistance on privacy topics for over 60 human services programs. In her role as the first permanent leader of the Evidence Team at the White House Office of Management and Budget (OMB), she was instrumental in establishing the Commission on Evidence-Based Policymaking and the Interagency Council on Evaluation Policy. Throughout her time at OMB, she led development of dozens of tiered evidence, social impact bond, and data infrastructure initiatives across government, becoming recognized as an expert on wage data policy.
+As former Director of the Division of Data and Improvement - essentially the Chief Data Officer - at HHS's Administration for Children and Families (ACF), she architected ACF's comprehensive data strategy, established a data governance structure, and provided technical assistance on privacy topics for over 60 human services programs. In her role as the first permanent leader of the Evidence Team at the White House Office of Management and Budget (OMB), she was instrumental in establishing the Commission on Evidence-Based Policymaking and the Interagency Council on Evaluation Policy. Throughout her time at OMB, she led development of dozens of tiered evidence, social impact bonds, and data infrastructure initiatives across government, becoming recognized as an expert on wage data policy.
 
 ### Amy O'Hara
 
