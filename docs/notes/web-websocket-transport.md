@@ -4,14 +4,14 @@ title: "The Web Application's WebSocket Transport Path"
 
 # The web application's WebSocket transport path: a relay for networks that stop TURN, and the browser SFTP proxy
 
-_Status: the relay path is built and turned on in both applications: the relay proof derivation, the relay service and its deployment, both clients, the wrap on the web side, the relay locator and settings, and the automatic fallback; its disclosure documents and its stress-tier run remain ([Implementation items implied, not filed](#implementation-items-implied-not-filed)). The browser SFTP path is design only but for its relay ([SFTP_RELAY.md](../spec/SFTP_RELAY.md)).
+_Status: the relay path is built and turned on in both applications: the relay proof derivation, the relay service and its deployment, both clients, the wrap on the web side, the relay locator and settings, and the automatic fallback ([Implementation items implied, not filed](#implementation-items-implied-not-filed)). The browser SFTP path is design only but for its relay ([SFTP_RELAY.md](../spec/SFTP_RELAY.md)).
 The maintainer ruled on the seven forks on 2026-10-09 ([The forks and their rulings](#the-forks-and-their-rulings)).
 What remains open is the spikes S2 and S4, neither of which has run, and S1's open parts, S1 having run in a narrower form with its decisive part met; S3, S5 and S6 passed with Node and Chromium parties on 2026-10-18, S6 through the 443 front on a host run (each [below](#the-spikes)).
 The browser SFTP spikes ran on 2026-10-29.
 S7 found no off-the-shelf raw relay, of the three tried, that both refuses by `Origin` and holds backpressure in both directions.
 S8's PASS line was met by `@microsoft/dev-tunnels-ssh` with three additions in the spike's own code, and by `ssh2` bundled for the browser only against a server that also offers an ECDSA host key.
-The relay is built first-party, its own package and image, by the maintainer's ruling of 2026-10-29 ([fork 5](#the-forks-and-their-rulings)); fork 5's earlier reading, an off-the-shelf relay S7 did not find, is superseded.
-The client the browser SFTP path builds on was chosen by the maintainer on 2026-10-29, on the conditions [browser-sftp-proxy.md](browser-sftp-proxy.md#the-chosen-client-dependency-check-and-sizing) records.
+The browser SFTP path's relay is a first-party fixed-target relay, its own package and image, built by the maintainer's ruling of 2026-10-29 ([fork 5](#the-forks-and-their-rulings)); fork 5's earlier reading, an off-the-shelf relay S7 did not find, is superseded.
+The client the browser SFTP path builds on is `@microsoft/dev-tunnels-ssh`, chosen by the maintainer on 2026-10-29 on two conditions, a dependency check and a sizing, that [browser-sftp-proxy.md](browser-sftp-proxy.md#the-chosen-client-dependency-check-and-sizing) records.
 The hosted relay admits one-shot exchanges, as part of the production default, by the maintainer's ruling of 2026-10-15 ([fork 1](#the-forks-and-their-rulings)).
 The public web application is the consumer of both paths and the console ships neither, by the maintainer's ruling.
 The note recommends a WebSocket relay for networks whose inspection stops TURN as the first thing to build, answers whether that relay and the browser SFTP proxy are one component, re-answers the browser SFTP note's open choices under the ruling, and ends with the sequence, the spikes, and the forks with the maintainer's rulings on them.
@@ -66,7 +66,7 @@ The pieces a WebSocket path would build on, with where each is stated:
   A browser with UDP refused and TCP admitted only to 443 of the relay and the app completed a relayed exchange with a CLI party ([webrtc-relay-deployment.md](webrtc-relay-deployment.md#what-remains-unmeasured), the registrar-path row).
   Whether a TURN client reaches a relay through an explicit proxy is unmeasured for the CLI and for a browser under `disable_non_proxied_udp` ([turn-provisioning-governance.md](turn-provisioning-governance.md#what-remains-unanswered)).
 - **The project already names the case.**
-  [DESIGN.md](../DESIGN.md#websocket-relay) describes a WebSocket relay for networks that fail WebRTC with TURN on 443 available, and the roadmap lists it as later work ([ROADMAP.md](../ROADMAP.md#possible-later-work)); the spec reserves the wrap's request bit for exactly a terminated leg ([CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#which-channels-request-it)).
+  [DESIGN.md](../DESIGN.md#websocket-relay) describes a WebSocket relay for networks that fail WebRTC with TURN on 443 available, and that relay is built; the spec reserves the wrap's request bit for exactly a terminated leg ([CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#which-channels-request-it)).
 
 ## Question 1: when inspection stops TURN
 
@@ -557,6 +557,7 @@ Relay path, in order:
 - **Automatic fallback** -- the start frame, the parked relay socket during the WebRTC rendezvous, and the hand-over.
   Built: the race both applications run (`packages/core/src/connection/relayFallback.ts`) over each client's parked socket and each run's relay list, specified in [WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#falling-back-to-the-websocket-relay).
 - **Disclosure documents** -- PRIVACY and SHARED_RESPONSIBILITY rows, the SECURITY_DESIGN channel-security paragraph, the wrap table row and its "no such transport exists" sentence in CHANNEL_SECURITY, COMMUNICATION's supporting services, DEPLOYMENT, CLI.md, the planned `connect-src` allowlist ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#egress-hardening-and-its-limits)).
+  Built: the WebSocket relay is in [PRIVACY.md](../../PRIVACY.md#what-supporting-services-can-observe), [SHARED_RESPONSIBILITY.md](../SHARED_RESPONSIBILITY.md), [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#channel-security) and [COMMUNICATION.md](../COMMUNICATION.md#websocket-relay).
 - **Tests** -- relay unit tests with the shared refusal fixtures, a relayed exchange in the browser suite, a CLI-to-browser relayed run in the interop suite ([TESTING.md](../TESTING.md#cross-runtime-interop-suite)), and a stress-tier run at the largest size.
   Built: the relay's unit tests, which present core's shared refused proofs (`packages/core/src/websocketRelayProofFixtures.ts`) in a hello (`packages/websocket-relay/test/proofFixtures.test.ts`), the browser suite's relayed exchange and unused relay sockets (`apps/web/test/browser/relayFallback.test.ts`), the interop suite's relayed run with WebRTC blocked (`apps/web/test/interop/cliWebRelayFallback.test.ts`), the live WebRTC leg's CLI-to-browser run with WebRTC open, whose relay sockets close unused (`apps/web/test/liveWebrtc/relayUnused.test.ts`), and the stress tier's relay round (`apps/cli/test/stress/websocketRelayRound.stress.test.ts`), measured in [WEBSOCKET_RELAY.md](../spec/WEBSOCKET_RELAY.md#measured-round-at-the-largest-exchange-size).
 
@@ -608,7 +609,7 @@ The reading after a ruling is how this note applies the ruling to the fork, not 
    - **The relay admits any exchange with a registered key, one-shot included.** It checks each party's proof against the key the exchange enrolled ([PROTOCOL.md](../spec/PROTOCOL.md#the-websocket-relay-proof)); one-shot admission is decided by this ruling, not weighed after S3.
    - **It is part of the production default**, as the TURN relay is.
      Superseded 2026-10-22: both are off on production and staging until a party turns them on, and on by default on the demo site alone ([turn-provisioning-governance.md](turn-provisioning-governance.md#what-this-record-assumes)).
-   - **The relay-restriction setting covers it.** The operator setting naming the relays a party's data may cross, not yet built, governs this relay as it governs the TURN relays.
+   - **The relay-restriction setting covers it.** The configuration's `connection.allowed_relays` and the browser's Allowed relays setting name the relays a party's data may cross and govern this relay as they govern the TURN relays ([EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#connectionallowed_relays); [WEB_APP.md](../WEB_APP.md#allowed-relays)).
    - **It runs behind the 443 front by server name**, one more route on the host that runs coturn and the broker ([Port 443 is a prerequisite](#who-runs-it-and-what-it-costs)).
 
    What the two rulings leave open, for the maintainer:
@@ -637,7 +638,7 @@ The reading after a ruling is how this note applies the ruling to the fork, not 
    Reading: an `Origin` check only, with an off-the-shelf relay; a first-party proxy that checks a proof is a later option for a deployment that asks.
    S7 (2026-10-29) found no single off-the-shelf relay, of three tried, that refuses by `Origin` and holds backpressure in both directions ([S7](#the-spikes)).
    Ruling (2026-10-29), on how the reading is met: "No, I'm willing to build it. Maybe I'm off base, but I just wouldn't expect a lot of mature choices to choose from in this space."
-   Reading: a small first-party relay with the `Origin` check only, its own package and image (`packages/sftp-relay`, [SFTP_RELAY.md](../spec/SFTP_RELAY.md)); the off-the-shelf relay of the earlier reading is superseded.
+   Reading: a small first-party fixed-target relay with the `Origin` check only, its own package and image (`packages/sftp-relay`, [SFTP_RELAY.md](../spec/SFTP_RELAY.md)); the off-the-shelf relay of the earlier reading is superseded.
 6. **The proxy on the invitation**: the SFTP endpoint names the proxy, or the browser-local setting alone.
    Recommendation: the endpoint names it, with the browser-local override ([Question 3](#question-3-the-browser-sftp-forks-under-the-ruling), fork 6).
    Ruling (2026-10-09): "Use your recommendation for this item."
@@ -646,4 +647,5 @@ The reading after a ruling is how this note applies the ruling to the fork, not 
    Recommendation: the key pair, conditional on S8 ([Question 3](#question-3-the-browser-sftp-forks-under-the-ruling), fork 8).
    Ruling (2026-10-09): "OK, use WebCrypto then."
    Reading: a non-extractable WebCrypto P-256 key pair, conditional on S8; a one-off exchange enters its credential at each run.
-   S8 (2026-10-29) met the condition with `@microsoft/dev-tunnels-ssh` and the spike's additions, and with `ssh2` bundled only against a server that also offers an ECDSA host key; no client is chosen yet ([S8](#the-spikes)).
+   S8 (2026-10-29) met the condition with `@microsoft/dev-tunnels-ssh` and the spike's additions, and with `ssh2` bundled only against a server that also offers an ECDSA host key ([S8](#the-spikes)).
+   The maintainer chose `@microsoft/dev-tunnels-ssh` on 2026-10-29, conditional on a dependency check and a sizing ([browser-sftp-proxy.md](browser-sftp-proxy.md#the-chosen-client-dependency-check-and-sizing)).

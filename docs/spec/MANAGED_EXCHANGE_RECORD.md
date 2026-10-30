@@ -776,7 +776,7 @@ windows after it: the partner's reported save failure is the other side's claim,
 which anyone holding the current secret can send, so it is not local evidence.
 A `"partner-storage"` condition is raised only by the partner's abort read on the channel its handshake authenticated.
 
-No standing condition holds a window: the scheduled runner opens each one as before, and
+A standing condition on its own holds no window: the scheduled runner opens each one as before, and
 since each party derives its rendezvous from the secret it holds
 ([Derived, never stored](#derived-never-stored)), a window after a one-sided
 persist failure finds no partner, recorded as a no-show, or fails closed at the
