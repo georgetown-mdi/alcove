@@ -415,6 +415,7 @@ import {
   exchangeRecordFromFailure,
   exchangeRecordOwedButUnbuilt,
   AuthenticationError,
+  NEW_INVITATION_REMEDY,
   NEXT_SECRET_STORE_FAILED_ABORT_REASON,
   PSI_SET_REFUSED_ABORT_REASON,
   PeerAbortError,
@@ -3581,7 +3582,8 @@ test("a failed save on the responder: the initiator, which saved first and kept 
   expect(reason.message).toContain(
     ", and kept the secret this run used, so the next run can use that one. " +
       "Run the exchange again once your partner has fixed what stopped " +
-      "their save.",
+      "their save. If authentication then fails, or the run never meets your " +
+      `partner, the two copies cannot reconnect. ${NEW_INVITATION_REMEDY} `,
   );
   expect(statesItsOwnNextStep(reason)).toBe(true);
   expect(fixedNextStep(reason)).toBeUndefined();
@@ -3598,6 +3600,67 @@ test("a failed save on the responder: the initiator, which saved first and kept 
   expect(ahead?.sharedSecret).not.toBe(TOKEN_A);
   expect(ahead?.previousSharedSecret).toBe(TOKEN_A);
   expect(loadKeyFile(keyFileB)?.sharedSecret).toBe(TOKEN_A);
+}, 20_000);
+
+test("a failed save on an online invite or accept responder, which holds no key file to heal from: both sides exit 77 with the re-invite remedy", async () => {
+  const keyFileA = path.join(tmpDir, "a.key");
+  const keyFileB = path.join(tmpDir, "b.key");
+  mockState.unwritableKeyFilePath = keyFileB;
+  driveTermsExchange({
+    initiator: async (rotation, nextSecret) => {
+      await rotation.store(nextSecret);
+      throw new PeerAbortError(
+        undefined,
+        NEXT_SECRET_STORE_FAILED_ABORT_REASON,
+      );
+    },
+    responder: async (rotation, nextSecret) => {
+      rotation.partnerMayHoldNextSecret?.(true);
+      await rotation.store(nextSecret);
+    },
+  });
+  const run = (keyFilePath: string, loggerName: string) =>
+    runProtocol({
+      connection: {
+        channel: "filedrop",
+        path: dropDir,
+        options: TWO_PARTY_OPTIONS,
+      },
+      auth: {
+        sharedSecret: TOKEN_A,
+        keyFilePath,
+        saveKeyFileExclusively: true,
+      },
+      prepared: minimalPrepared,
+      output: undefined,
+      verbosity: -1,
+      loggerName,
+    });
+  const b = run(keyFileB, "test-b");
+  await waitForFirstPartyHello(dropDir);
+  const [resultA, resultB] = await Promise.allSettled([
+    run(keyFileA, "test-a"),
+    b,
+  ]);
+
+  expect(resultA.status).toBe("rejected");
+  expect(resultB.status).toBe("rejected");
+  const initiatorReason = (resultA as PromiseRejectedResult).reason as Error;
+  expect(initiatorReason.message).toContain(
+    ", so you and your partner now hold different secrets, and running the " +
+      `exchange again cannot reconnect you. ${NEW_INVITATION_REMEDY}`,
+  );
+  expect(initiatorReason.message).not.toContain(
+    "kept the secret this run used",
+  );
+  expect(exitCodeForError(initiatorReason)).toBe(77);
+  const responderReason = (resultB as PromiseRejectedResult).reason as Error;
+  expect(responderReason.message).toContain(
+    ` Your partner may already hold the rotated token. ${NEW_INVITATION_REMEDY}`,
+  );
+  expect(responderReason.message).not.toContain("kept the one this run used");
+  expect(statesItsOwnNextStep(responderReason)).toBe(true);
+  expect(exitCodeForError(responderReason)).toBe(77);
 }, 20_000);
 
 test.each([

@@ -1127,9 +1127,9 @@ const PARTNER_SAVE_FAILURE_PREAMBLE =
 const PARTNER_SAVE_FAILURE_REMEDY =
   ", and kept the secret this run used, so the next run can use that one. " +
   "Run the exchange again once your partner has fixed what stopped their " +
-  "save. If authentication fails on that run or it never meets your " +
-  `partner: ${NEW_INVITATION_REMEDY} It is described under "Out-of-sync ` +
-  'tokens" in docs/CLI.md.';
+  "save. If authentication then fails, or the run never meets your " +
+  `partner, the two copies cannot reconnect. ${NEW_INVITATION_REMEDY} It is ` +
+  'described under "Out-of-sync tokens" in docs/CLI.md.';
 
 /** {@link PARTNER_SAVE_FAILURE_REMEDY} where the next run cannot heal. */
 const PARTNER_SAVE_FAILURE_REMEDY_NO_HEAL =
@@ -1251,7 +1251,8 @@ async function authenticateRun(params: {
   onAuthenticated: (() => void | Promise<void>) | undefined;
   log: ReturnType<typeof getLogger>;
   eventStream: EventStreamEmitter | undefined;
-  /** {@link nextRunCanHeal} for the run's channel. */
+  /** {@link nextRunCanHeal} for the run's channel, and a key file that was
+   * there before the run. */
   nextRunHeals: boolean;
 }): Promise<void> {
   const {
@@ -1406,7 +1407,10 @@ async function authenticateRun(params: {
       // line beneath it. An initiator's failed store aborts before the
       // responder's, so a retry recovers (exit 69). A responder stores after
       // an initiator that kept the secret this run used: exit 69 where the
-      // next run heals, else 77, since a retry cannot reconnect the two.
+      // next run heals, else 77, since a retry cannot reconnect the two. An
+      // online invite or accept responder (saved exclusively) has no key file
+      // after a failed save, and a re-run bootstrap healing from none is
+      // unmeasured, so it takes the 77 path on every channel.
       const reason = err instanceof Error ? err.message : String(err);
       const responderCannotHeal = role === "responder" && !nextRunHeals;
       const [preamble, remedy] =
@@ -2320,7 +2324,8 @@ export async function runProtocol(
   process.on("SIGINT", onSigint);
   process.on("SIGTERM", onSigterm);
 
-  const nextRunHeals = nextRunCanHeal(connection.channel);
+  const nextRunHeals =
+    nextRunCanHeal(connection.channel) && auth?.saveKeyFileExclusively !== true;
   try {
     const role = await openRunTransport({
       build,

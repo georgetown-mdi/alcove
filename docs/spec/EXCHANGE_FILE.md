@@ -768,7 +768,8 @@ history it read, and the rotation write (`rotationWriteContents` in
   front, unless the handshake used the previous secret, whose verifier the
   history already holds. A write keeps at most 64 entries and drops expired
   ones from the oldest end only, since the handshake counts rotations by an
-  entry's position.
+  entry's position. A reader takes a longer list whole, and the key exchange
+  uses its 64 newest entries; the next rotation write keeps 64.
 - **A new invitation.** A key file written from an invitation holds neither
   field.
 
