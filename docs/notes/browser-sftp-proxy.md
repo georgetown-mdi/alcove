@@ -4,7 +4,8 @@ title: "The Browser SFTP Path and its WebSocket-to-TCP Proxy"
 
 # The browser SFTP path, and the WebSocket-to-TCP proxy it needs
 
-_Status: design only; nothing here is decided or built.
+_Status: design only; nothing here is built.
+The browser SSH client is chosen on two conditions, measured on 2026-10-30: the licence check passes, the maintenance check does not, and the client is sized ([The chosen client](#the-chosen-client-dependency-check-and-sizing)).
 The note frames what a browser SFTP path would need, recommends where it can, and lists the choices left open for the maintainer.
 Nothing here is normative: the channel-security rules are in
 [CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#which-channels-request-it),
@@ -163,8 +164,8 @@ Candidates, none verified in the browser:
 - **A C SSH library compiled to WebAssembly**; which libraries build, their SFTP coverage, and how they take a WebSocket stream are unverified.
 - **Another JavaScript SSH client**; whether one exists with SFTP support, a host-key callback before authentication, and acceptable maintenance is unverified.
 
-No candidate is recommended until a spike drives one against the SFTP test server through a raw relay from the browser suite.
-Whichever is chosen is a new security-relevant dependency under [CONTRIBUTING.md](../../CONTRIBUTING.md#dependency-policy), shipped to every browser that loads the app.
+Spike S8 drove three clients from the browser ([web-websocket-transport.md](web-websocket-transport.md#the-spikes)), and the maintainer chose `@microsoft/dev-tunnels-ssh` on 2026-10-29, on the conditions [below](#the-chosen-client-dependency-check-and-sizing).
+It is a new security-relevant dependency under [CONTRIBUTING.md](../../CONTRIBUTING.md#dependency-policy), shipped to every browser that loads the app.
 
 The CLI adapter's transport [memory](../spec/TRANSPORT_BOUNDS.md) and [liveness](../spec/TRANSPORT_LIVENESS.md) bounds live in `apps/cli`, not core, so a browser client needs its own counterpart of each.
 
@@ -187,6 +188,120 @@ The `sftp` connection authenticates with a password or a private key (`SFTPServe
 ### Egress and disclosure documents
 
 The planned `connect-src` allowlist would need the proxy origin ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#egress-hardening-and-its-limits)), and the privacy statement's supporting-services list a proxy row ([PRIVACY.md](../../PRIVACY.md#what-supporting-services-can-observe)).
+
+## The chosen client: dependency check and sizing
+
+The maintainer chose `@microsoft/dev-tunnels-ssh` on 2026-10-29, with S8's three additions (an Ed25519 host-key verifier, the non-extractable key set on an undeclared field, a 120-line SFTP client) rewritten as owned code, on two conditions:
+it passes the [dependency policy](../../CONTRIBUTING.md#dependency-policy)'s licence and maintenance check, and the whole client is sized.
+Both were measured on 2026-10-30.
+
+**Result: the licence check passes, the maintenance check does not.**
+The library passes both; nine of the ten packages it adds to the browser bundle have no release in the last two years, four of them a key-agreement chain.
+Whether to accept them, remove some, or wait is the maintainer's decision, and the client items stay parked until it is made.
+
+### What it adds to the browser bundle
+
+`@microsoft/dev-tunnels-ssh` 3.12.42 was installed outside the repository (`npm install --omit=dev`, 13 packages), and an entry importing `SshClientSession`, `SshSessionConfiguration`, `SshAlgorithms`, `SshChannel` and `BaseStream` was bundled with the repository's esbuild (`--platform=browser --minify`, its metafile read per package).
+
+- **Bundled:** 11 packages, 328.4 KiB minified and 78.3 KiB gzipped.
+  `debug` and `ms` are declared dependencies, but the library's code requires neither, and the bundle has no part of them.
+- **Not resolved for the browser:** `stream`, which `sshStream.js` and `secureStream.js` extend (`stream.Duplex`) when they load.
+  esbuild refused it, and the web application provides none, so the client item adds a stream implementation, a package not checked here.
+  One candidate, `readable-stream` 4.8.0, is MIT, was last modified on 2026-10-08, and brings `buffer` 6, `events`, `process`, `string_decoder` and `abort-controller`.
+- **Marked external to complete the bundle:** `crypto` (the library's `algorithms/node/` and `brorand`), `net`, `path` and `os` (`vscode-jsonrpc`'s pipe and socket support), and `node-rsa`, a dynamic `require` in `algorithms/node/nodeRsa.js` that the library does not declare.
+  The library picks its WebCrypto classes when `self` and `crypto.subtle` exist (`algorithms/sshAlgorithms.js`); that a browser run reaches none of these modules was not driven.
+- **With `diffie-hellman` stubbed** by a module that throws: `diffie-hellman`, `bn.js`, `miller-rabin`, `brorand`, `randombytes` and `safe-buffer` leave the bundle, which falls to 271.2 KiB minified and 62.8 KiB gzipped.
+  The stub can work only if the session offers the ECDH key exchanges alone; that a session negotiates and completes with it was not driven.
+- **`vscode-jsonrpc`:** the library's code uses only `CancellationToken`, `CancellationTokenSource` and `Emitter` from it (counted with `grep`), so an owned replacement aliased in at build time is possible; it was not tried.
+
+### Licence and maintenance, per package
+
+Sources: `npm view` (licence, release dates) and `gh api` (repository state), both on 2026-10-30.
+"Maintained" means a release of the bundled major line in the last 24 months.
+"Policy" means a `SECURITY.md` in the repository or the owner's default `.github` repository.
+
+| Package | Bundled | Licence | Released | Latest | Last push | Policy | Maintained |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `@microsoft/dev-tunnels-ssh` | 3.12.42 | MIT | 2026-08-24 | same | 2026-10-28 | yes | yes |
+| `vscode-jsonrpc` | 4.0.0 | MIT | 2018-09-11 | 10.0.0, 2026-10-22 | 2026-10-30 | yes | no: the library's range is `^4.0.0` |
+| `buffer` | 5.7.1 | MIT | 2020-11-04 | 6.0.3, 2020-11-23 | 2025-10-28 | no | no |
+| `base64-js` | 1.5.1 | MIT | 2020-11-11 | same | 2024-07-25 | no | no |
+| `ieee754` | 1.2.1 | BSD-3-Clause | 2020-10-27 | same | 2021-08-12 | no | no |
+| `safe-buffer` | 5.2.1 | MIT | 2020-05-10 | same | 2023-06-03 | no | no |
+| `diffie-hellman` | 5.0.3 | MIT | 2018-04-11 | same | 2024-12-21 | yes (org) | no |
+| `miller-rabin` | 4.0.1 | MIT | 2017-09-27 | same | 2021-02-02 | no | no |
+| `brorand` | 1.1.0 | MIT | 2017-02-22 | same | 2018-06-09 | no | no |
+| `randombytes` | 2.1.0 | MIT | 2019-02-19 | same | 2024-12-21 | yes (org) | no |
+| `bn.js` | 4.12.5 | MIT | 2026-07-09 | 5.2.5, 2026-07-09 | 2026-07-09 | no | yes |
+
+- **Licence:** every package is MIT or BSD-3-Clause, both compatible with Apache 2.0, and none ships a `NOTICE` file to fold in.
+  The `@microsoft/dev-tunnels-ssh`, `brorand` and `miller-rabin` tarballs ship no licence file, and GitHub detects no licence in the `brorand` and `miller-rabin` repositories, so for those two the MIT terms are stated only in `package.json`.
+- **Audit:** `npm audit --omit=dev` over the 13 packages reported no vulnerabilities.
+- **The library's repository:** not archived; 43 commits since 2026-01-01, the latest on 2026-10-28; five npm releases in 2026; 9 open issues and pull requests.
+  Pull request 124, which adds `ssh-ed25519` public-key support, has been open since 2026-03-06 with no later update, so the Ed25519 verifier stays owned code.
+- **Cryptographic dependencies:** `diffie-hellman` is a key-agreement library, and `miller-rabin`, `brorand` and `randombytes` serve it, so the policy's [cryptographic-dependency](../../CONTRIBUTING.md#dependency-policy) review applies to them as well as to the library.
+- **Exact pin:** the library pins exactly (`"3.12.42"`).
+  Its manifest gives each dependency as a caret range, so their versions are fixed only by the lockfile, or by an `overrides` entry.
+
+### What the client needs on the wire
+
+Each `FileTransportClient` member (`packages/core/src/connection/fileSyncConnection.ts`), the SFTP version 3 requests it sends, and the CLI adapter's bound it takes over (`apps/cli/src/connection/`; the figures are in [TRANSPORT_BOUNDS.md](../spec/TRANSPORT_BOUNDS.md) and [TRANSPORT_LIVENESS.md](../spec/TRANSPORT_LIVENESS.md)):
+
+| Member | Requests (replies) | Bound |
+| --- | --- | --- |
+| `connect` | SSH session, the `sftp` subsystem on a session channel, INIT (VERSION) | Connect probe: one window per attempt; the host key checked before authentication |
+| `end` | CLOSE of open handles, then the channel and session | Returns within seconds |
+| `list` | OPENDIR (HANDLE), READDIR until EOF (NAME, STATUS), CLOSE | Listing: 8,192 entries and 255-byte names; liveness: 16,384 READDIRs and 60 s for the whole listing; the handle closed on failure |
+| `get` | OPEN for read (HANDLE), READ at rising offsets until EOF (DATA, STATUS), CLOSE | Frame size: `maxBytes` refused before it is allocated, and a DATA reply longer than requested refused; liveness: 60 s idle between chunks |
+| `put` | OPEN to write, create and truncate (HANDLE), WRITE per 64 KiB chunk (STATUS), CLOSE | Liveness: 60 s without upload progress; a retry only on `SSH_FX_FAILURE` |
+| `delete`, `safeDelete` | REMOVE (STATUS); `safeDelete` never rejects | Liveness: 60 s per operation |
+| `rename` | RENAME (STATUS) | Liveness: 60 s per operation |
+| `createExclusive` | OPEN to write, create and fail if present (HANDLE or STATUS), CLOSE; on `SSH_FX_FAILURE`, STAT to tell a present file from an I/O error | Liveness: 60 s per operation; a present file reported as `EEXIST` |
+| `exists` | STAT (ATTRS, or STATUS no-such-file for `false`) | Liveness: 60 s per operation |
+| `releaseForIdle`, `ensureConnected`, `beginTeardown` | Optional; left out, the session lasts the whole run | None |
+| Heartbeat (adapter, not interface) | REALPATH of `.` after 60 s idle | None |
+
+In total: 11 request types (INIT, OPEN, CLOSE, READ, WRITE, OPENDIR, READDIR, REMOVE, RENAME, STAT, REALPATH) and 6 replies (VERSION, STATUS, HANDLE, DATA, NAME, ATTRS).
+S8's client sent five of them: INIT, OPEN, WRITE, READ and CLOSE.
+The CLI adapter sets no SFTP packet-length bound of its own; the listing bound leans on the SSH transport's maximum packet size for one READDIR reply ([TRANSPORT_BOUNDS.md](../spec/TRANSPORT_BOUNDS.md#directory-listing-bound)).
+The browser client reassembles SFTP packets from channel data itself, and each packet declares its own length, so without a cap of its own a server chooses the allocation.
+That cap is a frame-size control, and it brings the SSH client item under security review in its own right.
+
+Core's file-sync engine uses Node's global `Buffer` (`fileSyncConnection.ts`, `fileSyncFraming.ts`, `fileSyncMessageLoop.ts`, `abortMarker.ts`, `controlEnvelope.ts`), and the web application defines none.
+`FileSyncConnection` has never run in a browser, so whether it needs more than a `Buffer` global is not known.
+
+### Sizing
+
+Projected changed lines count added and removed non-test lines, excluding `package-lock.json`.
+Each figure is an estimate built up from its parts, with the basis given; nothing here has been built.
+
+| Item | Part | Lines | Basis |
+| --- | --- | --- | --- |
+| SSH client on `dev-tunnels-ssh` | Library stream over a browser WebSocket | 80-150 | none in the repository; a byte stream, not the relay client's message connection |
+| | Session: WebCrypto-only algorithm lists, connect window, host key before authentication, key authentication, named error for no common algorithm, subsystem open | 200-260 | S8 did this in spike code whose size it did not record |
+| | Ed25519 verifier | 80-100 | S8: about 70 |
+| | Non-extractable key in the library's ECDSA pair | 40-60 | S8: an assignment after `setPublicKeyBytes` |
+| | SFTP v3 client: 11 requests, 6 replies, request ids, packets across channel data, inbound packet cap, status codes | 400-500 | S8: about 120 for five requests |
+| | Exact pin, `stream` implementation, Node-only module stubs, optional `diffie-hellman` stub | 20-40 | the bundle above |
+| | **Total** | **820-1,110** | |
+| File transport client | The 11 members over the SFTP client | 450-550 | the CLI adapter's members, recovery wiring included: 779 lines |
+| | Bound errors and constants, copied into the web app | 150-200 | `listingGuard.ts`, `sftpLivenessGuard.ts`, `frameSizeGuard.ts`, `causeLink.ts` |
+| | Heartbeat and slow-operation warning | 110-140 | `sftpHeartbeat.ts`: 143 lines |
+| | `Buffer` global, and a session drop as a stated limit in `SFTP_SESSION_RECOVERY.md` | 20-40 | |
+| | **Total, a session drop ending the run** | **730-930** | |
+| | Session recovery: re-dial, re-issue, the deferred-cleanup record, the transition lock, the idle release | 1,000-1,500 more | the CLI's: `sftpSessionState.ts`, `sftpDeferredCleanup.ts`, `sftpIdleBoundary.ts`, `sftpAdapterLedger.ts` (738 lines) and about 1,400 lines of the adapter's session lifecycle |
+| Host-key pin in the browser | Pin storage with the exchange, first-use confirmation, mismatch refusal, rotation pins, reconciliation | 350-550, coarse | core's `sshHostKey.ts` and `hostKeyReconciliation.ts` are reused |
+| Browser key pair for scheduled runs | Key generation and storage, `authorized_keys` display, deletion with the exchange | 250-400, coarse | the non-extractable key part above |
+
+Proposed splits:
+
+- **File transport client, with recovery: 1,730-2,430, past the ~1,200 line.**
+  Split it into the client with its bounds, a dropped session ending the run as a stated limit in [SFTP_SESSION_RECOVERY.md](../spec/SFTP_SESSION_RECOVERY.md) (730-930), and the session recovery as an item of its own, sized again before it is built.
+  If that item still projects past the line, re-dial and re-issue split from the deferred-cleanup record and the idle release.
+- **Moving the bound errors to core** instead of copying them counts each moved line twice and adds the CLI's import edits, about 450-650 changed lines.
+  That would be its own refactor ahead of the client, with the CLI's behavior unchanged.
+- **SSH client: 820-1,110, under the line.**
+  If it runs over, the SFTP v3 client is the part to split off: it is protocol code that unit tests can cover without a browser.
 
 ## Channel security
 
@@ -225,6 +340,6 @@ Each is left open for the maintainer; the linked section carries the argument.
 6. **Where the proxy setting lives**: the exchange file, or a browser-local setting.
    Browser-local ([Which client reads the proxy setting](#which-client-reads-the-proxy-setting)).
 7. **The browser SSH client**: `ssh2` bundled, a WebAssembly C library, or another JavaScript client.
-   None until a spike ([The SSH client in the browser](#the-ssh-client-in-the-browser)).
+   Ruled 2026-10-29: `@microsoft/dev-tunnels-ssh`, on a dependency check and a sizing whose result is open ([The chosen client](#the-chosen-client-dependency-check-and-sizing)).
 8. **SFTP credentials for recurring browser exchanges**: stored in browser storage, or entered each run.
    No recommendation ([Credentials](#credentials)).
