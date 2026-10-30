@@ -71,7 +71,7 @@
 - - -> The initiator drops its previous secret when the responder's first frame after terms message 3 that is not an abort arrives: `runExchange` awaits the caller's `TermsRotation.partnerStored` once, before that frame is read, on the initiator only.
 - - -> The responder stores before it sends any frame after `proceed`, so that frame shows the responder stored the next secret; it shows that only where the AEAD layer opened it.
 - - -> A responder whose store failed sends an abort, which is not such a frame, so the initiator keeps its previous secret.
-- - -> A drop that throws ends the run, after the initiator sends the responder an abort stating `"the partner could not save its key file"`, so the responder reports that its partner ended the run.
+- - -> A drop that throws ends the run, after the initiator sends the responder an abort stating `"the partner could not save its copy of the shared secret"`, so the responder reports that its partner ended the run.
 - - -> A completed run in each exchange mode -- cascade, single-pass and count-only -- sends such a frame, which `packages/core/test/initiatorDropsPreviousSecret.test.ts` checks in both PSI roles.
 - - -> **Its life is one run.**
 - - -> The next run in which that side stores replaces it: as initiator it keeps the secret that run used instead, and as responder it keeps none.

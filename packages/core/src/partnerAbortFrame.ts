@@ -52,7 +52,7 @@ export const NEXT_SECRET_STORE_FAILED_ABORT_REASON =
  * literal, as every abort reason must be (see `sendAbort`).
  */
 export const KEY_FILE_SAVE_FAILED_ABORT_REASON =
-  "the partner could not save its key file";
+  "the partner could not save its copy of the shared secret";
 
 // The fixed reasons a partner's abort past the terms exchange is matched
 // against: those a PSI round sends, and the two failed saves of a rotation.
