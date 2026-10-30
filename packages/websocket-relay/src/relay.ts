@@ -7,6 +7,7 @@ import {
 } from "@alcove/core/websocket-relay";
 
 import { createFaultLatch } from "./faultLatch.ts";
+import { sendWithinWindow } from "./forwarding.ts";
 import {
   PAIRED_FRAME,
   RELAY_CLOSE_WAIT_MS,
@@ -403,14 +404,13 @@ export function attachWebSocketRelay(
   }
 
   function forward(source: Party, destination: Party, data: Buffer): void {
-    destination.socket.send(data, { binary: true }, () => {
-      if (destination.socket.bufferedAmount <= lowBytes) {
-        release(source, "backpressure");
-      }
-    });
-    if (destination.socket.bufferedAmount > highBytes) {
-      hold(source, "backpressure");
-    }
+    sendWithinWindow(
+      destination.socket,
+      data,
+      { highBytes, lowBytes },
+      () => hold(source, "backpressure"),
+      () => release(source, "backpressure"),
+    );
     charge(source, data.length);
   }
 

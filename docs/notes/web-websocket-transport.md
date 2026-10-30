@@ -560,6 +560,7 @@ Relay path, in order:
 Browser SFTP path, after the relay path, re-scoped from the earlier note's list:
 
 - **Raw relay reference configuration**, operator-run, with the `Origin` check, in the DEPLOYMENT section that names the proxy.
+  Built first-party, since no relay S7 tried passed every check: `packages/sftp-relay` and its image, specified in [SFTP_RELAY.md](../spec/SFTP_RELAY.md), with the reference configuration in [DEPLOYMENT.md](../DEPLOYMENT.md#websocket-to-tcp-proxy).
 - **Browser SSH client** with an external WebCrypto signer, as a new security-relevant dependency under the dependency policy.
 - **Browser file transport client** implementing `FileTransportClient` (`packages/core/src/connection/fileSyncConnection.ts`) with browser counterparts of the CLI adapter's liveness, listing and frame-size bounds.
 - **Host-key pin and first use** in the browser, with reconciliation as on the CLI.

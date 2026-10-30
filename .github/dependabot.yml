@@ -149,6 +149,21 @@ updates:
       # ecosystems; the semver-*-days keys are supported for npm only.
       default-days: 7
 
+  # The SFTP relay image's node base, the digest the default image pins, in
+  # its own copy in packages/sftp-relay/Dockerfile. The relay listens for any
+  # browser, so a node advisory reaches it.
+  - package-ecosystem: docker
+    directory: "/packages/sftp-relay"
+    target-branch: "staging"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    cooldown:
+      # Only default-days is valid for the docker and github-actions
+      # ecosystems; the semver-*-days keys are supported for npm only.
+      default-days: 7
+
   # The broker TLS front's nginx image. infra/broker/Dockerfile is a single
   # pinned FROM that install.sh reads and nothing builds, in the same
   # tag@sha256: form as infra/relay/Dockerfile, so a bump here is the same

@@ -4,7 +4,7 @@ title: "The Browser SFTP Path and its WebSocket-to-TCP Proxy"
 
 # The browser SFTP path, and the WebSocket-to-TCP proxy it needs
 
-_Status: design only; nothing here is built.
+_Status: design; the proxy is built as the SFTP relay ([SFTP_RELAY.md](../spec/SFTP_RELAY.md)), and the rulings on the forks are in [web-websocket-transport.md](web-websocket-transport.md#the-forks-and-their-rulings).
 The browser SSH client is chosen on two conditions, measured on 2026-10-30: the licence check passes, the maintenance check does not, and the client is sized ([The chosen client](#the-chosen-client-dependency-check-and-sizing)).
 The note frames what a browser SFTP path would need, recommends where it can, and lists the choices left open for the maintainer.
 Nothing here is normative: the channel-security rules are in
@@ -19,7 +19,8 @@ See [docs/notes/README.md](README.md)._
 
 A browser cannot open a raw TCP connection, so a browser party that wants to reach an SFTP server needs a WebSocket-to-TCP proxy between them
 ([COMMUNICATION.md](../COMMUNICATION.md#websocket-to-tcp-proxy)).
-No such proxy, and no browser SFTP client, is built:
+No browser SFTP client is built.
+The proxy is, as the first-party SFTP relay ([SFTP_RELAY.md](../spec/SFTP_RELAY.md)), with no client that uses it:
 
 - The public web application runs WebRTC exchanges only.
   For the SFTP and shared-folder channels it writes an exchange file the command line application runs
