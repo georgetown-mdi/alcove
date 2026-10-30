@@ -183,7 +183,7 @@ const problemsFor = (authored: ReceiptsDraft): Array<string> =>
 const DEFAULT_IDENTITY_COMMAND: WorkingFolderCommandLines = {
   runCommand:
     'docker run --rm --user "$(id -u):$(id -g)" --mount ' +
-    "type=bind,src=/path/to/your/working-folder,dst=/work " +
+    '"type=bind,src=/path/to/your/working-folder,dst=/work" ' +
     `${buildImageReference()} fingerprint --identity-file ` +
     ".alcove-signing-identity.json",
   windowsRunCommand:
@@ -193,7 +193,7 @@ const DEFAULT_IDENTITY_COMMAND: WorkingFolderCommandLines = {
     ".alcove-signing-identity.json",
   podmanRunCommand:
     "podman run --rm --userns=keep-id:uid=1000,gid=1000 --mount " +
-    "type=bind,src=/path/to/your/working-folder,dst=/work " +
+    '"type=bind,src=/path/to/your/working-folder,dst=/work" ' +
     `${buildImageReference()} fingerprint --identity-file ` +
     ".alcove-signing-identity.json",
 };
@@ -203,25 +203,25 @@ const DEFAULT_IDENTITY_COMMAND: WorkingFolderCommandLines = {
 const PICKED_IDENTITY_COMMAND: WorkingFolderCommandLines = {
   runCommand:
     'docker run --rm --user "$(id -u):$(id -g)" --mount ' +
-    "type=bind,src=/path/to/your/working-folder,dst=/work --mount " +
-    "type=bind,src=/path/to/your/secrets-folder," +
-    "dst=/path/to/your/secrets-folder " +
+    '"type=bind,src=/path/to/your/working-folder,dst=/work" --mount ' +
+    '"type=bind,src=/path/to/your/secrets-folder,' +
+    'dst=/path/to/your/secrets-folder" ' +
     `${buildImageReference()} fingerprint --identity-file ` +
-    "/path/to/your/secrets-folder/FILE",
+    '"/path/to/your/secrets-folder/FILE"',
   windowsRunCommand:
     "docker run --rm --mount " +
     '"type=bind,src=C:\\path\\to\\your\\working-folder,dst=/work" --mount ' +
     '"type=bind,src=C:\\path\\to\\your\\secrets-folder,' +
     'dst=/path/to/your/secrets-folder" ' +
     `${buildImageReference()} fingerprint --identity-file ` +
-    "/path/to/your/secrets-folder/FILE",
+    '"/path/to/your/secrets-folder/FILE"',
   podmanRunCommand:
     "podman run --rm --userns=keep-id:uid=1000,gid=1000 --mount " +
-    "type=bind,src=/path/to/your/working-folder,dst=/work --mount " +
-    "type=bind,src=/path/to/your/secrets-folder," +
-    "dst=/path/to/your/secrets-folder " +
+    '"type=bind,src=/path/to/your/working-folder,dst=/work" --mount ' +
+    '"type=bind,src=/path/to/your/secrets-folder,' +
+    'dst=/path/to/your/secrets-folder" ' +
     `${buildImageReference()} fingerprint --identity-file ` +
-    "/path/to/your/secrets-folder/FILE",
+    '"/path/to/your/secrets-folder/FILE"',
 };
 
 /** `command` with `args` appended in every shell. */
@@ -1640,7 +1640,7 @@ describe("the receipts card's model", () => {
         rendezvous,
       ).find(({ message }) => message.includes("creates no key there"));
       expect(notice?.command).toEqual(
-        withArgs(PICKED_IDENTITY_COMMAND, "--identity NAME"),
+        withArgs(PICKED_IDENTITY_COMMAND, '--identity "NAME"'),
       );
     }
   });
@@ -1648,23 +1648,23 @@ describe("the receipts card's model", () => {
   test("a picked-identity command mounts the secrets folder writable only to create or replace", () => {
     expect(fingerprintCommand(true)).toEqual({
       runCommand: PICKED_IDENTITY_COMMAND.runCommand.replace(
-        "dst=/path/to/your/secrets-folder ",
-        "dst=/path/to/your/secrets-folder,readonly ",
+        'dst=/path/to/your/secrets-folder" ',
+        'dst=/path/to/your/secrets-folder,readonly" ',
       ),
       windowsRunCommand: PICKED_IDENTITY_COMMAND.windowsRunCommand.replace(
         'dst=/path/to/your/secrets-folder" ',
         'dst=/path/to/your/secrets-folder,readonly" ',
       ),
       podmanRunCommand: PICKED_IDENTITY_COMMAND.podmanRunCommand.replace(
-        "dst=/path/to/your/secrets-folder ",
-        "dst=/path/to/your/secrets-folder,readonly ",
+        'dst=/path/to/your/secrets-folder" ',
+        'dst=/path/to/your/secrets-folder,readonly" ',
       ),
     });
     expect(fingerprintCommand(true, ["--identity", "NAME"])).toEqual(
-      withArgs(PICKED_IDENTITY_COMMAND, "--identity NAME"),
+      withArgs(PICKED_IDENTITY_COMMAND, '--identity "NAME"'),
     );
     expect(fingerprintCommand(true, ["--force", "--identity", "NAME"])).toEqual(
-      withArgs(PICKED_IDENTITY_COMMAND, "--force --identity NAME"),
+      withArgs(PICKED_IDENTITY_COMMAND, '--force --identity "NAME"'),
     );
   });
 
@@ -1674,7 +1674,7 @@ describe("the receipts card's model", () => {
       "with the command below for your system and NAME your name, because",
     );
     expect(folder.command).toEqual(
-      withArgs(DEFAULT_IDENTITY_COMMAND, "--force --identity NAME"),
+      withArgs(DEFAULT_IDENTITY_COMMAND, '--force --identity "NAME"'),
     );
     const picked = identityRegenerationNotice(true);
     expect(picked.message).toContain(
@@ -1682,7 +1682,7 @@ describe("the receipts card's model", () => {
         "the file you picked, because",
     );
     expect(picked.command).toEqual(
-      withArgs(PICKED_IDENTITY_COMMAND, "--force --identity NAME"),
+      withArgs(PICKED_IDENTITY_COMMAND, '--force --identity "NAME"'),
     );
   });
 
@@ -1809,7 +1809,7 @@ describe("the signing identity's bound name against the agreed terms", () => {
     expect(statement).toContain(REKEY_POINTER);
     expect(statement).not.toContain("identity.json");
     expect(identityRegenerationNotice(true).command).toEqual(
-      withArgs(PICKED_IDENTITY_COMMAND, "--force --identity NAME"),
+      withArgs(PICKED_IDENTITY_COMMAND, '--force --identity "NAME"'),
     );
   });
 

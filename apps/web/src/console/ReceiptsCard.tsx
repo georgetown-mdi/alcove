@@ -24,6 +24,7 @@ import {
   CERTIFICATE_EXPORT_NOTICE,
   MAX_AGE_DAYS_LABEL,
   MAX_AGE_LABEL,
+  PICKED_IDENTITY_CREATE_COMMAND,
   RETENTION_NOTE_LABEL,
   RETENTION_NOTE_NOTICE,
   RETENTION_NOTE_PLACEHOLDER,
@@ -104,7 +105,7 @@ function fingerprintFailureMessage(
           "below for your system, with NAME your name and FILE the file you " +
           "picked, then show the fingerprint again. Or pick the file that " +
           "already holds your identity.",
-        command: fingerprintCommand(true, ["--identity", "NAME"]),
+        command: PICKED_IDENTITY_CREATE_COMMAND,
       };
     case "refused":
       return identityLocationPicked

@@ -8,14 +8,15 @@ import {
 } from "@alcove/core";
 
 import {
-  NOTE_CONTROL_CHAR_PATTERN,
-  SIGNING_IDENTITY_FILE_NAME,
-} from "@jobContract/intentSchemas";
-import {
+  IDENTITY_NAME_PLACEHOLDER,
   SECRETS_FOLDER_PLACEHOLDER,
   WINDOWS_SECRETS_FOLDER_PLACEHOLDER,
   workingFolderCommand,
 } from "@psi/dockerRunCommand";
+import {
+  NOTE_CONTROL_CHAR_PATTERN,
+  SIGNING_IDENTITY_FILE_NAME,
+} from "@jobContract/intentSchemas";
 
 import { OPT_IN_TOKEN_MAX_AGE_DAYS, maxAgeDaysError } from "./tokenMaxAge";
 
@@ -354,7 +355,7 @@ export interface IdentityCommandNotice {
 }
 
 /** The arguments that make a new identity under the name NAME stands for. */
-const NEW_IDENTITY_ARGS = ["--identity", "NAME"];
+const NEW_IDENTITY_ARGS = ["--identity", IDENTITY_NAME_PLACEHOLDER];
 
 /**
  * Where a divergence statement finds the re-key command: the card's note on

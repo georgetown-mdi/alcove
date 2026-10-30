@@ -56,6 +56,17 @@ export const CRONTAB_ACCOUNT_NOTE =
   "Add a cron line with crontab -e as the account that will run the " +
   "schedule, not with sudo: a line in root's crontab runs Alcove as root.";
 
+/** The sentence on what a POSIX shell still reads inside the double quotes a
+ * pasted path or name goes between. */
+export const PASTED_TEXT_ESCAPING_NOTE =
+  'In a Linux or macOS command, put a \\ before each $, `, \\, or " in a ' +
+  "path or name you paste between double quotes.";
+
+/** The sentence on a pasted path's `%` in a cron line, which cron reads as
+ * the end of the command ({@link cronLine}). */
+export const CRON_PERCENT_NOTE =
+  "In a cron line, also write each % in a path as \\%.";
+
 /** The panels' sentence on the Docker lines' account option, for a folder
  * handed to the image's own account. */
 export const FOLDER_OWNED_BY_IMAGE_ACCOUNT_NOTE =

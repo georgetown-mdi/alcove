@@ -1,6 +1,7 @@
 import { CopyableCode } from "@components/CopyableCode";
 import styles from "@styles/app.module.css";
 
+import { PASTED_TEXT_ESCAPING_NOTE } from "@recurring/scheduledRunCommand";
 import { PODMAN_USER_NAMESPACE_FLAG } from "@psi/containerAccount";
 import { RunCommandLines } from "@recurring/RunCommandLines";
 
@@ -37,6 +38,7 @@ export function WorkingFolderCommandLines({
         code={command.podmanRunCommand}
         ariaLabel={`${ariaLabel} for rootless Podman`}
       />
+      <p className={styles.small}>{PASTED_TEXT_ESCAPING_NOTE}</p>
     </div>
   );
 }

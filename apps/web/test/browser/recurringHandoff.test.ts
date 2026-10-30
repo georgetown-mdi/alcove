@@ -11,7 +11,9 @@ import "@mantine/core/styles.css";
 
 import {
   CRONTAB_ACCOUNT_NOTE,
+  CRON_PERCENT_NOTE,
   FOLDER_OWNED_BY_IMAGE_ACCOUNT_NOTE,
+  PASTED_TEXT_ESCAPING_NOTE,
 } from "@recurring/scheduledRunCommand";
 import { RecurringHandoff } from "@recurring/RecurringHandoff";
 
@@ -177,6 +179,8 @@ describe("RecurringHandoff panel", () => {
     // Which crontab the line goes in, and the account option a folder handed
     // to the image's account leaves out.
     expect(text()).toContain(CRONTAB_ACCOUNT_NOTE);
+    expect(text()).toContain(PASTED_TEXT_ESCAPING_NOTE);
+    expect(text()).toContain(CRON_PERCENT_NOTE);
     expect(text()).toContain(FOLDER_OWNED_BY_IMAGE_ACCOUNT_NOTE);
     // The input file the command reads is named as one to put in the folder.
     expect(text()).toContain("Put your input file in that folder as input.csv");
@@ -355,6 +359,8 @@ describe("RecurringHandoff panel", () => {
       'cd "/path/to/your/exchange-folder" && "/path/to/alcove"',
     );
     expect(text()).toContain(CRONTAB_ACCOUNT_NOTE);
+    expect(text()).toContain(PASTED_TEXT_ESCAPING_NOTE);
+    expect(text()).toContain(CRON_PERCENT_NOTE);
     expect(text()).not.toContain(FOLDER_OWNED_BY_IMAGE_ACCOUNT_NOTE);
   });
 

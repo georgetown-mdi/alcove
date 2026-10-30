@@ -17,8 +17,10 @@ import { buildImageReference } from "@psi/dockerRunCommand";
 
 import {
   CRONTAB_ACCOUNT_NOTE,
+  CRON_PERCENT_NOTE,
   EXCHANGE_FOLDER_PLACEHOLDER,
   FOLDER_OWNED_BY_IMAGE_ACCOUNT_NOTE,
+  PASTED_TEXT_ESCAPING_NOTE,
   bindPathsCaveat,
   handoffInputName,
   runLines,
@@ -230,7 +232,8 @@ function ScheduleLines({ lines }: { lines: ShownRunLines }) {
         each command is the folder the result goes in: each run writes its
         result there as alcove-results-&lt;time&gt;.csv, with the same time as
         that run&apos;s exchange record alcove-record-&lt;time&gt;.json, and
-        adds to exchange.log in that folder. {CRONTAB_ACCOUNT_NOTE}
+        adds to exchange.log in that folder. {PASTED_TEXT_ESCAPING_NOTE}{" "}
+        {CRON_PERCENT_NOTE} {CRONTAB_ACCOUNT_NOTE}
         {dockerShown &&
           " A scheduled job does not use your shell's PATH, so check that " +
             "/usr/bin/docker is where Docker is installed (command -v docker). " +

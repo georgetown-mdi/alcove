@@ -574,8 +574,8 @@ describe("ReceiptsCard: asking the console for this party's fingerprint", () => 
         "--identity NAME",
     );
     expect(blocks.posix).toContain(
-      "--mount type=bind,src=/path/to/your/secrets-folder," +
-        "dst=/path/to/your/secrets-folder ",
+      '--mount "type=bind,src=/path/to/your/secrets-folder,' +
+        'dst=/path/to/your/secrets-folder" ',
     );
     expect(blocks.windows).toContain(
       '--mount "type=bind,src=C:\\path\\to\\your\\secrets-folder,' +
@@ -623,8 +623,8 @@ describe("ReceiptsCard: asking the console for this party's fingerprint", () => 
         "--force --identity NAME",
     );
     expect(picked.posix).toContain(
-      "--mount type=bind,src=/path/to/your/secrets-folder," +
-        "dst=/path/to/your/secrets-folder ",
+      '--mount "type=bind,src=/path/to/your/secrets-folder,' +
+        'dst=/path/to/your/secrets-folder" ',
     );
     // The picked-location notice names the identity's creation for each
     // shell too.
@@ -838,8 +838,8 @@ describe("ReceiptsCard: a failed request", () => {
       " fingerprint --identity-file /path/to/your/secrets-folder/FILE",
     );
     expect(read.posix).toContain(
-      "--mount type=bind,src=/path/to/your/secrets-folder," +
-        "dst=/path/to/your/secrets-folder,readonly ",
+      '--mount "type=bind,src=/path/to/your/secrets-folder,' +
+        'dst=/path/to/your/secrets-folder,readonly" ',
     );
     expect(read.windows).toContain(
       '--mount "type=bind,src=C:\\path\\to\\your\\secrets-folder,' +

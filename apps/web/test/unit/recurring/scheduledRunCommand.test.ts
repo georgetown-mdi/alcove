@@ -7,9 +7,11 @@ import { afterEach, describe, expect, test } from "vitest";
 
 import {
   CRONTAB_ACCOUNT_NOTE,
+  CRON_PERCENT_NOTE,
   EXCHANGE_FOLDER_PLACEHOLDER,
   FOLDER_OWNED_BY_IMAGE_ACCOUNT_NOTE,
   INSTALLED_ALCOVE_PLACEHOLDER,
+  PASTED_TEXT_ESCAPING_NOTE,
   dockerCronLine,
   dockerRunCommand,
   dockerTaskSchedulerLine,
@@ -79,6 +81,16 @@ describe("the scheduled-run panels' notes", () => {
       "If the exchange folder belongs to user 1000 (you ran chown 1000:1000 " +
         'on it), leave out --user "$(id -u):$(id -g)" from the Docker command ' +
         "and cron line.",
+    );
+  });
+
+  test("name what a pasted path needs escaped, in one sentence each", () => {
+    expect(PASTED_TEXT_ESCAPING_NOTE).toBe(
+      'In a Linux or macOS command, put a \\ before each $, `, \\, or " in ' +
+        "a path or name you paste between double quotes.",
+    );
+    expect(CRON_PERCENT_NOTE).toBe(
+      "In a cron line, also write each % in a path as \\%.",
     );
   });
 });
@@ -524,7 +536,7 @@ describe("a hand-off whose argv is not an alcove command line", () => {
 
 describe("a command-line step the console's copy names", () => {
   const WORKING_FOLDER_MOUNT =
-    "--mount type=bind,src=/path/to/your/working-folder,dst=/work";
+    '--mount "type=bind,src=/path/to/your/working-folder,dst=/work"';
   const WINDOWS_WORKING_FOLDER_MOUNT =
     '--mount "type=bind,src=C:\\path\\to\\your\\working-folder,dst=/work"';
 
@@ -570,10 +582,10 @@ describe("a command-line step the console's copy names", () => {
       },
     );
     const mount =
-      "--mount type=bind,src=/path/to/your/secrets-folder," +
-      "dst=/path/to/your/secrets-folder,readonly";
+      '--mount "type=bind,src=/path/to/your/secrets-folder,' +
+      'dst=/path/to/your/secrets-folder,readonly"';
     const args =
-      "fingerprint --identity-file /path/to/your/secrets-folder/FILE";
+      'fingerprint --identity-file "/path/to/your/secrets-folder/FILE"';
     expect(lines).toEqual({
       runCommand: `docker run --rm ${DOCKER_USER} ${WORKING_FOLDER_MOUNT} ${mount} ${IMAGE} ${args}`,
       windowsRunCommand:
