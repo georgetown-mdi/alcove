@@ -32,7 +32,6 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@alcove/sftp-relay": "file:../../packages/sftp-relay",
     "@alcove/testkit": "file:../../packages/testkit",
     "@rollup/plugin-commonjs": "^29.0.3",
     "@rollup/plugin-json": "^6.1.0",

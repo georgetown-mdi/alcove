@@ -1076,8 +1076,8 @@ jobs:
       - name: Assert the relay refuses to start with no target
         run: |
           set -uo pipefail
-          docker run --rm "$IMAGE" --allowed-origin http://app.test
-          code=$?
+          code=0
+          docker run --rm "$IMAGE" --allowed-origin http://app.test || code=$?
           echo "exited $code"
           test "$code" = 64
 
