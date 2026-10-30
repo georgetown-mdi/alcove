@@ -54,9 +54,8 @@ function holdsVerifier(copy: OrderedCopy, verifier: string): boolean {
  * `copies` with each runnable one's {@link ManagedStoredCopy.order} against
  * `imported`, read from the record `read` returns for its `id`. A copy whose
  * record is gone, unreadable, holds no secret, or orders nothing is returned
- * as it was: the order only adds to the question. The replace the operator
- * chooses re-checks the record it writes, so a record changed since is
- * refused there.
+ * as it was: the order only adds to the question, and the replace does not
+ * re-check it.
  */
 export async function orderManagedStoredCopies(
   copies: ReadonlyArray<ManagedStoredCopy>,
