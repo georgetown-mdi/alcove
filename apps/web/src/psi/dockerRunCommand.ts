@@ -198,6 +198,31 @@ export const WINDOWS_WORKING_FOLDER_PLACEHOLDER =
 export const WINDOWS_SECRETS_FOLDER_PLACEHOLDER =
   "C:\\path\\to\\your\\secrets-folder";
 
+/** The argument a one-off command names for the identity string, which the
+ * operator replaces with their name. */
+export const IDENTITY_NAME_PLACEHOLDER = "NAME";
+
+/** The path placeholders a one-off command names, which the operator replaces
+ * with paths of their own. */
+export const WORKING_FOLDER_PATH_PLACEHOLDERS: ReadonlyArray<string> = [
+  WORKING_FOLDER_PLACEHOLDER,
+  SECRETS_FOLDER_PLACEHOLDER,
+  WINDOWS_WORKING_FOLDER_PLACEHOLDER,
+  WINDOWS_SECRETS_FOLDER_PLACEHOLDER,
+];
+
+/** Whether a one-off command's token holds a placeholder the operator
+ * replaces, which is double-quoted so what they put in its place may hold a
+ * space. */
+function holdsOneOffPlaceholder(token: string): boolean {
+  return (
+    token === IDENTITY_NAME_PLACEHOLDER ||
+    WORKING_FOLDER_PATH_PLACEHOLDERS.some((placeholder) =>
+      token.includes(placeholder),
+    )
+  );
+}
+
 /**
  * A one-off command over the operator's working folder, per shell: Docker on
  * Linux and macOS, as the operator's own account; Docker Desktop on Windows in
@@ -211,11 +236,15 @@ export interface WorkingFolderCommandLines {
 
 /**
  * Whether PowerShell needs `token` quoted though cmd would not: a `--mount`
- * value, whose commas PowerShell reads as an array, and a leading `@`, which
- * it reads as splatting.
+ * value, whose commas PowerShell reads as an array, a leading `@`, which it
+ * reads as splatting, and a token holding a placeholder the operator replaces.
  */
 function powerShellQuotes(token: string): boolean {
-  return token.startsWith("type=bind,") || token.startsWith("@");
+  return (
+    token.startsWith("type=bind,") ||
+    token.startsWith("@") ||
+    holdsOneOffPlaceholder(token)
+  );
 }
 
 /**
@@ -224,7 +253,8 @@ function powerShellQuotes(token: string): boolean {
  * the folder mounted at the image's working directory, so a file name in
  * `args` is read from it, and each of `bindPaths` at its own path inside the
  * container. `interactive` gives the run a terminal, for a command that asks
- * before it writes.
+ * before it writes. Each token holding a placeholder the operator replaces is
+ * double-quoted in every shell.
  */
 export function workingFolderCommand(
   args: ReadonlyArray<string>,
@@ -266,8 +296,8 @@ export function workingFolderCommand(
   if (posix === undefined || podman === undefined || windows === undefined)
     throw new Error("a working-folder command names an unmountable path");
   return {
-    runCommand: shellJoinRunArgv(posix),
+    runCommand: shellJoinRunArgv(posix, holdsOneOffPlaceholder),
     windowsRunCommand: windowsJoinCommand(windows, powerShellQuotes),
-    podmanRunCommand: shellJoinRunArgv(podman),
+    podmanRunCommand: shellJoinRunArgv(podman, holdsOneOffPlaceholder),
   };
 }

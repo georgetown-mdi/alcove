@@ -20,7 +20,9 @@ import {
 } from "@recurring/managedCronExportModel";
 import {
   CRONTAB_ACCOUNT_NOTE,
+  CRON_PERCENT_NOTE,
   FOLDER_OWNED_BY_IMAGE_ACCOUNT_NOTE,
+  PASTED_TEXT_ESCAPING_NOTE,
 } from "@recurring/scheduledRunCommand";
 import {
   clearManagedExchanges,
@@ -239,6 +241,8 @@ describe("the command-line export hands over two files", () => {
       .element(page.getByText("Register-ScheduledTask", { exact: false }))
       .toBeInTheDocument();
     expect(app.container.textContent).toContain(CRONTAB_ACCOUNT_NOTE);
+    expect(app.container.textContent).toContain(PASTED_TEXT_ESCAPING_NOTE);
+    expect(app.container.textContent).toContain(CRON_PERCENT_NOTE);
     expect(app.container.textContent).toContain(
       FOLDER_OWNED_BY_IMAGE_ACCOUNT_NOTE,
     );

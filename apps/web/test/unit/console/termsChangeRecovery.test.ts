@@ -180,7 +180,7 @@ describe("applying the proposal from the run step", () => {
       expect(message.command).toEqual({
         runCommand:
           'docker run --rm -it --user "$(id -u):$(id -g)" --mount ' +
-          "type=bind,src=/path/to/your/working-folder,dst=/work " +
+          '"type=bind,src=/path/to/your/working-folder,dst=/work" ' +
           `${image} apply @${JOB_ID}/alcove.proposed-terms`,
         windowsRunCommand:
           "docker run --rm -it --mount " +
@@ -188,7 +188,7 @@ describe("applying the proposal from the run step", () => {
           `${image} apply "@${JOB_ID}/alcove.proposed-terms"`,
         podmanRunCommand:
           "podman run --rm -it --userns=keep-id:uid=1000,gid=1000 --mount " +
-          "type=bind,src=/path/to/your/working-folder,dst=/work " +
+          '"type=bind,src=/path/to/your/working-folder,dst=/work" ' +
           `${image} apply @${JOB_ID}/alcove.proposed-terms`,
       });
     }
@@ -209,7 +209,7 @@ describe("applying the proposal from the run step", () => {
       const { command } = termsApplyOutcomeMessage(outcome, WORKING_FOLDER);
       expect(command?.runCommand).toBe(
         'docker run --rm -it --user "$(id -u):$(id -g)" --mount ' +
-          "type=bind,src=/path/to/your/working-folder,dst=/work " +
+          '"type=bind,src=/path/to/your/working-folder,dst=/work" ' +
           `${image} apply alcove.proposed-terms`,
       );
       expect(command?.windowsRunCommand).toBe(

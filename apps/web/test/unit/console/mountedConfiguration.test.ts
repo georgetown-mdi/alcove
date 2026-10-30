@@ -75,7 +75,7 @@ const HAND_BACK: JobConfigurationHandBack = {
 const UPDATE_COMMAND = {
   runCommand:
     'docker run --rm --user "$(id -u):$(id -g)" --mount ' +
-    "type=bind,src=/path/to/your/working-folder,dst=/work " +
+    '"type=bind,src=/path/to/your/working-folder,dst=/work" ' +
     `${buildImageReference()} update`,
   windowsRunCommand:
     "docker run --rm --mount " +
@@ -83,7 +83,7 @@ const UPDATE_COMMAND = {
     `${buildImageReference()} update`,
   podmanRunCommand:
     "podman run --rm --userns=keep-id:uid=1000,gid=1000 --mount " +
-    "type=bind,src=/path/to/your/working-folder,dst=/work " +
+    '"type=bind,src=/path/to/your/working-folder,dst=/work" ' +
     `${buildImageReference()} update`,
 };
 

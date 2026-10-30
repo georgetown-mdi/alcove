@@ -1339,6 +1339,14 @@ None of them is a line break to cron, so none can split a crontab entry; the
 limit is that such a character can still appear in the mount text the
 operator copies.
 
+The note on a path or name pasted between double quotes
+(`PASTED_TEXT_ESCAPING_NOTE`) covers a Linux or macOS shell only, and has two
+limits. No note says what a path or name needs inside a PowerShell line's
+double quotes. And a folder pasted into a `--mount` source still cannot hold a
+`,` or a `"` once it is escaped for the shell, since `--mount` reads its value
+as CSV, the reason `unmountableBindPaths` refuses such a path; the note does
+not say so.
+
 ### Re-supplied each run
 
 These are never persisted in the record. They are supplied at each run -- by
