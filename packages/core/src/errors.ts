@@ -609,7 +609,7 @@ export class PeerAbortError extends ConnectionError {
    * round's (`PSI_SET_TOO_LARGE_ABORT_REASON` and its siblings), the
    * responder's failed store of the next shared secret
    * (`NEXT_SECRET_STORE_FAILED_ABORT_REASON`), or the initiator's failed drop
-   * of the previous one (`KEY_FILE_SAVE_FAILED_ABORT_REASON`), all in
+   * of the previous one (`PREVIOUS_SECRET_DROP_FAILED_ABORT_REASON`), all in
    * `packages/core/src/partnerAbortFrame.ts`; undefined for any other abort.
    */
   readonly partnerReason: string | undefined;

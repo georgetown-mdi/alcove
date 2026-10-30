@@ -51,8 +51,8 @@ export const NEXT_SECRET_STORE_FAILED_ABORT_REASON =
  * then, so it is not {@link NEXT_SECRET_STORE_FAILED_ABORT_REASON}. A fixed
  * literal, as every abort reason must be (see `sendAbort`).
  */
-export const KEY_FILE_SAVE_FAILED_ABORT_REASON =
-  "the partner could not save its copy of the shared secret";
+export const PREVIOUS_SECRET_DROP_FAILED_ABORT_REASON =
+  "the partner could not remove its previous shared secret";
 
 // The fixed reasons a partner's abort past the terms exchange is matched
 // against: those a PSI round sends, and the two failed saves of a rotation.
@@ -61,7 +61,7 @@ const KEPT_ABORT_REASONS: ReadonlyArray<string> = [
   PSI_SET_REFUSED_ABORT_REASON,
   PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
   NEXT_SECRET_STORE_FAILED_ABORT_REASON,
-  KEY_FILE_SAVE_FAILED_ABORT_REASON,
+  PREVIOUS_SECRET_DROP_FAILED_ABORT_REASON,
 ];
 
 /**

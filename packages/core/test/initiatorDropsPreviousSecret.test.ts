@@ -8,8 +8,8 @@ import type { MessageConnection } from "../src/connection/messageConnection";
 import type { TermsRotation } from "../src/protocolSetup";
 import type { NextSecretInputs } from "../src/nextSecret";
 import {
-  KEY_FILE_SAVE_FAILED_ABORT_REASON,
   NEXT_SECRET_STORE_FAILED_ABORT_REASON,
+  PREVIOUS_SECRET_DROP_FAILED_ABORT_REASON,
 } from "../src/partnerAbortFrame";
 import { PeerAbortError } from "../src/errors";
 import { randomBytes } from "../src/utils/crypto";
@@ -213,7 +213,7 @@ for (const mode of MODES) {
       const reason = (responder as PromiseRejectedResult).reason as unknown;
       expect(reason).toBeInstanceOf(PeerAbortError);
       expect((reason as PeerAbortError).partnerReason).toBe(
-        KEY_FILE_SAVE_FAILED_ABORT_REASON,
+        PREVIOUS_SECRET_DROP_FAILED_ABORT_REASON,
       );
     }
   });
