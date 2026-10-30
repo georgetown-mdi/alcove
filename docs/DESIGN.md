@@ -88,7 +88,7 @@ As mentioned in the threat model, brute-force attacks are possible for simple ke
 
 Communication over SFTP requires polling for messages, which adds latency. Where both parties can reach a shared SSH server, SSH channels - bidirectional byte streams that need no polling - could replace it: the parties would establish order through the server's SFTP subsystem, or through a shell primitive such as `mkdir` where remote commands are permitted, then pass messages over SSH channels. Such a transport must satisfy the message-delivery contract in [COMMUNICATION.md](COMMUNICATION.md#message-delivery-and-teardown).
 
-This is not pursued, by the maintainer's ruling of 2026-10-29. On real data sets latency is not the bulk of the time, and polling faster trips servers' attack prevention. A CLI exchange that needs no polling runs over WebRTC.
+This is not pursued: on real data sets latency is not the bulk of the time, and polling faster trips servers' attack prevention. A CLI exchange that needs no polling runs over WebRTC.
 
 ## WebSocket relay
 

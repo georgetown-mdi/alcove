@@ -31,7 +31,7 @@ Captured in [DESIGN.md#possible-extensions](DESIGN.md#possible-extensions). Thes
 
 - Threshold and weighted scoring via secure multi-party computation
 - Brute-force protection through input-size controls
-- Post-quantum hybrid key establishment and dual signing, a decision recorded only in [key-establishment-fips-boundary.md](notes/key-establishment-fips-boundary.md#post-quantum-horizon)
+- Post-quantum hybrid key establishment and dual signing, an open decision recorded only in [key-establishment-fips-boundary.md](notes/key-establishment-fips-boundary.md#post-quantum-horizon), not in DESIGN.md
 - Electron desktop distribution of the web application. The progressive-web-app half is built: the hosted application is installable and its shell renders offline (see [MANAGED_EXCHANGE.md](MANAGED_EXCHANGE.md#installing-the-app))
 
 ## See also

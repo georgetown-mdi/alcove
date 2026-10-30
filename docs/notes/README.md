@@ -16,7 +16,7 @@ stands, from a direction still open to a decision taken and built.
 | [backup-import-per-exchange-guard.md](backup-import-per-exchange-guard.md) | Decided on the maintainer's ruling and built. |
 | [bound-transformed-value.md](bound-transformed-value.md) | Decided and built, by a 3-panelist design panel. |
 | [broker-runtime-closure.md](broker-runtime-closure.md) | Decided and built. |
-| [browser-sftp-proxy.md](browser-sftp-proxy.md) | Design; the proxy is built as the first-party SFTP relay after S7 found no off-the-shelf relay that passes, and the browser client is not built. `@microsoft/dev-tunnels-ssh` is chosen after S8, conditional on a dependency check: its licence check passes and its maintenance check does not; the client is sized. |
+| [browser-sftp-proxy.md](browser-sftp-proxy.md) | Design; the proxy is built as the first-party SFTP relay after S7 found no off-the-shelf relay that passes, and the browser client is not built. `@microsoft/dev-tunnels-ssh` is chosen after S8, conditional on a dependency check and a sizing: its licence check passes and its maintenance check does not, and the client is sized. |
 | [cascade-fan-out.md](cascade-fan-out.md) | Resolved; the realization ships, under `linkage_strategy: cascade` as under `single-pass`. |
 | [claude-md-spawn-cost.md](claude-md-spawn-cost.md) | Decided and built; what each spawn type receives, the orchestrator-only share under two partitions, and the split taken against it. |
 | [cli-webrtc-attempt-cycle.md](cli-webrtc-attempt-cycle.md) | Decided on the maintainer's ruling and built, after a real-broker measurement. |

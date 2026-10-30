@@ -7,7 +7,7 @@ title: "The Browser SFTP Path and its WebSocket-to-TCP Proxy"
 _Status: design; the proxy is built as the SFTP relay ([SFTP_RELAY.md](../spec/SFTP_RELAY.md)), and the rulings on the forks are in [web-websocket-transport.md](web-websocket-transport.md#the-forks-and-their-rulings).
 The relay is first-party and fixed-target, by the maintainer's ruling of 2026-10-29 on fork 5, after spike S7 found no off-the-shelf relay, of three tried, that both refuses by `Origin` and holds backpressure in both directions.
 Spike S8 drove three browser SSH clients: `@microsoft/dev-tunnels-ssh` passed with three additions in the spike's own code, `ssh2` bundled for the browser passed only against a server that also offers an ECDSA host key, and `@verdigris/libssh2.js` failed.
-The browser SSH client is `@microsoft/dev-tunnels-ssh`, chosen by the maintainer on 2026-10-29 and conditional on two checks, measured on 2026-10-30: the licence check passes, the maintenance check does not, and the client is sized ([The chosen client](#the-chosen-client-dependency-check-and-sizing)).
+The browser SSH client is `@microsoft/dev-tunnels-ssh`, chosen by the maintainer on 2026-10-29 and conditional on a dependency check and a sizing, measured on 2026-10-30: the licence check passes, the maintenance check does not, and the client is sized ([The chosen client](#the-chosen-client-dependency-check-and-sizing)).
 The note frames what a browser SFTP path would need, recommends where it can, and lists the choices left open for the maintainer.
 Nothing here is normative: the channel-security rules are in
 [CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#which-channels-request-it),
