@@ -7,6 +7,7 @@ import {
   computeKexKeys,
   initiatorConfirmTag,
   noiseHkdf,
+  responderConfirmTag,
 } from "../src/kex";
 import {
   deriveNextSecret,
@@ -398,7 +399,9 @@ test("known-answer vector: computeKexKeys reproduces the session key, confirmati
     expect(toHex(k.confirmKey)).toBe(vectors.derived.confirmKeyHex);
     expect(toHex(k.handshakeHash)).toBe(c.handshakeHashHex);
     expect(toHex(k.sessionKey)).toBe(c.sessionKeyHex);
-    expect(toHex(k.responderConfirm)).toBe(c.responderConfirmHex);
+    expect(
+      toHex(await responderConfirmTag(k.confirmKey, k.handshakeHash, false)),
+    ).toBe(c.responderConfirmHex);
 
     const initiatorValue = await importRotationValue(
       fromHex(vectors.inputs.initiatorValueHex),
@@ -465,8 +468,13 @@ test("known-answer vector: the schedule under the previous secret gives message 
     expect(toHex(p.handshakeHash)).toBe(c.underPrevious.handshakeHashHex);
     expect(toHex(p.sessionKey)).toBe(c.underPrevious.sessionKeyHex);
     expect(toHex(p.confirmKey)).toBe(c.underPrevious.confirmKeyHex);
-    expect(toHex(p.responderConfirm)).toBe(c.underPrevious.responderConfirmHex);
-    expect(c.wire.msg2.previousConfirm).toBe(toBase64Url(p.responderConfirm));
+    const previousTag = await responderConfirmTag(
+      p.confirmKey,
+      p.handshakeHash,
+      true,
+    );
+    expect(toHex(previousTag)).toBe(c.underPrevious.responderConfirmHex);
+    expect(c.wire.msg2.previousConfirm).toBe(toBase64Url(previousTag));
     const wrapped = await wrapRotationValue(
       p.sessionKey,
       "initiator",
@@ -1020,7 +1028,19 @@ async function fakeResponderUpToMsg2(
     msg1.reqEnc,
     responderReqEnc,
   );
-  return { eInitPub, eRespPub: eph.publicKey, keys, responderReqEnc };
+  return {
+    eInitPub,
+    eRespPub: eph.publicKey,
+    keys: {
+      ...keys,
+      responderConfirm: await responderConfirmTag(
+        keys.confirmKey,
+        keys.handshakeHash,
+        false,
+      ),
+    },
+    responderReqEnc,
+  };
 }
 
 test("a reflected confirmation (the initiator's own role label) does not verify", async () => {
@@ -1358,7 +1378,11 @@ async function computeKexKeysUnderTag(
     handshakeHash: h,
     responderConfirm: await hmacSha256(
       confirmKey,
-      concatBytes(encoder.encode("alcove-kex-v2:responder-confirm"), h),
+      concatBytes(
+        encoder.encode("alcove-kex-v2:responder-confirm"),
+        h,
+        flagByte(false),
+      ),
     ),
   };
 }
@@ -1389,7 +1413,11 @@ test("the tag-parameterized schedule reproduces computeKexKeys under the shipped
   expect(toHex(mirrored.sessionKey)).toBe(toHex(actual.sessionKey));
   expect(toHex(mirrored.confirmKey)).toBe(toHex(actual.confirmKey));
   expect(toHex(mirrored.handshakeHash)).toBe(toHex(actual.handshakeHash));
-  expect(toHex(mirrored.responderConfirm)).toBe(toHex(actual.responderConfirm));
+  expect(toHex(mirrored.responderConfirm)).toBe(
+    toHex(
+      await responderConfirmTag(actual.confirmKey, actual.handshakeHash, false),
+    ),
+  );
 });
 
 test("a peer on the superseded protocol-version tag fails the handshake closed", async () => {

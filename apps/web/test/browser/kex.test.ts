@@ -12,6 +12,7 @@ import {
   historyVerifierBytes,
   importRotationValue,
   initiatorConfirmTag,
+  responderConfirmTag,
   runKex,
   unwrapRotationValue,
   wrapRotationValue,
@@ -213,7 +214,11 @@ describe("key exchange in the browser", () => {
       expect(toHex(keys.confirmKey)).toBe(vectors.derived.confirmKeyHex);
       expect(toHex(keys.handshakeHash)).toBe(kexCase.handshakeHashHex);
       expect(toHex(keys.sessionKey)).toBe(kexCase.sessionKeyHex);
-      expect(toHex(keys.responderConfirm)).toBe(kexCase.responderConfirmHex);
+      expect(
+        toHex(
+          await responderConfirmTag(keys.confirmKey, keys.handshakeHash, false),
+        ),
+      ).toBe(kexCase.responderConfirmHex);
     },
   );
 

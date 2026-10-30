@@ -126,12 +126,20 @@ function computeKexKeys(psk, eInitPub, eRespPub, dh, iReq, rReq) {
   const master = Buffer.concat([ck, h]);
   const sessionKey = hkdfApp(master, SESSION_LABEL, 32);
   const confirmKey = hkdfApp(ck, CONFIRM_KEY_LABEL, 32);
-  const responderConfirm = hmac(
-    confirmKey,
-    Buffer.concat([Buffer.from(RESPONDER_CONFIRM_LABEL, "utf8"), h]),
-  );
-  return { ck, h, sessionKey, confirmKey, responderConfirm };
+  return { ck, h, sessionKey, confirmKey };
 }
+
+// The responder's tag binds after h the byte of the message 2 field it is sent
+// in: 0 for confirm (the current secret), 1 for previousConfirm.
+const responderConfirmTag = (k, previousSchedule) =>
+  hmac(
+    k.confirmKey,
+    Buffer.concat([
+      Buffer.from(RESPONDER_CONFIRM_LABEL, "utf8"),
+      k.h,
+      flagByte(previousSchedule),
+    ]),
+  );
 
 // Each party's value wrapped under the key its label derives from the session
 // key; the initiator's tag binds the previous-secret flag and its wrapped value
@@ -308,8 +316,8 @@ const computed = FLAG_CASES.map((c) => {
   );
   return {
     c,
-    k,
-    p,
+    k: { ...k, responderConfirm: responderConfirmTag(k, false) },
+    p: { ...p, responderConfirm: responderConfirmTag(p, true) },
     r: computeRotation(k, initiatorValue, responderValue, false),
     rp: computeRotation(p, initiatorValue, responderValue, true),
   };
@@ -404,7 +412,8 @@ const vector = {
     "is message 2's second tag, with the initiator's tag for a handshake " +
     "completed under it; and the history verifiers, both history proofs and " +
     "both behind notices are recorded once. computeKexKeys, " +
-    "initiatorConfirmTag, the rotation functions and the history functions " +
+    "responderConfirmTag, initiatorConfirmTag, the rotation functions and " +
+    "the history functions " +
     "in packages/core/src reproduce them from these inputs; kex.test.ts " +
     "checks that on Node and apps/web's browser suite checks the same file " +
     "against the browser build in real Chromium. The chaining key and " +
@@ -454,7 +463,9 @@ const vector = {
       "MixKey(eInitiatorPub), MixHash(initiatorFlagByte), MixHash(eResponderPub), " +
       "MixKey(eResponderPub), MixHash(responderFlagByte), MixKey(dh). sessionKey " +
       "= HKDF(ck||h, sessionLabel, 32); confirmKey = HKDF(ck, confirmKeyLabel, " +
-      "32); responder confirm = HMAC(confirmKey, label||h); initiator " +
+      "32); responder confirm = HMAC(confirmKey, label||h||scheduleByte), " +
+      "scheduleByte 0x00 for msg2's confirm (the current secret) and 0x01 " +
+      "for its previousConfirm (the previous secret); initiator " +
       "confirm = HMAC(confirmKey, label||h||usedPreviousByte||" +
       "wrappedInitiatorValue), usedPreviousByte 0x01 when the initiator " +
       "completed under its previous secret, else 0x00.",

@@ -7,7 +7,10 @@ import { createMessagePipe } from "../src/connection/messageConnection";
 import type { MessageConnection } from "../src/connection/messageConnection";
 import type { TermsRotation } from "../src/protocolSetup";
 import type { NextSecretInputs } from "../src/nextSecret";
-import { NEXT_SECRET_STORE_FAILED_ABORT_REASON } from "../src/partnerAbortFrame";
+import {
+  KEY_FILE_SAVE_FAILED_ABORT_REASON,
+  NEXT_SECRET_STORE_FAILED_ABORT_REASON,
+} from "../src/partnerAbortFrame";
 import { PeerAbortError } from "../src/errors";
 import { randomBytes } from "../src/utils/crypto";
 import { getLogger } from "../src/utils/logger";
@@ -63,20 +66,28 @@ interface Recorded {
   resolvedRoles: Partial<Record<HandshakeRole, PsiRole>>;
 }
 
+interface Failures {
+  responderStoreFails?: boolean;
+  dropFails?: boolean;
+}
+
+const DROP_FAILURE = "the drop failed";
+
 function rotationFor(
   role: HandshakeRole,
   inputs: NextSecretInputs,
   recorded: Recorded,
-  responderStoreFails = false,
+  failures: Failures,
 ): TermsRotation {
   return {
     inputs,
     store: () => {
-      if (role === "responder" && responderStoreFails)
+      if (role === "responder" && failures.responderStoreFails === true)
         throw new Error("the store failed");
       recorded.events.push(`${role} stored`);
     },
     partnerStored: () => {
+      if (failures.dropFails === true) throw new Error(DROP_FAILURE);
       recorded.events.push(`${role} dropped`);
     },
   };
@@ -86,7 +97,7 @@ async function runPair(
   mode: (typeof MODES)[number],
   initiatorRows: number,
   responderRows: number,
-  responderStoreFails = false,
+  failures: Failures = {},
 ) {
   const inputs: NextSecretInputs = {
     sessionKey: randomBytes(32),
@@ -124,7 +135,7 @@ async function runPair(
       ),
       {
         psiLibrary,
-        rotation: rotationFor(role, inputs, recorded, responderStoreFails),
+        rotation: rotationFor(role, inputs, recorded, failures),
         onProtocolConfirmed: (_terms, resolvedRole) => {
           recorded.resolvedRoles[role] = resolvedRole;
         },
@@ -168,7 +179,9 @@ for (const mode of MODES) {
 
 test("an abort from the responder after proceed does not drop the previous secret", async () => {
   vi.spyOn(getLogger("exchange"), "warn").mockImplementation(() => {});
-  const { outcomes, recorded } = await runPair(MODES[0]!, 2, 5, true);
+  const { outcomes, recorded } = await runPair(MODES[0]!, 2, 5, {
+    responderStoreFails: true,
+  });
   expect(outcomes[0].status).toBe("rejected");
   const reason = (outcomes[0] as PromiseRejectedResult).reason as unknown;
   expect(reason).toBeInstanceOf(PeerAbortError);
@@ -178,3 +191,30 @@ test("an abort from the responder after proceed does not drop the previous secre
   expect(recorded.events).toContain("initiator stored");
   expect(recorded.events.filter((e) => e.endsWith("dropped"))).toEqual([]);
 });
+
+for (const mode of MODES) {
+  test(`a failed drop in a ${mode.name} run ends the responder's run with the partner's abort, and the initiator's with the drop's error`, async () => {
+    vi.spyOn(getLogger("exchange"), "warn").mockImplementation(() => {});
+    for (const [initiatorRows, responderRows] of [
+      [2, 5],
+      [5, 2],
+    ] as const) {
+      // runPair settles only once both runs end: a responder left waiting for
+      // a frame would hold it past the test's timeout.
+      const { outcomes } = await runPair(mode, initiatorRows, responderRows, {
+        dropFails: true,
+      });
+      const [initiator, responder] = outcomes;
+      expect(initiator.status).toBe("rejected");
+      expect(
+        ((initiator as PromiseRejectedResult).reason as Error).message,
+      ).toBe(DROP_FAILURE);
+      expect(responder.status).toBe("rejected");
+      const reason = (responder as PromiseRejectedResult).reason as unknown;
+      expect(reason).toBeInstanceOf(PeerAbortError);
+      expect((reason as PeerAbortError).partnerReason).toBe(
+        KEY_FILE_SAVE_FAILED_ABORT_REASON,
+      );
+    }
+  });
+}

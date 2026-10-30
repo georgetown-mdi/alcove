@@ -220,10 +220,11 @@ function decodeBase64Url(value: string): Uint8Array<ArrayBuffer> | undefined {
   }
 }
 
-// Canonical single-byte encoding of a party's request-encryption flag for the
-// transcript hash: 0x01 when the party requests the additional
-// application-encryption layer, 0x00 otherwise. Both implementations (this one
-// and the independent vector generator) must agree on these bytes.
+// Canonical single-byte encoding of a flag for the transcript hash and the
+// confirmation tags: 0x01 when it is set (a party requests the additional
+// application-encryption layer, or a tag is made under the previous
+// schedule), 0x00 otherwise. Both implementations (this one and the
+// independent vector generator) must agree on these bytes.
 function flagByte(requested: boolean): Uint8Array<ArrayBuffer> {
   return Uint8Array.of(requested ? 1 : 0);
 }
@@ -339,7 +340,6 @@ export async function computeKexKeys(
 ): Promise<{
   sessionKey: Uint8Array<ArrayBuffer>;
   confirmKey: Uint8Array<ArrayBuffer>;
-  responderConfirm: Uint8Array<ArrayBuffer>;
   handshakeHash: Uint8Array<ArrayBuffer>;
   chainingKey: Uint8Array<ArrayBuffer>;
 }> {
@@ -368,21 +368,39 @@ export async function computeKexKeys(
   const sessionKey = await hkdfDerive(master, SESSION_LABEL, 32);
   // Confirmation key is derived from ck alone under a distinct label, so it is
   // independent of the session key. It does not fold in h the way the session
-  // key (ck||h) does: the confirmation tags below bind the transcript hash h
+  // key (ck||h) does: the confirmation tags bind the transcript hash h
   // explicitly in the HMAC message, so the tags are fully transcript-bound
   // without h also entering the key.
   const confirmKey = await hkdfDerive(s.ck, CONFIRM_KEY_LABEL, 32);
-  const responderConfirm = await hmacSha256(
-    confirmKey,
-    concatBytes(enc.encode(RESPONDER_CONFIRM_LABEL), s.h),
-  );
   return {
     sessionKey,
     confirmKey,
-    responderConfirm,
     handshakeHash: s.h,
     chainingKey: s.ck,
   };
+}
+
+/**
+ * The responder's confirmation tag, which binds after `h` a byte naming the
+ * message 2 field the tag is sent in: 0 for `confirm`, made under the current
+ * secret, and 1 for `previousConfirm`, made under the previous secret or the
+ * value drawn in its place. A tag moved to the other field fails.
+ *
+ * @internal exported only for the known-answer-vector tests.
+ */
+export async function responderConfirmTag(
+  confirmKey: Uint8Array<ArrayBuffer>,
+  handshakeHash: Uint8Array<ArrayBuffer>,
+  previousSchedule: boolean,
+): Promise<Uint8Array<ArrayBuffer>> {
+  return hmacSha256(
+    confirmKey,
+    concatBytes(
+      enc.encode(RESPONDER_CONFIRM_LABEL),
+      handshakeHash,
+      flagByte(previousSchedule),
+    ),
+  );
 }
 
 /**
@@ -813,7 +831,8 @@ export async function runKex(
       msg2.data.reqEnc,
     );
 
-    // Trial verification: every own schedule against both received tags, all
+    // Trial verification: every own schedule against both received tags, each
+    // expected tag made with the byte of the field it is compared at, all
     // four compared whatever matches, then the first match in the order
     // current-own then previous-own, each against the responder's current tag
     // first. bytesEqual is total, so a tag that does not decode to 32 bytes
@@ -821,9 +840,23 @@ export async function runKex(
     const receivedTags = [msg2.data.confirm, msg2.data.previousConfirm].map(
       (tag) => decodeBase64Url(tag) ?? EMPTY,
     );
-    const matches = schedules.map((schedule) =>
-      receivedTags.map((tag) => bytesEqual(tag, schedule.responderConfirm)),
-    );
+    const matches: boolean[][] = [];
+    for (const schedule of schedules) {
+      const row: boolean[] = [];
+      for (const [peer, tag] of receivedTags.entries()) {
+        row.push(
+          bytesEqual(
+            tag,
+            await responderConfirmTag(
+              schedule.confirmKey,
+              schedule.handshakeHash,
+              peer === 1,
+            ),
+          ),
+        );
+      }
+      matches.push(row);
+    }
     const ownChoices: number[] =
       candidates.previous === undefined ? [0] : [0, 1];
     let chosen: { own: number; peer: number } | undefined;
@@ -917,8 +950,20 @@ export async function runKex(
     await conn.send({
       kexMsg: "2",
       e: toBase64Url(myPublic),
-      confirm: toBase64Url(schedules[0].responderConfirm),
-      previousConfirm: toBase64Url(schedules[1].responderConfirm),
+      confirm: toBase64Url(
+        await responderConfirmTag(
+          schedules[0].confirmKey,
+          schedules[0].handshakeHash,
+          false,
+        ),
+      ),
+      previousConfirm: toBase64Url(
+        await responderConfirmTag(
+          schedules[1].confirmKey,
+          schedules[1].handshakeHash,
+          true,
+        ),
+      ),
       historyProof: toBase64Url(proof),
       reqEnc: requestEncryption,
     } satisfies KexMsg2);

@@ -230,6 +230,46 @@ describe("which secret a handshake completes under", () => {
     await authenticate(flipping, { current: x }, "initiator");
     await expect(responder).rejects.toThrow(GENERIC_FAILURE);
   });
+
+  const swapCases: ReadonlyArray<{ name: string; responder: Side }> = [
+    { name: "neither side holds a previous secret", responder: { current: x } },
+    {
+      name: "the responder uses its previous secret",
+      responder: {
+        current: y,
+        state: { previous: { sharedSecret: x }, history: [] },
+      },
+    },
+  ];
+  for (const c of swapCases) {
+    test(`swapping message 2's two responder tags in transit fails the handshake on both sides: ${c.name}`, async () => {
+      const [a, b] = createMessagePipe();
+      const swapping: MessageConnection = {
+        send: async (data) => {
+          const frame = data as Record<string, unknown>;
+          await b.send(
+            frame.kexMsg === "2"
+              ? {
+                  ...frame,
+                  confirm: frame.previousConfirm,
+                  previousConfirm: frame.confirm,
+                }
+              : frame,
+          );
+        },
+        receive: (t) => b.receive(t),
+        close: () => b.close(),
+      };
+      const [i, r] = await Promise.allSettled([
+        authenticate(a, { current: x }, "initiator"),
+        authenticate(swapping, c.responder, "responder"),
+      ]);
+      for (const outcome of [i, r]) {
+        expect(reasonOf(outcome)).toBeInstanceOf(AuthenticationError);
+        expect((reasonOf(outcome) as Error).message).toBe(GENERIC_FAILURE);
+      }
+    });
+  }
 });
 
 describe("the history proof and the behind notice", () => {

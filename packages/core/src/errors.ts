@@ -606,9 +606,10 @@ export class ConnectionClosedError extends Error {
 export class PeerAbortError extends ConnectionError {
   /**
    * The fixed reason the abort stated, as this build's own constant: a PSI
-   * round's (`PSI_SET_TOO_LARGE_ABORT_REASON` and its siblings) or the
+   * round's (`PSI_SET_TOO_LARGE_ABORT_REASON` and its siblings), the
    * responder's failed store of the next shared secret
-   * (`NEXT_SECRET_STORE_FAILED_ABORT_REASON`), all in
+   * (`NEXT_SECRET_STORE_FAILED_ABORT_REASON`), or the initiator's failed drop
+   * of the previous one (`KEY_FILE_SAVE_FAILED_ABORT_REASON`), all in
    * `packages/core/src/partnerAbortFrame.ts`; undefined for any other abort.
    */
   readonly partnerReason: string | undefined;

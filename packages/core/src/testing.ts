@@ -39,7 +39,11 @@ export {
 // checked-in known-answer vectors through the browser build the way the Node
 // suite runs them through the Node build. It stays out of the main entry point:
 // callers conduct a handshake with runKex, never by composing the schedule.
-export { computeKexKeys, initiatorConfirmTag } from "./kex.js";
+export {
+  computeKexKeys,
+  initiatorConfirmTag,
+  responderConfirmTag,
+} from "./kex.js";
 export {
   deriveNextSecret,
   importRotationValue,

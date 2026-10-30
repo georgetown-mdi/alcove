@@ -50,6 +50,7 @@ import { rawDecodeErrorDescription } from "./utils/describeDecodeError.js";
 import { snakeizeKey } from "./utils/camelizeKeys.js";
 import type { CSVRow } from "./file.js";
 import {
+  KEY_FILE_SAVE_FAILED_ABORT_REASON,
   PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
   afterFirstFrameNotAbort,
 } from "./partnerAbortFrame.js";
@@ -1586,10 +1587,20 @@ export async function runExchange(
     options.rotation,
   );
   // The initiator that stored drops its previous secret on the responder's
-  // first frame past the terms exchange that is not an abort.
+  // first frame past the terms exchange that is not an abort. A failed drop
+  // tells the responder before the run ends with the drop's error.
   const partnerStored = options.rotation?.partnerStored;
-  if (handshakeRole === "initiator" && partnerStored !== undefined)
-    conn = afterFirstFrameNotAbort(conn, partnerStored);
+  if (handshakeRole === "initiator" && partnerStored !== undefined) {
+    const termsConn = conn;
+    conn = afterFirstFrameNotAbort(termsConn, async () => {
+      try {
+        await partnerStored();
+      } catch (err) {
+        await sendAbort(termsConn, [KEY_FILE_SAVE_FAILED_ABORT_REASON]);
+        throw err;
+      }
+    });
+  }
   for (const warning of warnings) onWarning(warning);
   linkageTerms = agreedLocalTerms;
   // A partner that proceeded past a declared receive list other than the

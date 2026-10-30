@@ -45,13 +45,23 @@ export const PARTNER_SET_OVER_CAPACITY_ABORT_REASON =
 export const NEXT_SECRET_STORE_FAILED_ABORT_REASON =
   "the partner could not save the next shared secret";
 
+/**
+ * The abort reason an initiator sends when its drop of the previous shared
+ * secret (`TermsRotation.partnerStored`) failed. The next secret is saved by
+ * then, so it is not {@link NEXT_SECRET_STORE_FAILED_ABORT_REASON}. A fixed
+ * literal, as every abort reason must be (see `sendAbort`).
+ */
+export const KEY_FILE_SAVE_FAILED_ABORT_REASON =
+  "the partner could not save its key file";
+
 // The fixed reasons a partner's abort past the terms exchange is matched
-// against: those a PSI round sends, and the responder's failed store.
+// against: those a PSI round sends, and the two failed saves of a rotation.
 const KEPT_ABORT_REASONS: ReadonlyArray<string> = [
   PSI_SET_TOO_LARGE_ABORT_REASON,
   PSI_SET_REFUSED_ABORT_REASON,
   PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
   NEXT_SECRET_STORE_FAILED_ABORT_REASON,
+  KEY_FILE_SAVE_FAILED_ABORT_REASON,
 ];
 
 /**
