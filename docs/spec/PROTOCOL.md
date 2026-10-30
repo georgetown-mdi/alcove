@@ -1587,7 +1587,7 @@ The operator-facing rotation policy -- that the secret is never reused, that a r
 
 The heal run rotates as any run does. The initiator of the cut run is the side that may be ahead, and only its responder can be behind: before the initiator's store the responder cannot have stored, and after it the initiator holds the newer secret.
 
-Neither application keeps a previous secret or a history: the command line (`apps/cli/src/protocol.ts`) and the browser (`apps/web/src/psi/authenticateExchange.ts`) pass no previous secret and an empty history, so a cut run is recovered by re-invite and a stale copy gets the generic failure.
+Neither application keeps a previous secret: the command line (`apps/cli/src/protocol.ts`) and the browser (`apps/web/src/psi/authenticateExchange.ts`) offer none, so a cut run is recovered by re-invite. The command line passes an empty history, so a stale copy gets the generic failure there. A managed browser exchange passes its record's history ([MANAGED_EXCHANGE_RECORD.md](MANAGED_EXCHANGE_RECORD.md#persisted-across-runs), `rotationHistory`) and a one-shot exchange an empty one.
 
 ### The rotation history
 

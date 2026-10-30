@@ -51,8 +51,9 @@ import type { ManagedLocalState } from "./managedLocalStateShape";
  * - `"partial-rotation"` -- a rotation never saved and a later run met no partner,
  *   who probably saved a secret this device lacks (re-invite). Read only beside
  *   that no-show, so it cannot stand in for an unexplained handshake failure.
- * - `"imported"` -- an import since the last success
- *   (re-invite).
+ * - `"imported"` -- an import since the last success, read beside a
+ *   failed-closed handshake or a no-show after the import (the newest copy,
+ *   or re-invite).
  * - `"transport"` -- a connection drop that is not a failed-closed handshake, or a
  *   cancelled run (retry).
  * - `"unexplained"` -- a failed-closed (`auth`) handshake with no benign
@@ -102,6 +103,21 @@ export function rotationInFlightBeforeLastRun(
   const lastRun = record.lastRun;
   if (since === undefined || lastRun === undefined) return false;
   return Date.parse(since) < Date.parse(lastRun.at);
+}
+
+/**
+ * Whether the run stamped in `lastRun` came after an import that no success
+ * has followed: a restored copy's no-show then reads as a possibly stale
+ * copy. An entry the import itself brought in from the file is not after it.
+ */
+export function importedBeforeLastRun(
+  record: ManagedExchangeRecord,
+  local: ManagedLocalState | undefined,
+): boolean {
+  const importedAt = local?.imported?.importedAt;
+  const lastRun = record.lastRun;
+  if (importedAt === undefined || lastRun === undefined) return false;
+  return Date.parse(importedAt) < Date.parse(lastRun.at);
 }
 
 /**
@@ -165,6 +181,8 @@ export function readManagedFailure(
   if (condition === undefined) {
     if (recorded === "missed" && rotationInFlightBeforeLastRun(record))
       return { tier: "partial-rotation", standing: false };
+    if (recorded === "missed" && importedBeforeLastRun(record, local))
+      return { tier: "imported", standing: false };
     return { tier: recorded, standing: false };
   }
   if (recorded === "none" || recorded === "missed")

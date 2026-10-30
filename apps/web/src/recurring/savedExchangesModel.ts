@@ -198,7 +198,7 @@ function tierStatus(
     case "partial-rotation":
       return `Probably out of sync with your partner (${at}); re-invite to reconnect`;
     case "imported":
-      return "Restored from a backup or key file; re-invite to reconnect";
+      return "Restored from a backup or key file; import your newest copy or re-invite";
     case "unexplained":
       return `Last run failed (${at}); check with your partner`;
     case "transport":
@@ -227,7 +227,7 @@ function standingStatus(tier: ManagedStandingTier, at: string): string {
     case "partner-storage":
       return `Your partner could not save the new secret (${at}); no run can reach them until you re-invite`;
     case "imported":
-      return "Restored from a backup or key file; re-invite to reconnect";
+      return "Restored from a backup or key file; import your newest copy or re-invite";
     case "unexplained":
       return `A run failed and is unexplained (${at}); check with your partner`;
   }

@@ -9,7 +9,7 @@
  * docs/spec/MANAGED_EXCHANGE_RECORD.md).
  */
 
-import { canonicalString } from "@alcove/core";
+import { canonicalString, deriveHistoryVerifier } from "@alcove/core";
 
 import {
   clearUnfiledExchangeFlag,
@@ -76,6 +76,7 @@ import type {
   ManagedImportSource,
   ManagedTermsChangeWrite,
   NewManagedExchange,
+  RetiredSecret,
   RunnableManagedExchangeRecord,
 } from "./managedExchangeRecord";
 import type {
@@ -886,7 +887,8 @@ export async function updateManagedExchangeLocalFields(
 
 /**
  * Persist a rotation to the stored record: advance the rotated secret and the
- * `expires` bound, remove the rotation-in-flight marker, and set the pending
+ * `expires` bound, put the retired secret's verifier at the head of the
+ * rotation history, remove the rotation-in-flight marker, and set the pending
  * relay key registration, and nothing else, AND clear the record's backup
  * marker -- both in one strict-durability transaction spanning the record and
  * sibling stores ({@link readModifyWriteRotation}). The record write is
@@ -894,6 +896,10 @@ export async function updateManagedExchangeLocalFields(
  * re-validates), so it cannot include a stale secret or document. This is the
  * durable write the persist-before-success ordering awaits before the data
  * exchange begins (see docs/spec/MANAGED_EXCHANGE_RECORD.md).
+ *
+ * The verifier is derived from `expectedSharedSecret` before the transaction
+ * opens, since an IndexedDB transaction commits once its callbacks await
+ * anything else; the secret check below makes it the stored secret's.
  *
  * The write replaces `expectedSharedSecret`, the secret the run read when it
  * took the lock, and refuses where the record read inside the transaction holds
@@ -914,6 +920,7 @@ export async function persistManagedExchangeRotation(
   expectedSharedSecret: string,
   rotation: ManagedExchangeRotation,
 ): Promise<RunnableManagedExchangeRecord> {
+  const retired = await retiredSecret(expectedSharedSecret);
   return readModifyWriteRotation(id, (stored) => {
     if (stored === undefined)
       throw new Error(`no managed exchange with id ${id}`);
@@ -921,8 +928,17 @@ export async function persistManagedExchangeRotation(
       parseManagedExchangeRecord(stored),
     );
     refuseChangedSecret(existing, expectedSharedSecret);
-    return applyManagedExchangeRotation(existing, rotation);
+    return applyManagedExchangeRotation(existing, rotation, retired);
   });
+}
+
+/** The {@link RetiredSecret} a write replacing `sharedSecret` records, as of
+ * now. */
+async function retiredSecret(sharedSecret: string): Promise<RetiredSecret> {
+  return {
+    verifier: await deriveHistoryVerifier(sharedSecret),
+    at: Date.now(),
+  };
 }
 
 /**
@@ -1030,7 +1046,8 @@ export class ManagedReinviteWithheldError extends Error {
 
 /**
  * Persist a re-invite's rotation to the stored record: advance the fresh setup
- * secret and re-derive the `expires` bound exactly as
+ * secret, re-derive the `expires` bound, and record the retired secret in the
+ * rotation history exactly as
  * {@link persistManagedExchangeRotation}, AND drop any `lastRun` bookkeeping -- all
  * in the one cross-store transaction that also clears the backup and import markers
  * ({@link readModifyWriteRotation}). Distinct from the run's rotation write because a
@@ -1083,6 +1100,7 @@ export async function persistManagedExchangeReinvite(
   ) => Promise<RunnableManagedExchangeRecord>,
 ): Promise<RunnableManagedExchangeRecord> {
   const read: { replaced?: RunnableManagedExchangeRecord } = {};
+  const retired = await retiredSecret(expectedSharedSecret);
   const written = await readModifyWriteRotation(id, (stored) => {
     if (stored === undefined)
       throw new Error(`no managed exchange with id ${id}`);
@@ -1102,6 +1120,7 @@ export async function persistManagedExchangeReinvite(
             relayRegistrationPendingReason: "reinvite",
           }
         : rotation,
+      retired,
     );
   });
   const { replaced } = read;

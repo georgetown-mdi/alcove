@@ -38,6 +38,7 @@ import type {
   RunnableManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
 import type { ManagedImportDeps } from "@psi/managed/managedExchangeImport";
+import type { ManagedStoredCopy } from "@psi/managed/managedPairRecognition";
 
 /** A record built from `fields` and narrowed to the runnable shape: every fixture
  * here is built with a shared secret, and the export paths take the record type
@@ -399,6 +400,33 @@ describe("a backup reconciles against the exchange it holds", () => {
     });
     expect(deps.installed).toHaveLength(0);
     expect(deps.markImported).not.toHaveBeenCalled();
+  });
+
+  test("the live copies carry the order the histories state against the backup", async () => {
+    const copies: Array<ManagedStoredCopy> = [
+      { id: "listed-id", label: "Riverbend quarterly", state: "runs-here" },
+    ];
+    const orderCopies = vi.fn((listed: ReadonlyArray<ManagedStoredCopy>) =>
+      Promise.resolve(
+        listed.map((copy) => ({ ...copy, order: "import-newer" as const })),
+      ),
+    );
+    const deps = {
+      ...recordingDeps({ kind: "live-copy", copies }),
+      orderCopies,
+    };
+    const bytes = goodBytes();
+
+    await expect(importManagedExchangeFile(bytes, deps)).rejects.toMatchObject({
+      copies: [{ ...copies[0], order: "import-newer" }],
+    });
+    expect(orderCopies).toHaveBeenCalledWith(
+      copies,
+      expect.objectContaining({
+        sharedSecret: JSON.parse(bytes).key.sharedSecret,
+      }),
+    );
+    expect(deps.installed).toHaveLength(0);
   });
 
   test("a confirmed import passes the named records on as the ones to go beside", async () => {

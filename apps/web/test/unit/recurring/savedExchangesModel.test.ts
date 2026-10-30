@@ -458,7 +458,18 @@ describe("savedExchangeRow: a standing condition", () => {
       NOW,
     );
     expect(row.status).toBe(
-      "Restored from a backup or key file; re-invite to reconnect",
+      "Restored from a backup or key file; import your newest copy or re-invite",
+    );
+  });
+
+  test("a no-show after a restore, with no condition standing, reads as the restored copy", () => {
+    const row = savedExchangeRow(
+      record({ lastRun: { at: missedAt, outcome: "missed" } }),
+      { imported: { importedAt: "2026-07-09T00:00:00.000Z" } },
+      NOW,
+    );
+    expect(row.status).toBe(
+      "Restored from a backup or key file; import your newest copy or re-invite",
     );
   });
 });

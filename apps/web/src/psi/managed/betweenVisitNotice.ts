@@ -29,6 +29,8 @@ import {
   DOES_NOT_ADD_UP_OPTION,
 } from "./managedFailureConfirmation";
 import {
+  IMPORTED_FAILURE_REMEDY,
+  IMPORTED_FAILURE_TITLE,
   INPUT_FAILURE_TITLE,
   PARTIAL_ROTATION_FAILURE_TITLE,
   PARTNER_PROTOCOL_REFUSAL_PROBLEM,
@@ -76,6 +78,7 @@ export type BetweenVisitNoticeKind =
   | "skipped"
   | "repeated-misses"
   | "partial-rotation"
+  | "imported"
   | "input"
   | "terms-shortfall"
   | "too-large"
@@ -134,6 +137,7 @@ const NOTICE_TITLES: Record<
   missed: "A scheduled run did not happen",
   skipped: "Scheduled runs are on hold",
   "partial-rotation": PARTIAL_ROTATION_FAILURE_TITLE,
+  imported: IMPORTED_FAILURE_TITLE,
   input: INPUT_FAILURE_TITLE,
   "terms-shortfall": TERMS_SHORTFALL_FAILURE_TITLE,
   "terms-change": TERMS_CHANGE_FAILURE_TITLE,
@@ -214,6 +218,7 @@ export function betweenVisitNotice(
   if (disposition !== "missed" && caughtUpMisses === 0) return undefined;
   const { tier } = readManagedFailure(record, local, now);
   if (tier === "partial-rotation") return partialRotationNotice(record, name);
+  if (tier === "imported") return importedNotice(record, name);
   // The partner's failed save stands beside these misses: the windows after it
   // cannot meet a partner on the other secret, so the notice names the
   // re-invite under the tag that state already fired, never another wait.
@@ -270,6 +275,27 @@ function partialRotationNotice(
       `connect to your partner. Your partner probably saved a secret this device ` +
       `does not have. Open this app and re-invite your partner.`,
     tag: noticeTag(record.id, "partial-rotation"),
+  };
+}
+
+/** The notice a passed window earns where it follows an import no run has
+ * succeeded since: the restored copy may hold a secret the partnership has
+ * rotated past, so the notice names the newest copy and the re-invite rather
+ * than another wait. Its tag names the standing state, as the
+ * partial-rotation notice's does. */
+function importedNotice(
+  record: ManagedExchangeRecord,
+  name: string,
+): BetweenVisitNotice {
+  return {
+    kind: "imported",
+    title: NOTICE_TITLES.imported,
+    body:
+      `${name} was restored from a backup or key file, and a scheduled run ` +
+      `since then did not connect to your partner, so it may be a copy you ` +
+      `and your partner have already moved past. ` +
+      `${IMPORTED_FAILURE_REMEDY}. Open this app to do either.`,
+    tag: noticeTag(record.id, "imported"),
   };
 }
 

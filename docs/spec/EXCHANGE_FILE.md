@@ -747,11 +747,14 @@ previous secret and rotation history
   field is refused.
 
 A file whose field breaks its format is refused at load, as a malformed
-`expires` is. No application writes or reads these fields for a run: the
-command line passes the handshake no previous secret and an empty history, and
-the web application's import of a command-line key file names
-`previousSharedSecret`, `previousExpires` and `rotationHistory` among the
-fields it drops.
+`expires` is. The command line writes and reads none of these fields for a run:
+it passes the handshake no previous secret and an empty history. The web
+application keeps a rotation history on its managed record and no previous
+secret: its import of a command-line key file reads `rotationHistory` onto the
+record and names `previousSharedSecret` and `previousExpires` among the fields
+it drops, and its command-line export writes the record's history as the key
+file's `rotationHistory`
+([MANAGED_EXCHANGE_RECORD.md](MANAGED_EXCHANGE_RECORD.md#what-the-exports-write)).
 
 ### `exchange --invitation` fail-closed ordering
 

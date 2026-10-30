@@ -23,6 +23,7 @@
 import {
   ExchangeSpecSchema,
   KEY_FILE_FIELD_SCHEMAS,
+  ROTATION_HISTORY_MAX_ENTRIES,
   RelayRegistrarSchema,
   SHARED_SECRET_REGEX,
   UsageError,
@@ -50,6 +51,7 @@ import type {
   MatchingKeyUnavailableReason,
   OwnColumnSelection,
   RelayRegistrar,
+  RotationHistoryEntry,
   TermsUpdate,
   WebRTCExchangeLocator,
 } from "@alcove/core";
@@ -489,6 +491,12 @@ export interface ManagedExchangeRecord {
    * holds. Absent beside the marker, a registration signed under the current
    * key can confirm it. */
   relayRegistrationPendingReason?: ManagedRelayRegistrationPendingReason;
+  /** The verifiers of the secrets this record retired, newest first and at
+   * most {@link ROTATION_HISTORY_MAX_ENTRIES}: each run's rotation write and
+   * each re-invite puts the retired secret's entry at the head
+   * ({@link rotationHistoryAfterRetiring}). Never a retired secret itself.
+   * Absent while the record has retired none. */
+  rotationHistory?: ReadonlyArray<RotationHistoryEntry>;
   /** The unanswered standing condition an `auth`, `storage`, or
    * `partner-storage` failure raised, or
    * {@link NO_STANDING_CONDITION} while none stands. Cleared by the operator's
@@ -622,16 +630,35 @@ const persistedExchangeFileSchema = ExchangeSpecSchema.refine(
  */
 export type ManagedExchangeKeyFields = KeyFile;
 
-/** The key fields without the command line's rotation-in-flight marker: what
- * the export artifact's key block and the key file this app writes hold. */
-export type ManagedExchangeKeyPair = Omit<KeyFile, "rotationInFlightSince">;
+/** The key fields without the command line's rotation-in-flight marker and
+ * previous secret: what the export artifact's key block and the key file this
+ * app writes hold. */
+export type ManagedExchangeKeyPair = Omit<
+  KeyFile,
+  "rotationInFlightSince" | "previousSharedSecret" | "previousExpires"
+>;
+
+/** The rotation history's validator, for the record and the artifact's key
+ * block: the key file's entry shape, at most
+ * {@link ROTATION_HISTORY_MAX_ENTRIES} entries. */
+export const rotationHistorySchema: ZodType<Array<RotationHistoryEntry>> = z
+  .array(
+    z
+      .object({
+        verifier: z.string().regex(SHARED_SECRET_REGEX),
+        expires: z.iso.datetime().optional(),
+      })
+      .strict(),
+  )
+  .max(ROTATION_HISTORY_MAX_ENTRIES);
 
 /**
  * The key pair's validator, for the export artifact's key block:
- * `sharedSecret`, an optional ISO 8601 `expires`, and an optional pending
- * relay registration, each held to the key file's own field schema. Strict, so
- * an artifact whose key block holds the rotation-in-flight marker, which the
- * artifact never holds, is refused rather than read with the field dropped.
+ * `sharedSecret`, an optional ISO 8601 `expires`, an optional pending relay
+ * registration, and an optional rotation history, each held to the key file's
+ * own field schema. Strict, so an artifact whose key block holds the
+ * rotation-in-flight marker or a previous secret, which the artifact never
+ * holds, is refused rather than read with the field dropped.
  */
 export const keyPairFieldsSchema: ZodType<ManagedExchangeKeyPair> = z
   .object({
@@ -639,6 +666,7 @@ export const keyPairFieldsSchema: ZodType<ManagedExchangeKeyPair> = z
     expires: KEY_FILE_FIELD_SCHEMAS.expires,
     relayRegistrationPendingSince:
       KEY_FILE_FIELD_SCHEMAS.relayRegistrationPendingSince,
+    rotationHistory: rotationHistorySchema.optional(),
   })
   .strict();
 
@@ -688,6 +716,7 @@ const ManagedExchangeRecordSchema: ZodType<ManagedExchangeRecord> = z
     relayRegistrar: RelayRegistrarSchema.optional(),
     relayRegistrationPendingSince: z.iso.datetime().optional(),
     relayRegistrationPendingReason: z.literal("reinvite").optional(),
+    rotationHistory: rotationHistorySchema.optional(),
     standingCondition: standingConditionFieldSchema,
   })
   .refine(
@@ -711,12 +740,14 @@ const ManagedExchangeRecordSchema: ZodType<ManagedExchangeRecord> = z
         record.rotationInFlightSince === undefined &&
         record.relayRegistrar === undefined &&
         record.relayRegistrationPendingSince === undefined &&
+        record.rotationHistory === undefined &&
         record.workingDirectoryHandle === undefined),
     {
       message:
         "a record without a sharedSecret is configuration only and must hold " +
         "no expires, schedule, lastRun, recentRuns, rotationInFlightSince, " +
-        "relayRegistrar, relayRegistrationPendingSince, or platform handle",
+        "relayRegistrar, relayRegistrationPendingSince, rotationHistory, or " +
+        "platform handle",
     },
   )
   .refine(
@@ -1045,6 +1076,9 @@ export interface NewManagedExchange {
   /** Why no run can confirm {@link relayRegistrationPendingSince}, set only by
    * a backup import holding it beside the marker. */
   relayRegistrationPendingReason?: ManagedRelayRegistrationPendingReason;
+  /** The rotation history, set only by an import of a backup or a key file
+   * holding one. An empty history is stored as none. */
+  rotationHistory?: ReadonlyArray<RotationHistoryEntry>;
 }
 
 /**
@@ -1091,9 +1125,61 @@ export function buildManagedExchangeRecord(
           relayRegistrationPendingReason: fields.relayRegistrationPendingReason,
         }
       : {}),
+    ...(fields.rotationHistory !== undefined &&
+    fields.rotationHistory.length > 0
+      ? { rotationHistory: fields.rotationHistory }
+      : {}),
     standingCondition: fields.standingCondition ?? NO_STANDING_CONDITION,
   };
   return parseManagedExchangeRecord(record);
+}
+
+/** The secret a rotation write retires: its history verifier, which the
+ * caller derives before the write's transaction opens, and the instant the
+ * history is pruned at. Its `expires` is the stored record's own. */
+export interface RetiredSecret {
+  /** {@link deriveHistoryVerifier} of the secret the write replaces. */
+  verifier: string;
+  /** The instant of the write, UTC milliseconds. */
+  at: number;
+}
+
+/**
+ * The rotation history after `record` retires its current secret: the
+ * secret's entry, with its `expires`, at the head of the stored history, then
+ * the oldest entries removed while their `expires` has passed, then at most
+ * {@link ROTATION_HISTORY_MAX_ENTRIES} kept. An expired entry newer than one
+ * still in force keeps its place, so each entry's position still counts the
+ * rotations since its secret was retired (docs/spec/MANAGED_EXCHANGE_RECORD.md,
+ * the `rotationHistory` row).
+ */
+export function rotationHistoryAfterRetiring(
+  record: RunnableManagedExchangeRecord,
+  retired: RetiredSecret,
+): Array<RotationHistoryEntry> {
+  const history: Array<RotationHistoryEntry> = [
+    {
+      verifier: retired.verifier,
+      ...(record.expires !== undefined ? { expires: record.expires } : {}),
+    },
+    ...(record.rotationHistory ?? []),
+  ].slice(0, ROTATION_HISTORY_MAX_ENTRIES);
+  while (history.length > 0) {
+    const { expires } = history[history.length - 1];
+    if (expires === undefined || parseStoredInstant(expires) > retired.at)
+      break;
+    history.pop();
+  }
+  return history;
+}
+
+/** Set `next`'s rotation history, omitting an empty one. */
+function setRotationHistory(
+  next: ManagedExchangeRecord,
+  history: ReadonlyArray<RotationHistoryEntry>,
+): void {
+  if (history.length === 0) delete next.rotationHistory;
+  else next.rotationHistory = history;
 }
 
 /** The rotation fields a successful run advances on the stored record: the
@@ -1161,19 +1247,22 @@ function pendingRelayRegistrationAfterRotation(
 
 /**
  * Apply a rotation to a record, producing a validated new record with only the
- * rotated secret, the `expires` bound, and the pending relay registration
- * changed and the rotation-in-flight marker removed in the same write -- the
- * document, the label, the schedule, the handle, and the run bookkeeping
- * remain untouched. A string `expires` sets the bound; `null` clears it (a
- * policy dropped between runs must not leave a stale bound armed). The result
- * is re-validated through the schema, so a malformed rotated secret is
- * rejected here. The input record is not mutated.
+ * rotated secret, the `expires` bound, the rotation history, and the pending
+ * relay registration changed and the rotation-in-flight marker removed in the
+ * same write -- the document, the label, the schedule, the handle, and the run
+ * bookkeeping remain untouched. A string `expires` sets the bound; `null`
+ * clears it (a policy dropped between runs must not leave a stale bound
+ * armed). The history takes the `retired` secret's entry
+ * ({@link rotationHistoryAfterRetiring}). The result is re-validated through
+ * the schema, so a malformed rotated secret is rejected here. The input record
+ * is not mutated.
  *
  * @throws {ZodError} if the rotated record is invalid (a malformed secret).
  */
 export function applyManagedExchangeRotation(
   record: RunnableManagedExchangeRecord,
   rotation: ManagedExchangeRotation,
+  retired: RetiredSecret,
 ): RunnableManagedExchangeRecord {
   const next: ManagedExchangeRecord = {
     ...record,
@@ -1181,6 +1270,7 @@ export function applyManagedExchangeRotation(
   };
   if (rotation.expires === null) delete next.expires;
   else next.expires = rotation.expires;
+  setRotationHistory(next, rotationHistoryAfterRetiring(record, retired));
   delete next.rotationInFlightSince;
   setPendingRelayRegistration(
     next,
@@ -1513,8 +1603,9 @@ export function applyManagedExchangeSentColumns(
 }
 
 /**
- * Apply a re-invite rotation to a record: advance the rotated secret and the
- * `expires` bound and remove the rotation-in-flight marker exactly as
+ * Apply a re-invite rotation to a record: advance the rotated secret, the
+ * `expires` bound, and the rotation history and remove the rotation-in-flight
+ * marker exactly as
  * {@link applyManagedExchangeRotation}, AND drop any `lastRun` bookkeeping. A
  * re-invite is the recovery for the failure `lastRun` recorded; leaving that
  * entry in place would re-derive the consumed failure at the next visit, and
@@ -1535,6 +1626,7 @@ export function applyManagedExchangeSentColumns(
 export function applyManagedExchangeReinviteRotation(
   record: RunnableManagedExchangeRecord,
   rotation: ManagedExchangeReinviteRotation,
+  retired: RetiredSecret,
 ): RunnableManagedExchangeRecord {
   const { connection } = record.exchangeFile;
   if (connection.channel !== "webrtc")
@@ -1558,6 +1650,7 @@ export function applyManagedExchangeReinviteRotation(
   };
   if (rotation.expires === null) delete next.expires;
   else next.expires = rotation.expires;
+  setRotationHistory(next, rotationHistoryAfterRetiring(record, retired));
   delete next.lastRun;
   delete next.rotationInFlightSince;
   setPendingRelayRegistration(
@@ -1607,8 +1700,9 @@ export function applyManagedExchangeRotationInFlightCleared(
 /**
  * Complete a configuration-only record with a record read from a command-line
  * `alcove.yaml` and its `.alcove.key`, producing a validated new record: the
- * document, `side`, max-age policy, key pair, relay registrar, and pending
- * registration come from the pair, an absent policy clearing the stored one.
+ * document, `side`, max-age policy, key pair, relay registrar, pending
+ * registration, and rotation history come from the pair, an absent policy
+ * clearing the stored one.
  * The `id`, label, and standing condition stay as stored. A
  * configuration-only record holds no schedule, run bookkeeping, rotation
  * marker, registrar, or folder grant, so the result holds only what the pair
@@ -1638,6 +1732,8 @@ export function applyManagedExchangeCommandLinePair(
     next.relayRegistrar = imported.relayRegistrar;
   if (imported.relayRegistrationPendingSince !== undefined)
     next.relayRegistrationPendingSince = imported.relayRegistrationPendingSince;
+  if (imported.rotationHistory !== undefined)
+    next.rotationHistory = imported.rotationHistory;
   return runnableManagedExchangeOrRefuse(parseManagedExchangeRecord(next));
 }
 
@@ -1650,8 +1746,8 @@ export type ManagedImportSource = "backup" | "command-line";
  * (docs/spec/MANAGED_EXCHANGE_RECORD.md, "Replacing a saved copy"):
  *
  * - From the import: the document, `side`, secret, `expires`, max-age policy,
- *   and relay registration, each absent where the import states none, and
- *   from a backup also its schedule.
+ *   relay registration, and rotation history, each absent where the import
+ *   states none, and from a backup also its schedule.
  * - From `stored`: the `id`, label, and working-folder grant, and from a pair
  *   import also the schedule, which a pair has no field for.
  * - Merged: `lastRun` is the newer of the two, and the run list holds both
@@ -1704,6 +1800,9 @@ export function applyManagedExchangeImportReplace(
           relayRegistrationPendingReason:
             imported.relayRegistrationPendingReason,
         }
+      : {}),
+    ...(imported.rotationHistory !== undefined
+      ? { rotationHistory: imported.rotationHistory }
       : {}),
   };
   return runnableManagedExchangeOrRefuse(parseManagedExchangeRecord(next));

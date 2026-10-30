@@ -77,6 +77,7 @@ import {
   markManagedExchangeImported,
   markManagedExchangeKeyImported,
 } from "./managedLocalState";
+import { orderManagedStoredCopies } from "./managedCopyOrder";
 import { raisedStandingCondition } from "./managedExchangeRecord";
 
 import type {
@@ -212,6 +213,24 @@ export interface ManagedImportDeps {
   markImported: (id: string, at: string) => Promise<void>;
   /** The moment of the import; injected so the marker date is the caller's clock. */
   now: () => Date;
+  /** State which copy is newer on each stored copy the import asks about
+   * ({@link orderManagedStoredCopies}); absent, the question states none. */
+  orderCopies?: ManagedOrderCopies;
+}
+
+/** {@link orderManagedStoredCopies} as an import calls it. */
+type ManagedOrderCopies = (
+  copies: ReadonlyArray<ManagedStoredCopy>,
+  imported: ManagedExchangeRecord,
+) => Promise<ReadonlyArray<ManagedStoredCopy>>;
+
+/** `copies` with the order `orderCopies` states, or as they are without it. */
+async function orderedCopies(
+  copies: ReadonlyArray<ManagedStoredCopy>,
+  imported: ManagedExchangeRecord,
+  orderCopies: ManagedOrderCopies | undefined,
+): Promise<ReadonlyArray<ManagedStoredCopy>> {
+  return orderCopies === undefined ? copies : orderCopies(copies, imported);
 }
 
 /**
@@ -249,6 +268,9 @@ export function managedInstallFields(
           relayRegistrationPendingReason: record.relayRegistrationPendingReason,
         }
       : {}),
+    ...(record.rotationHistory !== undefined
+      ? { rotationHistory: record.rotationHistory }
+      : {}),
   };
 }
 
@@ -261,6 +283,7 @@ const defaultDeps: ManagedImportDeps = {
     createManagedExchange(managedInstallFields(record)),
   markImported: markManagedExchangeImported,
   now: () => new Date(),
+  orderCopies: orderManagedStoredCopies,
 };
 
 /** What an import leaves the operator with: the record, and the grants they have to
@@ -337,7 +360,9 @@ export async function importManagedExchange(
       reconciled.stateUnreadable === true,
     );
   if (reconciled.kind === "live-copy")
-    throw new ManagedImportLiveCopyError(reconciled.copies);
+    throw new ManagedImportLiveCopyError(
+      await orderedCopies(reconciled.copies, reconstructed, deps.orderCopies),
+    );
   if (reconciled.kind === "chosen-copy-changed")
     throw new ManagedImportChosenCopyError("changed");
   if (reconciled.kind === "replace") {
@@ -509,6 +534,8 @@ export interface ManagedPairImportDeps {
   markImported: (id: string, at: string) => Promise<void>;
   /** The moment of the import. */
   now: () => Date;
+  /** As {@link ManagedImportDeps.orderCopies}. */
+  orderCopies?: ManagedOrderCopies;
 }
 
 /** The default boundaries: reconcile and install through the store, mark
@@ -519,6 +546,7 @@ const defaultPairDeps: ManagedPairImportDeps = {
   install: defaultDeps.install,
   markImported: markManagedExchangeKeyImported,
   now: () => new Date(),
+  orderCopies: orderManagedStoredCopies,
 };
 
 /**
@@ -590,7 +618,9 @@ export async function importManagedCommandLinePair(
       ),
     );
   if (reconciled.kind === "stored-copy")
-    throw new ManagedImportStoredCopyError(reconciled.copies);
+    throw new ManagedImportStoredCopyError(
+      await orderedCopies(reconciled.copies, imported, deps.orderCopies),
+    );
   if (reconciled.kind === "chosen-copy-changed")
     throw new ManagedImportChosenCopyError("changed");
   if (reconciled.kind === "held")

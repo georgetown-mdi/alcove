@@ -3,14 +3,20 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
-import { generateSharedSecret, getDefaultLinkageTerms } from "@alcove/core";
+import {
+  deriveHistoryVerifier,
+  generateSharedSecret,
+  getDefaultLinkageTerms,
+} from "@alcove/core";
 
 import {
   MANAGED_EXCHANGE_LOCAL_STORE_NAME,
+  ManagedExchangeSecretChangedError,
   clearManagedExchanges,
   createManagedExchange,
   getManagedExchange,
   openManagedExchangeDatabase,
+  persistManagedExchangeRotation,
   recordManagedExchangeLastRun,
 } from "@psi/managed/managedExchangeStore";
 import {
@@ -34,6 +40,7 @@ import { rotatingDataExchange } from "../utils/rotatingDataExchange";
 import { waitFor } from "../utils/waitFor";
 
 import type {
+  ManagedExchangeRecord,
   NewManagedExchange,
   RunnableManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
@@ -363,6 +370,74 @@ describe("runManagedExchange: persist-before-success end to end", () => {
     // is strict; none defaulted to relaxed durability.
     expect(durabilities.length).toBeGreaterThanOrEqual(1);
     for (const durability of durabilities) expect(durability).toBe("strict");
+  });
+
+  test("the rotation write records the retired secret's verifier in the history, strict and under the run's lock", async () => {
+    const olderEntry = {
+      verifier: await deriveHistoryVerifier(generateSharedSecret()),
+    };
+    const created = await createRunnableExchange(
+      newExchange({
+        expires: "2099-01-01T00:00:00.000Z",
+        rotationHistory: [olderEntry],
+      }),
+    );
+    const rotatedSecret = generateSharedSecret();
+    const realTransaction = IDBDatabase.prototype.transaction;
+    const durabilities: Array<IDBTransactionDurability | undefined> = [];
+    IDBDatabase.prototype.transaction = function (
+      this: IDBDatabase,
+      storeNames: string | Array<string>,
+      mode?: IDBTransactionMode,
+      options?: IDBTransactionOptions,
+    ) {
+      if (mode === "readwrite") durabilities.push(options?.durability);
+      return realTransaction.call(this, storeNames, mode, options);
+    };
+    let storedAtExchange: ManagedExchangeRecord | undefined;
+    let lockHeldAtExchange: boolean | undefined;
+    try {
+      await runManagedExchange({
+        record: created,
+        runStartedAtMs: Date.now(),
+        acquireInput: () => Promise.resolve(undefined),
+        handshake: () => Promise.resolve("c"),
+        dataExchange: rotatingDataExchange(rotatedSecret, async () => {
+          storedAtExchange = await getManagedExchange(created.id);
+          lockHeldAtExchange = !(await attendedRunCouldStart(created.id));
+          return "done";
+        }),
+      });
+    } finally {
+      IDBDatabase.prototype.transaction = realTransaction;
+    }
+
+    // The history landed in the rotation write itself, while the run held the
+    // lock, and every readwrite the run opened was strict.
+    expect(storedAtExchange?.sharedSecret).toBe(rotatedSecret);
+    expect(storedAtExchange?.rotationHistory).toEqual([
+      {
+        verifier: await deriveHistoryVerifier(created.sharedSecret),
+        expires: "2099-01-01T00:00:00.000Z",
+      },
+      olderEntry,
+    ]);
+    expect(lockHeldAtExchange).toBe(true);
+    expect(durabilities.length).toBeGreaterThanOrEqual(1);
+    for (const durability of durabilities) expect(durability).toBe("strict");
+  });
+
+  test("a rotation write refused for a replaced secret leaves the history as it was", async () => {
+    const created = await createRunnableExchange(newExchange());
+    await expect(
+      persistManagedExchangeRotation(created.id, generateSharedSecret(), {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+      }),
+    ).rejects.toBeInstanceOf(ManagedExchangeSecretChangedError);
+    const stored = await getManagedExchange(created.id);
+    expect(stored?.sharedSecret).toBe(created.sharedSecret);
+    expect(stored?.rotationHistory).toBeUndefined();
   });
 
   test("the rotation write is field-scoped: it advances the secret, not the label", async () => {

@@ -16,6 +16,8 @@ import {
 } from "@alcove/core";
 
 import {
+  IMPORTED_FAILURE_REMEDY,
+  IMPORTED_FAILURE_TITLE,
   INPUT_FAILURE_TITLE,
   PARTIAL_ROTATION_FAILURE_TITLE,
   PARTNER_PROTOCOL_REFUSAL_PROBLEM,
@@ -693,17 +695,18 @@ const PARTIAL_ROTATION_FAILURE: ManagedRunFailure = {
 
 /** The Tier-1 restore/import state: this exchange was restored from a backup or
  * key file and has not successfully run since, so it may be one the partnership
- * has already moved past. Plain,
- * specific copy naming re-invite -- no attack checklist. */
+ * has already moved past. Read beside a failed-closed handshake and beside a
+ * no-show after the import. Plain, specific copy naming the newest copy and
+ * re-invite -- no attack checklist. */
 const IMPORTED_FAILURE: ManagedRunFailure = {
   kind: "imported",
-  title: "This exchange was restored from a backup or key file",
+  title: IMPORTED_FAILURE_TITLE,
   message:
     "This exchange was restored from a backup or key file, and no run has " +
-    "succeeded since, so it may be " +
-    "one you and your partner have already moved past. Re-invite your " +
-    "partner to reconnect; the exchange keeps your terms, gets a new secret, " +
-    "and uses the coordination server the new invitation names.",
+    "succeeded since, so it may be one you and your partner have already " +
+    `moved past. ${IMPORTED_FAILURE_REMEDY} to reconnect; the exchange keeps ` +
+    "your terms, gets a new secret, and uses the coordination server the new " +
+    "invitation names.",
   recovery: "reinvite",
 };
 
@@ -876,9 +879,10 @@ const MISSED_OUTRANKED_BY: ReadonlyArray<ManagedFailureTier> = [
  * has no `failureKind`.
  *
  * The import marker is read directly as well as through the derived tier,
- * because the derivation short-circuits on a `"missed"` outcome before reaching
- * the marker: a record whose last run was itself a no-show tiers as `"missed"`
- * while still holding a standing restore. The tier is checked first since it
+ * because the derivation reads it beside a `"missed"` outcome only where that
+ * no-show came after the import: a record whose last run is a no-show the
+ * imported file brought in tiers as `"missed"` while still holding a standing
+ * restore, and this run's no-show is after the import. The tier is checked first since it
  * also includes the lapse check and the recorded persist failure, which the
  * marker alone does not.
  *

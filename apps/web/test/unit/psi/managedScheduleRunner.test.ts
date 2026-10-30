@@ -57,6 +57,8 @@ import type {
 } from "@psi/managed/managedScheduleRunner";
 import type { ManagedLocalState } from "@psi/managed/managedLocalStateShape";
 
+const TEST_RETIRED = { verifier: "A".repeat(43), at: 0 };
+
 /** A record built from `fields` and narrowed to the runnable shape: every fixture
  * here is built with a shared secret, and the export paths take the record type
  * that holds one. */
@@ -1044,11 +1046,15 @@ describe("a due window under the operator's compromise response", () => {
     await tickManagedSchedules(runner.seams);
     runner.stored.set(
       record.id,
-      applyManagedExchangeReinviteRotation(storedRecord(runner, record.id), {
-        sharedSecret: generateSharedSecret(),
-        expires: null,
-        signalingServer: { host: "signaling.example.org" },
-      }),
+      applyManagedExchangeReinviteRotation(
+        storedRecord(runner, record.id),
+        {
+          sharedSecret: generateSharedSecret(),
+          expires: null,
+          signalingServer: { host: "signaling.example.org" },
+        },
+        TEST_RETIRED,
+      ),
     );
     runner.advanceClock(WEEK_MS);
     const [entry] = await tickManagedSchedules(runner.seams);

@@ -4,7 +4,7 @@ title: "Rotation Hardening Design"
 
 # Rotation hardening: recognizing a stale copy, and healing a one-sided rotation
 
-_Status: proposed for the maintainer's ratification; core stages 2 and 3 are built, and the command-line and web items are not ([The build split and its reviews](#the-build-split-and-its-reviews)).
+_Status: proposed for the maintainer's ratification; core stages 2 and 3 are built, and so is the web item's first part, the history and the two stale-copy readings; the command-line item and the web item's heal are not ([The build split and its reviews](#the-build-split-and-its-reviews)).
 Decided by the maintainer's rulings: always accept the previous secret, keep the WebRTC stale-copy limit, send a random value from the responder after key confirmation inside terms message 2, store the next secret initiator first, and state the SC-12 row as it is, keeping that value's own wrap (questions 1 to 4, 7 and 8).
 Proposed, with recommendations for the maintainer to ratify: how the two values are drawn and whether the security review runs per stage (questions 5 and 6), and two choices no ruling covers ([Open questions](#open-questions)).
 Nothing here is normative.
@@ -575,6 +575,7 @@ Three items, the first ahead of the other two, which are independent of each oth
 3. **Web application.**
    The record's previous secret and history, under the run+rotate lock with strict-durability writes; exports omitting the previous secret and including the history; the acceptor's offers to both inviter ids in the browser rendezvous, and both ids in the default-relay enrollment; the `"terms-change"` outcome removing the marker, and the storage failure at its new point; the heal notes; the import marker beside a no-show; the import's order.
    It tests the managed run's pending-registration retry under the previous secret's relay key as item 2 does.
+   It lands as two pull requests: first the history, its exports, the import marker beside a no-show and the import's order; then the heal, whole, since without the two-id rendezvous a browser heal never meets.
    **Security review: required**, scoped as for item 2, plus a UX review for the notes and the replace question.
 
 Each item lands its own spec changes, with its wording-change list, and the `SECURITY_DESIGN.md` changes it makes true.

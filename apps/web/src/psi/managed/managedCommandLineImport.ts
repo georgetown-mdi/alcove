@@ -72,6 +72,7 @@ import { ZodError } from "zod";
 
 import {
   KeyFileSchema,
+  ROTATION_HISTORY_MAX_ENTRIES,
   keyFileUnreadFieldNames,
   parseExchangeSpec,
   parseSensitiveJson,
@@ -117,17 +118,19 @@ import type {
 export const MAX_CONFIGURATION_IMPORT_BYTES = 1_000_000;
 
 /** Upper bound, in bytes, on a key file this app will read, applied before the
- * sensitive parse's own structural bound. The file holds one secret and one
- * instant, so anything larger is not the file the operator meant to choose. */
+ * sensitive parse's own structural bound. The file holds two secrets, a few
+ * instants, and at most {@link ROTATION_HISTORY_MAX_ENTRIES} history entries,
+ * so anything larger is not the file the operator meant to choose. */
 export const MAX_KEY_FILE_IMPORT_BYTES = 10_000;
 
-/** The key-file fields an import reads; the record keeps no previous secret or
- * rotation history, so the import names those among the fields it drops. */
+/** The key-file fields an import reads; the record keeps no previous secret,
+ * so the import names it among the fields it drops. */
 const KEY_FILE_FIELDS_IMPORTED: ReadonlySet<string> = new Set([
   "sharedSecret",
   "expires",
   "rotationInFlightSince",
   "relayRegistrationPendingSince",
+  "rotationHistory",
 ] satisfies Array<keyof ManagedExchangeKeyFields>);
 
 /** The label a file-name-free import starts the record at. The operator names
@@ -568,6 +571,10 @@ const KEY_FILE_PROBLEMS = {
     "its relayRegistrationPendingSince is not a date and time in the form " +
     "Alcove writes, so the file was written by hand or damaged; write the " +
     "file again from the command line, or remove that field",
+  malformedRotationHistory:
+    "its rotationHistory is not the list Alcove writes, so the file was " +
+    "written by hand or damaged; write the file again from the command " +
+    "line, or remove that field",
 } as const;
 
 /** A problem {@link KEY_FILE_PROBLEMS} names. */
@@ -580,6 +587,7 @@ const KEY_FILE_PROBLEM_ORDER: ReadonlyArray<KeyFileProblem> = [
   "malformedExpires",
   "malformedRotationInFlight",
   "malformedRelayRegistrationPending",
+  "malformedRotationHistory",
 ];
 
 /** Which problems a failed key-pair parse shows, read off each issue's code
@@ -599,6 +607,8 @@ function keyPairProblems(
       found.add("malformedRotationInFlight");
     else if (issue.path[0] === "relayRegistrationPendingSince")
       found.add("malformedRelayRegistrationPending");
+    else if (issue.path[0] === "rotationHistory")
+      found.add("malformedRotationHistory");
     else found.add("notObject");
   }
   if (found.has("notObject")) return ["notObject"];
@@ -678,7 +688,8 @@ function readManagedCommandLineKeyFileFields(
  * `sharedSecret` and `expires` -- the one record field the store keeps a secret
  * in. The relay registrar the configuration names, and a pending relay key
  * registration the key file records, are set on the record, so the first run
- * here retries the registration. Pure: nothing is stored here.
+ * here retries the registration, and so is the key file's rotation history, its
+ * newest entries up to the record's bound. Pure: nothing is stored here.
  *
  * A configuration this app does not run -- another channel, or a part it
  * cannot run -- is refused with its key file rather than installed without it:
@@ -747,6 +758,14 @@ export function readManagedCommandLinePairImport(
       ...(key.expires !== undefined ? { expires: key.expires } : {}),
       ...(key.relayRegistrationPendingSince !== undefined
         ? { relayRegistrationPendingSince: key.relayRegistrationPendingSince }
+        : {}),
+      ...(key.rotationHistory !== undefined
+        ? {
+            rotationHistory: key.rotationHistory.slice(
+              0,
+              ROTATION_HISTORY_MAX_ENTRIES,
+            ),
+          }
         : {}),
     }),
   );

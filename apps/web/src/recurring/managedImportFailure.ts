@@ -207,16 +207,34 @@ function listedNames(labels: ReadonlyArray<string>): string {
     : ` (${names.join(", ")}${unnamed === 0 ? "" : `, and ${unnamed} with no name`})`;
 }
 
+/** The sentences stating the order each listed exchange of several has
+ * against the import, where the rotation histories found one: `subject` is
+ * the import as the question names it. Empty where none was found. */
+function listedOrders(
+  copies: ReadonlyArray<ManagedStoredCopy>,
+  subject: "This backup is" | "These files are",
+): string {
+  return copies
+    .map(({ label, order }, index) => {
+      if (order === undefined) return "";
+      const named =
+        label === "" ? `listed exchange ${index + 1}` : `"${label}"`;
+      return ` ${subject} ${order === "import-newer" ? "newer" : "older"} than ${named}.`;
+    })
+    .join("");
+}
+
 /**
  * What a backup import says when it stops to ask: one or more listed exchanges
  * have the same agreed terms and side, and a different secret. Either copy may
  * be the newer -- the backup, where the exchange ran elsewhere since, or the
- * saved copy, where it ran here since the backup was taken -- and the record
- * states nothing that orders them, so the operator chooses: replace the saved
- * copy, keep it, or add the backup as a separate exchange with the same terms.
- * A listed exchange holding a configuration only never ran here, so the backup
- * completes it where it is of that exchange. Nothing is imported until they
- * answer.
+ * saved copy, where it ran here since the backup was taken. Where the two
+ * rotation histories order them ({@link ManagedStoredCopy.order}) the question
+ * states that order; otherwise it states when each answer fits. Either way the
+ * operator chooses: replace the saved copy, keep it, or add the backup as a
+ * separate exchange with the same terms. A listed exchange holding a
+ * configuration only never ran here, so the backup completes it where it is of
+ * that exchange. Nothing is imported until they answer.
  */
 export function liveCopyImportReason(
   copies: ReadonlyArray<ManagedStoredCopy>,
@@ -225,7 +243,7 @@ export function liveCopyImportReason(
     " If this is a separate exchange with the same terms, add the backup as a " +
     "new exchange.";
   if (copies.length === 1) {
-    const [{ label, state }] = copies;
+    const [{ label, state, order }] = copies;
     const named = label === "" ? "An exchange in the list" : `"${label}"`;
     if (state === "configuration-only")
       return (
@@ -234,9 +252,24 @@ export function liveCopyImportReason(
         "If the backup is of that exchange, replace the saved copy with it." +
         separate
       );
-    return (
+    const found =
       `${named} has the same terms and the same side as this backup, with a ` +
-      "different secret. Nothing was imported. If the exchange ran on " +
+      "different secret. Nothing was imported.";
+    if (order === "import-newer")
+      return (
+        `${found} This backup is newer than the saved copy: replace the ` +
+        "saved copy with it, and the saved copy's run history and accounting " +
+        "of disclosures are kept." +
+        separate
+      );
+    if (order === "import-older")
+      return (
+        `${found} This backup is older than the saved copy, so keep the ` +
+        "saved copy." +
+        separate
+      );
+    return (
+      `${found} If the exchange ran on ` +
       "another device since the saved copy last ran here, this backup is the " +
       "newer one: replace the saved copy with it, and the saved copy's run " +
       "history and accounting of disclosures are kept. If this backup is " +
@@ -245,6 +278,7 @@ export function liveCopyImportReason(
     );
   }
   const names = listedNames(copies.map(({ label }) => label));
+  const orders = listedOrders(copies, "This backup is");
   if (copies.every(({ state }) => state === "runs-here"))
     return (
       `${copies.length} exchanges in the list${names} have the same terms ` +
@@ -253,6 +287,7 @@ export function liveCopyImportReason(
       "last ran here, this backup is the newer one: replace that saved copy " +
       "with it, and its run history and accounting of disclosures are kept. " +
       "If this backup is older, keep the saved copies." +
+      orders +
       separate
     );
   const runsHere = copies.some(({ state }) => state === "runs-here");
@@ -266,6 +301,7 @@ export function liveCopyImportReason(
         "device since it last ran here: its run history and accounting of " +
         "disclosures are kept."
       : "") +
+    orders +
     separate
   );
 }
@@ -305,7 +341,8 @@ export const STORED_COPY_IMPORT_TITLE =
  * key file's secret, and one or more have its agreed terms and side. One that
  * holds a configuration only is completed with the files; one that runs here
  * is replaced by them, and as on the backup import, either copy may be the
- * newer, so the operator chooses. Two exchanges can share terms and side, so
+ * newer, so the question states the order the rotation histories found, if
+ * any, and the operator chooses. Two exchanges can share terms and side, so
  * nothing is imported until they answer.
  */
 export function storedCopyImportReason(
@@ -315,7 +352,7 @@ export function storedCopyImportReason(
     " If this is a separate exchange with the same terms, add these files as " +
     "a new one.";
   if (copies.length === 1) {
-    const [{ label, state }] = copies;
+    const [{ label, state, order }] = copies;
     const named = label === "" ? "An exchange in the list" : `"${label}"`;
     if (state === "configuration-only")
       return (
@@ -325,9 +362,24 @@ export function storedCopyImportReason(
         "complete it with these files." +
         separate
       );
-    return (
+    const found =
       `${named} runs in this browser and has the same terms and the same ` +
-      "side as these files, with a different secret. Nothing was imported. " +
+      "side as these files, with a different secret. Nothing was imported.";
+    if (order === "import-newer")
+      return (
+        `${found} These files are newer than the saved copy: replace the ` +
+        "saved copy with them, and its run history and accounting of " +
+        "disclosures are kept." +
+        separate
+      );
+    if (order === "import-older")
+      return (
+        `${found} These files are older than the saved copy, so cancel to ` +
+        "keep the saved copy." +
+        separate
+      );
+    return (
+      `${found} ` +
       "If the exchange ran from these files since the saved copy last ran " +
       "here, they are the newer copy: replace the saved copy with them, and " +
       "its run history and accounting of disclosures are kept. If these " +
@@ -346,6 +398,7 @@ export function storedCopyImportReason(
         "files since it last ran here: its run history and accounting of " +
         "disclosures are kept."
       : "") +
+    listedOrders(copies, "These files are") +
     separate
   );
 }
