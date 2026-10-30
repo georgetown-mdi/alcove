@@ -245,6 +245,7 @@ The web application builds only as a static site: `npm run build -w apps/web` wr
 
 - **Build and artifact:** the gate's packaging job builds the site with `VITE_SIGNALING_SERVER_URL` set from the variable of that name, and fails when it is unset. The same job builds [the demo site](#the-demo-site) as a second artifact.
 - **Upload:** a job of its own, which checks out nothing, downloads the artifact and runs `wrangler pages deploy` with the branch name. A deployment to `main` is the production deployment; one to `staging` is a preview, served on the project's `staging` branch alias (`staging.<project>.pages.dev`). The same job then uploads the demo site's artifact to the demo project. It and the project site's upload job ([The project site](#the-project-site)) are the only jobs in any workflow that hold the deploy credentials, and neither runs repository code.
+- **Post-deploy check:** a later job, holding no credentials, fetches `/.well-known/security.txt` from each deployment the upload made, at the deployment's own `pages.dev` address, and fails the run unless the file is served as `text/plain` with the contacts `SECURITY.md` names (`scripts/check-served-security-txt.mjs`).
 - **Environment rule:** give each GitHub environment a deployment branch rule allowing only its branch, under Settings -> Environments.
 
 It reads two secrets and six variables. The upload job runs in the GitHub environment `Production` for `main` and `Staging` for `staging`, so the two secrets and the two Pages project names are set on each of those environments. `VITE_SIGNALING_SERVER_URL` and the default relay variables are read by the gate's builds, which run in no environment, so they are repository variables, under Settings -> Secrets and variables -> Actions.
@@ -278,7 +279,7 @@ The root also declares the zone's own records:
 - **No mail.** No name in the zone sends or receives mail. Each name that answers with an address has a null MX (RFC 7505) and SPF `v=spf1 -all`, and DMARC `p=reject` at `_dmarc.data-bridge.org` covers every name, with no report address.
 - **CAA** records limit certificate issuance to the authorities that issue for the zone's names: Cloudflare's edge and Pages certificates, and Let's Encrypt for the relay host ([infra/hosted/README.md](../infra/hosted/README.md#certificate-authorities)).
 - **DNSSEC** is on, with the DS record at the registry ([infra/hosted/README.md](../infra/hosted/README.md#dnssec)).
-- **`/.well-known/security.txt`** (RFC 9116) is served by the web application's build, on the two public names and the demo site's, and by the project site's build at the apex. It names the reporting routes [SECURITY.md](../SECURITY.md#reporting-a-vulnerability) names, and its `Expires` date is renewed by hand: `scripts/security-txt.test.mjs` fails 45 days before it.
+- **`/.well-known/security.txt`** (RFC 9116) is served by the web application's build, on the two public names and the demo site's, and by the project site's build at the apex. It names the reporting routes [SECURITY.md](../SECURITY.md#reporting-a-vulnerability) names, and its `Expires` date is renewed by hand: `scripts/security-txt.test.mjs` fails 45 days before it. Each deploy checks the file it served ([Deploying to Cloudflare Pages](#deploying-to-cloudflare-pages)).
 
 ### Headers, caching, and the fallback document
 
@@ -317,7 +318,7 @@ The project site, at `data-bridge.org`, publishes the Markdown under `docs/` and
 - **Fonts:** the guides' fonts are npm packages (`@fontsource-variable/*`) bundled into the site.
 - **Building it:** `npm run site:build` writes `docs/.vitepress/dist/`, and `npm run site:dev` serves the site locally. A relative link to a page the site publishes becomes that page's address, and one to any other file in the repository points at the file on GitHub. The build fails on a relative link to a Markdown page that does not exist; `npm run linkcheck` checks every other relative link and each `#anchor`.
 - **When it runs:** [`site_deploy.yaml`](../.github/workflows/site_deploy.yaml) builds the site on a pull request and on a push to `main` or `staging` that changes a source the build reads, and uploads it on the push or on a manual dispatch on either branch. `main` is the production deployment; `staging` is a preview on the site project's `staging` branch alias.
-- **Upload:** as for the web application, using the same environments and secrets, plus `CLOUDFLARE_SITE_PAGES_PROJECT`, the site project's name, a variable set on both environments.
+- **Upload:** as for the web application, with the same post-deploy check, using the same environments and secrets, plus `CLOUDFLARE_SITE_PAGES_PROJECT`, the site project's name, a variable set on both environments.
 - **Headers:** the build writes no `_headers` file, so Pages serves the site with its default headers and the zone settings above.
 - **Redirects:** the build's `_redirects` file (`docs/.vitepress/public/_redirects`) sends `/instructions` to the root and `/instructions/<page>` to `/<page>`.
 

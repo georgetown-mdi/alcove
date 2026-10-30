@@ -7,6 +7,17 @@ import {
   BUILD_OUTPUT,
   SITE_DEPLOY_WORKFLOW,
 } from "./check-deploy-trigger-graph.mjs";
+import {
+  SECURITY_TXT_PATH,
+  securityTxtUrl,
+  servedProblems,
+} from "./check-served-security-txt.mjs";
+import {
+  GITHUB_REPORTING,
+  contacts,
+  fields,
+  securityPolicyContacts,
+} from "./lib/securityTxt.mjs";
 import { WORKFLOW_DIR, workflowDocument } from "./lib/workflows.mjs";
 
 // The security.txt files (RFC 9116) the web app's build and the project site's
@@ -42,9 +53,6 @@ const SITE_UPLOADS = [
   },
 ];
 
-const GITHUB_REPORTING =
-  "https://github.com/georgetown-mdi/alcove/security/advisories/new";
-
 /** Days ahead of Expires at which the check fails, to leave time to deploy. */
 const RENEW_DAYS = 45;
 
@@ -52,19 +60,6 @@ const RENEW_DAYS = 45;
 const MAX_DAYS_AHEAD = 366;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-/** The field lines of a security.txt, as [name, value] pairs, comments skipped. */
-function fields(text) {
-  return text
-    .split("\n")
-    .map((line) => line.replace(/\r$/, ""))
-    .filter((line) => line !== "" && !line.startsWith("#"))
-    .map((line) => {
-      const match = /^([A-Za-z-]+): (.+)$/.exec(line);
-      if (!match) throw new Error(`not a security.txt field line: ${line}`);
-      return [match[1].toLowerCase(), match[2]];
-    });
-}
 
 /**
  * Why an Expires value is not acceptable at `now`, or null when it is.
@@ -86,17 +81,6 @@ function expiresProblem(value, now) {
     return `Expires ${value} is more than a year away, which RFC 9116 advises against`;
   }
   return null;
-}
-
-/** The mailto address SECURITY.md names for reports outside GitHub. */
-function securityPolicyMailbox() {
-  const policy = readFileSync(resolve(repoRoot, "SECURITY.md"), "utf8");
-  const addresses = [...policy.matchAll(/\(mailto:([^)\s]+)\)/g)].map(
-    (match) => match[1],
-  );
-  expect(addresses, "SECURITY.md names one mailto address").toHaveLength(1);
-  expect(policy).toContain("private vulnerability reporting");
-  return addresses[0];
 }
 
 describe("expiresProblem", () => {
@@ -146,13 +130,10 @@ describe("the served security.txt files", () => {
   });
 
   it("name the contacts SECURITY.md names, GitHub's private reporting first", () => {
-    const contacts = fields(texts[0])
-      .filter(([name]) => name === "contact")
-      .map(([, value]) => value);
-    expect(contacts).toEqual([
-      GITHUB_REPORTING,
-      `mailto:${securityPolicyMailbox()}`,
-    ]);
+    const expected = securityPolicyContacts(repoRoot);
+    expect(expected[0]).toBe(GITHUB_REPORTING);
+    expect(expected[1]).toMatch(/^mailto:[^@\s]+@[^@\s]+$/);
+    expect(contacts(texts[0])).toEqual(expected);
   });
 
   it("have one Expires, not yet inside the renewal window", () => {
@@ -185,6 +166,108 @@ describe("each site's artifact upload", () => {
           ...excluded.map((entry) => `!${output}/${entry}`),
         ]);
       }
+    },
+  );
+});
+
+describe("servedProblems", () => {
+  const expected = [GITHUB_REPORTING, "mailto:security@example.org"];
+  const file = `# comment\nContact: ${expected[0]}\nContact: ${expected[1]}\nExpires: 2027-06-01T00:00:00.000Z\n`;
+  const served = {
+    status: 200,
+    contentType: "text/plain; charset=utf-8",
+    body: file,
+  };
+
+  it("accepts the file served as text/plain", () => {
+    expect(servedProblems(served, expected)).toEqual([]);
+  });
+
+  it("fails the index page served by fallback", () => {
+    const problems = servedProblems(
+      { ...served, contentType: "text/html", body: "<!doctype html>\n" },
+      expected,
+    );
+    expect(problems).toHaveLength(2);
+    expect(problems[0]).toMatch(/content type text\/html, not text\/plain/);
+    expect(problems[1]).toMatch(/is not a security\.txt/);
+  });
+
+  it("fails a status other than 200, a redirect among them", () => {
+    expect(servedProblems({ ...served, status: 404 }, expected)).toEqual([
+      "answered 404, not 200",
+    ]);
+    expect(servedProblems({ ...served, status: 308 }, expected)).toEqual([
+      "answered 308, not 200",
+    ]);
+  });
+
+  it("fails a response with no content type", () => {
+    expect(
+      servedProblems({ ...served, contentType: null }, expected)[0],
+    ).toMatch(/content type \(none\)/);
+  });
+
+  it("fails contacts other than the expected ones, or in another order", () => {
+    const reordered = `Contact: ${expected[1]}\nContact: ${expected[0]}\n`;
+    expect(servedProblems({ ...served, body: reordered }, expected)[0]).toMatch(
+      /names the contacts/,
+    );
+    const short = `Contact: ${expected[0]}\n`;
+    expect(servedProblems({ ...served, body: short }, expected)[0]).toMatch(
+      /names the contacts/,
+    );
+  });
+});
+
+describe("securityTxtUrl", () => {
+  it("joins the path to a deployment URL", () => {
+    expect(securityTxtUrl("https://0123abcd.alcove-app.pages.dev")).toBe(
+      `https://0123abcd.alcove-app.pages.dev${SECURITY_TXT_PATH}`,
+    );
+  });
+
+  it("refuses an empty, missing or non-https URL", () => {
+    expect(() => securityTxtUrl("")).toThrow(/not a URL/);
+    expect(() => securityTxtUrl(undefined)).toThrow(/not a URL/);
+    expect(() => securityTxtUrl("http://example.org")).toThrow(/not https/);
+  });
+});
+
+// Each Pages upload's own deployment URL, read from the wrangler action's
+// deployment-url output, reaches a check of the served file in a job of its
+// own: the job that holds the deploy credentials runs no repository code.
+describe("each Pages upload", () => {
+  const CHECK_COMMAND = "node scripts/check-served-security-txt.mjs";
+
+  it.each([`${WORKFLOW_DIR}/pages_deploy.yaml`, SITE_DEPLOY_WORKFLOW])(
+    "in %s is followed by a check of its deployment's security.txt",
+    (workflow) => {
+      const jobs = Object.entries(workflowDocument(repoRoot, workflow).jobs);
+      const [deployId, deploy] = jobs.find(([, job]) =>
+        (job.steps ?? []).some((step) =>
+          (step.uses ?? "").startsWith("cloudflare/wrangler-action@"),
+        ),
+      );
+      const uploads = deploy.steps.filter((step) =>
+        (step.uses ?? "").startsWith("cloudflare/wrangler-action@"),
+      );
+      const checks = jobs.flatMap(([, job]) =>
+        [job.needs ?? []].flat().includes(deployId)
+          ? (job.steps ?? []).filter((step) => step.run === CHECK_COMMAND)
+          : [],
+      );
+      expect(checks).toHaveLength(uploads.length);
+      uploads.forEach((upload, index) => {
+        const output = Object.entries(deploy.outputs ?? {}).find(
+          ([, value]) =>
+            value === `\${{ steps.${upload.id}.outputs.deployment-url }}`,
+        );
+        expect(output, `an output of upload ${upload.id}`).toBeDefined();
+        expect(checks[index].env.DEPLOYMENT_URL).toBe(
+          `\${{ needs.${deployId}.outputs.${output[0]} }}`,
+        );
+      });
     },
   );
 });
