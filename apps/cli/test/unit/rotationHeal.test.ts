@@ -175,9 +175,7 @@ function recordingEmitter(sink: Array<[string, string]>): EventStreamEmitter {
  * Run both parties from their key files, the responder first: `initiator`
  * names which of the two takes the initiator's role.
  */
-async function runBoth(
-  initiator: "a" | "b",
-): Promise<{
+async function runBoth(initiator: "a" | "b"): Promise<{
   a: PromiseSettledResult<unknown>;
   b: PromiseSettledResult<unknown>;
   emitted: Emitted;

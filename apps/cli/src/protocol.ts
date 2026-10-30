@@ -108,7 +108,7 @@ import {
   transportTeardownCeilingMs,
   type TeardownOutcome,
 } from "./transportTeardown";
-import { exitCodeForError, fixedNextStep } from "./util/exit";
+import { exitCodeForError, fixedNextStep, withExitCode } from "./util/exit";
 import { noteSignalOwnsExit } from "./util/exitGate";
 import { runBeforeEachLogLine } from "./util/logging";
 import { logRuntimeEnv } from "./util/runtimeEnv";
@@ -161,6 +161,9 @@ export interface AuthPersist extends Authentication {
    * after the run, so the rotation write records that registration as pending
    * (`relayRegistrationPendingSince`) until the registrar confirms it. */
   relayRegistrationFollows?: boolean;
+  /** The caller wrote the key file just before the run, from an invitation,
+   * so it cannot be an older copy than the partner's. */
+  keyFileWrittenThisRun?: boolean;
   /** The key file's previous secret, which the handshake also offers. */
   previousSharedSecret?: string;
   /** The `expires` {@link previousSharedSecret} had as the current secret. */
@@ -1076,6 +1079,19 @@ const ROTATED_TOKEN_SAVE_REMEDY =
   "on that run or it never meets your partner, ask your partner for a new " +
   "invitation.";
 
+/** {@link ROTATED_TOKEN_SAVE_REMEDY} where the next run cannot heal. */
+const ROTATED_TOKEN_SAVE_REMEDY_NO_HEAL = ` Your partner may already hold the rotated token. ${NEW_INVITATION_REMEDY}`;
+
+/**
+ * Whether the next run with the same partner can heal a run cut between the
+ * two stores. Over SFTP and a shared folder the two sides meet whatever secret
+ * each holds; over WebRTC each derives its rendezvous id from its current
+ * secret, so they do not meet. A cut run that cannot heal exits 77.
+ */
+function nextRunCanHeal(channel: ProtocolConnectionConfig["channel"]): boolean {
+  return channel === "sftp" || channel === "filedrop";
+}
+
 /**
  * What {@link authenticateRun} states ahead of the key file it could not save
  * as the initiator, which stores first, so its partner stored nothing.
@@ -1086,7 +1102,10 @@ const FIRST_STORE_SAVE_PREAMBLE =
 /**
  * What {@link authenticateRun} states behind that key file and the failure. A
  * directory flush that fails after the rename leaves the next secret in this
- * side's key file, which the authentication-failure fallback covers.
+ * side's key file beside the secret the run used, which the next run heals
+ * where the channel allows it ({@link nextRunCanHeal}); the
+ * authentication-failure fallback, and over WebRTC the next run's no-show
+ * remedy, cover a state it cannot.
  */
 const FIRST_STORE_SAVE_REMEDY =
   " Your partner did not save it. Fix the key file's location or " +
@@ -1112,18 +1131,26 @@ const PARTNER_SAVE_FAILURE_REMEDY =
   `partner: ${NEW_INVITATION_REMEDY} It is described under "Out-of-sync ` +
   'tokens" in docs/CLI.md.';
 
+/** {@link PARTNER_SAVE_FAILURE_REMEDY} where the next run cannot heal. */
+const PARTNER_SAVE_FAILURE_REMEDY_NO_HEAL =
+  ", so you and your partner now hold different secrets, and running the " +
+  `exchange again cannot reconnect you. ${NEW_INVITATION_REMEDY} It is ` +
+  'described under "Out-of-sync tokens" in docs/CLI.md.';
+
 /**
  * The failure an initiator reports in place of the partner's abort stating
  * that it could not save the next shared secret
- * ({@link isPartnerNextSecretStoreFailure}), where this side saved it: exit
- * 69, as the responder's own failed save, since this side kept the secret
- * the run used and the next run heals. `undefined` for every other failure,
- * and where this side saved nothing, which report as themselves.
+ * ({@link isPartnerNextSecretStoreFailure}), where this side saved it: as the
+ * responder's own failed save, exit 69 where the next run heals, since this
+ * side kept the secret the run used, and exit 77 where it cannot. `undefined`
+ * for every other failure, and where this side saved nothing, which report as
+ * themselves.
  */
 function partnerSaveFailure(
   err: unknown,
   run: RunLifecycle,
   keyFilePath: string | undefined,
+  nextRunHeals: boolean,
 ): Error | undefined {
   if (
     run.handshakeRole !== "initiator" ||
@@ -1134,9 +1161,12 @@ function partnerSaveFailure(
     return undefined;
   const message = messageWithOperatorText`${PARTNER_SAVE_FAILURE_PREAMBLE}${operatorSuppliedText(
     keyFilePath,
-  )}${PARTNER_SAVE_FAILURE_REMEDY}`;
+  )}${nextRunHeals ? PARTNER_SAVE_FAILURE_REMEDY : PARTNER_SAVE_FAILURE_REMEDY_NO_HEAL}`;
+  const failure = keepOperatorSuppliedText(new Error(message.text), message);
   return markStatesItsOwnNextStep(
-    keepOperatorSuppliedText(new Error(message.text), message),
+    nextRunHeals
+      ? failure
+      : withExitCode(failure, AUTHENTICATION_FAILED_EXIT_CODE),
   );
 }
 
@@ -1171,7 +1201,8 @@ export function rotationHealWarning(secretUsed: {
  * Drop the previous secret the initiator kept, once the responder's first
  * frame after the terms exchange shows it stored the next one. A failure
  * ends the run (core then sends the partner its fixed abort): both sides hold
- * the next secret, so the next run works as usual.
+ * the next secret as their current one, so the next run works as usual on
+ * every channel, WebRTC included, and the failure exits 69.
  */
 function dropStoredPreviousSecret(
   keyFilePath: string,
@@ -1220,9 +1251,20 @@ async function authenticateRun(params: {
   onAuthenticated: (() => void | Promise<void>) | undefined;
   log: ReturnType<typeof getLogger>;
   eventStream: EventStreamEmitter | undefined;
+  /** {@link nextRunCanHeal} for the run's channel. */
+  nextRunHeals: boolean;
 }): Promise<void> {
-  const { build, run, mc, auth, role, onAuthenticated, log, eventStream } =
-    params;
+  const {
+    build,
+    run,
+    mc,
+    auth,
+    role,
+    onAuthenticated,
+    log,
+    eventStream,
+    nextRunHeals,
+  } = params;
   log.info("authenticating");
   // Discard the (possibly whitespace-padded) keyFilePath from auth;
   // saveKeyFile below uses trimmedKeyFilePath, which was captured and
@@ -1230,6 +1272,7 @@ async function authenticateRun(params: {
   // auth object.
   const {
     keyFilePath: _ignored,
+    keyFileWrittenThisRun: _written,
     saveKeyFileExclusively,
     relayRegistrationFollows,
     previousSharedSecret,
@@ -1360,19 +1403,32 @@ async function authenticateRun(params: {
       storedSecret = rotatedSecret;
     } catch (err) {
       // Marked as stating its own next step, so runProtocol prints no rotation
-      // line beneath it. Either way a retry recovers (exit 69): an initiator's
-      // failed store aborts before the responder's, and a responder stores
-      // after an initiator that kept the secret this run used.
+      // line beneath it. An initiator's failed store aborts before the
+      // responder's, so a retry recovers (exit 69). A responder stores after
+      // an initiator that kept the secret this run used: exit 69 where the
+      // next run heals, else 77, since a retry cannot reconnect the two.
       const reason = err instanceof Error ? err.message : String(err);
+      const responderCannotHeal = role === "responder" && !nextRunHeals;
       const [preamble, remedy] =
         role === "initiator"
           ? [FIRST_STORE_SAVE_PREAMBLE, FIRST_STORE_SAVE_REMEDY]
-          : [ROTATED_TOKEN_SAVE_PREAMBLE, ROTATED_TOKEN_SAVE_REMEDY];
+          : [
+              ROTATED_TOKEN_SAVE_PREAMBLE,
+              responderCannotHeal
+                ? ROTATED_TOKEN_SAVE_REMEDY_NO_HEAL
+                : ROTATED_TOKEN_SAVE_REMEDY,
+            ];
       const message = messageWithOperatorText`${preamble}${operatorSuppliedText(
         keyFilePath,
       )}: ${reason}${remedy}`;
+      const failure = keepOperatorSuppliedText(
+        new Error(message.text),
+        message,
+      );
       throw markStatesItsOwnNextStep(
-        keepOperatorSuppliedText(new Error(message.text), message),
+        responderCannotHeal
+          ? withExitCode(failure, AUTHENTICATION_FAILED_EXIT_CODE)
+          : failure,
       );
     }
 
@@ -2264,6 +2320,7 @@ export async function runProtocol(
   process.on("SIGINT", onSigint);
   process.on("SIGTERM", onSigterm);
 
+  const nextRunHeals = nextRunCanHeal(connection.channel);
   try {
     const role = await openRunTransport({
       build,
@@ -2293,6 +2350,7 @@ export async function runProtocol(
         onAuthenticated,
         log,
         eventStream,
+        nextRunHeals,
       });
     }
 
@@ -2458,10 +2516,14 @@ export async function runProtocol(
     // What the run reports and exits on. The partner's abort stays `err` for
     // what reads the abort itself: the echo gate and the disclosed record.
     const reported =
-      partnerSaveFailure(err, run, build.trimmedKeyFilePath) ?? err;
+      partnerSaveFailure(err, run, build.trimmedKeyFilePath, nextRunHeals) ??
+      err;
     // A run whose key file was there before it started may hold an older copy.
     markArrivalWait(err, arrivalWait, {
-      fromKeyFile: auth !== null && auth.saveKeyFileExclusively !== true,
+      fromKeyFile:
+        auth !== null &&
+        auth.saveKeyFileExclusively !== true &&
+        auth.keyFileWrittenThisRun !== true,
     });
     // Only the online invite and accept pass a post-authentication hook: their
     // configuration write.

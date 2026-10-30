@@ -44,6 +44,13 @@ const mockState = vi.hoisted(() => ({
   warnLines: [] as Array<string>,
   /** Every WebSocket relay a run parked, none of which ever pairs. */
   parkedRelays: [] as Array<{ dial: unknown; closed: boolean }>,
+  /** When set, the initiator stores and then reads the responder's abort
+   * saying it could not save the next secret. */
+  responderSaveFails: false,
+  /** A key file path the rotated secret's save refuses. */
+  unwritableKeyFilePath: undefined as string | undefined,
+  /** When set, every rendezvous rejects with it. */
+  dialFailure: undefined as Error | undefined,
 }));
 
 vi.mock("@openmined/psi.js", () => ({
@@ -101,14 +108,21 @@ vi.mock("@alcove/core", async (importActual) => {
       // The real terms exchange stores the next secret through
       // `options.rotation`; a fixed responder value makes both sides agree.
       const rotation = (args[3] as { rotation?: TermsRotation }).rotation;
-      if (rotation !== undefined)
-        await rotation.store(
-          await deriveNextSecret(
-            rotation.inputs.keyAgreementOutput,
-            rotation.inputs.initiatorValue,
-            new Uint8Array(32),
-          ),
+      if (rotation !== undefined) {
+        const nextSecret = await deriveNextSecret(
+          rotation.inputs.keyAgreementOutput,
+          rotation.inputs.initiatorValue,
+          new Uint8Array(32),
         );
+        if (mockState.responderSaveFails && args[1] === "responder")
+          rotation.partnerMayHoldNextSecret?.(true);
+        await rotation.store(nextSecret);
+        if (mockState.responderSaveFails && args[1] === "initiator")
+          throw new actual.PeerAbortError(
+            undefined,
+            actual.NEXT_SECRET_STORE_FAILED_ABORT_REASON,
+          );
+      }
       return {
         associationTable: [[], []],
         intersectionCount: undefined,
@@ -143,11 +157,25 @@ vi.mock(
     openWebRtcMessageConnection: vi.fn(
       async (options: Record<string, unknown>) => {
         mockState.dials.push(options);
+        if (mockState.dialFailure !== undefined) throw mockState.dialFailure;
         return linkedConnection(options.role as "inviter" | "acceptor");
       },
     ),
   }),
 );
+
+// The rotated secret's save, real except at the one path a test names.
+vi.mock("../../../src/keyFile", async (importActual) => {
+  const actual = await importActual<typeof import("../../../src/keyFile")>();
+  return {
+    ...actual,
+    saveKeyFile: (...args: Parameters<typeof actual.saveKeyFile>) => {
+      if (args[0] === mockState.unwritableKeyFilePath)
+        throw new Error("EACCES: permission denied");
+      actual.saveKeyFile(...args);
+    },
+  };
+});
 
 vi.mock(
   "../../../src/connection/webrtc/websocketRelayConnection",
@@ -207,7 +235,12 @@ const {
   FINAL_FRAME_UNCONFIRMED_LINK_LOST_MESSAGE,
   FinalFrameUnconfirmedError,
 } = await import("../../../src/connection/webrtc/webrtcMessageConnection");
+const { failureRemedy, OLDER_KEY_FILE_NO_SHOW_REMEDY } =
+  await import("../../../src/failureRemedy");
 const {
+  ConnectionError,
+  markFailureCause,
+  NEW_INVITATION_REMEDY,
   DISPLAY_TRUNCATION_MARKER,
   EncryptedMessageConnection,
   RELAY_CREDENTIAL_MAX_TTL_SECONDS,
@@ -306,6 +339,9 @@ beforeEach(() => {
   mockState.logLines.length = 0;
   mockState.warnLines.length = 0;
   mockState.parkedRelays.length = 0;
+  mockState.responderSaveFails = false;
+  mockState.unwritableKeyFilePath = undefined;
+  mockState.dialFailure = undefined;
 });
 
 afterEach(() => {
@@ -488,6 +524,83 @@ test("the rendezvous line names the authority dialed, not the configured text", 
     `${rendezvousLine} peers.example.org:9000`,
   ]);
 });
+
+// --- a cut rotation the next run cannot heal ---------------------------------
+
+test("a failed save on the responder exits 77 on both sides and names a new invitation, since the two do not meet on the next run", async () => {
+  mockState.responderSaveFails = true;
+  // The inviter takes the responder's handshake role; its key file is written
+  // before the run starts, so the refusal is armed only once both are under way.
+  const runs = [runParty("inviter"), runParty("acceptor")];
+  mockState.unwritableKeyFilePath = path.join(tmpDir, "inviter.key");
+  const [responder, initiator] = await Promise.allSettled(runs);
+
+  expect(responder.status).toBe("rejected");
+  const responderReason = (responder as PromiseRejectedResult).reason as Error;
+  expect(responderReason.message).toContain(
+    "authentication succeeded and the shared token was rotated, but the " +
+      "updated token could not be saved to ",
+  );
+  expect(responderReason.message).toContain(
+    ` Your partner may already hold the rotated token. ${NEW_INVITATION_REMEDY}`,
+  );
+  expect(responderReason.message).not.toContain("kept the one this run used");
+  expect(exitCodeForError(responderReason)).toBe(77);
+
+  expect(initiator.status).toBe("rejected");
+  const initiatorReason = (initiator as PromiseRejectedResult).reason as Error;
+  expect(initiatorReason.message).toContain(
+    "Your partner could not save the new shared secret, so the exchange " +
+      "stopped. This side had already saved it to ",
+  );
+  expect(initiatorReason.message).toContain(
+    ", so you and your partner now hold different secrets, and running the " +
+      `exchange again cannot reconnect you. ${NEW_INVITATION_REMEDY}`,
+  );
+  expect(initiatorReason.message).not.toContain(
+    "kept the secret this run used",
+  );
+  expect(exitCodeForError(initiatorReason)).toBe(77);
+});
+
+test.each([
+  ["from an existing key file names", true, false],
+  [
+    "on the --invitation run that wrote its key file does not name",
+    false,
+    true,
+  ],
+] as const)(
+  "a no-show %s an older copy of the key file",
+  async (_case, namesOlderCopy, keyFileWrittenThisRun) => {
+    mockState.dialFailure = markFailureCause(
+      new ConnectionError("the partner did not arrive", "transport"),
+      { kind: "partner-never-arrived", channel: "webrtc", waitedMs: 1_000 },
+    );
+    const keyFilePath = path.join(tmpDir, "no-show.key");
+    saveKeyFile(keyFilePath, { sharedSecret: SECRET });
+    const outcome = await Promise.allSettled([
+      runProtocol({
+        connection: webrtcConnection("acceptor"),
+        auth: {
+          sharedSecret: SECRET,
+          keyFilePath,
+          ...(keyFileWrittenThisRun && { keyFileWrittenThisRun }),
+        },
+        prepared: minimalPrepared,
+        output: path.join(tmpDir, "out.csv"),
+        verbosity: -1,
+        loggerName: "test",
+      }),
+    ]);
+
+    expect(outcome[0].status).toBe("rejected");
+    const remedy = failureRemedy((outcome[0] as PromiseRejectedResult).reason);
+    expect(remedy).toContain("--peer-timeout sets how long to wait.");
+    if (namesOlderCopy) expect(remedy).toContain(OLDER_KEY_FILE_NO_SHOW_REMEDY);
+    else expect(remedy).not.toContain(OLDER_KEY_FILE_NO_SHOW_REMEDY);
+  },
+);
 
 /**
  * Trap the signal handler's `process.exit` and hand back a promise that

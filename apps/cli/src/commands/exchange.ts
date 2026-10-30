@@ -755,6 +755,7 @@ function readExchangeConfig(
     sharedSecret: keyData.sharedSecret,
     expires: keyData.expires,
     keyFilePath: options.keyFile,
+    ...(invitedKeyFile !== undefined && { keyFileWrittenThisRun: true }),
     ...(keyData.previousSharedSecret !== undefined && {
       previousSharedSecret: keyData.previousSharedSecret,
     }),

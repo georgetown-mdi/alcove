@@ -760,8 +760,9 @@ history it read, and the rotation write (`rotationWriteContents` in
   `previousExpires`; the responder's write holds neither. Once the responder's
   confirmation arrives, `dropPreviousSecret` removes both through the same
   owner-only, atomic-rename write, and a failed removal ends the run with exit
-  69, the file still holding them. An online `invite` or `accept` run that
-  initiates keeps the invitation's secret this way.
+  69, the file still holding them unless the failure was the directory flush
+  after the rename, which leaves them removed. An online `invite` or `accept`
+  run that initiates keeps the invitation's secret this way.
 - **The history.** Each rotation write adds the verifier of the secret the
   file held as current at the start of the run, with its `expires`, at the
   front, unless the handshake used the previous secret, whose verifier the

@@ -2246,6 +2246,35 @@ test("handler: --invitation provisions the key file when none exists and the exc
   }
 });
 
+test("handler: only an --invitation run tells the run its key file was written by this invocation", async () => {
+  fs.writeFileSync(configFile, YAML.stringify(minimalFiledropConfig));
+  const input = path.join(dir, "in.csv");
+  fs.writeFileSync(input, "ssn\n123456789\n");
+  const runWith = async (extra: Record<string, unknown>) => {
+    vi.mocked(runProtocol).mockReset();
+    vi.mocked(runProtocol).mockResolvedValueOnce({ outcome: "completed" });
+    await handler({
+      _: [],
+      $0: "alcove",
+      input,
+      "config-file": configFile,
+      "key-file": keyFile,
+      "log-level": "silent",
+      ...extra,
+    } as unknown as Arguments);
+    return vi.mocked(runProtocol).mock.calls[0][0].auth;
+  };
+
+  const invited = await runWith({
+    invitation: await encodeInvitation(inviteToken()),
+  });
+  expect(invited?.keyFileWrittenThisRun).toBe(true);
+
+  saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
+  const existing = await runWith({});
+  expect(existing?.keyFileWrittenThisRun).toBeUndefined();
+});
+
 test("handler: --invitation errors (exit 64) when a key file already exists and leaves it untouched", async () => {
   // A pre-existing key file is a clean usage error, never an overwrite: the
   // secret rotates after the first exchange, so re-supplying the original code
