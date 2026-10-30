@@ -1,5 +1,7 @@
 import { Anchor, VisuallyHidden } from "@mantine/core";
 
+import { alcoveVersion, buildCommit } from "@utils/clientConfig";
+import { buildLabel } from "@utils/buildLabel";
 import styles from "@styles/app.module.css";
 
 import {
@@ -26,10 +28,11 @@ function footerLinks(): ReadonlyArray<{ label: string; href: string }> {
 /**
  * The site footer: who builds Alcove, its documentation, instructions, privacy,
  * security and support pages on the project site, and its source code on
- * GitHub. The instructions link follows the build. `wide` matches the console
- * lobby column.
+ * GitHub, and the version or commit this build is. The instructions link
+ * follows the build. `wide` matches the console lobby column.
  */
 export function SiteFooter({ wide = false }: { wide?: boolean }) {
+  const buildLine = buildLabel(alcoveVersion(), buildCommit());
   return (
     <footer
       className={
@@ -60,6 +63,9 @@ export function SiteFooter({ wide = false }: { wide?: boolean }) {
           </Anchor>
         ))}
       </div>
+      {buildLine !== undefined && (
+        <p className={styles.siteFooterBuild}>{buildLine}</p>
+      )}
     </footer>
   );
 }

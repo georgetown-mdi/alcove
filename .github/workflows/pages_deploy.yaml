@@ -1,14 +1,15 @@
 name: Deploy to Cloudflare Pages
 
 # Uploads the hosted static build (apps/web/dist/hosted) to the Cloudflare
-# Pages project by direct upload. A push to main is the production deployment;
-# a push to staging is a preview deployment on the `staging` branch alias. The
-# demo site's build goes to the demo site's Pages project the same way.
+# Pages project by direct upload, as a preview deployment on the `staging`
+# branch alias for each push to staging. The demo site's build goes to the
+# demo site's Pages project the same way. The production deployment is made
+# from a release tag by release.yaml, after the release images are published.
 # The secrets and variables it reads:
 # docs/DEPLOYMENT.md, "Deploying to Cloudflare Pages".
 on:
   push:
-    branches: [main, staging]
+    branches: [staging]
     # Deploy-affecting sources only: apps/web/test/** is left out so a
     # test-only push does not redeploy, while the PR gate
     # (web_build_and_test.yaml) globs apps/web/**. That every source the build
@@ -59,7 +60,7 @@ jobs:
   # A dispatch from any other branch ends here rather than building a site
   # nothing deploys.
   build-and-test:
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging'
+    if: github.ref == 'refs/heads/staging'
     uses: ./.github/workflows/web_build_and_test.yaml
 
   # The only job given the Cloudflare credentials. It checks out nothing and
@@ -68,11 +69,11 @@ jobs:
   deploy:
     name: Upload to Cloudflare Pages
     needs: build-and-test
-    # Held on Ubuntu 24.04: this job runs only on a push to main or staging,
-    # where it deploys, so no branch run has driven it on 26.04.
+    # Held on Ubuntu 24.04: this job runs only on a push to staging, where it
+    # deploys, so no branch run has driven it on 26.04.
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    environment: ${{ github.ref == 'refs/heads/main' && 'Production' || 'Staging' }}
+    environment: Staging
     permissions: {}
     outputs:
       siteUrl: ${{ steps.deploy.outputs.deployment-url }}
@@ -87,8 +88,8 @@ jobs:
       # The action hands the command to wrangler as arguments with no shell, so
       # environment variables are never expanded and the values go in as
       # expressions; the project name is a variable only a repository admin
-      # sets, the branch is main or staging under the job's gate, and the sha
-      # is hex, so none can add an argument.
+      # sets, the branch is a literal, and the sha is hex, so none can add an
+      # argument.
       # Pinned to a commit because the step holds the deploy token, and to an
       # exact wrangler so the step does not install the newest wrangler 4.
       - name: Deploy
@@ -98,7 +99,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: "4.147.0"
-          command: pages deploy site --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT }} --branch=${{ github.ref_name }} --commit-hash=${{ github.sha }}
+          command: pages deploy site --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT }} --branch=staging --commit-hash=${{ github.sha }}
       # The demo site, after the site above, so a failed demo upload leaves
       # the site deployed and fails the run. Skipped while the job's
       # environment sets no CLOUDFLARE_DEMO_PAGES_PROJECT, which is set once
@@ -117,7 +118,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: "4.147.0"
-          command: pages deploy demo-site --project-name=${{ vars.CLOUDFLARE_DEMO_PAGES_PROJECT }} --branch=${{ github.ref_name }} --commit-hash=${{ github.sha }}
+          command: pages deploy demo-site --project-name=${{ vars.CLOUDFLARE_DEMO_PAGES_PROJECT }} --branch=staging --commit-hash=${{ github.sha }}
 
   # Fetches /.well-known/security.txt from each deployment the job above made,
   # in a job of its own because this one runs repository code. No retry: a

@@ -76,16 +76,23 @@ export interface ClientConfig {
    */
   DEPLOYMENT_PROFILE: DeploymentProfile;
   /**
-   * The release version of the image this build ships in, baked in from the
-   * canonical `apps/cli/package.json` version by the image build (see the
-   * Dockerfile and docs/RELEASES.md). Empty in the continuously deployed
-   * hosted build and in any web build outside the image build, which pass no
+   * The product version this build belongs to (docs/RELEASES.md). The image
+   * build bakes in the `apps/cli/package.json` version (see the Dockerfile);
+   * the hosted build bakes in the version of the release tag it was built
+   * from, and is empty when built from anything else
+   * (hosted/buildIdentity.ts). Empty in any other web build, which passes no
    * value. A docker build of the repo bakes whatever version the manifest
    * holds -- on a non-release tree, the last published release -- so a value
    * here names the release the manifest held at build time, not a promise
    * that this build is that release.
    */
   ALCOVE_VERSION: string;
+  /**
+   * The short commit hash a hosted build was built from
+   * (hosted/buildIdentity.ts), shown where the build names no release
+   * version. Empty in any other build.
+   */
+  BUILD_COMMIT: string;
   /**
    * The signaling server this deployment's browser parties register with, and
    * the one an invitation it mints names: a `ws:` or `wss:` URL whose path is
@@ -201,6 +208,8 @@ const LOG_LEVELS = [
   "SILENT",
 ] as const;
 
+const BUILD_COMMIT_SHAPE = /^(?:[0-9a-f]{7,64})?$/;
+
 // PeerJS's LogLevel runs from Disabled (0) to All (3).
 const PEERJS_MAX_DEBUG_LEVEL = 3;
 
@@ -215,6 +224,13 @@ const clientConfigSchema: ZodType<ClientConfig> = z
     ),
     DEPLOYMENT_PROFILE: z.enum(DEPLOYMENT_PROFILES).default("hosted"),
     ALCOVE_VERSION: z.string().default(""),
+    BUILD_COMMIT: z
+      .string()
+      .regex(
+        BUILD_COMMIT_SHAPE,
+        "must be empty or 7 to 64 lowercase hex digits",
+      )
+      .default(""),
     SIGNALING_SERVER_URL: z
       .string()
       .default("")
@@ -302,12 +318,18 @@ export function isConsoleBuild(): boolean {
   return deploymentProfile() === "console";
 }
 
-/** The release version of the image this build ships in, or undefined when it
- * has none. A released console image is the one build that has one; it
- * is what the partner accept kit names its `docker run` image by, so the
- * partner runs the version that minted their invitation. */
+/** The product version this build belongs to, or undefined when it has none.
+ * A console image and a hosted build from a release tag have one; it is what
+ * the partner accept kit names its `docker run` image by, so the partner runs
+ * the version that minted their invitation. */
 export function alcoveVersion(): string | undefined {
   return config.ALCOVE_VERSION === "" ? undefined : config.ALCOVE_VERSION;
+}
+
+/** The short commit hash this hosted build was built from, or undefined when
+ * the build names none. */
+export function buildCommit(): string | undefined {
+  return config.BUILD_COMMIT === "" ? undefined : config.BUILD_COMMIT;
 }
 
 /** The default level for the app's own loggers. */

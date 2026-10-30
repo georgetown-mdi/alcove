@@ -629,6 +629,100 @@ jobs:
           copy_and_compare "${DEFAULT_DIGEST}" ""
           copy_and_compare "${FIPS_DIGEST}" "-fips"
 
+  # The hosted app's build and its suites, the same gate a push to staging
+  # deploys through (pages_deploy.yaml). Built from the tag, the site names the
+  # tag's version (apps/web/hosted/buildIdentity.ts).
+  web:
+    name: Build and test the hosted app
+    if: ${{ github.event_name == 'push' }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/web_build_and_test.yaml
+
+  # The production deployment of the hosted app and the demo site. It needs the
+  # publish job, so a tag that job refuses -- a version that disagrees with
+  # apps/cli/package.json, a failed test, scan or signature -- deploys nothing,
+  # and the image a deployed site's commands name is already published.
+  #
+  # The only job here given the Cloudflare credentials. It checks out nothing
+  # and runs no repository code: it downloads the sites the gate built and
+  # tested, and uploads them.
+  pages:
+    name: Deploy the hosted app to Cloudflare Pages
+    needs: [web, publish]
+    if: ${{ github.event_name == 'push' }}
+    # Held on Ubuntu 24.04 with pages_deploy.yaml's upload job.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: Production
+    permissions: {}
+    outputs:
+      siteUrl: ${{ steps.deploy.outputs.deployment-url }}
+      demoUrl: ${{ steps.deploy-demo.outputs.deployment-url }}
+      demoOutcome: ${{ steps.deploy-demo.outcome }}
+    steps:
+      - name: Download the site
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.web.outputs.artifactName }}
+          path: site
+      # As in pages_deploy.yaml: wrangler gets the command as arguments with no
+      # shell. The branch is the Pages projects' production branch
+      # (infra/hosted/cloudflare.tf), which makes the upload the production
+      # deployment; the tag name would make it a preview.
+      - name: Deploy
+        id: deploy
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: "4.147.0"
+          command: pages deploy site --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT }} --branch=main --commit-hash=${{ github.sha }}
+      # As in pages_deploy.yaml: after the site, and skipped while the
+      # environment sets no CLOUDFLARE_DEMO_PAGES_PROJECT.
+      - name: Download the demo site
+        if: vars.CLOUDFLARE_DEMO_PAGES_PROJECT != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.web.outputs.demoArtifactName }}
+          path: demo-site
+      - name: Deploy the demo site
+        id: deploy-demo
+        if: vars.CLOUDFLARE_DEMO_PAGES_PROJECT != ''
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: "4.147.0"
+          command: pages deploy demo-site --project-name=${{ vars.CLOUDFLARE_DEMO_PAGES_PROJECT }} --branch=main --commit-hash=${{ github.sha }}
+
+  # As in pages_deploy.yaml: a job of its own, holding no credentials, since it
+  # runs repository code.
+  check-security-txt:
+    name: Check the served security.txt
+    needs: pages
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - name: Check the site
+        env:
+          DEPLOYMENT_URL: ${{ needs.pages.outputs.siteUrl }}
+        run: node scripts/check-served-security-txt.mjs
+      - name: Check the demo site
+        if: ${{ !cancelled() && needs.pages.outputs.demoOutcome == 'success' }}
+        env:
+          DEPLOYMENT_URL: ${{ needs.pages.outputs.demoUrl }}
+        run: node scripts/check-served-security-txt.mjs
+
   # A dispatch can come from any branch, so this job holds no write permission
   # by design.
   dry-run:

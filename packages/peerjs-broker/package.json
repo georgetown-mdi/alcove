@@ -4,6 +4,7 @@
   "description": "Alcove's PeerJS-compatible WebSocket signaling broker for WebRTC rendezvous",
   "license": "SEE LICENSE IN LICENSE",
   "author": "Vincent Dorie <vdorie@gmail.com>",
+  "private": true,
   "type": "module",
   "exports": {
     ".": "./src/contrib/index.ts",
