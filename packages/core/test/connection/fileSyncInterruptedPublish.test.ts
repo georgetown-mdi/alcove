@@ -6,7 +6,11 @@
 import { describe, expect, test } from "vitest";
 
 import type { FileTransportClient } from "../../src/connection/fileSyncConnection";
-import { ackMarkerName, LOCK_SUFFIX } from "../../src/connection/fileSyncNames";
+import {
+  ackMarkerName,
+  isHelloTempName,
+  LOCK_SUFFIX,
+} from "../../src/connection/fileSyncNames";
 import {
   LOCK_HELLO_BODY,
   helloBodyFor,
@@ -27,13 +31,14 @@ type HeldOp = "put" | "rename" | "createExclusive";
 interface Mode {
   writeWithoutRenaming: boolean;
   locklessRendezvous?: boolean;
+  retainFiles?: boolean;
 }
 
 // A transport that holds the one write `isHeld` names until released, and
 // that models the process exiting once close() resolves: nothing issued after
 // end() reaches the directory, while the held write, already sent, still lands.
-// `started` records every operation as it starts, safeDelete aside, so a test
-// can see what the rendezvous issued after the held write returned.
+// `started` records every operation as it starts, safeDelete included, so a
+// test can see what the rendezvous issued after the held write returned.
 function interruptibleClient(
   files: Map<string, Buffer>,
   isHeld: (op: HeldOp, destName: string) => boolean,
@@ -109,6 +114,7 @@ function interruptibleClient(
         await client.delete(path);
       },
       safeDelete: async (path) => {
+        started.push(`safeDelete:${baseName(path)}`);
         if (!ended) await client.safeDelete(path);
       },
     },
@@ -138,6 +144,10 @@ async function interruptHeldWrite(
   conn.id = OWN_ID;
   conn.options.writeWithoutRenaming = mode.writeWithoutRenaming;
   conn.options.locklessRendezvous = mode.locklessRendezvous ?? false;
+  if (mode.retainFiles) {
+    conn.options.retainFiles = true;
+    conn.options.timestampInFilename = true;
+  }
 
   const rendezvous = conn.synchronize().catch(() => {});
   await transport.heldWriteReached;
@@ -201,7 +211,7 @@ describe.each([
 
     expect(outcome.left).toEqual([]);
     expect(outcome.closedBeforeRelease).toBe(false);
-    expect(outcome.startedAfterRelease).toEqual([]);
+    expect(outcome.startedAfterRelease).toEqual([`safeDelete:${ownHello}`]);
     expect(await nextRunPassesEntryScan(files, lockMode)).toBe(true);
   });
 
@@ -219,9 +229,12 @@ describe.each([
     expect(outcome.left).toEqual([]);
     expect(outcome.closedBeforeRelease).toBe(false);
     // Written without renaming, the hello is followed by the sentinel's
-    // delete, the last step from the peer hello's delete to this party's hello.
+    // delete, the last step from the peer hello's delete to this party's hello;
+    // the rollback's delete of the hello comes after.
     expect(outcome.startedAfterRelease).toEqual(
-      writeWithoutRenaming ? [`delete:${joiningName(OWN_ID)}`] : [],
+      writeWithoutRenaming
+        ? [`delete:${joiningName(OWN_ID)}`, `safeDelete:${ownHello}`]
+        : [`safeDelete:${ownHello}`],
     );
     expect(await nextRunPassesEntryScan(files, lockMode)).toBe(true);
   });
@@ -239,7 +252,9 @@ describe.each([
 
     expect(outcome.left).toEqual([peerHello]);
     expect(outcome.closedBeforeRelease).toBe(false);
-    expect(outcome.startedAfterRelease).toEqual([]);
+    expect(outcome.startedAfterRelease).toEqual([
+      `safeDelete:${joiningName(OWN_ID)}`,
+    ]);
     expect(await nextRunPassesEntryScan(files, lockMode)).toBe(true);
   });
 
@@ -265,7 +280,10 @@ describe.each([
 
     expect(outcome.left).toEqual([peerLocklessHello]);
     expect(outcome.closedBeforeRelease).toBe(false);
-    expect(outcome.startedAfterRelease).toEqual([]);
+    expect(outcome.startedAfterRelease).toEqual([
+      `safeDelete:${ackName}`,
+      `safeDelete:${helloName(OWN_ID, locklessBody)}`,
+    ]);
     expect(await nextRunPassesEntryScan(files, locklessMode)).toBe(true);
   });
 
@@ -286,7 +304,67 @@ describe.each([
 
     expect(outcome.left).toEqual([peerHello]);
     expect(outcome.closedBeforeRelease).toBe(false);
-    expect(outcome.startedAfterRelease).toEqual([]);
+    expect(outcome.startedAfterRelease).toEqual([
+      `safeDelete:${ownHello}`,
+      `safeDelete:${lockName}`,
+    ]);
     expect(await nextRunPassesEntryScan(files, lockMode)).toBe(true);
+  });
+});
+
+describe("an interrupted hello publish, temp put held", () => {
+  const ownHello = helloName(OWN_ID);
+  const peerHello = helloName(PEER_ID);
+  const holdsHelloTempPut = (op: HeldOp, destName: string): boolean =>
+    op === "put" && isHelloTempName(destName);
+
+  test("delete mode: the step under way finishes with its rename and the rollback deletes, with no list or read", async () => {
+    const files = new Map<string, Buffer>([
+      [`${DIR}/${peerHello}`, LOCK_HELLO_BODY],
+    ]);
+
+    const outcome = await interruptHeldWrite(
+      files,
+      holdsHelloTempPut,
+      { writeWithoutRenaming: false },
+      [peerHello],
+    );
+
+    expect(outcome.closedBeforeRelease).toBe(false);
+    expect(outcome.startedAfterRelease).toEqual([
+      `rename:${ownHello}`,
+      `safeDelete:${ownHello}`,
+    ]);
+    expect(outcome.left).toEqual([peerHello]);
+  });
+
+  test("retain mode: close() removes this party's hello by the rollback and deletes no other json", async () => {
+    const retainBody = helloBodyFor({
+      locklessRendezvous: true,
+      retainFiles: true,
+    });
+    const retainHello = helloName(OWN_ID, retainBody);
+    const peerRetainHello = helloName(PEER_ID, retainBody);
+    const files = new Map<string, Buffer>([
+      [`${DIR}/${peerRetainHello}`, retainBody],
+    ]);
+
+    const outcome = await interruptHeldWrite(
+      files,
+      holdsHelloTempPut,
+      {
+        writeWithoutRenaming: false,
+        locklessRendezvous: true,
+        retainFiles: true,
+      },
+      [peerRetainHello],
+    );
+
+    expect(outcome.closedBeforeRelease).toBe(false);
+    expect(outcome.startedAfterRelease).toEqual([
+      `rename:${retainHello}`,
+      `safeDelete:${retainHello}`,
+    ]);
+    expect(outcome.left).toEqual([peerRetainHello]);
   });
 });
