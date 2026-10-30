@@ -4,7 +4,10 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import { parse as parseYaml } from "yaml";
 
-import { ALIAS_TYPE_META_MAP } from "../../src/config/metadata";
+import {
+  ALIAS_TYPE_META_MAP,
+  RUN_TOGETHER_RECORD_NUMBER_LOOKUP_KEYS,
+} from "../../src/config/metadata";
 import { safeParseLinkageTerms } from "../../src/config/linkageTermsSchema";
 import { getDefaultStandardization } from "../../src/defaults/builtInStandardization";
 import { runPipeline, suffixes, titles } from "../../src/standardization";
@@ -383,6 +386,23 @@ describe("DEFAULT_STANDARDIZATION.md inference table", () => {
           isPayload: unwrapCodeSpan(isPayload) === "true",
         });
     expect(Object.fromEntries(documented)).toEqual(ALIAS_TYPE_META_MAP);
+  });
+
+  test("lists the run-together record-number keys the code holds", () => {
+    const start = docLines.findIndex((line) =>
+      line.startsWith("The run-together record-number list holds"),
+    );
+    expect(start).toBeGreaterThanOrEqual(0);
+    const paragraph = docLines
+      .slice(start, docLines.indexOf("", start))
+      .join(" ");
+    const documented = [...paragraph.matchAll(/`([^`]+)`/g)].map(
+      (match) => match[1],
+    );
+    expect(documented).toHaveLength(
+      RUN_TOGETHER_RECORD_NUMBER_LOOKUP_KEYS.size,
+    );
+    expect(new Set(documented)).toEqual(RUN_TOGETHER_RECORD_NUMBER_LOOKUP_KEYS);
   });
 });
 
