@@ -3,9 +3,9 @@
 
 ![Massive Data Institute, Georgetown University](img/mdi-logo.png)
 
-Alcove is built at the [Massive Data Institute](https://mdi.georgetown.edu/) (MDI) at Georgetown University's McCourt School of Public Policy. MDI connects computer science, data science and public policy to research that improves people's lives. Alcove is open source under the [Apache 2.0 License](https://www.apache.org/licenses/LICENSE-2.0).
+Alcove is built at the [Massive Data Institute](https://mdi.georgetown.edu/) (MDI) at Georgetown University's McCourt School of Public Policy. MDI connects computer science, data science and public policy to research that improves people's lives. Alcove is open source under the [Apache License 2.0](../../LICENSE.md).
 
-Alcove grew out of a community of practice to enable bidirectional sharing between California Homeless Continuums of Care and Managed Care Organizations spanning twelve counties. It has benefitted from critical guidance from our partners at [Homebase](https://www.homebaseccc.org/) and [Connecting for Better Health](https://connectingforbetterhealth.com/). Resources about the California community of practice can be found [here](https://www.homebaseccc.org/resource/health-and-homelessness-community-of-practice).
+Alcove grew out of a community of practice to enable bidirectional sharing between California homeless Continuums of Care and Managed Care Organizations spanning twelve counties. It has benefited from critical guidance from our partners at [Homebase](https://www.homebaseccc.org/) and [Connecting for Better Health](https://connectingforbetterhealth.com/). The community of practice's resources are on [its Homebase page](https://www.homebaseccc.org/resource/health-and-homelessness-community-of-practice).
 
 ## The team
 
@@ -45,11 +45,11 @@ As former Director of the Division of Data and Improvement - essentially the Chi
 
 Director, Massive Data Institute. [Profile](https://mdi.georgetown.edu/profiles/amy-ohara/)
 
-Amy O'Hara is the Director of the Massive Data Institute and Executive Director of the Federal Statistical Research Data Center at the McCourt School for Public Policy. She works on data governance, linkage, and privacy enhancing technologies (PETs). She is leading projects with RWJF, Walton and Gates to expand use of PETs in government and nonprofits. Her research focuses on methods to improve secure data access, particularly involving administrative data with applications in education, justice, and population measurement.
+Amy is the Director of the Massive Data Institute and Executive Director of the Federal Statistical Research Data Center at the McCourt School of Public Policy. She works on data governance, linkage, and privacy-enhancing technologies (PETs). She is leading projects with RWJF, Walton and Gates to expand use of PETs in government and nonprofits. Her research focuses on methods to improve secure data access, particularly involving administrative data with applications in education, justice, and population measurement.
 
-O'Hara has published on topics including the measurement of income, longitudinal linkages to measure economic mobility, and the data infrastructure necessary to support government and academic research.
+Amy has published on topics including the measurement of income, longitudinal linkages to measure economic mobility, and the data infrastructure necessary to support government and academic research.
 
-Prior to joining Georgetown, O'Hara was a senior executive at the U.S. Census Bureau where she founded their administrative data curation and research unit.
+Prior to joining Georgetown, Amy was a senior executive at the U.S. Census Bureau where she founded their administrative data curation and research unit.
 
 ## Get in touch
 
