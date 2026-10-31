@@ -76,6 +76,7 @@ import {
 } from "../../src/onlineBootstrap";
 import { markNoHealSaveFailure } from "../../src/protocol";
 import { openInputSource } from "../../src/util/dataIo";
+import { promptConfirm } from "../../src/util/prompt";
 import { exitCodeForError, runOrExit, withExitCode } from "../../src/util/exit";
 import { MAX_TIMEOUT_SECONDS } from "../../src/util/flags";
 import { openEventStream } from "../../src/eventStream";
@@ -141,6 +142,13 @@ vi.mock("../../src/hostKeyTrust", async (importActual) => {
     ),
     establishHostKeyTrust: vi.fn(actual.establishHostKeyTrust),
   };
+});
+
+// The payload-column confirmation's prompt is spy-WRAPPED so a test can answer
+// it; every other test never reaches it.
+vi.mock("../../src/util/prompt", async (importActual) => {
+  const actual = await importActual<typeof import("../../src/util/prompt")>();
+  return { ...actual, promptConfirm: vi.fn(actual.promptConfirm) };
 });
 
 // runOrExit creates its error logger by name; silence that name so the
@@ -3656,6 +3664,56 @@ describe("runOnlineBootstrap", () => {
       errorSpy.mockRestore();
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  /**
+   * The message of the refusal an interactive online run's payload-column
+   * confirmation returns when the operator declines, for a configuration that
+   * `reuseExistingConfig` keeps or one the run writes.
+   */
+  async function declinedPayloadFillMessage(
+    reuseExistingConfig: boolean,
+  ): Promise<string> {
+    vi.mocked(promptConfirm).mockResolvedValue(false);
+    let message: string | undefined;
+    vi.mocked(runProtocol).mockImplementation((async (
+      ...callArgs: unknown[]
+    ) => {
+      const confirm = optionsArg(callArgs).onPayloadReceiveFill;
+      expect(confirm).toBeTypeOf("function");
+      const answer = await confirm!(["notes"]);
+      expect(answer.accepted).toBe(false);
+      if (!answer.accepted) message = (answer.refusal as Error).message;
+      throw new Error("declined the payload columns");
+    }) as never);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
+    const configPath = path.join(dir, "alcove.yaml");
+    try {
+      fs.writeFileSync(configPath, "channel: filedrop\npath: /mnt/share\n");
+      await expect(
+        runOnlineBootstrap({
+          ...onlineBootstrapParams(configPath),
+          interactive: true,
+          reuseExistingConfig,
+        }),
+      ).rejects.toThrow("declined the payload columns");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+    expect(message).toBeDefined();
+    return message!;
+  }
+
+  test("a declined payload-column confirmation on a kept configuration advises running again", async () => {
+    const message = await declinedPayloadFillMessage(true);
+    expect(message).toContain("Run the exchange again to be asked again");
+    expect(message).not.toContain("no configuration was written to");
+  });
+
+  test("a declined payload-column confirmation on a configuration the run writes says none was written", async () => {
+    const message = await declinedPayloadFillMessage(false);
+    expect(message).toContain("no configuration was written to");
+    expect(message).not.toContain("Run the exchange again");
   });
 
   /**
