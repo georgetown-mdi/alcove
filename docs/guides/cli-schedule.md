@@ -1,7 +1,6 @@
 ---
 reader: An IT engineer at either party who has run the exchange once by hand
 needs: "A first exchange that succeeded, from [Invite a partner](./cli-invite.md) or [Accept an invitation](./cli-accept.md)"
-timing: "Each side waits 1 hour for the other, 10 minutes on WebRTC. A 20-record run takes about 1 minute over a shared folder and about 14 minutes over SFTP."
 ---
 
 # Schedule it
@@ -128,7 +127,7 @@ Alcove does not stop a second run of the same exchange from starting. Two runs a
 ```
 
 - **On Windows**, a task made with `schtasks /Create` does not start while its last run is still going.
-- **Set any outer timeout above the run's length**: 1 hour of waiting plus the run itself.
+- **Set any outer timeout above the run's length**: 1 hour of waiting plus the run itself, whose length [How long a run takes](./cli-install.md#how-long-a-run-takes) gives for each channel and interval.
 
 ## Exit codes
 

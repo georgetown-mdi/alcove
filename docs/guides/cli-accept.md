@@ -2,7 +2,6 @@
 reader: An IT engineer or IT contact whose organization was sent an invitation
 needs: "[Alcove installed](./cli-install.md), the invitation file from your partner, and your input CSV"
 partner: "[Invite a partner](./cli-invite.md)"
-timing: "Accept and run the first exchange before the invitation expires: 1 hour after it was made, unless your partner set longer. Each side waits 1 hour for the other, 10 minutes on WebRTC. A 20-record test run takes about 1 minute over a shared folder and about 14 minutes over SFTP."
 next: "[Schedule it](./cli-schedule.md)"
 ---
 

@@ -3,7 +3,6 @@ reader: An analyst who invites a partner to an exchange
 needs: A CSV file with a header row, up to 200 MB; a partner who uses the web app; a trusted channel such as secure email
 before: "[Agree on terms](./agree-on-terms.md)"
 partner: "[Accept with the web app](./web-accept.md)"
-timing: The invitation lasts 1 hour unless you choose longer. Your page waits 10 minutes for your partner each time it listens. Measured runs, both browsers on one computer - sample files of 100 and 200 rows took 6 to 10 seconds; 10,000 records a side took 4 minutes 44 seconds.
 next: "[Run it on a schedule](./web-schedule.md)"
 ---
 

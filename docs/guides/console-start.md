@@ -2,7 +2,6 @@
 reader: Anyone running one exchange from a screen on their own computer, inviting or invited
 needs: Docker Desktop (or Docker Engine on Linux, or Podman), and a folder for this exchange holding your CSV file
 partner: "[Home](./index.md#your-partner-uses-a-different-app), for which app your partner can use"
-timing: A practice run on the sample files (100 and 200 records, 30 keys) over SFTP took 15.5 minutes, both of you running at once.
 next: "[Invite from the console](./console-invite.md) or [Accept in the console](./console-accept.md)"
 ---
 

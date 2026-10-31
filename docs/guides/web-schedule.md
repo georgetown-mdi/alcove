@@ -2,7 +2,6 @@
 reader: Both partners, after a first exchange in the web app
 needs: The completion screen of an exchange that was not a practice run; a desktop computer with Chrome or Edge for runs with nobody present
 before: "[Invite with the web app](./web-invite.md)"
-timing: A window opens every 1 to 366 days and stays open 1 to 12 hours. Both of you must be running during the same window.
 ---
 
 # Run it on a schedule

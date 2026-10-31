@@ -3,7 +3,6 @@ reader: An IT engineer whose organization creates the invitation
 needs: "[Alcove installed](./cli-install.md), your input CSV, the terms you agreed on, and an SFTP directory, shared folder or WebRTC"
 before: "[Agree on terms](./agree-on-terms.md)"
 partner: "[Accept an invitation](./cli-accept.md)"
-timing: "The invitation lasts 1 hour unless you set --expires-in, up to 365d. Each side waits 1 hour for the other, 10 minutes on WebRTC. A 20-record test run takes about 1 minute over a shared folder and about 14 minutes over SFTP."
 next: "[Schedule it](./cli-schedule.md)"
 ---
 

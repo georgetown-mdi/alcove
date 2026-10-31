@@ -1,7 +1,6 @@
 ---
 reader: Both partners, before anyone creates an invitation
 needs: Your partner, and the column names in each of your files
-timing: "An invitation lasts 1 hour unless you choose longer. Each side waits 10 minutes (browser, WebRTC) or 1 hour (SFTP, shared folder) for the other."
 next: "[Invite with the web app](./web-invite.md), [Invite from the console](./console-invite.md) or [Invite a partner](./cli-invite.md)"
 ---
 
@@ -126,17 +125,6 @@ The wait is how long a running side waits for the other to start. On the console
 Both of you run at the same time, on every channel. One of you can start first; the other must start before the first one's wait runs out. In the web app, both of you keep the page open until the run ends.
 
 A run's length grows with the number of keys, since each key is one round between you. It also grows with the channel's checking interval (250 milliseconds on a shared folder, 5 seconds on SFTP) and with the record count. A count-only run takes a round for each key as well, and sends one value for every record in each.
-
-Measured with 20 records a side and 27 keys, both parties on one machine:
-
-| Channel | Run length |
-| --- | --- |
-| WebRTC (command line) | 3 to 5 seconds |
-| Shared folder | 1 minute |
-| SFTP, default 5-second check | 14 minutes |
-| SFTP, `--polling-frequency 1s` | 4 minutes |
-
-In the web app, 10,000 records a side took 4 minutes 44 seconds, with both browsers on one computer.
 
 ## Where each decision is set
 

@@ -3,7 +3,6 @@ reader: A console user whose exchange worked and who wants it to run on a schedu
 needs: A finished console run whose result screen is still open, and the cadence and time you agreed on with your partner
 before: "[Invite from the console](./console-invite.md) or [Accept in the console](./console-accept.md)"
 partner: "[Schedule it](./cli-schedule.md) on the command line, or [Run it on a schedule](./web-schedule.md) in the web app"
-timing: Each scheduled run waits 1 hour for your partner over SFTP or a shared folder, 10 minutes over WebRTC. Measured - sample files of 100 and 200 records, 30 keys, over SFTP - 15.5 minutes a run.
 next: "[Schedule it](./cli-schedule.md) on the command line, for cadences, failure signals and exit codes"
 ---
 

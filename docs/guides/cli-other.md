@@ -1,7 +1,6 @@
 ---
 reader: An IT engineer who wants a one-off test, or whose partner uses the web app in a browser
 needs: "[Alcove installed](./cli-install.md) and your input CSV"
-timing: "A quick exchange of 20 records took about 1 minute over a shared folder. A browser invitation waits 15 minutes for your partner to accept; a 20-record WebRTC run took 3 to 5 seconds."
 ---
 
 # Other ways to exchange
