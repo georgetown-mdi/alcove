@@ -1322,10 +1322,14 @@ export interface RunExchangeOptions {
   /**
    * Called once, when this side's terms exchange has completed: both parties
    * proceeded, and this side's {@link rotation} store, where one was passed,
-   * has run. Awaited after the checks that follow the terms exchange and can
-   * refuse the run, the {@link onPayloadReceiveFill} confirmation among them,
-   * and before {@link onPayloadReceiveFilled} records the fill, the bootstrap
-   * frame, and any linkage key or payload row. Not called on a run the terms
+   * has run. Awaited after the checks that follow the terms exchange up to
+   * the payload disclosure (the invitation's deduplicate, the
+   * {@link onPayloadReceiveFill} confirmation, the receipt bindings and
+   * partner certificate, and the cardinality, count-only, and
+   * payload-disclosure resolutions), and before
+   * {@link onPayloadReceiveFilled} records the fill, the bootstrap frame, and
+   * any linkage key or payload row. The first round's capacity checks run
+   * after it and can still refuse the run. Not called on a run the terms
    * exchange or one of those checks refused, or that failed inside the terms
    * exchange. A throw ends the run: this side sends the partner an abort, then
    * rejects with what was thrown.

@@ -210,18 +210,25 @@ test("an online accept refused at the deduplicate check writes no configuration 
   const configPath = path.join(work, "accepting.yaml");
   const keyPath = path.join(work, "accepting.key");
   let configurationWrites = 0;
-  const [[acceptingRendered]] = await withCapturedLogs(
+  let invitingConfigurationWrites = 0;
+  const [[acceptingRendered, invitingRendered]] = await withCapturedLogs(
     () =>
       Promise.all([
         run("accepting", dropDir, accepting, () => {
           configurationWrites += 1;
           fs.writeFileSync(configPath, "written after the check");
         }),
-        run("inviting", dropDir, prepared("Inviting Co", "cascade")),
+        run("inviting", dropDir, prepared("Inviting Co", "cascade"), () => {
+          invitingConfigurationWrites += 1;
+        }),
       ]),
     () => true,
   );
   expect(configurationWrites).toBe(0);
+  // The check runs on the accepting side only, so the inviter passes its own
+  // checks, runs its configuration step, and then reads the abort.
+  expect(invitingConfigurationWrites).toBe(1);
+  expect(invitingRendered).toMatch(/^Your partner stopped the exchange\./);
   expect(fs.existsSync(configPath)).toBe(false);
   expect(loadKeyFile(keyPath)?.sharedSecret).not.toBe(SHARED_SECRET);
   // The refusal states its own step, a new invitation, so the line beneath it
@@ -260,7 +267,8 @@ test("an online accept that declines the payload columns writes no configuration
     ["first_name", "notes"],
   );
   let configurationWrites = 0;
-  const [[acceptingRendered]] = await withCapturedLogs(
+  let sendingConfigurationWrites = 0;
+  const [[acceptingRendered, sendingRendered]] = await withCapturedLogs(
     () =>
       Promise.all([
         run(
@@ -279,11 +287,17 @@ test("an online accept that declines the payload columns writes no configuration
             log: getLogger("terms-sides-accepting"),
           }),
         ),
-        run("sending", dropDir, sending),
+        run("sending", dropDir, sending, () => {
+          sendingConfigurationWrites += 1;
+        }),
       ]),
     () => true,
   );
   expect(configurationWrites).toBe(0);
+  // Only the receiving side asks, so the sending side runs its configuration
+  // step and then reads the decline.
+  expect(sendingConfigurationWrites).toBe(1);
+  expect(sendingRendered).toMatch(/^Your partner stopped the exchange\./);
   expect(fs.existsSync(configPath)).toBe(false);
   expect(loadKeyFile(keyPath)?.sharedSecret).not.toBe(SHARED_SECRET);
   expect(acceptingRendered).toContain("and no configuration was written to ");

@@ -19,6 +19,7 @@ import {
   LOW_POLLING_FREQUENCY_WARN_MS,
   MAX_RECONNECT_ATTEMPTS,
   parseExchangeSpec,
+  PeerAbortError,
   RoundSetLimitError,
   safeParseConnectionConfig,
   setDiagnosticSink,
@@ -2627,14 +2628,86 @@ describe("runOnlineBootstrap", () => {
       await expect(runOnlineBootstrap(params)).rejects.toThrow(
         "data exchange failed",
       );
-      expect(
-        errors.filter((entry) => entry.includes("are on disk")),
-      ).toHaveLength(1);
+      const notes = errors.filter((entry) => entry.includes("are on disk"));
+      expect(notes).toHaveLength(1);
+      expect(notes[0]).toContain(
+        "retry with 'alcove exchange' to recover without re-inviting.",
+      );
+      expect(notes[0]).not.toContain("Your partner ended the exchange");
     } finally {
       errorSink.mockRestore();
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  // A check that refuses on one side only can end the partner's run before
+  // its configuration step, so a run that wrote or kept its configuration and
+  // then reads the partner's abort names both steps rather than promising
+  // that a retry recovers.
+  test.each([
+    ["an inviter", "bare", undefined, false],
+    ["an inviter", "behind a transport wrap", undefined, false],
+    ["an acceptor", "bare", false, false],
+    ["an acceptor", "behind a transport wrap", true, false],
+    ["an acceptor keeping its configuration", "bare", false, true],
+  ] as const)(
+    "%s told of its partner's abort after its configuration step names both steps (abort %s)",
+    async (_label, shape, expectedPartnerDeduplicate, reuseExistingConfig) => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
+      const configPath = path.join(dir, "alcove.yaml");
+      const base = onlineBootstrapParams(configPath);
+      if (reuseExistingConfig)
+        saveConfig(configPath, {
+          connection: base.connection,
+          ...base.dataSpec,
+        });
+      vi.mocked(runProtocol).mockImplementation((async (
+        ...callArgs: unknown[]
+      ) => {
+        const writeConfig = writeConfigArg(callArgs);
+        await writeConfig();
+        const abort = new PeerAbortError();
+        throw shape === "bare"
+          ? abort
+          : new ConnectionError("receive failed", "transport", {
+              cause: abort,
+            });
+      }) as never);
+
+      const params = {
+        ...base,
+        ...(expectedPartnerDeduplicate === undefined
+          ? {}
+          : { expectedPartnerDeduplicate }),
+        ...(reuseExistingConfig ? { reuseExistingConfig } : {}),
+      };
+      const errors: string[] = [];
+      const errorSink = vi
+        .spyOn(getLogger(params.loggerName), "error")
+        .mockImplementation((...args: unknown[]) => {
+          errors.push(args.map(String).join(" "));
+        });
+      const startOver =
+        expectedPartnerDeduplicate === undefined
+          ? `delete ${params.keyPath}, then run 'alcove invite' without a URL to make a new invitation from ${configPath}.`
+          : `delete ${params.keyPath}, then accept the new invitation your partner sends with 'alcove accept'.`;
+      try {
+        await expect(runOnlineBootstrap(params)).rejects.toBeInstanceOf(
+          shape === "bare" ? PeerAbortError : ConnectionError,
+        );
+        expect(errors).toEqual([
+          `Your partner ended the exchange after the terms were exchanged. ` +
+            `The configuration at ${configPath} and the rotated key at ` +
+            `${params.keyPath} are on disk. If your partner's run says to ` +
+            `start again from a new invitation, ${startOver} Otherwise, ` +
+            `retry with 'alcove exchange'.`,
+        ]);
+      } finally {
+        errorSink.mockRestore();
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 
   test("passes a webrtc connection through to the exchange and the saved config", async () => {
     // The inviter's own webrtc connection reaches runProtocol unchanged (role

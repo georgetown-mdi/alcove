@@ -3,6 +3,7 @@ import type { Arguments } from "yargs";
 import {
   COUNT_ONLY_DECLARED_STRATEGY_STATEMENT,
   endpointRequiresRetainedFiles,
+  firstLinkBehindTransportWraps,
   getLogger,
   InternalConsistencyError,
   loadCSVFile,
@@ -20,6 +21,7 @@ import {
   messageWithOperatorText,
   OperatorConfigError,
   operatorSuppliedText,
+  PeerAbortError,
   PLACEHOLDER_SFTP_HOST,
   PLACEHOLDER_SSH_USERNAME,
   redactAndRenderOperatorSuppliedText,
@@ -824,6 +826,30 @@ export interface OnlineBootstrapResult {
   configWriteError?: unknown;
 }
 
+// The note for a run that wrote or kept its configuration and then read its
+// partner's abort. A check that refuses on one side only (the acceptor's
+// deduplicate check, the receiving side's payload-fill confirmation) leaves
+// the partner a key file and no configuration to retry from; the partner's
+// run states which step it needs.
+function partnerEndedAfterConfigurationNote(params: {
+  config: string;
+  key: string;
+  accepting: boolean;
+}): string {
+  const { config, key, accepting } = params;
+  const startOver = accepting
+    ? `delete ${key}, then accept the new invitation your partner sends ` +
+      `with 'alcove accept'`
+    : `delete ${key}, then run 'alcove invite' without a URL to make a new ` +
+      `invitation from ${config}`;
+  return (
+    `Your partner ended the exchange after the terms were exchanged. The ` +
+    `configuration at ${config} and the rotated key at ${key} are on disk. ` +
+    `If your partner's run says to start again from a new invitation, ` +
+    `${startOver}. Otherwise, retry with 'alcove exchange'.`
+  );
+}
+
 /**
  * Run the connect -> key exchange -> exchange path shared by online invite
  * and online accept, persisting the config once the terms exchange and the
@@ -851,9 +877,11 @@ export interface OnlineBootstrapResult {
  * When the exchange itself fails after the config was already written, this
  * function logs that the config and key are on disk -- so the user retries with
  * `alcove exchange` rather than re-inviting -- and then rejects with the
- * exchange error (the handler's error path reports the error itself). The note
- * is logged only when the config write actually succeeded, so a write failure
- * followed by an exchange failure never claims a config that is not there.
+ * exchange error (the handler's error path reports the error itself). A run
+ * the partner's abort ended gets a note naming both steps, starting over and
+ * retrying, since the partner may hold no configuration. The note is logged
+ * only when the config write actually succeeded, so a write failure followed
+ * by an exchange failure never claims a config that is not there.
  * A run that saved the rotated key and stopped before the configuration step
  * gets the step for what it left from `runProtocol`, which takes this run's
  * configuration as `onlineSetup`. A run a signal cut short resolves with
@@ -1076,17 +1104,26 @@ export async function runOnlineBootstrap(params: {
   // one that ended earlier -- and would falsely promise `alcove exchange`
   // recovery in the latter.
   let keyPersisted = false;
-  const logRecoveryNoteIfOnDisk = (): void => {
-    if (configWritten || (params.reuseExistingConfig && keyPersisted))
-      getLogger(params.loggerName).error(
-        `the configuration at ${redactAndRenderOperatorSuppliedText(
-          operatorSuppliedText(params.configPath),
-        )} and the rotated key at ` +
-          `${redactAndRenderOperatorSuppliedText(
-            operatorSuppliedText(params.keyPath),
-          )} are on disk; retry with 'alcove exchange' to ` +
-          `recover without re-inviting.`,
-      );
+  const logRecoveryNoteIfOnDisk = (err?: unknown): void => {
+    if (!(configWritten || (params.reuseExistingConfig && keyPersisted)))
+      return;
+    const config = redactAndRenderOperatorSuppliedText(
+      operatorSuppliedText(params.configPath),
+    );
+    const key = redactAndRenderOperatorSuppliedText(
+      operatorSuppliedText(params.keyPath),
+    );
+    getLogger(params.loggerName).error(
+      firstLinkBehindTransportWraps(err) instanceof PeerAbortError
+        ? partnerEndedAfterConfigurationNote({
+            config,
+            key,
+            accepting: params.expectedPartnerDeduplicate !== undefined,
+          })
+        : `the configuration at ${config} and the rotated key at ${key} ` +
+            `are on disk; retry with 'alcove exchange' to recover without ` +
+            `re-inviting.`,
+    );
   };
   try {
     const runResult = await runProtocol({
@@ -1134,17 +1171,19 @@ export async function runOnlineBootstrap(params: {
           // the key actually being on disk.
           keyPersisted = true;
           if (params.reuseExistingConfig) {
-            // The reconcile check already confirmed the pre-existing config agrees
-            // with the invitation and URL; its connection and linkage blocks are
-            // kept untouched. The rotated key is saved by runProtocol above; no
-            // fresh config is written here, so `configWritten` stays false.
+            // The reconcile check already confirmed the pre-existing config
+            // agrees with the invitation and URL; its connection and linkage
+            // blocks are kept untouched. The rotated key is saved by
+            // runProtocol above; no fresh config is written here, so
+            // `configWritten` stays false.
             //
             // The machine-managed consent record is the exception, refreshed
-            // surgically in place: leaving a prior acceptance's value stale would
-            // false-abort the next recurring exchange against an honest partner.
-            // A lost write is not fatal -- the kept config retains its prior
-            // state. Its presence marks an acceptance, whose declaration the
-            // operator has just consented to; the inviter never reaches it.
+            // surgically in place: leaving a prior acceptance's value stale
+            // would false-abort the next recurring exchange against an honest
+            // partner. A lost write is not fatal -- the kept config retains
+            // its prior state. Its presence marks an acceptance, whose
+            // declaration the operator has just consented to; the inviter
+            // never reaches it.
             if (params.expectedPartnerDeduplicate !== undefined)
               writeAcceptanceRecordReportingLoss(
                 params.configPath,
@@ -1157,19 +1196,20 @@ export async function runOnlineBootstrap(params: {
                   eventStream,
                 },
               );
-            // Unlike the offline path and the non-reuse branch below, there is no
-            // config re-gate here: runProtocol already rotated and saved the key
-            // before invoking this step, so a config deleted during the handshake
-            // window is unpreventable. That window is the documented immaterial
-            // single-user TOCTOU (see assertNoProvisionConflicts).
+            // Unlike the offline path and the non-reuse branch below, there is
+            // no config re-gate here: runProtocol already rotated and saved the
+            // key before invoking this step, so a config deleted during the
+            // handshake window is unpreventable. That window is the documented
+            // immaterial single-user TOCTOU (see assertNoProvisionConflicts).
             return;
           }
-          // Re-gate immediately before writing: a config that appeared between the
-          // pre-network conflict check and now must not be silently overwritten,
-          // consistent with the offline path's provisionConfigAndKey re-gate. The
-          // terms exchange has already completed and the rotated key is saved, so
-          // this throw becomes a non-fatal configWriteError (caught by
-          // runProtocol's step handling) rather than aborting the exchange.
+          // Re-gate immediately before writing: a config that appeared
+          // between the pre-network conflict check and now must not be
+          // silently overwritten, consistent with the offline path's
+          // provisionConfigAndKey re-gate. The terms exchange has already
+          // completed and the rotated key is saved, so this throw becomes a
+          // non-fatal configWriteError (caught by runProtocol's step
+          // handling) rather than aborting the exchange.
           const configAppearedLate = (): UsageError => {
             const message = messageWithOperatorText`refusing to overwrite ${operatorSuppliedText(
               params.configPath,
@@ -1184,11 +1224,11 @@ export async function runOnlineBootstrap(params: {
           const firstConfig: ExchangeSpec = {
             connection: params.connection,
             ...params.dataSpec,
-            // The acceptance's terms-side commitment, known before the exchange:
-            // the invitation declared the inviter's cardinality side and the
-            // consent surface stated it, so a later recurring run refuses a partner
-            // presenting anything else. Absent for the inviter, which accepted no
-            // declaration.
+            // The acceptance's terms-side commitment, known before the
+            // exchange: the invitation declared the inviter's cardinality side
+            // and the consent surface stated it, so a later recurring run
+            // refuses a partner presenting anything else. Absent for the
+            // inviter, which accepted no declaration.
             ...(params.expectedPartnerDeduplicate !== undefined
               ? {
                   expectedPartnerDeduplicate: params.expectedPartnerDeduplicate,
@@ -1260,10 +1300,10 @@ export async function runOnlineBootstrap(params: {
     // When the configuration step ran and BOTH the config and the rotated key
     // are on disk, tell the user to retry with `alcove exchange` rather than
     // re-invite, at error level beside the error the handler reports. A run
-    // that ended before that step gets its next step from runProtocol. A rotated secret
-    // one side could not save leaves the two on different secrets, and the
-    // error states the new invitation instead.
-    if (!isNoHealSaveFailure(err)) logRecoveryNoteIfOnDisk();
+    // that ended before that step gets its next step from runProtocol. A
+    // rotated secret one side could not save leaves the two on different
+    // secrets, and the error states the new invitation instead.
+    if (!isNoHealSaveFailure(err)) logRecoveryNoteIfOnDisk(err);
     throw err;
   }
 }
