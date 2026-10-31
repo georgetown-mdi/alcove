@@ -3645,15 +3645,30 @@ function makeSplitConn(
   return conn;
 }
 
-test("synchronize() (split): a non-fresh OUTBOUND directory fails the clean-start guard", async () => {
-  // The fresh-directory enforcement applies to BOTH halves: a leftover self
-  // message in the outbound directory is a terminal usage error even though the
-  // inbound directory is clean.
+test("synchronize() (split): a leftover lock in the OUTBOUND directory fails the clean-start guard", async () => {
+  // The entry guard applies to BOTH halves: a protocol file retain mode does
+  // not ignore is a terminal usage error even though the inbound directory is
+  // clean.
   const { client, files } = makeMockClient();
-  files.set("/out/me-20260101T000000-000-12.json", Buffer.from("x".repeat(12)));
+  files.set("/out/me-peer-lock.json", Buffer.alloc(0));
   const conn = makeSplitConn(client, "me", "/in", "/out");
 
   await expect(conn.synchronize()).rejects.toBeInstanceOf(UsageError);
+});
+
+test("synchronize() (split): an earlier exchange's message in the OUTBOUND directory is ignored and kept", async () => {
+  const { client, files } = makeMockClient();
+  const leftover = "/out/me-20260101T000000-000-12.json";
+  files.set(leftover, Buffer.from("x".repeat(12)));
+  const conn = makeSplitConn(client, "me", "/in", "/out", 80);
+
+  const err = await conn.synchronize().then(
+    () => undefined,
+    (e: unknown) => e,
+  );
+  expect(err).not.toBeInstanceOf(UsageError);
+  expect((err as Error).message).toContain("Your partner did not arrive");
+  expect(files.has(leftover)).toBe(true);
 });
 
 test("synchronize() (split): an orphaned temp in the OUTBOUND directory is swept, not rejected", async () => {
@@ -3677,17 +3692,14 @@ test("synchronize() (split): an orphaned temp in the OUTBOUND directory is swept
 
 for (const sweepExchangeFiles of [false, true]) {
   test(`synchronize() (split): a refused entry keeps the orphaned temps in both directories (sweep flag ${sweepExchangeFiles})`, async () => {
-    // With no flag the leftover outbound message trips the strict-empty guard;
+    // With no flag the leftover outbound lock trips the strict-empty guard;
     // with the flag, local retain mode refuses without --force-retain-sweep.
     const { client, files } = makeMockClient();
     const inTemp = `/in/${ORPHAN_TEMP_NAME}`;
     const outTemp = "/out/temp-77777777-7777-4777-8777-777777777777.tmp";
     files.set(inTemp, Buffer.alloc(0));
     files.set(outTemp, Buffer.alloc(0));
-    files.set(
-      "/out/me-20260101T000000-000-12.json",
-      Buffer.from("x".repeat(12)),
-    );
+    files.set("/out/me-peer-lock.json", Buffer.alloc(0));
     const conn = makeSplitConn(client, "me", "/in", "/out");
     conn.options.sweepExchangeFiles = sweepExchangeFiles;
 

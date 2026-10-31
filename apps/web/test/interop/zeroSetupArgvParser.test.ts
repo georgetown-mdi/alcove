@@ -12,6 +12,7 @@ import {
 
 import {
   CONNECTION_TUNING_DEFAULT,
+  FILEDROP_CONNECTION_TUNING,
   SFTP_CONNECTION_TUNING,
   connectionTuningOptions,
   connectionTuningProblems,
@@ -221,6 +222,30 @@ describe(
       expect(parsed.stderr).not.toContain("Unknown option");
       expect(parsed.status).not.toBe(EXIT_USAGE);
       expect(parsed.stderr).toContain("input.csv does not exist");
+    });
+
+    test("the unanswered-hello window tokens survive a real parse", async () => {
+      for (const window of [
+        { unansweredHelloWindow: { magnitude: "3", unit: "h" } as const },
+        { unansweredHelloWindowInfinite: true },
+      ]) {
+        const optionArgs = [
+          ...retainModeFileSyncArgs(),
+          ...zeroSetupOptionsArgv(
+            connectionTuningOptions(
+              { ...CONNECTION_TUNING_DEFAULT, ...window },
+              FILEDROP_CONNECTION_TUNING,
+            ),
+          ),
+        ];
+        expect(optionArgs.at(-1)).toMatch(/^--unanswered-hello-window=/);
+        const { argv, dir } = await captureFiledropArgv(optionArgs);
+
+        const parsed = parseWithRealCli(argv, dir);
+        expect(parsed.stderr).not.toContain("Unknown option");
+        expect(parsed.status).not.toBe(EXIT_USAGE);
+        expect(parsed.stderr).toContain("input.csv does not exist");
+      }
     });
 
     test("the diagnostic-run and sweep tokens survive a real parse on the exchange form too", async () => {

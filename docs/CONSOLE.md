@@ -128,7 +128,7 @@ bound is in
 Some deployments bridge two folders: this party reads its partner's files out of an **inbound** folder and writes its own into an **outbound** one. Set both `JOB_RENDEZVOUS_DIR` (inbound) and `JOB_RENDEZVOUS_OUTBOUND_DIR` (outbound), and every shared-folder exchange uses that pair, composing the CLI's `inbound_path`/`outbound_path` ([FILE_SYNC.md](spec/FILE_SYNC.md#split-inboundoutbound-directories)).
 
 - **Both variables are required.** With either missing, the console offers no shared-folder exchange and names the missing variable. `JOB_DATA_ROOT` never stands in for the inbound folder.
-- **It requires retain mode.** The console holds the exchange until you choose to keep every exchange file, and the CLI refuses the pair without `--retain-files`. Both folders must start empty on both sides.
+- **It requires retain mode.** The console holds the exchange until you choose to keep every exchange file, and the CLI refuses the pair without `--retain-files`. Both folders must start empty on both sides, or hold only an earlier exchange's files, which the run ignores.
 - **The two folders must differ, and neither may sit inside the other.** The console offers no shared-folder exchange until they do, naming the variable to move.
 - **Each folder needs a name, and the names must differ** (`JOB_RENDEZVOUS_OUTBOUND_NAME`).
 - **Your partner runs the mirror image.** The accept kit gives them the two-folder commands and routes a partner on a network drive to the Windows launcher ([DEPLOYMENT.md](DEPLOYMENT.md#the-user-the-image-runs-as)).
@@ -284,6 +284,7 @@ Retain mode and lockless rendezvous must match on both sides, from an empty shar
 - **How often to check for your partner's files** -- the poll interval. Not offered for WebRTC.
 - **How long to wait for your partner** and **how long to wait for each connection attempt** -- the peer and connect timeouts. The connect timeout is per attempt. Neither may exceed seven days.
 - **How many times to retry a failed connection** -- the reconnect budget.
+- **When to ignore a partner hello file nobody answered**, and **Never ignore an unanswered hello file** -- the unanswered-hello window, which applies when exchange files are kept. Blank takes this side's partner wait; it may not exceed seven days. Not offered for WebRTC. See [Directory exclusivity](EXCHANGE_REFERENCE.md#directory-exclusivity).
 - **Open a new connection for each check** -- SFTP only; for a server that limits how long a connection may stay open. It is this side's choice alone.
 
 Checking more than once a second, and a new connection per check at an interval under a minute, each draw a notice, not a block. These settings pass into the scheduled-run hand-off. Flags: [CLI.md](CLI.md).

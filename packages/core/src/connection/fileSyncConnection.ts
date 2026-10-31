@@ -202,6 +202,9 @@ interface Options {
   locklessRendezvous: boolean;
   peerId?: string;
   retainFiles: boolean;
+  // See FileSyncOptions.unansweredHelloWindowMs. Unset resolves to the arrival
+  // budget at the use site.
+  unansweredHelloWindowMs?: number | "infinite";
   // For a file that appears mid-loop and is neither an exchange file nor a
   // temp write. Unset resolves to a mode-dependent default at the use site
   // (resolveUnexpectedFilesPolicy); an explicit value wins.
@@ -414,6 +417,10 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   // at each entry and not cleared by resetSessionState(). See
   // docs/spec/FILE_SYNC.md#file-taxonomy.
   private foreignFileSnapshot = new Set<string>();
+  // Inbound protocol files an earlier exchange left, which a retain-mode run
+  // ignored at synchronize() entry: every later listing skips them. Rebuilt at
+  // each entry. See docs/spec/FILE_SYNC.md#reusing-a-retain-mode-directory.
+  private startupIgnoredFiles = new Set<string>();
   private entryPeerHello: string | undefined;
   // The most recent `error` emitted with no listener, held for the next
   // receive (see emit).
@@ -525,6 +532,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
     this.rendezvous = new FileSyncRendezvous({
       responsibleFiles: this.responsibleFiles,
       foreignFileSnapshot: this.foreignFileSnapshot,
+      startupIgnoredFiles: this.startupIgnoredFiles,
       client: () => this.client,
       id: () => this.id,
       isOwnId: (id) => id === this.id || (this.ownIdFormat?.(id) ?? false),
@@ -560,6 +568,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
     this.messageLoop = new FileSyncMessageLoop({
       responsibleFiles: this.responsibleFiles,
       foreignFileSnapshot: this.foreignFileSnapshot,
+      startupIgnoredFiles: this.startupIgnoredFiles,
       client: () => this.client,
       id: () => this.id,
       role: () => this.role,
@@ -721,6 +730,9 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
       this.options.locklessRendezvous = config.options.locklessRendezvous;
     if (config.options?.retainFiles !== undefined)
       this.options.retainFiles = config.options.retainFiles;
+    if (config.options?.unansweredHelloWindowMs !== undefined)
+      this.options.unansweredHelloWindowMs =
+        config.options.unansweredHelloWindowMs;
     if (config.options?.unexpectedFiles !== undefined)
       this.options.unexpectedFiles = config.options.unexpectedFiles;
     if (config.options?.writeWithoutRenaming !== undefined)

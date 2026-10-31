@@ -76,6 +76,7 @@ const MAXIMAL_OPTIONS: Required<JobExchangeOptions> = {
   maxReconnectAttempts: 12,
   connectionPerPoll: true,
   writeWithoutRenaming: true,
+  unansweredHelloWindowMs: 10_800_000,
 };
 
 /** Where each of those options graduates, for the values above. */
@@ -124,6 +125,10 @@ const TUNING_OPTION_ROUTES: Record<
   writeWithoutRenaming: {
     configKey: "write_without_renaming",
     flag: "--write-without-renaming",
+  },
+  unansweredHelloWindowMs: {
+    configKey: "unanswered_hello_window_ms",
+    flag: "--unanswered-hello-window=10800s",
   },
 };
 
@@ -409,6 +414,7 @@ describe("every authorable option graduates into the hand-off", () => {
       "--inactivity-timeout=5400s",
       "--connection-timeout=45s",
       "--max-reconnect-attempts=12",
+      "--unanswered-hello-window=10800s",
       "--connection-per-poll",
       "--write-without-renaming",
       "--identity=County Health",

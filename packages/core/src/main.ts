@@ -360,6 +360,8 @@ export {
   StunUrlSchema,
   TurnUrlSchema,
   UNALLOCATED_SERVER_HOST_MESSAGE,
+  UNANSWERED_HELLO_WINDOW_INFINITE,
+  UNANSWERED_HELLO_WINDOW_KEY,
   generateSharedSecret,
   hasMintedTurnEntry,
   normalizeAllowedRelay,

@@ -39,6 +39,7 @@ import {
   durationUnitChoices,
   peerTimeoutDefaultMs,
   pollIntervalDefaultMs,
+  unansweredHelloWindowDefaultMs,
   withConnectionTuning,
 } from "@console/connectionTuningModel";
 import { zeroSetupOptionsArgv } from "@jobs/intentArgv";
@@ -211,6 +212,97 @@ describe("the silence wait", () => {
         }),
       ),
     ).toEqual([]);
+  });
+});
+
+describe("the unanswered-hello window", () => {
+  const threeHours = draft({
+    unansweredHelloWindow: { magnitude: "3", unit: "h" },
+  });
+  const never = draft({ unansweredHelloWindowInfinite: true });
+
+  test("is emitted, counted and checked on the folder channels only", () => {
+    for (const capabilities of [
+      SFTP_CONNECTION_TUNING,
+      FILEDROP_CONNECTION_TUNING,
+    ]) {
+      expect(connectionTuningOptions(threeHours, capabilities)).toEqual({
+        unansweredHelloWindowMs: 10_800_000,
+      });
+      expect(connectionTuningOptions(never, capabilities)).toEqual({
+        unansweredHelloWindowMs: "infinite",
+      });
+      expect(connectionTuningSummary(never, capabilities)).toBe("Tuned");
+    }
+    expect(
+      connectionTuningOptions(threeHours, WEBRTC_CONNECTION_TUNING),
+    ).toBeUndefined();
+    expect(connectionTuningSummary(never, WEBRTC_CONNECTION_TUNING)).toBe(
+      "Default",
+    );
+    expect(
+      connectionTuningProblems(
+        draft({ unansweredHelloWindow: { magnitude: "x", unit: "m" } }),
+        WEBRTC_CONNECTION_TUNING,
+      ),
+    ).toEqual([]);
+  });
+
+  test("offers no zero, and holds to the seven-day ceiling", () => {
+    expect(
+      connectionTuningProblems(
+        draft({ unansweredHelloWindow: { magnitude: "0", unit: "m" } }),
+      ),
+    ).toHaveLength(1);
+    expect(
+      connectionTuningProblems(
+        draft({
+          unansweredHelloWindow: {
+            magnitude: String(MAX_TIMEOUT_SECONDS / 3600 + 1),
+            unit: "h",
+          },
+        }),
+      ),
+    ).toHaveLength(1);
+    expect(
+      connectionTuningProblems(
+        draft({
+          unansweredHelloWindow: { magnitude: "0", unit: "m" },
+          unansweredHelloWindowInfinite: true,
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  test("reaches the config and a quick exchange's command line", () => {
+    expect(composedOptions(threeHours)).toMatchObject({
+      unanswered_hello_window_ms: 10_800_000,
+    });
+    expect(composedOptions(never)).toMatchObject({
+      unanswered_hello_window_ms: "infinite",
+    });
+    expect(
+      zeroSetupOptionsArgv(
+        connectionTuningOptions(threeHours, SFTP_CONNECTION_TUNING),
+      ),
+    ).toEqual(["--unanswered-hello-window=10800s"]);
+    expect(
+      zeroSetupOptionsArgv(
+        connectionTuningOptions(never, SFTP_CONNECTION_TUNING),
+      ),
+    ).toEqual(["--unanswered-hello-window=infinite"]);
+  });
+
+  test("shows this side's peer timeout as its placeholder default", () => {
+    expect(
+      unansweredHelloWindowDefaultMs(draft(), FILEDROP_CONNECTION_TUNING),
+    ).toBe(DEFAULT_PEER_TIMEOUT_MS);
+    expect(
+      unansweredHelloWindowDefaultMs(
+        draft({ peerTimeout: { magnitude: "2", unit: "h" } }),
+        FILEDROP_CONNECTION_TUNING,
+      ),
+    ).toBe(7_200_000);
   });
 });
 
@@ -683,6 +775,7 @@ describe("the fields the two cards contribute", () => {
     serverConnectTimeout: { magnitude: "45", unit: "s" },
     maxReconnectAttempts: "3",
     connectionPerPoll: true,
+    unansweredHelloWindow: { magnitude: "3", unit: "h" },
   });
 
   /** The same for the file-handling card, whose block the tuning merges onto. */

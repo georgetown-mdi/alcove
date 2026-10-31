@@ -1745,6 +1745,29 @@ describe("the zero-setup arms admit only what their argv can hold", () => {
     ).toBe(true);
   });
 
+  test("admits the unanswered-hello window as whole seconds or infinite", () => {
+    for (const build of [validZeroSetupIntent, validZeroSetupSftpIntent]) {
+      const admits = (window: number | "infinite") =>
+        jobZeroSetupIntentSchema.safeParse(
+          build({ options: { unansweredHelloWindowMs: window } }),
+        ).success;
+      expect(admits(10_800_000)).toBe(true);
+      expect(admits("infinite")).toBe(true);
+      expect(admits(MAX_TIMEOUT_SECONDS * 1000)).toBe(true);
+      expect(admits((MAX_TIMEOUT_SECONDS + 1) * 1000)).toBe(false);
+      expect(admits(1500)).toBe(false);
+      expect(admits(0)).toBe(false);
+    }
+    const exchange = (window: number | "infinite") =>
+      jobExchangeIntentSchema.safeParse(
+        validIntent({ options: { unansweredHelloWindowMs: window } }),
+      ).success;
+    expect(exchange(1500)).toBe(true);
+    expect(exchange("infinite")).toBe(true);
+    expect(exchange(0)).toBe(false);
+    expect(exchange((MAX_TIMEOUT_SECONDS + 1) * 1000)).toBe(false);
+  });
+
   test("accepts writeWithoutRenaming on both arms", () => {
     for (const intent of [
       validZeroSetupSftpIntent({ options: { writeWithoutRenaming: true } }),

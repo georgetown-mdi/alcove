@@ -1,6 +1,6 @@
 import { pathToFileURL } from "node:url";
 
-import { formatSftpUrl } from "@alcove/core";
+import { UNANSWERED_HELLO_WINDOW_INFINITE, formatSftpUrl } from "@alcove/core";
 
 import {
   SFTP_FINGERPRINT_LIST_REFUSAL,
@@ -156,7 +156,8 @@ export function zeroSetupFiledropArgv(
  * `--polling-frequency` accepts a millisecond suffix and holds the interval
  * verbatim, while the three coarse-duration flags take a second-or-coarser
  * unit and so hold whole seconds -- exact, because the zero-setup arms
- * admit only a whole-second value for them.
+ * admit only a whole-second value for them. `--unanswered-hello-window`
+ * takes the same whole seconds, or its literal `infinite`.
  */
 export function zeroSetupOptionsArgv(
   options: JobExchangeOptions | undefined,
@@ -178,6 +179,12 @@ export function zeroSetupOptionsArgv(
     argv.push(`--connection-timeout=${options.serverConnectTimeoutMs / 1000}s`);
   if (options.maxReconnectAttempts !== undefined)
     argv.push(`--max-reconnect-attempts=${options.maxReconnectAttempts}`);
+  if (options.unansweredHelloWindowMs === UNANSWERED_HELLO_WINDOW_INFINITE)
+    argv.push(`--unanswered-hello-window=${UNANSWERED_HELLO_WINDOW_INFINITE}`);
+  else if (options.unansweredHelloWindowMs !== undefined)
+    argv.push(
+      `--unanswered-hello-window=${options.unansweredHelloWindowMs / 1000}s`,
+    );
   if (options.connectionPerPoll === true) argv.push("--connection-per-poll");
   if (options.writeWithoutRenaming === true)
     argv.push("--write-without-renaming");

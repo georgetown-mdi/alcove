@@ -343,6 +343,7 @@ function makeLoop(
   const deps: MessageLoopDeps = {
     responsibleFiles,
     foreignFileSnapshot,
+    startupIgnoredFiles: new Set<string>(),
     client: () => client,
     id: () => SELF,
     role: () => state.role,

@@ -10,6 +10,7 @@ import {
   MAX_RECONNECT_ATTEMPTS,
   MAX_TIMEOUT_SECONDS,
   MAX_TIMER_MS,
+  UNANSWERED_HELLO_WINDOW_INFINITE,
   defaultPollingFrequencyMs,
 } from "@alcove/core";
 
@@ -18,7 +19,8 @@ import type { Transport } from "@psi/transportChooser";
 
 /**
  * The pure model behind the console's "Connection tuning" authoring card: how the
- * operator's polling, timeout, retry, and SFTP session-mode choices become the
+ * operator's polling, timeout, retry, unanswered-hello window and SFTP
+ * session-mode choices become the
  * tuning `options` a server job holds, what the card refuses before the run
  * starts, and the two advisories the CLI raises at run time raised here instead,
  * while the operator can still act on them.
@@ -59,7 +61,11 @@ export const TIMEOUT_UNITS: ReadonlyArray<DurationUnit> = ["s", "m", "h"];
 
 /** The duration fields of {@link ConnectionTuningDraft}. */
 export type DurationFieldName =
-  "pollInterval" | "peerTimeout" | "inactivityTimeout" | "serverConnectTimeout";
+  | "pollInterval"
+  | "peerTimeout"
+  | "inactivityTimeout"
+  | "serverConnectTimeout"
+  | "unansweredHelloWindow";
 
 /** The units each duration field offers. */
 export const DURATION_FIELD_UNITS: Record<
@@ -70,6 +76,7 @@ export const DURATION_FIELD_UNITS: Record<
   peerTimeout: TIMEOUT_UNITS,
   inactivityTimeout: TIMEOUT_UNITS,
   serverConnectTimeout: TIMEOUT_UNITS,
+  unansweredHelloWindow: TIMEOUT_UNITS,
 };
 
 const COARSEST_FIRST: ReadonlyArray<DurationUnit> = ["h", "m", "s", "ms"];
@@ -127,6 +134,15 @@ export const CONNECTION_TUNING_HEADING = "Connection tuning";
  * partner to start (the CLI's `--peer-timeout`). */
 export const PEER_TIMEOUT_LABEL = "How long to wait for your partner";
 
+/** The label of the control that sets the unanswered-hello window (the CLI's
+ * `--unanswered-hello-window`). */
+export const UNANSWERED_HELLO_WINDOW_LABEL =
+  "When to ignore a partner hello file nobody answered";
+
+/** The subject the window's form problems name. */
+const UNANSWERED_HELLO_WINDOW_SUBJECT =
+  "The age at which to ignore an unanswered hello file";
+
 /**
  * One duration as the card holds it: the magnitude as raw field text (blank means
  * unset, so the field is left off entirely and core's default applies) and the
@@ -149,6 +165,11 @@ export interface ConnectionTuningDraft {
    * a count, exactly as the CLI's `--max-reconnect-attempts` is. */
   maxReconnectAttempts: string;
   connectionPerPoll: boolean;
+  /** How old a partner hello nobody answered must be before a retain-mode run
+   * ignores it at start-up (the CLI's `--unanswered-hello-window`). */
+  unansweredHelloWindow: DurationField;
+  /** Never ignore one: the window's `infinite`, which overrides the field. */
+  unansweredHelloWindowInfinite: boolean;
 }
 
 /**
@@ -164,6 +185,8 @@ export const CONNECTION_TUNING_DEFAULT: ConnectionTuningDraft = {
   serverConnectTimeout: { magnitude: "", unit: "s" },
   maxReconnectAttempts: "",
   connectionPerPoll: false,
+  unansweredHelloWindow: { magnitude: "", unit: "m" },
+  unansweredHelloWindowInfinite: false,
 };
 
 /** Which of the card's controls the calling flow can hold. The SFTP session mode
@@ -292,6 +315,7 @@ export function connectionTuningOptions(
   const inactivityTimeoutMs = timeoutMs(draft.inactivityTimeout);
   const serverConnectTimeoutMs = timeoutMs(draft.serverConnectTimeout);
   const maxReconnectAttempts = reconnectAttempts(draft.maxReconnectAttempts);
+  const unansweredHelloWindowMs = unansweredHelloWindowOf(draft, capabilities);
   const stated: JobExchangeOptions = {
     ...(typeof pollIntervalMs === "number" ? { pollIntervalMs } : {}),
     ...(typeof peerTimeoutMs === "number" ? { peerTimeoutMs } : {}),
@@ -305,8 +329,36 @@ export function connectionTuningOptions(
     ...(capabilities.connectionPerPoll && draft.connectionPerPoll
       ? { connectionPerPoll: true }
       : {}),
+    ...(unansweredHelloWindowMs !== undefined &&
+    unansweredHelloWindowMs !== null
+      ? { unansweredHelloWindowMs }
+      : {}),
   };
   return Object.keys(stated).length === 0 ? undefined : stated;
+}
+
+/** Whether the flow's channel has a folder for earlier exchanges' files, which
+ * is where the unanswered-hello window applies. */
+export function holdsExchangeFolder(
+  capabilities: ConnectionTuningCapabilities,
+): boolean {
+  return capabilities.channel !== "webrtc";
+}
+
+/**
+ * The unanswered-hello window the draft states: `infinite` when the operator
+ * chose never to ignore one, otherwise the field held to the same rules as a
+ * timeout, since its flag takes the same grammar and ceiling. `undefined` on a
+ * channel with no folder.
+ */
+function unansweredHelloWindowOf(
+  draft: ConnectionTuningDraft,
+  capabilities: ConnectionTuningCapabilities,
+): number | typeof UNANSWERED_HELLO_WINDOW_INFINITE | undefined | null {
+  if (!holdsExchangeFolder(capabilities)) return undefined;
+  if (draft.unansweredHelloWindowInfinite)
+    return UNANSWERED_HELLO_WINDOW_INFINITE;
+  return timeoutMs(draft.unansweredHelloWindow);
 }
 
 /**
@@ -399,6 +451,16 @@ export function connectionTuningProblems(
     "The connection attempt timeout",
   );
   if (connectProblem !== undefined) problems.push(connectProblem);
+  if (
+    holdsExchangeFolder(capabilities) &&
+    !draft.unansweredHelloWindowInfinite
+  ) {
+    const windowProblem = timeoutProblem(
+      draft.unansweredHelloWindow,
+      UNANSWERED_HELLO_WINDOW_SUBJECT,
+    );
+    if (windowProblem !== undefined) problems.push(windowProblem);
+  }
   if (reconnectAttempts(draft.maxReconnectAttempts) === null)
     problems.push(
       "The number of times to retry a failed connection must be a whole " +
@@ -489,7 +551,10 @@ export function connectionTuningSummary(
     draft.inactivityTimeout.magnitude.trim() !== "" ||
     draft.serverConnectTimeout.magnitude.trim() !== "" ||
     draft.maxReconnectAttempts.trim() !== "" ||
-    (capabilities.connectionPerPoll && draft.connectionPerPoll);
+    (capabilities.connectionPerPoll && draft.connectionPerPoll) ||
+    (holdsExchangeFolder(capabilities) &&
+      (draft.unansweredHelloWindowInfinite ||
+        draft.unansweredHelloWindow.magnitude.trim() !== ""));
   return touched ? "Tuned" : "Default";
 }
 
@@ -530,6 +595,18 @@ export function peerTimeoutDefaultMs(
   return capabilities.channel === "webrtc"
     ? DEFAULT_WEBRTC_PEER_TIMEOUT_MS
     : DEFAULT_PEER_TIMEOUT_MS;
+}
+
+/** The unanswered-hello window a blank field leaves the run, for the card's
+ * placeholder: this side's peer timeout, as authored or core's default. */
+export function unansweredHelloWindowDefaultMs(
+  draft: ConnectionTuningDraft,
+  capabilities: ConnectionTuningCapabilities,
+): number {
+  const authored = timeoutMs(draft.peerTimeout);
+  return typeof authored === "number"
+    ? authored
+    : peerTimeoutDefaultMs(capabilities);
 }
 
 /** Core's check-interval default for the flow's channel, for the card's

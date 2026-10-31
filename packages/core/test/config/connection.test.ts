@@ -2262,6 +2262,18 @@ test("a persisted options block resolves neither sweep flag", () => {
   expect(config.options).not.toHaveProperty("forceRetainSweep");
 });
 
+// --- FileSyncOptions: unanswered_hello_window_ms -----------------------------
+
+test("unanswered_hello_window_ms takes a positive count of milliseconds up to seven days, or infinite", () => {
+  const window = (value: unknown) =>
+    safeParseFileSyncOptions({ unanswered_hello_window_ms: value });
+  expect(window(3_600_000).data?.unansweredHelloWindowMs).toBe(3_600_000);
+  expect(window(7 * 86_400_000).success).toBe(true);
+  expect(window("infinite").data?.unansweredHelloWindowMs).toBe("infinite");
+  for (const refused of [0, -1, 1.5, 7 * 86_400_000 + 1, "never", "1h"])
+    expect(window(refused).success).toBe(false);
+});
+
 // --- SHARED_SECRET_REGEX -----------------------------------------------------
 
 const BASE64URL_ALPHABET =
