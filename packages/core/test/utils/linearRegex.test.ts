@@ -6,6 +6,7 @@ import {
   patternWeightedSize,
 } from "../../src/utils/linearRegex";
 import type { ScanBudget } from "../../src/utils/linearRegex";
+import { runPipeline } from "../../src/standardization";
 
 // --- Engine operations -------------------------------------------------------
 
@@ -159,6 +160,58 @@ describe("replacement-string $-sequences", () => {
     expect(two.replaceAll("ab", "$12")).toBe("a2");
     expect(two.replaceAll("ab", "$3")).toBe("$3");
   });
+
+  // Every case of the PROTOCOL.md replacement rule, with the output re2js 2.8.8
+  // gives unaided. re2js 2.9 resolves `$0n`, an unknown `$<name>` and an
+  // unclosed `$<` differently, so this table pins core's rule against the
+  // installed release; run it on each re2js release a bump takes.
+  const twelveGroups = "(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)(l)";
+  test.each([
+    ["(b)(c)", "abcd", "[$1|$2]", "a[b|c]d"],
+    ["(b)?(c)", "acd", "[$1|$2]", "a[|c]d"],
+    ["(b)(c)", "abcd", "[$12]", "a[b2]d"],
+    [twelveGroups, "abcdefghijkl", "[$12]", "[l]"],
+    [twelveGroups, "abcdefghijkl", "[$13]", "[a3]"],
+    ["(b)(c)", "abcd", "[$3]", "a[$3]d"],
+    ["(b)(c)", "abcd", "[$01]", "a[$01]d"],
+    ["(b)(c)", "abcd", "[$02x]", "a[$02x]d"],
+    [twelveGroups, "abcdefghijkl", "[$012]", "[$012]"],
+    ["(b)(c)", "abcd", "[$0]", "a[$0]d"],
+    ["(b)(c)", "abcd", "[$00]", "a[$00]d"],
+    ["(?P<x>b)(c)", "abcd", "[$<x>]", "a[b]d"],
+    ["(?P<x>b)?(c)", "acd", "[$<x>]", "a[]d"],
+    ["(?P<x>b)(c)", "abcd", "[$<nope>]", "a[$<nope>]d"],
+    ["(?P<x>b)(c)", "abcd", "[$<>]", "a[$<>]d"],
+    ["(?P<x>b)(c)", "abcd", "[$<1>]", "a[$<1>]d"],
+    ["(?P<x>b)(c)", "abcd", "[$<x$<x>>]", "a[$<x$<x>>]d"],
+    ["(?P<x>b)(c)", "abcd", "[$<constructor>]", "a[$<constructor>]d"],
+    ["(?P<__proto__>b)", "abcd", "[$<__proto__>]", "a[b]cd"],
+    ["(b)(c)", "abcd", "[$<x>]", "a[$<x>]d"],
+    ["(b)(c)", "abcd", "[$<x$1]", "a[$<x$1]d"],
+    ["(?P<x>b)(c)", "abcd", "$1$<$<x>$$", "ab$<$<x>$d"],
+    ["(b)(c)", "abcd", "$1$<$1$$", "ab$<$1$$d"],
+    ["(b)(c)", "abcd", "[$&]", "a[bc]d"],
+    ["(b)(c)", "abcd", "[$`]", "a[a]d"],
+    ["(b)(c)", "abcd", "[$']", "a[d]d"],
+    ["(b)(c)", "abcd", "[$$]", "a[$]d"],
+    ["(b)(c)", "abcd", "[$$01]", "a[$01]d"],
+    ["(b)(c)", "abcd", "[$$$01]", "a[$$01]d"],
+    ["(b)(c)", "abcd", "[$x]", "a[$x]d"],
+    ["(b)(c)", "abcd", "[${1}]", "a[${1}]d"],
+    ["(b)(c)", "abcd", "[$]", "a[$]d"],
+  ])(
+    "pattern %s on %s with replacement %s gives %s",
+    (pattern, input, replacement, expected) => {
+      expect(compileLinearRegex(pattern).replaceAll(input, replacement)).toBe(
+        expected,
+      );
+      expect(
+        runPipeline(input, [
+          { function: "replace_regex", params: { pattern, replacement } },
+        ]),
+      ).toBe(expected);
+    },
+  );
 });
 
 // --- Unicode-property and case-folding semantics -----------------------------
