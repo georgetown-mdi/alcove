@@ -10,7 +10,9 @@ import {
   FIRST_FORMAT_VERSION_POLICY,
   FormatInfoBlockSchema,
   formatVersionBelowNeededIssues,
+  formatVersionNeeded,
   newerFormatVersionMessage,
+  withoutOldDefaults,
   type FormatVersionPolicy,
 } from "./formatVersion.js";
 import { safeParseCamelized } from "./safeParseCamelized.js";
@@ -272,6 +274,28 @@ export function safeParseExchangeSpec(
 /** The format version table of the exchange file. */
 export const EXCHANGE_FILE_VERSION_POLICY: FormatVersionPolicy =
   FIRST_FORMAT_VERSION_POLICY;
+
+/**
+ * `spec` as every writer of an exchange file writes it: stating, first, the
+ * lowest format version its content needs, whatever it declared, with each
+ * field holding the value an older reader assumes for its absence left out.
+ * The caller's spec is not mutated. Validates nothing.
+ *
+ * @param policy the exchange file's version table; this build's by default.
+ */
+export function atLowestExchangeFileVersion(
+  spec: ExchangeSpec,
+  policy: FormatVersionPolicy = EXCHANGE_FILE_VERSION_POLICY,
+): ExchangeSpec {
+  const { formatVersion: _declared, ...fields } = withoutOldDefaults(
+    spec,
+    policy,
+  );
+  return {
+    formatVersion: formatVersionNeeded(fields, policy).version,
+    ...fields,
+  };
+}
 
 /** A parsed spec's fields that need a version above the one it declares. */
 function exchangeFileVersionIssues(

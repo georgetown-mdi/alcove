@@ -218,15 +218,26 @@ describe("reading a .alcove.key", () => {
 
   test("a configuration stating its format version and notes imports, and the export holds both", () => {
     const { configuration, key } = exportedPair();
+    expect(configuration.startsWith("format_version: 1\n")).toBe(true);
     const about = "about:\n  label: Quarterly match\n  from_a_later_build: 1\n";
     const imported = readManagedCommandLinePair(
-      `format_version: 1\n${about}${configuration}`,
+      `${about}${configuration}`,
       key,
     );
     expect(imported.exchangeFile.formatVersion).toBe(1);
     const reexported = composeManagedCronExport(imported).config.text;
-    expect(reexported).toContain("format_version: 1\n");
+    expect(reexported.startsWith("format_version: 1\n")).toBe(true);
     expect(reexported).toContain(about);
+  });
+
+  test("a configuration leaving out its format version imports, and the export states it", () => {
+    const { configuration, key } = exportedPair();
+    const imported = readManagedCommandLinePair(
+      configuration.replace(/^format_version: 1\n/, ""),
+      key,
+    );
+    expect(imported.exchangeFile.formatVersion).toBeUndefined();
+    expect(composeManagedCronExport(imported).config.text).toBe(configuration);
   });
 
   test("a key file exported here imports again and re-exports byte for byte", () => {
@@ -352,7 +363,10 @@ describe("reading a configuration with its key file", () => {
     expect(imported.expires).toBe("2026-12-31T00:00:00.000Z");
     expect(imported.tokenMaxAgeDays).toBe(30);
     expect(imported.side).toBe("acceptor");
-    expect(imported.exchangeFile).toEqual(record.exchangeFile);
+    expect(imported.exchangeFile).toEqual({
+      formatVersion: 1,
+      ...record.exchangeFile,
+    });
     expect(imported.id).not.toBe(record.id);
     // The secret lands in the record's own secret field and nowhere else in it.
     const { sharedSecret: _secret, ...rest } = imported;
@@ -835,7 +849,10 @@ describe("the relay key registration across the command-line files", () => {
       expect(imported).not.toHaveProperty("relayRegistrationPendingReason");
       // The registrar and the minted TURN entries beside it leave the stored
       // document, so a re-export writes the same file.
-      expect(imported.exchangeFile).toEqual(record.exchangeFile);
+      expect(imported.exchangeFile).toEqual({
+        formatVersion: 1,
+        ...record.exchangeFile,
+      });
       expect(composeManagedCronExport(imported, ownRelay).config.text).toBe(
         configuration,
       );

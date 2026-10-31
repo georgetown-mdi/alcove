@@ -3,13 +3,9 @@ import { stringify as stringifyYaml } from "yaml";
 import {
   EXCHANGE_FILE_VERSION_POLICY,
   ExchangeSpecSchema,
+  atLowestExchangeFileVersion,
 } from "./exchangeSpec.js";
-import {
-  formatVersionNeeded,
-  withoutOldDefaults,
-  type FormatInfoBlock,
-  type FormatVersionPolicy,
-} from "./formatVersion.js";
+import type { FormatInfoBlock, FormatVersionPolicy } from "./formatVersion.js";
 import type { ExchangeSpec } from "./exchangeSpec.js";
 import type { ConnectionConfig, FileSyncOptions } from "./connection.js";
 import type { LinkageTerms } from "./linkageTermsSchema.js";
@@ -213,16 +209,14 @@ export function mintExchangeSpec(
   policy: FormatVersionPolicy = EXCHANGE_FILE_VERSION_POLICY,
 ): ExchangeSpec {
   const { about, ...fields } = input;
-  const assembled = withoutOldDefaults(
-    assembleExchangeSpec({
-      ...fields,
-      connection: connectionFromLocator(fields.connection),
-    }),
-    policy,
-  );
   return ExchangeSpecSchema.parse({
-    ...assembled,
-    formatVersion: formatVersionNeeded(assembled, policy).version,
+    ...atLowestExchangeFileVersion(
+      assembleExchangeSpec({
+        ...fields,
+        connection: connectionFromLocator(fields.connection),
+      }),
+      policy,
+    ),
     ...(about !== undefined ? { about } : {}),
   });
 }

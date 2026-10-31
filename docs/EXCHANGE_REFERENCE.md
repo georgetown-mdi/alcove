@@ -1488,7 +1488,7 @@ Optional. Which version of the configuration format the file is written in, and 
 *Default:* 1  
 *Consistency:* none (describes the file, not the exchange)
 
-The version of the configuration format the file uses. A file the web application or the console writes states it; one you write by hand may leave it out. An Alcove that reads an older version than the file states refuses the file, naming both versions, so update Alcove to run it. How versions are chosen: [EXCHANGE_FILE.md](spec/EXCHANGE_FILE.md#versioning-and-compatibility-policy).
+The version of the configuration format the file uses. A file Alcove writes states it, including the ones `alcove init`, `alcove invite` and `alcove accept` write; one you write by hand may leave it out. When Alcove updates one setting in your file, it leaves the rest as you wrote it, this field included. An Alcove that reads an older version than the file states refuses the file, naming both versions, so update Alcove to run it. How versions are chosen: [EXCHANGE_FILE.md](spec/EXCHANGE_FILE.md#versioning-and-compatibility-policy).
 
 ```yaml
 format_version: 1
@@ -1865,7 +1865,7 @@ The cells:
 | `include_own_columns` | carried | authored | authored |
 | `include_matching_key` | authored (`--include-matching-key` overrides it for one run) | authored | carried |
 | `csv_delimiter` | authored | authored | authored |
-| `format_version` | carried (`alcove init` writes it) | not applicable | carried |
+| `format_version` | carried (`alcove init`, `alcove invite` and `alcove accept` write it) | not applicable | carried |
 | `about` | carried | carried | carried |
 | **[Input metadata](#input-metadata)** | | | |
 | `metadata` (`name`, `type`, `role`, `is_payload`) | authored (inferred) | authored | carried with a notice |

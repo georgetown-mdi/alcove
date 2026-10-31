@@ -301,13 +301,16 @@ function sortedSettingLines(source: string): Array<string> {
   );
 }
 
-/** The comment block an alcove-written configuration opens with, above its
- * connection block. */
+/** The first comment block of an alcove-written configuration, above its
+ * connection block and below its format version. */
 function guidanceHeaderOf(source: string): string {
   const lines = source.split("\n");
-  const end = lines.findIndex((line) => !line.startsWith("#"));
-  if (end <= 0) throw new Error("the fixture opens with no guidance comment");
-  return lines.slice(0, end).join("\n");
+  const start = lines.findIndex((line) => line.startsWith("#"));
+  if (start < 0) throw new Error("the fixture holds no guidance comment");
+  const end = lines.findIndex(
+    (line, index) => index > start && !line.startsWith("#"),
+  );
+  return lines.slice(start, end).join("\n");
 }
 
 /** The lines `after` holds that `before` does not, as a sorted list. */

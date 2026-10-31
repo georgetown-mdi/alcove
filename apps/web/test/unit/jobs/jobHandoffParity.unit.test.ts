@@ -382,13 +382,14 @@ describe("every authorable option graduates into the hand-off", () => {
   test("the exchange template's keys are exactly the routed ones", () => {
     // Two-way: an authorable field routed to a key the template does not hold
     // fails, and a key appearing in the template that no authorable field routes
-    // to fails -- which is what would catch a console-only key.
+    // to fails -- which is what would catch a console-only key. The format
+    // version is the writer's, stated in every file whatever was authored.
     const routedKeys = Object.values(EXCHANGE_INTENT_ROUTES)
       .filter((route) => route.carries === "configKey")
       .map((route) => route.key);
     expect(
       Object.keys(parseYaml(maximalExchangeYaml()) as object).sort(),
-    ).toEqual([...routedKeys].sort());
+    ).toEqual([...routedKeys, "format_version"].sort());
   });
 
   test("the zero-setup command is exactly the routed tokens", () => {

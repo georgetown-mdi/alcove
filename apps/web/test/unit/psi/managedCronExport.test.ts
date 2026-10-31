@@ -162,11 +162,13 @@ describe("the injected role", () => {
     },
   );
 
-  test("is the only thing the export adds to a policy-free document", () => {
+  test("is, with the format version, the only thing the export adds to a policy-free document", () => {
     const record = managedRecord();
     // Nothing synthesized: no stun list the browser run never used, no path or
-    // value from any machine, and no field the stored document did not have.
+    // value from any machine, and no field the stored document did not have
+    // beyond the format version every writer states.
     expect(parseExportedConfig(record)).toEqual({
+      formatVersion: 1,
       ...record.exchangeFile,
       connection: { ...record.exchangeFile.connection, role: record.side },
     });
@@ -319,7 +321,7 @@ describe("a record that is not a webrtc exchange", () => {
 
       expect(exported.connection.channel).toBe(channel);
       expect(exported.connection).not.toHaveProperty("role");
-      expect(exported).toEqual(record.exchangeFile);
+      expect(exported).toEqual({ formatVersion: 1, ...record.exchangeFile });
     },
   );
 
@@ -350,7 +352,7 @@ describe("a record that is not a webrtc exchange", () => {
     expect(text).toContain('private_key: "@/keys/exchange_key"');
     expect(
       parseExchangeSpec(parseSensitiveYaml(text, "exported alcove.yaml")),
-    ).toEqual(record.exchangeFile);
+    ).toEqual({ formatVersion: 1, ...record.exchangeFile });
   });
 
   test("refuses an sftp credential stored as a value, naming it and not echoing it", () => {
@@ -786,6 +788,7 @@ describe("the exportable top-level document fields", () => {
       }),
     });
     expect(parseExportedConfig(record)).toEqual({
+      formatVersion: 1,
       ...record.exchangeFile,
       connection: { ...record.exchangeFile.connection, role: record.side },
     });

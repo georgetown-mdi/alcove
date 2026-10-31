@@ -14,10 +14,12 @@ import type {
 } from "../../src/config/exchangeFile";
 import { PLACEHOLDER_SSH_USERNAME } from "../../src/config/endpointProducer";
 import {
+  atLowestExchangeFileVersion,
   parseExchangeSpec,
   safeParseExchangeSpec,
   ExchangeSpecSchema,
 } from "../../src/config/exchangeSpec";
+import { serializeExchangeDocument } from "../../src/config/exchangeDocument";
 import type { FormatVersionPolicy } from "../../src/config/formatVersion";
 import { camelizeKeys, snakeizeKeys } from "../../src/utils/camelizeKeys";
 import type { LinkageTerms } from "../../src/config/linkageTermsSchema";
@@ -598,4 +600,45 @@ test("an unknown semantic member is refused by name as possibly from a newer Alc
       "file was made by a newer version of Alcove than this one; use that " +
       "version or a newer one",
   );
+});
+
+test("a document written back states first the version its fields need, whatever it declared", () => {
+  const loaded = parseExchangeSpec(
+    snakeizeKeys({
+      connection: connectionFromLocator(sftpLocator),
+      linkageTerms: baseTerms,
+      includeMatchingKey: false,
+    }),
+  );
+  expect(loaded.formatVersion).toBeUndefined();
+  const written = atLowestExchangeFileVersion(loaded, FIELDS_AT_VERSION_2);
+  expect(Object.keys(written)[0]).toBe("formatVersion");
+  expect(written.formatVersion).toBe(1);
+  expect(written).not.toHaveProperty("includeMatchingKey");
+  expect(loaded.includeMatchingKey).toBe(false);
+
+  expect(
+    atLowestExchangeFileVersion(
+      { ...loaded, formatVersion: 2 },
+      FIELDS_AT_VERSION_2,
+    ).formatVersion,
+  ).toBe(1);
+  expect(
+    atLowestExchangeFileVersion(
+      { ...loaded, retentionDisposition: "kept seven years" },
+      FIELDS_AT_VERSION_2,
+    ).formatVersion,
+  ).toBe(2);
+});
+
+test("the document writer states the format version of a document that leaves it out", () => {
+  const loaded = parseExchangeSpec(
+    snakeizeKeys({
+      connection: connectionFromLocator(sftpLocator),
+      linkageTerms: baseTerms,
+    }),
+  );
+  const yaml = serializeExchangeDocument(loaded);
+  expect(yaml.startsWith("format_version: 1\n")).toBe(true);
+  expect(parseExchangeSpec(parseYaml(yaml)).formatVersion).toBe(1);
 });

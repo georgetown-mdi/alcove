@@ -98,6 +98,7 @@ export const COMMAND_LINE_EXPORT_RELAY_CASES: Readonly<
     side: "inviter",
     locator: { channel: "webrtc", host: "signaling.example.org" },
     document: [
+      "format_version: 1",
       "connection:",
       "  channel: webrtc",
       "  server:",
@@ -140,6 +141,7 @@ export const COMMAND_LINE_EXPORT_RELAY_CASES: Readonly<
       relay: COMMAND_LINE_EXPORT_INVITATION_RELAY,
     },
     document: [
+      "format_version: 1",
       "connection:",
       "  channel: webrtc",
       "  server:",

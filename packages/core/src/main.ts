@@ -448,6 +448,7 @@ export { getDefaultStandardization } from "./defaults/builtInStandardization";
 export { lastNameColumn } from "./personColumns";
 export {
   ExchangeSpecSchema,
+  atLowestExchangeFileVersion,
   parseExchangeSpec,
   safeParseExchangeSpec,
 } from "./config/exchangeSpec";

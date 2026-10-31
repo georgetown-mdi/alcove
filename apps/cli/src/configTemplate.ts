@@ -2,6 +2,7 @@ import YAML from "yaml";
 
 import {
   annotateUnsetPayloadReceive,
+  atLowestExchangeFileVersion,
   commentBlock,
   commentKey,
   CONNECTION_BLOCK_DOC_URL,
@@ -16,7 +17,12 @@ import {
   POLL_INTERVAL_LINES,
   snakeizeKeys,
 } from "@alcove/core";
-import type { LinkageTerms, Metadata, Standardization } from "@alcove/core";
+import type {
+  ExchangeSpec,
+  LinkageTerms,
+  Metadata,
+  Standardization,
+} from "@alcove/core";
 
 /**
  * The exchange-data portion of a template, as produced by `buildDataSpec`: the
@@ -584,7 +590,6 @@ export function renderConfigTemplate(
   connection: TemplateConnection = DEFAULT_TEMPLATE_CONNECTION,
 ): string {
   const spec: Record<string, unknown> = {
-    formatVersion: 1,
     connection: {
       ...connection,
       options: {
@@ -605,7 +610,9 @@ export function renderConfigTemplate(
     spec.standardization = data.standardization;
   if (data.csvDelimiter !== undefined) spec.csvDelimiter = data.csvDelimiter;
 
-  const doc = new YAML.Document(snakeizeKeys(spec));
+  const doc = new YAML.Document(
+    snakeizeKeys(atLowestExchangeFileVersion(spec as ExchangeSpec)),
+  );
   doc.commentBefore = commentBlock(HEADER_LINES);
   const channelDocs =
     connection.channel === "sftp" ? SFTP_FIELD_DOCS : FILEDROP_FIELD_DOCS;

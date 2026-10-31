@@ -152,7 +152,7 @@ refuses by name every file it cannot.
 
 The top-level `format_version` is a positive integer, distinct from
 `linkage_terms.version`. It is optional in a hand-authored file, where its
-absence means 1, and a minted file always states it. This build reads version
+absence means 1, and every file Alcove writes states it. This build reads version
 1 (`EXCHANGE_FILE_VERSION_POLICY`, `packages/core/src/config/exchangeSpec.ts`).
 
 The format's version table (`FormatVersionPolicy`,
@@ -170,13 +170,21 @@ the schema holds, so the table is empty.
   need from the table. A declared version below it is refused at the field,
   naming the field and the version it needs.
 
-### What a minted file targets
+### What a written file targets
 
-`mintExchangeSpec` writes a file at the lowest version its content needs. It
-leaves out each field that holds the value an older reader takes the field's
-absence to mean, then states as `format_version` the version the remaining
-fields need. A minted file that uses no field newer than an older CLI's version
-is therefore one that CLI reads.
+Every writer of the file writes it at the lowest version its content needs
+(`atLowestExchangeFileVersion`, `packages/core/src/config/exchangeSpec.ts`).
+The writers are the web application's minting, `alcove init`, the
+configuration `alcove invite` and `alcove accept` save, the console's run
+configuration and export, and the web application's command-line and backup
+exports. Each
+leaves out every field that holds the value an older reader takes the field's
+absence to mean, then states first, as `format_version`, the version the
+remaining fields need, whatever version the document it started from declared.
+A written file that uses no field newer than an older CLI's version is
+therefore one that CLI reads. An in-place edit of an operator's file, such as a
+pinned fingerprint or an applied terms update, changes only the field it writes
+and leaves `format_version` as the file states it.
 
 ### The informational block
 
@@ -250,9 +258,9 @@ printed as the refusal's other operator-written text is.
 
 ### Writing at the lowest version
 
-A minted file states the lowest format version its content needs and leaves out
-a field holding the value an older reader assumes for its absence, and a
-consumer that writes a document back keeps the version the document states.
+A file Alcove writes states the lowest format version its content needs and
+leaves out a field holding the value an older reader assumes for its absence,
+including when it writes back a document it read.
 A file that uses no newer field is therefore read by every Alcove that reads
 its version. A file that does use one is refused by an older reader, naming the
 version or the field, rather than read short of it.

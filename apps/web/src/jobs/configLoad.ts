@@ -49,6 +49,7 @@ import { isDeepStrictEqual } from "node:util";
 
 import {
   SensitiveYamlParseError,
+  atLowestExchangeFileVersion,
   describeYamlSyntaxPosition,
   getDefaultLinkageTerms,
   parseExchangeSpec,
@@ -884,8 +885,10 @@ export function mountedConfigurationDocument(source: string): ExchangeSpec {
 
 /**
  * Whether `text` states the same configuration as `document`, both read by the
- * same parse: the comparison a save makes so that writing settings the file
- * already states leaves the file's own bytes alone.
+ * same parse and compared as Alcove writes them, so a file leaving out the
+ * format version is the same as one stating the version its fields need: the
+ * comparison a save makes so that writing settings the file already states
+ * leaves the file's own bytes alone.
  */
 export function statesSameConfiguration(
   text: string,
@@ -898,7 +901,10 @@ export function statesSameConfiguration(
     if (error instanceof ConfigurationLoadRefusedError) return false;
     throw error;
   }
-  return isDeepStrictEqual(parsed, document);
+  return isDeepStrictEqual(
+    atLowestExchangeFileVersion(parsed),
+    atLowestExchangeFileVersion(document),
+  );
 }
 
 /** The document {@link mountedConfigurationDocument} reads. */

@@ -261,7 +261,7 @@ test.each([
     expect(load()).toEqual(document(0));
     saveConfig(configPath, document(1));
 
-    expect(load()).toEqual(document(1));
+    expect(load()).toEqual({ formatVersion: 1, ...document(1) });
     expect(load()).not.toEqual(document(0));
   },
 );
@@ -304,7 +304,7 @@ test("an invitation relay registrar written in a typed form is saved and read ba
   const saved = fs.readFileSync(configPath, "utf8");
   expect(saved).toContain("registrar: https://registrar.example.org\n");
   expect(saved).not.toContain(typed);
-  expect(load()).toEqual(loaded);
+  expect(load()).toEqual({ formatVersion: 1, ...loaded });
   const channel = load().connection;
   expect(
     channel.channel === "webrtc" ? channel.invitationRelay?.registrar : null,

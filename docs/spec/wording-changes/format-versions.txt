@@ -1,7 +1,7 @@
 - The policy below is the direct consequence of the schema mechanics, not a separate promise layered over them. -> The file states a format version so that an older CLI reads every file it can, and refuses by name every file it cannot.
 - - -> The format version
 - - -> The top-level `format_version` is a positive integer, distinct from `linkage_terms.version`.
-- - -> It is optional in a hand-authored file, where its absence means 1, and a minted file always states it.
+- - -> It is optional in a hand-authored file, where its absence means 1, and every file Alcove writes states it.
 - - -> This build reads version 1 (`EXCHANGE_FILE_VERSION_POLICY`, `packages/core/src/config/exchangeSpec.ts`).
 - - -> The format's version table (`FormatVersionPolicy`, `packages/core/src/config/formatVersion.ts`) lists each field a version after the first adds: its path, the version that adds it, and the value an older reader takes its absence to mean, where it has one.
 - - -> Version 1 holds every field the schema holds, so the table is empty.
@@ -9,9 +9,12 @@
 - - -> A `format_version` above the newest the reader reads is refused before any other check, naming both versions, so the fields of a newer file are never reported one by one.
 - - -> After the schema parse, the reader derives the version the present fields need from the table.
 - - -> A declared version below it is refused at the field, naming the field and the version it needs.
-- A minted file targets the `ExchangeSpecSchema` of the `@alcove/core` version the web app shipped with. -> `mintExchangeSpec` writes a file at the lowest version its content needs.
-- Both applications embed the same schema; the artifact is valid against the version that produced it. -> It leaves out each field that holds the value an older reader takes the field's absence to mean, then states as `format_version` the version the remaining fields need.
-- That is the whole promise on the compatibility axis. -> A minted file that uses no field newer than an older CLI's version is therefore one that CLI reads.
+- What a minted file targets -> What a written file targets
+- A minted file targets the `ExchangeSpecSchema` of the `@alcove/core` version the web app shipped with. -> Every writer of the file writes it at the lowest version its content needs (`atLowestExchangeFileVersion`, `packages/core/src/config/exchangeSpec.ts`).
+- - -> The writers are the web application's minting, `alcove init`, the configuration `alcove invite` and `alcove accept` save, the console's run configuration and export, and the web application's command-line and backup exports.
+- Both applications embed the same schema; the artifact is valid against the version that produced it. -> Each leaves out every field that holds the value an older reader takes the field's absence to mean, then states first, as `format_version`, the version the remaining fields need, whatever version the document it started from declared.
+- That is the whole promise on the compatibility axis. -> A written file that uses no field newer than an older CLI's version is therefore one that CLI reads.
+- - -> An in-place edit of an operator's file, such as a pinned fingerprint or an applied terms update, changes only the field it writes and leaves `format_version` as the file states it.
 - - -> The informational block
 - - -> The top-level `about` block holds notes about the file that no reader acts on: the mint time (`minted_at`), the minting build (`minted_by`), a `label`, a `comment`, and a form hint (`form_hint`).
 - - -> A reader of any version skips every member of it, a member it does not know included, and a consumer that writes the document back holds the block unchanged.
@@ -19,7 +22,7 @@
 - - -> An unknown-key refusal worded by the schema ("Unrecognized key") ends with a fixed sentence: if the spelling is intended, the file was made by a newer version of Alcove, so use that version or a newer one (`NEWER_EXCHANGE_FILE_HINT`).
 - - -> The key it names comes from the file and is printed as the refusal's other operator-written text is.
 - What is not promised -> Writing at the lowest version
-- There is no back-compatibility guarantee for existing artifacts. -> A minted file states the lowest format version its content needs and leaves out a field holding the value an older reader assumes for its absence, and a consumer that writes a document back keeps the version the document states.
+- There is no back-compatibility guarantee for existing artifacts. -> A file Alcove writes states the lowest format version its content needs and leaves out a field holding the value an older reader assumes for its absence, including when it writes back a document it read.
 - Breaking changes to the config file format are explicitly in scope: a future core version may change field shapes or semantics, and a file minted by one web version is not promised to load unchanged under a differently-versioned CLI. -> A file that uses no newer field is therefore read by every Alcove that reads its version.
 - The compatibility mechanics above are what keeps such a break visible -- an incompatible file fails validation with a named field rather than loading with a misread value -- not a promise that the break will not happen. -> A file that does use one is refused by an older reader, naming the version or the field, rather than read short of it.
 - An operator who downloads a file should run it against a CLI of the matching generation, and re-mint (or re-invite) rather than hand-migrate a file across a breaking change. -> The rule covers fields a version adds.

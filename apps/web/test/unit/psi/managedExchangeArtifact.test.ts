@@ -115,7 +115,10 @@ describe("export/import round-trip", () => {
     expect(restored.expires).toBe(record.expires);
     expect(restored.tokenMaxAgeDays).toBe(90);
     expect(restored.schedule).toEqual(schedule);
-    expect(restored.exchangeFile).toEqual(record.exchangeFile);
+    expect(restored.exchangeFile).toEqual({
+      formatVersion: 1,
+      ...record.exchangeFile,
+    });
   });
 
   test("keeps the run bookkeeping across the round trip", () => {
@@ -223,7 +226,10 @@ describe("export/import round-trip", () => {
     );
     const { record: restored } = importManagedExchangeArtifact(bytes);
     expect(restored.sharedSecret).toBe(record.sharedSecret);
-    expect(restored.exchangeFile).toEqual(record.exchangeFile);
+    expect(restored.exchangeFile).toEqual({
+      formatVersion: 1,
+      ...record.exchangeFile,
+    });
   });
 
   test("a secret-only export (no expires) round-trips", () => {
@@ -246,7 +252,7 @@ describe("CLI separability", () => {
     const parsed = parseExchangeSpec(
       parseSensitiveYaml(artifact.exchangeDocument, "test"),
     );
-    expect(parsed).toEqual(record.exchangeFile);
+    expect(parsed).toEqual({ formatVersion: 1, ...record.exchangeFile });
     // The document is credential-free and has no secret half.
     expect(parsed.authentication).toBeUndefined();
     expect(artifact.exchangeDocument).not.toContain(record.sharedSecret);

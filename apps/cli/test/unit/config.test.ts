@@ -896,8 +896,12 @@ describe("saveConfig", () => {
     expect(raw).not.toContain("firstName");
     expect(raw).not.toContain("dateOfBirth");
     // The writer is the inverse of the reader's camelizeKeys: parsing the
-    // written file reproduces the original spec exactly.
-    expect(parseExchangeSpec(YAML.parse(raw))).toEqual(spec);
+    // written file reproduces the original spec exactly, with the format
+    // version every writer states.
+    expect(parseExchangeSpec(YAML.parse(raw))).toEqual({
+      formatVersion: 1,
+      ...spec,
+    });
   });
 
   test.skipIf(process.platform === "win32")(
@@ -1242,7 +1246,7 @@ describe("saveConfig", () => {
 
     // read: parsing reproduces the spec exactly, opaque map included.
     const parsed = parseExchangeSpec(YAML.parse(raw1));
-    expect(parsed).toEqual(spec);
+    expect(parsed).toEqual({ formatVersion: 1, ...spec });
     if (parsed.connection.channel !== "sftp")
       throw new Error("expected sftp channel");
     expect(parsed.connection.providerOptions).toEqual({
@@ -1281,7 +1285,7 @@ describe("saveConfig", () => {
     expect(raw).not.toContain("keepaliveInterval:");
 
     const parsed = parseExchangeSpec(YAML.parse(raw));
-    expect(parsed).toEqual(spec);
+    expect(parsed).toEqual({ formatVersion: 1, ...spec });
     if (parsed.connection.channel !== "webrtc")
       throw new Error("expected webrtc channel");
     expect(parsed.connection.providerOptions).toEqual({
