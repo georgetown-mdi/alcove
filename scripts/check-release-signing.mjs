@@ -17,7 +17,8 @@
 //      cosign verify and attest steps before any later image build.
 //   5. Each of those verify steps passes both `--certificate-` arguments, with
 //      the published values, in its own run text, and so does every verify
-//      step in a job that pushes no image (the Docker Hub copy's).
+//      step in a job that pushes no image (the Docker Hub copy's). A cosign
+//      sign step in such a job is followed by a verify step in it.
 //   6. docs/RELEASES.md publishes at least one `--signer-workflow`, and each
 //      names that workflow path.
 //
@@ -397,8 +398,20 @@ export function publishSequenceViolations(source, file, published = {}) {
 
     for (const step of classified) {
       if (!SIGNING_ROLES.includes(step.role)) continue;
-      // A job that pushes no image verifies a copy of one another job signed,
-      // such as the Docker Hub copy, so there is no build of its own to cover.
+      // A job that pushes no image signs and verifies a copy of one another
+      // job built, such as the Docker Hub copy, so there is no build of its own
+      // to cover.
+      if (step.role === "sign" && !jobPushes) {
+        const verifiedAfter = classified.some(
+          (later) => later.role === "verify" && later.index > step.index,
+        );
+        if (!verifiedAfter) {
+          violations.push(
+            `${file}: ${where(step)} signs a copied image, but no verify step follows it in job \`${jobId}\`, so a signature the published command cannot verify there reaches a partner unchecked.`,
+          );
+        }
+        continue;
+      }
       if (step.role === "verify" && !jobPushes) {
         violations.push(
           ...verifyArgumentViolations({

@@ -355,6 +355,9 @@ jobs:
       # nothing at all.
       - name: Install Cosign
         uses: sigstore/cosign-installer@v4.1.2
+        # The version the Docker Hub signing was measured with.
+        with:
+          cosign-release: v3.1.4
 
       - name: Log in to the GitHub Container Registry
         uses: docker/login-action@v4
@@ -549,19 +552,21 @@ jobs:
   # Docker Hub serves the same two images, signed, so a pull from either
   # registry is verified where it is pulled. Each is copied from the manifest
   # ghcr.io received, by the digest the publish job signed and attested, never
-  # rebuilt, and its signature is copied with it rather than made again. A job of
-  # its own, so a failed copy is re-run without rebuilding or moving the ghcr.io
-  # tags.
+  # rebuilt, and is then signed in place on Docker Hub under the same release
+  # identity. A job of its own, so a failed copy or signature is re-run without
+  # rebuilding or moving the ghcr.io tags.
   dockerhub:
-    name: Copy both images to Docker Hub
+    name: Copy and sign both images on Docker Hub
     needs: publish
     if: ${{ github.event_name == 'push' }}
     runs-on: ubuntu-24.04
-    # Read access to the ghcr.io package alone: the copy writes to Docker Hub
-    # under that registry's own token, and nothing here writes to GitHub. No
-    # id-token either: copying a signature needs no signing certificate.
+    # Read access to the ghcr.io package: the copy writes to Docker Hub under
+    # that registry's own token, and nothing here writes to GitHub. The OIDC
+    # token is what the in-place keyless signature is made against, the same
+    # workflow identity the publish job signs under.
     permissions:
       packages: read
+      id-token: write
     env:
       GHCR_REPOSITORY: ghcr.io/georgetown-mdi/alcove
       DOCKERHUB_REPOSITORY: docker.io/gumdi/alcove
@@ -570,6 +575,8 @@ jobs:
       # installs it ahead of its first push.
       - name: Install Cosign
         uses: sigstore/cosign-installer@v4.1.2
+        with:
+          cosign-release: v3.1.4
 
       - name: Log in to the GitHub Container Registry
         uses: docker/login-action@v4
@@ -586,27 +593,6 @@ jobs:
           registry: docker.io
           username: ${{ secrets.DOCKERHUB_PUBLISH_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PUBLISH_TOKEN }}
-
-      # The keyless signature the publish job recorded names the manifest digest,
-      # which the copy below keeps, so the copied signature verifies against the
-      # Docker Hub reference under the same published command. `--only=sig`
-      # copies the signature alone, to the `sha256-<digest>.sig` tag beside the
-      # digest (docs/notes/cosign-keyless-signing.md). It runs before the images
-      # are copied, so no Docker Hub tag ever names an unsigned manifest.
-      - name: Copy both signatures to Docker Hub
-        env:
-          DEFAULT_DIGEST: ${{ needs.publish.outputs.digest }}
-          FIPS_DIGEST: ${{ needs.publish.outputs.fips_digest }}
-        run: |
-          set -euo pipefail
-          for digest in "${DEFAULT_DIGEST}" "${FIPS_DIGEST}"; do
-            if ! [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-              echo "::error::a publish job digest output is empty or not sha256: followed by 64 lowercase hex characters" >&2
-              exit 1
-            fi
-            cosign copy --only=sig --force \
-              "${GHCR_REPOSITORY}@${digest}" "${DOCKERHUB_REPOSITORY}"
-          done
 
       # Each image's version tag on ghcr.io and all three of its tags on Docker
       # Hub are read back after the copy, and any that names a digest other than
@@ -658,8 +644,27 @@ jobs:
           copy_and_compare "${DEFAULT_DIGEST}" ""
           copy_and_compare "${FIPS_DIGEST}" "-fips"
 
+      # Signed here rather than copied: cosign 3 stores a signature as an OCI
+      # referrer of the manifest, which the image copy above does not carry
+      # (docs/notes/cosign-keyless-signing.md). Until this step finishes a
+      # Docker Hub tag names a manifest with no signature there, so verification
+      # fails closed, a failure here fails the job, and a re-run signs.
+      - name: Sign both images on Docker Hub
+        env:
+          DEFAULT_DIGEST: ${{ needs.publish.outputs.digest }}
+          FIPS_DIGEST: ${{ needs.publish.outputs.fips_digest }}
+        run: |
+          set -euo pipefail
+          for digest in "${DEFAULT_DIGEST}" "${FIPS_DIGEST}"; do
+            if ! [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::a publish job digest output is empty or not sha256: followed by 64 lowercase hex characters" >&2
+              exit 1
+            fi
+            cosign sign --yes "${DOCKERHUB_REPOSITORY}@${digest}"
+          done
+
       # The command docs/RELEASES.md publishes, run against each Docker Hub
-      # reference: a copied signature that command cannot verify there fails the
+      # reference: a signature that command cannot verify there fails the
       # release before it is published. The `--certificate-` arguments are the
       # published literals, held to that document by
       # `npm run check:release-signing`.

@@ -37,7 +37,7 @@ Each release produces:
 | Build provenance | GitHub attestation store     | Subject `ghcr.io/georgetown-mdi/alcove`, one attestation per released manifest digest |
 | Hosted web application | Cloudflare Pages, with the demo site | The production deployment of tag `vX.Y.Z`, its footer showing `Version X.Y.Z`, until the next push to `main` replaces it |
 
-Each image is the same manifest on both registries, under one digest: the release copies the manifest ghcr.io received, and its Cosign signature, to Docker Hub rather than building and signing it again. The two registries are equally useful, equally recommended, and equally secure: each holds the same signed images, and an image is verified on the registry it was pulled from ([Verifying a Release](#verifying-a-release)). Pull from whichever one your network reaches.
+Each image is the same manifest on both registries, under one digest: the release copies the manifest ghcr.io received to Docker Hub rather than building it again, and signs the Docker Hub copy in place under the same release identity. The two registries are equally useful, equally recommended, and equally secure: each holds the same signed images, and one `cosign verify` command, naming either registry, verifies an image pulled from either ([Verifying a Release](#verifying-a-release)). Pull from whichever one your network reaches.
 
 - The launchers download from Docker Hub first and, if that download fails, the same digest from ghcr.io ([Stamped launchers](#stamped-launchers)).
 - The web app's accept kit names Docker Hub in its commands and the same image on ghcr.io beside it.
@@ -116,7 +116,7 @@ cosign verify \
   docker.io/gumdi/alcove@sha256:...
 ```
 
-The same command naming `ghcr.io/georgetown-mdi/alcove@sha256:...` verifies the copy on ghcr.io; verify on the registry the launcher downloaded from. A digest that verifies is the image the official release workflow published. Both `--certificate-` arguments are required; [Verifying a Release](#verifying-a-release) explains what they pin. Verify by digest when the reference comes from a launcher, as here; verify by tag when it comes from the release notes.
+The same command naming `ghcr.io/georgetown-mdi/alcove@sha256:...` verifies the signature held on ghcr.io. Either works whichever registry the launcher downloaded from, because the signature covers the digest and both registries serve the same one. A digest that verifies is the image the official release workflow published. Both `--certificate-` arguments are required; [Verifying a Release](#verifying-a-release) explains what they pin. Verify by digest when the reference comes from a launcher, as here; verify by tag when it comes from the release notes.
 
 ## Image vulnerability scan
 
@@ -219,7 +219,7 @@ git push origin vX.Y.Z
 
 ### 8. Build and publish the container image `[CI]`
 
-The `vX.Y.Z` tag push in step 7 triggers `.github/workflows/release.yaml`, which builds both multi-platform images and pushes them to the GitHub Container Registry, signs each with Cosign, attests each one's build provenance (see [Build provenance](#build-provenance)), and then stamps and attaches the launchers (see [Stamped launchers](#stamped-launchers)) and copies both images and their signatures to Docker Hub (see [The Docker Hub copy](#the-docker-hub-copy) below). The FIPS variant's three tags are the default image's three with `-fips` appended, derived from the pushed tag in the workflow itself. The ghcr.io push authenticates with the workflow's own `GITHUB_TOKEN` under `packages: write`, so no ghcr.io secret is configured; the package's settings on ghcr.io must grant this repository the Write role under "Manage Actions access", which the maintainer sets once. The Dockerfile's `org.opencontainers.image.source` label does not grant that access: for an organization package it is metadata only.
+The `vX.Y.Z` tag push in step 7 triggers `.github/workflows/release.yaml`, which builds both multi-platform images and pushes them to the GitHub Container Registry, signs each with Cosign, attests each one's build provenance (see [Build provenance](#build-provenance)), and then stamps and attaches the launchers (see [Stamped launchers](#stamped-launchers)) and copies both images to Docker Hub and signs them there (see [The Docker Hub copy](#the-docker-hub-copy) below). The FIPS variant's three tags are the default image's three with `-fips` appended, derived from the pushed tag in the workflow itself. The ghcr.io push authenticates with the workflow's own `GITHUB_TOKEN` under `packages: write`, so no ghcr.io secret is configured; the package's settings on ghcr.io must grant this repository the Write role under "Manage Actions access", which the maintainer sets once. The Dockerfile's `org.opencontainers.image.source` label does not grant that access: for an organization package it is metadata only.
 
 The default image's base and the builder and QEMU images come from Docker Hub, which limits anonymous pulls per source IP. The release jobs, like every CI job that pulls from the Hub, log in first with a read-only Docker Hub access token held in the `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` secrets (in both the Actions and the Dependabot secret stores). Without the secrets the jobs pull anonymously and can fail with `429 Too Many Requests`. The token has an expiry: once it lapses, the "Log in to Docker Hub" step fails in every job that has it, a release included, until a new token replaces the `DOCKERHUB_TOKEN` value in both stores.
 
@@ -233,17 +233,19 @@ The publish sequence signs each image immediately after its own push, verifies t
 
 **The hosted web application's production deployment.** The same workflow builds the hosted web application and the demo site from the tag and runs the web suites a `staging` deploy runs. Once the publish job has finished, it uploads both as the production deployment of their Pages projects ([DEPLOYMENT.md](DEPLOYMENT.md#deploying-to-cloudflare-pages)). A tag the publish job refuses deploys nothing. A push to `main` also deploys production, from `pages_deploy.yaml`, so the next push replaces the tag's deployment.
 
-**Dry run.** Dispatching the workflow from a branch (`gh workflow run release.yaml --ref <branch>`, or "Run workflow" on the Actions page) runs the test job and a separate dry-run job, and skips the publish, launchers, and hosted application jobs. The dry-run job holds read access to the repository and nothing else: it verifies the vendored tarball, then builds both images for both platforms under fixed local tags without pushing them. Apart from the Docker Hub pull login above, it runs no scan, FIPS probe, launcher stamp, login, signature, or release step. Use it to prove a runner-image or action change to the build before a tag depends on it; `scripts/release-dry-run.test.mjs` checks that the publish, launchers, and hosted application jobs run on a tag push only, that the hosted application's deploy needs the publish job and runs in the Production environment, and that the dry-run job holds no write permission or publishing step. It also checks that the `dockerhub` job copies each image's signature to Docker Hub before the image and verifies it there with the published command after, so a release whose Docker Hub copy would go unsigned fails the test rather than the partner's check.
+**Dry run.** Dispatching the workflow from a branch (`gh workflow run release.yaml --ref <branch>`, or "Run workflow" on the Actions page) runs the test job and a separate dry-run job, and skips the publish, launchers, and hosted application jobs. The dry-run job holds read access to the repository and nothing else: it verifies the vendored tarball, then builds both images for both platforms under fixed local tags without pushing them. Apart from the Docker Hub pull login above, it runs no scan, FIPS probe, launcher stamp, login, signature, or release step. Use it to prove a runner-image or action change to the build before a tag depends on it; `scripts/release-dry-run.test.mjs` checks that the publish, launchers, and hosted application jobs run on a tag push only, that the hosted application's deploy needs the publish job and runs in the Production environment, and that the dry-run job holds no write permission or publishing step. It also checks that the `dockerhub` job signs each image on Docker Hub after copying it and verifies it there with the published command after that, that the job holds `packages: read` and `id-token: write` alone, and that both Cosign installer steps pin the same release, so a release whose Docker Hub copy would go unsigned fails the test rather than the partner's check.
 
 If you must build and push by hand -- for a workflow outage or a local test -- follow the multi-platform buildx instructions in `apps/cli/README.md` (creating `multiarch-builder` and running `docker buildx build --push` from the repository root; the variant adds `-f Dockerfile.fips` and the `-fips` tags). A hand-built push bypasses the [image vulnerability scan](#image-vulnerability-scan) and Cosign: scan the image yourself before pushing it, at the threshold the workflow sets, and expect a hand-pushed tag to fail the verification commands below.
 
 #### The Docker Hub copy
 
-Once the publish job has finished, the `dockerhub` job copies both images, and the signature of each, to `docker.io/gumdi/alcove`:
+Once the publish job has finished, the `dockerhub` job copies both images to `docker.io/gumdi/alcove` and signs each copy there:
 
-1. **The signatures.** `cosign copy --only=sig` copies the Cosign signature the publish job recorded for each digest from ghcr.io to Docker Hub. The signature is copied rather than made again, so the job holds no OIDC token and the signer a partner pins is the publish job on both registries. It is copied before the images, so no Docker Hub tag names an unsigned manifest.
-2. **The images.** `docker buildx imagetools create` copies each image from the digest the publish job pushed to ghcr.io, signed, and attested, under the same three tags it has on ghcr.io. The job then reads back each image's version tag on ghcr.io and all three of its tags on Docker Hub, and fails the release if any of them names a digest other than the signed one. The run's summary page lists each reference with the digest read back.
+1. **The images.** `docker buildx imagetools create` copies each image from the digest the publish job pushed to ghcr.io, signed, and attested, under the same three tags it has on ghcr.io. The job then reads back each image's version tag on ghcr.io and all three of its tags on Docker Hub, and fails the release if any of them names a digest other than the signed one. The run's summary page lists each reference with the digest read back.
+2. **The signatures.** `cosign sign` signs each `docker.io/gumdi/alcove@sha256:...` reference in place, keylessly, under the same release identity as the publish job: the job holds `id-token: write` for this, and any job of `release.yaml` on a version tag is the identity the published command pins, so that command is unchanged. The signature is made on Docker Hub rather than copied from ghcr.io because Cosign 3 stores it as an OCI referrer, which the image copy does not carry (measured with Cosign 3.1.4 on 2026-10-31, the release both installer steps pin).
 3. **The check.** The job runs the `cosign verify` command published under [Verifying a Release](#verifying-a-release) against each `docker.io/gumdi/alcove@sha256:...` reference, with the same two `--certificate-` arguments, and fails the release if either does not verify.
+
+Between items 1 and 2, a Docker Hub tag names a manifest whose signature is not there yet. Verification fails closed in that window: the published command reports no signature rather than a wrong one.
 
 The job logs in to Docker Hub with secrets of its own, `DOCKERHUB_PUBLISH_USERNAME` and `DOCKERHUB_PUBLISH_TOKEN`, in the repository's Actions secrets:
 
@@ -251,7 +253,7 @@ The job logs in to Docker Hub with secrets of its own, `DOCKERHUB_PUBLISH_USERNA
 - It expires on 2027-10-30. Replace the `DOCKERHUB_PUBLISH_TOKEN` value before then, or the "Log in to Docker Hub to publish" step fails every release.
 - The read-only `DOCKERHUB_TOKEN` pull token above is not used for the copy, and is not given write access.
 
-The copy runs in its own job, so a failure there leaves both images published, signed, and attested on ghcr.io and the launchers attached. Once the cause is fixed, re-run the failed job (`gh run rerun <run-id> --failed`): it copies the same signatures and digests again without rebuilding. If the check in item 3 fails, the Docker Hub copy is not verifiable where it is pulled: do not publish the release until a re-run passes it. If the job reports a Docker Hub tag naming a different digest, that tag is not the signed image: do not publish the release in step 10 until a copy by digest from ghcr.io reads back the signed digest on every Docker Hub tag. If it reports the ghcr.io version tag naming a different digest, something pushed to that tag after the publish job signed it, and re-running the copy does not change that: find what pushed it, and do not publish the release until the tag names the signed digest again.
+The copy runs in its own job, so a failure there leaves both images published, signed, and attested on ghcr.io and the launchers attached. Once the cause is fixed, re-run the failed job (`gh run rerun <run-id> --failed`): it copies the same digests again without rebuilding and signs them. If the signing step in item 2 fails, the Docker Hub tags name unsigned manifests until a re-run signs them: do not publish the release until a re-run passes the job. If the check in item 3 fails, the Docker Hub copy is not verifiable where it is pulled: do not publish the release until a re-run passes it. If the job reports a Docker Hub tag naming a different digest, that tag is not the signed image: do not publish the release in step 10 until a copy by digest from ghcr.io reads back the signed digest on every Docker Hub tag. If it reports the ghcr.io version tag naming a different digest, something pushed to that tag after the publish job signed it, and re-running the copy does not change that: find what pushed it, and do not publish the release until the tag names the signed digest again.
 
 ### 9. Generate and attach the SBOM
 
@@ -292,7 +294,7 @@ For a hotfix answering a privately reported vulnerability, this section is the m
 
 ### Container image
 
-Both container image digests for each release are recorded in the GitHub Release notes. Each digest is the same on Docker Hub and on ghcr.io, and each registry holds the image's Cosign signature ([The Docker Hub copy](#the-docker-hub-copy)), so an image is verified on the registry it was pulled from. Verify with:
+Both container image digests for each release are recorded in the GitHub Release notes. Each digest is the same on Docker Hub and on ghcr.io, and each registry holds the image's Cosign signature ([The Docker Hub copy](#the-docker-hub-copy)). Read the digest of the image you pulled with:
 
 ```sh
 docker pull docker.io/gumdi/alcove:X.Y.Z
@@ -312,23 +314,28 @@ The build-provenance attestation is the one exception. GitHub holds it against t
 
 Each release image is also signed with Cosign, keylessly through Sigstore. The signature includes a short-lived certificate Fulcio issued against the release workflow's OIDC identity, and it is recorded in Rekor's public transparency log. There is no project-held signing key and no public key to fetch: what a verifier pins is the workflow that produced the signature ([cosign-keyless-signing.md](notes/cosign-keyless-signing.md)).
 
-This verifies by tag, the form to use when the reference comes from the release notes; a reference read out of a stamped launcher is verified by digest instead (see [Stamped launchers](#stamped-launchers)). To verify:
+This verifies by tag, the form to use when the reference comes from the release notes; a reference read out of a stamped launcher is verified by digest instead (see [Stamped launchers](#stamped-launchers)). To verify, run either command; they differ only in the registry they name:
 
 ```sh
 cosign verify \
   --certificate-identity-regexp '^https://github\.com/georgetown-mdi/alcove/\.github/workflows/release\.yaml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   docker.io/gumdi/alcove:X.Y.Z
+
+cosign verify \
+  --certificate-identity-regexp '^https://github\.com/georgetown-mdi/alcove/\.github/workflows/release\.yaml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/georgetown-mdi/alcove:X.Y.Z
 ```
 
-For an image pulled from ghcr.io, name `ghcr.io/georgetown-mdi/alcove:X.Y.Z` instead; the two `--certificate-` arguments are the same for both. Both are required:
+Either works for an image pulled from either registry, because the signature covers the digest and both registries serve the same digest under each tag. Run the one naming a registry your network reaches, and check that the digest it reports is the one you pulled. Both `--certificate-` arguments are required:
 
 - `--certificate-identity-regexp` pins the signer. The certificate's identity is the workflow file's path in this repository plus the ref it ran from, so an anchored pattern refuses a signature produced by a different workflow here, by a branch run of this one, or by a fork.
 - `--certificate-oidc-issuer` pins who vouched for that identity to GitHub Actions: verification compares the certificate's issuer for equality and refuses any mismatch.
 
 Omitting either, or loosening the pattern to something unanchored, accepts signatures a release did not produce.
 
-**The release runs this command on itself.** Each published image is verified with these exact arguments, against the digest just signed, before the next image is built, and again on Docker Hub once the copy is made, so a release that completes is one whose signatures verified under the command above on both registries. `npm run check:release-signing` holds the pattern published here, the copy the workflow runs, and the workflow's own path and tag trigger to each other on every pull request.
+**The release runs this command on itself.** Each published image is verified with these exact arguments, against the digest just signed, before the next image is built, and again on Docker Hub once the copy is made and signed there, so a release that completes is one whose signatures verified under the command above on both registries. `npm run check:release-signing` holds the pattern published here, the copy the workflow runs, and the workflow's own path and tag trigger to each other on every pull request.
 
 Install Cosign before running this command (see the Cosign documentation for your platform). Behind a signature that verifies there is also a public Rekor transparency-log entry, which anyone can inspect independently of this project.
 

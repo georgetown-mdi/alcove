@@ -758,6 +758,28 @@ describe("the arguments each verify step runs", () => {
         .join("\n");
       expect(withCopyJob(stripped)).toHaveLength(2);
     });
+
+    const copySignStep = [
+      "      - name: Sign the copy",
+      "        run: |",
+      '          cosign sign --yes "docker.io/gumdi/alcove@${DIGEST}"',
+    ].join("\n");
+
+    it("passes a sign step a verify step follows", () => {
+      expect(withCopyJob(`${copySignStep}\n${copyVerifyStep()}`)).toEqual([]);
+    });
+
+    it("fails a sign step no verify step follows", () => {
+      for (const steps of [
+        copySignStep,
+        `${copyVerifyStep()}\n${copySignStep}`,
+      ]) {
+        const violations = withCopyJob(steps);
+        expect(violations).toHaveLength(1);
+        expect(violations[0]).toContain('"Sign the copy" in job `dockerhub`');
+        expect(violations[0]).toContain("no verify step follows it");
+      }
+    });
   });
 });
 

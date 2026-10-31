@@ -183,7 +183,11 @@ alcove_resolve_registry_choice() {
     docker.io) ALCOVE_REPOSITORY_CANDIDATES=("$ALCOVE_DOCKERHUB_REPOSITORY") ;;
     ghcr.io) ALCOVE_REPOSITORY_CANDIDATES=("$ALCOVE_GHCR_REPOSITORY") ;;
     *)
-      alcove_bad "ALCOVE_IMAGE_REGISTRY is set to '$ALCOVE_IMAGE_REGISTRY', which is not a registry this launcher downloads from."
+      # Each control byte shown as `?`, so the refused value cannot send the
+      # terminal an escape sequence.
+      local shown_choice
+      shown_choice=$(printf '%s' "$ALCOVE_IMAGE_REGISTRY" | LC_ALL=C tr '\000-\037\177' '[?*]')
+      alcove_bad "ALCOVE_IMAGE_REGISTRY is set to '$shown_choice', which is not a registry this launcher downloads from."
       alcove_note 'Set it to docker.io or ghcr.io to use that registry alone, or'
       alcove_note 'unset it to try Docker Hub first and ghcr.io if that fails.'
       return 1

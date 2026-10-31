@@ -646,6 +646,27 @@ describe("where the image is downloaded from", () => {
     expect(engineCalls(workspace)).toBe("");
   });
 
+  it("shows each control byte of a refused registry as a question mark", () => {
+    const workspace = makeWorkspace();
+    installEngine(workspace, "docker");
+    const launcher = stampedLauncher(workspace);
+
+    const run = runLauncher(
+      workspace,
+      launcher,
+      ["--data-root", workspace.dataDir, "--no-browser"],
+      "",
+      { ALCOVE_IMAGE_REGISTRY: "quay.io\u001b[2J\u007f\tx" },
+    );
+
+    expect(run.status).not.toBe(0);
+    expect(run.stdout).toContain(
+      "ALCOVE_IMAGE_REGISTRY is set to 'quay.io?[2J??x', which is not a registry this launcher downloads from.",
+    );
+    expect(run.stdout).not.toMatch(/[\u0000-\u0008\u000b-\u001f\u007f]/);
+    expect(engineCalls(workspace)).toBe("");
+  });
+
   it("runs the checks from the registry it downloaded from", () => {
     const workspace = makeWorkspace();
     installEngine(workspace, "docker");

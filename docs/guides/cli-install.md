@@ -59,7 +59,21 @@ This form was tested with rootless Podman 4.9.3 on Linux. Podman on Windows or m
 
 The image is published to two registries with the same images, tags, and digests: Docker Hub, as `docker.io/gumdi/alcove`, and the GitHub Container Registry, as `ghcr.io/georgetown-mdi/alcove`. They are equally useful, equally recommended, and equally secure, so pull from whichever one your network reaches. These pages name the ghcr.io image; to use Docker Hub, pull `docker.io/gumdi/alcove:latest` and put that name in place of `ghcr.io/georgetown-mdi/alcove:latest` in each command. If a pull from one registry is refused, try the other: a network can block one and allow the other, and Docker Hub limits how often one network downloads from it.
 
-Each registry holds the release's signature, so you verify an image on the registry you pulled it from: [Verifying a Release](../RELEASES.md#container-image).
+Each registry holds the release's signature. To check that an image is the one the release published, install Cosign (see the Cosign documentation for your platform) and run either command, putting the tag you pulled, such as `latest`, in place of `X.Y.Z`:
+
+```sh
+cosign verify \
+  --certificate-identity-regexp '^https://github\.com/georgetown-mdi/alcove/\.github/workflows/release\.yaml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  docker.io/gumdi/alcove:X.Y.Z
+
+cosign verify \
+  --certificate-identity-regexp '^https://github\.com/georgetown-mdi/alcove/\.github/workflows/release\.yaml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/georgetown-mdi/alcove:X.Y.Z
+```
+
+Either works for an image pulled from either registry, because the signature covers the image's digest and both registries serve the same digest. What each argument pins, and how to verify by digest: [Verifying a Release](../RELEASES.md#container-image).
 
 More detail: [Which account the image runs as, and what each engine needs](../DEPLOYMENT.md#the-user-the-image-runs-as).
 

@@ -110,9 +110,9 @@ What the runs established:
   pinning a foreign issuer; presenting a certificate actually issued elsewhere
   to the published command was not driven, and the refusal of that direction
   rests on the same issuer-equality comparison the mirror measured.
-- The signature is written to the conventional `sha256-<digest>.sig` tag beside
-  the image, not as an OCI referrer, so it needs nothing of a registry that the
-  key-based signature did not already need.
+- Cosign v3.0.6 wrote the signature to the conventional `sha256-<digest>.sig`
+  tag beside the image, not as an OCI referrer. The release pins Cosign v3.1.4,
+  which stores it differently (next section).
 
 The probe's durable evidence is Actions runs 31931204906 (branch push) and
 31931280133 (tag push) and the Rekor entries the probe wrote, which are
@@ -122,13 +122,35 @@ two runs' sign-blob bundle entries; the keyless image signings in the same runs
 wrote their own transparency-log entries, which cosign reported verified but
 which are not indexed here.
 
+## The Docker Hub copy
+
+Two runs on the maintainer's machine on 2026-10-31, with Cosign v3.1.4 against
+a scratch Docker Hub repository, decided how the Docker Hub copy is signed:
+
+- A default `cosign sign` stored the signature as an OCI referrer of the
+  manifest (`cosign tree` reported it as an artifact via OCI referrer), not as
+  a `.sig` tag.
+- `cosign copy --only=sig` followed by `docker buildx imagetools create` left
+  nothing `cosign verify` found on the Docker Hub copy: it exited 10 with no
+  signatures found. `cosign copy` also reported itself deprecated.
+- `cosign sign` run on the Docker Hub reference by digest, after the manifest
+  was copied there, verified with exit 0, against a baseline verify of exit 10.
+
+The release therefore signs the Docker Hub copy in place, in its own job, under
+the same keyless identity as the publish job: any job of `release.yaml` on a
+version tag, so the published verification command is unchanged. The job holds
+`id-token: write` for it. Both installer steps pin Cosign v3.1.4 because the
+installer's default, v3.0.6, is not the version these runs measured. The
+procedure and its failure path are in
+[RELEASES.md](../RELEASES.md#the-docker-hub-copy).
+
 ## What this does not settle
 
-**The GitHub Container Registry.** The image leg ran against `registry:2`. The signature's storage
-scheme is the conventional tag, which ghcr.io already holds for any image, so
-nothing here is expected to differ -- but the first real release is what
-establishes that, alongside the attestation-reference question RELEASES.md
-already flags in the same position. What that release does with the answer is
+**The GitHub Container Registry.** The image leg ran against `registry:2`, and
+the Docker Hub runs against Docker Hub. Whether ghcr.io holds the OCI referrer
+Cosign v3.1.4 writes was not run; the first real release is what establishes
+that, alongside the attestation-reference question RELEASES.md already flags in
+the same position. What that release does with the answer is
 settled: it verifies each signature it produces before building the next image,
 so a storage scheme ghcr.io does not hold fails the release rather than
 reaching a partner as an image the published command calls untrusted.
