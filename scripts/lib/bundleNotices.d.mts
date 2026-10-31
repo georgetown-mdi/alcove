@@ -19,3 +19,9 @@ export function bundleNotices(): {
   name: string;
   banner(chunk: { moduleIds: readonly string[] }): string;
 };
+export const NO_LICENSE_FILE: ReadonlySet<string>;
+export const NOTICES_FILE: string;
+export function bundleNoticesFile(): {
+  client: import("vite").Plugin;
+  worker: import("vite").Plugin;
+};

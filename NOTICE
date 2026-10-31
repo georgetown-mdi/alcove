@@ -77,14 +77,24 @@ users. No further entries are required.
 
 ---
 
-Three built files copy npm packages into themselves rather than loading them
-at runtime: the console server (apps/web/dist/console-server/main.mjs, in the
-container images), the SFTP relay (/app/sftp-relay.mjs in its image), and the
-@alcove/core build (packages/core/dist), whose inlined packages the other two
-take in with it. Each such file begins with the license text, and any NOTICE
-file, of every package it includes, written when it is built by
-scripts/lib/bundleNotices.mjs; `npm run check:bundle-notices` fails if a file
-includes a package without that text.
+Five builds copy npm packages into their output rather than loading them at
+runtime, and each includes the license text, and any NOTICE file, of every
+package it copies, written when it is built by scripts/lib/bundleNotices.mjs:
+
+- The @alcove/core build (packages/core/dist), the console server
+  (apps/web/dist/console-server/main.mjs, in the container images), and the
+  SFTP relay (/app/sftp-relay.mjs in its image). Each file begins with the
+  text. The console server and the SFTP relay include core's build, and the
+  packages it copies with it.
+- The hosted web app (apps/web/dist/hosted) and the console's browser app
+  (apps/web/dist/console, in the container images), core's build included.
+  The text is in third-party-licenses.txt at the root of each, served beside
+  the app's pages, and covers the app's workers too.
+
+A package that ships no license file (react-remove-scroll-bar) is listed with
+the license, author, and source its package.json declares.
+`npm run check:bundle-notices` fails if a build copies a package without its
+text.
 
 ---
 
