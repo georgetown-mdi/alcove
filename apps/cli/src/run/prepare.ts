@@ -38,6 +38,7 @@ import { preflightKeyFilePath } from "../keyFilePreflight";
 import type {
   AuthPersist,
   FileSyncRuntimeOptions,
+  OnlineSetup,
   ProtocolConnectionConfig,
   SigningPersist,
 } from "../protocol";
@@ -560,7 +561,7 @@ export async function prepareTransport(
     output: string | undefined;
     auth: AuthPersist | null;
     saveIntent: boolean | undefined;
-    onAuthenticated: (() => void | Promise<void>) | undefined;
+    onlineSetup: OnlineSetup | undefined;
     signing: SigningPersist | null;
     writeRecord: boolean;
     signingWithoutRecordWarned: boolean;
@@ -580,7 +581,7 @@ export async function prepareTransport(
     output,
     auth,
     saveIntent,
-    onAuthenticated,
+    onlineSetup,
     signing,
     writeRecord,
     signingWithoutRecordWarned,
@@ -619,15 +620,15 @@ export async function prepareTransport(
       "saveIntent is only valid on an unauthenticated (zero-setup) exchange; " +
         "an authenticated exchange must not pass it",
     );
-  // The mirror constraint: onAuthenticated hooks the moment of acceptance,
-  // which exists only on the authenticated path -- its invocation below is
-  // nested in `if (auth)`. Reject a hook supplied with `auth: null` up
-  // front, so a future caller wiring a hook to a zero-setup exchange gets
-  // a clear error instead of a persistence step that never runs.
-  if (!auth && onAuthenticated !== undefined)
+  // The mirror constraint: the online setup's configuration step runs after
+  // the terms exchange of an authenticated run -- runProtocol wires it only
+  // when `auth` is set. Reject it with `auth: null` up front, so a future
+  // caller wiring it to a zero-setup exchange gets a clear error instead of
+  // a configuration step that never runs.
+  if (!auth && onlineSetup !== undefined)
     throw new InternalConsistencyError(
-      "onAuthenticated is only valid on an authenticated exchange; an " +
-        "unauthenticated (zero-setup) exchange has no acceptance step to hook",
+      "onlineSetup is only valid on an authenticated exchange; an " +
+        "unauthenticated (zero-setup) exchange writes no online configuration",
     );
   // The signed-receipt step binds the receipt to the session key, which
   // only the authenticated key exchange produces. Reject a signing config

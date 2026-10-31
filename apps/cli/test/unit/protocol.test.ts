@@ -161,6 +161,15 @@ function expectNoGenericRecoveryAdvisory(errors: readonly string[]): void {
     expect(errors.filter((m) => m.includes(line))).toEqual([]);
 }
 
+/** The configuration a fresh online setup passes with its hook. */
+const FRESH_ONLINE_SETUP = { configPath: "alcove.yaml", kept: false } as const;
+
+/** An online setup writing no configuration of its own, whose step is `writeConfig`. */
+const freshOnlineSetup = (writeConfig: () => void | Promise<void>) => ({
+  ...FRESH_ONLINE_SETUP,
+  writeConfig,
+});
+
 /** A phrase of each rotation line runProtocol can state. */
 const ROTATION_LINE_PHRASES = [
   "had not saved the next shared secret",
@@ -295,10 +304,16 @@ vi.mock("@alcove/core", async (importActual) => {
     if (role === "responder") rotation.partnerMayHoldNextSecret?.(true);
     await rotation.store(nextSecret);
   };
+  // The terms exchange then completes, and the real runExchange calls
+  // `options.onTermsExchanged` after the checks that follow it, before any
+  // data moves.
   const storingFirst =
     (impl: (...args: unknown[]) => unknown) =>
     async (...args: unknown[]): Promise<unknown> => {
       await storeRotation(args[1], args[3]);
+      await (
+        args[3] as { onTermsExchanged?: () => Promise<void> } | undefined
+      )?.onTermsExchanged?.();
       return impl(...args);
     };
   const runExchangeMock = vi.fn();
@@ -799,11 +814,11 @@ test("rejects before opening a connection when saveIntent is passed on an authen
   ).rejects.toThrow("only valid on an unauthenticated");
 });
 
-test("rejects before opening a connection when onAuthenticated is passed on an unauthenticated exchange", async () => {
-  // onAuthenticated hooks the moment of acceptance, which exists only on the
-  // authenticated path; its invocation is nested inside the `if (auth)` block.
-  // Passing it with `authentication: null` is a misuse: the guard must reject it
-  // up front rather than silently dropping the hook so the write never runs.
+test("rejects before opening a connection when onlineSetup is passed on an unauthenticated exchange", async () => {
+  // The configuration step runs after the terms exchange of an authenticated
+  // run only. Passing it with `authentication: null` is a misuse: the guard
+  // must reject it up front rather than silently dropping the step so the
+  // write never runs.
   await expect(
     runProtocol({
       connection: {
@@ -815,9 +830,9 @@ test("rejects before opening a connection when onAuthenticated is passed on an u
       output: undefined,
       verbosity: -1,
       loggerName: "test",
-      onAuthenticated: () => {
-        /* never invoked: the guard rejects before the hook would fire */
-      },
+      onlineSetup: freshOnlineSetup(() => {
+        /* never invoked: the guard rejects before the step would run */
+      }),
     }),
   ).rejects.toThrow("only valid on an authenticated exchange");
 });
@@ -7114,9 +7129,9 @@ test("authenticated exchange runs through EncryptedMessageConnection: wire bytes
   }
 }, 20_000);
 
-// --- Post-handshake hook (onAuthenticated) -----------------------------------
+// --- The online setup's configuration step (writeConfig) ---------------------
 
-test("runProtocol invokes onAuthenticated after the rotated key is saved and before the exchange begins", async () => {
+test("runProtocol invokes writeConfig after the rotated key is saved and before the exchange begins", async () => {
   // The hook must fire at the moment of acceptance: after saveKeyFile has
   // rotated the on-disk token, but before runExchange runs. Party A has the
   // hook; party B does not (exercising the no-hook path alongside). The hook
@@ -7149,7 +7164,7 @@ test("runProtocol invokes onAuthenticated after the rotated key is saved and bef
 
   let hookSawToken: string | undefined;
   let aExchangeRunAtHookTime: boolean | undefined;
-  const onAuthenticatedA = () => {
+  const writeConfigA = () => {
     hookSawToken = loadKeyFile(keyFileA)?.sharedSecret;
     aExchangeRunAtHookTime = events.includes("exchange:A");
   };
@@ -7166,7 +7181,7 @@ test("runProtocol invokes onAuthenticated after the rotated key is saved and bef
       output: undefined,
       verbosity: -1,
       loggerName: "test-a",
-      onAuthenticated: onAuthenticatedA,
+      onlineSetup: freshOnlineSetup(writeConfigA),
     }),
     runProtocol({
       connection: {
@@ -7188,10 +7203,10 @@ test("runProtocol invokes onAuthenticated after the rotated key is saved and bef
   // Fired before the exchange: A's runExchange had not run when the hook fired.
   expect(aExchangeRunAtHookTime).toBe(false);
   // A successful hook leaves no error in the result.
-  expect(resultA.onAuthenticatedError).toBeUndefined();
+  expect(resultA.configWriteError).toBeUndefined();
 }, 20_000);
 
-test("runProtocol persists the onAuthenticated side effect even when the data exchange then fails", async () => {
+test("runProtocol persists the writeConfig side effect even when the data exchange then fails", async () => {
   // The recurring-exchange guarantee: a handshake success followed by an
   // exchange failure must still leave the hook's persistence on disk (the
   // bootstrap callers write the config here). A marker file stands in for the
@@ -7222,7 +7237,7 @@ test("runProtocol persists the onAuthenticated side effect even when the data ex
     output: undefined,
     verbosity: -1,
     loggerName: "test-a",
-    onAuthenticated: () => fs.writeFileSync(markerA, "config-a"),
+    onlineSetup: freshOnlineSetup(() => fs.writeFileSync(markerA, "config-a")),
   });
   const pB = runProtocol({
     connection: {
@@ -7235,7 +7250,7 @@ test("runProtocol persists the onAuthenticated side effect even when the data ex
     output: undefined,
     verbosity: -1,
     loggerName: "test-b",
-    onAuthenticated: () => fs.writeFileSync(markerB, "config-b"),
+    onlineSetup: freshOnlineSetup(() => fs.writeFileSync(markerB, "config-b")),
   });
 
   const [resultA, resultB] = await Promise.allSettled([pA, pB]);
@@ -7249,13 +7264,13 @@ test("runProtocol persists the onAuthenticated side effect even when the data ex
   expect(loadKeyFile(keyFileB)?.sharedSecret).not.toBe(TOKEN_A);
 }, 20_000);
 
-test("runProtocol's recovery hint does not promise a clean retry when the post-handshake hook failed", async () => {
+test("runProtocol's recovery hint does not promise a clean retry when the configuration step failed", async () => {
   // Compound-failure regression: the handshake succeeds and the key rotates,
-  // then the post-handshake persistence hook throws (so the config the bootstrap
+  // then the configuration step throws (so the config the bootstrap
   // callers write is NOT on disk), and the data exchange then also fails. The
   // catch must not tell the user to "retry the exchange without re-inviting" --
-  // `alcove exchange` would have no config to run against -- but instead point
-  // at the failed persistence step.
+  // `alcove exchange` would have no config to run against -- but instead state
+  // the step for a key file saved with no configuration written.
   const keyFileA = path.join(tmpDir, "a.key");
   const keyFileB = path.join(tmpDir, "b.key");
   saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
@@ -7270,7 +7285,7 @@ test("runProtocol's recovery hint does not promise a clean retry when the post-h
     .mockImplementationOnce(waitForRotationThenThrow);
 
   // The hook stands in for the bootstrap config write; throwing leaves
-  // onAuthenticatedError set with no config on disk.
+  // configWriteError set with no config on disk.
   const failingHook = () => {
     throw new Error("simulated config-write failure");
   };
@@ -7286,7 +7301,7 @@ test("runProtocol's recovery hint does not promise a clean retry when the post-h
     output: undefined,
     verbosity: -1,
     loggerName: "test-a",
-    onAuthenticated: failingHook,
+    onlineSetup: freshOnlineSetup(failingHook),
   });
   const pB = runProtocol({
     connection: {
@@ -7299,18 +7314,23 @@ test("runProtocol's recovery hint does not promise a clean retry when the post-h
     output: undefined,
     verbosity: -1,
     loggerName: "test-b",
-    onAuthenticated: failingHook,
+    onlineSetup: freshOnlineSetup(failingHook),
   });
 
-  const [resultA, resultB] = await Promise.allSettled([pA, pB]);
-  expect(resultA.status).toBe("rejected");
-  expect(resultB.status).toBe("rejected");
-
-  // The corrected advisory is shown...
-  expect(
-    mockState.errors.some((m) => m.includes("nothing to run against")),
-  ).toBe(true);
-  // ...and the clean-retry advisory -- which would point `alcove exchange` at a
+  const results = await Promise.allSettled([pA, pB]);
+  for (const [result, keyFile] of [
+    [results[0], keyFileA],
+    [results[1], keyFileB],
+  ] as const) {
+    expect(result.status).toBe("rejected");
+    if (result.status !== "rejected") continue;
+    expect(
+      renderFailureForOperator(result.reason).endsWith(
+        `\n${CUT_STEPS.freshWriteFailed(keyFile, FRESH_ONLINE_SETUP.configPath)}`,
+      ),
+    ).toBe(true);
+  }
+  // The clean-retry advisory -- which would point `alcove exchange` at a
   // config that was never written -- is suppressed on both sides.
   expect(
     mockState.errors.some((m) =>
@@ -7319,7 +7339,7 @@ test("runProtocol's recovery hint does not promise a clean retry when the post-h
   ).toBe(false);
 }, 20_000);
 
-test("runProtocol does not invoke onAuthenticated when the handshake fails", async () => {
+test("runProtocol does not invoke writeConfig when the handshake fails", async () => {
   // An expired token fails the pre-handshake expiry check in
   // authenticateConnection, before any token rotation. The hook must not fire
   // -- preserving the "declined or unreachable partner leaves no config behind"
@@ -7347,7 +7367,7 @@ test("runProtocol does not invoke onAuthenticated when the handshake fails", asy
     output: undefined,
     verbosity: -1,
     loggerName: "test-a",
-    onAuthenticated: () => fs.writeFileSync(markerA, "config-a"),
+    onlineSetup: freshOnlineSetup(() => fs.writeFileSync(markerA, "config-a")),
   });
   const pB = runProtocol({
     connection: {
@@ -7364,7 +7384,7 @@ test("runProtocol does not invoke onAuthenticated when the handshake fails", asy
     output: undefined,
     verbosity: -1,
     loggerName: "test-b",
-    onAuthenticated: () => fs.writeFileSync(markerB, "config-b"),
+    onlineSetup: freshOnlineSetup(() => fs.writeFileSync(markerB, "config-b")),
   });
 
   const [resultA, resultB] = await Promise.allSettled([pA, pB]);
@@ -7378,7 +7398,7 @@ test("runProtocol does not invoke onAuthenticated when the handshake fails", asy
   expect(loadKeyFile(keyFileB)?.sharedSecret).toBe(TOKEN_A);
 }, 20_000);
 
-test("a throw from onAuthenticated is non-fatal: the exchange still runs and the failure is logged", async () => {
+test("a throw from writeConfig is non-fatal: the exchange still runs and the failure is logged", async () => {
   // The data exchange is the irreplaceable operation; a config-write failure at
   // acceptance must not abort it. A's hook throws, but A's exchange still
   // completes and the failure is reported at error level (captured in
@@ -7404,7 +7424,7 @@ test("a throw from onAuthenticated is non-fatal: the exchange still runs and the
       output: undefined,
       verbosity: -1,
       loggerName: "test-a",
-      onAuthenticated: throwingHook,
+      onlineSetup: freshOnlineSetup(throwingHook),
     }),
     runProtocol({
       connection: {
@@ -7427,20 +7447,22 @@ test("a throw from onAuthenticated is non-fatal: the exchange still runs and the
   expect(loadKeyFile(keyFileA)?.sharedSecret).not.toBe(TOKEN_A);
   // The hook failure was reported at error level, not silently lost.
   expect(
-    mockState.errors.some((m) => m.includes("post-authentication hook failed")),
+    mockState.errors.some((m) =>
+      m.includes("writing the configuration after the terms exchange failed"),
+    ),
   ).toBe(true);
   expect(
     mockState.errors.some((m) => m.includes("simulated config write failure")),
   ).toBe(true);
   // ...and is shown in the resolved result so the caller can fix its message.
   const valueA = (resultA as PromiseFulfilledResult<RunProtocolResult>).value;
-  expect(valueA.onAuthenticatedError).toBeInstanceOf(Error);
-  expect((valueA.onAuthenticatedError as Error).message).toBe(
+  expect(valueA.configWriteError).toBeInstanceOf(Error);
+  expect((valueA.configWriteError as Error).message).toBe(
     "simulated config write failure",
   );
 }, 20_000);
 
-test("a failed post-authentication hook warns on fd 3 and exits 73 with a result terminal event", async () => {
+test("a failed configuration step warns on fd 3 and exits 73 with a result terminal event", async () => {
   // The unattended half of the same non-fatal contract: the exchange completed,
   // so the terminal event is a `result` and the run must NOT be re-run -- but
   // what the hook was there to persist is not on disk. A supervisor that
@@ -7466,9 +7488,9 @@ test("a failed post-authentication hook warns on fd 3 and exits 73 with a result
         output: undefined,
         verbosity: -1,
         loggerName: "test-a",
-        onAuthenticated: () => {
+        onlineSetup: freshOnlineSetup(() => {
           throw new Error("simulated config write failure");
-        },
+        }),
         fileSyncRuntime: { eventStream: true },
       }),
       runProtocol({
@@ -7485,8 +7507,8 @@ test("a failed post-authentication hook warns on fd 3 and exits 73 with a result
       }),
     ]);
     // The exchange itself completed on both sides; only the hook was lost.
-    expect(resultA.onAuthenticatedError).toBeInstanceOf(Error);
-    expect(resultB.onAuthenticatedError).toBeUndefined();
+    expect(resultA.configWriteError).toBeInstanceOf(Error);
+    expect(resultB.configWriteError).toBeUndefined();
     expect(process.exitCode).toBe(73);
   } finally {
     vi.mocked(fs.fstatSync).mockRestore();
@@ -7498,7 +7520,7 @@ test("a failed post-authentication hook warns on fd 3 and exits 73 with a result
   expect(warnings).toHaveLength(1);
   expect(warnings[0].source).toBe("persistenceLoss");
   expect(String(warnings[0].message)).toContain(
-    "the post-authentication persistence step",
+    "writing the configuration after the terms exchange did not complete",
   );
   // The cause stays on the human log: the emitter escapes its message once, so
   // pre-rendered error text would reach a supervisor double-escaped.
@@ -7511,7 +7533,7 @@ test("a failed post-authentication hook warns on fd 3 and exits 73 with a result
   expect(lines.filter((l) => l.type === "error")).toHaveLength(0);
 }, 20_000);
 
-test("an async onAuthenticated that rejects is non-fatal: the exchange still runs and the rejection is logged", async () => {
+test("an async writeConfig that rejects is non-fatal: the exchange still runs and the rejection is logged", async () => {
   // The hook is awaited, so an async hook works and its rejected promise is
   // caught (not a detached unhandled rejection). Same non-fatal contract as the
   // synchronous-throw case: the exchange completes and the failure is logged.
@@ -7537,7 +7559,7 @@ test("an async onAuthenticated that rejects is non-fatal: the exchange still run
       output: undefined,
       verbosity: -1,
       loggerName: "test-a",
-      onAuthenticated: rejectingHook,
+      onlineSetup: freshOnlineSetup(rejectingHook),
     }),
     runProtocol({
       connection: {
@@ -7559,7 +7581,9 @@ test("an async onAuthenticated that rejects is non-fatal: the exchange still run
   expect(loadKeyFile(keyFileA)?.sharedSecret).not.toBe(TOKEN_A);
   // The rejection was caught and reported at error level, not detached.
   expect(
-    mockState.errors.some((m) => m.includes("post-authentication hook failed")),
+    mockState.errors.some((m) =>
+      m.includes("writing the configuration after the terms exchange failed"),
+    ),
   ).toBe(true);
   expect(
     mockState.errors.some((m) =>
@@ -7568,15 +7592,15 @@ test("an async onAuthenticated that rejects is non-fatal: the exchange still run
   ).toBe(true);
   // ...and is shown in the resolved result, just like a synchronous throw.
   const valueA = (resultA as PromiseFulfilledResult<RunProtocolResult>).value;
-  expect(valueA.onAuthenticatedError).toBeInstanceOf(Error);
-  expect((valueA.onAuthenticatedError as Error).message).toBe(
+  expect(valueA.configWriteError).toBeInstanceOf(Error);
+  expect((valueA.configWriteError as Error).message).toBe(
     "simulated async config write failure",
   );
 }, 20_000);
 
-test("a hook that throws a falsy value still reports a defined onAuthenticatedError (failure never masquerades as success)", async () => {
+test("a hook that throws a falsy value still reports a defined configWriteError (failure never masquerades as success)", async () => {
   // The caller distinguishes failure from success by the presence of
-  // onAuthenticatedError; a pathological `throw undefined` must not collapse to
+  // configWriteError; a pathological `throw undefined` must not collapse to
   // the undefined "no error" value, so runProtocol coerces it to an Error.
   const keyFileA = path.join(tmpDir, "a.key");
   const keyFileB = path.join(tmpDir, "b.key");
@@ -7602,7 +7626,7 @@ test("a hook that throws a falsy value still reports a defined onAuthenticatedEr
       output: undefined,
       verbosity: -1,
       loggerName: "test-a",
-      onAuthenticated: throwFalsyHook,
+      onlineSetup: freshOnlineSetup(throwFalsyHook),
     }),
     runProtocol({
       connection: {
@@ -7623,12 +7647,12 @@ test("a hook that throws a falsy value still reports a defined onAuthenticatedEr
   const valueA = (resultA as PromiseFulfilledResult<RunProtocolResult>).value;
   // Defined despite the falsy throw, so the caller's `=== undefined` success
   // guard correctly treats this as a failure rather than a clean write.
-  expect(valueA.onAuthenticatedError).toBeDefined();
-  expect(valueA.onAuthenticatedError).toBeInstanceOf(Error);
+  expect(valueA.configWriteError).toBeDefined();
+  expect(valueA.configWriteError).toBeInstanceOf(Error);
 }, 20_000);
 
-test("runProtocol without onAuthenticated runs a normal authenticated exchange (existing callers unaffected)", async () => {
-  // zeroSetup and exchange pass no post-handshake hook; the new optional
+test("runProtocol without onlineSetup runs a normal authenticated exchange (existing callers unaffected)", async () => {
+  // zeroSetup and exchange pass no online setup; the new optional
   // parameter must leave that path unchanged -- the token rotates, both sides
   // agree, and no hook-related error is logged.
   const keyFileA = path.join(tmpDir, "a.key");
@@ -7669,9 +7693,635 @@ test("runProtocol without onAuthenticated runs a normal authenticated exchange (
   expect(a).not.toBe(TOKEN_A);
   expect(a).toBe(b);
   expect(
-    mockState.errors.some((m) => m.includes("post-authentication hook")),
+    mockState.errors.some((m) => m.includes("writing the configuration")),
   ).toBe(false);
 }, 20_000);
+
+// --- The configuration step's place after the terms exchange -------------------
+
+/**
+ * Run responder B, then initiator A, each with its own configuration step,
+ * which sets that party's entry in `hookRan`.
+ */
+async function runPairRecordingHooks(
+  keyFileA: string,
+  keyFileB: string,
+  hookRan: Record<HandshakeRole, boolean>,
+): Promise<PromiseSettledResult<unknown>[]> {
+  const run = (keyFilePath: string, loggerName: string, role: HandshakeRole) =>
+    runProtocol({
+      connection: {
+        channel: "filedrop",
+        path: dropDir,
+        options: TWO_PARTY_OPTIONS,
+      },
+      auth: { sharedSecret: TOKEN_A, keyFilePath },
+      prepared: minimalPrepared,
+      output: undefined,
+      verbosity: -1,
+      loggerName,
+      onlineSetup: freshOnlineSetup(() => {
+        hookRan[role] = true;
+      }),
+    });
+  const b = run(keyFileB, "test-b", "responder");
+  await waitForFirstPartyHello(dropDir);
+  const a = run(keyFileA, "test-a", "initiator");
+  return Promise.allSettled([a, b]);
+}
+
+test("the configuration step runs after the terms exchange, not at the key-file save", async () => {
+  const keyFileA = path.join(tmpDir, "a.key");
+  const keyFileB = path.join(tmpDir, "b.key");
+  saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
+  saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+  const hookRan = { initiator: false, responder: false };
+  const ranAtSave: Partial<Record<HandshakeRole, boolean>> = {};
+  // Each side's save is followed, still inside its terms exchange, by a turn
+  // of the event loop in which a hook tied to the save would already have run.
+  const turn = () => new Promise<void>((resolve) => setImmediate(resolve));
+  driveTermsExchange({
+    initiator: async (rotation, nextSecret) => {
+      await rotation.store(nextSecret);
+      await turn();
+      ranAtSave.initiator = hookRan.initiator;
+    },
+    responder: async (rotation, nextSecret) => {
+      rotation.partnerMayHoldNextSecret?.(true);
+      await rotation.store(nextSecret);
+      await turn();
+      ranAtSave.responder = hookRan.responder;
+    },
+  });
+
+  const results = await runPairRecordingHooks(keyFileA, keyFileB, hookRan);
+
+  for (const result of results) expect(result.status).toBe("fulfilled");
+  expect(ranAtSave).toEqual({ initiator: false, responder: false });
+  expect(hookRan).toEqual({ initiator: true, responder: true });
+}, 20_000);
+
+test("a run refused at the terms exchange runs neither side's configuration step and rotates nobody", async () => {
+  const keyFileA = path.join(tmpDir, "a.key");
+  const keyFileB = path.join(tmpDir, "b.key");
+  saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
+  saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+  const hookRan = { initiator: false, responder: false };
+  driveTermsExchange({
+    responder: () =>
+      Promise.reject(
+        new ProtocolRefusalError("linkage terms are incompatible: deduplicate"),
+      ),
+    initiator: () =>
+      Promise.reject(
+        new ProtocolRefusalError(
+          "Your partner stopped the exchange because the linkage terms differ",
+        ),
+      ),
+  });
+
+  const results = await runPairRecordingHooks(keyFileA, keyFileB, hookRan);
+
+  for (const result of results) expect(result.status).toBe("rejected");
+  expect(hookRan).toEqual({ initiator: false, responder: false });
+  expect(loadKeyFile(keyFileA)).toEqual({ sharedSecret: TOKEN_A });
+  expect(loadKeyFile(keyFileB)).toEqual({ sharedSecret: TOKEN_A });
+}, 20_000);
+
+// --- An online setup that saved its key file and wrote no configuration
+//
+// The state table, one test per cell: how the run ended (a failure, or a
+// signal), whether its configuration was fresh or kept, and whether the
+// failure states its own next step. In each, initiator A, an online setup,
+// saves its rotated key file and its terms exchange then stops before the
+// configuration step; responder B never saves. On a signal the handler states
+// the step before any error in flight is seen, so for the two signal cells
+// with such an error the check is that the error adds no second step. The
+// rows after them: a setup whose configuration step ran and failed
+// before the run stopped, and a responder online setup that stopped before
+// its own save.
+
+const onlineSetupIn = (kept: boolean) => ({
+  configPath: path.join(tmpDir, "alcove.yaml"),
+  kept,
+});
+
+const KEPT_NEXT_RUN = (k: string, c: string) =>
+  `Run 'alcove exchange' again. If it stops because your partner's ` +
+  `deduplicate differs from the one ${c} records, run the 'alcove apply' ` +
+  `command it prints, then 'alcove exchange' again. If it fails to ` +
+  `authenticate or never meets your partner, ask your partner for a new ` +
+  `invitation, and delete ${k} before you accept it.`;
+
+/** The step each cell states, for key file `k` and configuration `c`. */
+const CUT_STEPS = {
+  freshFailed: (k: string, c: string) =>
+    `The key file ${k} was saved, but the run stopped before it wrote the ` +
+    `configuration ${c}. Delete ${k} before you start again. ` +
+    NEW_INVITATION_REMEDY,
+  freshFailedOwnStep: (k: string, c: string) =>
+    `The key file ${k} was saved, but the run stopped before it wrote the ` +
+    `configuration ${c}. Delete ${k} before you start again.`,
+  keptFailed: (k: string, c: string) =>
+    `The key file ${k} was saved and the configuration ${c} kept before the ` +
+    `run stopped. ${KEPT_NEXT_RUN(k, c)}`,
+  keptFailedOwnStep: (k: string, c: string) =>
+    `The key file ${k} was saved and the configuration ${c} kept before the ` +
+    `run stopped. If you accept a new invitation, delete ${k} first.`,
+  freshInterrupted: (k: string, c: string) =>
+    `The key file ${k} was saved, but the run was interrupted before it ` +
+    `wrote the configuration ${c}. Delete ${k} before you start again. ` +
+    NEW_INVITATION_REMEDY,
+  keptInterrupted: (k: string, c: string) =>
+    `The key file ${k} was saved and the configuration ${c} kept before the ` +
+    `run was interrupted. ${KEPT_NEXT_RUN(k, c)}`,
+  freshWriteFailed: (k: string, c: string) =>
+    `The key file ${k} was saved, but writing the configuration ${c} failed ` +
+    `(logged above), and then the run stopped. Delete ${k} before you start ` +
+    `again. ${NEW_INVITATION_REMEDY}`,
+  freshWriteFailedOwnStep: (k: string, c: string) =>
+    `The key file ${k} was saved, but writing the configuration ${c} failed ` +
+    `(logged above), and then the run stopped. Delete ${k} before you start ` +
+    `again.`,
+  freshWriteFailedInterrupted: (k: string, c: string) =>
+    `The key file ${k} was saved, but writing the configuration ${c} failed ` +
+    `(logged above), and then the run was interrupted. Delete ${k} before ` +
+    `you start again. ${NEW_INVITATION_REMEDY}`,
+};
+
+/** The step a responder online setup states when it stopped before its save. */
+const PARTNER_STEPS = {
+  failed:
+    "The run stopped before this side saved its key file, and your partner " +
+    `may already have saved the next shared secret. ${NEW_INVITATION_REMEDY}`,
+  interrupted:
+    "The run was interrupted before this side saved its key file, and your " +
+    "partner may already have saved the next shared secret. " +
+    NEW_INVITATION_REMEDY,
+};
+
+/** A failure that states its own next step, as core's terminal refusals do. */
+const ownStepFailure = () =>
+  markStatesItsOwnNextStep(
+    new ConnectionError(
+      "the server refused the write; run the exchange again in a clean directory",
+      "transport",
+    ),
+  );
+
+const droppedConnection = () =>
+  new ConnectionError("the exchange directory went away", "transport");
+
+/**
+ * Start responder B, then initiator A, each over its own key file. The side
+ * named by `onlineSide` is an online setup whose configuration step is
+ * `writeConfig`, by default one that throws, as a failed configuration write
+ * does; the other is a configured run.
+ */
+async function startCutPair(
+  kept: boolean,
+  onlineSide: HandshakeRole = "initiator",
+  writeConfig: () => void = () => {
+    throw new Error("the configuration step ran");
+  },
+) {
+  const keyFileA = path.join(tmpDir, "a.key");
+  const keyFileB = path.join(tmpDir, "b.key");
+  saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
+  saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+  const onlineSetup = onlineSetupIn(kept);
+  const run = (keyFilePath: string, loggerName: string, online: boolean) =>
+    runProtocol({
+      connection: {
+        channel: "filedrop",
+        path: dropDir,
+        options: TWO_PARTY_OPTIONS,
+      },
+      auth: { sharedSecret: TOKEN_A, keyFilePath },
+      prepared: minimalPrepared,
+      output: undefined,
+      verbosity: -1,
+      loggerName,
+      ...(online
+        ? {
+            onlineSetup: { ...onlineSetup, writeConfig },
+          }
+        : {}),
+    });
+  const pB = run(keyFileB, "test-b", onlineSide === "responder");
+  await waitForFirstPartyHello(dropDir);
+  const pA = run(keyFileA, "test-a", onlineSide === "initiator");
+  return { pA, pB, keyFileA, configPath: onlineSetup.configPath };
+}
+
+/** The lines either party logged that state a rotation for this side. */
+const initiatorRotationLines = () =>
+  [...mockState.errors, ...mockState.warnings].filter((m) =>
+    m.includes("already rotated and saved"),
+  );
+
+test.each([
+  {
+    cell: "failed, fresh configuration, the failure states no step",
+    kept: false,
+    failure: droppedConnection,
+    step: CUT_STEPS.freshFailed,
+  },
+  {
+    cell: "failed, fresh configuration, the failure states its own step",
+    kept: false,
+    failure: ownStepFailure,
+    step: CUT_STEPS.freshFailedOwnStep,
+  },
+  {
+    cell: "failed, kept configuration, the failure states no step",
+    kept: true,
+    failure: droppedConnection,
+    step: CUT_STEPS.keptFailed,
+  },
+  {
+    cell: "failed, kept configuration, the failure states its own step",
+    kept: true,
+    failure: ownStepFailure,
+    step: CUT_STEPS.keptFailedOwnStep,
+  },
+])(
+  "an online setup cut after its key-file save, $cell: the failure ends with that cell's step",
+  async ({ kept, failure, step }) => {
+    driveTermsExchange({
+      initiator: async (rotation, nextSecret) => {
+        await rotation.store(nextSecret);
+        throw failure();
+      },
+      responder: (rotation) => {
+        rotation.partnerMayHoldNextSecret?.(true);
+        return Promise.reject(droppedConnection());
+      },
+    });
+    const { pA, pB, keyFileA, configPath } = await startCutPair(kept);
+    const [initiator] = await Promise.allSettled([pA, pB]);
+
+    expect(initiator.status).toBe("rejected");
+    if (initiator.status !== "rejected") return;
+    expect(loadKeyFile(keyFileA)?.sharedSecret).not.toBe(TOKEN_A);
+    const rendered = renderFailureForOperator(initiator.reason);
+    expect(rendered).toBe(
+      `${sanitizeErrorForDisplay(initiator.reason)}\n${step(keyFileA, configPath)}`,
+    );
+    expect(initiatorRotationLines()).toEqual([]);
+    expect(
+      mockState.errors.some((m) => m.includes("the configuration step ran")),
+    ).toBe(false);
+  },
+  20_000,
+);
+
+test("an online setup cut after its key-file save by an internal fault states the fixed step, then the key file's", async () => {
+  driveTermsExchange({
+    initiator: async (rotation, nextSecret) => {
+      await rotation.store(nextSecret);
+      throw new InternalConsistencyError("internal error: a check failed");
+    },
+    responder: (rotation) => {
+      rotation.partnerMayHoldNextSecret?.(true);
+      return Promise.reject(droppedConnection());
+    },
+  });
+  const { pA, pB, keyFileA, configPath } = await startCutPair(false);
+  const [initiator] = await Promise.allSettled([pA, pB]);
+
+  expect(initiator.status).toBe("rejected");
+  if (initiator.status !== "rejected") return;
+  expect(renderFailureForOperator(initiator.reason)).toBe(
+    `${sanitizeErrorForDisplay(initiator.reason)}\n` +
+      `${INTERNAL_FAULT_NEXT_STEP}\n` +
+      CUT_STEPS.freshFailedOwnStep(keyFileA, configPath),
+  );
+}, 20_000);
+
+test.each([
+  {
+    cell: "fresh configuration, no error in flight",
+    kept: false,
+    inFlight: undefined,
+    step: CUT_STEPS.freshInterrupted,
+  },
+  {
+    cell: "fresh configuration, an error stating its own step in flight",
+    kept: false,
+    inFlight: ownStepFailure,
+    step: CUT_STEPS.freshInterrupted,
+  },
+  {
+    cell: "kept configuration, no error in flight",
+    kept: true,
+    inFlight: undefined,
+    step: CUT_STEPS.keptInterrupted,
+  },
+  {
+    cell: "kept configuration, an error stating its own step in flight",
+    kept: true,
+    inFlight: ownStepFailure,
+    step: CUT_STEPS.keptInterrupted,
+  },
+])(
+  "an online setup interrupted after its key-file save, $cell: the signal handler states that cell's step once",
+  async ({ kept, inFlight, step }) => {
+    const exitSpy = recordProcessExit();
+    let saved!: () => void;
+    const savedOnA = new Promise<void>((resolve) => {
+      saved = resolve;
+    });
+    let failA: (err: Error) => void = () => {};
+    let failB: (err: Error) => void = () => {};
+    driveTermsExchange({
+      initiator: async (rotation, nextSecret) => {
+        await rotation.store(nextSecret);
+        await new Promise<never>((_, reject) => {
+          failA = reject;
+          saved();
+        });
+      },
+      responder: (rotation) => {
+        rotation.partnerMayHoldNextSecret?.(true);
+        return new Promise<never>((_, reject) => {
+          failB = reject;
+        });
+      },
+    });
+    const { pA, pB, keyFileA, configPath } = await startCutPair(kept);
+    try {
+      await savedOnA;
+      process.emit("SIGINT");
+      await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(130), {
+        timeout: 5_000,
+      });
+      failA(inFlight?.() ?? new Error("test cleanup"));
+      failB(new Error("test cleanup"));
+      const [initiator] = await Promise.allSettled([pA, pB]);
+
+      expect(initiator).toEqual({
+        status: "fulfilled",
+        value: { outcome: "interrupted", configWriteError: undefined },
+      });
+      const expected = step(keyFileA, configPath);
+      expect(
+        [...mockState.warnings, ...mockState.errors].filter((m) =>
+          m.includes(keyFileA),
+        ),
+      ).toEqual([expected]);
+      expect(initiatorRotationLines()).toEqual([]);
+      if (inFlight !== undefined)
+        expect(
+          mockState.errors.some((m) =>
+            m.startsWith("error in flight when SIGINT arrived"),
+          ),
+        ).toBe(true);
+    } finally {
+      exitSpy.mockRestore();
+      failA(new Error("test cleanup"));
+      failB(new Error("test cleanup"));
+      await Promise.allSettled([pA, pB]);
+    }
+  },
+  20_000,
+);
+
+/** A terms exchange both sides complete, each storing the next secret. */
+const driveStoringTermsExchange = () =>
+  driveTermsExchange({
+    initiator: async (rotation, nextSecret) => {
+      await rotation.store(nextSecret);
+    },
+    responder: async (rotation, nextSecret) => {
+      rotation.partnerMayHoldNextSecret?.(true);
+      await rotation.store(nextSecret);
+    },
+  });
+
+/** The lines either party logged that name key file `k`. */
+const linesNaming = (k: string) =>
+  [...mockState.warnings, ...mockState.errors].filter((m) => m.includes(k));
+
+test.each([
+  {
+    cell: "fresh configuration, the failure states no step",
+    kept: false,
+    failure: droppedConnection,
+    step: CUT_STEPS.freshWriteFailed,
+  },
+  {
+    cell: "fresh configuration, the failure states its own step",
+    kept: false,
+    failure: ownStepFailure,
+    step: CUT_STEPS.freshWriteFailedOwnStep,
+  },
+  {
+    cell: "kept configuration, the failure states no step",
+    kept: true,
+    failure: droppedConnection,
+    step: CUT_STEPS.keptFailed,
+  },
+])(
+  "an online setup whose configuration step failed, then the run failed, $cell: the failure ends with that cell's step",
+  async ({ kept, failure, step }) => {
+    driveStoringTermsExchange();
+    vi.mocked(runExchange).mockImplementation((() =>
+      Promise.reject(failure())) as never);
+    const { pA, pB, keyFileA, configPath } = await startCutPair(kept);
+    const [initiator] = await Promise.allSettled([pA, pB]);
+
+    expect(initiator.status).toBe("rejected");
+    if (initiator.status !== "rejected") return;
+    expect(
+      mockState.errors.some((m) => m.includes("the configuration step ran")),
+    ).toBe(true);
+    expect(renderFailureForOperator(initiator.reason)).toBe(
+      `${sanitizeErrorForDisplay(initiator.reason)}\n${step(keyFileA, configPath)}`,
+    );
+    expect(linesNaming(keyFileA)).toEqual([]);
+  },
+  20_000,
+);
+
+test("an online setup whose configuration step failed, then interrupted: the signal handler states the step the failed run states", async () => {
+  const exitSpy = recordProcessExit();
+  const pending: Array<(err: Error) => void> = [];
+  let bothWaiting!: () => void;
+  const waiting = new Promise<void>((resolve) => {
+    bothWaiting = resolve;
+  });
+  driveStoringTermsExchange();
+  vi.mocked(runExchange).mockImplementation(
+    (() =>
+      new Promise<never>((_, reject) => {
+        pending.push(reject);
+        if (pending.length === 2) bothWaiting();
+      })) as never,
+  );
+  const { pA, pB, keyFileA, configPath } = await startCutPair(false);
+  try {
+    await waiting;
+    process.emit("SIGINT");
+    await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(130), {
+      timeout: 5_000,
+    });
+    for (const reject of pending) reject(new Error("test cleanup"));
+    const [initiator] = await Promise.allSettled([pA, pB]);
+
+    expect(initiator.status).toBe("fulfilled");
+    if (initiator.status !== "fulfilled") return;
+    expect(initiator.value.outcome).toBe("interrupted");
+    expect(initiator.value.configWriteError).toEqual(
+      new Error("the configuration step ran"),
+    );
+    expect(linesNaming(keyFileA)).toEqual([
+      CUT_STEPS.freshWriteFailedInterrupted(keyFileA, configPath),
+    ]);
+  } finally {
+    exitSpy.mockRestore();
+    for (const reject of pending) reject(new Error("test cleanup"));
+    await Promise.allSettled([pA, pB]);
+  }
+}, 20_000);
+
+test("an online setup a signal reaches as its terms exchange finishes runs no configuration step and states only the interrupted step", async () => {
+  const exitSpy = recordProcessExit();
+  const pending: Array<(err: Error) => void> = [];
+  driveTermsExchange({
+    initiator: async (rotation, nextSecret) => {
+      await rotation.store(nextSecret);
+      process.emit("SIGINT");
+    },
+    responder: async (rotation, nextSecret) => {
+      rotation.partnerMayHoldNextSecret?.(true);
+      await rotation.store(nextSecret);
+    },
+  });
+  vi.mocked(runExchange).mockImplementation(
+    (() =>
+      new Promise<never>((_, reject) => {
+        pending.push(reject);
+      })) as never,
+  );
+  const configPath = onlineSetupIn(false).configPath;
+  let configStepRan = false;
+  const { pA, pB, keyFileA } = await startCutPair(false, "initiator", () => {
+    configStepRan = true;
+    fs.writeFileSync(configPath, "written after the signal");
+  });
+  try {
+    await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(130), {
+      timeout: 5_000,
+    });
+    for (const reject of pending) reject(new Error("test cleanup"));
+    const [initiator] = await Promise.allSettled([pA, pB]);
+
+    expect(initiator).toEqual({
+      status: "fulfilled",
+      value: { outcome: "interrupted", configWriteError: undefined },
+    });
+    expect(configStepRan).toBe(false);
+    expect(fs.existsSync(configPath)).toBe(false);
+    expect(linesNaming(keyFileA)).toEqual([
+      CUT_STEPS.freshInterrupted(keyFileA, configPath),
+    ]);
+  } finally {
+    exitSpy.mockRestore();
+    for (const reject of pending) reject(new Error("test cleanup"));
+    await Promise.allSettled([pA, pB]);
+  }
+}, 20_000);
+
+// The responder of an online setup saves no key file until it reads proceed,
+// and the online commands refuse one already there, so one that stopped first
+// has none to retry with, whether it keeps a configuration or not.
+
+test.each([
+  { setup: "fresh", kept: false },
+  { setup: "kept", kept: true },
+])(
+  "a responder online setup, $setup configuration, that failed before its key-file save states a new invitation, not a retry",
+  async ({ kept }) => {
+    driveTermsExchange({
+      initiator: async (rotation, nextSecret) => {
+        await rotation.store(nextSecret);
+        throw droppedConnection();
+      },
+      responder: (rotation) => {
+        rotation.partnerMayHoldNextSecret?.(true);
+        return Promise.reject(droppedConnection());
+      },
+    });
+    const { pA, pB } = await startCutPair(kept, "responder");
+    const [, responder] = await Promise.allSettled([pA, pB]);
+
+    expect(responder.status).toBe("rejected");
+    expect(mockState.errors.filter((m) => m === PARTNER_STEPS.failed)).toEqual([
+      PARTNER_STEPS.failed,
+    ]);
+    expect(
+      [...mockState.errors, ...mockState.warnings].some((m) =>
+        m.includes("existing key file"),
+      ),
+    ).toBe(false);
+  },
+  20_000,
+);
+
+test.each([
+  { setup: "fresh", kept: false },
+  { setup: "kept", kept: true },
+])(
+  "a responder online setup, $setup configuration, interrupted before its key-file save states a new invitation, not a retry",
+  async ({ kept }) => {
+    const exitSpy = recordProcessExit();
+    let waiting!: () => void;
+    const responderWaiting = new Promise<void>((resolve) => {
+      waiting = resolve;
+    });
+    let failA: (err: Error) => void = () => {};
+    let failB: (err: Error) => void = () => {};
+    driveTermsExchange({
+      initiator: async (rotation, nextSecret) => {
+        await rotation.store(nextSecret);
+        await new Promise<never>((_, reject) => {
+          failA = reject;
+        });
+      },
+      responder: (rotation) => {
+        rotation.partnerMayHoldNextSecret?.(true);
+        return new Promise<never>((_, reject) => {
+          failB = reject;
+          waiting();
+        });
+      },
+    });
+    const { pA, pB } = await startCutPair(kept, "responder");
+    try {
+      await responderWaiting;
+      process.emit("SIGINT");
+      await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(130), {
+        timeout: 5_000,
+      });
+
+      expect(
+        mockState.warnings.filter((m) => m === PARTNER_STEPS.interrupted),
+      ).toEqual([PARTNER_STEPS.interrupted]);
+      expect(
+        [...mockState.errors, ...mockState.warnings].some((m) =>
+          m.includes("existing key file"),
+        ),
+      ).toBe(false);
+    } finally {
+      exitSpy.mockRestore();
+      failA(new Error("test cleanup"));
+      failB(new Error("test cleanup"));
+      await Promise.allSettled([pA, pB]);
+    }
+  },
+  20_000,
+);
 
 // --- Machine-interface event stream (--event-stream) --------------------------
 //
@@ -9280,7 +9930,7 @@ test("a terms-exchange warning past the per-value cap reaches stderr as whole as
   expect(stderrLine).not.toContain(DISPLAY_TRUNCATION_MARKER);
 }, 20_000);
 
-test("a failed onAuthenticated hook under --event-stream emits a warning event before the success terminal event", async () => {
+test("a failed configuration step under --event-stream emits a warning event before the success terminal event", async () => {
   // The run completes and writes its result, so the terminal event is a success:
   // a supervisor that discards stderr would treat the whole stream as a clean
   // provisioning while the configuration never reached disk. The warning event is
@@ -9307,9 +9957,9 @@ test("a failed onAuthenticated hook under --event-stream emits a warning event b
         output: undefined,
         verbosity: -1,
         loggerName: "test-a",
-        onAuthenticated: () => {
+        onlineSetup: freshOnlineSetup(() => {
           throw new Error("simulated config write failure");
-        },
+        }),
         fileSyncRuntime: { eventStream: true },
       }),
       runProtocol({

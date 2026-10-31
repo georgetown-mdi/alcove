@@ -48,11 +48,10 @@ import type {
 
 import {
   exitCodeForError,
-  fixedNextStep,
   installTerminalFailureReporter,
+  nextStepBeneathFailure,
   renderFailureForOperator,
 } from "./util/exit";
-import { failureRemedy } from "./failureRemedy";
 import { asciiSafeJsonText } from "./util/jsonLine";
 import { takeLogFileLossReport } from "./util/logging";
 import { termsChangeNotTakenOf } from "./termsChangeNotTaken";
@@ -334,8 +333,7 @@ export function buildErrorEvent(
     // stderr uses; the category and version fields are this party's own vocabulary.
     message: renderFailureForOperator(error),
     ...(errorStatesItsOwnNextStep(error) ||
-    fixedNextStep(error) !== undefined ||
-    failureRemedy(error) !== undefined
+    nextStepBeneathFailure(error) !== undefined
       ? { recoveryHint: true as const }
       : {}),
     ...(exitCode === INTERNAL_FAULT_EXIT_CODE

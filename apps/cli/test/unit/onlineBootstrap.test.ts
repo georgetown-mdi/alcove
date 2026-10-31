@@ -19,6 +19,7 @@ import {
   LOW_POLLING_FREQUENCY_WARN_MS,
   MAX_RECONNECT_ATTEMPTS,
   parseExchangeSpec,
+  PeerAbortError,
   RoundSetLimitError,
   safeParseConnectionConfig,
   setDiagnosticSink,
@@ -76,6 +77,7 @@ import {
 } from "../../src/onlineBootstrap";
 import { markNoHealSaveFailure } from "../../src/protocol";
 import { openInputSource } from "../../src/util/dataIo";
+import { promptConfirm } from "../../src/util/prompt";
 import { exitCodeForError, runOrExit, withExitCode } from "../../src/util/exit";
 import { MAX_TIMEOUT_SECONDS } from "../../src/util/flags";
 import { openEventStream } from "../../src/eventStream";
@@ -93,7 +95,7 @@ import { captureProcessExit, recordProcessExit } from "../exitCapture";
 
 // runOnlineBootstrap's config-persistence tests below drive its wiring without
 // opening a connection: runProtocol is mocked so each test chooses whether the
-// handshake "succeeds" (the mock invokes onAuthenticated) before it resolves or
+// handshake "succeeds" (the mock invokes writeConfig) before it resolves or
 // rejects. saveConfig is left real, so the assertions check the actual file.
 // The preflight that raises the undeclared-columns notice stays real,
 // spy-wrapped so the ordering test below can place it against the host-key step.
@@ -141,6 +143,13 @@ vi.mock("../../src/hostKeyTrust", async (importActual) => {
     ),
     establishHostKeyTrust: vi.fn(actual.establishHostKeyTrust),
   };
+});
+
+// The payload-column confirmation's prompt is spy-WRAPPED so a test can answer
+// it; every other test never reaches it.
+vi.mock("../../src/util/prompt", async (importActual) => {
+  const actual = await importActual<typeof import("../../src/util/prompt")>();
+  return { ...actual, promptConfirm: vi.fn(actual.promptConfirm) };
 });
 
 // runOrExit creates its error logger by name; silence that name so the
@@ -2382,9 +2391,9 @@ function optionsArg(callArgs: unknown[]): RunProtocolOptions {
   return callArgs[0] as RunProtocolOptions;
 }
 
-/** runProtocol's onAuthenticated hook, which every caller here supplies. */
-function onAuthenticatedArg(callArgs: unknown[]): () => void | Promise<void> {
-  const hook = optionsArg(callArgs).onAuthenticated;
+/** runProtocol's onlineSetup.writeConfig, which every caller here supplies. */
+function writeConfigArg(callArgs: unknown[]): () => void | Promise<void> {
+  const hook = optionsArg(callArgs).onlineSetup?.writeConfig;
   expect(hook).toBeTypeOf("function");
   return hook as () => void | Promise<void>;
 }
@@ -2423,14 +2432,14 @@ describe("runOnlineBootstrap", () => {
   });
 
   test("writes the config from the hook even when the exchange then fails", async () => {
-    // Handshake succeeds (runProtocol invokes onAuthenticated -> saveConfig), then
+    // Handshake succeeds (runProtocol invokes writeConfig -> saveConfig), then
     // the data exchange fails. The config must already be on disk so the
     // recurring-exchange setup is recoverable without re-inviting.
     vi.mocked(runProtocol).mockImplementation((async (
       ...callArgs: unknown[]
     ) => {
-      const onAuthenticated = onAuthenticatedArg(callArgs);
-      await onAuthenticated();
+      const writeConfig = writeConfigArg(callArgs);
+      await writeConfig();
       throw new Error("data exchange failed");
     }) as never);
 
@@ -2492,9 +2501,9 @@ describe("runOnlineBootstrap", () => {
     vi.mocked(runProtocol).mockImplementation((async (
       ...callArgs: unknown[]
     ) => {
-      const onAuthenticated = onAuthenticatedArg(callArgs);
+      const writeConfig = writeConfigArg(callArgs);
       fs.writeFileSync(configPath, "");
-      await onAuthenticated();
+      await writeConfig();
     }) as never);
 
     try {
@@ -2528,8 +2537,8 @@ describe("runOnlineBootstrap", () => {
     vi.mocked(runProtocol).mockImplementation((async (
       ...callArgs: unknown[]
     ) => {
-      const onAuthenticated = onAuthenticatedArg(callArgs);
-      await onAuthenticated();
+      const writeConfig = writeConfigArg(callArgs);
+      await writeConfig();
       throw new Error("data exchange failed");
     }) as never);
 
@@ -2569,8 +2578,8 @@ describe("runOnlineBootstrap", () => {
     vi.mocked(runProtocol).mockImplementation((async (
       ...callArgs: unknown[]
     ) => {
-      const onAuthenticated = onAuthenticatedArg(callArgs);
-      await onAuthenticated();
+      const writeConfig = writeConfigArg(callArgs);
+      await writeConfig();
       throw markNoHealSaveFailure(withExitCode(new Error(message), 77));
     }) as never);
 
@@ -2603,8 +2612,8 @@ describe("runOnlineBootstrap", () => {
     vi.mocked(runProtocol).mockImplementation((async (
       ...callArgs: unknown[]
     ) => {
-      const onAuthenticated = onAuthenticatedArg(callArgs);
-      await onAuthenticated();
+      const writeConfig = writeConfigArg(callArgs);
+      await writeConfig();
       throw withExitCode(new Error("data exchange failed"), 77);
     }) as never);
 
@@ -2619,14 +2628,86 @@ describe("runOnlineBootstrap", () => {
       await expect(runOnlineBootstrap(params)).rejects.toThrow(
         "data exchange failed",
       );
-      expect(
-        errors.filter((entry) => entry.includes("are on disk")),
-      ).toHaveLength(1);
+      const notes = errors.filter((entry) => entry.includes("are on disk"));
+      expect(notes).toHaveLength(1);
+      expect(notes[0]).toContain(
+        "retry with 'alcove exchange' to recover without re-inviting.",
+      );
+      expect(notes[0]).not.toContain("Your partner ended the exchange");
     } finally {
       errorSink.mockRestore();
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  // A check that refuses on one side only can end the partner's run before
+  // its configuration step, so a run that wrote or kept its configuration and
+  // then reads the partner's abort names both steps rather than promising
+  // that a retry recovers.
+  test.each([
+    ["an inviter", "bare", undefined, false],
+    ["an inviter", "behind a transport wrap", undefined, false],
+    ["an acceptor", "bare", false, false],
+    ["an acceptor", "behind a transport wrap", true, false],
+    ["an acceptor keeping its configuration", "bare", false, true],
+  ] as const)(
+    "%s told of its partner's abort after its configuration step names both steps (abort %s)",
+    async (_label, shape, expectedPartnerDeduplicate, reuseExistingConfig) => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
+      const configPath = path.join(dir, "alcove.yaml");
+      const base = onlineBootstrapParams(configPath);
+      if (reuseExistingConfig)
+        saveConfig(configPath, {
+          connection: base.connection,
+          ...base.dataSpec,
+        });
+      vi.mocked(runProtocol).mockImplementation((async (
+        ...callArgs: unknown[]
+      ) => {
+        const writeConfig = writeConfigArg(callArgs);
+        await writeConfig();
+        const abort = new PeerAbortError();
+        throw shape === "bare"
+          ? abort
+          : new ConnectionError("receive failed", "transport", {
+              cause: abort,
+            });
+      }) as never);
+
+      const params = {
+        ...base,
+        ...(expectedPartnerDeduplicate === undefined
+          ? {}
+          : { expectedPartnerDeduplicate }),
+        ...(reuseExistingConfig ? { reuseExistingConfig } : {}),
+      };
+      const errors: string[] = [];
+      const errorSink = vi
+        .spyOn(getLogger(params.loggerName), "error")
+        .mockImplementation((...args: unknown[]) => {
+          errors.push(args.map(String).join(" "));
+        });
+      const startOver =
+        expectedPartnerDeduplicate === undefined
+          ? `delete ${params.keyPath}, then run 'alcove invite' without a URL to make a new invitation from ${configPath}.`
+          : `delete ${params.keyPath}, then run 'alcove accept' on the new invitation your partner sends.`;
+      try {
+        await expect(runOnlineBootstrap(params)).rejects.toBeInstanceOf(
+          shape === "bare" ? PeerAbortError : ConnectionError,
+        );
+        expect(errors).toEqual([
+          `Your partner ended the exchange after the terms were exchanged. ` +
+            `The configuration at ${configPath} and the rotated key at ` +
+            `${params.keyPath} are on disk. If your partner's run says to ` +
+            `start again from a new invitation, ${startOver} Otherwise, ` +
+            `retry with 'alcove exchange'.`,
+        ]);
+      } finally {
+        errorSink.mockRestore();
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 
   test("passes a webrtc connection through to the exchange and the saved config", async () => {
     // The inviter's own webrtc connection reaches runProtocol unchanged (role
@@ -2642,7 +2723,7 @@ describe("runOnlineBootstrap", () => {
     vi.mocked(runProtocol).mockImplementation((async (
       ...callArgs: unknown[]
     ) => {
-      await onAuthenticatedArg(callArgs)();
+      await writeConfigArg(callArgs)();
       return {};
     }) as never);
 
@@ -2680,7 +2761,7 @@ describe("runOnlineBootstrap", () => {
     vi.mocked(runProtocol).mockImplementation((async (
       ...callArgs: unknown[]
     ) => {
-      await onAuthenticatedArg(callArgs)();
+      await writeConfigArg(callArgs)();
       return {};
     }) as never);
 
@@ -2713,7 +2794,7 @@ describe("runOnlineBootstrap", () => {
     vi.mocked(runProtocol).mockImplementation((async (
       ...callArgs: unknown[]
     ) => {
-      await onAuthenticatedArg(callArgs)();
+      await writeConfigArg(callArgs)();
       return {};
     }) as never);
 
@@ -2743,12 +2824,12 @@ describe("runOnlineBootstrap", () => {
 
   test("returns the config-write error when the hook fails but the exchange succeeds", async () => {
     // The hook (saveConfig) failed at acceptance, but the exchange still
-    // succeeded, so runProtocol resolves with onAuthenticatedError set.
+    // succeeded, so runProtocol resolves with configWriteError set.
     // runOnlineBootstrap must forward it as configWriteError so the caller can
     // avoid claiming the config was saved.
     const writeError = new Error("disk full while writing config");
     vi.mocked(runProtocol).mockImplementation((async () => ({
-      onAuthenticatedError: writeError,
+      configWriteError: writeError,
     })) as never);
 
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
@@ -2764,7 +2845,7 @@ describe("runOnlineBootstrap", () => {
   });
 
   test("reports no config-write error on a clean run", async () => {
-    // runProtocol resolves with no onAuthenticatedError (the hook succeeded), so
+    // runProtocol resolves with no configWriteError (the hook succeeded), so
     // runOnlineBootstrap reports a clean outcome.
     vi.mocked(runProtocol).mockImplementation((async () => ({})) as never);
 
@@ -2784,7 +2865,7 @@ describe("runOnlineBootstrap", () => {
 // --- runOnlineBootstrap: the receive list a run fills --------------------------
 
 /** Mock runProtocol as a successful exchange, in its real order: invoke the
- *  onAuthenticated hook, run `betweenStages`, then, where `filled` is given,
+ *  writeConfig hook, run `betweenStages`, then, where `filled` is given,
  *  hand the receive-list recorder the partner's declared send set as the terms
  *  exchange does. */
 function mockSuccessfulExchange(
@@ -2792,9 +2873,9 @@ function mockSuccessfulExchange(
   betweenStages?: () => void,
 ): void {
   vi.mocked(runProtocol).mockImplementation((async (...callArgs: unknown[]) => {
-    const onAuthenticated = optionsArg(callArgs).onAuthenticated as
+    const writeConfig = optionsArg(callArgs).onlineSetup?.writeConfig as
       (() => void | Promise<void>) | undefined;
-    await onAuthenticated?.();
+    await writeConfig?.();
     betweenStages?.();
     if (filled !== undefined)
       await optionsArg(callArgs).recordPayloadReceiveFill?.(filled);
@@ -2942,10 +3023,10 @@ describe("runOnlineBootstrap, when the acceptance hook wrote no configuration", 
       ...callArgs: unknown[]
     ) => {
       fs.writeFileSync(configPath, "operator: file\n");
-      const onAuthenticated = optionsArg(callArgs).onAuthenticated as
+      const writeConfig = optionsArg(callArgs).onlineSetup?.writeConfig as
         (() => void | Promise<void>) | undefined;
       try {
-        await onAuthenticated?.();
+        await writeConfig?.();
       } catch (err) {
         recorded.push(err);
       }
@@ -3187,9 +3268,9 @@ describe("runOnlineBootstrap", () => {
     ) => {
       connectionPassedToRunProtocol = optionsArg(callArgs)
         .connection as SFTPConnectionConfig;
-      const onAuthenticated = optionsArg(callArgs).onAuthenticated as
+      const writeConfig = optionsArg(callArgs).onlineSetup?.writeConfig as
         (() => void | Promise<void>) | undefined;
-      await onAuthenticated?.();
+      await writeConfig?.();
       return {};
     }) as never);
 
@@ -3237,9 +3318,9 @@ describe("runOnlineBootstrap", () => {
     ) => {
       connectionPassedToRunProtocol = optionsArg(callArgs)
         .connection as SFTPConnectionConfig;
-      const onAuthenticated = optionsArg(callArgs).onAuthenticated as
+      const writeConfig = optionsArg(callArgs).onlineSetup?.writeConfig as
         (() => void | Promise<void>) | undefined;
-      await onAuthenticated?.();
+      await writeConfig?.();
       return {};
     }) as never);
 
@@ -3289,9 +3370,9 @@ describe("runOnlineBootstrap", () => {
     ) => {
       connectionPassedToRunProtocol = optionsArg(callArgs)
         .connection as SFTPConnectionConfig;
-      const onAuthenticated = optionsArg(callArgs).onAuthenticated as
+      const writeConfig = optionsArg(callArgs).onlineSetup?.writeConfig as
         (() => void | Promise<void>) | undefined;
-      await onAuthenticated?.();
+      await writeConfig?.();
       return {};
     }) as never);
 
@@ -3431,7 +3512,7 @@ describe("runOnlineBootstrap", () => {
     ) => {
       connectionPassedToRunProtocol = optionsArg(callArgs)
         .connection as SFTPConnectionConfig;
-      await onAuthenticatedArg(callArgs)();
+      await writeConfigArg(callArgs)();
       return {};
     }) as never);
 
@@ -3526,8 +3607,8 @@ describe("runOnlineBootstrap", () => {
     vi.mocked(runProtocol).mockImplementation((async (
       ...callArgs: unknown[]
     ) => {
-      const onAuthenticated = onAuthenticatedArg(callArgs);
-      await onAuthenticated();
+      const writeConfig = writeConfigArg(callArgs);
+      await writeConfig();
       throw new Error("data exchange failed");
     }) as never);
 
@@ -3628,8 +3709,8 @@ describe("runOnlineBootstrap", () => {
     vi.mocked(runProtocol).mockImplementation((async (
       ...callArgs: unknown[]
     ) => {
-      const onAuthenticated = onAuthenticatedArg(callArgs);
-      await onAuthenticated();
+      const writeConfig = writeConfigArg(callArgs);
+      await writeConfig();
       throw new Error("data exchange failed");
     }) as never);
 
@@ -3658,12 +3739,152 @@ describe("runOnlineBootstrap", () => {
     }
   });
 
+  /**
+   * The message of the refusal an interactive online run's payload-column
+   * confirmation returns when the operator declines, for a configuration that
+   * `reuseExistingConfig` keeps or one the run writes.
+   */
+  async function declinedPayloadFillMessage(
+    reuseExistingConfig: boolean,
+  ): Promise<string> {
+    vi.mocked(promptConfirm).mockResolvedValue(false);
+    let message: string | undefined;
+    vi.mocked(runProtocol).mockImplementation((async (
+      ...callArgs: unknown[]
+    ) => {
+      const confirm = optionsArg(callArgs).onPayloadReceiveFill;
+      expect(confirm).toBeTypeOf("function");
+      const answer = await confirm!(["notes"]);
+      expect(answer.accepted).toBe(false);
+      if (!answer.accepted) message = (answer.refusal as Error).message;
+      throw new Error("declined the payload columns");
+    }) as never);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
+    const configPath = path.join(dir, "alcove.yaml");
+    try {
+      fs.writeFileSync(configPath, "channel: filedrop\npath: /mnt/share\n");
+      await expect(
+        runOnlineBootstrap({
+          ...onlineBootstrapParams(configPath),
+          interactive: true,
+          reuseExistingConfig,
+        }),
+      ).rejects.toThrow("declined the payload columns");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+    expect(message).toBeDefined();
+    return message!;
+  }
+
+  test("a declined payload-column confirmation on a kept configuration advises running again", async () => {
+    const message = await declinedPayloadFillMessage(true);
+    expect(message).toContain("Run the exchange again to be asked again");
+    expect(message).not.toContain("no configuration was written to");
+  });
+
+  test("a declined payload-column confirmation on a configuration the run writes says none was written", async () => {
+    const message = await declinedPayloadFillMessage(false);
+    expect(message).toContain("no configuration was written to");
+    expect(message).not.toContain("Run the exchange again");
+  });
+
+  /**
+   * The lines `runOnlineBootstrap` logs at error level for a run whose
+   * runProtocol rejects with `failure`, after invoking the hook when
+   * `reachHook` is set.
+   */
+  async function errorLinesAfterFailure(params: {
+    failure: Error;
+    reachHook: boolean;
+    reuseExistingConfig: boolean;
+  }): Promise<{
+    lines: string[];
+    configPath: string;
+    keyPath: string;
+    onlineSetup: RunProtocolOptions["onlineSetup"];
+  }> {
+    let onlineSetup: RunProtocolOptions["onlineSetup"];
+    vi.mocked(runProtocol).mockImplementation((async (
+      ...callArgs: unknown[]
+    ) => {
+      onlineSetup = optionsArg(callArgs).onlineSetup;
+      if (params.reachHook) await writeConfigArg(callArgs)();
+      throw params.failure;
+    }) as never);
+    const log = getLogger("bootstrap-recovery-test");
+    log.setLevel("silent");
+    const lines: string[] = [];
+    const errorSpy = vi
+      .spyOn(log, "error")
+      .mockImplementation((...args: unknown[]) => {
+        lines.push(args.map(String).join(" "));
+      });
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
+    const configPath = path.join(dir, "alcove.yaml");
+    const bootstrapParams = {
+      ...onlineBootstrapParams(configPath),
+      loggerName: "bootstrap-recovery-test",
+      reuseExistingConfig: params.reuseExistingConfig,
+    };
+    try {
+      if (params.reuseExistingConfig)
+        fs.writeFileSync(configPath, "channel: filedrop\npath: /mnt/share\n");
+      await expect(runOnlineBootstrap(bootstrapParams)).rejects.toBe(
+        params.failure,
+      );
+      return {
+        lines,
+        configPath,
+        keyPath: bootstrapParams.keyPath,
+        onlineSetup,
+      };
+    } finally {
+      errorSpy.mockRestore();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  // runProtocol states the step for a run that saved its key file and stopped
+  // before the hook, from the configuration this passes it
+  // (protocol.test.ts, "an online setup cut between its key-file save and its
+  // configuration step"); the bootstrap adds no line of its own.
+  test.each([false, true])(
+    "a run with reuseExistingConfig %s that ends before its hook passes runProtocol its configuration and logs nothing itself",
+    async (reuseExistingConfig) => {
+      const { lines, configPath, onlineSetup } = await errorLinesAfterFailure({
+        failure: new Error("the exchange directory went away"),
+        reachHook: false,
+        reuseExistingConfig,
+      });
+      expect(onlineSetup).toEqual({
+        configPath,
+        kept: reuseExistingConfig,
+        writeConfig: expect.any(Function),
+      });
+      expect(lines).toEqual([]);
+    },
+  );
+
+  test("a run that reached the hook keeps the retry note", async () => {
+    const { lines, configPath, keyPath } = await errorLinesAfterFailure({
+      failure: new Error("data exchange failed"),
+      reachHook: true,
+      reuseExistingConfig: false,
+    });
+    expect(lines).toEqual([
+      `the configuration at ${configPath} and the rotated key at ${keyPath} ` +
+        `are on disk; retry with 'alcove exchange' to recover without ` +
+        `re-inviting.`,
+    ]);
+  });
+
   test("resolves interrupted, with the recovery note, when a signal cuts the run short after the handshake", async () => {
     vi.mocked(runProtocol).mockImplementation((async (
       ...callArgs: unknown[]
     ) => {
-      const onAuthenticated = onAuthenticatedArg(callArgs);
-      await onAuthenticated();
+      const writeConfig = writeConfigArg(callArgs);
+      await writeConfig();
       return { outcome: "interrupted" };
     }) as never);
 
@@ -3788,8 +4009,8 @@ describe("runOnlineBootstrap", () => {
     vi.mocked(runProtocol).mockImplementation((async (
       ...callArgs: unknown[]
     ) => {
-      const onAuthenticated = onAuthenticatedArg(callArgs);
-      await onAuthenticated();
+      const writeConfig = writeConfigArg(callArgs);
+      await writeConfig();
       return {};
     }) as never);
 
@@ -3812,17 +4033,17 @@ describe("runOnlineBootstrap", () => {
 
   test("re-gates the config write: a config appearing after the check is not silently overwritten", async () => {
     // Emulate runProtocol's hook handling: a hook failure is captured as
-    // onAuthenticatedError (non-fatal), not propagated -- the same contract the
+    // configWriteError (non-fatal), not propagated -- the same contract the
     // real runProtocol upholds.
     vi.mocked(runProtocol).mockImplementation((async (
       ...callArgs: unknown[]
     ) => {
-      const onAuthenticated = onAuthenticatedArg(callArgs);
+      const writeConfig = writeConfigArg(callArgs);
       try {
-        await onAuthenticated();
+        await writeConfig();
         return {};
       } catch (err) {
-        return { onAuthenticatedError: err };
+        return { configWriteError: err };
       }
     }) as never);
 
@@ -3849,12 +4070,12 @@ describe("runOnlineBootstrap", () => {
     vi.mocked(runProtocol).mockImplementation((async (
       ...callArgs: unknown[]
     ) => {
-      const onAuthenticated = onAuthenticatedArg(callArgs);
+      const writeConfig = writeConfigArg(callArgs);
       try {
-        await onAuthenticated();
+        await writeConfig();
         return {};
       } catch (err) {
-        return { onAuthenticatedError: err };
+        return { configWriteError: err };
       }
     }) as never);
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));

@@ -141,9 +141,13 @@ async function runAttempt(options: AttemptOptions): Promise<AttemptOutcome> {
   const secretS = loadKeyFile(keyFiles.sender)!.sharedSecret;
 
   let authenticated = 0;
-  const onAuthenticated = () => {
-    authenticated += 1;
-    if (authenticated === 2) options.stageOnceAuthenticated?.(srv);
+  const onlineSetup = {
+    configPath: path.join(work, `${tag}-alcove.yaml`),
+    kept: false,
+    writeConfig: () => {
+      authenticated += 1;
+      if (authenticated === 2) options.stageOnceAuthenticated?.(srv);
+    },
   };
 
   const settle = async (
@@ -176,7 +180,7 @@ async function runAttempt(options: AttemptOptions): Promise<AttemptOutcome> {
         output: outR,
         verbosity: -1,
         loggerName: `${tag}-receiver`,
-        onAuthenticated,
+        onlineSetup,
       });
       const sender = runProtocol({
         connection: serverBlock(srv.handle.userb),
@@ -185,7 +189,7 @@ async function runAttempt(options: AttemptOptions): Promise<AttemptOutcome> {
         output: outS,
         verbosity: -1,
         loggerName: `${tag}-sender`,
-        onAuthenticated,
+        onlineSetup,
       });
       // Both settlements are attached before either is awaited, so a party that
       // rejects while the other is still running is never an unhandled rejection.

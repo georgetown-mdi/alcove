@@ -290,18 +290,22 @@ export function termsChangeHandler(params: {
  * to take them. A yes accepts, and a run with a `configPath` records them
  * there as `payload.receive` through its fill -- a zero-setup `--save` run
  * (`configSavedAfterExchange`) in the configuration it saves when the exchange
- * completes; a zero-setup run without `--save` has none and records nothing. A
- * no declines with an {@link OperatorConfigError} (exit 64, event category
+ * completes; a zero-setup run without `--save` has none and records nothing. An
+ * online setup (`configWrittenAfterChecks`) has no configuration yet, so its
+ * copy says the run writes one once the checks pass, and a decline leaves none.
+ * A no declines with an {@link OperatorConfigError} (exit 64, event category
  * `config`) and records no receive columns.
  */
 export function payloadReceiveFillConfirmation(params: {
   configPath: string | undefined;
   configSavedAfterExchange?: boolean;
+  configWrittenAfterChecks?: boolean;
   interactive: boolean;
   log: ReturnType<typeof getLogger>;
 }): ((columns: string[]) => Promise<PayloadReceiveFillAnswer>) | undefined {
   const { configPath, interactive, log } = params;
   const savedAfterExchange = params.configSavedAfterExchange === true;
+  const writtenAfterChecks = params.configWrittenAfterChecks === true;
   if (!interactive) return undefined;
   return async (columns) => {
     const emit = consentSurfaceSink({ log, toPromptStream: true });
@@ -317,7 +321,7 @@ export function payloadReceiveFillConfirmation(params: {
         : redactAndRenderOperatorSuppliedText(operatorSuppliedText(configPath));
     displayTermsDelta(
       emit,
-      shownConfig === undefined || savedAfterExchange
+      shownConfig === undefined || savedAfterExchange || writtenAfterChecks
         ? "Your partner's linkage terms declare payload columns it sends you:"
         : `Your partner's linkage terms declare payload columns it sends you, and ${shownConfig} lists none you receive (linkage_terms.payload.receive):`,
       delta,
@@ -327,7 +331,9 @@ export function payloadReceiveFillConfirmation(params: {
         ? "Receive these columns and continue this exchange?"
         : savedAfterExchange
           ? `Receive these columns, record them as linkage_terms.payload.receive in the configuration this run saves to ${shownConfig} when the exchange completes, and continue this exchange?`
-          : `Receive these columns, write them to ${shownConfig} as linkage_terms.payload.receive, and continue this exchange?`,
+          : writtenAfterChecks
+            ? `Receive these columns, record them as linkage_terms.payload.receive in the configuration this run writes to ${shownConfig}, and continue this exchange?`
+            : `Receive these columns, write them to ${shownConfig} as linkage_terms.payload.receive, and continue this exchange?`,
     );
     if (accepted) return { accepted: true };
     if (configPath === undefined)
@@ -343,6 +349,21 @@ export function payloadReceiveFillConfirmation(params: {
           delta,
         ),
       };
+    if (writtenAfterChecks) {
+      const message = messageWithOperatorText`you did not accept the payload columns your partner declares it sends you, so the exchange stopped before sending any of your linkage keys or data, and no configuration was written to ${operatorSuppliedText(
+        configPath,
+      )}. Ask your partner about the columns.`;
+      return {
+        accepted: false,
+        refusal: notTaken(
+          keepOperatorSuppliedText(
+            new OperatorConfigError(message.text),
+            message,
+          ),
+          delta,
+        ),
+      };
+    }
     const message = messageWithOperatorText`you did not accept the payload columns your partner declares it sends you, so the exchange stopped before sending any of your linkage keys or data, and no columns you receive were recorded in ${operatorSuppliedText(
       configPath,
     )}. Run the exchange again to be asked again, or ask your partner about the columns.`;

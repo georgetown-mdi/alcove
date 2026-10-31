@@ -11,7 +11,11 @@ import { FAILURE_CAUSE_KINDS } from "@alcove/core/testing";
 import type { FailureCause } from "@alcove/core";
 
 import { buildErrorEvent } from "../../src/eventStream";
-import { markArrivalWait, remedyForCause } from "../../src/failureRemedy";
+import {
+  markArrivalWait,
+  markKeyFileSavedConfigNotWritten,
+  remedyForCause,
+} from "../../src/failureRemedy";
 import { renderFailureForOperator } from "../../src/util/exit";
 
 function causeError(cause: FailureCause): Error {
@@ -53,6 +57,23 @@ test("an online invitation's no-show emits the same cause", () => {
   const event = buildErrorEvent(err, "prepare");
   expect(event.cause).toEqual(cause);
   expect(event.message).toContain("--accept-timeout");
+});
+
+test("an online setup's failure after its key-file save ends its message with the step for that state, marked as stating its step", () => {
+  const err = markKeyFileSavedConfigNotWritten(
+    new ConnectionError("the exchange directory went away", "transport"),
+    {
+      keyPath: "/k/.alcove.key",
+      configPath: "/k/alcove.yaml",
+      kept: true,
+      configWriteFailed: false,
+    },
+  );
+  const event = buildErrorEvent(err, "run");
+  expect(event.recoveryHint).toBe(true);
+  expect(event.cause).toBeUndefined();
+  expect(event.message).toBe(renderFailureForOperator(err));
+  expect(event.message).toContain("Run 'alcove exchange' again");
 });
 
 test("a failure the catalog does not name has no cause field", () => {

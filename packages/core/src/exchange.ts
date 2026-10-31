@@ -511,6 +511,12 @@ export const PAYLOAD_RECEIVE_NOT_ACCEPTED_REASON =
 const PAYLOAD_RECEIVE_UNCONFIRMED_ABORT_REASON =
   "a party could not confirm the payload columns it receives";
 
+// The abort reason a party sends when the caller's step after the terms
+// exchange (RunExchangeOptions.onTermsExchanged) threw; its own failure, like
+// the unrecorded fill's.
+const TERMS_EXCHANGED_STEP_FAILED_ABORT_REASON =
+  "a party could not complete its step after the terms exchange";
+
 /**
  * The answer to {@link RunExchangeOptions.onPayloadReceiveFill}: the columns
  * are taken, or declined with the error the run then ends on.
@@ -1314,6 +1320,22 @@ export interface RunExchangeOptions {
    */
   onTermsChange?: (change: TermsChange) => Promise<void>;
   /**
+   * Called once, when this side's terms exchange has completed: both parties
+   * proceeded, and this side's {@link rotation} store, where one was passed,
+   * has run. Awaited after the checks that follow the terms exchange up to
+   * the payload disclosure (the invitation's deduplicate, the
+   * {@link onPayloadReceiveFill} confirmation, the receipt bindings and
+   * partner certificate, and the cardinality, count-only, and
+   * payload-disclosure resolutions), and before
+   * {@link onPayloadReceiveFilled} records the fill, the bootstrap frame, and
+   * any linkage key or payload row. The first round's capacity checks run
+   * after it and can still refuse the run. Not called on a run the terms
+   * exchange or one of those checks refused, or that failed inside the terms
+   * exchange. A throw ends the run: this side sends the partner an abort, then
+   * rejects with what was thrown.
+   */
+  onTermsExchanged?: () => void | Promise<void>;
+  /**
    * The 32-byte session key from the authenticated key exchange, needed to derive
    * the per-exchange replay binder that the signed receipt commits to. Present only
    * on the authenticated path (the CLI discards it otherwise; the web has no key
@@ -1681,6 +1703,18 @@ export async function runExchange(
     partnerDisclosesPayload: partnerDisclosesPayload ?? true,
     partnerTerms,
   });
+
+  // After every check above that can refuse the run, so a refused run's caller
+  // has written nothing, and before the fill below, which the caller records
+  // into what this step writes.
+  if (options.onTermsExchanged !== undefined) {
+    try {
+      await options.onTermsExchanged();
+    } catch (err) {
+      await sendAbort(conn, [TERMS_EXCHANGED_STEP_FAILED_ABORT_REASON]);
+      throw err;
+    }
+  }
 
   // Record the fill after every terms-time refusal, so a refused run records
   // nothing though the confirmation above may already have asked, and before

@@ -10,7 +10,9 @@ import {
 import {
   CLI_FAILURE_REMEDIES,
   failureRemedy,
+  keyFileSavedConfigNotWrittenRemedy,
   markArrivalWait,
+  markKeyFileSavedConfigNotWritten,
   OLDER_KEY_FILE_NO_SHOW_REMEDY,
   remedyForCause,
   type ArrivalWait,
@@ -269,4 +271,46 @@ test("a frozen error is marked like any other", () => {
     "Your partner did not connect within 10 minutes.\n" +
       INVITATION_WAIT_REMEDY,
   );
+});
+
+// The step is appended at the display sink after the error chain is escaped,
+// so the paths in it are escaped where it is composed.
+test("the step for a key file saved before its configuration escapes both paths", () => {
+  const state = {
+    keyPath: "/keys/\x1b[31mEVIL\n.alcove.key",
+    configPath: "/conf/\x1b[31mEVIL\nalcove.yaml",
+    kept: false,
+    configWriteFailed: false,
+  };
+  for (const ending of [
+    { kind: "failed", errorStatesItsStep: false },
+    { kind: "interrupted" },
+  ] as const) {
+    const step = keyFileSavedConfigNotWrittenRemedy(state, ending);
+    expect(step).not.toContain("\x1b");
+    expect(step).not.toContain("\n");
+    expect(step).toContain("/keys/<1b>[31mEVIL<0a>.alcove.key");
+  }
+});
+
+test("the step for a key file saved before its configuration takes a catalog remedy's place beneath the error", () => {
+  const cause = SAMPLES["folder-missing"][0];
+  const err = markKeyFileSavedConfigNotWritten(
+    markFailureCause(new Error(failureCauseSentence(cause)), cause),
+    {
+      keyPath: "/k/.alcove.key",
+      configPath: "/k/alcove.yaml",
+      kept: false,
+      configWriteFailed: false,
+    },
+  );
+  const rendered = renderFailureForOperator(err);
+  expect(rendered).not.toContain(failureRemedy(err) ?? "no catalog remedy");
+  expect(
+    rendered.endsWith(
+      "Delete /k/.alcove.key before you start again. Ask your partner for a " +
+        "new invitation, or create one with 'alcove invite' and have your " +
+        "partner accept it.",
+    ),
+  ).toBe(true);
 });

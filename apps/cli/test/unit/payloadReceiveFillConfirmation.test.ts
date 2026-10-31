@@ -111,7 +111,10 @@ const isTermsOrDecisionFrame = (m: unknown): boolean =>
   m !== null &&
   ("linkageTerms" in m || "decision" in m);
 
-async function firstRun(interactive: boolean) {
+async function firstRun(
+  interactive: boolean,
+  configWrittenAfterChecks = false,
+) {
   const [connA, connB] = createMessagePipe();
   const bSent: unknown[] = [];
   const capturingB: MessageConnection = {
@@ -146,6 +149,7 @@ async function firstRun(interactive: boolean) {
   );
   const onPayloadReceiveFill = payloadReceiveFillConfirmation({
     configPath: config,
+    configWrittenAfterChecks,
     interactive,
     log: getLogger("exchange"),
   });
@@ -205,6 +209,34 @@ describe("an attended first run", () => {
     expect(aOutcome.status).toBe("rejected");
     expect(bSent.every(isTermsOrDecisionFrame)).toBe(true);
     expect(fs.readFileSync(config, "utf8")).toBe(before);
+  });
+});
+
+describe("an attended first run of an online setup", () => {
+  test("words the header and prompt for a configuration the run has yet to write", async () => {
+    promptConfirmMock.mockResolvedValue(true);
+    const { stderr } = await firstRun(true, true);
+    expect(stderr).toContain(
+      "Your partner's linkage terms declare payload columns it sends you:",
+    );
+    expect(stderr).not.toContain("lists none you receive");
+    expect(promptConfirmMock).toHaveBeenCalledTimes(1);
+    expect(promptConfirmMock.mock.calls[0][0]).toBe(
+      `Receive these columns, record them as linkage_terms.payload.receive in the configuration this run writes to ${redactAndRenderOperatorSuppliedText(operatorSuppliedText(config))}, and continue this exchange?`,
+    );
+  });
+
+  test("declining states that no configuration was written, and does not advise running again", async () => {
+    promptConfirmMock.mockResolvedValue(false);
+    const { bOutcome } = await firstRun(true, true);
+    expect(bOutcome.status).toBe("rejected");
+    const error = (bOutcome as PromiseRejectedResult).reason as Error;
+    expect(error).toBeInstanceOf(OperatorConfigError);
+    expect(error.message).toMatch(
+      /stopped before sending any of your linkage keys or data, and no configuration was written to .*\. Ask your partner about the columns\.$/,
+    );
+    expect(error.message).not.toContain("Run the exchange again");
+    expect(exitCodeForError(error)).toBe(64);
   });
 });
 
