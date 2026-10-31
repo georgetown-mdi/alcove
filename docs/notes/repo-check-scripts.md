@@ -920,6 +920,10 @@ The deploy holds a Cloudflare token able to replace the public site, and a job h
 So the upload job checks nothing out and only uploads the artifact the gate built, and no other job, in any workflow, holds the token or runs in the GitHub environments the token is set on.
 The production upload in `release.yaml` and the project site's deploy, `site_deploy.yaml`, read the same token, so their upload jobs are held to the same terms: one such job in each of the three deploy workflows, and none anywhere else.
 A second deploy path, or a build step moved into the upload job, would hold the same token without that separation, and nothing but review would notice; the check turns either into a failure.
+The `Release` environment holds the Docker Hub publish token instead, read only by the release's Docker Hub job, which needs inline steps to copy and read back the images.
+The script's header names the one job the check exempts from the holder rule and the form of its `environment` that keeps the exemption.
+Its inline `run` steps are admitted because the token is not a deploy credential, and the steps run in an environment only a `v*.*.*` tag can use; a checkout, a local action or a called workflow in it still fails, since each would run repository code beside the token.
+The environment's protection is its tag-only deployment rule and the tag ruleset limiting who can push such a tag, which the check does not read.
 
 ### Why the graph is read from a real build
 

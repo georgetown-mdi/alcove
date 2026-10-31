@@ -8,6 +8,12 @@
 //     job runs no repository code (no `run` step, no checkout, no local
 //     action, no called workflow); and no workflow passes `secrets: inherit`
 //     or `toJSON(secrets)`.
+//   - One job is not such a holder: RELEASE_JOB, whose `environment` is exactly
+//     the string RELEASE_ENVIRONMENT, which holds the Docker Hub publish token.
+//     It may run inline `run` steps but checks nothing out, runs no local action
+//     and calls no workflow. Any other form of its `environment` (a mapping, an
+//     expression, another name) leaves it a holder, so its `run` steps fail it;
+//     a job other than that one whose `environment` mentions it fails.
 //   - Every tracked source the hosted static build reads matches a push filter of
 //     pages_deploy.yaml; release.yaml's production redeploy runs on every
 //     release tag, with no filter. The graph is the module ids
@@ -58,6 +64,12 @@ export const CREDENTIAL_WORKFLOWS = [
 ];
 
 const credentialWorkflowList = `${CREDENTIAL_WORKFLOWS.slice(0, -1).join(", ")} and ${CREDENTIAL_WORKFLOWS.at(-1)}`;
+
+/** The environment holding the Docker Hub publish token. */
+export const RELEASE_ENVIRONMENT = "Release";
+
+/** The one job that may run in RELEASE_ENVIRONMENT without holding the deploy credentials. */
+export const RELEASE_JOB = { path: RELEASE_WORKFLOW, id: "dockerhub" };
 
 /** The build output the deploy uploads. */
 export const BUILD_OUTPUT = "apps/web/dist/hosted";
@@ -157,6 +169,7 @@ const ALL_SECRETS = /\btoJSON\(\s*secrets\s*\)/;
 export function deployCredentialFindings(workflows) {
   const findings = [];
   const holders = [];
+  const releaseJobs = [];
   for (const { path, document } of workflows) {
     if (ALL_SECRETS.test(JSON.stringify(document ?? null))) {
       findings.push(
@@ -175,8 +188,22 @@ export function deployCredentialFindings(workflows) {
         );
       }
       const steps = Array.isArray(job?.steps) ? job.steps : [];
+      const isReleaseJob =
+        path === RELEASE_JOB.path &&
+        id === RELEASE_JOB.id &&
+        job?.environment === RELEASE_ENVIRONMENT;
+      if (isReleaseJob) releaseJobs.push({ path, id, job, steps });
+      else if (
+        JSON.stringify(job?.environment ?? null)
+          .toLowerCase()
+          .includes(RELEASE_ENVIRONMENT.toLowerCase())
+      ) {
+        findings.push(
+          `${path} job ${id} runs in the ${RELEASE_ENVIRONMENT} environment, which only ${RELEASE_JOB.path} job ${RELEASE_JOB.id} may, with its environment written as the plain string ${RELEASE_ENVIRONMENT}.`,
+        );
+      }
       const holds =
-        job?.environment !== undefined ||
+        (job?.environment !== undefined && !isReleaseJob) ||
         DEPLOY_SECRET.test(JSON.stringify(job ?? null)) ||
         steps.some((step) =>
           String(step?.uses ?? "").startsWith(DEPLOY_ACTION),
@@ -202,19 +229,31 @@ export function deployCredentialFindings(workflows) {
       `No job outside ${credentialWorkflowList} may ${holding}; found ${named(outside).join(", ")}.`,
     );
   }
-  for (const { path, id, job, steps } of holders) {
+  const codeIn = (job, steps, { inlineRun }) => {
     const code = [];
     if (job?.uses !== undefined) code.push(`calls ${job.uses}`);
     for (const step of steps) {
       const uses = String(step?.uses ?? "");
-      if (step?.run !== undefined) code.push("has a run step");
+      if (inlineRun && step?.run !== undefined) code.push("has a run step");
       if (uses.startsWith("./")) code.push(`uses the local action ${uses}`);
       if (uses.startsWith("actions/checkout@"))
         code.push("checks out the repository");
     }
+    return [...new Set(code)];
+  };
+  for (const { path, id, job, steps } of holders) {
+    const code = codeIn(job, steps, { inlineRun: true });
     if (code.length > 0) {
       findings.push(
-        `${path} job ${id} holds the deploy credentials and runs repository code: it ${[...new Set(code)].join(", ")}.`,
+        `${path} job ${id} holds the deploy credentials and runs repository code: it ${code.join(", ")}.`,
+      );
+    }
+  }
+  for (const { path, id, job, steps } of releaseJobs) {
+    const code = codeIn(job, steps, { inlineRun: false });
+    if (code.length > 0) {
+      findings.push(
+        `${path} job ${id} holds the Docker Hub publish token and runs repository code: it ${code.join(", ")}.`,
       );
     }
   }
@@ -451,7 +490,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   );
   if (credentialFindings.length > 0) {
     console.error(
-      "Deploy trigger check failed: the deploy credentials reach a job other than the one upload job of each deploy workflow.\n",
+      "Deploy trigger check failed: the deploy credentials or the Docker Hub publish token reach a job they may not.\n",
     );
     for (const finding of credentialFindings) console.error(`  ${finding}`);
     process.exit(1);

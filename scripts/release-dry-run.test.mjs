@@ -113,6 +113,10 @@ describe("the release workflow's dry run", () => {
     expect(deploy?.environment).toBe("Production");
   });
 
+  it("runs the Docker Hub copy in the Release environment", () => {
+    expect(document.jobs.dockerhub?.environment).toBe("Release");
+  });
+
   it("runs the dry-run job on a manual dispatch only", () => {
     expect(dryRun?.if).toBe(DISPATCH_ONLY);
   });
