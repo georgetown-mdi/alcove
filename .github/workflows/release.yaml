@@ -561,6 +561,9 @@ jobs:
     needs: publish
     if: ${{ github.event_name == 'push' }}
     runs-on: ubuntu-24.04
+    # The publish credentials live in the Release environment, which only a
+    # v*.*.* tag can use.
+    environment: Release
     # Read access to the ghcr.io package: the copy writes to Docker Hub under
     # that registry's own token, and nothing here writes to GitHub. The OIDC
     # token is what the in-place keyless signature is made against, the same
