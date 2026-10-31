@@ -7,7 +7,7 @@ import {
 } from "@alcove/core/websocket-relay";
 
 import { createFaultLatch } from "./faultLatch.ts";
-import { sendWithinWindow } from "./forwarding.ts";
+import { pongWithinWindow, sendWithinWindow } from "./forwarding.ts";
 import {
   PAIRED_FRAME,
   RELAY_CLOSE_WAIT_MS,
@@ -44,8 +44,8 @@ export type RelayHoldReason = "backpressure" | "rate";
 
 /** @internal */
 export interface RelayObserver {
-  held?(role: RendezvousRole, reason: RelayHoldReason): void;
-  released?(role: RendezvousRole, reason: RelayHoldReason): void;
+  held?(role: RendezvousRole, reason: RelayHoldReason, key?: string): void;
+  released?(role: RendezvousRole, reason: RelayHoldReason, key?: string): void;
   forwarded?(key: string, from: RendezvousRole, data: Buffer): void;
 }
 
@@ -182,6 +182,7 @@ export function attachWebSocketRelay(
     maxPayload: RELAY_MAX_MESSAGE_BYTES,
     perMessageDeflate: false,
     closeTimeout: closeWaitMs,
+    autoPong: false,
   };
   const socketServer = new WebSocketServer(serverOptions);
   const parties = new Set<Party>();
@@ -205,13 +206,15 @@ export function attachWebSocketRelay(
     if (party.holds.has(reason)) return;
     if (party.holds.size === 0) party.socket.pause();
     party.holds.add(reason);
-    if (party.role !== undefined) observer.held?.(party.role, reason);
+    if (party.role !== undefined)
+      observer.held?.(party.role, reason, party.pairing?.key);
   }
 
   function release(party: Party, reason: RelayHoldReason): void {
     if (!party.holds.delete(reason)) return;
     if (party.holds.size === 0) party.socket.resume();
-    if (party.role !== undefined) observer.released?.(party.role, reason);
+    if (party.role !== undefined)
+      observer.released?.(party.role, reason, party.pairing?.key);
   }
 
   function partnerOf(party: Party): Party | undefined {
@@ -524,6 +527,13 @@ export function attachWebSocketRelay(
     // arrives as one Buffer.
     socket.on("message", (data, isBinary) =>
       onMessage(party, data as Buffer, isBinary),
+    );
+    // A ping is answered only when the answer fits under the high mark.
+    socket.on("ping", (data: Buffer) =>
+      pongWithinWindow(socket, data, { highBytes, lowBytes }, () => {
+        const partner = partnerOf(party);
+        if (partner !== undefined) release(partner, "backpressure");
+      }),
     );
     // `ws` closes the socket itself after an error it raises, an oversized
     // message's 1009 among them; the party's part ends here so the partner is

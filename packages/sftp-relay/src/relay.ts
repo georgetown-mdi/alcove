@@ -3,7 +3,10 @@ import { connect } from "node:net";
 import { WebSocket, WebSocketServer } from "ws";
 
 import { createFaultLatch } from "@alcove/websocket-relay/faultLatch";
-import { sendWithinWindow } from "@alcove/websocket-relay/forwarding";
+import {
+  pongWithinWindow,
+  sendWithinWindow,
+} from "@alcove/websocket-relay/forwarding";
 
 import {
   SFTP_RELAY_CLOSE_WAIT_MS,
@@ -172,6 +175,7 @@ export function attachSftpRelay(
     maxPayload: SFTP_RELAY_MAX_MESSAGE_BYTES,
     perMessageDeflate: false,
     closeTimeout: closeWaitMs,
+    autoPong: false,
   };
   const socketServer = new WebSocketServer(serverOptions);
   const connections = new Set<Connection>();
@@ -354,6 +358,10 @@ export function attachSftpRelay(
     // arrives as one Buffer.
     browser.on("message", (data, isBinary) =>
       toTarget(connection, data as Buffer, isBinary),
+    );
+    // A ping is answered only while the queue toward the browser is under the high mark.
+    browser.on("ping", (data: Buffer) =>
+      pongWithinWindow(browser, data, window, () => releaseTarget(connection)),
     );
     // `ws` closes the socket itself after an error it raises, an oversized
     // message's 1009 among them, and the close below ends the target.
