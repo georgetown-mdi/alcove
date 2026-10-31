@@ -247,10 +247,13 @@ export function InviterExchangeSection({
 
   // An unanswered coordination server of this browser's setting also offers a
   // fresh invitation beside the retry: clearing the setting and starting over
-  // names a server that answers, where waiting on the same one may never.
+  // names a server that answers, where waiting on the same one may never. So
+  // does a shared name, which start-over reaches on Review & create.
   const offersStartOver =
     failure !== undefined &&
-    (!retryable || failure.coordinationServerUnreachable === true) &&
+    (!retryable ||
+      failure.coordinationServerUnreachable === true ||
+      failure.sharedName === true) &&
     !termsApplied &&
     failure.category !== "output";
 

@@ -956,6 +956,48 @@ describe("direct exchange confirm and run", () => {
     );
   });
 
+  test("a no-show with a file of this side's name offers Start over beside Try again", async () => {
+    const cliMessage =
+      "Your partner did not arrive in the shared folder on the SFTP server " +
+      "within 90 seconds, and a file with this side's name appeared in it.";
+    expectConsole("error", `RelayedSelfExplainingError: ${cliMessage}`);
+    const api = stubJobApi({ sftp: CONFIGURED_SFTP, jobStatus: "failed" });
+    app.render(createElement(DirectExchangeScreen));
+    await reachConfirm();
+    await trustAffirmation().click();
+    await page.getByRole("button", { name: "Run the exchange" }).click();
+
+    await vi.waitFor(() =>
+      expect(api.captured.some((r) => r.url === "/api/jobs/job-7/events")).toBe(
+        true,
+      ),
+    );
+    api.emitEvent({
+      v: 1,
+      type: "error",
+      category: "exchange",
+      message: cliMessage,
+      recoveryHint: true,
+      exitCode: 69,
+      cause: {
+        kind: "partner-never-arrived",
+        channel: "sftp",
+        waitedMs: 90000,
+        sharedName: true,
+      },
+    });
+    api.closeEvents();
+    await expect
+      .element(page.getByText("Both sides may be using the same name"))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByRole("button", { name: "Try again" }))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByRole("button", { name: "Start over" }))
+      .toBeInTheDocument();
+  });
+
   test("an invalid identity names the fault at the field and blocks Run", async () => {
     stubJobApi({ sftp: CONFIGURED_SFTP });
     app.render(createElement(DirectExchangeScreen));

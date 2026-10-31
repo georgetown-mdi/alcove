@@ -737,9 +737,9 @@ export interface RendezvousOptions {
   renameRefusedGuidance?: string;
 }
 
-// With `ignoredOwnPatternHello`, the catalog sentence is followed by the hello
-// the wait skipped as this party's own and the likely cause, under the same
-// cause tag, so the error's class and the apps' remedy are unchanged.
+// With `ignoredOwnPatternHello`, the cause states the shared name and the
+// catalog sentence is followed by the hello the wait skipped as this party's
+// own; each app's remedy then names its own way to change the name.
 const partnerNeverArrived = (
   deps: RendezvousDeps,
   ignoredOwnPatternHello: string | undefined,
@@ -748,13 +748,13 @@ const partnerNeverArrived = (
     kind: "partner-never-arrived",
     channel: deps.channel(),
     waitedMs: deps.arrivalBudgetMs(),
+    ...(ignoredOwnPatternHello !== undefined ? { sharedName: true } : {}),
   };
   if (ignoredOwnPatternHello === undefined) return failureCauseError(cause);
   return markFailureCause(
     new Error(
-      `${failureCauseSentence(cause)} This run ignored a hello file whose ` +
-        "id fits its own peer_id, taking it for its own leftover. " +
-        `${SHARED_PEER_ID_LIKELY_CAUSE} The ignored file: ` +
+      `${failureCauseSentence(cause)} This run took it for its own leftover ` +
+        "and ignored it. The ignored file: " +
         redactPrivateKeyMaterial(ignoredOwnPatternHello),
     ),
     cause,

@@ -15,6 +15,8 @@ import { MAX_PEER_ID_LENGTH } from "@jobContract/intentSchemas";
 import { DisclosureSection } from "../components/DisclosureSection";
 
 import {
+  EXCHANGE_FILES_HEADING,
+  PEER_ID_LABEL,
   RETAIN_MODE_BILATERAL_NOTICE,
   WRITE_WITHOUT_RENAMING_NOTICE,
   exchangeFilesProblems,
@@ -91,7 +93,7 @@ export function ExchangeFilesCard({
 
   return (
     <DisclosureSection
-      label="How files are handled"
+      label={EXCHANGE_FILES_HEADING}
       summary={draftSummary(draft)}
       open={open}
       onToggle={setOpen}
@@ -170,7 +172,7 @@ export function ExchangeFilesCard({
         />
 
         <TextInput
-          label="Name for this side"
+          label={PEER_ID_LABEL}
           description={
             "A stable name for this party, used as the prefix of every file it " +
             "writes and in the logs. Leave it blank for a generated one. The " +

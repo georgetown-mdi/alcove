@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   FAILURE_CAUSE_PATH_MAX_LENGTH,
+  failureCauseFromUntrusted,
+  parseBoundedJson,
   sanitizeForDisplay,
 } from "@alcove/core";
 import { FAILURE_CAUSE_KINDS } from "@alcove/core/testing";
@@ -59,6 +61,51 @@ describe("the stream field", () => {
     expect(failureCauseStreamField({ kind: "partner-never-arrived" })).toEqual({
       kind: "partner-never-arrived",
     });
+  });
+
+  it("round trips the shared-name fact through a stream line and the validator", () => {
+    const cause: FailureCause = {
+      kind: "partner-never-arrived",
+      channel: "filedrop",
+      waitedMs: 90_000,
+      sharedName: true,
+    };
+    const field = failureCauseStreamField(cause);
+    expect(field).toEqual(cause);
+    const line = JSON.stringify({ v: 1, type: "error", cause: field });
+    const read = (parseBoundedJson(line) as { cause: unknown }).cause;
+    expect(failureCauseFromUntrusted(read)).toEqual(cause);
+    expect(
+      failureCauseStreamField({
+        kind: "partner-never-arrived",
+        channel: "sftp",
+      }),
+    ).not.toHaveProperty("sharedName");
+  });
+
+  // A consumer older than the shared-name fact rebuilt the cause from the
+  // facts it knew; the same rule here drops a fact newer than this build.
+  it("a consumer that does not know a fact drops it and keeps the cause", () => {
+    const line = JSON.stringify({
+      v: 1,
+      type: "error",
+      cause: {
+        kind: "partner-never-arrived",
+        channel: "filedrop",
+        waitedMs: 90_000,
+        sharedName: true,
+        laterFact: { nested: 1 },
+      },
+    });
+    const read = (parseBoundedJson(line) as { cause: unknown }).cause;
+    const rebuilt = failureCauseFromUntrusted(read);
+    expect(rebuilt).toEqual({
+      kind: "partner-never-arrived",
+      channel: "filedrop",
+      waitedMs: 90_000,
+      sharedName: true,
+    });
+    expect(failureCauseStreamField(rebuilt!)).toEqual(rebuilt);
   });
 
   it("escapes a folder path and leaves every fact off the kind behind", () => {

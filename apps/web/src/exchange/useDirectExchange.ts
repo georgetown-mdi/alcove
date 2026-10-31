@@ -197,7 +197,18 @@ export function useDirectExchange({
     // Raise a failure's alert and freeze the run: the terminal path for every
     // error except a busy (409) create, which re-attaches instead.
     const raiseFailure = (category: ExchangeErrorCategory, error: unknown) => {
-      setFailure(failureFor(category, error, inputSource, channel));
+      setFailure(
+        failureFor(
+          category,
+          error,
+          inputSource,
+          channel,
+          "inviter",
+          false,
+          false,
+          options?.peerId !== undefined,
+        ),
+      );
       setRun((current) => runWithFailure(current));
     };
 

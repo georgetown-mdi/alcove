@@ -674,6 +674,8 @@ export function useAcceptorExchange({
           channel,
           "acceptor",
           receipts?.signing?.identityLocation !== undefined,
+          false,
+          options?.peerId !== undefined,
         ),
       );
       setRun((prev) => runWithFailure(prev));

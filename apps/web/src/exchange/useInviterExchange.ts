@@ -176,6 +176,10 @@ export interface RunFailure {
    * answer the inviter's registration. The seat offers a fresh invitation
    * beside its retry, and a link to relay settings. */
   coordinationServerUnreachable?: true;
+  /** Set when a file with this side's name appeared while the partner never
+   * arrived, so both sides likely set the same name. The seat offers its way
+   * back to the settings, where that name is set, beside its retry. */
+  sharedName?: true;
   /** Whether the alert offers "Try again" and the seat's retry runs
    * ({@link retryDispositionFor}). Every retry control reads this rather than
    * {@link category}. */
@@ -348,6 +352,7 @@ function failureContentFor(
   seat: ExchangeSeat = "inviter",
   identityLocationPicked = false,
   singleColumnInput = false,
+  thisSideNamed = false,
 ): Omit<RunFailure, "retry"> {
   // The console already holds an exchange (its single slot is occupied), so the
   // create was rejected 409 -- the driver categorizes it retryable `exchange`. The
@@ -795,8 +800,16 @@ function failureContentFor(
     error instanceof RelayedTerminalError &&
     error.failureCause !== undefined &&
     (category === "exchange" || category === "config")
-  )
-    return { category, ...consoleFailureForCause(error.failureCause) };
+  ) {
+    const cause = error.failureCause;
+    return {
+      category,
+      ...consoleFailureForCause(cause, { thisSideNamed }),
+      ...(cause.kind === "partner-never-arrived" && cause.sharedName === true
+        ? { sharedName: true }
+        : {}),
+    };
+  }
   // A console run the partner or the agreed terms refused (the CLI's exit 76):
   // the partner's refusal, which a retry and a change to this party's settings
   // both meet again, so it takes the config category and no retry.
@@ -1554,6 +1567,7 @@ export function useInviterExchange({
           "inviter",
           receipts?.signing?.identityLocation !== undefined,
           minted.columns.length === 1,
+          options?.peerId !== undefined,
         ),
       );
       setRun((current) => runWithFailure(current));

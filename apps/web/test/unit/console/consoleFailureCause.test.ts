@@ -28,6 +28,12 @@ const SAMPLES: {
     { kind: "partner-never-arrived", channel: "filedrop", waitedMs: 90_000 },
     { kind: "partner-never-arrived", channel: "sftp" },
     { kind: "partner-never-arrived" },
+    {
+      kind: "partner-never-arrived",
+      channel: "filedrop",
+      waitedMs: 90_000,
+      sharedName: true,
+    },
   ],
   "folder-missing": [
     { kind: "folder-missing", path: "/data/drop", code: "ENOENT" },
@@ -115,6 +121,77 @@ describe("a console run that failed on a catalog cause", () => {
         "how long to wait.",
     );
     expect(failure.message).not.toContain("--peer-timeout");
+  });
+
+  test("a file with this side's name names the console's name control and offers the way back", () => {
+    for (const thisSideNamed of [false, true]) {
+      const failure = failureFor(
+        "exchange",
+        relayed("the CLI's text naming peer_id", {
+          failureCause: SAMPLES["partner-never-arrived"][3],
+          exitCode: 69,
+        }),
+        undefined,
+        "filedrop",
+        "inviter",
+        false,
+        false,
+        thisSideNamed,
+      );
+      expect(failure.title).toBe("Both sides may be using the same name");
+      expect(failure.message).toBe(
+        "Your partner did not arrive in the shared folder within 90 seconds, " +
+          "and a file with this side's name appeared in it. The likely cause " +
+          'is that both sides set the same name: change "Name for this side" ' +
+          'under "How files are handled" so the two names differ, then run ' +
+          "again.",
+      );
+      expect(failure.message).not.toContain("peer_id");
+      expect(failure.message).not.toContain(PEER_TIMEOUT_LABEL);
+      expect(failure.sharedName).toBe(true);
+      expect(failure.retry).toBe("offered");
+    }
+  });
+
+  test("a plain no-show gains the names clause only when this side set a name", () => {
+    const CLAUSE =
+      "If both sides set a name under 'How files are handled', check that " +
+      "the names differ.";
+    const noShow = (
+      cause: FailureCauseOfKind<"partner-never-arrived">,
+      thisSideNamed: boolean,
+    ) =>
+      failureFor(
+        "exchange",
+        relayed("the CLI's text", { failureCause: cause, exitCode: 69 }),
+        undefined,
+        cause.channel,
+        "inviter",
+        false,
+        false,
+        thisSideNamed,
+      );
+    const [filedrop, sftp] = SAMPLES["partner-never-arrived"];
+    expect(noShow(filedrop, true).message).toBe(
+      "Your partner did not arrive in the shared folder within 90 seconds. " +
+        "Check that you and your partner use the same shared folder and " +
+        `that it is syncing, then try again. ${CLAUSE} ` +
+        `"${PEER_TIMEOUT_LABEL}" under ${CONNECTION_TUNING_HEADING} sets ` +
+        "how long to wait.",
+    );
+    expect(noShow(sftp, true).message).toContain(CLAUSE);
+    expect(noShow(filedrop, false).message).not.toContain(CLAUSE);
+    expect(noShow(sftp, false).message).not.toContain(CLAUSE);
+    expect(
+      noShow({ kind: "partner-never-arrived", channel: "webrtc" }, true)
+        .message,
+    ).not.toContain(CLAUSE);
+    for (const thisSideNamed of [false, true]) {
+      expect(noShow(filedrop, thisSideNamed).title).toBe(
+        "Your partner did not arrive",
+      );
+      expect(noShow(filedrop, thisSideNamed).sharedName).toBeUndefined();
+    }
   });
 
   test("a missing shared folder names the mount, not a flag", () => {

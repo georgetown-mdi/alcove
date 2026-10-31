@@ -19,6 +19,7 @@ import {
 import { DISPLAY_TRUNCATION_MARKER } from "../../src/utils/sanitizeForDisplay";
 import { sanitizeErrorForDisplay } from "../../src/utils/sanitizeErrorForDisplay";
 import { withCapturedLogs } from "../../src/testing";
+import { failureCauseOf } from "../../src/failureCause";
 import {
   makeConnectedConn,
   LOCK_HELLO_BODY,
@@ -3737,8 +3738,12 @@ test("synchronize() (split): a partner hello with this run's own name in the INB
   expect(err).not.toBeInstanceOf(UsageError);
   expect(isPeerWaitTimeout(err)).toBe(true);
   const message = (err as Error).message;
-  expect(message).toContain("both parties set the same peer_id");
+  expect(message).toContain("a file with this side's name appeared");
   expect(message.endsWith(`The ignored file: ${name}`)).toBe(true);
+  expect(failureCauseOf(err)).toMatchObject({
+    kind: "partner-never-arrived",
+    sharedName: true,
+  });
 });
 
 test("synchronize() (split): a configured outbound without retain mode is rejected", async () => {

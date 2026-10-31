@@ -78,6 +78,12 @@ export type FailureCause =
       readonly channel?: PartnerMeetingChannel;
       /** How long this party waited, when the raise site knows it. */
       readonly waitedMs?: number;
+      /**
+       * Set when a hello with this party's name, other than this run's own,
+       * appeared during the wait: the likely cause is that both parties set
+       * the same name. Unset otherwise.
+       */
+      readonly sharedName?: true;
     }
   | {
       /** The shared folder named for a file-drop exchange is not usable. */
@@ -172,14 +178,16 @@ const FROM_UNTRUSTED: {
     fields: Record<string, unknown>,
   ) => FailureCauseOfKind<K> | undefined;
 } = {
-  "partner-never-arrived": ({ channel, waitedMs }) => {
+  "partner-never-arrived": ({ channel, waitedMs, sharedName }) => {
     if (channel !== undefined && !oneOf(PARTNER_MEETING_CHANNELS, channel))
       return undefined;
     if (waitedMs !== undefined && !isWholeNumber(waitedMs)) return undefined;
+    if (sharedName !== undefined && sharedName !== true) return undefined;
     return {
       kind: "partner-never-arrived",
       ...(channel !== undefined ? { channel } : {}),
       ...(waitedMs !== undefined ? { waitedMs: waitedMs as number } : {}),
+      ...(sharedName === true ? { sharedName } : {}),
     };
   },
   "folder-missing": ({ path, code }) =>
@@ -289,11 +297,16 @@ export function relayRegistrarUnreachableRemedy({
 const SENTENCES: {
   readonly [K in FailureCauseKind]: (cause: FailureCauseOfKind<K>) => string;
 } = {
-  "partner-never-arrived": ({ channel, waitedMs }) =>
+  "partner-never-arrived": ({ channel, waitedMs, sharedName }) =>
     `Your partner did not ${MEETING_PLACE[channel ?? "unknown"]} ` +
     (waitedMs === undefined
-      ? "in the time this run waited."
-      : `within ${formatWaitDuration(waitedMs)}.`),
+      ? "in the time this run waited"
+      : `within ${formatWaitDuration(waitedMs)}`) +
+    (sharedName !== true
+      ? "."
+      : channel === "filedrop" || channel === "sftp"
+        ? ", and a file with this side's name appeared in it."
+        : ", and a file with this side's name appeared during the wait."),
   "folder-missing": ({ path, code }) =>
     code === "ENOENT"
       ? `The shared folder ${path} does not exist (ENOENT).`

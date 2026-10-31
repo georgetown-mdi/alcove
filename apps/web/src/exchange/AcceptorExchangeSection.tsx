@@ -168,8 +168,12 @@ export function AcceptorExchangeSection({
   const retryable =
     failure?.retry === "offered" &&
     acceptorRetryAllowed(invitation.token.expires, new Date());
+  // A shared name is changed on the columns step too, so it returns there
+  // beside the retry while the invitation can still run.
   const columnsCanResolve =
-    failure?.category === "config" && failure.settingsCannotResolve !== true;
+    (failure?.category === "config" &&
+      failure.settingsCannotResolve !== true) ||
+    (failure?.sharedName === true && retryable);
   const offersFreshInvitation =
     failure !== undefined &&
     !retryable &&
@@ -259,9 +263,9 @@ export function AcceptorExchangeSection({
               folder={discardFolder}
             />
           )}
-          {/* A prepare-time fault in this party's own settings: the acceptor
-              fixes it on the confirm-columns step with every input intact, so
-              the recovery returns there rather than re-running as-is. */}
+          {/* A prepare-time fault in this party's own settings, or a name it
+              likely shares with its partner: the acceptor changes it on the
+              confirm-columns step with every input intact. */}
           {columnsCanResolve && (
             <FailureRecoveryButton
               label="Back to your columns"

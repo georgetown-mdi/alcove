@@ -253,6 +253,9 @@ describe("a partner id that fits this party's peer_id", () => {
   const NEVER_ARRIVED =
     "Your partner did not arrive in the shared folder in the time this run " +
     "waited.";
+  const SHARED_NAME_NEVER_ARRIVED =
+    "Your partner did not arrive in the shared folder in the time this run " +
+    "waited, and a file with this side's name appeared in it.";
 
   for (const shape of [
     { name: "the same peer_id", own: "site", partnerId: "site" },
@@ -339,12 +342,18 @@ describe("a partner id that fits this party's peer_id", () => {
         expect(err).toBeInstanceOf(Error);
         expect(err).not.toBeInstanceOf(UsageError);
         expect(isPeerWaitTimeout(err)).toBe(true);
-        expect(failureCauseOf(err)?.kind).toBe("partner-never-arrived");
+        expect(failureCauseOf(err)).toMatchObject({
+          kind: "partner-never-arrived",
+          sharedName: true,
+        });
         const message = (err as Error).message;
-        expect(message.startsWith(`${NEVER_ARRIVED} This run ignored a`)).toBe(
-          true,
-        );
-        expect(message).toContain(SHARED_CAUSE);
+        expect(
+          message.startsWith(
+            `${SHARED_NAME_NEVER_ARRIVED} This run took it for its own ` +
+              "leftover and ignored it.",
+          ),
+        ).toBe(true);
+        expect(message).not.toContain("peer_id");
         expect(message).toMatch(
           new RegExp(`The ignored file: ${other}-hello-\\d+\\.json$`),
         );
@@ -357,6 +366,7 @@ describe("a partner id that fits this party's peer_id", () => {
     const err = await rejectionOf(conn.synchronize());
     expect(isPeerWaitTimeout(err)).toBe(true);
     expect((err as Error).message).toBe(NEVER_ARRIVED);
+    expect(failureCauseOf(err)).not.toHaveProperty("sharedName");
   });
 });
 
