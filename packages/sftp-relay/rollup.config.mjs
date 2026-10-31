@@ -2,10 +2,13 @@ import commonjs from "@rollup/plugin-commonjs";
 import { nodeResolve } from "@rollup/plugin-node-resolve";
 import ts from "typescript";
 
+import { bundleNotices } from "../../scripts/lib/bundleNotices.mjs";
+
 // The image's one file: the standalone runner with every module it reaches,
 // `ws` and the workspace sources included, so the runtime stage ships no
-// node_modules. Each TypeScript module is transpiled on its own, as tsx and
-// vitest do; `npm run typecheck` is what checks the types.
+// node_modules, and the license text of each package it inlines at its head.
+// Each TypeScript module is transpiled on its own, as tsx and vitest do; `npm
+// run typecheck` is what checks the types.
 const transpileTypeScript = {
   name: "transpile-typescript",
   transform(code, id) {
@@ -30,5 +33,6 @@ export default {
     transpileTypeScript,
     nodeResolve({ preferBuiltins: true, exportConditions: ["node"] }),
     commonjs(),
+    bundleNotices(),
   ],
 };

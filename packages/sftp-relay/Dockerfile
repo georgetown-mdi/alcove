@@ -22,6 +22,9 @@ RUN --mount=type=cache,target=/root/.npm \
   npm ci -w packages/core -w packages/sftp-relay
 
 COPY tsconfig.base.json tsconfig.json ./
+# The plugin that heads each chunk of the core and relay builds with the
+# license text of each package the chunk inlines.
+COPY scripts/lib/bundleNotices.mjs scripts/lib/
 COPY packages/core/*.ts packages/core/tsconfig.json packages/core/tsconfig.rollup.json packages/core/
 COPY packages/core/src packages/core/src/
 COPY packages/peerjs-broker/src packages/peerjs-broker/src/

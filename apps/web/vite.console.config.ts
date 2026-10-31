@@ -4,6 +4,10 @@ import { defineConfig } from "vite";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 
+import {
+  bundleNotices,
+  bundleNoticesFile,
+} from "../../scripts/lib/bundleNotices.mjs";
 import { srcAliases } from "./vite.config.ts";
 import { withColorSchemeScript } from "./src/utils/colorSchemeScript.ts";
 
@@ -28,12 +32,16 @@ const consoleRouteTree = path.join(
   ".tanstack/console/routeTree.gen.ts",
 );
 
+const notices = bundleNoticesFile();
+
 /**
  * The console's two builds: `vite build` writes the single-page client to
- * `dist/console/`, and `vite build --ssr server/console/main.ts` writes the
- * console server, every dependency bundled in, to
- * `dist/console-server/main.mjs`. The server serves the client from the
- * directory beside its own.
+ * `dist/console/`, with the license text of every package it inlines in
+ * `third-party-licenses.txt` there, and `vite build --ssr
+ * server/console/main.ts` writes the console server, every dependency bundled
+ * in, to `dist/console-server/main.mjs`, with the license text of each package
+ * it inlines at its head. The server serves the client from the directory
+ * beside its own.
  */
 export default defineConfig(({ isSsrBuild }) => ({
   root: appRoot,
@@ -50,7 +58,9 @@ export default defineConfig(({ isSsrBuild }) => ({
     }),
     viteReact(),
     consoleColorSchemeScript(),
+    ...(isSsrBuild ? [] : [notices.client]),
   ],
+  worker: { plugins: () => [notices.worker] },
   resolve: {
     alias: [
       { find: /^\.\/routeTree\.gen$/, replacement: consoleRouteTree },
@@ -67,7 +77,10 @@ export default defineConfig(({ isSsrBuild }) => ({
         build: {
           outDir: "dist/console-server",
           emptyOutDir: true,
-          rollupOptions: { output: { entryFileNames: "main.mjs" } },
+          rollupOptions: {
+            output: { entryFileNames: "main.mjs" },
+            plugins: [bundleNotices()],
+          },
         },
       }
     : { build: { outDir: "dist/console", emptyOutDir: true } }),

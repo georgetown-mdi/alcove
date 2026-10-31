@@ -4,6 +4,8 @@ import { defineConfig } from "vite";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 
+import { bundleNoticesFile } from "../../scripts/lib/bundleNotices.mjs";
+
 import {
   gitHeadCommit,
   hostedBuildIdentity,
@@ -25,6 +27,8 @@ const hostedRouteTree = path.join(appRoot, ".tanstack/hosted/routeTree.gen.ts");
 
 const template = "hosted/index.html";
 
+const notices = bundleNoticesFile();
+
 const hostedConfig = {
   root: appRoot,
   plugins: [
@@ -42,9 +46,14 @@ const hostedConfig = {
     hostedHeadersFile(),
     hostedSignalingDiscoveryFile(),
     clientModuleGraphGuard(),
+    notices.client,
   ],
   worker: {
-    plugins: () => [...deployGraphRecorderFromEnv(), clientModuleGraphGuard()],
+    plugins: () => [
+      ...deployGraphRecorderFromEnv(),
+      clientModuleGraphGuard(),
+      notices.worker,
+    ],
   },
   resolve: {
     alias: [
@@ -68,8 +77,10 @@ const hostedConfig = {
  * writes a single-page client to `dist/hosted/`, with one document per route
  * the app-shell worker warms (hosted/routeDocuments.ts), the host's `_headers`
  * (hosted/headersFile.ts), the published coordination server
- * (hosted/signalingDiscoveryFile.ts) and no server. The build fails if the
- * page's or a worker's module graph reaches a server-only module
+ * (hosted/signalingDiscoveryFile.ts), the license text of every package the
+ * build inlines (`third-party-licenses.txt`, scripts/lib/bundleNotices.mjs)
+ * and no server. The build fails if the page's or a worker's module graph
+ * reaches a server-only module
  * (hosted/moduleGraphGuard.ts). The page names the release tag or commit it
  * was built from (hosted/buildIdentity.ts).
  */

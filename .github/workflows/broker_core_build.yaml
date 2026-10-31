@@ -22,6 +22,7 @@ on:
   pull_request:
     paths:
       - "packages/core/**"
+      - "scripts/lib/bundleNotices.mjs"
       - "package-lock.json"
       - "lib/**"
       - ".github/actions/setup/**"

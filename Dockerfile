@@ -28,6 +28,9 @@ RUN --mount=type=cache,target=/root/.npm \
   npm ci -w packages/core -w packages/peerjs-broker -w packages/cli-contract -w apps/cli -w apps/web
 
 COPY tsconfig.base.json tsconfig.json ./
+# The plugins that write the license text of each package the core build and
+# the console server and browser builds inline.
+COPY scripts/lib/bundleNotices.mjs scripts/lib/
 COPY packages/core/*.ts packages/core/tsconfig.json packages/core/tsconfig.rollup.json packages/core/
 COPY packages/core/src packages/core/src/
 COPY packages/cli-contract/tsconfig.json packages/cli-contract/tsconfig.build.json packages/cli-contract/

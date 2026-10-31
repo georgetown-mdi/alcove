@@ -248,6 +248,14 @@ export const CHECKS = [
       "apps/web/vite.config.ts loads from the file subset the Dockerfile builder stage copies, so the image build resolves no module the image does not have.",
   },
   {
+    script: "check:bundle-notices",
+    // The web builds write apps/web/.tanstack/ when it is absent or stale.
+    group: SHARED,
+    expiresOn: "2027-06-30",
+    description:
+      "Every chunk of core's dist, the SFTP relay bundle and the console server bundle has the license text of each third-party package it inlines, and the hosted app's and the console client's third-party-licenses.txt has that of every package their chunks and workers inline.",
+  },
+  {
     script: "check:core-barrel-wildcards",
     group: INDEPENDENT,
     expiresOn: "2027-03-31",
