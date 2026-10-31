@@ -50,29 +50,35 @@ The token is a JSON object with these members:
 
 | Member | JSON type | Required | Rule |
 | --- | --- | --- | --- |
-| `version` | string | yes | Exactly `"1"`. The number `1` and any other string are refused. |
+| `version` | string | yes | The decimal string of a positive integer no larger than the newest version this build reads, `"1"`. A larger one is refused as made by a newer Alcove, naming both versions; the number `1` and any other string are refused. |
+| `about` | object | no | The informational block; see [Version policy](#version-policy). |
 | `linkageTerms` | object | yes | A linkage-terms document, validated by `InvitationLinkageTermsSchema`: `LinkageTermsSchema` behind a key-folding pre-pass (below). |
 | `sharedSecret` | string | yes | `SHARED_SECRET_REGEX` (`packages/core/src/config/connection.ts`): 43 base64url characters, the last one in `[AEIMQUYcgkosw048]`, so the string decodes to exactly 32 bytes. |
 | `expires` | string | no | An ISO 8601 date-time in UTC with seconds, a `Z` suffix and any number of fractional-second digits (`z.iso.datetime()`); an offset, a time without seconds, a date alone, a lowercase `z`, or `null` is refused. |
 | `connectionEndpoint` | object | no | A credential-free locator; see [Connection endpoint](#connection-endpoint). |
 | `inviterRetainsFiles` | boolean | no | The inviting party's retain-mode declaration; see [Cross-field rules](#cross-field-rules). |
 
-The top-level object is not strict: a member outside this table is dropped when the token is decoded, never read.
-The encoder serializes its own parse result, so a member outside the table never reaches the wire from an Alcove mint either.
-Top-level member names are not case-folded: `linkage_terms` or `shared_secret` is an unknown member and is dropped, which leaves the required member absent and the token refused.
+The top-level object is strict: a member outside this table is refused as made by a newer Alcove, naming the member.
+The encoder serializes only the members of this table, so a member outside it never reaches the wire from an Alcove mint.
+Top-level member names are not case-folded: `linkage_terms` or `shared_secret` is an unknown member and is refused.
 
 Inside `linkageTerms` the keys are folded from snake_case to camelCase by the bounded `camelizeKeys` walk (`packages/core/src/utils/camelizeKeys.ts`) before `LinkageTermsSchema` validates them, the same fold a configuration file's terms take.
 Two keys of one object that fold to one name are refused with `KeyFoldCollisionError`.
 The walk leaves a `transform.params` object with more than `MAX_PARAMS_ENTRIES` (**256**) members unrewritten, for the schema's count bound to refuse.
-An unknown key at the top level of the terms document is dropped, as at the token's top level.
+A key anywhere in the terms document that the schema does not read is refused as made by a newer Alcove, naming the key as the token spells it, after a schema parse that succeeds.
 
 ### Version policy
 
-The `version` value changes only for a change an existing decoder cannot read.
-An optional top-level member is compatible, because the top level is not strict and an older decoder drops it.
-A member added to a strict endpoint sub-schema is not compatible, because an older decoder refuses it, so once a release has shipped such an addition changes the version.
-The split directory pair and the webrtc `relay` were added to the endpoint before any release, without a change of version ([FILE_SYNC.md](FILE_SYNC.md#split-inboundoutbound-directories), [PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator)).
-A decoder refuses every `version` other than `"1"`; it has no reading of a newer token.
+The token is versioned under the same rule as the exchange file ([EXCHANGE_FILE.md](EXCHANGE_FILE.md#versioning-and-compatibility-policy)), with its own version table (`INVITATION_VERSION_POLICY`, `packages/core/src/config/invitation.ts`):
+
+- `encodeInvitation` writes the token at the lowest version its content needs: it leaves out each member that holds the value an older decoder takes the member's absence to mean, and states as `version` the version the remaining members need, whatever `version` its caller passed.
+  A token that uses no member newer than an older decoder's version is therefore one that decoder reads.
+- `decodeInvitation` refuses a `version` above the newest it reads before the schema, naming both versions, and refuses a declared `version` below what the token's members need, naming the member and the version it needs.
+- The `about` member is the informational block: the mint time (`mintedAt`), the minting build (`mintedBy`), a `label`, a `comment`, and a form hint (`formHint`).
+  A decoder of any version skips every member of it, a member it does not know included.
+  Every other position is strict.
+
+Version 1 holds every member above, the split directory pair and the webrtc `relay` of the endpoint included ([FILE_SYNC.md](FILE_SYNC.md#split-inboundoutbound-directories), [PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator)), so the version table is empty.
 
 ### Connection endpoint
 
@@ -138,7 +144,8 @@ The string bounds count UTF-16 code units through `maxCodeUnits` (`packages/core
 
 `encodeInvitation` mints a token in this order:
 
-1. Validate the token against `MintedInvitationTokenSchema`, throwing `ZodError` on a failure, and keep the parse result, which drops any member outside the schema.
+1. Keep only the token's members the schema names, leave out each that holds the value an older decoder assumes for its absence, and set `version` to the lowest version the rest need ([Version policy](#version-policy)).
+   Validate the result against `MintedInvitationTokenSchema`, throwing `ZodError` on a failure, and keep the parse result.
 2. Refuse an `expires` that is not in the future, with `UsageError`.
 3. Encode the parse result as in [Encoding](#encoding).
 4. Refuse an encoded string longer than `MAX_ENCODED_INVITATION_LENGTH`, with a `UsageError` naming the length and the remedy, so that an invitation the partner could not decode is never handed over.
@@ -159,13 +166,15 @@ Each of the first five throws `InvitationDecodeError` with a fixed message conta
 4. **Checksum** (`checksumMismatch`): the first 4 bytes of the SHA-256 digest of the decoded body bytes, base64url-encoded, are compared with the last 6 characters as strings.
 5. **JSON** (`notJson`): the bytes are parsed by `parseBoundedJson` (`packages/core/src/utils/boundedJson.ts`), which checks the structure bounds over the bytes, decodes them as UTF-8 with invalid sequences refused, and then calls `JSON.parse`.
    A structure over a bound, invalid UTF-8 and malformed JSON are all reported as `notJson`.
-6. **Schema**: the parsed value is validated against `InvitationTokenSchema`, which throws `ZodError` on a failure.
+6. **Version**: a `version` above the newest this build reads is refused with `ZodError`, naming both versions.
+7. **Schema**: the parsed value is validated against `InvitationTokenSchema`, which throws `ZodError` on a failure.
    The `linkageTerms` fold runs inside that validation and throws its own errors through it: `NestingDepthExceededError`, `NodeCountExceededError` and `KeyFoldCollisionError`, each a `UsageError`.
+   A schema that accepts the token is followed by the refusal of each key of the terms the schema did not read, and of a declared `version` below what the members need, each with `ZodError`.
 
 The `failure` values divide into two groups by what the receiving party can do (`InvitationDecodeFailure`).
 `tooShort`, `notBase64Url` and `checksumMismatch` mean the string was cut or changed in transit, so a fresh copy of the same invitation may decode.
 `tooLong` and `notJson` mean an intact string this build does not read, so only a new invitation helps.
-A schema failure, including the `linkageTerms` fold errors (`NestingDepthExceededError`, `NodeCountExceededError`, `KeyFoldCollisionError`), is also an intact string this build does not read, so it takes the second group's remedy.
+A version or schema failure, including the `linkageTerms` fold errors (`NestingDepthExceededError`, `NodeCountExceededError`, `KeyFoldCollisionError`), is also an intact string this build does not read, so it takes the second group's remedy.
 The web accept route chooses its message by that division (`invitationDecodeRefusal` in `apps/web/src/exchange/invitationDecodeRefusal.ts`).
 
 `decodeInvitation` does not check `expires` against the clock: a token past its expiry decodes, and the expiry check below is a separate step.

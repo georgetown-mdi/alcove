@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import { generateSharedSecret } from "../src/config/connection";
+import type { FormatVersionPolicy } from "../src/config/formatVersion";
 import {
   MAX_ENCODED_TERMS_UPDATE_LENGTH,
   TermsUpdateRefusedError,
@@ -20,6 +21,20 @@ import {
 } from "../src/utils/crypto";
 
 const terms = getDefaultLinkageTerms("Agency A");
+
+// A later version adding the terms' `identity`, whose absence an older reader
+// takes as "Agency A".
+const IDENTITY_AT_VERSION_2: FormatVersionPolicy = {
+  current: 2,
+  features: [
+    {
+      path: ["linkageTerms", "identity"],
+      name: "linkageTerms.identity",
+      version: 2,
+      oldDefault: "Agency A",
+    },
+  ],
+};
 
 async function refusal(
   encoded: string,
@@ -183,8 +198,103 @@ describe("terms update", () => {
     const err = await refusal(await authenticated(content, secret), secret);
     expect(err.check).toBe("format");
     expect(err.message).toBe(
-      "this terms update was made by a newer version of Alcove than this " +
-        "one; update Alcove, then try the terms update again",
+      "This terms update is format version 2, made by a newer version of " +
+        "Alcove than this one, which reads up to version 1. Update Alcove, " +
+        "then try the terms update again.",
+    );
+  });
+
+  test("an authenticated body with an unknown member is refused as made by a newer Alcove, by name", async () => {
+    const secret = generateSharedSecret();
+    const encoded = await encodeTermsUpdate({ linkageTerms: terms }, secret);
+    const content = { ...body(encoded), addedLater: 1 };
+    const err = await refusal(await authenticated(content, secret), secret);
+    expect(err.check).toBe("format");
+    expect(err.message).toBe(
+      'This terms update has the field "addedLater", which this version of ' +
+        "Alcove does not read: it was made by a newer version of Alcove. " +
+        "Update Alcove, then try the terms update again.",
+    );
+  });
+
+  test("an unknown member of the terms is refused by name, as the body spells it", async () => {
+    const secret = generateSharedSecret();
+    const encoded = await encodeTermsUpdate({ linkageTerms: terms }, secret);
+    const content = body(encoded);
+    content["linkageTerms"] = {
+      ...(content["linkageTerms"] as object),
+      linkage_rule_set: { name: "baseline-pii" },
+    };
+    const err = await refusal(await authenticated(content, secret), secret);
+    expect(err.check).toBe("format");
+    expect(err.message).toContain('has the field "linkage_rule_set"');
+  });
+
+  test("an unknown member of the about block is skipped, the MAC checked over the bytes as sent", async () => {
+    const secret = generateSharedSecret();
+    const encoded = await encodeTermsUpdate(
+      { linkageTerms: terms, about: { label: "October change" } },
+      secret,
+    );
+    const content = {
+      ...body(encoded),
+      about: { label: "October change", fromALaterBuild: [1] },
+    };
+    // Spaced JSON, which no Alcove writer emits, verifies only if the MAC is
+    // computed over the received bytes rather than a re-serialization.
+    const bytes = new TextEncoder().encode(JSON.stringify(content, null, 1));
+    const macKey = await hkdfDerive(
+      fromBase64Url(secret),
+      "alcove-terms-update-v2:mac",
+      32,
+    );
+    const spaced = `${toBase64Url(bytes)}.${toBase64Url(
+      await hmacSha256(macKey, bytes),
+    )}`;
+    expect(await decodeTermsUpdate(spaced, secret)).toEqual({
+      linkageTerms: terms,
+    });
+  });
+
+  test("an update using no newer field is written at version 1 and read by this build", async () => {
+    const secret = generateSharedSecret();
+    const encoded = await encodeTermsUpdate(
+      { linkageTerms: terms },
+      secret,
+      IDENTITY_AT_VERSION_2,
+    );
+    expect(body(encoded)["version"]).toBe("1");
+    const { identity: _omitted, ...withoutIdentity } = terms;
+    expect(await decodeTermsUpdate(encoded, secret)).toEqual({
+      linkageTerms: withoutIdentity,
+    });
+  });
+
+  test("an update using a newer field is written at that field's version", async () => {
+    const secret = generateSharedSecret();
+    const encoded = await encodeTermsUpdate(
+      { linkageTerms: { ...terms, identity: "Agency B" } },
+      secret,
+      IDENTITY_AT_VERSION_2,
+    );
+    expect(body(encoded)["version"]).toBe("2");
+    expect(
+      (await decodeTermsUpdate(encoded, secret, IDENTITY_AT_VERSION_2))
+        .linkageTerms.identity,
+    ).toBe("Agency B");
+    const err = await refusal(encoded, secret);
+    expect(err.message).toMatch(/^This terms update is format version 2,/);
+  });
+
+  test("a declared version below what the fields need is refused naming the field and the version", async () => {
+    const secret = generateSharedSecret();
+    const encoded = await encodeTermsUpdate({ linkageTerms: terms }, secret);
+    await expect(
+      decodeTermsUpdate(encoded, secret, IDENTITY_AT_VERSION_2),
+    ).rejects.toThrow(
+      "This terms update declares format version 1, but its field " +
+        '"linkageTerms.identity" needs version 2. Set version to 2, or ' +
+        "remove the field.",
     );
   });
 
@@ -205,7 +315,6 @@ describe("terms update", () => {
     ["a non-decimal version", { version: "2a" }],
     ["a numeric version", { version: 2 }],
     ["another kind", { kind: "invitation", version: "2" }],
-    ["the current version with a field outside the format", { extra: 1 }],
   ])(
     "an authenticated body with %s is not an Alcove terms update",
     async (_label, change) => {

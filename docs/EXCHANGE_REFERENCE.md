@@ -21,7 +21,7 @@ An exchange specification has four top-level components:
 | `metadata` | no | Descriptions of input fields and their roles |
 | `standardization` | no | Data cleaning and standardizing transformations applied before linkage |
 
-Beside them sit the optional top-level blocks [`authentication`](#authentication), [`signing`](#signing), [`retention_disposition`](#retention_disposition), [`include_own_columns`](#include_own_columns), [`include_matching_key`](#include_matching_key) and [`csv_delimiter`](#csv_delimiter), and the terms enforcement record [`expected_partner_deduplicate`](#expected_partner_deduplicate). A key the configuration schema does not read is rejected when the configuration is read, at any level: at the top level, and inside any block, such as `linkage_terms`, a `linkage_fields` entry, `connection` and its `server` and `options`, `metadata`, `standardization`, `authentication`, and `signing`, except the keys of `connection.provider_options`. The error names the key and the block holding it, and no exchange runs until it is corrected. `alcove invite`, `alcove update`, and `alcove verify-receipt --partner-terms` read only the blocks they use, so a key outside those is refused by the file's next whole-file read (`alcove exchange`, `alcove apply`). What this means when a file written by a newer web application is loaded by an older CLI: [EXCHANGE_FILE.md](spec/EXCHANGE_FILE.md#what-an-older-cli-does-with-a-newer-file).
+Beside them sit the optional top-level blocks [`authentication`](#authentication), [`signing`](#signing), [`retention_disposition`](#retention_disposition), [`include_own_columns`](#include_own_columns), [`include_matching_key`](#include_matching_key), [`csv_delimiter`](#csv_delimiter), [`format_version`](#format_version) and [`about`](#about), and the terms enforcement record [`expected_partner_deduplicate`](#expected_partner_deduplicate). A key the configuration schema does not read is rejected when the configuration is read, at any level: at the top level, and inside any block, such as `linkage_terms`, a `linkage_fields` entry, `connection` and its `server` and `options`, `metadata`, `standardization`, `authentication`, and `signing`, except the keys of `connection.provider_options`. The error names the key and the block holding it, and no exchange runs until it is corrected. `alcove invite`, `alcove update`, and `alcove verify-receipt --partner-terms` read only the blocks they use, so a key outside those is refused by the file's next whole-file read (`alcove exchange`, `alcove apply`). What this means when a file written by a newer web application is loaded by an older CLI: [EXCHANGE_FILE.md](spec/EXCHANGE_FILE.md#what-an-older-cli-does-with-a-newer-file).
 
 ## File references
 
@@ -1477,6 +1477,40 @@ The CLI reads the key, as does the console when it runs a config file. The web a
 
 ---
 
+## The file's format version and notes
+
+Optional. Which version of the configuration format the file is written in, and notes about the file that Alcove keeps but never acts on.
+
+### `format_version`
+
+*Type:* integer  
+*Required:* no  
+*Default:* 1  
+*Consistency:* none (describes the file, not the exchange)
+
+The version of the configuration format the file uses. A file the web application or the console writes states it; one you write by hand may leave it out. An Alcove that reads an older version than the file states refuses the file, naming both versions, so update Alcove to run it. How versions are chosen: [EXCHANGE_FILE.md](spec/EXCHANGE_FILE.md#versioning-and-compatibility-policy).
+
+```yaml
+format_version: 1
+```
+
+### `about`
+
+*Type:* mapping  
+*Required:* no  
+*Default:* none  
+*Consistency:* none (per-party; not exchanged)
+
+Notes about the file: `minted_at`, `minted_by`, `label`, `comment`, and `form_hint` are the names Alcove uses, and any other name is kept too. No version of Alcove acts on them, and each application keeps the block as it is when it writes the file back.
+
+```yaml
+about:
+  label: "Quarterly enrollment match"
+  comment: "Set up with the county records office."
+```
+
+---
+
 ## Input metadata
 
 Optional field-level descriptions of the input dataset. If omitted, semantic types are inferred from column names. If no identifier column is specified, output row indices reference positions in the input file.
@@ -1831,6 +1865,8 @@ The cells:
 | `include_own_columns` | carried | authored | authored |
 | `include_matching_key` | authored (`--include-matching-key` overrides it for one run) | authored | carried |
 | `csv_delimiter` | authored | authored | authored |
+| `format_version` | carried (`alcove init` writes it) | not applicable | carried |
+| `about` | carried | carried | carried |
 | **[Input metadata](#input-metadata)** | | | |
 | `metadata` (`name`, `type`, `role`, `is_payload`) | authored (inferred) | authored | carried with a notice |
 | `metadata` (`description`) | carried | carried | carried with a notice |

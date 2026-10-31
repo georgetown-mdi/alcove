@@ -218,6 +218,7 @@ describe("the exported key file", () => {
     expect(Object.keys(parsed as object).sort()).toEqual([
       "expires",
       "sharedSecret",
+      "version",
     ]);
     const key = KeyFileSchema.parse(parsed);
     expect(key.sharedSecret).toBe(record.sharedSecret);
@@ -229,14 +230,14 @@ describe("the exported key file", () => {
     const parsed: unknown = JSON.parse(
       composeManagedCronExport(record).key.text,
     );
-    expect(Object.keys(parsed as object)).toEqual(["sharedSecret"]);
+    expect(Object.keys(parsed as object)).toEqual(["version", "sharedSecret"]);
     expect(KeyFileSchema.parse(parsed).sharedSecret).toBe(record.sharedSecret);
   });
 
   test("is written the way the CLI writes one: 2-space JSON, trailing newline", () => {
     const record = managedRecord();
     expect(composeManagedCronExport(record).key.text).toBe(
-      `${JSON.stringify({ sharedSecret: record.sharedSecret }, null, 2)}\n`,
+      `${JSON.stringify({ version: 1, sharedSecret: record.sharedSecret }, null, 2)}\n`,
     );
   });
 });

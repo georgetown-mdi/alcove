@@ -15,9 +15,22 @@ import {
 } from "../utils/crypto.js";
 import { SHARED_SECRET_REGEX } from "./connection.js";
 import {
+  droppedLinkageTermsIssues,
   InvitationLinkageTermsSchema,
   MAX_ENCODED_INVITATION_LENGTH,
 } from "./invitation.js";
+import {
+  declaredFormatVersion,
+  FIRST_FORMAT_VERSION_POLICY,
+  FormatInfoBlockSchema,
+  formatVersionBelowNeededIssues,
+  formatVersionNeeded,
+  newerFormatMemberErrorMap,
+  newerFormatVersionMessage,
+  withoutOldDefaults,
+  type FormatInfoBlock,
+  type FormatVersionPolicy,
+} from "./formatVersion.js";
 import type { LinkageTerms } from "./linkageTermsSchema.js";
 import type { Metadata } from "./metadata.js";
 import { termsStatingDeclaredPayloadSend } from "../payloadExchange.js";
@@ -39,6 +52,8 @@ export interface TermsUpdate {
    * `deriveAcceptedLinkageTerms`, as an acceptance does.
    */
   linkageTerms: LinkageTerms;
+  /** Notes about the update that no reader acts on. */
+  about?: FormatInfoBlock;
 }
 
 /**
@@ -60,8 +75,14 @@ export function termsUpdateFor(
 /** The `kind` a terms update's body states. */
 const TERMS_UPDATE_KIND = "terms-update";
 
-/** The format `version` a terms update's body states. */
-const TERMS_UPDATE_VERSION = "1";
+/** The format version table of the terms update. */
+export const TERMS_UPDATE_VERSION_POLICY: FormatVersionPolicy =
+  FIRST_FORMAT_VERSION_POLICY;
+
+const TERMS_UPDATE_FILE_NAME = "This terms update";
+
+const TERMS_UPDATE_NEWER_REMEDY =
+  "Update Alcove, then try the terms update again.";
 
 /**
  * The HKDF info strings a terms update derives from the shared secret, one
@@ -90,12 +111,23 @@ const MAC_BYTES = 32;
  */
 export const MAX_ENCODED_TERMS_UPDATE_LENGTH = MAX_ENCODED_INVITATION_LENGTH;
 
-const TermsUpdateBodySchema = z.strictObject({
-  kind: z.literal(TERMS_UPDATE_KIND),
-  version: z.literal(TERMS_UPDATE_VERSION),
-  partnership: z.string().regex(/^[A-Za-z0-9_-]{22}$/),
-  linkageTerms: InvitationLinkageTermsSchema,
-});
+// Strict: a member outside this shape is one a newer Alcove wrote. `about` is
+// the one block skipped.
+const TermsUpdateBodySchema = z.strictObject(
+  {
+    kind: z.literal(TERMS_UPDATE_KIND),
+    version: z.string().regex(/^[1-9][0-9]{0,8}$/),
+    about: FormatInfoBlockSchema.optional(),
+    partnership: z.string().regex(/^[A-Za-z0-9_-]{22}$/),
+    linkageTerms: InvitationLinkageTermsSchema,
+  },
+  {
+    error: newerFormatMemberErrorMap(
+      TERMS_UPDATE_FILE_NAME,
+      TERMS_UPDATE_NEWER_REMEDY,
+    ),
+  },
+);
 
 /**
  * Which check refused a terms update:
@@ -170,8 +202,11 @@ async function termsUpdateMac(
  * a `.`, and the base64url HMAC-SHA-256 of the body bytes under a key derived
  * from the secret. The body is validated against the same schema
  * {@link decodeTermsUpdate} applies, so nothing is encoded that a decoder
- * would refuse.
+ * would refuse, and written at the lowest format version its content needs:
+ * a field holding the value an older reader assumes for its absence is left
+ * out, and `version` states the version the rest needs.
  *
+ * @param policy the update's version table; this build's by default.
  * @throws {UsageError} if `sharedSecret` is not a valid shared secret or the
  *   encoded update exceeds {@link MAX_ENCODED_TERMS_UPDATE_LENGTH}.
  * @throws {ZodError} if the update fails the schema.
@@ -179,12 +214,20 @@ async function termsUpdateMac(
 export async function encodeTermsUpdate(
   update: TermsUpdate,
   sharedSecret: string,
+  policy: FormatVersionPolicy = TERMS_UPDATE_VERSION_POLICY,
 ): Promise<string> {
+  const lowest = withoutOldDefaults(
+    {
+      linkageTerms: update.linkageTerms,
+      ...(update.about !== undefined ? { about: update.about } : {}),
+    },
+    policy,
+  );
   const body = TermsUpdateBodySchema.parse({
     kind: TERMS_UPDATE_KIND,
-    version: TERMS_UPDATE_VERSION,
+    version: String(formatVersionNeeded(lowest, policy).version),
     partnership: await termsUpdatePartnership(sharedSecret),
-    linkageTerms: update.linkageTerms,
+    ...lowest,
   });
   const bytes = enc.encode(JSON.stringify(body));
   const encoded = `${toBase64Url(bytes)}.${toBase64Url(
@@ -222,18 +265,19 @@ function statedPartnership(body: Uint8Array<ArrayBuffer>): string | undefined {
 }
 
 /**
- * Whether an authenticated body states the terms update `kind` under a
- * format `version` above the one this build reads.
+ * The format version an authenticated body states beside the terms update
+ * `kind`, or `undefined` where it states no readable one.
  */
-function statesNewerVersion(json: unknown): boolean {
-  if (typeof json !== "object" || json === null) return false;
+function statedVersion(json: unknown): number | undefined {
+  if (typeof json !== "object" || json === null) return undefined;
   const { kind, version } = json as Record<string, unknown>;
-  return (
-    kind === TERMS_UPDATE_KIND &&
-    typeof version === "string" &&
-    /^[1-9][0-9]{0,8}$/.test(version) &&
-    Number(version) > Number(TERMS_UPDATE_VERSION)
-  );
+  if (kind !== TERMS_UPDATE_KIND || typeof version !== "string")
+    return undefined;
+  return declaredFormatVersion(version);
+}
+
+function refusedNewer(message: string): TermsUpdateRefusedError {
+  return new TermsUpdateRefusedError("format", message);
 }
 
 /**
@@ -245,12 +289,18 @@ function statesNewerVersion(json: unknown): boolean {
  * `encoded` is taken as given; strip a hard-wrapped paste's whitespace first
  * (`stripInvitationWhitespace`).
  *
+ * An authenticated body a newer Alcove made is refused as `format`, naming
+ * what this build does not read: a `version` above the policy's, or a member
+ * outside the schema anywhere but the `about` block, which is skipped.
+ *
+ * @param policy the update's version table; this build's by default.
  * @throws {TermsUpdateRefusedError} naming the check that refused it.
  * @throws {UsageError} if `sharedSecret` is not a valid shared secret.
  */
 export async function decodeTermsUpdate(
   encoded: string,
   sharedSecret: string,
+  policy: FormatVersionPolicy = TERMS_UPDATE_VERSION_POLICY,
 ): Promise<TermsUpdate> {
   if (encoded.length > MAX_ENCODED_TERMS_UPDATE_LENGTH)
     throw refusedFormat(
@@ -304,19 +354,44 @@ export async function decodeTermsUpdate(
       throw refusedFormat("its content is not valid JSON");
     throw err;
   }
+  const declared = statedVersion(json);
+  if (declared !== undefined && declared > policy.current)
+    throw refusedNewer(
+      newerFormatVersionMessage(
+        TERMS_UPDATE_FILE_NAME,
+        declared,
+        policy.current,
+        TERMS_UPDATE_NEWER_REMEDY,
+      ),
+    );
   let parsed: z.infer<typeof TermsUpdateBodySchema>;
   try {
     parsed = TermsUpdateBodySchema.parse(json);
   } catch (err) {
     if (!(err instanceof z.ZodError)) throw err;
-    if (statesNewerVersion(json))
-      throw new TermsUpdateRefusedError(
-        "format",
-        "this terms update was made by a newer version of Alcove than this " +
-          "one; update Alcove, then try the terms update again",
-      );
+    const unknownMember = err.issues.find(
+      (issue) => issue.code === "unrecognized_keys",
+    );
+    if (unknownMember !== undefined) throw refusedNewer(unknownMember.message);
     throw refusedFormat("its content does not match the terms update format");
   }
+  const newer = [
+    ...droppedLinkageTermsIssues(
+      TERMS_UPDATE_FILE_NAME,
+      TERMS_UPDATE_NEWER_REMEDY,
+      (json as Record<string, unknown>)["linkageTerms"],
+      parsed.linkageTerms,
+    ),
+    ...formatVersionBelowNeededIssues(
+      TERMS_UPDATE_FILE_NAME,
+      "version",
+      parsed,
+      Number(parsed.version),
+      policy,
+    ),
+  ];
+  if (newer.length > 0)
+    throw refusedNewer((newer[0] as z.core.$ZodIssue).message);
   if (parsed.partnership !== partnership)
     throw new TermsUpdateRefusedError(
       "partnership",

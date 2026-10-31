@@ -511,7 +511,7 @@ const PENDING_FILE_BYTES =
   '  "relayRegistrationPendingSince": "2026-02-01T00:00:00.000Z"\n' +
   "}\n";
 
-test("a key file in the established byte layout reads, and each write keeps that layout", () => {
+test("a key file without a version reads, and each write states version 1 first", () => {
   const keyPath = path.join(dir, ".alcove.key");
   fs.writeFileSync(keyPath, PENDING_FILE_BYTES, { mode: 0o600 });
   expect(loadKeyFile(keyPath)).toEqual({
@@ -523,6 +523,7 @@ test("a key file in the established byte layout reads, and each write keeps that
   markRotationInFlight(keyPath, TOKEN, Date.parse("2026-03-01T12:00:00Z"));
   expect(fs.readFileSync(keyPath, "utf8")).toBe(
     "{\n" +
+      '  "version": 1,\n' +
       `  "sharedSecret": "${TOKEN}",\n` +
       '  "expires": "2030-01-01T00:00:00.000Z",\n' +
       '  "relayRegistrationPendingSince": "2026-02-01T00:00:00.000Z",\n' +
@@ -531,33 +532,33 @@ test("a key file in the established byte layout reads, and each write keeps that
   );
 
   clearRotationInFlight(keyPath, TOKEN);
-  expect(fs.readFileSync(keyPath, "utf8")).toBe(PENDING_FILE_BYTES);
+  expect(fs.readFileSync(keyPath, "utf8")).toBe(
+    PENDING_FILE_BYTES.replace("{\n", '{\n  "version": 1,\n'),
+  );
 
   saveKeyFile(keyPath, buildRotatedKeyFile(TOKEN, undefined, 0));
   expect(fs.readFileSync(keyPath, "utf8")).toBe(
-    `{\n  "sharedSecret": "${TOKEN}"\n}\n`,
+    `{\n  "version": 1,\n  "sharedSecret": "${TOKEN}"\n}\n`,
   );
 });
 
-test("a field the key file schema does not know is read past and dropped by the next write", () => {
+test("a field the key file schema does not know is refused by name and the file left as it is", () => {
   const keyPath = path.join(dir, ".alcove.key");
-  fs.writeFileSync(
-    keyPath,
+  const bytes =
     "{\n" +
-      `  "sharedSecret": "${TOKEN}",\n` +
-      '  "fieldFromALaterBuild": "2026-02-01T00:00:00.000Z"\n' +
-      "}\n",
-    { mode: 0o600 },
+    `  "sharedSecret": "${TOKEN}",\n` +
+    '  "fieldFromALaterBuild": "2026-02-01T00:00:00.000Z"\n' +
+    "}\n";
+  fs.writeFileSync(keyPath, bytes, { mode: 0o600 });
+  expect(() => loadKeyFile(keyPath)).toThrow(
+    'The key file has the field \\"fieldFromALaterBuild\\", which this ' +
+      "version of Alcove does not read: it was made by a newer version of " +
+      "Alcove.",
   );
-  expect(loadKeyFile(keyPath)).toEqual({ sharedSecret: TOKEN });
-
-  markRotationInFlight(keyPath, TOKEN, Date.parse("2026-03-01T12:00:00Z"));
-  expect(fs.readFileSync(keyPath, "utf8")).toBe(
-    "{\n" +
-      `  "sharedSecret": "${TOKEN}",\n` +
-      '  "rotationInFlightSince": "2026-03-01T12:00:00.000Z"\n' +
-      "}\n",
-  );
+  expect(() =>
+    markRotationInFlight(keyPath, TOKEN, Date.parse("2026-03-01T12:00:00Z")),
+  ).toThrow("fieldFromALaterBuild");
+  expect(fs.readFileSync(keyPath, "utf8")).toBe(bytes);
 });
 
 // --- The previous secret and the rotation history ---------------------------

@@ -1,9 +1,11 @@
 import { ZodError } from "zod";
+import type { z } from "zod";
 import { expect, test } from "vitest";
 import { parse as parseYaml } from "yaml";
 
 import {
   mintExchangeFile,
+  mintExchangeSpec,
   connectionFromLocator,
 } from "../../src/config/exchangeFile";
 import type {
@@ -13,9 +15,11 @@ import type {
 import { PLACEHOLDER_SSH_USERNAME } from "../../src/config/endpointProducer";
 import {
   parseExchangeSpec,
+  safeParseExchangeSpec,
   ExchangeSpecSchema,
 } from "../../src/config/exchangeSpec";
-import { camelizeKeys } from "../../src/utils/camelizeKeys";
+import type { FormatVersionPolicy } from "../../src/config/formatVersion";
+import { camelizeKeys, snakeizeKeys } from "../../src/utils/camelizeKeys";
 import type { LinkageTerms } from "../../src/config/linkageTermsSchema";
 import type { FileSyncOptions } from "../../src/config/connection";
 
@@ -69,6 +73,7 @@ test("mintExchangeFile: an sftp config re-parses (camelize + schema) equal to th
   // What the mint layer asserted internally is exactly what the schema returns
   // for the assembled spec: build that expected spec the same way and compare.
   const expected = ExchangeSpecSchema.parse({
+    formatVersion: 1,
     connection: {
       channel: "sftp",
       server: {
@@ -319,6 +324,7 @@ test("mintExchangeFile: camelize(parse(mint(x))) equals the schema parse of the 
   });
   const viaYaml = ExchangeSpecSchema.parse(camelizeKeys(parseYaml(yaml)));
   const expected = ExchangeSpecSchema.parse({
+    formatVersion: 1,
     connection: {
       channel: "sftp",
       server: {
@@ -458,4 +464,138 @@ test("mintExchangeFile: a webrtc locator is not an admissible mint input (compil
   // Reference `input` so it is not an unused binding; the assertion under test is
   // the compile-time @ts-expect-error above, not a runtime property.
   expect(input.linkageTerms).toBe(baseTerms);
+});
+
+// --- Format version -----------------------------------------------------------
+
+// A later version adding `include_matching_key`, whose absence an older reader
+// takes as false, and `retention_disposition`, which has no such value.
+const FIELDS_AT_VERSION_2: FormatVersionPolicy = {
+  current: 2,
+  features: [
+    {
+      path: ["includeMatchingKey"],
+      name: "include_matching_key",
+      version: 2,
+      oldDefault: false,
+    },
+    {
+      path: ["retentionDisposition"],
+      name: "retention_disposition",
+      version: 2,
+    },
+  ],
+};
+
+const sftpLocator = {
+  channel: "sftp",
+  host: "sftp.example.org",
+  path: "/drop",
+} as const;
+
+function firstIssue(run: () => unknown): z.core.$ZodIssue {
+  try {
+    run();
+  } catch (err) {
+    expect(err).toBeInstanceOf(ZodError);
+    return (err as ZodError).issues[0] as z.core.$ZodIssue;
+  }
+  throw new Error("expected a refusal");
+}
+
+test("a minted file states format_version first, and this build reads it", () => {
+  const yaml = mintExchangeFile({
+    connection: sftpLocator,
+    linkageTerms: baseTerms,
+  });
+  expect(yaml.startsWith("format_version: 1\n")).toBe(true);
+  expect(parseExchangeSpec(parseYaml(yaml)).formatVersion).toBe(1);
+});
+
+test("a hand-authored file without format_version is read as version 1", () => {
+  const raw = parseYaml(
+    mintExchangeFile({ connection: sftpLocator, linkageTerms: baseTerms }),
+  ) as Record<string, unknown>;
+  delete raw["format_version"];
+  expect(parseExchangeSpec(raw).formatVersion).toBeUndefined();
+});
+
+test("a file using no newer field is minted at version 1 and read by this build", () => {
+  const minted = mintExchangeSpec(
+    {
+      connection: sftpLocator,
+      linkageTerms: baseTerms,
+      includeMatchingKey: false,
+    },
+    FIELDS_AT_VERSION_2,
+  );
+  expect(minted.formatVersion).toBe(1);
+  expect(minted).not.toHaveProperty("includeMatchingKey");
+  expect(() => parseExchangeSpec(snakeizeKeys(minted))).not.toThrow();
+});
+
+test("a file using a newer field is minted at that version, refused by this build by version", () => {
+  const minted = snakeizeKeys(
+    mintExchangeSpec(
+      {
+        connection: sftpLocator,
+        linkageTerms: baseTerms,
+        retentionDisposition: "kept seven years",
+      },
+      FIELDS_AT_VERSION_2,
+    ),
+  ) as Record<string, unknown>;
+  expect(minted["format_version"]).toBe(2);
+  expect(() => parseExchangeSpec(minted, FIELDS_AT_VERSION_2)).not.toThrow();
+  expect(firstIssue(() => parseExchangeSpec(minted))).toEqual({
+    code: "custom",
+    path: ["format_version"],
+    message:
+      "The exchange file is format version 2, made by a newer version of " +
+      "Alcove than this one, which reads up to version 1. Use the version " +
+      "of Alcove that made the file, or a newer one.",
+  });
+});
+
+test("a declared format_version below what the fields need is refused naming the field and the version", () => {
+  const raw = {
+    format_version: 1,
+    ...(snakeizeKeys(
+      mintExchangeSpec({ connection: sftpLocator, linkageTerms: baseTerms }),
+    ) as object),
+    retention_disposition: "kept seven years",
+  };
+  const message =
+    'The exchange file declares format version 1, but its field "retention_disposition" ' +
+    "needs version 2. Set format_version to 2, or remove the field.";
+  expect(
+    firstIssue(() => parseExchangeSpec(raw, FIELDS_AT_VERSION_2)),
+  ).toMatchObject({ path: ["retentionDisposition"], message });
+  const result = safeParseExchangeSpec(raw, FIELDS_AT_VERSION_2);
+  expect(result.error?.issues[0]?.message).toBe(message);
+});
+
+test("an unknown member of the about block is skipped and held", () => {
+  const about = { minted_at: "2026-10-31T00:00:00Z", from_a_later_build: 1 };
+  const yaml = mintExchangeFile({
+    connection: sftpLocator,
+    linkageTerms: baseTerms,
+    about,
+  });
+  const parsed = parseExchangeSpec(parseYaml(yaml));
+  expect(snakeizeKeys(parsed)).toMatchObject({ about });
+});
+
+test("an unknown semantic member is refused by name as possibly from a newer Alcove", () => {
+  const raw = {
+    ...(snakeizeKeys(
+      mintExchangeSpec({ connection: sftpLocator, linkageTerms: baseTerms }),
+    ) as object),
+    zz_later_field: true,
+  };
+  expect(firstIssue(() => parseExchangeSpec(raw)).message).toBe(
+    'Unrecognized key: "zz_later_field". If the spelling is intended, the ' +
+      "file was made by a newer version of Alcove than this one; use that " +
+      "version or a newer one",
+  );
 });

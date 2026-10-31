@@ -5,6 +5,7 @@ import {
   safeParseSigningConfig,
 } from "../../src/config/signing";
 import {
+  NEWER_EXCHANGE_FILE_HINT,
   parseExchangeSpec,
   safeParseExchangeSpec,
 } from "../../src/config/exchangeSpec";
@@ -135,7 +136,7 @@ describe("signing.receipt_output", () => {
         {
           code: "unrecognized_keys",
           path: ["signing"],
-          message: `Unrecognized key: "${key}"`,
+          message: `Unrecognized key: "${key}"` + NEWER_EXCHANGE_FILE_HINT,
         },
       ];
       expect(() => parseExchangeSpec(raw)).toThrow();

@@ -14,6 +14,19 @@ import { pathsResolveToSameDir } from "../utils/pathCompare.js";
 import { parseBoundedJson } from "../utils/boundedJson.js";
 import { fromBase64Url } from "../utils/crypto.js";
 import { UsageError } from "../errors.js";
+import {
+  declaredFormatVersion,
+  droppedMemberIssues,
+  FIRST_FORMAT_VERSION_POLICY,
+  FormatInfoBlockSchema,
+  formatVersionBelowNeededIssues,
+  formatVersionNeeded,
+  newerFormatMemberErrorMap,
+  newerFormatVersionMessage,
+  withoutOldDefaults,
+  type FormatInfoBlock,
+  type FormatVersionPolicy,
+} from "./formatVersion.js";
 
 // --- Connection endpoint -----------------------------------------------------
 
@@ -356,13 +369,13 @@ const ConnectionEndpointSchema: z.ZodType<ConnectionEndpoint> = z
  */
 export interface InvitationToken {
   /**
-   * Token format version, bumped only on a change an existing decoder cannot
-   * read. An optional top-level field is compatible (the top level is
-   * non-strict); a field added to a strict endpoint sub-schema is not, and once
-   * a release ships it must bump the version. The split pair and `relay` were
-   * added before any release, without a bump.
+   * Token format version, a decimal string. {@link encodeInvitation} writes
+   * the lowest version the token's content needs, whatever this states;
+   * {@link decodeInvitation} refuses one above {@link INVITATION_VERSION_POLICY}'s.
    */
-  version: "1";
+  version: string;
+  /** Notes about the token that no reader acts on. */
+  about?: FormatInfoBlock;
   linkageTerms: LinkageTerms;
   /**
    * Short-lived setup secret, rotated to a persistent shared secret on first
@@ -402,24 +415,66 @@ export const InvitationLinkageTermsSchema: z.ZodType<LinkageTerms> =
     LinkageTermsSchema,
   );
 
-const InvitationTokenBodySchema = z.object({
-  version: z.literal("1"),
-  // Camelizes transform.params before validating (InvitationLinkageTermsSchema).
-  linkageTerms: InvitationLinkageTermsSchema,
-  sharedSecret: z
-    .string()
-    .regex(
-      SHARED_SECRET_REGEX,
-      "invitation sharedSecret must be a base64url-encoded 32-byte value " +
-        "(43 base64url characters; final character must be in " +
-        "[AEIMQUYcgkosw048])",
+/**
+ * Each member of a token's or terms update's `linkageTerms` that
+ * {@link InvitationLinkageTermsSchema} dropped, refused as one a newer Alcove
+ * wrote. Runs on a successful parse of `rawTerms` only.
+ *
+ * @internal not a stable public API.
+ */
+export function droppedLinkageTermsIssues(
+  fileName: string,
+  remedy: string,
+  rawTerms: unknown,
+  parsedTerms: LinkageTerms,
+): Array<z.core.$ZodIssue> {
+  return droppedMemberIssues(
+    fileName,
+    remedy,
+    ["linkageTerms"],
+    rawTerms,
+    camelizeKeys(rawTerms, PARAMS_WIDTH_BOUND),
+    parsedTerms,
+  );
+}
+
+/** The format version table of the invitation token. */
+export const INVITATION_VERSION_POLICY: FormatVersionPolicy =
+  FIRST_FORMAT_VERSION_POLICY;
+
+const INVITATION_FILE_NAME = "The invitation";
+
+const INVITATION_NEWER_REMEDY =
+  "Update Alcove, then open the invitation again.";
+
+// Strict: a member outside this shape is one a newer Alcove wrote, and is
+// refused by name rather than dropped. `about` is the one block skipped.
+const InvitationTokenBodySchema = z.strictObject(
+  {
+    version: z.string().regex(/^[1-9][0-9]{0,8}$/),
+    about: FormatInfoBlockSchema.optional(),
+    // Camelizes transform.params before validating (InvitationLinkageTermsSchema).
+    linkageTerms: InvitationLinkageTermsSchema,
+    sharedSecret: z
+      .string()
+      .regex(
+        SHARED_SECRET_REGEX,
+        "invitation sharedSecret must be a base64url-encoded 32-byte value " +
+          "(43 base64url characters; final character must be in " +
+          "[AEIMQUYcgkosw048])",
+      ),
+    expires: z.iso.datetime().optional(),
+    connectionEndpoint: ConnectionEndpointSchema.optional(),
+    // No default: absence means nothing declared.
+    inviterRetainsFiles: z.boolean().optional(),
+  },
+  {
+    error: newerFormatMemberErrorMap(
+      INVITATION_FILE_NAME,
+      INVITATION_NEWER_REMEDY,
     ),
-  expires: z.iso.datetime().optional(),
-  connectionEndpoint: ConnectionEndpointSchema.optional(),
-  // Top-level and optional, so an older decoder ignores it. No default:
-  // absence means nothing declared.
-  inviterRetainsFiles: z.boolean().optional(),
-});
+  },
+);
 
 const InvitationTokenSchema: z.ZodType<InvitationToken> =
   InvitationTokenBodySchema
@@ -564,8 +619,11 @@ export const MAX_RAW_INVITATION_LENGTH = 2 * MAX_ENCODED_INVITATION_LENGTH;
  * Serialize an {@link InvitationToken} as base64url plus a 4-byte truncated
  * SHA-256 checksum, which detects transcription errors only. Every Alcove
  * invitation is emitted here, validated against the stricter
- * {@link MintedInvitationTokenSchema}.
+ * {@link MintedInvitationTokenSchema}, at the lowest format version its
+ * content needs: a field holding the value an older reader assumes for its
+ * absence is left out, and `version` states the version the rest needs.
  *
+ * @param policy the token's version table; this build's by default.
  * @throws {UsageError} if `expires` is not in the future, or the encoded token
  *   exceeds {@link MAX_ENCODED_INVITATION_LENGTH} (a long exclude list can).
  * @throws {ZodError} if the token fails {@link MintedInvitationTokenSchema}.
@@ -574,10 +632,22 @@ export const MAX_RAW_INVITATION_LENGTH = 2 * MAX_ENCODED_INVITATION_LENGTH;
  */
 export async function encodeInvitation(
   token: InvitationToken,
+  policy: FormatVersionPolicy = INVITATION_VERSION_POLICY,
 ): Promise<string> {
-  // Serialize the parse result: the top-level schema is non-strict for
-  // forward compatibility, and parsing strips a type-bypassed extra field.
-  const validated = MintedInvitationTokenSchema.parse(token);
+  // Only the schema's own members are serialized, so a type-bypassed extra
+  // field never reaches the wire.
+  const lowest = withoutOldDefaults(
+    Object.fromEntries(
+      Object.entries(token).filter(([name]) =>
+        Object.hasOwn(InvitationTokenBodySchema.shape, name),
+      ),
+    ),
+    policy,
+  );
+  const validated = MintedInvitationTokenSchema.parse({
+    ...lowest,
+    version: String(formatVersionNeeded(lowest, policy).version),
+  });
   if (
     validated.expires !== undefined &&
     new Date(validated.expires) <= new Date()
@@ -642,15 +712,22 @@ export class InvitationDecodeError extends Error {
  * Decode an invitation from {@link encodeInvitation}, verifying the checksum
  * and the schema. Does not check expiry ({@link isInvitationExpired}).
  *
+ * A token a newer Alcove made is refused naming what this build does not
+ * read: a `version` above the policy's, or a member outside the schema
+ * anywhere but the `about` block, which is skipped.
+ *
+ * @param policy the token's version table; this build's by default.
  * @throws {InvitationDecodeError} if the string is too long (checked first),
  *   too short, not base64url, fails the checksum, or is not JSON.
- * @throws {ZodError} on schema validation failure.
+ * @throws {ZodError} on schema validation failure, a newer version or
+ *   member, or a version below what the token's fields need.
  * @throws {NestingDepthExceededError|NodeCountExceededError} from the
  *   camelCase pre-pass; both are `UsageError` subclasses.
  * @throws {KeyFoldCollisionError} if two keys of one object fold to one name.
  */
 export async function decodeInvitation(
   encoded: string,
+  policy: FormatVersionPolicy = INVITATION_VERSION_POLICY,
 ): Promise<InvitationToken> {
   // The checksum gates nothing, so this cap is the size bound.
   if (encoded.length > MAX_ENCODED_INVITATION_LENGTH) {
@@ -697,7 +774,42 @@ export async function decodeInvitation(
       "invitation payload is not valid JSON",
     );
   }
-  return InvitationTokenSchema.parse(raw);
+  const declared = declaredFormatVersion(
+    typeof raw === "object" && raw !== null
+      ? (raw as Record<string, unknown>)["version"]
+      : undefined,
+  );
+  if (declared !== undefined && declared > policy.current)
+    throw new z.ZodError([
+      {
+        code: "custom",
+        path: ["version"],
+        message: newerFormatVersionMessage(
+          INVITATION_FILE_NAME,
+          declared,
+          policy.current,
+          INVITATION_NEWER_REMEDY,
+        ),
+      },
+    ]);
+  const token = InvitationTokenSchema.parse(raw);
+  const refused = [
+    ...droppedLinkageTermsIssues(
+      INVITATION_FILE_NAME,
+      INVITATION_NEWER_REMEDY,
+      (raw as Record<string, unknown>)["linkageTerms"],
+      token.linkageTerms,
+    ),
+    ...formatVersionBelowNeededIssues(
+      INVITATION_FILE_NAME,
+      "version",
+      token,
+      Number(token.version),
+      policy,
+    ),
+  ];
+  if (refused.length > 0) throw new z.ZodError(refused);
+  return token;
 }
 
 /**

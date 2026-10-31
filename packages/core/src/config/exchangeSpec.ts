@@ -1,10 +1,18 @@
 import { z } from "zod";
 import { maxCodeUnits } from "../utils/maxCodeUnits.js";
 import {
+  camelizeKey,
   camelizeKeys,
   KeyFoldCollisionError,
   type WidthBounds,
 } from "../utils/camelizeKeys.js";
+import {
+  FIRST_FORMAT_VERSION_POLICY,
+  FormatInfoBlockSchema,
+  formatVersionBelowNeededIssues,
+  newerFormatVersionMessage,
+  type FormatVersionPolicy,
+} from "./formatVersion.js";
 import { safeParseCamelized } from "./safeParseCamelized.js";
 import {
   droppedSettingIssues,
@@ -57,6 +65,12 @@ import { SigningConfigSchema } from "./signing.js";
  */
 export const ExchangeSpecSchema = z
   .strictObject({
+    // The file's format version, distinct from linkageTerms.version. Absent
+    // is read as 1; the parse functions below refuse one this build does not
+    // read and one below what the file's fields need.
+    formatVersion: z.int().min(1).optional(),
+    // Notes about the file that no reader acts on; held, never read.
+    about: FormatInfoBlockSchema.optional(),
     connection: ConnectionConfigSchema,
     linkageTerms: LinkageTermsSchema,
     metadata: MetadataSchema.optional(),
@@ -186,10 +200,21 @@ const EXCHANGE_FILE_WIDTH_BOUNDS: WidthBounds = new Map([
  * document spells them ({@link unrecognizedKeysAsWritten}), the schema's own
  * included.
  *
+ * The file's `format_version` is checked against `policy`: one above the
+ * newest this build reads is refused before anything else, and one below what
+ * the file's fields need is refused naming the field and the version.
+ *
+ * @param policy the format's version table; this build's by default.
  * @throws {ZodError} if validation fails, if the document holds a key the
- *   schema does not read, or if it writes one key in two spellings.
+ *   schema does not read, if it writes one key in two spellings, or if its
+ *   format version is one this build does not read or its fields do not fit.
  */
-export function parseExchangeSpec(raw: unknown): ExchangeSpec {
+export function parseExchangeSpec(
+  raw: unknown,
+  policy: FormatVersionPolicy = EXCHANGE_FILE_VERSION_POLICY,
+): ExchangeSpec {
+  const newer = newerExchangeFileIssue(raw, policy);
+  if (newer !== undefined) throw new z.ZodError([newer]);
   let camelized: unknown;
   try {
     camelized = camelizeKeys(raw, EXCHANGE_FILE_WIDTH_BOUNDS);
@@ -200,25 +225,118 @@ export function parseExchangeSpec(raw: unknown): ExchangeSpec {
   }
   const result = ExchangeSpecSchema.safeParse(camelized);
   if (!result.success)
-    throw new z.ZodError(unrecognizedKeysAsWritten(raw, result.error.issues));
-  const dropped = droppedSettingIssues(raw, camelized, result.data);
-  if (dropped.length > 0) throw new z.ZodError(dropped);
+    throw new z.ZodError(
+      withNewerFileHint(unrecognizedKeysAsWritten(raw, result.error.issues)),
+    );
+  const refused = [
+    ...withNewerFileHint(droppedSettingIssues(raw, camelized, result.data)),
+    ...exchangeFileVersionIssues(result.data, policy),
+  ];
+  if (refused.length > 0) throw new z.ZodError(refused);
   return result.data;
 }
 
 /**
  * Non-throwing version of {@link parseExchangeSpec}, holding the same rules for
- * a setting neither the case conversion nor the schema keeps. Honors the "safe"
- * contract for the {@link camelizeKeys} bounds too -- see
- * {@link safeParseCamelized}.
+ * a setting neither the case conversion nor the schema keeps and for the
+ * format version. Honors the "safe" contract for the {@link camelizeKeys}
+ * bounds too -- see {@link safeParseCamelized}.
  */
 export function safeParseExchangeSpec(
   raw: unknown,
+  policy: FormatVersionPolicy = EXCHANGE_FILE_VERSION_POLICY,
 ): z.ZodSafeParseResult<ExchangeSpec> {
-  return safeParseCamelized(
+  // A synthesized failure holds no `data`, so the cast's output type is never
+  // read (as in safeParseCamelized).
+  const failure = (
+    issues: Array<z.core.$ZodIssue>,
+  ): z.ZodSafeParseResult<ExchangeSpec> => ({
+    success: false,
+    error: new z.ZodError(issues) as z.ZodError<ExchangeSpec>,
+  });
+  const newer = newerExchangeFileIssue(raw, policy);
+  if (newer !== undefined) return failure([newer]);
+  const result = safeParseCamelized(
     ExchangeSpecSchema,
     raw,
     EXCHANGE_FILE_WIDTH_BOUNDS,
-    (camelized, parsed) => droppedSettingIssues(raw, camelized, parsed),
+    (camelized, parsed) => [
+      ...droppedSettingIssues(raw, camelized, parsed),
+      ...exchangeFileVersionIssues(parsed, policy),
+    ],
+  );
+  if (result.success) return result;
+  return failure(withNewerFileHint(result.error.issues));
+}
+
+/** The format version table of the exchange file. */
+export const EXCHANGE_FILE_VERSION_POLICY: FormatVersionPolicy =
+  FIRST_FORMAT_VERSION_POLICY;
+
+/** A parsed spec's fields that need a version above the one it declares. */
+function exchangeFileVersionIssues(
+  parsed: ExchangeSpec,
+  policy: FormatVersionPolicy,
+): Array<z.core.$ZodIssue> {
+  return formatVersionBelowNeededIssues(
+    "The exchange file",
+    "format_version",
+    parsed,
+    parsed.formatVersion ?? 1,
+    policy,
+  );
+}
+
+/**
+ * The refusal of a document declaring a `format_version` above the policy's,
+ * read from the raw document so it leads every other refusal.
+ */
+function newerExchangeFileIssue(
+  raw: unknown,
+  policy: FormatVersionPolicy,
+): z.core.$ZodIssue | undefined {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw))
+    return undefined;
+  const key = Object.keys(raw).find(
+    (name) => camelizeKey(name) === "formatVersion",
+  );
+  if (key === undefined) return undefined;
+  const declared = (raw as Record<string, unknown>)[key];
+  if (!Number.isSafeInteger(declared) || (declared as number) <= policy.current)
+    return undefined;
+  return {
+    code: "custom",
+    path: [key],
+    message: newerFormatVersionMessage(
+      "The exchange file",
+      declared as number,
+      policy.current,
+      "Use the version of Alcove that made the file, or a newer one.",
+    ),
+  };
+}
+
+/**
+ * What {@link parseExchangeSpec} appends to a schema-worded unknown-key
+ * refusal.
+ *
+ * @internal exported for testing
+ */
+export const NEWER_EXCHANGE_FILE_HINT =
+  ". If the spelling is intended, the file was made by a newer version of " +
+  "Alcove than this one; use that version or a newer one";
+
+/**
+ * Each schema-worded unknown-key refusal with the hint that a newer Alcove
+ * may have made the file; a block's own guidance is left as it is.
+ */
+function withNewerFileHint(
+  issues: ReadonlyArray<z.core.$ZodIssue>,
+): Array<z.core.$ZodIssue> {
+  return issues.map((issue) =>
+    issue.code === "unrecognized_keys" &&
+    issue.message.startsWith("Unrecognized key")
+      ? { ...issue, message: issue.message + NEWER_EXCHANGE_FILE_HINT }
+      : issue,
   );
 }

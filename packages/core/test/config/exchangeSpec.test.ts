@@ -2,6 +2,7 @@ import { ZodError } from "zod";
 import { expect, test } from "vitest";
 
 import {
+  NEWER_EXCHANGE_FILE_HINT,
   parseExchangeSpec,
   safeParseExchangeSpec,
 } from "../../src/config/exchangeSpec";
@@ -267,7 +268,7 @@ test.each([
     {
       code: "unrecognized_keys",
       path: [],
-      message: `Unrecognized key: "${key}"`,
+      message: `Unrecognized key: "${key}"` + NEWER_EXCHANGE_FILE_HINT,
     },
   ];
   let thrown: unknown;
@@ -624,7 +625,7 @@ test.each([
       {
         code: "unrecognized_keys",
         path: ["linkageTerms"],
-        message: `Unrecognized key: "${key}"`,
+        message: `Unrecognized key: "${key}"` + NEWER_EXCHANGE_FILE_HINT,
       },
     ];
     let thrown: unknown;
@@ -655,7 +656,9 @@ test("a filedrop connection stating server.provision is refused: the channel has
   const issue = result.error?.issues[0];
   expect(issue?.code).toBe("unrecognized_keys");
   expect(issue?.path).toEqual(["connection"]);
-  expect(issue?.message).toBe('Unrecognized key: "server"');
+  expect(issue?.message).toBe(
+    'Unrecognized key: "server"' + NEWER_EXCHANGE_FILE_HINT,
+  );
 });
 
 test("connection.options reads write_without_renaming on sftp and filedrop", () => {
@@ -691,7 +694,9 @@ test("connection.options refuses publish_without_rename as an unread key", () =>
   expect(result.success).toBe(false);
   const issue = result.error?.issues[0];
   expect(issue?.code).toBe("unrecognized_keys");
-  expect(issue?.message).toBe('Unrecognized key: "publish_without_rename"');
+  expect(issue?.message).toBe(
+    'Unrecognized key: "publish_without_rename"' + NEWER_EXCHANGE_FILE_HINT,
+  );
 });
 
 test("an unread key is named in the spelling the file writes, not snake_case", () => {
@@ -706,7 +711,7 @@ test("an unread key is named in the spelling the file writes, not snake_case", (
     });
     expect(result.success, key).toBe(false);
     expect(result.error?.issues[0]?.message, key).toBe(
-      `Unrecognized key: "${key}"`,
+      `Unrecognized key: "${key}"` + NEWER_EXCHANGE_FILE_HINT,
     );
   }
 });
@@ -725,7 +730,7 @@ test("one unread key that begins another is named without swallowing it", () => 
   });
   expect(result.success).toBe(false);
   expect(result.error?.issues[0]?.message).toBe(
-    'Unrecognized keys: "zz_probe", "zz_probe_key"',
+    'Unrecognized keys: "zz_probe", "zz_probe_key"' + NEWER_EXCHANGE_FILE_HINT,
   );
 });
 
@@ -745,7 +750,7 @@ test("a strict block names its unrecognized key as the file spells it too", () =
     expect(result.success).toBe(false);
     expect(result.error?.issues[0]?.path).toEqual(path);
     expect(result.error?.issues[0]?.message).toBe(
-      'Unrecognized key: "zz_probe_key"',
+      'Unrecognized key: "zz_probe_key"' + NEWER_EXCHANGE_FILE_HINT,
     );
     expect(() => parseExchangeSpec(spec)).toThrow("zz_probe_key");
   }
