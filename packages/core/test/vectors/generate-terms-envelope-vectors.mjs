@@ -114,6 +114,7 @@ function rotationFor(side) {
   if (side.rotates !== true) return undefined;
   return {
     inputs: {
+      negotiatedProtocolVersion: PROTOCOL_VERSION,
       sessionKey: fromHex(rotation.sessionKeyHex),
       keyAgreementOutput: fromHex(rotation.keyAgreementOutputHex),
       initiatorValue: fromHex(rotation.initiatorValueHex),

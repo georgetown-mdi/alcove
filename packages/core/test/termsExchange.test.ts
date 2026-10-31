@@ -29,6 +29,7 @@ import {
 } from "../src/connection/messageConnection";
 import { sanitizeErrorForDisplay } from "../src/utils/sanitizeErrorForDisplay";
 import { sanitizeForDisplay } from "../src/utils/sanitizeForDisplay";
+import { randomBytes } from "../src/utils/crypto";
 import { recordingConnection } from "./utils/recordingConnection";
 
 // --- Test fixtures -----------------------------------------------------------
@@ -255,6 +256,17 @@ test("both parties advertise the protocol version on their terms messages", asyn
   expect("protocolVersion" in initiatorSent[1]).toBe(false);
 });
 
+// The key material a completed key exchange leaves both sides, so the rotation
+// an authenticated run passes completes.
+const HANDSHAKE_KEYS = {
+  sessionKey: randomBytes(32),
+  keyAgreementOutput: randomBytes(32),
+  initiatorValue: randomBytes(32),
+  expires: undefined,
+};
+
+// An authenticated run's terms exchange, whose rotation inputs name the
+// protocol version the key exchange negotiated.
 function exchangeAtVersion(
   conn: MessageConnection,
   role: "initiator" | "responder",
@@ -271,8 +283,10 @@ function exchangeAtVersion(
     undefined,
     undefined,
     undefined,
-    undefined,
-    negotiated,
+    {
+      inputs: { ...HANDSHAKE_KEYS, negotiatedProtocolVersion: negotiated },
+      store: () => {},
+    },
   );
 }
 

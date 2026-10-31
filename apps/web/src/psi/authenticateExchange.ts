@@ -111,9 +111,8 @@ export async function authenticateExchange(
     );
   const connection = await EncryptedMessageConnection.create(
     mc,
-    result.sessionKey,
+    result,
     exchangeRole,
-    result.negotiated.envelope,
   );
   return { ...result, connection };
 }

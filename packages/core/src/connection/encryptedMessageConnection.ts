@@ -4,7 +4,7 @@ import {
   InternalConsistencyError,
   asConnectionError,
 } from "../errors";
-import { deriveAeadKey } from "../auth";
+import { deriveAeadKey, type AuthResult } from "../auth";
 import { enc } from "../utils/crypto";
 import { type MessageConnection } from "./messageConnection";
 import { MAX_FRAME_SIZE_BYTES } from "./frameSize";
@@ -158,24 +158,31 @@ export class EncryptedMessageConnection implements MessageConnection {
   }
 
   /**
-   * Derive the per-direction AEAD keys from `sessionKey` and construct the
+   * Derive the per-direction AEAD keys from the session key and construct the
    * decorator over `inner`. `role` must be this peer's handshake role; the two
    * peers must pass complementary roles (one "initiator", one "responder") so
    * each side's send key matches the other's receive key. A role mismatch is
    * not detected here - it shows up later as a "security" decrypt failure on the
-   * first received frame, not as a construction error. `sessionKey` must be 32
-   * bytes (the AES-256 key length); a wrong length throws a "usage"
-   * {@link ConnectionError}. `envelopeVersion` is the one the key exchange
-   * negotiated (`AuthResult.negotiated.envelope`), which every envelope this
-   * side writes holds and every envelope it reads must hold; a version this
-   * build does not implement throws an {@link InternalConsistencyError}.
+   * first received frame, not as a construction error. The session key must be
+   * 32 bytes (the AES-256 key length); a wrong length throws a "usage"
+   * {@link ConnectionError}.
+   *
+   * `keying` is the key exchange's `AuthResult`, whose session key and
+   * negotiated envelope version this takes; every envelope this side writes
+   * holds that version and every envelope it reads must. A bare session key,
+   * from no key exchange, keys the channel at {@link AEAD_ENVELOPE_VERSION}. A
+   * version this build does not implement throws an
+   * {@link InternalConsistencyError}.
    */
   static async create(
     inner: MessageConnection,
-    sessionKey: Uint8Array<ArrayBuffer>,
+    keying:
+      Pick<AuthResult, "sessionKey" | "negotiated"> | Uint8Array<ArrayBuffer>,
     role: HandshakeRole,
-    envelopeVersion: number = AEAD_ENVELOPE_VERSION,
   ): Promise<EncryptedMessageConnection> {
+    const [sessionKey, envelopeVersion] = ArrayBuffer.isView(keying)
+      ? [keying, AEAD_ENVELOPE_VERSION]
+      : [keying.sessionKey, keying.negotiated.envelope];
     if (envelopeVersion !== AEAD_ENVELOPE_VERSION)
       throw new InternalConsistencyError(
         `EncryptedMessageConnection: envelope version ${envelopeVersion} is ` +

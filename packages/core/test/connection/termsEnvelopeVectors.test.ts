@@ -154,6 +154,7 @@ function rotationFor(side: PartyInputs): TermsRotation | undefined {
   const fixture = vectors.rotation;
   return {
     inputs: {
+      negotiatedProtocolVersion: PROTOCOL_VERSION,
       sessionKey: fromHex(fixture.sessionKeyHex),
       keyAgreementOutput: fromHex(fixture.keyAgreementOutputHex),
       initiatorValue: fromHex(fixture.initiatorValueHex),

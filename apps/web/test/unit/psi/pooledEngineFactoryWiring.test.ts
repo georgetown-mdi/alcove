@@ -63,6 +63,7 @@ vi.mock("../../../src/psi/authenticateExchange.js", () => ({
     Promise.resolve({
       sessionKey: new Uint8Array(32),
       nextSecretInputs: {
+        negotiatedProtocolVersion: 1,
         sessionKey: new Uint8Array(32),
         keyAgreementOutput: new Uint8Array(32),
         initiatorValue: new Uint8Array(32),

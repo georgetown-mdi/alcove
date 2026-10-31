@@ -1347,17 +1347,12 @@ export interface RunExchangeOptions {
    * The shared-secret rotation an authenticated run makes at its terms
    * exchange, which awaits `rotation.store` at this side's point in the store
    * order ({@link TermsRotation}). Passed on every authenticated run and on no
-   * other.
+   * other. Its inputs hold the protocol version the key exchange negotiated,
+   * which the terms exchange states and checks; a run without it uses this
+   * build's own (docs/spec/PROTOCOL.md, "Protocol-version reconcile at the
+   * terms exchange").
    */
   rotation?: TermsRotation;
-  /**
-   * The protocol version the key exchange negotiated
-   * (`AuthResult.negotiated.protocol`), which both terms frames state and
-   * check. Passed on every authenticated run; without it the run checks
-   * against this build's `PROTOCOL_VERSION` (docs/spec/PROTOCOL.md,
-   * "Protocol-version reconcile at the terms exchange").
-   */
-  negotiatedProtocolVersion?: number;
   verbosity?: number;
 }
 
@@ -1588,7 +1583,6 @@ export async function runExchange(
     },
     localReceiveCeiling,
     options.rotation,
-    options.negotiatedProtocolVersion,
   );
   // The initiator that stored drops its previous secret on the responder's
   // first frame past the terms exchange that is not an abort.

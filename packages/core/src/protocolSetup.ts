@@ -1064,7 +1064,7 @@ async function responderNextSecret(
  * `localRecordCount`, "The receive ceiling" for `localReceiveCeiling`, which
  * is always sent, "Withholding the sender's table from a blind helper" for
  * `localDisclosesPayload`, "Protocol-version reconcile at the terms exchange"
- * for `negotiatedProtocolVersion`) and
+ * for the protocol version each side states) and
  * docs/SECURITY_DESIGN.md for `localSaveIntent` and the host-key
  * reconciliation `localHostKey` feeds.
  *
@@ -1089,10 +1089,10 @@ async function responderNextSecret(
  * the next secret at its point in the store order ({@link TermsRotation}).
  * Without it the initiator refuses a message 2 holding that value.
  *
- * `negotiatedProtocolVersion` is the protocol version the key exchange's
- * hellos selected (`AuthResult.negotiated.protocol`); each side states it and
- * refuses a partner frame stating another. A run with no key exchange passes
- * nothing and checks against {@link PROTOCOL_VERSION}.
+ * Each side states a protocol version and refuses a partner frame stating
+ * another: with `rotation`, the one the key exchange's hellos selected
+ * (`rotation.inputs.negotiatedProtocolVersion`); without it, a run with no key
+ * exchange, {@link PROTOCOL_VERSION}.
  */
 export async function exchangeTerms(
   conn: MessageConnection,
@@ -1106,9 +1106,11 @@ export async function exchangeTerms(
   termsChange?: TermsChangeOptions,
   localReceiveCeiling: number = MAX_PSI_DECODE_ELEMENTS,
   rotation?: TermsRotation,
-  negotiatedProtocolVersion: number = PROTOCOL_VERSION,
 ): Promise<TermsExchangeResult> {
-  const protocolVersion = negotiatedProtocolVersion;
+  const protocolVersion =
+    rotation === undefined
+      ? PROTOCOL_VERSION
+      : rotation.inputs.negotiatedProtocolVersion;
   const abortSlot: ResponderAbortSlot = {
     linkageTerms: localTerms,
     protocolVersion,

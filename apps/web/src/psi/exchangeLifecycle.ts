@@ -597,7 +597,6 @@ export async function runExchangeLifecycle<
     const psiLibrary = await psi;
     const result = await runExchange(secure, exchangeRole, prepared, {
       psiLibrary,
-      negotiatedProtocolVersion: authenticated.negotiated.protocol,
       rotation: {
         inputs: authenticated.nextSecretInputs,
         store: (nextSecret) => {

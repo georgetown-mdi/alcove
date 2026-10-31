@@ -10,6 +10,7 @@ import {
   supportedVersions,
 } from "../src/kex";
 import {
+  ENVELOPE_VERSION,
   NO_COMMON_VERSION_MESSAGE,
   PROTOCOL_VERSION,
   encodeHello,
@@ -35,6 +36,10 @@ import {
 import { enc, fromBase64Url, toBase64Url } from "../src/utils/crypto";
 import { deriveKeyAgreement } from "../src/kex";
 import { drawRotationValue, wrapRotationValue } from "../src/nextSecret";
+import { authenticateConnection, type AuthResult } from "../src/auth";
+import { exchangeTerms } from "../src/protocolSetup";
+import type { LinkageTerms } from "../src/config/linkageTermsSchema";
+import { recordingConnection } from "./utils/recordingConnection";
 
 const GENERIC_FAILURE = "key exchange authentication failed";
 const PSK = new Uint8Array(32).fill(0x42);
@@ -434,10 +439,110 @@ describe("the negotiated envelope version", () => {
     expect(envelopeVersionForFrame(false, undefined)).toBe(1);
   });
 
-  test("the encrypted connection refuses an envelope version this build does not implement", async () => {
-    const [a] = createMessagePipe();
-    await expect(
-      EncryptedMessageConnection.create(a, new Uint8Array(32), "initiator", 2),
-    ).rejects.toBeInstanceOf(InternalConsistencyError);
+  test("this build offers envelope version 1 only, the version a party aborts at before it has negotiated", () => {
+    for (const approvedKexSuitesOnly of [false, true])
+      expect(
+        supportedVersions({ approvedKexSuitesOnly }).envelope,
+        "This build offers an envelope version other than 1. A party that " +
+          "aborts before it has negotiated sends that abort at envelope " +
+          "version 1, so its partner reports the abort as an incompatible " +
+          "version rather than the generic failure (docs/spec/FILE_SYNC.md, " +
+          "Message body format). Settle the pre-negotiation abort before a " +
+          "second envelope version ships.",
+      ).toEqual([MESSAGE_ENVELOPE_VERSION]);
+  });
+});
+
+describe("an authenticated run takes the negotiated versions from its authentication result", () => {
+  const SECRET = toBase64Url(PSK);
+  const offerBoth: SupportedVersions = {
+    kex: supportedVersions().kex,
+    protocol: [PROTOCOL_VERSION, PROTOCOL_VERSION + 1],
+    envelope: [ENVELOPE_VERSION, ENVELOPE_VERSION + 1],
+  };
+
+  async function authenticatedPair() {
+    const [a, b] = createMessagePipe();
+    const [initiator, responder] = await Promise.all([
+      authenticateConnection(
+        a,
+        { sharedSecret: SECRET },
+        "initiator",
+        true,
+        { history: [] },
+        offerBoth,
+      ),
+      authenticateConnection(
+        b,
+        { sharedSecret: SECRET },
+        "responder",
+        true,
+        { history: [] },
+        offerBoth,
+      ),
+    ]);
+    return { a, b, initiator, responder };
+  }
+
+  test("the terms exchange states and checks the protocol version the result names", async () => {
+    const { a, b, initiator, responder } = await authenticatedPair();
+    expect(initiator.negotiated.protocol).toBe(PROTOCOL_VERSION + 1);
+    const { conn: recordingA, sent: initiatorSent } = recordingConnection(a);
+    const { conn: recordingB, sent: responderSent } = recordingConnection(b);
+    const terms = (identity: string): LinkageTerms => ({
+      version: "1.0.0",
+      identity,
+      date: "2025-01-01",
+      algorithm: "psi",
+      linkageStrategy: "cascade",
+      output: { expectsOutput: true, shareWithPartner: true },
+      deduplicate: false,
+      linkageFields: [{ name: "ssn", type: "ssn" }],
+      linkageKeys: [{ name: "SSN", elements: [{ field: "ssn" }] }],
+    });
+    const run = (
+      conn: MessageConnection,
+      role: "initiator" | "responder",
+      auth: AuthResult,
+    ) =>
+      exchangeTerms(
+        conn,
+        role,
+        terms(role),
+        10,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { inputs: auth.nextSecretInputs, store: () => {} },
+      );
+    await Promise.all([
+      run(recordingA, "initiator", initiator),
+      run(recordingB, "responder", responder),
+    ]);
+    expect(initiatorSent[0]).toMatchObject({
+      protocolVersion: PROTOCOL_VERSION + 1,
+    });
+    expect(responderSent[0]).toMatchObject({
+      protocolVersion: PROTOCOL_VERSION + 1,
+    });
+  });
+
+  test("the encrypted connection keys the channel at the envelope version the result names", async () => {
+    const { a, initiator } = await authenticatedPair();
+    expect(initiator.negotiated.envelope).toBe(ENVELOPE_VERSION + 1);
+    // This build implements only its own envelope version, so the guard
+    // naming the result's version shows the connection read it.
+    const refused = await EncryptedMessageConnection.create(
+      a,
+      initiator,
+      "initiator",
+    ).catch((error: unknown) => error);
+    expect(refused).toBeInstanceOf(InternalConsistencyError);
+    expect((refused as Error).message).toContain(
+      `envelope version ${ENVELOPE_VERSION + 1}`,
+    );
   });
 });

@@ -58,10 +58,10 @@ export interface AuthResult {
     partner: HandshakeSecretKind;
   };
   /**
-   * The version both hellos selected in each layer. The caller passes
-   * `envelope` to the `EncryptedMessageConnection` it wraps the connection in,
-   * and `protocol` to `runExchange` as `negotiatedProtocolVersion`
-   * (docs/spec/PROTOCOL.md, "The version hello").
+   * The version both hellos selected in each layer. The caller passes this
+   * result to `EncryptedMessageConnection.create`, which keys the channel at
+   * `envelope`; `nextSecretInputs` holds `protocol`, which the terms exchange
+   * reads from the run's rotation (docs/spec/PROTOCOL.md, "The version hello").
    */
   negotiated: NegotiatedVersions;
 }
@@ -308,6 +308,7 @@ export async function authenticateConnection(
     applyEncryption,
     negotiated,
     nextSecretInputs: {
+      negotiatedProtocolVersion: negotiated.protocol,
       sessionKey,
       keyAgreementOutput,
       initiatorValue,
