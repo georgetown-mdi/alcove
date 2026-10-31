@@ -82,5 +82,6 @@
 - - -> An ignored name stays ignored for the whole run, whatever its listed time or size later shows, so a partner hello written again under it is never met.
 - - -> Ignored files are still listed on every poll, so each exchange added to a reused folder makes each listing longer.
 - - -> **Limit -- a reused name the reusing side cannot see answered.**
-- - -> In a split configuration where a transfer moves the ack out of the outbound directory, the reusing party does not see the ack, writes its hello under the ignored name again, and both runs reach their peer timeout.
+- - -> In a split configuration where a transfer moves files out of the outbound directory, the reusing party sees neither its earlier hello nor the ack, writes its hello under the ignored name again, and both runs reach their peer timeout.
+- - -> When its earlier hello is still listed, the guard for an unanswered hello under its own id refuses its start-up instead.
 - - -> Measured on the mock transport (`fileSyncRetainLeftovers.test.ts`): a mismatch leaves no ack, an immediate rerun of both parties in retain mode takes the several-partner-hellos refusal, and the same rerun with both hellos an hour old, with the window at its default, the peer timeout, set to two seconds, completes.

@@ -419,7 +419,7 @@ A `peer_id` with no field writes the same hello name on every run, so a schedule
 
 **Limit -- listings grow.** Ignored files are still listed on every poll, so each exchange added to a reused folder makes each listing longer.
 
-**Limit -- a reused name the reusing side cannot see answered.** In a split configuration where a transfer moves the ack out of the outbound directory, the reusing party does not see the ack, writes its hello under the ignored name again, and both runs reach their peer timeout.
+**Limit -- a reused name the reusing side cannot see answered.** In a split configuration where a transfer moves files out of the outbound directory, the reusing party sees neither its earlier hello nor the ack, writes its hello under the ignored name again, and both runs reach their peer timeout. When its earlier hello is still listed, the guard for an unanswered hello under its own id refuses its start-up instead.
 
 ## Per-run peer id
 
