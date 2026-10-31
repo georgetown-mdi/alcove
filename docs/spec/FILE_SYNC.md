@@ -421,6 +421,10 @@ A `peer_id` with no field writes the same hello name on every run, so a schedule
 
 **Limit -- a reused name the reusing side cannot see answered.** In a split configuration where a transfer moves files out of the outbound directory, the reusing party sees neither its earlier hello nor the ack, writes its hello under the ignored name again, and both runs reach their peer timeout. When its earlier hello is still listed, the guard for an unanswered hello under its own id refuses its start-up instead.
 
+**Limit -- a running exchange looks like an earlier one.** Once a retain exchange's rendezvous completes, its hellos are answered and its files have writers, so a run started into the same folder while that exchange is still running ignores them, writes its hello and waits out its peer timeout instead of being refused at entry. A live party whose `unexpected_files` policy is `error` ends its exchange when that hello appears.
+
+**Limit -- an ack from any writer.** A hello counts as answered when an ack of it under any non-empty id is listed, so a party that can write to the folder can make a waiting partner's hello read as answered at entry, and the run ignores it and waits out its peer timeout. Write access to the folder already lets a party stop an exchange by removing its files.
+
 ## Per-run peer id
 
 A `peer_id` may hold fields filled in each time the connection opens, giving each run its own id for a transfer system that never passes a file name twice (operator reference: [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#fields-in-peer_id)). The grammar and expansion are `packages/core/src/config/peerIdTemplate.ts`. A `peer_id` with no `%` is used as written, exactly as without this section.

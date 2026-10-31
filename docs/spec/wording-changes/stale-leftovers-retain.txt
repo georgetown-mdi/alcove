@@ -85,3 +85,9 @@
 - - -> In a split configuration where a transfer moves files out of the outbound directory, the reusing party sees neither its earlier hello nor the ack, writes its hello under the ignored name again, and both runs reach their peer timeout.
 - - -> When its earlier hello is still listed, the guard for an unanswered hello under its own id refuses its start-up instead.
 - - -> Measured on the mock transport (`fileSyncRetainLeftovers.test.ts`): a mismatch leaves no ack, an immediate rerun of both parties in retain mode takes the several-partner-hellos refusal, and the same rerun with both hellos an hour old, with the window at its default, the peer timeout, set to two seconds, completes.
+- - -> **Limit -- a running exchange looks like an earlier one.**
+- - -> Once a retain exchange's rendezvous completes, its hellos are answered and its files have writers, so a run started into the same folder while that exchange is still running ignores them, writes its hello and waits out its peer timeout instead of being refused at entry.
+- - -> A live party whose `unexpected_files` policy is `error` ends its exchange when that hello appears.
+- - -> **Limit -- an ack from any writer.**
+- - -> A hello counts as answered when an ack of it under any non-empty id is listed, so a party that can write to the folder can make a waiting partner's hello read as answered at entry, and the run ignores it and waits out its peer timeout.
+- - -> Write access to the folder already lets a party stop an exchange by removing its files.
