@@ -2,6 +2,7 @@ import type { ConnectionConfig, ServerProvision } from "@alcove/core";
 import {
   safeParseConnectionConfig,
   safeParseFileSyncOptions,
+  UNANSWERED_HELLO_WINDOW_INFINITE,
   UsageError,
   withRetainModeImplications,
 } from "@alcove/core";
@@ -80,6 +81,13 @@ export interface ConnectionOptionsOverrides {
   peerId?: string;
   retainFiles?: boolean;
   timestampInFilename?: boolean;
+  /**
+   * The `--unanswered-hello-window` override, in seconds like the timeouts
+   * above or the literal `infinite`, feeding the connection's
+   * `unansweredHelloWindowMs`. A FileSyncOptions field, applied on `sftp` and
+   * `filedrop`.
+   */
+  unansweredHelloWindow?: number | typeof UNANSWERED_HELLO_WINDOW_INFINITE;
   /**
    * The `--connection-per-poll` override, feeding the connection's
    * `connectionPerPoll`. SFTP-only (the ephemeral-session mode dials a real SFTP
@@ -230,8 +238,10 @@ export function applyConnectionOverrides(
       optionsOverrides.peerId !== undefined ||
       optionsOverrides.retainFiles !== undefined ||
       optionsOverrides.timestampInFilename !== undefined ||
+      optionsOverrides.unansweredHelloWindow !== undefined ||
       optionsOverrides.writeWithoutRenaming !== undefined)
   ) {
+    const window = optionsOverrides.unansweredHelloWindow;
     result.options = withRetainModeImplications({
       ...result.options,
       ...(optionsOverrides.pollIntervalMs !== undefined && {
@@ -251,6 +261,10 @@ export function applyConnectionOverrides(
       }),
       ...(optionsOverrides.writeWithoutRenaming !== undefined && {
         writeWithoutRenaming: optionsOverrides.writeWithoutRenaming,
+      }),
+      ...(window !== undefined && {
+        unansweredHelloWindowMs:
+          window === UNANSWERED_HELLO_WINDOW_INFINITE ? window : window * 1000,
       }),
     });
 

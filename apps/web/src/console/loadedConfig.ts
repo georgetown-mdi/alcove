@@ -174,6 +174,14 @@ export function connectionTuningFromOptions(
         : String(stated.maxReconnectAttempts),
     connectionPerPoll:
       stated.connectionPerPoll ?? CONNECTION_TUNING_DEFAULT.connectionPerPoll,
+    unansweredHelloWindow: durationField(
+      stated.unansweredHelloWindowMs === "infinite"
+        ? undefined
+        : stated.unansweredHelloWindowMs,
+      "unansweredHelloWindow",
+    ),
+    unansweredHelloWindowInfinite:
+      stated.unansweredHelloWindowMs === "infinite",
   };
 }
 

@@ -401,30 +401,28 @@ function retainLines(endpoint: AcceptKitEndpoint): Array<string> {
         ? [
             "The files stay in both shared folders above, the one you write into",
             "and the one you read from, in your copies of them and your",
-            "partner's alike. Nothing removes them when the exchange ends, so",
-            "both folders must start empty on both sides. You and your partner",
-            "decide together whether to clear them afterwards.",
+            "partner's alike. Nothing removes them when the exchange ends.",
           ]
         : [
             "The files stay in the shared folder, in your copy of it and your",
-            "partner's alike. Nothing removes them when the exchange ends, so",
-            "both of you must start from an empty shared folder. You and your",
-            "partner decide together whether to clear it afterwards.",
+            "partner's alike. Nothing removes them when the exchange ends.",
           ]
       : split
         ? [
             "The files stay in both directories above, the one you write to and",
             "the one you read from, on the SFTP server named above. Nothing",
-            "removes them when the exchange ends, so both directories must start",
-            "empty. You and your partner decide together whether to clear them",
-            "afterwards.",
+            "removes them when the exchange ends.",
           ]
         : [
             "The files stay in the exchange directory on the SFTP",
-            "server named above. Nothing removes them when the exchange ends, so",
-            "both of you must start from an empty directory. You and your partner",
-            "decide together whether to clear it afterwards.",
+            "server named above. Nothing removes them when the exchange ends.",
           ];
+  const reuse = [
+    "A later exchange in the same place ignores them, as long as each run",
+    "writes new file names. For runs that repeat, give peer_id date and",
+    "time fields, for example site-%Y%m%d%H%M%S. You and your partner decide",
+    "together whether to clear the files afterwards.",
+  ];
   return [
     ...heading("THIS EXCHANGE KEEPS ITS FILES"),
     "Your partner has turned on retain mode, so this exchange keeps every",
@@ -432,6 +430,7 @@ function retainLines(endpoint: AcceptKitEndpoint): Array<string> {
     "once it has been read.",
     "",
     ...persistence,
+    ...reuse,
     "",
     "The records you and your partner exchange are encrypted, and stay",
     "encrypted in what is left behind. The small files the two sides use to",

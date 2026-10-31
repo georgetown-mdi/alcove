@@ -20,13 +20,16 @@ import {
   DURATION_FIELD_UNITS,
   PEER_TIMEOUT_LABEL,
   TUNING_DEFAULT_MS,
+  UNANSWERED_HELLO_WINDOW_LABEL,
   connectionTuningAdvisories,
   connectionTuningProblems,
   connectionTuningSummary,
   defaultPlaceholder,
   durationUnitChoices,
+  holdsExchangeFolder,
   peerTimeoutDefaultMs,
   pollIntervalDefaultMs,
+  unansweredHelloWindowDefaultMs,
 } from "./connectionTuningModel";
 
 import type {
@@ -102,8 +105,9 @@ function DurationRow({
  * The console's "Connection tuning" card: how often the exchange checks for the
  * partner's files, how long it waits for the partner to start, how long a
  * started partner may go quiet, how long it waits for each connection
- * attempt, how many times it retries, and -- on SFTP -- whether it opens a fresh
- * session for each check. Offered as a closed disclosure beside the file-handling
+ * attempt, how many times it retries, how old an unanswered partner hello must
+ * be before a run that keeps its files ignores it, and -- on SFTP -- whether it
+ * opens a fresh session for each check. Offered as a closed disclosure beside the file-handling
  * card, since the defaults are right for a first run and these are the settings an
  * operator reaches for in a specific situation: a slow peer, a firewalled link, or
  * a server that caps how long a session may last.
@@ -202,6 +206,41 @@ export function ConnectionTuningCard({
             set("maxReconnectAttempts", event.currentTarget.value)
           }
         />
+
+        {holdsExchangeFolder(capabilities) && (
+          <Stack gap="xs">
+            {!draft.unansweredHelloWindowInfinite && (
+              <DurationRow
+                label={UNANSWERED_HELLO_WINDOW_LABEL}
+                description={
+                  "Applies only when exchange files are kept. A run that " +
+                  "finds a hello file from a partner nobody answered treats " +
+                  "it as left by an earlier exchange once it is older than " +
+                  "this, and ignores it. Blank uses how long this side waits " +
+                  "for your partner."
+                }
+                units={DURATION_FIELD_UNITS.unansweredHelloWindow}
+                defaultMs={unansweredHelloWindowDefaultMs(draft, capabilities)}
+                value={draft.unansweredHelloWindow}
+                onChange={(next) => set("unansweredHelloWindow", next)}
+              />
+            )}
+            <Checkbox
+              checked={draft.unansweredHelloWindowInfinite}
+              onChange={(event) =>
+                set(
+                  "unansweredHelloWindowInfinite",
+                  event.currentTarget.checked,
+                )
+              }
+              label="Never ignore an unanswered hello file"
+              description={
+                "A run then meets any unanswered partner hello file as your " +
+                "partner's, however old it is."
+              }
+            />
+          </Stack>
+        )}
 
         {capabilities.connectionPerPoll && (
           <Checkbox

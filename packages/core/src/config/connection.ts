@@ -756,6 +756,19 @@ export const INACTIVITY_TIMEOUT_KEY = "inactivity_timeout_ms";
 export const WRITE_WITHOUT_RENAMING_KEY = "write_without_renaming";
 
 /**
+ * The config key the operator sets
+ * {@link FileSyncOptions.unansweredHelloWindowMs} by, as written in the
+ * configuration file.
+ */
+export const UNANSWERED_HELLO_WINDOW_KEY = "unanswered_hello_window_ms";
+
+/**
+ * The {@link FileSyncOptions.unansweredHelloWindowMs} value that never ignores
+ * an unanswered partner hello.
+ */
+export const UNANSWERED_HELLO_WINDOW_INFINITE = "infinite";
+
+/**
  * Channel-agnostic tuning parameters shared by all connection types.
  */
 interface SharedOptions {
@@ -971,11 +984,21 @@ export interface FileSyncOptions extends SharedOptions {
    * `locklessRendezvous: true` (lock rendezvous is delete-based and cannot
    * produce a no-delete transcript).
    *
-   * A fresh directory is required per exchange: `synchronize()` throws a
-   * `UsageError` if a message or ack-marker file from a prior session is
-   * present.
+   * A directory may be reused: at start-up the messages, acks, abort markers
+   * and answered hellos of earlier exchanges are ignored for the run, never
+   * deleted (see {@link unansweredHelloWindowMs}).
    */
   retainFiles?: boolean;
+  /**
+   * In retain mode, how old a partner hello nobody answered must be before a
+   * run ignores it at start-up, in milliseconds, or `"infinite"` to never
+   * ignore one. Unset, it is this side's own peer timeout
+   * ({@link SharedOptions.peerTimeoutMs}, or its default). A partner whose peer
+   * timeout is longer than this window can be ignored while it still waits.
+   * No effect outside retain mode. A positive integer of at most
+   * {@link MAX_TIMEOUT_SECONDS} seconds.
+   */
+  unansweredHelloWindowMs?: number | typeof UNANSWERED_HELLO_WINDOW_INFINITE;
   /**
    * How to handle a file that appears in the shared directory *during* the
    * message loop and is neither part of this exchange nor a known transient (an
@@ -1114,6 +1137,13 @@ const FileSyncOptionsSchema: z.ZodType<FileSyncOptions> = z
     locklessRendezvous: z.boolean().optional(),
     peerId: z.string().min(1).optional(),
     retainFiles: z.boolean().optional(),
+    // Positive and capped like peerTimeoutMs: a zero window is not offered.
+    unansweredHelloWindowMs: z
+      .union([
+        timerMs(MAX_TIMEOUT_SECONDS * 1000),
+        z.literal(UNANSWERED_HELLO_WINDOW_INFINITE),
+      ])
+      .optional(),
     unexpectedFiles: z.enum(["error", "warn", "ignore"]).optional(),
     connectionPerPoll: z.boolean().optional(),
     writeWithoutRenaming: z.boolean().optional(),

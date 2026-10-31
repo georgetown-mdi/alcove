@@ -48,9 +48,15 @@ import {
 import {
   failureCauseError,
   failureCauseSentence,
+  formatWaitDuration,
   markFailureCause,
   type FailureCause,
 } from "../failureCause";
+import {
+  UNANSWERED_HELLO_WINDOW_INFINITE,
+  UNANSWERED_HELLO_WINDOW_KEY,
+} from "../config/connection";
+import { classifyRetainLeftovers } from "./fileSyncLeftovers";
 import {
   ADVERTISE_HELLO_RETRY_ATTEMPTS,
   cancellableDelay,
@@ -733,16 +739,39 @@ export interface RendezvousOptions {
   sweepExchangeFiles: boolean;
   forceRetainSweep: boolean;
   joinerRecoveryMs: number;
+  unansweredHelloWindowMs?: number | typeof UNANSWERED_HELLO_WINDOW_INFINITE;
   writeWithoutRenaming?: boolean;
   renameRefusedGuidance?: string;
 }
 
+// What the entry scan hands the rendezvous: the at-most-one tolerated peer
+// hello, and in retain mode the youngest unanswered partner hello it ignored.
+interface EntryScan {
+  peerHellos: FileInfo[];
+  // The youngest ignored partner hello nobody answered, its age at entry, and
+  // the window it was older than.
+  unansweredHello:
+    { name: string; ageMs: number; windowMs: number } | undefined;
+}
+
+// A file age for an operator message, floored to whole minutes from a minute
+// up and to whole seconds below. A modification time ahead of this host's
+// clock reads as no age at all.
+const formatFileAge = (ms: number): string => {
+  const unit = ms >= 60_000 ? 60_000 : 1000;
+  return formatWaitDuration(Math.max(0, Math.floor(ms / unit) * unit));
+};
+
 // With `ignoredOwnPatternHello`, the cause states the shared name and the
 // catalog sentence is followed by the hello the wait skipped as this party's
-// own; each app's remedy then names its own way to change the name.
+// own; each app's remedy then names its own way to change the name. With
+// `unansweredHello`, the sentence is followed by the partner hello the entry
+// scan ignored as unanswered, its age, and the two ways to keep a waiting
+// partner's hello from being ignored.
 const partnerNeverArrived = (
   deps: RendezvousDeps,
   ignoredOwnPatternHello: string | undefined,
+  unansweredHello: EntryScan["unansweredHello"],
 ): Error => {
   const cause: FailureCause = {
     kind: "partner-never-arrived",
@@ -750,13 +779,25 @@ const partnerNeverArrived = (
     waitedMs: deps.arrivalBudgetMs(),
     ...(ignoredOwnPatternHello !== undefined ? { sharedName: true } : {}),
   };
-  if (ignoredOwnPatternHello === undefined) return failureCauseError(cause);
+  if (ignoredOwnPatternHello === undefined && unansweredHello === undefined)
+    return failureCauseError(cause);
+  const ownPattern =
+    ignoredOwnPatternHello === undefined
+      ? ""
+      : " This run took it for its own leftover and ignored it. The ignored " +
+        `file: ${redactPrivateKeyMaterial(ignoredOwnPatternHello)}`;
+  const unanswered =
+    unansweredHello === undefined
+      ? ""
+      : " At start-up this run ignored a partner hello nobody had answered " +
+        `for ${formatFileAge(unansweredHello.ageMs)}, longer than ` +
+        `${formatWaitDuration(unansweredHello.windowMs)} ` +
+        `(${UNANSWERED_HELLO_WINDOW_KEY}). If that was your partner's run, ` +
+        `raise ${UNANSWERED_HELLO_WINDOW_KEY} or give both sides the same ` +
+        "peer timeout. The ignored file: " +
+        redactPrivateKeyMaterial(unansweredHello.name);
   return markFailureCause(
-    new Error(
-      `${failureCauseSentence(cause)} This run took it for its own leftover ` +
-        "and ignored it. The ignored file: " +
-        redactPrivateKeyMaterial(ignoredOwnPatternHello),
-    ),
+    new Error(`${failureCauseSentence(cause)}${ownPattern}${unanswered}`),
     cause,
   );
 };
@@ -777,6 +818,9 @@ const partnerNeverArrived = (
 export interface RendezvousDeps {
   responsibleFiles: Set<string>;
   foreignFileSnapshot: Set<string>;
+  // Inbound names a retain-mode entry scan ignores as an earlier exchange's;
+  // the message loop's listings drop them too.
+  startupIgnoredFiles: Set<string>;
   client: () => FileTransportClient;
   id: () => string;
   // Whether an id is one this party's configuration writes on any run: its
@@ -856,7 +900,8 @@ export class FileSyncRendezvous {
     // leftover abort markers, snapshot foreign files, sweep-or-reject
     // unexpected protocol files, then delete the recognized leftovers once
     // entry is accepted). Yields the at-most-one tolerated peer hello.
-    const peerHellos = await this.scanEntryDirectory(scope);
+    const entry = await this.scanEntryDirectory(scope);
+    const { peerHellos } = entry;
     // close() waits for the whole rendezvous, so each step checks its abort
     // before starting: an operation in flight lands, and nothing follows it.
     deps.signal().throwIfAborted();
@@ -884,7 +929,12 @@ export class FileSyncRendezvous {
     if (peerHellos.length === 1 && !deps.options().locklessRendezvous) {
       await this.rendezvousAsLockJoiner(scope, peerHellos[0], helloPath);
     } else {
-      await this.rendezvousViaHelloExchange(scope, helloPath, entryPeerHello);
+      await this.rendezvousViaHelloExchange(
+        scope,
+        helloPath,
+        entryPeerHello,
+        entry,
+      );
     }
   }
 
@@ -1167,17 +1217,19 @@ export class FileSyncRendezvous {
   // foreign files, and either sweeps every protocol file
   // (--sweep-exchange-files) or rejects any unexpected protocol file. The
   // recognized leftovers are deleted only after that, so an entry it refuses
-  // deletes nothing. Returns the at-most-one tolerated peer hello.
-  private async scanEntryDirectory(
-    scope: RendezvousScope,
-  ): Promise<Array<FileInfo>> {
+  // deletes nothing. In retain mode without the sweep flag, it first sets
+  // aside the files an earlier exchange left (ignoreRetainLeftovers). Returns
+  // the at-most-one tolerated peer hello and what was set aside.
+  private async scanEntryDirectory(scope: RendezvousScope): Promise<EntryScan> {
     const { deps } = this;
     const { inboundPath, outboundPath, split, dirsDisplay } = scope;
 
-    // Reset the foreign-file snapshot up front so it is rebuilt fresh on every
-    // synchronize() entry even when the list() below throws: a failed entry must
-    // not leave a prior session's snapshot behind for a same-instance retry.
+    // Reset the foreign-file snapshot and the ignore list up front so both
+    // are rebuilt fresh on every synchronize() entry even when the list()
+    // below throws: a failed entry must not leave a prior session's behind
+    // for a same-instance retry.
     deps.foreignFileSnapshot.clear();
+    deps.startupIgnoredFiles.clear();
 
     let files: Array<FileInfo>;
     try {
@@ -1346,7 +1398,7 @@ export class FileSyncRendezvous {
     // sweeps it along with the first. Dir-qualified so the sweep below
     // deletes each from the directory it was listed in: inbound files here,
     // outbound leftovers appended in the split block below.
-    const unexpectedProtocol: Array<{ file: FileInfo; dir: string }> = files
+    let unexpectedProtocol: Array<{ file: FileInfo; dir: string }> = files
       .filter(
         (file) =>
           !ignored.has(file.name) &&
@@ -1381,8 +1433,9 @@ export class FileSyncRendezvous {
     // shapes here while the inbound side exempts the hello shape: a hello
     // temp in this directory can only be this party's own.
     let outOrphans: FileInfo[] = [];
+    let outFiles: FileInfo[] = [];
     if (split) {
-      const outFiles = await deps.client().list(outboundPath);
+      outFiles = await deps.client().list(outboundPath);
       outOrphans = outFiles.filter((file) => isProtocolTempName(file.name));
       const outOrphanNames = new Set(outOrphans.map((file) => file.name));
       const outForeign: FileInfo[] = [];
@@ -1404,6 +1457,19 @@ export class FileSyncRendezvous {
               `${redactAndSanitizeForDisplay(outboundPath)}: ` +
               `${outForeign.map((f) => redactAndSanitizeForDisplay(f.name)).join(", ")}`,
           );
+    }
+
+    let unansweredHello: EntryScan["unansweredHello"];
+    if (deps.options().retainFiles && !deps.options().sweepExchangeFiles) {
+      const kept = this.ignoreRetainLeftovers(
+        scope,
+        [...files, ...outFiles].map((file) => file.name),
+        peerHellos,
+        unexpectedProtocol,
+      );
+      peerHellos = kept.peerHellos;
+      unexpectedProtocol = kept.unexpectedProtocol;
+      unansweredHello = kept.unansweredHello;
     }
 
     if (deps.options().sweepExchangeFiles) {
@@ -1486,7 +1552,105 @@ export class FileSyncRendezvous {
       " in the outbound directory " + redactAndSanitizeForDisplay(outboundPath),
     );
 
-    return peerHellos;
+    return { peerHellos, unansweredHello };
+  }
+
+  // Retain mode reuses a directory, so the entry scan sets aside what an
+  // earlier exchange left there (classifyRetainLeftovers): the files are
+  // never deleted, and the inbound ones join startupIgnoredFiles, which every
+  // later listing drops. Refuses a run whose own hello name an earlier
+  // exchange already answered, since that exchange's acks would answer this
+  // run's hello. Returns the peer hellos and unexpected files left to judge.
+  private ignoreRetainLeftovers(
+    scope: RendezvousScope,
+    listed: string[],
+    peerHellos: FileInfo[],
+    unexpectedProtocol: Array<{ file: FileInfo; dir: string }>,
+  ): Omit<EntryScan, "peerHellos"> & {
+    peerHellos: FileInfo[];
+    unexpectedProtocol: Array<{ file: FileInfo; dir: string }>;
+  } {
+    const { deps } = this;
+    const outboundDir = scope.split ? scope.outboundPath : undefined;
+    const now = Date.now();
+    const setting = deps.options().unansweredHelloWindowMs;
+    const windowMs =
+      setting === UNANSWERED_HELLO_WINDOW_INFINITE
+        ? undefined
+        : (setting ??
+          deps.arrivalBudgetMs() ??
+          deps.options().timeToLive!.getTime() - now);
+    const leftovers = classifyRetainLeftovers({
+      inbound: [
+        ...peerHellos,
+        ...unexpectedProtocol
+          .filter((e) => e.dir !== outboundDir)
+          .map((e) => e.file),
+      ],
+      outbound: unexpectedProtocol
+        .filter((e) => e.dir === outboundDir)
+        .map((e) => e.file),
+      listed,
+      ownHelloName: this.ownControlName("hello"),
+      isOwnId: deps.isOwnId,
+      windowMs,
+      now,
+    });
+    if (leftovers.ownNameAnswered !== undefined)
+      throw entryGuardRefusal(
+        "an earlier exchange in this folder answered a hello under the name " +
+          "this run writes, so its files could be taken for this run's. Add " +
+          "fields to peer_id, for example %Y%m%d%H%M%S, so each run writes " +
+          "new names.",
+        "file(s) from an earlier exchange",
+        scope.dirsDisplay,
+        [leftovers.ownNameAnswered],
+      );
+
+    const ignored = new Set(leftovers.ignored.map((entry) => entry.file));
+    for (const { file, outbound } of leftovers.ignored)
+      if (!outbound) deps.startupIgnoredFiles.add(file.name);
+
+    let unansweredHello: EntryScan["unansweredHello"];
+    for (const file of leftovers.unansweredHellos)
+      if (
+        windowMs !== undefined &&
+        (unansweredHello === undefined ||
+          now - file.modifyTime < unansweredHello.ageMs)
+      )
+        unansweredHello = {
+          name: file.name,
+          ageMs: now - file.modifyTime,
+          windowMs,
+        };
+
+    if (ignored.size > 0) {
+      const youngestAgeMs = leftovers.ignored.reduce(
+        (age, entry) => Math.min(age, now - entry.file.modifyTime),
+        Infinity,
+      );
+      deps
+        .log()
+        .info(
+          `[${deps.id()}] ignoring ${ignored.size} file(s) an earlier ` +
+            `exchange left in ${redactAndSanitizeForDisplay(scope.dirsDisplay)}; ` +
+            `the youngest is ${formatFileAge(youngestAgeMs)} old` +
+            (unansweredHello === undefined
+              ? ""
+              : `, and ${leftovers.unansweredHellos.length} of them are ` +
+                "partner hellos nobody answered within " +
+                `${formatWaitDuration(unansweredHello.windowMs)} ` +
+                `(${UNANSWERED_HELLO_WINDOW_KEY})`),
+        );
+    }
+
+    return {
+      peerHellos: peerHellos.filter((file) => !ignored.has(file)),
+      unexpectedProtocol: unexpectedProtocol.filter(
+        (entry) => !ignored.has(entry.file),
+      ),
+      unansweredHello,
+    };
   }
 
   // Deletes the orphaned temps the entry scan recognized, once entry is
@@ -1784,9 +1948,17 @@ export class FileSyncRendezvous {
     scope: RendezvousScope,
     helloPath: string,
     entryPeerHello: string | undefined,
+    entry: EntryScan,
   ): Promise<void> {
     const { deps } = this;
     const { outboundPath } = scope;
+    // The inbound listing without the files the entry scan ignored, so no
+    // check below can read one. An ignored name stays ignored for the run,
+    // whatever its listed time or size.
+    const listInbound = async (): Promise<FileInfo[]> => {
+      const listed = await deps.client().list(scope.inboundPath);
+      return listed.filter((file) => !deps.startupIgnoredFiles.has(file.name));
+    };
 
     deps
       .log()
@@ -1842,7 +2014,7 @@ export class FileSyncRendezvous {
         // non-null assertion is safe here.
         while (Date.now() <= deps.options().timeToLive!.getTime()) {
           deps.signal().throwIfAborted();
-          const currentFiles = await deps.client().list(scope.inboundPath);
+          const currentFiles = await listInbound();
           const fileNames = currentFiles.map((file) => file.name);
           if (!deps.options().retainFiles)
             deps.responsibleFiles.forEach((fileName) => {
@@ -2045,7 +2217,11 @@ export class FileSyncRendezvous {
         // joiner, so the role is indeterminate here.
         deps.log().debug("synchronization has timed out");
         throw markPeerWaitTimeout(
-          partnerNeverArrived(deps, ignoredOwnPatternHello),
+          partnerNeverArrived(
+            deps,
+            ignoredOwnPatternHello,
+            entry.unansweredHello,
+          ),
         );
       }
 
@@ -2063,7 +2239,7 @@ export class FileSyncRendezvous {
       // assertion is safe here.
       while (Date.now() <= deps.options().timeToLive!.getTime()) {
         deps.signal().throwIfAborted();
-        const currentFiles = await deps.client().list(scope.inboundPath);
+        const currentFiles = await listInbound();
         const fileNames = currentFiles.map((file) => file.name);
         if (!deps.options().retainFiles)
           deps.responsibleFiles.forEach((fileName) => {
@@ -2588,7 +2764,11 @@ export class FileSyncRendezvous {
       }
       deps.log().debug("[starter] synchronization has timed out");
       throw markPeerWaitTimeout(
-        partnerNeverArrived(deps, ignoredOwnPatternHello),
+        partnerNeverArrived(
+          deps,
+          ignoredOwnPatternHello,
+          entry.unansweredHello,
+        ),
       );
     };
     try {

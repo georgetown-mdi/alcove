@@ -12,6 +12,7 @@ import {
   MAX_TIMER_MS,
   normalizeCsvDelimiter,
   sanitizeErrorForDisplay,
+  UNANSWERED_HELLO_WINDOW_INFINITE,
   UsageError,
 } from "@alcove/core";
 
@@ -81,6 +82,21 @@ export function durationFlagSeconds(
     );
   }
   return seconds;
+}
+
+/**
+ * {@link durationFlagSeconds} that also accepts the literal `infinite`,
+ * returned as is, for a window that may never close.
+ */
+export function windowFlagSeconds(
+  argv: Arguments,
+  name: string,
+  maxSeconds: number,
+): number | typeof UNANSWERED_HELLO_WINDOW_INFINITE | undefined {
+  const raw = singleValue(argv, name);
+  if (String(raw).trim() === UNANSWERED_HELLO_WINDOW_INFINITE)
+    return UNANSWERED_HELLO_WINDOW_INFINITE;
+  return durationFlagSeconds(argv, name, maxSeconds);
 }
 
 /**
