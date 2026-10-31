@@ -1,10 +1,10 @@
-docker run --rm -it -v "${PWD}:/work" ghcr.io/georgetown-mdi/alcove:1.4.2 accept PASTE_YOUR_INVITATION your-file.csv
-docker run --rm -v "${PWD}:/work" -v "/path/to/your/shared/folder:/sync" ghcr.io/georgetown-mdi/alcove:1.4.2 exchange your-file.csv ./results
-docker run --rm -v "${PWD}:/work" -v "/path/to/your/shared/folder:/sync" ghcr.io/georgetown-mdi/alcove:1.4.2 exchange --retain-files your-file.csv ./results
-docker run --rm -v "${PWD}:/work" -v "/path/to/your/shared/folder:/sync" ghcr.io/georgetown-mdi/alcove:1.4.2 exchange --lockless-rendezvous your-file.csv ./results
-docker run --rm -v "${PWD}:/work" -v "/path/to/the/folder/you/read:/sync-in" -v "/path/to/the/folder/you/write:/sync-out" ghcr.io/georgetown-mdi/alcove:1.4.2 exchange your-file.csv ./results
-docker run --rm -v "${PWD}:/work" -v "/path/to/the/folder/you/read:/sync-in" -v "/path/to/the/folder/you/write:/sync-out" ghcr.io/georgetown-mdi/alcove:1.4.2 exchange --retain-files your-file.csv ./results
-docker run --rm -v "${PWD}:/work" -v "/path/to/the/folder/you/read:/sync-in" -v "/path/to/the/folder/you/write:/sync-out" ghcr.io/georgetown-mdi/alcove:1.4.2 exchange --lockless-rendezvous your-file.csv ./results
-docker run --rm -it -v "${PWD}:/work" -v "/your/secrets:/run/secrets:ro" ghcr.io/georgetown-mdi/alcove:1.4.2 exchange your-file.csv ./results
-docker run --rm -it -v "${PWD}:/work" -v "/your/secrets:/run/secrets:ro" ghcr.io/georgetown-mdi/alcove:1.4.2 exchange --retain-files your-file.csv ./results
-docker run --rm -it -v "${PWD}:/work" -v "/your/secrets:/run/secrets:ro" ghcr.io/georgetown-mdi/alcove:1.4.2 exchange --lockless-rendezvous your-file.csv ./results
+docker run --rm -it -v "${PWD}:/work" docker.io/gumdi/alcove:1.4.2 accept PASTE_YOUR_INVITATION your-file.csv
+docker run --rm -v "${PWD}:/work" -v "/path/to/your/shared/folder:/sync" docker.io/gumdi/alcove:1.4.2 exchange your-file.csv ./results
+docker run --rm -v "${PWD}:/work" -v "/path/to/your/shared/folder:/sync" docker.io/gumdi/alcove:1.4.2 exchange --retain-files your-file.csv ./results
+docker run --rm -v "${PWD}:/work" -v "/path/to/your/shared/folder:/sync" docker.io/gumdi/alcove:1.4.2 exchange --lockless-rendezvous your-file.csv ./results
+docker run --rm -v "${PWD}:/work" -v "/path/to/the/folder/you/read:/sync-in" -v "/path/to/the/folder/you/write:/sync-out" docker.io/gumdi/alcove:1.4.2 exchange your-file.csv ./results
+docker run --rm -v "${PWD}:/work" -v "/path/to/the/folder/you/read:/sync-in" -v "/path/to/the/folder/you/write:/sync-out" docker.io/gumdi/alcove:1.4.2 exchange --retain-files your-file.csv ./results
+docker run --rm -v "${PWD}:/work" -v "/path/to/the/folder/you/read:/sync-in" -v "/path/to/the/folder/you/write:/sync-out" docker.io/gumdi/alcove:1.4.2 exchange --lockless-rendezvous your-file.csv ./results
+docker run --rm -it -v "${PWD}:/work" -v "/your/secrets:/run/secrets:ro" docker.io/gumdi/alcove:1.4.2 exchange your-file.csv ./results
+docker run --rm -it -v "${PWD}:/work" -v "/your/secrets:/run/secrets:ro" docker.io/gumdi/alcove:1.4.2 exchange --retain-files your-file.csv ./results
+docker run --rm -it -v "${PWD}:/work" -v "/your/secrets:/run/secrets:ro" docker.io/gumdi/alcove:1.4.2 exchange --lockless-rendezvous your-file.csv ./results

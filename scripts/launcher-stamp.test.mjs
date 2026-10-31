@@ -31,21 +31,29 @@ const repoRoot = resolve(here, "..");
 
 const PLACEHOLDER = "@@ALCOVE_IMAGE_DIGEST@@";
 
-// The fully qualified reference: podman requires the registry prefix and docker
-// accepts it, so both launchers name it in full rather than relying on a
-// default.
-const IMAGE_REPOSITORY = "ghcr.io/georgetown-mdi/alcove";
+// The fully qualified references: podman requires the registry prefix and docker
+// accepts it, so both launchers name each repository in full rather than relying
+// on a default. Both hold the stamped digest, which the release copies to Docker
+// Hub with its signature.
+const DOCKERHUB_REPOSITORY = "docker.io/gumdi/alcove";
+const GHCR_REPOSITORY = "ghcr.io/georgetown-mdi/alcove";
 
 const LAUNCHERS = [
   {
     path: "support/windows-network-filedrop/start-alcove.sh",
     digestLine: `ALCOVE_IMAGE_DIGEST='${PLACEHOLDER}'`,
-    repositoryLine: `ALCOVE_IMAGE_REPOSITORY='${IMAGE_REPOSITORY}'`,
+    repositoryLines: [
+      `ALCOVE_DOCKERHUB_REPOSITORY='${DOCKERHUB_REPOSITORY}'`,
+      `ALCOVE_GHCR_REPOSITORY='${GHCR_REPOSITORY}'`,
+    ],
   },
   {
     path: "support/windows-network-filedrop/Start-Alcove.ps1",
     digestLine: `$AlcoveImageDigest = '${PLACEHOLDER}'`,
-    repositoryLine: `$AlcoveImageRepository = '${IMAGE_REPOSITORY}'`,
+    repositoryLines: [
+      `$AlcoveDockerHubRepository = '${DOCKERHUB_REPOSITORY}'`,
+      `$AlcoveGhcrRepository = '${GHCR_REPOSITORY}'`,
+    ],
   },
 ];
 
@@ -79,8 +87,9 @@ describe("the launcher digest stamp", () => {
         expect(source.split("\n")).toContain(launcher.digestLine);
       });
 
-      it("names the fully qualified image repository", () => {
-        expect(source.split("\n")).toContain(launcher.repositoryLine);
+      it("names both fully qualified image repositories", () => {
+        for (const line of launcher.repositoryLines)
+          expect(source.split("\n")).toContain(line);
       });
 
       it("refuses an unstamped copy rather than falling back to a tag", () => {
@@ -88,7 +97,9 @@ describe("the launcher digest stamp", () => {
         // unstamped copy would run whatever a floating tag resolves to today.
         // Held here as the absence of any floating tag in the file: a `:latest`
         // reference is the shape that regression takes.
-        expect(source).not.toMatch(/georgetown-mdi\/alcove:[A-Za-z0-9._-]+/);
+        expect(source).not.toMatch(
+          /(georgetown-mdi|gumdi)\/alcove:[A-Za-z0-9._-]+/,
+        );
       });
     });
   }

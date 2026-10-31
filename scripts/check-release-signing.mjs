@@ -16,7 +16,9 @@
 //   4. Every step that pushes an image is followed by its own cosign sign,
 //      cosign verify and attest steps before any later image build.
 //   5. Each of those verify steps passes both `--certificate-` arguments, with
-//      the published values, in its own run text.
+//      the published values, in its own run text, and so does every verify
+//      step in a job that pushes no image (the Docker Hub copy's). A cosign
+//      sign step in such a job is followed by a verify step in it.
 //   6. docs/RELEASES.md publishes at least one `--signer-workflow`, and each
 //      names that workflow path.
 //
@@ -290,7 +292,10 @@ const CERTIFICATE_ARGUMENTS = [
  * which is the direction that reports rather than passes.
  */
 function verifyArgumentViolations({ step, where, file, published }) {
-  const covers = list(step.ids.map((id) => `steps.${id}.outputs.digest`));
+  const covers =
+    step.ids.length === 0
+      ? "a copied image"
+      : list(step.ids.map((id) => `steps.${id}.outputs.digest`));
   const violations = [];
   for (const { flag, key, of: pin } of CERTIFICATE_ARGUMENTS) {
     const values = step.flags[key];
@@ -336,6 +341,7 @@ export function publishSequenceViolations(source, file, published = {}) {
     const builds = classified.filter((step) => step.role === "build");
     const where = (step) => `${step.name} in job \`${jobId}\``;
     const pushedIds = new Set();
+    let jobPushes = false;
 
     for (const build of builds) {
       const state = pushState(build.push);
@@ -347,6 +353,7 @@ export function publishSequenceViolations(source, file, published = {}) {
       }
       if (state === "held") continue;
       pushed += 1;
+      jobPushes = true;
 
       const [id] = build.ids;
       if (id === undefined) {
@@ -391,6 +398,31 @@ export function publishSequenceViolations(source, file, published = {}) {
 
     for (const step of classified) {
       if (!SIGNING_ROLES.includes(step.role)) continue;
+      // A job that pushes no image signs and verifies a copy of one another
+      // job built, such as the Docker Hub copy, so there is no build of its own
+      // to cover.
+      if (step.role === "sign" && !jobPushes) {
+        const verifiedAfter = classified.some(
+          (later) => later.role === "verify" && later.index > step.index,
+        );
+        if (!verifiedAfter) {
+          violations.push(
+            `${file}: ${where(step)} signs a copied image, but no verify step follows it in job \`${jobId}\`, so a signature the published command cannot verify there reaches a partner unchecked.`,
+          );
+        }
+        continue;
+      }
+      if (step.role === "verify" && !jobPushes) {
+        violations.push(
+          ...verifyArgumentViolations({
+            step,
+            where: where(step),
+            file,
+            published,
+          }),
+        );
+        continue;
+      }
       if (!step.ids.some((id) => pushedIds.has(id))) {
         violations.push(
           `${file}: ${where(step)} names ${step.ids.length === 0 ? "no step digest at all" : `${list(step.ids.map((id) => `steps.${id}.outputs.digest`))}, which no pushing build in this job produces`}, so what it covers cannot be read from this file.`,

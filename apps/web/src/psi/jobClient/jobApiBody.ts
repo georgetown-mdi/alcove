@@ -11,7 +11,8 @@ import { readBoundedJsonBody } from "@alcove/core";
 /**
  * The cap on a fixed-shape status body: `GET /api/jobs/:jobId`, the `{ id }` of
  * a created or busy `POST /api/jobs`, `GET /api/jobs/slot`,
- * `GET /api/jobs/rendezvous`, `POST /api/jobs/signing/fingerprint`,
+ * `GET /api/jobs/rendezvous`, `GET /api/jobs/image`,
+ * `POST /api/jobs/signing/fingerprint`,
  * `POST /api/jobs/sftp/probe`, and a 400's `{ error }` body. Headroom over a few
  * hundred bytes, not a shape check.
  */

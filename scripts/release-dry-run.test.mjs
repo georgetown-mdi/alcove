@@ -1,7 +1,13 @@
+import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
+import {
+  RELEASES_DOC,
+  certificateFlags,
+  publishedCertificatePair,
+} from "./check-release-signing.mjs";
 import { WORKFLOW_DIR, workflowDocument } from "./lib/workflows.mjs";
 
 // The release workflow publishes on a pushed version tag; a manual dispatch,
@@ -35,6 +41,7 @@ const PUBLISHING_ACTIONS = [
 const PUBLISHING_COMMANDS = [
   /\bcosign\s+sign(?![-\w])/,
   /\bcosign\s+verify(?![-\w])/,
+  /\bcosign\s+copy\b/,
   /\bdocker\s+push\b/,
   /\bimagetools\s+create\b/,
   /\bgh\s+release\b/,
@@ -163,5 +170,98 @@ describe("the release workflow's dry run", () => {
         expect(publishScopes).not.toContain(cacheScope(step.with[input]));
       }
     }
+  });
+});
+
+// The Docker Hub copy is signed in place: the dockerhub job copies each image,
+// signs the copy by its docker.io digest reference under the release identity,
+// and verifies it there with the command docs/RELEASES.md publishes. What this
+// cannot see is whether the signature cosign writes on Docker Hub is one
+// `cosign verify` finds there; the verify step is what a real release fails on.
+describe("the Docker Hub copy's signature", () => {
+  const dockerhub = document.jobs.dockerhub;
+  const steps = dockerhub?.steps ?? [];
+  const publishSteps = document.jobs.publish?.steps ?? [];
+  const COPIED_DIGESTS = {
+    DEFAULT_DIGEST: "${{ needs.publish.outputs.digest }}",
+    FIPS_DIGEST: "${{ needs.publish.outputs.fips_digest }}",
+  };
+  const published = publishedCertificatePair(
+    readFileSync(resolve(repoRoot, RELEASES_DOC), "utf8"),
+  );
+
+  const indexOf = (predicate) => steps.findIndex(predicate);
+  const runs = (pattern) => (step) => pattern.test(step.run ?? "");
+  const imageCopy = indexOf(runs(/\bimagetools\s+create\b/));
+  const sign = indexOf(runs(/\bcosign\s+sign(?![-\w])/));
+  const verify = indexOf(runs(/\bcosign\s+verify(?![-\w])/));
+  const isCosignInstall = (step) =>
+    (step.uses ?? "").startsWith("sigstore/cosign-installer@");
+  const cosignInstall = indexOf(isCosignInstall);
+
+  /** Whether a step's run covers both copied digests, by their env names. */
+  function coversEveryDigest(step) {
+    for (const [name, value] of Object.entries(COPIED_DIGESTS)) {
+      expect(step.env?.[name]).toBe(value);
+      expect(step.run).toContain(`"\${${name}}"`);
+    }
+  }
+
+  it("copies the images by the digests the publish job signed", () => {
+    expect(imageCopy).toBeGreaterThanOrEqual(0);
+    expect(steps[imageCopy].env).toMatchObject(COPIED_DIGESTS);
+  });
+
+  it("signs both docker.io digest references after the image copy and before the verify step", () => {
+    expect(imageCopy).toBeGreaterThanOrEqual(0);
+    expect(sign).toBeGreaterThan(imageCopy);
+    expect(sign).toBeLessThan(verify);
+    const step = steps[sign];
+    expect(step.run).toMatch(
+      /\bcosign\s+sign\s+--yes\s+"\$\{DOCKERHUB_REPOSITORY\}@\$\{digest\}"/,
+    );
+    expect(step.run).toContain("set -euo pipefail");
+    expect(step.run).toContain("^sha256:[0-9a-f]{64}$");
+    coversEveryDigest(step);
+  });
+
+  it("verifies each signature on Docker Hub after it is made", () => {
+    expect(sign).toBeGreaterThan(imageCopy);
+    expect(verify).toBeGreaterThan(sign);
+    const step = steps[verify];
+    expect(step.run).toContain('"${DOCKERHUB_REPOSITORY}@${digest}"');
+    coversEveryDigest(step);
+    const flags = certificateFlags(step.run);
+    expect(published.identity).toBeDefined();
+    expect(published.issuer).toBeDefined();
+    expect(flags.identities).toEqual([published.identity]);
+    expect(flags.issuers).toEqual([published.issuer]);
+  });
+
+  it("names the two repositories the copy runs between", () => {
+    expect(dockerhub?.env).toEqual({
+      GHCR_REPOSITORY: "ghcr.io/georgetown-mdi/alcove",
+      DOCKERHUB_REPOSITORY: "docker.io/gumdi/alcove",
+    });
+  });
+
+  it("installs Cosign before anything is written to Docker Hub", () => {
+    expect(cosignInstall).toBeGreaterThanOrEqual(0);
+    expect(cosignInstall).toBeLessThan(imageCopy);
+  });
+
+  it("holds read access to the ghcr.io package and the OIDC token it signs with, nothing else", () => {
+    expect(dockerhub?.permissions).toEqual({
+      packages: "read",
+      "id-token": "write",
+    });
+  });
+
+  it("pins one cosign release in both installer steps", () => {
+    const installers = [...publishSteps, ...steps].filter(isCosignInstall);
+    expect(installers).toHaveLength(2);
+    const releases = installers.map((step) => step.with?.["cosign-release"]);
+    expect(releases[0]).toMatch(/^v\d+\.\d+\.\d+$/);
+    expect(releases[1]).toBe(releases[0]);
   });
 });

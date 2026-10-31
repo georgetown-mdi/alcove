@@ -14,10 +14,16 @@
     connection to the folder that holds them.
 
     It is plaintext on purpose, so whoever has to approve it can read all of it:
-    it fetches nothing itself, keeps nothing between runs, and never updates
-    itself. The container image it runs is pinned by digest, stamped in by the
-    release that published this file. A new version arrives the way everything
-    else in your organisation does -- somebody hands you a new copy.
+    it downloads nothing but the container image it names, keeps nothing
+    between runs, and never updates itself. That image is pinned by digest,
+    stamped in by the release that published this file. A new version arrives
+    the way everything else in your organisation does -- somebody hands you a
+    new copy.
+
+    The image is downloaded from Docker Hub (docker.io/gumdi/alcove) and, only
+    if that download fails, the same digest from the GitHub Container Registry
+    (ghcr.io/georgetown-mdi/alcove). Set the ALCOVE_IMAGE_REGISTRY environment
+    variable to docker.io or ghcr.io to keep it to that one registry.
 
     A network folder -- a mapped drive, a network path, or a DFS namespace --
     cannot be handed to Docker directly, so this asks
@@ -60,9 +66,13 @@ $ErrorActionPreference = 'Stop'
 # signed with cosign. A copy that still carries the placeholder did not come
 # from a release and refuses to run: an unpinned launcher would run whatever is
 # behind a floating tag today, which is the one thing an operator reading this
-# file cannot check for themselves.
-$AlcoveImageRepository = 'ghcr.io/georgetown-mdi/alcove'
+# file cannot check for themselves. Both registries hold that digest, signed.
+$AlcoveDockerHubRepository = 'docker.io/gumdi/alcove'
+$AlcoveGhcrRepository = 'ghcr.io/georgetown-mdi/alcove'
 $AlcoveImageDigest = '@@ALCOVE_IMAGE_DIGEST@@'
+
+# The repository the image was found in, which every container below runs from.
+$script:AlcoveImageRepository = $AlcoveDockerHubRepository
 
 $AlcoveReleasesUrl = 'https://github.com/georgetown-mdi/alcove/releases'
 $AlcoveTroubleshootingUrl = 'https://github.com/georgetown-mdi/alcove/blob/main/support/windows-network-filedrop/troubleshooting.md'
@@ -158,7 +168,7 @@ function Show-FromContainer {
 function Get-AlcoveImage {
     <#  Fully qualified, registry included: podman requires the prefix and
         docker accepts it, so one reference serves both. #>
-    return "$AlcoveImageRepository@$AlcoveImageDigest"
+    return "$script:AlcoveImageRepository@$AlcoveImageDigest"
 }
 
 function Test-AlcoveImageStamp {
@@ -174,7 +184,7 @@ function Test-AlcoveImageStamp {
 
 function Assert-AlcoveImageStamp {
     if (Test-AlcoveImageStamp) {
-        Show-Ok "Image pinned to $(Get-AlcoveImage)"
+        Show-Ok "Image pinned to digest $AlcoveImageDigest"
         return $true
     }
     Show-Fail 'This copy of the launcher did not come from a release.'
@@ -186,6 +196,127 @@ function Assert-AlcoveImageStamp {
     Show-Info "    $AlcoveReleasesUrl"
     Show-Info 'or ask whoever in your organisation distributes Alcove for the'
     Show-Info 'copy they approved.'
+    return $false
+}
+
+function Get-RegistryOf {
+    <#  The registry a repository is on, as the console's JOB_IMAGE_REGISTRY
+        names it. #>
+    param([string] $Repository = $script:AlcoveImageRepository)
+
+    return ($Repository -split '/', 2)[0]
+}
+
+function Get-RegistryLabel {
+    param([string] $Registry)
+
+    if ($Registry -eq 'docker.io') { return 'Docker Hub' }
+    return $Registry
+}
+
+function Get-RepositoryCandidates {
+    <#  The repositories to try, in order, from ALCOVE_IMAGE_REGISTRY: unset,
+        Docker Hub and then ghcr.io; set, that one alone, so an organisation
+        that approved one registry is kept to it. Returns @{ Ok; Repositories },
+        having said why when the value names neither. #>
+    param([string] $Choice = $env:ALCOVE_IMAGE_REGISTRY)
+
+    switch -CaseSensitive ("$Choice") {
+        '' { return @{ Ok = $true; Repositories = @($AlcoveDockerHubRepository, $AlcoveGhcrRepository) } }
+        'docker.io' { return @{ Ok = $true; Repositories = @($AlcoveDockerHubRepository) } }
+        'ghcr.io' { return @{ Ok = $true; Repositories = @($AlcoveGhcrRepository) } }
+    }
+    Show-Fail "ALCOVE_IMAGE_REGISTRY is set to '$($Choice -replace '[\x00-\x1f\x7f]', ' ')', which is not a registry this launcher downloads from."
+    Show-Note 'Set it to docker.io or ghcr.io to use that registry alone, or'
+    Show-Note 'remove it to try Docker Hub first and ghcr.io if that fails.'
+    return @{ Ok = $false; Repositories = @() }
+}
+
+function Test-PullMismatch {
+    <#  Whether a failed download's output says the registry sent something
+        other than the digest asked for. Best effort: the phrases have not been
+        seen from a real engine refusing a mismatched image, and wording they
+        miss is treated as an ordinary failed download -- whose fallback still
+        runs only the pinned digest. #>
+    param([string] $Output)
+
+    return [bool]($Output -match 'did not match|digest mismatch|verification failed|unexpected commit digest')
+}
+
+function Invoke-EnginePull {
+    <#  Download one reference, showing the engine's output as it arrives, with
+        control bytes blanked since a registry wrote some of it, and returning
+        it in the shape Invoke-EngineQuiet does. The stderr redirect runs with
+        the preference relaxed, for the reason Invoke-EngineQuiet gives. #>
+    param(
+        [Parameter(Mandatory = $true)][string] $Reference,
+        [string] $Engine = $script:AlcoveEngine
+    )
+
+    if (-not (Test-EngineCommand -Engine $Engine)) { return (New-AbsentEngineResult -Engine $Engine) }
+
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $lines = & $Engine pull $Reference 2>&1 | ForEach-Object {
+            $line = "$_"
+            Show-FromContainer $line
+            $line
+        }
+        return @{ Ran = $true; Output = (@($lines) -join [Environment]::NewLine); ExitCode = $LASTEXITCODE }
+    } finally { $ErrorActionPreference = $previous }
+}
+
+function Find-AlcoveImage {
+    <#  Find the pinned image in one of $Repositories and point
+        Get-AlcoveImage at it. One already on this PC is used without a
+        download. Otherwise each is downloaded in turn, and the next is tried
+        only on a failed download -- never on a mismatch, which is reported
+        instead. Returns whether the image is here. #>
+    param([Parameter(Mandatory = $true)][string[]] $Repositories)
+
+    foreach ($repository in $Repositories) {
+        $reference = "$repository@$AlcoveImageDigest"
+        if ((Invoke-EngineQuiet -EngineArgs @('image', 'inspect', $reference)).ExitCode -eq 0) {
+            $script:AlcoveImageRepository = $repository
+            Show-Ok "Using $reference, already on this PC."
+            return $true
+        }
+    }
+
+    for ($index = 0; $index -lt $Repositories.Count; $index++) {
+        $repository = $Repositories[$index]
+        $reference = "$repository@$AlcoveImageDigest"
+        Write-Host "Downloading $reference..."
+        $pulled = Invoke-EnginePull -Reference $reference
+        if ($pulled.ExitCode -eq 0) {
+            $script:AlcoveImageRepository = $repository
+            Show-Ok "Downloaded $reference"
+            return $true
+        }
+        $label = Get-RegistryLabel (Get-RegistryOf $repository)
+        if (Test-PullMismatch $pulled.Output) {
+            Show-Fail "$label sent an image that does not match the pinned digest."
+            Show-Note 'Nothing was run, and no other registry was tried: the image'
+            Show-Note 'that arrived is not the one this launcher names. Send the'
+            Show-Note 'message above to whoever in your organisation distributes'
+            Show-Note "Alcove. See $AlcoveTroubleshootingUrl"
+            return $false
+        }
+        if ($index + 1 -lt $Repositories.Count) {
+            Show-Alert "Could not download from $label; downloading the same image from $(Get-RegistryOf $Repositories[$index + 1]) instead."
+        }
+    }
+
+    Show-Fail 'The Alcove image could not be downloaded.'
+    if ($Repositories.Count -gt 1) {
+        Show-Note 'Both Docker Hub and ghcr.io were tried.'
+    } else {
+        Show-Note "ALCOVE_IMAGE_REGISTRY is set to $(Get-RegistryOf $Repositories[0]), so no other registry was tried."
+    }
+    Show-Note "The engine's messages above say why. A proxy that refuses or"
+    Show-Note 'intercepts the download is the usual cause. See'
+    Show-Info "    $AlcoveTroubleshootingUrl"
     return $false
 }
 
@@ -487,8 +618,8 @@ function Invoke-DoctorBattery {
     if ($run.ExitCode -ge 125) {
         Show-Fail "The container could not be started (exit $($run.ExitCode))."
         Show-Note 'Nothing about your folder was tested. The message the engine'
-        Show-Note 'printed above is the one to read. A first run also fetches the'
-        Show-Note 'image, which needs a network that can reach the registry.'
+        Show-Note 'printed above is the one to read. See'
+        Show-Info "    $AlcoveTroubleshootingUrl"
         return @{ Established = $false }
     }
 
@@ -1284,6 +1415,10 @@ function Get-ConsoleEngineArgs {
     if ($OutboundMount -or $OutboundLeg) {
         $engineArgs += @('--env', "JOB_RENDEZVOUS_OUTBOUND_NAME=$OutboundName")
     }
+    # The registry this run reached and the digest it runs, so the commands the
+    # console hands the operator name an image this PC can download.
+    $engineArgs += @('--env', "JOB_IMAGE_REGISTRY=$(Get-RegistryOf)",
+        '--env', "JOB_IMAGE_DIGEST=$AlcoveImageDigest")
     return $engineArgs + @((Get-AlcoveImage), 'serve')
 }
 
@@ -1313,6 +1448,8 @@ if ($LoadFunctionsOnly) { return }
 Show-Head 'Alcove console'
 
 if (-not (Assert-AlcoveImageStamp)) { exit 1 }
+$repositoryCandidates = Get-RepositoryCandidates
+if (-not $repositoryCandidates.Ok) { exit 1 }
 
 $script:AlcoveEngine = Find-ContainerEngine
 if (-not $script:AlcoveEngine) {
@@ -1339,6 +1476,7 @@ if (Test-WindowsContainerMode -Engine $script:AlcoveEngine) {
     exit 1
 }
 Show-Ok "Using $script:AlcoveEngine."
+if (-not (Find-AlcoveImage -Repositories $repositoryCandidates.Repositories)) { exit 1 }
 
 # Setup-AlcoveFileDrop.ps1 owns the Explorer-path-to-server-and-share
 # resolution, and the rule that names a folder within a share, and this script

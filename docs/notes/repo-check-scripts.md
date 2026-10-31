@@ -427,6 +427,7 @@ The decision to sign keylessly, and the probe runs behind the issuer and identit
 - Each verify step carries both certificate arguments in its own run text, because the one-identity comparison reads the whole workflow file at once and the step-order rule credits a step by the digest it names,
   so one step's copy of the certificate arguments would satisfy the comparison for every other step.
   A verify step stripped of the pair, or pointed at another identity, would pass both while running a command no partner runs.
+  A verify step in a job that pushes no image, the Docker Hub copy's, is held to the same pair without the step-order rule, which has no push of that job's to order it against.
 - The document publishes at least one `--signer-workflow`, since without it the attestation command's `--repo` is satisfied by an attestation any workflow in this repository produced.
 
 ### What it does not cover
