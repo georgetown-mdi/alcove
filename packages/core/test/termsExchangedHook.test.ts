@@ -7,6 +7,7 @@ import { createMessagePipe } from "../src/connection/messageConnection";
 import type { MessageConnection } from "../src/connection/messageConnection";
 import { InvitationTermDivergenceError, PeerAbortError } from "../src/errors";
 import type { NextSecretInputs } from "../src/nextSecret";
+import { PROTOCOL_VERSION } from "../src/versionHello";
 import { randomBytes } from "../src/utils/crypto";
 import { getLogger } from "../src/utils/logger";
 import type { LinkageTerms } from "../src/config/linkageTermsSchema";
@@ -49,6 +50,7 @@ async function runPair(options: {
     keyAgreementOutput: randomBytes(32),
     initiatorValue: randomBytes(32),
     expires: undefined,
+    negotiatedProtocolVersion: PROTOCOL_VERSION,
   };
   const events: string[] = [];
   const [rawI, rawR] = createMessagePipe();
