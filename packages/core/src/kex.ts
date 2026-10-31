@@ -70,7 +70,7 @@ const ECDH_P256 = { name: "ECDH", namedCurve: "P-256" } as const;
 // confirmation-tag value, and the block size the Noise chaining HKDF counts in.
 const HASH_LEN = 32;
 
-// The Noise "protocol name", hashed into the initial handshake hash. When it
+// The Noise "protocol name", which is the initial handshake hash. When it
 // is bumped, docs/spec/PROTOCOL.md ("Protocol-version tag") is what governs:
 // it states what the tag covers, what a bump is reserved for, and what a
 // mismatch does.
@@ -279,11 +279,23 @@ export async function noiseHkdf(
   return blocks;
 }
 
-async function initializeSymmetric(): Promise<SymmetricState> {
-  // Noise InitializeSymmetric: for a protocol name longer than the hash length
-  // (PROTOCOL_NAME is 33 bytes > 32) h = HASH(name); ck = h. The name-padding
-  // branch for <=32-byte names is unused here.
-  const h = await sha256(enc.encode(PROTOCOL_NAME));
+/**
+ * @internal exported only for the protocol-name rule test.
+ */
+export async function initializeSymmetric(
+  protocolName: string = PROTOCOL_NAME,
+): Promise<SymmetricState> {
+  // Noise InitializeSymmetric: a name of at most 32 bytes is zero-padded to
+  // 32 bytes, a longer one is hashed. PROTOCOL_NAME is exactly 32 bytes, so h0
+  // is the name itself.
+  const nameBytes = enc.encode(protocolName);
+  let h: Uint8Array<ArrayBuffer>;
+  if (nameBytes.length <= HASH_LEN) {
+    h = new Uint8Array(HASH_LEN);
+    h.set(nameBytes);
+  } else {
+    h = await sha256(nameBytes);
+  }
   // Noise sets ck = h here. Keep them as distinct buffers (not one shared
   // reference) so a future in-place mutation of one could never corrupt the
   // other; their values are identical at init regardless.

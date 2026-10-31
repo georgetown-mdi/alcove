@@ -67,3 +67,5 @@
 - - -> They record the key-agreement derivation's FixedInfo and its three blocks beside `Z`, which the generator computes with `node:crypto`'s `hkdfSync` over `Z` as bytes and the module reproduces from the recorded private keys through `deriveKey`.
 - - -> The shared secret itself never enters the rotation: SP 800-56A Rev.
 - - -> 3 section 5.8 lets it be used only by the scheme's key-derivation method, and the rotation takes that method's output ([COMPLIANCE.md](../COMPLIANCE.md#nist-sp-800-53), SC-12).
+- The Noise "protocol name" is the version tag and is hashed into the initial handshake hash, binding every derived key and confirmation tag to it: -> The Noise "protocol name" is the version tag and is the initial handshake hash, binding every derived key and confirmation tag to it:
+- `protocol_name` is longer than the 32-byte hash output, so the Noise `InitializeSymmetric` reduces to `h0 = SHA-256(protocol_name)`, and `ck0 = h0`. -> `protocol_name` is exactly 32 bytes, the hash output length, so the Noise `InitializeSymmetric` sets `h0 = protocol_name` (a name shorter than 32 bytes would be padded with zero bytes, a longer one hashed), and `ck0 = h0`.

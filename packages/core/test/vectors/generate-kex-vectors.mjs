@@ -108,7 +108,13 @@ function noiseHkdf(ck, ikm, n) {
 }
 
 function computeKexKeys(psk, eInitPub, eRespPub, eeInput, iReq, rReq) {
-  let h = sha256(Buffer.from(PROTOCOL_NAME, "utf8"));
+  // Noise InitializeSymmetric: a name of at most 32 bytes is zero-padded to 32
+  // bytes, a longer one is hashed.
+  const name = Buffer.from(PROTOCOL_NAME, "utf8");
+  let h =
+    name.length <= 32
+      ? Buffer.concat([name, Buffer.alloc(32 - name.length)])
+      : sha256(name);
   let ck = h;
   h = sha256(Buffer.concat([h, Buffer.alloc(0)])); // mixHash(empty prologue)
   {

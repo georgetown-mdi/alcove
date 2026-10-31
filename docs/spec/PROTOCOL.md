@@ -1435,7 +1435,7 @@ Every Noise citation in this section is to [the Noise Protocol Framework](https:
 
 **Module boundary.** The key schedule is composed in application JavaScript above primitive calls, and sits outside any validated cryptographic module boundary. Where a validated module is configured, it performs every cryptographic operation the handshake makes, all of which reach it through `crypto.subtle` -- the shared-secret computation as `KAS-ECC-SSC` per SP 800-56A Rev. 3 over P-256, and each extract-and-expand as the module's approved HKDF key-derivation function -- `KDA HKDF Sp800-56Cr1`, CAVP certificate A7440, on certificate 5438, the module the FIPS variant image holds ([CONTAINER_IMAGES.md](CONTAINER_IMAGES.md#what-certificate-5438-attests) states both rows and points at the conditions that certificate attaches to them). The shared secret reaches the key-agreement derivation through a `deriveKey` from ECDH to a non-extractable HKDF key, so no value application code can read holds it, and the ephemeral private key's only usage, `deriveKey`, makes the platform refuse a `deriveBits` that would. It still crosses the module boundary between the two services, whose shared-secret parameters certificate 5438's security policy lists as API input and output parameters (Table 20). It does not perform the mixing order, the domain-separation labels, the transcript binding, or the confirmation round, none of which any module certificate attests. In the browser there is no module beneath the platform at all. A composition of this shape yields validated primitives and never a validated protocol -- what a scoped claim may and may not say is in [COMPLIANCE.md](../COMPLIANCE.md#fips-140), and the decision behind the boundary is recorded in [key-establishment-fips-boundary.md](../notes/key-establishment-fips-boundary.md).
 
-**Protocol-version tag.** The Noise "protocol name" is the version tag and is hashed into the initial handshake hash, binding every derived key and confirmation tag to it:
+**Protocol-version tag.** The Noise "protocol name" is the version tag and is the initial handshake hash, binding every derived key and confirmation tag to it:
 
 ```
 protocol_name = "alcove-kex-v3:NNpsk0_P256_SHA256"
@@ -1480,7 +1480,7 @@ The layout, byte by byte:
 
 `packages/core/test/keyAgreement.test.ts` checks the layout at each offset, that the derivation is deterministic in both roles, that a changed byte in any field or the two parties in the other order changes every block, that `Z` reaches only this call through `deriveKey` with no ECDH `deriveBits` in a handshake, and that each block reaches only its consumer.
 
-**Key schedule** (a minimal subset of the Noise `SymmetricState`: a chaining key `ck` and a handshake hash `h`). `protocol_name` is longer than the 32-byte hash output, so the Noise `InitializeSymmetric` reduces to `h0 = SHA-256(protocol_name)`, and `ck0 = h0`. The NNpsk0 tokens (`-> psk, e` then `<- e, ee`, with an empty prologue) are then processed in order:
+**Key schedule** (a minimal subset of the Noise `SymmetricState`: a chaining key `ck` and a handshake hash `h`). `protocol_name` is exactly 32 bytes, the hash output length, so the Noise `InitializeSymmetric` sets `h0 = protocol_name` (a name shorter than 32 bytes would be padded with zero bytes, a longer one hashed), and `ck0 = h0`. The NNpsk0 tokens (`-> psk, e` then `<- e, ee`, with an empty prologue) are then processed in order:
 
 ```
 MixHash("")                       # empty prologue

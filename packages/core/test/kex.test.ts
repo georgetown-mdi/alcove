@@ -6,6 +6,7 @@ import {
   runKex,
   computeKexKeys,
   deriveKeyAgreement,
+  initializeSymmetric,
   initiatorConfirmTag,
   noiseHkdf,
   responderConfirmTag,
@@ -1387,7 +1388,11 @@ async function computeKexKeysUnderTag(
     ikm: Uint8Array<ArrayBuffer>,
   ) => (await noiseHkdf(ck, ikm, 2))[0]!;
 
-  let h = await sha256(encoder.encode(protocolName));
+  const nameBytes = encoder.encode(protocolName);
+  let h =
+    nameBytes.length <= 32
+      ? concatBytes(nameBytes, new Uint8Array(32 - nameBytes.length))
+      : await sha256(nameBytes);
   let ck = Uint8Array.from(h);
   h = await sha256(concatBytes(h, new Uint8Array(0)));
   const [ckAfterPsk, tempH] = await noiseHkdf(ck, psk, 3);
@@ -1427,6 +1432,37 @@ const SUPERSEDED_PROTOCOL_NAME = "alcove-kex-v2:NNpsk0_25519_SHA256";
 test("the shipped protocol-version tag names the P-256 suite and differs from the superseded tag", () => {
   expect(SHIPPED_PROTOCOL_NAME).toBe("alcove-kex-v3:NNpsk0_P256_SHA256");
   expect(SHIPPED_PROTOCOL_NAME).not.toBe(SUPERSEDED_PROTOCOL_NAME);
+});
+
+describe("the initial symmetric state follows Noise InitializeSymmetric", () => {
+  const encoder = new TextEncoder();
+
+  test("the shipped name is 32 bytes and h0 is the name itself", async () => {
+    const nameBytes = encoder.encode(SHIPPED_PROTOCOL_NAME);
+    expect(nameBytes.length).toBe(32);
+    const s = await initializeSymmetric();
+    expect(toHex(s.h)).toBe(toHex(nameBytes));
+    expect(toHex(s.ck)).toBe(toHex(nameBytes));
+    expect(s.ck).not.toBe(s.h);
+  });
+
+  test("a name shorter than 32 bytes is padded with zero bytes", async () => {
+    const name = "alcove-kex-test";
+    const expected = new Uint8Array(32);
+    expected.set(encoder.encode(name));
+    const s = await initializeSymmetric(name);
+    expect(toHex(s.h)).toBe(toHex(expected));
+    expect(toHex(s.ck)).toBe(toHex(expected));
+  });
+
+  test("a name longer than 32 bytes is hashed", async () => {
+    const name = `${SHIPPED_PROTOCOL_NAME}x`;
+    expect(encoder.encode(name).length).toBe(33);
+    const s = await initializeSymmetric(name);
+    const expected = toHex(await sha256(encoder.encode(name)));
+    expect(toHex(s.h)).toBe(expected);
+    expect(toHex(s.ck)).toBe(expected);
+  });
 });
 
 test("the tag-parameterized schedule reproduces computeKexKeys under the shipped tag", async () => {
