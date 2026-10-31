@@ -7,7 +7,7 @@ import {
 } from "@alcove/core/websocket-relay";
 
 import { createFaultLatch } from "./faultLatch.ts";
-import { sendWithinWindow } from "./forwarding.ts";
+import { pongWithinWindow, sendWithinWindow } from "./forwarding.ts";
 import {
   PAIRED_FRAME,
   RELAY_CLOSE_WAIT_MS,
@@ -182,6 +182,7 @@ export function attachWebSocketRelay(
     maxPayload: RELAY_MAX_MESSAGE_BYTES,
     perMessageDeflate: false,
     closeTimeout: closeWaitMs,
+    autoPong: false,
   };
   const socketServer = new WebSocketServer(serverOptions);
   const parties = new Set<Party>();
@@ -526,6 +527,13 @@ export function attachWebSocketRelay(
     // arrives as one Buffer.
     socket.on("message", (data, isBinary) =>
       onMessage(party, data as Buffer, isBinary),
+    );
+    // A ping is answered only while the queue toward its sender is under the high mark.
+    socket.on("ping", (data: Buffer) =>
+      pongWithinWindow(socket, data, { highBytes, lowBytes }, () => {
+        const partner = partnerOf(party);
+        if (partner !== undefined) release(partner, "backpressure");
+      }),
     );
     // `ws` closes the socket itself after an error it raises, an oversized
     // message's 1009 among them; the party's part ends here so the partner is

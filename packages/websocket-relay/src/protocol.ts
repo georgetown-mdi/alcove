@@ -33,19 +33,30 @@ export const RELAY_SEND_BUFFER_HIGH_BYTES = 1024 * 1024;
  * from the source again. */
 export const RELAY_SEND_BUFFER_LOW_BYTES = 256 * 1024;
 
+/** The smallest frame the relay parses from a party: a masked client frame
+ * with no payload, two header bytes and a four-byte mask. */
+const MIN_FRAME_BYTES = 6;
+
+/** Node's read size and a TCP socket's read high-water mark, in bytes. */
+const READ_BYTES = 64 * 1024;
+
 /**
- * The most bytes the relay charges for the messages queued toward one party,
- * each message its payload, its frame header and
- * {@link QUEUED_MESSAGE_OVERHEAD_BYTES}: the high mark, plus every message
- * completed in the read that crossed it, forwarded before the hold stops
- * reading. That read is at most 64 KiB, finishes at most one message begun
- * in the read before, and holds frames of at least 6 bytes.
+ * The most memory, in bytes, the relay holds for one party's queue and its
+ * source. The larger case is a held source that then closes: the relay
+ * forwards the queue from the read that crossed the high mark and the
+ * read-ahead the paused source held, a 64 KiB read and a 64 KiB high-water
+ * buffer. So the queue holds three reads of frames, each frame at least
+ * {@link MIN_FRAME_BYTES} and counted with its payload, its frame header and
+ * {@link QUEUED_MESSAGE_OVERHEAD_BYTES}, over the high mark and one whole
+ * message; the read-ahead is held as one buffer while it is read.
  */
 export const RELAY_QUEUED_BOUND_BYTES =
   RELAY_SEND_BUFFER_HIGH_BYTES +
-  64 * 1024 +
   RELAY_MAX_MESSAGE_BYTES +
-  (Math.floor((64 * 1024) / 6) + 1) * QUEUED_MESSAGE_OVERHEAD_BYTES;
+  3 * READ_BYTES +
+  (Math.floor((3 * READ_BYTES) / MIN_FRAME_BYTES) + 1) *
+    QUEUED_MESSAGE_OVERHEAD_BYTES +
+  2 * READ_BYTES;
 
 /** How long (ms) a socket may stay open before its hello arrives. */
 export const RELAY_HELLO_TIMEOUT_MS = 10_000;

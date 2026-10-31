@@ -1,6 +1,11 @@
 // The SFTP relay's wire: the request path, the close codes, and the bounds,
 // each stated in docs/spec/SFTP_RELAY.md.
 
+import {
+  PAUSED_READ_AHEAD_BYTES,
+  QUEUED_MESSAGE_OVERHEAD_BYTES,
+} from "@alcove/websocket-relay/forwarding";
+
 /** The request path a browser opens its relay socket on. */
 export const SFTP_RELAY_PATH = "/sftp";
 
@@ -25,17 +30,29 @@ export const SFTP_RELAY_PENDING_GROWTH_BYTES = 64 * 1024;
  * bytes read and not yet written, toward the target: the high mark, a partly
  * read message and its 14-byte frame header, the 64 KiB read that crossed the
  * mark, the unused capacity of the write in flight and of the pending buffer,
- * each under one growth step, and the paused source socket's read-ahead, under
- * 64 KiB plus one 64 KiB read. Toward the browser it is less: one read, its
- * 10-byte frame header and its queued-message overhead, no message, no
- * pending buffer.
+ * each under one growth step, and the paused source socket's read-ahead,
+ * counted as memory ({@link PAUSED_READ_AHEAD_BYTES}). Toward the browser it
+ * is less: {@link SFTP_RELAY_BROWSER_BOUND_BYTES}.
  */
 export const SFTP_RELAY_BUFFERED_BOUND_BYTES =
   SFTP_RELAY_SEND_BUFFER_HIGH_BYTES +
   (SFTP_RELAY_MAX_MESSAGE_BYTES + 14) +
   64 * 1024 +
   2 * SFTP_RELAY_PENDING_GROWTH_BYTES +
-  2 * 64 * 1024;
+  PAUSED_READ_AHEAD_BYTES;
+
+/**
+ * The most memory the relay holds toward the browser of one connection: the
+ * high mark, the 64 KiB read that crossed it with its 10-byte frame header
+ * and {@link QUEUED_MESSAGE_OVERHEAD_BYTES}, and the paused target socket's
+ * read-ahead, counted as memory ({@link PAUSED_READ_AHEAD_BYTES}).
+ */
+export const SFTP_RELAY_BROWSER_BOUND_BYTES =
+  SFTP_RELAY_SEND_BUFFER_HIGH_BYTES +
+  64 * 1024 +
+  10 +
+  QUEUED_MESSAGE_OVERHEAD_BYTES +
+  PAUSED_READ_AHEAD_BYTES;
 
 /** The most connections the relay holds at once, each a WebSocket and its
  * TCP connection; an upgrade above it is refused with 503. */

@@ -25,14 +25,57 @@ const queuedMessages = new WeakMap<WebSocket, number>();
 /**
  * The bytes the messages queued toward `destination` are charged against its
  * window: its send buffer, which counts each message's payload and frame
- * header, plus {@link QUEUED_MESSAGE_OVERHEAD_BYTES} for each message sent
- * through {@link sendWithinWindow} that has not yet been written.
+ * header, plus {@link QUEUED_MESSAGE_OVERHEAD_BYTES} for each message and
+ * ping answer queued here that has not yet been written.
  */
 export function queuedBytes(destination: WebSocket): number {
   return (
     destination.bufferedAmount +
     (queuedMessages.get(destination) ?? 0) * QUEUED_MESSAGE_OVERHEAD_BYTES
   );
+}
+
+/** Node's read size and a TCP socket's read high-water mark, in bytes. */
+const READ_BYTES = 64 * 1024;
+
+/**
+ * The memory, in bytes, a chunk in a paused socket's read buffer holds beyond
+ * its own bytes. Measured on Node v26.13 at about 219 bytes for chunks of one
+ * or two bytes, and rounded up.
+ */
+export const READ_CHUNK_OVERHEAD_BYTES = 256;
+
+/**
+ * The most memory, in bytes, a paused TCP socket's read-ahead holds: Node
+ * reads on until its buffer reaches the 64 KiB high-water mark, in chunks of
+ * at least one byte each counted with {@link READ_CHUNK_OVERHEAD_BYTES}, plus
+ * the one read that crossed the mark.
+ */
+export const PAUSED_READ_AHEAD_BYTES =
+  2 * READ_BYTES + (READ_BYTES + 1) * READ_CHUNK_OVERHEAD_BYTES;
+
+// Counts one frame toward `destination` until `write` completes it, with
+// Buffer's pool off: `ws` takes a frame's header from the shared pool, where
+// one queued header would keep a whole pool block alive.
+function queueFrame(
+  destination: WebSocket,
+  write: (done: () => void) => void,
+  done: () => void,
+): void {
+  queuedMessages.set(destination, (queuedMessages.get(destination) ?? 0) + 1);
+  const poolSize = Buffer.poolSize;
+  Buffer.poolSize = 0;
+  try {
+    write(() => {
+      queuedMessages.set(
+        destination,
+        (queuedMessages.get(destination) ?? 1) - 1,
+      );
+      done();
+    });
+  } finally {
+    Buffer.poolSize = poolSize;
+  }
 }
 
 /**
@@ -54,22 +97,34 @@ export function sendWithinWindow(
   // read or the shared pool block it arrived in.
   const message = Buffer.allocUnsafeSlow(data.length);
   data.copy(message);
-  queuedMessages.set(destination, (queuedMessages.get(destination) ?? 0) + 1);
-  // `ws` frames the message inside `send`, its header from Buffer's shared
-  // pool, where one queued header would keep a whole pool block alive; with
-  // the pool off for the call, the header is its own few bytes.
-  const poolSize = Buffer.poolSize;
-  Buffer.poolSize = 0;
-  try {
-    destination.send(message, { binary: true }, () => {
-      queuedMessages.set(
-        destination,
-        (queuedMessages.get(destination) ?? 1) - 1,
-      );
+  queueFrame(
+    destination,
+    (done) => destination.send(message, { binary: true }, done),
+    () => {
       if (queuedBytes(destination) <= window.lowBytes) release();
-    });
-  } finally {
-    Buffer.poolSize = poolSize;
-  }
+    },
+  );
   if (queuedBytes(destination) > window.highBytes) hold();
+}
+
+/**
+ * Answer a ping from `destination` while its queued bytes are under the
+ * window's high mark, counting the answer as a queued message, and drop it
+ * otherwise; `release` is called once the answer is written with the queued
+ * bytes at or below the low mark.
+ */
+export function pongWithinWindow(
+  destination: WebSocket,
+  data: Buffer,
+  window: SendWindow,
+  release: () => void,
+): void {
+  if (queuedBytes(destination) >= window.highBytes) return;
+  queueFrame(
+    destination,
+    (done) => destination.pong(data, false, done),
+    () => {
+      if (queuedBytes(destination) <= window.lowBytes) release();
+    },
+  );
 }
