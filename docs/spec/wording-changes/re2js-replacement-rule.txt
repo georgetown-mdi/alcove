@@ -1,0 +1,1 @@
+- - -> A `$<` begins a name that runs to the first `>` or space, or to the end of the replacement; the sequence is a group reference only when a `>` ends the name and the pattern has a group of that name, and otherwise it is emitted literally up to that `>` or space, so `$<x$1>` is wholly literal while in `$<x $1` the `$1` after the space is a reference.

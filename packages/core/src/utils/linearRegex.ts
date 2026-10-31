@@ -259,27 +259,48 @@ function underScanBudget<T>(
   return result;
 }
 
+// re2js releases disagree on these replacement sequences, so each is doubled to
+// its `$$` form before the engine sees it, which keeps it literal on every
+// release: `$0` (as in `$01`), and a `$<name>` that does not name a group, the
+// name running to the first `>` or space. The output is the one
+// docs/spec/PROTOCOL.md (Transform regular-expression dialect) requires.
+const UNSTABLE_REPLACEMENT_SEQUENCE = /\$(?:\$|0|<([^> ]*)(>?))/g;
+
+function literalizeUnstableSequences(
+  replacement: string,
+  namedGroups: Record<string, number>,
+): string {
+  return replacement.replace(
+    UNSTABLE_REPLACEMENT_SEQUENCE,
+    (sequence, name: string | undefined, close: string | undefined) =>
+      sequence === "$$" ||
+      (close === ">" && name !== undefined && Object.hasOwn(namedGroups, name))
+        ? sequence
+        : sequence.split("$").join("$$"),
+  );
+}
+
 /**
  * A compiled transform pattern, exposing exactly the operations the
  * standardization factories need, each matching the `RegExp` operation it
  * replaced for every in-dialect pattern (enforced by the cross-engine
  * equivalence tests). The equivalence covers the PATTERN dialect only;
  * {@link CompiledLinearRegex.replaceAll}'s replacement string resolves under
- * the engine's own rules, which diverge -- see there. Compile once via
+ * the protocol's rules, which diverge -- see there. Compile once via
  * {@link compileLinearRegex}; call per row.
  */
 export interface CompiledLinearRegex {
   /**
    * Replace every match with `replacement`. The `$n`/`$nn`, `$<name>`, `$&`,
    * `` $` ``, `$'`, and `$$` sequences have their usual meanings; an
-   * unrecognized sequence is emitted literally. The engine, not
-   * `String.prototype.replace`, decides what is recognized, and differs on
-   * two cases: a leading-zero reference (`$01`) and an unknown `$<name>` are
-   * emitted literally here, where JavaScript resolves the first to group 1
-   * and substitutes empty for the second. Normative in docs/spec/PROTOCOL.md
-   * (Transform regular-expression dialect); both divergences are checks in
-   * test/utils/linearRegex.test.ts. With a `budget`, the search is charged to
-   * it ({@link ScanBudget}).
+   * unrecognized sequence is emitted literally. This differs from
+   * `String.prototype.replace` on two cases: a leading-zero reference (`$01`)
+   * and an unknown `$<name>` are emitted literally here, where JavaScript
+   * resolves the first to group 1 and substitutes empty for the second.
+   * Normative in docs/spec/PROTOCOL.md (Transform regular-expression
+   * dialect), applied here rather than left to the engine release; the cases
+   * are checks in test/utils/linearRegex.test.ts. With a `budget`, the search
+   * is charged to it ({@link ScanBudget}).
    */
   replaceAll(input: string, replacement: string, budget?: ScanBudget): string;
   /**
@@ -357,13 +378,16 @@ export function compileLinearRegex(pattern: string): CompiledLinearRegex {
     for (let i = 1; i <= count; i++) groups.push(m.group(i));
     return groups;
   };
+  const namedGroups = re.namedGroups();
   return {
-    replaceAll: (input, replacement, budget) =>
-      budget === undefined
-        ? re.matcher(input).replaceAll(replacement)
+    replaceAll: (input, replacement, budget) => {
+      const literalized = literalizeUnstableSequences(replacement, namedGroups);
+      return budget === undefined
+        ? re.matcher(input).replaceAll(literalized)
         : underScanBudget(input, weightedSize, budget, true, (counted) =>
-            re.matcher(counted).replaceAll(replacement),
-          ),
+            re.matcher(counted).replaceAll(literalized),
+          );
+    },
     extractFirst: (input, budget) =>
       budget === undefined
         ? extractFirst(input)
