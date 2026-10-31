@@ -62,6 +62,9 @@ export type Connection = {
   // The partner's read-gate bound on a message file, which a PSI round checks
   // an outgoing set's file against. Omitted by a transport with no such bound.
   outboundFileSyncFrameBound?: () => number;
+  // The envelope version the key exchange negotiated, for each frame after a
+  // party's first. Omitted by a transport whose frames hold none (WebRTC).
+  useEnvelopeVersion?: (version: number) => void;
 };
 
 type Role = "starter" | "joiner" | "either";

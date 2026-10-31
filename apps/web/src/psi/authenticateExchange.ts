@@ -4,6 +4,7 @@ import {
   authenticateConnection,
   causeChainSome,
   errorMessage,
+  isPartnerProtocolRefusal,
   markStatesItsOwnNextStep,
   statesItsOwnNextStep,
 } from "@alcove/core";
@@ -46,7 +47,8 @@ export interface AuthenticatedExchange extends AuthResult {
  * A trust failure -- a wrong secret, a malformed or expired credential, or a
  * `protocol` error from the peer -- is re-tagged as a `security`
  * {@link ConnectionError}, so the caller shows the authentication-failure
- * alert; a {@link NON_TRUST_KINDS} failure is re-thrown unchanged. A failure
+ * alert; a {@link NON_TRUST_KINDS} failure, and the refusal when the two hellos
+ * share no version, are re-thrown unchanged. A failure
  * of the wrap itself during the exchange -- a bad tag, a replay, a gap, a
  * malformed envelope -- is a `security` ConnectionError from the returned
  * connection.
@@ -64,8 +66,8 @@ export interface AuthenticatedExchange extends AuthResult {
  *          `sessionKey`.
  * @throws {ConnectionError} of kind `"security"` on a trust failure; of kind
  *         `"usage"` if the handshake returns without the encryption this side
- *         requested; otherwise the original non-trust connection failure,
- *         unchanged.
+ *         requested; otherwise the original non-trust connection failure or
+ *         `PartnerProtocolRefusalError`, unchanged.
  */
 export async function authenticateExchange(
   mc: MessageConnection,
@@ -86,7 +88,9 @@ export async function authenticateExchange(
     );
   } catch (error) {
     // An unrecognized failure is treated as a trust failure: fail closed.
-    if (hasNonTrustConnectionError(error)) throw error;
+    // The hellos sharing no version is not one: it names the side to update.
+    if (hasNonTrustConnectionError(error) || isPartnerProtocolRefusal(error))
+      throw error;
     const wrapped = new ConnectionError(errorMessage(error), "security", {
       cause: error,
     });
@@ -109,6 +113,7 @@ export async function authenticateExchange(
     mc,
     result.sessionKey,
     exchangeRole,
+    result.negotiated.envelope,
   );
   return { ...result, connection };
 }

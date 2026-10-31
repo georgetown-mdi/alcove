@@ -49,6 +49,7 @@ import {
 } from "./utils/partnerOriginText";
 import type { PartnerOriginTextList } from "./utils/partnerOriginText";
 import { boundedArray } from "./utils/boundedArray";
+import { PROTOCOL_VERSION } from "./versionHello";
 import {
   ConnectionError,
   InternalConsistencyError,
@@ -200,23 +201,14 @@ export const receiveCeilingField = z
   .min(1)
   .max(MAX_PSI_DECODE_ELEMENTS);
 
-// The build-level exchange-protocol version both parties advertise on the
-// terms exchange and reconcile fail-closed. What the reconcile refuses, the
-// three neighbouring identifiers this marker is not, and what a bump is
-// reserved for: docs/spec/PROTOCOL.md ("Protocol-version reconcile at the
-// terms exchange"). Bumping this literal is that reconcile's whole mechanism,
-// so it is changed against that section rather than on its own.
-/** @internal exported for the protocol-version reconcile tests. */
-export const PROTOCOL_VERSION = 1;
-
 /**
  * The operator-facing diagnosis reported -- and sent to the partner as the
- * abort reason -- when a partner advertises anything but this build's exact
- * {@link PROTOCOL_VERSION}. It must stay a fixed literal holding nothing the
- * partner authored, and must read correctly from either side, since both
- * parties report it.
+ * abort reason -- when a partner's terms frame states any protocol version
+ * but the one the run negotiated. It must stay a fixed literal holding
+ * nothing the partner authored, and must read correctly from either side,
+ * since both parties report it.
  *
- * @internal exported for the protocol-version reconcile tests.
+ * @internal exported for the protocol-version check tests.
  */
 export const PROTOCOL_VERSION_MISMATCH_MESSAGE =
   "the partner is running an incompatible Alcove version; both parties must " +
@@ -244,8 +236,8 @@ const termsMessage = z.object({
   recordCount: recordCountField,
   receiveCeiling: receiveCeilingField,
   // Read as `unknown` and optional so every non-matching value reaches
-  // reconcileProtocolVersion rather than throwing a generic parse error; the
-  // reconcile refuses an absent advertisement itself, ahead of this parse.
+  // checkProtocolVersion rather than throwing a generic parse error; the
+  // check refuses an absent version itself, ahead of this parse.
   protocolVersion: z.unknown().optional(),
   save: z.boolean().optional(),
   disclosesPayload: z.boolean().optional(),
@@ -731,19 +723,26 @@ export interface TermsExchangeResult {
   partnerCertificateMalformed: boolean;
 }
 
+/** What the responder's abort in the message-2 slot states beside its reasons:
+ * its terms and the negotiated protocol version. */
+export interface ResponderAbortSlot {
+  linkageTerms: LinkageTerms;
+  protocolVersion: number;
+}
+
 /**
  * Best-effort delivery of an abort decision to the partner. The send is
  * wrapped so a transport failure coinciding with the abort condition is
  * swallowed: the partner falls back to its own receive timeout, and the
  * caller's subsequent throw -- which holds the real diagnostic -- is
- * always what shows. Pass `localTerms` when aborting from the responder's
+ * always what shows. Pass `slot` when aborting from the responder's
  * message-2 slot, which must still hold `linkageTerms`; omit it for the
  * initiator's decision-only frame.
  *
- * The protocol version is the one envelope field that rides the responder's
- * abort, and the `save` intent is not; which fields an abort frame holds and
- * why: docs/spec/PROTOCOL.md ("Protocol-version reconcile at the terms
- * exchange").
+ * The negotiated protocol version is the one envelope field that the
+ * responder's abort states, and the `save` intent is not; which fields an
+ * abort frame holds and why: docs/spec/PROTOCOL.md ("Protocol-version reconcile
+ * at the terms exchange").
  *
  * Exported for the refusals that fire past this exchange, which
  * `runExchange` applies to the terms this function's caller returned: the
@@ -757,16 +756,16 @@ export interface TermsExchangeResult {
 export async function sendAbort(
   conn: MessageConnection,
   abortReasons: string[],
-  localTerms?: LinkageTerms,
+  slot?: ResponderAbortSlot,
 ): Promise<void> {
   try {
     await conn.send(
-      localTerms !== undefined
+      slot !== undefined
         ? {
-            linkageTerms: localTerms,
+            linkageTerms: slot.linkageTerms,
             decision: "abort",
             abortReasons,
-            protocolVersion: PROTOCOL_VERSION,
+            protocolVersion: slot.protocolVersion,
           }
         : { decision: "abort", abortReasons },
     );
@@ -788,7 +787,7 @@ const protocolVersionProbe = z
 /**
  * Read the partner's advertised protocol version from a raw terms frame
  * without requiring the whole envelope to parse (see
- * {@link protocolVersionProbe}), so {@link reconcileProtocolVersion} can
+ * {@link protocolVersionProbe}), so {@link checkProtocolVersion} can
  * diagnose a version skew even when a sibling field would fail the strict
  * parse. Returns `undefined` for a frame that holds no version, that is
  * not an object, or whose `protocolVersion` read throws -- a throwing
@@ -810,36 +809,39 @@ export function probeProtocolVersion(rawData: unknown): unknown {
 }
 
 /**
- * Fail-closed reconcile of the partner's advertised {@link PROTOCOL_VERSION}.
- * Only this build's exact version proceeds; every other outcome best-effort
- * sends the partner the abort, so it too fails with the named cause rather
- * than a receive timeout, and throws
+ * Fail-closed check of the partner's stated protocol version against
+ * `expected`, the version the run negotiated. Only that version proceeds;
+ * every other outcome best-effort sends the partner the abort, so it too
+ * fails with the named cause rather than a receive timeout, and throws
  * {@link PROTOCOL_VERSION_MISMATCH_MESSAGE}. What "every other outcome"
- * covers, and why an absent advertisement is among them:
- * docs/spec/PROTOCOL.md ("Protocol-version reconcile at the terms exchange").
+ * covers, and why an absent version is among them: docs/spec/PROTOCOL.md
+ * ("Protocol-version reconcile at the terms exchange").
  *
- * Pass `localTerms` when reconciling from the responder's message-2 slot,
- * whose abort frame holds `linkageTerms`; omit it for the initiator's
- * decision-only abort.
+ * Pass `slot` when checking from the responder's message-2 slot, whose abort
+ * frame holds `linkageTerms`; omit it for the initiator's decision-only abort.
  */
-async function reconcileProtocolVersion(
+async function checkProtocolVersion(
   conn: MessageConnection,
   partnerVersion: unknown,
-  localTerms?: LinkageTerms,
+  expected: number,
+  slot?: ResponderAbortSlot,
 ): Promise<void> {
-  if (partnerVersion === PROTOCOL_VERSION) return;
-  await sendAbort(conn, [PROTOCOL_VERSION_MISMATCH_MESSAGE], localTerms);
+  if (partnerVersion === expected) return;
+  await sendAbort(conn, [PROTOCOL_VERSION_MISMATCH_MESSAGE], slot);
   throw new PartnerProtocolRefusalError(PROTOCOL_VERSION_MISMATCH_MESSAGE, {
-    olderVersion: olderVersionThan(partnerVersion),
+    olderVersion: olderVersionThan(partnerVersion, expected),
   });
 }
 
-// The version integer only rises, so a partner's integer orders against this
-// build's; any other value does not.
-function olderVersionThan(partnerVersion: unknown): OlderVersionSide {
+// The version integer only rises, so a partner's integer orders against the
+// expected one; any other value does not.
+function olderVersionThan(
+  partnerVersion: unknown,
+  expected: number,
+): OlderVersionSide {
   if (typeof partnerVersion !== "number" || !Number.isInteger(partnerVersion))
     return "unknown";
-  return partnerVersion < PROTOCOL_VERSION ? "partner" : "this-party";
+  return partnerVersion < expected ? "partner" : "this-party";
 }
 
 /** The diagnostics a comparison refuses on: the partner decides what this
@@ -874,7 +876,7 @@ async function settleTermsChange(params: {
   comparison: TermsComparison;
   adopted: LinkageTerms | undefined;
   options: TermsChangeOptions | undefined;
-  abortTerms: LinkageTerms | undefined;
+  abortTerms: ResponderAbortSlot | undefined;
 }): Promise<{ terms: LinkageTerms; comparison: TermsComparison }> {
   const { conn, localTerms, partnerTerms, comparison, adopted, abortTerms } =
     params;
@@ -933,7 +935,7 @@ async function settleTermsChange(params: {
 async function refuseIfSecretExpired(
   conn: MessageConnection,
   expires: string | undefined,
-  abortTerms: LinkageTerms | undefined,
+  abortTerms: ResponderAbortSlot | undefined,
 ): Promise<void> {
   if (expires === undefined || !isExpired(expires, Date.now())) return;
   await sendAbort(conn, [SHARED_SECRET_EXPIRED_ABORT_REASON], abortTerms);
@@ -950,7 +952,7 @@ async function storeNextSecret(
   conn: MessageConnection,
   rotation: TermsRotation,
   nextSecret: string,
-  abortTerms: LinkageTerms | undefined,
+  abortTerms: ResponderAbortSlot | undefined,
 ): Promise<void> {
   try {
     await rotation.store(nextSecret);
@@ -1062,7 +1064,7 @@ async function responderNextSecret(
  * `localRecordCount`, "The receive ceiling" for `localReceiveCeiling`, which
  * is always sent, "Withholding the sender's table from a blind helper" for
  * `localDisclosesPayload`, "Protocol-version reconcile at the terms exchange"
- * for the version this function advertises on its own) and
+ * for `negotiatedProtocolVersion`) and
  * docs/SECURITY_DESIGN.md for `localSaveIntent` and the host-key
  * reconciliation `localHostKey` feeds.
  *
@@ -1086,6 +1088,11 @@ async function responderNextSecret(
  * then sends its wrapped value on a proceeding message 2, and each side stores
  * the next secret at its point in the store order ({@link TermsRotation}).
  * Without it the initiator refuses a message 2 holding that value.
+ *
+ * `negotiatedProtocolVersion` is the protocol version the key exchange's
+ * hellos selected (`AuthResult.negotiated.protocol`); each side states it and
+ * refuses a partner frame stating another. A run with no key exchange passes
+ * nothing and checks against {@link PROTOCOL_VERSION}.
  */
 export async function exchangeTerms(
   conn: MessageConnection,
@@ -1099,7 +1106,13 @@ export async function exchangeTerms(
   termsChange?: TermsChangeOptions,
   localReceiveCeiling: number = MAX_PSI_DECODE_ELEMENTS,
   rotation?: TermsRotation,
+  negotiatedProtocolVersion: number = PROTOCOL_VERSION,
 ): Promise<TermsExchangeResult> {
+  const protocolVersion = negotiatedProtocolVersion;
+  const abortSlot: ResponderAbortSlot = {
+    linkageTerms: localTerms,
+    protocolVersion,
+  };
   // Spread into the outgoing terms frame only when this party is saving, so a
   // non-save exchange sends no `save` field at all.
   const saveField = localSaveIntent === true ? { save: true } : {};
@@ -1129,7 +1142,7 @@ export async function exchangeTerms(
       linkageTerms: localTerms,
       recordCount: localRecordCount,
       receiveCeiling: localReceiveCeiling,
-      protocolVersion: PROTOCOL_VERSION,
+      protocolVersion,
       ...saveField,
       ...disclosesPayloadField,
       ...hostKeyField,
@@ -1137,21 +1150,25 @@ export async function exchangeTerms(
     });
 
     // Message 2: receive partner's terms + decision. Raw receive so the
-    // protocol version is read from the lenient probe and reconciled before
+    // protocol version is read from the lenient probe and checked before
     // the strict parse: a malformed sibling field on this frame must not
     // throw the parse before the skew is diagnosed, which would strand the
     // responder awaiting our message 3 with no abort sent (see
-    // protocolVersionProbe / reconcileProtocolVersion).
+    // protocolVersionProbe / checkProtocolVersion).
     const rawMsg = await conn.receive();
 
     // Fail-closed protocol-version check first -- before the strict parse
     // and before any terms are weighed. A version skew is the root cause,
     // so its diagnosis wins over a record-count, terms, or sibling-field
     // parse difference the mismatch might also produce. A conforming
-    // responder advertises its version whether it proceeds or aborts (see
-    // sendAbort), so an abort passes the reconcile and reports its own
+    // responder states the negotiated version whether it proceeds or aborts
+    // (see sendAbort), so an abort passes the check and reports its own
     // reasons at the decision check below.
-    await reconcileProtocolVersion(conn, probeProtocolVersion(rawMsg));
+    await checkProtocolVersion(
+      conn,
+      probeProtocolVersion(rawMsg),
+      protocolVersion,
+    );
 
     const msg = parseOrProtocolError(termsWithDecisionMessage, rawMsg);
 
@@ -1277,7 +1294,7 @@ export async function exchangeTerms(
     let partnerCertificate: SigningCertificate | undefined;
     let partnerCertificateMalformed = false;
     // Read the version from the lenient probe before the strict parse, so
-    // the reconcile below runs on the peer's version even when
+    // the check below runs on the peer's version even when
     // `termsMessage.parse` throws -- whether on the linkage terms (a
     // version skew is the likely cause) or on any other envelope field a
     // future version might reshape (see protocolVersionProbe).
@@ -1308,11 +1325,16 @@ export async function exchangeTerms(
     // cause, so its diagnosis wins over a terms parse/compat error the same
     // mismatch would otherwise show. The abort holds localTerms (the
     // responder's message-2 slot always does).
-    await reconcileProtocolVersion(conn, partnerProtocolVersion, localTerms);
+    await checkProtocolVersion(
+      conn,
+      partnerProtocolVersion,
+      protocolVersion,
+      abortSlot,
+    );
 
     if (parseError !== undefined) {
       const errors = [`partner linkage terms failed to parse: ${parseError}`];
-      await sendAbort(conn, errors, localTerms);
+      await sendAbort(conn, errors, abortSlot);
       throw new ProtocolRefusalError(
         `linkage terms are incompatible: ${errors.join("; ")}`,
       );
@@ -1334,12 +1356,12 @@ export async function exchangeTerms(
         comparison: agreed.comparison,
         adopted: termsAdoptingPartnerTerms(localTerms, partnerTerms!),
         options: termsChange,
-        abortTerms: localTerms,
+        abortTerms: abortSlot,
       });
 
     let rotationReply: { nextSecret: string; wrapped: string } | undefined;
     if (rotation !== undefined) {
-      await refuseIfSecretExpired(conn, rotation.inputs.expires, localTerms);
+      await refuseIfSecretExpired(conn, rotation.inputs.expires, abortSlot);
       rotationReply = await responderNextSecret(rotation);
       rotation.partnerMayHoldNextSecret?.(true);
     }
@@ -1349,7 +1371,7 @@ export async function exchangeTerms(
       decision: "proceed",
       recordCount: localRecordCount,
       receiveCeiling: localReceiveCeiling,
-      protocolVersion: PROTOCOL_VERSION,
+      protocolVersion,
       ...saveField,
       ...disclosesPayloadField,
       ...hostKeyField,

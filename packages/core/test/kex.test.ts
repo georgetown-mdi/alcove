@@ -10,8 +10,10 @@ import {
   initiatorConfirmTag,
   noiseHkdf,
   responderConfirmTag,
+  supportedVersions,
   type KeyAgreementBlocks,
 } from "../src/kex";
+import { encodeHello, helloPrologue } from "../src/versionHello";
 import {
   deriveNextSecret,
   drawRotationValue,
@@ -234,6 +236,20 @@ async function importAccepts(bytes: Uint8Array<ArrayBuffer>): Promise<boolean> {
   }
 }
 
+// --- Version hello helpers ---------------------------------------------------
+
+// The hello runKex sends by default, which a hand-rolled peer sends too, and
+// the prologue the two then share.
+const HELLO = encodeHello(supportedVersions());
+const HELLO_WIRE = toBase64Url(HELLO);
+const PROLOGUE = helloPrologue(HELLO, HELLO);
+const SUITE = String(supportedVersions().kex[0]);
+
+/** Message 1's share map for a hand-rolled initiator offering one suite. */
+function sharesOf(share: string): Record<string, string> {
+  return { [SUITE]: share };
+}
+
 // One (initiator, responder) flag combination: chaining key and confirm key are
 // flag-independent (recorded once under `derived`); the handshake hash, session
 // key, and both tags vary per case.
@@ -257,9 +273,15 @@ interface KexCase {
     initiatorConfirmHex: string;
   };
   wire: {
-    msg1: { kexMsg: "1"; e: string; reqEnc: boolean };
+    msg1: {
+      kexMsg: "1";
+      hello: string;
+      e: Record<string, string>;
+      reqEnc: boolean;
+    };
     msg2: {
       kexMsg: "2";
+      hello: string;
       e: string;
       confirm: string;
       previousConfirm: string;
@@ -294,6 +316,9 @@ interface KexVectors {
     keyAgreementEeHex: string;
     keyAgreementKaHex: string;
     keyAgreementHistoryInputHex: string;
+    initiatorHelloHex: string;
+    responderHelloHex: string;
+    prologueHex: string;
     chainingKeyHex: string;
     confirmKeyHex: string;
     nextSecretHex: string;
@@ -416,6 +441,14 @@ test("known-answer vector: computeKexKeys reproduces the session key, confirmati
     );
   }
   const ee = fromHex(vectors.derived.keyAgreementEeHex);
+  // The prologue is the two recorded hellos, the initiator's being the one
+  // runKex sends by default.
+  const prologue = helloPrologue(
+    fromHex(vectors.derived.initiatorHelloHex),
+    fromHex(vectors.derived.responderHelloHex),
+  );
+  expect(toHex(prologue)).toBe(vectors.derived.prologueHex);
+  expect(toHex(HELLO)).toBe(vectors.derived.initiatorHelloHex);
 
   // All four (initiator, responder) flag combinations are pinned. The chaining
   // key and confirmation key are flag-independent (the flag MixHashes into h
@@ -424,6 +457,7 @@ test("known-answer vector: computeKexKeys reproduces the session key, confirmati
   for (const c of vectors.cases) {
     const k = await computeKexKeys(
       psk,
+      prologue,
       eInitPub,
       eRespPub,
       ee,
@@ -494,6 +528,7 @@ test("known-answer vector: the schedule under the previous secret gives message 
   for (const c of vectors.cases) {
     const p = await computeKexKeys(
       fromHex(vectors.inputs.previousPskHex),
+      fromHex(vectors.derived.prologueHex),
       eInitPub,
       eRespPub,
       ee,
@@ -693,9 +728,17 @@ test("known-answer vector: distinct flag values produce distinct transcripts", (
 
 test("known-answer vector: the wire base64url encodings match", () => {
   for (const c of vectors.cases) {
-    expect(
-      toBase64Url(fromHex(vectors.derived.initiatorEphemeralPublicHex)),
-    ).toBe(c.wire.msg1.e);
+    expect(c.wire.msg1.e).toEqual(
+      sharesOf(
+        toBase64Url(fromHex(vectors.derived.initiatorEphemeralPublicHex)),
+      ),
+    );
+    expect(c.wire.msg1.hello).toBe(
+      toBase64Url(fromHex(vectors.derived.initiatorHelloHex)),
+    );
+    expect(c.wire.msg2.hello).toBe(
+      toBase64Url(fromHex(vectors.derived.responderHelloHex)),
+    );
     expect(c.wire.msg1.reqEnc).toBe(c.initiatorRequestsEncryption);
     expect(
       toBase64Url(fromHex(vectors.derived.responderEphemeralPublicHex)),
@@ -891,9 +934,12 @@ test("the ephemeral public key on the wire is the pinned 65-byte uncompressed po
   const [connA, connB] = createMessagePipe();
   const initiator = runKex(connA, "initiator", PSK_A, false);
   initiator.catch(() => {});
-  const msg1 = (await connB.receive()) as { kexMsg: string; e: string };
+  const msg1 = (await connB.receive()) as {
+    kexMsg: string;
+    e: Record<string, string>;
+  };
   expect(msg1.kexMsg).toBe("1");
-  const e = fromBase64Url(msg1.e);
+  const e = fromBase64Url(msg1.e[SUITE]!);
   expect(e.length).toBe(65);
   expect(e[0]).toBe(0x04);
 });
@@ -1006,7 +1052,12 @@ test("responder sends abort when the initiator's msg1 is malformed", async () =>
   responder.catch(() => {});
   // reqEnc is present (a valid boolean) so the schema parses; the failure is the
   // undecodable `e`, exercising the public-key-decode abort path.
-  await connA.send({ kexMsg: "1", e: "not-base64url!!", reqEnc: false });
+  await connA.send({
+    kexMsg: "1",
+    hello: HELLO_WIRE,
+    e: sharesOf("not-base64url!!"),
+    reqEnc: false,
+  });
   const err = await responder.catch((e: unknown) => e);
   // A malformed-frame rejection holds the same security classification as a
   // confirmation mismatch: every authentication-failure site throws the one
@@ -1025,6 +1076,7 @@ test("initiator sends abort when the responder's msg2 is malformed", async () =>
   expect(msg1.kexMsg).toBe("1");
   await connB.send({
     kexMsg: "2",
+    hello: HELLO_WIRE,
     ...MSG2_ADDED_FIELDS,
     e: "not-base64url!!",
     confirm: "AA",
@@ -1048,15 +1100,16 @@ async function fakeResponderUpToMsg2(
 ) {
   const msg1 = (await conn.receive()) as {
     kexMsg: string;
-    e: string;
+    e: Record<string, string>;
     reqEnc: boolean;
   };
   expect(msg1.kexMsg).toBe("1");
-  const eInitPub = fromBase64Url(msg1.e);
+  const eInitPub = fromBase64Url(msg1.e[SUITE]!);
   const eph = await generateEphemeral();
   const { ee } = await agree(eph.privateKey, eInitPub, eInitPub, eph.publicKey);
   const keys = await computeKexKeys(
     psk,
+    PROLOGUE,
     eInitPub,
     eph.publicKey,
     ee,
@@ -1090,6 +1143,7 @@ test("a reflected confirmation (the initiator's own role label) does not verify"
   // two confirm labels are role-asymmetric, this must not verify.
   await connB.send({
     kexMsg: "2",
+    hello: HELLO_WIRE,
     ...MSG2_ADDED_FIELDS,
     e: toBase64Url(eRespPub),
     confirm: (await msg3For(keys)).confirm,
@@ -1112,6 +1166,7 @@ test("substituting the responder's public key on the wire breaks confirmation (i
   const other = await generateEphemeral();
   await connB.send({
     kexMsg: "2",
+    hello: HELLO_WIRE,
     ...MSG2_ADDED_FIELDS,
     e: toBase64Url(other.publicKey),
     confirm: toBase64Url(keys.responderConfirm),
@@ -1129,7 +1184,8 @@ test("substituting the initiator's public key breaks confirmation (responder sid
   const eph = await generateEphemeral();
   await connA.send({
     kexMsg: "1",
-    e: toBase64Url(eph.publicKey),
+    hello: HELLO_WIRE,
+    e: sharesOf(toBase64Url(eph.publicKey)),
     reqEnc: false,
   });
   const msg2 = (await connA.receive()) as {
@@ -1145,6 +1201,7 @@ test("substituting the initiator's public key breaks confirmation (responder sid
   const substitute = await generateEphemeral();
   const keys = await computeKexKeys(
     PSK_A,
+    PROLOGUE,
     substitute.publicKey,
     eRespPub,
     ee,
@@ -1170,7 +1227,8 @@ test("the responder folds an explicit abort delivered as msg3 into a generic fai
   const eph = await generateEphemeral();
   await connA.send({
     kexMsg: "1",
-    e: toBase64Url(eph.publicKey),
+    hello: HELLO_WIRE,
+    e: sharesOf(toBase64Url(eph.publicKey)),
     reqEnc: false,
   });
   expect(((await connA.receive()) as { kexMsg: string }).kexMsg).toBe("2");
@@ -1191,13 +1249,15 @@ describe("the responder's checks on message 3", () => {
     const eph = await generateEphemeral();
     await connA.send({
       kexMsg: "1",
-      e: toBase64Url(eph.publicKey),
+      hello: HELLO_WIRE,
+      e: sharesOf(toBase64Url(eph.publicKey)),
       reqEnc: false,
     });
     const msg2 = (await connA.receive()) as { e: string; reqEnc: boolean };
     const eRespPub = fromBase64Url(msg2.e);
     const keys = await computeKexKeys(
       PSK_A,
+      PROLOGUE,
       eph.publicKey,
       eRespPub,
       (await agree(eph.privateKey, eRespPub, eph.publicKey, eRespPub)).ee,
@@ -1293,6 +1353,7 @@ describe("a peer share that is not a canonically-encoded valid point is rejected
     expect(((await connB.receive()) as { kexMsg: string }).kexMsg).toBe("1");
     await connB.send({
       kexMsg: "2",
+      hello: HELLO_WIRE,
       ...MSG2_ADDED_FIELDS,
       e: toBase64Url(share),
       confirm: toBase64Url(new Uint8Array(32)),
@@ -1356,7 +1417,8 @@ describe("a peer share that is not a canonically-encoded valid point is rejected
       responder.catch(() => {});
       await connA.send({
         kexMsg: "1",
-        e: toBase64Url(share),
+        hello: HELLO_WIRE,
+        e: sharesOf(toBase64Url(share)),
         reqEnc: false,
       });
       await expect(responder).rejects.toThrow(GENERIC_FAILURE);
@@ -1375,6 +1437,7 @@ describe("a peer share that is not a canonically-encoded valid point is rejected
 async function computeKexKeysUnderTag(
   protocolName: string,
   psk: Uint8Array<ArrayBuffer>,
+  prologue: Uint8Array<ArrayBuffer>,
   eInitPub: Uint8Array<ArrayBuffer>,
   eRespPub: Uint8Array<ArrayBuffer>,
   ee: Uint8Array<ArrayBuffer>,
@@ -1394,7 +1457,7 @@ async function computeKexKeysUnderTag(
       ? concatBytes(nameBytes, new Uint8Array(32 - nameBytes.length))
       : await sha256(nameBytes);
   let ck = Uint8Array.from(h);
-  h = await sha256(concatBytes(h, new Uint8Array(0)));
+  h = await sha256(concatBytes(h, prologue));
   const [ckAfterPsk, tempH] = await noiseHkdf(ck, psk, 3);
   ck = ckAfterPsk!;
   h = await sha256(concatBytes(h, tempH!));
@@ -1473,13 +1536,22 @@ test("the tag-parameterized schedule reproduces computeKexKeys under the shipped
   const mirrored = await computeKexKeysUnderTag(
     SHIPPED_PROTOCOL_NAME,
     psk,
+    PROLOGUE,
     eInitPub,
     eRespPub,
     ee,
     true,
     false,
   );
-  const actual = await computeKexKeys(psk, eInitPub, eRespPub, ee, true, false);
+  const actual = await computeKexKeys(
+    psk,
+    PROLOGUE,
+    eInitPub,
+    eRespPub,
+    ee,
+    true,
+    false,
+  );
   expect(toHex(mirrored.sessionKey)).toBe(toHex(actual.sessionKey));
   expect(toHex(mirrored.confirmKey)).toBe(toHex(actual.confirmKey));
   expect(toHex(mirrored.handshakeHash)).toBe(toHex(actual.handshakeHash));
@@ -1501,17 +1573,18 @@ test("a peer on the superseded protocol-version tag fails the handshake closed",
 
   const msg1 = (await connB.receive()) as {
     kexMsg: string;
-    e: string;
+    e: Record<string, string>;
     reqEnc: boolean;
   };
   expect(msg1.kexMsg).toBe("1");
-  const eInitPub = fromBase64Url(msg1.e);
+  const eInitPub = fromBase64Url(msg1.e[SUITE]!);
   const eph = await generateEphemeral();
   const { ee } = await agree(eph.privateKey, eInitPub, eInitPub, eph.publicKey);
 
   const stale = await computeKexKeysUnderTag(
     SUPERSEDED_PROTOCOL_NAME,
     PSK_A,
+    PROLOGUE,
     eInitPub,
     eph.publicKey,
     ee,
@@ -1521,6 +1594,7 @@ test("a peer on the superseded protocol-version tag fails the handshake closed",
   const shipped = await computeKexKeysUnderTag(
     SHIPPED_PROTOCOL_NAME,
     PSK_A,
+    PROLOGUE,
     eInitPub,
     eph.publicKey,
     ee,
@@ -1536,6 +1610,7 @@ test("a peer on the superseded protocol-version tag fails the handshake closed",
 
   await connB.send({
     kexMsg: "2",
+    hello: HELLO_WIRE,
     ...MSG2_ADDED_FIELDS,
     e: toBase64Url(eph.publicKey),
     confirm: toBase64Url(stale.responderConfirm),
@@ -1589,7 +1664,8 @@ test("flipping the initiator's request-encryption flag on the wire fails the han
   // Tampered-down flag on the wire: the responder receives reqEnc: false.
   await connA.send({
     kexMsg: "1",
-    e: toBase64Url(eph.publicKey),
+    hello: HELLO_WIRE,
+    e: sharesOf(toBase64Url(eph.publicKey)),
     reqEnc: false,
   });
   const msg2 = (await connA.receive()) as {
@@ -1604,6 +1680,7 @@ test("flipping the initiator's request-encryption flag on the wire fails the han
   // the responder saw was flipped to false, so the two transcripts diverge.
   const keys = await computeKexKeys(
     PSK_A,
+    PROLOGUE,
     eph.publicKey,
     eRespPub,
     ee,
@@ -1631,6 +1708,7 @@ test("flipping the responder's request-encryption flag on the wire fails the han
   // false flag, diverging from the responder's, so the tag mismatches.
   await connB.send({
     kexMsg: "2",
+    hello: HELLO_WIRE,
     ...MSG2_ADDED_FIELDS,
     e: toBase64Url(eRespPub),
     confirm: toBase64Url(keys.responderConfirm),
@@ -1651,7 +1729,11 @@ test("a msg1 missing the request-encryption flag is rejected by the strict schem
   responder.catch(() => {});
   const eph = await generateEphemeral();
   // A flag-unaware initiator sends msg1 with no reqEnc field.
-  await connA.send({ kexMsg: "1", e: toBase64Url(eph.publicKey) });
+  await connA.send({
+    kexMsg: "1",
+    hello: HELLO_WIRE,
+    e: sharesOf(toBase64Url(eph.publicKey)),
+  });
   await expect(responder).rejects.toThrow(GENERIC_FAILURE);
   expect(await connA.receive()).toEqual({ kexMsg: "abort" });
 });
@@ -1666,6 +1748,7 @@ test("a msg2 missing the request-encryption flag is rejected by the strict schem
   // A flag-unaware responder replies with no reqEnc field.
   await connB.send({
     kexMsg: "2",
+    hello: HELLO_WIRE,
     ...MSG2_ADDED_FIELDS,
     e: toBase64Url(eph.publicKey),
     confirm: toBase64Url(new Uint8Array(32)),

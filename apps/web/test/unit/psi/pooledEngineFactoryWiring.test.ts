@@ -69,6 +69,7 @@ vi.mock("../../../src/psi/authenticateExchange.js", () => ({
         expires: undefined,
       },
       applyEncryption: true,
+      negotiated: { kex: 3, protocol: 1, envelope: 1 },
       connection,
     }),
   ),

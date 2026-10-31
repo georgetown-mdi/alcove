@@ -6,8 +6,29 @@
 //   bytes 10..  payload, never converted to a string
 //
 // See docs/spec/FILE_SYNC.md#file-taxonomy.
+//
+// MESSAGE_ENVELOPE_VERSION is byte 0 of each party's first message file, the
+// one that holds its version hello, and stays 1 permanently so a reader of any
+// version reads that frame; later frames hold the version the key exchange
+// negotiated (envelopeVersionForFrame).
 /** @internal */
 export const MESSAGE_ENVELOPE_VERSION = 1;
+
+/**
+ * The envelope version of a message file: {@link MESSAGE_ENVELOPE_VERSION} for
+ * a party's first, and the negotiated version for each later one where the
+ * key exchange negotiated one.
+ *
+ * @internal exported for the envelope-version test.
+ */
+export function envelopeVersionForFrame(
+  firstFrame: boolean,
+  negotiated: number | undefined,
+): number {
+  return firstFrame
+    ? MESSAGE_ENVELOPE_VERSION
+    : (negotiated ?? MESSAGE_ENVELOPE_VERSION);
+}
 /** @internal */
 export const MESSAGE_TYPE_OBJECT = 0;
 /** @internal */
@@ -19,8 +40,13 @@ export const messageTypeLabel = (type: number): string =>
   type === MESSAGE_TYPE_BINARY ? "Uint8Array" : "Object";
 
 // Assigns every header byte, so an allocUnsafe target leaks none.
-const writeMessageHeader = (out: Buffer, type: number, seq: number): void => {
-  out[0] = MESSAGE_ENVELOPE_VERSION;
+const writeMessageHeader = (
+  out: Buffer,
+  type: number,
+  seq: number,
+  version: number,
+): void => {
+  out[0] = version;
   out[1] = type;
   out.writeBigUInt64BE(BigInt(seq), 2);
 };
@@ -34,9 +60,10 @@ const writeMessageHeader = (out: Buffer, type: number, seq: number): void => {
 export function serializeFileSyncMessageHeader(
   type: number,
   seq: number,
+  version: number = MESSAGE_ENVELOPE_VERSION,
 ): Buffer {
   const header = Buffer.allocUnsafe(MESSAGE_HEADER_BYTES);
-  writeMessageHeader(header, type, seq);
+  writeMessageHeader(header, type, seq, version);
   return header;
 }
 
@@ -52,7 +79,7 @@ export function serializeFileSyncMessage(
   payload: Uint8Array,
 ): Buffer {
   const out = Buffer.allocUnsafe(MESSAGE_HEADER_BYTES + payload.length);
-  writeMessageHeader(out, type, seq);
+  writeMessageHeader(out, type, seq, MESSAGE_ENVELOPE_VERSION);
   out.set(payload, MESSAGE_HEADER_BYTES);
   return out;
 }
@@ -65,11 +92,14 @@ export interface DeserializedMessage {
 }
 
 /**
- * Byte 0 is not this build's {@link MESSAGE_ENVELOPE_VERSION}: most likely a
+ * Byte 0 is not the envelope version the frame should hold: most likely a
  * partner on an incompatible Alcove version, which the read path reports.
  */
 export class IncompatibleEnvelopeVersionError extends Error {
-  constructor(readonly foundVersion: number) {
+  constructor(
+    readonly foundVersion: number,
+    readonly expectedVersion: number,
+  ) {
     super(`unsupported message envelope version ${foundVersion}`);
     this.name = "IncompatibleEnvelopeVersionError";
   }
@@ -82,9 +112,10 @@ export class IncompatibleEnvelopeVersionError extends Error {
  */
 export function deserializeFileSyncMessage(
   raw: Uint8Array,
+  expectedVersion: number = MESSAGE_ENVELOPE_VERSION,
 ): DeserializedMessage {
-  if (raw.length > 0 && raw[0] !== MESSAGE_ENVELOPE_VERSION)
-    throw new IncompatibleEnvelopeVersionError(raw[0]);
+  if (raw.length > 0 && raw[0] !== expectedVersion)
+    throw new IncompatibleEnvelopeVersionError(raw[0], expectedVersion);
   if (raw.length < MESSAGE_HEADER_BYTES)
     throw new Error("message envelope is shorter than its header");
   const type = raw[1];

@@ -382,7 +382,10 @@ async function captureAbort(entry) {
     entry.abortReasons,
     entry.carriesLinkageTerms === null
       ? undefined
-      : linkageTerms[entry.carriesLinkageTerms],
+      : {
+          linkageTerms: linkageTerms[entry.carriesLinkageTerms],
+          protocolVersion: PROTOCOL_VERSION,
+        },
   );
   if (sent.length !== 1)
     throw new Error(

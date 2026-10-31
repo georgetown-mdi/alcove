@@ -3,11 +3,11 @@ import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 
 import {
-  PROTOCOL_VERSION,
   TERMS_ENVELOPE_FIELDS,
   exchangeTerms,
   sendAbort,
 } from "../../src/protocolSetup";
+import { PROTOCOL_VERSION } from "../../src/versionHello";
 import { createMessagePipe } from "../../src/connection/messageConnection";
 import { recordingConnection } from "../utils/recordingConnection";
 
@@ -242,7 +242,10 @@ describe("terms-exchange envelope vectors", () => {
         frame.envelope.abortReasons as Array<string>,
         frame.carriesLinkageTerms === null
           ? undefined
-          : vectors.linkageTerms[frame.carriesLinkageTerms],
+          : {
+              linkageTerms: vectors.linkageTerms[frame.carriesLinkageTerms]!,
+              protocolVersion: PROTOCOL_VERSION,
+            },
       );
 
       expect(sent).toHaveLength(1);

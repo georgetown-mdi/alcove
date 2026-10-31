@@ -3,9 +3,12 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   ConnectionError,
   EncryptedMessageConnection,
+  NO_COMMON_VERSION_MESSAGE,
   PartnerCopyBehindError,
   causeChainSome,
   deriveHistoryVerifier,
+  isPartnerProtocolRefusal,
+  olderVersionOf,
 } from "@alcove/core";
 
 import {
@@ -283,6 +286,28 @@ describe("authenticateExchange", () => {
     await expect(
       authenticateExchange(mc, "initiator", SECRET_A),
     ).rejects.toMatchObject({ name: "ConnectionError", kind: "security" });
+  });
+
+  test("a partner sharing no protocol version is passed through as the version refusal, not re-tagged as security", async () => {
+    const [connInitiator, connResponder] = createMessagePipe();
+    const partner = runKex(
+      connResponder,
+      "responder",
+      new Uint8Array(32),
+      true,
+      { history: [] },
+      { kex: [3], protocol: [99], envelope: [1] },
+    );
+    partner.catch(() => {});
+    const err: unknown = await authenticateExchange(
+      connInitiator,
+      "initiator",
+      SECRET_A,
+    ).catch((reason: unknown) => reason);
+    expect(err).not.toBeInstanceOf(ConnectionError);
+    expect(isPartnerProtocolRefusal(err)).toBe(true);
+    expect((err as Error).message).toBe(NO_COMMON_VERSION_MESSAGE);
+    expect(olderVersionOf(err)).toBe("this-party");
   });
 
   test("a local usage fault is passed through unchanged, not re-tagged as security", async () => {

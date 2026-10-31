@@ -907,6 +907,15 @@ export {
   deriveAbortToken,
 } from "./auth";
 export type { AuthResult, HandshakeSecretKind, RotationState } from "./auth";
+// The versions a build offers in its key-exchange hello, and the refusal both
+// parties report when the two offers share none in some layer.
+export { supportedVersions } from "./kex";
+export { NO_COMMON_VERSION_MESSAGE } from "./versionHello";
+export type {
+  NegotiatedVersions,
+  SupportedVersions,
+  VersionLayer,
+} from "./versionHello";
 // The rotation history and the failures its proofs report, for an application
 // that keeps a previous secret and a history.
 export {

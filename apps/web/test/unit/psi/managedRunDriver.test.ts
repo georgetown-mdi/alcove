@@ -258,6 +258,7 @@ vi.mock("../../../src/psi/authenticateExchange.js", () => ({
       nextSecretInputs: MOCKED_NEXT_SECRET_INPUTS,
       applyEncryption: true,
       secretUsed: { local: "current", partner: "current" },
+      negotiated: { kex: 3, protocol: 1, envelope: 1 },
       connection,
     }),
   ),
@@ -418,6 +419,7 @@ function wrappedHandshake(connection: MessageConnection) {
     nextSecretInputs: MOCKED_NEXT_SECRET_INPUTS,
     applyEncryption: true,
     secretUsed: { local: "current", partner: "current" } as const,
+    negotiated: { kex: 3, protocol: 1, envelope: 1 },
     connection,
   };
 }

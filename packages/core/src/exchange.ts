@@ -1350,6 +1350,14 @@ export interface RunExchangeOptions {
    * other.
    */
   rotation?: TermsRotation;
+  /**
+   * The protocol version the key exchange negotiated
+   * (`AuthResult.negotiated.protocol`), which both terms frames state and
+   * check. Passed on every authenticated run; without it the run checks
+   * against this build's `PROTOCOL_VERSION` (docs/spec/PROTOCOL.md,
+   * "Protocol-version reconcile at the terms exchange").
+   */
+  negotiatedProtocolVersion?: number;
   verbosity?: number;
 }
 
@@ -1580,6 +1588,7 @@ export async function runExchange(
     },
     localReceiveCeiling,
     options.rotation,
+    options.negotiatedProtocolVersion,
   );
   // The initiator that stored drops its previous secret on the responder's
   // first frame past the terms exchange that is not an abort.

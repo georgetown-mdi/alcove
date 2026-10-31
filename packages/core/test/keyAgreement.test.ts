@@ -8,6 +8,7 @@ import {
   deriveKeyAgreement,
   keyAgreementFixedInfo,
   runKex,
+  supportedVersions,
   type KexCandidates,
   type KeyAgreementBlocks,
 } from "../src/kex";
@@ -16,6 +17,11 @@ import { historyProof } from "../src/rotationHistory";
 import { createMessagePipe } from "../src/connection/messageConnection";
 import { AuthenticationError } from "../src/errors";
 import { toBase64Url } from "../src/utils/crypto";
+import { encodeHello } from "../src/versionHello";
+
+// The hello runKex sends by default, which these hand-rolled peers send too.
+const HELLO_WIRE = toBase64Url(encodeHello(supportedVersions()));
+const SUITE = String(supportedVersions().kex[0]);
 import type { HandshakeRole } from "../src/types";
 
 // The key-agreement derivation: the one HKDF call over Z, its FixedInfo layout,
@@ -209,6 +215,7 @@ describe("each block reaches only its consumer", () => {
   async function consumers(blocks: KeyAgreementBlocks) {
     const keys = await computeKexKeys(
       PSK_A,
+      new Uint8Array(0),
       eInitPub,
       eRespPub,
       blocks.ee,
@@ -463,6 +470,7 @@ describe("the all-zero check on the derived blocks", () => {
     expect(((await b.receive()) as { kexMsg: string }).kexMsg).toBe("1");
     await b.send({
       kexMsg: "2",
+      hello: HELLO_WIRE,
       e: await freshShare(),
       confirm: toBase64Url(new Uint8Array(32)),
       previousConfirm: toBase64Url(new Uint8Array(32)),
@@ -480,7 +488,12 @@ describe("the all-zero check on the derived blocks", () => {
     const [a, b] = createMessagePipe();
     const responder = runKex(b, "responder", PSK_A, false);
     responder.catch(() => {});
-    await a.send({ kexMsg: "1", e: await freshShare(), reqEnc: false });
+    await a.send({
+      kexMsg: "1",
+      hello: HELLO_WIRE,
+      e: { [SUITE]: await freshShare() },
+      reqEnc: false,
+    });
     const err = await responder.catch((e: unknown) => e);
     expect(err).toBeInstanceOf(AuthenticationError);
     expect((err as Error).message).toBe(GENERIC_FAILURE);

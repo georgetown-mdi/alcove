@@ -66,6 +66,8 @@ interface KexVectors {
     keyAgreementEeHex: string;
     keyAgreementKaHex: string;
     keyAgreementHistoryInputHex: string;
+    initiatorHelloHex: string;
+    prologueHex: string;
     chainingKeyHex: string;
     confirmKeyHex: string;
     nextSecret: string;
@@ -107,6 +109,11 @@ function toBase64Url(bytes: Uint8Array): string {
   for (const b of bytes) binary += String.fromCharCode(b);
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
 }
+
+// The vectors' initiator hello is this build's own, so a hand-rolled frame
+// carrying it passes the hello checks and reaches the one under test.
+const HELLO_WIRE = toBase64Url(fromHex(vectors.derived.initiatorHelloHex));
+const SUITE = "3";
 
 /** Import a fixed private key from the vectors by its recorded public point. */
 function importVectorPrivateKey(
@@ -255,6 +262,7 @@ describe("key exchange in the browser", () => {
     async (kexCase: KexCase) => {
       const keys = await computeKexKeys(
         fromHex(vectors.inputs.pskHex),
+        fromHex(vectors.derived.prologueHex),
         fromHex(vectors.derived.initiatorEphemeralPublicHex),
         fromHex(vectors.derived.responderEphemeralPublicHex),
         fromHex(vectors.derived.keyAgreementEeHex),
@@ -280,6 +288,7 @@ describe("key exchange in the browser", () => {
     async (kexCase: KexCase) => {
       const keys = await computeKexKeys(
         fromHex(vectors.inputs.pskHex),
+        fromHex(vectors.derived.prologueHex),
         fromHex(vectors.derived.initiatorEphemeralPublicHex),
         fromHex(vectors.derived.responderEphemeralPublicHex),
         fromHex(vectors.derived.keyAgreementEeHex),
@@ -466,6 +475,7 @@ describe("key exchange in the browser", () => {
     expect(((await connB.receive()) as { kexMsg: string }).kexMsg).toBe("1");
     await connB.send({
       kexMsg: "2",
+      hello: HELLO_WIRE,
       e: toBase64Url(share),
       confirm: toBase64Url(new Uint8Array(32)),
       previousConfirm: toBase64Url(new Uint8Array(32)),
@@ -487,7 +497,12 @@ describe("key exchange in the browser", () => {
       false,
     );
     responder.catch(() => {});
-    await connA.send({ kexMsg: "1", e: toBase64Url(share), reqEnc: false });
+    await connA.send({
+      kexMsg: "1",
+      hello: HELLO_WIRE,
+      e: { [SUITE]: toBase64Url(share) },
+      reqEnc: false,
+    });
     await expect(responder).rejects.toThrow(GENERIC_FAILURE);
     expect(await connA.receive()).toEqual({ kexMsg: "abort" });
   }

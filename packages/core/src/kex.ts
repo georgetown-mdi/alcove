@@ -35,6 +35,19 @@ import {
   type CheckedHistory,
   type HandshakeShares,
 } from "./rotationHistory.js";
+import {
+  ENVELOPE_VERSION,
+  PROTOCOL_VERSION,
+  encodeHello,
+  helloPrologue,
+  helloWire,
+  noCommonVersionError,
+  readHello,
+  selectVersions,
+  type NegotiatedVersions,
+  type ReceivedHello,
+  type SupportedVersions,
+} from "./versionHello.js";
 
 // The authenticated key exchange that produces the exchange session key: an
 // ephemeral P-256 Diffie-Hellman pinned to the Noise NNpsk0 pattern plus an
@@ -75,6 +88,46 @@ const HASH_LEN = 32;
 // it states what the tag covers, what a bump is reserved for, and what a
 // mismatch does.
 const PROTOCOL_NAME = "alcove-kex-v3:NNpsk0_P256_SHA256";
+
+/** A key-exchange suite a hello can offer. @internal */
+export interface KexSuite {
+  /** The integer the hello lists it by: its protocol-name tag's version. */
+  id: number;
+  /** Whether every primitive it uses is FIPS-approved. */
+  approved: boolean;
+}
+
+/** The suites this build implements. @internal */
+export const KEX_SUITES: readonly KexSuite[] = [{ id: 3, approved: true }];
+
+/**
+ * The ids of the suites in `suites` a party offers: the approved ones alone
+ * when `approvedOnly` is set.
+ *
+ * @internal exported for the suite-restriction test.
+ */
+export function offeredKexSuites(
+  suites: readonly KexSuite[],
+  approvedOnly: boolean,
+): number[] {
+  return suites.filter((s) => s.approved || !approvedOnly).map((s) => s.id);
+}
+
+/**
+ * The versions this build offers in its hello, per layer. A caller running
+ * on the FIPS variant passes `approvedKexSuitesOnly`, which drops every
+ * key-exchange suite that is not FIPS-approved (docs/spec/PROTOCOL.md, "The
+ * version hello").
+ */
+export function supportedVersions(
+  options: { approvedKexSuitesOnly?: boolean } = {},
+): SupportedVersions {
+  return {
+    kex: offeredKexSuites(KEX_SUITES, options.approvedKexSuitesOnly ?? false),
+    protocol: [PROTOCOL_VERSION],
+    envelope: [ENVELOPE_VERSION],
+  };
+}
 
 // Domain-separation labels for the derivations below, in the disjoint label
 // space docs/spec/PROTOCOL.md ("The domain-separation label space")
@@ -121,24 +174,29 @@ const EMPTY = new Uint8Array(0);
 // docs/spec/PROTOCOL.md ("Message flow"). Every schema is `.strict()`, so an
 // unexpected key fails the parse rather than being silently stripped; keep it
 // that way, since the strictness is half of what makes a flag-unaware peer
-// fail closed rather than negotiate.
+// fail closed rather than negotiate. Extension belongs in the hello, whose
+// reader accepts unknown members.
 
 interface KexMsg1 {
   kexMsg: "1";
-  e: string;
+  hello: string;
+  /** One share per offered suite, keyed by the suite's id in decimal. */
+  e: Record<string, string>;
   reqEnc: boolean;
 }
 
 const KexMsg1Schema: z.ZodType<KexMsg1> = z
   .object({
     kexMsg: z.literal("1"),
-    e: z.string(),
+    hello: z.string(),
+    e: z.record(z.string().regex(/^[1-9][0-9]{0,9}$/), z.string()),
     reqEnc: z.boolean(),
   })
   .strict();
 
 interface KexMsg2 {
   kexMsg: "2";
+  hello: string;
   e: string;
   confirm: string;
   previousConfirm: string;
@@ -149,6 +207,7 @@ interface KexMsg2 {
 const KexMsg2Schema: z.ZodType<KexMsg2> = z
   .object({
     kexMsg: z.literal("2"),
+    hello: z.string(),
     e: z.string(),
     confirm: z.string(),
     previousConfirm: z.string(),
@@ -180,6 +239,9 @@ interface BehindNotice {
 
 interface KexAbort {
   kexMsg: "abort";
+  /** The responder's hello, on the abort it sends in place of message 2
+   * when the two hellos share no version in some layer. */
+  hello?: string;
   historyProof?: string;
   behindNotice?: BehindNotice;
 }
@@ -187,6 +249,7 @@ interface KexAbort {
 const KexAbortSchema: z.ZodType<KexAbort> = z
   .object({
     kexMsg: z.literal("abort"),
+    hello: z.string().optional(),
     historyProof: z.string().optional(),
     behindNotice: z
       .object({
@@ -345,6 +408,7 @@ async function mixKeyAndHash(
  */
 export async function computeKexKeys(
   psk: Uint8Array<ArrayBuffer>,
+  prologue: Uint8Array<ArrayBuffer>,
   initiatorEphemeralPublic: Uint8Array<ArrayBuffer>,
   responderEphemeralPublic: Uint8Array<ArrayBuffer>,
   eeInput: Uint8Array<ArrayBuffer>,
@@ -357,7 +421,8 @@ export async function computeKexKeys(
   chainingKey: Uint8Array<ArrayBuffer>;
 }> {
   const s = await initializeSymmetric();
-  // NNpsk0 token sequence: -> psk, e ; <- e, ee (empty prologue). Each
+  // The prologue is both hellos (helloPrologue). NNpsk0 token sequence:
+  // -> psk, e ; <- e, ee. Each
   // message's request-encryption flag is mixed in as that message's
   // handshake payload, right after its `e` token. In PSK mode Noise (rev 34
   // section 9.2) processes every `e` token with MixKey(e.public) in addition
@@ -367,7 +432,7 @@ export async function computeKexKeys(
   // within one `e` token is immaterial; what is fixed is the ck-chain order
   // psk -> e_i -> e_r -> ee and the h-chain order e_i -> flag_i -> e_r ->
   // flag_r.
-  await mixHash(s, EMPTY);
+  await mixHash(s, prologue);
   await mixKeyAndHash(s, psk); // psk token at position 0
   await mixHash(s, initiatorEphemeralPublic); // initiator e: MixHash
   await mixKey(s, initiatorEphemeralPublic); //              and MixKey (PSK mode)
@@ -660,6 +725,8 @@ interface KexResult {
   localUsedPrevious: boolean;
   /** Whether the peer completed under its previous secret. */
   partnerUsedPrevious: boolean;
+  /** The version both hellos selected in each layer, the same on both ends. */
+  negotiated: NegotiatedVersions;
 }
 
 /**
@@ -682,6 +749,7 @@ type KexSchedule = Awaited<ReturnType<typeof computeKexKeys>>;
 async function computeBothSchedules(
   psk: Uint8Array<ArrayBuffer>,
   candidates: KexCandidates,
+  prologue: Uint8Array<ArrayBuffer>,
   shares: HandshakeShares,
   eeInput: Uint8Array<ArrayBuffer>,
   initiatorRequestsEncryption: boolean,
@@ -691,6 +759,7 @@ async function computeBothSchedules(
   const schedule = (secret: Uint8Array<ArrayBuffer>) =>
     computeKexKeys(
       secret,
+      prologue,
       shares.initiatorShare,
       shares.responderShare,
       eeInput,
@@ -832,6 +901,24 @@ async function responderFailsOnAbort(
   throw new AuthenticationError(GENERIC_FAILURE);
 }
 
+// The versions both hellos select. With none in common in some layer, sends
+// `abort` and throws the fixed refusal; otherwise tells the transport the
+// envelope version for its frames after the first.
+async function negotiateOrRefuse(
+  conn: MessageConnection,
+  supported: SupportedVersions,
+  peerHello: ReceivedHello,
+  abort: KexAbort = { kexMsg: "abort" },
+): Promise<NegotiatedVersions> {
+  const selection = selectVersions(supported, peerHello.versions);
+  if (!selection.ok) {
+    await sendAbort(conn, abort);
+    throw noCommonVersionError(selection.olderVersion);
+  }
+  conn.useEnvelopeVersion?.(selection.negotiated.envelope);
+  return selection.negotiated;
+}
+
 // --- Protocol ----------------------------------------------------------------
 
 /**
@@ -873,6 +960,11 @@ async function responderFailsOnAbort(
  *   the history fails as {@link PartnerCopyBehindError}, and a behind notice
  *   from the peer that verifies fails this side as
  *   {@link LocalCopyBehindError}; both are {@link AuthenticationError}s.
+ * @param supported  The versions this side's hello offers, per layer
+ *   ({@link supportedVersions}); its key-exchange suites must be ones this
+ *   build implements. With no version in common in some layer, the run ends
+ *   before the key exchange completes with a `PartnerProtocolRefusalError`
+ *   holding `NO_COMMON_VERSION_MESSAGE` (versionHello.ts).
  */
 export async function runKex(
   conn: MessageConnection,
@@ -880,6 +972,7 @@ export async function runKex(
   psk: Uint8Array<ArrayBuffer>,
   requestEncryption: boolean,
   candidates: KexCandidates = { history: [] },
+  supported: SupportedVersions = supportedVersions(),
 ): Promise<KexResult> {
   if (
     psk.length !== PSK_LEN ||
@@ -890,25 +983,66 @@ export async function runKex(
       `runKex: each secret must be ${PSK_LEN} bytes`,
     );
   }
-
-  const { privateKey: mySecret, publicKey: myPublic } =
-    await generateEphemeral();
+  if (
+    supported.kex.length === 0 ||
+    !supported.kex.every((id) => KEX_SUITES.some((s) => s.id === id))
+  ) {
+    throw new InternalConsistencyError(
+      "runKex: the offered key-exchange suites must be implemented ones",
+    );
+  }
+  const myHello = encodeHello(supported);
 
   if (handshakeRole === "initiator") {
+    // Every offered suite is P-256 today, so each share is one P-256 key pair.
+    const myEphemerals = new Map<
+      number,
+      Awaited<ReturnType<typeof generateEphemeral>>
+    >();
+    for (const id of new Set(supported.kex))
+      myEphemerals.set(id, await generateEphemeral());
     await conn.send({
       kexMsg: "1",
-      e: toBase64Url(myPublic),
+      hello: helloWire(myHello),
+      e: Object.fromEntries(
+        [...myEphemerals].map(([id, pair]) => [
+          String(id),
+          toBase64Url(pair.publicKey),
+        ]),
+      ),
       reqEnc: requestEncryption,
     } satisfies KexMsg1);
 
-    // Message 2: receive responder's ephemeral + confirmation.
-    // Every failure path below sends an abort so the responder stops waiting
-    // immediately rather than blocking until the handshake timeout.
-    const msg2 = KexMsg2Schema.safeParse(await receiveHandshake(conn));
+    // Message 2: receive responder's ephemeral + confirmation, or its abort
+    // naming its hello where the two share no version. Every failure path
+    // below sends an abort so the responder stops waiting immediately rather
+    // than blocking until the handshake timeout.
+    const reply: unknown = await receiveHandshake(conn);
+    const refusal = KexAbortSchema.safeParse(reply);
+    if (refusal.success && refusal.data.hello !== undefined) {
+      const peerHello = readHello(refusal.data.hello);
+      const selection =
+        peerHello === undefined
+          ? undefined
+          : selectVersions(supported, peerHello.versions);
+      if (selection !== undefined && !selection.ok)
+        throw noCommonVersionError(selection.olderVersion);
+    }
+    const msg2 = KexMsg2Schema.safeParse(reply);
     if (!msg2.success) {
       await sendAbort(conn);
       throw new AuthenticationError(GENERIC_FAILURE);
     }
+    const peerHello = readHello(msg2.data.hello);
+    if (peerHello === undefined) {
+      await sendAbort(conn);
+      throw new AuthenticationError(GENERIC_FAILURE);
+    }
+    const negotiated = await negotiateOrRefuse(conn, supported, peerHello);
+    const { privateKey: mySecret, publicKey: myPublic } = myEphemerals.get(
+      negotiated.kex,
+    )!;
+    const prologue = helloPrologue(myHello, peerHello.bytes);
     const peerPublic = decodeBase64Url(msg2.data.e);
     const peerKey =
       peerPublic === undefined ? undefined : await importPeerShare(peerPublic);
@@ -938,6 +1072,7 @@ export async function runKex(
     const schedules = await computeBothSchedules(
       psk,
       candidates,
+      prologue,
       shares,
       agreed.ee,
       requestEncryption,
@@ -1018,16 +1153,38 @@ export async function runKex(
       applyEncryption: requestEncryption || msg2.data.reqEnc,
       localUsedPrevious: usedPrevious,
       partnerUsedPrevious: chosen.peer === 1,
+      negotiated,
     };
   } else {
-    // Message 1: receive initiator's ephemeral public key.
+    // Message 1: receive initiator's hello and one share per offered suite.
     // Every failure path below sends an abort so the initiator stops waiting.
     const msg1 = KexMsg1Schema.safeParse(await receiveHandshake(conn));
     if (!msg1.success) {
       await sendAbort(conn);
       throw new AuthenticationError(GENERIC_FAILURE);
     }
-    const peerPublic = decodeBase64Url(msg1.data.e);
+    const peerHello = readHello(msg1.data.hello);
+    if (peerHello === undefined) {
+      await sendAbort(conn);
+      throw new AuthenticationError(GENERIC_FAILURE);
+    }
+    const negotiated = await negotiateOrRefuse(conn, supported, peerHello, {
+      kexMsg: "abort",
+      hello: helloWire(myHello),
+    });
+    const offered = new Set(peerHello.versions.kex.map(String));
+    const shareIds = Object.keys(msg1.data.e);
+    if (
+      shareIds.length !== offered.size ||
+      !shareIds.every((id) => offered.has(id))
+    ) {
+      await sendAbort(conn);
+      throw new AuthenticationError(GENERIC_FAILURE);
+    }
+    const { privateKey: mySecret, publicKey: myPublic } =
+      await generateEphemeral();
+    const prologue = helloPrologue(peerHello.bytes, myHello);
+    const peerPublic = decodeBase64Url(msg1.data.e[String(negotiated.kex)]!);
     const peerKey =
       peerPublic === undefined ? undefined : await importPeerShare(peerPublic);
     if (peerPublic === undefined || peerKey === undefined) {
@@ -1058,6 +1215,7 @@ export async function runKex(
     const schedules = await computeBothSchedules(
       psk,
       candidates,
+      prologue,
       shares,
       agreed.ee,
       msg1.data.reqEnc,
@@ -1068,6 +1226,7 @@ export async function runKex(
 
     await conn.send({
       kexMsg: "2",
+      hello: helloWire(myHello),
       e: toBase64Url(myPublic),
       confirm: toBase64Url(
         await responderConfirmTag(
@@ -1163,6 +1322,7 @@ export async function runKex(
       applyEncryption: msg1.data.reqEnc || requestEncryption,
       localUsedPrevious: completedOwn === 1,
       partnerUsedPrevious: usedPrevious,
+      negotiated,
     };
   }
 }

@@ -1,6 +1,7 @@
 import {
   ConnectionError,
   DeliveryUnconfirmedError,
+  InternalConsistencyError,
   asConnectionError,
 } from "../errors";
 import { deriveAeadKey } from "../auth";
@@ -12,15 +13,17 @@ import {
   JsonStructureBoundError,
 } from "../utils/boundedJson";
 import type { HandshakeRole } from "../types";
+import { ENVELOPE_VERSION } from "../versionHello";
 
-// Leading byte of the binary AEAD envelope: a format/version marker. A frame
-// whose first byte is not this value, or that is not binary at all (a
-// Uint8Array or an ArrayBuffer), is rejected as a security failure rather than
-// silently misparsed. Bump it on any
-// change to the envelope layout (the IV/ciphertext/tag order or widths) so a
-// format mismatch fails cleanly instead of being read as an IV.
+// Leading byte of the binary AEAD envelope: the negotiated envelope version,
+// this build's only one by default. A frame whose first byte is not that
+// value, or that is not binary at all (a Uint8Array or an ArrayBuffer), is
+// rejected as a security failure rather than silently misparsed. A change to
+// the envelope layout (the IV/ciphertext/tag order or widths) is a new
+// envelope version offered in the hello (docs/spec/PROTOCOL.md, "The version
+// hello").
 /** @internal */
-export const AEAD_ENVELOPE_VERSION = 1;
+export const AEAD_ENVELOPE_VERSION = ENVELOPE_VERSION;
 
 // First byte of the pre-encryption plaintext, preserving the original payload's
 // type across the wire. It lives INSIDE the authenticated ciphertext, so the
@@ -140,14 +143,18 @@ export class EncryptedMessageConnection implements MessageConnection {
     "usage",
   );
 
+  private readonly envelopeVersion: number;
+
   private constructor(
     inner: MessageConnection,
     sendKey: CryptoKey,
     recvKey: CryptoKey,
+    envelopeVersion: number,
   ) {
     this.inner = inner;
     this.sendKey = sendKey;
     this.recvKey = recvKey;
+    this.envelopeVersion = envelopeVersion;
   }
 
   /**
@@ -158,13 +165,22 @@ export class EncryptedMessageConnection implements MessageConnection {
    * not detected here - it shows up later as a "security" decrypt failure on the
    * first received frame, not as a construction error. `sessionKey` must be 32
    * bytes (the AES-256 key length); a wrong length throws a "usage"
-   * {@link ConnectionError}.
+   * {@link ConnectionError}. `envelopeVersion` is the one the key exchange
+   * negotiated (`AuthResult.negotiated.envelope`), which every envelope this
+   * side writes holds and every envelope it reads must hold; a version this
+   * build does not implement throws an {@link InternalConsistencyError}.
    */
   static async create(
     inner: MessageConnection,
     sessionKey: Uint8Array<ArrayBuffer>,
     role: HandshakeRole,
+    envelopeVersion: number = AEAD_ENVELOPE_VERSION,
   ): Promise<EncryptedMessageConnection> {
+    if (envelopeVersion !== AEAD_ENVELOPE_VERSION)
+      throw new InternalConsistencyError(
+        `EncryptedMessageConnection: envelope version ${envelopeVersion} is ` +
+          "not one this build implements",
+      );
     // Validate the session-key length up front. HKDF accepts any-length input,
     // so a wrong-length key would NOT throw - it would silently derive a
     // different 32-byte AEAD key, and the mismatch would show up only later as
@@ -200,7 +216,12 @@ export class EncryptedMessageConnection implements MessageConnection {
       ]),
     ]);
 
-    return new EncryptedMessageConnection(inner, sendKey, recvKey);
+    return new EncryptedMessageConnection(
+      inner,
+      sendKey,
+      recvKey,
+      envelopeVersion,
+    );
   }
 
   // Latch the first terminal error and return it for the caller to throw. The
@@ -342,7 +363,7 @@ export class EncryptedMessageConnection implements MessageConnection {
     const envelope = new Uint8Array(
       1 + 12 + cipher.length,
     ) as Uint8Array<ArrayBuffer>;
-    envelope[0] = AEAD_ENVELOPE_VERSION;
+    envelope[0] = this.envelopeVersion;
     envelope.set(iv, 1);
     envelope.set(cipher, 13);
 
@@ -430,7 +451,7 @@ export class EncryptedMessageConnection implements MessageConnection {
     // Version/format marker. A wrong value -- a different envelope layout, or a
     // frame from an incompatible build -- fails cleanly here instead of being
     // misparsed as the start of the IV.
-    if (bytes[0] !== AEAD_ENVELOPE_VERSION) {
+    if (bytes[0] !== this.envelopeVersion) {
       throw this.fail(
         new ConnectionError(
           `EncryptedMessageConnection: unsupported envelope version ${bytes[0]}`,
@@ -606,6 +627,10 @@ export class EncryptedMessageConnection implements MessageConnection {
 
   inboundPsiSetElementCeiling(): number | undefined {
     return this.inner.inboundPsiSetElementCeiling?.();
+  }
+
+  useEnvelopeVersion(version: number): void {
+    this.inner.useEnvelopeVersion?.(version);
   }
 
   // A failure this layer detected ends the inner connection with a local

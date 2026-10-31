@@ -37,15 +37,16 @@ import { MAX_FRAME_SIZE_BYTES } from "./frameSize";
 import { joinFileSyncPath } from "./fileSyncPath";
 import { renameOwnTemp } from "./fileSyncWrite";
 import {
-  MESSAGE_ENVELOPE_VERSION,
   MESSAGE_TYPE_OBJECT,
   MESSAGE_TYPE_BINARY,
   MESSAGE_HEADER_BYTES,
+  envelopeVersionForFrame,
   messageTypeLabel,
   serializeFileSyncMessageHeader,
   deserializeFileSyncMessage,
   IncompatibleEnvelopeVersionError,
 } from "./fileSyncFraming";
+import { ENVELOPE_VERSION } from "../versionHello";
 import type { DeserializedMessage } from "./fileSyncFraming";
 import {
   LOCK_SUFFIX,
@@ -393,6 +394,11 @@ export class FileSyncMessageLoop {
   // tight cap from a prior exchange cannot reject a later one.
   private inboundFrameCap: number | undefined;
 
+  // The envelope version the key exchange negotiated, and whether the
+  // partner's first message has been delivered; see envelopeVersionForFrame.
+  private negotiatedEnvelopeVersion: number | undefined;
+  private partnerFirstFrameDelivered = false;
+
   private poller: NodeJS.Timeout | undefined;
   private pollerActive = false;
 
@@ -591,7 +597,11 @@ export class FileSyncMessageLoop {
       // the peer waits until the synced file reaches that many bytes before
       // reading it, so a partial sync delivery is never read as a complete
       // message.
-      const header = serializeFileSyncMessageHeader(type, seq);
+      const header = serializeFileSyncMessageHeader(
+        type,
+        seq,
+        envelopeVersionForFrame(seq === 0, this.negotiatedEnvelopeVersion),
+      );
       const byteLength = MESSAGE_HEADER_BYTES + payloadBytes.length;
       const outName = messageFilename({
         id: deps.id(),
@@ -1083,7 +1093,13 @@ export class FileSyncMessageLoop {
           } => {
             let envelope: DeserializedMessage;
             try {
-              envelope = deserializeFileSyncMessage(message);
+              envelope = deserializeFileSyncMessage(
+                message,
+                envelopeVersionForFrame(
+                  !this.partnerFirstFrameDelivered,
+                  this.negotiatedEnvelopeVersion,
+                ),
+              );
             } catch (parseErr: unknown) {
               // An unrecognized envelope version byte is the file-sync
               // signature of a version-mismatched partner (a JSON-text
@@ -1096,7 +1112,7 @@ export class FileSyncMessageLoop {
                     `from ${redactPrivateKeyMaterial(peerId)} has an ` +
                     `unrecognized wire ` +
                     `format (envelope version byte ${parseErr.foundVersion}, ` +
-                    `not this build's ${MESSAGE_ENVELOPE_VERSION}); the partner ` +
+                    `not the expected ${parseErr.expectedVersion}); the partner ` +
                     `is likely running an incompatible Alcove version, and ` +
                     `both parties must run the same version`,
                   // A pre-envelope peer's leading '{' reads as a higher byte.
@@ -1199,6 +1215,7 @@ export class FileSyncMessageLoop {
             // `data` is already the value to deliver: the parsed object for a
             // JSON control message, or the raw frame bytes for a binary frame.
             deps.emit("data", validatedMessage.data);
+            this.partnerFirstFrameDelivered = true;
             // Advance only after the application has seen the payload: if emit
             // throws, recvSeq stays at msgNNN so the (never-deleted) message file
             // is reprocessed on the next poll rather than permanently lost.
@@ -1271,6 +1288,7 @@ export class FileSyncMessageLoop {
             // `data` is already the value to deliver: the parsed object for a
             // JSON control message, or the raw frame bytes for a binary frame.
             deps.emit("data", validatedMessage.data);
+            this.partnerFirstFrameDelivered = true;
           }
         }
       }
@@ -1384,6 +1402,19 @@ export class FileSyncMessageLoop {
     // layer clears it explicitly after each single-pass reply too; this is a
     // redundant reset on a fresh session.
     this.inboundFrameCap = undefined;
+    this.negotiatedEnvelopeVersion = undefined;
+    this.partnerFirstFrameDelivered = false;
+  }
+
+  // The negotiated envelope version for frames after each party's first. Only
+  // a version this build implements is accepted.
+  useEnvelopeVersion(version: number): void {
+    if (version !== ENVELOPE_VERSION)
+      throw new InternalConsistencyError(
+        `FileSyncMessageLoop: envelope version ${version} is not one this ` +
+          "build writes",
+      );
+    this.negotiatedEnvelopeVersion = version;
   }
 
   // Owns the per-exchange inbound frame cap and its clamp; the connection's

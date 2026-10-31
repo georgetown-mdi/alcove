@@ -1,3 +1,4 @@
+import { getFips } from "node:crypto";
 import path from "node:path";
 
 import {
@@ -16,6 +17,7 @@ import {
   describeResolvedMatching,
   describeResolvedRunShape,
   authenticateConnection,
+  supportedVersions,
   deriveAbortToken,
   OperatorConfigError,
   PeerAbortError,
@@ -491,6 +493,7 @@ async function runExchangeStage(params: {
       sessionKey: signing !== null ? run.sessionKeyForReceipt : undefined,
       // Set by authenticateRun on the authenticated path only.
       rotation: run.rotation,
+      negotiatedProtocolVersion: run.negotiatedProtocolVersion,
       // Record the adopted pin into the configuration this exchange was
       // given, at the moment of adoption and before anything is disclosed, so
       // a run that pins and then fails mid-round does not re-pin blind on the
@@ -1400,8 +1403,23 @@ async function authenticateRun(params: {
   // so DTLS alone does not keep content from it; it cannot complete this
   // handshake. See docs/spec/CHANNEL_SECURITY.md.
   const requestEncryption = true;
-  const { nextSecretInputs, sessionKey, applyEncryption, secretUsed } =
-    await authenticateConnection(mc, authParams, role, requestEncryption, {
+  // The FIPS variant image's OpenSSL configuration sets fips=yes as the
+  // default property, which getFips() reports (docs/notes/fips-provider-
+  // surface.md); under it the hello offers approved key-exchange suites only.
+  // A capability probe would not do: a FIPS provider build may still carry an
+  // unapproved primitive.
+  const {
+    nextSecretInputs,
+    sessionKey,
+    applyEncryption,
+    secretUsed,
+    negotiated,
+  } = await authenticateConnection(
+    mc,
+    authParams,
+    role,
+    requestEncryption,
+    {
       ...(previousSharedSecret !== undefined && {
         previous: {
           sharedSecret: previousSharedSecret,
@@ -1409,11 +1427,14 @@ async function authenticateRun(params: {
         },
       }),
       history: rotationHistory ?? [],
-    }).catch((err: unknown) => {
-      if (isTrustBoundaryFailure(classifyFailure(err)))
-        clearRotationInFlightMarker(keyFilePath, auth.sharedSecret, log);
-      throw err;
-    });
+    },
+    supportedVersions({ approvedKexSuitesOnly: getFips() === 1 }),
+  ).catch((err: unknown) => {
+    if (isTrustBoundaryFailure(classifyFailure(err)))
+      clearRotationInFlightMarker(keyFilePath, auth.sharedSecret, log);
+    throw err;
+  });
+  run.negotiatedProtocolVersion = negotiated.protocol;
   const heal = rotationHealWarning(secretUsed);
   if (heal !== undefined) {
     log.warn(heal);
@@ -1542,7 +1563,12 @@ async function authenticateRun(params: {
       "usage",
     );
   }
-  run.secure = await EncryptedMessageConnection.create(mc, sessionKey, role);
+  run.secure = await EncryptedMessageConnection.create(
+    mc,
+    sessionKey,
+    role,
+    negotiated.envelope,
+  );
   if (run.signalReceived !== undefined) {
     throw new Error(
       `interrupted by ${run.signalReceived} during channel encryption setup`,
@@ -1599,6 +1625,12 @@ interface RunLifecycle {
    * signed-receipt step derives its replay binder from.
    */
   sessionKeyForReceipt: Uint8Array<ArrayBuffer> | undefined;
+  /**
+   * The protocol version the key exchange negotiated, which the terms
+   * exchange checks the partner's stated version against. Unset on the
+   * no-auth path, which checks against this build's own version.
+   */
+  negotiatedProtocolVersion: number | undefined;
   /** Set immediately before the key exchange is awaited. */
   authStarted: boolean;
   /** This side's role in the key exchange, set with {@link authStarted}. */
@@ -2214,6 +2246,7 @@ export async function runProtocol(
     started: false,
     secure: undefined,
     sessionKeyForReceipt: undefined,
+    negotiatedProtocolVersion: undefined,
     authStarted: false,
     handshakeRole: undefined,
     partnerMayHoldNextSecret: false,

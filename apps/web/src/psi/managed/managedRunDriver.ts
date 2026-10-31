@@ -139,6 +139,9 @@ interface ManagedRerunCarried {
    * exchange takes it into the rotation it hands core
    * ({@link takeNextSecretInputs}). */
   nextSecretInputs?: NextSecretInputs;
+  /** The protocol version the key exchange negotiated, which the terms
+   * exchange checks the partner's stated version against. */
+  negotiatedProtocolVersion: number;
   /** The next secret, once the terms exchange has stored it: a run that
    * stopped before its store registers no rotated relay key. */
   rotatedSecret?: string;
@@ -442,6 +445,7 @@ export function runManagedExchangeInBrowser(
             csvDelimiter: current.exchangeFile.csvDelimiter,
             linkageTerms: current.exchangeFile.linkageTerms,
             nextSecretInputs: auth.nextSecretInputs,
+            negotiatedProtocolVersion: auth.negotiated.protocol,
             ...(runRegistrar !== undefined && {
               relayRegistration: {
                 registrar: runRegistrar,
@@ -494,6 +498,7 @@ export function runManagedExchangeInBrowser(
               psiLibrary: carried.psiLibrary,
               psiEngineFactory: browserPsiEngineFactory(),
               rotation,
+              negotiatedProtocolVersion: carried.negotiatedProtocolVersion,
               // What the agreed terms resolved to, reported here as for every
               // other seat: a re-run is where an unnoticed widening of the match
               // matters most, since the terms are a standing record. The
