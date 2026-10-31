@@ -232,7 +232,7 @@ export function parseExchangeSpec(
     );
   const refused = [
     ...withNewerFileHint(droppedSettingIssues(raw, camelized, result.data)),
-    ...exchangeFileVersionIssues(result.data, policy),
+    ...exchangeFileVersionIssues(camelized, result.data, policy),
   ];
   if (refused.length > 0) throw new z.ZodError(refused);
   return result.data;
@@ -264,7 +264,7 @@ export function safeParseExchangeSpec(
     EXCHANGE_FILE_WIDTH_BOUNDS,
     (camelized, parsed) => [
       ...droppedSettingIssues(raw, camelized, parsed),
-      ...exchangeFileVersionIssues(parsed, policy),
+      ...exchangeFileVersionIssues(camelized, parsed, policy),
     ],
   );
   if (result.success) return result;
@@ -297,15 +297,19 @@ export function atLowestExchangeFileVersion(
   };
 }
 
-/** A parsed spec's fields that need a version above the one it declares. */
+/**
+ * The fields a file states that need a version above the one it declares,
+ * read from the camelized document before the schema fills its defaults.
+ */
 function exchangeFileVersionIssues(
+  camelized: unknown,
   parsed: ExchangeSpec,
   policy: FormatVersionPolicy,
 ): Array<z.core.$ZodIssue> {
   return formatVersionBelowNeededIssues(
     "The exchange file",
     "format_version",
-    parsed,
+    camelized,
     parsed.formatVersion ?? 1,
     policy,
   );

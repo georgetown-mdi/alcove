@@ -80,6 +80,20 @@ describe("KeyFileSchema", () => {
     );
   });
 
+  test("refuses a newer version by its version alone, beside broken and unknown fields", () => {
+    const result = KeyFileSchema.safeParse({
+      version: 2,
+      sharedSecret: "short",
+      newField: 1,
+    });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues).toHaveLength(1);
+    expect(result.error?.issues[0]).toMatchObject({
+      path: ["version"],
+      message: expect.stringMatching(/^The key file is format version 2,/),
+    });
+  });
+
   test("refuses a malformed known field without echoing its value", () => {
     const nearMiss = SECRET.slice(0, 42);
     const result = KeyFileSchema.safeParse({ sharedSecret: nearMiss });

@@ -92,16 +92,18 @@ export class KeyFoldCollisionError extends UsageError {
 }
 
 /**
- * Key names whose value is passed verbatim to an external library, so its keys
- * are not case-transformed: `providerOptions`, the `ssh2-sftp-client` connect
- * options. A name match at any depth, decided in both directions by
- * {@link transformKeysDeep} so a write -> read round trip is byte-stable.
- * Exported for the structural-invariant test.
+ * Key names whose value is held verbatim, so its keys are not
+ * case-transformed: `providerOptions`, the `ssh2-sftp-client` connect options
+ * passed to that library, and `about`, a file's informational block, which a
+ * writer holds as the file states it. A name match at any depth, decided in
+ * both directions by {@link transformKeysDeep} so a write -> read round trip is
+ * byte-stable. Exported for the structural-invariant test.
  *
  * @internal
  */
 export const OPAQUE_VALUE_KEYS: ReadonlySet<string> = new Set([
   "providerOptions",
+  "about",
 ]);
 
 /**

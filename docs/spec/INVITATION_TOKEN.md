@@ -174,7 +174,8 @@ Each of the first five throws `InvitationDecodeError` with a fixed message conta
 The `failure` values divide into two groups by what the receiving party can do (`InvitationDecodeFailure`).
 `tooShort`, `notBase64Url` and `checksumMismatch` mean the string was cut or changed in transit, so a fresh copy of the same invitation may decode.
 `tooLong` and `notJson` mean an intact string this build does not read, so only a new invitation helps.
-A version or schema failure, including the `linkageTerms` fold errors (`NestingDepthExceededError`, `NodeCountExceededError`, `KeyFoldCollisionError`), is also an intact string this build does not read, so it takes the second group's remedy.
+A schema failure, including the `linkageTerms` fold errors (`NestingDepthExceededError`, `NodeCountExceededError`, `KeyFoldCollisionError`), is also an intact string this build does not read, so it takes the second group's remedy.
+A format version newer than this build reads is the one exception, since updating Alcove opens the invitation (`isNewerInvitationVersionError`, `INVITATION_NEWER_REMEDY`).
 The web accept route chooses its message by that division (`invitationDecodeRefusal` in `apps/web/src/exchange/invitationDecodeRefusal.ts`).
 
 `decodeInvitation` does not check `expires` against the clock: a token past its expiry decodes, and the expiry check below is a separate step.

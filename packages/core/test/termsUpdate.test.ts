@@ -286,6 +286,38 @@ describe("terms update", () => {
     expect(err.message).toMatch(/^This terms update is format version 2,/);
   });
 
+  test("a field the schema defaults counts toward the version only where the update states it", async () => {
+    const strategyAtVersion2: FormatVersionPolicy = {
+      current: 2,
+      features: [
+        {
+          path: ["linkageTerms", "linkageStrategy"],
+          name: "linkageTerms.linkageStrategy",
+          version: 2,
+        },
+      ],
+    };
+    const secret = generateSharedSecret();
+    const stating = await encodeTermsUpdate({ linkageTerms: terms }, secret);
+    const content = body(stating);
+    const { linkageStrategy: _strategy, ...termsLeavingItOut } = content[
+      "linkageTerms"
+    ] as Record<string, unknown>;
+    content["linkageTerms"] = termsLeavingItOut;
+    const leaving = await decodeTermsUpdate(
+      await authenticated(content, secret),
+      secret,
+      strategyAtVersion2,
+    );
+    expect(leaving.linkageTerms.linkageStrategy).toBe("cascade");
+    await expect(
+      decodeTermsUpdate(stating, secret, strategyAtVersion2),
+    ).rejects.toThrow(
+      "This terms update declares format version 1, but its field " +
+        '"linkageTerms.linkageStrategy" needs version 2.',
+    );
+  });
+
   test("a declared version below what the fields need is refused naming the field and the version", async () => {
     const secret = generateSharedSecret();
     const encoded = await encodeTermsUpdate({ linkageTerms: terms }, secret);

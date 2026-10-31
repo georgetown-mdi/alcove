@@ -1070,6 +1070,52 @@ test("an unknown member of the about block is skipped", async () => {
   expect(decoded.linkageTerms).toEqual(baseToken.linkageTerms);
 });
 
+test("a field the schema defaults counts toward the version only where the token states it", async () => {
+  const strategyAtVersion2: FormatVersionPolicy = {
+    current: 2,
+    features: [
+      {
+        path: ["linkageTerms", "linkageStrategy"],
+        name: "linkageStrategy",
+        version: 2,
+      },
+    ],
+  };
+  const { linkageStrategy: _strategy, ...termsLeavingItOut } = baseTerms;
+  const leaving = await decodeInvitation(
+    await encodeRawInvitation({
+      ...baseToken,
+      linkageTerms: termsLeavingItOut,
+    }),
+    strategyAtVersion2,
+  );
+  expect(leaving.linkageTerms.linkageStrategy).toBe("cascade");
+
+  const error = await decodeInvitation(
+    await encodeRawInvitation(baseToken),
+    strategyAtVersion2,
+  ).catch((err: unknown) => err);
+  expect((error as ZodError).issues[0]).toMatchObject({
+    path: ["linkageTerms", "linkageStrategy"],
+    message:
+      'The invitation declares format version 1, but its field "linkageStrategy" ' +
+      "needs version 2. Set version to 2, or remove the field.",
+  });
+});
+
+test("the about block is held as the token spells it, at every depth", async () => {
+  const about = {
+    my_note: "a",
+    myNote: "b",
+    URL: "c",
+    nested: { inner_key: 1 },
+  };
+  const decoded = await decodeInvitation(
+    await encodeRawInvitation({ ...baseToken, about }),
+  );
+  expect(decoded.about).toEqual(about);
+});
+
 test("an unknown top-level member is refused as made by a newer Alcove, by name", async () => {
   const issue = await decodeRefusal(
     await encodeRawInvitation({

@@ -438,14 +438,52 @@ export function droppedLinkageTermsIssues(
   );
 }
 
+/**
+ * A token's or terms update's body as the file states it, before any schema
+ * default, with its `linkageTerms` folded to camelCase as
+ * {@link InvitationLinkageTermsSchema} folds them: what the version-needed
+ * check reads. Runs on a successful parse of `body` only.
+ *
+ * @internal not a stable public API.
+ */
+export function statedBody(body: unknown): Record<string, unknown> {
+  const fields = body as Record<string, unknown>;
+  return {
+    ...fields,
+    linkageTerms: camelizeKeys(fields["linkageTerms"], PARAMS_WIDTH_BOUND),
+  };
+}
+
 /** The format version table of the invitation token. */
 export const INVITATION_VERSION_POLICY: FormatVersionPolicy =
   FIRST_FORMAT_VERSION_POLICY;
 
 const INVITATION_FILE_NAME = "The invitation";
 
-const INVITATION_NEWER_REMEDY =
+/** What to do with an invitation a newer Alcove made. */
+export const INVITATION_NEWER_REMEDY =
   "Update Alcove, then open the invitation again.";
+
+/** The `params` of the issue {@link decodeInvitation} raises for a token on a
+ * format version newer than the policy's. */
+const NEWER_VERSION_PARAMS = Object.freeze({ newerFormatVersion: true });
+
+/**
+ * Whether `error` is {@link decodeInvitation}'s refusal of a token on a format
+ * version newer than this build reads, whose remedy is updating Alcove
+ * ({@link INVITATION_NEWER_REMEDY}) rather than asking for a new invitation.
+ */
+export function isNewerInvitationVersionError(
+  error: unknown,
+): error is z.ZodError {
+  if (!(error instanceof z.ZodError) || error.issues.length !== 1) return false;
+  const [issue] = error.issues;
+  return (
+    issue?.code === "custom" &&
+    issue.params?.["newerFormatVersion"] ===
+      NEWER_VERSION_PARAMS.newerFormatVersion
+  );
+}
 
 // Strict: a member outside this shape is one a newer Alcove wrote, and is
 // refused by name rather than dropped. `about` is the one block skipped.
@@ -784,6 +822,7 @@ export async function decodeInvitation(
       {
         code: "custom",
         path: ["version"],
+        params: NEWER_VERSION_PARAMS,
         message: newerFormatVersionMessage(
           INVITATION_FILE_NAME,
           declared,
@@ -803,7 +842,7 @@ export async function decodeInvitation(
     ...formatVersionBelowNeededIssues(
       INVITATION_FILE_NAME,
       "version",
-      token,
+      statedBody(raw),
       Number(token.version),
       policy,
     ),

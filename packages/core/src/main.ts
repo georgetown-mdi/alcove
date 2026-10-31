@@ -540,6 +540,7 @@ export type {
 export {
   INVITATION_ACCEPT_ROUTE_PATH,
   INVITATION_LIFETIME_SECONDS,
+  INVITATION_NEWER_REMEDY,
   InvitationDecodeError,
   assertInvitationLifetimeSeconds,
   invitationExpires,
@@ -551,6 +552,7 @@ export {
   endpointRequiresRetainedFiles,
   hasExpiryInstantPassed,
   isInvitationExpired,
+  isNewerInvitationVersionError,
   relayLocatorFromOwnRelay,
   stripInvitationWhitespace,
   WebRTCEndpointSchema,

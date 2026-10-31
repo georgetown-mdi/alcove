@@ -585,7 +585,71 @@ test("an unknown member of the about block is skipped and held", () => {
     about,
   });
   const parsed = parseExchangeSpec(parseYaml(yaml));
+  expect(parsed.about).toEqual(about);
   expect(snakeizeKeys(parsed)).toMatchObject({ about });
+});
+
+test("the about block's keys are held as the file spells them, at every depth", () => {
+  const about = { myNote: "a", URL: "b", nested: { innerKey: 1 } };
+  const raw = {
+    ...(snakeizeKeys(
+      mintExchangeSpec({ connection: sftpLocator, linkageTerms: baseTerms }),
+    ) as object),
+    about,
+  };
+  const parsed = parseExchangeSpec(raw);
+  expect(parsed.about).toEqual(about);
+  const written = parseYaml(serializeExchangeDocument(parsed)) as {
+    about: unknown;
+  };
+  expect(written.about).toEqual(about);
+  expect(parseExchangeSpec(written).about).toEqual(about);
+});
+
+test("a field the schema defaults counts toward the version only where the file states it", () => {
+  const strategyAtVersion2: FormatVersionPolicy = {
+    current: 2,
+    features: [
+      {
+        path: ["linkageTerms", "linkageStrategy"],
+        name: "linkage_strategy",
+        version: 2,
+      },
+    ],
+  };
+  const stating = snakeizeKeys(
+    mintExchangeSpec({ connection: sftpLocator, linkageTerms: baseTerms }),
+  ) as { linkage_terms: Record<string, unknown> };
+  const { linkage_strategy: _strategy, ...termsLeavingItOut } =
+    stating.linkage_terms;
+  const leaving = { ...stating, linkage_terms: termsLeavingItOut };
+
+  expect(
+    parseExchangeSpec(leaving, strategyAtVersion2).linkageTerms.linkageStrategy,
+  ).toBe("cascade");
+  expect(
+    firstIssue(() => parseExchangeSpec(stating, strategyAtVersion2)),
+  ).toMatchObject({
+    path: ["linkageTerms", "linkageStrategy"],
+    message:
+      'The exchange file declares format version 1, but its field "linkage_strategy" ' +
+      "needs version 2. Set format_version to 2, or remove the field.",
+  });
+  expect(safeParseExchangeSpec(leaving, strategyAtVersion2).success).toBe(true);
+  expect(safeParseExchangeSpec(stating, strategyAtVersion2).success).toBe(
+    false,
+  );
+});
+
+test("an about block holding two spellings of one name is read", () => {
+  const about = { my_note: "a", myNote: "b" };
+  const raw = {
+    ...(snakeizeKeys(
+      mintExchangeSpec({ connection: sftpLocator, linkageTerms: baseTerms }),
+    ) as object),
+    about,
+  };
+  expect(parseExchangeSpec(raw).about).toEqual(about);
 });
 
 test("an unknown semantic member is refused by name as possibly from a newer Alcove", () => {

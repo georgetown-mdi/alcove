@@ -12,7 +12,7 @@ import { unreadKeyIssues, unrecognizedKeysAsWritten } from "./unreadKeys.js";
 
 /** A field a format version after the first introduced. */
 export interface FormatFeature {
-  /** Where the field sits in the parsed document, as camelCase keys. */
+  /** Where the field sits in the document, as camelCase keys. */
   readonly path: ReadonlyArray<string>;
   /** The field as the file spells it, for a message. */
   readonly name: string;
@@ -42,21 +42,14 @@ export const FIRST_FORMAT_VERSION_POLICY: FormatVersionPolicy = Object.freeze({
 /**
  * The informational block of an invitation, a minted exchange file, or a terms
  * update: notes about the file that no reader acts on. A reader of any version
- * skips every member, a member it does not know included.
+ * skips every member, a member it does not know included, and a writer holds
+ * the block as the file states it, key spelling included. Alcove's names for
+ * the mint time, the minting build, a label, a comment and a form hint are
+ * `mintedAt`, `mintedBy`, `label`, `comment` and `formHint` in the invitation
+ * and the terms update, and `minted_at`, `minted_by`, `label`, `comment` and
+ * `form_hint` in the exchange file.
  */
-export interface FormatInfoBlock {
-  /** ISO 8601 instant the file was made. */
-  mintedAt?: string;
-  /** The Alcove build that made it. */
-  mintedBy?: string;
-  /** A name for the file its author chose. */
-  label?: string;
-  /** Free text from its author. */
-  comment?: string;
-  /** Which form of the making application produced it. */
-  formHint?: string;
-  [member: string]: unknown;
-}
+export type FormatInfoBlock = Record<string, unknown>;
 
 /** Reads a {@link FormatInfoBlock}: any object, every member skipped. */
 export const FormatInfoBlockSchema: z.ZodType<FormatInfoBlock> = z.record(
@@ -186,15 +179,17 @@ export function formatVersionBelowNeededMessage(
 /**
  * The issue a document whose declared version is below what its fields need
  * raises, at the field's path; empty where the declaration covers them.
+ * `stated` is the document as the file holds it, before a schema fills its
+ * defaults, so a default counts as no field stated.
  */
 export function formatVersionBelowNeededIssues(
   fileName: string,
   versionField: string,
-  parsed: unknown,
+  stated: unknown,
   declared: number,
   policy: FormatVersionPolicy,
 ): Array<z.core.$ZodIssue> {
-  const needed = formatVersionNeeded(parsed, policy);
+  const needed = formatVersionNeeded(stated, policy);
   if (needed.feature === undefined || needed.version <= declared) return [];
   return [
     {

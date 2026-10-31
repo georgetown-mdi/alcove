@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 
 import {
+  INVITATION_NEWER_REMEDY,
   KeyFoldCollisionError,
   UsageError,
   decodeInvitation,
@@ -9,7 +10,10 @@ import {
   getDefaultLinkageTerms,
 } from "@alcove/core";
 
-import { invitationDecodeRefusal } from "@exchange/invitationDecodeRefusal";
+import {
+  NEWER_INVITATION_BODY,
+  invitationDecodeRefusal,
+} from "@exchange/invitationDecodeRefusal";
 
 async function refusalFor(encoded: string) {
   const error = await decodeInvitation(encoded).catch((e: unknown) => e);
@@ -67,6 +71,44 @@ test("an intact string that is not an invitation this build reads is unreadable"
   );
   expect(schema.kind).toBe("unreadable");
   if (schema.kind === "unreadable") expect(schema.detail).toContain(":");
+});
+
+test("an invitation on a newer format version asks for an update, not a new invitation", async () => {
+  const newer = await refusalFor(
+    await raw(
+      JSON.stringify({
+        version: "2",
+        linkageTerms: getDefaultLinkageTerms("County Health Department"),
+        sharedSecret: generateSharedSecret(),
+      }),
+    ),
+  );
+  expect(newer.kind).toBe("newer");
+  if (newer.kind === "newer")
+    expect(newer.detail).toContain("made by a newer version of Alcove");
+  expect(NEWER_INVITATION_BODY).toBe(
+    "This invitation was made by a newer version of Alcove than this one. " +
+      INVITATION_NEWER_REMEDY,
+  );
+  expect(INVITATION_NEWER_REMEDY).toMatch(/^Update Alcove/);
+});
+
+test("a schema failure on the version this build reads is still unreadable", async () => {
+  const malformed = await refusalFor(
+    await raw(JSON.stringify({ version: "1", sharedSecret: "x" })),
+  );
+  expect(malformed.kind).toBe("unreadable");
+  const unknownMember = await refusalFor(
+    await raw(
+      JSON.stringify({
+        version: "1",
+        linkageTerms: getDefaultLinkageTerms("County Health Department"),
+        sharedSecret: generateSharedSecret(),
+        fromALaterBuild: true,
+      }),
+    ),
+  );
+  expect(unknownMember.kind).toBe("unreadable");
 });
 
 test("a readable invitation the page refuses keeps its own message", () => {

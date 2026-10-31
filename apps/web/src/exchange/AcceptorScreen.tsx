@@ -120,7 +120,10 @@ import {
   ALLOWED_RELAYS_GUIDE_URL,
   CONSOLE_ALLOWED_RELAYS_GUIDE_URL,
 } from "./userGuide";
-import { invitationDecodeRefusal } from "./invitationDecodeRefusal";
+import {
+  NEWER_INVITATION_BODY,
+  invitationDecodeRefusal,
+} from "./invitationDecodeRefusal";
 
 import { preRunTrustFooter, settledTrustFooter } from "./trustFooter";
 
@@ -1994,9 +1997,10 @@ const PASTE_INVITATION_HREF = `/quick#${PASTE_INVITATION_FIELD_ID}`;
 
 /**
  * The body of the alert a refused decode shows: one plain remedy for a link
- * that holds no invitation, arrived damaged, or cannot be read, with the
- * decoder's own description behind a disclosure; a readable invitation this
- * page refuses keeps the message that states its remedy.
+ * that holds no invitation, arrived damaged, holds an invitation a newer
+ * Alcove made, or cannot be read, with the decoder's own description behind a
+ * disclosure; a readable invitation this page refuses keeps the message that
+ * states its remedy.
  */
 function DecodeRefusalBody({ refusal }: { refusal: InvitationDecodeRefusal }) {
   switch (refusal.kind) {
@@ -2019,6 +2023,13 @@ function DecodeRefusalBody({ refusal }: { refusal: InvitationDecodeRefusal }) {
             paste it on the start page
           </Anchor>
           , or ask your partner to send it again.
+          <DecodeRefusalDetail detail={refusal.detail} />
+        </>
+      );
+    case "newer":
+      return (
+        <>
+          {NEWER_INVITATION_BODY}
           <DecodeRefusalDetail detail={refusal.detail} />
         </>
       );

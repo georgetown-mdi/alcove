@@ -16,6 +16,7 @@ import {
 import { SHARED_SECRET_REGEX } from "./connection.js";
 import {
   droppedLinkageTermsIssues,
+  statedBody,
   InvitationLinkageTermsSchema,
   MAX_ENCODED_INVITATION_LENGTH,
 } from "./invitation.js";
@@ -385,7 +386,7 @@ export async function decodeTermsUpdate(
     ...formatVersionBelowNeededIssues(
       TERMS_UPDATE_FILE_NAME,
       "version",
-      parsed,
+      statedBody(json),
       Number(parsed.version),
       policy,
     ),

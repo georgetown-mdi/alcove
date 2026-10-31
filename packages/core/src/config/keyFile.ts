@@ -122,7 +122,9 @@ function keyFileFieldNameForDisplay(name: string): string {
  * The key file's validator. A field outside {@link KeyFile} and `version`,
  * and a version above {@link KEY_FILE_FORMAT_VERSION}, is refused as written
  * by a newer Alcove; the refusal names the field and never a value. The
- * result holds the {@link KeyFile} fields, without `version`.
+ * version is checked first, so a newer file is refused by its version alone,
+ * not beside field errors whose remedy differs. The result holds the
+ * {@link KeyFile} fields, without `version`.
  */
 export const KeyFileSchema: z.ZodType<KeyFile, unknown> = z
   .looseObject({
@@ -139,8 +141,13 @@ export const KeyFileSchema: z.ZodType<KeyFile, unknown> = z
           ),
       })
       .optional(),
-    ...KEY_FILE_FIELD_SCHEMAS,
   })
+  .pipe(
+    z.looseObject({
+      version: z.number().optional(),
+      ...KEY_FILE_FIELD_SCHEMAS,
+    }),
+  )
   .superRefine((file, ctx) => {
     const unknown = Object.keys(file).filter(
       (name) => name !== "version" && !KEY_FILE_FIELD_NAMES.has(name),
