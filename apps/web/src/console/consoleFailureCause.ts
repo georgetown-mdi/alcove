@@ -41,7 +41,7 @@ const WAIT_SETTING =
 // The clause a plain no-show on a shared folder gains when this side set a
 // name: a partner that arrived second with the same name refuses this side's
 // file at entry and writes nothing, so this side waits with no file to report.
-const SET_NAMES_DIFFER_CLAUSE = `If both sides set a name under '${EXCHANGE_FILES_HEADING}', check that the names differ.`;
+const SET_NAMES_DIFFER_CLAUSE = `If both sides set a name under "${EXCHANGE_FILES_HEADING}", check that the names differ.`;
 
 const SHARED_NAME_TITLE = "Both sides may be using the same name";
 

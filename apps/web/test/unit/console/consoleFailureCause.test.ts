@@ -155,7 +155,7 @@ describe("a console run that failed on a catalog cause", () => {
 
   test("a plain no-show gains the names clause only when this side set a name", () => {
     const CLAUSE =
-      "If both sides set a name under 'How files are handled', check that " +
+      'If both sides set a name under "How files are handled", check that ' +
       "the names differ.";
     const noShow = (
       cause: FailureCauseOfKind<"partner-never-arrived">,
