@@ -6,6 +6,7 @@ import { route as EventsRoute } from "./routes/$jobId/events";
 import { route as FolderEntriesRoute } from "./routes/mounts/folder/entries";
 import { route as FolderRoute } from "./routes/$jobId/folder";
 import { route as HandoffRoute } from "./routes/$jobId/handoff";
+import { route as ImageRoute } from "./routes/image";
 import { route as InputsRoute } from "./routes/inputs/index";
 import { route as JobRoute } from "./routes/$jobId/index";
 import { route as JobsRoute } from "./routes/index";
@@ -36,6 +37,7 @@ export const jobRoutes: ReadonlyArray<JobRouteDefinition> = [
   JobsRoute,
   ConfigRoute,
   RendezvousRoute,
+  ImageRoute,
   SlotRoute,
   InputsRoute,
   CoverageRoute,

@@ -37,7 +37,11 @@ Each release produces:
 | Build provenance | GitHub attestation store     | Subject `ghcr.io/georgetown-mdi/alcove`, one attestation per released manifest digest |
 | Hosted web application | Cloudflare Pages, with the demo site | The production deployment of tag `vX.Y.Z`, its footer showing `Version X.Y.Z`, until the next push to `main` replaces it |
 
-Each image is the same manifest on both registries, under one digest: the release copies the manifest ghcr.io received to Docker Hub rather than building it again. ghcr.io is the registry the launchers, the Windows file-drop setup scripts, and the web app's accept kit name; the Docker Hub copy is for a network that refuses ghcr.io's download host.
+Each image is the same manifest on both registries, under one digest: the release copies the manifest ghcr.io received, and its Cosign signature, to Docker Hub rather than building and signing it again. The two registries are equally useful, equally recommended, and equally secure: each holds the same signed images, and an image is verified on the registry it was pulled from ([Verifying a Release](#verifying-a-release)). Pull from whichever one your network reaches.
+
+- The launchers download from Docker Hub first and, if that download fails, the same digest from ghcr.io ([Stamped launchers](#stamped-launchers)).
+- The web app's accept kit names Docker Hub in its commands and the same image on ghcr.io beside it.
+- The Windows file-drop setup scripts pull from ghcr.io.
 
 Each image contains both the CLI and the console; which role it runs is decided by its first argument (see [DEPLOYMENT.md](DEPLOYMENT.md#docker-deployment)). Both images run unprivileged ([The user the image runs as](DEPLOYMENT.md#the-user-the-image-runs-as)), take the same arguments, and speak the same protocol, so a partner on one can exchange with a partner on the other.
 
@@ -45,10 +49,10 @@ The hosted web deployment (`apps/web`) is not this image. The release workflow r
 
 ## Which image has which posture
 
-The two tags differ in what serves the cryptography underneath `crypto.subtle`.
+The two tags differ in what serves the cryptography underneath `crypto.subtle`. Each is named the same way on both registries, `docker.io/gumdi/alcove:<tag>` and `ghcr.io/georgetown-mdi/alcove:<tag>`.
 
-- **`ghcr.io/georgetown-mdi/alcove:X.Y.Z`** -- the default artifact, built on `node:26-alpine`. It embeds no validated cryptographic module and the project claims none for it. It is smaller, its SFTP support is unrestricted, and it is the image the launchers and the Windows file-drop setup scripts pull. Use it unless a FIPS obligation applies.
-- **`ghcr.io/georgetown-mdi/alcove:X.Y.Z-fips`** -- built on Amazon Linux 2023 and containing the CMVP-validated OpenSSL FIPS provider AWS publishes for that distribution, so Alcove's `crypto.subtle` calls dispatch into that module. It is roughly 1.8x the size, and by default it cannot reach an SFTP server that offers only `curve25519` key exchange, only the `chacha20-poly1305@openssh.com` cipher, or only an Ed25519 host key.
+- **`X.Y.Z`** -- the default artifact, built on `node:26-alpine`. It embeds no validated cryptographic module and the project claims none for it. It is smaller, its SFTP support is unrestricted, and it is the image the launchers and the Windows file-drop setup scripts pull. Use it unless a FIPS obligation applies.
+- **`X.Y.Z-fips`** -- built on Amazon Linux 2023 and containing the CMVP-validated OpenSSL FIPS provider AWS publishes for that distribution, so Alcove's `crypto.subtle` calls dispatch into that module. It is roughly 1.8x the size, and by default it cannot reach an SFTP server that offers only `curve25519` key exchange, only the `chacha20-poly1305@openssh.com` cipher, or only an Ed25519 host key.
 
 What the FIPS variant does and does not support a claim of is stated in [COMPLIANCE.md](COMPLIANCE.md#fips-140). Two image facts bound it:
 
@@ -92,7 +96,11 @@ A launcher names the image by digest rather than by a floating tag, so a release
 | `start-alcove.sh` | `ALCOVE_IMAGE_DIGEST='@@ALCOVE_IMAGE_DIGEST@@'` |
 | `Start-Alcove.ps1` | `$AlcoveImageDigest = '@@ALCOVE_IMAGE_DIGEST@@'` |
 
-The value substituted is `steps.build.outputs.digest` from the image build -- the manifest-list digest, the same value [step 8](#8-build-and-publish-the-container-image-ci) signs with Cosign. Each launcher also names the repository in full, `ghcr.io/georgetown-mdi/alcove`, because podman requires the registry prefix and docker accepts it.
+The value substituted is `steps.build.outputs.digest` from the image build -- the manifest-list digest, the same value [step 8](#8-build-and-publish-the-container-image-ci) signs with Cosign. Each launcher also names both repositories in full, `docker.io/gumdi/alcove` and `ghcr.io/georgetown-mdi/alcove`, because podman requires the registry prefix and docker accepts it. One digest serves both, since the Docker Hub copy keeps it.
+
+**Where a launcher downloads the image from.** Before anything else runs, the launcher uses the image if either reference is already on the machine. Otherwise it pulls `docker.io/gumdi/alcove@<digest>`, and if that pull fails, it says so in one line and pulls the same digest from `ghcr.io/georgetown-mdi/alcove`. It falls back only on a failed download: if the engine reports that a registry sent an image that does not match the digest, the launcher stops. Either way it runs only the stamped digest, so the fallback trusts neither registry more than the other. The launcher runs the reference it found for the rest of the session, and passes the registry and digest to the console it starts (`JOB_IMAGE_REGISTRY`, `JOB_IMAGE_DIGEST`), so the commands the console shows name a registry this machine reached.
+
+An organisation that allows only one registry sets `ALCOVE_IMAGE_REGISTRY` to `docker.io` or `ghcr.io` in the environment the launcher runs in, and the launcher downloads from that registry alone. Any other value is refused before anything is downloaded.
 
 **What keeps the launcher and the workflow in step.** The workflow refuses the release if the publish job's digest output is empty or is not `sha256:` followed by 64 lowercase hex characters, if a launcher does not contain its placeholder line exactly once, or if a placeholder survives the substitution. `npm run test:scripts` pins the same two lines in both the launchers and the workflow. A copy that reaches an operator unstamped refuses to run and says where a release copy comes from.
 
@@ -105,10 +113,10 @@ grep ALCOVE_IMAGE_DIGEST start-alcove.sh
 cosign verify \
   --certificate-identity-regexp '^https://github\.com/georgetown-mdi/alcove/\.github/workflows/release\.yaml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  ghcr.io/georgetown-mdi/alcove@sha256:...
+  docker.io/gumdi/alcove@sha256:...
 ```
 
-A digest that verifies is the image the official release workflow published. Both `--certificate-` arguments are required; [Verifying a Release](#verifying-a-release) explains what they pin. Verify by digest when the reference comes from a launcher, as here; verify by tag when it comes from the release notes.
+The same command naming `ghcr.io/georgetown-mdi/alcove@sha256:...` verifies the copy on ghcr.io; verify on the registry the launcher downloaded from. A digest that verifies is the image the official release workflow published. Both `--certificate-` arguments are required; [Verifying a Release](#verifying-a-release) explains what they pin. Verify by digest when the reference comes from a launcher, as here; verify by tag when it comes from the release notes.
 
 ## Image vulnerability scan
 
@@ -284,21 +292,23 @@ For a hotfix answering a privately reported vulnerability, this section is the m
 
 ### Container image
 
-Both container image digests for each release are recorded in the GitHub Release notes. Verify with:
+Both container image digests for each release are recorded in the GitHub Release notes. Each digest is the same on Docker Hub and on ghcr.io, and each registry holds the image's Cosign signature ([The Docker Hub copy](#the-docker-hub-copy)), so an image is verified on the registry it was pulled from. Verify with:
+
+```sh
+docker pull docker.io/gumdi/alcove:X.Y.Z
+docker inspect --format '{{index .RepoDigests 0}}' docker.io/gumdi/alcove:X.Y.Z
+```
+
+or, for an image pulled from ghcr.io:
 
 ```sh
 docker pull ghcr.io/georgetown-mdi/alcove:X.Y.Z
 docker inspect --format '{{index .RepoDigests 0}}' ghcr.io/georgetown-mdi/alcove:X.Y.Z
 ```
 
-Compare the digest against the value in the release notes. The FIPS variant is verified the same way, at `ghcr.io/georgetown-mdi/alcove:X.Y.Z-fips`; every command in this section takes either reference.
+Compare the digest against the value in the release notes. The FIPS variant is verified the same way, at `X.Y.Z-fips` on either registry. Every command in this section takes any of the four references, and each reads what it checks from the registry it names.
 
-**An image pulled from Docker Hub.** `docker.io/gumdi/alcove` has the same images under the same tags and the same digests, and the release copies each image's Cosign signature there too ([The Docker Hub copy](#the-docker-hub-copy)). A Docker Hub pull is verified on Docker Hub:
-
-1. Read the digest with the two commands above, naming `docker.io/gumdi/alcove:X.Y.Z` (or `X.Y.Z-fips`).
-2. Compare it against the value in the release notes.
-3. Run the `cosign verify` command below naming `docker.io/gumdi/alcove:X.Y.Z` in place of the ghcr.io reference. Cosign reads the signature from Docker Hub, with the same two `--certificate-` arguments.
-4. Run the `gh attestation verify` command under [Build provenance](#build-provenance) with `oci://docker.io/gumdi/alcove@sha256:...` and that digest. The attestation is held by GitHub against the digest rather than in either registry, so it is not copied; that this command finds it on the Docker Hub reference is confirmed by the first release (see [On a Docker Hub reference](#build-provenance)).
+The build-provenance attestation is the one exception. GitHub holds it against the digest rather than in either registry, so it is not copied. That `gh attestation verify` finds it on a Docker Hub reference is confirmed by the first release (see [On a Docker Hub reference](#build-provenance)).
 
 Each release image is also signed with Cosign, keylessly through Sigstore. The signature includes a short-lived certificate Fulcio issued against the release workflow's OIDC identity, and it is recorded in Rekor's public transparency log. There is no project-held signing key and no public key to fetch: what a verifier pins is the workflow that produced the signature ([cosign-keyless-signing.md](notes/cosign-keyless-signing.md)).
 
@@ -308,10 +318,10 @@ This verifies by tag, the form to use when the reference comes from the release 
 cosign verify \
   --certificate-identity-regexp '^https://github\.com/georgetown-mdi/alcove/\.github/workflows/release\.yaml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  ghcr.io/georgetown-mdi/alcove:X.Y.Z
+  docker.io/gumdi/alcove:X.Y.Z
 ```
 
-Both `--certificate-` arguments are required:
+For an image pulled from ghcr.io, name `ghcr.io/georgetown-mdi/alcove:X.Y.Z` instead; the two `--certificate-` arguments are the same for both. Both are required:
 
 - `--certificate-identity-regexp` pins the signer. The certificate's identity is the workflow file's path in this repository plus the ref it ran from, so an anchored pattern refuses a signature produced by a different workflow here, by a branch run of this one, or by a fork.
 - `--certificate-oidc-issuer` pins who vouched for that identity to GitHub Actions: verification compares the certificate's issuer for equality and refuses any mismatch.

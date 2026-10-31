@@ -150,7 +150,132 @@ Describe 'The release stamp' {
     It 'names the registry in the reference it builds' {
         # podman requires the registry prefix and docker accepts it, so the
         # reference is fully qualified rather than relying on a default.
-        Get-AlcoveImage | Should -BeLike 'ghcr.io/georgetown-mdi/alcove@*'
+        Get-AlcoveImage | Should -BeLike 'docker.io/gumdi/alcove@*'
+    }
+}
+
+Describe 'Where the image is downloaded from' {
+    BeforeAll {
+        $script:DockerHubReference = "docker.io/gumdi/alcove@$AlcoveImageDigest"
+        $script:GhcrReference = "ghcr.io/georgetown-mdi/alcove@$AlcoveImageDigest"
+        # What podman prints when a registry sends a manifest other than the
+        # digest asked for: the wording the mismatch check matches, staged
+        # rather than driven.
+        $script:MismatchOutput = 'Error: copying system image from manifest list: Digest did not match, expected sha256:1, got sha256:2'
+        $script:RefusedOutput = 'Error response from daemon: denied: requested access to the resource is denied'
+
+        function Get-SaidLines {
+            param($Output)
+            return @($Output | Where-Object { $_ -is [System.Management.Automation.InformationRecord] } |
+                    ForEach-Object { ([string] $_).TrimEnd() })
+        }
+    }
+
+    BeforeEach {
+        $script:AlcoveEngine = 'docker'
+        $script:AlcoveImageRepository = $AlcoveDockerHubRepository
+        $script:Pulled = @()
+        $script:PullFails = @{}
+        # Nothing is on this PC unless a test says so.
+        function Invoke-EngineQuiet { return @{ Ran = $true; Output = ''; ExitCode = 1 } }
+        function Invoke-EnginePull {
+            param([string] $Reference)
+            $script:Pulled += $Reference
+            $registry = ($Reference -split '/', 2)[0]
+            if ($script:PullFails.ContainsKey($registry)) {
+                return @{ Ran = $true; Output = $script:PullFails[$registry]; ExitCode = 1 }
+            }
+            return @{ Ran = $true; Output = "pulled $Reference"; ExitCode = 0 }
+        }
+    }
+
+    It 'tries Docker Hub and then ghcr.io when nothing is chosen' {
+        (@((Get-RepositoryCandidates -Choice '').Repositories) -join ' | ') |
+            Should -Be 'docker.io/gumdi/alcove | ghcr.io/georgetown-mdi/alcove'
+    }
+
+    It 'keeps to the one registry ALCOVE_IMAGE_REGISTRY names, in each direction' {
+        (@((Get-RepositoryCandidates -Choice 'ghcr.io').Repositories) -join ' | ') | Should -Be 'ghcr.io/georgetown-mdi/alcove'
+        (@((Get-RepositoryCandidates -Choice 'docker.io').Repositories) -join ' | ') | Should -Be 'docker.io/gumdi/alcove'
+    }
+
+    It 'refuses a registry it does not download from' {
+        $output = @(Get-RepositoryCandidates -Choice 'quay.io' 6>&1)
+        $result = @($output | Where-Object { $_ -is [hashtable] })[0]
+        $result.Ok | Should -BeFalse
+        (Get-SaidLines $output)[0] |
+            Should -BeExactly "  FAIL  ALCOVE_IMAGE_REGISTRY is set to 'quay.io', which is not a registry this launcher downloads from."
+    }
+
+    It 'downloads from Docker Hub and not from ghcr.io when that works' {
+        $found = Find-AlcoveImage -Repositories (Get-RepositoryCandidates -Choice '').Repositories 6>$null
+
+        $found | Should -BeTrue
+        (@($script:Pulled) -join ' | ') | Should -Be $script:DockerHubReference
+        Get-AlcoveImage | Should -Be $script:DockerHubReference
+    }
+
+    It 'downloads the same digest from ghcr.io after a failed Docker Hub download, and says so in one line' {
+        $script:PullFails['docker.io'] = $script:RefusedOutput
+
+        $output = @(Find-AlcoveImage -Repositories (Get-RepositoryCandidates -Choice '').Repositories 6>&1)
+
+        @($output | Where-Object { $_ -is [bool] })[0] | Should -BeTrue
+        (@($script:Pulled) -join ' | ') | Should -Be "$script:DockerHubReference | $script:GhcrReference"
+        @(Get-SaidLines $output | Where-Object { $_ -like '  WARN*' }) |
+            Should -Be @('  WARN  Could not download from Docker Hub; downloading the same image from ghcr.io instead.')
+        Get-AlcoveImage | Should -Be $script:GhcrReference
+    }
+
+    It 'does not fall back when Docker Hub sends something other than the pinned digest' {
+        $script:PullFails['docker.io'] = $script:MismatchOutput
+
+        $output = @(Find-AlcoveImage -Repositories (Get-RepositoryCandidates -Choice '').Repositories 6>&1)
+
+        @($output | Where-Object { $_ -is [bool] })[0] | Should -BeFalse
+        (@($script:Pulled) -join ' | ') | Should -Be $script:DockerHubReference
+        (Get-SaidLines $output) | Should -Contain '  FAIL  Docker Hub sent an image that does not match the pinned digest.'
+    }
+
+    It 'does not fall back when ALCOVE_IMAGE_REGISTRY keeps it to Docker Hub' {
+        $script:PullFails['docker.io'] = $script:RefusedOutput
+
+        $output = @(Find-AlcoveImage -Repositories (Get-RepositoryCandidates -Choice 'docker.io').Repositories 6>&1)
+
+        @($output | Where-Object { $_ -is [bool] })[0] | Should -BeFalse
+        (@($script:Pulled) -join ' | ') | Should -Be $script:DockerHubReference
+        (Get-SaidLines $output) | Should -Contain '        ALCOVE_IMAGE_REGISTRY is set to docker.io, so no other registry was tried.'
+    }
+
+    It 'downloads from ghcr.io alone when ALCOVE_IMAGE_REGISTRY names it' {
+        $found = Find-AlcoveImage -Repositories (Get-RepositoryCandidates -Choice 'ghcr.io').Repositories 6>$null
+
+        $found | Should -BeTrue
+        (@($script:Pulled) -join ' | ') | Should -Be $script:GhcrReference
+    }
+
+    It 'uses an image already on this PC without downloading it' {
+        function Invoke-EngineQuiet {
+            param([string[]] $EngineArgs)
+            if ($EngineArgs[-1] -like 'ghcr.io/*') { return @{ Ran = $true; Output = ''; ExitCode = 0 } }
+            return @{ Ran = $true; Output = ''; ExitCode = 1 }
+        }
+
+        $found = Find-AlcoveImage -Repositories (Get-RepositoryCandidates -Choice '').Repositories 6>$null
+
+        $found | Should -BeTrue
+        @($script:Pulled).Count | Should -Be 0
+        Get-AlcoveImage | Should -Be $script:GhcrReference
+    }
+
+    It 'tells the console the registry it downloaded from and the digest it runs' {
+        $script:AlcoveImageRepository = $AlcoveGhcrRepository
+        $engineArgs = Get-ConsoleEngineArgs -ContainerName 'alcove-console-1' -ConsolePort 3000 `
+            -DataMount 'C:\work'
+
+        $engineArgs | Should -Contain 'JOB_IMAGE_REGISTRY=ghcr.io'
+        $engineArgs | Should -Contain "JOB_IMAGE_DIGEST=$AlcoveImageDigest"
+        $engineArgs[-2] | Should -Be $script:GhcrReference
     }
 }
 
@@ -984,8 +1109,8 @@ Describe 'A run of the checks the engine stopped during' {
         (Get-LauncherScreen $output) | Should -BeExactly (@(
                 '  FAIL  The container could not be started (exit 125).',
                 '        Nothing about your folder was tested. The message the engine',
-                '        printed above is the one to read. A first run also fetches the',
-                '        image, which needs a network that can reach the registry.') -join "`n")
+                '        printed above is the one to read. See',
+                "            $script:LauncherTroubleshootingUrl") -join "`n")
     }
 
     It 'shows a failed battery''s failures and leaves its SKIP block off the screen' {

@@ -176,7 +176,9 @@ section for each failure, and it covers how to send the whole run to whoever is
 helping you.
 
 The launcher and the setup script both download the Alcove image the first time
-they run. If that download stops with a certificate error or a refusal, see
+they run. The launcher downloads it from Docker Hub, or from ghcr.io if Docker
+Hub cannot be reached; the setup script downloads it from ghcr.io. If that
+download stops with a certificate error or a refusal, see
 [the image download fails with a certificate error](troubleshooting.md#the-image-download-fails-with-a-certificate-error).
 
 > **How far this has been tested.** Both versions have been run start to finish

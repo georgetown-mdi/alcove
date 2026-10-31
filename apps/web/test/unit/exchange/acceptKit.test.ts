@@ -99,15 +99,15 @@ function plainExchangeCommand(endpoint: AcceptKitEndpoint): string {
   if (endpoint.channel !== "filedrop")
     return (
       '     docker run --rm -it -v "${PWD}:/work" -v "/your/secrets:' +
-      '/run/secrets:ro" ghcr.io/georgetown-mdi/alcove:1.4.2 exchange ' +
+      '/run/secrets:ro" docker.io/gumdi/alcove:1.4.2 exchange ' +
       "your-file.csv ./results"
     );
   return endpoint.split === true
     ? '     docker run --rm -v "${PWD}:/work" -v "/path/to/the/folder/you/read:' +
         '/sync-in" -v "/path/to/the/folder/you/write:/sync-out" ' +
-        "ghcr.io/georgetown-mdi/alcove:1.4.2 exchange your-file.csv ./results"
+        "docker.io/gumdi/alcove:1.4.2 exchange your-file.csv ./results"
     : '     docker run --rm -v "${PWD}:/work" -v "/path/to/your/shared/folder:' +
-        '/sync" ghcr.io/georgetown-mdi/alcove:1.4.2 exchange your-file.csv ' +
+        '/sync" docker.io/gumdi/alcove:1.4.2 exchange your-file.csv ' +
         "./results";
 }
 
@@ -357,12 +357,12 @@ describe("accept kit, filedrop routing", () => {
     expect(text).toContain("B. A folder that syncs on this PC");
     expect(text).toContain(
       'docker run --rm -it -v "${PWD}:/work" ' +
-        "ghcr.io/georgetown-mdi/alcove:1.4.2 " +
+        "docker.io/gumdi/alcove:1.4.2 " +
         `accept ${INVITATION_PLACEHOLDER} your-file.csv`,
     );
     expect(text).toContain(
       'docker run --rm -v "${PWD}:/work" -v "/path/to/your/shared/folder:' +
-        '/sync" ghcr.io/georgetown-mdi/alcove:1.4.2 exchange your-file.csv ' +
+        '/sync" docker.io/gumdi/alcove:1.4.2 exchange your-file.csv ' +
         "./results",
     );
   });
@@ -373,7 +373,7 @@ describe("accept kit, sftp configuration section", () => {
     const text = sheet(SFTP);
     expect(text).toContain(
       'docker run --rm -it -v "${PWD}:/work" ' +
-        "ghcr.io/georgetown-mdi/alcove:1.4.2 " +
+        "docker.io/gumdi/alcove:1.4.2 " +
         `accept ${INVITATION_PLACEHOLDER} your-file.csv`,
     );
     // The exchange command has the read-only secrets mount, and the
@@ -381,7 +381,7 @@ describe("accept kit, sftp configuration section", () => {
     expect(text).toContain(
       'docker run --rm -it -v "${PWD}:/work" ' +
         '-v "/your/secrets:/run/secrets:ro" ' +
-        "ghcr.io/georgetown-mdi/alcove:1.4.2 exchange your-file.csv ./results",
+        "docker.io/gumdi/alcove:1.4.2 exchange your-file.csv ./results",
     );
     expect(text.indexOf("username: REPLACE_WITH_SSH_USERNAME")).toBeLessThan(
       text.indexOf("exchange your-file.csv"),
@@ -410,10 +410,19 @@ describe("accept kit, sftp configuration section", () => {
 });
 
 describe("accept kit, release version", () => {
-  /** Every image the sheet's commands name, in order. */
+  /** Every image reference the sheet names on either registry, in order. */
   function imageReferences(text: string): Array<string> {
-    return text.match(/ghcr\.io\/georgetown-mdi\/alcove\S*/g) ?? [];
+    return (
+      text.match(/(ghcr\.io\/georgetown-mdi|docker\.io\/gumdi)\/alcove\S*/g) ??
+      []
+    );
   }
+
+  /** The reference as the given registry names it at `tag`. */
+  const onBoth = (tag: string): Array<string> => [
+    `docker.io/gumdi/alcove:${tag}`,
+    `ghcr.io/georgetown-mdi/alcove:${tag}`,
+  ];
 
   test("a build with a version names it in every image reference", () => {
     for (const endpoint of [FILEDROP, SFTP]) {
@@ -422,7 +431,7 @@ describe("accept kit, release version", () => {
       const references = imageReferences(text);
       expect(references.length).toBeGreaterThan(0);
       for (const reference of references)
-        expect(reference).toBe("ghcr.io/georgetown-mdi/alcove:0.9.1");
+        expect(onBoth("0.9.1")).toContain(reference);
     }
   });
 
@@ -437,7 +446,7 @@ describe("accept kit, release version", () => {
       );
       expect(references.length).toBeGreaterThan(0);
       for (const reference of references)
-        expect(reference).toBe("ghcr.io/georgetown-mdi/alcove:latest");
+        expect(onBoth("latest")).toContain(reference);
     }
   });
 
@@ -459,7 +468,7 @@ describe("accept kit, release version", () => {
       const references = imageReferences(sheet(FILEDROP, version));
       expect(references.length).toBeGreaterThan(0);
       for (const reference of references)
-        expect(reference).toBe("ghcr.io/georgetown-mdi/alcove:latest");
+        expect(onBoth("latest")).toContain(reference);
     }
   });
 
@@ -476,6 +485,87 @@ describe("accept kit, release version", () => {
     expect(unversioned).toContain(`${RELEASES_URL}\n`);
     expect(unversioned).not.toContain(`${RELEASES_URL}/tag/`);
     expect(sheet(FILEDROP, "X.Y.Z")).not.toContain(`${RELEASES_URL}/tag/`);
+  });
+});
+
+describe("accept kit, the two registries", () => {
+  const DIGEST = `sha256:${"0123456789abcdef".repeat(4)}`;
+
+  function digestSheet(endpoint: AcceptKitEndpoint, digest?: string): string {
+    return buildAcceptKit({
+      endpoint,
+      retainFiles: false,
+      locklessRendezvous: false,
+      version: "0.9.1",
+      digest,
+    });
+  }
+
+  /** The REFERENCE section, from its heading to the end. */
+  function referenceSection(text: string): string {
+    return text.slice(text.indexOf("REFERENCE"));
+  }
+
+  test("every command runs the image from Docker Hub", () => {
+    for (const endpoint of ENDPOINTS) {
+      const text = digestSheet(endpoint, DIGEST);
+      const commands = text.slice(0, text.indexOf("IF SOMETHING GOES WRONG"));
+      expect(commands).toContain("docker.io/gumdi/alcove:0.9.1");
+      expect(commands).not.toContain("ghcr.io");
+      expect(commands).not.toContain("@sha256:");
+    }
+  });
+
+  test("the reference names Docker Hub first and ghcr.io second, each with the digest", () => {
+    const reference = referenceSection(digestSheet(FILEDROP, DIGEST));
+    const order = [
+      "Alcove image used above, from Docker Hub:",
+      "    docker.io/gumdi/alcove:0.9.1\n",
+      `    docker.io/gumdi/alcove@${DIGEST}\n`,
+      "The same image from the GitHub Container Registry:",
+      "    ghcr.io/georgetown-mdi/alcove:0.9.1\n",
+      `    ghcr.io/georgetown-mdi/alcove@${DIGEST}\n`,
+      "The @sha256: line names exactly the image your partner runs",
+    ].map((needle) => reference.indexOf(needle));
+    for (const position of order) expect(position).toBeGreaterThanOrEqual(0);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+
+  test("the recovery note swaps the Docker Hub image for the ghcr.io one", () => {
+    const text = digestSheet(SFTP, DIGEST);
+    const recovery = text.slice(
+      text.indexOf("IF SOMETHING GOES WRONG"),
+      text.indexOf("REFERENCE"),
+    );
+    expect(recovery).toContain(
+      "      ghcr.io/georgetown-mdi/alcove:0.9.1\n    in place of\n" +
+        "      docker.io/gumdi/alcove:0.9.1\n",
+    );
+  });
+
+  test("with no digest, the sheet points at the release notes for it", () => {
+    const text = digestSheet(FILEDROP);
+    expect(text).not.toContain("@sha256:");
+    expect(referenceSection(text)).toContain(
+      "The image's digest, the same on both, is in the Alcove release",
+    );
+  });
+
+  test("a digest in any shape but a sha256 digest is left off the sheet", () => {
+    for (const digest of [
+      "",
+      "sha256:",
+      `sha256:${"0".repeat(63)}`,
+      `sha256:${"A".repeat(64)}`,
+      `sha512:${"0".repeat(64)}`,
+      `${DIGEST}\n`,
+      `${DIGEST} `,
+      `sha256:${"0".repeat(64)}/../evil`,
+    ]) {
+      const text = digestSheet(FILEDROP, digest);
+      expect(text).not.toContain("@sha");
+      expect(text).toBe(digestSheet(FILEDROP));
+    }
   });
 });
 
@@ -499,7 +589,7 @@ describe("accept kit, printable-ASCII enforcement", () => {
       { channel: "filedrop", path: "alcove" },
       "1.0.0-é\nX",
     );
-    expect(hostileVersion).toContain("ghcr.io/georgetown-mdi/alcove:latest");
+    expect(hostileVersion).toContain("docker.io/gumdi/alcove:latest");
     expect(hostileVersion).toMatch(/^[\x20-\x7e\n]*$/);
     for (const ch of text) {
       const code = ch.charCodeAt(0);
@@ -731,10 +821,11 @@ describe("accept kit, retain mode", () => {
       ]);
   });
 
-  test("the retain disclosure is fixed text, not a third dynamic value", () => {
-    // The sheet admits exactly two dynamic values (the locator and the release
-    // version). Retain mode selects fixed paragraphs, so a hostile locator
-    // changes nothing about what it contributes -- the delta is identical.
+  test("the retain disclosure is fixed text, not another dynamic value", () => {
+    // The sheet admits three dynamic values (the locator, the release version,
+    // and the image digest). Retain mode selects fixed paragraphs, so a hostile
+    // locator changes nothing about what it contributes -- the delta is
+    // identical.
     const benign = retainDelta(SFTP);
     const hostile = retainDelta({
       channel: "sftp",
@@ -748,7 +839,7 @@ describe("accept kit, retain mode", () => {
     // the image reference on the rewritten command line, and nowhere else.
     const other = retainDelta(SFTP, "0.9.1");
     const withoutImage = (lines: Array<string>): Array<string> =>
-      lines.filter((line) => !line.includes("ghcr.io/georgetown-mdi/alcove"));
+      lines.filter((line) => !line.includes("docker.io/gumdi/alcove"));
     expect(withoutImage(other)).toEqual(withoutImage(benign));
     expect(benign.filter((line) => line.includes("1.4.2"))).toHaveLength(1);
     // And nothing the delta adds has either dynamic value.
@@ -858,10 +949,11 @@ describe("accept kit, lockless rendezvous", () => {
       ]);
   });
 
-  test("the addition is fixed text, not a third dynamic value", () => {
-    // The sheet admits exactly two dynamic values (the locator and the release
-    // version). The setting selects fixed text, so a hostile locator changes
-    // nothing about what it contributes -- the delta is identical.
+  test("the addition is fixed text, not another dynamic value", () => {
+    // The sheet admits three dynamic values (the locator, the release version,
+    // and the image digest). The setting selects fixed text, so a hostile
+    // locator changes nothing about what it contributes -- the delta is
+    // identical.
     const benign = locklessDelta(SFTP);
     const hostile = locklessDelta({
       channel: "sftp",
@@ -875,7 +967,7 @@ describe("accept kit, lockless rendezvous", () => {
     // the image reference on the rewritten command line, and nowhere else.
     const other = locklessDelta(SFTP, "0.9.1");
     const withoutImage = (lines: Array<string>): Array<string> =>
-      lines.filter((line) => !line.includes("ghcr.io/georgetown-mdi/alcove"));
+      lines.filter((line) => !line.includes("docker.io/gumdi/alcove"));
     expect(withoutImage(other)).toEqual(withoutImage(benign));
     expect(benign.filter((line) => line.includes("1.4.2"))).toHaveLength(1);
     for (const line of withoutImage(benign)) {

@@ -9,6 +9,7 @@ import {
 import { ConfigManager } from "@utils/serverConfig";
 import { JobApiConfigError } from "@jobs/gate";
 import { jobApiRequestTimeoutMs } from "@jobs/routeSupport";
+import { warnConsoleImage } from "@jobs/consoleImage";
 
 import {
   DEFAULT_BIND_HOST,
@@ -89,6 +90,7 @@ export async function startConsoleServer(options: {
   bootSftpCredentialScratchDir();
   warnJobApiProfileMismatch();
   warnJobRendezvousProvisioning();
+  warnConsoleImage();
   logUncaughtErrors();
 
   const server = createConsoleServer(createConsoleHandler(options), {

@@ -804,8 +804,9 @@ release has been cut since, whose remedy is a release rather than a held merge.
 Both legs print the digest the reference resolved to rather than the reference
 they asked for, because the floating tag moves.
 
-Both legs are scoped to the default image. It is the one published as
-`ghcr.io/georgetown-mdi/alcove`, the only one the scripts name, and the only one whose package
+Both legs are scoped to the default image. It is the one published without the
+`-fips` suffix, at `ghcr.io/georgetown-mdi/alcove` and `docker.io/gumdi/alcove`,
+the only one the scripts name, and the only one whose package
 closure their helper scripts were written against.
 
 ## Measured inventories

@@ -14,6 +14,7 @@ import styles from "@styles/app.module.css";
 
 import { HANDOFF_SIGNING_IDENTITY_PLACEHOLDER } from "@jobContract/handoffBindPaths";
 import { buildImageReference } from "@psi/dockerRunCommand";
+import { useConsoleImage } from "@utils/useConsoleImage";
 
 import {
   CRONTAB_ACCOUNT_NOTE,
@@ -28,6 +29,7 @@ import {
 import { PodmanLines } from "./PodmanLines";
 import { RunCommandLines } from "./RunCommandLines";
 
+import type { ImageRegistry } from "@utils/alcoveImage";
 import type { JobHandoff } from "@jobContract/jobHandoff";
 import type { ScheduledRunSource } from "@psi/dockerRunCommand";
 import type { ShownRunLines } from "./scheduledRunCommand";
@@ -75,7 +77,20 @@ export function RecurringHandoff({
     };
   }, [jobId]);
 
-  if (handoff === undefined || handoff === null) return null;
+  // The registry the console's launcher reached, so the lines name an image
+  // the scheduling machine's network is known to allow.
+  const consoleImage = useConsoleImage();
+
+  if (handoff === undefined || handoff === null || consoleImage === undefined)
+    return null;
+
+  const body = (
+    <HandoffBody
+      handoff={handoff}
+      jobId={jobId}
+      registry={consoleImage.registry}
+    />
+  );
 
   if (collapsible)
     return (
@@ -84,7 +99,7 @@ export function RecurringHandoff({
         open={open}
         onToggle={setOpen}
       >
-        <HandoffBody handoff={handoff} jobId={jobId} />
+        {body}
       </DisclosureSection>
     );
 
@@ -94,7 +109,7 @@ export function RecurringHandoff({
       aria-labelledby="recurring-handoff-title"
     >
       <h2 id="recurring-handoff-title">Run this exchange on a schedule</h2>
-      <HandoffBody handoff={handoff} jobId={jobId} />
+      {body}
     </section>
   );
 }
@@ -105,14 +120,16 @@ export function RecurringHandoff({
 function HandoffBody({
   handoff,
   jobId,
+  registry,
 }: {
   handoff: JobHandoff;
   jobId: string;
+  registry: ImageRegistry;
 }) {
   const source: ScheduledRunSource = {
     argv: handoff.template.argv,
     bindPaths: handoff.bindPaths,
-    image: buildImageReference(),
+    image: buildImageReference(registry),
   };
   const lines = runLines(source);
   const shown = lines.kind === "shown" ? lines : undefined;

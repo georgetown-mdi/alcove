@@ -5,10 +5,15 @@
 # starts the console and opens it.
 #
 # It is plaintext on purpose, so that whoever has to approve it can read all of
-# it: it fetches nothing itself, keeps nothing between runs, and never updates
-# itself. The container image it runs is pinned by digest, stamped in by the
-# release that published this file. A new version arrives the way everything
-# else in your organisation does -- somebody hands you a new copy.
+# it: it downloads nothing but the container image it names, keeps nothing
+# between runs, and never updates itself. That image is pinned by digest,
+# stamped in by the release that published this file. A new version arrives the
+# way everything else in your organisation does -- somebody hands you a new copy.
+#
+# The image is downloaded from Docker Hub (docker.io/gumdi/alcove) and, only if
+# that download fails, the same digest from the GitHub Container Registry
+# (ghcr.io/georgetown-mdi/alcove). Set ALCOVE_IMAGE_REGISTRY to docker.io or
+# ghcr.io to keep it to that one registry.
 #
 # Sourcing this file defines its functions and runs nothing; executing it runs
 # the launcher. That is what lets the repository's test suite drive the pieces
@@ -25,9 +30,14 @@ set -u
 # signed with cosign. A copy that still carries the placeholder did not come
 # from a release and refuses to run: an unpinned launcher would run whatever is
 # behind a floating tag today, which is the one thing an operator reading this
-# file cannot check for themselves.
-ALCOVE_IMAGE_REPOSITORY='ghcr.io/georgetown-mdi/alcove'
+# file cannot check for themselves. Both registries hold that digest, signed.
+ALCOVE_DOCKERHUB_REPOSITORY='docker.io/gumdi/alcove'
+ALCOVE_GHCR_REPOSITORY='ghcr.io/georgetown-mdi/alcove'
 ALCOVE_IMAGE_DIGEST='@@ALCOVE_IMAGE_DIGEST@@'
+
+# The repository the image was found in, which every container below runs from.
+ALCOVE_IMAGE_REPOSITORY="$ALCOVE_DOCKERHUB_REPOSITORY"
+ALCOVE_REPOSITORY_CANDIDATES=()
 
 ALCOVE_RELEASES_URL='https://github.com/georgetown-mdi/alcove/releases'
 ALCOVE_TROUBLESHOOTING_URL='https://github.com/georgetown-mdi/alcove/blob/main/support/windows-network-filedrop/troubleshooting.md'
@@ -139,7 +149,7 @@ alcove_stamp_is_release() {
 
 alcove_require_release_stamp() {
   if alcove_stamp_is_release; then
-    alcove_good "Image pinned to $(alcove_image)"
+    alcove_good "Image pinned to digest $ALCOVE_IMAGE_DIGEST"
     return 0
   fi
   alcove_bad 'This copy of the launcher did not come from a release.'
@@ -151,6 +161,115 @@ alcove_require_release_stamp() {
   alcove_note "    $ALCOVE_RELEASES_URL"
   alcove_note 'or ask whoever in your organisation distributes Alcove for the'
   alcove_note 'copy they approved.'
+  return 1
+}
+
+# The registry a repository is on, as the console's JOB_IMAGE_REGISTRY names it.
+alcove_registry_of() { printf '%s' "${1%%/*}"; }
+
+alcove_registry_label() {
+  case "$1" in
+    docker.io) printf 'Docker Hub' ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
+# Sets ALCOVE_REPOSITORY_CANDIDATES to the repositories to try, in order, from
+# ALCOVE_IMAGE_REGISTRY: unset, Docker Hub and then ghcr.io; set, that one alone,
+# so an organisation that approved one registry is kept to it.
+alcove_resolve_registry_choice() {
+  case "${ALCOVE_IMAGE_REGISTRY:-}" in
+    '') ALCOVE_REPOSITORY_CANDIDATES=("$ALCOVE_DOCKERHUB_REPOSITORY" "$ALCOVE_GHCR_REPOSITORY") ;;
+    docker.io) ALCOVE_REPOSITORY_CANDIDATES=("$ALCOVE_DOCKERHUB_REPOSITORY") ;;
+    ghcr.io) ALCOVE_REPOSITORY_CANDIDATES=("$ALCOVE_GHCR_REPOSITORY") ;;
+    *)
+      alcove_bad "ALCOVE_IMAGE_REGISTRY is set to '$ALCOVE_IMAGE_REGISTRY', which is not a registry this launcher downloads from."
+      alcove_note 'Set it to docker.io or ghcr.io to use that registry alone, or'
+      alcove_note 'unset it to try Docker Hub first and ghcr.io if that fails.'
+      return 1
+      ;;
+  esac
+  ALCOVE_IMAGE_REPOSITORY="${ALCOVE_REPOSITORY_CANDIDATES[0]}"
+  return 0
+}
+
+# Each line of a download's output, shown on stderr as it arrives, with control
+# bytes dropped since a registry wrote some of it, and kept on stdout for the
+# caller to read.
+alcove_show_and_keep() {
+  local line=''
+  while IFS= read -r line || [ -n "$line" ]; do
+    alcove_say_from_container "$line" >&2
+    printf '%s\n' "$line"
+  done
+}
+
+# Whether a failed download's output says the registry sent something other than
+# the digest asked for. Best effort: the phrases have not been seen from a real
+# engine refusing a mismatched image, and wording they miss is treated as an
+# ordinary failed download -- whose fallback still runs only the pinned digest.
+alcove_pull_was_mismatch() {
+  case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+    *'did not match'* | *'digest mismatch'* | *'verification failed'* | *'unexpected commit digest'*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+# Find the pinned image in a repository ALCOVE_REPOSITORY_CANDIDATES names, and
+# set ALCOVE_IMAGE_REPOSITORY to it. One already on this machine is used without
+# a download. Otherwise each is downloaded in turn, and the next is tried only on
+# a failed download -- never on a mismatch, which is reported instead. The
+# engine's own output is shown as it runs.
+alcove_fetch_image() {
+  local repository='' reference='' output='' status=0 index=0 next=''
+  local count=${#ALCOVE_REPOSITORY_CANDIDATES[@]}
+
+  for repository in "${ALCOVE_REPOSITORY_CANDIDATES[@]}"; do
+    reference="$repository@$ALCOVE_IMAGE_DIGEST"
+    if "$ALCOVE_ENGINE" image inspect "$reference" >/dev/null 2>&1; then
+      ALCOVE_IMAGE_REPOSITORY="$repository"
+      alcove_good "Using $reference, already on this machine."
+      return 0
+    fi
+  done
+
+  while [ "$index" -lt "$count" ]; do
+    repository="${ALCOVE_REPOSITORY_CANDIDATES[$index]}"
+    reference="$repository@$ALCOVE_IMAGE_DIGEST"
+    alcove_say "Downloading $reference..."
+    output=$("$ALCOVE_ENGINE" pull "$reference" 2>&1 | alcove_show_and_keep; exit "${PIPESTATUS[0]}")
+    status=$?
+    if [ "$status" -eq 0 ]; then
+      ALCOVE_IMAGE_REPOSITORY="$repository"
+      alcove_good "Downloaded $reference"
+      return 0
+    fi
+    if alcove_pull_was_mismatch "$output"; then
+      alcove_bad "$(alcove_registry_label "$(alcove_registry_of "$repository")") sent an image that does not match the pinned digest."
+      alcove_note 'Nothing was run, and no other registry was tried: the image'
+      alcove_note 'that arrived is not the one this launcher names. Send the'
+      alcove_note 'message above to whoever in your organisation distributes'
+      alcove_note "Alcove. See $ALCOVE_TROUBLESHOOTING_URL"
+      return 1
+    fi
+    index=$((index + 1))
+    if [ "$index" -lt "$count" ]; then
+      next="${ALCOVE_REPOSITORY_CANDIDATES[$index]}"
+      alcove_warn "Could not download from $(alcove_registry_label "$(alcove_registry_of "$repository")"); downloading the same image from $(alcove_registry_of "$next") instead."
+    fi
+  done
+
+  alcove_bad 'The Alcove image could not be downloaded.'
+  if [ "$count" -gt 1 ]; then
+    alcove_note 'Both Docker Hub and ghcr.io were tried.'
+  else
+    alcove_note "ALCOVE_IMAGE_REGISTRY is set to $(alcove_registry_of "${ALCOVE_REPOSITORY_CANDIDATES[0]}"), so no other registry was tried."
+  fi
+  alcove_note "The engine's messages above say why. A proxy that refuses or"
+  alcove_note 'intercepts the download is the usual cause. See'
+  alcove_note "    $ALCOVE_TROUBLESHOOTING_URL"
   return 1
 }
 
@@ -576,8 +695,8 @@ alcove_run_doctor_mount() {
   if [ "$status" -ge 125 ]; then
     alcove_bad "The container could not be started (exit $status)."
     alcove_note 'Nothing about your folder was tested. The message the engine'
-    alcove_note 'printed above is the one to read. A first run also fetches the'
-    alcove_note 'image, which needs a network that can reach the registry.'
+    alcove_note 'printed above is the one to read. See'
+    alcove_note "    $ALCOVE_TROUBLESHOOTING_URL"
     return 1
   fi
   if [ -z "$verdict" ]; then
@@ -959,6 +1078,12 @@ alcove_build_console_arguments() {
   # a name no partner could match.
   rendezvous_name="$(alcove_rendezvous_folder_name)"
   ALCOVE_CONSOLE_ARGUMENTS+=(--env "JOB_RENDEZVOUS_NAME=$rendezvous_name")
+  # The registry this run reached and the digest it runs, so the commands the
+  # console hands the operator name an image this machine can download.
+  ALCOVE_CONSOLE_ARGUMENTS+=(
+    --env "JOB_IMAGE_REGISTRY=$(alcove_registry_of "$ALCOVE_IMAGE_REPOSITORY")"
+    --env "JOB_IMAGE_DIGEST=$ALCOVE_IMAGE_DIGEST"
+  )
   ALCOVE_CONSOLE_ARGUMENTS+=("$(alcove_image)" serve)
 }
 
@@ -1017,6 +1142,10 @@ Usage: start-alcove.sh [options]
   --help                 this text
 
 With no options it asks for the folders it needs.
+
+It downloads the image from Docker Hub, and from ghcr.io if that fails.
+Set ALCOVE_IMAGE_REGISTRY=docker.io or ALCOVE_IMAGE_REGISTRY=ghcr.io to use
+that registry alone.
 ALCOVE_USAGE
 }
 
@@ -1076,7 +1205,9 @@ alcove_main() {
 
   alcove_head 'Alcove console'
   alcove_require_release_stamp || return 1
+  alcove_resolve_registry_choice || return 1
   alcove_select_engine || return 1
+  alcove_fetch_image || return 1
   alcove_collect_directories || return 1
 
   alcove_head 'Checking the folders'

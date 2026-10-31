@@ -85,6 +85,22 @@ if (args.includes("serve")) {
   return;
 }
 
+// An image is on this machine only where a test says so, and a download from a
+// registry fails, printing what the test staged, only where a test says so.
+const registryOf = (reference) => reference.split("/")[0];
+if (args[0] === "image" && args[1] === "inspect") {
+  process.exit(fs.existsSync(path.join(dir, "local-" + registryOf(args[2]))) ? 0 : 1);
+}
+if (args[0] === "pull") {
+  const failure = path.join(dir, "pull-fails-" + registryOf(args[1]));
+  if (fs.existsSync(failure)) {
+    process.stderr.write(fs.readFileSync(failure, "utf8"));
+    process.exit(1);
+  }
+  process.stdout.write("pulled " + args[1] + "\\n");
+  process.exit(0);
+}
+
 process.exit(0);
 `;
 
@@ -225,20 +241,20 @@ function launcherEnvironment(workspace, extra = {}) {
     ALCOVE_STUB_DIR: workspace.stubDir,
     ...extra,
   };
-  // The launcher reads these to find the account a sudo run came from, so a
-  // case that does not name them must not inherit them from whatever invoked
-  // this suite.
-  for (const name of ["SUDO_UID", "SUDO_GID"])
+  // The launcher reads these to find the account a sudo run came from, and the
+  // registry to download from, so a case that does not name them must not
+  // inherit them from whatever invoked this suite.
+  for (const name of ["SUDO_UID", "SUDO_GID", "ALCOVE_IMAGE_REGISTRY"])
     if (!(name in extra)) delete environment[name];
   return environment;
 }
 
-function runLauncher(workspace, script, args, input = "") {
+function runLauncher(workspace, script, args, input = "", extra = {}) {
   return spawnSync(BASH, [script, ...args], {
     input,
     encoding: "utf8",
     timeout: 60_000,
-    env: launcherEnvironment(workspace),
+    env: launcherEnvironment(workspace, extra),
   });
 }
 
@@ -476,6 +492,198 @@ describe("the shared folder's name passed to the console", () => {
       expect(args).toContain("JOB_RENDEZVOUS_NAME=");
       expect(args.join(" ")).not.toMatch(/JOB_RENDEZVOUS_NAME=\S/);
     }
+  });
+});
+
+describe("where the image is downloaded from", () => {
+  const DOCKERHUB = `docker.io/gumdi/alcove@${TEST_DIGEST}`;
+  const GHCR = `ghcr.io/georgetown-mdi/alcove@${TEST_DIGEST}`;
+  // What podman prints when a registry sends a manifest other than the digest
+  // asked for: the wording the mismatch check matches, staged rather than driven.
+  const MISMATCH =
+    "Error: copying system image from manifest list: Digest did not match, " +
+    `expected ${TEST_DIGEST}, got sha256:${"0".repeat(64)}\n`;
+  const REFUSED =
+    "Error response from daemon: denied: requested access to the resource is denied\n";
+
+  function stagePullFailure(workspace, registry, output) {
+    writeFileSync(join(workspace.stubDir, `pull-fails-${registry}`), output);
+  }
+
+  /** The registry choice and the download, run alone, with the repository the
+   * launcher would run every container from printed last. */
+  function fetchImage(workspace, environment = {}) {
+    installEngine(workspace, "docker");
+    return sourced(
+      workspace,
+      `ALCOVE_IMAGE_DIGEST='${TEST_DIGEST}'\nALCOVE_ENGINE=docker\n` +
+        "alcove_resolve_registry_choice && alcove_fetch_image\n" +
+        'status=$?\nprintf "repository=%s\\n" "$ALCOVE_IMAGE_REPOSITORY"\nexit $status',
+      environment,
+    );
+  }
+
+  const pulls = (workspace) =>
+    engineCalls(workspace)
+      .split("\n")
+      .filter((line) => line.startsWith("docker pull "));
+
+  it("downloads from Docker Hub first and does not download from ghcr.io on success", () => {
+    const workspace = makeWorkspace();
+
+    const run = fetchImage(workspace);
+
+    expect(run.status).toBe(0);
+    expect(pulls(workspace)).toEqual([`docker pull ${DOCKERHUB}`]);
+    expect(run.stdout).toContain("repository=docker.io/gumdi/alcove");
+    expect(run.stdout).not.toMatch(/WARN/);
+  });
+
+  it("downloads the same digest from ghcr.io after a failed Docker Hub download, and says so in one line", () => {
+    const workspace = makeWorkspace();
+    stagePullFailure(workspace, "docker.io", REFUSED);
+
+    const run = fetchImage(workspace);
+
+    expect(run.status).toBe(0);
+    expect(pulls(workspace)).toEqual([
+      `docker pull ${DOCKERHUB}`,
+      `docker pull ${GHCR}`,
+    ]);
+    const warnings = run.stdout
+      .split("\n")
+      .filter((line) => line.startsWith("  WARN"));
+    expect(warnings).toEqual([
+      "  WARN  Could not download from Docker Hub; downloading the same image from ghcr.io instead.",
+    ]);
+    // The engine's own message is shown, not swallowed.
+    expect(run.stderr).toContain("requested access to the resource is denied");
+    expect(run.stdout).toContain("repository=ghcr.io/georgetown-mdi/alcove");
+  });
+
+  it("does not fall back when Docker Hub sends something other than the pinned digest", () => {
+    const workspace = makeWorkspace();
+    stagePullFailure(workspace, "docker.io", MISMATCH);
+
+    const run = fetchImage(workspace);
+
+    expect(run.status).not.toBe(0);
+    expect(pulls(workspace)).toEqual([`docker pull ${DOCKERHUB}`]);
+    expect(run.stdout).toContain(
+      "Docker Hub sent an image that does not match the pinned digest.",
+    );
+    expect(run.stdout).not.toMatch(/WARN/);
+  });
+
+  it("uses an image already on this machine without downloading it", () => {
+    const workspace = makeWorkspace();
+    writeFileSync(join(workspace.stubDir, "local-ghcr.io"), "");
+
+    const run = fetchImage(workspace);
+
+    expect(run.status).toBe(0);
+    expect(pulls(workspace)).toEqual([]);
+    expect(run.stdout).toContain("repository=ghcr.io/georgetown-mdi/alcove");
+  });
+
+  it("says both registries were tried when neither download works", () => {
+    const workspace = makeWorkspace();
+    stagePullFailure(workspace, "docker.io", REFUSED);
+    stagePullFailure(workspace, "ghcr.io", REFUSED);
+
+    const run = fetchImage(workspace);
+
+    expect(run.status).not.toBe(0);
+    expect(pulls(workspace)).toHaveLength(2);
+    expect(run.stdout).toContain("The Alcove image could not be downloaded.");
+    expect(run.stdout).toContain("Both Docker Hub and ghcr.io were tried.");
+    expect(run.stdout).toMatch(/troubleshooting\.md/);
+  });
+
+  it("keeps to ghcr.io alone when ALCOVE_IMAGE_REGISTRY names it", () => {
+    const workspace = makeWorkspace();
+
+    const run = fetchImage(workspace, { ALCOVE_IMAGE_REGISTRY: "ghcr.io" });
+
+    expect(run.status).toBe(0);
+    expect(pulls(workspace)).toEqual([`docker pull ${GHCR}`]);
+    // Not even asked whether a Docker Hub copy is on this machine.
+    expect(engineCalls(workspace)).not.toContain("docker.io");
+    expect(run.stdout).toContain("repository=ghcr.io/georgetown-mdi/alcove");
+  });
+
+  it("keeps to Docker Hub alone when ALCOVE_IMAGE_REGISTRY names it, failure included", () => {
+    const workspace = makeWorkspace();
+    stagePullFailure(workspace, "docker.io", REFUSED);
+
+    const run = fetchImage(workspace, { ALCOVE_IMAGE_REGISTRY: "docker.io" });
+
+    expect(run.status).not.toBe(0);
+    expect(pulls(workspace)).toEqual([`docker pull ${DOCKERHUB}`]);
+    expect(engineCalls(workspace)).not.toContain("ghcr.io");
+    expect(run.stdout).toContain(
+      "ALCOVE_IMAGE_REGISTRY is set to docker.io, so no other registry was tried.",
+    );
+  });
+
+  it("refuses a registry it does not download from, before touching the engine", () => {
+    const workspace = makeWorkspace();
+    installEngine(workspace, "docker");
+    const launcher = stampedLauncher(workspace);
+
+    const run = runLauncher(
+      workspace,
+      launcher,
+      ["--data-root", workspace.dataDir, "--no-browser"],
+      "",
+      { ALCOVE_IMAGE_REGISTRY: "quay.io" },
+    );
+
+    expect(run.status).not.toBe(0);
+    expect(run.stdout).toContain(
+      "ALCOVE_IMAGE_REGISTRY is set to 'quay.io', which is not a registry this launcher downloads from.",
+    );
+    expect(engineCalls(workspace)).toBe("");
+  });
+
+  it("runs the checks from the registry it downloaded from", () => {
+    const workspace = makeWorkspace();
+    installEngine(workspace, "docker");
+    stagePullFailure(workspace, "docker.io", REFUSED);
+    stageVerdict(workspace, 1, 69, FATAL);
+    const launcher = stampedLauncher(workspace);
+
+    runLauncher(workspace, launcher, [
+      "--data-root",
+      workspace.dataDir,
+      "--no-browser",
+    ]);
+
+    const doctorRuns = engineCalls(workspace)
+      .split("\n")
+      .filter((line) => line.includes(" doctor "));
+    expect(doctorRuns).toHaveLength(1);
+    expect(doctorRuns[0]).toContain(`${GHCR} doctor mount`);
+  });
+
+  it("tells the console the registry and the digest it runs", () => {
+    const args = consoleArguments(makeWorkspace(), {
+      ALCOVE_DATA_ROOT: "/home/dana/alcove-work",
+      ALCOVE_IMAGE_DIGEST: TEST_DIGEST,
+      ALCOVE_IMAGE_REPOSITORY: "ghcr.io/georgetown-mdi/alcove",
+    });
+
+    expect(args).toContain("JOB_IMAGE_REGISTRY=ghcr.io");
+    expect(args).toContain(`JOB_IMAGE_DIGEST=${TEST_DIGEST}`);
+    expect(args.slice(-2)).toEqual([GHCR, "serve"]);
+  });
+
+  it("names Docker Hub to the console when nothing else was chosen", () => {
+    const args = consoleArguments(makeWorkspace(), {
+      ALCOVE_DATA_ROOT: "/home/dana/alcove-work",
+    });
+
+    expect(args).toContain("JOB_IMAGE_REGISTRY=docker.io");
   });
 });
 
@@ -1045,9 +1253,7 @@ describe("the doctor loop", () => {
     expect(doctorRuns[1]).toContain(`--volume ${inputDir}:/rz`);
     expect(doctorRuns[2]).toContain(`--volume ${rendezvous}:/rz`);
     expect(doctorRuns[0]).toContain("doctor mount /rz --json");
-    expect(doctorRuns[0]).toContain(
-      `ghcr.io/georgetown-mdi/alcove@${TEST_DIGEST}`,
-    );
+    expect(doctorRuns[0]).toContain(`docker.io/gumdi/alcove@${TEST_DIGEST}`);
     expect(engineCalls(workspace)).not.toMatch(/serve/);
   });
 

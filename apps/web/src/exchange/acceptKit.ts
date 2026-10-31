@@ -10,13 +10,14 @@
  * ("The partner accept kit").
  *
  * The sheet is a DISCLOSURE SURFACE: whatever it interpolates is written to
- * disk and handed to the partner. Two kinds of dynamic value are representable
+ * disk and handed to the partner. Three kinds of dynamic value are representable
  * here: the rendezvous locator the invitation already holds (free text held
- * to the sheet's ASCII contract by {@link printable}), and this build's public
+ * to the sheet's ASCII contract by {@link printable}), this build's public
  * release version (interpolated only in the shape `releaseVersion` in
- * `@utils/alcoveImage` admits). Everything else is fixed text:
- * {@link AcceptKitInput} declares only
- * those two kinds and two selector booleans, so no secret, no invitation
+ * `@utils/alcoveImage` admits), and the public digest of the image the console
+ * runs (interpolated only in the shape `imageDigest` there admits). Everything
+ * else is fixed text: {@link AcceptKitInput} declares only
+ * those three kinds and two selector booleans, so no secret, no invitation
  * token, and no path from the inviter's machine or container has a field to
  * arrive in.
  *
@@ -49,7 +50,14 @@ import { PROJECT_SITE_URL } from "@components/projectLinks";
 
 import { OPERATOR_USER_FLAG } from "@psi/containerAccount";
 
-import { imageReference, releaseVersion } from "@utils/alcoveImage";
+import {
+  digestReference,
+  imageDigest,
+  imageReference,
+  releaseVersion,
+} from "@utils/alcoveImage";
+
+import type { ImageRegistry } from "@utils/alcoveImage";
 
 export type AcceptKitEndpoint =
   | {
@@ -112,6 +120,22 @@ interface AcceptKitInput extends AcceptKitExchange {
    * release version, the sheet names the floating image tag and the releases
    * index. */
   version?: string;
+  /** The digest of the image the minting console runs, which the sheet prints
+   * beside each registry's reference; see `imageDigest`
+   * (`@utils/alcoveImage`). Absent, or in any other shape, the sheet names no
+   * digest and points at the release notes for it. */
+  digest?: string;
+}
+
+/** The registry every command on the sheet names, and the one it offers in
+ * place of it: the partner's network is unknown to the inviter, so the sheet
+ * names both, Docker Hub first, rather than taking the inviter's. */
+const COMMAND_REGISTRY: ImageRegistry = "docker.io";
+const ALTERNATIVE_REGISTRY: ImageRegistry = "ghcr.io";
+
+/** The image every command on the sheet runs. */
+function commandImage(version: string | undefined): string {
+  return imageReference(version, COMMAND_REGISTRY);
 }
 
 /** The release page the launcher files are downloaded from; the same URL the
@@ -248,7 +272,7 @@ const WORK_FOLDER_MOUNT = `-v "\${PWD}:${WORK_MOUNT}"`;
 function acceptCommand(version: string | undefined): string {
   return (
     `docker run --rm -it ${WORK_FOLDER_MOUNT} ` +
-    `${imageReference(version)} accept ${INVITATION_PLACEHOLDER} your-file.csv`
+    `${commandImage(version)} accept ${INVITATION_PLACEHOLDER} your-file.csv`
   );
 }
 
@@ -734,7 +758,7 @@ function filedropSplitBody(
     `     docker run --rm ${WORK_FOLDER_MOUNT} ` +
       `-v "/path/to/the/folder/you/read:${INBOUND_SYNC_MOUNT}" ` +
       `-v "/path/to/the/folder/you/write:${OUTBOUND_SYNC_MOUNT}" ` +
-      `${imageReference(version)} exchange${bilateralFlag(settings)} ` +
+      `${commandImage(version)} exchange${bilateralFlag(settings)} ` +
       `your-file.csv ./results`,
     "",
     "   Getting the two the wrong way round is the one mistake to watch for:",
@@ -789,7 +813,7 @@ function filedropBody(
     "",
     `     docker run --rm ${WORK_FOLDER_MOUNT} ` +
       `-v "/path/to/your/shared/folder:${SYNC_MOUNT}" ` +
-      `${imageReference(version)} exchange${bilateralFlag(settings)} ` +
+      `${commandImage(version)} exchange${bilateralFlag(settings)} ` +
       `your-file.csv ./results`,
     "",
     "   Replace your-file.csv with your CSV file's name. The matched records",
@@ -850,7 +874,7 @@ function sftpBody(
     "",
     `     docker run --rm -it ${WORK_FOLDER_MOUNT} ` +
       `-v "/your/secrets:/run/secrets:ro" ` +
-      `${imageReference(version)} exchange${bilateralFlag(settings)} ` +
+      `${commandImage(version)} exchange${bilateralFlag(settings)} ` +
       `your-file.csv ./results`,
     "",
     "   Replace /your/secrets with the folder that holds your credential",
@@ -867,9 +891,27 @@ function sftpBody(
   ];
 }
 
+/** One registry's lines under REFERENCE: the image by its tag, as the commands
+ * name it, and by its digest where the sheet has one. */
+function imageReferenceLines(
+  version: string | undefined,
+  digest: string | undefined,
+  registry: ImageRegistry,
+): Array<string> {
+  return [
+    `    ${imageReference(version, registry)}`,
+    ...(digest === undefined
+      ? []
+      : [`    ${digestReference(digest, registry)}`]),
+  ];
+}
+
 /** The shared closing: recovery, the privacy reassurance, and the reference
  * links. */
-function closing(version: string | undefined): Array<string> {
+function closing(
+  version: string | undefined,
+  digest: string | undefined,
+): Array<string> {
   return [
     ...heading("KEEPING THE KEY FILE"),
     "Accepting writes .alcove.key holding the shared secret: keep it",
@@ -878,6 +920,14 @@ function closing(version: string | undefined): Array<string> {
     ...heading("IF SOMETHING GOES WRONG"),
     "  * Invitations expire. If yours has, ask your partner for a new one.",
     "    Nothing is lost by starting again.",
+    "  * If Docker cannot download the Alcove image from Docker Hub, use the",
+    "    same image from the GitHub Container Registry: in every command on",
+    "    this sheet, put",
+    `      ${imageReference(version, ALTERNATIVE_REGISTRY)}`,
+    "    in place of",
+    `      ${commandImage(version)}`,
+    "    A network can refuse one registry and allow the other, and Docker",
+    "    Hub limits how often one network downloads from it.",
     "  * Every command prints what it did and which files it wrote.",
     "  * Your input file itself is never sent. Alcove reads it in the folder",
     "    you mounted and writes the result beside your input; what goes to",
@@ -886,8 +936,19 @@ function closing(version: string | undefined): Array<string> {
     ...heading("REFERENCE"),
     "  Command-line reference:",
     `    ${ALCOVE_CLI_DOC_URL}`,
-    "  Alcove image used above:",
-    `    ${imageReference(version)}`,
+    "  Alcove image used above, from Docker Hub:",
+    ...imageReferenceLines(version, digest, COMMAND_REGISTRY),
+    "  The same image from the GitHub Container Registry:",
+    ...imageReferenceLines(version, digest, ALTERNATIVE_REGISTRY),
+    ...(digest === undefined
+      ? [
+          "  The image's digest, the same on both, is in the Alcove release",
+          "  notes for this version.",
+        ]
+      : [
+          "  The @sha256: line names exactly the image your partner runs, and",
+          "  works in place of the image in any command above.",
+        ]),
     "",
   ];
 }
@@ -899,9 +960,11 @@ function closing(version: string | undefined): Array<string> {
 export function buildAcceptKit({
   endpoint,
   version: buildVersion,
+  digest: consoleDigest,
   ...settings
 }: AcceptKitInput): string {
   const version = releaseVersion(buildVersion);
+  const digest = imageDigest(consoleDigest);
   const lines = [
     ...opening(endpoint, settings),
     ...(endpoint.channel !== "filedrop"
@@ -914,7 +977,7 @@ export function buildAcceptKit({
             settings,
           )
         : filedropBody(version, endpoint.path !== undefined, settings)),
-    ...closing(version),
+    ...closing(version, digest),
   ];
   return `${lines.join("\n")}\n`;
 }

@@ -177,18 +177,25 @@ Neither engine has been tried behind such a proxy on Windows, so if the wording
 on your screen differs, trust your screen.
 
 If IT cannot allow the second host, the same image is also published on Docker
-Hub as `docker.io/gumdi/alcove`, under the same tags and the same digest. A
-network that allows Docker Hub can download it from there:
+Hub as `docker.io/gumdi/alcove`, under the same tags and the same digest. The
+two registries are equally good sources of the image, and a network that allows
+Docker Hub can download it from there:
 
 ```text
 docker pull docker.io/gumdi/alcove:latest
 ```
 
-The launcher and the setup scripts download from `ghcr.io` only, so a Docker
-Hub download does not get them past this. It does work for the `docker run`
-commands on this page: write `docker.io/gumdi/alcove:latest` where they have
+The launcher downloads from Docker Hub first, and from `ghcr.io` only if the
+Docker Hub download fails, saying so in one line. If your network blocks Docker
+Hub too, both messages are printed, and the launcher stops. If IT allows only
+one of the two, set `ALCOVE_IMAGE_REGISTRY` to `docker.io` or `ghcr.io` before
+starting the launcher, and it downloads from that registry alone.
+
+The setup scripts download from `ghcr.io` only, so a Docker Hub download does
+not get them past this. It does work for the `docker run` commands on this
+page: write `docker.io/gumdi/alcove:latest` where they have
 `ghcr.io/georgetown-mdi/alcove:latest`. To confirm it is the released image,
-compare its digest against the release notes, as described in
+verify it on Docker Hub as described in
 [Verifying a Release](../../docs/RELEASES.md#verifying-a-release).
 
 ## An image file from your partner does not replace the download
@@ -199,9 +206,11 @@ or `podman load`. When you use the launcher, that does not get you past a
 blocked download.
 
 The launcher runs the image by its exact digest,
-`ghcr.io/georgetown-mdi/alcove@sha256:` followed by the digest its release
-names. An image loaded from a file comes in with no name at all, so the engine
-does not match it to that reference:
+`docker.io/gumdi/alcove@sha256:` or `ghcr.io/georgetown-mdi/alcove@sha256:`
+followed by the digest its release names. An image loaded from a file comes in
+with no name at all, so the launcher does not find it under either name and
+downloads the image as in the section above. Run directly by the `ghcr.io`
+digest reference, the engines were seen to behave as follows:
 
 - **podman** goes to the registry anyway, and fails as in the section above.
   Adding `--pull=never` gives `image not known` instead.
@@ -487,7 +496,10 @@ Please could you provide:
 5. Docker or podman downloads the tool from ghcr.io, which sends the download on to
    pkg-containers.githubusercontent.com. Please allow HTTPS to both hosts from
    the container engine on my workstation. If the proxy inspects HTTPS, please send me its
-   root certificate so that it can be set to trust it.
+   root certificate so that it can be set to trust it. The tool is also
+   published on Docker Hub (docker.io), which the launcher tries first:
+   allowing Docker Hub instead works for the launcher, though not for the
+   setup script.
 6. If none of that is possible -- the container cannot reach the server from
    its own address, or the account can only sign in with single sign-on -- then
    a scheduled mirror between that shared folder and a local folder on my

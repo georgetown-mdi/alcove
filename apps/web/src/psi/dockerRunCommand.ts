@@ -1,4 +1,8 @@
-import { imageReference, releaseVersion } from "@utils/alcoveImage";
+import {
+  DEFAULT_IMAGE_REGISTRY,
+  imageReference,
+  releaseVersion,
+} from "@utils/alcoveImage";
 import { alcoveVersion } from "@utils/clientConfig";
 
 import {
@@ -12,6 +16,7 @@ import {
 
 import type { ContainerEngine } from "./containerAccount";
 import type { HandoffBindPath } from "@jobContract/handoffBindPaths";
+import type { ImageRegistry } from "@utils/alcoveImage";
 
 /**
  * The `docker run` command running Alcove's published image over a folder,
@@ -32,9 +37,12 @@ export const WORKING_FOLDER_PLACEHOLDER = "/path/to/your/working-folder";
 export const SECRETS_FOLDER_PLACEHOLDER = "/path/to/your/secrets-folder";
 
 /** The image this build's commands name: its own release, else the floating
- * tag. */
-export function buildImageReference(): string {
-  return imageReference(releaseVersion(alcoveVersion()));
+ * tag, on `registry` -- the one the console's launcher reached, where it
+ * passed one. */
+export function buildImageReference(
+  registry: ImageRegistry = DEFAULT_IMAGE_REGISTRY,
+): string {
+  return imageReference(releaseVersion(alcoveVersion()), registry);
 }
 
 /** What the lines are composed from: the hand-off's argv and bind paths, and

@@ -23,6 +23,7 @@ import {
   probeSftpHostKey,
   putSftpConnection,
 } from "@psi/jobClient/sftpAuthoringClient";
+import { fetchConsoleImage } from "@psi/jobClient/consoleImageClient";
 import { fetchJobExchangeRecordOffer } from "@psi/jobClient/jobExchangeRecord";
 import { fetchJobLogState } from "@psi/jobClient/jobDiagnosticLog";
 import { fetchJobReceiptOffer } from "@psi/jobClient/jobReceipt";
@@ -191,6 +192,16 @@ describe("a status body over its cap fails the reader safely", () => {
         Promise.resolve(),
       ),
     ).resolves.toEqual({ configured: false });
+  });
+
+  test("the console image is the unreported default, not the registry and digest the body names", async () => {
+    const body = overCapBody(MAX_JOB_STATUS_RESPONSE_BYTES, {
+      registry: "docker.io",
+      digest: `sha256:${"a".repeat(64)}`,
+    });
+    await expect(fetchConsoleImage(answering(body))).resolves.toEqual({
+      registry: "ghcr.io",
+    });
   });
 
   test("a host-key probe is an error rather than the fingerprint the body carries", async () => {
