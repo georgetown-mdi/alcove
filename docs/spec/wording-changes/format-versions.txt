@@ -38,7 +38,7 @@
 - - -> A reader takes a file without `version` as version 1.
 - - -> A reader refuses a `version` above 1, and a field it does not know, as written by a newer Alcove.
 - - -> The CLI's read and the web application's import name the version or the field and never a value, and a field name containing a secret-shaped run of base64url characters is replaced by a placeholder.
-- - -> The console's check of a mounted key file refuses with its fixed message, which states nothing read from the file; the CLI's read of the same file names the field and the version.
+- - -> The console's check of a mounted key file refuses with its fixed message, which states nothing read from the file.
 - - -> The parse result holds the fields without `version`.
 - The web application's import notice names each dropped field to the operator, by name only and never its value; a name containing a secret-shaped run of base64url characters is replaced by a placeholder. -> The web application's import keeps some known fields only, and its notice names each known field it did not keep, under the same naming rule.
 - Adding `inboundPath`/`outboundPath` to the `z.strictObject` endpoint sub-schemas is in principle an incompatible wire-format change -- an older decoder rejects the unknown keys rather than ignoring them, unlike a non-strict top-level addition. -> Adding `inboundPath`/`outboundPath` to the `z.strictObject` endpoint sub-schemas is in principle an incompatible wire-format change -- an older decoder rejects the unknown keys rather than ignoring them, as it rejects any unknown member of the token.
