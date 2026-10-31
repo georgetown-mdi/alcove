@@ -8,6 +8,7 @@ import { getLogger, prepareForExchange } from "@alcove/core";
 import type { LinkageTerms, PreparedExchange, TermsChange } from "@alcove/core";
 import { withCapturedLogs } from "@alcove/core/testing";
 
+import { keyFileSavedConfigNotWrittenRemedy } from "../../../src/failureRemedy";
 import { loadKeyFile, saveKeyFile } from "../../../src/keyFile";
 import {
   runProtocol,
@@ -55,7 +56,7 @@ async function run(
   name: string,
   dropDir: string,
   exchange: PreparedExchange,
-  onAuthenticated?: () => void,
+  writeConfig?: () => void,
   onTermsChange?: (change: TermsChange) => Promise<void>,
 ): Promise<string> {
   const keyFilePath = path.join(work, `${name}.key`);
@@ -78,13 +79,13 @@ async function run(
       verbosity: -1,
       loggerName: `terms-sides-${name}`,
       ...(onTermsChange === undefined ? {} : { onTermsChange }),
-      ...(onAuthenticated === undefined
+      ...(writeConfig === undefined
         ? {}
         : {
-            onAuthenticated,
             onlineSetup: {
               configPath: path.join(work, `${name}.yaml`),
               kept: false,
+              writeConfig,
             },
           }),
     });
@@ -176,6 +177,47 @@ test("a run refused at the terms exchange runs no configuration write", async ()
     : "partner";
   expect(
     plain.endsWith(`\n${TERMS_REFUSAL_NEXT_STEPS.configured[plainRefusedBy]}`),
+  ).toBe(true);
+}, 30_000);
+
+// The deduplicate the invitation declared is held after the terms exchange,
+// once the key file is saved, and the configuration step runs only after that
+// check, so an accept it refuses has a key file and no configuration.
+test("an online accept refused at the deduplicate check writes no configuration and states the key file's step", async () => {
+  const dropDir = fs.mkdtempSync(path.join(work, "drop-"));
+  const accepting: PreparedExchange = {
+    ...prepared("Accepting Co", "cascade"),
+    expectedPartnerDeduplicate: true,
+  };
+  const configPath = path.join(work, "accepting.yaml");
+  const keyPath = path.join(work, "accepting.key");
+  let configurationWrites = 0;
+  const [[acceptingRendered]] = await withCapturedLogs(
+    () =>
+      Promise.all([
+        run("accepting", dropDir, accepting, () => {
+          configurationWrites += 1;
+          fs.writeFileSync(configPath, "written after the check");
+        }),
+        run("inviting", dropDir, prepared("Inviting Co", "cascade")),
+      ]),
+    () => true,
+  );
+  expect(configurationWrites).toBe(0);
+  expect(fs.existsSync(configPath)).toBe(false);
+  expect(loadKeyFile(keyPath)?.sharedSecret).not.toBe(SHARED_SECRET);
+  // The refusal states its own step, a new invitation, so the line beneath it
+  // adds only the key file's part.
+  expect(acceptingRendered).toContain(
+    "differ from the invitation you accepted: the invitation declared deduplicate true",
+  );
+  expect(
+    acceptingRendered.endsWith(
+      `\n${keyFileSavedConfigNotWrittenRemedy(
+        { configPath, kept: false, keyPath, configWriteFailed: false },
+        { kind: "failed", errorStatesItsStep: true },
+      )}`,
+    ),
   ).toBe(true);
 }, 30_000);
 

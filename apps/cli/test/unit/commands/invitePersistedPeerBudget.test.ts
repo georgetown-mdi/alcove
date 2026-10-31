@@ -8,7 +8,7 @@ import YAML from "yaml";
 import type { ConnectionConfig } from "@alcove/core";
 
 // Only runProtocol is mocked: the handshake "succeeds" through its
-// post-handshake hook and the terms exchange's receive-list fill, with no
+// configuration step and the terms exchange's receive-list fill, with no
 // connection opened. Everything from argv to the file on disk is real, so the
 // accept budget reaches the file only through the connection the command
 // builds and the bootstrap writes, then edits in place -- asserting on just one
@@ -37,9 +37,9 @@ function optionsArg(callArgs: unknown[]): RunProtocolOptions {
   return callArgs[0] as RunProtocolOptions;
 }
 
-/** runProtocol's onAuthenticated hook, which the bootstrap always supplies. */
-function onAuthenticatedArg(callArgs: unknown[]): () => void | Promise<void> {
-  const hook = optionsArg(callArgs).onAuthenticated;
+/** runProtocol's onlineSetup.writeConfig, which the bootstrap always supplies. */
+function writeConfigArg(callArgs: unknown[]): () => void | Promise<void> {
+  const hook = optionsArg(callArgs).onlineSetup?.writeConfig;
   expect(hook).toBeTypeOf("function");
   return hook as () => void | Promise<void>;
 }
@@ -80,7 +80,7 @@ async function inviteOnline(
   );
   const configFile = path.join(dir, "alcove.yaml");
   vi.mocked(runProtocol).mockImplementation((async (...callArgs: unknown[]) => {
-    await onAuthenticatedArg(callArgs)();
+    await writeConfigArg(callArgs)();
     await receiveFillRecorder(callArgs)(FILLED_RECEIVE_COLUMNS);
     return {};
   }) as never);

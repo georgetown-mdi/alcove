@@ -1322,10 +1322,13 @@ export interface RunExchangeOptions {
   /**
    * Called once, when this side's terms exchange has completed: both parties
    * proceeded, and this side's {@link rotation} store, where one was passed,
-   * has run. Awaited before the checks that follow the terms exchange and
-   * before any linkage key or payload row moves. Not called on a run the terms
-   * exchange refused or that failed inside it. A throw ends the run: this side
-   * sends the partner an abort, then rejects with what was thrown.
+   * has run. Awaited after the checks that follow the terms exchange and can
+   * refuse the run, the {@link onPayloadReceiveFill} confirmation among them,
+   * and before {@link onPayloadReceiveFilled} records the fill, the bootstrap
+   * frame, and any linkage key or payload row. Not called on a run the terms
+   * exchange or one of those checks refused, or that failed inside the terms
+   * exchange. A throw ends the run: this side sends the partner an abort, then
+   * rejects with what was thrown.
    */
   onTermsExchanged?: () => void | Promise<void>;
   /**
@@ -1589,14 +1592,6 @@ export async function runExchange(
     });
   }
   for (const warning of warnings) onWarning(warning);
-  if (options.onTermsExchanged !== undefined) {
-    try {
-      await options.onTermsExchanged();
-    } catch (err) {
-      await sendAbort(conn, [TERMS_EXCHANGED_STEP_FAILED_ABORT_REASON]);
-      throw err;
-    }
-  }
   linkageTerms = agreedLocalTerms;
   // A partner that proceeded past a declared receive list other than the
   // columns this party sends has taken them on, as its own run records; both
@@ -1704,6 +1699,18 @@ export async function runExchange(
     partnerDisclosesPayload: partnerDisclosesPayload ?? true,
     partnerTerms,
   });
+
+  // After every check above that can refuse the run, so a refused run's caller
+  // has written nothing, and before the fill below, which the caller records
+  // into what this step writes.
+  if (options.onTermsExchanged !== undefined) {
+    try {
+      await options.onTermsExchanged();
+    } catch (err) {
+      await sendAbort(conn, [TERMS_EXCHANGED_STEP_FAILED_ABORT_REASON]);
+      throw err;
+    }
+  }
 
   // Record the fill after every terms-time refusal, so a refused run records
   // nothing though the confirmation above may already have asked, and before

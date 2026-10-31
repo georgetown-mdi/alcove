@@ -93,7 +93,7 @@ import { captureProcessExit, recordProcessExit } from "../exitCapture";
 
 // runOnlineBootstrap's config-persistence tests below drive its wiring without
 // opening a connection: runProtocol is mocked so each test chooses whether the
-// handshake "succeeds" (the mock invokes onAuthenticated) before it resolves or
+// handshake "succeeds" (the mock invokes writeConfig) before it resolves or
 // rejects. saveConfig is left real, so the assertions check the actual file.
 // The preflight that raises the undeclared-columns notice stays real,
 // spy-wrapped so the ordering test below can place it against the host-key step.
@@ -2382,9 +2382,9 @@ function optionsArg(callArgs: unknown[]): RunProtocolOptions {
   return callArgs[0] as RunProtocolOptions;
 }
 
-/** runProtocol's onAuthenticated hook, which every caller here supplies. */
-function onAuthenticatedArg(callArgs: unknown[]): () => void | Promise<void> {
-  const hook = optionsArg(callArgs).onAuthenticated;
+/** runProtocol's onlineSetup.writeConfig, which every caller here supplies. */
+function writeConfigArg(callArgs: unknown[]): () => void | Promise<void> {
+  const hook = optionsArg(callArgs).onlineSetup?.writeConfig;
   expect(hook).toBeTypeOf("function");
   return hook as () => void | Promise<void>;
 }
@@ -2423,14 +2423,14 @@ describe("runOnlineBootstrap", () => {
   });
 
   test("writes the config from the hook even when the exchange then fails", async () => {
-    // Handshake succeeds (runProtocol invokes onAuthenticated -> saveConfig), then
+    // Handshake succeeds (runProtocol invokes writeConfig -> saveConfig), then
     // the data exchange fails. The config must already be on disk so the
     // recurring-exchange setup is recoverable without re-inviting.
     vi.mocked(runProtocol).mockImplementation((async (
       ...callArgs: unknown[]
     ) => {
-      const onAuthenticated = onAuthenticatedArg(callArgs);
-      await onAuthenticated();
+      const writeConfig = writeConfigArg(callArgs);
+      await writeConfig();
       throw new Error("data exchange failed");
     }) as never);
 
@@ -2492,9 +2492,9 @@ describe("runOnlineBootstrap", () => {
     vi.mocked(runProtocol).mockImplementation((async (
       ...callArgs: unknown[]
     ) => {
-      const onAuthenticated = onAuthenticatedArg(callArgs);
+      const writeConfig = writeConfigArg(callArgs);
       fs.writeFileSync(configPath, "");
-      await onAuthenticated();
+      await writeConfig();
     }) as never);
 
     try {
@@ -2528,8 +2528,8 @@ describe("runOnlineBootstrap", () => {
     vi.mocked(runProtocol).mockImplementation((async (
       ...callArgs: unknown[]
     ) => {
-      const onAuthenticated = onAuthenticatedArg(callArgs);
-      await onAuthenticated();
+      const writeConfig = writeConfigArg(callArgs);
+      await writeConfig();
       throw new Error("data exchange failed");
     }) as never);
 
@@ -2569,8 +2569,8 @@ describe("runOnlineBootstrap", () => {
     vi.mocked(runProtocol).mockImplementation((async (
       ...callArgs: unknown[]
     ) => {
-      const onAuthenticated = onAuthenticatedArg(callArgs);
-      await onAuthenticated();
+      const writeConfig = writeConfigArg(callArgs);
+      await writeConfig();
       throw markNoHealSaveFailure(withExitCode(new Error(message), 77));
     }) as never);
 
@@ -2603,8 +2603,8 @@ describe("runOnlineBootstrap", () => {
     vi.mocked(runProtocol).mockImplementation((async (
       ...callArgs: unknown[]
     ) => {
-      const onAuthenticated = onAuthenticatedArg(callArgs);
-      await onAuthenticated();
+      const writeConfig = writeConfigArg(callArgs);
+      await writeConfig();
       throw withExitCode(new Error("data exchange failed"), 77);
     }) as never);
 
@@ -2642,7 +2642,7 @@ describe("runOnlineBootstrap", () => {
     vi.mocked(runProtocol).mockImplementation((async (
       ...callArgs: unknown[]
     ) => {
-      await onAuthenticatedArg(callArgs)();
+      await writeConfigArg(callArgs)();
       return {};
     }) as never);
 
@@ -2680,7 +2680,7 @@ describe("runOnlineBootstrap", () => {
     vi.mocked(runProtocol).mockImplementation((async (
       ...callArgs: unknown[]
     ) => {
-      await onAuthenticatedArg(callArgs)();
+      await writeConfigArg(callArgs)();
       return {};
     }) as never);
 
@@ -2713,7 +2713,7 @@ describe("runOnlineBootstrap", () => {
     vi.mocked(runProtocol).mockImplementation((async (
       ...callArgs: unknown[]
     ) => {
-      await onAuthenticatedArg(callArgs)();
+      await writeConfigArg(callArgs)();
       return {};
     }) as never);
 
@@ -2743,12 +2743,12 @@ describe("runOnlineBootstrap", () => {
 
   test("returns the config-write error when the hook fails but the exchange succeeds", async () => {
     // The hook (saveConfig) failed at acceptance, but the exchange still
-    // succeeded, so runProtocol resolves with onAuthenticatedError set.
+    // succeeded, so runProtocol resolves with configWriteError set.
     // runOnlineBootstrap must forward it as configWriteError so the caller can
     // avoid claiming the config was saved.
     const writeError = new Error("disk full while writing config");
     vi.mocked(runProtocol).mockImplementation((async () => ({
-      onAuthenticatedError: writeError,
+      configWriteError: writeError,
     })) as never);
 
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
@@ -2764,7 +2764,7 @@ describe("runOnlineBootstrap", () => {
   });
 
   test("reports no config-write error on a clean run", async () => {
-    // runProtocol resolves with no onAuthenticatedError (the hook succeeded), so
+    // runProtocol resolves with no configWriteError (the hook succeeded), so
     // runOnlineBootstrap reports a clean outcome.
     vi.mocked(runProtocol).mockImplementation((async () => ({})) as never);
 
@@ -2784,7 +2784,7 @@ describe("runOnlineBootstrap", () => {
 // --- runOnlineBootstrap: the receive list a run fills --------------------------
 
 /** Mock runProtocol as a successful exchange, in its real order: invoke the
- *  onAuthenticated hook, run `betweenStages`, then, where `filled` is given,
+ *  writeConfig hook, run `betweenStages`, then, where `filled` is given,
  *  hand the receive-list recorder the partner's declared send set as the terms
  *  exchange does. */
 function mockSuccessfulExchange(
@@ -2792,9 +2792,9 @@ function mockSuccessfulExchange(
   betweenStages?: () => void,
 ): void {
   vi.mocked(runProtocol).mockImplementation((async (...callArgs: unknown[]) => {
-    const onAuthenticated = optionsArg(callArgs).onAuthenticated as
+    const writeConfig = optionsArg(callArgs).onlineSetup?.writeConfig as
       (() => void | Promise<void>) | undefined;
-    await onAuthenticated?.();
+    await writeConfig?.();
     betweenStages?.();
     if (filled !== undefined)
       await optionsArg(callArgs).recordPayloadReceiveFill?.(filled);
@@ -2942,10 +2942,10 @@ describe("runOnlineBootstrap, when the acceptance hook wrote no configuration", 
       ...callArgs: unknown[]
     ) => {
       fs.writeFileSync(configPath, "operator: file\n");
-      const onAuthenticated = optionsArg(callArgs).onAuthenticated as
+      const writeConfig = optionsArg(callArgs).onlineSetup?.writeConfig as
         (() => void | Promise<void>) | undefined;
       try {
-        await onAuthenticated?.();
+        await writeConfig?.();
       } catch (err) {
         recorded.push(err);
       }
@@ -3187,9 +3187,9 @@ describe("runOnlineBootstrap", () => {
     ) => {
       connectionPassedToRunProtocol = optionsArg(callArgs)
         .connection as SFTPConnectionConfig;
-      const onAuthenticated = optionsArg(callArgs).onAuthenticated as
+      const writeConfig = optionsArg(callArgs).onlineSetup?.writeConfig as
         (() => void | Promise<void>) | undefined;
-      await onAuthenticated?.();
+      await writeConfig?.();
       return {};
     }) as never);
 
@@ -3237,9 +3237,9 @@ describe("runOnlineBootstrap", () => {
     ) => {
       connectionPassedToRunProtocol = optionsArg(callArgs)
         .connection as SFTPConnectionConfig;
-      const onAuthenticated = optionsArg(callArgs).onAuthenticated as
+      const writeConfig = optionsArg(callArgs).onlineSetup?.writeConfig as
         (() => void | Promise<void>) | undefined;
-      await onAuthenticated?.();
+      await writeConfig?.();
       return {};
     }) as never);
 
@@ -3289,9 +3289,9 @@ describe("runOnlineBootstrap", () => {
     ) => {
       connectionPassedToRunProtocol = optionsArg(callArgs)
         .connection as SFTPConnectionConfig;
-      const onAuthenticated = optionsArg(callArgs).onAuthenticated as
+      const writeConfig = optionsArg(callArgs).onlineSetup?.writeConfig as
         (() => void | Promise<void>) | undefined;
-      await onAuthenticated?.();
+      await writeConfig?.();
       return {};
     }) as never);
 
@@ -3431,7 +3431,7 @@ describe("runOnlineBootstrap", () => {
     ) => {
       connectionPassedToRunProtocol = optionsArg(callArgs)
         .connection as SFTPConnectionConfig;
-      await onAuthenticatedArg(callArgs)();
+      await writeConfigArg(callArgs)();
       return {};
     }) as never);
 
@@ -3526,8 +3526,8 @@ describe("runOnlineBootstrap", () => {
     vi.mocked(runProtocol).mockImplementation((async (
       ...callArgs: unknown[]
     ) => {
-      const onAuthenticated = onAuthenticatedArg(callArgs);
-      await onAuthenticated();
+      const writeConfig = writeConfigArg(callArgs);
+      await writeConfig();
       throw new Error("data exchange failed");
     }) as never);
 
@@ -3628,8 +3628,8 @@ describe("runOnlineBootstrap", () => {
     vi.mocked(runProtocol).mockImplementation((async (
       ...callArgs: unknown[]
     ) => {
-      const onAuthenticated = onAuthenticatedArg(callArgs);
-      await onAuthenticated();
+      const writeConfig = writeConfigArg(callArgs);
+      await writeConfig();
       throw new Error("data exchange failed");
     }) as never);
 
@@ -3678,7 +3678,7 @@ describe("runOnlineBootstrap", () => {
       ...callArgs: unknown[]
     ) => {
       onlineSetup = optionsArg(callArgs).onlineSetup;
-      if (params.reachHook) await onAuthenticatedArg(callArgs)();
+      if (params.reachHook) await writeConfigArg(callArgs)();
       throw params.failure;
     }) as never);
     const log = getLogger("bootstrap-recovery-test");
@@ -3726,7 +3726,11 @@ describe("runOnlineBootstrap", () => {
         reachHook: false,
         reuseExistingConfig,
       });
-      expect(onlineSetup).toEqual({ configPath, kept: reuseExistingConfig });
+      expect(onlineSetup).toEqual({
+        configPath,
+        kept: reuseExistingConfig,
+        writeConfig: expect.any(Function),
+      });
       expect(lines).toEqual([]);
     },
   );
@@ -3748,8 +3752,8 @@ describe("runOnlineBootstrap", () => {
     vi.mocked(runProtocol).mockImplementation((async (
       ...callArgs: unknown[]
     ) => {
-      const onAuthenticated = onAuthenticatedArg(callArgs);
-      await onAuthenticated();
+      const writeConfig = writeConfigArg(callArgs);
+      await writeConfig();
       return { outcome: "interrupted" };
     }) as never);
 
@@ -3874,8 +3878,8 @@ describe("runOnlineBootstrap", () => {
     vi.mocked(runProtocol).mockImplementation((async (
       ...callArgs: unknown[]
     ) => {
-      const onAuthenticated = onAuthenticatedArg(callArgs);
-      await onAuthenticated();
+      const writeConfig = writeConfigArg(callArgs);
+      await writeConfig();
       return {};
     }) as never);
 
@@ -3898,17 +3902,17 @@ describe("runOnlineBootstrap", () => {
 
   test("re-gates the config write: a config appearing after the check is not silently overwritten", async () => {
     // Emulate runProtocol's hook handling: a hook failure is captured as
-    // onAuthenticatedError (non-fatal), not propagated -- the same contract the
+    // configWriteError (non-fatal), not propagated -- the same contract the
     // real runProtocol upholds.
     vi.mocked(runProtocol).mockImplementation((async (
       ...callArgs: unknown[]
     ) => {
-      const onAuthenticated = onAuthenticatedArg(callArgs);
+      const writeConfig = writeConfigArg(callArgs);
       try {
-        await onAuthenticated();
+        await writeConfig();
         return {};
       } catch (err) {
-        return { onAuthenticatedError: err };
+        return { configWriteError: err };
       }
     }) as never);
 
@@ -3935,12 +3939,12 @@ describe("runOnlineBootstrap", () => {
     vi.mocked(runProtocol).mockImplementation((async (
       ...callArgs: unknown[]
     ) => {
-      const onAuthenticated = onAuthenticatedArg(callArgs);
+      const writeConfig = writeConfigArg(callArgs);
       try {
-        await onAuthenticated();
+        await writeConfig();
         return {};
       } catch (err) {
-        return { onAuthenticatedError: err };
+        return { configWriteError: err };
       }
     }) as never);
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
