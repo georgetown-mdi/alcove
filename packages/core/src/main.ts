@@ -558,6 +558,7 @@ export {
   WebRTCEndpointSchema,
 } from "./config/invitation";
 export {
+  TERMS_UPDATE_NEWER_REMEDY,
   TermsUpdateRefusedError,
   decodeTermsUpdate,
   encodeTermsUpdate,

@@ -3,6 +3,7 @@ import { ZodError } from "zod";
 
 import {
   PLACEHOLDER_IDENTITY,
+  TERMS_UPDATE_NEWER_REMEDY,
   UsageError,
   decodeTermsUpdate,
   deriveAcceptedLinkageTerms,
@@ -37,6 +38,7 @@ import { clearManagedExchangeTermsProposal } from "@psi/managed/managedLocalStat
 
 import {
   IDENTIFIER_COLUMN_NOTE,
+  NEWER_TERMS_UPDATE_TEXT,
   TERMS_UPDATE_APPLIED_TEXT,
   TERMS_UPDATE_CHANGE_TEXT,
   TERMS_UPDATE_NOT_APPLIED_TEXT,
@@ -57,6 +59,7 @@ import type * as ManagedExchangeStore from "@psi/managed/managedExchangeStore";
 import type {
   ColumnMetadata,
   ExchangeSpec,
+  FormatVersionPolicy,
   LinkageTerms,
   Metadata,
 } from "@alcove/core";
@@ -764,6 +767,52 @@ describe("applying a partner's terms update", () => {
       expect(storedBytes.get(record.id)).toBe(before);
     },
   );
+
+  test("a malformed update asks for the whole update again", async () => {
+    const record = await agencyBRecord();
+    const error: unknown = await readManagedTermsUpdate(
+      record,
+      "not a terms update",
+    ).then(
+      () => undefined,
+      (caught: unknown) => caught,
+    );
+    expect(termsUpdateNotAppliedText(error)).toBe(
+      TERMS_UPDATE_NOT_APPLIED_TEXT.format,
+    );
+  });
+
+  test("an update a newer Alcove made says so and gives the update remedy, and writes nothing", async () => {
+    const record = await agencyBRecord();
+    const before = storedBytes.get(record.id);
+    const identityAtVersion2: FormatVersionPolicy = {
+      current: 2,
+      features: [
+        {
+          path: ["linkageTerms", "identity"],
+          name: "linkageTerms.identity",
+          version: 2,
+          oldDefault: "an identity no update states",
+        },
+      ],
+    };
+    const update = await encodeTermsUpdate(
+      termsUpdateFor(OWN_TERMS, undefined),
+      CLI_TERMS_UPDATE_SECRET,
+      identityAtVersion2,
+    );
+
+    const error: unknown = await readManagedTermsUpdate(record, update).then(
+      () => undefined,
+      (caught: unknown) => caught,
+    );
+    expect(error).toBeInstanceOf(ManagedTermsUpdateNotAppliedError);
+    expect((error as ManagedTermsUpdateNotAppliedError).refusal).toBe("format");
+    expect(termsUpdateNotAppliedText(error)).toBe(NEWER_TERMS_UPDATE_TEXT);
+    expect(NEWER_TERMS_UPDATE_TEXT).toMatch(/newer version of Alcove/);
+    expect(NEWER_TERMS_UPDATE_TEXT).toContain(TERMS_UPDATE_NEWER_REMEDY);
+    expect(storedBytes.get(record.id)).toBe(before);
+  });
 
   test("refuses an update for a different exchange and leaves the record byte-identical", async () => {
     const record = await agencyBRecord(generateSharedSecret());

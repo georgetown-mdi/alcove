@@ -82,7 +82,8 @@ export const TERMS_UPDATE_VERSION_POLICY: FormatVersionPolicy =
 
 const TERMS_UPDATE_FILE_NAME = "This terms update";
 
-const TERMS_UPDATE_NEWER_REMEDY =
+/** What to do with a terms update a newer Alcove made. */
+export const TERMS_UPDATE_NEWER_REMEDY =
   "Update Alcove, then try the terms update again.";
 
 /**

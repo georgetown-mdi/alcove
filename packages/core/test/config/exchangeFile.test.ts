@@ -589,6 +589,16 @@ test("an unknown member of the about block is skipped and held", () => {
   expect(snakeizeKeys(parsed)).toMatchObject({ about });
 });
 
+test("an about block member named __proto__ is skipped, not refused as unread", () => {
+  const yaml = mintExchangeFile({
+    connection: sftpLocator,
+    linkageTerms: baseTerms,
+  });
+  expect(() =>
+    parseExchangeSpec(parseYaml(`${yaml}about:\n  __proto__:\n    a: 1\n`)),
+  ).not.toThrow();
+});
+
 test("the about block's keys are held as the file spells them, at every depth", () => {
   const about = { myNote: "a", URL: "b", nested: { innerKey: 1 } };
   const raw = {

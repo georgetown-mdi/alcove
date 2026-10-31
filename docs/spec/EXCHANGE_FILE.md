@@ -182,9 +182,7 @@ leaves out every field that holds the value an older reader takes the field's
 absence to mean, then states first, as `format_version`, the version the
 remaining fields need, whatever version the document it started from declared.
 A written file that uses no field newer than an older CLI's version is
-therefore one that CLI reads. Alcove builds from before format versions refuse
-the `format_version` key, since their exchange-file schema is strict; before
-publication there are no deployed readers to hold apart. An in-place edit of an operator's file, such as a
+therefore one that CLI reads. An in-place edit of an operator's file, such as a
 pinned fingerprint or an applied terms update, changes only the field it writes
 and leaves `format_version` as the file states it.
 
@@ -266,8 +264,9 @@ including when it writes back a document it read.
 A file that uses no newer field is therefore read by every Alcove that reads
 its version. Alcove builds from before format versions refuse the
 `format_version` key, since their exchange-file schema is strict; before
-publication there are no deployed readers to hold apart. A file that does use one is refused by an older reader, naming the
-version or the field, rather than read short of it.
+publication there are no deployed readers to hold apart. A file that does use
+one is refused by an older reader, naming the version or the field, rather
+than read short of it.
 
 The rule covers fields a version adds. A change to the shape or meaning of a
 field the schema already holds is not one an older reader can be made to read,

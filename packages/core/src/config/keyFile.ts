@@ -161,7 +161,8 @@ function newerKeyFileMembersIssue(
  * {@link KEY_FILE_FORMAT_VERSION}, is refused as written by a newer Alcove;
  * the refusal names the field through the display rule and never a value. The
  * version is checked first, so a newer file is refused by its version alone,
- * not beside field errors whose remedy differs. The unknown fields are read
+ * and a file with an unknown field by that refusal alone, not beside field
+ * errors whose remedy differs. The unknown fields are read
  * from the input's own keys, so a member Zod's output would absorb, such as
  * `__proto__`, is refused too. The result holds the {@link KeyFile} fields,
  * without `version`.
@@ -180,13 +181,16 @@ export const KeyFileSchema: z.ZodType<KeyFile, unknown> = z
       (name) => name !== "version" && !KEY_FILE_FIELD_NAMES.has(name),
     );
     const fields = KeyFileFieldsSchema.safeParse(raw);
-    const issues = (fields.success ? [] : fields.error.issues).map((issue) =>
+    const fieldIssues = fields.success ? [] : fields.error.issues;
+    const newerMembers = fieldIssues.flatMap((issue) =>
       issue.code === "unrecognized_keys"
-        ? newerKeyFileMembersIssue(issue.path, issue.keys)
-        : issue,
+        ? [newerKeyFileMembersIssue(issue.path, issue.keys)]
+        : [],
     );
-    if (unknown.length > 0) issues.push(newerKeyFileMembersIssue([], unknown));
-    if (issues.length > 0 || !fields.success) return refuse(issues);
+    if (unknown.length > 0)
+      newerMembers.push(newerKeyFileMembersIssue([], unknown));
+    if (newerMembers.length > 0) return refuse(newerMembers);
+    if (!fields.success) return refuse(fieldIssues);
     const { version: _version, ...known } = fields.data;
     return known as KeyFile;
   });

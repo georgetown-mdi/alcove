@@ -179,7 +179,9 @@ async function checkedTermsUpdate(
     update = await decodeTermsUpdate(encoded, record.sharedSecret);
   } catch (error) {
     if (error instanceof TermsUpdateRefusedError)
-      throw new ManagedTermsUpdateNotAppliedError(error.check);
+      throw new ManagedTermsUpdateNotAppliedError(error.check, {
+        cause: error,
+      });
     throw error;
   }
   const { exchangeFile } = record;

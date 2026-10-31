@@ -35,6 +35,15 @@ describe("KeyFileSchema", () => {
     );
   });
 
+  test("refuses a field it does not know alone, not beside a field error", () => {
+    const result = KeyFileSchema.safeParse({ sharedSecret: "short", extra: 1 });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues).toHaveLength(1);
+    expect(result.error?.issues[0]?.message).toMatch(
+      /^The key file has the field "extra", which this version of Alcove does not read: it was made by a newer version of Alcove\./,
+    );
+  });
+
   test("names a secret-shaped unknown field by placeholder, and no value", () => {
     const result = KeyFileSchema.safeParse({
       sharedSecret: SECRET,
