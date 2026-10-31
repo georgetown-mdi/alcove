@@ -2690,7 +2690,7 @@ describe("runOnlineBootstrap", () => {
       const startOver =
         expectedPartnerDeduplicate === undefined
           ? `delete ${params.keyPath}, then run 'alcove invite' without a URL to make a new invitation from ${configPath}.`
-          : `delete ${params.keyPath}, then accept the new invitation your partner sends with 'alcove accept'.`;
+          : `delete ${params.keyPath}, then run 'alcove accept' on the new invitation your partner sends.`;
       try {
         await expect(runOnlineBootstrap(params)).rejects.toBeInstanceOf(
           shape === "bare" ? PeerAbortError : ConnectionError,

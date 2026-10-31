@@ -172,7 +172,7 @@ test("an online acceptor whose partner ended the run after its configuration ste
   expect(online.exitCode).toBe(76);
   expect(fs.existsSync(configFile)).toBe(true);
   expect(partnerEndedNote(online.stderr)).toContain(
-    `delete ${keyFile}, then accept the new invitation your partner sends with 'alcove accept'.`,
+    `delete ${keyFile}, then run 'alcove accept' on the new invitation your partner sends.`,
   );
 
   fs.rmSync(keyFile);

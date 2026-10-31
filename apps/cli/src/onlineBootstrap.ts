@@ -838,8 +838,8 @@ function partnerEndedAfterConfigurationNote(params: {
 }): string {
   const { config, key, accepting } = params;
   const startOver = accepting
-    ? `delete ${key}, then accept the new invitation your partner sends ` +
-      `with 'alcove accept'`
+    ? `delete ${key}, then run 'alcove accept' on the new invitation your ` +
+      `partner sends`
     : `delete ${key}, then run 'alcove invite' without a URL to make a new ` +
       `invitation from ${config}`;
   return (
