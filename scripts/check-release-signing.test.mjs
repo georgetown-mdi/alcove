@@ -709,6 +709,56 @@ describe("the arguments each verify step runs", () => {
     expect(violations).toHaveLength(1);
     expect(violations[0]).toContain("cannot be read from this file");
   });
+
+  describe("in a job that pushes no image", () => {
+    // The Docker Hub copy's shape: a job of its own that verifies, by a digest
+    // another job handed it, a signature it copied rather than made.
+    const copyVerifyStep = ({
+      identity = IDENTITY,
+      issuer = ACTIONS_OIDC_ISSUER,
+    } = {}) =>
+      [
+        "      - name: Verify the copy",
+        "        run: |",
+        "          cosign verify \\",
+        `            --certificate-identity-regexp '${identity}' \\`,
+        `            --certificate-oidc-issuer ${issuer} \\`,
+        '            "docker.io/gumdi/alcove@${DIGEST}"',
+      ].join("\n");
+    const withCopyJob = (step) =>
+      publishSequenceViolations(
+        [
+          workflow({ steps: orderedSteps }).trimEnd(),
+          "  dockerhub:",
+          "    steps:",
+          step,
+          "",
+        ].join("\n"),
+        "fixture.yaml",
+        PUBLISHED,
+      );
+
+    it("passes a verify step running the published pair", () => {
+      expect(withCopyJob(copyVerifyStep())).toEqual([]);
+    });
+
+    it("fails a verify step pinned to an identity the document does not publish", () => {
+      const violations = withCopyJob(
+        copyVerifyStep({ identity: IDENTITY.replace("alcove", "other-repo") }),
+      );
+      expect(violations).toHaveLength(1);
+      expect(violations[0]).toContain('"Verify the copy" in job `dockerhub`');
+      expect(violations[0]).toContain("a copied image");
+    });
+
+    it("fails a verify step missing both arguments", () => {
+      const stripped = copyVerifyStep()
+        .split("\n")
+        .filter((line) => !line.includes("--certificate-"))
+        .join("\n");
+      expect(withCopyJob(stripped)).toHaveLength(2);
+    });
+  });
 });
 
 describe("the workflow the check reads the signer identity off", () => {
