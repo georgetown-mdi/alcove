@@ -5,6 +5,7 @@ import {
   camelizeKeys,
   KeyFoldCollisionError,
   OPAQUE_VALUE_KEYS,
+  ROOT_OPAQUE_VALUE_KEYS,
   snakeizeKey,
   snakeizeKeys,
   NestingDepthExceededError,
@@ -90,6 +91,20 @@ test("camelize and snakeize skip the identical set of opaque subtrees", () => {
   // ...and that set is exactly the opaque-keyed subtrees, not the control.
   expect(camelSkipped).toEqual([...expectedSkipped].sort());
   expect(camelSkipped).not.toContain("control");
+});
+
+test("a root-only opaque key is held at the root and folds anywhere deeper", () => {
+  for (const key of ROOT_OPAQUE_VALUE_KEYS) {
+    const held = { myNote: 1, inner_key: { URL: 2 } };
+    expect(camelizeKeys({ [key]: held })).toEqual({ [key]: held });
+    expect(snakeizeKeys({ [key]: held })).toEqual({ [key]: held });
+    expect(camelizeKeys({ outer_block: { [key]: { inner_key: 1 } } })).toEqual({
+      outerBlock: { [key]: { innerKey: 1 } },
+    });
+    expect(snakeizeKeys({ outerBlock: { [key]: { innerKey: 1 } } })).toEqual({
+      outer_block: { [key]: { inner_key: 1 } },
+    });
+  }
 });
 
 // --- Nesting-depth guard -----------------------------------------------------

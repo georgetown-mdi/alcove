@@ -8,9 +8,23 @@ import { z } from "zod";
 import { MS_PER_DAY } from "../utils/msPerDay";
 import { NEW_INVITATION_REMEDY } from "../auth";
 import { SHARED_SECRET_REGEX } from "./connection";
+import {
+  newerFormatMemberMessage,
+  newerFormatVersionMessage,
+} from "./formatVersion";
 import type { RotationHistoryEntry } from "../rotationHistory";
 
-/** Contents of a `.alcove.key` file. */
+/**
+ * The key file format version this build reads and writes: the file's
+ * `version` field, which {@link serializeKeyFile} always writes and
+ * {@link KeyFileSchema} reads as 1 when absent.
+ */
+export const KEY_FILE_FORMAT_VERSION = 1;
+
+/**
+ * Contents of a `.alcove.key` file, less its `version`, which only the
+ * schema and the serializer handle.
+ */
 export interface KeyFile {
   /** Shared secret; injected into the connection config at runtime. */
   sharedSecret: string;
@@ -88,11 +102,6 @@ export const KEY_FILE_FIELD_SCHEMAS = {
     .optional(),
 } as const;
 
-/** The key file's validator. A field outside {@link KeyFile} is dropped. */
-export const KeyFileSchema: z.ZodType<KeyFile> = z.object(
-  KEY_FILE_FIELD_SCHEMAS,
-);
-
 const KEY_FILE_FIELD_NAMES: ReadonlySet<string> = new Set(
   Object.keys(KEY_FILE_FIELD_SCHEMAS),
 );
@@ -102,13 +111,96 @@ export const KEY_FILE_REDACTED_FIELD_NAME = "<redacted>";
 
 const SECRET_SHAPED_RUN = /[A-Za-z0-9_-]{32,}/;
 
+const KEY_FILE_NEWER_REMEDY =
+  "Use the version of Alcove that wrote the key file, or a newer one.";
+
+function keyFileFieldNameForDisplay(name: string): string {
+  return SECRET_SHAPED_RUN.test(name) ? KEY_FILE_REDACTED_FIELD_NAME : name;
+}
+
+const KeyFileVersionSchema = z.looseObject({
+  version: z
+    .int()
+    .min(1)
+    .max(KEY_FILE_FORMAT_VERSION, {
+      error: (issue) =>
+        newerFormatVersionMessage(
+          "The key file",
+          Number(issue.input),
+          KEY_FILE_FORMAT_VERSION,
+          KEY_FILE_NEWER_REMEDY,
+        ),
+    })
+    .optional(),
+});
+
+const KeyFileFieldsSchema = z.looseObject({
+  version: z.unknown().optional(),
+  ...KEY_FILE_FIELD_SCHEMAS,
+});
+
+/** A refusal of members a newer Alcove wrote, named through the display rule. */
+function newerKeyFileMembersIssue(
+  path: ReadonlyArray<PropertyKey>,
+  names: ReadonlyArray<string>,
+): z.core.$ZodIssue {
+  return {
+    code: "custom",
+    path: [...path],
+    message: newerFormatMemberMessage(
+      "The key file",
+      names.map(keyFileFieldNameForDisplay),
+      KEY_FILE_NEWER_REMEDY,
+    ),
+  };
+}
+
 /**
- * The names of the top-level fields of a parsed key file that
- * {@link KeyFileSchema} does not read and so drops, in the file's order, for a
- * reader to name to the operator. A reader that keeps only some of the schema's
- * fields passes them as `keptFields`, so the rest are named too. Returns names
- * only: a value may be the secret. A name containing a run of 32 or more
- * base64url characters, which may be all or most of a secret, is replaced by
+ * The key file's validator. A field outside {@link KeyFile} and `version`, at
+ * the top level or inside a rotation history entry, and a version above
+ * {@link KEY_FILE_FORMAT_VERSION}, is refused as written by a newer Alcove;
+ * the refusal names the field through the display rule and never a value. The
+ * version is checked first, so a newer file is refused by its version alone,
+ * and a file with an unknown field by that refusal alone, not beside field
+ * errors whose remedy differs. The unknown fields are read
+ * from the input's own keys, so a member Zod's output would absorb, such as
+ * `__proto__`, is refused too. The result holds the {@link KeyFile} fields,
+ * without `version`.
+ */
+export const KeyFileSchema: z.ZodType<KeyFile, unknown> = z
+  .unknown()
+  .transform((raw, ctx): KeyFile => {
+    const refuse = (issues: ReadonlyArray<z.core.$ZodIssue>): KeyFile => {
+      for (const issue of issues)
+        ctx.issues.push({ ...issue, input: undefined });
+      return z.NEVER;
+    };
+    const version = KeyFileVersionSchema.safeParse(raw);
+    if (!version.success) return refuse(version.error.issues);
+    const unknown = Object.keys(raw as object).filter(
+      (name) => name !== "version" && !KEY_FILE_FIELD_NAMES.has(name),
+    );
+    const fields = KeyFileFieldsSchema.safeParse(raw);
+    const fieldIssues = fields.success ? [] : fields.error.issues;
+    const newerMembers = fieldIssues.flatMap((issue) =>
+      issue.code === "unrecognized_keys"
+        ? [newerKeyFileMembersIssue(issue.path, issue.keys)]
+        : [],
+    );
+    if (unknown.length > 0)
+      newerMembers.push(newerKeyFileMembersIssue([], unknown));
+    if (newerMembers.length > 0) return refuse(newerMembers);
+    if (!fields.success) return refuse(fieldIssues);
+    const { version: _version, ...known } = fields.data;
+    return known as KeyFile;
+  });
+
+/**
+ * The names of the top-level fields of a parsed key file that a reader keeping
+ * only `keptFields` does not read, in the file's order, for it to name to the
+ * operator; `version` counts as read. Returns names only: a value may be the
+ * secret. A name containing a run of 32 or more base64url characters, which
+ * may be all or most of a secret, is replaced by
  * {@link KEY_FILE_REDACTED_FIELD_NAME}. Empty for anything other than a plain
  * object.
  */
@@ -119,22 +211,24 @@ export function keyFileUnreadFieldNames(
   if (typeof document !== "object" || document === null) return [];
   if (Array.isArray(document)) return [];
   return Object.keys(document)
-    .filter((name) => !keptFields.has(name))
-    .map((name) =>
-      SECRET_SHAPED_RUN.test(name) ? KEY_FILE_REDACTED_FIELD_NAME : name,
-    );
+    .filter((name) => name !== "version" && !keptFields.has(name))
+    .map(keyFileFieldNameForDisplay);
 }
 
 /**
  * The bytes of a `.alcove.key` holding `data`: pretty-printed JSON with a
- * trailing newline, holding only the {@link KeyFile} fields `data` sets.
- * Validates nothing; a writer checks the secret's shape itself.
+ * trailing newline, the format version first, holding only the
+ * {@link KeyFile} fields `data` sets. Validates nothing; a writer checks the
+ * secret's shape itself.
  */
 export function serializeKeyFile(data: KeyFile): string {
   const known = Object.fromEntries(
     Object.entries(data).filter(([name]) => KEY_FILE_FIELD_NAMES.has(name)),
   );
-  return JSON.stringify(known, null, 2) + "\n";
+  return (
+    JSON.stringify({ version: KEY_FILE_FORMAT_VERSION, ...known }, null, 2) +
+    "\n"
+  );
 }
 
 /**

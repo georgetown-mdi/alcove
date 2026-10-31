@@ -220,8 +220,10 @@ describe("a webrtc configuration handed back with edits", () => {
       const { partnerFingerprint: _pin, ...heldSigning } = signing ?? {};
       return { ...rest, linkageTerms: terms, signing: heldSigning };
     };
-    expect(unedited(written)).toEqual(unedited(opened));
-    expect(Object.keys(written).sort()).toEqual(Object.keys(opened).sort());
+    // The writer states the format version the file left out.
+    const stated: ExchangeSpec = { formatVersion: 1, ...opened };
+    expect(unedited(written)).toEqual(unedited(stated));
+    expect(Object.keys(written).sort()).toEqual(Object.keys(stated).sort());
   });
 
   test("writes the connection block exactly as the file states it", () => {
@@ -379,6 +381,7 @@ describe("a webrtc configuration with every setting the hand-back edits edited",
     );
 
     expect(readBack(dir)).toEqual({
+      formatVersion: 1,
       ...opened,
       ...editedFields,
       signing: { ...opened.signing, partnerFingerprint: pin },

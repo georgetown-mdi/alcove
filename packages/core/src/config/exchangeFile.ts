@@ -1,6 +1,11 @@
 import { stringify as stringifyYaml } from "yaml";
 
-import { ExchangeSpecSchema } from "./exchangeSpec.js";
+import {
+  EXCHANGE_FILE_VERSION_POLICY,
+  ExchangeSpecSchema,
+  atLowestExchangeFileVersion,
+} from "./exchangeSpec.js";
+import type { FormatInfoBlock, FormatVersionPolicy } from "./formatVersion.js";
 import type { ExchangeSpec } from "./exchangeSpec.js";
 import type { ConnectionConfig, FileSyncOptions } from "./connection.js";
 import type { LinkageTerms } from "./linkageTermsSchema.js";
@@ -96,6 +101,8 @@ export interface ExchangeFileInput {
   includeMatchingKey?: boolean;
   /** See {@link ExchangeSpecAssembly.csvDelimiter}. */
   csvDelimiter?: string;
+  /** Notes about the file that no reader acts on. */
+  about?: FormatInfoBlock;
 }
 
 /** {@link ExchangeFileInput} with the connection already expanded. */
@@ -189,14 +196,28 @@ export function mintExchangeFile(input: ExchangeFileInput): string {
 }
 
 /**
- * The validated spec {@link mintExchangeFile} serializes.
+ * The validated spec {@link mintExchangeFile} serializes: written at the
+ * lowest format version its content needs, which it states as
+ * `formatVersion`, with each field holding the value an older reader assumes
+ * for its absence left out.
  *
+ * @param policy the exchange file's version table; this build's by default.
  * @throws {ZodError} if the assembled spec fails validation.
  */
-export function mintExchangeSpec(input: ExchangeFileInput): ExchangeSpec {
-  return assembleExchangeSpec({
-    ...input,
-    connection: connectionFromLocator(input.connection),
+export function mintExchangeSpec(
+  input: ExchangeFileInput,
+  policy: FormatVersionPolicy = EXCHANGE_FILE_VERSION_POLICY,
+): ExchangeSpec {
+  const { about, ...fields } = input;
+  return ExchangeSpecSchema.parse({
+    ...atLowestExchangeFileVersion(
+      assembleExchangeSpec({
+        ...fields,
+        connection: connectionFromLocator(fields.connection),
+      }),
+      policy,
+    ),
+    ...(about !== undefined ? { about } : {}),
   });
 }
 

@@ -2,6 +2,7 @@ import YAML from "yaml";
 
 import { snakeizeKeys } from "../utils/camelizeKeys.js";
 import { annotateConnectionGuidance } from "./connectionGuidance.js";
+import { atLowestExchangeFileVersion } from "./exchangeSpec.js";
 import type { ExchangeSpec } from "./exchangeSpec.js";
 import type { LinkageTerms } from "./linkageTermsSchema.js";
 import { payloadReceiveFillsOnFirstRun } from "./recurringTerms.js";
@@ -9,8 +10,9 @@ import { commentBlock } from "./yamlComments.js";
 
 /**
  * Serialize an {@link ExchangeSpec} into the snake_case YAML document Alcove
- * writes as an operator's `alcove.yaml`, guidance comments included. The
- * caller's spec is not mutated.
+ * writes as an operator's `alcove.yaml`, guidance comments included, at the
+ * lowest format version its content needs ({@link atLowestExchangeFileVersion}).
+ * The caller's spec is not mutated.
  *
  * The shared secret and its expiration live only in the key file: they are
  * stripped from the top-level `authentication` block here even if the caller
@@ -29,7 +31,7 @@ import { commentBlock } from "./yamlComments.js";
  * ({@link annotateUnsetPayloadReceive}).
  */
 export function serializeExchangeDocument(spec: ExchangeSpec): string {
-  const sanitized = structuredClone(spec);
+  const sanitized = atLowestExchangeFileVersion(spec);
   const auth = sanitized.authentication;
   if (auth) {
     delete auth.sharedSecret;

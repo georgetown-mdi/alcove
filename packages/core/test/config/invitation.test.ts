@@ -1,5 +1,8 @@
 import { ZodError } from "zod";
+import type { z } from "zod";
 import { expect, test } from "vitest";
+
+import type { FormatVersionPolicy } from "../../src/config/formatVersion";
 
 import {
   encodeInvitation,
@@ -373,6 +376,38 @@ test("decodeInvitation normalizes snake_case transform.params keys to camelCase"
   expect(
     decoded.linkageTerms.linkageKeys[0].elements[0].transform?.[0].params,
   ).toEqual({ inputFormat: "MM/DD/YYYY", outputFormat: "YYYYMMDD" });
+});
+
+test("a transform param named about folds like any other key", async () => {
+  const token = {
+    ...baseToken,
+    linkageTerms: {
+      ...baseTerms,
+      linkageKeys: [
+        {
+          name: "DOB",
+          elements: [
+            {
+              field: "ssn",
+              transform: [
+                {
+                  function: "parse_date",
+                  params: {
+                    input_format: "MM/DD/YYYY",
+                    about: { inner_key: 1 },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  };
+  const decoded = await decodeInvitation(await encodeRawInvitation(token));
+  expect(
+    decoded.linkageTerms.linkageKeys[0].elements[0].transform?.[0].params,
+  ).toEqual({ inputFormat: "MM/DD/YYYY", about: { innerKey: 1 } });
 });
 
 test("decodeInvitation reads a payload column named twice as one entry", async () => {
@@ -993,39 +1028,167 @@ test.each(positiveCases)(
   },
 );
 
-// --- A top-level field an earlier build wrote ---------------------------------
+// --- Format version -----------------------------------------------------------
 
-test("a token holding the disclosed-columns list an earlier build wrote decodes without it", async () => {
-  // The token schema is non-strict at the top level, so a field this build no
-  // longer reads is dropped rather than refused; the terms' own payload.send
-  // states the same columns.
+// A later version adding `inviterRetainsFiles`, whose absence an older reader
+// takes as false.
+const RETAIN_AT_VERSION_2: FormatVersionPolicy = {
+  current: 2,
+  features: [
+    {
+      path: ["inviterRetainsFiles"],
+      name: "inviterRetainsFiles",
+      version: 2,
+      oldDefault: false,
+    },
+  ],
+};
+
+async function decodeRefusal(encoded: string): Promise<z.core.$ZodIssue> {
+  const error = await decodeInvitation(encoded).catch((err: unknown) => err);
+  expect(error).toBeInstanceOf(ZodError);
+  return (error as ZodError).issues[0] as z.core.$ZodIssue;
+}
+
+test("a token using no newer field is written at version 1 and read by this build", async () => {
+  const encoded = await encodeInvitation(
+    { ...baseToken, version: "7", inviterRetainsFiles: false },
+    RETAIN_AT_VERSION_2,
+  );
+  const decoded = await decodeInvitation(encoded);
+  expect(decoded.version).toBe("1");
+  expect(decoded).not.toHaveProperty("inviterRetainsFiles");
+});
+
+test("a token using a newer field is written at that field's version", async () => {
+  const encoded = await encodeInvitation(
+    { ...baseToken, inviterRetainsFiles: true },
+    RETAIN_AT_VERSION_2,
+  );
+  const decoded = await decodeInvitation(encoded, RETAIN_AT_VERSION_2);
+  expect(decoded.version).toBe("2");
+  const issue = await decodeRefusal(encoded);
+  expect(issue.path).toEqual(["version"]);
+  expect(issue.message).toBe(
+    "The invitation is format version 2, made by a newer version of Alcove " +
+      "than this one, which reads up to version 1. Update Alcove, then open " +
+      "the invitation again.",
+  );
+});
+
+test("a token declaring a version below what its fields need is refused naming both", async () => {
+  const encoded = await encodeRawInvitation({
+    ...baseToken,
+    inviterRetainsFiles: true,
+  });
+  const error = await decodeInvitation(encoded, RETAIN_AT_VERSION_2).catch(
+    (err: unknown) => err,
+  );
+  expect((error as ZodError).issues[0]).toMatchObject({
+    path: ["inviterRetainsFiles"],
+    message:
+      'The invitation declares format version 1, but its field "inviterRetainsFiles" ' +
+      "needs version 2. Set version to 2, or remove the field.",
+  });
+});
+
+test("an unknown member of the about block is skipped", async () => {
   const decoded = await decodeInvitation(
+    await encodeRawInvitation({
+      ...baseToken,
+      about: { mintedAt: "2026-10-31T00:00:00Z", fromALaterBuild: { a: 1 } },
+    }),
+  );
+  expect(decoded.linkageTerms).toEqual(baseToken.linkageTerms);
+});
+
+test("a field the schema defaults counts toward the version only where the token states it", async () => {
+  const strategyAtVersion2: FormatVersionPolicy = {
+    current: 2,
+    features: [
+      {
+        path: ["linkageTerms", "linkageStrategy"],
+        name: "linkageStrategy",
+        version: 2,
+      },
+    ],
+  };
+  const { linkageStrategy: _strategy, ...termsLeavingItOut } = baseTerms;
+  const leaving = await decodeInvitation(
+    await encodeRawInvitation({
+      ...baseToken,
+      linkageTerms: termsLeavingItOut,
+    }),
+    strategyAtVersion2,
+  );
+  expect(leaving.linkageTerms.linkageStrategy).toBe("cascade");
+
+  const error = await decodeInvitation(
+    await encodeRawInvitation(baseToken),
+    strategyAtVersion2,
+  ).catch((err: unknown) => err);
+  expect((error as ZodError).issues[0]).toMatchObject({
+    path: ["linkageTerms", "linkageStrategy"],
+    message:
+      'The invitation declares format version 1, but its field "linkageStrategy" ' +
+      "needs version 2. Set version to 2, or remove the field.",
+  });
+});
+
+test("the about block is held as the token spells it, at every depth", async () => {
+  const about = {
+    my_note: "a",
+    myNote: "b",
+    URL: "c",
+    nested: { inner_key: 1 },
+  };
+  const decoded = await decodeInvitation(
+    await encodeRawInvitation({ ...baseToken, about }),
+  );
+  expect(decoded.about).toEqual(about);
+});
+
+test("an unknown top-level member is refused as made by a newer Alcove, by name", async () => {
+  const issue = await decodeRefusal(
     await encodeRawInvitation({
       ...baseToken,
       disclosedPayloadColumns: ["county", "enrollment_id"],
     }),
   );
-  expect(decoded).not.toHaveProperty("disclosedPayloadColumns");
-  expect(decoded.linkageTerms).toEqual(baseToken.linkageTerms);
+  expect(issue.message).toBe(
+    'The invitation has the field "disclosedPayloadColumns", which this ' +
+      "version of Alcove does not read: it was made by a newer version of " +
+      "Alcove. Update Alcove, then open the invitation again.",
+  );
 });
 
-test("a token whose terms hold a rule-set citation decodes without it", async () => {
-  // An unknown key at the top level of the terms is dropped, as at the
-  // token's own top level, so the acceptor reviews and runs the rules alone.
-  const decoded = await decodeInvitation(
+test("an unknown member of the terms is refused by name, as the token spells it", async () => {
+  const error = await decodeInvitation(
     await encodeRawInvitation({
       ...baseToken,
       linkageTerms: {
         ...baseToken.linkageTerms,
-        linkage_rule_set: {
-          field_set: { name: "baseline-pii", version: "1.3.0" },
-          key_set: { name: "precision-ranked-rules", version: "2.5.0" },
-        },
+        output: { expects_output: true, shareWithPartner: false, zz_new: 1 },
+        linkage_rule_set: { field_set: { name: "baseline-pii" } },
       },
     }),
+  ).catch((err: unknown) => err);
+  const issues = (error as ZodError).issues.map(({ path, message }) => ({
+    path,
+    named: /has the field "([^"]+)"/.exec(message)?.[1],
+  }));
+  expect(issues).toEqual([
+    { path: ["linkageTerms", "output"], named: "zz_new" },
+    { path: ["linkageTerms"], named: "linkage_rule_set" },
+  ]);
+});
+
+test("a member name from the token is fitted to one value's budget", async () => {
+  const longName = "x".repeat(4000);
+  const issue = await decodeRefusal(
+    await encodeRawInvitation({ ...baseToken, [longName]: true }),
   );
-  expect(decoded.linkageTerms).not.toHaveProperty("linkageRuleSet");
-  expect(decoded.linkageTerms).toEqual(baseToken.linkageTerms);
+  expect(issue.message.length).toBeLessThan(1000);
 });
 
 // --- Retain-mode declaration -------------------------------------------------

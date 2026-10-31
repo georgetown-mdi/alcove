@@ -32,6 +32,7 @@ import { z } from "zod";
 import {
   camelizeKey,
   OPAQUE_VALUE_KEYS,
+  ROOT_OPAQUE_VALUE_KEYS,
   type KeyFoldCollisionError,
 } from "../utils/camelizeKeys.js";
 import { fittedPathSegment } from "../utils/describeDecodeError.js";
@@ -222,7 +223,8 @@ function statesNothingBeyond(entry: unknown, kept: unknown): boolean {
  * document is compared against all of the result's, which reports a key no
  * surviving entry holds and lets one that some entry does hold stand.
  *
- * An opaque subtree ({@link OPAQUE_VALUE_KEYS}) is not entered: its keys are the
+ * An opaque subtree ({@link OPAQUE_VALUE_KEYS} at any depth,
+ * {@link ROOT_OPAQUE_VALUE_KEYS} at the root) is not entered: its keys are the
  * author's own free-form record, kept verbatim by both the camelize pre-pass and
  * the schema, so there is nothing there to drop.
  */
@@ -290,7 +292,11 @@ function collectUnreadKeys(
       unread.push(key);
       continue;
     }
-    if (OPAQUE_VALUE_KEYS.has(key)) continue;
+    if (
+      OPAQUE_VALUE_KEYS.has(key) ||
+      (path.length === 0 && ROOT_OPAQUE_VALUE_KEYS.has(key))
+    )
+      continue;
     collectUnreadKeys(
       value,
       holders.map((object) => object[key]),

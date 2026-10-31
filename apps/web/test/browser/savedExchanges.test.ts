@@ -954,7 +954,7 @@ describe("saved list route: an alcove.yaml imports with the .alcove.key beside i
     expect(anyRequestHeld(sharedSecret)).toBe(false);
   });
 
-  test("a key file with a misspelled expires lands without it, and the notice names the field and no value", async () => {
+  test("a key file with a misspelled expires is refused naming the fields and no value, and nothing is imported", async () => {
     await createRunnableExchange(newExchange());
     const { configuration, sharedSecret } = exportedPair();
     const misspelledBound = "2031-06-30T00:00:00.000Z";
@@ -978,8 +978,8 @@ describe("saved list route: an alcove.yaml imports with the .alcove.key beside i
     await expect
       .element(
         page.getByText(
-          "The key file holds fields this app does not read, so they were " +
-            "not imported: expiry, expire.",
+          'The key file has the fields "expiry", "expire", which this ' +
+            "version of Alcove does not read",
           { exact: false },
         ),
       )
@@ -987,8 +987,7 @@ describe("saved list route: an alcove.yaml imports with the .alcove.key beside i
     const imported = (await listManagedExchanges()).filter(
       (record) => record.sharedSecret === sharedSecret,
     );
-    expect(imported).toHaveLength(1);
-    expect(imported[0].expires).toBeUndefined();
+    expect(imported).toHaveLength(0);
     expect(document.body.innerHTML).not.toContain(sharedSecret);
     expect(document.body.innerHTML).not.toContain(misspelledBound);
   });

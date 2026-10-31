@@ -388,8 +388,14 @@ export type {
   PeerIdParse,
   PeerIdPart,
 } from "./config/peerIdTemplate";
+export type {
+  FormatFeature,
+  FormatInfoBlock,
+  FormatVersionPolicy,
+} from "./config/formatVersion";
 export {
   KEY_FILE_FIELD_SCHEMAS,
+  KEY_FILE_FORMAT_VERSION,
   KEY_FILE_SHARED_SECRET_FORMAT_MESSAGE,
   KeyFileSchema,
   keyFileUnreadFieldNames,
@@ -444,6 +450,7 @@ export { getDefaultStandardization } from "./defaults/builtInStandardization";
 export { lastNameColumn } from "./personColumns";
 export {
   ExchangeSpecSchema,
+  atLowestExchangeFileVersion,
   parseExchangeSpec,
   safeParseExchangeSpec,
 } from "./config/exchangeSpec";
@@ -535,6 +542,7 @@ export type {
 export {
   INVITATION_ACCEPT_ROUTE_PATH,
   INVITATION_LIFETIME_SECONDS,
+  INVITATION_NEWER_REMEDY,
   InvitationDecodeError,
   assertInvitationLifetimeSeconds,
   invitationExpires,
@@ -546,11 +554,13 @@ export {
   endpointRequiresRetainedFiles,
   hasExpiryInstantPassed,
   isInvitationExpired,
+  isNewerInvitationVersionError,
   relayLocatorFromOwnRelay,
   stripInvitationWhitespace,
   WebRTCEndpointSchema,
 } from "./config/invitation";
 export {
+  TERMS_UPDATE_NEWER_REMEDY,
   TermsUpdateRefusedError,
   decodeTermsUpdate,
   encodeTermsUpdate,

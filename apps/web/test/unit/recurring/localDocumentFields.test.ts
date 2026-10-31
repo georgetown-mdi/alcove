@@ -410,6 +410,7 @@ describe("each edit reaches the export and the next run", () => {
         ),
       ),
     ).toEqual({
+      formatVersion: 1,
       ...parseExchangeSpec(parseSensitiveYaml(source, "import")),
       includeOwnColumns: "disclosed",
       includeMatchingKey: true,

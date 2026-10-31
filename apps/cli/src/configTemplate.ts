@@ -2,6 +2,7 @@ import YAML from "yaml";
 
 import {
   annotateUnsetPayloadReceive,
+  atLowestExchangeFileVersion,
   commentBlock,
   commentKey,
   CONNECTION_BLOCK_DOC_URL,
@@ -16,7 +17,12 @@ import {
   POLL_INTERVAL_LINES,
   snakeizeKeys,
 } from "@alcove/core";
-import type { LinkageTerms, Metadata, Standardization } from "@alcove/core";
+import type {
+  ExchangeSpec,
+  LinkageTerms,
+  Metadata,
+  Standardization,
+} from "@alcove/core";
 
 /**
  * The exchange-data portion of a template, as produced by `buildDataSpec`: the
@@ -114,6 +120,13 @@ const HEADER_LINES = [
  */
 export const FIELD_DOCS: Array<{ path: Array<string>; lines: Array<string> }> =
   [
+    {
+      path: ["format_version"],
+      lines: [
+        "The version of this file's format. An older Alcove refuses a file",
+        "whose version is newer than it reads.",
+      ],
+    },
     {
       path: ["connection"],
       lines: [
@@ -439,6 +452,12 @@ export const OPTIONAL_SECTIONS = `# --- Optional sections (uncomment and edit to
 # retention schedule.
 # retention_disposition: "Filed in the secure share; purged after 90 days."
 
+# about: notes about this file that Alcove keeps but never acts on, such as a
+# label or a comment.
+# about:
+#   label: "Quarterly enrollment match"
+#   comment: "Set up with the county records office."
+
 # include_own_columns: which of your own input columns your result file holds
 # beside the values your partner sends, so you do not have to join the result
 # back to your input by hand. disclosed writes the columns you send to the
@@ -593,7 +612,9 @@ export function renderConfigTemplate(
     spec.standardization = data.standardization;
   if (data.csvDelimiter !== undefined) spec.csvDelimiter = data.csvDelimiter;
 
-  const doc = new YAML.Document(snakeizeKeys(spec));
+  const doc = new YAML.Document(
+    snakeizeKeys(atLowestExchangeFileVersion(spec as ExchangeSpec)),
+  );
   doc.commentBefore = commentBlock(HEADER_LINES);
   const channelDocs =
     connection.channel === "sftp" ? SFTP_FIELD_DOCS : FILEDROP_FIELD_DOCS;

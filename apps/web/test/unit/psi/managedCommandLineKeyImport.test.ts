@@ -180,36 +180,72 @@ describe("reading a .alcove.key", () => {
     });
   });
 
-  test("a field the key file schema does not know is read past and dropped", () => {
+  test("a field the key file schema does not know is refused as written by a newer Alcove, by name", () => {
     const sharedSecret = generateSharedSecret();
-    expect(
+    const error = thrownBy(() =>
       readManagedCommandLineKeyFile(
         commandLineKeyText({
           sharedSecret,
           expires: "2026-12-31T00:00:00.000Z",
-          fieldFromALaterBuild: "2026-09-01T00:00:00.000Z",
+          fieldFromALaterBuild: sharedSecret,
         }),
       ),
-    ).toEqual({ sharedSecret, expires: "2026-12-31T00:00:00.000Z" });
+    );
+    expect(error).toBeInstanceOf(ManagedKeyFileRefusedError);
+    expect((error as Error).message).toBe(
+      'The key file has the field "fieldFromALaterBuild", which this version ' +
+        "of Alcove does not read: it was made by a newer version of Alcove. " +
+        "Use the version of Alcove that wrote the key file, or a newer one. " +
+        "Nothing was imported.",
+    );
+    expect(errorText(error)).not.toContain(sharedSecret);
   });
 
-  test("a key file holding an unknown field round-trips through the import and the export", () => {
+  test("a key file stating a newer version is refused naming the version", () => {
+    const error = thrownBy(() =>
+      readManagedCommandLineKeyFile(
+        commandLineKeyText({
+          version: 2,
+          sharedSecret: generateSharedSecret(),
+        }),
+      ),
+    );
+    expect(error).toBeInstanceOf(ManagedKeyFileRefusedError);
+    expect((error as Error).message).toMatch(
+      /^The key file is format version 2, made by a newer version of Alcove/,
+    );
+  });
+
+  test("a configuration stating its format version and notes imports, and the export holds both", () => {
+    const { configuration, key } = exportedPair();
+    expect(configuration.startsWith("format_version: 1\n")).toBe(true);
+    const about = "about:\n  label: Quarterly match\n  from_a_later_build: 1\n";
+    const imported = readManagedCommandLinePair(
+      `${about}${configuration}`,
+      key,
+    );
+    expect(imported.exchangeFile.formatVersion).toBe(1);
+    const reexported = composeManagedCronExport(imported).config.text;
+    expect(reexported.startsWith("format_version: 1\n")).toBe(true);
+    expect(reexported).toContain(about);
+  });
+
+  test("a configuration leaving out its format version imports, and the export states it", () => {
+    const { configuration, key } = exportedPair();
+    const imported = readManagedCommandLinePair(
+      configuration.replace(/^format_version: 1\n/, ""),
+      key,
+    );
+    expect(imported.exchangeFile.formatVersion).toBeUndefined();
+    expect(composeManagedCronExport(imported).config.text).toBe(configuration);
+  });
+
+  test("a key file exported here imports again and re-exports byte for byte", () => {
     const { record, configuration, key } = exportedPair({
       expires: "2026-12-31T00:00:00.000Z",
     });
-    const withUnknownField = commandLineKeyText({
-      ...KeyFileSchema.parse(JSON.parse(key)),
-      fieldFromALaterBuild: { nested: true },
-    });
-
-    const imported = readManagedCommandLinePair(
-      configuration,
-      withUnknownField,
-    );
+    const imported = readManagedCommandLinePair(configuration, key);
     expect(imported.sharedSecret).toBe(record.sharedSecret);
-    expect(imported.expires).toBe("2026-12-31T00:00:00.000Z");
-    expect(imported).not.toHaveProperty("fieldFromALaterBuild");
-
     const reexported = composeManagedCronExport(imported).key.text;
     expect(reexported).toBe(key);
     expect(KeyFileSchema.parse(JSON.parse(reexported))).toEqual({
@@ -290,7 +326,7 @@ describe("reading a .alcove.key", () => {
     const sharedSecret = generateSharedSecret();
     const error = thrownBy(() =>
       readManagedCommandLineKeyFile(
-        commandLineKeyText({ sharedSecret, expires: "tomorrow", extra: 1 }),
+        commandLineKeyText({ sharedSecret, expires: "tomorrow" }),
       ),
     );
     expect((error as Error).message).toContain("its expires is not");
@@ -327,7 +363,10 @@ describe("reading a configuration with its key file", () => {
     expect(imported.expires).toBe("2026-12-31T00:00:00.000Z");
     expect(imported.tokenMaxAgeDays).toBe(30);
     expect(imported.side).toBe("acceptor");
-    expect(imported.exchangeFile).toEqual(record.exchangeFile);
+    expect(imported.exchangeFile).toEqual({
+      formatVersion: 1,
+      ...record.exchangeFile,
+    });
     expect(imported.id).not.toBe(record.id);
     // The secret lands in the record's own secret field and nowhere else in it.
     const { sharedSecret: _secret, ...rest } = imported;
@@ -810,7 +849,10 @@ describe("the relay key registration across the command-line files", () => {
       expect(imported).not.toHaveProperty("relayRegistrationPendingReason");
       // The registrar and the minted TURN entries beside it leave the stored
       // document, so a re-export writes the same file.
-      expect(imported.exchangeFile).toEqual(record.exchangeFile);
+      expect(imported.exchangeFile).toEqual({
+        formatVersion: 1,
+        ...record.exchangeFile,
+      });
       expect(composeManagedCronExport(imported, ownRelay).config.text).toBe(
         configuration,
       );
@@ -860,40 +902,26 @@ describe("the relay key registration across the command-line files", () => {
     expect(result).not.toHaveProperty("droppedTurnUrls");
   });
 
-  test("a pair import whose key file misspells expires lands without it and names the field, never a value", async () => {
+  test("a pair import whose key file misspells expires is refused naming the fields, never a value, and stores nothing", async () => {
     const { record, configuration } = exportedPair();
     const misspelledBound = "2026-12-31T00:00:00.000Z";
-    const result = await importManagedCommandLinePair(
+    const deps = recordingDeps();
+    const error = await importManagedCommandLinePair(
       configuration,
       commandLineKeyText({
         sharedSecret: record.sharedSecret,
         expiry: misspelledBound,
         expire: record.sharedSecret,
       }),
-      recordingDeps(),
+      deps,
+    ).catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(ManagedKeyFileRefusedError);
+    expect((error as Error).message).toContain(
+      'has the fields "expiry", "expire"',
     );
-    expect(result.unreadKeyFileFields).toEqual(["expiry", "expire"]);
-    expect(result.record.expires).toBeUndefined();
-    expect(JSON.stringify(result.unreadKeyFileFields)).not.toContain(
-      misspelledBound,
-    );
-  });
-
-  test("a pair import whose key file holds expires and an unknown field stores the secret and that expires", async () => {
-    const { record, configuration } = exportedPair();
-    const expires = "2026-12-31T00:00:00.000Z";
-    const result = await importManagedCommandLinePair(
-      configuration,
-      commandLineKeyText({
-        sharedSecret: record.sharedSecret,
-        expires,
-        extra: 1,
-      }),
-      recordingDeps(),
-    );
-    expect(result.record.sharedSecret).toBe(record.sharedSecret);
-    expect(result.record.expires).toBe(expires);
-    expect(result.unreadKeyFileFields).toEqual(["extra"]);
+    expect(errorText(error)).not.toContain(misspelledBound);
+    expect(errorText(error)).not.toContain(record.sharedSecret);
+    expect(deps.installed).toEqual([]);
   });
 
   test("a pair import whose key file holds a previous secret lands without it and names it, never a value, and keeps the rotation history", async () => {

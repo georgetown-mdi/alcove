@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   assembleExchangeSpec,
+  atLowestExchangeFileVersion,
   connectionFromLocator,
   generateSharedSecret,
   getDefaultLinkageTerms,
@@ -99,9 +100,13 @@ function exportedConfigText(overrides: Partial<NewManagedExchange> = {}) {
   ).config.text;
 }
 
-/** A hand-written configuration file, in the snake_case the CLI reads. */
+/** A configuration file in the snake_case the CLI reads, stating its format
+ * version as every writer does, so an export of it is compared field for
+ * field. */
 function configText(document: unknown): string {
-  return stringifyYaml(snakeizeKeys(document));
+  return stringifyYaml(
+    snakeizeKeys(atLowestExchangeFileVersion(document as ExchangeSpec)),
+  );
 }
 
 /** The document a hand-written file holds: the composed one plus the two fields

@@ -145,15 +145,55 @@ that promises, and what it does not, is bounded:
 The hosted web application is continuously deployed; a CLI in the field is
 pinned to whatever `@alcove/core` version its release shipped with. A newer web
 app can therefore mint a file whose schema is newer than an older CLI's. The
-policy below is the direct consequence of the schema mechanics, not a separate
-promise layered over them.
+file states a format version so that an older CLI reads every file it can, and
+refuses by name every file it cannot.
 
-### What a minted file targets
+### The format version
 
-A minted file targets the `ExchangeSpecSchema` of the `@alcove/core` version the
-web app shipped with. Both applications embed the same schema; the artifact is
-valid against the version that produced it. That is the whole promise on the
-compatibility axis.
+The top-level `format_version` is a positive integer, distinct from
+`linkage_terms.version`. It is optional in a hand-authored file, where its
+absence means 1, and every file Alcove writes states it. This build reads version
+1 (`EXCHANGE_FILE_VERSION_POLICY`, `packages/core/src/config/exchangeSpec.ts`).
+
+The format's version table (`FormatVersionPolicy`,
+`packages/core/src/config/formatVersion.ts`) lists each field a version after
+the first adds: its path, the version that adds it, and the value an older
+reader takes its absence to mean, where it has one. Version 1 holds every field
+the schema holds, so the table is empty.
+
+`parseExchangeSpec` and `safeParseExchangeSpec` check the version in two places:
+
+- A `format_version` above the newest the reader reads is refused before any
+  other check, naming both versions, so the fields of a newer file are never
+  reported one by one.
+- After the schema parse, the reader derives the version the present fields
+  need from the table. A declared version below it is refused at the field,
+  naming the field and the version it needs.
+
+### What a written file targets
+
+Every writer of the file writes it at the lowest version its content needs
+(`atLowestExchangeFileVersion`, `packages/core/src/config/exchangeSpec.ts`).
+The writers are the web application's minting, `alcove init`, the
+configuration `alcove invite` and `alcove accept` save, the console's run
+configuration and export, and the web application's command-line and backup
+exports. Each
+leaves out every field that holds the value an older reader takes the field's
+absence to mean, then states first, as `format_version`, the version the
+remaining fields need, whatever version the document it started from declared.
+A written file that uses no field newer than an older CLI's version is
+therefore one that CLI reads. An in-place edit of an operator's file, such as a
+pinned fingerprint or an applied terms update, changes only the field it writes
+and leaves `format_version` as the file states it.
+
+### The informational block
+
+The top-level `about` block holds notes about the file that no reader acts on:
+the mint time (`minted_at`), the minting build (`minted_by`), a `label`, a
+`comment`, and a form hint (`form_hint`). A reader of any version skips every
+member of it, a member it does not know included, and a consumer that writes the
+document back holds the block unchanged. Every other position of the file is
+strict, as the cases below describe.
 
 ### What an older CLI does with a newer file
 
@@ -210,16 +250,27 @@ The critical property across all four cases: an incompatibility is reported as a
 loud load-time validation error, never a silent reinterpretation of a value into
 something it did not mean and never a run over a subset of what the file states.
 
-### What is not promised
+An unknown-key refusal worded by the schema ("Unrecognized key") ends with a
+fixed sentence: if the spelling is intended, the file was made by a newer
+version of Alcove, so use that version or a newer one
+(`NEWER_EXCHANGE_FILE_HINT`). The key it names comes from the file and is
+printed as the refusal's other operator-written text is.
 
-There is no back-compatibility guarantee for existing artifacts. Breaking changes
-to the config file format are explicitly in scope: a future core version may change field shapes or semantics, and a file minted by
-one web version is not promised to load unchanged under a differently-versioned
-CLI. The compatibility mechanics above are what keeps such a break visible -- an
-incompatible file fails validation with a named field rather than loading with a
-misread value -- not a promise that the break will not happen. An operator who
-downloads a file should run it against a CLI of the matching generation, and
-re-mint (or re-invite) rather than hand-migrate a file across a breaking change.
+### Writing at the lowest version
+
+A file Alcove writes states the lowest format version its content needs and
+leaves out a field holding the value an older reader assumes for its absence,
+including when it writes back a document it read.
+A file that uses no newer field is therefore read by every Alcove that reads
+its version. Alcove builds from before format versions refuse the
+`format_version` key, since their exchange-file schema is strict; before
+publication there are no deployed readers to hold apart. A file that does use
+one is refused by an older reader, naming the version or the field, rather
+than read short of it.
+
+The rule covers fields a version adds. A change to the shape or meaning of a
+field the schema already holds is not one an older reader can be made to read,
+and it is refused by that reader's schema as the cases above describe.
 
 ## What a consumer does with a setting it cannot honor
 
@@ -540,7 +591,7 @@ The applying party derives its own terms from the update with `deriveAcceptedLin
 
 The encoded update is `BODY.MAC`, two base64url strings joined by `.`. Both are unpadded: the decoder refuses an update holding any `=` character as a `format` refusal, before it decodes either part:
 
-- `BODY` encodes the UTF-8 bytes of a JSON object with exactly the keys `kind` (the string `terms-update`), `version` (`"1"`), `partnership`, and `linkageTerms`. The object is strict: any other key is refused, including the `disclosedPayloadColumns` an earlier build wrote.
+- `BODY` encodes the UTF-8 bytes of a JSON object with the keys `kind` (the string `terms-update`), `version`, `partnership`, and `linkageTerms`, and optionally the informational block `about`. `version` is a decimal string, written at the lowest version the content needs under the same rule as the exchange file ([Writing at the lowest version](#writing-at-the-lowest-version)); this build writes and reads `"1"`. A reader skips every member of `about`. Every other position is strict: any other key, at the top level or inside `linkageTerms`, is refused as made by a newer Alcove, naming the key, including the `disclosedPayloadColumns` an earlier build wrote.
 - `MAC` encodes `HMAC-SHA-256(mac_key, BODY bytes)`, 32 bytes, computed over the exact bytes `BODY` encodes, so no canonical re-serialization is involved.
 
 The whole string is bounded by the invitation's encoded-length bound (`MAX_ENCODED_INVITATION_LENGTH`), checked before any decoding.
@@ -560,7 +611,7 @@ The partnership identifier is a one-way function of the secret both parties hold
 
 1. **Format**: the length bound, the `BODY.MAC` shape, no `=` padding, base64url, and a 32-byte MAC.
 2. **MAC**: the tag is recomputed over the body bytes and compared in constant time, before the body is validated or anything in it is returned. Where it fails, the body is read only far enough to find a `partnership` string: one that differs from the local identifier is refused as `partnership` (another partnership, or a secret replaced since), anything else as `authentication` (altered content).
-3. **Schema**: the authenticated body is validated as above; a failure is refused as `format`. Where the failing body states `kind` `terms-update` and a decimal `version` above `"1"`, the refusal says the update was made by a newer Alcove; this reading is gated on the MAC having verified, so an unauthenticated body is never reported that way. An authenticated body whose `partnership` differs from the local identifier is refused as `partnership`.
+3. **Schema**: the authenticated body is validated as above; a failure is refused as `format`. A body stating `kind` `terms-update` and a decimal `version` above `"1"` is refused before the schema, naming both versions and saying the update was made by a newer Alcove; a key outside the format is refused the same way, naming the key. Both readings are gated on the MAC having verified, so an unauthenticated body is never reported that way, and the MAC is computed over the received bytes before any of them is parsed. An authenticated body whose `partnership` differs from the local identifier is refused as `partnership`.
 
 The CLI then refuses, before any display, an update whose terms name the applying party's own identity, since that is the applying party's own update.
 
@@ -646,7 +697,9 @@ file, and each party provisions its own `.alcove.key` from the code:
 
 ### The key file schema
 
-`KeyFileSchema` and `serializeKeyFile` (`packages/core/src/config/keyFile.ts`) define the `.alcove.key` fields for every reader and writer: the CLI, the console's check of a mounted key file, and the web application's import and command-line export. A reader drops a field it does not know rather than refusing the file, and the serializer writes only the known fields, as pretty-printed JSON with a trailing newline. The web application's import notice names each dropped field to the operator, by name only and never its value; a name containing a secret-shaped run of base64url characters is replaced by a placeholder.
+`KeyFileSchema` and `serializeKeyFile` (`packages/core/src/config/keyFile.ts`) define the `.alcove.key` fields for every reader and writer: the CLI, the console's check of a mounted key file, and the web application's import and command-line export. The serializer writes the format version first, as `"version": 1` (`KEY_FILE_FORMAT_VERSION`), then the known fields, as pretty-printed JSON with a trailing newline. Version 1 includes every field this section describes, the previous secret and the rotation history among them. A reader takes a file without `version` as version 1.
+
+A reader refuses a `version` above 1, and a field it does not know, as written by a newer Alcove. The CLI's read and the web application's import name the version or the field and never a value, and a field name containing a secret-shaped run of base64url characters is replaced by a placeholder. A field it does not know inside a rotation history entry is named under the same rule. The rule matches an unbroken run of 32 or more base64url characters only, so a field name holding a secret broken up by other characters is shown as the file spells it, cut to the display length. The console's check of a mounted key file refuses with its fixed message, which states nothing read from the file. The parse result holds the fields without `version`. The web application's import keeps some known fields only, and its notice names each known field it did not keep, under the same naming rule.
 
 ### The rotation-in-flight marker
 

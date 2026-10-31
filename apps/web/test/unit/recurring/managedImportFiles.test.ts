@@ -189,14 +189,12 @@ describe("what the pair import says", () => {
   test("names the key-file fields the import did not read, escaped, never a value", () => {
     const notice = pairImportedNotice(
       importedPair({}),
-      { keyFileFields: ["expiry", "exp\u202eire"] },
+      { keyFileFields: ["previousSharedSecret", "prev\u202eExpires"] },
       noOwnRelay,
     );
     expect(notice.consequences).toEqual([
       "The key file holds fields this app does not read, so they were not " +
-        "imported: expiry, exp\\u202eire. If one was meant as the " +
-        "secret's expiry, rename it to expires in the key file and import " +
-        "the two files again.",
+        "imported: previousSharedSecret, prev\\u202eExpires.",
     ]);
   });
 

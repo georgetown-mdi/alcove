@@ -2924,21 +2924,34 @@ describe("the key file beside the opened configuration", () => {
     expect(composed.authentication).toEqual({ tokenMaxAgeDays: 30 });
   });
 
-  test("a key file stating an expiry, a rotation in flight, and an unknown key is one the run accepts", async () => {
-    // The CLI's reader strips an unknown key and takes an ISO expiry and
-    // rotation-in-flight instant, so the console refuses no file the run
-    // itself would read.
+  test("a key file stating its version, an expiry, and a rotation in flight is one the run accepts", async () => {
+    // The CLI's reader takes an ISO expiry and rotation-in-flight instant, so
+    // the console refuses no file the run itself would read.
     const root = mountWith(
       JSON.stringify({
+        version: 1,
         sharedSecret: MOUNTED_SHARED_SECRET,
         expires: "2030-01-01T00:00:00.000Z",
         rotationInFlightSince: "2029-12-01T00:00:00.000Z",
-        note: "kept by the operator",
       }),
     );
     const { manager, spawned } = capturingManager(root);
     await manager.createJob(openedIntent());
     expect(spawned[0].keyPath).toBe(path.join(root, ".alcove.key"));
+  });
+
+  test("a key file holding a field the run does not read is refused, as the run would refuse it", async () => {
+    const root = mountWith(
+      JSON.stringify({
+        sharedSecret: MOUNTED_SHARED_SECRET,
+        note: "kept by the operator",
+      }),
+    );
+    const { manager, spawned } = capturingManager(root);
+    await expect(manager.createJob(openedIntent())).rejects.toThrow(
+      MountedKeyFileRefusedError,
+    );
+    expect(spawned).toHaveLength(0);
   });
 
   test("a key file recording a pending relay registration is one the run accepts", async () => {

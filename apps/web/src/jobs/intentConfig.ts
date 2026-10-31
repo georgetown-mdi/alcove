@@ -2,6 +2,7 @@ import { stringify as stringifyYaml } from "yaml";
 
 import {
   ExchangeSpecSchema,
+  atLowestExchangeFileVersion,
   mintExchangeSpec,
   serializeExchangeDocument,
   snakeizeKeys,
@@ -171,7 +172,8 @@ export function composeFiledropConfigSpec(
  * This path does not use `mintExchangeFile`: its {@link ExchangeFileInput}
  * typing makes credentials unrepresentable, an invariant shared with the
  * browser minting flow that must not admit the console's credential-reference
- * entries. Instead the exchange spec is assembled directly and validated
+ * entries. Instead the exchange spec is assembled directly, stated at its
+ * lowest format version as the minting path states it, and validated
  * through core's {@link ExchangeSpecSchema}. The shared secret rides the key
  * file; the one `authentication` key composed is the intent's max-age policy
  * ({@link composedAuthentication}).
@@ -293,7 +295,7 @@ function assembledConfigSpec(
     ...(includeMatchingKey !== undefined ? { includeMatchingKey } : {}),
     ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
   };
-  return ExchangeSpecSchema.parse(assembled);
+  return ExchangeSpecSchema.parse(atLowestExchangeFileVersion(assembled));
 }
 
 /**

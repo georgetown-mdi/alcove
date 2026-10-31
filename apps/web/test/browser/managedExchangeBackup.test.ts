@@ -90,15 +90,19 @@ const webrtcLocator: WebRTCExchangeLocator = {
   path: "/api/",
 };
 
+/** A record's document as minting writes it, stating its format version. */
 function newExchange(
   overrides: Partial<NewManagedExchange> = {},
 ): NewManagedExchange {
   return {
     label: "Riverbend quarterly",
-    exchangeFile: composeManagedExchangeFile({
-      connection: webrtcLocator,
-      linkageTerms,
-    }),
+    exchangeFile: {
+      formatVersion: 1,
+      ...composeManagedExchangeFile({
+        connection: webrtcLocator,
+        linkageTerms,
+      }),
+    },
     side: "inviter",
     sharedSecret: generateSharedSecret(),
     ...overrides,
@@ -138,6 +142,24 @@ describe("export/import round-trip against the real store", () => {
     // The import marks it backed-up, so it shows green immediately.
     const local = await getManagedLocalState(installed.id);
     expect(local?.backup).toBeDefined();
+  });
+
+  test("an older record without a format version comes back stating version 1", async () => {
+    const older = composeManagedExchangeFile({
+      connection: webrtcLocator,
+      linkageTerms,
+    });
+    expect(older).not.toHaveProperty("formatVersion");
+    const source = await createRunnableExchange(
+      newExchange({ exchangeFile: older }),
+    );
+    const bytes = serializeManagedExchangeArtifact(
+      encodeManagedExchangeArtifact(source),
+    );
+    await deleteManagedExchange(source.id);
+
+    const { record: installed } = await importManagedExchange(bytes);
+    expect(installed.exchangeFile).toEqual({ formatVersion: 1, ...older });
   });
 
   test("a malformed import leaves the store untouched", async () => {

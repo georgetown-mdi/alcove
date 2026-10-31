@@ -1,4 +1,8 @@
-import { sanitizeErrorForDisplay } from "@alcove/core";
+import {
+  TERMS_UPDATE_NEWER_REMEDY,
+  TermsUpdateRefusedError,
+  sanitizeErrorForDisplay,
+} from "@alcove/core";
 
 import { ManagedTermsUpdateNotAppliedError } from "@psi/managed/managedTermsUpdate";
 import { matchingKeyTurnedOffNotice } from "@psi/matchingKeyModel";
@@ -166,17 +170,29 @@ export const TERMS_UPDATE_NOT_APPLIED_TEXT = {
     "now stands.",
 } as const satisfies Record<ManagedTermsUpdateApplyRefusal, string>;
 
+/** Why a terms update a newer Alcove made was not applied, and the remedy. */
+export const NEWER_TERMS_UPDATE_TEXT =
+  "This terms update was made by a newer version of Alcove than this one. " +
+  `${NOTHING_CHANGED} ${TERMS_UPDATE_NEWER_REMEDY}`;
+
 /**
  * What the apply control says when a terms update was not applied: the
  * reason it was refused, or a write that failed. A `not-runnable` refusal adds core's message naming the rule
- * the terms break, the one `alcove apply` prints for the same update.
+ * the terms break, the one `alcove apply` prints for the same update. An
+ * update a newer Alcove made says so and gives the update remedy.
  */
 export function termsUpdateNotAppliedText(error: unknown): string {
-  if (error instanceof ManagedTermsUpdateNotAppliedError)
+  if (error instanceof ManagedTermsUpdateNotAppliedError) {
+    if (
+      error.cause instanceof TermsUpdateRefusedError &&
+      error.cause.madeByNewerAlcove
+    )
+      return NEWER_TERMS_UPDATE_TEXT;
     return error.refusal === "not-runnable" && error.cause !== undefined
       ? `${TERMS_UPDATE_NOT_APPLIED_TEXT["not-runnable"]} The rule the ` +
           `terms break: ${sanitizeErrorForDisplay(error.cause)}`
       : TERMS_UPDATE_NOT_APPLIED_TEXT[error.refusal];
+  }
   return (
     "The terms update could not be saved to this exchange, and the " +
     "exchange was not changed. Reload the page and try again."

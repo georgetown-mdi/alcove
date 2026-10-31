@@ -94,8 +94,7 @@ function unreadKeyFileFieldsSentence(
     "The key file holds fields this app does not read, so they were not " +
     "imported: " +
     unreadKeyFileFields.map((name) => sanitizeForDisplay(name)).join(", ") +
-    ". If one was meant as the secret's expiry, rename it to expires in " +
-    "the key file and import the two files again."
+    "."
   );
 }
 
