@@ -105,9 +105,13 @@ export function DirectRunSection({
   // A retryable failure is a transport/exchange fault other than an internal
   // fault; the terms mismatch is a config failure, which -- like a security
   // failure -- is not retried as-is but sends the operator back to start over.
+  // A shared name also offers start-over beside the retry: it keeps every
+  // input, and the name is changed on the server step.
   const retryable = failure?.retry === "offered";
   const offersStartOver =
-    !retryable && failure !== undefined && failure.category !== "output";
+    failure !== undefined &&
+    (!retryable || failure.sharedName === true) &&
+    failure.category !== "output";
 
   // A busy (409) create at start re-attached this surface to an exchange the
   // console already held (a second tab, a navigate-away-and-back, or an orphaned

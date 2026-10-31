@@ -37,6 +37,20 @@ test("a catalog cause is emitted as its kind and facts, marked as stating its st
   expect(event.message).toBe(renderFailureForOperator(causeError(cause)));
 });
 
+test("a no-show with a file of this side's name emits the shared-name fact and the peer_id remedy", () => {
+  const cause: FailureCause = {
+    kind: "partner-never-arrived",
+    channel: "sftp",
+    waitedMs: 90_000,
+    sharedName: true,
+  };
+  const event = buildErrorEvent(causeError(cause), "prepare");
+  expect(event.cause).toEqual(cause);
+  expect(event.message).toContain("set a different peer_id on one side");
+  expect(event.message).not.toContain("--peer-timeout");
+  expect(failureCauseFromUntrusted(event.cause)).toEqual(cause);
+});
+
 test("the cause is read through a wrap, as the remedy is", () => {
   const cause: FailureCause = {
     kind: "folder-missing",
@@ -145,6 +159,7 @@ test("every emitted cause passes the allowlist a consumer checks it against", ()
     { kind: "partner-never-arrived" },
     { kind: "partner-never-arrived", channel: "sftp", waitedMs: 60_000 },
     { kind: "partner-never-arrived", channel: "webrtc" },
+    { kind: "partner-never-arrived", channel: "filedrop", sharedName: true },
     { kind: "folder-missing", path: "/data", code: "ENOENT" },
     { kind: "folder-missing", path: "/data", code: "ENOTDIR" },
     {

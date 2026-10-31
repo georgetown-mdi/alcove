@@ -30,6 +30,19 @@ describe("the relayed failure cause", () => {
     expect(event?.cause).toEqual(NO_SHOW_EVENT.cause);
   });
 
+  test("keeps the shared-name fact and drops a cause stating it as anything but true", () => {
+    const shared = { ...NO_SHOW_EVENT.cause, sharedName: true };
+    expect(
+      validateAndSanitizeEvent({ ...NO_SHOW_EVENT, cause: shared })?.cause,
+    ).toEqual(shared);
+    expect(
+      validateAndSanitizeEvent({
+        ...NO_SHOW_EVENT,
+        cause: { ...NO_SHOW_EVENT.cause, sharedName: "yes" },
+      })?.cause,
+    ).toBeUndefined();
+  });
+
   test("escapes a folder path again at this boundary", () => {
     const event = validateAndSanitizeEvent({
       ...NO_SHOW_EVENT,

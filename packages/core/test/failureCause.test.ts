@@ -26,6 +26,14 @@ const SAMPLES: {
     { kind: "partner-never-arrived", channel: "webrtc", waitedMs: 80_000 },
     { kind: "partner-never-arrived", channel: "filedrop", waitedMs: 3_600_000 },
     { kind: "partner-never-arrived", waitedMs: 90_000 },
+    {
+      kind: "partner-never-arrived",
+      channel: "filedrop",
+      waitedMs: 90_000,
+      sharedName: true,
+    },
+    { kind: "partner-never-arrived", channel: "sftp", sharedName: true },
+    { kind: "partner-never-arrived", sharedName: true },
   ],
   "folder-missing": [
     { kind: "folder-missing", path: "/data/drop", code: "ENOENT" },
@@ -97,6 +105,9 @@ describe("the failure-cause catalog", () => {
       "Your partner did not connect within 80 seconds.",
       "Your partner did not arrive in the shared folder within 1 hour.",
       "Your partner did not arrive within 90 seconds.",
+      "Your partner did not arrive in the shared folder within 90 seconds, and a file with this side's name appeared in it.",
+      "Your partner did not arrive in the shared folder on the SFTP server in the time this run waited, and a file with this side's name appeared in it.",
+      "Your partner did not arrive in the time this run waited, and a file with this side's name appeared during the wait.",
     ]);
     expect(
       SAMPLES["folder-missing"].map((cause) => failureCauseSentence(cause)),
@@ -222,6 +233,26 @@ describe("failureCauseFromUntrusted", () => {
     ).toEqual({ kind: "partner-never-arrived", channel: "filedrop" });
   });
 
+  // An older build rebuilt this kind from channel and waitedMs alone, so the
+  // shared-name fact it did not know was dropped with the cause kept; a fact
+  // added after this build is dropped the same way.
+  test("drops a fact added after this build and keeps the cause", () => {
+    expect(
+      failureCauseFromUntrusted({
+        kind: "partner-never-arrived",
+        channel: "sftp",
+        waitedMs: 90_000,
+        sharedName: true,
+        laterFact: "unknown to this build",
+      }),
+    ).toEqual({
+      kind: "partner-never-arrived",
+      channel: "sftp",
+      waitedMs: 90_000,
+      sharedName: true,
+    });
+  });
+
   test.each([
     ["an unknown kind", { kind: "partner-refused" }],
     ["a kind of the wrong type", { kind: 1 }],
@@ -234,6 +265,14 @@ describe("failureCauseFromUntrusted", () => {
     ["a negative wait", { kind: "partner-never-arrived", waitedMs: -1 }],
     ["a fractional wait", { kind: "partner-never-arrived", waitedMs: 1.5 }],
     ["a wait as text", { kind: "partner-never-arrived", waitedMs: "90000" }],
+    [
+      "a shared name stated false",
+      { kind: "partner-never-arrived", sharedName: false },
+    ],
+    [
+      "a shared name as text",
+      { kind: "partner-never-arrived", sharedName: "true" },
+    ],
     ["a folder with no path", { kind: "folder-missing", code: "ENOENT" }],
     [
       "a folder code off the list",

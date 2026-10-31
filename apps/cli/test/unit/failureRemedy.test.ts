@@ -28,6 +28,12 @@ const SAMPLES: {
     { kind: "partner-never-arrived", channel: "filedrop" },
     { kind: "partner-never-arrived", channel: "sftp" },
     { kind: "partner-never-arrived", channel: "webrtc", waitedMs: 600_000 },
+    {
+      kind: "partner-never-arrived",
+      channel: "filedrop",
+      waitedMs: 90_000,
+      sharedName: true,
+    },
   ],
   "folder-missing": [
     { kind: "folder-missing", path: "/data/drop", code: "ENOENT" },
@@ -140,6 +146,21 @@ test("an SFTP no-show names the server and --peer-timeout only", () => {
       "Check that you and your partner use the same server and folder, then " +
       "run again; --peer-timeout sets how long to wait.",
   );
+});
+
+test("a no-show with a file of this side's name names peer_id and no timeout flag", () => {
+  const shared = SAMPLES["partner-never-arrived"][3]!;
+  for (const arrivalWait of [undefined, ...ARRIVAL_WAITS])
+    expect(rendered(shared, arrivalWait)).toBe(
+      "Your partner did not arrive in the shared folder within 90 seconds, " +
+        "and a file with this side's name appeared in it.\n" +
+        "The likely cause is that both parties set the same peer_id: set a " +
+        "different peer_id on one side, changing its text rather than only " +
+        "its % fields, then run again.",
+    );
+  const sftp = rendered({ kind: "partner-never-arrived", channel: "sftp" });
+  expect(sftp).toContain("--peer-timeout");
+  expect(sftp).not.toContain("peer_id");
 });
 
 test("a no-show on an online invitation names --accept-timeout only", () => {

@@ -53,10 +53,11 @@ export const FAILURE_CAUSE_STREAM_FIELDS: {
     cause: FailureCauseOfKind<K>,
   ) => FailureCauseOfKind<K>;
 } = {
-  "partner-never-arrived": ({ channel, waitedMs }) => ({
+  "partner-never-arrived": ({ channel, waitedMs, sharedName }) => ({
     kind: "partner-never-arrived",
     ...(channel !== undefined ? { channel } : {}),
     ...(waitedMs !== undefined ? { waitedMs: toStreamCount(waitedMs) } : {}),
+    ...(sharedName === true ? { sharedName } : {}),
   }),
   "folder-missing": ({ path, code }) => ({
     kind: "folder-missing",

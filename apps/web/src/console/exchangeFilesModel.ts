@@ -25,6 +25,12 @@ import type { JobExchangeOptions } from "@jobContract/intentSchemas";
  * rule of its own.
  */
 
+/** The heading of the console's "Exchange files" authoring card. */
+export const EXCHANGE_FILES_HEADING = "How files are handled";
+
+/** The label of the card's control that sets this party's `peer_id`. */
+export const PEER_ID_LABEL = "Name for this side";
+
 /**
  * A file-sync toggle as the card holds it. `auto` leaves the field unset, so
  * retain mode's implication (or core's own default) decides it; `on` and `off`

@@ -50,10 +50,19 @@ export const OLDER_KEY_FILE_NO_SHOW_REMEDY =
   "another machine: run from the newest copy, or ask your partner for a new " +
   "invitation.";
 
+// The remedy for a partner that never arrived while a file with this side's
+// name appeared: the wait was not the problem, so it names no timeout flag.
+// Worded as the start-up refusal of such a file words it.
+const SHARED_PEER_ID_REMEDY =
+  "The likely cause is that both parties set the same peer_id: set a " +
+  "different peer_id on one side, changing its text rather than only its " +
+  "% fields, then run again.";
+
 const partnerNeverArrived = (
-  { channel }: FailureCauseOfKind<"partner-never-arrived">,
+  { channel, sharedName }: FailureCauseOfKind<"partner-never-arrived">,
   { arrivalWait, fromKeyFile }: RemedyContext,
 ): string => {
+  if (sharedName === true) return SHARED_PEER_ID_REMEDY;
   if (arrivalWait === "online-invitation")
     return (
       "Run alcove invite again and have your partner accept the new " +
