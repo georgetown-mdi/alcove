@@ -20,6 +20,12 @@
 // are flag-independent (the flag enters h only, via MixHash) and are recorded
 // once.
 //
+// Z enters one key-agreement derivation, an SP 800-56C two-step HKDF with
+// FixedInfo = uPartyInfo || vPartyInfo and L = 2048 bits, whose first three
+// 32-byte blocks are the Noise `ee` input, the rotation input `ka`, and the
+// history input. It is computed here with hkdfSync over Z as bytes; the module
+// derives Z straight into a non-extractable HKDF key.
+//
 // The rotation fixes both parties' 32-byte values and records each wrapped
 // value and the next secret. The wraps are computed with OpenSSL's
 // id-aes256-wrap (RFC 3394, anchored on its section 4.6 vector) and the
@@ -47,6 +53,7 @@ const SESSION_LABEL = "alcove-kex-v2:session";
 const CONFIRM_KEY_LABEL = "alcove-kex-v2:confirm";
 const INITIATOR_CONFIRM_LABEL = "alcove-kex-v2:initiator-confirm";
 const RESPONDER_CONFIRM_LABEL = "alcove-kex-v2:responder-confirm";
+const KEY_AGREEMENT_LABEL = "alcove-kex-v2:key-agreement";
 const INITIATOR_WRAP_LABEL = "alcove-shared-secret-wrap-v2";
 const RESPONDER_WRAP_LABEL = "alcove-shared-secret-wrap-responder-v2";
 const NEXT_SECRET_LABEL = "alcove-shared-secret-next-v2";
@@ -100,7 +107,7 @@ function noiseHkdf(ck, ikm, n) {
   return [o1, o2, o3];
 }
 
-function computeKexKeys(psk, eInitPub, eRespPub, dh, iReq, rReq) {
+function computeKexKeys(psk, eInitPub, eRespPub, eeInput, iReq, rReq) {
   let h = sha256(Buffer.from(PROTOCOL_NAME, "utf8"));
   let ck = h;
   h = sha256(Buffer.concat([h, Buffer.alloc(0)])); // mixHash(empty prologue)
@@ -120,7 +127,7 @@ function computeKexKeys(psk, eInitPub, eRespPub, dh, iReq, rReq) {
   ck = noiseHkdf(ck, eRespPub, 2)[0]; // mixKey(responder e)
   h = sha256(Buffer.concat([h, flagByte(rReq)])); // mixHash(responder flag): msg2 payload
   {
-    const [o1] = noiseHkdf(ck, dh, 2); // mixKey(ee)
+    const [o1] = noiseHkdf(ck, eeInput, 2); // mixKey(ee): the derivation's first block
     ck = o1;
   }
   const master = Buffer.concat([ck, h]);
@@ -166,13 +173,14 @@ function computeRotation(k, initiatorValue, responderValue, usedPrevious) {
 }
 
 // The rotation history: a verifier per secret, and the proofs and behind
-// notices keyed by HKDF(verifier || dh) under a label naming the sender's role.
+// notices keyed by HKDF(verifier || historyInput) under a label naming the
+// sender's role.
 const historyLabel = (use) => HISTORY_LABEL_PREFIX + use;
 const historyVerifier = (secret) =>
   hkdfApp(secret, historyLabel("verifier"), 32);
 const historyMac = (verifier, use, prefix) =>
   hmac(
-    hkdfApp(Buffer.concat([verifier, dh]), historyLabel(use), 32),
+    hkdfApp(Buffer.concat([verifier, historyInput]), historyLabel(use), 32),
     Buffer.concat([prefix, eInitPub, eRespPub]),
   );
 const countBytes = (count) => {
@@ -269,6 +277,36 @@ const dh = eInit.computeSecret(eRespPub);
 const dhCheck = eResp.computeSecret(eInitPub);
 if (hex(dh) !== hex(dhCheck)) throw new Error("DH disagreement");
 
+// The key-agreement derivation. Every FixedInfo item is fixed-length: the
+// label (27 bytes), the protocol name (32), the role (9), the share (65).
+const KEY_AGREEMENT_SALT = Buffer.alloc(64);
+const KEY_AGREEMENT_OUTPUT_BYTES = 2048 / 8;
+const partyInfo = (role, share) =>
+  Buffer.concat([
+    Buffer.from(KEY_AGREEMENT_LABEL, "utf8"),
+    Buffer.from(PROTOCOL_NAME, "utf8"),
+    Buffer.from(role, "utf8"),
+    share,
+  ]);
+const fixedInfo = Buffer.concat([
+  partyInfo("initiator", eInitPub),
+  partyInfo("responder", eRespPub),
+]);
+if (fixedInfo.length !== 266)
+  throw new Error("FixedInfo is not the 266-byte layout");
+const keyAgreementOutput = Buffer.from(
+  hkdfSync(
+    "sha256",
+    dh,
+    KEY_AGREEMENT_SALT,
+    fixedInfo,
+    KEY_AGREEMENT_OUTPUT_BYTES,
+  ),
+);
+const eeInput = keyAgreementOutput.subarray(0, 32);
+const ka = keyAgreementOutput.subarray(32, 64);
+const historyInput = keyAgreementOutput.subarray(64, 96);
+
 // The two parties' rotation values, fixed. The next secret takes no flag or
 // session-key input, so it is recorded once.
 const initiatorValue = Buffer.from(
@@ -278,7 +316,7 @@ const responderValue = Buffer.from(
   Array.from({ length: 32 }, (_, i) => 0x80 + i),
 );
 const nextSecret = hkdfApp(
-  Buffer.concat([dh, initiatorValue, responderValue]),
+  Buffer.concat([ka, initiatorValue, responderValue]),
   NEXT_SECRET_LABEL,
   32,
 );
@@ -302,7 +340,7 @@ const computed = FLAG_CASES.map((c) => {
     psk,
     eInitPub,
     eRespPub,
-    dh,
+    eeInput,
     c.initiator,
     c.responder,
   );
@@ -310,7 +348,7 @@ const computed = FLAG_CASES.map((c) => {
     previousPsk,
     eInitPub,
     eRespPub,
-    dh,
+    eeInput,
     c.initiator,
     c.responder,
   );
@@ -323,9 +361,9 @@ const computed = FLAG_CASES.map((c) => {
   };
 });
 
-// The history values, flag-independent: they take only the verifier, dh and
-// the two shares. The notices are made under the previous secret's verifier,
-// as a side that retired it three rotations ago makes them.
+// The history values, flag-independent: they take only the verifier, the
+// history input and the two shares. The notices are made under the previous
+// secret's verifier, as a side that retired it three rotations ago makes them.
 const NOTICE_COUNT = 3;
 const verifier = historyVerifier(psk);
 const previousVerifier = historyVerifier(previousPsk);
@@ -403,17 +441,18 @@ const vector = {
     "exchange (Noise NNpsk0 over P-256 ECDH + explicit role-asymmetric key " +
     "confirmation + a per-party request-encryption flag bound into the " +
     "transcript). Fixes the pre-shared secret and both ephemeral P-256 private " +
-    "keys, and records, for all four (initiator, responder) flag combinations, " +
+    "keys, and records the key-agreement derivation's FixedInfo and its three " +
+    "blocks, and, for all four (initiator, responder) flag combinations, " +
     "the handshake hash, session key, and both confirmation tags. It also " +
     "fixes both parties' rotation values and records, per combination, each " +
     "value AES-KW-wrapped under its key from the session key, and once the " +
-    "next shared secret derived over dh and both values. Each case also " +
+    "next shared secret derived over ka and both values. Each case also " +
     "records the schedule under a fixed previous secret, whose responder tag " +
     "is message 2's second tag, with the initiator's tag for a handshake " +
     "completed under it; and the history verifiers, both history proofs and " +
     "both behind notices are recorded once. computeKexKeys, " +
-    "responderConfirmTag, initiatorConfirmTag, the rotation functions and " +
-    "the history functions " +
+    "responderConfirmTag, initiatorConfirmTag, deriveKeyAgreement, the " +
+    "rotation functions and the history functions " +
     "in packages/core/src reproduce them from these inputs; kex.test.ts " +
     "checks that on Node and apps/web's browser suite checks the same file " +
     "against the browser build in real Chromium. The chaining key and " +
@@ -445,9 +484,20 @@ const vector = {
       "other encoding of the same point (compressed 0x02/0x03 || X, hybrid " +
       "0x06/0x07 || X || Y) is rejected rather than decoded.",
     sharedSecret:
-      "The 32-byte X coordinate of the shared point (SP 800-56A Rev 3 Z), " +
-      "which is what crypto.subtle deriveBits returns for ECDH over P-256.",
+      "The 32-byte X coordinate of the shared point (SP 800-56A Rev 3 Z). " +
+      "The module derives it into a non-extractable HKDF key; it is recorded " +
+      "here as bytes only for the check.",
     kdf: "HKDF-SHA-256",
+    keyAgreementLabel: KEY_AGREEMENT_LABEL,
+    keyAgreement:
+      "One SP 800-56C two-step HKDF-SHA-256 call over Z: salt = 64 zero " +
+      "bytes, info = FixedInfo = uPartyInfo || vPartyInfo, L = 2048 bits. " +
+      "uPartyInfo = keyAgreementLabel || protocolName || 'initiator' || " +
+      "eInitiatorPub; vPartyInfo = keyAgreementLabel || protocolName || " +
+      "'responder' || eResponderPub; every item fixed-length, 266 bytes in " +
+      "all. The first three 32-byte blocks of the output are ee (the Noise " +
+      "ee input), ka (the rotation input) and historyInput; the rest is " +
+      "discarded.",
     sessionLabel: SESSION_LABEL,
     confirmKeyLabel: CONFIRM_KEY_LABEL,
     initiatorConfirmLabel: INITIATOR_CONFIRM_LABEL,
@@ -461,7 +511,7 @@ const vector = {
       "MixHash then MixKey; each flag is MixHash'd as the message payload): " +
       "MixHash(''), MixKeyAndHash(psk), MixHash(eInitiatorPub), " +
       "MixKey(eInitiatorPub), MixHash(initiatorFlagByte), MixHash(eResponderPub), " +
-      "MixKey(eResponderPub), MixHash(responderFlagByte), MixKey(dh). sessionKey " +
+      "MixKey(eResponderPub), MixHash(responderFlagByte), MixKey(ee). sessionKey " +
       "= HKDF(ck||h, sessionLabel, 32); confirmKey = HKDF(ck, confirmKeyLabel, " +
       "32); responder confirm = HMAC(confirmKey, label||h||scheduleByte), " +
       "scheduleByte 0x00 for msg2's confirm (the current secret) and 0x01 " +
@@ -475,15 +525,15 @@ const vector = {
     rotation:
       "Each wrapped value = AES-KW (RFC 3394, default IV) of the party's " +
       "32-byte value under HKDF(sessionKey, that party's wrap label, 32). " +
-      "nextSecret = HKDF(dh || initiatorValue || responderValue, " +
+      "nextSecret = HKDF(ka || initiatorValue || responderValue, " +
       "nextSecretLabel, 32). The initiator's wrapped value travels in msg3, " +
       "the responder's as the terms message 2 field responderValue.",
     historyLabelPrefix: HISTORY_LABEL_PREFIX,
     history:
       "verifier = HKDF(secret, prefix + 'verifier', 32). A proof = " +
-      "HMAC(HKDF(verifier || dh, prefix + 'proof-<sender role>', 32), " +
+      "HMAC(HKDF(verifier || historyInput, prefix + 'proof-<sender role>', 32), " +
       "eInitiatorPub || eResponderPub), under the verifier of the sender's " +
-      "current secret. A behind notice = HMAC(HKDF(verifier || dh, prefix + " +
+      "current secret. A behind notice = HMAC(HKDF(verifier || historyInput, prefix + " +
       "'notice-<sender role>', 32), u32be(count) || eInitiatorPub || " +
       "eResponderPub), under the verifier of the peer's secret.",
   },
@@ -499,6 +549,10 @@ const vector = {
     initiatorEphemeralPublicHex: hex(eInitPub),
     responderEphemeralPublicHex: hex(eRespPub),
     dhSharedSecretHex: hex(dh),
+    keyAgreementFixedInfoHex: hex(fixedInfo),
+    keyAgreementEeHex: hex(eeInput),
+    keyAgreementKaHex: hex(ka),
+    keyAgreementHistoryInputHex: hex(historyInput),
     chainingKeyHex,
     confirmKeyHex,
     nextSecretHex: hex(nextSecret),

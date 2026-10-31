@@ -1,7 +1,7 @@
 ---
 title: "Alcove Security Design"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-10-30"
+last_reviewed: "2026-10-31"
 ---
 
 # Alcove security
@@ -195,7 +195,7 @@ The handshake accepts a previous secret, kept by the side that stored first in a
 
 The pre-shared secret is the baseline authentication anchor. A certificate-chain, authority-backed mode is left open by that same version discriminant (see [Pinned self-signed trust model](#pinned-self-signed-trust-model)). On approval:
 
-- Approval at the algorithm-standard level is not module-certificate approval: for key establishment the standards are [SP 800-56A Rev. 3](https://doi.org/10.6028/NIST.SP.800-56Ar3) (the shared-secret computation) and [SP 800-186](https://doi.org/10.6028/NIST.SP.800-186) (the curve), and for receipt signing [FIPS 186-5](https://doi.org/10.6028/NIST.FIPS.186-5) (ECDSA), which itself refers its curves to SP 800-186.
+- Approval at the algorithm-standard level is not module-certificate approval: for key establishment the standards are [SP 800-56A Rev. 3](https://doi.org/10.6028/NIST.SP.800-56Ar3) (the shared-secret computation and the Ephemeral Unified Model scheme), [SP 800-56C Rev. 2](https://doi.org/10.6028/NIST.SP.800-56Cr2) (the key derivation over the shared secret) and [SP 800-186](https://doi.org/10.6028/NIST.SP.800-186) (the curve), and for receipt signing [FIPS 186-5](https://doi.org/10.6028/NIST.FIPS.186-5) (ECDSA), which itself refers its curves to SP 800-186.
 - Key establishment: P-256 ECDH and HKDF are on the approved-algorithm list of the FIPS 140-3 certificate this project targets, so where a validated module is configured it performs every cryptographic operation in the handshake. The schedule composed above those operations is attested by no certificate ([key-establishment-fips-boundary.md](notes/key-establishment-fips-boundary.md)).
 - Receipt signing: ECDSA over P-256 with SHA-256 is on that certificate's approved list and runs through `crypto.subtle`, while the certificate document, the domain separation, the per-signer binding, and the pin-before-signature check remain a composition no certificate attests ([receipt-signing-fips-boundary.md](notes/receipt-signing-fips-boundary.md)).
 
