@@ -5,9 +5,12 @@ import { describe, expect, test } from "vitest";
 import {
   runKex,
   computeKexKeys,
+  deriveKeyAgreement,
+  initializeSymmetric,
   initiatorConfirmTag,
   noiseHkdf,
   responderConfirmTag,
+  type KeyAgreementBlocks,
 } from "../src/kex";
 import {
   deriveNextSecret,
@@ -82,9 +85,7 @@ async function generateEphemeral(): Promise<{
   privateKey: CryptoKey;
   publicKey: Uint8Array<ArrayBuffer>;
 }> {
-  const pair = await crypto.subtle.generateKey(ECDH_P256, false, [
-    "deriveBits",
-  ]);
+  const pair = await crypto.subtle.generateKey(ECDH_P256, false, ["deriveKey"]);
   return {
     privateKey: pair.privateKey,
     publicKey: new Uint8Array(
@@ -116,7 +117,7 @@ function importVectorPrivateKey(
     },
     ECDH_P256,
     false,
-    ["deriveBits"],
+    ["deriveBits", "deriveKey"],
   );
 }
 
@@ -135,6 +136,23 @@ async function ecdh(
       256,
     ),
   );
+}
+
+/** The key-agreement blocks a hand-rolled peer derives, as runKex does. */
+async function agree(
+  privateKey: CryptoKey,
+  peerPoint: Uint8Array<ArrayBuffer>,
+  initiatorShare: Uint8Array<ArrayBuffer>,
+  responderShare: Uint8Array<ArrayBuffer>,
+): Promise<KeyAgreementBlocks> {
+  const blocks = await deriveKeyAgreement(
+    privateKey,
+    await importPeerPoint(peerPoint),
+    initiatorShare,
+    responderShare,
+  );
+  if (blocks === undefined) throw new Error("key agreement failed");
+  return blocks;
 }
 
 /** The SEC1 compressed encoding (0x02/0x03 || X) of an uncompressed point. */
@@ -272,6 +290,10 @@ interface KexVectors {
     initiatorEphemeralPublicHex: string;
     responderEphemeralPublicHex: string;
     dhSharedSecretHex: string;
+    keyAgreementFixedInfoHex: string;
+    keyAgreementEeHex: string;
+    keyAgreementKaHex: string;
+    keyAgreementHistoryInputHex: string;
     chainingKeyHex: string;
     confirmKeyHex: string;
     nextSecretHex: string;
@@ -376,11 +398,24 @@ test("known-answer vector: computeKexKeys reproduces the session key, confirmati
     vectors.inputs.responderEphemeralPrivateHex,
     vectors.derived.responderEphemeralPublicHex,
   );
-  const dh = await ecdh(eInitPriv, eRespPub);
-  expect(toHex(dh)).toBe(vectors.derived.dhSharedSecretHex);
+  expect(toHex(await ecdh(eInitPriv, eRespPub))).toBe(
+    vectors.derived.dhSharedSecretHex,
+  );
   expect(toHex(await ecdh(eRespPriv, eInitPub))).toBe(
     vectors.derived.dhSharedSecretHex,
   );
+  // Each role's deriveKey path reaches the generator's hkdfSync blocks.
+  for (const blocks of [
+    await agree(eInitPriv, eRespPub, eInitPub, eRespPub),
+    await agree(eRespPriv, eInitPub, eInitPub, eRespPub),
+  ]) {
+    expect(toHex(blocks.ee)).toBe(vectors.derived.keyAgreementEeHex);
+    expect(toHex(blocks.ka)).toBe(vectors.derived.keyAgreementKaHex);
+    expect(toHex(blocks.historyInput)).toBe(
+      vectors.derived.keyAgreementHistoryInputHex,
+    );
+  }
+  const ee = fromHex(vectors.derived.keyAgreementEeHex);
 
   // All four (initiator, responder) flag combinations are pinned. The chaining
   // key and confirmation key are flag-independent (the flag MixHashes into h
@@ -391,7 +426,7 @@ test("known-answer vector: computeKexKeys reproduces the session key, confirmati
       psk,
       eInitPub,
       eRespPub,
-      dh,
+      ee,
       c.initiatorRequestsEncryption,
       c.responderRequestsEncryption,
     );
@@ -455,13 +490,13 @@ test("known-answer vector: computeKexKeys reproduces the session key, confirmati
 test("known-answer vector: the schedule under the previous secret gives message 2's second tag and the flagged initiator tag", async () => {
   const eInitPub = fromHex(vectors.derived.initiatorEphemeralPublicHex);
   const eRespPub = fromHex(vectors.derived.responderEphemeralPublicHex);
-  const dh = fromHex(vectors.derived.dhSharedSecretHex);
+  const ee = fromHex(vectors.derived.keyAgreementEeHex);
   for (const c of vectors.cases) {
     const p = await computeKexKeys(
       fromHex(vectors.inputs.previousPskHex),
       eInitPub,
       eRespPub,
-      dh,
+      ee,
       c.initiatorRequestsEncryption,
       c.responderRequestsEncryption,
     );
@@ -506,7 +541,7 @@ test("known-answer vector: the history verifiers, both proofs and both behind no
   const shares = {
     initiatorShare: fromHex(vectors.derived.initiatorEphemeralPublicHex),
     responderShare: fromHex(vectors.derived.responderEphemeralPublicHex),
-    dh: fromHex(vectors.derived.dhSharedSecretHex),
+    historyInput: fromHex(vectors.derived.keyAgreementHistoryInputHex),
   };
   const h = vectors.history;
   const verifier = await historyVerifierBytes(fromHex(vectors.inputs.pskHex));
@@ -540,14 +575,14 @@ test("known-answer vector: the history verifiers, both proofs and both behind no
     );
 });
 
-test("known-answer vector: the next secret is derived over dh and both values, in order", async () => {
-  const dh = fromHex(vectors.derived.dhSharedSecretHex);
+test("known-answer vector: the next secret is derived over ka and both values, in order", async () => {
+  const ka = fromHex(vectors.derived.keyAgreementKaHex);
   const initiatorValue = fromHex(vectors.inputs.initiatorValueHex);
   const responderValue = fromHex(vectors.inputs.responderValueHex);
-  const next = await deriveNextSecret(dh, initiatorValue, responderValue);
+  const next = await deriveNextSecret(ka, initiatorValue, responderValue);
   expect(next).toBe(vectors.derived.nextSecret);
   expect(toHex(fromBase64Url(next))).toBe(vectors.derived.nextSecretHex);
-  expect(await deriveNextSecret(dh, responderValue, initiatorValue)).not.toBe(
+  expect(await deriveNextSecret(ka, responderValue, initiatorValue)).not.toBe(
     next,
   );
 });
@@ -1019,12 +1054,12 @@ async function fakeResponderUpToMsg2(
   expect(msg1.kexMsg).toBe("1");
   const eInitPub = fromBase64Url(msg1.e);
   const eph = await generateEphemeral();
-  const dh = await ecdh(eph.privateKey, eInitPub);
+  const { ee } = await agree(eph.privateKey, eInitPub, eInitPub, eph.publicKey);
   const keys = await computeKexKeys(
     psk,
     eInitPub,
     eph.publicKey,
-    dh,
+    ee,
     msg1.reqEnc,
     responderReqEnc,
   );
@@ -1104,15 +1139,15 @@ test("substituting the initiator's public key breaks confirmation (responder sid
   };
   expect(msg2.kexMsg).toBe("2");
   const eRespPub = fromBase64Url(msg2.e);
-  const dh = await ecdh(eph.privateKey, eRespPub);
-  // Confirm over a different e_i (same DH, e_r, and flags): only the initiator
+  const { ee } = await agree(eph.privateKey, eRespPub, eph.publicKey, eRespPub);
+  // Confirm over a different e_i (same ee block, e_r, and flags): only the initiator
   // public key bound into the transcript differs, so the responder rejects.
   const substitute = await generateEphemeral();
   const keys = await computeKexKeys(
     PSK_A,
     substitute.publicKey,
     eRespPub,
-    dh,
+    ee,
     false,
     msg2.reqEnc,
   );
@@ -1165,7 +1200,7 @@ describe("the responder's checks on message 3", () => {
       PSK_A,
       eph.publicKey,
       eRespPub,
-      await ecdh(eph.privateKey, eRespPub),
+      (await agree(eph.privateKey, eRespPub, eph.publicKey, eRespPub)).ee,
       false,
       msg2.reqEnc,
     );
@@ -1342,7 +1377,7 @@ async function computeKexKeysUnderTag(
   psk: Uint8Array<ArrayBuffer>,
   eInitPub: Uint8Array<ArrayBuffer>,
   eRespPub: Uint8Array<ArrayBuffer>,
-  dh: Uint8Array<ArrayBuffer>,
+  ee: Uint8Array<ArrayBuffer>,
   iReq: boolean,
   rReq: boolean,
 ) {
@@ -1353,7 +1388,11 @@ async function computeKexKeysUnderTag(
     ikm: Uint8Array<ArrayBuffer>,
   ) => (await noiseHkdf(ck, ikm, 2))[0]!;
 
-  let h = await sha256(encoder.encode(protocolName));
+  const nameBytes = encoder.encode(protocolName);
+  let h =
+    nameBytes.length <= 32
+      ? concatBytes(nameBytes, new Uint8Array(32 - nameBytes.length))
+      : await sha256(nameBytes);
   let ck = Uint8Array.from(h);
   h = await sha256(concatBytes(h, new Uint8Array(0)));
   const [ckAfterPsk, tempH] = await noiseHkdf(ck, psk, 3);
@@ -1365,7 +1404,7 @@ async function computeKexKeysUnderTag(
   h = await sha256(concatBytes(h, eRespPub));
   ck = await chain(ck, eRespPub);
   h = await sha256(concatBytes(h, flagByte(rReq)));
-  ck = await chain(ck, dh);
+  ck = await chain(ck, ee);
 
   const confirmKey = await hkdfDerive(ck, "alcove-kex-v2:confirm", 32);
   return {
@@ -1395,21 +1434,52 @@ test("the shipped protocol-version tag names the P-256 suite and differs from th
   expect(SHIPPED_PROTOCOL_NAME).not.toBe(SUPERSEDED_PROTOCOL_NAME);
 });
 
+describe("the initial symmetric state follows Noise InitializeSymmetric", () => {
+  const encoder = new TextEncoder();
+
+  test("the shipped name is 32 bytes and h0 is the name itself", async () => {
+    const nameBytes = encoder.encode(SHIPPED_PROTOCOL_NAME);
+    expect(nameBytes.length).toBe(32);
+    const s = await initializeSymmetric();
+    expect(toHex(s.h)).toBe(toHex(nameBytes));
+    expect(toHex(s.ck)).toBe(toHex(nameBytes));
+    expect(s.ck).not.toBe(s.h);
+  });
+
+  test("a name shorter than 32 bytes is padded with zero bytes", async () => {
+    const name = "alcove-kex-test";
+    const expected = new Uint8Array(32);
+    expected.set(encoder.encode(name));
+    const s = await initializeSymmetric(name);
+    expect(toHex(s.h)).toBe(toHex(expected));
+    expect(toHex(s.ck)).toBe(toHex(expected));
+  });
+
+  test("a name longer than 32 bytes is hashed", async () => {
+    const name = `${SHIPPED_PROTOCOL_NAME}x`;
+    expect(encoder.encode(name).length).toBe(33);
+    const s = await initializeSymmetric(name);
+    const expected = toHex(await sha256(encoder.encode(name)));
+    expect(toHex(s.h)).toBe(expected);
+    expect(toHex(s.ck)).toBe(expected);
+  });
+});
+
 test("the tag-parameterized schedule reproduces computeKexKeys under the shipped tag", async () => {
   const psk = fromHex(vectors.inputs.pskHex);
   const eInitPub = fromHex(vectors.derived.initiatorEphemeralPublicHex);
   const eRespPub = fromHex(vectors.derived.responderEphemeralPublicHex);
-  const dh = fromHex(vectors.derived.dhSharedSecretHex);
+  const ee = fromHex(vectors.derived.keyAgreementEeHex);
   const mirrored = await computeKexKeysUnderTag(
     SHIPPED_PROTOCOL_NAME,
     psk,
     eInitPub,
     eRespPub,
-    dh,
+    ee,
     true,
     false,
   );
-  const actual = await computeKexKeys(psk, eInitPub, eRespPub, dh, true, false);
+  const actual = await computeKexKeys(psk, eInitPub, eRespPub, ee, true, false);
   expect(toHex(mirrored.sessionKey)).toBe(toHex(actual.sessionKey));
   expect(toHex(mirrored.confirmKey)).toBe(toHex(actual.confirmKey));
   expect(toHex(mirrored.handshakeHash)).toBe(toHex(actual.handshakeHash));
@@ -1437,14 +1507,14 @@ test("a peer on the superseded protocol-version tag fails the handshake closed",
   expect(msg1.kexMsg).toBe("1");
   const eInitPub = fromBase64Url(msg1.e);
   const eph = await generateEphemeral();
-  const dh = await ecdh(eph.privateKey, eInitPub);
+  const { ee } = await agree(eph.privateKey, eInitPub, eInitPub, eph.publicKey);
 
   const stale = await computeKexKeysUnderTag(
     SUPERSEDED_PROTOCOL_NAME,
     PSK_A,
     eInitPub,
     eph.publicKey,
-    dh,
+    ee,
     msg1.reqEnc,
     false,
   );
@@ -1453,12 +1523,12 @@ test("a peer on the superseded protocol-version tag fails the handshake closed",
     PSK_A,
     eInitPub,
     eph.publicKey,
-    dh,
+    ee,
     msg1.reqEnc,
     false,
   );
-  // Same psk, same ephemerals, same DH: only the tag differs, and every derived
-  // value does with it.
+  // Same psk, same ephemerals, same ee block: only the tag differs, and every
+  // derived value does with it.
   expect(toHex(stale.sessionKey)).not.toBe(toHex(shipped.sessionKey));
   expect(toHex(stale.responderConfirm)).not.toBe(
     toHex(shipped.responderConfirm),
@@ -1529,14 +1599,14 @@ test("flipping the initiator's request-encryption flag on the wire fails the han
   };
   expect(msg2.kexMsg).toBe("2");
   const eRespPub = fromBase64Url(msg2.e);
-  const dh = await ecdh(eph.privateKey, eRespPub);
+  const { ee } = await agree(eph.privateKey, eRespPub, eph.publicKey, eRespPub);
   // The honest initiator's transcript binds its true flag; only the wire copy
   // the responder saw was flipped to false, so the two transcripts diverge.
   const keys = await computeKexKeys(
     PSK_A,
     eph.publicKey,
     eRespPub,
-    dh,
+    ee,
     true,
     msg2.reqEnc,
   );

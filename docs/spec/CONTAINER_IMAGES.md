@@ -481,8 +481,13 @@ policy records:
 Three of those properties bound a value `packages/core/src` chooses, and all
 three are satisfied: the HKDF row's shared-secret window is 224-2048 bits
 against a 256-bit shared secret, its tested derived-key length 2048 bits against
-a 256-bit output, and the HMAC row's key-length floor 112 bits against a 256-bit
-key.
+the key-agreement derivation's 2048-bit output and the application derivations'
+256-bit output, and the HMAC row's key-length floor 112 bits against a 256-bit
+key. The key-agreement derivation also takes the fixed-info pattern
+`uPartyInfo||vPartyInfo` with concatenation encoding, the pattern and encoding
+the CAVP record for A7440 lists, which the security policy does not reproduce
+([PROTOCOL.md](PROTOCOL.md#p-256-authenticated-key-exchange), The key-agreement
+derivation).
 
 **The HKDF row's name and its reference column disagree, and the policy settles
 it by repetition rather than in prose.** The row is named `KDA HKDF Sp800-56Cr1`

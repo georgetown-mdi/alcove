@@ -33,7 +33,13 @@ const LABEL_FAMILIES: ReadonlyMap<string, readonly string[]> = new Map<
 >([
   [
     "alcove-kex-v2:",
-    ["session", "confirm", "initiator-confirm", "responder-confirm"],
+    [
+      "session",
+      "confirm",
+      "initiator-confirm",
+      "responder-confirm",
+      "key-agreement",
+    ],
   ],
   ["alcove-aead-v2:", AEAD_CONTEXTS],
   ["alcove-abort-token-v2:", ABORT_TOKEN_ROLES],

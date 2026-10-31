@@ -60,8 +60,8 @@ const PSK_LEN = 32;
 const PUBLIC_KEY_LEN = 65;
 const UNCOMPRESSED_POINT_PREFIX = 0x04;
 
-// SP 800-56A Rev 3 Z for P-256: the 32-byte X coordinate of the shared point,
-// which is what crypto.subtle.deriveBits returns for ECDH over this curve.
+// SP 800-56A Rev 3 Z for P-256: the 32-byte X coordinate of the shared point.
+// It is derived straight into a non-extractable HKDF key, never read as bytes.
 const SHARED_SECRET_LEN = 32;
 
 const ECDH_P256 = { name: "ECDH", namedCurve: "P-256" } as const;
@@ -70,7 +70,7 @@ const ECDH_P256 = { name: "ECDH", namedCurve: "P-256" } as const;
 // confirmation-tag value, and the block size the Noise chaining HKDF counts in.
 const HASH_LEN = 32;
 
-// The Noise "protocol name", hashed into the initial handshake hash. When it
+// The Noise "protocol name", which is the initial handshake hash. When it
 // is bumped, docs/spec/PROTOCOL.md ("Protocol-version tag") is what governs:
 // it states what the tag covers, what a bump is reserved for, and what a
 // mismatch does.
@@ -84,6 +84,7 @@ const SESSION_LABEL = "alcove-kex-v2:session";
 const CONFIRM_KEY_LABEL = "alcove-kex-v2:confirm";
 const INITIATOR_CONFIRM_LABEL = "alcove-kex-v2:initiator-confirm";
 const RESPONDER_CONFIRM_LABEL = "alcove-kex-v2:responder-confirm";
+const KEY_AGREEMENT_LABEL = "alcove-kex-v2:key-agreement";
 
 // The one message every authentication failure throws, and it must stay
 // non-oracular: no throw site may narrow it to the check that failed, and the
@@ -278,11 +279,23 @@ export async function noiseHkdf(
   return blocks;
 }
 
-async function initializeSymmetric(): Promise<SymmetricState> {
-  // Noise InitializeSymmetric: for a protocol name longer than the hash length
-  // (PROTOCOL_NAME is 33 bytes > 32) h = HASH(name); ck = h. The name-padding
-  // branch for <=32-byte names is unused here.
-  const h = await sha256(enc.encode(PROTOCOL_NAME));
+/**
+ * @internal exported only for the protocol-name rule test.
+ */
+export async function initializeSymmetric(
+  protocolName: string = PROTOCOL_NAME,
+): Promise<SymmetricState> {
+  // Noise InitializeSymmetric: a name of at most 32 bytes is zero-padded to
+  // 32 bytes, a longer one is hashed. PROTOCOL_NAME is exactly 32 bytes, so h0
+  // is the name itself.
+  const nameBytes = enc.encode(protocolName);
+  let h: Uint8Array<ArrayBuffer>;
+  if (nameBytes.length <= HASH_LEN) {
+    h = new Uint8Array(HASH_LEN);
+    h.set(nameBytes);
+  } else {
+    h = await sha256(nameBytes);
+  }
   // Noise sets ck = h here. Keep them as distinct buffers (not one shared
   // reference) so a future in-place mutation of one could never corrupt the
   // other; their values are identical at init regardless.
@@ -334,7 +347,7 @@ export async function computeKexKeys(
   psk: Uint8Array<ArrayBuffer>,
   initiatorEphemeralPublic: Uint8Array<ArrayBuffer>,
   responderEphemeralPublic: Uint8Array<ArrayBuffer>,
-  dhSharedSecret: Uint8Array<ArrayBuffer>,
+  eeInput: Uint8Array<ArrayBuffer>,
   initiatorRequestsEncryption: boolean,
   responderRequestsEncryption: boolean,
 ): Promise<{
@@ -362,7 +375,7 @@ export async function computeKexKeys(
   await mixHash(s, responderEphemeralPublic); // responder e: MixHash
   await mixKey(s, responderEphemeralPublic); //              and MixKey (PSK mode)
   await mixHash(s, flagByte(responderRequestsEncryption)); // msg2 payload: responder flag
-  await mixKey(s, dhSharedSecret); // ee
+  await mixKey(s, eeInput); // ee: the derivation's first block, not Z
 
   const master = concatBytes(s.ck, s.h);
   const sessionKey = await hkdfDerive(master, SESSION_LABEL, 32);
@@ -432,18 +445,15 @@ export async function initiatorConfirmTag(
 
 // A fresh ephemeral P-256 key pair. `extractable: false` applies to the private
 // key only (WebCrypto always marks a generated public key extractable), so the
-// ephemeral secret never becomes JavaScript-visible bytes at all -- it stays a
-// platform key handle, inside a validated module where one is configured, and
-// the residual-memory question the raw-bytes form raised does not arise for it.
-// The public key is exported raw, which for P-256 is the 65-byte uncompressed
-// point that goes on the wire.
+// ephemeral secret never becomes JavaScript-visible bytes at all. Its one usage,
+// deriveKey, makes the platform refuse deriveBits on it, so no value
+// application code can read holds Z either. The public key is exported raw,
+// which for P-256 is the 65-byte uncompressed point that goes on the wire.
 async function generateEphemeral(): Promise<{
   privateKey: CryptoKey;
   publicKey: Uint8Array<ArrayBuffer>;
 }> {
-  const pair = await crypto.subtle.generateKey(ECDH_P256, false, [
-    "deriveBits",
-  ]);
+  const pair = await crypto.subtle.generateKey(ECDH_P256, false, ["deriveKey"]);
   const publicKey = new Uint8Array(
     await crypto.subtle.exportKey("raw", pair.publicKey),
   );
@@ -467,29 +477,124 @@ async function importPeerShare(
   }
 }
 
-// Computes the ECDH shared secret, returning undefined on any failure. The
-// all-zero result check is a stated safety check rather than the validation,
-// and docs/spec/PROTOCOL.md ("Peer-share validation") says what it rests on
-// and why it stays. The compare is constant-time, against a freshly allocated
-// zero buffer rather than a module-level sentinel, so no in-place mutation
-// could weaken it.
-async function deriveSharedSecret(
+// --- Key-agreement derivation ------------------------------------------------
+//
+// The one SP 800-56C two-step HKDF call over Z. Its FixedInfo layout, the
+// parameters, and what each output block feeds: docs/spec/PROTOCOL.md ("The
+// key-agreement derivation").
+
+// SHA-256's block length: the 56C default salt is this many zero bytes.
+const KEY_AGREEMENT_SALT_LEN = 64;
+const KEY_AGREEMENT_OUTPUT_BITS = 2048;
+const KEY_AGREEMENT_BLOCK_COUNT = 3;
+
+/**
+ * The output blocks the key-agreement derivation takes from the front of its
+ * output, each 32 bytes.
+ *
+ * @internal exported only for the known-answer-vector tests.
+ */
+export interface KeyAgreementBlocks {
+  /** The Noise `ee` input, mixed into both key schedules. */
+  ee: Uint8Array<ArrayBuffer>;
+  /** The rotation input `ka` the next secret is derived over. */
+  ka: Uint8Array<ArrayBuffer>;
+  /** The input the history proofs and behind notices are keyed over. */
+  historyInput: Uint8Array<ArrayBuffer>;
+}
+
+function partyInfo(
+  role: HandshakeRole,
+  share: Uint8Array<ArrayBuffer>,
+): Uint8Array<ArrayBuffer> {
+  return concatBytes(
+    enc.encode(KEY_AGREEMENT_LABEL),
+    enc.encode(PROTOCOL_NAME),
+    enc.encode(role),
+    share,
+  );
+}
+
+/**
+ * The derivation's FixedInfo, `uPartyInfo || vPartyInfo` with U the initiator
+ * and V the responder. Every item is fixed-length, so the concatenation parses
+ * one way.
+ *
+ * @internal exported only for the FixedInfo layout test.
+ */
+export function keyAgreementFixedInfo(
+  initiatorShare: Uint8Array<ArrayBuffer>,
+  responderShare: Uint8Array<ArrayBuffer>,
+): Uint8Array<ArrayBuffer> {
+  return concatBytes(
+    partyInfo("initiator", initiatorShare),
+    partyInfo("responder", responderShare),
+  );
+}
+
+async function expandKeyAgreement(
+  sharedSecret: CryptoKey,
+  fixedInfo: Uint8Array<ArrayBuffer>,
+): Promise<Uint8Array<ArrayBuffer>> {
+  const okm = new Uint8Array(
+    await crypto.subtle.deriveBits(
+      {
+        name: "HKDF",
+        hash: "SHA-256",
+        salt: new Uint8Array(KEY_AGREEMENT_SALT_LEN),
+        info: fixedInfo,
+      },
+      sharedSecret,
+      KEY_AGREEMENT_OUTPUT_BITS,
+    ),
+  );
+  return okm.slice(0, KEY_AGREEMENT_BLOCK_COUNT * HASH_LEN);
+}
+
+/**
+ * Derives Z from the ECDH pair into a non-extractable HKDF key and runs the
+ * key-agreement derivation over it, returning undefined when the ECDH
+ * derivation fails (the only step the peer's share can fail); a fault in the
+ * HKDF steps is a local fault and rejects. The all-zero check compares the blocks, in constant time, against the same
+ * derivation over a zero Z: a stated safety check, not the validation
+ * (docs/spec/PROTOCOL.md, "Peer-share validation").
+ *
+ * @internal exported only for the tests' hand-rolled peers.
+ */
+export async function deriveKeyAgreement(
   myPrivate: CryptoKey,
   peerPublic: CryptoKey,
-): Promise<Uint8Array<ArrayBuffer> | undefined> {
-  let bits: ArrayBuffer;
+  initiatorShare: Uint8Array<ArrayBuffer>,
+  responderShare: Uint8Array<ArrayBuffer>,
+): Promise<KeyAgreementBlocks | undefined> {
+  const fixedInfo = keyAgreementFixedInfo(initiatorShare, responderShare);
+  let sharedSecret: CryptoKey;
   try {
-    bits = await crypto.subtle.deriveBits(
+    sharedSecret = await crypto.subtle.deriveKey(
       { name: "ECDH", public: peerPublic },
       myPrivate,
-      SHARED_SECRET_LEN * 8,
+      { name: "HKDF" },
+      false,
+      ["deriveBits"],
     );
   } catch {
     return undefined;
   }
-  const out = new Uint8Array(bits);
-  if (bytesEqual(out, new Uint8Array(SHARED_SECRET_LEN))) return undefined;
-  return out;
+  const blocks = await expandKeyAgreement(sharedSecret, fixedInfo);
+  const zeroSecret = await crypto.subtle.importKey(
+    "raw",
+    new Uint8Array(SHARED_SECRET_LEN),
+    { name: "HKDF" },
+    false,
+    ["deriveBits"],
+  );
+  const zeroBlocks = await expandKeyAgreement(zeroSecret, fixedInfo);
+  if (bytesEqual(blocks, zeroBlocks)) return undefined;
+  return {
+    ee: blocks.slice(0, HASH_LEN),
+    ka: blocks.slice(HASH_LEN, 2 * HASH_LEN),
+    historyInput: blocks.slice(2 * HASH_LEN, 3 * HASH_LEN),
+  };
 }
 
 // --- Receive / abort helpers -------------------------------------------------
@@ -537,7 +642,8 @@ async function receiveHandshake(conn: MessageConnection): Promise<unknown> {
 interface KexResult {
   /** 32-byte session key. */
   sessionKey: Uint8Array<ArrayBuffer>;
-  /** The key-agreement output the next secret is derived over: `dh`. */
+  /** The key-agreement output the next secret is derived over: the
+   * derivation's `ka` block. */
   keyAgreementOutput: Uint8Array<ArrayBuffer>;
   /** The initiator's 32-byte rotation value: drawn by the initiator, unwrapped
    * from message 3 by the responder. */
@@ -577,6 +683,7 @@ async function computeBothSchedules(
   psk: Uint8Array<ArrayBuffer>,
   candidates: KexCandidates,
   shares: HandshakeShares,
+  eeInput: Uint8Array<ArrayBuffer>,
   initiatorRequestsEncryption: boolean,
   responderRequestsEncryption: boolean,
 ): Promise<[KexSchedule, KexSchedule]> {
@@ -586,7 +693,7 @@ async function computeBothSchedules(
       secret,
       shares.initiatorShare,
       shares.responderShare,
-      shares.dh,
+      eeInput,
       initiatorRequestsEncryption,
       responderRequestsEncryption,
     );
@@ -809,15 +916,20 @@ export async function runKex(
       await sendAbort(conn);
       throw new AuthenticationError(GENERIC_FAILURE);
     }
-    const dh = await deriveSharedSecret(mySecret, peerKey);
-    if (dh === undefined) {
+    const agreed = await deriveKeyAgreement(
+      mySecret,
+      peerKey,
+      myPublic,
+      peerPublic,
+    );
+    if (agreed === undefined) {
       await sendAbort(conn);
       throw new AuthenticationError(GENERIC_FAILURE);
     }
     const shares: HandshakeShares = {
       initiatorShare: myPublic,
       responderShare: peerPublic,
-      dh,
+      historyInput: agreed.historyInput,
     };
     // We are the initiator, so our flag is the initiator flag and the
     // responder's (msg2.reqEnc) is the responder flag. Binding both into the
@@ -827,6 +939,7 @@ export async function runKex(
       psk,
       candidates,
       shares,
+      agreed.ee,
       requestEncryption,
       msg2.data.reqEnc,
     );
@@ -900,7 +1013,7 @@ export async function runKex(
 
     return {
       sessionKey,
-      keyAgreementOutput: dh,
+      keyAgreementOutput: agreed.ka,
       initiatorValue: initiatorValue.bytes,
       applyEncryption: requestEncryption || msg2.data.reqEnc,
       localUsedPrevious: usedPrevious,
@@ -921,15 +1034,20 @@ export async function runKex(
       await sendAbort(conn);
       throw new AuthenticationError(GENERIC_FAILURE);
     }
-    const dh = await deriveSharedSecret(mySecret, peerKey);
-    if (dh === undefined) {
+    const agreed = await deriveKeyAgreement(
+      mySecret,
+      peerKey,
+      peerPublic,
+      myPublic,
+    );
+    if (agreed === undefined) {
       await sendAbort(conn);
       throw new AuthenticationError(GENERIC_FAILURE);
     }
     const shares: HandshakeShares = {
       initiatorShare: peerPublic,
       responderShare: myPublic,
-      dh,
+      historyInput: agreed.historyInput,
     };
     // peerPublic is the initiator's e; myPublic is the responder's e. The
     // initiator's flag (msg1.reqEnc) is the initiator flag and ours is the
@@ -941,6 +1059,7 @@ export async function runKex(
       psk,
       candidates,
       shares,
+      agreed.ee,
       msg1.data.reqEnc,
       requestEncryption,
     );
@@ -1039,7 +1158,7 @@ export async function runKex(
 
     return {
       sessionKey,
-      keyAgreementOutput: dh,
+      keyAgreementOutput: agreed.ka,
       initiatorValue,
       applyEncryption: msg1.data.reqEnc || requestEncryption,
       localUsedPrevious: completedOwn === 1,

@@ -63,11 +63,12 @@ export async function deriveHistoryVerifier(
   return toBase64Url(await historyVerifierBytes(fromBase64Url(sharedSecret)));
 }
 
-/** The two ephemeral shares of one handshake, as sent, and its `dh`. */
+/** The two ephemeral shares of one handshake, as sent, and the key-agreement
+ * derivation's history block. */
 export interface HandshakeShares {
   initiatorShare: Uint8Array<ArrayBuffer>;
   responderShare: Uint8Array<ArrayBuffer>;
-  dh: Uint8Array<ArrayBuffer>;
+  historyInput: Uint8Array<ArrayBuffer>;
 }
 
 function concat(
@@ -89,7 +90,7 @@ async function historyMac(
   prefix: Uint8Array<ArrayBuffer>,
 ): Promise<Uint8Array<ArrayBuffer>> {
   const key = await hkdfDerive(
-    concat(verifier, shares.dh),
+    concat(verifier, shares.historyInput),
     historyLabel(derivation),
     32,
   );
@@ -101,7 +102,7 @@ async function historyMac(
 
 /**
  * The history proof `sender` makes under the verifier of its own current
- * secret: `HMAC(HKDF(verifier || dh, proof label), e_I || e_R)`.
+ * secret: `HMAC(HKDF(verifier || k_his, proof label), e_I || e_R)`.
  */
 export async function historyProof(
   verifier: Uint8Array<ArrayBuffer>,
@@ -124,7 +125,7 @@ function countBytes(count: number): Uint8Array<ArrayBuffer> {
 
 /**
  * The behind notice `sender` makes under the verifier of the peer's secret,
- * stating `count`: `HMAC(HKDF(verifier || dh, notice label), u32(count) ||
+ * stating `count`: `HMAC(HKDF(verifier || k_his, notice label), u32(count) ||
  * e_I || e_R)`.
  */
 export async function behindNotice(

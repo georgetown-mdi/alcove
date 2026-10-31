@@ -41,7 +41,9 @@ export {
 // callers conduct a handshake with runKex, never by composing the schedule.
 export {
   computeKexKeys,
+  deriveKeyAgreement,
   initiatorConfirmTag,
+  keyAgreementFixedInfo,
   responderConfirmTag,
 } from "./kex.js";
 export {

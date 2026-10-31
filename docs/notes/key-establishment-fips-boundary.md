@@ -15,7 +15,9 @@ replacing it. The normative construction is specified in
 [PROTOCOL.md](../spec/PROTOCOL.md#p-256-authenticated-key-exchange); the
 provider measurements and certificate readings underneath the reasoning are in
 [fips-provider-surface.md](fips-provider-surface.md). See
-[docs/notes/README.md](README.md).*
+[docs/notes/README.md](README.md). The Ephemeral Unified Model build of
+2026-10-31 ([The build](#the-build-2026-10-31)) is agent-written and not yet
+ratified.*
 
 With FIPS 140-3 as the target standard, no provider choice puts an X25519 key
 exchange inside a module's approved mode. Certificate 5438, the module the FIPS
@@ -641,8 +643,10 @@ with the row's wording in its open questions.
 
 ## An approved key-agreement scheme, researched 2026-10-29
 
-The SC-12 row ([COMPLIANCE.md](../COMPLIANCE.md#nist-sp-800-53)) claims no
-SP 800-56A Rev. 3 scheme and lists the gaps that follow. This section weighs
+When this section was researched, the SC-12 row
+([COMPLIANCE.md](../COMPLIANCE.md#nist-sp-800-53)) claimed no SP 800-56A
+Rev. 3 scheme and listed the gaps that follow; [The
+build](#the-build-2026-10-31) records what was built. This section weighs
 each scheme in that publication that could fit Alcove's two-party exchange
 against the handshake in
 [PROTOCOL.md](../spec/PROTOCOL.md#p-256-authenticated-key-exchange). Every
@@ -847,6 +851,58 @@ decision for the maintainer. Three questions above bear on its size: whether
 would leave the rotation's input and FixedInfo; whether Z can stay inside the
 platform; and whether an HKDF call with a secret salt is within the
 certificate's tested parameters.
+
+### The build, 2026-10-31
+
+The maintainer ruled on 2026-10-29 to build the Ephemeral Unified Model with
+`Z` passed through one approved HKDF call that takes no pre-shared secret, its
+output split between the Noise `ee` input and the rotation, the schedule and
+the confirmation round unchanged. The construction is specified in
+[PROTOCOL.md](../spec/PROTOCOL.md#p-256-authenticated-key-exchange) (The
+key-agreement derivation); this records how the three questions above were
+answered and what the build chose.
+
+- **`MixKey(dh)` as the derivation.** Moot under the ruling: the derivation is
+  a call of its own, and `MixKey` takes its first block.
+- **Keeping `Z` in the platform.** `deriveKey` from ECDH to a non-extractable
+  HKDF key was measured on 2026-10-30 on Node v26.11.1, Chromium 156,
+  Firefox 157, WebKit 27.2 and the `-fips` image's Node v26.13.0 under its
+  provider. Every runtime derives the key, refuses `exportKey('raw')`, agrees
+  with the `deriveBits` path and with the peer, and refuses `deriveBits` on a
+  private key whose only usage is `deriveKey`; Firefox alone accepts
+  `extractable: true` on the derived key, which the build never requests.
+  Scans of `/proc/self/mem` on Node and in the `-fips` image found `Z` in the
+  process heap while the key was alive, under `deriveKey` and `deriveBits`
+  alike, and gone after release and garbage collection. So `deriveKey` keeps
+  `Z` out of every value application code can read, which the build enforces
+  through the key usage and tests, not out of process memory. `Z` also crosses
+  the module boundary between the ECDH and HKDF services, which certificate
+  5438's security policy lists as API parameters (Table 20, p. 44). One path
+  runs everywhere, with no fallback.
+- **The certificate's tested parameters.** The CAVP record for A7440 lists, for
+  `KDA HKDF Sp800-56Cr1`, the fixed-info pattern `uPartyInfo||vPartyInfo` with
+  concatenation encoding, a derived-key length of 2048 bits, a shared-secret
+  length of 224-2048 bits and SHA2-256, and no salting method. The planned
+  `Label || Context || [L]2` layout and a 768-bit output were outside it, so
+  the build carries the label and protocol name in each party's identifier,
+  requests 2048 bits and uses the front 768. HKDF's expansion makes the blocks
+  independent of the requested length, so the reshaping changes no value
+  beyond the FixedInfo bytes. The default all-zero salt stays, and whether it
+  was tested is not established by the record.
+- **What else was chosen.** A third block keys the rotation history, which
+  also consumed `Z`. The
+  protocol-version tag stays, since pre-release formats take no bump. The
+  all-zero safety check moves to the derived blocks, compared against the
+  same derivation over a zero `Z`.
+- **The pre-shared secret stays out of the derivation.** Each candidate secret
+  would otherwise need its own call over `Z`, and the history proof, which
+  must verify between sides holding different secrets, could not be keyed
+  from it. A recorder who solves the Diffie-Hellman still derives no session
+  key, because `MixKeyAndHash(psk)` precedes the `ee` step.
+- **Forward constraint.** `deriveKey` takes `Z` alone, so a later ML-KEM
+  hybrid that derives over `Z || T` in one call would need `Z` in application
+  memory, or a second derivation chained after this one. The post-quantum
+  decision ([The open decision](#the-open-decision)) takes that up.
 
 ## Open questions
 

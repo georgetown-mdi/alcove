@@ -43,8 +43,8 @@ export interface RotationValue {
  */
 export interface NextSecretInputs {
   readonly sessionKey: Uint8Array<ArrayBuffer>;
-  /** Every shared secret the key agreement produced, in key-schedule order:
-   * for the P-256 handshake, its 32-byte `dh`. */
+  /** The rotation input the key agreement produced: for the P-256 handshake,
+   * the 32-byte `ka` block of its key-agreement derivation. */
   readonly keyAgreementOutput: Uint8Array<ArrayBuffer>;
   readonly initiatorValue: Uint8Array<ArrayBuffer>;
   readonly expires: string | undefined;

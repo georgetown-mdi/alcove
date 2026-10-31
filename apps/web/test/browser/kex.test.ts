@@ -7,11 +7,13 @@ import {
   behindNotice,
   computeKexKeys,
   createMessagePipe,
+  deriveKeyAgreement,
   deriveNextSecret,
   historyProof,
   historyVerifierBytes,
   importRotationValue,
   initiatorConfirmTag,
+  keyAgreementFixedInfo,
   responderConfirmTag,
   runKex,
   unwrapRotationValue,
@@ -60,6 +62,10 @@ interface KexVectors {
     initiatorEphemeralPublicHex: string;
     responderEphemeralPublicHex: string;
     dhSharedSecretHex: string;
+    keyAgreementFixedInfoHex: string;
+    keyAgreementEeHex: string;
+    keyAgreementKaHex: string;
+    keyAgreementHistoryInputHex: string;
     chainingKeyHex: string;
     confirmKeyHex: string;
     nextSecret: string;
@@ -119,7 +125,7 @@ function importVectorPrivateKey(
     },
     ECDH_P256,
     false,
-    ["deriveBits"],
+    ["deriveBits", "deriveKey"],
   );
 }
 
@@ -199,6 +205,51 @@ describe("key exchange in the browser", () => {
     );
   });
 
+  test("the browser build's deriveKey path reproduces the checked-in FixedInfo and key-agreement blocks in both roles", async () => {
+    const eInitPub = fromHex(vectors.derived.initiatorEphemeralPublicHex);
+    const eRespPub = fromHex(vectors.derived.responderEphemeralPublicHex);
+    expect(toHex(keyAgreementFixedInfo(eInitPub, eRespPub))).toBe(
+      vectors.derived.keyAgreementFixedInfoHex,
+    );
+    const roles = [
+      [vectors.inputs.initiatorEphemeralPrivateHex, eInitPub, eRespPub],
+      [vectors.inputs.responderEphemeralPrivateHex, eRespPub, eInitPub],
+    ] as const;
+    for (const [privateHex, ownPoint, peerPoint] of roles) {
+      const blocks = await deriveKeyAgreement(
+        await importVectorPrivateKey(privateHex, toHex(ownPoint)),
+        await crypto.subtle.importKey("raw", peerPoint, ECDH_P256, false, []),
+        eInitPub,
+        eRespPub,
+      );
+      expect(blocks && toHex(blocks.ee)).toBe(
+        vectors.derived.keyAgreementEeHex,
+      );
+      expect(blocks && toHex(blocks.ka)).toBe(
+        vectors.derived.keyAgreementKaHex,
+      );
+      expect(blocks && toHex(blocks.historyInput)).toBe(
+        vectors.derived.keyAgreementHistoryInputHex,
+      );
+    }
+  });
+
+  test("an ECDH private key with the deriveKey usage alone refuses deriveBits in the browser", async () => {
+    const own = await crypto.subtle.generateKey(ECDH_P256, false, [
+      "deriveKey",
+    ]);
+    const peer = await crypto.subtle.generateKey(ECDH_P256, false, [
+      "deriveKey",
+    ]);
+    await expect(
+      crypto.subtle.deriveBits(
+        { name: "ECDH", public: peer.publicKey },
+        own.privateKey,
+        256,
+      ),
+    ).rejects.toMatchObject({ name: "InvalidAccessError" });
+  });
+
   test.each(vectors.cases)(
     "$name: the browser build reproduces the checked-in key schedule",
     async (kexCase: KexCase) => {
@@ -206,7 +257,7 @@ describe("key exchange in the browser", () => {
         fromHex(vectors.inputs.pskHex),
         fromHex(vectors.derived.initiatorEphemeralPublicHex),
         fromHex(vectors.derived.responderEphemeralPublicHex),
-        fromHex(vectors.derived.dhSharedSecretHex),
+        fromHex(vectors.derived.keyAgreementEeHex),
         kexCase.initiatorRequestsEncryption,
         kexCase.responderRequestsEncryption,
       );
@@ -231,7 +282,7 @@ describe("key exchange in the browser", () => {
         fromHex(vectors.inputs.pskHex),
         fromHex(vectors.derived.initiatorEphemeralPublicHex),
         fromHex(vectors.derived.responderEphemeralPublicHex),
-        fromHex(vectors.derived.dhSharedSecretHex),
+        fromHex(vectors.derived.keyAgreementEeHex),
         kexCase.initiatorRequestsEncryption,
         kexCase.responderRequestsEncryption,
       );
@@ -271,7 +322,7 @@ describe("key exchange in the browser", () => {
   test("the browser build derives the checked-in next secret over the 96-byte input", async () => {
     expect(
       await deriveNextSecret(
-        fromHex(vectors.derived.dhSharedSecretHex),
+        fromHex(vectors.derived.keyAgreementKaHex),
         fromHex(vectors.inputs.initiatorValueHex),
         fromHex(vectors.inputs.responderValueHex),
       ),
@@ -282,7 +333,7 @@ describe("key exchange in the browser", () => {
     const shares = {
       initiatorShare: fromHex(vectors.derived.initiatorEphemeralPublicHex),
       responderShare: fromHex(vectors.derived.responderEphemeralPublicHex),
-      dh: fromHex(vectors.derived.dhSharedSecretHex),
+      historyInput: fromHex(vectors.derived.keyAgreementHistoryInputHex),
     };
     const h = vectors.history;
     const verifier = await historyVerifierBytes(fromHex(vectors.inputs.pskHex));
