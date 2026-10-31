@@ -673,6 +673,99 @@ describe("the deploy-credential rule", () => {
     ).toMatch(/calls \.\/x\.yaml/);
   });
 
+  describe("the Release environment", () => {
+    const dockerhubJob = (overrides = {}) => ({
+      "runs-on": "ubuntu-latest",
+      environment: "Release",
+      steps: [
+        { uses: "docker/login-action@v4" },
+        { run: "docker buildx imagetools create" },
+      ],
+      ...overrides,
+    });
+    const withRelease = (jobs) => {
+      const release = releaseWorkflow();
+      Object.assign(release.document.jobs, jobs);
+      return [deployWorkflow(), release, siteWorkflow()];
+    };
+
+    it("admits the release workflow's dockerhub job with inline run steps", () => {
+      expect(
+        deployCredentialFindings(withRelease({ dockerhub: dockerhubJob() })),
+      ).toEqual([]);
+    });
+
+    it("refuses a second job in the environment", () => {
+      const findings = deployCredentialFindings(
+        withRelease({ dockerhub: dockerhubJob(), second: dockerhubJob() }),
+      ).join("\n");
+      expect(findings).toMatch(
+        /Only .*release\.yaml job dockerhub may run in the Release environment; found .*release\.yaml job second/,
+      );
+    });
+
+    it("refuses the dockerhub job in another workflow", () => {
+      const findings = deployCredentialFindings([
+        ...deployWorkflows(),
+        other({ dockerhub: dockerhubJob() }),
+      ]).join("\n");
+      expect(findings).toMatch(/found .*other\.yaml job dockerhub/);
+    });
+
+    it.each([
+      ["a checkout", { uses: "actions/checkout@v7" }, /checks out/],
+      ["a local action", { uses: "./.github/actions/setup" }, /local action/],
+    ])("refuses the dockerhub job carrying %s", (_label, step, message) => {
+      const job = dockerhubJob();
+      job.steps = [step, ...job.steps];
+      expect(
+        deployCredentialFindings(withRelease({ dockerhub: job })).join("\n"),
+      ).toMatch(message);
+    });
+
+    it("refuses the dockerhub job calling a workflow", () => {
+      expect(
+        deployCredentialFindings(
+          withRelease({
+            dockerhub: dockerhubJob({ uses: "./x.yaml", steps: undefined }),
+          }),
+        ).join("\n"),
+      ).toMatch(/calls \.\/x\.yaml/);
+    });
+  });
+
+  it.each([
+    ["a literal", "Preview"],
+    ["a mapping", { name: "Preview" }],
+    [
+      "an expression",
+      "${{ github.ref == 'refs/heads/main' && 'Preview' || 'Staging' }}",
+    ],
+    ["an expression naming none", "${{ inputs.environment }}"],
+  ])(
+    "refuses a job in an unknown environment given as %s",
+    (_label, environment) => {
+      const findings = deployCredentialFindings([
+        ...deployWorkflows(),
+        other({ job: { steps: [], environment } }),
+      ]).join("\n");
+      expect(findings).toMatch(/does not know: teach/);
+    },
+  );
+
+  it("reads the Production and Staging expression the deploy workflows use", () => {
+    expect(
+      deployCredentialFindings(
+        deployWorkflows(
+          uploadJob({
+            environment:
+              "${{ github.ref == 'refs/heads/main' && 'Production' || 'Staging' }}",
+          }),
+        ),
+      ),
+    ).toEqual([]);
+  });
+
   it("refuses secrets: inherit, toJSON(secrets) and a workflow-level secret", () => {
     const findings = deployCredentialFindings([
       ...deployWorkflows(),
