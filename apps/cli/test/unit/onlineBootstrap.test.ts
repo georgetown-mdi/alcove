@@ -975,6 +975,36 @@ describe("parseCommonBootstrapArgs", () => {
     }
   });
 
+  test("--unanswered-hello-window reads a duration in seconds, or infinite", () => {
+    const window = (value: unknown) =>
+      parseCommonBootstrapArgs({
+        _: [],
+        $0: "alcove",
+        "unanswered-hello-window": value,
+      } as unknown as Arguments).unansweredHelloWindow;
+    expect(window("2h")).toBe(7200);
+    expect(window("infinite")).toBe("infinite");
+    expect(window(undefined)).toBeUndefined();
+    expect(
+      connectionOverridesFrom(
+        parseCommonBootstrapArgs({
+          _: [],
+          $0: "alcove",
+          "unanswered-hello-window": "90m",
+        } as unknown as Arguments),
+      ).options?.unansweredHelloWindow,
+    ).toBe(5400);
+    for (const [value, fragment] of [
+      ["0s", "--unanswered-hello-window"],
+      ["8d", "--unanswered-hello-window must not exceed 7d"],
+      ["never", "--unanswered-hello-window"],
+      [["1h", "2h"], "--unanswered-hello-window may be given only once"],
+    ] as const) {
+      expect(() => window(value)).toThrow(UsageError);
+      expect(() => window(value)).toThrow(fragment);
+    }
+  });
+
   test("a bare-integer timeout is rejected with the suffixed equivalent", () => {
     expect(() =>
       parseCommonBootstrapArgs({

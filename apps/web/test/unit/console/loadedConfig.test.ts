@@ -211,6 +211,16 @@ describe("the connection-tuning draft a loaded options block seeds", () => {
     ).toEqual(stated);
   });
 
+  test("an unanswered-hello window round-trips, infinite included", () => {
+    for (const stated of [
+      { unansweredHelloWindowMs: 10_800_000 },
+      { unansweredHelloWindowMs: "infinite" as const },
+    ])
+      expect(
+        connectionTuningOptions(connectionTuningFromOptions(stated)),
+      ).toEqual(stated);
+  });
+
   test("a retry budget of zero survives, distinct from an unset one", () => {
     const draft = connectionTuningFromOptions({ maxReconnectAttempts: 0 });
     expect(draft.maxReconnectAttempts).toBe("0");

@@ -23,6 +23,7 @@ import {
   PEER_ID_RANDOM_HEX_LENGTH,
   SHARED_SECRET_REGEX,
   StandardizationSchema,
+  UNANSWERED_HELLO_WINDOW_INFINITE,
   csvDelimiterRefusal,
   expandPeerIdTemplate,
   holdsPrivateKeyMaterial,
@@ -176,6 +177,7 @@ export interface JobExchangeOptions {
   unexpectedFiles?: "error" | "warn" | "ignore";
   connectionPerPoll?: boolean;
   writeWithoutRenaming?: boolean;
+  unansweredHelloWindowMs?: number | typeof UNANSWERED_HELLO_WINDOW_INFINITE;
 }
 
 /**
@@ -219,6 +221,12 @@ const jobExchangeOptionsFields = {
     .optional(),
   retainFiles: z.boolean().optional(),
   writeWithoutRenaming: z.boolean().optional(),
+  unansweredHelloWindowMs: z
+    .union([
+      z.number().int().positive(),
+      z.literal(UNANSWERED_HELLO_WINDOW_INFINITE),
+    ])
+    .optional(),
 };
 
 // unexpected_files has no CLI flag, so only a configured run admits it. A
@@ -298,6 +306,12 @@ const jobZeroSetupOptionsFields = {
   peerTimeoutMs: wholeSecondFlagMs("peerTimeoutMs"),
   inactivityTimeoutMs: wholeSecondFlagMs("inactivityTimeoutMs"),
   serverConnectTimeoutMs: wholeSecondFlagMs("serverConnectTimeoutMs"),
+  unansweredHelloWindowMs: z
+    .union([
+      wholeSecondFlagMs("unansweredHelloWindowMs").unwrap(),
+      z.literal(UNANSWERED_HELLO_WINDOW_INFINITE),
+    ])
+    .optional(),
 };
 
 const jobZeroSetupOptionsSchema: z.ZodType<JobExchangeOptions> = z

@@ -368,6 +368,12 @@ export interface MockClientOptions {
   hideAtEntry?: ReadonlyArray<string>;
   /** Rewrites each listing after the hides above. */
   listScript?: ListScript;
+  /**
+   * Modification times by full path. Each write records its time here, and a
+   * file the test placed in the store directly takes the time of the first
+   * listing that shows it.
+   */
+  modifyTimes?: Map<string, number>;
   /** put() and rename() wait this long before acting. */
   writeDelayMs?: number;
   /** put() never settles. */
@@ -395,6 +401,7 @@ export function makeMockClient(opts: MockClientOptions = {}): {
   files: Map<string, Buffer>;
 } {
   const files = opts.files ?? new Map<string, Buffer>();
+  const modifyTimes = opts.modifyTimes ?? new Map<string, number>();
   const deleteBehavior = opts.deleteBehavior ?? "real";
   const safeDeleteBehavior =
     opts.safeDeleteBehavior ?? (deleteBehavior === "real" ? "real" : "noop");
@@ -433,11 +440,14 @@ export function makeMockClient(opts: MockClientOptions = {}): {
           ([p]) =>
             p.startsWith(prefix) && !p.slice(prefix.length).includes("/"),
         )
-        .map(([p, buf]) => ({
-          name: p.slice(prefix.length),
-          modifyTime: 0,
-          size: buf.length,
-        }));
+        .map(([p, buf]) => {
+          if (!modifyTimes.has(p)) modifyTimes.set(p, Date.now());
+          return {
+            name: p.slice(prefix.length),
+            modifyTime: modifyTimes.get(p)!,
+            size: buf.length,
+          };
+        });
       const hidden = [
         ...(opts.hideFromList ?? []),
         ...(listCall === 0 ? (opts.hideAtEntry ?? []) : []),
@@ -465,6 +475,7 @@ export function makeMockClient(opts: MockClientOptions = {}): {
       if (writeDelayMs > 0) await delay(writeDelayMs);
       refuseAfterEnd(dest, "write");
       files.set(dest, await putSrcBytes(src));
+      modifyTimes.set(dest, Date.now());
       log(`put-done:${baseName(dest)}`);
     },
     delete: async (path: string) => {
@@ -480,6 +491,7 @@ export function makeMockClient(opts: MockClientOptions = {}): {
       if (data === undefined) throw new Error(`${from}: no such file`);
       files.delete(from);
       files.set(to, data);
+      modifyTimes.set(to, modifyTimes.get(from) ?? Date.now());
       log(`rename:${baseName(to)}`);
     },
     createExclusive: async (path: string) => {

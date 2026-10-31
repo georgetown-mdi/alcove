@@ -4026,11 +4026,12 @@ test("I8: retain poll() ack-write failure -- recvSeq held, message reprocessed a
 });
 
 // --- synchronize() entry precondition matrix ---------------------------------
-// One mode-agnostic rule: at synchronize() entry the directory must be empty
-// except for at most one peer hello. The matrix is the full (file-kind x
-// mode) cross-product of that rule, generated rather than hand-listed so a
-// missing combination is structurally impossible; every other file kind is
-// legal only AFTER entry, in both modes.
+// One rule: at synchronize() entry the directory must be empty except for at
+// most one peer hello, and in retain mode the messages, acks, abort markers
+// and answered hellos an earlier exchange left are ignored rather than counted.
+// The matrix is the full (file-kind x mode) cross-product of that rule,
+// generated rather than hand-listed so a missing combination is structurally
+// impossible.
 // If a kind below is not a direct consequence of the rule, the rule -- not
 // the matrix -- is wrong.
 
@@ -4042,13 +4043,13 @@ const ENTRY_PEER_ID_2 = "11111111-1111-4111-8111-111111111111";
 // given the hello body of the cell's mode. A peer hello on a proceed row is
 // read through the HelloEnvelope gate, so the test body (below) gives every
 // sized control file that mode-matched envelope; every other kind is rejected
-// on filename before any body read, so those bodies stay "{}". Outcome does not
-// vary by mode (the rule is mode-agnostic), so each kind has a single expected
-// outcome and is run in both modes below.
+// on filename before any body read, so those bodies stay "{}". `retainOutcome`
+// is set where retain mode ignores the kind.
 const entryPreconditionKinds: Array<{
   kind: string;
   present: (helloBody: Buffer) => string[];
   outcome: "proceed" | "reject";
+  retainOutcome?: "proceed";
 }> = [
   { kind: "empty directory", present: () => [], outcome: "proceed" },
   {
@@ -4103,11 +4104,13 @@ const entryPreconditionKinds: Array<{
     kind: "non-timestamped message",
     present: () => [`${ENTRY_PEER_ID}-42.json`],
     outcome: "reject",
+    retainOutcome: "proceed",
   },
   {
     kind: "timestamped message",
     present: () => [`${ENTRY_PEER_ID}-20260101T000000-000-42.json`],
     outcome: "reject",
+    retainOutcome: "proceed",
   },
   // A retain-mode message ack: the peer acking a message this party sent. The
   // embedded byte-count (2) is all digits but the terminal segment is `ack`.
@@ -4117,6 +4120,7 @@ const entryPreconditionKinds: Array<{
       `${ENTRY_PEER_ID}-${ENTRY_SELF_ID}-20260101T000000-000-2-ack.json`,
     ],
     outcome: "reject",
+    retainOutcome: "proceed",
   },
   // An orphaned in-flight temp file (a crashed send()/writeAck() artifact),
   // named with the protocol's own temp-<uuidv4()>.tmp shape, is swept at the
@@ -4166,7 +4170,7 @@ const entryPreconditionCells = entryPreconditionModes.flatMap((mode) => {
     present: k.present(helloBody),
     helloBody,
     retain: mode.retain,
-    outcome: k.outcome,
+    outcome: mode.retain ? (k.retainOutcome ?? k.outcome) : k.outcome,
   }));
 });
 
@@ -4217,6 +4221,10 @@ test.each(entryPreconditionCells)(
       expect(err instanceof Error ? err.message : "").not.toContain(
         "fits this party's own peer_id",
       );
+      // Retain mode ignores what an earlier exchange left; it deletes nothing.
+      if (retain)
+        for (const name of present.filter((n) => n.endsWith(".json")))
+          expect(files.has(`/test/${name}`)).toBe(true);
     }
   },
 );

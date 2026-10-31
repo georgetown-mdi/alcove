@@ -179,7 +179,9 @@ export const FIELD_DOCS: Array<{ path: Array<string>; lines: Array<string> }> =
       lines: [
         "Keep every message as a durable transcript instead of deleting it.",
         "Requires lockless_rendezvous and timestamp_in_filename both true; both",
-        "parties must set it identically and start from a fresh directory.",
+        "parties must set it identically. A later exchange may reuse the",
+        "directory if each run writes new file names: give peer_id date and",
+        "time fields, for example site-%Y%m%d%H%M%S.",
       ],
     },
     {

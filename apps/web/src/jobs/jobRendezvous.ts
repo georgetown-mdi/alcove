@@ -772,14 +772,25 @@ const QUOTED_SWEEP_CONTROL = "Clear leftover exchange files";
  * console does not compose. The whole sentence must fit
  * {@link RENDEZVOUS_NOTICE_BUDGET}.
  *
+ * A retain-mode run ignores an earlier exchange's files rather than refusing
+ * them, so with `retainFiles` the lead says that, and what it needs.
+ *
  * @internal exported for testing
  */
 export function notEmptyLead(
   rendezvousDir: string,
   leg: RendezvousLeg,
   sweepExchangeFiles: boolean,
+  retainFiles = false,
 ): string {
   const label = legNoun(leg);
+  if (retainFiles && !sweepExchangeFiles) {
+    const kept =
+      " holds an earlier exchange's files. With every exchange file kept, " +
+      "the run ignores them as long as each run writes new file names, and " +
+      "stops naming any file it cannot ignore.";
+    return fitNotice(`${label} ${rendezvousDir}${kept}`, `${label}${kept}`);
+  }
   const problem =
     " holds an earlier exchange's files, which an exchange refuses to start on. ";
   const recovery = sweepExchangeFiles
@@ -934,6 +945,7 @@ export function rendezvousStartupWarnings(
   dataRoot: string,
   jobWorkdir: string,
   sweepExchangeFiles: boolean,
+  retainFiles = false,
 ): Array<string> {
   const label = legNoun(leg);
   const warnings: Array<string> = [];
@@ -999,7 +1011,7 @@ export function rendezvousStartupWarnings(
       }
       if (entries !== undefined && entries.length > 0)
         warnings.push(
-          notEmptyLead(rendezvousDir, leg, sweepExchangeFiles),
+          notEmptyLead(rendezvousDir, leg, sweepExchangeFiles, retainFiles),
           describeRendezvousEntries(entries, leg),
         );
     }

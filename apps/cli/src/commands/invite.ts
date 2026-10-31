@@ -698,6 +698,7 @@ export async function validateInvite(params: {
         peerId: options.peerId,
         timestampInFilename: options.timestampInFilename,
         writeWithoutRenaming: options.writeWithoutRenaming,
+        unansweredHelloWindow: options.unansweredHelloWindow,
       },
       log,
     );

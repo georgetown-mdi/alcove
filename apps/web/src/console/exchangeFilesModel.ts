@@ -96,9 +96,13 @@ export const WRITE_WITHOUT_RENAMING_NOTICE =
  */
 export const RETAIN_MODE_BILATERAL_NOTICE =
   "Your partner must turn on the same three settings (retain, timestamped " +
-  "filenames, lockless rendezvous) on their side, and you must both start " +
-  "from an empty shared folder. A mismatch is only discovered when the two " +
-  "sides connect, and the exchange then stops with an error.";
+  "filenames, lockless rendezvous) on their side. A mismatch is only " +
+  "discovered when the two sides connect, and the exchange then stops with " +
+  "an error. A later exchange can reuse the shared folder: it ignores the " +
+  "files an earlier one kept, as long as each run writes new file names. " +
+  "A fixed name for this side repeats the same names, so leave it blank, " +
+  "or give peer_id date and time fields in a configuration file, for " +
+  "example site-%Y%m%d%H%M%S.";
 
 /** Resolve a {@link FileSyncToggle} to the boolean the option block holds, or
  * undefined for `auto` (the field is left off entirely). */

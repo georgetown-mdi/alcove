@@ -79,6 +79,10 @@ export const ALLOWED_OMISSIONS = new Map([
     "A remedy for a server that does not allow renames, resting on an assumption the operator vouches for; the failure that calls for it names the setting.",
   ],
   [
+    "connection.options.unanswered_hello_window_ms",
+    "A remedy for a retain-mode run that ignored a waiting partner's hello; the peer timeout that calls for it names the setting.",
+  ],
+  [
     "linkage_terms.linkage_keys.elements.name",
     "A key-element option the built-in keys the template writes do not use.",
   ],

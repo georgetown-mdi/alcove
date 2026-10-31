@@ -336,6 +336,9 @@ const inactivityGuidanceSuffix = (options: MessageLoopOptions): string =>
 export interface MessageLoopDeps {
   responsibleFiles: Set<string>;
   foreignFileSnapshot: Set<string>;
+  // Inbound names a retain-mode entry scan ignored as an earlier exchange's;
+  // every listing here drops them before any check reads it.
+  startupIgnoredFiles: ReadonlySet<string>;
   client: () => FileTransportClient;
   id: () => string;
   role: () => string;
@@ -427,6 +430,16 @@ export class FileSyncMessageLoop {
 
   constructor(private readonly deps: MessageLoopDeps) {}
 
+  // The inbound listing without the files the entry scan ignored, so no check
+  // here can read an earlier exchange's message, ack or abort marker.
+  private async listInbound(path: string): Promise<FileInfo[]> {
+    const files = await this.deps.client().list(path);
+    const ignored = this.deps.startupIgnoredFiles;
+    return ignored.size === 0
+      ? files
+      : files.filter((file) => !ignored.has(file.name));
+  }
+
   /**
    * Writes one message to the shared directory for the peer to consume. The
    * connection's public send() delegates here.
@@ -492,7 +505,7 @@ export class FileSyncMessageLoop {
     // The list() result also prunes responsibleFiles: an entry no longer on
     // the server was consumed by the peer and need not be swept at close.
     const hasOutstandingMessage = async () => {
-      const currentFiles = await deps.client().list(path);
+      const currentFiles = await this.listInbound(path);
       const fileNames = currentFiles.map((f) => f.name);
       deps.responsibleFiles.forEach((fileName) => {
         if (!fileNames.includes(fileName))
@@ -509,9 +522,7 @@ export class FileSyncMessageLoop {
     // we wrote (held in lastSentFile) and the peer id -- never parsed from a
     // marker on disk.
     const ackForLastSentPresent = async (expectedAck: string) =>
-      (await deps.client().list(path)).some(
-        (file) => file.name === expectedAck,
-      );
+      (await this.listInbound(path)).some((file) => file.name === expectedAck);
 
     // The budget for THIS send's wait on the peer, armed here and spent only
     // by this step. It is the peer-INACTIVITY budget, re-armed per send
@@ -825,10 +836,10 @@ export class FileSyncMessageLoop {
       // `unexpectedFiles`; `unexpected_files: ignore` skips it silently.
       //
       // In retain mode, messages are never deleted, so the directory
-      // accumulates one entry per send. synchronize() asserts a clean
-      // directory, so recvSeq starts at 0 and the next unprocessed message
-      // always has NNN === recvSeq.
-      const allFiles = await deps.client().list(path);
+      // accumulates one entry per send. synchronize() admits no message but
+      // the ones listInbound drops, so recvSeq starts at 0 and the next
+      // unprocessed message always has NNN === recvSeq.
+      const allFiles = await this.listInbound(path);
 
       const messages: Array<{ file: FileInfo; declaredSize: number }> = [];
       const unexpected: string[] = [];

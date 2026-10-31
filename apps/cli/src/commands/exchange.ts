@@ -626,6 +626,7 @@ function readExchangeConfig(
       peerId: options.peerId,
       timestampInFilename: options.timestampInFilename,
       writeWithoutRenaming: options.writeWithoutRenaming,
+      unansweredHelloWindow: options.unansweredHelloWindow,
     },
     log,
   );
