@@ -47,6 +47,7 @@
     "check:routetree": "node scripts/check-routetree-fresh.mjs",
     "check:web-config-native-load": "node scripts/check-web-config-native-load.mjs",
     "check:web-config-image-load": "node scripts/check-web-config-image-load.mjs",
+    "check:bundle-notices": "node scripts/check-bundle-notices.mjs",
     "check:core-barrel-wildcards": "node scripts/check-core-barrel-wildcards.mjs",
     "check:internal-fault-throws": "node scripts/check-internal-fault-throws.mjs",
     "check:vectors": "node scripts/check-vectors-generators.mjs",

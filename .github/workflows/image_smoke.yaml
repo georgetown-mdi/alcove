@@ -45,6 +45,8 @@ on:
       # containerised install would otherwise appear first at a release tag.
       - ".npmrc"
       - "package.json"
+      # Each image's builder copies the plugin its bundles are built with.
+      - "scripts/lib/bundleNotices.mjs"
       # The FIPS leg runs both harnesses out of this directory.
       - "support/fips-probe/**"
       # The file-drop setup and launcher scripts delegate every check they make

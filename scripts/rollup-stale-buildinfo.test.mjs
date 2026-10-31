@@ -61,10 +61,9 @@ function linkNodeModules(fromDir, toDir) {
 }
 
 function copyWorkspaces() {
-  cpSync(
-    join(repoRoot, "tsconfig.base.json"),
-    join(scratch, "tsconfig.base.json"),
-  );
+  for (const file of ["tsconfig.base.json", "scripts/lib/bundleNotices.mjs"]) {
+    cpSync(join(repoRoot, file), join(scratch, file), { recursive: true });
+  }
   linkNodeModules(repoRoot, scratch);
   for (const workspace of WORKSPACES) {
     const target = join(scratch, workspace);

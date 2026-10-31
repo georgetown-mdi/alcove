@@ -77,6 +77,17 @@ users. No further entries are required.
 
 ---
 
+Three built files copy npm packages into themselves rather than loading them
+at runtime: the console server (apps/web/dist/console-server/main.mjs, in the
+container images), the SFTP relay (/app/sftp-relay.mjs in its image), and the
+@alcove/core build (packages/core/dist), whose inlined packages the other two
+take in with it. Each such file begins with the license text, and any NOTICE
+file, of every package it includes, written when it is built by
+scripts/lib/bundleNotices.mjs; `npm run check:bundle-notices` fails if a file
+includes a package without that text.
+
+---
+
 The container images this repository publishes also redistribute their base
 distributions' operating-system packages, which no entry above reaches. Those
 packages are listed beside this file, one list per image, in

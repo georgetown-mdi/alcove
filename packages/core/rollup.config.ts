@@ -5,6 +5,8 @@ import { dts } from "rollup-plugin-dts";
 import resolve from "@rollup/plugin-node-resolve";
 import typescript from "@rollup/plugin-typescript";
 
+import { bundleNotices } from "../../scripts/lib/bundleNotices.mjs";
+
 const require = createRequire(import.meta.url);
 const pkg = require("./package.json");
 
@@ -47,7 +49,13 @@ export default defineConfig([
     // canonicalize) from node_modules; everything else is held external by the
     // `external` predicate above, so only the bundled set is pulled in.
     // tsconfig.rollup.json: see docs/notes/core-dist-cache-buildinfo.md.
-    plugins: [resolve(), typescript({ tsconfig: "./tsconfig.rollup.json" })],
+    // bundleNotices() heads each chunk with the license text of what it
+    // inlines, which the console server and SFTP relay bundles carry onward.
+    plugins: [
+      resolve(),
+      typescript({ tsconfig: "./tsconfig.rollup.json" }),
+      bundleNotices(),
+    ],
     // `[name]` is the input key above, so the entry names have to stay `core`,
     // `testing`, `untrusted-text` and `websocket-relay`: package.json points
     // main, module, and every `exports` condition at dist/core.*,

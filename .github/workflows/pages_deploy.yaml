@@ -31,6 +31,7 @@ on:
       - "packages/core/src/**"
       - "packages/core/package.json"
       - "packages/core/rollup.config.ts"
+      - "scripts/lib/bundleNotices.mjs"
       - "packages/core/tsconfig.json"
       - "packages/core/tsconfig.rollup.json"
       - "packages/cli-contract/src/**"
