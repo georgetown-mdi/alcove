@@ -44,8 +44,8 @@ export type RelayHoldReason = "backpressure" | "rate";
 
 /** @internal */
 export interface RelayObserver {
-  held?(role: RendezvousRole, reason: RelayHoldReason): void;
-  released?(role: RendezvousRole, reason: RelayHoldReason): void;
+  held?(role: RendezvousRole, reason: RelayHoldReason, key?: string): void;
+  released?(role: RendezvousRole, reason: RelayHoldReason, key?: string): void;
   forwarded?(key: string, from: RendezvousRole, data: Buffer): void;
 }
 
@@ -205,13 +205,15 @@ export function attachWebSocketRelay(
     if (party.holds.has(reason)) return;
     if (party.holds.size === 0) party.socket.pause();
     party.holds.add(reason);
-    if (party.role !== undefined) observer.held?.(party.role, reason);
+    if (party.role !== undefined)
+      observer.held?.(party.role, reason, party.pairing?.key);
   }
 
   function release(party: Party, reason: RelayHoldReason): void {
     if (!party.holds.delete(reason)) return;
     if (party.holds.size === 0) party.socket.resume();
-    if (party.role !== undefined) observer.released?.(party.role, reason);
+    if (party.role !== undefined)
+      observer.released?.(party.role, reason, party.pairing?.key);
   }
 
   function partnerOf(party: Party): Party | undefined {

@@ -26,8 +26,9 @@ export const SFTP_RELAY_PENDING_GROWTH_BYTES = 64 * 1024;
  * read message and its 14-byte frame header, the 64 KiB read that crossed the
  * mark, the unused capacity of the write in flight and of the pending buffer,
  * each under one growth step, and the paused source socket's read-ahead, under
- * 64 KiB plus one 64 KiB read. Toward the browser it is less: one read and its
- * 10-byte frame header, no message, no pending buffer.
+ * 64 KiB plus one 64 KiB read. Toward the browser it is less: one read, its
+ * 10-byte frame header and its queued-message overhead, no message, no
+ * pending buffer.
  */
 export const SFTP_RELAY_BUFFERED_BOUND_BYTES =
   SFTP_RELAY_SEND_BUFFER_HIGH_BYTES +
