@@ -40,6 +40,7 @@ export type NegotiatedVersions = Readonly<Record<VersionLayer, number>>;
 // A hello is a short JSON object; this bounds the decoded bytes, which the
 // prologue length-prefixes in two bytes.
 const HELLO_MAX_BYTES = 1024;
+const HELLO_MAX_WIRE_LENGTH = Math.ceil(HELLO_MAX_BYTES / 3) * 4;
 const HELLO_MAX_VERSIONS_PER_LAYER = 32;
 const MAX_VERSION = 0x7fffffff;
 
@@ -88,6 +89,7 @@ export interface ReceivedHello {
  * @internal exported for the key exchange and its tests.
  */
 export function readHello(wire: string): ReceivedHello | undefined {
+  if (wire.length > HELLO_MAX_WIRE_LENGTH) return undefined;
   let bytes: Uint8Array<ArrayBuffer>;
   try {
     bytes = fromBase64Url(wire);
