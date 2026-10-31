@@ -4,6 +4,8 @@ import {
   RENDEZVOUS_ROLES,
 } from "@alcove/core/websocket-relay";
 
+import { QUEUED_MESSAGE_OVERHEAD_BYTES } from "./forwarding.ts";
+
 import type {
   RendezvousRole,
   WebSocketRelayProof,
@@ -30,6 +32,20 @@ export const RELAY_SEND_BUFFER_HIGH_BYTES = 1024 * 1024;
 /** A destination's send buffer, in bytes, at or below which the relay reads
  * from the source again. */
 export const RELAY_SEND_BUFFER_LOW_BYTES = 256 * 1024;
+
+/**
+ * The most bytes the relay charges for the messages queued toward one party,
+ * each message its payload, its frame header and
+ * {@link QUEUED_MESSAGE_OVERHEAD_BYTES}: the high mark, plus every message
+ * completed in the read that crossed it, forwarded before the hold stops
+ * reading. That read is at most 64 KiB, finishes at most one message begun
+ * in the read before, and holds frames of at least 6 bytes.
+ */
+export const RELAY_QUEUED_BOUND_BYTES =
+  RELAY_SEND_BUFFER_HIGH_BYTES +
+  64 * 1024 +
+  RELAY_MAX_MESSAGE_BYTES +
+  (Math.floor((64 * 1024) / 6) + 1) * QUEUED_MESSAGE_OVERHEAD_BYTES;
 
 /** How long (ms) a socket may stay open before its hello arrives. */
 export const RELAY_HELLO_TIMEOUT_MS = 10_000;

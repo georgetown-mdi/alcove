@@ -1,5 +1,6 @@
 import { once } from "node:events";
 import { createServer } from "node:http";
+import { duplexPair } from "node:stream";
 
 import WebSocket from "ws";
 
@@ -9,7 +10,9 @@ import { RELAY_PATH } from "../src/protocol.ts";
 import { attachWebSocketRelay } from "../src/relay.ts";
 
 import type { RendezvousRole } from "@alcove/core";
-import type { AddressInfo } from "node:net";
+import type { Server } from "node:http";
+import type { AddressInfo, Socket } from "node:net";
+import type { ClientOptions } from "ws";
 
 import type { RelayKeyTable } from "../src/keyTable.ts";
 import type { WebSocketRelay, WebSocketRelayOptions } from "../src/relay.ts";
@@ -32,6 +35,7 @@ export function keyTableOf(
 
 export interface RunningRelay {
   url: string;
+  server: Server;
   relay: WebSocketRelay;
   faults: string[];
   /** Open TCP connections on the relay's server, upgraded sockets included. */
@@ -58,6 +62,7 @@ export async function startRelay(
   const { port } = server.address() as AddressInfo;
   return {
     url: `ws://127.0.0.1:${port}${RELAY_PATH}`,
+    server,
     relay,
     faults,
     connections: () =>
@@ -169,6 +174,41 @@ export async function connect(url: string): Promise<Party> {
   const party = new Party(socket);
   await once(socket, "open");
   return party;
+}
+
+/** A party connected in memory, and every chunk the server wrote to it. */
+export interface InMemoryConnection {
+  party: Party;
+  serverWrites: Buffer[];
+}
+
+/**
+ * Open a socket to `server` over an in-memory stream in place of TCP, so
+ * once the party's socket is paused the server's writes to it stay queued in
+ * the server's socket, with no kernel buffer taking them.
+ */
+export async function connectInMemory(
+  server: Server,
+  url: string,
+  options: ClientOptions = {},
+): Promise<InMemoryConnection> {
+  const [serverSide, clientSide] = duplexPair({ highWaterMark: 1 });
+  const serverWrites: Buffer[] = [];
+  const write = serverSide.write.bind(serverSide) as (
+    ...args: unknown[]
+  ) => boolean;
+  serverSide.write = ((chunk: unknown, ...rest: unknown[]) => {
+    if (Buffer.isBuffer(chunk)) serverWrites.push(chunk);
+    return write(chunk, ...rest);
+  }) as typeof serverSide.write;
+  server.emit("connection", serverSide);
+  const socket = new WebSocket(url, {
+    ...options,
+    createConnection: () => clientSide as Socket,
+  });
+  const party = new Party(socket);
+  await once(socket, "open");
+  return { party, serverWrites };
 }
 
 /** Two parties whose hellos verified and who both received `paired`. */
