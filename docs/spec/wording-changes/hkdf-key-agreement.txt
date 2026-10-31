@@ -72,3 +72,7 @@
 - The chaining-key chain above -- `psk`, then each `e`, then `ee` -- is faithful Noise NNpsk0, but the overall handshake is pinned by Alcove's own checked-in known-answer vector (`packages/core/test/vectors/kex-vectors.json`) rather than being wire-compatible with generic Noise. -> The chaining-key chain above -- `psk`, then each `e`, then `ee` -- is Noise NNpsk0 apart from the `ee` input, but the overall handshake is pinned by Alcove's own checked-in known-answer vector (`packages/core/test/vectors/kex-vectors.json`) rather than being wire-compatible with generic Noise.
 - Four things diverge from a stock Noise NNpsk0 session. -> Five things diverge from a stock Noise NNpsk0 session.
 - - -> The `ee` token mixes the first block of the key-agreement derivation, not the Diffie-Hellman output.
+- 3 section 5.7.1.2 outputs from the ECC CDH primitive, which for a cofactor-1 curve is plain ECDH -- and is what `deriveBits` returns for ECDH over this curve. -> 3 section 5.7.1.2 outputs from the ECC CDH primitive, which for a cofactor-1 curve is plain ECDH.
+- - -> **A local fault.**
+- - -> A fault the platform raises inside the derivation, rather than a refusal of the peer's share, ends the handshake with that error and sends no abort, so the partner stops at its own handshake timeout.
+- - -> That is a stated limit.
