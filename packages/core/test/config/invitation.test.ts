@@ -378,6 +378,38 @@ test("decodeInvitation normalizes snake_case transform.params keys to camelCase"
   ).toEqual({ inputFormat: "MM/DD/YYYY", outputFormat: "YYYYMMDD" });
 });
 
+test("a transform param named about folds like any other key", async () => {
+  const token = {
+    ...baseToken,
+    linkageTerms: {
+      ...baseTerms,
+      linkageKeys: [
+        {
+          name: "DOB",
+          elements: [
+            {
+              field: "ssn",
+              transform: [
+                {
+                  function: "parse_date",
+                  params: {
+                    input_format: "MM/DD/YYYY",
+                    about: { inner_key: 1 },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  };
+  const decoded = await decodeInvitation(await encodeRawInvitation(token));
+  expect(
+    decoded.linkageTerms.linkageKeys[0].elements[0].transform?.[0].params,
+  ).toEqual({ inputFormat: "MM/DD/YYYY", about: { innerKey: 1 } });
+});
+
 test("decodeInvitation reads a payload column named twice as one entry", async () => {
   // The payload lists reach this party from a partner-authored token, which may
   // name a column twice. The decode chokepoint embeds LinkageTermsSchema, so the

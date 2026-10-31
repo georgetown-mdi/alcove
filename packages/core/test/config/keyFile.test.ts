@@ -7,6 +7,7 @@ import {
   serializeKeyFile,
 } from "../../src/config/keyFile";
 import type { KeyFile } from "../../src/config/keyFile";
+import { parseSensitiveJson } from "../../src/sensitiveFile";
 
 const SECRET = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
@@ -92,6 +93,47 @@ describe("KeyFileSchema", () => {
       path: ["version"],
       message: expect.stringMatching(/^The key file is format version 2,/),
     });
+  });
+
+  test("refuses a __proto__ member by name, at the top level and in a history entry", () => {
+    const topLevel = KeyFileSchema.safeParse(
+      parseSensitiveJson(
+        `{"__proto__":{"newerThing":1},"sharedSecret":"${SECRET}"}`,
+        "key file",
+      ),
+    );
+    expect(topLevel.success).toBe(false);
+    expect(topLevel.error?.issues[0]?.message).toMatch(
+      /^The key file has the field "__proto__", /,
+    );
+
+    const nested = KeyFileSchema.safeParse(
+      parseSensitiveJson(
+        `{"sharedSecret":"${SECRET}","rotationHistory":` +
+          `[{"verifier":"${SECRET}","__proto__":{"newerThing":1}}]}`,
+        "key file",
+      ),
+    );
+    expect(nested.success).toBe(false);
+    expect(nested.error?.issues[0]).toMatchObject({
+      path: ["rotationHistory", 0],
+      message: expect.stringMatching(
+        /^The key file has the field "__proto__", /,
+      ),
+    });
+  });
+
+  test("names a secret-shaped member of a history entry by placeholder, and no value", () => {
+    const result = KeyFileSchema.safeParse({
+      sharedSecret: SECRET,
+      rotationHistory: [{ verifier: SECRET, [SECRET]: 1 }],
+    });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]).toMatchObject({
+      path: ["rotationHistory", 0],
+      message: expect.stringContaining(`"${KEY_FILE_REDACTED_FIELD_NAME}"`),
+    });
+    expect(JSON.stringify(result.error?.issues)).not.toContain(SECRET);
   });
 
   test("refuses a malformed known field without echoing its value", () => {

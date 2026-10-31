@@ -182,7 +182,9 @@ leaves out every field that holds the value an older reader takes the field's
 absence to mean, then states first, as `format_version`, the version the
 remaining fields need, whatever version the document it started from declared.
 A written file that uses no field newer than an older CLI's version is
-therefore one that CLI reads. An in-place edit of an operator's file, such as a
+therefore one that CLI reads. Alcove builds from before format versions refuse
+the `format_version` key, since their exchange-file schema is strict; before
+publication there are no deployed readers to hold apart. An in-place edit of an operator's file, such as a
 pinned fingerprint or an applied terms update, changes only the field it writes
 and leaves `format_version` as the file states it.
 
@@ -262,7 +264,9 @@ A file Alcove writes states the lowest format version its content needs and
 leaves out a field holding the value an older reader assumes for its absence,
 including when it writes back a document it read.
 A file that uses no newer field is therefore read by every Alcove that reads
-its version. A file that does use one is refused by an older reader, naming the
+its version. Alcove builds from before format versions refuse the
+`format_version` key, since their exchange-file schema is strict; before
+publication there are no deployed readers to hold apart. A file that does use one is refused by an older reader, naming the
 version or the field, rather than read short of it.
 
 The rule covers fields a version adds. A change to the shape or meaning of a
@@ -696,7 +700,7 @@ file, and each party provisions its own `.alcove.key` from the code:
 
 `KeyFileSchema` and `serializeKeyFile` (`packages/core/src/config/keyFile.ts`) define the `.alcove.key` fields for every reader and writer: the CLI, the console's check of a mounted key file, and the web application's import and command-line export. The serializer writes the format version first, as `"version": 1` (`KEY_FILE_FORMAT_VERSION`), then the known fields, as pretty-printed JSON with a trailing newline. Version 1 includes every field this section describes, the previous secret and the rotation history among them. A reader takes a file without `version` as version 1.
 
-A reader refuses a `version` above 1, and a field it does not know, as written by a newer Alcove. The CLI's read and the web application's import name the version or the field and never a value, and a field name containing a secret-shaped run of base64url characters is replaced by a placeholder. The console's check of a mounted key file refuses with its fixed message, which states nothing read from the file. The parse result holds the fields without `version`. The web application's import keeps some known fields only, and its notice names each known field it did not keep, under the same naming rule.
+A reader refuses a `version` above 1, and a field it does not know, as written by a newer Alcove. The CLI's read and the web application's import name the version or the field and never a value, and a field name containing a secret-shaped run of base64url characters is replaced by a placeholder. A field it does not know inside a rotation history entry is named under the same rule. The rule matches an unbroken run of 32 or more base64url characters only, so a field name holding a secret broken up by other characters is shown as the file spells it, cut to the display length. The console's check of a mounted key file refuses with its fixed message, which states nothing read from the file. The parse result holds the fields without `version`. The web application's import keeps some known fields only, and its notice names each known field it did not keep, under the same naming rule.
 
 ### The rotation-in-flight marker
 

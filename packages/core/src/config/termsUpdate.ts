@@ -148,11 +148,19 @@ export type TermsUpdateCheck = "format" | "partnership" | "authentication";
 export class TermsUpdateRefusedError extends UsageError {
   /** The check that refused the update. */
   readonly check: TermsUpdateCheck;
+  /** Whether a newer Alcove made the update, a `format` refusal whose message
+   * states its own remedy as a whole sentence. */
+  readonly madeByNewerAlcove: boolean;
 
-  constructor(check: TermsUpdateCheck, message: string) {
+  constructor(
+    check: TermsUpdateCheck,
+    message: string,
+    madeByNewerAlcove = false,
+  ) {
     super(message);
     this.name = "TermsUpdateRefusedError";
     this.check = check;
+    this.madeByNewerAlcove = madeByNewerAlcove;
   }
 }
 
@@ -278,7 +286,7 @@ function statedVersion(json: unknown): number | undefined {
 }
 
 function refusedNewer(message: string): TermsUpdateRefusedError {
-  return new TermsUpdateRefusedError("format", message);
+  return new TermsUpdateRefusedError("format", message, true);
 }
 
 /**

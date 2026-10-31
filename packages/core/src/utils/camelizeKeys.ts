@@ -92,19 +92,27 @@ export class KeyFoldCollisionError extends UsageError {
 }
 
 /**
- * Key names whose value is held verbatim, so its keys are not
- * case-transformed: `providerOptions`, the `ssh2-sftp-client` connect options
- * passed to that library, and `about`, a file's informational block, which a
- * writer holds as the file states it. A name match at any depth, decided in
- * both directions by {@link transformKeysDeep} so a write -> read round trip is
- * byte-stable. Exported for the structural-invariant test.
+ * Key names whose value is passed verbatim to an external library, so its keys
+ * are not case-transformed: `providerOptions`, the `ssh2-sftp-client` connect
+ * options. A name match at any depth, decided in both directions by
+ * {@link transformKeysDeep} so a write -> read round trip is byte-stable.
+ * Exported for the structural-invariant test.
  *
  * @internal
  */
 export const OPAQUE_VALUE_KEYS: ReadonlySet<string> = new Set([
   "providerOptions",
-  "about",
 ]);
+
+/**
+ * Key names whose value is held verbatim only as a member of the document the
+ * walk starts at: `about`, a file's informational block, which a writer holds
+ * as the file states it. Anywhere deeper the name folds like any other key.
+ * Decided in both directions by {@link transformKeysDeep}.
+ *
+ * @internal
+ */
+export const ROOT_OPAQUE_VALUE_KEYS: ReadonlySet<string> = new Set(["about"]);
 
 /**
  * Rewrite one snake_case key to camelCase; also the canonical form opacity is
@@ -155,7 +163,8 @@ interface KeyWalk {
  * The walker behind {@link camelizeKeys} and {@link snakeizeKeys}: rewrites
  * every object key, never a string value. An opaque key's value is not entered;
  * opacity is decided on `camelizeKey` of the input key in both directions, so
- * both skip the same subtrees (unit-tested from `OPAQUE_VALUE_KEYS`).
+ * both skip the same subtrees (unit-tested from `OPAQUE_VALUE_KEYS`, and from
+ * `ROOT_OPAQUE_VALUE_KEYS` at the walk's root only).
  *
  * `depth` and `budget` bound recursion and total width against partner input;
  * an over-wide array or object is refused before it is materialized. A skipped
@@ -209,7 +218,11 @@ function transformKeysDeep(
           writtenAs.set(rewrittenKey, k);
         }
         const camel = camelizeKey(k);
-        if (OPAQUE_VALUE_KEYS.has(camel)) return [rewrittenKey, v];
+        if (
+          OPAQUE_VALUE_KEYS.has(camel) ||
+          (path.length === 0 && ROOT_OPAQUE_VALUE_KEYS.has(camel))
+        )
+          return [rewrittenKey, v];
         const widthBound = walk.widthBoundedKeys?.get(camel);
         if (typeof widthBound === "object" && walk.atBoundsRoot) {
           path.push(rewrittenKey);

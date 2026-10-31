@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -167,6 +168,32 @@ async function runUpdate(): Promise<string> {
 const REPLACED_SEND_CLAUSE = "named other columns than its metadata sends";
 
 /** Run `alcove apply` for Agency B; returns stderr and the exit code. */
+/** The JSON body of an encoded terms update. */
+function updateBody(encoded: string): Record<string, unknown> {
+  const [body] = encoded.split(".") as [string];
+  return JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as Record<
+    string,
+    unknown
+  >;
+}
+
+/** `content` as a terms update authenticated under `secret`, by the MAC
+ * derivation docs/spec/EXCHANGE_FILE.md states (HKDF-SHA-256, zero salt). */
+function authenticatedUpdate(content: object, secret: string): string {
+  const bytes = Buffer.from(JSON.stringify(content), "utf8");
+  const macKey = Buffer.from(
+    crypto.hkdfSync(
+      "sha256",
+      Buffer.from(secret, "base64url"),
+      Buffer.alloc(0),
+      "alcove-terms-update-v2:mac",
+      32,
+    ),
+  );
+  const mac = crypto.createHmac("sha256", macKey).update(bytes).digest();
+  return `${bytes.toString("base64url")}.${mac.toString("base64url")}`;
+}
+
 async function runApply(
   update: string,
   party: Party = partnership.b,
@@ -692,6 +719,64 @@ describe("alcove apply", () => {
     expect(stderr).not.toContain("Terms update details");
     expect(promptConfirmMock).not.toHaveBeenCalled();
     expect(fs.readFileSync(partnership.b.config, "utf8")).toBe(before);
+  });
+
+  test.each([
+    [
+      "a newer format version",
+      (content: Record<string, unknown>) => ({ ...content, version: "2" }),
+      "This terms update is format version 2, made by a newer version of Alcove",
+    ],
+    [
+      "a member it does not read",
+      (content: Record<string, unknown>) => ({
+        ...content,
+        fromALaterBuild: 1,
+      }),
+      'This terms update has the field "fromALaterBuild"',
+    ],
+  ])(
+    "an update with %s is refused by the decoder's own message and remedy alone",
+    async (_case, edit, refusal) => {
+      const content = updateBody(
+        await encodeTermsUpdate(
+          { linkageTerms: partnership.aTerms },
+          partnership.secret,
+        ),
+      );
+      const before = fs.readFileSync(partnership.b.config, "utf8");
+
+      const { exit, stderr } = await runApply(
+        authenticatedUpdate(edit(content), partnership.secret),
+      );
+      expect(exit).toBe("exit:64");
+      expect(stderr).toContain(refusal);
+      expect(stderr).toContain(
+        "Update Alcove, then try the terms update again. Nothing was changed.",
+      );
+      expect(stderr).not.toContain("could not be read");
+      expect(stderr).not.toContain("alcove update' again");
+      expect(stderr).not.toContain("..");
+      expect(fs.readFileSync(partnership.b.config, "utf8")).toBe(before);
+    },
+  );
+
+  test("an update that is not an Alcove terms update keeps the read refusal and its remedy", async () => {
+    const { linkageTerms: _terms, ...content } = updateBody(
+      await encodeTermsUpdate(
+        { linkageTerms: partnership.aTerms },
+        partnership.secret,
+      ),
+    );
+
+    const { exit, stderr } = await runApply(
+      authenticatedUpdate(content, partnership.secret),
+    );
+    expect(exit).toBe("exit:64");
+    expect(stderr).toContain(
+      "the terms update could not be read: this is not an Alcove terms update",
+    );
+    expect(stderr).toContain("Ask your partner to run 'alcove update' again");
   });
 
   test("an update made for another partnership is refused by the partnership check", async () => {

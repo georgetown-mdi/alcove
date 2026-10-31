@@ -118,52 +118,78 @@ function keyFileFieldNameForDisplay(name: string): string {
   return SECRET_SHAPED_RUN.test(name) ? KEY_FILE_REDACTED_FIELD_NAME : name;
 }
 
+const KeyFileVersionSchema = z.looseObject({
+  version: z
+    .int()
+    .min(1)
+    .max(KEY_FILE_FORMAT_VERSION, {
+      error: (issue) =>
+        newerFormatVersionMessage(
+          "The key file",
+          Number(issue.input),
+          KEY_FILE_FORMAT_VERSION,
+          KEY_FILE_NEWER_REMEDY,
+        ),
+    })
+    .optional(),
+});
+
+const KeyFileFieldsSchema = z.looseObject({
+  version: z.unknown().optional(),
+  ...KEY_FILE_FIELD_SCHEMAS,
+});
+
+/** A refusal of members a newer Alcove wrote, named through the display rule. */
+function newerKeyFileMembersIssue(
+  path: ReadonlyArray<PropertyKey>,
+  names: ReadonlyArray<string>,
+): z.core.$ZodIssue {
+  return {
+    code: "custom",
+    path: [...path],
+    message: newerFormatMemberMessage(
+      "The key file",
+      names.map(keyFileFieldNameForDisplay),
+      KEY_FILE_NEWER_REMEDY,
+    ),
+  };
+}
+
 /**
- * The key file's validator. A field outside {@link KeyFile} and `version`,
- * and a version above {@link KEY_FILE_FORMAT_VERSION}, is refused as written
- * by a newer Alcove; the refusal names the field and never a value. The
+ * The key file's validator. A field outside {@link KeyFile} and `version`, at
+ * the top level or inside a rotation history entry, and a version above
+ * {@link KEY_FILE_FORMAT_VERSION}, is refused as written by a newer Alcove;
+ * the refusal names the field through the display rule and never a value. The
  * version is checked first, so a newer file is refused by its version alone,
- * not beside field errors whose remedy differs. The result holds the
- * {@link KeyFile} fields, without `version`.
+ * not beside field errors whose remedy differs. The unknown fields are read
+ * from the input's own keys, so a member Zod's output would absorb, such as
+ * `__proto__`, is refused too. The result holds the {@link KeyFile} fields,
+ * without `version`.
  */
 export const KeyFileSchema: z.ZodType<KeyFile, unknown> = z
-  .looseObject({
-    version: z
-      .int()
-      .min(1)
-      .max(KEY_FILE_FORMAT_VERSION, {
-        error: (issue) =>
-          newerFormatVersionMessage(
-            "The key file",
-            Number(issue.input),
-            KEY_FILE_FORMAT_VERSION,
-            KEY_FILE_NEWER_REMEDY,
-          ),
-      })
-      .optional(),
-  })
-  .pipe(
-    z.looseObject({
-      version: z.number().optional(),
-      ...KEY_FILE_FIELD_SCHEMAS,
-    }),
-  )
-  .superRefine((file, ctx) => {
-    const unknown = Object.keys(file).filter(
+  .unknown()
+  .transform((raw, ctx): KeyFile => {
+    const refuse = (issues: ReadonlyArray<z.core.$ZodIssue>): KeyFile => {
+      for (const issue of issues)
+        ctx.issues.push({ ...issue, input: undefined });
+      return z.NEVER;
+    };
+    const version = KeyFileVersionSchema.safeParse(raw);
+    if (!version.success) return refuse(version.error.issues);
+    const unknown = Object.keys(raw as object).filter(
       (name) => name !== "version" && !KEY_FILE_FIELD_NAMES.has(name),
     );
-    if (unknown.length === 0) return;
-    ctx.addIssue({
-      code: "custom",
-      path: [],
-      message: newerFormatMemberMessage(
-        "The key file",
-        unknown.map(keyFileFieldNameForDisplay),
-        KEY_FILE_NEWER_REMEDY,
-      ),
-    });
-  })
-  .transform(({ version: _version, ...fields }): KeyFile => fields);
+    const fields = KeyFileFieldsSchema.safeParse(raw);
+    const issues = (fields.success ? [] : fields.error.issues).map((issue) =>
+      issue.code === "unrecognized_keys"
+        ? newerKeyFileMembersIssue(issue.path, issue.keys)
+        : issue,
+    );
+    if (unknown.length > 0) issues.push(newerKeyFileMembersIssue([], unknown));
+    if (issues.length > 0 || !fields.success) return refuse(issues);
+    const { version: _version, ...known } = fields.data;
+    return known as KeyFile;
+  });
 
 /**
  * The names of the top-level fields of a parsed key file that a reader keeping

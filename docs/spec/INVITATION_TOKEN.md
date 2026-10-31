@@ -50,7 +50,7 @@ The token is a JSON object with these members:
 
 | Member | JSON type | Required | Rule |
 | --- | --- | --- | --- |
-| `version` | string | yes | The decimal string of a positive integer no larger than the newest version this build reads, `"1"`. A larger one is refused as made by a newer Alcove, naming both versions; the number `1` and any other string are refused. |
+| `version` | string | yes | The decimal string of a positive integer no larger than the newest version this build reads, `"1"`. A larger one of up to nine digits, the syntax the decoder reads, is refused as made by a newer Alcove, naming both versions; a longer one, the number `1` and any other string are refused by the schema. |
 | `about` | object | no | The informational block; see [Version policy](#version-policy). |
 | `linkageTerms` | object | yes | A linkage-terms document, validated by `InvitationLinkageTermsSchema`: `LinkageTermsSchema` behind a key-folding pre-pass (below). |
 | `sharedSecret` | string | yes | `SHARED_SECRET_REGEX` (`packages/core/src/config/connection.ts`): 43 base64url characters, the last one in `[AEIMQUYcgkosw048]`, so the string decodes to exactly 32 bytes. |
@@ -73,7 +73,7 @@ The token is versioned under the same rule as the exchange file ([EXCHANGE_FILE.
 
 - `encodeInvitation` writes the token at the lowest version its content needs: it leaves out each member that holds the value an older decoder takes the member's absence to mean, and states as `version` the version the remaining members need, whatever `version` its caller passed.
   A token that uses no member newer than an older decoder's version is therefore one that decoder reads.
-- `decodeInvitation` refuses a `version` above the newest it reads before the schema, naming both versions, and refuses a declared `version` below what the token's members need, naming the member and the version it needs.
+- `decodeInvitation` refuses a `version` of up to nine digits above the newest it reads before the schema, naming both versions, and refuses a declared `version` below what the token's members need, naming the member and the version it needs.
 - The `about` member is the informational block: the mint time (`mintedAt`), the minting build (`mintedBy`), a `label`, a `comment`, and a form hint (`formHint`).
   A decoder of any version skips every member of it, a member it does not know included.
   Every other position is strict.
@@ -166,7 +166,7 @@ Each of the first five throws `InvitationDecodeError` with a fixed message conta
 4. **Checksum** (`checksumMismatch`): the first 4 bytes of the SHA-256 digest of the decoded body bytes, base64url-encoded, are compared with the last 6 characters as strings.
 5. **JSON** (`notJson`): the bytes are parsed by `parseBoundedJson` (`packages/core/src/utils/boundedJson.ts`), which checks the structure bounds over the bytes, decodes them as UTF-8 with invalid sequences refused, and then calls `JSON.parse`.
    A structure over a bound, invalid UTF-8 and malformed JSON are all reported as `notJson`.
-6. **Version**: a `version` above the newest this build reads is refused with `ZodError`, naming both versions.
+6. **Version**: a `version` of up to nine digits above the newest this build reads is refused with `ZodError`, naming both versions; a longer one fails the schema step below and is refused as unreadable.
 7. **Schema**: the parsed value is validated against `InvitationTokenSchema`, which throws `ZodError` on a failure.
    The `linkageTerms` fold runs inside that validation and throws its own errors through it: `NestingDepthExceededError`, `NodeCountExceededError` and `KeyFoldCollisionError`, each a `UsageError`.
    A schema that accepts the token is followed by the refusal of each key of the terms the schema did not read, and of a declared `version` below what the members need, each with `ZodError`.

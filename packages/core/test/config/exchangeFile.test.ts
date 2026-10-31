@@ -641,6 +641,43 @@ test("a field the schema defaults counts toward the version only where the file 
   );
 });
 
+test("only the top-level about block is held verbatim: a transform param named about folds", () => {
+  const minted = snakeizeKeys(
+    mintExchangeSpec({ connection: sftpLocator, linkageTerms: baseTerms }),
+  ) as { linkage_terms: Record<string, unknown> };
+  const raw = {
+    ...minted,
+    linkage_terms: {
+      ...minted.linkage_terms,
+      linkage_keys: [
+        {
+          name: "SSN",
+          elements: [
+            {
+              field: "ssn",
+              transform: [
+                {
+                  function: "parse_date",
+                  params: {
+                    input_format: "MM/DD/YYYY",
+                    about: { inner_key: 1 },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    about: { inner_key: 1 },
+  };
+  const parsed = parseExchangeSpec(raw);
+  expect(
+    parsed.linkageTerms.linkageKeys[0]?.elements[0]?.transform?.[0]?.params,
+  ).toEqual({ inputFormat: "MM/DD/YYYY", about: { innerKey: 1 } });
+  expect(parsed.about).toEqual({ inner_key: 1 });
+});
+
 test("an about block holding two spellings of one name is read", () => {
   const about = { my_note: "a", myNote: "b" };
   const raw = {

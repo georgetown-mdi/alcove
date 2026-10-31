@@ -159,7 +159,8 @@ function namesFile(updateArgument: string, filePath: string): boolean {
  * The refusal an update the decode refused is reported as. A partnership
  * refusal names the terms proposal beside the configuration where there is
  * one: the exchange that wrote it rotated the shared secret, so an update
- * made before it no longer verifies.
+ * made before it no longer verifies. An update a newer Alcove made is reported
+ * by its own message, which states its own remedy.
  */
 function refusalOf(
   err: TermsUpdateRefusedError,
@@ -168,6 +169,8 @@ function refusalOf(
   const unchanged = " Nothing was changed.";
   switch (err.check) {
     case "format":
+      if (err.madeByNewerAlcove)
+        return new UsageError(`${err.message}${unchanged}`);
       return new UsageError(
         `the terms update could not be read: ${err.message}.${unchanged} ` +
           "Ask your partner to run 'alcove update' again and send you its " +
