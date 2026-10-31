@@ -920,10 +920,11 @@ The deploy holds a Cloudflare token able to replace the public site, and a job h
 So the upload job checks nothing out and only uploads the artifact the gate built, and no other job, in any workflow, holds the token or runs in the GitHub environments the token is set on.
 The production upload in `release.yaml` and the project site's deploy, `site_deploy.yaml`, read the same token, so their upload jobs are held to the same terms: one such job in each of the three deploy workflows, and none anywhere else.
 A second deploy path, or a build step moved into the upload job, would hold the same token without that separation, and nothing but review would notice; the check turns either into a failure.
-The `Release` environment holds the Docker Hub publish token instead, read only by the release's Docker Hub job, which needs inline steps to copy, sign and read back the images.
-The check admits that one job, `dockerhub` in `release.yaml`, with its `run` steps, and fails on a second job in the environment, a checkout, a local action or a called workflow in it.
-The environment's protection is its tag-only deployment policy (`v*.*.*`) and the tag ruleset limiting who can push such a tag, which the check does not read.
-A job in any environment the check does not name fails, so a new environment is added to it deliberately.
+The `Release` environment holds the Docker Hub publish token instead, read only by the release's Docker Hub job, which needs inline steps to copy and read back the images.
+The check exempts exactly one job from the holder rule: `dockerhub` in `release.yaml`, and only while its `environment` is the literal string `Release`.
+Its inline `run` steps are admitted because the token is not a deploy credential, and the steps run in an environment only a `v*.*.*` tag can use; a checkout, a local action or a called workflow in it still fails, since each would run repository code beside the token.
+Any other form of its `environment` (a mapping, an expression, another name) leaves it a holder, so the holder rule refuses its `run` steps; a second job in `Release` is a holder too, and the one-holder rule refuses it.
+The environment's protection is its tag-only deployment rule and the tag ruleset limiting who can push such a tag, which the check does not read.
 
 ### Why the graph is read from a real build
 

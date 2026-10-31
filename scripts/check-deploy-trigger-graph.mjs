@@ -3,16 +3,17 @@
 // `npm run check:all` in static_checks.yaml. It fails unless:
 //
 //   - The CREDENTIAL_WORKFLOWS hold the only deploys. A job uploads with
-//     DEPLOY_ACTION, names a Cloudflare secret or runs in one of the
-//     CLOUDFLARE_ENVIRONMENTS in exactly one job of each of them and in no
-//     other workflow; each such job runs no repository code (no `run` step,
-//     no checkout, no local action, no called workflow); and no workflow
-//     passes `secrets: inherit` or `toJSON(secrets)`.
-//   - The RELEASE_ENVIRONMENT, which holds the Docker Hub publish token,
-//     admits exactly one job in the repository, RELEASE_JOB. That job may run
-//     inline `run` steps, but checks nothing out, runs no local action and
-//     calls no workflow.
-//   - A job in any other environment fails: the check must be taught it.
+//     DEPLOY_ACTION, names a Cloudflare secret or runs in a GitHub environment
+//     in exactly one job of each of them and in no other workflow; each such
+//     job runs no repository code (no `run` step, no checkout, no local
+//     action, no called workflow); and no workflow passes `secrets: inherit`
+//     or `toJSON(secrets)`.
+//   - One job is not such a holder: RELEASE_JOB, whose `environment` is exactly
+//     the string RELEASE_ENVIRONMENT, which holds the Docker Hub publish token.
+//     It may run inline `run` steps but checks nothing out, runs no local action
+//     and calls no workflow. Any other form of its `environment` (a mapping, an
+//     expression, another name) leaves it a holder, so its `run` steps fail it;
+//     a second job in that environment is a holder too.
 //   - Every tracked source the hosted static build reads matches a push filter of
 //     pages_deploy.yaml; release.yaml's production redeploy runs on every
 //     release tag, with no filter. The graph is the module ids
@@ -64,13 +65,10 @@ export const CREDENTIAL_WORKFLOWS = [
 
 const credentialWorkflowList = `${CREDENTIAL_WORKFLOWS.slice(0, -1).join(", ")} and ${CREDENTIAL_WORKFLOWS.at(-1)}`;
 
-/** The environments the Cloudflare deploy token is set on. */
-export const CLOUDFLARE_ENVIRONMENTS = ["Production", "Staging"];
-
 /** The environment holding the Docker Hub publish token. */
 export const RELEASE_ENVIRONMENT = "Release";
 
-/** The one job allowed to run in RELEASE_ENVIRONMENT. */
+/** The one job that may run in RELEASE_ENVIRONMENT without holding the deploy credentials. */
 export const RELEASE_JOB = { path: RELEASE_WORKFLOW, id: "dockerhub" };
 
 /** The build output the deploy uploads. */
@@ -165,24 +163,6 @@ const DEPLOY_SECRET = /\bsecrets\.CLOUDFLARE_/;
 const ALL_SECRETS = /\btoJSON\(\s*secrets\s*\)/;
 
 /**
- * The environment names a job's `environment` key can resolve to: the string
- * itself, its `name` when a mapping, or the quoted literals of an expression
- * (`${{ cond && 'Production' || 'Staging' }}`), the literals after `&&` or
- * `||`. Empty when it names none.
- */
-function environmentNames(environment) {
-  const value =
-    typeof environment === "object" && environment !== null
-      ? environment.name
-      : environment;
-  if (typeof value !== "string") return [];
-  if (!value.includes("${{")) return [value];
-  return [...value.matchAll(/(?:&&|\|\|)\s*'([^']*)'/g)].map(
-    (match) => match[1],
-  );
-}
-
-/**
  * Findings against the deploy-credential rule (see the header), as strings, over
  * `[{path, document}]` parsed workflows. Empty when the rule holds.
  */
@@ -208,28 +188,13 @@ export function deployCredentialFindings(workflows) {
         );
       }
       const steps = Array.isArray(job?.steps) ? job.steps : [];
-      const environments =
-        job?.environment === undefined ? [] : environmentNames(job.environment);
-      if (job?.environment !== undefined) {
-        const unknown =
-          environments.length === 0
-            ? [JSON.stringify(job.environment)]
-            : environments.filter(
-                (name) =>
-                  name !== RELEASE_ENVIRONMENT &&
-                  !CLOUDFLARE_ENVIRONMENTS.includes(name),
-              );
-        for (const name of unknown) {
-          findings.push(
-            `${path} job ${id} runs in the environment ${name}, which this check does not know: teach scripts/check-deploy-trigger-graph.mjs that environment, and which jobs may run in it, before it is used.`,
-          );
-        }
-      }
-      if (environments.includes(RELEASE_ENVIRONMENT)) {
-        releaseJobs.push({ path, id, job, steps });
-      }
+      const isReleaseJob =
+        path === RELEASE_JOB.path &&
+        id === RELEASE_JOB.id &&
+        job?.environment === RELEASE_ENVIRONMENT;
+      if (isReleaseJob) releaseJobs.push({ path, id, job, steps });
       const holds =
-        environments.some((name) => CLOUDFLARE_ENVIRONMENTS.includes(name)) ||
+        (job?.environment !== undefined && !isReleaseJob) ||
         DEPLOY_SECRET.test(JSON.stringify(job ?? null)) ||
         steps.some((step) =>
           String(step?.uses ?? "").startsWith(DEPLOY_ACTION),
@@ -237,7 +202,7 @@ export function deployCredentialFindings(workflows) {
       if (holds) holders.push({ path, id, job, steps });
     }
   }
-  const holding = `upload with ${DEPLOY_ACTION}, name a Cloudflare secret or run in the ${CLOUDFLARE_ENVIRONMENTS.join(" or ")} environment`;
+  const holding = `upload with ${DEPLOY_ACTION}, name a Cloudflare secret or run in a GitHub environment`;
   const named = (list) => list.map(({ path, id }) => `${path} job ${id}`);
   for (const workflow of CREDENTIAL_WORKFLOWS) {
     const inWorkflow = holders.filter(({ path }) => path === workflow);
@@ -275,15 +240,7 @@ export function deployCredentialFindings(workflows) {
       );
     }
   }
-  const isReleaseJob = ({ path, id }) =>
-    path === RELEASE_JOB.path && id === RELEASE_JOB.id;
-  const releaseOutside = releaseJobs.filter((entry) => !isReleaseJob(entry));
-  if (releaseOutside.length > 0) {
-    findings.push(
-      `Only ${RELEASE_JOB.path} job ${RELEASE_JOB.id} may run in the ${RELEASE_ENVIRONMENT} environment; found ${named(releaseOutside).join(", ")}.`,
-    );
-  }
-  for (const { path, id, job, steps } of releaseJobs.filter(isReleaseJob)) {
+  for (const { path, id, job, steps } of releaseJobs) {
     const code = codeIn(job, steps, { inlineRun: false });
     if (code.length > 0) {
       findings.push(
@@ -524,7 +481,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   );
   if (credentialFindings.length > 0) {
     console.error(
-      "Deploy trigger check failed: the deploy credentials reach a job other than the one upload job of each deploy workflow, or a job runs in an environment it may not.\n",
+      "Deploy trigger check failed: the deploy credentials reach a job other than the one upload job of each deploy workflow.\n",
     );
     for (const finding of credentialFindings) console.error(`  ${finding}`);
     process.exit(1);
