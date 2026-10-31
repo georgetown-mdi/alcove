@@ -2,9 +2,15 @@
 // stating what to do, naming only the flag that applies to this run. Core's
 // sentence states what happened (failureCauseSentence); this map is total over
 // FailureCauseKind, so a cause core adds fails to compile here until bound.
+// Also the step for a state only the CLI reaches, an online setup that saved
+// its key file and stopped before its configuration
+// (keyFileSavedConfigNotWrittenRemedy).
 
 import {
   failureCauseOf,
+  NEW_INVITATION_REMEDY,
+  operatorSuppliedText,
+  redactAndRenderOperatorSuppliedText,
   relayRegistrarUnreachableRemedy,
   type FailureCause,
   type FailureCauseKind,
@@ -155,4 +161,94 @@ export function failureRemedy(err: unknown): string | undefined {
         arrivalWait: arrivalWaitOf(err),
         fromKeyFile: annotationOf(err, FROM_KEY_FILE) === true,
       });
+}
+
+/**
+ * The configuration an online `alcove invite` or `alcove accept` sets up: its
+ * path, and whether the run keeps one already there (an accept that reconciled
+ * it) rather than writing its own.
+ */
+export interface OnlineSetupConfiguration {
+  readonly configPath: string;
+  readonly kept: boolean;
+}
+
+/**
+ * An online invite or accept that saved its rotated key file at `keyPath` and
+ * then ended before its configuration step ran, so the configuration is the
+ * one it kept, or none.
+ */
+export interface KeyFileSavedConfigNotWritten extends OnlineSetupConfiguration {
+  readonly keyPath: string;
+}
+
+/**
+ * How a run ended: on a failure, whose message or fixed next step states a step
+ * of its own or not, or on a signal.
+ */
+export type RunEnding =
+  | { readonly kind: "failed"; readonly errorStatesItsStep: boolean }
+  | { readonly kind: "interrupted" };
+
+/**
+ * The step for `state` on a run that ended as `ending`. With no configuration
+ * on disk, the online commands refuse the key file left behind, so it is
+ * deleted before a new invitation; with a kept one, `alcove exchange` runs
+ * from both files. A failure that states its own step keeps it, and gets only
+ * the key file's part.
+ */
+export function keyFileSavedConfigNotWrittenRemedy(
+  state: KeyFileSavedConfigNotWritten,
+  ending: RunEnding,
+): string {
+  const key = redactAndRenderOperatorSuppliedText(
+    operatorSuppliedText(state.keyPath),
+  );
+  const config = redactAndRenderOperatorSuppliedText(
+    operatorSuppliedText(state.configPath),
+  );
+  const stopped = ending.kind === "interrupted" ? "was interrupted" : "stopped";
+  const errorStep = ending.kind === "failed" && ending.errorStatesItsStep;
+  if (!state.kept) {
+    const happened = `The key file ${key} was saved, but the run ${stopped} before it wrote the configuration ${config}.`;
+    const deleteKey = `Delete ${key} before you start again.`;
+    return errorStep
+      ? `${happened} ${deleteKey}`
+      : `${happened} ${deleteKey} ${NEW_INVITATION_REMEDY}`;
+  }
+  const happened = `The key file ${key} was saved and the configuration ${config} kept before the run ${stopped}.`;
+  return errorStep
+    ? `${happened} If you accept a new invitation, delete ${key} first.`
+    : `${happened} Run 'alcove exchange' again; if it fails to authenticate ` +
+        "or never meets your partner, ask your partner for a new invitation, " +
+        `and delete ${key} before you accept it.`;
+}
+
+const KEY_FILE_SAVED_CONFIG_NOT_WRITTEN =
+  annotationKey<KeyFileSavedConfigNotWritten>(
+    "key file saved, configuration not written",
+  );
+
+/**
+ * Record `state` on `err`, so the command boundary that renders it states
+ * {@link keyFileSavedConfigNotWrittenRemedy}. An error that is not an object is
+ * returned unchanged.
+ */
+export function markKeyFileSavedConfigNotWritten<E>(
+  err: E,
+  state: KeyFileSavedConfigNotWritten,
+): E {
+  if (typeof err === "object" && err !== null)
+    annotate(err, KEY_FILE_SAVED_CONFIG_NOT_WRITTEN, state);
+  return err;
+}
+
+/**
+ * What {@link markKeyFileSavedConfigNotWritten} recorded on `err` or the nearest
+ * link of its cause chain, else `undefined`.
+ */
+export function keyFileSavedConfigNotWrittenOf(
+  err: unknown,
+): KeyFileSavedConfigNotWritten | undefined {
+  return annotationOf(err, KEY_FILE_SAVED_CONFIG_NOT_WRITTEN);
 }

@@ -141,6 +141,10 @@ async function runAttempt(options: AttemptOptions): Promise<AttemptOutcome> {
   const secretS = loadKeyFile(keyFiles.sender)!.sharedSecret;
 
   let authenticated = 0;
+  const onlineSetup = {
+    configPath: path.join(work, `${tag}-alcove.yaml`),
+    kept: false,
+  };
   const onAuthenticated = () => {
     authenticated += 1;
     if (authenticated === 2) options.stageOnceAuthenticated?.(srv);
@@ -176,6 +180,7 @@ async function runAttempt(options: AttemptOptions): Promise<AttemptOutcome> {
         output: outR,
         verbosity: -1,
         loggerName: `${tag}-receiver`,
+        onlineSetup,
         onAuthenticated,
       });
       const sender = runProtocol({
@@ -185,6 +190,7 @@ async function runAttempt(options: AttemptOptions): Promise<AttemptOutcome> {
         output: outS,
         verbosity: -1,
         loggerName: `${tag}-sender`,
+        onlineSetup,
         onAuthenticated,
       });
       // Both settlements are attached before either is awaited, so a party that

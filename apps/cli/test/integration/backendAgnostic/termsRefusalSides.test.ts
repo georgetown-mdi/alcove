@@ -72,7 +72,15 @@ async function run(
       output: path.join(work, `${name}-out`),
       verbosity: -1,
       loggerName: `terms-sides-${name}`,
-      ...(onAuthenticated === undefined ? {} : { onAuthenticated }),
+      ...(onAuthenticated === undefined
+        ? {}
+        : {
+            onAuthenticated,
+            onlineSetup: {
+              configPath: path.join(work, `${name}.yaml`),
+              kept: false,
+            },
+          }),
     });
   } catch (err) {
     return renderFailureForOperator(err);
@@ -124,9 +132,10 @@ test("each party states a linkage strategy difference from its own side", async 
   }
 }, 30_000);
 
-// The configuration write runs with the key-file save, after the terms are
-// agreed on, so a run the terms refuse reaches neither and keeps its secret. The
-// run passing that write states the online invitation's step.
+// The key-file save runs inside the terms exchange once the terms are agreed
+// on, and the configuration write after it, so a run the terms refuse reaches
+// neither and keeps its secret. The run passing that write states the online
+// invitation's step.
 test("a run refused at the terms exchange runs no configuration write", async () => {
   const dropDir = fs.mkdtempSync(path.join(work, "drop-"));
   let configurationWrites = 0;

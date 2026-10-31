@@ -14,6 +14,16 @@ Core holds the catalog, `packages/core/src/failureCause.ts`: a `FailureCause` un
 
 Each app binds the remedy in a map keyed on every `FailureCauseKind`, so a cause core adds fails to compile in an app until it has a remedy. The console's is `apps/web/src/console/consoleFailureCause.ts`, naming the Connection tuning control that sets the wait and the console's shared-folder mount; the CLI's is `apps/cli/src/failureRemedy.ts`; it names only the flag that bounds the run in hand -- `--peer-timeout` on an exchange, `--accept-timeout` on an online invitation -- by reading a second tag the command boundary sets on a partner-never-arrived error. The remedy for an unreachable relay registrar is the same in both apps, since the registrar address is set in the configuration and neither app has a flag or control for it, so core holds it (`relayRegistrarUnreachableRemedy`) and both maps return it.
 
+## A state no cause names
+
+The CLI's remedy module also states the step for a state only the CLI reaches: an online `alcove invite` or `alcove accept` that saved its key file and stopped before it wrote its configuration (`keyFileSavedConfigNotWrittenRemedy`). It is not a catalog cause, for three reasons:
+
+- The console runs `alcove exchange` alone, so no second app reports it.
+- The state comes with whatever failure ended the run, or with an interrupt that raises no error at all, and an error holds one cause.
+- It is no fact of an existing cause either: those state why a partner or a place could not be reached, not what a run left on disk.
+
+So `apps/cli/src/protocol.ts` records the state, with the configuration the online commands pass it, on the error the run ends with. The command boundary states the step in place of a catalog remedy, and the signal handler states it on an interrupt.
+
 ## Formatting the facts
 
 A wait is stated by `formatWaitDuration` in the largest whole unit that states it exactly, and every count goes through `formatCount` (`packages/core/src/utils/formatCount.ts`), whose explicit locale keeps the digit separator ASCII for the CLI's console check. An OS error code goes in parentheses after the path or host it concerns. A fact the raise site cannot know -- a channel or a wait when the connection holds no configuration -- is left out of the sentence rather than guessed. Internal tags such as a `[role]` prefix stay in debug logs.

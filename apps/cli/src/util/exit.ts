@@ -28,7 +28,11 @@ import {
 } from "@alcove/core";
 import type { FailureClass } from "@alcove/core";
 
-import { failureRemedy } from "../failureRemedy";
+import {
+  failureRemedy,
+  keyFileSavedConfigNotWrittenOf,
+  keyFileSavedConfigNotWrittenRemedy,
+} from "../failureRemedy";
 import { termsRefusalNextStep } from "../termsRefusalRemedy";
 
 /**
@@ -94,15 +98,34 @@ export function fixedNextStep(err: unknown): string | undefined {
 }
 
 /**
+ * The next step shown beneath `err`: {@link fixedNextStep} when that applies,
+ * else the CLI's remedy for a catalog cause the chain holds
+ * ({@link failureRemedy}). On an online setup that saved its key file and
+ * stopped before its configuration ({@link keyFileSavedConfigNotWrittenOf}),
+ * the step for that state follows a fixed step, or takes the catalog remedy's
+ * place, since that remedy's "run again" is refused on the key file.
+ */
+export function nextStepBeneathFailure(err: unknown): string | undefined {
+  const fixed = fixedNextStep(err);
+  const setup = keyFileSavedConfigNotWrittenOf(err);
+  if (setup === undefined) return fixed ?? failureRemedy(err);
+  const setupStep = keyFileSavedConfigNotWrittenRemedy(setup, {
+    kind: "failed",
+    errorStatesItsStep: fixed !== undefined || statesItsOwnNextStep(err),
+  });
+  return fixed === undefined ? setupStep : `${fixed}\n${setupStep}`;
+}
+
+/**
  * The display-safe text a command boundary shows for a failure: the
- * sanitized error chain, followed on its own line by {@link fixedNextStep}
- * when that applies, else by the CLI's remedy for a catalog cause the chain
- * holds ({@link failureRemedy}). The terminal event's `message` is this same
- * text, so stderr and the event stream state the same step.
+ * sanitized error chain, followed on its own line by
+ * {@link nextStepBeneathFailure} where there is one. The terminal event's
+ * `message` is this same text, so stderr and the event stream state the same
+ * step.
  */
 export function renderFailureForOperator(err: unknown): string {
   const text = sanitizeErrorForDisplay(err);
-  const nextStep = fixedNextStep(err) ?? failureRemedy(err);
+  const nextStep = nextStepBeneathFailure(err);
   return nextStep === undefined ? text : `${text}\n${nextStep}`;
 }
 

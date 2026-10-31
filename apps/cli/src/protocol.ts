@@ -69,7 +69,14 @@ import {
 
 import { LocalFSClient } from "./connection/localFSClient";
 import { raiseInactivityLimit } from "./connection/timeoutGuidance";
-import { markArrivalWait, type ArrivalWait } from "./failureRemedy";
+import {
+  keyFileSavedConfigNotWrittenRemedy,
+  markArrivalWait,
+  markKeyFileSavedConfigNotWritten,
+  type ArrivalWait,
+  type KeyFileSavedConfigNotWritten,
+  type OnlineSetupConfiguration,
+} from "./failureRemedy";
 import { markTermsRefusalRun } from "./termsRefusalRemedy";
 import { SSH2SFTPClientAdapter } from "./connection/ssh2SftpAdapter";
 import { dialedBrokerAuthority } from "./connection/webrtc/brokerClient";
@@ -406,6 +413,7 @@ async function runExchangeStage(params: {
   onPayloadReceiveFill:
     ((columns: string[]) => Promise<PayloadReceiveFillAnswer>) | undefined;
   onTermsChange: ((change: TermsChange) => Promise<void>) | undefined;
+  onTermsExchanged: (() => Promise<void>) | undefined;
   writeRecord: boolean;
   allowMemoryShortfall: boolean;
   stageTimer: { open: (id: string) => void; close: () => void };
@@ -428,6 +436,7 @@ async function runExchangeStage(params: {
     payloadReceiveFillNotice,
     onPayloadReceiveFill,
     onTermsChange,
+    onTermsExchanged,
     writeRecord,
     allowMemoryShortfall,
     stageTimer,
@@ -525,6 +534,7 @@ async function runExchangeStage(params: {
             },
       ...(onPayloadReceiveFill !== undefined ? { onPayloadReceiveFill } : {}),
       ...(onTermsChange !== undefined ? { onTermsChange } : {}),
+      ...(onTermsExchanged !== undefined ? { onTermsExchanged } : {}),
       // Advertise the observed SFTP host key for cross-party
       // reconciliation only when the exchange runs over the
       // authenticated, AEAD-wrapped channel (`secure` set): the value is
@@ -1013,6 +1023,26 @@ function rotationStanding(run: RunLifecycle): RotationStanding {
 }
 
 /**
+ * The {@link KeyFileSavedConfigNotWritten} state of an online setup's run that
+ * saved its rotated key file at `keyPath` and has not started its
+ * configuration step, else `undefined`.
+ */
+function keyFileSavedConfigNotWritten(
+  run: RunLifecycle,
+  keyPath: string | undefined,
+  onlineSetup: OnlineSetupConfiguration | undefined,
+): KeyFileSavedConfigNotWritten | undefined {
+  if (
+    onlineSetup === undefined ||
+    keyPath === undefined ||
+    !run.tokenRotated ||
+    run.postTermsStepStarted
+  )
+    return undefined;
+  return { ...onlineSetup, keyPath };
+}
+
+/**
  * The rotation line printed beneath a failure, for a run whose standing is
  * `standing`, or `undefined` where there is nothing to state: a run that
  * rotated nobody leaves the existing secret valid on both sides. Where the
@@ -1247,6 +1277,53 @@ function dropStoredPreviousSecret(
   }
 }
 
+/**
+ * Run the caller's `onAuthenticated` step once this side's terms exchange has
+ * completed and its rotated key is saved, before any linkage key or payload
+ * row moves. A failure is non-fatal, since the data exchange must not be
+ * aborted by a failure to persist recoverable setup: it is logged, reported as
+ * a persistence loss, and recorded on the run.
+ */
+async function runAfterTermsExchange(params: {
+  onAuthenticated: () => void | Promise<void>;
+  run: RunLifecycle;
+  log: ReturnType<typeof getLogger>;
+  eventStream: EventStreamEmitter | undefined;
+}): Promise<void> {
+  const { onAuthenticated, run, log, eventStream } = params;
+  run.postTermsStepStarted = true;
+  try {
+    await onAuthenticated();
+  } catch (hookErr) {
+    // The caller distinguishes a hook failure from success by the presence of
+    // this value, so a falsy throw (`undefined`, `null`, `0`, `""`, `false`,
+    // `NaN`) is coerced to an Error: `undefined` is the success sentinel.
+    run.onAuthenticatedError = hookErr
+      ? hookErr
+      : new Error(
+          "the post-authentication hook threw a falsy value: " +
+            String(hookErr),
+        );
+    log.error(
+      "the post-authentication hook failed after the terms exchange " +
+        "completed and the rotated key was saved; the exchange will " +
+        "continue, but any persistence the hook performs (e.g. writing " +
+        "the configuration) did not complete: " +
+        sanitizeErrorForDisplay(hookErr),
+    );
+    // A supervisor that discards stderr on a run that completes would
+    // otherwise have nothing to tell it the setup is half provisioned.
+    // Reported on both machine channels at the loss itself, with the same
+    // hedge as the line above rather than naming the caller's own artifact.
+    reportPersistenceLoss(
+      "the post-authentication persistence step (writing the " +
+        "configuration) did not complete; the exchange continued and " +
+        "the rotated key is saved",
+      eventStream,
+    );
+  }
+}
+
 /** What a failed drop of the previous secret states ahead of the key file. */
 const PREVIOUS_DROP_PREAMBLE =
   "both sides saved the new shared secret, but removing the secret before " +
@@ -1259,10 +1336,10 @@ const PREVIOUS_DROP_REMEDY =
 
 /**
  * The run's authentication stage: run the key exchange, set the rotation the
- * terms exchange makes -- the rotated-token save and the caller's
- * post-handshake hook after it -- wrap the transport in the negotiated AEAD
- * layer, and arm the cross-party abort marker. Runs only on the authenticated
- * path; the unauthenticated one has no acceptance step at all.
+ * terms exchange makes -- the rotated-token save -- wrap the transport in the
+ * negotiated AEAD layer, and arm the cross-party abort marker. Runs only on
+ * the authenticated path; the unauthenticated one has no acceptance step at
+ * all.
  *
  * The rotated-token save and the flag recording it are one synchronous step, so
  * a signal handler reading the lifecycle sees both the pre-save state or both
@@ -1274,24 +1351,13 @@ async function authenticateRun(params: {
   mc: MessageConnection;
   auth: AuthPersist;
   role: HandshakeRole;
-  onAuthenticated: (() => void | Promise<void>) | undefined;
   log: ReturnType<typeof getLogger>;
   eventStream: EventStreamEmitter | undefined;
   /** {@link nextRunCanHeal} for the run's channel, and a key file that was
    * there before the run. */
   nextRunHeals: boolean;
 }): Promise<void> {
-  const {
-    build,
-    run,
-    mc,
-    auth,
-    role,
-    onAuthenticated,
-    log,
-    eventStream,
-    nextRunHeals,
-  } = params;
+  const { build, run, mc, auth, role, log, eventStream, nextRunHeals } = params;
   log.info("authenticating");
   // Discard the (possibly whitespace-padded) keyFilePath from auth;
   // saveKeyFile below uses trimmedKeyFilePath, which was captured and
@@ -1367,12 +1433,11 @@ async function authenticateRun(params: {
   // binder from it); only the authenticated path reaches here, so the no-auth
   // path leaves it undefined and runExchange's signing step stays skipped.
   run.sessionKeyForReceipt = sessionKey;
-  // The save, and the hook tied to it, run inside the terms exchange at this
-  // side's point in the store order: the initiator's before it sends
-  // `proceed`, the responder's on reading it.
-  // The initiator's store keeps the secret its handshake used as the previous
-  // secret, which it drops once the responder's first frame after the terms
-  // exchange shows the responder stored too.
+  // The save runs inside the terms exchange at this side's point in the store
+  // order: the initiator's before it sends `proceed`, the responder's on
+  // reading it. The initiator's store keeps the secret its handshake used as
+  // the previous secret, which it drops once the responder's first frame
+  // after the terms exchange shows the responder stored too.
   let storedSecret: string | undefined;
   run.rotation = releasableTermsRotation({
     inputs: nextSecretInputs,
@@ -1462,54 +1527,6 @@ async function authenticateRun(params: {
             )
           : failure,
       );
-    }
-
-    // The rotated token is now persisted to the key file. Fire the optional
-    // post-handshake hook here, right after the key save and before the data
-    // exchange, so a caller (online invite/accept) can persist its
-    // configuration at this point. Runs only on the authenticated path,
-    // exactly once, and is awaited. A signal firing during an async hook lets
-    // that write finish by design.
-    //
-    // A hook failure is non-fatal: logged at error level and the
-    // exchange proceeds, since the data exchange must not be aborted by
-    // a failure to persist recoverable config.
-    if (onAuthenticated !== undefined) {
-      try {
-        await onAuthenticated();
-      } catch (hookErr) {
-        // The caller distinguishes a hook failure from success by the
-        // presence of this value, so it must be truthy even when the hook
-        // threw a falsy value (`undefined`, `null`, `0`, `""`, `false`,
-        // `NaN`) -- `undefined` is the success sentinel, so coerce any
-        // falsy throw to an Error: a failure can never masquerade as a
-        // clean write.
-        run.onAuthenticatedError = hookErr
-          ? hookErr
-          : new Error(
-              "the post-authentication hook threw a falsy value: " +
-                String(hookErr),
-            );
-        log.error(
-          "the post-authentication hook failed after the handshake " +
-            "succeeded and the rotated key was saved; the exchange will " +
-            "continue, but any persistence the hook performs (e.g. writing " +
-            "the configuration) did not complete: " +
-            sanitizeErrorForDisplay(hookErr),
-        );
-        // A supervisor that discards stderr on a run that completes would
-        // otherwise have nothing to tell it the setup is half
-        // provisioned -- the exchange runs and its result is written, but
-        // what the hook persists is not on disk. Reported on both machine
-        // channels at the loss itself. The message holds the same hedge
-        // as the line above rather than naming the caller's own artifact.
-        reportPersistenceLoss(
-          "the post-authentication persistence step (writing the " +
-            "configuration) did not complete; the exchange continued and " +
-            "the rotated key is saved",
-          eventStream,
-        );
-      }
     }
   }
 
@@ -1638,6 +1655,11 @@ interface RunLifecycle {
    * stop the exchange; it is reported on the resolved result instead.
    */
   onAuthenticatedError: unknown;
+  /**
+   * Set as the post-handshake hook starts. A rotated run that ended before the
+   * terms exchange completed never starts it.
+   */
+  postTermsStepStarted: boolean;
 }
 
 /**
@@ -1885,6 +1907,11 @@ export interface RunProtocolOptions {
   saveIntent?: boolean;
   /** The post-handshake hook. Meaningful only on the authenticated path. */
   onAuthenticated?: () => void | Promise<void>;
+  /**
+   * The configuration `onAuthenticated` writes or keeps, passed with it and
+   * only with it by the online invite and accept.
+   */
+  onlineSetup?: OnlineSetupConfiguration;
   /** The file-sync entry-sweep controls, event stream, and output hook. */
   fileSyncRuntime?: FileSyncRuntimeOptions;
   /** The signed-receipt inputs; omit or pass `null` to skip signing. */
@@ -2006,15 +2033,17 @@ export interface RunProtocolOptions {
  * {@link OutputCompleteContext.bootstrap} to provision the saved
  * config/key. Meaningful only with `auth: null`.
  *
- * `onAuthenticated` is an optional post-handshake hook invoked exactly once,
- * on the authenticated path only, after the rotated token is saved to the
- * key file and before the data exchange begins. The online invite/accept
- * callers persist their configuration here, so a handshake that succeeds but
- * whose exchange then fails still leaves both the rotated key and the
- * config on disk. A handshake that never succeeds never reaches the hook
- * (protocol.test.ts, "runProtocol does not invoke onAuthenticated when the
- * handshake fails"). May be synchronous or async; a returned promise settles
- * before the exchange begins. A hook failure is non-fatal -- the data
+ * `onAuthenticated` is an optional post-handshake hook invoked at most once,
+ * on the authenticated path only, once this side's terms exchange has
+ * completed -- so after the rotated token is saved to the key file -- and
+ * before any linkage key or payload row moves. The online invite/accept
+ * callers persist their configuration here, so a run whose exchange fails
+ * after the terms exchange still leaves both the rotated key and the config
+ * on disk. A run that ends before its terms exchange completes, refused or
+ * failed, never reaches the hook (protocol.test.ts, "the post-handshake hook
+ * runs after the terms exchange, not at the key-file save"). May be
+ * synchronous or async; a returned promise settles before the exchange
+ * continues. A hook failure is non-fatal -- the data
  * exchange must not be aborted by a failure to persist recoverable config --
  * and is logged at error level, reported as a persistence loss (`warning`
  * event and `PERSISTENCE_LOSS_EXIT_CODE`), and returned on
@@ -2022,6 +2051,13 @@ export interface RunProtocolOptions {
  * no-auth path and from callers with no post-handshake step; passing a hook
  * with `auth: null` is rejected up front, since an unauthenticated exchange
  * has no acceptance step to hook.
+ *
+ * `onlineSetup` names the configuration that hook writes or keeps, so a run
+ * that saved its rotated key file and stopped before the hook states the step
+ * for that state ({@link keyFileSavedConfigNotWrittenRemedy}): on the error it
+ * rejects with, which the command boundary renders, or from the signal handler
+ * on an interrupt. It is passed with `onAuthenticated` and only with it, which
+ * is checked up front.
  *
  * `fileSyncRuntime` holds the CLI-only, non-persistable file-sync
  * entry-sweep controls (`--sweep-exchange-files` / `--force-retain-sweep`)
@@ -2055,6 +2091,7 @@ export async function runProtocol(
     writeRecord = false,
     saveIntent,
     onAuthenticated,
+    onlineSetup,
     fileSyncRuntime = {},
     signing = null,
     recordPayloadReceiveFill,
@@ -2141,6 +2178,7 @@ export async function runProtocol(
       auth,
       saveIntent,
       onAuthenticated,
+      onlineSetup,
       signing,
       writeRecord,
       signingWithoutRecordWarned,
@@ -2187,6 +2225,7 @@ export async function runProtocol(
     outputsWritten: false,
     signalReceived: undefined,
     onAuthenticatedError: undefined,
+    postTermsStepStarted: false,
   };
   // Cancels work still in flight when a signal arrives, which doCleanup
   // cannot reach: it closes what the run already holds, and a webrtc
@@ -2246,9 +2285,21 @@ export async function runProtocol(
   // and that a rejection from doCleanup (an uncaught throw added later)
   // never appears as an unhandled promise rejection, which
   // process.on("SIGINT") would otherwise silently discard.
-  // SIGINT and SIGTERM share one helper, reading the same standing the catch
-  // block reads (rotationStanding); a run that rotated nobody states nothing.
+  // SIGINT and SIGTERM share one helper, reading the same state the catch
+  // block reads (keyFileSavedConfigNotWritten, then rotationStanding); a run
+  // that rotated nobody states nothing.
   function logRotationStateOnInterrupt(reason: string): void {
+    const setup = keyFileSavedConfigNotWritten(
+      run,
+      build.trimmedKeyFilePath,
+      onlineSetup,
+    );
+    if (setup !== undefined) {
+      log.warn(
+        keyFileSavedConfigNotWrittenRemedy(setup, { kind: "interrupted" }),
+      );
+      return;
+    }
     const saved = `The shared secret was already rotated and saved before ${reason}.`;
     switch (rotationStanding(run)) {
       case "unchanged":
@@ -2380,7 +2431,6 @@ export async function runProtocol(
         mc,
         auth,
         role,
-        onAuthenticated,
         log,
         eventStream,
         nextRunHeals,
@@ -2426,6 +2476,11 @@ export async function runProtocol(
       payloadReceiveFillNotice,
       onPayloadReceiveFill,
       onTermsChange,
+      onTermsExchanged:
+        auth && onAuthenticated !== undefined
+          ? () =>
+              runAfterTermsExchange({ onAuthenticated, run, log, eventStream })
+          : undefined,
       writeRecord,
       allowMemoryShortfall,
       stageTimer,
@@ -2714,7 +2769,17 @@ export async function runProtocol(
         auth.sharedSecret,
         log,
       );
-    if (!hintAlreadyEmitted) {
+    // An online setup cut between its key-file save and its configuration
+    // step gets the step for that state instead of a rotation line: the
+    // command boundary renders it beneath this error, and on a signal the
+    // handler has already stated it.
+    const setup = keyFileSavedConfigNotWritten(
+      run,
+      build.trimmedKeyFilePath,
+      onlineSetup,
+    );
+    if (setup !== undefined) markKeyFileSavedConfigNotWritten(reported, setup);
+    else if (!hintAlreadyEmitted) {
       const rotationLine =
         standing === "unchanged" && run.authStarted && authenticationFailed
           ? "Authentication failed, and a retry with this key file fails " +

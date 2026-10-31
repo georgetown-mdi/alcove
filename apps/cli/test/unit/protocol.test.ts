@@ -161,6 +161,9 @@ function expectNoGenericRecoveryAdvisory(errors: readonly string[]): void {
     expect(errors.filter((m) => m.includes(line))).toEqual([]);
 }
 
+/** The configuration a fresh online setup passes with its hook. */
+const FRESH_ONLINE_SETUP = { configPath: "alcove.yaml", kept: false } as const;
+
 /** A phrase of each rotation line runProtocol can state. */
 const ROTATION_LINE_PHRASES = [
   "had not saved the next shared secret",
@@ -295,10 +298,15 @@ vi.mock("@alcove/core", async (importActual) => {
     if (role === "responder") rotation.partnerMayHoldNextSecret?.(true);
     await rotation.store(nextSecret);
   };
+  // The terms exchange then completes, and the real runExchange calls
+  // `options.onTermsExchanged` before anything else it does.
   const storingFirst =
     (impl: (...args: unknown[]) => unknown) =>
     async (...args: unknown[]): Promise<unknown> => {
       await storeRotation(args[1], args[3]);
+      await (
+        args[3] as { onTermsExchanged?: () => Promise<void> } | undefined
+      )?.onTermsExchanged?.();
       return impl(...args);
     };
   const runExchangeMock = vi.fn();
@@ -7166,6 +7174,7 @@ test("runProtocol invokes onAuthenticated after the rotated key is saved and bef
       output: undefined,
       verbosity: -1,
       loggerName: "test-a",
+      onlineSetup: FRESH_ONLINE_SETUP,
       onAuthenticated: onAuthenticatedA,
     }),
     runProtocol({
@@ -7222,6 +7231,7 @@ test("runProtocol persists the onAuthenticated side effect even when the data ex
     output: undefined,
     verbosity: -1,
     loggerName: "test-a",
+    onlineSetup: FRESH_ONLINE_SETUP,
     onAuthenticated: () => fs.writeFileSync(markerA, "config-a"),
   });
   const pB = runProtocol({
@@ -7235,6 +7245,7 @@ test("runProtocol persists the onAuthenticated side effect even when the data ex
     output: undefined,
     verbosity: -1,
     loggerName: "test-b",
+    onlineSetup: FRESH_ONLINE_SETUP,
     onAuthenticated: () => fs.writeFileSync(markerB, "config-b"),
   });
 
@@ -7286,6 +7297,7 @@ test("runProtocol's recovery hint does not promise a clean retry when the post-h
     output: undefined,
     verbosity: -1,
     loggerName: "test-a",
+    onlineSetup: FRESH_ONLINE_SETUP,
     onAuthenticated: failingHook,
   });
   const pB = runProtocol({
@@ -7299,6 +7311,7 @@ test("runProtocol's recovery hint does not promise a clean retry when the post-h
     output: undefined,
     verbosity: -1,
     loggerName: "test-b",
+    onlineSetup: FRESH_ONLINE_SETUP,
     onAuthenticated: failingHook,
   });
 
@@ -7347,6 +7360,7 @@ test("runProtocol does not invoke onAuthenticated when the handshake fails", asy
     output: undefined,
     verbosity: -1,
     loggerName: "test-a",
+    onlineSetup: FRESH_ONLINE_SETUP,
     onAuthenticated: () => fs.writeFileSync(markerA, "config-a"),
   });
   const pB = runProtocol({
@@ -7364,6 +7378,7 @@ test("runProtocol does not invoke onAuthenticated when the handshake fails", asy
     output: undefined,
     verbosity: -1,
     loggerName: "test-b",
+    onlineSetup: FRESH_ONLINE_SETUP,
     onAuthenticated: () => fs.writeFileSync(markerB, "config-b"),
   });
 
@@ -7404,6 +7419,7 @@ test("a throw from onAuthenticated is non-fatal: the exchange still runs and the
       output: undefined,
       verbosity: -1,
       loggerName: "test-a",
+      onlineSetup: FRESH_ONLINE_SETUP,
       onAuthenticated: throwingHook,
     }),
     runProtocol({
@@ -7466,6 +7482,7 @@ test("a failed post-authentication hook warns on fd 3 and exits 73 with a result
         output: undefined,
         verbosity: -1,
         loggerName: "test-a",
+        onlineSetup: FRESH_ONLINE_SETUP,
         onAuthenticated: () => {
           throw new Error("simulated config write failure");
         },
@@ -7537,6 +7554,7 @@ test("an async onAuthenticated that rejects is non-fatal: the exchange still run
       output: undefined,
       verbosity: -1,
       loggerName: "test-a",
+      onlineSetup: FRESH_ONLINE_SETUP,
       onAuthenticated: rejectingHook,
     }),
     runProtocol({
@@ -7602,6 +7620,7 @@ test("a hook that throws a falsy value still reports a defined onAuthenticatedEr
       output: undefined,
       verbosity: -1,
       loggerName: "test-a",
+      onlineSetup: FRESH_ONLINE_SETUP,
       onAuthenticated: throwFalsyHook,
     }),
     runProtocol({
@@ -7672,6 +7691,390 @@ test("runProtocol without onAuthenticated runs a normal authenticated exchange (
     mockState.errors.some((m) => m.includes("post-authentication hook")),
   ).toBe(false);
 }, 20_000);
+
+// --- The post-handshake hook's place after the terms exchange ------------------
+
+/**
+ * Run responder B, then initiator A, each with its own post-handshake hook,
+ * which sets that party's entry in `hookRan`.
+ */
+async function runPairRecordingHooks(
+  keyFileA: string,
+  keyFileB: string,
+  hookRan: Record<HandshakeRole, boolean>,
+): Promise<PromiseSettledResult<unknown>[]> {
+  const run = (keyFilePath: string, loggerName: string, role: HandshakeRole) =>
+    runProtocol({
+      connection: {
+        channel: "filedrop",
+        path: dropDir,
+        options: TWO_PARTY_OPTIONS,
+      },
+      auth: { sharedSecret: TOKEN_A, keyFilePath },
+      prepared: minimalPrepared,
+      output: undefined,
+      verbosity: -1,
+      loggerName,
+      onlineSetup: FRESH_ONLINE_SETUP,
+      onAuthenticated: () => {
+        hookRan[role] = true;
+      },
+    });
+  const b = run(keyFileB, "test-b", "responder");
+  await waitForFirstPartyHello(dropDir);
+  const a = run(keyFileA, "test-a", "initiator");
+  return Promise.allSettled([a, b]);
+}
+
+test("the post-handshake hook runs after the terms exchange, not at the key-file save", async () => {
+  const keyFileA = path.join(tmpDir, "a.key");
+  const keyFileB = path.join(tmpDir, "b.key");
+  saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
+  saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+  const hookRan = { initiator: false, responder: false };
+  const ranAtSave: Partial<Record<HandshakeRole, boolean>> = {};
+  // Each side's save is followed, still inside its terms exchange, by a turn
+  // of the event loop in which a hook tied to the save would already have run.
+  const turn = () => new Promise<void>((resolve) => setImmediate(resolve));
+  driveTermsExchange({
+    initiator: async (rotation, nextSecret) => {
+      await rotation.store(nextSecret);
+      await turn();
+      ranAtSave.initiator = hookRan.initiator;
+    },
+    responder: async (rotation, nextSecret) => {
+      rotation.partnerMayHoldNextSecret?.(true);
+      await rotation.store(nextSecret);
+      await turn();
+      ranAtSave.responder = hookRan.responder;
+    },
+  });
+
+  const results = await runPairRecordingHooks(keyFileA, keyFileB, hookRan);
+
+  for (const result of results) expect(result.status).toBe("fulfilled");
+  expect(ranAtSave).toEqual({ initiator: false, responder: false });
+  expect(hookRan).toEqual({ initiator: true, responder: true });
+}, 20_000);
+
+test("a run refused at the terms exchange runs neither side's post-handshake hook and rotates nobody", async () => {
+  const keyFileA = path.join(tmpDir, "a.key");
+  const keyFileB = path.join(tmpDir, "b.key");
+  saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
+  saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+  const hookRan = { initiator: false, responder: false };
+  driveTermsExchange({
+    responder: () =>
+      Promise.reject(
+        new ProtocolRefusalError("linkage terms are incompatible: deduplicate"),
+      ),
+    initiator: () =>
+      Promise.reject(
+        new ProtocolRefusalError(
+          "Your partner stopped the exchange because the linkage terms differ",
+        ),
+      ),
+  });
+
+  const results = await runPairRecordingHooks(keyFileA, keyFileB, hookRan);
+
+  for (const result of results) expect(result.status).toBe("rejected");
+  expect(hookRan).toEqual({ initiator: false, responder: false });
+  expect(loadKeyFile(keyFileA)).toEqual({ sharedSecret: TOKEN_A });
+  expect(loadKeyFile(keyFileB)).toEqual({ sharedSecret: TOKEN_A });
+}, 20_000);
+
+// --- An online setup cut between its key-file save and its configuration step
+//
+// The state table, one test per cell: how the run ended (a failure, or a
+// signal), whether its configuration was fresh or kept, and whether the
+// failure states its own next step. In each, initiator A, an online setup,
+// saves its rotated key file and its terms exchange then stops before the
+// configuration step; responder B never saves. On a signal the handler states
+// the step before any error in flight is seen, so for the two signal cells
+// with such an error the check is that the error adds no second step.
+
+const onlineSetupIn = (kept: boolean) => ({
+  configPath: path.join(tmpDir, "alcove.yaml"),
+  kept,
+});
+
+/** The step each cell states, for key file `k` and configuration `c`. */
+const CUT_STEPS = {
+  freshFailed: (k: string, c: string) =>
+    `The key file ${k} was saved, but the run stopped before it wrote the ` +
+    `configuration ${c}. Delete ${k} before you start again. ` +
+    NEW_INVITATION_REMEDY,
+  freshFailedOwnStep: (k: string, c: string) =>
+    `The key file ${k} was saved, but the run stopped before it wrote the ` +
+    `configuration ${c}. Delete ${k} before you start again.`,
+  keptFailed: (k: string, c: string) =>
+    `The key file ${k} was saved and the configuration ${c} kept before the ` +
+    `run stopped. Run 'alcove exchange' again; if it fails to authenticate ` +
+    `or never meets your partner, ask your partner for a new invitation, and ` +
+    `delete ${k} before you accept it.`,
+  keptFailedOwnStep: (k: string, c: string) =>
+    `The key file ${k} was saved and the configuration ${c} kept before the ` +
+    `run stopped. If you accept a new invitation, delete ${k} first.`,
+  freshInterrupted: (k: string, c: string) =>
+    `The key file ${k} was saved, but the run was interrupted before it ` +
+    `wrote the configuration ${c}. Delete ${k} before you start again. ` +
+    NEW_INVITATION_REMEDY,
+  keptInterrupted: (k: string, c: string) =>
+    `The key file ${k} was saved and the configuration ${c} kept before the ` +
+    `run was interrupted. Run 'alcove exchange' again; if it fails to ` +
+    `authenticate or never meets your partner, ask your partner for a new ` +
+    `invitation, and delete ${k} before you accept it.`,
+};
+
+/** A failure that states its own next step, as core's terminal refusals do. */
+const ownStepFailure = () =>
+  markStatesItsOwnNextStep(
+    new ConnectionError(
+      "the server refused the write; run the exchange again in a clean directory",
+      "transport",
+    ),
+  );
+
+const droppedConnection = () =>
+  new ConnectionError("the exchange directory went away", "transport");
+
+/**
+ * Start responder B, a configured run, then initiator A, an online setup
+ * whose post-handshake hook must not run, each over its own key file.
+ */
+async function startCutPair(kept: boolean) {
+  const keyFileA = path.join(tmpDir, "a.key");
+  const keyFileB = path.join(tmpDir, "b.key");
+  saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
+  saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+  const onlineSetup = onlineSetupIn(kept);
+  const run = (keyFilePath: string, loggerName: string, online: boolean) =>
+    runProtocol({
+      connection: {
+        channel: "filedrop",
+        path: dropDir,
+        options: TWO_PARTY_OPTIONS,
+      },
+      auth: { sharedSecret: TOKEN_A, keyFilePath },
+      prepared: minimalPrepared,
+      output: undefined,
+      verbosity: -1,
+      loggerName,
+      ...(online
+        ? {
+            onlineSetup,
+            onAuthenticated: () => {
+              throw new Error("the configuration step ran");
+            },
+          }
+        : {}),
+    });
+  const pB = run(keyFileB, "test-b", false);
+  await waitForFirstPartyHello(dropDir);
+  const pA = run(keyFileA, "test-a", true);
+  return { pA, pB, keyFileA, configPath: onlineSetup.configPath };
+}
+
+/** The lines either party logged that state a rotation for this side. */
+const initiatorRotationLines = () =>
+  [...mockState.errors, ...mockState.warnings].filter((m) =>
+    m.includes("already rotated and saved"),
+  );
+
+test.each([
+  {
+    cell: "failed, fresh configuration, the failure states no step",
+    kept: false,
+    failure: droppedConnection,
+    step: CUT_STEPS.freshFailed,
+  },
+  {
+    cell: "failed, fresh configuration, the failure states its own step",
+    kept: false,
+    failure: ownStepFailure,
+    step: CUT_STEPS.freshFailedOwnStep,
+  },
+  {
+    cell: "failed, kept configuration, the failure states no step",
+    kept: true,
+    failure: droppedConnection,
+    step: CUT_STEPS.keptFailed,
+  },
+  {
+    cell: "failed, kept configuration, the failure states its own step",
+    kept: true,
+    failure: ownStepFailure,
+    step: CUT_STEPS.keptFailedOwnStep,
+  },
+])(
+  "an online setup cut after its key-file save, $cell: the failure ends with that cell's step",
+  async ({ kept, failure, step }) => {
+    driveTermsExchange({
+      initiator: async (rotation, nextSecret) => {
+        await rotation.store(nextSecret);
+        throw failure();
+      },
+      responder: (rotation) => {
+        rotation.partnerMayHoldNextSecret?.(true);
+        return Promise.reject(droppedConnection());
+      },
+    });
+    const { pA, pB, keyFileA, configPath } = await startCutPair(kept);
+    const [initiator] = await Promise.allSettled([pA, pB]);
+
+    expect(initiator.status).toBe("rejected");
+    if (initiator.status !== "rejected") return;
+    expect(loadKeyFile(keyFileA)?.sharedSecret).not.toBe(TOKEN_A);
+    const rendered = renderFailureForOperator(initiator.reason);
+    expect(rendered).toBe(
+      `${sanitizeErrorForDisplay(initiator.reason)}\n${step(keyFileA, configPath)}`,
+    );
+    expect(initiatorRotationLines()).toEqual([]);
+    expect(
+      mockState.errors.some((m) => m.includes("the configuration step ran")),
+    ).toBe(false);
+  },
+  20_000,
+);
+
+test("an online setup cut after its key-file save by an internal fault states the fixed step, then the key file's", async () => {
+  driveTermsExchange({
+    initiator: async (rotation, nextSecret) => {
+      await rotation.store(nextSecret);
+      throw new InternalConsistencyError("internal error: a check failed");
+    },
+    responder: (rotation) => {
+      rotation.partnerMayHoldNextSecret?.(true);
+      return Promise.reject(droppedConnection());
+    },
+  });
+  const { pA, pB, keyFileA, configPath } = await startCutPair(false);
+  const [initiator] = await Promise.allSettled([pA, pB]);
+
+  expect(initiator.status).toBe("rejected");
+  if (initiator.status !== "rejected") return;
+  expect(renderFailureForOperator(initiator.reason)).toBe(
+    `${sanitizeErrorForDisplay(initiator.reason)}\n` +
+      `${INTERNAL_FAULT_NEXT_STEP}\n` +
+      CUT_STEPS.freshFailedOwnStep(keyFileA, configPath),
+  );
+}, 20_000);
+
+test.each([
+  {
+    cell: "fresh configuration, no error in flight",
+    kept: false,
+    inFlight: undefined,
+    step: CUT_STEPS.freshInterrupted,
+  },
+  {
+    cell: "fresh configuration, an error stating its own step in flight",
+    kept: false,
+    inFlight: ownStepFailure,
+    step: CUT_STEPS.freshInterrupted,
+  },
+  {
+    cell: "kept configuration, no error in flight",
+    kept: true,
+    inFlight: undefined,
+    step: CUT_STEPS.keptInterrupted,
+  },
+  {
+    cell: "kept configuration, an error stating its own step in flight",
+    kept: true,
+    inFlight: ownStepFailure,
+    step: CUT_STEPS.keptInterrupted,
+  },
+])(
+  "an online setup interrupted after its key-file save, $cell: the signal handler states that cell's step once",
+  async ({ kept, inFlight, step }) => {
+    const exitSpy = recordProcessExit();
+    let saved!: () => void;
+    const savedOnA = new Promise<void>((resolve) => {
+      saved = resolve;
+    });
+    let failA: (err: Error) => void = () => {};
+    let failB: (err: Error) => void = () => {};
+    driveTermsExchange({
+      initiator: async (rotation, nextSecret) => {
+        await rotation.store(nextSecret);
+        await new Promise<never>((_, reject) => {
+          failA = reject;
+          saved();
+        });
+      },
+      responder: (rotation) => {
+        rotation.partnerMayHoldNextSecret?.(true);
+        return new Promise<never>((_, reject) => {
+          failB = reject;
+        });
+      },
+    });
+    const { pA, pB, keyFileA, configPath } = await startCutPair(kept);
+    try {
+      await savedOnA;
+      process.emit("SIGINT");
+      await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(130), {
+        timeout: 5_000,
+      });
+      failA(inFlight?.() ?? new Error("test cleanup"));
+      failB(new Error("test cleanup"));
+      const [initiator] = await Promise.allSettled([pA, pB]);
+
+      expect(initiator).toEqual({
+        status: "fulfilled",
+        value: { outcome: "interrupted", onAuthenticatedError: undefined },
+      });
+      const expected = step(keyFileA, configPath);
+      expect(
+        [...mockState.warnings, ...mockState.errors].filter((m) =>
+          m.includes(keyFileA),
+        ),
+      ).toEqual([expected]);
+      expect(initiatorRotationLines()).toEqual([]);
+      if (inFlight !== undefined)
+        expect(
+          mockState.errors.some((m) =>
+            m.startsWith("error in flight when SIGINT arrived"),
+          ),
+        ).toBe(true);
+    } finally {
+      exitSpy.mockRestore();
+      failA(new Error("test cleanup"));
+      failB(new Error("test cleanup"));
+      await Promise.allSettled([pA, pB]);
+    }
+  },
+  20_000,
+);
+
+test("runProtocol rejects an onAuthenticated passed without onlineSetup, and onlineSetup without onAuthenticated", async () => {
+  for (const options of [
+    { onAuthenticated: () => {} },
+    { onlineSetup: FRESH_ONLINE_SETUP },
+  ])
+    await expect(
+      runProtocol({
+        connection: {
+          channel: "filedrop",
+          path: dropDir,
+          options: TWO_PARTY_OPTIONS,
+        },
+        auth: {
+          sharedSecret: TOKEN_A,
+          keyFilePath: path.join(tmpDir, "a.key"),
+        },
+        prepared: minimalPrepared,
+        output: undefined,
+        verbosity: -1,
+        loggerName: "test-a",
+        ...options,
+      }),
+    ).rejects.toThrow(
+      "onAuthenticated and onlineSetup are passed together or not at all",
+    );
+});
 
 // --- Machine-interface event stream (--event-stream) --------------------------
 //
@@ -9307,6 +9710,7 @@ test("a failed onAuthenticated hook under --event-stream emits a warning event b
         output: undefined,
         verbosity: -1,
         loggerName: "test-a",
+        onlineSetup: FRESH_ONLINE_SETUP,
         onAuthenticated: () => {
           throw new Error("simulated config write failure");
         },

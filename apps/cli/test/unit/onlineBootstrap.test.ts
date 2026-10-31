@@ -3658,6 +3658,92 @@ describe("runOnlineBootstrap", () => {
     }
   });
 
+  /**
+   * The lines `runOnlineBootstrap` logs at error level for a run whose
+   * runProtocol rejects with `failure`, after invoking the hook when
+   * `reachHook` is set.
+   */
+  async function errorLinesAfterFailure(params: {
+    failure: Error;
+    reachHook: boolean;
+    reuseExistingConfig: boolean;
+  }): Promise<{
+    lines: string[];
+    configPath: string;
+    keyPath: string;
+    onlineSetup: RunProtocolOptions["onlineSetup"];
+  }> {
+    let onlineSetup: RunProtocolOptions["onlineSetup"];
+    vi.mocked(runProtocol).mockImplementation((async (
+      ...callArgs: unknown[]
+    ) => {
+      onlineSetup = optionsArg(callArgs).onlineSetup;
+      if (params.reachHook) await onAuthenticatedArg(callArgs)();
+      throw params.failure;
+    }) as never);
+    const log = getLogger("bootstrap-recovery-test");
+    log.setLevel("silent");
+    const lines: string[] = [];
+    const errorSpy = vi
+      .spyOn(log, "error")
+      .mockImplementation((...args: unknown[]) => {
+        lines.push(args.map(String).join(" "));
+      });
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
+    const configPath = path.join(dir, "alcove.yaml");
+    const bootstrapParams = {
+      ...onlineBootstrapParams(configPath),
+      loggerName: "bootstrap-recovery-test",
+      reuseExistingConfig: params.reuseExistingConfig,
+    };
+    try {
+      if (params.reuseExistingConfig)
+        fs.writeFileSync(configPath, "channel: filedrop\npath: /mnt/share\n");
+      await expect(runOnlineBootstrap(bootstrapParams)).rejects.toBe(
+        params.failure,
+      );
+      return {
+        lines,
+        configPath,
+        keyPath: bootstrapParams.keyPath,
+        onlineSetup,
+      };
+    } finally {
+      errorSpy.mockRestore();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  // runProtocol states the step for a run that saved its key file and stopped
+  // before the hook, from the configuration this passes it
+  // (protocol.test.ts, "an online setup cut between its key-file save and its
+  // configuration step"); the bootstrap adds no line of its own.
+  test.each([false, true])(
+    "a run with reuseExistingConfig %s that ends before its hook passes runProtocol its configuration and logs nothing itself",
+    async (reuseExistingConfig) => {
+      const { lines, configPath, onlineSetup } = await errorLinesAfterFailure({
+        failure: new Error("the exchange directory went away"),
+        reachHook: false,
+        reuseExistingConfig,
+      });
+      expect(onlineSetup).toEqual({ configPath, kept: reuseExistingConfig });
+      expect(lines).toEqual([]);
+    },
+  );
+
+  test("a run that reached the hook keeps the retry note", async () => {
+    const { lines, configPath, keyPath } = await errorLinesAfterFailure({
+      failure: new Error("data exchange failed"),
+      reachHook: true,
+      reuseExistingConfig: false,
+    });
+    expect(lines).toEqual([
+      `the configuration at ${configPath} and the rotated key at ${keyPath} ` +
+        `are on disk; retry with 'alcove exchange' to recover without ` +
+        `re-inviting.`,
+    ]);
+  });
+
   test("resolves interrupted, with the recovery note, when a signal cuts the run short after the handshake", async () => {
     vi.mocked(runProtocol).mockImplementation((async (
       ...callArgs: unknown[]

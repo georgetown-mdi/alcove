@@ -826,16 +826,18 @@ export interface OnlineBootstrapResult {
 
 /**
  * Run the connect -> key exchange -> exchange path shared by online invite
- * and online accept, persisting the config at the moment the handshake
- * succeeds. `runProtocol` opens the connection, completes the handshake with
+ * and online accept, persisting the config once the terms exchange completes.
+ * `runProtocol` opens the connection, completes the handshake with
  * `sharedSecret`/`expires`, writes the rotated (persistent, no-expiry) token to
- * `keyPath`, then -- via the `onAuthenticated` post-handshake hook passed below
- * -- writes the config, and finally runs the exchange.
+ * `keyPath` inside the terms exchange, then -- via the `onAuthenticated` hook
+ * passed below, once the terms exchange has completed -- writes the config,
+ * and finally runs the exchange.
  *
- * Persisting from the hook (not after `runProtocol` returns) means a handshake
- * that succeeds but whose data exchange then fails still leaves both the
- * rotated key and the config on disk, recoverable without re-inviting; a
- * handshake that never succeeds never reaches the hook, so it leaves no config.
+ * Persisting from the hook (not after `runProtocol` returns) means a run whose
+ * data exchange fails after the terms exchange still leaves both the rotated
+ * key and the config on disk, recoverable without re-inviting; a run that ends
+ * before its terms exchange completes -- a failed handshake, or terms either
+ * party refused -- never reaches the hook, so it leaves no config.
  * A config-write failure is non-fatal -- the exchange still runs -- and is
  * returned as `configWriteError` rather than claiming the config was saved.
  *
@@ -852,8 +854,11 @@ export interface OnlineBootstrapResult {
  * exchange error (the handler's error path reports the error itself). The note
  * is logged only when the config write actually succeeded, so a hook failure
  * followed by an exchange failure never claims a config that is not there.
- * A run a signal cut short resolves with `outcome: "interrupted"` after the
- * same note, and the caller writes no completion summary for it.
+ * A run that saved the rotated key and stopped before the hook gets the step
+ * for what it left from `runProtocol`, which takes this run's configuration as
+ * `onlineSetup`. A run a signal cut short resolves with
+ * `outcome: "interrupted"` after the same note, and the caller writes no
+ * completion summary for it.
  *
  * The persisted config holds the plain `connection` (no `authentication`);
  * `saveConfig` strips any shared-secret material regardless. A budget that
@@ -1059,15 +1064,16 @@ export async function runOnlineBootstrap(params: {
 
   // Set inside the hook once saveConfig returns, so the catch below can tell a
   // "config is on disk, retry without re-inviting" recovery from a run where the
-  // config write never succeeded (hook threw, or handshake never reached it).
+  // config write never succeeded (hook threw, or the run never reached it).
   let configWritten = false;
   // Set at the very top of the hook, before the reuse early-return. runProtocol
-  // saves the rotated key immediately before invoking onAuthenticated, so
-  // reaching the hook is proof the key is on disk. The reuse branch keeps a
-  // pre-existing config and writes no fresh one (configWritten stays false), so
-  // without this flag the catch below could not tell a reuse run whose handshake
-  // succeeded (key saved) from one that failed pre-handshake (no key) -- and
-  // would falsely promise `alcove exchange` recovery in the latter.
+  // invokes onAuthenticated only once this side's terms exchange has completed,
+  // which saves the rotated key, so reaching the hook is proof the key is on
+  // disk. The reuse branch keeps a pre-existing config and writes no fresh one
+  // (configWritten stays false), so without this flag the catch below could not
+  // tell a reuse run that reached the hook (key saved) from one that ended
+  // earlier -- and would falsely promise `alcove exchange` recovery in the
+  // latter.
   let keyPersisted = false;
   const logRecoveryNoteIfOnDisk = (): void => {
     if (configWritten || (params.reuseExistingConfig && keyPersisted))
@@ -1099,16 +1105,20 @@ export async function runOnlineBootstrap(params: {
           ? "exchange"
           : "online-invitation",
       onSignalingRegistered: params.onSignalingRegistered,
+      onlineSetup: {
+        configPath: params.configPath,
+        kept: params.reuseExistingConfig === true,
+      },
       writeOutcomeLine: outcomeLineWriter(
         getLogger(params.loggerName),
         params.writePlainLine,
       ),
-      // Persist the configuration exactly at acceptance: runProtocol invokes this
-      // once, after the rotated token is saved to the key file and before the
-      // data exchange begins. Writing here (rather than after runProtocol
-      // returns) means a handshake success followed by a data-exchange failure
-      // leaves both the rotated key and the config on disk -- no re-invite needed
-      // to recover.
+      // Persist the configuration once the terms are agreed on: runProtocol
+      // invokes this once, after this side's terms exchange has completed and
+      // saved the rotated token, and before any linkage key or payload row
+      // moves. Writing here (rather than after runProtocol returns) means a
+      // data-exchange failure after the terms exchange leaves both the rotated
+      // key and the config on disk -- no re-invite needed to recover.
       //
       // saveConfig is synchronous, so `configWritten` is set only after the write
       // has completed, and a failed write throws before it -- what runProtocol's
@@ -1119,7 +1129,7 @@ export async function runOnlineBootstrap(params: {
       // success.
       onAuthenticated: () => {
         // Reaching the hook means runProtocol already saved the rotated key
-        // (it does so immediately before this call). Record that before the
+        // (the terms exchange did so before this call). Record that before the
         // reuse early-return so the recovery message below is gated on the key
         // actually being on disk.
         keyPersisted = true;
@@ -1157,9 +1167,9 @@ export async function runOnlineBootstrap(params: {
         // Re-gate immediately before writing: a config that appeared between the
         // pre-network conflict check and now must not be silently overwritten,
         // consistent with the offline path's provisionConfigAndKey re-gate. The
-        // handshake has already succeeded and the rotated key is saved, so this
-        // throw becomes a non-fatal configWriteError (caught by runProtocol's
-        // hook handling) rather than aborting the completed exchange.
+        // terms exchange has already completed and the rotated key is saved, so
+        // this throw becomes a non-fatal configWriteError (caught by
+        // runProtocol's hook handling) rather than aborting the exchange.
         const configAppearedLate = (): UsageError => {
           const message = messageWithOperatorText`refusing to overwrite ${operatorSuppliedText(
             params.configPath,
@@ -1246,17 +1256,12 @@ export async function runOnlineBootstrap(params: {
       configWriteError: runResult.onAuthenticatedError,
     };
   } catch (err) {
-    // The exchange failed after a successful handshake. When BOTH the config and
-    // the rotated key are on disk, tell the user so they retry with `alcove
-    // exchange` instead of re-inviting. Logged at error level so it stays
-    // visible alongside the error the handler then reports. Both files must
-    // actually be present: a fresh run needs `configWritten`; a reuse run needs
-    // `keyPersisted`, since a pre-handshake failure never saves the rotated key
-    // (onlineBootstrap.test.ts, "runOnlineBootstrap with reuseExistingConfig
-    // does not log a recovery note when the handshake fails before the key is
-    // saved"). A rotated secret that could not be saved on one side leaves
-    // the two sides with different secrets, so the note would give the wrong
-    // step: the error states the new invitation instead.
+    // When the hook ran and BOTH the config and the rotated key are on disk,
+    // tell the user to retry with `alcove exchange` rather than re-invite, at
+    // error level beside the error the handler reports. A run that ended before
+    // the hook gets its step from runProtocol (`onlineSetup`). A rotated secret
+    // one side could not save leaves the two on different secrets, and the
+    // error states the new invitation instead.
     if (!isNoHealSaveFailure(err)) logRecoveryNoteIfOnDisk();
     throw err;
   }
