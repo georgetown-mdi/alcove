@@ -1507,7 +1507,7 @@ describe("rendezvousStartupWarnings emptiness branch", () => {
     expect(notEmptyLead("/data", "shared", SWEEP_OFF, true)).toBe(
       "the shared folder /data holds an earlier exchange's files. With every " +
         "exchange file kept, the run ignores them as long as each run writes " +
-        "new file names, and stops naming any file it cannot ignore.",
+        "new file names. If it finds a file it cannot ignore, the run stops and names it.",
     );
     const [lead] = contentWarnings(retainedTranscript, SWEEP_OFF, true);
     expect(lead).toContain("the run ignores them");

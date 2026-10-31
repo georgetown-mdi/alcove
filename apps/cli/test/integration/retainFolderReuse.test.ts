@@ -14,6 +14,7 @@ import { withCapturedLogs } from "@alcove/core/testing";
 
 import { SSH2SFTPClientAdapter } from "../../src/connection/ssh2SftpAdapter";
 import { runProtocol, type ProtocolConnectionConfig } from "../../src/protocol";
+import { exitCodeForError } from "../../src/util/exit";
 import {
   ensureNamespace,
   remotePath,
@@ -76,13 +77,17 @@ const connectionFor = (
   },
 });
 
-async function runPair(namespace: string, run: number): Promise<void> {
+async function runPair(
+  namespace: string,
+  run: number,
+  optionsA: FileSyncOptions = {},
+): Promise<void> {
   const outA = path.join(work, `${namespace}-${run}-a`);
   const outB = path.join(work, `${namespace}-${run}-b`);
   await withCapturedLogs(() =>
     Promise.all([
       runProtocol({
-        connection: connectionFor(srv.usera, namespace),
+        connection: connectionFor(srv.usera, namespace, optionsA),
         auth: null,
         prepared: preparedFor("PartyA", ROWS_A),
         output: outA,
@@ -138,6 +143,43 @@ describe("a retain folder on an SFTP server, reused", () => {
         expect((await fsp.readFile(path.join(local, name))).equals(body)).toBe(
           true,
         );
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  test(
+    "a party with a fixed peer_id coming back is refused at its own start-up",
+    async () => {
+      const namespace = "retain-reuse-fixed-id";
+      const local = await ensureNamespace(srv, namespace);
+      await runPair(namespace, 1, { peerId: "site-a" });
+      const before = (await fsp.readdir(local)).sort();
+
+      const [err] = await withCapturedLogs(() =>
+        runProtocol({
+          connection: connectionFor(srv.usera, namespace, {
+            peerId: "site-a",
+          }),
+          auth: null,
+          prepared: preparedFor("PartyA", ROWS_A),
+          output: path.join(work, `${namespace}-2-a`),
+          verbosity: -1,
+          loggerName: `${namespace}-2-a`,
+        }).then(
+          () => undefined,
+          (rejection: unknown) => rejection,
+        ),
+      );
+      expect(exitCodeForError(err)).toBe(64);
+      const shown = sanitizeErrorForDisplay(err);
+      expect(shown).toContain(
+        "Add fields to peer_id, for example %Y%m%d%H%M%S, so each run " +
+          "writes new names.",
+      );
+      expect(shown).toMatch(/-site-a-hello-\d+-ack\.json/);
+      // Refused before it wrote anything: the folder is as the first exchange
+      // left it.
+      expect((await fsp.readdir(local)).sort()).toEqual(before);
     },
     TEST_TIMEOUT_MS,
   );

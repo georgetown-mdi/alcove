@@ -787,8 +787,8 @@ export function notEmptyLead(
   if (retainFiles && !sweepExchangeFiles) {
     const kept =
       " holds an earlier exchange's files. With every exchange file kept, " +
-      "the run ignores them as long as each run writes new file names, and " +
-      "stops naming any file it cannot ignore.";
+      "the run ignores them as long as each run writes new file names. If it " +
+      "finds a file it cannot ignore, the run stops and names it.";
     return fitNotice(`${label} ${rendezvousDir}${kept}`, `${label}${kept}`);
   }
   const problem =

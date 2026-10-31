@@ -44,9 +44,6 @@
 - - -> The scan logs one line: how many files it ignored, the directories, the age of the youngest, and how many of them were unanswered partner hellos past the window.
 - - -> **The peer-timeout message.**
 - - -> A run that ignored an unanswered partner hello and then reaches its peer timeout (exit 69) names that hello, its age and the window, and says that raising `unanswered_hello_window_ms` or giving both sides the same peer timeout fixes it.
-- - -> **A reused name stops the run.**
-- - -> Ignoring by name holds only while each run writes new names, so two refusals guard it, each naming the file and saying `peer_id` needs fields:
-- - -> An ack answering the hello name this run writes, present at start-up, refuses entry (exit 64).
 - - -> A `peer_id` with no field writes the same hello name on every run, so a scheduled run into one retain folder sets a `peer_id` with fields, such as `site-%Y%m%d%H%M%S` ([Per-run peer id](#per-run-peer-id)), rather than a fixed id.
 - - -> **Limit -- the age relies on the server's time stamp.**
 - - -> The listed `modifyTime` is whatever the server's file system holds.
@@ -76,13 +73,14 @@
 - - -> every abort marker under a non-empty id;
 - - -> every answered hello under a non-empty id;
 - - -> Everything else reaches the guard as before: a lock, a `joining` sentinel, a bare name (a message, ack, abort marker or hello under an empty id), an unanswered hello under this party's own id or `peer_id`, an unanswered hello in the outbound directory, and an unanswered partner hello younger than the window, which is met as a live partner.
-- - -> A partner hello written again under an ignored name stops the rendezvous (exit 64).
-- - -> The entry scan reads each ignored inbound hello's body, up to the byte count its name states and within the rendezvous hello-read bound.
-- - -> A later listing whose time or size for that name differs only prompts a re-read under the same bound: the run stops when the body differs from the one read at entry, or when the entry scan could not read one, and a re-read that does not complete is retried at the next listing.
-- - -> A re-stamp that leaves the body unchanged is ignored, so this check compares bodies and makes no use of `modifyTime`.
-- - -> Ignored files are still listed on every poll, so each exchange added to a reused folder makes each listing longer, and the entry scan reads one more hello body.
-- - -> **Limit -- an unreadable ignored hello.**
-- - -> When the entry scan cannot read an ignored hello's body within the bound, a later change to its listed time or size stops the run as a rewrite, even if only its time changed.
 - - -> Neither party acks the other's hello before refusing, so both hellos are unanswered.
 - - -> A rerun in retain mode therefore meets them as live partners while they are younger than its [unanswered-hello window](#reusing-a-retain-mode-directory) and is refused as above; once both are older, the rerun ignores them and proceeds, unless one is under the rerunning party's own `peer_id`, which stays refused.
-- - -> Measured on the mock transport (`fileSyncRetainLeftovers.test.ts`): a mismatch leaves no ack, an immediate rerun of both parties in retain mode takes the several-partner-hellos refusal, and the same rerun with both hellos an hour old, against a window defaulting to a two-second peer timeout, completes.
+- - -> **A reused name is refused at the reusing side's start-up.**
+- - -> Ignoring by name holds only while each run writes new names.
+- - -> A run whose start-up listing holds an ack answering the hello name it would write refuses entry (exit 64), naming that ack and saying `peer_id` needs fields.
+- - -> It writes nothing, so its partner never sees a hello it could meet and waits out its peer timeout.
+- - -> An ignored name stays ignored for the whole run, whatever its listed time or size later shows, so a partner hello written again under it is never met.
+- - -> Ignored files are still listed on every poll, so each exchange added to a reused folder makes each listing longer.
+- - -> **Limit -- a reused name the reusing side cannot see answered.**
+- - -> In a split configuration where a transfer moves the ack out of the outbound directory, the reusing party does not see the ack, writes its hello under the ignored name again, and both runs reach their peer timeout.
+- - -> Measured on the mock transport (`fileSyncRetainLeftovers.test.ts`): a mismatch leaves no ack, an immediate rerun of both parties in retain mode takes the several-partner-hellos refusal, and the same rerun with both hellos an hour old, with the window at its default, the peer timeout, set to two seconds, completes.

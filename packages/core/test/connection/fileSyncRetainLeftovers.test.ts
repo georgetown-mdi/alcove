@@ -1,7 +1,8 @@
 // Retain mode in a reused directory: the start-up scan ignores what an earlier
 // exchange left there and deletes none of it, every later check skips the
 // ignored files, a partner hello nobody answered is ignored only past the
-// window, and a reused hello name stops the run.
+// window, and a run whose own hello name an earlier exchange answered is
+// refused at start-up.
 
 import logLibrary from "loglevel";
 import { describe, expect, test } from "vitest";
@@ -414,51 +415,60 @@ describe("a rerun after a bilateral-mode mismatch", () => {
 describe("a reused hello name", () => {
   const reused = `${DIR}/${hello("partner")}`;
 
+  const earlierAck = `${DIR}/${ackMarkerName("earlier", stem(hello("partner")))}`;
+
   // A run into a folder holding an answered partner hello, which the entry
   // scan ignores; `midRun` then changes it while the run waits.
   async function runWhile(
     midRun: (files: Map<string, Buffer>, times: Map<string, number>) => void,
-    peerTimeoutMs: number,
-  ): Promise<unknown> {
+  ): Promise<{ err: unknown; files: Map<string, Buffer> }> {
     const files = new Map<string, Buffer>([
       [reused, HELLO_BODY],
-      [
-        `${DIR}/${ackMarkerName("earlier", stem(hello("partner")))}`,
-        Buffer.alloc(0),
-      ],
+      [earlierAck, Buffer.alloc(0)],
     ]);
     const modifyTimes = new Map([[reused, Date.now() - 86_400_000]]);
-    const conn = await openParty(files, { peerTimeoutMs }, modifyTimes);
+    const conn = await openParty(files, { peerTimeoutMs: 300 }, modifyTimes);
     const run = rejectionOf(conn.synchronize());
     await new Promise((resolve) => setTimeout(resolve, 30));
     midRun(files, modifyTimes);
     const err = await run;
     await conn.close();
-    return err;
+    return { err, files };
   }
 
-  test("a re-stamped hello whose body is unchanged stays ignored", async () => {
-    const err = await runWhile((_files, times) => {
-      times.set(reused, Date.now());
-    }, 300);
-    expect(isPeerWaitTimeout(err)).toBe(true);
-  });
-
-  test("a partner hello written again under an ignored name stops the run", async () => {
-    const rewritten = Buffer.from(HELLO_BODY);
-    rewritten[rewritten.length - 2] ^= 1;
-    const err = await runWhile((files, times) => {
-      files.set(reused, rewritten);
-      times.set(reused, Date.now());
-    }, 2_000);
-    expect(err).toBeInstanceOf(UsageError);
-    expect((err as Error).message).toBe(
-      `partner hello ${hello("partner")} was written again under a name an ` +
-        "earlier exchange in this folder used, so this run cannot tell it " +
-        "from that exchange's files. Your partner needs fields in its " +
-        "peer_id, for example %Y%m%d%H%M%S, so each run writes new names.",
-    );
-  });
+  test.each([
+    [
+      "re-stamped",
+      (_files: Map<string, Buffer>, times: Map<string, number>) =>
+        times.set(reused, Date.now()),
+    ],
+    [
+      "rewritten with the same bytes",
+      (files: Map<string, Buffer>, times: Map<string, number>) => {
+        files.set(reused, Buffer.from(HELLO_BODY));
+        times.set(reused, Date.now());
+      },
+    ],
+    [
+      "listed at another size",
+      (files: Map<string, Buffer>, times: Map<string, number>) => {
+        files.set(reused, HELLO_BODY.subarray(0, 10));
+        times.set(reused, Date.now());
+      },
+    ],
+  ])(
+    "an ignored hello %s mid-run stays ignored: no stop, and it is never met",
+    async (_label, midRun) => {
+      const { err, files } = await runWhile(midRun);
+      expect(isPeerWaitTimeout(err)).toBe(true);
+      const acksOfIt = [...files.keys()].filter(
+        (name) =>
+          name !== earlierAck &&
+          name.endsWith(`-${stem(hello("partner"))}-ack.json`),
+      );
+      expect(acksOfIt).toEqual([]);
+    },
+  );
 
   test("a run whose own hello name an earlier exchange answered is refused", async () => {
     const files = new Map<string, Buffer>([
