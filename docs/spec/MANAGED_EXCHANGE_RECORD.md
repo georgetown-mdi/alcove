@@ -240,13 +240,14 @@ object with a `sharedSecret` matching `SHARED_SECRET_REGEX`, an optional ISO
 8601 `expires`, the command line's optional
 [rotation-in-flight marker](#the-rotation-in-flight-marker), its optional
 [pending relay registration](#the-pending-relay-registration), and its optional
-`rotationHistory`, whose 64 newest entries the record keeps. A field outside
-these is read past and dropped, as the command line drops it
-([EXCHANGE_FILE.md](EXCHANGE_FILE.md#the-key-file-schema)), so a key file a
-later command line wrote still imports. The command line's previous secret,
-`previousSharedSecret` and `previousExpires`, is among the fields dropped: the
-record holds no previous secret. The landed import's notice names each
-dropped field to the operator, by name only and never its value.
+`rotationHistory`, whose 64 newest entries the record keeps. A field the key
+file schema does not know, and a format `version` above the one it reads, is
+refused as written by a newer Alcove, as the command line refuses it
+([EXCHANGE_FILE.md](EXCHANGE_FILE.md#the-key-file-schema)), naming the field
+or the version and never a value, and nothing is imported. The command line's
+previous secret, `previousSharedSecret` and `previousExpires`, is read and
+dropped: the record holds no previous secret. The landed import's notice
+names each dropped field to the operator, by name only and never its value.
 The key file is validated on its own -- the configuration's schema parse never
 sees it -- through the sensitive-JSON chokepoint and the shared key-file schema
 (`KeyFileSchema`), under the key file's own size cap

@@ -633,10 +633,11 @@ function keyFileRefusal(
  * configuration's schema parse never sees this file, so it is validated here
  * on its own: capped, parsed through the sensitive-JSON chokepoint, and read
  * against the key-file schema every application shares ({@link KeyFileSchema}),
- * which drops a field it does not know. Pure.
+ * which refuses a field it does not know as one a newer Alcove wrote. Pure.
  *
  * @throws {ManagedKeyFileRefusedError} if the file is over the cap, is not
- *   JSON, or is not the key pair; the message names which, never a value.
+ *   JSON, is not the key pair, or was written by a newer Alcove; the message
+ *   names which, never a value.
  */
 export function readManagedCommandLineKeyFile(
   source: string,
@@ -677,7 +678,27 @@ function readManagedCommandLineKeyFileFields(
         KEY_FILE_FIELDS_IMPORTED,
       ),
     };
+  const newer = newerKeyFileRefusal(result.error);
+  if (newer !== undefined) throw newer;
   throw keyFileRefusal(keyPairProblems(result.error, parsed));
+}
+
+/** The refusal of a key file a newer Alcove wrote: one stating a newer
+ * `version`, or a field this build does not read. The schema's message names
+ * the version or the field, redacted where the name is secret-shaped, and no
+ * value. */
+function newerKeyFileRefusal(
+  error: ZodError,
+): ManagedKeyFileRefusedError | undefined {
+  const issue = error.issues.find(
+    (candidate) =>
+      (candidate.code === "custom" && candidate.path.length === 0) ||
+      (candidate.code === "too_big" && candidate.path[0] === "version"),
+  );
+  if (issue === undefined) return undefined;
+  return new ManagedKeyFileRefusedError(
+    `${issue.message} Nothing was imported.`,
+  );
 }
 
 /**

@@ -515,6 +515,7 @@ describe("the settings a loaded configuration keeps in the export", () => {
     expect(
       parseExchangeSpec(parseSensitiveYaml(exported, "export parity")),
     ).toEqual({
+      formatVersion: 1,
       ...document,
       ...edits,
       connection: { ...document.connection, options },
@@ -905,7 +906,7 @@ describe("the sftp credential paths a loaded configuration keeps in the export",
 });
 
 describe("the blocks the export holds from the mounted document are pinned", () => {
-  test("authentication is the only block held outside the composed ones", () => {
+  test("authentication and the informational about block are the only blocks held outside the composed ones", () => {
     const held = Object.keys(ExchangeSpecSchema.shape)
       .map((key) => snakeizeKey(key))
       .filter((key) => !COMPOSED_BLOCKS.has(key))
@@ -917,6 +918,6 @@ describe("the blocks the export holds from the mounted document are pinned", () 
         "ExchangeSpecSchema must be either composed by this console or added " +
         "to the load's credential-name refusals (credentialFieldsNotAdopted) " +
         "before it may be held.",
-    ).toEqual(["authentication"]);
+    ).toEqual(["about", "authentication"]);
   });
 });

@@ -439,15 +439,18 @@ export function fileReferenceFields(
  * The top-level fields a command-line document may hold: what the app can
  * compose, read off {@link composeManagedExchangeFile}'s output for the widest
  * composition, the `authentication` block holding the max-age policy, and the
- * parts held unchanged on a record that does not run here. The connection is
- * one key whatever its channel, so one webrtc probe measures the document for
- * every channel. Nothing else the shared exchange-file schema can represent
- * belongs in a managed exchange's alcove.yaml.
+ * parts held unchanged on a record that does not run here, and the file's
+ * format version and informational block, which describe the file and are
+ * held as it states them. The connection is one key whatever its channel, so
+ * one webrtc probe measures the document for every channel. Nothing else the
+ * shared exchange-file schema can represent belongs in a managed exchange's
+ * alcove.yaml.
  */
 const COMMAND_LINE_DOCUMENT_FIELDS: ReadonlySet<string> = new Set([
   ...Object.keys(WIDEST_COMPOSED_DOCUMENT),
   "authentication",
   ...DOCUMENT_PARTS_THIS_APP_DOES_NOT_RUN,
+  ...(["formatVersion", "about"] satisfies ReadonlyArray<keyof ExchangeSpec>),
 ]);
 
 /**

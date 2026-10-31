@@ -386,8 +386,14 @@ export type {
   PeerIdParse,
   PeerIdPart,
 } from "./config/peerIdTemplate";
+export type {
+  FormatFeature,
+  FormatInfoBlock,
+  FormatVersionPolicy,
+} from "./config/formatVersion";
 export {
   KEY_FILE_FIELD_SCHEMAS,
+  KEY_FILE_FORMAT_VERSION,
   KEY_FILE_SHARED_SECRET_FORMAT_MESSAGE,
   KeyFileSchema,
   keyFileUnreadFieldNames,

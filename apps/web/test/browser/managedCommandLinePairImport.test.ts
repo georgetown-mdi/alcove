@@ -34,6 +34,7 @@ import {
   getManagedLocalState,
   markManagedExchangeBackedUp,
 } from "@psi/managed/managedLocalState";
+import { ManagedKeyFileRefusedError } from "@psi/managed/managedCommandLineImport";
 import { composeManagedCronExport } from "@psi/managed/managedCronExport";
 import { withManagedExchangeLock } from "@psi/managed/managedExchangeLock";
 
@@ -193,22 +194,38 @@ describe("a command-line pair installs a runnable exchange", () => {
     ]);
   });
 
-  test("a key file field the app does not read is dropped and named", async () => {
+  test("a key file field the app does not keep is dropped and named", async () => {
+    const source = runnableManagedExchangeOrRefuse(
+      buildManagedExchangeRecord(newExchange()),
+    );
+    const { configuration } = pairOf(source);
+    const previousExpires = "2030-01-01T00:00:00.000Z";
+
+    const { record, unreadKeyFileFields } = await importManagedCommandLinePair(
+      configuration,
+      JSON.stringify({ sharedSecret: source.sharedSecret, previousExpires }),
+    );
+
+    expect(unreadKeyFileFields).toEqual(["previousExpires"]);
+    const stored = await listManagedExchanges();
+    expect(stored.map((entry) => entry.id)).toEqual([record.id]);
+    expect(stored[0].sharedSecret).toBe(source.sharedSecret);
+    expect(JSON.stringify(stored[0])).not.toContain(previousExpires);
+  });
+
+  test("a key file field no Alcove version this app knows writes is refused, writing nothing", async () => {
     const source = runnableManagedExchangeOrRefuse(
       buildManagedExchangeRecord(newExchange()),
     );
     const { configuration } = pairOf(source);
 
-    const { record, unreadKeyFileFields } = await importManagedCommandLinePair(
-      configuration,
-      JSON.stringify({ sharedSecret: source.sharedSecret, stray: 1 }),
-    );
-
-    expect(unreadKeyFileFields).toEqual(["stray"]);
-    const stored = await listManagedExchanges();
-    expect(stored.map((entry) => entry.id)).toEqual([record.id]);
-    expect(stored[0].sharedSecret).toBe(source.sharedSecret);
-    expect(JSON.stringify(stored[0])).not.toContain("stray");
+    await expect(
+      importManagedCommandLinePair(
+        configuration,
+        JSON.stringify({ sharedSecret: source.sharedSecret, stray: 1 }),
+      ),
+    ).rejects.toBeInstanceOf(ManagedKeyFileRefusedError);
+    expect(await listManagedExchanges()).toEqual([]);
   });
 });
 
