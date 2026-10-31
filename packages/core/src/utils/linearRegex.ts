@@ -259,12 +259,12 @@ function underScanBudget<T>(
   return result;
 }
 
-// re2js releases disagree on three replacement sequences, so each is doubled to
+// re2js releases disagree on these replacement sequences, so each is doubled to
 // its `$$` form before the engine sees it, which keeps it literal on every
-// release: `$0` (as in `$01`), a closed `$<name>` naming no group, and an
-// unclosed `$<` with the rest of the replacement after it. The output is the
-// one docs/spec/PROTOCOL.md (Transform regular-expression dialect) requires.
-const UNSTABLE_REPLACEMENT_SEQUENCE = /\$(?:\$|0|<([^>]*)(>?))/g;
+// release: `$0` (as in `$01`), and a `$<name>` that does not name a group, the
+// name running to the first `>` or space. The output is the one
+// docs/spec/PROTOCOL.md (Transform regular-expression dialect) requires.
+const UNSTABLE_REPLACEMENT_SEQUENCE = /\$(?:\$|0|<([^> ]*)(>?))/g;
 
 function literalizeUnstableSequences(
   replacement: string,

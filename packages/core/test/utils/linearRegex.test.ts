@@ -162,8 +162,8 @@ describe("replacement-string $-sequences", () => {
   });
 
   // Every case of the PROTOCOL.md replacement rule, with the output re2js 2.8.8
-  // gives unaided. re2js 2.9 resolves `$0n`, an unknown `$<name>` and an
-  // unclosed `$<` differently, so this table pins core's rule against the
+  // gives unaided. re2js 2.9 resolves `$0n`, an unknown `$<name>` and a name
+  // not ended by `>` differently, so this table pins core's rule against the
   // installed release; run it on each re2js release a bump takes.
   const twelveGroups = "(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)(l)";
   test.each([
@@ -190,6 +190,11 @@ describe("replacement-string $-sequences", () => {
     ["(b)(c)", "abcd", "[$<x$1]", "a[$<x$1]d"],
     ["(?P<x>b)(c)", "abcd", "$1$<$<x>$$", "ab$<$<x>$d"],
     ["(b)(c)", "abcd", "$1$<$1$$", "ab$<$1$$d"],
+    ["(b)(c)", "abcd", "[$<x$1>]", "a[$<x$1>]d"],
+    ["(b)(c)", "abcd", "[$<x $1>]", "a[$<x b>]d"],
+    ["(?P<x>b)(c)", "abcd", "[$<x $<x>]", "a[$<x b]d"],
+    ["(?P<x>b)(c)", "abcd", "[$< x>]", "a[$< x>]d"],
+    ["(b)(c)", "abcd", "$<x$1 $1$$", "a$<x$1 b$d"],
     ["(b)(c)", "abcd", "[$&]", "a[bc]d"],
     ["(b)(c)", "abcd", "[$`]", "a[a]d"],
     ["(b)(c)", "abcd", "[$']", "a[d]d"],
