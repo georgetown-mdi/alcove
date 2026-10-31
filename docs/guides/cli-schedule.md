@@ -127,7 +127,7 @@ Alcove does not stop a second run of the same exchange from starting. Two runs a
 ```
 
 - **On Windows**, a task made with `schtasks /Create` does not start while its last run is still going.
-- **Set any outer timeout above the run's length**: 1 hour of waiting plus the run itself.
+- **Set any outer timeout above the run's length**: 1 hour of waiting plus the run itself, whose length [How long a run takes](./cli-install.md#how-long-a-run-takes) gives for each channel and interval.
 
 ## Exit codes
 

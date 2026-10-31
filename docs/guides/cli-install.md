@@ -127,11 +127,24 @@ You should see, for `alcove --version`: a version number, such as `0.1.0`.
 
 Both of you run at the same time. Each side waits up to 1 hour for the other over SFTP or a shared folder, and 10 minutes over WebRTC.
 
-On SFTP and a shared folder, each linkage key takes several rounds, and each round waits up to one check interval for your partner's file: 250 milliseconds on a shared folder and 5 seconds on SFTP by default. The number of keys and the interval set the pace, far more than the record count.
+Once you are both running, two things set the run's length:
 
-To shorten an SFTP test run, add `--polling-frequency 1s` to `alcove exchange`, on a server you control: a shorter interval can trip a server's limit on rapid requests.
+- **Waiting.** On SFTP and a shared folder, each linkage key passes about 9 messages, and each one waits for your partner's next check: every 250 milliseconds on a shared folder and every 5 seconds on SFTP by default. The number of keys and the interval set this part. WebRTC has no check interval.
+- **Computing.** This grows with the record count: about 2 seconds in all for 20 records a side, and about 1 minute for 5,000 against 150,000, or about 2 seconds a key.
 
-Set any outer timeout, such as a scheduler's, above the run length.
+Measured with 25 linkage keys, both parties on one machine, and a test SFTP server on that machine:
+
+| Channel and check interval | 20 records a side | 5,000 against 150,000 |
+| --- | --- | --- |
+| Shared folder, 250 milliseconds (default) | about 1 minute | 1.6 to 1.7 minutes |
+| SFTP, 1 second | about 4.5 minutes | about 3.6 minutes |
+| SFTP, 5 seconds (default) | about 21 minutes | about 13 minutes |
+
+At 5 seconds, waiting is over 90% of a run even at the larger size. On a shared folder, computing is most of a large run. The 5-second rows come from one run each, and a repeat can differ by minutes, because the two sides' checks drift in and out of step. More keys make every row longer.
+
+The 5-second SFTP default is a cautious setting for servers that limit or block rapid requests, not the fastest an exchange can go. On a server that allows it, a shorter interval shortens the run several-fold: both of you add `--polling-frequency 1s` to `alcove exchange`. Use a server you control or know the limits of, because a shorter interval can trip a server's limit on rapid requests.
+
+Set any outer timeout, such as a scheduler's, above the wait for your partner plus the run length for your channel, interval and number of keys. For 25 keys over SFTP at the 5-second default, that is more than 1 hour and 21 minutes, with room for a run that takes some minutes longer.
 
 ## What you get
 
