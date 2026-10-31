@@ -150,8 +150,20 @@ describe("classifyRetainLeftovers", () => {
       at(sizedControlName("p1", "joining", 9), 0),
       at("-abort-50.json", 0),
       at(sizedControlName("", "hello", 9), 0),
+      at("-42.json", 0),
+      at("-20260101T000000-000-12.json", 0),
+      at("-ack.json", 0),
+      at("-p1-ack.json", 0),
     ];
     expect(ignoredNames(classify(files))).toEqual([]);
+  });
+
+  test("reads a writer id that itself starts with a dash", () => {
+    const files = [
+      at("-p1-20260101T000000-000-12.json", NOW),
+      at(ackMarkerName("-q1", "p1-42"), NOW),
+    ];
+    expect(ignoredNames(classify(files))).toEqual(files.map((f) => f.name));
   });
 
   test("ignores an unanswered partner hello only once older than the window", () => {
@@ -275,6 +287,20 @@ describe("a retain exchange in a folder an earlier exchange used", () => {
     expect(line?.message).not.toContain("000-12");
   });
 
+  test("a bare message or ack, which no writer names, is still refused", async () => {
+    for (const bare of ["-20260101T000000-000-12.json", "-ack.json"]) {
+      const files = new Map<string, Buffer>([
+        [`${DIR}/${bare}`, Buffer.alloc(bare === "-ack.json" ? 0 : 12)],
+      ]);
+      const conn = await openParty(files, {});
+      const err = await rejectionOf(conn.synchronize());
+      await conn.close();
+      expect(err).toBeInstanceOf(UsageError);
+      expect(sanitizeErrorForDisplay(err)).toContain(bare);
+      expect(files.has(`${DIR}/${bare}`)).toBe(true);
+    }
+  });
+
   test("delete mode keeps refusing an earlier exchange's message", async () => {
     const files = new Map<string, Buffer>([
       [`${DIR}/p1-42.json`, Buffer.alloc(42)],
@@ -338,23 +364,93 @@ describe("a partner hello nobody answered", () => {
   });
 });
 
-describe("a reused hello name", () => {
-  test("a partner hello written again under an ignored name stops the run", async () => {
+describe("a rerun after a bilateral-mode mismatch", () => {
+  // One party in retain mode, the other not: both refuse at rendezvous and
+  // leave their hellos. Then both rerun in retain mode, either at once or once
+  // the leftover hellos are older than the window.
+  async function rerunAfterMismatch(
+    helloAgeMs: number,
+  ): Promise<{ first: unknown[]; acks: string[]; rerun: unknown[] }> {
     const files = new Map<string, Buffer>();
     const modifyTimes = new Map<string, number>();
-    const reused = `${DIR}/${hello("partner")}`;
-    files.set(reused, HELLO_BODY);
-    files.set(
-      `${DIR}/${ackMarkerName("earlier", stem(hello("partner")))}`,
-      Buffer.alloc(0),
-    );
-    modifyTimes.set(reused, Date.now() - 86_400_000);
-    const conn = await openParty(files, { peerTimeoutMs: 2_000 }, modifyTimes);
+    const a = await openParty(files, {}, modifyTimes);
+    const b = await openParty(files, { retainFiles: false }, modifyTimes);
+    const first = await Promise.all([
+      rejectionOf(a.synchronize()),
+      rejectionOf(b.synchronize()),
+    ]);
+    await Promise.all([a.close(), b.close()]);
+    const acks = [...files.keys()].filter((name) => name.endsWith("-ack.json"));
+    for (const name of files.keys())
+      modifyTimes.set(name, Date.now() - helloAgeMs);
+    const c = await openParty(files, { peerTimeoutMs: 2_000 }, modifyTimes);
+    const d = await openParty(files, { peerTimeoutMs: 2_000 }, modifyTimes);
+    const rerun = await Promise.all([
+      rejectionOf(c.synchronize()),
+      rejectionOf(d.synchronize()),
+    ]);
+    await Promise.all([c.close(), d.close()]);
+    return { first, acks, rerun };
+  }
+
+  test("leaves two unanswered hellos, which refuse a rerun inside the window", async () => {
+    const { first, acks, rerun } = await rerunAfterMismatch(0);
+    for (const err of first) expect(err).toBeInstanceOf(UsageError);
+    expect(acks).toEqual([]);
+    for (const err of rerun) {
+      expect(err).toBeInstanceOf(UsageError);
+      expect(sanitizeErrorForDisplay(err)).toContain(
+        "several partner hello files are present",
+      );
+    }
+  });
+
+  test("a rerun once both hellos are older than the window ignores them", async () => {
+    const { rerun } = await rerunAfterMismatch(3_600_000);
+    expect(rerun).toEqual([undefined, undefined]);
+  });
+});
+
+describe("a reused hello name", () => {
+  const reused = `${DIR}/${hello("partner")}`;
+
+  // A run into a folder holding an answered partner hello, which the entry
+  // scan ignores; `midRun` then changes it while the run waits.
+  async function runWhile(
+    midRun: (files: Map<string, Buffer>, times: Map<string, number>) => void,
+    peerTimeoutMs: number,
+  ): Promise<unknown> {
+    const files = new Map<string, Buffer>([
+      [reused, HELLO_BODY],
+      [
+        `${DIR}/${ackMarkerName("earlier", stem(hello("partner")))}`,
+        Buffer.alloc(0),
+      ],
+    ]);
+    const modifyTimes = new Map([[reused, Date.now() - 86_400_000]]);
+    const conn = await openParty(files, { peerTimeoutMs }, modifyTimes);
     const run = rejectionOf(conn.synchronize());
     await new Promise((resolve) => setTimeout(resolve, 30));
-    modifyTimes.set(reused, Date.now());
+    midRun(files, modifyTimes);
     const err = await run;
     await conn.close();
+    return err;
+  }
+
+  test("a re-stamped hello whose body is unchanged stays ignored", async () => {
+    const err = await runWhile((_files, times) => {
+      times.set(reused, Date.now());
+    }, 300);
+    expect(isPeerWaitTimeout(err)).toBe(true);
+  });
+
+  test("a partner hello written again under an ignored name stops the run", async () => {
+    const rewritten = Buffer.from(HELLO_BODY);
+    rewritten[rewritten.length - 2] ^= 1;
+    const err = await runWhile((files, times) => {
+      files.set(reused, rewritten);
+      times.set(reused, Date.now());
+    }, 2_000);
     expect(err).toBeInstanceOf(UsageError);
     expect((err as Error).message).toBe(
       `partner hello ${hello("partner")} was written again under a name an ` +

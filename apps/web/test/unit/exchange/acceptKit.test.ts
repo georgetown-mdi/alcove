@@ -21,6 +21,12 @@ import {
 import type { AcceptKitEndpoint } from "@exchange/acceptKit";
 import type { InvitationLocation } from "@psi/invitation";
 
+/** The retain sheet's rule for reusing the folder: new names each run. */
+const REUSE_RULE =
+  "A later exchange in the same place ignores them, as long as each run\n" +
+  "writes new file names. For runs that repeat, give peer_id date and\n" +
+  "time fields, for example site-%Y%m%d%H%M%S.";
+
 const FILEDROP: AcceptKitEndpoint = { channel: "filedrop", path: "alcove" };
 const UNNAMED_FILEDROP: AcceptKitEndpoint = { channel: "filedrop" };
 const FILEDROP_SPLIT: AcceptKitEndpoint = {
@@ -661,7 +667,8 @@ describe("accept kit, a split filedrop rendezvous", () => {
     expect(text).toContain(
       "The files stay in both shared folders above, the one you write into",
     );
-    expect(text).toContain("both folders must start empty on both sides");
+    expect(text).toContain(REUSE_RULE);
+    expect(text).not.toContain("must start empty");
     // The single-folder wording never crosses over.
     expect(text).not.toContain(
       "The files stay in the shared folder, in your copy of it",
@@ -707,7 +714,7 @@ describe("accept kit, retain mode", () => {
       "The files stay in the exchange directory on the SFTP",
     );
     expect(sftpText).toContain("server named above");
-    expect(sftpText).toContain("start from an empty directory");
+    expect(sftpText).toContain(REUSE_RULE);
     // The split wording never crosses onto the single-path sheet.
     expect(sftpText).not.toContain("both directories");
 
@@ -722,10 +729,9 @@ describe("accept kit, retain mode", () => {
     );
     expect(splitText).toContain("the one you read from, on the SFTP server");
     expect(splitText).toContain("server named above");
-    expect(splitText).toContain("both directories must start\nempty");
+    expect(splitText).toContain(REUSE_RULE);
     // The single-path wording never crosses over onto the split sheet.
     expect(splitText).not.toContain("The files stay in the exchange directory");
-    expect(splitText).not.toContain("start from an empty directory");
 
     for (const endpoint of [FILEDROP, UNNAMED_FILEDROP]) {
       const text = retainSheet(endpoint);
@@ -734,7 +740,7 @@ describe("accept kit, retain mode", () => {
       expect(text).toContain(
         "The files stay in the shared folder, in your copy of it",
       );
-      expect(text).toContain("start from an empty shared folder");
+      expect(text).toContain(REUSE_RULE);
       // The SFTP wording never crosses over.
       expect(text).not.toContain("on the SFTP");
     }

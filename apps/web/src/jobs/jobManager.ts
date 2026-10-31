@@ -1754,6 +1754,7 @@ export class JobManager {
           this.dataRoot,
           workdir,
           sweepExchangeFiles,
+          intent.options?.retainFiles === true,
         ))
           this.appendEvent(
             record,

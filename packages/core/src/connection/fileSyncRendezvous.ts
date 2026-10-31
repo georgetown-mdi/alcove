@@ -744,13 +744,68 @@ export interface RendezvousOptions {
   renameRefusedGuidance?: string;
 }
 
+// An ignored hello's listing and its body, undefined when no full body could be
+// read within the bound.
+interface IgnoredHello {
+  listed: FileInfo;
+  body: Buffer | undefined;
+}
+
+// The body of an ignored hello, read to tell a re-stamp from a rewrite under
+// the same name: up to the count its name states, refused past
+// HELLO_MAX_BYTES, retrying a failed or short read until `deadline` like
+// readControlFileWithGate. Undefined when no full body arrived in time or
+// the read was refused as a usage fault, which retrying cannot fix.
+async function readIgnoredHelloBody(
+  client: FileTransportClient,
+  filePath: string,
+  deadline: Date,
+  pollingFrequency: number,
+  signal: AbortSignal,
+): Promise<Buffer | undefined> {
+  const declaredSize = parseSizedControlName(
+    filePath.slice(filePath.lastIndexOf("/") + 1),
+  )?.byteCount;
+  if (
+    declaredSize === undefined ||
+    declaredSize === 0 ||
+    declaredSize > HELLO_MAX_BYTES
+  )
+    return undefined;
+  do {
+    signal.throwIfAborted();
+    try {
+      const raw = await getUpToNamedCount(
+        client,
+        filePath,
+        declaredSize,
+        null,
+        () =>
+          new MalformedHelloError(
+            largerThanNamedCountMessage(
+              `control file at ${redactPrivateKeyMaterial(filePath)}`,
+              declaredSize,
+            ),
+          ),
+      );
+      if (raw.length === declaredSize) return Buffer.from(raw);
+    } catch (err) {
+      if (signal.aborted) throw err;
+      if (err instanceof UsageError) return undefined;
+    }
+    if (Date.now() >= deadline.getTime()) return undefined;
+    await cancellableDelay(pollingFrequency, signal);
+  } while (Date.now() < deadline.getTime());
+  return undefined;
+}
+
 // What the entry scan hands the rendezvous: the at-most-one tolerated peer
 // hello, and in retain mode the hellos it ignored as an earlier exchange's.
 interface EntryScan {
   peerHellos: FileInfo[];
-  // Each ignored inbound hello as it was listed at entry, so a later listing
-  // can tell one written again under its name.
-  ignoredHellos: ReadonlyMap<string, FileInfo>;
+  // Each ignored inbound hello as last listed, with its body read at entry, so
+  // a later listing can tell one written again under its name from a re-stamp.
+  ignoredHellos: ReadonlyMap<string, IgnoredHello>;
   // The youngest ignored partner hello nobody answered, its age at entry, and
   // the window it was older than.
   unansweredHello:
@@ -1462,10 +1517,10 @@ export class FileSyncRendezvous {
           );
     }
 
-    let ignoredHellos: ReadonlyMap<string, FileInfo> = new Map();
+    let ignoredHellos: ReadonlyMap<string, IgnoredHello> = new Map();
     let unansweredHello: EntryScan["unansweredHello"];
     if (deps.options().retainFiles && !deps.options().sweepExchangeFiles) {
-      const kept = this.ignoreRetainLeftovers(
+      const kept = await this.ignoreRetainLeftovers(
         scope,
         [...files, ...outFiles].map((file) => file.name),
         peerHellos,
@@ -1565,16 +1620,20 @@ export class FileSyncRendezvous {
   // never deleted, and the inbound ones join startupIgnoredFiles, which every
   // later listing drops. Refuses a run whose own hello name an earlier
   // exchange already answered, since that exchange's acks would answer this
-  // run's hello. Returns the peer hellos and unexpected files left to judge.
-  private ignoreRetainLeftovers(
+  // run's hello. Reads each ignored inbound hello's body, so a later listing
+  // can tell a rewrite from a re-stamp. Returns the peer hellos and unexpected
+  // files left to judge.
+  private async ignoreRetainLeftovers(
     scope: RendezvousScope,
     listed: string[],
     peerHellos: FileInfo[],
     unexpectedProtocol: Array<{ file: FileInfo; dir: string }>,
-  ): Omit<EntryScan, "peerHellos"> & {
-    peerHellos: FileInfo[];
-    unexpectedProtocol: Array<{ file: FileInfo; dir: string }>;
-  } {
+  ): Promise<
+    Omit<EntryScan, "peerHellos"> & {
+      peerHellos: FileInfo[];
+      unexpectedProtocol: Array<{ file: FileInfo; dir: string }>;
+    }
+  > {
     const { deps } = this;
     const outboundDir = scope.split ? scope.outboundPath : undefined;
     const now = Date.now();
@@ -1613,12 +1672,22 @@ export class FileSyncRendezvous {
       );
 
     const ignored = new Set(leftovers.ignored.map((entry) => entry.file));
-    const ignoredHellos = new Map<string, FileInfo>();
+    const ignoredHellos = new Map<string, IgnoredHello>();
+    const bodyDeadline = helloReadDeadline(deps.options());
     for (const { file, outbound } of leftovers.ignored) {
       if (outbound) continue;
       deps.startupIgnoredFiles.add(file.name);
       if (parseSizedControlName(file.name)?.type === "hello")
-        ignoredHellos.set(file.name, file);
+        ignoredHellos.set(file.name, {
+          listed: file,
+          body: await readIgnoredHelloBody(
+            deps.client(),
+            joinFileSyncPath(scope.inboundPath, file.name),
+            bodyDeadline,
+            deps.options().pollingFrequency,
+            deps.signal(),
+          ),
+        });
     }
 
     let unansweredHello: EntryScan["unansweredHello"];
@@ -1966,25 +2035,42 @@ export class FileSyncRendezvous {
     // The inbound listing without the files the entry scan ignored, so no
     // check below can read one. First refuses an ignored hello written again
     // under its name: the partner's run reused an earlier exchange's name, and
-    // this run would otherwise wait out its peer timeout ignoring it.
+    // this run would otherwise wait out its peer timeout ignoring it. A
+    // changed listed time or size only prompts a re-read: the run stops when
+    // the body differs from the one read at entry, or when there is no entry
+    // body to compare with. A re-read that does not complete is retried at
+    // the next listing.
     const listInbound = async (): Promise<FileInfo[]> => {
       const listed = await deps.client().list(scope.inboundPath);
       if (deps.startupIgnoredFiles.size === 0) return listed;
-      const rewritten = listed.find((file) => {
-        const atEntry = entry.ignoredHellos.get(file.name);
-        return (
-          atEntry !== undefined &&
-          (file.modifyTime !== atEntry.modifyTime || file.size !== atEntry.size)
+      for (const file of listed) {
+        const ignored = entry.ignoredHellos.get(file.name);
+        if (
+          ignored === undefined ||
+          (file.modifyTime === ignored.listed.modifyTime &&
+            file.size === ignored.listed.size)
+        )
+          continue;
+        const rewritten = () =>
+          new UsageError(
+            `partner hello ${redactPrivateKeyMaterial(file.name)} was ` +
+              "written again under a name an earlier exchange in this folder " +
+              "used, so this run cannot tell it from that exchange's files. " +
+              "Your partner needs fields in its peer_id, for example " +
+              "%Y%m%d%H%M%S, so each run writes new names.",
+          );
+        if (ignored.body === undefined) throw rewritten();
+        const body = await readIgnoredHelloBody(
+          deps.client(),
+          joinFileSyncPath(scope.inboundPath, file.name),
+          helloReadDeadline(deps.options()),
+          deps.options().pollingFrequency,
+          deps.signal(),
         );
-      });
-      if (rewritten !== undefined)
-        throw new UsageError(
-          `partner hello ${redactPrivateKeyMaterial(rewritten.name)} was ` +
-            "written again under a name an earlier exchange in this folder " +
-            "used, so this run cannot tell it from that exchange's files. " +
-            "Your partner needs fields in its peer_id, for example " +
-            "%Y%m%d%H%M%S, so each run writes new names.",
-        );
+        if (body === undefined) continue;
+        if (!body.equals(ignored.body)) throw rewritten();
+        ignored.listed = file;
+      }
       return listed.filter((file) => !deps.startupIgnoredFiles.has(file.name));
     };
 

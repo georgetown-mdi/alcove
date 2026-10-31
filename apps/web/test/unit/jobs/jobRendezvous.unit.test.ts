@@ -1408,6 +1408,7 @@ function isContentWarning(warning: string): boolean {
 function contentWarnings(
   entries: Array<string>,
   sweepExchangeFiles: boolean = SWEEP_OFF,
+  retainFiles = false,
 ): Array<string> {
   const rendezvous = tempDir("rendezvous");
   const dataRoot = tempDir("data");
@@ -1420,6 +1421,7 @@ function contentWarnings(
     dataRoot,
     path.join(dataRoot, "current-job"),
     sweepExchangeFiles,
+    retainFiles,
   ).filter(isContentWarning);
 }
 
@@ -1499,6 +1501,17 @@ describe("rendezvousStartupWarnings emptiness branch", () => {
         'exchange files" and re-run. Your own input and results are not what ' +
         "it refuses over.",
     );
+  });
+
+  test("a retain-mode launch is told the run ignores the files, not refuses them", () => {
+    expect(notEmptyLead("/data", "shared", SWEEP_OFF, true)).toBe(
+      "the shared folder /data holds an earlier exchange's files. With every " +
+        "exchange file kept, the run ignores them as long as each run writes " +
+        "new file names, and stops naming any file it cannot ignore.",
+    );
+    const [lead] = contentWarnings(retainedTranscript, SWEEP_OFF, true);
+    expect(lead).toContain("the run ignores them");
+    expect(lead).not.toContain("refuses to start on");
   });
 
   test("the recovery for a launch with the sweep is pinned whole", () => {

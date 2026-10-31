@@ -33,6 +33,36 @@ export function answeredHelloStems(names: Iterable<string>): Set<string> {
   return stems;
 }
 
+const TIMESTAMPED_MESSAGE_TAIL = /-\d{8}T\d{6}-\d+-\d+\.json$/;
+const MESSAGE_TAIL = /-\d+\.json$/;
+
+/**
+ * Whether a message name holds a writer id: what precedes its
+ * `-<ts>-<NNN>-<bytes>.json` tail, or its `-<bytes>.json` tail when it has no
+ * timestamp, parsed right-anchored like a control name. A bare `-42.json` has
+ * none.
+ *
+ * @internal
+ */
+export function messageHasWriter(name: string): boolean {
+  const tail =
+    TIMESTAMPED_MESSAGE_TAIL.exec(name) ?? MESSAGE_TAIL.exec(name) ?? undefined;
+  return tail !== undefined && tail.index > 0;
+}
+
+/**
+ * Whether an ack name holds a writer id ahead of a non-empty acknowledged
+ * name: `<writer>-<acked>-ack.json`. Ids may hold `-`, so any split leaving
+ * both parts non-empty counts. A bare `-ack.json` has none.
+ *
+ * @internal
+ */
+export function ackHasWriter(name: string): boolean {
+  const acked = name.slice(0, -ACK_SUFFIX.length);
+  const dash = acked.indexOf("-", 1);
+  return dash !== -1 && dash < acked.length - 1;
+}
+
 /** A file the start-up scan ignores, and the directory it was listed in. */
 export interface IgnoredLeftover {
   file: FileInfo;
@@ -81,8 +111,12 @@ export function classifyRetainLeftovers(input: {
   const unansweredHellos: FileInfo[] = [];
   const consider = (file: FileInfo, outbound: boolean): void => {
     const { name } = file;
-    if (name.endsWith(ACK_SUFFIX) || isMessageName(name)) {
-      ignored.push({ file, outbound });
+    if (name.endsWith(ACK_SUFFIX)) {
+      if (ackHasWriter(name)) ignored.push({ file, outbound });
+      return;
+    }
+    if (isMessageName(name)) {
+      if (messageHasWriter(name)) ignored.push({ file, outbound });
       return;
     }
     const control = parseSizedControlName(name);

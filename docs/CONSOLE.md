@@ -128,7 +128,7 @@ bound is in
 Some deployments bridge two folders: this party reads its partner's files out of an **inbound** folder and writes its own into an **outbound** one. Set both `JOB_RENDEZVOUS_DIR` (inbound) and `JOB_RENDEZVOUS_OUTBOUND_DIR` (outbound), and every shared-folder exchange uses that pair, composing the CLI's `inbound_path`/`outbound_path` ([FILE_SYNC.md](spec/FILE_SYNC.md#split-inboundoutbound-directories)).
 
 - **Both variables are required.** With either missing, the console offers no shared-folder exchange and names the missing variable. `JOB_DATA_ROOT` never stands in for the inbound folder.
-- **It requires retain mode.** The console holds the exchange until you choose to keep every exchange file, and the CLI refuses the pair without `--retain-files`. Both folders must start empty on both sides, or hold only an earlier exchange's files, which the run ignores.
+- **It requires retain mode.** The console holds the exchange until you choose to keep every exchange file, and the CLI refuses the pair without `--retain-files`. An earlier exchange's files in either folder are ignored, as long as each run writes new file names ([Directory exclusivity](EXCHANGE_REFERENCE.md#directory-exclusivity)).
 - **The two folders must differ, and neither may sit inside the other.** The console offers no shared-folder exchange until they do, naming the variable to move.
 - **Each folder needs a name, and the names must differ** (`JOB_RENDEZVOUS_OUTBOUND_NAME`).
 - **Your partner runs the mirror image.** The accept kit gives them the two-folder commands and routes a partner on a network drive to the Windows launcher ([DEPLOYMENT.md](DEPLOYMENT.md#the-user-the-image-runs-as)).
@@ -275,7 +275,7 @@ Every flow that runs an SFTP or shared-folder exchange offers "How files are han
 - **If an unrecognised file appears** sets what happens when a foreign file turns up mid-run. It has no CLI flag, so quick exchange does not offer it.
 - **Write files without renaming them** (`--write-without-renaming`) is for a server that does not allow renames; it is safe only where the folder never passes a partly written file to your partner ([Setting `write_without_renaming`](EXCHANGE_REFERENCE.md#setting-write_without_renaming)). Your partner need not set it.
 
-Retain mode and lockless rendezvous must match on both sides, from an empty shared folder; a mismatch stops the exchange when the two sides meet. The console states this when you turn retain mode on and blocks a combination the exchange would reject. The settings: [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md#sftp-and-shared-folder-options).
+Retain mode and lockless rendezvous must match on both sides; a mismatch stops the exchange when the two sides meet. The console states this when you turn retain mode on and blocks a combination the exchange would reject. With retain mode on, a later exchange can reuse the shared folder: the run ignores the files an earlier one kept, as long as each run writes new file names. A fixed name for this side repeats the same names, so leave it blank or give `peer_id` date and time fields in a configuration file, such as `site-%Y%m%d%H%M%S`. Without retain mode, an exchange starts from a folder holding no exchange files, or clears them first with the sweep below. The settings: [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md#sftp-and-shared-folder-options).
 
 ## Tuning the connection
 
