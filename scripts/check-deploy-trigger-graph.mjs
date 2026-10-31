@@ -13,7 +13,7 @@
 //     It may run inline `run` steps but checks nothing out, runs no local action
 //     and calls no workflow. Any other form of its `environment` (a mapping, an
 //     expression, another name) leaves it a holder, so its `run` steps fail it;
-//     a second job in that environment is a holder too.
+//     a job other than that one whose `environment` mentions it fails.
 //   - Every tracked source the hosted static build reads matches a push filter of
 //     pages_deploy.yaml; release.yaml's production redeploy runs on every
 //     release tag, with no filter. The graph is the module ids
@@ -193,6 +193,13 @@ export function deployCredentialFindings(workflows) {
         id === RELEASE_JOB.id &&
         job?.environment === RELEASE_ENVIRONMENT;
       if (isReleaseJob) releaseJobs.push({ path, id, job, steps });
+      else if (
+        JSON.stringify(job?.environment ?? null).includes(RELEASE_ENVIRONMENT)
+      ) {
+        findings.push(
+          `${path} job ${id} runs in the ${RELEASE_ENVIRONMENT} environment, which only ${RELEASE_JOB.path} job ${RELEASE_JOB.id} may, with its environment written as the plain string ${RELEASE_ENVIRONMENT}.`,
+        );
+      }
       const holds =
         (job?.environment !== undefined && !isReleaseJob) ||
         DEPLOY_SECRET.test(JSON.stringify(job ?? null)) ||
@@ -481,7 +488,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   );
   if (credentialFindings.length > 0) {
     console.error(
-      "Deploy trigger check failed: the deploy credentials reach a job other than the one upload job of each deploy workflow.\n",
+      "Deploy trigger check failed: the deploy credentials or the Docker Hub publish token reach a job they may not.\n",
     );
     for (const finding of credentialFindings) console.error(`  ${finding}`);
     process.exit(1);

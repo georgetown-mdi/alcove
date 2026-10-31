@@ -923,7 +923,7 @@ A second deploy path, or a build step moved into the upload job, would hold the 
 The `Release` environment holds the Docker Hub publish token instead, read only by the release's Docker Hub job, which needs inline steps to copy and read back the images.
 The check exempts exactly one job from the holder rule: `dockerhub` in `release.yaml`, and only while its `environment` is the literal string `Release`.
 Its inline `run` steps are admitted because the token is not a deploy credential, and the steps run in an environment only a `v*.*.*` tag can use; a checkout, a local action or a called workflow in it still fails, since each would run repository code beside the token.
-Any other form of its `environment` (a mapping, an expression, another name) leaves it a holder, so the holder rule refuses its `run` steps; a second job in `Release` is a holder too, and the one-holder rule refuses it.
+Any other form of its `environment` (a mapping, an expression, another name) leaves it a holder, so the holder rule refuses its `run` steps; any other job whose `environment` mentions `Release` is refused outright, whether or not it is also a holder.
 The environment's protection is its tag-only deployment rule and the tag ruleset limiting who can push such a tag, which the check does not read.
 
 ### Why the graph is read from a real build

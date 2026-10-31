@@ -251,7 +251,7 @@ Between items 1 and 2, a Docker Hub tag names a manifest whose signature is not 
 
 The job logs in to Docker Hub with secrets of its own, `DOCKERHUB_PUBLISH_USERNAME` and `DOCKERHUB_PUBLISH_TOKEN`, in the `Release` environment's secrets, which only a `v*.*.*` tag can reach:
 
-- **Environment setup:** under Settings -> Environments, create an environment named `Release` with one deployment rule, tags matching `v*.*.*`, and set the two secrets on it. Keep no repository-level copy of either: a repository secret is readable from any workflow on any ref, so a rotated token goes on the environment, never the repository.
+- **Environment setup:** under Settings -> Environments, create an environment named `Release` with one deployment rule, tags matching `v*.*.*`, and set the two secrets on it. Keep no repository-level copy of either: a repository secret is readable from any workflow on any ref.
 - The token is a Docker Hub personal access token with Read & Write access, created on the `vdorie` account, because the free `gumdi` organization offers no organization tokens.
 - It expires on 2027-10-30. Replace the `DOCKERHUB_PUBLISH_TOKEN` value before then, or the "Log in to Docker Hub to publish" step fails every release.
 - The read-only `DOCKERHUB_TOKEN` pull token above is not used for the copy, and is not given write access.

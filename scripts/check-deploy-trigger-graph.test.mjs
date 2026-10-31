@@ -712,6 +712,18 @@ describe("the deploy-credential rule", () => {
       );
     });
 
+    it("refuses the release workflow's upload job running in the environment", () => {
+      const findings = deployCredentialFindings(
+        withRelease({
+          [RELEASE_JOB.id]: dockerhubJob(),
+          pages: uploadJob({ environment: RELEASE_ENVIRONMENT }),
+        }),
+      ).join("\n");
+      expect(findings).toMatch(
+        /release\.yaml job pages runs in the Release environment/,
+      );
+    });
+
     it("refuses a job in the environment in another workflow", () => {
       const findings = deployCredentialFindings([
         ...deployWorkflows(),
