@@ -3,11 +3,11 @@ import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 
 import {
-  PROTOCOL_VERSION,
   TERMS_ENVELOPE_FIELDS,
   exchangeTerms,
   sendAbort,
 } from "../../src/protocolSetup";
+import { PROTOCOL_VERSION } from "../../src/versionHello";
 import { createMessagePipe } from "../../src/connection/messageConnection";
 import { recordingConnection } from "../utils/recordingConnection";
 
@@ -154,6 +154,7 @@ function rotationFor(side: PartyInputs): TermsRotation | undefined {
   const fixture = vectors.rotation;
   return {
     inputs: {
+      negotiatedProtocolVersion: PROTOCOL_VERSION,
       sessionKey: fromHex(fixture.sessionKeyHex),
       keyAgreementOutput: fromHex(fixture.keyAgreementOutputHex),
       initiatorValue: fromHex(fixture.initiatorValueHex),
@@ -242,7 +243,10 @@ describe("terms-exchange envelope vectors", () => {
         frame.envelope.abortReasons as Array<string>,
         frame.carriesLinkageTerms === null
           ? undefined
-          : vectors.linkageTerms[frame.carriesLinkageTerms],
+          : {
+              linkageTerms: vectors.linkageTerms[frame.carriesLinkageTerms]!,
+              protocolVersion: PROTOCOL_VERSION,
+            },
       );
 
       expect(sent).toHaveLength(1);

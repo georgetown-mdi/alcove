@@ -228,6 +228,7 @@ function authenticatedOver(
     nextSecretInputs: MOCKED_NEXT_SECRET_INPUTS,
     applyEncryption: true,
     secretUsed: { local: "current", partner: "current" },
+    negotiated: { kex: 3, protocol: 1, envelope: 1 },
     connection,
   };
 }

@@ -467,6 +467,11 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
     return MAX_FRAME_SIZE_BYTES;
   }
 
+  /** Implements `Connection.useEnvelopeVersion`. */
+  useEnvelopeVersion(version: number): void {
+    this.messageLoop.useEnvelopeVersion(version);
+  }
+
   private get lastSentFile(): string | undefined {
     return this.messageLoop.lastSentFile;
   }

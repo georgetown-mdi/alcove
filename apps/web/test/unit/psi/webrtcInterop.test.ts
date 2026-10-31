@@ -4,7 +4,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { default as EventEmitter } from "eventemitter3";
 
-import { ConnectionError, handshakeRoleForRendezvousRole } from "@alcove/core";
+import {
+  ConnectionError,
+  handshakeRoleForRendezvousRole,
+  supportedVersions,
+} from "@alcove/core";
 
 import {
   dialAsAcceptor,
@@ -363,7 +367,10 @@ describe("the handshake role and encryption request the web app puts on the wire
 
     scripted.reply({
       kexMsg: "1",
-      e: await ephemeralShare(),
+      hello: Buffer.from(JSON.stringify(supportedVersions())).toString(
+        "base64url",
+      ),
+      e: { [String(supportedVersions().kex[0])]: await ephemeralShare() },
       reqEnc: false,
     });
     await vi.waitFor(() => expect(scripted.sent.length).toBe(1));

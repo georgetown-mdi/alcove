@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 
-import { exchangeTerms, PROTOCOL_VERSION } from "../src/protocolSetup";
+import { exchangeTerms } from "../src/protocolSetup";
+import { PROTOCOL_VERSION } from "../src/versionHello";
 import { MAX_PSI_DECODE_ELEMENTS } from "../src/connection/frameSize";
 import type { LinkageTerms } from "../src/config/linkageTermsSchema";
 import {

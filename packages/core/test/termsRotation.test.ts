@@ -16,6 +16,7 @@ import {
   wrapRotationValue,
 } from "../src/nextSecret";
 import type { NextSecretInputs } from "../src/nextSecret";
+import { PROTOCOL_VERSION } from "../src/versionHello";
 import { SHARED_SECRET_REGEX } from "../src/config/connection";
 import { createMessagePipe } from "../src/connection/messageConnection";
 import type { MessageConnection } from "../src/connection/messageConnection";
@@ -61,6 +62,7 @@ afterEach(() => {
 
 function handshakeInputs(expires?: string): NextSecretInputs {
   return {
+    negotiatedProtocolVersion: PROTOCOL_VERSION,
     sessionKey: randomBytes(32),
     keyAgreementOutput: randomBytes(32),
     initiatorValue: randomBytes(32),

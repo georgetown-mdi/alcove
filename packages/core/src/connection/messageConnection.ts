@@ -99,6 +99,14 @@ export interface MessageConnection {
    * frame's length first.
    */
   outboundFrameOverheadBytes?(): number;
+  /**
+   * Optional: the envelope version the key exchange negotiated, which the
+   * transport writes on each frame after this party's first and requires on
+   * each partner frame after the partner's first. A transport whose frames
+   * hold no envelope version (WebRTC) omits it. See docs/spec/FILE_SYNC.md
+   * ("Message body format").
+   */
+  useEnvelopeVersion?(version: number): void;
 }
 
 /** The transport's interface to push inbound events into the queue. */
@@ -197,6 +205,12 @@ interface TransportHooks {
    * the protocol's maximum alone omits it.
    */
   inboundPsiSetElementCeiling?: () => number;
+  /**
+   * Optional: take the negotiated envelope version (see
+   * {@link MessageConnection.useEnvelopeVersion}); a transport whose frames
+   * hold none omits it.
+   */
+  useEnvelopeVersion?: (version: number) => void;
 }
 
 type TransportConnect = (controls: TransportControls) => TransportHooks;
@@ -678,6 +692,10 @@ export class QueuedMessageConnection implements MessageConnection {
   inboundPsiSetElementCeiling(): number | undefined {
     return this.hooks.inboundPsiSetElementCeiling?.();
   }
+
+  useEnvelopeVersion(version: number): void {
+    this.hooks.useEnvelopeVersion?.(version);
+  }
 }
 
 /**
@@ -743,6 +761,7 @@ export function fromEventConnection(
         setInboundFrameCap: conn.setInboundFrameCap?.bind(conn),
         inboundPollIntervalMs: conn.inboundPollIntervalMs?.bind(conn),
         outboundFileSyncFrameBound: conn.outboundFileSyncFrameBound?.bind(conn),
+        useEnvelopeVersion: conn.useEnvelopeVersion?.bind(conn),
       };
     },
     {

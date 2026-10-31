@@ -1347,7 +1347,10 @@ export interface RunExchangeOptions {
    * The shared-secret rotation an authenticated run makes at its terms
    * exchange, which awaits `rotation.store` at this side's point in the store
    * order ({@link TermsRotation}). Passed on every authenticated run and on no
-   * other.
+   * other. Its inputs hold the protocol version the key exchange negotiated,
+   * which the terms exchange states and checks; a run without it uses this
+   * build's own (docs/spec/PROTOCOL.md, "Protocol-version reconcile at the
+   * terms exchange").
    */
   rotation?: TermsRotation;
   verbosity?: number;

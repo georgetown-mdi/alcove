@@ -4,13 +4,13 @@ import {
   exchangeTerms,
   probeProtocolVersion,
   resolveRole,
-  PROTOCOL_VERSION,
   PROTOCOL_VERSION_MISMATCH_MESSAGE,
   TERMS_CHANGE_NOT_ACCEPTED_REASON,
   TERMS_ENVELOPE_FIELDS,
   termsDifferenceLocalKeys,
   termsDifferenceRefusedBy,
 } from "../src/protocolSetup";
+import { PROTOCOL_VERSION } from "../src/versionHello";
 import { MAX_NAME_LENGTH } from "../src/config/linkageTermsSchema";
 import { MAX_PSI_DECODE_ELEMENTS } from "../src/connection/frameSize";
 import {
@@ -29,6 +29,7 @@ import {
 } from "../src/connection/messageConnection";
 import { sanitizeErrorForDisplay } from "../src/utils/sanitizeErrorForDisplay";
 import { sanitizeForDisplay } from "../src/utils/sanitizeForDisplay";
+import { randomBytes } from "../src/utils/crypto";
 import { recordingConnection } from "./utils/recordingConnection";
 
 // --- Test fixtures -----------------------------------------------------------
@@ -253,6 +254,70 @@ test("both parties advertise the protocol version on their terms messages", asyn
   expect(initiatorSent[0]).toMatchObject({ protocolVersion: PROTOCOL_VERSION });
   expect(responderSent[0]).toMatchObject({ protocolVersion: PROTOCOL_VERSION });
   expect("protocolVersion" in initiatorSent[1]).toBe(false);
+});
+
+// The key material a completed key exchange leaves both sides, so the rotation
+// an authenticated run passes completes.
+const HANDSHAKE_KEYS = {
+  sessionKey: randomBytes(32),
+  keyAgreementOutput: randomBytes(32),
+  initiatorValue: randomBytes(32),
+  expires: undefined,
+};
+
+// An authenticated run's terms exchange, whose rotation inputs name the
+// protocol version the key exchange negotiated.
+function exchangeAtVersion(
+  conn: MessageConnection,
+  role: "initiator" | "responder",
+  negotiated: number,
+) {
+  return exchangeTerms(
+    conn,
+    role,
+    role === "initiator" ? termsA : termsB,
+    100,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    {
+      inputs: { ...HANDSHAKE_KEYS, negotiatedProtocolVersion: negotiated },
+      store: () => {},
+    },
+  );
+}
+
+test("each terms message states the version the key exchange negotiated", async () => {
+  const negotiated = PROTOCOL_VERSION + 4;
+  const [connA, connB] = makeConnections();
+  const { conn: recordingA, sent: initiatorSent } = recordingConnection(connA);
+  const { conn: recordingB, sent: responderSent } = recordingConnection(connB);
+  await Promise.all([
+    exchangeAtVersion(recordingA, "initiator", negotiated),
+    exchangeAtVersion(recordingB, "responder", negotiated),
+  ]);
+  expect(initiatorSent[0]).toMatchObject({ protocolVersion: negotiated });
+  expect(responderSent[0]).toMatchObject({ protocolVersion: negotiated });
+});
+
+test("a terms message stating a version other than the negotiated one is refused", async () => {
+  const [connA, connB] = makeConnections();
+  const results = await Promise.allSettled([
+    exchangeAtVersion(connA, "initiator", PROTOCOL_VERSION),
+    exchangeAtVersion(connB, "responder", PROTOCOL_VERSION + 1),
+  ]);
+  for (const result of results) {
+    expect(result.status).toBe("rejected");
+    expect((result as PromiseRejectedResult).reason).toBeInstanceOf(
+      ProtocolRefusalError,
+    );
+    expect(((result as PromiseRejectedResult).reason as Error).message).toBe(
+      PROTOCOL_VERSION_MISMATCH_MESSAGE,
+    );
+  }
 });
 
 // --- Payload-intent advertisement (single-pass table withholding) ------------
@@ -676,7 +741,7 @@ test("a version mismatch is diagnosed ahead of a simultaneous terms mismatch", a
 });
 
 test("initiator: a version skew on an abort frame wins over the peer's abort reason", async () => {
-  // Precedence pin: reconcileProtocolVersion runs before the abort-decision
+  // Precedence pin: checkProtocolVersion runs before the abort-decision
   // check, so a message 2 that both aborts AND holds a SKEWED version is
   // diagnosed as the skew, not the peer's stated reason. A conforming abort
   // holds this build's own version, so the reconcile no-ops and the peer's

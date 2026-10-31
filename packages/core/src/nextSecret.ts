@@ -36,12 +36,17 @@ export interface RotationValue {
 }
 
 /**
- * What the key exchange hands the terms exchange for the rotation: the session
- * key the wraps derive from, the key-agreement output, the initiator's value,
- * and the current secret's `expires`, checked at each side's last point before
- * its store. Holds key material: kept in memory and never logged.
+ * What the key exchange hands the terms exchange: the protocol version its
+ * hellos selected, which both terms frames state and check, and for the
+ * rotation the session key the wraps derive from, the key-agreement output,
+ * the initiator's value, and the current secret's `expires`, checked at each
+ * side's last point before its store. Holds key material: kept in memory and
+ * never logged.
  */
 export interface NextSecretInputs {
+  /** `AuthResult.negotiated.protocol` (docs/spec/PROTOCOL.md, "The version
+   * hello"). */
+  readonly negotiatedProtocolVersion: number;
   readonly sessionKey: Uint8Array<ArrayBuffer>;
   /** The rotation input the key agreement produced: for the P-256 handshake,
    * the 32-byte `ka` block of its key-agreement derivation. */

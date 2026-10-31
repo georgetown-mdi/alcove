@@ -1,3 +1,4 @@
+import { getFips } from "node:crypto";
 import path from "node:path";
 
 import {
@@ -16,6 +17,7 @@ import {
   describeResolvedMatching,
   describeResolvedRunShape,
   authenticateConnection,
+  supportedVersions,
   deriveAbortToken,
   OperatorConfigError,
   PeerAbortError,
@@ -1400,8 +1402,17 @@ async function authenticateRun(params: {
   // so DTLS alone does not keep content from it; it cannot complete this
   // handshake. See docs/spec/CHANNEL_SECURITY.md.
   const requestEncryption = true;
-  const { nextSecretInputs, sessionKey, applyEncryption, secretUsed } =
-    await authenticateConnection(mc, authParams, role, requestEncryption, {
+  // The FIPS variant image's OpenSSL configuration sets fips=yes as the
+  // default property, which getFips() reports (docs/notes/fips-provider-
+  // surface.md); under it the hello offers approved key-exchange suites only.
+  // A capability probe would not do: a FIPS provider build may still carry an
+  // unapproved primitive.
+  const authResult = await authenticateConnection(
+    mc,
+    authParams,
+    role,
+    requestEncryption,
+    {
       ...(previousSharedSecret !== undefined && {
         previous: {
           sharedSecret: previousSharedSecret,
@@ -1409,11 +1420,15 @@ async function authenticateRun(params: {
         },
       }),
       history: rotationHistory ?? [],
-    }).catch((err: unknown) => {
-      if (isTrustBoundaryFailure(classifyFailure(err)))
-        clearRotationInFlightMarker(keyFilePath, auth.sharedSecret, log);
-      throw err;
-    });
+    },
+    supportedVersions({ approvedKexSuitesOnly: getFips() === 1 }),
+  ).catch((err: unknown) => {
+    if (isTrustBoundaryFailure(classifyFailure(err)))
+      clearRotationInFlightMarker(keyFilePath, auth.sharedSecret, log);
+    throw err;
+  });
+  const { nextSecretInputs, sessionKey, applyEncryption, secretUsed } =
+    authResult;
   const heal = rotationHealWarning(secretUsed);
   if (heal !== undefined) {
     log.warn(heal);
@@ -1542,7 +1557,7 @@ async function authenticateRun(params: {
       "usage",
     );
   }
-  run.secure = await EncryptedMessageConnection.create(mc, sessionKey, role);
+  run.secure = await EncryptedMessageConnection.create(mc, authResult, role);
   if (run.signalReceived !== undefined) {
     throw new Error(
       `interrupted by ${run.signalReceived} during channel encryption setup`,

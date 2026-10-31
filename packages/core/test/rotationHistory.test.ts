@@ -4,7 +4,8 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { authenticateConnection } from "../src/auth";
 import type { RotationState } from "../src/auth";
-import { runKex } from "../src/kex";
+import { runKex, supportedVersions } from "../src/kex";
+import { encodeHello } from "../src/versionHello";
 import {
   ROTATION_HISTORY_MAX_ENTRIES,
   deriveHistoryVerifier,
@@ -27,6 +28,9 @@ import type { HandshakeRole } from "../src/types";
 const GENERIC_FAILURE = "key exchange authentication failed";
 
 const secret = (): string => toBase64Url(randomBytes(32));
+
+const HELLO_WIRE = toBase64Url(encodeHello(supportedVersions()));
+const SUITE = String(supportedVersions().kex[0]);
 
 afterEach(() => {
   vi.useRealTimers();
@@ -403,7 +407,12 @@ describe("the history proof and the behind notice", () => {
       const [a, b] = createMessagePipe();
       const responder = runKex(b, "responder", randomBytes(32), true);
       responder.catch(() => {});
-      await a.send({ kexMsg: "1", e: await freshShare(), reqEnc: true });
+      await a.send({
+        kexMsg: "1",
+        hello: HELLO_WIRE,
+        e: { [SUITE]: await freshShare() },
+        reqEnc: true,
+      });
       expect(await a.receive()).toMatchObject({ kexMsg: "2" });
       await a.send(abort);
       await expect(responder).rejects.toThrow(GENERIC_FAILURE);
@@ -419,6 +428,7 @@ describe("the history proof and the behind notice", () => {
     expect(await b.receive()).toMatchObject({ kexMsg: "1" });
     await b.send({
       kexMsg: "2",
+      hello: HELLO_WIRE,
       e: await freshShare(),
       confirm: toBase64Url(randomBytes(32)),
       previousConfirm: toBase64Url(randomBytes(32)),

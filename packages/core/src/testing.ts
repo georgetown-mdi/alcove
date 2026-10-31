@@ -46,6 +46,7 @@ export {
   keyAgreementFixedInfo,
   responderConfirmTag,
 } from "./kex.js";
+export { helloPrologue } from "./versionHello.js";
 export {
   deriveNextSecret,
   importRotationValue,
@@ -85,11 +86,11 @@ export { FAN_OUT_CANDIDATES_PER_ELEMENT } from "./fanOutFunctions.js";
 export { linkViaSinglePassPSI } from "./psi/link.js";
 export { StandardizedKeyIterable } from "./standardization.js";
 export {
-  PROTOCOL_VERSION,
   TERMS_ENVELOPE_FIELDS,
   exchangeTerms,
   sendAbort,
 } from "./protocolSetup.js";
+export { PROTOCOL_VERSION } from "./versionHello.js";
 
 // The framing bytes of the file-sync message envelope, the AEAD envelope's
 // version marker, and the close() teardown budgets, so a suite can build a

@@ -8,6 +8,7 @@ export const MOCKED_NEXT_SECRET = "rotated";
 /** Inputs a mocked handshake hands the run; the mocked runExchange reads none
  * of their bytes. */
 export const MOCKED_NEXT_SECRET_INPUTS: NextSecretInputs = {
+  negotiatedProtocolVersion: 1,
   sessionKey: new Uint8Array(32),
   keyAgreementOutput: new Uint8Array(32),
   initiatorValue: new Uint8Array(32),

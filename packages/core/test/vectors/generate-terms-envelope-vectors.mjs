@@ -114,6 +114,7 @@ function rotationFor(side) {
   if (side.rotates !== true) return undefined;
   return {
     inputs: {
+      negotiatedProtocolVersion: PROTOCOL_VERSION,
       sessionKey: fromHex(rotation.sessionKeyHex),
       keyAgreementOutput: fromHex(rotation.keyAgreementOutputHex),
       initiatorValue: fromHex(rotation.initiatorValueHex),
@@ -382,7 +383,10 @@ async function captureAbort(entry) {
     entry.abortReasons,
     entry.carriesLinkageTerms === null
       ? undefined
-      : linkageTerms[entry.carriesLinkageTerms],
+      : {
+          linkageTerms: linkageTerms[entry.carriesLinkageTerms],
+          protocolVersion: PROTOCOL_VERSION,
+        },
   );
   if (sent.length !== 1)
     throw new Error(

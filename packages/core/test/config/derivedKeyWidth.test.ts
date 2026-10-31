@@ -5,11 +5,8 @@ import { expect, test, describe } from "vitest";
 
 import PSI from "@openmined/psi.js";
 
-import {
-  exchangeTerms,
-  resolveRole,
-  PROTOCOL_VERSION,
-} from "../../src/protocolSetup";
+import { exchangeTerms, resolveRole } from "../../src/protocolSetup";
+import { PROTOCOL_VERSION } from "../../src/versionHello";
 import {
   declaredEffectiveKeyCount,
   declaredKeyWidth,

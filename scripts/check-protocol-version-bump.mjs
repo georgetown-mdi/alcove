@@ -50,7 +50,7 @@ export {
 };
 
 /** The source the build's PROTOCOL_VERSION literal is read from. */
-export const PROTOCOL_VERSION_SOURCE = "packages/core/src/protocolSetup.ts";
+export const PROTOCOL_VERSION_SOURCE = "packages/core/src/versionHello.ts";
 
 /** The vectors directory the wire-format pin is taken over. */
 export const VECTORS_DIRECTORY = "packages/core/test/vectors";

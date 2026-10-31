@@ -65,8 +65,8 @@ const RECORDED_SITES: Readonly<Record<string, readonly string[]>> = {
   ],
   // The partner's own abort at the terms exchange.
   "packages/core/src/protocolSetup.ts :: partnerAbortError": [PLAIN, PLAIN],
-  // The partner advertises another protocol version.
-  "packages/core/src/protocolSetup.ts :: reconcileProtocolVersion": [PARTNER],
+  // The partner states a protocol version other than the negotiated one.
+  "packages/core/src/protocolSetup.ts :: checkProtocolVersion": [PARTNER],
   // This party does not take on the partner's changed terms.
   "packages/core/src/protocolSetup.ts :: settleTermsChange > refuse": [
     TERMS_CHANGE,
@@ -140,6 +140,8 @@ const RECORDED_SITES: Readonly<Record<string, readonly string[]>> = {
     PARTNER,
     PLAIN,
   ],
+  // The two hellos share no version in some layer.
+  "packages/core/src/versionHello.ts :: noCommonVersionError": [PARTNER],
 };
 
 // Each member class the scan finds, constructed bare, so the predicate is read

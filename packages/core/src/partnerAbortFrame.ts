@@ -126,6 +126,7 @@ const FORWARDED_CONNECTION_MEMBERS = {
   outboundFileSyncFrameBound: true,
   inboundPsiSetElementCeiling: true,
   outboundFrameOverheadBytes: true,
+  useEnvelopeVersion: true,
 } as const satisfies Record<keyof MessageConnection, true>;
 
 /**

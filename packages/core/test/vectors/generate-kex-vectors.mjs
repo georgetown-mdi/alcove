@@ -13,6 +13,9 @@
 // over the SP 800-186 section 3.2.1.3 base point) and RFC 5869 test case 3 (the
 // Noise-style chaining HKDF).
 //
+// The prologue is both parties' version hellos, each as the bytes sent behind
+// a two-byte length; the responder's holds a member no reader knows.
+//
 // The handshake includes a per-party request-encryption flag, bound into the
 // transcript as a single byte MixHash'd as each message's handshake payload. The
 // vectors below cover all four (initiator, responder) flag combinations so both
@@ -107,7 +110,31 @@ function noiseHkdf(ck, ikm, n) {
   return [o1, o2, o3];
 }
 
-function computeKexKeys(psk, eInitPub, eRespPub, eeInput, iReq, rReq) {
+// The Noise prologue: both version hellos as sent, initiator first, each
+// behind its length as a two-byte big-endian integer.
+function helloPrologue(initiatorHello, responderHello) {
+  const len = (b) => {
+    const out = Buffer.alloc(2);
+    out.writeUInt16BE(b.length);
+    return out;
+  };
+  return Buffer.concat([
+    len(initiatorHello),
+    initiatorHello,
+    len(responderHello),
+    responderHello,
+  ]);
+}
+
+function computeKexKeys(
+  psk,
+  prologue,
+  eInitPub,
+  eRespPub,
+  eeInput,
+  iReq,
+  rReq,
+) {
   // Noise InitializeSymmetric: a name of at most 32 bytes is zero-padded to 32
   // bytes, a longer one is hashed.
   const name = Buffer.from(PROTOCOL_NAME, "utf8");
@@ -116,7 +143,7 @@ function computeKexKeys(psk, eInitPub, eRespPub, eeInput, iReq, rReq) {
       ? Buffer.concat([name, Buffer.alloc(32 - name.length)])
       : sha256(name);
   let ck = h;
-  h = sha256(Buffer.concat([h, Buffer.alloc(0)])); // mixHash(empty prologue)
+  h = sha256(Buffer.concat([h, prologue])); // mixHash(prologue): both hellos
   {
     const [o1, o2] = noiseHkdf(ck, psk, 3); // mixKeyAndHash(psk)
     ck = o1;
@@ -341,9 +368,23 @@ const FLAG_CASES = [
 // and a handshake that completes under it sets the flag in the initiator's tag.
 const previousPsk = Buffer.alloc(32, 0x43);
 
+// The two version hellos. The initiator's is the hello this build sends; the
+// responder's holds a member no reader knows, which the prologue still binds.
+const SUITE_ID = 3;
+const initiatorHello = Buffer.from(
+  `{"kex":[${SUITE_ID}],"protocol":[1],"envelope":[1]}`,
+  "utf8",
+);
+const responderHello = Buffer.from(
+  `{"kex":[${SUITE_ID}],"protocol":[1],"envelope":[1],"later":{"note":"x"}}`,
+  "utf8",
+);
+const prologue = helloPrologue(initiatorHello, responderHello);
+
 const computed = FLAG_CASES.map((c) => {
   const k = computeKexKeys(
     psk,
+    prologue,
     eInitPub,
     eRespPub,
     eeInput,
@@ -352,6 +393,7 @@ const computed = FLAG_CASES.map((c) => {
   );
   const p = computeKexKeys(
     previousPsk,
+    prologue,
     eInitPub,
     eRespPub,
     eeInput,
@@ -422,9 +464,15 @@ const cases = computed.map(({ c, k, p, r, rp }) => ({
     initiatorConfirmHex: hex(rp.initiatorConfirm),
   },
   wire: {
-    msg1: { kexMsg: "1", e: b64url(eInitPub), reqEnc: c.initiator },
+    msg1: {
+      kexMsg: "1",
+      hello: b64url(initiatorHello),
+      e: { [String(SUITE_ID)]: b64url(eInitPub) },
+      reqEnc: c.initiator,
+    },
     msg2: {
       kexMsg: "2",
+      hello: b64url(responderHello),
       e: b64url(eRespPub),
       confirm: b64url(k.responderConfirm),
       previousConfirm: b64url(p.responderConfirm),
@@ -446,8 +494,9 @@ const vector = {
     "Known-answer vectors for the alcove-kex-v3 P-256 authenticated key " +
     "exchange (Noise NNpsk0 over P-256 ECDH + explicit role-asymmetric key " +
     "confirmation + a per-party request-encryption flag bound into the " +
-    "transcript). Fixes the pre-shared secret and both ephemeral P-256 private " +
-    "keys, and records the key-agreement derivation's FixedInfo and its three " +
+    "transcript). Fixes the pre-shared secret, both ephemeral P-256 private " +
+    "keys and both version hellos (the prologue), and records the " +
+    "key-agreement derivation's FixedInfo and its three " +
     "blocks, and, for all four (initiator, responder) flag combinations, " +
     "the handshake hash, session key, and both confirmation tags. It also " +
     "fixes both parties' rotation values and records, per combination, each " +
@@ -467,7 +516,8 @@ const vector = {
     "Noise NNpsk0 (PSK mode: each e token is MixHash + MixKey; each message's " +
     "flag is the MixHash'd handshake payload), but the overall handshake is " +
     "pinned by this file and is NOT wire-compatible with generic Noise: the " +
-    "protocol name differs (so the initial h differs) and, instead of Noise " +
+    "protocol name differs (so the initial h differs), the prologue holds " +
+    "the responder's hello, which only message 2 delivers, and, instead of Noise " +
     "Split(), the session key uses a custom KDF over ck||h with an added " +
     "explicit confirmation round. So no end-to-end Noise vector corresponds. " +
     "What does correspond is checked separately: the P-256 scalar " +
@@ -508,6 +558,12 @@ const vector = {
     confirmKeyLabel: CONFIRM_KEY_LABEL,
     initiatorConfirmLabel: INITIATOR_CONFIRM_LABEL,
     responderConfirmLabel: RESPONDER_CONFIRM_LABEL,
+    prologue:
+      "u16be(len(initiatorHello)) || initiatorHello || " +
+      "u16be(len(responderHello)) || responderHello, each hello the UTF-8 " +
+      "JSON bytes as sent (base64url-encoded as message 1's and message 2's " +
+      "hello field). The responder's hello holds a member no reader knows, " +
+      "bound all the same.",
     requestEncryptionFlag:
       "Single byte (0x01 if the party requests the additional " +
       "application-encryption layer, else 0x00), MixHash'd as that message's " +
@@ -516,7 +572,7 @@ const vector = {
       "h0 = protocolName zero-padded to 32 bytes (it is exactly 32, so h0 is " +
       "the name itself); ck0 = h0. Tokens (PSK mode -- each e is " +
       "MixHash then MixKey; each flag is MixHash'd as the message payload): " +
-      "MixHash(''), MixKeyAndHash(psk), MixHash(eInitiatorPub), " +
+      "MixHash(prologue), MixKeyAndHash(psk), MixHash(eInitiatorPub), " +
       "MixKey(eInitiatorPub), MixHash(initiatorFlagByte), MixHash(eResponderPub), " +
       "MixKey(eResponderPub), MixHash(responderFlagByte), MixKey(ee). sessionKey " +
       "= HKDF(ck||h, sessionLabel, 32); confirmKey = HKDF(ck, confirmKeyLabel, " +
@@ -560,6 +616,9 @@ const vector = {
     keyAgreementEeHex: hex(eeInput),
     keyAgreementKaHex: hex(ka),
     keyAgreementHistoryInputHex: hex(historyInput),
+    initiatorHelloHex: hex(initiatorHello),
+    responderHelloHex: hex(responderHello),
+    prologueHex: hex(prologue),
     chainingKeyHex,
     confirmKeyHex,
     nextSecretHex: hex(nextSecret),

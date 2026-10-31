@@ -18,7 +18,8 @@ import {
   type MessageConnection,
 } from "../../src/connection/messageConnection";
 import type { LinkageTerms } from "../../src/config/linkageTermsSchema";
-import { exchangeTerms, PROTOCOL_VERSION } from "../../src/protocolSetup";
+import { exchangeTerms } from "../../src/protocolSetup";
+import { PROTOCOL_VERSION } from "../../src/versionHello";
 import { sanitizeErrorForDisplay } from "../../src/utils/sanitizeErrorForDisplay";
 import { toBase64Url } from "../../src/utils/crypto";
 import {

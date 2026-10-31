@@ -1,5 +1,6 @@
 import { hkdfDerive, fromBase64Url } from "./utils/crypto.js";
-import { runKex } from "./kex.js";
+import { runKex, supportedVersions } from "./kex.js";
+import type { NegotiatedVersions, SupportedVersions } from "./versionHello.js";
 
 import type { HandshakeRole } from "./types.js";
 import type { NextSecretInputs } from "./nextSecret.js";
@@ -56,6 +57,13 @@ export interface AuthResult {
     local: HandshakeSecretKind;
     partner: HandshakeSecretKind;
   };
+  /**
+   * The version both hellos selected in each layer. The caller passes this
+   * result to `EncryptedMessageConnection.create`, which keys the channel at
+   * `envelope`; `nextSecretInputs` holds `protocol`, which the terms exchange
+   * reads from the run's rotation (docs/spec/PROTOCOL.md, "The version hello").
+   */
+  negotiated: NegotiatedVersions;
 }
 
 /** The secret a side completed a handshake under. */
@@ -222,7 +230,12 @@ export function assertSharedSecretReadyForHandshake(
  *                        offered; a history entry whose `expires` has passed
  *                        is not checked, and only the
  *                        {@link ROTATION_HISTORY_MAX_ENTRIES} newest are.
+ * @param supported       The versions this side's hello offers. The FIPS
+ *                        variant passes `supportedVersions({
+ *                        approvedKexSuitesOnly: true })`.
  *
+ * @throws {PartnerProtocolRefusalError} before the key exchange completes,
+ *                 when the two hellos share no version in some layer.
  * @throws {Error} if `authentication.sharedSecret` is absent or not a
  *                 base64url-encoded 32-byte value, or if
  *                 `authentication.expires` has passed.
@@ -241,6 +254,7 @@ export async function authenticateConnection(
   handshakeRole: HandshakeRole,
   requestEncryption: boolean,
   rotationState: RotationState,
+  supported: SupportedVersions = supportedVersions(),
 ): Promise<AuthResult> {
   assertSharedSecretReadyForHandshake(authentication);
   const { sharedSecret, expires } = authentication;
@@ -274,6 +288,7 @@ export async function authenticateConnection(
     initiatorValue,
     localUsedPrevious,
     partnerUsedPrevious,
+    negotiated,
   } = await runKex(
     conn,
     handshakeRole,
@@ -285,12 +300,15 @@ export async function authenticateConnection(
       }),
       history,
     },
+    supported,
   );
 
   return {
     sessionKey,
     applyEncryption,
+    negotiated,
     nextSecretInputs: {
+      negotiatedProtocolVersion: negotiated.protocol,
       sessionKey,
       keyAgreementOutput,
       initiatorValue,

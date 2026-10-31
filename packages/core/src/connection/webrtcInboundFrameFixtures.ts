@@ -276,7 +276,12 @@ const admittedValues: Array<{
   },
   {
     label: "a kex handshake message",
-    value: { kexMsg: "1", e: "BASE64", reqEnc: false },
+    value: {
+      kexMsg: "1",
+      hello: "BASE64",
+      e: { "3": "BASE64" },
+      reqEnc: false,
+    },
     limits: PRODUCTION_LIMITS,
   },
   {

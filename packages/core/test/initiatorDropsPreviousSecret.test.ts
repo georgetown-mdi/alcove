@@ -7,6 +7,7 @@ import { createMessagePipe } from "../src/connection/messageConnection";
 import type { MessageConnection } from "../src/connection/messageConnection";
 import type { TermsRotation } from "../src/protocolSetup";
 import type { NextSecretInputs } from "../src/nextSecret";
+import { PROTOCOL_VERSION } from "../src/versionHello";
 import {
   NEXT_SECRET_STORE_FAILED_ABORT_REASON,
   PREVIOUS_SECRET_DROP_FAILED_ABORT_REASON,
@@ -100,6 +101,7 @@ async function runPair(
   failures: Failures = {},
 ) {
   const inputs: NextSecretInputs = {
+    negotiatedProtocolVersion: PROTOCOL_VERSION,
     sessionKey: randomBytes(32),
     keyAgreementOutput: randomBytes(32),
     initiatorValue: randomBytes(32),
