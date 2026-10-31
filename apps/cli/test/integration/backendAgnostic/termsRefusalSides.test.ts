@@ -4,8 +4,8 @@ import path from "node:path";
 
 import { afterEach, beforeEach, expect, test } from "vitest";
 
-import { prepareForExchange } from "@alcove/core";
-import type { LinkageTerms, PreparedExchange } from "@alcove/core";
+import { getLogger, prepareForExchange } from "@alcove/core";
+import type { LinkageTerms, PreparedExchange, TermsChange } from "@alcove/core";
 import { withCapturedLogs } from "@alcove/core/testing";
 
 import { loadKeyFile, saveKeyFile } from "../../../src/keyFile";
@@ -13,6 +13,10 @@ import {
   runProtocol,
   type ProtocolConnectionConfig,
 } from "../../../src/protocol";
+import {
+  termsChangeHandler,
+  termsProposalPath,
+} from "../../../src/termsChange";
 import { TERMS_REFUSAL_NEXT_STEPS } from "../../../src/termsRefusalRemedy";
 import { renderFailureForOperator } from "../../../src/util/exit";
 import { firstNameTerms } from "../../support";
@@ -52,6 +56,7 @@ async function run(
   dropDir: string,
   exchange: PreparedExchange,
   onAuthenticated?: () => void,
+  onTermsChange?: (change: TermsChange) => Promise<void>,
 ): Promise<string> {
   const keyFilePath = path.join(work, `${name}.key`);
   saveKeyFile(keyFilePath, { sharedSecret: SHARED_SECRET });
@@ -72,6 +77,7 @@ async function run(
       output: path.join(work, `${name}-out`),
       verbosity: -1,
       loggerName: `terms-sides-${name}`,
+      ...(onTermsChange === undefined ? {} : { onTermsChange }),
       ...(onAuthenticated === undefined
         ? {}
         : {
@@ -171,4 +177,57 @@ test("a run refused at the terms exchange runs no configuration write", async ()
   expect(
     plain.endsWith(`\n${TERMS_REFUSAL_NEXT_STEPS.configured[plainRefusedBy]}`),
   ).toBe(true);
+}, 30_000);
+
+// A configuration `alcove accept` kept holds the previous acceptance's
+// expected_partner_deduplicate until the run's step after the terms exchange
+// refreshes it, so a run cut before that step leaves the old value. The
+// `alcove exchange` its step advises holds the partner to that value, with the
+// exchange command's terms-change handler.
+test("a kept configuration's stale acceptance record stops the next exchange at the terms, naming alcove apply", async () => {
+  const dropDir = fs.mkdtempSync(path.join(work, "drop-"));
+  const kept: PreparedExchange = {
+    ...prepared("Kept Co", "cascade"),
+    expectedPartnerDeduplicate: false,
+  };
+  const partner = prepareForExchange(
+    {
+      linkageTerms: {
+        ...firstNameTerms,
+        identity: "Partner Co",
+        deduplicate: true,
+      },
+    },
+    "Partner Co",
+    [{ first_name: "Bob" }],
+    ["first_name"],
+  );
+  const keptConfig = path.join(work, "kept.yaml");
+  const [[keptRendered]] = await withCapturedLogs(
+    () =>
+      Promise.all([
+        run(
+          "kept",
+          dropDir,
+          kept,
+          undefined,
+          termsChangeHandler({
+            configPath: keptConfig,
+            keyPath: path.join(work, "kept.key"),
+            interactive: false,
+            log: getLogger("terms-sides-kept"),
+          }),
+        ),
+        run("partner", dropDir, partner),
+      ]),
+    () => true,
+  );
+  expect(keptRendered).toContain(
+    "your partner's deduplicate, which only alcove apply takes on",
+  );
+  expect(keptRendered).toContain("alcove apply ");
+  expect(fs.existsSync(termsProposalPath(keptConfig))).toBe(true);
+  expect(loadKeyFile(path.join(work, "kept.key"))?.sharedSecret).toBe(
+    SHARED_SECRET,
+  );
 }, 30_000);

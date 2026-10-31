@@ -280,6 +280,7 @@ test("the step for a key file saved before its configuration escapes both paths"
     keyPath: "/keys/\x1b[31mEVIL\n.alcove.key",
     configPath: "/conf/\x1b[31mEVIL\nalcove.yaml",
     kept: false,
+    configWriteFailed: false,
   };
   for (const ending of [
     { kind: "failed", errorStatesItsStep: false },
@@ -296,7 +297,12 @@ test("the step for a key file saved before its configuration takes a catalog rem
   const cause = SAMPLES["folder-missing"][0];
   const err = markKeyFileSavedConfigNotWritten(
     markFailureCause(new Error(failureCauseSentence(cause)), cause),
-    { keyPath: "/k/.alcove.key", configPath: "/k/alcove.yaml", kept: false },
+    {
+      keyPath: "/k/.alcove.key",
+      configPath: "/k/alcove.yaml",
+      kept: false,
+      configWriteFailed: false,
+    },
   );
   const rendered = renderFailureForOperator(err);
   expect(rendered).not.toContain(failureRemedy(err) ?? "no catalog remedy");

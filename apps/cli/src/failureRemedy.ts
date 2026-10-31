@@ -2,9 +2,10 @@
 // stating what to do, naming only the flag that applies to this run. Core's
 // sentence states what happened (failureCauseSentence); this map is total over
 // FailureCauseKind, so a cause core adds fails to compile here until bound.
-// Also the step for a state only the CLI reaches, an online setup that saved
-// its key file and stopped before its configuration
-// (keyFileSavedConfigNotWrittenRemedy).
+// Also the steps for states only the CLI reaches, an online setup that stopped
+// with its key file saved and no configuration written
+// (keyFileSavedConfigNotWrittenRemedy), or before it saved its key file
+// (keyFileNotSavedRemedy).
 
 import {
   failureCauseOf,
@@ -175,11 +176,17 @@ export interface OnlineSetupConfiguration {
 
 /**
  * An online invite or accept that saved its rotated key file at `keyPath` and
- * then ended before its configuration step ran, so the configuration is the
- * one it kept, or none.
+ * then ended without writing a configuration, so the configuration is the one
+ * it kept, or none.
  */
 export interface KeyFileSavedConfigNotWritten extends OnlineSetupConfiguration {
   readonly keyPath: string;
+  /**
+   * The configuration step ran and failed to write the configuration, which
+   * only a setup that keeps none writes; false where the run ended before that
+   * step or the configuration is kept.
+   */
+  readonly configWriteFailed: boolean;
 }
 
 /**
@@ -194,8 +201,10 @@ export type RunEnding =
  * The step for `state` on a run that ended as `ending`. With no configuration
  * on disk, the online commands refuse the key file left behind, so it is
  * deleted before a new invitation; with a kept one, `alcove exchange` runs
- * from both files. A failure that states its own step keeps it, and gets only
- * the key file's part.
+ * from both files, and stops at the terms on a partner whose deduplicate
+ * differs from the acceptance record this run did not refresh, printing the
+ * `alcove apply` command that takes the new value on. A failure that states its own step keeps it, and gets only the key file's
+ * part.
  */
 export function keyFileSavedConfigNotWrittenRemedy(
   state: KeyFileSavedConfigNotWritten,
@@ -210,7 +219,9 @@ export function keyFileSavedConfigNotWrittenRemedy(
   const stopped = ending.kind === "interrupted" ? "was interrupted" : "stopped";
   const errorStep = ending.kind === "failed" && ending.errorStatesItsStep;
   if (!state.kept) {
-    const happened = `The key file ${key} was saved, but the run ${stopped} before it wrote the configuration ${config}.`;
+    const happened = state.configWriteFailed
+      ? `The key file ${key} was saved, but writing the configuration ${config} failed (logged above), and then the run ${stopped}.`
+      : `The key file ${key} was saved, but the run ${stopped} before it wrote the configuration ${config}.`;
     const deleteKey = `Delete ${key} before you start again.`;
     return errorStep
       ? `${happened} ${deleteKey}`
@@ -219,9 +230,25 @@ export function keyFileSavedConfigNotWrittenRemedy(
   const happened = `The key file ${key} was saved and the configuration ${config} kept before the run ${stopped}.`;
   return errorStep
     ? `${happened} If you accept a new invitation, delete ${key} first.`
-    : `${happened} Run 'alcove exchange' again; if it fails to authenticate ` +
-        "or never meets your partner, ask your partner for a new invitation, " +
-        `and delete ${key} before you accept it.`;
+    : `${happened} Run 'alcove exchange' again. If it stops because your ` +
+        `partner's deduplicate differs from the one ${config} records, run ` +
+        "the 'alcove apply' command it prints, then 'alcove exchange' again. " +
+        "If it fails to authenticate or never meets your partner, ask your " +
+        `partner for a new invitation, and delete ${key} before you accept it.`;
+}
+
+/**
+ * The step for an online invite or accept that ended before this side saved
+ * its key file, where its partner may have saved the next secret. Both online
+ * commands refuse a key file already there, a setup keeping its configuration
+ * included, so the run left none to retry with.
+ */
+export function keyFileNotSavedRemedy(ending: RunEnding): string {
+  const stopped = ending.kind === "interrupted" ? "was interrupted" : "stopped";
+  const happened = `The run ${stopped} before this side saved its key file, and your partner may already have saved the next shared secret.`;
+  return ending.kind === "failed" && ending.errorStatesItsStep
+    ? `${happened} The next run needs a new invitation.`
+    : `${happened} ${NEW_INVITATION_REMEDY}`;
 }
 
 const KEY_FILE_SAVED_CONFIG_NOT_WRITTEN =

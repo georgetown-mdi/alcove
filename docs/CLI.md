@@ -501,12 +501,12 @@ The command exits when the token expires, when the connection times out, when th
 
 On acceptance the two parties run the key exchange, and a fresh shared secret is generated and exchanged. The exchange then runs inside the application-layer encryption on every channel ([CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md#which-channels-request-it)). Both sides save the key file at the terms exchange that follows the handshake, once the terms are agreed on, and the configuration once that terms exchange completes, before the data exchange, so a later failure is retried with `alcove exchange` without re-inviting ([Recurring exchange](#recurring-exchange)). The result is written in `OUTPUT_FOLDER`, or to `stdout` ([The result file](#the-result-file)).
 
-A run that stops between those two saves, on a failure or an interrupt, states the step for what it left, beneath the error or when it is interrupted:
+A run that stops between those two saves, or after its configuration step failed, on a failure or an interrupt, states the step for what it left, beneath the error or when it is interrupted:
 
 - **No configuration on disk.** Delete the key file, then start again from a new invitation: `alcove invite` and `alcove accept` refuse an existing key file.
-- **A configuration `alcove accept` kept** ([Existing files](#existing-files)). Run `alcove exchange` again. If it fails to authenticate or never meets your partner, ask your partner for a new invitation, and delete the key file before you accept it.
+- **A configuration `alcove accept` kept** ([Existing files](#existing-files)). Run `alcove exchange` again. The kept configuration may still record the `deduplicate` an earlier invitation declared, so if your partner's differs, that exchange stops at the terms exchange before the secret changes and prints an `alcove apply` command that takes the new value on ([Recurring exchange](#recurring-exchange)); run it, then `alcove exchange` again. If it fails to authenticate or never meets your partner, ask your partner for a new invitation, and delete the key file before you accept it.
 
-A failure that states its own next step keeps it, and the line beneath it adds only the key file's part.
+A failure that states its own next step keeps it, and the line beneath it adds only the key file's part. A run that stops before it saves its key file, while its partner may have saved the next secret, has no key file to retry with, kept configuration or not, and states the step to start again from a new invitation.
 
 The online path does not read terms from an existing configuration. A configuration file at the configuration path, or a key file at the key path, is a conflict, and the command aborts before any token is created or connection opened; delete it or pass `--config-file` or `--key-file`. The linkage keys, metadata, and cleaning are inferred from the input file, and that configuration is saved only if the partner accepts. An input whose columns support no linkage key (none of the field types the built-in rules match on, such as name, date of birth, or SSN) stops the command (exit 64) before the token is created.
 

@@ -62,7 +62,12 @@ test("an online invitation's no-show emits the same cause", () => {
 test("an online setup's failure after its key-file save ends its message with the step for that state, marked as stating its step", () => {
   const err = markKeyFileSavedConfigNotWritten(
     new ConnectionError("the exchange directory went away", "transport"),
-    { keyPath: "/k/.alcove.key", configPath: "/k/alcove.yaml", kept: true },
+    {
+      keyPath: "/k/.alcove.key",
+      configPath: "/k/alcove.yaml",
+      kept: true,
+      configWriteFailed: false,
+    },
   );
   const event = buildErrorEvent(err, "run");
   expect(event.recoveryHint).toBe(true);

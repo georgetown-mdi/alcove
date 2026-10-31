@@ -7265,8 +7265,8 @@ test("runProtocol's recovery hint does not promise a clean retry when the post-h
   // then the post-handshake persistence hook throws (so the config the bootstrap
   // callers write is NOT on disk), and the data exchange then also fails. The
   // catch must not tell the user to "retry the exchange without re-inviting" --
-  // `alcove exchange` would have no config to run against -- but instead point
-  // at the failed persistence step.
+  // `alcove exchange` would have no config to run against -- but instead state
+  // the step for a key file saved with no configuration written.
   const keyFileA = path.join(tmpDir, "a.key");
   const keyFileB = path.join(tmpDir, "b.key");
   saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
@@ -7315,15 +7315,20 @@ test("runProtocol's recovery hint does not promise a clean retry when the post-h
     onAuthenticated: failingHook,
   });
 
-  const [resultA, resultB] = await Promise.allSettled([pA, pB]);
-  expect(resultA.status).toBe("rejected");
-  expect(resultB.status).toBe("rejected");
-
-  // The corrected advisory is shown...
-  expect(
-    mockState.errors.some((m) => m.includes("nothing to run against")),
-  ).toBe(true);
-  // ...and the clean-retry advisory -- which would point `alcove exchange` at a
+  const results = await Promise.allSettled([pA, pB]);
+  for (const [result, keyFile] of [
+    [results[0], keyFileA],
+    [results[1], keyFileB],
+  ] as const) {
+    expect(result.status).toBe("rejected");
+    if (result.status !== "rejected") continue;
+    expect(
+      renderFailureForOperator(result.reason).endsWith(
+        `\n${CUT_STEPS.freshWriteFailed(keyFile, FRESH_ONLINE_SETUP.configPath)}`,
+      ),
+    ).toBe(true);
+  }
+  // The clean-retry advisory -- which would point `alcove exchange` at a
   // config that was never written -- is suppressed on both sides.
   expect(
     mockState.errors.some((m) =>
@@ -7784,7 +7789,7 @@ test("a run refused at the terms exchange runs neither side's post-handshake hoo
   expect(loadKeyFile(keyFileB)).toEqual({ sharedSecret: TOKEN_A });
 }, 20_000);
 
-// --- An online setup cut between its key-file save and its configuration step
+// --- An online setup that saved its key file and wrote no configuration
 //
 // The state table, one test per cell: how the run ended (a failure, or a
 // signal), whether its configuration was fresh or kept, and whether the
@@ -7792,12 +7797,22 @@ test("a run refused at the terms exchange runs neither side's post-handshake hoo
 // saves its rotated key file and its terms exchange then stops before the
 // configuration step; responder B never saves. On a signal the handler states
 // the step before any error in flight is seen, so for the two signal cells
-// with such an error the check is that the error adds no second step.
+// with such an error the check is that the error adds no second step. The
+// rows after them: a setup whose configuration step ran and failed
+// before the run stopped, and a responder online setup that stopped before
+// its own save.
 
 const onlineSetupIn = (kept: boolean) => ({
   configPath: path.join(tmpDir, "alcove.yaml"),
   kept,
 });
+
+const KEPT_NEXT_RUN = (k: string, c: string) =>
+  `Run 'alcove exchange' again. If it stops because your partner's ` +
+  `deduplicate differs from the one ${c} records, run the 'alcove apply' ` +
+  `command it prints, then 'alcove exchange' again. If it fails to ` +
+  `authenticate or never meets your partner, ask your partner for a new ` +
+  `invitation, and delete ${k} before you accept it.`;
 
 /** The step each cell states, for key file `k` and configuration `c`. */
 const CUT_STEPS = {
@@ -7810,9 +7825,7 @@ const CUT_STEPS = {
     `configuration ${c}. Delete ${k} before you start again.`,
   keptFailed: (k: string, c: string) =>
     `The key file ${k} was saved and the configuration ${c} kept before the ` +
-    `run stopped. Run 'alcove exchange' again; if it fails to authenticate ` +
-    `or never meets your partner, ask your partner for a new invitation, and ` +
-    `delete ${k} before you accept it.`,
+    `run stopped. ${KEPT_NEXT_RUN(k, c)}`,
   keptFailedOwnStep: (k: string, c: string) =>
     `The key file ${k} was saved and the configuration ${c} kept before the ` +
     `run stopped. If you accept a new invitation, delete ${k} first.`,
@@ -7822,9 +7835,30 @@ const CUT_STEPS = {
     NEW_INVITATION_REMEDY,
   keptInterrupted: (k: string, c: string) =>
     `The key file ${k} was saved and the configuration ${c} kept before the ` +
-    `run was interrupted. Run 'alcove exchange' again; if it fails to ` +
-    `authenticate or never meets your partner, ask your partner for a new ` +
-    `invitation, and delete ${k} before you accept it.`,
+    `run was interrupted. ${KEPT_NEXT_RUN(k, c)}`,
+  freshWriteFailed: (k: string, c: string) =>
+    `The key file ${k} was saved, but writing the configuration ${c} failed ` +
+    `(logged above), and then the run stopped. Delete ${k} before you start ` +
+    `again. ${NEW_INVITATION_REMEDY}`,
+  freshWriteFailedOwnStep: (k: string, c: string) =>
+    `The key file ${k} was saved, but writing the configuration ${c} failed ` +
+    `(logged above), and then the run stopped. Delete ${k} before you start ` +
+    `again.`,
+  freshWriteFailedInterrupted: (k: string, c: string) =>
+    `The key file ${k} was saved, but writing the configuration ${c} failed ` +
+    `(logged above), and then the run was interrupted. Delete ${k} before ` +
+    `you start again. ${NEW_INVITATION_REMEDY}`,
+};
+
+/** The step a responder online setup states when it stopped before its save. */
+const PARTNER_STEPS = {
+  failed:
+    "The run stopped before this side saved its key file, and your partner " +
+    `may already have saved the next shared secret. ${NEW_INVITATION_REMEDY}`,
+  interrupted:
+    "The run was interrupted before this side saved its key file, and your " +
+    "partner may already have saved the next shared secret. " +
+    NEW_INVITATION_REMEDY,
 };
 
 /** A failure that states its own next step, as core's terminal refusals do. */
@@ -7840,10 +7874,14 @@ const droppedConnection = () =>
   new ConnectionError("the exchange directory went away", "transport");
 
 /**
- * Start responder B, a configured run, then initiator A, an online setup
- * whose post-handshake hook must not run, each over its own key file.
+ * Start responder B, then initiator A, each over its own key file. The side
+ * named by `onlineSide` is an online setup whose post-handshake hook throws,
+ * as a failed configuration write does; the other is a configured run.
  */
-async function startCutPair(kept: boolean) {
+async function startCutPair(
+  kept: boolean,
+  onlineSide: HandshakeRole = "initiator",
+) {
   const keyFileA = path.join(tmpDir, "a.key");
   const keyFileB = path.join(tmpDir, "b.key");
   saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
@@ -7870,9 +7908,9 @@ async function startCutPair(kept: boolean) {
           }
         : {}),
     });
-  const pB = run(keyFileB, "test-b", false);
+  const pB = run(keyFileB, "test-b", onlineSide === "responder");
   await waitForFirstPartyHello(dropDir);
-  const pA = run(keyFileA, "test-a", true);
+  const pA = run(keyFileA, "test-a", onlineSide === "initiator");
   return { pA, pB, keyFileA, configPath: onlineSetup.configPath };
 }
 
@@ -8039,6 +8077,194 @@ test.each([
             m.startsWith("error in flight when SIGINT arrived"),
           ),
         ).toBe(true);
+    } finally {
+      exitSpy.mockRestore();
+      failA(new Error("test cleanup"));
+      failB(new Error("test cleanup"));
+      await Promise.allSettled([pA, pB]);
+    }
+  },
+  20_000,
+);
+
+/** A terms exchange both sides complete, each storing the next secret. */
+const driveStoringTermsExchange = () =>
+  driveTermsExchange({
+    initiator: async (rotation, nextSecret) => {
+      await rotation.store(nextSecret);
+    },
+    responder: async (rotation, nextSecret) => {
+      rotation.partnerMayHoldNextSecret?.(true);
+      await rotation.store(nextSecret);
+    },
+  });
+
+/** The lines either party logged that name key file `k`. */
+const linesNaming = (k: string) =>
+  [...mockState.warnings, ...mockState.errors].filter((m) => m.includes(k));
+
+test.each([
+  {
+    cell: "fresh configuration, the failure states no step",
+    kept: false,
+    failure: droppedConnection,
+    step: CUT_STEPS.freshWriteFailed,
+  },
+  {
+    cell: "fresh configuration, the failure states its own step",
+    kept: false,
+    failure: ownStepFailure,
+    step: CUT_STEPS.freshWriteFailedOwnStep,
+  },
+  {
+    cell: "kept configuration, the failure states no step",
+    kept: true,
+    failure: droppedConnection,
+    step: CUT_STEPS.keptFailed,
+  },
+])(
+  "an online setup whose configuration step failed, then the run failed, $cell: the failure ends with that cell's step",
+  async ({ kept, failure, step }) => {
+    driveStoringTermsExchange();
+    vi.mocked(runExchange).mockImplementation((() =>
+      Promise.reject(failure())) as never);
+    const { pA, pB, keyFileA, configPath } = await startCutPair(kept);
+    const [initiator] = await Promise.allSettled([pA, pB]);
+
+    expect(initiator.status).toBe("rejected");
+    if (initiator.status !== "rejected") return;
+    expect(
+      mockState.errors.some((m) => m.includes("the configuration step ran")),
+    ).toBe(true);
+    expect(renderFailureForOperator(initiator.reason)).toBe(
+      `${sanitizeErrorForDisplay(initiator.reason)}\n${step(keyFileA, configPath)}`,
+    );
+    expect(linesNaming(keyFileA)).toEqual([]);
+  },
+  20_000,
+);
+
+test("an online setup whose configuration step failed, then interrupted: the signal handler states the step the failed run states", async () => {
+  const exitSpy = recordProcessExit();
+  const pending: Array<(err: Error) => void> = [];
+  let bothWaiting!: () => void;
+  const waiting = new Promise<void>((resolve) => {
+    bothWaiting = resolve;
+  });
+  driveStoringTermsExchange();
+  vi.mocked(runExchange).mockImplementation(
+    (() =>
+      new Promise<never>((_, reject) => {
+        pending.push(reject);
+        if (pending.length === 2) bothWaiting();
+      })) as never,
+  );
+  const { pA, pB, keyFileA, configPath } = await startCutPair(false);
+  try {
+    await waiting;
+    process.emit("SIGINT");
+    await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(130), {
+      timeout: 5_000,
+    });
+    for (const reject of pending) reject(new Error("test cleanup"));
+    const [initiator] = await Promise.allSettled([pA, pB]);
+
+    expect(initiator.status).toBe("fulfilled");
+    if (initiator.status !== "fulfilled") return;
+    expect(initiator.value.outcome).toBe("interrupted");
+    expect(initiator.value.onAuthenticatedError).toEqual(
+      new Error("the configuration step ran"),
+    );
+    expect(linesNaming(keyFileA)).toEqual([
+      CUT_STEPS.freshWriteFailedInterrupted(keyFileA, configPath),
+    ]);
+  } finally {
+    exitSpy.mockRestore();
+    for (const reject of pending) reject(new Error("test cleanup"));
+    await Promise.allSettled([pA, pB]);
+  }
+}, 20_000);
+
+// The responder of an online setup saves no key file until it reads proceed,
+// and the online commands refuse one already there, so one that stopped first
+// has none to retry with, whether it keeps a configuration or not.
+
+test.each([
+  { setup: "fresh", kept: false },
+  { setup: "kept", kept: true },
+])(
+  "a responder online setup, $setup configuration, that failed before its key-file save states a new invitation, not a retry",
+  async ({ kept }) => {
+    driveTermsExchange({
+      initiator: async (rotation, nextSecret) => {
+        await rotation.store(nextSecret);
+        throw droppedConnection();
+      },
+      responder: (rotation) => {
+        rotation.partnerMayHoldNextSecret?.(true);
+        return Promise.reject(droppedConnection());
+      },
+    });
+    const { pA, pB } = await startCutPair(kept, "responder");
+    const [, responder] = await Promise.allSettled([pA, pB]);
+
+    expect(responder.status).toBe("rejected");
+    expect(mockState.errors.filter((m) => m === PARTNER_STEPS.failed)).toEqual([
+      PARTNER_STEPS.failed,
+    ]);
+    expect(
+      [...mockState.errors, ...mockState.warnings].some((m) =>
+        m.includes("existing key file"),
+      ),
+    ).toBe(false);
+  },
+  20_000,
+);
+
+test.each([
+  { setup: "fresh", kept: false },
+  { setup: "kept", kept: true },
+])(
+  "a responder online setup, $setup configuration, interrupted before its key-file save states a new invitation, not a retry",
+  async ({ kept }) => {
+    const exitSpy = recordProcessExit();
+    let waiting!: () => void;
+    const responderWaiting = new Promise<void>((resolve) => {
+      waiting = resolve;
+    });
+    let failA: (err: Error) => void = () => {};
+    let failB: (err: Error) => void = () => {};
+    driveTermsExchange({
+      initiator: async (rotation, nextSecret) => {
+        await rotation.store(nextSecret);
+        await new Promise<never>((_, reject) => {
+          failA = reject;
+        });
+      },
+      responder: (rotation) => {
+        rotation.partnerMayHoldNextSecret?.(true);
+        return new Promise<never>((_, reject) => {
+          failB = reject;
+          waiting();
+        });
+      },
+    });
+    const { pA, pB } = await startCutPair(kept, "responder");
+    try {
+      await responderWaiting;
+      process.emit("SIGINT");
+      await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(130), {
+        timeout: 5_000,
+      });
+
+      expect(
+        mockState.warnings.filter((m) => m === PARTNER_STEPS.interrupted),
+      ).toEqual([PARTNER_STEPS.interrupted]);
+      expect(
+        [...mockState.errors, ...mockState.warnings].some((m) =>
+          m.includes("existing key file"),
+        ),
+      ).toBe(false);
     } finally {
       exitSpy.mockRestore();
       failA(new Error("test cleanup"));

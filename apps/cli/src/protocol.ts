@@ -70,6 +70,7 @@ import {
 import { LocalFSClient } from "./connection/localFSClient";
 import { raiseInactivityLimit } from "./connection/timeoutGuidance";
 import {
+  keyFileNotSavedRemedy,
   keyFileSavedConfigNotWrittenRemedy,
   markArrivalWait,
   markKeyFileSavedConfigNotWritten,
@@ -1025,21 +1026,22 @@ function rotationStanding(run: RunLifecycle): RotationStanding {
 /**
  * The {@link KeyFileSavedConfigNotWritten} state of an online setup's run that
  * saved its rotated key file at `keyPath` and has not started its
- * configuration step, else `undefined`.
+ * configuration step, or whose step failed, else `undefined`.
  */
 function keyFileSavedConfigNotWritten(
   run: RunLifecycle,
   keyPath: string | undefined,
   onlineSetup: OnlineSetupConfiguration | undefined,
 ): KeyFileSavedConfigNotWritten | undefined {
-  if (
-    onlineSetup === undefined ||
-    keyPath === undefined ||
-    !run.tokenRotated ||
-    run.postTermsStepStarted
-  )
+  if (onlineSetup === undefined || keyPath === undefined || !run.tokenRotated)
     return undefined;
-  return { ...onlineSetup, keyPath };
+  const stepFailed = run.onAuthenticatedError !== undefined;
+  if (run.postTermsStepStarted && !stepFailed) return undefined;
+  return {
+    ...onlineSetup,
+    keyPath,
+    configWriteFailed: stepFailed && !onlineSetup.kept,
+  };
 }
 
 /**
@@ -1052,7 +1054,6 @@ function keyFileSavedConfigNotWritten(
 function rotationLineAfterFailure(
   standing: RotationStanding,
   retryRuledOut: boolean,
-  postHandshakeStepFailed: boolean,
 ): string | undefined {
   const saved =
     "The shared secret was already rotated and saved before this error.";
@@ -1076,15 +1077,6 @@ function rotationLineAfterFailure(
       // frame after `proceed`, which shows the responder stored, so a line
       // would name a new invitation a retry may not need.
       if (retryRuledOut) return undefined;
-      // The post-handshake hook's own failure was logged when it happened, and
-      // what it writes -- e.g. the online invite/accept configuration -- may
-      // be what a retry would run against.
-      if (postHandshakeStepFailed)
-        return (
-          "The shared secret was rotated and saved, but a post-handshake " +
-          "persistence step failed earlier (logged above); resolve that " +
-          "before retrying, as the retry may have nothing to run against."
-        );
       return standing === "partner-may-lag"
         ? `${saved} Retry the exchange with the same key file; if ` +
             "authentication fails on retry, ask your partner for a new " +
@@ -2053,11 +2045,13 @@ export interface RunProtocolOptions {
  * has no acceptance step to hook.
  *
  * `onlineSetup` names the configuration that hook writes or keeps, so a run
- * that saved its rotated key file and stopped before the hook states the step
- * for that state ({@link keyFileSavedConfigNotWrittenRemedy}): on the error it
- * rejects with, which the command boundary renders, or from the signal handler
- * on an interrupt. It is passed with `onAuthenticated` and only with it, which
- * is checked up front.
+ * that saved its rotated key file and stopped before the hook, or after the
+ * hook failed to write it, states the step for that state
+ * ({@link keyFileSavedConfigNotWrittenRemedy}): on the error it rejects with,
+ * which the command boundary renders, or from the signal handler on an
+ * interrupt. A run that stopped before saving its key file, where its partner
+ * may have saved the next secret, states {@link keyFileNotSavedRemedy}. It is
+ * passed with `onAuthenticated` and only with it, which is checked up front.
  *
  * `fileSyncRuntime` holds the CLI-only, non-persistable file-sync
  * entry-sweep controls (`--sweep-exchange-files` / `--force-retain-sweep`)
@@ -2305,6 +2299,10 @@ export async function runProtocol(
       case "unchanged":
         return;
       case "partner-may-lead":
+        if (onlineSetup !== undefined) {
+          log.warn(keyFileNotSavedRemedy({ kind: "interrupted" }));
+          return;
+        }
         log.warn(
           `This side had not saved the next shared secret when ${reason}, ` +
             "and your partner may already have saved it. Retry the exchange " +
@@ -2769,8 +2767,8 @@ export async function runProtocol(
         auth.sharedSecret,
         log,
       );
-    // An online setup cut between its key-file save and its configuration
-    // step gets the step for that state instead of a rotation line: the
+    // An online setup that saved its key file and wrote no configuration
+    // gets the step for that state instead of a rotation line: the
     // command boundary renders it beneath this error, and on a signal the
     // handler has already stated it.
     const setup = keyFileSavedConfigNotWritten(
@@ -2787,11 +2785,12 @@ export async function runProtocol(
             "If the SFTP server's host key is not the pinned one, " +
             "confirm the server's key with its administrator and pin " +
             "that key instead."
-          : rotationLineAfterFailure(
-              standing,
-              retryRuledOut,
-              run.onAuthenticatedError !== undefined,
-            );
+          : standing === "partner-may-lead" && onlineSetup !== undefined
+            ? keyFileNotSavedRemedy({
+                kind: "failed",
+                errorStatesItsStep: retryRuledOut,
+              })
+            : rotationLineAfterFailure(standing, retryRuledOut);
       if (rotationLine !== undefined) log.error(rotationLine);
     }
     // If a signal handler is mid-cleanup, it owns the exit code (130/143).
