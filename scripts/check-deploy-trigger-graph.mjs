@@ -194,7 +194,9 @@ export function deployCredentialFindings(workflows) {
         job?.environment === RELEASE_ENVIRONMENT;
       if (isReleaseJob) releaseJobs.push({ path, id, job, steps });
       else if (
-        JSON.stringify(job?.environment ?? null).includes(RELEASE_ENVIRONMENT)
+        JSON.stringify(job?.environment ?? null)
+          .toLowerCase()
+          .includes(RELEASE_ENVIRONMENT.toLowerCase())
       ) {
         findings.push(
           `${path} job ${id} runs in the ${RELEASE_ENVIRONMENT} environment, which only ${RELEASE_JOB.path} job ${RELEASE_JOB.id} may, with its environment written as the plain string ${RELEASE_ENVIRONMENT}.`,
