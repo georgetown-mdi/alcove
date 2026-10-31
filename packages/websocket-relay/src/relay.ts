@@ -528,7 +528,7 @@ export function attachWebSocketRelay(
     socket.on("message", (data, isBinary) =>
       onMessage(party, data as Buffer, isBinary),
     );
-    // A ping is answered only while the queue toward its sender is under the high mark.
+    // A ping is answered only when the answer fits under the high mark.
     socket.on("ping", (data: Buffer) =>
       pongWithinWindow(socket, data, { highBytes, lowBytes }, () => {
         const partner = partnerOf(party);

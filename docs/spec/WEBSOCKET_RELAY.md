@@ -102,7 +102,7 @@ The quotas key on the exchange's relay key, not on a client's address: behind th
 
 ## Keepalive
 
-- **A party's ping.** The relay answers it with a pong and forwards nothing, counting the answer toward the ping sender's queue like a message and answering only while that queue is under the high mark ([Forwarding](#forwarding)); the library's own automatic answer is off.
+- **A party's ping.** The relay answers it with a pong and forwards nothing, counting the answer toward the ping sender's queue like a message and answering only when the answer fits under the high mark ([Forwarding](#forwarding)); the library's own automatic answer is off.
 - **The relay's ping.** The relay pings every socket it holds every 30 seconds (`RELAY_PING_INTERVAL_MS`), a tenth of the 300-second idle timeout of the reference deployment's front, since a browser's `WebSocket` cannot send a ping but answers one.
 
 ## Close

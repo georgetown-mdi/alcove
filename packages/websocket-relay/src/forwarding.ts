@@ -108,10 +108,10 @@ export function sendWithinWindow(
 }
 
 /**
- * Answer a ping from `destination` while its queued bytes are under the
- * window's high mark, counting the answer as a queued message, and drop it
- * otherwise; `release` is called once the answer is written with the queued
- * bytes at or below the low mark.
+ * Answer a ping from `destination` when the answer fits under the window's
+ * high mark, counting the answer as a queued message, and drop it otherwise;
+ * `release` is called once the answer is written with the queued bytes at or
+ * below the low mark.
  */
 export function pongWithinWindow(
   destination: WebSocket,
@@ -119,10 +119,14 @@ export function pongWithinWindow(
   window: SendWindow,
   release: () => void,
 ): void {
-  if (queuedBytes(destination) >= window.highBytes) return;
+  // 2: the header of an unmasked control frame of up to 125 bytes.
+  const answerBytes = 2 + data.length + QUEUED_MESSAGE_OVERHEAD_BYTES;
+  if (queuedBytes(destination) + answerBytes > window.highBytes) return;
+  const payload = Buffer.allocUnsafeSlow(data.length);
+  data.copy(payload);
   queueFrame(
     destination,
-    (done) => destination.pong(data, false, done),
+    (done) => destination.pong(payload, false, done),
     () => {
       if (queuedBytes(destination) <= window.lowBytes) release();
     },
