@@ -355,7 +355,8 @@ jobs:
       # nothing at all.
       - name: Install Cosign
         uses: sigstore/cosign-installer@v4.1.2
-        # The version the Docker Hub signing was measured with.
+        # One Cosign release for both jobs' signatures, the version the Docker
+        # Hub signing was measured with.
         with:
           cosign-release: v3.1.4
 

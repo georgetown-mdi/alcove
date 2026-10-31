@@ -73,7 +73,7 @@ cosign verify \
   ghcr.io/georgetown-mdi/alcove:X.Y.Z
 ```
 
-Either works for an image pulled from either registry, because the signature covers the image's digest and both registries serve the same digest. What each argument pins, and how to verify by digest: [Verifying a Release](../RELEASES.md#container-image).
+Run the one for the registry you pulled from. The other registry's command verifies the same image only when you give it your image's digest in place of the tag (`docker.io/gumdi/alcove@sha256:...` or `ghcr.io/georgetown-mdi/alcove@sha256:...`), because the signature covers the digest, not the tag. What each argument pins, and how to verify by digest: [Verifying a Release](../RELEASES.md#container-image).
 
 More detail: [Which account the image runs as, and what each engine needs](../DEPLOYMENT.md#the-user-the-image-runs-as).
 

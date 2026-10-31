@@ -112,7 +112,9 @@ What the runs established:
   rests on the same issuer-equality comparison the mirror measured.
 - Cosign v3.0.6 wrote the signature to the conventional `sha256-<digest>.sig`
   tag beside the image, not as an OCI referrer. The release pins Cosign v3.1.4,
-  which stores it differently (next section).
+  which stored it as a referrer on Docker Hub (next section). The two runs
+  differ in both the Cosign version and the registry, so which of the two
+  changed the storage is not isolated.
 
 The probe's durable evidence is Actions runs 31931204906 (branch push) and
 31931280133 (tag push) and the Rekor entries the probe wrote, which are
