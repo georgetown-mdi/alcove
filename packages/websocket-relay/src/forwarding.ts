@@ -13,8 +13,10 @@ export interface SendWindow {
  * The heap and buffer memory, in bytes, a message queued by
  * {@link sendWithinWindow} holds beyond its payload: its frame header, Node's
  * write entries, the buffer objects and the completion callback. Measured on
- * Node v26.13 with the pinned `ws` at 636 to 828 bytes for messages of
- * 1 byte, 1 KiB and 16 KiB, and rounded up to 1 KiB.
+ * Node v26.13 with the pinned `ws` at 636 to 864 bytes for messages of
+ * 1 byte, 1 KiB and 16 KiB, and rounded up to 1 KiB;
+ * test/queuedMessageOverhead.test.ts fails when the running Node and `ws`
+ * measure above it.
  */
 export const QUEUED_MESSAGE_OVERHEAD_BYTES = 1024;
 

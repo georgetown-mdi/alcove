@@ -12,7 +12,7 @@ import { attachWebSocketRelay } from "../src/relay.ts";
 import type { RendezvousRole } from "@alcove/core";
 import type { Server } from "node:http";
 import type { AddressInfo, Socket } from "node:net";
-import type { ClientOptions } from "ws";
+import type { Duplex } from "node:stream";
 
 import type { RelayKeyTable } from "../src/keyTable.ts";
 import type { WebSocketRelay, WebSocketRelayOptions } from "../src/relay.ts";
@@ -176,10 +176,13 @@ export async function connect(url: string): Promise<Party> {
   return party;
 }
 
-/** A party connected in memory, and every chunk the server wrote to it. */
+/** A party connected in memory, and every chunk the server wrote to it
+ * when they are recorded. */
 export interface InMemoryConnection {
   party: Party;
   serverWrites: Buffer[];
+  /** The server's end of the in-memory stream. */
+  serverSide: Duplex;
 }
 
 /**
@@ -190,25 +193,26 @@ export interface InMemoryConnection {
 export async function connectInMemory(
   server: Server,
   url: string,
-  options: ClientOptions = {},
+  { recordServerWrites = true }: { recordServerWrites?: boolean } = {},
 ): Promise<InMemoryConnection> {
   const [serverSide, clientSide] = duplexPair({ highWaterMark: 1 });
   const serverWrites: Buffer[] = [];
-  const write = serverSide.write.bind(serverSide) as (
-    ...args: unknown[]
-  ) => boolean;
-  serverSide.write = ((chunk: unknown, ...rest: unknown[]) => {
-    if (Buffer.isBuffer(chunk)) serverWrites.push(chunk);
-    return write(chunk, ...rest);
-  }) as typeof serverSide.write;
+  if (recordServerWrites) {
+    const write = serverSide.write.bind(serverSide) as (
+      ...args: unknown[]
+    ) => boolean;
+    serverSide.write = ((chunk: unknown, ...rest: unknown[]) => {
+      if (Buffer.isBuffer(chunk)) serverWrites.push(chunk);
+      return write(chunk, ...rest);
+    }) as typeof serverSide.write;
+  }
   server.emit("connection", serverSide);
   const socket = new WebSocket(url, {
-    ...options,
     createConnection: () => clientSide as Socket,
   });
   const party = new Party(socket);
   await once(socket, "open");
-  return { party, serverWrites };
+  return { party, serverWrites, serverSide };
 }
 
 /** Two parties whose hellos verified and who both received `paired`. */

@@ -16,6 +16,10 @@ export default defineConfig({
         test: {
           name: "unit",
           include: ["test/**/*.test.ts"],
+          // `--expose-gc` for test/queuedMessageOverhead.test.ts, which
+          // measures memory across collections. It exposes `globalThis.gc`
+          // and changes no collection behavior.
+          execArgv: ["--expose-gc"],
         },
       },
     ],
