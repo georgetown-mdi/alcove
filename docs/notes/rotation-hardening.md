@@ -129,7 +129,7 @@ Why the stored secret mixes in `ka` rather than being derived from the two value
 
 What the responder value adds is the property the shipped derivation has against an outsider who can predict one party's randomness:
 
-- **One party's predictable randomness exposes nothing.** An adversary who can predict the initiator's randomness knows its ephemeral scalar and `N_I`, and so computes `dh` from the responder's public share, but `N_R` travels under a key derived from the session key, which mixes the pre-shared secret.
+- **One party's predictable randomness exposes nothing.** An adversary who can predict the initiator's randomness knows its ephemeral scalar and `N_I`, and so computes the ECDH shared secret and its derived blocks from the responder's public share, but `N_R` travels under a key derived from the session key, which mixes the pre-shared secret.
   The same holds the other way for the responder, so either party's sound random source keeps the next secret from an outsider.
   That holds whichever party initiates: on `webrtc` the acceptor always does ([WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#roles)), and on `sftp` and `filedrop` the role follows arrival order (`packages/core/src/connection/fileSyncRendezvous.ts`).
 - **Both parties' predictable randomness exposes the next secret.** An adversary who can predict both computes `ka`, `N_I` and `N_R` from the recorded handshake, and so the next secret, without ever holding a secret; from then on it holds the current secret.

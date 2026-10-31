@@ -513,7 +513,8 @@ const vector = {
       "application-encryption layer, else 0x00), MixHash'd as that message's " +
       "handshake payload right after the party's e token. MixHash only.",
     note:
-      "h0 = SHA-256(protocolName); ck0 = h0. Tokens (PSK mode -- each e is " +
+      "h0 = protocolName zero-padded to 32 bytes (it is exactly 32, so h0 is " +
+      "the name itself); ck0 = h0. Tokens (PSK mode -- each e is " +
       "MixHash then MixKey; each flag is MixHash'd as the message payload): " +
       "MixHash(''), MixKeyAndHash(psk), MixHash(eInitiatorPub), " +
       "MixKey(eInitiatorPub), MixHash(initiatorFlagByte), MixHash(eResponderPub), " +

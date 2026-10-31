@@ -553,8 +553,9 @@ async function expandKeyAgreement(
 
 /**
  * Derives Z from the ECDH pair into a non-extractable HKDF key and runs the
- * key-agreement derivation over it, returning undefined on any failure. The
- * all-zero check compares the blocks, in constant time, against the same
+ * key-agreement derivation over it, returning undefined when the ECDH
+ * derivation fails (the only step the peer's share can fail); a fault in the
+ * HKDF steps is a local fault and rejects. The all-zero check compares the blocks, in constant time, against the same
  * derivation over a zero Z: a stated safety check, not the validation
  * (docs/spec/PROTOCOL.md, "Peer-share validation").
  *
@@ -567,28 +568,27 @@ export async function deriveKeyAgreement(
   responderShare: Uint8Array<ArrayBuffer>,
 ): Promise<KeyAgreementBlocks | undefined> {
   const fixedInfo = keyAgreementFixedInfo(initiatorShare, responderShare);
-  let blocks: Uint8Array<ArrayBuffer>;
-  let zeroBlocks: Uint8Array<ArrayBuffer>;
+  let sharedSecret: CryptoKey;
   try {
-    const sharedSecret = await crypto.subtle.deriveKey(
+    sharedSecret = await crypto.subtle.deriveKey(
       { name: "ECDH", public: peerPublic },
       myPrivate,
       { name: "HKDF" },
       false,
       ["deriveBits"],
     );
-    blocks = await expandKeyAgreement(sharedSecret, fixedInfo);
-    const zeroSecret = await crypto.subtle.importKey(
-      "raw",
-      new Uint8Array(SHARED_SECRET_LEN),
-      { name: "HKDF" },
-      false,
-      ["deriveBits"],
-    );
-    zeroBlocks = await expandKeyAgreement(zeroSecret, fixedInfo);
   } catch {
     return undefined;
   }
+  const blocks = await expandKeyAgreement(sharedSecret, fixedInfo);
+  const zeroSecret = await crypto.subtle.importKey(
+    "raw",
+    new Uint8Array(SHARED_SECRET_LEN),
+    { name: "HKDF" },
+    false,
+    ["deriveBits"],
+  );
+  const zeroBlocks = await expandKeyAgreement(zeroSecret, fixedInfo);
   if (bytesEqual(blocks, zeroBlocks)) return undefined;
   return {
     ee: blocks.slice(0, HASH_LEN),

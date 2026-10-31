@@ -487,3 +487,78 @@ describe("the all-zero check on the derived blocks", () => {
     expect(await a.receive()).toEqual({ kexMsg: "abort" });
   });
 });
+
+describe("which failures of deriveKeyAgreement are the peer's", () => {
+  const LOCAL_FAULT = new Error("provider refused the parameter");
+
+  async function ownPair(): Promise<{
+    privateKey: CryptoKey;
+    share: Uint8Array<ArrayBuffer>;
+  }> {
+    const pair = await crypto.subtle.generateKey(ECDH_P256, false, [
+      "deriveKey",
+    ]);
+    return {
+      privateKey: pair.privateKey,
+      share: new Uint8Array(
+        await crypto.subtle.exportKey("raw", pair.publicKey),
+      ),
+    };
+  }
+
+  async function agree(): Promise<KeyAgreementBlocks | undefined> {
+    const mine = await ownPair();
+    const peer = await ownPair();
+    return deriveKeyAgreement(
+      mine.privateKey,
+      await crypto.subtle.importKey("raw", peer.share, ECDH_P256, false, []),
+      mine.share,
+      peer.share,
+    );
+  }
+
+  test("a peer key the ECDH derivation refuses yields undefined", async () => {
+    const mine = await ownPair();
+    const otherCurve = await crypto.subtle.generateKey(
+      { name: "ECDH", namedCurve: "P-384" },
+      false,
+      ["deriveKey"],
+    );
+    expect(
+      await deriveKeyAgreement(
+        mine.privateKey,
+        otherCurve.publicKey,
+        mine.share,
+        mine.share,
+      ),
+    ).toBeUndefined();
+  });
+
+  test("a fault in an HKDF deriveBits call rejects with that fault", async () => {
+    const deriveBits = crypto.subtle.deriveBits.bind(crypto.subtle);
+    vi.spyOn(crypto.subtle, "deriveBits").mockImplementation(((
+      algorithm: AlgorithmIdentifier,
+      ...rest: [CryptoKey, number?]
+    ) => {
+      if ((algorithm as { name?: string }).name === "HKDF")
+        return Promise.reject(LOCAL_FAULT);
+      return deriveBits(algorithm, ...rest);
+    }) as never);
+    await expect(agree()).rejects.toBe(LOCAL_FAULT);
+  });
+
+  test("a fault importing the zero key rejects with that fault", async () => {
+    const importKey = crypto.subtle.importKey.bind(crypto.subtle);
+    vi.spyOn(crypto.subtle, "importKey").mockImplementation(((
+      format: "raw",
+      keyData: BufferSource,
+      algorithm: AlgorithmIdentifier,
+      ...rest: [boolean, KeyUsage[]]
+    ) => {
+      if ((algorithm as { name?: string }).name === "HKDF")
+        return Promise.reject(LOCAL_FAULT);
+      return importKey(format, keyData, algorithm as never, ...rest);
+    }) as never);
+    await expect(agree()).rejects.toBe(LOCAL_FAULT);
+  });
+});
