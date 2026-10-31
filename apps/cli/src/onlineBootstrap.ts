@@ -1242,6 +1242,7 @@ export async function runOnlineBootstrap(params: {
         }),
       onPayloadReceiveFill: payloadReceiveFillConfirmation({
         configPath: params.configPath,
+        configWrittenAfterChecks: true,
         interactive: params.interactive === true,
         log: getLogger(params.loggerName),
       }),

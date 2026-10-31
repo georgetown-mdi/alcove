@@ -2,11 +2,23 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, beforeEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import { getLogger, prepareForExchange } from "@alcove/core";
-import type { LinkageTerms, PreparedExchange, TermsChange } from "@alcove/core";
+import { getLogger, inferMetadata, prepareForExchange } from "@alcove/core";
+import type {
+  LinkageTerms,
+  PayloadReceiveFillAnswer,
+  PreparedExchange,
+  TermsChange,
+} from "@alcove/core";
 import { withCapturedLogs } from "@alcove/core/testing";
+
+vi.mock("../../../src/util/prompt", async () => {
+  const actual = await vi.importActual<
+    typeof import("../../../src/util/prompt")
+  >("../../../src/util/prompt");
+  return { ...actual, promptConfirm: vi.fn() };
+});
 
 import { keyFileSavedConfigNotWrittenRemedy } from "../../../src/failureRemedy";
 import { loadKeyFile, saveKeyFile } from "../../../src/keyFile";
@@ -15,11 +27,13 @@ import {
   type ProtocolConnectionConfig,
 } from "../../../src/protocol";
 import {
+  payloadReceiveFillConfirmation,
   termsChangeHandler,
   termsProposalPath,
 } from "../../../src/termsChange";
 import { TERMS_REFUSAL_NEXT_STEPS } from "../../../src/termsRefusalRemedy";
 import { renderFailureForOperator } from "../../../src/util/exit";
+import { promptConfirm } from "../../../src/util/prompt";
 import { firstNameTerms } from "../../support";
 
 // Two CLI parties whose linkage strategies differ run a real file-drop
@@ -58,6 +72,9 @@ async function run(
   exchange: PreparedExchange,
   writeConfig?: () => void,
   onTermsChange?: (change: TermsChange) => Promise<void>,
+  onPayloadReceiveFill?: (
+    columns: string[],
+  ) => Promise<PayloadReceiveFillAnswer>,
 ): Promise<string> {
   const keyFilePath = path.join(work, `${name}.key`);
   saveKeyFile(keyFilePath, { sharedSecret: SHARED_SECRET });
@@ -79,6 +96,7 @@ async function run(
       verbosity: -1,
       loggerName: `terms-sides-${name}`,
       ...(onTermsChange === undefined ? {} : { onTermsChange }),
+      ...(onPayloadReceiveFill === undefined ? {} : { onPayloadReceiveFill }),
       ...(writeConfig === undefined
         ? {}
         : {
@@ -211,6 +229,66 @@ test("an online accept refused at the deduplicate check writes no configuration 
   expect(acceptingRendered).toContain(
     "differ from the invitation you accepted: the invitation declared deduplicate true",
   );
+  expect(
+    acceptingRendered.endsWith(
+      `\n${keyFileSavedConfigNotWrittenRemedy(
+        { configPath, kept: false, keyPath, configWriteFailed: false },
+        { kind: "failed", errorStatesItsStep: true },
+      )}`,
+    ),
+  ).toBe(true);
+}, 30_000);
+
+// An online accept writes its configuration only after the checks that can
+// refuse the run, the payload-fill confirmation among them, so a declined
+// confirmation leaves a key file and no configuration, and the refusal says so.
+test("an online accept that declines the payload columns writes no configuration and states the key file's step", async () => {
+  vi.mocked(promptConfirm).mockResolvedValue(false);
+  const dropDir = fs.mkdtempSync(path.join(work, "drop-"));
+  const configPath = path.join(work, "accepting.yaml");
+  const keyPath = path.join(work, "accepting.key");
+  const sending = prepareForExchange(
+    {
+      metadata: [
+        ...inferMetadata(["first_name"], []),
+        { name: "notes", type: "other", role: "payload", isPayload: true },
+      ],
+      linkageTerms: { ...firstNameTerms, identity: "Sending Co" },
+    },
+    "Sending Co",
+    [{ first_name: "Bob", notes: "n" }],
+    ["first_name", "notes"],
+  );
+  let configurationWrites = 0;
+  const [[acceptingRendered]] = await withCapturedLogs(
+    () =>
+      Promise.all([
+        run(
+          "accepting",
+          dropDir,
+          prepared("Accepting Co", "cascade"),
+          () => {
+            configurationWrites += 1;
+            fs.writeFileSync(configPath, "written after the check");
+          },
+          undefined,
+          payloadReceiveFillConfirmation({
+            configPath,
+            configWrittenAfterChecks: true,
+            interactive: true,
+            log: getLogger("terms-sides-accepting"),
+          }),
+        ),
+        run("sending", dropDir, sending),
+      ]),
+    () => true,
+  );
+  expect(configurationWrites).toBe(0);
+  expect(fs.existsSync(configPath)).toBe(false);
+  expect(loadKeyFile(keyPath)?.sharedSecret).not.toBe(SHARED_SECRET);
+  expect(acceptingRendered).toContain("and no configuration was written to ");
+  expect(acceptingRendered).toContain(". Ask your partner about the columns.");
+  expect(acceptingRendered).not.toContain("Run the exchange again");
   expect(
     acceptingRendered.endsWith(
       `\n${keyFileSavedConfigNotWrittenRemedy(
