@@ -2,8 +2,12 @@ import { describe, expect, test } from "vitest";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
 import {
+  CONSENT_FACTS,
+  COUNT_ONLY_DECLARED_STRATEGY_STATEMENT,
+  COUNT_ONLY_DISCLOSURE_STATEMENT,
   authoredLinkageFields,
   derivedFieldSteps,
+  missingFieldConditionStatement,
   runPipeline,
   snakeizeKeys,
 } from "@alcove/core";
@@ -11,10 +15,16 @@ import {
 import { importLinkageTerms } from "@psi/linkageTermsIO";
 
 import {
+  addElement,
+  addKey,
   buildAdvancedTerms,
   importedConstraintDivergenceMessage,
   removeAllKeys,
+  updateKeyAt,
+  validateAdvancedInvite,
 } from "@psi/authoring/advancedInvite";
+import { SINGLE_PASS_TERMS_STATEMENT } from "@psi/linkageStrategyChoice";
+import { withKeyCondition } from "@psi/authoring/keyCondition";
 
 import {
   byteSizeLabel,
@@ -127,6 +137,51 @@ const csv: AcquiredCsv = {
   ],
   rowCount: 1,
 };
+
+function editorWithKeyed(
+  editor: ReturnType<typeof editorFromCsv>,
+  edit: (
+    draft: ReturnType<typeof editorFromCsv>["draft"],
+  ) => ReturnType<typeof editorFromCsv>["draft"],
+): ReturnType<typeof editorFromCsv> {
+  return editorWithAuthoredDraft(editor, edit(editor.draft));
+}
+
+/** Two keys over {@link csv}, the second matching only where a date of birth
+ * is missing, under `algorithm`. */
+function conditionKeysEditor(
+  algorithm: "psi" | "psi-c",
+): ReturnType<typeof editorFromCsv> {
+  return editorWithKeyed(
+    editorWithAlgorithm(editorFromCsv("Dana", csv), algorithm),
+    (draft) => {
+      let next = addKey(removeAllKeys(draft), "first_name");
+      next = addElement(next, 0, "last_name");
+      next = addElement(next, 0, "date_of_birth");
+      next = addKey(next, "first_name");
+      next = addElement(next, 1, "last_name");
+      next = addElement(next, 1, "ssn4");
+      return updateKeyAt(next, 1, (key) =>
+        withKeyCondition(key, "date_of_birth"),
+      );
+    },
+  );
+}
+
+function rowOf(
+  rows: ReturnType<typeof answersRows>,
+  label: string,
+): ReturnType<typeof answersRows>[number] {
+  const row = rows.find((entry) => entry.label === label);
+  if (row === undefined) throw new Error(`no ${label} row`);
+  return row;
+}
+
+function statements(
+  row: ReturnType<typeof answersRows>[number],
+): Array<string> {
+  return (row.notes ?? []).map((note) => note.statement);
+}
 
 const twoIds: AcquiredCsv = {
   ...csv,
@@ -560,6 +615,90 @@ describe("review and create", () => {
       (entry) => entry.label === "Matching method",
     );
     expect(row?.value).toBe("Reveal only the count (psi-c)");
+  });
+
+  test("check-your-answers states no count-only tier, strategy note or condition for one psi key", () => {
+    const editor = editorWithKeyed(editorFromCsv("Dana", csv), (draft) =>
+      addElement(addKey(removeAllKeys(draft), "first_name"), 0, "last_name"),
+    );
+    const rows = answersRows(editor, csv, "browser");
+    expect(rows.flatMap((row) => row.notes ?? [])).toEqual([]);
+    expect(rowOf(rows, "Linkage strategy").value).toBe("Cascade");
+    expect(rowOf(rows, "Matching keys").value).toBe("1 key, tried in order");
+  });
+
+  test.each(["psi", "psi-c"] as const)(
+    "check-your-answers states the %s missing-field condition under the keys",
+    (algorithm) => {
+      const editor = conditionKeysEditor(algorithm);
+      const notes = rowOf(
+        answersRows(editor, csv, "browser"),
+        "Matching keys",
+      ).notes;
+      const keyName = buildAdvancedTerms(editor.draft).linkageKeys[1].name;
+      expect(notes).toEqual([
+        {
+          statement: missingFieldConditionStatement("date of birth", algorithm),
+          keyNames: [keyName],
+        },
+      ]);
+    },
+  );
+
+  test("check-your-answers states the count-only tier for several psi-c keys", () => {
+    const editor = conditionKeysEditor("psi-c");
+    expect(validateAdvancedInvite(editor.draft, editor.seed).errors).toEqual(
+      {},
+    );
+    const rows = answersRows(editor, csv, "browser");
+    expect(statements(rowOf(rows, "Matching method"))).toEqual([
+      COUNT_ONLY_DISCLOSURE_STATEMENT,
+      CONSENT_FACTS.countOnlyResult.note,
+      CONSENT_FACTS.countOnlyRoundDisclosures.note,
+      CONSENT_FACTS.countOnlyInputChoice.note,
+    ]);
+    expect(statements(rowOf(rows, "Results go to"))).toEqual([
+      CONSENT_FACTS.countOnlyReportedCount.note,
+    ]);
+    expect(statements(rowOf(rows, "Linkage strategy"))).toEqual([]);
+  });
+
+  test("check-your-answers leaves out the reported count where one party receives the count", () => {
+    const editor = editorWithOutputDirection(
+      conditionKeysEditor("psi-c"),
+      "inviter",
+    );
+    const rows = answersRows(editor, csv, "browser");
+    expect(statements(rowOf(rows, "Results go to"))).toEqual([]);
+    expect(statements(rowOf(rows, "Matching method"))).toContain(
+      CONSENT_FACTS.countOnlyInputChoice.note,
+    );
+  });
+
+  test("check-your-answers states the single-pass note the partner reads", () => {
+    const editor = editorWithLinkageStrategy(
+      conditionKeysEditor("psi"),
+      "single-pass",
+    );
+    const rows = answersRows(editor, csv, "browser");
+    expect(rowOf(rows, "Linkage strategy").value).toBe("Single-pass");
+    expect(statements(rowOf(rows, "Linkage strategy"))).toEqual([
+      SINGLE_PASS_TERMS_STATEMENT,
+    ]);
+    expect(rowOf(rows, "Matching keys").value).toBe("2 keys");
+    expect(statements(rowOf(rows, "Matching method"))).toEqual([]);
+  });
+
+  test("check-your-answers states the count-only strategy line for psi-c terms naming single-pass", () => {
+    const editor = editorWithLinkageStrategy(
+      conditionKeysEditor("psi-c"),
+      "single-pass",
+    );
+    const rows = answersRows(editor, csv, "browser");
+    expect(statements(rowOf(rows, "Linkage strategy"))).toEqual([
+      COUNT_ONLY_DECLARED_STRATEGY_STATEMENT,
+    ]);
+    expect(rowOf(rows, "Matching keys").value).toBe("2 keys, tried in order");
   });
 
   test("a result-direction problem points at Matching & sharing", () => {

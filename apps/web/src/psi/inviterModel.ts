@@ -5,16 +5,30 @@
  */
 
 import {
+  CONSENT_FACTS,
+  COUNT_ONLY_DECLARED_STRATEGY_STATEMENT,
+  COUNT_ONLY_DISCLOSURE_STATEMENT,
   authoredLinkageFields,
   disclosedColumnNames,
   formatCount,
   precisionFloorSelectionStatement,
+  runsSinglePassLink,
   sanitizeForDisplay,
+  summarizeInvitation,
 } from "@alcove/core";
 
 import { isolatedColumnName } from "@components/ColumnName";
 
-import { validateAdvancedInvite } from "./authoring/advancedInvite";
+import {
+  buildAdvancedTerms,
+  validateAdvancedInvite,
+} from "./authoring/advancedInvite";
+
+import {
+  LINKAGE_STRATEGY_LABEL,
+  LINKAGE_STRATEGY_OPTION_COPY,
+  SINGLE_PASS_TERMS_STATEMENT,
+} from "./linkageStrategyChoice";
 
 import { SEMANTIC_TYPE_LABELS } from "./metadataEditing";
 
@@ -46,7 +60,7 @@ import type {
   AdvancedValidation,
 } from "./authoring/advancedInvite";
 
-import type { LinkageField } from "@alcove/core";
+import type { LinkageField, LinkageTerms } from "@alcove/core";
 
 import type { FieldValueCoverage } from "./workers/nonEmptyAggregate";
 
@@ -477,15 +491,66 @@ export function inviterCreateStatus(
   };
 }
 
-/** One check-your-answers row: the term, its display value, and either the
- * section its Change link navigates to or the "set above" mark for the terms
- * owned by step 3 itself. */
+/** A disclosure stated under a check-your-answers row's value, in the words
+ * the partner's terms panel states it. `keyNames` are the keys a missing-field
+ * condition line covers, sanitized for display. */
+interface AnswersNote {
+  statement: string;
+  keyNames?: ReadonlyArray<string>;
+}
+
+/** One check-your-answers row: the term, its display value, the disclosures
+ * stated under it, and either the section its Change link navigates to or the
+ * "set above" mark for the terms owned by step 3 itself. */
 interface AnswersRow {
   label: string;
   value: string;
   mono?: boolean;
+  notes?: ReadonlyArray<AnswersNote>;
   changeTarget?: SpineTarget;
   setAbove?: boolean;
+}
+
+/**
+ * The disclosures the partner's terms panel (`InvitationTerms`) states for
+ * `terms`, grouped by the review row each sits under: the count-only tier
+ * under the matching method, the reported-count line under the result
+ * direction where both parties receive the count, the strategy note under the
+ * linkage strategy, and the missing-field condition lines under the keys.
+ */
+function answersDisclosures(terms: LinkageTerms): {
+  matchingMethod: Array<AnswersNote>;
+  results: Array<AnswersNote>;
+  linkageStrategy: Array<AnswersNote>;
+  keys: Array<AnswersNote>;
+} {
+  const countOnly = terms.algorithm === "psi-c";
+  const bothReceive =
+    terms.output.expectsOutput && terms.output.shareWithPartner;
+  const strategyNote = runsSinglePassLink(terms)
+    ? SINGLE_PASS_TERMS_STATEMENT
+    : terms.linkageStrategy === "single-pass"
+      ? COUNT_ONLY_DECLARED_STRATEGY_STATEMENT
+      : undefined;
+  return {
+    matchingMethod: countOnly
+      ? [
+          COUNT_ONLY_DISCLOSURE_STATEMENT,
+          CONSENT_FACTS.countOnlyResult.note,
+          CONSENT_FACTS.countOnlyRoundDisclosures.note,
+          CONSENT_FACTS.countOnlyInputChoice.note,
+        ].map((statement) => ({ statement }))
+      : [],
+    results:
+      countOnly && bothReceive
+        ? [{ statement: CONSENT_FACTS.countOnlyReportedCount.note }]
+        : [],
+    linkageStrategy:
+      strategyNote !== undefined ? [{ statement: strategyNote }] : [],
+    keys: summarizeInvitation({ linkageTerms: terms }).conditionLines.map(
+      (line) => ({ statement: line.statement, keyNames: line.keyNames }),
+    ),
+  };
 }
 
 /** The check-your-answers table: the full proposal restated before the point
@@ -500,6 +565,8 @@ export function answersRows(
   { makesInvitation = true }: { makesInvitation?: boolean } = {},
 ): Array<AnswersRow> {
   const sent = disclosedColumnNames(editor.draft.metadata);
+  const terms = buildAdvancedTerms(editor.draft);
+  const disclosures = answersDisclosures(terms);
   return [
     {
       label: "Your name or agency",
@@ -515,11 +582,13 @@ export function answersRows(
     {
       label: MATCHING_METHOD_LABEL,
       value: MATCHING_METHOD_LABELS[editor.draft.algorithm],
+      notes: disclosures.matchingMethod,
       changeTarget: "columns",
     },
     {
       label: "Results go to",
       value: RESULTS_DIRECTION_LABELS[editor.draft.outputDirection],
+      notes: disclosures.results,
       changeTarget: "columns",
     },
     {
@@ -535,7 +604,16 @@ export function answersRows(
     },
     {
       label: "Matching keys",
-      value: `${keysFact(editor.draft)}, tried in order`,
+      value: runsSinglePassLink(terms)
+        ? keysFact(editor.draft)
+        : `${keysFact(editor.draft)}, tried in order`,
+      notes: disclosures.keys,
+      changeTarget: "keys",
+    },
+    {
+      label: LINKAGE_STRATEGY_LABEL,
+      value: LINKAGE_STRATEGY_OPTION_COPY[terms.linkageStrategy].label,
+      notes: disclosures.linkageStrategy,
       changeTarget: "keys",
     },
     {

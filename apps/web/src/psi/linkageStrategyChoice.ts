@@ -38,6 +38,18 @@ export const LINKAGE_STRATEGY_OPTION_COPY: Record<
 export const SINGLE_PASS_DISCLOSURE_TITLE =
   "Single-pass widens what one of you can observe";
 
+/**
+ * What the terms panel states under the linkage strategy for terms that run
+ * single-pass, and the inviter's review restates for the same terms.
+ */
+export const SINGLE_PASS_TERMS_STATEMENT =
+  "This exchange matches in a single pass. That means one of you sends the " +
+  "other everything it prepared for every linkage key at once, so that party " +
+  "also sees matches on the weaker keys, not only the strongest. Which of you " +
+  "sends is decided when the exchange runs, so it may be you. Both parties " +
+  "must agree to single-pass. The matched result is the same either way; " +
+  "what differs is how much your partner can observe while it runs.";
+
 /** The disclosure note itself: what single-pass costs, in the browser's voice
  * for the tradeoff the CLI prints at selection and the partner sees at consent. */
 export const SINGLE_PASS_DISCLOSURE_BODY =

@@ -12,6 +12,7 @@ import { createElement } from "react";
 import "@mantine/core/styles.css";
 
 import {
+  COUNT_ONLY_DISCLOSURE_STATEMENT,
   OperatorConfigError,
   assertTransformsCompile,
   decodeInvitation,
@@ -781,9 +782,13 @@ describe("inviter screen", () => {
     const methodRow = Array.from(document.querySelectorAll("tr")).find(
       (row) => row.querySelector("th")?.textContent === "Matching method",
     );
-    expect(methodRow?.querySelector("td")?.textContent).toBe(
+    const methodCell = methodRow?.querySelector("td");
+    expect(methodCell?.firstChild?.textContent).toBe(
       "Reveal only the count (psi-c)",
     );
+    expect(
+      Array.from(methodCell?.querySelectorAll("p") ?? [], (p) => p.textContent),
+    ).toContain(COUNT_ONLY_DISCLOSURE_STATEMENT);
 
     // Its Change link returns to the section, where the choice stands.
     await page.getByRole("button", { name: "Change matching method" }).click();

@@ -41,7 +41,7 @@ On the start page, choose **Create an invitation**. Three steps follow.
    - **Ignored.**
 
    Below the columns, two choices shape only your own result file: which of your own columns it holds beside your partner's values ([`include_own_columns`](EXCHANGE_REFERENCE.md#include_own_columns)), and whether it ends with a column naming the linkage key each match was made on ([`include_matching_key`](EXCHANGE_REFERENCE.md#include_matching_key)). Neither changes what your partner is sent or agrees to. The second is shown unavailable, with the reason, on terms that cannot name the key.
-3. **Review & create.** Choose how long the invitation can be accepted (one hour by default, up to one year). Leave **How will this exchange run?** at **live, in this browser**. Under it, where the exchange would use a relay server, you can set its [Allowed relays](#allowed-relays). Check every term in the exchange proposal, then choose **Create the invitation**. The terms cannot be changed after this.
+3. **Review & create.** Choose how long the invitation can be accepted (one hour by default, up to one year). Leave **How will this exchange run?** at **live, in this browser**. Under it, where the exchange would use a relay server, you can set its [Allowed relays](#allowed-relays). Check every term in the exchange proposal, then choose **Create the invitation**. The proposal states what the terms disclose in the words your partner reads before accepting, under the row each concerns. The terms cannot be changed after this.
 
 The next screen, **Your invitation is ready**, shows the invitation as a link, and a message you can copy that explains it to your partner. Send them the link over your trusted channel.
 

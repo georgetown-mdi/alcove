@@ -53,6 +53,7 @@ import {
   DEDUPLICATE_CONTROL_DESCRIPTION,
   DEDUPLICATE_CONTROL_LABEL,
 } from "@psi/deduplicateChoice";
+import { SINGLE_PASS_TERMS_STATEMENT } from "@psi/linkageStrategyChoice";
 import { acceptorMaySetDeduplicate } from "@psi/acceptInvitation";
 import { isConsoleBuild } from "@utils/clientConfig";
 
@@ -1222,15 +1223,7 @@ export function InvitationTerms({
           // double up for screen readers and visual scanning alike.
           <Term label="Linkage strategy">
             {runsSinglePassLink(summary) ? (
-              <Text size="sm">
-                This exchange matches in a single pass. That means one of you
-                sends the other everything it prepared for every linkage key at
-                once, so that party also sees matches on the weaker keys, not
-                only the strongest. Which of you sends is decided when the
-                exchange runs, so it may be you. Both parties must agree to
-                single-pass. The matched result is the same either way; what
-                differs is how much your partner can observe while it runs.
-              </Text>
+              <Text size="sm">{SINGLE_PASS_TERMS_STATEMENT}</Text>
             ) : (
               <Text size="sm">
                 Single-pass. {COUNT_ONLY_DECLARED_STRATEGY_STATEMENT}

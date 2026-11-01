@@ -698,6 +698,21 @@ export function ReviewCreateSection({
                   <th scope="row">{row.label}</th>
                   <td className={row.mono === true ? styles.mono : undefined}>
                     {row.value}
+                    {row.notes?.map((note, index) => (
+                      <div
+                        key={index}
+                        className={`${styles.small} ${styles.sub}`}
+                      >
+                        {note.keyNames !== undefined && (
+                          <ul>
+                            {note.keyNames.map((name, nameIndex) => (
+                              <li key={nameIndex}>{name}</li>
+                            ))}
+                          </ul>
+                        )}
+                        <p>{note.statement}</p>
+                      </div>
+                    ))}
                   </td>
                   <td className={styles.answersChange}>
                     {row.changeTarget !== undefined ? (
