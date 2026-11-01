@@ -298,7 +298,7 @@ This generates a shared secret, saves it with an `expires` field to the key file
 
 The refusal names the keys, the linkage fields they cost, and the configuration the terms came from.
 
-**What the terms disclose.** Before it creates an invitation from a configuration, the command prints what those terms disclose, in the lines your partner's `alcove accept` shows for them: the PSI algorithm with the count-only statements for `psi-c` terms, the linkage strategy with its note, and each linkage key with its missing-field condition line.
+**What the terms disclose.** Before it creates an invitation from a configuration, the command prints what those terms disclose, the same disclosures your partner's `alcove accept` shows for them: the PSI algorithm with the count-only statements for `psi-c` terms, the linkage strategy with its note, and each linkage key with its missing-field condition line.
 
 **Identity.** Terms inferred from an `INPUT_FILE` require `--identity`. Terms from a configuration use its `linkage_terms.identity`, and an `--identity` given there is reported as having no effect. A configuration holding no identity is refused.
 

@@ -375,7 +375,7 @@ function logLinkageKeyLines(
 
 /** The heading of {@link renderInvitationTermsDisclosure}. */
 const INVITATION_TERMS_DISCLOSURE_HEADING =
-  "What these terms disclose, as your partner is shown them before accepting:";
+  "What these terms disclose, which your partner is also shown before accepting:";
 
 /**
  * Print what an invitation minted from a configuration file's terms discloses,

@@ -26,7 +26,7 @@ import { displayInvitation } from "../../src/invitationDisplay";
 import { singlePassDisclosureNotice } from "../../src/onlineBootstrap";
 
 const HEADING =
-  "What these terms disclose, as your partner is shown them before accepting:";
+  "What these terms disclose, which your partner is also shown before accepting:";
 const STRATEGY_LINE_PREFIX = "  linkage strategy (enforced): ";
 const KEYS_LINE = "  linkage keys (enforced):";
 
