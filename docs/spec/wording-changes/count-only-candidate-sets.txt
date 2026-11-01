@@ -11,7 +11,6 @@
 - In every round each party's set has exactly one element for each of its records, so its element count is its declared record count, the figure the [first-round count at the start](#the-memory-ceiling-and-the-csv-intake-cap) and the count against the partner's [receive ceiling](#the-receive-ceiling) weigh for a count-only round: -> In every round whose key declares no candidate set, each party's set has exactly one element for each of its records, so its element count is its declared record count, the figure the [first-round count at the start](#the-memory-ceiling-and-the-csv-intake-cap) and the count against the partner's [receive ceiling](#the-receive-ceiling) weigh for a count-only round:
 - A dummy is 32 bytes from the platform's cryptographically secure random generator, written as 64 lowercase hexadecimal characters, drawn anew for each record in each round and never reused. -> A dummy is 32 bytes from the platform's cryptographically secure random generator, written as 64 lowercase hexadecimal characters, drawn anew for each element in each round and never reused.
 - - -> A round whose key declares a candidate set can give a slot or a pseudonym several pairs, and the replay then takes the general form [Candidate sets under count-only](#candidate-sets-under-count-only) specifies, of which steps 2 and 3 are the case where every round's pairs are disjoint.
-- - -> A round whose key declares a candidate set adds a second difference, which stays within that round ([Comparability with `psi` over candidate sets](#candidate-sets-under-count-only)).
 - - -> Candidate sets under count-only
 - - -> **Not yet built:** this subsection specifies how a count-only exchange runs a key whose agreed terms declare a candidate set.
 - - -> The shipped build refuses every candidate set under count-only, at the points [Refusals under count-only](#refusals-under-count-only) lists, and runs every round with one element per record.
@@ -29,12 +28,9 @@
 - - -> A record's candidates for the key are the values step 5 of [Where the expansion runs](#where-the-expansion-runs-after-the-element-transform-into-the-cross-product) yields for it, each written as its round value (above).
 - - -> A candidate is real when no other record the party builds the round for has it among its candidates, and a dummy otherwise.
 - - -> The record's other candidates stay real: this is the uniqueness rule above applied value by value, as [Value-level round participation](#value-level-round-participation) applies it under `psi`.
-- - -> The block holds the record's real candidates and a fresh dummy for each element left over, in any order, since the count does not depend on it (below).
-- - -> A record with more candidates than its width takes the fate [the width bound](#the-width-bound-a-per-key-candidate-cap-the-terms-declare) gives it, as under `psi`: a fan-out's drop leaves a block of dummies, and a fuzzy exceedance refuses the exchange.
 - - -> **The sender permutes blocks.**
 - - -> `pi` is a permutation of the receiver's `n_R` blocks: slot `s` of the response is the `w_R` elements answering block `pi(s)` of the request.
 - - -> Within each slot the sender orders the block's elements under a further permutation of `0` to `w_R - 1`, drawn for each slot in each round under the rules `pi` is drawn under.
-- - -> A matched response position `q` therefore names slot `floor(q / w_R)`, and its place within the slot does not tell the receiver which of its candidates matched.
 - - -> With `w_R = 1` this is the response above.
 - - -> **The index table names a pseudonym for each element.**
 - - -> The round's index table has `n_S * w_S` entries, entry `p` being `sigma` of the record whose block holds the element at position `p` of the setup as sent, so each pseudonym occurs exactly `w_S` times.
@@ -54,33 +50,130 @@
 - - -> Every slot and every pseudonym in a pair of the round's graph then leaves candidacy, whether or not a maximum matching includes the pair, as every record in a candidate pair does under `psi` ([Removal on a potential match](#removal-on-a-potential-match)).
 - - -> The count is the sum of what the rounds add.
 - - -> Only the size of a maximum matching enters the count, never which pairs it holds, and that size is a function of the graph alone.
-- - -> The count therefore does not depend on the order of a record's candidates, the order the pairs are met in, `pi`, `sigma`, or which party is the receiver, and it is the same in every run on the same data.
 - - -> Where every round's pairs are disjoint the graph is itself a matching, every pair counts, and the count is the one above.
-- - -> **The double-match case.**
-- - -> In [the normative double-match case](#the-normative-double-match-case) the round's candidate pairs are `(S0, R0)`, `(S0, R1)` and `(S1, R1)`, held as slots and pseudonyms.
-- - -> A maximum matching has two pairs, `(S0, R0)` and `(S1, R1)`, so the round adds 2, the size of the table both `psi` parties produce.
-- - -> A sweep meeting `(S0, R1)` first would accept one pair, and nothing in the slots and pseudonyms fixes which pair a sweep meets first.
-- - -> **Comparability with `psi` over candidate sets.**
-- - -> The `psi` sweep accepts a round's candidate pairs greedily in ascending (sender row, receiver row) ([Record-level resolution](#record-level-resolution-canonical-order-and-tiebreak)), so its table is a matching no further pair can join.
-- - -> A maximum matching is at least as large and at most twice as large:
-- - -> The two are equal wherever the sweep's table is a maximum matching, the double-match case included.
-- - -> They differ where a pair the sweep accepts first blocks two later ones.
-- - -> `S0` realizing `{ab, cd}` and `S1` realizing `{ef}`, against `R0` realizing `{ab, ef}` and `R1` realizing `{cd}`, give the pairs `(S0, R0)`, `(S0, R1)` and `(S1, R0)`.
-- - -> The sweep accepts `(S0, R0)` and discards the other two, a table of one, where the round adds 2, from `(S0, R1)` and `(S1, R0)`.
-- - -> Both remove every record in any of the round's candidate pairs, so this difference stays in the round where it arises.
-- - -> It adds to the difference through repeated values ([Comparability with `psi`](#computing-the-count)), which can carry into later rounds.
-- - -> Where no key value is repeated within either party's dataset, the count is therefore at least the size of the `psi` table and at most twice it, and each round adds the most pairs the `psi` sweep accepts on that round's pairs under any order of the two parties' rows.
 - a candidate set for a key, from any producer -- an element `transform` declaring a fan-out function or `generate_fuzzy_comparisons`, or a key declaring `swap`. -> a candidate set for a key, from any producer -- an element `transform` declaring a fan-out function or `generate_fuzzy_comparisons`, or a key declaring `swap` -- until [Candidate sets under count-only](#candidate-sets-under-count-only) is built, and a fan-out a party authors in its own data standardization after it.
 - - -> [Candidate sets under count-only](#candidate-sets-under-count-only) specifies both, and the refusal holds until it is built.
 - - -> A fan-out a party authors in its own data standardization stays refused after it.
 - - -> Such a party declares its record count times the fan-out factor and declares no width ([The width bound](#the-width-bound-a-per-key-candidate-cap-the-terms-declare)), so its records' blocks would be 20 times the width the terms declare, over a twentieth of the records it declares.
 - - -> No frame of a round states the factor.
 - - -> A sender ordering a fanning receiver's request by blocks of `w_R` would split each of the receiver's records across 20 slots, and one record could then be counted against up to 20 of the sender's.
-- - -> **A key with a candidate set adds its round's graph.**
-- - -> For each round of such a key ([Candidate sets under count-only](#candidate-sets-under-count-only)) the receiver's software learns the round's candidate pairs over slots and pseudonyms: how many sender pseudonyms each slot's candidates matched and how many slots each pseudonym's did, so which matches were contradicted.
-- - -> A `psi` cascade states the same of its matched records to both parties, in its per-round grouping ([The disclosure delta fan-out pays](#the-disclosure-delta-fan-out-pays)).
-- - -> From its own records it also learns that a slot matching two pseudonyms in a round belongs to one of its records with at least two real candidates for the key, as its own coverage narrows any slot.
-- - -> The permutation within each slot keeps from it which of a record's candidates matched.
 - - -> None of this is shown to the operator.
 - Each party's set in every round has exactly its declared record count, which the terms exchange already states, so a frame's element count tells the partner nothing more, and in particular not how well a key covers the party's dataset, nor, in a round a missing-field condition filters, how many of the party's records lack the field. -> Each party's set in every round has exactly its declared record count times its width for the round, which the terms exchange and the agreed terms already state, so a frame's element count tells the partner nothing more, and in particular not how well a key covers the party's dataset, nor, in a round a missing-field condition filters, how many of the party's records lack the field.
-- - -> A key with a candidate set lets such a receiver put up to `w_R` values in one record's block, and a count of 1 then says that one of them matched, not which.
+# The ruled count rule. psi's one-to-one resolution accepts the first largest
+# pairing in the canonical order, with the properties it leaves as they are,
+# what it changes, and a second normative case; the role dependence a
+# one-sided expansion gives the psi table is stated. Under psi-c each round
+# counts what the psi round accepts, the per-value rule runs on each party's
+# own candidates as under psi, refusals over a party's own rows move before
+# the connection, the receiver shuffles its blocks, the stale one-element
+# text in the count-only rounds is widened, and the learn-basis and
+# threat-model rows name each pair's multiplicity.
+- The resolution is a deterministic greedy sweep. -> The resolution is a deterministic sweep that accepts a largest pairing.
+- Sweep in that order, accepting a pair when neither of its two records has already been accepted in this round, and discarding it otherwise. -> Sweep in that order, accepting a pair when some largest pairing of the round holds it and every pair accepted before it in this round, and discarding it otherwise.
+- A recurring exchange whose record counts move may therefore resolve the opposite role between runs and still match the same records. -> A recurring exchange whose record counts move may therefore resolve the opposite role between runs and still meet the same value pairs.
+- Nothing is built to hold the role steady across runs, and nothing needs to be. -> Nothing is built to hold the role steady across runs.
+- The deterministic greedy sweep in ascending (sender row, receiver row) accepts a pair when neither of its records has already been accepted in this round and discards it otherwise ([Record-level resolution](#record-level-resolution-canonical-order-and-tiebreak)). -> The deterministic sweep in ascending (sender row, receiver row) accepts a pair when some largest pairing of the round holds it and every pair accepted before it, and discards it otherwise ([Record-level resolution](#record-level-resolution-canonical-order-and-tiebreak)).
+- Both parties MUST produce the association table `{(S0, R0), (S1, R1)}`: the sweep accepts `(S0, R0)`, discards `(S0, R1)` because `S0` is accepted in this round already, and accepts `(S1, R1)`. -> Both parties MUST produce the association table `{(S0, R0), (S1, R1)}`, the round's one largest pairing: the sweep accepts `(S0, R0)`, discards `(S0, R1)` because no pairing holds it beside `(S0, R0)`, and accepts `(S1, R1)`.
+- The sender sends it only after holding its setup to the per-set maximum and to the partner's receive ceiling, and the receiver reads it only after a setup of `n_S` elements within its own ceiling. -> The sender sends it only after holding its setup to the per-set maximum and to the partner's receive ceiling, and the receiver reads it only after a setup of the element count it expects, within its own ceiling.
+- A receiver reads the table frame under the channel's per-frame bound and refuses one whose length is not `4 * n_S` bytes once it has read it, so a partner that ignores the checks can make it read up to that bound first, as at any other frame. -> A receiver reads the table frame under the channel's per-frame bound and refuses one whose length is not four bytes for each setup element once it has read it, so a partner that ignores the checks can make it read up to that bound first, as at any other frame.
+- Each party's elements in a round are distinct, so a slot or a pseudonym occurs in at most one of the round's pairs; the engine refuses a round whose pairs repeat as an internal fault. -> Each party's elements in a round are distinct, so in a round whose key declares no candidate set a slot or a pseudonym occurs in at most one of the round's pairs, and the engine refuses such a round whose pairs repeat as an internal fault.
+- The replay is symmetric in the two parties, so the count does not depend on which party is the receiver, and it is at most the smaller of the two record counts. -> The replay is symmetric in the two parties, and the count is at most the smaller of the two record counts.
+- A candidate set can give one record several pairs in a round, and the number of those pairs a one-to-one resolution accepts depends on the order it meets them in. -> A candidate set can give one record several pairs in a round, and a greedy one-to-one sweep accepts a number of them that depends on the order it meets them in: in [the normative double-match case](#the-normative-double-match-case) an order meeting `(S0, R1)` first accepts one pair where the largest pairing holds two.
+- By design `pi` hides the receiver's row behind each slot and `sigma` the sender's row behind each pseudonym, and both are drawn anew for each run. -> By design `pi` hides the receiver's row behind each slot and `sigma` the sender's row behind each pseudonym, and both are drawn anew for each run, so no rule the engine applies can read the rows' order.
+- Lifting the refusal needs a resolution rule that does not depend on order, with its difference from `psi` stated, and every record's candidates padded to its key's declared width, so the number of a record's elements does not identify the record. -> It also needs every record's candidates padded to a width the terms fix, so the number of a record's elements does not identify the record.
+- It sees `n_R` encrypted elements a round, in the receiver's request order, and computes no match. -> It sees `n_R` encrypted elements a round, or `n_R * w_R` under a candidate set, in the receiver's request order, and computes no match.
+- Without `sigma`, an index table is a uniformly random permutation. -> Without `sigma`, an index table is a uniformly random arrangement of the pseudonyms, each occurring once, or `w_S` times under a candidate set, so beyond the matches it names it says only which setup positions belong to one sender record, each record having the same number of them.
+- `psi` fixes that order, ascending sender row then receiver row ([Record-level resolution](#record-level-resolution-canonical-order-and-tiebreak)). -> -
+- In [the normative double-match case](#the-normative-double-match-case) that order accepts two pairs, and an order meeting `(S0, R1)` first accepts one. -> -
+- The engine cannot apply the `psi` order, so a count over candidate sets could differ from a `psi` run's on the same terms and data, and between two runs on the same data. -> -
+- - -> **Not yet built:** the shipped resolution is a greedy sweep in the order below, accepting a pair when neither of its records is yet accepted in the round.
+- - -> The two rules accept the same pairs on every round where that sweep's pairs form a largest pairing (below), and the second `one-to-one` case of [the normative double-match case](#the-normative-double-match-case) is one where they part.
+- - -> A **pairing** of a round is a set of its candidate pairs no two of which share a record, and a **largest pairing** is one holding as many pairs as any pairing of the round does (a maximum matching of the round's candidate pairs).
+- - -> The accepted pairs are the first largest pairing in that order.
+- - -> So a round accepts as many pairs as a maximum matching of its candidate pairs holds, a number set by the candidate pairs alone and never by the order of either party's rows; the order decides only which largest pairing the table holds.
+- - -> A discarded pair shares a record with a pair accepted before or after it, as under any one-to-one rule.
+- - -> **What the rule leaves as it is.**
+- - -> The rule is resolution only, and four properties hold of it:
+- - -> It adds no frame, no field, no message, and no round.
+- - -> Each party resolves a round from the candidate pairs it already holds for that round, in the canonical order those pairs carry: the single-pass receiver in its local replay, and each cascade party from the round's two groupings, whose rank order is row order ([The per-round grouping the two frames hold](#the-per-round-grouping-the-two-frames-hold)).
+- - -> Every accepted pair is one of the round's candidate pairs.
+- - -> Candidacy does not move with the resolution: removal reads the round's candidate pairs and never which of them are accepted, so every later round's sets and frames are the same whichever largest pairing a round accepts.
+- - -> What each party learns of the association table is what it learns under any one-to-one resolution: which of its own records the table pairs, and, where it receives the result, the partner's row index and payload row for each of its pairs ([Output](#output)).
+- - -> **What the rule changes is which pairs the table holds.**
+- - -> Take a greedy sweep in the same order, accepting a pair when neither of its records is yet accepted in the round -- the clause the deduplicating cardinalities relax ([The per-side rules](#the-per-side-rules)).
+- - -> Wherever that sweep's pairs form a largest pairing, this rule accepts exactly them, as in [the normative double-match case](#the-normative-double-match-case).
+- - -> Elsewhere the sweep accepts fewer pairs, and this rule's table holds different pairs and more of them.
+- - -> Each added pair is a link and discloses what any link does: one more pair of linked rows, and, where payload is agreed, the payload row behind it.
+- - -> **Limit: the uniqueness rule can make the table depend on the role.**
+- - -> A value two or more of a party's records hold among their candidates is dropped from the round ([Value-level round participation](#value-level-round-participation)), and a one-sided expansion adds candidates on the expanding party alone.
+- - -> So a variant can collide with another of a party's own records' candidates when that party expands and not when its partner does.
+- - -> Against a partner record `(a, b)`, a party holding `(a, b)` and `(b, a)` under a `swap` key drops both orders of both records as the receiver, and matches nothing.
+- - -> As the sender it sends each record's exact value, and the partner's record, expanded, meets both.
+- - -> The association table, and the number of its pairs, can therefore differ between the two role assignments through such a collision.
+- - -> **A case where the first pair met is in no largest pairing.**
+- - -> One linkage key, cardinality `one-to-one`, two records a side.
+- - -> `S0` realizes `{ab, cd}` and `S1` realizes `{ef}`; `R0` realizes `{ab, ef}` and `R1` realizes `{cd}`.
+- - -> Every value occurs once within its own party's round.
+- - -> The round's value-level matches are `ab`, `cd`, and `ef`, which lift into the candidate pairs `(S0, R0)`, `(S0, R1)`, and `(S1, R0)`.
+- - -> Both parties MUST produce the association table `{(S0, R1), (S1, R0)}`, the round's one largest pairing.
+- - -> The sweep discards `(S0, R0)`, since `S1` and `R1` each have one candidate pair and no pairing holding `(S0, R0)` leaves either of them one; it then accepts `(S0, R1)` and `(S1, R0)`.
+- - -> A greedy sweep accepting `(S0, R0)` first would produce a table of one pair, so the case is the one that tells the two rules apart.
+- - -> On the wire, `S`'s matched positions are 0, 1, 2 with grouping `[2, 1]`, and `R`'s are 0, 1, 2 with grouping `[2, 1]`.
+- - -> It is normative as the case above is: a conformance test asserts both parties' association tables and runs the case in both role assignments.
+- - -> With `S` as receiver the order is (`R` row, `S` row), and the sweep again discards `(R0, S0)` and accepts the other two pairs.
+- - -> Those vectors MUST include both `one-to-one` cases of [the normative double-match case](#the-normative-double-match-case), each in both role assignments, the second being where a greedy sweep and the largest-pairing rule part.
+- - -> It has one entry for each element of the round's setup: `n_S` entries, or `n_S * w_S` in a round whose key declares a candidate set ([Candidate sets under count-only](#candidate-sets-under-count-only)).
+- - -> A round whose key declares a candidate set forms its pairs over blocks ([Candidate sets under count-only](#candidate-sets-under-count-only)), where one slot or pseudonym can occur in several.
+- - -> Where no key declares a candidate set the count therefore does not depend on which party is the receiver; a candidate set can make it depend on that, as it can the `psi` table ([Candidate sets under count-only](#candidate-sets-under-count-only)).
+- - -> A round whose key declares a candidate set adds no difference of its own: it counts the pairs the `psi` resolution accepts on the same round, in the same role assignment ([Candidate sets under count-only](#candidate-sets-under-count-only)).
+- - -> A value repeated within a party's dataset is there a value two or more of its records hold among their candidates for the key.
+- - -> Both parties apply that one rule, each to the candidates it contributes, as both do under `psi`: the receiver after a one-sided expansion and the sender without it.
+- - -> The test reads every record the round is built for, never only the records still unmatched, as above.
+- - -> The block holds the record's real candidates and a fresh dummy for each element left over.
+- - -> The receiver orders each of its blocks under a permutation of `0` to `w_R - 1` drawn for that block in each round, under the rules its request order is drawn under.
+- - -> No place in a request block therefore says which candidate an element is, or whether it is a dummy, to a sender that answers chosen positions of the request ([Threat-model scope](#threat-model-scope-of-the-count-only-claim)).
+- - -> The sender's setup needs no such rule: the library sorts it by ciphertext.
+- - -> A record with more candidates than its width takes the fate [the width bound](#the-width-bound-a-per-key-candidate-cap-the-terms-declare) gives it: a fan-out's drop leaves a block of dummies, and a fuzzy exceedance refuses the exchange, before the connection (below).
+- - -> **Every refusal over a party's own rows comes before the connection.**
+- - -> A party MUST build every round's candidates for its own records, and raise every refusal building them can raise, before it opens the exchange's connection.
+- - -> Those refusals include a fuzzy exceedance ([The width bound](#the-width-bound-a-per-key-candidate-cap-the-terms-declare)) and a date value that is not eight digits ([Which party expands](#which-party-expands-full-variant-and-deletion-neighbourhood-expansions)).
+- - -> Its role is not known until the terms exchange, so it builds them as the party that executes every one-sided expansion, and refuses on a row that would refuse in either role.
+- - -> Such a refusal is then a failure in front of its own operator, before any frame is sent, never an abort the partner sees after the rounds begin, whose round and timing would tell the partner that some row of this party's holds such a value.
+- - -> The cost is stated: a party that would resolve as the sender refuses on a row it would have sent as its exact value, so `psi-c` refuses some data `psi` runs on in that role assignment.
+- - -> A matched response position `q` therefore names slot `floor(q / w_R)`, and its place within the slot does not say which element of the receiver's block it answers.
+- - -> The count therefore does not depend on the order of a record's candidates, the order the pairs are met in, `pi`, or `sigma`, and it is the same in every run on the same data in the same role assignment.
+- - -> **Each round adds what the `psi` round accepts.**
+- - -> The `psi` resolution accepts a largest pairing of each round's candidate pairs ([Record-level resolution](#record-level-resolution-canonical-order-and-tiebreak)), so it accepts as many pairs as a maximum matching of them holds, and both remove every record in any of the round's candidate pairs.
+- - -> A round's graph over slots and pseudonyms is the `psi` round's candidate pairs under the two permutations wherever the two rounds hold the same participating values, so each such round adds the number of pairs the `psi` round accepts.
+- - -> The two can part in two ways, each able to carry into later rounds:
+- - -> a value repeated within a party's dataset, by the difference [Comparability with `psi`](#computing-the-count) states;
+- - -> a sender record whose candidates outnumber `w_S` but not `w_R`.
+- - -> The width bound holds a `psi` party's rows to the declared width `w_R` in either role, while a sender's block here holds `w_S`, so such a record takes a fan-out's drop, a block of dummies, where `psi` sends its candidates.
+- - -> It is reachable only through a fan-out realizing more than 20 values for one element, which the declared width admits where the record's other factors leave room.
+- - -> Sender blocks of `w_R` elements would close it, at `w_R / w_S` times the sender's elements in every round of the key.
+- - -> Where neither occurs, the count is the size of the `psi` table on the same terms, the same data and the same role assignment.
+- - -> **The two normative cases.**
+- - -> In [the normative double-match case](#the-normative-double-match-case) the round's candidate pairs are `(S0, R0)`, `(S0, R1)` and `(S1, R1)`, held as slots and pseudonyms; a maximum matching has two pairs, so the round adds 2, the size of the table both `psi` parties produce.
+- - -> In the case beside it the pairs are `(S0, R0)`, `(S0, R1)` and `(S1, R0)`, and the round again adds 2, the two pairs both `psi` parties accept.
+- - -> Neither figure depends on which pair a sweep meets first, which nothing in the slots and pseudonyms fixes.
+- - -> **The role assignment.**
+- - -> The count can depend on which party is the receiver as the `psi` table can, and in the same way.
+- - -> A one-sided expansion widens the receiver's candidates and not the sender's, so the uniqueness rule can drop a variant in one role assignment that the other keeps ([Which party expands](#which-party-expands-full-variant-and-deletion-neighbourhood-expansions)).
+- - -> Where no candidate a one-sided expansion adds is held by two or more of the expanding party's records, in either role assignment, the round's graph is the same in both, and so is what it adds.
+- - -> The `psi` resolution accepts a largest pairing ([Record-level resolution](#record-level-resolution-canonical-order-and-tiebreak)), whose size does not depend on that order, so a count can reach it.
+- - -> **A key with a candidate set adds its round's graph and how many candidates each pair shares.**
+- - -> For each round of such a key ([Candidate sets under count-only](#candidate-sets-under-count-only)) the receiver's software learns, beyond what the items above state:
+- - -> the round's candidate pairs over slots and pseudonyms: how many sender pseudonyms each slot matched and how many slots each pseudonym matched, so which matches were contradicted.
+- - -> A `psi` cascade states the same of its matched records to both parties, in its per-round grouping ([The disclosure delta fan-out pays](#the-disclosure-delta-fan-out-pays));
+- - -> each pair's multiplicity: how many of the slot's elements matched one of the pseudonym's.
+- - -> A value matches at most one element on each side, so this is how many candidates the two records share, and summed over a slot, or over a pseudonym, it is how many of that record's candidates matched, which a `psi` cascade's grouping states of each matched record;
+- - -> what the multiplicity says about the match.
+- - -> Under `edit_distances` an exact match shares the value and every one of its deletions, where a match one edit apart shares few, so the number tells the two apart.
+- - -> Under a fan-out it is how many of a record's parts matched;
+- - -> from its own records, that a slot whose elements matched `m` times in a round belongs to one of its records with at least `m` real candidates for the key, as its own coverage narrows any slot.
+- - -> The two orders within a block, the receiver's and the sender's within each slot, keep from it which of a record's candidates matched, except where the number settles it: a record with one real candidate, or a slot whose matched elements number its record's real candidates, every one of which then matched.
+- - -> **A refusal over a party's own rows reaches the partner as an exchange that did not start.**
+- - -> Under a candidate set, every refusal building a round can raise comes before the party opens the connection ([Candidate sets under count-only](#candidate-sets-under-count-only)), so no such refusal ends a run the partner has joined, and its round and timing reach the partner as nothing.
+- - -> A key with a candidate set adds a finer pattern: a slot's matched elements on the key narrow it to the receiver's records with at least that many real candidates, so a receiver varying its records' candidate counts as well can need fewer keys.
+- - -> A key with a candidate set lets such a receiver put up to `w_R` values in one record's block: a count of 1 then says that one of them matched, and its software reads how many of them matched, though not which.
+- - -> Under a candidate set the receiver orders each block at random each round ([Candidate sets under count-only](#candidate-sets-under-count-only)), so a position chosen within a block names no particular candidate of the record, such as its exact value.

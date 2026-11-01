@@ -143,7 +143,7 @@ Date these linkage terms were last modified. A mismatch produces a warning indic
 - `psi` -- reveals the intersection (matched records and their identifiers). Intended for operational data exchange.
 - `psi-c` -- reveals only the cardinality of the intersection (how many records match). Intended only for research.
 
-A count-only exchange runs every agreed key in order and counts each matched record once, so the count is the size of the linkage the same keys would make. Terms declaring `single-pass` run the same rounds. What the party computing the count learns beside it, and what a partner choosing its own records can learn, is in [Count-only exchanges](SECURITY_DESIGN.md#count-only-exchanges-and-the-pre-agreement-assumption).
+A count-only exchange runs every agreed key in order and counts each matched record once, so the count is the number of links a `psi` exchange over the same keys and data would make, with one difference. A key value two or more records in one party's file share is set aside for the whole file under `psi-c`, while `psi` sets it aside only while two or more of the records holding it are still unmatched, so where a file repeats a value the two can differ. Terms declaring `single-pass` run the same rounds. What the party computing the count learns beside it, and what a partner choosing its own records can learn, is in [Count-only exchanges](SECURITY_DESIGN.md#count-only-exchanges-and-the-pre-agreement-assumption).
 
 `psi-c` narrows what the rest of the document may say. Terms setting it are refused, naming what to change, when they declare any of:
 

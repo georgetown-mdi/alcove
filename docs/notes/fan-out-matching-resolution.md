@@ -2,9 +2,9 @@
 title: "Fan-Out Matching: Local Resolution, and the Strategy It Ran Under First"
 ---
 
-# Fan-out matching: why resolution is local, single-pass first, and greedy
+# Fan-out matching: why resolution is local, single-pass first, and in row order
 
-*Status: built under both linkage strategies. The construction is normatively specified in [PROTOCOL.md](../spec/PROTOCOL.md#fan-out-matching-multi-value-key-candidates), with the operator-facing description in [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#fan-out-multi-value-fields); the cascade's own realization landed after this note was written, and [cascade-fan-out.md](cascade-fan-out.md) records it. This note records why the rules have the shape they do, the alternatives weighed and set aside, and what remains open. See [docs/notes/README.md](README.md).*
+*Status: built under both linkage strategies, except the largest-pairing resolution, which the spec states and is not yet built. The construction is normatively specified in [PROTOCOL.md](../spec/PROTOCOL.md#fan-out-matching-multi-value-key-candidates), with the operator-facing description in [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#fan-out-multi-value-fields); the cascade's own realization landed after this note was written, and [cascade-fan-out.md](cascade-fan-out.md) records it. This note records why the rules have the shape they do, the alternatives weighed and set aside, and what remains open. See [docs/notes/README.md](README.md).*
 
 This is design rationale. Nothing here binds an implementation; the normative rows live in the spec documents linked above, and this note does not restate them.
 
@@ -39,7 +39,7 @@ Shipping the feature on one strategy first also reused machinery that already ex
 
 One asymmetry in a refusal of this kind deserves its own line, because it is the one place such a refusal is not symmetric: a field-level fan-out lives in a party's own data standardization, which is per-party and local and which no invitation states. The partner cannot derive that refusal from the agreed terms, so it has to land in front of the operator at preparation time -- before a connection exists to leave hanging -- and, if it somehow reaches the run boundary, as an abort stating its reason rather than a silent decline. An element-transform fan-out rides the agreed terms and needs no such handling.
 
-## Why a greedy sweep, in (sender row, receiver row) order
+## Why a sweep in (sender row, receiver row) order
 
 Any deterministic, side-symmetric order would do; the choice matters only because it decides which of two ambiguous matches wins, and that has to be fixed rather than emergent. Three properties decided it:
 
@@ -47,7 +47,7 @@ Any deterministic, side-symmetric order would do; the choice matters only becaus
 - **It is an order the frames already hold.** Message 3's local half is the sender's own rows in ascending order, and that ascending order is enforced at the single-pass boundary. Ordering the sweep sender-major means the resolution order and the frame's canonical order are one order rather than two.
 - **It reduces to today's behavior.** On single-valued inputs each round's candidate pairs form a partial one-to-one correspondence, so the sweep accepts every pair whatever the order. The rule therefore changes no fan-out-free run, which is what lets the strategies' existing byte-identical-table claim stand unqualified.
 
-A maximum-cardinality matching would pair more records in an ambiguous round than a greedy sweep does. It was set aside: it needs a canonical tiebreak anyway (so it does not avoid this decision, only adds to it), it is more work in the innermost replay, and "more pairs" is not obviously the better answer when the ambiguity means the evidence was contradictory. The greedy's bias is clear -- the lowest-numbered sender record wins its lowest-numbered candidate -- and clarity is worth more here than cardinality.
+A maximum-cardinality matching pairs more records in some ambiguous rounds than a greedy sweep does. This note first set it aside for the greedy sweep's plainer bias -- the lowest-numbered sender record wins its lowest-numbered candidate -- since it needs a canonical tiebreak anyway and is more work in the innermost replay. The maintainer ruled for it when count-only needed a count that does not depend on row order, which a greedy sweep's count does: the sweep keeps this order and accepts the first largest pairing in it, so the order breaks ties between largest pairings and never sets how many pairs a round accepts. Why, with examples: [psi-c-count-only.md](psi-c-count-only.md#candidate-sets-one-count-rule-for-psi-and-psi-c).
 
 Resolution being value-order-independent is deliberate too. An earlier instinct is to sweep in the order the values appear, which is what the current single-pass replay effectively does; that order is an artifact of a hash map's insertion sequence and of the sorted position of encrypted elements, neither of which an independent implementation reproduces. Naming row indices instead makes the rule reproducible from the frames alone.
 
