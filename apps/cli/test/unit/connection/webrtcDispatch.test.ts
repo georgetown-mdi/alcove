@@ -10,6 +10,7 @@ import type {
   PreparedExchange,
   TermsRotation,
 } from "@alcove/core";
+import type { KeyFile } from "../../../src/keyFile";
 
 /**
  * `runProtocol`'s webrtc dispatch: the branch that runs the exchange over a data
@@ -230,7 +231,7 @@ const {
   WEBRTC_BROKER_HOST_REFUSED,
   WEBRTC_BROKER_PATH_REFUSED,
 } = await import("../../../src/connection/webrtc/weriftPeer");
-const { saveKeyFile } = await import("../../../src/keyFile");
+const { loadKeyFile, saveKeyFile } = await import("../../../src/keyFile");
 const {
   FINAL_FRAME_UNCONFIRMED_LINK_LOST_MESSAGE,
   FinalFrameUnconfirmedError,
@@ -240,7 +241,6 @@ const { failureRemedy, OLDER_KEY_FILE_NO_SHOW_REMEDY } =
 const {
   ConnectionError,
   markFailureCause,
-  NEW_INVITATION_REMEDY,
   DISPLAY_TRUNCATION_MARKER,
   EncryptedMessageConnection,
   RELAY_CREDENTIAL_MAX_TTL_SECONDS,
@@ -525,9 +525,9 @@ test("the rendezvous line names the authority dialed, not the configured text", 
   ]);
 });
 
-// --- a cut rotation the next run cannot heal ---------------------------------
+// --- a cut rotation and the run that heals it --------------------------------
 
-test("a failed save on the responder exits 77 on both sides and names a new invitation, since the two do not meet on the next run", async () => {
+test("a failed save on the responder exits 69 on both sides, the acceptor keeping the secret the run used for the next run", async () => {
   mockState.responderSaveFails = true;
   // The inviter takes the responder's handshake role; its key file is written
   // before the run starts, so the refusal is armed only once both are under way.
@@ -542,10 +542,9 @@ test("a failed save on the responder exits 77 on both sides and names a new invi
       "updated token could not be saved to ",
   );
   expect(responderReason.message).toContain(
-    ` Your partner may already hold the rotated token. ${NEW_INVITATION_REMEDY}`,
+    "Your partner saved the new token and kept the one this run used",
   );
-  expect(responderReason.message).not.toContain("kept the one this run used");
-  expect(exitCodeForError(responderReason)).toBe(77);
+  expect(exitCodeForError(responderReason)).toBe(69);
 
   expect(initiator.status).toBe("rejected");
   const initiatorReason = (initiator as PromiseRejectedResult).reason as Error;
@@ -554,13 +553,135 @@ test("a failed save on the responder exits 77 on both sides and names a new invi
       "stopped. This side had already saved it to ",
   );
   expect(initiatorReason.message).toContain(
-    ", so you and your partner now hold different secrets, and running the " +
-      `exchange again cannot reconnect you. ${NEW_INVITATION_REMEDY}`,
+    ", and kept the secret this run used, so the next run can use that one.",
   );
-  expect(initiatorReason.message).not.toContain(
-    "kept the secret this run used",
-  );
-  expect(exitCodeForError(initiatorReason)).toBe(77);
+  expect(exitCodeForError(initiatorReason)).toBe(69);
+  const ahead = loadKeyFile(path.join(tmpDir, "acceptor.key"));
+  expect(ahead?.sharedSecret).not.toBe(SECRET);
+  expect(ahead?.previousSharedSecret).toBe(SECRET);
+});
+
+/** Run one party from the key file `keyFile`, saved first, over the linked pair. */
+function runPartyFrom(
+  role: "inviter" | "acceptor",
+  keyFile: KeyFile,
+  connection: Record<string, unknown> = {},
+): Promise<unknown> {
+  const keyFilePath = path.join(tmpDir, `${role}.key`);
+  saveKeyFile(keyFilePath, keyFile);
+  return runProtocol({
+    connection: { ...webrtcConnection(role), ...connection },
+    auth: {
+      sharedSecret: keyFile.sharedSecret,
+      keyFilePath,
+      ...(keyFile.previousSharedSecret !== undefined && {
+        previousSharedSecret: keyFile.previousSharedSecret,
+      }),
+      ...(keyFile.previousExpires !== undefined && {
+        previousExpires: keyFile.previousExpires,
+      }),
+    },
+    prepared: minimalPrepared,
+    output: path.join(tmpDir, `${role}.csv`),
+    verbosity: -1,
+    loggerName: "test",
+  });
+}
+
+const AHEAD = generateSharedSecret();
+
+test("an acceptor whose key file holds a previous secret waits under it too, and the run heals with an inviter left on it", async () => {
+  await Promise.all([
+    runPartyFrom("inviter", { sharedSecret: SECRET }),
+    runPartyFrom("acceptor", {
+      sharedSecret: AHEAD,
+      previousSharedSecret: SECRET,
+    }),
+  ]);
+
+  const acceptorDial = mockState.dials.find((dial) => dial.role === "acceptor");
+  expect(acceptorDial?.sharedSecret).toBe(AHEAD);
+  expect(acceptorDial?.previousSharedSecret).toBe(SECRET);
+  const inviterDial = mockState.dials.find((dial) => dial.role === "inviter");
+  expect(inviterDial).not.toHaveProperty("previousSharedSecret");
+  expect(
+    mockState.warnLines.filter((line) =>
+      line.startsWith("The last run stopped before your partner saved"),
+    ),
+  ).toHaveLength(1);
+  expect(
+    mockState.warnLines.filter((line) =>
+      line.startsWith("Your partner still had the shared secret"),
+    ),
+  ).toHaveLength(1);
+  const acceptorFile = loadKeyFile(path.join(tmpDir, "acceptor.key"))!;
+  const inviterFile = loadKeyFile(path.join(tmpDir, "inviter.key"))!;
+  expect(acceptorFile.sharedSecret).toBe(inviterFile.sharedSecret);
+  expect(acceptorFile.sharedSecret).not.toBe(SECRET);
+  expect(acceptorFile.sharedSecret).not.toBe(AHEAD);
+  // The stubbed exchange sends no frame after the terms exchange, so the
+  // acceptor keeps the secret this run used until one confirms it.
+  expect(acceptorFile.previousSharedSecret).toBe(SECRET);
+  expect(inviterFile.previousSharedSecret).toBeUndefined();
+});
+
+test.each([
+  ["an acceptor holding none", "acceptor", {}],
+  ["an inviter holding one", "inviter", { previousSharedSecret: AHEAD }],
+  [
+    "an acceptor whose previous secret has expired",
+    "acceptor",
+    {
+      previousSharedSecret: AHEAD,
+      previousExpires: "2020-01-01T00:00:00.000Z",
+    },
+  ],
+] as const)(
+  "%s waits under the current secret alone",
+  async (_case, role, previous) => {
+    mockState.dialFailure = new ConnectionError("no partner", "transport");
+    await runPartyFrom(role, { sharedSecret: SECRET, ...previous }).catch(
+      () => {},
+    );
+    expect(mockState.dials).toHaveLength(1);
+    expect(mockState.dials[0]).not.toHaveProperty("previousSharedSecret");
+  },
+);
+
+test("an acceptor holding a previous secret parks a relay dialed under the derived id under that secret's id and key too, and a relay under a named id once", async () => {
+  mockState.dialFailure = new ConnectionError("no partner", "transport");
+  await runPartyFrom(
+    "acceptor",
+    { sharedSecret: AHEAD, previousSharedSecret: SECRET },
+    {
+      websocketRelay: "wss://relay.example.org/relay",
+      invitationRelay: {
+        websocket: "wss://partner-relay.example.net/relay",
+        websocketExchangeId: "partner-exchange",
+      },
+    },
+  ).catch(() => {});
+
+  expect(mockState.parkedRelays.map(({ dial }) => dial)).toEqual([
+    {
+      url: "wss://relay.example.org/relay",
+      exchangeId: await deriveRelayExchangeId(AHEAD),
+      relayKey: await deriveRelayKey(AHEAD),
+      role: "acceptor",
+    },
+    {
+      url: "wss://partner-relay.example.net/relay",
+      exchangeId: "partner-exchange",
+      relayKey: await deriveRelayKey(AHEAD),
+      role: "acceptor",
+    },
+    {
+      url: "wss://relay.example.org/relay",
+      exchangeId: await deriveRelayExchangeId(SECRET),
+      relayKey: await deriveRelayKey(SECRET),
+      role: "acceptor",
+    },
+  ]);
 });
 
 test.each([
@@ -1530,4 +1651,42 @@ test("a run whose invitation relay names no registrar enrolls nowhere", async ()
     vi.unstubAllGlobals();
   }
   expect(registrar.requests).toHaveLength(0);
+});
+
+test("an acceptor holding a previous secret enrolls the key and derived id of both secrets at the invitation registrar", async () => {
+  mockState.dialFailure = new ConnectionError("no partner", "transport");
+  const registrar = fakeRegistrar([
+    registrationAnswer(null, "2026-01-01T01:10:00Z"),
+    registrationAnswer(null, "2026-01-01T01:10:00Z"),
+  ]);
+  vi.stubGlobal("fetch", registrar.fetch);
+  try {
+    await runPartyFrom(
+      "acceptor",
+      { sharedSecret: AHEAD, previousSharedSecret: SECRET },
+      {
+        invitationRelay: {
+          turn: [INVITATION_TURN_URL],
+          registrar: INVITATION_REGISTRAR,
+        },
+      },
+    ).catch(() => {});
+  } finally {
+    vi.unstubAllGlobals();
+  }
+  const enrolled = registrar.requests.map((request) => ({
+    url: request.url,
+    key: (JSON.parse(request.body) as { key: string }).key,
+  }));
+  expect(enrolled).toEqual(
+    expect.arrayContaining(
+      await Promise.all(
+        [AHEAD, SECRET].map(async (secret) => ({
+          url: `${INVITATION_REGISTRAR}/exchanges/${await deriveRelayExchangeId(secret)}`,
+          key: await deriveRelayKey(secret),
+        })),
+      ),
+    ),
+  );
+  expect(enrolled).toHaveLength(2);
 });

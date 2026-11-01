@@ -34,6 +34,7 @@ import {
   relayCredentialPerAttempt,
 } from "../connection/webrtc/weriftPeer";
 import { assertFirstRoundFits } from "../firstRoundFits";
+import { checkKeyFileExpiry } from "../keyFile";
 import { preflightKeyFilePath } from "../keyFilePreflight";
 import type {
   AuthPersist,
@@ -122,6 +123,7 @@ interface WebRtcDial {
  *   unused when every selected TURN entry sets its own. When one is given,
  *   each connection attempt after the first mints its own
  *   (`relayCredentialPerAttempt`).
+ * @param previousSharedSecret {@link rendezvousPreviousSecret} for the run.
  * @throws {UsageError} when the run holds no shared secret, when the connection
  *   names no role, when the server block cannot be resolved to a broker, or
  *   or when the connection sets `ice_provision` (via
@@ -132,6 +134,7 @@ export function webRtcDialFrom(
   connection: WebRTCConnectionConfig,
   sharedSecret: string | undefined,
   runRelayCredential?: RelayCredential,
+  previousSharedSecret?: string,
 ): WebRtcDial {
   if (sharedSecret === undefined)
     throw new UsageError(WEBRTC_RENDEZVOUS_SECRET_REQUIRED);
@@ -153,6 +156,8 @@ export function webRtcDialFrom(
       location,
       role,
       sharedSecret,
+      ...(previousSharedSecret !== undefined &&
+        role === "acceptor" && { previousSharedSecret }),
       iceServers,
       ...(runRelayCredential !== undefined && {
         attemptIceServers: relayCredentialPerAttempt(connection, sharedSecret),
@@ -169,6 +174,32 @@ export function webRtcDialFrom(
       ...(inactivityTimeoutMs !== undefined && { inactivityTimeoutMs }),
     },
   };
+}
+
+/**
+ * The previous secret a webrtc run also waits for its partner under: the key
+ * file's, on the acceptor, the only side that can be ahead there, while it has
+ * not expired and differs from the current secret, the rule by which the
+ * handshake offers it (`authenticateConnection` in core). `undefined`
+ * otherwise, so a run holding none, or holding one as the inviter, waits under
+ * the current secret alone.
+ */
+function rendezvousPreviousSecret(
+  role: WebRTCConnectionConfig["role"],
+  auth: Pick<
+    AuthPersist,
+    "sharedSecret" | "previousSharedSecret" | "previousExpires"
+  > | null,
+  now: number,
+): string | undefined {
+  const previous = auth?.previousSharedSecret;
+  if (role !== "acceptor" || previous === undefined) return undefined;
+  if (previous === auth?.sharedSecret) return undefined;
+  const expiry = checkKeyFileExpiry(
+    { sharedSecret: previous, expires: auth?.previousExpires },
+    now,
+  );
+  return expiry === "expired" ? undefined : previous;
 }
 
 /**
@@ -370,6 +401,7 @@ async function checkRunLocalInputs(params: {
       connection,
       auth?.sharedSecret,
       runRelayCredential,
+      rendezvousPreviousSecret(connection.role, auth, Date.now()),
     ),
   };
 }

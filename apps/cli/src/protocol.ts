@@ -778,15 +778,24 @@ async function openRunTransport(params: {
           "your partner enrolled there",
       );
     if (invitationRegistrar !== undefined && enrolls) {
-      const enrollment = await enrollAtInvitationRelay(
-        invitationRegistrar,
-        build.webRtcDial.options.sharedSecret,
-        { signal: interrupted.signal },
+      // An acceptor holding a previous secret enrolls that secret's key and
+      // derived id too, where a partner that did not save the new secret
+      // allocates and dials.
+      const { sharedSecret, previousSharedSecret } = build.webRtcDial.options;
+      const enrollments = await Promise.all(
+        [sharedSecret, previousSharedSecret]
+          .filter((secret) => secret !== undefined)
+          .map((secret) =>
+            enrollAtInvitationRelay(invitationRegistrar, secret, {
+              signal: interrupted.signal,
+            }),
+          ),
       );
-      reportInvitationRelayEnrollment(invitationRegistrar, enrollment, {
-        log,
-        emit,
-      });
+      for (const enrollment of enrollments)
+        reportInvitationRelayEnrollment(invitationRegistrar, enrollment, {
+          log,
+          emit,
+        });
       if (run.signalReceived !== undefined)
         throw new Error(
           `interrupted by ${run.signalReceived} before the rendezvous`,
@@ -825,6 +834,7 @@ async function openRunTransport(params: {
         connection,
         build.webRtcDial.options.sharedSecret,
         build.webRtcDial.options.role,
+        build.webRtcDial.options.previousSharedSecret,
       ),
     );
     build.transport = dialed;
@@ -1132,11 +1142,14 @@ export function isNoHealSaveFailure(err: unknown): boolean {
 /**
  * Whether the next run with the same partner can heal a run cut between the
  * two stores. Over SFTP and a shared folder the two sides meet whatever secret
- * each holds; over WebRTC each derives its rendezvous id from its current
- * secret, so they do not meet. A cut run that cannot heal exits 77.
+ * each holds, and over WebRTC the acceptor, the only side that can be ahead
+ * there, also waits where its previous secret meets the partner
+ * (`openWebRtcPeerSession`). An online invite or accept run cannot: its
+ * responder keeps no key file after a failed save. A cut run that cannot heal
+ * exits 77.
  */
-function nextRunCanHeal(channel: ProtocolConnectionConfig["channel"]): boolean {
-  return channel === "sftp" || channel === "filedrop";
+function nextRunCanHeal(auth: AuthPersist | null): boolean {
+  return auth?.saveKeyFileExclusively !== true;
 }
 
 /**
@@ -1150,9 +1163,8 @@ const FIRST_STORE_SAVE_PREAMBLE =
  * What {@link authenticateRun} states behind that key file and the failure. A
  * directory flush that fails after the rename leaves the next secret in this
  * side's key file beside the secret the run used, which the next run heals
- * where the channel allows it ({@link nextRunCanHeal}); the
- * authentication-failure fallback, and over WebRTC the next run's no-show
- * remedy, cover a state it cannot.
+ * where it can ({@link nextRunCanHeal}); the authentication-failure fallback,
+ * and over WebRTC the next run's no-show remedy, cover a state it cannot.
  */
 const FIRST_STORE_SAVE_REMEDY =
   " Your partner did not save it. Fix the key file's location or " +
@@ -1345,8 +1357,7 @@ async function authenticateRun(params: {
   role: HandshakeRole;
   log: ReturnType<typeof getLogger>;
   eventStream: EventStreamEmitter | undefined;
-  /** {@link nextRunCanHeal} for the run's channel, and a key file that was
-   * there before the run. */
+  /** {@link nextRunCanHeal} for the run. */
   nextRunHeals: boolean;
 }): Promise<void> {
   const { build, run, mc, auth, role, log, eventStream, nextRunHeals } = params;
@@ -2421,8 +2432,7 @@ export async function runProtocol(
   process.on("SIGINT", onSigint);
   process.on("SIGTERM", onSigterm);
 
-  const nextRunHeals =
-    nextRunCanHeal(connection.channel) && auth?.saveKeyFileExclusively !== true;
+  const nextRunHeals = nextRunCanHeal(auth);
   try {
     const role = await openRunTransport({
       build,

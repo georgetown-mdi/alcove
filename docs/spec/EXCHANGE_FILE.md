@@ -827,6 +827,11 @@ history it read, and the rotation write (`rotationWriteContents` in
   uses its 64 newest entries; the next rotation write keeps 64.
 - **A new invitation.** A key file written from an invitation holds neither
   field.
+- **Over WebRTC.** A webrtc acceptor's run from a file holding a
+  `previousSharedSecret` that has not expired also waits for its partner at
+  the rendezvous ids that secret derives
+  ([PROTOCOL.md](PROTOCOL.md#webrtc-rendezvous-peer-id-derivation)); an
+  inviter's run waits at the current secret's ids alone.
 
 The web application keeps a rotation history on its managed record and no
 previous secret: its import of a command-line key file reads `rotationHistory`

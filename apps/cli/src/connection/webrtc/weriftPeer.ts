@@ -5,6 +5,7 @@ import {
   chainDetailCauses,
   ConnectionError,
   DEFAULT_WEBRTC_PEER_TIMEOUT_MS,
+  failureCauseOf,
   failureCauseSentence,
   formatWaitDuration,
   InternalConsistencyError,
@@ -394,6 +395,15 @@ export interface WebRtcPeerOptions {
   role: RendezvousRole;
   /** The invitation's shared secret; both rendezvous ids derive from it. */
   sharedSecret: string;
+  /**
+   * The acceptor's previous shared secret, which its key file holds only
+   * after a run that stopped between the two saves of a rotation. While it
+   * is given, the acceptor also waits for its partner at the pair of ids this
+   * secret derives, where a partner that did not save the new secret waits
+   * (docs/spec/PROTOCOL.md, "WebRTC rendezvous peer-id derivation"). The
+   * inviter ignores it.
+   */
+  previousSharedSecret?: string;
   /** ICE servers, already resolved. Empty or absent selects werift's default. */
   iceServers?: Array<RTCIceServer>;
   /**
@@ -1068,8 +1078,87 @@ export function idTakenAfterRetryMessage(windowMs: number): string {
  * and every failure path, tears down what it built -- the channel, the peer
  * connection and the broker socket -- so a failed rendezvous leaves no
  * registered id and no half-open connection behind.
+ *
+ * An acceptor given a previous secret ({@link WebRtcPeerOptions.previousSharedSecret})
+ * waits under both secrets at once ({@link openUnderBothSecrets}).
  */
 export async function openWebRtcPeerSession(
+  options: WebRtcPeerOptions,
+): Promise<WebRtcPeerSession> {
+  const { role, sharedSecret, previousSharedSecret } = options;
+  if (
+    role !== "acceptor" ||
+    previousSharedSecret === undefined ||
+    previousSharedSecret === sharedSecret
+  )
+    return openRendezvous(options);
+  return openUnderBothSecrets(options, previousSharedSecret);
+}
+
+/**
+ * The acceptor's wait while its key file holds a previous secret: one
+ * rendezvous under each secret, each registering under the acceptor id its
+ * secret derives and offering to the inviter id beside it, since an inviter
+ * checks that an offer comes from the acceptor id of the secret it holds. The
+ * first to open is the session and ends the other. A rendezvous that ends with
+ * no partner leaves the outcome to the other, which ends at the same deadline
+ * unless a partner it met keeps it going; any other failure ends both, as it
+ * would end a single rendezvous.
+ */
+async function openUnderBothSecrets(
+  options: WebRtcPeerOptions,
+  previousSharedSecret: string,
+): Promise<WebRtcPeerSession> {
+  log.info(
+    "the key file holds the shared secret from before a run that stopped " +
+      "partway, so this run also looks for your partner under that secret",
+  );
+  let registered = false;
+  const onRegistered = (): void => {
+    if (registered) return;
+    registered = true;
+    options.onRegistered?.();
+  };
+  const legs = [options.sharedSecret, previousSharedSecret].map((secret) => {
+    const ended = new AbortController();
+    const opened = openRendezvous({
+      ...options,
+      sharedSecret: secret,
+      signal:
+        options.signal === undefined
+          ? ended.signal
+          : AbortSignal.any([options.signal, ended.signal]),
+      onRegistered,
+    }).then(
+      (session) => ({ session }),
+      (error: unknown) => ({ error }),
+    );
+    return { ended, opened };
+  });
+  const first = await Promise.race(
+    legs.map((leg, index) =>
+      leg.opened.then((outcome) => ({ index, outcome })),
+    ),
+  );
+  const other = legs[1 - first.index]!;
+  const outcome = first.outcome;
+  if (
+    "error" in outcome &&
+    failureCauseOf(outcome.error)?.kind === "partner-never-arrived"
+  ) {
+    const last = await other.opened;
+    if ("error" in last) throw last.error;
+    return last.session;
+  }
+  other.ended.abort();
+  const late = await other.opened;
+  if ("session" in late) await late.session.close();
+  if ("error" in outcome) throw outcome.error;
+  return outcome.session;
+}
+
+/** {@link openWebRtcPeerSession} under the one secret `options` names. */
+async function openRendezvous(
   options: WebRtcPeerOptions,
 ): Promise<WebRtcPeerSession> {
   const {

@@ -4,7 +4,7 @@ title: "Rotation Hardening Design"
 
 # Rotation hardening: recognizing a stale copy, and healing a one-sided rotation
 
-_Status: proposed for the maintainer's ratification; core stages 2 and 3 are built, and so is the web item's first part, the history and the two stale-copy readings; the command-line item and the web item's heal are not ([The build split and its reviews](#the-build-split-and-its-reviews)).
+_Status: proposed for the maintainer's ratification; core stages 2 and 3 and the command-line item are built, and so is the web item's first part, the history and the two stale-copy readings; the web item's heal is not ([The build split and its reviews](#the-build-split-and-its-reviews)).
 Decided by the maintainer's rulings: always accept the previous secret, keep the WebRTC stale-copy limit, send a random value from the responder after key confirmation inside terms message 2, store the next secret initiator first, and state the SC-12 row as it is, keeping that value's own wrap (questions 1 to 4, 7 and 8).
 Proposed, with recommendations for the maintainer to ratify: how the two values are drawn and whether the security review runs per stage (questions 5 and 6), and two choices no ruling covers ([Open questions](#open-questions)).
 Nothing here is normative.
@@ -339,6 +339,8 @@ Stated limit: the behind side cannot allocate on the ahead side's own relay, whi
 A heal run then depends on the ahead side's relayed candidate, or on the behind side's own relays.
 Whether ICE forms a path from one side's relayed candidate alone is the relay's and the browser's behavior, not measured here; the command-line item measures it against the reference relay before this limit is stated as a fact.
 Where it does not form, the run reports a no-show and re-invite recovers, as today.
+The command-line item measured the WebSocket relay: a relay holding one side's key pairs nothing, and the second dial under the previous secret's derived id pairs ([WEBSOCKET_RELAY.md](../spec/WEBSOCKET_RELAY.md#a-one-sided-allocation)).
+TURN stays unmeasured, since the development container holds no TURN server.
 
 ### What the operator is told
 

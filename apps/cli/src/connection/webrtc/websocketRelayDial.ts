@@ -47,6 +47,12 @@ export function websocketRelayNeedsSecretMessage(
  * token uses (docs/spec/PROTOCOL.md, "Relay credential derivation"). Empty
  * when the run lists none.
  *
+ * With `previousSharedSecret`, each relay dialed under the derived id is
+ * dialed a second time under the id and key that secret derives, where a
+ * partner that did not save the new secret dials it. A relay under an id the
+ * connection or the invitation names is dialed once, under the current key,
+ * the key its registrar holds.
+ *
  * @throws {UsageError} if the run lists a relay and `sharedSecret` is
  *   undefined.
  */
@@ -54,6 +60,7 @@ export async function webSocketRelayDialsFor(
   connection: RunRelayConnection,
   sharedSecret: string | undefined,
   role: RendezvousRole,
+  previousSharedSecret?: string,
 ): Promise<WebSocketRelayDial[]> {
   const relays = selectRunRelay(connection).websocket ?? [];
   if (relays.length === 0) return [];
@@ -61,12 +68,26 @@ export async function webSocketRelayDialsFor(
     throw new UsageError(websocketRelayNeedsSecretMessage(connection));
   const relayKey = await deriveRelayKey(sharedSecret);
   const derivedExchangeId = await deriveRelayExchangeId(sharedSecret);
-  return relays.map((relay) => ({
+  const dials = relays.map((relay) => ({
     url: relay.url,
     exchangeId: relay.exchangeId ?? derivedExchangeId,
     relayKey,
     role,
   }));
+  const derivedOnly = relays.filter((relay) => relay.exchangeId === undefined);
+  if (previousSharedSecret === undefined || derivedOnly.length === 0)
+    return dials;
+  const previousKey = await deriveRelayKey(previousSharedSecret);
+  const previousExchangeId = await deriveRelayExchangeId(previousSharedSecret);
+  return [
+    ...dials,
+    ...derivedOnly.map((relay) => ({
+      url: relay.url,
+      exchangeId: previousExchangeId,
+      relayKey: previousKey,
+      role,
+    })),
+  ];
 }
 
 /** @internal */
