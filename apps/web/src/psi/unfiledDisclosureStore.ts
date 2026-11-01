@@ -26,7 +26,11 @@
  * transaction (see {@link ./managed/managedExchangeStore.ts}).
  */
 
-import { getLogger, parseExchangeRecord } from "@alcove/core";
+import {
+  FormatMigrationError,
+  getLogger,
+  parseExchangeRecord,
+} from "@alcove/core";
 
 import {
   MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME,
@@ -76,8 +80,10 @@ export type UnfiledDisclosureRead =
   | { kind: "unfiled"; disclosures: ReadonlyArray<UnfiledDisclosure> }
   /** A stored value this build refuses: a run of this exchange was noted as
    * unfiled, and which run it was cannot be read. The bytes are left exactly as
-   * they sit -- the note is the only thing standing for that disclosure. */
-  | { kind: "unreadable" };
+   * they sit -- the note is the only thing standing for that disclosure.
+   * `migrationFailure` is the refusal where a migration failed, its message
+   * naming the versions and the cause, and is absent for damage. */
+  | { kind: "unreadable"; migrationFailure?: FormatMigrationError };
 
 /** Where a run that could not be filed was recorded, so a caller with no notice
  * sink still reports the outcome to the diagnostic log. */
@@ -244,8 +250,10 @@ export async function readUnfiledDisclosures(
         let stored: StoredUnfiledDisclosures;
         try {
           stored = parseStoredUnfiledDisclosures(raw);
-        } catch {
-          return { kind: "unreadable" };
+        } catch (error) {
+          return error instanceof FormatMigrationError
+            ? { kind: "unreadable", migrationFailure: error }
+            : { kind: "unreadable" };
         }
         const disclosures = unfiledDisclosuresOf(stored);
         return disclosures.length === 0

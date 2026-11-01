@@ -28,7 +28,6 @@ import {
   updateManagedExchangeLocalFields,
 } from "@psi/managed/managedExchangeStore";
 import {
-  MANAGED_EXCHANGE_PREVIOUS_ARTIFACT_VERSION,
   MANAGED_EXCHANGE_SCHEMA_VERSION,
   composeManagedExchangeFile,
   runnableManagedExchangeOrRefuse,
@@ -329,12 +328,10 @@ describe("an accounting an earlier version stored", () => {
 
   test("whose migration fails is refused naming the cause, the stored value unchanged", async () => {
     const created = await createManagedExchange(newExchange());
+    const entry = await disclosureRecord();
     const earlier = {
       ...atPreviousVersion(
-        {
-          version: DISCLOSURE_ACCOUNTING_VERSION,
-          entries: [await disclosureRecord()],
-        },
+        { version: DISCLOSURE_ACCOUNTING_VERSION, entries: [entry] },
         "version",
         ACCOUNTING_RENAME,
       ),
@@ -346,10 +343,19 @@ describe("an accounting an earlier version stored", () => {
       created.id,
     );
 
-    expect(await readDisclosureAccounting(created.id)).toEqual({
+    const read = await readDisclosureAccounting(created.id);
+
+    expect(read).toEqual({
       kind: "unreadable",
       stored: undefined,
+      migrationFailure: expect.any(FormatMigrationError),
     });
+    const message =
+      read.kind === "unreadable" ? (read.migrationFailure?.message ?? "") : "";
+    expect(message).toContain("The accounting of disclosures is format");
+    expect(message).toContain(UNMOVABLE_CAUSE);
+    for (const value of [created.id, entry.bindingNonce, entry.createdAt])
+      expect(message).not.toContain(value);
     await expect(
       appendDisclosureRecordToStore(created.id, await disclosureRecord()),
     ).rejects.toThrow(UNMOVABLE_CAUSE);
@@ -360,7 +366,8 @@ describe("an accounting an earlier version stored", () => {
 
   test("holding an entry whose migration fails offers its entries for export", async () => {
     const created = await createManagedExchange(newExchange());
-    const unmovable = { ...(await earlierRecord()), [UNMOVABLE_FIELD]: true };
+    const earlier = await earlierRecord();
+    const unmovable = { ...earlier, [UNMOVABLE_FIELD]: true };
     const stored = {
       version: DISCLOSURE_ACCOUNTING_VERSION,
       entries: [unmovable],
@@ -371,10 +378,18 @@ describe("an accounting an earlier version stored", () => {
       created.id,
     );
 
-    expect(await readDisclosureAccounting(created.id)).toEqual({
+    const read = await readDisclosureAccounting(created.id);
+
+    expect(read).toEqual({
       kind: "unreadable",
       stored,
+      migrationFailure: expect.any(FormatMigrationError),
     });
+    const message =
+      read.kind === "unreadable" ? (read.migrationFailure?.message ?? "") : "";
+    expect(message).toContain("The exchange record is format");
+    expect(message).toContain(UNMOVABLE_CAUSE);
+    expect(message).not.toContain(String(earlier["bindingNonce"]));
     await expect(
       appendDisclosureRecordToStore(created.id, await disclosureRecord()),
     ).rejects.toThrow(UNMOVABLE_CAUSE);
@@ -488,9 +503,17 @@ describe("a note of unfiled runs an earlier version stored", () => {
       await clearUnfiledExchangeFlag(created.id);
     });
 
-    expect(await readUnfiledDisclosures(created.id)).toEqual({
+    const read = await readUnfiledDisclosures(created.id);
+    expect(read).toEqual({
       kind: "unreadable",
+      migrationFailure: expect.any(FormatMigrationError),
     });
+    const message =
+      read.kind === "unreadable" ? (read.migrationFailure?.message ?? "") : "";
+    expect(message).toContain("The note is format");
+    expect(message).toContain(UNMOVABLE_CAUSE);
+    for (const value of [created.id, NOTED_AT])
+      expect(message).not.toContain(value);
     expect(
       await noteUnfiledDisclosureRun(
         created.id,
@@ -507,51 +530,22 @@ describe("a note of unfiled runs an earlier version stored", () => {
   });
 });
 
-describe("a backup file at the previous artifact version", () => {
-  /** A backup of a fresh exchange under the previous tag, and the exchange. */
-  async function previousVersionBackup(
-    condition?: Record<string, unknown>,
-  ): Promise<{ bytes: string; sharedSecret: string }> {
+describe("a backup file tagged with a development artifact version", () => {
+  test("is refused naming the cause, and installs nothing", async () => {
     const source = runnableManagedExchangeOrRefuse(
       await createManagedExchange(newExchange()),
     );
     const document = JSON.parse(
       serializeManagedExchangeArtifact(encodeManagedExchangeArtifact(source)),
     );
-    document.artifactVersion = MANAGED_EXCHANGE_PREVIOUS_ARTIFACT_VERSION;
-    if (condition !== undefined) document.local.standingCondition = condition;
+    document.artifactVersion = "alcove-managed-exchange-backup/v2";
     await clearManagedExchanges();
-    return {
-      bytes: JSON.stringify(document),
-      sharedSecret: source.sharedSecret,
-    };
-  }
 
-  test("imports as a record at the current version", async () => {
-    const raised = { since: "2026-07-10T09:00:00.000Z", kind: "auth" };
-    const { bytes, sharedSecret } = await previousVersionBackup(raised);
+    const imported = importManagedExchange(JSON.stringify(document));
 
-    const { record: installed } = await importManagedExchange(bytes);
-
-    expect(installed.sharedSecret).toBe(sharedSecret);
-    expect(installed.standingCondition).toEqual(raised);
-    expect(await rawStored(MANAGED_EXCHANGE_STORE_NAME, installed.id)).toEqual(
-      expect.objectContaining({
-        schemaVersion: MANAGED_EXCHANGE_SCHEMA_VERSION,
-        sharedSecret,
-      }),
-    );
-  });
-
-  test("whose migration fails installs nothing", async () => {
-    const { bytes } = await previousVersionBackup({
-      since: "2026-07-10T09:00:00.000Z",
-      kind: "auth",
-      response: { kind: "compromise", at: "2026-07-11T09:00:00.000Z" },
-    });
-
-    await expect(importManagedExchange(bytes)).rejects.toBeInstanceOf(
-      FormatMigrationError,
+    await expect(imported).rejects.toBeInstanceOf(FormatMigrationError);
+    await expect(imported).rejects.toThrow(
+      "it has no migration from version alcove-managed-exchange-backup/v2.",
     );
     expect(await listManagedExchanges()).toEqual([]);
   });

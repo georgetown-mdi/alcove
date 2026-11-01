@@ -9,7 +9,11 @@
  * docs/spec/MANAGED_EXCHANGE_RECORD.md).
  */
 
-import { canonicalString, deriveHistoryVerifier } from "@alcove/core";
+import {
+  FormatMigrationError,
+  canonicalString,
+  deriveHistoryVerifier,
+} from "@alcove/core";
 
 import {
   clearUnfiledExchangeFlag,
@@ -381,7 +385,9 @@ export async function listReadableManagedExchanges(): Promise<ManagedExchangeRea
  * note shows on the recovery path exactly as on the normal list. A boolean
  * suffices for the backup marker, whose timestamp is never shown here. A
  * readable entry whose sibling entry does not parse holds `stateUnreadable`:
- * its page cannot load, so nothing it holds can be exported first.
+ * its page cannot load, so nothing it holds can be exported first. An
+ * unreadable entry whose migration failed holds the refusal
+ * (`migrationFailure`), its message naming the versions and the cause.
  */
 export type ManagedExchangeDiagnosticEntry =
   | {
@@ -394,6 +400,7 @@ export type ManagedExchangeDiagnosticEntry =
       kind: "unreadable";
       id: string;
       backedUp: boolean;
+      migrationFailure?: FormatMigrationError;
     };
 
 /**
@@ -405,7 +412,8 @@ export type ManagedExchangeDiagnosticEntry =
  * normal list cannot load.
  *
  * SECURITY: entries hold display essentials only (label, side, dates, key) plus
- * the sibling custody, which has no secret material and no rotation epoch; the
+ * the sibling custody, which has no secret material and no rotation epoch, and
+ * a failed migration's refusal, whose message names versions and no value; the
  * `sharedSecret`, the document, the folder handle, and the backup marker's timestamp
  * never leave the diagnostic extraction. Keyed off the store's own keys rather than
  * the parsed records, so an unreadable entry still yields a key to delete by.
@@ -457,13 +465,16 @@ export async function listManagedExchangesDiagnostic(): Promise<
                 essentials: diagnoseManagedExchangeRecord(values[index]),
                 ...custody,
               });
-            } catch {
+            } catch (error) {
               // The parse failed, so the record's own `id` is untrusted; the store
               // key is the delete target instead, and the only field shown.
               entries.push({
                 kind: "unreadable",
                 id: key,
                 backedUp: custody.backedUp,
+                ...(error instanceof FormatMigrationError
+                  ? { migrationFailure: error }
+                  : {}),
               });
             }
           }

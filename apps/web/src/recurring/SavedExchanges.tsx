@@ -673,6 +673,11 @@ function RecoveryListing({ reload }: { reload: () => void }) {
                   : ""}
               </span>
             )}
+            {row.migrationFailure !== undefined && (
+              <span className={`${styles.small} ${styles.sub}`}>
+                {row.migrationFailure}
+              </span>
+            )}
             {row.stateUnreadable && (
               <span className={`${styles.small} ${styles.sub}`}>
                 {STATE_UNREADABLE_NOTE}

@@ -10,8 +10,8 @@
 - The same holds for a page running older code than the record it reads: it refuses the record rather than reading it as unanswered. -> A page running older code than the record it reads refuses the record rather than reading it as unanswered.
 - Such an entry holds an out-of-bounds period or width from an artifact imported or hand-edited before these ceilings existed, or is any other record an app upgrade invalidated. -> Such an entry holds an out-of-bounds period or width from an artifact imported or hand-edited before these ceilings existed, or is any other record this build cannot read, a failed migration among them.
 - The tag is its own reader-rejects-unknown literal -- `alcove-managed-exchange-backup/v3`, the single value this build accepts, and the only one it writes -- distinct from the record's `schemaVersion`: the on-disk artifact format versions independently of the stored record. -> The tag is its own literal -- `alcove-managed-exchange-backup/v3`, the one this build writes -- distinct from the record's `schemaVersion`: the on-disk artifact format versions independently of the stored record.
-- Every other value is refused on the literal rather than migrated, the superseded `alcove-managed-exchange-backup/v2` being recognized only far enough to say so (below). -> An import migrates the superseded `alcove-managed-exchange-backup/v2` into memory and refuses every other value (below).
-- A file tagged `alcove-managed-exchange-backup/v2`, the format this one replaced, is the other direction and is told apart from both: neither remedy applies to it, so the refusal states that the backup is from an earlier version and points at setting the exchange up again with the partner. -> A file tagged `alcove-managed-exchange-backup/v2`, the format this one replaced, is the v3 shape with no `response` in a condition.
+- Every other value is refused on the literal rather than migrated, the superseded `alcove-managed-exchange-backup/v2` being recognized only far enough to say so (below). -> An import migrates an earlier version a step leads from into memory and refuses every other value (below).
+- A file tagged `alcove-managed-exchange-backup/v2`, the format this one replaced, is the other direction and is told apart from both: neither remedy applies to it, so the refusal states that the backup is from an earlier version and points at setting the exchange up again with the partner. -> -
 - One object per exchange: a `version` (`alcove-disclosure-accounting/v2`, its own reader-rejects-unknown literal) and `entries`, the exchange records oldest first. -> One object per exchange: a `version` (`alcove-disclosure-accounting/v2`, its own literal) and `entries`, the exchange records oldest first.
 - A stored value that fails validation -- an unrecognized version, an unknown key, or an entry that is not a valid exchange record -- rejects the whole read rather than loading the entries that parsed: a partially-loaded accounting would still render, as a shorter and quietly false account of what was disclosed, so the failure is reported as a failure. -> A stored value that fails validation -- a version no step leads from, a failed migration, an unknown key, or an entry that is not a valid exchange record -- rejects the whole read rather than loading the entries that parsed: a partially-loaded accounting would still render, as a shorter and quietly false account of what was disclosed, so the failure is reported as a failure.
 - An entry is an exchange record, and the record format's version literal moves with its field set; a reader rejects an unrecognized version rather than migrating it, and no migration is offered pre-release (see [EXCHANGE_RECORD.md](EXCHANGE_RECORD.md)). -> An entry is an exchange record, and the record format's version literal moves with its field set.
@@ -29,22 +29,24 @@
 - - -> **Failure.**
 - - -> A migration that fails leaves the stored value unchanged and is refused naming the version found, the current version and the cause, never a value the record holds.
 - - -> The refusal is a read failure like any other: the attended list routes to its read-failed recovery surface, and the unattended read skips the entry.
+- - -> That surface shows the refusal in the record's row.
 - - -> **The table.**
 - - -> It has no step yet, since every earlier literal is a development one.
-- - -> **A backup at the previous version.**
-- - -> An import migrates it in memory by one step that moves the tag (`MANAGED_EXCHANGE_ARTIFACT_MIGRATIONS`), so its condition imports unanswered, which is what a v2 condition is.
+- - -> **A backup at an earlier version.**
+- - -> An import migrates a file at an earlier `artifactVersion` in memory through the steps of `MANAGED_EXCHANGE_ARTIFACT_MIGRATIONS`.
 - - -> The file is never rewritten, and the next export writes v3.
-- - -> No build writing v2 knew the `response` member, so the step refuses a v2 file whose condition holds one rather than dropping the answer or trusting it.
-- - -> That refusal, and the refusal of an earlier tag no step leads from, name the version found, the current version and the cause, never a value the file holds; the import surface shows it in place of the newer-build remedies, which do not apply to an older file.
+- - -> The table has no step yet, since every earlier tag is a development one.
+- - -> A file at an earlier tag no step leads from, or whose step fails, is refused naming the version found, the current version and the cause, never a value the file holds; the import surface shows the refusal in place of the newer-build remedies, which do not apply to an older file.
 - - -> **Versions.**
 - - -> **Versions.**
 - - -> The accounting is audit state, migrated on read as the record is (see [Versioning](#versioning-a-stored-record-is-migrated-on-read)): the envelope through `DISCLOSURE_ACCOUNTING_MIGRATIONS`, and each entry through the exchange record's own migrations.
 - - -> An envelope step moves the envelope and never an entry.
 - - -> The next append writes the envelope at the current version and the stored entries exactly as they sit at rest, never their migrated reading, so a past exchange record is never rewritten (see [EXCHANGE_RECORD.md](EXCHANGE_RECORD.md#record-fields)).
+- - -> A failed migration of the envelope or of an entry leaves the accounting unreadable, and that state shows the refusal.
 - - -> Neither table has a step yet.
 - - -> A reader migrates an entry at an earlier version where a step leads from it, and the accounting then reads as one (see [EXCHANGE_RECORD.md](EXCHANGE_RECORD.md)).
 - - -> An envelope whose own migration fails has no stored form to return, the corruption case below.
 - - -> The note is audit state: it stands for runs the accounting is short, so it is migrated on read like the accounting rather than discarded (`UNFILED_DISCLOSURE_MIGRATIONS`), and written at the current version by its next write -- a further note, or a filing that leaves runs noted -- never by a read.
 - - -> A step moves the note and never a retained record, which a filing appends to the accounting as retained.
-- - -> A note whose migration fails is a note this build cannot read, below.
+- - -> A note whose migration fails is a note this build cannot read, below, and that state shows the refusal.
 - - -> The table has no step yet.

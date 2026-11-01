@@ -1,6 +1,12 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  FormatMigrationError,
+  migrateOnRead,
+  sanitizeErrorForDisplay,
+} from "@alcove/core";
+
+import {
   STATE_UNREADABLE_NOTE,
   UNREADABLE_RECORD_LABEL,
   recoveryRow,
@@ -109,6 +115,45 @@ describe("recoveryRow", () => {
     expect(row.sideLabel).toBeUndefined();
     expect(row.lastRunAt).toBeUndefined();
     expect(row.unreadable).toBe(true);
+    expect(row.migrationFailure).toBeUndefined();
+  });
+
+  test("an unreadable entry whose migration failed shows the refusal, escaped", () => {
+    let refusal: unknown;
+    try {
+      migrateOnRead(
+        { schemaVersion: "alcove-managed-exchange/v3\u0007", label: "x" },
+        {
+          fileName: "A saved exchange",
+          versionField: "schemaVersion",
+          current: "alcove-managed-exchange/v4",
+          steps: [
+            {
+              from: "alcove-managed-exchange/v3\u0007",
+              to: "alcove-managed-exchange/v4",
+              migrate: () => {
+                throw new Error("the step cannot move it");
+              },
+            },
+          ],
+          failureRemedy: "Remove it.",
+        },
+      );
+    } catch (error) {
+      refusal = error;
+    }
+    expect(refusal).toBeInstanceOf(FormatMigrationError);
+
+    const row = recoveryRow({
+      kind: "unreadable",
+      id: "bad-key",
+      backedUp: false,
+      migrationFailure: refusal as FormatMigrationError,
+    });
+
+    expect(row.migrationFailure).toBe(sanitizeErrorForDisplay(refusal));
+    expect(row.migrationFailure).toContain("the step cannot move it");
+    expect(row.migrationFailure).not.toContain("\u0007");
   });
 
   test("a readable entry whose saved state cannot be read keeps its essentials and says so", () => {

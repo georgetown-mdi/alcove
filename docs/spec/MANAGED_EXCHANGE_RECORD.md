@@ -494,7 +494,7 @@ invalidate it:
   refused naming the version found, the current version and the cause, never a
   value the record holds. The refusal is a read failure like any other: the
   attended list routes to its read-failed recovery surface, and the unattended
-  read skips the entry.
+  read skips the entry. That surface shows the refusal in the record's row.
 - **The table.** It has no step yet, since every earlier literal is a
   development one.
 
@@ -1813,10 +1813,9 @@ tag and three parts that keep the two CLI halves separable from the browser-only
 fields. The tag is its own literal --
 `alcove-managed-exchange-backup/v3`, the one this build writes -- distinct from
 the record's `schemaVersion`: the on-disk artifact format versions
-independently of the stored record. An import migrates the superseded
-`alcove-managed-exchange-backup/v2` into memory and refuses every other value
-(below). `exchangeDocument` embeds the exchange-file document as a
-valid `alcove.yaml` (the snake_case YAML the CLI loads, serialized through the
+independently of the stored record. An import migrates an earlier version a
+step leads from into memory and refuses every other value (below).
+`exchangeDocument` embeds the exchange-file document as a valid `alcove.yaml` (the snake_case YAML the CLI loads, serialized through the
 same discipline the mint layer applies to a validated spec). `key` is the
 `.alcove.key` pair (`sharedSecret`, `expires` when a bound is in force,
 `relayRegistrationPendingSince` when a relay key registration is pending, and
@@ -1867,17 +1866,14 @@ either imports with the answer or is refused entire. The artifact's own
   build's export as a likely cause and states the two ways past it -- bring the
   page up to date, or write the file from a build that matches -- alongside the
   wrong-file and modified-file checks.
-- **A backup at the previous version.** A file tagged
-  `alcove-managed-exchange-backup/v2`, the format this one replaced, is the v3
-  shape with no `response` in a condition. An import migrates it in memory by
-  one step that moves the tag (`MANAGED_EXCHANGE_ARTIFACT_MIGRATIONS`), so its
-  condition imports unanswered, which is what a v2 condition is. The file is
-  never rewritten, and the next export writes v3. No build writing v2 knew the
-  `response` member, so the step refuses a v2 file whose condition holds one
-  rather than dropping the answer or trusting it. That refusal, and the refusal
-  of an earlier tag no step leads from, name the version found, the current
-  version and the cause, never a value the file holds; the import surface shows
-  it in place of the newer-build remedies, which do not apply to an older file.
+- **A backup at an earlier version.** An import migrates a file at an earlier
+  `artifactVersion` in memory through the steps of
+  `MANAGED_EXCHANGE_ARTIFACT_MIGRATIONS`. The file is never rewritten, and the
+  next export writes v3. The table has no step yet, since every earlier tag is a
+  development one. A file at an earlier tag no step leads from, or whose step
+  fails, is refused naming the version found, the current version and the
+  cause, never a value the file holds; the import surface shows the refusal in
+  place of the newer-build remedies, which do not apply to an older file.
 - **What a reconstructed `lastRun` can and cannot assert.** The `local.lastRun`
   block is validated against the record's own `lastRun` schema rather than a
   narrower one, so an artifact is accepted with every outcome and
@@ -2334,8 +2330,9 @@ exchange record's own migrations. An envelope step moves the envelope and never
 an entry. The next append writes the envelope at the current version and the
 stored entries exactly as they sit at rest, never their migrated reading, so a
 past exchange record is never rewritten (see
-[EXCHANGE_RECORD.md](EXCHANGE_RECORD.md#record-fields)). Neither table has a
-step yet.
+[EXCHANGE_RECORD.md](EXCHANGE_RECORD.md#record-fields)). A failed migration of
+the envelope or of an entry leaves the accounting unreadable, and that state
+shows the refusal. Neither table has a step yet.
 
 **When an entry is written.** A run appends its record once that record is owed
 -- from the moment this party's payload crosses (see
@@ -2550,7 +2547,8 @@ short, so it is migrated on read like the accounting rather than discarded
 next write -- a further note, or a filing that leaves runs noted -- never by a
 read. A step moves the note and never a retained record, which a filing appends
 to the accounting as retained. A note whose migration fails is a note this build
-cannot read, below. The table has no step yet.
+cannot read, below, and that state shows the refusal. The table has no step
+yet.
 
 **When an entry is written.** Whenever a run that disclosed does not file --
 either arm above -- and on the same terms the append itself takes: best-effort,

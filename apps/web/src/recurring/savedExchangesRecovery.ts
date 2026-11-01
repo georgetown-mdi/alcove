@@ -10,7 +10,8 @@
  * names it), and last-run date, and where only its sibling entry does not
  * parse, a note that part of its saved state cannot be read; an unreadable
  * entry, whose record does not parse, shows a fixed "Unreadable record" label
- * and no other detail. Neither of those two can be opened.
+ * and no other detail but a failed migration's refusal, escaped here for
+ * display. Neither of those two can be opened.
  * Every row holds the stored key the one-step delete-by-key acts on, so an
  * unreadable record is discardable without a successful parse, and whether an
  * exported backup remains, which the delete confirm states and which survives a
@@ -18,6 +19,8 @@
  * Secret material never reaches this model:
  * the diagnostic entries hold display essentials only.
  */
+
+import { sanitizeErrorForDisplay } from "@alcove/core";
 
 import { dateLabel } from "@psi/formatting";
 
@@ -59,6 +62,9 @@ export interface RecoveryRow {
   lastRunAt?: string;
   /** Whether the entry could not be parsed. */
   unreadable: boolean;
+  /** Why an unreadable entry's migration failed, escaped for display; absent
+   * where the entry is readable or the failure was not a migration's. */
+  migrationFailure?: string;
   /** Whether the record parsed and its sibling entry did not
    * ({@link STATE_UNREADABLE_NOTE}). */
   stateUnreadable: boolean;
@@ -81,6 +87,9 @@ export function recoveryRow(
       label: UNREADABLE_RECORD_LABEL,
       deleteLabel: "",
       unreadable: true,
+      ...(entry.migrationFailure !== undefined
+        ? { migrationFailure: sanitizeErrorForDisplay(entry.migrationFailure) }
+        : {}),
       stateUnreadable: false,
       backedUp: entry.backedUp,
     };

@@ -2,7 +2,9 @@
 /// <reference types="vite/client" />
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+
 import {
+  FormatMigrationError,
   deriveHistoryVerifier,
   generateSharedSecret,
   getDefaultLinkageTerms,
@@ -1501,6 +1503,7 @@ describe("a refused accounting is classified by which side is behind", () => {
     expect(await readDisclosureAccounting(id)).toEqual({
       kind: "unreadable",
       stored: { version: DISCLOSURE_ACCOUNTING_VERSION, entries },
+      migrationFailure: expect.any(FormatMigrationError),
     });
   });
 

@@ -232,6 +232,64 @@ describe("read-failed recovery listing", () => {
     // The secret must not appear anywhere on the recovery surface.
     expect(document.body.textContent).not.toContain(good.sharedSecret);
   });
+
+  test("a record whose migration fails names why in its row, and no value it holds", async () => {
+    const good = await createRunnableExchange(
+      newExchange({ label: "Riverbend quarterly" }),
+    );
+    const earlierSecret = generateSharedSecret();
+    await rawPut({
+      ...good,
+      id: "zzz-earlier-record",
+      label: "Lakeside annual",
+      sharedSecret: earlierSecret,
+      schemaVersion: "alcove-managed-exchange/v3",
+    });
+
+    app.render(createElement(SavedExchanges));
+
+    await expect
+      .element(
+        page.getByText(
+          "A saved exchange is format version alcove-managed-exchange/v3, " +
+            "and this version of Alcove could not move it to version " +
+            "alcove-managed-exchange/v4: it has no migration from version " +
+            "alcove-managed-exchange/v3. The saved exchange was not changed. " +
+            "Remove it from the list of saved exchanges, then import its " +
+            "backup file or set the exchange up again with your partner.",
+        ),
+      )
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByText(UNREADABLE_RECORD_LABEL))
+      .toBeInTheDocument();
+    for (const value of [
+      "Lakeside annual",
+      "zzz-earlier-record",
+      earlierSecret,
+    ])
+      expect(document.body.textContent).not.toContain(value);
+  });
+
+  test("a record unreadable for another reason states no migration", async () => {
+    const good = await createRunnableExchange(
+      newExchange({ label: "Riverbend quarterly" }),
+    );
+    await rawPut({
+      ...good,
+      id: "zzz-bad-record",
+      schemaVersion: "alcove-managed-exchange/v5",
+    });
+
+    app.render(createElement(SavedExchanges));
+
+    await expect
+      .element(page.getByText(UNREADABLE_RECORD_LABEL))
+      .toBeInTheDocument();
+    expect(
+      page.getByText("could not move it to version", { exact: false }).query(),
+    ).toBeNull();
+  });
 });
 
 describe("recovery listing: the delete confirm's custody notes", () => {

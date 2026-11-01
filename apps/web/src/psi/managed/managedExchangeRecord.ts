@@ -95,24 +95,16 @@ export const MANAGED_EXCHANGE_MIGRATIONS: FormatMigrations<string> =
  * artifact (see {@link ./managedExchangeArtifact.ts}). Distinct from
  * {@link MANAGED_EXCHANGE_SCHEMA_VERSION}: the artifact is a separate on-disk
  * format (the embedded document plus the key pair plus the local block), so it
- * versions independently of the stored record. A reader migrates
- * {@link MANAGED_EXCHANGE_PREVIOUS_ARTIFACT_VERSION} and refuses any other
- * value. The literal moves for the {@link ManagedStandingResponse} nested in a
- * raised condition: a build that does not know the member reads it with a
- * schema that drops what it cannot name, so it would import a condition
- * stripped of the operator's answer and offer a fresh invitation over it. The
- * whole file is refused on the literal instead.
+ * versions independently of the stored record. A reader migrates an earlier
+ * version a step leads from and refuses any other value. The literal moves
+ * for the {@link ManagedStandingResponse} nested in a raised condition: a
+ * build that does not know the member reads it with a schema that drops what
+ * it cannot name, so it would import a condition stripped of the operator's
+ * answer and offer a fresh invitation over it. The whole file is refused on
+ * the literal instead.
  */
 export const MANAGED_EXCHANGE_ARTIFACT_VERSION =
   "alcove-managed-exchange-backup/v3";
-
-/**
- * The `artifactVersion` literal of the artifact format this one replaced,
- * written before the operator's response existed: the v3 shape with no
- * response in a raised condition. A reader migrates it to v3.
- */
-export const MANAGED_EXCHANGE_PREVIOUS_ARTIFACT_VERSION =
-  "alcove-managed-exchange-backup/v2";
 
 /**
  * Upper bound on the operator's {@link ManagedExchangeRecord.label}, in

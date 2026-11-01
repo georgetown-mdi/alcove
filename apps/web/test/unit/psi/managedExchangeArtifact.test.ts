@@ -13,7 +13,6 @@ import { stringify as stringifyYaml } from "yaml";
 
 import {
   MANAGED_EXCHANGE_ARTIFACT_VERSION,
-  MANAGED_EXCHANGE_PREVIOUS_ARTIFACT_VERSION,
   NO_STANDING_CONDITION,
   buildManagedExchangeRecord,
   composeManagedExchangeFile,
@@ -415,6 +414,47 @@ describe("rejection of malformed or tampered imports", () => {
         `${MANAGED_EXCHANGE_ARTIFACT_VERSION}: it has no migration from ` +
         "version alcove-managed-exchange-backup/v1.",
     );
+  });
+
+  test("an artifact tagged v2 is refused naming the cause and no value from it", () => {
+    // No build wrote this tag, so no step leads from it.
+    const record = runnableRecord(newExchange({ label: "Riverbend 2026" }));
+    const artifact = JSON.parse(
+      serializeManagedExchangeArtifact(encodeManagedExchangeArtifact(record)),
+    );
+    artifact.artifactVersion = "alcove-managed-exchange-backup/v2";
+    artifact.local.standingCondition = {
+      since: "2026-07-10T09:00:00.000Z",
+      kind: "auth",
+      response: { kind: "compromise", at: "2026-07-11T10:30:00.000Z" },
+    };
+    const bytes = JSON.stringify(artifact);
+
+    let caught: unknown;
+    try {
+      importManagedExchangeArtifact(bytes);
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(FormatMigrationError);
+    const message = (caught as Error).message;
+    expect(message).toBe(
+      "The backup file is format version alcove-managed-exchange-backup/v2, " +
+        "and this version of Alcove could not move it to version " +
+        `${MANAGED_EXCHANGE_ARTIFACT_VERSION}: it has no migration from ` +
+        "version alcove-managed-exchange-backup/v2. The file was not " +
+        "changed. Export the backup again from the device that holds the " +
+        "exchange, or set up a new exchange with your partner.",
+    );
+    for (const value of [
+      record.label,
+      record.sharedSecret,
+      "2026-07-10T09:00:00.000Z",
+      "2026-07-11T10:30:00.000Z",
+      "compromise",
+    ])
+      expect(message).not.toContain(value);
   });
 
   test("an unknown top-level key is rejected (reader-rejects-unknown)", () => {
@@ -929,89 +969,5 @@ describe("the rotation history", () => {
     expect(() =>
       parseManagedExchangeArtifact(JSON.stringify(artifact)),
     ).toThrow();
-  });
-});
-
-describe("a backup at the previous artifact version", () => {
-  const raised = { since: "2026-07-10T09:00:00.000Z", kind: "auth" as const };
-
-  /** A v2 backup of `record`: this build's export of it under the v2 tag,
-   * which is the v3 shape with no answer in a condition. */
-  function previousVersionBytes(
-    record: RunnableManagedExchangeRecord,
-    condition?: Record<string, unknown>,
-  ): string {
-    const document = JSON.parse(
-      serializeManagedExchangeArtifact(encodeManagedExchangeArtifact(record)),
-    );
-    document.artifactVersion = MANAGED_EXCHANGE_PREVIOUS_ARTIFACT_VERSION;
-    if (condition !== undefined) document.local.standingCondition = condition;
-    return `${JSON.stringify(document, null, 2)}\n`;
-  }
-
-  test("is migrated to the current version and imports as the same record", () => {
-    const record = runnableRecord(newExchange({ schedule }));
-    const bytes = previousVersionBytes(record);
-    const before = bytes.slice();
-
-    const artifact = parseManagedExchangeArtifact(bytes);
-    const { record: imported } = importManagedExchangeArtifact(bytes);
-
-    expect(artifact.artifactVersion).toBe(MANAGED_EXCHANGE_ARTIFACT_VERSION);
-    expect(bytes).toBe(before);
-    expect({ ...imported, id: record.id }).toEqual({
-      ...reconstructRecordFromArtifact(encodeManagedExchangeArtifact(record)),
-      id: record.id,
-    });
-  });
-
-  test("keeps an unanswered condition, which is what a v2 condition is", () => {
-    const record = runnableRecord(newExchange());
-    const { record: imported } = importManagedExchangeArtifact(
-      previousVersionBytes(record, raised),
-    );
-    expect(imported.standingCondition).toEqual(raised);
-  });
-
-  test("is written at the current version by the next export", () => {
-    const { record: imported } = importManagedExchangeArtifact(
-      previousVersionBytes(runnableRecord(newExchange())),
-    );
-    expect(
-      encodeManagedExchangeArtifact(runnableManagedExchangeOrRefuse(imported))
-        .artifactVersion,
-    ).toBe(MANAGED_EXCHANGE_ARTIFACT_VERSION);
-  });
-
-  test("holding an answer is refused naming the cause and no value", () => {
-    // No build writing v2 knew the answer, so dropping it would clear a
-    // condition and reading it would trust a file not written as it stands.
-    const record = runnableRecord(newExchange({ label: "Riverbend 2026" }));
-    const answer = { kind: "compromise", at: "2026-07-11T10:30:00.000Z" };
-    const bytes = previousVersionBytes(record, { ...raised, response: answer });
-    const before = bytes.slice();
-
-    let caught: unknown;
-    try {
-      importManagedExchangeArtifact(bytes);
-    } catch (error) {
-      caught = error;
-    }
-
-    expect(caught).toBeInstanceOf(FormatMigrationError);
-    const message = (caught as Error).message;
-    expect(message).toContain(
-      "could not move it to version alcove-managed-exchange-backup/v3: it " +
-        "records that the exchange was treated as a possible compromise, " +
-        "which a backup of that version cannot record.",
-    );
-    for (const value of [
-      record.label,
-      record.sharedSecret,
-      raised.since,
-      answer.at,
-    ])
-      expect(message).not.toContain(value);
-    expect(bytes).toBe(before);
   });
 });

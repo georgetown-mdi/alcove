@@ -10,6 +10,7 @@ import {
   Textarea,
 } from "@mantine/core";
 import { Link } from "@tanstack/react-router";
+import { sanitizeErrorForDisplay } from "@alcove/core";
 
 import { downloadBlob, triggerBlobDownload } from "@components/blobDownload";
 
@@ -135,6 +136,7 @@ import type {
 import type { ConfigRow } from "./managedDetailModel";
 import type { DisclosureAccountingRead } from "@psi/disclosureAccountingStore";
 import type { DisclosureFact } from "./disclosureAccountingModel";
+import type { FormatMigrationError } from "@alcove/core";
 import type { ManagedReinviteFailureAlert } from "./managedRunRecoveryModel";
 import type { ManagedRunHolder } from "./managedRunHolder";
 import type { ParkedResultsRead } from "@psi/parkedResultsStore";
@@ -1516,7 +1518,11 @@ function DisclosureAccountingView({
       ) : read.kind === "stale-page" ? (
         <StalePageAccountingNotice stored={read.stored} />
       ) : read.kind === "unreadable" ? (
-        <UnreadableAccountingRecovery stored={read.stored} onReset={onReset} />
+        <UnreadableAccountingRecovery
+          stored={read.stored}
+          migrationFailure={read.migrationFailure}
+          onReset={onReset}
+        />
       ) : entries.length === 0 ? (
         <EmptyAccountingNotice
           completedRunOnRecord={completedRunOnRecord}
@@ -1623,10 +1629,15 @@ function UnfiledDisclosureNotice({
           title="A run's record is missing from this accounting"
           mt="sm"
         >
-          A run of this exchange disclosed your columns and its record was not
-          saved to the accounting below. The note of which run it was cannot be
-          read by this version of the app, so the run is not named here. The
-          accounting below is short at least one entry.
+          <p>
+            A run of this exchange disclosed your columns and its record was not
+            saved to the accounting below. The note of which run it was cannot
+            be read by this version of the app, so the run is not named here.
+            The accounting below is short at least one entry.
+          </p>
+          {read.migrationFailure !== undefined && (
+            <p>{sanitizeErrorForDisplay(read.migrationFailure)}</p>
+          )}
         </Alert>
       )}
       {read?.kind === "unavailable" && (
@@ -1955,13 +1966,16 @@ function StalePageAccountingNotice({
  * whole; corruption that takes the envelope leaves nothing to hand over, and
  * that state says so. The reset is offered either way -- it is what restores
  * appendability -- but only behind an explicit confirm naming what is
- * destroyed and what is kept.
+ * destroyed and what is kept. A failed migration's refusal is shown beside
+ * the explanation, escaped here, so the operator sees which one this is.
  */
 function UnreadableAccountingRecovery({
   stored,
+  migrationFailure,
   onReset,
 }: {
   stored: StoredDisclosureAccounting | undefined;
+  migrationFailure: FormatMigrationError | undefined;
   onReset: () => Promise<void>;
 }) {
   // Whether the download was TAKEN here, not whether the file landed: the browser
@@ -2001,6 +2015,9 @@ function UnreadableAccountingRecovery({
           damaged, or this version of the app could not convert them from the
           format an earlier version stored them in.
         </p>
+        {migrationFailure !== undefined && (
+          <p>{sanitizeErrorForDisplay(migrationFailure)}</p>
+        )}
         <p>
           Until it is cleared, this exchange cannot add to it either: every run
           still discloses, and none of them files a record here.

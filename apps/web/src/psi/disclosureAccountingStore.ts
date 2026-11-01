@@ -29,7 +29,7 @@
  * which this page being behind is enough to explain.
  */
 
-import { parseExchangeRecord } from "@alcove/core";
+import { FormatMigrationError, parseExchangeRecord } from "@alcove/core";
 
 import {
   MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME,
@@ -106,8 +106,14 @@ export type DisclosureAccountingRead =
    * one whose migration failed. `stored` holds the entries exactly as they sit
    * at rest when the ENVELOPE still parses (an entry whose record migration
    * failed, which is what makes the export arm possible), and is `undefined`
-   * when the envelope is gone too and there is nothing to hand back. */
-  | { kind: "unreadable"; stored: StoredDisclosureAccounting | undefined }
+   * when the envelope is gone too and there is nothing to hand back.
+   * `migrationFailure` is the refusal where a migration failed, its message
+   * naming the versions and the cause, and is absent for damage. */
+  | {
+      kind: "unreadable";
+      stored: StoredDisclosureAccounting | undefined;
+      migrationFailure?: FormatMigrationError;
+    }
   /** A stored value the validating parse refused whose entries name a LATER
    * exchange-record format than this build admits: the records are fine and this
    * PAGE is behind them (see {@link storedEntriesAheadOfThisBuild}). Its recovery
@@ -163,11 +169,17 @@ export async function readDisclosureAccounting(
   if (raw === undefined) return { kind: "none" };
   try {
     return { kind: "accounting", accounting: parseDisclosureAccounting(raw) };
-  } catch {
+  } catch (error) {
     const stored = recoverableStored(raw);
     if (stored !== undefined && storedEntriesAheadOfThisBuild(stored))
       return { kind: "stale-page", stored };
-    return { kind: "unreadable", stored };
+    return {
+      kind: "unreadable",
+      stored,
+      ...(error instanceof FormatMigrationError
+        ? { migrationFailure: error }
+        : {}),
+    };
   }
 }
 
