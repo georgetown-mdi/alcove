@@ -298,6 +298,8 @@ This generates a shared secret, saves it with an `expires` field to the key file
 
 The refusal names the keys, the linkage fields they cost, and the configuration the terms came from.
 
+**What the terms disclose.** Before it creates an invitation from a configuration, the command prints what those terms disclose, in the lines your partner's `alcove accept` shows for them: the PSI algorithm with the count-only statements for `psi-c` terms, the linkage strategy with its note, and each linkage key with its missing-field condition line.
+
 **Identity.** Terms inferred from an `INPUT_FILE` require `--identity`. Terms from a configuration use its `linkage_terms.identity`, and an `--identity` given there is reported as having no effect. A configuration holding no identity is refused.
 
 **A `webrtc` configuration.** When the configuration's connection is `webrtc`, the invitation names its coordination server and relay as its [connection endpoint](#invitations), as an [online invitation over WebRTC](#inviting-over-webrtc) does: the `url` of each `turn` entry that sets no `username` or `credential`, and the `stun` list ([`invitation_relay`](EXCHANGE_REFERENCE.md#connectioninvitation_relay)). That block must be valid; another channel's block may still be a placeholder. A partner who accepts it with an `INPUT_FILE` runs the exchange at once ([Accepting and running a WebRTC exchange](#accepting-and-running-a-webrtc-exchange)), so run `alcove exchange` at the same time, or have them accept with [`--no-run`](#accepting-without-running) and agree on when both of you run it. An invitation requesting a column their configuration does not send stops their acceptance until they declare it, so agree on the time either way.

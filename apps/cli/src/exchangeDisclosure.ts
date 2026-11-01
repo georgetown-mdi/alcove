@@ -40,6 +40,7 @@ import { logFileLinePattern, readLogFileTail } from "./util/logging";
 
 import type { ProtocolConnectionConfig } from "./protocol";
 import type {
+  InvitationSummary,
   LinkageTerms,
   Metadata,
   PreparedExchange,
@@ -237,18 +238,7 @@ export function renderExchangeDisclosure(
     emit(`    ${CONSENT_FACTS[membershipFact].note}`);
   }
 
-  emit(`  ${marked("PSI algorithm", "algorithm")}: ${linkageTerms.algorithm}`);
-  if (linkageTerms.algorithm === "psi-c")
-    logCountOnlyTier(
-      emit,
-      linkageTerms.output.expectsOutput && linkageTerms.output.shareWithPartner,
-    );
-  emit(
-    `  ${marked("linkage strategy", "linkageStrategy")}: ` +
-      linkageTerms.linkageStrategy,
-  );
-  const strategyNote = linkageStrategyNote(linkageTerms);
-  if (strategyNote !== undefined) emit(`    ${strategyNote}`);
+  logAlgorithmAndStrategy(emit, linkageTerms);
 
   emit(
     `  ${marked("duplicate matches", "duplicateMatches")}: ` +
@@ -329,23 +319,79 @@ export function renderExchangeDisclosure(
         precisionFloorSelectionStatement(DEFAULT_PRECISION_FLOOR_SELECTION),
     );
   }
+  logLinkageKeyLines(emit, summary, { lessCertainMarker: true });
+  if (summary.linkageKeys.some((key) => key.lessCertain))
+    displayLessCertainNote(emit, LESS_CERTAIN_REMEDY[run]);
+}
+
+/**
+ * The algorithm line with the count-only tier beneath it, and the linkage
+ * strategy line with its note, in the lines and order the accept display
+ * prints them.
+ */
+function logAlgorithmAndStrategy(
+  emit: ConsentSurfaceSink,
+  linkageTerms: LinkageTerms,
+): void {
+  emit(`  ${marked("PSI algorithm", "algorithm")}: ${linkageTerms.algorithm}`);
+  if (linkageTerms.algorithm === "psi-c")
+    logCountOnlyTier(
+      emit,
+      linkageTerms.output.expectsOutput && linkageTerms.output.shareWithPartner,
+    );
+  emit(
+    `  ${marked("linkage strategy", "linkageStrategy")}: ` +
+      linkageTerms.linkageStrategy,
+  );
+  const strategyNote = linkageStrategyNote(linkageTerms);
+  if (strategyNote !== undefined) emit(`    ${strategyNote}`);
+}
+
+/**
+ * One line per key: its name and the fields it combines, both already escaped
+ * by the summary, and beneath it a key condition's line, the same one the
+ * acceptance display states. The full element and transform detail stays in
+ * the acceptance display, where a party is reading terms it did not write.
+ * `lessCertainMarker` false leaves the mark off for a display that does not
+ * explain it.
+ */
+function logLinkageKeyLines(
+  emit: ConsentSurfaceSink,
+  summary: InvitationSummary,
+  { lessCertainMarker }: { lessCertainMarker: boolean },
+): void {
   emit(`  ${marked("linkage keys", "linkageKeys")}:`);
-  // One line per key: its name and the fields it combines, both already escaped
-  // by the summary, and beneath it a key condition's line, the same one the
-  // acceptance display states. The full element and transform detail stays in
-  // the acceptance display, where a party is reading terms it did not write.
   for (const key of summary.linkageKeys) {
     emit(
       `    - ${key.name}: ${key.headerFields.join(" - ")}` +
         (key.hasSwap ? " (matched in either order)" : "") +
-        (key.lessCertainHeaderMarker !== undefined
+        (lessCertainMarker && key.lessCertainHeaderMarker !== undefined
           ? ` ${key.lessCertainHeaderMarker}`
           : ""),
     );
     if (key.condition !== undefined) emit(`      ${key.condition}`);
   }
-  if (summary.linkageKeys.some((key) => key.lessCertain))
-    displayLessCertainNote(emit, LESS_CERTAIN_REMEDY[run]);
+}
+
+/** The heading of {@link renderInvitationTermsDisclosure}. */
+const INVITATION_TERMS_DISCLOSURE_HEADING =
+  "What these terms disclose, as your partner is shown them before accepting:";
+
+/**
+ * Print what an invitation minted from a configuration file's terms discloses,
+ * through `emit`: the algorithm with the count-only tier and the linkage
+ * strategy with its note, in the accept display's own lines, and each key with
+ * the missing-field condition line the accept display states under it.
+ */
+export function renderInvitationTermsDisclosure(
+  emit: ConsentSurfaceSink,
+  linkageTerms: LinkageTerms,
+): void {
+  emit(INVITATION_TERMS_DISCLOSURE_HEADING);
+  logAlgorithmAndStrategy(emit, linkageTerms);
+  logLinkageKeyLines(emit, summarizeInvitation({ linkageTerms }), {
+    lessCertainMarker: false,
+  });
 }
 
 /**

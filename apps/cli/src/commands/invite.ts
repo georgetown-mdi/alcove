@@ -93,6 +93,8 @@ import {
   type InviterConnectionConfig,
   type InviterOwnRelay,
 } from "../connectionFromUrl";
+import { renderInvitationTermsDisclosure } from "../exchangeDisclosure";
+import { consentSurfaceSink } from "../invitationDisplay";
 import { resolveWebAppSignalingServer } from "../webAppSignaling";
 import { withWebRTCPeerRole } from "../webrtcPeerRole";
 import {
@@ -1007,6 +1009,10 @@ export async function validateInvite(params: {
     // exchange would refuse, so the partner never accepts an invitation the
     // first run refuses.
     assertTermsRunnable(configTerms, configSource);
+    renderInvitationTermsDisclosure(
+      consentSurfaceSink({ log, toPromptStream: false }),
+      configTerms,
+    );
 
     // State the send set only when the config declares an explicit metadata
     // block: without one the run infers metadata from the exchange input (which
