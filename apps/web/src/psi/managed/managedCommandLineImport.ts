@@ -102,6 +102,7 @@ import {
 import type {
   ConnectionConfig,
   ExchangeSpec,
+  KeyFile,
   RelayRegistrar,
 } from "@alcove/core";
 import type {
@@ -111,6 +112,7 @@ import type {
   NewManagedExchange,
   RunnableManagedExchangeRecord,
 } from "./managedExchangeRecord";
+import type { z } from "zod";
 
 /** Upper bound, in bytes, on a configuration file this import will read, applied
  * before the bounded parse. The same cap the backup artifact takes: both are
@@ -647,17 +649,23 @@ export function readManagedCommandLineKeyFile(
 
 /** A command-line key file read ({@link readManagedCommandLineKeyFile}), with
  * the names of the fields it holds that the read dropped. */
-interface ManagedCommandLineKeyFileRead {
+export interface ManagedCommandLineKeyFileRead {
   fields: ManagedExchangeKeyFields;
   /** Names only, as the file states them; never a value. */
   unreadFieldNames: Array<string>;
 }
 
 /** {@link readManagedCommandLineKeyFile}, also returning the names of the
- * fields the file holds that the read dropped. Throws what that function
- * throws. */
-function readManagedCommandLineKeyFileFields(
+ * fields the migrated file holds that the read dropped. Throws what that
+ * function throws.
+ *
+ * @internal
+ * @param schema the key file's validator; the one every application shares
+ *   by default, a parameter so a test reads under a migration table of its
+ *   own. */
+export function readManagedCommandLineKeyFileFields(
   source: string,
+  schema: z.ZodType<KeyFile, unknown> = KeyFileSchema,
 ): ManagedCommandLineKeyFileRead {
   if (new TextEncoder().encode(source).byteLength > MAX_KEY_FILE_IMPORT_BYTES)
     throw keyFileRefusal(["oversize"]);
@@ -669,12 +677,12 @@ function readManagedCommandLineKeyFileFields(
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
     throw keyFileRefusal(["notObject"]);
-  const result = KeyFileSchema.safeParse(parsed);
+  const result = schema.safeParse(parsed);
   if (result.success)
     return {
       fields: result.data,
       unreadFieldNames: keyFileUnreadFieldNames(
-        parsed,
+        result.data,
         KEY_FILE_FIELDS_IMPORTED,
       ),
     };
@@ -683,16 +691,20 @@ function readManagedCommandLineKeyFileFields(
   throw keyFileRefusal(keyPairProblems(result.error, parsed));
 }
 
-/** The refusal of a key file a newer Alcove wrote: one stating a newer
- * `version`, or a field this build does not read. The schema's message names
- * the version or the field, redacted where the name is secret-shaped, and no
- * value. */
+/** The refusal of a key file the schema refuses by its version: one a newer
+ * Alcove wrote, stating a newer `version` or a field this build does not read,
+ * or an earlier version whose migration failed. The schema's message names
+ * the version or the field, redacted where the name is secret-shaped, and for
+ * a failed migration the version found, the current version and the cause;
+ * never a value. */
 function newerKeyFileRefusal(
   error: ZodError,
 ): ManagedKeyFileRefusedError | undefined {
   const issue = error.issues.find(
     (candidate) =>
-      (candidate.code === "custom" && candidate.path.length === 0) ||
+      (candidate.code === "custom" &&
+        (candidate.path.length === 0 ||
+          (candidate.path.length === 1 && candidate.path[0] === "version"))) ||
       (candidate.code === "too_big" && candidate.path[0] === "version"),
   );
   if (issue === undefined) return undefined;

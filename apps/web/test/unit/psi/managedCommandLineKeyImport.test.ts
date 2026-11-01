@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
+  KEY_FILE_MIGRATIONS,
   KeyFileSchema,
   ROTATION_HISTORY_MAX_ENTRIES,
   generateSharedSecret,
   getDefaultLinkageTerms,
+  keyFileSchemaFor,
   serializeKeyFile,
   snakeizeKeys,
 } from "@alcove/core";
@@ -17,6 +19,7 @@ import {
   ManagedKeyFileRefusedError,
   readManagedCommandLineConfiguration,
   readManagedCommandLineKeyFile,
+  readManagedCommandLineKeyFileFields,
   readManagedCommandLinePair,
 } from "@psi/managed/managedCommandLineImport";
 import {
@@ -49,6 +52,7 @@ import type {
   ManagedPairReconcileOutcome,
   ManagedReplaceOutcome,
 } from "@psi/managed/managedExchangeStore";
+import type { FormatMigrations } from "@alcove/core";
 import type { ManagedPairImportDeps } from "@psi/managed/managedExchangeImport";
 import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
 
@@ -348,6 +352,124 @@ describe("reading a .alcove.key", () => {
       "does not hold the sharedSecret",
     );
     expect(errorText(error)).not.toContain(sharedSecret);
+  });
+});
+
+describe("reading a .alcove.key of an earlier version", () => {
+  const FAILURE_REMEDY =
+    "Use the version of Alcove that wrote the key file, or report the " +
+    "failure to the Alcove maintainers.";
+
+  function readUnder(table: FormatMigrations<number>, fields: object) {
+    return readManagedCommandLineKeyFileFields(
+      commandLineKeyText(fields),
+      keyFileSchemaFor(table),
+    );
+  }
+
+  test("a migration that throws is refused naming the version, the current version and the cause, never a value", () => {
+    const sharedSecret = generateSharedSecret();
+    const error = thrownBy(() =>
+      readUnder(
+        {
+          ...KEY_FILE_MIGRATIONS,
+          current: 3,
+          steps: [
+            {
+              from: 2,
+              to: 3,
+              migrate: () => {
+                throw new Error("expiresAt is not an instant");
+              },
+            },
+          ],
+        },
+        { version: 2, sharedSecret },
+      ),
+    );
+    expect(error).toBeInstanceOf(ManagedKeyFileRefusedError);
+    expect((error as Error).message).toBe(
+      "The key file is format version 2, and this version of Alcove could " +
+        "not move it to version 3: expiresAt is not an instant. The file " +
+        `was not changed. ${FAILURE_REMEDY} Nothing was imported.`,
+    );
+    expect((error as Error).message).not.toContain("does not hold");
+    expect(errorText(error)).not.toContain(sharedSecret);
+  });
+
+  test("a version no chain of steps leads from is refused naming the version and the current version", () => {
+    const sharedSecret = generateSharedSecret();
+    const error = thrownBy(() =>
+      readUnder(
+        {
+          ...KEY_FILE_MIGRATIONS,
+          current: 3,
+          steps: [{ from: 2, to: 3, migrate: (document) => document }],
+        },
+        { version: 1, sharedSecret },
+      ),
+    );
+    expect(error).toBeInstanceOf(ManagedKeyFileRefusedError);
+    expect((error as Error).message).toBe(
+      "The key file is format version 1, and this version of Alcove could " +
+        "not move it to version 3: it has no migration from version 1. The " +
+        `file was not changed. ${FAILURE_REMEDY} Nothing was imported.`,
+    );
+    expect(errorText(error)).not.toContain(sharedSecret);
+  });
+
+  test("a field a migration renames is not named as unread", () => {
+    const sharedSecret = generateSharedSecret();
+    const table: FormatMigrations<number> = {
+      ...KEY_FILE_MIGRATIONS,
+      current: 2,
+      steps: [
+        {
+          from: 1,
+          to: 2,
+          migrate: ({ expiresAt, ...rest }) => ({
+            ...rest,
+            expires: expiresAt,
+          }),
+        },
+      ],
+    };
+    const read = readUnder(table, {
+      version: 1,
+      sharedSecret,
+      expiresAt: "2026-12-31T00:00:00.000Z",
+    });
+    expect(read.fields).toEqual({
+      sharedSecret,
+      expires: "2026-12-31T00:00:00.000Z",
+    });
+    expect(read.unreadFieldNames).toEqual([]);
+  });
+
+  test("a field the migrated key file holds and the import drops is still named, never a value", () => {
+    const sharedSecret = generateSharedSecret();
+    const previous = generateSharedSecret();
+    const table: FormatMigrations<number> = {
+      ...KEY_FILE_MIGRATIONS,
+      current: 2,
+      steps: [
+        {
+          from: 1,
+          to: 2,
+          migrate: ({ oldSecret, ...rest }) => ({
+            ...rest,
+            previousSharedSecret: oldSecret,
+          }),
+        },
+      ],
+    };
+    const read = readUnder(table, {
+      version: 1,
+      sharedSecret,
+      oldSecret: previous,
+    });
+    expect(read.unreadFieldNames).toEqual(["previousSharedSecret"]);
+    expect(JSON.stringify(read.unreadFieldNames)).not.toContain(previous);
   });
 });
 
