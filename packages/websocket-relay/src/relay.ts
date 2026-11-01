@@ -199,8 +199,8 @@ export function attachWebSocketRelay(
   const idleTimeoutMs = testing.idleTimeoutMs ?? RELAY_IDLE_TIMEOUT_MS;
   const observer = testing.observer ?? {};
 
-  // `closeTimeout` and `maxFragments` are read by the pinned `ws` but missing
-  // from @types/ws, so the options are not written as a literal at the call; the relay's tests
+  // `closeTimeout` is read by the pinned `ws` but missing from @types/ws, so
+  // the options are not written as a literal at the call; the relay's tests
   // hold that `ws` applies it.
   const serverOptions = {
     noServer: true,

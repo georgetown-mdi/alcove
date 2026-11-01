@@ -8,7 +8,6 @@ import WebSocket, { WebSocketServer } from "ws";
 import {
   PAIRED_FRAME,
   RELAY_MAX_MESSAGE_BYTES,
-  RELAY_MAX_MESSAGE_FRAGMENTS,
   RelayCloseCode,
   START_FRAME,
 } from "../src/protocol.ts";
@@ -316,10 +315,10 @@ describe("refusals", () => {
     expect(acceptor.received.slice(2)).toEqual([{ binary: atCap }]);
   });
 
-  it("refuses a message in more fragments than the limit and closes the partner, forwarding nothing", async () => {
+  it("refuses a message in two fragments and closes the partner, forwarding nothing", async () => {
     const { url } = await relay();
     const { inviter, acceptor } = await forwardingParties(url);
-    sendInFragments(inviter, Buffer.alloc(RELAY_MAX_MESSAGE_FRAGMENTS + 1, 9));
+    sendInFragments(inviter, Buffer.alloc(2, 9));
     expect((await inviter.closed).code).toBe(RelayCloseCode.tooManyFragments);
     expect(await acceptor.closed).toEqual({
       code: RelayCloseCode.partnerEnded,
@@ -328,11 +327,11 @@ describe("refusals", () => {
     expect(acceptor.received.slice(2)).toEqual([]);
   });
 
-  it("forwards a message in as many fragments as the limit, intact", async () => {
+  it("forwards a message in one frame, intact", async () => {
     const { url } = await relay();
     const { inviter, acceptor } = await forwardingParties(url);
-    const message = Buffer.alloc(RELAY_MAX_MESSAGE_FRAGMENTS, 9);
-    sendInFragments(inviter, message);
+    const message = Buffer.alloc(RELAY_MAX_MESSAGE_BYTES, 9);
+    inviter.send(message);
     const received = await acceptor.receivedCount(3);
     expect(received[2]).toEqual({ binary: message });
   });

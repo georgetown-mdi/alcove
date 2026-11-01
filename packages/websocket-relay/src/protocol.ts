@@ -28,9 +28,10 @@ export const RELAY_PATH = "/relay";
  */
 export const RELAY_MAX_MESSAGE_BYTES = 16_384;
 
-/** The most WebSocket fragments `ws` holds for one message
+/** The most WebSocket frames `ws` takes for one message: one, so a message
+ * still arriving holds at most one fragment and one frame in progress
  * (docs/spec/WEBSOCKET_RELAY.md, Forwarding). */
-export const RELAY_MAX_MESSAGE_FRAGMENTS = 64;
+export const RELAY_MAX_MESSAGE_FRAGMENTS = 1;
 
 /** A destination's send buffer, in bytes, above which the relay stops reading
  * from the source. */
@@ -74,7 +75,9 @@ export const RELAY_PAUSED_READ_AHEAD_BYTES = pausedReadAheadBytes(
  * source: the queue up to {@link RELAY_QUEUE_LIMIT_BYTES}, the one message
  * whose queueing passes it counted with its frame header and
  * {@link QUEUED_MESSAGE_OVERHEAD_BYTES}, the read the relay is parsing, a
- * message begun in an earlier read, and the paused source's read-ahead
+ * message still arriving (the two reads its held fragment and its frame in
+ * progress can each keep alive, and its later pieces, up to
+ * {@link RELAY_MAX_MESSAGE_BYTES}), and the paused source's read-ahead
  * ({@link RELAY_PAUSED_READ_AHEAD_BYTES}). Past the limit the pairing ends and
  * nothing more is queued.
  */
@@ -84,6 +87,7 @@ export const RELAY_QUEUED_BOUND_BYTES =
   MESSAGE_HEADER_BYTES +
   QUEUED_MESSAGE_OVERHEAD_BYTES +
   READ_BYTES +
+  2 * READ_BYTES +
   RELAY_MAX_MESSAGE_BYTES +
   RELAY_PAUSED_READ_AHEAD_BYTES;
 
