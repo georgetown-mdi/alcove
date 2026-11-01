@@ -70,7 +70,6 @@ type PsiWorkerRequestBody =
   | { method: "completeServerSetup" }
   | { method: "discardServerSetup" }
   | { method: "computeAssociationTable"; responseBytes: Uint8Array }
-  | { method: "computeIntersectionCardinality"; responseBytes: Uint8Array }
   | { method: "createPermutedSetup"; values: ReadonlyArray<string> }
   | { method: "receiveIndexTable"; indexTable: Int32Array }
   | { method: "matchPermutedRound"; responseBytes: Uint8Array }
@@ -293,13 +292,6 @@ export class WorkerPsiEngine implements PsiEngine {
     return this.call({ method: "computeAssociationTable", responseBytes });
   }
 
-  computeIntersectionCardinality(responseBytes: Uint8Array): Promise<number> {
-    return this.call({
-      method: "computeIntersectionCardinality",
-      responseBytes,
-    });
-  }
-
   createPermutedSetup(
     values: ReadonlyArray<string>,
   ): Promise<{ setup: Uint8Array; indexTable: Int32Array }> {
@@ -394,8 +386,6 @@ export function servePsiEngine(
         return engine.discardServerSetup();
       case "computeAssociationTable":
         return engine.computeAssociationTable(body.responseBytes);
-      case "computeIntersectionCardinality":
-        return engine.computeIntersectionCardinality(body.responseBytes);
       case "createPermutedSetup":
         return engine.createPermutedSetup(body.values);
       case "receiveIndexTable":

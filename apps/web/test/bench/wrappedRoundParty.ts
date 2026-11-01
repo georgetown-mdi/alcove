@@ -117,10 +117,10 @@ export interface RoundSide {
   readonly partnerCeiling: number;
 }
 
-/** What one party's round returned: the matched pairs, or the count. */
-export type RoundOutcome =
-  | { readonly pairs: Array<[number, number]> }
-  | { readonly count: number | undefined };
+/** What one party's round returned: the matched pairs. */
+export interface RoundOutcome {
+  readonly pairs: Array<[number, number]>;
+}
 
 /**
  * Runs one PSI round of core's participant over `connection`, as a cascade
@@ -142,8 +142,6 @@ export async function runRound(
     { local: side.ownCeiling, partner: side.partnerCeiling },
   );
   try {
-    if (side.mode === "count-only")
-      return { count: await participant.countIntersection(connection, values) };
     const [local, partner] = await participant.identifyIntersection(
       connection,
       values,

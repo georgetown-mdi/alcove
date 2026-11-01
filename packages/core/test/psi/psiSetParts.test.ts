@@ -392,7 +392,11 @@ async function round(
       ),
     ])
   ).map(recording);
-  const mode = countOnly ? "count-only" : "identifier-revealing";
+  const mode = countOnly ? "count-only-permuted" : "identifier-revealing";
+  const declared = {
+    senderRecords: starterSet.length,
+    receiverRecords: joinerSet.length,
+  };
   const participant = (role: "starter" | "joiner") =>
     new PSIParticipant(
       role === "starter" ? "server" : "client",
@@ -414,7 +418,9 @@ async function round(
     set: Array<string>,
   ) =>
     countOnly
-      ? p.countIntersection(conn, set)
+      ? p
+          .countPermutedRound(conn, set, declared)
+          .then(() => (p === joiner ? p.finishPermutedCount(1) : undefined))
       : p
           .identifyIntersection(conn, set)
           .then(([local, partner]) =>
@@ -429,6 +435,17 @@ async function round(
   starter.dispose();
   joiner.dispose();
   return { starter: starterEnd, joiner: joinerEnd, sent };
+}
+
+/** The record counts a count-only round states, the over party's set in `overRole`. */
+function declaredCounts(
+  overRole: "starter" | "joiner",
+  overSet: ReadonlyArray<string>,
+  partnerSet: ReadonlyArray<string>,
+): { senderRecords: number; receiverRecords: number } {
+  const [sender, receiver] =
+    overRole === "starter" ? [overSet, partnerSet] : [partnerSet, overSet];
+  return { senderRecords: sender.length, receiverRecords: receiver.length };
 }
 
 /** The sent binary frames, the PSI set parts among them. */
@@ -864,6 +881,7 @@ test.each([
   async (overRole, countOnly) => {
     const build = [
       vi.spyOn(InProcessPsiEngine.prototype, "createServerSetup"),
+      vi.spyOn(InProcessPsiEngine.prototype, "createPermutedSetup"),
       vi.spyOn(InProcessPsiEngine.prototype, "createClientRequest"),
     ];
     const [a, b] = createMessagePipe();
@@ -877,7 +895,7 @@ test.each([
       close: () => a.close(),
     };
     const partnerRole = overRole === "starter" ? "joiner" : "starter";
-    const mode = countOnly ? "count-only" : "identifier-revealing";
+    const mode = countOnly ? "count-only-permuted" : "identifier-revealing";
     const participant = (role: "starter" | "joiner") =>
       new PSIParticipant(
         role === "starter" ? "server" : "client",
@@ -893,23 +911,25 @@ test.each([
       );
     const over = participant(overRole);
     const partner = participant(partnerRole);
+    // Sparse: the check reads only the count, so no value is materialized.
+    const overSet = new Array<string>(MAX_PSI_DECODE_ELEMENTS + 1);
+    const partnerSet = values(3, "p");
+    const declared = declaredCounts(overRole, overSet, partnerSet);
     const run = (
       p: PSIParticipant,
       conn: MessageConnection,
       set: Array<string>,
     ): Promise<unknown> =>
       (countOnly
-        ? p.countIntersection(conn, set)
+        ? p.countPermutedRound(conn, set, declared)
         : p.identifyIntersection(conn, set)
       ).then(
         () => "completed",
         (err: unknown) => err,
       );
-    // Sparse: the check reads only the count, so no value is materialized.
-    const overSet = new Array<string>(MAX_PSI_DECODE_ELEMENTS + 1);
     const [overEnd, partnerEnd] = await Promise.all([
       run(over, overConn, overSet),
-      run(partner, b, values(3, "p")),
+      run(partner, b, partnerSet),
     ]);
     over.dispose();
     partner.dispose();
@@ -940,6 +960,7 @@ test.each([
   async (overRole, countOnly) => {
     const build = [
       vi.spyOn(InProcessPsiEngine.prototype, "createServerSetup"),
+      vi.spyOn(InProcessPsiEngine.prototype, "createPermutedSetup"),
       vi.spyOn(InProcessPsiEngine.prototype, "createClientRequest"),
     ];
     const [a, b] = createMessagePipe();
@@ -953,7 +974,7 @@ test.each([
       close: () => a.close(),
     };
     const partnerRole = overRole === "starter" ? "joiner" : "starter";
-    const mode = countOnly ? "count-only" : "identifier-revealing";
+    const mode = countOnly ? "count-only-permuted" : "identifier-revealing";
     const participant = (role: "starter" | "joiner") =>
       new PSIParticipant(
         role === "starter" ? "server" : "client",
@@ -973,21 +994,24 @@ test.each([
       );
     const over = participant(overRole);
     const partner = participant(partnerRole);
+    const overSet = values(3, "o");
+    const partnerSet = values(2, "p");
+    const declared = declaredCounts(overRole, overSet, partnerSet);
     const run = (
       p: PSIParticipant,
       conn: MessageConnection,
       set: Array<string>,
     ): Promise<unknown> =>
       (countOnly
-        ? p.countIntersection(conn, set)
+        ? p.countPermutedRound(conn, set, declared)
         : p.identifyIntersection(conn, set)
       ).then(
         () => "completed",
         (err: unknown) => err,
       );
     const [overEnd, partnerEnd] = await Promise.all([
-      run(over, overConn, values(3, "o")),
-      run(partner, b, values(2, "p")),
+      run(over, overConn, overSet),
+      run(partner, b, partnerSet),
     ]);
     over.dispose();
     partner.dispose();

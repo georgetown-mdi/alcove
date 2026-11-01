@@ -243,25 +243,18 @@ async function main(): Promise<void> {
       await step("receiveServerSetup", () =>
         page.evaluate(() => probeOf().receiveServerSetup()),
       );
-      if (mode === "count-only") {
-        const size = await step("computeIntersectionCardinality", () =>
-          page.evaluate(() => probeOf().computeIntersectionCardinality()),
+      const pairs = await step("computeAssociationTable", () =>
+        page.evaluate(() => probeOf().computeAssociationTable()),
+      );
+      const partnerPosition = new Map(
+        built.permutation.map((input, position) => [input, position]),
+      );
+      matchesExpected =
+        pairs.length === overlap &&
+        pairs.every(
+          ([local, position]) =>
+            local < overlap && partnerPosition.get(local) === position,
         );
-        matchesExpected = size === overlap;
-      } else {
-        const pairs = await step("computeAssociationTable", () =>
-          page.evaluate(() => probeOf().computeAssociationTable()),
-        );
-        const partnerPosition = new Map(
-          built.permutation.map((input, position) => [input, position]),
-        );
-        matchesExpected =
-          pairs.length === overlap &&
-          pairs.every(
-            ([local, position]) =>
-              local < overlap && partnerPosition.get(local) === position,
-          );
-      }
     } else {
       await step("createServerSetup", () =>
         page.evaluate(([n, m]) => probeOf().createServerSetup(n, m), [
@@ -279,27 +272,20 @@ async function main(): Promise<void> {
         page.evaluate(() => probeOf().processClientRequest()),
       );
       await partner.receiveServerSetup(sets.get("setup")!);
-      if (mode === "count-only") {
-        const size = await step("partnerComputeIntersectionCardinality", () =>
-          partner.computeIntersectionCardinality(sets.get("response")!),
+      const [local, partnerIndices] = await step(
+        "partnerComputeAssociationTable",
+        () => partner.computeAssociationTable(sets.get("response")!),
+      );
+      const expected = await page.evaluate(
+        (indices) => probeOf().partnerPositionsOf(indices),
+        local,
+      );
+      matchesExpected =
+        local.length === overlap &&
+        local.every(
+          (index, pair) =>
+            index < overlap && expected[pair] === partnerIndices[pair],
         );
-        matchesExpected = size === overlap;
-      } else {
-        const [local, partnerIndices] = await step(
-          "partnerComputeAssociationTable",
-          () => partner.computeAssociationTable(sets.get("response")!),
-        );
-        const expected = await page.evaluate(
-          (indices) => probeOf().partnerPositionsOf(indices),
-          local,
-        );
-        matchesExpected =
-          local.length === overlap &&
-          local.every(
-            (index, pair) =>
-              index < overlap && expected[pair] === partnerIndices[pair],
-          );
-      }
     }
   } catch (caught) {
     error = [String(caught), ...pageErrors].join("\n").slice(0, 4000);

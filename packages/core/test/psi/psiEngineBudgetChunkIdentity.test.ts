@@ -10,7 +10,6 @@ import {
 import { loadNativeAddonOrSkip } from "../utils/nativeAddon";
 import {
   chunkIdentityValues,
-  expectChunkedCountMatchesSingleCall,
   expectChunkedRoundMatchesSingleCall,
 } from "../utils/psiChunkIdentity";
 
@@ -67,19 +66,5 @@ describe.each([
     // The budget sizes masking calls only: the match takes this response,
     // one piece under the policy, whole.
     expect(processed.computeAssociationTable).toBeUndefined();
-  });
-
-  test("a count-only round reproduces the single call's bytes and cardinality", async (ctx) => {
-    if (!library) {
-      ctx.skip();
-      return;
-    }
-    const processed = await expectChunkedCountMatchesSingleCall({
-      library,
-      serverValues,
-      clientValues,
-      maskingMemoryBudgetBytes: BUDGET_BYTES,
-    });
-    expect(processed).toStrictEqual([]);
   });
 });

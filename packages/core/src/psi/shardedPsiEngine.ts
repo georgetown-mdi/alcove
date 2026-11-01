@@ -7,14 +7,11 @@ import {
   buildRequest,
   buildResponse,
   chunkRanges,
-  mergeCountOnlyResponseChunks,
-  serializeResponse,
 } from "./psiChunks";
 import {
   knownEngineMode,
-  modeSetsRevealFlag,
   partnerRequestModeError,
-  valuesContributedExactlyOnce,
+  REVEAL_INTERSECTION_FLAG,
 } from "./psiEngine";
 
 import type { PsiChunkRange } from "./psiChunks";
@@ -33,14 +30,14 @@ import type {
 
 /**
  * The mode the helpers of a {@link ShardedPsiEngine} in `mode` are built in:
- * `mode` itself, except that a count-only-permuted engine's helpers are
- * identifier-revealing. Both set the library's reveal flag, so a helper masks
- * its part to the bytes the primary would, in request order; the primary
- * alone holds `pi` and the receiver's state.
+ * identifier-revealing in either mode. Both modes set the library's reveal
+ * flag, so a helper masks its part to the bytes the primary would, in
+ * request order; a count-only-permuted primary alone holds `pi` and the
+ * receiver's state.
  */
 export function shardHelperMode(mode: PsiEngineMode): PsiEngineMode {
-  const known = knownEngineMode(mode);
-  return known === "count-only-permuted" ? "identifier-revealing" : known;
+  knownEngineMode(mode);
+  return "identifier-revealing";
 }
 
 // A primary in another mode answers a request in the library's order, with no
@@ -171,7 +168,7 @@ export class ShardedPsiEngine implements PsiEngine {
   private readonly library: PSILibrary;
   private readonly id: string;
   private readonly mode: PsiEngineMode;
-  private readonly revealFlag: boolean;
+  private readonly revealFlag = REVEAL_INTERSECTION_FLAG;
   private readonly permutedPrimary:
     (PsiEngine & PermutedShardPrimary) | undefined;
   private readonly engines: ReadonlyArray<PsiEngine>;
@@ -195,7 +192,6 @@ export class ShardedPsiEngine implements PsiEngine {
     this.library = library;
     this.id = id;
     this.mode = knownEngineMode(mode);
-    this.revealFlag = modeSetsRevealFlag(this.mode);
     if (this.mode === "count-only-permuted") {
       if (!isPermutedShardPrimary(primary))
         throw new InternalConsistencyError(
@@ -335,11 +331,9 @@ export class ShardedPsiEngine implements PsiEngine {
     } catch (error) {
       throw markPsiLibraryFailure(error);
     }
-    // The merge below follows this wrapper's mode, so a request in the other
-    // mode is refused here even if every shard would serve it.
     const revealFlag = request.getRevealIntersection();
     if (revealFlag !== this.revealFlag)
-      throw partnerRequestModeError(this.id, revealFlag, this.mode);
+      throw partnerRequestModeError(this.id, this.mode);
     const ranges = this.shardRangesFor(declared);
     if (ranges.length === 1)
       return this.primary.processClientRequest(requestBytes);
@@ -359,11 +353,6 @@ export class ShardedPsiEngine implements PsiEngine {
         )
         .getEncryptedElementsList_asU8(),
     );
-    if (this.mode === "count-only")
-      return serializeResponse(
-        this.library,
-        mergeCountOnlyResponseChunks(parts),
-      );
     const response = buildResponse(this.library, []);
     for (const part of parts) appendChunkElements(response, part);
     return response.serializeBinary();
@@ -373,13 +362,7 @@ export class ShardedPsiEngine implements PsiEngine {
     values: ReadonlyArray<string>,
   ): Promise<Uint8Array> {
     this.requireUndisposed("createClientRequest");
-    // Filtered over the whole set before it is split: a value repeated across
-    // two parts occurs once in each, and neither shard would drop it.
-    const contributed =
-      this.mode === "count-only"
-        ? valuesContributedExactlyOnce(values)
-        : values;
-    const ranges = this.shardRangesFor(contributed.length);
+    const ranges = this.shardRangesFor(values.length);
     if (ranges.length === 1) return this.primary.createClientRequest(values);
     const permutedPrimary = this.permutedPrimary;
     // In the count-only-permuted mode the primary checks and records the
@@ -388,12 +371,9 @@ export class ShardedPsiEngine implements PsiEngine {
       this.library.request
         .deserializeBinary(
           engine === permutedPrimary
-            ? await permutedPrimary.createRequestFirstPart(
-                contributed,
-                range.end,
-              )
+            ? await permutedPrimary.createRequestFirstPart(values, range.end)
             : await engine.createClientRequest(
-                contributed.slice(range.start, range.end),
+                values.slice(range.start, range.end),
               ),
         )
         .getEncryptedElementsList_asU8(),
@@ -423,10 +403,6 @@ export class ShardedPsiEngine implements PsiEngine {
     responseBytes: Uint8Array,
   ): Promise<[Array<number>, Array<number>]> {
     return this.primary.computeAssociationTable(responseBytes);
-  }
-
-  computeIntersectionCardinality(responseBytes: Uint8Array): Promise<number> {
-    return this.primary.computeIntersectionCardinality(responseBytes);
   }
 
   createPermutedSetup(

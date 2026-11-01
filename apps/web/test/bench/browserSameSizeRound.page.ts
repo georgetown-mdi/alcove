@@ -23,7 +23,6 @@ export interface RoundProbe {
   processClientRequest: () => Promise<number>;
   receiveServerSetup: () => Promise<void>;
   computeAssociationTable: () => Promise<Array<[number, number]>>;
-  computeIntersectionCardinality: () => Promise<number>;
   partnerPositionsOf: (localIndices: Array<number>) => Array<number>;
   dispose: () => void;
 }
@@ -75,11 +74,6 @@ const probe: RoundProbe = {
       await download("response"),
     );
     return local.map((index, pair) => [index, partner[pair]]);
-  },
-  async computeIntersectionCardinality() {
-    return requireEngine().computeIntersectionCardinality(
-      await download("response"),
-    );
   },
   partnerPositionsOf(localIndices) {
     const positions = new Map(localIndices.map((index) => [index, -1]));

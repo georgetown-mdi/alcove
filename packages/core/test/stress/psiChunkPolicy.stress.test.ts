@@ -7,7 +7,6 @@ import { psiChunkRanges } from "../../src/psi/psiChunks";
 import { loadNativeAddonOrSkip } from "../utils/nativeAddon";
 import {
   chunkIdentityValues,
-  expectChunkedCountMatchesSingleCall,
   expectChunkedRoundMatchesSingleCall,
 } from "../utils/psiChunkIdentity";
 
@@ -55,23 +54,5 @@ describe.each([
       processClientRequest: expectedCounts,
       computeAssociationTable: expectedCounts,
     });
-  });
-
-  test("a chunked count-only round reports the single call's cardinality", async (ctx) => {
-    if (!library) {
-      ctx.skip();
-      return;
-    }
-    // The streamed match takes the response in pieces the policy sizes and
-    // reports between them, while the count stays one count over the whole
-    // response (docs/spec/PROTOCOL.md, PSI-C, "The match counts inside the
-    // engine").
-    expect(
-      await expectChunkedCountMatchesSingleCall({
-        library,
-        serverValues,
-        clientValues,
-      }),
-    ).toStrictEqual(expectedCounts);
   });
 });

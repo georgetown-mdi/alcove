@@ -97,8 +97,6 @@ function heldSenderEngine({
     completeServerSetup: () => inner.completeServerSetup(),
     discardServerSetup: () => inner.discardServerSetup(),
     computeAssociationTable: (bytes) => inner.computeAssociationTable(bytes),
-    computeIntersectionCardinality: (bytes) =>
-      inner.computeIntersectionCardinality(bytes),
     createPermutedSetup: (values) => inner.createPermutedSetup(values),
     receiveIndexTable: (table) => inner.receiveIndexTable(table),
     matchPermutedRound: (bytes) => inner.matchPermutedRound(bytes),
@@ -356,8 +354,6 @@ test("an engine is disposed when building its participant throws", async () => {
       completeServerSetup: () => inner.completeServerSetup(),
       discardServerSetup: () => inner.discardServerSetup(),
       computeAssociationTable: (bytes) => inner.computeAssociationTable(bytes),
-      computeIntersectionCardinality: (bytes) =>
-        inner.computeIntersectionCardinality(bytes),
       createPermutedSetup: (values) => inner.createPermutedSetup(values),
       receiveIndexTable: (table) => inner.receiveIndexTable(table),
       matchPermutedRound: (bytes) => inner.matchPermutedRound(bytes),

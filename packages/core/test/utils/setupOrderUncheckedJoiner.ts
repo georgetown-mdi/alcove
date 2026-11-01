@@ -94,10 +94,6 @@ class SetupOrderUncheckedEngine implements PsiEngine {
     }
   }
 
-  computeIntersectionCardinality(): never {
-    throw new Error("this engine runs identifier-revealing rounds only");
-  }
-
   createPermutedSetup(): never {
     throw new Error("this engine runs identifier-revealing rounds only");
   }

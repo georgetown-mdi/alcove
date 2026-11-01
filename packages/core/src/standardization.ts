@@ -1014,9 +1014,9 @@ export const STANDARDIZATION_FUNCTION_NAMES: readonly string[] = [
  * Refusal for a candidate set that reached a call site running one value per
  * record -- the point of harm, since the alternative is silent narrowing.
  * Key realization holds every candidate ({@link buildKeyStrings}); the call
- * sites that cannot honor them are `linkViaCountOnlyPSI` (a count-only round
- * counts matched values), `linkViaPSI` under a strategy off the candidate-set
- * allowlist, and the single-pass table build for a party that declared no
+ * sites that cannot honor them are `countOnlyRoundElements` (a count-only
+ * round has one element per record), `linkViaPSI` under a strategy off the
+ * candidate-set allowlist, and the single-pass table build for a party that declared no
  * fan-out (a fixed-width column holds one value per key, record). A party that
  * DID declare one builds a ragged table instead and refuses in `link.ts`'s own
  * width checks, a different refusal on the same fault: an expansion the

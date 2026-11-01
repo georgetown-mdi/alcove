@@ -2,18 +2,21 @@ import { expect } from "vitest";
 
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
-import { buildResponse, serializeSetup } from "../../src/psi/psiChunks";
+import { serializeSetup } from "../../src/psi/psiChunks";
 import { InProcessPsiEngine } from "../../src/psi/psiEngine";
 import { isPsiLibraryFailure, ProtocolRefusalError } from "../../src/errors";
 import { classifyFailure } from "../../src/failureClass";
 
-import type { InProcessPsiEngineOptions } from "../../src/psi/psiEngine";
+import type {
+  InProcessPsiEngineOptions,
+  PsiEngineMode,
+} from "../../src/psi/psiEngine";
 import { fixedKeyPsiLibrary, psiTestKey } from "./fixedKeyPsiLibrary";
 
 // The wire claim the chunked engine rests on: splitting one operation and
 // reassembling the chunk results yields the BYTES a single call over the whole
 // set produces, for the server setup, the client request and the server
-// response, and the element-identical association table and intersection size.
+// response, and the element-identical association table.
 // Driven against the library under the same key on both sides rather than
 // argued, and run over every backend the running platform has.
 
@@ -21,6 +24,10 @@ const SERVER_KEY = psiTestKey(0x11);
 const CLIENT_KEY = psiTestKey(0x22);
 const FALSE_POSITIVE_RATE = 0.0;
 const CLIENT_INPUT_COUNT = -1;
+const MODES: ReadonlyArray<PsiEngineMode> = [
+  "identifier-revealing",
+  "count-only-permuted",
+];
 
 /** A set and the partner set overlapping it on every other value. */
 export function chunkIdentityValues(total: number): {
@@ -38,7 +45,7 @@ export function chunkIdentityValues(total: number): {
 function engine(
   library: PSILibrary,
   role: "starter" | "joiner",
-  revealsIdentifiers: boolean,
+  mode: PsiEngineMode,
   chunkElements: number | undefined,
   maskingMemoryBudgetBytes?: number,
 ): InProcessPsiEngine {
@@ -52,7 +59,7 @@ function engine(
     fixedKeyPsiLibrary(library, SERVER_KEY, CLIENT_KEY),
     role,
     role,
-    revealsIdentifiers ? "identifier-revealing" : "count-only",
+    mode,
     options,
   );
 }
@@ -86,14 +93,14 @@ export async function expectChunkedRoundMatchesSingleCall(params: {
   const starter = engine(
     library,
     "starter",
-    true,
+    "identifier-revealing",
     chunkElements,
     maskingMemoryBudgetBytes,
   );
   const joiner = engine(
     library,
     "joiner",
-    true,
+    "identifier-revealing",
     chunkElements,
     maskingMemoryBudgetBytes,
   );
@@ -146,135 +153,6 @@ export async function expectChunkedRoundMatchesSingleCall(params: {
 }
 
 /**
- * Asserts that a chunked count-only round puts the single call's response
- * bytes on the wire and reports its cardinality, and returns the processed
- * counts the match reported: one between each pair of response pieces.
- */
-export async function expectChunkedCountMatchesSingleCall(params: {
-  library: PSILibrary;
-  serverValues: ReadonlyArray<string>;
-  clientValues: ReadonlyArray<string>;
-  chunkElements?: number;
-  maskingMemoryBudgetBytes?: number;
-}): Promise<Array<number>> {
-  const {
-    library,
-    serverValues,
-    clientValues,
-    chunkElements,
-    maskingMemoryBudgetBytes,
-  } = params;
-  const server = library.server!.createFromKey(SERVER_KEY, false);
-  const client = library.client!.createFromKey(CLIENT_KEY, false);
-  const starter = engine(
-    library,
-    "starter",
-    false,
-    chunkElements,
-    maskingMemoryBudgetBytes,
-  );
-  const joiner = engine(
-    library,
-    "joiner",
-    false,
-    chunkElements,
-    maskingMemoryBudgetBytes,
-  );
-  const processed: Array<number> = [];
-  try {
-    const wholeSetup = server.createSetupMessage(
-      FALSE_POSITIVE_RATE,
-      CLIENT_INPUT_COUNT,
-      serverValues,
-      library.dataStructure.Raw,
-      [],
-    );
-    const wholeRequest = client.createRequest(clientValues);
-    const wholeResponse = server.processRequest(
-      client.createRequest(clientValues),
-    );
-    const wholeSize = client.getIntersectionSize(wholeSetup, wholeResponse);
-
-    const setup = await starter.createServerSetup(serverValues);
-    expect(setup.setup).toEqual(wholeSetup.serializeBinary());
-    expect(setup.permutation).toStrictEqual([]);
-    const request = await joiner.createClientRequest(clientValues);
-    expect(request).toEqual(wholeRequest.serializeBinary());
-    const response = await starter.processClientRequest(request);
-    // The count-only response is sorted rather than answered position by
-    // position, so this is where a merge that concatenated the chunks would
-    // put different bytes on the wire.
-    expect(response).toEqual(wholeResponse.serializeBinary());
-    await joiner.receiveServerSetup(setup.setup);
-    joiner.observeProcessedElements((count) => processed.push(count));
-    expect(await joiner.computeIntersectionCardinality(response)).toBe(
-      wholeSize,
-    );
-    expect(wholeSize).toBeGreaterThan(0);
-  } finally {
-    starter.dispose();
-    joiner.dispose();
-    server.delete();
-    client.delete();
-  }
-  return processed;
-}
-
-/**
- * Asserts that the cardinality reported over a response whose element list is
- * DUPLICATED, each repeat a whole list away from its twin so a split would put
- * the two in different chunks, is the one a single call over that response
- * reports. The response is the partner's message and no local rule constrains
- * what it holds, so the repeat is the shape the count has to survive. Returns
- * the processed counts the match reported.
- */
-export async function expectDuplicatedResponseCountMatchesSingleCall(params: {
-  library: PSILibrary;
-  serverValues: ReadonlyArray<string>;
-  clientValues: ReadonlyArray<string>;
-  chunkElements: number;
-}): Promise<Array<number>> {
-  const { library, serverValues, clientValues, chunkElements } = params;
-  const server = library.server!.createFromKey(SERVER_KEY, false);
-  const client = library.client!.createFromKey(CLIENT_KEY, false);
-  const joiner = engine(library, "joiner", false, chunkElements);
-  const processed: Array<number> = [];
-  joiner.observeProcessedElements((count) => processed.push(count));
-  try {
-    const setup = server.createSetupMessage(
-      FALSE_POSITIVE_RATE,
-      CLIENT_INPUT_COUNT,
-      serverValues,
-      library.dataStructure.Raw,
-      [],
-    );
-    const elements = server
-      .processRequest(client.createRequest(clientValues))
-      .getEncryptedElementsList_asU8();
-    const duplicated = buildResponse(library, [...elements, ...elements]);
-    const wholeSize = client.getIntersectionSize(setup, duplicated);
-    expect(wholeSize).toBeGreaterThan(0);
-    // What a split would have reported, driven against the library rather than
-    // argued: the library deduplicates within each call, so every repeat the
-    // split separates is counted again.
-    expect(
-      client.getIntersectionSize(setup, buildResponse(library, elements)) +
-        client.getIntersectionSize(setup, buildResponse(library, elements)),
-    ).toBe(wholeSize * 2);
-
-    await joiner.receiveServerSetup(setup.serializeBinary());
-    expect(
-      await joiner.computeIntersectionCardinality(duplicated.serializeBinary()),
-    ).toBe(wholeSize);
-  } finally {
-    joiner.dispose();
-    server.delete();
-    client.delete();
-  }
-  return processed;
-}
-
-/**
  * A serialized partner setup over `serverValues` whose element at `repeatAt`
  * repeats the element before it.
  */
@@ -282,10 +160,9 @@ export function repeatedSetupElement(params: {
   library: PSILibrary;
   serverValues: ReadonlyArray<string>;
   repeatAt: number;
-  revealsIdentifiers: boolean;
 }): Uint8Array {
-  const { library, serverValues, repeatAt, revealsIdentifiers } = params;
-  const server = library.server!.createFromKey(SERVER_KEY, revealsIdentifiers);
+  const { library, serverValues, repeatAt } = params;
+  const server = library.server!.createFromKey(SERVER_KEY, true);
   try {
     const elements = [
       ...server
@@ -318,14 +195,13 @@ export async function expectRepeatedSetupElementRefused(params: {
   repeatAt: number;
 }): Promise<void> {
   const { library, serverValues, repeatAt } = params;
-  for (const revealsIdentifiers of [true, false]) {
-    const joiner = engine(library, "joiner", revealsIdentifiers, undefined);
+  for (const mode of MODES) {
+    const joiner = engine(library, "joiner", mode, undefined);
     try {
       const setup = repeatedSetupElement({
         library,
         serverValues,
         repeatAt,
-        revealsIdentifiers,
       });
       const caught = await joiner.receiveServerSetup(setup).then(
         () => undefined,

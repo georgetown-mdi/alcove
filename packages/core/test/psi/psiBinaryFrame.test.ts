@@ -204,34 +204,39 @@ test("a frame the engine diagnoses keeps its diagnosis as the top line", async (
   );
 });
 
-// A count-only sender parked on the request frame, which is where the two
-// parties' reveal flags are compared, and a joiner engine built for the other
-// mode to produce the diverging request.
-function countOnlySender(): PSIParticipant {
+// A sender parked on the request frame, which is where the request's reveal
+// flag is compared with the sender's, and a request with the flag cleared, as
+// the library's own client builds one in its cardinality mode.
+function revealingSender(): PSIParticipant {
   return new PSIParticipant(
     "sender",
     psiLibrary,
     { role: "starter", verbose: 0 },
     UNBOUNDED_PSI_ELEMENTS,
-    new InProcessPsiEngine(psiLibrary, "starter", "sender", "count-only"),
+    new InProcessPsiEngine(
+      psiLibrary,
+      "starter",
+      "sender",
+      "identifier-revealing",
+    ),
   );
 }
 
-function revealingClientRequest(): Promise<Uint8Array> {
-  return new InProcessPsiEngine(
-    psiLibrary,
-    "joiner",
-    "joiner",
-    "identifier-revealing",
-  ).createClientRequest(["Carol"]);
+function cardinalityClientRequest(): Uint8Array {
+  const client = psiLibrary.client!.createWithNewKey(false);
+  try {
+    return client.createRequest(["Carol"]).serializeBinary();
+  } finally {
+    client.delete();
+  }
 }
 
 test("a diverging reveal flag ends the round on the divergence, not a decode", async () => {
   // The request deserializes and is well formed; what disagrees is the mode
   // the two parties ran. Naming that is the whole point of the check, so it
   // must stand as the top line rather than sit under "failed to decode".
-  const ended = await countOnlySender()
-    .processClientRequest(await revealingClientRequest())
+  const ended = await revealingSender()
+    .processClientRequest(cardinalityClientRequest())
     .then(
       () => undefined,
       (err: unknown) => err as Error,
@@ -239,7 +244,7 @@ test("a diverging reveal flag ends the round on the divergence, not a decode", a
 
   expect(ended?.message).toBe(
     "sender protocol error: the partner's PSI request ran the " +
-      "identifier-revealing mode, where this exchange runs count-only",
+      "library's cardinality mode, where this exchange runs identifier-revealing",
   );
   expect(ended?.message).not.toMatch(/failed to decode/);
 });
@@ -256,7 +261,7 @@ test("a role precondition this party broke is not reported as a bad frame", asyn
   );
 
   const ended = await joinerSide
-    .processClientRequest(await revealingClientRequest())
+    .processClientRequest(cardinalityClientRequest())
     .then(
       () => undefined,
       (err: unknown) => err as Error,

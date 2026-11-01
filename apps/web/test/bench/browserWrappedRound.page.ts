@@ -104,10 +104,6 @@ function steppedEngine(inner: PsiEngine): PsiEngine {
       step("computeAssociationTable", () =>
         inner.computeAssociationTable(response),
       ),
-    computeIntersectionCardinality: (response) =>
-      step("computeIntersectionCardinality", () =>
-        inner.computeIntersectionCardinality(response),
-      ),
     createPermutedSetup: (values) => inner.createPermutedSetup(values),
     receiveIndexTable: (table) => inner.receiveIndexTable(table),
     matchPermutedRound: (response) => inner.matchPermutedRound(response),

@@ -180,12 +180,10 @@ interface IndexableIterable<T> extends Iterable<T> {
  * record holding several is refused rather than narrowed to one candidate or
  * dropped, either of which would match on less than the terms declare. Key
  * realization holds the whole candidate set (buildKeyStrings), so this is the
- * point a round applies the refusal at. A count-only round is held to it
- * unconditionally -- psi-c counts matched VALUES where the resolution accepts
- * at most one pair per record, so a candidate set would over-report the
- * linkage the count is used to justify -- while the cascade applies it behind
- * the strategy allowlist (docs/spec/PROTOCOL.md, Where a candidate set is
- * refused).
+ * point a round applies the refusal at. The cascade applies it behind the
+ * strategy allowlist (docs/spec/PROTOCOL.md, Where a candidate set is
+ * refused); a count-only round refuses a candidate set in
+ * `countOnlyRoundElements`, which holds one element per record.
  */
 export function requireSingleCandidate(
   value: KeyCandidates,
