@@ -1761,7 +1761,10 @@ describe("diagnostic read never rejects wholesale", () => {
 
   test("a record that does not parse beside an unparseable sibling entry is the unreadable marker", async () => {
     const created = await createRunnableExchange(newExchange({ label: "Bad" }));
-    await rawPut({ ...created, schemaVersion: "alcove-managed-exchange/v5" });
+    await rawPut({
+      ...created,
+      schemaVersion: "alcove-managed-exchange/damaged",
+    });
     await rawLocalPut(created.id, { backup: { backedUpAt: "not-an-instant" } });
 
     expect(await listManagedExchangesDiagnostic()).toEqual([
@@ -1807,12 +1810,12 @@ describe("diagnostic read never rejects wholesale", () => {
 
   test("one unreadable record does not fail the read; it yields an unreadable marker keyed for delete", async () => {
     const good = await createRunnableExchange(newExchange({ label: "Good" }));
-    // Seed a future-version record under its own key: the strict list read rejects
+    // Seed a damaged record under its own key: the strict list read rejects
     // wholesale on it, but the diagnostic read must still enumerate both.
     await rawPut({
       ...good,
       id: "bad-record",
-      schemaVersion: "alcove-managed-exchange/v5",
+      schemaVersion: "alcove-managed-exchange/damaged",
     });
 
     // The strict read still rejects wholesale -- the untouched contract.
@@ -1835,7 +1838,7 @@ describe("diagnostic read never rejects wholesale", () => {
     await rawPut({
       ...good,
       id: "bad-record",
-      schemaVersion: "alcove-managed-exchange/v5",
+      schemaVersion: "alcove-managed-exchange/damaged",
     });
     // The sibling backup marker survives the record's unreadability: a delete of the
     // bad record must still warn about the exported backup's custody.
@@ -1855,7 +1858,7 @@ describe("diagnostic read never rejects wholesale", () => {
     await rawPut({
       ...good,
       id: "bad-record",
-      schemaVersion: "alcove-managed-exchange/v5",
+      schemaVersion: "alcove-managed-exchange/damaged",
     });
 
     await deleteManagedExchange("bad-record");

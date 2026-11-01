@@ -50,6 +50,7 @@ import {
   runnableManagedExchangeOrRefuse,
   safeParseManagedExchangeRecord,
   standingCompromiseResponse,
+  storedRecordAheadOfThisBuild,
 } from "./managedExchangeRecord";
 import {
   decideCommandLinePairTarget,
@@ -387,7 +388,10 @@ export async function listReadableManagedExchanges(): Promise<ManagedExchangeRea
  * readable entry whose sibling entry does not parse holds `stateUnreadable`:
  * its page cannot load, so nothing it holds can be exported first. An
  * unreadable entry whose migration failed holds the refusal
- * (`migrationFailure`), its message naming the versions and the cause.
+ * (`migrationFailure`), its message naming the versions and the cause. A
+ * record whose `schemaVersion` is later than this build's is `later-version`
+ * instead: a later build wrote it, and this page is behind rather than the
+ * record damaged.
  */
 export type ManagedExchangeDiagnosticEntry =
   | {
@@ -401,7 +405,8 @@ export type ManagedExchangeDiagnosticEntry =
       id: string;
       backedUp: boolean;
       migrationFailure?: FormatMigrationError;
-    };
+    }
+  | { kind: "later-version"; id: string; backedUp: boolean };
 
 /**
  * Read every stored entry for the read-failed recovery listing, per-record and
@@ -468,6 +473,14 @@ export async function listManagedExchangesDiagnostic(): Promise<
             } catch (error) {
               // The parse failed, so the record's own `id` is untrusted; the store
               // key is the delete target instead, and the only field shown.
+              if (storedRecordAheadOfThisBuild(values[index])) {
+                entries.push({
+                  kind: "later-version",
+                  id: key,
+                  backedUp: custody.backedUp,
+                });
+                continue;
+              }
               entries.push({
                 kind: "unreadable",
                 id: key,

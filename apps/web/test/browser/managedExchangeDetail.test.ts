@@ -3540,6 +3540,40 @@ describe("why an accounting or its note could not be read", () => {
       expect(document.body.textContent).not.toContain(value);
   });
 
+  test("an accounting a newer version wrote asks for a reload, offering no reset and no download", async () => {
+    renderReads({ kind: "stale-page", stored: undefined }, { kind: "none" });
+
+    await expect
+      .element(
+        page.getByText("running an older version of Alcove", { exact: false }),
+      )
+      .toBeInTheDocument();
+    expect(
+      page.getByRole("button", { name: "Start a fresh accounting" }).query(),
+    ).toBeNull();
+    expect(
+      page
+        .getByRole("button", { name: "Download the stored records (JSON)" })
+        .query(),
+    ).toBeNull();
+    expect(
+      page.getByText("could not convert them", { exact: false }).query(),
+    ).toBeNull();
+  });
+
+  test("a note a newer version wrote asks for a reload", async () => {
+    renderReads({ kind: "none" }, { kind: "stale-page" });
+
+    await expect
+      .element(
+        page.getByText("from a newer version of this app", { exact: false }),
+      )
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByText("Reload this page", { exact: false }))
+      .toBeInTheDocument();
+  });
+
   test("a damaged note shows no refusal of a migration", async () => {
     renderReads({ kind: "none" }, { kind: "unreadable" });
 

@@ -29,6 +29,7 @@ import {
   UsageError,
   assembleExchangeSpec,
   connectionFromLocator,
+  declaresLaterFormatVersion,
   deriveAcceptedLinkageTerms,
   matchingKeyUnavailableReason,
   maxCodeUnits,
@@ -809,6 +810,13 @@ export function safeParseManagedExchangeRecord(
   } catch (error) {
     return { success: false, error };
   }
+}
+
+/** Whether `raw`, a value read from the store, declares a `schemaVersion`
+ * later than this build's: a record a later build wrote, which this page
+ * being behind explains, never a damaged one. */
+export function storedRecordAheadOfThisBuild(raw: unknown): boolean {
+  return declaresLaterFormatVersion(raw, MANAGED_EXCHANGE_MIGRATIONS);
 }
 
 /**

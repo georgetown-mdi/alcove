@@ -16,7 +16,14 @@ import {
   test,
   vi,
 } from "vitest";
+import { ZodError } from "zod";
 
+import {
+  LATER_VERSION_RECORDS_CAUSE,
+  UNREADABLE_RECORDS_CAUSE,
+  recoveryRows,
+  savedExchangesFailedCauses,
+} from "@recurring/savedExchangesRecovery";
 import {
   MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME,
   MANAGED_EXCHANGE_STORE_NAME,
@@ -24,6 +31,7 @@ import {
   createManagedExchange,
   getManagedExchange,
   listManagedExchanges,
+  listManagedExchangesDiagnostic,
   openManagedExchangeDatabase,
   updateManagedExchangeLocalFields,
 } from "@psi/managed/managedExchangeStore";
@@ -36,6 +44,10 @@ import {
   UNFILED_DISCLOSURE_VERSION,
   unfiledDisclosureKey,
 } from "@psi/unfiledDisclosure";
+import {
+  UNRECOGNIZED_IMPORT_REASON,
+  importFailureReason,
+} from "@recurring/managedImportFailure";
 import {
   appendDisclosureRecordToStore,
   readDisclosureAccounting,
@@ -57,6 +69,7 @@ import {
   UNMOVABLE_CAUSE,
   UNMOVABLE_FIELD,
   atPreviousVersion,
+  nextVersionOf,
 } from "../utils/storedFormatMigrations";
 import { disclosureRecord } from "../utils/disclosureFixtures";
 
@@ -547,6 +560,140 @@ describe("a backup file tagged with a development artifact version", () => {
     await expect(imported).rejects.toThrow(
       "it has no migration from version alcove-managed-exchange-backup/v2.",
     );
+    expect(await listManagedExchanges()).toEqual([]);
+  });
+});
+
+describe("a value a newer version stored", () => {
+  test("a managed record is listed as a newer version's, with no remove, the stored value unchanged", async () => {
+    const created = await createManagedExchange(newExchange());
+    const later = {
+      ...created,
+      schemaVersion: nextVersionOf(MANAGED_EXCHANGE_SCHEMA_VERSION),
+    };
+    await putRawStored(MANAGED_EXCHANGE_STORE_NAME, later);
+
+    const read = getManagedExchange(created.id);
+    await expect(read).rejects.toThrow();
+    await expect(read).rejects.not.toBeInstanceOf(FormatMigrationError);
+    await expect(
+      updateManagedExchangeLocalFields(created.id, { label: "Riverbend" }),
+    ).rejects.toThrow();
+    const entries = await listManagedExchangesDiagnostic();
+    expect(entries).toEqual([
+      { kind: "later-version", id: created.id, backedUp: false },
+    ]);
+    const [row] = recoveryRows(entries);
+    expect(row.laterVersion).toBe(true);
+    expect(savedExchangesFailedCauses([row])).toEqual([
+      LATER_VERSION_RECORDS_CAUSE,
+    ]);
+    expect(await rawStored(MANAGED_EXCHANGE_STORE_NAME, created.id)).toEqual(
+      later,
+    );
+  });
+
+  test("a damaged managed record still reaches the remove", async () => {
+    const created = await createManagedExchange(newExchange());
+    await putRawStored(MANAGED_EXCHANGE_STORE_NAME, {
+      ...created,
+      label: 7,
+    });
+
+    const entries = await listManagedExchangesDiagnostic();
+    expect(entries).toEqual([
+      { kind: "unreadable", id: created.id, backedUp: false },
+    ]);
+    expect(savedExchangesFailedCauses(recoveryRows(entries))).toEqual([
+      UNREADABLE_RECORDS_CAUSE,
+    ]);
+  });
+
+  test("an accounting envelope is a stale page, never the reset, the stored value unchanged", async () => {
+    const created = await createManagedExchange(newExchange());
+    const later = {
+      version: nextVersionOf(DISCLOSURE_ACCOUNTING_VERSION),
+      entries: [await disclosureRecord()],
+    };
+    await putRawStored(
+      MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME,
+      later,
+      created.id,
+    );
+
+    expect(await readDisclosureAccounting(created.id)).toEqual({
+      kind: "stale-page",
+      stored: undefined,
+    });
+    await expect(
+      appendDisclosureRecordToStore(created.id, await disclosureRecord()),
+    ).rejects.toThrow();
+    expect(
+      await rawStored(MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME, created.id),
+    ).toEqual(later);
+  });
+
+  test("a damaged accounting envelope still reaches the reset", async () => {
+    const created = await createManagedExchange(newExchange());
+    await putRawStored(
+      MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME,
+      { version: DISCLOSURE_ACCOUNTING_VERSION, entries: "damaged" },
+      created.id,
+    );
+
+    expect(await readDisclosureAccounting(created.id)).toEqual({
+      kind: "unreadable",
+      stored: undefined,
+    });
+  });
+
+  test("a note is a stale page, the stored value unchanged", async () => {
+    const created = await createManagedExchange(newExchange());
+    const key = unfiledDisclosureKey(created.id);
+    const later = {
+      version: nextVersionOf(UNFILED_DISCLOSURE_VERSION),
+      entries: [{ at: NOTED_AT }],
+    };
+    await putRawStored(MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME, later, key);
+
+    expect(await readUnfiledDisclosures(created.id)).toEqual({
+      kind: "stale-page",
+    });
+    expect(
+      await rawStored(MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME, key),
+    ).toEqual(later);
+  });
+
+  test("a damaged note is still unreadable", async () => {
+    const created = await createManagedExchange(newExchange());
+    await putRawStored(
+      MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME,
+      { version: UNFILED_DISCLOSURE_VERSION, entries: [{}] },
+      unfiledDisclosureKey(created.id),
+    );
+
+    expect(await readUnfiledDisclosures(created.id)).toEqual({
+      kind: "unreadable",
+    });
+  });
+
+  test("a backup file is refused as a newer version's export, and installs nothing", async () => {
+    const source = runnableManagedExchangeOrRefuse(
+      await createManagedExchange(newExchange()),
+    );
+    const document = JSON.parse(
+      serializeManagedExchangeArtifact(encodeManagedExchangeArtifact(source)),
+    );
+    document.artifactVersion = nextVersionOf(document.artifactVersion);
+    await clearManagedExchanges();
+
+    const error = await importManagedExchange(JSON.stringify(document)).then(
+      () => undefined,
+      (refusal: unknown) => refusal,
+    );
+
+    expect(error).toBeInstanceOf(ZodError);
+    expect(importFailureReason(error)).toBe(UNRECOGNIZED_IMPORT_REASON);
     expect(await listManagedExchanges()).toEqual([]);
   });
 });

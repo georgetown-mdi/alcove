@@ -7,10 +7,14 @@ import {
 } from "@alcove/core";
 
 import {
+  LATER_VERSION_RECORDS_CAUSE,
+  LATER_VERSION_RECORD_LABEL,
   STATE_UNREADABLE_NOTE,
+  UNREADABLE_RECORDS_CAUSE,
   UNREADABLE_RECORD_LABEL,
   recoveryRow,
   recoveryRows,
+  savedExchangesFailedCauses,
 } from "@recurring/savedExchangesRecovery";
 
 import type { ManagedExchangeDiagnosticEntry } from "@psi/managed/managedExchangeStore";
@@ -183,6 +187,61 @@ describe("recoveryRow", () => {
       recoveryRow({ kind: "unreadable", id: "bad-key", backedUp: true })
         .backedUp,
     ).toBe(true);
+  });
+});
+
+describe("a record a newer version saved", () => {
+  const later: ManagedExchangeDiagnosticEntry = {
+    kind: "later-version",
+    id: "later-key",
+    backedUp: true,
+  };
+
+  test("shows its fixed label, offers no delete, and keeps its custody", () => {
+    expect(recoveryRow(later)).toEqual({
+      id: "later-key",
+      label: LATER_VERSION_RECORD_LABEL,
+      deleteLabel: "",
+      unreadable: true,
+      laterVersion: true,
+      stateUnreadable: false,
+      backedUp: true,
+    });
+  });
+
+  test("is stated as a newer version's, never as damaged", () => {
+    expect(savedExchangesFailedCauses(recoveryRows([later]))).toEqual([
+      LATER_VERSION_RECORDS_CAUSE,
+    ]);
+  });
+
+  test("beside a damaged record states both causes", () => {
+    expect(
+      savedExchangesFailedCauses(
+        recoveryRows([
+          later,
+          { kind: "unreadable", id: "bad-key", backedUp: false },
+        ]),
+      ),
+    ).toEqual([LATER_VERSION_RECORDS_CAUSE, UNREADABLE_RECORDS_CAUSE]);
+  });
+});
+
+describe("savedExchangesFailedCauses", () => {
+  test("states the unreadable cause for a damaged record, or when no row names one", () => {
+    expect(
+      savedExchangesFailedCauses(
+        recoveryRows([{ kind: "unreadable", id: "bad-key", backedUp: false }]),
+      ),
+    ).toEqual([UNREADABLE_RECORDS_CAUSE]);
+    expect(savedExchangesFailedCauses([])).toEqual([UNREADABLE_RECORDS_CAUSE]);
+    expect(savedExchangesFailedCauses(recoveryRows([readable()]))).toEqual([
+      UNREADABLE_RECORDS_CAUSE,
+    ]);
+  });
+
+  test("states nothing while the rows are loading", () => {
+    expect(savedExchangesFailedCauses(undefined)).toEqual([]);
   });
 });
 

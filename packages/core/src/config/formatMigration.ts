@@ -74,24 +74,74 @@ export class FormatMigrationError extends Error {
   }
 }
 
-const LITERAL_VERSION = /^(.+)\/v(\d+)$/;
+/** A `<family>/v<n>` literal whose `n` is written canonically, with no
+ * leading zero. */
+const LITERAL_VERSION = /^(.+)\/v(0|[1-9]\d*)$/;
 
 /**
- * Whether `version` comes before `current`: a smaller integer, or a
- * `<family>/v<n>` literal of the same family with a smaller `n`. False for
- * two versions that cannot be ordered, such as a literal of another family.
+ * `version` less `current`, as a sign: negative where `version` comes first.
+ * Defined for two safe integers, or two `<family>/v<n>` literals of one
+ * family with a canonical `n`; `undefined` for any other pair.
+ */
+function formatVersionOrder(
+  version: unknown,
+  current: unknown,
+): number | undefined {
+  if (typeof version === "number" && typeof current === "number")
+    return Number.isSafeInteger(version) && Number.isSafeInteger(current)
+      ? Math.sign(version - current)
+      : undefined;
+  if (typeof version !== "string" || typeof current !== "string")
+    return undefined;
+  const found = LITERAL_VERSION.exec(version);
+  const ours = LITERAL_VERSION.exec(current);
+  if (found === null || ours === null || found[1] !== ours[1]) return undefined;
+  const ordinal = BigInt(found[2]);
+  const currentOrdinal = BigInt(ours[2]);
+  return ordinal === currentOrdinal ? 0 : ordinal < currentOrdinal ? -1 : 1;
+}
+
+/**
+ * Whether `version` comes before `current`: a smaller safe integer, or a
+ * `<family>/v<n>` literal of the same family with a smaller canonical `n`.
+ * False for two versions that cannot be ordered, such as a literal of
+ * another family or one whose `n` has a leading zero.
  */
 export function formatVersionPrecedes(
   version: unknown,
   current: unknown,
 ): boolean {
-  if (typeof version === "number" && typeof current === "number")
-    return version < current;
-  if (typeof version !== "string" || typeof current !== "string") return false;
-  const found = LITERAL_VERSION.exec(version);
-  const ours = LITERAL_VERSION.exec(current);
-  if (found === null || ours === null || found[1] !== ours[1]) return false;
-  return Number(found[2]) < Number(ours[2]);
+  const order = formatVersionOrder(version, current);
+  return order !== undefined && order < 0;
+}
+
+/**
+ * Whether `version` comes after `current`, under the ordering
+ * {@link formatVersionPrecedes} uses: a value a later build wrote.
+ */
+export function formatVersionFollows(
+  version: unknown,
+  current: unknown,
+): boolean {
+  const order = formatVersionOrder(version, current);
+  return order !== undefined && order > 0;
+}
+
+/**
+ * Whether `raw` is a plain object declaring a version of `migrations` that
+ * comes after the current one: a value a later build wrote, which this build
+ * neither migrates nor reads.
+ */
+export function declaresLaterFormatVersion<Version>(
+  raw: unknown,
+  migrations: FormatMigrations<Version>,
+): boolean {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw))
+    return false;
+  return formatVersionFollows(
+    declaredVersion(raw as Record<string, unknown>, migrations),
+    migrations.current,
+  );
 }
 
 function declaredVersion<Version>(

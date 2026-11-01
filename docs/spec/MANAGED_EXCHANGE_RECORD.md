@@ -495,6 +495,10 @@ invalidate it:
   value the record holds. The refusal is a read failure like any other: the
   attended list routes to its read-failed recovery surface, and the unattended
   read skips the entry. That surface shows the refusal in the record's row.
+- **Later.** A record at a later `schemaVersion` than this build's means this
+  page is behind the build that wrote it, not that the record is damaged. The
+  read-failed surface names the record as a newer version's and states the
+  reload, and offers no remove for it.
 - **The table.** It has no step yet, since every earlier literal is a
   development one.
 
@@ -2465,20 +2469,24 @@ deployment reads what the newer build filed. It classifies as *stale-page*, whos
 remedy is a reload; offering the reset there would destroy records the current
 build reads. Only entries the reading build is ahead of are the *unreadable* state
 the recovery below belongs to. A literal that cannot be ordered against this
-build's -- another family, or no ordinal -- is not later, so a value nothing can
+build's -- another family, no ordinal, or an ordinal written with a leading
+zero -- is not later, so a value nothing can
 be concluded about keeps the reading that offers a way out. The append refuses in
 both directions alike, since it re-reads through the same validating parse: a run
 from a stale page discloses and files nothing, which is why that state's copy
 states the consequence and not only the remedy.
 
-The direction split reads only as far as an envelope this build admits. The
-entry literals that decide it are read by the envelope-only parse, so a
-later build that reshapes the envelope itself -- a bumped accounting `version`
-literal, or any added envelope key, which the strict envelope schema refuses --
-classifies here as *unreadable*, reset offered, even when its entries are newer
-than this build. Nothing pins the envelope's shape across builds (the recovery
-check pins the entry version literal alone), so an envelope change is a
-compatibility decision that change must itself state: route the new envelope
+The direction split reads the envelope's own `version` first: a later literal
+of the accounting's family is *stale-page*, whatever its entries hold. With no
+envelope this build admits, there is no stored form to export, so that state
+offers only the reload. Past the envelope's `version`, the entry literals that
+decide the split are read by the envelope-only parse, so a later build that
+reshapes the envelope under the same `version` -- an added envelope key, which
+the strict envelope schema refuses -- classifies here as *unreadable*, reset
+offered, even when its entries are newer than this build. Nothing pins the
+envelope's shape across builds (the recovery check pins the entry version
+literal alone), so an envelope change is a compatibility decision that change
+must itself state: bump the accounting `version`, which routes the new envelope
 through this direction split, or accept that pages of this build offer the
 reset over the value it writes.
 
@@ -2498,7 +2506,8 @@ destroyed and what is kept, and is never a read's side effect. When the stored
 value is damaged past its envelope -- corruption, or an envelope whose own
 migration failed -- there is nothing to export and the surface says so rather than offering a
 download it cannot honor. The export arm alone is offered from the stale-page
-state as well: handing back stored bytes asserts nothing in either direction,
+state as well, where its envelope is one this build admits: handing back stored
+bytes asserts nothing in either direction,
 where the reset belongs to the direction that has records stranded.
 
 Two shapes are not offered. **Rewriting** an entry at the version a migration
@@ -2547,8 +2556,9 @@ short, so it is migrated on read like the accounting rather than discarded
 next write -- a further note, or a filing that leaves runs noted -- never by a
 read. A step moves the note and never a retained record, which a filing appends
 to the accounting as retained. A note whose migration fails is a note this build
-cannot read, below, and that state shows the refusal. The table has no step
-yet.
+cannot read, below, and that state shows the refusal. A note at a later version
+than this build's is a stale page instead, whose surface states the reload. The
+table has no step yet.
 
 **When an entry is written.** Whenever a run that disclosed does not file --
 either arm above -- and on the same terms the append itself takes: best-effort,

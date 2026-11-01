@@ -10,6 +10,14 @@ import { createElement } from "react";
 import "@mantine/core/styles.css";
 
 import {
+  LATER_VERSION_RECORDS_CAUSE,
+  LATER_VERSION_RECORD_LABEL,
+  LATER_VERSION_RECORD_NOTE,
+  STATE_UNREADABLE_NOTE,
+  UNREADABLE_RECORDS_CAUSE,
+  UNREADABLE_RECORD_LABEL,
+} from "@recurring/savedExchangesRecovery";
+import {
   MANAGED_EXCHANGE_LOCAL_STORE_NAME,
   MANAGED_EXCHANGE_STORE_NAME,
   clearManagedExchanges,
@@ -20,10 +28,6 @@ import {
   openManagedExchangeDatabase,
   recordManagedExchangeLastRun,
 } from "@psi/managed/managedExchangeStore";
-import {
-  STATE_UNREADABLE_NOTE,
-  UNREADABLE_RECORD_LABEL,
-} from "@recurring/savedExchangesRecovery";
 import {
   composeManagedExchangeFile,
   runnableManagedExchangeOrRefuse,
@@ -83,7 +87,7 @@ function newExchange(
   };
 }
 
-/** Seed an arbitrary raw value under a key, so a test can plant a future-version
+/** Seed an arbitrary raw value under a key, so a test can plant a damaged
  * record the strict read rejects but the diagnostic read still enumerates. */
 async function rawPut(value: unknown): Promise<void> {
   const db = await openManagedExchangeDatabase();
@@ -96,6 +100,23 @@ async function rawPut(value: unknown): Promise<void> {
       transaction.objectStore(MANAGED_EXCHANGE_STORE_NAME).put(value);
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+/** The value at rest under `id`, past every validating read. */
+async function rawGet(id: string): Promise<unknown> {
+  const db = await openManagedExchangeDatabase();
+  try {
+    return await new Promise<unknown>((resolve, reject) => {
+      const request = db
+        .transaction(MANAGED_EXCHANGE_STORE_NAME, "readonly")
+        .objectStore(MANAGED_EXCHANGE_STORE_NAME)
+        .get(id);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
     });
   } finally {
     db.close();
@@ -144,7 +165,7 @@ describe("read-failed recovery listing", () => {
     await rawPut({
       ...good,
       id: "zzz-bad-record",
-      schemaVersion: "alcove-managed-exchange/v5",
+      schemaVersion: "alcove-managed-exchange/damaged",
     });
     // Precondition: the strict list read rejects wholesale on the bad record.
     await expect(listManagedExchanges()).rejects.toThrow();
@@ -201,7 +222,7 @@ describe("read-failed recovery listing", () => {
     await rawPut({
       ...good,
       id: "zzz-bad-record",
-      schemaVersion: "alcove-managed-exchange/v5",
+      schemaVersion: "alcove-managed-exchange/damaged",
     });
 
     app.render(createElement(SavedExchanges));
@@ -221,7 +242,7 @@ describe("read-failed recovery listing", () => {
     await rawPut({
       ...good,
       id: "zzz-bad-record",
-      schemaVersion: "alcove-managed-exchange/v5",
+      schemaVersion: "alcove-managed-exchange/damaged",
     });
 
     app.render(createElement(SavedExchanges));
@@ -278,7 +299,7 @@ describe("read-failed recovery listing", () => {
     await rawPut({
       ...good,
       id: "zzz-bad-record",
-      schemaVersion: "alcove-managed-exchange/v5",
+      schemaVersion: "alcove-managed-exchange/damaged",
     });
 
     app.render(createElement(SavedExchanges));
@@ -289,6 +310,69 @@ describe("read-failed recovery listing", () => {
     expect(
       page.getByText("could not move it to version", { exact: false }).query(),
     ).toBeNull();
+  });
+
+  test("a record a newer version saved asks for a reload, and offers no remove", async () => {
+    const good = await createRunnableExchange(
+      newExchange({ label: "Riverbend quarterly" }),
+    );
+    const later = {
+      ...good,
+      id: "zzz-later-record",
+      label: "Lakeside annual",
+      schemaVersion: "alcove-managed-exchange/v5",
+    };
+    await rawPut(later);
+
+    app.render(createElement(SavedExchanges));
+
+    await expect
+      .element(page.getByText(LATER_VERSION_RECORD_LABEL, { exact: true }))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByText(LATER_VERSION_RECORD_NOTE, { exact: true }))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByText(LATER_VERSION_RECORDS_CAUSE))
+      .toBeInTheDocument();
+    expect(page.getByText(UNREADABLE_RECORDS_CAUSE).query()).toBeNull();
+    expect(page.getByText(UNREADABLE_RECORD_LABEL).query()).toBeNull();
+    // Only the readable record's row offers a remove.
+    expect(page.getByRole("button", { name: "Remove" }).all()).toHaveLength(1);
+    expect(document.body.textContent).not.toContain("Lakeside annual");
+    expect(
+      (await listManagedExchangesDiagnostic()).find(
+        (entry) => entry.kind === "later-version",
+      ),
+    ).toEqual({ kind: "later-version", id: later.id, backedUp: false });
+    await expect(rawGet(later.id)).resolves.toEqual(later);
+  });
+
+  test("a damaged record beside one a newer version saved states both causes", async () => {
+    const good = await createRunnableExchange(
+      newExchange({ label: "Riverbend quarterly" }),
+    );
+    await rawPut({
+      ...good,
+      id: "zzz-later-record",
+      schemaVersion: "alcove-managed-exchange/v5",
+    });
+    await rawPut({
+      ...good,
+      id: "zzz-z-damaged-record",
+      schemaVersion: "alcove-managed-exchange/damaged",
+    });
+
+    app.render(createElement(SavedExchanges));
+
+    await expect
+      .element(page.getByText(LATER_VERSION_RECORDS_CAUSE))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByText(UNREADABLE_RECORDS_CAUSE))
+      .toBeInTheDocument();
+    // The readable record and the damaged one each offer a remove.
+    expect(page.getByRole("button", { name: "Remove" }).all()).toHaveLength(2);
   });
 });
 
@@ -306,7 +390,7 @@ describe("recovery listing: the delete confirm's custody notes", () => {
     await rawPut({
       ...good,
       id: "zzz-bad-record",
-      schemaVersion: "alcove-managed-exchange/v5",
+      schemaVersion: "alcove-managed-exchange/damaged",
     });
     if (seedState) await seedState(good);
     await expect(listManagedExchanges()).rejects.toThrow();
@@ -452,7 +536,7 @@ describe("the import this surface offers works from the read-failed state", () =
     await rawPut({
       ...good,
       id: "zzz-bad-record",
-      schemaVersion: "alcove-managed-exchange/v5",
+      schemaVersion: "alcove-managed-exchange/damaged",
     });
     await expect(listManagedExchanges()).rejects.toThrow();
 

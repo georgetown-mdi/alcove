@@ -21,6 +21,13 @@ export function previousVersionOf(current: string): string {
   return `${match[1]}/v${Number(match[2]) - 1}`;
 }
 
+/** The `<family>/v<n>` literal one ordinal after `current`. */
+export function nextVersionOf(current: string): string {
+  const match = /^(.+)\/v(\d+)$/.exec(current);
+  if (match === null) throw new Error(`${current} holds no ordinal`);
+  return `${match[1]}/v${Number(match[2]) + 1}`;
+}
+
 /**
  * A table with one step, from the version before `current` to `current`. A
  * document at the earlier version holds `field` under `storedName`, which the

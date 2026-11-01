@@ -25,6 +25,8 @@ import { z } from "zod";
 
 import {
   EXCHANGE_RECORD_VERSION,
+  declaresLaterFormatVersion,
+  formatVersionFollows,
   migrateOnRead,
   parseExchangeRecord,
 } from "@alcove/core";
@@ -118,22 +120,6 @@ export function parseStoredDisclosureAccounting(
   };
 }
 
-/** The `<family>/v<n>` shape a format version literal takes, split so two literals
- * of the same family can be ordered. A literal that does not take it has no
- * ordinal, and orders against nothing. */
-const VERSION_SHAPE = /^(.+)\/v(\d+)$/;
-
-/** A version literal's family and ordinal, or `undefined` for a value that is not
- * a literal of that shape. */
-function versionParts(
-  version: unknown,
-): { family: string; ordinal: number } | undefined {
-  if (typeof version !== "string") return undefined;
-  const match = VERSION_SHAPE.exec(version);
-  if (match === null) return undefined;
-  return { family: match[1], ordinal: Number(match[2]) };
-}
-
 /**
  * Whether any stored entry names a LATER exchange-record format than this
  * build admits -- the direction that says the READER is behind, not the
@@ -143,25 +129,28 @@ function versionParts(
  * under a running page; see {@link ../utils/appShellUpdate.ts}), so clearing
  * it here would destroy readable records. True on any such entry, including a
  * mixed accounting. A version literal this cannot order (another family, or
- * a shape holding no ordinal) is treated as not later.
+ * a shape holding no canonical ordinal) is treated as not later.
  */
 export function storedEntriesAheadOfThisBuild(
   stored: StoredDisclosureAccounting,
 ): boolean {
-  const build = versionParts(EXCHANGE_RECORD_VERSION);
-  if (build === undefined) return false;
-  return stored.entries.some((entry) => {
-    const version =
+  return stored.entries.some((entry) =>
+    formatVersionFollows(
       entry !== null && typeof entry === "object"
         ? (entry as Record<string, unknown>)["version"]
-        : undefined;
-    const entryVersion = versionParts(version);
-    return (
-      entryVersion !== undefined &&
-      entryVersion.family === build.family &&
-      entryVersion.ordinal > build.ordinal
-    );
-  });
+        : undefined,
+      EXCHANGE_RECORD_VERSION,
+    ),
+  );
+}
+
+/**
+ * Whether `raw`, a value read from the accounting store, declares an
+ * envelope version later than this build's: an accounting a later build
+ * wrote, which this page being behind explains, never a damaged one.
+ */
+export function storedEnvelopeAheadOfThisBuild(raw: unknown): boolean {
+  return declaresLaterFormatVersion(raw, DISCLOSURE_ACCOUNTING_MIGRATIONS);
 }
 
 /**

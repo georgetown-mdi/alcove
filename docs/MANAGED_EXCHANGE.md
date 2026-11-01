@@ -1238,12 +1238,17 @@ a newer version has filed records for the exchange since, the page says **this
 page is running an older version of Alcove**. Nothing is wrong with the records,
 and clearing them is not offered. Reload before running: a run from this page
 discloses and files no record. If a run is under way, reloading ends it. The
-stored-records download stays available meanwhile.
+stored-records download stays available meanwhile, unless the newer version
+changed the format of the accounting itself. The same holds for a saved
+exchange, or a note of missing runs, that a newer version wrote: the page asks
+for a reload, and the saved exchange cannot be removed from this version.
 
 If a reload shows the same message, the deployment was rolled back past the
-format change. Take the stored-records download, and do not leave the exchange
-running, since every run discloses and files nothing. Removing the exchange is
-then the only way out this build offers, and the downloaded records stay intact.
+format change. Take the stored-records download if it is offered, and do not
+leave the exchange running, since every run discloses and files nothing.
+Removing the exchange is then the only way out this build offers, and the
+downloaded records stay intact. A saved exchange a newer version wrote cannot be
+removed this way: the list reads again once the newer version is deployed.
 
 ## Surviving storage eviction
 

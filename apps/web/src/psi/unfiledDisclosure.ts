@@ -10,7 +10,11 @@
 
 import { z } from "zod";
 
-import { migrateOnRead, parseExchangeRecord } from "@alcove/core";
+import {
+  declaresLaterFormatVersion,
+  migrateOnRead,
+  parseExchangeRecord,
+} from "@alcove/core";
 
 import type { ExchangeRecord, FormatMigrations } from "@alcove/core";
 import type { ZodType } from "zod";
@@ -96,6 +100,13 @@ export function parseStoredUnfiledDisclosures(
   migrations: FormatMigrations<string> = UNFILED_DISCLOSURE_MIGRATIONS,
 ): StoredUnfiledDisclosures {
   return storedSchema.parse(migrateOnRead(raw, migrations));
+}
+
+/** Whether `raw`, a value read from the note's key, declares a note version
+ * later than this build's: a note a later build wrote, which this page being
+ * behind explains, never a damaged one. */
+export function storedNoteAheadOfThisBuild(raw: unknown): boolean {
+  return declaresLaterFormatVersion(raw, UNFILED_DISCLOSURE_MIGRATIONS);
 }
 
 /** The retained record's binding nonce, or `undefined`, read without

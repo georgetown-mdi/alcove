@@ -43,6 +43,7 @@ import {
 import {
   noteUnfiledDisclosure,
   parseStoredUnfiledDisclosures,
+  storedNoteAheadOfThisBuild,
   unfiledDisclosureKey,
   unfiledDisclosuresAfterFiling,
   unfiledDisclosuresOf,
@@ -83,7 +84,11 @@ export type UnfiledDisclosureRead =
    * they sit -- the note is the only thing standing for that disclosure.
    * `migrationFailure` is the refusal where a migration failed, its message
    * naming the versions and the cause, and is absent for damage. */
-  | { kind: "unreadable"; migrationFailure?: FormatMigrationError };
+  | { kind: "unreadable"; migrationFailure?: FormatMigrationError }
+  /** A stored note this build refuses whose version is later than this
+   * build's: a run went unfiled, and the build that wrote the note names it.
+   * This page is behind, and reloading is the recovery. */
+  | { kind: "stale-page" };
 
 /** Where a run that could not be filed was recorded, so a caller with no notice
  * sink still reports the outcome to the diagnostic log. */
@@ -251,6 +256,7 @@ export async function readUnfiledDisclosures(
         try {
           stored = parseStoredUnfiledDisclosures(raw);
         } catch (error) {
+          if (storedNoteAheadOfThisBuild(raw)) return { kind: "stale-page" };
           return error instanceof FormatMigrationError
             ? { kind: "unreadable", migrationFailure: error }
             : { kind: "unreadable" };

@@ -10,12 +10,14 @@ import {
   parseDisclosureAccounting,
   parseStoredDisclosureAccounting,
   storedEntriesAheadOfThisBuild,
+  storedEnvelopeAheadOfThisBuild,
 } from "../../../src/psi/disclosureAccounting.js";
 
 import {
   UNMOVABLE_CAUSE,
   UNMOVABLE_FIELD,
   atPreviousVersion,
+  nextVersionOf,
   previousVersionMigrations,
 } from "../../utils/storedFormatMigrations.js";
 import {
@@ -294,6 +296,41 @@ describe("telling a stranded accounting from a stale page", () => {
     ]) {
       expect(storedEntriesAheadOfThisBuild(storedWith([entry]))).toBe(false);
     }
+  });
+
+  test("a later version written with a leading zero is not ahead", async () => {
+    const record = await disclosureRecord();
+    const later = neighbouringRecordVersion(1).replace("/v", "/v0");
+
+    expect(
+      storedEntriesAheadOfThisBuild(
+        storedWith([{ ...record, version: later }]),
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("whether a stored envelope is ahead of this build", () => {
+  test("a later envelope version is, whatever its entries", () => {
+    const later = nextVersionOf(DISCLOSURE_ACCOUNTING_VERSION);
+    expect(
+      storedEnvelopeAheadOfThisBuild({ version: later, entries: [] }),
+    ).toBe(true);
+    expect(storedEnvelopeAheadOfThisBuild({ version: later })).toBe(true);
+  });
+
+  test("this version, an earlier one, or one it cannot order is not", () => {
+    for (const version of [
+      DISCLOSURE_ACCOUNTING_VERSION,
+      "alcove-disclosure-accounting/v1",
+      "alcove-disclosure-accounting/v03",
+      "alcove-exchange-record/v99",
+      undefined,
+    ])
+      expect(storedEnvelopeAheadOfThisBuild({ version, entries: [] })).toBe(
+        false,
+      );
+    expect(storedEnvelopeAheadOfThisBuild(undefined)).toBe(false);
   });
 });
 

@@ -48,6 +48,7 @@ import {
   safeParseManagedExchangeRecord,
   standingCompromiseResponse,
   standingConditionFrom,
+  storedRecordAheadOfThisBuild,
 } from "@psi/managed/managedExchangeRecord";
 import {
   UNMOVABLE_CAUSE,
@@ -391,6 +392,26 @@ describe("parseManagedExchangeRecord reader-rejects-unknown", () => {
     const result = safeParseManagedExchangeRecord(future);
     expect(result.success).toBe(false);
     expect(() => parseManagedExchangeRecord(future)).toThrow();
+  });
+
+  test("tells a later schemaVersion from a damaged or earlier one", () => {
+    const record = buildManagedExchangeRecord(newExchange());
+    expect(
+      storedRecordAheadOfThisBuild({
+        ...record,
+        schemaVersion: "alcove-managed-exchange/v5",
+      }),
+    ).toBe(true);
+    for (const schemaVersion of [
+      MANAGED_EXCHANGE_SCHEMA_VERSION,
+      "alcove-managed-exchange/v3",
+      "alcove-managed-exchange/v05",
+      "alcove-managed-exchange/damaged",
+    ])
+      expect(storedRecordAheadOfThisBuild({ ...record, schemaVersion })).toBe(
+        false,
+      );
+    expect(storedRecordAheadOfThisBuild({ ...record, label: 7 })).toBe(false);
   });
 
   test("accepts the recognized v4 schemaVersion", () => {

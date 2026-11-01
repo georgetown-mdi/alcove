@@ -6,6 +6,7 @@ import {
   UNFILED_DISCLOSURE_VERSION,
   noteUnfiledDisclosure,
   parseStoredUnfiledDisclosures,
+  storedNoteAheadOfThisBuild,
   unfiledDisclosureKey,
   unfiledDisclosuresAfterFiling,
   unfiledDisclosuresOf,
@@ -15,6 +16,7 @@ import {
   UNMOVABLE_CAUSE,
   UNMOVABLE_FIELD,
   atPreviousVersion,
+  nextVersionOf,
   previousVersionMigrations,
 } from "../../utils/storedFormatMigrations.js";
 import {
@@ -264,5 +266,23 @@ describe("what filing leaves behind", () => {
     // Undefined rather than an empty note: the store removes the key, so an
     // exchange that owes nothing holds nothing.
     expect(left).toBeUndefined();
+  });
+});
+
+describe("whether a stored note is ahead of this build", () => {
+  test("a later note version is, and this, an earlier, or an unordered one is not", () => {
+    expect(
+      storedNoteAheadOfThisBuild({
+        version: nextVersionOf(UNFILED_DISCLOSURE_VERSION),
+        entries: [],
+      }),
+    ).toBe(true);
+    for (const version of [
+      UNFILED_DISCLOSURE_VERSION,
+      "alcove-unfiled-disclosure/v1",
+      "alcove-unfiled-disclosure/v03",
+      "alcove-disclosure-accounting/v9",
+    ])
+      expect(storedNoteAheadOfThisBuild({ version, entries: [] })).toBe(false);
   });
 });

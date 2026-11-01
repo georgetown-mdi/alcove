@@ -65,7 +65,13 @@ import {
   storedCopyImportReason,
   storedCopyTakeLabel,
 } from "./managedImportFailure";
-import { STATE_UNREADABLE_NOTE, recoveryRows } from "./savedExchangesRecovery";
+import {
+  LATER_VERSION_RECORD_NOTE,
+  SAVED_EXCHANGES_FAILED_LEAD,
+  STATE_UNREADABLE_NOTE,
+  recoveryRows,
+  savedExchangesFailedCauses,
+} from "./savedExchangesRecovery";
 import {
   managedImportFileChoice,
   pairImportedNotice,
@@ -617,31 +623,42 @@ function SavedExchangesEmpty() {
  * delete-by-key. A fresh import lands from this state, the store's reconciliation
  * skipping the entry it cannot parse, but it does not mend the list while that
  * record stands: the restore-from-backup affordance is a way straight to a run
- * surface, not the repair. */
+ * surface, not the repair. The causes it states are read off the listing's
+ * rows ({@link savedExchangesFailedCauses}), so a record a newer version saved
+ * is named as that, never as damaged. */
 function SavedExchangesFailed({ reload }: { reload: () => void }) {
+  const [rows, setRows] = useState<Array<RecoveryRow>>();
   return (
     <>
-      <p className={styles.sub}>
-        Your recurring exchanges could not be read from this browser. One or
-        more stored records is unreadable - damaged, or from an earlier app
-        version this one could not convert. Remove the record below to recover
-        the rest, or import a backup file.
-      </p>
-      <RecoveryListing reload={reload} />
+      <p className={styles.sub}>{SAVED_EXCHANGES_FAILED_LEAD}</p>
+      {savedExchangesFailedCauses(rows).map((cause) => (
+        <p key={cause} className={styles.sub}>
+          {cause}
+        </p>
+      ))}
+      <RecoveryListing rows={rows} setRows={setRows} reload={reload} />
       <ImportExchangeFile />
     </>
   );
 }
 
 /** The recovery listing on the read-failed surface: the diagnostic read's
- * per-entry result, each row with the one-step delete-by-key. It loads on mount
+ * per-entry result, each row with the one-step delete-by-key but a record a
+ * newer version saved, which states the reload instead. It loads on mount
  * from the diagnostic read (which never rejects wholesale), so an unreadable
  * record is identifiable and discardable even when the normal list cannot load.
  * A delete calls `reload`, which re-runs the whole load. If the diagnostic read
  * itself fails (the store's own failure, not a single bad record), the listing
  * is simply omitted and the restore affordance below still stands. */
-function RecoveryListing({ reload }: { reload: () => void }) {
-  const [rows, setRows] = useState<Array<RecoveryRow>>();
+function RecoveryListing({
+  rows,
+  setRows,
+  reload,
+}: {
+  rows: Array<RecoveryRow> | undefined;
+  setRows: (rows: Array<RecoveryRow>) => void;
+  reload: () => void;
+}) {
   useEffect(() => {
     let live = true;
     void listManagedExchangesDiagnostic()
@@ -654,7 +671,7 @@ function RecoveryListing({ reload }: { reload: () => void }) {
     return () => {
       live = false;
     };
-  }, []);
+  }, [setRows]);
 
   if (rows === undefined) return <Loader />;
   if (rows.length === 0) return null;
@@ -683,14 +700,21 @@ function RecoveryListing({ reload }: { reload: () => void }) {
                 {STATE_UNREADABLE_NOTE}
               </span>
             )}
+            {row.laterVersion && (
+              <span className={`${styles.small} ${styles.sub}`}>
+                {LATER_VERSION_RECORD_NOTE}
+              </span>
+            )}
           </div>
-          <DeleteExchangeButton
-            id={row.id}
-            label={row.deleteLabel}
-            backedUp={row.backedUp}
-            unopenable={row.unreadable || row.stateUnreadable}
-            onDeleted={reload}
-          />
+          {!row.laterVersion && (
+            <DeleteExchangeButton
+              id={row.id}
+              label={row.deleteLabel}
+              backedUp={row.backedUp}
+              unopenable={row.unreadable || row.stateUnreadable}
+              onDeleted={reload}
+            />
+          )}
         </li>
       ))}
     </ul>

@@ -1640,6 +1640,24 @@ function UnfiledDisclosureNotice({
           )}
         </Alert>
       )}
+      {read?.kind === "stale-page" && (
+        <Alert
+          color="yellow"
+          title="A run's record is missing from this accounting"
+          mt="sm"
+        >
+          <p>
+            A run of this exchange disclosed your columns and its record was not
+            saved to the accounting below. The note of which run it was is from
+            a newer version of this app than this page is running, so the run is
+            not named here. The accounting below is short at least one entry.
+          </p>
+          <p>
+            Reload this page to use the current version, which names the run. If
+            a run is under way, reloading ends it.
+          </p>
+        </Alert>
+      )}
       {read?.kind === "unavailable" && (
         <p className={`${styles.small} ${styles.sub}`}>
           Whether any run&apos;s record is missing from this accounting could
@@ -1904,11 +1922,14 @@ function downloadStoredAccounting(stored: StoredDisclosureAccounting): void {
  * The reload is named rather than pressed: this section sits below the run
  * controls, a reload ends a run in progress, and the app's own update banner
  * holds the reload button, above every route.
+ *
+ * Where the accounting's own envelope is the later one, this build has no
+ * stored form to hand back, and the download is not offered.
  */
 function StalePageAccountingNotice({
   stored,
 }: {
-  stored: StoredDisclosureAccounting;
+  stored: StoredDisclosureAccounting | undefined;
 }) {
   return (
     <>
@@ -1929,18 +1950,23 @@ function StalePageAccountingNotice({
           is under way, reloading ends it.
         </p>
       </Alert>
-      <p className={`${styles.small} ${styles.sub}`}>
-        You can still download the records in the form they are stored in, for
-        your own files. This app version cannot read that file back or check it.
-      </p>
-      <div className={styles.savedRowActions} style={{ marginTop: "1rem" }}>
-        <Button
-          variant="default"
-          onClick={() => downloadStoredAccounting(stored)}
-        >
-          Download the stored records (JSON)
-        </Button>
-      </div>
+      {stored !== undefined && (
+        <>
+          <p className={`${styles.small} ${styles.sub}`}>
+            You can still download the records in the form they are stored in,
+            for your own files. This app version cannot read that file back or
+            check it.
+          </p>
+          <div className={styles.savedRowActions} style={{ marginTop: "1rem" }}>
+            <Button
+              variant="default"
+              onClick={() => downloadStoredAccounting(stored)}
+            >
+              Download the stored records (JSON)
+            </Button>
+          </div>
+        </>
+      )}
     </>
   );
 }
@@ -1949,9 +1975,9 @@ function StalePageAccountingNotice({
  * The recovery affordance for an accounting this build cannot read: an earlier
  * format whose migration failed, or a damaged value, which the validating read
  * refuses wholesale. An earlier format that migrates reads as an accounting and
- * never reaches this. Reached only for entries this build is not BEHIND; the
- * opposite direction is a stale page rather than a stranded accounting, and
- * takes {@link StalePageAccountingNotice}.
+ * never reaches this. Reached only for an envelope and entries this build is
+ * not BEHIND; the opposite direction is a stale page rather than a stranded
+ * accounting, and takes {@link StalePageAccountingNotice}.
  *
  * Two arms, offered export-then-reset (see
  * docs/spec/MANAGED_EXCHANGE_RECORD.md, "The recovery offered is export then
