@@ -1,8 +1,12 @@
 import {
+  EXCHANGE_KEYS_MIGRATIONS,
   EXCHANGE_KEYS_VERSION,
+  EXCHANGE_RECORD_MIGRATIONS,
   EXCHANGE_RECORD_VERSION,
   FINGERPRINT_REGEX,
+  FormatMigrationError,
   OWN_IDENTITY_UNMATCHED_SENTENCE,
+  SIGNED_RECEIPT_MIGRATIONS,
   SIGNED_RECEIPT_VERSION,
   SIGNING_CERTIFICATE_VERSION,
   SIGNING_IDENTITY_VERSION,
@@ -16,6 +20,7 @@ import {
   parseVerificationKeys,
   recordAlterationIsTheOnlyExplanation,
   recordedVersionMatches,
+  recordedVersionReadable,
   sanitizeErrorForDisplay,
   sanitizeForDisplay,
   signedRecordExpectations,
@@ -213,14 +218,16 @@ export function parseRecordDocument(text: string): RecordParseResult {
       message: `${MALFORMED_RECORD_MESSAGE} ${sanitizeErrorForDisplay(error)}`,
     };
   }
-  if (!recordedVersionMatches(raw, EXCHANGE_RECORD_VERSION))
+  if (!recordedVersionReadable(raw, EXCHANGE_RECORD_MIGRATIONS))
     return {
       kind: "unrecognized-version",
       message: unrecognizedVersionMessage("record"),
     };
   try {
     return { kind: "ok", record: parseExchangeRecord(raw) };
-  } catch {
+  } catch (error) {
+    if (error instanceof FormatMigrationError)
+      return { kind: "malformed", message: sanitizeErrorForDisplay(error) };
     // The Zod error can quote a parsed value; do not forward it. The static
     // message locates the fault (wrong file / edited record) without an echo.
     return { kind: "malformed", message: MALFORMED_RECORD_MESSAGE };
@@ -239,14 +246,16 @@ export function parseKeysDocument(text: string): KeysParseResult {
       message: `${MALFORMED_KEYS_MESSAGE} ${sanitizeErrorForDisplay(error)}`,
     };
   }
-  if (!recordedVersionMatches(raw, EXCHANGE_KEYS_VERSION))
+  if (!recordedVersionReadable(raw, EXCHANGE_KEYS_MIGRATIONS))
     return {
       kind: "unrecognized-version",
       message: unrecognizedVersionMessage("keys"),
     };
   try {
     return { kind: "ok", keys: parseVerificationKeys(raw) };
-  } catch {
+  } catch (error) {
+    if (error instanceof FormatMigrationError)
+      return { kind: "malformed", message: sanitizeErrorForDisplay(error) };
     return { kind: "malformed", message: MALFORMED_KEYS_MESSAGE };
   }
 }
@@ -267,14 +276,16 @@ export function parseSignedRecordDocument(
       message: `${MALFORMED_SIGNED_RECORD_MESSAGE} ${sanitizeErrorForDisplay(error)}`,
     };
   }
-  if (!recordedVersionMatches(raw, SIGNED_RECEIPT_VERSION))
+  if (!recordedVersionReadable(raw, SIGNED_RECEIPT_MIGRATIONS))
     return {
       kind: "unrecognized-version",
       message: unrecognizedVersionMessage("signed-record"),
     };
   try {
     return { kind: "ok", record: parseDualSignedRecord(raw) };
-  } catch {
+  } catch (error) {
+    if (error instanceof FormatMigrationError)
+      return { kind: "malformed", message: sanitizeErrorForDisplay(error) };
     return { kind: "malformed", message: MALFORMED_SIGNED_RECORD_MESSAGE };
   }
 }

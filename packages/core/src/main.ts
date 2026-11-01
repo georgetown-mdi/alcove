@@ -394,8 +394,18 @@ export type {
   FormatVersionPolicy,
 } from "./config/formatVersion";
 export {
+  FormatMigrationError,
+  migrateOnRead,
+  readableFormatVersions,
+} from "./config/formatMigration";
+export type {
+  FormatMigrationStep,
+  FormatMigrations,
+} from "./config/formatMigration";
+export {
   KEY_FILE_FIELD_SCHEMAS,
   KEY_FILE_FORMAT_VERSION,
+  KEY_FILE_MIGRATIONS,
   KEY_FILE_SHARED_SECRET_FORMAT_MESSAGE,
   KeyFileSchema,
   keyFileUnreadFieldNames,
@@ -834,8 +844,10 @@ export type {
 export { parseAgreedTerms, serializeAgreedTerms } from "./records/agreedTerms";
 export type { AgreedTerms } from "./records/agreedTerms";
 export {
+  EXCHANGE_KEYS_MIGRATIONS,
   EXCHANGE_KEYS_VERSION,
   EXCHANGE_RECORD_OUTCOMES,
+  EXCHANGE_RECORD_MIGRATIONS,
   EXCHANGE_RECORD_VERSION,
   parseExchangeRecord,
   parseVerificationKeys,
@@ -857,6 +869,7 @@ export {
 } from "./records/partyIdentityDisplay";
 export {
   ReceiptVerificationError,
+  SIGNED_RECEIPT_MIGRATIONS,
   SIGNED_RECEIPT_VERSION,
   parseDualSignedRecord,
   serializeDualSignedRecord,
@@ -867,6 +880,7 @@ export {
   reconstructCommittedData,
   recordAlterationIsTheOnlyExplanation,
   recordedVersionMatches,
+  recordedVersionReadable,
   reproductionMismatchCauses,
   resuppliedFilesAreFromAnotherRun,
   toRetainedResult,
