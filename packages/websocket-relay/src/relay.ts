@@ -17,6 +17,7 @@ import {
   RELAY_HELLO_TIMEOUT_MS,
   RELAY_IDLE_TIMEOUT_MS,
   RELAY_MAX_MESSAGE_BYTES,
+  RELAY_MAX_MESSAGE_FRAGMENTS,
   RELAY_MAX_PAIRINGS,
   RELAY_MAX_UNVERIFIED_SOCKETS,
   RELAY_PAIRING_BURST_BYTES,
@@ -198,13 +199,14 @@ export function attachWebSocketRelay(
   const idleTimeoutMs = testing.idleTimeoutMs ?? RELAY_IDLE_TIMEOUT_MS;
   const observer = testing.observer ?? {};
 
-  // `closeTimeout` is read by the pinned `ws` but missing from @types/ws, so
-  // the options are not written as a literal at the call; the relay's tests
+  // `closeTimeout` and `maxFragments` are read by the pinned `ws` but missing
+  // from @types/ws, so the options are not written as a literal at the call; the relay's tests
   // hold that `ws` applies it.
   const serverOptions = {
     noServer: true,
     clientTracking: false,
     maxPayload: RELAY_MAX_MESSAGE_BYTES,
+    maxFragments: RELAY_MAX_MESSAGE_FRAGMENTS,
     perMessageDeflate: false,
     closeTimeout: closeWaitMs,
     autoPong: false,

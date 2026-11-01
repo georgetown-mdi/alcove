@@ -28,6 +28,10 @@ export const RELAY_PATH = "/relay";
  */
 export const RELAY_MAX_MESSAGE_BYTES = 16_384;
 
+/** The most WebSocket fragments `ws` holds for one message
+ * (docs/spec/WEBSOCKET_RELAY.md, Forwarding). */
+export const RELAY_MAX_MESSAGE_FRAGMENTS = 64;
+
 /** A destination's send buffer, in bytes, above which the relay stops reading
  * from the source. */
 export const RELAY_SEND_BUFFER_HIGH_BYTES = 1024 * 1024;
@@ -139,6 +143,8 @@ export const RelayCloseCode = Object.freeze({
   normal: 1000,
   /** The relay is shutting down. */
   goingAway: 1001,
+  /** A message in more than {@link RELAY_MAX_MESSAGE_FRAGMENTS} fragments. */
+  tooManyFragments: 1008,
   /** A message above {@link RELAY_MAX_MESSAGE_BYTES}. */
   messageTooBig: 1009,
   /**

@@ -37,3 +37,21 @@
 - - -> The relay ends no connection on the size of that queue, since the hold keeps it within the ceiling.
 - - -> **The queue's ceiling.**
 - - -> `packages/sftp-relay/test/browserQueue.test.ts` pauses an in-memory browser while the target sends 4 MiB, in writes of 1,000 bytes, of 64 KiB, and of 1 MiB, and checks after each read the relay queues that the counted queue passes the high mark and never passes the ceiling.
+- - -> **The per-message fragment limit.**
+- - -> A message in more than 64 WebSocket fragments (`RELAY_MAX_MESSAGE_FRAGMENTS`) is refused: `ws` closes its sender with 1008, and the relay closes the partner with 4000 and forwards nothing.
+- - -> `ws` holds every fragment of a message until the message completes, outside the bound below, and its default allows 16,384 fragments a message.
+- - -> The clients send each message as one frame ([Measured fragments](#measured-fragments)).
+- - -> For the same reason a burst of small messages in one read can pass the limit and end the pairing even toward a party that reads at once: 1,277 one-byte messages, each counted 1,027 bytes, pass it, and one 64 KiB read holds thousands of them.
+- - -> The clients send no such burst, as the honest rounds show ([Measured counted queues](#measured-counted-queues)).
+- - -> On top of the bound, `ws` holds a message still arriving in fragments: at most 64 fragments, under 14 KB a connection at the measured cost of a held fragment ([Measured fragments](#measured-fragments)).
+- - -> 1008 | the sender | A message in more than 64 fragments, closed by `ws`; the partner is closed with 4000
+- - -> Measured fragments
+- - -> Measured 2026-11-01 through probes outside the repository: Node's `ws` client (`ws` 8.22.0, Node v26.13.0) and Chromium 156 in the development container, and Firefox 159.0 and Safari 26.6.2 on a macOS host.
+- - -> **Frames a message.**
+- - -> Every client measured, Node's `ws` client, Chromium, Firefox and Safari, sent each relay-sized message, up to 16,384 bytes, as one frame.
+- - -> Chromium first splits a message above 65,536 bytes, four times the cap; Firefox and Safari split none up to 4,194,304 bytes.
+- - -> **A held fragment.**
+- - -> A message held open in 1-byte fragments cost `ws` about 123 bytes a fragment when the fragments arrived in large writes and about 218 bytes when each arrived in a read of its own, measured at the default 16,384 fragments.
+- - -> Runs of 64 fragments or fewer were dominated by heap noise, so the cost is read from the run at the default limit; 64 fragments at 218 bytes are under 14 KB.
+- - -> **The limit.**
+- - -> With the limit set, a message in more fragments than it closed its sender with 1008 and the partner with 4000, and forwarded nothing; a message in as many fragments as the limit was forwarded intact (`packages/websocket-relay/test/relay.test.ts`).

@@ -8,6 +8,7 @@ import WebSocket, { WebSocketServer } from "ws";
 import {
   PAIRED_FRAME,
   RELAY_MAX_MESSAGE_BYTES,
+  RELAY_MAX_MESSAGE_FRAGMENTS,
   RelayCloseCode,
   START_FRAME,
 } from "../src/protocol.ts";
@@ -46,6 +47,15 @@ afterEach(async () => {
 });
 
 const START = '{"type":"start"}';
+
+/** Send `message` as one binary message in 1-byte WebSocket fragments. */
+function sendInFragments(party: Party, message: Buffer): void {
+  for (let index = 0; index < message.length; index += 1) {
+    party.socket.send(message.subarray(index, index + 1), {
+      fin: index === message.length - 1,
+    });
+  }
+}
 
 // A byte rate no loopback test reaches, for a test moving more than one
 // burst whose subject is not the rate.
@@ -304,6 +314,27 @@ describe("refusals", () => {
       reason: "",
     });
     expect(acceptor.received.slice(2)).toEqual([{ binary: atCap }]);
+  });
+
+  it("refuses a message in more fragments than the limit and closes the partner, forwarding nothing", async () => {
+    const { url } = await relay();
+    const { inviter, acceptor } = await forwardingParties(url);
+    sendInFragments(inviter, Buffer.alloc(RELAY_MAX_MESSAGE_FRAGMENTS + 1, 9));
+    expect((await inviter.closed).code).toBe(RelayCloseCode.tooManyFragments);
+    expect(await acceptor.closed).toEqual({
+      code: RelayCloseCode.partnerEnded,
+      reason: "",
+    });
+    expect(acceptor.received.slice(2)).toEqual([]);
+  });
+
+  it("forwards a message in as many fragments as the limit, intact", async () => {
+    const { url } = await relay();
+    const { inviter, acceptor } = await forwardingParties(url);
+    const message = Buffer.alloc(RELAY_MAX_MESSAGE_FRAGMENTS, 9);
+    sendInFragments(inviter, message);
+    const received = await acceptor.receivedCount(3);
+    expect(received[2]).toEqual({ binary: message });
   });
 
   it("forwards nothing until both parties have sent a start", async () => {
