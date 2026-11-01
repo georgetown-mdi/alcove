@@ -70,12 +70,6 @@ function nodeEngine(): PsiEngine {
         Array<number>,
       ];
     },
-    async computeIntersectionCardinality(response) {
-      return (await withInput(
-        response,
-        "computeIntersectionCardinality",
-      )) as number;
-    },
     createPermutedSetup: () => Promise.reject(new Error(NOT_BENCHED)),
     receiveIndexTable: () => Promise.reject(new Error(NOT_BENCHED)),
     matchPermutedRound: () => Promise.reject(new Error(NOT_BENCHED)),

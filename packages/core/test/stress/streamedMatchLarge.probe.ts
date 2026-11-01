@@ -6,7 +6,7 @@
 //
 // Usage: node --expose-gc --import tsx streamedMatchLarge.probe.ts
 //          <generate|match-wasm|match-native>
-//          <identifier-revealing|count-only> <elements> <overlap> <directory>
+//          identifier-revealing <elements> <overlap> <directory>
 //
 // Both sides hold `elements` values, the first `overlap` of them shared. The
 // joiner's key is written with the round, so the request built under it is
@@ -206,8 +206,7 @@ async function generate(
     // A serialized response is a list of elements, so the responses to
     // consecutive slices of the request join into the response to the whole
     // request, in request order: built a slice at a time, the round never
-    // holds a whole request. A count-only response is then sorted only within
-    // each slice, which the count does not depend on.
+    // holds a whole request.
     phase("building the request and response");
     let requestMs = 0;
     let responseMs = 0;
@@ -340,8 +339,9 @@ async function match(
         local.length === overlap &&
         pairsMatchExpected(local, partner, sharedPositions);
     } else {
-      matchesExpected =
-        (await joiner.computeIntersectionCardinality(response)) === overlap;
+      throw new Error(
+        "the probe matches in the identifier-revealing mode only",
+      );
     }
     const matchMs = performance.now() - started;
     const heapEndBytes = getHeapStatistics().used_heap_size;

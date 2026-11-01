@@ -9,6 +9,7 @@ import {
 import { numberArrayMessage } from "../../src/psi/roundTableParts";
 import { MATCHED_LIST_PART_HEADER_BYTES } from "../../src/psi/matchedListParts";
 import { InProcessPsiEngine } from "../../src/psi/psiEngine";
+import { encodeIndexTable } from "../../src/psi/countOnlyPermutation";
 import {
   InternalConsistencyError,
   ProtocolRefusalError,
@@ -420,64 +421,56 @@ describe.each([
   ["wasm", psiLibrary],
   ["native", nativeLibrary],
 ] as const)("a real round on the %s backend", (_backend, library) => {
-  describe.each(["identifier-revealing", "count-only"] as const)(
-    "in %s mode",
-    (mode) => {
-      test.for(RESPONSE_BOUND_SETS)(
-        "answers a request from %s with a response no longer than it",
-        async ([, receiverSet], ctx) => {
-          if (library === undefined) {
-            ctx.skip();
-            return;
-          }
-          const [senderConn, receiverConn] = createMessagePipe();
-          const senderEngine = new InProcessPsiEngine(
-            library,
-            "starter",
-            "sender",
-            mode,
-          );
-          const processRequest = vi.spyOn(senderEngine, "processClientRequest");
-          const sender = new PSIParticipant(
-            "sender",
-            library,
-            { role: "starter", verbose: 0 },
-            UNBOUNDED_PSI_ELEMENTS,
-            senderEngine,
-          );
-          const receiver = new PSIParticipant(
-            "receiver",
-            library,
-            { role: "joiner", verbose: 0 },
-            UNBOUNDED_PSI_ELEMENTS,
-            new InProcessPsiEngine(library, "joiner", "receiver", mode),
-          );
-          const senderSet = ["Alice", "Carol", "Elizabeth"];
-          await (mode === "count-only"
-            ? Promise.all([
-                sender.countIntersection(senderConn, senderSet),
-                receiver.countIntersection(receiverConn, receiverSet),
-              ])
-            : Promise.all([
-                sender.identifyIntersection(senderConn, senderSet),
-                receiver.identifyIntersection(receiverConn, receiverSet),
-              ]));
-          expect(processRequest).toHaveBeenCalledTimes(1);
-          const request = processRequest.mock.calls[0][0];
-          const response = await processRequest.mock.results[0].value;
-          expect(response.byteLength).toBeLessThanOrEqual(request.byteLength);
-          const max = Number.MAX_SAFE_INTEGER;
-          expect(
-            countDeclaredPsiElements(response, "response", max),
-          ).toBeLessThanOrEqual(
-            countDeclaredPsiElements(request, "request", max),
-          );
-          sender.dispose();
-          receiver.dispose();
-        },
-      );
-    },
-  );
+  describe.each(["identifier-revealing"] as const)("in %s mode", (mode) => {
+    test.for(RESPONSE_BOUND_SETS)(
+      "answers a request from %s with a response no longer than it",
+      async ([, receiverSet], ctx) => {
+        if (library === undefined) {
+          ctx.skip();
+          return;
+        }
+        const [senderConn, receiverConn] = createMessagePipe();
+        const senderEngine = new InProcessPsiEngine(
+          library,
+          "starter",
+          "sender",
+          mode,
+        );
+        const processRequest = vi.spyOn(senderEngine, "processClientRequest");
+        const sender = new PSIParticipant(
+          "sender",
+          library,
+          { role: "starter", verbose: 0 },
+          UNBOUNDED_PSI_ELEMENTS,
+          senderEngine,
+        );
+        const receiver = new PSIParticipant(
+          "receiver",
+          library,
+          { role: "joiner", verbose: 0 },
+          UNBOUNDED_PSI_ELEMENTS,
+          new InProcessPsiEngine(library, "joiner", "receiver", mode),
+        );
+        const senderSet = ["Alice", "Carol", "Elizabeth"];
+        await Promise.all([
+          sender.identifyIntersection(senderConn, senderSet),
+          receiver.identifyIntersection(receiverConn, receiverSet),
+        ]);
+        expect(processRequest).toHaveBeenCalledTimes(1);
+        const request = processRequest.mock.calls[0][0];
+        const response = await processRequest.mock.results[0].value;
+        expect(response.byteLength).toBeLessThanOrEqual(request.byteLength);
+        const max = Number.MAX_SAFE_INTEGER;
+        expect(
+          countDeclaredPsiElements(response, "response", max),
+        ).toBeLessThanOrEqual(
+          countDeclaredPsiElements(request, "request", max),
+        );
+        sender.dispose();
+        receiver.dispose();
+      },
+    );
+  });
 });
 
 test("cascade identifyIntersection (joiner) refuses a response declaring more bytes than its request, at the first part", async () => {
@@ -578,41 +571,51 @@ test("cascade identifyIntersection (joiner) rejects an over-declared server setu
   );
 });
 
-test("count-only countIntersection (joiner) rejects an over-declared response frame", async () => {
-  // The count-only leg reaches the same amplifying deserialize the association-table
-  // leg does -- partner-supplied response bytes -- so it gets the same
-  // pre-deserialize bound. Without it the guard would be present for one disclosure
-  // and absent for the other, on the same frame.
+test("count-only countPermutedRound (joiner) rejects a response declaring more elements than the request it answers", async () => {
+  // The every-key count-only receive leg holds the response to the request this
+  // party sent, as the single-pass leg does, before it deserializes the frame.
   const [serverConn, clientConn] = createMessagePipe();
   const joiner = new PSIParticipant(
     "joiner",
     psiLibrary,
     { role: "joiner", verbose: 0 },
     UNBOUNDED_PSI_ELEMENTS,
-    new InProcessPsiEngine(psiLibrary, "joiner", "joiner", "count-only"),
+    new InProcessPsiEngine(
+      psiLibrary,
+      "joiner",
+      "joiner",
+      "count-only-permuted",
+    ),
   );
   const sender = new InProcessPsiEngine(
     psiLibrary,
     "starter",
     "sender",
-    "count-only",
+    "count-only-permuted",
   );
-  const { setup } = await sender.createServerSetup(["Alice", "Carol"]);
+  const senderValues = ["Alice", "Carol"];
+  const { setup, indexTable } = await sender.createPermutedSetup(senderValues);
   const overDeclared = new psiLibrary.response();
   overDeclared.setEncryptedElementsList(tinyElements());
-  // The joiner reads the setup (1st receive), sends its request, then reads the
-  // response (2nd receive) -- the frame replaced here.
-  const run = joiner.countIntersection(
+  // The joiner reads the setup (1st receive) and the index table (2nd), sends
+  // its request, then reads the response (3rd receive) -- the frame replaced
+  // here.
+  const run = joiner.countPermutedRound(
     corruptNthReceive(
       clientConn,
-      2,
+      3,
       asOnePsiSetPart(overDeclared.serializeBinary()),
     ),
     EIGHT_VALUES,
+    {
+      senderRecords: senderValues.length,
+      receiverRecords: EIGHT_VALUES.length,
+    },
   );
   await serverConn.send(asOnePsiSetPart(setup));
-  // Drain the joiner's request and unblock its 2nd receive; the
-  // over-declared response stands in for whatever this frame holds.
+  await serverConn.send(encodeIndexTable(indexTable));
+  // Drain the joiner's request and unblock its 3rd receive; the over-declared
+  // response stands in for whatever this frame holds.
   await serverConn.receive();
   await serverConn.send(new Uint8Array([0]));
   const deserialize = vi.spyOn(psiLibrary.response, "deserializeBinary");
@@ -620,6 +623,7 @@ test("count-only countIntersection (joiner) rejects an over-declared response fr
     await expect(run).rejects.toThrow(
       /inbound PSI response declares more than 8 encrypted element\(s\)/,
     );
+    await expect(run).rejects.toBeInstanceOf(ProtocolRefusalError);
     expect(deserialize).not.toHaveBeenCalled();
   } finally {
     deserialize.mockRestore();

@@ -538,18 +538,13 @@ describe("the count-only-permuted engine refuses", () => {
             sender.createServerSetup(frames.senderValues),
           ),
         ).rejects.toThrow(
-          /createServerSetup needs a PSI engine that is identifier-revealing or count-only; this one is count-only-permuted/,
+          /createServerSetup needs a PSI engine that is identifier-revealing; this one is count-only-permuted/,
         );
         await receiver.receiveServerSetup(frames.setup);
         await expect(
           receiver.computeAssociationTable(frames.response),
         ).rejects.toThrow(
           /computeAssociationTable needs a PSI engine that is identifier-revealing; this one is count-only-permuted/,
-        );
-        await expect(
-          receiver.computeIntersectionCardinality(frames.response),
-        ).rejects.toThrow(
-          /computeIntersectionCardinality needs a PSI engine that is count-only; this one is count-only-permuted/,
         );
         // A round's match returns nothing: no pair and no per-round count.
         await receiver.receiveIndexTable(frames.indexTable);
@@ -563,52 +558,87 @@ describe("the count-only-permuted engine refuses", () => {
     },
   );
 
-  test.for(["identifier-revealing", "count-only"] as const)(
-    "its operations on a %s engine",
-    async (mode) => {
-      const sender = engine(wasm, "starter", mode);
-      const receiver = engine(wasm, "joiner", mode);
-      try {
-        const refused = new RegExp(
-          `needs a PSI engine that is count-only-permuted; this one is ${mode}`,
-        );
-        await expect(sender.createPermutedSetup(["a"])).rejects.toThrow(
-          refused,
-        );
-        await expect(
-          receiver.receiveIndexTable(Int32Array.of(0)),
-        ).rejects.toThrow(refused);
-        await expect(
-          receiver.matchPermutedRound(new Uint8Array()),
-        ).rejects.toThrow(refused);
-        await expect(receiver.finishPermutedCount()).rejects.toThrow(refused);
-      } finally {
-        sender.dispose();
-        receiver.dispose();
-      }
-    },
-  );
+  test("its operations on an identifier-revealing engine", async () => {
+    const sender = engine(wasm, "starter", "identifier-revealing");
+    const receiver = engine(wasm, "joiner", "identifier-revealing");
+    try {
+      const refused =
+        /needs a PSI engine that is count-only-permuted; this one is identifier-revealing/;
+      await expect(sender.createPermutedSetup(["a"])).rejects.toThrow(refused);
+      await expect(
+        receiver.receiveIndexTable(Int32Array.of(0)),
+      ).rejects.toThrow(refused);
+      await expect(
+        receiver.matchPermutedRound(new Uint8Array()),
+      ).rejects.toThrow(refused);
+      await expect(receiver.finishPermutedCount()).rejects.toThrow(refused);
+    } finally {
+      sender.dispose();
+      receiver.dispose();
+    }
+  });
+
+  // A request with the reveal flag cleared, as the library's own client
+  // builds one: no engine mode builds such a request.
+  const cardinalityRequest = (values: Array<string>): Uint8Array => {
+    const client = wasm.client!.createWithNewKey(false);
+    try {
+      return client.createRequest(values).serializeBinary();
+    } finally {
+      client.delete();
+    }
+  };
 
   test.for(refusingEngines)(
     "a request in the cardinality mode, %s",
     async ([, create]) => {
       const sender = create(wasm, "starter");
-      const cardinalityReceiver = engine(wasm, "joiner", "count-only");
       try {
         await sender.createPermutedSetup(roundSet(SENDER, 0));
-        const request = await cardinalityReceiver.createClientRequest([
-          "a",
-          "b",
-        ]);
         await expect(
-          Promise.resolve().then(() => sender.processClientRequest(request, 2)),
+          Promise.resolve().then(() =>
+            sender.processClientRequest(cardinalityRequest(["a", "b"]), 2),
+          ),
         ).rejects.toThrow(
-          /the partner's PSI request ran the count-only mode, where this exchange runs count-only-permuted/,
+          /the partner's PSI request ran the library's cardinality mode, where this exchange runs count-only-permuted/,
         );
       } finally {
         sender.dispose();
-        cardinalityReceiver.dispose();
       }
+    },
+  );
+
+  test("a request in the cardinality mode, on an identifier-revealing engine", async () => {
+    const sender = engine(wasm, "starter", "identifier-revealing");
+    try {
+      await sender.createServerSetup(["a", "b"]);
+      await expect(
+        Promise.resolve().then(() =>
+          sender.processClientRequest(cardinalityRequest(["a", "b"])),
+        ),
+      ).rejects.toThrow(
+        /the partner's PSI request ran the library's cardinality mode, where this exchange runs identifier-revealing/,
+      );
+    } finally {
+      sender.dispose();
+    }
+  });
+
+  test.for(["count-only", "reveal-everything", undefined])(
+    "construction in a mode outside PsiEngineMode (%s)",
+    (mode) => {
+      expect(
+        () =>
+          new InProcessPsiEngine(
+            wasm,
+            "starter",
+            "sender",
+            mode as unknown as PsiEngineMode,
+          ),
+      ).toThrow(InternalConsistencyError);
+      expect(() => shardHelperMode(mode as unknown as PsiEngineMode)).toThrow(
+        InternalConsistencyError,
+      );
     },
   );
 

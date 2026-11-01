@@ -292,7 +292,7 @@ describe("the PSI worker pool (real workers, real WASM)", () => {
     return startPsiWorkerPool(spawn, role, id, mode, 3, 60_000);
   }
 
-  test.for<PsiEngineMode>(["identifier-revealing", "count-only"])(
+  test.for<PsiEngineMode>(["identifier-revealing"])(
     "a %s round across three workers puts one engine's bytes on the wire",
     // 1.5x the slowest case measured at a load average of 50 to 60 on 10
     // cores, 50.6 s; the same case takes about 6 s on an idle machine.
@@ -332,14 +332,8 @@ describe("the PSI worker pool (real workers, real WASM)", () => {
           await sha256Hex(await starterReference.processClientRequest(request)),
         );
         expect(splits).toEqual([true, true]);
-        if (mode === "count-only")
-          expect(await joiner.computeIntersectionCardinality(response)).toBe(
-            SHARED_INDICES.length,
-          );
-        else {
-          const [local] = await joiner.computeAssociationTable(response);
-          expect([...local].sort((a, b) => a - b)).toEqual(SHARED_INDICES);
-        }
+        const [local] = await joiner.computeAssociationTable(response);
+        expect([...local].sort((a, b) => a - b)).toEqual(SHARED_INDICES);
       } finally {
         for (const engine of engines) engine.dispose();
       }

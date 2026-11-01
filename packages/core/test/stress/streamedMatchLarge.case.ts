@@ -43,7 +43,6 @@ type ProbedMode = Exclude<PsiEngineMode, "count-only-permuted">;
 // or an extra mode, so the accepted set follows the engine's type.
 const ENGINE_MODES = {
   "identifier-revealing": true,
-  "count-only": true,
 } as const satisfies Record<ProbedMode, true>;
 
 const ENGINE_NAMES = {

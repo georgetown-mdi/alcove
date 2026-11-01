@@ -175,10 +175,7 @@ const JOINER_VALUES = VALUES.map((value, index) =>
 const SHARED_INDICES = JOINER_VALUES.flatMap((_, index) =>
   index % 2 === 0 ? [index] : [],
 );
-const MODES: ReadonlyArray<PsiEngineMode> = [
-  "identifier-revealing",
-  "count-only",
-];
+const MODES: ReadonlyArray<PsiEngineMode> = ["identifier-revealing"];
 
 // The partner's setup and its response to the request `createRequest` makes,
 // from a starter in `mode`.
@@ -214,10 +211,7 @@ async function joinerMatch(
     joiner.engine.createClientRequest(values),
   );
   await joiner.engine.receiveServerSetup(setup);
-  const match = () =>
-    mode === "count-only"
-      ? joiner.engine.computeIntersectionCardinality(response)
-      : joiner.engine.computeAssociationTable(response);
+  const match = () => joiner.engine.computeAssociationTable(response);
   return { ...joiner, match };
 }
 
@@ -264,15 +258,10 @@ test.each(MODES)(
     } finally {
       engine.dispose();
     }
-    const matched =
-      mode === "count-only"
-        ? result
-        : [...(result as [Array<number>, Array<number>])[0]].sort(
-            (a, b) => a - b,
-          );
-    expect(matched).toStrictEqual(
-      mode === "count-only" ? SHARED_INDICES.length : SHARED_INDICES,
+    const matched = [...(result as [Array<number>, Array<number>])[0]].sort(
+      (a, b) => a - b,
     );
+    expect(matched).toStrictEqual(SHARED_INDICES);
     expect(posted.slice(before)).toStrictEqual([
       { id: posted[before]!.id, ok: true, result },
     ]);

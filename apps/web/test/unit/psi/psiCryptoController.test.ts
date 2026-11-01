@@ -172,7 +172,7 @@ describe("createBrowserPsiEngineFactory", () => {
   test("spawns a worker seeded with the resolved role, id, and mode", () => {
     const { factory, seeds, workers } = wireFactory();
     factory("starter", "server", "identifier-revealing");
-    factory("joiner", "client", "count-only");
+    factory("joiner", "client", "count-only-permuted");
     // The seed is the worker's whole instruction: it builds its engine -- and its key,
     // which is what fixes the round's disclosure -- from this alone. So the mode the
     // exchange resolved from the agreed algorithm has to reach it rather than being
@@ -189,7 +189,7 @@ describe("createBrowserPsiEngineFactory", () => {
       {
         role: "joiner",
         id: "client",
-        mode: "count-only",
+        mode: "count-only-permuted",
         shard: "primary",
         helpers: 0,
       },

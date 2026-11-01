@@ -138,26 +138,41 @@ test("a duration rides the settled report and nothing else", async () => {
   expect(Number.isFinite(finished.durationMs)).toBe(true);
 });
 
-test("a count-only round reports the cardinality operation", async () => {
+test("a count-only round reports the counting operation", async () => {
   const [senderConn, receiverConn] = createMessagePipe();
   const receiverReports: Array<PsiProgress> = [];
   const sender = participant(
     "sender",
     "starter",
     [],
-    new InProcessPsiEngine(psiLibrary, "starter", "sender", "count-only"),
+    new InProcessPsiEngine(
+      psiLibrary,
+      "starter",
+      "sender",
+      "count-only-permuted",
+    ),
   );
   const receiver = participant(
     "receiver",
     "joiner",
     receiverReports,
-    new InProcessPsiEngine(psiLibrary, "joiner", "receiver", "count-only"),
+    new InProcessPsiEngine(
+      psiLibrary,
+      "joiner",
+      "receiver",
+      "count-only-permuted",
+    ),
   );
+  const declared = {
+    senderRecords: senderValues.length,
+    receiverRecords: receiverValues.length,
+  };
 
   await Promise.all([
-    sender.countIntersection(senderConn, senderValues),
-    receiver.countIntersection(receiverConn, receiverValues),
+    sender.countPermutedRound(senderConn, senderValues, declared),
+    receiver.countPermutedRound(receiverConn, receiverValues, declared),
   ]);
+  expect(await receiver.finishPermutedCount(1)).toBe(2);
 
   expect(operationsFrom(receiverReports)).toStrictEqual([
     {

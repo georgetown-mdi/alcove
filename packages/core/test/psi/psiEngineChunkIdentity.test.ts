@@ -6,9 +6,7 @@ import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 import { loadNativeAddonOrSkip } from "../utils/nativeAddon";
 import {
   chunkIdentityValues,
-  expectChunkedCountMatchesSingleCall,
   expectChunkedRoundMatchesSingleCall,
-  expectDuplicatedResponseCountMatchesSingleCall,
   expectRepeatedSetupElementRefused,
 } from "../utils/psiChunkIdentity";
 
@@ -52,42 +50,6 @@ describe.each([
       processClientRequest: BETWEEN_CHUNKS,
       computeAssociationTable: BETWEEN_CHUNKS,
     });
-  });
-
-  test("a chunked count-only round reports the single call's cardinality", async (ctx) => {
-    if (!library) {
-      ctx.skip();
-      return;
-    }
-    // The streamed match takes the response in pieces of the chunk size and
-    // reports between them, while the count stays one count over the whole
-    // response.
-    expect(
-      await expectChunkedCountMatchesSingleCall({
-        library,
-        serverValues,
-        clientValues,
-        chunkElements: CHUNK_ELEMENTS,
-      }),
-    ).toStrictEqual(BETWEEN_CHUNKS);
-  });
-
-  test("a duplicated response counts each value once, not once per piece", async (ctx) => {
-    if (!library) {
-      ctx.skip();
-      return;
-    }
-    // Each repeat lies a whole list, five pieces, away from its twin.
-    expect(
-      await expectDuplicatedResponseCountMatchesSingleCall({
-        library,
-        serverValues,
-        clientValues,
-        chunkElements: CHUNK_ELEMENTS,
-      }),
-    ).toStrictEqual(
-      Array.from({ length: 9 }, (_, index) => CHUNK_ELEMENTS * (index + 1)),
-    );
   });
 
   test("a set the policy takes in one chunk reports no count at all", async (ctx) => {

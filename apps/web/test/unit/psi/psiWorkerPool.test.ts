@@ -229,8 +229,8 @@ describe("the PSI worker pool's key path", () => {
     const { spawn, toPage } = inProcessSpawner(
       () => () => Promise.resolve({ library, backend: "wasm" }),
     );
-    const pool = joinerPool(spawn, "count-only", 3);
-    const single = engineUnderKey("count-only");
+    const pool = joinerPool(spawn, "identifier-revealing", 3);
+    const single = engineUnderKey("identifier-revealing");
     try {
       const merged = await pool.createClientRequest(values(3072));
       expect(merged).toEqual(await single.createClientRequest(values(3072)));
@@ -305,8 +305,8 @@ describe("the PSI worker pool's key path", () => {
         return () => Promise.reject(new Error("the engine failed to load"));
       return () => Promise.resolve({ library, backend: "wasm" });
     });
-    const pool = joinerPool(spawn, "count-only", 3);
-    const single = engineUnderKey("count-only");
+    const pool = joinerPool(spawn, "identifier-revealing", 3);
+    const single = engineUnderKey("identifier-revealing");
     try {
       expect(await pool.createClientRequest(values(3072))).toEqual(
         await single.createClientRequest(values(3072)),
@@ -327,8 +327,8 @@ describe("the PSI worker pool's key path", () => {
     const { spawn, workers, toPage } = inProcessSpawner(
       () => () => Promise.resolve({ library, backend: "wasm" }),
     );
-    const pool = joinerPool(spawn, "count-only", 2);
-    const single = engineUnderKey("count-only");
+    const pool = joinerPool(spawn, "identifier-revealing", 2);
+    const single = engineUnderKey("identifier-revealing");
     try {
       await vi.waitFor(() =>
         expect(toPage).toContainEqual({ kind: "helper-setup", ready: false }),
@@ -1051,9 +1051,9 @@ describe("the web exchange's PSI engine factory", () => {
     createPooledBrowserPsiEngineFactory(spawn, linux)(
       "joiner",
       "client",
-      "count-only",
+      "identifier-revealing",
     ).dispose();
-    const seed = { role: "joiner", id: "client", mode: "count-only" };
+    const seed = { role: "joiner", id: "client", mode: "identifier-revealing" };
     expect(workers.map((worker) => worker.seed)).toEqual([
       { ...seed, shard: "primary", helpers: 3 },
       { ...seed, shard: "helper" },
@@ -1084,13 +1084,13 @@ describe("the web exchange's PSI engine factory", () => {
     const engine = createPooledBrowserPsiEngineFactory(spawn, linux)(
       "starter",
       "server",
-      "count-only",
+      "count-only-permuted",
     );
     expect(workers.map((worker) => worker.seed)).toEqual([
       {
         role: "starter",
         id: "server",
-        mode: "count-only",
+        mode: "count-only-permuted",
         shard: "primary",
         helpers: 0,
       },

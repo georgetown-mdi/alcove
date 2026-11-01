@@ -30,7 +30,6 @@ import {
   buildResponse,
   chunkRangesOfSize,
   concatChunkElements,
-  mergeCountOnlyResponseChunks,
   mergeSetupChunks,
   serializeResponse,
   serializeSetup,
@@ -68,61 +67,56 @@ const ENGINE_SETUP_INCOMPLETE = "server setup is incomplete";
  *
  * - `identifier-revealing` -- the `psi` construction: the round resolves to
  *   matched positions and an association table.
- * - `count-only` -- the library's cardinality mode, over one round: the round
- *   resolving to the intersection cardinality alone, and the operations that
- *   would name the matches refuse. A psi-c run builds `count-only-permuted`.
  * - `count-only-permuted` -- the psi-c construction over every agreed key
  *   (docs/spec/PROTOCOL.md, PSI-C): the library's revealing mode, the sender
  *   reordering every response under one permutation it holds for the
  *   exchange and sending an index table of pseudonyms with every setup, and
  *   the receiver keeping every round's pairs and returning only the count.
  *
- * The mode is fixed when the engine is constructed, never chosen per call: it
- * fixes the library's reveal-intersection flag, which rides the receiver's
- * request and which the sender enforces agreement on.
+ * The mode is fixed when the engine is constructed, never chosen per call:
+ * it fixes which operations the engine answers. Both modes set the library's
+ * reveal-intersection flag, which rides the receiver's request and which the
+ * sender enforces agreement on.
  */
-export type PsiEngineMode =
-  "identifier-revealing" | "count-only" | "count-only-permuted";
+export type PsiEngineMode = "identifier-revealing" | "count-only-permuted";
+
+/**
+ * The library's reveal-intersection flag every engine's key objects are
+ * created with. No mode runs the library's cardinality mode, the flag
+ * cleared (docs/spec/PROTOCOL.md, PSI-C).
+ *
+ * @internal
+ */
+export const REVEAL_INTERSECTION_FLAG = true;
 
 /**
  * The mode an engine built with `mode` runs. TypeScript does not reach a JS
  * caller of the published package, which can pass a string outside
- * PsiEngineMode; any such value runs as `count-only`, the mode that sets no
- * reveal flag, rather than as a hybrid of two modes.
+ * PsiEngineMode; any such value is refused rather than run as a hybrid of
+ * two modes.
  *
  * @internal
  */
 export function knownEngineMode(mode: PsiEngineMode): PsiEngineMode {
-  return mode === "identifier-revealing" || mode === "count-only-permuted"
-    ? mode
-    : "count-only";
+  if (mode === "identifier-revealing" || mode === "count-only-permuted")
+    return mode;
+  throw new InternalConsistencyError(
+    "a PSI engine was asked for a mode that is neither identifier-revealing nor count-only-permuted",
+  );
 }
 
 /**
- * The library's reveal-intersection flag a mode's key objects are created with.
- *
- * @internal
- */
-export function modeSetsRevealFlag(mode: PsiEngineMode): boolean {
-  return knownEngineMode(mode) !== "count-only";
-}
-
-/**
- * The refusal of a partner's PSI request whose reveal flag disagrees with the
- * mode `engineMode` the engine `engineId` serves it in, naming both modes.
+ * The refusal of a partner's PSI request whose reveal flag is cleared, the
+ * library's cardinality mode, which the engine `engineId` in `engineMode`
+ * does not serve.
  */
 export function partnerRequestModeError(
   engineId: string,
-  requestRevealsIdentifiers: boolean,
   engineMode: PsiEngineMode,
 ): Error {
-  // Fixed literals only: the request is partner-supplied.
-  const requestMode = requestRevealsIdentifiers
-    ? "identifier-revealing"
-    : "count-only";
   return new Error(
     `${engineId} protocol error: the partner's PSI request ran the ` +
-      `${requestMode} mode, where this exchange runs ${knownEngineMode(engineMode)}`,
+      `library's cardinality mode, where this exchange runs ${knownEngineMode(engineMode)}`,
   );
 }
 
@@ -135,37 +129,6 @@ function fromLibrary<T>(call: () => T): T {
   } catch (error) {
     throw markPsiLibraryFailure(error);
   }
-}
-
-/**
- * @internal
- *
- * The values a party contributes to a count-only round: those occurring
- * EXACTLY ONCE in its own dataset, in input order. Every occurrence of a
- * repeated value is dropped, not just the later ones -- an ambiguous match
- * cannot be attributed to a single record.
- *
- * Normative for psi-c (docs/spec/PROTOCOL.md, PSI-C), and not a filter the
- * library applies: its cardinality operation reports the size of the
- * MULTISET intersection, where a value repeated on both sides contributes
- * the smaller of the two multiplicities. A count-only round shows no
- * identifier that would contradict such a figure, so the filter is applied
- * here, at the point that owns the contribution, rather than left to a
- * caller.
- */
-export function valuesContributedExactlyOnce(
-  values: ReadonlyArray<string>,
-): Array<string> {
-  const distinct = new DistinctValues();
-  const occurrences: Array<number> = [];
-  const positions = values.map((value) => {
-    const size = distinct.size;
-    const position = distinct.add(value);
-    if (position === size) occurrences.push(1);
-    else ++occurrences[position];
-    return position;
-  });
-  return values.filter((_value, i) => occurrences[positions[i]] === 1);
 }
 
 /**
@@ -198,12 +161,8 @@ export interface PsiEngine {
    * Encrypts this party's values once under the server key, returning the
    * serialized setup message and the sorting permutation (see
    * {@link ./participant.PSIParticipant.createServerSetup}). Server role.
-   *
-   * A count-only engine contributes only the values occurring exactly once in
-   * `values` and returns an EMPTY permutation: that round has no pairing to map
-   * back to rows, and the library's permutation indexes the filtered contribution
-   * rather than `values`, so it is not a correspondence a caller could use. A
-   * count-only-permuted engine refuses: its setup is {@link createPermutedSetup}.
+   * A count-only-permuted engine refuses: its setup is
+   * {@link createPermutedSetup}.
    */
   createServerSetup(
     values: ReadonlyArray<string>,
@@ -218,7 +177,7 @@ export interface PsiEngine {
    * `declaredElements` is the record count the partner declared. A
    * count-only-permuted engine requires it and refuses, as a protocol error
    * and before it draws `pi`, a request whose element count as the library
-   * parsed it differs; the other modes ignore it.
+   * parsed it differs; the identifier-revealing mode ignores it.
    */
   processClientRequest(
     requestBytes: Uint8Array,
@@ -226,11 +185,9 @@ export interface PsiEngine {
   ): Promise<Uint8Array>;
   /**
    * Encrypts this party's values once under the client key. Client role. A
-   * count-only engine contributes only the values occurring exactly once in
-   * `values`, and the request holds its cleared reveal flag, which the
-   * partner's server enforces agreement on. A count-only-permuted engine
-   * contributes every value, one per receiver record in record order; values
-   * must be distinct, and every round's request must have as many.
+   * count-only-permuted engine contributes every value, one per receiver
+   * record in record order; values must be distinct, and every round's
+   * request must have as many.
    */
   createClientRequest(values: ReadonlyArray<string>): Promise<Uint8Array>;
   /**
@@ -253,7 +210,7 @@ export interface PsiEngine {
    * Ends the setup the pieces above started, refusing one that is not a whole
    * Raw data structure whose elements are strictly ascending, and holds it for
    * the match the engine's mode allows -- {@link computeAssociationTable} or
-   * {@link computeIntersectionCardinality}. Client role. Split from the match
+   * {@link matchPermutedRound}. Client role. Split from the match
    * so the joiner can validate the setup as it arrives (a fail-fast before it
    * sends its own request), while the response it matches against arrives a
    * round trip later.
@@ -274,24 +231,12 @@ export interface PsiEngine {
    * {@link completeServerSetup} holds, returning
    * `[localIndices, partnerIndices]` ordered by partner index, as the
    * library's own call orders them. Client role; throws if no setup is held.
-   * Identifier-revealing mode only: a count-only engine refuses instead of
-   * returning a pairing.
+   * Identifier-revealing mode only: a count-only-permuted engine refuses
+   * instead of returning a pairing.
    */
   computeAssociationTable(
     responseBytes: Uint8Array,
   ): Promise<[Array<number>, Array<number>]>;
-  /**
-   * Removes this party's encryption layer from the partner's doubly-encrypted
-   * response and reports the SIZE of the intersection against the setup the
-   * preceding {@link completeServerSetup} holds -- no identifier, no pairing,
-   * no matched position. Client role; throws if no setup is held. Count-only
-   * mode only: an identifier-revealing engine refuses, so the disclosure a
-   * round produces stays the one its key was created for. The streamed match
-   * marks each setup element a decrypted response element equals and counts
-   * the marks once the whole response is fed, so the count is the same
-   * however the response is cut and never leaves the engine per piece.
-   */
-  computeIntersectionCardinality(responseBytes: Uint8Array): Promise<number>;
   /**
    * Encrypts one element per sender record, `values` in record order, and
    * returns the serialized setup with the round's index table: entry `p` is
@@ -439,7 +384,7 @@ export class InProcessPsiEngine implements PsiEngine, PermutedShardPrimary {
   private readonly id: string;
   /** The mode the engine was built in. */
   readonly mode: PsiEngineMode;
-  private readonly revealFlag: boolean;
+  private readonly revealFlag = REVEAL_INTERSECTION_FLAG;
   private readonly server?: PSIServer;
   private readonly client?: PSIClient;
   // The joiner's setup from its first piece until it completes, then until
@@ -488,7 +433,6 @@ export class InProcessPsiEngine implements PsiEngine, PermutedShardPrimary {
     this.library = library;
     this.id = id;
     this.mode = knownEngineMode(mode);
-    this.revealFlag = modeSetsRevealFlag(this.mode);
     this.chunkElements = options.chunkElements;
     this.maskingMemoryBudgetBytes = options.maskingMemoryBudgetBytes;
     // The secret key for this exchange, generated fresh unless a shard
@@ -674,16 +618,8 @@ export class InProcessPsiEngine implements PsiEngine, PermutedShardPrimary {
     values: ReadonlyArray<string>,
   ): Promise<{ setup: Uint8Array; permutation: Array<number> }> {
     const server = this.requireServer("createServerSetup");
-    this.requireMode("createServerSetup", "identifier-revealing", "count-only");
-    const countOnly = this.mode === "count-only";
-    const contributed = countOnly
-      ? valuesContributedExactlyOnce(values)
-      : values;
-    const { setup, permutation } = this.maskSetup(server, contributed);
-    return Promise.resolve({
-      setup,
-      permutation: countOnly ? [] : permutation,
-    });
+    this.requireMode("createServerSetup", "identifier-revealing");
+    return Promise.resolve(this.maskSetup(server, values));
   }
 
   private maskSetup(
@@ -758,11 +694,7 @@ export class InProcessPsiEngine implements PsiEngine, PermutedShardPrimary {
     // library's refusal, which the frame boundary reports as a request that
     // failed to decode.
     if (request.getRevealIntersection() !== this.revealFlag)
-      throw partnerRequestModeError(
-        this.id,
-        request.getRevealIntersection(),
-        this.mode,
-      );
+      throw partnerRequestModeError(this.id, this.mode);
     const elements = request.getEncryptedElementsList().length;
     if (this.mode === "count-only-permuted") {
       if (declaredElements === undefined)
@@ -785,16 +717,8 @@ export class InProcessPsiEngine implements PsiEngine, PermutedShardPrimary {
     const inbound = request.getEncryptedElementsList_asU8();
     const maskChunk = (range: PsiChunkRange): Array<Uint8Array> =>
       this.maskRequestChunk(server, inbound, range);
-    // A count-only response is sorted by element bytes, so the whole masked
-    // list is held to order it; an identifier-revealing one answers position
-    // by position, so each chunk goes straight into the outgoing message.
-    if (this.mode === "count-only")
-      return Promise.resolve(
-        serializeResponse(
-          this.library,
-          mergeCountOnlyResponseChunks(this.overChunks(ranges, maskChunk)),
-        ),
-      );
+    // The response answers position by position, so each chunk goes
+    // straight into the outgoing message.
     const response = buildResponse(this.library, []);
     this.overChunks(ranges, (range) =>
       appendChunkElements(response, maskChunk(range)),
@@ -858,11 +782,7 @@ export class InProcessPsiEngine implements PsiEngine, PermutedShardPrimary {
     const client = this.requireClient("createClientRequest");
     if (this.mode === "count-only-permuted")
       this.recordPermutedRequest("createClientRequest", values);
-    const contributed =
-      this.mode === "count-only"
-        ? valuesContributedExactlyOnce(values)
-        : values;
-    return Promise.resolve(this.maskRequest(client, contributed));
+    return Promise.resolve(this.maskRequest(client, values));
   }
 
   createRequestFirstPart(
@@ -1104,10 +1024,6 @@ export class InProcessPsiEngine implements PsiEngine, PermutedShardPrimary {
     return settled(() => this.associationTableOf(responseBytes));
   }
 
-  computeIntersectionCardinality(responseBytes: Uint8Array): Promise<number> {
-    return settled(() => this.intersectionCardinalityOf(responseBytes));
-  }
-
   private associationTableOf(
     responseBytes: Uint8Array,
   ): Promise<[Array<number>, Array<number>]> {
@@ -1154,18 +1070,6 @@ export class InProcessPsiEngine implements PsiEngine, PermutedShardPrimary {
       partner[at] = partnerIndices[index]!;
     }
     return [local, partner];
-  }
-
-  private intersectionCardinalityOf(
-    responseBytes: Uint8Array,
-  ): Promise<number> {
-    const match = this.beginMatch(
-      "computeIntersectionCardinality",
-      "count-only",
-    );
-    return Promise.resolve(
-      this.matchStreamed(match, responseBytes).intersectionSize,
-    );
   }
 
   receiveIndexTable(indexTable: Int32Array): Promise<void> {

@@ -15,7 +15,6 @@ import { buildResponse, serializeSetup } from "../../src/psi/psiChunks";
 import {
   InProcessPsiEngine,
   type InProcessPsiEngineOptions,
-  type PsiEngineMode,
 } from "../../src/psi/psiEngine";
 import { fixedKeyPsiLibrary, psiTestKey } from "../utils/fixedKeyPsiLibrary";
 import { loadNativeAddonOrSkip } from "../utils/nativeAddon";
@@ -28,10 +27,6 @@ import { loadNativeAddonOrSkip } from "../utils/nativeAddon";
 
 const SERVER_KEY = psiTestKey(0x31);
 const CLIENT_KEY = psiTestKey(0x42);
-const MODES: ReadonlyArray<PsiEngineMode> = [
-  "identifier-revealing",
-  "count-only",
-];
 
 const wasm = await PSI();
 const native: PSILibrary | undefined = await loadNativeAddonOrSkip();
@@ -86,19 +81,17 @@ interface Frames {
   readonly setup: Uint8Array;
   readonly response: Uint8Array;
   readonly responseElements: number;
-  readonly expected: [Array<number>, Array<number>] | number;
+  readonly expected: [Array<number>, Array<number>];
 }
 
 // A round's setup and response under the fixed keys, and the library's own
 // whole-setup result over them.
 function frames(
   library: PSILibrary,
-  mode: PsiEngineMode,
   response: (elements: Array<Uint8Array>) => Array<Uint8Array> = (e) => e,
 ): Frames {
-  const reveal = mode === "identifier-revealing";
-  const server = library.server!.createFromKey(SERVER_KEY, reveal);
-  const client = library.client!.createFromKey(CLIENT_KEY, reveal);
+  const server = library.server!.createFromKey(SERVER_KEY, true);
+  const client = library.client!.createFromKey(CLIENT_KEY, true);
   try {
     const setup = server.createSetupMessage(
       0,
@@ -113,16 +106,12 @@ function frames(
         .getEncryptedElementsList_asU8(),
     );
     const responseMessage = buildResponse(library, elements);
-    const table = reveal
-      ? client.getAssociationTable(setup, responseMessage)
-      : undefined;
+    const table = client.getAssociationTable(setup, responseMessage);
     return {
       setup: setup.serializeBinary(),
       response: responseMessage.serializeBinary(),
       responseElements: elements.length,
-      expected: table
-        ? [table[0]!, table[1]!]
-        : client.getIntersectionSize(setup, responseMessage),
+      expected: [table[0]!, table[1]!],
     };
   } finally {
     server.delete();
@@ -140,20 +129,22 @@ function pieces(bytes: Uint8Array, size: number): Array<Uint8Array> {
 
 function joiner(
   library: PSILibrary,
-  mode: PsiEngineMode,
   options: InProcessPsiEngineOptions = {},
 ): InProcessPsiEngine {
-  return new InProcessPsiEngine(library, "joiner", "joiner", mode, options);
+  return new InProcessPsiEngine(
+    library,
+    "joiner",
+    "joiner",
+    "identifier-revealing",
+    options,
+  );
 }
 
 async function match(
   engine: InProcessPsiEngine,
-  mode: PsiEngineMode,
   response: Uint8Array,
-): Promise<[Array<number>, Array<number>] | number> {
-  return mode === "count-only"
-    ? engine.computeIntersectionCardinality(response)
-    : engine.computeAssociationTable(response);
+): Promise<[Array<number>, Array<number>]> {
+  return engine.computeAssociationTable(response);
 }
 
 async function caught(run: () => Promise<unknown>): Promise<unknown> {
@@ -170,17 +161,17 @@ describe.each([
   ["wasm", wasm],
   ["native addon", native],
 ])("the %s backend", (_name, library) => {
-  describe.each(MODES)("in %s mode", (mode) => {
+  describe("in identifier-revealing mode", () => {
     test("a setup fed in pieces, cut anywhere, matches as the whole-setup call does, decrypting each response element once", async (ctx) => {
       if (!library) {
         ctx.skip();
         return;
       }
-      const round = frames(library, mode);
+      const round = frames(library);
       for (const setupPieceBytes of [...SETUP_PIECE_BYTES, round.setup.length])
         for (const chunkElements of RESPONSE_PIECE_ELEMENTS) {
           const recorded: Recorded = { results: [], wholeCalls: [] };
-          const engine = joiner(recordingLibrary(library, recorded), mode, {
+          const engine = joiner(recordingLibrary(library, recorded), {
             ...(chunkElements === undefined ? {} : { chunkElements }),
           });
           const ticks: Array<number> = [];
@@ -189,7 +180,7 @@ describe.each([
             for (const piece of pieces(round.setup, setupPieceBytes))
               await engine.receiveServerSetupPiece(piece);
             await engine.completeServerSetup();
-            expect(await match(engine, mode, round.response)).toStrictEqual(
+            expect(await match(engine, round.response)).toStrictEqual(
               round.expected,
             );
           } finally {
@@ -213,34 +204,29 @@ describe.each([
         ctx.skip();
         return;
       }
-      const round = frames(library, mode, (elements) => [
+      const round = frames(library, (elements) => [
         ...elements,
         ...elements.slice(0, 30),
       ]);
       const recorded: Recorded = { results: [], wholeCalls: [] };
-      const engine = joiner(recordingLibrary(library, recorded), mode, {
+      const engine = joiner(recordingLibrary(library, recorded), {
         chunkElements: 11,
       });
       try {
         await engine.receiveServerSetup(round.setup);
-        const result = await match(engine, mode, round.response);
-        const expected = round.expected;
-        if (typeof expected === "number") {
-          expect(result).toBe(expected);
-        } else {
-          // The same pairs; ordered by partner index, ties by local index.
-          const [local, partner] = result as [Array<number>, Array<number>];
-          const pairs = local.map((value, index) => [value, partner[index]!]);
-          const [expectedLocal, expectedPartner] = expected;
-          const expectedPairs = expectedLocal.map((value, index) => [
-            value,
-            expectedPartner[index]!,
-          ]);
-          const byPartner = (a: Array<number>, b: Array<number>) =>
-            a[1]! - b[1]! || a[0]! - b[0]!;
-          expect(pairs).toStrictEqual([...expectedPairs].sort(byPartner));
-          expect(pairs).toStrictEqual([...pairs].sort(byPartner));
-        }
+        const result = await match(engine, round.response);
+        // The same pairs; ordered by partner index, ties by local index.
+        const [local, partner] = result;
+        const pairs = local.map((value, index) => [value, partner[index]!]);
+        const [expectedLocal, expectedPartner] = round.expected;
+        const expectedPairs = expectedLocal.map((value, index) => [
+          value,
+          expectedPartner[index]!,
+        ]);
+        const byPartner = (a: Array<number>, b: Array<number>) =>
+          a[1]! - b[1]! || a[0]! - b[0]!;
+        expect(pairs).toStrictEqual([...expectedPairs].sort(byPartner));
+        expect(pairs).toStrictEqual([...pairs].sort(byPartner));
       } finally {
         engine.dispose();
       }
@@ -252,7 +238,7 @@ describe.each([
         ctx.skip();
         return;
       }
-      const round = frames(library, mode);
+      const round = frames(library);
       const elements = [
         ...library.serverSetup
           .deserializeBinary(round.setup)
@@ -269,7 +255,7 @@ describe.each([
         (piece) => piece.length > 0,
       );
       expect(showing).toBeLessThan(cut.length - 1);
-      const engine = joiner(library, mode);
+      const engine = joiner(library);
       try {
         for (const piece of cut.slice(0, showing))
           await engine.receiveServerSetupPiece(piece);
@@ -283,7 +269,7 @@ describe.each([
         expect(classifyFailure(refusal)).toBe("partner-refused");
         expect(isPsiLibraryFailure(refusal)).toBe(false);
         expect(
-          ((await caught(() => match(engine, mode, round.response))) as Error)
+          ((await caught(() => match(engine, round.response))) as Error)
             .message,
         ).toMatch(/called before the partner's setup completed/);
       } finally {
@@ -292,66 +278,63 @@ describe.each([
     });
   });
 
-  test.for(MODES)(
-    "in %s mode, a response the element scan cannot read is refused as the partner's, before the engine sees it",
-    async (mode, ctx) => {
-      if (!library) {
-        ctx.skip();
-        return;
-      }
-      const round = frames(library, mode);
-      const fed = vi.fn();
-      const deleted = vi.fn();
-      const clients = library.client!;
-      const watching: PSILibrary = {
-        ...library,
-        client: {
-          ...clients,
-          createWithNewKey: (reveal) => {
-            const client = clients.createWithNewKey(reveal);
-            return {
-              ...client,
-              createMatch: () => {
-                const match = client.createMatch();
-                return {
-                  ...match,
-                  matchResponsePiece: (piece) => {
-                    fed();
-                    match.matchResponsePiece(piece);
-                  },
-                  delete: () => {
-                    deleted();
-                    match.delete();
-                  },
-                };
-              },
-            };
-          },
+  test("a response the element scan cannot read is refused as the partner's, before the engine sees it", async (ctx) => {
+    if (!library) {
+      ctx.skip();
+      return;
+    }
+    const round = frames(library);
+    const fed = vi.fn();
+    const deleted = vi.fn();
+    const clients = library.client!;
+    const watching: PSILibrary = {
+      ...library,
+      client: {
+        ...clients,
+        createWithNewKey: (reveal) => {
+          const client = clients.createWithNewKey(reveal);
+          return {
+            ...client,
+            createMatch: () => {
+              const match = client.createMatch();
+              return {
+                ...match,
+                matchResponsePiece: (piece) => {
+                  fed();
+                  match.matchResponsePiece(piece);
+                },
+                delete: () => {
+                  deleted();
+                  match.delete();
+                },
+              };
+            },
+          };
         },
-      };
-      for (const unreadable of [
-        round.response.subarray(0, round.response.length - 1),
-        new Uint8Array([0x0a, 0x05, 0x01]),
-        new Uint8Array([0x0b]),
-      ]) {
-        const engine = joiner(watching, mode);
-        try {
-          await engine.receiveServerSetup(round.setup);
-          const refusal = await caught(() => match(engine, mode, unreadable));
-          expect(refusal).toBeInstanceOf(ProtocolRefusalError);
-          expect((refusal as Error).message).toBe(
-            "joiner protocol error: malformed inbound PSI response frame",
-          );
-          expect(classifyFailure(refusal)).toBe("partner-refused");
-          expect(deleted).toHaveBeenCalledTimes(1);
-        } finally {
-          engine.dispose();
-          deleted.mockClear();
-        }
+      },
+    };
+    for (const unreadable of [
+      round.response.subarray(0, round.response.length - 1),
+      new Uint8Array([0x0a, 0x05, 0x01]),
+      new Uint8Array([0x0b]),
+    ]) {
+      const engine = joiner(watching);
+      try {
+        await engine.receiveServerSetup(round.setup);
+        const refusal = await caught(() => match(engine, unreadable));
+        expect(refusal).toBeInstanceOf(ProtocolRefusalError);
+        expect((refusal as Error).message).toBe(
+          "joiner protocol error: malformed inbound PSI response frame",
+        );
+        expect(classifyFailure(refusal)).toBe("partner-refused");
+        expect(deleted).toHaveBeenCalledTimes(1);
+      } finally {
+        engine.dispose();
+        deleted.mockClear();
       }
-      expect(fed).not.toHaveBeenCalled();
-    },
-  );
+    }
+    expect(fed).not.toHaveBeenCalled();
+  });
 
   test("a setup that is not a Raw data structure is refused by name, and a setup the engine cannot read as the library's failure", async (ctx) => {
     if (!library) {
@@ -364,9 +347,9 @@ describe.each([
     info.setHashRange(1000);
     info.setBits(new Uint8Array([1, 2, 3, 4]));
     gcs.setGcs(info);
-    const round = frames(library, "identifier-revealing");
+    const round = frames(library);
     const refusal = async (pieceList: Array<Uint8Array>): Promise<unknown> => {
-      const engine = joiner(library, "identifier-revealing");
+      const engine = joiner(library);
       try {
         return await caught(async () => {
           for (const piece of pieceList)
@@ -405,8 +388,8 @@ describe.each([
       ctx.skip();
       return;
     }
-    const round = frames(library, "identifier-revealing");
-    const engine = joiner(library, "identifier-revealing");
+    const round = frames(library);
+    const engine = joiner(library);
     try {
       expect(await caught(() => engine.completeServerSetup())).toBeInstanceOf(
         InternalConsistencyError,
@@ -427,7 +410,7 @@ describe.each([
       ctx.skip();
       return;
     }
-    const round = frames(library, "identifier-revealing");
+    const round = frames(library);
     const deleted: Array<string> = [];
     const clients = library.client!;
     const deleting: PSILibrary = {
@@ -452,10 +435,10 @@ describe.each([
         },
       },
     };
-    const receiving = joiner(deleting, "identifier-revealing");
+    const receiving = joiner(deleting);
     await receiving.receiveServerSetupPiece(round.setup.subarray(0, 100));
     receiving.dispose();
-    const held = joiner(deleting, "identifier-revealing");
+    const held = joiner(deleting);
     await held.receiveServerSetup(round.setup);
     held.dispose();
     expect(deleted).toStrictEqual(["match", "match"]);
@@ -463,7 +446,7 @@ describe.each([
 });
 
 test("an association table out of response order is refused as a local fault", async () => {
-  const round = frames(wasm, "identifier-revealing");
+  const round = frames(wasm);
   const keyed = fixedKeyPsiLibrary(wasm, SERVER_KEY, CLIENT_KEY);
   const clients = keyed.client!;
   const reversing: PSILibrary = {
@@ -495,7 +478,7 @@ test("an association table out of response order is refused as a local fault", a
       },
     },
   };
-  const engine = joiner(reversing, "identifier-revealing");
+  const engine = joiner(reversing);
   try {
     await engine.receiveServerSetup(round.setup);
     const refusal = await caught(() =>
@@ -508,7 +491,7 @@ test("an association table out of response order is refused as a local fault", a
 });
 
 test("a match whose decrypted count differs from the response's element count is refused as a local fault", async () => {
-  const round = frames(wasm, "count-only");
+  const round = frames(wasm);
   const keyed = fixedKeyPsiLibrary(wasm, SERVER_KEY, CLIENT_KEY);
   const clients = keyed.client!;
   const finish = vi.fn((result: MatchResult) => ({
@@ -531,11 +514,11 @@ test("a match whose decrypted count differs from the response's element count is
       },
     },
   };
-  const engine = joiner(doubling, "count-only", { chunkElements: 10 });
+  const engine = joiner(doubling, { chunkElements: 10 });
   try {
     await engine.receiveServerSetup(round.setup);
     const refusal = await caught(() =>
-      engine.computeIntersectionCardinality(round.response),
+      engine.computeAssociationTable(round.response),
     );
     expect(refusal).toBeInstanceOf(InternalConsistencyError);
     expect(finish).toHaveBeenCalledTimes(1);

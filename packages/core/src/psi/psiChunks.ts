@@ -28,11 +28,9 @@ import { InternalConsistencyError } from "../errors";
 //     match either way;
 //   - a request holds its elements in input order, so chunk results
 //     concatenate;
-//   - an identifier-revealing response holds its elements in the request's
-//     order, so those chunk results concatenate too, while a COUNT-ONLY
-//     response is sorted by element bytes -- the shuffle that keeps the
-//     receiver from pairing a response element with the request position it
-//     answers -- so its chunk results merge by that order instead.
+//   - a response to a request with the reveal flag set, the only kind the
+//     protocol sends, holds its elements in the request's order, so those
+//     chunk results concatenate too.
 
 /** A contiguous slice of a value or element list, covered by one chunk. */
 export interface PsiChunkRange {
@@ -183,24 +181,10 @@ export function concatChunkElements(
 }
 
 /**
- * Reassembles a COUNT-ONLY server response from chunk results, in the order a
- * single call over the whole request emits: sorted by element bytes, the
- * library sorting the response rather than answering position by position.
- * An identifier-revealing response holds the request's own order, so its
- * chunks go straight into the outgoing message
- * ({@link appendChunkElements}) with no list beside it.
- */
-export function mergeCountOnlyResponseChunks(
-  chunks: ReadonlyArray<ReadonlyArray<Uint8Array>>,
-): Uint8Array[] {
-  return concatChunkElements(chunks).sort(compareElementBytes);
-}
-
-/**
  * Appends one chunk's masked elements to the message being built, for the
- * merges that are a concatenation in input order -- a request, and an
- * identifier-revealing response. Byte-identical to setting the whole list at
- * once, and it never holds a second copy of the elements.
+ * merges that are a concatenation in input order -- a request, and a
+ * response. Byte-identical to setting the whole list at once, and it never
+ * holds a second copy of the elements.
  */
 export function appendChunkElements(
   message: {

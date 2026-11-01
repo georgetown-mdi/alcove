@@ -460,7 +460,7 @@ describe.each([
     }
   });
 
-  test.for(["identifier-revealing", "count-only"] as const)(
+  test.for(["identifier-revealing"] as const)(
     "a setup repeating an element in %s mode, refused as it arrives, stays the partner's refusal after the worker round trip",
     async (mode, ctx) => {
       if (!library) {
@@ -479,7 +479,6 @@ describe.each([
           library,
           serverValues: ["a", "b", "c", "d"],
           repeatAt: 2,
-          revealsIdentifiers: mode === "identifier-revealing",
         });
         const refused = await rejection(engine.receiveServerSetup(setup));
         expect(refused).toBeInstanceOf(PartnerProtocolRefusalError);

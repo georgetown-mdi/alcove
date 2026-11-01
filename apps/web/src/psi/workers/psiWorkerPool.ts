@@ -195,10 +195,6 @@ export class PsiWorkerPoolEngine implements PsiEngine {
     return this.primary.computeAssociationTable(responseBytes);
   }
 
-  computeIntersectionCardinality(responseBytes: Uint8Array): Promise<number> {
-    return this.primary.computeIntersectionCardinality(responseBytes);
-  }
-
   createPermutedSetup(
     values: ReadonlyArray<string>,
   ): Promise<{ setup: Uint8Array; indexTable: Int32Array }> {

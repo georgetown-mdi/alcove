@@ -7,7 +7,7 @@
 // names the operation and the error.
 //
 // Usage: node --expose-gc --import tsx psiRoundWalls.probe.ts
-//          <identifier-revealing|count-only> <elements>
+//          identifier-revealing <elements>
 //
 // The starter's worker is stopped once it has built the response, so the
 // joiner's match runs with only its own worker alive, as in a browser tab.
@@ -66,7 +66,6 @@ interface Request {
 interface Reply {
   readonly figures: WallsOperation;
   readonly bytes?: Uint8Array;
-  readonly matched?: boolean;
   readonly sharedPositions?: Array<number>;
   readonly pairs?: [Array<number>, Array<number>];
   readonly error?: string;
@@ -171,12 +170,6 @@ async function runParty(init: PartyInit): Promise<void> {
       case "receiveServerSetup":
         await engine.receiveServerSetup(request.bytes!);
         return {};
-      case "computeIntersectionCardinality":
-        return {
-          matched:
-            (await engine.computeIntersectionCardinality(request.bytes!)) ===
-            init.overlap,
-        };
       case "computeAssociationTable": {
         const [local, partner] = await engine.computeAssociationTable(
           request.bytes!,
@@ -251,27 +244,18 @@ async function main(): Promise<void> {
     const response = await step(starter, "processClientRequest", request.bytes);
     await starter.stop();
     await step(joiner, "receiveServerSetup", setup.bytes);
-    if (mode === "count-only") {
-      const result = await step(
-        joiner,
-        "computeIntersectionCardinality",
-        response.bytes,
+    const result = await step(
+      joiner,
+      "computeAssociationTable",
+      response.bytes,
+    );
+    const [local, partner] = result.pairs!;
+    matchesExpected =
+      local.length === overlap &&
+      local.every(
+        (input, pair) =>
+          input < overlap && setup.sharedPositions![input] === partner[pair],
       );
-      matchesExpected = result.matched === true;
-    } else {
-      const result = await step(
-        joiner,
-        "computeAssociationTable",
-        response.bytes,
-      );
-      const [local, partner] = result.pairs!;
-      matchesExpected =
-        local.length === overlap &&
-        local.every(
-          (input, pair) =>
-            input < overlap && setup.sharedPositions![input] === partner[pair],
-        );
-    }
   } catch (error) {
     failure = { operation: current, error: String(error).slice(0, 2_000) };
   } finally {
@@ -298,7 +282,6 @@ const ORDER = [
   "processClientRequest",
   "receiveServerSetup",
   "computeAssociationTable",
-  "computeIntersectionCardinality",
 ];
 
 if (isMainThread) await main();

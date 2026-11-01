@@ -159,7 +159,6 @@ function hostMemAvailableBytes(): number | undefined {
 }
 
 function matchesOverlap(outcome: RoundOutcome, overlap: number): boolean {
-  if ("count" in outcome) return outcome.count === overlap;
   return (
     outcome.pairs.length === overlap &&
     outcome.pairs.every(
@@ -395,8 +394,6 @@ async function main(): Promise<void> {
         return partner.discardServerSetup();
       case "computeAssociationTable":
         return partner.computeAssociationTable(take("partner-input"));
-      case "computeIntersectionCardinality":
-        return partner.computeIntersectionCardinality(take("partner-input"));
       case "dispose":
         partner.dispose();
         return undefined;
@@ -469,7 +466,7 @@ async function main(): Promise<void> {
       ),
     ]);
     phase = "before the first operation";
-    const [outcome, partnerOutcome] = await Promise.all([
+    const [outcome] = await Promise.all([
       stopOnFailure(
         page.evaluate(
           ([roundSide, count, shared]) =>
@@ -484,10 +481,7 @@ async function main(): Promise<void> {
         ),
       ),
     ]);
-    // A count-only round's count reaches only its joiner.
-    const counted =
-      mode === "count-only" && role === "starter" ? partnerOutcome : outcome;
-    matchesExpected = matchesOverlap(counted, overlap);
+    matchesExpected = matchesOverlap(outcome, overlap);
     pageMemory = await page.evaluate(() => measuredProbe().pageMemory());
   } catch (caught) {
     error = [String(caught), ...pageErrors].join("\n").slice(0, 4000);
