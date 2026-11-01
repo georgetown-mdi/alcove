@@ -95,6 +95,8 @@ const SHARED_VALUE_CAVEAT =
  * the expert switch that opens element-by-element authoring and terms
  * import/export, and the matching settings -- the linkage strategy and
  * deduplication controls, each live while the exchange applies what it writes.
+ * On a count-only draft the strategy choice is disabled, its value kept, and
+ * each option is described by the statement that it changes nothing.
  *
  * The list holds the built-in keys the chosen floor selects for these
  * columns, each with a checkbox and the reorder pair, and a key core marks
@@ -201,6 +203,8 @@ export function KeysTab({
   const builtInRulesLabelId = useId();
   const builtInRulesDescriptionId = useId();
   const builtInRulesName = useId();
+  const countOnly = editor.draft.algorithm === "psi-c";
+  const countOnlyStatementId = useId();
   const keyCount = editor.draft.keys.length;
   const showsSharedValueKey = useMemo(() => {
     const typeOf = new Map(
@@ -403,6 +407,7 @@ export function KeysTab({
       <Radio.Group
         label={LINKAGE_STRATEGY_LABEL}
         value={editor.draft.linkageStrategy}
+        disabled={countOnly}
         // Parsed rather than trusted so a Radio value literal drifting from
         // the enum throws loudly instead of typechecking clean.
         onChange={(value) => onStrategy(LinkageStrategySchema.parse(value))}
@@ -411,20 +416,22 @@ export function KeysTab({
           value="cascade"
           label={LINKAGE_STRATEGY_OPTION_COPY.cascade.label}
           description={
-            editor.draft.algorithm === "psi-c"
+            countOnly
               ? undefined
               : LINKAGE_STRATEGY_OPTION_COPY.cascade.description
           }
+          aria-describedby={countOnly ? countOnlyStatementId : undefined}
           mt="xs"
         />
         <Radio
           value="single-pass"
           label={LINKAGE_STRATEGY_OPTION_COPY["single-pass"].label}
           description={
-            editor.draft.algorithm === "psi-c"
+            countOnly
               ? undefined
               : LINKAGE_STRATEGY_OPTION_COPY["single-pass"].description
           }
+          aria-describedby={countOnly ? countOnlyStatementId : undefined}
           mt="xs"
         />
       </Radio.Group>
@@ -440,8 +447,14 @@ export function KeysTab({
           {SINGLE_PASS_DISCLOSURE_BODY}
         </Alert>
       )}
-      {editor.draft.algorithm === "psi-c" && (
-        <Alert variant="light" color="gray" role="note" mt="sm">
+      {countOnly && (
+        <Alert
+          id={countOnlyStatementId}
+          variant="light"
+          color="gray"
+          role="note"
+          mt="sm"
+        >
           {COUNT_ONLY_DECLARED_STRATEGY_STATEMENT}
         </Alert>
       )}
