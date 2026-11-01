@@ -1,4 +1,4 @@
-docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "${PWD}:/work" ghcr.io/georgetown-mdi/alcove:latest serve
+docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "${PWD}:/work" docker.io/gumdi/alcove:latest serve
   [run]
   [--rm]
   [-p]
@@ -7,75 +7,75 @@ docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "${PWD}:/wor
   [JOB_DATA_ROOT=/work]
   [-v]
   [<working folder>:/work]
-  [ghcr.io/georgetown-mdi/alcove:latest]
+  [docker.io/gumdi/alcove:latest]
   [serve]
 
-docker run -it --rm --mount type=bind,src="$PWD",dst=/work ghcr.io/georgetown-mdi/alcove:latest sftp://SFTP_USER@SFTP_HOST/SFTP_PATH --server-password=@PASSWORD_FILE INPUT_FILE OUTPUT_FOLDER
+docker run -it --rm --mount type=bind,src="$PWD",dst=/work docker.io/gumdi/alcove:latest sftp://SFTP_USER@SFTP_HOST/SFTP_PATH --server-password=@PASSWORD_FILE INPUT_FILE OUTPUT_FOLDER
   [run]
   [-it]
   [--rm]
   [--mount]
   [type=bind,src=<working folder>,dst=/work]
-  [ghcr.io/georgetown-mdi/alcove:latest]
+  [docker.io/gumdi/alcove:latest]
   [sftp://SFTP_USER@SFTP_HOST/SFTP_PATH]
   [--server-password=@PASSWORD_FILE]
   [INPUT_FILE]
   [OUTPUT_FOLDER]
 
-docker pull ghcr.io/georgetown-mdi/alcove:latest
+docker pull docker.io/gumdi/alcove:latest
   [pull]
-  [ghcr.io/georgetown-mdi/alcove:latest]
+  [docker.io/gumdi/alcove:latest]
 
-docker run -it --rm --mount type=bind,src=WORK_PATH,dst=/work ghcr.io/georgetown-mdi/alcove:latest sftp://SFTP_USER@SFTP_HOST:SFTP_PORT/SFTP_PATH --server-password=@PASSWORD_FILE INPUT_FILE OUTPUT_FOLDER
+docker run -it --rm --mount type=bind,src=WORK_PATH,dst=/work docker.io/gumdi/alcove:latest sftp://SFTP_USER@SFTP_HOST:SFTP_PORT/SFTP_PATH --server-password=@PASSWORD_FILE INPUT_FILE OUTPUT_FOLDER
   [run]
   [-it]
   [--rm]
   [--mount]
   [type=bind,src=WORK_PATH,dst=/work]
-  [ghcr.io/georgetown-mdi/alcove:latest]
+  [docker.io/gumdi/alcove:latest]
   [sftp://SFTP_USER@SFTP_HOST:SFTP_PORT/SFTP_PATH]
   [--server-password=@PASSWORD_FILE]
   [INPUT_FILE]
   [OUTPUT_FOLDER]
 
-docker run -it --rm --mount type=bind,src=/Users/me/psi-exchange,dst=/work ghcr.io/georgetown-mdi/alcove:latest sftp://exchange_user@sftp.example.org/exchanges/county-a-county-b --server-password=@passwd clients.csv matches/
+docker run -it --rm --mount type=bind,src=/Users/me/psi-exchange,dst=/work docker.io/gumdi/alcove:latest sftp://exchange_user@sftp.example.org/exchanges/county-a-county-b --server-password=@passwd clients.csv matches/
   [run]
   [-it]
   [--rm]
   [--mount]
   [type=bind,src=/Users/me/psi-exchange,dst=/work]
-  [ghcr.io/georgetown-mdi/alcove:latest]
+  [docker.io/gumdi/alcove:latest]
   [sftp://exchange_user@sftp.example.org/exchanges/county-a-county-b]
   [--server-password=@passwd]
   [clients.csv]
   [matches/]
 
-docker run --rm ghcr.io/georgetown-mdi/alcove:latest probe-host-key sftp://sftp.example.org
+docker run --rm docker.io/gumdi/alcove:latest probe-host-key sftp://sftp.example.org
   [run]
   [--rm]
-  [ghcr.io/georgetown-mdi/alcove:latest]
+  [docker.io/gumdi/alcove:latest]
   [probe-host-key]
   [sftp://sftp.example.org]
 
-docker run --rm --mount type=bind,src=/Users/me/psi-exchange,dst=/work ghcr.io/georgetown-mdi/alcove:latest sftp://exchange_user@sftp.example.org/exchanges/county-a-county-b --server-password=@passwd --server-host-key-fingerprint=SHA256:FINGERPRINT clients.csv matches/
+docker run --rm --mount type=bind,src=/Users/me/psi-exchange,dst=/work docker.io/gumdi/alcove:latest sftp://exchange_user@sftp.example.org/exchanges/county-a-county-b --server-password=@passwd --server-host-key-fingerprint=SHA256:FINGERPRINT clients.csv matches/
   [run]
   [--rm]
   [--mount]
   [type=bind,src=/Users/me/psi-exchange,dst=/work]
-  [ghcr.io/georgetown-mdi/alcove:latest]
+  [docker.io/gumdi/alcove:latest]
   [sftp://exchange_user@sftp.example.org/exchanges/county-a-county-b]
   [--server-password=@passwd]
   [--server-host-key-fingerprint=SHA256:FINGERPRINT]
   [clients.csv]
   [matches/]
 
-docker run -it --rm --mount type=bind,src="$PWD",dst=/work ghcr.io/georgetown-mdi/alcove:latest invite --identity "Agency A" https://psi.data-bridge.org/ clients.csv matches/
+docker run -it --rm --mount type=bind,src="$PWD",dst=/work docker.io/gumdi/alcove:latest invite --identity "Agency A" https://psi.data-bridge.org/ clients.csv matches/
   [run]
   [-it]
   [--rm]
   [--mount]
   [type=bind,src=<working folder>,dst=/work]
-  [ghcr.io/georgetown-mdi/alcove:latest]
+  [docker.io/gumdi/alcove:latest]
   [invite]
   [--identity]
   [Agency A]
@@ -83,7 +83,7 @@ docker run -it --rm --mount type=bind,src="$PWD",dst=/work ghcr.io/georgetown-md
   [clients.csv]
   [matches/]
 
-docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "${PWD}:/work" --env JOB_RENDEZVOUS_DIR=/shared --env JOB_RENDEZVOUS_NAME=shared-folder -v "C:\path\to\shared-folder:/shared" ghcr.io/georgetown-mdi/alcove:latest serve
+docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "${PWD}:/work" --env JOB_RENDEZVOUS_DIR=/shared --env JOB_RENDEZVOUS_NAME=shared-folder -v "C:\path\to\shared-folder:/shared" docker.io/gumdi/alcove:latest serve
   [run]
   [--rm]
   [-p]
@@ -98,59 +98,59 @@ docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "${PWD}:/wor
   [JOB_RENDEZVOUS_NAME=shared-folder]
   [-v]
   [C:\path\to\shared-folder:/shared]
-  [ghcr.io/georgetown-mdi/alcove:latest]
+  [docker.io/gumdi/alcove:latest]
   [serve]
 
-docker run -it --rm --mount type=bind,src="$PWD",dst=/work ghcr.io/georgetown-mdi/alcove:latest 'sftp://user:passw!rd@example.org/psi' input.csv ./results
+docker run -it --rm --mount type=bind,src="$PWD",dst=/work docker.io/gumdi/alcove:latest 'sftp://user:passw!rd@example.org/psi' input.csv ./results
   [run]
   [-it]
   [--rm]
   [--mount]
   [type=bind,src=<working folder>,dst=/work]
-  [ghcr.io/georgetown-mdi/alcove:latest]
+  [docker.io/gumdi/alcove:latest]
   [sftp://user:passw!rd@example.org/psi]
   [input.csv]
   [./results]
 
-docker run -it --rm --mount type=bind,src="$PWD",dst=/work ghcr.io/georgetown-mdi/alcove:latest sftp://user@example.org/psi --server-password=@passwd input.csv ./results
+docker run -it --rm --mount type=bind,src="$PWD",dst=/work docker.io/gumdi/alcove:latest sftp://user@example.org/psi --server-password=@passwd input.csv ./results
   [run]
   [-it]
   [--rm]
   [--mount]
   [type=bind,src=<working folder>,dst=/work]
-  [ghcr.io/georgetown-mdi/alcove:latest]
+  [docker.io/gumdi/alcove:latest]
   [sftp://user@example.org/psi]
   [--server-password=@passwd]
   [input.csv]
   [./results]
 
-docker run -it --rm --mount type=bind,src='C:\Users\me\Documents\alcove',dst=/work ghcr.io/georgetown-mdi/alcove:latest sftp://user@example.org/psi --server-password=@passwd input.csv ./results
+docker run -it --rm --mount type=bind,src='C:\Users\me\Documents\alcove',dst=/work docker.io/gumdi/alcove:latest sftp://user@example.org/psi --server-password=@passwd input.csv ./results
   [run]
   [-it]
   [--rm]
   [--mount]
   [type=bind,src=C:\Users\me\Documents\alcove,dst=/work]
-  [ghcr.io/georgetown-mdi/alcove:latest]
+  [docker.io/gumdi/alcove:latest]
   [sftp://user@example.org/psi]
   [--server-password=@passwd]
   [input.csv]
   [./results]
 
-docker run -it --rm --mount type=bind,src=WORK_PATH,dst=/work ghcr.io/georgetown-mdi/alcove:latest
+docker run -it --rm --mount type=bind,src=WORK_PATH,dst=/work docker.io/gumdi/alcove:latest
   [run]
   [-it]
   [--rm]
   [--mount]
   [type=bind,src=WORK_PATH,dst=/work]
-  [ghcr.io/georgetown-mdi/alcove:latest]
+  [docker.io/gumdi/alcove:latest]
 
-docker run --rm ghcr.io/georgetown-mdi/alcove:latest --help
+docker run --rm docker.io/gumdi/alcove:latest --help
   [run]
   [--rm]
-  [ghcr.io/georgetown-mdi/alcove:latest]
+  [docker.io/gumdi/alcove:latest]
   [--help]
 
-docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "${PWD}:/work" --env JOB_RENDEZVOUS_DIR=/shared --env JOB_RENDEZVOUS_NAME=shared-folder -v "/path/to/shared-folder:/shared" ghcr.io/georgetown-mdi/alcove:latest serve
+docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "${PWD}:/work" --env JOB_RENDEZVOUS_DIR=/shared --env JOB_RENDEZVOUS_NAME=shared-folder -v "/path/to/shared-folder:/shared" docker.io/gumdi/alcove:latest serve
   [run]
   [--rm]
   [-p]
@@ -165,7 +165,7 @@ docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "${PWD}:/wor
   [JOB_RENDEZVOUS_NAME=shared-folder]
   [-v]
   [/path/to/shared-folder:/shared]
-  [ghcr.io/georgetown-mdi/alcove:latest]
+  [docker.io/gumdi/alcove:latest]
   [serve]
 
 docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/data -v "/host/work:/data" --env JOB_RENDEZVOUS_DIR=/shared --env JOB_RENDEZVOUS_NAME=agency-a-agency-b -v "/host/agency-a-agency-b:/shared" docker.io/gumdi/alcove:latest serve

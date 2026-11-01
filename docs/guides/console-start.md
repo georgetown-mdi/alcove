@@ -66,7 +66,7 @@ Without `--userns`, the console cannot write into your folder and says "The cons
 
 :::
 
-The first start downloads the image from Docker Hub. If that download is refused, put `ghcr.io/georgetown-mdi/alcove:latest` in place of `docker.io/gumdi/alcove:latest` in the command: it is the same image on the GitHub Container Registry.
+The first start downloads the image from Docker Hub. If that download is refused, put `ghcr.io/georgetown-mdi/alcove:latest` in place of `docker.io/gumdi/alcove:latest` in the command, and add `--env JOB_IMAGE_REGISTRY=ghcr.io` before the image name so the scheduled-run commands the console shows pull from the same registry: it is the same image on the GitHub Container Registry.
 
 You should see: a line ending `Listening on http://0.0.0.0:3000`. That is the address inside the container; you open the one in the next step.
 

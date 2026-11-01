@@ -11,15 +11,17 @@ Pick the one that matches who you are. All three run the same protocol, so the t
 1. **You have a spreadsheet and a browser.** Open [https://psi.data-bridge.org](https://psi.data-bridge.org). Nothing to install: your file is read and matched inside your browser and never uploaded to our servers. What is sent to your partner is encrypted first. Best for first-time and occasional exchanges. See [Web app](#web-app).
 2. **You run Docker and want a guided screen for an exchange over your own SFTP server.** Start the console from the directory holding your input file, then visit [http://127.0.0.1:3000](http://127.0.0.1:3000):
    ```sh
-   docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "${PWD}:/work" ghcr.io/georgetown-mdi/alcove:latest serve
+   docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "${PWD}:/work" docker.io/gumdi/alcove:latest serve
    ```
    On Windows, use the Windows form in the [Web Console Quickstart](#web-console-quickstart).
    For an exchange through a shared folder, add the folder as the [Web Console Quickstart](#web-console-quickstart) shows.
 3. **You automate exchanges from the command line.** Run the containerized command line app against an SFTP server, a shared folder, or a partner's browser:
    ```sh
-   docker run -it --rm --mount type=bind,src="$PWD",dst=/work ghcr.io/georgetown-mdi/alcove:latest sftp://SFTP_USER@SFTP_HOST/SFTP_PATH --server-password=@PASSWORD_FILE INPUT_FILE OUTPUT_FOLDER
+   docker run -it --rm --mount type=bind,src="$PWD",dst=/work docker.io/gumdi/alcove:latest sftp://SFTP_USER@SFTP_HOST/SFTP_PATH --server-password=@PASSWORD_FILE INPUT_FILE OUTPUT_FOLDER
    ```
    Best for recurring or scheduled exchanges and for IT teams fitting linkage into a data pipeline. See the [CLI App Quickstart](#cli-app-quickstart).
+
+The commands on this page pull the image from Docker Hub. If a pull from Docker Hub is refused, put `ghcr.io/georgetown-mdi/alcove:latest` in place of `docker.io/gumdi/alcove:latest`: it is the same image on the GitHub Container Registry (see [Install and run](docs/guides/cli-install.md#install)).
 
 How many records each one handles, and roughly how long an exchange takes: [How large an exchange can be](docs/DEPLOYMENT.md#how-large-an-exchange-can-be).
 
@@ -66,8 +68,8 @@ To link a file:
 1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/).
 2. Within the Docker terminal (or in a Windows/Mac/Linux terminal window), run:  
 ```sh
-docker pull ghcr.io/georgetown-mdi/alcove:latest
-docker run -it --rm --mount type=bind,src=WORK_PATH,dst=/work ghcr.io/georgetown-mdi/alcove:latest sftp://SFTP_USER@SFTP_HOST:SFTP_PORT/SFTP_PATH --server-password=@PASSWORD_FILE INPUT_FILE OUTPUT_FOLDER
+docker pull docker.io/gumdi/alcove:latest
+docker run -it --rm --mount type=bind,src=WORK_PATH,dst=/work docker.io/gumdi/alcove:latest sftp://SFTP_USER@SFTP_HOST:SFTP_PORT/SFTP_PATH --server-password=@PASSWORD_FILE INPUT_FILE OUTPUT_FOLDER
 ```  
 Replacing each of the following:
    * `WORK_PATH` - relative or absolute path to a directory on your machine that contains your input file. The container can only read and write inside this directory, and the output folder is in it. Example: `/Users/me/psi-exchange` (Mac/Linux) or `C:\Users\me\psi-exchange` (Windows).
@@ -82,7 +84,7 @@ If `docker pull` stops with a certificate error or a refusal behind your organiz
 A complete example, run from `/Users/me/psi-exchange` containing `clients.csv`:
 
 ```sh
-docker run -it --rm --mount type=bind,src=/Users/me/psi-exchange,dst=/work ghcr.io/georgetown-mdi/alcove:latest sftp://exchange_user@sftp.example.org/exchanges/county-a-county-b --server-password=@passwd clients.csv matches/
+docker run -it --rm --mount type=bind,src=/Users/me/psi-exchange,dst=/work docker.io/gumdi/alcove:latest sftp://exchange_user@sftp.example.org/exchanges/county-a-county-b --server-password=@passwd clients.csv matches/
 ```
 
 The `-it` flag connects your terminal to the container. On the first connection, Alcove shows the SFTP server's host-key fingerprint and asks you to confirm it; check it against the fingerprint your server administrator gives you before answering yes. Without `-it` there is no terminal to ask at, and Alcove refuses to connect to a server whose fingerprint it has not been given.
@@ -90,13 +92,13 @@ The `-it` flag connects your terminal to the container. On the first connection,
 To run without a terminal, as a scheduled job does, read the fingerprint first, confirm it with your server administrator, and pass it on each run:
 
 ```sh
-docker run --rm ghcr.io/georgetown-mdi/alcove:latest probe-host-key sftp://sftp.example.org
+docker run --rm docker.io/gumdi/alcove:latest probe-host-key sftp://sftp.example.org
 ```
 
 Then paste the whole fingerprint it printed in place of `SHA256:FINGERPRINT` in the run command:
 
 ```sh
-docker run --rm --mount type=bind,src=/Users/me/psi-exchange,dst=/work ghcr.io/georgetown-mdi/alcove:latest sftp://exchange_user@sftp.example.org/exchanges/county-a-county-b --server-password=@passwd --server-host-key-fingerprint=SHA256:FINGERPRINT clients.csv matches/
+docker run --rm --mount type=bind,src=/Users/me/psi-exchange,dst=/work docker.io/gumdi/alcove:latest sftp://exchange_user@sftp.example.org/exchanges/county-a-county-b --server-password=@passwd --server-host-key-fingerprint=SHA256:FINGERPRINT clients.csv matches/
 ```
 
 See [Reading a host key with `probe-host-key`](docs/CLI.md#reading-a-host-key-with-probe-host-key).
@@ -114,7 +116,7 @@ To practice before using real data, the repository provides two synthetic input 
 The command line app also exchanges over WebRTC with a partner who uses the web app, with no SFTP server or shared folder between you. Invite them from the directory holding your input, replacing `Agency A` with your organization's name:
 
 ```sh
-docker run -it --rm --mount type=bind,src="$PWD",dst=/work ghcr.io/georgetown-mdi/alcove:latest invite --identity "Agency A" https://psi.data-bridge.org/ clients.csv matches/
+docker run -it --rm --mount type=bind,src="$PWD",dst=/work docker.io/gumdi/alcove:latest invite --identity "Agency A" https://psi.data-bridge.org/ clients.csv matches/
 ```
 
 It prints an invitation and waits. Send it to your partner over a trusted channel; they paste it under **Have an invitation? Paste it here** at [https://psi.data-bridge.org](https://psi.data-bridge.org). See [Inviting over WebRTC](docs/CLI.md#inviting-over-webrtc).
@@ -141,11 +143,11 @@ docker run --rm -p 127.0.0.1:3000:3000 \
   --env JOB_RENDEZVOUS_DIR=/shared \
   --env JOB_RENDEZVOUS_NAME=shared-folder \
   -v "/path/to/shared-folder:/shared" \
-  ghcr.io/georgetown-mdi/alcove:latest serve
+  docker.io/gumdi/alcove:latest serve
 ```
    On Windows, navigate to that directory in the Docker console and run:
 ```sh
-docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "${PWD}:/work" --env JOB_RENDEZVOUS_DIR=/shared --env JOB_RENDEZVOUS_NAME=shared-folder -v "C:\path\to\shared-folder:/shared" ghcr.io/georgetown-mdi/alcove:latest serve
+docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "${PWD}:/work" --env JOB_RENDEZVOUS_DIR=/shared --env JOB_RENDEZVOUS_NAME=shared-folder -v "C:\path\to\shared-folder:/shared" docker.io/gumdi/alcove:latest serve
 ```
 3. Visit [http://127.0.0.1:3000](http://127.0.0.1:3000) on that machine; press Ctrl-C when done.
 
@@ -172,13 +174,13 @@ Read the password from a file with `--server-password=@PASSWORD_FILE`, as the qu
 If you put the password in the connection string instead, special characters in it can be interpreted incorrectly by your shell. To avoid this, encase the whole connection string in single-quotation marks or escape the problematic characters. As an example of an exchange running from the current directory (indicated by mounting `$PWD`, or **p**rinting the **w**orking **d**irectory):
 
 ```sh
-docker run -it --rm --mount type=bind,src="$PWD",dst=/work ghcr.io/georgetown-mdi/alcove:latest 'sftp://user:passw!rd@example.org/psi' input.csv ./results
+docker run -it --rm --mount type=bind,src="$PWD",dst=/work docker.io/gumdi/alcove:latest 'sftp://user:passw!rd@example.org/psi' input.csv ./results
 ```
 
 or, in a Mac or Linux terminal only, where a backslash escapes the character:
 
 ```sh
-docker run -it --rm --mount type=bind,src="$PWD",dst=/work ghcr.io/georgetown-mdi/alcove:latest \
+docker run -it --rm --mount type=bind,src="$PWD",dst=/work docker.io/gumdi/alcove:latest \
    sftp://user:passw\!rd@example.org/psi input.csv ./results
 ```
 
@@ -194,7 +196,7 @@ Connection parameters can also be specified individually as command line flags t
 Using `@path`s specifies that the value should be read from a file. For example, to have the script read a password from the file `passwd` in the working directory, run:
 
 ```sh
-docker run -it --rm --mount type=bind,src="$PWD",dst=/work ghcr.io/georgetown-mdi/alcove:latest sftp://user@example.org/psi --server-password=@passwd input.csv ./results
+docker run -it --rm --mount type=bind,src="$PWD",dst=/work docker.io/gumdi/alcove:latest sftp://user@example.org/psi --server-password=@passwd input.csv ./results
 ```
 
 Note that because Docker prevents the container from accessing any path on your host system that isn't explicitly mounted, if you wish to use a pre-existing private key the program cannot access `~/.ssh` by default. In that case, either add a read-only mount to the key folder or copy the key to the working directory.
@@ -216,7 +218,7 @@ Paths can be given to Docker using standard Windows-style back-slashes. One exce
 A command in this README written on one line runs as written in PowerShell and in a Mac or Linux terminal. A command split over several lines, with a `\` at the end of each line, is for a Mac or Linux terminal only: PowerShell does not read the `\`. Put such a command on one line without the `\` marks instead. For example:
 
 ```sh
-docker run -it --rm --mount type=bind,src='C:\Users\me\Documents\alcove',dst=/work ghcr.io/georgetown-mdi/alcove:latest sftp://user@example.org/psi --server-password=@passwd input.csv ./results
+docker run -it --rm --mount type=bind,src='C:\Users\me\Documents\alcove',dst=/work docker.io/gumdi/alcove:latest sftp://user@example.org/psi --server-password=@passwd input.csv ./results
 ```
 
 A command that mounts `$PWD` or `${PWD}` needs a folder on a local drive. From a network location, a path starting with `\\`, PowerShell gives `$PWD` as `Microsoft.PowerShell.Core\FileSystem::\\server\share\...`, which Docker cannot mount. Docker cannot mount a folder on a network location by its path either, whether a `\\` path or a mapped drive such as `Z:\exchange`: it reaches that folder through a volume the Windows shared-folder setup makes, described in [Using a network file drop with Alcove on Windows](support/windows-network-filedrop/README.md). For a folder on a local drive, you can write its path in place of `$PWD`, as in the example above.
@@ -226,7 +228,7 @@ A command that mounts `$PWD` or `${PWD}` needs a folder on a local drive. From a
 The `docker run` command has two parts. The first is the Docker invocation, which connects your terminal to the container so Alcove can ask you to confirm the server's fingerprint, and mounts `WORK_PATH` at `/work` so the container can read your input and write the output there (see Docker's own docs for [`--rm`](https://docs.docker.com/reference/cli/docker/container/run/#rm) and [`--mount`](https://docs.docker.com/reference/cli/docker/container/run/#mount)):
 
 ```sh
-docker run -it --rm --mount type=bind,src=WORK_PATH,dst=/work ghcr.io/georgetown-mdi/alcove:latest
+docker run -it --rm --mount type=bind,src=WORK_PATH,dst=/work docker.io/gumdi/alcove:latest
 ```
 
 The second part is the invocation of the Alcove script and includes any command line options you wish to use. In the first example above it is:
@@ -238,7 +240,7 @@ sftp://SFTP_USER@SFTP_HOST:SFTP_PORT/SFTP_PATH --server-password=@PASSWORD_FILE 
 However, you can place anything here you wish to pass on to the program. For example, to have it print all of its options, execute:
 
 ```sh
-docker run --rm ghcr.io/georgetown-mdi/alcove:latest --help
+docker run --rm docker.io/gumdi/alcove:latest --help
 ```
 
 ## Documentation

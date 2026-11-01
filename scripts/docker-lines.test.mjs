@@ -65,7 +65,7 @@ function consoleCommandWithSharedFolder() {
       !command.includes("JOB_RENDEZVOUS"),
   );
   expect(start).toBeDefined();
-  const imageAt = start.command.indexOf(" ghcr.io/");
+  const imageAt = start.command.indexOf(" docker.io/");
   expect(imageAt).toBeGreaterThan(0);
   return (
     `${start.command.slice(0, imageAt)} ${SHARED_FOLDER_MOUNT_FLAGS}` +

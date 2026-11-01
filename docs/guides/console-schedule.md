@@ -80,6 +80,8 @@ Replace `/path/to/your/credential-file` in `alcove.yaml` and in each Docker comm
 
 Replace `/path/to/your/exchange-folder` in each command with your exchange folder.
 
+Each command names the Docker Hub image. If you started the console from the GitHub Container Registry copy (see [Start the console](./console-start.md)), put `ghcr.io/georgetown-mdi/alcove:latest` in place of `docker.io/gumdi/alcove:latest` in each command.
+
 ### 4. Both of you: run it once by hand
 
 At a time agreed on with your partner, run the exchange once from a terminal on the scheduling machine.
