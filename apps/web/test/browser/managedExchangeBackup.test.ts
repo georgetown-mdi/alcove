@@ -881,13 +881,11 @@ async function plantUnreadable(id: string, fields: object): Promise<void> {
         MANAGED_EXCHANGE_STORE_NAME,
         "readwrite",
       );
-      transaction
-        .objectStore(MANAGED_EXCHANGE_STORE_NAME)
-        .put({
-          ...fields,
-          id,
-          schemaVersion: "alcove-managed-exchange/damaged",
-        });
+      transaction.objectStore(MANAGED_EXCHANGE_STORE_NAME).put({
+        ...fields,
+        id,
+        schemaVersion: "alcove-managed-exchange/damaged",
+      });
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error);
       transaction.onabort = () => reject(transaction.error);
