@@ -72,6 +72,7 @@ import {
 import { LocalFSClient } from "./connection/localFSClient";
 import { raiseInactivityLimit } from "./connection/timeoutGuidance";
 import {
+  isConfigAppearedLate,
   keyFileNotSavedRemedy,
   keyFileSavedConfigNotWrittenRemedy,
   markArrivalWait,
@@ -184,6 +185,8 @@ export interface AuthPersist extends Authentication {
   previousExpires?: string;
   /** The key file's rotation history, newest first. */
   rotationHistory?: ReadonlyArray<RotationHistoryEntry>;
+  /** The key file's rotation-in-flight marker, as the run read it. */
+  rotationInFlightSince?: string;
 }
 
 /**
@@ -782,20 +785,29 @@ async function openRunTransport(params: {
       // derived id too, where a partner that did not save the new secret
       // allocates and dials.
       const { sharedSecret, previousSharedSecret } = build.webRtcDial.options;
+      const secrets: Array<{ kind: HandshakeSecretKind; secret: string }> = [
+        { kind: "current", secret: sharedSecret },
+        ...(previousSharedSecret === undefined
+          ? []
+          : [{ kind: "previous" as const, secret: previousSharedSecret }]),
+      ];
       const enrollments = await Promise.all(
-        [sharedSecret, previousSharedSecret]
-          .filter((secret) => secret !== undefined)
-          .map((secret) =>
-            enrollAtInvitationRelay(invitationRegistrar, secret, {
-              signal: interrupted.signal,
-            }),
+        secrets.map(async ({ kind, secret }) => ({
+          kind,
+          enrollment: await enrollAtInvitationRelay(
+            invitationRegistrar,
+            secret,
+            { signal: interrupted.signal },
           ),
+        })),
       );
-      for (const enrollment of enrollments)
-        reportInvitationRelayEnrollment(invitationRegistrar, enrollment, {
-          log,
-          emit,
-        });
+      for (const { kind, enrollment } of enrollments)
+        reportInvitationRelayEnrollment(
+          invitationRegistrar,
+          enrollment,
+          { log, emit },
+          secrets.length > 1 ? kind : undefined,
+        );
       if (run.signalReceived !== undefined)
         throw new Error(
           `interrupted by ${run.signalReceived} before the rendezvous`,
@@ -824,17 +836,22 @@ async function openRunTransport(params: {
     // rendezvous does not wait out that budget. The post-dial guard below
     // still stands, for the window between the dial settling and the
     // transport being assigned.
+    const { afterCutRotation } = build.webRtcDial;
     const dialed = await openWebRtcWithRelayFallback(
       {
         ...build.webRtcDial.options,
         signal: interrupted.signal,
         onRegistered: onSignalingRegistered,
       },
-      await webSocketRelayDialsFor(
-        connection,
-        build.webRtcDial.options.sharedSecret,
-        build.webRtcDial.options.role,
-        build.webRtcDial.options.previousSharedSecret,
+      (
+        await webSocketRelayDialsFor(
+          connection,
+          build.webRtcDial.options.sharedSecret,
+          build.webRtcDial.options.role,
+          build.webRtcDial.options.previousSharedSecret,
+        )
+      ).map((dial) =>
+        afterCutRotation === true ? { ...dial, afterCutRotation } : dial,
       ),
     );
     build.transport = dialed;
@@ -1053,6 +1070,9 @@ function keyFileSavedConfigNotWritten(
     kept: onlineSetup.kept,
     keyPath,
     configWriteFailed: stepFailed && !onlineSetup.kept,
+    ...(isConfigAppearedLate(run.configWriteError) && {
+      configAppearedLate: true,
+    }),
   };
 }
 
@@ -1141,15 +1161,33 @@ export function isNoHealSaveFailure(err: unknown): boolean {
 
 /**
  * Whether the next run with the same partner can heal a run cut between the
- * two stores. Over SFTP and a shared folder the two sides meet whatever secret
- * each holds, and over WebRTC the acceptor, the only side that can be ahead
- * there, also waits where its previous secret meets the partner
- * (`openWebRtcPeerSession`). An online invite or accept run cannot: its
- * responder keeps no key file after a failed save. A cut run that cannot heal
- * exits 77.
+ * two stores, as far as the run's own key file decides it. Over SFTP and a
+ * shared folder the two sides meet whatever secret each holds, and over WebRTC
+ * a CLI acceptor, the only side that can be ahead there, also waits where its
+ * previous secret meets the partner (`openWebRtcPeerSession`). An online
+ * invite or accept run cannot: its responder keeps no key file after a failed
+ * save. A cut run that cannot heal exits 77.
  */
 function nextRunCanHeal(auth: AuthPersist | null): boolean {
   return auth?.saveKeyFileExclusively !== true;
+}
+
+/**
+ * Whether the initiator this responder ran with keeps the secret the run used
+ * when it stores, so that a failed save on this side heals on the next run.
+ * Over SFTP and a shared folder the two meet whatever secret each holds. Over
+ * WebRTC the initiator is the acceptor, which keeps one only where it is a CLI
+ * party; a browser keeps none and waits under one pair of ids. The handshake
+ * looks the same from either, except that a partner completing under its
+ * previous secret (`secretUsed.partner`) shows it keeps one.
+ */
+function initiatorKeepsSecretRunUsed(
+  channel: ProtocolConnectionConfig["channel"],
+  secretUsed: { partner: HandshakeSecretKind },
+): boolean {
+  if (channel === "sftp" || channel === "filedrop") return true;
+  if (channel === "webrtc") return secretUsed.partner === "previous";
+  return false;
 }
 
 /**
@@ -1359,8 +1397,19 @@ async function authenticateRun(params: {
   eventStream: EventStreamEmitter | undefined;
   /** {@link nextRunCanHeal} for the run. */
   nextRunHeals: boolean;
+  channel: ProtocolConnectionConfig["channel"];
 }): Promise<void> {
-  const { build, run, mc, auth, role, log, eventStream, nextRunHeals } = params;
+  const {
+    build,
+    run,
+    mc,
+    auth,
+    role,
+    log,
+    eventStream,
+    nextRunHeals,
+    channel,
+  } = params;
   log.info("authenticating");
   // Discard the (possibly whitespace-padded) keyFilePath from auth;
   // saveKeyFile below uses trimmedKeyFilePath, which was captured and
@@ -1374,6 +1423,7 @@ async function authenticateRun(params: {
     previousSharedSecret,
     previousExpires,
     rotationHistory,
+    rotationInFlightSince: _marked,
     ...authParams
   } = auth;
   // trimmedKeyFilePath is set whenever auth is set; they are populated
@@ -1513,13 +1563,15 @@ async function authenticateRun(params: {
       // Marked as stating its own next step, so runProtocol prints no rotation
       // line beneath it. An initiator's failed store aborts before the
       // responder's, so a retry recovers (exit 69). A responder stores after
-      // an initiator that kept the secret this run used: exit 69 where the
-      // next run heals, else 77, since a retry cannot reconnect the two. An
-      // online invite or accept responder (saved exclusively) has no key file
-      // after a failed save, and a re-run bootstrap healing from none is
-      // unmeasured, so it takes the 77 path on every channel.
+      // its initiator: exit 69 where that initiator kept the secret this run
+      // used and the next run heals, else 77, since a retry cannot reconnect
+      // the two. An online invite or accept responder (saved exclusively) has
+      // no key file after a failed save, and a re-run bootstrap healing from
+      // none is unmeasured, so it takes the 77 path on every channel.
       const reason = err instanceof Error ? err.message : String(err);
-      const responderCannotHeal = role === "responder" && !nextRunHeals;
+      const responderCannotHeal =
+        role === "responder" &&
+        !(nextRunHeals && initiatorKeepsSecretRunUsed(channel, secretUsed));
       const [preamble, remedy] =
         role === "initiator"
           ? [FIRST_STORE_SAVE_PREAMBLE, FIRST_STORE_SAVE_REMEDY]
@@ -2462,6 +2514,7 @@ export async function runProtocol(
         log,
         eventStream,
         nextRunHeals,
+        channel: connection.channel,
       });
     }
 

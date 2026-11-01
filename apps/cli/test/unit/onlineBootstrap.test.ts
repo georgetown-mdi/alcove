@@ -26,6 +26,7 @@ import {
   SHARED_SECRET_REGEX,
   UsageError,
   redactUrlCredentials,
+  sanitizeErrorForDisplay,
 } from "@alcove/core";
 import {
   CsvRowParseError,
@@ -82,6 +83,7 @@ import { exitCodeForError, runOrExit, withExitCode } from "../../src/util/exit";
 import { MAX_TIMEOUT_SECONDS } from "../../src/util/flags";
 import { openEventStream } from "../../src/eventStream";
 import { assertFirstRoundFits } from "../../src/firstRoundFits";
+import { configAppearedLateStepShown } from "../../src/failureRemedy";
 import {
   assertHostKeyTrustCanBeEstablished,
   establishHostKeyTrust,
@@ -2553,6 +2555,60 @@ describe("runOnlineBootstrap", () => {
           .filter((span) => span.operatorSupplied)
           .map((span) => span.text),
       ).toContain(configPath);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("the refusal of a config that appeared late and the completion summary state the same step for the same file", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
+    const configPath = path.join(dir, "alcove.yaml");
+    vi.mocked(runProtocol).mockImplementation((async (
+      ...callArgs: unknown[]
+    ) => {
+      fs.writeFileSync(configPath, "operator: file\n");
+      try {
+        await writeConfigArg(callArgs)();
+        return {};
+      } catch (err) {
+        return { configWriteError: err };
+      }
+    }) as never);
+    try {
+      const params = onlineBootstrapParams(configPath);
+      const { configWriteError } = await runOnlineBootstrap(params);
+      const step = configAppearedLateStepShown(configPath);
+      expect(step).toBe(
+        `Move the file at ${configPath} elsewhere, then recreate ` +
+          `${configPath} to match your connection and linkage settings and ` +
+          "run 'alcove exchange'.",
+      );
+      const refusal = sanitizeErrorForDisplay(configWriteError);
+      expect(refusal).toBe(
+        `refusing to overwrite ${configPath}: a file appeared there after ` +
+          `the initial conflict check. The rotated key was saved. ${step}`,
+      );
+
+      const log = {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      } as unknown as ReturnType<typeof getLogger>;
+      logOnlineBootstrapOutcome(log, {
+        outcome: "completed",
+        configFile: configPath,
+        keyFile: params.keyPath,
+        configWriteError,
+      });
+      const summary = String(vi.mocked(log.error).mock.calls[0]?.[0]);
+      expect(summary).toBe(
+        `exchange complete and the rotated key was saved to ${params.keyPath}, ` +
+          `but a file appeared at ${configPath} after the initial conflict ` +
+          `check, so the configuration was not written. ${step} Keep the key ` +
+          "file private.",
+      );
+      for (const message of [refusal, summary])
+        expect(message).not.toMatch(/delete/i);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

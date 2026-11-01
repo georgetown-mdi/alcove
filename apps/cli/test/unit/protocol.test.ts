@@ -529,6 +529,10 @@ import {
 } from "../../src/exchangeOutcome";
 import { termsChangeHandler } from "../../src/termsChange";
 import { LocalFSClient } from "../../src/connection/localFSClient";
+import {
+  configAppearedLateStepShown,
+  markConfigAppearedLate,
+} from "../../src/failureRemedy";
 import { captureProcessExit, recordProcessExit } from "../exitCapture";
 
 // 32 zero bytes in base64url (43 chars, no padding).
@@ -3129,6 +3133,7 @@ test("a completed run ends with one outcome line naming the count, the paths and
     warning: record("warning"),
     payloadReceiveTaken: record("payloadReceiveTaken"),
     logFileLoss: record("logFileLoss"),
+    invitationRelayEnrollment: record("invitationRelayEnrollment"),
     metrics: record("metrics"),
     result: record("result"),
     error: record("error"),
@@ -8144,6 +8149,32 @@ test.each([
   20_000,
 );
 
+test("an online setup that found a file at its configuration path, then failed, states the step the refusal states, naming the same file, and not deleting the key file", async () => {
+  driveStoringTermsExchange();
+  vi.mocked(runExchange).mockImplementation((() =>
+    Promise.reject(droppedConnection())) as never);
+  const { pA, pB, keyFileA, configPath } = await startCutPair(
+    false,
+    "initiator",
+    () => {
+      throw markConfigAppearedLate(new Error("a file appeared"));
+    },
+  );
+  const [initiator] = await Promise.allSettled([pA, pB]);
+
+  expect(initiator.status).toBe("rejected");
+  if (initiator.status !== "rejected") return;
+  const rendered = renderFailureForOperator(initiator.reason);
+  expect(rendered).toBe(
+    `${sanitizeErrorForDisplay(initiator.reason)}\n` +
+      `The key file ${keyFileA} was saved, but a file appeared at ` +
+      `${configPath} after the initial conflict check, so the configuration ` +
+      `was not written, and then the run stopped. ` +
+      configAppearedLateStepShown(configPath),
+  );
+  expect(rendered).not.toContain(`Delete ${keyFileA}`);
+}, 20_000);
+
 test("an online setup whose configuration step failed, then interrupted: the signal handler states the step the failed run states", async () => {
   const exitSpy = recordProcessExit();
   const pending: Array<(err: Error) => void> = [];
@@ -8939,6 +8970,7 @@ test("an emitter passed instead of the flag receives every event, and no second 
     warning: record("warning"),
     payloadReceiveTaken: record("payloadReceiveTaken"),
     logFileLoss: record("logFileLoss"),
+    invitationRelayEnrollment: record("invitationRelayEnrollment"),
     metrics: record("metrics"),
     result: record("result"),
     error: record("error"),
@@ -9015,6 +9047,7 @@ test("a --log-file that stopped taking lines mid-run is counted on the stream on
     warning: recordB("warning"),
     payloadReceiveTaken: recordB("payloadReceiveTaken"),
     logFileLoss: recordB("logFileLoss"),
+    invitationRelayEnrollment: recordB("invitationRelayEnrollment"),
     metrics: recordB("metrics"),
     result: recordB("result"),
     error: recordB("error"),

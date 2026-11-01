@@ -18,6 +18,7 @@ import type {
   Displayable,
   EntityClusterSummary,
   ExchangeStageDefinition,
+  HandshakeSecretKind,
   PayloadColumnsChange,
   ResolvedMatching,
 } from "@alcove/core";
@@ -511,6 +512,14 @@ export interface EventStreamEmitter {
     columnCount: number,
   ): void;
   logFileLoss(message: string, lostLines: number): void;
+  /**
+   * An `invitationRelayEnrollment` warning, holding `secretKind` where the run
+   * enrolls both its current and its previous secret.
+   */
+  invitationRelayEnrollment(
+    message: string,
+    secretKind: HandshakeSecretKind | undefined,
+  ): void;
   metrics(
     recordsProcessed: number,
     transportRetries: number,
@@ -549,6 +558,11 @@ function createEventStreamEmitter(
       ),
     logFileLoss: (message, lostLines) =>
       writer.emit({ ...buildWarningEvent("logFileLoss", message), lostLines }),
+    invitationRelayEnrollment: (message, secretKind) =>
+      writer.emit({
+        ...buildWarningEvent("invitationRelayEnrollment", message),
+        ...(secretKind !== undefined && { secretKind }),
+      }),
     metrics: (recordsProcessed, transportRetries, reconnects) =>
       writer.emit(
         buildMetricsEvent(recordsProcessed, transportRetries, reconnects),

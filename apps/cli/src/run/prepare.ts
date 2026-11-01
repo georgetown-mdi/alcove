@@ -7,6 +7,7 @@ import {
   InternalConsistencyError,
   assertSharedSecretReadyForHandshake,
   handshakeRoleForRendezvousRole,
+  offerablePrevious,
   redactAndSanitizeForDisplay,
   selectRunRelay,
   UsageError,
@@ -34,7 +35,6 @@ import {
   relayCredentialPerAttempt,
 } from "../connection/webrtc/weriftPeer";
 import { assertFirstRoundFits } from "../firstRoundFits";
-import { checkKeyFileExpiry } from "../keyFile";
 import { preflightKeyFilePath } from "../keyFilePreflight";
 import type {
   AuthPersist,
@@ -103,6 +103,8 @@ interface WebRtcDial {
   /** The key-exchange role this party takes once the channel is open. */
   handshakeRole: HandshakeRole;
   options: WebRtcPeerOptions & WebRtcMessageConnectionOptions;
+  /** `WebSocketRelayDial.afterCutRotation` for each relay the run dials. */
+  afterCutRotation?: boolean;
 }
 
 /**
@@ -178,11 +180,11 @@ export function webRtcDialFrom(
 
 /**
  * The previous secret a webrtc run also waits for its partner under: the key
- * file's, on the acceptor, the only side that can be ahead there, while it has
- * not expired and differs from the current secret, the rule by which the
- * handshake offers it (`authenticateConnection` in core). `undefined`
+ * file's, on the acceptor, the only side that can be ahead there, where the
+ * handshake would offer it at `now` (core's `offerablePrevious`). `undefined`
  * otherwise, so a run holding none, or holding one as the inviter, waits under
- * the current secret alone.
+ * the current secret alone. The handshake decides again with its own clock, so
+ * one that expires during the wait fails authentication there.
  */
 function rendezvousPreviousSecret(
   role: WebRTCConnectionConfig["role"],
@@ -193,13 +195,18 @@ function rendezvousPreviousSecret(
   now: number,
 ): string | undefined {
   const previous = auth?.previousSharedSecret;
-  if (role !== "acceptor" || previous === undefined) return undefined;
-  if (previous === auth?.sharedSecret) return undefined;
-  const expiry = checkKeyFileExpiry(
-    { sharedSecret: previous, expires: auth?.previousExpires },
+  if (role !== "acceptor" || auth === null || previous === undefined)
+    return undefined;
+  return offerablePrevious(
+    {
+      sharedSecret: previous,
+      ...(auth.previousExpires !== undefined && {
+        expires: auth.previousExpires,
+      }),
+    },
+    auth.sharedSecret,
     now,
-  );
-  return expiry === "expired" ? undefined : previous;
+  )?.sharedSecret;
 }
 
 /**
@@ -394,15 +401,25 @@ async function checkRunLocalInputs(params: {
     auth?.sharedSecret,
     new Date(),
   );
+  const previousSharedSecret = rendezvousPreviousSecret(
+    connection.role,
+    auth,
+    Date.now(),
+  );
+  const webRtcDial = webRtcDialFrom(
+    connection,
+    auth?.sharedSecret,
+    runRelayCredential,
+    previousSharedSecret,
+  );
   return {
     trimmedKeyFilePath,
     runRelayCredential,
-    webRtcDial: webRtcDialFrom(
-      connection,
-      auth?.sharedSecret,
-      runRelayCredential,
-      rendezvousPreviousSecret(connection.role, auth, Date.now()),
-    ),
+    webRtcDial:
+      previousSharedSecret !== undefined ||
+      auth?.rotationInFlightSince !== undefined
+        ? { ...webRtcDial, afterCutRotation: true }
+        : webRtcDial,
   };
 }
 

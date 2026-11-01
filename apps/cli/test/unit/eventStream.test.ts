@@ -833,6 +833,8 @@ for (const source of WARNING_SOURCES.filter(
     const emitter = openEventStreamWithFdWired();
     const text = "the partner named a\\b caf\u00e9";
     if (source === "logFileLoss") emitter.logFileLoss(text, 2);
+    else if (source === "invitationRelayEnrollment")
+      emitter.invitationRelayEnrollment(text, undefined);
     else emitter.warning(source, text);
     const [line] = cap.lines();
     expect(line).toMatch(/^[\x20-\x7e]*$/);
@@ -841,6 +843,27 @@ for (const source of WARNING_SOURCES.filter(
     expect(event.unescapedMessage).toBe(text);
     expect(event.message).toBe("the partner named a\\\\b caf\\xe9");
   });
+
+test("an invitationRelayEnrollment warning holds secretKind only where the run names one", () => {
+  const cap = captureFd3Writes();
+  const emitter = openEventStreamWithFdWired();
+  emitter.invitationRelayEnrollment("refused", "previous");
+  emitter.invitationRelayEnrollment("refused", undefined);
+  const [named, unnamed] = cap
+    .lines()
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+  expect(named).toMatchObject({
+    type: "warning",
+    source: "invitationRelayEnrollment",
+    message: "refused",
+    secretKind: "previous",
+  });
+  expect(unnamed).toMatchObject({
+    type: "warning",
+    source: "invitationRelayEnrollment",
+  });
+  expect(unnamed).not.toHaveProperty("secretKind");
+});
 
 test("a payloadReceiveTaken warning holds its partner text in columns alone", () => {
   const cap = captureFd3Writes();
@@ -909,6 +932,7 @@ test("every event is written to fd 3 as a printable-ASCII line", () => {
   emitter.warning("termsExchange", hostile);
   emitter.payloadReceiveTaken(hostile as Displayable, [hostile], 1);
   emitter.logFileLoss(hostile, 3);
+  emitter.invitationRelayEnrollment(hostile, "current");
   emitter.metrics(1000, 2, 1);
   emitter.result(ONE_TO_ONE, {
     intersectionCount: 7,
@@ -918,7 +942,7 @@ test("every event is written to fd 3 as a printable-ASCII line", () => {
   failing.error(new Error(hostile), "run");
 
   const lines = cap.lines();
-  expect(lines).toHaveLength(9);
+  expect(lines).toHaveLength(10);
   for (const line of lines) expect(PRINTABLE_ASCII_ONLY.test(line)).toBe(true);
   // The encoding is of the text alone: each unescaped field parses back to
   // the bytes it was given.

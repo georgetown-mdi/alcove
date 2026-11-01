@@ -1277,7 +1277,7 @@ The block is validated **strictly**, as the document's top level is: an unrecogn
 | Before either party saves it (a failed handshake, or terms that are refused) | The existing secret stays valid |
 | After both parties saved it, during the data exchange | Both parties hold the rotated secret and can retry without re-inviting |
 | The first party to save cannot persist it (for example a disk-write error) | Normally neither party holds it, and the same command run again after the fix recovers ([Out-of-sync tokens](CLI.md#out-of-sync-tokens)) |
-| The second party cannot persist it, or the run stops between the two saves | The first party is ahead. The next run heals it; after an online `alcove invite` or `alcove accept` run, both must re-invite ([Out-of-sync tokens](CLI.md#out-of-sync-tokens)) |
+| The second party cannot persist it, or the run stops between the two saves | The first party is ahead. The next run heals it; after an online `alcove invite` or `alcove accept` run, and where a WebRTC inviter's own save failed, both must re-invite ([Out-of-sync tokens](CLI.md#out-of-sync-tokens)) |
 
 Invitation tokens expire after 1 hour by default; a rotated secret's lifetime is governed by [`token_max_age_days`](#authenticationtoken_max_age_days). WebRTC peer addressing is configured in [`connection.role`](#connectionrole), not here.
 

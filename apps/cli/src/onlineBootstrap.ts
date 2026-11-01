@@ -53,6 +53,12 @@ import {
   saveConfig,
 } from "./config";
 import { outcomeLineWriter } from "./exchangeOutcome";
+import {
+  configAppearedLateStep,
+  configAppearedLateStepShown,
+  isConfigAppearedLate,
+  markConfigAppearedLate,
+} from "./failureRemedy";
 import { detectFileConflicts, FileExistsError } from "./fileUtils";
 import { writeAcceptanceRecordReportingLoss } from "./acceptedTermsRecords";
 import {
@@ -808,16 +814,6 @@ export function prepareForOnlineExchange(
 
 // --- Online exchange ---------------------------------------------------------
 
-/**
- * What {@link runOnlineBootstrap}'s acceptance hook states behind the config
- * path a file appeared at.
- */
-const CONFIG_APPEARED_LATE_REMEDY =
-  ": a file appeared there after the initial conflict check. The exchange " +
-  "completed and the rotated key was saved; move or remove that file (or " +
-  "pass --config-file), then rerun 'alcove exchange' to recover without " +
-  "re-inviting.";
-
 /** What {@link runOnlineBootstrap} resolves with. */
 export interface OnlineBootstrapResult {
   /** The run's outcome, as {@link RunProtocolResult.outcome} states it. */
@@ -1213,10 +1209,11 @@ export async function runOnlineBootstrap(params: {
           const configAppearedLate = (): UsageError => {
             const message = messageWithOperatorText`refusing to overwrite ${operatorSuppliedText(
               params.configPath,
-            )}${CONFIG_APPEARED_LATE_REMEDY}`;
-            return keepOperatorSuppliedText(
-              new UsageError(message.text),
-              message,
+            )}: a file appeared there after the initial conflict check. The rotated key was saved. ${configAppearedLateStep(
+              params.configPath,
+            )}`;
+            return markConfigAppearedLate(
+              keepOperatorSuppliedText(new UsageError(message.text), message),
             );
           };
           if (detectFileConflicts([params.configPath]).length > 0)
@@ -1371,6 +1368,17 @@ export function logOnlineBootstrapOutcome(
   const configFileDisplay = redactAndRenderOperatorSuppliedText(
     operatorSuppliedText(params.configFile),
   );
+  if (isConfigAppearedLate(params.configWriteError)) {
+    log.error(
+      `exchange complete and the rotated key was saved to ${redactAndRenderOperatorSuppliedText(
+        operatorSuppliedText(params.keyFile),
+      )}, but a file appeared at ${configFileDisplay} after the initial ` +
+        `conflict check, so the configuration was not written. ` +
+        `${configAppearedLateStepShown(params.configFile)} Keep the key ` +
+        `file private.`,
+    );
+    return;
+  }
   log.error(
     `exchange complete and the rotated key was saved to ${redactAndRenderOperatorSuppliedText(
       operatorSuppliedText(params.keyFile),

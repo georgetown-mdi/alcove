@@ -13,7 +13,10 @@ import {
   redactAndSanitizeForDisplay,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
 } from "@alcove/core";
-import type { RelayEnrollmentWithinWait } from "@alcove/core";
+import type {
+  HandshakeSecretKind,
+  RelayEnrollmentWithinWait,
+} from "@alcove/core";
 
 import type { EventStreamEmitter } from "./eventStream";
 
@@ -70,9 +73,21 @@ export function invitationRelayNotEnrolledWarning(
 }
 
 /**
+ * What a line about one of a run's two enrollments starts with, naming the
+ * secret it enrolled.
+ */
+const ENROLLED_SECRET_PREFIX: Readonly<Record<HandshakeSecretKind, string>> =
+  Object.freeze({
+    current: "for the current shared secret, ",
+    previous: "for the shared secret from before a run that stopped partway, ",
+  });
+
+/**
  * Report an enrollment: a confirmed one on the log at info level, a failed one
  * as a warning on the log and the event stream. A cancelled one reports
- * nothing, since the run is stopping.
+ * nothing, since the run is stopping. `secretKind` names which secret it
+ * enrolled, on a run that enrolls both its current and its previous secret;
+ * a run enrolling one passes none.
  */
 export function reportInvitationRelayEnrollment(
   registrarUrl: string,
@@ -81,24 +96,26 @@ export function reportInvitationRelayEnrollment(
     log: { info: (message: string) => void; warn: (message: string) => void };
     emit: (fn: (e: EventStreamEmitter) => void) => void;
   },
+  secretKind?: HandshakeSecretKind,
 ): void {
   if (enrollment.kind === "cancelled") return;
+  const prefix =
+    secretKind === undefined ? "" : ENROLLED_SECRET_PREFIX[secretKind];
   if (enrollment.kind === "enrolled") {
     sinks.log.info(
       redactAndSanitizeForDisplay(
-        invitationRelayEnrolledNotice(registrarUrl, enrollment.lapsesAt),
+        prefix +
+          invitationRelayEnrolledNotice(registrarUrl, enrollment.lapsesAt),
       ),
     );
     return;
   }
-  const warning = invitationRelayNotEnrolledWarning(
-    registrarUrl,
-    enrollment.detail,
-  );
+  const warning =
+    prefix + invitationRelayNotEnrolledWarning(registrarUrl, enrollment.detail);
   sinks.log.warn(
     redactAndSanitizeForDisplay(warning, {
       maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
     }),
   );
-  sinks.emit((e) => e.warning("invitationRelayEnrollment", warning));
+  sinks.emit((e) => e.invitationRelayEnrollment(warning, secretKind));
 }

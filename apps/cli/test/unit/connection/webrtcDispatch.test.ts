@@ -241,6 +241,7 @@ const { failureRemedy, OLDER_KEY_FILE_NO_SHOW_REMEDY } =
 const {
   ConnectionError,
   markFailureCause,
+  NEW_INVITATION_REMEDY,
   DISPLAY_TRUNCATION_MARKER,
   EncryptedMessageConnection,
   RELAY_CREDENTIAL_MAX_TTL_SECONDS,
@@ -527,7 +528,7 @@ test("the rendezvous line names the authority dialed, not the configured text", 
 
 // --- a cut rotation and the run that heals it --------------------------------
 
-test("a failed save on the responder exits 69 on both sides, the acceptor keeping the secret the run used for the next run", async () => {
+test("a failed save on an inviter that cannot tell its acceptor keeps the secret the run used exits 77 and names a new invitation, and the acceptor, which kept it, exits 69", async () => {
   mockState.responderSaveFails = true;
   // The inviter takes the responder's handshake role; its key file is written
   // before the run starts, so the refusal is armed only once both are under way.
@@ -535,6 +536,8 @@ test("a failed save on the responder exits 69 on both sides, the acceptor keepin
   mockState.unwritableKeyFilePath = path.join(tmpDir, "inviter.key");
   const [responder, initiator] = await Promise.allSettled(runs);
 
+  // A browser acceptor keeps no previous secret, and this handshake looks the
+  // same from a browser acceptor as from a CLI one.
   expect(responder.status).toBe("rejected");
   const responderReason = (responder as PromiseRejectedResult).reason as Error;
   expect(responderReason.message).toContain(
@@ -542,9 +545,10 @@ test("a failed save on the responder exits 69 on both sides, the acceptor keepin
       "updated token could not be saved to ",
   );
   expect(responderReason.message).toContain(
-    "Your partner saved the new token and kept the one this run used",
+    ` Your partner may already hold the rotated token. ${NEW_INVITATION_REMEDY}`,
   );
-  expect(exitCodeForError(responderReason)).toBe(69);
+  expect(responderReason.message).not.toContain("kept the one this run used");
+  expect(exitCodeForError(responderReason)).toBe(77);
 
   expect(initiator.status).toBe("rejected");
   const initiatorReason = (initiator as PromiseRejectedResult).reason as Error;
@@ -580,6 +584,9 @@ function runPartyFrom(
       ...(keyFile.previousExpires !== undefined && {
         previousExpires: keyFile.previousExpires,
       }),
+      ...(keyFile.rotationInFlightSince !== undefined && {
+        rotationInFlightSince: keyFile.rotationInFlightSince,
+      }),
     },
     prepared: minimalPrepared,
     output: path.join(tmpDir, `${role}.csv`),
@@ -589,6 +596,40 @@ function runPartyFrom(
 }
 
 const AHEAD = generateSharedSecret();
+
+test("a failed save on an inviter whose acceptor completed under its previous secret exits 69 and says the next run can use the secret this run used", async () => {
+  mockState.responderSaveFails = true;
+  const runs = [
+    runPartyFrom("inviter", { sharedSecret: SECRET }),
+    runPartyFrom("acceptor", {
+      sharedSecret: AHEAD,
+      previousSharedSecret: SECRET,
+    }),
+  ];
+  mockState.unwritableKeyFilePath = path.join(tmpDir, "inviter.key");
+  const [responder, initiator] = await Promise.allSettled(runs);
+
+  expect(responder.status).toBe("rejected");
+  const responderReason = (responder as PromiseRejectedResult).reason as Error;
+  expect(responderReason.message).toContain(
+    "Your partner saved the new token and kept the one this run used",
+  );
+  expect(responderReason.message).not.toContain(NEW_INVITATION_REMEDY);
+  expect(exitCodeForError(responderReason)).toBe(69);
+
+  expect(initiator.status).toBe("rejected");
+  expect(exitCodeForError((initiator as PromiseRejectedResult).reason)).toBe(
+    69,
+  );
+  // The acceptor kept the secret the inviter still holds, which the next run
+  // meets it under.
+  expect(loadKeyFile(path.join(tmpDir, "inviter.key"))?.sharedSecret).toBe(
+    SECRET,
+  );
+  const ahead = loadKeyFile(path.join(tmpDir, "acceptor.key"));
+  expect(ahead?.sharedSecret).not.toBe(SECRET);
+  expect(ahead?.previousSharedSecret).toBe(SECRET);
+});
 
 test("an acceptor whose key file holds a previous secret waits under it too, and the run heals with an inviter left on it", async () => {
   await Promise.all([
@@ -668,21 +709,48 @@ test("an acceptor holding a previous secret parks a relay dialed under the deriv
       exchangeId: await deriveRelayExchangeId(AHEAD),
       relayKey: await deriveRelayKey(AHEAD),
       role: "acceptor",
+      afterCutRotation: true,
     },
     {
       url: "wss://partner-relay.example.net/relay",
       exchangeId: "partner-exchange",
       relayKey: await deriveRelayKey(AHEAD),
       role: "acceptor",
+      afterCutRotation: true,
     },
     {
       url: "wss://relay.example.org/relay",
       exchangeId: await deriveRelayExchangeId(SECRET),
       relayKey: await deriveRelayKey(SECRET),
       role: "acceptor",
+      afterCutRotation: true,
     },
   ]);
 });
+
+test.each([
+  ["a key file holding a rotation-in-flight marker", true],
+  ["a key file holding none", false],
+] as const)(
+  "an inviter from %s marks its relay dials as after a cut rotation accordingly",
+  async (_case, marked) => {
+    mockState.dialFailure = new ConnectionError("no partner", "transport");
+    await runPartyFrom(
+      "inviter",
+      {
+        sharedSecret: SECRET,
+        ...(marked && { rotationInFlightSince: "2026-01-01T00:00:00.000Z" }),
+      },
+      { websocketRelay: "wss://relay.example.org/relay" },
+    ).catch(() => {});
+    const dials = mockState.parkedRelays.map(
+      ({ dial }) => dial as Record<string, unknown>,
+    );
+    expect(dials).toHaveLength(1);
+    if (marked) expect(dials[0]!.afterCutRotation).toBe(true);
+    else expect(dials[0]).not.toHaveProperty("afterCutRotation");
+  },
+);
 
 test.each([
   ["from an existing key file names", true, false],
@@ -1689,4 +1757,42 @@ test("an acceptor holding a previous secret enrolls the key and derived id of bo
     ),
   );
   expect(enrolled).toHaveLength(2);
+});
+
+test("each enrollment line of an acceptor holding a previous secret names the secret it enrolled", async () => {
+  mockState.dialFailure = new ConnectionError("no partner", "transport");
+  const previousUrl = `${INVITATION_REGISTRAR}/exchanges/${await deriveRelayExchangeId(SECRET)}`;
+  vi.stubGlobal("fetch", (async (input: string | URL | Request) =>
+    String(input) === previousUrl
+      ? jsonResponse(409, { error: "held" })
+      : registrationAnswer(
+          null,
+          "2026-01-01T01:10:00Z",
+        )) as typeof globalThis.fetch);
+  try {
+    await runPartyFrom(
+      "acceptor",
+      { sharedSecret: AHEAD, previousSharedSecret: SECRET },
+      {
+        invitationRelay: {
+          turn: [INVITATION_TURN_URL],
+          registrar: INVITATION_REGISTRAR,
+        },
+      },
+    ).catch(() => {});
+  } finally {
+    vi.unstubAllGlobals();
+  }
+  expect(mockState.logLines).toContain(
+    `for the current shared secret, the relay registrar at ` +
+      `${INVITATION_REGISTRAR} that your partner's invitation names enrolled ` +
+      "this exchange, until 2026-01-01T01:10:00Z",
+  );
+  expect(mockState.warnLines).toContain(
+    "for the shared secret from before a run that stopped partway, the " +
+      `relay registrar at ${INVITATION_REGISTRAR} that your partner's ` +
+      "invitation names did not enroll this exchange (HTTP 409: held). The " +
+      "run continues with its other relays, and that relay takes it only if " +
+      "your partner enrolled the exchange there.",
+  );
 });

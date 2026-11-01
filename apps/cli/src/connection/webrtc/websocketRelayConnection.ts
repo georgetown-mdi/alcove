@@ -59,6 +59,13 @@ export interface WebSocketRelayDial {
   /** The exchange's relay key, as 64 lowercase hex characters. */
   relayKey: string;
   role: RendezvousRole;
+  /**
+   * The run's key file shows a run that stopped between the two saves of a
+   * rotation: it holds a previous secret, or a rotation-in-flight marker. A
+   * relay refusing this side's proof may then hold the key of the secret only
+   * the partner saved, or only this side did.
+   */
+  afterCutRotation?: boolean;
 }
 
 /** What a caller can vary about a relay connection. */
@@ -218,7 +225,10 @@ function withNextStep(message: string, kind: "transport" | "protocol") {
 
 /**
  * The failure a relay close before the exchange starts becomes, stating what
- * the code means and what to do.
+ * the code means and what to do. After a cut rotation
+ * ({@link WebSocketRelayDial.afterCutRotation}) a refused proof is the state
+ * docs/spec/WEBSOCKET_RELAY.md, "A one-sided allocation", describes, where
+ * replacing the relay key would refuse the partner instead.
  *
  * @internal exported for testing
  */
@@ -226,6 +236,7 @@ export function relayRefusalError(
   url: string,
   code: number,
   reason: string,
+  afterCutRotation = false,
 ): ConnectionError {
   const relay = `the WebSocket relay at ${url}`;
   switch (code) {
@@ -237,6 +248,16 @@ export function relayRefusalError(
         "transport",
       );
     case RELAY_CLOSE.proofRefused:
+      if (afterCutRotation)
+        return withNextStep(
+          `${relay} holds a key for this exchange other than the one this ` +
+            "side's shared secret derives. A run stopped before both of you " +
+            "saved a new shared secret, so the key may be the one your " +
+            "partner's secret derives: leave it in place, since the exchange " +
+            "can still meet over WebRTC or another relay. If no run meets " +
+            "your partner, ask your partner for a new invitation.",
+          "transport",
+        );
       return withNextStep(
         `${relay} holds a key for this exchange other than the one this ` +
           "side's shared secret derives. Register the current key with " +
@@ -680,7 +701,12 @@ class ParkedRelay implements ParkedWebSocketRelay {
     const wasPaired = this.paired;
     this.paired = false;
     this.partnerStarted = false;
-    const refusal = relayRefusalError(this.url, event.code, event.reason);
+    const refusal = relayRefusalError(
+      this.url,
+      event.code,
+      event.reason,
+      this.dial.afterCutRotation === true,
+    );
     if (refusal instanceof ProofExpiredRefusal) {
       const relayNowMs =
         refusal.relayNowSeconds === undefined

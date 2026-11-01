@@ -1049,6 +1049,27 @@ test("a parked relay's refusal reaches its listeners and a later start", async (
   await expect(relay.start()).rejects.toBe(relay.failure);
 });
 
+test("a refused proof after a cut rotation says to leave the relay's key in place, not to replace it", async () => {
+  const { sockets, options } = harness();
+  const relay = parkWebSocketRelay(
+    { ...(await relayDial("inviter")), afterCutRotation: true },
+    options,
+  );
+  const socket = await socketDialed(sockets);
+  socket.open();
+  socket.closedByRelay(4004);
+  expect(relay.failure?.message).toBe(
+    "the WebSocket relay at wss://relay.example.org/relay holds a key for " +
+      "this exchange other than the one this side's shared secret derives. A " +
+      "run stopped before both of you saved a new shared secret, so the key " +
+      "may be the one your partner's secret derives: leave it in place, " +
+      "since the exchange can still meet over WebRTC or another relay. If no " +
+      "run meets your partner, ask your partner for a new invitation.",
+  );
+  expect(relay.failure?.message).not.toContain("--replace-relay-key");
+  expect(statesItsOwnNextStep(relay.failure)).toBe(true);
+});
+
 test("a binary message to a parked relay the partner has started is refused as a protocol fault", async () => {
   const { relay, sockets } = await parkedRelay();
   const socket = await socketDialed(sockets);
