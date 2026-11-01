@@ -443,6 +443,9 @@ The decision to sign keylessly, and the probe runs behind the issuer and identit
   Any other character, `*` and `?` above all, fails rather than being translated on a guess.
 - Whether any of it verifies.
   Only a release run signs anything; the self-verify step measures that, and this check keeps that step's two arguments the published ones.
+- The hosted web application's manifest.
+  Its `cosign sign-blob` and `verify-blob` steps and its attest step, which names a `subject-path` rather than an image digest, sign a file rather than a pushed image, so the step-order and per-step argument rules do not read them.
+  The `--certificate-` values its verify step and the document's `verify-blob` command hold still count toward the one-identity comparison, and `scripts/hosted-site-manifest.test.mjs` holds the steps' shape.
 
 ## Protocol version bump from 1.0.0
 

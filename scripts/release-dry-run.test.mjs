@@ -28,10 +28,19 @@ const document = workflowDocument(repoRoot, RELEASE_WORKFLOW);
 
 const TAG_PUSH_ONLY = "${{ github.event_name == 'push' }}";
 const DISPATCH_ONLY = "${{ github.event_name == 'workflow_dispatch' }}";
-const PUBLISHING_JOBS = ["publish", "launchers", "dockerhub"];
+const PUBLISHING_JOBS = [
+  "publish",
+  "launchers",
+  "dockerhub",
+  "hosted-manifest-sign",
+  "hosted-manifest-publish",
+];
 const DRY_RUN_JOB = "dry-run";
 const HOSTED_APP_DEPLOY_JOB = "pages";
-const HOSTED_APP_JOBS = ["web", HOSTED_APP_DEPLOY_JOB];
+const HOSTED_APP_JOBS = [HOSTED_APP_DEPLOY_JOB];
+// The hosted app's build and its manifest run on a dispatch too, so a dry run
+// proves both without deploying or signing.
+const DISPATCHED_HOSTED_APP_JOBS = ["web", "hosted-manifest"];
 
 const PUBLISHING_ACTIONS = [
   /(^|\/)login-action@/,
@@ -107,10 +116,28 @@ describe("the release workflow's dry run", () => {
     });
   }
 
-  it("deploys the hosted app only after the publish job succeeds", () => {
+  it("deploys the hosted app only after the publish job succeeds and the manifest is signed", () => {
     const deploy = document.jobs[HOSTED_APP_DEPLOY_JOB];
     expect([deploy?.needs].flat()).toContain("publish");
+    expect([deploy?.needs].flat()).toContain("hosted-manifest-sign");
     expect(deploy?.environment).toBe("Production");
+  });
+
+  for (const job of DISPATCHED_HOSTED_APP_JOBS) {
+    it(`runs the ${job} job on a tag push and a dispatch alike, read-only`, () => {
+      expect(document.jobs[job]).toBeDefined();
+      expect(document.jobs[job].if).toBeUndefined();
+      expect(document.jobs[job].permissions).toEqual({ contents: "read" });
+    });
+  }
+
+  it("has no publishing step in the manifest job a dispatch runs", () => {
+    const steps = document.jobs["hosted-manifest"]?.steps ?? [];
+    expect(steps.length).toBeGreaterThan(0);
+    const found = steps
+      .map((step) => ({ name: step.name ?? step.uses, why: publishes(step) }))
+      .filter(({ why }) => why !== undefined);
+    expect(found).toEqual([]);
   });
 
   it("runs the Docker Hub copy in the Release environment", () => {
@@ -261,11 +288,14 @@ describe("the Docker Hub copy's signature", () => {
     });
   });
 
-  it("pins one cosign release in both installer steps", () => {
-    const installers = [...publishSteps, ...steps].filter(isCosignInstall);
-    expect(installers).toHaveLength(2);
+  it("pins one cosign release in every installer step of the workflow", () => {
+    const installers = Object.values(document.jobs)
+      .flatMap((job) => job.steps ?? [])
+      .filter(isCosignInstall);
+    expect([...publishSteps, ...steps].filter(isCosignInstall)).toHaveLength(2);
+    expect(installers).toHaveLength(3);
     const releases = installers.map((step) => step.with?.["cosign-release"]);
     expect(releases[0]).toMatch(/^v\d+\.\d+\.\d+$/);
-    expect(releases[1]).toBe(releases[0]);
+    expect(new Set(releases)).toEqual(new Set([releases[0]]));
   });
 });

@@ -481,8 +481,9 @@ jobs:
     # Held on Ubuntu 24.04 with the publish job: it needs that job's image
     # digest, so it moves when that job does.
     runs-on: ubuntu-24.04
-    # The only job in this workflow holding contents: write, and what it writes
-    # under it is release assets alone.
+    # One of the two jobs in this workflow holding contents: write, with
+    # hosted-manifest-publish, and what each writes under it is release assets
+    # alone.
     permissions:
       contents: write
     steps:
@@ -687,25 +688,200 @@ jobs:
 
   # The hosted app's build and its suites, the same gate a push to staging
   # deploys through (pages_deploy.yaml). Built from the tag, the site names the
-  # tag's version (apps/web/hosted/buildIdentity.ts).
+  # tag's version (apps/web/hosted/buildIdentity.ts). This is the release's one
+  # build of each site: the manifest below hashes these artifacts and the pages
+  # job uploads them. A dry run runs it too, so it proves the build and the
+  # manifest without deploying.
   web:
     name: Build and test the hosted app
-    if: ${{ github.event_name == 'push' }}
     permissions:
       contents: read
     uses: ./.github/workflows/web_build_and_test.yaml
 
+  # Writes the manifest of both sites from the artifacts the pages job deploys,
+  # never from a build of its own, and checks each downloaded tree against it.
+  # A dry run stops here, with the unsigned manifest kept as a run artifact.
+  hosted-manifest:
+    name: Write the hosted app's manifest
+    needs: web
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      file: ${{ steps.write.outputs.file }}
+      sha256: ${{ steps.write.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # The script is dependency-free, so a plain pinned Node suffices.
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - name: Download the site
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.web.outputs.artifactName }}
+          path: ${{ runner.temp }}/site
+      - name: Download the demo site
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.web.outputs.demoArtifactName }}
+          path: ${{ runner.temp }}/demo-site
+      # On a tag the version is the tag's. A dry run has no tag, so it names
+      # the version apps/cli/package.json holds, the one the publish job's
+      # version check requires the next tag to name.
+      - name: Write the manifest and check both sites against it
+        id: write
+        env:
+          ALCOVE_REF_TYPE: ${{ github.ref_type }}
+          ALCOVE_REF_NAME: ${{ github.ref_name }}
+          SITE_DIR: ${{ runner.temp }}/site
+          DEMO_DIR: ${{ runner.temp }}/demo-site
+        run: |
+          set -euo pipefail
+          if [ "${ALCOVE_REF_TYPE}" = "tag" ]; then
+            version="${ALCOVE_REF_NAME#v}"
+          else
+            version="$(node -p "require('./apps/cli/package.json').version")"
+          fi
+          file="alcove-hosted-web-${version}.manifest.json"
+          manifest="${RUNNER_TEMP}/${file}"
+          node scripts/hosted-site-manifest.mjs write \
+            --version "${version}" --commit "${GITHUB_SHA}" --out "${manifest}" \
+            "site=${SITE_DIR}" "demo=${DEMO_DIR}"
+          node scripts/hosted-site-manifest.mjs check-tree "${manifest}" "site=${SITE_DIR}"
+          node scripts/hosted-site-manifest.mjs check-tree "${manifest}" "demo=${DEMO_DIR}"
+          digest="$(sha256sum "${manifest}")"
+          {
+            echo "file=${file}"
+            echo "sha256=${digest%% *}"
+          } >>"$GITHUB_OUTPUT"
+      - name: Upload the unsigned manifest
+        uses: actions/upload-artifact@v7
+        with:
+          name: hosted-manifest-unsigned
+          path: ${{ runner.temp }}/${{ steps.write.outputs.file }}
+          if-no-files-found: error
+          retention-days: 7
+
+  # Runs no repository code: it signs, verifies and attests the file the job
+  # above wrote, once it matches the digest that job reported, and only after
+  # the publish job accepts the release. Signed keylessly
+  # under the identity the images are, so one published --certificate- pair
+  # verifies both.
+  hosted-manifest-sign:
+    name: Sign and attest the hosted app's manifest
+    needs: [hosted-manifest, publish]
+    if: ${{ github.event_name == 'push' }}
+    # Held on Ubuntu 24.04 with the publish job, whose cosign and attest steps
+    # this repeats.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      ALCOVE_MANIFEST: ${{ needs.hosted-manifest.outputs.file }}
+      ALCOVE_MANIFEST_SHA256: ${{ needs.hosted-manifest.outputs.sha256 }}
+    steps:
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v4.1.2
+        with:
+          cosign-release: v3.1.4
+
+      - name: Fetch the unsigned manifest
+        uses: actions/download-artifact@v8
+        with:
+          name: hosted-manifest-unsigned
+
+      - name: Check the manifest is the one the job above wrote
+        run: |
+          set -euo pipefail
+          if [ -z "${ALCOVE_MANIFEST}" ] || [ -z "${ALCOVE_MANIFEST_SHA256}" ]; then
+            echo "::error::the manifest job reported no file name or digest" >&2
+            exit 1
+          fi
+          digest="$(sha256sum "${ALCOVE_MANIFEST}")"
+          if [ "${digest%% *}" != "${ALCOVE_MANIFEST_SHA256}" ]; then
+            echo "::error::${ALCOVE_MANIFEST} does not match the digest the manifest job reported" >&2
+            exit 1
+          fi
+
+      - name: Sign the manifest
+        run: |
+          set -euo pipefail
+          cosign sign-blob --yes \
+            --bundle "${ALCOVE_MANIFEST}.sigstore.json" "${ALCOVE_MANIFEST}"
+
+      # The command docs/RELEASES.md publishes for the manifest, with the
+      # images' --certificate- pair.
+      - name: Verify the signature just produced
+        run: |
+          set -euo pipefail
+          cosign verify-blob \
+            --bundle "${ALCOVE_MANIFEST}.sigstore.json" \
+            --certificate-identity-regexp '^https://github\.com/georgetown-mdi/alcove/\.github/workflows/release\.yaml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$' \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "${ALCOVE_MANIFEST}"
+
+      - name: Attest the manifest's build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: ${{ env.ALCOVE_MANIFEST }}
+
+      - name: Upload the signed manifest and its bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: hosted-manifest-signed
+          path: |
+            ${{ env.ALCOVE_MANIFEST }}
+            ${{ env.ALCOVE_MANIFEST }}.sigstore.json
+          if-no-files-found: error
+          retention-days: 1
+
+  # After the launchers job rather than beside it, so the two never race to
+  # create the draft release. Runs no repository code.
+  hosted-manifest-publish:
+    name: Attach the hosted app's manifest to the release
+    needs: [launchers, hosted-manifest-sign]
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Fetch the signed manifest and its bundle
+        uses: actions/download-artifact@v8
+        with:
+          name: hosted-manifest-signed
+          path: hosted-manifest
+
+      - name: Attach the manifest to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ALCOVE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release upload "$ALCOVE_TAG" hosted-manifest/* --clobber
+
   # The production deployment of the hosted app and the demo site. It needs the
   # publish job, so a tag that job refuses -- a version that disagrees with
   # apps/cli/package.json, a failed test, scan or signature -- deploys nothing,
-  # and the image a deployed site's commands name is already published.
+  # and the image a deployed site's commands name is already published. It
+  # needs the manifest's signature too, so production never serves a release
+  # build that has no signed manifest.
   #
   # The only job here given the Cloudflare credentials. It checks out nothing
   # and runs no repository code: it downloads the sites the gate built and
   # tested, and uploads them.
   pages:
     name: Deploy the hosted app to Cloudflare Pages
-    needs: [web, publish]
+    needs: [web, publish, hosted-manifest-sign, hosted-manifest-publish]
     if: ${{ github.event_name == 'push' }}
     # Held on Ubuntu 24.04 with pages_deploy.yaml's upload job.
     runs-on: ubuntu-24.04

@@ -140,9 +140,19 @@ describe("the release workflow's stamp step", () => {
     const writers = Object.entries(releaseDocument.jobs).filter(
       ([, job]) => job.permissions?.contents === "write",
     );
-    expect(writers).toHaveLength(1);
-    const [, writer] = writers[0];
+    // The other writer attaches the hosted app's manifest, and checks out no
+    // repository code.
+    expect(writers.map(([id]) => id).sort()).toEqual([
+      "hosted-manifest-publish",
+      "launchers",
+    ]);
+    const writer = releaseDocument.jobs.launchers;
     expect(writer.steps.map((step) => step.run ?? "")).toContain(stamp);
+    const other = releaseDocument.jobs["hosted-manifest-publish"].steps;
+    expect(other.map((step) => step.run ?? "")).not.toContain(stamp);
+    expect(
+      other.filter((step) => (step.uses ?? "").startsWith("actions/checkout@")),
+    ).toEqual([]);
   });
 });
 
