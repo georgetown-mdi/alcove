@@ -233,50 +233,55 @@ function shapeOf(value: unknown): unknown {
   return typeof value;
 }
 
-// Where the frames built from the association table begin in what one party
-// sent: the cascade's first mapped-element list, and the single-pass
-// receiver's returned table, its last frame. A run whose table is empty under
-// both rules is compared whole.
-function firstFrameFromTable(
-  strategy: Strategy,
-  party: "starter" | "joiner",
-  sent: Array<unknown>,
-): number {
+// Whether a frame is built from the association table, judged by its kind: a
+// part of the cascade's mapped-element lists, whose entries name partner
+// positions, or the single-pass receiver's returned table, two lists of row
+// indices sent as one frame. A list that is empty under both rules is neither,
+// and is compared by its bytes.
+function isBuiltFromTable(strategy: Strategy, frame: unknown): boolean {
   if (strategy === "single-pass")
-    return party === "joiner" ? sent.length - 1 : sent.length;
-  const index = sent.findIndex((frame) => {
-    const body = readPartFrame(frame)?.body;
     return (
-      Array.isArray(body) &&
-      body.some(
-        (entry) =>
-          typeof entry === "object" && entry !== null && "theirIndex" in entry,
-      )
+      Array.isArray(frame) &&
+      frame.length === 2 &&
+      frame.every((half) => Array.isArray(half))
     );
-  });
-  return index < 0 ? sent.length : index;
+  const body = readPartFrame(frame)?.body;
+  return (
+    Array.isArray(body) &&
+    body.some(
+      (entry) =>
+        typeof entry === "object" && entry !== null && "theirIndex" in entry,
+    )
+  );
 }
 
-// The frames one party sent under the two rules: the same number, the same
-// bytes up to the first frame built from the table, and the same fields from
-// there on.
-function expectFramesAgreeBeforeTheTable(
+// The frames one party sent under the two rules: the same number, each built
+// from the table at the same place, every frame not built from the table the
+// same bytes wherever it falls, every later round's sets included, and the
+// table-built frames the same fields.
+function expectFramesAgreeOutsideTheTable(
   strategy: Strategy,
-  party: "starter" | "joiner",
   largest: Array<unknown>,
   greedy: Array<unknown>,
   where: string,
 ): void {
   expect(largest.length, where).toBe(greedy.length);
-  const from = firstFrameFromTable(strategy, party, largest);
-  expect(firstFrameFromTable(strategy, party, greedy), where).toBe(from);
+  const fromTable = largest.map((frame) => isBuiltFromTable(strategy, frame));
+  expect(
+    greedy.map((frame) => isBuiltFromTable(strategy, frame)),
+    where,
+  ).toStrictEqual(fromTable);
   // Every party sends the round's set before anything built from its table.
-  expect(from, where).toBeGreaterThan(0);
-  expect(largest.slice(0, from).map(bytesOf), where).toStrictEqual(
-    greedy.slice(0, from).map(bytesOf),
+  expect(fromTable[0], where).toBe(false);
+  const outside = (frames: Array<unknown>) =>
+    frames.filter((_, i) => !fromTable[i]);
+  const inside = (frames: Array<unknown>) =>
+    frames.filter((_, i) => fromTable[i]);
+  expect(outside(largest).map(bytesOf), where).toStrictEqual(
+    outside(greedy).map(bytesOf),
   );
-  expect(largest.slice(from).map(shapeOf), where).toStrictEqual(
-    greedy.slice(from).map(shapeOf),
+  expect(inside(largest).map(shapeOf), where).toStrictEqual(
+    inside(greedy).map(shapeOf),
   );
 }
 
@@ -313,9 +318,8 @@ function expectCaseAgrees(
   );
 
   for (const party of ["starter", "joiner"] as const)
-    expectFramesAgreeBeforeTheTable(
+    expectFramesAgreeOutsideTheTable(
       strategy,
-      party,
       party === "starter" ? largest.starterSent : largest.joinerSent,
       party === "starter" ? greedy.starterSent : greedy.joinerSent,
       `${where}, ${party}`,
@@ -354,8 +358,9 @@ export interface Measured {
  * - where the greedy sweep's first-round pairs are a largest pairing, the two
  *   tables are equal and so is every frame either party sent, byte for byte;
  * - elsewhere the shipped rule's table holds more pairs, and each party sent
- *   the same number of frames under both rules, byte-identical up to the
- *   first frame built from the table and with the same fields after it.
+ *   the same number of frames under both rules: every frame not built from
+ *   the table byte-identical, a later round's sets included, and each frame
+ *   built from it with the same fields.
  */
 export async function measureDifferential(
   strategy: Strategy,

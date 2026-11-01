@@ -7,3 +7,9 @@
 - - -> Where a round's candidate pairs admit more than one largest pairing, the one-to-one rule keeps the first in (sender row, receiver row) order, and swapping the roles changes that order.
 - - -> The two role assignments can then keep different pairs, the same number of them: on three records a side, a six-pair cycle of candidate pairs can make each assignment keep a different one of the cycle's two largest pairings.
 - - -> The number of pairs, and so a count-only exchange's count, does not depend on the role through this order.
+# The resolution's measured worst case is new, beside its work bound.
+- - -> **Limit: a partner who can shape the round's candidate pairs can reach the quadratic case.**
+- - -> The search for each pair can cross most of its component, so the work grows with the square of a component's pairs.
+- - -> Every record of such a component can stand in at most three pairs: each of many short pieces holds a pair in no largest pairing, and rejecting it takes a failed search along one long chain of matched pairs.
+- - -> On that shape the resolution took 0.26 s for 30,000 pairs, 3.8 s for 120,000, and 15.1 s for 240,000, about four times as long for each doubling (measured 2026-11-01 on a 10-core `aarch64` development container under Node 26).
+- - -> The searches yield to the event loop at the pacing interval, and the longest stretch between two yields at 240,000 pairs was 16 ms, so the event loop stays responsive while it runs.
