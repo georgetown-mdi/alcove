@@ -23,6 +23,9 @@ check off it. Beside them:
 - the job list `nightly_core_stress.yaml` runs its tiers from;
 - the packer of the core files the signaling broker runs, which
   `broker_core_build.yaml` archives, signs, and publishes;
+- the hosted web application's manifest writer, which `release.yaml` runs on
+  the builds it deploys and a partner runs to compare a served site against
+  the signed manifest;
 - the relay host's deployment check `nightly_relay_deployment.yaml` runs;
 - the check of the broker's TLS front logs `broker_front_logs.yaml` runs;
 - the helper modules the checks import, in [`lib/`](lib).

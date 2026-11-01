@@ -36,6 +36,7 @@ Each release produces:
 | Launchers      | GitHub Release assets          | `start-alcove.sh`, `Start-Alcove.ps1`, `Setup-AlcoveFileDrop.ps1`     |
 | Build provenance | GitHub attestation store     | Subject `ghcr.io/georgetown-mdi/alcove`, one attestation per released manifest digest |
 | Hosted web application | Cloudflare Pages, with the demo site | The production deployment of tag `vX.Y.Z`, its footer showing `Version X.Y.Z`, until the next push to `main` replaces it |
+| Hosted web application manifest | GitHub Release assets, and its build provenance in the GitHub attestation store | `alcove-hosted-web-X.Y.Z.manifest.json` and its Sigstore bundle, `alcove-hosted-web-X.Y.Z.manifest.json.sigstore.json` ([Hosted web application](#hosted-web-application)) |
 
 Each image is the same manifest on both registries, under one digest: the release copies the manifest ghcr.io received to Docker Hub rather than building it again, and signs the Docker Hub copy in place under the same release identity. The two registries are equally useful, equally recommended, and equally secure: each holds the same signed images, and one `cosign verify` command, naming either registry, verifies an image pulled from either ([Verifying a Release](#verifying-a-release)). Pull from whichever one your network reaches.
 
@@ -104,7 +105,7 @@ An organisation that allows only one registry sets `ALCOVE_IMAGE_REGISTRY` to `d
 
 **What keeps the launcher and the workflow in step.** The workflow refuses the release if the publish job's digest output is empty or is not `sha256:` followed by 64 lowercase hex characters, if a launcher does not contain its placeholder line exactly once, or if a placeholder survives the substitution. `npm run test:scripts` pins the same two lines in both the launchers and the workflow. A copy that reaches an operator unstamped refuses to run and says where a release copy comes from.
 
-**What a release publishes.** The `launchers` job attaches the two stamped files plus `Setup-AlcoveFileDrop.ps1` -- unstamped, and the one `Start-Alcove.ps1` dot-sources -- as assets on the release for this tag, creating it as a draft if the tag has none yet. That job is the only one in the workflow holding `contents: write`.
+**What a release publishes.** The `launchers` job attaches the two stamped files plus `Setup-AlcoveFileDrop.ps1` -- unstamped, and the one `Start-Alcove.ps1` dot-sources -- as assets on the release for this tag, creating it as a draft if the tag has none yet. That job and the `hosted-manifest-publish` job, which attaches the [hosted web application's manifest](#hosted-web-application) to the same draft after it, are the only two in the workflow holding `contents: write`.
 
 **How an organisation verifies a copy.** Read the digest out of the launcher and verify the signature over that exact reference:
 
@@ -235,7 +236,9 @@ The publish sequence signs each image immediately after its own push, verifies t
 
 **The hosted web application's production deployment.** The same workflow builds the hosted web application and the demo site from the tag and runs the web suites a `staging` deploy runs. Once the publish job has finished, it uploads both as the production deployment of their Pages projects ([DEPLOYMENT.md](DEPLOYMENT.md#deploying-to-cloudflare-pages)). A tag the publish job refuses deploys nothing. A push to `main` also deploys production, from `pages_deploy.yaml`, so the next push replaces the tag's deployment.
 
-**Dry run.** Dispatching the workflow from a branch (`gh workflow run release.yaml --ref <branch>`, or "Run workflow" on the Actions page) runs the test job and a separate dry-run job, and skips the publish, launchers, and hosted application jobs. The dry-run job holds read access to the repository and nothing else: it verifies the vendored tarball, then builds both images for both platforms under fixed local tags without pushing them. Apart from the Docker Hub pull login above, it runs no scan, FIPS probe, launcher stamp, login, signature, or release step. Use it to prove a runner-image or action change to the build before a tag depends on it; `scripts/release-dry-run.test.mjs` checks that the publish, launchers, and hosted application jobs run on a tag push only, that the hosted application's deploy needs the publish job and runs in the Production environment, that the Docker Hub copy runs in the `Release` environment, and that the dry-run job holds no write permission or publishing step. It also checks that the `dockerhub` job signs each image on Docker Hub after copying it and verifies it there with the published command after that, that the job holds `packages: read` and `id-token: write` alone, and that both Cosign installer steps pin the same release, so a release whose Docker Hub copy would go unsigned fails the test rather than the partner's check.
+Each site is built once, and the manifest is made from the same build artifacts the upload takes. The `hosted-manifest` job lists every file of both builds with its SHA-256. The `hosted-manifest-sign` job then signs that list with Cosign, verifies the signature with the command under [Hosted web application](#hosted-web-application), and attests its build provenance. The upload waits for that job, so production never serves a release build without a signed manifest. The `hosted-manifest-publish` job attaches the manifest and its bundle to the draft release once the launchers are attached.
+
+**Dry run.** Dispatching the workflow from a branch (`gh workflow run release.yaml --ref <branch>`, or "Run workflow" on the Actions page) runs the test job, the hosted application's build and suites, its `hosted-manifest` job, and a separate dry-run job. It skips the publish, launchers, Docker Hub, manifest signing and attaching, and deploy jobs. The `hosted-manifest` job writes the manifest from the dry run's builds, naming the version `apps/cli/package.json` holds, checks both sites against it, and keeps it unsigned as the run artifact `hosted-manifest-unsigned`. The dry-run job holds read access to the repository and nothing else: it verifies the vendored tarball, then builds both images for both platforms under fixed local tags without pushing them. Apart from the Docker Hub pull login above, it runs no scan, FIPS probe, launcher stamp, login, signature, or release step. Use it to prove a runner-image or action change to the build before a tag depends on it; `scripts/release-dry-run.test.mjs` checks that the publish, launchers, manifest signing and attaching, and deploy jobs run on a tag push only, that the hosted application's deploy needs the publish job and the manifest's signature and runs in the Production environment, that the Docker Hub copy runs in the `Release` environment, and that the dry-run job and the jobs a dispatch shares with a release hold no write permission or publishing step. It also checks that the `dockerhub` job signs each image on Docker Hub after copying it and verifies it there with the published command after that, that the job holds `packages: read` and `id-token: write` alone, and that every Cosign installer step pins the same release, so a release whose Docker Hub copy would go unsigned fails the test rather than the partner's check.
 
 If you must build and push by hand -- for a workflow outage or a local test -- follow the multi-platform buildx instructions in `apps/cli/README.md` (creating `multiarch-builder` and running `docker buildx build --push` from the repository root; the variant adds `-f Dockerfile.fips` and the `-fips` tags). A hand-built push bypasses the [image vulnerability scan](#image-vulnerability-scan) and Cosign: scan the image yourself before pushing it, at the threshold the workflow sets, and expect a hand-pushed tag to fail the verification commands below.
 
@@ -367,6 +370,48 @@ Notes on the command:
 - The attested subject is the multi-platform manifest list, which is what the release publishes and what the digest above resolves to. A per-architecture digest read out of that index is not itself an attested subject.
 
 What the attestation is and is not evidence of, for an agency assessment, is in [COMPLIANCE.md#release-integrity](COMPLIANCE.md#release-integrity).
+
+### Hosted web application
+
+Each release attaches a manifest of the hosted web application it deploys, `alcove-hosted-web-X.Y.Z.manifest.json`. It is a JSON file that names the release version and the commit built. For each deployed site it lists every file with its size and SHA-256:
+
+- `site` is the hosted application, `psi.data-bridge.org`.
+- `demo` is the [demo site](DEPLOYMENT.md#the-demo-site), `demo.data-bridge.org`.
+
+The release signs the manifest with Cosign under the same identity as the images and attests its build provenance. `scripts/hosted-site-manifest.mjs` writes it, and the same script compares it.
+
+**Verify the manifest.** Download the manifest and its bundle, then check the signature and the attestation:
+
+```sh
+gh release download vX.Y.Z --repo georgetown-mdi/alcove --pattern 'alcove-hosted-web-*'
+cosign verify-blob \
+  --bundle alcove-hosted-web-X.Y.Z.manifest.json.sigstore.json \
+  --certificate-identity-regexp '^https://github\.com/georgetown-mdi/alcove/\.github/workflows/release\.yaml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  alcove-hosted-web-X.Y.Z.manifest.json
+gh attestation verify alcove-hosted-web-X.Y.Z.manifest.json \
+  --repo georgetown-mdi/alcove \
+  --signer-workflow georgetown-mdi/alcove/.github/workflows/release.yaml
+```
+
+Both `--certificate-` arguments are required, for the reasons given under [Container image](#container-image). The release runs this `cosign verify-blob` command on the manifest it just signed, before it deploys. Neither command has yet run against a published release; the first release runs both.
+
+**Compare the served site against it.** Check the site's footer first: it must show `Version X.Y.Z`. A footer showing `Commit` and a hash means a push to `main` has replaced the release's deployment, and no release manifest lists that build. Then, from a checkout of the signed tag ([Source integrity](#source-integrity)), with Node.js installed:
+
+```sh
+git checkout vX.Y.Z
+node scripts/hosted-site-manifest.mjs check-served alcove-hosted-web-X.Y.Z.manifest.json site=https://psi.data-bridge.org/
+```
+
+It fetches every file the manifest lists from the site and reports each one whose bytes differ or that could not be fetched. It exits 0 only when every file matched. `demo=https://demo.data-bridge.org/` checks the demo site. The `_headers` file is skipped, because Pages reads it as configuration and does not serve it; its rules show up as the response headers instead.
+
+To check a single file a browser received, save it from the browser's developer tools (Network panel). Run `sha256sum` on it and compare the result with the manifest entry for its path.
+
+**What this does and does not show.**
+
+- The signature and the attestation show that the release workflow built these files from the tagged commit. They do not show that the commit's source was reviewed: that rests on the project's review process.
+- The comparison shows what the site served this machine when it ran. It does not show what any other browser received: a host can serve different bytes to different clients or at different times, and a browser can run a copy its service worker cached earlier.
+- A file the site serves that the manifest does not list is not found, since a site has no listing to read.
 
 ### Source integrity
 

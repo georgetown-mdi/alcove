@@ -24,7 +24,10 @@
 //
 // Reads docs/RELEASES.md and the workflow files. The `<owner>/<repo>` segment
 // of either command is not compared, and whether a release run produces this
-// identity is not seen. Exit 0 clean, 1 on a finding. Rationale and limits:
+// identity is not seen. A `cosign sign-blob` or `verify-blob` step, and an
+// attest step naming `subject-path` alone, cover a file rather than an image
+// and are outside rules 4 and 5; a `--certificate-` value they hold still
+// counts toward rule 1. Exit 0 clean, 1 on a finding. Rationale and limits:
 // docs/notes/repo-check-scripts.md.
 
 import { readFileSync } from "node:fs";
@@ -239,6 +242,13 @@ export function classifyStep(step) {
     };
   }
   if (uses.startsWith(ATTEST_ACTION)) {
+    // A file attestation, the hosted app's manifest, attests no image.
+    if (
+      step?.with?.["subject-path"] !== undefined &&
+      step?.with?.["subject-digest"] === undefined
+    ) {
+      return { role: null, ids: [] };
+    }
     return {
       role: "attest",
       ids: digestReferences(String(step?.with?.["subject-digest"] ?? "")),

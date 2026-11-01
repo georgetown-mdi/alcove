@@ -421,7 +421,11 @@ describe("the coupling between the published commands and the signer", () => {
 
 describe("the attestation command the document publishes", () => {
   it("reads the workflow the committed command names", () => {
-    expect(signerWorkflows(releasesDocSource)).toEqual([SIGNER_WORKFLOW]);
+    // One command for the images and one for the hosted app's manifest.
+    expect(signerWorkflows(releasesDocSource)).toEqual([
+      SIGNER_WORKFLOW,
+      SIGNER_WORKFLOW,
+    ]);
     expect(parseSignerWorkflow(SIGNER_WORKFLOW)).toEqual({
       workflowPath: RELEASE_WORKFLOW,
     });
@@ -779,6 +783,35 @@ describe("the arguments each verify step runs", () => {
         expect(violations[0]).toContain('"Sign the copy" in job `dockerhub`');
         expect(violations[0]).toContain("no verify step follows it");
       }
+    });
+
+    // The hosted app manifest's shape: a file signed with sign-blob and
+    // attested by path, in a job of its own.
+    const fileAttestStep = [
+      "      - name: Attest the manifest",
+      "        uses: actions/attest-build-provenance@v4",
+      "        with:",
+      "          subject-path: manifest.json",
+    ].join("\n");
+    const blobSteps = [
+      "      - name: Sign the manifest",
+      "        run: cosign sign-blob --yes --bundle m.sigstore.json manifest.json",
+      "      - name: Verify the manifest",
+      "        run: cosign verify-blob --bundle m.sigstore.json manifest.json",
+    ].join("\n");
+
+    it("leaves a file attestation and a blob signature outside the image rules", () => {
+      expect(withCopyJob(`${blobSteps}\n${fileAttestStep}`)).toEqual([]);
+    });
+
+    it("still fails an attest step naming no digest and no path", () => {
+      const bare = [
+        "      - name: Attest nothing",
+        "        uses: actions/attest-build-provenance@v4",
+      ].join("\n");
+      const violations = withCopyJob(bare);
+      expect(violations).toHaveLength(1);
+      expect(violations[0]).toContain("no step digest at all");
     });
   });
 });

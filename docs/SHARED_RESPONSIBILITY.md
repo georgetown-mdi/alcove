@@ -1,7 +1,7 @@
 ---
 title: "Alcove Deployment Model and Shared Responsibility"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-10-25"
+last_reviewed: "2026-11-01"
 ---
 
 # Deployment model and shared responsibility
@@ -38,7 +38,7 @@ The local console is part of this deployment rather than a hosted one: it rides 
 - **This is the one deployment where the project operates infrastructure at all**: the coordination server the application connects through, the TURN relay, the WebSocket relay, and the relay registrar, all on one host of the project's own on AWS in `us-west-2`.
 - **What that infrastructure receives:** connection metadata, and from the registrar an exchange id and a relay key derived from the shared secret. When an exchange uses the project's relay, and what each service receives and keeps, are in [PRIVACY.md](../PRIVACY.md#hosted-web-application).
 - **The inviting user can keep the project's coordination server out.** An exchange uses the coordination server its invitation names. A user who sets their own coordination server in relay settings creates invitations naming it from then on, and both parties of those exchanges contact it rather than the project's ([WEB_APP.md](WEB_APP.md#relay-settings)). Choosing and operating that server, and what it logs, are then the agency's. An invitation already sent keeps the server it named, and a saved exchange keeps its server until its inviter re-invites from it.
-- **Third parties serve the pages and answer STUN.** Cloudflare Pages delivers the application code under Cloudflare's own retention, and carries none of the coordination server's traffic. Google's public STUN server is contacted where neither the browser's relay settings nor the invitation names a STUN server ([PRIVACY.md](../PRIVACY.md#hosted-web-application)).
+- **Third parties serve the pages and answer STUN.** Cloudflare Pages delivers the application code under Cloudflare's own retention, and carries none of the coordination server's traffic. Each release publishes a signed manifest of the files it deploys, to compare against what the site serves ([RELEASES.md](RELEASES.md#hosted-web-application)). A party who cannot trust the host to deliver that code runs the container instead ([DEPLOYMENT.md](DEPLOYMENT.md#docker-deployment)). Google's public STUN server is contacted where neither the browser's relay settings nor the invitation names a STUN server ([PRIVACY.md](../PRIVACY.md#hosted-web-application)).
 - **What it does not receive is the exchange:** not its content, the input file, the linkage identifiers, the shared secret, the agreed terms, or any record of what was linked. Matching happens in the browser ([SECURITY_DESIGN.md](SECURITY_DESIGN.md#egress-hardening-and-its-limits)), and the exchange is end-to-end encrypted under the application-layer encryption keyed by the two parties' shared secret ([SECURITY_DESIGN.md](SECURITY_DESIGN.md#channel-security)).
 
 An agency that deploys the web application on its own infrastructure takes every project-side row of the hosted table below.
