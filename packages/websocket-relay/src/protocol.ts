@@ -55,7 +55,7 @@ export const RELAY_QUEUE_LIMIT_BYTES = 1280 * 1024;
 const MESSAGE_HEADER_BYTES = 4;
 
 /** Node's read size, in bytes. */
-const READ_BYTES = 64 * 1024;
+export const READ_BYTES = 64 * 1024;
 
 /**
  * The read high-water mark, in bytes, of each socket the relay's HTTP server
@@ -75,9 +75,9 @@ export const RELAY_PAUSED_READ_AHEAD_BYTES = pausedReadAheadBytes(
  * source: the queue up to {@link RELAY_QUEUE_LIMIT_BYTES}, the one message
  * whose queueing passes it counted with its frame header and
  * {@link QUEUED_MESSAGE_OVERHEAD_BYTES}, the read the relay is parsing, a
- * message still arriving (the two reads its held fragment and its frame in
- * progress can each keep alive, and its later pieces, up to
- * {@link RELAY_MAX_MESSAGE_BYTES}), and the paused source's read-ahead
+ * message still arriving (four reads and its later pieces, up to
+ * {@link RELAY_MAX_MESSAGE_BYTES}: the largest measured case held 235,800
+ * bytes, rounded up to whole reads), and the paused source's read-ahead
  * ({@link RELAY_PAUSED_READ_AHEAD_BYTES}). Past the limit the pairing ends and
  * nothing more is queued.
  */
@@ -87,7 +87,7 @@ export const RELAY_QUEUED_BOUND_BYTES =
   MESSAGE_HEADER_BYTES +
   QUEUED_MESSAGE_OVERHEAD_BYTES +
   READ_BYTES +
-  2 * READ_BYTES +
+  4 * READ_BYTES +
   RELAY_MAX_MESSAGE_BYTES +
   RELAY_PAUSED_READ_AHEAD_BYTES;
 

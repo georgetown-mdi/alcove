@@ -4,7 +4,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
 
 import { QUEUED_MESSAGE_OVERHEAD_BYTES } from "../src/forwarding.ts";
-import { RELAY_QUEUED_BOUND_BYTES } from "../src/protocol.ts";
+import {
+  READ_BYTES,
+  RELAY_MAX_MESSAGE_BYTES,
+  RELAY_QUEUED_BOUND_BYTES,
+} from "../src/protocol.ts";
 
 import { connect, connectInMemory, helloFrame, startRelay } from "./harness.ts";
 
@@ -203,6 +207,123 @@ describe("retained memory", () => {
     // for the memory measurement's noise.
     const allowed = QUEUED_MESSAGE_OVERHEAD_BYTES * 1.5 + answerFrameBytes;
     expect(median(runs)).toBeLessThanOrEqual(allowed);
+  }, 30_000);
+
+  it("holds no more than four reads and a message's size for a message arriving across a held fragment, toward a partner that never reads", async () => {
+    const messageBytes = RELAY_MAX_MESSAGE_BYTES;
+    // A masked frame with an all-zero mask key.
+    const frame = (fin: boolean, opcode: number, payload: Buffer): Buffer => {
+      const size =
+        payload.length < 126
+          ? [payload.length]
+          : [126, payload.length >> 8, payload.length & 0xff];
+      return Buffer.concat([
+        Buffer.from([
+          (fin ? 0x80 : 0) | opcode,
+          0x80 | size[0],
+          ...size.slice(1),
+        ]),
+        Buffer.alloc(4),
+        payload,
+      ]);
+    };
+    const message = (payloadBytes: number): Buffer =>
+      frame(true, 0x2, Buffer.alloc(payloadBytes, 0x64));
+    const messageFrameBytes = message(messageBytes).length;
+    // Complete messages totalling exactly `bytes`.
+    const completeMessages = (bytes: number): Buffer => {
+      const parts: Buffer[] = [];
+      let left = bytes;
+      while (left > messageFrameBytes) {
+        parts.push(message(messageBytes));
+        left -= messageFrameBytes;
+      }
+      parts.push(message(left - (messageFrameBytes - messageBytes)));
+      return Buffer.concat(parts);
+    };
+    // A control frame may sit between a message's fragments.
+    const controlFrames = (bytes: number): Buffer => {
+      const parts: Buffer[] = [];
+      let left = bytes;
+      while (left > 0) {
+        const size = left > 131 ? Math.min(131, left - 6) : left;
+        parts.push(frame(true, 0xa, Buffer.alloc(size - 6, 0x65)));
+        left -= size;
+      }
+      return Buffer.concat(parts);
+    };
+    const fragment = frame(false, 0x2, Buffer.alloc(1, 0x61));
+    const continuation = frame(true, 0x0, Buffer.alloc(messageBytes - 1, 0x62));
+    const head = 100;
+    const firstRead = Buffer.concat([
+      completeMessages(READ_BYTES - fragment.length),
+      fragment,
+    ]);
+    const secondRead = Buffer.concat([
+      controlFrames(READ_BYTES - head),
+      continuation.subarray(0, head),
+    ]);
+    expect(firstRead.length).toBe(READ_BYTES);
+    expect(secondRead.length).toBe(READ_BYTES);
+
+    // The memory held beyond the queue toward the partner, while the frame is
+    // open. Each write is a copy made after the baseline, so the memory the
+    // relay keeps alive is counted.
+    async function heldWhileArriving(): Promise<number> {
+      let forwarded = 0;
+      const relay = await startRelay({
+        testing: { observer: { forwarded: () => (forwarded += 1) } },
+      });
+      running.push(relay);
+      const { party: sender } = await connectInMemory(relay.server, relay.url, {
+        recordServerWrites: false,
+      });
+      const { party: partner, serverSide } = await connectInMemory(
+        relay.server,
+        relay.url,
+        { recordServerWrites: false },
+      );
+      sender.send(await helloFrame({ role: "inviter" }));
+      partner.send(await helloFrame({ role: "acceptor" }));
+      await sender.receivedCount(1);
+      await partner.receivedCount(1);
+      sender.send('{"type":"start"}');
+      partner.send('{"type":"start"}');
+      await sender.receivedCount(2);
+      await partner.receivedCount(2);
+      partner.socket.pause();
+      const senderSide = (sender.socket as unknown as { _socket: Duplex })
+        ._socket;
+
+      const before = await settledMemory();
+      senderSide.write(Buffer.from(firstRead));
+      await until(() => forwarded === 4);
+      senderSide.write(Buffer.from(secondRead));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      // The rest of the frame in smaller reads, its last byte withheld.
+      const cuts = [head, 4100, 8100, 12100, continuation.length - 1];
+      for (let index = 0; index < cuts.length - 1; index += 1) {
+        const piece = continuation.subarray(cuts[index], cuts[index + 1]);
+        senderSide.write(Buffer.from(piece));
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      const queued = serverSide.writableLength;
+      const retained = (await settledMemory()) - before - queued;
+      expect(forwarded).toBe(4);
+      serverSide.destroy();
+      sender.socket.terminate();
+      await relay.stop();
+      running.pop();
+      return retained;
+    }
+    const runs = [
+      await heldWhileArriving(),
+      await heldWhileArriving(),
+      await heldWhileArriving(),
+    ];
+    expect(median(runs)).toBeLessThanOrEqual(
+      4 * READ_BYTES + RELAY_MAX_MESSAGE_BYTES,
+    );
   }, 30_000);
 
   it("bounds the memory held for replies to a socket that sends pings and never reads", async () => {
