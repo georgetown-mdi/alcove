@@ -304,8 +304,8 @@ function couldNotConnectError(): ConnectionError {
  * message names what happened and what to do and uses no relay-chosen text;
  * a 4005 reason is read only as a time to sign a proof on. After a cut
  * rotation a refused proof is the state docs/spec/WEBSOCKET_RELAY.md, "A
- * one-sided allocation", describes, so it names no step that changes a key or
- * a secret.
+ * one-sided allocation", describes, so it names no step that replaces or
+ * removes the relay's key, and a new invitation only if the next run fails too.
  */
 function setupCloseError(
   event: CloseEvent,
