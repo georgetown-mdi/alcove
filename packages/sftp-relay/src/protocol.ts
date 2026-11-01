@@ -42,17 +42,25 @@ export const SFTP_RELAY_BUFFERED_BOUND_BYTES =
   PAUSED_READ_AHEAD_BYTES;
 
 /**
- * The most memory the relay holds toward the browser of one connection: the
- * high mark, the 64 KiB read that crossed it with its 10-byte frame header
- * and {@link QUEUED_MESSAGE_OVERHEAD_BYTES}, and the paused target socket's
- * read-ahead, counted as memory ({@link PAUSED_READ_AHEAD_BYTES}).
+ * The most the messages queued toward the browser count: the high mark, and
+ * the 64 KiB read that crossed it with its 10-byte frame header and
+ * {@link QUEUED_MESSAGE_OVERHEAD_BYTES}. The target is held in the call that
+ * queues that read, so nothing more is queued until the browser reads.
  */
-export const SFTP_RELAY_BROWSER_BOUND_BYTES =
+export const SFTP_RELAY_BROWSER_QUEUE_CEILING_BYTES =
   SFTP_RELAY_SEND_BUFFER_HIGH_BYTES +
   64 * 1024 +
   10 +
-  QUEUED_MESSAGE_OVERHEAD_BYTES +
-  PAUSED_READ_AHEAD_BYTES;
+  QUEUED_MESSAGE_OVERHEAD_BYTES;
+
+/**
+ * The most memory the relay holds toward the browser of one connection: the
+ * queue's ceiling ({@link SFTP_RELAY_BROWSER_QUEUE_CEILING_BYTES}) and the
+ * paused target socket's read-ahead, counted as memory
+ * ({@link PAUSED_READ_AHEAD_BYTES}).
+ */
+export const SFTP_RELAY_BROWSER_BOUND_BYTES =
+  SFTP_RELAY_BROWSER_QUEUE_CEILING_BYTES + PAUSED_READ_AHEAD_BYTES;
 
 /** The most connections the relay holds at once, each a WebSocket and its
  * TCP connection; an upgrade above it is refused with 503. */

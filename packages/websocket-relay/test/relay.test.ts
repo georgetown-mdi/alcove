@@ -47,6 +47,15 @@ afterEach(async () => {
 
 const START = '{"type":"start"}';
 
+/** Send `message` as one binary message in 1-byte WebSocket fragments. */
+function sendInFragments(party: Party, message: Buffer): void {
+  for (let index = 0; index < message.length; index += 1) {
+    party.socket.send(message.subarray(index, index + 1), {
+      fin: index === message.length - 1,
+    });
+  }
+}
+
 // A byte rate no loopback test reaches, for a test moving more than one
 // burst whose subject is not the rate.
 const UNLIMITED_RATE = Number.MAX_SAFE_INTEGER;
@@ -304,6 +313,27 @@ describe("refusals", () => {
       reason: "",
     });
     expect(acceptor.received.slice(2)).toEqual([{ binary: atCap }]);
+  });
+
+  it("refuses a message in two fragments and closes the partner, forwarding nothing", async () => {
+    const { url } = await relay();
+    const { inviter, acceptor } = await forwardingParties(url);
+    sendInFragments(inviter, Buffer.alloc(2, 9));
+    expect((await inviter.closed).code).toBe(RelayCloseCode.tooManyFragments);
+    expect(await acceptor.closed).toEqual({
+      code: RelayCloseCode.partnerEnded,
+      reason: "",
+    });
+    expect(acceptor.received.slice(2)).toEqual([]);
+  });
+
+  it("forwards a message in one frame, intact", async () => {
+    const { url } = await relay();
+    const { inviter, acceptor } = await forwardingParties(url);
+    const message = Buffer.alloc(RELAY_MAX_MESSAGE_BYTES, 9);
+    inviter.send(message);
+    const received = await acceptor.receivedCount(3);
+    expect(received[2]).toEqual({ binary: message });
   });
 
   it("forwards nothing until both parties have sent a start", async () => {

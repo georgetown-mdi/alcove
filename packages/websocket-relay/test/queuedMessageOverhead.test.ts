@@ -5,9 +5,10 @@ import { QUEUED_MESSAGE_OVERHEAD_BYTES } from "../src/forwarding.ts";
 import { connect, connectInMemory, helloFrame, startRelay } from "./harness.ts";
 
 // The memory a queued message holds beyond its payload, measured on the
-// running Node and `ws`: the relay's marks are raised so every message stays
-// queued toward a reader paused in memory, and the heap and buffer memory
-// after a collection is compared before and after the messages.
+// running Node and `ws`: the relay's marks and its queue limit are raised so
+// every message stays queued toward a reader paused in memory, and the heap
+// and buffer memory after a collection is compared before and after the
+// messages.
 
 const gc = (globalThis as { gc?: () => void }).gc;
 
@@ -43,6 +44,7 @@ async function measuredOverhead(size: number, count: number): Promise<number> {
     testing: {
       sendBufferHighBytes: Number.MAX_SAFE_INTEGER,
       sendBufferLowBytes: Number.MAX_SAFE_INTEGER,
+      queueLimitBytes: Number.MAX_SAFE_INTEGER,
       bytesPerSecond: Number.MAX_SAFE_INTEGER,
       burstBytes: Number.MAX_SAFE_INTEGER,
       observer: { forwarded: () => (forwarded += 1) },

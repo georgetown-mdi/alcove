@@ -9,6 +9,15 @@ export interface SendWindow {
   lowBytes: number;
 }
 
+/** The counted queue above which {@link sendWithinWindow} ends a forwarding,
+ * and what it calls then in place of holding the source. */
+export interface QueueLimit {
+  /** The counted queue, in bytes, above which the forwarding ends. */
+  bytes: number;
+  /** Ends the forwarding. */
+  overLimit: () => void;
+}
+
 /**
  * The heap and buffer memory, in bytes, a message queued by
  * {@link sendWithinWindow} holds beyond its payload: its frame header, Node's
@@ -46,13 +55,20 @@ const READ_BYTES = 64 * 1024;
 export const READ_CHUNK_OVERHEAD_BYTES = 256;
 
 /**
- * The most memory, in bytes, a paused TCP socket's read-ahead holds: Node
- * reads on until its buffer reaches the 64 KiB high-water mark, in chunks of
- * at least one byte each counted with {@link READ_CHUNK_OVERHEAD_BYTES}, plus
- * the one read that crossed the mark.
+ * The most memory, in bytes, a paused TCP socket's read-ahead holds when its
+ * read high-water mark is `highWaterMark` bytes: Node reads on until its
+ * buffer reaches the mark, in chunks of at least one byte each counted with
+ * {@link READ_CHUNK_OVERHEAD_BYTES}, plus the one read that crossed the mark.
  */
-export const PAUSED_READ_AHEAD_BYTES =
-  2 * READ_BYTES + (READ_BYTES + 1) * READ_CHUNK_OVERHEAD_BYTES;
+export function pausedReadAheadBytes(highWaterMark: number): number {
+  return (
+    highWaterMark + READ_BYTES + (highWaterMark + 1) * READ_CHUNK_OVERHEAD_BYTES
+  );
+}
+
+/** The most memory, in bytes, a paused TCP socket's read-ahead holds at
+ * Node's default 64 KiB read high-water mark. */
+export const PAUSED_READ_AHEAD_BYTES = pausedReadAheadBytes(READ_BYTES);
 
 // Counts one frame toward `destination` until `write` completes it, with
 // Buffer's pool off: `ws` takes a frame's header from the shared pool, where
@@ -84,7 +100,8 @@ function queueFrame(
  * window's high mark and `release` once a send completes with them at or
  * below the low mark: the pause-and-resume forwarding of
  * docs/spec/WEBSOCKET_RELAY.md, Forwarding, which the SFTP relay applies
- * toward its browser too.
+ * toward its browser too. Given a `limit`, queued bytes above it call its
+ * `overLimit` in place of `hold`.
  */
 export function sendWithinWindow(
   destination: WebSocket,
@@ -92,6 +109,7 @@ export function sendWithinWindow(
   window: SendWindow,
   hold: () => void,
   release: () => void,
+  limit?: QueueLimit,
 ): void {
   // An unpooled copy, so a queued message keeps its own bytes and not the
   // read or the shared pool block it arrived in.
@@ -104,7 +122,9 @@ export function sendWithinWindow(
       if (queuedBytes(destination) <= window.lowBytes) release();
     },
   );
-  if (queuedBytes(destination) > window.highBytes) hold();
+  const queued = queuedBytes(destination);
+  if (limit !== undefined && queued > limit.bytes) limit.overLimit();
+  else if (queued > window.highBytes) hold();
 }
 
 /**

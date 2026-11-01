@@ -4,7 +4,10 @@ import {
   RENDEZVOUS_ROLES,
 } from "@alcove/core/websocket-relay";
 
-import { QUEUED_MESSAGE_OVERHEAD_BYTES } from "./forwarding.ts";
+import {
+  QUEUED_MESSAGE_OVERHEAD_BYTES,
+  pausedReadAheadBytes,
+} from "./forwarding.ts";
 
 import type {
   RendezvousRole,
@@ -25,6 +28,11 @@ export const RELAY_PATH = "/relay";
  */
 export const RELAY_MAX_MESSAGE_BYTES = 16_384;
 
+/** The most WebSocket frames `ws` takes for one message: one, so a message
+ * still arriving holds at most one fragment and one frame in progress
+ * (docs/spec/WEBSOCKET_RELAY.md, Forwarding). */
+export const RELAY_MAX_MESSAGE_FRAGMENTS = 1;
+
 /** A destination's send buffer, in bytes, above which the relay stops reading
  * from the source. */
 export const RELAY_SEND_BUFFER_HIGH_BYTES = 1024 * 1024;
@@ -33,30 +41,55 @@ export const RELAY_SEND_BUFFER_HIGH_BYTES = 1024 * 1024;
  * from the source again. */
 export const RELAY_SEND_BUFFER_LOW_BYTES = 256 * 1024;
 
-/** The smallest frame the relay parses from a party: a masked client frame
- * with no payload, two header bytes and a four-byte mask. */
-const MIN_FRAME_BYTES = 6;
+/**
+ * A destination's counted queue, in bytes, above which the relay ends the
+ * pairing: 1.25 MiB, 256 KiB over the 1 MiB high mark. The largest counted
+ * queue measured in honest rounds through the relay was 1,093,869 bytes,
+ * 45,293 over the high mark, in a 539,000,000-byte round whose reader stopped
+ * for 45 seconds (docs/spec/WEBSOCKET_RELAY.md, Measured counted queues).
+ */
+export const RELAY_QUEUE_LIMIT_BYTES = 1280 * 1024;
 
-/** Node's read size and a TCP socket's read high-water mark, in bytes. */
-const READ_BYTES = 64 * 1024;
+/** The frame header, in bytes, the relay writes for a message of up to
+ * 65,535 bytes and at least 126. */
+const MESSAGE_HEADER_BYTES = 4;
+
+/** Node's read size, in bytes. */
+export const READ_BYTES = 64 * 1024;
+
+/**
+ * The read high-water mark, in bytes, of each socket the relay's HTTP server
+ * accepts (`highWaterMark` of `http.createServer`), so a paused socket stops
+ * reading at its first read.
+ */
+export const RELAY_READ_HIGH_WATER_MARK_BYTES = 1;
+
+/** The most memory, in bytes, a paused source's read-ahead holds at
+ * {@link RELAY_READ_HIGH_WATER_MARK_BYTES}. */
+export const RELAY_PAUSED_READ_AHEAD_BYTES = pausedReadAheadBytes(
+  RELAY_READ_HIGH_WATER_MARK_BYTES,
+);
 
 /**
  * The most memory, in bytes, the relay holds for one party's queue and its
- * source. The larger case is a held source that then closes: the relay
- * forwards the queue from the read that crossed the high mark and the
- * read-ahead the paused source held, a 64 KiB read and a 64 KiB high-water
- * buffer. So the queue holds three reads of frames, each frame at least
- * {@link MIN_FRAME_BYTES} and counted with its payload, its frame header and
- * {@link QUEUED_MESSAGE_OVERHEAD_BYTES}, over the high mark and one whole
- * message; the read-ahead is held as one buffer while it is read.
+ * source: the queue up to {@link RELAY_QUEUE_LIMIT_BYTES}, the one message
+ * whose queueing passes it counted with its frame header and
+ * {@link QUEUED_MESSAGE_OVERHEAD_BYTES}, the read the relay is parsing, a
+ * message still arriving (four reads and its later pieces, up to
+ * {@link RELAY_MAX_MESSAGE_BYTES}: the largest measured case held 235,800
+ * bytes, rounded up to whole reads), and the paused source's read-ahead
+ * ({@link RELAY_PAUSED_READ_AHEAD_BYTES}). Past the limit the pairing ends and
+ * nothing more is queued.
  */
 export const RELAY_QUEUED_BOUND_BYTES =
-  RELAY_SEND_BUFFER_HIGH_BYTES +
+  RELAY_QUEUE_LIMIT_BYTES +
   RELAY_MAX_MESSAGE_BYTES +
-  3 * READ_BYTES +
-  (Math.floor((3 * READ_BYTES) / MIN_FRAME_BYTES) + 1) *
-    QUEUED_MESSAGE_OVERHEAD_BYTES +
-  2 * READ_BYTES;
+  MESSAGE_HEADER_BYTES +
+  QUEUED_MESSAGE_OVERHEAD_BYTES +
+  READ_BYTES +
+  4 * READ_BYTES +
+  RELAY_MAX_MESSAGE_BYTES +
+  RELAY_PAUSED_READ_AHEAD_BYTES;
 
 /** How long (ms) a socket may stay open before its hello arrives. */
 export const RELAY_HELLO_TIMEOUT_MS = 10_000;
@@ -64,11 +97,9 @@ export const RELAY_HELLO_TIMEOUT_MS = 10_000;
 /**
  * The most pairings the relay holds at once, a pairing counting from its
  * first verified hello until every socket it admitted has closed, the close
- * wait included: coturn's 40 concurrent allocations at two an
- * exchange (docs/notes/webrtc-relay-deployment.md, Quotas against one
- * exchange).
+ * wait included.
  */
-export const RELAY_MAX_PAIRINGS = 20;
+export const RELAY_MAX_PAIRINGS = 12;
 
 /**
  * The most sockets the relay holds whose hello has not verified, each counted
@@ -116,6 +147,8 @@ export const RelayCloseCode = Object.freeze({
   normal: 1000,
   /** The relay is shutting down. */
   goingAway: 1001,
+  /** A message in more than {@link RELAY_MAX_MESSAGE_FRAGMENTS} fragments. */
+  tooManyFragments: 1008,
   /** A message above {@link RELAY_MAX_MESSAGE_BYTES}. */
   messageTooBig: 1009,
   /**
@@ -144,6 +177,9 @@ export const RelayCloseCode = Object.freeze({
   relayFull: 4008,
   /** No message crossed the pairing within {@link RELAY_IDLE_TIMEOUT_MS}. */
   idle: 4009,
+  /** The messages this party sent and its partner has not read counted above
+   * {@link RELAY_QUEUE_LIMIT_BYTES}. */
+  queueLimit: 4010,
 });
 
 /** The text frame the relay sends both parties once both hellos verified. */

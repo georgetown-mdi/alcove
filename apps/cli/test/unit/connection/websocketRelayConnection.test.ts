@@ -547,6 +547,7 @@ test("a text message once the exchange has started fails the connection", async 
 test.each([
   [4000, "ended without a clean close"],
   [4009, "within its idle limit"],
+  [4010, "partner stopped receiving"],
   [1001, "shut down"],
   [1006, "was lost (close code 1006)"],
 ])("a relay close %i once started fails the connection", async (code, text) => {
@@ -564,6 +565,7 @@ test.each([
   [1011, "could not check this side's proof", "key table"],
   [1001, "shut down", "once it is back"],
   [4007, "refused a message this side sent (close code 4007)", "names an"],
+  [4010, "the exchange partner stopped receiving", "Run the exchange again."],
 ])(
   "a relay close %i before the start is refused at once with its cause and next step",
   async (code, what, next) => {

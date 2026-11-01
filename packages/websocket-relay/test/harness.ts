@@ -1,5 +1,4 @@
 import { once } from "node:events";
-import { createServer } from "node:http";
 import { duplexPair } from "node:stream";
 
 import WebSocket from "ws";
@@ -7,7 +6,10 @@ import WebSocket from "ws";
 import { buildWebSocketRelayProof } from "@alcove/core";
 
 import { RELAY_PATH } from "../src/protocol.ts";
-import { attachWebSocketRelay } from "../src/relay.ts";
+import {
+  attachWebSocketRelay,
+  createWebSocketRelayServer,
+} from "../src/relay.ts";
 
 import type { RendezvousRole } from "@alcove/core";
 import type { Server } from "node:http";
@@ -47,10 +49,7 @@ export interface RunningRelay {
 export async function startRelay(
   options: Partial<WebSocketRelayOptions> = {},
 ): Promise<RunningRelay> {
-  const server = createServer((_request, response) => {
-    response.writeHead(404);
-    response.end();
-  });
+  const server = createWebSocketRelayServer();
   const faults: string[] = [];
   const relay = attachWebSocketRelay(server, {
     keyTable: keyTableOf(),

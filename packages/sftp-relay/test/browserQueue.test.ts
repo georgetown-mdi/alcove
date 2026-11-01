@@ -12,6 +12,7 @@ import {
 } from "@alcove/websocket-relay/forwarding";
 
 import {
+  SFTP_RELAY_BROWSER_QUEUE_CEILING_BYTES,
   SFTP_RELAY_PATH,
   SFTP_RELAY_SEND_BUFFER_HIGH_BYTES,
 } from "../src/protocol.ts";
@@ -103,6 +104,42 @@ describe("the queued-message bound toward the browser", () => {
         await until(() => queuedBytes(observed.browser) > before);
       }
       expect(sent).toBe(expected);
+    },
+  );
+});
+
+describe("the queue's ceiling toward the browser", () => {
+  it("is the figure docs/spec/SFTP_RELAY.md states", () => {
+    expect(SFTP_RELAY_BROWSER_QUEUE_CEILING_BYTES).toBe(1_115_146);
+  });
+
+  it.each([1000, 65_536, 1024 * 1024])(
+    "never counts a stalled browser's queue above the ceiling while the target keeps sending in writes of %i bytes",
+    async (size) => {
+      const { observed, targetEnd } = await stalledBrowser();
+      let reads = 0;
+      let largest = 0;
+      // After the relay's own listener, so each read is counted once queued.
+      observed.target.on("data", () => {
+        reads += 1;
+        largest = Math.max(largest, queuedBytes(observed.browser));
+      });
+      const chunk = Buffer.alloc(size, 0x61);
+      for (let sent = 0; sent < 4 * 1024 * 1024; sent += size) {
+        targetEnd.write(chunk);
+      }
+      await until(() => observed.target.isPaused());
+      let settled = -1;
+      while (settled !== reads) {
+        settled = reads;
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+      expect(largest).toBeGreaterThan(SFTP_RELAY_SEND_BUFFER_HIGH_BYTES);
+      expect(largest).toBeLessThanOrEqual(
+        SFTP_RELAY_BROWSER_QUEUE_CEILING_BYTES,
+      );
+      expect(queuedBytes(observed.browser)).toBe(largest);
+      expect(observed.browser.readyState).toBe(WebSocket.OPEN);
     },
   );
 });

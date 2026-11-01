@@ -1,0 +1,62 @@
+- A paused socket reads on until its buffer reaches Node's 64 KiB high-water mark, in chunks held beyond their own bytes: each chunk counts 256 bytes (`READ_CHUNK_OVERHEAD_BYTES` in `packages/websocket-relay/src/forwarding.ts`), measured on Node v26.13 at about 219 bytes for one- and two-byte chunks and rounded up. -> A paused socket reads on until its buffer reaches its read high-water mark, in chunks held beyond their own bytes: each chunk counts 256 bytes (`READ_CHUNK_OVERHEAD_BYTES` in `packages/websocket-relay/src/forwarding.ts`), measured on Node v26.13 at about 219 bytes for one- and two-byte chunks and rounded up.
+- - -> The relay's HTTP server sets that mark to 1 byte for each socket it accepts (`RELAY_READ_HIGH_WATER_MARK_BYTES`, the `highWaterMark` option of Node's `http.createServer`), so a paused source stops reading at its first read.
+- With chunks of at least one byte and the one read that crossed the mark, a paused source's read-ahead is at most 16,908,544 bytes (`PAUSED_READ_AHEAD_BYTES`). -> Its read-ahead is then at most one 64 KiB read in two chunks, 66,049 bytes (`RELAY_PAUSED_READ_AHEAD_BYTES`), where Node's default 64 KiB mark allows 16,908,544 bytes (`PAUSED_READ_AHEAD_BYTES`).
+- - -> **The queue limit.**
+- - -> Once the messages queued toward a party count above 1,310,720 bytes (`RELAY_QUEUE_LIMIT_BYTES`, 1.25 MiB), the relay ends the pairing.
+- - -> It closes the party that sent them with 4010, and the party they are queued for with 4000 behind every message already queued for it, and forwards nothing more.
+- - -> The limit is 256 KiB over the high mark, set from the counted queues of honest rounds ([Measured counted queues](#measured-counted-queues)).
+- - -> Since each message counts its 1,024 bytes of overhead, a run of small messages passes the limit on a few kilobytes of payload, so the relay keeps no separate limit on the number of messages.
+- The relay holds at most 34,948,096 bytes (`RELAY_QUEUED_BOUND_BYTES`) for one party's queue and its source. -> The relay holds at most 1,738,245 bytes (`RELAY_QUEUED_BOUND_BYTES`) for one party's queue and its source.
+- While the source is held that is the high mark, plus every message completed from the read that crossed it, at most one message begun before, each counted as above, plus the paused source's read-ahead. -> That is the queue up to the limit, the one message whose queueing passes it, counted as above, the read the relay is parsing, a message still arriving, and the paused source's read-ahead.
+- - -> A message still arriving counts four 64 KiB reads, 262,144 bytes, and its later pieces, up to the 16,384-byte cap ([Measured fragments](#measured-fragments)).
+- When the source closes the relay forwards that read-ahead too, at most 128 KiB of frames, held as one buffer while it is read; that case, with frames of at least 6 bytes, is the larger and sets the bound. -> When a held source closes, the relay forwards its read-ahead too, but only until the queue passes the limit.
+- - -> **The restated bounds.**
+- A pairing's two parties together are at most 69,896,192 bytes. -> A pairing's two parties together are at most 3,476,490 bytes, and the 12 pairings the relay holds at once ([Quotas](#quotas)) at most 41,717,880 bytes.
+- The relay counts nothing by client address ([The endpoint](#the-endpoint)); behind the reference deployment's front, which holds at most 8 sockets from one address, that address's sockets reach at most 8 such bounds, 279,584,768 bytes. -> The relay counts nothing by client address ([The endpoint](#the-endpoint)); behind the reference deployment's front, which holds at most 8 sockets from one address, that address's sockets reach at most 8 such bounds, 13,905,960 bytes.
+- - -> These bounds hold for the server `createWebSocketRelayServer` makes, which the standalone runner uses; a relay attached to another server reads ahead under that server's own mark.
+- The relay holds at most 80 sockets whose hello has not verified (`RELAY_MAX_UNVERIFIED_SOCKETS`), each counted from its upgrade until its hello verifies or its socket closes. -> The relay holds at most 48 sockets whose hello has not verified (`RELAY_MAX_UNVERIFIED_SOCKETS`), each counted from its upgrade until its hello verifies or its socket closes.
+- The value is four times the 20 exchanges coturn's 40 concurrent allocations admit at two an exchange ([webrtc-relay-deployment.md](../notes/webrtc-relay-deployment.md#quotas-against-one-exchange)): two hellos an exchange, twice over. -> The value is four times the 12 concurrent pairings ([Quotas](#quotas)): two hellos a pairing, twice over.
+- Concurrent pairings | 20 (`RELAY_MAX_PAIRINGS`) | The pairings the relay holds at once, each counted from its first verified hello until every socket it admitted has closed, the close wait included. A hello that would start one more is refused (4008); one joining a pairing already held is not. A new pairing under a key ends at once the sockets the key's earlier pairing still holds, so a key holds at most one pairing's sockets; a socket ended this way loses any message still queued to it and closes abnormally (1006). coturn's 40 concurrent allocations at two an exchange -> Concurrent pairings | 12 (`RELAY_MAX_PAIRINGS`) | The pairings the relay holds at once, each counted from its first verified hello until every socket it admitted has closed, the close wait included. A hello that would start one more is refused (4008); one joining a pairing already held is not. A new pairing under a key ends at once the sockets the key's earlier pairing still holds, so a key holds at most one pairing's sockets; a socket ended this way loses any message still queued to it and closes abnormally (1006)
+- - -> 4010 | the sender | The messages it sent that its partner has not read counted above the queue limit; the partner is closed with 4000
+- - -> Measured counted queues
+- - -> Measured 2026-11-01 in the development container (10 cores, 23 GB; aarch64 Linux, Node v26.13.0), with other workloads running beside it.
+- - -> Each round went one way through the relay's standalone process between two of the command-line client's relay connections, as the round above, with the receiving party in a process of its own, which was suspended for a while in some rounds.
+- - -> The relay's process read the counted queue, as [Forwarding](#forwarding) counts it, after each message it queued, through a probe outside the repository.
+- - -> Round | Receiving party | Largest counted queue
+- - -> 10,000,000 bytes | read throughout | 5,120 bytes
+- - -> 50,000,000 bytes | suspended for 10 s | 1,076,506 bytes
+- - -> 539,000,000 bytes, twice, once with the queue limit | read throughout | 5,120 bytes
+- - -> 539,000,000 bytes | suspended for 30 s | 1,059,143 bytes
+- - -> 539,000,000 bytes, with the queue limit | suspended for 45 s | 1,093,869 bytes
+- - -> Every round arrived intact, and neither round run with the queue limit ended its pairing.
+- - -> A party that reads keeps its queue near empty.
+- - -> A suspended party's queue passed the 1 MiB high mark by at most 45,293 bytes, the messages already read when the relay held their source.
+- - -> The queue limit is 216,851 bytes above the largest of these.
+- - -> **The queue's ceiling toward the browser.**
+- - -> The messages queued on the WebSocket count at most 1,115,146 bytes (`SFTP_RELAY_BROWSER_QUEUE_CEILING_BYTES`): the high mark, 1,048,576 bytes, plus the 64 KiB read that crossed it, 65,536 bytes, its 10-byte frame header, and the 1,024 bytes a queued message counts beside them.
+- - -> The relay holds the TCP connection in the same call that queues the read crossing the high mark, and a held connection is read no further, so nothing more is queued until the browser reads.
+- - -> The relay ends no connection on the size of that queue, since the hold keeps it within the ceiling.
+- - -> **The queue's ceiling.**
+- - -> `packages/sftp-relay/test/browserQueue.test.ts` pauses an in-memory browser while the target sends 4 MiB, in writes of 1,000 bytes, of 64 KiB, and of 1 MiB, and checks after each read the relay queues that the counted queue passes the high mark and never passes the ceiling.
+- - -> **The per-message fragment limit.**
+- - -> A message in more than one WebSocket frame (`RELAY_MAX_MESSAGE_FRAGMENTS`, 1) is refused: `ws` closes its sender with 1008, and the relay closes the partner with 4000 and forwards nothing.
+- - -> The clients send each message as one frame ([Measured fragments](#measured-fragments)).
+- - -> For the same reason a burst of small messages in one read can pass the limit and end the pairing even toward a party that reads at once: 1,277 one-byte messages, each counted 1,027 bytes, pass it, and one 64 KiB read holds thousands of them.
+- - -> The clients send no such burst, as the honest rounds show ([Measured counted queues](#measured-counted-queues)).
+- - -> 1008 | the sender | A message in more than one frame, closed by `ws`; the partner is closed with 4000
+- - -> Measured fragments
+- - -> Measured 2026-11-01 through probes outside the repository: Node's `ws` client (`ws` 8.22.0, Node v26.13.0) and Chromium 156 in the development container, and Firefox 159.0 and Safari 26.6.2 on a macOS host.
+- - -> **Frames a message.**
+- - -> Every client measured, Node's `ws` client, Chromium, Firefox and Safari, sent each relay-sized message, up to 16,384 bytes, as one frame.
+- - -> Chromium first splits a message above 65,536 bytes, four times the cap; Firefox and Safari split none up to 4,194,304 bytes.
+- - -> **What `ws` keeps of a message still arriving.**
+- - -> `ws` keeps each piece of an incomplete message as the read it arrived in, so a piece keeps its whole read alive, up to 65,536 bytes, until the message completes.
+- - -> With the limit at one frame, measured through the relay's own code with the partner never reading and the read that ends a piece full (64 KiB), the ArrayBuffers retained were:
+- - -> one 1-byte fragment (not final) whose frame ends a read: 65,514 bytes;
+- - -> one 16,384-byte frame whose first piece ends a read and whose rest arrives in four smaller reads, the last byte withheld: 81,805 bytes, 65,514 for the read and 16,291 for the later pieces;
+- - -> the same fragment, then a continuation frame of 16,383 bytes whose first piece ends the next read and whose rest arrives in four smaller reads, the last byte withheld: 147,340 bytes, 131,050 for the two reads and 16,290 for the later pieces;
+- - -> the same layout driven through the relay's own code in `packages/websocket-relay/test/retainedMemory.test.ts`, the memory retained beyond the 65,513 bytes queued toward the partner: about 136 KB to 236 KB over seven runs, with an extra read alive in alternate runs.
+- - -> The queued-message bound counts four reads and the 16,384-byte cap, 278,528 bytes, for a message still arriving, to cover that range.
+- - -> A frame that fits one read, as every client's does, completes within it and keeps nothing once the relay has copied it.
+- - -> **The limit.**
+- - -> With the limit at one frame, a message in two fragments closed its sender with 1008 and the partner with 4000, and forwarded nothing; a message in one frame was forwarded intact (`packages/websocket-relay/test/relay.test.ts`).
