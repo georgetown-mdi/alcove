@@ -42,28 +42,52 @@ export interface FormatMigrations<Version> {
 export class FormatMigrationError extends Error {
   /** The version the document declares. */
   readonly fromVersion: unknown;
-  /** The version the failed step moves to. */
+  /** The version the migration could not move the document to. */
   readonly toVersion: unknown;
 
+  /**
+   * @param cause why the migration failed: a step's error, or a sentence
+   *   holding no value from the document.
+   */
   constructor(
     migrations: FormatMigrations<unknown>,
-    step: FormatMigrationStep<unknown>,
     declared: unknown,
-    stepError: unknown,
+    toVersion: unknown,
+    cause: unknown,
   ) {
     const reason = (
-      stepError instanceof Error ? stepError.message : String(stepError)
+      cause instanceof Error ? cause.message : String(cause)
     ).replace(/\.$/, "");
     super(
       `${migrations.fileName} is format version ${String(declared)}, and ` +
         `this version of Alcove could not move it to version ` +
-        `${String(step.to)}: ${reason}. The file was not changed. ` +
+        `${String(toVersion)}: ${reason}. The file was not changed. ` +
         migrations.failureRemedy,
     );
     this.name = "FormatMigrationError";
     this.fromVersion = declared;
-    this.toVersion = step.to;
+    this.toVersion = toVersion;
   }
+}
+
+const LITERAL_VERSION = /^(.+)\/v(\d+)$/;
+
+/**
+ * Whether `version` comes before `current`: a smaller integer, or a
+ * `<family>/v<n>` literal of the same family with a smaller `n`. False for
+ * two versions that cannot be ordered, such as a literal of another family.
+ */
+export function formatVersionPrecedes(
+  version: unknown,
+  current: unknown,
+): boolean {
+  if (typeof version === "number" && typeof current === "number")
+    return version < current;
+  if (typeof version !== "string" || typeof current !== "string") return false;
+  const found = LITERAL_VERSION.exec(version);
+  const ours = LITERAL_VERSION.exec(current);
+  if (found === null || ours === null || found[1] !== ours[1]) return false;
+  return Number(found[2]) < Number(ours[2]);
 }
 
 function declaredVersion<Version>(
@@ -119,12 +143,13 @@ export function migrationChainEnd<Version>(
 /**
  * `raw` at the current version of `migrations`, moved there in memory. A
  * value that is not a plain object, one at the current version, and one at a
- * version no chain of steps leads from to the current one are returned as
- * they are, for the format's schema to read or refuse. Otherwise the steps
- * run on a copy: `raw` is never modified.
+ * version neither before the current one nor led from by a chain of steps
+ * are returned as they are, for the format's schema to read or refuse.
+ * Otherwise the steps run on a copy: `raw` is never modified.
  *
- * @throws {FormatMigrationError} if a step throws, naming the version and
- *   the step's reason.
+ * @throws {FormatMigrationError} if a step throws, or if the version comes
+ *   before the current one and no chain of steps leads from it, naming the
+ *   version and the reason.
  */
 export function migrateOnRead<Version>(
   raw: unknown,
@@ -134,7 +159,15 @@ export function migrateOnRead<Version>(
   const document = raw as Record<string, unknown>;
   const declared = declaredVersion(document, migrations);
   if (declared === migrations.current || declared === undefined) return raw;
-  if (!migrationChainEnd(migrations, declared).reaches) return raw;
+  if (!migrationChainEnd(migrations, declared).reaches) {
+    if (!formatVersionPrecedes(declared, migrations.current)) return raw;
+    throw new FormatMigrationError(
+      migrations as FormatMigrations<unknown>,
+      declared,
+      migrations.current,
+      `it has no migration from version ${String(declared)}`,
+    );
+  }
   let migrated: Record<string, unknown> = structuredClone(document);
   let at: Version = declared;
   while (at !== migrations.current) {
@@ -144,8 +177,8 @@ export function migrateOnRead<Version>(
     } catch (error) {
       throw new FormatMigrationError(
         migrations as FormatMigrations<unknown>,
-        step as FormatMigrationStep<unknown>,
         declared,
+        step.to,
         error,
       );
     }

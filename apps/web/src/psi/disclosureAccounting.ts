@@ -29,8 +29,7 @@ import type { ExchangeRecord } from "@alcove/core";
 import type { ZodType } from "zod";
 
 /** The single recognized format version for a stored accounting. A reader rejects
- * any other value rather than migrating it, the reader-rejects-unknown rule the
- * record and verification-keys files follow (see docs/spec/EXCHANGE_RECORD.md). */
+ * any other value rather than migrating it, the reader-rejects-unknown rule. */
 export const DISCLOSURE_ACCOUNTING_VERSION = "alcove-disclosure-accounting/v2";
 
 /** One managed exchange's accounting of disclosures: its runs' exchange records,

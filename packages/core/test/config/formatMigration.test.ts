@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   FormatMigrationError,
+  formatVersionPrecedes,
   migrateOnRead,
   migrationChainEnd,
   readableFormatVersions,
@@ -97,6 +98,72 @@ describe("migrateOnRead", () => {
         "file was not changed. Use the version that wrote it.",
     );
     expect(JSON.stringify(raw)).toBe(before);
+  });
+});
+
+describe("an earlier version no chain of steps leads from", () => {
+  const BROKEN_CHAIN: FormatMigrations<number> = {
+    ...MIGRATIONS,
+    steps: [MIGRATIONS.steps[1]],
+  };
+
+  test("is refused naming both versions, the input unchanged", () => {
+    const raw = deepFreeze({ version: 1, old: "x" });
+    const before = JSON.stringify(raw);
+    expect(() => migrateOnRead(raw, BROKEN_CHAIN)).toThrow(
+      new FormatMigrationError(
+        BROKEN_CHAIN as FormatMigrations<unknown>,
+        1,
+        3,
+        "it has no migration from version 1",
+      ),
+    );
+    expect(() => migrateOnRead(raw, BROKEN_CHAIN)).toThrow(
+      "The test file is format version 1, and this version of Alcove could " +
+        "not move it to version 3: it has no migration from version 1. The " +
+        "file was not changed. Use the version that wrote it.",
+    );
+    expect(JSON.stringify(raw)).toBe(before);
+  });
+
+  test("leaves a version a step leads from to migrate", () => {
+    expect(migrateOnRead({ version: 2, renamed: "x" }, BROKEN_CHAIN)).toEqual({
+      version: 3,
+      renamed: "x",
+      added: true,
+    });
+  });
+
+  test("is refused for a literal of the current one's family", () => {
+    const literals: FormatMigrations<string> = {
+      fileName: "The test file",
+      versionField: "version",
+      current: "alcove-test/v3",
+      steps: [
+        { from: "alcove-test/v2", to: "alcove-test/v3", migrate: (d) => d },
+      ],
+      failureRemedy: "Use the version that wrote it.",
+    };
+    expect(() =>
+      migrateOnRead({ version: "alcove-test/v1" }, literals),
+    ).toThrow(FormatMigrationError);
+    const otherFamily = { version: "alcove-other/v1" };
+    expect(migrateOnRead(otherFamily, literals)).toBe(otherFamily);
+  });
+});
+
+describe("formatVersionPrecedes", () => {
+  test.each([
+    [1, 3, true],
+    [3, 3, false],
+    [4, 3, false],
+    ["alcove-x/v2", "alcove-x/v10", true],
+    ["alcove-x/v10", "alcove-x/v2", false],
+    ["alcove-y/v1", "alcove-x/v2", false],
+    ["alcove-x/v1-synthetic", "alcove-x/v2", false],
+    ["1", 3, false],
+  ])("%j before %j is %j", (version, current, expected) => {
+    expect(formatVersionPrecedes(version, current)).toBe(expected);
   });
 });
 

@@ -91,6 +91,34 @@ function expectMigrationRefused(read: () => unknown, cause: string): void {
   expect((caught as Error).message).toContain("The file was not changed.");
 }
 
+// `<family>/v0` comes before every current literal of its family, and the
+// tables below have no step from it.
+function unchainedEarlierVersion(current: string): string {
+  return `${current.slice(0, current.lastIndexOf("/"))}/v0`;
+}
+
+function expectUnchainedVersionRefused(
+  stored: Record<string, unknown>,
+  current: string,
+  parse: (raw: unknown) => unknown,
+): void {
+  const earlier = { ...stored, version: unchainedEarlierVersion(current) };
+  const before = JSON.stringify(earlier);
+  let caught: unknown;
+  try {
+    parse(earlier);
+  } catch (error) {
+    caught = error;
+  }
+  expect(caught).toBeInstanceOf(FormatMigrationError);
+  expect((caught as Error).message).toContain(
+    `is format version ${earlier.version}, and this version of Alcove could ` +
+      `not move it to version ${current}: it has no migration from version ` +
+      `${earlier.version}.`,
+  );
+  expect(JSON.stringify(earlier)).toBe(before);
+}
+
 describe("exchange record migration on read", () => {
   const previous = "alcove-exchange-record/v0-synthetic";
   const migrations: FormatMigrations<string> = {
@@ -131,6 +159,12 @@ describe("exchange record migration on read", () => {
   test("this build reads only its own version", () => {
     expect(() => parseExchangeRecord(stored)).toThrow();
   });
+
+  test("refuses an earlier version no step leads from, by name, the document unchanged", () => {
+    expectUnchainedVersionRefused(stored, EXCHANGE_RECORD_VERSION, (raw) =>
+      parseExchangeRecord(raw, migrations),
+    );
+  });
 });
 
 describe("verification keys migration on read", () => {
@@ -162,6 +196,12 @@ describe("verification keys migration on read", () => {
       "the previous version has no salt",
     );
     expect(JSON.stringify(broken)).toBe(before);
+  });
+
+  test("refuses an earlier version no step leads from, by name, the document unchanged", () => {
+    expectUnchainedVersionRefused(stored, EXCHANGE_KEYS_VERSION, (raw) =>
+      parseVerificationKeys(raw, migrations),
+    );
   });
 });
 
@@ -213,5 +253,11 @@ describe("signed receipt migration on read", () => {
       "the previous version has no responderBlock",
     );
     expect(JSON.stringify(broken)).toBe(before);
+  });
+
+  test("refuses an earlier version no step leads from, by name, the document unchanged", () => {
+    expectUnchainedVersionRefused(stored, SIGNED_RECEIPT_VERSION, (raw) =>
+      parseDualSignedRecord(raw, migrations),
+    );
   });
 });

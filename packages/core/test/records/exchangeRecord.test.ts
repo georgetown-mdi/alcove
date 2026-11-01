@@ -1122,7 +1122,9 @@ describe("serialize / parse", () => {
     // termsHash would mismatch a recomputation rather than be refused.
     const { record } = await buildExchangeRecord(baseInputs, fixedRandomness);
     const v9 = { ...record, version: "alcove-exchange-record/v9" };
-    expect(() => parseExchangeRecord(v9)).toThrow(/"version"/);
+    expect(() => parseExchangeRecord(v9)).toThrow(
+      /format version alcove-exchange-record\/v9,|"version"/,
+    );
   });
 
   test("parseExchangeRecord refuses a record written before the run outcome", async () => {
@@ -1237,7 +1239,9 @@ describe("serialize / parse", () => {
     // discriminant instead, like the shapes above.
     const { record } = await buildExchangeRecord(baseInputs, fixedRandomness);
     const v10 = { ...record, version: "alcove-exchange-record/v10" };
-    expect(() => parseExchangeRecord(v10)).toThrow(/"version"/);
+    expect(() => parseExchangeRecord(v10)).toThrow(
+      /format version alcove-exchange-record\/v10,|"version"/,
+    );
   });
 
   test("a record built from the default terms holds no citation", async () => {

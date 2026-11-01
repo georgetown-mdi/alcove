@@ -323,6 +323,27 @@ describe("key file migration on read", () => {
     expect(JSON.stringify(raw)).toBe(before);
   });
 
+  test("refuses an earlier version no step leads from by name, and migrates one a step does", () => {
+    const brokenChain = keyFileSchemaFor({
+      ...KEY_FILE_MIGRATIONS,
+      current: 3,
+      steps: [{ from: 2, to: 3, migrate: (document) => document }],
+    });
+    const raw = { version: 1, sharedSecret: SECRET };
+    const before = JSON.stringify(raw);
+    const result = brokenChain.safeParse(raw);
+    expect(result.error?.issues.map((issue) => issue.message)).toEqual([
+      "The key file is format version 1, and this version of Alcove could " +
+        "not move it to version 3: it has no migration from version 1. The " +
+        "file was not changed. Use the version of Alcove that wrote the key " +
+        "file, or report the failure to the Alcove maintainers.",
+    ]);
+    expect(JSON.stringify(raw)).toBe(before);
+    expect(brokenChain.parse({ version: 2, sharedSecret: SECRET })).toEqual({
+      sharedSecret: SECRET,
+    });
+  });
+
   test("still refuses a version above the current one by its version", () => {
     const result = schema.safeParse({ version: 3, sharedSecret: SECRET });
     expect(result.error?.issues[0]?.message).toMatch(
