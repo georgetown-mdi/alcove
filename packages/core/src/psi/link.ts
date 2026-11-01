@@ -3005,9 +3005,11 @@ export interface SinglePassReplay {
  *
  * 1. lift the round's value-level matches to record-level candidate pairs, several
  *    equal value pairs between the same two records collapsing to one;
- * 2. sweep those pairs in ascending (sender row, receiver row) order, accepting a
- *    pair when some largest pairing of the round holds it and every pair
- *    accepted before it;
+ * 2. sweep those pairs in ascending (sender row, receiver row) order. Under a
+ *    one-to-one cardinality, accept a pair when some largest pairing of the
+ *    round holds it and every pair accepted before it; under a deduplicating
+ *    one, accept it unless a side held to one pair already has its record
+ *    accepted;
  * 3. remove every record appearing in ANY of the round's candidate pairs --
  *    accepted or not -- from candidacy for every later key.
  *
