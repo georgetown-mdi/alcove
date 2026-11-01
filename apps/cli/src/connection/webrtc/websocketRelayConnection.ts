@@ -340,7 +340,7 @@ function relayDropError(code: number): ConnectionError {
     case RELAY_CLOSE.queueLimit:
       return new ConnectionError(
         "the WebSocket relay ended the exchange because the exchange " +
-          "partner stopped receiving. Run the exchange again.",
+          "partner stopped receiving",
         "transport",
       );
     case RELAY_CLOSE.goingAway:

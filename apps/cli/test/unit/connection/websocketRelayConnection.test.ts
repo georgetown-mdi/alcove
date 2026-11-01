@@ -547,7 +547,7 @@ test("a text message once the exchange has started fails the connection", async 
 test.each([
   [4000, "ended without a clean close"],
   [4009, "within its idle limit"],
-  [4010, "partner stopped receiving. Run the exchange again."],
+  [4010, "partner stopped receiving"],
   [1001, "shut down"],
   [1006, "was lost (close code 1006)"],
 ])("a relay close %i once started fails the connection", async (code, text) => {
