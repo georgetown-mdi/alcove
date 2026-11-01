@@ -134,7 +134,6 @@ The **relay settings** link on the start page opens the Relay server page. What 
   - An invitation you already sent, a saved recurring exchange, and an invitation you accept keep the server they name. Re-inviting your partner from a recurring exchange you created names the server set here, or this site's where none is set, and that exchange's later runs use it; where this browser cannot read the address you saved, the re-invite names the server the exchange already uses. If the address that exchange saved cannot be used either, the re-invite stops and says to set your address again or clear it here first.
   - If the server you set does not answer when you invite, the exchange stops with a message naming it. Ask whoever runs it to check it, then choose **Try again**, or clear the address and choose **Start over with a fresh invitation**.
   - The command line app given this site's address (`alcove invite https://psi.data-bridge.org`) uses the site's own coordination server, not your browser's setting ([DEPLOYMENT.md](DEPLOYMENT.md#coordination-server)).
-- **SFTP relay** names the SFTP relay this browser uses to reach a partner's SFTP server, in place of the one an SFTP invitation names. Enter its `wss://` address, such as `wss://sftp.example.org/sftp`; an address of another form, or one holding a space, `@`, `\`, `?`, `#` or `%`, is refused with a message saying what to enter. No browser exchange runs over SFTP yet, so nothing reads the setting until one does ([INVITATION_TOKEN.md](spec/INVITATION_TOKEN.md#the-sftp-relay-url)).
 
 ### Allowed relays
 

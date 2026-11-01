@@ -1,7 +1,7 @@
 /**
- * This browser's own SFTP relay: the `wss://` url a user names on the relay
- * settings page, used in place of the SFTP relay an invitation names, kept in
- * localStorage and so held per origin. The url is held to the rule an
+ * This browser's own SFTP relay: the `wss://` url a user names, used in place
+ * of the SFTP relay an invitation names, kept in localStorage and so held per
+ * origin. The url is held to the rule an
  * invitation's is (core's `sftpRelayUrlRefusal`,
  * docs/spec/INVITATION_TOKEN.md#the-sftp-relay-url).
  */
