@@ -71,6 +71,7 @@ vi.mock("../../../src/psi/authenticateExchange.js", () => ({
       },
       applyEncryption: true,
       negotiated: { kex: 3, protocol: 1, envelope: 1 },
+      secretUsed: { local: "current", partner: "current" },
       connection,
     }),
   ),
@@ -106,13 +107,19 @@ vi.mock("../../../src/psi/managed/managedRun.js", async (importOriginal) => ({
     },
   ),
 }));
-vi.mock("../../../src/psi/managed/managedRendezvous.js", () => ({
-  assertManagedRendezvousPossible: vi.fn(),
-  beginManagedRendezvous: vi.fn(),
-  managedRunRelayPlan: vi.fn(() =>
-    Promise.resolve({ relaysLeftOut: [], websocketRelays: [] }),
-  ),
-}));
+vi.mock(
+  "../../../src/psi/managed/managedRendezvous.js",
+  async (importOriginal) => ({
+    managedRendezvousPreviousSecret: (
+      await importOriginal<Record<string, unknown>>()
+    ).managedRendezvousPreviousSecret,
+    assertManagedRendezvousPossible: vi.fn(),
+    beginManagedRendezvous: vi.fn(),
+    managedRunRelayPlan: vi.fn(() =>
+      Promise.resolve({ relaysLeftOut: [], websocketRelays: [] }),
+    ),
+  }),
+);
 vi.mock(
   "../../../src/psi/managed/managedInputHandle.js",
   async (importOriginal) => ({

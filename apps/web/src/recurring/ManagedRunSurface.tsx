@@ -176,7 +176,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
   // something else, and at the next visit; once cleared it holds its place.
   const standingView =
     record !== undefined
-      ? managedStandingConditionView(record, localState)
+      ? managedStandingConditionView(record, localState, Date.now())
       : undefined;
   const showStanding = managedStandingConditionShown(
     recovery,

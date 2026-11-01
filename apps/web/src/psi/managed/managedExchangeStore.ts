@@ -32,6 +32,7 @@ import {
   applyManagedExchangeLastRun,
   applyManagedExchangeLocalEdits,
   applyManagedExchangePayloadReceiveFill,
+  applyManagedExchangePreviousSecretDropped,
   applyManagedExchangeReinviteRotation,
   applyManagedExchangeRelayRegistrar,
   applyManagedExchangeRelayRegistrationConfirmed,
@@ -76,7 +77,7 @@ import type {
   ManagedExchangeReadableRecords,
   ManagedExchangeRecord,
   ManagedExchangeReinviteRotation,
-  ManagedExchangeRotation,
+  ManagedExchangeRunRotation,
   ManagedExchangeScheduleAdvance,
   ManagedImportSource,
   ManagedTermsChangeWrite,
@@ -913,8 +914,9 @@ export async function updateManagedExchangeLocalFields(
 /**
  * Persist a rotation to the stored record: advance the rotated secret and the
  * `expires` bound, put the retired secret's verifier at the head of the
- * rotation history, remove the rotation-in-flight marker, and set the pending
- * relay key registration, and nothing else, AND clear the record's backup
+ * rotation history, set the previous secret the rotation states, remove the
+ * rotation-in-flight marker, and set the pending relay key registration, and
+ * nothing else, AND clear the record's backup
  * marker -- both in one strict-durability transaction spanning the record and
  * sibling stores ({@link readModifyWriteRotation}). The record write is
  * field-scoped through {@link applyManagedExchangeRotation} (which
@@ -943,7 +945,7 @@ export async function updateManagedExchangeLocalFields(
 export async function persistManagedExchangeRotation(
   id: string,
   expectedSharedSecret: string,
-  rotation: ManagedExchangeRotation,
+  rotation: ManagedExchangeRunRotation,
 ): Promise<RunnableManagedExchangeRecord> {
   const retired = await retiredSecret(expectedSharedSecret);
   return readModifyWriteRotation(id, (stored) => {
@@ -954,6 +956,37 @@ export async function persistManagedExchangeRotation(
     );
     refuseChangedSecret(existing, expectedSharedSecret);
     return applyManagedExchangeRotation(existing, rotation, retired);
+  });
+}
+
+/**
+ * Remove the stored record's previous secret once the partner's first frame
+ * after the terms exchange shows it saved the next secret, in a
+ * strict-durability transaction awaited to `complete`, made by the run inside
+ * its run+rotate lock. Writes nothing where the stored secret is not
+ * `sharedSecret`, the one the run's rotation stored, or no previous secret is
+ * held.
+ *
+ * @throws {Error} if no record with `id` exists, or it holds a configuration
+ *   only.
+ * @throws {ZodError} if the stored value or the resulting record is invalid.
+ */
+export async function dropManagedExchangePreviousSecret(
+  id: string,
+  sharedSecret: string,
+): Promise<void> {
+  await readModifyWriteRecord(id, (stored) => {
+    if (stored === undefined)
+      throw new Error(`no managed exchange with id ${id}`);
+    const existing = runnableManagedExchangeOrRefuse(
+      parseManagedExchangeRecord(stored),
+    );
+    if (
+      existing.sharedSecret !== sharedSecret ||
+      existing.previousSharedSecret === undefined
+    )
+      return { unwritten: existing };
+    return applyManagedExchangePreviousSecretDropped(existing);
   });
 }
 

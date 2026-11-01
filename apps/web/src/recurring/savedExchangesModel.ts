@@ -14,6 +14,7 @@ import {
 } from "@psi/managed/managedExchangeRecord";
 import {
   managedStandingConditionTier,
+  partnerStorageReach,
   readManagedFailure,
 } from "@psi/managed/managedFailureTiers";
 import { deriveManagedBackupState } from "@psi/managed/managedBackupState";
@@ -42,6 +43,7 @@ import type {
 import type {
   ManagedFailureTier,
   ManagedStandingTier,
+  PartnerStorageReach,
 } from "@psi/managed/managedFailureTiers";
 import type { ManagedLocalState } from "@psi/managed/managedLocalState";
 
@@ -161,12 +163,14 @@ export function relayRegistrationPendingLine(
  * plain lead without the checklist. `at` is the last run's phrased instant;
  * `tooLargeReading` is what a too-large run recorded of the set it refused;
  * `termsProposalStored` is whether a terms change waits on this
- * device for the operator's decision. */
+ * device for the operator's decision; `reach` is what the partner-storage
+ * tier's next run can do. */
 function tierStatus(
   tier: ManagedFailureTier,
   at: string,
   tooLargeReading: TooLargeReading,
   termsProposalStored: boolean,
+  reach: PartnerStorageReach,
 ): string {
   switch (tier) {
     case "expired":
@@ -186,7 +190,7 @@ function tierStatus(
     case "partner-refused-set":
       return `Last run stopped: your partner's run refused to send its set (${at}); ask your partner`;
     case "partner-storage":
-      return `Last run stopped: your partner could not save the new secret (${at}); no run can reach them until you re-invite`;
+      return `Last run stopped: your partner could not save the new secret (${at}); ${partnerStorageClause(reach)}`;
     case "partner-refused-terms":
       return `Last run stopped: your partner's run refused your linkage terms (${at}); agree on the terms through a terms update`;
     case "partner-protocol-refusal":
@@ -219,17 +223,34 @@ function tierStatus(
 /** The one-line status a STANDING condition displays as: the same quiet register as
  * {@link tierStatus}, phrased for a condition the record carries rather than for the
  * last run -- which may since be a no-show or a success, and saying "last run" of
- * either would be false. `at` is the condition's own instant. */
-function standingStatus(tier: ManagedStandingTier, at: string): string {
+ * either would be false. `at` is the condition's own instant, and `reach` what
+ * a partner-storage condition's next run can do. */
+function standingStatus(
+  tier: ManagedStandingTier,
+  at: string,
+  reach: PartnerStorageReach,
+): string {
   switch (tier) {
     case "storage":
       return `A run could not save this exchange's secret (${at}); re-invite to reconnect`;
     case "partner-storage":
-      return `Your partner could not save the new secret (${at}); no run can reach them until you re-invite`;
+      return `Your partner could not save the new secret (${at}); ${partnerStorageClause(reach)}`;
     case "imported":
       return "Restored from a backup or key file; import your newest copy or re-invite";
     case "unexplained":
       return `A run failed and is unexplained (${at}); check with your partner`;
+  }
+}
+
+/** What a partner-storage line says after its instant. */
+function partnerStorageClause(reach: PartnerStorageReach): string {
+  switch (reach) {
+    case "succeeded-since":
+      return "a run since then succeeded; clear this on the exchange's page";
+    case "kept":
+      return "the next run can still reach them";
+    case "not-kept":
+      return "no run can reach them until you re-invite";
   }
 }
 
@@ -253,6 +274,7 @@ function lastRunStatus(
     return standingStatus(
       managedStandingConditionTier(condition, local),
       dateTimeLabel(new Date(condition.since)),
+      partnerStorageReach(record, now),
     );
   const { tier } = reading;
   if (tier === "none") {
@@ -275,6 +297,7 @@ function lastRunStatus(
     at,
     record.lastRun ?? {},
     local?.termsProposal !== undefined,
+    partnerStorageReach(record, now),
   );
 }
 

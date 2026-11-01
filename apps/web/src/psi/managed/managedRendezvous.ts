@@ -36,10 +36,14 @@ import {
   dialAsAcceptor,
   listenAsInviter,
 } from "../transport/rendezvous";
+import { PartnerNoShowError } from "../transport/waitForConnection";
 import { refusedSignalingEndpointField } from "../transport/signalingAddress";
 import { relayPlanForRun } from "../transport/runRelayPlan";
 
-import { managedAllowedRelays } from "./managedExchangeRecord";
+import {
+  managedAllowedRelays,
+  offeredManagedPreviousSecret,
+} from "./managedExchangeRecord";
 
 import type { DefaultRelayDependencies } from "../transport/defaultRelay";
 import type { RunRelayPlan } from "../transport/runRelayPlan";
@@ -69,6 +73,23 @@ export type ManagedRendezvousRecord = Pick<
   RunnableManagedExchangeRecord,
   "side" | "sharedSecret" | "exchangeFile" | "label" | "relayRegistrar"
 >;
+
+/**
+ * The previous secret a run of `record` also waits for its partner under:
+ * the one it would offer at `now` ({@link offeredManagedPreviousSecret}), so
+ * a run holding none, or holding one as the inviter, waits under the current
+ * secret alone. The key exchange decides again with its own clock, so one
+ * that expires during the wait fails the authentication.
+ */
+export function managedRendezvousPreviousSecret(
+  record: Pick<
+    RunnableManagedExchangeRecord,
+    "side" | "sharedSecret" | "previousSharedSecret" | "previousExpires"
+  >,
+  now: number,
+): string | undefined {
+  return offeredManagedPreviousSecret(record, now);
+}
 
 /**
  * Reject a stored record whose exchange is not the webrtc channel: only a webrtc
@@ -210,8 +231,10 @@ type ManagedRendezvousAcquisition =
  * there, right before it connects, each only where the stored connection's
  * `allowedRelays` keep it. A failed enrollment is reported through
  * `onRunNotice` as it happens, and the run goes on without the default relay.
- * Refuses, before any contact, a record whose rendezvous cannot begin
- * ({@link assertManagedRendezvousPossible}).
+ * With `previousSharedSecret` ({@link managedRendezvousPreviousSecret}), the
+ * default relay's enrollment and each WebSocket relay dialed under the derived
+ * id are made under that secret too. Refuses, before any contact, a record
+ * whose rendezvous cannot begin ({@link assertManagedRendezvousPossible}).
  */
 export async function managedRunRelayPlan(
   record: ManagedRendezvousRecord,
@@ -219,6 +242,7 @@ export async function managedRunRelayPlan(
     signal?: AbortSignal;
     defaultRelay?: DefaultRelayDependencies;
     onRunNotice?: (message: string) => void;
+    previousSharedSecret?: string;
   } = {},
 ): Promise<RunRelayPlan> {
   assertManagedRendezvousPossible(record);
@@ -232,6 +256,9 @@ export async function managedRunRelayPlan(
       ...options.defaultRelay,
       ...(record.relayRegistrar !== undefined
         ? { ownRelayExchangeId: record.relayRegistrar.exchangeId }
+        : {}),
+      ...(options.previousSharedSecret !== undefined
+        ? { previousSharedSecret: options.previousSharedSecret }
         : {}),
       ...(options.signal !== undefined ? { signal: options.signal } : {}),
       ...(options.onRunNotice !== undefined
@@ -262,6 +289,13 @@ export async function managedRunRelayPlan(
  *
  * Both flows gather against `relayPlan`, the run's {@link managedRunRelayPlan},
  * and report a failure of the path to the partner to `onPathFailed`.
+ *
+ * An acceptor given `previousSharedSecret`
+ * ({@link managedRendezvousPreviousSecret}) dials under both secrets at once
+ * ({@link dialUnderBothSecrets}), where a partner that did not save the last
+ * rotation waits (docs/spec/PROTOCOL.md, "WebRTC rendezvous peer-id
+ * derivation"); the relay credential is minted from the current secret on
+ * both. The inviter ignores it.
  */
 export async function beginManagedRendezvous(
   record: ManagedRendezvousRecord,
@@ -271,6 +305,7 @@ export async function beginManagedRendezvous(
     flows?: ManagedRendezvousFlows;
     peerWaitTimeoutMs?: number;
     onPathFailed?: (failure: WebRtcPathFailure) => void;
+    previousSharedSecret?: string;
   },
 ): Promise<ManagedRendezvousAcquisition> {
   const flows = options.flows ?? defaultFlows;
@@ -297,14 +332,73 @@ export async function beginManagedRendezvous(
     });
     return { side: "inviter", peer };
   }
-  const [peer, conn] = await flows.dialAsAcceptor(sharedSecret, endpoint, {
-    signal,
-    ...relayPlan,
-    ...registrationBound,
-    onPathFailed,
-    ...(peerWaitTimeoutMs !== undefined
-      ? { totalTimeoutMs: peerWaitTimeoutMs }
-      : {}),
-  });
+  const dial = (secret: string, dialSignal: AbortSignal | undefined) =>
+    flows.dialAsAcceptor(secret, endpoint, {
+      signal: dialSignal,
+      ...relayPlan,
+      relaySecret: sharedSecret,
+      ...registrationBound,
+      onPathFailed,
+      ...(peerWaitTimeoutMs !== undefined
+        ? { totalTimeoutMs: peerWaitTimeoutMs }
+        : {}),
+    });
+  const previous = options.previousSharedSecret;
+  const [peer, conn] =
+    previous === undefined || previous === sharedSecret
+      ? await dial(sharedSecret, signal)
+      : await dialUnderBothSecrets(dial, [sharedSecret, previous], signal);
   return { side: "acceptor", peer, conn };
+}
+
+/**
+ * The acceptor's dial while its record holds a previous secret: one dial under
+ * each secret, each registering under the acceptor id its secret derives and
+ * dialing the inviter id beside it, since an inviter takes a connection only
+ * from the acceptor id of the secret it holds. The first channel to open is
+ * the run's, and the other dial is stopped and its peer destroyed. A dial that
+ * ends with no partner leaves the outcome to the other, which ends at the same
+ * deadline unless it met the partner; any other failure ends both.
+ */
+async function dialUnderBothSecrets(
+  dial: (
+    secret: string,
+    signal: AbortSignal,
+  ) => Promise<[Peer, DataConnection]>,
+  secrets: readonly [string, string],
+  signal: AbortSignal | undefined,
+): Promise<[Peer, DataConnection]> {
+  type Outcome = { pair: [Peer, DataConnection] } | { error: unknown };
+  const legs = secrets.map((secret) => {
+    const ended = new AbortController();
+    const endLeg = () => ended.abort(signal?.reason);
+    if (signal?.aborted === true) endLeg();
+    else signal?.addEventListener("abort", endLeg, { once: true });
+    const opened: Promise<Outcome> = dial(secret, ended.signal)
+      .then(
+        (pair): Outcome => ({ pair }),
+        (error: unknown): Outcome => ({ error }),
+      )
+      .finally(() => signal?.removeEventListener("abort", endLeg));
+    return { ended, opened };
+  });
+  const first = await Promise.race(
+    legs.map((leg, index) =>
+      leg.opened.then((outcome) => ({ index, outcome })),
+    ),
+  );
+  const other = legs[1 - first.index];
+  if (
+    "error" in first.outcome &&
+    first.outcome.error instanceof PartnerNoShowError
+  ) {
+    const last = await other.opened;
+    if ("error" in last) throw last.error;
+    return last.pair;
+  }
+  other.ended.abort();
+  const late = await other.opened;
+  if ("pair" in late) late.pair[0].destroy();
+  if ("error" in first.outcome) throw first.outcome.error;
+  return first.outcome.pair;
 }

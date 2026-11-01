@@ -49,7 +49,11 @@
  *   terms exchange awaits; {@link persistManagedExchangeRotation} is the
  *   durable, field-scoped write beneath it. A responder run that ends at the
  *   terms exchange with neither side able to have stored removes the marker
- *   ({@link clearManagedExchangeRotationInFlight}).
+ *   ({@link clearManagedExchangeRotationInFlight}). The initiator's rotation
+ *   write keeps the secret its key exchange used as the previous secret, and
+ *   a second strict-durability write removes it once the partner's first
+ *   frame after the terms exchange shows it stored
+ *   ({@link dropManagedExchangePreviousSecret}).
  */
 
 import {
@@ -61,6 +65,7 @@ import {
 import {
   ManagedExchangeSecretChangedError,
   clearManagedExchangeRotationInFlight,
+  dropManagedExchangePreviousSecret,
   getManagedExchange,
   markManagedExchangeRotationInFlight,
   persistManagedExchangeRotation,
@@ -72,9 +77,14 @@ import {
   storeRotatedSecret,
   succeededRun,
 } from "./managedRunRotate";
+import {
+  runRotationPrevious,
+  runnableManagedExchangeOrRefuse,
+} from "./managedExchangeRecord";
 import { enterManagedWindowRun } from "./managedWindowRuns";
-import { runnableManagedExchangeOrRefuse } from "./managedExchangeRecord";
 import { withManagedExchangeLock } from "./managedExchangeLock";
+
+import type { AuthResult } from "@alcove/core";
 
 import type {
   ManagedExchangeLastRun,
@@ -84,6 +94,16 @@ import type { ManagedExchangeLockOptions } from "./managedExchangeLock";
 import type { RotationWriteBack } from "./managedRunRotate";
 
 const log = getLogger("managedExchangeRun");
+
+/** Which of its secrets each side's key exchange used (`AuthResult`'s
+ * `secretUsed`). */
+export type ManagedRunSecretUsed = AuthResult["secretUsed"];
+
+/** A key exchange both sides completed under their current secret. */
+const BOTH_CURRENT: ManagedRunSecretUsed = {
+  local: "current",
+  partner: "current",
+};
 
 /**
  * Raised when the record a run reads inside the run+rotate lock is gone,
@@ -146,15 +166,22 @@ interface ManagedExchangeRunPhases<TInput, THandshake, TExchange> {
     current: RunnableManagedExchangeRecord,
   ) => Promise<THandshake>;
   /** Begin and complete the data exchange. Receives the value the handshake
-   * produced, the durable rotation write, which the data exchange hands
-   * core's terms exchange as its store and which resolves only once the next
-   * secret is committed, and the callback it hands core's terms exchange as
-   * `TermsRotation.partnerMayHoldNextSecret`, which decides whether a failed
-   * responder run removes its rotation-in-flight marker. */
+   * produced; the durable rotation write, which the data exchange hands
+   * core's terms exchange as its store with the secrets the key exchange
+   * used (both sides' current where omitted), and which resolves only once
+   * the next secret is committed; the callback it hands core's terms
+   * exchange as `TermsRotation.partnerMayHoldNextSecret`, which decides
+   * whether a failed responder run removes its rotation-in-flight marker; and
+   * the durable removal of the previous secret it hands core as
+   * `TermsRotation.partnerStored` on the initiator. */
   dataExchange: (
     handshake: THandshake,
-    persistNextSecret: (nextSecret: string) => Promise<void>,
+    persistNextSecret: (
+      nextSecret: string,
+      secretUsed?: ManagedRunSecretUsed,
+    ) => Promise<void>,
     partnerMayHoldNextSecret: (mayHold: boolean) => void,
+    partnerStored: () => Promise<void>,
   ) => Promise<TExchange>;
   /** Invoked once, synchronously, at the instant the data exchange begins
    * (immediately before {@link dataExchange}, with the lock still held).
@@ -287,8 +314,8 @@ export async function runManagedExchange<TInput, THandshake, TExchange>(
     }
     // The initiator stores the next secret first, so only a responder can be
     // left behind by a run cut partway.
-    const marksRotationInFlight =
-      handshakeRoleForRendezvousRole(current.side) === "responder";
+    const role = handshakeRoleForRendezvousRole(current.side);
+    const marksRotationInFlight = role === "responder";
     const handshake = await phases.handshake(
       input,
       async () => {
@@ -302,11 +329,16 @@ export async function runManagedExchange<TInput, THandshake, TExchange>(
       current,
     );
     let rotatedSecret: string | undefined;
+    let healedCutRotation = false;
     // How far the terms exchange got in the store order, which decides
     // whether a failed responder run leaves its marker.
     const storeOrder = { partnerMayHoldNextSecret: false, storeBegan: false };
-    const persistNextSecret = async (nextSecret: string): Promise<void> => {
+    const persistNextSecret = async (
+      nextSecret: string,
+      secretUsed: ManagedRunSecretUsed = BOTH_CURRENT,
+    ): Promise<void> => {
       storeOrder.storeBegan = true;
+      const previous = runRotationPrevious(current, role, secretUsed.local);
       rotatedSecret = await storeRotatedSecret(
         {
           persist: (writeBack: RotationWriteBack) =>
@@ -314,15 +346,26 @@ export async function runManagedExchange<TInput, THandshake, TExchange>(
               record.id,
               current.sharedSecret,
               writeBack,
+              previous,
               current.relayRegistrar !== undefined
                 ? new Date(now()).toISOString()
                 : undefined,
             ),
           tokenMaxAgeDays: current.tokenMaxAgeDays,
           now,
+          nextRunHeals:
+            role === "responder" && secretUsed.partner === "previous",
         },
         nextSecret,
       );
+      healedCutRotation =
+        secretUsed.local === "previous" || secretUsed.partner === "previous";
+    };
+    // On the initiator, the partner's first frame after the terms exchange
+    // shows it stored the next secret, so the previous secret is removed.
+    const partnerStored = async (): Promise<void> => {
+      if (role === "initiator" && rotatedSecret !== undefined)
+        await dropManagedExchangePreviousSecret(record.id, rotatedSecret);
     };
     // The peer-visible data exchange and the success stamp run inside the
     // single-writer window, so no second context can exchange against the
@@ -334,9 +377,14 @@ export async function runManagedExchange<TInput, THandshake, TExchange>(
     // `storage` bookkeeping steers the next handshake failure to the benign
     // tier. Every other failure is the runner's to classify and record.
     const exchange = await phases
-      .dataExchange(handshake, persistNextSecret, (mayHold) => {
-        storeOrder.partnerMayHoldNextSecret = mayHold;
-      })
+      .dataExchange(
+        handshake,
+        persistNextSecret,
+        (mayHold) => {
+          storeOrder.partnerMayHoldNextSecret = mayHold;
+        },
+        partnerStored,
+      )
       .catch(async (error: unknown) => {
         // The safety check refused the rotation: the record is the replacing
         // write's, so this run stamps nothing on it.
@@ -374,7 +422,7 @@ export async function runManagedExchange<TInput, THandshake, TExchange>(
       throw new InternalConsistencyError(
         `managed exchange ${record.id}: the exchange completed without storing a next secret`,
       );
-    const lastRun = succeededRun(now());
+    const lastRun = succeededRun(now(), healedCutRotation);
     try {
       await recordLastRun(record.id, lastRun, runStartedAtMs);
     } catch (error) {
@@ -419,11 +467,13 @@ async function persistRotation(
   id: string,
   expectedSharedSecret: string,
   writeBack: RotationWriteBack,
+  previous: ReturnType<typeof runRotationPrevious>,
   relayRegistrationPendingSince: string | undefined,
 ): Promise<void> {
   await persistManagedExchangeRotation(id, expectedSharedSecret, {
     sharedSecret: writeBack.sharedSecret,
     expires: writeBack.expires,
+    ...previous,
     ...(relayRegistrationPendingSince !== undefined && {
       relayRegistrationPendingSince,
     }),

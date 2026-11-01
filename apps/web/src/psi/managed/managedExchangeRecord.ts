@@ -22,6 +22,7 @@
 
 import {
   ExchangeSpecSchema,
+  InternalConsistencyError,
   KEY_FILE_FIELD_SCHEMAS,
   ROTATION_HISTORY_MAX_ENTRIES,
   RelayRegistrarSchema,
@@ -34,6 +35,7 @@ import {
   matchingKeyUnavailableReason,
   maxCodeUnits,
   migrateOnRead,
+  offerablePrevious,
   termsStatingDeclaredPayloadSend,
 } from "@alcove/core";
 
@@ -330,6 +332,11 @@ export interface ManagedExchangeLastRun {
    * sent. The run history then states the uncertain
    * disclosure line rather than that nothing was disclosed. */
   refusedInRound?: true;
+  /** Present only on a `"succeeded"` run whose key exchange completed under
+   * a previous secret, this side's or its partner's: the run healed one cut
+   * between the two saves of a rotation. The run history states the heal
+   * ({@link ./managedHealNote.ts}). */
+  healedCutRotation?: true;
 }
 
 /** What a `"too-large"` failure records about the set it refused. */
@@ -503,6 +510,16 @@ export interface ManagedExchangeRecord {
    * ({@link rotationHistoryAfterRetiring}). Never a retired secret itself.
    * Absent while the record has retired none. */
   rotationHistory?: ReadonlyArray<RotationHistoryEntry>;
+  /** The secret the last run's key exchange used, kept by that run's rotation
+   * write when this side was its initiator, until the partner's first frame
+   * after the terms exchange shows it saved the next secret too
+   * ({@link applyManagedExchangePreviousSecretDropped}). A run cut between
+   * the two saves leaves it, so the next run can still meet a partner that
+   * did not save. Never in an export. Absent while none is held. */
+  previousSharedSecret?: string;
+  /** The `expires` {@link previousSharedSecret} had as the current secret;
+   * held only beside it. */
+  previousExpires?: string;
   /** The unanswered standing condition an `auth`, `storage`, or
    * `partner-storage` failure raised, or
    * {@link NO_STANDING_CONDITION} while none stands. Cleared by the operator's
@@ -550,8 +567,8 @@ export function parseStoredInstant(value: string): number {
  * moves {@link MANAGED_EXCHANGE_SCHEMA_VERSION}. An artifact holding a value
  * this reader does not know is refused whole rather than read with the value
  * dropped -- the reader-rejects-unknown rule. `singleColumnInput`,
- * `setUncounted`, and `refusedInRound` are admitted only as `true`, so none
- * can hold a reading its absence already states. */
+ * `setUncounted`, `refusedInRound`, and `healedCutRotation` are admitted only
+ * as `true`, so none can hold a reading its absence already states. */
 export const lastRunSchema: ZodType<ManagedExchangeLastRun> = z.object({
   at: z.iso.datetime(),
   outcome: z.enum(["succeeded", "failed", "desynced", "missed", "skipped"]),
@@ -577,6 +594,7 @@ export const lastRunSchema: ZodType<ManagedExchangeLastRun> = z.object({
   tooLargeBound: z.enum(["partner-ceiling", "webrtc-message"]).optional(),
   setUncounted: z.literal(true).optional(),
   refusedInRound: z.literal(true).optional(),
+  healedCutRotation: z.literal(true).optional(),
 });
 
 /** The canonical validator for the operator's answer. Strict, so a member a
@@ -717,8 +735,16 @@ const ManagedExchangeRecordSchema: ZodType<ManagedExchangeRecord> = z
     relayRegistrationPendingSince: z.iso.datetime().optional(),
     relayRegistrationPendingReason: z.literal("reinvite").optional(),
     rotationHistory: rotationHistorySchema.optional(),
+    previousSharedSecret: z.string().regex(SHARED_SECRET_REGEX).optional(),
+    previousExpires: z.iso.datetime().optional(),
     standingCondition: standingConditionFieldSchema,
   })
+  .refine(
+    (record) =>
+      record.previousExpires === undefined ||
+      record.previousSharedSecret !== undefined,
+    { message: "previousExpires is held only beside previousSharedSecret" },
+  )
   .refine(
     (record) =>
       record.relayRegistrationPendingReason === undefined ||
@@ -741,13 +767,14 @@ const ManagedExchangeRecordSchema: ZodType<ManagedExchangeRecord> = z
         record.relayRegistrar === undefined &&
         record.relayRegistrationPendingSince === undefined &&
         record.rotationHistory === undefined &&
+        record.previousSharedSecret === undefined &&
         record.workingDirectoryHandle === undefined),
     {
       message:
         "a record without a sharedSecret is configuration only and must hold " +
         "no expires, schedule, lastRun, recentRuns, rotationInFlightSince, " +
-        "relayRegistrar, relayRegistrationPendingSince, rotationHistory, or " +
-        "platform handle",
+        "relayRegistrar, relayRegistrationPendingSince, rotationHistory, " +
+        "previousSharedSecret, or platform handle",
     },
   )
   .refine(
@@ -1171,16 +1198,27 @@ export interface RetiredSecret {
  * still in force keeps its place, so each entry's position still counts the
  * rotations since its secret was retired (docs/spec/MANAGED_EXCHANGE_RECORD.md,
  * the `rotationHistory` row).
+ *
+ * With `retiresSharedSecret` false the write adds no entry and only prunes: a
+ * key exchange completed under the previous secret, whose entry the run that
+ * retired it added, and the current secret it replaces was never shared.
  */
 export function rotationHistoryAfterRetiring(
   record: RunnableManagedExchangeRecord,
   retired: RetiredSecret,
+  retiresSharedSecret = true,
 ): Array<RotationHistoryEntry> {
   const history: Array<RotationHistoryEntry> = [
-    {
-      verifier: retired.verifier,
-      ...(record.expires !== undefined ? { expires: record.expires } : {}),
-    },
+    ...(retiresSharedSecret
+      ? [
+          {
+            verifier: retired.verifier,
+            ...(record.expires !== undefined
+              ? { expires: record.expires }
+              : {}),
+          },
+        ]
+      : []),
     ...(record.rotationHistory ?? []),
   ].slice(0, ROTATION_HISTORY_MAX_ENTRIES);
   while (history.length > 0) {
@@ -1199,6 +1237,36 @@ function setRotationHistory(
 ): void {
   if (history.length === 0) delete next.rotationHistory;
   else next.rotationHistory = history;
+}
+
+/** Set `next`'s previous secret and its `expires`, removing both where
+ * `previous` is absent. */
+function setPreviousSecret(
+  next: ManagedExchangeRecord,
+  previous: ManagedExchangeRunRotation["previous"],
+): void {
+  delete next.previousSharedSecret;
+  delete next.previousExpires;
+  if (previous === undefined) return;
+  next.previousSharedSecret = previous.sharedSecret;
+  if (previous.expires !== undefined) next.previousExpires = previous.expires;
+}
+
+/**
+ * Remove a record's previous secret, producing a validated new record, once
+ * the partner's first frame after the terms exchange shows it saved the next
+ * secret too. Only the previous secret and its `expires` change; the input
+ * record is not mutated.
+ *
+ * @throws {ZodError} if the result is not a valid record.
+ */
+export function applyManagedExchangePreviousSecretDropped(
+  record: RunnableManagedExchangeRecord,
+): RunnableManagedExchangeRecord {
+  if (record.previousSharedSecret === undefined) return record;
+  const next: ManagedExchangeRecord = { ...record };
+  setPreviousSecret(next, undefined);
+  return runnableManagedExchangeOrRefuse(parseManagedExchangeRecord(next));
 }
 
 /** The rotation fields a successful run advances on the stored record: the
@@ -1221,6 +1289,56 @@ export interface ManagedExchangeRotation {
   /** Why the pending registration cannot be confirmed by a run, stored with
    * {@link relayRegistrationPendingSince}: a re-invite's. */
   relayRegistrationPendingReason?: ManagedRelayRegistrationPendingReason;
+}
+
+/** A run's rotation: the {@link ManagedExchangeRotation} fields plus what the
+ * run's key exchange decides about the previous secret
+ * ({@link runRotationPrevious}). */
+export interface ManagedExchangeRunRotation extends ManagedExchangeRotation {
+  /** The secret the key exchange used and its own `expires`, which the
+   * initiator's store keeps as the previous secret. Absent, the write keeps
+   * none: the responder's store. */
+  previous?: { sharedSecret: string; expires?: string };
+  /** The key exchange completed under the record's previous secret, so the
+   * current secret the write replaces was never shared and the history gains
+   * no entry for it. */
+  usedPrevious?: true;
+}
+
+/**
+ * What a run's rotation write stores about the previous secret, given the
+ * record the run read and which of its secrets this side's key exchange used:
+ * on the initiator, the secret used and its own `expires` as the previous
+ * secret; on the responder, none (docs/spec/PROTOCOL.md, "The previous
+ * secret").
+ *
+ * @throws {InternalConsistencyError} if the key exchange used a previous
+ *   secret the record does not hold.
+ */
+export function runRotationPrevious(
+  record: RunnableManagedExchangeRecord,
+  role: "initiator" | "responder",
+  localSecretUsed: "current" | "previous",
+): Pick<ManagedExchangeRunRotation, "previous" | "usedPrevious"> {
+  const usedPrevious = localSecretUsed === "previous";
+  const previousSecret = record.previousSharedSecret;
+  if (usedPrevious && previousSecret === undefined)
+    throw new InternalConsistencyError(
+      "the key exchange used a previous secret the record does not hold",
+    );
+  const used =
+    usedPrevious && previousSecret !== undefined
+      ? { secret: previousSecret, expires: record.previousExpires }
+      : { secret: record.sharedSecret, expires: record.expires };
+  return {
+    ...(role === "initiator" && {
+      previous: {
+        sharedSecret: used.secret,
+        ...(used.expires !== undefined ? { expires: used.expires } : {}),
+      },
+    }),
+    ...(usedPrevious && { usedPrevious: true as const }),
+  };
 }
 
 /** A re-invite's rotation: the {@link ManagedExchangeRotation} fields plus the
@@ -1266,21 +1384,23 @@ function pendingRelayRegistrationAfterRotation(
 
 /**
  * Apply a rotation to a record, producing a validated new record with only the
- * rotated secret, the `expires` bound, the rotation history, and the pending
- * relay registration changed and the rotation-in-flight marker removed in the
- * same write -- the document, the label, the schedule, the handle, and the run
- * bookkeeping remain untouched. A string `expires` sets the bound; `null`
- * clears it (a policy dropped between runs must not leave a stale bound
- * armed). The history takes the `retired` secret's entry
- * ({@link rotationHistoryAfterRetiring}). The result is re-validated through
- * the schema, so a malformed rotated secret is rejected here. The input record
- * is not mutated.
+ * rotated secret, the `expires` bound, the rotation history, the previous
+ * secret, and the pending relay registration changed and the
+ * rotation-in-flight marker removed in the same write -- the document, the
+ * label, the schedule, the handle, and the run bookkeeping remain untouched. A
+ * string `expires` sets the bound; `null` clears it (a policy dropped between
+ * runs must not leave a stale bound armed). The history takes the `retired`
+ * secret's entry unless the key exchange used the previous secret
+ * ({@link rotationHistoryAfterRetiring}). The previous secret becomes the one
+ * the rotation states, and none where it states none. The result is
+ * re-validated through the schema, so a malformed rotated secret is rejected
+ * here. The input record is not mutated.
  *
  * @throws {ZodError} if the rotated record is invalid (a malformed secret).
  */
 export function applyManagedExchangeRotation(
   record: RunnableManagedExchangeRecord,
-  rotation: ManagedExchangeRotation,
+  rotation: ManagedExchangeRunRotation,
   retired: RetiredSecret,
 ): RunnableManagedExchangeRecord {
   const next: ManagedExchangeRecord = {
@@ -1289,7 +1409,15 @@ export function applyManagedExchangeRotation(
   };
   if (rotation.expires === null) delete next.expires;
   else next.expires = rotation.expires;
-  setRotationHistory(next, rotationHistoryAfterRetiring(record, retired));
+  setRotationHistory(
+    next,
+    rotationHistoryAfterRetiring(
+      record,
+      retired,
+      rotation.usedPrevious !== true,
+    ),
+  );
+  setPreviousSecret(next, rotation.previous);
   delete next.rotationInFlightSince;
   setPendingRelayRegistration(
     next,
@@ -1625,7 +1753,8 @@ export function applyManagedExchangeSentColumns(
  * Apply a re-invite rotation to a record: advance the rotated secret, the
  * `expires` bound, and the rotation history and remove the rotation-in-flight
  * marker exactly as
- * {@link applyManagedExchangeRotation}, AND drop any `lastRun` bookkeeping. A
+ * {@link applyManagedExchangeRotation}, AND drop the previous secret, which a
+ * fresh secret ends, and any `lastRun` bookkeeping. A
  * re-invite is the recovery for the failure `lastRun` recorded; leaving that
  * entry in place would re-derive the consumed failure at the next visit, and
  * once the import marker is cleared in the same rotation, a stale `auth`
@@ -1670,6 +1799,7 @@ export function applyManagedExchangeReinviteRotation(
   if (rotation.expires === null) delete next.expires;
   else next.expires = rotation.expires;
   setRotationHistory(next, rotationHistoryAfterRetiring(record, retired));
+  setPreviousSecret(next, undefined);
   delete next.lastRun;
   delete next.rotationInFlightSince;
   setPendingRelayRegistration(
@@ -1946,6 +2076,50 @@ export function recentRunsOf(
   return record.lastRun !== undefined ? [record.lastRun] : [];
 }
 
+/** Whether a run the record lists ({@link recentRunsOf}) succeeded after
+ * `since`. */
+export function runSucceededSince(
+  record: Pick<ManagedExchangeRecord, "lastRun" | "recentRuns">,
+  since: string,
+): boolean {
+  const sinceMs = Date.parse(since);
+  return recentRunsOf(record).some(
+    (run) => run.outcome === "succeeded" && Date.parse(run.at) > sinceMs,
+  );
+}
+
+/**
+ * The previous secret a run of `record` would offer at `now`: the record's,
+ * on the acceptor, the only side that can be ahead over WebRTC, where core's
+ * `offerablePrevious` offers it. `undefined` on the inviter, on a record
+ * holding none or no current secret, and once it has expired.
+ */
+export function offeredManagedPreviousSecret(
+  record: Pick<
+    ManagedExchangeRecord,
+    "side" | "sharedSecret" | "previousSharedSecret" | "previousExpires"
+  >,
+  now: number,
+): string | undefined {
+  const previous = record.previousSharedSecret;
+  if (
+    record.side !== "acceptor" ||
+    previous === undefined ||
+    record.sharedSecret === undefined
+  )
+    return undefined;
+  return offerablePrevious(
+    {
+      sharedSecret: previous,
+      ...(record.previousExpires !== undefined && {
+        expires: record.previousExpires,
+      }),
+    },
+    record.sharedSecret,
+    now,
+  )?.sharedSecret;
+}
+
 /** The stored entry the `lastRun` write rules compare against: `undefined`
  * where it is stamped later than `nowMs`, so the incoming entry replaces it. */
 function lastRunNotAfter(
@@ -1959,9 +2133,11 @@ function lastRunNotAfter(
 
 /** Whether `lastRun` records an outcome that supersedes a rotation-in-flight
  * marker set at `since`: a key exchange that reached a verdict at or after the
- * marker -- it succeeded, failed closed, or could not save its rotation. A
- * no-show, a dropped connection, or a refusal before connecting says nothing
- * about the secret the partner holds, and leaves the marker standing. */
+ * marker -- it succeeded, failed closed, or could not save its rotation -- or
+ * a `"terms-change"` refusal, which comes before either side stores and so
+ * rotated nothing. A no-show, a dropped connection, or a refusal before
+ * connecting says nothing about the secret the partner holds, and leaves the
+ * marker standing. */
 export function answersRotationInFlight(
   lastRun: ManagedExchangeLastRun,
   since: string,
@@ -1969,6 +2145,7 @@ export function answersRotationInFlight(
   if (Date.parse(lastRun.at) < Date.parse(since)) return false;
   return (
     lastRun.outcome === "succeeded" ||
+    lastRun.failureKind === "terms-change" ||
     standingConditionFrom(lastRun) !== undefined
   );
 }

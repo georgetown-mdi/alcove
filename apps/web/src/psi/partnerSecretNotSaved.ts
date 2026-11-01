@@ -19,7 +19,8 @@ import type { HandshakeRole } from "@alcove/core";
 export class PartnerSecretNotSavedError extends Error {
   /** Whether this side saved the next secret where a later run reads it. A
    * managed run saves it before the partner's abort can arrive, so the two now
-   * hold different secrets and only a fresh invitation reconnects them. A
+   * hold different secrets, and its record keeps the partner's as its
+   * previous secret for the next run to meet them under. A
    * one-shot exchange keeps nothing past the run, so both still hold the
    * invitation's secret. */
   readonly keptNextSecret: boolean;

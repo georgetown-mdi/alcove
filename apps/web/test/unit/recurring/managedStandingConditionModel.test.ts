@@ -25,6 +25,7 @@ import type { ManagedLocalState } from "@psi/managed/managedLocalState";
 
 const RAISED_AT = "2026-07-10T09:00:00.000Z";
 const LATER_AT = "2026-07-12T09:00:00.000Z";
+const NOW = Date.parse("2026-07-14T09:00:00.000Z");
 
 function record(
   overrides: Partial<ManagedExchangeRecord> = {},
@@ -50,6 +51,7 @@ describe("managedStandingConditionView", () => {
       managedStandingConditionView(
         record({ lastRun: { at: LATER_AT, outcome: "missed" } }),
         undefined,
+        NOW,
       ),
     ).toBeUndefined();
   });
@@ -61,6 +63,7 @@ describe("managedStandingConditionView", () => {
         standingCondition: { since: RAISED_AT, kind: "auth" },
       }),
       undefined,
+      NOW,
     );
     expect(view?.clearance).toBe("confirmation");
     expect(view?.message).toMatch(/could not verify your partner/);
@@ -76,6 +79,7 @@ describe("managedStandingConditionView", () => {
         standingCondition: { since: RAISED_AT, kind: "storage" },
       }),
       undefined,
+      NOW,
     );
     expect(view?.clearance).toBe("acknowledge");
     expect(view?.message).toMatch(/Re-invite your partner to reconnect/);
@@ -91,6 +95,7 @@ describe("managedStandingConditionView", () => {
         standingCondition: { since: RAISED_AT, kind: "auth" },
       }),
       restored,
+      NOW,
     );
     expect(view?.clearance).toBe("acknowledge");
     expect(view?.title).toBe(
@@ -105,11 +110,77 @@ describe("managedStandingConditionView", () => {
         standingCondition: { since: RAISED_AT, kind: "auth" },
       }),
       undefined,
+      NOW,
     );
     const raisedYear = new Date(RAISED_AT).getFullYear().toString();
     expect(view?.message).toContain(raisedYear);
     // The no-show instant falls on a different day, and the copy names one run.
     expect(view?.message.match(/A run on /g)).toHaveLength(1);
+  });
+
+  describe("the partner's failed save", () => {
+    const previousSecret = generateSharedSecret();
+    const partnerStorage = (overrides: Partial<ManagedExchangeRecord> = {}) =>
+      record({
+        side: "acceptor",
+        lastRun: { at: LATER_AT, outcome: "missed" },
+        standingCondition: { since: RAISED_AT, kind: "partner-storage" },
+        previousSharedSecret: previousSecret,
+        ...overrides,
+      });
+
+    test("names the next run while the record holds a previous secret it would offer", () => {
+      const view = managedStandingConditionView(
+        partnerStorage(),
+        undefined,
+        NOW,
+      );
+      expect(view?.message).toMatch(
+        /This device also kept the earlier secret your partner still holds, so the next run can still reach them\. If your partner's device can save the new secret this time, you are back in step\. If runs keep missing your partner or stopping, ask your partner to re-invite you\. Once a later run succeeds, you are both on the new secret and you can clear this\.$/,
+      );
+      expect(view?.message).not.toMatch(/do not settle it/);
+      expect(view?.reinvite).toBe("if-runs-keep-failing");
+      expect(view?.clearance).toBe("acknowledge");
+    });
+
+    test.each([
+      ["holds no previous secret", { previousSharedSecret: undefined }],
+      [
+        "holds one that expired",
+        { previousExpires: "2026-07-13T09:00:00.000Z" },
+      ],
+      ["is the inviter's", { side: "inviter" as const }],
+    ])("names the re-invite where the record %s", (_case, overrides) => {
+      const view = managedStandingConditionView(
+        partnerStorage(overrides),
+        undefined,
+        NOW,
+      );
+      expect(view?.message).toMatch(
+        /Scheduled runs keep running but cannot reach your partner, and running the exchange again cannot either\. Re-invite your partner to reconnect\. Runs since then do not settle it, including any that succeeded\.$/,
+      );
+      expect(view?.reinvite).toBeUndefined();
+    });
+
+    test("says a run since then succeeded, offers no re-invite, and still waits for the clear", () => {
+      const view = managedStandingConditionView(
+        partnerStorage({
+          previousSharedSecret: undefined,
+          lastRun: { at: LATER_AT, outcome: "missed" },
+          recentRuns: [
+            { at: LATER_AT, outcome: "missed" },
+            { at: "2026-07-11T09:00:00.000Z", outcome: "succeeded" },
+          ],
+        }),
+        undefined,
+        NOW,
+      );
+      expect(view?.message).toMatch(
+        /A run since then succeeded, so you and your partner are on the same secret again, and you can clear this\.$/,
+      );
+      expect(view?.reinvite).toBe("none");
+      expect(view?.clearance).toBe("acknowledge");
+    });
   });
 
   test("the acknowledge control's label is short and states what the click does", () => {

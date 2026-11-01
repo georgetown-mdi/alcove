@@ -26,6 +26,7 @@ import {
   PARTNER_REFUSED_SET_REMEDY,
   PARTNER_REFUSED_SET_TITLE,
   PARTNER_REFUSED_TERMS_REMEDY,
+  PARTNER_SECRET_NOT_SAVED_KEPT_REMEDY,
   PARTNER_SECRET_NOT_SAVED_PROBLEM,
   PARTNER_SECRET_NOT_SAVED_TITLE,
   PARTNER_SET_TOO_LARGE_PROBLEM,
@@ -51,12 +52,14 @@ import {
   ManagedExchangeNotRunnableError,
   ManagedInputError,
   ManagedRelayRegistrationError,
+  RotationPersistError,
   benignRerunOutcome,
   tooLargeReadingOf,
 } from "@psi/managed/managedRun";
 import {
   deriveManagedFailureTier,
   importedSinceLastSuccess,
+  partnerStorageReach,
   rotationInFlightUnansweredAtLaunch,
 } from "@psi/managed/managedFailureTiers";
 import { DEFAULT_RELAY_OFF_REMEDY } from "@psi/transport/defaultRelaySwitch";
@@ -179,6 +182,9 @@ export interface ManagedRunFailure {
   reportedCause?: string;
   /** The recovery affordance the host renders. */
   recovery: ManagedRunRecovery;
+  /** Set where the message names the next run as the step, so the re-invite
+   * recovery is for runs that keep failing. */
+  reinvite?: "if-runs-keep-failing";
 }
 
 /** The benign expiry state's copy: a lapsed stored secret, plain re-invite
@@ -582,21 +588,36 @@ const PARTNER_REFUSED_SET_FAILURE: ManagedRunFailure = {
 
 /** The Tier-1 state of a run stopped because the partner could not save the
  * new secret this device had saved, so the two now hold different secrets. A
- * live launch and the record read back show the same copy, which names the
- * re-invite and offers no retry: a run under this device's secret cannot meet
- * a partner holding the one before it. The record's standing condition keeps
- * this state across the no-shows and failed handshakes of the runs after it,
- * so the copy names "a run" rather than the last one. */
-const PARTNER_STORAGE_FAILURE: ManagedRunFailure = {
-  kind: "partner-storage",
-  title: PARTNER_SECRET_NOT_SAVED_TITLE,
-  message:
-    `A run stopped because ${PARTNER_SECRET_NOT_SAVED_PROBLEM}. Scheduled ` +
-    "runs keep running but cannot reach your partner, and running the " +
-    "exchange again cannot either; it needs a fresh invitation, which keeps " +
-    "your terms and gives the exchange a new secret.",
-  recovery: "reinvite",
-};
+ * live launch and the record read back show the same copy. Where the record
+ * holds a previous secret the next run would offer, that run meets the
+ * partner under it, so the copy says so and offers the re-invite for the runs
+ * that cannot; otherwise only a re-invite reconnects the two
+ * ({@link partnerStorageReach}). The record's standing condition keeps this
+ * state across the no-shows and failed handshakes of the runs after it, so
+ * the copy names "a run" rather than the last one. */
+function partnerStorageFailure(
+  record: ManagedExchangeRecord,
+  now: number,
+): ManagedRunFailure {
+  const stopped = `A run stopped because ${PARTNER_SECRET_NOT_SAVED_PROBLEM}.`;
+  if (partnerStorageReach(record, now) === "kept")
+    return {
+      kind: "partner-storage",
+      title: PARTNER_SECRET_NOT_SAVED_TITLE,
+      message: `${stopped} ${PARTNER_SECRET_NOT_SAVED_KEPT_REMEDY}`,
+      recovery: "reinvite",
+      reinvite: "if-runs-keep-failing",
+    };
+  return {
+    kind: "partner-storage",
+    title: PARTNER_SECRET_NOT_SAVED_TITLE,
+    message:
+      `${stopped} Scheduled runs keep running but cannot reach your partner, ` +
+      "and running the exchange again cannot either; it needs a fresh " +
+      "invitation, which keeps your terms and gives the exchange a new secret.",
+    recovery: "reinvite",
+  };
+}
 
 /** The benign state of a run stopped because the partner's run refused this
  * exchange's linkage terms as differing from its own, at the terms exchange
@@ -672,6 +693,25 @@ const STORAGE_FAILURE: ManagedRunFailure = {
     "your partner to reconnect; the exchange keeps your terms, gets a new " +
     "secret, and uses the coordination server the new invitation names.",
   recovery: "reinvite",
+};
+
+/** {@link STORAGE_FAILURE} on a live launch whose partner saved first and
+ * completed the key exchange under its previous secret, which shows it keeps
+ * one, so the next run can meet it under the secret this run used
+ * ({@link RotationPersistError.nextRunHeals}), as the command line's
+ * responder decides. */
+const STORAGE_NEXT_RUN_HEALS_FAILURE: ManagedRunFailure = {
+  kind: "storage",
+  title: STORAGE_FAILURE.title,
+  message:
+    "The last run connected but could not save its updated secret on this " +
+    "device. Your partner saved the new secret and kept the one this run " +
+    "used, so the next run can still reach them. If runs keep missing your " +
+    "partner or stopping, re-invite your partner; the exchange keeps your " +
+    "terms, gets a new secret, and uses the coordination server the new " +
+    "invitation names.",
+  recovery: "reinvite",
+  reinvite: "if-runs-keep-failing",
 };
 
 /** The Tier-1 interrupted-rotation state: a key exchange began and did not save
@@ -799,11 +839,14 @@ const UNEXPLAINED_FAILURE: ManagedRunFailure = {
  * `"none"` and `"missed"` are handled explicitly even though {@link
  * managedRunFailureFromRecord} filters both before a record reaches this
  * function; {@link classifyManagedRunFailure} can still route either tier here.
+ * `now` decides whether the partner-storage tier's next run can still reach
+ * the partner.
  * @internal exported for the unit test. */
 export function managedRunTierFailure(
   tier: ManagedFailureTier,
   record: ManagedExchangeRecord,
   local: ManagedLocalState | undefined,
+  now: number = Date.now(),
 ): ManagedRunFailure {
   switch (tier) {
     case "expired":
@@ -829,7 +872,7 @@ export function managedRunTierFailure(
     case "partner-refused-set":
       return PARTNER_REFUSED_SET_FAILURE;
     case "partner-storage":
-      return PARTNER_STORAGE_FAILURE;
+      return partnerStorageFailure(record, now);
     case "partner-refused-terms":
       return PARTNER_REFUSED_TERMS_FAILURE;
     case "partner-protocol-refusal":
@@ -898,7 +941,7 @@ function missedFailure(
 ): ManagedRunFailure {
   const tier = deriveManagedFailureTier(atLaunch, local, now);
   if (MISSED_OUTRANKED_BY.includes(tier))
-    return managedRunTierFailure(tier, atLaunch, local);
+    return managedRunTierFailure(tier, atLaunch, local, now);
   if (importedSinceLastSuccess(local)) return IMPORTED_FAILURE;
   if (rotationInFlightUnansweredAtLaunch(atLaunch))
     return PARTIAL_ROTATION_FAILURE;
@@ -1131,7 +1174,8 @@ function classifyLaunchState(
   if (benign === "partner-set-too-large")
     return partnerSetTooLargeFailure(error);
   if (benign === "partner-refused-set") return PARTNER_REFUSED_SET_FAILURE;
-  if (benign === "partner-storage") return PARTNER_STORAGE_FAILURE;
+  if (benign === "partner-storage")
+    return partnerStorageFailure(records.afterRun, now);
   if (benign === "partner-refused-terms") return PARTNER_REFUSED_TERMS_FAILURE;
   if (benign === "partner-protocol-refusal")
     return partnerProtocolRefusalFailure(partnerProtocolRefusalCopy(error));
@@ -1143,10 +1187,17 @@ function classifyLaunchState(
     return savedAddressRefusedFailure(error);
   const { afterRun } = records;
   const tier = deriveManagedFailureTier(afterRun, local, now);
+  if (
+    tier === "storage" &&
+    error instanceof RotationPersistError &&
+    error.nextRunHeals
+  )
+    return STORAGE_NEXT_RUN_HEALS_FAILURE;
   return managedRunTierFailure(
     dataExchangeStarted && attestsNonDisclosure(tier) ? "transport" : tier,
     afterRun,
     local,
+    now,
   );
 }
 
@@ -1165,7 +1216,7 @@ export function managedRunFailureFromRecord(
 ): ManagedRunFailure | undefined {
   const tier = deriveManagedFailureTier(record, local, now);
   if (tier === "none" || tier === "missed") return undefined;
-  return managedRunTierFailure(tier, record, local);
+  return managedRunTierFailure(tier, record, local, now);
 }
 
 /** Whether a classified failure is retryable in place: the input and transport
@@ -1237,11 +1288,21 @@ const ACCEPTOR_REINVITE_RECOVERY: ManagedReinviteRecoveryCopy = {
  * deposits a NEW managed record beside the superseded one, which still offers a
  * run that fails closed as the unexplained tier (see docs/MANAGED_EXCHANGE.md,
  * "Recovery: fast re-invite").
+ *
+ * With `"if-runs-keep-failing"`, the lead names the re-invite for runs that
+ * keep failing, for an alert that names the next run as the step.
  */
 export function managedReinviteRecoveryCopy(
   record: ManagedExchangeRecord,
+  when: "now" | "if-runs-keep-failing" = "now",
 ): ManagedReinviteRecoveryCopy {
-  return canReinviteFromRecord(record)
-    ? INVITER_REINVITE_RECOVERY
-    : ACCEPTOR_REINVITE_RECOVERY;
+  const inviter = canReinviteFromRecord(record);
+  const copy = inviter ? INVITER_REINVITE_RECOVERY : ACCEPTOR_REINVITE_RECOVERY;
+  if (when === "now") return copy;
+  return {
+    ...copy,
+    lead: inviter
+      ? "If runs keep failing, re-invite your partner."
+      : "If runs keep failing, ask your partner to re-invite you.",
+  };
 }

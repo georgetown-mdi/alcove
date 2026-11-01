@@ -18,10 +18,12 @@ import {
   assertManagedRendezvousPossible,
   assertManagedRerunDispatchable,
   beginManagedRendezvous,
+  managedRendezvousPreviousSecret,
   managedRunRelayPlan,
   managedSignalingEndpoint,
 } from "@psi/managed/managedRendezvous";
 import { DEFAULT_RELAY_NOT_ENROLLED_NOTICE } from "@psi/transport/defaultRelay";
+import { PartnerNoShowError } from "@psi/transport/waitForConnection";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 
 import type {
@@ -721,4 +723,233 @@ describe("beginManagedRendezvous: relay", () => {
       ]);
     },
   );
+});
+
+describe("managedRendezvousPreviousSecret", () => {
+  const NOW = Date.parse("2026-07-14T12:00:00.000Z");
+  const current = generateSharedSecret();
+  const previous = generateSharedSecret();
+
+  test("an acceptor offers the previous secret it holds while it is in force", () => {
+    expect(
+      managedRendezvousPreviousSecret(
+        {
+          side: "acceptor",
+          sharedSecret: current,
+          previousSharedSecret: previous,
+          previousExpires: "2026-08-01T00:00:00.000Z",
+        },
+        NOW,
+      ),
+    ).toBe(previous);
+  });
+
+  test("offers none for an inviter, a record holding none, an expired previous secret, or one equal to the current", () => {
+    expect(
+      managedRendezvousPreviousSecret(
+        {
+          side: "inviter",
+          sharedSecret: current,
+          previousSharedSecret: previous,
+        },
+        NOW,
+      ),
+    ).toBeUndefined();
+    expect(
+      managedRendezvousPreviousSecret(
+        { side: "acceptor", sharedSecret: current },
+        NOW,
+      ),
+    ).toBeUndefined();
+    expect(
+      managedRendezvousPreviousSecret(
+        {
+          side: "acceptor",
+          sharedSecret: current,
+          previousSharedSecret: previous,
+          previousExpires: "2026-07-01T00:00:00.000Z",
+        },
+        NOW,
+      ),
+    ).toBeUndefined();
+    expect(
+      managedRendezvousPreviousSecret(
+        {
+          side: "acceptor",
+          sharedSecret: current,
+          previousSharedSecret: current,
+        },
+        NOW,
+      ),
+    ).toBeUndefined();
+  });
+});
+
+describe("beginManagedRendezvous: an acceptor holding a previous secret", () => {
+  /** A peer whose `destroy` a test can watch. */
+  function destroyablePeer(tag: string): Peer {
+    return { tag, destroy: vi.fn() } as unknown as Peer;
+  }
+
+  /** Acceptor flows whose dial under each secret ends as `outcomes` says,
+   * once its signal is checked: `"open"` resolves at once, `"hold"` waits for
+   * the leg's signal to abort, a `PartnerNoShowError` or another error after a
+   * tick. */
+  function legFlows(outcomes: Record<string, "open" | "hold" | Error>): {
+    flows: ManagedRendezvousFlows;
+    calls: Array<{ secret: string; relaySecret: string | undefined }>;
+    peers: Record<string, Peer>;
+    aborted: Array<string>;
+  } {
+    const calls: Array<{ secret: string; relaySecret: string | undefined }> =
+      [];
+    const peers: Record<string, Peer> = {};
+    const aborted: Array<string> = [];
+    const flows: ManagedRendezvousFlows = {
+      listenAsInviter: () => Promise.reject(new Error("not the inviter")),
+      dialAsAcceptor: (secret, _endpoint, options) => {
+        calls.push({ secret, relaySecret: options?.relaySecret });
+        const peer = destroyablePeer(secret);
+        peers[secret] = peer;
+        const outcome = outcomes[secret];
+        const signal = options?.signal;
+        signal?.addEventListener("abort", () => aborted.push(secret));
+        if (outcome === "open") return Promise.resolve([peer, fakeConn()]);
+        if (outcome === "hold")
+          return new Promise((resolve) => {
+            signal?.addEventListener("abort", () =>
+              resolve([peer, fakeConn()]),
+            );
+          });
+        return new Promise((_resolve, reject) =>
+          setTimeout(() => reject(outcome), 0),
+        );
+      },
+    };
+    return { flows, calls, peers, aborted };
+  }
+
+  test("dials under both secrets at once, minting the relay credential from the current one", async () => {
+    stubAppLocation();
+    const current = generateSharedSecret();
+    const previous = generateSharedSecret();
+    const { flows, calls } = legFlows({
+      [current]: "hold",
+      [previous]: "open",
+    });
+
+    const acquisition = await begin("acceptor", current, exchangeFile(), {
+      flows,
+      previousSharedSecret: previous,
+    });
+
+    expect(calls).toEqual([
+      { secret: current, relaySecret: current },
+      { secret: previous, relaySecret: current },
+    ]);
+    expect(acquisition.side === "acceptor" && acquisition.peer).toMatchObject({
+      tag: previous,
+    });
+  });
+
+  test("the first channel to open is the run's, and the other dial is stopped and its peer destroyed", async () => {
+    stubAppLocation();
+    const current = generateSharedSecret();
+    const previous = generateSharedSecret();
+    const { flows, peers, aborted } = legFlows({
+      [current]: "open",
+      [previous]: "hold",
+    });
+
+    const acquisition = await begin("acceptor", current, exchangeFile(), {
+      flows,
+      previousSharedSecret: previous,
+    });
+
+    expect(acquisition.side === "acceptor" && acquisition.peer).toBe(
+      peers[current],
+    );
+    expect(aborted).toEqual([previous]);
+    expect(peers[previous].destroy).toHaveBeenCalledOnce();
+    expect(peers[current].destroy).not.toHaveBeenCalled();
+  });
+
+  test("a partner that does not arrive under one secret leaves the outcome to the other", async () => {
+    stubAppLocation();
+    const current = generateSharedSecret();
+    const previous = generateSharedSecret();
+    const opened = legFlows({
+      [current]: new PartnerNoShowError("nobody arrived"),
+      [previous]: "open",
+    });
+    const acquisition = await begin("acceptor", current, exchangeFile(), {
+      flows: opened.flows,
+      previousSharedSecret: previous,
+    });
+    expect(acquisition.side === "acceptor" && acquisition.peer).toBe(
+      opened.peers[previous],
+    );
+
+    const noShow = new PartnerNoShowError("nobody arrived");
+    const neither = legFlows({ [current]: noShow, [previous]: noShow });
+    await expect(
+      begin("acceptor", current, exchangeFile(), {
+        flows: neither.flows,
+        previousSharedSecret: previous,
+      }),
+    ).rejects.toBe(noShow);
+  });
+
+  test("any other failure ends both dials", async () => {
+    stubAppLocation();
+    const current = generateSharedSecret();
+    const previous = generateSharedSecret();
+    const failure = new Error("the signaling server refused the dial");
+    const { flows, peers, aborted } = legFlows({
+      [current]: "hold",
+      [previous]: failure,
+    });
+
+    await expect(
+      begin("acceptor", current, exchangeFile(), {
+        flows,
+        previousSharedSecret: previous,
+      }),
+    ).rejects.toBe(failure);
+    expect(aborted).toEqual([current]);
+    expect(peers[current].destroy).toHaveBeenCalledOnce();
+  });
+
+  test("a run's cancel reaches both dials", async () => {
+    stubAppLocation();
+    const current = generateSharedSecret();
+    const previous = generateSharedSecret();
+    const { flows, aborted } = legFlows({
+      [current]: "hold",
+      [previous]: "hold",
+    });
+    const run = new AbortController();
+
+    const begun = begin("acceptor", current, exchangeFile(), {
+      flows,
+      previousSharedSecret: previous,
+      signal: run.signal,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    run.abort();
+    await begun;
+
+    expect(aborted.sort()).toEqual([current, previous].sort());
+  });
+
+  test("an inviter registers under its current secret alone", async () => {
+    const current = generateSharedSecret();
+    const { flows, inviterCalls, acceptorCalls } = recordingFlows();
+    await begin("inviter", current, exchangeFile(), {
+      flows,
+      previousSharedSecret: generateSharedSecret(),
+    });
+    expect(inviterCalls.map((call) => call.secret)).toEqual([current]);
+    expect(acceptorCalls).toHaveLength(0);
+  });
 });

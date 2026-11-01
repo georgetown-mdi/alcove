@@ -68,8 +68,10 @@ import { runManagedRerun } from "./managedRun";
 import {
   assertManagedRendezvousPossible,
   beginManagedRendezvous,
+  managedRendezvousPreviousSecret,
   managedRunRelayPlan,
 } from "./managedRendezvous";
+import { managedHealNote } from "./managedHealNote";
 
 import {
   managedRelayRegistrarForRun,
@@ -98,7 +100,10 @@ import type Peer from "peerjs";
 import type { ObjectUrls, RunOutputs } from "../runOutputs";
 import type { PairTableFactors } from "../resultSizeProjection";
 
-import type { ManagedExchangeRunResult } from "./managedExchangeRun";
+import type {
+  ManagedExchangeRunResult,
+  ManagedRunSecretUsed,
+} from "./managedExchangeRun";
 import type { ManagedInputSource } from "./managedInputHandle";
 import type { ManagedRerunOptions } from "./managedRun";
 import type { ManagedRunRecordExpectation } from "./managedExchangeStore";
@@ -145,6 +150,9 @@ interface ManagedRerunCarried {
   /** The terms the run read when it took the lock, which its own terms writes
    * compare the stored terms with. */
   linkageTerms: LinkageTerms;
+  /** Which of its secrets each side's key exchange used, which the rotation
+   * write reads. */
+  secretUsed: ManagedRunSecretUsed;
 }
 
 /** How a re-run reads its input this run, and how it is attended. `source` is the
@@ -337,6 +345,16 @@ export function runManagedExchangeInBrowser(
           await retryPendingManagedRelayRegistration(current, runRegistrar, {
             signal,
           });
+        const previousSharedSecret = managedRendezvousPreviousSecret(
+          current,
+          Date.now(),
+        );
+        if (previousSharedSecret !== undefined)
+          log.info(
+            "the record holds the shared secret from before a run that " +
+              "stopped partway, so this run also looks for the partner " +
+              "under that secret",
+          );
         const psiPromise = loadPsiBackend(
           { loadWasm: () => PSI() as Promise<PSILibrary> },
           { isNode: false },
@@ -346,14 +364,22 @@ export function runManagedExchangeInBrowser(
         // opens; a rejecting load on a torn-down run must not go unhandled.
         void psiPromise.catch(() => undefined);
 
+        const previousOption =
+          previousSharedSecret !== undefined ? { previousSharedSecret } : {};
         const relayPlan = await managedRunRelayPlan(current, {
           signal,
           onRunNotice: emitRunNotice,
+          ...previousOption,
         });
         const runConnection = await openRunConnectionWithRelayFallback({
           role: current.side,
           sharedSecret: current.sharedSecret,
+          ...previousOption,
           relays: relayPlan.websocketRelays,
+          ...((previousSharedSecret !== undefined ||
+            current.rotationInFlightSince !== undefined) && {
+            afterCutRotation: true,
+          }),
           signal,
           onCloseOutcome: emitCloseWarning,
           onRunNotice: emitRunNotice,
@@ -362,6 +388,7 @@ export function runManagedExchangeInBrowser(
               relayPlan,
               signal: webRtcSignal,
               onPathFailed,
+              ...previousOption,
               ...(peerWaitTimeoutMs !== undefined ? { peerWaitTimeoutMs } : {}),
             });
             let peer: Peer;
@@ -427,6 +454,14 @@ export function runManagedExchangeInBrowser(
             current.sharedSecret,
             current.expires,
             current.rotationHistory,
+            current.previousSharedSecret === undefined
+              ? undefined
+              : {
+                  sharedSecret: current.previousSharedSecret,
+                  ...(current.previousExpires !== undefined && {
+                    expires: current.previousExpires,
+                  }),
+                },
           );
           // From here the run uses the AEAD-wrapped connection: the exchange
           // runs on it, and a cancel or teardown closes it, which closes the
@@ -442,6 +477,7 @@ export function runManagedExchangeInBrowser(
             csvDelimiter: current.exchangeFile.csvDelimiter,
             linkageTerms: current.exchangeFile.linkageTerms,
             nextSecretInputs: auth.nextSecretInputs,
+            secretUsed: auth.secretUsed,
             ...(runRegistrar !== undefined && {
               relayRegistration: {
                 registrar: runRegistrar,
@@ -471,19 +507,34 @@ export function runManagedExchangeInBrowser(
         carried,
         persistNextSecret,
         partnerMayHoldNextSecret,
+        partnerStored,
       ) => {
         const termsTakenOnRef: { current: boolean } = { current: false };
         const expected: ManagedRunRecordExpectation = {
           id: record.id,
           linkageTerms: carried.linkageTerms,
         };
+        // A heal is stated once both sides saved the next secret: on the
+        // responder at its own save, on the initiator once the partner's
+        // frame shows it saved.
+        const healNote = managedHealNote(carried.secretUsed);
+        const stateHeal = (): void => {
+          if (healNote !== undefined) emitRunNotice(healNote);
+        };
         const rotation = releasableTermsRotation({
           inputs: takeNextSecretInputs(carried),
           store: async (nextSecret) => {
-            await persistNextSecret(nextSecret);
+            await persistNextSecret(nextSecret, carried.secretUsed);
             carried.rotatedSecret = nextSecret;
+            if (carried.exchangeRole === "responder") stateHeal();
           },
           partnerMayHoldNextSecret,
+          ...(carried.exchangeRole === "initiator" && {
+            partnerStored: async () => {
+              await partnerStored();
+              stateHeal();
+            },
+          }),
         });
         try {
           const result = await runExchange(
