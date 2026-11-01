@@ -9,6 +9,7 @@ import {
 
 import {
   CLI_FAILURE_REMEDIES,
+  configAppearedLateStepShown,
   failureRemedy,
   keyFileSavedConfigNotWrittenRemedy,
   markArrivalWait,
@@ -311,6 +312,28 @@ test("the step for a key file saved before its configuration escapes both paths"
     expect(step).not.toContain("\x1b");
     expect(step).not.toContain("\n");
     expect(step).toContain("/keys/<1b>[31mEVIL<0a>.alcove.key");
+  }
+});
+
+test("the step for a key file saved where a file appeared at the configuration path is the refusal's own step on every ending", () => {
+  const state = {
+    keyPath: "/k/.alcove.key",
+    configPath: "/k/alcove.yaml",
+    kept: false,
+    configWriteFailed: true,
+    configAppearedLate: true,
+  };
+  for (const ending of [
+    { kind: "failed", errorStatesItsStep: false },
+    { kind: "failed", errorStatesItsStep: true },
+    { kind: "interrupted" },
+  ] as const) {
+    const step = keyFileSavedConfigNotWrittenRemedy(state, ending);
+    expect(
+      step.endsWith(` ${configAppearedLateStepShown("/k/alcove.yaml")}`),
+    ).toBe(true);
+    expect(step).toContain("a file appeared at /k/alcove.yaml");
+    expect(step).not.toMatch(/delete/i);
   }
 });
 

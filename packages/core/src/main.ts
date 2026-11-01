@@ -937,6 +937,7 @@ export {
   assertSharedSecretReadyForHandshake,
   NEW_INVITATION_REMEDY,
   deriveAbortToken,
+  offerablePrevious,
 } from "./auth";
 export type { AuthResult, HandshakeSecretKind, RotationState } from "./auth";
 // The versions a build offers in its key-exchange hello, and the refusal both

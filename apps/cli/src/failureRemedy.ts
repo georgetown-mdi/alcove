@@ -9,6 +9,7 @@
 
 import {
   failureCauseOf,
+  messageWithOperatorText,
   NEW_INVITATION_REMEDY,
   operatorSuppliedText,
   redactAndRenderOperatorSuppliedText,
@@ -16,6 +17,7 @@ import {
   type FailureCause,
   type FailureCauseKind,
   type FailureCauseOfKind,
+  type MessageWithOperatorText,
   annotate,
   annotationKey,
   annotationOf,
@@ -184,6 +186,48 @@ export interface OnlineSetupConfiguration {
 }
 
 /**
+ * The step for an online setup whose configuration step found a file at its
+ * configuration path that appeared after the conflict check, and refused to
+ * overwrite it. Every message on that path states this step: the refusal
+ * itself, the completion summary, and the step of a run that then stops
+ * ({@link keyFileSavedConfigNotWrittenRemedy}).
+ */
+export function configAppearedLateStep(
+  configPath: string,
+): MessageWithOperatorText {
+  const config = operatorSuppliedText(configPath);
+  return messageWithOperatorText`Move the file at ${config} elsewhere, then recreate ${config} to match your connection and linkage settings and run 'alcove exchange'.`;
+}
+
+/** {@link configAppearedLateStep} as a log line shows it. */
+export function configAppearedLateStepShown(configPath: string): string {
+  return configAppearedLateStep(configPath)
+    .spans.map((span) =>
+      span.operatorSupplied
+        ? redactAndRenderOperatorSuppliedText(operatorSuppliedText(span.text))
+        : span.text,
+    )
+    .join("");
+}
+
+const CONFIG_APPEARED_LATE = annotationKey<true>(
+  "a file appeared at the configuration path",
+);
+
+/**
+ * Mark `err` as the configuration step's refusal of a file that appeared at
+ * the configuration path, whose step is {@link configAppearedLateStep}.
+ */
+export function markConfigAppearedLate<E extends object>(err: E): E {
+  return annotate(err, CONFIG_APPEARED_LATE, true);
+}
+
+/** Whether {@link markConfigAppearedLate} marked `err`. */
+export function isConfigAppearedLate(err: unknown): boolean {
+  return annotationOf(err, CONFIG_APPEARED_LATE) === true;
+}
+
+/**
  * An online invite or accept that saved its rotated key file at `keyPath` and
  * then ended without writing a configuration, so the configuration is the one
  * it kept, or none.
@@ -196,6 +240,11 @@ export interface KeyFileSavedConfigNotWritten extends OnlineSetupConfiguration {
    * step or the configuration is kept.
    */
   readonly configWriteFailed: boolean;
+  /**
+   * That failure was a file that appeared at the configuration path
+   * ({@link isConfigAppearedLate}).
+   */
+  readonly configAppearedLate?: boolean;
 }
 
 /**
@@ -213,7 +262,8 @@ export type RunEnding =
  * from both files, and stops at the terms on a partner whose deduplicate
  * differs from the acceptance record this run did not refresh, printing the
  * `alcove apply` command that takes the new value on. A failure that states its own step keeps it, and gets only the key file's
- * part.
+ * part. Where a file appeared at the configuration path, the step is
+ * {@link configAppearedLateStep}, the one the refusal itself states.
  */
 export function keyFileSavedConfigNotWrittenRemedy(
   state: KeyFileSavedConfigNotWritten,
@@ -227,6 +277,13 @@ export function keyFileSavedConfigNotWrittenRemedy(
   );
   const stopped = ending.kind === "interrupted" ? "was interrupted" : "stopped";
   const errorStep = ending.kind === "failed" && ending.errorStatesItsStep;
+  if (!state.kept && state.configAppearedLate === true)
+    return (
+      `The key file ${key} was saved, but a file appeared at ${config} ` +
+      `after the initial conflict check, so the configuration was not ` +
+      `written, and then the run ${stopped}. ` +
+      configAppearedLateStepShown(state.configPath)
+    );
   if (!state.kept) {
     const happened = state.configWriteFailed
       ? `The key file ${key} was saved, but writing the configuration ${config} failed (logged above), and then the run ${stopped}.`

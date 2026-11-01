@@ -4,7 +4,7 @@ title: "Rotation Hardening Design"
 
 # Rotation hardening: recognizing a stale copy, and healing a one-sided rotation
 
-_Status: proposed for the maintainer's ratification; core stages 2 and 3 are built, and so is the web item's first part, the history and the two stale-copy readings; the command-line item and the web item's heal are not ([The build split and its reviews](#the-build-split-and-its-reviews)).
+_Status: proposed for the maintainer's ratification; core stages 2 and 3 and the command-line item are built, and so is the web item's first part, the history and the two stale-copy readings; the web item's heal is not ([The build split and its reviews](#the-build-split-and-its-reviews)).
 Decided by the maintainer's rulings: always accept the previous secret, keep the WebRTC stale-copy limit, send a random value from the responder after key confirmation inside terms message 2, store the next secret initiator first, and state the SC-12 row as it is, keeping that value's own wrap (questions 1 to 4, 7 and 8).
 Proposed, with recommendations for the maintainer to ratify: how the two values are drawn and whether the security review runs per stage (questions 5 and 6), and two choices no ruling covers ([Open questions](#open-questions)).
 Nothing here is normative.
@@ -226,7 +226,7 @@ On `webrtc` the roles are fixed, the acceptor always the initiator ([WEBRTC_TRAN
 
 - **A heal run** completes under the previous secret and draws fresh `N_I` and `N_R` like any run, from which both sides derive a next secret with that run's `ka`.
   The ahead side's unshared current secret, which the cut run derived and only the ahead side stored, is discarded.
-- **The previous-secret rules hold unchanged:** its life is one run, it keeps its own `expires`, a re-invite drops it, an export omits it, and every heal is reported.
+- **The previous-secret rules hold unchanged:** a store replaces it, it keeps its own `expires`, a re-invite drops it, an export omits it, and every heal is reported.
   It is always accepted ([question 2](#open-questions)).
   SP 800-57 section 8.2.3.2 does not reach it: the previous secret enters no later secret, so keeping it for one heal run is a question of how long a secret is used, not of how its replacement is made.
 
@@ -255,7 +255,7 @@ The cost is one more durable write per run on the initiator: an atomic key-file 
 
 Rules that bound it:
 
-- **Its life is one run.**
+- **Until a store replaces it.**
   The next run in which that side stores a next secret drops it: as initiator it keeps the secret that run used instead, until that run's confirmation, and as responder it keeps none.
   Only a run cut before that side's store keeps a previous secret past its end.
   No time window is involved, so there is no width to choose.
@@ -339,6 +339,8 @@ Stated limit: the behind side cannot allocate on the ahead side's own relay, whi
 A heal run then depends on the ahead side's relayed candidate, or on the behind side's own relays.
 Whether ICE forms a path from one side's relayed candidate alone is the relay's and the browser's behavior, not measured here; the command-line item measures it against the reference relay before this limit is stated as a fact.
 Where it does not form, the run reports a no-show and re-invite recovers, as today.
+The command-line item measured the WebSocket relay: a relay holding one side's key pairs nothing, and the second dial under the previous secret's derived id pairs ([WEBSOCKET_RELAY.md](../spec/WEBSOCKET_RELAY.md#a-one-sided-allocation)).
+TURN stays unmeasured, since the development container holds no TURN server.
 
 ### What the operator is told
 

@@ -7,6 +7,7 @@ import {
   InternalConsistencyError,
   assertSharedSecretReadyForHandshake,
   handshakeRoleForRendezvousRole,
+  offerablePrevious,
   redactAndSanitizeForDisplay,
   selectRunRelay,
   UsageError,
@@ -102,6 +103,8 @@ interface WebRtcDial {
   /** The key-exchange role this party takes once the channel is open. */
   handshakeRole: HandshakeRole;
   options: WebRtcPeerOptions & WebRtcMessageConnectionOptions;
+  /** `WebSocketRelayDial.afterCutRotation` for each relay the run dials. */
+  afterCutRotation?: boolean;
 }
 
 /**
@@ -122,6 +125,7 @@ interface WebRtcDial {
  *   unused when every selected TURN entry sets its own. When one is given,
  *   each connection attempt after the first mints its own
  *   (`relayCredentialPerAttempt`).
+ * @param previousSharedSecret {@link rendezvousPreviousSecret} for the run.
  * @throws {UsageError} when the run holds no shared secret, when the connection
  *   names no role, when the server block cannot be resolved to a broker, or
  *   or when the connection sets `ice_provision` (via
@@ -132,6 +136,7 @@ export function webRtcDialFrom(
   connection: WebRTCConnectionConfig,
   sharedSecret: string | undefined,
   runRelayCredential?: RelayCredential,
+  previousSharedSecret?: string,
 ): WebRtcDial {
   if (sharedSecret === undefined)
     throw new UsageError(WEBRTC_RENDEZVOUS_SECRET_REQUIRED);
@@ -153,6 +158,8 @@ export function webRtcDialFrom(
       location,
       role,
       sharedSecret,
+      ...(previousSharedSecret !== undefined &&
+        role === "acceptor" && { previousSharedSecret }),
       iceServers,
       ...(runRelayCredential !== undefined && {
         attemptIceServers: relayCredentialPerAttempt(connection, sharedSecret),
@@ -169,6 +176,37 @@ export function webRtcDialFrom(
       ...(inactivityTimeoutMs !== undefined && { inactivityTimeoutMs }),
     },
   };
+}
+
+/**
+ * The previous secret a webrtc run also waits for its partner under: the key
+ * file's, on the acceptor, the only side that can be ahead there, where the
+ * handshake would offer it at `now` (core's `offerablePrevious`). `undefined`
+ * otherwise, so a run holding none, or holding one as the inviter, waits under
+ * the current secret alone. The handshake decides again with its own clock, so
+ * one that expires during the wait fails authentication there.
+ */
+function rendezvousPreviousSecret(
+  role: WebRTCConnectionConfig["role"],
+  auth: Pick<
+    AuthPersist,
+    "sharedSecret" | "previousSharedSecret" | "previousExpires"
+  > | null,
+  now: number,
+): string | undefined {
+  const previous = auth?.previousSharedSecret;
+  if (role !== "acceptor" || auth === null || previous === undefined)
+    return undefined;
+  return offerablePrevious(
+    {
+      sharedSecret: previous,
+      ...(auth.previousExpires !== undefined && {
+        expires: auth.previousExpires,
+      }),
+    },
+    auth.sharedSecret,
+    now,
+  )?.sharedSecret;
 }
 
 /**
@@ -363,14 +401,25 @@ async function checkRunLocalInputs(params: {
     auth?.sharedSecret,
     new Date(),
   );
+  const previousSharedSecret = rendezvousPreviousSecret(
+    connection.role,
+    auth,
+    Date.now(),
+  );
+  const webRtcDial = webRtcDialFrom(
+    connection,
+    auth?.sharedSecret,
+    runRelayCredential,
+    previousSharedSecret,
+  );
   return {
     trimmedKeyFilePath,
     runRelayCredential,
-    webRtcDial: webRtcDialFrom(
-      connection,
-      auth?.sharedSecret,
-      runRelayCredential,
-    ),
+    webRtcDial:
+      previousSharedSecret !== undefined ||
+      auth?.rotationInFlightSince !== undefined
+        ? { ...webRtcDial, afterCutRotation: true }
+        : webRtcDial,
   };
 }
 

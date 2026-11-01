@@ -360,6 +360,7 @@ function recordingEmitter(): {
         buildPayloadReceiveTakenEvent(message, shownColumns, columnCount),
       ),
     logFileLoss: unexpected,
+    invitationRelayEnrollment: unexpected,
     metrics: unexpected,
     result: unexpected,
     error: unexpected,

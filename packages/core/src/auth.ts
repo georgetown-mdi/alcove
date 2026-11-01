@@ -321,9 +321,14 @@ export async function authenticateConnection(
   };
 }
 
-// The previous secret the handshake offers: none when it has expired or is the
-// current secret itself.
-function offerablePrevious(
+/**
+ * The previous secret {@link authenticateConnection} offers at `now`: none
+ * when it has expired or is the current secret itself.
+ *
+ * @throws {InternalConsistencyError} if the previous secret is not a
+ *   base64url-encoded 32-byte value.
+ */
+export function offerablePrevious(
   previous: RotationState["previous"],
   currentSecret: string,
   now: number,

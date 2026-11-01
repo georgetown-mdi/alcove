@@ -133,6 +133,17 @@ Every close reason is empty except 4005's.
 | 4008 | the sender of a hello | The relay holds as many pairings as its cap |
 | 4009 | both parties | No message crossed the pairing within the idle bound |
 
+## A one-sided allocation
+
+A run cut between the two saves of a rotation leaves one side on the next secret and its partner on the secret before it ([PROTOCOL.md](PROTOCOL.md#the-previous-secret)).
+A relay whose registrar took only one side's rotation holds that side's key under the exchange id, so only that side's hello verifies there.
+Measured 2026-11-01 in the development container (10 cores, aarch64 Linux, Node v26.13.0) against the relay's standalone process, by `apps/cli/test/integration/webrtc/websocketRelayOneSided.test.ts` in the CLI's webrtc suite:
+
+- **One side's allocation forms no path.** Under an id holding one side's key, that side's socket waited unpaired, and the other side's hello, its proof made under the key of the secret before, was refused with 4004. The relay pairs two sockets under one key only ([Pairing and the start](#pairing-and-the-start)), so a run whose two sides hold different keys at a relay has no path through it, and depends on WebRTC or on its other relays.
+- **Under the derived id, the run pairs.** A relay dialed under the id derived from the secret holds one row for each secret's id. An acceptor holding a previous secret dials it under both ids ([PROTOCOL.md](PROTOCOL.md#webrtc-rendezvous-peer-id-derivation)), and its socket under the previous secret's id paired with an inviter left on that secret, while its socket under the current secret's id stayed unpaired.
+- **What the run states on that refusal.** A CLI run whose key file holds a previous secret it waits under, or a rotation-in-flight marker ([EXCHANGE_FILE.md](EXCHANGE_FILE.md#the-rotation-in-flight-marker)), states on a 4004 that the relay's key may be the one its partner's secret derives, that it is left in place since the exchange can still meet over WebRTC or another relay, and that a new invitation recovers a run that meets the partner on none. It does not name `alcove enroll-relay --replace-relay-key`, which would put this side's key in place of the partner's (`relayRefusalError` in `apps/cli/src/connection/webrtc/websocketRelayConnection.ts`).
+- **Not measured: TURN.** Whether ICE forms a path from one side's TURN relayed candidate alone is the behavior of coturn and of the two ICE agents. The development container holds no TURN server, so this measurement does not reach it. Over the inviter's own TURN relay, whose registrar holds the key of the secret the inviter stored, only the inviter allocates in this state, so a heal there depends on the inviter's relayed candidate alone, which is unmeasured.
+
 ## Measured round at the largest exchange size
 
 Measured 2026-10-26 in the development container (10 cores, 23 GB; aarch64 Linux, Node v26.12.1), with other workloads running beside it, load average 5.88 at the start.

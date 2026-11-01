@@ -766,6 +766,9 @@ function readExchangeConfig(
     ...(keyData.rotationHistory !== undefined && {
       rotationHistory: keyData.rotationHistory,
     }),
+    ...(keyData.rotationInFlightSince !== undefined && {
+      rotationInFlightSince: keyData.rotationInFlightSince,
+    }),
   };
   // The channel guard above throws on any channel runProtocol cannot run, so
   // the discriminated union narrows `connection` to ProtocolConnectionConfig

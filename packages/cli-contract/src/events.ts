@@ -4,6 +4,7 @@
 import type {
   EntityClusterSummary,
   FailureCause,
+  HandshakeSecretKind,
   PartnerDeduplicateChange,
   PayloadColumnsChange,
   ResolvedMatching,
@@ -119,6 +120,11 @@ export interface WarningEvent extends EventBase {
   unescapedMessage?: string;
   /** Lines the `--log-file` could not take; `logFileLoss` only. */
   lostLines?: number;
+  /**
+   * Which secret's enrollment the warning is about, on a run that enrolls both
+   * its current and its previous secret; `invitationRelayEnrollment` only.
+   */
+  secretKind?: HandshakeSecretKind;
   /**
    * The partner's column names, redacted and fitted but not escaped;
    * `payloadReceiveTaken` only.

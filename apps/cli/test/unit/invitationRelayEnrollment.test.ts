@@ -148,10 +148,18 @@ describe("enrollAtInvitationRelay", () => {
 describe("reportInvitationRelayEnrollment", () => {
   function sinks() {
     const lines = { info: [] as string[], warn: [] as string[] };
-    const warnings: Array<{ source: string; message: string }> = [];
+    const warnings: Array<{
+      source: string;
+      message: string;
+      secretKind?: string;
+    }> = [];
     const emitter = {
-      warning: (source: string, message: string) =>
-        warnings.push({ source, message }),
+      invitationRelayEnrollment: (message: string, secretKind?: string) =>
+        warnings.push({
+          source: "invitationRelayEnrollment",
+          message,
+          ...(secretKind !== undefined && { secretKind }),
+        }),
     } as unknown as EventStreamEmitter;
     return {
       lines,
@@ -201,6 +209,60 @@ describe("reportInvitationRelayEnrollment", () => {
     expect(lines.warn).toEqual([warning]);
     expect(warnings).toEqual([
       { source: "invitationRelayEnrollment", message: warning },
+    ]);
+  });
+
+  test("on a run enrolling both secrets, each line and warning names the secret it enrolled", () => {
+    const { lines, warnings, sinks: s } = sinks();
+    reportInvitationRelayEnrollment(
+      REGISTRAR,
+      { kind: "enrolled", lapsesAt: LAPSES_AT },
+      s,
+      "current",
+    );
+    reportInvitationRelayEnrollment(
+      REGISTRAR,
+      { kind: "enrolled", lapsesAt: LAPSES_AT },
+      s,
+      "previous",
+    );
+    reportInvitationRelayEnrollment(
+      REGISTRAR,
+      { kind: "failed", detail: "HTTP 409: held" },
+      s,
+      "current",
+    );
+    reportInvitationRelayEnrollment(
+      REGISTRAR,
+      { kind: "failed", detail: "HTTP 409: held" },
+      s,
+      "previous",
+    );
+    const enrolled =
+      `the relay registrar at ${REGISTRAR} that your partner's invitation ` +
+      `names enrolled this exchange, until ${LAPSES_AT}`;
+    expect(lines.info).toEqual([
+      `for the current shared secret, ${enrolled}`,
+      `for the shared secret from before a run that stopped partway, ${enrolled}`,
+    ]);
+    const refused = invitationRelayNotEnrolledWarning(
+      REGISTRAR,
+      "HTTP 409: held",
+    );
+    const current = `for the current shared secret, ${refused}`;
+    const previous = `for the shared secret from before a run that stopped partway, ${refused}`;
+    expect(lines.warn).toEqual([current, previous]);
+    expect(warnings).toEqual([
+      {
+        source: "invitationRelayEnrollment",
+        message: current,
+        secretKind: "current",
+      },
+      {
+        source: "invitationRelayEnrollment",
+        message: previous,
+        secretKind: "previous",
+      },
     ]);
   });
 
