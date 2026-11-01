@@ -14,6 +14,7 @@ import {
 import {
   SFTP_RELAY_PATH,
   SFTP_RELAY_SEND_BUFFER_HIGH_BYTES,
+  SftpRelayCloseCode,
 } from "../src/protocol.ts";
 import { attachSftpRelay } from "../src/relay.ts";
 
@@ -42,9 +43,10 @@ async function until(condition: () => boolean, ms = 5000): Promise<void> {
 
 /** A relay whose browser is paused in memory, and the target's end of its
  * TCP connection. */
-async function stalledBrowser(): Promise<{
+async function stalledBrowser(queueLimitBytes?: number): Promise<{
   observed: SftpRelayObservedConnection;
   targetEnd: Socket;
+  browser: WebSocket;
 }> {
   const targetEnds: Socket[] = [];
   const target = createTcpServer((socket) => targetEnds.push(socket));
@@ -60,6 +62,7 @@ async function stalledBrowser(): Promise<{
     allowedOrigins: [ORIGIN],
     reportFault: () => {},
     testing: {
+      queueLimitBytes,
       observer: {
         connection: (observed) => observedConnections.push(observed),
       },
@@ -82,7 +85,11 @@ async function stalledBrowser(): Promise<{
     () => targetEnds.length === 1 && observedConnections.length === 1,
   );
   browser.pause();
-  return { observed: observedConnections[0], targetEnd: targetEnds[0] };
+  return {
+    observed: observedConnections[0],
+    targetEnd: targetEnds[0],
+    browser,
+  };
 }
 
 describe("the queued-message bound toward the browser", () => {
@@ -105,4 +112,40 @@ describe("the queued-message bound toward the browser", () => {
       expect(sent).toBe(expected);
     },
   );
+});
+
+describe("the queue limit toward the browser", () => {
+  it("closes a stalled browser with 4000 behind what was queued and ends the target once the browser's counted queue passes the limit", async () => {
+    // Lowered under the high mark, so the queue passes the limit before the
+    // target is held.
+    const limit = 256 * 1024;
+    const { observed, targetEnd, browser } = await stalledBrowser(limit);
+    const targetEnded = once(targetEnd, "end");
+    const received: Buffer[] = [];
+    browser.on("message", (data) => received.push(data as Buffer));
+    const closed = once(browser, "close");
+    const charged = 16_384 + 4 + QUEUED_MESSAGE_OVERHEAD_BYTES;
+    const expected = Math.floor(limit / charged) + 1;
+    let sent = 0;
+    while (
+      sent < 2 * expected &&
+      observed.browser.readyState === WebSocket.OPEN
+    ) {
+      const before = queuedBytes(observed.browser);
+      targetEnd.write(Buffer.alloc(16_384, sent));
+      sent += 1;
+      await until(
+        () =>
+          queuedBytes(observed.browser) > before ||
+          observed.browser.readyState !== WebSocket.OPEN,
+      );
+    }
+    expect(sent).toBe(expected);
+    browser.resume();
+    const [code] = (await closed) as [number];
+    expect(code).toBe(SftpRelayCloseCode.targetFailed);
+    expect(received).toHaveLength(expected);
+    expect(received.every((data, index) => data[0] === index)).toBe(true);
+    await targetEnded;
+  });
 });

@@ -1,0 +1,36 @@
+- 4000 | `targetFailed` | The target's connection failed after it was accepted. -> 4000 | `targetFailed` | The target's connection failed after it was accepted, or what it sent and the browser has not read counted above the queue limit.
+- - -> **The queue limit toward the browser.**
+- - -> Once the messages queued on the WebSocket count above the WebSocket relay's queue limit, 1,310,720 bytes (`SFTP_RELAY_BROWSER_QUEUE_LIMIT_BYTES`, [WEBSOCKET_RELAY.md](WEBSOCKET_RELAY.md#forwarding)), the relay closes the WebSocket with 4000 behind every message already queued and ends the TCP connection.
+- - -> The messages queued toward the browser count above the queue limit | Closes the WebSocket with 4000 and ends the TCP connection
+- A paused socket reads on until its buffer reaches Node's 64 KiB high-water mark, in chunks held beyond their own bytes: each chunk counts 256 bytes (`READ_CHUNK_OVERHEAD_BYTES` in `packages/websocket-relay/src/forwarding.ts`), measured on Node v26.13 at about 219 bytes for one- and two-byte chunks and rounded up. -> A paused socket reads on until its buffer reaches its read high-water mark, in chunks held beyond their own bytes: each chunk counts 256 bytes (`READ_CHUNK_OVERHEAD_BYTES` in `packages/websocket-relay/src/forwarding.ts`), measured on Node v26.13 at about 219 bytes for one- and two-byte chunks and rounded up.
+- - -> The relay's HTTP server sets that mark to 1 byte for each socket it accepts (`RELAY_READ_HIGH_WATER_MARK_BYTES`, the `highWaterMark` option of Node's `http.createServer`), so a paused source stops reading at its first read.
+- With chunks of at least one byte and the one read that crossed the mark, a paused source's read-ahead is at most 16,908,544 bytes (`PAUSED_READ_AHEAD_BYTES`). -> Its read-ahead is then at most one 64 KiB read in two chunks, 66,049 bytes (`RELAY_PAUSED_READ_AHEAD_BYTES`), where Node's default 64 KiB mark allows 16,908,544 bytes (`PAUSED_READ_AHEAD_BYTES`).
+- - -> **The queue limit.**
+- - -> Once the messages queued toward a party count above 1,310,720 bytes (`RELAY_QUEUE_LIMIT_BYTES`, 1.25 MiB), the relay ends the pairing.
+- - -> It closes the party that sent them with 4010, and the party they are queued for with 4000 behind every message already queued for it, and forwards nothing more.
+- - -> The limit is 256 KiB over the high mark, set from the counted queues of honest rounds ([Measured counted queues](#measured-counted-queues)).
+- - -> Since each message counts its 1,024 bytes of overhead, a run of small messages passes the limit on a few kilobytes of payload, so the relay keeps no separate limit on the number of messages.
+- The relay holds at most 34,948,096 bytes (`RELAY_QUEUED_BOUND_BYTES`) for one party's queue and its source. -> The relay holds at most 1,476,101 bytes (`RELAY_QUEUED_BOUND_BYTES`) for one party's queue and its source.
+- While the source is held that is the high mark, plus every message completed from the read that crossed it, at most one message begun before, each counted as above, plus the paused source's read-ahead. -> That is the queue up to the limit, the one message whose queueing passes it, counted as above, the read the relay is parsing, a message begun in an earlier read, and the paused source's read-ahead.
+- When the source closes the relay forwards that read-ahead too, at most 128 KiB of frames, held as one buffer while it is read; that case, with frames of at least 6 bytes, is the larger and sets the bound. -> When a held source closes, the relay forwards its read-ahead too, but only until the queue passes the limit.
+- - -> **The restated bounds.**
+- A pairing's two parties together are at most 69,896,192 bytes. -> A pairing's two parties together are at most 2,952,202 bytes, and the 20 pairings the relay holds at once ([Quotas](#quotas)) at most 59,044,040 bytes.
+- The relay counts nothing by client address ([The endpoint](#the-endpoint)); behind the reference deployment's front, which holds at most 8 sockets from one address, that address's sockets reach at most 8 such bounds, 279,584,768 bytes. -> The relay counts nothing by client address ([The endpoint](#the-endpoint)); behind the reference deployment's front, which holds at most 8 sockets from one address, that address's sockets reach at most 8 such bounds, 11,808,808 bytes.
+- - -> 4010 | the sender | The messages it sent that its partner has not read counted above the queue limit; the partner is closed with 4000
+- - -> Measured counted queues
+- - -> Measured 2026-11-01 in the development container (10 cores, 23 GB; aarch64 Linux, Node v26.13.0), with other workloads running beside it.
+- - -> Each round went one way through the relay's standalone process between two of the command-line client's relay connections, as the round above, with the receiving party in a process of its own, which was suspended for a while in some rounds.
+- - -> The relay's process read the counted queue, as [Forwarding](#forwarding) counts it, after each message it queued, through a probe outside the repository.
+- - -> Round | Receiving party | Largest counted queue
+- - -> 10,000,000 bytes | read throughout | 5,120 bytes
+- - -> 50,000,000 bytes | suspended for 10 s | 1,076,506 bytes
+- - -> 539,000,000 bytes, twice, once with the queue limit | read throughout | 5,120 bytes
+- - -> 539,000,000 bytes | suspended for 30 s | 1,059,143 bytes
+- - -> 539,000,000 bytes, with the queue limit | suspended for 45 s | 1,093,869 bytes
+- - -> Every round arrived intact, and neither round run with the queue limit ended its pairing.
+- - -> A party that reads keeps its queue near empty.
+- - -> A suspended party's queue passed the 1 MiB high mark by at most 45,293 bytes, the messages already read when the relay held their source.
+- - -> The queue limit is 216,851 bytes above the largest of these.
+- `apps/cli/test/integration/sftpRelay.test.ts` writes and reads a file over SFTP through the relay, and drives each `Origin` case, the fixed target, backpressure each way, each row of the close table but the connect timeout, the 1009 close, the close wait of a TCP end, the connection cap, and the pings. -> `apps/cli/test/integration/sftpRelay.test.ts` writes and reads a file over SFTP through the relay, and drives each `Origin` case, the fixed target, backpressure each way, each row of the close table but the connect timeout and the queue limit, the 1009 close, the close wait of a TCP end, the connection cap, and the pings.
+- - -> **The queue limit.**
+- - -> `packages/sftp-relay/test/browserQueue.test.ts` drives the queue-limit close in process, with the browser in memory and the limit lowered under the high mark, so the queue passes it before the target is held.

@@ -1,10 +1,8 @@
-import { createServer } from "node:http";
-
 import { redactAndSanitizeForDisplay } from "@alcove/core/websocket-relay";
 import { applyStandaloneUpgradeBounds } from "@alcove/peerjs-broker/standaloneUpgradeBounds";
 
 import { openRelayKeyTable } from "./keyTable.ts";
-import { attachWebSocketRelay } from "./relay.ts";
+import { attachWebSocketRelay, createWebSocketRelayServer } from "./relay.ts";
 import { RelayOptionError, resolveRelayOptions } from "./standaloneOptions.ts";
 
 import type { AddressInfo } from "node:net";
@@ -67,10 +65,7 @@ try {
   );
 }
 
-const server = createServer((_request, response) => {
-  response.writeHead(404);
-  response.end();
-});
+const server = createWebSocketRelayServer();
 
 applyStandaloneUpgradeBounds(server);
 

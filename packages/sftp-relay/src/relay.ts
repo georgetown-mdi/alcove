@@ -19,6 +19,7 @@ import {
   SFTP_RELAY_PING_INTERVAL_MS,
   SFTP_RELAY_SEND_BUFFER_HIGH_BYTES,
   SFTP_RELAY_SEND_BUFFER_LOW_BYTES,
+  SFTP_RELAY_BROWSER_QUEUE_LIMIT_BYTES,
   SftpRelayCloseCode,
 } from "./protocol.ts";
 
@@ -68,6 +69,7 @@ export interface SftpRelayOptions {
     closeWaitMs?: number;
     pingIntervalMs?: number;
     connectTarget?: (target: Readonly<SftpRelayTarget>) => Socket;
+    queueLimitBytes?: number;
     observer?: SftpRelayObserver;
   };
 }
@@ -153,6 +155,7 @@ export function attachSftpRelay(
   const window = Object.freeze({
     highBytes: SFTP_RELAY_SEND_BUFFER_HIGH_BYTES,
     lowBytes: SFTP_RELAY_SEND_BUFFER_LOW_BYTES,
+    limitBytes: testing.queueLimitBytes ?? SFTP_RELAY_BROWSER_QUEUE_LIMIT_BYTES,
   });
   const maxConnections = testing.maxConnections ?? SFTP_RELAY_MAX_CONNECTIONS;
   const connectTimeoutMs =
@@ -308,6 +311,12 @@ export function attachSftpRelay(
       window,
       () => holdTarget(connection),
       () => releaseTarget(connection),
+      // The browser's close comes first, so the target's close that follows
+      // does not report a clean end.
+      () => {
+        closeBrowser(connection, SftpRelayCloseCode.targetFailed);
+        endTarget(connection);
+      },
     );
   }
 

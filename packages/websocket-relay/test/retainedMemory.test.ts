@@ -82,7 +82,7 @@ describe("retained memory", () => {
     socket.terminate();
   });
 
-  it("keeps the queue toward a stalled reader within the bound when a held source closes", async () => {
+  it("keeps the queue toward a stalled reader within the bound when a held source's read-ahead passes the limit as it closes", async () => {
     async function heldOnClose(): Promise<{
       heldBytes: number;
       forwardedOnClose: number;
@@ -117,12 +117,19 @@ describe("retained memory", () => {
 
       const message = Buffer.alloc(1, 0x61);
       const before = await settledMemory();
+      // One at a time until held, so the queue sits between the high mark
+      // and the limit, then a flood the held source reads ahead.
+      while (!held) {
+        const sent = forwarded + 1;
+        inviter.send(message);
+        await until(() => forwarded === sent);
+      }
       for (let index = 0; index < 40_000; index += 1) inviter.send(message);
-      await until(() => held);
       await unchangedFor(() => forwarded);
       const base = forwarded;
       // The source closes; the relay forwards its read-ahead to the still
-      // stalled reader, and that queue is held for the close wait.
+      // stalled reader until the queue passes the limit, and that queue is
+      // held for the close wait.
       inviter.socket.terminate();
       await until(() => forwarded > base);
       await unchangedFor(() => forwarded);

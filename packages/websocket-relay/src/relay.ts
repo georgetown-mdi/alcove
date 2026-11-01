@@ -1,3 +1,5 @@
+import { createServer } from "node:http";
+
 import { WebSocketServer } from "ws";
 
 import {
@@ -21,6 +23,8 @@ import {
   RELAY_PAIRING_BYTES_PER_SECOND,
   RELAY_PATH,
   RELAY_PING_INTERVAL_MS,
+  RELAY_QUEUE_LIMIT_BYTES,
+  RELAY_READ_HIGH_WATER_MARK_BYTES,
   RELAY_REFUSAL_CLOSE_WAIT_MS,
   RELAY_SEND_BUFFER_HIGH_BYTES,
   RELAY_SEND_BUFFER_LOW_BYTES,
@@ -69,6 +73,7 @@ export interface WebSocketRelayOptions {
     pingIntervalMs?: number;
     sendBufferHighBytes?: number;
     sendBufferLowBytes?: number;
+    queueLimitBytes?: number;
     closeWaitMs?: number;
     refusalCloseWaitMs?: number;
     maxPairings?: number;
@@ -144,7 +149,24 @@ function refuseUpgrade(
 }
 
 /**
- * Attach the WebSocket relay to `server`: it takes upgrades on
+ * An HTTP server for {@link attachWebSocketRelay} that answers every plain
+ * request with 404 and reads at most one read ahead from a paused socket
+ * ({@link RELAY_READ_HIGH_WATER_MARK_BYTES}), the read-ahead the relay's
+ * stated bounds count.
+ */
+export function createWebSocketRelayServer(): Server {
+  return createServer(
+    { highWaterMark: RELAY_READ_HIGH_WATER_MARK_BYTES },
+    (_request, response) => {
+      response.writeHead(404);
+      response.end();
+    },
+  );
+}
+
+/**
+ * Attach the WebSocket relay to `server`, which the stated bounds take to be
+ * one {@link createWebSocketRelayServer} made: it takes upgrades on
  * {@link RELAY_PATH}, pairs the two sockets whose hellos verify under one
  * exchange's relay key with opposite roles, and once both have sent a start
  * forwards each binary message to the other unread. It opens no connection of
@@ -161,8 +183,11 @@ export function attachWebSocketRelay(
   const faultReportWindowMs =
     testing.faultReportWindowMs ?? RELAY_FAULT_REPORT_WINDOW_MS;
   const pingIntervalMs = testing.pingIntervalMs ?? RELAY_PING_INTERVAL_MS;
-  const highBytes = testing.sendBufferHighBytes ?? RELAY_SEND_BUFFER_HIGH_BYTES;
-  const lowBytes = testing.sendBufferLowBytes ?? RELAY_SEND_BUFFER_LOW_BYTES;
+  const window = {
+    highBytes: testing.sendBufferHighBytes ?? RELAY_SEND_BUFFER_HIGH_BYTES,
+    lowBytes: testing.sendBufferLowBytes ?? RELAY_SEND_BUFFER_LOW_BYTES,
+    limitBytes: testing.queueLimitBytes ?? RELAY_QUEUE_LIMIT_BYTES,
+  };
   const closeWaitMs = testing.closeWaitMs ?? RELAY_CLOSE_WAIT_MS;
   const refusalCloseWaitMs =
     testing.refusalCloseWaitMs ?? RELAY_REFUSAL_CLOSE_WAIT_MS;
@@ -410,10 +435,14 @@ export function attachWebSocketRelay(
     sendWithinWindow(
       destination.socket,
       data,
-      { highBytes, lowBytes },
+      window,
       () => hold(source, "backpressure"),
       () => release(source, "backpressure"),
+      () => refuse(source, RelayCloseCode.queueLimit),
     );
+    // Not charged once ended: a rate hold would pause the socket, which must
+    // read the answer to its close.
+    if (source.state === "ended") return;
     charge(source, data.length);
   }
 
@@ -530,7 +559,7 @@ export function attachWebSocketRelay(
     );
     // A ping is answered only when the answer fits under the high mark.
     socket.on("ping", (data: Buffer) =>
-      pongWithinWindow(socket, data, { highBytes, lowBytes }, () => {
+      pongWithinWindow(socket, data, window, () => {
         const partner = partnerOf(party);
         if (partner !== undefined) release(partner, "backpressure");
       }),
