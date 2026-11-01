@@ -273,7 +273,7 @@ export function pinViolations({ bound, protocolVersion, digests, pins }) {
       } else if (pinned !== digests[vectors]) {
         violations.push({
           kind: "moved",
-          message: `${VECTORS_DIRECTORY}/${vectors} has moved under published PROTOCOL_VERSION ${protocolVersion} (recorded ${pinned}, tree ${digests[vectors]}). Raise PROTOCOL_VERSION in ${PROTOCOL_VERSION_SOURCE} and write the ledger printed below, or revert the change to the file: from the first published release on, a wire-format delta takes a version bump (${SPEC_PARAGRAPH}).`,
+          message: `${VECTORS_DIRECTORY}/${vectors} has moved under published PROTOCOL_VERSION ${protocolVersion} (recorded ${pinned}, tree ${digests[vectors]}). Raise PROTOCOL_VERSION in ${PROTOCOL_VERSION_SOURCE} and write the ledger printed below, or revert the change to the file: from the release at or above ${COMPATIBILITY_RELEASE} on, a wire-format delta takes a version bump (${SPEC_PARAGRAPH}).`,
         });
       }
     }

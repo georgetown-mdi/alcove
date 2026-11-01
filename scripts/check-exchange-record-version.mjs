@@ -23,8 +23,7 @@
 // check fails until the literal is at that value and RESET_TAKEN_AT_RELEASE
 // records the release that took the reset, which retires the rule. A recorded
 // release below COMPATIBILITY_RELEASE or ahead of the marker fails. The steps
-// are docs/RELEASES.md, "Reset the exchange-record format at first
-// publication".
+// are docs/RELEASES.md, "Reset the exchange-record format at 1.0.0".
 //
 // RECORD_VERSION_PIN and RESET_TAKEN_AT_RELEASE are constants in this file, so
 // recording either is an edit a reviewer sees. `--root <tree>` reads another
@@ -81,8 +80,7 @@ export const RESET_RECORD_VERSION = "alcove-exchange-record/v1";
 
 /** The Release Checklist heading holding the obligations this check cannot
  * read: the artifacts to clear, and the order the reset is taken in. */
-export const CHECKLIST_HEADING =
-  "Reset the exchange-record format at first publication";
+export const CHECKLIST_HEADING = "Reset the exchange-record format at 1.0.0";
 
 /** That heading as every failure names it. */
 export const CHECKLIST_STEP = `docs/RELEASES.md, "${CHECKLIST_HEADING}"`;
@@ -171,7 +169,7 @@ export function recoveryViolations(sources) {
 /**
  * The reasons the tree breaks rule 2, as `{kind, message}`; empty when it
  * meets it. `kind` is `discharge` (the recorded RESET_TAKEN_AT_RELEASE names
- * no published release, or one ahead of the marker), `early` (the reset
+ * no release at or above COMPATIBILITY_RELEASE, or one ahead of the marker), `early` (the reset
  * landed before the release that publishes it), `due` (the reset is due and the
  * literal is elsewhere), or `record` (the reset landed and is not recorded).
  */
@@ -239,7 +237,7 @@ export function resetViolations({
   violations.push({
     kind: "record",
     message: [
-      `${RECORD_VERSION_SOURCE} declares EXCHANGE_RECORD_VERSION "${RESET_RECORD_VERSION}" and ${RELEASE_MANIFEST} names published release ${releaseVersion}, but ${CHECK_SOURCE} records no RESET_TAKEN_AT_RELEASE.`,
+      `${RECORD_VERSION_SOURCE} declares EXCHANGE_RECORD_VERSION "${RESET_RECORD_VERSION}" and ${RELEASE_MANIFEST} names release ${releaseVersion}, at or above ${COMPATIBILITY_RELEASE}, but ${CHECK_SOURCE} records no RESET_TAKEN_AT_RELEASE.`,
       "",
       `Once the rest of the checklist step is met -- the vectors regenerated, RECORD_VERSION_PIN re-recorded, and the development artifacts cleared -- set RESET_TAKEN_AT_RELEASE to "${releaseVersion}" in ${CHECK_SOURCE}. The reset is taken once, and recording it retires this rule, so an ordinary forward bump after this release passes (${CHECKLIST_STEP}).`,
     ].join("\n"),
