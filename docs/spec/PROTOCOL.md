@@ -679,8 +679,6 @@ Every record appearing in any of round `j`'s candidate pairs leaves candidacy fo
 
 #### Record-level resolution: canonical order and tiebreak
 
-> **Not yet built:** the shipped resolution is a greedy sweep in the order below, accepting a pair when neither of its records is yet accepted in the round. The two rules accept the same pairs on every round where that sweep's pairs form a largest pairing (below), and the second `one-to-one` case of [the normative double-match case](#the-normative-double-match-case) is one where they part.
-
 The resolution is a deterministic sweep that accepts a largest pairing. A **pairing** of a round is a set of its candidate pairs no two of which share a record, and a **largest pairing** is one holding as many pairs as any pairing of the round does (a maximum matching of the round's candidate pairs). For each linkage key `j` in the agreed key order:
 
 1. Form round `j`'s record-level candidate pairs as above.

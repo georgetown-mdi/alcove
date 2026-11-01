@@ -132,8 +132,15 @@ test("the paced sweep resolves a round as the unpaced sweep does", async () => {
     roundCandidatePairSweep(senderRanks, receiverRanks, acceptance),
     new EventLoopPacer(),
   );
-  // Two passes over the pairs: indexing the receivers, then the sweep.
-  expect(yieldWhenDue).toHaveBeenCalledTimes(6);
+  // Every step the sweep yields is a point the pacer is asked at, and there is
+  // at least one in each stretch of each pass over the pairs.
+  let steps = 0;
+  const sweep = roundCandidatePairSweep(senderRanks, receiverRanks, acceptance);
+  while (!sweep.next().done) ++steps;
+  expect(yieldWhenDue).toHaveBeenCalledTimes(steps);
+  expect(steps).toBeGreaterThanOrEqual(
+    Math.floor(pairs / PACED_STRETCH_RECORDS) * 2,
+  );
   expect(paced).toStrictEqual(
     resolveRoundCandidatePairs(senderRanks, receiverRanks, acceptance),
   );

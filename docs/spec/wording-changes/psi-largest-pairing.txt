@@ -1,0 +1,4 @@
+# The one-to-one resolution's largest-pairing rule is built, so the marker
+# stating the shipped greedy sweep goes.
+- **Not yet built:** the shipped resolution is a greedy sweep in the order below, accepting a pair when neither of its records is yet accepted in the round. -> -
+- The two rules accept the same pairs on every round where that sweep's pairs form a largest pairing (below), and the second `one-to-one` case of [the normative double-match case](#the-normative-double-match-case) is one where they part. -> -

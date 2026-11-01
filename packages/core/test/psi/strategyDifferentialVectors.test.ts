@@ -150,6 +150,24 @@ test("one-to-one, the normative double-match case", async () => {
   ]);
 });
 
+test("one-to-one, the case where the first pair met is in no largest pairing", async () => {
+  // The candidate pairs (S0, R0), (S0, R1) and (S1, R0): a greedy sweep would
+  // accept (S0, R0) alone, and the largest pairing holds the other two.
+  const [starter, joiner] = await expectStrategiesAgree(
+    "one-to-one",
+    [[new Set(["ab", "cd"]), "ef"]],
+    [[new Set(["ab", "ef"]), "cd"]],
+  );
+  expect(starter).toStrictEqual([
+    [0, 1],
+    [1, 0],
+  ]);
+  expect(joiner).toStrictEqual([
+    [0, 1],
+    [1, 0],
+  ]);
+});
+
 test("one-to-one, a candidate set across two keys with removal in between", async () => {
   // Round 1 leaves a record contradicted rather than matched; round 2 must not
   // pick it up. Both strategies compute the same removal set.
