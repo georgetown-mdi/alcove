@@ -17,13 +17,14 @@
 // changed, then set RECORD_VERSION_PIN. Each RECOVERY_ENTRY_POINTS function no
 // longer exported also fails.
 //
-// Rule 2, the reset. First publication, a marker above PRE_PUBLICATION_RELEASE,
-// ships the counter at RESET_RECORD_VERSION. Before it, the literal at that
-// value fails; from it, the check fails until the literal is at that value and
-// RESET_TAKEN_AT_RELEASE records the release that took the reset, which retires
-// the rule. A recorded release that is not published or is ahead of the marker
-// fails. The steps are docs/RELEASES.md, "Reset the exchange-record format at
-// first publication".
+// Rule 2, the reset. The first release at COMPATIBILITY_RELEASE or above, the
+// marker from which the compatibility policy binds, ships the counter at
+// RESET_RECORD_VERSION. Before it, the literal at that value fails; from it, the
+// check fails until the literal is at that value and RESET_TAKEN_AT_RELEASE
+// records the release that took the reset, which retires the rule. A recorded
+// release below COMPATIBILITY_RELEASE or ahead of the marker fails. The steps
+// are docs/RELEASES.md, "Reset the exchange-record format at first
+// publication".
 //
 // RECORD_VERSION_PIN and RESET_TAKEN_AT_RELEASE are constants in this file, so
 // recording either is an edit a reviewer sees. `--root <tree>` reads another
@@ -42,14 +43,14 @@ import {
   reportViolations,
 } from "./lib/deferredObligation.mjs";
 import {
-  PRE_PUBLICATION_RELEASE,
+  COMPATIBILITY_RELEASE,
   RELEASE_MANIFEST,
   compareReleaseVersions,
-  isPublishedRelease,
+  isCompatibilityRelease,
   manifestVersion,
 } from "./lib/releaseManifest.mjs";
 
-export { PRE_PUBLICATION_RELEASE, RELEASE_MANIFEST };
+export { COMPATIBILITY_RELEASE, RELEASE_MANIFEST };
 
 /** Where the record version literal is declared. */
 export const RECORD_VERSION_SOURCE =
@@ -75,7 +76,7 @@ export const RECOVERY_ENTRY_POINTS = {
   ],
 };
 
-/** The record format literal first publication ships. */
+/** The record format literal the first release at COMPATIBILITY_RELEASE ships. */
 export const RESET_RECORD_VERSION = "alcove-exchange-record/v1";
 
 /** The Release Checklist heading holding the obligations this check cannot
@@ -175,7 +176,7 @@ export function recoveryViolations(sources) {
  * literal is elsewhere), or `record` (the reset landed and is not recorded).
  */
 export function resetViolations({
-  published,
+  bound,
   releaseVersion,
   declared,
   takenAtRelease,
@@ -183,10 +184,10 @@ export function resetViolations({
   const violations = [];
 
   if (takenAtRelease !== undefined) {
-    if (isPublishedRelease(takenAtRelease) !== true) {
+    if (isCompatibilityRelease(takenAtRelease) !== true) {
       violations.push({
         kind: "discharge",
-        message: `${CHECK_SOURCE} records the reset as taken at "${takenAtRelease}", which is not a release above the pre-publication ${PRE_PUBLICATION_RELEASE}. Set RESET_TAKEN_AT_RELEASE to the release that shipped the reset, or back to undefined if no release has: any other value would turn this rule off before the reset is taken.`,
+        message: `${CHECK_SOURCE} records the reset as taken at "${takenAtRelease}", which is not a release at or above ${COMPATIBILITY_RELEASE}. Set RESET_TAKEN_AT_RELEASE to the release that shipped the reset, or back to undefined if no release has: any other value would turn this rule off before the reset is taken.`,
       });
     } else {
       const compared = compareReleaseVersions(takenAtRelease, releaseVersion);
@@ -200,16 +201,16 @@ export function resetViolations({
     return violations;
   }
 
-  if (!published) {
+  if (!bound) {
     if (declared === RESET_RECORD_VERSION) {
       violations.push({
         kind: "early",
         message: [
-          `${RECORD_VERSION_SOURCE}: EXCHANGE_RECORD_VERSION is already "${RESET_RECORD_VERSION}" while ${RELEASE_MANIFEST} names ${releaseVersion}, at or below the pre-publication ${PRE_PUBLICATION_RELEASE}.`,
+          `${RECORD_VERSION_SOURCE}: EXCHANGE_RECORD_VERSION is already "${RESET_RECORD_VERSION}" while ${RELEASE_MANIFEST} names ${releaseVersion}, below ${COMPATIBILITY_RELEASE}.`,
           "",
           "The counter has been through that value once already, so a development artifact written under the old one parses as the current version and then fails on its field set, instead of taking the clean version refusal the reader is built to give.",
           "",
-          `The reset belongs to the release that publishes it: move the literal forward on the development counter, and set it to "${RESET_RECORD_VERSION}" in the release branch that takes ${RELEASE_MANIFEST} above ${PRE_PUBLICATION_RELEASE} (${CHECKLIST_STEP}).`,
+          `The reset belongs to the release that publishes it: move the literal forward on the development counter, and set it to "${RESET_RECORD_VERSION}" in the release branch that takes ${RELEASE_MANIFEST} to ${COMPATIBILITY_RELEASE} or above (${CHECKLIST_STEP}).`,
         ].join("\n"),
       });
     }
@@ -220,9 +221,9 @@ export function resetViolations({
     violations.push({
       kind: "due",
       message: [
-        `${RELEASE_MANIFEST} names ${releaseVersion}, a release above the pre-publication ${PRE_PUBLICATION_RELEASE}, and ${RECORD_VERSION_SOURCE} declares EXCHANGE_RECORD_VERSION "${declared}".`,
+        `${RELEASE_MANIFEST} names ${releaseVersion}, a release at or above ${COMPATIBILITY_RELEASE}, and ${RECORD_VERSION_SOURCE} declares EXCHANGE_RECORD_VERSION "${declared}".`,
         "",
-        `First publication ships the record format at "${RESET_RECORD_VERSION}": the counter moved freely while no published artifact contained any of its values, and from this release one does.`,
+        `The release at ${COMPATIBILITY_RELEASE} or above ships the record format at "${RESET_RECORD_VERSION}": the counter moved freely before the compatibility policy bound, and from this release it is held to it.`,
         "",
         `Take the reset as one piece (${CHECKLIST_STEP}):`,
         `  - set EXCHANGE_RECORD_VERSION to "${RESET_RECORD_VERSION}" in ${RECORD_VERSION_SOURCE};`,
@@ -248,7 +249,7 @@ export function resetViolations({
 
 /**
  * Read the tree at `root` and report what both rules find there, as
- * `{published, releaseVersion, declared, takenAtRelease, violations, blocked}`.
+ * `{bound, releaseVersion, declared, takenAtRelease, violations, blocked}`.
  * `blocked` lists the reasons an input could not be read at all, which fail
  * rather than passing as inert. A blocked run still reports the recovery
  * violations, which rest on no input it is blocked on.
@@ -269,10 +270,10 @@ export function inspect(root) {
   const blocked = [];
 
   const releaseVersion = manifestVersion(read(RELEASE_MANIFEST));
-  const published = isPublishedRelease(releaseVersion);
-  if (published === undefined) {
+  const bound = isCompatibilityRelease(releaseVersion);
+  if (bound === undefined) {
     blocked.push(
-      `${RELEASE_MANIFEST} has ${releaseVersion === undefined ? "no version" : `"${releaseVersion}"`}, which is not a release version this can compare against ${PRE_PUBLICATION_RELEASE}. Set it to a release version (major.minor.patch); until then this check cannot tell whether the reset is due.`,
+      `${RELEASE_MANIFEST} has ${releaseVersion === undefined ? "no version" : `"${releaseVersion}"`}, which is not a release version this can compare against ${COMPATIBILITY_RELEASE}. Set it to a release version (major.minor.patch); until then this check cannot tell whether the reset is due.`,
     );
   }
 
@@ -295,7 +296,7 @@ export function inspect(root) {
       ? [
           ...bumpViolations(declared, sources),
           ...resetViolations({
-            published,
+            bound,
             releaseVersion,
             declared,
             takenAtRelease: RESET_TAKEN_AT_RELEASE,
@@ -304,7 +305,7 @@ export function inspect(root) {
       : recoveryViolations(sources);
 
   return {
-    published,
+    bound,
     releaseVersion,
     declared,
     takenAtRelease: RESET_TAKEN_AT_RELEASE,
@@ -330,6 +331,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   console.log(
     report.takenAtRelease !== undefined
       ? `check-exchange-record-version: the reset to "${RESET_RECORD_VERSION}" was taken at release ${report.takenAtRelease}, so EXCHANGE_RECORD_VERSION moves under its own rules from here.`
-      : `check-exchange-record-version: ${RELEASE_MANIFEST} names ${report.releaseVersion}, at or below the pre-publication ${PRE_PUBLICATION_RELEASE}, so EXCHANGE_RECORD_VERSION "${report.declared}" is still a development counter. First publication ships "${RESET_RECORD_VERSION}" (${CHECKLIST_STEP}).`,
+      : `check-exchange-record-version: ${RELEASE_MANIFEST} names ${report.releaseVersion}, below ${COMPATIBILITY_RELEASE}, so EXCHANGE_RECORD_VERSION "${report.declared}" is still a development counter. The release at ${COMPATIBILITY_RELEASE} or above ships "${RESET_RECORD_VERSION}" (${CHECKLIST_STEP}).`,
   );
 }
