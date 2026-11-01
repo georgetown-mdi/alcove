@@ -14,10 +14,10 @@ import { pathsResolveToSameDir } from "../utils/pathCompare.js";
 import { parseBoundedJson } from "../utils/boundedJson.js";
 import { fromBase64Url } from "../utils/crypto.js";
 import { UsageError } from "../errors.js";
+import { sftpRelayUrlRefusal } from "./sftpRelayUrl.js";
 import {
   declaredFormatVersion,
   droppedMemberIssues,
-  FIRST_FORMAT_VERSION_POLICY,
   FormatInfoBlockSchema,
   formatVersionBelowNeededIssues,
   formatVersionNeeded,
@@ -69,6 +69,13 @@ export interface SFTPEndpoint {
   inboundPath?: string;
   /** Self-written directory; the companion to {@link inboundPath}. */
   outboundPath?: string;
+  /**
+   * The `wss://` url of the SFTP relay in front of the server, which a
+   * browser party dials to reach it unless it sets its own
+   * (docs/spec/INVITATION_TOKEN.md#the-sftp-relay-url). The CLI and the
+   * console connect over TCP and do not read it.
+   */
+  relayUrl?: string;
 }
 
 /** A file-drop locator: the shared directory both parties rendezvous in. */
@@ -111,7 +118,8 @@ const endpointKeyError: z.core.$ZodErrorMap = (issue) => {
     return (
       "a connection endpoint may hold only a credential-free locator (channel " +
       "plus host/port/path and, on webrtc, a relay of turn and stun urls, " +
-      "a websocket url with its exchange id, and a registrar url, or " +
+      "a websocket url with its exchange id, and a registrar url, on sftp, " +
+      "its SFTP relay's wss url, or " +
       "an inbound_path/outbound_path pair for a split " +
       "file-sync directory), so that no password, private key, or host-key " +
       "fingerprint is sent in an invitation. Remove unexpected " +
@@ -226,6 +234,18 @@ const SFTPEndpointSchema = z.strictObject(
       .string()
       .min(1)
       .check(maxCodeUnits(MAX_ENDPOINT_PATH_LENGTH))
+      .optional(),
+    relayUrl: z
+      .string()
+      .superRefine((url, ctx) => {
+        const refusal = sftpRelayUrlRefusal(url, "relayUrl");
+        if (refusal !== undefined)
+          ctx.addIssue({
+            code: "custom",
+            message: refusal.message,
+            params: { sftpRelayUrlProblem: refusal.problem },
+          });
+      })
       .optional(),
     // No identity field: the acceptor configures its SSH identity in its own
     // connection block.
@@ -454,9 +474,22 @@ export function statedBody(body: unknown): Record<string, unknown> {
   };
 }
 
-/** The format version table of the invitation token. */
-export const INVITATION_VERSION_POLICY: FormatVersionPolicy =
-  FIRST_FORMAT_VERSION_POLICY;
+/**
+ * The format version table of the invitation token
+ * (docs/spec/INVITATION_TOKEN.md#version-policy). An older reader takes no
+ * value for the SFTP relay url's absence, so a token naming one is written at
+ * version 2 and every other token at version 1.
+ */
+export const INVITATION_VERSION_POLICY: FormatVersionPolicy = Object.freeze({
+  current: 2,
+  features: Object.freeze([
+    Object.freeze({
+      path: Object.freeze(["connectionEndpoint", "relayUrl"]),
+      name: "connectionEndpoint.relayUrl",
+      version: 2,
+    }),
+  ]),
+});
 
 const INVITATION_FILE_NAME = "The invitation";
 

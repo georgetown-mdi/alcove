@@ -57,6 +57,15 @@ import { RELAY_SETTINGS_GUIDE_URL } from "@exchange/userGuide";
 
 import { CONSOLE_RELAY_POINTER, Lobby } from "@exchange/Lobby";
 
+import {
+  SFTP_RELAY_CLEARED,
+  SFTP_RELAY_FIELD_DESCRIPTION,
+  SFTP_RELAY_INFO,
+  SFTP_RELAY_SET,
+  SFTP_RELAY_UNREADABLE,
+} from "@exchange/SftpRelaySection";
+import { readSftpRelaySetting } from "@psi/transport/sftpRelaySetting";
+
 import { Route as RelayRoute } from "../../src/routes/relay.tsx";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
@@ -467,6 +476,92 @@ describe("RelaySettingsScreen: the coordination server", () => {
 
     await expect.element(serverField()).toHaveValue(`${SERVER}x`);
     expect(unreadableAlert().query()).toBeNull();
+  });
+});
+
+describe("RelaySettingsScreen: the SFTP relay", () => {
+  const RELAY = "wss://relay.agency.example/sftp";
+  const relayField = () =>
+    page.getByRole("textbox", { name: "SFTP relay url" });
+  const setButton = () => page.getByRole("button", { name: "Set SFTP relay" });
+  const clearButton = () =>
+    page.getByRole("button", { name: "Clear SFTP relay" });
+
+  test("its info says what the relay sees and which relay a setting replaces", async () => {
+    await mountScreen();
+
+    expect(SFTP_RELAY_INFO).toBe(
+      "To exchange over SFTP, a browser connects through an SFTP relay in " +
+        "front of the SFTP server. An SFTP invitation can name your " +
+        "partner's relay. Set a relay here to use your own instead, such as " +
+        "one your organization runs. The relay sees your network address " +
+        "and the start of each connection, and none of your data: the SFTP " +
+        "server's own sign-in and encryption protect it.",
+    );
+    await expect
+      .element(relayField())
+      .toHaveAccessibleDescription(SFTP_RELAY_FIELD_DESCRIPTION);
+    await openInfo("About the SFTP relay", SFTP_RELAY_INFO);
+  });
+
+  test("a set url is kept across a reload, and clearing removes it", async () => {
+    await mountScreen();
+
+    await userEvent.fill(relayField(), RELAY);
+    await userEvent.click(setButton());
+    await expect.element(page.getByText(SFTP_RELAY_SET)).toBeVisible();
+    expect(readSftpRelaySetting()).toEqual({ kind: "set", url: RELAY });
+
+    await mountScreen();
+    await expect.element(relayField()).toHaveValue(RELAY);
+
+    await userEvent.click(clearButton());
+    await expect.element(page.getByText(SFTP_RELAY_CLEARED)).toBeVisible();
+    await expect.element(relayField()).toHaveValue("");
+    expect(readSftpRelaySetting()).toEqual({ kind: "none" });
+  });
+
+  const RELAY_FORM =
+    "write it as a wss:// url naming a host, an optional port, and a path, " +
+    "for example wss://sftp.example.org/sftp";
+
+  test.each([
+    [
+      "a ws scheme",
+      "ws://relay.agency.example/sftp",
+      `The SFTP relay url must start with wss://; ${RELAY_FORM}`,
+    ],
+    [
+      "userinfo",
+      "wss://relay.agency.example@evil.example/sftp",
+      "The SFTP relay url contains a space, a control character, or one of " +
+        `@ \\ ? # %; ${RELAY_FORM}`,
+    ],
+  ])(
+    "a url with %s is refused on entry and nothing is stored",
+    async (_shape, text, message) => {
+      await mountScreen();
+
+      await userEvent.fill(relayField(), text);
+      await userEvent.click(setButton());
+
+      await expect
+        .element(relayField())
+        .toHaveAttribute("aria-invalid", "true");
+      await expect.element(page.getByRole("alert")).toHaveTextContent(message);
+      expect(readSftpRelaySetting()).toEqual({ kind: "none" });
+    },
+  );
+
+  test("a stored value this page cannot read says so until it is set again", async () => {
+    window.localStorage.setItem("alcove-own-sftp-relay", "{not json");
+    await mountScreen();
+
+    await expect.element(page.getByText(SFTP_RELAY_UNREADABLE)).toBeVisible();
+    await userEvent.fill(relayField(), RELAY);
+    await userEvent.click(setButton());
+    await expect.element(page.getByText(SFTP_RELAY_SET)).toBeVisible();
+    expect(page.getByText(SFTP_RELAY_UNREADABLE).query()).toBeNull();
   });
 });
 

@@ -26,6 +26,7 @@ The SFTP server's operator runs it in front of that one server.
 - **No extension.** The relay negotiates no per-message compression.
 - **Before the upgrade.** The relay applies the signaling broker's pre-upgrade bounds: a 10-second header timeout, a 15-second request timeout, and a 10-second idle bound on a socket that has not completed its request ([SIGNALING_SERVER_BOUNDS.md](SIGNALING_SERVER_BOUNDS.md#web-signaling-surface-bounds); `packages/peerjs-broker/src/standaloneUpgradeBounds.ts`).
 - **No TLS.** The relay terminates none, so a deployment puts it behind a front that does.
+- **Named in an invitation.** An invitation's `sftp` endpoint may name the relay's `wss://` url, which a browser party may replace with its own ([INVITATION_TOKEN.md](INVITATION_TOKEN.md#the-sftp-relay-url)).
 
 ## The `Origin` check
 

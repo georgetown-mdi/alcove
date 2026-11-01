@@ -35,6 +35,7 @@ import styles from "@styles/app.module.css";
 import { CoordinationServerSection } from "./CoordinationServerSection";
 import { RELAY_SETTINGS_GUIDE_URL } from "./userGuide";
 import { RelayTestSection } from "./RelayTestSection";
+import { SftpRelaySection } from "./SftpRelaySection";
 import { WorkShell } from "./WorkShell";
 
 import type {
@@ -165,8 +166,9 @@ type SaveStatus =
  * urls and its WebSocket relay url, kept in browser storage for this site, a
  * test of the relays a browser run lists that the user starts, and what the
  * relay's operator learns. The page also sets the coordination server the
- * invitations this browser creates name ({@link CoordinationServerSection}).
- * A console build has no such page: its route redirects. The relays an
+ * invitations this browser creates name ({@link CoordinationServerSection}),
+ * and the SFTP relay used in place of an SFTP invitation's
+ * ({@link SftpRelaySection}). A console build has no such page: its route redirects. The relays an
  * exchange may use are that exchange's own, set
  * where it is authored, so none is set here. Where the build offers its
  * default relay switched off, the page has the switch that turns it on in
@@ -422,6 +424,8 @@ export function RelaySettingsScreen({
       />
 
       <CoordinationServerSection />
+
+      <SftpRelaySection />
 
       <p className={`${styles.small} ${styles.sub}`}>
         <Anchor inherit component={Link} to="/">

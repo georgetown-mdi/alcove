@@ -2,12 +2,14 @@ import { ZodError } from "zod";
 import type { z } from "zod";
 import { expect, test } from "vitest";
 
+import { FIRST_FORMAT_VERSION_POLICY } from "../../src/config/formatVersion";
 import type { FormatVersionPolicy } from "../../src/config/formatVersion";
 
 import {
   encodeInvitation,
   decodeInvitation,
   hasExpiryInstantPassed,
+  INVITATION_VERSION_POLICY,
   InvitationDecodeError,
   isInvitationExpired,
   INVITATION_LIFETIME_SECONDS,
@@ -924,7 +926,10 @@ test("rejects a token with invalid linkage terms (bad version)", async () => {
 });
 
 test("rejects a token with an unknown token version", async () => {
-  const encoded = await encodeRawInvitation({ ...baseToken, version: "2" });
+  const encoded = await encodeRawInvitation({
+    ...baseToken,
+    version: String(INVITATION_VERSION_POLICY.current + 1),
+  });
   await expect(decodeInvitation(encoded)).rejects.toThrow(ZodError);
 });
 
@@ -1044,8 +1049,13 @@ const RETAIN_AT_VERSION_2: FormatVersionPolicy = {
   ],
 };
 
-async function decodeRefusal(encoded: string): Promise<z.core.$ZodIssue> {
-  const error = await decodeInvitation(encoded).catch((err: unknown) => err);
+async function decodeRefusal(
+  encoded: string,
+  policy?: FormatVersionPolicy,
+): Promise<z.core.$ZodIssue> {
+  const error = await decodeInvitation(encoded, policy).catch(
+    (err: unknown) => err,
+  );
   expect(error).toBeInstanceOf(ZodError);
   return (error as ZodError).issues[0] as z.core.$ZodIssue;
 }
@@ -1067,7 +1077,7 @@ test("a token using a newer field is written at that field's version", async () 
   );
   const decoded = await decodeInvitation(encoded, RETAIN_AT_VERSION_2);
   expect(decoded.version).toBe("2");
-  const issue = await decodeRefusal(encoded);
+  const issue = await decodeRefusal(encoded, FIRST_FORMAT_VERSION_POLICY);
   expect(issue.path).toEqual(["version"]);
   expect(issue.message).toBe(
     "The invitation is format version 2, made by a newer version of Alcove " +
@@ -1189,6 +1199,113 @@ test("a member name from the token is fitted to one value's budget", async () =>
     await encodeRawInvitation({ ...baseToken, [longName]: true }),
   );
   expect(issue.message.length).toBeLessThan(1000);
+});
+
+// --- SFTP relay url ------------------------------------------------------------
+
+const SFTP_ENDPOINT: ConnectionEndpoint = {
+  channel: "sftp",
+  host: "sftp.example.org",
+  port: 22,
+  path: "/exchange",
+};
+const RELAY_URL = "wss://sftp.example.org/sftp";
+
+test("an sftp endpoint naming no relay url is written at version 1", async () => {
+  const decoded = await decodeInvitation(
+    await encodeInvitation({ ...baseToken, connectionEndpoint: SFTP_ENDPOINT }),
+    FIRST_FORMAT_VERSION_POLICY,
+  );
+  expect(decoded.version).toBe("1");
+  expect(decoded.connectionEndpoint).toEqual(SFTP_ENDPOINT);
+});
+
+test("an sftp endpoint naming its relay url round-trips at version 2", async () => {
+  const endpoint = { ...SFTP_ENDPOINT, relayUrl: RELAY_URL };
+  const decoded = await decodeInvitation(
+    await encodeInvitation({ ...baseToken, connectionEndpoint: endpoint }),
+  );
+  expect(decoded.version).toBe("2");
+  expect(decoded.connectionEndpoint).toEqual(endpoint);
+});
+
+test("a build reading up to version 1 refuses a token naming the relay url, as made by a newer Alcove", async () => {
+  const encoded = await encodeInvitation({
+    ...baseToken,
+    connectionEndpoint: { ...SFTP_ENDPOINT, relayUrl: RELAY_URL },
+  });
+  const issue = await decodeRefusal(encoded, FIRST_FORMAT_VERSION_POLICY);
+  expect(issue.message).toBe(
+    "The invitation is format version 2, made by a newer version of Alcove " +
+      "than this one, which reads up to version 1. Update Alcove, then open " +
+      "the invitation again.",
+  );
+});
+
+test("a token declaring version 1 beside a relay url is refused naming the field", async () => {
+  const issue = await decodeRefusal(
+    await encodeRawInvitation({
+      ...baseToken,
+      connectionEndpoint: { ...SFTP_ENDPOINT, relayUrl: RELAY_URL },
+    }),
+  );
+  expect(issue).toMatchObject({
+    path: ["connectionEndpoint", "relayUrl"],
+    message:
+      "The invitation declares format version 1, but its field " +
+      '"connectionEndpoint.relayUrl" needs version 2. Set version to 2, or ' +
+      "remove the field.",
+  });
+});
+
+test.each([
+  ["notWss", "ws://sftp.example.org/sftp"],
+  ["notWss", "https://sftp.example.org/sftp"],
+  ["delimiter", "wss://sftp.example.org@evil.example.org/sftp"],
+  ["delimiter", "wss://sftp.example.org\\evil.example.org/sftp"],
+  ["delimiter", "wss://sftp.example.org/sftp?target=evil.example.org"],
+])(
+  "decodeInvitation refuses a relay url as %s: %s",
+  async (problem, relayUrl) => {
+    const issue = await decodeRefusal(
+      await encodeRawInvitation({
+        ...baseToken,
+        version: "2",
+        connectionEndpoint: { ...SFTP_ENDPOINT, relayUrl },
+      }),
+    );
+    expect(issue.path).toEqual(["connectionEndpoint", "relayUrl"]);
+    expect(issue.message).toMatch(/^relayUrl /);
+    expect(issue).toMatchObject({ params: { sftpRelayUrlProblem: problem } });
+  },
+);
+
+test("encodeInvitation refuses a relay url that is not wss", async () => {
+  await expect(
+    encodeInvitation({
+      ...baseToken,
+      connectionEndpoint: {
+        ...SFTP_ENDPOINT,
+        relayUrl: "ws://sftp.example.org/sftp",
+      },
+    }),
+  ).rejects.toThrow(/relayUrl must start with wss:\/\//);
+});
+
+test("a webrtc endpoint may not name an SFTP relay url", async () => {
+  await expect(
+    decodeInvitation(
+      await encodeRawInvitation({
+        ...baseToken,
+        version: "2",
+        connectionEndpoint: {
+          channel: "webrtc",
+          host: "signal.example",
+          relayUrl: RELAY_URL,
+        },
+      }),
+    ),
+  ).rejects.toThrow(/credential-free locator.*relayUrl/s);
 });
 
 // --- Retain-mode declaration -------------------------------------------------
