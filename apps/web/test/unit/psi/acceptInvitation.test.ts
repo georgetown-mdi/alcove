@@ -250,6 +250,19 @@ describe("prepareAcceptedInvitation", () => {
     expect(endpoint).toEqual(sftpEndpoint);
   });
 
+  test("admits an SFTP endpoint naming its SFTP relay on a console build", async () => {
+    const withRelay: ConnectionEndpoint = {
+      ...sftpEndpoint,
+      relayUrl: "wss://sftp.example.com/sftp",
+    };
+    const encoded = await encode({ connectionEndpoint: withRelay });
+
+    const { endpoint } = await prepareAcceptedInvitation(encoded, {
+      profile: "console",
+    });
+    expect(endpoint).toEqual(withRelay);
+  });
+
   test("rejects an SFTP endpoint off a console build (fails closed)", async () => {
     const encoded = await encode({ connectionEndpoint: sftpEndpoint });
 

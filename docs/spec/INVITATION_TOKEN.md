@@ -50,7 +50,7 @@ The token is a JSON object with these members:
 
 | Member | JSON type | Required | Rule |
 | --- | --- | --- | --- |
-| `version` | string | yes | The decimal string of a positive integer no larger than the newest version this build reads, `"1"`. A larger one of up to nine digits, the syntax the decoder reads, is refused as made by a newer Alcove, naming both versions; a longer one, the number `1` and any other string are refused by the schema. |
+| `version` | string | yes | The decimal string of a positive integer no larger than the newest version this build reads, `"2"`. A larger one of up to nine digits, the syntax the decoder reads, is refused as made by a newer Alcove, naming both versions; a longer one, the number `1` and any other string are refused by the schema. |
 | `about` | object | no | The informational block; see [Version policy](#version-policy). |
 | `linkageTerms` | object | yes | A linkage-terms document, validated by `InvitationLinkageTermsSchema`: `LinkageTermsSchema` behind a key-folding pre-pass (below). |
 | `sharedSecret` | string | yes | `SHARED_SECRET_REGEX` (`packages/core/src/config/connection.ts`): 43 base64url characters, the last one in `[AEIMQUYcgkosw048]`, so the string decodes to exactly 32 bytes. |
@@ -78,7 +78,14 @@ The token is versioned under the same rule as the exchange file ([EXCHANGE_FILE.
   A decoder of any version skips every member of it, a member it does not know included.
   Every other position is strict.
 
-Version 1 holds every member above, the split directory pair and the webrtc `relay` of the endpoint included ([FILE_SYNC.md](FILE_SYNC.md#split-inboundoutbound-directories), [PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator)), so the version table is empty.
+Version 1 holds every member above, the split directory pair and the webrtc `relay` of the endpoint included ([FILE_SYNC.md](FILE_SYNC.md#split-inboundoutbound-directories), [PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator)), except the one the version table lists:
+
+| Version | Adds | The value its absence means to an older decoder |
+| --- | --- | --- |
+| 2 | `connectionEndpoint.relayUrl`, the [SFTP relay url](#the-sftp-relay-url) of an `sftp` endpoint | none, so a token naming one is always written at version 2 |
+
+A token naming no SFTP relay url is written at version 1, so a decoder that reads only version 1 reads it.
+A decoder that reads only version 1 refuses a token naming one by its version, as made by a newer Alcove; a token naming one under a declared version 1 is refused by this build naming `connectionEndpoint.relayUrl` and version 2, and by a decoder that reads only version 1 as an endpoint key outside the allowlist, naming `relayUrl`.
 
 ### Connection endpoint
 
@@ -89,7 +96,7 @@ Endpoint keys are not case-folded, so `inbound_path` is an unknown key and refus
 | Channel | Members |
 | --- | --- |
 | `webrtc` | `channel`; `host` (required); `port`; `path`; `relay` |
-| `sftp` | `channel`; `host` (required); `port`; `path`; `inboundPath`; `outboundPath` |
+| `sftp` | `channel`; `host` (required); `port`; `path`; `inboundPath`; `outboundPath`; `relayUrl` |
 | `filedrop` | `channel`; `path`; `inboundPath`; `outboundPath` |
 
 - `host` is a string of 1 to `MAX_ENDPOINT_HOST_LENGTH` (**256**) UTF-16 code units, the only check the schema makes.
@@ -99,6 +106,7 @@ Endpoint keys are not case-folded, so `inbound_path` is an unknown key and refus
 - `path`, `inboundPath` and `outboundPath` are each a string of 1 to `MAX_ENDPOINT_PATH_LENGTH` (**4096**) UTF-16 code units.
   They are not checked to be absolute here: the accepting party remaps the inviter's paths, and `packages/core/src/config/connection.ts` checks its own final configuration.
 - `relay` is the inviting party's relay locator, TURN and STUN urls, a WebSocket relay url with its exchange id, and a registrar url only (`relayLocatorSchema` in `packages/core/src/config/connection.ts`), with its grammar and bounds in [PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator).
+- `relayUrl` is the `wss://` url of the SFTP relay in front of the `sftp` endpoint's server; see [The SFTP relay url](#the-sftp-relay-url).
 
 `ConnectionEndpointSchema` then applies four rules to the `sftp` and `filedrop` endpoints, each at both encode and decode:
 
@@ -110,6 +118,59 @@ Endpoint keys are not case-folded, so `inbound_path` is an unknown key and refus
 
 A refusal of an unknown endpoint key starts with the locator allowlist and then names the rejected keys, each fitted to `DEFAULT_MAX_DISPLAY_LENGTH` (`endpointKeyError`).
 The names are partner-chosen and are composed raw, for the display boundary to escape once ([DISPLAY_ESCAPE.md](DISPLAY_ESCAPE.md#display-sanitization-escape-format)).
+
+### The SFTP relay url
+
+A browser cannot open a TCP connection, so it reaches an SFTP server through the [SFTP relay](SFTP_RELAY.md) its operator runs in front of it.
+An `sftp` endpoint's `relayUrl` names that relay, beside the server's `host`, `port` and `path`, which say where the server is.
+A browser party dials the relay the invitation names, and the relay connects only to the target fixed at its own start: the invitation chooses which relay the browser dials, and the relay's operator, not the url, chooses where that relay connects.
+
+**The rule.**
+One function judges the url in the token and the browser party's own override alike: `sftpRelayUrlRefusal` (`packages/core/src/config/sftpRelayUrl.ts`), which returns an `SftpRelayUrlError` naming the rule it broke in `problem`, checked in this order:
+
+| `problem` | Refused |
+| --- | --- |
+| `tooLong` | more than `MAX_SFTP_RELAY_URL_LENGTH` (**1024**) UTF-16 code units |
+| `delimiter` | any of `@ \ ? # %`, any ECMAScript `\s` character, and any control character (`\p{Cc}`), anywhere in the url |
+| `notUrl` | text the WHATWG URL parser does not parse |
+| `notWss` | a scheme other than `wss:`, `ws:` included |
+| `portZero` | port 0 |
+| `notCanonical` | a url that differs from the parser's `href` for it, the trailing slash of an empty path aside |
+
+In the token the refusal is a `ZodError` issue at `connectionEndpoint.relayUrl`, with the error's message and `params.sftpRelayUrlProblem`.
+The message starts with the field's name and repeats the url, in its canonical form, only for `notCanonical`, after `@` is ruled out, so it holds no user name or password.
+
+**Why those characters.**
+The token's encoding is base64url over JSON, so it carries every character of the url unchanged and makes none of them dangerous on its own.
+The danger is in how a url is read and dialed, the same as for the coordination server an endpoint names ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#broker-socket)):
+
+- `@` turns what precedes it into userinfo, so the dial reaches the host after it.
+- `\` is read as `/` in a `wss:` url, so it ends the host early.
+- The path ends at `#` or `?`, and the relay ignores a query.
+- `%` is decoded by the dial into the character it stands for.
+- Whitespace and control characters are deleted or rewritten by the parser, so the url shown and the url dialed differ.
+
+The canonical-form rule catches every other rewrite the parser makes, such as an upper-case host, a default port, a dot segment or a mapped label separator.
+
+**Who sets it, and what it can do.**
+
+- **The partner.** The url in the token is remote partner content, judged at decode and at mint.
+  It is never dialed by this build: no browser SFTP transport exists yet, and the CLI and the console connect to the server over TCP and do not read it.
+- **The browser party.** The party's own SFTP relay url is kept in that browser's local storage for the origin (`apps/web/src/psi/transport/sftpRelaySetting.ts`) and set from the screen the browser SFTP transport adds, judged at entry and again each time it is read.
+  Where one is set it replaces the invitation's (`sftpRelayForExchange`); where the stored value cannot be read, neither is chosen.
+
+**What the relay sees.**
+The relay forwards the bytes of each connection unread, and SSH runs end to end through it.
+It sees the address the browser party's connection arrives from, which behind a front is the front's ([SFTP_RELAY.md](SFTP_RELAY.md#quotas-and-keepalive)), the page's `Origin`, the SSH version strings, algorithm lists and key-exchange messages sent before the keys take effect (the ephemeral public values, the server's host key and its signature over the exchange), and the timing and size of what follows, but nothing SSH encrypts.
+The SSH session authenticates the server by its host key and the party by its own credential, so it is that authentication, not the relay, that protects the data.
+A relay that connects to a server other than the one the party expects presents that server's host key, not the expected one.
+The protection holds only for a party that holds the server's expected host key; the invitation does not supply it, and a browser party must obtain it by another route before it trusts a relay the partner names.
+
+**Limits**:
+- The url names a host the partner chose, so a browser party dials a WebSocket host chosen by remote content, as it does the coordination server a webrtc endpoint names.
+- The rule is a denylist of characters plus the canonical form, not an allowlist of host spellings.
+
+**Held by**: `packages/core/test/config/sftpRelayUrl.test.ts`; `packages/core/test/config/invitation.test.ts` ("decodeInvitation refuses a relay url as %s: %s", "a token declaring version 1 beside a relay url is refused naming the field"); `apps/web/test/unit/psi/sftpRelaySetting.test.ts`; `apps/cli/test/unit/commands/accept.test.ts` ("validateAccept: offline accepts it and seeds a connection that names no relay").
 
 ### Cross-field rules
 
@@ -134,6 +195,7 @@ The checksum is no barrier to a crafted payload, so the per-field bounds below i
 | `MAX_ENDPOINT_HOST_LENGTH` | **256** UTF-16 code units | the `host` of a `webrtc` or `sftp` endpoint |
 | `MAX_ENDPOINT_PATH_LENGTH` | **4096** UTF-16 code units | each endpoint path |
 | `MAX_RELAY_LOCATOR_URLS`, `MAX_RELAY_LOCATOR_URL_LENGTH` | **8** urls per list, **1024** code units per url | the webrtc `relay` ([PROTOCOL.md](PROTOCOL.md#the-invitations-relay-locator)) |
+| `MAX_SFTP_RELAY_URL_LENGTH` | **1024** UTF-16 code units | the `relayUrl` of an `sftp` endpoint ([The SFTP relay url](#the-sftp-relay-url)) |
 | `parseBoundedJson` structure bounds | per object, per array, nesting depth | the decoded JSON, before `JSON.parse` ([PARSED_INPUT_BOUNDS.md](PARSED_INPUT_BOUNDS.md#application-layer-parsed-input-bounds)) |
 | `camelizeKeys` bounds | nesting depth and total node count | the `linkageTerms` fold ([PARSED_INPUT_BOUNDS.md](PARSED_INPUT_BOUNDS.md#application-layer-parsed-input-bounds)) |
 
@@ -208,6 +270,7 @@ The CLI applies it in `decodeAndValidateInvitation` (`apps/cli/src/invitationDec
 **Endpoint.**
 The web application refuses a token with no `connectionEndpoint`, and one whose channel this build cannot drive (`endpointDrivableHere`): `webrtc` on every build, `filedrop` and `sftp` on a console build only.
 The CLI drives all three channels and accepts a token with no endpoint.
+Neither the CLI nor the console reads an `sftp` endpoint's `relayUrl`: the CLI seeds its connection from the endpoint's host, port and directories alone (`connectionFromEndpoint` in `apps/cli/src/onlineBootstrap.ts`), and the console from its host, port and path.
 The full rule is in [EXCHANGE_FILE.md](EXCHANGE_FILE.md#channel-binding-semantics).
 
 **Terms.**

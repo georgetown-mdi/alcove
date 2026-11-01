@@ -1678,6 +1678,41 @@ describe("the WebRTC peer-addressing role", () => {
   });
 });
 
+describe("an sftp invitation naming its SFTP relay", () => {
+  test("validateAccept: offline accepts it and seeds a connection that names no relay", async () => {
+    const input = writeInputCSV(["first_name", "last_name", "dob", "ssn"]);
+    const endpoint: ConnectionEndpoint = {
+      channel: "sftp",
+      host: "sftp.example.org",
+      port: 2222,
+      path: "/exchange",
+      relayUrl: "wss://sftp.example.org/sftp",
+    };
+    try {
+      const encoded = await encodeInvitation(sampleToken(FUTURE(), endpoint));
+      const ready = await validateAccept({
+        resolved: { mode: "offline", invitation: encoded, input },
+        options: testOptions(),
+        log: silentLog,
+      });
+      expect(ready.mode).toBe("offline");
+      if (ready.mode !== "offline") return;
+      expect(ready.connection).toEqual({
+        channel: "sftp",
+        server: {
+          host: "sftp.example.org",
+          port: 2222,
+          path: "/exchange",
+          username: expect.any(String),
+        },
+      });
+      expect(JSON.stringify(ready.connection)).not.toContain("wss:");
+    } finally {
+      fs.rmSync(input, { force: true });
+    }
+  });
+});
+
 // --- accepting and running a webrtc exchange in one command ------------------
 // An invitation naming a webrtc coordination server has everything the
 // exchange needs, so an acceptance given an input file runs it rather than

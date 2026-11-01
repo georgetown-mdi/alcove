@@ -874,6 +874,15 @@ describe("acceptUnsupported (runnability by endpoint shape)", () => {
       ).toBeUndefined();
     }
   });
+
+  test("an SFTP endpoint naming its SFTP relay runs on the console, which connects over TCP", () => {
+    expect(
+      acceptUnsupported(
+        { ...SINGLE_DIR_SFTP, relayUrl: "wss://sftp.partner.example/sftp" },
+        NO_MOUNT,
+      ),
+    ).toBeUndefined();
+  });
 });
 
 describe("acceptorHowItRunsLabel", () => {

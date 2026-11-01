@@ -570,6 +570,12 @@ export {
   WebRTCEndpointSchema,
 } from "./config/invitation";
 export {
+  MAX_SFTP_RELAY_URL_LENGTH,
+  SftpRelayUrlError,
+  sftpRelayUrlRefusal,
+} from "./config/sftpRelayUrl";
+export type { SftpRelayUrlProblem } from "./config/sftpRelayUrl";
+export {
   TERMS_UPDATE_NEWER_REMEDY,
   TermsUpdateRefusedError,
   decodeTermsUpdate,

@@ -77,7 +77,7 @@ test("an invitation on a newer format version asks for an update, not a new invi
   const newer = await refusalFor(
     await raw(
       JSON.stringify({
-        version: "2",
+        version: "999",
         linkageTerms: getDefaultLinkageTerms("County Health Department"),
         sharedSecret: generateSharedSecret(),
       }),

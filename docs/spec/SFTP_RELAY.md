@@ -17,7 +17,7 @@ Each is a working value, raised or lowered on request.
 
 The relay lets a browser, which cannot open a TCP connection, reach one SFTP server.
 It forwards the bytes of each WebSocket to a TCP connection and back, unread.
-SSH runs end to end between the browser and the SFTP server, so the relay sees the SSH version strings and algorithm lists sent before encryption and nothing after.
+SSH runs end to end between the browser and the SFTP server, so the relay sees the SSH version strings, algorithm lists and key-exchange messages sent before the keys take effect (the ephemeral public values, the server's host key and its signature over the exchange) and nothing after.
 The SFTP server's operator runs it in front of that one server.
 
 ## The endpoint
@@ -26,6 +26,7 @@ The SFTP server's operator runs it in front of that one server.
 - **No extension.** The relay negotiates no per-message compression.
 - **Before the upgrade.** The relay applies the signaling broker's pre-upgrade bounds: a 10-second header timeout, a 15-second request timeout, and a 10-second idle bound on a socket that has not completed its request ([SIGNALING_SERVER_BOUNDS.md](SIGNALING_SERVER_BOUNDS.md#web-signaling-surface-bounds); `packages/peerjs-broker/src/standaloneUpgradeBounds.ts`).
 - **No TLS.** The relay terminates none, so a deployment puts it behind a front that does.
+- **Named in an invitation.** An invitation's `sftp` endpoint may name the relay's `wss://` url, which a browser party may replace with its own ([INVITATION_TOKEN.md](INVITATION_TOKEN.md#the-sftp-relay-url)).
 
 ## The `Origin` check
 
