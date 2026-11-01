@@ -21,6 +21,9 @@ const STORAGE_KEY = "alcove-own-sftp-relay";
 /** The stored value's schema version; a value under any other is refused. */
 const SETTING_VERSION = 1;
 
+/** The field's name in a refusal's message. */
+const SETTING_NAME = "The SFTP relay url";
+
 const StoredSftpRelaySchema = z.strictObject({
   version: z.literal(SETTING_VERSION),
   url: z.string().check(maxCodeUnits(MAX_SFTP_RELAY_URL_LENGTH)),
@@ -39,7 +42,7 @@ export type SftpRelayEntry =
 export function parseSftpRelayUrl(text: string): SftpRelayEntry {
   const trimmed = text.trim();
   if (trimmed === "") return { ok: true };
-  const refusal = sftpRelayUrlRefusal(trimmed, "The SFTP relay url");
+  const refusal = sftpRelayUrlRefusal(trimmed, SETTING_NAME);
   return refusal === undefined
     ? { ok: true, url: trimmed }
     : { ok: false, message: refusal.message };
@@ -65,7 +68,10 @@ function storage(): Storage | undefined {
   return store;
 }
 
-/** Read the stored SFTP relay, held again to {@link parseSftpRelayUrl}. */
+/**
+ * Read the stored SFTP relay, its url judged as stored (no trimming) by
+ * core's rule.
+ */
 export function readSftpRelaySetting(): SftpRelayRead {
   let raw: string | null | undefined;
   try {
@@ -76,9 +82,9 @@ export function readSftpRelaySetting(): SftpRelayRead {
   if (raw === null || raw === undefined) return { kind: "none" };
   try {
     const stored = StoredSftpRelaySchema.parse(parseBoundedJson(raw));
-    const entry = parseSftpRelayUrl(stored.url);
-    if (!entry.ok || entry.url === undefined) return { kind: "unreadable" };
-    return { kind: "set", url: entry.url };
+    if (sftpRelayUrlRefusal(stored.url, SETTING_NAME) !== undefined)
+      return { kind: "unreadable" };
+    return { kind: "set", url: stored.url };
   } catch {
     return { kind: "unreadable" };
   }
@@ -86,9 +92,12 @@ export function readSftpRelaySetting(): SftpRelayRead {
 
 /**
  * Store `url` as this browser's SFTP relay, or remove the setting when it is
- * undefined. `url` is one {@link parseSftpRelayUrl} returned.
+ * undefined. `url` is judged exactly as given, so text pasted with
+ * surrounding whitespace is trimmed by {@link parseSftpRelayUrl} first.
  *
- * @throws if storage is unavailable or refuses the write.
+ * @throws the {@link SftpRelayUrlError} core's rule gives for a refused `url`,
+ * naming its `problem`, with nothing stored; or an error if storage is
+ * unavailable or refuses the write.
  */
 export function writeSftpRelaySetting(url: string | undefined): void {
   const store = storage();
@@ -98,6 +107,8 @@ export function writeSftpRelaySetting(url: string | undefined): void {
     store.removeItem(STORAGE_KEY);
     return;
   }
+  const refusal = sftpRelayUrlRefusal(url, SETTING_NAME);
+  if (refusal !== undefined) throw refusal;
   const value = StoredSftpRelaySchema.parse({ version: SETTING_VERSION, url });
   store.setItem(STORAGE_KEY, JSON.stringify(value));
 }

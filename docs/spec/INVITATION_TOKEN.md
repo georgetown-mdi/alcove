@@ -123,7 +123,7 @@ The names are partner-chosen and are composed raw, for the display boundary to e
 
 A browser cannot open a TCP connection, so it reaches an SFTP server through the [SFTP relay](SFTP_RELAY.md) its operator runs in front of it.
 An `sftp` endpoint's `relayUrl` names that relay, beside the server's `host`, `port` and `path`, which say where the server is.
-A browser party dials the relay, and the relay connects only to the target fixed at its own start, so nothing in the invitation chooses where a TCP connection opens.
+A browser party dials the relay the invitation names, and the relay connects only to the target fixed at its own start: the invitation chooses which relay the browser dials, and the relay's operator, not the url, chooses where that relay connects.
 
 **The rule.**
 One function judges the url in the token and the browser party's own override alike: `sftpRelayUrlRefusal` (`packages/core/src/config/sftpRelayUrl.ts`), which returns an `SftpRelayUrlError` naming the rule it broke in `problem`, checked in this order:
@@ -161,9 +161,10 @@ The canonical-form rule catches every other rewrite the parser makes, such as an
 
 **What the relay sees.**
 The relay forwards the bytes of each connection unread, and SSH runs end to end through it.
-It sees the browser party's network address, the page's `Origin`, the SSH version strings and algorithm lists sent before encryption, and the timing and size of what follows, but nothing SSH encrypts.
+It sees the address the browser party's connection arrives from, which behind a front is the front's ([SFTP_RELAY.md](SFTP_RELAY.md#quotas-and-keepalive)), the page's `Origin`, the SSH version strings, algorithm lists and key-exchange messages sent before the keys take effect (the ephemeral public values, the server's host key and its signature over the exchange), and the timing and size of what follows, but nothing SSH encrypts.
 The SSH session authenticates the server by its host key and the party by its own credential, so it is that authentication, not the relay, that protects the data.
 A relay that connects to a server other than the one the party expects presents that server's host key, not the expected one.
+The protection holds only for a party that holds the server's expected host key; the invitation does not supply it, and a browser party must obtain it by another route before it trusts a relay the partner names.
 
 **Limits**:
 - The url names a host the partner chose, so a browser party dials a WebSocket host chosen by remote content, as it does the coordination server a webrtc endpoint names.

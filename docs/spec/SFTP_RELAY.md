@@ -17,7 +17,7 @@ Each is a working value, raised or lowered on request.
 
 The relay lets a browser, which cannot open a TCP connection, reach one SFTP server.
 It forwards the bytes of each WebSocket to a TCP connection and back, unread.
-SSH runs end to end between the browser and the SFTP server, so the relay sees the SSH version strings and algorithm lists sent before encryption and nothing after.
+SSH runs end to end between the browser and the SFTP server, so the relay sees the SSH version strings, algorithm lists and key-exchange messages sent before the keys take effect (the ephemeral public values, the server's host key and its signature over the exchange) and nothing after.
 The SFTP server's operator runs it in front of that one server.
 
 ## The endpoint

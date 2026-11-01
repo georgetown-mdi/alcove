@@ -86,6 +86,25 @@ describe("the stored SFTP relay", () => {
     expect(readSftpRelaySetting()).toEqual({ kind: "unreadable" });
   });
 
+  test.each([
+    ["ws://evil.example/", "notWss"],
+    ["wss://a@b.example/", "delimiter"],
+    ["javascript:alert(1)", "notWss"],
+  ])("a refused value is not stored: %s", (url, problem) => {
+    const values = stubStorage();
+    expect(() => writeSftpRelaySetting(url)).toThrow(
+      expect.objectContaining({ problem }),
+    );
+    expect(values.has(STORAGE_KEY)).toBe(false);
+  });
+
+  test("a padded url placed in storage is unreadable and selects no url", () => {
+    const values = stubStorage();
+    values.set(STORAGE_KEY, JSON.stringify({ version: 1, url: ` ${OWN} ` }));
+    expect(readSftpRelaySetting()).toEqual({ kind: "unreadable" });
+    expect(sftpRelayForExchange(PARTNER)).toEqual({ kind: "unreadable" });
+  });
+
   test("a stored value with another member or version is unreadable", () => {
     const values = stubStorage();
     values.set(
