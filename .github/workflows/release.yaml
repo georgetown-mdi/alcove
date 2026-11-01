@@ -768,12 +768,13 @@ jobs:
           retention-days: 7
 
   # Runs no repository code: it signs, verifies and attests the file the job
-  # above wrote, once it matches the digest that job reported. Signed keylessly
+  # above wrote, once it matches the digest that job reported, and only after
+  # the publish job accepts the release. Signed keylessly
   # under the identity the images are, so one published --certificate- pair
   # verifies both.
   hosted-manifest-sign:
     name: Sign and attest the hosted app's manifest
-    needs: hosted-manifest
+    needs: [hosted-manifest, publish]
     if: ${{ github.event_name == 'push' }}
     # Held on Ubuntu 24.04 with the publish job, whose cosign and attest steps
     # this repeats.

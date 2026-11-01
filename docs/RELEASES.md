@@ -394,7 +394,7 @@ gh attestation verify alcove-hosted-web-X.Y.Z.manifest.json \
   --signer-workflow georgetown-mdi/alcove/.github/workflows/release.yaml
 ```
 
-Both `--certificate-` arguments are required, for the reasons given under [Container image](#container-image). The release runs this `cosign verify-blob` command on the manifest it just signed, before it deploys. Neither command has yet run against a published release; the first release runs both.
+Both `--certificate-` arguments are required, for the reasons given under [Container image](#container-image). The release runs this `cosign verify-blob` command on the manifest it just signed, before it deploys. Neither command has yet run against a published release; the first release runs both. The comparison below has not been run against the hosted site, and the release does not run it on the deployment it makes.
 
 **Compare the served site against it.** Check the site's footer first: it must show `Version X.Y.Z`. A footer showing `Commit` and a hash means a push to `main` has replaced the release's deployment, and no release manifest lists that build. Then, from a checkout of the signed tag ([Source integrity](#source-integrity)), with Node.js installed:
 
