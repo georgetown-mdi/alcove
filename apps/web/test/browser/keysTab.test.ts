@@ -17,12 +17,14 @@ import {
   USE_BUILT_IN_RULES_STATEMENT,
   declaredFieldsFor,
   editorFromCsv,
+  editorWithAlgorithm,
   editorWithAuthoredDraft,
   editorWithBuiltInKeys,
   editorWithColumnDisclosure,
   editorWithImportedTerms,
   editorWithKeyEnabled,
   editorWithKeyMoved,
+  editorWithLinkageStrategy,
   editorWithPrecisionFloorSelection,
   keyOrderHelp,
   resetToRecommended,
@@ -1345,4 +1347,97 @@ describe("KeysTab: the notes beside the strategy choice", () => {
       }
     },
   );
+});
+
+describe("KeysTab: the strategy choice on a count-only draft", () => {
+  /** The tab over a live session, with buttons outside it that set the
+   * draft's protocol through `editorWithAlgorithm`. */
+  function AlgorithmHarness() {
+    const [editor, setEditor] = useState(() =>
+      editorFromCsv("Dana Okafor", csv),
+    );
+    return createElement(
+      Fragment,
+      null,
+      createElement(
+        "button",
+        {
+          type: "button",
+          onClick: () => setEditor(editorWithAlgorithm(editor, "psi-c")),
+        },
+        "Count only",
+      ),
+      createElement(
+        "button",
+        {
+          type: "button",
+          onClick: () => setEditor(editorWithAlgorithm(editor, "psi")),
+        },
+        "Match records",
+      ),
+      createElement(KeysTab, {
+        editor,
+        csv,
+        expertMode: false,
+        onExpertMode: () => undefined,
+        onPrecisionFloorSelection: () => undefined,
+        onUseBuiltInRules: () => undefined,
+        onKeyEnabled: () => undefined,
+        onKeyMoved: () => undefined,
+        onAuthoredDraft: () => undefined,
+        onStrategy: (strategy) =>
+          setEditor(editorWithLinkageStrategy(editor, strategy)),
+        onDeduplicate: () => undefined,
+        onImport: () => [],
+        keysError: undefined,
+        announce: () => undefined,
+        onBack: () => undefined,
+      }),
+    );
+  }
+
+  test("disables the choice on count-only keeping its value, naming why, and enables it again on psi", async () => {
+    app.render(createElement(AlgorithmHarness));
+    const cascade = page.getByRole("radio", {
+      name: LINKAGE_STRATEGY_OPTION_COPY.cascade.label,
+      exact: true,
+    });
+    const singlePass = page.getByRole("radio", {
+      name: LINKAGE_STRATEGY_OPTION_COPY["single-pass"].label,
+      exact: true,
+    });
+
+    await singlePass.click();
+    await expect.element(singlePass).toBeChecked();
+    await expect.element(singlePass).toBeEnabled();
+
+    await page.getByRole("button", { name: "Count only" }).click();
+    await expect.element(singlePass).toBeDisabled();
+    await expect.element(cascade).toBeDisabled();
+    await expect.element(singlePass).toBeChecked();
+    await expect.element(cascade).not.toBeChecked();
+    await expect
+      .element(page.getByText(COUNT_ONLY_DECLARED_STRATEGY_STATEMENT))
+      .toBeInTheDocument();
+    for (const option of [cascade, singlePass])
+      await expect
+        .element(option)
+        .toHaveAccessibleDescription(COUNT_ONLY_DECLARED_STRATEGY_STATEMENT);
+
+    await page.getByRole("button", { name: "Match records" }).click();
+    await expect.element(singlePass).toBeEnabled();
+    await expect.element(cascade).toBeEnabled();
+    await expect.element(singlePass).toBeChecked();
+    await expect
+      .element(singlePass)
+      .toHaveAccessibleDescription(
+        LINKAGE_STRATEGY_OPTION_COPY["single-pass"].description,
+      );
+    expect(document.body.textContent).not.toContain(
+      COUNT_ONLY_DECLARED_STRATEGY_STATEMENT,
+    );
+
+    await cascade.click();
+    await expect.element(cascade).toBeChecked();
+  });
 });
