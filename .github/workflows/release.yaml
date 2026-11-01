@@ -881,7 +881,7 @@ jobs:
   # tested, and uploads them.
   pages:
     name: Deploy the hosted app to Cloudflare Pages
-    needs: [web, publish, hosted-manifest-sign]
+    needs: [web, publish, hosted-manifest-sign, hosted-manifest-publish]
     if: ${{ github.event_name == 'push' }}
     # Held on Ubuntu 24.04 with pages_deploy.yaml's upload job.
     runs-on: ubuntu-24.04

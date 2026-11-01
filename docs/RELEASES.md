@@ -373,7 +373,7 @@ What the attestation is and is not evidence of, for an agency assessment, is in 
 
 ### Hosted web application
 
-Each release attaches a manifest of the hosted web application it deploys, `alcove-hosted-web-X.Y.Z.manifest.json`. It is a JSON file that names the release version and the commit built. For each deployed site it lists every file with its size and SHA-256:
+Each release attaches a manifest of the hosted web application it deploys, `alcove-hosted-web-X.Y.Z.manifest.json`. It is a JSON file that names the release version and the commit built. For each site the release builds it lists every file with its size and SHA-256:
 
 - `site` is the hosted application, `psi.data-bridge.org`.
 - `demo` is the [demo site](DEPLOYMENT.md#the-demo-site), `demo.data-bridge.org`.
