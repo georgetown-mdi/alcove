@@ -1889,7 +1889,520 @@ A refused cell has one of these reasons:
 
 ## Full example
 
-An end-to-end annotated specification covering every component is planned; see [ROADMAP.md](ROADMAP.md). For the linkage-terms component, the web application's expert authoring surface in the Matching keys tab exports the terms as a JSON or YAML document (and imports one back, round-tripped through the same validation), which serves as a GUI-produced reference. The per-section snippets above are the working reference for the rest.
+The configuration below is a complete `alcove.yaml` exactly as the web application exports it from a recurring exchange's **Run this from the command line** panel ([Exporting to the command line](MANAGED_EXCHANGE.md#exporting-to-the-command-line)). It is the inviting party's side of a WebRTC exchange between two agencies, matching on five keys and sending one column to the partner.
+
+- **Build.** Exported by Alcove 0.1.0 (the version in `apps/cli/package.json`) at commit `5bf2258d947dd80ffd4531f573db6b722b2ff498`.
+- **How the exchange was set up.** An invitation created in the web application's editor from an input file with the columns `client_id`, `first_name`, `last_name`, `dob`, `ssn`, `zip`, and `enrollment_date`: `enrollment_date` set to be sent to the partner, a legal agreement attached, and five of the keys broader matching selects left on. After the exchange it was saved as a recurring exchange with a 90-day limit on the shared secret's age and a retention note, then exported.
+- **Placeholders.** `signaling.example.org`, `Example County Health Department`, and `EXAMPLE-MOU-0001` are placeholders, entered in place of a real server, name, and agreement before the export. The file contains no secret, since the shared secret is exported beside it in `.alcove.key`, and no value from the input file. Nothing in the file was edited after the export, and the comments in it are the ones the export writes.
+
+```yaml
+format_version: 1
+# How to reach your exchange partner. channel is one of sftp, filedrop (a
+# shared mounted directory), or webrtc; the block each one takes is at
+# https://github.com/georgetown-mdi/alcove/blob/main/docs/EXCHANGE_REFERENCE.md#connection-blocks-by-channel
+connection:
+  channel: webrtc
+  server:
+    host: signaling.example.org
+    port: 443
+    path: /api/
+  role: inviter
+  # Connection tuning, all optional; the defaults are shown below. Uncomment
+  # and edit to change one.
+  # options:
+  #   peer_timeout_ms: 600000
+  #   inactivity_timeout_ms: 3600000
+linkage_terms:
+  version: 1.0.0
+  identity: Example County Health Department
+  date: 2026-11-01
+  algorithm: psi
+  linkage_strategy: cascade
+  output:
+    expects_output: true
+    share_with_partner: true
+  deduplicate: false
+  linkage_fields:
+    - type: ssn
+      name: ssn
+      constraints:
+        valid_only: true
+        exclude:
+          - "111111111"
+          - "123456789"
+    - type: ssn4
+      name: ssn4
+      constraints:
+        valid_only: true
+    - type: first_name
+      name: first_name
+      constraints:
+        allowed_characters: "A-Z "
+        affixes_allowed: false
+    - type: last_name
+      name: last_name
+      constraints:
+        allowed_characters: "A-Z "
+        affixes_allowed: false
+    - type: date_of_birth
+      name: date_of_birth
+    - type: zip_code
+      name: zip_code
+  linkage_keys:
+    - name: SSN + LN + DOB
+      elements:
+        - field: ssn
+        - field: last_name
+        - field: date_of_birth
+    - name: SSN + LN + FN1
+      elements:
+        - field: ssn
+        - field: last_name
+        - field: first_name
+          transform:
+            - function: substring
+              params:
+                start: 1
+                length: 1
+    - name: SSN4 + split(LN) + FN + DOB
+      elements:
+        - field: ssn4
+        - field: last_name
+          transform:
+            - function: split_on
+              params:
+                delimiter: " "
+                include_original: true
+        - field: first_name
+          transform:
+            - function: filter_regex
+              params:
+                pattern: ^.{2,}$
+        - field: date_of_birth
+    - name: SSN4 + swap(LN, FN) + DOB
+      elements:
+        - field: ssn4
+        - field: last_name
+          transform:
+            - function: filter_regex
+              params:
+                pattern: ^.{2,}$
+        - field: first_name
+          transform:
+            - function: filter_regex
+              params:
+                pattern: ^.{2,}$
+        - field: date_of_birth
+      swap:
+        - last_name
+        - first_name
+    - name: LN + FN + DOB + ZIP3
+      elements:
+        - field: last_name
+        - field: first_name
+          transform:
+            - function: filter_regex
+              params:
+                pattern: ^.{2,}$
+        - field: date_of_birth
+        - field: zip_code
+          transform:
+            - function: zip3
+  payload:
+    send:
+      - name: enrollment_date
+    # receive is not set: the first exchange sets it to the payload columns your
+    # partner declares it sends, and later exchanges refuse a partner that sends
+    # a different list. Write receive: [] to receive none.
+  legal_agreement:
+    reference: EXAMPLE-MOU-0001
+    purpose: Evaluation of the county home-visiting program
+    expiration_date: 2027-12-31
+metadata:
+  - name: client_id
+    type: identifier
+    role: identifier
+    is_payload: false
+  - name: first_name
+    type: first_name
+    role: linkage
+    is_payload: false
+  - name: last_name
+    type: last_name
+    role: linkage
+    is_payload: false
+  - name: dob
+    type: date_of_birth
+    role: linkage
+    is_payload: false
+  - name: ssn
+    type: ssn
+    role: linkage
+    is_payload: false
+  - name: zip
+    type: zip_code
+    role: linkage
+    is_payload: false
+  - name: enrollment_date
+    type: other
+    role: payload
+    is_payload: true
+standardization:
+  - output: ssn
+    input: ssn
+    steps:
+      - function: trim_whitespace
+      - function: filter_regex
+        params:
+          pattern: ^[0-9 \-\x{2010}-\x{2014}\x{2212}]*$
+      - function: replace_regex
+        params:
+          pattern: "[^0-9]"
+          replacement: ""
+      - function: null_if
+        params:
+          value: ""
+      - function: pad_left
+        params:
+          length: 9
+      - function: filter_regex
+        params:
+          pattern: ^\d{9}$
+      - function: filter_regex
+        params:
+          pattern: ^0{0,2}[1-9]
+      - function: filter_regex
+        params:
+          pattern: ^(?:[0-578]|6[0-57-9]|66[0-57-9])
+      - function: filter_regex
+        params:
+          pattern: ^\d{3}(?:[1-9]\d|\d[1-9])
+      - function: filter_regex
+        params:
+          pattern: "[1-9]\\d{0,3}$"
+      - function: null_if
+        params:
+          values:
+            - "000000000"
+            - "111111111"
+            - "222222222"
+            - "333333333"
+            - "444444444"
+            - "555555555"
+            - "666666666"
+            - "777777777"
+            - "888888888"
+            - "999999999"
+            - "012345678"
+            - "123456789"
+            - "234567890"
+            - "345678901"
+            - "456789012"
+            - "567890123"
+            - "678901234"
+            - "789012345"
+            - "890123456"
+            - "901234567"
+            - "876543210"
+            - "987654321"
+            - "098765432"
+            - "109876543"
+            - "210987654"
+            - "321098765"
+            - "432109876"
+            - "543210987"
+            - "654321098"
+            - "765432109"
+            - "078051120"
+            - "219099999"
+            - "111223333"
+      - function: replace_regex
+        params:
+          pattern: ^(?:\d*9{7}|0{0,2}[1-9]\d*0{7})\d*$
+          replacement: ""
+      - function: null_if
+        params:
+          value: ""
+    max_people_per_value: 1
+  - output: ssn4
+    input: ssn
+    steps:
+      - function: trim_whitespace
+      - function: filter_regex
+        params:
+          pattern: ^[0-9 \-\x{2010}-\x{2014}\x{2212}]*$|(?:[0-9][
+            \-\x{2010}-\x{2014}\x{2212}]*){4}$
+      - function: replace_regex
+        params:
+          pattern: "[^0-9]"
+          replacement: ""
+      - function: null_if
+        params:
+          value: ""
+      - function: pad_left
+        params:
+          length: 9
+      - function: null_if
+        params:
+          values:
+            - "000000000"
+            - "111111111"
+            - "222222222"
+            - "333333333"
+            - "444444444"
+            - "555555555"
+            - "666666666"
+            - "777777777"
+            - "888888888"
+            - "999999999"
+            - "012345678"
+            - "123456789"
+            - "234567890"
+            - "345678901"
+            - "456789012"
+            - "567890123"
+            - "678901234"
+            - "789012345"
+            - "890123456"
+            - "901234567"
+            - "876543210"
+            - "987654321"
+            - "098765432"
+            - "109876543"
+            - "210987654"
+            - "321098765"
+            - "432109876"
+            - "543210987"
+            - "654321098"
+            - "765432109"
+            - "078051120"
+            - "219099999"
+            - "111223333"
+      - function: replace_regex
+        params:
+          pattern: ^(?:\d*9{7}|0{0,2}[1-9]\d*0{7})\d*$
+          replacement: ""
+      - function: null_if
+        params:
+          value: ""
+      - function: pad_left
+        params:
+          length: 4
+      - function: extract_regex
+        params:
+          pattern: (\d{4})$
+      - function: filter_regex
+        params:
+          pattern: ^\d{4}$
+      - function: null_if
+        params:
+          values:
+            - "0000"
+            - "1111"
+            - "2222"
+            - "3333"
+            - "4444"
+            - "5555"
+            - "6666"
+            - "7777"
+            - "8888"
+            - "9999"
+  - output: first_name
+    input: first_name
+    steps:
+      - function: trim_whitespace
+      - function: squash_spaces
+      - function: remove_accents
+      - function: replace_separators_with_spaces
+      - function: remove_non_ascii
+      - function: to_upper_case
+      - function: remove_affixes
+      - function: remove_punctuation
+      - function: squash_spaces
+      - function: trim_whitespace
+      - function: filter_regex
+        params:
+          pattern: "[A-Z]"
+      - function: null_if
+        params:
+          values:
+            - DR
+            - MISS
+            - MR
+            - MRS
+            - MS
+            - MX
+            - PROF
+            - PROFESSOR
+            - SIR
+            - FRAU
+            - HR
+            - MONSIEUR
+            - IND
+            - MISC
+      - function: null_if
+        params:
+          values:
+            - UNKNOWN
+            - UNK
+            - GIRL
+            - TWIN
+            - FEMALE
+            - TRAUMA
+            - REFUSED
+            - ANONYMOUS
+            - NONE
+            - TEST
+            - BABY
+            - BOY
+            - MALE
+            - BABY BOY
+            - BABY GIRL
+            - BB
+            - BG
+            - FNU
+            - UNKNOWN MALE
+            - UNKNOWN FEMALE
+            - TWIN A
+            - TWIN B
+    null_if_last_name:
+      values:
+        - JOHN
+        - JANE
+      last_names:
+        - DOE
+  - output: last_name
+    input: last_name
+    steps:
+      - function: trim_whitespace
+      - function: squash_spaces
+      - function: remove_accents
+      - function: replace_separators_with_spaces
+      - function: remove_non_ascii
+      - function: to_upper_case
+      - function: remove_affixes
+      - function: remove_punctuation
+      - function: squash_spaces
+      - function: trim_whitespace
+      - function: filter_regex
+        params:
+          pattern: "[A-Z]"
+      - function: null_if
+        params:
+          values:
+            - DR
+            - MISS
+            - MR
+            - MRS
+            - MS
+            - MX
+            - PROF
+            - PROFESSOR
+            - SIR
+            - FRAU
+            - HR
+            - MONSIEUR
+            - IND
+            - MISC
+      - function: filter_regex
+        params:
+          pattern: ^.{2,}$
+      - function: null_if
+        params:
+          values:
+            - UNKNOWN
+            - UNK
+            - GIRL
+            - TWIN
+            - FEMALE
+            - TRAUMA
+            - REFUSED
+            - ANONYMOUS
+            - NONE
+            - TEST
+  - output: date_of_birth
+    input: dob
+    steps:
+      - function: trim_whitespace
+      - function: remove_non_ascii
+      - function: parse_date
+        params:
+          input_format: YYYY-MM-DD
+          output_format: YYYYMMDD
+      - function: filter_regex
+        params:
+          pattern: ^(?:19|[2-9])
+      - function: null_if
+        params:
+          values:
+            - "19000101"
+            - "19010101"
+  - output: zip_code
+    input: zip
+    steps:
+      - function: replace_regex
+        params:
+          pattern: "[^0-9]"
+          replacement: ""
+      - function: substring
+        params:
+          start: 1
+          length: 5
+      - function: null_if
+        params:
+          value: ""
+      - function: pad_left
+        params:
+          length: 5
+      - function: filter_regex
+        params:
+          pattern: ^0{0,2}[1-9]
+      - function: null_if
+        params:
+          values:
+            - "00000"
+            - "99999"
+            - "88888"
+authentication:
+  token_max_age_days: 90
+retention_disposition: Results filed in the program evaluation share; deleted after 3 years
+```
+
+Each field of the example, and where its reference entry is:
+
+| Field | In this example | Reference |
+|-------|-----------------|-----------|
+| `format_version` | Version 1 of the configuration format. | [`format_version`](#format_version) |
+| `connection.channel` | `webrtc`: a recurring exchange in the web application runs over WebRTC. | [`connection.channel`](#connectionchannel) |
+| `connection.server` | The peer coordination server the invitation named, by `host`, `port`, and `path`. | [`connection.server`](#connectionserver) |
+| `connection.role` | `inviter`: this party's side, written by the export. The partner's configuration has `acceptor`. | [`connection.role`](#connectionrole) |
+| `connection.options` (commented out) | The two timeouts at their WebRTC defaults, for you to uncomment and change. | [`connection.options`](#connectionoptions) |
+| `linkage_terms.version` | The version of the terms schema. | [`linkage_terms.version`](#linkage_termsversion) |
+| `linkage_terms.identity` | This party's self-asserted name, shown to the partner and written into both exchange records. | [`linkage_terms.identity`](#linkage_termsidentity) |
+| `linkage_terms.date` | The day the terms were made. A different date on the partner's side only warns. | [`linkage_terms.date`](#linkage_termsdate) |
+| `linkage_terms.algorithm` | `psi`: the matched records are revealed, not only how many there are. | [`linkage_terms.algorithm`](#linkage_termsalgorithm) |
+| `linkage_terms.linkage_strategy` | `cascade`: the keys run one at a time, in the order listed. | [`linkage_terms.linkage_strategy`](#linkage_termslinkage_strategy) |
+| `linkage_terms.output` | Both parties receive the result. | [`linkage_terms.output`](#linkage_termsoutput) |
+| `linkage_terms.deduplicate` | `false`: this party's records are not grouped, so with a partner's `false` the match is one-to-one. | [`linkage_terms.deduplicate`](#linkage_termsdeduplicate) |
+| `linkage_terms.linkage_fields` | The six standardized fields the keys read, each with its `name`, `type`, and the `constraints` the built-in rules give it. `ssn4` has no column of its own: its cleaning reads the `ssn` column. | [`linkage_terms.linkage_fields`](#linkage_termslinkage_fields), [Constraints](#constraints) |
+| `linkage_terms.linkage_keys` | Five built-in keys, in the order they run. Each element names a `field` and any `transform` steps applied to it. | [`linkage_terms.linkage_keys`](#linkage_termslinkage_keys), [Transform steps](#transform-steps) |
+| `SSN + LN + FN1` | A `substring` step keeps the first letter of the first name. | [String transformation](#string-transformation) |
+| `SSN4 + split(LN) + FN + DOB` | A `split_on` step with `include_original` makes the whole last name and each of its parts a candidate value, so `GARCIA LOPEZ` also matches `GARCIA` and `LOPEZ`. | [Fan-out (multi-value fields)](#fan-out-multi-value-fields) |
+| `SSN4 + swap(LN, FN) + DOB` | `swap` also matches a record whose first and last names are reversed. | [Swapped keys](#swapped-keys) |
+| `LN + FN + DOB + ZIP3` | A `zip3` step matches on the three-digit ZIP area. | [String transformation](#string-transformation) |
+| `filter_regex` with `^.{2,}$` | Drops a one-letter first name, as every built-in rule on the whole first name does. The swapped key gives the last name the same step, since the two elements it swaps take the same steps. | [The built-in rules](#the-built-in-rules) |
+| `linkage_terms.payload.send` | `enrollment_date`, the one column this party sends for its matched records. | [`linkage_terms.payload`](#linkage_termspayload) |
+| `linkage_terms.payload.receive` (unset) | Left out, with the comment the export writes, so the first run records the columns the partner sends. | [Leaving `payload.receive` unset](#leaving-payloadreceive-unset) |
+| `linkage_terms.legal_agreement` | The agreement's `reference`, the `purpose` of this exchange, and its `expiration_date`, each checked against the partner's. | [`linkage_terms.legal_agreement`](#linkage_termslegal_agreement) |
+| `metadata` | One entry per input column, with its `name`, `type`, `role`, and `is_payload`. `client_id` indexes the records, and `enrollment_date` is the one column sent. | [Input metadata](#input-metadata), [Column fields](#column-fields) |
+| `standardization` | One entry per linkage field: `output` names the field, `input` the column it is read from, and `steps` the cleaning, the per-type defaults the editor starts from. | [Data standardizing transformations](#data-standardizing-transformations), [Step fields](#step-fields), [Available functions](#available-functions) |
+| `parse_date` on `date_of_birth` | `input_format: YYYY-MM-DD`, the layout the editor found in the file's `dob` column. | [Available functions](#available-functions) |
+| `max_people_per_value` on `ssn` | Drops an SSN that more than one person in this party's file has. | [Transformation fields](#transformation-fields) |
+| `null_if_last_name` on `first_name` | Drops the first name `JOHN` or `JANE` beside the last name `DOE`. | [Transformation fields](#transformation-fields) |
+| `authentication.token_max_age_days` | `90`, the limit chosen when saving the recurring exchange: a shared secret unused for 90 days expires. | [`authentication.token_max_age_days`](#authenticationtoken_max_age_days) |
+| `retention_disposition` | The retention note entered when saving the recurring exchange, written into this party's exchange record only. | [`retention_disposition`](#retention_disposition) |
+
+Optional settings this exchange did not set, such as [`signing`](#signing) and [`include_own_columns`](#include_own_columns), are absent from the file.
 
 ## See also
 
