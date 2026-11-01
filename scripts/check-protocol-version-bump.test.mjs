@@ -15,14 +15,14 @@ import { afterAll, describe, expect, it } from "vitest";
 import {
   COVERED_VECTORS,
   PINS_FILE,
-  PRE_PUBLICATION_RELEASE,
+  COMPATIBILITY_RELEASE,
   PROTOCOL_VERSION_SOURCE,
   RELEASE_MANIFEST,
   UNCOVERED_VECTORS,
   VECTORS_DIRECTORY,
   classificationReport,
   classifyVectorsDirectory,
-  isPublishedRelease,
+  isCompatibilityRelease,
   ledgerSuggestionVersion,
   manifestVersion,
   parseReleaseVersion,
@@ -35,6 +35,8 @@ import { CHECKS } from "./run-checks.mjs";
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..");
 const SCRIPT = resolve(here, "check-protocol-version-bump.mjs");
+
+const INERT_RELEASE = "0.1.0";
 
 const readRoot = (relative) =>
   readFileSync(resolve(repoRoot, relative), "utf8");
@@ -86,7 +88,7 @@ function pinOf(sources) {
  * end to end through the real script.
  */
 function fixtureTree({
-  releaseVersion = PRE_PUBLICATION_RELEASE,
+  releaseVersion = INERT_RELEASE,
   protocolVersion = 1,
   sources = vectorsSources(),
   pins = {},
@@ -120,28 +122,38 @@ describe("the release marker the rule arms on", () => {
   });
 
   it("reads a prerelease or build suffix as the release it qualifies", () => {
-    // A published `0.2.0-rc.1` puts peers in the field exactly as `0.2.0` does,
-    // so the suffix must not disarm the rule.
-    expect(isPublishedRelease("0.2.0-rc.1")).toBe(true);
-    expect(isPublishedRelease("0.2.0+build.5")).toBe(true);
+    // `1.0.0-rc.1` puts peers in the field under the policy exactly as `1.0.0`
+    // does, so the suffix must not disarm the rule.
+    expect(isCompatibilityRelease("1.0.0-rc.1")).toBe(true);
+    expect(isCompatibilityRelease("1.0.0+build.5")).toBe(true);
+    expect(isCompatibilityRelease("0.99.0-rc.1")).toBe(false);
   });
 
-  it("holds the rule inert at and below the pre-publication release", () => {
-    expect(isPublishedRelease(PRE_PUBLICATION_RELEASE)).toBe(false);
-    expect(isPublishedRelease("0.0.9")).toBe(false);
+  it("holds the rule inert on every 0.x release", () => {
+    for (const version of [
+      INERT_RELEASE,
+      "0.0.9",
+      "0.1.1",
+      "0.2.0",
+      "0.9.0",
+      "0.10.0",
+      "0.99.0",
+      "0.99.99",
+    ]) {
+      expect(isCompatibilityRelease(version)).toBe(false);
+    }
   });
 
-  it("arms on the next release of any number, not on a 1.0 milestone", () => {
-    // A marker waiting for 1.0 would read a published 0.2.0 as pre-publication,
-    // which is the silent miss this floor exists to avoid.
-    expect(isPublishedRelease("0.1.1")).toBe(true);
-    expect(isPublishedRelease("0.2.0")).toBe(true);
-    expect(isPublishedRelease("1.0.0")).toBe(true);
+  it("arms at 1.0.0 and above, and not before", () => {
+    expect(COMPATIBILITY_RELEASE).toBe("1.0.0");
+    for (const version of ["1.0.0", "1.0.1", "1.2.0", "2.0.0"]) {
+      expect(isCompatibilityRelease(version)).toBe(true);
+    }
   });
 
   it("reads a version it cannot parse as neither, rather than as inert", () => {
     for (const version of ["", "latest", "0.1", "v0.2.0", undefined]) {
-      expect(isPublishedRelease(version)).toBeUndefined();
+      expect(isCompatibilityRelease(version)).toBeUndefined();
     }
   });
 
@@ -252,7 +264,7 @@ describe("the rule while it is inert", () => {
     // within PROTOCOL_VERSION 1, so the pin binds nothing yet.
     expect(
       pinViolations({
-        published: false,
+        bound: false,
         protocolVersion: 1,
         digests: { "psi-engine-wire-vectors.json": "sha256:moved" },
         pins: { 1: { "psi-engine-wire-vectors.json": "sha256:recorded" } },
@@ -263,7 +275,7 @@ describe("the rule while it is inert", () => {
   it("passes against this repository, which has no release marker", () => {
     const { status, stdout } = runCheck();
     expect(status).toBe(0);
-    expect(stdout).toContain(PRE_PUBLICATION_RELEASE);
+    expect(stdout).toContain(COMPATIBILITY_RELEASE);
     expect(stdout).toContain("Wire-format deltas");
   });
 
@@ -272,12 +284,27 @@ describe("the rule while it is inert", () => {
     const moved = vectorsSources({
       "psi-engine-wire-vectors.json": '{"pinned":"moved"}',
     });
+    for (const releaseVersion of [INERT_RELEASE, "0.9.0", "0.10.0", "0.99.0"]) {
+      const root = fixtureTree({
+        releaseVersion,
+        sources: moved,
+        pins: { 1: pinOf(sources) },
+      });
+      expect(runCheck(root).status).toBe(0);
+    }
+  });
+
+  it("fails the same tree at 1.0.0, where the policy binds", () => {
+    const sources = vectorsSources();
+    const moved = vectorsSources({
+      "psi-engine-wire-vectors.json": '{"pinned":"moved"}',
+    });
     const root = fixtureTree({
-      releaseVersion: PRE_PUBLICATION_RELEASE,
+      releaseVersion: "1.0.0",
       sources: moved,
       pins: { 1: pinOf(sources) },
     });
-    expect(runCheck(root).status).toBe(0);
+    expect(runCheck(root).status).toBe(1);
   });
 });
 
@@ -286,7 +313,7 @@ describe("the rule once a release marker arms it", () => {
     // The arming moment: the ledger is empty by design, and the first armed run
     // records the wire format this release publishes. It needs no edit to the
     // check itself -- only the marker moved.
-    const root = fixtureTree({ releaseVersion: "0.2.0", pins: {} });
+    const root = fixtureTree({ releaseVersion: "1.0.0", pins: {} });
     const { status, stderr } = runCheck(root);
     expect(status).toBe(1);
     expect(stderr).toContain("records none for PROTOCOL_VERSION 1");
@@ -299,13 +326,13 @@ describe("the rule once a release marker arms it", () => {
   it("passes an unchanged wire format", () => {
     const sources = vectorsSources();
     const root = fixtureTree({
-      releaseVersion: "0.2.0",
+      releaseVersion: "1.0.0",
       sources,
       pins: { 1: pinOf(sources) },
     });
     const { status, stdout } = runCheck(root);
     expect(status).toBe(0);
-    expect(stdout).toContain("published release 0.2.0");
+    expect(stdout).toContain("release 1.0.0");
   });
 
   it("fails a moved wire format with no bump, naming the spec paragraph", () => {
@@ -314,7 +341,7 @@ describe("the rule once a release marker arms it", () => {
       "psi-engine-wire-vectors.json": '{"pinned":"a ragged table"}',
     });
     const root = fixtureTree({
-      releaseVersion: "0.2.0",
+      releaseVersion: "1.0.0",
       protocolVersion: 1,
       sources: moved,
       pins: { 1: pinOf(sources) },
@@ -335,7 +362,7 @@ describe("the rule once a release marker arms it", () => {
       "psi-engine-wire-vectors.json": '{"pinned":"a ragged table"}',
     });
     const root = fixtureTree({
-      releaseVersion: "0.2.0",
+      releaseVersion: "1.0.0",
       protocolVersion: 2,
       sources: moved,
       pins: { 1: pinOf(sources), 2: pinOf(moved) },
@@ -349,7 +376,7 @@ describe("the rule once a release marker arms it", () => {
       "psi-engine-wire-vectors.json": '{"pinned":"a ragged table"}',
     });
     const root = fixtureTree({
-      releaseVersion: "0.2.0",
+      releaseVersion: "1.0.0",
       protocolVersion: 2,
       sources: moved,
       pins: { 1: pinOf(sources) },
@@ -368,7 +395,7 @@ describe("the rule once a release marker arms it", () => {
       "kex-vectors.json": '{"pinned":"a new suite"}',
     });
     const root = fixtureTree({
-      releaseVersion: "0.2.0",
+      releaseVersion: "1.0.0",
       sources: moved,
       pins: { 1: pinOf(sources) },
     });
@@ -378,7 +405,7 @@ describe("the rule once a release marker arms it", () => {
   it("fails a ledger entry that pins a file this check does not cover", () => {
     const sources = vectorsSources();
     const root = fixtureTree({
-      releaseVersion: "0.2.0",
+      releaseVersion: "1.0.0",
       sources,
       pins: {
         1: { ...pinOf(sources), "kex-vectors.json": "sha256:elsewhere" },
@@ -394,7 +421,7 @@ describe("the rule once a release marker arms it", () => {
     const { "psi-intersection-vectors.json": _dropped, ...partial } =
       pinOf(sources);
     const root = fixtureTree({
-      releaseVersion: "0.2.0",
+      releaseVersion: "1.0.0",
       sources,
       pins: { 1: partial },
     });
@@ -407,7 +434,7 @@ describe("the rule once a release marker arms it", () => {
   it("fails a pin recorded ahead of the version the build advertises", () => {
     const sources = vectorsSources();
     const root = fixtureTree({
-      releaseVersion: "0.2.0",
+      releaseVersion: "1.0.0",
       protocolVersion: 1,
       sources,
       pins: { 1: pinOf(sources), 2: pinOf(sources) },
@@ -424,7 +451,7 @@ describe("the rule once a release marker arms it", () => {
     // which is the difference a reviewer reads.
     const sources = vectorsSources();
     const root = fixtureTree({
-      releaseVersion: "0.2.0",
+      releaseVersion: "1.0.0",
       protocolVersion: 3,
       sources,
       pins: { 1: pinOf(sources), 3: pinOf(sources) },
@@ -440,7 +467,7 @@ describe("the rule once a release marker arms it", () => {
     // looking recorded.
     const sources = vectorsSources();
     const root = fixtureTree({
-      releaseVersion: "0.2.0",
+      releaseVersion: "1.0.0",
       sources,
       pins: { 1: pinOf(sources), abc: pinOf(sources) },
     });
@@ -459,7 +486,7 @@ describe("the rule once a release marker arms it", () => {
     const entry = pinOf(vectorsSources());
     for (const key of ["abc", "1.0", "01", "0", " 1", "", "-1", "1e1"]) {
       const [violation] = pinViolations({
-        published: true,
+        bound: true,
         protocolVersion: 1,
         digests: entry,
         pins: { 1: entry, [key]: entry },
@@ -470,7 +497,7 @@ describe("the rule once a release marker arms it", () => {
     // A version of more than one digit is a ledger key, not a malformed one.
     expect(
       pinViolations({
-        published: true,
+        bound: true,
         protocolVersion: 10,
         digests: entry,
         pins: { 10: entry },
@@ -489,7 +516,7 @@ describe("the inputs it refuses to run without", () => {
   });
 
   it("fails a PROTOCOL_VERSION it cannot read", () => {
-    const root = fixtureTree({ releaseVersion: "0.2.0" });
+    const root = fixtureTree({ releaseVersion: "1.0.0" });
     writeFileSync(
       resolve(root, PROTOCOL_VERSION_SOURCE),
       "export const PROTOCOL_VERSION = VERSIONS.wire;\n",
@@ -502,7 +529,7 @@ describe("the inputs it refuses to run without", () => {
 
   it("fails an unclassified vectors file, armed or not", () => {
     const root = fixtureTree({
-      releaseVersion: PRE_PUBLICATION_RELEASE,
+      releaseVersion: INERT_RELEASE,
       extraVectors: { "new-wire-vectors.json": '{"pinned":"something new"}' },
     });
     const { status, stderr } = runCheck(root);

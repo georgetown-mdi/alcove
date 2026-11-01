@@ -1,13 +1,13 @@
 #!/usr/bin/env node
-// Post-publication PROTOCOL_VERSION bump check:
+// PROTOCOL_VERSION bump check after the compatibility policy binds:
 // `npm run check:protocol-version-bump`, run by static_checks.yaml on every PR;
 // `--root <tree>` reads another tree. Enforces docs/spec/PROTOCOL.md's
-// "Wire-format deltas: existing frames only, and no version bump": from the
-// first published release on, a wire-format delta takes a version bump.
+// "Wire-format deltas: existing frames only, and no version bump": from release
+// 1.0.0 on, a wire-format delta takes a version bump.
 //
 // Reads, from the tree alone:
 //   - the release marker, apps/cli/package.json's version; the rule binds once
-//     it rises above 0.1.0;
+//     it reaches 1.0.0, and every 0.x version leaves it inert;
 //   - the wire-format pin, a digest of each known-answer vectors file under
 //     packages/core/test/vectors/, taken over its parsed JSON; every *.json
 //     there must be classified below as covered by PROTOCOL_VERSION or by a
@@ -34,17 +34,17 @@ import {
   reportViolations,
 } from "./lib/deferredObligation.mjs";
 import {
-  PRE_PUBLICATION_RELEASE,
+  COMPATIBILITY_RELEASE,
   RELEASE_MANIFEST,
-  isPublishedRelease,
+  isCompatibilityRelease,
   manifestVersion,
   parseReleaseVersion,
 } from "./lib/releaseManifest.mjs";
 
 export {
-  PRE_PUBLICATION_RELEASE,
+  COMPATIBILITY_RELEASE,
   RELEASE_MANIFEST,
-  isPublishedRelease,
+  isCompatibilityRelease,
   manifestVersion,
   parseReleaseVersion,
 };
@@ -227,8 +227,8 @@ const LEDGER_VERSION_KEY = /^[1-9][0-9]*$/;
  * remedy), `moved` (a published pin has moved), or `ledger` (the ledger's own
  * shape is wrong, which no printed pin repairs).
  */
-export function pinViolations({ published, protocolVersion, digests, pins }) {
-  if (!published) return [];
+export function pinViolations({ bound, protocolVersion, digests, pins }) {
+  if (!bound) return [];
   const violations = [];
 
   const keys = Object.keys(pins);
@@ -259,7 +259,7 @@ export function pinViolations({ published, protocolVersion, digests, pins }) {
       kind: "record",
       message:
         recorded.length === 0
-          ? `${RELEASE_MANIFEST} names a published release, and ${PINS_FILE} records none for PROTOCOL_VERSION ${protocolVersion} yet. Write the ledger printed below: its entry records the wire format this release publishes, and every later change to that format takes a version bump (${SPEC_PARAGRAPH}).`
+          ? `${RELEASE_MANIFEST} names a release at or above ${COMPATIBILITY_RELEASE}, and ${PINS_FILE} records none for PROTOCOL_VERSION ${protocolVersion} yet. Write the ledger printed below: its entry records the wire format this release publishes, and every later change to that format takes a version bump (${SPEC_PARAGRAPH}).`
           : `${PINS_FILE} records no pin for PROTOCOL_VERSION ${protocolVersion}. Write the ledger printed below, which adds the entry recording the wire format this version ships (${SPEC_PARAGRAPH}).`,
     });
   } else {
@@ -273,7 +273,7 @@ export function pinViolations({ published, protocolVersion, digests, pins }) {
       } else if (pinned !== digests[vectors]) {
         violations.push({
           kind: "moved",
-          message: `${VECTORS_DIRECTORY}/${vectors} has moved under published PROTOCOL_VERSION ${protocolVersion} (recorded ${pinned}, tree ${digests[vectors]}). Raise PROTOCOL_VERSION in ${PROTOCOL_VERSION_SOURCE} and write the ledger printed below, or revert the change to the file: from the first published release on, a wire-format delta takes a version bump (${SPEC_PARAGRAPH}).`,
+          message: `${VECTORS_DIRECTORY}/${vectors} has moved under published PROTOCOL_VERSION ${protocolVersion} (recorded ${pinned}, tree ${digests[vectors]}). Raise PROTOCOL_VERSION in ${PROTOCOL_VERSION_SOURCE} and write the ledger printed below, or revert the change to the file: from the release at or above ${COMPATIBILITY_RELEASE} on, a wire-format delta takes a version bump (${SPEC_PARAGRAPH}).`,
         });
       }
     }
@@ -302,7 +302,7 @@ export function pinViolations({ published, protocolVersion, digests, pins }) {
 
 /**
  * Read the tree at `root` and report what the rule finds there, as
- * `{published, releaseVersion, protocolVersion, digests, pins, coverage,
+ * `{bound, releaseVersion, protocolVersion, digests, pins, coverage,
  * violations, blocked}`. `violations` are `{kind, message}`, `kind` also
  * taking `coverage` for a vectors file neither manifest classifies. `blocked`
  * lists the reasons the check could not read an input at all, which fail
@@ -313,10 +313,10 @@ export function inspect(root) {
   const blocked = [];
 
   const releaseVersion = manifestVersion(read(RELEASE_MANIFEST));
-  const published = isPublishedRelease(releaseVersion);
-  if (published === undefined) {
+  const bound = isCompatibilityRelease(releaseVersion);
+  if (bound === undefined) {
     blocked.push(
-      `${RELEASE_MANIFEST} has ${releaseVersion === undefined ? "no version" : `"${releaseVersion}"`}, which is not a release version this can compare against ${PRE_PUBLICATION_RELEASE}. Set it to a release version (major.minor.patch); until then this check cannot tell whether the rule applies.`,
+      `${RELEASE_MANIFEST} has ${releaseVersion === undefined ? "no version" : `"${releaseVersion}"`}, which is not a release version this can compare against ${COMPATIBILITY_RELEASE}. Set it to a release version (major.minor.patch); until then this check cannot tell whether the rule applies.`,
     );
   }
 
@@ -341,7 +341,7 @@ export function inspect(root) {
   const { pins } = JSON.parse(read(PINS_FILE));
   if (pins === null || typeof pins !== "object" || Array.isArray(pins)) {
     blocked.push(
-      `${PINS_FILE} has no \`pins\` object. Restore it from git history, or as \`{"pins": {}}\` if no release above ${PRE_PUBLICATION_RELEASE} has shipped.`,
+      `${PINS_FILE} has no \`pins\` object. Restore it from git history, or as \`{"pins": {}}\` if no release at or above ${COMPATIBILITY_RELEASE} has shipped.`,
     );
   }
 
@@ -360,12 +360,12 @@ export function inspect(root) {
   }
   if (blocked.length === 0) {
     violations.push(
-      ...pinViolations({ published, protocolVersion, digests, pins }),
+      ...pinViolations({ bound, protocolVersion, digests, pins }),
     );
   }
 
   return {
-    published,
+    bound,
     releaseVersion,
     protocolVersion,
     digests,
@@ -437,8 +437,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 
   for (const line of classificationReport()) console.log(line);
   console.log(
-    report.published
-      ? `\nProtocol version bump check passed: ${RELEASE_MANIFEST} names published release ${report.releaseVersion}, and every pinned file matches what ${PINS_FILE} records for PROTOCOL_VERSION ${report.protocolVersion}.`
-      : `\nProtocol version bump check passed: ${RELEASE_MANIFEST} names ${report.releaseVersion}, at or below the pre-publication ${PRE_PUBLICATION_RELEASE}, so a wire-format delta still ships within PROTOCOL_VERSION ${report.protocolVersion} (${SPEC_PARAGRAPH}). The pinned files bind once a release above ${PRE_PUBLICATION_RELEASE} lands.`,
+    report.bound
+      ? `\nProtocol version bump check passed: ${RELEASE_MANIFEST} names release ${report.releaseVersion}, at or above ${COMPATIBILITY_RELEASE}, and every pinned file matches what ${PINS_FILE} records for PROTOCOL_VERSION ${report.protocolVersion}.`
+      : `\nProtocol version bump check passed: ${RELEASE_MANIFEST} names ${report.releaseVersion}, below ${COMPATIBILITY_RELEASE}, so a wire-format delta still ships within PROTOCOL_VERSION ${report.protocolVersion} (${SPEC_PARAGRAPH}). The pinned files bind once a release at or above ${COMPATIBILITY_RELEASE} lands.`,
   );
 }

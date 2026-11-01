@@ -293,13 +293,13 @@ They are named functions rather than a surface description: a declaration is a f
 ### The reset
 
 The counter has cycled freely, from the format's first `v1` under the earlier product name on up,
-because no published artifact contains any of its literals: `exchangeRecord.ts` does not exist at v0.1.0, the only tagged release.
-The reset is taken at first publication rather than earlier.
+because releases below 1.0.0 carry no compatibility promise and partners upgrade together.
+The reset is taken at 1.0.0 rather than earlier.
 Re-using a previously cycled value mid-development would let an artifact written under the old `v1` parse as the current version and fail on its field set,
 instead of taking the clean version refusal the reader is built to give.
 
-The release marker is `apps/cli/package.json`'s version, the same marker and publication floor `check-protocol-version-bump.mjs` arms on,
-so "first publication" has one definition.
+The release marker is `apps/cli/package.json`'s version, the same marker and 1.0.0 floor `check-protocol-version-bump.mjs` arms on,
+so the point the compatibility policy binds has one definition.
 It is read from the tree rather than a git tag because the gate's checkout has no tags:
 `static_checks.yaml` pins neither `fetch-depth` nor `fetch-tags`, and a marker absent from the checkout would leave the check inert forever.
 
@@ -444,14 +444,15 @@ The decision to sign keylessly, and the probe runs behind the issuer and identit
 - Whether any of it verifies.
   Only a release run signs anything; the self-verify step measures that, and this check keeps that step's two arguments the published ones.
 
-## Post-publication protocol version bump
+## Protocol version bump from 1.0.0
 
 [`scripts/check-protocol-version-bump.mjs`](../../scripts/check-protocol-version-bump.mjs)
 
 ### Why it is a check
 
-[PROTOCOL.md](../spec/PROTOCOL.md) states that a wire-format delta ships within `PROTOCOL_VERSION` 1 while Alcove is pre-publication,
-and takes a bump from the first published deployment onward.
+[PROTOCOL.md](../spec/PROTOCOL.md) states that a wire-format delta ships within `PROTOCOL_VERSION` 1 below release 1.0.0,
+and takes a bump from 1.0.0 onward.
+The floor is 1.0.0 because releases below it carry no compatibility promise and partners upgrade together.
 The release that obligation binds arrives long after the sentence was written, nothing fails when it is forgotten,
 and the change that should have taken the version decision ships past it.
 
@@ -463,7 +464,7 @@ and the change that should have taken the version decision ships past it.
 - The vectors digests are the proxy for "the wire format changed".
   A vectors file classified in neither list fails, so coverage cannot lapse behind a file nobody classified.
 - The ledger is empty while the rule is inert,
-  because a pin recorded pre-publication would go stale against months of permitted deltas and then fail at publication for an unrelated reason.
+  because a pin recorded below 1.0.0 would go stale against months of permitted deltas and then fail at 1.0.0 for an unrelated reason.
 - Once the rule binds, the ledger is append-only, and that shape is what a reviewer reads:
   a bump adds an entry, so a legitimate bump and an in-place rewrite of a published version's pin are different diffs.
   The check cannot tell a legitimate re-pin from a rewrite that dodges the bump,

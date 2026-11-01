@@ -281,7 +281,7 @@ export const CHECKS = [
     group: INDEPENDENT,
     expiresOn: "2027-03-31",
     description:
-      "A wire-format change from the first published release onward moves PROTOCOL_VERSION.",
+      "A wire-format change once the compatibility policy binds moves PROTOCOL_VERSION.",
   },
   {
     script: "check:exchange-record-version",

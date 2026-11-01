@@ -1,25 +1,21 @@
-// The canonical release version, where it is read from, and what counts as a
-// published one, shared by the checks that read it: check-release-version.mjs
-// holds a pushed release tag to it, check-protocol-version-bump.mjs reads it as
-// the marker deciding whether the wire-format pin binds yet, and
-// check-exchange-record-version.mjs as the marker the record-format reset is
-// dated by. One manifest path, one reader, and one publication floor, so no two of
-// them can come to disagree about which file holds the release version, what
-// counts as holding one, or when first publication happens.
+// The canonical release version, where it is read from, and when the
+// compatibility policy binds it, shared by the checks that read it:
+// check-release-version.mjs holds a pushed release tag to it,
+// check-protocol-version-bump.mjs reads it as the marker deciding whether the
+// wire-format pin binds yet, and check-exchange-record-version.mjs as the marker
+// the record-format reset is dated by. One manifest path, one reader, and one
+// floor, so no two of them can come to disagree about which file holds the
+// release version, what counts as holding one, or when the policy binds.
 
 /** The manifest holding the canonical release version (docs/RELEASES.md). */
 export const RELEASE_MANIFEST = "apps/cli/package.json";
 
-// The release below which nothing has been published. The v0.1.0 tag and the
-// CHANGELOG heading beside it name a proof-of-concept whose tree predates the
-// current protocol outright -- no packages/core, no PROTOCOL_VERSION, no
-// exchange record, no CHANGELOG -- so it deployed no peer a version reconcile
-// can meet and shipped no artifact containing either format literal. The next
-// release of any number is the first that can, so the floor is that release
-// rather than a 1.0 milestone: a marker that waits for 1.0 would read a
-// published 0.2.0 as pre-publication, which is the silent miss rather than the
-// loud false alarm. Moving this floor moves every rule dated by it.
-export const PRE_PUBLICATION_RELEASE = "0.1.0";
+// The release from which the compatibility policy binds (docs/RELEASES.md,
+// Versioning). A 0.x release carries no compatibility promise and partners
+// upgrade together, so below this floor a wire-format delta ships within the
+// current PROTOCOL_VERSION and the format literals stay development counters.
+// Moving this floor moves every rule dated by it.
+export const COMPATIBILITY_RELEASE = "1.0.0";
 
 /**
  * The release version a package manifest's source contains, or undefined when it
@@ -62,11 +58,12 @@ export function compareReleaseVersions(left, right) {
 }
 
 /**
- * Whether the release version names a published deployment, or undefined when
- * the version is not in a shape this can read. Undefined is not "no": a caller
- * that cannot read the marker fails rather than treating the rule as inert.
+ * Whether the compatibility policy binds the release version (it is
+ * COMPATIBILITY_RELEASE or above), or undefined when the version is not in a
+ * shape this can read. Undefined is not "no": a caller that cannot read the
+ * marker fails rather than treating the rule as inert.
  */
-export function isPublishedRelease(version) {
-  const compared = compareReleaseVersions(version, PRE_PUBLICATION_RELEASE);
-  return compared === undefined ? undefined : compared > 0;
+export function isCompatibilityRelease(version) {
+  const compared = compareReleaseVersions(version, COMPATIBILITY_RELEASE);
+  return compared === undefined ? undefined : compared >= 0;
 }
