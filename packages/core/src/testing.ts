@@ -35,6 +35,8 @@ export {
   COMMAND_LINE_EXPORT_RELAY_REGISTRAR,
 } from "./config/commandLineExportRelayDocuments.js";
 
+export { keyFileSchemaFor } from "./config/keyFile.js";
+
 // The key-schedule core, so the browser cross-implementation suite can run the
 // checked-in known-answer vectors through the browser build the way the Node
 // suite runs them through the Node build. It stays out of the main entry point:

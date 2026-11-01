@@ -6,10 +6,10 @@ import {
   ROTATION_HISTORY_MAX_ENTRIES,
   generateSharedSecret,
   getDefaultLinkageTerms,
-  keyFileSchemaFor,
   serializeKeyFile,
   snakeizeKeys,
 } from "@alcove/core";
+import { keyFileSchemaFor } from "@alcove/core/testing";
 
 import { stringify as stringifyYaml } from "yaml";
 

@@ -651,7 +651,8 @@ export function readManagedCommandLineKeyFile(
  * the names of the fields it holds that the read dropped. */
 export interface ManagedCommandLineKeyFileRead {
   fields: ManagedExchangeKeyFields;
-  /** Names only, as the file states them; never a value. */
+  /** Names only, as the migrated file names them, in schema order; never a
+   * value. */
   unreadFieldNames: Array<string>;
 }
 
@@ -753,7 +754,8 @@ export interface ManagedCommandLinePairRead {
    * registrar or no `turn` entry. */
   droppedTurnUrls: Array<string>;
   /** The names of the fields the key file holds that the read dropped, as
-   * the file states them; empty where it holds none. Never a value. */
+   * the migrated file names them and in schema order; empty where it holds
+   * none. Never a value. */
   unreadKeyFileFields: Array<string>;
 }
 
