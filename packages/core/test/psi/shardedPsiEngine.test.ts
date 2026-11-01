@@ -392,6 +392,7 @@ describe("the sharded engine in the count-only-permuted mode", () => {
         expect(permuted.primaryAnswers).toHaveBeenCalledWith(
           request,
           serverValues.length,
+          undefined,
         );
         for (const answer of permuted.helperAnswers)
           expect(answer).not.toHaveBeenCalled();

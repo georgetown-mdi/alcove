@@ -87,6 +87,68 @@ export function* roundCandidatePairSweep(
   receiverRanks: ArrayLike<number>,
   acceptance: RoundAcceptance,
 ): PaceableSteps<ResolvedRound> {
+  const { distinct, touchedSenderRanks, receivers } = yield* distinctPairsOf(
+    senderRanks,
+    receiverRanks,
+  );
+
+  const accepted =
+    acceptance.senderAcceptsOnce && acceptance.receiverAcceptsOnce
+      ? yield* firstLargestPairing(distinct)
+      : yield* relaxedSweep(distinct, acceptance);
+
+  const acceptedSenderRanks: Array<number> = [];
+  const acceptedReceiverRanks: Array<number> = [];
+  for (let k = 0; k < accepted.length; ++k) {
+    if ((k + 1) % PACED_STRETCH_RECORDS === 0) yield;
+    if (accepted[k] === 0) continue;
+    acceptedSenderRanks.push(touchedSenderRanks[distinct.sender[k]]);
+    acceptedReceiverRanks.push(receivers[distinct.receiver[k]]);
+  }
+
+  return {
+    acceptedSenderRanks,
+    acceptedReceiverRanks,
+    touchedSenderRanks,
+    touchedReceiverRanks: Array.from(receivers),
+  };
+}
+
+/**
+ * The size of a maximum matching of the candidate pairs `senderRanks[i]` to
+ * `receiverRanks[i]`: the most pairs no two of which share a sender or a
+ * receiver. It is the number of pairs the one-to-one resolution accepts over
+ * the same pairs, found by the same searches, and names no pair. Pairs may
+ * arrive in any order and may repeat; every rank is a whole number.
+ */
+export function maximumMatchingSize(
+  senderRanks: ArrayLike<number>,
+  receiverRanks: ArrayLike<number>,
+): number {
+  return runUnpaced(maximumMatchingSizeSteps(senderRanks, receiverRanks));
+}
+
+function* maximumMatchingSizeSteps(
+  senderRanks: ArrayLike<number>,
+  receiverRanks: ArrayLike<number>,
+): PaceableSteps<number> {
+  const { distinct } = yield* distinctPairsOf(senderRanks, receiverRanks);
+  const { senderMatch } = yield* largestPairing(distinct);
+  let size = 0;
+  for (const pair of senderMatch) if (pair >= 0) ++size;
+  return size;
+}
+
+// The round's distinct pairs in canonical order, each sender read as its place
+// among the touched senders and each receiver as its place among `receivers`.
+function* distinctPairsOf(
+  senderRanks: ArrayLike<number>,
+  receiverRanks: ArrayLike<number>,
+): PaceableSteps<{
+  distinct: DistinctPairs;
+  touchedSenderRanks: Array<number>;
+  receivers: Float64Array;
+}> {
   if (senderRanks.length !== receiverRanks.length)
     throw new InternalConsistencyError(
       "a round's candidate pairs need one receiver rank per sender rank, " +
@@ -134,27 +196,7 @@ export function* roundCandidatePairSweep(
     senderCount: touchedSenderRanks.length,
     receiverCount: receivers.length,
   };
-
-  const accepted =
-    acceptance.senderAcceptsOnce && acceptance.receiverAcceptsOnce
-      ? yield* firstLargestPairing(distinct)
-      : yield* relaxedSweep(distinct, acceptance);
-
-  const acceptedSenderRanks: Array<number> = [];
-  const acceptedReceiverRanks: Array<number> = [];
-  for (let k = 0; k < accepted.length; ++k) {
-    if ((k + 1) % PACED_STRETCH_RECORDS === 0) yield;
-    if (accepted[k] === 0) continue;
-    acceptedSenderRanks.push(touchedSenderRanks[distinct.sender[k]]);
-    acceptedReceiverRanks.push(receivers[distinct.receiver[k]]);
-  }
-
-  return {
-    acceptedSenderRanks,
-    acceptedReceiverRanks,
-    touchedSenderRanks,
-    touchedReceiverRanks: Array.from(receivers),
-  };
+  return { distinct, touchedSenderRanks, receivers };
 }
 
 // A round's distinct candidate pairs in canonical order: pair `k` joins sender
@@ -202,6 +244,75 @@ function* relaxedSweep(
  * its pairs: one search per pair, and one per sender for the first pairing.
  */
 function* firstLargestPairing(pairs: DistinctPairs): PaceableSteps<Uint8Array> {
+  const count = pairs.sender.length;
+  const {
+    senderMatch,
+    receiverMatch,
+    senderFixed,
+    receiverFixed,
+    augmentFromSender,
+    augmentFromReceiver,
+  } = yield* largestPairing(pairs);
+
+  const accepted = new Uint8Array(count);
+  for (let k = 0; k < count; ++k) {
+    if ((k + 1) % PACED_STRETCH_RECORDS === 0) yield;
+    const sender = pairs.sender[k];
+    const receiver = pairs.receiver[k];
+    if (senderFixed[sender] === 1 || receiverFixed[receiver] === 1) continue;
+    const senderPair = senderMatch[sender];
+    const receiverPair = receiverMatch[receiver];
+    if (senderPair < 0 && receiverPair < 0)
+      throw new InternalConsistencyError(
+        "a round's pairing left both records of a candidate pair unmatched, " +
+          "so it was not a largest pairing",
+      );
+    senderFixed[sender] = 1;
+    receiverFixed[receiver] = 1;
+    accepted[k] = 1;
+    if (senderPair === k) continue;
+    senderMatch[sender] = k;
+    receiverMatch[receiver] = k;
+    // With one record free, swapping the pair in keeps the pairing's size.
+    if (senderPair < 0) {
+      senderMatch[pairs.sender[receiverPair]] = -1;
+      continue;
+    }
+    if (receiverPair < 0) {
+      receiverMatch[pairs.receiver[senderPair]] = -1;
+      continue;
+    }
+    // With both matched elsewhere, forcing the pair in frees two records and
+    // loses one pair; any path that wins it back ends at one of them.
+    const freedSender = pairs.sender[receiverPair];
+    const freedReceiver = pairs.receiver[senderPair];
+    senderMatch[freedSender] = -1;
+    receiverMatch[freedReceiver] = -1;
+    if (yield* augmentFromSender(freedSender)) continue;
+    if (yield* augmentFromReceiver(freedReceiver)) continue;
+    senderFixed[sender] = 0;
+    receiverFixed[receiver] = 0;
+    accepted[k] = 0;
+    senderMatch[sender] = senderPair;
+    receiverMatch[receiver] = receiverPair;
+    senderMatch[freedSender] = receiverPair;
+    receiverMatch[freedReceiver] = senderPair;
+  }
+  return accepted;
+}
+
+// A largest pairing of `pairs`, as the pair matching each record or -1, with
+// the augmenting-path searches that rebuild it around records a caller fixes.
+interface LargestPairing {
+  readonly senderMatch: Int32Array;
+  readonly receiverMatch: Int32Array;
+  readonly senderFixed: Uint8Array;
+  readonly receiverFixed: Uint8Array;
+  augmentFromSender(start: number): PaceableSteps<boolean>;
+  augmentFromReceiver(start: number): PaceableSteps<boolean>;
+}
+
+function* largestPairing(pairs: DistinctPairs): PaceableSteps<LargestPairing> {
   const count = pairs.sender.length;
   const { senderCount, receiverCount } = pairs;
   let work = 0;
@@ -338,51 +449,14 @@ function* firstLargestPairing(pairs: DistinctPairs): PaceableSteps<Uint8Array> {
   for (let sender = 0; sender < senderCount; ++sender)
     if (senderMatch[sender] < 0) yield* augmentFromSender(sender);
 
-  const accepted = new Uint8Array(count);
-  for (let k = 0; k < count; ++k) {
-    if ((k + 1) % PACED_STRETCH_RECORDS === 0) yield;
-    const sender = pairs.sender[k];
-    const receiver = pairs.receiver[k];
-    if (senderFixed[sender] === 1 || receiverFixed[receiver] === 1) continue;
-    const senderPair = senderMatch[sender];
-    const receiverPair = receiverMatch[receiver];
-    if (senderPair < 0 && receiverPair < 0)
-      throw new InternalConsistencyError(
-        "a round's pairing left both records of a candidate pair unmatched, " +
-          "so it was not a largest pairing",
-      );
-    senderFixed[sender] = 1;
-    receiverFixed[receiver] = 1;
-    accepted[k] = 1;
-    if (senderPair === k) continue;
-    senderMatch[sender] = k;
-    receiverMatch[receiver] = k;
-    // With one record free, swapping the pair in keeps the pairing's size.
-    if (senderPair < 0) {
-      senderMatch[pairs.sender[receiverPair]] = -1;
-      continue;
-    }
-    if (receiverPair < 0) {
-      receiverMatch[pairs.receiver[senderPair]] = -1;
-      continue;
-    }
-    // With both matched elsewhere, forcing the pair in frees two records and
-    // loses one pair; any path that wins it back ends at one of them.
-    const freedSender = pairs.sender[receiverPair];
-    const freedReceiver = pairs.receiver[senderPair];
-    senderMatch[freedSender] = -1;
-    receiverMatch[freedReceiver] = -1;
-    if (yield* augmentFromSender(freedSender)) continue;
-    if (yield* augmentFromReceiver(freedReceiver)) continue;
-    senderFixed[sender] = 0;
-    receiverFixed[receiver] = 0;
-    accepted[k] = 0;
-    senderMatch[sender] = senderPair;
-    receiverMatch[receiver] = receiverPair;
-    senderMatch[freedSender] = receiverPair;
-    receiverMatch[freedReceiver] = senderPair;
-  }
-  return accepted;
+  return {
+    senderMatch,
+    receiverMatch,
+    senderFixed,
+    receiverFixed,
+    augmentFromSender,
+    augmentFromReceiver,
+  };
 }
 
 function isRank(rank: number): boolean {

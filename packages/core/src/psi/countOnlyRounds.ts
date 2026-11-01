@@ -123,6 +123,23 @@ export interface CountOnlyDeclaredCounts {
 }
 
 /**
+ * A count-only round's widths (docs/spec/PROTOCOL.md, Candidate sets under
+ * count-only): `w_R`, the elements in each block of the receiver's request,
+ * and `w_S`, in each block of the sender's setup. Each is 1 in a round whose
+ * key declares no candidate set.
+ */
+export interface CountOnlyRoundWidths {
+  readonly receiverWidth: number;
+  readonly senderWidth: number;
+}
+
+/** The widths of a round whose key declares no candidate set. */
+export const ONE_ELEMENT_PER_RECORD: CountOnlyRoundWidths = {
+  receiverWidth: 1,
+  senderWidth: 1,
+};
+
+/**
  * Runs every count-only round of `data`, one entry per round in the round
  * order, and returns the count on the receiver, `undefined` on the sender.
  * The receiver draws its request order once and discards it when the rounds

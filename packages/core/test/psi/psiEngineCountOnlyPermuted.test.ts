@@ -8,7 +8,7 @@ import {
   PartnerProtocolRefusalError,
 } from "../../src/errors";
 import {
-  assertIndexTableIsPermutation,
+  assertIndexTableNamesEachPseudonym,
   assertResponseElementsDistinct,
   drawUniformPermutation,
   HeldPermutation,
@@ -548,6 +548,7 @@ describe("the count-only-permuted engine refuses", () => {
         );
         // A round's match returns nothing: no pair and no per-round count.
         await receiver.receiveIndexTable(frames.indexTable);
+        await receiver.createClientRequest(frames.receiverValues);
         await expect(
           receiver.matchPermutedRound(frames.response),
         ).resolves.toBeUndefined();
@@ -1008,11 +1009,13 @@ describe("the count-only-permuted engine refuses", () => {
   });
 
   test("an index table entry that is not an integer, whatever the array type", () => {
-    expect(() => assertIndexTableIsPermutation("joiner", [0, 1])).not.toThrow();
+    expect(() =>
+      assertIndexTableNamesEachPseudonym("joiner", [0, 1], 1),
+    ).not.toThrow();
     for (const table of [[0.5, 0.5], Float64Array.of(NaN, NaN)])
-      expect(() => assertIndexTableIsPermutation("joiner", table)).toThrow(
-        PartnerProtocolRefusalError,
-      );
+      expect(() =>
+        assertIndexTableNamesEachPseudonym("joiner", table, 1),
+      ).toThrow(PartnerProtocolRefusalError);
   });
 
   test.for(refusingEngines)(

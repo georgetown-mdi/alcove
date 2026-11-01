@@ -163,14 +163,20 @@ export class PsiWorkerPoolEngine implements PsiEngine {
   processClientRequest(
     requestBytes: Uint8Array,
     declaredElements?: number,
+    width?: number,
   ): Promise<Uint8Array> {
     return this.splitOnPrimary(() =>
-      this.primary.processClientRequest(requestBytes, declaredElements),
+      this.primary.processClientRequest(requestBytes, declaredElements, width),
     );
   }
 
-  createClientRequest(values: ReadonlyArray<string>): Promise<Uint8Array> {
-    return this.splitOnPrimary(() => this.primary.createClientRequest(values));
+  createClientRequest(
+    values: ReadonlyArray<string>,
+    width?: number,
+  ): Promise<Uint8Array> {
+    return this.splitOnPrimary(() =>
+      this.primary.createClientRequest(values, width),
+    );
   }
 
   receiveServerSetup(setupBytes: Uint8Array): Promise<void> {
@@ -197,12 +203,13 @@ export class PsiWorkerPoolEngine implements PsiEngine {
 
   createPermutedSetup(
     values: ReadonlyArray<string>,
+    width?: number,
   ): Promise<{ setup: Uint8Array; indexTable: Int32Array }> {
-    return this.primary.createPermutedSetup(values);
+    return this.primary.createPermutedSetup(values, width);
   }
 
-  receiveIndexTable(indexTable: Int32Array): Promise<void> {
-    return this.primary.receiveIndexTable(indexTable);
+  receiveIndexTable(indexTable: Int32Array, width?: number): Promise<void> {
+    return this.primary.receiveIndexTable(indexTable, width);
   }
 
   matchPermutedRound(responseBytes: Uint8Array): Promise<void> {

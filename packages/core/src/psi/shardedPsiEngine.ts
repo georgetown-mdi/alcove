@@ -307,12 +307,18 @@ export class ShardedPsiEngine implements PsiEngine {
   async processClientRequest(
     requestBytes: Uint8Array,
     declaredElements?: number,
+    width?: number,
   ): Promise<Uint8Array> {
     this.requireUndisposed("processClientRequest");
     if (this.permutedPrimary !== undefined)
       return this.permutedPrimary.processClientRequest(
         requestBytes,
         declaredElements,
+        width,
+      );
+    if (width !== undefined && width !== 1)
+      throw new InternalConsistencyError(
+        `${this.id}: processClientRequest takes no width but 1 in the ${this.mode} mode`,
       );
     let declared: number;
     try {
@@ -360,18 +366,29 @@ export class ShardedPsiEngine implements PsiEngine {
 
   async createClientRequest(
     values: ReadonlyArray<string>,
+    width?: number,
   ): Promise<Uint8Array> {
     this.requireUndisposed("createClientRequest");
-    const ranges = this.shardRangesFor(values.length);
-    if (ranges.length === 1) return this.primary.createClientRequest(values);
     const permutedPrimary = this.permutedPrimary;
+    if (permutedPrimary === undefined && width !== undefined && width !== 1)
+      throw new InternalConsistencyError(
+        `${this.id}: createClientRequest takes no width but 1 in the ${this.mode} mode`,
+      );
+    const ranges = this.shardRangesFor(values.length);
+    if (ranges.length === 1)
+      return this.primary.createClientRequest(values, width);
     // In the count-only-permuted mode the primary checks and records the
-    // whole set as the round's request, and masks only its own part.
+    // whole set as the round's request, and masks only its own part; a
+    // helper masks its values whatever block they fall in.
     const parts = await this.overShards(ranges, async (engine, range) =>
       this.library.request
         .deserializeBinary(
           engine === permutedPrimary
-            ? await permutedPrimary.createRequestFirstPart(values, range.end)
+            ? await permutedPrimary.createRequestFirstPart(
+                values,
+                range.end,
+                width,
+              )
             : await engine.createClientRequest(
                 values.slice(range.start, range.end),
               ),
@@ -407,12 +424,13 @@ export class ShardedPsiEngine implements PsiEngine {
 
   createPermutedSetup(
     values: ReadonlyArray<string>,
+    width?: number,
   ): Promise<{ setup: Uint8Array; indexTable: Int32Array }> {
-    return this.primary.createPermutedSetup(values);
+    return this.primary.createPermutedSetup(values, width);
   }
 
-  receiveIndexTable(indexTable: Int32Array): Promise<void> {
-    return this.primary.receiveIndexTable(indexTable);
+  receiveIndexTable(indexTable: Int32Array, width?: number): Promise<void> {
+    return this.primary.receiveIndexTable(indexTable, width);
   }
 
   matchPermutedRound(responseBytes: Uint8Array): Promise<void> {

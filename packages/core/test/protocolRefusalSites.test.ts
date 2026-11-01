@@ -109,7 +109,7 @@ const RECORDED_SITES: Readonly<Record<string, readonly string[]>> = {
   ],
   "packages/core/src/psi/psiEngine.ts :: InProcessPsiEngine.refuseAfterFailedRound":
     [PARTNER],
-  "packages/core/src/psi/countOnlyPermutation.ts :: assertIndexTableIsPermutation":
+  "packages/core/src/psi/countOnlyPermutation.ts :: assertIndexTableNamesEachPseudonym > refusal":
     [PARTNER],
   "packages/core/src/psi/psiEngine.ts :: InProcessPsiEngine.permutedRoundOf": [
     PARTNER,
