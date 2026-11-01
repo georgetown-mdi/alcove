@@ -62,9 +62,10 @@ export const UNREADABLE_RECORDS_CAUSE =
 /** The cause the read-failed surface states for a record a newer version of
  * the app saved. */
 export const LATER_VERSION_RECORDS_CAUSE =
-  "One or more was saved by a newer version of this app than this page is " +
-  "running. Nothing is wrong with it. Reload this page to use the current " +
-  "version, which reads it. If a run is under way, reloading ends it.";
+  "One or more stored records were saved by a newer version of this app than " +
+  "this page is running. Nothing is wrong with them. Reload this page to use " +
+  "the current version, which reads them. If a run is under way, reloading " +
+  "ends it.";
 
 /** One row in the read-failed recovery listing: the stored key the delete acts on,
  * a display label (the operator's label, "(unnamed exchange)" when empty, or
