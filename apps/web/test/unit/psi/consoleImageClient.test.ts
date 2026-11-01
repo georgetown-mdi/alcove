@@ -49,9 +49,13 @@ describe("fetchConsoleImage", () => {
     ["a 404", answering({ registry: "docker.io" }, 404)],
     ["a malformed body", answering({ registry: "quay.io" })],
     ["a network failure", () => Promise.reject(new TypeError("offline"))],
-  ])("names the unreported default on %s", async (_label, fetchImpl) => {
-    await expect(fetchConsoleImage(fetchImpl)).resolves.toEqual(
-      UNREPORTED_CONSOLE_IMAGE,
-    );
-  });
+  ])(
+    "names Docker Hub, the unreported default, on %s",
+    async (_label, fetchImpl) => {
+      expect(UNREPORTED_CONSOLE_IMAGE).toEqual({ registry: "docker.io" });
+      await expect(fetchConsoleImage(fetchImpl)).resolves.toEqual(
+        UNREPORTED_CONSOLE_IMAGE,
+      );
+    },
+  );
 });

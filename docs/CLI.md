@@ -33,7 +33,7 @@ Before a first SFTP exchange against a server you do not administer, work throug
 
 Two parties, Agency A and Agency B, set up an exchange once and then run it on a schedule. Agency A invites; Agency B accepts. Each party needs an input CSV, and both need a place to exchange files: a directory on an SFTP server both can reach, or a folder both have mounted (a network share or a shared folder).
 
-The commands below use an installed `alcove`. With the container image, run each one as `docker run -it --rm -v "${PWD}:/work" ghcr.io/georgetown-mdi/alcove:latest` followed by the same arguments (see [Running the CLI](DEPLOYMENT.md#running-the-cli)).
+The commands below use an installed `alcove`. With the container image, run each one as `docker run -it --rm -v "${PWD}:/work" docker.io/gumdi/alcove:latest` followed by the same arguments (see [Running the CLI](DEPLOYMENT.md#running-the-cli)).
 
 ### 1. Each party: make a directory for this partner
 
@@ -929,7 +929,7 @@ A daily run at 02:00, from the directory holding this exchange's files:
 The container form mounts that directory at the image's working directory (`/work`) and so needs no `cd` (see [Running the CLI](DEPLOYMENT.md#running-the-cli)):
 
 ```text
-0 2 * * * /usr/bin/docker run --rm -v /srv/alcove/agency-b:/work ghcr.io/georgetown-mdi/alcove exchange input.csv ./ --log-file exchange.log
+0 2 * * * /usr/bin/docker run --rm -v /srv/alcove/agency-b:/work docker.io/gumdi/alcove exchange input.csv ./ --log-file exchange.log
 ```
 
 To be told when a run fails, let cron mail what the job prints, and have the job print one line when the exit code is not 0:

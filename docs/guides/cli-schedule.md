@@ -34,7 +34,7 @@ Each row starts at 02:00 on the days it names. Your partner uses the same row.
 
 ### 1. Write the schedule line
 
-Each line below is quarterly, for the folder `/srv/alcove/plan-coc` or `C:\alcove\plan-coc`. Put your own cadence from [Cadences](#cadences) in place of its schedule part.
+Each line below is quarterly, for the folder `/srv/alcove/plan-coc` or `C:\alcove\plan-coc`. Put your own cadence from [Cadences](#cadences) in place of its schedule part. Each line names the Docker Hub image; if the scheduling machine pulled from the GitHub Container Registry instead (see [Install](./cli-install.md#install)), put `ghcr.io/georgetown-mdi/alcove:latest` in place of `docker.io/gumdi/alcove:latest`.
 
 ::: tabs platform
 
@@ -44,7 +44,7 @@ Add this to the scheduling account's crontab with `crontab -e`. Use the path to 
 
 ```text
 MAILTO=alcove-owner@example.org
-0 2 1 1,4,7,10 * /usr/bin/docker run --rm --user "$(id -u):$(id -g)" -v /srv/alcove/plan-coc:/work ghcr.io/georgetown-mdi/alcove:latest exchange input.csv ./ --log-file exchange.log || echo "alcove exchange failed with exit code $?; see /srv/alcove/plan-coc/exchange.log"
+0 2 1 1,4,7,10 * /usr/bin/docker run --rm --user "$(id -u):$(id -g)" -v /srv/alcove/plan-coc:/work docker.io/gumdi/alcove:latest exchange input.csv ./ --log-file exchange.log || echo "alcove exchange failed with exit code $?; see /srv/alcove/plan-coc/exchange.log"
 ```
 
 cron mails what the line prints to `MAILTO`, where the machine can send mail. On failure that is the error, its next step and the exit code. Where it cannot send mail, put a command that alerts you in place of the `echo`.
@@ -56,7 +56,7 @@ The `|| echo` makes the cron job itself end with 0; the exit code is in the mail
 In Command Prompt, as the account the task runs as:
 
 ```cmd
-schtasks /Create /TN "alcove exchange" /SC MONTHLY /M JAN,APR,JUL,OCT /D 1 /ST 02:00 /TR "cmd /c cd /d C:\alcove\plan-coc && docker run --rm --mount type=bind,src=C:\alcove\plan-coc,dst=/work ghcr.io/georgetown-mdi/alcove:latest exchange input.csv ./ --log-file exchange.log"
+schtasks /Create /TN "alcove exchange" /SC MONTHLY /M JAN,APR,JUL,OCT /D 1 /ST 02:00 /TR "cmd /c cd /d C:\alcove\plan-coc && docker run --rm --mount type=bind,src=C:\alcove\plan-coc,dst=/work docker.io/gumdi/alcove:latest exchange input.csv ./ --log-file exchange.log"
 ```
 
 Docker Desktop installs `docker.exe` in `C:\Program Files\Docker\Docker\resources\bin`; put that folder on the task account's `PATH`. The text after `/TR` may be at most 261 characters.
@@ -69,7 +69,7 @@ Add this to the scheduling account's crontab with `crontab -e`. Use the path to 
 
 ```text
 MAILTO=alcove-owner@example.org
-0 2 1 1,4,7,10 * /usr/local/bin/docker run --rm -v /srv/alcove/plan-coc:/work ghcr.io/georgetown-mdi/alcove:latest exchange input.csv ./ --log-file exchange.log || echo "alcove exchange failed with exit code $?; see /srv/alcove/plan-coc/exchange.log"
+0 2 1 1,4,7,10 * /usr/local/bin/docker run --rm -v /srv/alcove/plan-coc:/work docker.io/gumdi/alcove:latest exchange input.csv ./ --log-file exchange.log || echo "alcove exchange failed with exit code $?; see /srv/alcove/plan-coc/exchange.log"
 ```
 
 cron mails what the line prints to `MAILTO`, where the machine can send mail. Where it cannot, put a command that alerts you in place of the `echo`.
@@ -82,7 +82,7 @@ Add this to the scheduling account's crontab with `crontab -e`:
 
 ```text
 MAILTO=alcove-owner@example.org
-0 2 1 1,4,7,10 * /usr/bin/podman run --rm --userns=keep-id:uid=1000,gid=1000 -v /srv/alcove/plan-coc:/work ghcr.io/georgetown-mdi/alcove:latest exchange input.csv ./ --log-file exchange.log || echo "alcove exchange failed with exit code $?; see /srv/alcove/plan-coc/exchange.log"
+0 2 1 1,4,7,10 * /usr/bin/podman run --rm --userns=keep-id:uid=1000,gid=1000 -v /srv/alcove/plan-coc:/work docker.io/gumdi/alcove:latest exchange input.csv ./ --log-file exchange.log || echo "alcove exchange failed with exit code $?; see /srv/alcove/plan-coc/exchange.log"
 ```
 
 This line was tested in a minimal environment like cron's, not under cron itself.
@@ -123,7 +123,7 @@ Alcove does not stop a second run of the same exchange from starting. Two runs a
 - **On Linux, skip a start while a run is going** by putting `flock` in front of the command. A skipped start exits 75:
 
 ```text
-0 2 1 1,4,7,10 * flock -n -E 75 /srv/alcove/plan-coc/.run.lock /usr/bin/docker run --rm --user "$(id -u):$(id -g)" -v /srv/alcove/plan-coc:/work ghcr.io/georgetown-mdi/alcove:latest exchange input.csv ./ --log-file exchange.log || echo "alcove exchange failed with exit code $?; see /srv/alcove/plan-coc/exchange.log"
+0 2 1 1,4,7,10 * flock -n -E 75 /srv/alcove/plan-coc/.run.lock /usr/bin/docker run --rm --user "$(id -u):$(id -g)" -v /srv/alcove/plan-coc:/work docker.io/gumdi/alcove:latest exchange input.csv ./ --log-file exchange.log || echo "alcove exchange failed with exit code $?; see /srv/alcove/plan-coc/exchange.log"
 ```
 
 - **On Windows**, a task made with `schtasks /Create` does not start while its last run is still going.

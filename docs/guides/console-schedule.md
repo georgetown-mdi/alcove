@@ -91,7 +91,7 @@ At a time agreed on with your partner, run the exchange once from a terminal on 
 The panel shows the **Run the exchange** command for Windows too, labeled **Windows (in PowerShell)**. Run it with your exchange folder and the credential mount from step 3, keeping the panel's arguments after the image name:
 
 ```powershell
-docker run --rm --mount "type=bind,src=C:\alcove\state-county,dst=/work" --mount "type=bind,src=C:\alcove\secrets\sftp-password.txt,dst=/secrets/sftp-password.txt,readonly" ghcr.io/georgetown-mdi/alcove:latest exchange --log-file=exchange.log alcove-sample-partner.csv ./
+docker run --rm --mount "type=bind,src=C:\alcove\state-county,dst=/work" --mount "type=bind,src=C:\alcove\secrets\sftp-password.txt,dst=/secrets/sftp-password.txt,readonly" docker.io/gumdi/alcove:latest exchange --log-file=exchange.log alcove-sample-partner.csv ./
 ```
 
 Use your input file's name from the panel in place of `alcove-sample-partner.csv`. For WebRTC, leave out the second `--mount`. For a shared folder, replace it with one for the shared folder, mounted at the path `alcove.yaml` gives under `connection.path`, as **Before you schedule it** lists: `--mount "type=bind,src=D:\shares\state-county,dst=<that path>"`.

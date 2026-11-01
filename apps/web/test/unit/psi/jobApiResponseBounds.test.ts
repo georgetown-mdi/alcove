@@ -196,11 +196,11 @@ describe("a status body over its cap fails the reader safely", () => {
 
   test("the console image is the unreported default, not the registry and digest the body names", async () => {
     const body = overCapBody(MAX_JOB_STATUS_RESPONSE_BYTES, {
-      registry: "docker.io",
+      registry: "ghcr.io",
       digest: `sha256:${"a".repeat(64)}`,
     });
     await expect(fetchConsoleImage(answering(body))).resolves.toEqual({
-      registry: "ghcr.io",
+      registry: "docker.io",
     });
   });
 

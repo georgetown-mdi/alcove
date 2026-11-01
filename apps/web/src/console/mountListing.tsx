@@ -96,7 +96,7 @@ export const RUNNING_THE_CONTAINER_URL = `${PROJECT_SITE_URL}/docs/CONSOLE#runni
  * for the operator to fill in. */
 export const SINGLE_FOLDER_RUN_COMMAND =
   "docker run --rm -p 127.0.0.1:3000:3000 -v <your folder>:/work " +
-  "--env JOB_DATA_ROOT=/work ghcr.io/georgetown-mdi/alcove serve";
+  "--env JOB_DATA_ROOT=/work docker.io/gumdi/alcove serve";
 
 /**
  * The state both pickers show when the console was started without a working

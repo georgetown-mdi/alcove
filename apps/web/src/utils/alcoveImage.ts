@@ -23,7 +23,7 @@ const ALCOVE_IMAGE_REPOSITORIES: Readonly<Record<ImageRegistry, string>> = {
 };
 
 /** The registry a console line names when the console was told none. */
-export const DEFAULT_IMAGE_REGISTRY: ImageRegistry = "ghcr.io";
+export const DEFAULT_IMAGE_REGISTRY: ImageRegistry = "docker.io";
 
 /**
  * The image tag a line names when the build holds no release version -- a
@@ -85,6 +85,24 @@ export function imageReference(
   registry: ImageRegistry = DEFAULT_IMAGE_REGISTRY,
 ): string {
   return `${imageRepository(registry)}:${version ?? DEFAULT_ALCOVE_IMAGE_TAG}`;
+}
+
+/** The signer and issuer every release image's signature names, as the
+ * `cosign verify` command `docs/RELEASES.md` publishes pins them; a unit test
+ * holds the two to that command. */
+const RELEASE_SIGNER_IDENTITY_REGEXP =
+  "^https://github\\.com/georgetown-mdi/alcove/\\.github/workflows/release\\.yaml@refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+$";
+const RELEASE_SIGNER_OIDC_ISSUER =
+  "https://token.actions.githubusercontent.com";
+
+/** The one-line `cosign verify` command checking that `reference` is signed by
+ * the release workflow. The identity is single-quoted so a shell hands its
+ * `$` and `\` to cosign unchanged. */
+export function cosignVerifyCommand(reference: string): string {
+  return (
+    `cosign verify --certificate-identity-regexp '${RELEASE_SIGNER_IDENTITY_REGEXP}' ` +
+    `--certificate-oidc-issuer ${RELEASE_SIGNER_OIDC_ISSUER} ${reference}`
+  );
 }
 
 /** The image pinned by a digest {@link imageDigest} returned, on `registry`. */

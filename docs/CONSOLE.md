@@ -12,7 +12,7 @@ This document does not cover the CLI's own commands and configuration files (see
 
 ## The image and the console build
 
-The published `ghcr.io/georgetown-mdi/alcove` image is the console: it is built with `VITE_DEPLOYMENT_PROFILE=console`, so its web assets and its server-side job driver are the console halves, and the `-fips` variant is built the same way. You do not build web assets, set the profile, or build an image yourself. The hosted web deployment (`apps/web`, not this image) never runs an exchange server-side: a shared-folder or SFTP exchange there only saves an exchange file for the command-line tool.
+The published image, `docker.io/gumdi/alcove` on Docker Hub and `ghcr.io/georgetown-mdi/alcove` on the GitHub Container Registry, is the console: it is built with `VITE_DEPLOYMENT_PROFILE=console`, so its web assets and its server-side job driver are the console halves, and the `-fips` variant is built the same way. You do not build web assets, set the profile, or build an image yourself. The hosted web deployment (`apps/web`, not this image) never runs an exchange server-side: a shared-folder or SFTP exchange there only saves an exchange file for the command-line tool.
 
 ## Running the container
 
@@ -23,7 +23,7 @@ Pass `serve` as the first argument to run the console instead of the headless CL
 For a shared-folder exchange, mount your working folder and the shared folder separately:
 
 ```sh
-docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/data -v "/host/work:/data" --env JOB_RENDEZVOUS_DIR=/shared --env JOB_RENDEZVOUS_NAME=agency-a-agency-b -v "/host/agency-a-agency-b:/shared" ghcr.io/georgetown-mdi/alcove:latest serve
+docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/data -v "/host/work:/data" --env JOB_RENDEZVOUS_DIR=/shared --env JOB_RENDEZVOUS_NAME=agency-a-agency-b -v "/host/agency-a-agency-b:/shared" docker.io/gumdi/alcove:latest serve
 ```
 
 The operator drops their input CSVs into `/host/work`; `/host/agency-a-agency-b` is the folder their sync tool shares with the partner.
@@ -42,7 +42,7 @@ docker run --rm \
   -v "/host/jobs:/data/jobs" \
   -v "/host/input:/data/input" \
   -v "/host/agency-a-agency-b:/data/rendezvous" \
-  ghcr.io/georgetown-mdi/alcove:latest serve
+  docker.io/gumdi/alcove:latest serve
 ```
 
 A partner-shared mailbox of two folders (see [Split inbound and outbound shared folders](#split-inbound-and-outbound-shared-folders)) mounts and names both. In a Mac or Linux terminal only, where a `\` ends each line, run:
@@ -60,7 +60,7 @@ docker run --rm \
   -v "/host/input:/data/input" \
   -v "/host/from-agency-b:/data/rendezvous-in" \
   -v "/host/to-agency-b:/data/rendezvous-out" \
-  ghcr.io/georgetown-mdi/alcove:latest serve
+  docker.io/gumdi/alcove:latest serve
 ```
 
 `JOB_CLI_BINARY` is pre-set in the image. Setting `JOB_DATA_ROOT` turns the job API on; unset, `serve` runs the web UI only. The account the container runs as, and the ownership each mount needs, are in [The user the image runs as](DEPLOYMENT.md#the-user-the-image-runs-as).
@@ -91,7 +91,7 @@ The job API is **off by default**: it serves no endpoint and spawns no CLI until
 - `JOB_RENDEZVOUS_OUTBOUND_NAME` -- the same, for the outbound folder. The two names must differ, so set it when the two mounts' last segments coincide (`/mnt/in/alcove` and `/mnt/out/alcove`); until they differ the console offers no shared-folder exchange, naming this variable.
 - `JOB_SECRETS_DIR` -- optional; a directory, mounted read-only, that the console browses for a connection's credential file (a password file or an SSH private key) and for the file holding your signing identity. It has no fallback. Unset, the credential picker browses your mounted folder, with a warning, and the signing identity's picker offers no folder. The console writes nothing into this mount, with one exception: a signing identity removed between the console's presence check and its read is created again at that path, which a read-only mount prevents.
 - `JOB_SFTP_CREDENTIAL_DIR` -- the container-internal directory a pasted credential is written to. Leave it unset under the image's own account; set it when you run the container with `--user` ([The user the image runs as](DEPLOYMENT.md#the-user-the-image-runs-as)).
-- `JOB_IMAGE_REGISTRY` -- optional; the registry the image was downloaded from, `docker.io` or `ghcr.io`, which the commands the console shows for a scheduled run name, so they pull from a registry this machine reaches. The launchers set it to the registry they downloaded from. Unset, or any other value, the console names `ghcr.io`, and a value it does not read draws a startup warning naming the variable.
+- `JOB_IMAGE_REGISTRY` -- optional; the registry the image was downloaded from, `docker.io` or `ghcr.io`, which the commands the console shows for a scheduled run name, so they pull from a registry this machine reaches. The launchers set it to the registry they downloaded from. Unset, or any other value, the console names `docker.io`, and a value it does not read draws a startup warning naming the variable.
 - `JOB_IMAGE_DIGEST` -- optional; the digest of the image the console runs, `sha256:` followed by 64 lowercase hex digits, which the partner accept kit prints beside the image on each registry. The launchers set it to their stamped digest. Unset, or any other value, the kit names no digest and points at the release notes for it.
 - `JOB_ALLOWED_HOSTS` -- optional; a comma-separated list of extra `Host` header hostnames the API accepts beyond `127.0.0.1`, `localhost`, and `::1`. Set it only to front the console behind a reverse proxy or reach it by a LAN name, listing the hostname the browser sends (the port is ignored). It does not widen reach on its own: the publish binding and the host firewall still decide who can connect.
 
@@ -343,7 +343,7 @@ Contract: [SERVER_JOB_API.md](spec/SERVER_JOB_API.md#the-recurring-run-hand-off)
 
 ## Sending the partner an accept kit
 
-An SFTP or shared-folder exchange puts the partner on the command line, so the console offers a second artifact when it creates the invitation: a printable, plaintext instruction sheet to send with the invitation. It assumes the partner has Docker -- Desktop or Engine -- or can get it, and takes them to the point of accepting: the channel, the rendezvous the invitation names, the `docker run ... accept` and `exchange` commands, and, on a shared folder, routing a partner whose folder is a Windows network drive or DFS path to the release launchers (Docker cannot see a drive letter).
+An SFTP or shared-folder exchange puts the partner on the command line, so the console offers a second artifact when it creates the invitation: a printable, plaintext instruction sheet to send with the invitation. It assumes the partner has Docker -- Desktop or Engine -- or can get it, and takes them to the point of accepting: the channel, the rendezvous the invitation names, a `cosign verify` command that checks the image's signature before it runs, the `docker run ... accept` and `exchange` commands, and, on a shared folder, routing a partner whose folder is a Windows network drive or DFS path to the release launchers (Docker cannot see a drive letter).
 
 - An exchange created with retain mode on adds a fixed disclosure of what it leaves behind and where those files persist, and the commands include the setting; on the launcher route it points the partner at the console's file-handling control.
 - Lockless rendezvous without retain mode is handled the same two ways, since the partner's side must match it.

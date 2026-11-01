@@ -19,7 +19,7 @@ Choose the tab for the machine that will run the exchange; for a schedule, that 
 Install Docker Engine, then pull the image:
 
 ```sh
-docker pull ghcr.io/georgetown-mdi/alcove:latest
+docker pull docker.io/gumdi/alcove:latest
 ```
 
 Docker Engine needs `--user "$(id -u):$(id -g)"` on every run, which the command form below includes: it runs the container as your own account, so it can write your folder.
@@ -31,7 +31,7 @@ Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) and st
 Open PowerShell and pull the image:
 
 ```powershell
-docker pull ghcr.io/georgetown-mdi/alcove:latest
+docker pull docker.io/gumdi/alcove:latest
 ```
 
 == macOS
@@ -39,7 +39,7 @@ docker pull ghcr.io/georgetown-mdi/alcove:latest
 Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) and start it. Open Terminal and pull the image:
 
 ```sh
-docker pull ghcr.io/georgetown-mdi/alcove:latest
+docker pull docker.io/gumdi/alcove:latest
 ```
 
 == Podman
@@ -47,7 +47,7 @@ docker pull ghcr.io/georgetown-mdi/alcove:latest
 Pull the image:
 
 ```sh
-podman pull ghcr.io/georgetown-mdi/alcove:latest
+podman pull docker.io/gumdi/alcove:latest
 ```
 
 Rootless Podman needs `--userns=keep-id:uid=1000,gid=1000` on every run, which the command form below includes. Without it, the first write fails with exit 64 and `EACCES: permission denied, open './alcove.yaml.tmp.1'`.
@@ -56,7 +56,7 @@ This form was tested with rootless Podman 4.9.3 on Linux. Podman on Windows or m
 
 :::
 
-The image is published to two registries with the same images, tags, and digests: Docker Hub, as `docker.io/gumdi/alcove`, and the GitHub Container Registry, as `ghcr.io/georgetown-mdi/alcove`. They are equally useful, equally recommended, and equally secure, so pull from whichever one your network reaches. These pages name the ghcr.io image; to use Docker Hub, pull `docker.io/gumdi/alcove:latest` and put that name in place of `ghcr.io/georgetown-mdi/alcove:latest` in each command. If a pull from one registry is refused, try the other: a network can block one and allow the other, and Docker Hub limits how often one network downloads from it.
+The image is published to two registries with the same images, tags, and digests: Docker Hub, as `docker.io/gumdi/alcove`, and the GitHub Container Registry, as `ghcr.io/georgetown-mdi/alcove`. The two are equally secure. Start with Docker Hub, as these pages do. If a pull from Docker Hub is refused, pull `ghcr.io/georgetown-mdi/alcove:latest` instead and put that name in place of `docker.io/gumdi/alcove:latest` in each command: a network can block one registry and allow the other, and Docker Hub limits how often one network downloads from it.
 
 Each registry holds the release's signature. To check that an image is the one the release published, install Cosign (see the Cosign documentation for your platform) and run either command, putting the tag you pulled, such as `latest`, in place of `X.Y.Z`:
 
@@ -85,49 +85,49 @@ These pages write each command as `alcove ...`. Run it from the folder that hold
 == Linux
 
 ```sh
-docker run -it --rm --user "$(id -u):$(id -g)" -v "$PWD":/work ghcr.io/georgetown-mdi/alcove:latest
+docker run -it --rm --user "$(id -u):$(id -g)" -v "$PWD":/work docker.io/gumdi/alcove:latest
 ```
 
 For example, `alcove exchange input.csv ./` becomes:
 
 ```sh
-docker run -it --rm --user "$(id -u):$(id -g)" -v "$PWD":/work ghcr.io/georgetown-mdi/alcove:latest exchange input.csv ./
+docker run -it --rm --user "$(id -u):$(id -g)" -v "$PWD":/work docker.io/gumdi/alcove:latest exchange input.csv ./
 ```
 
 == Windows
 
 ```powershell
-docker run -it --rm -v "${PWD}:/work" ghcr.io/georgetown-mdi/alcove:latest
+docker run -it --rm -v "${PWD}:/work" docker.io/gumdi/alcove:latest
 ```
 
 For example, `alcove exchange input.csv ./` becomes:
 
 ```powershell
-docker run -it --rm -v "${PWD}:/work" ghcr.io/georgetown-mdi/alcove:latest exchange input.csv ./
+docker run -it --rm -v "${PWD}:/work" docker.io/gumdi/alcove:latest exchange input.csv ./
 ```
 
 == macOS
 
 ```sh
-docker run -it --rm -v "$PWD":/work ghcr.io/georgetown-mdi/alcove:latest
+docker run -it --rm -v "$PWD":/work docker.io/gumdi/alcove:latest
 ```
 
 For example, `alcove exchange input.csv ./` becomes:
 
 ```sh
-docker run -it --rm -v "$PWD":/work ghcr.io/georgetown-mdi/alcove:latest exchange input.csv ./
+docker run -it --rm -v "$PWD":/work docker.io/gumdi/alcove:latest exchange input.csv ./
 ```
 
 == Podman
 
 ```sh
-podman run -it --rm --userns=keep-id:uid=1000,gid=1000 -v "$PWD":/work ghcr.io/georgetown-mdi/alcove:latest
+podman run -it --rm --userns=keep-id:uid=1000,gid=1000 -v "$PWD":/work docker.io/gumdi/alcove:latest
 ```
 
 For example, `alcove exchange input.csv ./` becomes:
 
 ```sh
-podman run -it --rm --userns=keep-id:uid=1000,gid=1000 -v "$PWD":/work ghcr.io/georgetown-mdi/alcove:latest exchange input.csv ./
+podman run -it --rm --userns=keep-id:uid=1000,gid=1000 -v "$PWD":/work docker.io/gumdi/alcove:latest exchange input.csv ./
 ```
 
 :::
