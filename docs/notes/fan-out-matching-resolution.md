@@ -4,7 +4,7 @@ title: "Fan-Out Matching: Local Resolution, and the Strategy It Ran Under First"
 
 # Fan-out matching: why resolution is local, single-pass first, and in row order
 
-*Status: built under both linkage strategies, except the largest-pairing resolution, which the spec states and is not yet built. The construction is normatively specified in [PROTOCOL.md](../spec/PROTOCOL.md#fan-out-matching-multi-value-key-candidates), with the operator-facing description in [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#fan-out-multi-value-fields); the cascade's own realization landed after this note was written, and [cascade-fan-out.md](cascade-fan-out.md) records it. This note records why the rules have the shape they do, the alternatives weighed and set aside, and what remains open. See [docs/notes/README.md](README.md).*
+*Status: built under both linkage strategies, the largest-pairing resolution included. The construction is normatively specified in [PROTOCOL.md](../spec/PROTOCOL.md#fan-out-matching-multi-value-key-candidates), with the operator-facing description in [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#fan-out-multi-value-fields); the cascade's own realization landed after this note was written, and [cascade-fan-out.md](cascade-fan-out.md) records it. This note records why the rules have the shape they do, the alternatives weighed and set aside, and what remains open. See [docs/notes/README.md](README.md).*
 
 This is design rationale. Nothing here binds an implementation; the normative rows live in the spec documents linked above, and this note does not restate them.
 

@@ -36,8 +36,8 @@ import { makeParticipant, runCascade, settleWithin } from "../utils/support";
 //
 // Every fixture also runs with the two parties' roles exchanged, since which
 // party opens the PSI exchange decides which one permutes its own set and
-// which reads the other's positions. The two assignments owe the same table,
-// read from the other side.
+// which reads the other's positions. On every fixture here the two
+// assignments reach the same table, read from the other side.
 
 const psiLibrary = await PSI();
 
@@ -60,7 +60,45 @@ interface Fixture {
   readonly cardinality: LinkageCardinality;
   readonly starterKeys: Array<Column>;
   readonly joinerKeys: Array<Column>;
+  // The pairs the table holds, where a greedy sweep in canonical order would
+  // accept fewer: the first round's largest pairing and any later round's.
+  readonly largestTablePairs?: number;
 }
+
+// Fixtures whose first round a greedy sweep in canonical order does not
+// resolve to a largest pairing, so a corpus fixture reads the largest-pairing
+// rule where it parts from that sweep.
+const FIXTURES_WHERE_GREEDY_FALLS_SHORT: ReadonlyArray<Fixture> = [
+  // The second normative one-to-one case: (S0, R0), (S0, R1) and (S1, R0).
+  {
+    cardinality: "one-to-one",
+    starterKeys: [[new Set(["ab", "cd"]), "ef"]],
+    joinerKeys: [[new Set(["ab", "ef"]), "cd"]],
+    largestTablePairs: 2,
+  },
+  // An augmenting path of five pairs: a greedy sweep takes (S0, R0) and
+  // (S1, R1) and leaves S2 unpaired, where the largest pairing holds three.
+  {
+    cardinality: "one-to-one",
+    starterKeys: [[new Set(["a", "b"]), new Set(["c", "d"]), "e"]],
+    joinerKeys: [[new Set(["a", "e"]), new Set(["b", "c"]), "d"]],
+    largestTablePairs: 3,
+  },
+  // The same first round followed by a key that pairs the records it left in
+  // candidacy, which the first round's resolution must not reach.
+  {
+    cardinality: "one-to-one",
+    starterKeys: [
+      [new Set(["ab", "cd"]), "ef", undefined],
+      ["k0", "k1", "k2"],
+    ],
+    joinerKeys: [
+      [new Set(["ab", "ef"]), "cd", undefined],
+      ["k0", "k1", "k2"],
+    ],
+    largestTablePairs: 3,
+  },
+];
 
 // `many-to-many` is left out: it takes obligations of its own rather than this
 // corpus's, the round-diagonal closure check over the table each strategy
@@ -268,7 +306,11 @@ test(
     let resolvedFixtures = 0;
     let fixturesStatingMappedElements = 0;
 
-    for (const fixture of randomCorpus(CORPUS_SIZE)) {
+    const corpus = [
+      ...FIXTURES_WHERE_GREEDY_FALLS_SHORT,
+      ...randomCorpus(CORPUS_SIZE),
+    ];
+    for (const fixture of corpus) {
       const where = describeFixture(fixture);
       const cascade = await cascadeOutcome(fixture);
       const mirrored = await cascadeOutcome(mirroredAssignment(fixture));
@@ -319,6 +361,15 @@ test(
           `${where}: joiner cascade ${cascadeTables[1]} vs single-pass ` +
             singleTables[1],
         );
+      const cascadePairs = (cascade.starter as AssociationTable)[0].length;
+      if (
+        fixture.largestTablePairs !== undefined &&
+        cascadePairs !== fixture.largestTablePairs
+      )
+        problems.push(
+          `${where}: ${cascadePairs} pairs where the largest pairing holds ` +
+            fixture.largestTablePairs,
+        );
 
       const mirroredTables = [
         canonicalPairs(mirrored.starter as AssociationTable),
@@ -344,7 +395,7 @@ test(
     // Every fixture resolves: no shape the sweep reaches is refused, and the
     // count is the corpus size rather than a floor, so a fixture that stopped
     // resolving would fail here even if it also stopped being compared.
-    expect(resolvedFixtures).toBe(CORPUS_SIZE);
+    expect(resolvedFixtures).toBe(corpus.length);
     // Non-vacuity on the mapped-element frames, which a fixture matching
     // nothing puts on neither wire.
     expect(fixturesStatingMappedElements).toBeGreaterThan(0);

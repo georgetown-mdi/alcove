@@ -679,8 +679,6 @@ Every record appearing in any of round `j`'s candidate pairs leaves candidacy fo
 
 #### Record-level resolution: canonical order and tiebreak
 
-> **Not yet built:** the shipped resolution is a greedy sweep in the order below, accepting a pair when neither of its records is yet accepted in the round. The two rules accept the same pairs on every round where that sweep's pairs form a largest pairing (below), and the second `one-to-one` case of [the normative double-match case](#the-normative-double-match-case) is one where they part.
-
 The resolution is a deterministic sweep that accepts a largest pairing. A **pairing** of a round is a set of its candidate pairs no two of which share a record, and a **largest pairing** is one holding as many pairs as any pairing of the round does (a maximum matching of the round's candidate pairs). For each linkage key `j` in the agreed key order:
 
 1. Form round `j`'s record-level candidate pairs as above.
@@ -693,7 +691,11 @@ The accepted pairs are the first largest pairing in that order. So a round accep
 
 **The resolution's work is bounded by the round's candidate pairs.** A party shapes the round's candidate graph through its own grouping ([The grouping is the partner's own word](#what-the-cascade-realization-owes)), so the realization MUST compute the round's first largest pairing, the lexicographically first maximum matching, for each connected component of the candidate graph in time polynomial in that component's pairs; one augmenting-path search for each pair suffices. The work is then bounded by the round's candidate pairs, which the matched positions bound.
 
+**Limit: a partner who can shape the round's candidate pairs can reach the quadratic case.** The search for each pair can cross most of its component, so the work grows with the square of a component's pairs. Every record of such a component can stand in at most three pairs: each of many short pieces holds a pair in no largest pairing, and rejecting it takes a failed search along one long chain of matched pairs. On that shape the resolution took 0.26 s for 30,000 pairs, 3.8 s for 120,000, and 15.1 s for 240,000, about four times as long for each doubling (measured 2026-11-01 on a 10-core `aarch64` development container under Node 26). The searches yield to the event loop at the pacing interval, and the longest stretch between two yields at 240,000 pairs was 16 ms, so the event loop stays responsive while it runs.
+
 The order is fixed normatively because it decides which of two ambiguous matches wins. Both of its components are role-derived rather than local: sender and receiver are fixed for the exchange by [role resolution](#role-resolution-and-work-minimization), so the order is the same one whichever party evaluates it, and it is the order message 3's local half already holds (that half is the sender's own rows in ascending order, enforced at the single-pass boundary). Nothing in the rule reads a hash-map iteration order, a value's bytes, or an encrypted element's position, so an independent implementation reproduces the same table from the same frames.
+
+**Limit: the canonical order can make the table depend on the role.** Where a round's candidate pairs admit more than one largest pairing, the one-to-one rule keeps the first in (sender row, receiver row) order, and swapping the roles changes that order. The two role assignments can then keep different pairs, the same number of them: on three records a side, a six-pair cycle of candidate pairs can make each assignment keep a different one of the cycle's two largest pairings. The number of pairs, and so a count-only exchange's count, does not depend on the role through this order.
 
 The exchange record is unaffected by design: its commitments cover the association table's row-index pairs and the payload values, never key strings ([EXCHANGE_RECORD.md](EXCHANGE_RECORD.md#commitment-scheme)). The record-level table stays the only committed matching artifact, which is why the determinism of this rule -- not the candidate structure underneath it -- is the critical property.
 
