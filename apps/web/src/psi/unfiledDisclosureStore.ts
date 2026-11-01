@@ -26,19 +26,24 @@
  * transaction (see {@link ./managed/managedExchangeStore.ts}).
  */
 
-import { getLogger, parseExchangeRecord } from "@alcove/core";
+import {
+  FormatMigrationError,
+  getLogger,
+  parseExchangeRecord,
+} from "@alcove/core";
 
 import {
   MANAGED_EXCHANGE_DISCLOSURE_STORE_NAME,
   openManagedExchangeDatabase,
 } from "./managed/managedExchangeStore";
 import {
-  appendDisclosureRecord,
+  appendToStoredDisclosureAccounting,
   parseDisclosureAccounting,
 } from "./disclosureAccounting";
 import {
   noteUnfiledDisclosure,
   parseStoredUnfiledDisclosures,
+  storedNoteAheadOfThisBuild,
   unfiledDisclosureKey,
   unfiledDisclosuresAfterFiling,
   unfiledDisclosuresOf,
@@ -49,8 +54,8 @@ import type {
   StoredUnfiledDisclosures,
   UnfiledDisclosure,
 } from "./unfiledDisclosure";
-import type { DisclosureAccounting } from "./disclosureAccounting";
 import type { ExchangeRecord } from "@alcove/core";
+import type { StoredDisclosureAccounting } from "./disclosureAccounting";
 
 const log = getLogger("unfiledDisclosureStore");
 
@@ -76,8 +81,14 @@ export type UnfiledDisclosureRead =
   | { kind: "unfiled"; disclosures: ReadonlyArray<UnfiledDisclosure> }
   /** A stored value this build refuses: a run of this exchange was noted as
    * unfiled, and which run it was cannot be read. The bytes are left exactly as
-   * they sit -- the note is the only thing standing for that disclosure. */
-  | { kind: "unreadable" };
+   * they sit -- the note is the only thing standing for that disclosure.
+   * `migrationFailure` is the refusal where a migration failed, its message
+   * naming the versions and the cause, and is absent for damage. */
+  | { kind: "unreadable"; migrationFailure?: FormatMigrationError }
+  /** A stored note this build refuses whose version is later than this
+   * build's: a run went unfiled, and the build that wrote the note names it.
+   * This page is behind, and reloading is the recovery. */
+  | { kind: "stale-page" };
 
 /** Where a run that could not be filed was recorded, so a caller with no notice
  * sink still reports the outcome to the diagnostic log. */
@@ -244,8 +255,11 @@ export async function readUnfiledDisclosures(
         let stored: StoredUnfiledDisclosures;
         try {
           stored = parseStoredUnfiledDisclosures(raw);
-        } catch {
-          return { kind: "unreadable" };
+        } catch (error) {
+          if (storedNoteAheadOfThisBuild(raw)) return { kind: "stale-page" };
+          return error instanceof FormatMigrationError
+            ? { kind: "unreadable", migrationFailure: error }
+            : { kind: "unreadable" };
         }
         const disclosures = unfiledDisclosuresOf(stored);
         return disclosures.length === 0
@@ -266,7 +280,9 @@ export async function readUnfiledDisclosures(
  * written back beside the note's own write, so a run cannot be dropped from the
  * note without its entry being in the accounting. The append is the accounting's
  * own, idempotent on the record's binding nonce, so filing a run the accounting
- * already holds resolves without a second entry.
+ * already holds resolves without a second entry. Each record is filed as the
+ * note retained it, and the accounting's earlier entries are written back as
+ * stored, so no past exchange record is rewritten.
  *
  * A run whose record cannot be read -- none was retained, or the record format
  * has moved past it -- stays noted: there is nothing to append for it, and
@@ -286,10 +302,9 @@ export async function fileUnfiledDisclosures(id: string): Promise<void> {
     read.onsuccess = () => {
       try {
         const filed = new Set<string>();
-        let accounting: DisclosureAccounting | undefined =
-          read.result === undefined
-            ? undefined
-            : parseDisclosureAccounting(read.result);
+        // Refuses as a run's own append does, even where nothing is fileable.
+        if (read.result !== undefined) parseDisclosureAccounting(read.result);
+        let accounting: StoredDisclosureAccounting | undefined;
         for (const entry of stored.entries) {
           if (entry.record === undefined) continue;
           let record: ExchangeRecord;
@@ -298,7 +313,10 @@ export async function fileUnfiledDisclosures(id: string): Promise<void> {
           } catch {
             continue;
           }
-          accounting = appendDisclosureRecord(accounting, record);
+          accounting = appendToStoredDisclosureAccounting(
+            accounting ?? read.result,
+            entry.record,
+          );
           filed.add(record.bindingNonce);
         }
         if (filed.size === 0 || accounting === undefined) return;

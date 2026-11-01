@@ -6,8 +6,9 @@
 // RECOVERY_ENTRY_POINTS names, and the release marker apps/cli/package.json's
 // version, through lib/releaseManifest.mjs.
 //
-// Rule 1, the bump. A move invalidates every managed accounting of disclosures
-// at rest in a browser (docs/spec/MANAGED_EXCHANGE_RECORD.md), and its recovery
+// Rule 1, the bump. A move with no migration step from the version before it
+// leaves every managed accounting of disclosures at rest in a browser
+// unreadable (docs/spec/MANAGED_EXCHANGE_RECORD.md), and its recovery
 // has been driven against RECORD_VERSION_PIN alone. So a literal off the pin
 // fails, naming the steps to take before recording the new value: re-drive the
 // envelope/entries split (apps/web/test/unit/psi/disclosureAccounting.test.ts),

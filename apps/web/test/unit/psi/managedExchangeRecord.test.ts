@@ -1,5 +1,6 @@
 import {
   CSV_DELIMITER_DETECT,
+  FormatMigrationError,
   KeyFileSchema,
   ROTATION_HISTORY_MAX_ENTRIES,
   assembleExchangeSpec,
@@ -9,11 +10,13 @@ import {
   termsAsTheRunStatedThem,
 } from "@alcove/core";
 import { describe, expect, test } from "vitest";
+import { ZodError } from "zod";
 import { computeTermsHash } from "@alcove/core/testing";
 
 import { storedWorkingDirectoryUsable } from "@psi/managed/managedWorkingDirectory";
 
 import {
+  MANAGED_EXCHANGE_MIGRATIONS,
   MANAGED_EXCHANGE_SCHEMA_VERSION,
   MAX_LABEL_LENGTH,
   MAX_RECENT_RUNS,
@@ -45,7 +48,14 @@ import {
   safeParseManagedExchangeRecord,
   standingCompromiseResponse,
   standingConditionFrom,
+  storedRecordAheadOfThisBuild,
 } from "@psi/managed/managedExchangeRecord";
+import {
+  UNMOVABLE_CAUSE,
+  UNMOVABLE_FIELD,
+  atPreviousVersion,
+  previousVersionMigrations,
+} from "../../utils/storedFormatMigrations";
 import { withTimeZone } from "../../utils/hostTimeZone";
 
 import type {
@@ -325,8 +335,9 @@ describe("a stored document holding a key the document schema does not read", ()
         ...built,
         exchangeFile: { ...built.exchangeFile, [key]: ["age"] },
       });
-      expect(result.success).toBe(false);
-      expect(result.error?.issues).toMatchObject([
+      if (result.success) throw new Error("the record parsed");
+      expect(result.error).toBeInstanceOf(ZodError);
+      expect((result.error as ZodError).issues).toMatchObject([
         {
           code: "unrecognized_keys",
           keys: [key],
@@ -335,6 +346,43 @@ describe("a stored document holding a key the document schema does not read", ()
       ]);
     },
   );
+});
+
+describe("a record an earlier version stored", () => {
+  const rename = { field: "label", storedName: "name" };
+  const migrations = previousVersionMigrations(
+    "A saved exchange",
+    "schemaVersion",
+    MANAGED_EXCHANGE_SCHEMA_VERSION,
+    rename,
+  );
+
+  test("is migrated in memory, the stored value unchanged", () => {
+    const record = buildManagedExchangeRecord(newExchange());
+    const stored = atPreviousVersion({ ...record }, "schemaVersion", rename);
+    const before = structuredClone(stored);
+
+    expect(parseManagedExchangeRecord(stored, migrations)).toEqual(record);
+    expect(stored).toEqual(before);
+  });
+
+  test("whose migration fails is refused naming the cause, the stored value unchanged", () => {
+    const stored = {
+      ...atPreviousVersion(
+        { ...buildManagedExchangeRecord(newExchange()) },
+        "schemaVersion",
+        rename,
+      ),
+      [UNMOVABLE_FIELD]: true,
+    };
+    const before = structuredClone(stored);
+
+    expect(() => parseManagedExchangeRecord(stored, migrations)).toThrow(
+      UNMOVABLE_CAUSE,
+    );
+    expect(safeParseManagedExchangeRecord(stored).success).toBe(false);
+    expect(stored).toEqual(before);
+  });
 });
 
 describe("parseManagedExchangeRecord reader-rejects-unknown", () => {
@@ -346,32 +394,58 @@ describe("parseManagedExchangeRecord reader-rejects-unknown", () => {
     expect(() => parseManagedExchangeRecord(future)).toThrow();
   });
 
+  test("tells a later schemaVersion from a damaged or earlier one", () => {
+    const record = buildManagedExchangeRecord(newExchange());
+    expect(
+      storedRecordAheadOfThisBuild({
+        ...record,
+        schemaVersion: "alcove-managed-exchange/v5",
+      }),
+    ).toBe(true);
+    for (const schemaVersion of [
+      MANAGED_EXCHANGE_SCHEMA_VERSION,
+      "alcove-managed-exchange/v3",
+      "alcove-managed-exchange/v05",
+      "alcove-managed-exchange/damaged",
+    ])
+      expect(storedRecordAheadOfThisBuild({ ...record, schemaVersion })).toBe(
+        false,
+      );
+    expect(storedRecordAheadOfThisBuild({ ...record, label: 7 })).toBe(false);
+  });
+
   test("accepts the recognized v4 schemaVersion", () => {
     const record = buildManagedExchangeRecord(newExchange());
     expect(safeParseManagedExchangeRecord(record).success).toBe(true);
   });
 
-  test("rejects a record stored under the v2 literal", () => {
-    // A v2 record's condition cannot hold the operator's answer, so a reader that
-    // knows the answer refuses the record rather than reading it as unanswered and
-    // offering the fresh invitation the answer withholds.
+  test("refuses a record stored under the v2 literal by name", () => {
+    // A v2 record's condition cannot hold the operator's answer, and no step
+    // leads from the development literal, so the reader refuses it rather than
+    // reading it as unanswered.
     const stored = {
       ...buildManagedExchangeRecord(newExchange()),
       schemaVersion: "alcove-managed-exchange/v2",
     };
-    expect(safeParseManagedExchangeRecord(stored).success).toBe(false);
+    expect(() => parseManagedExchangeRecord(stored)).toThrow(
+      new FormatMigrationError(
+        MANAGED_EXCHANGE_MIGRATIONS,
+        "alcove-managed-exchange/v2",
+        MANAGED_EXCHANGE_SCHEMA_VERSION,
+        "it has no migration from version alcove-managed-exchange/v2",
+      ),
+    );
   });
 
   test("rejects a record stored under the v1 literal", () => {
-    // The shape a v1 record has: the older literal, and no `standingCondition`.
-    // The recovery is re-invite, so the reader refuses it rather than filling in
-    // the field.
     const stored: Record<string, unknown> = {
       ...buildManagedExchangeRecord(newExchange()),
       schemaVersion: "alcove-managed-exchange/v1",
     };
     delete stored.standingCondition;
-    expect(safeParseManagedExchangeRecord(stored).success).toBe(false);
+    expect(() => parseManagedExchangeRecord(stored)).toThrow(
+      FormatMigrationError,
+    );
   });
 
   test("rejects a record with no standingCondition: the field is required", () => {

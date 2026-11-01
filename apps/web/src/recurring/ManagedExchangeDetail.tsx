@@ -10,6 +10,7 @@ import {
   Textarea,
 } from "@mantine/core";
 import { Link } from "@tanstack/react-router";
+import { sanitizeErrorForDisplay } from "@alcove/core";
 
 import { downloadBlob, triggerBlobDownload } from "@components/blobDownload";
 
@@ -135,6 +136,7 @@ import type {
 import type { ConfigRow } from "./managedDetailModel";
 import type { DisclosureAccountingRead } from "@psi/disclosureAccountingStore";
 import type { DisclosureFact } from "./disclosureAccountingModel";
+import type { FormatMigrationError } from "@alcove/core";
 import type { ManagedReinviteFailureAlert } from "./managedRunRecoveryModel";
 import type { ManagedRunHolder } from "./managedRunHolder";
 import type { ParkedResultsRead } from "@psi/parkedResultsStore";
@@ -1516,7 +1518,11 @@ function DisclosureAccountingView({
       ) : read.kind === "stale-page" ? (
         <StalePageAccountingNotice stored={read.stored} />
       ) : read.kind === "unreadable" ? (
-        <UnreadableAccountingRecovery stored={read.stored} onReset={onReset} />
+        <UnreadableAccountingRecovery
+          stored={read.stored}
+          migrationFailure={read.migrationFailure}
+          onReset={onReset}
+        />
       ) : entries.length === 0 ? (
         <EmptyAccountingNotice
           completedRunOnRecord={completedRunOnRecord}
@@ -1623,10 +1629,33 @@ function UnfiledDisclosureNotice({
           title="A run's record is missing from this accounting"
           mt="sm"
         >
-          A run of this exchange disclosed your columns and its record was not
-          saved to the accounting below. The note of which run it was cannot be
-          read by this version of the app, so the run is not named here. The
-          accounting below is short at least one entry.
+          <p>
+            A run of this exchange disclosed your columns and its record was not
+            saved to the accounting below. The note of which run it was cannot
+            be read by this version of the app, so the run is not named here.
+            The accounting below is short at least one entry.
+          </p>
+          {read.migrationFailure !== undefined && (
+            <p>{sanitizeErrorForDisplay(read.migrationFailure)}</p>
+          )}
+        </Alert>
+      )}
+      {read?.kind === "stale-page" && (
+        <Alert
+          color="yellow"
+          title="A run's record is missing from this accounting"
+          mt="sm"
+        >
+          <p>
+            A run of this exchange disclosed your columns and its record was not
+            saved to the accounting below. The note of which run it was is from
+            a newer version of this app than this page is running, so the run is
+            not named here. The accounting below is short at least one entry.
+          </p>
+          <p>
+            Reload this page to use the current version, which names the run. If
+            a run is under way, reloading ends it.
+          </p>
         </Alert>
       )}
       {read?.kind === "unavailable" && (
@@ -1893,11 +1922,14 @@ function downloadStoredAccounting(stored: StoredDisclosureAccounting): void {
  * The reload is named rather than pressed: this section sits below the run
  * controls, a reload ends a run in progress, and the app's own update banner
  * holds the reload button, above every route.
+ *
+ * Where the accounting's own envelope is the later one, this build has no
+ * stored form to hand back, and the download is not offered.
  */
 function StalePageAccountingNotice({
   stored,
 }: {
-  stored: StoredDisclosureAccounting;
+  stored: StoredDisclosureAccounting | undefined;
 }) {
   return (
     <>
@@ -1918,28 +1950,33 @@ function StalePageAccountingNotice({
           is under way, reloading ends it.
         </p>
       </Alert>
-      <p className={`${styles.small} ${styles.sub}`}>
-        You can still download the records in the form they are stored in, for
-        your own files. This app version cannot read that file back or check it.
-      </p>
-      <div className={styles.savedRowActions} style={{ marginTop: "1rem" }}>
-        <Button
-          variant="default"
-          onClick={() => downloadStoredAccounting(stored)}
-        >
-          Download the stored records (JSON)
-        </Button>
-      </div>
+      {stored !== undefined && (
+        <>
+          <p className={`${styles.small} ${styles.sub}`}>
+            You can still download the records in the form they are stored in,
+            for your own files. This app version cannot read that file back or
+            check it.
+          </p>
+          <div className={styles.savedRowActions} style={{ marginTop: "1rem" }}>
+            <Button
+              variant="default"
+              onClick={() => downloadStoredAccounting(stored)}
+            >
+              Download the stored records (JSON)
+            </Button>
+          </div>
+        </>
+      )}
     </>
   );
 }
 
 /**
- * The recovery affordance for an accounting this build can no longer read: an
- * app upgrade moved the exchange-record format forward, the stored entries
- * stay admissible under the format they were written under, and the
- * validating read refuses them wholesale. Reached only for entries this build
- * is AHEAD of; the opposite direction is a stale page rather than a stranded
+ * The recovery affordance for an accounting this build cannot read: an earlier
+ * format whose migration failed, or a damaged value, which the validating read
+ * refuses wholesale. An earlier format that migrates reads as an accounting and
+ * never reaches this. Reached only for an envelope and entries this build is
+ * not BEHIND; the opposite direction is a stale page rather than a stranded
  * accounting, and takes {@link StalePageAccountingNotice}.
  *
  * Two arms, offered export-then-reset (see
@@ -1950,18 +1987,21 @@ function StalePageAccountingNotice({
  * failure is an append failure too. Reversing the order loses the record the
  * export would have saved.
  *
- * Whether the export is offered is read off the stored value: a
- * record-version bump leaves the envelope parsable and the entries come back
+ * Whether the export is offered is read off the stored value: an entry whose
+ * migration failed leaves the envelope parsable and the entries come back
  * whole; corruption that takes the envelope leaves nothing to hand over, and
  * that state says so. The reset is offered either way -- it is what restores
  * appendability -- but only behind an explicit confirm naming what is
- * destroyed and what is kept.
+ * destroyed and what is kept. A failed migration's refusal is shown beside
+ * the explanation, escaped here, so the operator sees which one this is.
  */
 function UnreadableAccountingRecovery({
   stored,
+  migrationFailure,
   onReset,
 }: {
   stored: StoredDisclosureAccounting | undefined;
+  migrationFailure: FormatMigrationError | undefined;
   onReset: () => Promise<void>;
 }) {
   // Whether the download was TAKEN here, not whether the file landed: the browser
@@ -1997,10 +2037,13 @@ function UnreadableAccountingRecovery({
       <Alert role="alert" color="red" title="This accounting could not be read">
         <p>
           The disclosure records stored for this exchange could not be read, so
-          they are not shown. This does not mean nothing was disclosed. An app
-          upgrade can leave a stored accounting unreadable to this version of
-          the app.
+          they are not shown. This does not mean nothing was disclosed. They are
+          damaged, or this version of the app could not convert them from the
+          format an earlier version stored them in.
         </p>
+        {migrationFailure !== undefined && (
+          <p>{sanitizeErrorForDisplay(migrationFailure)}</p>
+        )}
         <p>
           Until it is cleared, this exchange cannot add to it either: every run
           still discloses, and none of them files a record here.

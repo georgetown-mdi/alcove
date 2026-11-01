@@ -1,14 +1,24 @@
 import { describe, expect, test } from "vitest";
 
+import { FormatMigrationError } from "@alcove/core";
+
 import {
   UNFILED_DISCLOSURE_VERSION,
   noteUnfiledDisclosure,
   parseStoredUnfiledDisclosures,
+  storedNoteAheadOfThisBuild,
   unfiledDisclosureKey,
   unfiledDisclosuresAfterFiling,
   unfiledDisclosuresOf,
 } from "../../../src/psi/unfiledDisclosure.js";
 
+import {
+  UNMOVABLE_CAUSE,
+  UNMOVABLE_FIELD,
+  atPreviousVersion,
+  nextVersionOf,
+  previousVersionMigrations,
+} from "../../utils/storedFormatMigrations.js";
 import {
   disclosureRecord,
   neighbouringRecordVersion,
@@ -98,6 +108,71 @@ describe("noting a run", () => {
 
     expect(again).toBe(first);
     expect(later.entries).toHaveLength(2);
+  });
+});
+
+describe("a note an earlier version stored", () => {
+  const rename = { field: "entries", storedName: "runs" };
+  const migrations = previousVersionMigrations(
+    "The note",
+    "version",
+    UNFILED_DISCLOSURE_VERSION,
+    rename,
+  );
+
+  test("is migrated in memory, the stored value unchanged", () => {
+    const stored = atPreviousVersion(
+      noted([{ at: NOTED_AT }]) as unknown as Record<string, unknown>,
+      "version",
+      rename,
+    );
+    const before = structuredClone(stored);
+
+    expect(parseStoredUnfiledDisclosures(stored, migrations)).toEqual(
+      noted([{ at: NOTED_AT }]),
+    );
+    expect(stored).toEqual(before);
+  });
+
+  test("is written at the current version by the next note", () => {
+    const read = parseStoredUnfiledDisclosures(
+      atPreviousVersion(
+        noted([{ at: NOTED_AT }]) as unknown as Record<string, unknown>,
+        "version",
+        rename,
+      ),
+      migrations,
+    );
+
+    expect(
+      noteUnfiledDisclosure(read, { at: "2026-08-01T09:00:00.000Z" }),
+    ).toEqual(noted([{ at: NOTED_AT }, { at: "2026-08-01T09:00:00.000Z" }]));
+  });
+
+  test("whose migration fails is refused naming the cause, the stored value unchanged", () => {
+    const stored = {
+      ...atPreviousVersion(
+        noted([{ at: NOTED_AT }]) as unknown as Record<string, unknown>,
+        "version",
+        rename,
+      ),
+      [UNMOVABLE_FIELD]: true,
+    };
+    const before = structuredClone(stored);
+
+    expect(() => parseStoredUnfiledDisclosures(stored, migrations)).toThrow(
+      UNMOVABLE_CAUSE,
+    );
+    expect(stored).toEqual(before);
+  });
+
+  test("at a version no step leads from is refused by name", () => {
+    expect(() =>
+      parseStoredUnfiledDisclosures({
+        version: "alcove-unfiled-disclosure/v1",
+        entries: [],
+      }),
+    ).toThrow(FormatMigrationError);
   });
 });
 
@@ -191,5 +266,23 @@ describe("what filing leaves behind", () => {
     // Undefined rather than an empty note: the store removes the key, so an
     // exchange that owes nothing holds nothing.
     expect(left).toBeUndefined();
+  });
+});
+
+describe("whether a stored note is ahead of this build", () => {
+  test("a later note version is, and this, an earlier, or an unordered one is not", () => {
+    expect(
+      storedNoteAheadOfThisBuild({
+        version: nextVersionOf(UNFILED_DISCLOSURE_VERSION),
+        entries: [],
+      }),
+    ).toBe(true);
+    for (const version of [
+      UNFILED_DISCLOSURE_VERSION,
+      "alcove-unfiled-disclosure/v1",
+      "alcove-unfiled-disclosure/v03",
+      "alcove-disclosure-accounting/v9",
+    ])
+      expect(storedNoteAheadOfThisBuild({ version, entries: [] })).toBe(false);
   });
 });

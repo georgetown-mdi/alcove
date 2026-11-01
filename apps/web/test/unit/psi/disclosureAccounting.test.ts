@@ -1,15 +1,25 @@
 import { describe, expect, test } from "vitest";
 
-import { EXCHANGE_RECORD_VERSION } from "@alcove/core";
+import { EXCHANGE_RECORD_VERSION, FormatMigrationError } from "@alcove/core";
 
 import {
+  DISCLOSURE_ACCOUNTING_MIGRATIONS,
   DISCLOSURE_ACCOUNTING_VERSION,
   appendDisclosureRecord,
+  appendToStoredDisclosureAccounting,
   parseDisclosureAccounting,
   parseStoredDisclosureAccounting,
   storedEntriesAheadOfThisBuild,
+  storedEnvelopeAheadOfThisBuild,
 } from "../../../src/psi/disclosureAccounting.js";
 
+import {
+  UNMOVABLE_CAUSE,
+  UNMOVABLE_FIELD,
+  atPreviousVersion,
+  nextVersionOf,
+  previousVersionMigrations,
+} from "../../utils/storedFormatMigrations.js";
 import {
   disclosureRecord,
   neighbouringRecordVersion,
@@ -287,6 +297,41 @@ describe("telling a stranded accounting from a stale page", () => {
       expect(storedEntriesAheadOfThisBuild(storedWith([entry]))).toBe(false);
     }
   });
+
+  test("a later version written with a leading zero is not ahead", async () => {
+    const record = await disclosureRecord();
+    const later = neighbouringRecordVersion(1).replace("/v", "/v0");
+
+    expect(
+      storedEntriesAheadOfThisBuild(
+        storedWith([{ ...record, version: later }]),
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("whether a stored envelope is ahead of this build", () => {
+  test("a later envelope version is, whatever its entries", () => {
+    const later = nextVersionOf(DISCLOSURE_ACCOUNTING_VERSION);
+    expect(
+      storedEnvelopeAheadOfThisBuild({ version: later, entries: [] }),
+    ).toBe(true);
+    expect(storedEnvelopeAheadOfThisBuild({ version: later })).toBe(true);
+  });
+
+  test("this version, an earlier one, or one it cannot order is not", () => {
+    for (const version of [
+      DISCLOSURE_ACCOUNTING_VERSION,
+      "alcove-disclosure-accounting/v1",
+      "alcove-disclosure-accounting/v03",
+      "alcove-exchange-record/v99",
+      undefined,
+    ])
+      expect(storedEnvelopeAheadOfThisBuild({ version, entries: [] })).toBe(
+        false,
+      );
+    expect(storedEnvelopeAheadOfThisBuild(undefined)).toBe(false);
+  });
 });
 
 describe("the envelope-only read is scoped to the envelope, not an override", () => {
@@ -339,5 +384,128 @@ describe("the envelope-only read is scoped to the envelope, not an override", ()
         entries: "one disclosure",
       }),
     ).toThrow();
+  });
+});
+
+describe("an accounting an earlier version stored", () => {
+  const rename = { field: "entries", storedName: "records" };
+  const migrations = previousVersionMigrations(
+    "The accounting of disclosures",
+    "version",
+    DISCLOSURE_ACCOUNTING_VERSION,
+    rename,
+  );
+
+  test("is migrated in memory, the stored value unchanged", async () => {
+    const record = await disclosureRecord();
+    const stored = atPreviousVersion(
+      { version: DISCLOSURE_ACCOUNTING_VERSION, entries: [record] },
+      "version",
+      rename,
+    );
+    const before = structuredClone(stored);
+
+    expect(parseDisclosureAccounting(stored, migrations)).toEqual({
+      version: DISCLOSURE_ACCOUNTING_VERSION,
+      entries: [record],
+    });
+    expect(stored).toEqual(before);
+  });
+
+  test("is written at the current version by the next append", async () => {
+    const [first, next] = [await disclosureRecord(), await disclosureRecord()];
+    const stored = atPreviousVersion(
+      { version: DISCLOSURE_ACCOUNTING_VERSION, entries: [first] },
+      "version",
+      rename,
+    );
+
+    expect(
+      appendToStoredDisclosureAccounting(stored, next, migrations),
+    ).toEqual({
+      version: DISCLOSURE_ACCOUNTING_VERSION,
+      entries: [first, next],
+    });
+    expect(
+      appendToStoredDisclosureAccounting(stored, first, migrations),
+    ).toEqual({ version: DISCLOSURE_ACCOUNTING_VERSION, entries: [first] });
+  });
+
+  test("whose migration fails is refused naming the cause, the stored value unchanged", async () => {
+    const stored = {
+      ...atPreviousVersion(
+        {
+          version: DISCLOSURE_ACCOUNTING_VERSION,
+          entries: [await disclosureRecord()],
+        },
+        "version",
+        rename,
+      ),
+      [UNMOVABLE_FIELD]: true,
+    };
+    const before = structuredClone(stored);
+    const next = await disclosureRecord();
+
+    expect(() => parseStoredDisclosureAccounting(stored, migrations)).toThrow(
+      UNMOVABLE_CAUSE,
+    );
+    expect(() =>
+      appendToStoredDisclosureAccounting(stored, next, migrations),
+    ).toThrow(UNMOVABLE_CAUSE);
+    expect(stored).toEqual(before);
+  });
+
+  test("at a version no step leads from is refused by name", () => {
+    expect(() =>
+      parseStoredDisclosureAccounting({
+        version: "alcove-disclosure-accounting/v1",
+        entries: [],
+      }),
+    ).toThrow(
+      new FormatMigrationError(
+        DISCLOSURE_ACCOUNTING_MIGRATIONS,
+        "alcove-disclosure-accounting/v1",
+        DISCLOSURE_ACCOUNTING_VERSION,
+        "it has no migration from version alcove-disclosure-accounting/v1",
+      ),
+    );
+  });
+});
+
+describe("the append writes the stored entries as they sit at rest", () => {
+  test("a stored entry is written back as the value at rest, not a parse of it", async () => {
+    // An entry is a past exchange record, never rewritten: the append writes
+    // the stored value, not the reading the accounting's display takes of it.
+    // The browser suite drives this with an entry a step migrates.
+    const entry = await disclosureRecord();
+    const stored = { version: DISCLOSURE_ACCOUNTING_VERSION, entries: [entry] };
+    const next = await disclosureRecord();
+
+    const written = appendToStoredDisclosureAccounting(stored, next);
+
+    expect(written.entries[0]).toBe(entry);
+    expect(written.entries[1]).toBe(next);
+  });
+
+  test("starts an accounting where none is stored", async () => {
+    const record = await disclosureRecord();
+    expect(appendToStoredDisclosureAccounting(undefined, record)).toEqual({
+      version: DISCLOSURE_ACCOUNTING_VERSION,
+      entries: [record],
+    });
+  });
+
+  test("refuses an accounting holding an entry this build cannot read", async () => {
+    const stranded = {
+      ...(await disclosureRecord()),
+      version: neighbouringRecordVersion(-1),
+    };
+    const next = await disclosureRecord();
+    expect(() =>
+      appendToStoredDisclosureAccounting(
+        { version: DISCLOSURE_ACCOUNTING_VERSION, entries: [stranded] },
+        next,
+      ),
+    ).toThrow(FormatMigrationError);
   });
 });

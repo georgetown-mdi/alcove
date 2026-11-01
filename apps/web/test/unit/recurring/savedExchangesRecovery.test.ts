@@ -1,10 +1,20 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  FormatMigrationError,
+  migrateOnRead,
+  sanitizeErrorForDisplay,
+} from "@alcove/core";
+
+import {
+  LATER_VERSION_RECORDS_CAUSE,
+  LATER_VERSION_RECORD_LABEL,
   STATE_UNREADABLE_NOTE,
+  UNREADABLE_RECORDS_CAUSE,
   UNREADABLE_RECORD_LABEL,
   recoveryRow,
   recoveryRows,
+  savedExchangesFailedCauses,
 } from "@recurring/savedExchangesRecovery";
 
 import type { ManagedExchangeDiagnosticEntry } from "@psi/managed/managedExchangeStore";
@@ -109,6 +119,45 @@ describe("recoveryRow", () => {
     expect(row.sideLabel).toBeUndefined();
     expect(row.lastRunAt).toBeUndefined();
     expect(row.unreadable).toBe(true);
+    expect(row.migrationFailure).toBeUndefined();
+  });
+
+  test("an unreadable entry whose migration failed shows the refusal, escaped", () => {
+    let refusal: unknown;
+    try {
+      migrateOnRead(
+        { schemaVersion: "alcove-managed-exchange/v3\u0007", label: "x" },
+        {
+          fileName: "A saved exchange",
+          versionField: "schemaVersion",
+          current: "alcove-managed-exchange/v4",
+          steps: [
+            {
+              from: "alcove-managed-exchange/v3\u0007",
+              to: "alcove-managed-exchange/v4",
+              migrate: () => {
+                throw new Error("the step cannot move it");
+              },
+            },
+          ],
+          failureRemedy: "Remove it.",
+        },
+      );
+    } catch (error) {
+      refusal = error;
+    }
+    expect(refusal).toBeInstanceOf(FormatMigrationError);
+
+    const row = recoveryRow({
+      kind: "unreadable",
+      id: "bad-key",
+      backedUp: false,
+      migrationFailure: refusal as FormatMigrationError,
+    });
+
+    expect(row.migrationFailure).toBe(sanitizeErrorForDisplay(refusal));
+    expect(row.migrationFailure).toContain("the step cannot move it");
+    expect(row.migrationFailure).not.toContain("\u0007");
   });
 
   test("a readable entry whose saved state cannot be read keeps its essentials and says so", () => {
@@ -138,6 +187,61 @@ describe("recoveryRow", () => {
       recoveryRow({ kind: "unreadable", id: "bad-key", backedUp: true })
         .backedUp,
     ).toBe(true);
+  });
+});
+
+describe("a record a newer version saved", () => {
+  const later: ManagedExchangeDiagnosticEntry = {
+    kind: "later-version",
+    id: "later-key",
+    backedUp: true,
+  };
+
+  test("shows its fixed label, offers no delete, and keeps its custody", () => {
+    expect(recoveryRow(later)).toEqual({
+      id: "later-key",
+      label: LATER_VERSION_RECORD_LABEL,
+      deleteLabel: "",
+      unreadable: true,
+      laterVersion: true,
+      stateUnreadable: false,
+      backedUp: true,
+    });
+  });
+
+  test("is stated as a newer version's, never as damaged", () => {
+    expect(savedExchangesFailedCauses(recoveryRows([later]))).toEqual([
+      LATER_VERSION_RECORDS_CAUSE,
+    ]);
+  });
+
+  test("beside a damaged record states both causes", () => {
+    expect(
+      savedExchangesFailedCauses(
+        recoveryRows([
+          later,
+          { kind: "unreadable", id: "bad-key", backedUp: false },
+        ]),
+      ),
+    ).toEqual([LATER_VERSION_RECORDS_CAUSE, UNREADABLE_RECORDS_CAUSE]);
+  });
+});
+
+describe("savedExchangesFailedCauses", () => {
+  test("states the unreadable cause for a damaged record, or when no row names one", () => {
+    expect(
+      savedExchangesFailedCauses(
+        recoveryRows([{ kind: "unreadable", id: "bad-key", backedUp: false }]),
+      ),
+    ).toEqual([UNREADABLE_RECORDS_CAUSE]);
+    expect(savedExchangesFailedCauses([])).toEqual([UNREADABLE_RECORDS_CAUSE]);
+    expect(savedExchangesFailedCauses(recoveryRows([readable()]))).toEqual([
+      UNREADABLE_RECORDS_CAUSE,
+    ]);
+  });
+
+  test("states nothing while the rows are loading", () => {
+    expect(savedExchangesFailedCauses(undefined)).toEqual([]);
   });
 });
 

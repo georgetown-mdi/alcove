@@ -278,12 +278,12 @@ A managed web exchange keeps an accounting of disclosures:
 one stored value per exchange, holding its runs' exchange records verbatim,
 and the source an operator draws a HIPAA 164.528 accounting or a FERPA 99.32 disclosure record from
 ([MANAGED_EXCHANGE_RECORD.md](../spec/MANAGED_EXCHANGE_RECORD.md), "The accounting of disclosures").
-The reader rejects an unrecognized version rather than migrating it,
-so moving `EXCHANGE_RECORD_VERSION` invalidates, on every device holding one, an accounting nothing else holds a copy of.
+The reader migrates an entry at an earlier version only where a step leads from it,
+so moving `EXCHANGE_RECORD_VERSION` with no step from the version before it invalidates, on every device holding one, an accounting nothing else holds a copy of.
 The read refuses the whole value, and so does the append, which re-reads the accounting inside its own transaction:
 a still-scheduled exchange goes on disclosing and files nothing, unattended.
 
-The recovery is built: the stored-form export and the accounting-scoped reset, offered in that order from the unreadable state.
+The recovery is built: the stored-form export and the accounting-scoped reset, offered in that order from the unreadable state, which only a failed migration or damage reaches.
 It rests on an assumption only the current format has been driven against:
 that a move invalidates the entries and leaves the accounting envelope readable, so the entries come back whole.
 An assumption about a format that does not exist yet cannot be tested ahead of the bump, so the literal is pinned.

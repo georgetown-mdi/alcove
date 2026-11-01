@@ -1,4 +1,5 @@
 import {
+  FormatMigrationError,
   KeyFileSchema,
   generateSharedSecret,
   getDefaultLinkageTerms,
@@ -400,15 +401,60 @@ describe("rejection of malformed or tampered imports", () => {
     ).toThrow();
   });
 
-  test("an artifact written under the previous version is refused whole", () => {
-    // A v2 file predates the operator's answer to a standing condition. The
-    // version is what this build reads it on, so an older file is refused entire
-    // rather than imported as a record, exactly as an older stored record is.
+  test("an artifact at a version no migration leads from is refused by name", () => {
     const artifact = JSON.parse(goodBytes());
+    artifact.artifactVersion = "alcove-managed-exchange-backup/v1";
+    const bytes = JSON.stringify(artifact);
+    expect(() => importManagedExchangeArtifact(bytes)).toThrow(
+      FormatMigrationError,
+    );
+    expect(() => importManagedExchangeArtifact(bytes)).toThrow(
+      "The backup file is format version alcove-managed-exchange-backup/v1, " +
+        "and this version of Alcove could not move it to version " +
+        `${MANAGED_EXCHANGE_ARTIFACT_VERSION}: it has no migration from ` +
+        "version alcove-managed-exchange-backup/v1.",
+    );
+  });
+
+  test("an artifact tagged v2 is refused naming the cause and no value from it", () => {
+    // No build wrote this tag, so no step leads from it.
+    const record = runnableRecord(newExchange({ label: "Riverbend 2026" }));
+    const artifact = JSON.parse(
+      serializeManagedExchangeArtifact(encodeManagedExchangeArtifact(record)),
+    );
     artifact.artifactVersion = "alcove-managed-exchange-backup/v2";
-    expect(() =>
-      importManagedExchangeArtifact(JSON.stringify(artifact)),
-    ).toThrow();
+    artifact.local.standingCondition = {
+      since: "2026-07-10T09:00:00.000Z",
+      kind: "auth",
+      response: { kind: "compromise", at: "2026-07-11T10:30:00.000Z" },
+    };
+    const bytes = JSON.stringify(artifact);
+
+    let caught: unknown;
+    try {
+      importManagedExchangeArtifact(bytes);
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(FormatMigrationError);
+    const message = (caught as Error).message;
+    expect(message).toBe(
+      "The backup file is format version alcove-managed-exchange-backup/v2, " +
+        "and this version of Alcove could not move it to version " +
+        `${MANAGED_EXCHANGE_ARTIFACT_VERSION}: it has no migration from ` +
+        "version alcove-managed-exchange-backup/v2. The file was not " +
+        "changed. Export the backup again from the device that holds the " +
+        "exchange, or set up a new exchange with your partner.",
+    );
+    for (const value of [
+      record.label,
+      record.sharedSecret,
+      "2026-07-10T09:00:00.000Z",
+      "2026-07-11T10:30:00.000Z",
+      "compromise",
+    ])
+      expect(message).not.toContain(value);
   });
 
   test("an unknown top-level key is rejected (reader-rejects-unknown)", () => {

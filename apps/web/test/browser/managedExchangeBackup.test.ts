@@ -871,7 +871,7 @@ describe("a backup replaces the saved copy it is chosen for", () => {
 });
 
 /** Plant an invalid record under `id`, keeping every other field of `fields`, so a
- * test stages the record an app upgrade left unreadable. Bypasses the validating
+ * test stages a damaged record. Bypasses the validating
  * write, as no supported path stores one. */
 async function plantUnreadable(id: string, fields: object): Promise<void> {
   const db = await openManagedExchangeDatabase();
@@ -881,9 +881,11 @@ async function plantUnreadable(id: string, fields: object): Promise<void> {
         MANAGED_EXCHANGE_STORE_NAME,
         "readwrite",
       );
-      transaction
-        .objectStore(MANAGED_EXCHANGE_STORE_NAME)
-        .put({ ...fields, id, schemaVersion: "alcove-managed-exchange/v5" });
+      transaction.objectStore(MANAGED_EXCHANGE_STORE_NAME).put({
+        ...fields,
+        id,
+        schemaVersion: "alcove-managed-exchange/damaged",
+      });
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error);
       transaction.onabort = () => reject(transaction.error);

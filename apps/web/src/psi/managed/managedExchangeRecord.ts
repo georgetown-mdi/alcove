@@ -29,9 +29,11 @@ import {
   UsageError,
   assembleExchangeSpec,
   connectionFromLocator,
+  declaresLaterFormatVersion,
   deriveAcceptedLinkageTerms,
   matchingKeyUnavailableReason,
   maxCodeUnits,
+  migrateOnRead,
   termsStatingDeclaredPayloadSend,
 } from "@alcove/core";
 
@@ -46,6 +48,7 @@ import type {
   ColumnMetadata,
   ConnectionConfig,
   ExchangeSpec,
+  FormatMigrations,
   KeyFile,
   LinkageTerms,
   MatchingKeyUnavailableReason,
@@ -59,46 +62,50 @@ import type { DisclosureChoice } from "../metadataEditing";
 import type { ZodType } from "zod";
 
 /**
- * The single recognized `schemaVersion` literal for the v4 record. A reader
- * rejects any other value rather than migrating it (the reader-rejects-unknown
- * rule), the earlier literals among them: a v1 record has no
- * {@link ManagedExchangeRecord.standingCondition} at all, and a v2 one's
- * condition holds no {@link ManagedStandingResponse}. The literal moves for that
- * member because a build not knowing it would read the record and offer a fresh
- * invitation over an answer it cannot see; the whole record is refused instead,
- * and the recovery is re-invite rather than a migration. A later shape change is
- * a new literal under a new version, never an existing version holding
- * speculative fields.
+ * The `schemaVersion` literal this build writes for the v4 record. A reader
+ * migrates an earlier version {@link MANAGED_EXCHANGE_MIGRATIONS} leads from
+ * and refuses any other value. The literal moves for a member a build not
+ * knowing it would read past and lose state by, such as the
+ * {@link ManagedStandingResponse}: such a build refuses the record whole
+ * rather than offering a fresh invitation over an answer it cannot see. A
+ * later shape change is a new literal under a new version, never an existing
+ * version holding speculative fields.
  */
 export const MANAGED_EXCHANGE_SCHEMA_VERSION = "alcove-managed-exchange/v4";
 
 /**
- * The single recognized `artifactVersion` literal for the v3 export/import
+ * The managed record's migrations, run in memory at every read of the store.
+ * A migrated record is written at the current version by the next store
+ * write that changes it, never by a read. The earlier literals are
+ * development ones no step leads from.
+ */
+export const MANAGED_EXCHANGE_MIGRATIONS: FormatMigrations<string> =
+  Object.freeze({
+    fileName: "A saved exchange",
+    versionField: "schemaVersion",
+    current: MANAGED_EXCHANGE_SCHEMA_VERSION,
+    steps: Object.freeze([]),
+    unchangedStatement: "The saved exchange was not changed.",
+    failureRemedy:
+      "Remove it from the list of saved exchanges, then import its backup " +
+      "file or set the exchange up again with your partner.",
+  });
+
+/**
+ * The `artifactVersion` literal this build writes for the v3 export/import
  * artifact (see {@link ./managedExchangeArtifact.ts}). Distinct from
  * {@link MANAGED_EXCHANGE_SCHEMA_VERSION}: the artifact is a separate on-disk
  * format (the embedded document plus the key pair plus the local block), so it
- * versions independently of the stored record. A reader rejects any other value
- * rather than migrating it, {@link MANAGED_EXCHANGE_PREVIOUS_ARTIFACT_VERSION}
- * among them. The literal moves for the {@link ManagedStandingResponse} nested
- * in a raised condition: a build that does not know the member reads it with a
- * schema that drops what it cannot name, so it would import a condition
- * stripped of the operator's answer and offer a fresh invitation over it. The
- * whole file is refused on the literal instead, and the recovery is an export
- * taken from a build that matches.
+ * versions independently of the stored record. A reader migrates an earlier
+ * version a step leads from and refuses any other value. The literal moves
+ * for the {@link ManagedStandingResponse} nested in a raised condition: a
+ * build that does not know the member reads it with a schema that drops what
+ * it cannot name, so it would import a condition stripped of the operator's
+ * answer and offer a fresh invitation over it. The whole file is refused on
+ * the literal instead.
  */
 export const MANAGED_EXCHANGE_ARTIFACT_VERSION =
   "alcove-managed-exchange-backup/v3";
-
-/**
- * The `artifactVersion` literal of the artifact format this one replaced. Every
- * backup taken before the operator's response existed holds it, and no build
- * reads one again. It is kept so the import can tell such a file from an
- * unreadable one and from a newer build's export, whose remedies are not an
- * older file's: the recovery here is a fresh exchange, not a version to move
- * between.
- */
-export const MANAGED_EXCHANGE_PREVIOUS_ARTIFACT_VERSION =
-  "alcove-managed-exchange-backup/v2";
 
 /**
  * Upper bound on the operator's {@link ManagedExchangeRecord.label}, in
@@ -399,8 +406,8 @@ export const NO_STANDING_CONDITION: ManagedStandingConditionNone = {
  * docs/spec/MANAGED_EXCHANGE_RECORD.md for the field-by-field shape.
  */
 export interface ManagedExchangeRecord {
-  /** The single recognized v4 literal; a reader rejects an unrecognized value
-   * rather than migrating (see {@link MANAGED_EXCHANGE_SCHEMA_VERSION}). */
+  /** The v4 literal; a reader migrates an earlier version or refuses it (see
+   * {@link MANAGED_EXCHANGE_SCHEMA_VERSION}). */
   schemaVersion: typeof MANAGED_EXCHANGE_SCHEMA_VERSION;
   /** Locally-generated identifier for this managed exchange, distinct from any
    * rendezvous id. Used only to name the record in local UI; never sent. */
@@ -776,21 +783,40 @@ const ManagedExchangeRecordSchema: ZodType<ManagedExchangeRecord> = z
 
 /**
  * Parse and validate a value read from the store as a {@link ManagedExchangeRecord}.
- * Throws on an unrecognized `schemaVersion`, an over-long label, a malformed
- * secret, or a document holding an `authentication` block, rather than migrating
- * or silently accepting -- the reader-rejects-unknown rule.
+ * An earlier `schemaVersion` a migration reads is migrated in memory, `raw` left
+ * as it is. Throws on any other `schemaVersion`, an over-long label, a malformed
+ * secret, or a document holding an `authentication` block, rather than silently
+ * accepting.
  *
+ * @param migrations the record's migrations; this build's by default.
+ * @throws {FormatMigrationError} if a migration fails, naming its cause.
  * @throws {ZodError} if the value is not a valid v4 record.
  */
 export function parseManagedExchangeRecord(
   raw: unknown,
+  migrations: FormatMigrations<string> = MANAGED_EXCHANGE_MIGRATIONS,
 ): ManagedExchangeRecord {
-  return ManagedExchangeRecordSchema.parse(raw);
+  return ManagedExchangeRecordSchema.parse(migrateOnRead(raw, migrations));
 }
 
 /** Non-throwing {@link parseManagedExchangeRecord}. */
-export function safeParseManagedExchangeRecord(raw: unknown) {
-  return ManagedExchangeRecordSchema.safeParse(raw);
+export function safeParseManagedExchangeRecord(
+  raw: unknown,
+):
+  | { success: true; data: ManagedExchangeRecord }
+  | { success: false; error: unknown } {
+  try {
+    return { success: true, data: parseManagedExchangeRecord(raw) };
+  } catch (error) {
+    return { success: false, error };
+  }
+}
+
+/** Whether `raw`, a value read from the store, declares a `schemaVersion`
+ * later than this build's: a record a later build wrote, which this page
+ * being behind explains, never a damaged one. */
+export function storedRecordAheadOfThisBuild(raw: unknown): boolean {
+  return declaresLaterFormatVersion(raw, MANAGED_EXCHANGE_MIGRATIONS);
 }
 
 /**

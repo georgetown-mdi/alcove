@@ -9,7 +9,11 @@
  * docs/spec/MANAGED_EXCHANGE_RECORD.md).
  */
 
-import { canonicalString, deriveHistoryVerifier } from "@alcove/core";
+import {
+  FormatMigrationError,
+  canonicalString,
+  deriveHistoryVerifier,
+} from "@alcove/core";
 
 import {
   clearUnfiledExchangeFlag,
@@ -46,6 +50,7 @@ import {
   runnableManagedExchangeOrRefuse,
   safeParseManagedExchangeRecord,
   standingCompromiseResponse,
+  storedRecordAheadOfThisBuild,
 } from "./managedExchangeRecord";
 import {
   decideCommandLinePairTarget,
@@ -298,11 +303,12 @@ export async function putManagedExchange(
 
 /**
  * Read one managed exchange record by `id`, or `undefined` when none exists. The
- * stored value is re-validated through {@link parseManagedExchangeRecord}, so a
- * record whose `schemaVersion` the current build does not recognize -- or one an
- * app upgrade has otherwise invalidated -- rejects loudly rather than loading
- * (the recovery is re-invite, not migration).
+ * stored value is re-validated through {@link parseManagedExchangeRecord}, which
+ * migrates an earlier version in memory and leaves the stored value as it is;
+ * a record whose migration fails, or whose `schemaVersion` the current build
+ * does not read, rejects loudly rather than loading.
  *
+ * @throws {FormatMigrationError} if the stored value's migration fails.
  * @throws {ZodError} if the stored value is not a valid v4 record.
  */
 export async function getManagedExchange(
@@ -316,8 +322,8 @@ export async function getManagedExchange(
 /**
  * Read every managed exchange record. Each stored value is re-validated through
  * {@link parseManagedExchangeRecord}; a single invalid record rejects the whole
- * read rather than silently dropping it, so a corrupted or app-upgrade-
- * invalidated store surfaces rather than partially loading.
+ * read rather than silently dropping it, so a corrupted store, or one holding a
+ * record whose migration fails, shows rather than partially loading.
  *
  * @throws {ZodError} if any stored value is not a valid v4 record.
  */
@@ -380,7 +386,12 @@ export async function listReadableManagedExchanges(): Promise<ManagedExchangeRea
  * note shows on the recovery path exactly as on the normal list. A boolean
  * suffices for the backup marker, whose timestamp is never shown here. A
  * readable entry whose sibling entry does not parse holds `stateUnreadable`:
- * its page cannot load, so nothing it holds can be exported first.
+ * its page cannot load, so nothing it holds can be exported first. An
+ * unreadable entry whose migration failed holds the refusal
+ * (`migrationFailure`), its message naming the versions and the cause. A
+ * record whose `schemaVersion` is later than this build's is `later-version`
+ * instead: a later build wrote it, and this page is behind rather than the
+ * record damaged.
  */
 export type ManagedExchangeDiagnosticEntry =
   | {
@@ -393,7 +404,9 @@ export type ManagedExchangeDiagnosticEntry =
       kind: "unreadable";
       id: string;
       backedUp: boolean;
-    };
+      migrationFailure?: FormatMigrationError;
+    }
+  | { kind: "later-version"; id: string; backedUp: boolean };
 
 /**
  * Read every stored entry for the read-failed recovery listing, per-record and
@@ -404,7 +417,8 @@ export type ManagedExchangeDiagnosticEntry =
  * normal list cannot load.
  *
  * SECURITY: entries hold display essentials only (label, side, dates, key) plus
- * the sibling custody, which has no secret material and no rotation epoch; the
+ * the sibling custody, which has no secret material and no rotation epoch, and
+ * a failed migration's refusal, whose message names versions and no value; the
  * `sharedSecret`, the document, the folder handle, and the backup marker's timestamp
  * never leave the diagnostic extraction. Keyed off the store's own keys rather than
  * the parsed records, so an unreadable entry still yields a key to delete by.
@@ -456,13 +470,24 @@ export async function listManagedExchangesDiagnostic(): Promise<
                 essentials: diagnoseManagedExchangeRecord(values[index]),
                 ...custody,
               });
-            } catch {
+            } catch (error) {
               // The parse failed, so the record's own `id` is untrusted; the store
               // key is the delete target instead, and the only field shown.
+              if (storedRecordAheadOfThisBuild(values[index])) {
+                entries.push({
+                  kind: "later-version",
+                  id: key,
+                  backedUp: custody.backedUp,
+                });
+                continue;
+              }
               entries.push({
                 kind: "unreadable",
                 id: key,
                 backedUp: custody.backedUp,
+                ...(error instanceof FormatMigrationError
+                  ? { migrationFailure: error }
+                  : {}),
               });
             }
           }

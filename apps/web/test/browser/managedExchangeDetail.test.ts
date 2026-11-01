@@ -2,7 +2,12 @@
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { getDefaultLinkageTerms, inferMetadata } from "@alcove/core";
+import {
+  FormatMigrationError,
+  getDefaultLinkageTerms,
+  inferMetadata,
+  migrateOnRead,
+} from "@alcove/core";
 
 import { page, userEvent } from "vitest/browser";
 
@@ -11,6 +16,7 @@ import { createElement } from "react";
 import "@mantine/core/styles.css";
 
 import {
+  DISCLOSURE_ACCOUNTING_MIGRATIONS,
   DISCLOSURE_ACCOUNTING_VERSION,
   appendDisclosureRecord,
 } from "@psi/disclosureAccounting";
@@ -69,6 +75,7 @@ import {
   partnerScheduleText,
 } from "@recurring/scheduleSurfacingModel";
 import { PARTNER_SCHEDULE_NOT_A_SCHEDULE } from "@recurring/scheduleEntryModel";
+import { UNFILED_DISCLOSURE_MIGRATIONS } from "@psi/unfiledDisclosure";
 
 import {
   disclosureRecord,
@@ -79,6 +86,7 @@ import { createAppMount, flushPendingUpdates } from "./renderApp";
 import { captureDownloads } from "./captureDownloads";
 import { expectNoAccessibilityViolations } from "./accessibilityRules";
 
+import type { FormatMigrations, WebRTCExchangeLocator } from "@alcove/core";
 import type {
   ManagedExchangeFailureKind,
   ManagedExchangeLocalEdits,
@@ -91,7 +99,6 @@ import type { DisclosureAccountingRead } from "@psi/disclosureAccountingStore";
 import type { ManagedReinviteFailureAlert } from "@recurring/managedRunRecoveryModel";
 import type { ParkedResultsRead } from "@psi/parkedResultsStore";
 import type { UnfiledDisclosureRead } from "@psi/unfiledDisclosureStore";
-import type { WebRTCExchangeLocator } from "@alcove/core";
 
 // The managed exchange detail sections, rendered: the read-only configuration with
 // its re-invite affordance (never an edit control over the terms), the editable
@@ -2878,7 +2885,7 @@ describe("managed exchange detail accounting of disclosures", () => {
     // export from this state, and a record file only where one was downloaded --
     // which an unattended run never offered.
     await expect
-      .element(page.getByText("An app upgrade can leave", { exact: false }))
+      .element(page.getByText("could not convert them", { exact: false }))
       .toBeInTheDocument();
     await expect
       .element(page.getByText("no export of it from here", { exact: false }))
@@ -3417,6 +3424,172 @@ describe("recovering an accounting this version cannot read", () => {
   });
 });
 
+/** The refusal migrating `document` under `migrations` raises. */
+function migrationRefusal(
+  document: Record<string, unknown>,
+  migrations: FormatMigrations<string>,
+): FormatMigrationError {
+  try {
+    migrateOnRead(document, migrations);
+  } catch (error) {
+    if (error instanceof FormatMigrationError) return error;
+  }
+  throw new Error("the document was not refused");
+}
+
+describe("why an accounting or its note could not be read", () => {
+  function renderReads(
+    accountingRead: DisclosureAccountingRead,
+    unfiledDisclosureRead: UnfiledDisclosureRead,
+  ) {
+    app.render(
+      createElement(ManagedExchangeDetail, {
+        record: record("inviter"),
+        parkedResultsRead: { kind: "none" },
+        accountingRead,
+        unfiledDisclosureRead,
+        unrecordedRunFlagged: false,
+        onUnrecordedRunFlagShown: () => undefined,
+        onFileUnfiledDisclosures: () => Promise.resolve(),
+        onResetAccounting: () => Promise.resolve(),
+        onRetryAccountingRead: () => undefined,
+        onRetryParkedResultsRead: () => undefined,
+        onClearParkedResults: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
+        onSaveLocalFields: () => Promise.resolve(),
+        onTermsChanged: () => undefined,
+        onRelayRegistrationChanged: () => undefined,
+        onReinviteToChangeTerms: () => undefined,
+        canReinvite: true,
+        reinviting: false,
+        reinviteFailure: undefined,
+        compromiseResponse: false,
+        runInFlight: false,
+        runHolder: undefined,
+        onStopRunAndReinvite: () => undefined,
+        onRunLockRefused: () => undefined,
+        onRecheckRunLock: () => undefined,
+      }),
+    );
+  }
+
+  test("a failed migration of the accounting shows its refusal, naming no value", async () => {
+    const filed = await disclosureRecord({
+      partnerIdentity: "Riverbend Schools",
+    });
+    const refusal = migrationRefusal(
+      { version: "alcove-disclosure-accounting/v1", entries: [filed] },
+      DISCLOSURE_ACCOUNTING_MIGRATIONS,
+    );
+
+    renderReads(
+      { kind: "unreadable", stored: undefined, migrationFailure: refusal },
+      { kind: "none" },
+    );
+
+    await expect.element(page.getByText(refusal.message)).toBeInTheDocument();
+    await expect
+      .element(page.getByText("This accounting could not be read"))
+      .toBeInTheDocument();
+    for (const value of ["Riverbend Schools", filed.bindingNonce])
+      expect(document.body.textContent).not.toContain(value);
+  });
+
+  test("a damaged accounting shows no refusal of a migration", async () => {
+    renderReads({ kind: "unreadable", stored: undefined }, { kind: "none" });
+
+    await expect
+      .element(page.getByText("This accounting could not be read"))
+      .toBeInTheDocument();
+    expect(
+      page.getByText("could not move it to version", { exact: false }).query(),
+    ).toBeNull();
+  });
+
+  test("a failed migration of the note shows its refusal, naming no value", async () => {
+    const filed = await disclosureRecord({
+      partnerIdentity: "Riverbend Schools",
+    });
+    const refusal = migrationRefusal(
+      {
+        version: "alcove-unfiled-disclosure/v1",
+        entries: [{ at: filed.createdAt, record: filed }],
+      },
+      UNFILED_DISCLOSURE_MIGRATIONS,
+    );
+
+    renderReads(
+      { kind: "none" },
+      { kind: "unreadable", migrationFailure: refusal },
+    );
+
+    await expect.element(page.getByText(refusal.message)).toBeInTheDocument();
+    await expect
+      .element(
+        page.getByText("its record was not saved to the accounting below", {
+          exact: false,
+        }),
+      )
+      .toBeInTheDocument();
+    for (const value of [
+      "Riverbend Schools",
+      filed.bindingNonce,
+      filed.createdAt,
+    ])
+      expect(document.body.textContent).not.toContain(value);
+  });
+
+  test("an accounting a newer version wrote asks for a reload, offering no reset and no download", async () => {
+    renderReads({ kind: "stale-page", stored: undefined }, { kind: "none" });
+
+    await expect
+      .element(
+        page.getByText("running an older version of Alcove", { exact: false }),
+      )
+      .toBeInTheDocument();
+    expect(
+      page.getByRole("button", { name: "Start a fresh accounting" }).query(),
+    ).toBeNull();
+    expect(
+      page
+        .getByRole("button", { name: "Download the stored records (JSON)" })
+        .query(),
+    ).toBeNull();
+    expect(
+      page.getByText("could not convert them", { exact: false }).query(),
+    ).toBeNull();
+  });
+
+  test("a note a newer version wrote asks for a reload", async () => {
+    renderReads({ kind: "none" }, { kind: "stale-page" });
+
+    await expect
+      .element(
+        page.getByText("from a newer version of this app", { exact: false }),
+      )
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByText("Reload this page", { exact: false }))
+      .toBeInTheDocument();
+  });
+
+  test("a damaged note shows no refusal of a migration", async () => {
+    renderReads({ kind: "none" }, { kind: "unreadable" });
+
+    await expect
+      .element(
+        page.getByText("its record was not saved to the accounting below", {
+          exact: false,
+        }),
+      )
+      .toBeInTheDocument();
+    expect(
+      page.getByText("could not move it to version", { exact: false }).query(),
+    ).toBeNull();
+  });
+});
+
 /**
  * The reverse skew: entries a NEWER build filed, read by a page still running the
  * code it loaded with. The app makes this reachable -- a new deployment's worker
@@ -3501,7 +3674,7 @@ describe("an accounting a newer version of the app filed", () => {
     ).toBeNull();
     expect(
       page
-        .getByText("An app upgrade can leave a stored accounting", {
+        .getByText("could not convert them", {
           exact: false,
         })
         .query(),

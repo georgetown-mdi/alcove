@@ -2,6 +2,8 @@ import { describe, expect, test } from "vitest";
 
 import {
   FormatMigrationError,
+  declaresLaterFormatVersion,
+  formatVersionFollows,
   formatVersionPrecedes,
   migrateOnRead,
   migrationChainEnd,
@@ -99,6 +101,18 @@ describe("migrateOnRead", () => {
     );
     expect(JSON.stringify(raw)).toBe(before);
   });
+
+  test("states what was left unchanged in the format's own words", () => {
+    expect(() =>
+      migrateOnRead(
+        { version: 2, renamed: "unmovable" },
+        { ...MIGRATIONS, unchangedStatement: "The stored copy was kept." },
+      ),
+    ).toThrow(
+      "could not move it to version 3: the renamed field cannot be split. " +
+        "The stored copy was kept. Use the version that wrote it.",
+    );
+  });
 });
 
 describe("an earlier version no chain of steps leads from", () => {
@@ -161,9 +175,72 @@ describe("formatVersionPrecedes", () => {
     ["alcove-x/v10", "alcove-x/v2", false],
     ["alcove-y/v1", "alcove-x/v2", false],
     ["alcove-x/v1-synthetic", "alcove-x/v2", false],
+    ["alcove-x/v01", "alcove-x/v2", false],
+    ["alcove-x/v1", "alcove-x/v02", false],
+    ["alcove-x/v0", "alcove-x/v2", true],
+    [1.5, 3, false],
     ["1", 3, false],
   ])("%j before %j is %j", (version, current, expected) => {
     expect(formatVersionPrecedes(version, current)).toBe(expected);
+  });
+});
+
+describe("a version number with a leading zero", () => {
+  const literals: FormatMigrations<string> = {
+    fileName: "The test file",
+    versionField: "version",
+    current: "alcove-test/v3",
+    steps: [],
+    failureRemedy: "Use the version that wrote it.",
+  };
+
+  test("is an unrecognized tag, returned as it is for the schema to refuse", () => {
+    for (const version of ["alcove-test/v01", "alcove-test/v0000000002"]) {
+      const raw = { version };
+      expect(migrateOnRead(raw, literals)).toBe(raw);
+    }
+    expect(() =>
+      migrateOnRead({ version: "alcove-test/v2" }, literals),
+    ).toThrow(FormatMigrationError);
+  });
+
+  test("is not a later version either", () => {
+    expect(
+      declaresLaterFormatVersion({ version: "alcove-test/v04" }, literals),
+    ).toBe(false);
+  });
+});
+
+describe("formatVersionFollows", () => {
+  test.each([
+    [4, 3, true],
+    [3, 3, false],
+    [1, 3, false],
+    ["alcove-x/v10", "alcove-x/v2", true],
+    ["alcove-x/v2", "alcove-x/v10", false],
+    ["alcove-x/v99999999999999999999", "alcove-x/v2", true],
+    ["alcove-y/v9", "alcove-x/v2", false],
+    ["alcove-x/v09", "alcove-x/v2", false],
+    [4.5, 3, false],
+  ])("%j after %j is %j", (version, current, expected) => {
+    expect(formatVersionFollows(version, current)).toBe(expected);
+  });
+});
+
+describe("declaresLaterFormatVersion", () => {
+  test("reads the declared version, or the absent one, against the current", () => {
+    expect(declaresLaterFormatVersion({ version: 4 }, MIGRATIONS)).toBe(true);
+    expect(declaresLaterFormatVersion({ version: 3 }, MIGRATIONS)).toBe(false);
+    expect(declaresLaterFormatVersion({ version: 1 }, MIGRATIONS)).toBe(false);
+    expect(declaresLaterFormatVersion({}, MIGRATIONS)).toBe(false);
+    expect(
+      declaresLaterFormatVersion({}, { ...MIGRATIONS, absentVersion: 5 }),
+    ).toBe(true);
+  });
+
+  test("is false for a value that is not a plain object", () => {
+    for (const raw of [undefined, null, 4, "4", [{ version: 4 }]])
+      expect(declaresLaterFormatVersion(raw, MIGRATIONS)).toBe(false);
   });
 });
 

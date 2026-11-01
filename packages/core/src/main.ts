@@ -395,6 +395,8 @@ export type {
 } from "./config/formatVersion";
 export {
   FormatMigrationError,
+  declaresLaterFormatVersion,
+  formatVersionFollows,
   migrateOnRead,
   readableFormatVersions,
 } from "./config/formatMigration";

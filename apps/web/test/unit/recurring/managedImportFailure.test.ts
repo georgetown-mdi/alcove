@@ -11,7 +11,6 @@ import { readManagedCommandLineConfiguration } from "@psi/managed/managedCommand
 
 import {
   LIVE_COPY_IMPORT_CONFIRM,
-  OUTDATED_IMPORT_REASON,
   UNREADABLE_IMPORT_REASON,
   UNRECOGNIZED_IMPORT_REASON,
   alreadyHeldBackupImportReason,
@@ -25,7 +24,6 @@ import {
   storedCopyTakeLabel,
 } from "@recurring/managedImportFailure";
 import {
-  MANAGED_EXCHANGE_PREVIOUS_ARTIFACT_VERSION,
   buildManagedExchangeRecord,
   composeManagedExchangeFile,
   runnableManagedExchangeOrRefuse,
@@ -198,22 +196,22 @@ describe("a command-line configuration off the exchange-file schema", () => {
   });
 });
 
-describe("a backup file from the previous artifact format", () => {
-  test("says the file is older, and gives an older file's way on", () => {
-    // Every backup taken before the response existed holds this tag. Told the
-    // newer-build story, the operator would reload a page that is already current
-    // and re-export from a device that cannot write this format any more.
+describe("a backup file at an earlier artifact version no migration leads from", () => {
+  test("names both versions and the cause, and gives an older file's way on", () => {
+    // Told the newer-build story, the operator would reload a page that is
+    // already current.
     const document = artifactDocument();
-    document.artifactVersion = MANAGED_EXCHANGE_PREVIOUS_ARTIFACT_VERSION;
+    document.artifactVersion = "alcove-managed-exchange-backup/v2";
 
     const reason = reasonForImporting(serialize(document));
 
-    expect(reason).toBe(OUTDATED_IMPORT_REASON);
     expect(reason).toBe(
-      "This backup was written by an earlier version of this app and cannot " +
-        "be restored. Check that you chose the backup file you exported and " +
-        "that it was not modified. Set up a new exchange with your partner " +
-        "instead. Remove the old exchange if this browser still holds it.",
+      "The backup file is format version alcove-managed-exchange-backup/v2, " +
+        "and this version of Alcove could not move it to version " +
+        "alcove-managed-exchange-backup/v3: it has no migration from " +
+        "version alcove-managed-exchange-backup/v2. The file was not " +
+        "changed. Export the backup again from the device that holds the " +
+        "exchange, or set up a new exchange with your partner.",
     );
     expect(reason).not.toContain("newer version");
     expect(reason).not.toContain("reload");
@@ -394,7 +392,6 @@ describe("what a backup import says about an exchange already listed", () => {
       ...LISTED_EXCHANGE_REASONS,
       ["unreadable", UNREADABLE_IMPORT_REASON],
       ["unrecognized", UNRECOGNIZED_IMPORT_REASON],
-      ["outdated", OUTDATED_IMPORT_REASON],
     ]) {
       expect(reason, name).not.toMatch(/\bevery\b|\ball\b/i);
       expect(reason, name).not.toMatch(/no recurring exchanges/i);
