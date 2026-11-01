@@ -298,6 +298,10 @@ The reset is taken at 1.0.0 rather than earlier.
 Re-using a previously cycled value mid-development would let an artifact written under the old `v1` parse as the current version and fail on its field set,
 instead of taking the clean version refusal the reader is built to give.
 
+The reset moves format discriminants only, and the domains a hash or signature is computed under keep their numbers.
+A domain's number is a label rather than a counter a reader orders, so moving it buys no clean refusal:
+it changes every value the domain separates, and moving it back to `v1` reuses a value an earlier development build computed over other bytes.
+
 The release marker is `apps/cli/package.json`'s version, the same marker and 1.0.0 floor `check-protocol-version-bump.mjs` arms on,
 so the point the compatibility policy binds has one definition.
 It is read from the tree rather than a git tag because the gate's checkout has no tags:

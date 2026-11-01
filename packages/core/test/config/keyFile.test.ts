@@ -2,11 +2,14 @@ import { describe, expect, test } from "vitest";
 
 import {
   KEY_FILE_REDACTED_FIELD_NAME,
+  KEY_FILE_MIGRATIONS,
   KeyFileSchema,
+  keyFileSchemaFor,
   keyFileUnreadFieldNames,
   serializeKeyFile,
 } from "../../src/config/keyFile";
 import type { KeyFile } from "../../src/config/keyFile";
+import type { FormatMigrations } from "../../src/config/formatMigration";
 import { parseSensitiveJson } from "../../src/sensitiveFile";
 
 const SECRET = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
@@ -257,6 +260,94 @@ describe("serializeKeyFile", () => {
     };
     expect(serializeKeyFile(withExtra)).toBe(
       `{\n  "version": 1,\n  "sharedSecret": "${SECRET}"\n}\n`,
+    );
+  });
+});
+
+describe("key file migration on read", () => {
+  // A made-up version 2 whose step renames a version 1 field.
+  const SYNTHETIC: FormatMigrations<number> = {
+    ...KEY_FILE_MIGRATIONS,
+    current: 2,
+    steps: [
+      {
+        from: 1,
+        to: 2,
+        migrate: ({ expiresAt, ...rest }) => {
+          if (expiresAt === "never")
+            throw new Error("expiresAt is not an instant");
+          return { ...rest, expires: expiresAt };
+        },
+      },
+    ],
+  };
+  const schema = keyFileSchemaFor(SYNTHETIC);
+  const source =
+    `{"version":1,"sharedSecret":"${SECRET}",` +
+    `"expiresAt":"2026-06-01T00:00:00.000Z"}`;
+
+  test("reads a previous version migrated in memory, the file's document unchanged", () => {
+    const raw = parseSensitiveJson(source, "key file");
+    const before = JSON.stringify(raw);
+    expect(schema.parse(raw)).toEqual({
+      sharedSecret: SECRET,
+      expires: "2026-06-01T00:00:00.000Z",
+    });
+    expect(JSON.stringify(raw)).toBe(before);
+  });
+
+  test("writes the current version at the next write", () => {
+    const read = schema.parse(parseSensitiveJson(source, "key file"));
+    expect(JSON.parse(serializeKeyFile(read, SYNTHETIC))).toEqual({
+      version: 2,
+      sharedSecret: SECRET,
+      expires: "2026-06-01T00:00:00.000Z",
+    });
+  });
+
+  test("refuses a failed migration naming the cause and no secret, the document unchanged", () => {
+    const raw = parseSensitiveJson(
+      `{"version":1,"sharedSecret":"${SECRET}","expiresAt":"never"}`,
+      "key file",
+    );
+    const before = JSON.stringify(raw);
+    const result = schema.safeParse(raw);
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map((issue) => issue.message)).toEqual([
+      "The key file is format version 1, and this version of Alcove could " +
+        "not move it to version 2: expiresAt is not an instant. The file " +
+        "was not changed. Use the version of Alcove that wrote the key " +
+        "file, or report the failure to the Alcove maintainers.",
+    ]);
+    expect(JSON.stringify(result.error)).not.toContain(SECRET);
+    expect(JSON.stringify(raw)).toBe(before);
+  });
+
+  test("refuses an earlier version no step leads from by name, and migrates one a step does", () => {
+    const brokenChain = keyFileSchemaFor({
+      ...KEY_FILE_MIGRATIONS,
+      current: 3,
+      steps: [{ from: 2, to: 3, migrate: (document) => document }],
+    });
+    const raw = { version: 1, sharedSecret: SECRET };
+    const before = JSON.stringify(raw);
+    const result = brokenChain.safeParse(raw);
+    expect(result.error?.issues.map((issue) => issue.message)).toEqual([
+      "The key file is format version 1, and this version of Alcove could " +
+        "not move it to version 3: it has no migration from version 1. The " +
+        "file was not changed. Use the version of Alcove that wrote the key " +
+        "file, or report the failure to the Alcove maintainers.",
+    ]);
+    expect(JSON.stringify(raw)).toBe(before);
+    expect(brokenChain.parse({ version: 2, sharedSecret: SECRET })).toEqual({
+      sharedSecret: SECRET,
+    });
+  });
+
+  test("still refuses a version above the current one by its version", () => {
+    const result = schema.safeParse({ version: 3, sharedSecret: SECRET });
+    expect(result.error?.issues[0]?.message).toMatch(
+      /^The key file is format version 3, made by a newer version of Alcove/,
     );
   });
 });

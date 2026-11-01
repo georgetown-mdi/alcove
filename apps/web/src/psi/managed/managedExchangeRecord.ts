@@ -61,8 +61,7 @@ import type { ZodType } from "zod";
 /**
  * The single recognized `schemaVersion` literal for the v4 record. A reader
  * rejects any other value rather than migrating it (the reader-rejects-unknown
- * rule the exchange-record and verification-keys files follow), the earlier
- * literals among them: a v1 record has no
+ * rule), the earlier literals among them: a v1 record has no
  * {@link ManagedExchangeRecord.standingCondition} at all, and a v2 one's
  * condition holds no {@link ManagedStandingResponse}. The literal moves for that
  * member because a build not knowing it would read the record and offer a fresh

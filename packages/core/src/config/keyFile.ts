@@ -8,10 +8,12 @@ import { z } from "zod";
 import { MS_PER_DAY } from "../utils/msPerDay";
 import { NEW_INVITATION_REMEDY } from "../auth";
 import { SHARED_SECRET_REGEX } from "./connection";
+import { migrateOnRead } from "./formatMigration";
 import {
   newerFormatMemberMessage,
   newerFormatVersionMessage,
 } from "./formatVersion";
+import type { FormatMigrations } from "./formatMigration";
 import type { RotationHistoryEntry } from "../rotationHistory";
 
 /**
@@ -20,6 +22,22 @@ import type { RotationHistoryEntry } from "../rotationHistory";
  * {@link KeyFileSchema} reads as 1 when absent.
  */
 export const KEY_FILE_FORMAT_VERSION = 1;
+
+/**
+ * The key file's migrations: an earlier version is read into the current one
+ * in memory, and the file is written at the current version at its next
+ * write, a rotation or a run's own bookkeeping, never on load.
+ */
+export const KEY_FILE_MIGRATIONS: FormatMigrations<number> = Object.freeze({
+  fileName: "The key file",
+  versionField: "version",
+  absentVersion: 1,
+  current: KEY_FILE_FORMAT_VERSION,
+  steps: Object.freeze([]),
+  failureRemedy:
+    "Use the version of Alcove that wrote the key file, or report the " +
+    "failure to the Alcove maintainers.",
+});
 
 /**
  * Contents of a `.alcove.key` file, less its `version`, which only the
@@ -118,21 +136,23 @@ function keyFileFieldNameForDisplay(name: string): string {
   return SECRET_SHAPED_RUN.test(name) ? KEY_FILE_REDACTED_FIELD_NAME : name;
 }
 
-const KeyFileVersionSchema = z.looseObject({
-  version: z
-    .int()
-    .min(1)
-    .max(KEY_FILE_FORMAT_VERSION, {
-      error: (issue) =>
-        newerFormatVersionMessage(
-          "The key file",
-          Number(issue.input),
-          KEY_FILE_FORMAT_VERSION,
-          KEY_FILE_NEWER_REMEDY,
-        ),
-    })
-    .optional(),
-});
+function keyFileVersionSchema(current: number) {
+  return z.looseObject({
+    version: z
+      .int()
+      .min(1)
+      .max(current, {
+        error: (issue) =>
+          newerFormatVersionMessage(
+            "The key file",
+            Number(issue.input),
+            current,
+            KEY_FILE_NEWER_REMEDY,
+          ),
+      })
+      .optional(),
+  });
+}
 
 const KeyFileFieldsSchema = z.looseObject({
   version: z.unknown().optional(),
@@ -162,25 +182,45 @@ function newerKeyFileMembersIssue(
  * the refusal names the field through the display rule and never a value. The
  * version is checked first, so a newer file is refused by its version alone,
  * and a file with an unknown field by that refusal alone, not beside field
- * errors whose remedy differs. The unknown fields are read
+ * errors whose remedy differs. An earlier version is then migrated in memory
+ * through {@link KEY_FILE_MIGRATIONS}, the input left as it is, and a failed
+ * migration is refused with its cause. The unknown fields are read
  * from the input's own keys, so a member Zod's output would absorb, such as
  * `__proto__`, is refused too. The result holds the {@link KeyFile} fields,
  * without `version`.
  */
-export const KeyFileSchema: z.ZodType<KeyFile, unknown> = z
-  .unknown()
-  .transform((raw, ctx): KeyFile => {
+export const KeyFileSchema: z.ZodType<KeyFile, unknown> =
+  keyFileSchemaFor(KEY_FILE_MIGRATIONS);
+
+/** @internal */
+export function keyFileSchemaFor(
+  migrations: FormatMigrations<number>,
+): z.ZodType<KeyFile, unknown> {
+  const versionSchema = keyFileVersionSchema(migrations.current);
+  return z.unknown().transform((raw, ctx): KeyFile => {
     const refuse = (issues: ReadonlyArray<z.core.$ZodIssue>): KeyFile => {
       for (const issue of issues)
         ctx.issues.push({ ...issue, input: undefined });
       return z.NEVER;
     };
-    const version = KeyFileVersionSchema.safeParse(raw);
+    const version = versionSchema.safeParse(raw);
     if (!version.success) return refuse(version.error.issues);
-    const unknown = Object.keys(raw as object).filter(
+    let document: unknown;
+    try {
+      document = migrateOnRead(raw, migrations);
+    } catch (error) {
+      return refuse([
+        {
+          code: "custom",
+          path: ["version"],
+          message: error instanceof Error ? error.message : String(error),
+        },
+      ]);
+    }
+    const unknown = Object.keys(document as object).filter(
       (name) => name !== "version" && !KEY_FILE_FIELD_NAMES.has(name),
     );
-    const fields = KeyFileFieldsSchema.safeParse(raw);
+    const fields = KeyFileFieldsSchema.safeParse(document);
     const fieldIssues = fields.success ? [] : fields.error.issues;
     const newerMembers = fieldIssues.flatMap((issue) =>
       issue.code === "unrecognized_keys"
@@ -194,6 +234,7 @@ export const KeyFileSchema: z.ZodType<KeyFile, unknown> = z
     const { version: _version, ...known } = fields.data;
     return known as KeyFile;
   });
+}
 
 /**
  * The names of the top-level fields of a parsed key file that a reader keeping
@@ -218,16 +259,21 @@ export function keyFileUnreadFieldNames(
 /**
  * The bytes of a `.alcove.key` holding `data`: pretty-printed JSON with a
  * trailing newline, the format version first, holding only the
- * {@link KeyFile} fields `data` sets. Validates nothing; a writer checks the
- * secret's shape itself.
+ * {@link KeyFile} fields `data` sets. Always the current version, whatever
+ * version the file `data` was read from had. Validates nothing; a writer
+ * checks the secret's shape itself.
+ *
+ * @param migrations the format's migrations; this build's by default.
  */
-export function serializeKeyFile(data: KeyFile): string {
+export function serializeKeyFile(
+  data: KeyFile,
+  migrations: FormatMigrations<number> = KEY_FILE_MIGRATIONS,
+): string {
   const known = Object.fromEntries(
     Object.entries(data).filter(([name]) => KEY_FILE_FIELD_NAMES.has(name)),
   );
   return (
-    JSON.stringify({ version: KEY_FILE_FORMAT_VERSION, ...known }, null, 2) +
-    "\n"
+    JSON.stringify({ version: migrations.current, ...known }, null, 2) + "\n"
   );
 }
 

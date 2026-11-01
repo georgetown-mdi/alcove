@@ -6,7 +6,8 @@ import {
   computeCertificateFingerprint,
   decideSignedReceiptVerdict,
   deriveOurIdColumn,
-  EXCHANGE_KEYS_VERSION,
+  EXCHANGE_KEYS_MIGRATIONS,
+  EXCHANGE_RECORD_MIGRATIONS,
   EXCHANGE_RECORD_VERSION,
   FINGERPRINT_REGEX,
   InternalConsistencyError,
@@ -18,7 +19,7 @@ import {
   partnerTermsForVerification,
   reconstructCommittedData,
   recordAlterationIsTheOnlyExplanation,
-  recordedVersionMatches,
+  recordedVersionReadable,
   keepOperatorSuppliedText,
   messageWithOperatorText,
   operatorSuppliedText,
@@ -28,6 +29,7 @@ import {
   resuppliedFilesAreFromAnotherRun,
   sanitizeErrorForDisplay,
   sanitizeForDisplay,
+  SIGNED_RECEIPT_MIGRATIONS,
   SIGNED_RECEIPT_VERSION,
   signedRecordExpectations,
   termsAsTheRunStatedThem,
@@ -46,6 +48,7 @@ import type {
   DualSignedRecord,
   DualSignedRecordVerificationReport,
   ExchangeRecord,
+  FormatMigrations,
   LinkageTerms,
   LocalIdentityAnchor,
   LocalIdentitySource,
@@ -243,14 +246,15 @@ function recordedVersionValue(raw: unknown): unknown {
 // Reject an unrecognized version with a specific message BEFORE the schema
 // parse -- so a future-format or hand-edited file is not mis-reported as a generic
 // shape error. The version literal is also enforced by the schema; this only makes
-// the failure clear.
+// the failure clear. An earlier version the format's migrations read passes.
 function assertRecognizedVersion(
   raw: unknown,
-  expected: string,
+  migrations: FormatMigrations<string>,
   pathValue: string,
   kind: string,
 ): void {
-  if (!recordedVersionMatches(raw, expected)) {
+  if (!recordedVersionReadable(raw, migrations)) {
+    const expected = migrations.current;
     const version = recordedVersionValue(raw);
     const message = messageWithOperatorText`${kind} file ${operatorSuppliedText(
       pathValue,
@@ -299,7 +303,7 @@ function parseSignedRecord(raw: unknown, pathValue: string): DualSignedRecord {
 /** @internal exported for testing */
 export function readExchangeRecordFile(pathValue: string): ExchangeRecord {
   const raw = readJsonFile(pathValue, "record");
-  assertRecognizedVersion(raw, EXCHANGE_RECORD_VERSION, pathValue, "record");
+  assertRecognizedVersion(raw, EXCHANGE_RECORD_MIGRATIONS, pathValue, "record");
   return parseRecord(raw, pathValue);
 }
 
@@ -308,7 +312,7 @@ export function readSignedRecordFile(pathValue: string): DualSignedRecord {
   const raw = readJsonFile(pathValue, "signed-record");
   assertRecognizedVersion(
     raw,
-    SIGNED_RECEIPT_VERSION,
+    SIGNED_RECEIPT_MIGRATIONS,
     pathValue,
     "signed-record",
   );
@@ -332,9 +336,9 @@ const SIGNED_RECEIPT_VERSION_NOTE = " (a signed receipt)";
  */
 export function readVerifiableArtifact(pathValue: string): VerifiableArtifact {
   const raw = readJsonFile(pathValue, "record");
-  if (recordedVersionMatches(raw, EXCHANGE_RECORD_VERSION))
+  if (recordedVersionReadable(raw, EXCHANGE_RECORD_MIGRATIONS))
     return { kind: "record", record: parseRecord(raw, pathValue) };
-  if (recordedVersionMatches(raw, SIGNED_RECEIPT_VERSION))
+  if (recordedVersionReadable(raw, SIGNED_RECEIPT_MIGRATIONS))
     return { kind: "signed", signed: parseSignedRecord(raw, pathValue) };
   const version = recordedVersionValue(raw);
   const message = messageWithOperatorText`record file ${operatorSuppliedText(
@@ -352,7 +356,7 @@ export function readVerificationKeysFile(pathValue: string): VerificationKeys {
   const raw = readJsonFile(pathValue, "verification-keys");
   assertRecognizedVersion(
     raw,
-    EXCHANGE_KEYS_VERSION,
+    EXCHANGE_KEYS_MIGRATIONS,
     pathValue,
     "verification-keys",
   );

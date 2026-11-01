@@ -1,5 +1,6 @@
 import { computeTermsHash, verifyCommitmentOpening } from "./exchangeRecord.js";
 import { readRowColumn } from "../file.js";
+import { readableFormatVersions } from "../config/formatMigration.js";
 import { distinctMatchedRows } from "../payloadExchange.js";
 import { DistinctValues } from "../utils/distinctValues.js";
 import {
@@ -17,6 +18,7 @@ import type { CanonicalValue } from "../utils/canonical.js";
 import type { Displayable } from "../utils/sanitizeForDisplay.js";
 import type { LinkageTerms } from "../config/linkageTermsSchema.js";
 import type { CSVRow } from "../file.js";
+import type { FormatMigrations } from "../config/formatMigration.js";
 import type { AssociationTable } from "../types.js";
 
 // The verification consumer for the self-attested exchange record: it reads
@@ -710,6 +712,21 @@ export function recordedVersionMatches(
       ? (raw as Record<string, unknown>)["version"]
       : undefined;
   return version === expected;
+}
+
+/**
+ * Whether a raw parsed record, keys or receipt value has a format version
+ * this build reads: the current one, or one `migrations` leads from to it. The
+ * pre-parse check {@link recordedVersionMatches} is for a format with no
+ * migrations.
+ */
+export function recordedVersionReadable(
+  raw: unknown,
+  migrations: FormatMigrations<string>,
+): boolean {
+  return readableFormatVersions(migrations).some((version) =>
+    recordedVersionMatches(raw, version),
+  );
 }
 
 /**

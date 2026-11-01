@@ -31,9 +31,11 @@ import {
   resolvedMatchingFromTerms,
 } from "../linkageTermsPolicy.js";
 
+import { migrateOnRead } from "../config/formatMigration.js";
 import { AGREED_TERMS_VERSION } from "./agreedTerms.js";
 
 import type { AgreedTerms } from "./agreedTerms.js";
+import type { FormatMigrations } from "../config/formatMigration.js";
 import type { CanonicalValue } from "../utils/canonical.js";
 import type { LinkageTerms } from "../config/linkageTermsSchema.js";
 import type { ResolvedMatching } from "../linkageTermsPolicy.js";
@@ -48,14 +50,45 @@ import type { Algorithm, AssociationTable } from "../types.js";
 // --- Versions ----------------------------------------------------------------
 
 /**
- * The one recognized format version for an {@link ExchangeRecord}; a reader
- * rejects any other. It moves with the field set and with the bytes a field
- * is computed over. See docs/spec/EXCHANGE_RECORD.md#record-fields.
+ * The format version this build writes for an {@link ExchangeRecord}; a reader
+ * reads it and each earlier version {@link EXCHANGE_RECORD_MIGRATIONS} leads
+ * from, and refuses any other. It moves with the field set and with the bytes
+ * a field is computed over. See docs/spec/EXCHANGE_RECORD.md#record-fields.
  */
 export const EXCHANGE_RECORD_VERSION = "alcove-exchange-record/v11";
 
-/** The one recognized format version for v2 {@link VerificationKeys}. */
+/** The format version this build writes for {@link VerificationKeys}. */
 export const EXCHANGE_KEYS_VERSION = "alcove-exchange-keys/v2";
+
+const RECORD_MIGRATION_REMEDY =
+  "Verify it with the version of Alcove that wrote it, or report the " +
+  "failure to the Alcove maintainers.";
+
+/**
+ * The exchange record's migrations, run in memory at every read. A record is
+ * never rewritten: a version whose commitments or agreed-terms hash cover
+ * other bytes has no step, since its values could not be checked against
+ * this build's.
+ */
+export const EXCHANGE_RECORD_MIGRATIONS: FormatMigrations<string> =
+  Object.freeze({
+    fileName: "The exchange record",
+    versionField: "version",
+    current: EXCHANGE_RECORD_VERSION,
+    steps: Object.freeze([]),
+    failureRemedy: RECORD_MIGRATION_REMEDY,
+  });
+
+/** The verification-keys file's migrations, run in memory at every read. */
+export const EXCHANGE_KEYS_MIGRATIONS: FormatMigrations<string> = Object.freeze(
+  {
+    fileName: "The verification-keys file",
+    versionField: "version",
+    current: EXCHANGE_KEYS_VERSION,
+    steps: Object.freeze([]),
+    failureRemedy: RECORD_MIGRATION_REMEDY,
+  },
+);
 
 // --- Commitment scheme -------------------------------------------------------
 
@@ -688,21 +721,33 @@ export function serializeVerificationKeys(keys: VerificationKeys): string {
 
 /**
  * Parse and validate an {@link ExchangeRecord} from a raw value (e.g. the result
- * of `JSON.parse`). Rejects an unrecognized `version` rather than migrating it.
+ * of `JSON.parse`). An earlier version a migration reads is migrated in memory,
+ * `raw` left as it is; any other `version` than the current one is refused.
  *
+ * @param migrations the format's migrations; this build's by default.
+ * @throws {FormatMigrationError} if a migration fails.
  * @throws {z.ZodError} if validation fails.
  */
-export function parseExchangeRecord(raw: unknown): ExchangeRecord {
-  return ExchangeRecordSchema.parse(raw);
+export function parseExchangeRecord(
+  raw: unknown,
+  migrations: FormatMigrations<string> = EXCHANGE_RECORD_MIGRATIONS,
+): ExchangeRecord {
+  return ExchangeRecordSchema.parse(migrateOnRead(raw, migrations));
 }
 
 /**
- * Parse and validate {@link VerificationKeys} from a raw value.
+ * Parse and validate {@link VerificationKeys} from a raw value, migrating an
+ * earlier version in memory as {@link parseExchangeRecord} does.
  *
+ * @param migrations the format's migrations; this build's by default.
+ * @throws {FormatMigrationError} if a migration fails.
  * @throws {z.ZodError} if validation fails.
  */
-export function parseVerificationKeys(raw: unknown): VerificationKeys {
-  return VerificationKeysSchema.parse(raw);
+export function parseVerificationKeys(
+  raw: unknown,
+  migrations: FormatMigrations<string> = EXCHANGE_KEYS_MIGRATIONS,
+): VerificationKeys {
+  return VerificationKeysSchema.parse(migrateOnRead(raw, migrations));
 }
 
 // --- Verify ------------------------------------------------------------------

@@ -3,6 +3,7 @@ import { maxCodeUnits } from "../utils/maxCodeUnits.js";
 
 import { canonicalBytes } from "../utils/canonical.js";
 import { safeParseLinkageTerms } from "../config/linkageTermsSchema.js";
+import { migrateOnRead } from "../config/formatMigration.js";
 import { canonicalHmacSha256 } from "../utils/canonicalHmac.js";
 import { hkdfDerive, toBase64Url } from "../utils/crypto.js";
 import { receiveAfterTerms } from "../partnerAbortFrame.js";
@@ -25,6 +26,7 @@ import type { HandshakeRole } from "../types.js";
 import type { MessageConnection } from "../connection/messageConnection.js";
 import type { CanonicalValue } from "../utils/canonical.js";
 import type { CommittedPayload } from "./exchangeRecord.js";
+import type { FormatMigrations } from "../config/formatMigration.js";
 import type { LinkageTerms } from "../config/linkageTermsSchema.js";
 import type { SigningCertificate, SigningIdentity } from "./signingIdentity.js";
 import { InternalConsistencyError, ConnectionError } from "../errors.js";
@@ -44,11 +46,29 @@ import { InternalConsistencyError, ConnectionError } from "../errors.js";
 
 // --- Versions and domains ----------------------------------------------------
 
-/** Single recognized format version for a dual-signed record; a reader rejects
- * any other value rather than migrating it. It moves with the certificate
- * format the record embeds and with the envelope beside the signed content
+/** The format version this build writes for a dual-signed record; a reader
+ * reads it and each earlier version {@link SIGNED_RECEIPT_MIGRATIONS} leads
+ * from, and refuses any other. It moves with the certificate format the record
+ * embeds and with the envelope beside the signed content
  * (docs/spec/EXCHANGE_RECORD.md, "Signed receipt file"). */
 export const SIGNED_RECEIPT_VERSION = "alcove-signed-receipt/v4";
+
+/**
+ * The signed receipt's migrations, run in memory at every read. A receipt is
+ * never rewritten. A step moves only what no signature covers: a version
+ * whose signed bytes differ from this build's has no step, since its
+ * signatures would not verify over the migrated content.
+ */
+export const SIGNED_RECEIPT_MIGRATIONS: FormatMigrations<string> =
+  Object.freeze({
+    fileName: "The signed receipt",
+    versionField: "version",
+    current: SIGNED_RECEIPT_VERSION,
+    steps: Object.freeze([]),
+    failureRemedy:
+      "Verify it with the version of Alcove that wrote it, or verify the " +
+      "run from its exchange record.",
+  });
 
 // The domain label folded into the signed receipt-content bytes. Its version
 // tracks the shape of those bytes, not the signature algorithm; the embedded
@@ -461,15 +481,21 @@ export function serializeDualSignedRecord(record: DualSignedRecord): string {
 
 /**
  * Parse and validate a {@link DualSignedRecord} from a raw value (e.g. the result
- * of `JSON.parse`). Rejects an unrecognized `version` rather than migrating it.
+ * of `JSON.parse`). An earlier version a migration reads is migrated in memory,
+ * `raw` left as it is; any other `version` than the current one is refused.
  * Shape validation only -- signature, certificate, and pin verification belong to
  * `verifyDualSignedRecord` (signedReceiptVerification.ts), which a caller runs on
  * the parsed record.
  *
+ * @param migrations the format's migrations; this build's by default.
+ * @throws {FormatMigrationError} if a migration fails.
  * @throws {z.ZodError} if validation fails.
  */
-export function parseDualSignedRecord(raw: unknown): DualSignedRecord {
-  return DualSignedRecordSchema.parse(raw);
+export function parseDualSignedRecord(
+  raw: unknown,
+  migrations: FormatMigrations<string> = SIGNED_RECEIPT_MIGRATIONS,
+): DualSignedRecord {
+  return DualSignedRecordSchema.parse(migrateOnRead(raw, migrations));
 }
 
 // --- Wire exchange -----------------------------------------------------------
