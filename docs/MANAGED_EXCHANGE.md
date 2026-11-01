@@ -355,10 +355,10 @@ sooner. One fires for each of these:
   large for this browser](#a-partners-set-too-large-for-this-browser)).
 - **The partner's run refused to send its set** (see [A partner's run that
   refuses to send its set](#a-partners-run-that-refuses-to-send-its-set)).
-- **Your partner could not save the new secret** that this device saved. This
-  device kept the secret your partner still holds, so the next run can still
-  reach them, and a fresh invitation is the step if runs keep missing your
-  partner or stopping (see [A missed window is neither desync nor
+- **Your partner could not save the new secret** that this device saved. While
+  this device keeps the earlier secret your partner still holds, the next run
+  can still reach them; a fresh invitation is the step if runs keep missing
+  your partner or stopping, or once this device no longer keeps it (see [A missed window is neither desync nor
   attack](#a-missed-window-is-neither-desync-nor-attack)).
 - **The partner's data did not follow the exchange protocol** (see [Partner data
   that does not follow the
@@ -845,8 +845,9 @@ partner connects and before the key exchange starts, and the write that stores
 the rotated secret removes it, so a tab closed or killed between the two leaves
 it behind ([the rotation-in-flight
 marker](spec/MANAGED_EXCHANGE_RECORD.md#the-rotation-in-flight-marker)). A
-no-show after it reads as a probable partial rotation, with the re-invite
-recovery and no attack checklist.
+run that refuses a change to the partner's terms also removes it, since such a
+refusal stores nothing on either side. A no-show after it reads as a probable
+partial rotation, with the re-invite recovery and no attack checklist.
 
 A restore is detected by the import marker, which a successful run clears
 ([the import
@@ -857,10 +858,9 @@ two recoveries: import the newest copy of the exchange, or re-invite.
 The other side of that rotation is reported too. This device saves the new
 secret first when it accepted the invitation; when the partner's run then
 reports that it could not save the new secret, this run says so, says that this
-device kept the secret the partner still holds, so the next run can still reach
-them, and names a fresh invitation as the step if runs keep missing the partner
-or stopping, with no retry. The run history, the recurring list, and a
-notification state the same. The partner's report is matched against a fixed
+device also kept the earlier secret the partner still holds, so the next run can
+still reach them, and names a fresh invitation as the step if runs keep missing
+the partner or stopping, with no retry. The partner's report is matched against a fixed
 reason and never shown as text the partner sent. Scheduled runs keep running
 afterwards. Each side's meeting point derives from the secret it holds, so the
 next run waits for the partner at the meeting points of both the new secret and
@@ -868,17 +868,30 @@ the one it kept, and its key exchange uses the kept one; once the partner's
 device can save, both sides save a new secret and the two are back in step. A
 no-show does not replace the report.
 
+The run history, the recurring list, and a notification state the same while
+this device would still offer that secret. Once it would not, because the
+secret expired or an older version of this app last saved the exchange, they
+name a fresh invitation as the step. Once a later run succeeds, the exchange's
+page and the recurring list say so, and you clear the report with its
+acknowledgement.
+
 A run that heals a cut rotation this way is always reported, on both sides,
-while it runs and in the run history: the side that kept the secret says the
-last run stopped before the partner saved the new secret, and the other side
-says its partner still had the secret from before its last run stopped. Each
-adds that if no run stopped partway, the exchange may also be running from
-another copy, so a heal cannot hide a copy of the exchange used elsewhere. The
+once both have saved the new secret, and in the run history: the side that kept
+the secret says the run before stopped before the partner saved the new secret,
+and the other side says its partner still had the secret from before that run
+stopped. Each adds that if no run stopped partway, the exchange may also be
+running from another copy, and that a fresh invitation then leaves only one copy
+running, so a heal cannot hide a copy of the exchange used elsewhere. The
 kept secret is not in a backup or a command-line export, so a copy moved that
 way cannot heal and is recovered by a fresh invitation. A handshake that
 fails closed replaces the report as the standing condition and takes the
 confirmation below, because the partner's report is the other side's claim and
 not local evidence. A report that holds a compromise response stays in place.
+
+Where this device invited the partner and could not save the new secret after
+the partner saved it, the run says the next run can still reach the partner
+only where the partner's key exchange used the secret it kept, which shows that
+it keeps one; otherwise it names a fresh invitation.
 
 A no-show's run entry replaces the previous one, but a save failure on either
 side or a failed-closed handshake is also kept as a standing condition, which a

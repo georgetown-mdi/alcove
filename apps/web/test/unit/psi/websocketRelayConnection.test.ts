@@ -355,6 +355,26 @@ describe("a refused hello", () => {
     },
   );
 
+  test("a refused proof after a cut rotation names the state and the new invitation, and no step that changes a key or a secret", async () => {
+    const { socket, pending } = await startOpening({ afterCutRotation: true });
+    socket.open();
+    socket.closeFromRelay(4004);
+    const error = await pending.catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ConnectionError);
+    expect((error as ConnectionError).kind).toBe("transport");
+    expect((error as Error).message).toBe(
+      "The WebSocket relay refused this side's proof: the key it holds for " +
+        "this exchange is not the one this device's secret gives. A run " +
+        "stopped before both of you saved a new secret, so the key may be " +
+        "the one your partner's secret gives, and the exchange can still " +
+        "reach your partner over WebRTC or another relay. If the next run " +
+        "does not reach them either, reconnect with a new invitation.",
+    );
+    expect((error as Error).message).not.toMatch(
+      /current invitation|enroll|replace|delete|remove/i,
+    );
+  });
+
   describe("an expired proof", () => {
     const localSecond = 1_767_225_600;
 

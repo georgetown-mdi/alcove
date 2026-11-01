@@ -104,6 +104,7 @@ export function FailureRecovery({
     return (
       <ReinviteRecovery
         record={record}
+        ifRunsKeepFailing={failure.reinvite === "if-runs-keep-failing"}
         reinviting={reinviting}
         runInFlight={runInFlight}
         runHolder={runHolder}
@@ -285,9 +286,10 @@ export function StandingConditionSection({
         </>
       ) : (
         <>
-          {offersReinvite && (
+          {offersReinvite && view.reinvite !== "none" && (
             <ReinviteRecovery
               record={record}
+              ifRunsKeepFailing={view.reinvite === "if-runs-keep-failing"}
               reinviting={reinviting}
               runInFlight={runInFlight}
               runHolder={runHolder}
@@ -313,6 +315,9 @@ export function StandingConditionSection({
 
 interface ReinviteRecoveryProps {
   record: ManagedExchangeRecord;
+  /** Whether the alert above names the next run as the step, so the re-invite
+   * is for runs that keep failing. */
+  ifRunsKeepFailing?: boolean;
   reinviting: boolean;
   /** Whether a run of this exchange is under way anywhere this browser profile
    * can see. The mint replaces the secret that run is connecting on, so the
@@ -336,6 +341,7 @@ interface ReinviteRecoveryProps {
  * this renders them. */
 function ReinviteRecovery({
   record,
+  ifRunsKeepFailing = false,
   reinviting,
   runInFlight,
   runHolder,
@@ -343,7 +349,10 @@ function ReinviteRecovery({
   onReinvite,
   onStopRunAndReinvite,
 }: ReinviteRecoveryProps) {
-  const copy = managedReinviteRecoveryCopy(record);
+  const copy = managedReinviteRecoveryCopy(
+    record,
+    ifRunsKeepFailing ? "if-runs-keep-failing" : "now",
+  );
   return (
     <div className={styles.callout}>
       <p className={styles.calloutLead}>{copy.lead}</p>

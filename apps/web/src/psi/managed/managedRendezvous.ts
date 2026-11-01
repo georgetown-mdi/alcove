@@ -29,7 +29,7 @@
  * per-run peer-id derivation are unit-testable without a real broker.
  */
 
-import { WebRTCEndpointSchema, offerablePrevious } from "@alcove/core";
+import { WebRTCEndpointSchema } from "@alcove/core";
 
 import {
   BROKER_REGISTRATION_TIMEOUT_MS,
@@ -40,7 +40,10 @@ import { PartnerNoShowError } from "../transport/waitForConnection";
 import { refusedSignalingEndpointField } from "../transport/signalingAddress";
 import { relayPlanForRun } from "../transport/runRelayPlan";
 
-import { managedAllowedRelays } from "./managedExchangeRecord";
+import {
+  managedAllowedRelays,
+  offeredManagedPreviousSecret,
+} from "./managedExchangeRecord";
 
 import type { DefaultRelayDependencies } from "../transport/defaultRelay";
 import type { RunRelayPlan } from "../transport/runRelayPlan";
@@ -72,13 +75,11 @@ export type ManagedRendezvousRecord = Pick<
 >;
 
 /**
- * The previous secret a run of `record` also waits for its partner under: the
- * record's, on the acceptor, the only side that can be ahead over WebRTC,
- * where the key exchange would offer it at `now` (core's `offerablePrevious`).
- * `undefined` otherwise, so a run holding none, or holding one as the
- * inviter, waits under the current secret alone. The key exchange decides
- * again with its own clock, so one that expires during the wait fails the
- * authentication.
+ * The previous secret a run of `record` also waits for its partner under:
+ * the one it would offer at `now` ({@link offeredManagedPreviousSecret}), so
+ * a run holding none, or holding one as the inviter, waits under the current
+ * secret alone. The key exchange decides again with its own clock, so one
+ * that expires during the wait fails the authentication.
  */
 export function managedRendezvousPreviousSecret(
   record: Pick<
@@ -87,18 +88,7 @@ export function managedRendezvousPreviousSecret(
   >,
   now: number,
 ): string | undefined {
-  const previous = record.previousSharedSecret;
-  if (record.side !== "acceptor" || previous === undefined) return undefined;
-  return offerablePrevious(
-    {
-      sharedSecret: previous,
-      ...(record.previousExpires !== undefined && {
-        expires: record.previousExpires,
-      }),
-    },
-    record.sharedSecret,
-    now,
-  )?.sharedSecret;
+  return offeredManagedPreviousSecret(record, now);
 }
 
 /**

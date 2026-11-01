@@ -18,11 +18,16 @@
  */
 
 import {
+  PARTNER_SECRET_NOT_SAVED_KEPT_CLOSING,
   PARTNER_SECRET_NOT_SAVED_KEPT_REMEDY,
   PARTNER_SECRET_NOT_SAVED_PROBLEM,
+  PARTNER_SECRET_NOT_SAVED_SUCCEEDED_SINCE,
   PARTNER_SECRET_NOT_SAVED_TITLE,
 } from "@psi/managed/managedFailureCopy";
-import { managedStandingConditionTier } from "@psi/managed/managedFailureTiers";
+import {
+  managedStandingConditionTier,
+  partnerStorageReach,
+} from "@psi/managed/managedFailureTiers";
 import { raisedStandingCondition } from "@psi/managed/managedExchangeRecord";
 
 import { dateTimeLabel } from "@psi/formatting";
@@ -53,10 +58,14 @@ export interface ManagedStandingConditionView {
   tier: ManagedStandingTier;
   /** The alert's title: the state, not a verdict on who caused it. */
   title: string;
-  /** What stands, since when, what resolves it, and that runs since do not. */
+  /** What stands, since when, and what resolves it. */
   message: string;
   /** How the operator clears it from this page. */
   clearance: ManagedStandingClearance;
+  /** When the re-invite recovery beside it applies: `"if-runs-keep-failing"`
+   * where the message names the next run as the step, `"none"` where a run
+   * since then succeeded, and now where absent. */
+  reinvite?: "if-runs-keep-failing" | "none";
 }
 
 /** The label on the acknowledge control. Short, and it states what the click
@@ -77,11 +86,14 @@ const STANDS_UNTIL =
  * `local` supplies the import marker, which decides whether a restore since the
  * last success explains a failed-closed handshake. The tiering itself is the
  * record modules' ({@link managedStandingConditionTier}), so this surface and the
- * failure tiers cannot disagree about what a condition means.
+ * failure tiers cannot disagree about what a condition means. `now` decides
+ * whether the record's previous secret would still be offered
+ * ({@link partnerStorageReach}).
  */
 export function managedStandingConditionView(
   record: ManagedExchangeRecord,
   local: ManagedLocalState | undefined,
+  now: number,
 ): ManagedStandingConditionView | undefined {
   const condition = raisedStandingCondition(record);
   if (condition === undefined) return undefined;
@@ -99,14 +111,7 @@ export function managedStandingConditionView(
         clearance: "acknowledge",
       };
     case "partner-storage":
-      return {
-        tier,
-        title: PARTNER_SECRET_NOT_SAVED_TITLE,
-        message:
-          `A run on ${when} stopped because ${PARTNER_SECRET_NOT_SAVED_PROBLEM}. ` +
-          `${PARTNER_SECRET_NOT_SAVED_KEPT_REMEDY} ${STANDS_UNTIL}`,
-        clearance: "acknowledge",
-      };
+      return partnerStorageView(record, when, now);
     case "imported":
       return {
         tier,
@@ -130,6 +135,45 @@ export function managedStandingConditionView(
           "which is why it is still here: confirm with your partner before you " +
           `re-invite them. ${STANDS_UNTIL}`,
         clearance: "confirmation",
+      };
+  }
+}
+
+/** The partner-storage condition's view, by what the record can still do
+ * ({@link partnerStorageReach}). */
+function partnerStorageView(
+  record: ManagedExchangeRecord,
+  when: string,
+  now: number,
+): ManagedStandingConditionView {
+  const stopped = `A run on ${when} stopped because ${PARTNER_SECRET_NOT_SAVED_PROBLEM}.`;
+  const base = {
+    tier: "partner-storage" as const,
+    title: PARTNER_SECRET_NOT_SAVED_TITLE,
+    clearance: "acknowledge" as const,
+  };
+  switch (partnerStorageReach(record, now)) {
+    case "succeeded-since":
+      return {
+        ...base,
+        message: `${stopped} ${PARTNER_SECRET_NOT_SAVED_SUCCEEDED_SINCE}`,
+        reinvite: "none",
+      };
+    case "kept":
+      return {
+        ...base,
+        message:
+          `${stopped} ${PARTNER_SECRET_NOT_SAVED_KEPT_REMEDY} ` +
+          PARTNER_SECRET_NOT_SAVED_KEPT_CLOSING,
+        reinvite: "if-runs-keep-failing",
+      };
+    case "not-kept":
+      return {
+        ...base,
+        message:
+          `${stopped} Scheduled runs keep running but cannot reach your ` +
+          "partner, and running the exchange again cannot either. Re-invite " +
+          `your partner to reconnect. ${STANDS_UNTIL}`,
       };
   }
 }

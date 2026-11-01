@@ -21,8 +21,8 @@
 
 import { dateTimeLabel } from "../formatting";
 
+import { partnerStorageReach, readManagedFailure } from "./managedFailureTiers";
 import { deriveManagedBackupState } from "./managedBackupState";
-import { readManagedFailure } from "./managedFailureTiers";
 
 import {
   COMPROMISE_ACKNOWLEDGE_LABEL,
@@ -220,10 +220,13 @@ export function betweenVisitNotice(
   const { tier } = readManagedFailure(record, local, now);
   if (tier === "partial-rotation") return partialRotationNotice(record, name);
   if (tier === "imported") return importedNotice(record, name);
-  // The partner's failed save stands beside these misses: the windows after it
-  // cannot meet a partner on the other secret, so the notice names the
-  // re-invite under the tag that state already fired, never another wait.
-  if (tier === "partner-storage")
+  // The partner's failed save stands beside these misses, so the notice names
+  // its step under the tag that state already fired, never another wait. A
+  // run that succeeded since then answered it, and these are plain misses.
+  if (
+    tier === "partner-storage" &&
+    partnerStorageReach(record, now) !== "succeeded-since"
+  )
     return failureNotice(record, local, now, name);
   return missNotice(record, name);
 }
@@ -392,7 +395,10 @@ function failureNotice(
       title: NOTICE_TITLES["partner-storage"],
       body:
         `${name} stopped because ${PARTNER_SECRET_NOT_SAVED_PROBLEM}. ` +
-        PARTNER_SECRET_NOT_SAVED_KEPT_REMEDY,
+        (partnerStorageReach(record, now) === "kept"
+          ? PARTNER_SECRET_NOT_SAVED_KEPT_REMEDY
+          : "Scheduled runs keep running but cannot reach your partner until " +
+            "you re-invite them. Open this app and re-invite your partner."),
       tag: noticeTag(record.id, "partner-storage"),
     };
   if (tier === "partner-refused-terms")

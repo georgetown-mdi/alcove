@@ -94,6 +94,9 @@ export interface RunConnectionWithRelayFallbackOptions {
   previousSharedSecret?: string;
   /** The WebSocket relays the run lists, in its order. */
   relays: ReadonlyArray<WebSocketRelayForRun>;
+  /** Each relay connection's
+   * {@link WebSocketRelayConnectionOptions.afterCutRotation}. */
+  afterCutRotation?: boolean;
   /** The run's interrupt, which also cuts a relay connection's clean close
    * short. */
   signal: AbortSignal;
@@ -143,6 +146,7 @@ export async function openRunConnectionWithRelayFallback(
         relay.underPreviousSecret === true ? previousRelayKey : relayKey,
       signal: relaysInterrupt.signal,
       onCloseOutcome: options.onCloseOutcome,
+      ...(options.afterCutRotation === true && { afterCutRotation: true }),
       ...relayOptions,
     }),
   );

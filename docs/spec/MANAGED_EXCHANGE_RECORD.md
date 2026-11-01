@@ -1594,7 +1594,9 @@ the next run ([PROTOCOL.md](PROTOCOL.md#the-previous-secret)).
   that records a key exchange reaching a verdict at or after the marker -- a
   success, a failed-closed handshake, or a rotation not saved, the last two
   with the standing condition they raise -- removes it in the same write
-  (`applyManagedExchangeLastRun`). A responder run that completed its key
+  (`applyManagedExchangeLastRun`). A `"terms-change"` failure recorded at or
+  after the marker removes it the same way, since that refusal comes before
+  either side stores and so rotated nothing. A responder run that completed its key
   exchange and ended at the terms exchange with neither side able to have
   stored the next secret -- before it sent terms message 2, or on the
   initiator's abort in place of `proceed` -- removes it too, before its

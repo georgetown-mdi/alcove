@@ -2824,7 +2824,8 @@ describe("the rotation-in-flight marker", () => {
     expect(stamped.rotationInFlightSince).toBe(MARKED_AT);
   });
 
-  // Only a failure that raises a standing condition answers the marker; every
+  // A failure that raises a standing condition answers the marker, and so
+  // does a refused terms change, which comes before either side stores; every
   // other kind leaves it for the next visit to read.
   const removesMarker = {
     auth: true,
@@ -2839,7 +2840,7 @@ describe("the rotation-in-flight marker", () => {
     "partner-storage": true,
     "partner-refused-terms": false,
     "partner-protocol-refusal": false,
-    "terms-change": false,
+    "terms-change": true,
     cancelled: false,
   } satisfies Record<ManagedExchangeFailureKind, boolean>;
 

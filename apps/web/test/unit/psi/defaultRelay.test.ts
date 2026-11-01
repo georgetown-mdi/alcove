@@ -428,6 +428,39 @@ describe("relayWithDefaultForRun", () => {
         defaultWebSocketRelayUnderPrevious: WEBSOCKET,
       });
     });
+
+    test("both enrollments failing show the current secret's notice alone", async () => {
+      const onRunNotice = vi.fn();
+      const run = await relayWithDefaultForRun(
+        generateSharedSecret(),
+        OWN,
+        NO_RESTRICTION,
+        {
+          setting: withWebSocket,
+          enroll: answering({ kind: "failed", detail: "HTTP 503" }),
+          previousSharedSecret: generateSharedSecret(),
+          onRunNotice,
+        },
+      );
+      expect(run).toEqual(WITHOUT_DEFAULT);
+      expect(onRunNotice).toHaveBeenCalledExactlyOnceWith(
+        DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
+      );
+    });
+
+    test("a default relay naming no WebSocket relay is enrolled at under the current secret alone", async () => {
+      const current = generateSharedSecret();
+      const enroll = answering(ENROLLED);
+      const run = await relayWithDefaultForRun(current, OWN, NO_RESTRICTION, {
+        setting: () => DEFAULT_RELAY,
+        enroll,
+        previousSharedSecret: generateSharedSecret(),
+      });
+      expect(enroll.mock.calls.map(([params]) => params.sharedSecret)).toEqual([
+        current,
+      ]);
+      expect(run).toEqual(WITH_DEFAULT);
+    });
   });
 });
 

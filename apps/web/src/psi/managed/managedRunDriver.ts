@@ -376,6 +376,10 @@ export function runManagedExchangeInBrowser(
           sharedSecret: current.sharedSecret,
           ...previousOption,
           relays: relayPlan.websocketRelays,
+          ...((previousSharedSecret !== undefined ||
+            current.rotationInFlightSince !== undefined) && {
+            afterCutRotation: true,
+          }),
           signal,
           onCloseOutcome: emitCloseWarning,
           onRunNotice: emitRunNotice,
@@ -459,10 +463,6 @@ export function runManagedExchangeInBrowser(
                   }),
                 },
           );
-          // Stated on every heal, so that it cannot hide a copy of the
-          // exchange running elsewhere.
-          const healNote = managedHealNote(auth.secretUsed);
-          if (healNote !== undefined) emitRunNotice(healNote);
           // From here the run uses the AEAD-wrapped connection: the exchange
           // runs on it, and a cancel or teardown closes it, which closes the
           // opened connection beneath it.
@@ -514,14 +514,27 @@ export function runManagedExchangeInBrowser(
           id: record.id,
           linkageTerms: carried.linkageTerms,
         };
+        // A heal is stated once both sides saved the next secret: on the
+        // responder at its own save, on the initiator once the partner's
+        // frame shows it saved.
+        const healNote = managedHealNote(carried.secretUsed);
+        const stateHeal = (): void => {
+          if (healNote !== undefined) emitRunNotice(healNote);
+        };
         const rotation = releasableTermsRotation({
           inputs: takeNextSecretInputs(carried),
           store: async (nextSecret) => {
             await persistNextSecret(nextSecret, carried.secretUsed);
             carried.rotatedSecret = nextSecret;
+            if (carried.exchangeRole === "responder") stateHeal();
           },
           partnerMayHoldNextSecret,
-          ...(carried.exchangeRole === "initiator" && { partnerStored }),
+          ...(carried.exchangeRole === "initiator" && {
+            partnerStored: async () => {
+              await partnerStored();
+              stateHeal();
+            },
+          }),
         });
         try {
           const result = await runExchange(

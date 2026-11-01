@@ -353,6 +353,8 @@ export async function runManagedExchange<TInput, THandshake, TExchange>(
             ),
           tokenMaxAgeDays: current.tokenMaxAgeDays,
           now,
+          nextRunHeals:
+            role === "responder" && secretUsed.partner === "previous",
         },
         nextSecret,
       );

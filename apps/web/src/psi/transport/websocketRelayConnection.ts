@@ -123,6 +123,11 @@ export interface WebSocketRelayConnectionOptions {
   role: RendezvousRole;
   /** The exchange's relay key, 64 lowercase hex characters. */
   relayKey: string;
+  /** The run's record shows a run that stopped between the two saves of a
+   * rotation: it holds a previous secret the run offers, or a
+   * rotation-in-flight marker. A relay refusing this side's proof may then
+   * hold the key of the secret only one side saved. */
+  afterCutRotation?: boolean;
   /** Ends the wait for the partner, closing the socket, and cuts the clean
    * close's wait short. */
   signal?: AbortSignal;
@@ -297,12 +302,16 @@ function couldNotConnectError(): ConnectionError {
 /**
  * The failure for a close the relay sent before forwarding started. Every
  * message names what happened and what to do and uses no relay-chosen text;
- * a 4005 reason is read only as a time to sign a proof on.
+ * a 4005 reason is read only as a time to sign a proof on. After a cut
+ * rotation a refused proof is the state docs/spec/WEBSOCKET_RELAY.md, "A
+ * one-sided allocation", describes, so it names no step that changes a key or
+ * a secret.
  */
 function setupCloseError(
   event: CloseEvent,
   opened: boolean,
   paired: boolean,
+  afterCutRotation: boolean,
 ): ConnectionError {
   switch (event.code) {
     case RelayCloseCode.notEnrolled:
@@ -311,6 +320,11 @@ function setupCloseError(
         "transport",
       );
     case RelayCloseCode.proofRefused:
+      if (afterCutRotation)
+        return new ConnectionError(
+          "The WebSocket relay refused this side's proof: the key it holds for this exchange is not the one this device's secret gives. A run stopped before both of you saved a new secret, so the key may be the one your partner's secret gives, and the exchange can still reach your partner over WebRTC or another relay. If the next run does not reach them either, reconnect with a new invitation.",
+          "transport",
+        );
       return new ConnectionError(
         "The WebSocket relay refused this side's proof: the key it holds for this exchange is not the one this invitation gives. Check that both parties use the current invitation, then start the exchange again.",
         "transport",
@@ -743,6 +757,7 @@ class ParkedRelay implements ParkedWebSocketRelayConnection {
       event,
       current.phase !== "connecting",
       current.phase === "paired",
+      this.options.afterCutRotation === true,
     );
     if (error instanceof ProofExpiredRefusal) {
       if (this.relayClockOffsetMs !== undefined)

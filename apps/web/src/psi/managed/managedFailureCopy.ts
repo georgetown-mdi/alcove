@@ -250,13 +250,27 @@ export const PARTNER_SECRET_NOT_SAVED_PROBLEM =
   "side had already taken it, so you and your partner now hold different " +
   "secrets";
 
-/** What a saved exchange can still do after such a run: its record kept the
- * secret the run used as its previous secret, so the next run can meet a
- * partner that did not save (docs/spec/PROTOCOL.md, "The previous secret"). */
+/** What a saved exchange can still do after such a run while its record holds
+ * the secret the run used as a previous secret it would offer
+ * ({@link ./managedFailureTiers.ts}, `partnerStorageReach`), so the next run
+ * can meet a partner that did not save (docs/spec/PROTOCOL.md, "The previous
+ * secret"). Only an acceptor keeps one, so the step is the acceptor's. */
 export const PARTNER_SECRET_NOT_SAVED_KEPT_REMEDY =
-  "This device kept the secret your partner still holds, so the next run " +
-  "can still reach them, and both sides save a new secret. If runs keep " +
-  "missing your partner or stopping, re-invite them.";
+  "This device also kept the earlier secret your partner still holds, so " +
+  "the next run can still reach them. If your partner's device can save " +
+  "the new secret this time, you are back in step. If runs keep missing " +
+  "your partner or stopping, ask your partner to re-invite you.";
+
+/** The line the standing condition ends on beside
+ * {@link PARTNER_SECRET_NOT_SAVED_KEPT_REMEDY}. */
+export const PARTNER_SECRET_NOT_SAVED_KEPT_CLOSING =
+  "Once a later run succeeds, you are both on the new secret and you can " +
+  "clear this.";
+
+/** What the standing condition says once a run after it succeeded. */
+export const PARTNER_SECRET_NOT_SAVED_SUCCEEDED_SINCE =
+  "A run since then succeeded, so you and your partner are on the same " +
+  "secret again, and you can clear this.";
 
 /** The title of the alert for a refusal over a difference in the linkage
  * terms; shared by the one-shot exchange, a managed run's alert, and the

@@ -125,12 +125,13 @@ export interface DefaultRelayDependencies {
   /** How long a dial waits; {@link DEFAULT_RELAY_DIAL_WAIT_MS} when unset. */
   dialWaitMs?: number;
   /** Receives {@link DEFAULT_RELAY_NOT_ENROLLED_NOTICE} when the enrollment
-   * fails, and {@link DEFAULT_RELAY_PREVIOUS_NOT_ENROLLED_NOTICE} when the
-   * enrollment under `previousSharedSecret` does. */
+   * fails, and {@link DEFAULT_RELAY_PREVIOUS_NOT_ENROLLED_NOTICE} when only
+   * the enrollment under `previousSharedSecret` does. */
   onRunNotice?: (message: string) => void;
   /** A managed acceptor's previous secret, which the run also waits for its
-   * partner under: the key and exchange id it derives are enrolled too, at
-   * the same time. */
+   * partner under: where the run uses the default relay's WebSocket relay
+   * url, the key and exchange id it derives are enrolled too, at the same
+   * time. */
   previousSharedSecret?: string;
 }
 
@@ -197,12 +198,12 @@ export const DEFAULT_RELAY_NOT_ENROLLED_NOTICE =
 
 /**
  * The run notice a run shows when its enrollment at the default relay under
- * its previous secret fails, while the one under its current secret may not.
+ * its previous secret fails, while the one under its current secret confirmed.
  */
 export const DEFAULT_RELAY_PREVIOUS_NOT_ENROLLED_NOTICE =
   "The site's relay server could not be set up for the secret from before " +
-  "the run that stopped partway. This run looks for your partner there " +
-  "under the current secret only.";
+  "the run that stopped partway. This run looks for your partner on that " +
+  "server under the current secret only.";
 
 /** What {@link relayWithDefaultForRun} lists once the default relay is added. */
 export interface RelayWithDefault {
@@ -231,8 +232,9 @@ export interface RelayWithDefault {
  * keeps is not enrolled at (docs/spec/PROTOCOL.md, "Enrolling at a default
  * relay"); unset keeps both.
  *
- * With `previousSharedSecret`, that secret's key and exchange id are enrolled
- * in a second request sent at the same time, and its failure shows
+ * With `previousSharedSecret`, where the run uses the WebSocket relay url,
+ * that secret's key and exchange id are enrolled in a second request sent at
+ * the same time, and its failure beside a confirmed current enrollment shows
  * {@link DEFAULT_RELAY_PREVIOUS_NOT_ENROLLED_NOTICE}. Its confirmation lists
  * the WebSocket relay url under that secret; the TURN url is listed by the
  * current secret's enrollment alone, since the run's relay credential is
@@ -264,7 +266,9 @@ export async function relayWithDefaultForRun(
         }),
       },
     );
-  const previousSecret = dependencies.previousSharedSecret;
+  const previousSecret = websocketKept
+    ? dependencies.previousSharedSecret
+    : undefined;
   const [enrollment, previousEnrollment] = await Promise.all([
     enrollUnder(sharedSecret),
     previousSecret === undefined ? undefined : enrollUnder(previousSecret),
@@ -276,7 +280,7 @@ export async function relayWithDefaultForRun(
     );
     dependencies.onRunNotice?.(DEFAULT_RELAY_NOT_ENROLLED_NOTICE);
   }
-  if (previousEnrollment?.kind === "failed") {
+  if (previousEnrollment?.kind === "failed" && enrollment.kind === "enrolled") {
     log.warn(
       `the default relay's registrar did not enroll this exchange under ` +
         `the previous secret (${previousEnrollment.detail})`,

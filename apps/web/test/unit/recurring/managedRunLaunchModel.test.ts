@@ -947,6 +947,52 @@ describe("classifyManagedRunFailure: a no-show read against standing desync evid
     ).toBeUndefined();
   });
 
+  describe("a live failed save on a run whose partner saved first", () => {
+    const persistFailedAt = Date.parse("2026-07-14T10:00:00.000Z");
+    const afterRun = applyManagedExchangeLastRun(
+      record({ side: "inviter" }),
+      storageFailureRun(persistFailedAt),
+      persistFailedAt,
+    );
+    const classify = (nextRunHeals: boolean) =>
+      classifyManagedRunFailure(
+        new RotationPersistError(
+          persistFailedAt,
+          new Error("the write failed"),
+          nextRunHeals,
+        ),
+        { atLaunch: record({ side: "inviter" }), afterRun },
+        undefined,
+        NOW,
+        false,
+      );
+
+    test("names the next run where the partner handshook under its previous secret", () => {
+      const failure = classify(true);
+      expect(failure.kind).toBe("storage");
+      expect(failure.message).toBe(
+        "The last run connected but could not save its updated secret on " +
+          "this device. Your partner saved the new secret and kept the one " +
+          "this run used, so the next run can still reach them. If runs keep " +
+          "missing your partner or stopping, re-invite your partner; the " +
+          "exchange keeps your terms, gets a new secret, and uses the " +
+          "coordination server the new invitation names.",
+      );
+      expect(failure.recovery).toBe("reinvite");
+      expect(failure.reinvite).toBe("if-runs-keep-failing");
+    });
+
+    test("keeps the re-invite otherwise, and at the next visit", () => {
+      const failure = classify(false);
+      expect(failure.kind).toBe("storage");
+      expect(failure.message).toMatch(/Re-invite your partner to reconnect;/);
+      expect(failure.reinvite).toBeUndefined();
+      expect(managedRunFailureFromRecord(afterRun, undefined, NOW)).toEqual(
+        failure,
+      );
+    });
+  });
+
   test("a second run in one visit reads the evidence the first run left", () => {
     // Two runs in one mounted visit, each run's bookkeeping applied through the
     // real monotonic write. Nothing stands at the mount, so the first run's own
@@ -1494,6 +1540,22 @@ describe("managedReinviteRecoveryCopy", () => {
     expect(copy.body.join(" ")).not.toMatch(/delete|remove/i);
     expect(copy.body.join(" ")).not.toMatch(/second/i);
   });
+
+  test.each([
+    ["acceptor", "If runs keep failing, ask your partner to re-invite you."],
+    ["inviter", "If runs keep failing, re-invite your partner."],
+  ] as const)(
+    "for an alert naming the next run, the %s's lead names the re-invite for runs that keep failing",
+    (side, lead) => {
+      const now = managedReinviteRecoveryCopy(record({ side }));
+      const later = managedReinviteRecoveryCopy(
+        record({ side }),
+        "if-runs-keep-failing",
+      );
+      expect(later.lead).toBe(lead);
+      expect(later.body).toEqual(now.body);
+    },
+  );
 
   test("the guidance is keyed off the record's own side, not its run history", () => {
     // Same record in every other respect: only `side` decides which recovery reads.

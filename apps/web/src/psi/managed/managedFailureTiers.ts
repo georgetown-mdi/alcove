@@ -7,7 +7,9 @@
 
 import {
   answersRotationInFlight,
+  offeredManagedPreviousSecret,
   raisedStandingCondition,
+  runSucceededSince,
 } from "./managedExchangeRecord";
 import { managedExchangeLapsed } from "./managedExpiry";
 
@@ -158,6 +160,33 @@ export function managedStandingConditionTier(
   if (condition.kind === "storage") return "storage";
   if (condition.kind === "partner-storage") return "partner-storage";
   return importedSinceLastSuccess(local) ? "imported" : "unexplained";
+}
+
+/**
+ * What a `"partner-storage"` reading can say about reaching the partner, as of
+ * `now`: a run succeeded since the partner's failed save
+ * (`"succeeded-since"`), the record holds a previous secret its next run
+ * would offer (`"kept"`), or neither, which only a re-invite answers
+ * (`"not-kept"`). The failed save is the standing condition's, else the last
+ * run's.
+ */
+export type PartnerStorageReach = "succeeded-since" | "kept" | "not-kept";
+
+/** The {@link PartnerStorageReach} of `record` at `now`. */
+export function partnerStorageReach(
+  record: ManagedExchangeRecord,
+  now: number,
+): PartnerStorageReach {
+  const condition = raisedStandingCondition(record);
+  const since =
+    condition?.kind === "partner-storage"
+      ? condition.since
+      : record.lastRun?.at;
+  if (since !== undefined && runSucceededSince(record, since))
+    return "succeeded-since";
+  return offeredManagedPreviousSecret(record, now) !== undefined
+    ? "kept"
+    : "not-kept";
 }
 
 /**

@@ -583,7 +583,11 @@ Three items, the first ahead of the other two, which are independent of each oth
    - A heal is recorded as `healedCutRotation` on the run's `"succeeded"` entry, and the run history picks the ahead or behind note by the record's side, since over WebRTC only the acceptor keeps a previous secret.
    - Both dials take the TURN credential minted from the current secret, as the command line's do, so the default relay's TURN url is listed only once the current secret's enrollment confirms; its WebSocket relay url is listed under each secret whose enrollment confirmed.
    - A drop of the previous secret that fails ends the run, as core's `partnerStored` rule states, and is recorded as the run's failure; the previous secret stays for the next run.
-   - The partner-storage copy says the next run can still reach the partner and keeps the re-invite as the step offered, and its standing condition still waits for the operator's acknowledgement, which a successful run never gives for any standing condition.
+   - The partner-storage copy says the next run can still reach the partner only while the record holds a previous secret the run would offer, read at render, and keeps the re-invite as the step offered for runs that keep failing; with none it names the re-invite alone.
+     Its standing condition still waits for the operator's acknowledgement, which a successful run never gives for any standing condition; the page and the list say once a run since then succeeded.
+     Clearing it on a heal run's success is a behavior change left to the maintainer.
+   - The live heal note is stated once both sides saved the next secret: the responder at its own save, the initiator once the partner's first frame shows it saved.
+   - A browser inviter whose save fails names the next run as the step only where its acceptor completed the key exchange under its previous secret, as the command line's responder does; the record keeps no account of that, so the next visit names the re-invite.
    - No import, a backup restore or a command-line pair, carries a previous secret onto the record, as no export writes one.
 
 Each item lands its own spec changes, with its wording-change list, and the `SECURITY_DESIGN.md` changes it makes true.

@@ -86,6 +86,7 @@ function record(
     }),
     side: "acceptor",
     sharedSecret: generateSharedSecret(),
+    previousSharedSecret: generateSharedSecret(),
     standingCondition: NO_STANDING_CONDITION,
     ...overrides,
   };
@@ -230,13 +231,59 @@ describe("a managed exchange", () => {
       expect(failure.kind).toBe("partner-storage");
       expect(failure.title).toBe(PARTNER_SECRET_NOT_SAVED_TITLE);
       expect(failure.message).toMatch(
-        /^A run stopped because your partner could not save the exchange's new shared secret, and this side had already taken it, so you and your partner now hold different secrets\. This device kept the secret your partner still holds, so the next run can still reach them, and both sides save a new secret\. If runs keep missing your partner or stopping, re-invite them\.$/,
+        /^A run stopped because your partner could not save the exchange's new shared secret, and this side had already taken it, so you and your partner now hold different secrets\. This device also kept the earlier secret your partner still holds, so the next run can still reach them\. If your partner's device can save the new secret this time, you are back in step\. If runs keep missing your partner or stopping, ask your partner to re-invite you\.$/,
       );
       expect(failure.reportedCause).toBeUndefined();
       expect(managedRunRetryable(failure)).toBe(false);
       expect(managedRunReinvites(failure)).toBe(true);
+      expect(failure.reinvite).toBe("if-runs-keep-failing");
     }
   });
+
+  test.each([
+    ["holds no previous secret", { previousSharedSecret: undefined }],
+    [
+      "holds one that has expired",
+      { previousExpires: "2026-07-14T10:00:00.000Z" },
+    ],
+  ])(
+    "where the record %s, every surface names the re-invite",
+    (_case, overrides) => {
+      const stored = record({ lastRun: stamped, ...overrides });
+      const live = classifyManagedRunFailure(
+        notSaved(),
+        { atLaunch: record(overrides), afterRun: stored },
+        undefined,
+        NOW,
+        true,
+      );
+      const recorded = managedRunFailureFromRecord(stored, undefined, NOW);
+      for (const failure of [live, recorded]) {
+        if (failure === undefined)
+          throw new Error("expected the partner-storage alert");
+        expect(failure.kind).toBe("partner-storage");
+        expect(failure.message).toMatch(
+          /\. Scheduled runs keep running but cannot reach your partner, and running the exchange again cannot either; it needs a fresh invitation, which keeps your terms and gives the exchange a new secret\.$/,
+        );
+        expect(failure.reinvite).toBeUndefined();
+        expect(managedRunReinvites(failure)).toBe(true);
+      }
+      const notice = betweenVisitNotice({
+        record: stored,
+        local: undefined,
+        caughtUpMisses: 0,
+        disposition: "failed",
+        now: NOW,
+      });
+      expect(notice?.body).not.toContain(PARTNER_SECRET_NOT_SAVED_KEPT_REMEDY);
+      expect(notice?.body).toMatch(
+        /Scheduled runs keep running but cannot reach your partner until you re-invite them\. Open this app and re-invite your partner\.$/,
+      );
+      expect(savedExchangeRow(stored, undefined, NOW).status).toMatch(
+        /^Last run stopped: your partner could not save the new secret \(.*\); no run can reach them until you re-invite$/,
+      );
+    },
+  );
 
   test("a no-show after it keeps the re-invite on the live launch", () => {
     const live = classifyManagedRunFailure(
@@ -339,7 +386,7 @@ describe("the windows after the partner's failed save, until a re-invite", () =>
     expect(savedExchangeRow(later, undefined, NOW + 1).status).toMatch(
       /^Your partner could not save the new secret \(.*\); the next run can still reach them$/,
     );
-    const view = managedStandingConditionView(later, undefined);
+    const view = managedStandingConditionView(later, undefined, NOW + 1);
     expect(view?.tier).toBe("partner-storage");
     expect(view?.title).toBe(PARTNER_SECRET_NOT_SAVED_TITLE);
     expect(view?.clearance).toBe("acknowledge");
@@ -400,7 +447,7 @@ describe("the windows after the partner's failed save, until a re-invite", () =>
         since: LATER,
         kind: "auth",
       });
-      const view = managedStandingConditionView(later(), undefined);
+      const view = managedStandingConditionView(later(), undefined, NOW + 1);
       expect(view?.tier).toBe("unexplained");
       expect(view?.clearance).toBe("confirmation");
     });
@@ -423,7 +470,11 @@ describe("the windows after the partner's failed save, until a re-invite", () =>
       );
       expect(failure?.kind).toBe("unexplained");
       expect(failure && managedRunReinvites(failure)).toBe(false);
-      const view = managedStandingConditionView(afterNoShow, undefined);
+      const view = managedStandingConditionView(
+        afterNoShow,
+        undefined,
+        NOW + 1,
+      );
       expect(view?.tier).toBe("unexplained");
       expect(view?.clearance).toBe("confirmation");
     });
@@ -465,6 +516,36 @@ describe("the windows after the partner's failed save, until a re-invite", () =>
     );
     expect(raisedStandingCondition(twice)?.kind).toBe("partner-storage");
     expectReinvite(managedRunFailureFromRecord(twice, undefined, NOW + 1));
+  });
+
+  test("a run that succeeded since then is named on the row, and a later miss is a plain miss", () => {
+    const healed = applyManagedExchangeLastRun(
+      afterStop(),
+      { at: LATER, outcome: "succeeded" },
+      LATER_MS,
+      LATER_MS,
+    );
+    const missed = applyManagedExchangeLastRun(
+      { ...healed, previousSharedSecret: undefined },
+      { at: LATER_2, outcome: "missed" },
+      LATER_2_MS,
+      LATER_2_MS,
+    );
+    for (const stored of [healed, missed]) {
+      expect(raisedStandingCondition(stored)?.kind).toBe("partner-storage");
+      expect(savedExchangeRow(stored, undefined, NOW + 1).status).toMatch(
+        /^Your partner could not save the new secret \(.*\); a run since then succeeded; clear this on the exchange's page$/,
+      );
+    }
+    expect(
+      betweenVisitNotice({
+        record: missed,
+        local: undefined,
+        caughtUpMisses: 0,
+        disposition: "missed",
+        now: NOW + 1,
+      })?.kind,
+    ).not.toBe("partner-storage");
   });
 
   test.each(["auth", "storage"] as const)(
@@ -524,6 +605,8 @@ describe("the windows after the partner's failed save, until a re-invite", () =>
     expect(deriveManagedFailureTier(reinvited, undefined, NOW + 1)).toBe(
       "none",
     );
-    expect(managedStandingConditionView(reinvited, undefined)).toBeUndefined();
+    expect(
+      managedStandingConditionView(reinvited, undefined, NOW + 1),
+    ).toBeUndefined();
   });
 });

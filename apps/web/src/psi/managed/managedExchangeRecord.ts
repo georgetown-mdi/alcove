@@ -35,6 +35,7 @@ import {
   matchingKeyUnavailableReason,
   maxCodeUnits,
   migrateOnRead,
+  offerablePrevious,
   termsStatingDeclaredPayloadSend,
 } from "@alcove/core";
 
@@ -2075,6 +2076,50 @@ export function recentRunsOf(
   return record.lastRun !== undefined ? [record.lastRun] : [];
 }
 
+/** Whether a run the record lists ({@link recentRunsOf}) succeeded after
+ * `since`. */
+export function runSucceededSince(
+  record: Pick<ManagedExchangeRecord, "lastRun" | "recentRuns">,
+  since: string,
+): boolean {
+  const sinceMs = Date.parse(since);
+  return recentRunsOf(record).some(
+    (run) => run.outcome === "succeeded" && Date.parse(run.at) > sinceMs,
+  );
+}
+
+/**
+ * The previous secret a run of `record` would offer at `now`: the record's,
+ * on the acceptor, the only side that can be ahead over WebRTC, where core's
+ * `offerablePrevious` offers it. `undefined` on the inviter, on a record
+ * holding none or no current secret, and once it has expired.
+ */
+export function offeredManagedPreviousSecret(
+  record: Pick<
+    ManagedExchangeRecord,
+    "side" | "sharedSecret" | "previousSharedSecret" | "previousExpires"
+  >,
+  now: number,
+): string | undefined {
+  const previous = record.previousSharedSecret;
+  if (
+    record.side !== "acceptor" ||
+    previous === undefined ||
+    record.sharedSecret === undefined
+  )
+    return undefined;
+  return offerablePrevious(
+    {
+      sharedSecret: previous,
+      ...(record.previousExpires !== undefined && {
+        expires: record.previousExpires,
+      }),
+    },
+    record.sharedSecret,
+    now,
+  )?.sharedSecret;
+}
+
 /** The stored entry the `lastRun` write rules compare against: `undefined`
  * where it is stamped later than `nowMs`, so the incoming entry replaces it. */
 function lastRunNotAfter(
@@ -2088,9 +2133,11 @@ function lastRunNotAfter(
 
 /** Whether `lastRun` records an outcome that supersedes a rotation-in-flight
  * marker set at `since`: a key exchange that reached a verdict at or after the
- * marker -- it succeeded, failed closed, or could not save its rotation. A
- * no-show, a dropped connection, or a refusal before connecting says nothing
- * about the secret the partner holds, and leaves the marker standing. */
+ * marker -- it succeeded, failed closed, or could not save its rotation -- or
+ * a `"terms-change"` refusal, which comes before either side stores and so
+ * rotated nothing. A no-show, a dropped connection, or a refusal before
+ * connecting says nothing about the secret the partner holds, and leaves the
+ * marker standing. */
 export function answersRotationInFlight(
   lastRun: ManagedExchangeLastRun,
   since: string,
@@ -2098,6 +2145,7 @@ export function answersRotationInFlight(
   if (Date.parse(lastRun.at) < Date.parse(since)) return false;
   return (
     lastRun.outcome === "succeeded" ||
+    lastRun.failureKind === "terms-change" ||
     standingConditionFrom(lastRun) !== undefined
   );
 }

@@ -551,9 +551,43 @@ describe("runManagedExchangeInBrowser", () => {
           relayKey: await deriveRelayKey(sharedSecret),
         }),
       );
+      expect(
+        vi.mocked(parkWebSocketRelayConnection).mock.calls[0][0]
+          .afterCutRotation,
+      ).toBeUndefined();
       expect(close).toHaveBeenCalled();
     },
   );
+
+  test("a run whose record holds a rotation-in-flight marker parks its relays as after a cut rotation", async () => {
+    const { mc } = makeParkedCloseMc();
+    mockedOpen.mockResolvedValue(mc);
+    acquireResources("inviter");
+    const url = "wss://relay.example.org/relay";
+    vi.mocked(managedRunRelayPlan).mockResolvedValueOnce({
+      relaysLeftOut: [],
+      websocketRelays: [{ url, exchangeId: "exchange" }],
+    });
+    vi.mocked(parkWebSocketRelayConnection).mockImplementationOnce(() => ({
+      url,
+      paired: false,
+      partnerStarted: false,
+      failure: undefined,
+      onChange: () => () => {},
+      start: () => new Promise<never>(() => {}),
+      close: vi.fn(),
+    }));
+
+    await runDriver(new AbortController().signal, undefined, {
+      ...recordForSide("inviter"),
+      sharedSecret: generateSharedSecret(),
+      rotationInFlightSince: "2026-07-01T09:00:00.000Z",
+    });
+
+    expect(vi.mocked(parkWebSocketRelayConnection)).toHaveBeenCalledWith(
+      expect.objectContaining({ afterCutRotation: true }),
+    );
+  });
 
   describe("a record holding a previous secret", () => {
     const PREVIOUS_EXPIRES = "2099-01-01T00:00:00.000Z";
@@ -612,6 +646,9 @@ describe("runManagedExchangeInBrowser", () => {
           relayKey: await deriveRelayKey(previousSharedSecret),
         }),
       );
+      for (const [options] of vi.mocked(parkWebSocketRelayConnection).mock
+        .calls)
+        expect(options.afterCutRotation).toBe(true);
       expect(mockedAuthenticate).toHaveBeenCalledWith(
         mc,
         "initiator",
@@ -645,35 +682,80 @@ describe("runManagedExchangeInBrowser", () => {
     test.each([
       [
         "this side used its previous secret",
+        "acceptor",
         { local: "previous", partner: "current" } as const,
         "The last run stopped before your partner saved the new secret",
+        ["stored", "partner stored", "noted"],
       ],
       [
         "the partner used its previous secret",
+        "inviter",
         { local: "current", partner: "previous" } as const,
         "Your partner still had the secret from before your last run stopped",
+        ["stored", "noted"],
       ],
-    ])(
-      "a key exchange where %s states the heal note and hands the store which secrets it used",
-      async (_case, secretUsed, note) => {
+    ] as const)(
+      "a key exchange where %s states the heal note once both sides saved, and hands the store which secrets it used",
+      async (_case, side, secretUsed, note, order) => {
         const { mc } = makeParkedCloseMc();
         mockedOpen.mockResolvedValue(mc);
-        acquireResources();
+        acquireResources(side);
         mockedAuthenticate.mockResolvedValueOnce({
           ...wrappedHandshake(mc),
           secretUsed,
         });
-        const onWarning = vi.fn();
+        const steps: Array<string> = [];
+        persistNextSecret.mockImplementationOnce(() => {
+          steps.push("stored");
+          return Promise.resolve();
+        });
+        partnerStored.mockImplementationOnce(() => {
+          steps.push("partner stored");
+          return Promise.resolve();
+        });
+        mockedRunExchange.mockImplementationOnce(async (...args) => {
+          await args[3].rotation?.partnerStored?.();
+          return minimalExchangeResult({
+            partnerTerms: getDefaultLinkageTerms("Managed re-run partner"),
+          });
+        });
+        const onWarning = vi.fn((message: string) => {
+          if (message.includes(note)) steps.push("noted");
+        });
 
-        await runDriver(new AbortController().signal, onWarning);
+        await runDriver(new AbortController().signal, onWarning, {
+          ...recordForSide(side),
+        });
 
-        expect(onWarning).toHaveBeenCalledWith(expect.stringContaining(note));
+        expect(steps).toEqual(order);
         expect(persistNextSecret).toHaveBeenCalledWith(
           MOCKED_NEXT_SECRET,
           secretUsed,
         );
       },
     );
+
+    test("a heal run whose save fails states no heal note", async () => {
+      const { mc } = makeParkedCloseMc();
+      mockedOpen.mockResolvedValue(mc);
+      acquireResources("inviter");
+      mockedAuthenticate.mockResolvedValueOnce({
+        ...wrappedHandshake(mc),
+        secretUsed: { local: "current", partner: "previous" },
+      });
+      persistNextSecret.mockRejectedValueOnce(new Error("the write failed"));
+      const onWarning = vi.fn();
+
+      await expect(
+        runDriver(new AbortController().signal, onWarning, {
+          ...recordForSide("inviter"),
+        }),
+      ).rejects.toThrow("the write failed");
+
+      expect(onWarning).not.toHaveBeenCalledWith(
+        expect.stringContaining("another copy"),
+      );
+    });
 
     test("a key exchange both completed under the current secret states no heal note", async () => {
       const { mc } = makeParkedCloseMc();

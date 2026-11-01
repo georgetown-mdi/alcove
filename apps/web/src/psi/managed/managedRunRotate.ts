@@ -108,10 +108,14 @@ export function failedRun(
 export class RotationPersistError extends Error {
   /** The `storage`-kind `lastRun` to record for this failed run. */
   readonly lastRun: ManagedExchangeLastRun;
-  constructor(at: number, cause: unknown) {
+  /** Whether the next run can meet the partner under the secret this run
+   * used ({@link ManagedRotationPersist.nextRunHeals}). */
+  readonly nextRunHeals: boolean;
+  constructor(at: number, cause: unknown, nextRunHeals = false) {
     super("failed to persist the rotated shared secret", { cause });
     this.name = "RotationPersistError";
     this.lastRun = storageFailureRun(at);
+    this.nextRunHeals = nextRunHeals;
   }
 }
 
@@ -125,6 +129,11 @@ export interface ManagedRotationPersist {
   tokenMaxAgeDays: number | undefined;
   /** The clock the stamps read. */
   now: () => number;
+  /** Whether a failed persist leaves the next run able to meet the partner
+   * under the secret this run used: this side is the responder, which stores
+   * after its partner, and the partner completed the key exchange under its
+   * previous secret, which shows that it keeps one. */
+  nextRunHeals?: boolean;
 }
 
 /**
@@ -146,7 +155,11 @@ export async function storeRotatedSecret(
   try {
     await section.persist(writeBack);
   } catch (error) {
-    throw new RotationPersistError(section.now(), error);
+    throw new RotationPersistError(
+      section.now(),
+      error,
+      section.nextRunHeals === true,
+    );
   }
   return writeBack.sharedSecret;
 }
