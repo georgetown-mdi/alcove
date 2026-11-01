@@ -226,7 +226,7 @@ On `webrtc` the roles are fixed, the acceptor always the initiator ([WEBRTC_TRAN
 
 - **A heal run** completes under the previous secret and draws fresh `N_I` and `N_R` like any run, from which both sides derive a next secret with that run's `ka`.
   The ahead side's unshared current secret, which the cut run derived and only the ahead side stored, is discarded.
-- **The previous-secret rules hold unchanged:** its life is one run, it keeps its own `expires`, a re-invite drops it, an export omits it, and every heal is reported.
+- **The previous-secret rules hold unchanged:** a store replaces it, it keeps its own `expires`, a re-invite drops it, an export omits it, and every heal is reported.
   It is always accepted ([question 2](#open-questions)).
   SP 800-57 section 8.2.3.2 does not reach it: the previous secret enters no later secret, so keeping it for one heal run is a question of how long a secret is used, not of how its replacement is made.
 
@@ -255,7 +255,7 @@ The cost is one more durable write per run on the initiator: an atomic key-file 
 
 Rules that bound it:
 
-- **Its life is one run.**
+- **Until a store replaces it.**
   The next run in which that side stores a next secret drops it: as initiator it keeps the secret that run used instead, until that run's confirmation, and as responder it keeps none.
   Only a run cut before that side's store keeps a previous secret past its end.
   No time window is involved, so there is no width to choose.
