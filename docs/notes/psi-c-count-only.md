@@ -4,7 +4,7 @@ title: "Count-Only Linkage (PSI-C): Construction, Provenance, and Reporting"
 
 # Count-only linkage: why psi-c counts every key under one permutation
 
-*Status: directed by the maintainer's rulings of 2026-10-26 and 2026-10-27; built. The construction is normatively specified in [PROTOCOL.md](../spec/PROTOCOL.md#psi-c) and its record rows in [EXCHANGE_RECORD.md](../spec/EXCHANGE_RECORD.md#count-only-psi-c-records). This note records why the construction has its shape, how the one-key construction came about, the alternatives weighed, and which key shapes the maintainer ruled count-only admits. See [docs/notes/README.md](README.md).*
+*Status: directed by the maintainer's rulings of 2026-10-26 and 2026-10-27; built, except candidate sets, whose construction is a proposal awaiting a ruling. The construction is normatively specified in [PROTOCOL.md](../spec/PROTOCOL.md#psi-c) and its record rows in [EXCHANGE_RECORD.md](../spec/EXCHANGE_RECORD.md#count-only-psi-c-records). This note records why the construction has its shape, how the one-key construction came about, the alternatives weighed, and which key shapes the maintainer ruled count-only admits. See [docs/notes/README.md](README.md).*
 
 This is design rationale. Nothing here binds an implementation; the normative rows live in the two spec documents linked above, and this note does not restate them.
 
@@ -86,6 +86,16 @@ One choice the ruling left open, the spec makes: uniqueness is tested over the r
 - Without candidate sets every round's pairs are disjoint, so order never matters, which is why the other shapes carry no such risk.
 
 Lifting the refusal needs a resolution rule that does not depend on order, with its difference from `psi` stated, and every record's candidates padded to its key's declared width so group sizes do not identify records -- which also multiplies each round's size by that width. The cost of waiting is stated rather than hidden: the built-in default keys include candidate-set keys, a swap key among them, so count-only over the defaults stays refused until that stage, and a count over terms with those keys removed is comparable to a `psi` run on the narrowed terms, not on the defaults.
+
+**The proposed construction for candidate sets.** *Proposal, awaiting the maintainer's ruling on the resolution rule and on what it adds to the receiver's learning; not built.* [PROTOCOL.md](../spec/PROTOCOL.md#candidate-sets-under-count-only) specifies it ahead of the build. Each record contributes one block of elements per round, padded with fresh dummies to its role's width; the sender permutes whole blocks and, each round, the elements within a block; the receiver's replay then has, per round, a graph of candidate pairs between slots and pseudonyms. Three rules turn that graph into a count without depending on the order the graph is met in, each removing every slot and pseudonym the round's graph touches:
+
+- **A, the size of a maximum matching** (proposed). It is one-to-one by construction and is the largest count any order of a one-to-one greedy sweep could reach, so it equals `psi` on the spec's double-match case and on any round where `psi`'s row order happens to be a best one. It is at least the `psi` count and at most twice it. Where `psi`'s row order is not a best one it counts more: senders `{ab,cd}`, `{ef}` against receivers `{ab,ef}`, `{cd}` give 1 under `psi` and 2 under A.
+- **B, the number of connected components.** Never above the `psi` count, but 1 on the double-match case, where `psi` gives 2, so it undercounts the very case the spec makes normative.
+- **C, isolated pairs only**, counting a pair only when neither end has another candidate. Never above `psi`, and 0 on the double-match case: it reads every contested match as no match.
+
+Two rules were excluded outright: a greedy sweep over the permuted labels, since the labels are drawn anew each run and the count would vary between runs on the same data; and the smaller side of each component, which is not one-to-one. A was preferred because it keeps the count's difference from `psi` one-sided and bounded and agrees with `psi` on the normative case; the choice is the maintainer's, since B and C are also order-independent and one-to-one.
+
+The proposal keeps one producer refused: a fan-out a party authors in its own data standardization. Such a party declares its record count already multiplied by the fan-out factor and declares no width, and no frame states the factor, so the sender cannot find the receiver's block boundaries. Admitting it would need the factor on the wire, a frame change the PSI-C spec does not provide for.
 
 Two things were not part of the ruling. `deduplicate` stays refused: what a count means under a many-to-X cardinality is not defined. And how often coverage singles out a record on genuine data is unmeasured; measuring it on a realistic dataset before consent copy states a limit is proposed, as is a receiver-side warning when a coverage class is small, neither of them built.
 
