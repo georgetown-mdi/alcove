@@ -15,12 +15,22 @@
 - - -> A wait that meets no partner under one secret ends when the other's does; any other failure ends both.
 - - -> **Only then.**
 - - -> An acceptor holding no previous secret, one whose previous secret has expired or equals its current one, and every inviter register under the current secret's ids alone.
-- - -> A previous secret is held for one run ([The previous secret](#the-previous-secret)), so the second registration lasts that run.
+- - -> Every acceptor run registers, enrolls and dials under the previous secret while the key file holds one it would offer, until a run stores the next secret or the confirmation write drops it ([The previous secret](#the-previous-secret)).
+- - -> A run that never meets its partner writes nothing, and a failed confirmation write leaves the previous secret in place ([EXCHANGE_FILE.md](EXCHANGE_FILE.md#the-previous-secret-and-the-rotation-history)).
+- - -> The previous secret's `expires`, where the key file holds one, bounds how long that lasts.
+- - -> Stated limit: a previous secret with no `expires` has no time bound, so an acceptor whose partner never returns registers, enrolls and dials under it on every run until the exchange is re-invited.
 - - -> **The relays.**
 - - -> The same run enrolls the key and derived exchange id of both secrets at the registrar its invitation names, and dials each WebSocket relay it lists under the derived id under the id and key of both secrets.
 - - -> A relay under an id the connection or the invitation names is dialed under the current key alone ([Enrolling at a default relay](#enrolling-at-a-default-relay)).
-- - -> **What the coordination server reads.**
-- - -> One party registering under two acceptor ids and offering to two inviter ids in the same attempts, which links two rotations of the partnership, for that run.
+- - -> Stated limit: each enrollment's failure detail is redacted only of the exchange id and relay key sent in that request ([A command-line party](#enrolling-at-a-default-relay)), so a registrar can echo a value it received in the other request, such as the other secret's relay key, into the warning the run logs, where the detail is shown as untrusted text.
+- - -> **Who can link the two rotations.**
+- - -> Three parties see one host use both secrets at once.
+- - -> The coordination server sees one party registering under two acceptor ids and offering to two inviter ids in the same attempts.
+- - -> The registrar the invitation names receives both secrets' exchange ids and relay keys in two enrollments sent at the same time.
+- - -> Each WebSocket relay dialed under the derived id receives two hellos from one host under two exchange ids.
+- - -> Each of them can link two rotations of the partnership, on every run that registers under both secrets.
+- **Its life is one run.** -> **Until a store replaces it.**
+- - -> A run that stores nothing leaves it in place, and the command line's key file can still hold it after a drop that fails ([EXCHANGE_FILE.md](EXCHANGE_FILE.md#the-previous-secret-and-the-rotation-history)).
 - - -> The browser keeps no previous secret, so it registers under one pair of ids.
 - - -> An acceptor that also waits under its previous secret enrolls that secret's key under that secret's derived id at the same time ([WebRTC rendezvous peer-id derivation](#webrtc-rendezvous-peer-id-derivation)).
 - - -> A one-sided allocation
