@@ -19,8 +19,10 @@ import {
 } from "../errors";
 import { DistinctValues } from "../utils/distinctValues";
 import {
-  assertIndexTableIsPermutation,
+  assertIndexTableNamesEachPseudonym,
   assertResponseElementsDistinct,
+  atWidth,
+  drawBlockOrders,
   HeldPermutation,
   PermutedCountReplay,
 } from "./countOnlyPermutation";
@@ -170,26 +172,36 @@ export interface PsiEngine {
   /**
    * Doubly-encrypts a deserialized-from-`requestBytes` client request under the
    * server key, returning the serialized response. Server role. A
-   * count-only-permuted engine reorders the response under `pi`, drawn on the
-   * first request, so slot `s` answers request position `pi(s)`; a later
-   * request with another element count is refused as a protocol error.
+   * count-only-permuted engine reads the request as one block of `width`
+   * elements per receiver record (docs/spec/PROTOCOL.md, Candidate sets under
+   * count-only) and reorders the response's blocks under `pi`, drawn on the
+   * first request, so slot `s` answers request block `pi(s)`; within each
+   * slot it orders the block's elements under a permutation it draws for that
+   * slot in that round. A later request with another number of blocks is
+   * refused as a protocol error.
    *
    * `declaredElements` is the record count the partner declared. A
    * count-only-permuted engine requires it and refuses, as a protocol error
    * and before it draws `pi`, a request whose element count as the library
-   * parsed it differs; the identifier-revealing mode ignores it.
+   * parsed it is not `declaredElements * width`; the identifier-revealing
+   * mode ignores it and takes no width but 1.
    */
   processClientRequest(
     requestBytes: Uint8Array,
     declaredElements?: number,
+    width?: number,
   ): Promise<Uint8Array>;
   /**
    * Encrypts this party's values once under the client key. Client role. A
-   * count-only-permuted engine contributes every value, one per receiver
-   * record in record order; values must be distinct, and every round's
-   * request must have as many.
+   * count-only-permuted engine contributes every value, one block of `width`
+   * consecutive values per receiver record, the blocks in request order;
+   * values must be distinct, and every round's request must have as many
+   * blocks. The identifier-revealing mode takes no width but 1.
    */
-  createClientRequest(values: ReadonlyArray<string>): Promise<Uint8Array>;
+  createClientRequest(
+    values: ReadonlyArray<string>,
+    width?: number,
+  ): Promise<Uint8Array>;
   /**
    * Takes the partner's whole serialized server setup as one piece and
    * completes it: {@link receiveServerSetupPiece} then
@@ -238,33 +250,38 @@ export interface PsiEngine {
     responseBytes: Uint8Array,
   ): Promise<[Array<number>, Array<number>]>;
   /**
-   * Encrypts one element per sender record, `values` in record order, and
-   * returns the serialized setup with the round's index table: entry `p` is
-   * the pseudonym `sigma` gives the record whose element is at setup position
-   * `p`. `sigma` is drawn on the first call and serves every later one, which
-   * must have as many values; values must be distinct. Server role,
-   * count-only-permuted mode only.
+   * Encrypts `values`, one block of `width` consecutive values per sender
+   * record in record order, and returns the serialized setup with the round's
+   * index table: entry `p` is the pseudonym `sigma` gives the record whose
+   * block holds the element at setup position `p`, so each pseudonym occurs
+   * `width` times. `sigma` is drawn on the first call and serves every later
+   * one, which must have as many blocks; values must be distinct. Server
+   * role, count-only-permuted mode only.
    */
   createPermutedSetup(
     values: ReadonlyArray<string>,
+    width?: number,
   ): Promise<{ setup: Uint8Array; indexTable: Int32Array }>;
   /**
    * Takes the round's index table for the setup the preceding
    * {@link completeServerSetup} holds, refusing as a protocol error a table
-   * whose length is not the setup's element count, or the length earlier
-   * rounds had, or which is not a permutation. Client role,
-   * count-only-permuted mode only.
+   * whose length is not the setup's element count, or in which a pseudonym
+   * does not occur exactly `width` times (a permutation at `width` 1), or
+   * which names another number of pseudonyms than earlier rounds did. Client
+   * role, count-only-permuted mode only.
    */
-  receiveIndexTable(indexTable: Int32Array): Promise<void>;
+  receiveIndexTable(indexTable: Int32Array, width?: number): Promise<void>;
   /**
    * Matches the partner's permuted response against the held setup and index
    * table and replays the round's (slot, pseudonym) pairs into the count,
    * returning nothing: no pair, slot, pseudonym or per-round count leaves the
-   * engine. A response that is not a list of 33-byte elements or that repeats
-   * an element is refused as a protocol error before any element is matched,
-   * and one whose element count is not this party's request's after. A
-   * 33-byte element that is not a valid point is refused by the library
-   * during the match. Client role, count-only-permuted mode only.
+   * engine. A matched response position `q` names slot `floor(q / w)`, `w`
+   * being the width of this party's request for the round. A response that
+   * is not a list of 33-byte elements or that repeats an element is refused
+   * as a protocol error before any element is matched, and one whose element
+   * count is not this party's request's after. A 33-byte element that is not
+   * a valid point is refused by the library during the match. Client role,
+   * count-only-permuted mode only.
    */
   matchPermutedRound(responseBytes: Uint8Array): Promise<void>;
   /**
@@ -316,8 +333,8 @@ export interface PermutedShardPrimary {
   /** The mode the engine was built in. */
   readonly mode: PsiEngineMode;
   /**
-   * Checks `values`, the whole of a receiver's request, as
-   * {@link PsiEngine.createClientRequest} checks it, records it as the
+   * Checks `values`, the whole of a receiver's request in blocks of `width`,
+   * as {@link PsiEngine.createClientRequest} checks it, records it as the
    * exchange's request, and masks only its first `partElements` values,
    * returning that part as a request. Client role, count-only-permuted mode
    * only.
@@ -325,6 +342,7 @@ export interface PermutedShardPrimary {
   createRequestFirstPart(
     values: ReadonlyArray<string>,
     partElements: number,
+    width?: number,
   ): Promise<Uint8Array>;
 }
 
@@ -395,13 +413,16 @@ export class InProcessPsiEngine implements PsiEngine, PermutedShardPrimary {
   private heldSetupElements = 0;
   // The count-only-permuted state, held for the exchange and discarded with
   // the engine: the sender's two permutations, and the receiver's record
-  // counts, the round's index table and the replay. The secret parts are
-  // JavaScript private fields, which no caller can read at runtime.
+  // counts, the round's index table, both widths of the round, and the
+  // replay. The secret parts are JavaScript private fields, which no caller
+  // can read at runtime.
   #pi: HeldPermutation | undefined;
   #sigma: HeldPermutation | undefined;
   private receiverRecords: number | undefined;
   private senderRecords: number | undefined;
   #heldIndexTable: Int32Array | undefined;
+  private heldIndexTableWidth = 1;
+  private roundRequestWidth: number | undefined;
   #replay: PermutedCountReplay | undefined;
   private countTaken = false;
   // Latched when a count-only-permuted receiver's round fails, on the
@@ -541,6 +562,25 @@ export class InProcessPsiEngine implements PsiEngine, PermutedShardPrimary {
       );
   }
 
+  // Refuses, as this party's own fault, a width that is not a whole number
+  // of at least 1, one other than 1 outside the count-only-permuted mode, or,
+  // where `elements` is given, one that does not divide it into blocks.
+  private requireWidth(
+    operation: string,
+    width: number,
+    elements?: number,
+  ): void {
+    if (
+      !Number.isSafeInteger(width) ||
+      width < 1 ||
+      (width !== 1 && this.mode !== "count-only-permuted") ||
+      (elements !== undefined && elements % width !== 0)
+    )
+      throw new InternalConsistencyError(
+        `${this.id}: ${operation} cannot take ${elements === undefined ? "" : `${String(elements)} elements `}at width ${String(width)} in the ${this.mode} mode`,
+      );
+  }
+
   /**
    * A fresh copy of this engine's secret key, for building a shard helper
    * that masks under it (the {@link InProcessPsiEngineOptions.secretKey}
@@ -658,21 +698,26 @@ export class InProcessPsiEngine implements PsiEngine, PermutedShardPrimary {
 
   createPermutedSetup(
     values: ReadonlyArray<string>,
+    width = 1,
   ): Promise<{ setup: Uint8Array; indexTable: Int32Array }> {
     return settled(() => {
       const server = this.requireServer("createPermutedSetup");
       this.requireMode("createPermutedSetup", "count-only-permuted");
       this.requireUndisposed("createPermutedSetup");
+      this.requireWidth("createPermutedSetup", width, values.length);
       this.assertDistinctValues("createPermutedSetup", values);
-      const sigma = (this.#sigma ??= HeldPermutation.draw(values.length));
-      if (sigma.size !== values.length)
+      const records = values.length / width;
+      const sigma = (this.#sigma ??= HeldPermutation.draw(records));
+      if (sigma.size !== records)
         throw new InternalConsistencyError(
-          `${this.id}: a count-only setup has ${String(values.length)} values where the exchange's first had ${String(sigma.size)}`,
+          `${this.id}: a count-only setup has ${blocksOf(values.length, width)} where the exchange's first had ${String(sigma.size)}`,
         );
       const { setup, permutation } = this.maskSetup(server, values);
       const indexTable = new Int32Array(permutation.length);
       for (let position = 0; position < permutation.length; position += 1)
-        indexTable[position] = sigma.at(permutation[position]!);
+        indexTable[position] = sigma.at(
+          Math.floor(permutation[position]! / width),
+        );
       permutation.fill(0);
       return { setup, indexTable };
     });
@@ -681,9 +726,11 @@ export class InProcessPsiEngine implements PsiEngine, PermutedShardPrimary {
   processClientRequest(
     requestBytes: Uint8Array,
     declaredElements?: number,
+    width = 1,
   ): Promise<Uint8Array> {
     const server = this.requireServer("processClientRequest");
     this.requireUndisposed("processClientRequest");
+    this.requireWidth("processClientRequest", width);
     const request = fromLibrary(() =>
       this.library.request.deserializeBinary(requestBytes),
     );
@@ -701,11 +748,13 @@ export class InProcessPsiEngine implements PsiEngine, PermutedShardPrimary {
         throw new InternalConsistencyError(
           `${this.id}: processClientRequest in the count-only-permuted mode needs the partner's declared record count`,
         );
-      if (elements !== declaredElements)
+      if (elements !== declaredElements * width)
         throw new PartnerProtocolRefusalError(
-          `${this.id} protocol error: the partner's PSI request has ${String(elements)} elements for its ${String(declaredElements)} declared records`,
+          `${this.id} protocol error: the partner's PSI request has ${String(elements)} elements for its ${String(declaredElements)} declared records${atWidth(width)}`,
         );
-      return Promise.resolve(this.permutedResponse(server, request, elements));
+      return Promise.resolve(
+        this.permutedResponse(server, request, declaredElements, width),
+      );
     }
     const ranges = this.rangesFor(elements, "processRequest");
     // One chunk is the single call: the partner's request is re-encrypted as
@@ -742,17 +791,20 @@ export class InProcessPsiEngine implements PsiEngine, PermutedShardPrimary {
     ).getEncryptedElementsList_asU8();
   }
 
-  // The response in request order, then reordered under `pi` before any part
-  // of it leaves the engine: slot `s` is the element at position `pi(s)`.
+  // The response in request order, then reordered before any part of it
+  // leaves the engine: slot `s` is the block at `pi(s)`, its elements in the
+  // order a permutation drawn for the slot in this round gives them.
   private permutedResponse(
     server: PSIServer,
     request: PSIRequest,
-    elements: number,
+    records: number,
+    width: number,
   ): Uint8Array {
-    const pi = (this.#pi ??= HeldPermutation.draw(elements));
-    if (pi.size !== elements)
+    const elements = records * width;
+    const pi = (this.#pi ??= HeldPermutation.draw(records));
+    if (pi.size !== records)
       throw new PartnerProtocolRefusalError(
-        `${this.id} protocol error: the partner's PSI request has ${String(elements)} elements where the exchange's first had ${String(pi.size)}`,
+        `${this.id} protocol error: the partner's PSI request has ${blocksOf(elements, width, "elements")} where the exchange's first had ${String(pi.size)}`,
       );
     const ranges = this.rangesFor(elements, "processRequest");
     let inOrder: Array<Uint8Array>;
@@ -773,21 +825,35 @@ export class InProcessPsiEngine implements PsiEngine, PermutedShardPrimary {
         `${this.id}: the PSI engine answered ${String(inOrder.length)} of a request's ${String(elements)} elements`,
       );
     const permuted = new Array<Uint8Array>(elements);
-    for (let slot = 0; slot < elements; slot += 1)
-      permuted[slot] = inOrder[pi.at(slot)]!;
+    const withinSlot = drawBlockOrders(records, width);
+    try {
+      for (let slot = 0; slot < records; slot += 1) {
+        const block = pi.at(slot) * width;
+        for (let place = 0; place < width; place += 1)
+          permuted[slot * width + place] =
+            inOrder[block + withinSlot[slot * width + place]!]!;
+      }
+    } finally {
+      withinSlot.fill(0);
+    }
     return serializeResponse(this.library, permuted);
   }
 
-  createClientRequest(values: ReadonlyArray<string>): Promise<Uint8Array> {
+  createClientRequest(
+    values: ReadonlyArray<string>,
+    width = 1,
+  ): Promise<Uint8Array> {
     const client = this.requireClient("createClientRequest");
+    this.requireWidth("createClientRequest", width);
     if (this.mode === "count-only-permuted")
-      this.recordPermutedRequest("createClientRequest", values);
+      this.recordPermutedRequest("createClientRequest", values, width);
     return Promise.resolve(this.maskRequest(client, values));
   }
 
   createRequestFirstPart(
     values: ReadonlyArray<string>,
     partElements: number,
+    width = 1,
   ): Promise<Uint8Array> {
     return settled(() => {
       const client = this.requireClient("createRequestFirstPart");
@@ -800,24 +866,28 @@ export class InProcessPsiEngine implements PsiEngine, PermutedShardPrimary {
         throw new InternalConsistencyError(
           `${this.id}: the first part of a request cannot have ${String(partElements)} of its ${String(values.length)} values`,
         );
-      this.recordPermutedRequest("createRequestFirstPart", values);
+      this.recordPermutedRequest("createRequestFirstPart", values, width);
       return this.maskRequest(client, values.slice(0, partElements));
     });
   }
 
-  // A count-only-permuted receiver's request: one distinct value per record,
-  // the same record count in every round.
+  // A count-only-permuted receiver's request: one block of distinct values
+  // per record, the same record count in every round.
   private recordPermutedRequest(
     operation: string,
     values: ReadonlyArray<string>,
+    width: number,
   ): void {
     this.refuseAfterFailedRound(operation);
+    this.requireWidth(operation, width, values.length);
     this.assertDistinctValues(operation, values);
-    this.receiverRecords ??= values.length;
-    if (this.receiverRecords !== values.length)
+    const records = values.length / width;
+    this.receiverRecords ??= records;
+    if (this.receiverRecords !== records)
       throw new InternalConsistencyError(
-        `${this.id}: a count-only request has ${String(values.length)} values where the exchange's first had ${String(this.receiverRecords)}`,
+        `${this.id}: a count-only request has ${blocksOf(values.length, width)} where the exchange's first had ${String(this.receiverRecords)}`,
       );
+    this.roundRequestWidth = width;
   }
 
   private maskRequest(
@@ -1072,16 +1142,17 @@ export class InProcessPsiEngine implements PsiEngine, PermutedShardPrimary {
     return [local, partner];
   }
 
-  receiveIndexTable(indexTable: Int32Array): Promise<void> {
+  receiveIndexTable(indexTable: Int32Array, width = 1): Promise<void> {
     return settled(() =>
-      this.latchingRoundFailure(() => this.takeIndexTable(indexTable)),
+      this.latchingRoundFailure(() => this.takeIndexTable(indexTable, width)),
     );
   }
 
-  private takeIndexTable(indexTable: Int32Array): void {
+  private takeIndexTable(indexTable: Int32Array, width: number): void {
     this.requireClient("receiveIndexTable");
     this.requireMode("receiveIndexTable", "count-only-permuted");
     this.refuseAfterFailedRound("receiveIndexTable");
+    this.requireWidth("receiveIndexTable", width);
     if (this.heldSetup === undefined)
       throw new Error(
         `${this.id}: receiveIndexTable called before the partner's setup completed`,
@@ -1095,13 +1166,15 @@ export class InProcessPsiEngine implements PsiEngine, PermutedShardPrimary {
       throw new PartnerProtocolRefusalError(
         `${this.id} protocol error: the partner's index table has ${String(entries)} entries for a setup of ${String(this.heldSetupElements)} elements`,
       );
-    if (this.senderRecords !== undefined && entries !== this.senderRecords)
+    assertIndexTableNamesEachPseudonym(this.id, indexTable, width);
+    const records = entries / width;
+    if (this.senderRecords !== undefined && records !== this.senderRecords)
       throw new PartnerProtocolRefusalError(
-        `${this.id} protocol error: the partner's index table has ${String(entries)} entries where the exchange's first had ${String(this.senderRecords)}`,
+        `${this.id} protocol error: the partner's index table has ${blocksOf(entries, width, "entries")} where the exchange's first had ${String(this.senderRecords)}`,
       );
-    assertIndexTableIsPermutation(this.id, indexTable);
-    this.senderRecords = entries;
+    this.senderRecords = records;
     this.#heldIndexTable = indexTable.slice();
+    this.heldIndexTableWidth = width;
   }
 
   matchPermutedRound(responseBytes: Uint8Array): Promise<void> {
@@ -1120,7 +1193,14 @@ export class InProcessPsiEngine implements PsiEngine, PermutedShardPrimary {
       );
     const indexTable = this.#heldIndexTable;
     const receiverRecords = this.receiverRecords;
-    if (indexTable === undefined || receiverRecords === undefined)
+    const senderRecords = this.senderRecords;
+    const requestWidth = this.roundRequestWidth;
+    if (
+      indexTable === undefined ||
+      receiverRecords === undefined ||
+      senderRecords === undefined ||
+      requestWidth === undefined
+    )
       throw new Error(
         `${this.id}: matchPermutedRound called before the round's index table and request`,
       );
@@ -1128,30 +1208,41 @@ export class InProcessPsiEngine implements PsiEngine, PermutedShardPrimary {
     assertResponseElementsDistinct(this.id, responseBytes);
     const match = this.beginMatch("matchPermutedRound", "count-only-permuted");
     this.#heldIndexTable = undefined;
+    this.roundRequestWidth = undefined;
     try {
       const result = this.matchStreamed(match, responseBytes);
-      if (result.decryptedCount !== receiverRecords)
+      const requestElements = receiverRecords * requestWidth;
+      if (result.decryptedCount !== requestElements)
         throw new PartnerProtocolRefusalError(
-          `${this.id} protocol error: the partner's PSI response has ${String(result.decryptedCount)} elements for a request of ${String(receiverRecords)}`,
+          `${this.id} protocol error: the partner's PSI response has ${String(result.decryptedCount)} elements for a request of ${String(requestElements)}`,
         );
       const pairs = result.associationTable;
       if (pairs === undefined)
         throw new InternalConsistencyError(
           `${this.id}: the PSI engine's revealing match returned no pairs`,
         );
-      const [slots, setupPositions] = pairs;
+      const [responsePositions, setupPositions] = pairs;
+      const slots = new Int32Array(responsePositions.length);
       const pseudonyms = new Int32Array(setupPositions.length);
-      for (let pair = 0; pair < setupPositions.length; pair += 1)
+      for (let pair = 0; pair < setupPositions.length; pair += 1) {
+        slots[pair] = Math.floor(responsePositions[pair]! / requestWidth);
         pseudonyms[pair] = indexTable[setupPositions[pair]!]!;
+      }
       const replay = (this.#replay ??= new PermutedCountReplay(
         receiverRecords,
-        indexTable.length,
+        senderRecords,
       ));
       try {
-        replay.acceptRound(this.id, slots, pseudonyms);
+        replay.acceptRound(
+          this.id,
+          slots,
+          pseudonyms,
+          requestWidth > 1 || this.heldIndexTableWidth > 1,
+        );
       } finally {
-        slots.fill(0);
+        responsePositions.fill(0);
         setupPositions.fill(0);
+        slots.fill(0);
         pseudonyms.fill(0);
       }
     } finally {
@@ -1196,6 +1287,14 @@ export class InProcessPsiEngine implements PsiEngine, PermutedShardPrimary {
     this.server?.delete();
     this.client?.delete();
   }
+}
+
+// `count` elements as a refusal states them: as they are at width 1, and as
+// blocks of `width` otherwise.
+function blocksOf(count: number, width: number, noun = "values"): string {
+  return width === 1
+    ? `${String(count)} ${noun}`
+    : `${String(count / width)} blocks of ${String(width)} ${noun}`;
 }
 
 // `run`'s outcome as a promise, a throw included, so a caller chaining on it

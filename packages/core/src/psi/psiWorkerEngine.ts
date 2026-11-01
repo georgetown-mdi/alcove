@@ -63,15 +63,24 @@ type PsiWorkerRequestBody =
       method: "processClientRequest";
       requestBytes: Uint8Array;
       declaredElements?: number;
+      width?: number;
     }
-  | { method: "createClientRequest"; values: ReadonlyArray<string> }
+  | {
+      method: "createClientRequest";
+      values: ReadonlyArray<string>;
+      width?: number;
+    }
   | { method: "receiveServerSetup"; setupBytes: Uint8Array }
   | { method: "receiveServerSetupPiece"; piece: Uint8Array }
   | { method: "completeServerSetup" }
   | { method: "discardServerSetup" }
   | { method: "computeAssociationTable"; responseBytes: Uint8Array }
-  | { method: "createPermutedSetup"; values: ReadonlyArray<string> }
-  | { method: "receiveIndexTable"; indexTable: Int32Array }
+  | {
+      method: "createPermutedSetup";
+      values: ReadonlyArray<string>;
+      width?: number;
+    }
+  | { method: "receiveIndexTable"; indexTable: Int32Array; width?: number }
   | { method: "matchPermutedRound"; responseBytes: Uint8Array }
   | { method: "finishPermutedCount" };
 
@@ -258,16 +267,21 @@ export class WorkerPsiEngine implements PsiEngine {
   processClientRequest(
     requestBytes: Uint8Array,
     declaredElements?: number,
+    width?: number,
   ): Promise<Uint8Array> {
     return this.call({
       method: "processClientRequest",
       requestBytes,
       declaredElements,
+      width,
     });
   }
 
-  createClientRequest(values: ReadonlyArray<string>): Promise<Uint8Array> {
-    return this.call({ method: "createClientRequest", values });
+  createClientRequest(
+    values: ReadonlyArray<string>,
+    width?: number,
+  ): Promise<Uint8Array> {
+    return this.call({ method: "createClientRequest", values, width });
   }
 
   receiveServerSetup(setupBytes: Uint8Array): Promise<void> {
@@ -294,12 +308,13 @@ export class WorkerPsiEngine implements PsiEngine {
 
   createPermutedSetup(
     values: ReadonlyArray<string>,
+    width?: number,
   ): Promise<{ setup: Uint8Array; indexTable: Int32Array }> {
-    return this.call({ method: "createPermutedSetup", values });
+    return this.call({ method: "createPermutedSetup", values, width });
   }
 
-  receiveIndexTable(indexTable: Int32Array): Promise<void> {
-    return this.call({ method: "receiveIndexTable", indexTable });
+  receiveIndexTable(indexTable: Int32Array, width?: number): Promise<void> {
+    return this.call({ method: "receiveIndexTable", indexTable, width });
   }
 
   matchPermutedRound(responseBytes: Uint8Array): Promise<void> {
@@ -373,9 +388,10 @@ export function servePsiEngine(
         return engine.processClientRequest(
           body.requestBytes,
           body.declaredElements,
+          body.width,
         );
       case "createClientRequest":
-        return engine.createClientRequest(body.values);
+        return engine.createClientRequest(body.values, body.width);
       case "receiveServerSetup":
         return engine.receiveServerSetup(body.setupBytes);
       case "receiveServerSetupPiece":
@@ -387,9 +403,9 @@ export function servePsiEngine(
       case "computeAssociationTable":
         return engine.computeAssociationTable(body.responseBytes);
       case "createPermutedSetup":
-        return engine.createPermutedSetup(body.values);
+        return engine.createPermutedSetup(body.values, body.width);
       case "receiveIndexTable":
-        return engine.receiveIndexTable(body.indexTable);
+        return engine.receiveIndexTable(body.indexTable, body.width);
       case "matchPermutedRound":
         return engine.matchPermutedRound(body.responseBytes);
       case "finishPermutedCount":

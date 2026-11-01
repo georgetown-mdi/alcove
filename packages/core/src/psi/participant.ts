@@ -28,8 +28,16 @@ import {
   PSI_SET_TOO_LARGE_ABORT_REASON,
   receiveAfterTerms,
 } from "../partnerAbortFrame";
-import { decodeIndexTable, encodeIndexTable } from "./countOnlyPermutation";
-import type { CountOnlyDeclaredCounts } from "./countOnlyRounds";
+import {
+  atWidth,
+  decodeIndexTable,
+  encodeIndexTable,
+} from "./countOnlyPermutation";
+import {
+  ONE_ELEMENT_PER_RECORD,
+  type CountOnlyDeclaredCounts,
+  type CountOnlyRoundWidths,
+} from "./countOnlyRounds";
 import { decodePsiBinaryFrame, receivePsiBinaryFrame } from "./psiBinaryFrame";
 import { InProcessPsiEngine, type PsiEngine } from "./psiEngine";
 import { PsiOperationStoppedError } from "./psiWorkerEngine";
@@ -682,10 +690,12 @@ export class PSIParticipant {
 
   /**
    * Encrypts this party's set once under the client key, returning the serialized
-   * request. Requires the `"joiner"` role.
+   * request. Requires the `"joiner"` role. `width` is a count-only round's
+   * block width, as {@link PsiEngine.createClientRequest} takes it.
    */
   public async createClientRequest(
     values: ReadonlyArray<string>,
+    width?: number,
   ): Promise<Uint8Array> {
     if (this.sentRequest !== undefined)
       throw new InternalConsistencyError(
@@ -695,7 +705,7 @@ export class PSIParticipant {
     const request = await this.reportProgress(
       "createClientRequest",
       values.length,
-      () => this.engine.createClientRequest(values),
+      () => this.engine.createClientRequest(values, width),
     );
     this.sentRequest = {
       bytes: request.byteLength,
@@ -756,41 +766,50 @@ export class PSIParticipant {
    * Runs one round of the count-only construction over every agreed key
    * (docs/spec/PROTOCOL.md, PSI-C, The frames of one round): the sender's
    * setup and index table, the receiver's request, the sender's permuted
-   * response. `set` has one element per record of this party, the receiver's
-   * in its request order. Each partner set is held to the record count
-   * `declared` states for it, and a refusal is a protocol error raised before
-   * the round goes on. The round returns nothing on either party: the
-   * receiver's engine keeps its pairs, and {@link finishPermutedCount}
-   * returns the count after the last round. Requires a participant whose
-   * engine was built `count-only-permuted`.
+   * response. `set` has one block of its width's elements per record of this
+   * party, the receiver's blocks in its request order. Each partner set is
+   * held to the record count `declared` states for it times its width in
+   * `widths`, and a refusal is a protocol error raised before the round goes
+   * on. The round returns nothing on either party: the receiver's engine
+   * keeps its pairs, and {@link finishPermutedCount} returns the count after
+   * the last round. Requires a participant whose engine was built
+   * `count-only-permuted`.
    */
   public async countPermutedRound(
     conn: MessageConnection,
     set: ReadonlyArray<string>,
     declared: CountOnlyDeclaredCounts,
+    widths: CountOnlyRoundWidths = ONE_ELEMENT_PER_RECORD,
   ): Promise<void> {
     const isSender = this.config.role === "starter";
+    for (const width of [widths.receiverWidth, widths.senderWidth])
+      if (!Number.isSafeInteger(width) || width < 1)
+        throw new InternalConsistencyError(
+          `${this.id}: a count-only round cannot have a width of ${String(width)}`,
+        );
     const ownRecords = isSender
       ? declared.senderRecords
       : declared.receiverRecords;
-    if (set.length !== ownRecords)
+    const ownWidth = isSender ? widths.senderWidth : widths.receiverWidth;
+    if (set.length !== ownRecords * ownWidth)
       throw new InternalConsistencyError(
-        `${this.id}: a count-only round set has ${String(set.length)} elements for ${String(ownRecords)} declared records`,
+        `${this.id}: a count-only round set has ${String(set.length)} elements for ${String(ownRecords)} declared records${atWidth(ownWidth)}`,
       );
-    if (isSender) await this.sendPermutedRound(conn, set, declared);
-    else await this.receivePermutedRound(conn, set, declared);
+    if (isSender) await this.sendPermutedRound(conn, set, declared, widths);
+    else await this.receivePermutedRound(conn, set, declared, widths);
   }
 
   private async sendPermutedRound(
     conn: MessageConnection,
     set: ReadonlyArray<string>,
     declared: CountOnlyDeclaredCounts,
+    widths: CountOnlyRoundWidths,
   ): Promise<void> {
     await this.refuseOwnSetOverDecodeCap(conn, set.length);
     const { setup, indexTable } = await this.reportProgress(
       "createServerSetup",
       set.length,
-      () => this.engine.createPermutedSetup(set),
+      () => this.engine.createPermutedSetup(set, widths.senderWidth),
     );
     await sendPsiSet(conn, setup);
     await conn.send(encodeIndexTable(indexTable));
@@ -801,16 +820,20 @@ export class PSIParticipant {
       request,
       this.elementBounds.request,
     );
-    if (elements !== declared.receiverRecords)
+    if (elements !== declared.receiverRecords * widths.receiverWidth)
       throw new PartnerProtocolRefusalError(
-        `${this.id} protocol error: the partner's PSI request has ${String(elements)} elements for its ${String(declared.receiverRecords)} declared records`,
+        `${this.id} protocol error: the partner's PSI request has ${String(elements)} elements for its ${String(declared.receiverRecords)} declared records${atWidth(widths.receiverWidth)}`,
       );
     const response = await this.reportProgress(
       "processClientRequest",
       elements,
       () =>
         decodePsiBinaryFrame(this.id, "request", () =>
-          this.engine.processClientRequest(request, declared.receiverRecords),
+          this.engine.processClientRequest(
+            request,
+            declared.receiverRecords,
+            widths.receiverWidth,
+          ),
         ),
     );
     await sendPsiSet(conn, response);
@@ -820,16 +843,23 @@ export class PSIParticipant {
     conn: MessageConnection,
     set: ReadonlyArray<string>,
     declared: CountOnlyDeclaredCounts,
+    widths: CountOnlyRoundWidths,
   ): Promise<void> {
     const setupElements = await this.receiveServerSetupInParts(conn);
     try {
-      if (setupElements !== declared.senderRecords)
+      if (setupElements !== declared.senderRecords * widths.senderWidth)
         throw new PartnerProtocolRefusalError(
-          `${this.id} protocol error: the partner's PSI setup has ${String(setupElements)} elements for its ${String(declared.senderRecords)} declared records`,
+          `${this.id} protocol error: the partner's PSI setup has ${String(setupElements)} elements for its ${String(declared.senderRecords)} declared records${atWidth(widths.senderWidth)}`,
         );
       const frame = await receivePsiBinaryFrame(conn, this.id, "index table");
       await this.engine.receiveIndexTable(
-        decodeIndexTable(this.id, frame, declared.senderRecords),
+        decodeIndexTable(
+          this.id,
+          frame,
+          declared.senderRecords,
+          widths.senderWidth,
+        ),
+        widths.senderWidth,
       );
     } catch (error) {
       await this.engine.discardServerSetup().catch(() => undefined);
@@ -837,7 +867,7 @@ export class PSIParticipant {
     }
 
     await this.refuseOwnSetOverDecodeCap(conn, set.length);
-    const request = await this.createClientRequest(set);
+    const request = await this.createClientRequest(set, widths.receiverWidth);
     await sendPsiSet(conn, request);
 
     const response = await this.receiveRoundSet(conn, "response");
