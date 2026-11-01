@@ -98,7 +98,7 @@ are the standing definition of the managed exchange.
 
 | Field | Type | Notes |
 | ----- | ---- | ----- |
-| `schemaVersion` | string literal | The single recognized literal for v4, `alcove-managed-exchange/v4`; a reader rejects any other value rather than migrating it -- the earlier literals among them, `alcove-managed-exchange/v1` (whose records hold no `standingCondition`) and `alcove-managed-exchange/v2` (whose condition holds no operator response) -- under the reader-rejects-unknown rule. |
+| `schemaVersion` | string literal | The literal this build writes, `alcove-managed-exchange/v4`. A reader migrates an earlier version a step leads from (`MANAGED_EXCHANGE_MIGRATIONS`) and refuses any other value ([Versioning](#versioning-a-stored-record-is-migrated-on-read)); no step leads from the earlier development literals, `alcove-managed-exchange/v1` (whose records hold no `standingCondition`) and `alcove-managed-exchange/v2` (whose condition holds no operator response). |
 | `id` | string (UUID) | A locally-generated identifier for this managed exchange, distinct from any rendezvous id. Used only to name the record in local UI; never sent on the wire. |
 | `label` | string, at most 120 UTF-16 code units (enforced at write; a character outside the Basic Multilingual Plane counts as two) | An operator-supplied display name for the partnership. Local only; never sent -- but disclosed to any reader of the store (see [Metadata at rest](../SECURITY_DESIGN.md#metadata-at-rest-presence-and-shape)). The length cap is enforced; what the label discloses is not checked and cannot be. The label field states where the label appears, in results and backup file names and in notifications, and the operator applies their own rules to what they write there: **operator cooperation**, exactly as export-source invalidation is. The field's only structural protections are the cap and its never-sent locality. |
 | `exchangeFile` | object | This party's exchange-file document, verbatim: the validated `ExchangeSpec` shape both applications share (see [EXCHANGE_FILE.md](EXCHANGE_FILE.md), "The artifact is the CLI config schema") -- the linkage terms both parties validated (column **shape** and disclosed payload column **names**, never a row value), metadata, standardization, the acceptor's `expectedPartnerDeduplicate` -- the cardinality side the accepted invitation declared for the partner, which a re-run holds the partner to (see [EXCHANGE_FILE.md](EXCHANGE_FILE.md#terms-binding-consent), "Terms-binding consent") -- this party's own `includeOwnColumns` output-composition choice, a closed two-value enum naming no column, this party's own `includeMatchingKey` choice, a boolean, this party's own `csvDelimiter` -- the field-delimiter choice its input file is read under and its result file written with, naming no column and holding no row value: one character, or the reserved word `detect` where the operator chose to have the delimiter taken from the file itself, a value distinct from the field being absent; an absent field is read and written with a comma, so every record stored without one keeps reading and no migration pass rewrites it -- and the connection block. A record stored before that rule holds no delimiter: it was read by detection and now reads as a comma, with no `schemaVersion` change, so a recurring exchange whose input is not comma-separated fails closed at its next window, with the single-column delimiter remedy stated at launch. It has **no `authentication` block** (the secret lives in `sharedSecret` below) and is composed exactly as the mint layer composes a downloadable file: assembled from a credential-free locator input, validated through the shared schema, with the **parse result** (never the raw input) persisted. The document's operator-authored free-text fields persist verbatim with it: each metadata column's optional `description` (no schema length bound), each standardization step's `params` (an open parameter map -- an authored cleaning step can embed a literal value, a pattern or a replacement string), and `retentionDisposition` (bounded at 1024 characters, the config schema's text bound), plus the terms' own 1024-bounded payload `description` and legal-agreement `purpose` strings. The retention note field states where the note is saved: with the exchange records, backup files, and configurations. The record stores the document as minted, or as the operator last edited its local settings, so what these fields disclose is the same **operator cooperation** the `label` row describes, and no additional bound or strip pass runs at persist time: the document is kept verbatim, and a document the mint layer accepts must remain saveable as managed (see [Metadata at rest](../SECURITY_DESIGN.md#metadata-at-rest-presence-and-shape)). The document's connection is fixed for the partnership but for its `allowedRelays` and the `server` an inviter's re-invite replaces ([Role: a local `side` field](#role-a-local-side-field-not-the-document)), and a re-invite otherwise re-issues the document verbatim with a fresh secret. Its terms change only as a partner's terms change is taken on ([A refused terms change](#a-refused-terms-change)) or through [a terms update](#a-terms-update); exchanging with a different partner is a new exchange. Its five per-party settings -- `includeOwnColumns`, `includeMatchingKey`, `csvDelimiter`, `retentionDisposition`, and a webrtc connection's `allowedRelays` -- are local fields the operator edits in place (see [Local settings of the document](#local-settings-of-the-document)). |
@@ -115,7 +115,7 @@ are the standing definition of the managed exchange.
 | `relayRegistrar` | object or absent | The relay registrar this browser enrolled the exchange at: `url`, the registrar's `https://` address, and `exchangeId`, the id it holds the exchange's relay key under, validated as the command line's [`connection.relay_registrar`](../EXCHANGE_REFERENCE.md#connectionrelay_registrar) is. It holds no credential: the relay-owner token is asked for at enrollment and written nowhere. Written by an enrollment once the registrar has confirmed it holds the relay key derived from the record's current secret; by a pair import whose configuration names a registrar; and by a backup restore holding one. A pair import or restore writes it whether or not that registrar confirmed the current key, and the key file's or backup's `relayRegistrationPendingSince` beside it records a registration it has not confirmed. Removed when the operator stops registering. A run registers there only when it relays through this browser's own relay ([PROTOCOL.md](PROTOCOL.md#registering-the-rotated-relay-key)). Absent in a [configuration-only record](#the-configuration-only-record). The export artifact holds it in its `local` block, and the command-line export writes it as `connection.relay_registrar` ([What the exports write](#what-the-exports-write)). |
 | `relayRegistrationPendingSince` | string (ISO 8601, UTC `Z`) or absent | The instant the secret the record holds was rotated to, while the relay registrar has not confirmed that it holds the relay key derived from it. What writes and reads it: [The pending relay registration](#the-pending-relay-registration). Absent in a [configuration-only record](#the-configuration-only-record). The export artifact's `key` block and the command-line key file this app writes hold it under the same name ([What the exports write](#what-the-exports-write)). |
 | `relayRegistrationPendingReason` | `"reinvite"` or absent | Why no run can confirm the registration `relayRegistrationPendingSince` records, held only beside it and `relayRegistrar`, so a record or backup holding it without either is refused whole: `"reinvite"` when a re-invite replaced the secret and the registrar did not confirm the fresh secret's key, so the key it holds is derived from a secret the record no longer holds. Absent beside the marker, a registration signed under the current key can confirm it. What writes and reads it: [The pending relay registration](#the-pending-relay-registration). The export artifact holds it in its `local` block; it has no key-file form, so the command-line export refuses a record holding it ([What the exports write](#what-the-exports-write)). |
-| `standingCondition` | object | The unanswered **standing condition**: evidence that this device's secret may no longer be the partnership's, raised by a run and not answered since. It holds one of two forms, neither with free text: a raised condition, `since` (ISO 8601 UTC, the instant of the run that raised it) and `kind` (`"auth"` \| `"storage"` \| `"partner-storage"`), the three `failureKind`s whose remedy is out-of-band rather than an act on this device; or `{"kind": "none"}` while none stands. A raised condition additionally holds the operator's `response` where one has been given -- `kind` (`"compromise"`) and `at` (ISO 8601 UTC, the instant they answered) -- nested inside the condition it answers rather than beside it, so the acts that clear the condition clear the response with it (see [The standing condition](#the-standing-condition)). The field is **required**, so a reader never has to tell a record holding none from one written without the field: a record stored under `alcove-managed-exchange/v1`, which has no such field, is rejected whole and re-established by re-invite, as is one under `alcove-managed-exchange/v2`, whose condition cannot hold a response (see [Versioning](#versioning-an-app-upgrade-can-invalidate-a-stored-record)). It stands BESIDE `lastRun` rather than inside it because `lastRun` holds one run: the next run's stamp replaces it, so a no-show or a later success would otherwise carry the evidence off with the entry that held it and the operator would never again be asked for the confirmation the design requires (see [A standing condition outlives the run that raised it](../MANAGED_EXCHANGE.md#a-standing-condition-outlives-the-run-that-raised-it)). What raises and clears it is [The standing condition](#the-standing-condition). |
+| `standingCondition` | object | The unanswered **standing condition**: evidence that this device's secret may no longer be the partnership's, raised by a run and not answered since. It holds one of two forms, neither with free text: a raised condition, `since` (ISO 8601 UTC, the instant of the run that raised it) and `kind` (`"auth"` \| `"storage"` \| `"partner-storage"`), the three `failureKind`s whose remedy is out-of-band rather than an act on this device; or `{"kind": "none"}` while none stands. A raised condition additionally holds the operator's `response` where one has been given -- `kind` (`"compromise"`) and `at` (ISO 8601 UTC, the instant they answered) -- nested inside the condition it answers rather than beside it, so the acts that clear the condition clear the response with it (see [The standing condition](#the-standing-condition)). The field is **required**, so a reader never has to tell a record holding none from one written without the field: a record stored under `alcove-managed-exchange/v1`, which has no such field, is rejected whole and re-established by re-invite, as is one under `alcove-managed-exchange/v2`, whose condition cannot hold a response (see [Versioning](#versioning-a-stored-record-is-migrated-on-read)). It stands BESIDE `lastRun` rather than inside it because `lastRun` holds one run: the next run's stamp replaces it, so a no-show or a later success would otherwise carry the evidence off with the entry that held it and the operator would never again be asked for the confirmation the design requires (see [A standing condition outlives the run that raised it](../MANAGED_EXCHANGE.md#a-standing-condition-outlives-the-run-that-raised-it)). What raises and clears it is [The standing condition](#the-standing-condition). |
 
 Everything in this table except `sharedSecret` is non-secret but not
 non-sensitive. The `rotationHistory` verifiers are derived from retired
@@ -196,7 +196,7 @@ them in place beside the document's [local settings](#local-settings-of-the-docu
 an edit of the policy stamps no `expires`.
 
 **`schemaVersion` does not move for it.** The literal moves for a member an older
-build would read past and lose state by ([Versioning](#versioning-an-app-upgrade-can-invalidate-a-stored-record)).
+build would read past and lose state by ([Versioning](#versioning-a-stored-record-is-migrated-on-read)).
 A build that predates this shape requires `sharedSecret`, so it refuses a
 configuration-only record whole rather than reading one as runnable -- the
 fail-closed outcome the version bump exists to produce -- while every record such
@@ -477,32 +477,43 @@ therefore how an inviter moves a saved exchange to another server, and, where
 the setting is readable or unset, it recovers an inviter's record whose saved
 address is refused.
 
-#### Versioning: an app upgrade can invalidate a stored record
+#### Versioning: a stored record is migrated on read
 
-A persisted document is subject to the exchange-file versioning and
-compatibility policy (see
-[EXCHANGE_FILE.md](EXCHANGE_FILE.md#versioning-and-compatibility-policy)): the
-web app is continuously deployed, there is no back-compatibility promise for
-existing artifacts, and an unknown enum value rejects loudly at load. An app
-upgrade can therefore invalidate a stored record -- over and above the record's
-own `schemaVersion` reader-rejects-unknown rule -- and the recovery is
-re-invite: a record the new version cannot load is re-established from a fresh
-invitation rather than hand-migrated, matching the policy's guidance for every
-other artifact of this schema.
+A stored record is partner state under the compatibility policy (see
+[RELEASES.md](../RELEASES.md#compatibility-policy)), so an app upgrade does not
+invalidate it:
 
-That evolution path -- reject, re-invite, re-create -- is also how the shape
-grows: a schema revision adds its fields under a new `schemaVersion`, required
-on that new shape, rather than as optional, structurally always-absent
-placeholders on the version already stored.
+- **Read.** A reader migrates a record at an earlier `schemaVersion` into
+  memory through the steps of `MANAGED_EXCHANGE_MIGRATIONS`
+  (`apps/web/src/psi/managed/managedExchangeRecord.ts`), and leaves the stored
+  value as it is.
+- **Write.** The record is written at the current version by the next store
+  write that changes it -- a run's outcome, a rotation, an edit -- and never by
+  a read.
+- **Failure.** A migration that fails leaves the stored value unchanged and is
+  refused naming the version found, the current version and the cause, never a
+  value the record holds. The refusal is a read failure like any other: the
+  attended list routes to its read-failed recovery surface, and the unattended
+  read skips the entry.
+- **The table.** It has no step yet, since every earlier literal is a
+  development one.
 
-A version bump therefore destroys an **unanswered compromise response** along
-with the condition it answers and the record that holds both. That is accepted,
-because it collapses into the three clearers rather than adding a fourth: the
-record the response stood on is refused whole, no surface renders an invitation
-control over a record that does not load, and re-establishing the exchange is
-the delete-and-re-invite the versioning rule already prescribes. The same holds
-for a page running older code than the record it reads: it refuses the record
-rather than reading it as unanswered.
+The persisted document inside the record states its own format version and is
+read under the exchange file's policy (see
+[EXCHANGE_FILE.md](EXCHANGE_FILE.md#versioning-and-compatibility-policy)).
+
+The shape grows the same way: a schema revision adds its fields under a new
+`schemaVersion`, required on that new shape, rather than as optional,
+structurally always-absent placeholders on the version already stored, and adds
+the step that moves the version before it.
+
+A step carries the standing condition and its **compromise response** over,
+since a migration that dropped either would be a fourth way to clear a
+condition, and only the three clearers may. A version no step can carry them
+from has no step, so its record is refused whole, no surface renders an
+invitation control over a record that does not load, and re-establishing the
+exchange is the delete-and-re-invite. A page running older code than the record
+it reads refuses the record rather than reading it as unanswered.
 
 #### Local settings of the document
 
@@ -993,8 +1004,8 @@ half of the pair.
 entry at a time. An entry this build cannot parse is **skipped**, reported as
 its own skip in the wake's diagnostic line, and every other due record still
 runs. Such an entry holds an out-of-bounds period or width from an artifact
-imported or hand-edited before these ceilings existed, or is any other record an
-app upgrade invalidated. Such an
+imported or hand-edited before these ceilings existed, or is any other record
+this build cannot read, a failed migration among them. Such an
 entry stays unparseable until an operator discards it, so a wholesale rejection
 here would be standing rather than transient: no exchange in the store would run
 unattended for as long as the entry sat there, with nobody present to meet the
@@ -1799,12 +1810,11 @@ record's `id` is likewise not included: it is a device-local record
   re-export after each rotation.
 - **Top-level shape.** The artifact is a JSON document with an `artifactVersion`
 tag and three parts that keep the two CLI halves separable from the browser-only
-fields. The tag is its own reader-rejects-unknown literal --
-`alcove-managed-exchange-backup/v3`, the single value this build accepts, and
-the only one it writes -- distinct from the record's `schemaVersion`: the on-disk
-artifact format versions independently of the stored record. Every other value
-is refused on the literal rather than migrated, the superseded
-`alcove-managed-exchange-backup/v2` being recognized only far enough to say so
+fields. The tag is its own literal --
+`alcove-managed-exchange-backup/v3`, the one this build writes -- distinct from
+the record's `schemaVersion`: the on-disk artifact format versions
+independently of the stored record. An import migrates the superseded
+`alcove-managed-exchange-backup/v2` into memory and refuses every other value
 (below). `exchangeDocument` embeds the exchange-file document as a
 valid `alcove.yaml` (the snake_case YAML the CLI loads, serialized through the
 same discipline the mint layer applies to a validated spec). `key` is the
@@ -1856,11 +1866,18 @@ either imports with the answer or is refused entire. The artifact's own
   parse at all: a document that parses and then fails the schema names a newer
   build's export as a likely cause and states the two ways past it -- bring the
   page up to date, or write the file from a build that matches -- alongside the
-  wrong-file and modified-file checks. A file tagged
-  `alcove-managed-exchange-backup/v2`, the format this one replaced, is the
-  other direction and is told apart from both: neither remedy applies to it, so
-  the refusal states that the backup is from an earlier version and points at
-  setting the exchange up again with the partner.
+  wrong-file and modified-file checks.
+- **A backup at the previous version.** A file tagged
+  `alcove-managed-exchange-backup/v2`, the format this one replaced, is the v3
+  shape with no `response` in a condition. An import migrates it in memory by
+  one step that moves the tag (`MANAGED_EXCHANGE_ARTIFACT_MIGRATIONS`), so its
+  condition imports unanswered, which is what a v2 condition is. The file is
+  never rewritten, and the next export writes v3. No build writing v2 knew the
+  `response` member, so the step refuses a v2 file whose condition holds one
+  rather than dropping the answer or trusting it. That refusal, and the refusal
+  of an earlier tag no step leads from, name the version found, the current
+  version and the cause, never a value the file holds; the import surface shows
+  it in place of the newer-build remedies, which do not apply to an older file.
 - **What a reconstructed `lastRun` can and cannot assert.** The `local.lastRun`
   block is validated against the record's own `lastRun` schema rather than a
   narrower one, so an artifact is accepted with every outcome and
@@ -2302,13 +2319,23 @@ therefore its own store, which also keeps it out of the export artifact
 structurally, exactly as the four local siblings above are kept out.
 
 **Shape.** One object per exchange: a `version`
-(`alcove-disclosure-accounting/v2`, its own reader-rejects-unknown literal) and
-`entries`, the exchange records oldest first. A stored value that fails
-validation -- an unrecognized version, an unknown key, or an entry that is not a
-valid exchange record -- rejects the whole read rather than loading the entries
-that parsed: a partially-loaded accounting would still render, as a shorter and
+(`alcove-disclosure-accounting/v2`, its own literal) and `entries`, the exchange
+records oldest first. A stored value that fails validation -- a version no step
+leads from, a failed migration, an unknown key, or an entry that is not a valid
+exchange record -- rejects the whole read rather than loading the entries that
+parsed: a partially-loaded accounting would still render, as a shorter and
 quietly false account of what was disclosed, so the failure is reported as a
 failure.
+
+**Versions.** The accounting is audit state, migrated on read as the record is
+(see [Versioning](#versioning-a-stored-record-is-migrated-on-read)): the
+envelope through `DISCLOSURE_ACCOUNTING_MIGRATIONS`, and each entry through the
+exchange record's own migrations. An envelope step moves the envelope and never
+an entry. The next append writes the envelope at the current version and the
+stored entries exactly as they sit at rest, never their migrated reading, so a
+past exchange record is never rewritten (see
+[EXCHANGE_RECORD.md](EXCHANGE_RECORD.md#record-fields)). Neither table has a
+step yet.
 
 **When an entry is written.** A run appends its record once that record is owed
 -- from the moment this party's payload crosses (see
@@ -2389,11 +2416,13 @@ removal, so an operator who must keep it exports it first.
 ### What an exchange-record version bump does to a stored accounting
 
 An entry is an exchange record, and the record format's version literal moves
-with its field set; a reader rejects an unrecognized version rather than
-migrating it, and no migration is offered pre-release (see
-[EXCHANGE_RECORD.md](EXCHANGE_RECORD.md)). So a bump of
-`EXCHANGE_RECORD_VERSION` invalidates the entries of every accounting already at
-rest. Two consequences follow, and the second is the one that compounds:
+with its field set. A reader migrates an entry at an earlier version where a
+step leads from it, and the accounting then reads as one (see
+[EXCHANGE_RECORD.md](EXCHANGE_RECORD.md)). A bump of `EXCHANGE_RECORD_VERSION`
+with no step from the version before it, or a step that fails on an entry, leaves
+the entries of an accounting at rest unreadable: a **failed migration**, which
+with damage is all the recovery below serves. Two consequences follow, and the second is the
+one that compounds:
 
 - **The read refuses the whole value**, per the Shape rule above, so the
   accounting renders as unreadable rather than as an empty or shortened one.
@@ -2403,10 +2432,12 @@ rest. Two consequences follow, and the second is the one that compounds:
   files nothing. A scheduled run's failed append raises the same notice any
   failed append raises, on a completion surface an unattended run does not open.
 
-**The stored form survives the bump.** The accounting's own `version` is a
-separate literal from the entries', and the envelope is validated without looking
-inside an entry, so a bump leaves the envelope readable and the stored entries
-returned verbatim. Only the per-entry validation refuses. This is what recovery
+**The stored form survives the failed migration.** The accounting's own
+`version` is a separate literal from the entries', and the envelope is validated
+without looking inside an entry, so an entry's failed migration leaves the
+envelope readable and the stored entries returned verbatim. Only the per-entry
+validation refuses. An envelope whose own migration fails has no stored form to
+return, the corruption case below. This is what recovery
 rests on, and it is pinned by a test driving both parses against a moved version
 rather than asserted here.
 
@@ -2455,7 +2486,8 @@ through this direction split, or accept that pages of this build offer the
 reset over the value it writes.
 
 **The recovery offered is export then reset**, in that order, from the unreadable
-state, and it never removes the exchange:
+state -- a failed migration or a damaged value, never an accounting a migration
+reads -- and it never removes the exchange:
 
 | Arm | What it does | What it does not do |
 | --- | --- | --- |
@@ -2466,15 +2498,16 @@ Neither alone covers the failure, which is why the surface orders them: the
 export is the only thing that retains the record, and the reset is the only thing
 that restores appendability. The reset is confirmed explicitly, names what is
 destroyed and what is kept, and is never a read's side effect. When the stored
-value is damaged past its envelope -- corruption rather than a version bump --
-there is nothing to export and the surface says so rather than offering a
+value is damaged past its envelope -- corruption, or an envelope whose own
+migration failed -- there is nothing to export and the surface says so rather than offering a
 download it cannot honor. The export arm alone is offered from the stale-page
 state as well: handing back stored bytes asserts nothing in either direction,
 where the reset belongs to the direction that has records stranded.
 
-Two shapes are not offered. **Migration** would rewrite a
-self-attested artifact into a version it was not written under, which the
-reader-rejects-unknown rule and the pre-release no-migration rule both exclude. A
+Two shapes are not offered. **Rewriting** an entry at the version a migration
+reads it at would alter a self-attested artifact after the fact, so a migrated
+entry is read in memory and written back as stored, and an entry no step can
+move stays unreadable. A
 **read-only legacy view** would render an earlier record's absent fields through
 the current version's meaning of their absence -- the quietly false account the
 whole-read rejection above exists to prevent. The export hands over stored bytes
@@ -2504,12 +2537,20 @@ holds no accounting: `lastRun` and `recentRuns` are timestamps and closed enums
 with no free-text field, and they keep only the last ten runs.
 
 **Shape.** One object per exchange: a `version`
-(`alcove-unfiled-disclosure/v2`, its own reader-rejects-unknown literal) and
+(`alcove-unfiled-disclosure/v2`, its own literal) and
 `entries`, oldest first. An entry holds `at`, the ISO 8601 instant the shortfall
 was noted, which falls inside the run it stands for; and, where the run built a
 record the reader admits, `record`, that run's exchange record retained verbatim.
 An entry with no `record` is a run whose record could not be built, and nothing
 can file it later.
+
+**Versions.** The note is audit state: it stands for runs the accounting is
+short, so it is migrated on read like the accounting rather than discarded
+(`UNFILED_DISCLOSURE_MIGRATIONS`), and written at the current version by its
+next write -- a further note, or a filing that leaves runs noted -- never by a
+read. A step moves the note and never a retained record, which a filing appends
+to the accounting as retained. A note whose migration fails is a note this build
+cannot read, below. The table has no step yet.
 
 **When an entry is written.** Whenever a run that disclosed does not file --
 either arm above -- and on the same terms the append itself takes: best-effort,

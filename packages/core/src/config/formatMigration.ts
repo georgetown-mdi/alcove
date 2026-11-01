@@ -36,6 +36,9 @@ export interface FormatMigrations<Version> {
   readonly steps: ReadonlyArray<FormatMigrationStep<Version>>;
   /** What the operator does when a migration fails. */
   readonly failureRemedy: string;
+  /** The sentence stating the stored document was left as it was; "The file
+   * was not changed." where unset. */
+  readonly unchangedStatement?: string;
 }
 
 /** A stored document whose migration to the current version failed. */
@@ -61,7 +64,8 @@ export class FormatMigrationError extends Error {
     super(
       `${migrations.fileName} is format version ${String(declared)}, and ` +
         `this version of Alcove could not move it to version ` +
-        `${String(toVersion)}: ${reason}. The file was not changed. ` +
+        `${String(toVersion)}: ${reason}. ` +
+        `${migrations.unchangedStatement ?? "The file was not changed."} ` +
         migrations.failureRemedy,
     );
     this.name = "FormatMigrationError";

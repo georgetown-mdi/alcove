@@ -46,6 +46,7 @@
 
 import {
   RelayRegistrarSchema,
+  migrateOnRead,
   parseExchangeSpec,
   parseSensitiveJson,
   parseSensitiveYaml,
@@ -68,7 +69,11 @@ import {
 } from "./managedExchangeRecord";
 import { refuseDocumentNotHeld } from "./managedCommandLineImport";
 
-import type { ExchangeSpec, RelayRegistrar } from "@alcove/core";
+import type {
+  ExchangeSpec,
+  FormatMigrations,
+  RelayRegistrar,
+} from "@alcove/core";
 import type {
   ManagedExchangeKeyPair,
   ManagedExchangeLastRun,
@@ -136,8 +141,8 @@ export type ManagedPlatformGrant = "working-folder";
  * handle is a member (no file serialization; see the module header).
  */
 interface ManagedExchangeArtifact {
-  /** The single recognized artifact-format literal; a reader rejects any other
-   * value rather than migrating it. */
+  /** The artifact-format literal this build writes; a reader migrates the
+   * previous one and refuses any other value. */
   artifactVersion: typeof MANAGED_EXCHANGE_ARTIFACT_VERSION;
   /** The exchange-file document embedded as a valid `alcove.yaml` (snake_case
    * YAML). The CLI half of the record. */
@@ -276,52 +281,71 @@ const artifactSchema: ZodType<ManagedExchangeArtifact> = z
     },
   );
 
-/** Raised when a backup file holds the previous artifact format
- * ({@link MANAGED_EXCHANGE_PREVIOUS_ARTIFACT_VERSION}). The strict schema refuses
- * the tag either way; this names which direction the difference runs, so the
- * import states the remedy an older file has -- a fresh exchange -- rather than
- * the version-gap remedies that only close a newer file's. */
-export class ManagedArtifactOutdatedError extends Error {
-  constructor() {
-    super("the backup file holds the previous artifact format");
-    this.name = "ManagedArtifactOutdatedError";
-  }
+/**
+ * The v2 -> v3 step. A v2 backup is the v3 shape with no answer in a raised
+ * condition, so the step moves only the tag. One holding an answer is refused
+ * rather than read: no build writing v2 knew the member, so the file was not
+ * written as it stands.
+ */
+function migrateArtifactFromV2(
+  document: Record<string, unknown>,
+): Record<string, unknown> {
+  const local = document["local"];
+  if (typeof local !== "object" || local === null) return document;
+  const condition = (local as Record<string, unknown>)["standingCondition"];
+  if (
+    typeof condition === "object" &&
+    condition !== null &&
+    Object.hasOwn(condition, "response")
+  )
+    throw new Error(
+      "it records that the exchange was treated as a possible compromise, " +
+        "which a backup of that version cannot record",
+    );
+  return document;
 }
 
-/** Matches any document whose `artifactVersion` is the previous literal, ahead of
- * the strict schema that refuses it. The rest of the document is left unchecked:
- * an older file's other fields are not this build's to read, and the tag alone
- * decides what the operator is told. */
-const previousArtifactSchema = z.object({
-  artifactVersion: z.literal(MANAGED_EXCHANGE_PREVIOUS_ARTIFACT_VERSION),
-});
+/** The backup file's migrations, run in memory at every import. A backup is
+ * never rewritten: the next one an export writes is at the current version. */
+export const MANAGED_EXCHANGE_ARTIFACT_MIGRATIONS: FormatMigrations<string> =
+  Object.freeze({
+    fileName: "The backup file",
+    versionField: "artifactVersion",
+    current: MANAGED_EXCHANGE_ARTIFACT_VERSION,
+    steps: Object.freeze([
+      {
+        from: MANAGED_EXCHANGE_PREVIOUS_ARTIFACT_VERSION,
+        to: MANAGED_EXCHANGE_ARTIFACT_VERSION,
+        migrate: migrateArtifactFromV2,
+      },
+    ]),
+    failureRemedy:
+      "Export the backup again from the device that holds the exchange, or " +
+      "set up a new exchange with your partner.",
+  });
 
 /**
  * Parse untrusted artifact bytes into a validated {@link ManagedExchangeArtifact}.
  * The whole document is parsed through the shared sensitive-JSON chokepoint
  * ({@link parseSensitiveJson}: structurally bounded before the parse, path-only
- * errors so no artifact bytes leak) and then the strict reader-rejects-unknown
+ * errors so no artifact bytes leak), migrated in memory where it is at an
+ * earlier version, and then held to the strict reader-rejects-unknown
  * {@link artifactSchema}. The embedded exchange document's YAML is not validated
  * here; {@link reconstructRecordFromArtifact} validates it through the exchange-file
  * parser.
  *
- * The previous format's tag is refused first, with its own error: it fails the
- * schema as surely, but as a rejection it is indistinguishable from a newer build's
- * export, whose remedies do not apply to a file this build has already moved past.
- * Nothing is reconstructed either way.
- *
+ * @param migrations the backup's migrations; this build's by default.
  * @throws {UsageError} if the bytes are not parseable JSON.
- * @throws {ManagedArtifactOutdatedError} if the document holds the previous
- *   artifact format.
+ * @throws {FormatMigrationError} if the document is at an earlier version and
+ *   its migration fails, naming the cause.
  * @throws {ZodError} if the parsed value is not a valid artifact.
  */
 export function parseManagedExchangeArtifact(
   source: string,
+  migrations: FormatMigrations<string> = MANAGED_EXCHANGE_ARTIFACT_MIGRATIONS,
 ): ManagedExchangeArtifact {
   const raw = parseSensitiveJson(source, "managed exchange backup");
-  if (previousArtifactSchema.safeParse(raw).success)
-    throw new ManagedArtifactOutdatedError();
-  return artifactSchema.parse(raw);
+  return artifactSchema.parse(migrateOnRead(raw, migrations));
 }
 
 /**
@@ -423,8 +447,8 @@ export interface ImportedManagedExchangeArtifact {
  *
  * @throws {UsageError} if the bytes are not parseable JSON or the embedded document
  *   is not parseable YAML.
- * @throws {ManagedArtifactOutdatedError} if the bytes hold the previous artifact
- *   format.
+ * @throws {FormatMigrationError} if the bytes hold an earlier artifact version
+ *   whose migration fails.
  * @throws {ZodError} if the artifact or the reconstructed record is invalid.
  */
 export function importManagedExchangeArtifact(

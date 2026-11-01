@@ -178,9 +178,11 @@ traffic passes through it, and no exchange work happens in it.
   leaves the offer standing.
 - A scheduled run never applies a waiting version.
 - An update replaces the app's cached code, not the browser's storage: the
-  recurring exchanges, their secrets, and the accounting stay. An upgrade can
-  still leave a stored record the new version cannot load; its recovery is [a
-  fast re-invite](#recovery-fast-re-invite).
+  recurring exchanges, their secrets, and the accounting stay. A new version
+  reads what an earlier one stored, and saves it in its own format the next
+  time the exchange changes. If it cannot convert a saved exchange, it says so
+  and changes nothing; the recovery is [a fast
+  re-invite](#recovery-fast-re-invite).
 
 ## The schedule and its run windows
 
@@ -1195,10 +1197,11 @@ browser's developer-tools console
 exchanges, or where even the marker cannot be written, nothing records the run:
 free space on the device rather than keep exchanging.
 
-### When an app upgrade leaves an accounting unreadable
+### When an accounting cannot be read
 
-An upgrade can change the format of the records an accounting holds. The
-accounting page then says so instead of showing entries. The entries are still
+A new version of the app reads an accounting an earlier one stored. If it
+cannot convert the stored records to its own format, or they are damaged, the
+accounting page says so instead of showing entries. The entries are still
 stored, and the exchange keeps running and disclosing, but none of its runs
 files a record until the accounting is cleared. Take both steps, in order:
 

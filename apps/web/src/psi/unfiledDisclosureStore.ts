@@ -33,7 +33,7 @@ import {
   openManagedExchangeDatabase,
 } from "./managed/managedExchangeStore";
 import {
-  appendDisclosureRecord,
+  appendToStoredDisclosureAccounting,
   parseDisclosureAccounting,
 } from "./disclosureAccounting";
 import {
@@ -49,8 +49,8 @@ import type {
   StoredUnfiledDisclosures,
   UnfiledDisclosure,
 } from "./unfiledDisclosure";
-import type { DisclosureAccounting } from "./disclosureAccounting";
 import type { ExchangeRecord } from "@alcove/core";
+import type { StoredDisclosureAccounting } from "./disclosureAccounting";
 
 const log = getLogger("unfiledDisclosureStore");
 
@@ -266,7 +266,9 @@ export async function readUnfiledDisclosures(
  * written back beside the note's own write, so a run cannot be dropped from the
  * note without its entry being in the accounting. The append is the accounting's
  * own, idempotent on the record's binding nonce, so filing a run the accounting
- * already holds resolves without a second entry.
+ * already holds resolves without a second entry. Each record is filed as the
+ * note retained it, and the accounting's earlier entries are written back as
+ * stored, so no past exchange record is rewritten.
  *
  * A run whose record cannot be read -- none was retained, or the record format
  * has moved past it -- stays noted: there is nothing to append for it, and
@@ -286,10 +288,9 @@ export async function fileUnfiledDisclosures(id: string): Promise<void> {
     read.onsuccess = () => {
       try {
         const filed = new Set<string>();
-        let accounting: DisclosureAccounting | undefined =
-          read.result === undefined
-            ? undefined
-            : parseDisclosureAccounting(read.result);
+        // Refuses as a run's own append does, even where nothing is fileable.
+        if (read.result !== undefined) parseDisclosureAccounting(read.result);
+        let accounting: StoredDisclosureAccounting | undefined;
         for (const entry of stored.entries) {
           if (entry.record === undefined) continue;
           let record: ExchangeRecord;
@@ -298,7 +299,10 @@ export async function fileUnfiledDisclosures(id: string): Promise<void> {
           } catch {
             continue;
           }
-          accounting = appendDisclosureRecord(accounting, record);
+          accounting = appendToStoredDisclosureAccounting(
+            accounting ?? read.result,
+            entry.record,
+          );
           filed.add(record.bindingNonce);
         }
         if (filed.size === 0 || accounting === undefined) return;

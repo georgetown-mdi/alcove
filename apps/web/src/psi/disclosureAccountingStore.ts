@@ -17,9 +17,11 @@
  * A deleted managed exchange takes its accounting with it, in the same one-step
  * delete transaction (see {@link ./managedExchangeStore.ts}).
  *
- * Beside the read and the append sit the two recovery operations for a stored
- * accounting this build can no longer read -- get the entries out, then make the
- * store appendable again. They are one ordered pair, not alternatives: the export
+ * An accounting at an earlier version is migrated on read, the envelope and each
+ * entry, and the append writes the envelope at the current version with the
+ * entries as stored. Beside the read and the append sit the two recovery
+ * operations for a stored accounting whose migration failed or that is damaged
+ * -- get the entries out, then make the store appendable again. They are one ordered pair, not alternatives: the export
  * retains the record but leaves the store un-appendable, and the reset restores
  * appendability but destroys the record. The read classifies which state the
  * exchange is in, so the recovery is offered on a value in hand, never on a
@@ -34,7 +36,7 @@ import {
   openManagedExchangeDatabase,
 } from "./managed/managedExchangeStore";
 import {
-  appendDisclosureRecord,
+  appendToStoredDisclosureAccounting,
   parseDisclosureAccounting,
   parseStoredDisclosureAccounting,
   storedEntriesAheadOfThisBuild,
@@ -80,8 +82,8 @@ async function readStoredValue(id: string): Promise<unknown> {
  * How reading one exchange's accounting turned out. The states are distinct
  * because their recoveries are: an accounting that could not be OBTAINED is a
  * condition of the store and says nothing about what is at rest, while one that
- * was obtained and refused is the app-upgrade case the export-then-reset recovery
- * exists for. Neither may render as an empty accounting -- "nothing was
+ * was obtained and refused -- a failed migration, or damage -- is the case the
+ * export-then-reset recovery exists for. Neither may render as an empty accounting -- "nothing was
  * disclosed" is a claim, and only `"none"` makes it.
  */
 export type DisclosureAccountingRead =
@@ -100,11 +102,11 @@ export type DisclosureAccountingRead =
   | { kind: "none" }
   /** The stored accounting, validated through {@link parseDisclosureAccounting}. */
   | { kind: "accounting"; accounting: DisclosureAccounting }
-  /** A stored value the validating parse refused -- the corrupted or
-   * app-upgrade-invalidated accounting. `stored` holds the entries exactly as
-   * they sit at rest when the ENVELOPE still parses (the record-version-bump
-   * case, which is what makes the export arm possible), and is `undefined` when
-   * the envelope is gone too and there is nothing to hand back. */
+  /** A stored value the validating parse refused -- a corrupted accounting, or
+   * one whose migration failed. `stored` holds the entries exactly as they sit
+   * at rest when the ENVELOPE still parses (an entry whose record migration
+   * failed, which is what makes the export arm possible), and is `undefined`
+   * when the envelope is gone too and there is nothing to hand back. */
   | { kind: "unreadable"; stored: StoredDisclosureAccounting | undefined }
   /** A stored value the validating parse refused whose entries name a LATER
    * exchange-record format than this build admits: the records are fine and this
@@ -141,7 +143,8 @@ function recoverableStored(
  * blocked open -- which self-heals when the other tab yields -- can never present
  * as the irreversible-reset case. A value that WAS refused is then split by
  * direction, on the refused entries' own version literals: only entries from an
- * earlier record format are the stranded accounting the reset exists for; entries
+ * earlier record format whose migration failed, or damaged ones, are the
+ * stranded accounting the reset exists for; entries
  * from a later one say this page is running older code than the build that wrote
  * them, and reloading is that state's whole recovery.
  *
@@ -176,7 +179,7 @@ export async function readDisclosureAccounting(
  * and takes the accounting with it.
  *
  * This is the second half of the recovery from a stored accounting this build
- * cannot read: the read failure is also an APPEND failure (the append re-reads
+ * cannot read, a failed migration or damage: the read failure is also an APPEND failure (the append re-reads
  * the accounting through the validating read inside its own transaction), so
  * every later run of a still-live exchange discloses and files nothing. Clearing
  * the unreadable value restores appendability; the next run starts a fresh
@@ -215,9 +218,11 @@ export async function resetDisclosureAccounting(id: string): Promise<void> {
  * entry is requested through to OS writeback before this resolves -- the same
  * durability the secret's own persist asks for.
  *
- * Re-appending a record already present is a no-op ({@link appendDisclosureRecord}
- * matches on the record's own binding nonce), so a retried write cannot inflate
- * the count of disclosures the accounting reports.
+ * Re-appending a record already present adds no entry
+ * ({@link appendToStoredDisclosureAccounting} matches on the record's own binding
+ * nonce), so a retried write cannot inflate the count of disclosures the
+ * accounting reports. The write holds the accounting at the current version and
+ * its earlier entries exactly as stored.
  *
  * The record is validated on the way in, through the same
  * {@link parseExchangeRecord} the read path holds a stored entry to, and the
@@ -226,6 +231,7 @@ export async function resetDisclosureAccounting(id: string): Promise<void> {
  * (the parser strips unknown keys) and a record the reader would reject cannot be
  * written at all.
  *
+ * @throws {FormatMigrationError} if the stored accounting's migration fails.
  * @throws {ZodError} if the record or the stored accounting is invalid; the
  *   transaction aborts and nothing is written.
  */
@@ -248,12 +254,11 @@ export async function appendDisclosureRecordToStore(
       let failure: unknown;
       read.onsuccess = () => {
         try {
-          const current =
-            read.result === undefined
-              ? undefined
-              : parseDisclosureAccounting(read.result);
           store.put(
-            appendDisclosureRecord(current, parseExchangeRecord(record)),
+            appendToStoredDisclosureAccounting(
+              read.result,
+              parseExchangeRecord(record),
+            ),
             id,
           );
         } catch (error) {

@@ -20,9 +20,9 @@
  * artifact"). That case names the version difference and both ways out of it --
  * bring this page up to date, or write the file from a build that matches -- before
  * the wrong-file and modified-file checks, which are what is left when the two
- * builds already agree. A file written in the previous artifact format is the
- * opposite direction and has neither remedy: no build reads it again, so it is
- * named as what it is and the operator is pointed at a fresh exchange.
+ * builds already agree. A file at an earlier artifact version is migrated on
+ * read, so the one that stops is a migration that failed, and its refusal names
+ * the versions and the cause.
  *
  * The refusals that name an exchange this browser already holds -- the same
  * secret, or the same agreed terms and side -- are here too, since they say what
@@ -31,13 +31,12 @@
 
 import { ZodError } from "zod";
 
-import { sanitizeErrorForDisplay } from "@alcove/core";
+import { FormatMigrationError, sanitizeErrorForDisplay } from "@alcove/core";
 
 import {
   ManagedConfigurationRefusedError,
   ManagedKeyFileRefusedError,
 } from "@psi/managed/managedCommandLineImport";
-import { ManagedArtifactOutdatedError } from "@psi/managed/managedExchangeArtifact";
 import { ManagedImportBackupNotConfigurationError } from "@psi/managed/managedExchangeImport";
 
 import type { ManagedChosenCopyRefusal } from "@psi/managed/managedExchangeImport";
@@ -63,33 +62,25 @@ export const UNRECOGNIZED_IMPORT_REASON =
   "device that wrote this file. Otherwise check that you chose the backup file " +
   "you exported and that it was not modified.";
 
-/** The file was written in the previous artifact format, which this build does not
- * read. The remedies a newer file has are void here -- there is no version to move
- * to and no build left that writes this one -- so the wrong-file check leads, and a
- * new exchange with the partner is the way on. */
-export const OUTDATED_IMPORT_REASON =
-  "This backup was written by an earlier version of this app and cannot be " +
-  "restored. Check that you chose the backup file you exported and that it " +
-  "was not modified. Set up a new exchange with your partner instead. " +
-  "Remove the old exchange if this browser still holds it.";
-
 /**
  * Which refusal an import error is shown as. A command-line configuration this
  * app cannot hold carries its own reason and is checked first; it is escaped for
  * display here, at the one altitude, since it names fields read out of the file.
- * A file holding the previous artifact format raises {@link ManagedArtifactOutdatedError}, which is checked first: it
- * would otherwise read as the newer-build case below, whose remedies an older file
- * does not have. A schema rejection anywhere else in the
+ * A file at an earlier artifact version whose migration failed raises a
+ * {@link FormatMigrationError}, which states its own versions and cause and is
+ * escaped the same way: it would otherwise read as the newer-build case below,
+ * whose remedies an older file does not have. A schema rejection anywhere else in the
  * parse-and-reconstruct -- the artifact's own strict schema, the embedded exchange
  * document, or the reconstructed record -- raises a {@link ZodError}, and that is
  * the version-difference case. Everything else, a failed parse and a store that
  * would not take the record alike, leaves the operator with the file to check.
  */
 export function importFailureReason(error: unknown): string {
-  if (error instanceof ManagedConfigurationRefusedError)
+  if (
+    error instanceof ManagedConfigurationRefusedError ||
+    error instanceof FormatMigrationError
+  )
     return sanitizeErrorForDisplay(error);
-  if (error instanceof ManagedArtifactOutdatedError)
-    return OUTDATED_IMPORT_REASON;
   return error instanceof ZodError
     ? UNRECOGNIZED_IMPORT_REASON
     : UNREADABLE_IMPORT_REASON;

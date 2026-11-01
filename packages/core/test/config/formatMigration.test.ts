@@ -99,6 +99,18 @@ describe("migrateOnRead", () => {
     );
     expect(JSON.stringify(raw)).toBe(before);
   });
+
+  test("states what was left unchanged in the format's own words", () => {
+    expect(() =>
+      migrateOnRead(
+        { version: 2, renamed: "unmovable" },
+        { ...MIGRATIONS, unchangedStatement: "The stored copy was kept." },
+      ),
+    ).toThrow(
+      "could not move it to version 3: the renamed field cannot be split. " +
+        "The stored copy was kept. Use the version that wrote it.",
+    );
+  });
 });
 
 describe("an earlier version no chain of steps leads from", () => {

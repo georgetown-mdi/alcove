@@ -2878,7 +2878,7 @@ describe("managed exchange detail accounting of disclosures", () => {
     // export from this state, and a record file only where one was downloaded --
     // which an unattended run never offered.
     await expect
-      .element(page.getByText("An app upgrade can leave", { exact: false }))
+      .element(page.getByText("could not convert them", { exact: false }))
       .toBeInTheDocument();
     await expect
       .element(page.getByText("no export of it from here", { exact: false }))
@@ -3501,7 +3501,7 @@ describe("an accounting a newer version of the app filed", () => {
     ).toBeNull();
     expect(
       page
-        .getByText("An app upgrade can leave a stored accounting", {
+        .getByText("could not convert them", {
           exact: false,
         })
         .query(),

@@ -1935,12 +1935,12 @@ function StalePageAccountingNotice({
 }
 
 /**
- * The recovery affordance for an accounting this build can no longer read: an
- * app upgrade moved the exchange-record format forward, the stored entries
- * stay admissible under the format they were written under, and the
- * validating read refuses them wholesale. Reached only for entries this build
- * is AHEAD of; the opposite direction is a stale page rather than a stranded
- * accounting, and takes {@link StalePageAccountingNotice}.
+ * The recovery affordance for an accounting this build cannot read: an earlier
+ * format whose migration failed, or a damaged value, which the validating read
+ * refuses wholesale. An earlier format that migrates reads as an accounting and
+ * never reaches this. Reached only for entries this build is not BEHIND; the
+ * opposite direction is a stale page rather than a stranded accounting, and
+ * takes {@link StalePageAccountingNotice}.
  *
  * Two arms, offered export-then-reset (see
  * docs/spec/MANAGED_EXCHANGE_RECORD.md, "The recovery offered is export then
@@ -1950,8 +1950,8 @@ function StalePageAccountingNotice({
  * failure is an append failure too. Reversing the order loses the record the
  * export would have saved.
  *
- * Whether the export is offered is read off the stored value: a
- * record-version bump leaves the envelope parsable and the entries come back
+ * Whether the export is offered is read off the stored value: an entry whose
+ * migration failed leaves the envelope parsable and the entries come back
  * whole; corruption that takes the envelope leaves nothing to hand over, and
  * that state says so. The reset is offered either way -- it is what restores
  * appendability -- but only behind an explicit confirm naming what is
@@ -1997,9 +1997,9 @@ function UnreadableAccountingRecovery({
       <Alert role="alert" color="red" title="This accounting could not be read">
         <p>
           The disclosure records stored for this exchange could not be read, so
-          they are not shown. This does not mean nothing was disclosed. An app
-          upgrade can leave a stored accounting unreadable to this version of
-          the app.
+          they are not shown. This does not mean nothing was disclosed. They are
+          damaged, or this version of the app could not convert them from the
+          format an earlier version stored them in.
         </p>
         <p>
           Until it is cleared, this exchange cannot add to it either: every run

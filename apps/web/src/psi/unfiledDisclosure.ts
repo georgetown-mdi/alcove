@@ -10,14 +10,34 @@
 
 import { z } from "zod";
 
-import { parseExchangeRecord } from "@alcove/core";
+import { migrateOnRead, parseExchangeRecord } from "@alcove/core";
 
-import type { ExchangeRecord } from "@alcove/core";
+import type { ExchangeRecord, FormatMigrations } from "@alcove/core";
 import type { ZodType } from "zod";
 
-/** The single recognized format version for a stored note; a reader rejects any
- * other value rather than migrating it. */
+/** The format version this build writes for a stored note; a reader migrates an
+ * earlier version {@link UNFILED_DISCLOSURE_MIGRATIONS} leads from and refuses
+ * any other value. */
 export const UNFILED_DISCLOSURE_VERSION = "alcove-unfiled-disclosure/v2";
+
+/**
+ * The note's migrations, run in memory at every read. It is audit state: it
+ * stands for runs the accounting is short, so a version this build can move
+ * forward is read rather than discarded. A step moves the note and never a
+ * retained record, which is migrated on its own read. A migrated note is
+ * written at the current version by its next write, never by a read.
+ */
+export const UNFILED_DISCLOSURE_MIGRATIONS: FormatMigrations<string> =
+  Object.freeze({
+    fileName: "The note of runs missing from the accounting of disclosures",
+    versionField: "version",
+    current: UNFILED_DISCLOSURE_VERSION,
+    steps: Object.freeze([]),
+    unchangedStatement: "The stored note was not changed.",
+    failureRemedy:
+      "Keep the exchange in this browser: the note is the only record of " +
+      "those runs.",
+  });
 
 /** The second element of the note's key. */
 const UNFILED_DISCLOSURE_KEY_PART = "unfiled";
@@ -62,15 +82,20 @@ const storedSchema: ZodType<StoredUnfiledDisclosures> = z
   .strict();
 
 /**
- * Parse a value read from the note's key. Rejects an unrecognized `version`, an
- * unknown key, or an entry with no instant, and looks inside no retained record.
+ * Parse a value read from the note's key, migrated in memory where it is at an
+ * earlier version, `raw` left as it is. Rejects any other `version`, an
+ * unknown key, or an entry with no instant, and looks inside no retained
+ * record.
  *
+ * @param migrations the note's migrations; this build's by default.
+ * @throws {FormatMigrationError} if the note's migration fails.
  * @throws {ZodError} if the value is not a stored note this build recognizes.
  */
 export function parseStoredUnfiledDisclosures(
   raw: unknown,
+  migrations: FormatMigrations<string> = UNFILED_DISCLOSURE_MIGRATIONS,
 ): StoredUnfiledDisclosures {
-  return storedSchema.parse(raw);
+  return storedSchema.parse(migrateOnRead(raw, migrations));
 }
 
 /** The retained record's binding nonce, or `undefined`, read without

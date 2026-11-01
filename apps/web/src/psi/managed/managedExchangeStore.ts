@@ -298,11 +298,12 @@ export async function putManagedExchange(
 
 /**
  * Read one managed exchange record by `id`, or `undefined` when none exists. The
- * stored value is re-validated through {@link parseManagedExchangeRecord}, so a
- * record whose `schemaVersion` the current build does not recognize -- or one an
- * app upgrade has otherwise invalidated -- rejects loudly rather than loading
- * (the recovery is re-invite, not migration).
+ * stored value is re-validated through {@link parseManagedExchangeRecord}, which
+ * migrates an earlier version in memory and leaves the stored value as it is;
+ * a record whose migration fails, or whose `schemaVersion` the current build
+ * does not read, rejects loudly rather than loading.
  *
+ * @throws {FormatMigrationError} if the stored value's migration fails.
  * @throws {ZodError} if the stored value is not a valid v4 record.
  */
 export async function getManagedExchange(
@@ -316,8 +317,8 @@ export async function getManagedExchange(
 /**
  * Read every managed exchange record. Each stored value is re-validated through
  * {@link parseManagedExchangeRecord}; a single invalid record rejects the whole
- * read rather than silently dropping it, so a corrupted or app-upgrade-
- * invalidated store surfaces rather than partially loading.
+ * read rather than silently dropping it, so a corrupted store, or one holding a
+ * record whose migration fails, shows rather than partially loading.
  *
  * @throws {ZodError} if any stored value is not a valid v4 record.
  */

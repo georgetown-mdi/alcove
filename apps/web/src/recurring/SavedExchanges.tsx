@@ -623,8 +623,9 @@ function SavedExchangesFailed({ reload }: { reload: () => void }) {
     <>
       <p className={styles.sub}>
         Your recurring exchanges could not be read from this browser. One or
-        more stored records is unreadable - likely from an old app version.
-        Remove the record below to recover the rest, or import a backup file.
+        more stored records is unreadable - damaged, or from an earlier app
+        version this one could not convert. Remove the record below to recover
+        the rest, or import a backup file.
       </p>
       <RecoveryListing reload={reload} />
       <ImportExchangeFile />
