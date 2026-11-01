@@ -144,6 +144,18 @@ export const ALLOWLIST = [
       "operator-clicked hyperlinks into this project's own repository documentation: user navigation, not app-initiated egress; a prefix because UI work adds these routinely, scoped to this repository so a link to any other host still fails",
   },
   {
+    url: "https://github",
+    match: "exact",
+    reason:
+      "the head of the release signer pattern in the `cosign verify` command the accept kit prints for the partner to run, cut short at its first `\\.` escape; a pattern cosign matches against a certificate, never dialed by the app",
+  },
+  {
+    url: "https://token.actions.githubusercontent.com",
+    match: "exact",
+    reason:
+      "the OIDC issuer in the same printed `cosign verify` command, which cosign compares against a certificate's issuer; an identifier the app never contacts",
+  },
+  {
     url: "https://data-bridge.org",
     match: "prefix",
     reason:

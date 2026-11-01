@@ -479,7 +479,7 @@ The test suite's own SFTP servers are for testing, not a production reference; s
 
 ## Docker deployment
 
-The published image `ghcr.io/georgetown-mdi/alcove` runs in either of two roles depending on its first argument; there is no separate console image.
+The published image runs in either of two roles depending on its first argument; there is no separate console image. It is published as `docker.io/gumdi/alcove` on Docker Hub and as `ghcr.io/georgetown-mdi/alcove` on the GitHub Container Registry, the same image under the same digest. Every command in this document names the Docker Hub copy; where Docker Hub is refused, put the ghcr.io name in its place (see [Install](guides/cli-install.md#install)).
 
 It publishes two variants, differing only in what serves the cryptography. The unsuffixed tags (`X.Y.Z`, `X.Y`, `latest`) are the default and the one every command in this document names. The `-fips` tags (`X.Y.Z-fips`, `X.Y-fips`, `latest-fips`) include a CMVP-validated OpenSSL FIPS provider instead, at roughly 1.8x the size and with the SFTP restrictions in [FIPS_SFTP_PROFILE.md](FIPS_SFTP_PROFILE.md); take one only under a FIPS obligation. Which artifact has which posture is in [RELEASES.md](RELEASES.md#which-image-has-which-posture), and what may be claimed of the variant is in [COMPLIANCE.md](COMPLIANCE.md#fips-140). Everything below holds for both.
 
@@ -493,7 +493,7 @@ A bind mount keeps its host directory's ownership inside the container, so every
 - **Docker Engine on Linux** passes the host directory's real ownership through. Run the container as your own account, which needs no privilege and leaves everything Alcove writes owned by you:
 
   ```sh
-  docker run --rm --user "$(id -u):$(id -g)" -v "${PWD}:/work" ghcr.io/georgetown-mdi/alcove exchange input.csv
+  docker run --rm --user "$(id -u):$(id -g)" -v "${PWD}:/work" docker.io/gumdi/alcove exchange input.csv
   ```
 
   Rootless Podman takes `--userns=keep-id:uid=1000,gid=1000` in place of `--user`.
@@ -526,7 +526,7 @@ docker run --rm -p 127.0.0.1:3000:3000 \
   --env JOB_SFTP_CREDENTIAL_DIR=/tmp/alcove-sftp-credentials \
   --env JOB_DATA_ROOT=/data \
   -v /host/work:/data \
-  ghcr.io/georgetown-mdi/alcove:latest serve
+  docker.io/gumdi/alcove:latest serve
 ```
 
 The path must sit outside every folder you mounted -- the data root, the input directory, the shared folders, and the secrets directory -- or the console refuses to start. It is container-internal and goes with the container. The variable is required once you name an account: a console that cannot create the directory refuses to start, naming this variable.
@@ -550,7 +550,7 @@ In all three the remedy is ownership, not mode: a `chmod` on a directory or file
 By default the image runs the headless CLI. Mount a working directory and pass CLI arguments:
 
 ```sh
-docker run --rm -v "${PWD}:/work" ghcr.io/georgetown-mdi/alcove exchange input.csv
+docker run --rm -v "${PWD}:/work" docker.io/gumdi/alcove exchange input.csv
 ```
 
 What the container needs to reach while it runs is in [Network requirements](#network-requirements), and how to restrict it in [Restricting the container's outbound network access](#restricting-the-containers-outbound-network-access).
@@ -562,7 +562,7 @@ The image starts the CLI with `NODE_OPTIONS=--max-old-space-size=19075`, the hea
 - **Raise or remove `--memory`** to give the run what it needs:
 
   ```sh
-  docker run --rm --memory 16g -v "${PWD}:/work" ghcr.io/georgetown-mdi/alcove exchange input.csv
+  docker run --rm --memory 16g -v "${PWD}:/work" docker.io/gumdi/alcove exchange input.csv
   ```
 
 - **Raise the heap limit** with your own `NODE_OPTIONS`, which the image places after its own and so takes precedence: `--env NODE_OPTIONS=--max-old-space-size=30000`.
@@ -589,7 +589,7 @@ An SFTP or shared-folder exchange gives the container at most one reason to reac
 For a shared-folder exchange on the CLI, take the network away outright:
 
 ```sh
-docker run --rm --network none -v "${PWD}:/work" ghcr.io/georgetown-mdi/alcove exchange input.csv
+docker run --rm --network none -v "${PWD}:/work" docker.io/gumdi/alcove exchange input.csv
 ```
 
 This is the strongest option and the only portable one. It is not an option for the console, whose browser traffic has to reach the published port; a console that will only run shared-folder exchanges takes the allowlist below with no SFTP entry, which denies the same traffic outbound.
@@ -636,14 +636,14 @@ The explicit rule numbers keep the `DROP` last: `-I` inserts at the top of the c
 ```sh
 # Headless CLI
 docker run --rm --network alcove-egress --dns 192.0.2.53 \
-  -v "${PWD}:/work" ghcr.io/georgetown-mdi/alcove exchange input.csv
+  -v "${PWD}:/work" docker.io/gumdi/alcove exchange input.csv
 
 # Console
 docker run --rm --network alcove-egress --dns 192.0.2.53 \
   -p 127.0.0.1:3000:3000 \
   --env JOB_DATA_ROOT=/data \
   -v /host/work:/data \
-  ghcr.io/georgetown-mdi/alcove:latest serve
+  docker.io/gumdi/alcove:latest serve
 ```
 
 `--dns` names the resolver the container uses, so the address the rules permit is one you chose. Drop the flag along with the two resolver rules if you pin the server by address.
@@ -666,17 +666,17 @@ An allowlist that drops name resolution, and one whose `DROP` sits above the per
 ```sh
 # Permitted: the endpoint you allowed. Prints a fingerprint, exits 0.
 docker run --rm --network alcove-egress --dns 192.0.2.53 \
-  ghcr.io/georgetown-mdi/alcove probe-host-key sftp://sftp.partner.example --connect-timeout 10s
+  docker.io/gumdi/alcove probe-host-key sftp://sftp.partner.example --connect-timeout 10s
 
 # Blocked: the same host on a port you did not allow. Exits 69.
 docker run --rm --network alcove-egress --dns 192.0.2.53 \
-  ghcr.io/georgetown-mdi/alcove probe-host-key sftp://sftp.partner.example:2222 --connect-timeout 10s
+  docker.io/gumdi/alcove probe-host-key sftp://sftp.partner.example:2222 --connect-timeout 10s
 
 # Blocked: a host you did not allow. Run it a second time without
 # `--network alcove-egress`: a probe that fails for its own reasons proves
 # nothing, so it has to succeed off the restricted network to count.
 docker run --rm --network alcove-egress --dns 192.0.2.53 \
-  ghcr.io/georgetown-mdi/alcove probe-host-key sftp://some.other.host --connect-timeout 10s
+  docker.io/gumdi/alcove probe-host-key sftp://some.other.host --connect-timeout 10s
 ```
 
 A blocked endpoint answers nothing rather than refusing, so each blocked row takes about its `--connect-timeout` to exit.
@@ -712,7 +712,7 @@ Automated deployment tooling -- CI runners, container entrypoints, Kubernetes in
 docker run \
   --mount type=bind,src=/data/config,dst=/work,readonly \
   --mount type=bind,src=/data/secrets,dst=/run/secrets \
-  ghcr.io/georgetown-mdi/alcove exchange input.csv --key-file /run/secrets/.alcove.key
+  docker.io/gumdi/alcove exchange input.csv --key-file /run/secrets/.alcove.key
 ```
 
 ```yaml
@@ -785,7 +785,7 @@ Provision it once, against a directory writable for that one command:
 ```sh
 docker run --rm \
   --mount type=bind,src=/data/signing,dst=/run/signing \
-  ghcr.io/georgetown-mdi/alcove fingerprint \
+  docker.io/gumdi/alcove fingerprint \
   --identity-file /run/signing/alcove-signing-identity.json \
   --identity "Agency A, a@agency-a.gov"
 ```
@@ -798,7 +798,7 @@ docker run \
   --mount type=bind,src=/data/secrets,dst=/run/secrets \
   --mount type=bind,src=/data/signing,dst=/run/signing,readonly \
   --mount type=bind,src=/data/out,dst=/run/out \
-  ghcr.io/georgetown-mdi/alcove exchange input.csv /run/out/ \
+  docker.io/gumdi/alcove exchange input.csv /run/out/ \
   --key-file /run/secrets/.alcove.key
 ```
 

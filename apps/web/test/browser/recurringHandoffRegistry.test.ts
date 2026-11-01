@@ -108,10 +108,12 @@ describe("RecurringHandoff names the registry the console reports", () => {
     }
   });
 
-  test("ghcr.io, when the console reports no registry", async () => {
+  test("Docker Hub, when the console reports no registry", async () => {
     stubConsole(null);
     app.render(createElement(RecurringHandoff, { jobId: JOB_ID }));
-    for (const block of await runBlocks())
-      expect(block).toContain("ghcr.io/georgetown-mdi/alcove:latest");
+    for (const block of await runBlocks()) {
+      expect(block).toContain("docker.io/gumdi/alcove:latest");
+      expect(block).not.toContain("ghcr.io");
+    }
   });
 });

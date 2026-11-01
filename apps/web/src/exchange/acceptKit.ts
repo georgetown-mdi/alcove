@@ -51,6 +51,7 @@ import { PROJECT_SITE_URL } from "@components/projectLinks";
 import { OPERATOR_USER_FLAG } from "@psi/containerAccount";
 
 import {
+  cosignVerifyCommand,
   digestReference,
   imageDigest,
   imageReference,
@@ -890,6 +891,27 @@ function sftpBody(
   ];
 }
 
+/** How the partner checks the image's signature before running it: one
+ * `cosign verify` line against the image every command names. It needs no
+ * digest, so a sheet from a console started without a launcher has it too. */
+function imageCheckLines(version: string | undefined): Array<string> {
+  return [
+    ...heading("CHECKING THE ALCOVE IMAGE"),
+    "You can check that the Alcove image the commands below run is the one",
+    "an Alcove release published. Install Cosign (see the Cosign",
+    "documentation for your platform), then run:",
+    "",
+    `  ${cosignVerifyCommand(commandImage(version))}`,
+    "",
+    "It checks the image's signature on Docker Hub and prints what it",
+    "found. If it reports an error instead, do not run the image: tell your",
+    "partner. If you use the GitHub Container Registry copy (see IF",
+    "SOMETHING GOES WRONG below), put that name in place of the Docker Hub",
+    "one here too.",
+    "",
+  ];
+}
+
 /** One registry's lines under REFERENCE: the image by its tag, as the commands
  * name it, and by its digest where the sheet has one. */
 function imageReferenceLines(
@@ -966,6 +988,7 @@ export function buildAcceptKit({
   const digest = imageDigest(consoleDigest);
   const lines = [
     ...opening(endpoint, settings),
+    ...imageCheckLines(version),
     ...(endpoint.channel !== "filedrop"
       ? sftpBody(version, settings)
       : endpoint.split === true

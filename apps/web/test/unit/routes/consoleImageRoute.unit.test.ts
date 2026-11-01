@@ -57,11 +57,11 @@ describe("GET /api/jobs/image names the image the launcher ran", () => {
     expect((await getImage()).status).toBe(404);
   });
 
-  test("names ghcr.io and no digest when the launcher passed neither", async () => {
+  test("names Docker Hub and no digest when the launcher passed neither", async () => {
     enableJobApi();
     const response = await getImage();
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ registry: "ghcr.io" });
+    expect(await response.json()).toEqual({ registry: "docker.io" });
   });
 
   test("names the registry and digest the launcher passed, either registry", async () => {
@@ -80,7 +80,7 @@ describe("GET /api/jobs/image names the image the launcher ran", () => {
     enableJobApi();
     vi.stubEnv("JOB_IMAGE_REGISTRY", "registry.example.org");
     vi.stubEnv("JOB_IMAGE_DIGEST", `${DIGEST}/../evil`);
-    expect(await (await getImage()).json()).toEqual({ registry: "ghcr.io" });
+    expect(await (await getImage()).json()).toEqual({ registry: "docker.io" });
   });
 });
 

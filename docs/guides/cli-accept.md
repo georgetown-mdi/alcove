@@ -39,7 +39,7 @@ Run this with `-it`, since it asks you a question:
 alcove accept --identity "Riverside County CoC" @invitation.txt input.csv
 ```
 
-With the image, on Windows: `docker run -it --rm -v "${PWD}:/work" ghcr.io/georgetown-mdi/alcove:latest accept --identity "Riverside County CoC" '@invitation.txt' input.csv`. The quotes around `@invitation.txt` stop PowerShell reading `@` as its own syntax.
+With the image, on Windows: `docker run -it --rm -v "${PWD}:/work" docker.io/gumdi/alcove:latest accept --identity "Riverside County CoC" '@invitation.txt' input.csv`. The quotes around `@invitation.txt` stop PowerShell reading `@` as its own syntax.
 
 `--identity` is the name your partner sees for you. Alcove prints the terms, about 340 to 380 lines with the built-in keys, then asks:
 

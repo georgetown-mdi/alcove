@@ -28,7 +28,7 @@ Open PowerShell from the Start menu, go to your folder, and run the command as o
 
 ```powershell
 cd C:\Users\you\Documents\alcove-state
-docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "${PWD}:/work" ghcr.io/georgetown-mdi/alcove:latest serve
+docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "${PWD}:/work" docker.io/gumdi/alcove:latest serve
 ```
 
 Use PowerShell, not Command Prompt.
@@ -39,7 +39,7 @@ Start Docker Desktop. Open Terminal, go to your folder, and run:
 
 ```sh
 cd ~/alcove-state
-docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "${PWD}:/work" ghcr.io/georgetown-mdi/alcove:latest serve
+docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "${PWD}:/work" docker.io/gumdi/alcove:latest serve
 ```
 
 == Linux
@@ -48,7 +48,7 @@ Open a terminal, go to your folder, and run:
 
 ```sh
 cd ~/alcove-state
-docker run --rm -p 127.0.0.1:3000:3000 --user "$(id -u):$(id -g)" --env JOB_SFTP_CREDENTIAL_DIR=/tmp/alcove-sftp-credentials --env JOB_DATA_ROOT=/work -v "${PWD}:/work" ghcr.io/georgetown-mdi/alcove:latest serve
+docker run --rm -p 127.0.0.1:3000:3000 --user "$(id -u):$(id -g)" --env JOB_SFTP_CREDENTIAL_DIR=/tmp/alcove-sftp-credentials --env JOB_DATA_ROOT=/work -v "${PWD}:/work" docker.io/gumdi/alcove:latest serve
 ```
 
 `--user` runs the console as your own account, so it can write into your folder.
@@ -59,14 +59,14 @@ Rootless Podman needs the console's user mapped to yours. Go to your folder and 
 
 ```sh
 cd ~/alcove-state
-podman run --rm --userns=keep-id:uid=1000,gid=1000 -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "${PWD}:/work" ghcr.io/georgetown-mdi/alcove:latest serve
+podman run --rm --userns=keep-id:uid=1000,gid=1000 -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "${PWD}:/work" docker.io/gumdi/alcove:latest serve
 ```
 
 Without `--userns`, the console cannot write into your folder and says "The console could not write the sample files into your folder, which may be mounted read-only."
 
 :::
 
-The first start downloads the image.
+The first start downloads the image from Docker Hub. If that download is refused, put `ghcr.io/georgetown-mdi/alcove:latest` in place of `docker.io/gumdi/alcove:latest` in the command, and add `--env JOB_IMAGE_REGISTRY=ghcr.io` before the image name so the scheduled-run commands the console shows pull from the same registry: it is the same image on the GitHub Container Registry.
 
 You should see: a line ending `Listening on http://0.0.0.0:3000`. That is the address inside the container; you open the one in the next step.
 

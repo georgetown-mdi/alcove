@@ -1,5 +1,6 @@
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { Readable } from "node:stream";
+import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -573,6 +574,107 @@ describe("accept kit, the two registries", () => {
       expect(text).toBe(digestSheet(FILEDROP));
     }
   });
+});
+
+describe("accept kit, checking the image", () => {
+  const DIGEST = `sha256:${"0123456789abcdef".repeat(4)}`;
+
+  /** The release's own `cosign verify` command on Docker Hub by tag, from
+   * docs/RELEASES.md's Container image section, joined onto one line. */
+  function publishedVerifyCommand(): string {
+    const releases = readFileSync(
+      fileURLToPath(
+        new URL("../../../../../docs/RELEASES.md", import.meta.url),
+      ),
+      "utf8",
+    );
+    const block =
+      /cosign verify \\\n(?:.*\\\n)*?\s*docker\.io\/gumdi\/alcove:X\.Y\.Z\n/.exec(
+        releases.slice(releases.indexOf("### Container image")),
+      );
+    expect(block).not.toBeNull();
+    return (block?.[0] ?? "").trim().replace(/\s*\\\n\s*/g, " ");
+  }
+
+  /** The sheet's verify line, trimmed. */
+  function verifyLine(text: string): string | undefined {
+    return text
+      .split("\n")
+      .map((line) => line.trim())
+      .find((line) => line.startsWith("cosign verify "));
+  }
+
+  test("every sheet gives the release's verify command against the image it runs", () => {
+    const expected = publishedVerifyCommand().replace("X.Y.Z", "1.4.2");
+    for (const endpoint of ENDPOINTS)
+      for (const text of [
+        sheet(endpoint),
+        retainSheet(endpoint),
+        locklessSheet(endpoint),
+      ]) {
+        expect(verifyLine(text)).toBe(expected);
+        expect(text.indexOf("cosign verify ")).toBeLessThan(
+          text.indexOf("docker run"),
+        );
+      }
+  });
+
+  test("a build with no version verifies the floating tag", () => {
+    const text = buildAcceptKit({
+      endpoint: SFTP,
+      retainFiles: false,
+      locklessRendezvous: false,
+    });
+    expect(verifyLine(text)).toBe(
+      publishedVerifyCommand().replace("X.Y.Z", "latest"),
+    );
+  });
+
+  test("a console that reports no digest gives the same verify step", () => {
+    // A console started without a launcher reports no digest: the check
+    // names the tag, so that sheet has it unchanged.
+    const section = (digest?: string): string => {
+      const text = buildAcceptKit({
+        endpoint: FILEDROP,
+        retainFiles: false,
+        locklessRendezvous: false,
+        version: "1.4.2",
+        digest,
+      });
+      return text.slice(
+        text.indexOf("CHECKING THE ALCOVE IMAGE"),
+        text.indexOf("STEP 1"),
+      );
+    };
+    expect(section()).toContain("cosign verify ");
+    expect(section()).toBe(section(DIGEST));
+  });
+
+  test.each(["bash", "sh"])(
+    "%s hands cosign the identity pattern unchanged",
+    (shell) => {
+      const line = verifyLine(sheet(SFTP)) ?? "";
+      const script =
+        "cosign() { for argument in \"$@\"; do printf '[%s]\\n' " +
+        `"$argument"; done; }; ${line}`;
+      const run = spawnSync(shell, ["-c", script], { encoding: "utf8" });
+      expect(run.status, run.stderr).toBe(0);
+      expect(
+        run.stdout
+          .split("\n")
+          .filter((output) => output.length > 0)
+          .map((output) => output.replace(/^\[(.*)\]$/, "$1")),
+      ).toEqual([
+        "verify",
+        "--certificate-identity-regexp",
+        "^https://github\\.com/georgetown-mdi/alcove/\\.github/workflows/" +
+          "release\\.yaml@refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+$",
+        "--certificate-oidc-issuer",
+        "https://token.actions.githubusercontent.com",
+        "docker.io/gumdi/alcove:1.4.2",
+      ]);
+    },
+  );
 });
 
 describe("accept kit, printable-ASCII enforcement", () => {

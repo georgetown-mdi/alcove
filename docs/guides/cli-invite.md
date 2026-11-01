@@ -125,13 +125,13 @@ A column with `is_payload: false`, or not listed, is not sent.
 == Linux
 
 ```sh
-docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work ghcr.io/georgetown-mdi/alcove:latest invite --expires-in 2d input.csv > invitation.txt
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work docker.io/gumdi/alcove:latest invite --expires-in 2d input.csv > invitation.txt
 ```
 
 == Windows
 
 ```powershell
-docker run --rm -v "${PWD}:/work" ghcr.io/georgetown-mdi/alcove:latest invite --expires-in 2d input.csv | Set-Content -Encoding ascii invitation.txt
+docker run --rm -v "${PWD}:/work" docker.io/gumdi/alcove:latest invite --expires-in 2d input.csv | Set-Content -Encoding ascii invitation.txt
 ```
 
 Windows PowerShell's `>` writes the file as UTF-16, which `alcove accept` refuses with `invalid invitation: the invitation contains characters an invitation cannot hold`.
@@ -139,13 +139,13 @@ Windows PowerShell's `>` writes the file as UTF-16, which `alcove accept` refuse
 == macOS
 
 ```sh
-docker run --rm -v "$PWD":/work ghcr.io/georgetown-mdi/alcove:latest invite --expires-in 2d input.csv > invitation.txt
+docker run --rm -v "$PWD":/work docker.io/gumdi/alcove:latest invite --expires-in 2d input.csv > invitation.txt
 ```
 
 == Podman
 
 ```sh
-podman run --rm --userns=keep-id:uid=1000,gid=1000 -v "$PWD":/work ghcr.io/georgetown-mdi/alcove:latest invite --expires-in 2d input.csv > invitation.txt
+podman run --rm --userns=keep-id:uid=1000,gid=1000 -v "$PWD":/work docker.io/gumdi/alcove:latest invite --expires-in 2d input.csv > invitation.txt
 ```
 
 :::
@@ -240,7 +240,7 @@ This one command prints the invitation, waits for your partner to accept, and ru
 == Linux
 
 ```sh
-docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work ghcr.io/georgetown-mdi/alcove:latest invite --identity "Northside Health Plan" --expires-in 2h --accept-timeout 2h --server-password @passwd --server-host-key-fingerprint SHA256:... sftp://alcove@sftp.example.org/exchanges/plan-coc input.csv ./ > invitation.txt
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work docker.io/gumdi/alcove:latest invite --identity "Northside Health Plan" --expires-in 2h --accept-timeout 2h --server-password @passwd --server-host-key-fingerprint SHA256:... sftp://alcove@sftp.example.org/exchanges/plan-coc input.csv ./ > invitation.txt
 ```
 
 == Windows
@@ -250,13 +250,13 @@ Not tested on Windows. Let your partner invite from the console instead.
 == macOS
 
 ```sh
-docker run --rm -v "$PWD":/work ghcr.io/georgetown-mdi/alcove:latest invite --identity "Northside Health Plan" --expires-in 2h --accept-timeout 2h --server-password @passwd --server-host-key-fingerprint SHA256:... sftp://alcove@sftp.example.org/exchanges/plan-coc input.csv ./ > invitation.txt
+docker run --rm -v "$PWD":/work docker.io/gumdi/alcove:latest invite --identity "Northside Health Plan" --expires-in 2h --accept-timeout 2h --server-password @passwd --server-host-key-fingerprint SHA256:... sftp://alcove@sftp.example.org/exchanges/plan-coc input.csv ./ > invitation.txt
 ```
 
 == Podman
 
 ```sh
-podman run --rm --userns=keep-id:uid=1000,gid=1000 -v "$PWD":/work ghcr.io/georgetown-mdi/alcove:latest invite --identity "Northside Health Plan" --expires-in 2h --accept-timeout 2h --server-password @passwd --server-host-key-fingerprint SHA256:... sftp://alcove@sftp.example.org/exchanges/plan-coc input.csv ./ > invitation.txt
+podman run --rm --userns=keep-id:uid=1000,gid=1000 -v "$PWD":/work docker.io/gumdi/alcove:latest invite --identity "Northside Health Plan" --expires-in 2h --accept-timeout 2h --server-password @passwd --server-host-key-fingerprint SHA256:... sftp://alcove@sftp.example.org/exchanges/plan-coc input.csv ./ > invitation.txt
 ```
 
 :::

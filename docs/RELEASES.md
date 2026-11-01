@@ -68,7 +68,7 @@ At every container start the variant reports on stderr whether its own crypto is
 **Confirming the module inside it.** A signature says which build this is, not what is running in it. Run the image and read its first two stderr lines:
 
 ```sh
-docker run --rm ghcr.io/georgetown-mdi/alcove:X.Y.Z-fips --help
+docker run --rm docker.io/gumdi/alcove:X.Y.Z-fips --help
 ```
 
 A run whose crypto is being served by the module reports `FIPS provider active`, naming the baked-in module version when `FIPS_MODULE_VERSION` is intact in the container's environment, and saying that it cannot name one when that variable was cleared or overridden at start. Anything else is a warning naming what the startup probe found instead. The host kernel's FIPS-mode line is separate and is reported the same way. The probe is a Node process making Alcove's own call shapes under the image's configuration, and its exit status is the whole verdict; neither line is parsed from `openssl list`.
