@@ -2,3 +2,8 @@
 # stating the shipped greedy sweep goes.
 - **Not yet built:** the shipped resolution is a greedy sweep in the order below, accepting a pair when neither of its records is yet accepted in the round. -> -
 - The two rules accept the same pairs on every round where that sweep's pairs form a largest pairing (below), and the second `one-to-one` case of [the normative double-match case](#the-normative-double-match-case) is one where they part. -> -
+# The canonical order's role-dependence limit is new.
+- - -> **Limit: the canonical order can make the table depend on the role.**
+- - -> Where a round's candidate pairs admit more than one largest pairing, the one-to-one rule keeps the first in (sender row, receiver row) order, and swapping the roles changes that order.
+- - -> The two role assignments can then keep different pairs, the same number of them: on three records a side whose candidate pairs form one six-pair cycle, each assignment keeps a different one of the cycle's two largest pairings.
+- - -> The number of pairs, and so a count-only exchange's count, does not depend on the role through this order.
