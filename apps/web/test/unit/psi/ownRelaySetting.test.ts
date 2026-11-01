@@ -411,6 +411,61 @@ describe("the WebSocket relays a run's plan lists", () => {
     ]);
   });
 
+  test("with a previous secret, each relay under the derived id is listed again under that secret's id, and one under a named id once", async () => {
+    const current = generateSharedSecret();
+    const previous = generateSharedSecret();
+    const enroll = vi.fn(enrolled);
+    const plan = await relayPlanForRun(
+      current,
+      { websocket: PARTNER, websocketExchangeId: "partner-weekly" },
+      undefined,
+      {
+        readOwn: ownWithWebSocket,
+        setting: () => SITE,
+        enroll,
+        previousSharedSecret: previous,
+      },
+    );
+    const derived = await deriveRelayExchangeId(current);
+    const derivedPrevious = await deriveRelayExchangeId(previous);
+    expect(plan.websocketRelays).toEqual([
+      { url: WEBSOCKET, exchangeId: derived },
+      { url: PARTNER, exchangeId: "partner-weekly" },
+      { url: SITE_WEBSOCKET, exchangeId: derived },
+      {
+        url: WEBSOCKET,
+        exchangeId: derivedPrevious,
+        underPreviousSecret: true,
+      },
+      {
+        url: SITE_WEBSOCKET,
+        exchangeId: derivedPrevious,
+        underPreviousSecret: true,
+      },
+    ]);
+    expect(enroll).toHaveBeenCalledTimes(2);
+  });
+
+  test("with a previous secret the default relay could not enroll, its url is listed under the current secret only", async () => {
+    const current = generateSharedSecret();
+    const previous = generateSharedSecret();
+    const plan = await relayPlanForRun(current, undefined, undefined, {
+      readOwn: () => ({ kind: "set", relay: OWN }),
+      setting: () => SITE,
+      enroll: vi.fn((params: { sharedSecret: string }) =>
+        Promise.resolve(
+          params.sharedSecret === previous
+            ? { kind: "failed" as const, detail: "HTTP 503" }
+            : { kind: "enrolled" as const, lapsesAt: "x" },
+        ),
+      ),
+      previousSharedSecret: previous,
+    });
+    expect(plan.websocketRelays).toEqual([
+      { url: SITE_WEBSOCKET, exchangeId: await deriveRelayExchangeId(current) },
+    ]);
+  });
+
   test("a url both name is listed once, under the invitation's exchange id", async () => {
     const plan = await relayPlanForRun(
       generateSharedSecret(),

@@ -71,8 +71,11 @@ import type {
   RunnableManagedExchangeRecord,
   TooLargeReading,
 } from "./managedExchangeRecord";
+import type {
+  ManagedExchangeRunResult,
+  ManagedRunSecretUsed,
+} from "./managedExchangeRun";
 import type { ManagedExchangeLockOptions } from "./managedExchangeLock";
-import type { ManagedExchangeRunResult } from "./managedExchangeRun";
 
 /** The platform operations a re-run injects, each the wiring the pure
  * orchestration cannot own. Split so the run's decisions and ordering are
@@ -107,13 +110,19 @@ interface ManagedRerunSeams<TInput, THandshake, TExchange> {
   ) => Promise<THandshake>;
   /** Run the data exchange. Receives the handshake's output value, the
    * durable rotation write, which it hands core's terms exchange as the
-   * store of the next secret, and the report core's terms exchange makes of
-   * whether the partner may hold a next secret this side has not stored
-   * (`TermsRotation.partnerMayHoldNextSecret`). */
+   * store of the next secret with the secrets the key exchange used, the
+   * report core's terms exchange makes of whether the partner may hold a
+   * next secret this side has not stored
+   * (`TermsRotation.partnerMayHoldNextSecret`), and the durable removal of
+   * the previous secret (`TermsRotation.partnerStored`). */
   dataExchange: (
     handshake: THandshake,
-    persistNextSecret: (nextSecret: string) => Promise<void>,
+    persistNextSecret: (
+      nextSecret: string,
+      secretUsed?: ManagedRunSecretUsed,
+    ) => Promise<void>,
     partnerMayHoldNextSecret: (mayHold: boolean) => void,
+    partnerStored: () => Promise<void>,
   ) => Promise<TExchange>;
 }
 
@@ -252,15 +261,21 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
         phase.handshakeBegan = true;
         return seams.handshake(input, beginKeyExchange, read);
       },
-      dataExchange: (handshake, persistNextSecret, partnerMayHoldNextSecret) =>
+      dataExchange: (
+        handshake,
+        persistNextSecret,
+        partnerMayHoldNextSecret,
+        partnerStored,
+      ) =>
         seams.dataExchange(
           handshake,
-          async (nextSecret) => {
-            await persistNextSecret(nextSecret);
+          async (nextSecret, secretUsed) => {
+            await persistNextSecret(nextSecret, secretUsed);
             storedSecret = nextSecret;
             rotation.stored = true;
           },
           partnerMayHoldNextSecret,
+          partnerStored,
         ),
       onDataExchangeStart: () => {
         dataExchangeStarted = true;

@@ -331,16 +331,15 @@ The raise sites and what clears the condition are in [MANAGED_EXCHANGE_RECORD.md
 
 ### The grace window
 
-A grace-window mitigation for a rotation desync is deferred.
-On a handshake failure it would briefly also accept the **previous** rotated secret, so a one-sided persist failure heals itself on the next run in place of forcing a re-invite.
-It is a core-level change for a later, separately reviewed step, and it is **not implemented anywhere**: neither the CLI nor core accepts a previous secret.
-The current handling is the re-invite recovery, with the rotation-in-flight marker naming a probable partial rotation.
-The first managed release ships with implicit-only detection plus the explicit recovery.
+A grace-window mitigation for a rotation desync was deferred from the first managed release, and has since been built as the previous secret.
+The handshake also accepts the **previous** rotated secret, so a one-sided persist failure heals itself on the next run in place of forcing a re-invite.
+Core accepts it, the CLI keeps it in the key file, and a managed browser exchange keeps it in its record ([PROTOCOL.md](../spec/PROTOCOL.md#the-previous-secret)).
+The first managed release shipped with implicit-only detection plus the explicit recovery, the re-invite with the rotation-in-flight marker naming a probable partial rotation, which still covers a cut run the previous secret cannot heal.
 
 The grace window belongs in core and not in the web app, and later and not first, because it is a threat-model change.
 It widens the active-impersonation window for a leaked secret (it accepts an extra, older secret), so the CLI and the web app should inherit one reviewed implementation and not diverge on a web-first version.
-Fast re-invite already closes the operational gap without it, so the first release is not blocked on it.
-Its design, a previous secret kept only until the partner's first frame after the handshake confirms the rotation, is in [rotation-hardening.md](rotation-hardening.md#part-1-healing-a-one-sided-rotation), together with the stale-copy detection that replaces the rotation epoch; neither is built.
+Fast re-invite already closed the operational gap without it, so the first release was not blocked on it.
+Its design, a previous secret kept only until the partner's first frame after the handshake confirms the rotation, is in [rotation-hardening.md](rotation-hardening.md#part-1-healing-a-one-sided-rotation), together with the stale-copy detection that replaces the rotation epoch.
 
 ### Telling a desync from an attack
 

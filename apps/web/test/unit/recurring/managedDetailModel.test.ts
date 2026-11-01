@@ -256,6 +256,29 @@ describe("runHistoryEntries renders each kept run", () => {
     expect(entries[0].disclosure).not.toMatch(/\d+ (rows|matches|records)/);
   });
 
+  test.each([
+    ["acceptor", "The run before this one stopped before your partner saved"],
+    ["inviter", "Your partner still had the secret from before"],
+  ] as const)(
+    "a succeeded run that healed a cut rotation states the %s's heal note",
+    (side, note) => {
+      const healed: ManagedExchangeLastRun = {
+        at: "2026-07-01T09:00:00.000Z",
+        outcome: "succeeded",
+        healedCutRotation: true,
+      };
+      const [entry] = runHistoryEntries(record(side, { lastRun: healed }));
+      expect(entry.outcome).toBe("Succeeded");
+      expect(entry.healNote).toContain(note);
+      const [plain] = runHistoryEntries(
+        record(side, {
+          lastRun: { at: "2026-07-01T09:00:00.000Z", outcome: "succeeded" },
+        }),
+      );
+      expect(plain.healNote).toBeUndefined();
+    },
+  );
+
   test("a skipped window states that no run was started at all", () => {
     // The no-disclosure line the failures take speaks of a run that stopped; this
     // window had none to stop.

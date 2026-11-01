@@ -660,7 +660,11 @@ async function dialInviterWithRetry(
  *                      `*Ms` overrides tune the registration bound and the
  *                      retry timing; `onPathFailed` takes an unanswered
  *                      registration, a lost coordination server, a channel
- *                      error and a spent channel-open bound as path failures.
+ *                      error and a spent channel-open bound as path failures;
+ *                      `relaySecret` is the secret the relay credential is
+ *                      minted from where it is not `sharedSecret`: a managed
+ *                      run's current secret, while it also dials under its
+ *                      previous one.
  */
 export async function dialAsAcceptor(
   sharedSecret: string,
@@ -668,6 +672,7 @@ export async function dialAsAcceptor(
   options?: {
     signal?: AbortSignal;
     relay?: RelayLocator;
+    relaySecret?: string;
     relaysLeftOut?: ReadonlyArray<string>;
     defaultRelayOff?: boolean;
     peerFactory?: PeerFactory;
@@ -683,7 +688,11 @@ export async function dialAsAcceptor(
   const [inviterId, acceptorId, iceServers] = await Promise.all([
     deriveRendezvousPeerId(sharedSecret, "inviter"),
     deriveRendezvousPeerId(sharedSecret, "acceptor"),
-    buildIceServers(options?.relay, sharedSecret, new Date()),
+    buildIceServers(
+      options?.relay,
+      options?.relaySecret ?? sharedSecret,
+      new Date(),
+    ),
   ]);
   const loc = acceptorLocationFromEndpoint(endpoint);
   throwIfAbortedBeforeBrokerContact(signal);

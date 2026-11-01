@@ -250,6 +250,14 @@ export const PARTNER_SECRET_NOT_SAVED_PROBLEM =
   "side had already taken it, so you and your partner now hold different " +
   "secrets";
 
+/** What a saved exchange can still do after such a run: its record kept the
+ * secret the run used as its previous secret, so the next run can meet a
+ * partner that did not save (docs/spec/PROTOCOL.md, "The previous secret"). */
+export const PARTNER_SECRET_NOT_SAVED_KEPT_REMEDY =
+  "This device kept the secret your partner still holds, so the next run " +
+  "can still reach them, and both sides save a new secret. If runs keep " +
+  "missing your partner or stopping, re-invite them.";
+
 /** The title of the alert for a refusal over a difference in the linkage
  * terms; shared by the one-shot exchange, a managed run's alert, and the
  * between-visit notification. */

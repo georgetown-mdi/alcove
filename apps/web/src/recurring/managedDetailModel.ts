@@ -24,6 +24,7 @@ import {
 
 import { dateTimeLabel } from "@psi/formatting";
 import { recentRunsOf } from "@psi/managed/managedExchangeRecord";
+import { recordedHealNote } from "@psi/managed/managedHealNote";
 import { tooLargeFailureClause } from "@psi/managed/managedFailureCopy";
 
 import {
@@ -303,6 +304,9 @@ interface RunHistoryEntry {
    * no match result, count, or row value (it is closed enums and a timestamp), so
    * this states what the record can accurately say, not a fabricated disclosure. */
   disclosure: string;
+  /** The heal note of a completed run that healed a cut rotation
+   * ({@link recordedHealNote}); absent otherwise. */
+  healNote?: string;
 }
 
 /** The display outcome for each run outcome the bookkeeping records. The no-show
@@ -330,8 +334,7 @@ const FAILURE_KIND_LABELS: Record<
   "terms-shortfall": "your input file does not cover every agreed key",
   "partner-set-too-large": "your partner's set is too large for this browser",
   "partner-refused-set": "your partner's run refused to send its set",
-  "partner-storage":
-    "your partner could not save the new secret, so this exchange needs a fresh invitation",
+  "partner-storage": "your partner could not save the new secret",
   "partner-refused-terms": "your partner's run refused your linkage terms",
   "partner-protocol-refusal":
     "your partner's data did not follow the exchange protocol",
@@ -455,7 +458,7 @@ function nonSucceededDisclosure(lastRun: ManagedExchangeLastRun): string {
  * disclosures, not here.
  */
 export function runHistoryEntries(
-  record: Pick<ManagedExchangeRecord, "lastRun" | "recentRuns">,
+  record: Pick<ManagedExchangeRecord, "lastRun" | "recentRuns" | "side">,
 ): Array<RunHistoryEntry> {
   return recentRunsOf(record).map((entry) => {
     const disclosure =
@@ -471,6 +474,9 @@ export function runHistoryEntries(
       outcome: OUTCOME_LABELS[entry.outcome],
       ...(failure !== undefined ? { failure } : {}),
       disclosure,
+      ...(entry.outcome === "succeeded" && entry.healedCutRotation === true
+        ? { healNote: recordedHealNote(record.side) }
+        : {}),
     };
   });
 }

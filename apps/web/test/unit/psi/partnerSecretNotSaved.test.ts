@@ -19,6 +19,10 @@ import {
   runnableManagedExchangeOrRefuse,
 } from "@psi/managed/managedExchangeRecord";
 import {
+  PARTNER_SECRET_NOT_SAVED_KEPT_REMEDY,
+  PARTNER_SECRET_NOT_SAVED_TITLE,
+} from "@psi/managed/managedFailureCopy";
+import {
   PartnerSecretNotSavedError,
   withPartnerSecretNotSaved,
 } from "@psi/partnerSecretNotSaved";
@@ -40,7 +44,6 @@ import {
   lastRunMayHaveSentPayload,
   runHistoryEntries,
 } from "@recurring/managedDetailModel";
-import { PARTNER_SECRET_NOT_SAVED_TITLE } from "@psi/managed/managedFailureCopy";
 import { PartnerNoShowError } from "@psi/transport/waitForConnection";
 import { betweenVisitNotice } from "@psi/managed/betweenVisitNotice";
 import { composeConfirmationMessage } from "@psi/managed/managedFailureConfirmation";
@@ -208,7 +211,7 @@ describe("a managed exchange", () => {
     }
   });
 
-  test("a live launch and the next visit name the re-invite and offer no retry", () => {
+  test("a live launch and the next visit say the kept secret reaches the partner, and offer the re-invite", () => {
     const live = classifyManagedRunFailure(
       notSaved(),
       { atLaunch: record(), afterRun: record({ lastRun: stamped }) },
@@ -227,7 +230,7 @@ describe("a managed exchange", () => {
       expect(failure.kind).toBe("partner-storage");
       expect(failure.title).toBe(PARTNER_SECRET_NOT_SAVED_TITLE);
       expect(failure.message).toMatch(
-        /^A run stopped because your partner could not save the exchange's new shared secret, and this side had already taken it, so you and your partner now hold different secrets\. Scheduled runs keep running but cannot reach your partner, and running the exchange again cannot either; it needs a fresh invitation/,
+        /^A run stopped because your partner could not save the exchange's new shared secret, and this side had already taken it, so you and your partner now hold different secrets\. This device kept the secret your partner still holds, so the next run can still reach them, and both sides save a new secret\. If runs keep missing your partner or stopping, re-invite them\.$/,
       );
       expect(failure.reportedCause).toBeUndefined();
       expect(managedRunRetryable(failure)).toBe(false);
@@ -264,16 +267,12 @@ describe("a managed exchange", () => {
     });
     expect(notice?.kind).toBe("partner-storage");
     expect(notice?.title).toBe(PARTNER_SECRET_NOT_SAVED_TITLE);
-    expect(notice?.body).toContain(
-      "Scheduled runs keep running but cannot reach your partner until you " +
-        "re-invite them.",
-    );
+    expect(notice?.body).toContain(PARTNER_SECRET_NOT_SAVED_KEPT_REMEDY);
     expect(savedExchangeRow(stored, undefined, NOW).status).toMatch(
-      /^Last run stopped: your partner could not save the new secret \(.*\); no run can reach them until you re-invite$/,
+      /^Last run stopped: your partner could not save the new secret \(.*\); the next run can still reach them$/,
     );
     expect(runHistoryEntries(stored).map((entry) => entry.failure)).toEqual([
-      "your partner could not save the new secret, so this exchange needs a " +
-        "fresh invitation",
+      "your partner could not save the new secret",
     ]);
   });
 });
@@ -338,7 +337,7 @@ describe("the windows after the partner's failed save, until a re-invite", () =>
     });
     expectReinvite(managedRunFailureFromRecord(later, undefined, NOW + 1));
     expect(savedExchangeRow(later, undefined, NOW + 1).status).toMatch(
-      /^Your partner could not save the new secret \(.*\); no run can reach them until you re-invite$/,
+      /^Your partner could not save the new secret \(.*\); the next run can still reach them$/,
     );
     const view = managedStandingConditionView(later, undefined);
     expect(view?.tier).toBe("partner-storage");

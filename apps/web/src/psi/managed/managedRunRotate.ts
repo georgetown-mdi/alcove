@@ -58,9 +58,17 @@ export function rotationWriteBack(
   }
 }
 
-/** Record a run that completed the data exchange. */
-export function succeededRun(at: number): ManagedExchangeLastRun {
-  return { at: new Date(at).toISOString(), outcome: "succeeded" };
+/** Record a run that completed the data exchange, marked where its key
+ * exchange healed a cut rotation. */
+export function succeededRun(
+  at: number,
+  healedCutRotation = false,
+): ManagedExchangeLastRun {
+  return {
+    at: new Date(at).toISOString(),
+    outcome: "succeeded",
+    ...(healedCutRotation && { healedCutRotation: true as const }),
+  };
 }
 
 /**

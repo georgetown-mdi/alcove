@@ -14,6 +14,7 @@ import {
 import {
   DEFAULT_RELAY_DIAL_WAIT_MS,
   DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
+  DEFAULT_RELAY_PREVIOUS_NOT_ENROLLED_NOTICE,
   invitationRelayWithDefault,
   relayWithDefaultForRun,
 } from "../../../src/psi/transport/defaultRelay.js";
@@ -353,6 +354,79 @@ describe("relayWithDefaultForRun", () => {
         ),
       ).toEqual(WITHOUT_DEFAULT);
       expect(enroll).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("under a previous secret", () => {
+    const WEBSOCKET = "wss://wsrelay.example.org/relay";
+    const withWebSocket = () => ({ ...DEFAULT_RELAY, websocketUrl: WEBSOCKET });
+
+    test("enrolls under both secrets at once, and lists the WebSocket relay under each", async () => {
+      const current = generateSharedSecret();
+      const previous = generateSharedSecret();
+      const enroll = answering(ENROLLED);
+      const onRunNotice = vi.fn();
+      const run = await relayWithDefaultForRun(current, OWN, NO_RESTRICTION, {
+        setting: withWebSocket,
+        enroll,
+        previousSharedSecret: previous,
+        onRunNotice,
+      });
+      expect(enroll.mock.calls.map(([params]) => params.sharedSecret)).toEqual([
+        current,
+        previous,
+      ]);
+      expect(run).toEqual({
+        ...WITH_DEFAULT,
+        defaultWebSocketRelay: WEBSOCKET,
+        defaultWebSocketRelayUnderPrevious: WEBSOCKET,
+      });
+      expect(onRunNotice).not.toHaveBeenCalled();
+    });
+
+    test("a failed enrollment under the previous secret says so and lists the relay under the current one only", async () => {
+      const current = generateSharedSecret();
+      const previous = generateSharedSecret();
+      const onRunNotice = vi.fn();
+      const run = await relayWithDefaultForRun(current, OWN, NO_RESTRICTION, {
+        setting: withWebSocket,
+        enroll: vi.fn<typeof enrollRelayKeyWithinWait>((params) =>
+          Promise.resolve(
+            params.sharedSecret === previous
+              ? { kind: "failed", detail: "HTTP 503" }
+              : ENROLLED,
+          ),
+        ),
+        previousSharedSecret: previous,
+        onRunNotice,
+      });
+      expect(run).toEqual({
+        ...WITH_DEFAULT,
+        defaultWebSocketRelay: WEBSOCKET,
+      });
+      expect(onRunNotice).toHaveBeenCalledExactlyOnceWith(
+        DEFAULT_RELAY_PREVIOUS_NOT_ENROLLED_NOTICE,
+      );
+    });
+
+    test("the TURN url follows the current secret's enrollment alone", async () => {
+      const current = generateSharedSecret();
+      const previous = generateSharedSecret();
+      const run = await relayWithDefaultForRun(current, OWN, NO_RESTRICTION, {
+        setting: withWebSocket,
+        enroll: vi.fn<typeof enrollRelayKeyWithinWait>((params) =>
+          Promise.resolve(
+            params.sharedSecret === current
+              ? { kind: "failed", detail: "HTTP 503" }
+              : ENROLLED,
+          ),
+        ),
+        previousSharedSecret: previous,
+      });
+      expect(run).toEqual({
+        ...WITHOUT_DEFAULT,
+        defaultWebSocketRelayUnderPrevious: WEBSOCKET,
+      });
     });
   });
 });

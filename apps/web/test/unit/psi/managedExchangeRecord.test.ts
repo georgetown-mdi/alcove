@@ -1,6 +1,7 @@
 import {
   CSV_DELIMITER_DETECT,
   FormatMigrationError,
+  InternalConsistencyError,
   KeyFileSchema,
   ROTATION_HISTORY_MAX_ENTRIES,
   assembleExchangeSpec,
@@ -27,6 +28,7 @@ import {
   applyManagedExchangeLastRun,
   applyManagedExchangeLocalEdits,
   applyManagedExchangePayloadReceiveFill,
+  applyManagedExchangePreviousSecretDropped,
   applyManagedExchangeReinviteRotation,
   applyManagedExchangeRotation,
   applyManagedExchangeRotationInFlight,
@@ -43,6 +45,7 @@ import {
   partitionReadableManagedExchanges,
   recentRunsOf,
   rotationHistoryAfterRetiring,
+  runRotationPrevious,
   runnableManagedExchange,
   runnableManagedExchangeOrRefuse,
   safeParseManagedExchangeRecord,
@@ -1074,6 +1077,157 @@ describe("the rotation history", () => {
       "backup",
     );
     expect(replaced.rotationHistory).toEqual(history);
+  });
+});
+
+describe("the previous secret", () => {
+  const PREVIOUS_EXPIRES = "2026-12-31T00:00:00.000Z";
+  const retired = { verifier: generateSharedSecret(), at: 0 };
+
+  /** A runnable record holding `previousSharedSecret` and, where given, its
+   * `previousExpires`. */
+  function holding(
+    previousSharedSecret: string,
+    previousExpires?: string,
+    overrides: Partial<NewManagedExchange> = {},
+  ): RunnableManagedExchangeRecord {
+    return runnableManagedExchangeOrRefuse(
+      parseManagedExchangeRecord({
+        ...buildManagedExchangeRecord(
+          newExchange({ side: "acceptor", ...overrides }),
+        ),
+        previousSharedSecret,
+        ...(previousExpires !== undefined ? { previousExpires } : {}),
+      }),
+    );
+  }
+
+  test("the record holds it with its own expires, an expires only beside a secret, and a well-formed secret only", () => {
+    const record = holding(generateSharedSecret(), PREVIOUS_EXPIRES);
+    expect(record.previousExpires).toBe(PREVIOUS_EXPIRES);
+    expect(() =>
+      parseManagedExchangeRecord({
+        ...buildManagedExchangeRecord(newExchange()),
+        previousExpires: PREVIOUS_EXPIRES,
+      }),
+    ).toThrow(/previousExpires is held only beside previousSharedSecret/);
+    expect(() => holding("not-a-secret")).toThrow();
+  });
+
+  test("a configuration-only record holds none", () => {
+    const { sharedSecret: _sharedSecret, ...configuration } = newExchange();
+    expect(() =>
+      parseManagedExchangeRecord({
+        ...buildManagedExchangeRecord(configuration),
+        previousSharedSecret: generateSharedSecret(),
+      }),
+    ).toThrow(/previousSharedSecret/);
+  });
+
+  test("the initiator's store keeps the secret its key exchange used, with that secret's expires; the responder's keeps none", () => {
+    const record = runnableRecord({ expires: PREVIOUS_EXPIRES });
+    expect(runRotationPrevious(record, "initiator", "current")).toEqual({
+      previous: {
+        sharedSecret: record.sharedSecret,
+        expires: PREVIOUS_EXPIRES,
+      },
+    });
+    expect(runRotationPrevious(record, "responder", "current")).toEqual({});
+  });
+
+  test("a key exchange under the previous secret keeps that secret and marks it used", () => {
+    const previous = generateSharedSecret();
+    const record = holding(previous, PREVIOUS_EXPIRES);
+    expect(runRotationPrevious(record, "initiator", "previous")).toEqual({
+      previous: { sharedSecret: previous, expires: PREVIOUS_EXPIRES },
+      usedPrevious: true,
+    });
+  });
+
+  test("a key exchange under a previous secret the record does not hold is refused", () => {
+    expect(() =>
+      runRotationPrevious(runnableRecord(), "initiator", "previous"),
+    ).toThrow(InternalConsistencyError);
+  });
+
+  test("a rotation sets the previous secret it states and drops one where it states none", () => {
+    const record = holding(generateSharedSecret(), PREVIOUS_EXPIRES);
+    const stated = { sharedSecret: generateSharedSecret() };
+    const kept = applyManagedExchangeRotation(
+      record,
+      { sharedSecret: generateSharedSecret(), expires: null, previous: stated },
+      retired,
+    );
+    expect(kept.previousSharedSecret).toBe(stated.sharedSecret);
+    expect(kept).not.toHaveProperty("previousExpires");
+    const dropped = applyManagedExchangeRotation(
+      record,
+      { sharedSecret: generateSharedSecret(), expires: null },
+      retired,
+    );
+    expect(dropped).not.toHaveProperty("previousSharedSecret");
+    expect(dropped).not.toHaveProperty("previousExpires");
+  });
+
+  test("a rotation under the previous secret adds no history entry for the current secret it replaces", () => {
+    const older = { verifier: generateSharedSecret() };
+    const previous = generateSharedSecret();
+    const record = runnableManagedExchangeOrRefuse(
+      parseManagedExchangeRecord({
+        ...holding(previous),
+        rotationHistory: [older],
+      }),
+    );
+    const rotated = applyManagedExchangeRotation(
+      record,
+      {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+        previous: { sharedSecret: previous },
+        usedPrevious: true,
+      },
+      retired,
+    );
+    expect(rotated.rotationHistory).toEqual([older]);
+    expect(rotated.previousSharedSecret).toBe(previous);
+  });
+
+  test("the partner's save drops it and nothing else", () => {
+    const record = holding(generateSharedSecret(), PREVIOUS_EXPIRES);
+    const dropped = applyManagedExchangePreviousSecretDropped(record);
+    expect(dropped).not.toHaveProperty("previousSharedSecret");
+    expect(dropped).not.toHaveProperty("previousExpires");
+    const {
+      previousSharedSecret: _secret,
+      previousExpires: _expires,
+      ...rest
+    } = record;
+    expect(dropped).toEqual(rest);
+    const none = runnableRecord();
+    expect(applyManagedExchangePreviousSecretDropped(none)).toBe(none);
+  });
+
+  test("a re-invite drops it", () => {
+    const reinvited = applyManagedExchangeReinviteRotation(
+      holding(generateSharedSecret(), PREVIOUS_EXPIRES),
+      {
+        sharedSecret: generateSharedSecret(),
+        expires: null,
+        signalingServer: { host: "signaling.example.org" },
+      },
+      retired,
+    );
+    expect(reinvited).not.toHaveProperty("previousSharedSecret");
+    expect(reinvited).not.toHaveProperty("previousExpires");
+  });
+
+  test("an import replace keeps none of the stored record's", () => {
+    const replaced = applyManagedExchangeImportReplace(
+      holding(generateSharedSecret(), PREVIOUS_EXPIRES),
+      runnableRecord({ side: "acceptor" }),
+      "backup",
+    );
+    expect(replaced).not.toHaveProperty("previousSharedSecret");
   });
 });
 

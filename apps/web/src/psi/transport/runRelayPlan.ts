@@ -30,6 +30,9 @@ export interface WebSocketRelayForRun {
   url: string;
   /** The id the relay holds the exchange's relay key under. */
   exchangeId: string;
+  /** The id and the proof's key are derived from the run's previous secret
+   * rather than its current one. */
+  underPreviousSecret?: true;
 }
 
 /** The relay a browser run dials with. */
@@ -87,6 +90,12 @@ export interface RunRelayPlanDependencies extends DefaultRelayDependencies {
  * browser's own url `ownRelayExchangeId`, and any other, or one with none
  * named, the id derived from the secret, the one the default relay's
  * enrollment uses.
+ *
+ * With `previousSharedSecret`, each WebSocket relay listed under the derived
+ * id is listed again under the id that secret derives
+ * (`underPreviousSecret`), the default relay's only where its enrollment
+ * under that secret confirmed. A relay under an id the invitation or the
+ * registrar names is listed once, under the current secret.
  */
 export async function relayPlanForRun(
   sharedSecret: string,
@@ -126,20 +135,35 @@ export async function relayPlanForRun(
   ];
   if (allowedRelays !== undefined && kept.length + relaysLeftOut.length > 0)
     defaultRelay.onRunNotice?.(allowedRelaysRunNotice(kept, relaysLeftOut));
-  const { relay, defaultWebSocketRelay } = await relayWithDefaultForRun(
-    sharedSecret,
-    relayForRun(invitationRelay, allowedRelays, () => own),
-    allowedRelays,
-    { ...defaultRelay, setting: () => site },
-  );
-  const websocketRelays = await webSocketRelaysWithExchangeIds(sharedSecret, {
+  const { relay, defaultWebSocketRelay, defaultWebSocketRelayUnderPrevious } =
+    await relayWithDefaultForRun(
+      sharedSecret,
+      relayForRun(invitationRelay, allowedRelays, () => own),
+      allowedRelays,
+      { ...defaultRelay, setting: () => site },
+    );
+  const sources = {
     invitationRelay,
     allowedRelays,
     own,
     ownRelayExchangeId,
     site,
-    defaultWebSocketRelay,
-  });
+  };
+  const websocketRelays = [
+    ...(await webSocketRelaysWithExchangeIds(sharedSecret, {
+      ...sources,
+      defaultWebSocketRelay,
+    })),
+    ...(defaultRelay.previousSharedSecret === undefined
+      ? []
+      : await webSocketRelaysUnderPreviousSecret(
+          defaultRelay.previousSharedSecret,
+          {
+            ...sources,
+            defaultWebSocketRelay: defaultWebSocketRelayUnderPrevious,
+          },
+        )),
+  ];
   return {
     ...(relay !== undefined && { relay }),
     relaysLeftOut,
@@ -233,22 +257,24 @@ function relayUrlsListed(
   };
 }
 
-// The WebSocket relays a run lists. Where the run uses the default relay's
+/** Where a run's WebSocket relay urls and their exchange ids come from. */
+interface WebSocketRelaySources {
+  invitationRelay: RelayUrls | undefined;
+  allowedRelays: ReadonlyArray<string> | undefined;
+  own: OwnRelayRead;
+  ownRelayExchangeId: string | undefined;
+  site: DefaultRelaySetting | undefined;
+  /** The default relay's WebSocket relay url, where the enrollment for the
+   * secret being listed confirmed. */
+  defaultWebSocketRelay: string | undefined;
+}
+
+// The WebSocket relay urls a run lists. Where the run uses the default relay's
 // WebSocket relay url, that url is left out unless the run's enrollment there
 // confirmed, even where another source names it, as its TURN url is.
-async function webSocketRelaysWithExchangeIds(
-  sharedSecret: string,
-  sources: {
-    invitationRelay: RelayUrls | undefined;
-    allowedRelays: ReadonlyArray<string> | undefined;
-    own: OwnRelayRead;
-    ownRelayExchangeId: string | undefined;
-    site: DefaultRelaySetting | undefined;
-    defaultWebSocketRelay: string | undefined;
-  },
-): Promise<Array<WebSocketRelayForRun>> {
+function webSocketRelayUrls(sources: WebSocketRelaySources): Array<string> {
   const { invitationRelay, own, site, defaultWebSocketRelay } = sources;
-  const urls = [
+  return [
     ...new Set([
       ...webSocketRelaysForRun(
         invitationRelay,
@@ -260,16 +286,49 @@ async function webSocketRelaysWithExchangeIds(
   ].filter(
     (url) => url !== site?.websocketUrl || defaultWebSocketRelay !== undefined,
   );
+}
+
+// The exchange id the invitation or this browser's registrar names for `url`,
+// or `undefined` where the proof is made under the id the secret derives.
+function namedExchangeId(
+  url: string,
+  sources: WebSocketRelaySources,
+): string | undefined {
+  const { invitationRelay, own } = sources;
+  if (url === invitationRelay?.websocket)
+    return invitationRelay.websocketExchangeId;
+  const ownUrl = own.kind === "set" ? own.relay.websocket : undefined;
+  return url === ownUrl ? sources.ownRelayExchangeId : undefined;
+}
+
+// The WebSocket relays a run lists under its current secret.
+async function webSocketRelaysWithExchangeIds(
+  sharedSecret: string,
+  sources: WebSocketRelaySources,
+): Promise<Array<WebSocketRelayForRun>> {
+  const urls = webSocketRelayUrls(sources);
   if (urls.length === 0) return [];
   const derived = await deriveRelayExchangeId(sharedSecret);
-  const ownUrl = own.kind === "set" ? own.relay.websocket : undefined;
   return urls.map((url) => ({
     url,
-    exchangeId:
-      url === invitationRelay?.websocket
-        ? (invitationRelay.websocketExchangeId ?? derived)
-        : url === ownUrl
-          ? (sources.ownRelayExchangeId ?? derived)
-          : derived,
+    exchangeId: namedExchangeId(url, sources) ?? derived,
+  }));
+}
+
+// The WebSocket relays a run also lists under its previous secret: those it
+// dials under the derived id.
+async function webSocketRelaysUnderPreviousSecret(
+  previousSharedSecret: string,
+  sources: WebSocketRelaySources,
+): Promise<Array<WebSocketRelayForRun>> {
+  const urls = webSocketRelayUrls(sources).filter(
+    (url) => namedExchangeId(url, sources) === undefined,
+  );
+  if (urls.length === 0) return [];
+  const derived = await deriveRelayExchangeId(previousSharedSecret);
+  return urls.map((url) => ({
+    url,
+    exchangeId: derived,
+    underPreviousSecret: true as const,
   }));
 }

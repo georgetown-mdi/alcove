@@ -587,6 +587,101 @@ describe("the retry before a run connects", () => {
     );
     expect(benignRerunOutcome(error, false)).toBe("relay-registration");
   });
+
+  /**
+   * A registrar holding the relay key of `heldSecret` for {@link REGISTRAR}'s
+   * exchange, answering a `PUT` by the verification rule of
+   * docs/spec/PROTOCOL.md, "The registrar request proof": a body naming the
+   * key it holds is a renewal; otherwise the proof must verify under the key
+   * it holds, and the body's key replaces it; anything else is 409.
+   */
+  async function verifyingRegistrar(heldSecret: string): Promise<{
+    fetch: typeof globalThis.fetch;
+    held: () => string;
+  }> {
+    let held = await deriveRelayKey(heldSecret);
+    const fetch = (async (
+      _input: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      const body = typeof init?.body === "string" ? init.body : "";
+      const authorization =
+        new Headers(init?.headers).get("Authorization") ?? "";
+      const ts = Number(/ts=(\d+)/.exec(authorization)?.[1]);
+      const key = (JSON.parse(body) as { key: string }).key;
+      const expected = await relayRegistrarAuthorization({
+        relayKey: held,
+        method: "PUT",
+        exchangeId: REGISTRAR.exchangeId,
+        body,
+        now: new Date(ts * 1000),
+      });
+      if (key !== held && authorization !== expected)
+        return new Response(
+          JSON.stringify({ error: "the proof does not verify" }),
+          { status: 409, headers: { "Content-Type": "application/json" } },
+        );
+      held = key;
+      return new Response(JSON.stringify(REGISTERED[1]), {
+        status: REGISTERED[0],
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof globalThis.fetch;
+    return { fetch, held: () => held };
+  }
+
+  const PREVIOUS = generateSharedSecret();
+  const ROTATED = generateSharedSecret();
+
+  test.each([
+    ["still holds the previous secret's key, and takes the rotation", PREVIOUS],
+    ["already holds the current key, and takes a renewal", ROTATED],
+  ])(
+    "while a previous secret is held, the retry is signed under its relay key: a registrar that %s",
+    async (_case, heldSecret) => {
+      const current = record({
+        side: "acceptor",
+        sharedSecret: ROTATED,
+        previousSharedSecret: PREVIOUS,
+        relayRegistrar: REGISTRAR,
+        relayRegistrationPendingSince: PENDING_SINCE,
+      });
+      const registrar = await verifyingRegistrar(heldSecret);
+      const store = recordingStore();
+
+      await retryPendingManagedRelayRegistration(
+        current,
+        REGISTRAR,
+        { fetch: registrar.fetch, now: () => NOW },
+        store,
+      );
+
+      expect(registrar.held()).toBe(await deriveRelayKey(ROTATED));
+      expect(store.cleared).toEqual([["record-under-test", ROTATED]]);
+    },
+  );
+
+  test("with no previous secret held, a registrar still holding the key before the rotation refuses the retry", async () => {
+    const registrar = await verifyingRegistrar(PREVIOUS);
+    const store = recordingStore();
+    const error = await retryPendingManagedRelayRegistration(
+      record({
+        sharedSecret: ROTATED,
+        relayRegistrar: REGISTRAR,
+        relayRegistrationPendingSince: PENDING_SINCE,
+      }),
+      REGISTRAR,
+      { fetch: registrar.fetch, now: () => NOW },
+      store,
+    ).then(
+      () => undefined,
+      (reason: unknown) => reason,
+    );
+
+    expect(error).toBeInstanceOf(ManagedRelayRegistrationError);
+    expect(registrar.held()).toBe(await deriveRelayKey(PREVIOUS));
+    expect(store.cleared).toEqual([]);
+  });
 });
 
 describe("the registration a re-invite makes", () => {

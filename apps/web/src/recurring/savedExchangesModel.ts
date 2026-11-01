@@ -186,7 +186,7 @@ function tierStatus(
     case "partner-refused-set":
       return `Last run stopped: your partner's run refused to send its set (${at}); ask your partner`;
     case "partner-storage":
-      return `Last run stopped: your partner could not save the new secret (${at}); no run can reach them until you re-invite`;
+      return `Last run stopped: your partner could not save the new secret (${at}); the next run can still reach them`;
     case "partner-refused-terms":
       return `Last run stopped: your partner's run refused your linkage terms (${at}); agree on the terms through a terms update`;
     case "partner-protocol-refusal":
@@ -225,7 +225,7 @@ function standingStatus(tier: ManagedStandingTier, at: string): string {
     case "storage":
       return `A run could not save this exchange's secret (${at}); re-invite to reconnect`;
     case "partner-storage":
-      return `Your partner could not save the new secret (${at}); no run can reach them until you re-invite`;
+      return `Your partner could not save the new secret (${at}); the next run can still reach them`;
     case "imported":
       return "Restored from a backup or key file; import your newest copy or re-invite";
     case "unexplained":

@@ -1162,6 +1162,9 @@ function RunHistory({
                     : ""} - {entry.when}
                 </span>
                 <span>{entry.disclosure}</span>
+                {entry.healNote !== undefined && (
+                  <span className={styles.dlNote}>{entry.healNote}</span>
+                )}
               </li>
             ))}
           </ol>

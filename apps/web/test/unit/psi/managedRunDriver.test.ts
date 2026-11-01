@@ -125,8 +125,11 @@ const beginKeyExchange = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 /** The durable rotation write the mocked orchestration hands the data
  * exchange, which the run passes core's terms exchange as its store. */
 const persistNextSecret = vi.hoisted(() =>
-  vi.fn((_nextSecret: string) => Promise.resolve()),
+  vi.fn((_nextSecret: string, _secretUsed?: unknown) => Promise.resolve()),
 );
+/** The drop of the previous secret the mocked orchestration hands the data
+ * exchange, which an initiator's run passes core's terms exchange. */
+const partnerStored = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 /** The report of whether the partner may hold a next secret this side has
  * not stored, which the mocked orchestration hands the data exchange. */
 const partnerMayHoldNextSecret = vi.hoisted(() =>
@@ -156,8 +159,12 @@ vi.mock("../../../src/psi/managed/managedRun.js", async (importOriginal) => ({
         ) => Promise<unknown>;
         dataExchange: (
           carried: unknown,
-          persistNextSecret: (nextSecret: string) => Promise<void>,
+          persistNextSecret: (
+            nextSecret: string,
+            secretUsed?: unknown,
+          ) => Promise<void>,
           partnerMayHoldNextSecret: (mayHold: boolean) => void,
+          partnerStored: () => Promise<void>,
         ) => Promise<unknown>;
       },
     ) => {
@@ -169,18 +176,25 @@ vi.mock("../../../src/psi/managed/managedRun.js", async (importOriginal) => ({
         handshake,
         persistNextSecret,
         partnerMayHoldNextSecret,
+        partnerStored,
       );
       return { exchange, lastRun: { at: 0, outcome: "succeeded" } };
     },
   ),
 }));
-vi.mock("../../../src/psi/managed/managedRendezvous.js", () => ({
-  assertManagedRendezvousPossible: vi.fn(),
-  beginManagedRendezvous: vi.fn(),
-  managedRunRelayPlan: vi.fn(() =>
-    Promise.resolve({ relaysLeftOut: [], websocketRelays: [] }),
-  ),
-}));
+vi.mock(
+  "../../../src/psi/managed/managedRendezvous.js",
+  async (importOriginal) => ({
+    managedRendezvousPreviousSecret: (
+      await importOriginal<Record<string, unknown>>()
+    ).managedRendezvousPreviousSecret,
+    assertManagedRendezvousPossible: vi.fn(),
+    beginManagedRendezvous: vi.fn(),
+    managedRunRelayPlan: vi.fn(() =>
+      Promise.resolve({ relaysLeftOut: [], websocketRelays: [] }),
+    ),
+  }),
+);
 // Real, and watched, so a case can show what a run registers and when.
 vi.mock(
   "../../../src/psi/managed/managedRelayRegistration.js",
@@ -495,6 +509,7 @@ describe("runManagedExchangeInBrowser", () => {
         RECORD.sharedSecret,
         undefined,
         undefined,
+        undefined,
       );
     },
   );
@@ -540,6 +555,140 @@ describe("runManagedExchangeInBrowser", () => {
     },
   );
 
+  describe("a record holding a previous secret", () => {
+    const PREVIOUS_EXPIRES = "2099-01-01T00:00:00.000Z";
+
+    test("an acceptor's run looks for its partner under both secrets, and authenticates offering the previous one", async () => {
+      const { mc } = makeParkedCloseMc();
+      mockedOpen.mockResolvedValue(mc);
+      acquireResources("acceptor");
+      const url = "wss://relay.example.org/relay";
+      vi.mocked(managedRunRelayPlan).mockResolvedValueOnce({
+        relaysLeftOut: [],
+        websocketRelays: [
+          { url, exchangeId: "current-id" },
+          { url, exchangeId: "previous-id", underPreviousSecret: true },
+        ],
+      });
+      const parked = () => ({
+        url,
+        paired: false,
+        partnerStarted: false,
+        failure: undefined,
+        onChange: () => () => {},
+        start: () => new Promise<never>(() => {}),
+        close: vi.fn(),
+      });
+      vi.mocked(parkWebSocketRelayConnection)
+        .mockImplementationOnce(parked)
+        .mockImplementationOnce(parked);
+      const sharedSecret = generateSharedSecret();
+      const previousSharedSecret = generateSharedSecret();
+
+      await runDriver(new AbortController().signal, undefined, {
+        ...recordForSide("acceptor"),
+        sharedSecret,
+        previousSharedSecret,
+        previousExpires: PREVIOUS_EXPIRES,
+      });
+
+      expect(vi.mocked(managedRunRelayPlan)).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ previousSharedSecret }),
+      );
+      expect(mockedRendezvous).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ previousSharedSecret }),
+      );
+      expect(vi.mocked(parkWebSocketRelayConnection)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          exchangeId: "current-id",
+          relayKey: await deriveRelayKey(sharedSecret),
+        }),
+      );
+      expect(vi.mocked(parkWebSocketRelayConnection)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          exchangeId: "previous-id",
+          relayKey: await deriveRelayKey(previousSharedSecret),
+        }),
+      );
+      expect(mockedAuthenticate).toHaveBeenCalledWith(
+        mc,
+        "initiator",
+        sharedSecret,
+        undefined,
+        undefined,
+        { sharedSecret: previousSharedSecret, expires: PREVIOUS_EXPIRES },
+      );
+    });
+
+    test("an expired previous secret is not looked for under", async () => {
+      const { mc } = makeParkedCloseMc();
+      mockedOpen.mockResolvedValue(mc);
+      acquireResources("acceptor");
+
+      await runDriver(new AbortController().signal, undefined, {
+        ...recordForSide("acceptor"),
+        sharedSecret: generateSharedSecret(),
+        previousSharedSecret: generateSharedSecret(),
+        previousExpires: "2000-01-01T00:00:00.000Z",
+      });
+
+      expect(mockedRendezvous).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.not.objectContaining({
+          previousSharedSecret: expect.anything(),
+        }),
+      );
+    });
+
+    test.each([
+      [
+        "this side used its previous secret",
+        { local: "previous", partner: "current" } as const,
+        "The last run stopped before your partner saved the new secret",
+      ],
+      [
+        "the partner used its previous secret",
+        { local: "current", partner: "previous" } as const,
+        "Your partner still had the secret from before your last run stopped",
+      ],
+    ])(
+      "a key exchange where %s states the heal note and hands the store which secrets it used",
+      async (_case, secretUsed, note) => {
+        const { mc } = makeParkedCloseMc();
+        mockedOpen.mockResolvedValue(mc);
+        acquireResources();
+        mockedAuthenticate.mockResolvedValueOnce({
+          ...wrappedHandshake(mc),
+          secretUsed,
+        });
+        const onWarning = vi.fn();
+
+        await runDriver(new AbortController().signal, onWarning);
+
+        expect(onWarning).toHaveBeenCalledWith(expect.stringContaining(note));
+        expect(persistNextSecret).toHaveBeenCalledWith(
+          MOCKED_NEXT_SECRET,
+          secretUsed,
+        );
+      },
+    );
+
+    test("a key exchange both completed under the current secret states no heal note", async () => {
+      const { mc } = makeParkedCloseMc();
+      mockedOpen.mockResolvedValue(mc);
+      acquireResources();
+      const onWarning = vi.fn();
+
+      await runDriver(new AbortController().signal, onWarning);
+
+      expect(onWarning).not.toHaveBeenCalledWith(
+        expect.stringContaining("new secret"),
+      );
+    });
+  });
+
   test("meets the partner and authenticates with the secret read inside the lock", async () => {
     // The driver is handed the record a surface or a scheduled window loaded
     // earlier; a rotation stored since then is what the run must use.
@@ -579,6 +728,7 @@ describe("runManagedExchangeInBrowser", () => {
       "rotated-secret",
       undefined,
       lockedHistory,
+      undefined,
     );
     // The outputs are built with the delimiter read inside the lock, not the
     // one on the record the driver was handed before it.
@@ -612,6 +762,7 @@ describe("runManagedExchangeInBrowser", () => {
         expect.anything(),
         undefined,
         undefined,
+        undefined,
       );
       expect(beginKeyExchange).toHaveBeenCalledTimes(1);
       const begunAt = beginKeyExchange.mock.invocationCallOrder[0];
@@ -632,7 +783,10 @@ describe("runManagedExchangeInBrowser", () => {
     const rotation = mockedRunExchange.mock.calls[0][3].rotation;
     if (rotation === undefined) throw new Error("the run handed no rotation");
     expect(inputsReadAtStore(rotation)).toBe(MOCKED_NEXT_SECRET_INPUTS);
-    expect(persistNextSecret).toHaveBeenCalledWith(MOCKED_NEXT_SECRET);
+    expect(persistNextSecret).toHaveBeenCalledWith(MOCKED_NEXT_SECRET, {
+      local: "current",
+      partner: "current",
+    });
     rotation.partnerMayHoldNextSecret?.(true);
     expect(partnerMayHoldNextSecret).toHaveBeenCalledWith(true);
   });

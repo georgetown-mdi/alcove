@@ -1,5 +1,6 @@
 import {
   ConnectionError,
+  InternalConsistencyError,
   deriveRelayKey,
   getLogger,
   raceWebRtcAgainstRelays,
@@ -88,6 +89,9 @@ export interface RunConnectionWithRelayFallbackOptions {
   role: RendezvousRole;
   /** The run's current shared secret, which the relay key derives from. */
   sharedSecret: string;
+  /** The run's previous secret, which the key of each relay listed
+   * `underPreviousSecret` derives from. */
+  previousSharedSecret?: string;
   /** The WebSocket relays the run lists, in its order. */
   relays: ReadonlyArray<WebSocketRelayForRun>;
   /** The run's interrupt, which also cuts a relay connection's clean close
@@ -106,25 +110,37 @@ export interface RunConnectionWithRelayFallbackOptions {
  * lists no WebSocket relay, which dials nothing else and hands the WebRTC open
  * the run's own signal, and otherwise raced against those relays by
  * {@link raceWebRtcAgainstRelays}, each proven to under the relay key the
- * shared secret derives. A raced run states the path that carries it through
- * `onRunNotice`.
+ * shared secret derives, or the previous secret for a relay listed under it.
+ * A raced run states the path that carries it through `onRunNotice`.
  *
  * @param relayOptions Tests only.
+ * @throws {InternalConsistencyError} if a relay is listed under a previous
+ *   secret the options do not name.
  */
 export async function openRunConnectionWithRelayFallback(
   options: RunConnectionWithRelayFallbackOptions,
   relayOptions: Partial<WebSocketRelayConnectionOptions> = {},
 ): Promise<RunConnection> {
-  const { role, relays, signal } = options;
+  const { role, relays, signal, previousSharedSecret } = options;
   if (relays.length === 0) return options.openWebRtc({ signal });
+  const underPrevious = relays.some((relay) => relay.underPreviousSecret);
+  if (underPrevious && previousSharedSecret === undefined)
+    throw new InternalConsistencyError(
+      "a WebSocket relay is listed under a previous secret the run does not hold",
+    );
   const relayKey = await deriveRelayKey(options.sharedSecret);
+  const previousRelayKey =
+    underPrevious && previousSharedSecret !== undefined
+      ? await deriveRelayKey(previousSharedSecret)
+      : relayKey;
   const relaysInterrupt = new AbortController();
   const parked = relays.map((relay) =>
     parkWebSocketRelayConnection({
       url: relay.url,
       exchangeId: relay.exchangeId,
       role,
-      relayKey,
+      relayKey:
+        relay.underPreviousSecret === true ? previousRelayKey : relayKey,
       signal: relaysInterrupt.signal,
       onCloseOutcome: options.onCloseOutcome,
       ...relayOptions,

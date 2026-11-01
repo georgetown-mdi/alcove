@@ -234,11 +234,15 @@ const defaultRegistrationStore: ManagedRelayRegistrationStore = {
 
 /**
  * Before a run connects: when `current` records a registration the registrar
- * did not confirm, register the key derived from its secret again. The key
- * the registrar held before that rotation left with the run that made it, so
- * this is a renewal signed with the current key, which the registrar takes
- * only if it already holds that key -- a rotation whose answer was lost. A
- * confirmed renewal drops the pending registration from the record.
+ * did not confirm, register the key derived from its secret again. While the
+ * record holds a previous secret, the request is signed under that secret's
+ * relay key, the request the rotation would have sent: a registrar still
+ * holding that key takes the rotation, and one already holding the current
+ * key takes it as a renewal. Otherwise the key the registrar held before that
+ * rotation left with the run that made it, so this is a renewal signed with
+ * the current key, which the registrar takes only if it already holds that
+ * key -- a rotation whose answer was lost. A confirmed registration drops the
+ * pending registration from the record.
  * `env.signal` cancels the renewal and its retries. A registration pending for
  * the reason `"reinvite"` sends nothing: the key the registrar holds is
  * derived from a secret the re-invite replaced, so no renewal can confirm it.
@@ -264,7 +268,7 @@ export async function retryPendingManagedRelayRegistration(
   const outcome = await registerRelayKey(
     {
       registrar,
-      signingSecret: current.sharedSecret,
+      signingSecret: current.previousSharedSecret ?? current.sharedSecret,
       registeredSecret: current.sharedSecret,
       maxAgeDays: current.tokenMaxAgeDays ?? null,
     },

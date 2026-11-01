@@ -39,6 +39,7 @@ import {
   PARTNER_REFUSED_SET_REMEDY,
   PARTNER_REFUSED_SET_TITLE,
   PARTNER_REFUSED_TERMS_REMEDY,
+  PARTNER_SECRET_NOT_SAVED_KEPT_REMEDY,
   PARTNER_SECRET_NOT_SAVED_PROBLEM,
   PARTNER_SECRET_NOT_SAVED_TITLE,
   PARTNER_SET_TOO_LARGE_PROBLEM,
@@ -391,8 +392,7 @@ function failureNotice(
       title: NOTICE_TITLES["partner-storage"],
       body:
         `${name} stopped because ${PARTNER_SECRET_NOT_SAVED_PROBLEM}. ` +
-        `Scheduled runs keep running but cannot reach your partner until you ` +
-        `re-invite them. Open this app and re-invite your partner.`,
+        PARTNER_SECRET_NOT_SAVED_KEPT_REMEDY,
       tag: noticeTag(record.id, "partner-storage"),
     };
   if (tier === "partner-refused-terms")

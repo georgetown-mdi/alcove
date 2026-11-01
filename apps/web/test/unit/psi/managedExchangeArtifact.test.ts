@@ -16,6 +16,7 @@ import {
   NO_STANDING_CONDITION,
   buildManagedExchangeRecord,
   composeManagedExchangeFile,
+  parseManagedExchangeRecord,
   runnableManagedExchangeOrRefuse,
 } from "@psi/managed/managedExchangeRecord";
 import {
@@ -30,6 +31,7 @@ import {
 import {
   encodeManagedExchangeArtifact,
   importManagedExchangeArtifact,
+  keyFileFieldsFromRecord,
   parseManagedExchangeArtifact,
   reconstructRecordFromArtifact,
   serializeManagedExchangeArtifact,
@@ -929,6 +931,31 @@ describe("the rotation history", () => {
     expect(reconstructRecordFromArtifact(artifact)).not.toHaveProperty(
       "rotationHistory",
     );
+  });
+
+  test("a record holding a previous secret exports the history and not the previous secret, in the backup and the command-line key file", () => {
+    const previousSharedSecret = generateSharedSecret();
+    const record = runnableManagedExchangeOrRefuse(
+      parseManagedExchangeRecord({
+        ...buildManagedExchangeRecord(
+          newExchange({ side: "acceptor", rotationHistory: history }),
+        ),
+        previousSharedSecret,
+        previousExpires: "2026-04-06T14:00:00.000Z",
+      }),
+    );
+    const bytes = serializeManagedExchangeArtifact(
+      encodeManagedExchangeArtifact(record),
+    );
+    expect(bytes).not.toContain(previousSharedSecret);
+    expect(bytes).not.toContain("previousExpires");
+    const keyFields = keyFileFieldsFromRecord(record);
+    expect(keyFields).not.toHaveProperty("previousSharedSecret");
+    expect(keyFields).not.toHaveProperty("previousExpires");
+    expect(keyFields.rotationHistory).toEqual(history);
+    const { record: restored } = importManagedExchangeArtifact(bytes);
+    expect(restored).not.toHaveProperty("previousSharedSecret");
+    expect(restored.rotationHistory).toEqual(history);
   });
 
   test.each([

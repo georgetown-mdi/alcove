@@ -18,6 +18,7 @@
  */
 
 import {
+  PARTNER_SECRET_NOT_SAVED_KEPT_REMEDY,
   PARTNER_SECRET_NOT_SAVED_PROBLEM,
   PARTNER_SECRET_NOT_SAVED_TITLE,
 } from "@psi/managed/managedFailureCopy";
@@ -103,8 +104,7 @@ export function managedStandingConditionView(
         title: PARTNER_SECRET_NOT_SAVED_TITLE,
         message:
           `A run on ${when} stopped because ${PARTNER_SECRET_NOT_SAVED_PROBLEM}. ` +
-          "Scheduled runs keep running but cannot reach your partner, and " +
-          `running the exchange again cannot either. Re-invite your partner to reconnect. ${STANDS_UNTIL}`,
+          `${PARTNER_SECRET_NOT_SAVED_KEPT_REMEDY} ${STANDS_UNTIL}`,
         clearance: "acknowledge",
       };
     case "imported":

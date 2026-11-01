@@ -427,6 +427,179 @@ describe("runManagedExchange: persist-before-success end to end", () => {
     for (const durability of durabilities) expect(durability).toBe("strict");
   });
 
+  describe("the previous secret across a cut run and its heal", () => {
+    /** Every readwrite transaction's durability while `body` runs. */
+    async function readwriteDurabilities(
+      body: () => Promise<unknown>,
+    ): Promise<Array<IDBTransactionDurability | undefined>> {
+      const realTransaction = IDBDatabase.prototype.transaction;
+      const durabilities: Array<IDBTransactionDurability | undefined> = [];
+      IDBDatabase.prototype.transaction = function (
+        this: IDBDatabase,
+        storeNames: string | Array<string>,
+        mode?: IDBTransactionMode,
+        options?: IDBTransactionOptions,
+      ) {
+        if (mode === "readwrite") durabilities.push(options?.durability);
+        return realTransaction.call(this, storeNames, mode, options);
+      };
+      try {
+        await body();
+      } finally {
+        IDBDatabase.prototype.transaction = realTransaction;
+      }
+      return durabilities;
+    }
+
+    test("the initiator's store keeps the secret it used, the partner's save drops it, and a heal adds no history, each write strict and under the lock", async () => {
+      const PREVIOUS_EXPIRES = "2099-01-01T00:00:00.000Z";
+      const created = await createRunnableExchange(
+        newExchange({ side: "acceptor", expires: PREVIOUS_EXPIRES }),
+      );
+      const cutSecret = generateSharedSecret();
+      const healedSecret = generateSharedSecret();
+      const cut = new Error("the partner could not save the next secret");
+      let afterCutStore: ManagedExchangeRecord | undefined;
+      let lockHeldAtCutStore: boolean | undefined;
+
+      const cutDurabilities = await readwriteDurabilities(() =>
+        runManagedExchange({
+          record: created,
+          runStartedAtMs: Date.now(),
+          acquireInput: () => Promise.resolve(undefined),
+          handshake: () => Promise.resolve("c"),
+          dataExchange: async (_carried, persistNextSecret) => {
+            await persistNextSecret(cutSecret);
+            afterCutStore = await getManagedExchange(created.id);
+            lockHeldAtCutStore = !(await attendedRunCouldStart(created.id));
+            throw cut;
+          },
+        }).catch((error: unknown) => {
+          if (error !== cut) throw error;
+        }),
+      );
+
+      expect(lockHeldAtCutStore).toBe(true);
+      expect(afterCutStore?.sharedSecret).toBe(cutSecret);
+      expect(afterCutStore?.previousSharedSecret).toBe(created.sharedSecret);
+      expect(afterCutStore?.previousExpires).toBe(PREVIOUS_EXPIRES);
+      const retiredEntry = {
+        verifier: await deriveHistoryVerifier(created.sharedSecret),
+        expires: PREVIOUS_EXPIRES,
+      };
+      expect(afterCutStore?.rotationHistory).toEqual([retiredEntry]);
+      expect(cutDurabilities.length).toBeGreaterThanOrEqual(1);
+      for (const durability of cutDurabilities)
+        expect(durability).toBe("strict");
+
+      const beforeHeal = runnableManagedExchangeOrRefuse(
+        (await getManagedExchange(created.id)) as ManagedExchangeRecord,
+      );
+      let afterHealStore: ManagedExchangeRecord | undefined;
+      let afterPartnerStored: ManagedExchangeRecord | undefined;
+      let lockHeldAtDrop: boolean | undefined;
+
+      const healDurabilities = await readwriteDurabilities(() =>
+        runManagedExchange({
+          record: beforeHeal,
+          runStartedAtMs: Date.now(),
+          acquireInput: () => Promise.resolve(undefined),
+          handshake: () => Promise.resolve("c"),
+          dataExchange: async (
+            _carried,
+            persistNextSecret,
+            _partnerMayHoldNextSecret,
+            partnerStored,
+          ) => {
+            await persistNextSecret(healedSecret, {
+              local: "previous",
+              partner: "current",
+            });
+            afterHealStore = await getManagedExchange(created.id);
+            await partnerStored();
+            afterPartnerStored = await getManagedExchange(created.id);
+            lockHeldAtDrop = !(await attendedRunCouldStart(created.id));
+            return "done";
+          },
+        }),
+      );
+
+      // The heal's store keeps the secret its key exchange used, and the
+      // history holds no entry for the cut run's secret, never shared.
+      expect(afterHealStore?.sharedSecret).toBe(healedSecret);
+      expect(afterHealStore?.previousSharedSecret).toBe(created.sharedSecret);
+      expect(afterHealStore?.rotationHistory).toEqual([retiredEntry]);
+      expect(afterPartnerStored?.sharedSecret).toBe(healedSecret);
+      expect(afterPartnerStored).not.toHaveProperty("previousSharedSecret");
+      expect(afterPartnerStored).not.toHaveProperty("previousExpires");
+      expect(lockHeldAtDrop).toBe(true);
+      expect(healDurabilities.length).toBeGreaterThanOrEqual(3);
+      for (const durability of healDurabilities)
+        expect(durability).toBe("strict");
+
+      const stored = await getManagedExchange(created.id);
+      expect(stored?.sharedSecret).toBe(healedSecret);
+      expect(stored).not.toHaveProperty("previousSharedSecret");
+      expect(stored?.lastRun).toMatchObject({
+        outcome: "succeeded",
+        healedCutRotation: true,
+      });
+    });
+
+    test("the responder's store keeps none, and a run under both current secrets is not marked healed", async () => {
+      const created = await createRunnableExchange(
+        newExchange({ side: "inviter" }),
+      );
+      const rotatedSecret = generateSharedSecret();
+      let afterStore: ManagedExchangeRecord | undefined;
+
+      await runManagedExchange({
+        record: created,
+        runStartedAtMs: Date.now(),
+        acquireInput: () => Promise.resolve(undefined),
+        handshake: () => Promise.resolve("c"),
+        dataExchange: async (_carried, persistNextSecret) => {
+          await persistNextSecret(rotatedSecret);
+          afterStore = await getManagedExchange(created.id);
+          return "done";
+        },
+      });
+
+      expect(afterStore?.sharedSecret).toBe(rotatedSecret);
+      expect(afterStore).not.toHaveProperty("previousSharedSecret");
+      const stored = await getManagedExchange(created.id);
+      expect(stored?.lastRun?.outcome).toBe("succeeded");
+      expect(stored?.lastRun).not.toHaveProperty("healedCutRotation");
+    });
+
+    test("the responder of a heal, whose partner used its previous secret, is marked healed", async () => {
+      const created = await createRunnableExchange(
+        newExchange({ side: "inviter" }),
+      );
+
+      await runManagedExchange({
+        record: created,
+        runStartedAtMs: Date.now(),
+        acquireInput: () => Promise.resolve(undefined),
+        handshake: () => Promise.resolve("c"),
+        dataExchange: async (_carried, persistNextSecret) => {
+          await persistNextSecret(generateSharedSecret(), {
+            local: "current",
+            partner: "previous",
+          });
+          return "done";
+        },
+      });
+
+      const stored = await getManagedExchange(created.id);
+      expect(stored).not.toHaveProperty("previousSharedSecret");
+      expect(stored?.lastRun).toMatchObject({
+        outcome: "succeeded",
+        healedCutRotation: true,
+      });
+    });
+  });
+
   test("a rotation write refused for a replaced secret leaves the history as it was", async () => {
     const created = await createRunnableExchange(newExchange());
     await expect(

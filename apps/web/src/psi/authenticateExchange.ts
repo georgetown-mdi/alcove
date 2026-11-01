@@ -15,6 +15,7 @@ import type {
   HandshakeRole,
   MessageConnection,
   RotationHistoryEntry,
+  RotationState,
 } from "@alcove/core";
 
 // ConnectionError kinds that are not a peer-trust problem and pass through
@@ -62,6 +63,10 @@ export interface AuthenticatedExchange extends AuthResult {
  * @param rotationHistory The verifiers of the secrets this side retired,
  *                      newest first: a managed record's history, empty for a
  *                      one-shot exchange.
+ * @param previous      The previous secret a managed record holds after a run
+ *                      cut between the two saves of a rotation, and its own
+ *                      `expires`; core offers it only while it has not
+ *                      expired. Omitted for a one-shot exchange.
  * @returns The {@link AuthenticatedExchange}; both peers derive the same
  *          `sessionKey`.
  * @throws {ConnectionError} of kind `"security"` on a trust failure; of kind
@@ -75,16 +80,19 @@ export async function authenticateExchange(
   sharedSecret: string,
   expires?: string,
   rotationHistory: ReadonlyArray<RotationHistoryEntry> = [],
+  previous?: RotationState["previous"],
 ): Promise<AuthenticatedExchange> {
   let result: AuthResult;
   try {
-    // The browser record keeps no previous secret, so none is offered.
     result = await authenticateConnection(
       mc,
       { sharedSecret, expires },
       exchangeRole,
       true,
-      { history: rotationHistory },
+      {
+        history: rotationHistory,
+        ...(previous !== undefined && { previous }),
+      },
     );
   } catch (error) {
     // An unrecognized failure is treated as a trust failure: fail closed.
