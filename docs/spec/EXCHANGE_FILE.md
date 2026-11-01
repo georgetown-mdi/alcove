@@ -263,8 +263,8 @@ leaves out a field holding the value an older reader assumes for its absence,
 including when it writes back a document it read.
 A file that uses no newer field is therefore read by every Alcove that reads
 its version. Alcove builds from before format versions refuse the
-`format_version` key, since their exchange-file schema is strict; before
-publication there are no deployed readers to hold apart. A file that does use
+`format_version` key, since their exchange-file schema is strict; below
+`1.0.0` partners upgrade together, so there are no mixed-version readers to hold apart. A file that does use
 one is refused by an older reader, naming the version or the field, rather
 than read short of it.
 
