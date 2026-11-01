@@ -329,7 +329,14 @@ Describe 'The Task Scheduler lines, registered under a time zone with daylight s
                 $task | Should -Not -BeNullOrEmpty -Because "the interval $($expected.interval) line registered no task (exit $($run.Exit): $($run.Output))"
                 $start = [string] @($task.Triggers)[0].StartBoundary
                 $measurement["start_$label"] = $start
-                $start | Should -Match ('T' + $expected.time + ':00') -Because 'the task starts at the line''s time'
+                # The boundary is written with the offset in force on the day of
+                # registration, so a start date on the other side of a daylight
+                # saving change reads at another hour: compare instants.
+                $boundary = [DateTimeOffset]::Parse($start, [Globalization.CultureInfo]::InvariantCulture)
+                $startDay = if ($expected.start -eq '-') { $boundary.ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture) } else { $expected.start }
+                $wallTime = [datetime]::ParseExact("$startDay $($expected.time)", 'yyyy-MM-dd HH:mm', [Globalization.CultureInfo]::InvariantCulture)
+                $intendedStart = [TimeZoneInfo]::ConvertTimeToUtc($wallTime, [TimeZoneInfo]::FindSystemTimeZoneById($zoneEast))
+                $boundary.UtcDateTime | Should -Be $intendedStart -Because "the task starts at the line's time, $($expected.time) on $startDay under $zoneEast ($intendedStart UTC), not at $start"
 
                 $before = Get-NextRunReading
                 $before | Should -Not -BeNullOrEmpty -Because "the interval $($expected.interval) task has no next run under $zoneEast (start boundary $start)"
