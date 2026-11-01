@@ -788,8 +788,8 @@ TCP to coturn on loopback, which opens no TLS listener and holds no key.
   clients, six times coturn's `total-quota` of 40 allocations, 256 clients
   of routed services, twice the 128 WebSocket clients the broker's front
   admits (`worker_connections 256` in `infra/broker/nginx.conf.tmpl`, two
-  per client), 256 sockets of the WebSocket relay, above the 120 it holds at
-  once (80 awaiting a hello and 20 pairings of two, `docs/spec/WEBSOCKET_RELAY.md`),
+  per client), 256 sockets of the WebSocket relay, above the 72 it holds at
+  once (48 awaiting a hello and 12 pairings of two, `docs/spec/WEBSOCKET_RELAY.md`),
   or 512 registrar clients. That is the bound on the front's
   memory: each TURN client holds the TURN server's TLS session and a buffer
   each way on two hops, which the host run reads under load

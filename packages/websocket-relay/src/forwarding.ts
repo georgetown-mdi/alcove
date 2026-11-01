@@ -1,25 +1,22 @@
 import type { WebSocket } from "ws";
 
 /** The send-buffer marks, in bytes, a forwarder stops and resumes reading its
- * source at, and the limit it ends the forwarding at. */
+ * source at. */
 export interface SendWindow {
   /** Above this, the source is held. */
   highBytes: number;
   /** At or below this, the source is released. */
   lowBytes: number;
-  /** Above this, the forwarding ends. */
-  limitBytes: number;
 }
 
-/**
- * The counted queue, in bytes, above which the relays end a forwarding
- * ({@link sendWithinWindow}): 1.25 MiB, 256 KiB over the 1 MiB high mark.
- * The largest counted queue measured in honest rounds through the WebSocket
- * relay was 1,093,869 bytes, 45,293 over the high mark, in a 539,000,000-byte
- * round whose reader stopped for 45 seconds (docs/spec/WEBSOCKET_RELAY.md,
- * Measured counted queues).
- */
-export const QUEUE_LIMIT_BYTES = 1280 * 1024;
+/** The counted queue above which {@link sendWithinWindow} ends a forwarding,
+ * and what it calls then in place of holding the source. */
+export interface QueueLimit {
+  /** The counted queue, in bytes, above which the forwarding ends. */
+  bytes: number;
+  /** Ends the forwarding. */
+  overLimit: () => void;
+}
 
 /**
  * The heap and buffer memory, in bytes, a message queued by
@@ -98,12 +95,13 @@ function queueFrame(
 }
 
 /**
- * Send `data` to `destination` as one binary message, calling `overLimit`
- * when the destination's queued bytes ({@link queuedBytes}) are then above
- * the window's limit, `hold` when they are above its high mark, and
- * `release` once a send completes with them at or below the low mark: the
- * pause-and-resume forwarding of docs/spec/WEBSOCKET_RELAY.md, Forwarding,
- * which the SFTP relay applies toward its browser too.
+ * Send `data` to `destination` as one binary message, calling `hold` when the
+ * destination's queued bytes ({@link queuedBytes}) are then above the
+ * window's high mark and `release` once a send completes with them at or
+ * below the low mark: the pause-and-resume forwarding of
+ * docs/spec/WEBSOCKET_RELAY.md, Forwarding, which the SFTP relay applies
+ * toward its browser too. Given a `limit`, queued bytes above it call its
+ * `overLimit` in place of `hold`.
  */
 export function sendWithinWindow(
   destination: WebSocket,
@@ -111,7 +109,7 @@ export function sendWithinWindow(
   window: SendWindow,
   hold: () => void,
   release: () => void,
-  overLimit: () => void,
+  limit?: QueueLimit,
 ): void {
   // An unpooled copy, so a queued message keeps its own bytes and not the
   // read or the shared pool block it arrived in.
@@ -125,7 +123,7 @@ export function sendWithinWindow(
     },
   );
   const queued = queuedBytes(destination);
-  if (queued > window.limitBytes) overLimit();
+  if (limit !== undefined && queued > limit.bytes) limit.overLimit();
   else if (queued > window.highBytes) hold();
 }
 

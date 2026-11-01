@@ -31,8 +31,8 @@ pid /tmp/nginx.pid;
 # client counts four (the 443 server's two sides, then the 5347, 5348 or 5351
 # server's), a registrar client two, so 1024 is 256 such clients: six times
 # coturn's total-quota of 40 allocations, twice the broker front's 128
-# WebSocket clients, and above the WebSocket relay's 120 sockets (80 awaiting
-# a hello, 20 pairings of two). The bound on the front's memory.
+# WebSocket clients, and above the WebSocket relay's 72 sockets (48 awaiting
+# a hello, 12 pairings of two). The bound on the front's memory.
 events { worker_connections 1024; }
 stream {
   access_log off;

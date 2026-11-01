@@ -6,7 +6,6 @@ import {
 
 import {
   QUEUED_MESSAGE_OVERHEAD_BYTES,
-  QUEUE_LIMIT_BYTES,
   pausedReadAheadBytes,
 } from "./forwarding.ts";
 
@@ -39,10 +38,12 @@ export const RELAY_SEND_BUFFER_LOW_BYTES = 256 * 1024;
 
 /**
  * A destination's counted queue, in bytes, above which the relay ends the
- * pairing: {@link QUEUE_LIMIT_BYTES}, the limit the SFTP relay applies
- * toward its browser too.
+ * pairing: 1.25 MiB, 256 KiB over the 1 MiB high mark. The largest counted
+ * queue measured in honest rounds through the relay was 1,093,869 bytes,
+ * 45,293 over the high mark, in a 539,000,000-byte round whose reader stopped
+ * for 45 seconds (docs/spec/WEBSOCKET_RELAY.md, Measured counted queues).
  */
-export const RELAY_QUEUE_LIMIT_BYTES = QUEUE_LIMIT_BYTES;
+export const RELAY_QUEUE_LIMIT_BYTES = 1280 * 1024;
 
 /** The frame header, in bytes, the relay writes for a message of up to
  * 65,535 bytes and at least 126. */
@@ -88,11 +89,9 @@ export const RELAY_HELLO_TIMEOUT_MS = 10_000;
 /**
  * The most pairings the relay holds at once, a pairing counting from its
  * first verified hello until every socket it admitted has closed, the close
- * wait included: coturn's 40 concurrent allocations at two an
- * exchange (docs/notes/webrtc-relay-deployment.md, Quotas against one
- * exchange).
+ * wait included.
  */
-export const RELAY_MAX_PAIRINGS = 20;
+export const RELAY_MAX_PAIRINGS = 12;
 
 /**
  * The most sockets the relay holds whose hello has not verified, each counted

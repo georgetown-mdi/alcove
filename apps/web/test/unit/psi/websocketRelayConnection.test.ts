@@ -336,6 +336,10 @@ describe("a refused hello", () => {
     [4006, /Another connection already holds this side's place/],
     [4008, /as many exchanges as it allows\. Wait a few minutes/],
     [1011, /could not check this side's proof\. Wait a few minutes/],
+    [
+      4010,
+      /ended the exchange because the exchange partner stopped receiving\. Start the exchange again/,
+    ],
   ];
 
   test.each(refusals)(
@@ -595,6 +599,14 @@ describe("the inbound path", () => {
       /partner's connection to the WebSocket relay ended without a clean close/,
     );
   });
+
+  test("a relay that ends the exchange because the partner stopped receiving fails the connection", async () => {
+    const { socket, mc } = await openStarted();
+    socket.closeFromRelay(4010);
+    await expect(mc.receive()).rejects.toThrow(
+      /ended the exchange because the exchange partner stopped receiving\. Start the exchange again/,
+    );
+  });
 });
 
 describe("the close", () => {
@@ -811,7 +823,7 @@ describe("a parked socket", () => {
     },
   );
 
-  test.each([4004, 4008, 1011, 1001, 4001, 4002, 4007, 1009])(
+  test.each([4004, 4008, 1011, 1001, 4001, 4002, 4007, 1009, 4010])(
     "ends the attempt on a close with code %i, without dialing again",
     async (code) => {
       const { parked, sockets, dialed, changes } = park();

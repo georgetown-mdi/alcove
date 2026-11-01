@@ -186,8 +186,8 @@ export function attachWebSocketRelay(
   const window = {
     highBytes: testing.sendBufferHighBytes ?? RELAY_SEND_BUFFER_HIGH_BYTES,
     lowBytes: testing.sendBufferLowBytes ?? RELAY_SEND_BUFFER_LOW_BYTES,
-    limitBytes: testing.queueLimitBytes ?? RELAY_QUEUE_LIMIT_BYTES,
   };
+  const queueLimitBytes = testing.queueLimitBytes ?? RELAY_QUEUE_LIMIT_BYTES;
   const closeWaitMs = testing.closeWaitMs ?? RELAY_CLOSE_WAIT_MS;
   const refusalCloseWaitMs =
     testing.refusalCloseWaitMs ?? RELAY_REFUSAL_CLOSE_WAIT_MS;
@@ -438,7 +438,10 @@ export function attachWebSocketRelay(
       window,
       () => hold(source, "backpressure"),
       () => release(source, "backpressure"),
-      () => refuse(source, RelayCloseCode.queueLimit),
+      {
+        bytes: queueLimitBytes,
+        overLimit: () => refuse(source, RelayCloseCode.queueLimit),
+      },
     );
     // Not charged once ended: a rate hold would pause the socket, which must
     // read the answer to its close.

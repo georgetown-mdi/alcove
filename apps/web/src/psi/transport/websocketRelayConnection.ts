@@ -85,6 +85,7 @@ const RelayCloseCode = {
   helloTimeout: 4007,
   relayFull: 4008,
   idle: 4009,
+  queueLimit: 4010,
 } as const;
 
 const RELAY_CLOSE_CODES: ReadonlySet<number> = new Set([
@@ -353,6 +354,11 @@ function setupCloseError(
         "The WebSocket relay closed the connection after an hour with no message. Start the exchange again.",
         "transport",
       );
+    case RelayCloseCode.queueLimit:
+      return new ConnectionError(
+        "The WebSocket relay ended the exchange because the exchange partner stopped receiving. Start the exchange again.",
+        "transport",
+      );
   }
   if (!opened) return couldNotConnectError();
   if (paired)
@@ -382,6 +388,11 @@ function forwardingCloseError(event: CloseEvent): ConnectionError {
   if (event.code === RelayCloseCode.goingAway)
     return new ConnectionError(
       "the WebSocket relay shut down during the exchange",
+      "transport",
+    );
+  if (event.code === RelayCloseCode.queueLimit)
+    return new ConnectionError(
+      "the WebSocket relay ended the exchange because the exchange partner stopped receiving. Start the exchange again.",
       "transport",
     );
   return new ConnectionError(

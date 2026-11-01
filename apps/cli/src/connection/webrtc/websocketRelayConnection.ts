@@ -143,6 +143,7 @@ export const RELAY_CLOSE = {
   helloTimeout: 4007,
   full: 4008,
   idle: 4009,
+  queueLimit: 4010,
 } as const;
 
 const RELAY_CLOSE_CODES: ReadonlySet<number> = new Set(
@@ -294,6 +295,12 @@ export function relayRefusalError(
           "exchange again.",
         "transport",
       );
+    case RELAY_CLOSE.queueLimit:
+      return withNextStep(
+        `${relay} ended the exchange because the exchange partner stopped ` +
+          "receiving. Run the exchange again.",
+        "transport",
+      );
     case RELAY_CLOSE.tooBig:
     case RELAY_CLOSE.malformedHello:
     case RELAY_CLOSE.unexpected:
@@ -328,6 +335,12 @@ function relayDropError(code: number): ConnectionError {
       return new ConnectionError(
         "the WebSocket relay closed the connection because nothing crossed " +
           "it within its idle limit",
+        "transport",
+      );
+    case RELAY_CLOSE.queueLimit:
+      return new ConnectionError(
+        "the WebSocket relay ended the exchange because the exchange " +
+          "partner stopped receiving. Run the exchange again.",
         "transport",
       );
     case RELAY_CLOSE.goingAway:
