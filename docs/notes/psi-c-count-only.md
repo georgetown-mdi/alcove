@@ -4,7 +4,7 @@ title: "Count-Only Linkage (PSI-C): Construction, Provenance, and Reporting"
 
 # Count-only linkage: why psi-c counts every key under one permutation
 
-*Status: directed by the maintainer's rulings of 2026-10-26 and 2026-10-27; built. The construction is normatively specified in [PROTOCOL.md](../spec/PROTOCOL.md#psi-c) and its record rows in [EXCHANGE_RECORD.md](../spec/EXCHANGE_RECORD.md#count-only-psi-c-records). This note records why the construction has its shape, how the one-key construction came about, the alternatives weighed, and which key shapes the maintainer ruled count-only admits. See [docs/notes/README.md](README.md).*
+*Status: directed by the maintainer's rulings of 2026-10-26 and 2026-10-27; built, except candidate sets, whose count rule the maintainer has ruled and the spec states, not yet built. The construction is normatively specified in [PROTOCOL.md](../spec/PROTOCOL.md#psi-c) and its record rows in [EXCHANGE_RECORD.md](../spec/EXCHANGE_RECORD.md#count-only-psi-c-records). This note records why the construction has its shape, how the one-key construction came about, the alternatives weighed, and which key shapes the maintainer ruled count-only admits. See [docs/notes/README.md](README.md).*
 
 This is design rationale. Nothing here binds an implementation; the normative rows live in the two spec documents linked above, and this note does not restate them.
 
@@ -50,7 +50,7 @@ The vendored library (`@openmined/psi.js` 2.0.6-seclink.6) was driven on 2026-10
 Two counts fit "a consistent permutation":
 
 - **The union of slots**: the receiver's records matched on at least one key. It needs the permutation alone. It over-counts against a linkage when two of the receiver's records match one sender record on different keys, and it depends on which party is the receiver. In the probe above, one receiver record matched different sender records on the two keys; the union counted three records where a one-to-one linkage pairs two.
-- **The one-to-one cascade replayed over pseudonyms**: the sender also gives its records stable pseudonyms, through a per-round index table over a padded setup, and the receiver's engine replays the cascade in key order over slots and pseudonyms. Its size is that of a true one-to-one linkage, as the May text says, and it does not depend on which party is the receiver.
+- **The one-to-one cascade replayed over pseudonyms**: the sender also gives its records stable pseudonyms, through a per-round index table over a padded setup, and the receiver's engine replays the cascade in key order over slots and pseudonyms. Its size is that of a true one-to-one linkage, as the May text says, and over keys with no candidate set it does not depend on which party is the receiver.
 
 The replay was taken: it is the count comparable to the linkage it is used to justify, which is the instrument's purpose. The index table is the single-pass index table's idea, keyed by pseudonym instead of by row, so that sender row order -- which can be meaningful, a file sorted by name or date -- does not reach the receiver.
 
@@ -79,15 +79,38 @@ One choice the ruling left open, the spec makes: uniqueness is tested over the r
 
 **`single-pass` is admitted and runs as the cascade realization.** Every count-only round is full-size and the cascade's removal happens in the receiver's replay, so no round depends on another, and the two strategies differ only in batching: the count and what each party learns are identical. The existing single-pass frame pools distinct values across keys under one row-keyed index table, which breaks slot alignment, so a batched realization would be a second wire format, with its own ceiling and parity tests, for no difference in result. The independent rounds could instead be sent back to back for the same latency gain. The terms keep the strategy as declared, and the record and consent surfaces state it as written.
 
-**Candidate sets stay refused.** The one-key build's reason, a count of matched values rather than records, does not apply under per-record slots and a record-level replay. The panel found another, which the spec's own resolution rules confirm:
-
-- `psi` resolves a round's candidate pairs by a greedy sweep in ascending sender-row, receiver-row order, and the size of a greedy one-to-one matching depends on its order. In the spec's normative double-match case the `psi` order accepts two pairs, and an order meeting the pair `psi` discards first accepts one.
-- The count-only receiver's engine holds only slots and pseudonyms, whose rows the two permutations hide by design and draw anew each run. A count over candidate sets could therefore differ from a `psi` run's on the same data, and between two runs on the same data.
-- Without candidate sets every round's pairs are disjoint, so order never matters, which is why the other shapes carry no such risk.
-
-Lifting the refusal needs a resolution rule that does not depend on order, with its difference from `psi` stated, and every record's candidates padded to its key's declared width so group sizes do not identify records -- which also multiplies each round's size by that width. The cost of waiting is stated rather than hidden: the built-in default keys include candidate-set keys, a swap key among them, so count-only over the defaults stays refused until that stage, and a count over terms with those keys removed is comparable to a `psi` run on the narrowed terms, not on the defaults.
+**Candidate sets were held back at that ruling**, to follow on a count rule of their own, which [the next section](#candidate-sets-one-count-rule-for-psi-and-psi-c) records. The cost of waiting is stated rather than hidden: the built-in default keys include candidate-set keys, a swap key among them, so count-only over the defaults stays refused until that stage is built, and a count over terms with those keys removed is comparable to a `psi` run on the narrowed terms, not on the defaults.
 
 Two things were not part of the ruling. `deduplicate` stays refused: what a count means under a many-to-X cardinality is not defined. And how often coverage singles out a record on genuine data is unmeasured; measuring it on a realistic dataset before consent copy states a limit is proposed, as is a receiver-side warning when a coverage class is small, neither of them built.
+
+## Candidate sets: one count rule for psi and psi-c
+
+*Ruled by the maintainer; specified, not yet built.* The rule for `psi` is in [Record-level resolution](../spec/PROTOCOL.md#record-level-resolution-canonical-order-and-tiebreak), and the count-only construction in [Candidate sets under count-only](../spec/PROTOCOL.md#candidate-sets-under-count-only). This section records why, and does not restate either.
+
+A candidate set -- a split surname, a swapped name pair, an adjacent or day/month-swapped date, a fuzzy variant -- lets one record match several partner records in one round, and a one-to-one rule has to choose among them.
+
+**Why a greedy sweep could not be matched.** A greedy sweep takes the round's pairs in file-row order and keeps each pair whose two records are both still free. Its count depends on that order. Take sender records `S0 {ab, cd}` and `S1 {ef}` against receiver records `R0 {ab, ef}` and `R1 {cd}`:
+
+- in that row order the sweep keeps `S0`-`R0` first, and then `S1` and `R1` have no free partner left: a count of 1;
+- with the receiver's two rows the other way round it keeps `S0`-`R1`, then `S1`-`R0`: a count of 2.
+
+The same data gives 1 or 2. Count-only never learns either party's row order, by design: the two permutations exist to hide it. So no count-only rule could reproduce a greedy sweep's count.
+
+**The largest pairing.** A pairing is a set of a round's candidate pairs in which no record appears twice, and the largest pairing (a maximum matching) has as many pairs as any. In the example it is `S0`-`R1` and `S1`-`R0`, two pairs, whatever the row order. Its size depends only on which pairs exist, which count-only sees as slots and pseudonyms, so the count-only replay can count it. `psi` takes the largest pairing too, using row order only to choose between largest pairings of the same size, so on the same terms and data the two counts agree. Where a greedy sweep's pairs already form a largest pairing, as in the spec's double-match case, `psi`'s table is the same under either rule.
+
+**Why not the smallest pairing.** The other choice that ignores order is the smallest pairing no further pair can join. It keeps the most ambiguous pair and shuts out the records that had no other choice. Under the split-surname key, take `Garcia Lopez` and `Smith` against `Garcia` and `Lopez Smith`:
+
+- `Garcia Lopez` shares a part with both partner records, while `Smith` and `Garcia` each share a part with one;
+- the smallest pairing keeps only `Garcia Lopez` with `Lopez Smith`, after which `Smith` and `Garcia` have no partner left;
+- the largest keeps `Garcia Lopez` with `Garcia`, and `Smith` with `Lopez Smith`.
+
+**A preference for whole-value matches lives in key order.** The rule weighs no pair above another; precedence is the cascade's. The built-in terms run `SSN4 + LN + DOB` before `SSN4 + split(LN) + FN + DOB`, so a record matching on its whole surname is paired, and leaves candidacy, before the split round runs.
+
+**Why sending record indices back does not help.** One proposal had the permuted party send its record indices with its values, returned permuted with them, so the counting party could do a greedy sweep's bookkeeping. The bookkeeping is not what is missing: the padded blocks already tell the replay which elements belong to one record. Readable indices would tell the counting party which of its own records matched, which is what the permutation exists to hide. And the tiebreak a greedy sweep needs is row order, often the other party's, which no index of the counting party's own records supplies.
+
+**The gap that remains.** A value repeated within one party's file -- held by two of its records, among their candidates -- is set aside for the whole file under count-only, but under `psi` only while two or more of its holders are still unmatched. Following the `psi` rule would show the counting party which of its own slots share a value ([Which count](#which-count)), so the two counts can still differ on a file with repeated values, as they can without candidate sets. The spec states two narrower points beside it: a one-sided expansion can make the `psi` table and the count alike depend on which party is the receiver, and a sender row wider than the sender's block takes a drop `psi` does not.
+
+A fan-out a party authors in its own data standardization stays refused: it declares no width, and no frame states its factor, so the sender could not find the receiver's block boundaries.
 
 ## Count reporting: who learns the number
 
@@ -101,7 +124,7 @@ The consequence to state plainly is that the sender's copy of the count is the r
 
 **The alternative weighed, and not adopted.** When both parties are entitled to output, the exchange could run **role-swapped double rounds**: each party takes the receiver role once, each computes its own count from its own rounds, and the two values are exchanged only to be compared, with a divergence aborting the exchange. Neither party would then hold a number it took on the other's word, and a receiver that lied would be caught by the comparison rather than believed.
 
-It was not adopted, for two reasons. It doubles the elliptic-curve work of the exchange -- the expensive part -- to remove a trust dependency the system already accepts in the same shape elsewhere; and the abort-on-divergence it buys is not the guarantee it first appears to be, since a party willing to misreport a count is equally able to contribute a different input set to its own rounds, which the comparison cannot detect. The dissent is recorded here rather than discarded: it is a coherent design, and if psi-c ever needs a checkable count -- for a setting where the number itself has contractual weight -- this is where to start, not from scratch. Under the replay the two directions' counts are equal for conforming parties, since the count does not depend on which party is the receiver, so the comparison would be exact.
+It was not adopted, for two reasons. It doubles the elliptic-curve work of the exchange -- the expensive part -- to remove a trust dependency the system already accepts in the same shape elsewhere; and the abort-on-divergence it buys is not the guarantee it first appears to be, since a party willing to misreport a count is equally able to contribute a different input set to its own rounds, which the comparison cannot detect. The dissent is recorded here rather than discarded: it is a coherent design, and if psi-c ever needs a checkable count -- for a setting where the number itself has contractual weight -- this is where to start, not from scratch. Under the replay the two directions' counts are equal for conforming parties over keys with no candidate set, since the count then does not depend on which party is the receiver, so the comparison would be exact there; a one-sided expansion can make the two directions differ.
 
 ## Why the threat-model scope is stated plainly
 
