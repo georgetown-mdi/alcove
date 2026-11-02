@@ -29,6 +29,31 @@ export function transportTeardownCeilingMs(
   return TRANSPORT_TEARDOWN_CEILING_MS[channel];
 }
 
+/**
+ * How long an interrupted file-channel run's teardown runs before the CLI says
+ * it is waiting on it. A working value for when the notice prints, not a bound
+ * on the wait: a normal teardown finishes well within it, so only a slow
+ * or unresponsive folder or server reaches it.
+ */
+export const TEARDOWN_WAIT_NOTICE_DELAY_MS = 2_000;
+
+/**
+ * The line an interrupted file-channel run prints when its teardown is still
+ * running after {@link TEARDOWN_WAIT_NOTICE_DELAY_MS}: what it is waiting on,
+ * for at most `ceilingMs`, and that a second Ctrl-C ends the wait.
+ */
+export function teardownWaitNotice(
+  ceilingMs: number,
+  retainFiles: boolean,
+): string {
+  const minutes = Math.round(ceilingMs / 60_000);
+  const upTo = `up to ${minutes} minute${minutes === 1 ? "" : "s"}`;
+  return retainFiles
+    ? `closing the connection (${upTo}); press Ctrl-C again to exit now`
+    : `cleaning up this run's files (${upTo}); press Ctrl-C again to exit ` +
+        `now and leave them`;
+}
+
 /** How a run's transport teardown ended. */
 export interface TeardownOutcome extends CeilingOutcome {
   /**

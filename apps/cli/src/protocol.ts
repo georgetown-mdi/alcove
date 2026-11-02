@@ -119,7 +119,9 @@ import { writeExchangeRecord } from "./recordFile";
 import { runArtifactFolder } from "./resultFile";
 import {
   closeWithinCeiling,
+  TEARDOWN_WAIT_NOTICE_DELAY_MS,
   teardownCeilingNotice,
+  teardownWaitNotice,
   transportTeardownCeilingMs,
   type TeardownOutcome,
 } from "./transportTeardown";
@@ -2416,6 +2418,25 @@ export async function runProtocol(
         signal === "SIGINT" ? INTERRUPTED_EXIT_CODE : TERMINATED_EXIT_CODE,
       ),
   };
+  // The interrupted run's own cleanup, announced only when it is slow: a
+  // file-channel close removes this run's files from the exchange folder, and
+  // a hung mount or server can hold it to the teardown ceiling.
+  async function cleanUpAfterInterrupt(): Promise<void> {
+    if (connection.channel === "webrtc") return doCleanup();
+    const notice = teardownWaitNotice(
+      transportTeardownCeilingMs(connection.channel),
+      connection.options?.retainFiles === true,
+    );
+    const timer = setTimeout(
+      () => log.info(notice),
+      TEARDOWN_WAIT_NOTICE_DELAY_MS,
+    );
+    try {
+      await doCleanup();
+    } finally {
+      clearTimeout(timer);
+    }
+  }
   async function onSigint(): Promise<void> {
     // Must be set synchronously, before the first await, so the runProtocol
     // catch block sees it as soon as the cleanup-induced failure propagates.
@@ -2432,10 +2453,10 @@ export async function runProtocol(
     // of their own. doCleanup closes it again, idempotently.
     psiProgress.close();
     try {
-      log.info("caught SIGINT, exiting");
+      log.info("caught SIGINT, stopping");
       offerExitAtOnceWhilePsiWorkersStop(psiWorkerExitWait);
       logRotationStateOnInterrupt("the exchange was interrupted");
-      await doCleanup();
+      await cleanUpAfterInterrupt();
     } catch (cleanupErr: unknown) {
       log.debug("onSigint cleanup threw:", sanitizeErrorForDisplay(cleanupErr));
     } finally {
@@ -2458,7 +2479,7 @@ export async function runProtocol(
     // The live line is dropped before the first interrupt line, as in onSigint.
     psiProgress.close();
     try {
-      log.info("caught SIGTERM, exiting");
+      log.info("caught SIGTERM, stopping");
       offerExitAtOnceWhilePsiWorkersStop(psiWorkerExitWait);
       logRotationStateOnInterrupt("the exchange was interrupted");
       await doCleanup();
