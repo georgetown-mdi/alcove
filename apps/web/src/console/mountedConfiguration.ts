@@ -101,7 +101,7 @@ export type MountedConfigurationState =
       converted?: true;
       relayEnrollment?: true;
       iceProvision?: true;
-      keyFileFault?: "absent" | "invalid";
+      keyFileFault?: "absent" | "invalid" | "newer";
       newInvitation?: true;
       runsInPlace?: true;
       signalingServer?: string;
@@ -269,11 +269,20 @@ export const OPENED_SIGNALING_SERVER_UNREADABLE = {
 export const CREATE_INVITATION_FROM_SETTINGS_LABEL =
   "Create an invitation from these settings";
 
+/** The title of the notice of a `.alcove.key` a newer Alcove wrote. */
+export const NEWER_KEY_FILE_TITLE =
+  "The .alcove.key in your folder was written by a newer version of Alcove";
+
+/** What to do about a `.alcove.key` a newer Alcove wrote. */
+export const NEWER_KEY_FILE_REMEDY =
+  "Update Alcove, then open the configuration again.";
+
 /**
  * What the operator is told on opening a configuration whose `.alcove.key`
  * would refuse its run, or undefined where the key file is usable or a new
  * invitation was already chosen ({@link withNewInvitation}). Offers the two ways
- * on: put the key file back, or make a new invitation from the settings.
+ * on: put the key file back, or make a new invitation from the settings. A file
+ * a newer Alcove wrote is told only to update Alcove.
  */
 export function keyFileNotice(
   state: MountedConfigurationState,
@@ -284,6 +293,8 @@ export function keyFileNotice(
     state.newInvitation === true
   )
     return undefined;
+  if (state.keyFileFault === "newer")
+    return { title: NEWER_KEY_FILE_TITLE, message: NEWER_KEY_FILE_REMEDY };
   const choice =
     state.runsInPlace === true
       ? "or, if the key file is somewhere else, run the configuration with " +
@@ -392,6 +403,8 @@ export function runWithheldReason(
 ): string | undefined {
   if (state.status !== "opened") return undefined;
   if (state.iceProvision === true) return ICE_PROVISION_RUN_WITHHELD;
+  if (state.runsInPlace === true && state.keyFileFault === "newer")
+    return `${NEWER_KEY_FILE_TITLE}. ${NEWER_KEY_FILE_REMEDY}`;
   if (state.runsInPlace === true && state.keyFileFault !== undefined)
     return (
       "The console cannot run this configuration without a usable " +

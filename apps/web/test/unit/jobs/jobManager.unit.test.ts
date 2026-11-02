@@ -2988,7 +2988,7 @@ describe("the key file beside the opened configuration", () => {
     ["absent", undefined],
     ["invalid", "not json"],
     ["invalid", JSON.stringify({ sharedSecret: "too-short" })],
-    ["invalid", JSON.stringify({ secret: MOUNTED_SHARED_SECRET })],
+    ["newer", JSON.stringify({ secret: MOUNTED_SHARED_SECRET })],
     [
       "invalid",
       JSON.stringify({ sharedSecret: MOUNTED_SHARED_SECRET, expires: "soon" }),
@@ -3006,6 +3006,10 @@ describe("the key file beside the opened configuration", () => {
         sharedSecret: MOUNTED_SHARED_SECRET,
         relayRegistrationPendingSince: "soon",
       }),
+    ],
+    [
+      "newer",
+      JSON.stringify({ version: 2, sharedSecret: MOUNTED_SHARED_SECRET }),
     ],
   ] as const)(
     "refuses the run, before anything is written, when the key file is %s",

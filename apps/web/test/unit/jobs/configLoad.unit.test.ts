@@ -20,6 +20,7 @@ import {
 } from "@jobs/configLoad";
 import {
   RELAY_ENROLLMENT_NOTICE,
+  keyFileNotice,
   mountedConfigurationNotices,
   mountedConfigurationRead,
   openedAllowedRelays,
@@ -894,6 +895,52 @@ describe("the key file beside an opened configuration", () => {
     const response = loadMountedConfiguration(dir);
     expect(response.keyFileFault).toBe("invalid");
     expect(JSON.stringify(response)).not.toContain("not-json-but-a-secret");
+  });
+
+  describe("written by a newer Alcove", () => {
+    const SECRET = "Z".repeat(42) + "A";
+
+    test.each([
+      ["a newer format version", { version: 98765, sharedSecret: SECRET }],
+      [
+        "a field this build does not read",
+        { sharedSecret: SECRET, fieldFromNewerAlcove: "valueFromNewerAlcove" },
+      ],
+    ])(
+      "for %s, shows the fixed reason and remedy and nothing from the file",
+      async (_case, keyFile) => {
+        const dir = mountHolding(savedSftpDocument());
+        fs.writeFileSync(
+          path.join(dir, ".alcove.key"),
+          JSON.stringify(keyFile),
+        );
+        const response = loadMountedConfiguration(dir);
+        expect(response.keyFileFault).toBe("newer");
+        const answer = await fetchMountedConfiguration(() =>
+          Promise.resolve(
+            new Response(JSON.stringify(response), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            }),
+          ),
+        );
+        const notice = keyFileNotice(mountedConfigurationRead(answer).state);
+        expect(notice).toEqual({
+          title:
+            "The .alcove.key in your folder was written by a newer version " +
+            "of Alcove",
+          message: "Update Alcove, then open the configuration again.",
+        });
+        for (const shown of [JSON.stringify(response), JSON.stringify(notice)])
+          for (const content of [
+            SECRET,
+            "98765",
+            "fieldFromNewerAlcove",
+            "valueFromNewerAlcove",
+          ])
+            expect(shown).not.toContain(content);
+      },
+    );
   });
 
   test("names nothing where the key file is usable", () => {

@@ -15,6 +15,7 @@ import {
   COORDINATION_SERVER_CHANGED_REFUSAL,
   MOUNTED_KEY_FILE_ABSENT_REFUSAL,
   MOUNTED_KEY_FILE_INVALID_REFUSAL,
+  MOUNTED_KEY_FILE_NEWER_REFUSAL,
   MOUNTED_SIGNING_IDENTITY_MISMATCH_REFUSAL,
   MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL,
   OPENED_CONFIGURATION_NOT_RUNNABLE_REFUSAL,
@@ -792,6 +793,27 @@ describe("failureFor", () => {
       );
     },
   );
+
+  test("a run refused over a key file a newer Alcove wrote says to update Alcove", () => {
+    const failure = failureFor(
+      "config",
+      new JobApiRequestError(
+        400,
+        "POST /api/jobs failed with status 400",
+        undefined,
+        MOUNTED_KEY_FILE_NEWER_REFUSAL,
+      ),
+      WORK_FILE,
+      "filedrop",
+    );
+    expect(failure).toMatchObject({
+      category: "config",
+      title:
+        "The .alcove.key in your folder was written by a newer version of " +
+        "Alcove",
+      message: "Update Alcove, then open the configuration again.",
+    });
+  });
 
   test.each(["filedrop", "webrtc"] as const)(
     "a signed %s run refused over the configuration's own signing paths offers the conversion",

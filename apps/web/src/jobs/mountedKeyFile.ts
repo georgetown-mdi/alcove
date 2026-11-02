@@ -8,10 +8,14 @@
  * reads the secret, and writes the rotated one back to the same file at the
  * handshake, as a command-line run does. Nothing here returns the secret, and
  * no refusal states anything read from the file -- the operator is told which
- * of the two faults it is and nothing else.
+ * fault it is and nothing else.
  */
 
-import { KeyFileSchema, parseSensitiveJson } from "@alcove/core";
+import {
+  KeyFileSchema,
+  keyFileRefusedAsNewer,
+  parseSensitiveJson,
+} from "@alcove/core";
 
 import { JOB_FILE_NAMES } from "@jobContract/intentSchemas";
 import { readBoundedMountedFile } from "./boundedMountedFile";
@@ -21,8 +25,17 @@ import { resolveWorkdirFile } from "./workdir";
  * secret and one instant, so anything larger is not a key file. */
 export const MAX_MOUNTED_KEY_FILE_BYTES = 10_000;
 
-/** Which of the two faults a refused mounted key file is. */
-export type MountedKeyFileFault = "absent" | "invalid";
+/** Which fault a refused mounted key file is: `newer` is one a newer Alcove
+ * wrote ({@link keyFileRefusedAsNewer}). */
+export type MountedKeyFileFault = "absent" | "invalid" | "newer";
+
+const MOUNTED_KEY_FILE_FAULT_MESSAGES: Record<MountedKeyFileFault, string> = {
+  absent: "your working folder holds no key file beside the configuration",
+  invalid:
+    "the key file beside the mounted configuration is not one Alcove can read",
+  newer:
+    "the key file beside the mounted configuration was written by a newer version of Alcove",
+};
 
 /**
  * Raised when an opened configuration's run finds no usable key file beside
@@ -30,11 +43,7 @@ export type MountedKeyFileFault = "absent" | "invalid";
  */
 export class MountedKeyFileRefusedError extends Error {
   constructor(readonly fault: MountedKeyFileFault) {
-    super(
-      fault === "absent"
-        ? "your working folder holds no key file beside the configuration"
-        : "the key file beside the mounted configuration is not one Alcove can read",
-    );
+    super(MOUNTED_KEY_FILE_FAULT_MESSAGES[fault]);
     this.name = "MountedKeyFileRefusedError";
   }
 }
@@ -48,7 +57,8 @@ export class MountedKeyFileRefusedError extends Error {
  * without blocking this synchronous server.
  *
  * @throws {MountedKeyFileRefusedError} `absent` when no file is at the name,
- *   `invalid` when one is there and cannot be read or is not a key file.
+ *   `newer` when a newer Alcove wrote it, and `invalid` when it cannot be read
+ *   or is not a key file.
  */
 export function checkedMountedKeyFilePath(dataRoot: string): string {
   const filePath = resolveWorkdirFile(dataRoot, JOB_FILE_NAMES.key);
@@ -62,13 +72,16 @@ export function checkedMountedKeyFilePath(dataRoot: string): string {
   } catch {
     throw new MountedKeyFileRefusedError("invalid");
   }
-  if (!KeyFileSchema.safeParse(parsed).success)
-    throw new MountedKeyFileRefusedError("invalid");
+  const keyFile = KeyFileSchema.safeParse(parsed);
+  if (!keyFile.success)
+    throw new MountedKeyFileRefusedError(
+      keyFileRefusedAsNewer(keyFile.error) ? "newer" : "invalid",
+    );
   return filePath;
 }
 
 /**
- * Which of the two faults {@link checkedMountedKeyFilePath} would refuse a run
+ * Which fault {@link checkedMountedKeyFilePath} would refuse a run
  * of the mounted configuration with, or undefined where the key file beside it
  * is usable: read when the configuration is opened, so the operator learns of
  * it then rather than when the run starts.

@@ -1022,7 +1022,7 @@ describe("the terms of an opened configuration changed here", () => {
 
 describe("an opened configuration whose key file would refuse its run", () => {
   function openedWithoutKeyFile(
-    fault: "absent" | "invalid" = "absent",
+    fault: "absent" | "invalid" | "newer" = "absent",
     channel: DisclosedExchangeDocument["channel"] = "sftp",
   ) {
     return mountedConfigurationRead({
@@ -1057,6 +1057,22 @@ describe("an opened configuration whose key file would refuse its run", () => {
       expect(runWithheldReason(state)).toContain(".alcove.key");
       expect(withNewInvitation(state)).toBe(state);
     }
+  });
+
+  test("one a newer Alcove wrote is told only to update Alcove", () => {
+    for (const channel of ["sftp", "webrtc"] as const) {
+      const state = openedWithoutKeyFile("newer", channel);
+      expect(keyFileNotice(state)).toEqual({
+        title:
+          "The .alcove.key in your folder was written by a newer version of " +
+          "Alcove",
+        message: "Update Alcove, then open the configuration again.",
+      });
+    }
+    expect(runWithheldReason(openedWithoutKeyFile("newer", "webrtc"))).toBe(
+      "The .alcove.key in your folder was written by a newer version of " +
+        "Alcove. Update Alcove, then open the configuration again.",
+    );
   });
 
   test("a new invitation from its settings stops continuing the opened exchange", () => {

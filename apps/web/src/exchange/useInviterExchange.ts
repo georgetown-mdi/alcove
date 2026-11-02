@@ -29,6 +29,7 @@ import {
   COORDINATION_SERVER_CHANGED_REFUSAL,
   MOUNTED_KEY_FILE_ABSENT_REFUSAL,
   MOUNTED_KEY_FILE_INVALID_REFUSAL,
+  MOUNTED_KEY_FILE_NEWER_REFUSAL,
   MOUNTED_SIGNING_IDENTITY_MISMATCH_REFUSAL,
   MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL,
   OPENED_CONFIGURATION_NOT_RUNNABLE_REFUSAL,
@@ -47,6 +48,10 @@ import {
   createFetchJobApiClient,
   createServerJobExchangeDriver,
 } from "@psi/jobClient/serverJobExchangeDriver";
+import {
+  NEWER_KEY_FILE_REMEDY,
+  NEWER_KEY_FILE_TITLE,
+} from "@console/mountedConfiguration";
 import {
   discardServerJob,
   writeAttachment,
@@ -584,6 +589,15 @@ function failureContentFor(
         "the key Alcove wrote for this exchange, then start the run again. " +
         "If you no longer have that key, start over, open the configuration " +
         "again, and choose Create an invitation from these settings.",
+    };
+  if (
+    error instanceof JobApiRequestError &&
+    error.refusalReason === MOUNTED_KEY_FILE_NEWER_REFUSAL
+  )
+    return {
+      category: "config",
+      title: NEWER_KEY_FILE_TITLE,
+      message: NEWER_KEY_FILE_REMEDY,
     };
   if (
     error instanceof JobApiRequestError &&

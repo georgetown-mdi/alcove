@@ -136,22 +136,30 @@ function keyFileFieldNameForDisplay(name: string): string {
   return SECRET_SHAPED_RUN.test(name) ? KEY_FILE_REDACTED_FIELD_NAME : name;
 }
 
-function keyFileVersionSchema(current: number) {
-  return z.looseObject({
-    version: z
-      .int()
-      .min(1)
-      .max(current, {
-        error: (issue) =>
-          newerFormatVersionMessage(
-            "The key file",
-            Number(issue.input),
-            current,
-            KEY_FILE_NEWER_REMEDY,
-          ),
-      })
-      .optional(),
-  });
+const KeyFileVersionSchema = z.looseObject({
+  version: z.int().min(1).optional(),
+});
+
+const WRITTEN_BY_NEWER_ALCOVE = Object.freeze({
+  keyFileWrittenByNewerAlcove: true,
+});
+
+/** A refusal of a version above `current`, naming both versions. */
+function newerKeyFileVersionIssue(
+  declared: number,
+  current: number,
+): z.core.$ZodIssue {
+  return {
+    code: "custom",
+    path: ["version"],
+    params: WRITTEN_BY_NEWER_ALCOVE,
+    message: newerFormatVersionMessage(
+      "The key file",
+      declared,
+      current,
+      KEY_FILE_NEWER_REMEDY,
+    ),
+  };
 }
 
 const KeyFileFieldsSchema = z.looseObject({
@@ -167,6 +175,7 @@ function newerKeyFileMembersIssue(
   return {
     code: "custom",
     path: [...path],
+    params: WRITTEN_BY_NEWER_ALCOVE,
     message: newerFormatMemberMessage(
       "The key file",
       names.map(keyFileFieldNameForDisplay),
@@ -192,19 +201,34 @@ function newerKeyFileMembersIssue(
 export const KeyFileSchema: z.ZodType<KeyFile, unknown> =
   keyFileSchemaFor(KEY_FILE_MIGRATIONS);
 
+/**
+ * Whether a {@link KeyFileSchema} refusal is of a file a newer Alcove wrote: a
+ * version above {@link KEY_FILE_FORMAT_VERSION}, or a field this build does
+ * not read. A failed migration of an earlier version is not.
+ */
+export function keyFileRefusedAsNewer(error: z.ZodError): boolean {
+  return error.issues.some(
+    (issue) =>
+      issue.code === "custom" &&
+      issue.params?.keyFileWrittenByNewerAlcove === true,
+  );
+}
+
 /** @internal */
 export function keyFileSchemaFor(
   migrations: FormatMigrations<number>,
 ): z.ZodType<KeyFile, unknown> {
-  const versionSchema = keyFileVersionSchema(migrations.current);
   return z.unknown().transform((raw, ctx): KeyFile => {
     const refuse = (issues: ReadonlyArray<z.core.$ZodIssue>): KeyFile => {
       for (const issue of issues)
         ctx.issues.push({ ...issue, input: undefined });
       return z.NEVER;
     };
-    const version = versionSchema.safeParse(raw);
+    const version = KeyFileVersionSchema.safeParse(raw);
     if (!version.success) return refuse(version.error.issues);
+    const declared = version.data.version;
+    if (declared !== undefined && declared > migrations.current)
+      return refuse([newerKeyFileVersionIssue(declared, migrations.current)]);
     let document: unknown;
     try {
       document = migrateOnRead(raw, migrations);

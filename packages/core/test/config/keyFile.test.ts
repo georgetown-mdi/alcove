@@ -4,6 +4,7 @@ import {
   KEY_FILE_REDACTED_FIELD_NAME,
   KEY_FILE_MIGRATIONS,
   KeyFileSchema,
+  keyFileRefusedAsNewer,
   keyFileSchemaFor,
   keyFileUnreadFieldNames,
   serializeKeyFile,
@@ -164,6 +165,31 @@ describe("KeyFileSchema", () => {
   });
 });
 
+describe("keyFileRefusedAsNewer", () => {
+  test.each([
+    ["a newer version", { version: 2, sharedSecret: SECRET }],
+    ["an unknown field", { sharedSecret: SECRET, newField: 1 }],
+    [
+      "an unknown field in a history entry",
+      { sharedSecret: SECRET, rotationHistory: [{ verifier: SECRET, x: 1 }] },
+    ],
+  ])("is true of %s", (_case, document) => {
+    const result = KeyFileSchema.safeParse(document);
+    expect(result.success).toBe(false);
+    expect(keyFileRefusedAsNewer(result.error!)).toBe(true);
+  });
+
+  test.each([
+    ["a malformed secret", { sharedSecret: "short" }],
+    ["a version that is not a number", { version: "2", sharedSecret: SECRET }],
+    ["a version below 1", { version: 0, sharedSecret: SECRET }],
+  ])("is false of %s", (_case, document) => {
+    const result = KeyFileSchema.safeParse(document);
+    expect(result.success).toBe(false);
+    expect(keyFileRefusedAsNewer(result.error!)).toBe(false);
+  });
+});
+
 describe("keyFileUnreadFieldNames", () => {
   test("names each field outside those kept, in file order, and no value", () => {
     const file = {
@@ -321,6 +347,7 @@ describe("key file migration on read", () => {
     ]);
     expect(JSON.stringify(result.error)).not.toContain(SECRET);
     expect(JSON.stringify(raw)).toBe(before);
+    expect(keyFileRefusedAsNewer(result.error!)).toBe(false);
   });
 
   test("refuses an earlier version no step leads from by name, and migrates one a step does", () => {
