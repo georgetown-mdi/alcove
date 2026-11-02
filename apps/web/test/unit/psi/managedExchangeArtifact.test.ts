@@ -476,13 +476,81 @@ describe("rejection of malformed or tampered imports", () => {
       expect.objectContaining({
         issues: [
           expect.objectContaining({
-            code: "unrecognized_keys",
-            keys: ["rotationInFlightSince"],
+            code: "custom",
             path: ["key"],
+            message: expect.stringContaining('"rotationInFlightSince"'),
           }),
         ],
       }),
     );
+  });
+
+  describe("an unknown member named with a secret", () => {
+    const secretName = generateSharedSecret();
+    const secretValue = generateSharedSecret();
+
+    function refusal(edit: (artifact: any) => void): ZodError {
+      const artifact = JSON.parse(goodBytes());
+      edit(artifact);
+      try {
+        parseManagedExchangeArtifact(JSON.stringify(artifact));
+      } catch (error) {
+        expect(error).toBeInstanceOf(ZodError);
+        return error as ZodError;
+      }
+      throw new Error("the artifact was imported");
+    }
+
+    test.each([
+      [
+        "the key block",
+        (artifact: any) => {
+          artifact.key[secretName] = secretValue;
+        },
+        ["key"],
+      ],
+      [
+        "a rotation history entry",
+        (artifact: any) => {
+          artifact.key.rotationHistory = [
+            { verifier: generateSharedSecret(), [secretName]: secretValue },
+          ];
+        },
+        ["key", "rotationHistory", 0],
+      ],
+      [
+        "the top level",
+        (artifact: any) => {
+          artifact[secretName] = secretValue;
+        },
+        [],
+      ],
+      [
+        "the local block",
+        (artifact: any) => {
+          artifact.local[secretName] = secretValue;
+        },
+        ["local"],
+      ],
+    ])("in %s is refused without its name or value", (_where, edit, path) => {
+      const error = refusal(edit);
+      const text = [
+        error.message,
+        ...error.issues.map((issue) => issue.message),
+      ].join("\n");
+      expect(text).not.toContain(secretName);
+      expect(text).not.toContain(secretValue);
+      expect(text).toContain("<redacted>");
+      expect(error.issues).toEqual([
+        expect.objectContaining({
+          code: "custom",
+          path,
+          message: expect.stringMatching(/^The backup file has the field /),
+        }),
+      ]);
+      expect(error.issues[0]).not.toHaveProperty("params");
+      expect(text).not.toContain("key file");
+    });
   });
 
   test("a key block holding only the secret and its expiry imports", () => {
@@ -976,9 +1044,9 @@ describe("the rotation history", () => {
         expect.objectContaining({
           issues: [
             expect.objectContaining({
-              code: "unrecognized_keys",
-              keys: [field],
+              code: "custom",
               path: ["key"],
+              message: expect.stringContaining(`"${field}"`),
             }),
           ],
         }),

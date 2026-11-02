@@ -46,7 +46,9 @@
 
 import {
   RelayRegistrarSchema,
+  keyFileFieldNameForDisplay,
   migrateOnRead,
+  newerFormatMemberMessage,
   parseExchangeSpec,
   parseSensitiveJson,
   parseSensitiveYaml,
@@ -317,7 +319,30 @@ export function parseManagedExchangeArtifact(
   migrations: FormatMigrations<string> = MANAGED_EXCHANGE_ARTIFACT_MIGRATIONS,
 ): ManagedExchangeArtifact {
   const raw = parseSensitiveJson(source, "managed exchange backup");
-  return artifactSchema.parse(migrateOnRead(raw, migrations));
+  const parsed = artifactSchema.safeParse(migrateOnRead(raw, migrations));
+  if (parsed.success) return parsed.data;
+  throw new z.ZodError(parsed.error.issues.map(unknownMembersNamedForDisplay));
+}
+
+const BACKUP_FILE_NEWER_REMEDY =
+  "Use the version of Alcove that wrote the backup file, or a newer one.";
+
+/** An unknown member anywhere in the artifact, refused as written by a newer
+ * Alcove: Zod's own issue holds the member's name raw, and a name can hold a
+ * secret. */
+function unknownMembersNamedForDisplay(
+  issue: z.core.$ZodIssue,
+): z.core.$ZodIssue {
+  if (issue.code !== "unrecognized_keys") return issue;
+  return {
+    code: "custom",
+    path: issue.path,
+    message: newerFormatMemberMessage(
+      MANAGED_EXCHANGE_ARTIFACT_MIGRATIONS.fileName,
+      issue.keys.map(keyFileFieldNameForDisplay),
+      BACKUP_FILE_NEWER_REMEDY,
+    ),
+  };
 }
 
 /**

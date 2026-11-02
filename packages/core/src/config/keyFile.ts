@@ -132,7 +132,9 @@ const SECRET_SHAPED_RUN = /[A-Za-z0-9_-]{32,}/;
 const KEY_FILE_NEWER_REMEDY =
   "Use the version of Alcove that wrote the key file, or a newer one.";
 
-function keyFileFieldNameForDisplay(name: string): string {
+/** A member name as a refusal shows it: the name, or a stand-in where it
+ * contains a run that could be a shared secret. */
+export function keyFileFieldNameForDisplay(name: string): string {
   return SECRET_SHAPED_RUN.test(name) ? KEY_FILE_REDACTED_FIELD_NAME : name;
 }
 
