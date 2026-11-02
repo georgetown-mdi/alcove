@@ -24,7 +24,14 @@ import {
 import { matchingKeyTurnedOffNotice } from "@psi/matchingKeyModel";
 
 import {
+  MANAGED_RECOVERY_INITIAL,
+  managedStandingConditionShown,
+} from "@recurring/managedRunRecoveryModel";
+import { managedStandingConditionView } from "@recurring/managedStandingConditionModel";
+
+import {
   PARTIAL_ROTATION_FAILURE_TITLE,
+  RUN_SUCCEEDED_SINCE_SAME_SECRET,
   SINGLE_COLUMN_DELIMITER_REMEDY,
 } from "@psi/managed/managedFailureCopy";
 
@@ -947,6 +954,45 @@ describe("classifyManagedRunFailure: a no-show read against standing desync evid
     ).toBeUndefined();
   });
 
+  test("a failed save a run has succeeded since leaves a plain no-show beside the standing view", () => {
+    const failedSaveAt = Date.parse("2026-07-14T09:00:00.000Z");
+    const succeededAt = Date.parse("2026-07-14T10:00:00.000Z");
+    const missedAt = Date.parse("2026-07-14T11:00:00.000Z");
+    const atLaunch = applyManagedExchangeLastRun(
+      applyManagedExchangeLastRun(
+        record(),
+        storageFailureRun(failedSaveAt),
+        failedSaveAt,
+      ),
+      { at: new Date(succeededAt).toISOString(), outcome: "succeeded" },
+      succeededAt,
+    );
+    expect(atLaunch.standingCondition.kind).toBe("storage");
+    const afterRun = applyManagedExchangeLastRun(
+      atLaunch,
+      missedRun(missedAt),
+      missedAt,
+    );
+
+    const failure = classifyManagedRunFailure(
+      new PartnerNoShowError("timed out waiting for the other party"),
+      { atLaunch, afterRun },
+      undefined,
+      NOW,
+      false,
+    );
+    expect(failure.kind).toBe("missed");
+    expect(failure.message).not.toMatch(/different secrets/);
+    expect(managedRunReinvites(failure)).toBe(false);
+
+    const view = managedStandingConditionView(afterRun, undefined, NOW);
+    expect(view?.message).toContain(RUN_SUCCEEDED_SINCE_SAME_SECRET);
+    expect(view?.message).not.toMatch(/re-invite/i);
+    expect(
+      managedStandingConditionShown(MANAGED_RECOVERY_INITIAL, view, failure),
+    ).toBe(true);
+  });
+
   describe("a live failed save on a run whose partner saved first", () => {
     const persistFailedAt = Date.parse("2026-07-14T10:00:00.000Z");
     const afterRun = applyManagedExchangeLastRun(
@@ -973,7 +1019,7 @@ describe("classifyManagedRunFailure: a no-show read against standing desync evid
       expect(failure.message).toBe(
         "The last run connected but could not save its updated secret on " +
           "this device. Your partner saved the new secret and kept the one " +
-          "this run used, so the next run can still reach them. If runs keep " +
+          "that run used, so the next run can still reach them. If runs keep " +
           "missing your partner or stopping, re-invite your partner; the " +
           "exchange keeps your terms, gets a new secret, and uses the " +
           "coordination server the new invitation names.",

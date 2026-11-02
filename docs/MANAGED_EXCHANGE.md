@@ -931,14 +931,14 @@ Three things clear any standing condition:
 - **A re-invite**, which installs a fresh secret.
 - **Removing the exchange.**
 
-A no-show never clears one. A successful run clears only one kind, an
-exception to the rule that nothing else clears a standing condition.
+A no-show never clears one. A successful run clears only one kind, described
+next.
 
 **A successful run clears a save failure your partner reported.** Both sides
 saved the new secret in that run, which answers the report, and the run's heal
-note already asks whether the exchange also runs from another copy. It does not clear a report you answered as a possible
-compromise. A successful run leaves the other two in place, for your
-acknowledgement: a save failure this device recorded, and a handshake that
+note already asks whether the exchange also runs from another copy. It does not
+clear a report you answered as a possible compromise. A successful run leaves
+the other two in place, for your acknowledgement: a save failure this device recorded, and a handshake that
 failed closed. A later success rules out neither a third party's attempt nor a
 copy of the exchange running elsewhere, and those are the readings the
 acknowledgement and the confirmation exist to separate.

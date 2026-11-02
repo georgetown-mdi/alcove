@@ -2399,6 +2399,93 @@ describe("the standing condition across the bookkeeping writes", () => {
       });
       expect(advanced.standingCondition).toEqual(NO_STANDING_CONDITION);
     });
+
+    describe("left standing beside a later listed success", () => {
+      const newerAt = "2026-07-14T14:00:00.000Z";
+      // A record an earlier version wrote: its success did not clear the
+      // condition.
+      function staleBesideSuccess(
+        condition: ManagedStandingCondition = partnerStorage,
+      ): ManagedExchangeRecord {
+        return {
+          ...applyManagedExchangeLastRun(
+            buildManagedExchangeRecord(newExchange({ schedule })),
+            { at: laterAt, outcome: "succeeded" },
+            Date.parse(laterAt),
+          ),
+          standingCondition: condition,
+        };
+      }
+      function writeRun(
+        record: ManagedExchangeRecord,
+        condition: ManagedStandingCondition,
+      ): ManagedExchangeRecord {
+        return applyManagedExchangeLastRun(
+          record,
+          {
+            at: condition.since,
+            outcome: "failed",
+            failureKind: condition.kind,
+          },
+          Date.parse(condition.since),
+        );
+      }
+      function writeAdvance(
+        record: ManagedExchangeRecord,
+        condition: ManagedStandingCondition,
+      ): ManagedExchangeRecord {
+        return applyManagedExchangeScheduleAdvance(record, {
+          schedule: {
+            ...schedule,
+            nextWindow: "2026-01-20T14:00:00.000Z",
+            consecutiveMisses: schedule.consecutiveMisses,
+          },
+          fromNextWindow: schedule.nextWindow,
+          fromConsecutiveMisses: schedule.consecutiveMisses,
+          evidenceSharedSecret: record.sharedSecret,
+          standingCondition: condition,
+        });
+      }
+      const writeSites = [
+        ["a run's entry", writeRun],
+        ["a schedule advance", writeAdvance],
+      ] as const;
+
+      describe.each(writeSites)("written by %s", (_site, write) => {
+        test.each(["storage", "partner-storage"] as const)(
+          "a newer %s condition stands in its place",
+          (kind) => {
+            const newer: ManagedStandingCondition = { since: newerAt, kind };
+            const after = write(staleBesideSuccess(), newer);
+            expect(after.standingCondition).toEqual(newer);
+          },
+        );
+
+        test("a partner's failed save stamped before the success clears with it", () => {
+          const late: ManagedStandingCondition = {
+            since: "2026-07-14T12:30:00.000Z",
+            kind: "partner-storage",
+          };
+          const after = write(staleBesideSuccess(), late);
+          expect(after.standingCondition).toEqual(NO_STANDING_CONDITION);
+        });
+
+        test("one holding the operator's compromise response stays over a newer condition", () => {
+          const answered: ManagedStandingCondition = {
+            ...partnerStorage,
+            response: {
+              kind: "compromise",
+              at: "2026-07-14T12:30:00.000Z",
+            },
+          };
+          const after = write(staleBesideSuccess(answered), {
+            since: newerAt,
+            kind: "storage",
+          });
+          expect(after.standingCondition).toEqual(answered);
+        });
+      });
+    });
   });
 
   test("a successful run after this device's failed save leaves it for the operator", () => {

@@ -18,11 +18,13 @@
  */
 
 import {
+  PARTNER_KEPT_SECRET_NEXT_RUN_REACHES,
   PARTNER_SECRET_NOT_SAVED_KEPT_CLOSING,
   PARTNER_SECRET_NOT_SAVED_KEPT_REMEDY,
   PARTNER_SECRET_NOT_SAVED_PROBLEM,
-  PARTNER_SECRET_NOT_SAVED_SUCCEEDED_SINCE,
   PARTNER_SECRET_NOT_SAVED_TITLE,
+  REINVITE_IF_RUNS_KEEP_FAILING,
+  RUN_SUCCEEDED_SINCE_SAME_SECRET,
 } from "@psi/managed/managedFailureCopy";
 import {
   managedStandingConditionTier,
@@ -150,20 +152,16 @@ function storageView(
     case "succeeded-since":
       return {
         ...base,
-        message:
-          `${failed}. A run since then succeeded, so you and your partner ` +
-          "are on the same secret again, and you can clear this.",
+        message: `${failed}. ${RUN_SUCCEEDED_SINCE_SAME_SECRET}`,
         reinvite: "none",
       };
     case "next-run-heals":
       return {
         ...base,
         message:
-          `${failed}. Your partner saved the new secret and kept the one ` +
-          "that run used, so the next run can still reach them. If runs " +
-          "keep missing your partner or stopping, re-invite your partner. " +
-          "Once a later run succeeds, you are both on the new secret and " +
-          "you can clear this.",
+          `${failed}. ${PARTNER_KEPT_SECRET_NEXT_RUN_REACHES} ` +
+          `${REINVITE_IF_RUNS_KEEP_FAILING}. Once a later run succeeds, you ` +
+          "are both on the new secret and you can clear this.",
         reinvite: "if-runs-keep-failing",
       };
     case "reinvite":
@@ -193,7 +191,7 @@ function partnerStorageView(
     case "succeeded-since":
       return {
         ...base,
-        message: `${stopped} ${PARTNER_SECRET_NOT_SAVED_SUCCEEDED_SINCE}`,
+        message: `${stopped} ${RUN_SUCCEEDED_SINCE_SAME_SECRET}`,
         reinvite: "none",
       };
     case "kept":

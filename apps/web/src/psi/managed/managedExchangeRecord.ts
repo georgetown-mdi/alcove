@@ -2044,10 +2044,7 @@ export function applyManagedExchangeLastRun(
   nowMs: number = Date.now(),
 ): ManagedExchangeRecord {
   const raised = withoutAnsweredRotationInFlight(
-    withoutPartnerStorageAnsweredBySuccess(
-      withStandingCondition(record, standingConditionFrom(lastRun)),
-      lastRun,
-    ),
+    withRunStandingCondition(record, standingConditionFrom(lastRun), lastRun),
     lastRun,
   );
   const stored = lastRunNotAfter(record.lastRun, nowMs);
@@ -2259,6 +2256,27 @@ function withoutPartnerStorageAnsweredBySuccess(
     : record;
 }
 
+/** `record` after a run's write: `condition` raised
+ * ({@link withStandingCondition}), with a `"partner-storage"` condition a
+ * success answers cleared both before and after the raise
+ * ({@link withoutPartnerStorageAnsweredBySuccess}). The clear before keeps a
+ * condition a success already answered from blocking the raise and then
+ * being cleared with the raise lost; the clear after removes a raised one a
+ * listed success answers, as for an entry arriving after that success. */
+function withRunStandingCondition(
+  record: ManagedExchangeRecord,
+  condition: ManagedStandingCondition | undefined,
+  lastRun: ManagedExchangeLastRun | undefined,
+): ManagedExchangeRecord {
+  return withoutPartnerStorageAnsweredBySuccess(
+    withStandingCondition(
+      withoutPartnerStorageAnsweredBySuccess(record, lastRun),
+      condition,
+    ),
+    lastRun,
+  );
+}
+
 /** Apply the operator's clear-and-acknowledge to a record, producing a validated
  * new record whose `standingCondition` is back to {@link NO_STANDING_CONDITION}
  * -- the run bookkeeping, the secret, and the document remain untouched. A record
@@ -2410,8 +2428,9 @@ export function applyManagedExchangeScheduleAdvance(
   const evidenceStands = record.sharedSecret === advance.evidenceSharedSecret;
   const advanced: ManagedExchangeRecord = {
     ...(evidenceStands
-      ? withoutPartnerStorageAnsweredBySuccess(
-          withStandingCondition(record, advance.standingCondition),
+      ? withRunStandingCondition(
+          record,
+          advance.standingCondition,
           advance.lastRun,
         )
       : record),
