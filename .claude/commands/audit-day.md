@@ -35,7 +35,7 @@ At the first that fails, write `D/summary.md` naming it, and stop.
   The deploy's footer reads `Commit <short sha>`; the smoke records it, and that commit is the one the day tests.
 - **Smoke.** Spawn one `general-purpose` agent with `model: "sonnet"` and the smoke below as its brief; it writes `D/smoke.md`.
 
-The smoke, run in `D/smoke/` with the same CLI and the session names `smoke-a` and `smoke-b`:
+The smoke, run with the same CLI, session `smoke-a` in `D/smoke/a/` and session `smoke-b` in `D/smoke/b/`, so one `results.csv` never overwrites the other:
 
 1. `open https://staging.data-bridge.org/` in `smoke-a`. If no browser starts, run `install-browser` for the one the error names and record it. Record the footer's `Commit` text.
 2. Isolation: `localstorage-set audit-probe 1` in `smoke-a`, then `open` the site in `smoke-b` and `localstorage-get audit-probe` there. Expected: no value.
@@ -79,11 +79,11 @@ Run one trial at a time, or two at once: four testers is the writing-spawn cap o
    ```
 3. The invitation's lifetime and the inviter page's 10-minute wait are the app's own: the session never shortens, extends or pauses them, and never relays anything between the testers.
 4. When both have reported, run `npx --yes @playwright/cli@0.1.23 list` and close any of the trial's sessions still open.
-5. Write `T/outcome.md`: pass or fail against the correct outcome, and each critical error with the file that shows it, checked as `.claude/audit/paired-web-exchange/journey.md`, How the session checks a trial, sets out.
+5. Write each tester's final report to its `<role dir>/report.md`, then `T/outcome.md`: pass or fail against the correct outcome, and each critical error with the file that shows it, checked as `.claude/audit/paired-web-exchange/journey.md`, How the session checks a trial, sets out.
 
 ## Step 4 -- Problems
 
-- Group the day's confusion lines by screen and by what was unclear.
+- Group the day's confusion lines by screen and by what was unclear, in `D/problems-grouping.md`.
 - A problem is a group seen in two or more trials, or a critical error seen once. One remark in one trial is not a problem and changes nothing.
 - Class each problem by the forms it appeared in: in cold trials and not guided ones, a discoverability finding (the guide has what the screen lacks); in both, a defect; in guided trials only, a guide finding.
 - Disclosure copy is protected: the text telling a party what is sent, matched, received or consented to -- the terms review, the consent statement, the column-use options, the "What you will share" bar, the result and record screens. A problem against it goes to the owner as a finding, stating the confusion and its evidence, and never proposes or makes a wording change.
@@ -92,11 +92,12 @@ Run one trial at a time, or two at once: four testers is the writing-spawn cap o
 
 Each problem becomes one item on board 9, where end-user behavior and user docs go (`.claude/pm/ruleset.md`, Project routing), which the owner reads before any agent works from it.
 
-- Check first: `node .claude/scripts/list-issues.mjs --all 9` for an item already covering it, which gets this day's evidence added to its body instead (read in full first, as `.claude/pm/ruleset.md`, Filing and updating items, says), and `node .claude/scripts/find-rulings.mjs <2-3 subject words>`.
+- Check first: `node .claude/scripts/list-issues.mjs --all 9` for an item already covering it, which gets this day's evidence added to its body instead (read in full first, as `.claude/pm/ruleset.md`, Filing and updating items, says), and `node .claude/scripts/find-rulings.mjs <2-3 subject words>`. A ruling or documented behavior that bears on a problem is context cited on the item, never a reason not to file it or to keep the current behavior (owner, 2026-11-02: "Ooh, I don't like 'already answered by a ruling or documented behavior.' Often our 'rulings' and 'documented behavior' is out-of-line - agent written and also excessive.").
 - File it as a draft (`gh project item-create 9`, the same section), then set Status to Decision with `node .claude/scripts/edit-issue.mjs 9 <PVTI_id> --status "Decision"`. The Decision column is the owner's ruling queue, and no session works an item there (`.claude/commands/orchestrate.md`, The work), so the item is a question -- work it as filed, rescope it, or decline it -- and the same section lets a Decision item be filed at once rather than at the follow-ups pass.
 - The body is the PM ruleset's Light tier, with this as its first line:
   `Owner reads first: an audit-day finding; no agent works from this item until the owner rules on it and moves it out of Decision.`
-  It holds the problem in one sentence, its class, the trials and their confusion lines quoted, the tested commit, and the artifacts' host path. A disclosure-copy problem adds: `Disclosure copy: the owner decides any wording change; no agent edits the copy from this item.`
+  It holds the problem in one sentence, its class, the trials, the costliest confusion line of each quoted (`D/problems-grouping.md` holds every line, and the body names it), the tested commit, and the artifacts' host path. A disclosure-copy problem adds: `Disclosure copy: the owner decides any wording change; no agent edits the copy from this item.`
+- Every problem item also carries: `A fix simplifies first: remove or shorten copy, fields and steps before adding any (owner, 2026-11-02: "Agents tend to error the side of being excessively wordy. Whatever we do in response, it should also try to simplify as much as possible.").`
 - Epic: the audit findings epic once the owner ratifies one; until then, none.
 - A pain-point intake the day reproduced is now a problem: add the reproduction to its item, which stays in Decision.
 

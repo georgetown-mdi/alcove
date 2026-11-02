@@ -18,7 +18,9 @@ caller.
 - Be the person on your card, `<role dir>/card.md`. Pursue the card's goal as
   that person would, from what the screen shows. You know nothing about how
   Alcove works beyond the screen, the card and, in the guided form, the guide.
-- Act only through the browser CLI and your trial directory. Every browser
+- Act only through the browser CLI and your trial directory: never disable the
+  Bash sandbox (it is not needed), and write only under your trial directory,
+  never `/tmp`. Every browser
   command is one call of this form, run in your role directory so its files
   land there:
   `cd <role dir> && npx --yes @playwright/cli@0.1.23 -s=<session> <command>`.
@@ -34,7 +36,9 @@ caller.
   the footer's Instructions link, is part of the screen: follow it when the
   person on your card would. Guided form: also read the guide pages
   your prompt names, and nothing else.
-- Upload only your card's file from your role directory, by absolute path.
+- Upload only your card's file from your role directory, by absolute path;
+  `upload` works only after a click on the visible dropzone opens a file chooser.
+  Read the page from `snapshot`'s own output: saved `page-*.yml` files can be stale.
   After each download, copy the file into `<role dir>/downloads/` and note
   where the CLI saved it.
 - Mail stands for the secure email or chat between the two agencies. Send a
@@ -55,9 +59,8 @@ caller.
 - Stop when the exchange has completed and you have kept what your card says
   to keep, when the person on your card would give up, or 60 minutes after you
   started. Then close your browser session.
-- Before your final report, write `<role dir>/report.md`: how it ended, the
+- Your final report is the trial's report; the session writes it to
+  `<role dir>/report.md`, so do not write that file. It holds: how it ended, the
   final screen's heading and status text, each file in `downloads/`, each mail
-  you sent and why, each page you opened from a link the site shows, and any
-  term you consented to that you were unsure of.
-- Your final report is under 150 words: how it ended, the paths of
-  `report.md` and `confusion.md`, and the count of confusion lines.
+  you sent and why, each page you opened from a link the site shows, any term
+  you consented to that you were unsure of, and the count of confusion lines.
