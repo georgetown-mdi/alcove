@@ -522,6 +522,54 @@ describe("savedExchangeRow: a standing condition", () => {
         /^A run could not save this exchange's secret .*; re-invite to reconnect$/,
       );
     });
+
+    test("names the re-invite where a handshake failed closed before the success", () => {
+      const healed = { at: healedAt, outcome: "succeeded" } as const;
+      const auth = {
+        at: "2026-07-12T10:00:00.000Z",
+        outcome: "failed",
+        failureKind: "auth",
+      } as const;
+      const row = savedExchangeRow(
+        record({
+          lastRun: healed,
+          recentRuns: [healed, auth, failedSave],
+          standingCondition: { since: standingAt, kind: "storage" },
+        }),
+        undefined,
+        NOW,
+      );
+      expect(row.status).not.toMatch(/a run since then succeeded/);
+      expect(row.status).toMatch(
+        /^A run could not save this exchange's secret .*; re-invite to reconnect$/,
+      );
+    });
+  });
+
+  test("the partner's failed save does not read as settled by a success after a failed-closed handshake", () => {
+    const succeeded = {
+      at: "2026-07-13T09:00:00.000Z",
+      outcome: "succeeded",
+    } as const;
+    const auth = {
+      at: missedAt,
+      outcome: "failed",
+      failureKind: "auth",
+    } as const;
+    const row = savedExchangeRow(
+      record({
+        side: "acceptor",
+        lastRun: succeeded,
+        recentRuns: [succeeded, auth],
+        standingCondition: { since: standingAt, kind: "partner-storage" },
+      }),
+      undefined,
+      NOW,
+    );
+    expect(row.status).not.toMatch(/a run since then succeeded/);
+    expect(row.status).toMatch(
+      /^Your partner could not save the new secret .*; no run can reach them until you re-invite$/,
+    );
   });
 
   test("the partner's failed save clears itself on a successful run, and the row names the heal", () => {

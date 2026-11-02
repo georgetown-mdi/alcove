@@ -872,7 +872,8 @@ The run history, the recurring list, and a notification state the same while
 this device would still offer that secret. Once it would not, because the
 secret expired or an older version of this app last saved the exchange, they
 name a fresh invitation as the step. A later run that succeeds clears the
-report on its own, since both sides saved the new secret in it (see [A standing
+report on its own, since both sides saved the new secret in it, unless this
+device could not save a new secret after the report (see [A standing
 condition outlives the run that raised
 it](#a-standing-condition-outlives-the-run-that-raised-it)).
 
@@ -895,8 +896,10 @@ only where the partner's key exchange used the secret it kept, which shows that
 it keeps one; otherwise it names a fresh invitation. The exchange's page and the
 recurring list say the same at later visits, across no-shows, until a
 handshake fails closed or a run succeeds. Once a run succeeds, they say so, and
-you clear the report with its acknowledgement. A handshake that fails closed
-after that success brings back the fresh invitation, and runs after it do not
+you clear the report with its acknowledgement. That holds only while no save
+has failed and no handshake has failed closed since the report, before or after
+the success: otherwise they read the newest such run as above, so a handshake
+that failed closed brings back the fresh invitation, and runs after it do not
 settle the report.
 
 The recurring list names a last run that healed a cut rotation, and the run
@@ -939,7 +942,8 @@ next.
 **A successful run clears a save failure your partner reported.** Both sides
 saved the new secret in that run, which answers the report, and the run's heal
 note already asks whether the exchange also runs from another copy. It does not
-clear a report you answered as a possible compromise. A successful run leaves
+clear a report you answered as a possible compromise, or one after which this
+device could not save a new secret. A successful run leaves
 the other two in place, for your acknowledgement: a save failure this device recorded, and a handshake that
 failed closed. A later success rules out neither a third party's attempt nor a
 copy of the exchange running elsewhere, and those are the readings the

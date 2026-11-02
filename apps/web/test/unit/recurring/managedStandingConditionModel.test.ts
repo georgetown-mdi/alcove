@@ -182,6 +182,28 @@ describe("managedStandingConditionView", () => {
       );
       expect(view?.reinvite).toBeUndefined();
     });
+
+    test("names the re-invite where a handshake failed closed before the success", () => {
+      const auth = {
+        at: "2026-07-11T09:00:00.000Z",
+        outcome: "failed",
+        failureKind: "auth",
+      } as const;
+      const succeeded = { at: LATER_AT, outcome: "succeeded" } as const;
+      const view = managedStandingConditionView(
+        storage({
+          lastRun: succeeded,
+          recentRuns: [succeeded, auth, { ...failedSave, nextRunHeals: true }],
+        }),
+        undefined,
+        NOW,
+      );
+      expect(view?.message).not.toMatch(/same secret again/);
+      expect(view?.message).toMatch(
+        /Re-invite your partner to reconnect\. Runs since then do not settle it, including any that succeeded\.$/,
+      );
+      expect(view?.reinvite).toBeUndefined();
+    });
   });
 
   test("a restore since the last success explains a standing handshake failure", () => {
@@ -280,6 +302,68 @@ describe("managedStandingConditionView", () => {
       expect(view?.reinvite).toBe("none");
       expect(view?.clearance).toBe("acknowledge");
     });
+
+    test.each([
+      ["a failed save on this device", "storage" as const],
+      ["a failed-closed handshake", "auth" as const],
+    ])(
+      "does not read a success after %s as settling it",
+      (_case, failureKind) => {
+        const between = {
+          at: "2026-07-11T09:00:00.000Z",
+          outcome: "failed",
+          failureKind,
+        } as const;
+        const succeeded = { at: LATER_AT, outcome: "succeeded" } as const;
+        const runs = { lastRun: succeeded, recentRuns: [succeeded, between] };
+        const kept = managedStandingConditionView(
+          partnerStorage(runs),
+          undefined,
+          NOW,
+        );
+        expect(kept?.message).not.toMatch(/same secret again/);
+        expect(kept?.message).not.toMatch(/clears itself/);
+        expect(kept?.message).toMatch(
+          /This device also kept the earlier secret your partner still holds, so the next run can still reach them\..* Runs since then do not settle it, including any that succeeded\.$/,
+        );
+        expect(kept?.reinvite).toBe("if-runs-keep-failing");
+        const notKept = managedStandingConditionView(
+          partnerStorage({ ...runs, previousSharedSecret: undefined }),
+          undefined,
+          NOW,
+        );
+        expect(notKept?.message).not.toMatch(/same secret again/);
+        expect(notKept?.message).toMatch(
+          /Re-invite your partner to reconnect\. Runs since then do not settle it, including any that succeeded\.$/,
+        );
+        expect(notKept?.reinvite).toBeUndefined();
+      },
+    );
+
+    test.each([
+      ["kept", {}],
+      ["not kept", { previousSharedSecret: undefined }],
+    ])(
+      "does not say it clears itself where the operator answered a possible compromise, secret %s",
+      (_case, overrides) => {
+        const view = managedStandingConditionView(
+          partnerStorage({
+            ...overrides,
+            standingCondition: {
+              since: RAISED_AT,
+              kind: "partner-storage",
+              response: { kind: "compromise", at: LATER_AT },
+            },
+          }),
+          undefined,
+          NOW,
+        );
+        expect(view?.message).not.toMatch(/clears itself/);
+        expect(view?.message).toMatch(
+          /Runs since then do not settle it, including any that succeeded\.$/,
+        );
+      },
+    );
   });
 
   test("the acknowledge control's label is short and states what the click does", () => {

@@ -796,11 +796,10 @@ advance](#catch-up-on-wake) clears it by the same rule.
 Like the raise, the clear holds whether or not the success's own entry lands.
 A condition holding the operator's response stays, and a `"storage"` or
 `"auth"` condition is cleared only by the three acts above.
-A limit follows from the first raise standing: a failed save on this device,
-raised while an unanswered `"partner-storage"` condition stands, is kept off
-the record, and a later success clears that condition, so this device's failed
-save is never shown; that success shows both sides on one secret, so the cost
-is small.
+Neither write clears it while the record lists a run after the condition's
+`since` holding a failed save on this device or a failed-closed handshake,
+whichever side of the success it falls: the first raise kept that run off the
+record, and the condition standing is what still shows it.
 
 The condition tiers as the equivalent `lastRun` entry would: a `"storage"`
 condition is the benign persist-failure state, a `"partner-storage"` condition

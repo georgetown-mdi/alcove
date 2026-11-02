@@ -31,7 +31,10 @@ import {
   partnerStorageReach,
   storageReach,
 } from "@psi/managed/managedFailureTiers";
-import { raisedStandingCondition } from "@psi/managed/managedExchangeRecord";
+import {
+  raisedStandingCondition,
+  standingConditionClearedBySuccess,
+} from "@psi/managed/managedExchangeRecord";
 
 import { dateTimeLabel } from "@psi/formatting";
 
@@ -175,12 +178,14 @@ function storageView(
 }
 
 /** The partner-storage condition's view, by what the record can still do
- * ({@link partnerStorageReach}). */
+ * ({@link partnerStorageReach}). The copy says a run clears it only where one
+ * does ({@link standingConditionClearedBySuccess}). */
 function partnerStorageView(
   record: ManagedExchangeRecord,
   when: string,
   now: number,
 ): ManagedStandingConditionView {
+  const clearedByRun = standingConditionClearedBySuccess(record);
   const stopped = `A run on ${when} stopped because ${PARTNER_SECRET_NOT_SAVED_PROBLEM}.`;
   const base = {
     tier: "partner-storage" as const,
@@ -199,7 +204,7 @@ function partnerStorageView(
         ...base,
         message:
           `${stopped} ${PARTNER_SECRET_NOT_SAVED_KEPT_REMEDY} ` +
-          PARTNER_SECRET_NOT_SAVED_KEPT_CLOSING,
+          (clearedByRun ? PARTNER_SECRET_NOT_SAVED_KEPT_CLOSING : STANDS_UNTIL),
         reinvite: "if-runs-keep-failing",
       };
     case "not-kept":
@@ -208,7 +213,8 @@ function partnerStorageView(
         message:
           `${stopped} Scheduled runs keep running but cannot reach your ` +
           "partner, and running the exchange again cannot either. Re-invite " +
-          "your partner to reconnect.",
+          "your partner to reconnect." +
+          (clearedByRun ? "" : ` ${STANDS_UNTIL}`),
       };
   }
 }

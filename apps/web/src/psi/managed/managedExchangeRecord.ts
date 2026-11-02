@@ -2092,9 +2092,27 @@ export function recentRunsOf(
   return record.lastRun !== undefined ? [record.lastRun] : [];
 }
 
+/** Whether a run entry holds a verdict on the secret: a failed save on this
+ * device or a failed-closed handshake. */
+export function runHoldsSecretVerdict(run: ManagedExchangeLastRun): boolean {
+  return run.failureKind === "storage" || run.failureKind === "auth";
+}
+
+/** Whether a run the record lists ({@link recentRunsOf}) after `since` holds
+ * a verdict on the secret ({@link runHoldsSecretVerdict}). */
+function secretVerdictListedSince(
+  record: Pick<ManagedExchangeRecord, "lastRun" | "recentRuns">,
+  since: string,
+): boolean {
+  const sinceMs = Date.parse(since);
+  return recentRunsOf(record).some(
+    (run) => runHoldsSecretVerdict(run) && Date.parse(run.at) > sinceMs,
+  );
+}
+
 /** Whether a run the record lists ({@link recentRunsOf}) succeeded after
  * `since`, and where `notAfterMs` is given, no later than it. */
-export function runSucceededSince(
+function runSucceededSince(
   record: Pick<ManagedExchangeRecord, "lastRun" | "recentRuns">,
   since: string,
   notAfterMs: number = Number.POSITIVE_INFINITY,
@@ -2104,6 +2122,18 @@ export function runSucceededSince(
     const atMs = Date.parse(run.at);
     return run.outcome === "succeeded" && atMs > sinceMs && atMs <= notAfterMs;
   });
+}
+
+/** Whether the runs the record lists settle a failed save at `since`: one
+ * succeeded after it and none after it holds a verdict on the secret
+ * ({@link secretVerdictListedSince}), whichever of the two came first. */
+export function runSucceededWithNoVerdictSince(
+  record: Pick<ManagedExchangeRecord, "lastRun" | "recentRuns">,
+  since: string,
+): boolean {
+  return (
+    runSucceededSince(record, since) && !secretVerdictListedSince(record, since)
+  );
 }
 
 /**
@@ -2240,22 +2270,38 @@ function withStandingCondition(
   return { ...record, standingCondition: condition };
 }
 
+/** Whether a successful run clears the record's standing condition: a
+ * `"partner-storage"` one holding no compromise response, where no run the
+ * record lists after it holds a verdict on the secret
+ * ({@link secretVerdictListedSince}), which first raise wins kept off the
+ * record. Every other condition stays until the operator's act. */
+export function standingConditionClearedBySuccess(
+  record: ManagedExchangeRecord,
+): boolean {
+  const standing = raisedStandingCondition(record);
+  return (
+    standing?.kind === "partner-storage" &&
+    standing.response === undefined &&
+    !secretVerdictListedSince(record, standing.since)
+  );
+}
+
 /** `record` with a standing `"partner-storage"` condition cleared where a run
- * succeeded after it: `lastRun` when it is that success, or a success the
- * record already lists, which covers the partner-storage entry that arrives
- * after a later success. A listed success stamped later than `nowMs`, the
- * writer's clock, does not count, so a stamp from the future cannot hold off
- * every new report. Both sides saved the next secret in such a run, which
- * answers what the partner reported. The one condition a run clears: one
- * holding the operator's compromise response stays, as do the `"storage"` and
- * `"auth"` kinds. The input record is not mutated. */
+ * succeeded after it and the condition is one a success clears
+ * ({@link standingConditionClearedBySuccess}): `lastRun` when it is that
+ * success, or a success the record already lists, which covers the
+ * partner-storage entry that arrives after a later success. A listed success
+ * stamped later than `nowMs`, the writer's clock, does not count, so a stamp
+ * from the future cannot hold off every new report. Both sides saved the next
+ * secret in such a run, which answers what the partner reported. The input
+ * record is not mutated. */
 function withoutPartnerStorageAnsweredBySuccess(
   record: ManagedExchangeRecord,
   lastRun: ManagedExchangeLastRun | undefined,
   nowMs: number,
 ): ManagedExchangeRecord {
   const standing = raisedStandingCondition(record);
-  if (standing?.kind !== "partner-storage" || standing.response !== undefined)
+  if (standing === undefined || !standingConditionClearedBySuccess(record))
     return record;
   const succeededSince =
     (lastRun?.outcome === "succeeded" &&

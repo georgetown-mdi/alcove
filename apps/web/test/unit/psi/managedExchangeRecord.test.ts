@@ -2328,6 +2328,23 @@ describe("the standing condition across the bookkeeping writes", () => {
       expect(after.standingCondition).toEqual(NO_STANDING_CONDITION);
     });
 
+    test("a success after this device's own failed save leaves it standing", () => {
+      const failedSaveAt = "2026-07-14T12:30:00.000Z";
+      const failedSave = applyManagedExchangeLastRun(
+        withPartnerStorage(),
+        { at: failedSaveAt, outcome: "failed", failureKind: "storage" },
+        Date.parse(failedSaveAt),
+      );
+      expect(failedSave.standingCondition).toEqual(partnerStorage);
+      const after = applyManagedExchangeLastRun(
+        failedSave,
+        { at: laterAt, outcome: "succeeded" },
+        Date.parse(laterAt),
+      );
+      expect(after.lastRun?.outcome).toBe("succeeded");
+      expect(after.standingCondition).toEqual(partnerStorage);
+    });
+
     test("a no-show after it leaves it standing", () => {
       const after = applyManagedExchangeLastRun(
         withPartnerStorage(),
