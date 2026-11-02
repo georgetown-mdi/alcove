@@ -552,7 +552,39 @@ describe("the main deploy's manifest", () => {
     expect(writeAt).toBeGreaterThan(verifyAt);
   });
 
-  it("replaces the one prerelease's assets, never marked latest, and never with an older commit's", () => {
+  it("checks the served security.txt whenever the deploy succeeded, including off main", () => {
+    const check = jobs["check-security-txt"];
+    expect([check.needs].flat()).toEqual(["deploy"]);
+    expect(check.if).toBe(
+      "${{ !cancelled() && needs.deploy.result == 'success' }}",
+    );
+  });
+
+  it("gives every job downstream of a main-only job an explicit condition unless it is main-only itself", () => {
+    const mainOnly = new Set(
+      Object.keys(jobs).filter((id) => jobs[id].if === MAIN_ONLY),
+    );
+    const downstream = (id, seen = new Set()) => {
+      for (const need of [jobs[id].needs ?? []].flat()) {
+        if (!seen.has(need)) {
+          seen.add(need);
+          downstream(need, seen);
+        }
+      }
+      return seen;
+    };
+    for (const id of Object.keys(jobs)) {
+      if (mainOnly.has(id)) continue;
+      const reachesMainOnly = [...downstream(id)].some((need) =>
+        mainOnly.has(need),
+      );
+      if (reachesMainOnly) {
+        expect(jobs[id].if, id).toMatch(/!cancelled\(\)/);
+      }
+    }
+  });
+
+  it("replaces the one prerelease's assets, never marked latest, and always with this run's manifest", () => {
     const run = runs("hosted-manifest-publish").find((text) =>
       /\bgh release upload\b/.test(text),
     );
@@ -563,11 +595,11 @@ describe("the main deploy's manifest", () => {
     expect(run).toMatch(
       /gh release edit "\$\{ALCOVE_RELEASE_TAG\}" --prerelease --latest=false/,
     );
-    const compare = run.indexOf("/compare/");
     const upload = run.indexOf("gh release upload");
     const prune = run.indexOf("gh release delete-asset");
-    expect(compare).toBeGreaterThanOrEqual(0);
-    expect(upload).toBeGreaterThan(compare);
+    expect(run).not.toContain("compare");
+    expect(run).not.toContain("exit 0");
+    expect(upload).toBeGreaterThanOrEqual(0);
     expect(prune).toBeGreaterThan(upload);
   });
 

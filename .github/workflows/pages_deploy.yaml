@@ -318,32 +318,17 @@ jobs:
 
       # The new commit's assets are uploaded before the earlier commit's are
       # deleted, so the prerelease never holds no manifest. Never marked
-      # latest. A run whose commit main has moved past publishes nothing once
-      # a later commit's manifest is published, so a re-run cannot replace it
-      # with an older one. That is read off the published manifest rather than
-      # main's tip, since a push outside this workflow's path filter moves the
-      # tip without deploying.
+      # latest. The manifest replaces the prerelease's assets whenever the
+      # deploy of this run succeeded, so the prerelease names what production
+      # serves. Runs on main share one concurrency group and none is cancelled,
+      # so they run one at a time: the run that deploys last publishes last,
+      # including a re-run of an older run.
       - name: Replace the prerelease's assets
         run: |
           set -euo pipefail
           bundle="${ALCOVE_MANIFEST}.sigstore.json"
           notes="The manifest of the hosted app built from commit ${GITHUB_SHA} on main and deployed to production. Not a release of Alcove: see docs/RELEASES.md, Hosted web application."
-          if gh release view "${ALCOVE_RELEASE_TAG}" >/dev/null 2>&1; then
-            gh release view "${ALCOVE_RELEASE_TAG}" --json assets --jq '.assets[].name' >"${RUNNER_TEMP}/published"
-            while IFS= read -r name; do
-              published="${name#alcove-hosted-web-}"
-              published="${published%.manifest.json}"
-              if [ "${name}" != "alcove-hosted-web-${published}.manifest.json" ] ||
-                ! [[ "${published}" =~ ^[0-9a-f]{40}$ ]]; then
-                continue
-              fi
-              status="$(gh api "repos/${GH_REPO}/compare/${published}...${GITHUB_SHA}" --jq .status)"
-              if [ "${status}" != "ahead" ] && [ "${status}" != "identical" ]; then
-                echo "the prerelease holds the manifest of ${published}, which ${GITHUB_SHA} does not follow on main: it is left as it is."
-                exit 0
-              fi
-            done <"${RUNNER_TEMP}/published"
-          else
+          if ! gh release view "${ALCOVE_RELEASE_TAG}" >/dev/null 2>&1; then
             gh release create "${ALCOVE_RELEASE_TAG}" --prerelease --latest=false \
               --target "${GITHUB_SHA}" --title "Hosted app manifest of the main deploy (not a release)" \
               --notes "${notes}"
@@ -359,10 +344,13 @@ jobs:
 
   # Fetches /.well-known/security.txt from each deployment the job above made,
   # in a job of its own because this one runs repository code. No retry: a
-  # Pages deployment exists only once its upload completes.
+  # Pages deployment exists only once its upload completes. The condition is
+  # explicit because the manifest jobs are skipped off main, and a skipped
+  # ancestor would otherwise skip this job on every staging deploy.
   check-security-txt:
     name: Check the served security.txt
     needs: deploy
+    if: ${{ !cancelled() && needs.deploy.result == 'success' }}
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
