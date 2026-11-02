@@ -22,7 +22,11 @@ failure, and you can stop reading this page at that point.
 
 ## What you will need in front of you
 
-- **Docker Desktop, running.** The whale icon should be still, not animating.
+- **Docker Desktop or Podman, running.** With Docker Desktop, the whale icon
+  should be still, not animating. With Podman, type `podman` wherever a
+  command below says `docker`, and check its answer with `podman version`
+  rather than the first command in Part 2. The volume options in Part 4 have
+  only been tried with Docker.
 - **The file-drop folder path**, as File Explorer shows it. Click once in the
   address bar and it turns into text you can copy.
 - **A username and password for that folder.** Not your own Windows sign-in,

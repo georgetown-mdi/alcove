@@ -294,6 +294,14 @@ installed. The script warns before prompting and suggests `cls` afterwards.
 Given the operator is the machine's own user, this is a warn-and-guide case
 rather than a reason to refuse.
 
+**This script runs docker alone, with no podman fallback.** The PowerShell
+scripts run podman when docker does not answer. This one names `docker` at
+every one of its engine call sites rather than through one variable, and
+reads the engine's answer through docker's own `{{.Server.Os}}` template, so a
+fallback here is a rewrite of every call site rather than a choice made once.
+An operator with Podman alone runs the PowerShell script, or does it by hand
+with `podman` in place of `docker`.
+
 **The password is not masked out of Docker's error text; the line is dropped.**
 The PowerShell script does a string substitution to mask it. `cmd` cannot
 substitute inside a variable that may itself hold the characters `cmd` parses,

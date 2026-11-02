@@ -82,6 +82,19 @@ In either case switch to
 commands from here on, including in [Doing it by hand](#doing-it-by-hand) --
 whose PowerShell commands the same policy blocks.
 
+## Docker or Podman is not answering
+
+The PowerShell scripts use Docker, or Podman when Docker is not installed or
+not running. The Command Prompt script uses Docker only.
+
+- **Docker Desktop**: start it and wait for the whale icon to stop animating.
+  "Access is denied" means your account is not in the local `docker-users`
+  group, which an administrator has to add you to.
+- **Podman**: start its machine with `podman machine start`.
+
+The commands on these pages say `docker`. With Podman, type `podman` in its
+place.
+
 ## A comma or a double quote in the password
 
 The script refuses before it does anything.

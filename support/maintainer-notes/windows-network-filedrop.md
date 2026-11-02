@@ -290,7 +290,8 @@ login carries has been reasoned about here and not run.
 each exit code of the doctor, the loop that offers a run again on 78 and the
 sign-in again with no as its default, the release stamp, the registry order, the
 console's argument vector, the parameter-name reader the dot-source protects
-itself with, and both Docker wrappers on a PC with no docker.
+itself with, the engine it chooses, and both engine wrappers on a PC with no
+docker.
 
 Its network flow is driven end to end on the runner: a stamped copy of the
 launcher, the setup script beside it, a stub `docker.cmd` first on a PATH
@@ -434,15 +435,39 @@ the server's own name beside the namespace share (`Q3_resolve`,
 `smb_connections`).
 
 The launcher's CIFS volume options are the setup script's -- since 5 August 2026
-literally, through `New-ShareVolume`. Its credential prompts, its password-comma
+literally, through `New-ShareVolume`, which the launcher calls with `-Engine`
+naming whichever engine it found. Its credential prompts, its password-comma
 refusal and its volume replace-or-refuse sequence are the setup script's copies
 too, reached through the same dot-source: the launcher's own copies of all three
-were deleted rather than kept in step. Both Windows scripts run docker alone.
+were deleted rather than kept in step.
+
+**The engine.** Both PowerShell scripts run docker when it answers and podman
+otherwise, since some operators have no Docker access and use Podman.
+
+- Each chooses in a function of its own -- `Find-ContainerEngine` in the
+  launcher, `Find-SetupEngine` in the setup script -- because the launcher
+  chooses before it can load the setup script, and in a constrained language
+  mode never loads it.
+- An engine counts only when it answers. The launcher asks each a bare
+  `version`; the setup script asks docker the `{{.Server.Os}}` question its
+  Windows-containers check reads, and podman a bare `version`, since podman's
+  template fields have not been tried here.
+- Every later engine command each script runs goes through the engine chosen,
+  and the text naming an engine that stopped during the checks names the one
+  that did.
+- Neither script's volume options have been driven against anything but
+  docker, and `New-ShareVolume` says so on screen before creating the volume
+  under any other engine rather than predicting what podman will make of them.
+- Covered against stubs only: the launcher's suite drives the choice in each
+  order and the screen when neither answers; the setup suite drives its choice
+  and a whole run through a stub podman behind a docker that does not answer.
+  No pass has run either script against a real Podman.
+- The Command Prompt script runs docker alone; its notes say why.
 
 What that sharing costs the launcher, and what to look at first on a real
 Windows pass: it now prints the setup script's fuller credential preamble and
 its longer refusals, names the device it is creating the volume for, and says
-that Docker mounts the volume the first time it is used. Nothing there changes
+that the volume is mounted the first time it is used. Nothing there changes
 what it does.
 
 Still unverified: the Windows-containers branch, which needs Docker Desktop

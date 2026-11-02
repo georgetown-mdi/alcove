@@ -1,6 +1,7 @@
 <#
 .SYNOPSIS
-    Makes a network file-drop folder usable by Alcove running in Docker.
+    Makes a network file-drop folder usable by Alcove running in Docker or
+    Podman.
     Run this once before your first exchange.
 
 .DESCRIPTION
@@ -23,6 +24,7 @@
       4. Prints the docker command to run your exchange.
 
     Nothing is installed on Windows; the checks run in throwaway containers.
+    It runs docker when docker answers, and podman otherwise.
 
     About the password. The diagnostic phase passes it through an inherited
     environment variable, so it never reaches a command line. Creating the
@@ -189,25 +191,31 @@ function Invoke-Docker {
         "System.Management.Automation.RemoteException". The message is read off
         the record instead, which keeps a blank line blank.
 
-        Docker missing from this PC is answered here rather than called:
+        An engine missing from this PC is answered here rather than called:
         calling it raises CommandNotFoundException, which the relaxed
         preference does not soften and nothing here catches, so a run would end
         on a raw .NET error instead of the message the flow means to print. Ran
-        is what tells that apart from a docker that ran and exited: 127 is the
+        is what tells that apart from an engine that ran and exited: 127 is the
         shell convention for a command that is not there, and a container that
-        exits 127 reports the same code. #>
+        exits 127 reports the same code.
+
+        -Engine names the command to run: docker, or podman where the flow
+        below or the launcher chose it. #>
     param(
-        [Parameter(Mandatory = $true)][string[]] $DockerArgs
+        [Parameter(Mandatory = $true)][string[]] $DockerArgs,
+        [string] $Engine = 'docker'
     )
 
-    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-        return @{ Ran = $false; Output = 'docker is not a command on this PC.'; ExitCode = 127 }
+    if ([string]::IsNullOrWhiteSpace($Engine) -or -not (Get-Command $Engine -ErrorAction SilentlyContinue)) {
+        $named = $Engine
+        if ([string]::IsNullOrWhiteSpace($named)) { $named = '(no engine)' }
+        return @{ Ran = $false; Output = "$named is not a command on this PC."; ExitCode = 127 }
     }
 
     $previous = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        $lines = & docker @DockerArgs 2>&1 | ForEach-Object {
+        $lines = & $Engine @DockerArgs 2>&1 | ForEach-Object {
             if ($_ -is [System.Management.Automation.ErrorRecord]) { [string] $_.Exception.Message }
             else { "$_" }
         }
@@ -216,11 +224,43 @@ function Invoke-Docker {
     finally { $ErrorActionPreference = $previous }
 }
 
+function Get-EngineVersionQuery {
+    <#  The question that tells whether an engine answers. Docker is asked its
+        server's OS and version, which the start-up check reads; podman a bare
+        "version", since the template fields differ between the two and
+        podman's have not been tried here. #>
+    param([string] $Engine = 'docker')
+
+    if ($Engine -eq 'docker') { return @('version', '--format', '{{.Server.Os}} {{.Server.Version}}') }
+    return @('version')
+}
+
 function Test-DockerAnswers {
     <#  Whether the engine answers the version query the start-up check
-        makes. A docker run against a stopped engine exits 1, which says
-        nothing by itself about whether the engine is up. #>
-    return ((Invoke-Docker -DockerArgs @('version', '--format', '{{.Server.Os}} {{.Server.Version}}')).ExitCode -eq 0)
+        makes. A run against a stopped engine exits 1, which says nothing by
+        itself about whether the engine is up. #>
+    param([string] $Engine = 'docker')
+
+    return ((Invoke-Docker -Engine $Engine -DockerArgs (Get-EngineVersionQuery -Engine $Engine)).ExitCode -eq 0)
+}
+
+function Find-SetupEngine {
+    <#  docker first, podman second, each counting only when it answers: a
+        docker that cannot reach its engine is the ordinary "Docker Desktop is
+        not started yet" case, and must not be chosen over a podman that works.
+        Named apart from Start-Alcove.ps1's Find-ContainerEngine, which that
+        script runs before it can load this one.
+
+        Returns @{ Engine; Output }: the engine and what its version query
+        printed, or an empty Engine and what the first one installed said. #>
+
+    $said = ''
+    foreach ($candidate in @('docker', 'podman')) {
+        $answer = Invoke-Docker -Engine $candidate -DockerArgs (Get-EngineVersionQuery -Engine $candidate)
+        if ($answer.ExitCode -eq 0) { return @{ Engine = $candidate; Output = $answer.Output } }
+        if ($answer.Ran -and -not $said) { $said = $answer.Output }
+    }
+    return @{ Engine = ''; Output = $said }
 }
 
 function Test-Elevated {
@@ -250,7 +290,10 @@ function Write-DoctorOutcome {
         pointer; the other codes are ones the doctor's lines do not explain.
         Named apart from Start-Alcove.ps1's Show-DoctorOutcome, which that
         script keeps for the folders it checks without this one loaded. #>
-    param([Parameter(Mandatory = $true)][int] $ExitCode)
+    param(
+        [Parameter(Mandatory = $true)][int] $ExitCode,
+        [string] $Engine = 'docker'
+    )
 
     if ($ExitCode -eq 0) { return }
     Write-Host ''
@@ -277,10 +320,16 @@ function Write-DoctorOutcome {
             Write-Note 'report it as a problem with this script. An image older than'
             Write-Note 'these checks also ends this way, and downloading it again'
             Write-Note 'fixes that:'
-            Write-Note '    docker pull ghcr.io/georgetown-mdi/alcove:latest'
+            Write-Note "    $Engine pull ghcr.io/georgetown-mdi/alcove:latest"
         }
         default {
-            if (-not (Test-DockerAnswers)) {
+            if (-not (Test-DockerAnswers -Engine $Engine)) {
+                if ($Engine -eq 'podman') {
+                    Write-Bad 'Podman stopped during the checks.'
+                    Write-Note 'Start the Podman machine with "podman machine start", and run'
+                    Write-Note 'this script again.'
+                    return
+                }
                 Write-Bad 'Docker stopped during the checks.'
                 Write-Note 'Start Docker Desktop, wait for the whale icon to stop animating,'
                 Write-Note 'and run this script again.'
@@ -400,8 +449,9 @@ function New-ShareVolume {
         it did not.
 
         -MountVersion is the "vers=" option for a pinned dialect, empty to let
-        the mount negotiate. Returns $true when the volume is there to be
-        mounted, and $false when the reason it is not has been printed. #>
+        the mount negotiate. -Engine is the engine the caller chose. Returns
+        $true when the volume is there to be mounted, and $false when the
+        reason it is not has been printed. #>
     param(
         [Parameter(Mandatory = $true)][string] $VolumeName,
         [Parameter(Mandatory = $true)][string] $Server,
@@ -410,11 +460,18 @@ function New-ShareVolume {
         [Parameter(Mandatory = $true)][string] $Username,
         [string] $Password = '',
         [string] $Domain = '',
-        [string] $MountVersion = ''
+        [string] $MountVersion = '',
+        [string] $Engine = 'docker'
     )
 
     $device = "//$Server/$Share"
     if ($SubPath) { $device = "$device/$SubPath" }
+
+    if ($Engine -ne 'docker') {
+        Write-Warn 'The volume options below have only been tried with docker.'
+        Write-Note "$Engine may reject them or read them differently. If it does,"
+        Write-Note 'its own message below is the one to read.'
+    }
 
     # uid/gid are what make the mount writable from the Alcove image, which runs
     # as an unprivileged account (uid 1000). A Windows SMB server serves no Unix
@@ -431,7 +488,7 @@ function New-ShareVolume {
     # -- a template Docker will not parse, a daemon that answers oddly -- also
     # exits non-zero, and reading that as "no such volume" walks straight past
     # the guard and into the removal further down.
-    $listed = Invoke-Docker -DockerArgs @('volume', 'ls', '--quiet')
+    $listed = Invoke-Docker -Engine $Engine -DockerArgs @('volume', 'ls', '--quiet')
     $volumeExists = ($listed.ExitCode -eq 0 -and
         (@($listed.Output -split '\r?\n' | Where-Object { $_.Trim() -eq $VolumeName }).Count -gt 0))
 
@@ -440,37 +497,37 @@ function New-ShareVolume {
         # building a native command line, so "{{index .Options """type"""}}"
         # reaches Docker as {{index .Options type}} and fails to parse -- for
         # every volume, which disables the check entirely.
-        $existing = Invoke-Docker -DockerArgs @('volume', 'inspect', '--format',
+        $existing = Invoke-Docker -Engine $Engine -DockerArgs @('volume', 'inspect', '--format',
                                                                 '{{.Driver}} {{.Options.type}}', $VolumeName)
         if ($existing.ExitCode -ne 0 -or $existing.Output.Trim() -ne 'local cifs') {
-            Write-Bad "A Docker volume called '$VolumeName' already exists and was not"
+            Write-Bad "A volume called '$VolumeName' already exists and was not"
             Write-Note 'made by this script -- it is not a network-share volume. It has'
             Write-Note 'been left alone; removing it could destroy data belonging to'
             Write-Note 'something else on this PC.'
             Write-Info ''
             Write-Info 'Run this script again with -VolumeName <another-name>, or remove'
-            Write-Info "that volume yourself if you are certain: docker volume rm $VolumeName"
+            Write-Info "that volume yourself if you are certain: $Engine volume rm $VolumeName"
             return $false
         }
         # docker volume create on an existing name exits 0 and silently keeps
         # the options the volume already has, so a run after a password change
         # would quietly go on using the old one. Removing it first is what
         # makes a re-run mean anything.
-        $removed = Invoke-Docker -DockerArgs @('volume', 'rm', $VolumeName)
+        $removed = Invoke-Docker -Engine $Engine -DockerArgs @('volume', 'rm', $VolumeName)
         if ($removed.ExitCode -ne 0) {
             Write-Bad "Could not replace the existing '$VolumeName' volume."
             Write-Host ''
             Write-Host (Hide-Secret -Text $removed.Output -Secret $Password)
             Write-Host ''
             Write-Note 'A container is probably still using it. Stop any exchange that is'
-            Write-Note "running, then try again: docker ps"
+            Write-Note "running, then try again: $Engine ps"
             return $false
         }
         Write-Info "Replaced the existing '$VolumeName' volume."
     }
 
     Write-Host "Creating volume '$VolumeName' for $device"
-    $create = Invoke-Docker -DockerArgs @(
+    $create = Invoke-Docker -Engine $Engine -DockerArgs @(
         'volume', 'create', '--driver', 'local',
         '--opt', 'type=cifs', '--opt', "device=$device", '--opt', "o=$opts",
         $VolumeName)
@@ -480,7 +537,7 @@ function New-ShareVolume {
         Write-Host (Hide-Secret -Text $create.Output -Secret $Password)
         return $false
     }
-    Write-Good 'Volume created. Docker mounts it the first time it is used.'
+    Write-Good 'Volume created. It is mounted the first time it is used.'
     return $true
 }
 
@@ -714,11 +771,12 @@ function Get-ConsoleCommandLines {
         picked, and a name no partner could match. #>
     param(
         [Parameter(Mandatory = $true)][string] $VolumeName,
-        [string] $RendezvousName = ''
+        [string] $RendezvousName = '',
+        [string] $Engine = 'docker'
     )
 
     return @(
-        "  docker run --rm -p 127.0.0.1:3000:3000 ``",
+        "  $Engine run --rm -p 127.0.0.1:3000:3000 ``",
         "    --env JOB_DATA_ROOT=/data --env JOB_RENDEZVOUS_DIR=/sync ``",
         "    --env 'JOB_RENDEZVOUS_NAME=$RendezvousName' ``",
         "    -v 'C:\path\to\your\work:/data' ``",
@@ -749,30 +807,41 @@ if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') {
     exit 1
 }
 
-Write-Host 'Checking Docker...'
-$dockerInfo = Invoke-Docker -DockerArgs @('version', '--format', '{{.Server.Os}} {{.Server.Version}}')
-if ($dockerInfo.ExitCode -ne 0) {
-    Write-Bad 'Docker is not running, or is not installed, or you cannot use it.'
-    Write-Note 'Start Docker Desktop and wait for the whale icon to stop animating.'
-    Write-Note 'If it is already running, the message below usually says which of'
-    Write-Note 'the three it is -- "access is denied" means your account is not in'
-    Write-Note 'the local docker-users group, which an administrator has to add'
-    Write-Note 'you to before Docker will talk to you.'
+Write-Host 'Checking for Docker or Podman...'
+$engineFound = Find-SetupEngine
+$containerEngine = $engineFound.Engine
+if (-not $containerEngine) {
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue) -and
+        -not (Get-Command podman -ErrorAction SilentlyContinue)) {
+        Write-Bad 'Neither docker nor podman is installed on this PC.'
+        Write-Note 'Install Docker Desktop, start it, and run this again.'
+        exit 1
+    }
+    Write-Bad 'Docker or Podman is installed but is not answering.'
+    Write-Note 'Start Docker Desktop and wait for the whale icon to stop animating,'
+    Write-Note 'or start the Podman machine with "podman machine start". If it is'
+    Write-Note 'already running, the message below usually says why it did not'
+    Write-Note 'answer -- "access is denied" means your account is not in the local'
+    Write-Note 'docker-users group, which an administrator has to add you to.'
     Write-Host ''
-    Write-Host $dockerInfo.Output
+    Write-Host $engineFound.Output
     exit 1
 }
-$dockerOs = ($dockerInfo.Output -split '\s+')[0]
-if ($dockerOs -eq 'windows') {
-    Write-Bad 'Docker Desktop is in Windows containers mode.'
-    Write-Note 'Alcove and these checks are Linux containers. In this mode the'
-    Write-Note 'engine answers normally and then every container fails to start.'
-    Write-Info ''
-    Write-Info 'Right-click the Docker whale icon in the notification area and'
-    Write-Info 'choose "Switch to Linux containers...", then run this again.'
-    exit 1
+if ($containerEngine -eq 'docker') {
+    $dockerOs = ($engineFound.Output -split '\s+')[0]
+    if ($dockerOs -eq 'windows') {
+        Write-Bad 'Docker Desktop is in Windows containers mode.'
+        Write-Note 'Alcove and these checks are Linux containers. In this mode the'
+        Write-Note 'engine answers normally and then every container fails to start.'
+        Write-Info ''
+        Write-Info 'Right-click the Docker whale icon in the notification area and'
+        Write-Info 'choose "Switch to Linux containers...", then run this again.'
+        exit 1
+    }
+    Write-Good "Docker engine $(($engineFound.Output -split '\s+')[1]) is running."
+} else {
+    Write-Good 'Podman is running.'
 }
-Write-Good "Docker engine $(($dockerInfo.Output -split '\s+')[1]) is running."
 
 # The checks are the image's own -- `alcove doctor` -- run in the same image the
 # exchange itself runs, at the same floating tag. Floating is deliberate: this
@@ -783,14 +852,14 @@ Write-Good "Docker engine $(($dockerInfo.Output -split '\s+')[1]) is running."
 # fetched exits 125, which is indistinguishable from the checks deciding
 # something about the share, and would be reported as a share problem with no
 # diagnosis printed above it.
-$imagePresent = Invoke-Docker -DockerArgs @('image', 'inspect', 'ghcr.io/georgetown-mdi/alcove:latest')
+$imagePresent = Invoke-Docker -Engine $containerEngine -DockerArgs @('image', 'inspect', 'ghcr.io/georgetown-mdi/alcove:latest')
 if ($imagePresent.ExitCode -ne 0) {
     # `pull --quiet` prints nothing until it finishes, so say first how long it
     # takes: an unannounced wait of minutes looks like a hang.
     Write-Host 'Fetching the Alcove image (first run only).'
     Write-Host 'It is a few hundred megabytes -- the same image the exchange itself'
     Write-Host 'runs -- so this can take several minutes with nothing on screen.'
-    $pull = Invoke-Docker -DockerArgs @('pull', '--quiet', 'ghcr.io/georgetown-mdi/alcove:latest')
+    $pull = Invoke-Docker -Engine $containerEngine -DockerArgs @('pull', '--quiet', 'ghcr.io/georgetown-mdi/alcove:latest')
     if ($pull.ExitCode -ne 0) {
         Write-Bad 'Could not fetch the Alcove image the checks run in.'
         Write-Host ''
@@ -840,7 +909,7 @@ if (-not $explicitTarget) {
             Write-Host 'That means you do not need a Docker volume at all -- you can mount'
             Write-Host 'the folder directly. Run your exchange like this:'
             Write-Host ''
-            Write-Host "  docker run --rm ``"
+            Write-Host "  $containerEngine run --rm ``"
             Write-Host "    -v 'C:\path\to\your\work:/work' ``"
             Write-Host "    -v '$($resolved.LocalPath):/sync' ``"
             Write-Host "    ghcr.io/georgetown-mdi/alcove:latest ``"
@@ -955,7 +1024,7 @@ try {
 
         Write-Host 'Running the checks against the server. They take a moment, and'
         Write-Host 'everything they found is printed together when they finish.'
-        $probe = Invoke-Docker -DockerArgs @(
+        $probe = Invoke-Docker -Engine $containerEngine -DockerArgs @(
             'run', '--rm',
             '--env', 'SMB_SERVER', '--env', 'SMB_SHARE', '--env', 'SMB_PATH',
             '--env', 'SMB_USER', '--env', 'SMB_DOMAIN', '--env', 'SMB_PASS',
@@ -963,7 +1032,7 @@ try {
             'ghcr.io/georgetown-mdi/alcove:latest', 'doctor', 'probe')
         Write-Host ''
         Write-Host (Hide-Secret -Text $probe.Output -Secret $credential.Password)
-        Write-DoctorOutcome -ExitCode $probe.ExitCode
+        Write-DoctorOutcome -ExitCode $probe.ExitCode -Engine $containerEngine
         if ($probe.ExitCode -eq 0) { break }
         if ($probe.ExitCode -ne 78) { exit $probe.ExitCode }
 
@@ -1002,7 +1071,7 @@ try {
     $volumeMade = New-ShareVolume -VolumeName $VolumeName `
         -Server $Server -Share $Share -SubPath $SubPath `
         -Username $credential.Username -Password $credential.Password -Domain $credential.Domain `
-        -MountVersion (Get-DialectMountVersion -Dialect $Dialect)
+        -MountVersion (Get-DialectMountVersion -Dialect $Dialect) -Engine $containerEngine
     if (-not $volumeMade) { exit 8 }
 
     # The kernel-side half of the checks, run over the real mount rather than
@@ -1011,7 +1080,7 @@ try {
     # part 3, which is what lets this confirm that the volume and those checks
     # reached the same directory.
     Write-Host 'Mounting it and running the checks over it...'
-    $test = Invoke-Docker -DockerArgs @(
+    $test = Invoke-Docker -Engine $containerEngine -DockerArgs @(
         'run', '--rm', '--env', 'SMB_MARKER', '--env', 'SMB_TOKEN',
         '-v', "${VolumeName}:/rz",
         'ghcr.io/georgetown-mdi/alcove:latest', 'doctor', 'mount', '/rz')
@@ -1052,12 +1121,12 @@ try {
         else {
             Write-Note 'The message Docker printed above is the one to read.'
         }
-        Invoke-Docker -DockerArgs @('volume', 'rm', $VolumeName) | Out-Null
+        Invoke-Docker -Engine $containerEngine -DockerArgs @('volume', 'rm', $VolumeName) | Out-Null
         exit 9
     }
-    Write-DoctorOutcome -ExitCode $test.ExitCode
+    Write-DoctorOutcome -ExitCode $test.ExitCode -Engine $containerEngine
     if ($test.ExitCode -ne 0) {
-        Invoke-Docker -DockerArgs @('volume', 'rm', $VolumeName) | Out-Null
+        Invoke-Docker -Engine $containerEngine -DockerArgs @('volume', 'rm', $VolumeName) | Out-Null
         exit 9
     }
 }
@@ -1078,7 +1147,7 @@ Write-Host 'need to run this script again unless the password changes.'
 Write-Host ''
 Write-Host 'Run your exchange like this:' -ForegroundColor Cyan
 Write-Host ''
-Write-Host "  docker run --rm ``"
+Write-Host "  $containerEngine run --rm ``"
 Write-Host "    -v 'C:\path\to\your\work:/work' ``"
 Write-Host "    -v '${VolumeName}:/sync' ``"
 Write-Host "    ghcr.io/georgetown-mdi/alcove:latest ``"
@@ -1111,7 +1180,7 @@ Write-Host ''
 # names a folder by, and passed to the console because what the container is
 # shown is this script's mount point rather than anything the partner knows.
 $shareFolderName = Get-RendezvousFolderName -Share $Share -SubPath $SubPath
-foreach ($line in (Get-ConsoleCommandLines -VolumeName $VolumeName -RendezvousName $shareFolderName)) {
+foreach ($line in (Get-ConsoleCommandLines -VolumeName $VolumeName -RendezvousName $shareFolderName -Engine $containerEngine)) {
     Write-Host $line
 }
 Write-Host ''
@@ -1121,11 +1190,13 @@ Write-Info 'The console cannot set --lockless-rendezvous. If you were told above
 Write-Info 'that you need it, or this is a synced folder, use the command-line'
 Write-Info 'form instead.'
 Write-Host ''
-Write-Warn "Docker stored the share password in cleartext in this volume's"
-Write-Note "metadata: 'docker volume inspect $VolumeName' shows it to anyone who"
-Write-Note 'can run Docker on this PC. When you are finished:'
+$engineLabel = 'Docker'
+if ($containerEngine -eq 'podman') { $engineLabel = 'Podman' }
+Write-Warn "$engineLabel stored the share password in cleartext in this volume's"
+Write-Note "metadata: '$containerEngine volume inspect $VolumeName' shows it to anyone who"
+Write-Note "can run $engineLabel on this PC. When you are finished:"
 Write-Info ''
-Write-Info "    docker volume rm $VolumeName"
+Write-Info "    $containerEngine volume rm $VolumeName"
 Write-Info ''
 Write-Info 'That removes the volume but not every trace of the password, so'
 Write-Info 'retire or rotate the account when the exchanges are done. The'

@@ -652,6 +652,54 @@ Describe 'Invoke-Docker' {
     }
 }
 
+Describe 'The engine the setup script chooses' {
+    BeforeEach {
+        $script:EnginesAsked = @()
+    }
+
+    It 'chooses podman when docker is not installed' {
+        function Invoke-Docker {
+            param([string[]] $DockerArgs, [string] $Engine)
+            $script:EnginesAsked += "$Engine $($DockerArgs -join ' ')"
+            if ($Engine -eq 'podman') { return @{ Ran = $true; Output = 'podman version 5.1.0'; ExitCode = 0 } }
+            return @{ Ran = $false; Output = "$Engine is not a command on this PC."; ExitCode = 127 }
+        }
+
+        $found = Find-SetupEngine
+
+        $found.Engine | Should -Be 'podman'
+        ($script:EnginesAsked -join '|') |
+            Should -Be 'docker version --format {{.Server.Os}} {{.Server.Version}}|podman version'
+    }
+
+    It 'keeps docker when it answers, without asking podman' {
+        function Invoke-Docker {
+            param([string[]] $DockerArgs, [string] $Engine)
+            $script:EnginesAsked += $Engine
+            return @{ Ran = $true; Output = 'linux 27.1.1'; ExitCode = 0 }
+        }
+
+        $found = Find-SetupEngine
+
+        $found.Engine | Should -Be 'docker'
+        $found.Output | Should -Be 'linux 27.1.1'
+        ($script:EnginesAsked -join ',') | Should -Be 'docker'
+    }
+
+    It 'chooses nothing when neither answers, keeping what the installed one said' {
+        function Invoke-Docker {
+            param([string[]] $DockerArgs, [string] $Engine)
+            if ($Engine -eq 'docker') { return @{ Ran = $true; Output = 'access is denied'; ExitCode = 1 } }
+            return @{ Ran = $false; Output = "$Engine is not a command on this PC."; ExitCode = 127 }
+        }
+
+        $found = Find-SetupEngine
+
+        $found.Engine | Should -BeNullOrEmpty
+        $found.Output | Should -Be 'access is denied'
+    }
+}
+
 Describe 'The setup flow, driven against a stub engine' {
     BeforeAll {
         # Whole engines, each named docker.cmd so the flow's own `docker` calls
@@ -1033,7 +1081,11 @@ Describe 'The setup flow, driven against a stub engine' {
                     first answers, with no lines.
 
                     -EngineStopsAfterStart makes every version query after the
-                    first exit 1, as an engine that stopped mid-run does. #>
+                    first exit 1, as an engine that stopped mid-run does.
+
+                    -EngineName is the command the engine answers as. Any
+                    version query is answered, since podman is asked a bare
+                    one. #>
                 param(
                     [Parameter(Mandatory = $true)][string] $Name,
                     [string[]] $ProbeLines = @(),
@@ -1041,7 +1093,8 @@ Describe 'The setup flow, driven against a stub engine' {
                     [int] $RetriedProbeExit = -1,
                     [string[]] $MountLines = @(),
                     [int] $MountExit = 0,
-                    [switch] $EngineStopsAfterStart
+                    [switch] $EngineStopsAfterStart,
+                    [string] $EngineName = 'docker'
                 )
 
                 $root = Join-Path $script:ReplayRoot $Name
@@ -1064,10 +1117,10 @@ Describe 'The setup flow, driven against a stub engine' {
                         "if exist `"$probedFile`" exit /b $RetriedProbeExit",
                         "type nul >`"$probedFile`"")
                 }
-                Set-Content -LiteralPath (Join-Path $root 'docker.cmd') -Encoding Ascii -Value (@(
+                Set-Content -LiteralPath (Join-Path $root "$EngineName.cmd") -Encoding Ascii -Value (@(
                     '@echo off',
                     '>>"%ALCOVE_STUB_LOG%" echo %*',
-                    'echo %*| findstr /C:"version --format" >nul',
+                    'echo %*| findstr /B /C:"version" >nul',
                     'if not errorlevel 1 goto engineversion',
                     'echo %*| findstr /C:"image inspect" >nul',
                     'if not errorlevel 1 goto succeed',
@@ -1105,6 +1158,19 @@ Describe 'The setup flow, driven against a stub engine' {
                         -InputLines $InputLines)
             }
 
+            function Add-StoppedDocker {
+                <#  A docker that is installed and does not answer, beside a
+                    podman engine and so ahead of any docker the runner has.
+                    Its calls are logged under a prefix of their own. #>
+                param([Parameter(Mandatory = $true)][string] $EngineRoot)
+
+                Set-Content -LiteralPath (Join-Path $EngineRoot 'docker.cmd') -Encoding Ascii -Value @(
+                    '@echo off',
+                    '>>"%ALCOVE_STUB_LOG%" echo docker-stub %*',
+                    'exit /b 1')
+                return $EngineRoot
+            }
+
             # Where part 3 leaves off and the checks' own lines begin, and where
             # part 4 does.
             $script:ProbeLead = @(
@@ -1134,6 +1200,35 @@ Describe 'The setup flow, driven against a stub engine' {
             # The image is present, so nothing has any reason to fetch one.
             $run.Calls | Should -Not -Match 'pull' -Because $run.Calls
             $run.Calls | Should -Not -Match '--json' -Because $run.Calls
+        }
+
+        It 'runs every engine call through podman when docker does not answer' {
+            $run = Invoke-ReplayRun -EngineRoot (Add-StoppedDocker -EngineRoot (
+                    New-ReplayEngine -Name 'podman-all-0' -EngineName 'podman'))
+            $shape = Get-RunShape -Run $run
+            $dockerCalls = @(([string] $run.Calls) -split '\r?\n' | Where-Object { $_ -like 'docker-stub *' })
+
+            $run.TimedOut | Should -BeFalse -Because $shape
+            $run.Exit | Should -Be 0 -Because $shape
+            $run.Output | Should -Match 'Podman is running\.' -Because $shape
+            $run.Output | Should -Match 'Ready to run an exchange' -Because $shape
+            $run.Output | Should -Match 'podman volume rm alcove-sync' -Because $shape
+            # The one question docker was asked is whether it answers.
+            $dockerCalls.Count | Should -Be 1 -Because $run.Calls
+            $dockerCalls[0] | Should -BeLike 'docker-stub version*' -Because $run.Calls
+            $run.Calls | Should -Match 'doctor probe' -Because $run.Calls
+            $run.Calls | Should -Match 'doctor mount' -Because $run.Calls
+        }
+
+        It 'names Podman when the checks ended with 1 and podman no longer answers' {
+            $run = Invoke-ReplayRun -EngineRoot (Add-StoppedDocker -EngineRoot (
+                    New-ReplayEngine -Name 'podman-probe-1-stopped' -EngineName 'podman' -ProbeExit 1 -EngineStopsAfterStart))
+
+            Assert-SetupEndsWith -Run $run -Exit 1 -Screen @(
+                '',
+                '  FAIL  Podman stopped during the checks.',
+                '        Start the Podman machine with "podman machine start", and run',
+                '        this script again.')
         }
 
         It 'shows a battery that is not ready whole, then offers the sign-in again with no as the default' {

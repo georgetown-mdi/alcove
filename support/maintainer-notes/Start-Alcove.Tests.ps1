@@ -1,8 +1,9 @@
 <#
 .SYNOPSIS
     Pester suite over Start-Alcove.ps1 -- the release stamp, the registry
-    order, the console's argument vector, the pair of folders, and the screens
-    and prompts it puts under each exit code of the image's checks.
+    order, the engine it chooses, the console's argument vector, the pair of
+    folders, and the screens and prompts it puts under each exit code of the
+    image's checks.
     Maintainer-facing: it lives outside the guide folder, and an operator
     following the setup page never receives it.
 
@@ -463,6 +464,80 @@ Describe 'The Docker wrappers' {
     }
 }
 
+Describe 'The engine the launcher chooses' {
+    BeforeAll {
+        function Get-ChoiceScreen {
+            param($Output)
+            return (@($Output | Where-Object { $_ -is [System.Management.Automation.InformationRecord] } |
+                        ForEach-Object { ([string] $_).TrimEnd() }) -join "`n")
+        }
+    }
+
+    BeforeEach {
+        $script:EnginesAsked = @()
+    }
+
+    It 'chooses podman when docker is not installed' {
+        function Invoke-EngineQuiet {
+            param([string[]] $EngineArgs, [string] $Engine)
+            $script:EnginesAsked += $Engine
+            if ($Engine -eq 'podman') { return @{ Ran = $true; Output = ''; ExitCode = 0 } }
+            return @{ Ran = $false; Output = "$Engine is not a command on this PC."; ExitCode = 127 }
+        }
+
+        Find-ContainerEngine | Should -Be 'podman'
+        ($script:EnginesAsked -join ',') | Should -Be 'docker,podman'
+    }
+
+    It 'chooses podman when docker is installed but does not answer' {
+        function Invoke-EngineQuiet {
+            param([string[]] $EngineArgs, [string] $Engine)
+            $script:EnginesAsked += $Engine
+            if ($Engine -eq 'podman') { return @{ Ran = $true; Output = ''; ExitCode = 0 } }
+            return @{ Ran = $true; Output = 'error during connect: is the docker daemon running?'; ExitCode = 1 }
+        }
+
+        Find-ContainerEngine | Should -Be 'podman'
+        ($script:EnginesAsked -join ',') | Should -Be 'docker,podman'
+    }
+
+    It 'keeps docker when it answers, without asking podman' {
+        function Invoke-EngineQuiet {
+            param([string[]] $EngineArgs, [string] $Engine)
+            $script:EnginesAsked += $Engine
+            return @{ Ran = $true; Output = ''; ExitCode = 0 }
+        }
+
+        Find-ContainerEngine | Should -Be 'docker'
+        ($script:EnginesAsked -join ',') | Should -Be 'docker'
+    }
+
+    It 'skips an engine that is not there rather than choosing it' {
+        Find-ContainerEngine -Candidates @('alcove-no-such-engine') | Should -BeNullOrEmpty
+    }
+
+    It 'says neither engine is installed when neither is' {
+        function Test-EngineCommand { param([string] $Engine) return $false }
+
+        $screen = Get-ChoiceScreen @(Show-NoEngine 6>&1)
+
+        $screen | Should -BeExactly (@(
+                '  FAIL  Neither docker nor podman is installed on this PC.',
+                '        Install Docker Desktop, start it, and run this again.') -join "`n")
+    }
+
+    It 'names the Podman machine when podman alone is installed and does not answer' {
+        function Test-EngineCommand { param([string] $Engine) return ($Engine -eq 'podman') }
+
+        $screen = Get-ChoiceScreen @(Show-NoEngine 6>&1)
+
+        $screen | Should -BeExactly (@(
+                '  FAIL  Podman is installed but is not answering.',
+                '        Start the Podman machine with "podman machine start", and run',
+                '        this again.') -join "`n")
+    }
+}
+
 Describe 'The console argument vector' {
     It 'publishes to host loopback and keeps nothing' {
         $engineArgs = Get-ConsoleEngineArgs -ContainerName 'alcove-console-1' -ConsolePort 3000 `
@@ -851,7 +926,7 @@ Describe 'What the launcher prints under the checks' {
             $script:StagedRun = @{ Ran = $true; Output = ($Lines -join [Environment]::NewLine); ExitCode = $ExitCode }
             $script:StagedVersion = @{ Ran = $true; Output = ''; ExitCode = $EngineVersionExit }
             function Invoke-EngineQuiet {
-                param([string[]] $EngineArgs)
+                param([string[]] $EngineArgs, [string] $Engine)
                 if ($EngineArgs[0] -eq 'version') { return $script:StagedVersion }
                 return $script:StagedRun
             }
@@ -941,6 +1016,24 @@ Describe 'What the launcher prints under the checks' {
                     '        and run this script again.')) -join "`n")
     }
 
+    It 'names Podman when the run ended with 1 and podman no longer answers' {
+        $script:AlcoveEngine = 'podman'
+        try {
+            $run = Invoke-StagedBattery -Lines @('Error: unable to connect to Podman socket') -ExitCode 1 -EngineVersionExit 1
+        } finally {
+            $script:AlcoveEngine = 'docker'
+        }
+
+        $run.Code | Should -Be 1
+        $run.Screen | Should -BeExactly (($script:BatteryLead + @(
+                    'Error: unable to connect to Podman socket',
+                    '',
+                    '  FAIL  Podman stopped during the checks.',
+                    '        Start the Podman machine with "podman machine start", and run',
+                    '        this script again.')) -join "`n")
+        $run.Screen | Should -Not -Match 'Docker'
+    }
+
     It 'keeps the unknown-code text for a code of 1 while the engine answers' {
         $run = Invoke-StagedBattery -ExitCode 1 -EngineVersionExit 0
 
@@ -967,6 +1060,22 @@ Describe 'What the launcher prints under the checks' {
         $run.Code | Should -Be 125
         $run.Screen | Should -Not -Match 'hunter2'
         $run.Screen | Should -Match 'username=alcoveci,password=<password removed>: permission denied'
+    }
+
+    It 'leaves no part of a held password with a comma in it, and marks it once' {
+        $script:AlcoveShareCredential = @{ Username = 'alcoveci'; Domain = ''; Password = 'hun,ter2' }
+        try {
+            $text = Hide-ShareSecrets (
+                'docker: Error response from daemon: failed to mount local volume: data: vers=3.1.1,username=alcoveci,password=hun,ter2,uid=1000: invalid argument.')
+        } finally {
+            $script:AlcoveShareCredential = $null
+        }
+
+        $text | Should -Not -Match 'hun'
+        $text | Should -Not -Match 'ter2'
+        [regex]::Matches($text, '<password removed>').Count | Should -Be 1
+        $text | Should -BeExactly (
+            'docker: Error response from daemon: failed to mount local volume: data: vers=3.1.1,username=alcoveci,password=<password removed>,uid=1000: invalid argument.')
     }
 
     It 'leaves the share password out of a console that would not start, once none is held' {

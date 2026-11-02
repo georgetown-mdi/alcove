@@ -4,9 +4,10 @@
     an exchange.
 
 .DESCRIPTION
-    You have Docker and a folder or two. This picks the folders, works out what
-    Docker has to be told about them, checks them with the container's own
-    checks, starts the console and opens it.
+    You have Docker Desktop or Podman and a folder or two. This picks the
+    folders, works out what the engine has to be told about them, checks them
+    with the container's own checks, starts the console and opens it. It runs
+    docker when docker answers, and podman otherwise.
 
     Some partners share one folder with you; others name two, one they write
     into for you to read and one you write into for them. Both are asked for
@@ -82,6 +83,10 @@ $AlcoveTroubleshootingUrl = 'https://github.com/georgetown-mdi/alcove/blob/main/
 # written into it is what tells the two apart.
 $AlcoveMarkerName = 'alcove-setup-check.tmp'
 
+# The engine every command below runs: docker until the preflight has chosen
+# one, and podman when docker is not installed or does not answer.
+$script:AlcoveEngine = 'docker'
+
 # The share credential this run has already been given, and the server it was
 # given for. A second share on that server offers this answer rather than
 # asking for the same one twice, and Clear-ShareCredential drops both at every
@@ -153,14 +158,16 @@ function Hide-ShareSecrets {
         password there only as far as the next comma. The password this run
         holds is replaced literally, never through a pattern built from it; a
         password= option is replaced whatever its value, which also covers the
-        runs that have already dropped the held one. #>
+        runs that have already dropped the held one. The pattern skips a value
+        the literal replacement already made the placeholder, whose space
+        would otherwise end the match inside it. #>
     param([string] $Output)
 
     $text = [string] $Output
     $password = ''
     if ($script:AlcoveShareCredential) { $password = [string] $script:AlcoveShareCredential.Password }
     if ($password) { $text = $text.Replace($password, '<password removed>') }
-    return [regex]::Replace($text, '(?i)password=[^,\s"'']*', 'password=<password removed>')
+    return [regex]::Replace($text, '(?i)password=(?!<password removed>)[^,\s"'']*', 'password=<password removed>')
 }
 
 function Show-DoctorLines {
@@ -207,9 +214,7 @@ function Show-DoctorOutcome {
         }
         default {
             if (-not (Test-EngineAnswers)) {
-                Show-Fail 'Docker stopped during the checks.'
-                Show-Note 'Start Docker Desktop, wait for the whale icon to stop animating,'
-                Show-Note 'and run this script again.'
+                Show-EngineStopped
                 return
             }
             Show-Fail "The checks ended with exit $ExitCode, which this launcher does not know."
@@ -306,14 +311,17 @@ function Invoke-EnginePull {
         control bytes blanked since a registry wrote some of it, and returning
         it in the shape Invoke-EngineQuiet does. The stderr redirect runs with
         the preference relaxed, for the reason Invoke-EngineQuiet gives. #>
-    param([Parameter(Mandatory = $true)][string] $Reference)
+    param(
+        [Parameter(Mandatory = $true)][string] $Reference,
+        [string] $Engine = $script:AlcoveEngine
+    )
 
-    if (-not (Test-DockerCommand)) { return (New-AbsentDockerResult) }
+    if (-not (Test-EngineCommand -Engine $Engine)) { return (New-AbsentEngineResult -Engine $Engine) }
 
     $previous = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        $lines = & docker pull $Reference 2>&1 | ForEach-Object {
+        $lines = & $Engine pull $Reference 2>&1 | ForEach-Object {
             $line = Hide-ShareSecrets "$_"
             Show-FromContainer $line
             $line
@@ -376,24 +384,42 @@ function Find-AlcoveImage {
 }
 
 # ==========================================================================
-# Docker
+# The container engine
 # ==========================================================================
 
-function Test-DockerCommand {
-    return [bool](Get-Command docker -ErrorAction SilentlyContinue)
+function Test-EngineCommand {
+    <#  Whether a name is a command this session can run. An empty name is
+        answered here rather than passed on: Get-Command refuses one while its
+        parameters are being bound, which -ErrorAction cannot soften. #>
+    param([string] $Engine = $script:AlcoveEngine)
+
+    if ([string]::IsNullOrWhiteSpace($Engine)) { return $false }
+    return [bool](Get-Command $Engine -ErrorAction SilentlyContinue)
 }
 
-function New-AbsentDockerResult {
-    <#  The answer the two wrappers give when docker is not there, in the shape
-        a run of it returns. #>
-    return @{ Ran = $false; Output = 'docker is not a command on this PC.'; ExitCode = 127 }
+function New-AbsentEngineResult {
+    <#  The answer the two wrappers give for an engine that is not there, in
+        the shape a run of one returns. #>
+    param([string] $Engine = $script:AlcoveEngine)
+
+    $named = $Engine
+    if ([string]::IsNullOrWhiteSpace($named)) { $named = '(no engine)' }
+    return @{ Ran = $false; Output = "$named is not a command on this PC."; ExitCode = 127 }
+}
+
+function Get-EngineLabel {
+    <#  The engine's name as a sentence names it. #>
+    param([string] $Engine = $script:AlcoveEngine)
+
+    if ($Engine -eq 'podman') { return 'Podman' }
+    return 'Docker'
 }
 
 function Invoke-EngineQuiet {
-    <#  Run docker and return whether it ran at all, its combined output, and
-        its exit code.
+    <#  Run the engine and return whether it ran at all, its combined output,
+        and its exit code.
 
-        Docker is never called with a bare "2>&1" outside this function,
+        The engine is never called with a bare "2>&1" outside this function,
         because Windows PowerShell 5.1 turns every stderr line of a native
         program into an ErrorRecord when its stderr is redirected -- and this
         script runs with $ErrorActionPreference = 'Stop', which makes that
@@ -404,25 +430,28 @@ function Invoke-EngineQuiet {
         message, because the record's ToString() answers an empty line with
         the exception's type name, and the doctor's lines include blank ones.
 
-        Docker missing from this PC is answered here rather than called:
+        An engine missing from this PC is answered here rather than called:
         calling it raises CommandNotFoundException, which the relaxed
         preference does not soften and nothing here catches. Ran is what tells
-        that apart from a docker that ran and exited: 127 is the shell
+        that apart from an engine that ran and exited: 127 is the shell
         convention for a command that is not there, and a container that exits
         127 reports the same code.
 
         The arguments are one explicit array rather than loose trailing words: a
         function that collects remaining arguments is an advanced function, so
-        PowerShell binds docker's own short flags to the common parameters
-        first and "-v" becomes -Verbose instead of reaching docker. #>
-    param([Parameter(Mandatory = $true)][string[]] $EngineArgs)
+        PowerShell binds the engine's own short flags to the common parameters
+        first and "-v" becomes -Verbose instead of reaching the engine. #>
+    param(
+        [Parameter(Mandatory = $true)][string[]] $EngineArgs,
+        [string] $Engine = $script:AlcoveEngine
+    )
 
-    if (-not (Test-DockerCommand)) { return (New-AbsentDockerResult) }
+    if (-not (Test-EngineCommand -Engine $Engine)) { return (New-AbsentEngineResult -Engine $Engine) }
 
     $previous = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        $lines = & docker @EngineArgs 2>&1 | ForEach-Object {
+        $lines = & $Engine @EngineArgs 2>&1 | ForEach-Object {
             if ($_ -is [System.Management.Automation.ErrorRecord]) { [string] $_.Exception.Message }
             else { "$_" }
         }
@@ -432,19 +461,77 @@ function Invoke-EngineQuiet {
 
 function Test-WindowsContainerMode {
     <#  Whether Docker Desktop is serving Windows containers, in which the engine
-        answers normally and then every Linux container fails to start. #>
+        answers normally and then every Linux container fails to start. Asked of
+        docker alone: {{.Server.Os}} is docker's own template field, and
+        podman's have not been tried here. #>
+    param([string] $Engine = $script:AlcoveEngine)
 
-    $probe = Invoke-EngineQuiet -EngineArgs @('version', '--format', '{{.Server.Os}}')
+    if ($Engine -ne 'docker') { return $false }
+    $probe = Invoke-EngineQuiet -Engine $Engine -EngineArgs @('version', '--format', '{{.Server.Os}}')
     if ($probe.ExitCode -ne 0) { return $false }
     return ($probe.Output.Trim() -eq 'windows')
 }
 
 function Test-EngineAnswers {
-    <#  Whether the engine answers the version query the start-up check makes.
-        A docker run against a stopped engine exits 1, which says nothing by
-        itself about whether the engine is up. #>
+    <#  Whether the engine answers a bare "version", which both engines answer
+        and which needs the engine running: a run against a stopped engine
+        exits 1, which says nothing by itself about whether the engine is up. #>
+    param([string] $Engine = $script:AlcoveEngine)
 
-    return ((Invoke-EngineQuiet -EngineArgs @('version')).ExitCode -eq 0)
+    return ((Invoke-EngineQuiet -Engine $Engine -EngineArgs @('version')).ExitCode -eq 0)
+}
+
+function Find-ContainerEngine {
+    <#  docker first, podman second. An engine counts only when it answers: a
+        docker on PATH that cannot reach its engine is the ordinary "Docker
+        Desktop is not started yet" case, and must not be chosen over a podman
+        that works. Returns the engine's name, or an empty string. #>
+    param([string[]] $Candidates = @('docker', 'podman'))
+
+    foreach ($candidate in $Candidates) {
+        if (Test-EngineAnswers -Engine $candidate) { return $candidate }
+    }
+    return ''
+}
+
+function Show-NoEngine {
+    <#  Why no engine was chosen: neither is installed, or each one that is
+        did not answer. #>
+
+    $dockerInstalled = Test-EngineCommand -Engine 'docker'
+    $podmanInstalled = Test-EngineCommand -Engine 'podman'
+    if (-not $dockerInstalled -and -not $podmanInstalled) {
+        Show-Fail 'Neither docker nor podman is installed on this PC.'
+        Show-Note 'Install Docker Desktop, start it, and run this again.'
+        return
+    }
+    if ($dockerInstalled) {
+        Show-Fail 'Docker is installed but is not answering.'
+        Show-Note 'Start Docker Desktop and wait for the whale icon to stop'
+        Show-Note 'animating. "Access is denied" instead means your account is'
+        Show-Note 'not in the local docker-users group, which an administrator'
+        Show-Note 'has to add you to.'
+    }
+    if ($podmanInstalled) {
+        Show-Fail 'Podman is installed but is not answering.'
+        Show-Note 'Start the Podman machine with "podman machine start", and run'
+        Show-Note 'this again.'
+    }
+}
+
+function Show-EngineStopped {
+    <#  What to say when the engine stopped answering during a run of the
+        checks: whatever they printed is not about the folder. #>
+    param([string] $Engine = $script:AlcoveEngine)
+
+    Show-Fail "$(Get-EngineLabel -Engine $Engine) stopped during the checks."
+    if ($Engine -eq 'podman') {
+        Show-Note 'Start the Podman machine with "podman machine start", and run'
+        Show-Note 'this script again.'
+        return
+    }
+    Show-Note 'Start Docker Desktop, wait for the whale icon to stop animating,'
+    Show-Note 'and run this script again.'
 }
 
 # ==========================================================================
@@ -664,7 +751,8 @@ function New-RendezvousShareMount {
         Show-Head "Creating the network-share volume '$VolumeName'"
         $volumeMade = New-ShareVolume -VolumeName $VolumeName `
             -Server $Server -Share $Share -SubPath $SubPath `
-            -Username $credential.Username -Password $plainPass -Domain $credential.Domain
+            -Username $credential.Username -Password $plainPass -Domain $credential.Domain `
+            -Engine $script:AlcoveEngine
         if (-not $volumeMade) { return @{ Mounted = $false; VolumeName = '' } }
 
         foreach ($leg in $Legs) {
@@ -718,16 +806,17 @@ function Show-VolumeRemoval {
     if (@($VolumeNames).Count -eq 0) { return }
 
     $volumeList = $VolumeNames -join ' '
-    $storedLine = "Docker stored the share password in cleartext in the volume's"
+    $label = Get-EngineLabel
+    $storedLine = "$label stored the share password in cleartext in the volume's"
     if (@($VolumeNames).Count -gt 1) {
-        $storedLine = "Docker stored the share password in cleartext in each volume's"
+        $storedLine = "$label stored the share password in cleartext in each volume's"
     }
     Write-Host ''
     Show-Alert $storedLine
-    Show-Note "metadata: 'docker volume inspect $volumeList' shows it"
-    Show-Note 'to anyone who can run Docker on this PC. When you are finished:'
+    Show-Note "metadata: '$script:AlcoveEngine volume inspect $volumeList' shows it"
+    Show-Note "to anyone who can run $label on this PC. When you are finished:"
     Show-Info ''
-    Show-Info "    docker volume rm $volumeList"
+    Show-Info "    $script:AlcoveEngine volume rm $volumeList"
     Show-Info ''
     Show-Info 'That removes what it names but not every trace of the password, so'
     Show-Info 'retire or rotate the account when the exchanges are done. The'
@@ -1097,18 +1186,9 @@ if (-not (Assert-AlcoveImageStamp)) { exit 1 }
 $repositoryCandidates = Get-RepositoryCandidates
 if (-not $repositoryCandidates.Ok) { exit 1 }
 
-if (-not (Test-DockerCommand)) {
-    Show-Fail 'Docker is not installed on this PC.'
-    Show-Note 'Install Docker Desktop, start it, and run this again.'
-    exit 1
-}
-$dockerVersion = Invoke-EngineQuiet -EngineArgs @('version')
-if ($dockerVersion.ExitCode -ne 0) {
-    Show-Fail 'Docker is installed but is not answering.'
-    Show-Note 'Start Docker Desktop and wait for the whale icon to stop'
-    Show-Note 'animating. "Access is denied" instead means your account is'
-    Show-Note 'not in the local docker-users group, which an administrator'
-    Show-Note 'has to add you to.'
+$script:AlcoveEngine = Find-ContainerEngine
+if (-not $script:AlcoveEngine) {
+    Show-NoEngine
     exit 1
 }
 if (Test-WindowsContainerMode) {
@@ -1120,7 +1200,7 @@ if (Test-WindowsContainerMode) {
     Show-Info 'choose "Switch to Linux containers...", then run this again.'
     exit 1
 }
-Show-Ok 'Docker is running.'
+Show-Ok "Using $script:AlcoveEngine."
 if (-not (Find-AlcoveImage -Repositories $repositoryCandidates.Repositories)) { exit 1 }
 
 # Setup-AlcoveFileDrop.ps1 owns the Explorer-path-to-server-and-share
@@ -1354,7 +1434,7 @@ if ($splitRendezvous) {
 
 if ($rendezvousResolved.Kind -eq 'Network' -or $outboundResolved.Kind -eq 'Network') {
     if ($splitRendezvous) { Show-Head 'Part 2: the network folders' } else { Show-Head 'Part 2: the network folder' }
-    Write-Host 'Docker cannot open a network folder directly -- its engine runs in'
+    Write-Host "$(Get-EngineLabel) cannot open a network folder directly -- its engine runs in"
     Write-Host 'a Linux virtual machine that cannot see Windows drive letters or'
     Write-Host 'network paths. It has to be given the server and share instead, and'
     Write-Host 'a username and password of its own to reach them with.'
@@ -1478,7 +1558,7 @@ try {
         if (-not $NoBrowser) { Start-Process $url | Out-Null }
         Write-Host ''
         Show-Info 'Leave this window open while you use it.'
-        Show-Info "If it closes without stopping the console, run: docker stop $containerName"
+        Show-Info "If it closes without stopping the console, run: $script:AlcoveEngine stop $containerName"
     } else {
         Show-Fail "Nothing answered on $url."
         Write-Host ''
