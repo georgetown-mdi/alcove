@@ -2096,6 +2096,7 @@ Describe 'The Windows-containers refusal, against this PC''s own engine' {
 
     It 'refuses at its preflight and leaves the volumes as they were' {
         if ($script:NoWindowsEngine) {
+            if ($env:GITHUB_ACTIONS -eq 'true') { throw $script:NoWindowsEngine }
             Set-ItResult -Skipped -Because $script:NoWindowsEngine
             return
         }
