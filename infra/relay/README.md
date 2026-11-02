@@ -793,10 +793,10 @@ TCP to coturn on loopback, which opens no TLS listener and holds no key.
   or 512 registrar clients. That is the bound on the front's
   memory: each TURN client holds the TURN server's TLS session and a buffer
   each way on two hops, which the host run reads under load
-  (below). The instance has 412 MB and no headroom (a full `npm ci` there
+  (below). The instance has no headroom (a full `npm ci` there
   OOM-killed coturn). On the project's host, without a registrar and without
-  the TURN server, the front's cgroup measured 8.08 MB and `free` reported
-  20 MB less available memory, mostly page cache, with no out-of-memory kill.
+  the TURN server, the front's cgroup measured 8.08 MB, with no
+  out-of-memory kill.
   `install.sh` adds disk swap for dnf's runs; see [OS updates](#os-updates).
   These are working values in `front.conf.tmpl`, raised on request.
 - **Measuring the front's memory.** On a docker host the container's cgroup
@@ -939,13 +939,11 @@ stops and disables it where that is unset.
   [WEBSOCKET_RELAY.md, The key table](../../docs/spec/WEBSOCKET_RELAY.md#the-key-table)
   names, each limited to one a minute; a fault about one exchange's key
   names that exchange's id.
-- **Memory.** On the project's host, which has 412 MB, the relay's
+- **Memory.** The unit sets a resource limit on the relay and systemd
+  restarts it on failure. On the project's host, the relay's
   resident set peaked at about 81 MB and its cgroup at about 94 MiB through
-  `verify.sh` on 2026-10-19. Available memory was 129 MB before the relay
-  started and 103 MB at the lowest, 24 seconds after the start, against the
-  installer's 64 MB floor ([The 443 front](#the-443-front), Connections and
-  memory). The resident set falls once the relay is idle, because the kernel
-  swaps part of it, so the peak is the figure. In the development container
+  `verify.sh` on 2026-10-19. The resident set falls once the relay is idle,
+  because the kernel swaps part of it, so the peak is the figure. In the development container
   its resident set peaked at 77 MB on one pairing at its full byte rate
   ([web-websocket-transport.md, S3](../../docs/notes/web-websocket-transport.md#the-spikes)).
 - **Restarts.** Every `install.sh` run on a host that names the relay
@@ -1166,8 +1164,8 @@ both left. A failed upgrade fails `alcove-relay-os-update.service`
 (`journalctl -u alcove-relay-os-update.service`), and a relay it broke fails
 `alcove-relay-verify.service`.
 
-**The swapfile.** dnf needs more memory than a 412 MB instance has: on the
-project's t4g.nano with only Amazon Linux 2023's zram swap, reading the newest
+**The swapfile.** dnf needs more memory than the instance has: on the
+project's host with only Amazon Linux 2023's zram swap, reading the newest
 release's package metadata ran out of memory, and the out-of-memory killer
 stopped the relay and the broker. So `install.sh`, on every distribution, adds
 a disk swapfile before it installs anything:
@@ -1185,7 +1183,7 @@ a disk swapfile before it installs anything:
   nothing but a missing `/etc/fstab` line for a file that is in use as swap,
   and logs its `swapon --show` line, or warns when it is not in use.
 
-**Measured.** On the project's host, a t4g.nano with a 1024 MB swapfile, on
+**Measured.** On the project's host, with a 1024 MB swapfile, on
 2026-10-13:
 
 - The upgrade, run through `alcove-relay-os-update.service`, took 23 min 17 s

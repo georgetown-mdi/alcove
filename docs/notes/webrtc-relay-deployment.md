@@ -388,7 +388,7 @@ connection idle for ten minutes, a browser acceptor, a network admitting TCP to
 443 only, or a scheduled liveness probe.
 
 Two operational facts came with the 2026-10-03 run. The relay instance is a
-t4g.nano with 412 MB, which carried coturn, the broker and nginx with no
+t4g.nano, which carried coturn, the broker and nginx with no
 headroom. A full-workspace `npm ci` on it OOM-killed coturn (restarted by systemd in about
 8 s), so any install there must be scoped to the broker workspace or built
 elsewhere.
@@ -530,7 +530,7 @@ Not measured, and so owed before the front is called deployed:
 tsx's loader, rather than `npm start`, which runs npm, tsx's own process and
 then node ([`infra/relay/README.md`, The WebSocket
 relay](../../infra/relay/README.md#the-websocket-relay)). The reason is
-memory on a host of 412 MB:
+memory on the project's host:
 
 - idle, three starts of each in the development container on 2026-10-19
   (x86-64, Node 26.12.0);
@@ -538,9 +538,7 @@ memory on a host of 412 MB:
 - the unit's form held about 82 MB, tsx's esbuild service included.
 
 On the project's host, through `verify.sh` on 2026-10-19, the relay's
-resident set peaked at about 81 MB and its cgroup at about 94 MiB. Available
-memory fell from 129 MB to 103 MB at the lowest, of the host's 412 MB, and the
-installer's 64 MB floor passed.
+resident set peaked at about 81 MB and its cgroup at about 94 MiB.
 
 ## The proposed epic
 
