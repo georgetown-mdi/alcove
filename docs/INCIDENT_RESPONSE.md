@@ -27,7 +27,7 @@ gh api repos/georgetown-mdi/alcove/private-vulnerability-reporting
 
 The answer must be `{"enabled":true}`. If it is not, enable private vulnerability reporting in the repository's security settings.
 
-**Release credentials are reachable.** Either of two people can ship a hotfix. The maintainer and the co-owner each hold an SSH signing key listed in `allowed_signers` ([RELEASES.md#source-integrity](RELEASES.md#source-integrity)), and each one's GitHub account is on the bypass list of the "Protect release tags" ruleset ([RELEASES.md#7-tag-the-release](RELEASES.md#7-tag-the-release)), so either can push a signed release tag. Confirm both. The registry logins belong to the release workflow: the ghcr.io push uses the workflow's own token, and the Docker Hub copy uses a personal access token created on the `vdorie` account, stored in the `Release` environment's secrets, which only a release tag can reach. That token expires on 2027-10-30, and once it lapses the Docker Hub copy fails in every release until it is replaced ([RELEASES.md#the-docker-hub-copy](RELEASES.md#the-docker-hub-copy)).
+**Release credentials are reachable.** Either of two people can ship a hotfix. The maintainer and the co-owner each hold an SSH signing key listed in `allowed_signers` ([RELEASES.md#source-integrity](RELEASES.md#source-integrity)), and each one's GitHub account is on the bypass list of the "Protect release tags" ruleset ([RELEASES.md#7-tag-the-release](RELEASES.md#7-tag-the-release)), so either can push a signed release tag. Confirm both. The registry logins belong to the release workflow: the ghcr.io push uses the workflow's own token, and the Docker Hub copy uses a personal access token created on the `vdorie` account, stored in the `Release` environment's secrets, which only a release tag can reach. That token expires on 2027-10-30, and once it lapses the Docker Hub copy fails in every release until it is replaced ([RELEASES.md#the-docker-hub-copy](RELEASES.md#the-docker-hub-copy)). The release jobs also log in to Docker Hub with a read-only pull token that expires too, and once it lapses the login step fails in every job that has it, a release included ([RELEASES.md#8-build-and-publish-the-container-image-ci](RELEASES.md#8-build-and-publish-the-container-image-ci)).
 
 **Someone besides the maintainer sees a report arrive.** Confirm the co-owner holds an account with admin access to the repository and that its security notifications reach them.
 
@@ -131,7 +131,7 @@ In order:
 3. **Reach the maintainer** through the routes the organization keeps for this, and get an expected return date.
 4. **Tell the reporter what is actually true** as soon as the 15-business-day triage target looks unreachable: the technical owner is unavailable, here is the date they return, here is when a verdict follows.
 5. **Bring in technical help only if waiting is not viable** -- the report suggests active exploitation, or the absence will outrun the 90-day window. Use someone the organization already trusts with a private disclosure, and scope them to assessing severity, not to shipping a fix.
-6. **Do not** tag or publish a release except by the [co-owner hotfix](#co-owner-hotfix), and do not publish an advisory or request a CVE.
+6. **Do not** tag or publish a release, publish an advisory, or request a CVE, except by the [co-owner hotfix](#co-owner-hotfix).
 
 Acknowledgement template:
 
@@ -149,7 +149,7 @@ I will escalate immediately.
 
 ### Co-owner hotfix
 
-The co-owner can ship a fix without the maintainer. Branch from the affected release tag, apply the fix, and follow [RELEASES.md#hotfix-releases](RELEASES.md#hotfix-releases) for the release steps as written. At the tag step, sign the tag with your own SSH key, whose fingerprint is listed in [RELEASES.md#source-integrity](RELEASES.md#source-integrity), and push it: the release workflow runs on that push and needs no approval from the maintainer.
+The co-owner can ship a fix without the maintainer when waiting is not viable, as step 5 above defines it. Branch from the affected release tag, apply the fix, and follow [RELEASES.md#hotfix-releases](RELEASES.md#hotfix-releases) for the release steps, except that the review before merging is waived on this path: say so in the pull request. Opening that pull request is the disclosure, so merge, tag, release and publish the advisory in one sitting, as [4. Fix privately, then release](#4-fix-privately-then-release) and [5. Draft the advisory and request a CVE](#5-draft-the-advisory-and-request-a-cve) set out. At the tag step, sign the tag with your own SSH key, whose fingerprint is listed in [RELEASES.md#source-integrity](RELEASES.md#source-integrity), with git set to sign with it in that clone (`git config gpg.format ssh` and `git config user.signingkey <path to the key>`), and push it: the release workflow runs on that push and needs no approval from the maintainer.
 
 ## Exercise record
 
