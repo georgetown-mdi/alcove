@@ -118,10 +118,12 @@ export function assertStandardizationMatchesTerms(
 
 /**
  * Refuse a per-(record, key) candidate set (a fan-out, a fuzzy expansion or a
- * `swap`) under `psi-c` or a strategy that resolves none, before matching
- * (docs/spec/PROTOCOL.md#the-combinations-that-stay-unsupported). Runs where
- * terms are authored or minted, at prepare, and at the run boundary; a parse
- * already refuses the terms half ({@link termsCandidateSetRefusal}).
+ * `swap`) under a strategy that resolves none, and a fan-out this party's own
+ * standardization declares under `psi-c`, before matching
+ * (docs/spec/PROTOCOL.md#the-combinations-that-stay-unsupported, and Refusals
+ * under count-only). Runs where terms are authored or minted, at prepare, and
+ * at the run boundary; a parse already refuses the terms half
+ * ({@link termsCandidateSetRefusal}).
  *
  * The local standardization half is refused here because a partner cannot
  * derive it. It throws {@link OperatorConfigError}, since no invitation contains a
@@ -141,7 +143,7 @@ export function assertFanOutImplemented(
     if (declared !== undefined)
       throw new OperatorConfigError(
         countOnly
-          ? COUNT_ONLY_SHAPE_REFUSALS.candidateSet
+          ? COUNT_ONLY_SHAPE_REFUSALS.standardizationFanOut
           : fanOutDeclaredMessage(declared),
       );
   }

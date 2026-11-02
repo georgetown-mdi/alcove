@@ -15,6 +15,7 @@ import {
   runsSinglePassLink,
   sanitizeForDisplay,
   summarizeInvitation,
+  termsDeclareCandidateSet,
 } from "@alcove/core";
 
 import { isolatedColumnName } from "@components/ColumnName";
@@ -538,6 +539,9 @@ function answersDisclosures(terms: LinkageTerms): {
           COUNT_ONLY_DISCLOSURE_STATEMENT,
           CONSENT_FACTS.countOnlyResult.note,
           CONSENT_FACTS.countOnlyRoundDisclosures.note,
+          ...(termsDeclareCandidateSet(terms)
+            ? [CONSENT_FACTS.countOnlyCandidateSets.note]
+            : []),
           CONSENT_FACTS.countOnlyInputChoice.note,
         ].map((statement) => ({ statement }))
       : [],

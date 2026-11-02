@@ -11,10 +11,10 @@ import {
   assertBothSidedDeduplicateImplemented,
   assertCountOnlyTermsShape,
   assertDeduplicateImplemented,
-  candidateSetIsImplementedForStrategy,
   COUNT_ONLY_SHAPE_REFUSALS,
   resolvedMatchingFromTerms,
   runsSinglePassLink,
+  termsResolveCandidateSets,
 } from "./linkageTermsPolicy.js";
 import { getDefaultLinkageTerms } from "./defaults/builtInLinkageTerms.js";
 import { quoteTermsValue } from "./config/compatibilityMessage.js";
@@ -402,9 +402,11 @@ export function matchedPairCount(associationTable: AssociationTable): number {
 /**
  * Refuse agreed terms that declare a per-record candidate width
  * ({@link partyFansOut}) under a combination with no resolution for one,
- * before anything goes on the wire: a `linkage_strategy` off the
- * candidate-set allowlist, or the count-only algorithm
- * (docs/spec/PROTOCOL.md, The combinations that stay unsupported).
+ * before anything goes on the wire: a `psi` exchange whose
+ * `linkage_strategy` is off the candidate-set allowlist
+ * (docs/spec/PROTOCOL.md, The combinations that stay unsupported). A
+ * count-only exchange resolves every declared width
+ * ({@link termsResolveCandidateSets}).
  *
  * The numeric reading of what `assertFanOutImplemented` refuses structurally,
  * kept beside it so a width the derivation produces and the producer list does
@@ -415,9 +417,7 @@ function assertDeclaredWidthMatchesStrategy(
   terms: LinkageTerms,
   effectiveKeyCount: number,
 ): void {
-  const countOnly = terms.algorithm === "psi-c";
-  if (!countOnly && candidateSetIsImplementedForStrategy(terms.linkageStrategy))
-    return;
+  if (termsResolveCandidateSets(terms)) return;
   if (
     !partyFansOut(linkageRounds(terms.linkageKeys).length, {
       effectiveKeyCount,
@@ -425,7 +425,6 @@ function assertDeclaredWidthMatchesStrategy(
   )
     return;
   const keyCount = terms.linkageKeys.length;
-  if (countOnly) throw new UsageError(COUNT_ONLY_SHAPE_REFUSALS.candidateSet);
   throw new UsageError(
     "these linkage terms declare " +
       `${effectiveKeyCount} candidate value slot(s) per record across ` +
@@ -1371,9 +1370,9 @@ export { PARTNER_SET_OVER_CAPACITY_ABORT_REASON };
  * realize up to the declared width per declared record. Its local cleaning is
  * not in the agreed terms, so no sender partner is weighed narrower.
  *
- * Count-only terms declare no candidate set, so for them the figure is the
- * partner's declared record count, the size of the partner's set in every
- * count-only round.
+ * A count-only partner's set in each round is its declared record count times
+ * its width for the round, at most the key's declared width, so the same
+ * figure bounds it.
  */
 export function partnerRoundValues(
   partnerRecordCount: number,
@@ -1465,6 +1464,13 @@ export async function runExchange(
   // row's candidate set reaches the linkage strategy -- at the point of harm, but
   // after this party's terms have gone on the wire. See assertFanOutImplemented.
   assertFanOutImplemented(linkageTerms);
+  // A count-only exchange is the exception: its built dataset states whether
+  // its own cleaning fans out a key's field, which declares no width a
+  // count-only block can be laid out by, so that is refused here too.
+  if (linkageTerms.algorithm === "psi-c" && prepared.dataset.declaresFanOut)
+    throw new OperatorConfigError(
+      COUNT_ONLY_SHAPE_REFUSALS.standardizationFanOut,
+    );
 
   // Refuse a key condition the terms schema refuses, for a PreparedExchange whose
   // terms were built without a parse. See assertKeyConditionsAdmitted.

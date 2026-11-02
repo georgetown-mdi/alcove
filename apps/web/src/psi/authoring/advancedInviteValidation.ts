@@ -26,7 +26,6 @@ import {
   sanitizeForDisplay,
   summarizeLinkageShortfall,
   swapPairTransformsDiffer,
-  termsDeclareCandidateSet,
 } from "@alcove/core";
 
 import {
@@ -267,21 +266,6 @@ const COUNT_ONLY_MESSAGES: Record<CountOnlyShapeViolation, string> = {
     `those columns so they are not sent, or ${REVEAL_IDENTIFIERS_INSTEAD}`,
 };
 
-/** Shown when a count-only draft's linkage keys declare a candidate set -- an
- * element expanded into approximate variants, a key matched in either order, or
- * a transform that splits one value into several. Core refuses such a document
- * before the exchange runs (`assertFanOutImplemented`), so an invitation
- * minted on it is one both sides abort on; this is that refusal given where the
- * operator still holds the controls. Names the three declarations rather than
- * which one this key holds: the key list is where each is edited, and an
- * imported key's names are partner-influenceable, the same reason
- * {@link UNSUPPLYABLE_KEY_MESSAGE} names no field. */
-const COUNT_ONLY_CANDIDATE_SET_MESSAGE =
-  "A count-only exchange matches one value per record, but a linkage key here " +
-  "matches on several. Open that key and remove its fuzzy comparison, its " +
-  "either-order swap, or the step that splits a value into parts; or " +
-  REVEAL_IDENTIFIERS_INSTEAD;
-
 /** A Cleaning-tab card as the tab labels it, by its field's type: never the
  * field's own name, which the tab does not show. */
 export function fieldCleaningCard(fieldType: string | undefined): string {
@@ -291,10 +275,11 @@ export function fieldCleaningCard(fieldType: string | undefined): string {
     : "a field's cleaning";
 }
 
-/** The cleaning-step counterpart of {@link COUNT_ONLY_CANDIDATE_SET_MESSAGE}:
- * core refuses an exchange whose own cleaning splits a value under a
- * count-only algorithm or a strategy that matches none
- * ({@link refusedCleaningFanOut}), which the terms alone do not show. Names
+/** Core refuses an exchange whose own cleaning splits a value under a
+ * count-only algorithm, whose terms do not state how many parts it adds, or
+ * a strategy that matches none ({@link refusedCleaningFanOut}), which the
+ * terms alone do not show. The count-only wording follows core's own refusal
+ * (`COUNT_ONLY_SHAPE_REFUSALS.standardizationFanOut`). Names
  * the step by its menu label, and the card by what the Cleaning tab shows: the
  * field's type label and the operator's input column. The field's own name is
  * left out: the tab never shows it, and an imported one is
@@ -310,8 +295,10 @@ function cleaningFanOutMessage(
     `${fieldCleaningCard(fieldType)} from the ` +
     `${sanitizeForDisplay(refused.input)} column`;
   return countOnly
-    ? `A count-only exchange matches one value per record, but ${step} ` +
-        `splits a value into parts. Remove that step, or ${REVEAL_IDENTIFIERS_INSTEAD}`
+    ? `A count-only exchange cannot run ${step}, because the invitation does ` +
+        "not state how many parts it adds to each record. Remove that step " +
+        "and split the value in the linkage key instead, or " +
+        REVEAL_IDENTIFIERS_INSTEAD
     : `This linkage strategy matches one value per record, but ${step} ` +
         "splits a value into parts. Remove that step, or on the Matching keys " +
         "tab change Linkage strategy.";
@@ -406,8 +393,8 @@ function shortfallRemedy(verdict: LinkageTermsVerdict): string {
  * not-yet-passed legal-agreement expiry, at least one column-satisfiable linkage
  * key, a canonical-encode dry run (the byte form both parties hash), and the
  * pairings the schema admits but the run refuses (a deduplicating term under a
- * linkage strategy that matches one value per record, and a candidate set or a
- * splitting cleaning step under the count-only algorithm).
+ * linkage strategy that matches one value per record, and a splitting cleaning
+ * step under the count-only algorithm).
  *
  * Schema errors are mapped back to the offending control by their issue path,
  * since the referential-integrity refines report at the array path, echoing no
@@ -714,8 +701,8 @@ export function validateAdvancedInvite(
         "before generating.";
   }
 
-  // The cleaning fan-out gate, core's own refusal; the key-transform half is
-  // the candidate-set gate below.
+  // The cleaning fan-out gate, core's own refusal; a key-transform fan-out is
+  // refused by the terms schema only under a strategy that resolves none.
   const refusedFanOut = refusedCleaningFanOut(terms, draft.standardization);
   if (refusedFanOut !== undefined)
     errors.standardization = cleaningFanOutMessage(
@@ -756,16 +743,6 @@ export function validateAdvancedInvite(
     if (!(err instanceof UsageError)) throw err;
     errors.keys = DEDUPLICATE_STRATEGY_MESSAGE;
   }
-
-  // The count-only candidate-set gate: a count-only document whose keys expand a
-  // record into several match candidates is refused before the exchange runs
-  // (`assertFanOutImplemented`). The verdict is core's own predicate over all
-  // three declarations -- a fan-out step, a fuzzy comparison and a swap
-  // (`termsDeclareCandidateSet`), not a second web-side list of them, so this
-  // gate refuses exactly the documents the run refuses. Written ahead of the
-  // shape gate below, whose rules the terms schema refuses first.
-  if (terms.algorithm === "psi-c" && termsDeclareCandidateSet(terms))
-    errors.keys = COUNT_ONLY_CANDIDATE_SET_MESSAGE;
 
   // The count-only shape gate, read from core's own rules rather than a second
   // web-side list, so this editor refuses exactly the documents core refuses at

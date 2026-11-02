@@ -7,10 +7,7 @@ import {
 } from "../../src/config/invitation";
 import { safeParseLinkageTerms } from "../../src/config/linkageTermsSchema";
 import type { LinkageTerms } from "../../src/config/linkageTermsSchema";
-import {
-  CANDIDATE_SET_IMPLEMENTED_BY_STRATEGY,
-  COUNT_ONLY_SHAPE_REFUSALS,
-} from "../../src/linkageTermsPolicy";
+import { CANDIDATE_SET_IMPLEMENTED_BY_STRATEGY } from "../../src/linkageTermsPolicy";
 import {
   candidateSetUnderStrategyMessage,
   MAX_EFFECTIVE_KEY_COUNT,
@@ -65,7 +62,7 @@ function partnerTerms(
   };
 }
 
-// A key whose candidate set a count-only round has no resolution for.
+// A key declaring a candidate set.
 const candidateSetKeys = [
   {
     name: "Partner Key Name",
@@ -129,21 +126,20 @@ async function decodeRefusalsOf(
   return (raised as ZodError).issues.map((issue) => issue.message);
 }
 
-test("a candidate set under the count-only algorithm is refused at the parse", () => {
-  const messages = refusalsOf(
-    partnerTerms({ algorithm: "psi-c", linkageKeys: candidateSetKeys }),
-  );
-  expect(messages).toContain(COUNT_ONLY_SHAPE_REFUSALS.candidateSet);
-  expectNoPartnerText(messages);
-});
-
-test("a candidate set under the count-only algorithm is refused at the decode", async () => {
-  const messages = await decodeRefusalsOf(
-    partnerTerms({ algorithm: "psi-c", linkageKeys: candidateSetKeys }),
-  );
-  expect(messages).toContain(COUNT_ONLY_SHAPE_REFUSALS.candidateSet);
-  expectNoPartnerText(messages);
-});
+test.each(["cascade", "single-pass"])(
+  "a candidate set under the count-only algorithm is admitted at the parse and the decode (%s)",
+  async (linkageStrategy) => {
+    const terms = partnerTerms({
+      algorithm: "psi-c",
+      linkageStrategy,
+      linkageKeys: candidateSetKeys,
+    });
+    expect(safeParseLinkageTerms(terms).success).toBe(true);
+    await expect(
+      decodeInvitation(await invitationOver(terms)),
+    ).resolves.toBeDefined();
+  },
+);
 
 test("a candidate set under a strategy off the allowlist is refused at the parse", () => {
   // Both shipped strategies resolve a candidate set, so the allowlist half is

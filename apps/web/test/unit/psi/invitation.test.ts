@@ -1230,7 +1230,7 @@ describe("generateInvitation", () => {
     };
   };
 
-  test("refuses to mint when a linkage-key element transform fans out", async () => {
+  test("mints count-only terms whose linkage-key element transform fans out", async () => {
     const metadata = inferMetadata(
       ["ssn", "first_name", "last_name", "dob"],
       [],
@@ -1259,7 +1259,7 @@ describe("generateInvitation", () => {
         linkageTerms: fanning,
         metadata,
       }),
-    ).rejects.toThrow(/count-only/);
+    ).resolves.toBeDefined();
   });
 
   test("refuses to mint when the authored standardization fans out", async () => {

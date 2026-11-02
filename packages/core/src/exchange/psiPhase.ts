@@ -1,5 +1,6 @@
 // The PSI phase of an exchange: the crypto engine and participant, the link
 // run the agreed terms select, and the teardown that disposes the engine.
+import { countOnlyWidthsOfRounds } from "../psi/countOnlyRounds.js";
 import { PSIParticipant } from "../psi/participant.js";
 import { InProcessPsiEngine } from "../psi/psiEngine.js";
 import { reportsCountToSender } from "../protocolSetup.js";
@@ -195,6 +196,7 @@ export async function runPsiPhase(p: {
           senderRecords: isReceiver ? partnerRecordCount : declaredRecordCount,
         },
         onStage,
+        countOnlyWidthsOfRounds(linkageTerms),
       );
     else
       associationTable = runsSinglePassLink(linkageTerms)

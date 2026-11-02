@@ -40,10 +40,10 @@ import { builtInRuleChoiceOf } from "../defaults/builtInLinkageTerms.js";
 import type { PrecisionFloor } from "../defaults/builtInLinkageTerms.js";
 import {
   bothSidedDeduplicateRefused,
-  candidateSetIsImplementedForStrategy,
   declaresNoPayloadColumn,
   deduplicateIsImplementedForStrategy,
   runsSinglePassLink,
+  termsResolveCandidateSets,
 } from "../linkageTermsPolicy.js";
 import { deriveAcceptedLinkageTerms } from "../linkageTermsNegotiation.js";
 import { termsDeclareCandidateSet } from "../fanOutFunctions.js";
@@ -282,8 +282,9 @@ interface InvitationKeyElementSummary {
   fuzzyComparison?: string;
   /**
    * Whether today's exchange applies the fuzzy comparison: the verdict of
-   * {@link InvitationSummary.fanOutApplied}, since a count-only exchange
-   * refuses the expanded element. Meaningful only with `fuzzyComparison`.
+   * {@link InvitationSummary.fanOutApplied}, since a strategy that resolves
+   * no candidate set refuses the expanded element. Meaningful only with
+   * `fuzzyComparison`.
    */
   fuzzyComparisonApplied: boolean;
 }
@@ -310,8 +311,9 @@ export interface InvitationKeySummary {
   hasSwap: boolean;
   /**
    * Whether today's exchange applies the swap: the verdict of
-   * {@link InvitationSummary.fanOutApplied}, since a count-only exchange
-   * refuses a swapped key. Meaningful only with {@link hasSwap}.
+   * {@link InvitationSummary.fanOutApplied}, since a strategy that resolves
+   * no candidate set refuses a swapped key. Meaningful only with
+   * {@link hasSwap}.
    */
   swapApplied: boolean;
   /**
@@ -457,10 +459,17 @@ export interface InvitationSummary {
   /**
    * Whether the exchange matches on those candidates. True for either linkage
    * strategy under `psi` (docs/spec/PROTOCOL.md, Fan-out runs under both
-   * linkage strategies); `psi-c` refuses terms declaring a fan-out before the
-   * exchange runs. Meaningful only with {@link fansOut}.
+   * linkage strategies) and under `psi-c` (Candidate sets under count-only).
+   * Meaningful only with {@link fansOut}.
    */
   fanOutApplied: boolean;
+  /**
+   * Whether a count-only (`psi-c`) exchange counts over a candidate set: its
+   * terms declare one from any producer (`swap`, fuzzy comparison,
+   * `split_on`). Selects `countOnlyCandidateSets`, which a count-only surface
+   * renders in place of the `psi` fan-out lines.
+   */
+  countOnlyCandidateSets: boolean;
   /**
    * Whether a `deduplicate: true` the ACCEPTING party declares is refused: the
    * inviter declares its own `deduplicate` under a strategy that pairs no
@@ -777,7 +786,7 @@ const LITERAL_CORRESPONDENCE_BREAKING_FUNCTIONS: ReadonlySet<string> = new Set([
  * Ranking, widest first:
  *
  * 1. "multiple" or "not supported": fan-out; `fanOutMatches` picks which, since
- *    a count-only `psi-c` exchange refuses a candidate set.
+ *    a strategy that resolves no candidate set refuses one.
  * 2. A pipeline that matches nothing: no marker.
  * 3. "any date" (a `parse_date` output with no date token, or one a later
  *    `substring` run leaves constant, per {@link gradeElementPipeline}), then
@@ -1377,9 +1386,7 @@ export function summarizeInvitation(
   // matches a candidate set, or one the terms are refused for. It is read from
   // the refusal's own predicates, once, so the markers, key summaries and
   // consent fact follow one verdict.
-  const fanOutMatches =
-    terms.algorithm !== "psi-c" &&
-    candidateSetIsImplementedForStrategy(terms.linkageStrategy);
+  const fanOutMatches = termsResolveCandidateSets(terms);
   // Whether the strategy matches the deduplicating cardinality the term asks
   // for, from the refusal's own predicate; a strategy that does not is refused
   // at acceptance.
@@ -1414,6 +1421,8 @@ export function summarizeInvitation(
     deduplicateApplied,
     fansOut: terms.linkageKeys.some((key) => key.elements.some(declaresFanOut)),
     fanOutApplied: fanOutMatches,
+    countOnlyCandidateSets:
+      terms.algorithm === "psi-c" && termsDeclareCandidateSet(terms),
     acceptorDeduplicateRefused,
     candidateSetChainsGrouping,
     acceptorTableWithheld: withholdsAcceptorAssociationTable(terms),

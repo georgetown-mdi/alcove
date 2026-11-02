@@ -143,15 +143,15 @@ Date these linkage terms were last modified. A mismatch produces a warning indic
 - `psi` -- reveals the intersection (matched records and their identifiers). Intended for operational data exchange.
 - `psi-c` -- reveals only the cardinality of the intersection (how many records match). Intended only for research.
 
-A count-only exchange runs every agreed key in order and counts each matched record once, so the count is the number of links a `psi` exchange over the same keys and data would make, with two differences. First, a key value two or more records in one party's file share is set aside for the whole file under `psi-c`, while `psi` sets it aside only while two or more of the records holding it are still unmatched. Second, on a key that tries several candidate values for each record, the sending party's record with more candidates than the sender's side of that key holds is set aside for the key under `psi-c`, while `psi` still tries its candidates; this needs a data standardization step or key setting that produces more than 20 values for one element. Where either applies, the two counts can differ. Terms declaring `single-pass` run the same rounds. What the party computing the count learns beside it, and what a partner choosing its own records can learn, is in [Count-only exchanges](SECURITY_DESIGN.md#count-only-exchanges-and-the-pre-agreement-assumption).
+A count-only exchange runs every agreed key in order and counts each matched record once, so the count is the number of links a `psi` exchange over the same keys and data would make, with one difference: a key value two or more records in one party's file share is set aside for the whole file under `psi-c`, while `psi` sets it aside only while two or more of the records holding it are still unmatched. Where that applies, the two counts can differ. A key that tries several candidate values for each record -- a `split_on` step in a key element, `generate_fuzzy_comparisons`, or `swap` -- is counted as `psi` pairs its records, each record sending the same number of encrypted values for the key whatever its own data holds. Terms declaring `single-pass` run the same rounds. What the party computing the count learns beside it, and what a partner choosing its own records can learn, is in [Count-only exchanges](SECURITY_DESIGN.md#count-only-exchanges-and-the-pre-agreement-assumption).
 
 `psi-c` narrows what the rest of the document may say. Terms setting it are refused, naming what to change, when they declare any of:
 
 - `deduplicate: true`;
 - payload in either direction -- a non-empty `payload.send` or `payload.receive`, or [input metadata](#input-metadata) that would transmit a column (`is_payload: true` on a column whose `role` is not `ignored`);
-- a key matching on several values per record: a `split_on` step, `generate_fuzzy_comparisons`, or `swap` ([Fan-out (multi-value fields)](#fan-out-multi-value-fields)).
-
 The refusal happens where the terms are authored, where an invitation over them is created, and where a received invitation is parsed or accepted. It is never resolved by narrowing the document to the count-only shape or by running it as `psi`; the reasoning is in [PROTOCOL.md](spec/PROTOCOL.md#psi-c). None of this constrains `psi` terms.
+
+A `split_on` step in a party's own `standardization` is refused under `psi-c` when that party prepares its data, naming the step: the terms do not state how many parts it adds to each record, so no width covers it. Move the split into the linkage key element's `transform`, or set the algorithm to `psi`.
 
 ### `linkage_terms.linkage_strategy`
 
@@ -166,7 +166,7 @@ How the agreed linkage keys are matched. Both strategies produce the same associ
 
 Under `single-pass` the receiver learns the sender's full per-key duplicate structure, so it sees matches on less precise keys the cascade would have discarded; the emitted result is identical. Both parties must agree on the value or the exchange aborts. The wire shape and disclosure: [PROTOCOL.md](spec/PROTOCOL.md#linkage-strategies-cascade-and-single-pass); the ceiling: [PROTOCOL.md](spec/PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute).
 
-Both strategies match on the several values a `split_on` produces, and on the several a `generate_fuzzy_comparisons` or a key declaring `swap` produces, reaching the same table on the same rows (see [Fan-out (multi-value fields)](#fan-out-multi-value-fields)). What refuses those terms is the count-only algorithm, whatever the strategy. A both-sided `deduplicate` matches them under either strategy, grouping the records a key's several values reach (see [Deduplicating matches](#linkage_termsdeduplicate)).
+Both strategies match on the several values a `split_on` produces, and on the several a `generate_fuzzy_comparisons` or a key declaring `swap` produces, reaching the same table on the same rows (see [Fan-out (multi-value fields)](#fan-out-multi-value-fields)). The count-only algorithm counts them under either strategy ([`linkage_terms.algorithm`](#linkage_termsalgorithm)). A both-sided `deduplicate` matches them under either strategy, grouping the records a key's several values reach (see [Deduplicating matches](#linkage_termsdeduplicate)).
 
 ### `linkage_terms.output`
 
@@ -425,7 +425,7 @@ A `swap` target names an element by its `name` if it declares one, otherwise by 
 - the two elements declare different [`generate_fuzzy_comparisons`](#element-fields) (both must declare the same value, or neither one);
 - the two elements declare different [`transform`](#element-fields) pipelines. An omitted `transform` and an empty list are the same pipeline, and `params` keys are compared without regard to order. Cleaning that belongs to one column rather than to the key goes in that column's [data standardizing transformation](#data-standardizing-transformations).
 
-A swapped key costs two candidate values per record toward the [`single-pass`](#linkage_termslinkage_strategy) dataset ceiling, in place of one, multiplied by whatever its elements declare. It is a candidate set, so a count-only exchange refuses it ([Fan-out (multi-value fields)](#fan-out-multi-value-fields)).
+A swapped key costs two candidate values per record toward the [`single-pass`](#linkage_termslinkage_strategy) dataset ceiling, in place of one, multiplied by whatever its elements declare. A count-only exchange pads every record to the same number of encrypted values for the key: the receiving party's to the key's width, the sending party's to the part of that width it expands itself ([PROTOCOL.md](spec/PROTOCOL.md#candidate-sets-under-count-only)).
 
 #### Keys that run only where a field is missing
 
@@ -1640,7 +1640,7 @@ Each linkage field may have at most one transformation. A field with none is giv
 
 An authored `standardization` that contradicts the linkage terms - an `output` naming no declared linkage field, or a step naming an unknown `function` - fails closed (the CLI exits 64), naming the output or function. `alcove exchange`, and any run that creates no invitation, refuses during data preparation, before any credential, terms, or data are sent; on a quick exchange the first-use host-key probe of an unpinned SFTP server, which presents no credential, can precede it ([SFTP_CONNECTION.md](spec/SFTP_CONNECTION.md#sftp-host-key-verification)). A config-source `alcove invite` refuses before it creates the invitation.
 
-A `split_on` step under the count-only algorithm is refused wherever the terms are known; see [Fan-out (multi-value fields)](#fan-out-multi-value-fields).
+Under the count-only algorithm a `split_on` step in a party's own `standardization` is refused when that party prepares its data; a `split_on` in a linkage key element's `transform` runs. See [Fan-out (multi-value fields)](#fan-out-multi-value-fields).
 
 ### Transformation fields
 
@@ -1687,7 +1687,7 @@ The `split_on` function produces `set<string>` instead of a single `string`, so 
 
 **Cross-product**: a linkage key over several fan-out fields matches on the cartesian product of their values; a `split_on` on both `first_name` and `last_name` with two parts each produces four key strings per row. The count is capped at the width the agreed terms declare for that key: 20 candidate values for each element that splits, multiplied together. A row over the cap sits that key's round out, as a row with no value does, remains eligible for later keys, and draws a warning; a round names the first few dropped rows and then one line with that key's totals. The cap and its arithmetic: [PROTOCOL.md](spec/PROTOCOL.md#fan-out-matching-multi-value-key-candidates).
 
-**Either linkage strategy**: fan-out runs under [`cascade`](#linkage_termslinkage_strategy) and `single-pass` with the same table on the same rows; each strategy keeps its own disclosure. A key whose element splits costs 20 toward the single-pass dataset ceiling in place of 1; a fan-out in your own `standardization` multiplies the record count you declare instead ([PROTOCOL.md](spec/PROTOCOL.md#the-width-bound-a-per-key-candidate-cap-the-terms-declare)). The count-only algorithm [`psi-c`](#linkage_termsalgorithm) refuses a fan-out when the terms are authored or written into an invitation, at data preparation, and again once both parties' terms are agreed on. `deduplicate: true` on both parties does not ([`linkage_terms.deduplicate`](#linkage_termsdeduplicate)).
+**Either linkage strategy**: fan-out runs under [`cascade`](#linkage_termslinkage_strategy) and `single-pass` with the same table on the same rows; each strategy keeps its own disclosure. A key whose element splits costs 20 toward the single-pass dataset ceiling in place of 1; a fan-out in your own `standardization` multiplies the record count you declare instead ([PROTOCOL.md](spec/PROTOCOL.md#the-width-bound-a-per-key-candidate-cap-the-terms-declare)). The count-only algorithm [`psi-c`](#linkage_termsalgorithm) counts a key element's fan-out, every record sending the key's declared width in encrypted values on both sides, and refuses a fan-out in a party's own `standardization` when that party prepares its data and again when the exchange starts. `deduplicate: true` on both parties does not ([`linkage_terms.deduplicate`](#linkage_termsdeduplicate)).
 
 **What the accepting party is told**: an invitation whose linkage keys split a value marks each such key element as matching on several values and states the consequences: matching per candidate, the record leaving later keys once any candidate matches, and the candidate grouping the resolver is handed. A fan-out in your own `standardization` is local and in no invitation.
 

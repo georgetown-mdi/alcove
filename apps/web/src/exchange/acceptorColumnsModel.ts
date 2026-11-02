@@ -499,15 +499,15 @@ export function acceptorLaunchBlockedReason(
     invitationTerms,
     editorState.standardization,
   );
-  if (refusedFanOut !== undefined)
-    return (
-      (invitationTerms.algorithm === "psi-c"
-        ? "Your partner chose a count-only exchange, which matches"
-        : "Your partner chose a linkage strategy that matches") +
-      " one value per record, so remove the " +
-      `${functionDisplay(refusedFanOut.functionName).label} step from your ` +
-      "cleaning before you can start."
-    );
+  if (refusedFanOut !== undefined) {
+    const step = `${functionDisplay(refusedFanOut.functionName).label} step`;
+    return invitationTerms.algorithm === "psi-c"
+      ? `Your partner chose a count-only exchange, which cannot run the ${step} ` +
+          "in your cleaning, because the invitation does not state how many " +
+          "parts it adds to each record. Remove that step before you can start."
+      : "Your partner chose a linkage strategy that matches one value per " +
+          `record, so remove the ${step} from your cleaning before you can start.`;
+  }
   if (stepBlocks.connectionBlocked)
     return "Set up the SFTP connection above before you can start.";
   if (stepBlocks.splitDirectoryProblem !== undefined)

@@ -197,6 +197,16 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
   },
   {
     file: "packages/core/src/exchange.ts",
+    anchor: "runExchange",
+    raises: "OperatorConfigError",
+    interpolates: ["COUNT_ONLY_SHAPE_REFUSALS.standardizationFanOut"],
+    provenance:
+      "a module constant of fixed prose that quotes no value at all. The " +
+      "condition reads this party's own prepared dataset (whether its own " +
+      "standardization declares a fan-out), never partner-authored text.",
+  },
+  {
+    file: "packages/core/src/exchange.ts",
     anchor: "assertTermsPassPartnerParse",
     raises: "OperatorConfigError",
     interpolates: ["reason", "valueClause"],
@@ -232,7 +242,7 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
     anchor: "assertFanOutImplemented",
     raises: "OperatorConfigError",
     interpolates: [
-      "COUNT_ONLY_SHAPE_REFUSALS.candidateSet",
+      "COUNT_ONLY_SHAPE_REFUSALS.standardizationFanOut",
       "fanOutDeclaredMessage(declared)",
     ],
     provenance:

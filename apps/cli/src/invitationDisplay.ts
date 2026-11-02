@@ -532,8 +532,8 @@ function displayLinkageKey(
       key.swap !== undefined
         ? `      swap: ${key.swap[0]} and ${key.swap[1]} may be matched in either order`
         : "      swap: two of these elements may be matched in either order";
-    // The caveat renders only for a swap the run would not apply, which on the
-    // shipped build is a count-only exchange, where a candidate set is refused.
+    // The caveat renders only for a swap the run would not apply: one under a
+    // linkage strategy that resolves no candidate set.
     emit(
       key.swapApplied
         ? swapNote
@@ -586,11 +586,13 @@ function displayLinkageFields(
  * accept display and by the run disclosure of `alcove exchange`, so an
  * operator reads the same facts whether the terms came from an invitation or
  * a configuration file. `bothPartiesReceive` is whether both parties are
- * entitled to the count.
+ * entitled to the count, `countsCandidateSets` whether the terms declare a
+ * key matching several values per record.
  */
 export function logCountOnlyTier(
   emit: ConsentSurfaceSink,
   bothPartiesReceive: boolean,
+  countsCandidateSets: boolean,
 ): void {
   emit(`    ${COUNT_ONLY_DISCLOSURE_STATEMENT}`);
   emit(`    ${CONSENT_FACTS.countOnlyResult.note}`);
@@ -598,6 +600,10 @@ export function logCountOnlyTier(
     `  ${marked("what a count-only exchange still discloses", "countOnlyRoundDisclosures")}:`,
   );
   emit(`    ${CONSENT_FACTS.countOnlyRoundDisclosures.note}`);
+  if (countsCandidateSets) {
+    emit(`  ${marked("several values per record", "countOnlyCandidateSets")}:`);
+    emit(`    ${CONSENT_FACTS.countOnlyCandidateSets.note}`);
+  }
   // Only where both parties are entitled to the count does one of them hold a
   // number it did not compute: where exactly one is entitled, that party is the
   // receiver by the role rule and computes its own, so the line would name a
@@ -710,6 +716,7 @@ export function logDecisionFacts(
     logCountOnlyTier(
       emit,
       summary.inviterReceivesOutput && summary.inviterSharesResult,
+      summary.countOnlyCandidateSets,
     );
 
   // What outlives the run: an acceptor is agreeing to a permanent
@@ -982,8 +989,9 @@ export function displayInvitation(params: {
   // how many pairings result. Rendered only when the terms declare a
   // fan-out -- an invitation holds only the element transforms, never the
   // inviter's own standardization -- and which of the two facts prints
-  // follows the strategy, like the partner-receipt pair above.
-  if (summary.fansOut) {
+  // follows the strategy, like the partner-receipt pair above. A count-only
+  // exchange states its own line in its tier instead.
+  if (summary.fansOut && summary.algorithm !== "psi-c") {
     const fact = summary.fanOutApplied ? "fanOutCandidates" : "fanOutRefused";
     emit(`  ${marked("several values per record", fact)}:`);
     emit(`    ${CONSENT_FACTS[fact].note}`);

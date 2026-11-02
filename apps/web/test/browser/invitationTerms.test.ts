@@ -2695,12 +2695,11 @@ describe("InvitationTerms: matching on several values per record", () => {
     },
   );
 
-  test("states the refusal where the algorithm matches one value per record", async () => {
-    // The count-only algorithm is the register the refusal is left in: its
-    // round counts matched values where the resolution pairs a record once,
-    // so terms declaring a candidate set are refused whichever strategy they
-    // name. Driven off the count-only probe, whose shape a psi-c document is
-    // held to, with a splitting element on its one key.
+  test("states the count-only fact in place of the psi one for a splitting key", async () => {
+    // A count-only round runs the candidate set, and states what its own run
+    // discloses over it beside the matching method rather than the `psi`
+    // sentence. Driven off the count-only probe with a splitting element on
+    // its one key.
     await renderTerms({
       ...COUNT_ONLY_PROBE_TERMS,
       linkageKeys: [
@@ -2718,6 +2717,9 @@ describe("InvitationTerms: matching on several values per record", () => {
     await expect.element(toggle("Other details")).toBeInTheDocument();
     await readyPanel("Other details");
     expect(app.container.textContent).toContain(
+      CONSENT_FACTS.countOnlyCandidateSets.note,
+    );
+    expect(app.container.textContent).not.toContain(
       CONSENT_FACTS.fanOutRefused.note,
     );
     expect(app.container.textContent).not.toContain(
@@ -3073,45 +3075,41 @@ describe("InvitationTerms: a qualifying sentence sits at its headline's visibili
     );
   });
 
-  test("a count-only invitation marks the swap it will refuse, beside the swap note", async () => {
-    // A swapped key order is a candidate set, which a count-only round refuses,
-    // so the either-order note is qualified where it stands rather than left
-    // reading as behavior the run performs. The count-only probe holds a key
-    // declaring neither, since a psi-c document declaring one is refused where
-    // it is decoded, so the shape this marking is for is composed here from the
-    // shared base's key -- the same composition the CLI accept prompt's pin
-    // uses, so the two surfaces are measured on one input.
+  test("a count-only invitation shows the swap it runs unqualified", async () => {
+    // A swapped key order is a candidate set, which a count-only round runs,
+    // so the either-order note stands as under `psi`. The shape is composed
+    // from the shared base's key -- the same composition the CLI accept
+    // prompt's pin uses, so the two surfaces are measured on one input.
     await renderTerms({
       ...COUNT_ONLY_PROBE_TERMS,
       linkageKeys: CONSENT_PROBE_TERMS.linkageKeys,
     });
     await expect.element(toggle("Matching strategies")).toBeInTheDocument();
-    // "date of birth (fuzzy) (either order not supported)" is the per-key
-    // header MatchKeyDisclosure renders for this key: always-visible relative
-    // to its own inner disclosure, but nested inside the outer "Matching
-    // strategies" Collapse, so it commits at that panel's deferred priority.
-    // Wait for the panel rather than racing its commit (see collapsePanels.ts).
+    // The per-key header commits at the outer panel's deferred priority, so
+    // wait for the panel rather than racing its commit (see collapsePanels.ts).
     await readyPanel("Matching strategies");
     expect(app.container.textContent).toContain(
-      "date of birth (fuzzy) (either order not supported)",
+      "date of birth (fuzzy) (matched in either order)",
     );
     expect(app.container.textContent).not.toContain(
-      "(matched in either order)",
+      "(either order not supported)",
     );
     await userEvent.click(toggle("Matching strategies"));
     const panel = await readyPanel(
       "given name, family name, and date of birth",
     );
     expect(panel.textContent).toContain("may be matched in either order");
-    expect(panel.textContent).toContain(
+    expect(app.container.textContent).not.toContain(
       PROPOSED_NOT_APPLIED_NOTES.swappedKeyOrder,
+    );
+    expect(app.container.textContent).toContain(
+      CONSENT_FACTS.countOnlyCandidateSets.note,
     );
   });
 
   test("a swap the run applies shows its note unqualified", async () => {
-    // Non-vacuous the other way, over the same key: under `psi` the receiver
-    // builds the key in both orders, so the note stands with nothing qualifying
-    // it and the caveat above is the algorithm's doing rather than the fixture's.
+    // The same key under `psi`: the receiver builds the key in both orders, so
+    // the note stands with nothing qualifying it.
     await renderTerms(CONSENT_PROBE_TERMS);
     await expect.element(toggle("Matching strategies")).toBeInTheDocument();
     // "date of birth (fuzzy) (matched in either order)" is the per-key

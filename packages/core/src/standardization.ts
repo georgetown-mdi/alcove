@@ -1011,11 +1011,11 @@ export const STANDARDIZATION_FUNCTION_NAMES: readonly string[] = [
 ];
 
 /**
- * Refusal for a candidate set that reached a call site running one value per
- * record -- the point of harm, since the alternative is silent narrowing.
- * Key realization holds every candidate ({@link buildKeyStrings}); the call
- * sites that cannot honor them are `countOnlyRoundElements` (a count-only
- * round has one element per record), `linkViaPSI` under a strategy off the
+ * Refusal for a candidate set wider than a call site takes for one record --
+ * the point of harm, since the alternative is silent narrowing. Key
+ * realization holds every candidate ({@link buildKeyStrings}); the call sites
+ * that cannot honor more are a count-only round's block of its width
+ * (`countOnlyRoundElements`), `linkViaPSI` under a strategy off the
  * candidate-set allowlist, and the single-pass table build for a party that declared no
  * fan-out (a fixed-width column holds one value per key, record). A party that
  * DID declare one builds a ragged table instead and refuses in `link.ts`'s own
@@ -1032,9 +1032,9 @@ export const STANDARDIZATION_FUNCTION_NAMES: readonly string[] = [
 export function fanOutReachedMatchingRefusal(): UsageError {
   return new UsageError(
     "a transform turned one record's value into several match candidates, " +
-      "but this round matches one value per record, because the exchange is " +
-      "count-only or the agreed linkage terms and the standardization do not " +
-      "declare the expansion. Remove the step that expands this record's " +
+      "more than this round takes for one record, because the agreed linkage " +
+      "terms and the standardization do not declare the expansion. Remove " +
+      "the step that expands this record's " +
       `value: a ${QUOTED_FAN_OUT_FUNCTION_NAMES} step, a fuzzy comparison, a ` +
       "swapped key order, or a transform that expands one value without " +
       "being a declared fan-out function.",

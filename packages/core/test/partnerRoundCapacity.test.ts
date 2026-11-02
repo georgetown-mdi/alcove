@@ -561,7 +561,7 @@ describe("in a count-only exchange", () => {
     expect((refusal as RoundSetLimitError).reason).toBe("over-partner-ceiling");
     expect(statesItsOwnNextStep(refusal, { ownOnly: true })).toBe(true);
     expect(refusal.message).toBe(
-      roundOneSetOverPartnerCeilingMessage(12, 11, true),
+      roundOneSetOverPartnerCeilingMessage(12, 11, "every-key"),
     );
     expect(refusal.message).toMatch(
       /^Too large for your partner: a count-only exchange sends 12 values for every linkage key, over the 11 your partner can receive in one PSI set,/,
@@ -587,7 +587,7 @@ describe("in a count-only exchange", () => {
       ...countOnly,
     });
     expect(((partner as PromiseRejectedResult).reason as Error).message).toBe(
-      roundOneSetOverPartnerCeilingMessage(5, 4, true),
+      roundOneSetOverPartnerCeilingMessage(5, 4, "every-key"),
     );
     expect(binaryFrames(partnerSent)).toEqual([]);
   });

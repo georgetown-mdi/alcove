@@ -33,7 +33,7 @@ export type CountOnlyShapeViolation = "deduplicate" | "payload";
  */
 export const COUNT_ONLY_SHAPE_REFUSALS: Readonly<
   Record<
-    CountOnlyShapeViolation | "transmittedColumns" | "candidateSet",
+    CountOnlyShapeViolation | "transmittedColumns" | "standardizationFanOut",
     string
   >
 > = {
@@ -46,11 +46,11 @@ export const COUNT_ONLY_SHAPE_REFUSALS: Readonly<
     "because a count-only exchange reveals only the size of the " +
     "intersection. Remove the payload send and receive columns, or set " +
     'algorithm to "psi".',
-  candidateSet:
-    'a count-only ("psi-c") exchange matches one value per record, but these ' +
-    "linkage terms declare a step that turns one value into several match " +
-    "candidates. Remove the expanding step, the fuzzy " +
-    'comparison, or the swapped key order, or set algorithm to "psi".',
+  standardizationFanOut:
+    'a count-only ("psi-c") exchange cannot run a split in your own data ' +
+    "standardization, because the agreed linkage terms do not state how " +
+    "many parts it adds to each record. Move the split into the linkage " +
+    'key element\'s transform, or set algorithm to "psi".',
   transmittedColumns:
     'a count-only ("psi-c") exchange sends no data columns, but your ' +
     "input's metadata marks one or more columns to send to your partner. " +
@@ -186,8 +186,24 @@ export function runsSinglePassLink(
 }
 
 /**
- * The refusal for a candidate set declared under `psi-c` or a strategy that
- * resolves none, or `undefined`
+ * Whether an exchange on these terms resolves the candidate sets their keys
+ * declare: a count-only (`psi-c`) exchange always does, over blocks of the
+ * declared width (docs/spec/PROTOCOL.md, Candidate sets under count-only),
+ * and a `psi` exchange where its strategy does
+ * ({@link candidateSetIsImplementedForStrategy}).
+ */
+export function termsResolveCandidateSets(
+  terms: Pick<LinkageTerms, "algorithm" | "linkageStrategy">,
+): boolean {
+  return (
+    terms.algorithm === "psi-c" ||
+    candidateSetIsImplementedForStrategy(terms.linkageStrategy)
+  );
+}
+
+/**
+ * The refusal for a candidate set declared under a strategy that resolves
+ * none, or `undefined`
  * (docs/spec/PROTOCOL.md#the-combinations-that-stay-unsupported).
  * Shared by the schema refine and `assertFanOutImplemented`; fixed literals
  * only.
@@ -195,13 +211,9 @@ export function runsSinglePassLink(
 export function termsCandidateSetRefusal(
   terms: LinkageTerms,
 ): string | undefined {
-  const countOnly = terms.algorithm === "psi-c";
-  if (!countOnly && candidateSetIsImplementedForStrategy(terms.linkageStrategy))
-    return undefined;
+  if (termsResolveCandidateSets(terms)) return undefined;
   if (!termsDeclareCandidateSet(terms)) return undefined;
-  return countOnly
-    ? COUNT_ONLY_SHAPE_REFUSALS.candidateSet
-    : candidateSetUnderStrategyMessage();
+  return candidateSetUnderStrategyMessage();
 }
 
 /**

@@ -159,7 +159,7 @@ test("the first-round count yields to the event loop as it reports", async () =>
   expect(progressAfterTimer).toBe(true);
 });
 
-test("the first-round check weighs a count-only exchange at its record count, leaving a candidate set to its round", async () => {
+test("the first-round check weighs a count-only exchange at its record count times each round's width", async () => {
   const split = [{ function: "split_on", params: { delimiter: " " } }];
   const cascade = prepareForExchange(
     {
@@ -186,7 +186,6 @@ test("the first-round check weighs a count-only exchange at its record count, le
     })),
     ["first_name"],
   );
-  // A count-only exchange assembled without the prepare step's refusal.
   const countOnly = {
     ...cascade,
     linkageTerms: { ...cascade.linkageTerms, algorithm: "psi-c" as const },
@@ -196,12 +195,70 @@ test("the first-round check weighs a count-only exchange at its record count, le
   await expect(
     assertFirstRoundWithinSetMaximum(cascade, { maxValues }),
   ).rejects.toThrow(RoundSetLimitError);
+  // A fan-out key's width is 20 in both roles, so every round of the one key
+  // sends 200 blocks of 20, whatever the rows realize.
   await expect(
-    assertFirstRoundWithinSetMaximum(countOnly, { maxValues }),
-  ).rejects.toThrow(roundOneSetOverMaximumMessage(200, maxValues, true));
+    assertFirstRoundWithinSetMaximum(countOnly, { maxValues: 3999 }),
+  ).rejects.toThrow(roundOneSetOverMaximumMessage(4000, 3999, "every-key"));
   await expect(
-    assertFirstRoundWithinSetMaximum(countOnly, { maxValues: 200 }),
+    assertFirstRoundWithinSetMaximum(countOnly, { maxValues: 4000 }),
   ).resolves.toBeUndefined();
+
+  // Beside a key of width 1 the figure is the widest key's.
+  const twoKeys = {
+    ...countOnly,
+    linkageTerms: {
+      ...countOnly.linkageTerms,
+      linkageKeys: [
+        ...countOnly.linkageTerms.linkageKeys,
+        { name: "plain", elements: [{ field: "firstName" }] },
+      ],
+    },
+  };
+  await expect(
+    assertFirstRoundWithinSetMaximum(twoKeys, { maxValues: 3999 }),
+  ).rejects.toThrow(roundOneSetOverMaximumMessage(4000, 3999, "widest-key"));
+});
+
+test("the first-round check refuses a count-only exchange only where the widest round is over the maximum in both roles", async () => {
+  // A swapped key has width 2 on the receiver and 1 on the sender, so a party
+  // that may still resolve as the sender is not refused before contact.
+  const prepared = prepareForExchange(
+    {
+      linkageTerms: {
+        version: "1.0.0",
+        date: "2026-01-01",
+        algorithm: "psi-c",
+        deduplicate: false,
+        linkageStrategy: "cascade",
+        identity: "Tester",
+        output: { expectsOutput: true, shareWithPartner: true },
+        linkageFields: [
+          { name: "firstName", type: "first_name" },
+          { name: "lastName", type: "last_name" },
+        ],
+        linkageKeys: [
+          {
+            name: "names",
+            elements: [{ field: "firstName" }, { field: "lastName" }],
+            swap: ["firstName", "lastName"],
+          },
+        ],
+      },
+    },
+    "Tester",
+    Array.from({ length: 50 }, (_unused, i) => ({
+      first_name: distinctFirstName(i),
+      last_name: distinctFirstName(i + 50),
+    })),
+    ["first_name", "last_name"],
+  );
+  await expect(
+    assertFirstRoundWithinSetMaximum(prepared, { maxValues: 50 }),
+  ).resolves.toBeUndefined();
+  await expect(
+    assertFirstRoundWithinSetMaximum(prepared, { maxValues: 49 }),
+  ).rejects.toThrow(roundOneSetOverMaximumMessage(50, 49, "every-key"));
 });
 
 /**

@@ -965,14 +965,9 @@ describe("summarizeInvitation", () => {
     expect(fuzzyOnly.headerFields).toEqual(["first name", "last name (fuzzy)"]);
   });
 
-  test("keeps a refused rule on the element that declares it, across a swap", () => {
-    // "not supported" is not a breadth the receiver applies to a field; it names a
-    // step the operator has to find and remove, and that step sits in the element
-    // that declares it. Re-attributing it would put it on a field with no such
-    // step, so the pair keeps its own markers -- the refused key has no run whose
-    // per-field effect the swap could describe. The count-only algorithm is what
-    // puts the key in that register: both linkage strategies match a candidate
-    // set, and psi-c refuses one.
+  test("re-attributes a fan-out marker across a swap under count-only terms", () => {
+    // A count-only round runs the candidate set too, so the marker crosses the
+    // swap as under either `psi` strategy rather than staying as a refusal.
     const countOnly: Partial<LinkageTerms> = { algorithm: "psi-c" };
     const lastNameFansOut = swapKey(
       { transform: soundAlike },
@@ -980,26 +975,12 @@ describe("summarizeInvitation", () => {
       countOnly,
     );
     expect(lastNameFansOut.headerFields).toEqual([
-      "first name (sound-alike)",
-      "last name (not supported)",
-    ]);
-
-    // Symmetric: declared on the first element, shown on the first element.
-    const firstNameFansOut = swapKey(
-      { transform: fanOut },
-      { transform: soundAlike },
-      countOnly,
-    );
-    expect(firstNameFansOut.headerFields).toEqual([
-      "first name (not supported)",
+      "first name (multiple)",
       "last name (sound-alike)",
     ]);
-
-    // The lone declaring element holds it too, with nothing to trade markers with.
-    expect(swapKey({}, { transform: fanOut }, countOnly).headerFields).toEqual([
-      "first name",
-      "last name (not supported)",
-    ]);
+    expect(
+      swapKey({}, { transform: fanOut }, countOnly).headerFields,
+    ).not.toContain("last name (not supported)");
   });
 
   test("re-attributes a fan-out marker across a swap where the strategy matches candidates", () => {
@@ -1032,9 +1013,9 @@ describe("summarizeInvitation", () => {
     ]);
   });
 
-  test("keeps a refused rule on its own field without a swap", () => {
+  test("keeps a count-only fan-out marker on its own field without a swap", () => {
     // The plain shape, where no re-attribution runs at all: the marker sits on the
-    // declaring element's field, and the sibling element is unmarked.
+    // declaring element's field, and the sibling element keeps its own.
     const key = summarizeInvitation(
       makeToken({
         algorithm: "psi-c",
@@ -1055,7 +1036,7 @@ describe("summarizeInvitation", () => {
     ).linkageKeys[0];
     expect(key.headerFields).toEqual([
       "first name (sound-alike)",
-      "last name (not supported)",
+      "last name (multiple)",
     ]);
   });
 

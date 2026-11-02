@@ -336,11 +336,10 @@ export const CONSENT_PROBE_TERMS: LinkageTerms = {
 
 /**
  * {@link CONSENT_PROBE_TERMS} stripped to what a count-only exchange
- * accepts, `psi` still: no payload in either direction, and no key declaring
- * a candidate set -- neither the swapped order nor the fuzzy expansion the
- * base declares, both of which a psi-c document is refused for
- * (docs/spec/PROTOCOL.md, PSI-C). Every key and its missing-field condition
- * stay, as do the cascade strategy and `deduplicate: false`.
+ * accepts, `psi` still: no payload in either direction, which a psi-c
+ * document is refused for (docs/spec/PROTOCOL.md, PSI-C). Every key stays,
+ * with its swapped order, fuzzy expansion and missing-field condition, as do
+ * the cascade strategy and `deduplicate: false`.
  *
  * It is the `algorithm` entry's `prepare` below, so the count-only pair
  * is built on it: varied against the base as it stands, the psi-c side
@@ -350,11 +349,6 @@ export const CONSENT_PROBE_TERMS: LinkageTerms = {
 function countOnlyAdmissibleBase(terms: LinkageTerms): LinkageTerms {
   return edited(terms, (draft) => {
     draft.payload = { send: [], receive: [] };
-    for (const key of draft.linkageKeys) {
-      delete key.swap;
-      for (const element of key.elements)
-        delete element.generateFuzzyComparisons;
-    }
   });
 }
 
@@ -382,7 +376,8 @@ const IDENTIFIER_REVEALING_SHAPE_NAME = "identifier-revealing";
  * The shape of a probe pair moved onto the count-only tier: both sides
  * stripped by {@link countOnlyAdmissibleBase} and set to `psi-c`, so a field
  * a count-only document admits -- several keys, `single-pass`, a missing-field
- * condition -- is measured where a count-only acceptor reads it too.
+ * condition, a candidate set -- is measured where a count-only acceptor reads
+ * it too.
  */
 const COUNT_ONLY_SHAPE_NAME = "count-only";
 
@@ -516,9 +511,9 @@ export const LINKAGE_TERM_CONSENT_CLASSIFICATION: Record<
       "only their count (`psi-c`) -- and with the count, each party's record " +
       "count and what the receiver's software derives beside it, which the " +
       "count-only tier states and a surface omitting the tier does not.",
-    // A count-only exchange accepts neither a payload nor a candidate set, so
-    // the pair is built on a base declaring neither -- countOnlyAdmissibleBase
-    // above states what it strips and why. Both sides are that same stripped
+    // A count-only exchange accepts no payload, so the pair is built on a base
+    // declaring none -- countOnlyAdmissibleBase above states what it strips
+    // and why. Both sides are that same stripped
     // document, so they still differ at the algorithm alone.
     prepare: countOnlyAdmissibleBase,
     vary: (terms) =>
@@ -865,7 +860,12 @@ export const LINKAGE_TERM_CONSENT_CLASSIFICATION: Record<
     // transforms bound no width, and an all-pairs expansion over an unbounded
     // value declares more candidates than one key may hold, so that variant is
     // a document the parse refuses. Every kind has a label of its own, so the
-    // difference a surface has to show is the same one.
+    // difference a surface has to show is the same one. Measured on a
+    // count-only document too, whose round counts over the expansion.
+    shapes: [
+      { name: IDENTIFIER_REVEALING_SHAPE_NAME },
+      { name: COUNT_ONLY_SHAPE_NAME, shape: countOnlyShape },
+    ],
     vary: (terms) =>
       edited(terms, (draft) => {
         draft.linkageKeys[0].elements[2].generateFuzzyComparisons =
@@ -903,6 +903,12 @@ export const LINKAGE_TERM_CONSENT_CLASSIFICATION: Record<
       "Builds this key with the two named elements' values exchanged on the " +
       "receiving side, so records whose values are transposed between two " +
       "fields match.",
+    // A count-only round counts over the swapped order too, so the swap is
+    // measured where a count-only acceptor reads it.
+    shapes: [
+      { name: IDENTIFIER_REVEALING_SHAPE_NAME },
+      { name: COUNT_ONLY_SHAPE_NAME, shape: countOnlyShape },
+    ],
     vary: (terms) =>
       edited(terms, (draft) => {
         delete draft.linkageKeys[0].swap;
