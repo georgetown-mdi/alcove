@@ -13,7 +13,7 @@
     run still reaches the banner -- because a guard that silently swallowed the
     flow would leave every operator with a script that does nothing.
 
-    Three kinds of test:
+    Four kinds of test:
 
       - Pure: UNC and device-prefix parsing, drive-kind classification, the
         dialect map, password masking, the rule that names the shared folder
@@ -26,6 +26,8 @@
         the flow made and which it did not go on to make. The same engine
         replays what the image's checks print for each exit code, so every
         screen the flow puts under them is compared line for line.
+      - Real-engine: the flow run against the PC's own docker, which on the
+        hosted runner serves Windows containers, to the refusal of that mode.
       - Rig-backed: a share the runner serves itself over loopback, a drive
         letter mapped to it, and a standalone DFS namespace with a link into
         that share. Built the way support/maintainer-notes/ci-resolution-rig.ps1
@@ -1397,6 +1399,43 @@ Describe 'The setup flow, driven against a stub engine' {
                     '        The message above says why.'))
             $run.Calls | Should -Match 'volume rm' -Because $run.Calls
         }
+    }
+}
+
+Describe 'The Windows-containers refusal, against this PC''s own engine' {
+    BeforeAll {
+        # Whatever docker the session's PATH reaches, with no stub ahead of it.
+        # The hosted Windows runner's engine serves Windows containers.
+        $engineOs = Invoke-Docker -DockerArgs @('version', '--format', '{{.Server.Os}}')
+        $script:NoWindowsEngine = ''
+        if (-not $engineOs.Ran) { $script:NoWindowsEngine = 'docker is not installed on this PC' }
+        elseif ($engineOs.ExitCode -ne 0) { $script:NoWindowsEngine = "docker did not answer: $($engineOs.Output)" }
+        elseif ($engineOs.Output.Trim() -ne 'windows') {
+            $script:NoWindowsEngine = "the engine serves $($engineOs.Output.Trim()) containers, not windows"
+        }
+    }
+
+    It 'refuses at its preflight and leaves the volumes as they were' {
+        if ($script:NoWindowsEngine) {
+            if ($env:GITHUB_ACTIONS -eq 'true') { throw $script:NoWindowsEngine }
+            Set-ItResult -Skipped -Because $script:NoWindowsEngine
+            return
+        }
+
+        $before = Invoke-Docker -DockerArgs @('volume', 'ls', '--quiet')
+        $run = Start-PowerShellChild -Arguments @(
+            '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$setupScript`"") -TimeoutSeconds 120
+        $after = Invoke-Docker -DockerArgs @('volume', 'ls', '--quiet')
+
+        $output = [string] $run.Output
+        $shape = "timedout=$($run.TimedOut) exit=$($run.Exit) tail=" +
+            (($output.Substring([Math]::Max(0, $output.Length - 300))) -replace '\s+', ' ')
+        $run.TimedOut | Should -BeFalse -Because $shape
+        $run.Exit | Should -Be 1 -Because $shape
+        $lines = @($output -split '\r?\n' | ForEach-Object { $_.TrimEnd() })
+        ($lines -contains '  FAIL  Docker Desktop is in Windows containers mode.') | Should -BeTrue -Because $shape
+        $before.ExitCode | Should -Be 0 -Because "volume ls said: $($before.Output)"
+        $after.Output | Should -BeExactly $before.Output
     }
 }
 

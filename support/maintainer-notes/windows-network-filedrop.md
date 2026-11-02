@@ -467,10 +467,9 @@ its longer refusals, names the device it is creating the volume for, and says
 that the volume is mounted the first time it is used. Nothing there changes
 what it does.
 
-Still unverified: the Windows-containers branch, which needs Docker Desktop
-switched to Windows containers to reach -- only the `{{.Server.Os}}` parse it
-keys on is confirmed, against a `linux` engine. The launcher asks the same
-question of docker alone, for the same reason.
+CI runs both PowerShell scripts to their Windows-containers refusal against
+the hosted runner's own engine, which serves Windows containers. The Command
+Prompt script's own branch is not covered.
 
 Both `docker run` calls that replaced the here-strings -- the argument vectors
 that invoke `doctor probe` and `doctor mount`, the exit codes the script
