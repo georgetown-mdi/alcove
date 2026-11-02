@@ -743,7 +743,6 @@ describe("displayInvitation: the declared terms it discloses (columns, built-in 
     expect(counted).toContain("several values per record (enforced):");
     expect(counted).toContain(CONSENT_FACTS.countOnlyCandidateSets.note);
     expect(counted).not.toContain(CONSENT_FACTS.fanOutCandidates.note);
-    expect(counted).not.toContain(CONSENT_FACTS.fanOutRefused.note);
     expect(counted).toContain("(multiple)");
 
     // Silent for terms that declare no split, so the line is not a fixture of the
@@ -1596,20 +1595,10 @@ describe("displayInvitation: the declared terms it discloses (columns, built-in 
     // which this prompt offers no control over, and the ones a party reading
     // terms it wrote itself states on a basis an acceptance does not hold.
     // Both sets are core's judgment, not this test's, so the seats that do
-    // render them are held to the same lists. The refused fan-out is barred
-    // too: no strategy built today refuses a candidate set, which the check
-    // below holds, so no invitation reaches it.
-    expect(
-      (["cascade", "single-pass"] as const).every(
-        (linkageStrategy) =>
-          summarizeInvitation(splittingKeyToken(FUTURE(), linkageStrategy))
-            .fanOutApplied,
-      ),
-    ).toBe(true);
+    // render them are held to the same lists.
     const elsewhere: ReadonlyArray<string> = [
       ...ACCEPTOR_DEDUPLICATE_CONTROL_FACTS,
       ...SELF_AUTHORED_EXCHANGE_FACTS,
-      "fanOutRefused",
     ];
     const classified: Array<ConsentFact> = Object.entries(CONSENT_FACTS)
       .filter(([id]) => !elsewhere.includes(id))

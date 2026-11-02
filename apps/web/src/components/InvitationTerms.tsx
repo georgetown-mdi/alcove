@@ -1245,13 +1245,9 @@ export function InvitationTerms({
             standardization can fan out a field no invitation shows, so this claims
             nothing about the whole of what the inviter runs. A count-only
             exchange states its own line beside the matching method instead. */}
-        {summary.fansOut && !countOnly && (
+        {summary.fansOut && summary.fanOutApplied && !countOnly && (
           <Term label="Several values per record">
-            <Text size="sm">
-              {summary.fanOutApplied
-                ? CONSENT_FACTS.fanOutCandidates.note
-                : CONSENT_FACTS.fanOutRefused.note}
-            </Text>
+            <Text size="sm">{CONSENT_FACTS.fanOutCandidates.note}</Text>
           </Term>
         )}
 

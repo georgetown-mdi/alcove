@@ -317,8 +317,9 @@ describe("the built-in contact rules without a date of birth", () => {
     const statement = missingFieldConditionStatement("date of birth", "psi-c");
     expect(statement).toBe(
       "Matches only where one of the two records has no valid date of birth. " +
-        "In a count-only exchange you send one encrypted value for each of " +
-        "your records in every round, so what you send does not tell your " +
+        "In a count-only exchange you send the same number of encrypted " +
+        "values for each of your records in every round, so what you send " +
+        "does not tell your " +
         "partner how many of your records have no valid date of birth. The " +
         "software of the party that computes the count does learn, for each " +
         "match through this key, which of the two records had none.",

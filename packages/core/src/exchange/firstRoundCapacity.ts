@@ -173,7 +173,7 @@ export async function assertFirstRoundWithinSetMaximum(
         { cause: failure },
       ),
   });
-  await readEveryCountOnlyRound(prepared, options.signal);
+  await readEveryCountOnlyRound(prepared, options);
 }
 
 /**
@@ -184,12 +184,14 @@ export interface FirstRoundCheckOptions {
   /**
    * Takes `countFirstRoundValues` reports (`PsiProgress`) as the count
    * starts, as it goes, and as it settles, once for each round and role it
-   * counts in.
+   * counts in, and for each round and role of a count-only exchange whose
+   * terms declare a candidate set, every one of which is read.
    * An input whose records cannot reach the bound is not counted, so it
-   * reports nothing. Called as a {@link PsiProgressReporter} is: a raise on a
-   * `progress` report is dropped, and any other reaches the caller. The
-   * settle report's `elements` is the number of rows the count walked, not
-   * the dataset's row count, so it is short of the started report's
+   * reports nothing unless it is read as a count-only candidate set. Called
+   * as a {@link PsiProgressReporter} is: a raise on a `progress` report is
+   * dropped, and any other reaches the caller. The settle report's
+   * `elements` is the number of rows the count walked, not the dataset's row
+   * count, so it is short of the started report's
    * `elements` when a deduplicating party's growing count stopped early.
    */
   onProgress?: PsiProgressReporter;
@@ -289,11 +291,12 @@ function assertCountOnlyRoundsFit(
  * round's candidates -- a fuzzy exceedance, a record wider than its block --
  * is raised in front of this party's operator rather than ending a run its
  * partner has joined (docs/spec/PROTOCOL.md, Candidate sets under count-only).
- * The read reports no row; the run reports each when it reads the round.
+ * Each round and role read reports as the first-round count does
+ * (`countFirstRoundValues`, {@link FirstRoundCheckOptions}).
  */
 async function readEveryCountOnlyRound(
   prepared: Pick<PreparedExchange, "linkageTerms" | "dataset" | "rowCount">,
-  signal: AbortSignal | undefined,
+  options: FirstRoundCheckOptions,
 ): Promise<void> {
   const { linkageTerms, dataset, rowCount } = prepared;
   if (
@@ -301,6 +304,9 @@ async function readEveryCountOnlyRound(
     !termsDeclareCandidateSet(linkageTerms)
   )
     return;
+  const report = options.onProgress;
+  const progressIntervalMs =
+    options.progressIntervalMs ?? FIRST_ROUND_COUNT_PROGRESS_MS;
   const rounds = linkageRounds(linkageTerms.linkageKeys);
   const widths = countOnlyWidthsOfRounds(linkageTerms);
   for (const isReceiver of [true, false])
@@ -308,20 +314,54 @@ async function readEveryCountOnlyRound(
       const width = isReceiver
         ? widths[index]!.receiverWidth
         : widths[index]!.senderWidth;
+      report?.({
+        operation: "countFirstRoundValues",
+        elements: rowCount,
+        state: "started",
+      });
+      const startedAt = performance.now();
       let row = 0;
-      const records = roundKeyIterable(
-        round,
-        dataset,
-        rowCount,
-        isReceiver,
-        false,
-      );
-      for (const candidates of records) {
-        candidatesWithinWidth(candidates, width);
-        if (++row % FIRST_ROUND_COUNT_CLOCK_RECORDS !== 0) continue;
-        await yieldToEventLoop();
-        signal?.throwIfAborted();
+      const settled = (state: "finished" | "failed"): void =>
+        report?.({
+          operation: "countFirstRoundValues",
+          elements: row,
+          state,
+          durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
+        });
+      try {
+        let lastReportAt = performance.now();
+        const records = roundKeyIterable(
+          round,
+          dataset,
+          rowCount,
+          isReceiver,
+          false,
+        );
+        for (const candidates of records) {
+          candidatesWithinWidth(candidates, width);
+          if (++row % FIRST_ROUND_COUNT_CLOCK_RECORDS !== 0) continue;
+          if (performance.now() - lastReportAt >= progressIntervalMs) {
+            try {
+              report?.({
+                operation: "countFirstRoundValues",
+                elements: rowCount,
+                state: "progress",
+                processed: row,
+              });
+            } catch {
+              // Dropped; the read continues and its settle report follows.
+            }
+            lastReportAt = performance.now();
+          }
+          await yieldToEventLoop();
+          options.signal?.throwIfAborted();
+        }
+      } catch (failure) {
+        if (!(options.signal?.aborted && failure === options.signal.reason))
+          settled("failed");
+        throw failure;
       }
+      settled("finished");
     }
 }
 

@@ -2720,9 +2720,6 @@ describe("InvitationTerms: matching on several values per record", () => {
       CONSENT_FACTS.countOnlyCandidateSets.note,
     );
     expect(app.container.textContent).not.toContain(
-      CONSENT_FACTS.fanOutRefused.note,
-    );
-    expect(app.container.textContent).not.toContain(
       CONSENT_FACTS.fanOutCandidates.note,
     );
   });
@@ -2733,9 +2730,6 @@ describe("InvitationTerms: matching on several values per record", () => {
     await readyPanel("Other details");
     expect(app.container.textContent).not.toContain(
       CONSENT_FACTS.fanOutCandidates.note,
-    );
-    expect(app.container.textContent).not.toContain(
-      CONSENT_FACTS.fanOutRefused.note,
     );
   });
 });

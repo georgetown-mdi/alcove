@@ -556,24 +556,6 @@ export const CONSENT_FACTS = {
       "other's matched values group into records, round by round, for the " +
       "records still in the running.",
   },
-  fanOutRefused: {
-    basis: "enforced",
-    reason:
-      "The other case of the same line, and enforced for the same reason the " +
-      "`deduplicate` refusal is: terms declaring a candidate set under a " +
-      "linkage strategy that resolves none are refused when they are " +
-      "authored or minted, at the local prepare step, and again at the " +
-      "agreed-terms run boundary. Both linkage strategies and a count-only " +
-      "exchange resolve one (docs/spec/PROTOCOL.md, Fan-out runs under both " +
-      "linkage strategies, and Candidate sets under count-only), so it " +
-      "applies only to a strategy added without a resolution. The exchange " +
-      "this invitation proposes does not run at all, which is a fact of the " +
-      "run rather than of the partner's conduct.",
-    note:
-      "The exchange will refuse to run these terms. Your partner proposes " +
-      "matching on parts of a value, which the agreed linkage strategy " +
-      "cannot do. Ask your partner for an invitation that drops the split.",
-  },
   candidateSetChainsGrouping: {
     basis: "enforced",
     reason:
@@ -992,12 +974,12 @@ export const LESS_CERTAIN_KEY_COPY = {
  * which pairs the key matches and what the rounds disclose. Under `psi`, a
  * match tells a party receiving the result which record lacked the field, and
  * the element count of the round built only for your records lacking it tells
- * the partner how many of them are still unmatched. A `psi-c` round has one
- * element per record, so its count tells the partner nothing, but the software
- * of the party computing the count learns, for each match through the key,
- * which of the two records lacked the field (docs/spec/PROTOCOL.md, Keys with
- * a missing-field condition, and PSI-C, What each party learns, and on what
- * basis).
+ * the partner how many of them are still unmatched. A `psi-c` round has the
+ * same number of elements for each record, so its count tells the partner
+ * nothing, but the software of the party computing the count learns, for
+ * each match through the key, which of the two records lacked the field
+ * (docs/spec/PROTOCOL.md, Keys with a missing-field condition, and PSI-C,
+ * What each party learns, and on what basis).
  * `field` names the field's type in lowercase words
  * (`MISSING_FIELD_CONDITION_TYPE_WORDS`, linkageKeyCondition.ts). `keyCount`
  * above 1 words it for one line naming that many keys together.
@@ -1013,9 +995,10 @@ export function missingFieldConditionStatement(
     `records has no valid ${field}.`;
   if (algorithm === "psi-c")
     return (
-      `${matches} In a count-only exchange you send one encrypted value for ` +
-      "each of your records in every round, so what you send does not tell " +
-      `your partner how many of your records have no valid ${field}. The ` +
+      `${matches} In a count-only exchange you send the same number of ` +
+      "encrypted values for each of your records in every round, so what " +
+      "you send does not tell your partner how many of your records have " +
+      `no valid ${field}. The ` +
       "software of the party that computes the count does learn, for each " +
       `match through ${several ? "one of these keys" : "this key"}, which of ` +
       "the two records had none."

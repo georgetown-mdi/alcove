@@ -988,13 +988,15 @@ export function displayInvitation(params: {
   // its value matches on each candidate, and the removal rule then decides
   // how many pairings result. Rendered only when the terms declare a
   // fan-out -- an invitation holds only the element transforms, never the
-  // inviter's own standardization -- and which of the two facts prints
-  // follows the strategy, like the partner-receipt pair above. A count-only
-  // exchange states its own line in its tier instead.
-  if (summary.fansOut && summary.algorithm !== "psi-c") {
-    const fact = summary.fanOutApplied ? "fanOutCandidates" : "fanOutRefused";
-    emit(`  ${marked("several values per record", fact)}:`);
-    emit(`    ${CONSENT_FACTS[fact].note}`);
+  // inviter's own standardization -- that a `psi` exchange matches on. A
+  // count-only exchange states its own line in its tier instead.
+  if (
+    summary.fansOut &&
+    summary.fanOutApplied &&
+    summary.algorithm !== "psi-c"
+  ) {
+    emit(`  ${marked("several values per record", "fanOutCandidates")}:`);
+    emit(`    ${CONSENT_FACTS.fanOutCandidates.note}`);
   }
 
   // What those several values group once this party declares a duplicate

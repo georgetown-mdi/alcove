@@ -21,6 +21,7 @@ import {
 
 import type { LinkageTerms } from "../../src/config/linkageTermsSchema";
 import type { PreparedExchange } from "../../src/exchange";
+import type { PsiProgress } from "../../src/psi/participant";
 
 // Count-only terms whose keys declare candidate sets -- a swapped key order, a
 // fuzzy comparison, a fan-out -- run through the PSI phase both parties enter
@@ -338,5 +339,50 @@ describe("a refusal building a round's candidates comes before contact", () => {
     await expect(assertFirstRoundWithinSetMaximum(unreadable)).rejects.toThrow(
       /YYYYMMDD/,
     );
+    const reports: Array<PsiProgress> = [];
+    await expect(
+      assertFirstRoundWithinSetMaximum(unreadable, {
+        onProgress: (report) => reports.push(report),
+      }),
+    ).rejects.toBeInstanceOf(UsageError);
+    expect(reports.map((report) => report.state)).toEqual([
+      "started",
+      "failed",
+    ]);
   });
+});
+
+test("the read of every count-only round reports its progress as the first-round count does", async () => {
+  const rows = Array.from({ length: 2048 }, (_, index) =>
+    person(`First${index}`, `Last${index}`),
+  );
+  const terms = countOnly(PSI_TERMS);
+  const prepared = {
+    ...preparedParty("Tester", rows, terms),
+    linkageTerms: terms,
+  };
+  const reports: Array<PsiProgress> = [];
+  await assertFirstRoundWithinSetMaximum(prepared, {
+    onProgress: (report) => reports.push(report),
+    progressIntervalMs: 0,
+  });
+  const readsInBothRoles = 2 * countOnlyWidthsOfRounds(terms).length;
+  expect(
+    reports.every((report) => report.operation === "countFirstRoundValues"),
+  ).toBe(true);
+  const started = reports.filter((report) => report.state === "started");
+  const finished = reports.filter((report) => report.state === "finished");
+  expect(started).toHaveLength(readsInBothRoles);
+  expect(started.every((report) => report.elements === rows.length)).toBe(true);
+  expect(finished).toHaveLength(readsInBothRoles);
+  expect(finished.every((report) => report.elements === rows.length)).toBe(
+    true,
+  );
+  expect(
+    reports
+      .filter((report) => report.state === "progress")
+      .map((report) => report.processed),
+  ).toEqual(
+    Array.from({ length: readsInBothRoles }, () => [1024, 2048]).flat(),
+  );
 });
