@@ -500,6 +500,28 @@ describe("savedExchangeRow: a standing condition", () => {
         /^Last run succeeded .* and recovered from a run that stopped partway; read its note on the exchange's page$/,
       );
     });
+
+    test("names the re-invite once a handshake after the success failed closed", () => {
+      const healed = { at: healedAt, outcome: "succeeded" } as const;
+      const auth = {
+        at: "2026-07-13T10:00:00.000Z",
+        outcome: "failed",
+        failureKind: "auth",
+      } as const;
+      const row = savedExchangeRow(
+        record({
+          lastRun: auth,
+          recentRuns: [auth, healed, failedSave],
+          standingCondition: { since: standingAt, kind: "storage" },
+        }),
+        undefined,
+        NOW,
+      );
+      expect(row.status).not.toMatch(/a run since then succeeded/);
+      expect(row.status).toMatch(
+        /^A run could not save this exchange's secret .*; re-invite to reconnect$/,
+      );
+    });
   });
 
   test("the partner's failed save clears itself on a successful run, and the row names the heal", () => {

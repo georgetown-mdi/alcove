@@ -790,11 +790,17 @@ next secret in that run, which answers what the partner reported, and that
 run's heal note already asks whether a second copy of the exchange runs. The
 `lastRun` write clears it where the entry it is handed is a success stamped
 after the condition's `since`, or where the record already lists such a
-success, so a partner-storage entry arriving after a later success raises
-nothing; the [schedule advance](#catch-up-on-wake) clears it by the same rule.
+success stamped no later than the writer's clock, so a partner-storage entry
+arriving after a later success raises nothing; the [schedule
+advance](#catch-up-on-wake) clears it by the same rule.
 Like the raise, the clear holds whether or not the success's own entry lands.
 A condition holding the operator's response stays, and a `"storage"` or
 `"auth"` condition is cleared only by the three acts above.
+A limit follows from the first raise standing: a failed save on this device,
+raised while an unanswered `"partner-storage"` condition stands, is kept off
+the record, and a later success clears that condition, so this device's failed
+save is never shown; that success shows both sides on one secret, so the cost
+is small.
 
 The condition tiers as the equivalent `lastRun` entry would: a `"storage"`
 condition is the benign persist-failure state, a `"partner-storage"` condition

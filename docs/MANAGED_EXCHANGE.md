@@ -895,7 +895,9 @@ only where the partner's key exchange used the secret it kept, which shows that
 it keeps one; otherwise it names a fresh invitation. The exchange's page and the
 recurring list say the same at later visits, across no-shows, until a
 handshake fails closed or a run succeeds. Once a run succeeds, they say so, and
-you clear the report with its acknowledgement.
+you clear the report with its acknowledgement. A handshake that fails closed
+after that success brings back the fresh invitation, and runs after it do not
+settle the report.
 
 The recurring list names a last run that healed a cut rotation, and the run
 history beside it holds that run's note.

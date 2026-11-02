@@ -15,6 +15,7 @@ import {
 import { managedExchangeLapsed } from "./managedExpiry";
 
 import type {
+  ManagedExchangeLastRun,
   ManagedExchangeRecord,
   ManagedStandingCondition,
 } from "./managedExchangeRecord";
@@ -192,7 +193,8 @@ export function partnerStorageReach(
 
 /**
  * What a `"storage"` reading can say about reaching the partner: a run
- * succeeded since the failed save (`"succeeded-since"`), the failed save's
+ * succeeded since the failed save and none failed after it
+ * (`"succeeded-since"`), the failed save's
  * entry recorded that the next run can still reach the partner
  * (`"next-run-heals"`), or neither, which a re-invite answers
  * (`"reinvite"`). The failed save is the standing condition's, else the last
@@ -200,21 +202,34 @@ export function partnerStorageReach(
  */
 export type StorageReach = "succeeded-since" | "next-run-heals" | "reinvite";
 
-/** The {@link StorageReach} of `record`. The entry read is the newest listed
- * run that met the partner's key exchange with a verdict on the secret -- a
- * failed save or a failed-closed handshake -- since the failed save, so a
- * handshake that failed after it is not read as a heal to come. */
+/** The {@link StorageReach} of `record`. A success since the failed save
+ * reads as `"succeeded-since"` only while no listed run after the newest
+ * success holds a verdict on the secret -- a failed save or a failed-closed
+ * handshake -- since first raise wins keeps such a run off the standing
+ * condition. Otherwise the entry read is the newest listed run holding such a
+ * verdict since the failed save, so a handshake that failed after it is not
+ * read as a heal to come. */
 export function storageReach(record: ManagedExchangeRecord): StorageReach {
   const condition = raisedStandingCondition(record);
   const since =
     condition?.kind === "storage" ? condition.since : record.lastRun?.at;
   if (since === undefined) return "reinvite";
-  if (runSucceededSince(record, since)) return "succeeded-since";
   const sinceMs = Date.parse(since);
-  const verdict = recentRunsOf(record).find(
-    (run) =>
-      Date.parse(run.at) >= sinceMs &&
-      (run.failureKind === "storage" || run.failureKind === "auth"),
+  const runs = recentRunsOf(record);
+  const isVerdict = (run: ManagedExchangeLastRun) =>
+    run.failureKind === "storage" || run.failureKind === "auth";
+  const newestSuccessMs = Math.max(
+    ...runs
+      .filter((run) => run.outcome === "succeeded")
+      .map((run) => Date.parse(run.at)),
+  );
+  if (
+    newestSuccessMs > sinceMs &&
+    !runs.some((run) => isVerdict(run) && Date.parse(run.at) > newestSuccessMs)
+  )
+    return "succeeded-since";
+  const verdict = runs.find(
+    (run) => Date.parse(run.at) >= sinceMs && isVerdict(run),
   );
   return verdict?.failureKind === "storage" && verdict.nextRunHeals === true
     ? "next-run-heals"

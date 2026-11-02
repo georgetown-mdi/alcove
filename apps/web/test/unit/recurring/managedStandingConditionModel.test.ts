@@ -160,6 +160,28 @@ describe("managedStandingConditionView", () => {
       expect(view?.reinvite).toBe("none");
       expect(view?.clearance).toBe("acknowledge");
     });
+
+    test("names the re-invite once a handshake after the success failed closed", () => {
+      const succeeded = { at: LATER_AT, outcome: "succeeded" } as const;
+      const auth = {
+        at: "2026-07-13T09:00:00.000Z",
+        outcome: "failed",
+        failureKind: "auth",
+      } as const;
+      const view = managedStandingConditionView(
+        storage({
+          lastRun: auth,
+          recentRuns: [auth, succeeded, { ...failedSave, nextRunHeals: true }],
+        }),
+        undefined,
+        NOW,
+      );
+      expect(view?.message).not.toMatch(/same secret again/);
+      expect(view?.message).toMatch(
+        /Re-invite your partner to reconnect\. Runs since then do not settle it, including any that succeeded\.$/,
+      );
+      expect(view?.reinvite).toBeUndefined();
+    });
   });
 
   test("a restore since the last success explains a standing handshake failure", () => {

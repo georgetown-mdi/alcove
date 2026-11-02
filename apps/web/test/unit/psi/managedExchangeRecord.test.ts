@@ -2419,6 +2419,7 @@ describe("the standing condition across the bookkeeping writes", () => {
       function writeRun(
         record: ManagedExchangeRecord,
         condition: ManagedStandingCondition,
+        nowMs?: number,
       ): ManagedExchangeRecord {
         return applyManagedExchangeLastRun(
           record,
@@ -2428,23 +2429,29 @@ describe("the standing condition across the bookkeeping writes", () => {
             failureKind: condition.kind,
           },
           Date.parse(condition.since),
+          nowMs,
         );
       }
       function writeAdvance(
         record: ManagedExchangeRecord,
         condition: ManagedStandingCondition,
+        nowMs?: number,
       ): ManagedExchangeRecord {
-        return applyManagedExchangeScheduleAdvance(record, {
-          schedule: {
-            ...schedule,
-            nextWindow: "2026-01-20T14:00:00.000Z",
-            consecutiveMisses: schedule.consecutiveMisses,
+        return applyManagedExchangeScheduleAdvance(
+          record,
+          {
+            schedule: {
+              ...schedule,
+              nextWindow: "2026-01-20T14:00:00.000Z",
+              consecutiveMisses: schedule.consecutiveMisses,
+            },
+            fromNextWindow: schedule.nextWindow,
+            fromConsecutiveMisses: schedule.consecutiveMisses,
+            evidenceSharedSecret: record.sharedSecret,
+            standingCondition: condition,
           },
-          fromNextWindow: schedule.nextWindow,
-          fromConsecutiveMisses: schedule.consecutiveMisses,
-          evidenceSharedSecret: record.sharedSecret,
-          standingCondition: condition,
-        });
+          nowMs,
+        );
       }
       const writeSites = [
         ["a run's entry", writeRun],
@@ -2468,6 +2475,22 @@ describe("the standing condition across the bookkeeping writes", () => {
           };
           const after = write(staleBesideSuccess(), late);
           expect(after.standingCondition).toEqual(NO_STANDING_CONDITION);
+        });
+
+        test("a partner's failed save stands beside a listed success stamped after the write", () => {
+          const futureAt = "2026-07-20T09:00:00.000Z";
+          const futureSuccess = applyManagedExchangeLastRun(
+            buildManagedExchangeRecord(newExchange({ schedule })),
+            { at: futureAt, outcome: "succeeded" },
+            Date.parse(futureAt),
+            Date.parse(futureAt),
+          );
+          const raised: ManagedStandingCondition = {
+            since: newerAt,
+            kind: "partner-storage",
+          };
+          const after = write(futureSuccess, raised, Date.parse(newerAt));
+          expect(after.standingCondition).toEqual(raised);
         });
 
         test("one holding the operator's compromise response stays over a newer condition", () => {
