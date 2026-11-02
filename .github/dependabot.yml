@@ -130,6 +130,8 @@ updates:
       # The same base under the registry-qualified name Dockerfile.fips's FROM
       # spells, held out for the same reason as the entry above.
       - dependency-name: "public.ecr.aws/amazonlinux/amazonlinux"
+      # The name Dependabot gives that ECR Public reference when it files a bump.
+      - dependency-name: "amazonlinux/amazonlinux"
 
   # The relay reference's base image. infra/relay/Dockerfile is a single pinned
   # FROM and nothing else -- the digest's only home, since every other file there

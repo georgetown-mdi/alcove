@@ -1,0 +1,3 @@
+- The block ignores two names for this base: `amazonlinux`, Docker Hub's name for the image, and `public.ecr.aws/amazonlinux/amazonlinux`, the ECR Public name `Dockerfile.fips` spells. -> -
+- Which of the two Dependabot matches against the ECR Public reference has not been observed on `main`. -> -
+- - -> The block ignores three names for this base: `amazonlinux`, Docker Hub's name for the image; `public.ecr.aws/amazonlinux/amazonlinux`, the ECR Public name `Dockerfile.fips` spells; and `amazonlinux/amazonlinux`, the name Dependabot gives that reference when it files a bump, which neither of the other two matched with both on `main`.

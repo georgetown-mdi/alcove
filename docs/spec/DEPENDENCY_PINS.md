@@ -823,11 +823,12 @@ inert and an `amazonlinux` pull request that arrives is closed unmerged -- what
 the entry removes is a filing, and the digest freeze plus the procedure below is
 what holds the base either way.
 
-The block ignores two names for this base: `amazonlinux`, Docker Hub's name
-for the image, and `public.ecr.aws/amazonlinux/amazonlinux`, the ECR Public
-name `Dockerfile.fips` spells. Which of the two Dependabot matches against the
-ECR Public reference has not been observed on `main`. A pull request that
-arrives for it is closed unmerged, as above.
+The block ignores three names for this base: `amazonlinux`, Docker Hub's name
+for the image; `public.ecr.aws/amazonlinux/amazonlinux`, the ECR Public name
+`Dockerfile.fips` spells; and `amazonlinux/amazonlinux`, the name Dependabot
+gives that reference when it files a bump, which neither of the other two
+matched with both on `main`. A pull request that arrives for it is closed
+unmerged, as above.
 
 **What shows a base worth moving to**, in the absence of a filed bump:
 
