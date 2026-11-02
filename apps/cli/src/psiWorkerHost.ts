@@ -14,11 +14,6 @@ import {
 } from "@alcove/core";
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
-import {
-  offerExitAtOnce,
-  withdrawExitAtOnce,
-  type ExitWaitOptions,
-} from "./exitAtOnce";
 import { raisePsiWorkerHeapLimit } from "./psiMemoryBudget";
 
 // The host side of the CLI's PSI worker: it spawns the
@@ -231,21 +226,46 @@ export const PSI_WORKER_EXIT_WAIT_NOTICE =
   "chunk, or the whole match); press Ctrl-C again or send the signal " +
   "again to exit at once, which can end with a different exit code";
 
+/** The signals whose repeat ends the wait for a PSI worker at once. */
+export type PsiWorkerExitSignal = "SIGINT" | "SIGTERM";
+
+const EXIT_SIGNALS: readonly PsiWorkerExitSignal[] = ["SIGINT", "SIGTERM"];
+
+/** How a signal handler reports and ends the wait for a PSI worker. */
+export interface PsiWorkerExitWaitOptions {
+  announce: (line: string) => void;
+  exitAtOnce: (signal: PsiWorkerExitSignal) => void;
+}
+
+let exitAtOnceListeners: Map<PsiWorkerExitSignal, () => void> | undefined;
+
 /**
  * Called by a signal handler as it begins, and again by
  * {@link stopPsiWorkersBeforeExit}: when a PSI worker has a request in
  * flight, print {@link PSI_WORKER_EXIT_WAIT_NOTICE} through `announce` and,
  * until {@link stopPsiWorkersBeforeExit} finishes, call `exitAtOnce` on a
- * further SIGINT or SIGTERM ({@link offerExitAtOnce}).
+ * further SIGINT or SIGTERM.
  * The operator is the bound on the wait: there is no timeout.
  */
 export function offerExitAtOnceWhilePsiWorkersStop(
-  options: ExitWaitOptions,
+  options: PsiWorkerExitWaitOptions,
 ): void {
+  if (exitAtOnceListeners !== undefined) return;
   const inFlight = [...liveWorkers.values()].some((worker) =>
     worker.requestInFlight(),
   );
-  if (inFlight) offerExitAtOnce(PSI_WORKER_EXIT_WAIT_NOTICE, options);
+  if (!inFlight) return;
+  options.announce(PSI_WORKER_EXIT_WAIT_NOTICE);
+  exitAtOnceListeners = new Map();
+  for (const signal of EXIT_SIGNALS) {
+    const listener = (): void => {
+      options.exitAtOnce(signal);
+    };
+    exitAtOnceListeners.set(signal, listener);
+    // Ahead of the exchange's own handler, which would otherwise print its
+    // interrupt lines again before this exit.
+    process.prependListener(signal, listener);
+  }
 }
 
 /**
@@ -256,12 +276,10 @@ export function offerExitAtOnceWhilePsiWorkersStop(
  * chunk during encryption, one response piece during the match -- for a
  * match whose response is one piece, the whole match. When it has
  * to wait, a repeated signal ends the wait as
- * {@link offerExitAtOnceWhilePsiWorkersStop} describes. As the handler's last
- * wait, it then withdraws every offer to exit at once, another wait's
- * included ({@link withdrawExitAtOnce}). Never rejects.
+ * {@link offerExitAtOnceWhilePsiWorkersStop} describes. Never rejects.
  */
 export async function stopPsiWorkersBeforeExit(
-  options: ExitWaitOptions,
+  options: PsiWorkerExitWaitOptions,
 ): Promise<void> {
   offerExitAtOnceWhilePsiWorkersStop(options);
   const exits = [...liveWorkers].map(([engine, { exited }]) => {
@@ -275,5 +293,9 @@ export async function stopPsiWorkersBeforeExit(
     }
   });
   await Promise.all(exits);
-  withdrawExitAtOnce();
+  if (exitAtOnceListeners !== undefined) {
+    for (const [signal, listener] of exitAtOnceListeners)
+      process.off(signal, listener);
+    exitAtOnceListeners = undefined;
+  }
 }

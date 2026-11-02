@@ -32,7 +32,7 @@ export function transportTeardownCeilingMs(
 /**
  * How long an interrupted file-channel run's teardown runs before the CLI says
  * it is waiting on it. A working value for when the notice prints, not a bound
- * on the wait: the normal teardown takes about a millisecond, so only a slow
+ * on the wait: a normal teardown finishes well within it, so only a slow
  * or unresponsive folder or server reaches it.
  */
 export const TEARDOWN_WAIT_NOTICE_DELAY_MS = 2_000;

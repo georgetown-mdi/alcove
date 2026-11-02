@@ -351,7 +351,7 @@ test("a cleanup that finishes quickly prints no notice", async () => {
   ).toEqual([]);
 });
 
-test("a slow cleanup says so, and a second Ctrl-C during it exits at once", async () => {
+test("a slow cleanup says so once, and a second Ctrl-C during it exits 130 without waiting", async () => {
   const notice = `info: ${teardownWaitNotice(
     transportTeardownCeilingMs("filedrop"),
     false,
@@ -392,15 +392,18 @@ test("a slow cleanup says so, and a second Ctrl-C during it exits at once", asyn
     });
     expect(exitSpy).not.toHaveBeenCalled();
 
-    // The exit comes from inside the second signal's own delivery, with the
-    // cleanup still held open.
+    // The second signal exits while the first handler's cleanup is still
+    // held open.
     process.emit("SIGINT");
-    expect(exitSpy).toHaveBeenCalledExactlyOnceWith(130);
+    await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(130), {
+      timeout: 5_000,
+    });
+    expect(exitSpy).toHaveBeenCalledTimes(1);
 
     // With process.exit mocked away the first handler carries on once the
     // cleanup finishes, and everything the run installed comes off.
     release();
-    await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledTimes(3), {
+    await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledTimes(2), {
       timeout: 5_000,
     });
     await settled;

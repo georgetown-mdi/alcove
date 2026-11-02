@@ -93,7 +93,6 @@ import {
   reportInvitationRelayEnrollment,
 } from "./invitationRelayEnrollment";
 import { describeExchangeOutcome, zeroMatchWarning } from "./exchangeOutcome";
-import { offerExitAtOnce, type ExitWaitOptions } from "./exitAtOnce";
 import {
   clearRotationInFlight,
   dropPreviousSecret,
@@ -114,6 +113,7 @@ import {
   offerExitAtOnceWhilePsiWorkersStop,
   psiEngineRunsInWorker,
   stopPsiWorkersBeforeExit,
+  type PsiWorkerExitWaitOptions,
 } from "./psiWorkerHost";
 import { writeExchangeRecord } from "./recordFile";
 import { runArtifactFolder } from "./resultFile";
@@ -2411,7 +2411,7 @@ export async function runProtocol(
         return;
     }
   }
-  const exitWait: ExitWaitOptions = {
+  const psiWorkerExitWait: PsiWorkerExitWaitOptions = {
     announce: (line) => log.info(line),
     exitAtOnce: (signal) =>
       process.exit(
@@ -2428,7 +2428,7 @@ export async function runProtocol(
       connection.options?.retainFiles === true,
     );
     const timer = setTimeout(
-      () => offerExitAtOnce(notice, exitWait),
+      () => log.info(notice),
       TEARDOWN_WAIT_NOTICE_DELAY_MS,
     );
     try {
@@ -2454,7 +2454,7 @@ export async function runProtocol(
     psiProgress.close();
     try {
       log.info("caught SIGINT, stopping");
-      offerExitAtOnceWhilePsiWorkersStop(exitWait);
+      offerExitAtOnceWhilePsiWorkersStop(psiWorkerExitWait);
       logRotationStateOnInterrupt("the exchange was interrupted");
       await cleanUpAfterInterrupt();
     } catch (cleanupErr: unknown) {
@@ -2462,7 +2462,7 @@ export async function runProtocol(
     } finally {
       // Exiting while the PSI worker is inside a native masking call aborts
       // the process instead of exiting 130.
-      await stopPsiWorkersBeforeExit(exitWait);
+      await stopPsiWorkersBeforeExit(psiWorkerExitWait);
       // 128 + 2 (SIGINT): conventional exit code for a process interrupted
       // by SIGINT, distinguishable from a clean exit (0) or an error (69).
       process.exit(INTERRUPTED_EXIT_CODE);
@@ -2480,7 +2480,7 @@ export async function runProtocol(
     psiProgress.close();
     try {
       log.info("caught SIGTERM, stopping");
-      offerExitAtOnceWhilePsiWorkersStop(exitWait);
+      offerExitAtOnceWhilePsiWorkersStop(psiWorkerExitWait);
       logRotationStateOnInterrupt("the exchange was interrupted");
       await doCleanup();
     } catch (cleanupErr: unknown) {
@@ -2489,7 +2489,7 @@ export async function runProtocol(
         sanitizeErrorForDisplay(cleanupErr),
       );
     } finally {
-      await stopPsiWorkersBeforeExit(exitWait);
+      await stopPsiWorkersBeforeExit(psiWorkerExitWait);
       // 128 + 15 (SIGTERM): conventional exit code for a process terminated by
       // SIGTERM, distinguishable from a clean exit (0) or an error exit (69).
       process.exit(TERMINATED_EXIT_CODE);
