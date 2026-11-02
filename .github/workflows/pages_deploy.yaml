@@ -57,9 +57,10 @@ on:
 
 # One run per branch. Off main a newer push cancels an older run of the same
 # branch, so only the newest commit deploys; safe because a Pages deployment
-# exists only once its upload completes. A run on main is never cancelled, so
-# a production deploy is never cut off before its manifest is published, and a
-# newer push waits for it.
+# exists only once its upload completes. A run in progress on main is never
+# cancelled, so a production deploy is never cut off before its manifest is
+# published; a newer push waits for it, and replaces a run still waiting to
+# start, which has deployed nothing.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
@@ -320,8 +321,9 @@ jobs:
       # deleted, so the prerelease never holds no manifest. Never marked
       # latest. The manifest replaces the prerelease's assets whenever the
       # deploy of this run succeeded, so the prerelease names what production
-      # serves. Runs on main share one concurrency group and none is cancelled,
-      # so they run one at a time: the run that deploys last publishes last,
+      # serves. Runs on main share one concurrency group and none in progress
+      # is cancelled, so they run one at a time: the run that deploys last
+      # publishes last,
       # including a re-run of an older run.
       - name: Replace the prerelease's assets
         run: |

@@ -647,7 +647,7 @@ describe("the main deploy's manifest", () => {
     expect(pins(document)).toEqual([releasePin, releasePin]);
   });
 
-  it("never cancels a run on main, and cancels a superseded run elsewhere", () => {
+  it("never cancels a run in progress on main, and cancels a superseded run elsewhere", () => {
     expect(document.concurrency).toEqual({
       group: "${{ github.workflow }}-${{ github.ref }}",
       "cancel-in-progress": "${{ github.ref != 'refs/heads/main' }}",
