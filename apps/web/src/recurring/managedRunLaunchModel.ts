@@ -61,6 +61,7 @@ import {
   importedSinceLastSuccess,
   partnerStorageReach,
   rotationInFlightUnansweredAtLaunch,
+  storageReach,
 } from "@psi/managed/managedFailureTiers";
 import { DEFAULT_RELAY_OFF_REMEDY } from "@psi/transport/defaultRelaySwitch";
 import { ManagedSignalingEndpointRefusedError } from "@psi/managed/managedRendezvous";
@@ -695,11 +696,12 @@ const STORAGE_FAILURE: ManagedRunFailure = {
   recovery: "reinvite",
 };
 
-/** {@link STORAGE_FAILURE} on a live launch whose partner saved first and
- * completed the key exchange under its previous secret, which shows it keeps
- * one, so the next run can meet it under the secret this run used
- * ({@link RotationPersistError.nextRunHeals}), as the command line's
- * responder decides. */
+/** {@link STORAGE_FAILURE} for a run whose partner saved first and completed
+ * the key exchange under its previous secret, which shows it keeps one, so
+ * the next run can meet it under the secret this run used, as the command
+ * line's responder decides: read off a live launch's
+ * {@link RotationPersistError.nextRunHeals}, or off the record
+ * ({@link storageReach}). */
 const STORAGE_NEXT_RUN_HEALS_FAILURE: ManagedRunFailure = {
   kind: "storage",
   title: STORAGE_FAILURE.title,
@@ -882,7 +884,9 @@ export function managedRunTierFailure(
     case "custody-unreadable":
       return RECORDED_CUSTODY_UNREADABLE_FAILURE;
     case "storage":
-      return STORAGE_FAILURE;
+      return storageReach(record) === "next-run-heals"
+        ? STORAGE_NEXT_RUN_HEALS_FAILURE
+        : STORAGE_FAILURE;
     case "partial-rotation":
       return PARTIAL_ROTATION_FAILURE;
     case "imported":

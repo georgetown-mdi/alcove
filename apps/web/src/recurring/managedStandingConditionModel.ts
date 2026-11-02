@@ -7,8 +7,8 @@
  * This is the condition's OWN surface, not a reading of the last run: it renders
  * wherever one stands, including on a record whose last run succeeded, and it
  * holds the clearance the operator reaches from a page where the condition has
- * gone unanswered. What clears a condition, and why a successful run is not one
- * of them, is
+ * gone unanswered. What clears a condition, and why a successful run clears
+ * only the partner's failed save, is
  * docs/MANAGED_EXCHANGE.md, "A standing condition outlives the run that raised
  * it"; the two-outcome gate the unexplained tier routes through is the one the
  * live Tier-2 failure uses ({@link ../psi/managed/managedFailureConfirmation.ts}).
@@ -27,6 +27,7 @@ import {
 import {
   managedStandingConditionTier,
   partnerStorageReach,
+  storageReach,
 } from "@psi/managed/managedFailureTiers";
 import { raisedStandingCondition } from "@psi/managed/managedExchangeRecord";
 
@@ -73,8 +74,9 @@ export interface ManagedStandingConditionView {
  * why a condition was cleared. */
 export const STANDING_CONDITION_CLEAR_LABEL = "Clear this";
 
-/** The line every tier ends on: the condition outlives the runs after it, so an
- * operator does not read a state nothing has answered as settled. */
+/** The line a tier no run clears ends on: the condition outlives the runs
+ * after it, so an operator does not read a state nothing has answered as
+ * settled. */
 const STANDS_UNTIL =
   "Runs since then do not settle it, including any that succeeded.";
 
@@ -101,15 +103,7 @@ export function managedStandingConditionView(
   const tier = managedStandingConditionTier(condition, local);
   switch (tier) {
     case "storage":
-      return {
-        tier,
-        title: "A run could not save this exchange's new secret",
-        message:
-          `A run on ${when} changed this exchange's secret and could not save ` +
-          "the change, so your partner may hold a secret this device does not. " +
-          `Re-invite your partner to reconnect. ${STANDS_UNTIL}`,
-        clearance: "acknowledge",
-      };
+      return storageView(record, when);
     case "partner-storage":
       return partnerStorageView(record, when, now);
     case "imported":
@@ -135,6 +129,49 @@ export function managedStandingConditionView(
           "which is why it is still here: confirm with your partner before you " +
           `re-invite them. ${STANDS_UNTIL}`,
         clearance: "confirmation",
+      };
+  }
+}
+
+/** The storage condition's view, by what its failed save recorded and the
+ * runs since ({@link storageReach}). It clears only by the operator's
+ * acknowledgement, a successful run since included. */
+function storageView(
+  record: ManagedExchangeRecord,
+  when: string,
+): ManagedStandingConditionView {
+  const failed = `A run on ${when} changed this exchange's secret and could not save the change`;
+  const base = {
+    tier: "storage" as const,
+    title: "A run could not save this exchange's new secret",
+    clearance: "acknowledge" as const,
+  };
+  switch (storageReach(record)) {
+    case "succeeded-since":
+      return {
+        ...base,
+        message:
+          `${failed}. A run since then succeeded, so you and your partner ` +
+          "are on the same secret again, and you can clear this.",
+        reinvite: "none",
+      };
+    case "next-run-heals":
+      return {
+        ...base,
+        message:
+          `${failed}. Your partner saved the new secret and kept the one ` +
+          "that run used, so the next run can still reach them. If runs " +
+          "keep missing your partner or stopping, re-invite your partner. " +
+          "Once a later run succeeds, you are both on the new secret and " +
+          "you can clear this.",
+        reinvite: "if-runs-keep-failing",
+      };
+    case "reinvite":
+      return {
+        ...base,
+        message:
+          `${failed}, so your partner may hold a secret this device does ` +
+          `not. Re-invite your partner to reconnect. ${STANDS_UNTIL}`,
       };
   }
 }
@@ -173,7 +210,7 @@ function partnerStorageView(
         message:
           `${stopped} Scheduled runs keep running but cannot reach your ` +
           "partner, and running the exchange again cannot either. Re-invite " +
-          `your partner to reconnect. ${STANDS_UNTIL}`,
+          "your partner to reconnect.",
       };
   }
 }

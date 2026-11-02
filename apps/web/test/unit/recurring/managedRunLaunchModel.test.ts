@@ -991,6 +991,17 @@ describe("classifyManagedRunFailure: a no-show read against standing desync evid
         failure,
       );
     });
+
+    test("reads the next run off the record where the failed save's entry is marked", () => {
+      const markedAfterRun = applyManagedExchangeLastRun(
+        record({ side: "inviter" }),
+        storageFailureRun(persistFailedAt, true),
+        persistFailedAt,
+      );
+      expect(
+        managedRunFailureFromRecord(markedAfterRun, undefined, NOW),
+      ).toEqual(classify(true));
+    });
   });
 
   test("a second run in one visit reads the evidence the first run left", () => {

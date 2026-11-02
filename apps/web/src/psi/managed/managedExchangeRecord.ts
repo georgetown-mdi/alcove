@@ -337,6 +337,12 @@ export interface ManagedExchangeLastRun {
    * between the two saves of a rotation. The run history states the heal
    * ({@link ./managedHealNote.ts}). */
   healedCutRotation?: true;
+  /** Present only on a `"storage"` failure whose partner saved the next
+   * secret first and completed the key exchange under its previous secret,
+   * which shows that it keeps one: the next run can still reach the partner
+   * under the secret this run used. The standing condition and the list read
+   * it at later visits; where it is absent they name the re-invite. */
+  nextRunHeals?: true;
 }
 
 /** What a `"too-large"` failure records about the set it refused. */
@@ -524,7 +530,8 @@ export interface ManagedExchangeRecord {
    * `partner-storage` failure raised, or
    * {@link NO_STANDING_CONDITION} while none stands. Cleared by the operator's
    * explicit clear-and-acknowledge, by a re-invite, or with the record itself --
-   * never by a no-show and never by a successful run alone. */
+   * never by a no-show. A successful run clears a `partner-storage` condition
+   * holding no response, and no other. */
   standingCondition: ManagedStandingConditionField;
 }
 
@@ -567,8 +574,9 @@ export function parseStoredInstant(value: string): number {
  * moves {@link MANAGED_EXCHANGE_SCHEMA_VERSION}. An artifact holding a value
  * this reader does not know is refused whole rather than read with the value
  * dropped -- the reader-rejects-unknown rule. `singleColumnInput`,
- * `setUncounted`, `refusedInRound`, and `healedCutRotation` are admitted only
- * as `true`, so none can hold a reading its absence already states. */
+ * `setUncounted`, `refusedInRound`, `healedCutRotation`, and `nextRunHeals` are
+ * admitted only as `true`, so none can hold a reading its absence already
+ * states. */
 export const lastRunSchema: ZodType<ManagedExchangeLastRun> = z.object({
   at: z.iso.datetime(),
   outcome: z.enum(["succeeded", "failed", "desynced", "missed", "skipped"]),
@@ -595,6 +603,7 @@ export const lastRunSchema: ZodType<ManagedExchangeLastRun> = z.object({
   setUncounted: z.literal(true).optional(),
   refusedInRound: z.literal(true).optional(),
   healedCutRotation: z.literal(true).optional(),
+  nextRunHeals: z.literal(true).optional(),
 });
 
 /** The canonical validator for the operator's answer. Strict, so a member a
@@ -2010,7 +2019,9 @@ function mergedRecentRuns(
  * raised whether or not the entry itself lands: the two rules below choose which
  * of two runs' STAMPS the record keeps, while the condition is not one run's
  * stamp but evidence nobody has answered yet, so the run that met it raises it
- * even where a newer entry keeps the `lastRun` slot.
+ * even where a newer entry keeps the `lastRun` slot. A success after a
+ * `"partner-storage"` condition clears it the same way, whether or not its
+ * entry lands ({@link withoutPartnerStorageAnsweredBySuccess}).
  *
  * A failure never overwrites a success stamped after its own run began:
  * `runStartedAtMs` is the instant the run producing `lastRun` began, and a
@@ -2033,7 +2044,10 @@ export function applyManagedExchangeLastRun(
   nowMs: number = Date.now(),
 ): ManagedExchangeRecord {
   const raised = withoutAnsweredRotationInFlight(
-    withStandingCondition(record, standingConditionFrom(lastRun)),
+    withoutPartnerStorageAnsweredBySuccess(
+      withStandingCondition(record, standingConditionFrom(lastRun)),
+      lastRun,
+    ),
     lastRun,
   );
   const stored = lastRunNotAfter(record.lastRun, nowMs);
@@ -2222,6 +2236,29 @@ function withStandingCondition(
   return { ...record, standingCondition: condition };
 }
 
+/** `record` with a standing `"partner-storage"` condition cleared where a run
+ * succeeded after it: `lastRun` when it is that success, or a success the
+ * record already lists, which covers the partner-storage entry that arrives
+ * after a later success. Both sides saved the next secret in such a run, which
+ * answers what the partner reported. The one condition a run clears: one
+ * holding the operator's compromise response stays, as do the `"storage"` and
+ * `"auth"` kinds. The input record is not mutated. */
+function withoutPartnerStorageAnsweredBySuccess(
+  record: ManagedExchangeRecord,
+  lastRun: ManagedExchangeLastRun | undefined,
+): ManagedExchangeRecord {
+  const standing = raisedStandingCondition(record);
+  if (standing?.kind !== "partner-storage" || standing.response !== undefined)
+    return record;
+  const succeededSince =
+    (lastRun?.outcome === "succeeded" &&
+      Date.parse(lastRun.at) > Date.parse(standing.since)) ||
+    runSucceededSince(record, standing.since);
+  return succeededSince
+    ? { ...record, standingCondition: NO_STANDING_CONDITION }
+    : record;
+}
+
 /** Apply the operator's clear-and-acknowledge to a record, producing a validated
  * new record whose `standingCondition` is back to {@link NO_STANDING_CONDITION}
  * -- the run bookkeeping, the secret, and the document remain untouched. A record
@@ -2373,7 +2410,10 @@ export function applyManagedExchangeScheduleAdvance(
   const evidenceStands = record.sharedSecret === advance.evidenceSharedSecret;
   const advanced: ManagedExchangeRecord = {
     ...(evidenceStands
-      ? withStandingCondition(record, advance.standingCondition)
+      ? withoutPartnerStorageAnsweredBySuccess(
+          withStandingCondition(record, advance.standingCondition),
+          advance.lastRun,
+        )
       : record),
     schedule: advance.schedule,
   };

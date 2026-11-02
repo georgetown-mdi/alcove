@@ -107,8 +107,9 @@ interface ManagedExchangeArtifactLocal {
   lastRun?: ManagedExchangeLastRun;
   /** The standing condition the source record held, with the operator's answer
    * to it where one was given; omitted where none stood. Both travel because an
-   * export that dropped either would be a fourth way to clear a condition, and
-   * only the operator's acknowledgement, a re-invite, and a delete may. */
+   * export that dropped either would be another way to clear a condition, and
+   * only the operator's acknowledgement, a re-invite, a delete, and, for a
+   * partner-storage condition, a successful run may. */
   standingCondition?: ManagedStandingCondition;
   /** The max-token-age policy, when the operator opted in. */
   tokenMaxAgeDays?: number;

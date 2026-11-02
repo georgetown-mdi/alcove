@@ -75,14 +75,91 @@ describe("managedStandingConditionView", () => {
   test("a persist failure gets the re-invite recovery and no attack checklist", () => {
     const view = managedStandingConditionView(
       record({
-        lastRun: { at: LATER_AT, outcome: "succeeded" },
+        lastRun: { at: LATER_AT, outcome: "missed" },
         standingCondition: { since: RAISED_AT, kind: "storage" },
       }),
       undefined,
       NOW,
     );
     expect(view?.clearance).toBe("acknowledge");
-    expect(view?.message).toMatch(/Re-invite your partner to reconnect/);
+    expect(view?.message).toMatch(
+      /Re-invite your partner to reconnect\. Runs since then do not settle it, including any that succeeded\.$/,
+    );
+    expect(view?.reinvite).toBeUndefined();
+  });
+
+  describe("this device's failed save", () => {
+    const failedSave = {
+      at: RAISED_AT,
+      outcome: "failed",
+      failureKind: "storage",
+    } as const;
+    const storage = (overrides: Partial<ManagedExchangeRecord> = {}) =>
+      record({
+        lastRun: { ...failedSave, nextRunHeals: true },
+        standingCondition: { since: RAISED_AT, kind: "storage" },
+        ...overrides,
+      });
+
+    test("names the next run where the failed save recorded that it can reach the partner", () => {
+      const view = managedStandingConditionView(storage(), undefined, NOW);
+      expect(view?.message).toMatch(
+        /Your partner saved the new secret and kept the one that run used, so the next run can still reach them\. If runs keep missing your partner or stopping, re-invite your partner\. Once a later run succeeds, you are both on the new secret and you can clear this\.$/,
+      );
+      expect(view?.reinvite).toBe("if-runs-keep-failing");
+      expect(view?.clearance).toBe("acknowledge");
+    });
+
+    test("keeps naming the next run across a later visit's no-show", () => {
+      const view = managedStandingConditionView(
+        storage({
+          lastRun: { at: LATER_AT, outcome: "missed" },
+          recentRuns: [
+            { at: LATER_AT, outcome: "missed" },
+            { ...failedSave, nextRunHeals: true },
+          ],
+        }),
+        undefined,
+        NOW,
+      );
+      expect(view?.message).toMatch(/the next run can still reach them/);
+      expect(view?.reinvite).toBe("if-runs-keep-failing");
+    });
+
+    test("names the re-invite once a handshake after it failed closed", () => {
+      const view = managedStandingConditionView(
+        storage({
+          lastRun: { at: LATER_AT, outcome: "failed", failureKind: "auth" },
+          recentRuns: [
+            { at: LATER_AT, outcome: "failed", failureKind: "auth" },
+            { ...failedSave, nextRunHeals: true },
+          ],
+        }),
+        undefined,
+        NOW,
+      );
+      expect(view?.message).toMatch(/Re-invite your partner to reconnect\./);
+      expect(view?.reinvite).toBeUndefined();
+    });
+
+    test("says a run since then succeeded and still waits for the clear", () => {
+      const view = managedStandingConditionView(
+        storage({
+          lastRun: { at: LATER_AT, outcome: "succeeded" },
+          recentRuns: [
+            { at: LATER_AT, outcome: "succeeded" },
+            { ...failedSave, nextRunHeals: true },
+          ],
+        }),
+        undefined,
+        NOW,
+      );
+      expect(view?.message).toMatch(
+        /A run since then succeeded, so you and your partner are on the same secret again, and you can clear this\.$/,
+      );
+      expect(view?.reinvite).toBe("none");
+      expect(view?.clearance).toBe("acknowledge");
+    });
   });
 
   test("a restore since the last success explains a standing handshake failure", () => {
@@ -136,7 +213,7 @@ describe("managedStandingConditionView", () => {
         NOW,
       );
       expect(view?.message).toMatch(
-        /This device also kept the earlier secret your partner still holds, so the next run can still reach them\. If your partner's device can save the new secret this time, you are back in step\. If runs keep missing your partner or stopping, ask your partner to re-invite you\. Once a later run succeeds, you are both on the new secret and you can clear this\.$/,
+        /This device also kept the earlier secret your partner still holds, so the next run can still reach them\. If your partner's device can save the new secret this time, you are back in step\. If runs keep missing your partner or stopping, ask your partner to re-invite you\. Once a later run succeeds, you are both on the new secret and this alert clears itself\.$/,
       );
       expect(view?.message).not.toMatch(/do not settle it/);
       expect(view?.reinvite).toBe("if-runs-keep-failing");
@@ -157,12 +234,12 @@ describe("managedStandingConditionView", () => {
         NOW,
       );
       expect(view?.message).toMatch(
-        /Scheduled runs keep running but cannot reach your partner, and running the exchange again cannot either\. Re-invite your partner to reconnect\. Runs since then do not settle it, including any that succeeded\.$/,
+        /Scheduled runs keep running but cannot reach your partner, and running the exchange again cannot either\. Re-invite your partner to reconnect\.$/,
       );
       expect(view?.reinvite).toBeUndefined();
     });
 
-    test("says a run since then succeeded, offers no re-invite, and still waits for the clear", () => {
+    test("says a run since then succeeded and offers no re-invite on a record no run's write cleared", () => {
       const view = managedStandingConditionView(
         partnerStorage({
           previousSharedSecret: undefined,

@@ -264,10 +264,12 @@ export const PARTNER_SECRET_NOT_SAVED_KEPT_REMEDY =
 /** The line the standing condition ends on beside
  * {@link PARTNER_SECRET_NOT_SAVED_KEPT_REMEDY}. */
 export const PARTNER_SECRET_NOT_SAVED_KEPT_CLOSING =
-  "Once a later run succeeds, you are both on the new secret and you can " +
-  "clear this.";
+  "Once a later run succeeds, you are both on the new secret and this " +
+  "alert clears itself.";
 
-/** What the standing condition says once a run after it succeeded. */
+/** What the standing condition says once a run after it succeeded, on a
+ * record whose condition no run's write cleared, such as one an earlier
+ * version of this app wrote. */
 export const PARTNER_SECRET_NOT_SAVED_SUCCEEDED_SINCE =
   "A run since then succeeded, so you and your partner are on the same " +
   "secret again, and you can clear this.";

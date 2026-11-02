@@ -9,6 +9,7 @@ import {
   answersRotationInFlight,
   offeredManagedPreviousSecret,
   raisedStandingCondition,
+  recentRunsOf,
   runSucceededSince,
 } from "./managedExchangeRecord";
 import { managedExchangeLapsed } from "./managedExpiry";
@@ -49,7 +50,7 @@ import type { ManagedLocalState } from "./managedLocalStateShape";
  * - `"custody-unreadable"` -- the stored record could not be
  *   read, before anything rotated (none here).
  * - `"storage"` -- a rotation could not be persisted and may have desynced the
- *   parties (re-invite).
+ *   parties (re-invite, or the next run where {@link storageReach} says so).
  * - `"partial-rotation"` -- a rotation never saved and a later run met no partner,
  *   who probably saved a secret this device lacks (re-invite). Read only beside
  *   that no-show, so it cannot stand in for an unexplained handshake failure.
@@ -187,6 +188,37 @@ export function partnerStorageReach(
   return offeredManagedPreviousSecret(record, now) !== undefined
     ? "kept"
     : "not-kept";
+}
+
+/**
+ * What a `"storage"` reading can say about reaching the partner: a run
+ * succeeded since the failed save (`"succeeded-since"`), the failed save's
+ * entry recorded that the next run can still reach the partner
+ * (`"next-run-heals"`), or neither, which a re-invite answers
+ * (`"reinvite"`). The failed save is the standing condition's, else the last
+ * run's.
+ */
+export type StorageReach = "succeeded-since" | "next-run-heals" | "reinvite";
+
+/** The {@link StorageReach} of `record`. The entry read is the newest listed
+ * run that met the partner's key exchange with a verdict on the secret -- a
+ * failed save or a failed-closed handshake -- since the failed save, so a
+ * handshake that failed after it is not read as a heal to come. */
+export function storageReach(record: ManagedExchangeRecord): StorageReach {
+  const condition = raisedStandingCondition(record);
+  const since =
+    condition?.kind === "storage" ? condition.since : record.lastRun?.at;
+  if (since === undefined) return "reinvite";
+  if (runSucceededSince(record, since)) return "succeeded-since";
+  const sinceMs = Date.parse(since);
+  const verdict = recentRunsOf(record).find(
+    (run) =>
+      Date.parse(run.at) >= sinceMs &&
+      (run.failureKind === "storage" || run.failureKind === "auth"),
+  );
+  return verdict?.failureKind === "storage" && verdict.nextRunHeals === true
+    ? "next-run-heals"
+    : "reinvite";
 }
 
 /**
