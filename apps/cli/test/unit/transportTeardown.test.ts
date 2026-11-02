@@ -12,6 +12,7 @@ import {
   TRANSPORT_TEARDOWN_CEILING_MS,
   closeWithinCeiling,
   teardownCeilingNotice,
+  teardownWaitNotice,
   transportTeardownCeilingMs,
   type TeardownOutcome,
 } from "../../src/transportTeardown";
@@ -197,4 +198,15 @@ test("a webrtc run, which has no protocol files, is told nothing about them", ()
   });
   expect(notice).toContain("exit status are unchanged");
   expect(notice).not.toContain("exchange directory");
+});
+
+test("the cleanup-wait notice states the wait, its bound, and the second Ctrl-C", () => {
+  expect(teardownWaitNotice(3 * 60_000, false)).toBe(
+    "cleaning up this run's files (up to 3 minutes); press Ctrl-C again to " +
+      "exit now and leave them",
+  );
+  // A retain-mode run deletes nothing, so it is told only of the close.
+  expect(teardownWaitNotice(60_000, true)).toBe(
+    "closing the connection (up to 1 minute); press Ctrl-C again to exit now",
+  );
 });

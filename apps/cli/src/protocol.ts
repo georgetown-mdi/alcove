@@ -93,6 +93,7 @@ import {
   reportInvitationRelayEnrollment,
 } from "./invitationRelayEnrollment";
 import { describeExchangeOutcome, zeroMatchWarning } from "./exchangeOutcome";
+import { offerExitAtOnce, type ExitWaitOptions } from "./exitAtOnce";
 import {
   clearRotationInFlight,
   dropPreviousSecret,
@@ -113,13 +114,14 @@ import {
   offerExitAtOnceWhilePsiWorkersStop,
   psiEngineRunsInWorker,
   stopPsiWorkersBeforeExit,
-  type PsiWorkerExitWaitOptions,
 } from "./psiWorkerHost";
 import { writeExchangeRecord } from "./recordFile";
 import { runArtifactFolder } from "./resultFile";
 import {
   closeWithinCeiling,
+  TEARDOWN_WAIT_NOTICE_DELAY_MS,
   teardownCeilingNotice,
+  teardownWaitNotice,
   transportTeardownCeilingMs,
   type TeardownOutcome,
 } from "./transportTeardown";
@@ -2409,13 +2411,32 @@ export async function runProtocol(
         return;
     }
   }
-  const psiWorkerExitWait: PsiWorkerExitWaitOptions = {
+  const exitWait: ExitWaitOptions = {
     announce: (line) => log.info(line),
     exitAtOnce: (signal) =>
       process.exit(
         signal === "SIGINT" ? INTERRUPTED_EXIT_CODE : TERMINATED_EXIT_CODE,
       ),
   };
+  // The interrupted run's own cleanup, announced only when it is slow: a
+  // file-channel close removes this run's files from the exchange folder, and
+  // a hung mount or server can hold it to the teardown ceiling.
+  async function cleanUpAfterInterrupt(): Promise<void> {
+    if (connection.channel === "webrtc") return doCleanup();
+    const notice = teardownWaitNotice(
+      transportTeardownCeilingMs(connection.channel),
+      connection.options?.retainFiles === true,
+    );
+    const timer = setTimeout(
+      () => offerExitAtOnce(notice, exitWait),
+      TEARDOWN_WAIT_NOTICE_DELAY_MS,
+    );
+    try {
+      await doCleanup();
+    } finally {
+      clearTimeout(timer);
+    }
+  }
   async function onSigint(): Promise<void> {
     // Must be set synchronously, before the first await, so the runProtocol
     // catch block sees it as soon as the cleanup-induced failure propagates.
@@ -2432,16 +2453,16 @@ export async function runProtocol(
     // of their own. doCleanup closes it again, idempotently.
     psiProgress.close();
     try {
-      log.info("caught SIGINT, exiting");
-      offerExitAtOnceWhilePsiWorkersStop(psiWorkerExitWait);
+      log.info("caught SIGINT, stopping");
+      offerExitAtOnceWhilePsiWorkersStop(exitWait);
       logRotationStateOnInterrupt("the exchange was interrupted");
-      await doCleanup();
+      await cleanUpAfterInterrupt();
     } catch (cleanupErr: unknown) {
       log.debug("onSigint cleanup threw:", sanitizeErrorForDisplay(cleanupErr));
     } finally {
       // Exiting while the PSI worker is inside a native masking call aborts
       // the process instead of exiting 130.
-      await stopPsiWorkersBeforeExit(psiWorkerExitWait);
+      await stopPsiWorkersBeforeExit(exitWait);
       // 128 + 2 (SIGINT): conventional exit code for a process interrupted
       // by SIGINT, distinguishable from a clean exit (0) or an error (69).
       process.exit(INTERRUPTED_EXIT_CODE);
@@ -2458,8 +2479,8 @@ export async function runProtocol(
     // The live line is dropped before the first interrupt line, as in onSigint.
     psiProgress.close();
     try {
-      log.info("caught SIGTERM, exiting");
-      offerExitAtOnceWhilePsiWorkersStop(psiWorkerExitWait);
+      log.info("caught SIGTERM, stopping");
+      offerExitAtOnceWhilePsiWorkersStop(exitWait);
       logRotationStateOnInterrupt("the exchange was interrupted");
       await doCleanup();
     } catch (cleanupErr: unknown) {
@@ -2468,7 +2489,7 @@ export async function runProtocol(
         sanitizeErrorForDisplay(cleanupErr),
       );
     } finally {
-      await stopPsiWorkersBeforeExit(psiWorkerExitWait);
+      await stopPsiWorkersBeforeExit(exitWait);
       // 128 + 15 (SIGTERM): conventional exit code for a process terminated by
       // SIGTERM, distinguishable from a clean exit (0) or an error exit (69).
       process.exit(TERMINATED_EXIT_CODE);

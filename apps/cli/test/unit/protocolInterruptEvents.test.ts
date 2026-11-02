@@ -60,9 +60,38 @@ vi.mock("../../src/psiProgressDisplay", () => ({
   ) => check(() => {}),
 }));
 
+// A teardown a test can hold open, standing in for a hung folder or server,
+// and a notice delay short enough for a unit test. The normal teardown here
+// takes about a millisecond, far inside the delay.
+const teardown = vi.hoisted(() => ({
+  hold: undefined as Promise<void> | undefined,
+  noticeDelayMs: 200,
+}));
+vi.mock("../../src/transportTeardown", async (importActual) => {
+  const actual =
+    await importActual<typeof import("../../src/transportTeardown")>();
+  return {
+    ...actual,
+    get TEARDOWN_WAIT_NOTICE_DELAY_MS() {
+      return teardown.noticeDelayMs;
+    },
+    closeWithinCeiling: async (
+      ceilingMs: number,
+      close: () => Promise<void>,
+    ) => {
+      await teardown.hold;
+      return actual.closeWithinCeiling(ceilingMs, close);
+    },
+  };
+});
+
 import { runExchange } from "@alcove/core";
 
 import { runProtocol } from "../../src/protocol";
+import {
+  teardownWaitNotice,
+  transportTeardownCeilingMs,
+} from "../../src/transportTeardown";
 import { recordProcessExit } from "../exitCapture";
 
 // 32 zero bytes in base64url (43 chars, no padding).
@@ -108,6 +137,7 @@ let dropDir: string;
 
 beforeEach(() => {
   runEvents.ordered.length = 0;
+  teardown.hold = undefined;
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-proto-interrupt-"));
   dropDir = path.join(tmpDir, "drop");
   fs.mkdirSync(dropDir);
@@ -208,7 +238,7 @@ test("a SIGINT interrupt under --event-stream emits no terminal event", async ()
 test("an interrupt drops the live progress line before it logs anything", async () => {
   // Ctrl-C lands mid-operation with the cursor parked on the redrawn progress
   // row, so the display is closed before the first interrupt line: otherwise
-  // "caught SIGINT, exiting" is written over the half-drawn row.
+  // "caught SIGINT, stopping" is written over the half-drawn row.
   const exitSpy = recordProcessExit();
   const keyFile = path.join(tmpDir, "interrupted-progress.key");
   const run = runProtocol({
@@ -240,7 +270,7 @@ test("an interrupt drops the live progress line before it logs anything", async 
 
   const closed = runEvents.ordered.indexOf("progress display closed");
   const firstInterruptLine = runEvents.ordered.indexOf(
-    "info: caught SIGINT, exiting",
+    "info: caught SIGINT, stopping",
   );
   expect(closed).toBeGreaterThanOrEqual(0);
   expect(firstInterruptLine).toBeGreaterThan(closed);
@@ -293,8 +323,8 @@ async function deliverSignals(
 test("a second Ctrl-C ends the run", async () => {
   const { exits, caught } = await deliverSignals(["SIGINT", "SIGINT"]);
   expect(caught).toEqual([
-    "info: caught SIGINT, exiting",
-    "info: caught SIGINT, exiting",
+    "info: caught SIGINT, stopping",
+    "info: caught SIGINT, stopping",
   ]);
   expect(exits).toEqual([130, 130]);
 });
@@ -302,8 +332,83 @@ test("a second Ctrl-C ends the run", async () => {
 test("a SIGTERM after a SIGINT still ends the run", async () => {
   const { exits, caught } = await deliverSignals(["SIGINT", "SIGTERM"]);
   expect(caught).toEqual([
-    "info: caught SIGINT, exiting",
-    "info: caught SIGTERM, exiting",
+    "info: caught SIGINT, stopping",
+    "info: caught SIGTERM, stopping",
   ]);
   expect(exits).toEqual([143, 130]);
+});
+
+test("a cleanup that finishes quickly prints no notice", async () => {
+  const { exits } = await deliverSignals(["SIGINT"]);
+  expect(exits).toEqual([130]);
+  // Past the notice delay, so a timer the cleanup failed to clear would
+  // have fired by now.
+  await new Promise((resolve) =>
+    setTimeout(resolve, teardown.noticeDelayMs + 100),
+  );
+  expect(
+    runEvents.ordered.filter((line) => line.includes("Ctrl-C again")),
+  ).toEqual([]);
+});
+
+test("a slow cleanup says so, and a second Ctrl-C during it exits at once", async () => {
+  const notice = `info: ${teardownWaitNotice(
+    transportTeardownCeilingMs("filedrop"),
+    false,
+  )}`;
+  let release: () => void = () => {};
+  teardown.hold = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const signalListenersBefore = {
+    SIGINT: process.listenerCount("SIGINT"),
+    SIGTERM: process.listenerCount("SIGTERM"),
+  };
+  const exitSpy = recordProcessExit();
+  try {
+    const run = runProtocol({
+      connection: {
+        channel: "filedrop",
+        path: dropDir,
+        options: { pollIntervalMs: 1, peerTimeoutMs: 5_000 },
+      },
+      auth: {
+        sharedSecret: TOKEN_A,
+        keyFilePath: path.join(tmpDir, "slow-cleanup.key"),
+      },
+      prepared: minimalPrepared,
+      output: undefined,
+      verbosity: -1,
+      loggerName: "test-d",
+    });
+    const settled = Promise.allSettled([run]);
+    await vi.waitFor(
+      () => expect(fs.readdirSync(dropDir).length).toBeGreaterThan(0),
+      { timeout: 5_000 },
+    );
+    process.emit("SIGINT");
+    await vi.waitFor(() => expect(runEvents.ordered).toContain(notice), {
+      timeout: 5_000,
+    });
+    expect(exitSpy).not.toHaveBeenCalled();
+
+    // The exit comes from inside the second signal's own delivery, with the
+    // cleanup still held open.
+    process.emit("SIGINT");
+    expect(exitSpy).toHaveBeenCalledExactlyOnceWith(130);
+
+    // With process.exit mocked away the first handler carries on once the
+    // cleanup finishes, and everything the run installed comes off.
+    release();
+    await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledTimes(3), {
+      timeout: 5_000,
+    });
+    await settled;
+  } finally {
+    release();
+    exitSpy.mockRestore();
+  }
+  expect(runEvents.ordered.filter((line) => line === notice)).toHaveLength(1);
+  expect(process.listenerCount("SIGINT")).toBe(signalListenersBefore.SIGINT);
+  expect(process.listenerCount("SIGTERM")).toBe(signalListenersBefore.SIGTERM);
 });
