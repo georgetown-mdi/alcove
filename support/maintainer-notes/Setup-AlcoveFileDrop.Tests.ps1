@@ -881,7 +881,7 @@ Describe 'The setup flow, driven against a stub engine' {
         $run.TimedOut | Should -BeFalse -Because $shape
         $run.Exit | Should -Be 0 -Because $shape
         $run.Output | Should -Match 'already local' -Because $shape
-        $run.Output | Should -Match 'do not need a Docker volume at all' -Because $shape
+        $run.Output | Should -Match 'do not need a volume at all' -Because $shape
         $run.Output | Should -Not -Match 'unexpected engine call' -Because $shape
         $run.Calls | Should -Match 'image inspect' -Because $run.Calls
         # The image is present, so nothing has any reason to fetch one.
@@ -1302,8 +1302,25 @@ Describe 'The setup flow, driven against a stub engine' {
                     '',
                     '',
                     '  FAIL  Docker could not start the container (exit 125).',
-                    '        Nothing was tested. The message Docker printed above is the one',
-                    '        to read.'))
+                    '        Nothing was tested; the message above says why.',
+                    '        If it says Docker is not running:',
+                    '        Start Docker Desktop, wait for the whale icon to stop animating,',
+                    '        and run this script again.'))
+        }
+
+        It 'names Podman and its machine when podman could not start the container' {
+            $run = Invoke-ReplayRun -EngineRoot (Add-StoppedDocker -EngineRoot (
+                    New-ReplayEngine -Name 'podman-probe-125' -EngineName 'podman' -ProbeExit 125))
+
+            Assert-SetupEndsWith -Run $run -Exit 125 -Screen ($script:ProbeLead + @(
+                    '',
+                    '',
+                    '  FAIL  Podman could not start the container (exit 125).',
+                    '        Nothing was tested; the message above says why.',
+                    '        If it says Podman is not running:',
+                    '        Start the Podman machine with "podman machine start", and run',
+                    '        this script again.'))
+            $run.Output | Should -Not -Match 'Docker Desktop' -Because (Get-RunShape -Run $run)
         }
 
         It 'reads an exit code the checks never give as a newer image' {
@@ -1377,7 +1394,7 @@ Describe 'The setup flow, driven against a stub engine' {
                     '',
                     '',
                     '  FAIL  The volume could not be mounted.',
-                    '        The message Docker printed above is the one to read.'))
+                    '        The message above says why.'))
             $run.Calls | Should -Match 'volume rm' -Because $run.Calls
         }
     }

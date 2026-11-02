@@ -453,11 +453,8 @@ otherwise, since some operators have no Docker access and use Podman.
   Windows-containers check reads, and podman a bare `version`, since podman's
   template fields have not been tried here.
 - Every later engine command each script runs goes through the engine chosen,
-  and the text naming an engine that stopped during the checks names the one
-  that did.
-- Neither script's volume options have been driven against anything but
-  docker, and `New-ShareVolume` says so on screen before creating the volume
-  under any other engine rather than predicting what podman will make of them.
+  and every message naming an engine names that one, with one shared line per
+  engine saying how to start it.
 - Covered against stubs only: the launcher's suite drives the choice in each
   order and the screen when neither answers; the setup suite drives its choice
   and a whole run through a stub podman behind a docker that does not answer.

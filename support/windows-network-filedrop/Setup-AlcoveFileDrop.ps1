@@ -283,6 +283,29 @@ function Get-DialectMountVersion {
     return $versMap[$Dialect]
 }
 
+function Get-SetupEngineLabel {
+    <#  The engine's name as the operator knows it. Named apart from
+        Start-Alcove.ps1's Get-EngineLabel, which dot-sourcing this script
+        would otherwise replace. #>
+    param([string] $Engine = 'docker')
+
+    if ($Engine -eq 'podman') { return 'Podman' }
+    return 'Docker'
+}
+
+function Write-StartEngine {
+    <#  How to start the engine, for every message about one not answering. #>
+    param([string] $Engine = 'docker')
+
+    if ($Engine -eq 'podman') {
+        Write-Note 'Start the Podman machine with "podman machine start", and run'
+        Write-Note 'this script again.'
+        return
+    }
+    Write-Note 'Start Docker Desktop, wait for the whale icon to stop animating,'
+    Write-Note 'and run this script again.'
+}
+
 function Write-DoctorOutcome {
     <#  What to read after the doctor's own lines, by the exit code it ended
         with. The doctor's lines say what was found and what to do, and its
@@ -298,9 +321,11 @@ function Write-DoctorOutcome {
     if ($ExitCode -eq 0) { return }
     Write-Host ''
     if ($ExitCode -ge 125) {
-        Write-Bad "Docker could not start the container (exit $ExitCode)."
-        Write-Note 'Nothing was tested. The message Docker printed above is the one'
-        Write-Note 'to read.'
+        $label = Get-SetupEngineLabel -Engine $Engine
+        Write-Bad "$label could not start the container (exit $ExitCode)."
+        Write-Note 'Nothing was tested; the message above says why.'
+        Write-Note "If it says $label is not running:"
+        Write-StartEngine -Engine $Engine
         return
     }
     switch ($ExitCode) {
@@ -324,15 +349,8 @@ function Write-DoctorOutcome {
         }
         default {
             if (-not (Test-DockerAnswers -Engine $Engine)) {
-                if ($Engine -eq 'podman') {
-                    Write-Bad 'Podman stopped during the checks.'
-                    Write-Note 'Start the Podman machine with "podman machine start", and run'
-                    Write-Note 'this script again.'
-                    return
-                }
-                Write-Bad 'Docker stopped during the checks.'
-                Write-Note 'Start Docker Desktop, wait for the whale icon to stop animating,'
-                Write-Note 'and run this script again.'
+                Write-Bad "$(Get-SetupEngineLabel -Engine $Engine) stopped during the checks."
+                Write-StartEngine -Engine $Engine
                 return
             }
             Write-Bad "The checks ended with exit $ExitCode, which this script does not know."
@@ -369,12 +387,12 @@ function Read-ShareCredential {
     )
 
     Write-Host 'These are the credentials the CONTAINER will use to reach the share.'
-    Write-Host 'Windows signs you in to it as yourself; Docker cannot borrow that, so'
-    Write-Host 'it needs a username and password of its own.'
+    Write-Host 'It cannot borrow your Windows sign-in, so it needs a username and'
+    Write-Host 'password of its own.'
     Write-Host ''
     Write-Warn 'Prefer an account scoped to this share, or one you are prepared to'
-    Write-Note 'retire. Docker stores this password in cleartext in the volume'
-    Write-Note 'metadata and puts it on a command line while creating the volume.'
+    Write-Note 'retire. The password is kept in cleartext in the volume metadata'
+    Write-Note 'and is put on a command line while the volume is created.'
     Write-Note 'Do not use a domain administrator account, and do not use one whose'
     Write-Note 'password protects anything else you care about.'
     Write-Info ''
@@ -421,11 +439,10 @@ function Read-ShareCredential {
     # comma-separated string. Said now rather than after the volume fails, because
     # the failure text carries the tail of the password in the clear.
     if ($plainPass.Contains(',')) {
-        Write-Bad 'That password contains a comma, and Docker cannot carry it.'
+        Write-Bad 'That password contains a comma, which a volume cannot take.'
         Write-Note 'Mount options are separated by commas, so the password is cut off at'
         Write-Note 'the first one and the mount fails with "invalid argument". There is'
-        Write-Note 'no way to quote or escape it -- this is a limit of Docker volumes,'
-        Write-Note 'not of Alcove, and doing it by hand hits exactly the same wall.'
+        Write-Note 'no way to quote or escape it, here or by hand.'
         Write-Info ''
         Write-Info 'Use an account whose password has no comma. The troubleshooting'
         Write-Info 'page has a ready-made request for one, under "What to ask your'
@@ -466,12 +483,6 @@ function New-ShareVolume {
 
     $device = "//$Server/$Share"
     if ($SubPath) { $device = "$device/$SubPath" }
-
-    if ($Engine -ne 'docker') {
-        Write-Warn 'The volume options below have only been tried with docker.'
-        Write-Note "$Engine may reject them or read them differently. If it does,"
-        Write-Note 'its own message below is the one to read.'
-    }
 
     # uid/gid are what make the mount writable from the Alcove image, which runs
     # as an unprivileged account (uid 1000). A Windows SMB server serves no Unix
@@ -811,22 +822,28 @@ Write-Host 'Checking for Docker or Podman...'
 $engineFound = Find-SetupEngine
 $containerEngine = $engineFound.Engine
 if (-not $containerEngine) {
-    if (-not (Get-Command docker -ErrorAction SilentlyContinue) -and
-        -not (Get-Command podman -ErrorAction SilentlyContinue)) {
+    $dockerInstalled = $null -ne (Get-Command docker -ErrorAction SilentlyContinue)
+    $podmanInstalled = $null -ne (Get-Command podman -ErrorAction SilentlyContinue)
+    if (-not $dockerInstalled -and -not $podmanInstalled) {
         Write-Bad 'Neither docker nor podman is installed on this PC.'
         Write-Note 'Install Docker Desktop, start it, and run this again.'
         exit 1
     }
-    Write-Bad 'Docker or Podman is installed but is not answering.'
-    Write-Note 'Start Docker Desktop and wait for the whale icon to stop animating,'
-    Write-Note 'or start the Podman machine with "podman machine start". If it is'
-    Write-Note 'already running, the message below usually says why it did not'
-    Write-Note 'answer -- "access is denied" means your account is not in the local'
-    Write-Note 'docker-users group, which an administrator has to add you to.'
+    if ($dockerInstalled) {
+        Write-Bad 'Docker is installed but is not answering.'
+        Write-StartEngine -Engine 'docker'
+        Write-Note '"Access is denied" below means your account is not in the local'
+        Write-Note 'docker-users group, which an administrator has to add you to.'
+    }
+    if ($podmanInstalled) {
+        Write-Bad 'Podman is installed but is not answering.'
+        Write-StartEngine -Engine 'podman'
+    }
     Write-Host ''
     Write-Host $engineFound.Output
     exit 1
 }
+$engineLabel = Get-SetupEngineLabel -Engine $containerEngine
 if ($containerEngine -eq 'docker') {
     $dockerOs = ($engineFound.Output -split '\s+')[0]
     if ($dockerOs -eq 'windows') {
@@ -866,7 +883,7 @@ if ($imagePresent.ExitCode -ne 0) {
         Write-Host $pull.Output
         Write-Host ''
         Write-Note 'Nothing about your file drop has been tested yet -- this is'
-        Write-Note 'Docker being unable to reach its registry. A corporate proxy'
+        Write-Note "$engineLabel being unable to reach its registry. A corporate proxy"
         Write-Note 'intercepting HTTPS is the usual cause. The troubleshooting page'
         Write-Note 'covers it under "The image download fails with a certificate'
         Write-Note 'error" and, if the registry refused the request, "The image'
@@ -874,7 +891,7 @@ if ($imagePresent.ExitCode -ne 0) {
         Write-Info 'https://github.com/georgetown-mdi/alcove/blob/main/support/windows-network-filedrop/troubleshooting.md'
         Write-Info ''
         Write-Info 'The checks run in the same image as the exchange itself, so'
-        Write-Info 'nothing will run until Docker can fetch it.'
+        Write-Info "nothing will run until $engineLabel can fetch it."
         exit 1
     }
 }
@@ -902,11 +919,10 @@ if (-not $explicitTarget) {
             Write-Head 'This folder is already local'
             Write-Good "$($resolved.LocalPath) is on this PC, not a network server."
             if (-not (Test-Path -LiteralPath $resolved.LocalPath)) {
-                Write-Warn 'It does not exist yet -- create it before running the exchange,'
-                Write-Note 'or Docker will report "bind source path does not exist".'
+                Write-Warn 'It does not exist yet -- create it before running the exchange.'
             }
             Write-Host ''
-            Write-Host 'That means you do not need a Docker volume at all -- you can mount'
+            Write-Host 'That means you do not need a volume at all -- you can mount'
             Write-Host 'the folder directly. Run your exchange like this:'
             Write-Host ''
             Write-Host "  $containerEngine run --rm ``"
@@ -1055,12 +1071,12 @@ try {
     }
 
     # ======================================================================
-    # Part 4: create and test the Docker volume
+    # Part 4: create and test the volume
     # ======================================================================
-    Write-Head 'Part 4: creating the Docker volume'
+    Write-Head 'Part 4: creating the volume'
 
     if ($Dialect -eq 'NT1') {
-        Write-Warn 'The Docker VM kernel is built without SMB1, so the mount below'
+        Write-Warn "The $engineLabel VM kernel is built without SMB1, so the mount below"
         Write-Note 'will be refused however well the checks went. -Dialect NT1 is'
         Write-Note 'useful for diagnosis only. If the server speaks nothing newer,'
         Write-Note 'ask IT for a scheduled mirror to a local folder instead -- the'
@@ -1114,12 +1130,12 @@ try {
             Write-Note 'encryption or signing. Run again with -Dialect SMB3.'
         }
         elseif ($testOut -match 'required key not available') {
-            Write-Note 'The mount wanted a Kerberos ticket and the Docker VM has none.'
+            Write-Note "The mount wanted a Kerberos ticket and the $engineLabel VM has none."
             Write-Note 'The server is refusing password authentication. See the'
             Write-Note 'troubleshooting page, "The share never asks for a password".'
         }
         else {
-            Write-Note 'The message Docker printed above is the one to read.'
+            Write-Note 'The message above says why.'
         }
         Invoke-Docker -Engine $containerEngine -DockerArgs @('volume', 'rm', $VolumeName) | Out-Null
         exit 9
@@ -1190,8 +1206,6 @@ Write-Info 'The console cannot set --lockless-rendezvous. If you were told above
 Write-Info 'that you need it, or this is a synced folder, use the command-line'
 Write-Info 'form instead.'
 Write-Host ''
-$engineLabel = 'Docker'
-if ($containerEngine -eq 'podman') { $engineLabel = 'Podman' }
 Write-Warn "$engineLabel stored the share password in cleartext in this volume's"
 Write-Note "metadata: '$containerEngine volume inspect $VolumeName' shows it to anyone who"
 Write-Note "can run $engineLabel on this PC. When you are finished:"

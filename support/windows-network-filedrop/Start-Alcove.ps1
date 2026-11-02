@@ -195,10 +195,11 @@ function Show-DoctorOutcome {
     if ($ExitCode -eq 0) { return }
     Write-Host ''
     if ($ExitCode -ge 125) {
-        Show-Fail "Docker could not start the container (exit $ExitCode)."
-        Show-Note 'Nothing about your folder was tested. The message Docker'
-        Show-Note 'printed above is the one to read. If it says Docker is not'
-        Show-Note 'running, start Docker Desktop and run this script again.'
+        $label = Get-EngineLabel
+        Show-Fail "$label could not start the container (exit $ExitCode)."
+        Show-Note 'Nothing about your folder was tested; the message above says why.'
+        Show-Note "If it says $label is not running:"
+        Show-StartEngine
         return
     }
     switch ($ExitCode) {
@@ -507,16 +508,27 @@ function Show-NoEngine {
     }
     if ($dockerInstalled) {
         Show-Fail 'Docker is installed but is not answering.'
-        Show-Note 'Start Docker Desktop and wait for the whale icon to stop'
-        Show-Note 'animating. "Access is denied" instead means your account is'
-        Show-Note 'not in the local docker-users group, which an administrator'
-        Show-Note 'has to add you to.'
+        Show-StartEngine -Engine 'docker'
+        Show-Note '"Access is denied" instead means your account is not in the'
+        Show-Note 'local docker-users group, which an administrator has to add you to.'
     }
     if ($podmanInstalled) {
         Show-Fail 'Podman is installed but is not answering.'
-        Show-Note 'Start the Podman machine with "podman machine start", and run'
-        Show-Note 'this again.'
+        Show-StartEngine -Engine 'podman'
     }
+}
+
+function Show-StartEngine {
+    <#  How to start the engine, for every message about one not answering. #>
+    param([string] $Engine = $script:AlcoveEngine)
+
+    if ($Engine -eq 'podman') {
+        Show-Note 'Start the Podman machine with "podman machine start", and run'
+        Show-Note 'this script again.'
+        return
+    }
+    Show-Note 'Start Docker Desktop, wait for the whale icon to stop animating,'
+    Show-Note 'and run this script again.'
 }
 
 function Show-EngineStopped {
@@ -525,13 +537,7 @@ function Show-EngineStopped {
     param([string] $Engine = $script:AlcoveEngine)
 
     Show-Fail "$(Get-EngineLabel -Engine $Engine) stopped during the checks."
-    if ($Engine -eq 'podman') {
-        Show-Note 'Start the Podman machine with "podman machine start", and run'
-        Show-Note 'this script again.'
-        return
-    }
-    Show-Note 'Start Docker Desktop, wait for the whale icon to stop animating,'
-    Show-Note 'and run this script again.'
+    Show-StartEngine -Engine $Engine
 }
 
 # ==========================================================================

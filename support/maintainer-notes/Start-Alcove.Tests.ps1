@@ -534,7 +534,7 @@ Describe 'The engine the launcher chooses' {
         $screen | Should -BeExactly (@(
                 '  FAIL  Podman is installed but is not answering.',
                 '        Start the Podman machine with "podman machine start", and run',
-                '        this again.') -join "`n")
+                '        this script again.') -join "`n")
     }
 }
 
@@ -987,9 +987,30 @@ Describe 'What the launcher prints under the checks' {
                     'docker: error during connect',
                     '',
                     '  FAIL  Docker could not start the container (exit 125).',
-                    '        Nothing about your folder was tested. The message Docker',
-                    '        printed above is the one to read. If it says Docker is not',
-                    '        running, start Docker Desktop and run this script again.')) -join "`n")
+                    '        Nothing about your folder was tested; the message above says why.',
+                    '        If it says Docker is not running:',
+                    '        Start Docker Desktop, wait for the whale icon to stop animating,',
+                    '        and run this script again.')) -join "`n")
+    }
+
+    It 'names Podman and its machine when podman could not start the container' {
+        $script:AlcoveEngine = 'podman'
+        try {
+            $run = Invoke-StagedBattery -Lines @('Error: unable to connect to Podman socket') -ExitCode 125
+        } finally {
+            $script:AlcoveEngine = 'docker'
+        }
+
+        $run.Code | Should -Be 125
+        $run.Screen | Should -BeExactly (($script:BatteryLead + @(
+                    'Error: unable to connect to Podman socket',
+                    '',
+                    '  FAIL  Podman could not start the container (exit 125).',
+                    '        Nothing about your folder was tested; the message above says why.',
+                    '        If it says Podman is not running:',
+                    '        Start the Podman machine with "podman machine start", and run',
+                    '        this script again.')) -join "`n")
+        $run.Screen | Should -Not -Match 'Docker Desktop'
     }
 
     It 'reads a code the checks never give as a launcher out of step with its image' {
