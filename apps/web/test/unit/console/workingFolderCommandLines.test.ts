@@ -104,7 +104,9 @@ describe("a one-off command over the working folder", () => {
       }).split("\n");
     const line = lineFor(path.replaceAll("!", '"\\!"'));
     const mount = `type=bind,src=${path},dst=/work`;
-    expect(PASTED_TEXT_ESCAPING_NOTE).toContain('write each ! as "\\!"');
+    expect(PASTED_TEXT_ESCAPING_NOTE).toContain(
+      'replace each ! with "\\!", quotes included',
+    );
     expect(shellArguments(line)).toContain(mount);
     expect(interactiveBash(line)).toContain(mount);
     expect(interactiveBash(lineFor(path))).not.toContain(mount);

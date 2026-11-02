@@ -66,7 +66,8 @@ export const CRONTAB_ACCOUNT_NOTE =
  */
 export const PASTED_TEXT_ESCAPING_NOTE =
   'In a Linux or macOS command, put a \\ before each $, `, \\, or " in a ' +
-  'path or name you paste between double quotes, and write each ! as "\\!". ' +
+  "path or name you paste between double quotes, and replace each ! with " +
+  '"\\!", quotes included. ' +
   "In PowerShell, put a ` before each $, `, \u201C, \u201D, or \u201E " +
   'instead; a " cannot be pasted there. A folder in a --mount option cannot ' +
   'hold a , or ".';
