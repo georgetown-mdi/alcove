@@ -440,3 +440,196 @@ describe("the release workflow's one build", () => {
     });
   });
 });
+
+// A push to main deploys production from pages_deploy.yaml, and the deploy
+// waits for a signed manifest of the artifacts it uploads. The identity the
+// docs publish for it is held by check-release-signing.mjs; this holds the job
+// graph and the permission split. What only a run on main shows: that the
+// signature verifies, the attestation is recorded, and the publish succeeds.
+describe("the main deploy's manifest", () => {
+  const document = workflowDocument(
+    repoRoot,
+    `${WORKFLOW_DIR}/pages_deploy.yaml`,
+  );
+  const release = workflowDocument(repoRoot, `${WORKFLOW_DIR}/release.yaml`);
+  const jobs = document.jobs;
+  const MAIN_ONLY = "github.ref == 'refs/heads/main'";
+  const MAIN_JOBS = [
+    "hosted-manifest",
+    "hosted-manifest-sign",
+    "hosted-manifest-publish",
+  ];
+  const TAG = "hosted-web-main-deploy";
+  const steps = (job) => jobs[job]?.steps ?? [];
+  const runs = (job) => steps(job).map((step) => step.run ?? "");
+  const usesPrefix = (prefix) => (step) => (step.uses ?? "").startsWith(prefix);
+  const downloads = (job) =>
+    steps(job)
+      .filter(usesPrefix("actions/download-artifact@"))
+      .map((step) => step.with?.name);
+  const indexOfRun = (job, pattern) =>
+    steps(job).findIndex((step) => pattern.test(step.run ?? ""));
+  const ARTIFACTS = [
+    "${{ needs.build-and-test.outputs.artifactName }}",
+    "${{ needs.build-and-test.outputs.demoArtifactName }}",
+  ];
+
+  for (const job of MAIN_JOBS) {
+    it(`runs the ${job} job on main only`, () => {
+      expect(jobs[job]?.if).toBe(MAIN_ONLY);
+    });
+  }
+
+  it("hashes the artifacts the deploy job uploads", () => {
+    expect(downloads("hosted-manifest")).toEqual(ARTIFACTS);
+    expect(downloads("deploy")).toEqual(ARTIFACTS);
+    expect([jobs["hosted-manifest"].needs].flat()).toEqual(["build-and-test"]);
+  });
+
+  it("writes the manifest of both sites with this script, named by commit", () => {
+    const write = steps("hosted-manifest").find((step) => step.id === "write");
+    expect(write.run).toContain("node scripts/hosted-site-manifest.mjs write");
+    expect(write.run).toContain('--commit "${GITHUB_SHA}"');
+    expect(write.run).toContain(
+      'file="alcove-hosted-web-${GITHUB_SHA}.manifest.json"',
+    );
+    expect(write.run).toContain('"site=${SITE_DIR}" "demo=${DEMO_DIR}"');
+    expect(write.run).toMatch(
+      /check-tree "\$\{manifest\}" "site=\$\{SITE_DIR\}"/,
+    );
+    expect(write.run).toMatch(
+      /check-tree "\$\{manifest\}" "demo=\$\{DEMO_DIR\}"/,
+    );
+  });
+
+  it("signs, verifies and attests the file the manifest job wrote", () => {
+    const sign = jobs["hosted-manifest-sign"];
+    expect([sign.needs].flat()).toEqual(["hosted-manifest"]);
+    expect(sign.env.ALCOVE_MANIFEST).toBe(
+      "${{ needs.hosted-manifest.outputs.file }}",
+    );
+    const signAt = indexOfRun("hosted-manifest-sign", /cosign sign-blob --yes/);
+    const verifyAt = indexOfRun("hosted-manifest-sign", /cosign verify-blob/);
+    const attestAt = steps("hosted-manifest-sign").findIndex(
+      usesPrefix("actions/attest-build-provenance@"),
+    );
+    expect(signAt).toBeGreaterThanOrEqual(0);
+    expect(verifyAt).toBeGreaterThan(signAt);
+    expect(attestAt).toBeGreaterThan(verifyAt);
+    expect(steps("hosted-manifest-sign")[attestAt].with).toEqual({
+      "subject-path": "${{ env.ALCOVE_MANIFEST }}",
+    });
+  });
+
+  it("deploys only once the manifest is signed on main, and on the build alone off it", () => {
+    const deploy = jobs.deploy;
+    expect([deploy.needs].flat().sort()).toEqual([
+      "build-and-test",
+      "hosted-manifest-sign",
+    ]);
+    expect(deploy.if).toBe(
+      "${{ !cancelled() && needs.build-and-test.result == 'success' && (github.ref != 'refs/heads/main' || needs.hosted-manifest-sign.result == 'success') }}",
+    );
+  });
+
+  it("publishes after the deploy, and verifies before it writes", () => {
+    const publish = jobs["hosted-manifest-publish"];
+    expect([publish.needs].flat().sort()).toEqual([
+      "deploy",
+      "hosted-manifest",
+      "hosted-manifest-sign",
+    ]);
+    expect(publish.env.ALCOVE_RELEASE_TAG).toBe(TAG);
+    expect(downloads("hosted-manifest-publish")).toEqual([
+      "hosted-manifest-signed",
+    ]);
+    const verifyAt = indexOfRun(
+      "hosted-manifest-publish",
+      /cosign verify-blob/,
+    );
+    const writeAt = indexOfRun("hosted-manifest-publish", /\bgh release\b/);
+    expect(verifyAt).toBeGreaterThanOrEqual(0);
+    expect(writeAt).toBeGreaterThan(verifyAt);
+  });
+
+  it("replaces the one prerelease's assets, never marked latest, and never with an older commit's", () => {
+    const run = runs("hosted-manifest-publish").find((text) =>
+      /\bgh release upload\b/.test(text),
+    );
+    expect(run).toContain("set -euo pipefail");
+    expect(run).toMatch(
+      /gh release create "\$\{ALCOVE_RELEASE_TAG\}" --prerelease --latest=false/,
+    );
+    expect(run).toMatch(
+      /gh release edit "\$\{ALCOVE_RELEASE_TAG\}" --prerelease --latest=false/,
+    );
+    const compare = run.indexOf("/compare/");
+    const upload = run.indexOf("gh release upload");
+    const prune = run.indexOf("gh release delete-asset");
+    expect(compare).toBeGreaterThanOrEqual(0);
+    expect(upload).toBeGreaterThan(compare);
+    expect(prune).toBeGreaterThan(upload);
+  });
+
+  it("gives contents: write and id-token: write each to one job alone", () => {
+    expect(document.permissions).toEqual({ contents: "read" });
+    expect(jobs["hosted-manifest"].permissions).toEqual({ contents: "read" });
+    expect(jobs["hosted-manifest-sign"].permissions).toEqual({
+      contents: "read",
+      "id-token": "write",
+      attestations: "write",
+    });
+    expect(jobs["hosted-manifest-publish"].permissions).toEqual({
+      contents: "write",
+    });
+    expect(jobs.deploy.permissions).toEqual({});
+    for (const [id, job] of Object.entries(jobs)) {
+      const permissions = job.permissions ?? {};
+      if (id !== "hosted-manifest-sign") {
+        expect(permissions["id-token"], id).toBeUndefined();
+        expect(permissions.attestations, id).toBeUndefined();
+      }
+      if (id !== "hosted-manifest-publish") {
+        expect(permissions.contents ?? "read", id).toBe("read");
+      }
+    }
+  });
+
+  it("runs no repository code in the signing and publishing jobs", () => {
+    for (const job of ["hosted-manifest-sign", "hosted-manifest-publish"]) {
+      for (const step of steps(job)) {
+        expect(step.uses ?? "", job).not.toMatch(/^(actions\/checkout@|\.\/)/);
+        expect(step.run ?? "", job).not.toMatch(/\b(node|npm|npx)\b/);
+      }
+    }
+  });
+
+  it("pins release.yaml's cosign release in every installer step", () => {
+    const pins = (doc) =>
+      Object.values(doc.jobs)
+        .flatMap((job) => job.steps ?? [])
+        .filter(usesPrefix("sigstore/cosign-installer@"))
+        .map((step) => `${step.uses} ${step.with?.["cosign-release"]}`);
+    const [releasePin] = pins(release);
+    expect(releasePin).toMatch(/ v\d+\.\d+\.\d+$/);
+    expect(pins(document)).toEqual([releasePin, releasePin]);
+  });
+
+  it("never cancels a run on main, and cancels a superseded run elsewhere", () => {
+    expect(document.concurrency).toEqual({
+      group: "${{ github.workflow }}-${{ github.ref }}",
+      "cancel-in-progress": "${{ github.ref != 'refs/heads/main' }}",
+    });
+  });
+
+  it("is published where docs/RELEASES.md says", () => {
+    const releases = readFileSync(
+      resolve(repoRoot, "docs/RELEASES.md"),
+      "utf8",
+    );
+    expect(releases).toContain(
+      `gh release download ${TAG} --repo georgetown-mdi/alcove --pattern 'alcove-hosted-web-*'`,
+    );
+    expect(releases).toContain("`alcove-hosted-web-<commit>.manifest.json`");
+  });
+});

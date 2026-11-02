@@ -6,6 +6,13 @@ name: Deploy to Cloudflare Pages
 # demo site's build goes to the demo site's Pages project the same way. A
 # release tag also redeploys production, from release.yaml, once the release
 # images are published.
+# On main, the deploy waits for a manifest of both sites, written from the
+# artifacts it uploads, signed keylessly and attested under this workflow's
+# identity at refs/heads/main. After the deploy, the manifest and its bundle
+# replace the assets of the one hosted-web-main-deploy prerelease
+# (docs/RELEASES.md, Hosted web application). Jobs are split as in
+# broker_core_build.yaml: only the signing job holds id-token: write, and only
+# the publishing job holds contents: write.
 # The secrets and variables it reads:
 # docs/DEPLOYMENT.md, "Deploying to Cloudflare Pages".
 on:
@@ -48,12 +55,14 @@ on:
 
   workflow_dispatch:
 
-# One run per branch: a newer push cancels an older run of the same branch, so
-# only the newest commit deploys. Safe because a Pages deployment exists only
-# once its upload completes.
+# One run per branch. Off main a newer push cancels an older run of the same
+# branch, so only the newest commit deploys; safe because a Pages deployment
+# exists only once its upload completes. A run on main is never cancelled, so
+# a production deploy is never cut off before its manifest is published, and a
+# newer push waits for it.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
@@ -65,12 +74,153 @@ jobs:
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging'
     uses: ./.github/workflows/web_build_and_test.yaml
 
+  # On main, the manifest of both sites, written from the artifacts the deploy
+  # job uploads rather than from a build of its own, and checked against each
+  # downloaded tree. A main build has no release version, so the file is named
+  # by commit and its version field is the one apps/cli/package.json holds.
+  hosted-manifest:
+    name: Write the hosted app's manifest
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      file: ${{ steps.write.outputs.file }}
+      sha256: ${{ steps.write.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # The script is dependency-free, so a plain pinned Node suffices.
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - name: Download the site
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.build-and-test.outputs.artifactName }}
+          path: ${{ runner.temp }}/site
+      - name: Download the demo site
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.build-and-test.outputs.demoArtifactName }}
+          path: ${{ runner.temp }}/demo-site
+      - name: Write the manifest and check both sites against it
+        id: write
+        env:
+          SITE_DIR: ${{ runner.temp }}/site
+          DEMO_DIR: ${{ runner.temp }}/demo-site
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./apps/cli/package.json').version")"
+          file="alcove-hosted-web-${GITHUB_SHA}.manifest.json"
+          manifest="${RUNNER_TEMP}/${file}"
+          node scripts/hosted-site-manifest.mjs write \
+            --version "${version}" --commit "${GITHUB_SHA}" --out "${manifest}" \
+            "site=${SITE_DIR}" "demo=${DEMO_DIR}"
+          node scripts/hosted-site-manifest.mjs check-tree "${manifest}" "site=${SITE_DIR}"
+          node scripts/hosted-site-manifest.mjs check-tree "${manifest}" "demo=${DEMO_DIR}"
+          digest="$(sha256sum "${manifest}")"
+          {
+            echo "file=${file}"
+            echo "sha256=${digest%% *}"
+          } >>"$GITHUB_OUTPUT"
+      - name: Upload the unsigned manifest
+        uses: actions/upload-artifact@v7
+        with:
+          name: hosted-manifest-unsigned
+          path: ${{ runner.temp }}/${{ steps.write.outputs.file }}
+          if-no-files-found: error
+          retention-days: 7
+
+  # Runs no repository code: it signs, verifies and attests the file the job
+  # above wrote, once it matches the digest that job reported. The certificate
+  # names this workflow at refs/heads/main, the identity docs/RELEASES.md
+  # publishes for this manifest.
+  hosted-manifest-sign:
+    name: Sign and attest the hosted app's manifest
+    needs: hosted-manifest
+    if: github.ref == 'refs/heads/main'
+    # Held on Ubuntu 24.04 with release.yaml's signing job, whose steps this
+    # repeats: it runs only on main, so no branch run has driven it on 26.04.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      ALCOVE_MANIFEST: ${{ needs.hosted-manifest.outputs.file }}
+      ALCOVE_MANIFEST_SHA256: ${{ needs.hosted-manifest.outputs.sha256 }}
+    steps:
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v4.1.2
+        with:
+          cosign-release: v3.1.4
+
+      - name: Fetch the unsigned manifest
+        uses: actions/download-artifact@v8
+        with:
+          name: hosted-manifest-unsigned
+
+      - name: Check the manifest is the one the job above wrote
+        run: |
+          set -euo pipefail
+          if [ -z "${ALCOVE_MANIFEST}" ] || [ -z "${ALCOVE_MANIFEST_SHA256}" ]; then
+            echo "::error::the manifest job reported no file name or digest" >&2
+            exit 1
+          fi
+          digest="$(sha256sum "${ALCOVE_MANIFEST}")"
+          if [ "${digest%% *}" != "${ALCOVE_MANIFEST_SHA256}" ]; then
+            echo "::error::${ALCOVE_MANIFEST} does not match the digest the manifest job reported" >&2
+            exit 1
+          fi
+
+      - name: Sign the manifest
+        run: |
+          set -euo pipefail
+          cosign sign-blob --yes \
+            --bundle "${ALCOVE_MANIFEST}.sigstore.json" "${ALCOVE_MANIFEST}"
+
+      # The command docs/RELEASES.md publishes for this manifest. The workflow
+      # SHA binds the signature to this commit.
+      - name: Verify the signature just produced
+        run: |
+          set -euo pipefail
+          cosign verify-blob \
+            --bundle "${ALCOVE_MANIFEST}.sigstore.json" \
+            --certificate-identity https://github.com/georgetown-mdi/alcove/.github/workflows/pages_deploy.yaml@refs/heads/main \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-github-workflow-sha "${GITHUB_SHA}" \
+            "${ALCOVE_MANIFEST}"
+
+      - name: Attest the manifest's build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: ${{ env.ALCOVE_MANIFEST }}
+
+      - name: Upload the signed manifest and its bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: hosted-manifest-signed
+          path: |
+            ${{ env.ALCOVE_MANIFEST }}
+            ${{ env.ALCOVE_MANIFEST }}.sigstore.json
+          if-no-files-found: error
+          retention-days: 30
+
   # The only job given the Cloudflare credentials. It checks out nothing and
   # runs no repository code: it downloads the sites the gate built and tested,
-  # and uploads them.
+  # and uploads them. On main it also waits for the manifest's signature, so
+  # production never serves a main build without a signed manifest; off main
+  # that job is skipped and the deploy waits for the build alone.
   deploy:
     name: Upload to Cloudflare Pages
-    needs: build-and-test
+    needs: [build-and-test, hosted-manifest-sign]
+    if: ${{ !cancelled() && needs.build-and-test.result == 'success' && (github.ref != 'refs/heads/main' || needs.hosted-manifest-sign.result == 'success') }}
     # Held on Ubuntu 24.04: this job runs only on a push to main or staging,
     # where it deploys, so no branch run has driven it on 26.04.
     runs-on: ubuntu-24.04
@@ -121,6 +271,91 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: "4.147.0"
           command: pages deploy demo-site --project-name=${{ vars.CLOUDFLARE_DEMO_PAGES_PROJECT }} --branch=${{ github.ref_name }} --commit-hash=${{ github.sha }}
+
+  # After the deploy rather than before it, so the prerelease never names a
+  # build production does not yet serve, nor one whose upload failed. The
+  # window left: from the site's upload until this job replaces the assets, and
+  # for as long as this job, or the demo site's upload after the site's, stays
+  # failed, production serves this commit while the prerelease holds the
+  # previous deploy's manifest.
+  #
+  # The only job in this workflow holding contents: write, and what it writes
+  # under it is the one prerelease's assets alone. Runs no repository code.
+  hosted-manifest-publish:
+    name: Publish the hosted app's manifest
+    needs: [hosted-manifest, hosted-manifest-sign, deploy]
+    if: github.ref == 'refs/heads/main'
+    # Held on Ubuntu 24.04 with the signing job above.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      ALCOVE_MANIFEST: ${{ needs.hosted-manifest.outputs.file }}
+      ALCOVE_RELEASE_TAG: hosted-web-main-deploy
+      GH_REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v4.1.2
+        with:
+          cosign-release: v3.1.4
+
+      - name: Fetch the signed manifest and its bundle
+        uses: actions/download-artifact@v8
+        with:
+          name: hosted-manifest-signed
+
+      - name: Verify the signature before publishing
+        run: |
+          set -euo pipefail
+          cosign verify-blob \
+            --bundle "${ALCOVE_MANIFEST}.sigstore.json" \
+            --certificate-identity https://github.com/georgetown-mdi/alcove/.github/workflows/pages_deploy.yaml@refs/heads/main \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-github-workflow-sha "${GITHUB_SHA}" \
+            "${ALCOVE_MANIFEST}"
+
+      # The new commit's assets are uploaded before the earlier commit's are
+      # deleted, so the prerelease never holds no manifest. Never marked
+      # latest. A run whose commit main has moved past publishes nothing once
+      # a later commit's manifest is published, so a re-run cannot replace it
+      # with an older one. That is read off the published manifest rather than
+      # main's tip, since a push outside this workflow's path filter moves the
+      # tip without deploying.
+      - name: Replace the prerelease's assets
+        run: |
+          set -euo pipefail
+          bundle="${ALCOVE_MANIFEST}.sigstore.json"
+          notes="The manifest of the hosted app built from commit ${GITHUB_SHA} on main and deployed to production. Not a release of Alcove: see docs/RELEASES.md, Hosted web application."
+          if gh release view "${ALCOVE_RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release view "${ALCOVE_RELEASE_TAG}" --json assets --jq '.assets[].name' >"${RUNNER_TEMP}/published"
+            while IFS= read -r name; do
+              published="${name#alcove-hosted-web-}"
+              published="${published%.manifest.json}"
+              if [ "${name}" != "alcove-hosted-web-${published}.manifest.json" ] ||
+                ! [[ "${published}" =~ ^[0-9a-f]{40}$ ]]; then
+                continue
+              fi
+              status="$(gh api "repos/${GH_REPO}/compare/${published}...${GITHUB_SHA}" --jq .status)"
+              if [ "${status}" != "ahead" ] && [ "${status}" != "identical" ]; then
+                echo "the prerelease holds the manifest of ${published}, which ${GITHUB_SHA} does not follow on main: it is left as it is."
+                exit 0
+              fi
+            done <"${RUNNER_TEMP}/published"
+          else
+            gh release create "${ALCOVE_RELEASE_TAG}" --prerelease --latest=false \
+              --target "${GITHUB_SHA}" --title "Hosted app manifest of the main deploy (not a release)" \
+              --notes "${notes}"
+          fi
+          gh release upload "${ALCOVE_RELEASE_TAG}" "${ALCOVE_MANIFEST}" "${bundle}" --clobber
+          gh release edit "${ALCOVE_RELEASE_TAG}" --prerelease --latest=false --notes "${notes}"
+          gh release view "${ALCOVE_RELEASE_TAG}" --json assets --jq '.assets[].name' |
+            while IFS= read -r name; do
+              if [ "${name}" != "${ALCOVE_MANIFEST}" ] && [ "${name}" != "${bundle}" ]; then
+                gh release delete-asset "${ALCOVE_RELEASE_TAG}" "${name}" --yes
+              fi
+            done
 
   # Fetches /.well-known/security.txt from each deployment the job above made,
   # in a job of its own because this one runs repository code. No retry: a

@@ -50,6 +50,12 @@ Each release produces:
 | Hosted web application | Cloudflare Pages, with the demo site | The production deployment of tag `vX.Y.Z`, its footer showing `Version X.Y.Z`, until the next push to `main` replaces it |
 | Hosted web application manifest | GitHub Release assets, and its build provenance in the GitHub attestation store | `alcove-hosted-web-X.Y.Z.manifest.json` and its Sigstore bundle, `alcove-hosted-web-X.Y.Z.manifest.json.sigstore.json` ([Hosted web application](#hosted-web-application)) |
 
+Between releases, each push to `main` that deploys production publishes one more artifact:
+
+| Artifact       | Published to                   | Tag / name                                                               |
+| -------------- | ------------------------------ | ------------------------------------------------------------------------ |
+| Hosted web application manifest of a `main` deploy | Assets of the `hosted-web-main-deploy` prerelease, which hold the latest deploy's alone, and its build provenance in the GitHub attestation store | `alcove-hosted-web-<commit>.manifest.json` and its Sigstore bundle, `alcove-hosted-web-<commit>.manifest.json.sigstore.json` ([The manifest of a `main` deploy](#the-manifest-of-a-main-deploy)) |
+
 Each image is the same manifest on both registries, under one digest: the release copies the manifest ghcr.io received to Docker Hub rather than building it again, and signs the Docker Hub copy in place under the same release identity. The two registries are equally useful, equally recommended, and equally secure: each holds the same signed images, and one `cosign verify` command, naming either registry, verifies an image pulled from either ([Verifying a Release](#verifying-a-release)). Pull from whichever one your network reaches.
 
 - The launchers download from Docker Hub first and, if that download fails, the same digest from ghcr.io ([Stamped launchers](#stamped-launchers)).
@@ -415,7 +421,7 @@ gh attestation verify alcove-hosted-web-X.Y.Z.manifest.json \
 
 Both `--certificate-` arguments are required, for the reasons given under [Container image](#container-image). The release runs this `cosign verify-blob` command on the manifest it just signed, before it deploys. Neither command has yet run against a published release; the first release runs both. The comparison below has not been run against the hosted site, and the release does not run it on the deployment it makes.
 
-**Compare the served site against it.** Check the site's footer first: it must show `Version X.Y.Z`. A footer showing `Commit` and a hash means a push to `main` has replaced the release's deployment, and no release manifest lists that build. Then, from a checkout of the signed tag ([Source integrity](#source-integrity)), with Node.js installed:
+**Compare the served site against it.** Check the site's footer first: it must show `Version X.Y.Z`. A footer showing `Commit` and a hash means a push to `main` has replaced the release's deployment: compare against the manifest of that `main` deploy instead, the one whose commit begins with that hash ([The manifest of a `main` deploy](#the-manifest-of-a-main-deploy)). Then, from a checkout of the signed tag ([Source integrity](#source-integrity)), with Node.js installed:
 
 ```sh
 git checkout vX.Y.Z
@@ -431,6 +437,41 @@ To check a single file a browser received, save it from the browser's developer 
 - The signature and the attestation show that the release workflow built these files from the tagged commit. They do not show that the commit's source was reviewed: that rests on the project's review process.
 - The comparison shows what the site served this machine when it ran. It does not show what any other browser received: a host can serve different bytes to different clients or at different times, and a browser can run a copy its service worker cached earlier.
 - A file the site serves that the manifest does not list is not found, since a site has no listing to read.
+
+#### The manifest of a `main` deploy
+
+Each push to `main` that deploys production publishes a manifest of that build too, in the same format. It names the commit built. Its version is the one `apps/cli/package.json` held at that commit, which names no release.
+
+- **Who writes it.** `.github/workflows/pages_deploy.yaml` writes it from the artifacts it uploads, signs it with Cosign under its own identity at `refs/heads/main`, and attests its build provenance. It verifies the signature with the command below before it deploys, and again before it publishes.
+- **Where it is.** After the deploy, the workflow replaces the assets of the `hosted-web-main-deploy` prerelease with `alcove-hosted-web-<commit>.manifest.json` and its Sigstore bundle, `alcove-hosted-web-<commit>.manifest.json.sigstore.json`. The prerelease holds the latest deploy's manifest alone. Like [the broker core build](#the-broker-core-build), it is never marked latest and is not a release of Alcove.
+- **When it lags.** From the deploy's end until the publish finishes, the prerelease still holds the previous deploy's manifest. If the commit in the file name does not begin with the footer's hash, wait for the deploy's run to finish and download again.
+
+Download the manifest and its bundle, then check the signature and the attestation, with `commit` set to the full commit in the file name:
+
+```sh
+gh release download hosted-web-main-deploy --repo georgetown-mdi/alcove --pattern 'alcove-hosted-web-*'
+commit=<the full commit in the manifest's file name>
+cosign verify-blob \
+  --bundle "alcove-hosted-web-${commit}.manifest.json.sigstore.json" \
+  --certificate-identity https://github.com/georgetown-mdi/alcove/.github/workflows/pages_deploy.yaml@refs/heads/main \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-github-workflow-sha "${commit}" \
+  "alcove-hosted-web-${commit}.manifest.json"
+gh attestation verify "alcove-hosted-web-${commit}.manifest.json" \
+  --repo georgetown-mdi/alcove \
+  --signer-workflow georgetown-mdi/alcove/.github/workflows/pages_deploy.yaml
+```
+
+Both `--certificate-` arguments are required, as for a release. `--certificate-identity` names one workflow at one ref, so it takes the exact value rather than a pattern. `--certificate-github-workflow-sha` binds the signature to the run of that commit. `npm run check:release-signing` holds the identity and the `--signer-workflow` published here to that workflow on every pull request. Neither command has yet run against a `main` deploy's manifest.
+
+Then compare the served site as above, from a checkout of that commit rather than of a tag:
+
+```sh
+git checkout "${commit}"
+node scripts/hosted-site-manifest.mjs check-served "alcove-hosted-web-${commit}.manifest.json" site=https://psi.data-bridge.org/
+```
+
+The signature and the attestation show that `pages_deploy.yaml` built these files from that commit on `main`. What else the comparison does and does not show is as for a release, above.
 
 ### Source integrity
 

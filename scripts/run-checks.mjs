@@ -344,7 +344,7 @@ export const CHECKS = [
     group: INDEPENDENT,
     expiresOn: "2027-03-31",
     description:
-      "The cosign verify command docs/RELEASES.md publishes, the release workflow's self-verify step, and the publish sequence name one release identity.",
+      "The cosign verify command docs/RELEASES.md publishes, the release workflow's self-verify step, and the publish sequence name one release identity; the identity it publishes for a main deploy's manifest is the one pages_deploy.yaml signs and verifies under.",
   },
   {
     script: "check:deploy-trigger-graph",

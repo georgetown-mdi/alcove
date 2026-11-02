@@ -13,10 +13,15 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import {
   ACTIONS_OIDC_ISSUER,
+  MAIN_DEPLOY_REF,
+  MAIN_DEPLOY_WORKFLOW,
   RELEASES_DOC,
   certificateFlags,
   couplingViolations,
+  exactCertificateIdentities,
   findSigningWorkflow,
+  mainDeployViolations,
+  parseExactIdentity,
   parseSignerIdentity,
   parseSignerWorkflow,
   publishSequenceViolations,
@@ -161,6 +166,88 @@ const coupling = (overrides = {}) =>
     workflowPath: RELEASE_WORKFLOW,
     workflowSource: workflow({ steps: orderedSteps }),
     docSource: doc(),
+    ...overrides,
+  });
+
+// The manifest of a main deploy: its committed identity and attestation
+// signer, read rather than transcribed, as above.
+const mainDeploySource = readRoot(MAIN_DEPLOY_WORKFLOW);
+const [MAIN_DEPLOY_IDENTITY] = exactCertificateIdentities(releasesDocSource);
+const MAIN_DEPLOY_SIGNER = signerWorkflows(releasesDocSource).find(
+  (signer) => parseSignerWorkflow(signer).workflowPath === MAIN_DEPLOY_WORKFLOW,
+);
+const MAIN_GATE = `github.ref == '${MAIN_DEPLOY_REF}'`;
+
+const mainDeployDoc = ({
+  identity = MAIN_DEPLOY_IDENTITY,
+  signerWorkflow = MAIN_DEPLOY_SIGNER,
+} = {}) =>
+  [
+    "#### The manifest of a `main` deploy",
+    "",
+    "```sh",
+    "cosign verify-blob \\",
+    '  --bundle "m.json.sigstore.json" \\',
+    `  --certificate-identity ${identity} \\`,
+    `  --certificate-oidc-issuer ${ACTIONS_OIDC_ISSUER} \\`,
+    '  "m.json"',
+    "gh attestation verify m.json \\",
+    "  --repo georgetown-mdi/alcove \\",
+    `  --signer-workflow ${signerWorkflow}`,
+    "```",
+    "",
+  ].join("\n");
+
+const verifyBlobStep = ({
+  identity = `--certificate-identity ${MAIN_DEPLOY_IDENTITY}`,
+  issuer = `--certificate-oidc-issuer ${ACTIONS_OIDC_ISSUER}`,
+} = {}) =>
+  [
+    "      - name: Verify the signature just produced",
+    "        run: |",
+    "          cosign verify-blob \\",
+    '            --bundle "m.json.sigstore.json" \\',
+    ...[identity, issuer]
+      .filter((line) => line !== "")
+      .map((line) => `            ${line} \\`),
+    "            m.json",
+  ].join("\n");
+
+const signBlobStep = [
+  "      - name: Sign the manifest",
+  "        run: |",
+  '          cosign sign-blob --yes --bundle "m.json.sigstore.json" m.json',
+].join("\n");
+
+const fileAttest = [
+  "      - name: Attest the manifest's build provenance",
+  "        uses: actions/attest-build-provenance@v4",
+  "        with:",
+  "          subject-path: m.json",
+].join("\n");
+
+const mainDeployWorkflow = ({
+  branches = "[main, staging]",
+  gate = MAIN_GATE,
+  steps = [signBlobStep, verifyBlobStep(), fileAttest],
+} = {}) =>
+  [
+    "name: Deploy to Cloudflare Pages",
+    "on:",
+    "  push:",
+    `    branches: ${branches}`,
+    "jobs:",
+    "  hosted-manifest-sign:",
+    ...(gate === null ? [] : [`    if: ${gate}`]),
+    "    steps:",
+    ...steps,
+    "",
+  ].join("\n");
+
+const mainDeploy = (overrides = {}) =>
+  mainDeployViolations({
+    workflowSource: mainDeployWorkflow(),
+    docSource: mainDeployDoc(),
     ...overrides,
   });
 
@@ -421,14 +508,29 @@ describe("the coupling between the published commands and the signer", () => {
 
 describe("the attestation command the document publishes", () => {
   it("reads the workflow the committed command names", () => {
-    // One command for the images and one for the hosted app's manifest.
+    // One command for the images, one for a release's hosted app manifest, and
+    // one for a main deploy's.
     expect(signerWorkflows(releasesDocSource)).toEqual([
       SIGNER_WORKFLOW,
       SIGNER_WORKFLOW,
+      MAIN_DEPLOY_SIGNER,
     ]);
     expect(parseSignerWorkflow(SIGNER_WORKFLOW)).toEqual({
       workflowPath: RELEASE_WORKFLOW,
     });
+  });
+
+  it("leaves a command naming the main-deploy workflow to its own rules", () => {
+    expect(coupling({ docSource: `${doc()}\n${mainDeployDoc()}` })).toEqual([]);
+  });
+
+  it("fails a document whose only signer workflow is the main deploy's", () => {
+    const [violation, ...rest] = coupling({
+      docSource: doc({ signerWorkflow: MAIN_DEPLOY_SIGNER }),
+    });
+    expect(rest).toEqual([]);
+    expect(violation).toContain("--signer-workflow");
+    expect(violation).toContain(RELEASE_WORKFLOW);
   });
 
   it("reads no value from a document publishing no such command", () => {
@@ -816,6 +918,205 @@ describe("the arguments each verify step runs", () => {
   });
 });
 
+describe("the manifest of a main deploy", () => {
+  it("passes the committed workflow and document", () => {
+    expect(
+      mainDeployViolations({
+        workflowSource: mainDeploySource,
+        docSource: releasesDocSource,
+      }),
+    ).toEqual([]);
+  });
+
+  it("reads the committed identity as the main-deploy workflow at main", () => {
+    expect(exactCertificateIdentities(releasesDocSource)).toEqual([
+      MAIN_DEPLOY_IDENTITY,
+    ]);
+    expect(parseExactIdentity(MAIN_DEPLOY_IDENTITY)).toEqual({
+      repository: "georgetown-mdi/alcove",
+      workflowPath: MAIN_DEPLOY_WORKFLOW,
+      ref: MAIN_DEPLOY_REF,
+    });
+  });
+
+  it("reads an exact identity quoted or bare, and never the pattern form", () => {
+    const value =
+      "https://github.com/o/r/.github/workflows/a.yaml@refs/heads/main";
+    expect(
+      exactCertificateIdentities(
+        [
+          `--certificate-identity ${value} \\`,
+          `--certificate-identity "${value}" \\`,
+          `--certificate-identity '${value}'`,
+          `--certificate-identity-regexp '^${value}$'`,
+        ].join("\n"),
+      ),
+    ).toEqual([value, value, value]);
+  });
+
+  it("refuses an identity of another shape", () => {
+    expect(
+      parseExactIdentity("https://example.org/o/r/a.yaml@refs/heads/main")
+        .problem,
+    ).toContain("shape");
+    expect(
+      parseExactIdentity("https://github.com/o/r/a.yaml").problem,
+    ).toContain("shape");
+  });
+
+  it("passes a document and a workflow naming one signer", () => {
+    expect(mainDeploy()).toEqual([]);
+  });
+
+  it("fails a published identity at another ref", () => {
+    const staging = MAIN_DEPLOY_IDENTITY.replace(
+      MAIN_DEPLOY_REF,
+      "refs/heads/staging",
+    );
+    const violations = mainDeploy({
+      docSource: mainDeployDoc({ identity: staging }),
+    });
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toContain("refs/heads/staging");
+  });
+
+  it("fails a published identity naming another workflow", () => {
+    const renamed = MAIN_DEPLOY_IDENTITY.replace(
+      "pages_deploy.yaml",
+      "deploy.yaml",
+    );
+    const violations = mainDeploy({
+      docSource: mainDeployDoc({ identity: renamed }),
+    });
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toContain(".github/workflows/deploy.yaml");
+    expect(violations[0]).toContain(MAIN_DEPLOY_WORKFLOW);
+  });
+
+  it("fails a document publishing no exact identity, or two", () => {
+    const [none, ...noneRest] = mainDeploy({
+      docSource: mainDeployDoc().replace(/^ *--certificate-identity .*\n/m, ""),
+    });
+    expect(noneRest).toEqual([]);
+    expect(none).toContain("no `--certificate-identity`");
+    const staging = MAIN_DEPLOY_IDENTITY.replace(
+      MAIN_DEPLOY_REF,
+      "refs/heads/staging",
+    );
+    const [two, ...twoRest] = mainDeploy({
+      docSource: `${mainDeployDoc()}\n${mainDeployDoc({ identity: staging })}`,
+    });
+    expect(twoRest).toEqual([]);
+    expect(two).toContain("2 different");
+  });
+
+  it("fails a document naming no main-deploy signer workflow", () => {
+    const [violation, ...rest] = mainDeploy({
+      docSource: mainDeployDoc({ signerWorkflow: SIGNER_WORKFLOW }),
+    });
+    expect(rest).toEqual([]);
+    expect(violation).toContain("--signer-workflow");
+    expect(violation).toContain(MAIN_DEPLOY_WORKFLOW);
+  });
+
+  it("fails a verify step pinned to an identity the document does not publish", () => {
+    const staging = MAIN_DEPLOY_IDENTITY.replace(
+      MAIN_DEPLOY_REF,
+      "refs/heads/staging",
+    );
+    const violations = mainDeploy({
+      workflowSource: mainDeployWorkflow({
+        steps: [
+          signBlobStep,
+          verifyBlobStep({ identity: `--certificate-identity ${staging}` }),
+          fileAttest,
+        ],
+      }),
+    });
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toContain("refs/heads/staging");
+  });
+
+  it("fails a verify step holding a pattern or no issuer", () => {
+    const pattern = mainDeploy({
+      workflowSource: mainDeployWorkflow({
+        steps: [
+          signBlobStep,
+          verifyBlobStep({
+            identity: `--certificate-identity-regexp '^https://github\\.com/.*$'`,
+          }),
+          fileAttest,
+        ],
+      }),
+    });
+    expect(pattern).toHaveLength(2);
+    expect(pattern.join("\n")).toContain("without `--certificate-identity`");
+    expect(pattern.join("\n")).toContain("`--certificate-identity-regexp`");
+    const noIssuer = mainDeploy({
+      workflowSource: mainDeployWorkflow({
+        steps: [signBlobStep, verifyBlobStep({ issuer: "" }), fileAttest],
+      }),
+    });
+    expect(noIssuer).toHaveLength(1);
+    expect(noIssuer[0]).toContain("--certificate-oidc-issuer");
+  });
+
+  it("fails a signing job not gated on main", () => {
+    for (const gate of [
+      null,
+      "github.ref == 'refs/heads/staging'",
+      `${MAIN_GATE} || true`,
+    ]) {
+      const violations = mainDeploy({
+        workflowSource: mainDeployWorkflow({ gate }),
+      });
+      expect(violations, String(gate)).toHaveLength(1);
+      expect(violations[0]).toContain(MAIN_GATE);
+    }
+    expect(
+      mainDeploy({
+        workflowSource: mainDeployWorkflow({ gate: `\${{ ${MAIN_GATE} }}` }),
+      }),
+    ).toEqual([]);
+  });
+
+  it("fails a signature no verify step follows, or a file never attested", () => {
+    const unverified = mainDeploy({
+      workflowSource: mainDeployWorkflow({
+        steps: [verifyBlobStep(), signBlobStep, fileAttest],
+      }),
+    });
+    expect(unverified).toHaveLength(1);
+    expect(unverified[0]).toContain("no `cosign verify-blob` step follows");
+    const unattested = mainDeploy({
+      workflowSource: mainDeployWorkflow({
+        steps: [signBlobStep, verifyBlobStep()],
+      }),
+    });
+    expect(unattested).toHaveLength(1);
+    expect(unattested[0]).toContain("subject-path");
+  });
+
+  it("fails a workflow that does not run on main or signs nothing", () => {
+    const [offMain, ...offMainRest] = mainDeploy({
+      workflowSource: mainDeployWorkflow({ branches: "[staging]" }),
+    });
+    expect(offMainRest).toEqual([]);
+    expect(offMain).toContain("push to `main`");
+    const [unsigned, ...unsignedRest] = mainDeploy({
+      workflowSource: mainDeployWorkflow({ steps: [verifyBlobStep()] }),
+    });
+    expect(unsignedRest).toEqual([]);
+    expect(unsigned).toContain("no `cosign sign-blob`");
+  });
+
+  it("fails a tree holding no main-deploy workflow", () => {
+    const [violation, ...rest] = mainDeploy({ workflowSource: undefined });
+    expect(rest).toEqual([]);
+    expect(violation).toContain("does not exist");
+  });
+});
+
 describe("the workflow the check reads the signer identity off", () => {
   it("finds the one workflow that signs", () => {
     const found = findSigningWorkflow([
@@ -845,15 +1146,23 @@ describe("the workflow the check reads the signer identity off", () => {
 
 describe("the check over a repository tree", () => {
   const trees = [];
-  const tree = ({ workflowSource, docSource }) => {
+  const tree = ({
+    workflowSource,
+    docSource,
+    mainDeployWorkflowSource = mainDeploySource,
+  }) => {
     const root = mkdtempSync(join(tmpdir(), "alcove-release-signing-"));
     trees.push(root);
     mkdirSync(join(root, ".github", "workflows"), { recursive: true });
     mkdirSync(join(root, "docs"), { recursive: true });
     writeFileSync(join(root, RELEASE_WORKFLOW), workflowSource);
+    if (mainDeployWorkflowSource !== null) {
+      writeFileSync(join(root, MAIN_DEPLOY_WORKFLOW), mainDeployWorkflowSource);
+    }
     writeFileSync(join(root, RELEASES_DOC), docSource);
     return root;
   };
+  const bothDocs = () => `${doc()}\n${mainDeployDoc()}`;
 
   afterAll(() => {
     for (const root of trees) rmSync(root, { recursive: true, force: true });
@@ -863,7 +1172,7 @@ describe("the check over a repository tree", () => {
     const report = releaseSigningReport(
       tree({
         workflowSource: workflow({ steps: orderedSteps }),
-        docSource: doc(),
+        docSource: bothDocs(),
       }),
     );
     expect(report.violations).toEqual([]);
@@ -898,13 +1207,37 @@ describe("the check over a repository tree", () => {
           tags: ["release-[0-9]+.[0-9]+.[0-9]+"],
           steps: [buildStep("build", true), signStep("build")],
         }),
-        docSource: doc(),
+        docSource: bothDocs(),
       }),
     );
     // Both coupling failures -- the widened trigger, and a workflow that never
     // verifies what it signed -- plus the missing verify and attest steps: a run
     // reports everything that is wrong rather than the first thing.
     expect(report.violations).toHaveLength(4);
+  });
+
+  it("holds the main-deploy workflow in the same run", () => {
+    const missing = releaseSigningReport(
+      tree({
+        workflowSource: workflow({ steps: orderedSteps }),
+        docSource: bothDocs(),
+        mainDeployWorkflowSource: null,
+      }),
+    );
+    expect(missing.violations).toHaveLength(1);
+    expect(missing.violations[0]).toContain(MAIN_DEPLOY_WORKFLOW);
+    const ungated = releaseSigningReport(
+      tree({
+        workflowSource: releaseWorkflowSource,
+        docSource: releasesDocSource,
+        mainDeployWorkflowSource: mainDeploySource.replace(
+          `if: ${MAIN_GATE}\n    # Held on Ubuntu 24.04 with release.yaml's signing job`,
+          `if: github.ref != ''\n    # Held on Ubuntu 24.04 with release.yaml's signing job`,
+        ),
+      }),
+    );
+    expect(ungated.violations).toHaveLength(1);
+    expect(ungated.violations[0]).toContain("hosted-manifest-sign");
   });
 });
 

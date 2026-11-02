@@ -2,9 +2,10 @@
 // The hosted web application's manifest: every file of each deployed build,
 // with its size and SHA-256, naming the release version and commit.
 // release.yaml writes it from the artifacts it deploys, then attests, signs
-// and attaches it to the release; the same script compares a manifest against
-// a tree on disk or against what a deployment serves (docs/RELEASES.md,
-// Hosted web application).
+// and attaches it to the release; pages_deploy.yaml does the same for each
+// production deploy from main, publishing it to a prerelease. The same script
+// compares a manifest against a tree on disk or against what a deployment
+// serves (docs/RELEASES.md, Hosted web application).
 //
 //   node scripts/hosted-site-manifest.mjs write --version <X.Y.Z> --commit <sha> --out <file> <site>=<dir>...
 //   node scripts/hosted-site-manifest.mjs check-tree <manifest> <site>=<dir>
