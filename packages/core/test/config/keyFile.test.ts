@@ -184,6 +184,10 @@ describe("keyFileRefusedAsNewer", () => {
       "a version beyond the safe-integer range",
       { version: 1e20, sharedSecret: SECRET },
     ],
+    [
+      "a version past the finite range",
+      { version: 1e400, sharedSecret: SECRET },
+    ],
     ["a fractional version above 1", { version: 1.5, sharedSecret: SECRET }],
     ["an unknown field", { sharedSecret: SECRET, newField: 1 }],
     [

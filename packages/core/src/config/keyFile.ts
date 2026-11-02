@@ -136,10 +136,6 @@ function keyFileFieldNameForDisplay(name: string): string {
   return SECRET_SHAPED_RUN.test(name) ? KEY_FILE_REDACTED_FIELD_NAME : name;
 }
 
-const KeyFileDeclaredVersionSchema = z.looseObject({
-  version: z.number().optional(),
-});
-
 const KeyFileVersionSchema = z.looseObject({
   version: z.int().min(1).optional(),
 });
@@ -227,8 +223,8 @@ export function keyFileSchemaFor(
         ctx.issues.push({ ...issue, input: undefined });
       return z.NEVER;
     };
-    const declared = KeyFileDeclaredVersionSchema.safeParse(raw).data?.version;
-    if (declared !== undefined && declared > migrations.current)
+    const declared = (raw as { version?: unknown } | null | undefined)?.version;
+    if (typeof declared === "number" && declared > migrations.current)
       return refuse([newerKeyFileVersionIssue(declared, migrations.current)]);
     const version = KeyFileVersionSchema.safeParse(raw);
     if (!version.success) return refuse(version.error.issues);
