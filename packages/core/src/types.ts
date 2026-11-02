@@ -65,6 +65,10 @@ export type Connection = {
   // The envelope version the key exchange negotiated, for each frame after a
   // party's first. Omitted by a transport whose frames hold none (WebRTC).
   useEnvelopeVersion?: (version: number) => void;
+  // Marks the last frame sent as one the peer will not read, so a clean close
+  // does not wait for the peer to consume it. Omitted by a transport whose
+  // close does not wait on the peer (WebRTC).
+  markLastSentUnread?: () => void;
 };
 
 type Role = "starter" | "joiner" | "either";

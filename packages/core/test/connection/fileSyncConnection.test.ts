@@ -2998,6 +2998,46 @@ test("close() drain is bounded by the fixed terminal-frame budget, not the full 
   }
 });
 
+test("close() does not drain a frame marked unread, and drains one sent after the mark", async () => {
+  const { client, files } = makeMockClient();
+  const conn = await makeConnectedConn(client, {
+    pollingFrequency: 5,
+    inactivityTimeoutMs: TERMINAL_FRAME_DRAIN_TIMEOUT_MS,
+  });
+  conn.peerId = "stub-peer";
+  const sentBy = (id: string) =>
+    [...files.keys()].filter((p) =>
+      new RegExp(`^/test/${id}-\\d+\\.json$`).test(p),
+    );
+
+  await conn.send({ reply: true });
+  conn.markLastSentUnread();
+  const started = Date.now();
+  await conn.close();
+  expect(Date.now() - started).toBeLessThan(
+    TERMINAL_FRAME_DRAIN_TIMEOUT_MS / 12,
+  );
+  expect(sentBy(conn.id)).toEqual([]);
+
+  const next = await makeConnectedConn(client, {
+    pollingFrequency: 5,
+    inactivityTimeoutMs: TERMINAL_FRAME_DRAIN_TIMEOUT_MS,
+  });
+  next.peerId = "stub-peer";
+  await next.send({ first: true });
+  next.markLastSentUnread();
+  files.delete(sentBy(next.id)[0]!);
+  await next.send({ second: true });
+  const [second] = sentBy(next.id);
+  let consumedBeforeClose = false;
+  setTimeout(() => {
+    consumedBeforeClose = true;
+    files.delete(second!);
+  }, 50);
+  await next.close();
+  expect(consumedBeforeClose).toBe(true);
+});
+
 // --- send(): hasOutstandingMessage excludes typed protocol files ---------------
 
 test("send() completes without spinning when a <id>-hello-<n>.json file is present in the store", async () => {
