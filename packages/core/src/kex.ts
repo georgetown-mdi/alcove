@@ -885,6 +885,9 @@ async function responderFailsOnAbort(
     };
   }
   await sendAbort(conn, reply);
+  // An initiator that sends a behind notice fails as it sends it and reads no
+  // reply, so teardown does not wait for it to consume this one.
+  if (abort.behindNotice !== undefined) conn.markLastSentUnread?.();
   if (matchedAt !== undefined) throw new PartnerCopyBehindError(matchedAt);
   if (abort.behindNotice !== undefined) {
     const { count, tag } = abort.behindNotice;

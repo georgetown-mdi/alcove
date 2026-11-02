@@ -107,6 +107,13 @@ export interface MessageConnection {
    * ("Message body format").
    */
   useEnvelopeVersion?(version: number): void;
+  /**
+   * Optional: marks the last frame sent as one the peer will not read, such
+   * as a reply to a peer that stopped as it sent the frame replied to, so
+   * {@link close} does not wait for the peer to consume it. A transport whose
+   * close does not wait on the peer omits it.
+   */
+  markLastSentUnread?(): void;
 }
 
 /** The transport's interface to push inbound events into the queue. */
@@ -211,6 +218,12 @@ interface TransportHooks {
    * hold none omits it.
    */
   useEnvelopeVersion?: (version: number) => void;
+  /**
+   * Optional: mark the last frame sent as unread (see
+   * {@link MessageConnection.markLastSentUnread}); a transport whose close
+   * does not wait on the peer omits it.
+   */
+  markLastSentUnread?: () => void;
 }
 
 type TransportConnect = (controls: TransportControls) => TransportHooks;
@@ -696,6 +709,10 @@ export class QueuedMessageConnection implements MessageConnection {
   useEnvelopeVersion(version: number): void {
     this.hooks.useEnvelopeVersion?.(version);
   }
+
+  markLastSentUnread(): void {
+    this.hooks.markLastSentUnread?.();
+  }
 }
 
 /**
@@ -762,6 +779,7 @@ export function fromEventConnection(
         inboundPollIntervalMs: conn.inboundPollIntervalMs?.bind(conn),
         outboundFileSyncFrameBound: conn.outboundFileSyncFrameBound?.bind(conn),
         useEnvelopeVersion: conn.useEnvelopeVersion?.bind(conn),
+        markLastSentUnread: conn.markLastSentUnread?.bind(conn),
       };
     },
     {

@@ -102,11 +102,15 @@ vi.mock("@alcove/core", async (importActual) => {
 });
 
 import {
+  DEFAULT_PEER_INACTIVITY_TIMEOUT_MS,
   deriveHistoryVerifier,
   LocalCopyBehindError,
   PartnerCopyBehindError,
 } from "@alcove/core";
-import { minimalPreparedExchange } from "@alcove/core/testing";
+import {
+  minimalPreparedExchange,
+  TERMINAL_FRAME_DRAIN_TIMEOUT_MS,
+} from "@alcove/core/testing";
 
 import { loadKeyFile, saveKeyFile, type KeyFile } from "../../src/keyFile";
 import { runProtocol } from "../../src/protocol";
@@ -173,22 +177,28 @@ function recordingEmitter(sink: Array<[string, string]>): EventStreamEmitter {
 
 /**
  * Run both parties from their key files, the responder first: `initiator`
- * names which of the two takes the initiator's role.
+ * names which of the two takes the initiator's role. `settledAt` is when each
+ * party's run ended, in `Date.now()` milliseconds.
  */
-async function runBoth(initiator: "a" | "b"): Promise<{
+async function runBoth(
+  initiator: "a" | "b",
+  options: typeof OPTIONS = OPTIONS,
+): Promise<{
   a: PromiseSettledResult<unknown>;
   b: PromiseSettledResult<unknown>;
   emitted: Emitted;
+  settledAt: Record<"a" | "b", number>;
 }> {
   resetStoreOrder();
   fs.rmSync(dropDir, { recursive: true, force: true });
   fs.mkdirSync(dropDir);
   const emitted: Emitted = { a: [], b: [] };
+  const settledAt = { a: NaN, b: NaN };
   const run = (party: "a" | "b") => {
     const keyFilePath = party === "a" ? keyFileA : keyFileB;
     const keyFile = loadKeyFile(keyFilePath)!;
     return runProtocol({
-      connection: { channel: "filedrop", path: dropDir, options: OPTIONS },
+      connection: { channel: "filedrop", path: dropDir, options },
       auth: {
         sharedSecret: keyFile.sharedSecret,
         expires: keyFile.expires,
@@ -202,6 +212,8 @@ async function runBoth(initiator: "a" | "b"): Promise<{
       verbosity: -1,
       loggerName: `test-${party}`,
       fileSyncRuntime: { eventStream: recordingEmitter(emitted[party]) },
+    }).finally(() => {
+      settledAt[party] = Date.now();
     });
   };
   const responder = initiator === "a" ? "b" : "a";
@@ -211,7 +223,7 @@ async function runBoth(initiator: "a" | "b"): Promise<{
   const settled = await Promise.allSettled(
     initiator === "a" ? [first, second] : [second, first],
   );
-  return { a: settled[0], b: settled[1], emitted };
+  return { a: settled[0], b: settled[1], emitted, settledAt };
 }
 
 async function waitForHello(): Promise<void> {
@@ -353,7 +365,9 @@ test("a confirmation write that fails ends the initiator's run with exit 69, kee
   );
 }, 30_000);
 
-test("a stale key file restored from backup is refused with exit 65 naming the recovery, and its partner fails with exit 77", async () => {
+// The timeout outlasts the 60 s drain, so a run that waits it out fails on its
+// measured end rather than on the timeout.
+test("a stale key file restored from backup is refused with exit 65 naming the recovery, its run ending at the refusal, and its partner fails with exit 77", async () => {
   // A rotated past X; B runs from a copy of X restored from backup.
   saveKeyFile(keyFileA, {
     sharedSecret: SECRET_Y,
@@ -361,8 +375,17 @@ test("a stale key file restored from backup is refused with exit 65 naming the r
   });
   saveKeyFile(keyFileB, { sharedSecret: SECRET_X });
 
-  const { a, b } = await runBoth("a");
+  // The production inactivity default, under which the stale responder's
+  // teardown would otherwise wait the full terminal-frame drain for a reply
+  // its partner never reads.
+  const { a, b, settledAt } = await runBoth("a", {
+    ...OPTIONS,
+    inactivityTimeoutMs: DEFAULT_PEER_INACTIVITY_TIMEOUT_MS,
+  });
 
+  expect(settledAt.b - settledAt.a).toBeLessThan(
+    TERMINAL_FRAME_DRAIN_TIMEOUT_MS / 12,
+  );
   expect(b.status).toBe("rejected");
   const stale = (b as PromiseRejectedResult).reason as Error;
   expect(stale).toBeInstanceOf(LocalCopyBehindError);
@@ -378,4 +401,4 @@ test("a stale key file restored from backup is refused with exit 65 naming the r
   // Neither side changed its key file.
   expect(loadKeyFile(keyFileA)?.sharedSecret).toBe(SECRET_Y);
   expect(loadKeyFile(keyFileB)?.sharedSecret).toBe(SECRET_X);
-}, 30_000);
+}, 90_000);

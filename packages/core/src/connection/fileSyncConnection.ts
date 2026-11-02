@@ -412,6 +412,8 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   // The rendezvous synchronize() started, which close() lets settle before
   // cleanup() so a write it has in flight lands tracked.
   private rendezvousInFlight: Promise<void> | undefined;
+  // A sent frame the peer will not read, which close() does not drain.
+  private unreadSentFile: string | undefined;
   // Grammar-failing names present at synchronize() entry, which the poll loop
   // tolerates; the new-foreign-file warning counts only later arrivals. Rebuilt
   // at each entry and not cleared by resetSessionState(). See
@@ -477,6 +479,11 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   /** Implements `Connection.useEnvelopeVersion`. */
   useEnvelopeVersion(version: number): void {
     this.messageLoop.useEnvelopeVersion(version);
+  }
+
+  /** Implements `Connection.markLastSentUnread`. */
+  markLastSentUnread(): void {
+    this.unreadSentFile = this.lastSentFile;
   }
 
   private get lastSentFile(): string | undefined {
@@ -1028,7 +1035,11 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
       // Delete mode only: wait for the peer to consume the terminal frame so
       // cleanup() does not delete it unread. Retain mode never deletes a
       // message, so the frame stays on disk for the peer.
-      if (this.lastSentFile !== undefined && !this.options.retainFiles) {
+      if (
+        this.lastSentFile !== undefined &&
+        this.lastSentFile !== this.unreadSentFile &&
+        !this.options.retainFiles
+      ) {
         const path = this.path;
         const lastSentFile = this.lastSentFile;
         const drainTimeoutMs = Math.min(
@@ -1115,8 +1126,8 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
     this.path = undefined;
     this.outbound = undefined;
     this.config = undefined;
-    // Here, not in resetSessionState(), which resets only the message loop's
-    // counters.
+    // Here, not in resetSessionState(), which resets only per-session send
+    // state.
     this.abortMarker.clear();
     this.resetSessionState();
   }
@@ -1237,10 +1248,11 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
     return name;
   }
 
-  // Resets the message loop's per-session counters, for a rendezvous retry and
-  // on close().
+  // Resets the message loop's per-session counters and the unread mark, for a
+  // rendezvous retry and on close().
   private resetSessionState() {
     this.messageLoop.resetSessionState();
+    this.unreadSentFile = undefined;
   }
 
   start() {

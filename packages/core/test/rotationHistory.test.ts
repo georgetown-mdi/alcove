@@ -317,6 +317,51 @@ describe("the history proof and the behind notice", () => {
     }
   }
 
+  test("only a reply to a behind notice is marked unread, and the initiator that sent the notice reads nothing after it", async () => {
+    const recording = (
+      conn: MessageConnection,
+      calls: string[],
+    ): MessageConnection => ({
+      send: (data) => {
+        calls.push(`send ${(data as { kexMsg: string }).kexMsg}`);
+        return conn.send(data);
+      },
+      receive: (t) => {
+        calls.push("receive");
+        return conn.receive(t);
+      },
+      close: () => conn.close(),
+      markLastSentUnread: () => calls.push("markLastSentUnread"),
+    });
+    const { current, stale } = await staleCopy(1);
+    const run = async (initiator: Side, responder: Side) => {
+      const calls = { initiator: [] as string[], responder: [] as string[] };
+      const [a, b] = createMessagePipe();
+      await Promise.allSettled([
+        authenticate(recording(a, calls.initiator), initiator, "initiator"),
+        authenticate(recording(b, calls.responder), responder, "responder"),
+      ]);
+      return calls;
+    };
+
+    const staleResponder = await run(current, stale);
+    expect(staleResponder.initiator.at(-1)).toBe("send abort");
+    expect(staleResponder.responder.slice(-2)).toEqual([
+      "send abort",
+      "markLastSentUnread",
+    ]);
+
+    const staleInitiator = await run(stale, current);
+    expect(staleInitiator.initiator.at(-1)).toBe("receive");
+    expect(staleInitiator.responder).not.toContain("markLastSentUnread");
+
+    const strangers = await run(
+      { current: secret() },
+      { current: secret(), state: { history: await entriesFor([secret()]) } },
+    );
+    expect(strangers.responder).not.toContain("markLastSentUnread");
+  });
+
   test("a stranger meets the generic failure on both sides, whatever the histories hold", async () => {
     const [i, r] = await handshake(
       {
