@@ -509,7 +509,7 @@ function Show-NoEngine {
     if ($dockerInstalled) {
         Show-Fail 'Docker is installed but is not answering.'
         Show-StartEngine -Engine 'docker'
-        Show-Note '"Access is denied" instead means your account is not in the'
+        Show-Note 'If docker says "Access is denied", your account is not in the'
         Show-Note 'local docker-users group, which an administrator has to add you to.'
     }
     if ($podmanInstalled) {
