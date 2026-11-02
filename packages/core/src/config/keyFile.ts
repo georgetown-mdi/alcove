@@ -167,8 +167,9 @@ const KeyFileFieldsSchema = z.looseObject({
   ...KEY_FILE_FIELD_SCHEMAS,
 });
 
-/** A refusal of members a newer Alcove wrote, named through the display rule. */
-function newerKeyFileMembersIssue(
+/** A refusal of members a newer Alcove wrote, named through the display rule;
+ * a reader of the key block outside the key file uses it too. */
+export function newerKeyFileMembersIssue(
   path: ReadonlyArray<PropertyKey>,
   names: ReadonlyArray<string>,
 ): z.core.$ZodIssue {

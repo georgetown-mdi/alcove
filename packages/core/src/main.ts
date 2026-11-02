@@ -413,6 +413,7 @@ export {
   KeyFileSchema,
   keyFileRefusedAsNewer,
   keyFileUnreadFieldNames,
+  newerKeyFileMembersIssue,
   rotatedKeyExpires,
   serializeKeyFile,
 } from "./config/keyFile";

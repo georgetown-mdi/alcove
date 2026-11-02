@@ -47,6 +47,7 @@
 import {
   RelayRegistrarSchema,
   migrateOnRead,
+  newerKeyFileMembersIssue,
   parseExchangeSpec,
   parseSensitiveJson,
   parseSensitiveYaml,
@@ -317,7 +318,23 @@ export function parseManagedExchangeArtifact(
   migrations: FormatMigrations<string> = MANAGED_EXCHANGE_ARTIFACT_MIGRATIONS,
 ): ManagedExchangeArtifact {
   const raw = parseSensitiveJson(source, "managed exchange backup");
-  return artifactSchema.parse(migrateOnRead(raw, migrations));
+  const parsed = artifactSchema.safeParse(migrateOnRead(raw, migrations));
+  if (parsed.success) return parsed.data;
+  throw new z.ZodError(parsed.error.issues.map(keyBlockMembersNamedForDisplay));
+}
+
+/** An unknown member of the key block, or of a rotation history entry in it,
+ * named as the key file reader names one: Zod's own issue holds the member's
+ * name raw, and a name can hold a secret. */
+function keyBlockMembersNamedForDisplay(
+  issue: z.core.$ZodIssue,
+): z.core.$ZodIssue {
+  if (issue.code !== "unrecognized_keys" || issue.path[0] !== "key")
+    return issue;
+  return {
+    ...newerKeyFileMembersIssue(issue.path, issue.keys),
+    input: undefined,
+  };
 }
 
 /**
