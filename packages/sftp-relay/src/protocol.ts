@@ -76,6 +76,13 @@ export const SFTP_RELAY_CLOSE_WAIT_MS = 30_000;
 /** How often (ms) the relay pings each WebSocket it holds. */
 export const SFTP_RELAY_PING_INTERVAL_MS = 30_000;
 
+/**
+ * The most ping frames, and pong frames answering none of the relay's pings,
+ * the relay reads from one WebSocket between two of its pings; a WebSocket
+ * past it is closed. Two a second, where a browser sends none.
+ */
+export const SFTP_RELAY_MAX_CONTROL_FRAMES = 60;
+
 /** The window (ms) in which the relay reports an unreachable target at most
  * once. */
 export const SFTP_RELAY_FAULT_REPORT_WINDOW_MS = 60_000;
@@ -96,4 +103,7 @@ export const SftpRelayCloseCode = Object.freeze({
   targetFailed: 4000,
   /** The target refused the connection or did not accept it in time. */
   targetUnreachable: 4001,
+  /** The browser sent more than {@link SFTP_RELAY_MAX_CONTROL_FRAMES} control
+   * frames between two of the relay's pings. */
+  controlFrameLimit: 4002,
 });

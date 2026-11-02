@@ -118,6 +118,13 @@ export const RELAY_FAULT_REPORT_WINDOW_MS = 60_000;
 /** How often (ms) the relay pings each socket it holds. */
 export const RELAY_PING_INTERVAL_MS = 30_000;
 
+/**
+ * The most ping frames, and pong frames answering none of the relay's pings,
+ * the relay reads from one socket between two of its pings; a socket past it
+ * is closed. Two a second, where the clients send none.
+ */
+export const RELAY_MAX_CONTROL_FRAMES = 60;
+
 /** How long (ms) a close the relay forwards may wait behind the messages
  * queued ahead of it before the socket is dropped. */
 export const RELAY_CLOSE_WAIT_MS = 300_000;
@@ -180,6 +187,9 @@ export const RelayCloseCode = Object.freeze({
   /** The messages this party sent and its partner has not read counted above
    * {@link RELAY_QUEUE_LIMIT_BYTES}. */
   queueLimit: 4010,
+  /** The socket sent more than {@link RELAY_MAX_CONTROL_FRAMES} control
+   * frames between two of the relay's pings. */
+  controlFrameLimit: 4011,
 });
 
 /** The text frame the relay sends both parties once both hellos verified. */

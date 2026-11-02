@@ -21,6 +21,12 @@ afterEach(async () => {
   await Promise.all(running.splice(0).map((started) => started.stop()));
 });
 
+/** A relay that reads any number of control frames, for the tests that send
+ * more than the control frame limit allows. */
+const PAST_THE_CONTROL_FRAME_LIMIT = {
+  testing: { maxControlFrames: Number.MAX_SAFE_INTEGER },
+};
+
 const gc = (globalThis as { gc?: () => void }).gc;
 
 /** Heap and buffer memory in use once collections have settled. */
@@ -171,7 +177,7 @@ describe("retained memory", () => {
       ...Array.from({ length: 250 }, () => frame(0xa, body)),
     ]);
     async function retainedPerAnswer(): Promise<number> {
-      const relay = await startRelay();
+      const relay = await startRelay(PAST_THE_CONTROL_FRAME_LIMIT);
       running.push(relay);
       const { party, serverSide } = await connectInMemory(
         relay.server,
@@ -328,7 +334,7 @@ describe("retained memory", () => {
 
   it("bounds the memory held for replies to a socket that sends pings and never reads", async () => {
     async function retainedAfterPings(): Promise<number> {
-      const relay = await startRelay();
+      const relay = await startRelay(PAST_THE_CONTROL_FRAME_LIMIT);
       running.push(relay);
       const socket = new WebSocket(relay.url);
       socket.on("error", () => {});

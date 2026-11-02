@@ -8,6 +8,7 @@ import {
   WebSocketRelayProofRefusedError,
 } from "@alcove/core/websocket-relay";
 
+import { createControlFrameCount } from "./controlFrames.ts";
 import { createFaultLatch } from "./faultLatch.ts";
 import { pongWithinWindow, sendWithinWindow } from "./forwarding.ts";
 import {
@@ -16,6 +17,7 @@ import {
   RELAY_FAULT_REPORT_WINDOW_MS,
   RELAY_HELLO_TIMEOUT_MS,
   RELAY_IDLE_TIMEOUT_MS,
+  RELAY_MAX_CONTROL_FRAMES,
   RELAY_MAX_MESSAGE_BYTES,
   RELAY_MAX_MESSAGE_FRAGMENTS,
   RELAY_MAX_PAIRINGS,
@@ -40,6 +42,7 @@ import type { IncomingMessage, Server } from "node:http";
 import type { Duplex } from "node:stream";
 import type { WebSocket } from "ws";
 
+import type { ControlFrameCount } from "./controlFrames.ts";
 import type { RelayKeyTable } from "./keyTable.ts";
 import type { RelayHello } from "./protocol.ts";
 
@@ -81,6 +84,7 @@ export interface WebSocketRelayOptions {
     bytesPerSecond?: number;
     burstBytes?: number;
     idleTimeoutMs?: number;
+    maxControlFrames?: number;
     observer?: RelayObserver;
   };
 }
@@ -107,6 +111,7 @@ interface Party {
   tokens: number;
   tokensAt: number;
   rateTimer: ReturnType<typeof setTimeout> | undefined;
+  controlFrames: ControlFrameCount;
 }
 
 interface Pairing {
@@ -197,6 +202,7 @@ export function attachWebSocketRelay(
     testing.bytesPerSecond ?? RELAY_PAIRING_BYTES_PER_SECOND;
   const burstBytes = testing.burstBytes ?? RELAY_PAIRING_BURST_BYTES;
   const idleTimeoutMs = testing.idleTimeoutMs ?? RELAY_IDLE_TIMEOUT_MS;
+  const maxControlFrames = testing.maxControlFrames ?? RELAY_MAX_CONTROL_FRAMES;
   const observer = testing.observer ?? {};
 
   // `closeTimeout` is read by the pinned `ws` but missing from @types/ws, so
@@ -451,6 +457,18 @@ export function attachWebSocketRelay(
     charge(source, data.length);
   }
 
+  // A socket past the limit is closed, and dropped if it sends another control
+  // frame while the relay waits on its close.
+  function withinControlFrameLimit(
+    party: Party,
+    frame: "ping" | "pong",
+  ): boolean {
+    if (party.controlFrames.admit(frame)) return true;
+    if (party.state === "ended") party.socket.terminate();
+    else refuse(party, RelayCloseCode.controlFrameLimit);
+    return false;
+  }
+
   function closeIdlePairings(): void {
     const now = performance.now();
     for (const pairing of [...pairings.values()]) {
@@ -550,6 +568,7 @@ export function attachWebSocketRelay(
       tokens: burstBytes,
       tokensAt: performance.now(),
       rateTimer: undefined,
+      controlFrames: createControlFrameCount(maxControlFrames),
     };
     parties.add(party);
     unverified.add(party);
@@ -563,12 +582,14 @@ export function attachWebSocketRelay(
       onMessage(party, data as Buffer, isBinary),
     );
     // A ping is answered only when the answer fits under the high mark.
-    socket.on("ping", (data: Buffer) =>
+    socket.on("ping", (data: Buffer) => {
+      if (!withinControlFrameLimit(party, "ping")) return;
       pongWithinWindow(socket, data, window, () => {
         const partner = partnerOf(party);
         if (partner !== undefined) release(partner, "backpressure");
-      }),
-    );
+      });
+    });
+    socket.on("pong", () => withinControlFrameLimit(party, "pong"));
     // `ws` closes the socket itself after an error it raises, an oversized
     // message's 1009 among them; the party's part ends here so the partner is
     // closed behind what was already forwarded.
@@ -613,7 +634,10 @@ export function attachWebSocketRelay(
   // ping interval late.
   const pingTimer = setInterval(() => {
     closeIdlePairings();
-    for (const party of parties) party.socket.ping();
+    for (const party of parties) {
+      party.controlFrames.pinged();
+      party.socket.ping();
+    }
   }, pingIntervalMs);
   pingTimer.unref();
 
