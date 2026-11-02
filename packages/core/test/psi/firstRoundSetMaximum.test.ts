@@ -147,7 +147,7 @@ describe("in a count-only exchange", () => {
     expect((refusal as RoundSetLimitError).reason).toBe("over-set-maximum");
     expect(statesItsOwnNextStep(refusal, { ownOnly: true })).toBe(true);
     expect((refusal as Error).message).toBe(
-      roundOneSetOverMaximumMessage(301, 300, true),
+      roundOneSetOverMaximumMessage(301, 300, "every-key"),
     );
     expect((refusal as Error).message).toMatch(
       /^Too large to send: a count-only exchange sends 301 values for every linkage key, over the 300 one PSI set can hold\. Nothing was sent\. Split the input/,
@@ -186,7 +186,7 @@ describe("in a count-only exchange", () => {
         roundOneSetOverMaximumMessage(
           MAX_PSI_DECODE_ELEMENTS * 10,
           MAX_PSI_DECODE_ELEMENTS,
-          true,
+          "every-key",
         ),
         "over-set-maximum",
       ),

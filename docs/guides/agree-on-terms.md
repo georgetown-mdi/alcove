@@ -70,7 +70,7 @@ Choose under **Matching method**, at the top of **Matching & sharing**.
 
 This choice is the same for both of you: Alcove cannot give one of you a list and the other only a count. Under **Only you**, your partner sees neither a list nor a count (a command line debug log shows the count); if you agreed to tell them how many matched, tell them yourself.
 
-A count-only exchange counts across every key you keep, each record once. It needs every column set so it is not sent, **Allow several of your records to match one partner record** cleared, and no key that matches several values per record: turn off each key with a name containing `split(`, `swap(`, `+/-` or `day/month exchanged`.
+A count-only exchange counts across every key you keep, each record once. It needs every column set so it is not sent, and **Allow several of your records to match one partner record** cleared.
 
 A count only is the choice for a question such as "how many of our clients are also your members", and it is intended only for research. The count is the number of records the same keys would link, so keep the keys you would use for a list. A less certain key such as `LN + FN + DOB` reaches more people, so the count may include some pairs of different people.
 

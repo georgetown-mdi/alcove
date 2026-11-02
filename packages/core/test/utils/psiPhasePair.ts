@@ -19,7 +19,11 @@ import {
 } from "../../src/fanOutFunctions";
 import { linkageRounds } from "../../src/linkageKeyCondition";
 import { runsSinglePassLink } from "../../src/linkageTermsPolicy";
-import { InProcessPsiEngine, type PsiEngine } from "../../src/psi/psiEngine";
+import {
+  InProcessPsiEngine,
+  type PsiEngine,
+  type PsiEngineMode,
+} from "../../src/psi/psiEngine";
 import { roundKeyIterable } from "../../src/standardization";
 
 import type { LinkageTerms } from "../../src/config/linkageTermsSchema";
@@ -82,16 +86,26 @@ function recording(
   };
 }
 
+/** Builds a party's engine, as `psiEngineFactory` does. */
+export type EngineFor = (
+  role: "starter" | "joiner",
+  id: string,
+  mode: PsiEngineMode,
+) => PsiEngine;
+
 /**
  * Runs `receiver` and `sender` against each other through runPsiPhase over
  * `terms`, both parties' agreed terms. A party that fails closes its end,
- * so the other is not left waiting.
+ * so the other is not left waiting. `engineFor` builds each party's engine,
+ * by default in process over `psiLibrary`.
  */
 export async function runPsiPhasePair(
   psiLibrary: PSILibrary,
   terms: LinkageTerms,
   receiver: PreparedExchange,
   sender: PreparedExchange,
+  engineFor: EngineFor = (role, id, mode) =>
+    new InProcessPsiEngine(psiLibrary, role, id, mode),
 ): Promise<{ receiver: PhaseOutcome; sender: PhaseOutcome }> {
   const [receiverEnd, senderEnd] = createMessagePipe();
   const countOnly = terms.algorithm === "psi-c";
@@ -116,7 +130,7 @@ export async function runPsiPhasePair(
       conn,
       psiLibrary,
       psiEngineFactory: (role, id, mode) =>
-        recordingSets(new InProcessPsiEngine(psiLibrary, role, id, mode), sets),
+        recordingSets(engineFor(role, id, mode), sets),
       isReceiver,
       countOnly,
       verbosity: 0,

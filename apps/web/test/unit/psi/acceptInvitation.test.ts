@@ -103,18 +103,24 @@ describe("prepareAcceptedInvitation", () => {
         linkageStrategy: "cascade",
         output: { expectsOutput: true, shareWithPartner: false },
         deduplicate: false,
-        linkageFields: [{ name: "partner_given", type: "first_name" }],
+        linkageFields: [
+          { name: "partner_given", type: "first_name" },
+          { name: "partner_family", type: "last_name" },
+          { name: "partner_identifier", type: "ssn" },
+        ],
+        // Three split elements: 20 * 20 * 20 values per record, over the
+        // per-key ceiling.
         linkageKeys: [
           {
             name: "Partner Key Name",
             elements: [
-              {
-                field: "partner_given",
-                transform: [
-                  { function: "split_on", params: { delimiter: "," } },
-                ],
-              },
-            ],
+              "partner_given",
+              "partner_family",
+              "partner_identifier",
+            ].map((field) => ({
+              field,
+              transform: [{ function: "split_on", params: { delimiter: "," } }],
+            })),
           },
         ],
       },
@@ -131,12 +137,11 @@ describe("prepareAcceptedInvitation", () => {
 
     expect(raised).toBeInstanceOf(ZodError);
     const messages = (raised as ZodError).issues.map((issue) => issue.message);
-    expect(messages.join("\n")).toContain(
-      "turns one value into several match candidates",
-    );
+    expect(messages.join("\n")).toContain("candidate values one key may hold");
     for (const authored of [
       "Partner Authored Identity",
       "partner_given",
+      "partner_family",
       "Partner Key Name",
     ])
       expect(messages.join("\n")).not.toContain(authored);

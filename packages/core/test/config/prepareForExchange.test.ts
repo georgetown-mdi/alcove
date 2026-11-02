@@ -435,14 +435,13 @@ describe("prepareForExchange: a deduplicating term is read against the strategy"
 
 // --- A fan-out transform fails closed before connecting -----------------------
 
-describe("prepareForExchange: a fan-out transform is refused under psi-c", () => {
-  // A count-only round counts matched VALUES where the resolution pairs each
-  // record at most once, so a record whose value splits would make the count
-  // over-report the linkage it is used to justify. Refuse before any connection
-  // rather than abort the run once a splitting row reaches the round. The base
-  // `terms` are already in the count-only shape apart from the algorithm, so
-  // every case below sets that alone; the admitted half is the psi describe
-  // that follows.
+describe("prepareForExchange: a fan-out under psi-c", () => {
+  // A count-only round counts over blocks of the width the terms declare
+  // (docs/spec/PROTOCOL.md, Candidate sets under count-only), so a fan-out in
+  // a key element's transform prepares. A fan-out in a party's own
+  // standardization declares no width, so it is refused before any
+  // connection. The base `terms` are already in the count-only shape apart
+  // from the algorithm, so every case below sets that alone.
   const countOnlyTerms: LinkageTerms = { ...terms, algorithm: "psi-c" };
   const splittingStandardization: Standardization = [
     {
@@ -489,18 +488,16 @@ describe("prepareForExchange: a fan-out transform is refused under psi-c", () =>
     expect(prepare).toThrow(/count-only/);
   });
 
-  test("a linkage-key element transform declaring split_on is refused", () => {
-    // The second authoring surface: an element transform fans out into the key's
-    // cross-product like the field path, so it is refused on the same terms.
-    const prepare = () =>
-      prepareForExchange(
-        { linkageTerms: splittingElementTerms, metadata },
-        "Tester",
-        rawRows,
-        columns,
-      );
-    expect(prepare).toThrow(UsageError);
-    expect(prepare).toThrow(/count-only/);
+  test("a linkage-key element transform declaring split_on prepares", () => {
+    // The second authoring surface: the terms declare the element's width, so
+    // the count-only round counts over its candidates.
+    const prepared = prepareForExchange(
+      { linkageTerms: splittingElementTerms, metadata },
+      "Tester",
+      rawRows,
+      columns,
+    );
+    expect(prepared.linkageTerms.algorithm).toBe("psi-c");
   });
 
   test("the standardization-declared refusal is an OperatorConfigError", () => {
@@ -527,31 +524,9 @@ describe("prepareForExchange: a fan-out transform is refused under psi-c", () =>
     expect(thrown).toBeInstanceOf(OperatorConfigError);
   });
 
-  test("the element-transform refusal is not an OperatorConfigError", () => {
-    // An acceptor adopts the element transforms verbatim from the partner's
-    // invitation, so the fault is not provably this operator's own content: the
-    // message stays swallowed by the web's generic alert, like the psi-c and
-    // deduplicate siblings.
-    let thrown: unknown;
-    try {
-      prepareForExchange(
-        { linkageTerms: splittingElementTerms, metadata },
-        "Tester",
-        rawRows,
-        columns,
-      );
-    } catch (err) {
-      thrown = err;
-    }
-    expect(thrown).toBeInstanceOf(UsageError);
-    expect(thrown).not.toBeInstanceOf(OperatorConfigError);
-  });
-
-  // The run boundary re-checks the terms half, so a PreparedExchange assembled
-  // without going through prepareForExchange is refused before its terms reach
-  // the partner. Every collaborator the run would touch throws when used, so the
-  // refusal is what the rejection can come from -- a connection frame or a PSI
-  // call would appear as its own error, failing these assertions.
+  // The run boundary re-checks the terms half. Every collaborator the run
+  // would touch throws when used, so reaching the connection shows the terms
+  // passed every refusal before it.
   const failIfUsed = (what: string) => (): never => {
     throw new Error(`${what} was used past the fan-out refusal`);
   };
@@ -564,39 +539,25 @@ describe("prepareForExchange: a fan-out transform is refused under psi-c", () =>
     get: failIfUsed("the PSI library"),
   });
 
-  test("runExchange refuses a fan-out element transform before it connects", async () => {
-    // Built legitimately -- terms and standardization both free of fan-out -- then
-    // given fan-out TERMS, the way a caller that skipped prepareForExchange could.
-    const prepared = prepareForExchange(
-      { linkageTerms: countOnlyTerms, metadata },
-      "Tester",
-      rawRows,
-      columns,
-    );
-    prepared.linkageTerms = splittingElementTerms;
-
-    const run = runExchange(unusableConnection(), "initiator", prepared, {
-      psiLibrary: unusablePsiLibrary,
-    });
-    await expect(run).rejects.toThrow(UsageError);
-    await expect(run).rejects.toThrow(/count-only/);
-  });
-
-  test("runExchange runs past the guard for terms declaring no fan-out", async () => {
-    // The sibling of the refusal: with the same unusable collaborators, terms free
-    // of fan-out reach the terms exchange, so the failure is the connection's --
-    // proof the refusal above fired on the fan-out rather than on the fixtures.
-    const prepared = prepareForExchange(
-      { linkageTerms: countOnlyTerms, metadata },
-      "Tester",
-      rawRows,
-      columns,
-    );
-    const run = runExchange(unusableConnection(), "initiator", prepared, {
-      psiLibrary: unusablePsiLibrary,
-    });
-    await expect(run).rejects.toThrow(/the connection was used/);
-  });
+  test.each([
+    ["declaring no fan-out", undefined],
+    ["given a fan-out element transform", splittingElementTerms],
+  ])(
+    "runExchange runs past the guard for count-only terms %s",
+    async (_label, runTerms) => {
+      const prepared = prepareForExchange(
+        { linkageTerms: countOnlyTerms, metadata },
+        "Tester",
+        rawRows,
+        columns,
+      );
+      if (runTerms !== undefined) prepared.linkageTerms = runTerms;
+      const run = runExchange(unusableConnection(), "initiator", prepared, {
+        psiLibrary: unusablePsiLibrary,
+      });
+      await expect(run).rejects.toThrow(/the connection was used/);
+    },
+  );
 });
 
 // --- The same two surfaces run under either linkage strategy ------------------
@@ -1369,33 +1330,6 @@ const refusalCases: Array<{
     },
     errorClass: OperatorConfigError,
     messageRendered: true,
-  },
-  {
-    what: "a fan-out declared in a linkage key's element transform under psi-c",
-    says: /count-only/,
-    spec: {
-      linkageTerms: {
-        ...terms,
-        algorithm: "psi-c",
-        linkageKeys: [
-          {
-            name: "FN_LN",
-            elements: [
-              { field: "first_name" },
-              {
-                field: "last_name",
-                transform: [
-                  { function: "split_on", params: { delimiter: "-" } },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-      metadata,
-    },
-    errorClass: UsageError,
-    messageRendered: false,
   },
   {
     what: "a dataset over the single-pass ceiling",

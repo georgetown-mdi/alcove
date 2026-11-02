@@ -1007,11 +1007,15 @@ test("a key splitting one value states what the run matches on", () => {
   expect(lines).toContain("several values per record (enforced):");
   expect(lines).toContain(CONSENT_FACTS.fanOutCandidates.note);
 
-  // Silent where the run refuses the split rather than matching on it, and
-  // where the terms declare none: the line is not a fixture of the display.
-  expect(
-    rendered({ ...splittingKeyTerms, algorithm: "psi-c" }).join("\n"),
-  ).not.toContain("several values per record");
+  // A count-only run states its own fact in place of the `psi` one, and the
+  // line is silent where the terms declare no split: it is not a fixture of
+  // the display.
+  const countOnly = rendered({
+    ...splittingKeyTerms,
+    algorithm: "psi-c",
+  }).join("\n");
+  expect(countOnly).toContain(CONSENT_FACTS.countOnlyCandidateSets.note);
+  expect(countOnly).not.toContain(CONSENT_FACTS.fanOutCandidates.note);
   expect(rendered(localTerms).join("\n")).not.toContain(
     "several values per record",
   );

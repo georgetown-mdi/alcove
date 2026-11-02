@@ -104,9 +104,9 @@ export const CONSENT_FACTS = {
     reason:
       "What a count-only run discloses beside the count, however either party " +
       "behaves. Each party's raw record count is sent in the terms exchange " +
-      "that opens every exchange, and every round's frame holds one encrypted " +
-      "element per record, a value or a random dummy, so the frames add " +
-      "nothing to it. The receiver's software also derives, from genuine " +
+      "that opens every exchange, and every round's frame holds the same " +
+      "number of encrypted elements for each record, values or random " +
+      "dummies, so the frames add nothing to it. The receiver's software also derives, from genuine " +
       "inputs, the number of matches on each key, the overlap between keys, " +
       "and a table pairing its own request slots with sender pseudonyms; " +
       "with its own records' key coverage, a slot that matched on a set of " +
@@ -117,13 +117,41 @@ export const CONSENT_FACTS = {
       "than the partner's -- the same one as the own-membership disclosure a " +
       "one-sided `psi` exchange carries.",
     note:
-      "Your partner learns how many records you hold. Each round sends one " +
-      "encrypted value for every record, so it does not learn how many of " +
-      "your records have a value for a key. The party that computes the " +
+      "Your partner learns how many records you hold. Each round sends the " +
+      "same number of encrypted values for every record, so it does not " +
+      "learn how many of your records have a value for a key. The party " +
+      "that computes the " +
       "count also has software that learns how many records matched on each " +
       "key and how the keys overlap, and from which keys its own records " +
       "have values for, it can narrow a match to a few of its own records, " +
       "or name one. Alcove does not show this to that party's operator.",
+  },
+  countOnlyCandidateSets: {
+    basis: "enforced",
+    reason:
+      "What a count-only run discloses beside the count on a key matching " +
+      "several values per record, however either party behaves. Every record " +
+      "sends the key's declared width of elements, its candidates padded with " +
+      "random dummies, so the frames state no record's candidate count, and " +
+      "each round counts the size of a largest one-to-one pairing of its " +
+      "candidate pairs, the number of pairs a `psi` round accepts. The " +
+      "receiver's software derives, from genuine inputs, how many sender " +
+      "pseudonyms each of its slots matched and how many candidates each " +
+      "matched pair shares (docs/spec/PROTOCOL.md, PSI-C, What each party " +
+      "learns), which needs no deviation from the protocol and is shown to " +
+      "no operator, so it sits in the run's register beside the per-key " +
+      "counts. A receiver choosing its input can also place up to the " +
+      "declared width of values in one record, the crafted set " +
+      "`countOnlyInputChoice` states, scaled by the width.",
+    note:
+      "A key here matches several values per record, such as a name in " +
+      "either order or a date read approximately. Every record sends the " +
+      "same number of encrypted values for that key, and each record is " +
+      "counted at most once. The party that computes the count also has " +
+      "software that learns, for each match on such a key, how many values " +
+      "the two records share and how many of the other party's records " +
+      "each of its records matched. Alcove does not show this to that " +
+      "party's operator.",
   },
   countOnlyReportedCount: {
     basis: "trust-contingent",
@@ -528,26 +556,6 @@ export const CONSENT_FACTS = {
       "other's matched values group into records, round by round, for the " +
       "records still in the running.",
   },
-  fanOutRefused: {
-    basis: "enforced",
-    reason:
-      "The other case of the same line, and enforced for the same reason the " +
-      "`deduplicate` refusal is: a count-only exchange counts matched values " +
-      "where the matching pairs each record at most once, so terms declaring " +
-      "a candidate set under it are refused when they are authored or " +
-      "minted, at the local prepare step, and again at the agreed-terms run " +
-      "boundary. The note names the count-only case alone because a " +
-      "count-only exchange is the one that refuses split values: both " +
-      "linkage strategies match them (docs/spec/PROTOCOL.md, Fan-out runs " +
-      "under both linkage strategies). The exchange this invitation " +
-      "proposes does not run at all, which is a fact of the run rather than " +
-      "of the partner's conduct.",
-    note:
-      "The exchange will refuse to run these terms. Your partner proposes " +
-      "matching on parts of a value, which a count-only exchange cannot do. " +
-      "Ask your partner for an invitation that drops the split, or one that " +
-      "reveals which records match instead of only their number.",
-  },
   candidateSetChainsGrouping: {
     basis: "enforced",
     reason:
@@ -913,22 +921,21 @@ export function describeDeduplicatePair({
 }
 
 /**
- * The caveat for a term an inviter may declare that a count-only exchange refuses,
- * keyed by the term. Each names the refusal and the two invitations the reader can
- * ask for; why a refused term and a narrowing term take different copy: "Proposed
- * is not applied" in docs/notes/shared-consent-summary.md.
+ * The caveat for a term an inviter may declare that a linkage strategy resolving
+ * no candidate set refuses, keyed by the term. Each names the refusal and the
+ * invitation the reader can ask for; why a refused term and a narrowing term take
+ * different copy: "Proposed is not applied" in
+ * docs/notes/shared-consent-summary.md.
  */
 export const PROPOSED_NOT_APPLIED_NOTES = {
   fuzzyComparisons:
-    "(The exchange will refuse to run these terms, because a count-only " +
-    "exchange cannot match approximate variants. Ask your partner for an " +
-    "invitation that drops the approximate matching, or one that reveals " +
-    "which records match instead of only their number.)",
+    "(The exchange will refuse to run these terms, because the agreed " +
+    "linkage strategy cannot match approximate variants. Ask your partner " +
+    "for an invitation that drops the approximate matching.)",
   swappedKeyOrder:
-    "(The exchange will refuse to run these terms, because a count-only " +
-    "exchange cannot match in either order. Ask your partner for an " +
-    "invitation that drops the swapped key order, or one that reveals which " +
-    "records match instead of only their number.)",
+    "(The exchange will refuse to run these terms, because the agreed " +
+    "linkage strategy cannot match in either order. Ask your partner for an " +
+    "invitation that drops the swapped key order.)",
 } as const;
 
 /**
@@ -967,12 +974,12 @@ export const LESS_CERTAIN_KEY_COPY = {
  * which pairs the key matches and what the rounds disclose. Under `psi`, a
  * match tells a party receiving the result which record lacked the field, and
  * the element count of the round built only for your records lacking it tells
- * the partner how many of them are still unmatched. A `psi-c` round has one
- * element per record, so its count tells the partner nothing, but the software
- * of the party computing the count learns, for each match through the key,
- * which of the two records lacked the field (docs/spec/PROTOCOL.md, Keys with
- * a missing-field condition, and PSI-C, What each party learns, and on what
- * basis).
+ * the partner how many of them are still unmatched. A `psi-c` round has the
+ * same number of elements for each record, so its count tells the partner
+ * nothing, but the software of the party computing the count learns, for
+ * each match through the key, which of the two records lacked the field
+ * (docs/spec/PROTOCOL.md, Keys with a missing-field condition, and PSI-C,
+ * What each party learns, and on what basis).
  * `field` names the field's type in lowercase words
  * (`MISSING_FIELD_CONDITION_TYPE_WORDS`, linkageKeyCondition.ts). `keyCount`
  * above 1 words it for one line naming that many keys together.
@@ -988,9 +995,10 @@ export function missingFieldConditionStatement(
     `records has no valid ${field}.`;
   if (algorithm === "psi-c")
     return (
-      `${matches} In a count-only exchange you send one encrypted value for ` +
-      "each of your records in every round, so what you send does not tell " +
-      `your partner how many of your records have no valid ${field}. The ` +
+      `${matches} In a count-only exchange you send the same number of ` +
+      "encrypted values for each of your records in every round, so what " +
+      "you send does not tell your partner how many of your records have " +
+      `no valid ${field}. The ` +
       "software of the party that computes the count does learn, for each " +
       `match through ${several ? "one of these keys" : "this key"}, which of ` +
       "the two records had none."

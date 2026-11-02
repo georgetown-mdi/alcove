@@ -24,6 +24,7 @@ import {
   redactAndSanitizeForDisplay,
   redactUrlCredentials,
   summarizeInvitation,
+  termsDeclareCandidateSet,
   withholdsPartnerAssociationTable,
 } from "@alcove/core";
 
@@ -256,9 +257,13 @@ export function renderExchangeDisclosure(
     emit(`    ${DEDUPLICATE_PARTNER_DECLARED_SIDE_NOTE}`);
   }
   // Value-level matching multiplicity, beside the record-level line above.
-  // Printed only where the exchange matches on the candidates: terms declaring
-  // a split under a count-only exchange are refused before it runs.
-  if (summary.fansOut && summary.fanOutApplied) {
+  // Printed only where a `psi` exchange matches on the candidates; a
+  // count-only exchange states its own line in its tier.
+  if (
+    summary.fansOut &&
+    summary.fanOutApplied &&
+    linkageTerms.algorithm !== "psi-c"
+  ) {
     emit(`  ${marked("several values per record", "fanOutCandidates")}:`);
     emit(`    ${CONSENT_FACTS.fanOutCandidates.note}`);
   }
@@ -338,6 +343,7 @@ function logAlgorithmAndStrategy(
     logCountOnlyTier(
       emit,
       linkageTerms.output.expectsOutput && linkageTerms.output.shareWithPartner,
+      termsDeclareCandidateSet(linkageTerms),
     );
   emit(
     `  ${marked("linkage strategy", "linkageStrategy")}: ` +

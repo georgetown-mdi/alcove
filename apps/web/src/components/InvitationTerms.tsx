@@ -419,8 +419,8 @@ function MatchKeyDetails({ summary }: { summary: InvitationKeySummary }) {
                   - also matches approximate variants ({element.fuzzyComparison}
                   )
                   {/* The marker renders only for an expansion the run would not
-                      apply, which on the shipped build is a count-only exchange,
-                      where a candidate set is refused. Fuzzy changes match
+                      apply: one under a linkage strategy that resolves no
+                      candidate set. Fuzzy changes match
                       breadth, not the disclosure guarantee, so by the
                       caveat-placement rule on {@link InvitationTerms} the marker
                       stays here with the annotation it qualifies. */}
@@ -466,9 +466,9 @@ function MatchKeyDetails({ summary }: { summary: InvitationKeySummary }) {
           {summary.swap !== undefined
             ? `${summary.swap[0]} and ${summary.swap[1]} may be matched in either order`
             : "Two of these elements may be matched in either order"}
-          {/* The marker renders only for a swap the run would not apply, which
-              on the shipped build is a count-only exchange, where a candidate
-              set is refused. A swapped order changes match breadth, not the
+          {/* The marker renders only for a swap the run would not apply: one
+              under a linkage strategy that resolves no candidate set. A
+              swapped order changes match breadth, not the
               disclosure guarantee, so by the caveat-placement rule on
               {@link InvitationTerms} the marker stays here with the note it
               qualifies. */}
@@ -1038,6 +1038,11 @@ export function InvitationTerms({
               <Text size="xs" c="dimmed">
                 {CONSENT_FACTS.countOnlyRoundDisclosures.note}
               </Text>
+              {summary.countOnlyCandidateSets && (
+                <Text size="xs" c="dimmed">
+                  {CONSENT_FACTS.countOnlyCandidateSets.note}
+                </Text>
+              )}
               <Text size="xs" c="dimmed">
                 {CONSENT_FACTS.countOnlyInputChoice.note}
               </Text>
@@ -1238,14 +1243,11 @@ export function InvitationTerms({
             prompt state the consequence in the same words. Rendered from the
             element transforms the invitation declares; the inviter's own data
             standardization can fan out a field no invitation shows, so this claims
-            nothing about the whole of what the inviter runs. */}
-        {summary.fansOut && (
+            nothing about the whole of what the inviter runs. A count-only
+            exchange states its own line beside the matching method instead. */}
+        {summary.fansOut && summary.fanOutApplied && !countOnly && (
           <Term label="Several values per record">
-            <Text size="sm">
-              {summary.fanOutApplied
-                ? CONSENT_FACTS.fanOutCandidates.note
-                : CONSENT_FACTS.fanOutRefused.note}
-            </Text>
+            <Text size="sm">{CONSENT_FACTS.fanOutCandidates.note}</Text>
           </Term>
         )}
 

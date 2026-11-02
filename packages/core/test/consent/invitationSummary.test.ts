@@ -283,22 +283,23 @@ describe("the consent summary's fan-out register", () => {
     },
   );
 
-  test("the same element under the count-only algorithm is marked as not supported", () => {
-    // Refused before the exchange runs, so no matching of any breadth happens
-    // and naming one would describe a run that does not occur.
-    const summary = summarizeInvitation({
-      linkageTerms: {
-        ...fanOutTerms,
-        algorithm: "psi-c",
-        linkageStrategy: "cascade",
-      },
-    });
-    expect(summary.linkageKeys[0].headerFields).toEqual([
-      "last name (not supported)",
-    ]);
-    expect(summary.fansOut).toBe(true);
-    expect(summary.fanOutApplied).toBe(false);
-  });
+  test.each(["cascade", "single-pass"] as const)(
+    "the same element under the count-only algorithm (%s) is marked as matching on several values, and selects the count-only line",
+    (linkageStrategy) => {
+      // A count-only round counts over the element's candidates, so the
+      // header names the same breadth, and the count-only flag selects the
+      // tier's own line in place of the `psi` fan-out fact.
+      const summary = summarizeInvitation({
+        linkageTerms: { ...fanOutTerms, algorithm: "psi-c", linkageStrategy },
+      });
+      expect(summary.linkageKeys[0].headerFields).toEqual([
+        "last name (multiple)",
+      ]);
+      expect(summary.fansOut).toBe(true);
+      expect(summary.fanOutApplied).toBe(true);
+      expect(summary.countOnlyCandidateSets).toBe(true);
+    },
+  );
 
   const swapKeys = [
     {
@@ -325,12 +326,10 @@ describe("the consent summary's fan-out register", () => {
     },
   );
 
-  test("the same swap under the count-only algorithm is marked as not applied", () => {
-    // The count-only round refuses a candidate set, so the swap the invitation
-    // declares is a term the exchange will not run. The flag reads the
-    // refusal's own verdict, so the surfaces cannot state an either-order match
-    // for a document the run stops, and the header marker degrades the same
-    // way a refused fan-out element's header marker does.
+  test("the same swap under the count-only algorithm is marked as applied, and selects the count-only line", () => {
+    // A count-only round counts over the swapped order, so the surfaces state
+    // the either-order match the run performs. A swap declares no fan-out, so
+    // only the count-only flag selects a line for it.
     const summary = summarizeInvitation({
       linkageTerms: {
         ...baseTerms,
@@ -340,11 +339,29 @@ describe("the consent summary's fan-out register", () => {
       },
     });
     expect(summary.linkageKeys[0].hasSwap).toBe(true);
-    expect(summary.linkageKeys[0].swapApplied).toBe(false);
+    expect(summary.linkageKeys[0].swapApplied).toBe(true);
     expect(summary.linkageKeys[0].swapHeaderMarker).toBe(
-      "(either order not supported)",
+      "(matched in either order)",
     );
-    expect(summary.fanOutApplied).toBe(false);
+    expect(summary.fanOutApplied).toBe(true);
+    expect(summary.fansOut).toBe(false);
+    expect(summary.countOnlyCandidateSets).toBe(true);
+  });
+
+  test("count-only terms declaring no candidate set select no count-only candidate line", () => {
+    const summary = summarizeInvitation({
+      linkageTerms: {
+        ...baseTerms,
+        linkageKeys: [
+          {
+            name: "name",
+            elements: [{ field: "first_name" }, { field: "last_name" }],
+          },
+        ],
+        algorithm: "psi-c",
+      },
+    });
+    expect(summary.countOnlyCandidateSets).toBe(false);
   });
 
   test("terms declaring no fan-out are in neither register", () => {
@@ -676,7 +693,7 @@ describe("the consent summary's chained-grouping register", () => {
       ).toBe(true);
   });
 
-  test("withholds it where the count-only algorithm refuses the candidate set", () => {
+  test("withholds it under the count-only algorithm, which refuses deduplicate", () => {
     // The terms are refused before the exchange runs, so no grouping of any
     // shape happens and stating one would describe a run that does not occur.
     for (const [, linkageKeys] of candidateSetKeys)

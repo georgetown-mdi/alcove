@@ -4,9 +4,10 @@ import { UsageError } from "@alcove/core";
 import { decodeAndValidateInvitation } from "../../src/invitationDecode";
 import { encodeRawInvitation } from "../support";
 
-// A partner-crafted invitation whose count-only terms declare a candidate set:
-// a `split_on` fan-out on the key's only element. No count-only round resolves
-// one, so the exchange it invites cannot run.
+// A partner-crafted invitation whose one key splits three elements, a width of
+// 20 * 20 * 20 values per record, over the per-key ceiling, so the exchange it
+// invites cannot run.
+const splitOn = [{ function: "split_on", params: { delimiter: "," } }];
 function unrunnableInvitation(): Promise<string> {
   return encodeRawInvitation({
     version: "1",
@@ -18,15 +19,18 @@ function unrunnableInvitation(): Promise<string> {
       linkageStrategy: "cascade",
       output: { expectsOutput: true, shareWithPartner: false },
       deduplicate: false,
-      linkageFields: [{ name: "partner_given", type: "first_name" }],
+      linkageFields: [
+        { name: "partner_given", type: "first_name" },
+        { name: "partner_family", type: "last_name" },
+        { name: "partner_identifier", type: "ssn" },
+      ],
       linkageKeys: [
         {
           name: "Partner Key Name",
           elements: [
-            {
-              field: "partner_given",
-              transform: [{ function: "split_on", params: { delimiter: "," } }],
-            },
+            { field: "partner_given", transform: splitOn },
+            { field: "partner_family", transform: splitOn },
+            { field: "partner_identifier", transform: splitOn },
           ],
         },
       ],
@@ -50,7 +54,7 @@ test("the accept path refuses unrunnable terms at its decode gate", async () => 
 
   expect(raised).toBeInstanceOf(UsageError);
   expect((raised as UsageError).message).toContain(
-    "turns one value into several match candidates",
+    "candidate values one key may hold",
   );
 });
 
@@ -69,6 +73,7 @@ test("the decode gate's refusal echoes nothing the partner authored", async () =
   for (const authored of [
     "Partner Authored Identity",
     "partner_given",
+    "partner_family",
     "Partner Key Name",
   ])
     expect((raised as UsageError).message).not.toContain(authored);

@@ -10,11 +10,17 @@ import {
   PSI_SET_TOO_LARGE_ABORT_REASON,
 } from "../partnerAbortFrame.js";
 import { sendAbort } from "../protocolSetup.js";
+import {
+  candidatesWithinWidth,
+  countOnlyWidthsOfRounds,
+  type CountOnlyRoundWidths,
+} from "../psi/countOnlyRounds.js";
 import { RoundSetCounter, requireSingleCandidate } from "../psi/link.js";
 import {
   declaredKeyWidth,
   localFanOutFactor,
   roundKeyIterable,
+  termsDeclareCandidateSet,
 } from "../standardization.js";
 import { linkageRounds } from "../linkageKeyCondition.js";
 import { yieldToEventLoop } from "../utils/eventLoop.js";
@@ -28,49 +34,85 @@ import type { PsiProgressReporter } from "../psi/participant.js";
 // round sends, held to one PSI set's maximum before contact and to the
 // partner's stated receive ceiling after the terms exchange. In a
 // count-only exchange every round's set is this party's declared record
-// count, so the checks hold every round to that figure.
+// count times its width for the round, so the checks hold every round to
+// that figure.
 
-// What a refusal states this party sends: at least `elementCount` values for
-// the first key, or, where `everyRound`, exactly that many for every key.
-function valuesToSend(elementCount: number, everyRound: boolean): string {
-  return everyRound
-    ? `a count-only exchange sends ${elementCount} values for every ` +
+/**
+ * Which rounds a first-round refusal's figure covers: at least that many
+ * values for the first key, exactly that many for every key of a count-only
+ * exchange, or exactly that many for the widest key of a count-only exchange
+ * whose keys differ in width.
+ */
+export type RoundSetScope = "first-key" | "every-key" | "widest-key";
+
+function valuesToSend(elementCount: number, scope: RoundSetScope): string {
+  switch (scope) {
+    case "every-key":
+      return (
+        `a count-only exchange sends ${elementCount} values for every ` +
         "linkage key"
-    : `the first linkage key gives you at least ${elementCount} values to send`;
+      );
+    case "widest-key":
+      return (
+        `a count-only exchange sends ${elementCount} values for its widest ` +
+        "linkage key"
+      );
+    case "first-key":
+      return `the first linkage key gives you at least ${elementCount} values to send`;
+  }
 }
 
 /**
  * The refusal an exchange raises at its start when this party's first round
- * holds more values than one PSI set can hold: `elementCount` is the fewest
- * values that round sends, `maxValues` the protocol's per-set maximum.
- * `everyRound` states that every round sends exactly `elementCount` values,
- * as in a count-only exchange.
+ * holds more values than one PSI set can hold: `elementCount` is the values
+ * that round sends (the fewest it can send, for the first key),
+ * `maxValues` the protocol's per-set maximum, and `scope` the rounds the
+ * figure covers.
  */
 export function roundOneSetOverMaximumMessage(
   elementCount: number,
   maxValues: number = MAX_PSI_DECODE_ELEMENTS,
-  everyRound = false,
+  scope: RoundSetScope = "first-key",
 ): string {
   return (
-    `Too large to send: ${valuesToSend(elementCount, everyRound)}, over the ` +
+    `Too large to send: ${valuesToSend(elementCount, scope)}, over the ` +
     `${maxValues} one PSI set can hold. Nothing was sent. ${SPLIT_INPUT_REMEDY}`
   );
 }
 
 /**
  * The refusal raised after the terms exchange, before any linkage key is
+ * sent, when a round of a count-only exchange holds more values in the role
+ * this party resolved to than one PSI set can hold. The arguments are
+ * {@link roundOneSetOverMaximumMessage}'s.
+ */
+export function roundOneSetOverMaximumAfterTermsMessage(
+  elementCount: number,
+  maxValues: number = MAX_PSI_DECODE_ELEMENTS,
+  scope: RoundSetScope = "every-key",
+): string {
+  return (
+    `Too large to send: ${valuesToSend(elementCount, scope)}, over the ` +
+    `${maxValues} one PSI set can hold, so the exchange stopped before any ` +
+    `linkage key was sent and told your partner. ${SPLIT_INPUT_REMEDY}`
+  );
+}
+
+/**
+ * The refusal raised after the terms exchange, before any linkage key is
  * sent, when this party's first round holds more values than the partner
- * stated it can receive: `elementCount` is the fewest values that round
- * sends, `partnerReceiveCeiling` the partner's stated ceiling. `everyRound`
- * is {@link roundOneSetOverMaximumMessage}'s.
+ * stated it can receive: `elementCount` is the values that round sends (the
+ * fewest it can send, for the first key), `partnerReceiveCeiling` the
+ * partner's stated ceiling. `scope` is
+ * {@link roundOneSetOverMaximumMessage}'s.
  */
 export function roundOneSetOverPartnerCeilingMessage(
   elementCount: number,
   partnerReceiveCeiling: number,
-  everyRound = false,
+  scope: RoundSetScope = "first-key",
 ): string {
   return (
-    `Too large for your partner: ${valuesToSend(elementCount, everyRound)}, ` +
+    `Too large for your partner: ${valuesToSend(elementCount, scope)}, ` +
     `over the ${partnerReceiveCeiling} your partner can receive in one PSI ` +
     "set, so the exchange stopped before any linkage key was sent and told " +
     `your partner. ${PARTNER_CEILING_REMEDY}`
@@ -118,10 +160,13 @@ const PARTNER_CEILING_REMEDY =
  * exchange is not checked here: its dataset ceiling holds every set it sends
  * (docs/spec/PROTOCOL.md, "The single-pass dataset ceiling").
  *
- * Every round of a count-only (`psi-c`) exchange sends one value for each
- * of this party's declared records, in either role (docs/spec/PROTOCOL.md,
- * PSI-C), so that figure is checked for every round without reading the
- * input.
+ * Every round of a count-only (`psi-c`) exchange sends one block of this
+ * party's width for the round for each of its declared records
+ * (docs/spec/PROTOCOL.md, PSI-C), so that figure is checked for every round
+ * without reading the input, refused where the widest round is over the
+ * maximum in both roles. Where its terms declare a candidate set, every
+ * round is then read in both roles, so a refusal over this party's own rows
+ * is raised here, before contact.
  *
  * The count reports its progress through `options.onProgress`
  * ({@link FirstRoundCheckOptions}) and yields to the event loop as it goes,
@@ -134,9 +179,9 @@ export async function assertFirstRoundWithinSetMaximum(
   const maxValues = options.maxValues ?? MAX_PSI_DECODE_ELEMENTS;
   await assertFirstRoundFits(prepared, options, [false, true], {
     exceeds: (elementCount) => elementCount > maxValues,
-    tooLarge: (fewest, everyRound) =>
+    tooLarge: (elementCount, scope) =>
       new RoundSetLimitError(
-        roundOneSetOverMaximumMessage(fewest, maxValues, everyRound),
+        roundOneSetOverMaximumMessage(elementCount, maxValues, scope),
         "over-set-maximum",
       ),
     uncounted: (failure) =>
@@ -148,6 +193,7 @@ export async function assertFirstRoundWithinSetMaximum(
         { cause: failure },
       ),
   });
+  await readEveryCountOnlyRound(prepared, options);
 }
 
 /**
@@ -158,12 +204,14 @@ export interface FirstRoundCheckOptions {
   /**
    * Takes `countFirstRoundValues` reports (`PsiProgress`) as the count
    * starts, as it goes, and as it settles, once for each round and role it
-   * counts in.
+   * counts in, and for each round and role of a count-only exchange whose
+   * terms declare a candidate set, every one of which is read.
    * An input whose records cannot reach the bound is not counted, so it
-   * reports nothing. Called as a {@link PsiProgressReporter} is: a raise on a
-   * `progress` report is dropped, and any other reaches the caller. The
-   * settle report's `elements` is the number of rows the count walked, not
-   * the dataset's row count, so it is short of the started report's
+   * reports nothing unless it is read as a count-only candidate set. Called
+   * as a {@link PsiProgressReporter} is: a raise on a `progress` report is
+   * dropped, and any other reaches the caller. The settle report's
+   * `elements` is the number of rows the count walked, not the dataset's row
+   * count, so it is short of the started report's
    * `elements` when a deduplicating party's growing count stopped early.
    */
   onProgress?: PsiProgressReporter;
@@ -178,12 +226,12 @@ export interface FirstRoundCheckOptions {
   signal?: AbortSignal;
 }
 
-// Hold this party's first round to the partner's stated receive ceiling, after
-// the terms exchange and before this party builds a set: counted as the
-// start-of-exchange check counts, in the role this party resolved to, and
-// in a count-only exchange every round with it. Every
-// refusal sends the partner an abort before it propagates, its reason stating
-// only that the set was too large or that it was refused.
+// Hold this party's first round, and in a count-only exchange every round, to
+// the lesser of the partner's stated receive ceiling and one PSI set's
+// maximum, after the terms exchange and before this party builds a set:
+// counted as the start-of-exchange check counts, in the role this party
+// resolved to. Every refusal sends the partner an abort before it propagates,
+// its reason stating only that the set was too large or that it was refused.
 export async function assertFirstRoundWithinPartnerCeiling(
   conn: MessageConnection,
   input: Pick<PreparedExchange, "linkageTerms" | "dataset" | "rowCount">,
@@ -192,18 +240,28 @@ export async function assertFirstRoundWithinPartnerCeiling(
   onProgress: PsiProgressReporter | undefined,
 ): Promise<void> {
   const options: FirstRoundCheckOptions = { onProgress };
+  const ceiling = Math.min(partnerReceiveCeiling, MAX_PSI_DECODE_ELEMENTS);
   try {
     await assertFirstRoundFits(input, options, [isReceiver], {
-      exceeds: (elementCount) => elementCount > partnerReceiveCeiling,
-      tooLarge: (fewest, everyRound) =>
-        new RoundSetLimitError(
-          roundOneSetOverPartnerCeilingMessage(
-            fewest,
-            partnerReceiveCeiling,
-            everyRound,
-          ),
-          "over-partner-ceiling",
-        ),
+      exceeds: (elementCount) => elementCount > ceiling,
+      tooLarge: (elementCount, scope) =>
+        elementCount > MAX_PSI_DECODE_ELEMENTS
+          ? new RoundSetLimitError(
+              roundOneSetOverMaximumAfterTermsMessage(
+                elementCount,
+                MAX_PSI_DECODE_ELEMENTS,
+                scope,
+              ),
+              "over-set-maximum",
+            )
+          : new RoundSetLimitError(
+              roundOneSetOverPartnerCeilingMessage(
+                elementCount,
+                ceiling,
+                scope,
+              ),
+              "over-partner-ceiling",
+            ),
       uncounted: (failure) =>
         new RoundSetLimitError(
           ROUND_ONE_SET_UNCOUNTED_FOR_PARTNER_MESSAGE,
@@ -227,29 +285,142 @@ export async function assertFirstRoundWithinPartnerCeiling(
 const FIRST_ROUND_COUNT_CLOCK_RECORDS = 1024;
 const FIRST_ROUND_COUNT_PROGRESS_MS = 250;
 
+// A count-only exchange's rounds, each `declaredRecords` times this party's
+// width for the round, held to the bound in each of `roles`: refused where,
+// in every role counted, the widest round is over it, naming the size of the
+// role that sends the most so the refusal never understates the run.
+function assertCountOnlyRoundsFit(
+  declaredRecords: number,
+  widths: ReadonlyArray<CountOnlyRoundWidths>,
+  roles: ReadonlyArray<boolean>,
+  bound: {
+    exceeds: (elementCount: number) => boolean;
+    tooLarge: (elementCount: number, scope: RoundSetScope) => Error;
+  },
+): void {
+  let most = 0;
+  let scope: RoundSetScope = "every-key";
+  for (const isReceiver of roles) {
+    const roleWidths = widths.map((width) =>
+      isReceiver ? width.receiverWidth : width.senderWidth,
+    );
+    const widest = Math.max(1, ...roleWidths);
+    const size = declaredRecords * widest;
+    if (!bound.exceeds(size)) return;
+    if (size <= most) continue;
+    most = size;
+    scope = roleWidths.every((width) => width === widest)
+      ? "every-key"
+      : "widest-key";
+  }
+  throw bound.tooLarge(most, scope);
+}
+
+/**
+ * Under count-only terms declaring a candidate set, read every round of every
+ * key in both PSI roles before the connection opens, so a refusal building a
+ * round's candidates -- a fuzzy exceedance, a record wider than its block --
+ * is raised in front of this party's operator rather than ending a run its
+ * partner has joined (docs/spec/PROTOCOL.md, Candidate sets under count-only).
+ * Each round and role read reports as the first-round count does
+ * (`countFirstRoundValues`, {@link FirstRoundCheckOptions}).
+ */
+async function readEveryCountOnlyRound(
+  prepared: Pick<PreparedExchange, "linkageTerms" | "dataset" | "rowCount">,
+  options: FirstRoundCheckOptions,
+): Promise<void> {
+  const { linkageTerms, dataset, rowCount } = prepared;
+  if (
+    linkageTerms.algorithm !== "psi-c" ||
+    !termsDeclareCandidateSet(linkageTerms)
+  )
+    return;
+  const report = options.onProgress;
+  const progressIntervalMs =
+    options.progressIntervalMs ?? FIRST_ROUND_COUNT_PROGRESS_MS;
+  const rounds = linkageRounds(linkageTerms.linkageKeys);
+  const widths = countOnlyWidthsOfRounds(linkageTerms);
+  for (const isReceiver of [true, false])
+    for (const [index, round] of rounds.entries()) {
+      const width = isReceiver
+        ? widths[index]!.receiverWidth
+        : widths[index]!.senderWidth;
+      report?.({
+        operation: "countFirstRoundValues",
+        elements: rowCount,
+        state: "started",
+      });
+      const startedAt = performance.now();
+      let row = 0;
+      const settled = (state: "finished" | "failed"): void =>
+        report?.({
+          operation: "countFirstRoundValues",
+          elements: row,
+          state,
+          durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
+        });
+      try {
+        let lastReportAt = performance.now();
+        const records = roundKeyIterable(
+          round,
+          dataset,
+          rowCount,
+          isReceiver,
+          false,
+        );
+        for (const candidates of records) {
+          candidatesWithinWidth(candidates, width);
+          if (++row % FIRST_ROUND_COUNT_CLOCK_RECORDS !== 0) continue;
+          if (performance.now() - lastReportAt >= progressIntervalMs) {
+            try {
+              report?.({
+                operation: "countFirstRoundValues",
+                elements: rowCount,
+                state: "progress",
+                processed: row,
+              });
+            } catch {
+              // Dropped; the read continues and its settle report follows.
+            }
+            lastReportAt = performance.now();
+          }
+          await yieldToEventLoop();
+          options.signal?.throwIfAborted();
+        }
+      } catch (failure) {
+        if (!(options.signal?.aborted && failure === options.signal.reason))
+          settled("failed");
+        throw failure;
+      }
+      settled("finished");
+    }
+}
+
 // The first-round count both checks above share, in each of `roles` (whether
 // this party counts as the PSI receiver) until one fits every round of the
 // first key. `exceeds` is the check's bound on a set of that many values,
-// `tooLarge` its refusal on the fewest values a round over the bound sends in
-// any role counted, `everyRound` where every round sends exactly that many,
-// `uncounted` its refusal when the count fails other than with a refusal the
-// round would raise.
+// `tooLarge` its refusal on the values a round over the bound sends (in a
+// count-only exchange the most of any role counted, else the fewest) and the
+// rounds that figure covers, `uncounted` its refusal when the count fails
+// other than with a refusal the round would raise.
 async function assertFirstRoundFits(
   prepared: Pick<PreparedExchange, "linkageTerms" | "dataset" | "rowCount">,
   options: FirstRoundCheckOptions,
   roles: ReadonlyArray<boolean>,
   bound: {
     exceeds: (elementCount: number) => boolean;
-    tooLarge: (fewest: number, everyRound: boolean) => Error;
+    tooLarge: (elementCount: number, scope: RoundSetScope) => Error;
     uncounted: (failure: unknown) => Error;
   },
 ): Promise<void> {
   const { linkageTerms, dataset, rowCount } = prepared;
   if (linkageTerms.algorithm === "psi-c") {
-    const declaredRecords =
-      rowCount * localFanOutFactor(dataset.declaresFanOut);
-    if (bound.exceeds(declaredRecords))
-      throw bound.tooLarge(declaredRecords, true);
+    assertCountOnlyRoundsFit(
+      rowCount * localFanOutFactor(dataset.declaresFanOut),
+      countOnlyWidthsOfRounds(linkageTerms),
+      roles,
+      bound,
+    );
     return;
   }
   if (runsSinglePassLink(linkageTerms)) return;
@@ -373,5 +544,5 @@ async function assertFirstRoundFits(
     else refusals.push(refused);
   }
   if (refusals.length > 0) throw refusals[0];
-  throw bound.tooLarge(Math.min(...counted), false);
+  throw bound.tooLarge(Math.min(...counted), "first-key");
 }

@@ -133,9 +133,10 @@ describe("the count-only launch gate (the acceptor's own marked columns)", () =>
       })),
     };
     expect(acceptorLaunchBlockedReason(verdict, split, countOnlyTerms)).toBe(
-      "Your partner chose a count-only exchange, which matches one value per " +
-        "record, so remove the Split on step from your cleaning before you " +
-        "can start.",
+      "Your partner chose a count-only exchange, which cannot run the Split " +
+        "on step in your cleaning, because the invitation does not state how " +
+        "many parts it adds to each record. Remove that step before you can " +
+        "start.",
     );
     expect(
       acceptorLaunchBlockedReason(verdict, split, {

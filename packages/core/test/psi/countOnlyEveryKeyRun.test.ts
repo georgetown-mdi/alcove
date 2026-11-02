@@ -17,6 +17,7 @@ import { HeldPermutation } from "../../src/psi/countOnlyPermutation";
 import {
   CountOnlyDummies,
   countOnlyRoundElements,
+  runCountOnlyRounds,
   type CountOnlyDeclaredCounts,
 } from "../../src/psi/countOnlyRounds";
 import { linkViaCountOnlyPSI } from "../../src/psi/link";
@@ -706,6 +707,114 @@ describe("a run that ends before its last round yields no count", () => {
     ).rejects.toThrow(/after 1 of the exchange.s 2 count-only rounds/);
     disposeBoth(outcome);
   });
+});
+
+// A receiver whose rounds are recorded rather than sent, and whose count is 0.
+function recordingReceiver(
+  requests: Array<ReadonlyArray<string>>,
+): PSIParticipant {
+  return {
+    config: { role: "joiner" },
+    countPermutedRound: (
+      _conn: MessageConnection,
+      set: ReadonlyArray<string>,
+    ) => {
+      requests.push([...set]);
+      return Promise.resolve();
+    },
+    finishPermutedCount: () => Promise.resolve(0),
+  } as unknown as PSIParticipant;
+}
+
+describe("the receiver orders each block anew in every round", () => {
+  const rounds = 3000;
+  const [conn] = createMessagePipe();
+
+  test("a record's three candidates take each of the six orders about equally often", async () => {
+    const requests: Array<ReadonlyArray<string>> = [];
+    await runCountOnlyRounds(
+      recordingReceiver(requests),
+      conn,
+      Array.from({ length: rounds }, () => [new Set(["a", "b", "c"])]),
+      { receiverRecords: 1, senderRecords: 1 },
+      () => {},
+      Array.from({ length: rounds }, () => ({
+        receiverWidth: 3,
+        senderWidth: 1,
+      })),
+    );
+    const seen = new Map<string, number>();
+    requests.forEach((request, round) => {
+      const order = request
+        .map((element) => element.slice(`${String(round)}:`.length))
+        .join("");
+      seen.set(order, (seen.get(order) ?? 0) + 1);
+    });
+    expect([...seen.keys()].sort()).toStrictEqual([
+      "abc",
+      "acb",
+      "bac",
+      "bca",
+      "cab",
+      "cba",
+    ]);
+    // Pearson's chi-squared over the six orders, five degrees of freedom:
+    // 20.5 is its 0.999 quantile, so a uniform draw fails one run in a
+    // thousand, and a fixed order scores 15,000.
+    const expected = rounds / 6;
+    const chiSquared = [...seen.values()].reduce(
+      (sum, hits) => sum + (hits - expected) ** 2 / expected,
+      0,
+    );
+    expect(chiSquared).toBeLessThan(20.5);
+  });
+
+  test("a record's one real candidate takes each place in its block about equally often", async () => {
+    const requests: Array<ReadonlyArray<string>> = [];
+    await runCountOnlyRounds(
+      recordingReceiver(requests),
+      conn,
+      Array.from({ length: rounds }, () => ["a", undefined]),
+      { receiverRecords: 2, senderRecords: 1 },
+      () => {},
+      Array.from({ length: rounds }, () => ({
+        receiverWidth: 4,
+        senderWidth: 1,
+      })),
+    );
+    const places = [0, 0, 0, 0];
+    requests.forEach((request, round) => {
+      expect(request).toHaveLength(8);
+      const position = request.indexOf(`${String(round)}:a`);
+      // The record's block stays whole: its real candidate is in one half.
+      places[position % 4] += 1;
+    });
+    // Three degrees of freedom: 16.3 is the 0.999 quantile.
+    const expected = rounds / 4;
+    const chiSquared = places.reduce(
+      (sum, hits) => sum + (hits - expected) ** 2 / expected,
+      0,
+    );
+    expect(chiSquared).toBeLessThan(16.3);
+  });
+});
+
+test("a round's blocks hold each record's unique candidates, then dummies", async () => {
+  const elements = await countOnlyRoundElements(
+    [new Set(["a", "b"]), "b", "c", undefined],
+    2,
+    4,
+    3,
+  );
+  expect(elements).toHaveLength(12);
+  expect(elements[0]).toBe("2:a");
+  expect(elements[6]).toBe("2:c");
+  for (const index of [1, 2, 3, 4, 5, 7, 8, 9, 10, 11])
+    expect(elements[index]).toMatch(/^[0-9a-f]{64}$/);
+  expect(new Set(elements).size).toBe(12);
+  await expect(
+    countOnlyRoundElements([new Set(["a", "b", "c", "d"])], 0, 1, 3),
+  ).rejects.toThrow(/several/);
 });
 
 test("a round's set has one element per record, a fresh dummy for a missing or repeated value", async () => {

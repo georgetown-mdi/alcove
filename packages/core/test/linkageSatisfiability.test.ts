@@ -68,6 +68,7 @@ import type {
 } from "../src/config/linkageTermsSchema";
 import type { Standardization } from "../src/config/standardizationSchema";
 import { safeParseLinkageTerms } from "../src/config/linkageTermsSchema";
+import { COUNT_ONLY_SHAPE_REFUSALS } from "../src/linkageTermsPolicy";
 
 const col = (name: string, type: ColumnMetadata["type"]): ColumnMetadata => ({
   name,
@@ -1908,29 +1909,33 @@ describe("assertFanOutImplemented", () => {
     ).toThrow(UsageError);
   });
 
-  test("refuses a candidate set under the count-only algorithm, whatever the strategy", () => {
-    // psi-c counts matched VALUES where the resolution pairs each record at most
-    // once, so the count would over-report the linkage it is used to justify.
-    // The refusal reaches both authoring surfaces, under the very strategy that
-    // otherwise resolves a candidate set.
-    const countOnly: LinkageTerms = {
-      ...minimalTerms,
-      algorithm: "psi-c",
-      linkageStrategy: "cascade",
-    };
-    const standardization = [
-      { output: "last_name", input: "LN", steps: [fanOutStep] },
-    ];
-    expect(() => assertFanOutImplemented(countOnly, standardization)).toThrow(
-      OperatorConfigError,
-    );
-    expect(() =>
-      assertFanOutImplemented({ ...countOnly, linkageKeys: elementFanOutKeys }),
-    ).toThrow(UsageError);
-    expect(() =>
-      assertFanOutImplemented({ ...countOnly, linkageKeys: elementFanOutKeys }),
-    ).toThrow(/count-only/);
-  });
+  test.each(["cascade", "single-pass"] as const)(
+    "under the count-only algorithm admits a key's candidate set and refuses only its own standardization's fan-out (%s)",
+    (linkageStrategy) => {
+      // A count-only round counts over blocks of the width the terms declare
+      // (docs/spec/PROTOCOL.md, Candidate sets under count-only); a fan-out in a
+      // party's own standardization declares no width, so it stays refused.
+      const countOnly: LinkageTerms = {
+        ...minimalTerms,
+        algorithm: "psi-c",
+        linkageStrategy,
+      };
+      const standardization = [
+        { output: "last_name", input: "LN", steps: [fanOutStep] },
+      ];
+      expect(() => assertFanOutImplemented(countOnly, standardization)).toThrow(
+        new OperatorConfigError(
+          COUNT_ONLY_SHAPE_REFUSALS.standardizationFanOut,
+        ),
+      );
+      expect(() =>
+        assertFanOutImplemented({
+          ...countOnly,
+          linkageKeys: elementFanOutKeys,
+        }),
+      ).not.toThrow();
+    },
+  );
 
   test("the refusal names the strategy rule and the two ways out of it", () => {
     // What an operator does about it: agree on terms whose strategy matches a

@@ -1674,12 +1674,9 @@ describe("customize tabs", () => {
     expect(validation.terms?.deduplicate).toBe(true);
   });
 
-  test("a count-only draft over a seeded multi-key spine blocks generation", () => {
-    // The algorithm is not clamped -- the exchange honors psi-c -- so a draft that
-    // selects it reaches the count-only shape rules, and the seeded spine authors
-    // more than one linkage key, the shape a count-only run does not admit. Blocking
-    // generation is the fix path: narrowing the document to one key silently is
-    // exactly what the specification forbids.
+  test("a count-only draft over the seeded multi-key spine generates", () => {
+    // A count-only run counts over every agreed key, candidate sets included,
+    // so the seeded spine generates under psi-c as it stands.
     const seeded = editorFromCsv("Dana", csv);
     const countOnly = editorWithAlgorithm(seeded, "psi-c");
     expect(countOnly.draft.algorithm).toBe("psi-c");
@@ -1687,8 +1684,8 @@ describe("customize tabs", () => {
       countOnly.draft.keys.filter((k) => k.enabled).length,
     ).toBeGreaterThan(1);
     const validation = reviewValidation(countOnly);
-    expect(validation.canGenerate).toBe(false);
-    expect(validation.terms).toBeUndefined();
+    expect(validation.canGenerate).toBe(true);
+    expect(validation.terms?.algorithm).toBe("psi-c");
   });
 
   test("choosing count-only stops sending an id column the operator set sent", () => {
@@ -1744,12 +1741,17 @@ describe("customize tabs", () => {
       columns: ["id", "first_name", "last_name", "dob"],
       rawRows: [{ id: "1", first_name: "Ann", last_name: "Lee", dob: "x" }],
     };
-    const seeded = editorWithColumnDisclosure(
-      editorFromCsv("Dana", withId),
-      withId,
-      "id",
-      "identifier-sent",
-    ).editor;
+    // A duplicate-matching choice is the problem the change raises: count-only
+    // refuses it.
+    const seeded = editorWithDeduplicate(
+      editorWithColumnDisclosure(
+        editorFromCsv("Dana", withId),
+        withId,
+        "id",
+        "identifier-sent",
+      ).editor,
+      true,
+    );
     const countOnly = editorWithAlgorithm(seeded, "psi-c");
     expect(spineProblems(seeded)).toHaveLength(0);
     expect(spineProblems(countOnly)).toHaveLength(1);
@@ -1759,7 +1761,7 @@ describe("customize tabs", () => {
         "A problem above must be resolved before you can create.",
     );
     // Over the seed, which sends no column, the change stops sending nothing.
-    const fresh = editorFromCsv("Dana", withId);
+    const fresh = editorWithDeduplicate(editorFromCsv("Dana", withId), true);
     expect(
       methodChangeAnnouncement(fresh, editorWithAlgorithm(fresh, "psi-c"), 0),
     ).toBe("A problem above must be resolved before you can create.");

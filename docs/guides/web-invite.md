@@ -56,7 +56,7 @@ Choose **Continue to matching & sharing**.
 
 Screen: Step 2 of 3 - Matching & sharing
 
-**Matching method**: leave **Reveal the matched identifiers (standard)** for a list of matched records. For a count only, choose **Reveal only the count (psi-c)**, then untick the keys that match several values per record on **Matching keys** (step 3 below; [A list or only a count](./agree-on-terms.md#a-list-or-only-a-count)).
+**Matching method**: leave **Reveal the matched identifiers (standard)** for a list of matched records. For a count only, choose **Reveal only the count (psi-c)** ([A list or only a count](./agree-on-terms.md#a-list-or-only-a-count)).
 
 **Who receives the matched results** ([Who receives the result](./agree-on-terms.md#who-receives-the-result)):
 

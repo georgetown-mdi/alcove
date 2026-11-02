@@ -743,8 +743,9 @@ describe("inviter screen", () => {
       .poll(() => ledger.textContent)
       .toContain("How many records you have in common");
 
-    // The step's live region names the identifier the choice stopped sending
-    // and the problem it raised above the heading.
+    // The step's live region names the identifier the choice stopped sending.
+    // The seeded keys, candidate sets included, run under count-only, so the
+    // choice raises no problem.
     const politeText = () =>
       Array.from(
         document.querySelectorAll('p[aria-live="polite"]'),
@@ -753,15 +754,13 @@ describe("inviter screen", () => {
     await expect
       .poll(politeText)
       .toContain(
-        `${isolatedColumnName("client_id")} is no longer sent to your partner. ` +
-          "A problem above must be resolved before you can create.",
+        `${isolatedColumnName("client_id")} is no longer sent to your partner.`,
       );
+    expect(politeText()).not.toContain("A problem above");
     await expect
       .element(page.getByLabelText(usedLabel("client_id")))
       .toHaveValue("identifier");
-    expect(
-      document.querySelector('section[aria-label="Problems"]'),
-    ).not.toBeNull();
+    expect(document.querySelector('section[aria-label="Problems"]')).toBeNull();
     // Switching back clears the notice rather than leaving it stale.
     await page
       .getByRole("radio", {

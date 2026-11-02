@@ -102,6 +102,7 @@ import { receiveCountReport, sendCountReport } from "../protocolSetup";
 import {
   runCountOnlyRounds,
   type CountOnlyDeclaredCounts,
+  type CountOnlyRoundWidths,
 } from "./countOnlyRounds";
 
 import { getLoggerForVerbosity } from "../utils/logger";
@@ -182,8 +183,8 @@ interface IndexableIterable<T> extends Iterable<T> {
  * realization holds the whole candidate set (buildKeyStrings), so this is the
  * point a round applies the refusal at. The cascade applies it behind the
  * strategy allowlist (docs/spec/PROTOCOL.md, Where a candidate set is
- * refused); a count-only round refuses a candidate set in
- * `countOnlyRoundElements`, which holds one element per record.
+ * refused); a count-only round refuses a candidate set wider than its block
+ * in `countOnlyRoundElements`.
  */
 export function requireSingleCandidate(
   value: KeyCandidates,
@@ -1737,9 +1738,9 @@ export async function linkViaPSI(
 /**
  * The count-only (`psi-c`) counterpart to {@link linkViaPSI}, resolving to the
  * size of the intersection and to nothing that names a match: one round for
- * each entry of `data`, in order, each set holding one element per record,
- * under the sender's permutation (docs/spec/PROTOCOL.md, PSI-C, The
- * count-only rounds).
+ * each entry of `data`, in order, each set holding one block of the round's
+ * width per record, under the sender's permutation (docs/spec/PROTOCOL.md,
+ * PSI-C, The count-only rounds, and Candidate sets under count-only).
  *
  * Returns the count this party holds at the end of the rounds, or
  * `undefined` when it holds none -- the sender of a run whose agreed terms
@@ -1760,6 +1761,8 @@ export async function linkViaPSI(
  * @param maxCount - The largest legitimate count, for bounding the reported figure
  *   on the sender: the smaller of the two exchanged record counts.
  * @param declared - The record counts the terms exchange stated.
+ * @param widths - Each round's widths (`countOnlyWidthsOfRounds`), one entry
+ *   per entry of `data`; omitted, every round has width 1.
  */
 export async function linkViaCountOnlyPSI(
   participant: PSIParticipant,
@@ -1769,6 +1772,7 @@ export async function linkViaCountOnlyPSI(
   maxCount: number,
   declared: CountOnlyDeclaredCounts,
   setStage?: (id: string) => void,
+  widths?: ReadonlyArray<CountOnlyRoundWidths>,
 ): Promise<number | undefined> {
   if (participant.config.role === "either")
     throw new InternalConsistencyError("the participant's role is unresolved");
@@ -1779,6 +1783,7 @@ export async function linkViaCountOnlyPSI(
     data,
     declared,
     setStage ?? (() => {}),
+    widths,
   );
 
   if (!reportCountToSender) return count;

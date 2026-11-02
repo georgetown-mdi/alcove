@@ -718,8 +718,8 @@ describe("displayInvitation: the declared terms it discloses (columns, built-in 
 
   test("displayInvitation: states what a splitting key does, in the register its strategy puts it in", () => {
     // A key element that splits its value is matched on each candidate, which is
-    // both a widening and a disclosure -- and under a combination that matches
-    // one value per record it is a refusal instead. The sentence for each case
+    // both a widening and a disclosure, and a count-only exchange states what
+    // its own run discloses in place of the `psi` sentence. The sentence for each case
     // comes from core's shared classification, so this prompt and the web consent
     // screen state the consequence in the same words rather than two accounts of
     // it.
@@ -736,13 +736,14 @@ describe("displayInvitation: the declared terms it discloses (columns, built-in 
       expect(matched).toContain("(multiple)");
     }
 
-    const refused = renderDisplayInvitation(
+    const counted = renderDisplayInvitation(
       log,
       splittingKeyToken(FUTURE(), "cascade", "psi-c"),
     );
-    expect(refused).toContain("several values per record (enforced):");
-    expect(refused).toContain(CONSENT_FACTS.fanOutRefused.note);
-    expect(refused).toContain("(not supported)");
+    expect(counted).toContain("several values per record (enforced):");
+    expect(counted).toContain(CONSENT_FACTS.countOnlyCandidateSets.note);
+    expect(counted).not.toContain(CONSENT_FACTS.fanOutCandidates.note);
+    expect(counted).toContain("(multiple)");
 
     // Silent for terms that declare no split, so the line is not a fixture of the
     // prompt itself.
@@ -975,18 +976,12 @@ describe("displayInvitation: the declared terms it discloses (columns, built-in 
     expect(out).toContain("    agreement valid through: 2027-12-31");
   });
 
-  test("displayInvitation: a count-only invitation marks the swap it will refuse", () => {
-    // A swapped key order is a candidate set, which a count-only round refuses,
-    // so the note stating an either-order match is qualified where it stands
-    // rather than left reading as behavior the run performs. The expansion on
-    // the same terms is marked for the same reason, so the two producers a
-    // reader meets in the key detail are marked together.
-    //
-    // The count-only probe holds a key declaring neither, since a psi-c
-    // document declaring one is refused where it is decoded, so the shape this
-    // marking is for is composed here from the shared base's key -- the same
-    // composition the web screen's pin uses, so the two surfaces are measured
-    // on one input.
+  test("displayInvitation: a count-only invitation states the swap and the expansion it runs", () => {
+    // A swapped key order and a fuzzy expansion are candidate sets, which a
+    // count-only round runs, so both are stated unqualified, as a `psi`
+    // invitation states them, and the count-only tier adds what the run
+    // discloses over them. The shape is composed from the shared base's key,
+    // the same composition the web screen's pin uses.
     const log = getLogger("accept-display-count-only-swap-test");
     log.setLevel("silent");
     const out = renderDisplayInvitation(log, {
@@ -997,18 +992,13 @@ describe("displayInvitation: the declared terms it discloses (columns, built-in 
       },
     });
     expect(out).toContain(
-      "      swap: First name and Last name may be matched in either order " +
-        PROPOSED_NOT_APPLIED_NOTES.swappedKeyOrder,
+      "      swap: First name and Last name may be matched in either order\n",
     );
-    expect(out).toContain(PROPOSED_NOT_APPLIED_NOTES.fuzzyComparisons);
-    // The always-visible header line degrades the same way a refused fan-out
-    // element's header marker does, rather than asserting the either-order
-    // match a count-only round refuses.
-    expect(out).toContain(
-      "      matches on: first name (partial) - last name (partial) - " +
-        "date of birth (fuzzy) (either order not supported)",
-    );
-    expect(out).not.toContain("(matched in either order)");
+    expect(out).not.toContain(PROPOSED_NOT_APPLIED_NOTES.swappedKeyOrder);
+    expect(out).not.toContain(PROPOSED_NOT_APPLIED_NOTES.fuzzyComparisons);
+    expect(out).toContain("(matched in either order)");
+    expect(out).not.toContain("(either order not supported)");
+    expect(out).toContain(CONSENT_FACTS.countOnlyCandidateSets.note);
   });
 
   test("displayInvitation: a deduplicating term states what it discloses and whose records pay it", () => {
@@ -1514,15 +1504,14 @@ describe("displayInvitation: the declared terms it discloses (columns, built-in 
       ...sampleToken(FUTURE()),
       inviterRetainsFiles: true,
     });
-    // The fan-out pair is the fifth and sixth, for the same reason again: both are
-    // raised by a linkage key that splits its element's value, and which of the two
-    // follows the algorithm and the strategy together, so no variation above
-    // reaches either.
+    // The fan-out pair is the fifth and sixth, for the same reason again: both
+    // are raised by a linkage key that splits its element's value, and which of
+    // the two follows the algorithm, so no variation above reaches either.
     const fanOutMatched = renderDisplayInvitation(
       log,
       splittingKeyToken(FUTURE(), "single-pass"),
     );
-    const fanOutRefused = renderDisplayInvitation(
+    const countOnlyCandidateSets = renderDisplayInvitation(
       log,
       splittingKeyToken(FUTURE(), "cascade", "psi-c"),
     );
@@ -1590,7 +1579,7 @@ describe("displayInvitation: the declared terms it discloses (columns, built-in 
       renderCountOnlyFacts(),
       retaining,
       fanOutMatched,
-      fanOutRefused,
+      countOnlyCandidateSets,
       deduplicatingSoleReceiver,
       deduplicatingTableWithheld,
       inviterLearnsNoMembership,

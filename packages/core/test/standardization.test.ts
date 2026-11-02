@@ -4652,13 +4652,15 @@ describe("FAN_OUT_FUNCTION_NAMES", () => {
 // --- fanOutReachedMatchingRefusal --------------------------------------------
 
 describe("the refusal a candidate set earns at a single-valued round", () => {
-  test("states the count-only reason and the declaration the rest read", () => {
+  test("states the declaration the round reads and names no algorithm", () => {
+    // A count-only round takes a block of its declared width, so the refusal
+    // is the same under either algorithm: an expansion the declarations miss.
     const message = fanOutReachedMatchingRefusal().message;
-    expect(message).toContain("because the exchange is count-only");
     expect(message).toContain(
-      "or the agreed linkage terms and the standardization do not declare " +
-        "the expansion",
+      "because the agreed linkage terms and the standardization do not " +
+        "declare the expansion",
     );
+    expect(message).not.toContain("count-only");
   });
 
   test("names no cardinality, none of which decides the refusal", () => {

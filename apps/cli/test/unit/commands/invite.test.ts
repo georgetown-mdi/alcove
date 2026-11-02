@@ -2506,10 +2506,10 @@ test.each(["cascade", "single-pass"] as const)(
 );
 
 test("validateInvite: offline config-source refuses a fan-out standardization before minting", async () => {
-  // The mint-boundary counterpart of the run-side candidate-set refusal (a
-  // count-only round counts matched values where the resolution pairs each
-  // record at most once): a config whose hand-authored standardization declares
-  // `split_on` must be refused BEFORE the token is disclosed, not left for the
+  // The mint-boundary counterpart of the count-only standardization fan-out
+  // refusal (the terms state no width for a split in a party's own cleaning):
+  // a config whose hand-authored standardization declares `split_on` must be
+  // refused BEFORE the token is disclosed, not left for the
   // config's own `alcove exchange` to reject later (exit 64). An
   // OperatorConfigError, since a standardization is only this party's own
   // authoring.
@@ -2536,12 +2536,10 @@ test("validateInvite: offline config-source refuses a fan-out standardization be
   }
 });
 
-test("validateInvite: offline config-source refuses a fan-out element transform before minting", async () => {
+test("validateInvite: offline config-source mints a count-only fan-out element transform", async () => {
   // The second authoring surface only this config-as-source path can hold: a
-  // linkage key whose element transform declares `split_on`, refused at the same
-  // mint boundary. A plain UsageError, not an OperatorConfigError -- an acceptor
-  // adopts element transforms verbatim from the partner's invitation, so the
-  // fault is not provably the local operator's own content.
+  // linkage key whose element transform declares `split_on`. The terms declare
+  // its width, so a count-only exchange runs it and the mint admits it.
   const base = countOnlyTerms();
   const [firstKey, ...restKeys] = base.linkageKeys;
   const terms: LinkageTerms = {
@@ -2565,16 +2563,15 @@ test("validateInvite: offline config-source refuses a fan-out element transform 
   };
   const { dir, configPath, keyPath } = withConfig(terms);
   try {
-    const invite = () =>
-      validateInvite({
-        resolved: { mode: "offline" },
-        options: testOptions({ configFile: configPath, keyFile: keyPath }),
-        acceptTimeout: 900,
-        log: silentLog,
-      });
-    await expect(invite()).rejects.toBeInstanceOf(UsageError);
-    await expect(invite()).rejects.not.toBeInstanceOf(OperatorConfigError);
-    await expect(invite()).rejects.toThrow(/count-only/);
+    const ready = await validateInvite({
+      resolved: { mode: "offline" },
+      options: testOptions({ configFile: configPath, keyFile: keyPath }),
+      acceptTimeout: 900,
+      log: silentLog,
+    });
+    expect(ready.mode).toBe("offlineFromConfig");
+    if (ready.mode !== "offlineFromConfig") throw new Error("unreachable");
+    expect(ready.linkageTerms.algorithm).toBe("psi-c");
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
