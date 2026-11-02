@@ -228,7 +228,7 @@ On `webrtc` the roles are fixed, the acceptor always the initiator ([WEBRTC_TRAN
   The ahead side's unshared current secret, which the cut run derived and only the ahead side stored, is discarded.
 - **The previous-secret rules hold unchanged:** a store replaces it, it keeps its own `expires`, a re-invite drops it, an export omits it, and every heal is reported.
   It is always accepted ([question 2](#open-questions)).
-  SP 800-57 section 8.2.3.2 does not reach it: the previous secret enters no later secret, so keeping it until a heal run is a question of how long a secret is used, not of how its replacement is made.
+  SP 800-57 section 8.2.3.2 does not reach it: the previous secret enters no later secret, so keeping it until that side next stores is a question of how long a secret is used, not of how its replacement is made.
 
 ### What it does to the values derived from the secret
 
@@ -261,7 +261,7 @@ Rules that bound it:
   No time window is involved, so there is no width to choose.
 - **It keeps its own `expires`.**
   The previous secret takes the `expires` it had as the current secret, so under `token_max_age_days` it never outlives the policy ([PROTOCOL.md](../spec/PROTOCOL.md#expires-enforcement-and-the-expiring-soon-advisory)).
-  An expired previous secret is dropped, not offered.
+  An expired previous secret stays at rest but is not offered.
 - **A re-invite drops it.**
   The write that stores a fresh invitation secret removes the previous secret, so the compromise response ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#compromise-response)) ends both.
 - **An export omits it.**
