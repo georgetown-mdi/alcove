@@ -672,7 +672,11 @@ describe("in a count-only exchange", () => {
         },
       );
 
-    async function runTwoKeys(localRows: number, partnerRows: number) {
+    async function runTwoKeys(
+      localRows: number,
+      partnerRows: number,
+      partnerCeiling?: number,
+    ) {
       setMaximum.lowered = maximum;
       const [local, partner] = createMessagePipe();
       const sent: Array<unknown> = [];
@@ -687,7 +691,7 @@ describe("in a count-only exchange", () => {
           },
         ),
         runExchange(
-          partner,
+          withCeiling(partner, partnerCeiling, []),
           "responder",
           preparedTwoKeys("Partner Co", partnerRows),
           {
@@ -721,6 +725,17 @@ describe("in a count-only exchange", () => {
         ((partner as PromiseRejectedResult).reason as PeerAbortError)
           .partnerReason,
       ).toBe(PSI_SET_TOO_LARGE_ABORT_REASON);
+    });
+
+    test("a count over the maximum is refused for the maximum, whatever lower ceiling the partner states", async () => {
+      const { local, sent } = await runTwoKeys(5, 6, 4);
+      const refusal = (local as PromiseRejectedResult).reason as Error;
+      expect(refusal).toBeInstanceOf(RoundSetLimitError);
+      expect((refusal as RoundSetLimitError).reason).toBe("over-set-maximum");
+      expect(refusal.message).toBe(
+        roundOneSetOverMaximumAfterTermsMessage(10, maximum, "widest-key"),
+      );
+      expect(binaryFrames(sent)).toEqual([]);
     });
 
     test("the same records resolved as the sender run to completion", async () => {

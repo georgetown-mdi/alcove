@@ -241,27 +241,26 @@ export async function assertFirstRoundWithinPartnerCeiling(
 ): Promise<void> {
   const options: FirstRoundCheckOptions = { onProgress };
   const ceiling = Math.min(partnerReceiveCeiling, MAX_PSI_DECODE_ELEMENTS);
-  const partnerCeilingBinds = ceiling < MAX_PSI_DECODE_ELEMENTS;
   try {
     await assertFirstRoundFits(input, options, [isReceiver], {
       exceeds: (elementCount) => elementCount > ceiling,
       tooLarge: (elementCount, scope) =>
-        partnerCeilingBinds
+        elementCount > MAX_PSI_DECODE_ELEMENTS
           ? new RoundSetLimitError(
+              roundOneSetOverMaximumAfterTermsMessage(
+                elementCount,
+                MAX_PSI_DECODE_ELEMENTS,
+                scope,
+              ),
+              "over-set-maximum",
+            )
+          : new RoundSetLimitError(
               roundOneSetOverPartnerCeilingMessage(
                 elementCount,
                 ceiling,
                 scope,
               ),
               "over-partner-ceiling",
-            )
-          : new RoundSetLimitError(
-              roundOneSetOverMaximumAfterTermsMessage(
-                elementCount,
-                ceiling,
-                scope,
-              ),
-              "over-set-maximum",
             ),
       uncounted: (failure) =>
         new RoundSetLimitError(
