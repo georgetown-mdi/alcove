@@ -9,6 +9,10 @@
     or the step that failed and its Win32 error. With none of -Text,
     -SecretFile, -CtrlC and -Close, it presses Enter.
 
+    Each character goes in as the layout's own key for it (VkKeyScanW, with
+    its shift bit), or as a packet when the layout has no key for it, never
+    as the code of an editing key that shares its number.
+
     -SecretFile types the password from that DPAPI file. It is copied out of
     the SecureString into a buffer that is cleared once written, and never
     becomes a string.
@@ -51,6 +55,7 @@ public static class AlcoveVmConsole {
     static extern IntPtr CreateFileW(string name, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern bool WriteConsoleInputW(IntPtr handle, InputRecord[] records, uint length, out uint written);
+    [DllImport("user32.dll")] static extern short VkKeyScanW(char c);
     [DllImport("kernel32.dll", SetLastError = true)] static extern bool CloseHandle(IntPtr handle);
     [DllImport("kernel32.dll", SetLastError = true)] static extern bool GenerateConsoleCtrlEvent(uint ctrlEvent, uint group);
     [DllImport("kernel32.dll", SetLastError = true)] static extern bool SetConsoleCtrlHandler(IntPtr handler, bool add);
@@ -71,7 +76,17 @@ public static class AlcoveVmConsole {
         try {
             for (int i = 0; i < keys.Length; i++) {
                 char c = keys[i];
-                ushort key = c == (char)13 ? (ushort)0x0D : (ushort)char.ToUpperInvariant(c);
+                ushort key = 0x0D;
+                uint state = 0;
+                if (c != (char)13) {
+                    short scanned = VkKeyScanW(c);
+                    if (scanned == -1 || (scanned & 0xFF) == 0xFF) {
+                        key = 0xE7;
+                    } else {
+                        key = (ushort)(scanned & 0xFF);
+                        if ((scanned & 0x100) != 0) { state = 0x10; }
+                    }
+                }
                 for (int down = 0; down < 2; down++) {
                     InputRecord record = new InputRecord();
                     record.EventType = 1;
@@ -79,6 +94,7 @@ public static class AlcoveVmConsole {
                     record.KeyEvent.RepeatCount = 1;
                     record.KeyEvent.VirtualKeyCode = key;
                     record.KeyEvent.UnicodeChar = c;
+                    record.KeyEvent.ControlKeyState = state;
                     records[i * 2 + down] = record;
                 }
             }

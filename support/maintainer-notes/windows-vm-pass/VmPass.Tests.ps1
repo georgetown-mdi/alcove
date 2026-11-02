@@ -33,19 +33,28 @@ AfterAll {
 
 Describe 'Console input' {
     It 'answers set /p with typed text and with the password, and its output holds neither' {
+        # The punctuation whose characters are also the codes of editing keys
+        # (PRIOR, END, HOME, LEFT, UP, DOWN, INSERT, DELETE), beside letters and digits.
+        $typedPassword = 'Smoke!#$%&(-.' + [guid]::NewGuid().ToString('N').Substring(0, 12)
+        $typedSecret = Join-Path $script:SmokeRoot 'secret\typed.dpapi'
+        ConvertTo-SecureString -String $typedPassword -AsPlainText -Force | ConvertFrom-SecureString |
+            Set-Content -LiteralPath $typedSecret
         $target = Join-Path $script:SmokeRoot 'prompts.cmd'
         Set-Content -LiteralPath $target -Encoding Ascii -Value @(
             '@echo off',
             'set /p "FIRST=First: "',
             'set /p "SECOND=Second: "',
             'if "%FIRST%"=="abc" if "%SECOND%"=="%ALCOVE_SMOKE_EXPECTED%" echo MATCHED')
-        $env:ALCOVE_SMOKE_EXPECTED = $script:SmokePassword
+        # The batch compares what set /p received with the value handed to
+        # the child in its environment, and prints only a match line.
+        $env:ALCOVE_SMOKE_EXPECTED = $typedPassword
         try { $console = Start-ConsoleCommand -Name 'smoke-console' -CommandLine "`"$target`"" }
         finally { Remove-Item 'env:ALCOVE_SMOKE_EXPECTED' }
 
         $reasons = @(
             Send-AtPrompt -Console $console -Prompt 'First: ' -Text 'abc' -TimeoutSeconds 60
-            Send-AtPrompt -Console $console -Prompt 'Second: ' -Secret -TimeoutSeconds 60) | Where-Object { $_ }
+            Send-AtPrompt -Console $console -Prompt 'Second: ' -Secret -SecretFile $typedSecret -TimeoutSeconds 60) |
+            Where-Object { $_ }
         $console.Process.WaitForExit(60000) | Out-Null
         # Read before Complete-ConsoleCommand removes the password: what is
         # pinned here is that set /p never writes what it reads to the file.
@@ -56,7 +65,7 @@ Describe 'Console input' {
         $raw | Should -Match 'First: '
         $raw | Should -Match 'MATCHED' -Because "the file held: $($raw -replace '\s+', ' ')"
         $raw | Should -Not -Match 'abc'
-        $raw | Should -Not -Match $script:SmokePassword
+        $raw.Contains($typedPassword) | Should -BeFalse
         $done.Exit | Should -Be 0
     }
 }

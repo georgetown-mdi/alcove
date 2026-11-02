@@ -220,7 +220,8 @@ function Send-ConsoleInput {
 function Send-AtPrompt {
     <#  Wait for a prompt to reach the console's output, then answer it.
         Returns a reason when it never came or the answer was not written. #>
-    param($Console, [string] $Prompt, [string] $Text = '', [switch] $Secret, [int] $TimeoutSeconds = 300)
+    param($Console, [string] $Prompt, [string] $Text = '', [switch] $Secret, [string] $SecretFile = $script:Pass.SecretFile,
+        [int] $TimeoutSeconds = 300)
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     while (-not (Read-SharedText $Console.Out).Contains($Prompt)) {
@@ -228,7 +229,7 @@ function Send-AtPrompt {
         Start-Sleep -Milliseconds 500
     }
     $helperArgs = @()
-    if ($Secret) { $helperArgs = @('-SecretFile', $script:Pass.SecretFile) }
+    if ($Secret) { $helperArgs = @('-SecretFile', $SecretFile) }
     elseif ($Text) { $helperArgs = @('-Text', $Text) }
     $said = Send-ConsoleInput -ProcessId $Console.Process.Id -HelperArgs $helperArgs
     if ($said -notlike 'written_*') { return "answering '$Prompt': $said" }
@@ -388,13 +389,15 @@ function Invoke-LapExchange {
             $script:Image, 'file:///sync', $party.Input, 'matches.csv') | Out-Null
     }
     $deadline = (Get-Date).AddSeconds(1500)
+    $finished = $false
     while ((Get-Date) -lt $deadline) {
         $running = @($parties | Where-Object { (Invoke-Engine @('inspect', '-f', '{{.State.Running}}', $_.Name)).Output.Trim() -eq 'true' })
-        if ($running.Count -eq 0) { break }
+        if ($running.Count -eq 0) { $finished = $true; break }
         Start-Sleep -Seconds 10
     }
 
     $reasons = @(); $notes = @(); $log = ''; $matched = @(); $rows = @()
+    if (-not $finished) { $reasons += 'the exchange did not finish within 1500 seconds' }
     foreach ($party in $parties) {
         $exit = (Invoke-Engine @('inspect', '-f', '{{.State.ExitCode}}', $party.Name)).Output.Trim()
         $output = (Invoke-Engine @('logs', $party.Name)).Output
@@ -793,7 +796,8 @@ function Invoke-LapCleanUp {
     }
     foreach ($folder in $folders) { Remove-Item -LiteralPath $folder -Recurse -Force -ErrorAction SilentlyContinue }
     if ($script:Pass.DfsTarget) {
-        Get-ChildItem -Force -LiteralPath $script:Pass.DfsTarget -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
+        Get-ChildItem -Force -LiteralPath $script:Pass.DfsTarget -Filter 'alcove-vm-*' -ErrorAction SilentlyContinue |
+            Remove-Item -Recurse -Force
     }
     $reasons = @()
     $left = (Invoke-Engine @('ps', '-a', '--format', '{{.Names}}')).Output -split '\r?\n'
