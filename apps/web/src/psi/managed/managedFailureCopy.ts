@@ -264,13 +264,29 @@ export const PARTNER_SECRET_NOT_SAVED_KEPT_REMEDY =
 /** The line the standing condition ends on beside
  * {@link PARTNER_SECRET_NOT_SAVED_KEPT_REMEDY}. */
 export const PARTNER_SECRET_NOT_SAVED_KEPT_CLOSING =
-  "Once a later run succeeds, you are both on the new secret and you can " +
-  "clear this.";
+  "Once a later run succeeds, you are both on the new secret and this " +
+  "alert clears itself.";
 
-/** What the standing condition says once a run after it succeeded. */
-export const PARTNER_SECRET_NOT_SAVED_SUCCEEDED_SINCE =
+/** What a standing condition of either failed save says once a run after it
+ * succeeded: always for this device's, and for the partner's on a record
+ * whose condition no run's write cleared, such as one an earlier version of
+ * this app wrote. */
+export const RUN_SUCCEEDED_SINCE_SAME_SECRET =
   "A run since then succeeded, so you and your partner are on the same " +
   "secret again, and you can clear this.";
+
+/** What a run that could not save the new secret on this device left, where
+ * its partner saved that secret and kept the one the run used
+ * ({@link ./managedFailureTiers.ts}, `storageReach`). */
+export const PARTNER_KEPT_SECRET_NEXT_RUN_REACHES =
+  "Your partner saved the new secret and kept the one that run used, so " +
+  "the next run can still reach them.";
+
+/** The re-invite offered beside
+ * {@link PARTNER_KEPT_SECRET_NEXT_RUN_REACHES}, for the runs that do not
+ * reach the partner; a clause, so each site ends the sentence its own way. */
+export const REINVITE_IF_RUNS_KEEP_FAILING =
+  "If runs keep missing your partner or stopping, re-invite your partner";
 
 /** The title of the alert for a refusal over a difference in the linkage
  * terms; shared by the one-shot exchange, a managed run's alert, and the

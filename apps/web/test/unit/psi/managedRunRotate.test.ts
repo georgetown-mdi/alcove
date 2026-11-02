@@ -78,6 +78,22 @@ describe("lastRun bookkeeping builders", () => {
     });
   });
 
+  test("storageFailureRun marks a failure the next run can heal, and RotationPersistError records it", () => {
+    const marked = {
+      at: new Date(ROTATION_AT).toISOString(),
+      outcome: "failed",
+      failureKind: "storage",
+      nextRunHeals: true,
+    };
+    expect(storageFailureRun(ROTATION_AT, true)).toEqual(marked);
+    expect(
+      new RotationPersistError(ROTATION_AT, new Error("db"), true).lastRun,
+    ).toEqual(marked);
+    expect(
+      new RotationPersistError(ROTATION_AT, new Error("db")).lastRun,
+    ).not.toHaveProperty("nextRunHeals");
+  });
+
   test("failedRun records the runner-classified outcomes", () => {
     expect(failedRun(ROTATION_AT, "desynced", "auth")).toEqual({
       at: new Date(ROTATION_AT).toISOString(),

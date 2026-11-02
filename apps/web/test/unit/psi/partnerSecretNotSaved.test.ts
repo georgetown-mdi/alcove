@@ -518,7 +518,7 @@ describe("the windows after the partner's failed save, until a re-invite", () =>
     expectReinvite(managedRunFailureFromRecord(twice, undefined, NOW + 1));
   });
 
-  test("a run that succeeded since then is named on the row, and a later miss is a plain miss", () => {
+  test("a run that succeeded since then clears it, and a later miss is a plain miss", () => {
     const healed = applyManagedExchangeLastRun(
       afterStop(),
       { at: LATER, outcome: "succeeded" },
@@ -531,12 +531,14 @@ describe("the windows after the partner's failed save, until a re-invite", () =>
       LATER_2_MS,
       LATER_2_MS,
     );
-    for (const stored of [healed, missed]) {
-      expect(raisedStandingCondition(stored)?.kind).toBe("partner-storage");
-      expect(savedExchangeRow(stored, undefined, NOW + 1).status).toMatch(
-        /^Your partner could not save the new secret \(.*\); a run since then succeeded; clear this on the exchange's page$/,
-      );
-    }
+    expect(raisedStandingCondition(healed)).toBeUndefined();
+    expect(savedExchangeRow(healed, undefined, NOW + 1).status).toMatch(
+      /^Last run succeeded /,
+    );
+    expect(raisedStandingCondition(missed)).toBeUndefined();
+    expect(savedExchangeRow(missed, undefined, NOW + 1).status).toMatch(
+      /^Your partner did not arrive /,
+    );
     expect(
       betweenVisitNotice({
         record: missed,

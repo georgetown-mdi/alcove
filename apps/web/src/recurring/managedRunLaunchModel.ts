@@ -20,6 +20,7 @@ import {
   IMPORTED_FAILURE_TITLE,
   INPUT_FAILURE_TITLE,
   PARTIAL_ROTATION_FAILURE_TITLE,
+  PARTNER_KEPT_SECRET_NEXT_RUN_REACHES,
   PARTNER_PROTOCOL_REFUSAL_PROBLEM,
   PARTNER_PROTOCOL_REFUSAL_TITLE,
   PARTNER_REFUSED_SET_PROBLEM,
@@ -34,6 +35,7 @@ import {
   PARTNER_SET_TOO_LARGE_TITLE,
   RAN_ELSEWHERE_IMPORT_REMEDY,
   RECORDED_PARTNER_PROTOCOL_REFUSAL_REMEDY,
+  REINVITE_IF_RUNS_KEEP_FAILING,
   SINGLE_COLUMN_DELIMITER_REMEDY,
   TERMS_CHANGE_FAILURE_TITLE,
   TERMS_DIFFERENCE_PROBLEM,
@@ -61,6 +63,7 @@ import {
   importedSinceLastSuccess,
   partnerStorageReach,
   rotationInFlightUnansweredAtLaunch,
+  storageReach,
 } from "@psi/managed/managedFailureTiers";
 import { DEFAULT_RELAY_OFF_REMEDY } from "@psi/transport/defaultRelaySwitch";
 import { ManagedSignalingEndpointRefusedError } from "@psi/managed/managedRendezvous";
@@ -695,21 +698,20 @@ const STORAGE_FAILURE: ManagedRunFailure = {
   recovery: "reinvite",
 };
 
-/** {@link STORAGE_FAILURE} on a live launch whose partner saved first and
- * completed the key exchange under its previous secret, which shows it keeps
- * one, so the next run can meet it under the secret this run used
- * ({@link RotationPersistError.nextRunHeals}), as the command line's
- * responder decides. */
+/** {@link STORAGE_FAILURE} for a run whose partner saved first and completed
+ * the key exchange under its previous secret, which shows it keeps one, so
+ * the next run can meet it under the secret this run used, as the command
+ * line's responder decides: read off a live launch's
+ * {@link RotationPersistError.nextRunHeals}, or off the record
+ * ({@link storageReach}). */
 const STORAGE_NEXT_RUN_HEALS_FAILURE: ManagedRunFailure = {
   kind: "storage",
   title: STORAGE_FAILURE.title,
   message:
     "The last run connected but could not save its updated secret on this " +
-    "device. Your partner saved the new secret and kept the one this run " +
-    "used, so the next run can still reach them. If runs keep missing your " +
-    "partner or stopping, re-invite your partner; the exchange keeps your " +
-    "terms, gets a new secret, and uses the coordination server the new " +
-    "invitation names.",
+    `device. ${PARTNER_KEPT_SECRET_NEXT_RUN_REACHES} ` +
+    `${REINVITE_IF_RUNS_KEEP_FAILING}; the exchange keeps your terms, gets a ` +
+    "new secret, and uses the coordination server the new invitation names.",
   recovery: "reinvite",
   reinvite: "if-runs-keep-failing",
 };
@@ -882,7 +884,9 @@ export function managedRunTierFailure(
     case "custody-unreadable":
       return RECORDED_CUSTODY_UNREADABLE_FAILURE;
     case "storage":
-      return STORAGE_FAILURE;
+      return storageReach(record) === "next-run-heals"
+        ? STORAGE_NEXT_RUN_HEALS_FAILURE
+        : STORAGE_FAILURE;
     case "partial-rotation":
       return PARTIAL_ROTATION_FAILURE;
     case "imported":
@@ -933,14 +937,21 @@ const MISSED_OUTRANKED_BY: ReadonlyArray<ManagedFailureTier> = [
  * run found a key exchange that never saved its rotation, and met no partner.
  * It is read only while no standing condition is raised and no outcome since
  * supersedes it ({@link rotationInFlightUnansweredAtLaunch}), so a failed-closed
- * handshake keeps its confirm-first reading. */
+ * handshake keeps its confirm-first reading.
+ *
+ * A storage condition a run has succeeded since ({@link storageReach}) does
+ * not outrank the no-show: the success shows the two sides on one secret, so
+ * the standing condition's own view states that beside a plain no-show. */
 function missedFailure(
   atLaunch: ManagedExchangeRecord,
   local: ManagedLocalState | undefined,
   now: number,
 ): ManagedRunFailure {
   const tier = deriveManagedFailureTier(atLaunch, local, now);
-  if (MISSED_OUTRANKED_BY.includes(tier))
+  if (
+    MISSED_OUTRANKED_BY.includes(tier) &&
+    !(tier === "storage" && storageReach(atLaunch) === "succeeded-since")
+  )
     return managedRunTierFailure(tier, atLaunch, local, now);
   if (importedSinceLastSuccess(local)) return IMPORTED_FAILURE;
   if (rotationInFlightUnansweredAtLaunch(atLaunch))

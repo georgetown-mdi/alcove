@@ -83,13 +83,19 @@ export function missedRun(at: number): ManagedExchangeLastRun {
 /**
  * Record a run whose rotation could not be persisted, so the next handshake
  * failure is shown with the desync framing rather than the attack framing
- * (docs/MANAGED_EXCHANGE.md, "Telling a desync from an attack").
+ * (docs/MANAGED_EXCHANGE.md, "Telling a desync from an attack"), marked where
+ * the next run can still reach the partner
+ * ({@link ManagedRotationPersist.nextRunHeals}).
  */
-export function storageFailureRun(at: number): ManagedExchangeLastRun {
+export function storageFailureRun(
+  at: number,
+  nextRunHeals = false,
+): ManagedExchangeLastRun {
   return {
     at: new Date(at).toISOString(),
     outcome: "failed",
     failureKind: "storage",
+    ...(nextRunHeals && { nextRunHeals: true as const }),
   };
 }
 
@@ -114,7 +120,7 @@ export class RotationPersistError extends Error {
   constructor(at: number, cause: unknown, nextRunHeals = false) {
     super("failed to persist the rotated shared secret", { cause });
     this.name = "RotationPersistError";
-    this.lastRun = storageFailureRun(at);
+    this.lastRun = storageFailureRun(at, nextRunHeals);
     this.nextRunHeals = nextRunHeals;
   }
 }

@@ -871,9 +871,11 @@ no-show does not replace the report.
 The run history, the recurring list, and a notification state the same while
 this device would still offer that secret. Once it would not, because the
 secret expired or an older version of this app last saved the exchange, they
-name a fresh invitation as the step. Once a later run succeeds, the exchange's
-page and the recurring list say so, and you clear the report with its
-acknowledgement.
+name a fresh invitation as the step. A later run that succeeds clears the
+report on its own, since both sides saved the new secret in it, unless this
+device could not save a new secret after the report (see [A standing
+condition outlives the run that raised
+it](#a-standing-condition-outlives-the-run-that-raised-it)).
 
 A run that heals a cut rotation this way is always reported, on both sides,
 once both have saved the new secret, and in the run history: the side that kept
@@ -891,7 +893,17 @@ not local evidence. A report that holds a compromise response stays in place.
 Where this device invited the partner and could not save the new secret after
 the partner saved it, the run says the next run can still reach the partner
 only where the partner's key exchange used the secret it kept, which shows that
-it keeps one; otherwise it names a fresh invitation.
+it keeps one; otherwise it names a fresh invitation. The exchange's page and the
+recurring list say the same at later visits, across no-shows, until a
+handshake fails closed or a run succeeds. Once a run succeeds, they say so, and
+you clear the report with its acknowledgement. That holds only while no save
+has failed and no handshake has failed closed since the report, before or after
+the success: otherwise they read the newest such run as above, so a handshake
+that failed closed brings back the fresh invitation, and runs after it do not
+settle the report.
+
+The recurring list names a last run that healed a cut rotation, and the run
+history beside it holds that run's note.
 
 A no-show's run entry replaces the previous one, but a save failure on either
 side or a failed-closed handshake is also kept as a standing condition, which a
@@ -914,7 +926,7 @@ other side's claim and not local evidence. A handshake that fails closed after a
 save failure this device recorded is read as that save failure, which explains
 it.
 
-Three things clear a standing condition, and nothing else does:
+Three things clear any standing condition:
 
 - **Your explicit acknowledgement**, on the exchange's page. For an unexplained
   handshake failure, that is the two-outcome gate below. Where the record
@@ -924,7 +936,18 @@ Three things clear a standing condition, and nothing else does:
 - **A re-invite**, which installs a fresh secret.
 - **Removing the exchange.**
 
-A no-show or a successful run does not clear one.
+A no-show never clears one. A successful run clears only one kind, described
+next.
+
+**A successful run clears a save failure your partner reported.** Both sides
+saved the new secret in that run, which answers the report, and the run's heal
+note already asks whether the exchange also runs from another copy. It does not
+clear a report you answered as a possible compromise, or one after which this
+device could not save a new secret. A successful run leaves
+the other two in place, for your acknowledgement: a save failure this device recorded, and a handshake that
+failed closed. A later success rules out neither a third party's attempt nor a
+copy of the exchange running elsewhere, and those are the readings the
+acknowledgement and the confirmation exist to separate.
 
 ### Telling a desync from an attack
 

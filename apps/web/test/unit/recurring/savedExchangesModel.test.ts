@@ -4,6 +4,7 @@ import { generateSharedSecret, getDefaultLinkageTerms } from "@alcove/core";
 import {
   MANAGED_EXCHANGE_SCHEMA_VERSION,
   NO_STANDING_CONDITION,
+  applyManagedExchangeLastRun,
   composeManagedExchangeFile,
 } from "@psi/managed/managedExchangeRecord";
 import {
@@ -417,6 +418,193 @@ describe("savedExchangeRow: a standing condition", () => {
     );
     expect(row.status).toMatch(/^A run could not save this exchange's secret /);
     expect(row.status).toMatch(/re-invite to reconnect$/);
+  });
+
+  describe("across a run that heals a failed save", () => {
+    const failedSave = {
+      at: standingAt,
+      outcome: "failed",
+      failureKind: "storage",
+      nextRunHeals: true,
+    } as const;
+    const healedAt = "2026-07-13T09:00:00.000Z";
+
+    test("names the next run at the failed run", () => {
+      const row = savedExchangeRow(
+        record({
+          lastRun: failedSave,
+          standingCondition: { since: standingAt, kind: "storage" },
+        }),
+        undefined,
+        NOW,
+      );
+      expect(row.status).toMatch(/^Last run could not be saved /);
+      expect(row.status).toMatch(/the next run can still reach your partner$/);
+    });
+
+    test("keeps naming it after a no-show", () => {
+      const row = savedExchangeRow(
+        record({
+          lastRun: { at: missedAt, outcome: "missed" },
+          recentRuns: [{ at: missedAt, outcome: "missed" }, failedSave],
+          standingCondition: { since: standingAt, kind: "storage" },
+        }),
+        undefined,
+        NOW,
+      );
+      expect(row.status).toMatch(
+        /^A run could not save this exchange's secret .*; the next run can still reach your partner$/,
+      );
+    });
+
+    test("names the re-invite where the failed save recorded no heal", () => {
+      const row = savedExchangeRow(
+        record({
+          lastRun: {
+            at: standingAt,
+            outcome: "failed",
+            failureKind: "storage",
+          },
+          standingCondition: { since: standingAt, kind: "storage" },
+        }),
+        undefined,
+        NOW,
+      );
+      expect(row.status).toMatch(/re-invite to reconnect$/);
+    });
+
+    test("says a run since then succeeded once the heal ran, and names the heal on a cleared row", () => {
+      const healed = {
+        at: healedAt,
+        outcome: "succeeded",
+        healedCutRotation: true,
+      } as const;
+      const standing = savedExchangeRow(
+        record({
+          lastRun: healed,
+          recentRuns: [healed, failedSave],
+          standingCondition: { since: standingAt, kind: "storage" },
+        }),
+        undefined,
+        NOW,
+      );
+      expect(standing.status).toMatch(
+        /^A run could not save this exchange's secret .*; a run since then succeeded; clear this on the exchange's page$/,
+      );
+      const cleared = savedExchangeRow(
+        record({ lastRun: healed, recentRuns: [healed, failedSave] }),
+        undefined,
+        NOW,
+      );
+      expect(cleared.status).toMatch(
+        /^Last run succeeded .* and recovered from a run that stopped partway; read its note on the exchange's page$/,
+      );
+    });
+
+    test("names the re-invite once a handshake after the success failed closed", () => {
+      const healed = { at: healedAt, outcome: "succeeded" } as const;
+      const auth = {
+        at: "2026-07-13T10:00:00.000Z",
+        outcome: "failed",
+        failureKind: "auth",
+      } as const;
+      const row = savedExchangeRow(
+        record({
+          lastRun: auth,
+          recentRuns: [auth, healed, failedSave],
+          standingCondition: { since: standingAt, kind: "storage" },
+        }),
+        undefined,
+        NOW,
+      );
+      expect(row.status).not.toMatch(/a run since then succeeded/);
+      expect(row.status).toMatch(
+        /^A run could not save this exchange's secret .*; re-invite to reconnect$/,
+      );
+    });
+
+    test("names the re-invite where a handshake failed closed before the success", () => {
+      const healed = { at: healedAt, outcome: "succeeded" } as const;
+      const auth = {
+        at: "2026-07-12T10:00:00.000Z",
+        outcome: "failed",
+        failureKind: "auth",
+      } as const;
+      const row = savedExchangeRow(
+        record({
+          lastRun: healed,
+          recentRuns: [healed, auth, failedSave],
+          standingCondition: { since: standingAt, kind: "storage" },
+        }),
+        undefined,
+        NOW,
+      );
+      expect(row.status).not.toMatch(/a run since then succeeded/);
+      expect(row.status).toMatch(
+        /^A run could not save this exchange's secret .*; re-invite to reconnect$/,
+      );
+    });
+  });
+
+  test("the partner's failed save does not read as settled by a success after a failed-closed handshake", () => {
+    const succeeded = {
+      at: "2026-07-13T09:00:00.000Z",
+      outcome: "succeeded",
+    } as const;
+    const auth = {
+      at: missedAt,
+      outcome: "failed",
+      failureKind: "auth",
+    } as const;
+    const row = savedExchangeRow(
+      record({
+        side: "acceptor",
+        lastRun: succeeded,
+        recentRuns: [succeeded, auth],
+        standingCondition: { since: standingAt, kind: "partner-storage" },
+      }),
+      undefined,
+      NOW,
+    );
+    expect(row.status).not.toMatch(/a run since then succeeded/);
+    expect(row.status).toMatch(
+      /^Your partner could not save the new secret .*; no run can reach them until you re-invite$/,
+    );
+  });
+
+  test("the partner's failed save clears itself on a successful run, and the row names the heal", () => {
+    const partnerFailed = applyManagedExchangeLastRun(
+      record({ side: "acceptor" }),
+      { at: standingAt, outcome: "failed", failureKind: "partner-storage" },
+      Date.parse(standingAt),
+      NOW,
+    );
+    expect(savedExchangeRow(partnerFailed, undefined, NOW).status).toMatch(
+      /^Last run stopped: your partner could not save the new secret /,
+    );
+    const missed = applyManagedExchangeLastRun(
+      partnerFailed,
+      { at: missedAt, outcome: "missed" },
+      Date.parse(missedAt),
+      NOW,
+    );
+    expect(savedExchangeRow(missed, undefined, NOW).status).toMatch(
+      /^Your partner could not save the new secret /,
+    );
+    const healed = applyManagedExchangeLastRun(
+      missed,
+      {
+        at: "2026-07-13T09:00:00.000Z",
+        outcome: "succeeded",
+        healedCutRotation: true,
+      },
+      Date.parse("2026-07-13T08:00:00.000Z"),
+      NOW,
+    );
+    expect(healed.standingCondition).toEqual(NO_STANDING_CONDITION);
+    expect(savedExchangeRow(healed, undefined, NOW).status).toMatch(
+      /^Last run succeeded .* and recovered from a run that stopped partway/,
+    );
   });
 
   test("a later successful run does not return the row to a green line", () => {

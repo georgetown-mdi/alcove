@@ -9,7 +9,9 @@ import {
   answersRotationInFlight,
   offeredManagedPreviousSecret,
   raisedStandingCondition,
-  runSucceededSince,
+  recentRunsOf,
+  runHoldsSecretVerdict,
+  runSucceededWithNoVerdictSince,
 } from "./managedExchangeRecord";
 import { managedExchangeLapsed } from "./managedExpiry";
 
@@ -49,7 +51,7 @@ import type { ManagedLocalState } from "./managedLocalStateShape";
  * - `"custody-unreadable"` -- the stored record could not be
  *   read, before anything rotated (none here).
  * - `"storage"` -- a rotation could not be persisted and may have desynced the
- *   parties (re-invite).
+ *   parties (re-invite, or the next run where {@link storageReach} says so).
  * - `"partial-rotation"` -- a rotation never saved and a later run met no partner,
  *   who probably saved a secret this device lacks (re-invite). Read only beside
  *   that no-show, so it cannot stand in for an unexplained handshake failure.
@@ -164,9 +166,10 @@ export function managedStandingConditionTier(
 
 /**
  * What a `"partner-storage"` reading can say about reaching the partner, as of
- * `now`: a run succeeded since the partner's failed save
- * (`"succeeded-since"`), the record holds a previous secret its next run
- * would offer (`"kept"`), or neither, which only a re-invite answers
+ * `now`: a run succeeded since the partner's failed save and no run since it
+ * holds a verdict on the secret (`"succeeded-since"`), the record holds a
+ * previous secret its next run would offer (`"kept"`), or neither, which only
+ * a re-invite answers
  * (`"not-kept"`). The failed save is the standing condition's, else the last
  * run's.
  */
@@ -182,11 +185,44 @@ export function partnerStorageReach(
     condition?.kind === "partner-storage"
       ? condition.since
       : record.lastRun?.at;
-  if (since !== undefined && runSucceededSince(record, since))
+  if (since !== undefined && runSucceededWithNoVerdictSince(record, since))
     return "succeeded-since";
   return offeredManagedPreviousSecret(record, now) !== undefined
     ? "kept"
     : "not-kept";
+}
+
+/**
+ * What a `"storage"` reading can say about reaching the partner: a run
+ * succeeded since the failed save and no run since it holds a verdict on the
+ * secret (`"succeeded-since"`), the failed save's
+ * entry recorded that the next run can still reach the partner
+ * (`"next-run-heals"`), or neither, which a re-invite answers
+ * (`"reinvite"`). The failed save is the standing condition's, else the last
+ * run's.
+ */
+export type StorageReach = "succeeded-since" | "next-run-heals" | "reinvite";
+
+/** The {@link StorageReach} of `record`. A success since the failed save
+ * reads as `"succeeded-since"` only where no listed run after the failed save
+ * holds a verdict on the secret ({@link runSucceededWithNoVerdictSince}),
+ * whether before or after the success, since first raise wins keeps such a
+ * run off the standing condition. Otherwise the entry read is the newest
+ * listed run holding such a verdict from the failed save on, so a handshake
+ * that failed after it is not read as a heal to come. */
+export function storageReach(record: ManagedExchangeRecord): StorageReach {
+  const condition = raisedStandingCondition(record);
+  const since =
+    condition?.kind === "storage" ? condition.since : record.lastRun?.at;
+  if (since === undefined) return "reinvite";
+  if (runSucceededWithNoVerdictSince(record, since)) return "succeeded-since";
+  const sinceMs = Date.parse(since);
+  const verdict = recentRunsOf(record).find(
+    (run) => Date.parse(run.at) >= sinceMs && runHoldsSecretVerdict(run),
+  );
+  return verdict?.failureKind === "storage" && verdict.nextRunHeals === true
+    ? "next-run-heals"
+    : "reinvite";
 }
 
 /**
