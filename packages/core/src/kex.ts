@@ -671,11 +671,13 @@ export async function deriveKeyAgreement(
 async function sendAbort(
   conn: MessageConnection,
   abort: KexAbort = { kexMsg: "abort" },
-): Promise<void> {
+): Promise<boolean> {
   try {
     await conn.send(abort);
+    return true;
   } catch {
     // Peer will hit the handshake timeout if abort delivery fails.
+    return false;
   }
 }
 
@@ -884,10 +886,7 @@ async function responderFailsOnAbort(
       ),
     };
   }
-  await sendAbort(conn, reply);
-  // An initiator that sends a behind notice fails as it sends it and reads no
-  // reply, so teardown does not wait for it to consume this one.
-  if (abort.behindNotice !== undefined) conn.markLastSentUnread?.();
+  const sent = await sendAbort(conn, reply);
   if (matchedAt !== undefined) throw new PartnerCopyBehindError(matchedAt);
   if (abort.behindNotice !== undefined) {
     const { count, tag } = abort.behindNotice;
@@ -898,8 +897,12 @@ async function responderFailsOnAbort(
         received,
         await behindNotice(verifier, "initiator", count, shares),
       )
-    )
+    ) {
+      // An initiator that sends a behind notice fails as it sends it and reads
+      // no reply, so teardown does not wait for it to consume this one.
+      if (sent) conn.markLastSentUnread?.();
       throw new LocalCopyBehindError();
+    }
   }
   throw new AuthenticationError(GENERIC_FAILURE);
 }

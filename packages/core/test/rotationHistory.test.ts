@@ -362,6 +362,52 @@ describe("the history proof and the behind notice", () => {
     expect(strangers.responder).not.toContain("markLastSentUnread");
   });
 
+  test("the answer to a behind notice is not marked unread when the notice does not verify or the answer was not sent", async () => {
+    const marks: string[] = [];
+    const marking = (
+      conn: MessageConnection,
+      label: string,
+      failAbortSend = false,
+    ): MessageConnection => ({
+      send: (data) =>
+        failAbortSend && (data as { kexMsg: string }).kexMsg === "abort"
+          ? Promise.reject(new Error("send failed"))
+          : conn.send(data),
+      receive: (t) => conn.receive(t),
+      close: () => conn.close(),
+      markLastSentUnread: () => marks.push(label),
+    });
+
+    const [a, b] = createMessagePipe();
+    const forging: MessageConnection = {
+      ...marking(b, "forged"),
+      receive: async (t) => {
+        const frame = (await b.receive(t)) as Record<string, unknown>;
+        return frame.kexMsg === "abort"
+          ? {
+              ...frame,
+              behindNotice: { count: 1, tag: toBase64Url(randomBytes(32)) },
+            }
+          : frame;
+      },
+    };
+    const [, forged] = await Promise.allSettled([
+      runKex(a, "initiator", randomBytes(32), true),
+      runKex(forging, "responder", randomBytes(32), true),
+    ]);
+    expect((reasonOf(forged) as Error).message).toBe(GENERIC_FAILURE);
+
+    const { current, stale } = await staleCopy(1);
+    const [c, d] = createMessagePipe();
+    const [, unsent] = await Promise.allSettled([
+      authenticate(c, current, "initiator"),
+      authenticate(marking(d, "unsent", true), stale, "responder"),
+    ]);
+    expect(reasonOf(unsent)).toBeInstanceOf(LocalCopyBehindError);
+
+    expect(marks).toEqual([]);
+  });
+
   test("a stranger meets the generic failure on both sides, whatever the histories hold", async () => {
     const [i, r] = await handshake(
       {
