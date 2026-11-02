@@ -24,8 +24,9 @@ User=__ALCOVE_RELAY_IMAGE_UID__
 Group=__ALCOVE_RELAY_IMAGE_GID__
 WorkingDirectory=/opt/alcove-broker/src
 ExecStart=/usr/local/bin/node --import tsx packages/websocket-relay/src/standalone.ts --host 127.0.0.1 --port __ALCOVE_RELAY_WEBSOCKET_PORT__ --key-table /var/lib/alcove-relay/turndb
-Restart=always
+Restart=on-failure
 RestartSec=5
+MemoryMax=129M
 StandardOutput=journal
 StandardError=journal
 

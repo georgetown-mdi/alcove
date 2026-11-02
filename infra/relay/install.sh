@@ -106,9 +106,9 @@ fi
 # --- the swapfile -------------------------------------------------------------
 # Disk swap below the distribution's own (zram on Amazon Linux 2023, at priority
 # 100, fills first), added before this script's dnf and image builds and the OS
-# update timer: on a 412 MB instance dnf without it ran out of memory and the
-# OOM killer took the relay and the broker. vm.swappiness is left as found.
-# A measured working choice: 1024 MB peaked at 328 MB used on a 412 MB t4g.nano.
+# update timer: on the project's instance dnf without it ran out of memory and
+# the OOM killer took the relay and the broker. vm.swappiness is left as found.
+# A measured working choice: 1024 MB peaked at 328 MB used there.
 SWAPFILE_SMALL_MB=1024
 SWAPFILE_LARGE_MB=2048
 # Each leaves at least 1.5 GB of / free for dnf's downloads.

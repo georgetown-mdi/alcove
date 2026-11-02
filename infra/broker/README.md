@@ -42,7 +42,7 @@ Later commits reach the project's host through [the host pull](../host-pull/READ
 A host without the pull takes a later commit by fetching and checking out that commit in the clone at `/opt/alcove-broker/src`, then repeating steps 3, 5 and 6 and `install.sh`.
 
 The broker's workspace is a precondition `install.sh` checks for and does not create.
-On a host the size of the relay's (412 MB of memory), a full-workspace `npm ci` OOM-killed coturn, so the install is scoped to the broker workspace and core is built elsewhere:
+On a host the size of the relay's, a full-workspace `npm ci` OOM-killed coturn, so the install is scoped to the broker workspace and core is built elsewhere:
 
 1. Install Node under `/usr/local/lib/nodejs`, from the official tarball checked against its published `SHASUMS256.txt`, with `node` and `npm` linked into `/usr/local/bin`; the unit runs `/usr/local/bin/npm`.
    On Amazon Linux 2023 the tarball needs `tar`, `xz` and `libatomic`, and the clone needs `git`.

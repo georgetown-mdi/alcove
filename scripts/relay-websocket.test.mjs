@@ -465,6 +465,11 @@ describe("alcove-relay-websocket.service", () => {
     );
   });
 
+  it("limits its memory and restarts only on failure", () => {
+    expect(directive("MemoryMax")).toEqual(["129M"]);
+    expect(directive("Restart")).toEqual(["on-failure"]);
+  });
+
   it("defaults the port to the same value in install.sh and render-front.sh", () => {
     const fallback =
       /^WEBSOCKET_PORT="\$\{ALCOVE_RELAY_WEBSOCKET_PORT:-(\d+)\}"$/m;
