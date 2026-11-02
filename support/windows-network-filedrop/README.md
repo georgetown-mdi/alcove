@@ -95,18 +95,16 @@ Invoke-WebRequest -UseBasicParsing `
   -OutFile .\Setup-AlcoveFileDrop.ps1
 ```
 
-**Command Prompt** -- four files rather than one, and **all four have to be in
-the same folder**, which is what the folder is for: the script feeds the other
-three to Docker.
+**Command Prompt** -- two files rather than one, and **both have to be in the
+same folder**, which is what the folder is for: the script feeds the other one
+to Docker.
 
 ```text
 mkdir "%USERPROFILE%\alcove" 2>nul
 cd /d "%USERPROFILE%\alcove"
 set BASE=https://raw.githubusercontent.com/georgetown-mdi/alcove/main/support/windows-network-filedrop
 curl -L -o cmd_Setup-AlcoveFileDrop.cmd %BASE%/cmd_Setup-AlcoveFileDrop.cmd
-curl -L -o cmd_alcove-probe.sh %BASE%/cmd_alcove-probe.sh
 curl -L -o cmd_alcove-credcheck.sh %BASE%/cmd_alcove-credcheck.sh
-curl -L -o cmd_alcove-volcheck.sh %BASE%/cmd_alcove-volcheck.sh
 ```
 
 Use the command rather than saving from a browser, which saves it in a form

@@ -630,7 +630,7 @@ export async function runProbe(
         "this copy of the Alcove image predates the checks. Nothing has been " +
           "established about the credentials, the share, the folder, or write " +
           "access; the name and reachability checks above stand.",
-        "pull a current Alcove image and run this again.",
+        "use a current Alcove release and run this again.",
         { blocksRun: true },
       ),
     );

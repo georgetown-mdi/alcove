@@ -10,8 +10,9 @@ name: Windows Path Resolution
 #
 #   test     Pester over the guide scripts' own functions, dot-sourced with
 #            -LoadFunctionsOnly: the setup script's path resolution against the
-#            rig below, and the launcher's verdict reader, release stamp and DFS
-#            candidate selection, which need no rig and only Windows PowerShell.
+#            rig below, and both scripts' screens for each exit code of the
+#            image's checks and the launcher's release stamp, which need no rig
+#            and only Windows PowerShell.
 #            Beside them, the accept sheet's commands, run under Windows
 #            PowerShell 5.1 against a docker stand-in; the web unit
 #            tests keep the file holding those commands equal to the sheet

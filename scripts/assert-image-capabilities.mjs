@@ -23,18 +23,19 @@
 //     checks then fail their write with EACCES -- a verdict about the fixture.
 //     The bind mount below is world-writable, so the account the image runs as
 //     can write it whichever image is under test.
-//   - A TCP peer on port 445. `doctor probe` and cmd_alcove-probe.sh both stop
-//     at their reachability check when nothing answers, leaving smbclient
-//     unreached and unproven. A stub container accepts and immediately drops
-//     each connection, which is enough for both to run smbclient and report on
-//     it, and a fixture that does not come up is reported as a fixture failure
-//     rather than as a verdict about the image.
+//   - A TCP peer on port 445. `doctor probe` stops at its reachability check
+//     when nothing answers, leaving smbclient unreached and unproven. A stub
+//     container accepts and immediately drops each connection, which is enough
+//     for it to run smbclient and report on it, and a fixture that does not
+//     come up is reported as a fixture failure rather than as a verdict about
+//     the image.
 //
 // What the run may claim is bounded by exit codes it treats as evidence. The
 // doctor refusing its input exits 64 having run no check, and so does an
 // image whose CLI has no `doctor` command at all -- so 64 is never taken as
 // proof that anything ran. The evidence is a verdict: the machine-readable
-// document, whose version the shipped launchers refuse to read past.
+// document the recipes ask for with --json, which the scripts themselves do
+// not read.
 
 import { randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
@@ -72,11 +73,10 @@ export const FIXTURE_ENVIRONMENT = {
   SMB_PASS: "alcove-gate-fixture-credential",
   SMB_DIALECT: "",
   SMB_MARKER: MARKER_NAME,
-  MARKER: MARKER_NAME,
 };
 
 /** Environment names whose value the run mints rather than fixes. */
-export const GENERATED_ENVIRONMENT = ["SMB_SERVER", "SMB_TOKEN", "TOKEN"];
+export const GENERATED_ENVIRONMENT = ["SMB_SERVER", "SMB_TOKEN"];
 
 /**
  * How each derived Alcove argument vector is exercised, by recipe key.
@@ -85,7 +85,6 @@ export const GENERATED_ENVIRONMENT = ["SMB_SERVER", "SMB_TOKEN", "TOKEN"];
  * `doctor mount /rz --json` are one recipe run twice, once per derived vector.
  */
 export const CLI_RECIPES = {
-  "doctor --help": exerciseDoctorHelp,
   "doctor probe": exerciseDoctorProbe,
   "doctor mount": exerciseDoctorMount,
   serve: exerciseServe,
@@ -104,14 +103,6 @@ export const HELPER_EXPECTATIONS = {
     reaches: ["VERDICT=", "TOKEN="],
     refuses: [],
     pattern: /^TOKEN=[0-9a-f]{32}$/m,
-  },
-  "cmd_alcove-probe.sh": {
-    reaches: ["-- 1.", "-- 2.", "-- 3. Authentication"],
-    refuses: ["smbclient is not in the image"],
-  },
-  "cmd_alcove-volcheck.sh": {
-    reaches: ["WRITE_OK", "EXCL_OK", "RENAME_OK"],
-    refuses: ["NOMOUNT", "Permission denied"],
   },
 };
 
@@ -235,16 +226,6 @@ function verdict(ok, detail) {
   return { ok, detail };
 }
 
-function exerciseDoctorHelp(context, argv) {
-  const result = context.docker(["run", "--rm", context.image, ...argv]);
-  const output = `${result.stdout}${result.stderr}`;
-  if (result.status !== 0)
-    return verdict(false, `exited ${result.status}, expected 0`);
-  if (!/doctor/.test(output))
-    return verdict(false, "printed a usage that never names the doctor");
-  return verdict(true, "printed the doctor's own usage");
-}
-
 function exerciseDoctorProbe(context, argv) {
   const withJson = argv.includes("--json") ? argv : [...argv, "--json"];
   const result = context.docker([
@@ -273,11 +254,6 @@ function exerciseDoctorProbe(context, argv) {
     );
   const document = readVerdict(result.stdout);
   if (document === null) return verdict(false, "printed no readable verdict");
-  if (document.version !== context.verdictVersion)
-    return verdict(
-      false,
-      `verdict version ${document.version}, and the shipped launchers read version ${context.verdictVersion} and stop on any other`,
-    );
   const smbclient = (document.checks ?? []).find(
     (check) => check.id === "smbclient_available",
   );
@@ -286,10 +262,7 @@ function exerciseDoctorProbe(context, argv) {
       false,
       `the battery reported smbclient_available as ${smbclient?.status ?? "absent"}; the stub peer is up, so this is the image rather than the fixture`,
     );
-  return verdict(
-    true,
-    `verdict version ${document.version}, smbclient_available ok, overall ${document.overall}`,
-  );
+  return verdict(true, `smbclient_available ok, overall ${document.overall}`);
 }
 
 function exerciseDoctorMount(context, argv) {
@@ -314,11 +287,6 @@ function exerciseDoctorMount(context, argv) {
     );
   const document = readVerdict(result.stdout);
   if (document === null) return verdict(false, "printed no readable verdict");
-  if (document.version !== context.verdictVersion)
-    return verdict(
-      false,
-      `verdict version ${document.version}, and the shipped launchers read version ${context.verdictVersion} and stop on any other`,
-    );
   if (document.overall !== "ok")
     return verdict(false, `overall ${document.overall}, expected ok`);
   const ids = (document.checks ?? []).map((check) => check.id).join(", ");
@@ -470,7 +438,6 @@ async function exerciseAll(image, derived) {
     ...FIXTURE_ENVIRONMENT,
     SMB_SERVER: stub,
     SMB_TOKEN: token,
-    TOKEN: token,
   };
 
   const docker = (argv, options = {}) =>
@@ -479,7 +446,6 @@ async function exerciseAll(image, derived) {
     image,
     network,
     rendezvous,
-    verdictVersion: derived.verdictVersion,
     docker,
     environmentFlags: (names) => names.flatMap((name) => ["--env", name]),
     plantMarker: () =>

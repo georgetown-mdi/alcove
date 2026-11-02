@@ -779,8 +779,8 @@ with nothing to exercise it fails `npm run check:image-capabilities`, which
 `static_checks.yaml` runs on every pull request whatever it touched.
 
 **Each is exercised rather than matched.** `scripts/assert-image-capabilities.mjs`
-runs the argument vector and reads back the machine-readable verdict, and pipes
-each helper script in as the `.cmd` pipes it -- so a helper's in-image tools are
+runs the argument vector, asking for the machine-readable verdict the scripts
+themselves do not read, and pipes each helper script in as the `.cmd` pipes it -- so a helper's in-image tools are
 resolved by the run and are enumerated nowhere. Two fixtures decide whether a red
 result is about the image at all, and the script sets up both. The first is a
 rendezvous directory the account the image runs as can write, because a fresh
@@ -793,8 +793,7 @@ probe paths stop at their reachability check when nothing answers and leave
 run that refuses its input exits 64 having run no check, and an image whose
 CLI has no `doctor` command answers the same way, so 64 proves nothing; 69 is
 a dependency the run could not reach and fails the gate. The evidence is the
-verdict document, whose `version` must be the one the shipped launchers read and
-stop past.
+verdict document.
 
 **Two legs, asserting different things.** The build-time leg runs against the
 image the job just built. That is the right subject for `Start-Alcove.ps1` and

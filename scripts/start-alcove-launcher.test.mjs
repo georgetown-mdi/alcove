@@ -17,11 +17,11 @@ import { afterEach, describe, expect, it } from "vitest";
 // The POSIX launcher, driven end to end against a stub container engine.
 //
 // What it stands in for: an operator on macOS or Linux with a folder and an
-// engine, and a container whose doctor verdict decides whether the console
+// engine, and a container whose doctor exit code decides whether the console
 // starts. The engine is stubbed rather than mocked out of the script -- the
 // launcher builds a real argument vector and a real process reads it -- so the
-// mount flags, the publish binding and the verdict handling are asserted as the
-// engine would receive them.
+// mount flags, the publish binding and the exit-code handling are asserted as
+// the engine would receive them.
 //
 // What it cannot reach: the real image (nothing here pulls one), the browser,
 // and Windows. Start-Alcove.ps1's share of this ground is covered by the Pester
@@ -43,7 +43,8 @@ const PLACEHOLDER_LINE = "ALCOVE_IMAGE_DIGEST='@@ALCOVE_IMAGE_DIGEST@@'";
 const TEST_DIGEST = `sha256:${"a1b2c3d4".repeat(8)}`;
 
 // A container engine that records its argument vectors, answers the doctor from
-// fixture files in turn, and can hold a port open for the console.
+// fixture files in turn on standard error, where the doctor writes its lines,
+// and can hold a port open for the console.
 const STUB_ENGINE = `#!/usr/bin/env node
 "use strict";
 const fs = require("node:fs");
@@ -69,10 +70,7 @@ if (args.includes("doctor")) {
   const lines = fs.readFileSync(fixture, "utf8").split("\\n");
   const code = Number(lines[0]);
   const body = lines.slice(1).join("\\n").trim();
-  if (body) process.stdout.write(body + "\\n");
-  if (fs.existsSync(path.join(dir, "stops-on-turn-" + turn))) {
-    fs.writeFileSync(path.join(dir, engine + ".broken"), "");
-  }
+  if (body) process.stderr.write(body + "\\n");
   process.exit(code);
 }
 
@@ -196,28 +194,22 @@ function breakEngine(workspace, name) {
   writeFileSync(join(workspace.stubDir, `${name}.broken`), "");
 }
 
-/**
- * What the stub prints on its `turn`-th doctor run, exiting `exitCode`, after
- * which it stops answering: what an engine stopped mid-run leaves.
- */
-function stageEngineStop(workspace, turn, exitCode, output) {
+/** What the stub prints, exiting `exitCode`, on its `turn`-th doctor run and
+ * on every run after the last one staged. */
+function stageVerdict(workspace, turn, exitCode, lines) {
   writeFileSync(
     join(workspace.stubDir, `verdict-${turn}`),
-    `${exitCode}\n${output}\n`,
-  );
-  writeFileSync(join(workspace.stubDir, `stops-on-turn-${turn}`), "");
-}
-
-/** A verdict the stub answers with on its `turn`-th doctor run. */
-function stageVerdict(workspace, turn, exitCode, verdict) {
-  writeFileSync(
-    join(workspace.stubDir, `verdict-${turn}`),
-    `${exitCode}\n${JSON.stringify(verdict)}\n`,
+    `${exitCode}\n${lines}\n`,
   );
   writeFileSync(
     join(workspace.stubDir, "verdict-last"),
-    `${exitCode}\n${JSON.stringify(verdict)}\n`,
+    `${exitCode}\n${lines}\n`,
   );
+}
+
+/** Everything a run printed, the doctor's lines on standard error included. */
+function printed(run) {
+  return `${run.stdout}${run.stderr}`;
 }
 
 /** The launcher with its digest line stamped, as a release copy would be. */
@@ -275,131 +267,35 @@ function sourced(workspace, snippet, environment = {}) {
   });
 }
 
-const FIX_AND_RETRY = {
-  version: 1,
-  mode: "mount",
-  overall: "fix_and_retry",
-  checks: [
-    { id: "mount_readable", status: "ok" },
-    {
-      id: "write_rename",
-      status: "fail",
-      meaning: "the folder cannot be written to, {even} as this account.",
-      action: 'ask for write permission on "the folder".',
-    },
-    {
-      id: "rename_onto_existing",
-      status: "warn",
-      meaning: "this share will not rename a file onto an existing one.",
-      action: "pass --lockless-rendezvous on both sides.",
-    },
-  ],
-};
+// What `alcove doctor mount` prints, in the doctor's own wording, for the
+// outcomes the launcher branches on.
+const NOT_READY = [
+  "OK: /rz is readable.",
+  "FAIL: could not write and rename in this folder (EACCES).",
+  "      MEANING: the folder cannot be written to, {even} as this account.",
+  '      ACTION:  ask for write permission on "the folder".',
+  "",
+  "NOT READY YET -- follow the ACTION lines above and run this again.",
+].join("\n");
 
-const ALL_OK = {
-  version: 1,
-  mode: "mount",
-  overall: "ok",
-  checks: [
-    { id: "mount_readable", status: "ok" },
-    {
-      id: "exclusive_create",
-      status: "warn",
-      meaning: "this share does not refuse a create of a file that exists.",
-      action: "pass --lockless-rendezvous on both sides.",
-    },
-  ],
-};
+const ALL_PASSED = ["OK: /rz is readable.", "", "ALL CHECKS PASSED"].join("\n");
 
-const FATAL = {
-  version: 1,
-  mode: "mount",
-  overall: "fatal",
-  checks: [
-    {
-      id: "mount_readable",
-      status: "fail",
-      meaning: "the directory could not be listed.",
-      action: "check that the folder still exists.",
-    },
-    { id: "marker", status: "skipped", meaning: "an earlier check stopped." },
-  ],
-};
+const COULD_NOT_RUN = [
+  "FAIL: /rz could not be read (ENOENT).",
+  "      MEANING: the folder the exchange runs in is not there, or is not a directory this process can list.",
+  "      ACTION:  check that the volume is mounted at this path.",
+  "",
+  "COULD NOT RUN THE CHECKS -- nothing was established either way.",
+].join("\n");
 
-// The two verdicts `alcove doctor mount` returns for a folder that can be read
-// and not written, and for one that cannot be read at all, as the real run
-// wrote them: the launcher's answer to the first is what separates the input
-// folder from the folders the console writes in.
-const READABLE_NOT_WRITABLE = {
-  version: 1,
-  mode: "mount",
-  overall: "fix_and_retry",
-  checks: [
-    { id: "mount_readable", status: "ok" },
-    {
-      id: "marker",
-      status: "skipped",
-      meaning:
-        "does not apply to the inputs given: no marker and token were supplied.",
-    },
-    {
-      id: "write_rename",
-      status: "fail",
-      meaning:
-        "the mount reached a folder but Alcove cannot write in it. Either " +
-        "the account this container runs as does not own the folder, or it " +
-        "can open the folder but not create files in it, or the share is out " +
-        "of space.",
-      action:
-        "see the troubleshooting page, 'The folder cannot be written to'.",
-    },
-    {
-      id: "exclusive_create",
-      status: "skipped",
-      meaning:
-        "an earlier check failed and stopped the battery before this one, so " +
-        "nothing was established about it.",
-    },
-    {
-      id: "rename_onto_existing",
-      status: "skipped",
-      meaning:
-        "an earlier check failed and stopped the battery before this one, so " +
-        "nothing was established about it.",
-    },
-  ],
-};
-
-const UNREADABLE = {
-  version: 1,
-  mode: "mount",
-  overall: "fatal",
-  checks: [
-    {
-      id: "mount_readable",
-      status: "fail",
-      meaning:
-        "the folder the exchange runs in is not there, or is not a directory " +
-        "this process can list. Nothing about the share itself has been " +
-        "established.",
-      action:
-        "check that the volume is mounted at this path and that the container " +
-        "was started with it attached.",
-    },
-    ...[
-      "marker",
-      "write_rename",
-      "exclusive_create",
-      "rename_onto_existing",
-    ].map((id) => ({
-      id,
-      status: "skipped",
-      meaning:
-        "an earlier check failed and stopped the battery before this one, " +
-        "so nothing was established about it.",
-    })),
-  ],
-};
+// A read-only folder: read, and its writes refused.
+const READ_ONLY = [
+  "OK: /rz is readable.",
+  "FAIL: could not write and rename in this folder (EROFS).",
+  "      ACTION:  see the troubleshooting page, 'The folder cannot be written to'.",
+  "",
+  "NOT READY YET -- follow the ACTION lines above and run this again.",
+].join("\n");
 
 describe("the release stamp", () => {
   it("refuses to run an unstamped copy, before touching the engine", () => {
@@ -422,7 +318,7 @@ describe("the release stamp", () => {
 describe("the sourcing contract", () => {
   it("defines the functions and runs nothing when sourced", () => {
     const workspace = makeWorkspace();
-    const run = sourced(workspace, "type -t alcove_json_load alcove_main");
+    const run = sourced(workspace, "type -t alcove_doctor_loop alcove_main");
 
     expect(run.status).toBe(0);
     expect(run.stderr.trim()).toBe("");
@@ -671,7 +567,7 @@ describe("where the image is downloaded from", () => {
     const workspace = makeWorkspace();
     installEngine(workspace, "docker");
     stagePullFailure(workspace, "docker.io", REFUSED);
-    stageVerdict(workspace, 1, 69, FATAL);
+    stageVerdict(workspace, 1, 69, COULD_NOT_RUN);
     const launcher = stampedLauncher(workspace);
 
     runLauncher(workspace, launcher, [
@@ -838,7 +734,7 @@ describe("the account the container runs as", () => {
     const workspace = makeWorkspace();
     stubUname(workspace, "Linux");
     installEngine(workspace, "docker");
-    stageVerdict(workspace, 1, 78, FIX_AND_RETRY);
+    stageVerdict(workspace, 1, 78, NOT_READY);
     const launcher = stampedLauncher(workspace);
 
     runLauncher(
@@ -911,101 +807,10 @@ describe("option validation", () => {
   });
 });
 
-describe("the verdict reader", () => {
-  const read = (workspace, document, snippet) =>
-    sourced(
-      workspace,
-      `alcove_json_load ${JSON.stringify(document)} || { echo REFUSED; exit 0; }\n${snippet}`,
-    );
-
-  it("reports an absent optional field as absent", () => {
-    const workspace = makeWorkspace();
-    const run = read(
-      workspace,
-      '{"version":1,"checks":[{"id":"a","status":"ok"}]}',
-      [
-        'checks=$(alcove_json_member "$ALCOVE_JSON_SKELETON" checks)',
-        'first=$(alcove_json_elements "$checks" | head -1)',
-        'alcove_json_member "$first" meaning >/dev/null && echo PRESENT || echo ABSENT',
-      ].join("\n"),
-    );
-
-    expect(run.stdout.trim()).toBe("ABSENT");
-  });
-
-  it("reports an explicit null as absent rather than as a value", () => {
-    const workspace = makeWorkspace();
-    const run = read(
-      workspace,
-      '{"version":1,"checks":[{"id":"a","status":"warn","action":null}]}',
-      [
-        'checks=$(alcove_json_member "$ALCOVE_JSON_SKELETON" checks)',
-        'first=$(alcove_json_elements "$checks" | head -1)',
-        'alcove_json_member "$first" action >/dev/null && echo PRESENT || echo ABSENT',
-      ].join("\n"),
-    );
-
-    expect(run.stdout.trim()).toBe("ABSENT");
-  });
-
-  it("keeps prose that holds a brace, a comma and a quote intact", () => {
-    const workspace = makeWorkspace();
-    const document = JSON.stringify({
-      version: 1,
-      checks: [
-        {
-          id: "write",
-          status: "fail",
-          meaning: 'a folder named "q3,final" {here} cannot be written.',
-        },
-      ],
-    });
-    const run = read(
-      workspace,
-      document,
-      [
-        'checks=$(alcove_json_member "$ALCOVE_JSON_SKELETON" checks)',
-        'first=$(alcove_json_elements "$checks" | head -1)',
-        'alcove_json_text "$(alcove_json_member "$first" meaning)"',
-      ].join("\n"),
-    );
-
-    expect(run.stdout).toBe(
-      'a folder named "q3,final" {here} cannot be written.',
-    );
-  });
-
-  it("turns an escaped control character into a space", () => {
-    const workspace = makeWorkspace();
-    const document = JSON.stringify({
-      version: 1,
-      checks: [{ id: "a", status: "warn", meaning: "before[31mafter" }],
-    });
-    const run = read(
-      workspace,
-      document,
-      [
-        'checks=$(alcove_json_member "$ALCOVE_JSON_SKELETON" checks)',
-        'first=$(alcove_json_elements "$checks" | head -1)',
-        'alcove_json_text "$(alcove_json_member "$first" meaning)" | cat -v',
-      ].join("\n"),
-    );
-
-    expect(run.stdout).toBe("before [31mafter");
-    expect(run.stdout).not.toContain("^[");
-  });
-
-  it("refuses a line that is not a JSON object", () => {
-    const workspace = makeWorkspace();
-    const run = read(workspace, "docker: command not found", "echo READ");
-
-    expect(run.stdout.trim()).toBe("REFUSED");
-  });
-
+describe("container text", () => {
   it("drops a raw carriage return from container text", () => {
     const workspace = makeWorkspace();
-    // A raw CR is not JSON-escaped prose: it reaches the byte filter directly,
-    // and left alone it rewrites the terminal line it lands on.
+    // Left alone, a raw CR rewrites the terminal line it lands on.
     const run = sourced(
       workspace,
       `alcove_say_from_container "$(printf 'before\\rafter')" | cat -v`,
@@ -1014,226 +819,105 @@ describe("the verdict reader", () => {
     expect(run.status).toBe(0);
     expect(run.stdout.trim()).toBe("beforeafter");
   });
-
-  it("finds a check by its id rather than its position", () => {
-    const workspace = makeWorkspace();
-    const document = JSON.stringify({
-      version: 1,
-      checks: [
-        { id: "added_later", status: "ok" },
-        { id: "marker", status: "warn", meaning: "a marker from another run." },
-      ],
-    });
-    const run = read(
-      workspace,
-      document,
-      [
-        'checks=$(alcove_json_member "$ALCOVE_JSON_SKELETON" checks)',
-        'alcove_show_checks_with_status "$checks" warn',
-      ].join("\n"),
-    );
-
-    expect(run.stdout).toMatch(/WARN\s+marker/);
-    expect(run.stdout).toMatch(/a marker from another run\./);
-  });
-
-  it("reads one check's status by id, and says when there is none", () => {
-    // What a folder the console only reads is judged on, so an absent check
-    // has to read as absent rather than as a status.
-    const workspace = makeWorkspace();
-    const document = JSON.stringify({
-      version: 1,
-      checks: [
-        { id: "added_later", status: "warn" },
-        { id: "mount_readable", status: "ok" },
-      ],
-    });
-    const run = read(
-      workspace,
-      document,
-      [
-        'checks=$(alcove_json_member "$ALCOVE_JSON_SKELETON" checks)',
-        'alcove_check_status "$checks" mount_readable',
-        "echo",
-        'alcove_check_status "$checks" marker || echo ABSENT',
-      ].join("\n"),
-    );
-
-    expect(run.stdout.trim().split("\n")).toEqual(["ok", "ABSENT"]);
-  });
 });
 
 describe("the doctor loop", () => {
-  it("refuses a verdict version it does not read, and starts nothing", () => {
-    const workspace = makeWorkspace();
-    installEngine(workspace, "docker");
-    stageVerdict(workspace, 1, 0, {
-      version: 2,
-      mode: "mount",
-      overall: "ok",
-      checks: [],
-    });
-    const launcher = stampedLauncher(workspace);
-
-    const run = runLauncher(workspace, launcher, [
-      "--data-root",
-      workspace.dataDir,
-      "--no-browser",
-    ]);
-
-    expect(run.status).not.toBe(0);
-    expect(run.stdout).toMatch(/verdict version 2/);
-    expect(engineCalls(workspace)).not.toMatch(/serve/);
-  });
-
-  it("prints each failing check's meaning and action, and runs again", () => {
-    const workspace = makeWorkspace();
-    installEngine(workspace, "docker");
-    stageVerdict(workspace, 1, 78, FIX_AND_RETRY);
-    const launcher = stampedLauncher(workspace);
-
-    // Accept the first retry, decline the second: the checks run twice, and the
-    // console is never reached.
-    const run = runLauncher(
-      workspace,
-      launcher,
-      ["--data-root", workspace.dataDir, "--no-browser"],
-      "y\nn\n",
-    );
-
-    // Verbatim, as the container wrote it: the launcher classifies, the image
-    // owns the words.
-    expect(run.stdout).toContain(
-      "MEANING: the folder cannot be written to, {even} as this account.",
-    );
-    expect(run.stdout).toContain(
-      'ACTION:  ask for write permission on "the folder".',
-    );
-    // A warn alongside the failure is shown too: it does not stop an exchange
-    // and still has to be read.
-    expect(run.stdout).toContain(
-      "MEANING: this share will not rename a file onto an existing one.",
-    );
-    const doctorRuns = engineCalls(workspace)
+  const doctorRuns = (workspace) =>
+    engineCalls(workspace)
       .split("\n")
-      .filter((line) => line.includes("doctor"));
-    expect(doctorRuns).toHaveLength(2);
+      .filter((line) => line.includes(" doctor "));
+
+  /** A stamped launcher run over the working folder alone. */
+  function runOverDataRoot(workspace, input = "") {
+    return runLauncher(
+      workspace,
+      stampedLauncher(workspace),
+      ["--data-root", workspace.dataDir, "--no-browser"],
+      input,
+    );
+  }
+
+  it("prints the checks' own lines and runs again after a finding", () => {
+    const workspace = makeWorkspace();
+    installEngine(workspace, "docker");
+    stageVerdict(workspace, 1, 78, NOT_READY);
+
+    // Accept the first run again, decline the second: the checks run twice,
+    // and the console is never reached.
+    const run = runOverDataRoot(workspace, "y\nn\n");
+
+    // Verbatim, as the container wrote them: the image owns the words.
+    expect(printed(run)).toContain(
+      "      MEANING: the folder cannot be written to, {even} as this account.",
+    );
+    expect(printed(run)).toContain(
+      '      ACTION:  ask for write permission on "the folder".',
+    );
+    expect(run.stdout).toMatch(/troubleshooting\.md/);
+    expect(doctorRuns(workspace)).toHaveLength(2);
     expect(engineCalls(workspace)).not.toMatch(/serve/);
   });
 
-  it("stops on a declined retry without starting the console", () => {
+  it("stops on a declined run again without starting the console", () => {
     const workspace = makeWorkspace();
     installEngine(workspace, "docker");
-    stageVerdict(workspace, 1, 78, FIX_AND_RETRY);
-    const launcher = stampedLauncher(workspace);
+    stageVerdict(workspace, 1, 78, NOT_READY);
 
-    const run = runLauncher(
-      workspace,
-      launcher,
-      ["--data-root", workspace.dataDir, "--no-browser"],
-      "n\n",
-    );
+    const run = runOverDataRoot(workspace, "n\n");
 
     expect(run.status).not.toBe(0);
     expect(run.stdout).toMatch(/Stopping without starting the console/);
     expect(engineCalls(workspace)).not.toMatch(/serve/);
   });
 
-  it("stops rather than loops when stdin closes during the retry prompt", () => {
+  it("stops rather than loops when stdin closes during the run-again prompt", () => {
     const workspace = makeWorkspace();
     installEngine(workspace, "docker");
-    stageVerdict(workspace, 1, 78, FIX_AND_RETRY);
-    const launcher = stampedLauncher(workspace);
+    stageVerdict(workspace, 1, 78, NOT_READY);
 
-    // No input at all: a run without a TTY whose verdict stays fix_and_retry
+    // No input at all: a run without a TTY whose checks keep finding something
     // must stop after one doctor run, not spin the engine on a prompt nobody
     // will answer.
-    const run = runLauncher(workspace, launcher, [
-      "--data-root",
-      workspace.dataDir,
-      "--no-browser",
-    ]);
+    const run = runOverDataRoot(workspace);
 
     expect(run.status).not.toBe(0);
-    const doctorRuns = engineCalls(workspace)
-      .split("\n")
-      .filter((line) => line.includes("doctor"));
-    expect(doctorRuns).toHaveLength(1);
+    expect(doctorRuns(workspace)).toHaveLength(1);
     expect(engineCalls(workspace)).not.toMatch(/serve/);
   });
 
-  it("stops on a fatal verdict and points at the troubleshooting page", () => {
+  it("stops on checks that could not run, pointing at their ACTION line", () => {
     const workspace = makeWorkspace();
     installEngine(workspace, "docker");
-    stageVerdict(workspace, 1, 69, FATAL);
-    const launcher = stampedLauncher(workspace);
+    stageVerdict(workspace, 1, 69, COULD_NOT_RUN);
 
-    const run = runLauncher(workspace, launcher, [
-      "--data-root",
-      workspace.dataDir,
-      "--no-browser",
-    ]);
+    const run = runOverDataRoot(workspace, "y\n");
 
     expect(run.status).not.toBe(0);
-    expect(run.stdout).toContain("MEANING: the directory could not be listed.");
-    expect(run.stdout).toMatch(/nothing was established/);
-    expect(run.stdout).toMatch(/troubleshooting\.md/);
-    // A fatal verdict is not retried: there is no ACTION to follow.
-    const doctorRuns = engineCalls(workspace)
-      .split("\n")
-      .filter((line) => line.includes("doctor"));
-    expect(doctorRuns).toHaveLength(1);
+    expect(printed(run)).toContain(
+      "COULD NOT RUN THE CHECKS -- nothing was established either way.",
+    );
+    expect(run.stdout).toMatch(/Follow the ACTION line above/);
+    // Not offered again: a run that established nothing has no finding to fix.
+    expect(run.stdout).not.toMatch(/Run the checks again/);
+    expect(doctorRuns(workspace)).toHaveLength(1);
     expect(engineCalls(workspace)).not.toMatch(/serve/);
   });
 
   it.each([
-    ["printed nothing", 1, ""],
-    ["printed part of a verdict", 1, '{"version":1,"mode":"mou'],
-    ["ended in the engine's own range", 125, ""],
-  ])(
-    "names the stopped engine when it stops during the checks and the run %s",
-    (_label, exitCode, output) => {
-      const workspace = makeWorkspace();
-      installEngine(workspace, "docker");
-      stageEngineStop(workspace, 1, exitCode, output);
-      const launcher = stampedLauncher(workspace);
-
-      const run = runLauncher(workspace, launcher, [
-        "--data-root",
-        workspace.dataDir,
-        "--no-browser",
-      ]);
-
-      expect(run.status).not.toBe(0);
-      expect(run.stdout).toContain(
-        "The container engine (docker) stopped answering",
-      );
-      expect(run.stdout).toMatch(/Start Docker again/);
-      expect(run.stdout).not.toMatch(/launcher published/);
-      expect(run.stdout).not.toMatch(/printed no verdict/);
-      expect(run.stdout).not.toMatch(/could not be started/);
-      expect(engineCalls(workspace)).not.toMatch(/serve/);
-    },
-  );
-
-  it("keeps the verdict message while the engine still answers", () => {
+    [125, /The container could not be started \(exit 125\)/],
+    [64, /The checks refused a value they were given/],
+    [3, /exit 3, which this launcher does not know/],
+  ])("stops on exit %i and says what that code means", (exitCode, message) => {
     const workspace = makeWorkspace();
     installEngine(workspace, "docker");
-    writeFileSync(
-      join(workspace.stubDir, "verdict-last"),
-      '1\n{"version":1,"mode":"mou\n',
-    );
-    const launcher = stampedLauncher(workspace);
+    stageVerdict(workspace, 1, exitCode, "");
 
-    const run = runLauncher(workspace, launcher, [
-      "--data-root",
-      workspace.dataDir,
-      "--no-browser",
-    ]);
+    const run = runOverDataRoot(workspace, "y\n");
 
     expect(run.status).not.toBe(0);
-    expect(run.stdout).toMatch(/The verdict could not be read/);
-    expect(run.stdout).not.toMatch(/stopped answering/);
+    expect(run.stdout).toMatch(message);
+    expect(doctorRuns(workspace)).toHaveLength(1);
+    expect(engineCalls(workspace)).not.toMatch(/serve/);
   });
 
   it("runs the mount checks against every folder the console is given", () => {
@@ -1246,9 +930,9 @@ describe("the doctor loop", () => {
     const rendezvous = join(workspace.root, "shared");
     mkdirSync(inputDir);
     mkdirSync(rendezvous);
-    stageVerdict(workspace, 1, 0, ALL_OK);
-    stageVerdict(workspace, 2, 0, ALL_OK);
-    stageVerdict(workspace, 3, 78, FIX_AND_RETRY);
+    stageVerdict(workspace, 1, 0, ALL_PASSED);
+    stageVerdict(workspace, 2, 0, ALL_PASSED);
+    stageVerdict(workspace, 3, 78, NOT_READY);
     const launcher = stampedLauncher(workspace);
 
     runLauncher(
@@ -1266,22 +950,20 @@ describe("the doctor loop", () => {
       "n\n",
     );
 
-    const doctorRuns = engineCalls(workspace)
-      .split("\n")
-      .filter((line) => line.includes("doctor"));
-    expect(doctorRuns).toHaveLength(3);
-    expect(doctorRuns[0]).toContain(`--volume ${workspace.dataDir}:/rz`);
-    expect(doctorRuns[1]).toContain(`--volume ${inputDir}:/rz`);
-    expect(doctorRuns[2]).toContain(`--volume ${rendezvous}:/rz`);
-    expect(doctorRuns[0]).toContain("doctor mount /rz --json");
-    expect(doctorRuns[0]).toContain(`docker.io/gumdi/alcove@${TEST_DIGEST}`);
+    const runs = doctorRuns(workspace);
+    expect(runs).toHaveLength(3);
+    expect(runs[0]).toContain(`--volume ${workspace.dataDir}:/rz `);
+    expect(runs[1]).toContain(`--volume ${inputDir}:/rz:ro `);
+    expect(runs[2]).toContain(`--volume ${rendezvous}:/rz `);
+    expect(runs[0]).toMatch(/ doctor mount \/rz$/);
+    expect(runs[0]).toContain(`docker.io/gumdi/alcove@${TEST_DIGEST}`);
     expect(engineCalls(workspace)).not.toMatch(/serve/);
   });
 
   it("runs the checks once when the same folder was given for everything", () => {
     const workspace = makeWorkspace();
     installEngine(workspace, "docker");
-    stageVerdict(workspace, 1, 78, FIX_AND_RETRY);
+    stageVerdict(workspace, 1, 78, NOT_READY);
     const launcher = stampedLauncher(workspace);
 
     runLauncher(
@@ -1299,10 +981,7 @@ describe("the doctor loop", () => {
       "n\n",
     );
 
-    const doctorRuns = engineCalls(workspace)
-      .split("\n")
-      .filter((line) => line.includes("doctor"));
-    expect(doctorRuns).toHaveLength(1);
+    expect(doctorRuns(workspace)).toHaveLength(1);
   });
 });
 
@@ -1310,10 +989,14 @@ describe("what each folder has to answer", () => {
   // The console writes in the working and rendezvous folders and only reads the
   // input folder: it lists the CSVs there, and the exchange reads the selected
   // one in place. Mounting that folder read-only is a documented setup, so the
-  // checks' write verdict must not decide whether the console starts.
-  const WRITE_ACTION = READABLE_NOT_WRITABLE.checks.find(
-    (check) => check.id === "write_rename",
-  ).action;
+  // checks' write findings must not decide whether the console starts.
+  const WRITE_ACTION =
+    "ACTION:  see the troubleshooting page, 'The folder cannot be written to'.";
+
+  const doctorRuns = (workspace) =>
+    engineCalls(workspace)
+      .split("\n")
+      .filter((line) => line.includes(" doctor "));
 
   /** A workspace with an engine installed and a folder made per name. */
   function withFolders(names) {
@@ -1327,105 +1010,71 @@ describe("what each folder has to answer", () => {
     return { workspace, folders };
   }
 
+  /** A stamped launcher run over the working folder and the folders named. */
+  function runWith(workspace, folders, input = "") {
+    const args = ["--data-root", workspace.dataDir];
+    if (folders.input) args.push("--input-dir", folders.input);
+    if (folders.shared) args.push("--rendezvous-dir", folders.shared);
+    return runLauncher(
+      workspace,
+      stampedLauncher(workspace),
+      [...args, "--no-browser"],
+      input,
+    );
+  }
+
   it("starts past an input folder it can read and cannot write", () => {
     const { workspace, folders } = withFolders(["input", "shared"]);
-    stageVerdict(workspace, 1, 0, ALL_OK);
-    stageVerdict(workspace, 2, 78, READABLE_NOT_WRITABLE);
+    stageVerdict(workspace, 1, 0, ALL_PASSED);
+    stageVerdict(workspace, 2, 78, READ_ONLY);
     // The rendezvous folder is what stops this run, so the flow is observed
     // past the input folder without the console being started.
-    stageVerdict(workspace, 3, 78, FIX_AND_RETRY);
-    const launcher = stampedLauncher(workspace);
+    stageVerdict(workspace, 3, 78, NOT_READY);
 
-    const run = runLauncher(
-      workspace,
-      launcher,
-      [
-        "--data-root",
-        workspace.dataDir,
-        "--input-dir",
-        folders.input,
-        "--rendezvous-dir",
-        folders.shared,
-        "--no-browser",
-      ],
-      "n\n",
-    );
+    const run = runWith(workspace, folders, "n\n");
 
-    const doctorRuns = engineCalls(workspace)
-      .split("\n")
-      .filter((line) => line.includes("doctor"));
-    expect(doctorRuns).toHaveLength(3);
-    expect(doctorRuns[1]).toContain(`--volume ${folders.input}:/rz`);
+    const runs = doctorRuns(workspace);
+    expect(runs).toHaveLength(3);
+    // Mounted read-only, as the console mounts it.
+    expect(runs[1]).toContain(`--volume ${folders.input}:/rz:ro `);
     expect(run.stdout).toMatch(/The console can read this folder/);
     // The refused write is not put to the operator as something to fix: it is
     // the folder they mounted read-only, doing what they asked of it.
-    expect(run.stdout).not.toContain(WRITE_ACTION);
+    expect(printed(run)).not.toContain(WRITE_ACTION);
     // The rendezvous folder is held to the whole set of checks, and this run
     // stopped there rather than at the input folder.
-    expect(run.stdout).toContain(
+    expect(printed(run)).toContain(
       'ACTION:  ask for write permission on "the folder".',
     );
   });
 
-  it("stops on an input folder it cannot read", () => {
-    // Unreadable is a fault whatever the folder is for: the console lists the
-    // CSVs there, and nothing about the folder was established either way.
+  it("stops on an input folder it cannot read, showing why", () => {
+    // A folder the doctor cannot read ends its run with 69 before any write,
+    // which is what tells it apart from a read-only one.
     const { workspace, folders } = withFolders(["input"]);
-    stageVerdict(workspace, 1, 0, ALL_OK);
-    stageVerdict(workspace, 2, 69, UNREADABLE);
-    const launcher = stampedLauncher(workspace);
+    stageVerdict(workspace, 1, 0, ALL_PASSED);
+    stageVerdict(workspace, 2, 69, COULD_NOT_RUN);
 
-    const run = runLauncher(workspace, launcher, [
-      "--data-root",
-      workspace.dataDir,
-      "--input-dir",
-      folders.input,
-      "--no-browser",
-    ]);
+    const run = runWith(workspace, folders);
 
     expect(run.status).not.toBe(0);
-    const doctorRuns = engineCalls(workspace)
-      .split("\n")
-      .filter((line) => line.includes("doctor"));
-    expect(doctorRuns).toHaveLength(2);
+    expect(doctorRuns(workspace)).toHaveLength(2);
     expect(run.stdout).toMatch(/is not there, or is not a directory/);
-    expect(run.stdout).toMatch(/nothing was established/);
-    expect(run.stdout).toMatch(/troubleshooting\.md/);
+    expect(run.stdout).toMatch(/Follow the ACTION line above/);
+    expect(run.stdout).not.toMatch(/The console can read this folder/);
     expect(engineCalls(workspace)).not.toMatch(/serve/);
   });
 
-  it("stops on checks that could not be run, read or no read", () => {
-    // A `fatal` verdict says the checks never finished, so what a check that
-    // did run reported is not a verdict on the folder. The read is taken only
-    // out of a run that reached a verdict, whatever else it found.
+  it("stops on an input folder whose check could not start a container", () => {
     const { workspace, folders } = withFolders(["input"]);
-    stageVerdict(workspace, 1, 0, ALL_OK);
-    stageVerdict(workspace, 2, 69, {
-      version: 1,
-      mode: "mount",
-      overall: "fatal",
-      checks: [
-        { id: "mount_readable", status: "ok" },
-        {
-          id: "write_rename",
-          status: "fail",
-          meaning: "the battery stopped before it established anything.",
-          action: "there is nothing to do about this one.",
-        },
-      ],
-    });
-    const launcher = stampedLauncher(workspace);
+    stageVerdict(workspace, 1, 0, ALL_PASSED);
+    stageVerdict(workspace, 2, 125, "docker: Error response from daemon.");
 
-    const run = runLauncher(workspace, launcher, [
-      "--data-root",
-      workspace.dataDir,
-      "--input-dir",
-      folders.input,
-      "--no-browser",
-    ]);
+    const run = runWith(workspace, folders);
 
     expect(run.status).not.toBe(0);
-    expect(run.stdout).toMatch(/nothing was established/);
+    expect(run.stdout).toContain("docker: Error response from daemon.");
+    expect(run.stdout).toMatch(/could not be started \(exit 125\)/);
     expect(run.stdout).not.toMatch(/The console can read this folder/);
     expect(engineCalls(workspace)).not.toMatch(/serve/);
   });
@@ -1435,32 +1084,20 @@ describe("what each folder has to answer", () => {
     // one is written: the stricter requirement is the one that applies, and it
     // is checked once rather than twice.
     const { workspace, folders } = withFolders(["shared"]);
-    stageVerdict(workspace, 1, 0, ALL_OK);
-    stageVerdict(workspace, 2, 78, READABLE_NOT_WRITABLE);
-    const launcher = stampedLauncher(workspace);
+    stageVerdict(workspace, 1, 0, ALL_PASSED);
+    stageVerdict(workspace, 2, 78, READ_ONLY);
 
-    const run = runLauncher(
+    const run = runWith(
       workspace,
-      launcher,
-      [
-        "--data-root",
-        workspace.dataDir,
-        "--input-dir",
-        folders.shared,
-        "--rendezvous-dir",
-        folders.shared,
-        "--no-browser",
-      ],
+      { input: folders.shared, shared: folders.shared },
       "n\n",
     );
 
     expect(run.status).not.toBe(0);
-    const doctorRuns = engineCalls(workspace)
-      .split("\n")
-      .filter((line) => line.includes("doctor"));
-    expect(doctorRuns).toHaveLength(2);
-    expect(doctorRuns[1]).toContain(`--volume ${folders.shared}:/rz`);
-    expect(run.stdout).toContain(WRITE_ACTION);
+    const runs = doctorRuns(workspace);
+    expect(runs).toHaveLength(2);
+    expect(runs[1]).toContain(`--volume ${folders.shared}:/rz `);
+    expect(printed(run)).toContain(WRITE_ACTION);
     expect(run.stdout).not.toMatch(/The console can read this folder/);
     expect(engineCalls(workspace)).not.toMatch(/serve/);
   });
@@ -1471,7 +1108,7 @@ describe("engine detection", () => {
     const workspace = makeWorkspace();
     installEngine(workspace, "docker");
     installEngine(workspace, "podman");
-    stageVerdict(workspace, 1, 78, FIX_AND_RETRY);
+    stageVerdict(workspace, 1, 78, NOT_READY);
     const launcher = stampedLauncher(workspace);
 
     const run = runLauncher(
@@ -1489,7 +1126,7 @@ describe("engine detection", () => {
     installEngine(workspace, "docker");
     installEngine(workspace, "podman");
     breakEngine(workspace, "docker");
-    stageVerdict(workspace, 1, 78, FIX_AND_RETRY);
+    stageVerdict(workspace, 1, 78, NOT_READY);
     const launcher = stampedLauncher(workspace);
 
     const run = runLauncher(
@@ -1534,7 +1171,7 @@ describe("starting the console", () => {
     const workspace = makeWorkspace();
     stubUname(workspace, "Linux");
     installEngine(workspace, "docker");
-    stageVerdict(workspace, 1, 0, ALL_OK);
+    stageVerdict(workspace, 1, 0, ALL_PASSED);
     const launcher = stampedLauncher(workspace);
     const port = await freePort();
 

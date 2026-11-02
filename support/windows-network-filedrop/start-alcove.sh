@@ -42,11 +42,6 @@ ALCOVE_REPOSITORY_CANDIDATES=()
 ALCOVE_RELEASES_URL='https://github.com/georgetown-mdi/alcove/releases'
 ALCOVE_TROUBLESHOOTING_URL='https://github.com/georgetown-mdi/alcove/blob/main/support/windows-network-filedrop/troubleshooting.md'
 
-# The verdict schema this launcher was written against. `alcove doctor --json`
-# carries its own; anything else is refused rather than parsed on, because a
-# later version may have re-meaned a field this one reads.
-ALCOVE_VERDICT_VERSION='1'
-
 ALCOVE_DEFAULT_PORT='3000'
 # How long to wait for the console to answer before saying so. A first run also
 # fetches the image, which is why this is minutes rather than seconds.
@@ -64,9 +59,6 @@ ALCOVE_CONTAINER_NAME=''
 ALCOVE_CONSOLE_PID=''
 ALCOVE_ANSWER=''
 ALCOVE_DIRECTORY=''
-ALCOVE_VERDICT_OVERALL=''
-ALCOVE_JSON_SKELETON=''
-ALCOVE_JSON_STRINGS=()
 ALCOVE_CONSOLE_ARGUMENTS=()
 
 # ===========================================================================
@@ -87,9 +79,7 @@ alcove_note() { printf '        %s\n' "$*"; }
 # Text the container supplied, shown as the container wrote it. Control bytes
 # are dropped rather than displayed: this is classified prose the image owns,
 # but it passes through a terminal that reads an escape sequence as a command
-# and nothing downstream re-checks it. Tab and newline survive; the JSON decoder
-# below has already turned every escaped control character into a space, so this
-# covers the raw ones only.
+# and nothing downstream re-checks it. Tab and newline survive.
 alcove_say_from_container() {
   printf '%s\n' "$1" | LC_ALL=C tr -d '\000-\010\013-\037\177'
 }
@@ -289,17 +279,6 @@ alcove_engine_answers() {
   "$1" version >/dev/null 2>&1
 }
 
-# What to say when the engine stopped answering during a run of the checks:
-# whatever they printed is not about the folder, or about this launcher and the
-# image.
-alcove_engine_stopped() {
-  alcove_bad "The container engine ($ALCOVE_ENGINE) stopped answering, so the checks did not finish."
-  local product="$ALCOVE_ENGINE"
-  [ "$ALCOVE_ENGINE" = 'docker' ] && product='Docker'
-  alcove_note "Start $product again and wait until it is running, then run this"
-  alcove_note 'script again.'
-}
-
 alcove_select_engine() {
   local candidate=''
   for candidate in docker podman; do
@@ -394,411 +373,73 @@ alcove_resolve_container_identity() {
 }
 
 # ===========================================================================
-# The verdict document
-#
-# One line of JSON, per docs/spec/CLI_DOCTOR.md. It is read rather than
-# pattern-matched: the meaning and action strings are prose that can hold a
-# brace, a comma or a quote, and a grep for one of those would cut a sentence
-# in half.
-#
-# alcove_json_load walks the document once and replaces every string literal
-# with an @index@ marker, leaving a skeleton of structure behind. The skeleton
-# then splits on plain characters, and a string is decoded only when one is
-# actually printed.
-# ===========================================================================
-
-alcove_json_load() {
-  local doc="$1"
-  local length=${#doc}
-  local position=0
-  local character=''
-  local skeleton=''
-  local current=''
-  local in_string=0
-  local index=0
-
-  ALCOVE_JSON_STRINGS=()
-  ALCOVE_JSON_SKELETON=''
-
-  while [ "$position" -lt "$length" ]; do
-    character=${doc:position:1}
-    if [ "$in_string" -eq 1 ]; then
-      if [ "$character" = '\' ]; then
-        current="$current${doc:position:2}"
-        position=$((position + 2))
-        continue
-      fi
-      if [ "$character" = '"' ]; then
-        ALCOVE_JSON_STRINGS[$index]="$current"
-        skeleton="$skeleton@$index@"
-        index=$((index + 1))
-        current=''
-        in_string=0
-        position=$((position + 1))
-        continue
-      fi
-      current="$current$character"
-      position=$((position + 1))
-      continue
-    fi
-    case "$character" in
-      '"') in_string=1 ;;
-      ' ' | $'\t') ;;
-      *) skeleton="$skeleton$character" ;;
-    esac
-    position=$((position + 1))
-  done
-
-  [ "$in_string" -eq 0 ] || return 1
-  case "$skeleton" in
-    '{'*'}') ;;
-    *) return 1 ;;
-  esac
-  ALCOVE_JSON_SKELETON="$skeleton"
-  return 0
-}
-
-# Split a skeleton's top-level elements on their separating commas, one per
-# line. Safe as lines because alcove_json_load has already taken every string
-# out: what is left holds no newline.
-alcove_json_split() {
-  local body="$1"
-  local length=${#body}
-  local position=0
-  local depth=0
-  local character=''
-  local piece=''
-
-  while [ "$position" -lt "$length" ]; do
-    character=${body:position:1}
-    case "$character" in
-      '{' | '[')
-        depth=$((depth + 1))
-        piece="$piece$character"
-        ;;
-      '}' | ']')
-        depth=$((depth - 1))
-        piece="$piece$character"
-        ;;
-      ',')
-        if [ "$depth" -eq 0 ]; then
-          printf '%s\n' "$piece"
-          piece=''
-        else
-          piece="$piece$character"
-        fi
-        ;;
-      *) piece="$piece$character" ;;
-    esac
-    position=$((position + 1))
-  done
-  [ -z "$piece" ] || printf '%s\n' "$piece"
-}
-
-# The value of one member of an object skeleton, or failure when the object does
-# not carry that member. An explicit null reports as absent too: the verdict
-# omits an optional field rather than nulling it, so a null is a document this
-# launcher does not understand and must not read as a value.
-alcove_json_member() {
-  local object="$1" key="$2"
-  local body=${object#\{}
-  body=${body%\}}
-
-  local piece='' name='' value='' index=''
-  while IFS= read -r piece; do
-    [ -n "$piece" ] || continue
-    name=${piece%%:*}
-    value=${piece#*:}
-    case "$name" in
-      @*@)
-        index=${name#@}
-        index=${index%@}
-        ;;
-      *) continue ;;
-    esac
-    if [ "${ALCOVE_JSON_STRINGS[$index]}" = "$key" ]; then
-      [ "$value" != 'null' ] || return 1
-      printf '%s' "$value"
-      return 0
-    fi
-  done <<ALCOVE_MEMBERS
-$(alcove_json_split "$body")
-ALCOVE_MEMBERS
-  return 1
-}
-
-# Each element of an array skeleton, one per line.
-alcove_json_elements() {
-  local array="$1"
-  local body=${array#\[}
-  body=${body%\]}
-  alcove_json_split "$body"
-}
-
-# The decoded text of a string value, or failure when the value is not a string.
-alcove_json_text() {
-  local value="$1" index=''
-  case "$value" in
-    @*@)
-      index=${value#@}
-      index=${index%@}
-      ;;
-    *) return 1 ;;
-  esac
-  alcove_json_unescape "${ALCOVE_JSON_STRINGS[$index]}"
-}
-
-# JSON's own escapes, decoded. Every escape denoting a control character -- \b,
-# \f, \r, and the \uXXXX form, which JSON.stringify emits for control characters
-# and nothing else -- becomes a space rather than the character it names: this
-# text is printed to a terminal, where a decoded escape sequence is a command
-# rather than prose.
-alcove_json_unescape() {
-  local raw="$1"
-  local length=${#raw}
-  local position=0
-  local out=''
-  local character=''
-  local escape=''
-
-  while [ "$position" -lt "$length" ]; do
-    character=${raw:position:1}
-    if [ "$character" != '\' ]; then
-      out="$out$character"
-      position=$((position + 1))
-      continue
-    fi
-    escape=${raw:position+1:1}
-    case "$escape" in
-      '"') out="$out\"" ;;
-      '\') out="$out\\" ;;
-      '/') out="$out/" ;;
-      n) out="$out"$'\n' ;;
-      t) out="$out"$'\t' ;;
-      b | f | r) out="$out " ;;
-      u)
-        out="$out "
-        position=$((position + 4))
-        ;;
-      *) out="$out$escape" ;;
-    esac
-    position=$((position + 2))
-  done
-  printf '%s' "$out"
-}
-
-# ===========================================================================
 # The doctor
 # ===========================================================================
 
-# One check, as the operator reads it, with MEANING and ACTION as the container
-# wrote them. The status alone decides the label: a consumer never infers
-# severity from which optional fields a check happens to carry.
-alcove_show_check() {
-  local check="$1"
-  local identifier='' status='' meaning='' action=''
-
-  identifier=$(alcove_json_text "$(alcove_json_member "$check" id)") || return 1
-  status=$(alcove_json_text "$(alcove_json_member "$check" status)") || return 1
-
+# What to read after the doctor's own lines, by the exit code it ended with. Its
+# lines say what was found and what to do, and its last line says whether the
+# checks passed, so 0, 78 and 69 add only a pointer; the other codes are ones
+# its lines do not explain.
+alcove_doctor_outcome() {
+  local status="$1"
+  [ "$status" -eq 0 ] && return 0
+  alcove_say ''
+  if [ "$status" -ge 125 ]; then
+    alcove_bad "The container could not be started (exit $status)."
+    alcove_note 'Nothing about your folder was tested. The message the engine'
+    alcove_note 'printed above is the one to read.'
+    return 0
+  fi
   case "$status" in
-    fail) alcove_bad "$identifier" ;;
-    warn) alcove_warn "$identifier" ;;
-    skipped) alcove_note "SKIP  $identifier" ;;
-    *) alcove_good "$identifier" ;;
+    78) alcove_note "The troubleshooting page explains each of these: $ALCOVE_TROUBLESHOOTING_URL" ;;
+    69) alcove_note 'Follow the ACTION line above, then run this script again.' ;;
+    64)
+      alcove_bad 'The checks refused a value they were given, so nothing was tested.'
+      alcove_note 'The message above names it.'
+      ;;
+    *)
+      alcove_bad "The checks ended with exit $status, which this launcher does not know."
+      alcove_note 'Nothing was established about your folder. Use the launcher'
+      alcove_note 'published with the image it runs.'
+      ;;
   esac
-
-  if meaning=$(alcove_json_member "$check" meaning); then
-    alcove_say_from_container "        MEANING: $(alcove_json_text "$meaning")"
-  fi
-  if action=$(alcove_json_member "$check" action); then
-    alcove_say_from_container "        ACTION:  $(alcove_json_text "$action")"
-  fi
   return 0
 }
 
-# Show every check whose status is one of those named, reporting whether any
-# was. Checks are found by their status and printed in verdict order; nothing
-# keys on an entry's position, which the spec does not fix.
-alcove_show_checks_with_status() {
-  local checks="$1"
-  shift
-  local wanted=" $* "
-  local element='' status='' shown=1
-
-  while IFS= read -r element; do
-    [ -n "$element" ] || continue
-    status=$(alcove_json_text "$(alcove_json_member "$element" status)") || continue
-    case "$wanted" in
-      *" $status "*)
-        alcove_show_check "$element"
-        shown=0
-        ;;
-    esac
-  done <<ALCOVE_CHECKS
-$(alcove_json_elements "$checks")
-ALCOVE_CHECKS
-  return $shown
-}
-
-# The status of the check carrying this id, or failure when the verdict holds no
-# such check. Found by id, as the display is: the spec fixes the id set a battery
-# reports, and nothing about where in the array a check sits.
-alcove_check_status() {
-  local checks="$1" wanted="$2"
-  local element='' identifier=''
-
-  while IFS= read -r element; do
-    [ -n "$element" ] || continue
-    identifier=$(alcove_json_text "$(alcove_json_member "$element" id)") || continue
-    [ "$identifier" = "$wanted" ] || continue
-    alcove_json_text "$(alcove_json_member "$element" status)" || return 1
-    return 0
-  done <<ALCOVE_CHECKS
-$(alcove_json_elements "$checks")
-ALCOVE_CHECKS
-  return 1
-}
-
-# Run one battery and classify it against what the folder has to answer --
-# `writable` for a folder the console writes in, `readable` for one it only reads
-# from. Sets ALCOVE_VERDICT_OVERALL and returns:
-#   0  a verdict was read, and ALCOVE_VERDICT_OVERALL says what it was
-#   1  nothing was established (the engine, the version, or a line that is not
-#      a verdict this launcher understands)
+# Run the doctor's mount checks over one folder, as the account the console will
+# run as, and return their exit code. $2 is an option for the bind mount: `ro`
+# for a folder the console only reads, empty otherwise.
 alcove_run_doctor_mount() {
-  local label="$1" directory="$2" requirement="$3"
-  local verdict='' status=0 version='' overall='' checks='' loaded='no'
+  local directory="$1" mount_option="${2:-}"
+  local source="$directory:/rz"
   local -a arguments
 
-  ALCOVE_VERDICT_OVERALL=''
   alcove_resolve_container_identity
-  alcove_say "Checking the $label ($directory) with the container's own checks..."
+  [ -z "$mount_option" ] || source="$source:$mount_option"
   arguments=(run --rm)
   if [ -n "$ALCOVE_CONTAINER_IDENTITY" ]; then
     arguments+=(--user "$ALCOVE_CONTAINER_IDENTITY")
   fi
-  arguments+=(--volume "$directory:/rz" "$(alcove_image)" doctor mount /rz --json)
-  verdict=$("$ALCOVE_ENGINE" "${arguments[@]}")
-  status=$?
-
-  # Asked before reading what the run printed: an engine stopped mid-run leaves
-  # an exit code and an output that would otherwise be blamed on the folder or
-  # on the launcher.
-  if [ "$status" -lt 125 ] && [ -n "$verdict" ] && alcove_json_load "$verdict"; then
-    loaded='yes'
-  fi
-  if [ "$loaded" = 'no' ] && ! alcove_engine_answers "$ALCOVE_ENGINE"; then
-    alcove_engine_stopped
-    return 1
-  fi
-
-  # Docker reserves 125 and above for its own failure to start a container, and
-  # every verdict code is below it -- so this is "the checks never ran" rather
-  # than anything about the folder.
-  if [ "$status" -ge 125 ]; then
-    alcove_bad "The container could not be started (exit $status)."
-    alcove_note 'Nothing about your folder was tested. The message the engine'
-    alcove_note 'printed above is the one to read. See'
-    alcove_note "    $ALCOVE_TROUBLESHOOTING_URL"
-    return 1
-  fi
-  if [ -z "$verdict" ]; then
-    alcove_bad "The checks printed no verdict (exit $status)."
-    alcove_note 'They exit 64 when an input is malformed, having run no check at'
-    alcove_note 'all, so nothing was established about the folder.'
-    return 1
-  fi
-  if [ "$loaded" = 'no' ]; then
-    alcove_bad 'The verdict could not be read.'
-    alcove_note 'This launcher and that image do not agree on the verdict'
-    alcove_note 'format. Use the launcher published with the image you are'
-    alcove_note 'running.'
-    return 1
-  fi
-
-  version=$(alcove_json_member "$ALCOVE_JSON_SKELETON" version) || version=''
-  if [ "$version" != "$ALCOVE_VERDICT_VERSION" ]; then
-    alcove_bad "The checks reported verdict version ${version:-none}."
-    alcove_note "This launcher reads version $ALCOVE_VERDICT_VERSION, and stops"
-    alcove_note 'rather than guessing at a later one whose fields may not mean'
-    alcove_note 'what these do. Use the launcher published with this image.'
-    return 1
-  fi
-
-  checks=$(alcove_json_member "$ALCOVE_JSON_SKELETON" checks) || checks='[]'
-  overall=$(alcove_json_text "$(alcove_json_member "$ALCOVE_JSON_SKELETON" overall)") || overall=''
-
-  # A folder the console only reads passes on the read alone: nothing is written
-  # back to the input folder, so writes it refuses are a read-only mount doing
-  # its job rather than a fault to stop on. There is no lighter battery to run,
-  # so the read is taken from its own check rather than from the roll-up, which
-  # speaks for the writes as well -- and only from a battery that ran to a
-  # verdict, since a fatal one establishes nothing about anything.
-  if [ "$requirement" = 'readable' ] && [ "$overall" = 'fix_and_retry' ]; then
-    case "$(alcove_check_status "$checks" mount_readable)" in
-      ok | warn)
-        alcove_show_checks_with_status "$checks" warn && alcove_say ''
-        alcove_good 'The console can read this folder, which is all it needs.'
-        alcove_note 'Your CSVs are read where they are and nothing is written'
-        alcove_note 'back to this folder, so a read-only one is fine here.'
-        ALCOVE_VERDICT_OVERALL='ok'
-        return 0
-        ;;
-    esac
-  fi
-
-  case "$overall" in
-    ok)
-      # A warn does not stop an exchange and still has to be read, so it is
-      # surfaced here rather than swallowed by the roll-up.
-      alcove_show_checks_with_status "$checks" warn && alcove_say ''
-      alcove_good 'Nothing here blocks an exchange.'
-      ;;
-    fix_and_retry)
-      alcove_say ''
-      alcove_show_checks_with_status "$checks" fail warn
-      alcove_say ''
-      alcove_say 'Do what the ACTION lines say, then run the checks again.'
-      ;;
-    fatal)
-      alcove_say ''
-      alcove_show_checks_with_status "$checks" fail
-      alcove_say ''
-      alcove_bad 'The checks could not be run, so nothing was established.'
-      alcove_note 'There is no ACTION to follow: the checks that would have'
-      alcove_note 'produced one never ran.'
-      alcove_note "See $ALCOVE_TROUBLESHOOTING_URL"
-      ;;
-    *)
-      alcove_bad "The checks reported an overall verdict of '${overall:-none}'."
-      alcove_note 'This launcher knows ok, fix_and_retry and fatal, and stops on'
-      alcove_note 'anything else rather than treating it as one of them.'
-      return 1
-      ;;
-  esac
-
-  ALCOVE_VERDICT_OVERALL="$overall"
-  return 0
+  arguments+=(--volume "$source" "$(alcove_image)" doctor mount /rz)
+  "$ALCOVE_ENGINE" "${arguments[@]}"
 }
 
-# The mount battery is the one that applies here. `doctor probe` asks an SMB
+# The mount checks are the ones that apply here. `doctor probe` asks an SMB
 # server directly, over credentials this launcher never collects; on macOS and
 # Linux a folder is bind-mounted as the host already sees it, so the kernel's
 # view is the only view there is. That is what `doctor mount` checks -- the
 # write, the exclusive create and the rename onto an existing file that
-# Alcove's rendezvous is built on.
+# Alcove's rendezvous is built on. Their lines go straight to the terminal.
 alcove_doctor_loop() {
-  local label="$1" directory="$2" requirement="$3"
+  local label="$1" directory="$2" status=0
 
   while :; do
-    if ! alcove_run_doctor_mount "$label" "$directory" "$requirement"; then
-      return 1
-    fi
-    case "$ALCOVE_VERDICT_OVERALL" in
-      ok) return 0 ;;
-      fatal) return 1 ;;
-    esac
+    alcove_say "Checking the $label ($directory) with the container's own checks..."
+    alcove_run_doctor_mount "$directory"
+    status=$?
+    alcove_doctor_outcome "$status"
+    [ "$status" -eq 0 ] && return 0
+    [ "$status" -eq 78 ] || return 1
     alcove_say ''
     if ! alcove_confirm 'Run the checks again? [Y/n] ' yes; then
       alcove_say ''
@@ -808,42 +449,55 @@ alcove_doctor_loop() {
   done
 }
 
+# The input folder is read in place and nothing is written back to it, so the
+# console mounts it read-only and a read-only folder has to pass. The mount
+# checks run over it mounted the same way: a folder they cannot read ends them
+# with 69, before any write, so 78 -- the writes the read-only mount refuses --
+# means it was read. apps/cli/test/unit/doctor/doctorMount.test.ts holds the
+# doctor to that order. Their lines are shown only when the folder fails, since
+# on a pass they are about writes this folder is not asked for.
+alcove_check_input_directory() {
+  local label="$1" directory="$2" output='' status=0
+
+  alcove_say "Checking that the console can read the $label ($directory)..."
+  output=$(alcove_run_doctor_mount "$directory" ro 2>&1)
+  status=$?
+  if [ "$status" -eq 0 ] || [ "$status" -eq 78 ]; then
+    alcove_good 'The console can read this folder, which is all it needs.'
+    return 0
+  fi
+  alcove_say_from_container "$output"
+  alcove_doctor_outcome "$status"
+  return 1
+}
+
 # Every folder the console is given, checked in turn rather than the shared one
 # alone: a folder the console cannot use is a reason not to start at all, and
 # left to it the same fault arrives as an EACCES in the middle of an exchange,
 # after the browser has opened. A layout that gives one folder for everything
 # checks it once.
 #
-# What each folder has to answer differs. The working folder takes the key file
-# and the results, and the rendezvous folder takes the messages both sides write,
-# so those two are checked for the writes Alcove makes. The input folder is read
-# in place and nothing is written back to it, so it is checked for the read
-# alone: an operator who mounts their CSVs read-only has a working console, and
-# stopping them would be refusing a setup Alcove documents.
+# The working folder takes the key file and the results, and the rendezvous
+# folder takes the messages both sides write, so those two are checked for the
+# writes Alcove makes. The input folder is checked for the read alone.
 alcove_check_console_directories() {
-  local input_label='input folder' input_requirement='readable'
-
-  # One folder given as both is the rendezvous folder as well, and that one is
-  # written: the stricter of the two requirements is the one that applies.
-  if [ -n "$ALCOVE_INPUT_DIR" ] &&
-    [ "$ALCOVE_INPUT_DIR" = "$ALCOVE_RENDEZVOUS_DIR" ]; then
-    input_label='input and rendezvous folder'
-    input_requirement='writable'
-  fi
-
-  alcove_doctor_loop 'working folder' "$ALCOVE_DATA_ROOT" writable || return 1
+  alcove_doctor_loop 'working folder' "$ALCOVE_DATA_ROOT" || return 1
   if [ -n "$ALCOVE_INPUT_DIR" ] &&
     [ "$ALCOVE_INPUT_DIR" != "$ALCOVE_DATA_ROOT" ]; then
     alcove_say ''
-    alcove_doctor_loop "$input_label" "$ALCOVE_INPUT_DIR" \
-      "$input_requirement" || return 1
+    # One folder given as both input and rendezvous is the rendezvous folder as
+    # well, and that one is written: the stricter check is the one that applies.
+    if [ "$ALCOVE_INPUT_DIR" = "$ALCOVE_RENDEZVOUS_DIR" ]; then
+      alcove_doctor_loop 'input and rendezvous folder' "$ALCOVE_INPUT_DIR" || return 1
+    else
+      alcove_check_input_directory 'input folder' "$ALCOVE_INPUT_DIR" || return 1
+    fi
   fi
   if [ -n "$ALCOVE_RENDEZVOUS_DIR" ] &&
     [ "$ALCOVE_RENDEZVOUS_DIR" != "$ALCOVE_DATA_ROOT" ] &&
     [ "$ALCOVE_RENDEZVOUS_DIR" != "$ALCOVE_INPUT_DIR" ]; then
     alcove_say ''
-    alcove_doctor_loop 'rendezvous folder' "$ALCOVE_RENDEZVOUS_DIR" \
-      writable || return 1
+    alcove_doctor_loop 'rendezvous folder' "$ALCOVE_RENDEZVOUS_DIR" || return 1
   fi
   return 0
 }

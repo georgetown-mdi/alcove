@@ -189,34 +189,25 @@ function Invoke-Docker {
         "System.Management.Automation.RemoteException". The message is read off
         the record instead, which keeps a blank line blank.
 
-        A name that is not a command on this PC is answered here rather than
-        called: calling one raises CommandNotFoundException, which the relaxed
+        Docker missing from this PC is answered here rather than called:
+        calling it raises CommandNotFoundException, which the relaxed
         preference does not soften and nothing here catches, so a run would end
         on a raw .NET error instead of the message the flow means to print. Ran
-        is what tells that apart from an engine that ran and exited: 127 is the
+        is what tells that apart from a docker that ran and exited: 127 is the
         shell convention for a command that is not there, and a container that
-        exits 127 reports the same code.
-
-        -Engine names the command to run, for the launcher, which reaches this
-        through the shared volume sequence below and may have chosen podman.
-        This script itself asks for docker and nothing else. #>
+        exits 127 reports the same code. #>
     param(
-        [Parameter(Mandatory = $true)][string[]] $DockerArgs,
-        [string] $Engine = 'docker'
+        [Parameter(Mandatory = $true)][string[]] $DockerArgs
     )
 
-    # An empty name is answered here rather than passed on: Get-Command refuses
-    # one while its parameters are being bound, which -ErrorAction cannot soften.
-    if ([string]::IsNullOrWhiteSpace($Engine) -or -not (Get-Command $Engine -ErrorAction SilentlyContinue)) {
-        $named = $Engine
-        if ([string]::IsNullOrWhiteSpace($named)) { $named = '(no engine)' }
-        return @{ Ran = $false; Output = "$named is not a command on this PC."; ExitCode = 127 }
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+        return @{ Ran = $false; Output = 'docker is not a command on this PC.'; ExitCode = 127 }
     }
 
     $previous = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        $lines = & $Engine @DockerArgs 2>&1 | ForEach-Object {
+        $lines = & docker @DockerArgs 2>&1 | ForEach-Object {
             if ($_ -is [System.Management.Automation.ErrorRecord]) { [string] $_.Exception.Message }
             else { "$_" }
         }
@@ -245,76 +236,43 @@ function Get-DialectMountVersion {
     return $versMap[$Dialect]
 }
 
-function Test-DoctorCapableImage {
-    <#  Whether the image carries `alcove doctor` at all.
+function Write-DoctorOutcome {
+    <#  What to read after the doctor's own lines, by the exit code it ended
+        with. The doctor's lines say what was found and what to do, and its
+        last line says whether the checks passed, so 0, 78 and 69 add only a
+        pointer; the other codes are ones the doctor's lines do not explain.
+        Named apart from Start-Alcove.ps1's Show-DoctorOutcome, which that
+        script keeps for the folders it checks without this one loaded. #>
+    param([Parameter(Mandatory = $true)][int] $ExitCode)
 
-        An image published before the doctor existed answers a battery with
-        exit 64, the same code the doctor itself uses for an input it refuses
-        -- the words "doctor probe" are not flags, so they fall past the
-        option validation to the zero-setup command, which reads the first of
-        them as a server URL and rejects it as a usage error. No exit code
-        tells those two apart, and a released image cannot be changed after
-        the fact, so the question has to be settled here, before any battery
-        runs and before an operator is asked for a password.
-
-        `doctor --help` is what settles it. It reaches no share, reads no
-        SMB_* value and starts no check, so nothing it says can be about the
-        file drop; an image carrying the command prints the doctor's own usage,
-        and one without it prints the zero-setup usage, which names no doctor.
-        Output rather than exit code, because both answer 0.
-
-        Returns a hashtable with Capable, and with Reason ('NoDoctor' or
-        'EngineFailed'), ExitCode and Output when it is $false. An engine that
-        could not start the container at all is its own answer rather than an
-        old image: Docker reserves 125 and above for that, as the batteries
-        below already read it. #>
-    param(
-        [Parameter(Mandatory = $true)][string] $Image,
-        [string] $Engine = 'docker'
-    )
-
-    $help = Invoke-Docker -Engine $Engine -DockerArgs @('run', '--rm', $Image, 'doctor', '--help')
-    if ($help.ExitCode -ge 125) {
-        return @{ Capable  = $false
-                  Reason   = 'EngineFailed'
-                  ExitCode = $help.ExitCode
-                  Output   = $help.Output }
+    if ($ExitCode -eq 0) { return }
+    Write-Host ''
+    if ($ExitCode -ge 125) {
+        Write-Bad "Docker could not start the container (exit $ExitCode)."
+        Write-Note 'Nothing was tested. The message Docker printed above is the one'
+        Write-Note 'to read.'
+        return
     }
-    if ($help.ExitCode -eq 0 -and $help.Output -match 'doctor') {
-        return @{ Capable = $true }
+    switch ($ExitCode) {
+        78 {
+            Write-Info 'The troubleshooting page explains each of these in more detail:'
+            Write-Info 'https://github.com/georgetown-mdi/alcove/blob/main/support/windows-network-filedrop/troubleshooting.md'
+        }
+        69 {
+            Write-Info 'Follow the ACTION line above, then run this again.'
+        }
+        64 {
+            Write-Bad 'The checks refused a value they were given, so nothing was tested.'
+            Write-Note 'The message above names it: SMB_SERVER is the server, SMB_SHARE'
+            Write-Note 'the share, SMB_PATH the folder within it, and SMB_USER the'
+            Write-Note 'username. Correct it and run this again.'
+        }
+        default {
+            Write-Bad "The checks ended with exit $ExitCode, which this script does not know."
+            Write-Note 'Nothing was established about your file drop. Look for a newer'
+            Write-Note 'copy of this script wherever you downloaded it.'
+        }
     }
-    return @{ Capable  = $false
-              Reason   = 'NoDoctor'
-              ExitCode = $help.ExitCode
-              Output   = $help.Output }
-}
-
-function Invoke-ImageFetch {
-    <#  Fetch the image, saying first how long it is going to take.
-
-        `pull --quiet` prints nothing until it is finished and the image is a
-        few hundred megabytes, so a fetch that announced nothing reads as a
-        hang. Both callers say the same thing about the size and the wait,
-        which is why that notice lives here rather than beside either of them;
-        -Refresh only changes the line above it, because a fetch that follows
-        a failed check is a different thing to be told than a first run.
-
-        Returns the pull's Invoke-Docker result. #>
-    param(
-        [Parameter(Mandatory = $true)][string] $Image,
-        [switch] $Refresh,
-        [string] $Engine = 'docker'
-    )
-
-    if ($Refresh) {
-        Write-Host 'Fetching a newer copy from the registry before giving up.'
-    } else {
-        Write-Host 'Fetching the Alcove image (first run only).'
-    }
-    Write-Host 'It is a few hundred megabytes -- the same image the exchange itself'
-    Write-Host 'runs -- so this can take several minutes with nothing on screen.'
-
-    return Invoke-Docker -Engine $Engine -DockerArgs @('pull', '--quiet', $Image)
 }
 
 # ==========================================================================
@@ -364,6 +322,12 @@ function Read-ShareCredential {
         if (-not $Domain) { $Domain = $Matches[1] }
         $Username = $Matches[2]
         Write-Note "Using domain '$Domain' and username '$Username'."
+    }
+    if (-not $Username.Trim()) {
+        Write-Bad 'No username entered.'
+        Write-Note 'The container signs in to the share with a username of its own.'
+        Write-Note 'Run this again and enter one.'
+        return
     }
 
     $securePass = Read-Host 'Password' -AsSecureString
@@ -428,8 +392,7 @@ function New-ShareVolume {
         [Parameter(Mandatory = $true)][string] $Username,
         [string] $Password = '',
         [string] $Domain = '',
-        [string] $MountVersion = '',
-        [string] $Engine = 'docker'
+        [string] $MountVersion = ''
     )
 
     $device = "//$Server/$Share"
@@ -450,7 +413,7 @@ function New-ShareVolume {
     # -- a template Docker will not parse, a daemon that answers oddly -- also
     # exits non-zero, and reading that as "no such volume" walks straight past
     # the guard and into the removal further down.
-    $listed = Invoke-Docker -Engine $Engine -DockerArgs @('volume', 'ls', '--quiet')
+    $listed = Invoke-Docker -DockerArgs @('volume', 'ls', '--quiet')
     $volumeExists = ($listed.ExitCode -eq 0 -and
         (@($listed.Output -split '\r?\n' | Where-Object { $_.Trim() -eq $VolumeName }).Count -gt 0))
 
@@ -459,7 +422,7 @@ function New-ShareVolume {
         # building a native command line, so "{{index .Options """type"""}}"
         # reaches Docker as {{index .Options type}} and fails to parse -- for
         # every volume, which disables the check entirely.
-        $existing = Invoke-Docker -Engine $Engine -DockerArgs @('volume', 'inspect', '--format',
+        $existing = Invoke-Docker -DockerArgs @('volume', 'inspect', '--format',
                                                                 '{{.Driver}} {{.Options.type}}', $VolumeName)
         if ($existing.ExitCode -ne 0 -or $existing.Output.Trim() -ne 'local cifs') {
             Write-Bad "A Docker volume called '$VolumeName' already exists and was not"
@@ -468,28 +431,28 @@ function New-ShareVolume {
             Write-Note 'something else on this PC.'
             Write-Info ''
             Write-Info 'Run this script again with -VolumeName <another-name>, or remove'
-            Write-Info "that volume yourself if you are certain: $Engine volume rm $VolumeName"
+            Write-Info "that volume yourself if you are certain: docker volume rm $VolumeName"
             return $false
         }
         # docker volume create on an existing name exits 0 and silently keeps
         # the options the volume already has, so a run after a password change
         # would quietly go on using the old one. Removing it first is what
         # makes a re-run mean anything.
-        $removed = Invoke-Docker -Engine $Engine -DockerArgs @('volume', 'rm', $VolumeName)
+        $removed = Invoke-Docker -DockerArgs @('volume', 'rm', $VolumeName)
         if ($removed.ExitCode -ne 0) {
             Write-Bad "Could not replace the existing '$VolumeName' volume."
             Write-Host ''
             Write-Host (Hide-Secret -Text $removed.Output -Secret $Password)
             Write-Host ''
             Write-Note 'A container is probably still using it. Stop any exchange that is'
-            Write-Note "running, then try again: $Engine ps"
+            Write-Note "running, then try again: docker ps"
             return $false
         }
         Write-Info "Replaced the existing '$VolumeName' volume."
     }
 
     Write-Host "Creating volume '$VolumeName' for $device"
-    $create = Invoke-Docker -Engine $Engine -DockerArgs @(
+    $create = Invoke-Docker -DockerArgs @(
         'volume', 'create', '--driver', 'local',
         '--opt', 'type=cifs', '--opt', "device=$device", '--opt', "o=$opts",
         $VolumeName)
@@ -638,7 +601,7 @@ function Resolve-DropPath {
             if (Test-Elevated) {
                 return @{ Kind = 'Unknown'
                           RetypingWillNotHelp = $true
-                          Reason = "This window is running as Administrator, and an elevated session cannot see the drive letters you mapped as yourself -- ${letter}: is invisible here even if File Explorer shows it. Close this window, open PowerShell normally, and run the script again. If you were told to elevate in order to resolve a DFS path, you no longer need to: see the troubleshooting page, 'Reading the real path from Windows'" }
+                          Reason = "This window is running as Administrator, and an elevated session cannot see the drive letters you mapped as yourself -- ${letter}: is invisible here even if File Explorer shows it. Close this window, open PowerShell normally, and run the script again" }
             }
             if ($kind -eq 'Network') {
                 return @{ Kind = 'Unknown'
@@ -804,7 +767,12 @@ Write-Good "Docker engine $(($dockerInfo.Output -split '\s+')[1]) is running."
 # diagnosis printed above it.
 $imagePresent = Invoke-Docker -DockerArgs @('image', 'inspect', 'ghcr.io/georgetown-mdi/alcove:latest')
 if ($imagePresent.ExitCode -ne 0) {
-    $pull = Invoke-ImageFetch -Image 'ghcr.io/georgetown-mdi/alcove:latest'
+    # `pull --quiet` prints nothing until it finishes, so say first how long it
+    # takes: an unannounced wait of minutes looks like a hang.
+    Write-Host 'Fetching the Alcove image (first run only).'
+    Write-Host 'It is a few hundred megabytes -- the same image the exchange itself'
+    Write-Host 'runs -- so this can take several minutes with nothing on screen.'
+    $pull = Invoke-Docker -DockerArgs @('pull', '--quiet', 'ghcr.io/georgetown-mdi/alcove:latest')
     if ($pull.ExitCode -ne 0) {
         Write-Bad 'Could not fetch the Alcove image the checks run in.'
         Write-Host ''
@@ -930,106 +898,6 @@ if (-not $explicitTarget -and -not $SkipConfirm) {
     }
 }
 
-# Asked here rather than beside either battery: two things fix the place.
-# Above it, part 1 has already let every answer that runs no battery leave -- a
-# folder that is local, a path that could not be read, values the operator did
-# not confirm -- and none of those needs the image to carry anything, so asking
-# earlier would make a local folder wait on a container it never runs. Below it,
-# part 2 asks for the share password, and an image that cannot produce a verdict
-# has to be turned away before the operator types one.
-$doctorImage = Test-DoctorCapableImage -Image 'ghcr.io/georgetown-mdi/alcove:latest'
-
-# One pull, on the failure path and nowhere else. The guard above fetches an
-# image that is absent and never a newer one, so a copy from before the checks
-# existed survives every re-run -- and the operator it turns away can do nothing
-# about that but run the pull by hand. Asking the registry here is that pull,
-# with the same question put again afterwards, so the case self-heals wherever
-# the registry has the answer. An image that already carries the checks never
-# reaches this, so a working run waits for nothing.
-#
-# An EngineFailed answer is not fetched for: Docker could not start a container
-# at all, which a newer image does not change, and the pull would be one more
-# thing to fail in front of the message the operator has to read.
-$refreshFailure = ''
-if (-not $doctorImage.Capable -and $doctorImage.Reason -eq 'NoDoctor') {
-    Write-Head 'Refreshing the Alcove image'
-    Write-Warn 'The copy on this PC does not carry the checks this script runs.'
-    Write-Note 'An image is fetched only when it is missing, so a copy from'
-    Write-Note 'before the checks existed stays until something asks the'
-    Write-Note 'registry for a newer one.'
-    Write-Host ''
-    $refresh = Invoke-ImageFetch -Image 'ghcr.io/georgetown-mdi/alcove:latest' -Refresh
-    if ($refresh.ExitCode -eq 0) {
-        $doctorImage = Test-DoctorCapableImage -Image 'ghcr.io/georgetown-mdi/alcove:latest'
-    } else {
-        # What the pull said is also whether it failed at all, as the refusal
-        # below reads it, so a pull that failed saying nothing has to leave
-        # something behind: an empty answer would send the operator to the arm
-        # for a registry that answered.
-        $refreshFailure = $refresh.Output
-        if (-not $refreshFailure) {
-            $refreshFailure = "The fetch ended with exit $($refresh.ExitCode) and said nothing."
-        }
-    }
-}
-
-if (-not $doctorImage.Capable) {
-    if ($doctorImage.Reason -eq 'EngineFailed') {
-        Write-Head 'Could not run the checks'
-        Write-Bad "Docker could not start a container from the image (exit $($doctorImage.ExitCode))."
-        Write-Host ''
-        Write-Host $doctorImage.Output
-        Write-Host ''
-        Write-Note 'Nothing about your file drop has been tested. This is Docker'
-        Write-Note 'failing to start a container, not a verdict about your share,'
-        Write-Note 'so there is nothing here to fix on the server. The message'
-        Write-Note 'Docker printed is the one to read.'
-        exit 1
-    }
-    Write-Head 'The Alcove image on this PC is too old'
-    Write-Bad 'It does not carry the checks this script runs.'
-    Write-Note 'Nothing about your file drop has been tested. Nothing is wrong'
-    Write-Note 'with your share, your credentials, or this script -- the checks'
-    Write-Note 'it would have run are simply not in this copy of the image.'
-    Write-Info ''
-    if ($refreshFailure) {
-        Write-Info 'A newer copy could not be fetched either, so the one here is'
-        Write-Info 'all there is to run. Docker could not reach its registry: a'
-        Write-Info 'corporate proxy intercepting HTTPS is the usual cause.'
-        Write-Info 'The troubleshooting page covers it under "The image download'
-        Write-Info 'fails with a certificate error" and, if the registry refused the'
-        Write-Info 'request, "The image download is refused":'
-        Write-Info 'https://github.com/georgetown-mdi/alcove/blob/main/support/windows-network-filedrop/troubleshooting.md'
-        Write-Info 'What Docker answered:'
-        Write-Host ''
-        Write-Host $refreshFailure
-        Write-Info ''
-        Write-Info 'Run this again once Docker can fetch images. If it then says'
-        Write-Info 'the image is already up to date and this message comes back,'
-        Write-Info 'the published image does not carry the checks yet and there'
-        Write-Info 'is nothing to update to.'
-    } else {
-        Write-Info 'The published image was fetched just now and does not carry'
-        Write-Info 'them either, so there is nothing to update to and pulling it'
-        Write-Info 'again by hand will not change this.'
-    }
-    Write-Info ''
-    Write-Info 'Set the file drop up by hand in the meantime: see the'
-    Write-Info 'troubleshooting page, "Doing it by hand".'
-    # What the image actually said, printed after the remedy rather than instead
-    # of it: an image published before the checks existed answers this with its
-    # own usage text, which is expected and nothing to act on, but the same
-    # branch also catches a `doctor --help` that crashed in an image new enough
-    # to carry one -- and that operator has nothing else to put in a report.
-    Write-Info ''
-    Write-Info "What the image answered to 'doctor --help' (exit $($doctorImage.ExitCode)),"
-    Write-Info 'which is the text to include if you report this:'
-    Write-Host ''
-    Write-Host $doctorImage.Output
-    exit 1
-}
-Write-Good 'The Alcove image carries the checks.'
-
 # ==========================================================================
 # Part 2: credentials
 # ==========================================================================
@@ -1038,9 +906,6 @@ Write-Head 'Part 2: credentials for the file server'
 $credential = Read-ShareCredential -Username $Username -Domain $Domain `
     -DomainSupplied:($PSBoundParameters.ContainsKey('Domain'))
 if (-not $credential) { exit 1 }
-$Username  = $credential.Username
-$Domain    = $credential.Domain
-$plainPass = $credential.Password
 
 # ==========================================================================
 # Part 3: test the share from inside a container
@@ -1053,98 +918,49 @@ try {
     $env:SMB_SERVER  = $Server
     $env:SMB_SHARE   = $Share
     $env:SMB_PATH    = $SubPath
-    $env:SMB_USER    = $Username
-    $env:SMB_DOMAIN  = $Domain
     $env:SMB_DIALECT = $Dialect
     $env:SMB_MARKER  = if ($SkipVolumeTest) { '' } else { $MarkerName }
     $env:SMB_TOKEN   = $token
-    $env:SMB_PASS    = $plainPass
 
-    Write-Host 'Running the checks against the server. They take a moment, and'
-    Write-Host 'everything they found is printed together when they finish.'
-
-    # The image's own checks. The environment set above is the whole of their
-    # input -- the password is passed by NAME, so it never becomes a command-line
-    # argument any process listing on this PC could read -- and their exit code
-    # is the verdict: 0 nothing blocks an exchange, 78 something to change first,
-    # 69 the checks could not be run at all. The image entrypoint is left alone,
-    # because "doctor probe" is what it hands to Alcove.
+    # The image's own checks, `alcove doctor probe`. The environment is the
+    # whole of their input -- the password is passed by NAME, so it never
+    # becomes a command-line argument any process listing on this PC could
+    # read -- and their exit code is the verdict.
     #
     # Collected rather than streamed: the checks write their lines to standard
     # error, and re-emitting them with Write-Host is what puts them in the file
     # the troubleshooting page's logging recipe writes.
-    $probe = Invoke-Docker -DockerArgs @(
-        'run', '--rm',
-        '--env', 'SMB_SERVER', '--env', 'SMB_SHARE', '--env', 'SMB_PATH',
-        '--env', 'SMB_USER', '--env', 'SMB_DOMAIN', '--env', 'SMB_PASS',
-        '--env', 'SMB_DIALECT', '--env', 'SMB_MARKER', '--env', 'SMB_TOKEN',
-        'ghcr.io/georgetown-mdi/alcove:latest', 'doctor', 'probe')
-    $probeExit = $probe.ExitCode
-    Write-Host ''
-    Write-Host (Hide-Secret -Text $probe.Output -Secret $plainPass)
+    while ($true) {
+        $env:SMB_USER   = $credential.Username
+        $env:SMB_DOMAIN = $credential.Domain
+        $env:SMB_PASS   = $credential.Password
 
-    if ($probeExit -ge 125) {
-        Write-Head 'Could not run the checks'
-        Write-Bad "Docker could not start the container (exit $probeExit)."
-        Write-Note 'Nothing was tested. This is Docker itself failing, not a verdict'
-        Write-Note 'about your file drop -- so there is no ACTION above to follow.'
-        Write-Note 'The message Docker printed is the one to read.'
-        exit $probeExit
-    }
-    if ($probeExit -eq 64) {
-        Write-Head 'Could not run the checks'
-        Write-Bad 'The checks refused the values they were given. Nothing was tested.'
-        if ($explicitTarget) {
-            # -Server and -Share are forwarded as typed, so an operator's own
-            # values reach this refusal; the resolved path never does.
-            Write-Note "Check what you passed: a path separator in -Server '$Server' or"
-            Write-Note "-Share '$Share' (a subfolder belongs in -SubPath instead), a"
-            Write-Note "leading '-', or a stray control character is refused before"
-            Write-Note 'anything is tested.'
-            Write-Info ''
-            Write-Info 'If those look right, this is a defect in Setup-AlcoveFileDrop.ps1;'
-            Write-Info 'please report it, with the message above and the command you ran.'
-        } else {
-            Write-Note 'This is a defect in Setup-AlcoveFileDrop.ps1 rather than a'
-            Write-Note 'problem with your share or your credentials.'
-            Write-Info ''
-            Write-Info 'Please report it, with the message above and the command you ran.'
+        Write-Host 'Running the checks against the server. They take a moment, and'
+        Write-Host 'everything they found is printed together when they finish.'
+        $probe = Invoke-Docker -DockerArgs @(
+            'run', '--rm',
+            '--env', 'SMB_SERVER', '--env', 'SMB_SHARE', '--env', 'SMB_PATH',
+            '--env', 'SMB_USER', '--env', 'SMB_DOMAIN', '--env', 'SMB_PASS',
+            '--env', 'SMB_DIALECT', '--env', 'SMB_MARKER', '--env', 'SMB_TOKEN',
+            'ghcr.io/georgetown-mdi/alcove:latest', 'doctor', 'probe')
+        Write-Host ''
+        Write-Host (Hide-Secret -Text $probe.Output -Secret $credential.Password)
+        Write-DoctorOutcome -ExitCode $probe.ExitCode
+        if ($probe.ExitCode -eq 0) { break }
+        if ($probe.ExitCode -ne 78) { exit $probe.ExitCode }
+
+        # A wrong password tried again is one more failed sign-in against an
+        # account a handful of those lock out, and most findings are not about
+        # the sign-in at all, so no is the default.
+        Write-Host ''
+        if (-not (Read-YesNoAnswer -Prompt 'Enter the username and password again and run the checks again? [y/N]')) {
+            exit 78
         }
-        exit $probeExit
+        Write-Head 'Part 2: credentials for the file server'
+        $credential = Read-ShareCredential
+        if (-not $credential) { exit 1 }
+        Write-Head 'Part 3: testing the share from inside a container'
     }
-    if ($probeExit -eq 69) {
-        Write-Head 'Could not run the checks'
-        Write-Bad 'The checks could not run, so nothing was established either way.'
-        Write-Note 'There is no ACTION above to follow: the check that would have'
-        Write-Note 'produced one never ran.'
-        exit $probeExit
-    }
-    if ($probeExit -eq 78) {
-        Write-Head 'Not ready yet'
-        Write-Bad 'The file drop is not usable from Docker. Follow the ACTION above.'
-        Write-Info ''
-        Write-Info 'The troubleshooting page explains every one of these in more detail:'
-        Write-Info 'https://github.com/georgetown-mdi/alcove/blob/main/support/windows-network-filedrop/troubleshooting.md'
-        exit $probeExit
-    }
-    # Anything else is not a verdict at all: the codes above are the whole set
-    # the checks produce. An image too old to carry them is not among the
-    # causes -- the capability check above part 2 turned that one away before
-    # this ran -- so a code outside the set points at an image newer than this
-    # script, which is what part 4's arm says of the same case.
-    if ($probeExit -ne 0) {
-        Write-Head 'Could not run the checks'
-        Write-Bad "The checks answered with an exit code this script does not know ($probeExit)."
-        Write-Note 'Nothing has been established about your file drop, and nothing'
-        Write-Note 'is wrong with your share: this script does not recognise what'
-        Write-Note 'the checks answered. The likeliest cause is an image newer'
-        Write-Note 'than this script.'
-        Write-Info ''
-        Write-Info 'Look for a newer copy of this script wherever you downloaded'
-        Write-Info 'it.'
-        exit $probeExit
-    }
-    Write-Good 'The share is reachable, writable, and supports rename.'
 
     if ($SkipVolumeTest) {
         Write-Note 'Skipping volume creation as requested.'
@@ -1167,40 +983,31 @@ try {
 
     $volumeMade = New-ShareVolume -VolumeName $VolumeName `
         -Server $Server -Share $Share -SubPath $SubPath `
-        -Username $Username -Password $plainPass -Domain $Domain `
+        -Username $credential.Username -Password $credential.Password -Domain $credential.Domain `
         -MountVersion (Get-DialectMountVersion -Dialect $Dialect)
     if (-not $volumeMade) { exit 8 }
 
     # The kernel-side half of the checks, run over the real mount rather than
     # over smbclient, which refuses a rename onto an existing file whatever the
-    # server would have allowed. A share can pass every check in part 3 and
-    # still fail here. SMB_MARKER and SMB_TOKEN are still set from part 3, which
-    # is what lets this confirm that the volume and those checks reached the
-    # same directory.
+    # server would have allowed. SMB_MARKER and SMB_TOKEN are still set from
+    # part 3, which is what lets this confirm that the volume and those checks
+    # reached the same directory.
     Write-Host 'Mounting it and running the checks over it...'
     $test = Invoke-Docker -DockerArgs @(
         'run', '--rm', '--env', 'SMB_MARKER', '--env', 'SMB_TOKEN',
         '-v', "${VolumeName}:/rz",
         'ghcr.io/georgetown-mdi/alcove:latest', 'doctor', 'mount', '/rz')
-    $testOut = Hide-Secret -Text $test.Output -Secret $plainPass
+    $testOut = Hide-Secret -Text $test.Output -Secret $credential.Password
     Write-Host ''
     Write-Host $testOut
 
-    # "Did not mount" and "mounted, then refused the write" are different
-    # answers and must not share one message: a mount that did reach the folder
-    # sent round the -Dialect loop costs the operator a lap for what is a
-    # permissions or quota problem on the share. Docker reserves 125 and above
-    # for its own failure to start a container, which is where a refused mount
-    # lands, and every verdict the checks themselves reach is below it.
+    # Docker reserves 125 and above for its own failure to start a container,
+    # which is where a refused mount lands; the message classified is the
+    # daemon's, lowercase as Go renders the mount(2) errno, so that the batch
+    # script's findstr can match the same literals.
     if ($test.ExitCode -ge 125) {
-        Write-Bad 'The volume could not be mounted.'
         Write-Host ''
-        # The message being classified is the one the Docker daemon prints, which
-        # is the mount(2) errno rendered from Go's own table -- lowercase
-        # throughout, where mount.cifs and glibc capitalise the same errors. The
-        # arms are written as the daemon prints them so that the batch script,
-        # whose findstr matches literals rather than a case-insensitive regex, can
-        # carry the same set.
+        Write-Bad 'The volume could not be mounted.'
         if ($testOut -match 'invalid argument') {
             Write-Note 'The mount options were malformed. An equals sign or a special'
             Write-Note 'character in the password or the domain is the usual cause.'
@@ -1224,54 +1031,23 @@ try {
             Write-Note 'The server is refusing password authentication. See the'
             Write-Note 'troubleshooting page, "The share never asks for a password".'
         }
+        else {
+            Write-Note 'The message Docker printed above is the one to read.'
+        }
         Invoke-Docker -DockerArgs @('volume', 'rm', $VolumeName) | Out-Null
         exit 9
     }
-    if ($test.ExitCode -eq 69) {
-        Write-Bad 'The checks could not run over the volume.'
-        Write-Note 'Nothing was established about the folder either way, so there is'
-        Write-Note 'no ACTION above to follow.'
-        Invoke-Docker -DockerArgs @('volume', 'rm', $VolumeName) | Out-Null
-        exit 9
-    }
-    if ($test.ExitCode -eq 64) {
-        # Self-blame is the whole answer here, in a way it is not in part 3: no
-        # operator value reaches this battery -- the marker, token and mount
-        # directory are all generated here -- and the other producer of 64, an
-        # image with no doctor command at all, was turned away above part 2.
-        Write-Bad 'The checks refused the values this script gave them.'
-        Write-Note 'Nothing was established about the folder. This is a defect in'
-        Write-Note 'Setup-AlcoveFileDrop.ps1; please report it, with the message'
-        Write-Note 'above and the command you ran.'
-        Invoke-Docker -DockerArgs @('volume', 'rm', $VolumeName) | Out-Null
-        exit 9
-    }
-    if ($test.ExitCode -eq 78) {
-        Write-Bad 'The volume mounted, but the folder is not usable for an exchange.'
-        Write-Note 'The share was reached, so this is not a mount or a dialect'
-        Write-Note 'problem and -Dialect will not change it. Follow the ACTION above.'
-        Write-Info ''
-        Write-Info 'The troubleshooting page explains every one of these in more detail:'
-        Write-Info 'https://github.com/georgetown-mdi/alcove/blob/main/support/windows-network-filedrop/troubleshooting.md'
-        Invoke-Docker -DockerArgs @('volume', 'rm', $VolumeName) | Out-Null
-        exit 9
-    }
+    Write-DoctorOutcome -ExitCode $test.ExitCode
     if ($test.ExitCode -ne 0) {
-        Write-Bad "The checks answered with an exit code this script does not know ($($test.ExitCode))."
-        Write-Note 'Nothing has been established about the folder either way. The'
-        Write-Note 'likeliest cause is an image newer than this script -- look for a'
-        Write-Note 'newer copy of this script wherever you downloaded it.'
         Invoke-Docker -DockerArgs @('volume', 'rm', $VolumeName) | Out-Null
         exit 9
     }
-    Write-Good 'The volume mounts and Alcove can write to it.'
 }
 finally {
     foreach ($v in 'SMB_SERVER', 'SMB_SHARE', 'SMB_PATH', 'SMB_USER', 'SMB_DOMAIN',
                    'SMB_PASS', 'SMB_DIALECT', 'SMB_MARKER', 'SMB_TOKEN') {
         Remove-Item "env:$v" -ErrorAction SilentlyContinue
     }
-    $plainPass = $null
     $credential = $null
 }
 

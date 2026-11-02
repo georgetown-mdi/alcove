@@ -5,7 +5,6 @@ import {
   deriveCliCapabilities,
   deriveHelperInvocations,
   deriveImageDependencies,
-  deriveVerdictVersion,
   dispatchedWords,
   logicalLines,
   repositoryRoot,
@@ -42,24 +41,23 @@ describe("what the shipped scripts are read to ask of the image", () => {
     for (const site of probe.sites) expect(site).toMatch(/^[\w.-]+:\d+$/);
   });
 
-  it("derives all three helper scripts the .cmd path pipes into the image", () => {
-    expect(derived.helpers.map((entry) => entry.script)).toEqual([
-      "cmd_alcove-credcheck.sh",
-      "cmd_alcove-probe.sh",
-      "cmd_alcove-volcheck.sh",
+  it("derives the one helper script the .cmd path pipes into the image", () => {
+    expect(derived.helpers).toEqual([
+      expect.objectContaining({
+        script: "cmd_alcove-credcheck.sh",
+        env: ["SMB_PASS"],
+        mounts: [],
+      }),
     ]);
   });
 
-  it("derives the environment and the mount each helper call site gives it", () => {
-    const volcheck = derived.helpers.find(
-      (entry) => entry.script === "cmd_alcove-volcheck.sh",
-    );
-    expect(volcheck.env).toEqual(["MARKER", "TOKEN"]);
-    expect(volcheck.mounts).toEqual(["/rz"]);
-  });
-
-  it("derives one verdict version both launchers agree on", () => {
-    expect(derived.verdictVersion).toBe(1);
+  it("reads the doctor's own batteries off the .cmd path, not a copy of them", () => {
+    const sites = derived.cli
+      .filter((entry) => entry.argv[0] === "doctor")
+      .flatMap((entry) => entry.sites);
+    expect(
+      sites.filter((site) => site.startsWith("cmd_Setup-AlcoveFileDrop.cmd:")),
+    ).toHaveLength(2);
   });
 });
 
@@ -225,24 +223,6 @@ describe("the tripwires that keep an empty derivation from passing", () => {
     expect(() => deriveCliCapabilities({ "a.txt": "" }, COMMANDS)).toThrow(
       /no reader is defined/,
     );
-  });
-
-  it("refuses launchers that read different verdict versions", () => {
-    expect(() =>
-      deriveVerdictVersion({
-        "Start-Alcove.ps1": "$AlcoveVerdictVersion = 2",
-        "start-alcove.sh": "ALCOVE_VERDICT_VERSION='1'",
-      }),
-    ).toThrow(/disagree/);
-  });
-
-  it("refuses a launcher whose version declaration it cannot find", () => {
-    expect(() =>
-      deriveVerdictVersion({
-        "Start-Alcove.ps1": "",
-        "start-alcove.sh": "ALCOVE_VERDICT_VERSION='1'",
-      }),
-    ).toThrow(/no verdict version declaration was found/);
   });
 });
 

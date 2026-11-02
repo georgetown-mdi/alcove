@@ -77,24 +77,10 @@ $script:AlcoveImageRepository = $AlcoveDockerHubRepository
 $AlcoveReleasesUrl = 'https://github.com/georgetown-mdi/alcove/releases'
 $AlcoveTroubleshootingUrl = 'https://github.com/georgetown-mdi/alcove/blob/main/support/windows-network-filedrop/troubleshooting.md'
 
-# The verdict schema this launcher was written against. `alcove doctor --json`
-# carries its own; anything else is refused rather than parsed on, because a
-# later version may have re-meaned a field this one reads.
-$AlcoveVerdictVersion = 1
-
-# The overall verdicts and check statuses this launcher knows. Both vocabularies
-# are closed within a schema version, so a value outside one of these sets means
-# the document is not the version it claims and is refused rather than mapped
-# onto the nearest thing.
-$AlcoveOverallValues = @('ok', 'fix_and_retry', 'fatal')
-$AlcoveStatusValues = @('ok', 'warn', 'fail', 'skipped')
-
 # The marker the probe leaves for the mount check to find. Fixed rather than
 # unique, so a run always clears any copy an earlier one left; the per-run token
 # written into it is what tells the two apart.
 $AlcoveMarkerName = 'alcove-setup-check.tmp'
-
-$script:AlcoveEngine = ''
 
 # The share credential this run has already been given, and the server it was
 # given for. A second share on that server offers this answer rather than
@@ -161,13 +147,61 @@ function Show-FromContainer {
     Write-Host ("        " + ($Text -replace '[\x00-\x08\x0b-\x1f\x7f]', ' '))
 }
 
+function Show-DoctorLines {
+    <#  What the doctor printed, line for line and unindented, with control
+        characters dropped for the reason Show-FromContainer gives. Split
+        before they are dropped, since a line break is one of them. #>
+    param([string] $Output)
+
+    foreach ($line in ($Output -split '\r?\n')) {
+        Write-Host ($line -replace '[\x00-\x08\x0b-\x1f\x7f]', ' ')
+    }
+}
+
+function Show-DoctorOutcome {
+    <#  What to read after the doctor's own lines, by the exit code it ended
+        with. The doctor's lines say what was found and what to do, and its
+        last line says whether the checks passed, so 0, 78 and 69 add only a
+        pointer; the other codes are ones the doctor's lines do not explain.
+
+        Carried here rather than borrowed from Setup-AlcoveFileDrop.ps1's
+        Write-DoctorOutcome, as Read-YesNo is: a folder on this PC is checked
+        on runs where that script cannot be loaded at all. #>
+    param([Parameter(Mandatory = $true)][int] $ExitCode)
+
+    if ($ExitCode -eq 0) { return }
+    Write-Host ''
+    if ($ExitCode -ge 125) {
+        Show-Fail "Docker could not start the container (exit $ExitCode)."
+        Show-Note 'Nothing about your folder was tested. The message Docker'
+        Show-Note 'printed above is the one to read. If it says Docker is not'
+        Show-Note 'running, start Docker Desktop and run this script again.'
+        return
+    }
+    switch ($ExitCode) {
+        78 { Show-Info "The troubleshooting page explains each of these: $AlcoveTroubleshootingUrl" }
+        69 { Show-Info 'Follow the ACTION line above, then run this script again.' }
+        64 {
+            Show-Fail 'The checks refused a value they were given, so nothing was tested.'
+            Show-Note 'The message above names it: SMB_SERVER is the server, SMB_SHARE'
+            Show-Note 'the share, SMB_PATH the folder within it, and SMB_USER the'
+            Show-Note 'username. Correct it and run this script again.'
+        }
+        default {
+            Show-Fail "The checks ended with exit $ExitCode, which this launcher does not know."
+            Show-Note 'Nothing was established about your folder. Use the launcher'
+            Show-Note 'published with the image it runs.'
+        }
+    }
+}
+
 # ==========================================================================
 # The image reference
 # ==========================================================================
 
 function Get-AlcoveImage {
-    <#  Fully qualified, registry included: podman requires the prefix and
-        docker accepts it, so one reference serves both. #>
+    <#  Fully qualified, registry included, so the reference names the
+        registry the image was found in. #>
     return "$script:AlcoveImageRepository@$AlcoveImageDigest"
 }
 
@@ -248,17 +282,14 @@ function Invoke-EnginePull {
         control bytes blanked since a registry wrote some of it, and returning
         it in the shape Invoke-EngineQuiet does. The stderr redirect runs with
         the preference relaxed, for the reason Invoke-EngineQuiet gives. #>
-    param(
-        [Parameter(Mandatory = $true)][string] $Reference,
-        [string] $Engine = $script:AlcoveEngine
-    )
+    param([Parameter(Mandatory = $true)][string] $Reference)
 
-    if (-not (Test-EngineCommand -Engine $Engine)) { return (New-AbsentEngineResult -Engine $Engine) }
+    if (-not (Test-DockerCommand)) { return (New-AbsentDockerResult) }
 
     $previous = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        $lines = & $Engine pull $Reference 2>&1 | ForEach-Object {
+        $lines = & docker pull $Reference 2>&1 | ForEach-Object {
             $line = "$_"
             Show-FromContainer $line
             $line
@@ -321,510 +352,123 @@ function Find-AlcoveImage {
 }
 
 # ==========================================================================
-# The container engine
+# Docker
 # ==========================================================================
 
-function Test-EngineCommand {
-    <#  Whether a name is a command this session can run. An empty name is
-        answered here rather than passed on: Get-Command refuses one while its
-        parameters are being bound, which -ErrorAction cannot soften, and the
-        engine name is empty until one has been found. #>
-    param([string] $Engine)
-
-    if ([string]::IsNullOrWhiteSpace($Engine)) { return $false }
-    return [bool](Get-Command $Engine -ErrorAction SilentlyContinue)
+function Test-DockerCommand {
+    return [bool](Get-Command docker -ErrorAction SilentlyContinue)
 }
 
-function New-AbsentEngineResult {
-    <#  The answer the two wrappers give for an engine that is not there, in the
-        shape a run of one returns. #>
-    param([string] $Engine)
-
-    $named = $Engine
-    if ([string]::IsNullOrWhiteSpace($named)) { $named = '(no engine)' }
-    return @{ Ran = $false; Output = "$named is not a command on this PC."; ExitCode = 127 }
+function New-AbsentDockerResult {
+    <#  The answer the two wrappers give when docker is not there, in the shape
+        a run of it returns. #>
+    return @{ Ran = $false; Output = 'docker is not a command on this PC.'; ExitCode = 127 }
 }
 
 function Invoke-EngineQuiet {
-    <#  Run the engine and return whether it ran at all, its combined output,
-        and its exit code.
+    <#  Run docker and return whether it ran at all, its combined output, and
+        its exit code.
 
-        The engine is never called with a bare "2>&1" outside this function,
+        Docker is never called with a bare "2>&1" outside this function,
         because Windows PowerShell 5.1 turns every stderr line of a native
         program into an ErrorRecord when its stderr is redirected -- and this
         script runs with $ErrorActionPreference = 'Stop', which makes that
         record throw. Docker writes routine, expected messages to stderr ("no
-        such volume" when removing one that was never created), so the redirect
-        has to happen with the preference relaxed.
+        such volume" when removing one that was never created), and the
+        doctor writes all its lines there, so the redirect has to happen with
+        the preference relaxed. Each such line is read off its record's
+        message, because the record's ToString() answers an empty line with
+        the exception's type name, and the doctor's lines include blank ones.
 
-        A name that is not a command on this PC is answered here rather than
-        called: calling one raises CommandNotFoundException, which the relaxed
-        preference does not soften and nothing here catches, so a run would end
-        on a raw .NET error instead of the message the flow means to print. Ran
-        is what tells that apart from an engine that ran and exited: 127 is the
-        shell convention for a command that is not there, and a container that
-        exits 127 reports the same code.
+        Docker missing from this PC is answered here rather than called:
+        calling it raises CommandNotFoundException, which the relaxed
+        preference does not soften and nothing here catches. Ran is what tells
+        that apart from a docker that ran and exited: 127 is the shell
+        convention for a command that is not there, and a container that exits
+        127 reports the same code.
 
         The arguments are one explicit array rather than loose trailing words: a
         function that collects remaining arguments is an advanced function, so
-        PowerShell binds the engine's own short flags to the common parameters
+        PowerShell binds docker's own short flags to the common parameters
         first and "-v" becomes -Verbose instead of reaching docker. #>
-    param(
-        [Parameter(Mandatory = $true)][string[]] $EngineArgs,
-        [string] $Engine = $script:AlcoveEngine
-    )
+    param([Parameter(Mandatory = $true)][string[]] $EngineArgs)
 
-    if (-not (Test-EngineCommand -Engine $Engine)) { return (New-AbsentEngineResult -Engine $Engine) }
+    if (-not (Test-DockerCommand)) { return (New-AbsentDockerResult) }
 
     $previous = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        $lines = & $Engine @EngineArgs 2>&1 | ForEach-Object { "$_" }
+        $lines = & docker @EngineArgs 2>&1 | ForEach-Object {
+            if ($_ -is [System.Management.Automation.ErrorRecord]) { [string] $_.Exception.Message }
+            else { "$_" }
+        }
         return @{ Ran = $true; Output = ($lines -join [Environment]::NewLine); ExitCode = $LASTEXITCODE }
     } finally { $ErrorActionPreference = $previous }
 }
 
-function Invoke-EngineCapture {
-    <#  Run the engine, capture its standard output, and let its standard error
-        reach the console. The doctor's --json verdict is the whole of its
-        standard output and its log lines are the whole of its standard error,
-        so merging the two would put log text into the document being parsed.
-
-        A name that is not a command on this PC is answered without calling it,
-        for the reason Invoke-EngineQuiet gives. #>
-    param(
-        [Parameter(Mandatory = $true)][string[]] $EngineArgs,
-        [string] $Engine = $script:AlcoveEngine
-    )
-
-    if (-not (Test-EngineCommand -Engine $Engine)) { return (New-AbsentEngineResult -Engine $Engine) }
-
-    $previous = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    try {
-        $lines = & $Engine @EngineArgs
-        return @{ Ran = $true; Output = (($lines | ForEach-Object { "$_" }) -join "`n"); ExitCode = $LASTEXITCODE }
-    } finally { $ErrorActionPreference = $previous }
-}
-
-function Find-ContainerEngine {
-    <#  docker first, podman second. An engine counts only when it answers: a
-        name on PATH that cannot reach a daemon is the ordinary "Docker Desktop
-        is not started yet" case, and must not be chosen over one that works.
-        The question is put as a bare "version", which both engines answer,
-        rather than through a format template, whose fields differ between them.
-        Returns the engine's name, or an empty string. #>
-    param([string[]] $Candidates = @('docker', 'podman'))
-
-    foreach ($candidate in $Candidates) {
-        if (-not (Test-EngineAnswering -Engine $candidate)) { continue }
-        return $candidate
-    }
-    return ''
-}
-
-function Test-EngineAnswering {
-    <#  Whether the engine answers a bare "version", which needs its daemon:
-        a name on PATH whose daemon is stopped answers no. #>
-    param([string] $Engine = $script:AlcoveEngine)
-
-    return ((Invoke-EngineQuiet -Engine $Engine -EngineArgs @('version')).ExitCode -eq 0)
-}
-
-function Show-EngineStopped {
-    <#  What to say when the engine stopped answering during a run of the
-        checks: whatever they printed is not about the folder, or about this
-        launcher and the image. #>
-    param([string] $Engine = $script:AlcoveEngine)
-
-    Show-Fail "The container engine ($Engine) stopped answering, so the checks did not finish."
-    if ($Engine -eq 'docker') {
-        Show-Note 'Start Docker Desktop again and wait for the whale icon to stop'
-        Show-Note 'animating, then run this script again.'
-    } else {
-        Show-Note "Start $Engine again, then run this script again."
-    }
-}
-
 function Test-WindowsContainerMode {
     <#  Whether Docker Desktop is serving Windows containers, in which the engine
-        answers normally and then every Linux container fails to start. Asked of
-        docker alone: {{.Server.Os}} is docker's own template field, confirmed
-        against a linux engine, and podman is not modelled here. #>
-    param([string] $Engine)
+        answers normally and then every Linux container fails to start. #>
 
-    if ($Engine -ne 'docker') { return $false }
-    $probe = Invoke-EngineQuiet -Engine $Engine -EngineArgs @('version', '--format', '{{.Server.Os}}')
+    $probe = Invoke-EngineQuiet -EngineArgs @('version', '--format', '{{.Server.Os}}')
     if ($probe.ExitCode -ne 0) { return $false }
     return ($probe.Output.Trim() -eq 'windows')
 }
 
 # ==========================================================================
-# The verdict document
+# The doctor
 # ==========================================================================
 
-function Test-JsonMember {
-    <#  Whether a parsed JSON object carries a member at all -- presence, not a
-        null test. #>
-    param($Object, [string] $Name)
-
-    if ($null -eq $Object) { return $false }
-    if ($null -eq $Object.PSObject) { return $false }
-    return (@($Object.PSObject.Properties.Name) -contains $Name)
-}
-
-function Get-JsonText {
-    <#  A member's text when the object carries one and it is not null, and an
-        empty string otherwise. #>
-    param($Object, [string] $Name)
-
-    if (-not (Test-JsonMember -Object $Object -Name $Name)) { return '' }
-    $value = $Object.$Name
-    if ($null -eq $value) { return '' }
-    return [string] $value
-}
-
-function Read-DoctorVerdict {
-    <#  Read one line of `alcove doctor --json` output, per
-        docs/spec/CLI_DOCTOR.md. Returns a hashtable:
-
-          Ok       whether the document is a verdict this launcher understands
-          Reason   why not, when it is not
-          Overall  ok | fix_and_retry | fatal
-          Checks   one hashtable per check: Id, Status, Meaning, Action
-
-        The version is read before anything else and an unknown one is refused
-        rather than parsed on. Both vocabularies are closed within a version, so
-        a status or an overall outside them is refused too. An optional field is
-        carried only when the document actually has it and it is not null: the
-        verdict omits what it has nothing to say about, so a null is a document
-        this does not understand rather than a value. #>
-    param([string] $Json)
-
-    if ([string]::IsNullOrWhiteSpace($Json)) {
-        return @{ Ok = $false; Reason = 'the checks printed no verdict' }
-    }
-
-    $document = $null
-    try { $document = $Json | ConvertFrom-Json } catch {
-        return @{ Ok = $false; Reason = 'the verdict is not readable as JSON' }
-    }
-    if ($null -eq $document) {
-        return @{ Ok = $false; Reason = 'the verdict is empty' }
-    }
-
-    if (-not (Test-JsonMember -Object $document -Name 'version')) {
-        return @{ Ok = $false; Reason = 'the verdict carries no version' }
-    }
-    $version = $document.version
-    if ($version -ne $AlcoveVerdictVersion) {
-        return @{ Ok = $false
-                  Reason = "the verdict is version $version and this launcher reads version $AlcoveVerdictVersion" }
-    }
-
-    if (-not (Test-JsonMember -Object $document -Name 'overall')) {
-        return @{ Ok = $false; Reason = 'the verdict carries no overall value' }
-    }
-    $overall = [string] $document.overall
-    if ($AlcoveOverallValues -notcontains $overall) {
-        return @{ Ok = $false; Reason = "the verdict's overall value '$overall' is not one this launcher knows" }
-    }
-
-    $checks = @()
-    if (Test-JsonMember -Object $document -Name 'checks') {
-        foreach ($entry in @($document.checks)) {
-            if ($null -eq $entry) { continue }
-            if (-not (Test-JsonMember -Object $entry -Name 'id')) {
-                return @{ Ok = $false; Reason = 'a check in the verdict carries no id' }
-            }
-            if (-not (Test-JsonMember -Object $entry -Name 'status')) {
-                return @{ Ok = $false; Reason = 'a check in the verdict carries no status' }
-            }
-            $status = [string] $entry.status
-            if ($AlcoveStatusValues -notcontains $status) {
-                return @{ Ok = $false; Reason = "the check status '$status' is not one this launcher knows" }
-            }
-            $checks += @{
-                Id      = [string] $entry.id
-                Status  = $status
-                Meaning = Get-JsonText -Object $entry -Name 'meaning'
-                Action  = Get-JsonText -Object $entry -Name 'action'
-            }
-        }
-    }
-
-    return @{ Ok = $true; Reason = ''; Overall = $overall; Checks = $checks }
-}
-
-function Select-DoctorChecks {
-    <#  The checks carrying one of the named statuses, in verdict order. Checks
-        are found by status and id; nothing here keys on an entry's position,
-        which the verdict does not fix. #>
-    param($Verdict, [string[]] $Status)
-
-    $selected = @()
-    foreach ($check in @($Verdict.Checks)) {
-        if ($Status -contains $check.Status) { $selected += $check }
-    }
-    # Returned through the comma operator so an empty result stays an empty
-    # array. Bare, PowerShell unrolls it to nothing, and "foreach ($x in $null)"
-    # then runs its body once with a null -- which would print a check that is
-    # not there.
-    return , $selected
-}
-
-function Show-DoctorCheck {
-    <#  One check, as the operator reads it, with MEANING and ACTION as the
-        container wrote them. The status alone decides the label: severity is
-        never inferred from which optional fields a check happens to carry. #>
-    param($Check)
-
-    switch ($Check.Status) {
-        'fail' { Show-Fail $Check.Id }
-        'warn' { Show-Alert $Check.Id }
-        'skipped' { Show-Info "SKIP  $($Check.Id)" }
-        default { Show-Ok $Check.Id }
-    }
-    if ($Check.Meaning) { Show-FromContainer "MEANING: $($Check.Meaning)" }
-    if ($Check.Action) { Show-FromContainer "ACTION:  $($Check.Action)" }
-}
-
 function Invoke-DoctorBattery {
-    <#  Run one battery and report what it said. $BatteryArgs are the doctor's
-        own arguments; $EngineArgs are what the engine needs to reach the folder
-        (a bind mount, or the network-share volume).
-
-        Returns a hashtable: Established (whether a verdict was read at all),
-        Overall, and Failed, the ids of the checks that failed. #>
+    <#  Run one battery of the doctor, print what it said, and return its exit
+        code. $BatteryArgs are the doctor's own arguments; $EngineArgs are what
+        docker needs to reach the folder (a bind mount, or the network-share
+        volume). #>
     param(
         [Parameter(Mandatory = $true)][string[]] $EngineArgs,
         [Parameter(Mandatory = $true)][string[]] $BatteryArgs
     )
 
-    $run = Invoke-EngineCapture -EngineArgs (@('run', '--rm') + $EngineArgs + @((Get-AlcoveImage)) + $BatteryArgs + @('--json'))
-
-    # Asked before reading what the run printed: an engine stopped mid-run
-    # leaves an exit code and an output that would otherwise be blamed on the
-    # folder or on the launcher.
-    $verdict = Read-DoctorVerdict -Json $run.Output
-    if (($run.ExitCode -ge 125 -or -not $verdict.Ok) -and -not (Test-EngineAnswering)) {
-        Show-EngineStopped
-        return @{ Established = $false }
-    }
-
-    # Docker reserves 125 and above for its own failure to start a container,
-    # and every verdict code is below it -- so this is "the checks never ran"
-    # rather than anything about the folder.
-    if ($run.ExitCode -ge 125) {
-        Show-Fail "The container could not be started (exit $($run.ExitCode))."
-        Show-Note 'Nothing about your folder was tested. The message the engine'
-        Show-Note 'printed above is the one to read. See'
-        Show-Info "    $AlcoveTroubleshootingUrl"
-        return @{ Established = $false }
-    }
-
-    if (-not $verdict.Ok) {
-        Show-Fail "The checks did not produce a verdict this launcher can read: $($verdict.Reason)."
-        Show-Note 'Use the launcher published with the image you are running.'
-        return @{ Established = $false }
-    }
-
-    switch ($verdict.Overall) {
-        'ok' {
-            # A warn does not stop an exchange and still has to be read, so it
-            # is surfaced here rather than swallowed by the roll-up.
-            foreach ($check in (Select-DoctorChecks -Verdict $verdict -Status @('warn'))) {
-                Show-DoctorCheck $check
-            }
-            Show-Ok 'Nothing here blocks an exchange.'
-        }
-        'fix_and_retry' {
-            Write-Host ''
-            foreach ($check in (Select-DoctorChecks -Verdict $verdict -Status @('fail', 'warn'))) {
-                Show-DoctorCheck $check
-            }
-            Write-Host ''
-            Write-Host 'Do what the ACTION lines say, then run the checks again.'
-        }
-        'fatal' {
-            Write-Host ''
-            foreach ($check in (Select-DoctorChecks -Verdict $verdict -Status @('fail'))) {
-                Show-DoctorCheck $check
-            }
-            Write-Host ''
-            Show-Fail 'The checks could not be run, so nothing was established.'
-            Show-Note 'There is no ACTION to follow: the checks that would have'
-            Show-Note 'produced one never ran.'
-            Show-Info "See $AlcoveTroubleshootingUrl"
-        }
-    }
-    $failed = @()
-    foreach ($check in (Select-DoctorChecks -Verdict $verdict -Status @('fail'))) { $failed += $check.Id }
-    return @{ Established = $true; Overall = $verdict.Overall; Failed = $failed }
+    Write-Host 'Running the checks. They take a moment, and everything they found'
+    Write-Host 'is printed together when they finish.'
+    $run = Invoke-EngineQuiet -EngineArgs (@('run', '--rm') + $EngineArgs + @((Get-AlcoveImage)) + $BatteryArgs)
+    Write-Host ''
+    Show-DoctorLines -Output $run.Output
+    Show-DoctorOutcome -ExitCode $run.ExitCode
+    return $run.ExitCode
 }
 
 function Invoke-DoctorLoop {
-    <#  Run a battery until it passes, the operator gives up, or it reports
-        something no retry will change.
+    <#  Run a battery until it passes, the operator stops, or it ends with a
+        code no retry changes: only 78 is a finding the operator can fix and
+        run again.
 
-        -AskCredentialAfterSignInFailure is for the battery that signs in to
-        the share: after its authentication check fails, a retry offers to
-        take the credentials again first, since signing in with a wrong
-        password is one more failed sign-in against an account that a handful
-        of those lock out. That check also fails for reasons the credentials
-        do not cause, which its ACTION lines name, so an empty user name keeps
-        the credentials given and runs the checks again with them. #>
+        -OfferSignIn is for the battery that signs in to the share: a run
+        again offers to take the username and password again first. No is
+        the default, since signing in with a wrong password is one more
+        failed sign-in against an account a handful of those lock out, and
+        most findings are not about the sign-in. #>
     param(
         [Parameter(Mandatory = $true)][string[]] $EngineArgs,
         [Parameter(Mandatory = $true)][string[]] $BatteryArgs,
-        [switch] $AskCredentialAfterSignInFailure
+        [switch] $OfferSignIn
     )
 
     while ($true) {
-        $result = Invoke-DoctorBattery -EngineArgs $EngineArgs -BatteryArgs $BatteryArgs
-        if (-not $result.Established) { return $false }
-        if ($result.Overall -eq 'ok') { return $true }
-        if ($result.Overall -eq 'fatal') { return $false }
+        $exitCode = Invoke-DoctorBattery -EngineArgs $EngineArgs -BatteryArgs $BatteryArgs
+        if ($exitCode -eq 0) { return $true }
+        if ($exitCode -ne 78) { return $false }
 
-        $signInFailed = $AskCredentialAfterSignInFailure -and (@($result.Failed) -contains 'authentication')
         Write-Host ''
-        if ($signInFailed) {
-            Show-Note 'If the user name or password was wrong, enter them again.'
-            Show-Note 'Press Enter at Username to keep the ones you gave.'
-        }
         if (-not (Read-YesNo -Prompt 'Run the checks again? [Y/n]' -DefaultYes)) {
             Write-Host ''
             Show-Note 'Stopping without starting the console.'
             return $false
         }
-        if ($signInFailed -and -not (Update-ShareCredential)) { return $false }
-    }
-}
-
-# ==========================================================================
-# DFS: suggest and confirm
-# ==========================================================================
-
-function Get-SmbConnectionCandidates {
-    <#  The machine's live SMB connections as server/share pairs, or an empty
-        array. Reading them needs Administrator rights, so an ordinary operator
-        session answers nothing here -- which is why every caller has a manual
-        route to fall back to rather than depending on this. #>
-
-    try {
-        $connections = Get-SmbConnection -ErrorAction SilentlyContinue
-    } catch { return @() }
-    if (-not $connections) { return @() }
-    return @($connections)
-}
-
-function Select-DfsCandidate {
-    <#  Given the machine's SMB connections and the namespace path Windows
-        reported, decide whether there is a single real server and share to
-        offer as a correction.
-
-        Both halves are matched, never the server alone: a DFS namespace and its
-        target can differ in server, share and subfolder at once, and
-        substituting only the server produces a device that cannot exist.
-
-        Returns Outcome = 'offer' (with Server and Share), 'none', or 'several'.
-        Anything but 'offer' means the caller falls back to the manual route --
-        which is load-bearing rather than an edge case, because a non-elevated
-        session sees no connections at all. #>
-    param(
-        $Connections,
-        [string] $NamespaceServer,
-        [string] $NamespaceShare
-    )
-
-    $candidates = @()
-    $seen = @()
-    foreach ($connection in @($Connections)) {
-        if ($null -eq $connection) { continue }
-        $server = [string] $connection.ServerName
-        $share = [string] $connection.ShareName
-        if (-not $server -or -not $share) { continue }
-        # IPC$ is the named-pipe share every connection carries; it is never a
-        # file-drop target.
-        if ($share -eq 'IPC$') { continue }
-        if ($server -eq $NamespaceServer -and $share -eq $NamespaceShare) { continue }
-        $key = "$server/$share"
-        if ($seen -contains $key) { continue }
-        $seen += $key
-        $candidates += @{ Server = $server; Share = $share }
-    }
-
-    if ($candidates.Count -eq 0) { return @{ Outcome = 'none'; Count = 0 } }
-    if ($candidates.Count -gt 1) { return @{ Outcome = 'several'; Count = $candidates.Count } }
-    return @{ Outcome = 'offer'; Count = 1
-              Server = $candidates[0].Server; Share = $candidates[0].Share }
-}
-
-function Show-DfsManualRoute {
-    <#  The way on from a server and share the operator would not confirm, and
-        it stays inside the launcher: -RendezvousDir takes a network path as
-        typed, so the path read off the DFS tab goes where the wrong one did.
-        Setup-AlcoveFileDrop.ps1 makes a volume and stops, which is not what
-        someone opening the console came for. #>
-
-    Show-Info 'Open the folder in File Explorer, right-click, Properties, and'
-    Show-Info 'read the DFS tab: it names the real server, share and folder.'
-    Show-Info 'Then run this script again and give that path instead:'
-    Show-Info ''
-    Show-Info '    .\Start-Alcove.ps1 -RendezvousDir ''\\fs-04.agency.gov\exchange$\dropbox'''
-    Show-Info ''
-    Show-Info 'Add -RendezvousOutboundDir the same way if your partner named a'
-    Show-Info 'second folder. A path typed there is used as it stands, so it'
-    Show-Info 'reaches the real share rather than the namespace.'
-    Show-Info ''
-    Show-Info "See $AlcoveTroubleshootingUrl, 'Reading the real path from Windows'."
-}
-
-function Resolve-DfsSuggestion {
-    <#  Offer a correction when the machine's SMB connections name exactly one
-        real server and share behind the namespace, and fall back to the manual
-        route otherwise. Never substitutes silently: the operator confirms.
-
-        Returns a hashtable with Accepted, Server and Share. #>
-    param([string] $NamespaceServer, [string] $NamespaceShare)
-
-    $candidate = Select-DfsCandidate -Connections (Get-SmbConnectionCandidates) `
-        -NamespaceServer $NamespaceServer -NamespaceShare $NamespaceShare
-
-    if ($candidate.Outcome -ne 'offer') {
-        Write-Host ''
-        if ($candidate.Outcome -eq 'several') {
-            Show-Note 'This PC holds connections to several shares, so there is no'
-            Show-Note 'single one to suggest.'
-        } else {
-            Show-Note 'This PC''s connection list names nothing else behind that'
-            Show-Note 'path. Reading that list needs an Administrator window, and'
-            Show-Note 'an elevated window cannot see the drive letters you mapped'
-            Show-Note 'as yourself -- so that is not the way round it.'
+        if ($OfferSignIn -and (Read-YesNo -Prompt 'Enter the username and password again first? [y/N]')) {
+            if (-not (Update-ShareCredential)) { return $false }
         }
-        Write-Host ''
-        Show-DfsManualRoute
-        return @{ Accepted = $false }
     }
-
-    Write-Host ''
-    Show-Alert 'This PC holds one connection that may be what is really behind it:'
-    Show-Note ''
-    Show-Note "    Server: $($candidate.Server)"
-    Show-Note "    Share:  $($candidate.Share)"
-    Show-Note ''
-    Show-Note 'That is a guess read off this PC''s connection list, not an answer'
-    Show-Note 'from the namespace. The folder underneath the share stays yours to'
-    Show-Note 'check; a wrong one is caught by the check file, below, before any'
-    Show-Note 'exchange runs.'
-    Write-Host ''
-    if (Read-YesNo -Prompt 'Use that server and share? [y/N]') {
-        return @{ Accepted = $true; Server = $candidate.Server; Share = $candidate.Share }
-    }
-
-    Write-Host ''
-    Show-DfsManualRoute
-    return @{ Accepted = $false }
 }
 
 # ==========================================================================
@@ -833,12 +477,12 @@ function Resolve-DfsSuggestion {
 
 function Confirm-ShareTarget {
     <#  The server and share the volume will be made for, shown to the operator
-        and corrected from the DFS tab when they say it is wrong. One share
-        answers for however many folders are on it, so the folders are listed
-        together under it.
+        to confirm. One share answers for however many folders are on it, so
+        the folders are listed together under it.
 
-        Returns @{ Accepted = $true } with the server and share to use, or
-        @{ Accepted = $false } once the reason has been printed. #>
+        Returns whether the operator confirmed them. When not, the way to give
+        the real path has been printed: -RendezvousDir takes a network path as
+        typed, so the path read off the DFS tab goes where the wrong one did. #>
     param(
         [Parameter(Mandatory = $true)][string] $Server,
         [Parameter(Mandatory = $true)][string] $Share,
@@ -856,43 +500,20 @@ function Confirm-ShareTarget {
     Write-Host 'machine, and the real server, share and folder can all be different.'
     Write-Host ''
 
-    if (Read-YesNo -Prompt 'Are those correct? [Y/n]' -DefaultYes) {
-        return @{ Accepted = $true; Server = $Server; Share = $Share }
-    }
+    if (Read-YesNo -Prompt 'Are those correct? [Y/n]' -DefaultYes) { return $true }
 
-    $suggestion = Resolve-DfsSuggestion -NamespaceServer $Server -NamespaceShare $Share
-    if (-not $suggestion.Accepted) { return @{ Accepted = $false } }
     Write-Host ''
-    Show-Ok "Server:       $($suggestion.Server)"
-    Show-Ok "Share:        $($suggestion.Share)"
-    foreach ($subPath in $SubPaths) {
-        Show-Ok "Subdirectory: $(if ($subPath) { $subPath } else { '(share root)' })"
-    }
-    return @{ Accepted = $true; Server = $suggestion.Server; Share = $suggestion.Share }
-}
-
-function Get-CorrectedShareTarget {
-    <#  A resolved folder as the server and share confirmed above leave it, with
-        the full path rebuilt from them. A pair of folders is compared by that
-        full path, and a folder that is a share root is named after the share --
-        so a leg left at the path the operator typed would hide a pair that two
-        corrections put on one real folder, and would name a folder after a
-        namespace the partner cannot reach.
-
-        A folder on this PC has no share to correct and is returned as it is. #>
-    param($Resolved, [string] $Server, [string] $Share)
-
-    if ($Resolved.Kind -ne 'Network') { return $Resolved }
-
-    $corrected = [hashtable] $Resolved.Clone()
-    $corrected.Server = $Server
-    $corrected.Share = $Share
-    $corrected.Unc = "\\$Server\$Share"
-    $corrected.Full = $corrected.Unc
-    if ($corrected.SubPath) {
-        $corrected.Full = "$($corrected.Unc)\$($corrected.SubPath.Replace('/', '\'))"
-    }
-    return $corrected
+    Show-Info 'Open the folder in File Explorer, right-click, Properties, and'
+    Show-Info 'read the DFS tab: it names the real server, share and folder.'
+    Show-Info 'Then run this script again and give that path instead:'
+    Show-Info ''
+    Show-Info '    .\Start-Alcove.ps1 -RendezvousDir ''\\fs-04.agency.gov\exchange$\dropbox'''
+    Show-Info ''
+    Show-Info 'Add -RendezvousOutboundDir the same way if your partner named a'
+    Show-Info 'second folder.'
+    Show-Info ''
+    Show-Info "See $AlcoveTroubleshootingUrl, 'Reading the real path from Windows'."
+    return $false
 }
 
 function Clear-ShareCredential {
@@ -903,30 +524,16 @@ function Clear-ShareCredential {
     $script:AlcoveShareCredentialServer = ''
 }
 
-function Read-RetryUsername {
-    <#  The first question of Update-ShareCredential, on its own so that a test
-        can answer it. #>
-
-    return (Read-Host 'Username (press Enter to keep the ones you gave)')
-}
-
 function Update-ShareCredential {
-    <#  The answer for the share the checks are signing in to, after they
-        failed to sign in. An empty user name keeps the answer this run holds.
-        Any other starts a new answer, which replaces that one for the server
-        and the SMB_* variables the probe reads, which New-RendezvousShareMount
-        sets for the run of the checks.
+    <#  A new answer for the share the checks are signing in to. It replaces
+        the one this run holds for the server, and the SMB_* variables the
+        probe reads, which New-RendezvousShareMount sets for the run of the
+        checks.
 
-        Returns whether the run has an answer to sign in with: false when a new
-        one was started and not finished. #>
+        Returns whether the run has an answer to sign in with. #>
 
     Show-Head 'Credentials for the file server'
-    $username = Read-RetryUsername
-    if (-not $username) {
-        Show-Info 'Keeping the credentials you gave.'
-        return $true
-    }
-    $credential = Read-ShareCredential -Username $username
+    $credential = Read-ShareCredential
     if (-not $credential) { return $false }
     $script:AlcoveShareCredential = $credential
     $env:SMB_USER = $credential.Username
@@ -1008,28 +615,20 @@ function New-RendezvousShareMount {
         foreach ($leg in $Legs) {
             Show-Head "Checking $($leg.Label) from inside a container"
             $env:SMB_PATH = Join-SharePath -Parent $SubPath -Child $leg.Path
-            if (-not (Invoke-DoctorLoop -AskCredentialAfterSignInFailure `
+            if (-not (Invoke-DoctorLoop -OfferSignIn `
                         -EngineArgs $probeEnvArgs -BatteryArgs @('doctor', 'probe'))) {
                 return @{ Mounted = $false; VolumeName = '' }
             }
         }
-        # A retry after a failed sign-in may have replaced the answer, and the
-        # volume is made from the one the checks accepted.
+        # A run again may have taken a new answer, and the volume is made from
+        # the one the checks accepted.
         $credential = $script:AlcoveShareCredential
         $plainPass = $credential.Password
 
         Show-Head "Creating the network-share volume '$VolumeName'"
-        if ($script:AlcoveEngine -ne 'docker') {
-            Show-Alert 'The volume options below have only ever been driven against docker.'
-            Show-Note "$script:AlcoveEngine may reject or read them differently. If it"
-            Show-Note 'does, its own message is the answer -- nothing here predicts'
-            Show-Note 'what it will make of them.'
-        }
-
         $volumeMade = New-ShareVolume -VolumeName $VolumeName `
             -Server $Server -Share $Share -SubPath $SubPath `
-            -Username $credential.Username -Password $plainPass -Domain $credential.Domain `
-            -Engine $script:AlcoveEngine
+            -Username $credential.Username -Password $plainPass -Domain $credential.Domain
         if (-not $volumeMade) { return @{ Mounted = $false; VolumeName = '' } }
 
         foreach ($leg in $Legs) {
@@ -1089,10 +688,10 @@ function Show-VolumeRemoval {
     }
     Write-Host ''
     Show-Alert $storedLine
-    Show-Note "metadata: '$script:AlcoveEngine volume inspect $volumeList' shows it"
+    Show-Note "metadata: 'docker volume inspect $volumeList' shows it"
     Show-Note 'to anyone who can run Docker on this PC. When you are finished:'
     Show-Info ''
-    Show-Info "    $script:AlcoveEngine volume rm $volumeList"
+    Show-Info "    docker volume rm $volumeList"
     Show-Info ''
     Show-Info 'That removes what it names but not every trace of the password, so'
     Show-Info 'retire or rotate the account when the exchanges are done. The'
@@ -1451,22 +1050,21 @@ if (-not (Assert-AlcoveImageStamp)) { exit 1 }
 $repositoryCandidates = Get-RepositoryCandidates
 if (-not $repositoryCandidates.Ok) { exit 1 }
 
-$script:AlcoveEngine = Find-ContainerEngine
-if (-not $script:AlcoveEngine) {
-    if (-not (Get-Command docker -ErrorAction SilentlyContinue) -and
-        -not (Get-Command podman -ErrorAction SilentlyContinue)) {
-        Show-Fail 'Neither docker nor podman is installed on this PC.'
-        Show-Note 'Install Docker Desktop, start it, and run this again.'
-    } else {
-        Show-Fail 'A container engine is installed but is not answering.'
-        Show-Note 'Start Docker Desktop and wait for the whale icon to stop'
-        Show-Note 'animating. "Access is denied" instead means your account is'
-        Show-Note 'not in the local docker-users group, which an administrator'
-        Show-Note 'has to add you to.'
-    }
+if (-not (Test-DockerCommand)) {
+    Show-Fail 'Docker is not installed on this PC.'
+    Show-Note 'Install Docker Desktop, start it, and run this again.'
     exit 1
 }
-if (Test-WindowsContainerMode -Engine $script:AlcoveEngine) {
+$dockerVersion = Invoke-EngineQuiet -EngineArgs @('version')
+if ($dockerVersion.ExitCode -ne 0) {
+    Show-Fail 'Docker is installed but is not answering.'
+    Show-Note 'Start Docker Desktop and wait for the whale icon to stop'
+    Show-Note 'animating. "Access is denied" instead means your account is'
+    Show-Note 'not in the local docker-users group, which an administrator'
+    Show-Note 'has to add you to.'
+    exit 1
+}
+if (Test-WindowsContainerMode) {
     Show-Fail 'Docker Desktop is in Windows containers mode.'
     Show-Note 'Alcove and these checks are Linux containers. In this mode the'
     Show-Note 'engine answers normally and then every container fails to start.'
@@ -1475,7 +1073,7 @@ if (Test-WindowsContainerMode -Engine $script:AlcoveEngine) {
     Show-Info 'choose "Switch to Linux containers...", then run this again.'
     exit 1
 }
-Show-Ok "Using $script:AlcoveEngine."
+Show-Ok 'Docker is running.'
 if (-not (Find-AlcoveImage -Repositories $repositoryCandidates.Repositories)) { exit 1 }
 
 # Setup-AlcoveFileDrop.ps1 owns the Explorer-path-to-server-and-share
@@ -1727,25 +1325,13 @@ try {
     if ($sharedMount.Shared) {
         # One share holds both folders, so one volume reaches both and the two are
         # passed to the console as paths within it.
-        $target = Confirm-ShareTarget -Server $sharedMount.Server -Share $sharedMount.Share `
+        $confirmed = Confirm-ShareTarget -Server $sharedMount.Server -Share $sharedMount.Share `
             -SubPaths @((Join-SharePath -Parent $sharedMount.SubPath -Child $sharedMount.InboundLeg),
             (Join-SharePath -Parent $sharedMount.SubPath -Child $sharedMount.OutboundLeg))
-        if (-not $target.Accepted) { Clear-ShareCredential; exit 1 }
-
-        # One confirmation answers for both folders, so both move to the share it
-        # named: a folder that is a share root takes its name from that share, and
-        # the pair is checked again below against the paths the file server opens.
-        $rendezvousResolved = Get-CorrectedShareTarget -Resolved $rendezvousResolved `
-            -Server $target.Server -Share $target.Share
-        $outboundResolved = Get-CorrectedShareTarget -Resolved $outboundResolved `
-            -Server $target.Server -Share $target.Share
-        $rendezvousFolderName = Get-RendezvousFolderName -Share $rendezvousResolved.Share `
-            -SubPath $rendezvousResolved.SubPath
-        $outboundFolderName = Get-RendezvousFolderName -Share $outboundResolved.Share `
-            -SubPath $outboundResolved.SubPath
+        if (-not $confirmed) { Clear-ShareCredential; exit 1 }
 
         $mountAttempt = New-RendezvousShareMount -VolumeName $VolumeName `
-            -Server $target.Server -Share $target.Share -SubPath $sharedMount.SubPath `
+            -Server $sharedMount.Server -Share $sharedMount.Share -SubPath $sharedMount.SubPath `
             -Legs @(@{ Label = 'the folder your partner writes into'; Path = $sharedMount.InboundLeg },
             @{ Label = 'the folder you write into'; Path = $sharedMount.OutboundLeg })
         if ($mountAttempt.VolumeName) { $volumesMade += $mountAttempt.VolumeName }
@@ -1773,33 +1359,19 @@ try {
         foreach ($leg in $legs) {
             $mount = $leg.Path
             if ($leg.Resolved.Kind -eq 'Network') {
-                $target = Confirm-ShareTarget -Server $leg.Resolved.Server -Share $leg.Resolved.Share `
+                $confirmed = Confirm-ShareTarget -Server $leg.Resolved.Server -Share $leg.Resolved.Share `
                     -SubPaths @($leg.Resolved.SubPath)
-                if (-not $target.Accepted) {
+                if (-not $confirmed) {
                     Show-VolumeRemoval -VolumeNames $volumesMade
                     Clear-ShareCredential
                     exit 1
                 }
 
-                # From the share as resolved, and after any correction above: the
-                # drive letter or namespace path the operator typed is theirs alone,
-                # and a volume is mounted by server and share rather than by that
-                # path. The corrected leg replaces the parse of what was typed,
-                # so the pair check below compares the folders the file server
-                # opens.
-                $corrected = Get-CorrectedShareTarget -Resolved $leg.Resolved `
-                    -Server $target.Server -Share $target.Share
-                $correctedName = Get-RendezvousFolderName -Share $corrected.Share -SubPath $corrected.SubPath
-                if ($leg.Outbound) {
-                    $outboundResolved = $corrected
-                    $outboundFolderName = $correctedName
-                } else {
-                    $rendezvousResolved = $corrected
-                    $rendezvousFolderName = $correctedName
-                }
-
+                # By server and share as resolved: the drive letter or namespace
+                # path the operator typed is theirs alone, and a volume is mounted
+                # by server and share rather than by that path.
                 $mountAttempt = New-RendezvousShareMount -VolumeName $leg.Volume `
-                    -Server $corrected.Server -Share $corrected.Share -SubPath $corrected.SubPath `
+                    -Server $leg.Resolved.Server -Share $leg.Resolved.Share -SubPath $leg.Resolved.SubPath `
                     -Legs @(@{ Label = $leg.Label; Path = '' })
                 if ($mountAttempt.VolumeName) { $volumesMade += $mountAttempt.VolumeName }
                 if (-not $mountAttempt.Mounted) {
@@ -1819,21 +1391,6 @@ try {
     }
 } finally {
     Clear-ShareCredential
-}
-
-# A correction from the DFS tab settles which share a folder is really on, and a
-# folder that is a share root takes its name from it, so the pair is held to the
-# console's rules once more against the names it will actually be given.
-if ($splitRendezvous) {
-    $pairVerdict = Test-RendezvousPair `
-        -InboundPath (Get-ComparableFolderPath -Resolved $rendezvousResolved) `
-        -OutboundPath (Get-ComparableFolderPath -Resolved $outboundResolved) `
-        -InboundName $rendezvousFolderName -OutboundName $outboundFolderName
-    if (-not $pairVerdict.Usable) {
-        Show-PairRefusal -Verdict $pairVerdict
-        Show-VolumeRemoval -VolumeNames $volumesMade
-        exit 1
-    }
 }
 
 # ==========================================================================
@@ -1876,7 +1433,7 @@ try {
         if (-not $NoBrowser) { Start-Process $url | Out-Null }
         Write-Host ''
         Show-Info 'Leave this window open while you use it.'
-        Show-Info "If it closes without stopping the console, run: $script:AlcoveEngine stop $containerName"
+        Show-Info "If it closes without stopping the console, run: docker stop $containerName"
     } else {
         Show-Fail "Nothing answered on $url."
         Write-Host ''
