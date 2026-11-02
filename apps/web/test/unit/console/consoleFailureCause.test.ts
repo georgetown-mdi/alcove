@@ -191,8 +191,8 @@ describe("a console run that failed on a catalog cause", () => {
         "Your partner's hello file may have been ignored",
       );
       expect(failure.message).toBe(
-        "Your partner did not arrive in the shared folder within 90 seconds, " +
-          "and at start-up this run ignored a partner hello file nobody had " +
+        "Your partner did not arrive in the shared folder within 90 seconds; " +
+          "at start-up, this run ignored a partner hello file nobody had " +
           "answered for 2 hours, past the limit of 90 seconds. " +
           IGNORED_HELLO_REMEDY,
       );

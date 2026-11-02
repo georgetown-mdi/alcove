@@ -61,13 +61,10 @@ const SHARED_PEER_ID_REMEDY =
   "different peer_id on one side, changing its text rather than only its " +
   "% fields, then run again.";
 
-// The remedy for a partner that never arrived after this run ignored an
-// unanswered partner hello at start-up: the two ways to keep a waiting
-// partner's hello from being ignored.
 const IGNORED_HELLO_REMEDY =
   "If the ignored hello was your partner's run, raise " +
-  `${UNANSWERED_HELLO_WINDOW_KEY} or give both sides the same ` +
-  "--peer-timeout, then run again.";
+  `${UNANSWERED_HELLO_WINDOW_KEY} (or --unanswered-hello-window), or give ` +
+  "both sides the same peer_timeout_ms, then run again.";
 
 const partnerNeverArrived = (
   {

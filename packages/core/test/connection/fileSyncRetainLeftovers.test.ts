@@ -350,9 +350,9 @@ describe("a partner hello nobody answered", () => {
     expect(ageMs).toBeLessThan(3 * 3_600_000 + 60_000);
     const rendered = sanitizeErrorForDisplay(err);
     expect(rendered).toContain(
-      ", and at start-up this run ignored a partner hello file nobody had " +
-        "answered for 3 hours, past the limit of 0.1 seconds. The ignored " +
-        `partner hello file: ${hello("p1")}`,
+      " within 0.1 seconds; at start-up, this run ignored a partner hello " +
+        "file nobody had answered for 3 hours, past the limit of 0.1 " +
+        `seconds. The ignored partner hello file: ${hello("p1")}`,
     );
     expect(files.has(`${DIR}/${hello("p1")}`)).toBe(true);
   });
@@ -375,15 +375,15 @@ describe("a partner hello nobody answered", () => {
         sharedName: true,
         ignoredHello: { windowMs: 300 },
       });
-      expect((err as Error).message).toMatch(
-        new RegExp(
-          "appeared in it, and at start-up this run ignored a partner hello " +
-            "file nobody had answered for 1 hour, past the limit of 0\\.3 " +
-            "seconds\\. This run took the file with this side's name for its " +
-            "own leftover and ignored it\\. The ignored file: site-[0-9a-f]+-" +
-            `hello-\\d+\\.json The ignored partner hello file: ${old}$`,
-        ),
+      const lines = new RegExp(
+        "appeared in it; at start-up, this run ignored a partner hello " +
+          "file nobody had answered for 1 hour, past the limit of 0\\.3 " +
+          "seconds\\. This run took the file with this side's name for its " +
+          "own leftover and ignored it\\. The ignored file: site-[0-9a-f]+-" +
+          `hello-\\d+\\.json\\nThe ignored partner hello file: ${old}$`,
       );
+      expect((err as Error).message).toMatch(lines);
+      expect(sanitizeErrorForDisplay(err)).toMatch(lines);
     }
   });
 

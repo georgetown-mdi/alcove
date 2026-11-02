@@ -358,7 +358,7 @@ const SENTENCES: {
         : ", and a file with this side's name appeared during the wait") +
     (ignoredHello === undefined
       ? ""
-      : ", and at start-up this run ignored a partner hello file nobody had " +
+      : "; at start-up, this run ignored a partner hello file nobody had " +
         `answered for ${formatFileAge(ignoredHello.ageMs)}, past the limit ` +
         `of ${formatWaitDuration(ignoredHello.windowMs)}`) +
     ".",

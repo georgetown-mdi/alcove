@@ -26,6 +26,7 @@ import {
   DEFAULT_MAX_DISPLAY_LENGTH,
 } from "../utils/sanitizeForDisplay";
 import {
+  keepFirstPartyLineBreaks,
   redactAndSanitizeForDisplay,
   redactPrivateKeyMaterial,
 } from "../utils/sanitizeErrorForDisplay";
@@ -789,13 +790,18 @@ const partnerNeverArrived = (
           : " This run took the file with this side's name for its own " +
             "leftover and ignored it.") +
         ` The ignored file: ${redactPrivateKeyMaterial(ignoredOwnPatternHello)}`;
+  const first = `${failureCauseSentence(cause)}${ownPattern}`;
+  if (unansweredHello === undefined)
+    return markFailureCause(new Error(first), cause);
   const unanswered =
-    unansweredHello === undefined
-      ? ""
-      : " The ignored partner hello file: " +
-        redactPrivateKeyMaterial(unansweredHello.name);
+    "The ignored partner hello file: " +
+    redactPrivateKeyMaterial(unansweredHello.name);
+  if (ignoredOwnPatternHello === undefined)
+    return markFailureCause(new Error(`${first} ${unanswered}`), cause);
+  // Each ignored file's name ends a line of its own.
+  const lines = [first, unanswered];
   return markFailureCause(
-    new Error(`${failureCauseSentence(cause)}${ownPattern}${unanswered}`),
+    keepFirstPartyLineBreaks(new Error(lines.join("\n")), lines),
     cause,
   );
 };

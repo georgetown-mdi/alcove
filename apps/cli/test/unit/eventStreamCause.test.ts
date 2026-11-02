@@ -61,7 +61,9 @@ test("a no-show after an ignored partner hello emits the fact and the window rem
   const event = buildErrorEvent(causeError(cause), "prepare");
   expect(event.cause).toEqual(cause);
   expect(event.message).toContain("nobody had answered for 2 hours");
-  expect(event.message).toContain("raise unanswered_hello_window_ms");
+  expect(event.message).toContain(
+    "unanswered_hello_window_ms (or --unanswered-hello-window)",
+  );
   expect(failureCauseFromUntrusted(event.cause)).toEqual(cause);
 });
 

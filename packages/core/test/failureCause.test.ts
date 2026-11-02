@@ -122,8 +122,8 @@ describe("the failure-cause catalog", () => {
       "Your partner did not arrive in the shared folder within 90 seconds, and a file with this side's name appeared in it.",
       "Your partner did not arrive in the shared folder on the SFTP server in the time this run waited, and a file with this side's name appeared in it.",
       "Your partner did not arrive in the time this run waited, and a file with this side's name appeared during the wait.",
-      "Your partner did not arrive in the shared folder within 90 seconds, and at start-up this run ignored a partner hello file nobody had answered for 3 hours, past the limit of 90 seconds.",
-      "Your partner did not arrive in the shared folder on the SFTP server within 0.15 seconds, and a file with this side's name appeared in it, and at start-up this run ignored a partner hello file nobody had answered for 59 seconds, past the limit of 0.15 seconds.",
+      "Your partner did not arrive in the shared folder within 90 seconds; at start-up, this run ignored a partner hello file nobody had answered for 3 hours, past the limit of 90 seconds.",
+      "Your partner did not arrive in the shared folder on the SFTP server within 0.15 seconds, and a file with this side's name appeared in it; at start-up, this run ignored a partner hello file nobody had answered for 59 seconds, past the limit of 0.15 seconds.",
     ]);
     expect(
       SAMPLES["folder-missing"].map((cause) => failureCauseSentence(cause)),
