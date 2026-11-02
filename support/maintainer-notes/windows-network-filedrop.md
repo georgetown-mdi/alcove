@@ -40,11 +40,15 @@ folder and reading the DFS tab.
 - `passwords.md` -- the account decision, cited by the script in two places.
 
 The three scripts listed above run the doctor without `--json`, print the lines
-it writes, and branch on its exit code alone: 0 passes, 78 offers a run again, 69 and 64
-stop, and 125 and above are Docker failing to start the container. A code none
-of those names is first checked against the engine: a stopped engine makes
-`docker run` exit 1 (recorded below as P4b), so when the version query no
-longer answers, the scripts say Docker stopped rather than blaming the launcher.
+it writes, and branch on its exit code alone: 0 passes, 78 offers a run again,
+69 and 64 stop, and 125 and above are Docker failing to start the container.
+
+The two PowerShell scripts and the Command Prompt script go one step further: a
+code none of those names is first checked against the engine, because a stopped
+engine makes `docker run` exit 1 (recorded below as P4b), so when the version
+query no longer answers they say Docker stopped rather than blaming the script.
+`start-alcove.sh` does not make that check and reports such a code as one it
+does not know.
 
 The Command Prompt script and its container-side shell script have their own
 notes, [`cmd_windows-network-filedrop.md`](cmd_windows-network-filedrop.md).
