@@ -6,6 +6,7 @@ import { PARTNER_REFUSED_EXIT_CODE } from "@alcove/cli-contract";
 import {
   CONNECTION_TUNING_HEADING,
   PEER_TIMEOUT_LABEL,
+  UNANSWERED_HELLO_WINDOW_LABEL,
 } from "@console/connectionTuningModel";
 import {
   RelayedSelfExplainingError,
@@ -33,6 +34,19 @@ const SAMPLES: {
       channel: "filedrop",
       waitedMs: 90_000,
       sharedName: true,
+    },
+    {
+      kind: "partner-never-arrived",
+      channel: "filedrop",
+      waitedMs: 90_000,
+      ignoredHello: { ageMs: 7_200_000, windowMs: 90_000 },
+    },
+    {
+      kind: "partner-never-arrived",
+      channel: "sftp",
+      waitedMs: 90_000,
+      sharedName: true,
+      ignoredHello: { ageMs: 7_200_000, windowMs: 90_000 },
     },
   ],
   "folder-missing": [
@@ -151,6 +165,65 @@ describe("a console run that failed on a catalog cause", () => {
       expect(failure.sharedName).toBe(true);
       expect(failure.retry).toBe("offered");
     }
+  });
+
+  test("an ignored partner hello states its age and names the window and wait controls", () => {
+    const IGNORED_HELLO_REMEDY =
+      "If the ignored hello file was your partner's run, raise " +
+      `"${UNANSWERED_HELLO_WINDOW_LABEL}" under ${CONNECTION_TUNING_HEADING}, ` +
+      `or give both sides the same "${PEER_TIMEOUT_LABEL}", then run again.`;
+    const [, , , , ignored, both] = SAMPLES["partner-never-arrived"];
+    for (const thisSideNamed of [false, true]) {
+      const failure = failureFor(
+        "exchange",
+        relayed("the CLI's text naming unanswered_hello_window_ms", {
+          failureCause: ignored,
+          exitCode: 69,
+        }),
+        undefined,
+        "filedrop",
+        "inviter",
+        false,
+        false,
+        thisSideNamed,
+      );
+      expect(failure.title).toBe(
+        "Your partner's hello file may have been ignored",
+      );
+      expect(failure.message).toBe(
+        "Your partner did not arrive in the shared folder within 90 seconds, " +
+          "and at start-up this run ignored a partner hello file nobody had " +
+          "answered for 2 hours, past the limit of 90 seconds. " +
+          IGNORED_HELLO_REMEDY,
+      );
+      expect(failure.message).not.toContain("unanswered_hello_window_ms");
+      expect(failure.sharedName).toBeUndefined();
+      expect(failure.retry).toBe("offered");
+    }
+    const shared = failureFor(
+      "exchange",
+      relayed("the CLI's text", { failureCause: both, exitCode: 69 }),
+      undefined,
+      "sftp",
+    );
+    expect(shared.title).toBe("Both sides may be using the same name");
+    expect(shared.message).toContain(
+      "nobody had answered for 2 hours, past the limit of 90 seconds. The " +
+        "likely cause is that both sides set the same name",
+    );
+    expect(shared.message.endsWith(` ${IGNORED_HELLO_REMEDY}`)).toBe(true);
+    expect(shared.sharedName).toBe(true);
+    const plain = failureFor(
+      "exchange",
+      relayed("the CLI's text", {
+        failureCause: SAMPLES["partner-never-arrived"][0],
+        exitCode: 69,
+      }),
+      undefined,
+      "filedrop",
+    );
+    expect(plain.message).not.toContain(UNANSWERED_HELLO_WINDOW_LABEL);
+    expect(plain.message).not.toContain("ignored");
   });
 
   test("a plain no-show gains the names clause only when this side set a name", () => {

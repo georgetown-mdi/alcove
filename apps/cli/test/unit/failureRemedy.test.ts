@@ -35,6 +35,19 @@ const SAMPLES: {
       waitedMs: 90_000,
       sharedName: true,
     },
+    {
+      kind: "partner-never-arrived",
+      channel: "filedrop",
+      waitedMs: 90_000,
+      ignoredHello: { ageMs: 7_200_000, windowMs: 90_000 },
+    },
+    {
+      kind: "partner-never-arrived",
+      channel: "sftp",
+      waitedMs: 90_000,
+      sharedName: true,
+      ignoredHello: { ageMs: 7_200_000, windowMs: 90_000 },
+    },
   ],
   "folder-missing": [
     { kind: "folder-missing", path: "/data/drop", code: "ENOENT" },
@@ -162,6 +175,28 @@ test("a no-show with a file of this side's name names peer_id and no timeout fla
   const sftp = rendered({ kind: "partner-never-arrived", channel: "sftp" });
   expect(sftp).toContain("--peer-timeout");
   expect(sftp).not.toContain("peer_id");
+});
+
+test("a no-show after an ignored partner hello names its age and the window", () => {
+  const [, , , , ignored, both] = SAMPLES["partner-never-arrived"];
+  const remedy =
+    "If the ignored hello was your partner's run, raise " +
+    "unanswered_hello_window_ms or give both sides the same --peer-timeout, " +
+    "then run again.";
+  for (const arrivalWait of [undefined, ...ARRIVAL_WAITS]) {
+    expect(rendered(ignored!, arrivalWait)).toBe(
+      "Your partner did not arrive in the shared folder within 90 seconds, " +
+        "and at start-up this run ignored a partner hello file nobody had " +
+        "answered for 2 hours, past the limit of 90 seconds.\n" +
+        remedy,
+    );
+    expect(rendered(both!, arrivalWait)).toMatch(
+      /^Your partner did not arrive in the shared folder on the SFTP server within 90 seconds, and a file with this side's name appeared in it, and at start-up this run ignored a partner hello file nobody had answered for 2 hours, past the limit of 90 seconds\.\nThe likely cause is that both parties set the same peer_id: .* then run again\. If the ignored hello was your partner's run, .* then run again\.$/,
+    );
+  }
+  expect(rendered(SAMPLES["partner-never-arrived"][0])).not.toContain(
+    "unanswered_hello_window_ms",
+  );
 });
 
 test("a no-show on an online invitation names --accept-timeout only", () => {

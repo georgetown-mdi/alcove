@@ -13,6 +13,7 @@ import {
 import {
   CONNECTION_TUNING_HEADING,
   PEER_TIMEOUT_LABEL,
+  UNANSWERED_HELLO_WINDOW_LABEL,
 } from "./connectionTuningModel";
 import { EXCHANGE_FILES_HEADING, PEER_ID_LABEL } from "./exchangeFilesModel";
 
@@ -50,12 +51,31 @@ const SHARED_NAME_REMEDY =
   `"${PEER_ID_LABEL}" under "${EXCHANGE_FILES_HEADING}" so the two names ` +
   "differ, then run again.";
 
+const IGNORED_HELLO_TITLE = "Your partner's hello file may have been ignored";
+
+const IGNORED_HELLO_REMEDY =
+  "If the ignored hello file was your partner's run, raise " +
+  `"${UNANSWERED_HELLO_WINDOW_LABEL}" under ${CONNECTION_TUNING_HEADING}, ` +
+  `or give both sides the same "${PEER_TIMEOUT_LABEL}", then run again.`;
+
 const partnerNeverArrived = (
-  { channel, sharedName }: FailureCauseOfKind<"partner-never-arrived">,
+  {
+    channel,
+    sharedName,
+    ignoredHello,
+  }: FailureCauseOfKind<"partner-never-arrived">,
   { thisSideNamed }: ConsoleRunContext,
 ): ConsoleFailureRemedy => {
   if (sharedName === true)
-    return { title: SHARED_NAME_TITLE, remedy: SHARED_NAME_REMEDY };
+    return {
+      title: SHARED_NAME_TITLE,
+      remedy:
+        ignoredHello === undefined
+          ? SHARED_NAME_REMEDY
+          : `${SHARED_NAME_REMEDY} ${IGNORED_HELLO_REMEDY}`,
+    };
+  if (ignoredHello !== undefined)
+    return { title: IGNORED_HELLO_TITLE, remedy: IGNORED_HELLO_REMEDY };
   const check =
     channel === "filedrop"
       ? "Check that you and your partner use the same shared folder and " +

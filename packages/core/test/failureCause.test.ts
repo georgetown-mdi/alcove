@@ -6,6 +6,7 @@ import {
   failureCauseFromUntrusted,
   failureCauseOf,
   failureCauseSentence,
+  formatFileAge,
   formatWaitDuration,
   relayRegistrarUnreachableRemedy,
   markFailureCause,
@@ -34,6 +35,19 @@ const SAMPLES: {
     },
     { kind: "partner-never-arrived", channel: "sftp", sharedName: true },
     { kind: "partner-never-arrived", sharedName: true },
+    {
+      kind: "partner-never-arrived",
+      channel: "filedrop",
+      waitedMs: 90_000,
+      ignoredHello: { ageMs: 3 * 3_600_000 + 59_999, windowMs: 90_000 },
+    },
+    {
+      kind: "partner-never-arrived",
+      channel: "sftp",
+      waitedMs: 150,
+      sharedName: true,
+      ignoredHello: { ageMs: 59_999, windowMs: 150 },
+    },
   ],
   "folder-missing": [
     { kind: "folder-missing", path: "/data/drop", code: "ENOENT" },
@@ -108,6 +122,8 @@ describe("the failure-cause catalog", () => {
       "Your partner did not arrive in the shared folder within 90 seconds, and a file with this side's name appeared in it.",
       "Your partner did not arrive in the shared folder on the SFTP server in the time this run waited, and a file with this side's name appeared in it.",
       "Your partner did not arrive in the time this run waited, and a file with this side's name appeared during the wait.",
+      "Your partner did not arrive in the shared folder within 90 seconds, and at start-up this run ignored a partner hello file nobody had answered for 3 hours, past the limit of 90 seconds.",
+      "Your partner did not arrive in the shared folder on the SFTP server within 0.15 seconds, and a file with this side's name appeared in it, and at start-up this run ignored a partner hello file nobody had answered for 59 seconds, past the limit of 0.15 seconds.",
     ]);
     expect(
       SAMPLES["folder-missing"].map((cause) => failureCauseSentence(cause)),
@@ -167,6 +183,19 @@ describe("formatWaitDuration", () => {
     [3_600_000_000, "1,000 hours"],
   ])("%d ms is %s", (ms, text) => {
     expect(formatWaitDuration(ms)).toBe(text);
+  });
+});
+
+describe("formatFileAge", () => {
+  test.each([
+    [-5_000, "0 seconds"],
+    [999, "0 seconds"],
+    [59_999, "59 seconds"],
+    [60_000, "1 minute"],
+    [119_999, "1 minute"],
+    [3 * 3_600_000 + 59_999, "3 hours"],
+  ])("%d ms is %s", (ms, text) => {
+    expect(formatFileAge(ms)).toBe(text);
   });
 });
 
@@ -233,6 +262,18 @@ describe("failureCauseFromUntrusted", () => {
     ).toEqual({ kind: "partner-never-arrived", channel: "filedrop" });
   });
 
+  test("rebuilds an ignored hello from its age and window alone", () => {
+    expect(
+      failureCauseFromUntrusted({
+        kind: "partner-never-arrived",
+        ignoredHello: { ageMs: 120_000, windowMs: 60_000, name: "p1-hello" },
+      }),
+    ).toEqual({
+      kind: "partner-never-arrived",
+      ignoredHello: { ageMs: 120_000, windowMs: 60_000 },
+    });
+  });
+
   // An older build rebuilt this kind from channel and waitedMs alone, so the
   // shared-name fact it did not know was dropped with the cause kept; a fact
   // added after this build is dropped the same way.
@@ -272,6 +313,32 @@ describe("failureCauseFromUntrusted", () => {
     [
       "a shared name as text",
       { kind: "partner-never-arrived", sharedName: "true" },
+    ],
+    [
+      "an ignored hello stated true",
+      { kind: "partner-never-arrived", ignoredHello: true },
+    ],
+    [
+      "an ignored hello as a list",
+      { kind: "partner-never-arrived", ignoredHello: [1, 2] },
+    ],
+    [
+      "an ignored hello with no window",
+      { kind: "partner-never-arrived", ignoredHello: { ageMs: 1 } },
+    ],
+    [
+      "an ignored hello with a negative age",
+      {
+        kind: "partner-never-arrived",
+        ignoredHello: { ageMs: -1, windowMs: 1 },
+      },
+    ],
+    [
+      "an ignored hello with a fractional window",
+      {
+        kind: "partner-never-arrived",
+        ignoredHello: { ageMs: 1, windowMs: 0.5 },
+      },
     ],
     ["a folder with no path", { kind: "folder-missing", code: "ENOENT" }],
     [

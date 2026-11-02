@@ -83,6 +83,29 @@ describe("the stream field", () => {
     ).not.toHaveProperty("sharedName");
   });
 
+  it("round trips the ignored-hello fact, its age and window floored", () => {
+    const cause: FailureCause = {
+      kind: "partner-never-arrived",
+      channel: "sftp",
+      waitedMs: 90_000,
+      ignoredHello: { ageMs: 10_800_000.75, windowMs: 90_000 },
+    };
+    const field = failureCauseStreamField(cause);
+    expect(field).toEqual({
+      ...cause,
+      ignoredHello: { ageMs: 10_800_000, windowMs: 90_000 },
+    });
+    const line = JSON.stringify({ v: 1, type: "error", cause: field });
+    const read = (parseBoundedJson(line) as { cause: unknown }).cause;
+    expect(failureCauseFromUntrusted(read)).toEqual(field);
+    expect(
+      failureCauseStreamField({
+        kind: "partner-never-arrived",
+        channel: "filedrop",
+      }),
+    ).not.toHaveProperty("ignoredHello");
+  });
+
   // A consumer older than the shared-name fact rebuilt the cause from the
   // facts it knew; the same rule here drops a fact newer than this build.
   it("a consumer that does not know a fact drops it and keeps the cause", () => {

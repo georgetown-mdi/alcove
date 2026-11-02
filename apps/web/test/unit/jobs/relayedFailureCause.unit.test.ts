@@ -30,6 +30,28 @@ describe("the relayed failure cause", () => {
     expect(event?.cause).toEqual(NO_SHOW_EVENT.cause);
   });
 
+  test("keeps the ignored-hello fact's age and window and drops a cause stating it otherwise", () => {
+    const ignored = {
+      ...NO_SHOW_EVENT.cause,
+      ignoredHello: { ageMs: 7_200_000, windowMs: 90_000 },
+    };
+    expect(
+      validateAndSanitizeEvent({
+        ...NO_SHOW_EVENT,
+        cause: {
+          ...ignored,
+          ignoredHello: { ...ignored.ignoredHello, name: "p1-hello.json" },
+        },
+      })?.cause,
+    ).toEqual(ignored);
+    expect(
+      validateAndSanitizeEvent({
+        ...NO_SHOW_EVENT,
+        cause: { ...NO_SHOW_EVENT.cause, ignoredHello: { ageMs: "2h" } },
+      })?.cause,
+    ).toBeUndefined();
+  });
+
   test("keeps the shared-name fact and drops a cause stating it as anything but true", () => {
     const shared = { ...NO_SHOW_EVENT.cause, sharedName: true };
     expect(
