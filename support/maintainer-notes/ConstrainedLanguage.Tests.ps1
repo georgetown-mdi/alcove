@@ -175,13 +175,13 @@ BeforeAll {
     }
 
     # An engine that records the argument vector it is handed and answers
-    # every run of the doctor checks with a verdict that blocks nothing: the
-    # flow stub of Start-Alcove.Tests.ps1.
+    # every run of the doctor checks with a pass: the flow stub of
+    # Start-Alcove.Tests.ps1.
     Set-Content -LiteralPath (Join-Path $script:ClmBin 'docker.cmd') -Encoding Ascii -Value @(
         '@echo off',
         'echo %* >> "%ALCOVE_STUB_DIR%\calls.log"',
         'echo %* | findstr /c:"doctor" >nul',
-        'if not errorlevel 1 echo {"version":1,"mode":"mount","overall":"ok","checks":[]}',
+        'if not errorlevel 1 echo READY 1>&2',
         'exit /b 0')
 
     # The launcher refuses to run unstamped, so the copy under test has a

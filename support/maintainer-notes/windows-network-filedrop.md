@@ -32,20 +32,32 @@ folder and reading the DFS tab.
   rather than carrying a second copy of any of them, which is why the two travel
   together and why a release publishes both.
 - `start-alcove.sh` -- the launcher for macOS and Linux. It shares only the
-  doctor verdict contract with the PowerShell one; there is no resolution
+  doctor's exit codes with the PowerShell one; there is no resolution
   machinery in it, because a path the host can see is a path the engine can.
 - `README.md` -- the setup page, covering this script and the Command Prompt
   one alike.
 - `troubleshooting.md` -- the page the script's errors cite by section name.
 - `passwords.md` -- the account decision, cited by the script in two places.
 
-The Command Prompt script and its three container-side shell scripts have their
-own notes, [`cmd_windows-network-filedrop.md`](cmd_windows-network-filedrop.md).
+The three scripts listed above run the doctor without `--json`, print the lines
+it writes, and branch on its exit code alone: 0 passes, 78 offers a run again,
+69 and 64 stop, and 125 and above are Docker failing to start the container.
 
-The PowerShell script carries no container-side diagnostic of its own; the
-Command Prompt one carries three shell scripts, and its notes cover them. The
-diagnostic used to live as a here-string inside `Setup-AlcoveFileDrop.ps1`, and
-a second, hand-maintained copy of it used to sit beside the script for reading;
+The two PowerShell scripts and the Command Prompt script go one step further: a
+code none of those names is first checked against the engine, because a stopped
+engine makes `docker run` exit 1 (recorded below as P4b), so when the version
+query no longer answers they say Docker stopped rather than blaming the script.
+`start-alcove.sh` does not make that check and reports such a code as one it
+does not know.
+
+The Command Prompt script and its container-side shell script have their own
+notes, [`cmd_windows-network-filedrop.md`](cmd_windows-network-filedrop.md).
+
+Neither Windows script carries a container-side diagnostic of its own: both run
+the image's `alcove doctor`. The Command Prompt one keeps one shell script, the
+password check, and its notes cover it. The diagnostic used to live as a
+here-string inside `Setup-AlcoveFileDrop.ps1`, and a second, hand-maintained
+copy of it used to sit beside the script for reading;
 that copy drifted -- it read `SMB_VERS` where the script exported `SMB_DIALECT`,
 so running it with the script's own environment silently ignored the dialect --
 and was removed rather than resynchronised. The lesson outlived both: a second
@@ -91,8 +103,7 @@ why a working share passed before and why it is not evidence now.
 
 Re-measuring it takes the shape that pass took: run either script through part
 4 against a real share and read that same verdict. Both scripts' probes are the
-measurement -- `alcove doctor mount` for the PowerShell
-one, `cmd_alcove-volcheck.sh` for the Command Prompt one -- and both run inside
+measurement -- `alcove doctor mount`, for both -- and run inside
 the published image, so their write is uid 1000's write and a wrong mapping
 fails them rather than passing silently. Worth doing against a native Windows
 server rather than the Samba rig: Samba can be configured to serve Unix
@@ -109,9 +120,9 @@ produced is carried by the doctor batteries in `apps/cli/src/doctor/`, whose own
 CI leg drives them against a real Samba server and a real CIFS mount on every
 change to them -- the `smb-doctor` job in
 `.github/workflows/cli_build_and_test.yaml`, which is where that coverage now
-lives. The Command Prompt script still carries its own copy of both checks, and
-its state is recorded in `cmd_windows-network-filedrop.md`; parity between the
-doctor's battery and that copy is maintained by hand, not asserted by a test.
+lives. The Command Prompt script runs the same two doctor batteries from the
+image and branches on the same exit codes; its state is recorded in
+`cmd_windows-network-filedrop.md`.
 
 **The container half was verified against a real Samba server**, driven through
 the here-string the script then carried rather than a paraphrase of it.
@@ -239,11 +250,10 @@ Linux CI against a stub engine on PATH -- a real process reading the real
 argument vector, so the mounts and the publish binding are asserted as the
 engine receives them. Covered: the unstamped refusal, and
 that it happens before the engine is touched at all; the sourcing contract from
-both sides; the verdict reader (absent versus null, prose holding a brace, a
-comma and a quote, an escaped control character rendered as a space, a check
-found by id rather than by position); a `fix_and_retry` loop printing MEANING
-and ACTION verbatim and running again; a declined retry; a `fatal` stop that is
-not retried; a refused verdict version; the docker-then-podman order; the
+both sides; the doctor's lines printed verbatim, a carriage return in them
+blanked; a 78 running again on yes; a declined run again; a 69 that is not
+offered again; 125, 64 and an unknown code each stopping; the docker-then-podman
+order; the
 account the container is run as and the pasted-credential scratch override that
 travels with it, with the host's own kind stubbed each way and `id` stubbed at
 root, where a sudo run takes the account sudo names and a root run naming none
@@ -276,11 +286,12 @@ answers. So does the troubleshooting page's account of a folder writable only
 through a supplementary group -- what `--user` does with the other groups a
 login carries has been reasoned about here and not run.
 
-`Start-Alcove.ps1` is covered by `Start-Alcove.Tests.ps1`, most of it purely:
-the verdict reader against the same fixtures, the release stamp, the DFS
-candidate selection, the console's argument vector, the parameter-name reader
-the dot-source protects itself with, and both engine wrappers against a name
-that is not a command and against an empty one.
+`Start-Alcove.ps1` is covered by `Start-Alcove.Tests.ps1`: the screen under
+each exit code of the doctor, the loop that offers a run again on 78 and the
+sign-in again with no as its default, the release stamp, the registry order, the
+console's argument vector, the parameter-name reader the dot-source protects
+itself with, the engine it chooses, and both engine wrappers on a PC with no
+docker.
 
 Its network flow is driven end to end on the runner: a stamped copy of the
 launcher, the setup script beside it, a stub `docker.cmd` first on a PATH
@@ -314,7 +325,7 @@ unmeasured is the same as everywhere else here: Windows, a real share, and the
 
 The folder picker, its typed fallback, the credential prompt itself and the
 paths that need a real engine and a real share were executed by the 17 September
-2026 pass below. Still unexecuted anywhere: the DFS offer.
+2026 pass below, against the launcher as it then stood.
 
 **Constrained language mode is driven in CI by a policy, measured on 27 October
 2026 (run 40505959607) to take effect.** `ConstrainedLanguage.Tests.ps1`,
@@ -428,15 +439,32 @@ literally, through `New-ShareVolume`, which the launcher calls with `-Engine`
 naming whichever engine it found. Its credential prompts, its password-comma
 refusal and its volume replace-or-refuse sequence are the setup script's copies
 too, reached through the same dot-source: the launcher's own copies of all three
-were deleted rather than kept in step. Neither script's volume options have been
-driven against anything but docker, and the launcher still says so on screen
-before creating the volume under any other engine rather than predicting what
-podman will make of them.
+were deleted rather than kept in step.
+
+**The engine.** Both PowerShell scripts run docker when it answers and podman
+otherwise, since some operators have no Docker access and use Podman.
+
+- Each chooses in a function of its own -- `Find-ContainerEngine` in the
+  launcher, `Find-SetupEngine` in the setup script -- because the launcher
+  chooses before it can load the setup script, and in a constrained language
+  mode never loads it.
+- An engine counts only when it answers. The launcher asks each a bare
+  `version`; the setup script asks docker the `{{.Server.Os}}` question its
+  Windows-containers check reads, and podman a bare `version`, since podman's
+  template fields have not been tried here.
+- Every later engine command each script runs goes through the engine chosen,
+  and every message naming an engine names that one, with one shared line per
+  engine saying how to start it.
+- Covered against stubs only: the launcher's suite drives the choice in each
+  order and the screen when neither answers; the setup suite drives its choice
+  and a whole run through a stub podman behind a docker that does not answer.
+  No pass has run either script against a real Podman.
+- The Command Prompt script runs docker alone; its notes say why.
 
 What that sharing costs the launcher, and what to look at first on a real
 Windows pass: it now prints the setup script's fuller credential preamble and
 its longer refusals, names the device it is creating the volume for, and says
-that Docker mounts the volume the first time it is used. Nothing there changes
+that the volume is mounted the first time it is used. Nothing there changes
 what it does.
 
 Still unverified: the Windows-containers branch, which needs Docker Desktop
@@ -449,15 +477,15 @@ that invoke `doctor probe` and `doctor mount`, the exit codes the script
 branches on, and the collected-then-printed output -- were executed by the 17
 September 2026 pass below, on the happy path and on a wrong password.
 
-Two branches past them are still unverified on Windows. The branch that reports
-a volume which mounted and then refused the write, split out of the "could not
-be mounted" verdict it used to share, is reached only after a failure, so the
-cost of it being wrong is a wrong message rather than a wrong outcome. And the
-image fetch the capability gate makes when the copy on the PC carries no doctor
--- the pull itself, and the second ask that either carries the run on or reaches
-the same refusal -- is driven in both directions by the Pester stub engines and
-by nothing on Windows; reaching it there takes a local copy older than the
-checks, tagged as the floating tag the script asks for.
+The branch that reports a volume which mounted and then refused the write is
+still unverified on Windows. It is reached only after a failure, so the cost of
+it being wrong is a wrong message rather than a wrong outcome.
+
+A copy of the image on the PC older than the doctor is not looked for: such an
+image answers `doctor probe` with 64, which the setup scripts cannot tell from a
+refused value, so their text for 64 names both causes and the `docker pull` of
+the floating tag that removes the second. The launchers run the digest they
+were released with, so an older copy is not one they can meet.
 
 A later pass ran the script in the form it had on 30 July 2026, from Windows
 against the same
@@ -769,47 +797,29 @@ targets, and there is no way to test it here. If a domain-joined machine
 becomes available, measure the premise first -- if `Get-SmbConnection` does
 name the target, a much smaller fix exists.
 
-**Partly reversed, 5 August 2026: the suggestion is back, as an offer.**
-`Start-Alcove.ps1` asks `Get-SmbConnection` for a correction when the operator
-says the resolved server and share are wrong, and offers what it finds rather
-than substituting it. Of the three defects above, two no longer hold and one
-still does.
+**Briefly reversed, then removed: the suggestion as an offer.**
+`Start-Alcove.ps1` once asked `Get-SmbConnection` for a correction when the
+operator said the resolved server and share were wrong, and offered what it
+found. The offer is gone. It was reached only after a declined confirmation, it
+needed rights an ordinary operator's window has not been shown to hold, and on
+zero candidates, several, or an error it fell back to the DFS tab anyway. Both
+Windows scripts print the manual route and stop.
 
-*Server-only substitution* is fixed rather than argued away. `Select-DfsCandidate`
-matches `ServerName` and `ShareName` together and returns both, so a correction
-that keeps the namespace's share cannot be produced at all. The suite holds that
-against a connection list where the target sits on the namespace's own server
-under a different share.
-
-*Namespace-root masking is measured away.* The claim that the connection list
-answers with the name already in hand was read off the protocol, not measured;
-the rig has measured it. Check-run `92447351999`'s `Q3_resolve` annotation,
-taken after a write through `\\runnervmhisb5\alcovedfs2d4600cc\drop` whose
-folder target is `\\runnervmhisb5\alcoveci2d4600cc`, records:
+The rig's measurement of the premise stays on record for whoever revisits it.
+Check-run `92447351999`'s `Q3_resolve` annotation, taken after a write through
+`\\runnervmhisb5\alcovedfs2d4600cc\drop` whose folder target is
+`\\runnervmhisb5\alcoveci2d4600cc`, records:
 
 ```text
 smb_connections=localhost\alcoveci2d4600cc|runnervmhisb5\IPC$|runnervmhisb5\alcoveci2d4600cc|runnervmhisb5\alcovedfs2d4600cc
 ```
 
-The target share is there alongside the namespace root, so dropping the
-namespace's own pair leaves something real to offer. Read it for the limit as
-well: with `IPC$` dropped, two entries naming a real share remain, so on that
-rig the selection reports several and falls back. The rig settles the premise,
-not the offer.
-
-*The elevation requirement stands, and is still unmeasured where it matters.*
-`Get-SmbConnection` answered on the runner, whose session holds the rights; it
-has not been run in an ordinary operator's non-elevated window, where the field
-notes below recorded "Access is denied". That is why the fallback is
-load-bearing rather than an edge case, and why the suggestion is never more than
-an offer: on zero candidates, several, an error, or an empty result the launcher
-routes to the DFS tab, exactly the manual route the setup script gives. Settling
-the non-elevated premise is assigned to the planned real-Windows end-to-end
-pass, which is also the only thing that can exercise the offer's prompt.
-
-The offer is reached only after the operator declines the confirmation, which
-keeps it off every path that resolved correctly. `Setup-AlcoveFileDrop.ps1` is
-unchanged: it still prints the manual route and stops.
+The target share is there alongside the namespace root, so the connection list
+does not answer only with the name already in hand. With `IPC$` dropped, two
+entries naming a real share remain, so on that rig a selection would still have
+had to fall back. `Get-SmbConnection` has not been run in an ordinary
+operator's non-elevated window, where the field notes below recorded "Access is
+denied".
 
 **The probe reports derived facts, not the operator's data.** Step 3 used to
 print the server's share list and step 5 the drop folder's listing. The runbook

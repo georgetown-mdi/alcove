@@ -143,15 +143,10 @@ if not defined DOCKER_OS goto no_docker
 if /i "%DOCKER_OS%"=="windows" goto windows_containers
 call :good "Docker engine %DOCKER_VER% is running."
 
-rem The checks run in the same image the exchange itself runs, at the same
-rem floating tag: it carries smbclient, so the checks do not have to fetch it on
-rem a network that may be the reason they are being run. Floating is deliberate
-rem -- this script is downloaded on its own rather than shipped with a release,
-rem so pinning the diagnostic tighter than the thing it diagnoses buys nothing.
-rem
-rem Every docker run below overrides the image entrypoint with sh, because that
-rem image's own entrypoint hands its argument vector to Alcove and would read a
-rem helper script passed to it as exchange arguments.
+rem The checks are the image's own, "alcove doctor", run in the same image the
+rem exchange itself runs, at the same floating tag. Floating is deliberate --
+rem this script is downloaded on its own rather than shipped with a release, so
+rem pinning the diagnostic tighter than the thing it diagnoses buys nothing.
 rem
 rem Pulled here rather than left to the first docker run: an image that cannot
 rem be fetched exits 125, which is indistinguishable from the checks deciding
@@ -279,6 +274,10 @@ echo(
 set /p "SMB_PASS=Password: "
 echo(
 
+rem The image entrypoint is overridden with sh here and nowhere else: it hands
+rem its argument vector to Alcove, which would read the helper as exchange
+rem arguments. The helper is fed through "tr -d '\r'" so that a CRLF copy from
+rem a checkout with core.autocrlf on still runs.
 set "VERDICT="
 set "PWWARN="
 set "TOKEN="
@@ -298,8 +297,8 @@ if not "%VERDICT%"=="OK" goto credcheck_failed
 if "%PWWARN%"=="LEADSPACE" (
   call :warn "That password begins with a space."
   call :note "The credentials file the checks use drops leading spaces, so it will"
-  call :note "be tried without one and reported as a wrong password. If step 3"
-  call :note "below says LOGON_FAILURE, that is why, and it is not your mistake."
+  call :note "be tried without one and reported as a wrong password. If the checks"
+  call :note "below say LOGON_FAILURE, that is why, and it is not your mistake."
 )
 
 rem ================================ part 3: test the share from a container
@@ -315,27 +314,15 @@ set "SMB_TOKEN=%TOKEN%"
 set "SMB_MARKER=%MARKER_NAME%"
 if defined SKIP_VOLUME_TEST set "SMB_MARKER="
 
-rem The probe streams to the console: its output is the thing the operator
-rem reads. It is fed on standard input through "tr -d '\r'" so that a checkout
-rem with core.autocrlf on cannot break it -- sh does not treat a carriage
-rem return as whitespace, and a CRLF copy reaching sh directly dies with an
-rem unterminated if.
-docker run --rm -i --env SMB_SERVER --env SMB_SHARE --env SMB_PATH --env SMB_USER --env SMB_DOMAIN --env SMB_PASS --env SMB_DIALECT --env SMB_MARKER --env SMB_TOKEN --entrypoint sh "ghcr.io/georgetown-mdi/alcove:latest" -c "tr -d '\r' | sh" <"%SCRIPT_DIR%cmd_alcove-probe.sh"
+rem The image's own checks, "alcove doctor probe". Every value reaches them by
+rem name from the environment, so the password is never on a command line, and
+rem their lines stream to this window: they are the thing the operator reads.
+docker run --rm --env SMB_SERVER --env SMB_SHARE --env SMB_PATH --env SMB_USER --env SMB_DOMAIN --env SMB_PASS --env SMB_DIALECT --env SMB_MARKER --env SMB_TOKEN "ghcr.io/georgetown-mdi/alcove:latest" doctor probe
 set "PROBE_RC=%errorlevel%"
 
-set "SMB_SERVER="
-set "SMB_SHARE="
-set "SMB_PATH="
-set "SMB_USER="
-set "SMB_DOMAIN="
-set "SMB_DIALECT="
-set "SMB_MARKER="
-set "SMB_TOKEN="
-
 if %PROBE_RC% GEQ 125 goto docker_broke
+if "%PROBE_RC%"=="78" goto probe_not_ready
 if not "%PROBE_RC%"=="0" goto probe_failed
-
-call :good "The share is reachable, writable, and supports rename."
 
 if defined SKIP_VOLUME_TEST (
   call :note "Skipping volume creation as requested."
@@ -398,80 +385,19 @@ if errorlevel 1 goto volume_create_failed
 set "VOL_OPTS="
 call :good "Volume created. Docker mounts it the first time it is used."
 
-echo Mounting it and testing what Alcove needs...
-set "MARKER=%MARKER_NAME%"
-docker run --rm -i -v "%VOLUME_NAME%:/rz" --env MARKER --env TOKEN --entrypoint sh "ghcr.io/georgetown-mdi/alcove:latest" -c "tr -d '\r' | sh" <"%SCRIPT_DIR%cmd_alcove-volcheck.sh" >"%WORK%" 2>&1
+rem The kernel-side half of the checks, over the real mount. SMB_MARKER and
+rem SMB_TOKEN are still set from part 3, which is what lets this confirm that the
+rem volume and those checks reached the same folder. Collected rather than
+rem streamed, so that a refused mount's message can be read for its cause.
+echo Mounting it and running the checks over it...
+docker run --rm --env SMB_MARKER --env SMB_TOKEN -v "%VOLUME_NAME%:/rz" "ghcr.io/georgetown-mdi/alcove:latest" doctor mount /rz >"%WORK%" 2>&1
 set "VOL_RC=%errorlevel%"
-set "MARKER="
+echo(
+call :show_safely
 
-rem "Did not mount" and "mounted, then refused the write" are different answers
-rem and used to share one message. A volume that reported any marker line has
-rem demonstrably reached a directory, so calling that a mount failure sent the
-rem operator round the -Dialect loop for what is a permissions or quota problem
-rem on the share.
-findstr /c:"WRITE_OK" "%WORK%" >nul 2>&1
-if not errorlevel 1 goto volume_write_ok
-findstr /c:"MARKER_OK" /c:"MARKER_MISMATCH" /c:"MARKER_MISSING" "%WORK%" >nul 2>&1
-if not errorlevel 1 goto volume_not_writable
-goto volume_mount_failed
-
-:volume_write_ok
-if not "%VOL_RC%"=="0" goto volume_mount_failed
-
-call :good "The volume mounts and Alcove can write to it."
-
-findstr /c:"MARKER_MISSING" "%WORK%" >nul 2>&1
-if not errorlevel 1 goto marker_missing
-
-findstr /c:"MARKER_MISMATCH" "%WORK%" >nul 2>&1
-if errorlevel 1 goto marker_agree
-call :warn "The check file in the folder is not the one part 3 wrote."
-call :note "Either someone else is setting up this same share right now, or"
-call :note "an earlier run of this script left the file behind. The volume"
-call :note "itself reached the folder either way."
-call :note "To tell the two apart, delete %MARKER_NAME% from the drop folder"
-call :note "and run this again: if it comes back, you have company."
-goto marker_done
-
-rem The reassuring line waits for the positive verdict rather than being
-rem inferred from the absence of the other two.
-:marker_agree
-findstr /c:"MARKER_OK" "%WORK%" >nul 2>&1
-if not errorlevel 1 call :good "The volume and the checks agree on which folder this is."
-
-:marker_done
-
-findstr /c:"RENAME_FAIL" "%WORK%" >nul 2>&1
-if not errorlevel 1 (
-  call :warn "This share will not rename a file onto an existing one."
-  call :note "Alcove does that when two sides meet at once. Pass"
-  call :note "--lockless-rendezvous on BOTH sides of the exchange."
-)
-
-findstr /c:"EXCL_WEAK" "%WORK%" >nul 2>&1
-if not errorlevel 1 (
-  call :warn "This share does not refuse to create a file that already exists."
-  call :note "Alcove uses that refusal to decide which side goes first, so"
-  call :note "without it both sides can believe they did. Pass"
-  call :note "--lockless-rendezvous on BOTH sides of the exchange."
-)
-
-findstr /c:"EXCL_UNTESTED" "%WORK%" >nul 2>&1
-if not errorlevel 1 (
-  call :note "Could not test exclusive create on this share. If the exchange"
-  call :note "hangs at the start, try --lockless-rendezvous on both sides."
-)
-
-rem The positive counterpart of the three warnings above, and the only one that
-rem tells an operator whose share is fine that it is fine. It is stated only
-rem when both halves held: a share that refuses a duplicate create but will not
-rem rename onto an existing file still needs --lockless-rendezvous, so the
-rem rename result gates the message.
-findstr /c:"RENAME_FAIL" "%WORK%" >nul 2>&1
-if not errorlevel 1 goto skip_excl_ok
-findstr /c:"EXCL_OK" "%WORK%" >nul 2>&1
-if not errorlevel 1 call :good "Exclusive create and rename behave the way Alcove needs."
-:skip_excl_ok
+if %VOL_RC% GEQ 125 goto volume_mount_failed
+if not "%VOL_RC%"=="0" goto volume_checks_failed
+call :clear_check_env
 
 rem ===================================================================== done
 call :head "Ready to run an exchange"
@@ -646,24 +572,37 @@ call :info "'What to ask your IT department for'."
 goto fail_generic
 
 :docker_broke
-call :head "Could not run the checks"
+echo(
 call :bad "Docker could not start the container (exit %PROBE_RC%)."
-call :note "Nothing was tested. This is Docker itself failing, not a verdict"
-call :note "about your file drop -- so there is no ACTION above to follow."
-call :note "The message Docker printed is the one to read."
-call :cleanup
-endlocal
-exit /b 1
+call :note "Nothing was tested. The message Docker printed above is the one"
+call :note "to read."
+goto fail_generic
+
+:probe_not_ready
+echo(
+call :info "The troubleshooting page explains each of these in more detail:"
+call :info "https://github.com/georgetown-mdi/alcove/blob/main/support/windows-network-filedrop/troubleshooting.md"
+echo(
+rem A wrong password tried again is one more failed sign-in against an account
+rem a handful of those lock out, and most findings are not about the sign-in at
+rem all, so no is the default.
+set "RETRY_SIGNIN="
+set /p "RETRY_SIGNIN=Enter the username and password again and run the checks again? [y/N]: "
+if /i "%RETRY_SIGNIN%"=="y"   goto retry_signin
+if /i "%RETRY_SIGNIN%"=="yes" goto retry_signin
+goto fail_generic
+
+:retry_signin
+call :clear_check_env
+set "SMB_USERNAME="
+set "SMB_DOMAINNAME="
+set "DOMAIN_GIVEN="
+goto credentials
 
 :probe_failed
-call :head "Not ready yet"
-call :bad "The file drop is not usable from Docker. Follow the ACTION above."
-call :info ""
-call :info "The troubleshooting page explains every one of these in detail:"
-call :info "https://github.com/georgetown-mdi/alcove/blob/main/support/windows-network-filedrop/troubleshooting.md"
-call :cleanup
-endlocal
-exit /b 1
+echo(
+call :doctor_exit %PROBE_RC%
+goto fail_generic
 
 :volume_list_failed
 call :bad "Could not list the Docker volumes."
@@ -702,25 +641,20 @@ echo(
 call :show_safely
 goto fail_generic
 
-:volume_not_writable
-call :bad "The volume mounted, but Alcove cannot write in that folder."
+:volume_checks_failed
 echo(
-call :show_safely
-echo(
-call :note "The share was reached, so this is not a mount or a dialect"
-call :note "problem and -Dialect will not change it. Either the account"
-call :note "can open the folder but not create files in it, or the share"
-call :note "is out of space."
-call :info ""
-call :info "See the troubleshooting page, 'The folder cannot be written to'."
+if "%VOL_RC%"=="78" (
+  call :info "The troubleshooting page explains each of these in more detail:"
+  call :info "https://github.com/georgetown-mdi/alcove/blob/main/support/windows-network-filedrop/troubleshooting.md"
+) else (
+  call :doctor_exit %VOL_RC%
+)
 docker volume rm "%VOLUME_NAME%" >nul 2>&1
 goto fail_generic
 
 :volume_mount_failed
+echo(
 call :bad "The volume could not be mounted."
-echo(
-call :show_safely
-echo(
 rem The message being classified is the one the Docker daemon prints, which is
 rem the mount(2) errno rendered from Go's own table -- lowercase throughout,
 rem where mount.cifs and glibc capitalise the same errors. findstr is
@@ -759,26 +693,16 @@ goto mount_arms_done
 
 :mount_arm_nokey
 findstr /i /c:"required key not available" "%WORK%" >nul 2>&1
-if errorlevel 1 goto mount_arms_done
+if errorlevel 1 goto mount_arm_other
 call :note "The mount wanted a Kerberos ticket and the Docker VM has none."
 call :note "The server is refusing password authentication. See the"
 call :note "troubleshooting page, 'The share never asks for a password'."
+goto mount_arms_done
+
+:mount_arm_other
+call :note "The message Docker printed above is the one to read."
 
 :mount_arms_done
-docker volume rm "%VOLUME_NAME%" >nul 2>&1
-goto fail_generic
-
-:marker_missing
-call :bad "The volume is not mounting the folder that was just tested."
-call :note "A file left in the folder by part 3 is not visible through the"
-call :note "volume, so the two are pointing at different directories. The"
-call :note "server, share, or subfolder is wrong somewhere -- a DFS path is"
-call :note "the usual reason, because the namespace and the real location can"
-call :note "differ in all three."
-call :info ""
-call :info "Read the real path from the folder Properties, DFS tab, and run"
-call :info "again with -Server, -Share and -SubPath. See the troubleshooting"
-call :info "page, 'Reading the real path from Windows'."
 docker volume rm "%VOLUME_NAME%" >nul 2>&1
 goto fail_generic
 
@@ -821,9 +745,52 @@ echo(        %~1
 exit /b 0
 
 :cleanup
-set "SMB_PASS="
+call :clear_check_env
 set "VOL_OPTS="
 if exist "%WORK%" del /q "%WORK%" >nul 2>&1
+exit /b 0
+
+:clear_check_env
+set "SMB_SERVER="
+set "SMB_SHARE="
+set "SMB_PATH="
+set "SMB_USER="
+set "SMB_DOMAIN="
+set "SMB_PASS="
+set "SMB_DIALECT="
+set "SMB_MARKER="
+set "SMB_TOKEN="
+exit /b 0
+
+:doctor_exit
+rem %1 = an exit code of the checks other than 0, 78 and 125 and above. The
+rem checks' own lines say what was found; this says what the code adds.
+if "%~1"=="69" (
+  call :info "Follow the ACTION line above, then run this again."
+  exit /b 0
+)
+if "%~1"=="64" (
+  call :bad "The checks refused a value they were given, so nothing was tested."
+  call :note "The line above names the value. SMB_SERVER is the server,"
+  call :note "SMB_SHARE the share, SMB_PATH the folder within it, and SMB_USER"
+  call :note "the username; correct the one it names and run this again."
+  call :note "Any other name is a value this script set, not one you typed:"
+  call :note "report it as a problem with this script. An image older than"
+  call :note "these checks also ends this way, and downloading it again"
+  call :note "fixes that:"
+  call :note "    docker pull ghcr.io/georgetown-mdi/alcove:latest"
+  exit /b 0
+)
+docker version --format "{{.Server.Os}} {{.Server.Version}}" >nul 2>&1
+if errorlevel 1 (
+  call :bad "Docker stopped during the checks."
+  call :note "Start Docker Desktop, wait for the whale icon to stop animating,"
+  call :note "and run this script again."
+  exit /b 0
+)
+call :bad "The checks ended with exit %~1, which this script does not know."
+call :note "Nothing was established about your file drop. Look for a newer"
+call :note "copy of this script wherever you downloaded it."
 exit /b 0
 
 :show_safely

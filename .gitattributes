@@ -11,13 +11,11 @@
 # is what makes both delivery paths work.
 /support/windows-network-filedrop/cmd_Setup-AlcoveFileDrop.cmd -text
 
-# Its container-side scripts are the opposite case -- sh does not treat a
-# carriage return as whitespace -- so they are stored LF and kept that way.
-# They are also fed through "tr -d '\r'" at run time, which covers a copy that
-# picked up CRLF some other way.
-/support/windows-network-filedrop/cmd_alcove-probe.sh -text
+# Its container-side script is the opposite case -- sh does not treat a
+# carriage return as whitespace -- so it is stored LF and kept that way. It is
+# also fed through "tr -d '\r'" at run time, which covers a copy that picked up
+# CRLF some other way.
 /support/windows-network-filedrop/cmd_alcove-credcheck.sh -text
-/support/windows-network-filedrop/cmd_alcove-volcheck.sh -text
 
 # The macOS/Linux launcher is delivered as a release asset and by checkout, and
 # bash refuses a script whose shebang line ends in a carriage return. It has no

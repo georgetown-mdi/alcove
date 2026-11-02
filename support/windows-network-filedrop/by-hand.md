@@ -14,16 +14,18 @@ network folder needs a volume at all. Which account to use is
 [the passwords page](passwords.md), and it is worth five minutes before you
 start, because that choice is the awkward one to undo.
 
-**The parts and steps below are numbered to match the Command Prompt script.**
-So when [troubleshooting](troubleshooting.md) names a step, it is the one with
-that number here. The PowerShell script runs the checks that ship inside the
-Alcove image, which name what they looked at rather than numbering it, and
-which ask the same questions in the same order. Every step names the section
-that covers its failure, and you can stop reading this page at that point.
+**The steps below are numbered for this page only.** Both scripts run the
+checks that ship inside the Alcove image, which name what they looked at rather
+than numbering it, and which ask the same questions in the same order. Every
+step names the section of [troubleshooting](troubleshooting.md) that covers its
+failure, and you can stop reading this page at that point.
 
 ## What you will need in front of you
 
-- **Docker Desktop, running.** The whale icon should be still, not animating.
+- **Docker Desktop or Podman, running.** With Docker Desktop, the whale icon
+  should be still, not animating. With Podman, type `podman` wherever a
+  command below says `docker`, and check its answer with `podman version`
+  rather than the first command in Part 2.
 - **The file-drop folder path**, as File Explorer shows it. Click once in the
   address bar and it turns into text you can copy.
 - **A username and password for that folder.** Not your own Windows sign-in,

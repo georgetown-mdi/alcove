@@ -34,18 +34,10 @@ export const SUPPORT_SCRIPTS = [
   "start-alcove.sh",
   "cmd_Setup-AlcoveFileDrop.cmd",
   "cmd_alcove-credcheck.sh",
-  "cmd_alcove-probe.sh",
-  "cmd_alcove-volcheck.sh",
 ];
 
 /** The `.cmd` path's setup script, whose redirects name the helper scripts. */
 export const CMD_SETUP_SCRIPT = "cmd_Setup-AlcoveFileDrop.cmd";
-
-/** The launchers that declare which `--json` verdict version they read. */
-export const VERDICT_VERSION_SOURCES = {
-  "Start-Alcove.ps1": /\$AlcoveVerdictVersion\s*=\s*'?(\d+)'?/,
-  "start-alcove.sh": /ALCOVE_VERDICT_VERSION='(\d+)'/,
-};
 
 const LANGUAGE_BY_EXTENSION = { ps1: "powershell", sh: "shell", cmd: "batch" };
 
@@ -302,36 +294,6 @@ export function deriveHelperInvocations(cmdSource) {
   return [...byScript.keys()].sort().map((key) => byScript.get(key));
 }
 
-/**
- * The `--json` verdict version the shipped launchers read.
- *
- * Both declare it, and a launcher stops rather than reads a verdict holding any
- * other version, so they must agree with each other before either is compared
- * against an image.
- */
-export function deriveVerdictVersion(sources) {
-  const declared = Object.entries(VERDICT_VERSION_SOURCES).map(
-    ([filename, pattern]) => {
-      const match = (sources[filename] ?? "").match(pattern);
-      if (match === null) {
-        throw new Error(
-          `${filename}: no verdict version declaration was found. If you changed how the file declares it, update the pattern in scripts/derive-image-dependencies.mjs to read the new form.`,
-        );
-      }
-      return { filename, version: Number(match[1]) };
-    },
-  );
-  const [first, ...rest] = declared;
-  for (const other of rest) {
-    if (other.version !== first.version) {
-      throw new Error(
-        `${first.filename} reads verdict version ${first.version} and ${other.filename} reads ${other.version} -- the launchers disagree`,
-      );
-    }
-  }
-  return first.version;
-}
-
 /** Read every support script and the CLI parser from a repository root. */
 export function readSources(root) {
   const support = Object.fromEntries(
@@ -350,11 +312,10 @@ export function readSources(root) {
 /**
  * The whole derived dependency set, with the tripwires that keep it accurate.
  *
- * Returns the argument vectors, the helper invocations, the verdict version and
- * the support-script sources, which a caller pipes into a container as the `.cmd`
- * path does. Each derivation throws rather than returns an empty set: a pattern
- * that stops matching would otherwise report an image with nothing to answer for
- * as clean.
+ * Returns the argument vectors, the helper invocations and the support-script
+ * sources, which a caller pipes into a container as the `.cmd` path does. Each
+ * derivation throws rather than returns an empty set: a pattern that stops
+ * matching would otherwise report an image with nothing to answer for as clean.
  */
 export function deriveImageDependencies(root) {
   const { support, parser, entrypoint } = readSources(root);
@@ -397,7 +358,6 @@ export function deriveImageDependencies(root) {
     cli,
     helpers,
     sources: support,
-    verdictVersion: deriveVerdictVersion(support),
   };
 }
 

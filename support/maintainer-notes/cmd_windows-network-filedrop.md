@@ -1,6 +1,6 @@
 # Maintainer notes: the Command Prompt file-drop setup on Windows
 
-Notes on `cmd_Setup-AlcoveFileDrop.cmd` and its three container-side scripts in
+Notes on `cmd_Setup-AlcoveFileDrop.cmd` and its container-side script in
 [`support/windows-network-filedrop`](../windows-network-filedrop/README.md).
 They live outside that folder for the same reason the PowerShell notes do: the
 guide is handed to an operator as a unit, and what is here -- what is
@@ -37,16 +37,18 @@ quote in it. The reasoning for folding its page back in is in
   passwords page it uses the same name the PowerShell version does. It cites
   fewer of them: the PowerShell script reaches some conditions this one does
   not.
-- `cmd_alcove-probe.sh` -- the container checks, steps 1 to 6. A port of the
-  `$probe` here-string in the PowerShell script.
 - `cmd_alcove-credcheck.sh` -- inspects the password and mints the run token.
-- `cmd_alcove-volcheck.sh` -- the checks that run over the mounted volume.
 
-The three shell scripts are separate files rather than text embedded in the
-batch file. Embedding them would mean escaping every `%`, `>`, `&`, `|` and
-`^` in four hundred lines of shell, and each of those escapes is a defect
-waiting to happen -- see the hazards below, three of which were found in this
-script's own guidance text.
+The checks themselves are the image's: the script runs `alcove doctor probe`
+and `alcove doctor mount /rz`, prints what they print, and branches on the exit
+code as the PowerShell script does. Its own copies of both, `cmd_alcove-probe.sh`
+and `cmd_alcove-volcheck.sh`, were removed; the record below of what was
+measured through them is kept as history.
+
+The shell script is a separate file rather than text embedded in the batch file.
+Embedding it would mean escaping every `%`, `>`, `&`, `|` and `^` in it, and
+each of those escapes is a defect waiting to happen -- see the hazards below,
+three of which were found in this script's own guidance text.
 
 ## State
 
@@ -55,8 +57,8 @@ are unverified against a real share**, exactly as the PowerShell script's are;
 the reasoning, what would settle it, and why the earlier passing runs are not
 evidence are recorded once, under "The CIFS volume pins `uid=1000,gid=1000`" in
 [`windows-network-filedrop.md`](windows-network-filedrop.md). The measurement on
-this side is `cmd_alcove-volcheck.sh`'s `WRITE_OK`, which runs inside the
-published image and so writes as the unprivileged account the mapping is for.
+this side is `alcove doctor mount`, which runs inside the published image and so
+writes as the unprivileged account the mapping is for.
 
 The most recent full pass covers both scripts together and is written up once,
 under "Verification pass on staging, 30 July 2026" in
@@ -274,42 +276,16 @@ fixing it properly means a lookup that does not exist in `cmd`.
 
 ## Decisions worth not relitigating
 
-**The probe is a second copy, not a shared file.** The maintainer of this branch
-asked for a standalone `cmd_`-prefixed set, and that is what this is. It is
-worth being clear about the cost: the PowerShell notes record that a second,
-hand-maintained copy of the container diagnostic already drifted once -- it read
-`SMB_VERS` where the script exported `SMB_DIALECT`, so the dialect was silently
-ignored -- and was deleted rather than resynchronised. `cmd_alcove-probe.sh`
-is that same text again, and nothing currently detects the two falling out of
-step. It drifted immediately: the port was cut before the probe's fixes landed,
-so it shipped a copy that read an empty status scrape as success, swept a name
-it never created, deleted a concurrent operator's marker, drew its uniqueness
-from a `$$` that is constant under `sh -c`, and printed the server's share list
-and the drop folder's file listing into output the guide asks operators to send
-onward.
-
-It was resynchronised rather than patched, and the two are now the same text
-again. The measured divergence is small enough that keeping them so is
-mechanical. To redo it:
-
-1. Extract the `$probe` here-string from the `.ps1` -- there is exactly one, so
-   `awk "/^\\\$probe = @'\$/{f=1;next} /^'@\$/{f=0} f"` is unambiguous.
-2. Insert `cmd_alcove-probe.sh`'s own nine-line delivery header immediately
-   after the shebang, not at the top of the file.
-3. Substitute four message lines: the script name in three of them, and
-   `Resolve-DnsName` to `nslookup` in the fourth.
-
-Nothing else differs, so a diff expecting that header plus exactly those four
-substitutions is the whole check.
-
-**A repository check for this was considered and declined.** It would have to
-gate the build on a support guide's internal consistency, which is out of
-proportion to what it protects: this folder is a self-contained artifact handed
-to an operator, not something the rest of the repository builds against. The
-consequence is accepted rather than overlooked -- the copies are in step as of
-this commit and nothing enforces that they stay so, which is why the recipe
-above is written out. Do not re-propose the check without a reason that has
-changed.
+**The probe is the image's, not a copy.** This script once carried its own port
+of the container checks, `cmd_alcove-probe.sh`, and a volume check beside it.
+The PowerShell notes record that a second, hand-maintained copy of the container
+diagnostic drifted once -- it read `SMB_VERS` where the script exported
+`SMB_DIALECT` -- and the port drifted the same way: it was cut before the
+probe's fixes landed, so it shipped a copy that read an empty status scrape as
+success, swept a name it never created, and printed the server's share list into
+output the guide asks operators to send onward. Both copies were removed when
+the checks moved into the image as `alcove doctor`, which both Windows scripts
+run. Do not reintroduce a copy.
 
 **The password is visible as it is typed.** `cmd` has no equivalent of
 `Read-Host -AsSecureString`, and `set /p` echoes. No reliable way to suppress
@@ -317,6 +293,14 @@ the echo in plain `cmd` was found that does not depend on something else being
 installed. The script warns before prompting and suggests `cls` afterwards.
 Given the operator is the machine's own user, this is a warn-and-guide case
 rather than a reason to refuse.
+
+**This script runs docker alone, with no podman fallback.** The PowerShell
+scripts run podman when docker does not answer. This one names `docker` at
+every one of its engine call sites rather than through one variable, and
+reads the engine's answer through docker's own `{{.Server.Os}}` template, so a
+fallback here is a rewrite of every call site rather than a choice made once.
+An operator with Podman alone runs the PowerShell script, or does it by hand
+with `podman` in place of `docker`.
 
 **The password is not masked out of Docker's error text; the line is dropped.**
 The PowerShell script does a string substitution to mask it. `cmd` cannot

@@ -191,8 +191,6 @@ case "$*" in
     printf 'ok\\n' ;;
   *"--entrypoint node"*)
     printf 'stub-peer-id\\n' ;;
-  *"doctor --help")
-    printf 'Usage: alcove doctor <probe | mount DIRECTORY> [options]\\n' ;;
   *"doctor probe --json")
     printf '%s\\n' "$STUB_PROBE_VERDICT"; exit "$STUB_PROBE_STATUS" ;;
   *"doctor mount /rz --json")
@@ -206,10 +204,6 @@ case "$*" in
     case "$piped" in
       *"mints the run token"*)
         printf 'VERDICT=OK\\nWARN=\\nTOKEN=0123456789abcdef0123456789abcdef\\n' ;;
-      *"Container-side checks"*)
-        printf '%s\\n' "-- 1. Name resolution" "-- 2. TCP reachability" "-- 3. Authentication" ;;
-      *"Runs over the mounted volume"*)
-        printf 'MARKER_MISSING\\nWRITE_OK\\nEXCL_OK\\nRENAME_OK\\n' ;;
       *) printf 'no stub answer for this helper\\n' >&2; exit 9 ;;
     esac ;;
   *)
@@ -310,7 +304,7 @@ describe("the gate driven against a stub engine", () => {
     const mounted = invocations.filter((line) =>
       line.includes("doctor mount /rz --json"),
     );
-    expect(mounted.length).toBe(2);
+    expect(mounted.length).toBe(1);
     for (const line of mounted) expect(line).toMatch(/--volume \S+:\/rz /);
   });
 
@@ -339,21 +333,21 @@ describe("the gate driven against a stub engine", () => {
       line.includes("--entrypoint sh"),
     );
     expect(piped.length).toBe(derived.helpers.length);
-    const volcheck = piped.find((line) => line.includes("--env MARKER"));
-    expect(volcheck).toContain("--env TOKEN");
-    expect(volcheck).toMatch(/--volume \S+:\/rz /);
+    const credcheck = piped.find((line) => line.includes("--env SMB_PASS"));
+    expect(credcheck).toBeDefined();
+    expect(credcheck).not.toContain("--volume");
   });
 
-  it("fails on a verdict version the shipped launchers would not read", () => {
+  it("fails on mount checks that did not pass", () => {
     const { result } = drive({
       STUB_MOUNT_VERDICT: JSON.stringify({
-        version: 2,
-        overall: "ok",
+        version: 1,
+        overall: "fix_and_retry",
         checks: [],
       }),
+      STUB_MOUNT_STATUS: "78",
     });
     expect(result.status).toBe(1);
-    expect(result.stdout).toContain("verdict version 2");
     expect(result.stderr).toContain("went unanswered");
   });
 

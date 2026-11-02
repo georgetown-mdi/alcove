@@ -1,9 +1,11 @@
 <#
 .SYNOPSIS
-    Pester suite over the pure functions in Start-Alcove.ps1 -- the doctor
-    verdict reader, the release stamp, the DFS candidate selection, and the
-    console's argument vector. Maintainer-facing: it lives outside the guide
-    folder, and an operator following the setup page never receives it.
+    Pester suite over Start-Alcove.ps1 -- the release stamp, the registry
+    order, the engine it chooses, the console's argument vector, the pair of
+    folders, and the screens and prompts it puts under each exit code of the
+    image's checks.
+    Maintainer-facing: it lives outside the guide folder, and an operator
+    following the setup page never receives it.
 
 .DESCRIPTION
     The script under test is dot-sourced with -LoadFunctionsOnly, which defines
@@ -12,12 +14,12 @@
     ordinary run reaches the banner -- because a guard that silently swallowed
     the flow would leave every operator with a launcher that does nothing.
 
-    Everything here is pure. Nothing in this file starts a container, reaches a
-    network, or opens a picker: the launcher's engine calls, its prompts and its
-    folder picker are verified by running it, and by nothing else. The POSIX
-    launcher's share of this ground -- the same verdict contract, driven end to
-    end against a stub engine -- is covered by
-    scripts/start-alcove-launcher.test.mjs, which runs on Linux CI.
+    Nothing in this file starts a container, reaches a network, or opens a
+    picker: the engine is a stub docker, put ahead of the PATH or replaced by a
+    function for the call under test. The POSIX launcher's share of this
+    ground -- the same exit codes, driven end to end against a stub engine --
+    is covered by scripts/start-alcove-launcher.test.mjs, which runs on Linux
+    CI.
 
     Run it through ci-resolution-tests.ps1 rather than Invoke-Pester directly:
     that script is what reports results as annotations, which is all the CI
@@ -85,18 +87,13 @@ BeforeAll {
         }
     }
 
-    function New-SmbConnectionFixture {
-        param([string] $ServerName, [string] $ShareName)
-        return [PSCustomObject]@{ ServerName = $ServerName; ShareName = $ShareName }
-    }
-
     $script:StampedDigest = 'sha256:' + ('a1b2c3d4' * 8)
 }
 
 Describe 'The -LoadFunctionsOnly guard' {
     It 'defines the launcher functions and runs nothing else' {
         $command = ". '$launcherScript' -LoadFunctionsOnly; " +
-            "if (Get-Command Read-DoctorVerdict -ErrorAction SilentlyContinue) { 'LOADED' }"
+            "if (Get-Command Invoke-DoctorLoop -ErrorAction SilentlyContinue) { 'LOADED' }"
         $run = Start-LauncherChild -Arguments @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $command)
 
         # Null-safe reads and a -Because carrying the run's shape: the failure
@@ -148,8 +145,6 @@ Describe 'The release stamp' {
     }
 
     It 'names the registry in the reference it builds' {
-        # podman requires the registry prefix and docker accepts it, so the
-        # reference is fully qualified rather than relying on a default.
         Get-AlcoveImage | Should -BeLike 'docker.io/gumdi/alcove@*'
     }
 }
@@ -158,9 +153,8 @@ Describe 'Where the image is downloaded from' {
     BeforeAll {
         $script:DockerHubReference = "docker.io/gumdi/alcove@$AlcoveImageDigest"
         $script:GhcrReference = "ghcr.io/georgetown-mdi/alcove@$AlcoveImageDigest"
-        # What podman prints when a registry sends a manifest other than the
-        # digest asked for: the wording the mismatch check matches, staged
-        # rather than driven.
+        # Output naming a manifest other than the digest asked for: the wording
+        # the mismatch check matches, staged rather than driven.
         $script:MismatchOutput = 'Error: copying system image from manifest list: Digest did not match, expected sha256:1, got sha256:2'
         $script:RefusedOutput = 'Error response from daemon: denied: requested access to the resource is denied'
 
@@ -172,7 +166,6 @@ Describe 'Where the image is downloaded from' {
     }
 
     BeforeEach {
-        $script:AlcoveEngine = 'docker'
         $script:AlcoveImageRepository = $AlcoveDockerHubRepository
         $script:Pulled = @()
         $script:PullFails = @{}
@@ -279,101 +272,10 @@ Describe 'Where the image is downloaded from' {
     }
 }
 
-Describe 'Read-DoctorVerdict' {
-    It 'reads a version 1 verdict and its overall value' {
-        $verdict = Read-DoctorVerdict -Json '{"version":1,"mode":"mount","overall":"ok","checks":[]}'
-
-        $verdict.Ok | Should -BeTrue
-        $verdict.Overall | Should -Be 'ok'
-    }
-
-    It 'refuses a version it does not know rather than parsing on' {
-        $verdict = Read-DoctorVerdict -Json '{"version":2,"mode":"mount","overall":"ok","checks":[]}'
-
-        $verdict.Ok | Should -BeFalse
-        $verdict.Reason | Should -Match 'version 2'
-    }
-
-    It 'refuses a document carrying no version at all' {
-        $verdict = Read-DoctorVerdict -Json '{"mode":"mount","overall":"ok","checks":[]}'
-
-        $verdict.Ok | Should -BeFalse
-        $verdict.Reason | Should -Match 'no version'
-    }
-
-    It 'reads each of the three overall values' {
-        foreach ($value in @('ok', 'fix_and_retry', 'fatal')) {
-            $verdict = Read-DoctorVerdict -Json "{`"version`":1,`"mode`":`"mount`",`"overall`":`"$value`",`"checks`":[]}"
-            $verdict.Ok | Should -BeTrue -Because $value
-            $verdict.Overall | Should -Be $value
-        }
-    }
-
-    It 'refuses an overall value outside the closed vocabulary' {
-        $verdict = Read-DoctorVerdict -Json '{"version":1,"mode":"mount","overall":"probably","checks":[]}'
-
-        $verdict.Ok | Should -BeFalse
-        $verdict.Reason | Should -Match 'probably'
-    }
-
-    It 'refuses a check status outside the closed vocabulary' {
-        $verdict = Read-DoctorVerdict -Json '{"version":1,"mode":"mount","overall":"ok","checks":[{"id":"a","status":"maybe"}]}'
-
-        $verdict.Ok | Should -BeFalse
-        $verdict.Reason | Should -Match 'maybe'
-    }
-
-    It 'carries each check id, status, meaning and action' {
-        $json = '{"version":1,"mode":"probe","overall":"fix_and_retry","checks":[' +
-            '{"id":"tcp_445","status":"ok"},' +
-            '{"id":"write","status":"fail","meaning":"cannot write here.","action":"ask for write permission."}]}'
-        $verdict = Read-DoctorVerdict -Json $json
-
-        $verdict.Ok | Should -BeTrue
-        @($verdict.Checks).Count | Should -Be 2
-        $failing = Select-DoctorChecks -Verdict $verdict -Status @('fail')
-        @($failing).Count | Should -Be 1
-        $failing[0].Id | Should -Be 'write'
-        $failing[0].Meaning | Should -Be 'cannot write here.'
-        $failing[0].Action | Should -Be 'ask for write permission.'
-    }
-
-    It 'reports an absent optional field as absent' {
-        $verdict = Read-DoctorVerdict -Json '{"version":1,"mode":"mount","overall":"ok","checks":[{"id":"a","status":"ok"}]}'
-
-        $verdict.Checks[0].Meaning | Should -BeNullOrEmpty
-        $verdict.Checks[0].Action | Should -BeNullOrEmpty
-    }
-
-    It 'reports an explicit null as absent rather than as a value' {
-        # The verdict omits what it has nothing to say about, so a null is a
-        # document this does not understand rather than something to display.
-        $verdict = Read-DoctorVerdict -Json '{"version":1,"mode":"mount","overall":"ok","checks":[{"id":"a","status":"warn","meaning":"x","action":null}]}'
-
-        $verdict.Checks[0].Meaning | Should -Be 'x'
-        $verdict.Checks[0].Action | Should -BeNullOrEmpty
-    }
-
-    It 'refuses a line that is not a verdict' {
-        (Read-DoctorVerdict -Json 'docker: command not found').Ok | Should -BeFalse
-        (Read-DoctorVerdict -Json '').Ok | Should -BeFalse
-        (Read-DoctorVerdict -Json '   ').Ok | Should -BeFalse
-    }
-
-    It 'keeps prose that holds a brace, a comma and a quote intact' {
-        $json = '{"version":1,"mode":"mount","overall":"fix_and_retry","checks":[' +
-            '{"id":"write_rename","status":"fail","meaning":"a folder named \"q3,final\" {here} cannot be written.","action":"x"}]}'
-        $verdict = Read-DoctorVerdict -Json $json
-
-        $verdict.Checks[0].Meaning | Should -Be 'a folder named "q3,final" {here} cannot be written.'
-    }
-}
-
 Describe 'Show-FromContainer' {
     It 'blanks a raw carriage return rather than letting it rewrite the line' {
-        # A raw CR is not JSON-escaped prose -- the decoder never saw it -- so
-        # it reaches the byte filter directly, and left alone it pulls the
-        # cursor back over classified output already on the line.
+        # Left alone, a raw CR pulls the cursor back over output already on
+        # the line.
         $records = Show-FromContainer -Text ('before' + [char]13 + 'after') 6>&1
         $text = @($records | ForEach-Object { [string] $_ }) -join ''
 
@@ -466,111 +368,6 @@ Describe 'Read-YesNo' {
     }
 }
 
-Describe 'Select-DoctorChecks' {
-    BeforeAll {
-        $script:Verdict = Read-DoctorVerdict -Json (
-            '{"version":1,"mode":"mount","overall":"fix_and_retry","checks":[' +
-            '{"id":"added_later","status":"ok"},' +
-            '{"id":"marker","status":"warn","meaning":"a marker from another run.","action":"x"},' +
-            '{"id":"write_rename","status":"fail","meaning":"m","action":"a"}]}')
-    }
-
-    It 'selects by status rather than by position' {
-        # A check added to a mode appears as an extra entry, so a consumer keys
-        # on ids and statuses rather than on where an entry sits.
-        $selected = Select-DoctorChecks -Verdict $script:Verdict -Status @('fail', 'warn')
-
-        @($selected).Count | Should -Be 2
-        @($selected | ForEach-Object { $_.Id }) | Should -Be @('marker', 'write_rename')
-    }
-
-    It 'returns an empty array when nothing matches' {
-        # Bare, an empty result unrolls to nothing, and "foreach ($x in $null)"
-        # then runs its body once with a null -- printing a check that is not
-        # there.
-        $selected = Select-DoctorChecks -Verdict $script:Verdict -Status @('skipped')
-
-        $selected -is [array] | Should -BeTrue -Because 'an empty result has to stay an array'
-        @($selected).Count | Should -Be 0
-    }
-}
-
-Describe 'Select-DfsCandidate' {
-    It 'offers a single connection that is not the namespace''s own' {
-        $connections = @(
-            (New-SmbConnectionFixture -ServerName 'namespace' -ShareName 'dfs'),
-            (New-SmbConnectionFixture -ServerName 'fs-04' -ShareName 'exchange'))
-
-        $candidate = Select-DfsCandidate -Connections $connections -NamespaceServer 'namespace' -NamespaceShare 'dfs'
-
-        $candidate.Outcome | Should -Be 'offer'
-        $candidate.Server | Should -Be 'fs-04'
-        $candidate.Share | Should -Be 'exchange'
-    }
-
-    It 'matches server and share together, never the server alone' {
-        # Substituting only the server, keeping the namespace's share, produces
-        # a device that cannot exist.
-        $connections = @(
-            (New-SmbConnectionFixture -ServerName 'namespace' -ShareName 'dfs'),
-            (New-SmbConnectionFixture -ServerName 'namespace' -ShareName 'exchange$'))
-
-        $candidate = Select-DfsCandidate -Connections $connections -NamespaceServer 'namespace' -NamespaceShare 'dfs'
-
-        $candidate.Outcome | Should -Be 'offer'
-        $candidate.Server | Should -Be 'namespace'
-        $candidate.Share | Should -Be 'exchange$'
-    }
-
-    It 'falls back when the only connection is the namespace itself' {
-        $connections = @((New-SmbConnectionFixture -ServerName 'namespace' -ShareName 'dfs'))
-
-        (Select-DfsCandidate -Connections $connections -NamespaceServer 'namespace' -NamespaceShare 'dfs').Outcome |
-            Should -Be 'none'
-    }
-
-    It 'falls back on an empty list, which is what a non-elevated session sees' {
-        # Reading the connection list needs Administrator rights, and an
-        # elevated window cannot see the drive letters the operator mapped as
-        # themselves -- so the empty answer is the ordinary case, not the edge.
-        (Select-DfsCandidate -Connections @() -NamespaceServer 'namespace' -NamespaceShare 'dfs').Outcome |
-            Should -Be 'none'
-        (Select-DfsCandidate -Connections $null -NamespaceServer 'namespace' -NamespaceShare 'dfs').Outcome |
-            Should -Be 'none'
-    }
-
-    It 'falls back when several connections could be the one' {
-        $connections = @(
-            (New-SmbConnectionFixture -ServerName 'fs-04' -ShareName 'exchange'),
-            (New-SmbConnectionFixture -ServerName 'fs-09' -ShareName 'projects'))
-
-        $candidate = Select-DfsCandidate -Connections $connections -NamespaceServer 'namespace' -NamespaceShare 'dfs'
-
-        $candidate.Outcome | Should -Be 'several'
-        $candidate.Count | Should -Be 2
-    }
-
-    It 'ignores the IPC$ share every connection carries' {
-        $connections = @(
-            (New-SmbConnectionFixture -ServerName 'fs-04' -ShareName 'IPC$'),
-            (New-SmbConnectionFixture -ServerName 'fs-04' -ShareName 'exchange'))
-
-        $candidate = Select-DfsCandidate -Connections $connections -NamespaceServer 'namespace' -NamespaceShare 'dfs'
-
-        $candidate.Outcome | Should -Be 'offer'
-        $candidate.Share | Should -Be 'exchange'
-    }
-
-    It 'counts one server and share once however many connections name it' {
-        $connections = @(
-            (New-SmbConnectionFixture -ServerName 'fs-04' -ShareName 'exchange'),
-            (New-SmbConnectionFixture -ServerName 'FS-04' -ShareName 'Exchange'))
-
-        (Select-DfsCandidate -Connections $connections -NamespaceServer 'namespace' -NamespaceShare 'dfs').Outcome |
-            Should -Be 'offer'
-    }
-}
-
 Describe 'Get-ScriptParameterName' {
     It 'reads the parameter names out of the script beside this one' {
         # What the launcher protects itself with across the dot-source: the
@@ -594,8 +391,50 @@ Describe 'Get-ScriptParameterName' {
     }
 }
 
-Describe 'The engine wrappers' {
-    It 'answers a name that is not a command without borrowing an earlier code' {
+Describe 'The Docker wrappers' {
+    BeforeAll {
+        $script:WrapperStubRoot = Join-Path $env:TEMP ('alcove-launcher-docker-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+        $script:NoDockerRoot = Join-Path $script:WrapperStubRoot 'none'
+        $script:BlankLineDockerRoot = Join-Path $script:WrapperStubRoot 'blankline'
+        New-Item -ItemType Directory -Path $script:NoDockerRoot -Force | Out-Null
+        New-Item -ItemType Directory -Path $script:BlankLineDockerRoot -Force | Out-Null
+
+        # The doctor writes its lines to standard error, a blank one among
+        # them, and each redirected line reaches the wrapper as an error record
+        # whose ToString() answers with a type name when the line it holds is
+        # empty.
+        Set-Content -LiteralPath (Join-Path $script:BlankLineDockerRoot 'docker.cmd') -Encoding Ascii -Value @(
+            '@echo off',
+            '>&2 echo FAIL: /rz could not be read.',
+            '>&2 echo(',
+            '>&2 echo COULD NOT RUN THE CHECKS',
+            'exit /b 69')
+
+        function Invoke-WithPath {
+            <#  -RootOnly leaves the Windows folders off the PATH: a hosted
+                runner keeps a real docker in one of them. #>
+            param(
+                [Parameter(Mandatory = $true)][string] $Root,
+                [Parameter(Mandatory = $true)][scriptblock] $Call,
+                [switch] $RootOnly
+            )
+
+            $originalPath = $env:PATH
+            try {
+                $env:PATH = if ($RootOnly) { $Root }
+                else { @($Root, (Join-Path $env:SystemRoot 'System32'), $env:SystemRoot) -join ';' }
+                return (& $Call)
+            } finally {
+                $env:PATH = $originalPath
+            }
+        }
+    }
+
+    AfterAll {
+        Remove-Item -LiteralPath $script:WrapperStubRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    It 'answers a PC with no docker without borrowing an earlier code' {
         # A native command run first, leaving a 0 in $LASTEXITCODE, so that the
         # answers below cannot have been taken from there -- a 0 would read as
         # an engine that ran and was happy. What such a call does without the
@@ -603,27 +442,99 @@ Describe 'The engine wrappers' {
         # script's suite.
         & cmd /c exit 0
 
-        $quiet = Invoke-EngineQuiet -Engine 'alcove-no-such-engine' -EngineArgs @('version')
-        $captured = Invoke-EngineCapture -Engine 'alcove-no-such-engine' -EngineArgs @('version')
+        $quiet = Invoke-WithPath -Root $script:NoDockerRoot -RootOnly -Call { Invoke-EngineQuiet -EngineArgs @('version') }
+        $pulled = Invoke-WithPath -Root $script:NoDockerRoot -RootOnly -Call { Invoke-EnginePull -Reference 'ghcr.io/georgetown-mdi/alcove:latest' }
 
         $quiet.Ran | Should -Be $false
         $quiet.ExitCode | Should -Not -Be 0
-        $quiet.Output | Should -Match 'alcove-no-such-engine'
-        $captured.Ran | Should -Be $false
-        $captured.ExitCode | Should -Not -Be 0
-        $captured.Output | Should -Match 'alcove-no-such-engine'
+        $quiet.Output | Should -Match 'docker is not a command'
+        $pulled.Ran | Should -Be $false
+        $pulled.ExitCode | Should -Not -Be 0
     }
 
-    It 'reports an empty engine name the same way' {
-        # The name is empty until Find-ContainerEngine has chosen one.
-        & cmd /c exit 0
+    It 'carries the doctor''s lines back, a blank one as a blank line' {
+        $ErrorActionPreference = 'Stop'
 
-        (Invoke-EngineQuiet -Engine '' -EngineArgs @('version')).Ran | Should -Be $false
-        (Invoke-EngineCapture -Engine '' -EngineArgs @('version')).ExitCode | Should -Not -Be 0
+        $result = Invoke-WithPath -Root $script:BlankLineDockerRoot -Call { Invoke-EngineQuiet -EngineArgs @('run') }
+
+        $result.Ran | Should -Be $true
+        $result.ExitCode | Should -Be 69
+        (@($result.Output -split '\r?\n') -join '|') |
+            Should -Be 'FAIL: /rz could not be read.||COULD NOT RUN THE CHECKS'
+    }
+}
+
+Describe 'The engine the launcher chooses' {
+    BeforeAll {
+        function Get-ChoiceScreen {
+            param($Output)
+            return (@($Output | Where-Object { $_ -is [System.Management.Automation.InformationRecord] } |
+                        ForEach-Object { ([string] $_).TrimEnd() }) -join "`n")
+        }
+    }
+
+    BeforeEach {
+        $script:EnginesAsked = @()
+    }
+
+    It 'chooses podman when docker is not installed' {
+        function Invoke-EngineQuiet {
+            param([string[]] $EngineArgs, [string] $Engine)
+            $script:EnginesAsked += $Engine
+            if ($Engine -eq 'podman') { return @{ Ran = $true; Output = ''; ExitCode = 0 } }
+            return @{ Ran = $false; Output = "$Engine is not a command on this PC."; ExitCode = 127 }
+        }
+
+        Find-ContainerEngine | Should -Be 'podman'
+        ($script:EnginesAsked -join ',') | Should -Be 'docker,podman'
+    }
+
+    It 'chooses podman when docker is installed but does not answer' {
+        function Invoke-EngineQuiet {
+            param([string[]] $EngineArgs, [string] $Engine)
+            $script:EnginesAsked += $Engine
+            if ($Engine -eq 'podman') { return @{ Ran = $true; Output = ''; ExitCode = 0 } }
+            return @{ Ran = $true; Output = 'error during connect: is the docker daemon running?'; ExitCode = 1 }
+        }
+
+        Find-ContainerEngine | Should -Be 'podman'
+        ($script:EnginesAsked -join ',') | Should -Be 'docker,podman'
+    }
+
+    It 'keeps docker when it answers, without asking podman' {
+        function Invoke-EngineQuiet {
+            param([string[]] $EngineArgs, [string] $Engine)
+            $script:EnginesAsked += $Engine
+            return @{ Ran = $true; Output = ''; ExitCode = 0 }
+        }
+
+        Find-ContainerEngine | Should -Be 'docker'
+        ($script:EnginesAsked -join ',') | Should -Be 'docker'
     }
 
     It 'skips an engine that is not there rather than choosing it' {
         Find-ContainerEngine -Candidates @('alcove-no-such-engine') | Should -BeNullOrEmpty
+    }
+
+    It 'says neither engine is installed when neither is' {
+        function Test-EngineCommand { param([string] $Engine) return $false }
+
+        $screen = Get-ChoiceScreen @(Show-NoEngine 6>&1)
+
+        $screen | Should -BeExactly (@(
+                '  FAIL  Neither docker nor podman is installed on this PC.',
+                '        Install Docker Desktop, start it, and run this again.') -join "`n")
+    }
+
+    It 'names the Podman machine when podman alone is installed and does not answer' {
+        function Test-EngineCommand { param([string] $Engine) return ($Engine -eq 'podman') }
+
+        $screen = Get-ChoiceScreen @(Show-NoEngine 6>&1)
+
+        $screen | Should -BeExactly (@(
+                '  FAIL  Podman is installed but is not answering.',
+                '        Start the Podman machine with "podman machine start", and run',
+                '        this script again.') -join "`n")
     }
 }
 
@@ -835,7 +746,6 @@ Describe 'The credential a pair of folders on one server takes' {
         $script:CredentialAsks = 0
         $script:ReusePrompts = @()
         $script:VolumeUsers = @()
-        $script:AlcoveEngine = 'docker'
     }
 
     It 'asks once for two shares of one server' {
@@ -887,7 +797,7 @@ Describe 'The credential a pair of folders on one server takes' {
             return $false
         }
         function New-ShareVolume {
-            param($VolumeName, $Server, $Share, $SubPath, $Username, $Password, $Domain, $Engine)
+            param($VolumeName, $Server, $Share, $SubPath, $Username, $Password, $Domain)
             $script:VolumeUsers += $Username
             return $true
         }
@@ -948,70 +858,53 @@ Describe 'The credential a pair of folders on one server takes' {
     }
 
     AfterAll {
-        # Left as the session found it: no engine, and no answer held for one.
-        $script:AlcoveEngine = ''
+        # Left as the session found it: no answer held for a server.
         $script:AlcoveShareCredential = $null
         $script:AlcoveShareCredentialServer = ''
     }
 }
 
-Describe 'A run of the checks the engine stopped during' {
+Describe 'What the launcher prints under the checks' {
     BeforeAll {
-        # What `alcove doctor --json` prints for each outcome below, recorded
-        # from the checks themselves: apps/cli/src/doctor/probe.ts and mount.ts
-        # run against a server and a folder that answer that way, the line
-        # written by verdict.ts. One check to a line here, joined back into the
-        # single line the image prints.
-        $script:VerdictPortClosed = -join @(
-            '{"version":1,"mode":"probe","overall":"fix_and_retry","checks":[',
-            '{"id":"name_resolution","status":"ok"},',
-            '{"id":"tcp_445","status":"fail","meaning":"this container reaches the network through its runtime''s address translation, so to the file server it looks like a different machine than Windows does. A VPN that routes only the Windows side, a host firewall rule, or a server-side address restriction blocks it while File Explorer keeps working.","action":"if you are on a VPN, that is the likely cause. See the troubleshooting page, ''The container cannot reach the server''."},',
-            '{"id":"smbclient_available","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
-            '{"id":"authentication","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
-            '{"id":"share_open","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
-            '{"id":"subdirectory","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
-            '{"id":"free_space","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
-            '{"id":"write","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
-            '{"id":"rename","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
-            '{"id":"delete","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
-            '{"id":"marker","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."}',
-            ']}')
-        $script:VerdictWriteDenied = -join @(
-            '{"version":1,"mode":"probe","overall":"fix_and_retry","checks":[',
-            '{"id":"name_resolution","status":"ok"},',
-            '{"id":"tcp_445","status":"ok"},',
-            '{"id":"smbclient_available","status":"ok"},',
-            '{"id":"authentication","status":"ok"},',
-            '{"id":"share_open","status":"ok"},',
-            '{"id":"subdirectory","status":"ok"},',
-            '{"id":"free_space","status":"warn","meaning":"that is little enough that a large exchange could exhaust it.","action":"ask for more quota if your input files are large."},',
-            '{"id":"write","status":"fail","meaning":"this account can read the folder but not write to it.","action":"ask whoever administers the share for write permission on this folder. Mount options such as file_mode cannot grant it -- they only change how permissions look inside the container, not what the server allows."},',
-            '{"id":"rename","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
-            '{"id":"delete","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
-            '{"id":"marker","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."}',
-            ']}')
-        $script:VerdictSignInRefused = -join @(
-            '{"version":1,"mode":"probe","overall":"fix_and_retry","checks":[',
-            '{"id":"name_resolution","status":"ok"},',
-            '{"id":"tcp_445","status":"ok"},',
-            '{"id":"smbclient_available","status":"ok"},',
-            '{"id":"authentication","status":"fail","meaning":"the username, password, or domain is wrong. This is the one status that really does mean bad credentials.","action":"if this is a domain account, give its domain -- answer the setup script''s Domain prompt, or set SMB_DOMAIN if you are running this image yourself. If the folder opens in File Explorer WITHOUT ever asking for a password, Windows is signing you in with Kerberos and there may be no password that works here; see the troubleshooting page, ''The share never asks for a password''. Do not work through passwords one at a time -- each run is one failed sign-in against the account, and a handful of those locks it out."},',
-            '{"id":"share_open","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
-            '{"id":"subdirectory","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
-            '{"id":"free_space","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
-            '{"id":"write","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
-            '{"id":"rename","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
-            '{"id":"delete","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
-            '{"id":"marker","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."}',
-            ']}')
-        $script:VerdictMountUnreadable = -join @(
-            '{"version":1,"mode":"mount","overall":"fatal","checks":[',
-            '{"id":"mount_readable","status":"fail","meaning":"the folder the exchange runs in is not there, or is not a directory this process can list. Nothing about the share itself has been established.","action":"check that the volume is mounted at this path and that the container was started with it attached."},',
-            '{"id":"marker","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
-            '{"id":"write_rename","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
-            '{"id":"exclusive_create","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."},',
-            '{"id":"rename_onto_existing","status":"skipped","meaning":"an earlier check failed and stopped the run, so nothing was established either way about what did not run."}',
-            ']}')
+        # What `alcove doctor` prints, recorded from the checks themselves:
+        # apps/cli/src/doctor/mount.ts run against a folder that answers each
+        # way, rendered by verdict.ts.
+        $script:MountWriteDenied = @(
+            'OK: /rz is readable.',
+            'FAIL: could not write and rename in this folder (EACCES).',
+            'MEANING: the mount reached a folder but Alcove cannot write in it. Either',
+            '         the account this container runs as does not own the folder, or it',
+            '         can open the folder but not create files in it, or the share is out',
+            '         of space.',
+            'ACTION:  see the troubleshooting page, ''The folder cannot be written to''.',
+            'SKIP: refusing to create a file twice -- not run.',
+            'SKIP: renaming onto an existing file -- not run.',
+            'MEANING: an earlier check failed and stopped the run, so nothing was',
+            '         established either way about what did not run.',
+            '',
+            'NOT READY YET -- follow the ACTION lines above and run this again.')
+        $script:MountUnreadable = @(
+            'FAIL: /rz could not be read (ENOENT).',
+            'MEANING: the folder the exchange runs in is not there, or is not a directory',
+            '         this process can list. Nothing about the share itself has been',
+            '         established.',
+            'ACTION:  check that the volume is mounted at this path and that the',
+            '         container was started with it attached.',
+            'SKIP: matching the file the network checks left behind -- not run.',
+            'SKIP: writing a file and renaming it into place -- not run.',
+            'SKIP: refusing to create a file twice -- not run.',
+            'SKIP: renaming onto an existing file -- not run.',
+            'MEANING: an earlier check failed and stopped the run, so nothing was',
+            '         established either way about what did not run.',
+            '',
+            'COULD NOT RUN THE CHECKS -- nothing was established either way.')
+        $script:RefusedServer = @(
+            '[2026-10-28T17:21:06.949Z] [ERROR] [doctor-probe] alcove doctor cannot run with the environment it was given: SMB_SERVER must not contain a path separator')
+
+        $script:BatteryLead = @(
+            'Running the checks. They take a moment, and everything they found',
+            'is printed together when they finish.',
+            '')
 
         function Get-LauncherScreen {
             <#  The lines a battery or a loop of them put on the screen, as one
@@ -1024,231 +917,332 @@ Describe 'A run of the checks the engine stopped during' {
                         ForEach-Object { ([string] $_).TrimEnd() }) -join "`n")
         }
 
-        $script:LauncherTroubleshootingUrl = 'https://github.com/georgetown-mdi/alcove/blob/main/support/windows-network-filedrop/troubleshooting.md'
-    }
+        function Invoke-StagedBattery {
+            <#  Invoke-DoctorBattery over an engine that answers with the lines
+                and exit code given, returning the screen and the code. The
+                engine answers a version query with -EngineVersionExit. #>
+            param([string[]] $Lines = @(), [int] $ExitCode, [int] $EngineVersionExit = 0)
 
-    BeforeEach {
-        $script:AlcoveEngine = 'docker'
-    }
-
-    It 'names the stopped engine, not the launcher or the image, when the run printed nothing' {
-        # What the engine leaves when it stops mid-run: an exit code below the
-        # engine's own range and no verdict. The engine then answers nothing.
-        function Invoke-EngineCapture { return @{ Ran = $true; Output = ''; ExitCode = 1 } }
-        function Invoke-EngineQuiet { return @{ Ran = $true; Output = 'error during connect'; ExitCode = 1 } }
-
-        $output = @(Invoke-DoctorBattery -EngineArgs @('--volume', 'C:\data:/rz') `
-                -BatteryArgs @('doctor', 'mount', '/rz') 6>&1)
-        $result = @($output | Where-Object { $_ -is [hashtable] })[0]
-        $said = @($output | Where-Object { $_ -isnot [hashtable] } | ForEach-Object { [string] $_ }) -join ' '
-
-        $result.Established | Should -BeFalse -Because $said
-        $said | Should -BeLike '*container engine (docker) stopped answering*' -Because $said
-        $said | Should -BeLike '*Start Docker Desktop again*' -Because $said
-        $said | Should -Not -BeLike '*launcher published*' -Because $said
-        $said | Should -Not -BeLike '*could not be started*' -Because $said
-        (Get-LauncherScreen $output) | Should -BeExactly (@(
-                '  FAIL  The container engine (docker) stopped answering, so the checks did not finish.',
-                '        Start Docker Desktop again and wait for the whale icon to stop',
-                '        animating, then run this script again.') -join "`n")
-    }
-
-    It 'names the stopped engine when the run ended in the engine''s own range' {
-        function Invoke-EngineCapture { return @{ Ran = $true; Output = ''; ExitCode = 125 } }
-        function Invoke-EngineQuiet { return @{ Ran = $true; Output = ''; ExitCode = 1 } }
-
-        $said = @(Invoke-DoctorBattery -EngineArgs @('--volume', 'C:\data:/rz') `
-                -BatteryArgs @('doctor', 'mount', '/rz') 6>&1 |
-                Where-Object { $_ -isnot [hashtable] } | ForEach-Object { [string] $_ }) -join ' '
-
-        $said | Should -BeLike '*stopped answering*' -Because $said
-        $said | Should -Not -BeLike '*could not be started*' -Because $said
-    }
-
-    It 'names podman by its own name' {
-        $script:AlcoveEngine = 'podman'
-        function Invoke-EngineCapture { return @{ Ran = $true; Output = ''; ExitCode = 1 } }
-        function Invoke-EngineQuiet { return @{ Ran = $true; Output = ''; ExitCode = 1 } }
-
-        $said = @(Invoke-DoctorBattery -EngineArgs @('--volume', 'C:\data:/rz') `
-                -BatteryArgs @('doctor', 'mount', '/rz') 6>&1 |
-                Where-Object { $_ -isnot [hashtable] } | ForEach-Object { [string] $_ }) -join ' '
-
-        $said | Should -BeLike '*container engine (podman) stopped answering*' -Because $said
-        $said | Should -BeLike '*Start podman again*' -Because $said
-    }
-
-    It 'keeps the verdict message while the engine still answers' {
-        # A refused input is what the doctor answers this way: exit 64, and
-        # nothing on standard output (docs/spec/CLI_DOCTOR.md, Exit codes).
-        function Invoke-EngineCapture { return @{ Ran = $true; Output = ''; ExitCode = 64 } }
-        function Invoke-EngineQuiet { return @{ Ran = $true; Output = 'Server: Docker Engine'; ExitCode = 0 } }
-
-        $output = @(Invoke-DoctorBattery -EngineArgs @('--volume', 'C:\data:/rz') `
-                -BatteryArgs @('doctor', 'mount', '/rz') 6>&1)
-        $said = @($output | Where-Object { $_ -isnot [hashtable] } | ForEach-Object { [string] $_ }) -join ' '
-
-        $said | Should -BeLike '*the checks printed no verdict*' -Because $said
-        $said | Should -Not -BeLike '*stopped answering*' -Because $said
-        (Get-LauncherScreen $output) | Should -BeExactly (@(
-                '  FAIL  The checks did not produce a verdict this launcher can read: the checks printed no verdict.',
-                '        Use the launcher published with the image you are running.') -join "`n")
-    }
-
-    It 'names the engine''s own failure to start a container, not the folder' {
-        # Docker's range, with the engine still answering: the checks never
-        # ran, and what the engine printed reached the window above this.
-        function Invoke-EngineCapture { return @{ Ran = $true; Output = ''; ExitCode = 125 } }
-        function Invoke-EngineQuiet { return @{ Ran = $true; Output = 'Server: Docker Engine'; ExitCode = 0 } }
-
-        $output = @(Invoke-DoctorBattery -EngineArgs @('--volume', 'C:\data:/rz') `
-                -BatteryArgs @('doctor', 'mount', '/rz') 6>&1)
-        $result = @($output | Where-Object { $_ -is [hashtable] })[0]
-
-        $result.Established | Should -BeFalse
-        (Get-LauncherScreen $output) | Should -BeExactly (@(
-                '  FAIL  The container could not be started (exit 125).',
-                '        Nothing about your folder was tested. The message the engine',
-                '        printed above is the one to read. See',
-                "            $script:LauncherTroubleshootingUrl") -join "`n")
-    }
-
-    It 'shows a failed battery''s failures and leaves its SKIP block off the screen' {
-        # Only the checks to act on are shown: the run's skipped checks carry
-        # no ACTION, and the retry runs them again.
-        function Invoke-EngineCapture { return @{ Ran = $true; Output = $script:VerdictPortClosed; ExitCode = 78 } }
-        function Invoke-EngineQuiet { return @{ Ran = $true; Output = 'Server: Docker Engine'; ExitCode = 0 } }
-
-        $output = @(Invoke-DoctorBattery -EngineArgs @('--env', 'SMB_SERVER') `
-                -BatteryArgs @('doctor', 'probe') 6>&1)
-        $result = @($output | Where-Object { $_ -is [hashtable] })[0]
-
-        $result.Established | Should -BeTrue
-        $result.Overall | Should -Be 'fix_and_retry'
-        (@($result.Failed) -join ' ') | Should -Be 'tcp_445'
-        (Get-LauncherScreen $output) | Should -BeExactly (@(
-                '',
-                '  FAIL  tcp_445',
-                '        MEANING: this container reaches the network through its runtime''s address translation, so to the file server it looks like a different machine than Windows does. A VPN that routes only the Windows side, a host firewall rule, or a server-side address restriction blocks it while File Explorer keeps working.',
-                '        ACTION:  if you are on a VPN, that is the likely cause. See the troubleshooting page, ''The container cannot reach the server''.',
-                '',
-                'Do what the ACTION lines say, then run the checks again.') -join "`n")
-    }
-
-    It 'shows a warning beside a failure, in the order the checks ran' {
-        function Invoke-EngineCapture { return @{ Ran = $true; Output = $script:VerdictWriteDenied; ExitCode = 78 } }
-        function Invoke-EngineQuiet { return @{ Ran = $true; Output = 'Server: Docker Engine'; ExitCode = 0 } }
-
-        $output = @(Invoke-DoctorBattery -EngineArgs @('--env', 'SMB_SERVER') `
-                -BatteryArgs @('doctor', 'probe') 6>&1)
-
-        (Get-LauncherScreen $output) | Should -BeExactly (@(
-                '',
-                '  WARN  free_space',
-                '        MEANING: that is little enough that a large exchange could exhaust it.',
-                '        ACTION:  ask for more quota if your input files are large.',
-                '  FAIL  write',
-                '        MEANING: this account can read the folder but not write to it.',
-                '        ACTION:  ask whoever administers the share for write permission on this folder. Mount options such as file_mode cannot grant it -- they only change how permissions look inside the container, not what the server allows.',
-                '',
-                'Do what the ACTION lines say, then run the checks again.') -join "`n")
-    }
-
-    It 'shows checks that could not run under the screen that says nothing was established' {
-        function Invoke-EngineCapture { return @{ Ran = $true; Output = $script:VerdictMountUnreadable; ExitCode = 69 } }
-        function Invoke-EngineQuiet { return @{ Ran = $true; Output = 'Server: Docker Engine'; ExitCode = 0 } }
-
-        $output = @(Invoke-DoctorBattery -EngineArgs @('--volume', 'C:\data:/rz') `
-                -BatteryArgs @('doctor', 'mount', '/rz') 6>&1)
-        $result = @($output | Where-Object { $_ -is [hashtable] })[0]
-
-        $result.Established | Should -BeTrue
-        $result.Overall | Should -Be 'fatal'
-        (Get-LauncherScreen $output) | Should -BeExactly (@(
-                '',
-                '  FAIL  mount_readable',
-                '        MEANING: the folder the exchange runs in is not there, or is not a directory this process can list. Nothing about the share itself has been established.',
-                '        ACTION:  check that the volume is mounted at this path and that the container was started with it attached.',
-                '',
-                '  FAIL  The checks could not be run, so nothing was established.',
-                '        There is no ACTION to follow: the checks that would have',
-                '        produced one never ran.',
-                "        See $script:LauncherTroubleshootingUrl") -join "`n")
-    }
-
-    It 'offers the credentials again after a refused sign-in, and stops when the retry is declined' {
-        function Invoke-EngineCapture { return @{ Ran = $true; Output = $script:VerdictSignInRefused; ExitCode = 78 } }
-        function Invoke-EngineQuiet { return @{ Ran = $true; Output = 'Server: Docker Engine'; ExitCode = 0 } }
-        function Read-YesNo { param([string] $Prompt, [switch] $DefaultYes) return $false }
-
-        $output = @(Invoke-DoctorLoop -EngineArgs @('--env', 'SMB_PASS') -BatteryArgs @('doctor', 'probe') `
-                -AskCredentialAfterSignInFailure 6>&1)
-
-        (@($output | Where-Object { $_ -is [bool] }) -join ' ') | Should -Be 'False'
-        (Get-LauncherScreen $output) | Should -BeExactly (@(
-                '',
-                '  FAIL  authentication',
-                '        MEANING: the username, password, or domain is wrong. This is the one status that really does mean bad credentials.',
-                '        ACTION:  if this is a domain account, give its domain -- answer the setup script''s Domain prompt, or set SMB_DOMAIN if you are running this image yourself. If the folder opens in File Explorer WITHOUT ever asking for a password, Windows is signing you in with Kerberos and there may be no password that works here; see the troubleshooting page, ''The share never asks for a password''. Do not work through passwords one at a time -- each run is one failed sign-in against the account, and a handful of those locks it out.',
-                '',
-                'Do what the ACTION lines say, then run the checks again.',
-                '',
-                '        If the user name or password was wrong, enter them again.',
-                '        Press Enter at Username to keep the ones you gave.',
-                '',
-                '        Stopping without starting the console.') -join "`n")
-    }
-
-    It 'asks nothing of the engine after a verdict it can read' {
-        $script:EngineQuestions = 0
-        function Invoke-EngineCapture {
-            return @{ Ran = $true; ExitCode = 0
-                      Output = '{"version":1,"mode":"mount","overall":"ok","checks":[]}' }
+            $script:StagedRun = @{ Ran = $true; Output = ($Lines -join [Environment]::NewLine); ExitCode = $ExitCode }
+            $script:StagedVersion = @{ Ran = $true; Output = ''; ExitCode = $EngineVersionExit }
+            function Invoke-EngineQuiet {
+                param([string[]] $EngineArgs, [string] $Engine)
+                if ($EngineArgs[0] -eq 'version') { return $script:StagedVersion }
+                return $script:StagedRun
+            }
+            $output = @(Invoke-DoctorBattery -EngineArgs @('--volume', 'C:\data:/rz') `
+                    -BatteryArgs @('doctor', 'mount', '/rz') 6>&1)
+            return @{
+                Screen = (Get-LauncherScreen $output)
+                Code   = @($output | Where-Object { $_ -is [int] })[0]
+            }
         }
-        function Invoke-EngineQuiet { $script:EngineQuestions++; return @{ Ran = $true; Output = ''; ExitCode = 1 } }
-
-        $result = @(Invoke-DoctorBattery -EngineArgs @('--volume', 'C:\data:/rz') `
-                -BatteryArgs @('doctor', 'mount', '/rz') 6>$null)[0]
-
-        $result.Established | Should -BeTrue
-        $result.Overall | Should -Be 'ok'
-        $script:EngineQuestions | Should -Be 0
     }
 
-    AfterAll {
-        $script:AlcoveEngine = ''
+    It 'prints the doctor''s lines whole and nothing under a pass' {
+        $run = Invoke-StagedBattery -Lines @('OK: /rz is readable.', '', 'READY') -ExitCode 0
+
+        $run.Code | Should -Be 0
+        $run.Screen | Should -BeExactly (($script:BatteryLead + @('OK: /rz is readable.', '', 'READY')) -join "`n")
+    }
+
+    It 'points a run that is not ready at the troubleshooting page' {
+        $run = Invoke-StagedBattery -Lines $script:MountWriteDenied -ExitCode 78
+
+        $run.Code | Should -Be 78
+        $run.Screen | Should -BeExactly (($script:BatteryLead + $script:MountWriteDenied + @(
+                    '',
+                    "        The troubleshooting page explains each of these: $AlcoveTroubleshootingUrl")) -join "`n")
+    }
+
+    It 'points checks that could not run at their own ACTION line' {
+        $run = Invoke-StagedBattery -Lines $script:MountUnreadable -ExitCode 69
+
+        $run.Code | Should -Be 69
+        $run.Screen | Should -BeExactly (($script:BatteryLead + $script:MountUnreadable + @(
+                    '',
+                    '        Follow the ACTION line above, then run this script again.')) -join "`n")
+    }
+
+    It 'names a refused value without blaming the launcher' {
+        $run = Invoke-StagedBattery -Lines $script:RefusedServer -ExitCode 64
+
+        $run.Code | Should -Be 64
+        $run.Screen | Should -BeExactly (($script:BatteryLead + $script:RefusedServer + @(
+                    '',
+                    '  FAIL  The checks refused a value they were given, so nothing was tested.',
+                    '        The line above names the value. SMB_SERVER is the server,',
+                    '        SMB_SHARE the share, SMB_PATH the folder within it, and SMB_USER',
+                    '        the username; correct the one it names and run this script again.',
+                    '        Any other name is a value this script set, not one you typed:',
+                    '        report it as a problem with this script.')) -join "`n")
+        $run.Screen | Should -Not -Match 'defect'
+    }
+
+    It 'reads Docker''s own range as Docker failing, not as the folder' {
+        $run = Invoke-StagedBattery -Lines @('docker: error during connect') -ExitCode 125
+
+        $run.Code | Should -Be 125
+        $run.Screen | Should -BeExactly (($script:BatteryLead + @(
+                    'docker: error during connect',
+                    '',
+                    '  FAIL  Docker could not start the container (exit 125).',
+                    '        Nothing about your folder was tested; the message above says why.',
+                    '        If it says Docker is not running:',
+                    '        Start Docker Desktop, wait for the whale icon to stop animating,',
+                    '        and run this script again.')) -join "`n")
+    }
+
+    It 'names Podman and its machine when podman could not start the container' {
+        $script:AlcoveEngine = 'podman'
+        try {
+            $run = Invoke-StagedBattery -Lines @('Error: unable to connect to Podman socket') -ExitCode 125
+        } finally {
+            $script:AlcoveEngine = 'docker'
+        }
+
+        $run.Code | Should -Be 125
+        $run.Screen | Should -BeExactly (($script:BatteryLead + @(
+                    'Error: unable to connect to Podman socket',
+                    '',
+                    '  FAIL  Podman could not start the container (exit 125).',
+                    '        Nothing about your folder was tested; the message above says why.',
+                    '        If it says Podman is not running:',
+                    '        Start the Podman machine with "podman machine start", and run',
+                    '        this script again.')) -join "`n")
+        $run.Screen | Should -Not -Match 'Docker Desktop'
+    }
+
+    It 'reads a code the checks never give as a launcher out of step with its image' {
+        $run = Invoke-StagedBattery -ExitCode 3
+
+        $run.Code | Should -Be 3
+        $run.Screen | Should -BeExactly (($script:BatteryLead + @(
+                    '',
+                    '',
+                    '  FAIL  The checks ended with exit 3, which this launcher does not know.',
+                    '        Nothing was established about your folder. Use the launcher',
+                    '        published with the image it runs.')) -join "`n")
+    }
+
+    It 'says Docker stopped when the run ended with 1 and the engine no longer answers' {
+        $run = Invoke-StagedBattery -Lines @('failed to connect to the docker API') -ExitCode 1 -EngineVersionExit 1
+
+        $run.Code | Should -Be 1
+        $run.Screen | Should -BeExactly (($script:BatteryLead + @(
+                    'failed to connect to the docker API',
+                    '',
+                    '  FAIL  Docker stopped during the checks.',
+                    '        Start Docker Desktop, wait for the whale icon to stop animating,',
+                    '        and run this script again.')) -join "`n")
+    }
+
+    It 'names Podman when the run ended with 1 and podman no longer answers' {
+        $script:AlcoveEngine = 'podman'
+        try {
+            $run = Invoke-StagedBattery -Lines @('Error: unable to connect to Podman socket') -ExitCode 1 -EngineVersionExit 1
+        } finally {
+            $script:AlcoveEngine = 'docker'
+        }
+
+        $run.Code | Should -Be 1
+        $run.Screen | Should -BeExactly (($script:BatteryLead + @(
+                    'Error: unable to connect to Podman socket',
+                    '',
+                    '  FAIL  Podman stopped during the checks.',
+                    '        Start the Podman machine with "podman machine start", and run',
+                    '        this script again.')) -join "`n")
+        $run.Screen | Should -Not -Match 'Docker'
+    }
+
+    It 'keeps the unknown-code text for a code of 1 while the engine answers' {
+        $run = Invoke-StagedBattery -ExitCode 1 -EngineVersionExit 0
+
+        $run.Screen | Should -Match 'ended with exit 1, which this launcher does not know'
+        $run.Screen | Should -Not -Match 'Docker stopped'
+    }
+
+    It 'blanks a raw carriage return in what the checks printed' {
+        $run = Invoke-StagedBattery -Lines @('before' + [char]13 + 'after') -ExitCode 0
+
+        $run.Screen | Should -Match 'before after'
+        $run.Screen | Should -Not -Match ([string] [char]13)
+    }
+
+    It 'leaves the share password out of a volume Docker could not mount' {
+        $script:AlcoveShareCredential = @{ Username = 'alcoveci'; Domain = ''; Password = 'hunter2' }
+        try {
+            $run = Invoke-StagedBattery -ExitCode 125 -Lines @(
+                'docker: Error response from daemon: failed to mount local volume: mount //fs-04/exchange:/var/lib/docker/volumes/alcove-rz/_data, data: vers=3.1.1,username=alcoveci,password=hunter2: permission denied.')
+        } finally {
+            $script:AlcoveShareCredential = $null
+        }
+
+        $run.Code | Should -Be 125
+        $run.Screen | Should -Not -Match 'hunter2'
+        $run.Screen | Should -Match 'username=alcoveci,password=<password removed>: permission denied'
+    }
+
+    It 'leaves no part of a held password with a comma in it, and marks it once' {
+        $script:AlcoveShareCredential = @{ Username = 'alcoveci'; Domain = ''; Password = 'hun,ter2' }
+        try {
+            $text = Hide-ShareSecrets (
+                'docker: Error response from daemon: failed to mount local volume: data: vers=3.1.1,username=alcoveci,password=hun,ter2,uid=1000: invalid argument.')
+        } finally {
+            $script:AlcoveShareCredential = $null
+        }
+
+        $text | Should -Not -Match 'hun'
+        $text | Should -Not -Match 'ter2'
+        [regex]::Matches($text, '<password removed>').Count | Should -Be 1
+        $text | Should -BeExactly (
+            'docker: Error response from daemon: failed to mount local volume: data: vers=3.1.1,username=alcoveci,password=<password removed>,uid=1000: invalid argument.')
+    }
+
+    It 'leaves the share password out of a console that would not start, once none is held' {
+        $script:AlcoveShareCredential = $null
+        $screen = Get-LauncherScreen @(Show-ConsoleStartFailure -Output (
+                'docker: Error response from daemon: failed to mount local volume: data: vers=3.1.1,username=alcoveci,PASSWORD=s3cret,uid=0: permission denied.') 6>&1)
+
+        $screen | Should -Match 'FAIL  The console container would not start.'
+        $screen | Should -Not -Match 's3cret'
+        $screen | Should -Match 'username=alcoveci,password=<password removed>,uid=0: permission denied'
+    }
+
+    It 'leaves Docker output that carries no password untouched' {
+        $script:AlcoveShareCredential = $null
+        $text = 'docker: Error response from daemon: port is already allocated.'
+
+        Hide-ShareSecrets $text | Should -BeExactly $text
+        Hide-ShareSecrets '' | Should -BeExactly ''
     }
 }
 
-Describe 'The retry after the checks failed to sign in' {
+Describe 'The loop over a battery' {
     BeforeAll {
-        # The probe's answer on each turn: the first fails the checks named in
-        # $script:FirstFailed, and every later one passes. What it records is
-        # the account each run of the checks would have signed in with.
+        # The battery's exit codes in turn, the answers the prompts are given in
+        # turn, and every step recorded in the order it happened.
         function Invoke-DoctorBattery {
-            $script:BatteryTurn++
-            $script:Events += "checks:$env:SMB_PASS"
-            $script:SignInUsers += $env:SMB_USER
-            if ($script:BatteryTurn -eq 1) {
-                return @{ Established = $true; Overall = 'fix_and_retry'; Failed = $script:FirstFailed }
-            }
-            return @{ Established = $true; Overall = 'ok'; Failed = @() }
+            $code = $script:Codes[$script:Turn]
+            $script:Turn++
+            $script:Events += "checks:$code"
+            return $code
         }
         function Read-YesNo {
             param([string] $Prompt, [switch] $DefaultYes)
-            $script:Events += 'retry'
+            $script:Prompts += "$Prompt default=$([bool] $DefaultYes)"
+            $answer = $script:Answers[0]
+            $script:Answers = @($script:Answers | Select-Object -Skip 1)
+            $script:Events += "asked:$answer"
+            return $answer
+        }
+        function Update-ShareCredential {
+            $script:Events += 'signin'
+            return $script:SignInGiven
+        }
+    }
+
+    BeforeEach {
+        $script:Turn = 0
+        $script:Events = @()
+        $script:Prompts = @()
+        $script:Answers = @()
+        $script:SignInGiven = $true
+    }
+
+    It 'passes on a 0 and asks nothing' {
+        $script:Codes = @(0)
+
+        Invoke-DoctorLoop -EngineArgs @('x') -BatteryArgs @('doctor', 'probe') -OfferSignIn 6>$null | Should -BeTrue
+        @($script:Prompts).Count | Should -Be 0
+    }
+
+    It 'stops on every code no run again can change, asking nothing' {
+        foreach ($code in 69, 64, 125, 3) {
+            $script:Turn = 0
+            $script:Prompts = @()
+            $script:Codes = @($code)
+
+            Invoke-DoctorLoop -EngineArgs @('x') -BatteryArgs @('doctor', 'probe') -OfferSignIn 6>$null |
+                Should -BeFalse -Because "exit $code"
+            @($script:Prompts).Count | Should -Be 0 -Because "exit $code"
+            $script:Turn | Should -Be 1 -Because "exit $code"
+        }
+    }
+
+    It 'stops a run that is not ready when the run again is declined' {
+        $script:Codes = @(78)
+        $script:Answers = @($false)
+
+        $output = @(Invoke-DoctorLoop -EngineArgs @('x') -BatteryArgs @('doctor', 'probe') -OfferSignIn 6>&1)
+
+        (@($output | Where-Object { $_ -is [bool] }) -join ' ') | Should -Be 'False'
+        ($script:Prompts -join ' | ') | Should -Be 'Run the checks again? [Y/n] default=True'
+        (@($output | ForEach-Object { [string] $_ }) -join ' ') | Should -Match 'Stopping without starting the console.'
+    }
+
+    It 'runs again without offering the sign-in to a battery that does not sign in' {
+        $script:Codes = @(78, 0)
+        $script:Answers = @($true)
+
+        Invoke-DoctorLoop -EngineArgs @('x') -BatteryArgs @('doctor', 'mount', '/rz') 6>$null | Should -BeTrue
+        ($script:Events -join ' ') | Should -Be 'checks:78 asked:True checks:0'
+    }
+
+    It 'offers the sign-in again with no as the default, and keeps the answer given on no' {
+        $script:Codes = @(78, 0)
+        $script:Answers = @($true, $false)
+
+        Invoke-DoctorLoop -EngineArgs @('x') -BatteryArgs @('doctor', 'probe') -OfferSignIn 6>$null | Should -BeTrue
+        ($script:Prompts -join ' | ') |
+            Should -Be 'Run the checks again? [Y/n] default=True | Enter the username and password again first? [y/N] default=False'
+        ($script:Events -join ' ') | Should -Be 'checks:78 asked:True asked:False checks:0'
+    }
+
+    It 'takes the sign-in again before the checks run again on yes' {
+        $script:Codes = @(78, 0)
+        $script:Answers = @($true, $true)
+
+        Invoke-DoctorLoop -EngineArgs @('x') -BatteryArgs @('doctor', 'probe') -OfferSignIn 6>$null | Should -BeTrue
+        ($script:Events -join ' ') | Should -Be 'checks:78 asked:True asked:True signin checks:0'
+    }
+
+    It 'stops without running the checks again when no sign-in is given' {
+        $script:Codes = @(78, 0)
+        $script:Answers = @($true, $true)
+        $script:SignInGiven = $false
+
+        Invoke-DoctorLoop -EngineArgs @('x') -BatteryArgs @('doctor', 'probe') -OfferSignIn 6>$null | Should -BeFalse
+        ($script:Events -join ' ') | Should -Be 'checks:78 asked:True asked:True signin'
+    }
+}
+
+Describe 'The sign-in taken again, through a share''s volume' {
+    BeforeAll {
+        # The probe fails once and passes after; every run records the account
+        # it would have signed in with.
+        function Invoke-DoctorBattery {
+            $script:BatteryTurn++
+            $script:Events += "checks:$env:SMB_USER/$env:SMB_PASS"
+            if ($script:BatteryTurn -eq 1) { return 78 }
+            return 0
+        }
+        function Read-YesNo {
+            param([string] $Prompt, [switch] $DefaultYes)
+            if ($Prompt -like 'Enter the username*') {
+                $script:Events += "signin:$script:SignInAgain"
+                return $script:SignInAgain
+            }
+            $script:Events += 'again'
             return $true
         }
-        function Read-RetryUsername { return $script:RetryUsername }
         function Read-ShareCredential {
-            param([string] $Username = '')
             $script:CredentialAsks++
             $script:Events += 'ask'
-            if (-not $Username) { $Username = 'alcoveci' }
-            return @{ Username = $Username; Domain = ''; Password = ('hunter' + (2 + $script:CredentialAsks)) }
+            return @{ Username = ('alcoveci' + $script:CredentialAsks); Domain = ''; Password = ('hunter' + (2 + $script:CredentialAsks)) }
         }
         function New-ShareVolume {
-            param($VolumeName, $Server, $Share, $SubPath, $Username, $Password, $Domain, $Engine)
+            param($VolumeName, $Server, $Share, $SubPath, $Username, $Password, $Domain)
             $script:VolumeAccounts += "${Username}:$Password"
             return $true
         }
@@ -1257,102 +1251,35 @@ Describe 'The retry after the checks failed to sign in' {
     BeforeEach {
         $script:AlcoveShareCredential = $null
         $script:AlcoveShareCredentialServer = ''
-        $script:AlcoveEngine = 'docker'
         $script:Events = @()
-        $script:SignInUsers = @()
         $script:BatteryTurn = 0
         $script:CredentialAsks = 0
         $script:VolumeAccounts = @()
-        $script:FirstFailed = @('authentication')
-        $script:RetryUsername = 'alcoveci'
-        $env:SMB_PASS = 'hunter2'
-    }
-
-    It 'takes new credentials before the checks sign in again' {
-        $passed = Invoke-DoctorLoop -EngineArgs @('--env', 'SMB_PASS') -BatteryArgs @('doctor', 'probe') `
-            -AskCredentialAfterSignInFailure 6>$null
-
-        $passed | Should -BeTrue
-        ($script:Events -join ' ') | Should -Be 'checks:hunter2 retry ask checks:hunter3'
-        $script:AlcoveShareCredential.Password | Should -Be 'hunter3'
-    }
-
-    It 'says before the retry question that the credentials can be entered again or kept' {
-        $said = @(Invoke-DoctorLoop -EngineArgs @('--env', 'SMB_PASS') -BatteryArgs @('doctor', 'probe') `
-                -AskCredentialAfterSignInFailure 6>&1 | ForEach-Object { [string] $_ }) -join ' '
-
-        $said | Should -BeLike '*If the user name or password was wrong, enter them again.*' -Because $said
-        $said | Should -BeLike '*Press Enter at Username to keep the ones you gave.*' -Because $said
-        # The authentication check fails for more than a refused password, so
-        # the note claims no refusal.
-        $said | Should -Not -BeLike '*refused*' -Because $said
-    }
-
-    It 'keeps the credentials and runs again on an empty user name' {
-        $script:RetryUsername = ''
-
-        $passed = Invoke-DoctorLoop -EngineArgs @('--env', 'SMB_PASS') -BatteryArgs @('doctor', 'probe') `
-            -AskCredentialAfterSignInFailure 6>$null
-
-        $passed | Should -BeTrue
-        $script:CredentialAsks | Should -Be 0
-        ($script:Events -join ' ') | Should -Be 'checks:hunter2 retry checks:hunter2'
-    }
-
-    It 'makes the volume from the credentials kept on an empty user name' {
-        $script:RetryUsername = ''
-
-        $mount = @(New-RendezvousShareMount -VolumeName 'alcoveci-in' -Server 'fs-04' -Share 'exchange' `
-                -Legs @(@{ Label = 'the folder your partner writes into'; Path = 'from-clinic' }) 6>$null)[0]
-
-        $mount.Mounted | Should -BeTrue
-        $script:CredentialAsks | Should -Be 1
-        (@($script:VolumeAccounts) -join ' ') | Should -Be 'alcoveci:hunter3'
-        # The last run is the check through the volume.
-        ($script:Events -join ' ') | Should -Be 'ask checks:hunter3 retry checks:hunter3 checks:hunter3'
-    }
-
-    It 'signs in and makes the volume with the new user name and password' {
-        $script:RetryUsername = 'alcoveci2'
-
-        $mount = @(New-RendezvousShareMount -VolumeName 'alcoveci-in' -Server 'fs-04' -Share 'exchange' `
-                -Legs @(@{ Label = 'the folder your partner writes into'; Path = 'from-clinic' }) 6>$null)[0]
-
-        $mount.Mounted | Should -BeTrue
-        (@($script:SignInUsers) -join ' ') | Should -Be 'alcoveci alcoveci2 alcoveci2'
-        (@($script:VolumeAccounts) -join ' ') | Should -Be 'alcoveci2:hunter4'
-        ($script:Events -join ' ') | Should -Be 'ask checks:hunter3 retry ask checks:hunter4 checks:hunter4'
-    }
-
-    It 'stops when no new answer is given, without signing in again' {
-        function Read-ShareCredential { $script:Events += 'ask'; return }
-
-        $passed = Invoke-DoctorLoop -EngineArgs @('--env', 'SMB_PASS') -BatteryArgs @('doctor', 'probe') `
-            -AskCredentialAfterSignInFailure 6>$null
-
-        $passed | Should -BeFalse
-        ($script:Events -join ' ') | Should -Be 'checks:hunter2 retry ask'
-    }
-
-    It 'runs again on the same answer after a failure that is not the sign-in' {
-        $script:FirstFailed = @('write')
-
-        $passed = Invoke-DoctorLoop -EngineArgs @('--env', 'SMB_PASS') -BatteryArgs @('doctor', 'probe') `
-            -AskCredentialAfterSignInFailure 6>$null
-
-        $passed | Should -BeTrue
-        ($script:Events -join ' ') | Should -Be 'checks:hunter2 retry checks:hunter2'
     }
 
     It 'makes the volume from the answer the checks accepted' {
+        $script:SignInAgain = $true
+
         $mount = @(New-RendezvousShareMount -VolumeName 'alcoveci-in' -Server 'fs-04' -Share 'exchange' `
                 -Legs @(@{ Label = 'the folder your partner writes into'; Path = 'from-clinic' }) 6>$null)[0]
 
         $mount.Mounted | Should -BeTrue
-        $script:CredentialAsks | Should -Be 2
-        (@($script:VolumeAccounts) -join ' ') | Should -Be 'alcoveci:hunter4'
+        (@($script:VolumeAccounts) -join ' ') | Should -Be 'alcoveci2:hunter4'
         # The last run is the check through the volume, made after the retry.
-        ($script:Events -join ' ') | Should -Be 'ask checks:hunter3 retry ask checks:hunter4 checks:hunter4'
+        ($script:Events -join ' ') |
+            Should -Be 'ask checks:alcoveci1/hunter3 again signin:True ask checks:alcoveci2/hunter4 checks:alcoveci2/hunter4'
+    }
+
+    It 'keeps the answer given when the sign-in is not taken again' {
+        $script:SignInAgain = $false
+
+        $mount = @(New-RendezvousShareMount -VolumeName 'alcoveci-in' -Server 'fs-04' -Share 'exchange' `
+                -Legs @(@{ Label = 'the folder your partner writes into'; Path = 'from-clinic' }) 6>$null)[0]
+
+        $mount.Mounted | Should -BeTrue
+        (@($script:VolumeAccounts) -join ' ') | Should -Be 'alcoveci1:hunter3'
+        ($script:Events -join ' ') |
+            Should -Be 'ask checks:alcoveci1/hunter3 again signin:False checks:alcoveci1/hunter3 checks:alcoveci1/hunter3'
     }
 
     AfterEach {
@@ -1362,7 +1289,6 @@ Describe 'The retry after the checks failed to sign in' {
     }
 
     AfterAll {
-        $script:AlcoveEngine = ''
         $script:AlcoveShareCredential = $null
         $script:AlcoveShareCredentialServer = ''
     }
@@ -1460,76 +1386,6 @@ Describe 'The pair of folders an exchange over two folders needs' {
             $verdict.Reason | Should -Not -BeNullOrEmpty -Because "[$($case.In) | $($case.Out)]"
             $verdict.Remedy | Should -Not -BeNullOrEmpty -Because "[$($case.In) | $($case.Out)]"
         }
-    }
-}
-
-Describe 'A folder as the correction from the DFS tab leaves it' {
-    It 'rebuilds the full path from the server and share confirmed' {
-        $corrected = Get-CorrectedShareTarget -Resolved (
-            Resolve-DropPath -Raw '\\namespace\dfs\clinic-study\from-clinic') `
-            -Server 'fs-04' -Share 'exchange'
-
-        $corrected.Server | Should -Be 'fs-04'
-        $corrected.Share | Should -Be 'exchange'
-        $corrected.Unc | Should -Be '\\fs-04\exchange'
-        $corrected.SubPath | Should -Be 'clinic-study/from-clinic'
-        $corrected.Full | Should -Be '\\fs-04\exchange\clinic-study\from-clinic'
-    }
-
-    It 'gives a folder on this PC back as it stands' {
-        $local = Get-CorrectedShareTarget -Resolved @{ Kind = 'Local'; LocalPath = 'C:\drops\to-clinic' } `
-            -Server 'fs-04' -Share 'exchange'
-
-        $local.Kind | Should -Be 'Local'
-        $local.LocalPath | Should -Be 'C:\drops\to-clinic'
-    }
-
-    It 'names a folder that is a share root after the share it was corrected to' {
-        # The name the console mints into the invitation: a folder that IS the
-        # share root takes the share's name, so a leg left at the namespace
-        # would give the partner a name for a share that holds nothing of
-        # theirs.
-        $corrected = Get-CorrectedShareTarget -Resolved (Resolve-DropPath -Raw '\\namespace\from-clinic') `
-            -Server 'fs-04' -Share 'exchange'
-
-        Get-RendezvousFolderName -Share $corrected.Share -SubPath $corrected.SubPath |
-            Should -Be 'exchange'
-    }
-
-    It 'refuses a pair the corrections put on one real folder' {
-        # Two paths that named two folders, and one folder behind both: the
-        # check before the console starts is held against the corrected paths,
-        # or it passes a console that refuses every exchange.
-        $before = Test-RendezvousPair -InboundPath '\\namespace\from-clinic' `
-            -OutboundPath '\\fs-04\exchange' -InboundName 'from-clinic' -OutboundName 'exchange'
-        $before.Usable | Should -BeTrue -Because 'the paths as typed name two folders'
-
-        $inbound = Get-CorrectedShareTarget -Resolved (Resolve-DropPath -Raw '\\namespace\from-clinic') `
-            -Server 'fs-04' -Share 'exchange'
-        $outbound = Get-CorrectedShareTarget -Resolved (Resolve-DropPath -Raw '\\fs-04\exchange') `
-            -Server 'fs-04' -Share 'exchange'
-        $verdict = Test-RendezvousPair `
-            -InboundPath (Get-ComparableFolderPath -Resolved $inbound) `
-            -OutboundPath (Get-ComparableFolderPath -Resolved $outbound) `
-            -InboundName (Get-RendezvousFolderName -Share $inbound.Share -SubPath $inbound.SubPath) `
-            -OutboundName (Get-RendezvousFolderName -Share $outbound.Share -SubPath $outbound.SubPath)
-
-        $verdict.Usable | Should -BeFalse
-        $verdict.Reason | Should -Match 'same folder'
-    }
-
-    It 'refuses a pair a correction puts one inside the other' {
-        $inbound = Get-CorrectedShareTarget -Resolved (
-            Resolve-DropPath -Raw '\\namespace\dfs\from-clinic') -Server 'fs-04' -Share 'exchange'
-        $outbound = Resolve-DropPath -Raw '\\fs-04\exchange'
-        $verdict = Test-RendezvousPair `
-            -InboundPath (Get-ComparableFolderPath -Resolved $inbound) `
-            -OutboundPath (Get-ComparableFolderPath -Resolved $outbound) `
-            -InboundName (Get-RendezvousFolderName -Share $inbound.Share -SubPath $inbound.SubPath) `
-            -OutboundName (Get-RendezvousFolderName -Share $outbound.Share -SubPath $outbound.SubPath)
-
-        $verdict.Usable | Should -BeFalse
-        $verdict.Reason | Should -Match 'inside the other'
     }
 }
 
@@ -1717,32 +1573,32 @@ Describe 'The launcher flow, driven against a stub engine' {
         }
 
         # An engine that records the argument vector it is handed and answers
-        # every doctor battery with a verdict that blocks nothing. A .cmd rather
-        # than something this session could run itself: the launcher reaches its
-        # engine as a native command, and the exit code and the merged streams
-        # it reads back are properties of that.
+        # every doctor battery with a pass. A .cmd rather than something this
+        # session could run itself: the launcher reaches its engine as a native
+        # command, and the exit code and the merged streams it reads back are
+        # properties of that.
         Set-Content -LiteralPath (Join-Path $script:FlowBin 'docker.cmd') -Encoding Ascii -Value @(
             '@echo off',
             'echo %* >> "%ALCOVE_STUB_DIR%\calls.log"',
             'echo %* | findstr /c:"doctor" >nul',
-            'if not errorlevel 1 echo {"version":1,"mode":"mount","overall":"ok","checks":[]}',
+            'if not errorlevel 1 echo READY 1>&2',
             'exit /b 0')
 
         # The same engine, except that the checks over a volume fail: the
         # share answers over the network and the volume is made, and only the
-        # battery run through it says no. A fatal verdict rather than one to
-        # retry, so the run stops where it is rather than prompting.
+        # battery run through it says no. Checks that could not run rather than
+        # a finding to fix, so the run stops where it is rather than prompting.
         Set-Content -LiteralPath (Join-Path $script:MountFailBin 'docker.cmd') -Encoding Ascii -Value @(
             '@echo off',
             'echo %* >> "%ALCOVE_STUB_DIR%\calls.log"',
             'echo %* | findstr /c:"doctor mount" >nul',
             'if not errorlevel 1 goto :mount',
             'echo %* | findstr /c:"doctor" >nul',
-            'if not errorlevel 1 echo {"version":1,"mode":"probe","overall":"ok","checks":[]}',
+            'if not errorlevel 1 echo READY 1>&2',
             'exit /b 0',
             ':mount',
-            'echo {"version":1,"mode":"mount","overall":"fatal","checks":[]}',
-            'exit /b 0')
+            'echo COULD NOT RUN THE CHECKS 1>&2',
+            'exit /b 69')
 
         # The launcher refuses to run unstamped, so the copy under test carries
         # a digest. The setup script travels with it: the launcher requires one
@@ -2204,10 +2060,7 @@ Describe 'The launcher flow, driven against a stub engine' {
             '        This window is running as Administrator, and an elevated session',
             "        cannot see the drive letters you mapped as yourself -- ${letter}: is",
             '        invisible here even if File Explorer shows it. Close this window,',
-            '        open PowerShell normally, and run the script again. If you were',
-            '        told to elevate in order to resolve a DFS path, you no longer need',
-            '        to: see the troubleshooting page, ''Reading the real path from',
-            '        Windows''.')
+            '        open PowerShell normally, and run the script again.')
         $lines = @(([string] $run.Output).TrimEnd() -split '\r?\n' | ForEach-Object { $_.TrimEnd() })
         (@($lines | Select-Object -Last $expected.Count) -join "`n") |
             Should -BeExactly ($expected -join "`n") -Because $shape

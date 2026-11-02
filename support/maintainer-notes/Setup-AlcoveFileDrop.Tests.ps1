@@ -2,9 +2,8 @@
 .SYNOPSIS
     Pester suite over the path-resolution functions in
     Setup-AlcoveFileDrop.ps1, the console command it closes on, and the
-    image-capability question it turns an unusable image away on before it asks
-    for a password -- and the single fetch that question makes before it gives
-    up. Maintainer-facing: it lives outside the guide folder, and an operator
+    screens it prints under each exit code of the image's checks.
+    Maintainer-facing: it lives outside the guide folder, and an operator
     following the setup page never receives it.
 
 .DESCRIPTION
@@ -21,13 +20,12 @@
         and the console command the closing screen prints from it, and that the
         switch defines the sequences the launcher reaches through it. These
         need no rig and no rights.
-      - Stub-engine: a .cmd standing in for the container engine, either passed
-        by path to one function or put ahead of the PATH so a whole run of the
-        flow reaches it. That second form is what lets a test read back which
-        calls the flow made -- and, for the image-capability question, which it
-        did not go on to make. The same engine replays what the image's checks
-        print for each failure, so every screen the flow puts under them is
-        compared line for line.
+      - Stub-engine: a docker.cmd standing in for the container engine, put
+        ahead of the PATH for one function call or for a whole run of the flow.
+        The engine records each call, which lets a test read back which calls
+        the flow made and which it did not go on to make. The same engine
+        replays what the image's checks print for each exit code, so every
+        screen the flow puts under them is compared line for line.
       - Rig-backed: a share the runner serves itself over loopback, a drive
         letter mapped to it, and a standalone DFS namespace with a link into
         that share. Built the way support/maintainer-notes/ci-resolution-rig.ps1
@@ -533,13 +531,16 @@ Describe 'Hide-Secret' {
 Describe 'Invoke-Docker' {
     BeforeAll {
         $script:EngineStubRoot = Join-Path $env:TEMP ('alcove-engine-stub-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
-        New-Item -ItemType Directory -Path $script:EngineStubRoot -Force | Out-Null
 
+        # Each stub is a docker.cmd in a folder of its own, put ahead of the PATH
+        # for the one call, because the wrapper calls docker by name.
+        #
         # A native command that answers on both streams and exits non-zero,
         # which is the engine's own routine behaviour: docker writes "no such
         # volume" to standard error on every first run.
-        $script:NoisyEngine = Join-Path $script:EngineStubRoot 'noisy.cmd'
-        Set-Content -LiteralPath $script:NoisyEngine -Encoding Ascii -Value @(
+        $script:NoisyEngine = Join-Path $script:EngineStubRoot 'noisy'
+        New-Item -ItemType Directory -Path $script:NoisyEngine -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $script:NoisyEngine 'docker.cmd') -Encoding Ascii -Value @(
             '@echo off',
             'echo answered on stdout',
             'echo grumbled on stderr 1>&2',
@@ -549,39 +550,49 @@ Describe 'Invoke-Docker' {
         # output has them, and each redirected line reaches the wrapper as an
         # error record whose ToString() answers with a type name when the line
         # it holds is empty.
-        $script:BlankLineEngine = Join-Path $script:EngineStubRoot 'blankline.cmd'
-        Set-Content -LiteralPath $script:BlankLineEngine -Encoding Ascii -Value @(
+        $script:BlankLineEngine = Join-Path $script:EngineStubRoot 'blankline'
+        New-Item -ItemType Directory -Path $script:BlankLineEngine -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $script:BlankLineEngine 'docker.cmd') -Encoding Ascii -Value @(
             '@echo off',
             '>&2 echo(',
             '>&2 echo could not mount the share',
             'exit /b 1')
+
+        $script:NoEngine = Join-Path $script:EngineStubRoot 'none'
+        New-Item -ItemType Directory -Path $script:NoEngine -Force | Out-Null
+
+        function Invoke-DockerFrom {
+            <#  -EngineOnly leaves the Windows folders off the PATH: a hosted
+                runner keeps a real docker in one of them. #>
+            param([Parameter(Mandatory = $true)][string] $EngineRoot, [switch] $EngineOnly)
+
+            $originalPath = $env:PATH
+            try {
+                $env:PATH = if ($EngineOnly) { $EngineRoot }
+                else { @($EngineRoot, (Join-Path $env:SystemRoot 'System32'), $env:SystemRoot) -join ';' }
+                return (Invoke-Docker -DockerArgs @('version'))
+            } finally {
+                $env:PATH = $originalPath
+            }
+        }
     }
 
     AfterAll {
         Remove-Item -LiteralPath $script:EngineStubRoot -Recurse -Force -ErrorAction SilentlyContinue
     }
 
-    It 'answers a name that is not a command without borrowing an earlier code' {
+    It 'answers a PC with no docker without borrowing an earlier code' {
         # A native command run first, leaving a 0 in $LASTEXITCODE, so that the
         # answer below cannot have been taken from there -- a 0 would read as an
         # engine that ran and was happy. What the call itself does without the
-        # guard is the case two below.
+        # guard is the last case below.
         & cmd /c exit 0
 
-        $result = Invoke-Docker -Engine 'alcove-no-such-engine' -DockerArgs @('version')
+        $result = Invoke-DockerFrom -EngineRoot $script:NoEngine -EngineOnly
 
         $result.Ran | Should -Be $false
         $result.ExitCode | Should -Not -Be 0
-        $result.Output | Should -Match 'alcove-no-such-engine'
-    }
-
-    It 'reports an empty engine name the same way' {
-        & cmd /c exit 0
-
-        $result = Invoke-Docker -Engine '' -DockerArgs @('version')
-
-        $result.Ran | Should -Be $false
-        $result.ExitCode | Should -Not -Be 0
+        $result.Output | Should -Match 'docker is not a command'
     }
 
     It 'carries a stderr-writing command''s output and code back rather than throwing' {
@@ -589,7 +600,7 @@ Describe 'Invoke-Docker' {
         # whole reason the redirect inside Invoke-Docker relaxes it.
         $ErrorActionPreference = 'Stop'
 
-        $result = Invoke-Docker -Engine $script:NoisyEngine -DockerArgs @('ignored')
+        $result = Invoke-DockerFrom -EngineRoot $script:NoisyEngine
 
         $result.Ran | Should -Be $true
         $result.ExitCode | Should -Be 3
@@ -600,7 +611,7 @@ Describe 'Invoke-Docker' {
     It 'reads a blank stderr line as a blank line and a message as itself' {
         $ErrorActionPreference = 'Stop'
 
-        $result = Invoke-Docker -Engine $script:BlankLineEngine -DockerArgs @('ignored')
+        $result = Invoke-DockerFrom -EngineRoot $script:BlankLineEngine
 
         $result.Ran | Should -Be $true
         $result.Output | Should -Match 'could not mount the share'
@@ -617,7 +628,7 @@ Describe 'Invoke-Docker' {
         $ErrorActionPreference = 'Stop'
         $threw = $false
 
-        try { $null = & $script:NoisyEngine 2>&1 } catch { $threw = $true }
+        try { $null = & (Join-Path $script:NoisyEngine 'docker.cmd') 2>&1 } catch { $threw = $true }
 
         $threw | Should -BeTrue
     }
@@ -641,208 +652,80 @@ Describe 'Invoke-Docker' {
     }
 }
 
-Describe 'The image fetch both call sites make' {
-    BeforeAll {
-        $script:FetchStubRoot = Join-Path $env:TEMP ('alcove-fetch-stub-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
-        New-Item -ItemType Directory -Path $script:FetchStubRoot -Force | Out-Null
-
-        # A pull that worked, recording the call it was given so the vector can
-        # be read back rather than inferred from the exit code.
-        $script:PullEngine = Join-Path $script:FetchStubRoot 'pull.cmd'
-        Set-Content -LiteralPath $script:PullEngine -Encoding Ascii -Value @(
-            '@echo off',
-            '>"%ALCOVE_STUB_ARGS%" echo %*',
-            'exit /b 0')
-
-        # And one that could not reach the registry, which is the arm whose
-        # output the refusal prints as the evidence an operator has to act on.
-        $script:UnreachableRegistryEngine = Join-Path $script:FetchStubRoot 'noregistry.cmd'
-        Set-Content -LiteralPath $script:UnreachableRegistryEngine -Encoding Ascii -Value @(
-            '@echo off',
-            'echo error response from daemon: the proxy refused the connection 1>&2',
-            'exit /b 1')
+Describe 'The engine the setup script chooses' {
+    BeforeEach {
+        $script:EnginesAsked = @()
     }
 
-    AfterAll {
-        Remove-Item -LiteralPath $script:FetchStubRoot -Recurse -Force -ErrorAction SilentlyContinue
-    }
-
-    It 'fetches the same image quietly whichever call site asked for it' {
-        # -Refresh changes what the operator is told and nothing about what is
-        # fetched, which is what lets one function carry the size-and-duration
-        # notice for the first run and for the refresh below it.
-        $argsFile = Join-Path $script:FetchStubRoot 'recorded-args.txt'
-        $previous = $env:ALCOVE_STUB_ARGS
-        try {
-            $env:ALCOVE_STUB_ARGS = $argsFile
-            $first = Invoke-ImageFetch -Image 'ghcr.io/georgetown-mdi/alcove:latest' -Engine $script:PullEngine
-            $firstCall = ([string] (Get-Content -LiteralPath $argsFile -Raw)).Trim()
-            $refresh = Invoke-ImageFetch -Image 'ghcr.io/georgetown-mdi/alcove:latest' -Engine $script:PullEngine -Refresh
-            $refreshCall = ([string] (Get-Content -LiteralPath $argsFile -Raw)).Trim()
-        } finally {
-            if ($null -eq $previous) { Remove-Item env:ALCOVE_STUB_ARGS -ErrorAction SilentlyContinue }
-            else { $env:ALCOVE_STUB_ARGS = $previous }
+    It 'chooses podman when docker is not installed' {
+        function Invoke-Docker {
+            param([string[]] $DockerArgs, [string] $Engine)
+            $script:EnginesAsked += "$Engine $($DockerArgs -join ' ')"
+            if ($Engine -eq 'podman') { return @{ Ran = $true; Output = 'podman version 5.1.0'; ExitCode = 0 } }
+            return @{ Ran = $false; Output = "$Engine is not a command on this PC."; ExitCode = 127 }
         }
 
-        $first.ExitCode | Should -Be 0
-        $refresh.ExitCode | Should -Be 0
-        $firstCall | Should -Match 'pull' -Because $firstCall
-        $firstCall | Should -Match '--quiet' -Because $firstCall
-        $firstCall | Should -Match 'ghcr.io/georgetown-mdi/alcove:latest' -Because $firstCall
-        $refreshCall | Should -Be $firstCall -Because $refreshCall
+        $found = Find-SetupEngine
+
+        $found.Engine | Should -Be 'podman'
+        ($script:EnginesAsked -join '|') |
+            Should -Be 'docker version --format {{.Server.Os}} {{.Server.Version}}|podman version'
     }
 
-    It 'carries back what an engine that could not fetch anything said' {
-        $result = Invoke-ImageFetch -Image 'ghcr.io/georgetown-mdi/alcove:latest' -Engine $script:UnreachableRegistryEngine -Refresh
-
-        $result.ExitCode | Should -Be 1
-        $result.Output | Should -Match 'proxy refused the connection'
-    }
-}
-
-Describe 'The image capability check' {
-    BeforeAll {
-        $script:CapabilityStubRoot = Join-Path $env:TEMP ('alcove-capability-stub-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
-        New-Item -ItemType Directory -Path $script:CapabilityStubRoot -Force | Out-Null
-
-        # An engine standing in for a released image published before the doctor
-        # existed: it exits 0 and prints the zero-setup help, which names no
-        # doctor. The exit code is the shape that matters here -- such an image
-        # answers 0 to this and 64 to a battery, and 64 is also what the doctor
-        # answers for a value it refuses, so a code cannot decide the question.
-        $script:PreDoctorEngine = Join-Path $script:CapabilityStubRoot 'predoctor.cmd'
-        Set-Content -LiteralPath $script:PreDoctorEngine -Encoding Ascii -Value @(
-            '@echo off',
-            'echo alcove [command] [options]',
-            'echo Usage:',
-            'echo   alcove [--save] [options] URL INPUT_FILE [OUTPUT_FILE]',
-            'echo Commands:',
-            'echo   alcove init [args..]   Write a commented configuration template',
-            'echo   alcove exchange        Execute a recurring exchange',
-            'exit /b 0')
-
-        $script:DoctorEngine = Join-Path $script:CapabilityStubRoot 'withdoctor.cmd'
-        Set-Content -LiteralPath $script:DoctorEngine -Encoding Ascii -Value @(
-            '@echo off',
-            'echo Usage: alcove doctor probe or doctor mount DIRECTORY',
-            'echo Commands:',
-            'echo   alcove doctor probe   Check the file drop over the network',
-            'echo   alcove doctor mount   Check an already-mounted file-drop directory',
-            'exit /b 0')
-
-        # Docker reserves 125 and above for its own failure to start a
-        # container, which the script's battery arms already read as their own
-        # case; the capability question has to keep the same line.
-        $script:UnstartableEngine = Join-Path $script:CapabilityStubRoot 'unstartable.cmd'
-        Set-Content -LiteralPath $script:UnstartableEngine -Encoding Ascii -Value @(
-            '@echo off',
-            'echo docker: error during connect 1>&2',
-            'exit /b 125')
-
-        # Records what it was asked to run, so the invocation itself can be
-        # read back rather than inferred from the answer.
-        $script:RecordingEngine = Join-Path $script:CapabilityStubRoot 'recorder.cmd'
-        Set-Content -LiteralPath $script:RecordingEngine -Encoding Ascii -Value @(
-            '@echo off',
-            '>"%ALCOVE_STUB_ARGS%" echo %*',
-            'echo Usage: alcove doctor probe or doctor mount DIRECTORY',
-            'exit /b 0')
-    }
-
-    AfterAll {
-        Remove-Item -LiteralPath $script:CapabilityStubRoot -Recurse -Force -ErrorAction SilentlyContinue
-    }
-
-    It 'calls an image whose doctor answers for itself capable' {
-        $result = Test-DoctorCapableImage -Image 'ghcr.io/georgetown-mdi/alcove:latest' -Engine $script:DoctorEngine
-
-        $result.Capable | Should -BeTrue
-    }
-
-    It 'calls an image whose help names no doctor too old, though it exits 0' {
-        $result = Test-DoctorCapableImage -Image 'ghcr.io/georgetown-mdi/alcove:latest' -Engine $script:PreDoctorEngine
-
-        $result.Capable | Should -BeFalse
-        $result.Reason | Should -Be 'NoDoctor'
-        # The verdict is fixed, so what the image said is the whole of the
-        # evidence the flow can print under it -- and this bucket holds a
-        # `doctor --help` that crashed in a current image as well as the
-        # documented old one.
-        $result.ExitCode | Should -Be 0
-        $result.Output | Should -Match 'URL INPUT_FILE'
-    }
-
-    It 'keeps an engine that could not start the container apart from an old image' {
-        # The two remedies point opposite ways -- refresh the image, versus read
-        # what the engine said -- so merging them would send an operator whose
-        # Docker is down off pulling an image they already have.
-        $result = Test-DoctorCapableImage -Image 'ghcr.io/georgetown-mdi/alcove:latest' -Engine $script:UnstartableEngine
-
-        $result.Capable | Should -BeFalse
-        $result.Reason | Should -Be 'EngineFailed'
-        $result.ExitCode | Should -Be 125
-    }
-
-    It 'asks the question with no battery and no share input' {
-        # What makes this safe to run before the credentials are collected: it
-        # names neither battery, so nothing it reports can be about the share.
-        $argsFile = Join-Path $script:CapabilityStubRoot 'recorded-args.txt'
-        $previous = $env:ALCOVE_STUB_ARGS
-        try {
-            $env:ALCOVE_STUB_ARGS = $argsFile
-            $result = Test-DoctorCapableImage -Image 'ghcr.io/georgetown-mdi/alcove:latest' -Engine $script:RecordingEngine
-            $result.Capable | Should -BeTrue
-        } finally {
-            if ($null -eq $previous) { Remove-Item env:ALCOVE_STUB_ARGS -ErrorAction SilentlyContinue }
-            else { $env:ALCOVE_STUB_ARGS = $previous }
+    It 'keeps docker when it answers, without asking podman' {
+        function Invoke-Docker {
+            param([string[]] $DockerArgs, [string] $Engine)
+            $script:EnginesAsked += $Engine
+            return @{ Ran = $true; Output = 'linux 27.1.1'; ExitCode = 0 }
         }
 
-        # Read defensively: a stub that wrote nothing must reach the assertions
-        # as an empty string it can report, not as a throw inside Trim.
-        $recorded = ''
-        if (Test-Path -LiteralPath $argsFile) {
-            $recorded = ([string] (Get-Content -LiteralPath $argsFile -Raw)).Trim()
+        $found = Find-SetupEngine
+
+        $found.Engine | Should -Be 'docker'
+        $found.Output | Should -Be 'linux 27.1.1'
+        ($script:EnginesAsked -join ',') | Should -Be 'docker'
+    }
+
+    It 'chooses nothing when neither answers, keeping what the installed one said' {
+        function Invoke-Docker {
+            param([string[]] $DockerArgs, [string] $Engine)
+            if ($Engine -eq 'docker') { return @{ Ran = $true; Output = 'access is denied'; ExitCode = 1 } }
+            return @{ Ran = $false; Output = "$Engine is not a command on this PC."; ExitCode = 127 }
         }
-        $recorded | Should -Match 'ghcr.io/georgetown-mdi/alcove:latest' -Because $recorded
-        $recorded | Should -Match 'doctor' -Because $recorded
-        $recorded | Should -Match '--help' -Because $recorded
-        $recorded | Should -Not -Match 'probe' -Because $recorded
-        $recorded | Should -Not -Match 'mount' -Because $recorded
+
+        $found = Find-SetupEngine
+
+        $found.Engine | Should -BeNullOrEmpty
+        $found.Output | Should -Be 'access is denied'
     }
 }
 
 Describe 'The setup flow, driven against a stub engine' {
     BeforeAll {
-        # Whole engines, each named so the flow's own `docker` calls reach it
-        # through the PATH. Each answers preflight normally and then serves one
-        # of the shapes of `doctor --help`, with or without a fetch that can
-        # change that answer -- or, for the last of them, refuses to run a
-        # container at all -- and appends every call it was given to
+        # Whole engines, each named docker.cmd so the flow's own `docker` calls
+        # reach it through the PATH, each appending every call it was given to
         # ALCOVE_STUB_LOG, which is what lets a test assert what the flow did
         # NOT go on to run.
         #
-        # Labels rather than parenthesised blocks: a `)` anywhere in the help
-        # text would close a block early, and the pre-doctor help is the real
-        # CLI's, punctuation included.
-        $script:StaleEngineRoot = Join-Path $env:TEMP ('alcove-flow-stale-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
-        $script:SelfHealEngineRoot = Join-Path $env:TEMP ('alcove-flow-selfheal-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
-        $script:NoRegistryEngineRoot = Join-Path $env:TEMP ('alcove-flow-noregistry-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
-        $script:CapableEngineRoot = Join-Path $env:TEMP ('alcove-flow-capable-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
-        $script:NoRunEngineRoot = Join-Path $env:TEMP ('alcove-flow-norun-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
-        New-Item -ItemType Directory -Path $script:StaleEngineRoot -Force | Out-Null
-        New-Item -ItemType Directory -Path $script:SelfHealEngineRoot -Force | Out-Null
-        New-Item -ItemType Directory -Path $script:NoRegistryEngineRoot -Force | Out-Null
-        New-Item -ItemType Directory -Path $script:CapableEngineRoot -Force | Out-Null
-        New-Item -ItemType Directory -Path $script:NoRunEngineRoot -Force | Out-Null
+        # Labels rather than parenthesised blocks: a `)` anywhere in what a stub
+        # prints would close a block early.
+        $script:PresentImageEngineRoot = Join-Path $env:TEMP ('alcove-flow-present-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+        $script:NoImageEngineRoot = Join-Path $env:TEMP ('alcove-flow-noimage-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+        New-Item -ItemType Directory -Path $script:PresentImageEngineRoot -Force | Out-Null
+        New-Item -ItemType Directory -Path $script:NoImageEngineRoot -Force | Out-Null
 
-        $engineHead = @(
+        # Answers the version question and has the image, and refuses every
+        # other call loudly: any `docker run` at all reaches the unexpected-call
+        # arm, which exits 99 and names the call it was given. That is what
+        # makes "the local answer runs no container" an assertion rather than a
+        # reading of the flow.
+        Set-Content -LiteralPath (Join-Path $script:PresentImageEngineRoot 'docker.cmd') -Encoding Ascii -Value @(
             '@echo off',
             '>>"%ALCOVE_STUB_LOG%" echo %*',
             'echo %*| findstr /C:"version --format" >nul',
             'if not errorlevel 1 goto engineversion',
             'echo %*| findstr /C:"image inspect" >nul',
-            'if not errorlevel 1 goto imagepresent')
-        $engineTail = @(
+            'if not errorlevel 1 goto imagepresent',
             'echo unexpected engine call: %*',
             'exit /b 99',
             ':engineversion',
@@ -851,74 +734,33 @@ Describe 'The setup flow, driven against a stub engine' {
             ':imagepresent',
             'exit /b 0')
 
-        $prologue = $engineHead + @(
-            'echo %*| findstr /C:"doctor --help" >nul',
-            'if not errorlevel 1 goto doctorhelp') + $engineTail + @(':doctorhelp')
-
-        # The branch checks the engines that also serve a pull carry, ahead of
-        # the same tail. Each of them supplies its own :imagepull and
-        # :doctorhelp bodies, which is where the direction it stands for lives.
-        # An engine with no pull arm holds the other direction: a run that
-        # fetched where it should not have reaches the unexpected-call arm.
-        $refreshHead = $engineHead + @(
+        # Has no copy of the image and cannot reach the registry for one.
+        Set-Content -LiteralPath (Join-Path $script:NoImageEngineRoot 'docker.cmd') -Encoding Ascii -Value @(
+            '@echo off',
+            '>>"%ALCOVE_STUB_LOG%" echo %*',
+            'echo %*| findstr /C:"version --format" >nul',
+            'if not errorlevel 1 goto engineversion',
+            'echo %*| findstr /C:"image inspect" >nul',
+            'if not errorlevel 1 goto imageabsent',
             'echo %*| findstr /C:"pull" >nul',
-            'if not errorlevel 1 goto imagepull',
-            'echo %*| findstr /C:"doctor --help" >nul',
-            'if not errorlevel 1 goto doctorhelp') + $engineTail
-        $pullWorks = @(':imagepull', 'exit /b 0', ':doctorhelp')
-        $preDoctorHelp = @(
-            'echo alcove [command] [options]',
-            'echo Usage:',
-            'echo   alcove [--save] [options] URL INPUT_FILE [OUTPUT_FILE]',
-            'exit /b 0')
-
-        # A registry copy no newer than the one on the PC: the pull succeeds and
-        # the help it answers afterwards is the same one it answered before.
-        Set-Content -LiteralPath (Join-Path $script:StaleEngineRoot 'docker.cmd') `
-            -Encoding Ascii -Value ($refreshHead + $pullWorks + $preDoctorHelp)
-
-        # A registry copy that does carry the doctor: the same `doctor --help`
-        # answers the pre-doctor usage until a pull has been made and the
-        # doctor's own after one. The recorded log is the state it remembers by,
-        # so the stub needs no second file to keep.
-        Set-Content -LiteralPath (Join-Path $script:SelfHealEngineRoot 'docker.cmd') `
-            -Encoding Ascii -Value ($refreshHead + $pullWorks + @(
-            'findstr /C:"pull" "%ALCOVE_STUB_LOG%" >nul',
-            'if not errorlevel 1 goto freshimage') + $preDoctorHelp + @(
-            ':freshimage',
-            'echo Usage: alcove doctor probe or doctor mount DIRECTORY',
-            'echo   alcove doctor probe   Check the file drop over the network',
-            'exit /b 0'))
-
-        # A registry the engine cannot reach at all, which leaves the copy on
-        # the PC the only one there is and the refusal reading what Docker said
-        # about the fetch rather than about an image it never received.
-        Set-Content -LiteralPath (Join-Path $script:NoRegistryEngineRoot 'docker.cmd') `
-            -Encoding Ascii -Value ($refreshHead + @(
-            ':imagepull',
-            'echo error response from daemon: the proxy refused the connection 1>&2',
+            'if not errorlevel 1 goto pullrefused',
+            'echo unexpected engine call: %*',
+            'exit /b 99',
+            ':engineversion',
+            'echo linux 27.1.1',
+            'exit /b 0',
+            ':imageabsent',
             'exit /b 1',
-            ':doctorhelp') + $preDoctorHelp)
-
-        Set-Content -LiteralPath (Join-Path $script:CapableEngineRoot 'docker.cmd') -Encoding Ascii -Value ($prologue + @(
-            'echo Usage: alcove doctor probe or doctor mount DIRECTORY',
-            'echo   alcove doctor probe   Check the file drop over the network',
-            'echo   alcove doctor mount   Check an already-mounted file-drop directory',
-            'exit /b 0'))
-
-        # The same engine with the doctor branch taken out, so it answers only
-        # the two preflight questions and refuses everything else loudly: any
-        # `docker run` at all reaches the unexpected-call arm, which exits 99 and
-        # names the call it was given. That is what makes "the local answer runs
-        # no container" an assertion rather than a reading of the flow.
-        Set-Content -LiteralPath (Join-Path $script:NoRunEngineRoot 'docker.cmd') -Encoding Ascii -Value ($engineHead + $engineTail)
+            ':pullrefused',
+            'echo error response from daemon: the proxy refused the connection 1>&2',
+            'exit /b 1')
 
         # The setup script with the elevation question answered, for the one
         # reason an elevated window gets: this suite cannot put a run in such a
         # window, and the answer decides which reason the flow prints. Injected
         # above the guard line so that it replaces the script's own definition,
         # which is where the launcher's flow suite puts its credential answer.
-        $script:ElevatedSetupScript = Join-Path $script:CapableEngineRoot 'Setup-AlcoveFileDrop.ps1'
+        $script:ElevatedSetupScript = Join-Path $script:PresentImageEngineRoot 'Setup-AlcoveFileDrop.ps1'
         $setupSource = Get-Content -Raw -LiteralPath $setupScript
         $guardLine = "if (`$LoadFunctionsOnly) { return }"
         $answeredElevation = @(
@@ -935,10 +777,8 @@ Describe 'The setup flow, driven against a stub engine' {
                 same reason the -LoadFunctionsOnly guard's own flow test cuts
                 it: a runner with a real Docker would otherwise answer first.
 
-                -TimeoutSeconds is a backstop for a run that ends on its own and
-                the whole of the wait for one that cannot, so a case judging the
-                second asks for a shorter one than the default. -InputLines
-                answers the prompts a run reaches. #>
+                -TimeoutSeconds is a backstop for a run that ends on its own.
+                -InputLines answers the prompts a run reaches. #>
             param(
                 [Parameter(Mandatory = $true)][string] $EngineRoot,
                 [Parameter(Mandatory = $true)][string] $SetupScript,
@@ -980,6 +820,18 @@ Describe 'The setup flow, driven against a stub engine' {
             }
         }
 
+        function Get-RunShape {
+            param($Run)
+            $output = [string] $Run.Output
+            return "timedout=$($Run.TimedOut) exit=$($Run.Exit) calls=$($Run.Calls) tail=" +
+                (($output.Substring([Math]::Max(0, $output.Length - 200))) -replace '\s+', ' ')
+        }
+
+        function Get-RunLines {
+            param($Run)
+            return (@(([string] $Run.Output).TrimEnd() -split '\r?\n' | ForEach-Object { $_.TrimEnd() }) -join "`n")
+        }
+
         function Assert-SetupEndsWith {
             <#  That a run ended where it should, on exactly the lines given: the
                 last lines of the window, each compared whole, so a change to a
@@ -988,208 +840,87 @@ Describe 'The setup flow, driven against a stub engine' {
                 and nobody reading the window sees it. #>
             param($Run, [int] $Exit, [string[]] $Screen)
 
-            $output = [string] $Run.Output
-            $shape = "timedout=$($Run.TimedOut) exit=$($Run.Exit) calls=$($Run.Calls) tail=" +
-                (($output.Substring([Math]::Max(0, $output.Length - 200))) -replace '\s+', ' ')
+            $shape = Get-RunShape -Run $Run
             $Run.TimedOut | Should -BeFalse -Because $shape
             $Run.Exit | Should -Be $Exit -Because $shape
 
-            $lines = @($output.TrimEnd() -split '\r?\n' | ForEach-Object { $_.TrimEnd() })
+            $lines = @((Get-RunLines -Run $Run) -split "`n")
             $expected = @($Screen | ForEach-Object { $_.TrimEnd() })
             (@($lines | Select-Object -Last $expected.Count) -join "`n") |
                 Should -BeExactly ($expected -join "`n") -Because $shape
         }
+
+        function Assert-SetupShows {
+            <#  That a run printed the lines given, one after another and each
+                compared whole, somewhere in the window: for a screen followed
+                by a prompt, whose own line a redirected run renders as it
+                likes. #>
+            param($Run, [int] $Exit, [string[]] $Screen)
+
+            $shape = Get-RunShape -Run $Run
+            $Run.TimedOut | Should -BeFalse -Because $shape
+            $Run.Exit | Should -Be $Exit -Because $shape
+
+            $expected = (@($Screen | ForEach-Object { $_.TrimEnd() }) -join "`n")
+            (Get-RunLines -Run $Run).Contains($expected) | Should -BeTrue -Because "$shape expected=$expected"
+        }
     }
 
     AfterAll {
-        Remove-Item -LiteralPath $script:StaleEngineRoot -Recurse -Force -ErrorAction SilentlyContinue
-        Remove-Item -LiteralPath $script:SelfHealEngineRoot -Recurse -Force -ErrorAction SilentlyContinue
-        Remove-Item -LiteralPath $script:NoRegistryEngineRoot -Recurse -Force -ErrorAction SilentlyContinue
-        Remove-Item -LiteralPath $script:CapableEngineRoot -Recurse -Force -ErrorAction SilentlyContinue
-        Remove-Item -LiteralPath $script:NoRunEngineRoot -Recurse -Force -ErrorAction SilentlyContinue
-    }
-
-    It 'turns a stale image away on the -Server path, blaming neither the values nor itself' {
-        $run = Invoke-SetupWithEngine -EngineRoot $script:StaleEngineRoot -SetupScript $setupScript -ScriptArguments @(
-            '-Server', 'fs-04.agency.gov', '-Share', 'exchange', '-SkipConfirm')
-        $shape = "timedout=$($run.TimedOut) exit=$($run.Exit) calls=$($run.Calls)"
-
-        $run.TimedOut | Should -BeFalse -Because $shape
-        $run.Exit | Should -Be 1 -Because $shape
-        $run.Output | Should -Match 'too old' -Because $shape
-        # The registry answered with the same image, which is what makes this
-        # arm terminal. The remedy the operator is left with is not a pull to
-        # make by hand: the run made that pull, and asking for it again sends
-        # them after an image they already have.
-        $run.Output | Should -Match 'fetched just now' -Because $shape
-        $run.Output | Should -Match 'Doing it by hand' -Because $shape
-        $run.Output | Should -Not -Match 'docker pull ghcr.io/georgetown-mdi/alcove:latest' -Because $shape
-        # The notice the fetch runs under. `pull --quiet` prints nothing until
-        # it is done, so a refresh on a failure path that said nothing would
-        # read as a hang.
-        $run.Output | Should -Match 'few hundred megabytes' -Because $shape
-        @([regex]::Matches($run.Calls, 'pull --quiet')).Count | Should -Be 1 -Because $run.Calls
-        # The two things a 64 from the battery can honestly mean. This is
-        # neither: it is the image, so neither may be printed here.
-        $run.Output | Should -Not -Match 'defect in Setup-AlcoveFileDrop.ps1' -Because $shape
-        $run.Output | Should -Not -Match 'refused the values' -Because $shape
-        # And what the image itself answered, printed after the remedy. The
-        # verdict is fixed, so this is the only thing an operator whose
-        # `doctor --help` crashed in a current image has to report.
-        $run.Output | Should -Match '\(exit 0\)' -Because $shape
-        $run.Output | Should -Match 'URL INPUT_FILE' -Because $shape
-    }
-
-    It 'turns a stale image away on the resolved-path route too, before the credentials' {
-        # The other way in: -DropPath goes through the path resolution the
-        # -Server form skips, and the check sits below that resolution, so one
-        # arm cannot stand for both routes. A reserved TLD (RFC 6761) for the
-        # server, because the flow asks Windows whether it can reach the path
-        # on the way down, and no machine can ever answer to this one.
-        $run = Invoke-SetupWithEngine -EngineRoot $script:StaleEngineRoot -SetupScript $setupScript -ScriptArguments @(
-            '-DropPath', '\\fs-04.invalid\exchange\alcove', '-SkipConfirm')
-        $shape = "timedout=$($run.TimedOut) exit=$($run.Exit) calls=$($run.Calls)"
-
-        $run.TimedOut | Should -BeFalse -Because $shape
-        $run.Exit | Should -Be 1 -Because $shape
-        $run.Output | Should -Match 'too old' -Because $shape
-        $run.Output | Should -Not -Match 'credentials for the file server' -Because $shape
+        Remove-Item -LiteralPath $script:PresentImageEngineRoot -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $script:NoImageEngineRoot -Recurse -Force -ErrorAction SilentlyContinue
     }
 
     It 'runs no container at all for a folder that turns out to be local' {
-        # The local answer needs no battery -- it prints a direct -v mount and
-        # leaves -- so it must not be made to survive a container first. The
-        # engine here refuses every `docker run`, so a capability check asked
-        # above the path resolution fails this run rather than merely slowing
-        # it.
-        $run = Invoke-SetupWithEngine -EngineRoot $script:NoRunEngineRoot -SetupScript $setupScript -ScriptArguments @(
+        # The local answer prints a direct -v mount and leaves, so it must not
+        # be made to survive a container first.
+        $run = Invoke-SetupWithEngine -EngineRoot $script:PresentImageEngineRoot -SetupScript $setupScript -ScriptArguments @(
             '-DropPath', 'C:\alcove-local-drop')
-        $shape = "timedout=$($run.TimedOut) exit=$($run.Exit) calls=$($run.Calls)"
+        $shape = Get-RunShape -Run $run
 
         $run.TimedOut | Should -BeFalse -Because $shape
         $run.Exit | Should -Be 0 -Because $shape
         $run.Output | Should -Match 'already local' -Because $shape
-        $run.Output | Should -Match 'do not need a Docker volume at all' -Because $shape
-        $run.Output | Should -Not -Match 'too old' -Because $shape
+        $run.Output | Should -Match 'do not need a volume at all' -Because $shape
         $run.Output | Should -Not -Match 'unexpected engine call' -Because $shape
         $run.Calls | Should -Match 'image inspect' -Because $run.Calls
-        $run.Calls | Should -Not -Match 'doctor --help' -Because $run.Calls
-        # The image is present here, and no question about it has been asked
-        # yet, so nothing has any reason to fetch one.
+        # The image is present, so nothing has any reason to fetch one.
         $run.Calls | Should -Not -Match 'pull' -Because $run.Calls
     }
 
-    It 'reaches no battery with an image that cannot produce a verdict' {
-        # The property the placement buys: every verdict arm below reads a code
-        # from one of these two batteries, so an image turned away before either
-        # runs cannot reach one.
-        $run = Invoke-SetupWithEngine -EngineRoot $script:StaleEngineRoot -SetupScript $setupScript -ScriptArguments @(
+    It 'fetches an image the PC does not have, and stops on what Docker said when it cannot' {
+        $run = Invoke-SetupWithEngine -EngineRoot $script:NoImageEngineRoot -SetupScript $setupScript -ScriptArguments @(
             '-Server', 'fs-04.agency.gov', '-Share', 'exchange', '-SkipConfirm')
-
-        $run.Calls | Should -Not -BeNullOrEmpty
-        $run.Calls | Should -Match 'doctor --help' -Because $run.Calls
-        $run.Calls | Should -Not -Match 'doctor probe' -Because $run.Calls
-        $run.Calls | Should -Not -Match 'doctor mount' -Because $run.Calls
-        $run.Calls | Should -Not -Match 'volume create' -Because $run.Calls
-        # The fetch is on the failure path, so the question is asked before it
-        # and again after it, and never a battery in between.
-        $run.Calls | Should -Match '(?s)doctor --help.*pull --quiet' -Because $run.Calls
-    }
-
-    It 'names the fetch that could not run rather than a registry that answered' {
-        # The third way the refusal is reached: nothing could be fetched, so the
-        # copy on this PC is still all there is, and what Docker said about the
-        # fetch is the only thing the operator has to act on.
-        $run = Invoke-SetupWithEngine -EngineRoot $script:NoRegistryEngineRoot -SetupScript $setupScript -ScriptArguments @(
-            '-Server', 'fs-04.agency.gov', '-Share', 'exchange', '-SkipConfirm')
-        $shape = "timedout=$($run.TimedOut) exit=$($run.Exit) calls=$($run.Calls)"
+        $shape = Get-RunShape -Run $run
 
         $run.TimedOut | Should -BeFalse -Because $shape
         $run.Exit | Should -Be 1 -Because $shape
-        $run.Output | Should -Match 'too old' -Because $shape
-        $run.Output | Should -Match 'could not be fetched' -Because $shape
+        # `pull --quiet` prints nothing until it is done, so a fetch that said
+        # nothing first would read as a hang.
+        $run.Output | Should -Match 'few hundred megabytes' -Because $shape
+        $run.Output | Should -Match 'Could not fetch the Alcove image' -Because $shape
         $run.Output | Should -Match 'proxy refused the connection' -Because $shape
-        $run.Output | Should -Not -Match 'fetched just now' -Because $shape
-    }
-
-    It 'fetches once and carries on when the registry has an image that answers' {
-        # The self-heal, and the reason the arm above can stay terminal: the
-        # copy on this PC carries no doctor, the published one does, and the
-        # fetch on the failure path is what turns a refusal into a run. It ends
-        # the way the capable run below does -- waiting at a password prompt
-        # Read-Host reads from the console rather than from the redirect -- so
-        # the wait is the evidence and there is no exit code to assert.
-        $run = Invoke-SetupWithEngine -EngineRoot $script:SelfHealEngineRoot -SetupScript $setupScript -ScriptArguments @(
-            '-Server', 'fs-04.agency.gov', '-Share', 'exchange', '-SkipConfirm') -TimeoutSeconds 20
-        $output = [string] $run.Output
-        $shape = "timedout=$($run.TimedOut) exit=$($run.Exit) calls=$($run.Calls) tail=" +
-            (($output.Substring([Math]::Max(0, $output.Length - 200))) -replace '\s+', ' ')
-
-        # Asked, fetched, asked again: the order is what makes this a refresh of
-        # a copy already judged rather than a pull made before anything knew.
-        $run.Calls | Should -Match '(?s)doctor --help.*pull --quiet.*doctor --help' -Because $run.Calls
+        $run.Output | Should -Not -Match 'credentials for the file server' -Because $shape
         @([regex]::Matches($run.Calls, 'pull --quiet')).Count | Should -Be 1 -Because $run.Calls
-        $output | Should -Match 'few hundred megabytes' -Because $shape
-        $output | Should -Match 'image carries the checks' -Because $shape
-        $output | Should -Match 'credentials for the file server' -Because $shape
-        $output | Should -Not -Match 'too old' -Because $shape
-        $run.TimedOut | Should -BeTrue -Because $shape
-    }
-
-    It 'lets an image that carries the doctor through to the credentials' {
-        # The other direction: the gate has to be silent for a current image, or
-        # it would trade one misdiagnosis for another. Nothing below the gate
-        # ends a run driven this way -- part 2 reads the share password with
-        # Read-Host -AsSecureString, which reads the console rather than the
-        # redirected standard input every child here is given, and waits there
-        # -- so reaching the credentials and waiting IS the evidence that a
-        # capable image was let through, and there is no exit code to assert.
-        # Twenty seconds rather than the flow default: every terminating case
-        # above completes a whole run in under one, so the wait has only to
-        # cover reaching the prompt.
-        $run = Invoke-SetupWithEngine -EngineRoot $script:CapableEngineRoot -SetupScript $setupScript -ScriptArguments @(
-            '-Server', 'fs-04.agency.gov', '-Share', 'exchange', '-SkipConfirm') -TimeoutSeconds 20
-        $output = [string] $run.Output
-        # The tail as well as the calls: this is a run nothing ended, so how far
-        # it had reached is the whole of what a failure here has to report.
-        $shape = "timedout=$($run.TimedOut) exit=$($run.Exit) calls=$($run.Calls) tail=" +
-            (($output.Substring([Math]::Max(0, $output.Length - 200))) -replace '\s+', ' ')
-
-        $run.Calls | Should -Match 'doctor --help' -Because $shape
-        $output | Should -Match 'image carries the checks' -Because $shape
-        $output | Should -Match 'credentials for the file server' -Because $shape
-        $output | Should -Not -Match 'too old' -Because $shape
-        # A run whose image already answers pays nothing for the fetch. This
-        # engine serves no pull at all, so one made here reaches its
-        # unexpected-call arm rather than passing unnoticed.
-        $run.Calls | Should -Not -Match 'pull' -Because $shape
-        $output | Should -Not -Match 'Refreshing the Alcove image' -Because $shape
-        $output | Should -Not -Match 'unexpected engine call' -Because $shape
-        # Held as a check rather than left to the reasoning above: a Windows
-        # PowerShell that did answer the password prompt from a redirect would
-        # end this run instead of waiting, and fails here.
-        $run.TimedOut | Should -BeTrue -Because $shape
     }
 
     It 'puts the confirmation again for an answer that is neither yes nor no' {
         # Everything below this prompt depends on the three values it
         # confirms, and an answer that is neither yes nor no settles nothing
-        # about them. A reserved TLD for the server, for the reason the
-        # stale-image case above gives: the flow asks Windows whether it can
-        # reach the path on the way down.
-        $run = Invoke-SetupWithEngine -EngineRoot $script:CapableEngineRoot -SetupScript $setupScript `
+        # about them. A reserved TLD (RFC 6761) for the server, because the flow
+        # asks Windows whether it can reach the path on the way down, and no
+        # machine can ever answer to this one.
+        $run = Invoke-SetupWithEngine -EngineRoot $script:PresentImageEngineRoot -SetupScript $setupScript `
             -ScriptArguments @('-DropPath', '\\fs-04.invalid\exchange\alcove') `
             -InputLines @('B', 'n') -TimeoutSeconds 60
-        $output = [string] $run.Output
-        $shape = "timedout=$($run.TimedOut) exit=$($run.Exit) tail=" +
-            (($output.Substring([Math]::Max(0, $output.Length - 200))) -replace '\s+', ' ')
+        $shape = Get-RunShape -Run $run
 
         $run.TimedOut | Should -BeFalse -Because $shape
         $run.Exit | Should -Be 0 -Because $shape
-        $output | Should -Match 'Answer y or n' -Because $shape
+        $run.Output | Should -Match 'Answer y or n' -Because $shape
         # Where the answer after it took the run: the no it was, rather than the
         # yes that reading only the first answer would have made of it.
-        $output | Should -Match 'Run the script again with the real values' -Because $shape
+        $run.Output | Should -Match 'Run the script again with the real values' -Because $shape
     }
 
     It 'leaves the retype advice off a reason that retyping would not answer' {
@@ -1199,12 +930,10 @@ Describe 'The setup flow, driven against a stub engine' {
         $letter = Find-FreeDriveLetter
         $letter | Should -Not -BeNullOrEmpty -Because 'the reason needs a letter nothing holds'
 
-        $run = Invoke-SetupWithEngine -EngineRoot $script:CapableEngineRoot `
+        $run = Invoke-SetupWithEngine -EngineRoot $script:PresentImageEngineRoot `
             -SetupScript $script:ElevatedSetupScript `
             -ScriptArguments @('-DropPath', "${letter}:\Exchange") -TimeoutSeconds 60
 
-        # The refusal is the last thing on the screen, with no retype advice
-        # under it.
         Assert-SetupEndsWith -Run $run -Exit 1 -Screen @(
             ('=' * 72),
             'Part 1: locating the file drop',
@@ -1214,23 +943,18 @@ Describe 'The setup flow, driven against a stub engine' {
             '        This window is running as Administrator, and an elevated session',
             "        cannot see the drive letters you mapped as yourself -- ${letter}: is",
             '        invisible here even if File Explorer shows it. Close this window,',
-            '        open PowerShell normally, and run the script again. If you were',
-            '        told to elevate in order to resolve a DFS path, you no longer need',
-            '        to: see the troubleshooting page, ''Reading the real path from',
-            '        Windows''.')
+            '        open PowerShell normally, and run the script again.')
     }
 
     It 'keeps the retype advice for a reason that a different path would answer' {
-        $run = Invoke-SetupWithEngine -EngineRoot $script:CapableEngineRoot -SetupScript $setupScript `
+        $run = Invoke-SetupWithEngine -EngineRoot $script:PresentImageEngineRoot -SetupScript $setupScript `
             -ScriptArguments @('-DropPath', 'the exchange folder') -TimeoutSeconds 60
-        $output = [string] $run.Output
-        $shape = "timedout=$($run.TimedOut) exit=$($run.Exit) tail=" +
-            (($output.Substring([Math]::Max(0, $output.Length - 200))) -replace '\s+', ' ')
+        $shape = Get-RunShape -Run $run
 
         $run.TimedOut | Should -BeFalse -Because $shape
         $run.Exit | Should -Be 1 -Because $shape
-        $output | Should -Match 'Could not interpret' -Because $shape
-        $output | Should -Match 'Enter it as a drive letter path' -Because $shape
+        $run.Output | Should -Match 'Could not interpret' -Because $shape
+        $run.Output | Should -Match 'Enter it as a drive letter path' -Because $shape
     }
 
     Context 'what the checks printed, replayed through each screen' {
@@ -1270,7 +994,7 @@ Describe 'The setup flow, driven against a stub engine' {
                 'MEANING: this copy of the Alcove image predates the checks. Nothing has been',
                 '         established about the credentials, the share, the folder, or write',
                 '         access; the name and reachability checks above stand.',
-                'ACTION:  pull a current Alcove image and run this again.',
+                'ACTION:  use a current Alcove release and run this again.',
                 'SKIP: signing in to the server -- not run.',
                 'SKIP: opening the share -- not run.',
                 'SKIP: opening the folder inside the share -- not run.',
@@ -1321,9 +1045,12 @@ Describe 'The setup flow, driven against a stub engine' {
             $script:ReplayRoot = Join-Path $env:TEMP ('alcove-flow-replay-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
             New-Item -ItemType Directory -Path $script:ReplayRoot -Force | Out-Null
 
-            # The credential prompt answered, for the reason the launcher's flow
-            # suite gives: it reads the console rather than the redirected
-            # standard input, so nothing past it could be reached otherwise.
+            # The credential prompt answered: the password is read with
+            # Read-Host -AsSecureString, which reads the console rather than the
+            # redirected standard input, so nothing past it could be reached
+            # otherwise. A prompt's text goes to the console too, and never
+            # reaches the output captured here, so each is also written where
+            # the run's other lines go before the prompt itself is put.
             $script:AnsweredSetupScript = Join-Path $script:ReplayRoot 'Setup-AlcoveFileDrop.ps1'
             $replaySource = Get-Content -Raw -LiteralPath $setupScript
             $replayGuard = "if (`$LoadFunctionsOnly) { return }"
@@ -1332,41 +1059,71 @@ Describe 'The setup flow, driven against a stub engine' {
                 '    param([string] $Username, [string] $Domain, [switch] $DomainSupplied)',
                 "    return @{ Username = 'alcoveci'; Domain = ''; Password = 'hunter2' }",
                 '}',
+                'function Read-Host {',
+                '    param([string] $Prompt)',
+                '    Write-Host $Prompt',
+                '    return (Microsoft.PowerShell.Utility\Read-Host -Prompt $Prompt)',
+                '}',
                 '') -join [Environment]::NewLine
             $patchedReplay = $replaySource.Replace($replayGuard, $answeredCredential + $replayGuard)
             if ($patchedReplay -eq $replaySource) { throw 'the setup script no longer carries the guard line this suite patches' }
             [IO.File]::WriteAllText($script:AnsweredSetupScript, $patchedReplay)
 
             function New-ReplayEngine {
-                <#  An engine that answers preflight and `doctor --help` as a
-                    current image does, makes every volume asked of it, and
-                    answers each battery with the lines and exit code given,
-                    written to standard error, where the image writes them. The
-                    lines go through a file and `type` rather than `echo`, which
-                    would read the parentheses and backticks in them. #>
+                <#  An engine that answers preflight as a PC with the image does,
+                    makes every volume asked of it, and answers each battery
+                    with the lines and exit code given, written to standard
+                    error, where the image writes them. The lines go through a
+                    file and `type` rather than `echo`, which would read the
+                    parentheses and backticks in them.
+
+                    -RetriedProbeExit, when given, is what every probe after the
+                    first answers, with no lines.
+
+                    -EngineStopsAfterStart makes every version query after the
+                    first exit 1, as an engine that stopped mid-run does.
+
+                    -EngineName is the command the engine answers as. Any
+                    version query is answered, since podman is asked a bare
+                    one. #>
                 param(
                     [Parameter(Mandatory = $true)][string] $Name,
                     [string[]] $ProbeLines = @(),
                     [int] $ProbeExit = 0,
+                    [int] $RetriedProbeExit = -1,
                     [string[]] $MountLines = @(),
-                    [int] $MountExit = 0
+                    [int] $MountExit = 0,
+                    [switch] $EngineStopsAfterStart,
+                    [string] $EngineName = 'docker'
                 )
 
                 $root = Join-Path $script:ReplayRoot $Name
                 New-Item -ItemType Directory -Path $root -Force | Out-Null
                 $probeFile = Join-Path $root 'probe.txt'
                 $mountFile = Join-Path $root 'mount.txt'
+                $probedFile = Join-Path $root 'probed'
+                $versionedFile = Join-Path $root 'versioned'
+                $stopArm = @()
+                if ($EngineStopsAfterStart) {
+                    $stopArm = @(
+                        "if exist `"$versionedFile`" exit /b 1",
+                        "type nul >`"$versionedFile`"")
+                }
                 [IO.File]::WriteAllText($probeFile, (@($ProbeLines | ForEach-Object { "$_`r`n" }) -join ''))
                 [IO.File]::WriteAllText($mountFile, (@($MountLines | ForEach-Object { "$_`r`n" }) -join ''))
-                Set-Content -LiteralPath (Join-Path $root 'docker.cmd') -Encoding Ascii -Value @(
+                $retryArm = @()
+                if ($RetriedProbeExit -ge 0) {
+                    $retryArm = @(
+                        "if exist `"$probedFile`" exit /b $RetriedProbeExit",
+                        "type nul >`"$probedFile`"")
+                }
+                Set-Content -LiteralPath (Join-Path $root "$EngineName.cmd") -Encoding Ascii -Value (@(
                     '@echo off',
                     '>>"%ALCOVE_STUB_LOG%" echo %*',
-                    'echo %*| findstr /C:"version --format" >nul',
+                    'echo %*| findstr /B /C:"version" >nul',
                     'if not errorlevel 1 goto engineversion',
                     'echo %*| findstr /C:"image inspect" >nul',
                     'if not errorlevel 1 goto succeed',
-                    'echo %*| findstr /C:"doctor --help" >nul',
-                    'if not errorlevel 1 goto doctorhelp',
                     'echo %*| findstr /C:"doctor probe" >nul',
                     'if not errorlevel 1 goto doctorprobe',
                     'echo %*| findstr /C:"doctor mount" >nul',
@@ -1375,28 +1132,43 @@ Describe 'The setup flow, driven against a stub engine' {
                     'if not errorlevel 1 goto succeed',
                     'echo unexpected engine call: %*',
                     'exit /b 99',
-                    ':engineversion',
+                    ':engineversion') + $stopArm + @(
                     'echo linux 27.1.1',
                     'exit /b 0',
                     ':succeed',
                     'exit /b 0',
-                    ':doctorhelp',
-                    'echo Usage: alcove doctor probe or doctor mount DIRECTORY',
-                    'exit /b 0',
-                    ':doctorprobe',
+                    ':doctorprobe') + $retryArm + @(
                     "type `"$probeFile`" 1>&2",
                     "exit /b $ProbeExit",
                     ':doctormount',
                     "type `"$mountFile`" 1>&2",
-                    "exit /b $MountExit")
+                    "exit /b $MountExit"))
                 return $root
             }
 
             function Invoke-ReplayRun {
-                param([Parameter(Mandatory = $true)][string] $EngineRoot, [string] $Server = 'fs-04.agency.gov')
+                param(
+                    [Parameter(Mandatory = $true)][string] $EngineRoot,
+                    [string] $Server = 'fs-04.agency.gov',
+                    [string[]] $InputLines = @()
+                )
 
                 return (Invoke-SetupWithEngine -EngineRoot $EngineRoot -SetupScript $script:AnsweredSetupScript `
-                        -ScriptArguments @('-Server', $Server, '-Share', 'exchange', '-SubPath', 'dropbox'))
+                        -ScriptArguments @('-Server', $Server, '-Share', 'exchange', '-SubPath', 'dropbox') `
+                        -InputLines $InputLines)
+            }
+
+            function Add-StoppedDocker {
+                <#  A docker that is installed and does not answer, beside a
+                    podman engine and so ahead of any docker the runner has.
+                    Its calls are logged under a prefix of their own. #>
+                param([Parameter(Mandatory = $true)][string] $EngineRoot)
+
+                Set-Content -LiteralPath (Join-Path $EngineRoot 'docker.cmd') -Encoding Ascii -Value @(
+                    '@echo off',
+                    '>>"%ALCOVE_STUB_LOG%" echo docker-stub %*',
+                    'exit /b 1')
+                return $EngineRoot
             }
 
             # Where part 3 leaves off and the checks' own lines begin, and where
@@ -1406,43 +1178,102 @@ Describe 'The setup flow, driven against a stub engine' {
                 'everything they found is printed together when they finish.',
                 '')
             $script:MountLead = @('Mounting it and running the checks over it...', '')
-            $script:TroubleshootingUrl = 'https://github.com/georgetown-mdi/alcove/blob/main/support/windows-network-filedrop/troubleshooting.md'
+            $script:NotReadyTail = @(
+                '',
+                '        The troubleshooting page explains each of these in more detail:',
+                '        https://github.com/georgetown-mdi/alcove/blob/main/support/windows-network-filedrop/troubleshooting.md')
+            $script:SignInAgain = 'Enter the username and password again and run the checks again? [y/N]'
         }
 
         AfterAll {
             Remove-Item -LiteralPath $script:ReplayRoot -Recurse -Force -ErrorAction SilentlyContinue
         }
 
-        It 'shows a failed battery whole, its SKIP block included, under the not-ready screen' {
-            $run = Invoke-ReplayRun -EngineRoot (New-ReplayEngine -Name 'probe-78' `
-                    -ProbeLines $script:ProbePortClosed -ProbeExit 78)
+        It 'carries a run whose checks pass through to the closing screen' {
+            $run = Invoke-ReplayRun -EngineRoot (New-ReplayEngine -Name 'all-0')
+            $shape = Get-RunShape -Run $run
 
-            Assert-SetupEndsWith -Run $run -Exit 78 -Screen ($script:ProbeLead + $script:ProbePortClosed + @(
-                    '',
-                    ('=' * 72),
-                    'Not ready yet',
-                    ('=' * 72),
-                    '  FAIL  The file drop is not usable from Docker. Follow the ACTION above.',
-                    '',
-                    '        The troubleshooting page explains every one of these in more detail:',
-                    "        $script:TroubleshootingUrl"))
+            $run.TimedOut | Should -BeFalse -Because $shape
+            $run.Exit | Should -Be 0 -Because $shape
+            $run.Output | Should -Match 'Ready to run an exchange' -Because $shape
+            $run.Output | Should -Not -Match ([regex]::Escape($script:SignInAgain)) -Because $shape
+            # The image is present, so nothing has any reason to fetch one.
+            $run.Calls | Should -Not -Match 'pull' -Because $run.Calls
+            $run.Calls | Should -Not -Match '--json' -Because $run.Calls
         }
 
-        It 'shows checks that could not run under the screen that says nothing was established' {
+        It 'runs every engine call through podman when docker does not answer' {
+            $run = Invoke-ReplayRun -EngineRoot (Add-StoppedDocker -EngineRoot (
+                    New-ReplayEngine -Name 'podman-all-0' -EngineName 'podman'))
+            $shape = Get-RunShape -Run $run
+            $dockerCalls = @(([string] $run.Calls) -split '\r?\n' | Where-Object { $_ -like 'docker-stub *' })
+
+            $run.TimedOut | Should -BeFalse -Because $shape
+            $run.Exit | Should -Be 0 -Because $shape
+            $run.Output | Should -Match 'Podman is running\.' -Because $shape
+            $run.Output | Should -Match 'Ready to run an exchange' -Because $shape
+            $run.Output | Should -Match 'podman volume rm alcove-sync' -Because $shape
+            # The one question docker was asked is whether it answers.
+            $dockerCalls.Count | Should -Be 1 -Because $run.Calls
+            $dockerCalls[0] | Should -BeLike 'docker-stub version*' -Because $run.Calls
+            $run.Calls | Should -Match 'doctor probe' -Because $run.Calls
+            $run.Calls | Should -Match 'doctor mount' -Because $run.Calls
+        }
+
+        It 'names Podman when the checks ended with 1 and podman no longer answers' {
+            $run = Invoke-ReplayRun -EngineRoot (Add-StoppedDocker -EngineRoot (
+                    New-ReplayEngine -Name 'podman-probe-1-stopped' -EngineName 'podman' -ProbeExit 1 -EngineStopsAfterStart))
+
+            Assert-SetupEndsWith -Run $run -Exit 1 -Screen @(
+                '',
+                '  FAIL  Podman stopped during the checks.',
+                '        Start the Podman machine with "podman machine start", and run',
+                '        this script again.')
+        }
+
+        It 'shows a battery that is not ready whole, then offers the sign-in again with no as the default' {
+            $run = Invoke-ReplayRun -InputLines @('') -EngineRoot (New-ReplayEngine -Name 'probe-78' `
+                    -ProbeLines $script:ProbePortClosed -ProbeExit 78)
+
+            Assert-SetupShows -Run $run -Exit 78 -Screen ($script:ProbeLead + $script:ProbePortClosed + $script:NotReadyTail)
+            $run.Output | Should -Match ([regex]::Escape($script:SignInAgain)) -Because (Get-RunShape -Run $run)
+            @([regex]::Matches($run.Calls, 'doctor probe')).Count | Should -Be 1 -Because $run.Calls
+            $run.Calls | Should -Not -Match 'volume create' -Because $run.Calls
+        }
+
+        It 'runs the checks again with the credentials entered again, and stops when declined' {
+            $run = Invoke-ReplayRun -InputLines @('y', 'n') -EngineRoot (New-ReplayEngine -Name 'probe-78-again' `
+                    -ProbeLines $script:ProbePortClosed -ProbeExit 78)
+            $shape = Get-RunShape -Run $run
+
+            $run.TimedOut | Should -BeFalse -Because $shape
+            $run.Exit | Should -Be 78 -Because $shape
+            @([regex]::Matches($run.Calls, 'doctor probe')).Count | Should -Be 2 -Because $run.Calls
+            @([regex]::Matches($run.Output, 'Part 2: credentials for the file server')).Count | Should -Be 2 -Because $shape
+        }
+
+        It 'carries on to the volume once the checks run again pass' {
+            $run = Invoke-ReplayRun -InputLines @('y') -EngineRoot (New-ReplayEngine -Name 'probe-78-then-0' `
+                    -ProbeLines $script:ProbePortClosed -ProbeExit 78 -RetriedProbeExit 0)
+            $shape = Get-RunShape -Run $run
+
+            $run.TimedOut | Should -BeFalse -Because $shape
+            $run.Exit | Should -Be 0 -Because $shape
+            @([regex]::Matches($run.Calls, 'doctor probe')).Count | Should -Be 2 -Because $run.Calls
+            $run.Calls | Should -Match 'doctor mount' -Because $run.Calls
+            $run.Output | Should -Match 'Ready to run an exchange' -Because $shape
+        }
+
+        It 'stops on checks that could not run, with no sign-in offered' {
             $run = Invoke-ReplayRun -EngineRoot (New-ReplayEngine -Name 'probe-69' `
                     -ProbeLines $script:ProbeNoSmbclient -ProbeExit 69)
 
             Assert-SetupEndsWith -Run $run -Exit 69 -Screen ($script:ProbeLead + $script:ProbeNoSmbclient + @(
                     '',
-                    ('=' * 72),
-                    'Could not run the checks',
-                    ('=' * 72),
-                    '  FAIL  The checks could not run, so nothing was established either way.',
-                    '        There is no ACTION above to follow: the check that would have',
-                    '        produced one never ran.'))
+                    '        Follow the ACTION line above, then run this again.'))
         }
 
-        It 'points a refused value back at what the operator typed' {
+        It 'names the refused value without blaming the script' {
             # -Server is forwarded as typed, which is how a path separator in it
             # reaches the checks and is refused there.
             $run = Invoke-ReplayRun -Server 'fs-04.agency.gov/exchange' -EngineRoot (New-ReplayEngine -Name 'probe-64' `
@@ -1450,20 +1281,19 @@ Describe 'The setup flow, driven against a stub engine' {
 
             Assert-SetupEndsWith -Run $run -Exit 64 -Screen ($script:ProbeLead + $script:ProbeRefusedServer + @(
                     '',
-                    ('=' * 72),
-                    'Could not run the checks',
-                    ('=' * 72),
-                    '  FAIL  The checks refused the values they were given. Nothing was tested.',
-                    '        Check what you passed: a path separator in -Server ''fs-04.agency.gov/exchange'' or',
-                    '        -Share ''exchange'' (a subfolder belongs in -SubPath instead), a',
-                    '        leading ''-'', or a stray control character is refused before',
-                    '        anything is tested.',
-                    '',
-                    '        If those look right, this is a defect in Setup-AlcoveFileDrop.ps1;',
-                    '        please report it, with the message above and the command you ran.'))
+                    '  FAIL  The checks refused a value they were given, so nothing was tested.',
+                    '        The line above names the value. SMB_SERVER is the server,',
+                    '        SMB_SHARE the share, SMB_PATH the folder within it, and SMB_USER',
+                    '        the username; correct the one it names and run this again.',
+                    '        Any other name is a value this script set, not one you typed:',
+                    '        report it as a problem with this script. An image older than',
+                    '        these checks also ends this way, and downloading it again',
+                    '        fixes that:',
+                    '            docker pull ghcr.io/georgetown-mdi/alcove:latest'))
+            $run.Output | Should -Not -Match 'defect' -Because (Get-RunShape -Run $run)
         }
 
-        It 'tells a container that never started apart from a verdict' {
+        It 'tells a container that never started apart from the checks' {
             # Docker's own message, not the checks', is what precedes this
             # screen, so the engine here prints none.
             $run = Invoke-ReplayRun -EngineRoot (New-ReplayEngine -Name 'probe-125' -ProbeExit 125)
@@ -1471,43 +1301,64 @@ Describe 'The setup flow, driven against a stub engine' {
             Assert-SetupEndsWith -Run $run -Exit 125 -Screen ($script:ProbeLead + @(
                     '',
                     '',
-                    ('=' * 72),
-                    'Could not run the checks',
-                    ('=' * 72),
                     '  FAIL  Docker could not start the container (exit 125).',
-                    '        Nothing was tested. This is Docker itself failing, not a verdict',
-                    '        about your file drop -- so there is no ACTION above to follow.',
-                    '        The message Docker printed is the one to read.'))
+                    '        Nothing was tested; the message above says why.',
+                    '        If it says Docker is not running:',
+                    '        Start Docker Desktop, wait for the whale icon to stop animating,',
+                    '        and run this script again.'))
+        }
+
+        It 'names Podman and its machine when podman could not start the container' {
+            $run = Invoke-ReplayRun -EngineRoot (Add-StoppedDocker -EngineRoot (
+                    New-ReplayEngine -Name 'podman-probe-125' -EngineName 'podman' -ProbeExit 125))
+
+            Assert-SetupEndsWith -Run $run -Exit 125 -Screen ($script:ProbeLead + @(
+                    '',
+                    '',
+                    '  FAIL  Podman could not start the container (exit 125).',
+                    '        Nothing was tested; the message above says why.',
+                    '        If it says Podman is not running:',
+                    '        Start the Podman machine with "podman machine start", and run',
+                    '        this script again.'))
+            $run.Output | Should -Not -Match 'Docker Desktop' -Because (Get-RunShape -Run $run)
         }
 
         It 'reads an exit code the checks never give as a newer image' {
             $run = Invoke-ReplayRun -EngineRoot (New-ReplayEngine -Name 'probe-3' -ProbeExit 3)
 
             Assert-SetupEndsWith -Run $run -Exit 3 -Screen @(
-                ('=' * 72),
-                'Could not run the checks',
-                ('=' * 72),
-                '  FAIL  The checks answered with an exit code this script does not know (3).',
-                '        Nothing has been established about your file drop, and nothing',
-                '        is wrong with your share: this script does not recognise what',
-                '        the checks answered. The likeliest cause is an image newer',
-                '        than this script.',
                 '',
-                '        Look for a newer copy of this script wherever you downloaded',
-                '        it.')
+                '  FAIL  The checks ended with exit 3, which this script does not know.',
+                '        Nothing was established about your file drop. Look for a newer',
+                '        copy of this script wherever you downloaded it.')
         }
 
-        It 'shows a failed battery over the volume whole, its SKIP block included' {
+        It 'says Docker stopped when the checks ended with 1 and the engine no longer answers' {
+            $run = Invoke-ReplayRun -EngineRoot (New-ReplayEngine -Name 'probe-1-stopped' -ProbeExit 1 -EngineStopsAfterStart)
+
+            Assert-SetupEndsWith -Run $run -Exit 1 -Screen @(
+                '',
+                '  FAIL  Docker stopped during the checks.',
+                '        Start Docker Desktop, wait for the whale icon to stop animating,',
+                '        and run this script again.')
+        }
+
+        It 'keeps the unknown-code text for a code of 1 while the engine answers' {
+            $run = Invoke-ReplayRun -EngineRoot (New-ReplayEngine -Name 'probe-1-up' -ProbeExit 1)
+
+            Assert-SetupEndsWith -Run $run -Exit 1 -Screen @(
+                '',
+                '  FAIL  The checks ended with exit 1, which this script does not know.',
+                '        Nothing was established about your file drop. Look for a newer',
+                '        copy of this script wherever you downloaded it.')
+        }
+
+        It 'shows a battery over the volume that is not ready whole, and removes the volume' {
             $run = Invoke-ReplayRun -EngineRoot (New-ReplayEngine -Name 'mount-78' `
                     -MountLines $script:MountWriteDenied -MountExit 78)
 
-            Assert-SetupEndsWith -Run $run -Exit 9 -Screen ($script:MountLead + $script:MountWriteDenied + @(
-                    '  FAIL  The volume mounted, but the folder is not usable for an exchange.',
-                    '        The share was reached, so this is not a mount or a dialect',
-                    '        problem and -Dialect will not change it. Follow the ACTION above.',
-                    '',
-                    '        The troubleshooting page explains every one of these in more detail:',
-                    "        $script:TroubleshootingUrl"))
+            Assert-SetupEndsWith -Run $run -Exit 9 -Screen ($script:MountLead + $script:MountWriteDenied + $script:NotReadyTail)
+            $run.Calls | Should -Match 'volume rm' -Because $run.Calls
         }
 
         It 'shows checks over the volume that could not run' {
@@ -1515,30 +1366,36 @@ Describe 'The setup flow, driven against a stub engine' {
                     -MountLines $script:MountUnreadable -MountExit 69)
 
             Assert-SetupEndsWith -Run $run -Exit 9 -Screen ($script:MountLead + $script:MountUnreadable + @(
-                    '  FAIL  The checks could not run over the volume.',
-                    '        Nothing was established about the folder either way, so there is',
-                    '        no ACTION above to follow.'))
+                    '',
+                    '        Follow the ACTION line above, then run this again.'))
         }
 
-        It 'blames itself for a value the checks over the volume refused' {
+        It 'names a value the checks over the volume refused without blaming the script' {
             $run = Invoke-ReplayRun -EngineRoot (New-ReplayEngine -Name 'mount-64' `
                     -MountLines $script:MountRefusedToken -MountExit 64)
 
             Assert-SetupEndsWith -Run $run -Exit 9 -Screen ($script:MountLead + $script:MountRefusedToken + @(
-                    '  FAIL  The checks refused the values this script gave them.',
-                    '        Nothing was established about the folder. This is a defect in',
-                    '        Setup-AlcoveFileDrop.ps1; please report it, with the message',
-                    '        above and the command you ran.'))
+                    '',
+                    '  FAIL  The checks refused a value they were given, so nothing was tested.',
+                    '        The line above names the value. SMB_SERVER is the server,',
+                    '        SMB_SHARE the share, SMB_PATH the folder within it, and SMB_USER',
+                    '        the username; correct the one it names and run this again.',
+                    '        Any other name is a value this script set, not one you typed:',
+                    '        report it as a problem with this script. An image older than',
+                    '        these checks also ends this way, and downloading it again',
+                    '        fixes that:',
+                    '            docker pull ghcr.io/georgetown-mdi/alcove:latest'))
         }
 
-        It 'reads an exit code the checks over the volume never give as a newer image' {
-            $run = Invoke-ReplayRun -EngineRoot (New-ReplayEngine -Name 'mount-3' -MountExit 3)
+        It 'reads a volume Docker could not mount as Docker''s failure, not the checks''' {
+            $run = Invoke-ReplayRun -EngineRoot (New-ReplayEngine -Name 'mount-125' -MountExit 125)
 
-            Assert-SetupEndsWith -Run $run -Exit 9 -Screen @(
-                '  FAIL  The checks answered with an exit code this script does not know (3).',
-                '        Nothing has been established about the folder either way. The',
-                '        likeliest cause is an image newer than this script -- look for a',
-                '        newer copy of this script wherever you downloaded it.')
+            Assert-SetupEndsWith -Run $run -Exit 9 -Screen ($script:MountLead + @(
+                    '',
+                    '',
+                    '  FAIL  The volume could not be mounted.',
+                    '        The message above says why.'))
+            $run.Calls | Should -Match 'volume rm' -Because $run.Calls
         }
     }
 }
