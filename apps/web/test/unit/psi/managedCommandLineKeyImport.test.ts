@@ -205,6 +205,28 @@ describe("reading a .alcove.key", () => {
     expect(errorText(error)).not.toContain(sharedSecret);
   });
 
+  test("a field a rotation history entry does not know is refused as written by a newer Alcove, by name", () => {
+    const sharedSecret = generateSharedSecret();
+    const error = thrownBy(() =>
+      readManagedCommandLineKeyFile(
+        commandLineKeyText({
+          sharedSecret,
+          rotationHistory: [
+            { verifier: generateSharedSecret(), fieldFromALaterBuild: 1 },
+          ],
+        }),
+      ),
+    );
+    expect(error).toBeInstanceOf(ManagedKeyFileRefusedError);
+    expect((error as Error).message).toBe(
+      'The key file has the field "fieldFromALaterBuild", which this version ' +
+        "of Alcove does not read: it was made by a newer version of Alcove. " +
+        "Use the version of Alcove that wrote the key file, or a newer one. " +
+        "Nothing was imported.",
+    );
+    expect(errorText(error)).not.toContain(sharedSecret);
+  });
+
   test("a key file stating a newer version is refused naming the version", () => {
     const error = thrownBy(() =>
       readManagedCommandLineKeyFile(

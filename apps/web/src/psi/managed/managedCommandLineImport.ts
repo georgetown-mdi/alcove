@@ -73,6 +73,7 @@ import { ZodError } from "zod";
 import {
   KeyFileSchema,
   ROTATION_HISTORY_MAX_ENTRIES,
+  keyFileRefusedAsNewer,
   keyFileUnreadFieldNames,
   parseExchangeSpec,
   parseSensitiveJson,
@@ -701,12 +702,14 @@ export function readManagedCommandLineKeyFileFields(
 function newerKeyFileRefusal(
   error: ZodError,
 ): ManagedKeyFileRefusedError | undefined {
-  const issue = error.issues.find(
-    (candidate) =>
-      candidate.code === "custom" &&
-      (candidate.path.length === 0 ||
-        (candidate.path.length === 1 && candidate.path[0] === "version")),
-  );
+  const issue = keyFileRefusedAsNewer(error)
+    ? error.issues[0]
+    : error.issues.find(
+        (candidate) =>
+          candidate.code === "custom" &&
+          candidate.path.length === 1 &&
+          candidate.path[0] === "version",
+      );
   if (issue === undefined) return undefined;
   return new ManagedKeyFileRefusedError(
     `${issue.message} Nothing was imported.`,

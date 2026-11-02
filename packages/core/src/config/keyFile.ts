@@ -136,13 +136,17 @@ function keyFileFieldNameForDisplay(name: string): string {
   return SECRET_SHAPED_RUN.test(name) ? KEY_FILE_REDACTED_FIELD_NAME : name;
 }
 
+const KeyFileDeclaredVersionSchema = z.looseObject({
+  version: z.number().optional(),
+});
+
 const KeyFileVersionSchema = z.looseObject({
   version: z.int().min(1).optional(),
 });
 
-const WRITTEN_BY_NEWER_ALCOVE = Object.freeze({
-  keyFileWrittenByNewerAlcove: true,
-});
+// Matched by identity in keyFileRefusedAsNewer; its toJSON keeps it out of the
+// ZodError's message, which the CLI prints.
+const WRITTEN_BY_NEWER_ALCOVE = Object.freeze({ toJSON: () => undefined });
 
 /** A refusal of a version above `current`, naming both versions. */
 function newerKeyFileVersionIssue(
@@ -209,8 +213,7 @@ export const KeyFileSchema: z.ZodType<KeyFile, unknown> =
 export function keyFileRefusedAsNewer(error: z.ZodError): boolean {
   return error.issues.some(
     (issue) =>
-      issue.code === "custom" &&
-      issue.params?.keyFileWrittenByNewerAlcove === true,
+      issue.code === "custom" && issue.params === WRITTEN_BY_NEWER_ALCOVE,
   );
 }
 
@@ -224,11 +227,11 @@ export function keyFileSchemaFor(
         ctx.issues.push({ ...issue, input: undefined });
       return z.NEVER;
     };
-    const version = KeyFileVersionSchema.safeParse(raw);
-    if (!version.success) return refuse(version.error.issues);
-    const declared = version.data.version;
+    const declared = KeyFileDeclaredVersionSchema.safeParse(raw).data?.version;
     if (declared !== undefined && declared > migrations.current)
       return refuse([newerKeyFileVersionIssue(declared, migrations.current)]);
+    const version = KeyFileVersionSchema.safeParse(raw);
+    if (!version.success) return refuse(version.error.issues);
     let document: unknown;
     try {
       document = migrateOnRead(raw, migrations);

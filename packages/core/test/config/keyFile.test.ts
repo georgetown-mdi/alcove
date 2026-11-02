@@ -94,6 +94,18 @@ describe("KeyFileSchema", () => {
     );
   });
 
+  test("refuses a version beyond the safe-integer range as newer", () => {
+    const result = KeyFileSchema.safeParse({
+      version: 1e20,
+      sharedSecret: SECRET,
+    });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues).toHaveLength(1);
+    expect(result.error?.issues[0]?.message).toMatch(
+      /^The key file is format version 100000000000000000000, made by a newer version of Alcove /,
+    );
+  });
+
   test("refuses a newer version by its version alone, beside broken and unknown fields", () => {
     const result = KeyFileSchema.safeParse({
       version: 2,
@@ -168,6 +180,11 @@ describe("KeyFileSchema", () => {
 describe("keyFileRefusedAsNewer", () => {
   test.each([
     ["a newer version", { version: 2, sharedSecret: SECRET }],
+    [
+      "a version beyond the safe-integer range",
+      { version: 1e20, sharedSecret: SECRET },
+    ],
+    ["a fractional version above 1", { version: 1.5, sharedSecret: SECRET }],
     ["an unknown field", { sharedSecret: SECRET, newField: 1 }],
     [
       "an unknown field in a history entry",
@@ -180,9 +197,26 @@ describe("keyFileRefusedAsNewer", () => {
   });
 
   test.each([
+    ["a newer version", { version: 2, sharedSecret: SECRET }],
+    ["an unknown field", { sharedSecret: SECRET, newField: 1 }],
+  ])("leaves no marker in the printed message of %s", (_case, document) => {
+    const result = KeyFileSchema.safeParse(document);
+    expect(result.success).toBe(false);
+    const printed = JSON.parse(result.error!.message) as Array<object>;
+    expect(printed).toHaveLength(1);
+    expect(Object.keys(printed[0]!).sort()).toEqual([
+      "code",
+      "message",
+      "path",
+    ]);
+    expect(keyFileRefusedAsNewer(result.error!)).toBe(true);
+  });
+
+  test.each([
     ["a malformed secret", { sharedSecret: "short" }],
     ["a version that is not a number", { version: "2", sharedSecret: SECRET }],
     ["a version below 1", { version: 0, sharedSecret: SECRET }],
+    ["a fractional version below 1", { version: 0.5, sharedSecret: SECRET }],
   ])("is false of %s", (_case, document) => {
     const result = KeyFileSchema.safeParse(document);
     expect(result.success).toBe(false);
