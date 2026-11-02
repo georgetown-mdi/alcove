@@ -99,14 +99,25 @@ function registeredRelayKey(body: string): string | undefined {
 }
 
 /**
+ * The exchange id and relay key of another request a run sends at the same
+ * time as this one, to a registrar that may repeat them in this one's answer.
+ */
+export interface OtherRegistrarRequest {
+  exchangeId: string;
+  relayKey: string;
+}
+
+/**
  * The values a registrar request sent that no message repeats: the
  * `Authorization` value and its credential after the scheme, the exchange id
- * in the request path, and the relay key the body registers.
+ * in the request path, the relay key the body registers, and the exchange id
+ * and relay key of each of `otherRequests`.
  */
 function sentValues(request: {
   registrar: RelayRegistrar;
   body: string;
   authorization?: string;
+  otherRequests?: readonly OtherRegistrarRequest[];
 }): SentValue[] {
   const values: SentValue[] = [];
   const { authorization } = request;
@@ -126,6 +137,11 @@ function sentValues(request: {
   const relayKey = registeredRelayKey(request.body);
   if (relayKey !== undefined)
     values.push({ value: relayKey, marker: REMOVED_RELAY_KEY_TEXT });
+  for (const other of request.otherRequests ?? [])
+    values.push(
+      { value: other.exchangeId, marker: REMOVED_EXCHANGE_ID_TEXT },
+      { value: other.relayKey, marker: REMOVED_RELAY_KEY_TEXT },
+    );
   return values;
 }
 
@@ -364,10 +380,10 @@ async function readAnswerBody(
  * classify the answer. Never throws for a network failure or a status: each
  * is an answer kind. Redirects are not followed, so the credential reaches no
  * second host, and no reason repeats the credential, the exchange id, or the
- * relay key the request sent, each replaced by its marker. A 2xx is
- * `registered` only when its body is the registrar's answer to a registration
- * -- a JSON object, within the answer bound, stating `maxAgeDays` and
- * `lapsesAt`; any other 2xx is `unavailable` with a fixed reason, and so is a
+ * relay key the request sent, nor those of `otherRequests`, each replaced by
+ * its marker. A 2xx is `registered` only when its body is the registrar's
+ * answer to a registration -- a JSON object, within the answer bound, stating
+ * `maxAgeDays` and `lapsesAt`; any other 2xx is `unavailable` with a fixed reason, and so is a
  * request `transport.signal` cancelled. With `authorization` unset the request
  * has no `Authorization` header: an enrollment without a token.
  */
@@ -377,6 +393,7 @@ export async function sendRelayRegistration(
     method: "POST" | "PUT";
     body: string;
     authorization?: string;
+    otherRequests?: readonly OtherRegistrarRequest[];
   },
   transport: RelayRegistrarTransport = {},
 ): Promise<RelayRegistrarAnswer> {
@@ -675,10 +692,16 @@ export async function registerRelayKey(
  * ({@link deriveRelayExchangeId}), with `maxAgeDays` `null`, since the
  * registrar fixes the lapse. Either party may send it: the same key on the same
  * id is answered as registered. Retried as {@link registerRelayKey} is; a 401
- * or 409 is final.
+ * or 409 is final. `otherSecrets` are the secrets of the run's other
+ * enrollments sent at the same time: no message repeats the exchange id or
+ * relay key derived from any of them either.
  */
 export async function enrollRelayKeyWithoutToken(
-  params: { registrarUrl: string; sharedSecret: string },
+  params: {
+    registrarUrl: string;
+    sharedSecret: string;
+    otherSecrets?: readonly string[];
+  },
   env: RelayRegistrationEnvironment = {},
 ): Promise<RelayRegistrationOutcome> {
   const sleep = env.sleep ?? defaultSleep;
@@ -691,6 +714,12 @@ export async function enrollRelayKeyWithoutToken(
     await deriveRelayKey(params.sharedSecret),
     null,
   );
+  const otherRequests = await Promise.all(
+    (params.otherSecrets ?? []).map(async (secret) => ({
+      exchangeId: await deriveRelayExchangeId(secret),
+      relayKey: await deriveRelayKey(secret),
+    })),
+  );
   for (let attempt = 0; ; attempt++) {
     if (env.signal?.aborted === true)
       return {
@@ -698,7 +727,7 @@ export async function enrollRelayKeyWithoutToken(
         reason: RELAY_REGISTRATION_CANCELLED_REASON,
       };
     const answer = await sendRelayRegistration(
-      { registrar, method: "POST", body },
+      { registrar, method: "POST", body, otherRequests },
       env,
     );
     if (answer.kind === "clock-skew")
@@ -730,10 +759,15 @@ export type RelayEnrollmentWithinWait =
  * One {@link enrollRelayKeyWithoutToken} attempt, with no retry, whose request
  * is cut once `waitMs` pass: the request's own timeout is the wait, so no
  * second timer races it. `cancelled` once `signal` aborts, before or during
- * the attempt; a same-key repeat is `enrolled`. Never throws.
+ * the attempt; a same-key repeat is `enrolled`. Never throws. `otherSecrets`
+ * is passed on: `detail` repeats no exchange id or relay key derived from them.
  */
 export async function enrollRelayKeyWithinWait(
-  params: { registrarUrl: string; sharedSecret: string },
+  params: {
+    registrarUrl: string;
+    sharedSecret: string;
+    otherSecrets?: readonly string[];
+  },
   options: {
     waitMs: number;
     signal?: AbortSignal;

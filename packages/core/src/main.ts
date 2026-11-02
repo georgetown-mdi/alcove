@@ -1051,6 +1051,7 @@ export {
   sendRelayRegistration,
 } from "./relayRegistrarClient";
 export type {
+  OtherRegistrarRequest,
   RelayEnrollmentWithinWait,
   RelayRegistrarAnswer,
   RelayRegistrarTransport,
