@@ -489,21 +489,16 @@ describe("rejection of malformed or tampered imports", () => {
     const secretName = generateSharedSecret();
     const secretValue = generateSharedSecret();
 
-    function refusalMessage(edit: (artifact: any) => void): string {
+    function refusal(edit: (artifact: any) => void): ZodError {
       const artifact = JSON.parse(goodBytes());
       edit(artifact);
-      let caught: unknown;
       try {
         parseManagedExchangeArtifact(JSON.stringify(artifact));
       } catch (error) {
-        caught = error;
+        expect(error).toBeInstanceOf(ZodError);
+        return error as ZodError;
       }
-      expect(caught).toBeInstanceOf(ZodError);
-      const error = caught as ZodError;
-      return [
-        error.message,
-        ...error.issues.map((issue) => issue.message),
-      ].join("\n");
+      throw new Error("the artifact was imported");
     }
 
     test.each([
@@ -523,20 +518,38 @@ describe("rejection of malformed or tampered imports", () => {
         },
         ["key", "rotationHistory", 0],
       ],
+      [
+        "the top level",
+        (artifact: any) => {
+          artifact[secretName] = secretValue;
+        },
+        [],
+      ],
+      [
+        "the local block",
+        (artifact: any) => {
+          artifact.local[secretName] = secretValue;
+        },
+        ["local"],
+      ],
     ])("in %s is refused without its name or value", (_where, edit, path) => {
-      const message = refusalMessage(edit);
-      expect(message).not.toContain(secretName);
-      expect(message).not.toContain(secretValue);
-      expect(message).toContain("<redacted>");
-      const artifact = JSON.parse(goodBytes());
-      edit(artifact);
-      expect(() =>
-        parseManagedExchangeArtifact(JSON.stringify(artifact)),
-      ).toThrow(
+      const error = refusal(edit);
+      const text = [
+        error.message,
+        ...error.issues.map((issue) => issue.message),
+      ].join("\n");
+      expect(text).not.toContain(secretName);
+      expect(text).not.toContain(secretValue);
+      expect(text).toContain("<redacted>");
+      expect(error.issues).toEqual([
         expect.objectContaining({
-          issues: [expect.objectContaining({ code: "custom", path })],
+          code: "custom",
+          path,
+          message: expect.stringMatching(/^The backup file has the field /),
         }),
-      );
+      ]);
+      expect(error.issues[0]).not.toHaveProperty("params");
+      expect(text).not.toContain("key file");
     });
   });
 

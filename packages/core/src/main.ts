@@ -389,6 +389,7 @@ export type {
   PeerIdParse,
   PeerIdPart,
 } from "./config/peerIdTemplate";
+export { newerFormatMemberMessage } from "./config/formatVersion";
 export type {
   FormatFeature,
   FormatInfoBlock,
@@ -411,9 +412,9 @@ export {
   KEY_FILE_MIGRATIONS,
   KEY_FILE_SHARED_SECRET_FORMAT_MESSAGE,
   KeyFileSchema,
+  keyFileFieldNameForDisplay,
   keyFileRefusedAsNewer,
   keyFileUnreadFieldNames,
-  newerKeyFileMembersIssue,
   rotatedKeyExpires,
   serializeKeyFile,
 } from "./config/keyFile";
