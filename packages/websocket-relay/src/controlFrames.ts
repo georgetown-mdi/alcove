@@ -13,7 +13,8 @@ export interface ControlFrameLimit {
   /**
    * Handle a ping or pong the socket sent, returning whether it is within the
    * bound, so a ping is to be answered. A pong answering a ping the relay sent
-   * is not counted, so a socket answering a backlog of the relay's pings at
+   * is not counted for up to {@link MAX_CARRIED_PING_ANSWERS} of the relay's
+   * pings left unanswered at a time, so a socket answering one or two pings at
    * once stays within it.
    *
    * The first frame past the bound closes the socket, the next terminates it,
