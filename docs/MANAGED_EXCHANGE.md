@@ -1270,12 +1270,21 @@ changed the format of the accounting itself. The same holds for a saved
 exchange, or a note of missing runs, that a newer version wrote: the page asks
 for a reload, and the saved exchange cannot be removed from this version.
 
+A saved exchange a newer version wrote also stops the recurring-exchanges list
+from loading as usual. The list shows its recovery view instead: every saved
+exchange is listed, and each one whose saved state this version reads opens from
+its row as it does on the usual list. A damaged one does not open, and offers
+its remove. The one a newer version wrote neither opens nor offers a remove.
+Scheduled runs of the others go on.
+
 If a reload shows the same message, the deployment was rolled back past the
-format change. Take the stored-records download if it is offered, and do not
-leave the exchange running, since every run discloses and files nothing.
-Removing the exchange is then the only way out this build offers, and the
-downloaded records stay intact. A saved exchange a newer version wrote cannot be
-removed this way: the list reads again once the newer version is deployed.
+format change, and the page says so. Take the stored-records download if it is
+offered, and do not leave the exchange running, since every run discloses and
+files nothing. Removing the exchange is then the only way out this build
+offers, and the downloaded records stay intact. A saved exchange a newer version
+wrote cannot be removed this way: it waits for the newer version to be deployed
+again, and the list loads as usual from then on. Meanwhile the other saved
+exchanges open from the recovery view.
 
 ## Surviving storage eviction
 

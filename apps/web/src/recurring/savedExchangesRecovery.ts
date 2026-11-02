@@ -11,10 +11,13 @@
  * parse, a note that part of its saved state cannot be read; an unreadable
  * entry, whose record does not parse, shows a fixed "Unreadable record" label
  * and no other detail but a failed migration's refusal, escaped here for
- * display. Neither of those two can be opened. A record a newer version of the
- * app saved shows a fixed label and the reload remedy, and offers no delete:
- * the current version reads it, so removing it would destroy a working
- * exchange over a condition a reload clears.
+ * display. Neither of those two can be opened; a row whose record and sibling
+ * entry both parse opens its exchange ({@link recoveryRowOpens}), whose page
+ * reads its own entries rather than the whole list. A record a newer version
+ * of the app saved shows a fixed label and the reload remedy, and offers no
+ * delete: a newer build reads it, so removing it would destroy a working
+ * exchange, whether a reload or a redeploy of that build is what brings it
+ * back.
  * Every row holds the stored key the one-step delete-by-key acts on, so an
  * unreadable record is discardable without a successful parse, and whether an
  * exported backup remains, which the delete confirm states and which survives a
@@ -46,7 +49,9 @@ export const LATER_VERSION_RECORD_LABEL =
 
 /** The note a row shows under {@link LATER_VERSION_RECORD_LABEL}. */
 export const LATER_VERSION_RECORD_NOTE =
-  "Reload this page to use the current version, which reads it.";
+  "Reload this page to use the current version, which reads it. If reloading " +
+  "shows this again, the app was rolled back, and this exchange waits for " +
+  "the newer version.";
 
 /** The read-failed surface's opening sentence, before the causes. */
 export const SAVED_EXCHANGES_FAILED_LEAD =
@@ -65,7 +70,8 @@ export const LATER_VERSION_RECORDS_CAUSE =
   "One or more stored records were saved by a newer version of this app than " +
   "this page is running. Nothing is wrong with them. Reload this page to use " +
   "the current version, which reads them. If a run is under way, reloading " +
-  "ends it.";
+  "ends it. If reloading shows this again, the app was rolled back, and " +
+  "those exchanges wait for the newer version.";
 
 /** One row in the read-failed recovery listing: the stored key the delete acts on,
  * a display label (the operator's label, "(unnamed exchange)" when empty, or
@@ -151,6 +157,14 @@ export function recoveryRow(
     stateUnreadable: entry.stateUnreadable === true,
     backedUp: entry.backedUp,
   };
+}
+
+/** Whether a recovery row opens its exchange, as a row on the normal list
+ * does: its record and its sibling entry both parse, so its page loads. A
+ * damaged record, one a newer version saved, and one whose sibling entry does
+ * not parse do not open. */
+export function recoveryRowOpens(row: RecoveryRow): boolean {
+  return !row.unreadable && !row.stateUnreadable;
 }
 
 /** Derive the recovery rows from the store's diagnostic entries, in store order. */

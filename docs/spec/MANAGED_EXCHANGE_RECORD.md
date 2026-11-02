@@ -497,10 +497,15 @@ invalidate it:
   value the record holds. The refusal is a read failure like any other: the
   attended list routes to its read-failed recovery surface, and the unattended
   read skips the entry. That surface shows the refusal in the record's row.
+  Each row of that surface whose record and sibling entry both parse opens its
+  exchange, whose page reads its own record (`getManagedExchange`); a row whose
+  record or sibling entry does not parse does not open.
 - **Later.** A record at a later `schemaVersion` than this build's means this
   page is behind the build that wrote it, not that the record is damaged. The
   read-failed surface names the record as a newer version's and states the
-  reload, and offers no remove for it.
+  reload, and offers no remove for it. It also states the case where a reload
+  shows the same record: the deployment was rolled back, and the record waits
+  for the build that wrote it.
 - **The table.** It has no step yet, since every earlier literal is a
   development one.
 

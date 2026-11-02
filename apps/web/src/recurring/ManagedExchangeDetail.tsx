@@ -1657,7 +1657,9 @@ function UnfiledDisclosureNotice({
           </p>
           <p>
             Reload this page to use the current version, which names the run. If
-            a run is under way, reloading ends it.
+            a run is under way, reloading ends it. If reloading shows this
+            again, the app was rolled back, and the run is named once the newer
+            version is back.
           </p>
         </Alert>
       )}
@@ -1914,9 +1916,10 @@ function downloadStoredAccounting(stored: StoredDisclosureAccounting): void {
  *
  * The records are not stranded and nothing here is damaged -- a build that
  * reads them exists, and this page simply is not it. This state offers no
- * reset: clearing would destroy records the current version reads, over a
- * condition a reload clears. The stored-form export stays, since handing back
- * stored bytes asserts nothing about them and costs nothing.
+ * reset: clearing would destroy records the newer version reads, over a
+ * condition a reload, or that version's redeploy after a rollback, clears.
+ * The stored-form export stays, since handing back stored bytes asserts
+ * nothing about them and costs nothing.
  *
  * Like the stranded state, a run from this page discloses and files nothing
  * here: this build's read failure is a write failure too, which is what makes
@@ -1950,7 +1953,8 @@ function StalePageAccountingNotice({
           Runs started from this page file no record here either: this version
           cannot add to what a newer one wrote. Reload this page to use the
           current version, which reads these records and files again. If a run
-          is under way, reloading ends it.
+          is under way, reloading ends it. If reloading shows this again, the
+          app was rolled back, and these records wait for the newer version.
         </p>
       </Alert>
       {stored !== undefined && (
