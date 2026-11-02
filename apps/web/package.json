@@ -29,15 +29,15 @@
     "record linkage"
   ],
   "dependencies": {
-    "@mantine/core": "^9.7.3",
-    "@mantine/dropzone": "^9.7.3",
+    "@mantine/core": "^9.7.4",
+    "@mantine/dropzone": "^9.7.4",
     "@mantine/hooks": "^9.5.0",
     "@openmined/psi.js": "file:../../lib/openmined-psi.js-2.0.6-seclink.6.tgz",
     "@alcove/cli-contract": "file:../../packages/cli-contract",
     "@alcove/core": "file:../../packages/core",
     "@tabler/icons-react": "^3.49.0",
     "@tanstack/react-form": "^1.33.5",
-    "@tanstack/react-query": "^5.104.5",
+    "@tanstack/react-query": "^5.105.0",
     "@tanstack/react-router": "^1.170.46",
     "@tanstack/react-router-devtools": "^1.167.2",
     "env-schema": "^8.0.1",
