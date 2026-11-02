@@ -1,7 +1,7 @@
 ---
 title: "Security Incident Response Runbook"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-09-29"
+last_reviewed: "2026-11-02"
 ---
 
 # Security incident response runbook
@@ -10,8 +10,8 @@ This is the responder's side of [SECURITY.md](../SECURITY.md), in the order the 
 
 Two roles appear throughout:
 
-- **The maintainer** holds commit access and the release signing key, and does the technical work.
-- **The co-owner** is the organization's other owner. When the maintainer is unavailable, the co-owner covers intake and reporter communication and does not attempt the fix; see [When the maintainer is unavailable](#when-the-maintainer-is-unavailable).
+- **The maintainer** holds commit access and a release signing key, and does the technical work.
+- **The co-owner** is the organization's other owner, and holds the second release signing key. When the maintainer is unavailable, the co-owner covers intake and reporter communication, and can ship a fix; see [When the maintainer is unavailable](#when-the-maintainer-is-unavailable).
 
 A leaked shared secret between two exchange partners is not handled here: the partners run [SECURITY_DESIGN.md#compromise-response](SECURITY_DESIGN.md#compromise-response) themselves, and it needs nothing from this project.
 
@@ -27,7 +27,7 @@ gh api repos/georgetown-mdi/alcove/private-vulnerability-reporting
 
 The answer must be `{"enabled":true}`. If it is not, enable private vulnerability reporting in the repository's security settings.
 
-**Release credentials are reachable.** Shipping a hotfix needs the maintainer's SSH signing key ([RELEASES.md#source-integrity](RELEASES.md#source-integrity)); the image push authenticates with the release workflow's own token, so no registry credential is held ([RELEASES.md](RELEASES.md#8-build-and-publish-the-container-image-ci)). The signing key is single-custody, so the maintainer-unavailable path below covers communication only.
+**Release credentials are reachable.** Either of two people can ship a hotfix. The maintainer and the co-owner each hold an SSH signing key listed in `allowed_signers` ([RELEASES.md#source-integrity](RELEASES.md#source-integrity)), and each one's GitHub account is on the bypass list of the "Protect release tags" ruleset ([RELEASES.md#7-tag-the-release](RELEASES.md#7-tag-the-release)), so either can push a signed release tag. Confirm both. The registry logins belong to the release workflow: the ghcr.io push uses the workflow's own token, and the Docker Hub copy uses a personal access token created on the `vdorie` account, stored in the `Release` environment's secrets, which only a release tag can reach. That token expires on 2027-10-30, and once it lapses the Docker Hub copy fails in every release until it is replaced ([RELEASES.md#the-docker-hub-copy](RELEASES.md#the-docker-hub-copy)). The release jobs also log in to Docker Hub with a read-only pull token that expires too, and once it lapses the login step fails in every job that has it, a release included ([RELEASES.md#8-build-and-publish-the-container-image-ci](RELEASES.md#8-build-and-publish-the-container-image-ci)).
 
 **Someone besides the maintainer sees a report arrive.** Confirm the co-owner holds an account with admin access to the repository and that its security notifications reach them.
 
@@ -122,7 +122,7 @@ The 90-day window in [SECURITY.md](../SECURITY.md#response-timeline) runs from c
 
 ## When the maintainer is unavailable
 
-This section is for the co-owner. All of it is communication. None of it is a release: the release signing key is the maintainer's alone, so no fix can ship on this path.
+This section is for the co-owner. The co-owner holds the second release signing key, so a fix can ship on this path, by the [co-owner hotfix](#co-owner-hotfix) below. The rest of it is communication.
 
 In order:
 
@@ -131,7 +131,7 @@ In order:
 3. **Reach the maintainer** through the routes the organization keeps for this, and get an expected return date.
 4. **Tell the reporter what is actually true** as soon as the 15-business-day triage target looks unreachable: the technical owner is unavailable, here is the date they return, here is when a verdict follows.
 5. **Bring in technical help only if waiting is not viable** -- the report suggests active exploitation, or the absence will outrun the 90-day window. Use someone the organization already trusts with a private disclosure, and scope them to assessing severity, not to shipping a fix.
-6. **Do not** attempt the fix, tag or publish a release, publish an advisory, or request a CVE.
+6. **Do not** tag or publish a release, publish an advisory, or request a CVE, except by the [co-owner hotfix](#co-owner-hotfix).
 
 Acknowledgement template:
 
@@ -146,6 +146,10 @@ The report stays private with us in the meantime. If anything changes on your en
 -- including evidence that the issue is being exploited -- please tell me here and
 I will escalate immediately.
 ```
+
+### Co-owner hotfix
+
+The co-owner can ship a fix without the maintainer when waiting is not viable, as step 5 above defines it. Branch from the affected release tag, apply the fix, and follow [RELEASES.md#hotfix-releases](RELEASES.md#hotfix-releases) for the release steps, except that the review before merging is waived on this path: say so in the pull request. Opening that pull request is the disclosure, so merge, tag, release and publish the advisory in one sitting, as [4. Fix privately, then release](#4-fix-privately-then-release) and [5. Draft the advisory and request a CVE](#5-draft-the-advisory-and-request-a-cve) set out. At the tag step, sign the tag with your own SSH key, whose fingerprint is listed in [RELEASES.md#source-integrity](RELEASES.md#source-integrity), with git set to sign with it in that clone (`git config gpg.format ssh` and `git config user.signingkey <path to the key>`), and push it: the release workflow runs on that push and needs no approval from the maintainer.
 
 ## Exercise record
 
@@ -173,3 +177,5 @@ This runbook is walked once a year against a simulated report, and again after a
 5. No fallback intake channel is published anywhere in the repository. A reporter who cannot use the GitHub path, or who arrives while it is off, has nowhere to go but a public issue.
 6. The release signing key is single-custody, and it is the only thing that gates a hotfix. That is what makes the maintainer-unavailable path communication-only, and whether it is accepted or mitigated is a decision for the owners rather than for this runbook.
 7. The scope list in SECURITY.md covers the protocol, transport confidentiality, and credential parsing, but not the at-rest permissions of the artifacts Alcove writes -- the very class this exercise simulated. The interim reading is in step 2; whether the published list should name it is the maintainer's call.
+
+Finding 6 was resolved after the exercise by a second holder: the co-owner holds a release signing key and can ship a fix ([Co-owner hotfix](#co-owner-hotfix)).
