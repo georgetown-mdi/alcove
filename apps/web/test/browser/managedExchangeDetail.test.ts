@@ -3572,6 +3572,15 @@ describe("why an accounting or its note could not be read", () => {
     await expect
       .element(page.getByText("Reload this page", { exact: false }))
       .toBeInTheDocument();
+    await expect
+      .element(
+        page.getByText(
+          "If reloading shows this again, the app was rolled back, and the " +
+            "run is named once the newer version is back.",
+          { exact: false },
+        ),
+      )
+      .toBeInTheDocument();
   });
 
   test("a damaged note shows no refusal of a migration", async () => {
@@ -3656,6 +3665,15 @@ describe("an accounting a newer version of the app filed", () => {
       .toBeInTheDocument();
     await expect
       .element(page.getByText("reloading ends it", { exact: false }))
+      .toBeInTheDocument();
+    await expect
+      .element(
+        page.getByText(
+          "If reloading shows this again, the app was rolled back, and these " +
+            "records wait for the newer version.",
+          { exact: false },
+        ),
+      )
       .toBeInTheDocument();
     // Why it is urgent rather than cosmetic: this build's read failure is an
     // append failure too, so a run from this page would file nothing.

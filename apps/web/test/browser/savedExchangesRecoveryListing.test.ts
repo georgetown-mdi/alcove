@@ -66,8 +66,11 @@ async function createRunnableExchange(
 // diagnostic read lists both entries with a delete-by-key. Deleting the bad
 // record and reloading recovers the list to the normal run surface.
 
+const navigations = vi.hoisted(() => [] as Array<unknown>);
 vi.mock("@tanstack/react-router", async () =>
-  (await import("./moduleMocks")).reactRouterMock(),
+  (await import("./moduleMocks")).reactRouterMock({
+    onNavigate: (options) => navigations.push(options),
+  }),
 );
 
 const linkageTerms = getDefaultLinkageTerms("County Health Dept");
@@ -146,6 +149,7 @@ async function rawLocalPut(id: string, value: unknown): Promise<void> {
 const app = createAppMount();
 
 beforeEach(async () => {
+  navigations.length = 0;
   await clearManagedExchanges();
 });
 
@@ -374,6 +378,67 @@ describe("read-failed recovery listing", () => {
     // The readable record and the damaged one each offer a remove.
     expect(page.getByRole("button", { name: "Remove" }).all()).toHaveLength(2);
   });
+
+  test("beside a record a newer version saved, the readable rows open their exchanges and the damaged row keeps its remove", async () => {
+    const first = await createRunnableExchange(
+      newExchange({ label: "Riverbend quarterly" }),
+    );
+    const second = await createRunnableExchange(
+      newExchange({ label: "Lakeside annual", side: "acceptor" }),
+    );
+    await rawPut({
+      ...first,
+      id: "zzz-later-record",
+      label: "Hidden newer exchange",
+      schemaVersion: "alcove-managed-exchange/v5",
+    });
+    await expect(listManagedExchanges()).rejects.toThrow();
+
+    app.render(createElement(SavedExchanges));
+
+    await expect
+      .element(page.getByText(LATER_VERSION_RECORD_LABEL, { exact: true }))
+      .toBeInTheDocument();
+    const rows = page.getByRole("listitem");
+    await expect.poll(() => rows.all().length).toBe(3);
+    const firstRow = rows.filter({ hasText: "Riverbend quarterly" });
+    const secondRow = rows.filter({ hasText: "Lakeside annual" });
+    const laterRow = rows.filter({ hasText: LATER_VERSION_RECORD_LABEL });
+
+    // The newer version's row neither opens nor offers a remove.
+    expect(laterRow.getByRole("button").all()).toHaveLength(0);
+    expect(document.body.textContent).not.toContain("Hidden newer exchange");
+
+    await firstRow.getByRole("button", { name: "Open" }).click();
+    await secondRow.getByRole("button", { name: "Open" }).click();
+    expect(navigations).toEqual([
+      { to: "/saved/$id", params: { id: first.id } },
+      { to: "/saved/$id", params: { id: second.id } },
+    ]);
+    expect(page.getByRole("button", { name: "Open" }).all()).toHaveLength(2);
+    expect(page.getByRole("button", { name: "Remove" }).all()).toHaveLength(2);
+
+    // A damaged record beside them keeps its remove and does not open.
+    app.unmount();
+    await rawPut({
+      ...first,
+      id: "zzz-z-damaged-record",
+      schemaVersion: "alcove-managed-exchange/damaged",
+    });
+    app.render(createElement(SavedExchanges));
+    await expect
+      .element(page.getByText(UNREADABLE_RECORD_LABEL))
+      .toBeInTheDocument();
+    const damagedRow = page
+      .getByRole("listitem")
+      .filter({ hasText: UNREADABLE_RECORD_LABEL });
+    await expect
+      .element(damagedRow.getByRole("button", { name: "Remove" }))
+      .toBeInTheDocument();
+    expect(damagedRow.getByRole("button", { name: "Open" }).query()).toBeNull();
+    expect(page.getByRole("button", { name: "Open" }).all()).toHaveLength(2);
+    expect(page.getByRole("button", { name: "Remove" }).all()).toHaveLength(3);
+  });
 });
 
 describe("recovery listing: the delete confirm's custody notes", () => {
@@ -466,6 +531,8 @@ describe("recovery listing: the delete confirm's custody notes", () => {
       )
       .toBeInTheDocument();
     expect(page.getByText(UNREADABLE_RECORD_LABEL).query()).toBeNull();
+    // Its page cannot load, so the row does not open it.
+    expect(page.getByRole("button", { name: "Open" }).query()).toBeNull();
 
     await page.getByRole("button", { name: "Remove" }).first().click();
     const dialog = page.getByRole("dialog");

@@ -1,0 +1,2 @@
+- - -> Each row of that surface whose record and sibling entry both parse opens its exchange, whose page reads its own record (`getManagedExchange`); a row whose record or sibling entry does not parse does not open.
+- - -> It also states the case where a reload shows the same record: the deployment was rolled back, and the record waits for the build that wrote it.

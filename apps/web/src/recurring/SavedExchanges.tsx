@@ -69,6 +69,7 @@ import {
   LATER_VERSION_RECORD_NOTE,
   SAVED_EXCHANGES_FAILED_LEAD,
   STATE_UNREADABLE_NOTE,
+  recoveryRowOpens,
   recoveryRows,
   savedExchangesFailedCauses,
 } from "./savedExchangesRecovery";
@@ -644,7 +645,10 @@ function SavedExchangesFailed({ reload }: { reload: () => void }) {
 
 /** The recovery listing on the read-failed surface: the diagnostic read's
  * per-entry result, each row with the one-step delete-by-key but a record a
- * newer version saved, which states the reload instead. It loads on mount
+ * newer version saved, which states the reload instead. A row whose record
+ * and sibling entry parse also opens its exchange, as the normal list's does:
+ * the exchange's page reads its own record, so one unreadable record does not
+ * keep the rest from opening. It loads on mount
  * from the diagnostic read (which never rejects wholesale), so an unreadable
  * record is identifiable and discardable even when the normal list cannot load.
  * A delete calls `reload`, which re-runs the whole load. If the diagnostic read
@@ -659,6 +663,7 @@ function RecoveryListing({
   setRows: (rows: Array<RecoveryRow>) => void;
   reload: () => void;
 }) {
+  const navigate = useNavigate();
   useEffect(() => {
     let live = true;
     void listManagedExchangesDiagnostic()
@@ -706,15 +711,30 @@ function RecoveryListing({
               </span>
             )}
           </div>
-          {!row.laterVersion && (
-            <DeleteExchangeButton
-              id={row.id}
-              label={row.deleteLabel}
-              backedUp={row.backedUp}
-              unopenable={row.unreadable || row.stateUnreadable}
-              onDeleted={reload}
-            />
-          )}
+          <div className={styles.savedRowActions}>
+            {recoveryRowOpens(row) && (
+              <Button
+                variant="subtle"
+                onClick={() =>
+                  void navigate({
+                    to: "/saved/$id",
+                    params: { id: row.id },
+                  })
+                }
+              >
+                Open
+              </Button>
+            )}
+            {!row.laterVersion && (
+              <DeleteExchangeButton
+                id={row.id}
+                label={row.deleteLabel}
+                backedUp={row.backedUp}
+                unopenable={!recoveryRowOpens(row)}
+                onDeleted={reload}
+              />
+            )}
+          </div>
         </li>
       ))}
     </ul>

@@ -9,10 +9,12 @@ import {
 import {
   LATER_VERSION_RECORDS_CAUSE,
   LATER_VERSION_RECORD_LABEL,
+  LATER_VERSION_RECORD_NOTE,
   STATE_UNREADABLE_NOTE,
   UNREADABLE_RECORDS_CAUSE,
   UNREADABLE_RECORD_LABEL,
   recoveryRow,
+  recoveryRowOpens,
   recoveryRows,
   savedExchangesFailedCauses,
 } from "@recurring/savedExchangesRecovery";
@@ -209,6 +211,21 @@ describe("a record a newer version saved", () => {
     });
   });
 
+  test("its note and cause keep the reload and name a rollback", () => {
+    expect(LATER_VERSION_RECORD_NOTE).toBe(
+      "Reload this page to use the current version, which reads it. If " +
+        "reloading shows this again, the app was rolled back, and this " +
+        "exchange waits for the newer version.",
+    );
+    expect(LATER_VERSION_RECORDS_CAUSE).toBe(
+      "One or more stored records were saved by a newer version of this app " +
+        "than this page is running. Nothing is wrong with them. Reload this " +
+        "page to use the current version, which reads them. If a run is " +
+        "under way, reloading ends it. If reloading shows this again, the " +
+        "app was rolled back, and those exchanges wait for the newer version.",
+    );
+  });
+
   test("is stated as a newer version's, never as damaged", () => {
     expect(savedExchangesFailedCauses(recoveryRows([later]))).toEqual([
       LATER_VERSION_RECORDS_CAUSE,
@@ -242,6 +259,28 @@ describe("savedExchangesFailedCauses", () => {
 
   test("states nothing while the rows are loading", () => {
     expect(savedExchangesFailedCauses(undefined)).toEqual([]);
+  });
+});
+
+describe("recoveryRowOpens", () => {
+  test("a row whose record and sibling entry parse opens", () => {
+    expect(recoveryRowOpens(recoveryRow(readable()))).toBe(true);
+  });
+
+  test("a damaged row, a newer version's row, and a row with unreadable state do not open", () => {
+    expect(
+      recoveryRowOpens(
+        recoveryRow({ kind: "unreadable", id: "bad-key", backedUp: false }),
+      ),
+    ).toBe(false);
+    expect(
+      recoveryRowOpens(
+        recoveryRow({ kind: "later-version", id: "later", backedUp: false }),
+      ),
+    ).toBe(false);
+    expect(
+      recoveryRowOpens(recoveryRow(readable({ stateUnreadable: true }))),
+    ).toBe(false);
   });
 });
 
