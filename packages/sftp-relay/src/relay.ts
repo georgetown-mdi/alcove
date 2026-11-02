@@ -2,7 +2,7 @@ import { connect } from "node:net";
 
 import { WebSocket, WebSocketServer } from "ws";
 
-import { createControlFrameCount } from "@alcove/websocket-relay/controlFrames";
+import { createControlFrameLimit } from "@alcove/websocket-relay/controlFrames";
 import { createFaultLatch } from "@alcove/websocket-relay/faultLatch";
 import {
   pongWithinWindow,
@@ -28,7 +28,7 @@ import type { IncomingMessage, Server } from "node:http";
 import type { Socket } from "node:net";
 import type { Duplex } from "node:stream";
 
-import type { ControlFrameCount } from "@alcove/websocket-relay/controlFrames";
+import type { ControlFrameLimit } from "@alcove/websocket-relay/controlFrames";
 
 /** The one TCP endpoint the relay connects every accepted WebSocket to. */
 export interface SftpRelayTarget {
@@ -103,7 +103,7 @@ interface Connection {
   /** Sockets of the two not yet closed. */
   open: number;
   targetCloseTimer: ReturnType<typeof setTimeout> | undefined;
-  controlFrames: ControlFrameCount;
+  controlFrames: ControlFrameLimit;
 }
 
 const NO_PENDING = Buffer.alloc(0);
@@ -319,22 +319,6 @@ export function attachSftpRelay(
     );
   }
 
-  // A WebSocket past the limit is closed, and dropped if it sends another
-  // control frame while the relay waits on its close.
-  function withinControlFrameLimit(
-    connection: Connection,
-    frame: "ping" | "pong",
-  ): boolean {
-    if (connection.controlFrames.admit(frame)) return true;
-    if (connection.browser.readyState !== WebSocket.OPEN) {
-      connection.browser.terminate();
-      return false;
-    }
-    closeBrowser(connection, SftpRelayCloseCode.controlFrameLimit);
-    endTarget(connection);
-    return false;
-  }
-
   function onConnection(browser: WebSocket, browserSocket: Duplex): void {
     // The one connection the relay opens, always to the target fixed above.
     const tcp = connectTarget(target);
@@ -351,7 +335,17 @@ export function attachSftpRelay(
       pendingBytes: 0,
       open: 2,
       targetCloseTimer: undefined,
-      controlFrames: createControlFrameCount(maxControlFrames),
+      // A WebSocket past the limit is closed, dropped if it sends another
+      // control frame while the relay waits on its close, and ignored after
+      // that.
+      controlFrames: createControlFrameLimit(maxControlFrames, {
+        closable: () => browser.readyState === WebSocket.OPEN,
+        close: () => {
+          closeBrowser(connection, SftpRelayCloseCode.controlFrameLimit);
+          endTarget(connection);
+        },
+        terminate: () => browser.terminate(),
+      }),
     };
     connections.add(connection);
 
@@ -386,10 +380,10 @@ export function attachSftpRelay(
     );
     // A ping is answered only while the queue toward the browser is under the high mark.
     browser.on("ping", (data: Buffer) => {
-      if (!withinControlFrameLimit(connection, "ping")) return;
+      if (!connection.controlFrames.admit("ping")) return;
       pongWithinWindow(browser, data, window, () => releaseTarget(connection));
     });
-    browser.on("pong", () => withinControlFrameLimit(connection, "pong"));
+    browser.on("pong", () => connection.controlFrames.admit("pong"));
     // `ws` closes the socket itself after an error it raises, an oversized
     // message's 1009 among them, and the close below ends the target.
     browser.on("error", () => {});

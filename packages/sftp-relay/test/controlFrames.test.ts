@@ -1,8 +1,11 @@
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { createServer as createTcpServer } from "node:net";
+import {
+  connect as connectTcp,
+  createServer as createTcpServer,
+} from "node:net";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
 
 import { SFTP_RELAY_PATH, SftpRelayCloseCode } from "../src/protocol.ts";
@@ -15,6 +18,7 @@ const ORIGIN = "https://app.example.org";
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const cleanup of cleanups.splice(0)) cleanup();
 });
 
@@ -74,17 +78,48 @@ describe("the control frame limit", () => {
       await expectEcho(other);
     },
   );
+
+  it.each([
+    ["ping", Buffer.from([0x89, 0x80, 0, 0, 0, 0])],
+    ["pong", Buffer.from([0x8a, 0x80, 0, 0, 0, 0])],
+  ] as const)(
+    "closes and drops a WebSocket once for one write of many %s frames past the limit",
+    async (_frame, bytes) => {
+      const url = await startRelay({ maxControlFrames: 4 });
+      const { hostname, port } = new URL(url);
+      const socket = connectTcp(Number(port), hostname);
+      socket.on("error", () => {});
+      await once(socket, "connect");
+      socket.write(
+        `GET ${SFTP_RELAY_PATH} HTTP/1.1\r\nHost: relay\r\nOrigin: ${ORIGIN}\r\n` +
+          "Upgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\n" +
+          "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n",
+      );
+      await once(socket, "data");
+      const terminate = vi.spyOn(WebSocket.prototype, "terminate");
+      const close = vi.spyOn(WebSocket.prototype, "close");
+      socket.write(Buffer.concat(Array(10_000).fill(bytes)));
+      await once(socket, "close");
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(terminate).toHaveBeenCalledTimes(1);
+      expect(
+        close.mock.calls.filter(
+          ([code]) => code === SftpRelayCloseCode.controlFrameLimit,
+        ),
+      ).toHaveLength(1);
+    },
+  );
 });
 
 describe("keepalive within the control frame limit", () => {
-  it("keeps open a WebSocket answering every ping, a backlog of them at once included", async () => {
-    const url = await startRelay({ maxControlFrames: 3, pingIntervalMs: 5 });
+  it("keeps open a WebSocket answering every ping, two of them at once included", async () => {
+    const url = await startRelay({ maxControlFrames: 1, pingIntervalMs: 50 });
     const browser = await openBrowser(url);
     let closed = false;
     browser.on("close", () => (closed = true));
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    browser.pause();
     await new Promise((resolve) => setTimeout(resolve, 200));
+    browser.pause();
+    await new Promise((resolve) => setTimeout(resolve, 120));
     browser.resume();
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(closed).toBe(false);

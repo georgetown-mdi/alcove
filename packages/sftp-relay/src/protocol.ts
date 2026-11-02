@@ -77,9 +77,9 @@ export const SFTP_RELAY_CLOSE_WAIT_MS = 30_000;
 export const SFTP_RELAY_PING_INTERVAL_MS = 30_000;
 
 /**
- * The most ping frames, and pong frames answering none of the relay's pings,
- * the relay reads from one WebSocket between two of its pings; a WebSocket
- * past it is closed. Two a second, where a browser sends none.
+ * The most ping frames, and pong frames beyond those answering the relay's
+ * pings, the relay counts from one WebSocket between two of its pings; a
+ * WebSocket past it is closed. Two a second, where a browser sends none.
  */
 export const SFTP_RELAY_MAX_CONTROL_FRAMES = 60;
 

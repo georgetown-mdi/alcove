@@ -119,9 +119,9 @@ export const RELAY_FAULT_REPORT_WINDOW_MS = 60_000;
 export const RELAY_PING_INTERVAL_MS = 30_000;
 
 /**
- * The most ping frames, and pong frames answering none of the relay's pings,
- * the relay reads from one socket between two of its pings; a socket past it
- * is closed. Two a second, where the clients send none.
+ * The most ping frames, and pong frames beyond those answering the relay's
+ * pings, the relay counts from one socket between two of its pings; a socket
+ * past it is closed. Two a second, where the clients send none.
  */
 export const RELAY_MAX_CONTROL_FRAMES = 60;
 
