@@ -56,11 +56,21 @@ export const CRONTAB_ACCOUNT_NOTE =
   "Add a cron line with crontab -e as the account that will run the " +
   "schedule, not with sudo: a line in root's crontab runs Alcove as root.";
 
-/** The sentence on what a POSIX shell still reads inside the double quotes a
- * pasted path or name goes between. */
+/**
+ * What a shell still reads inside the double quotes a pasted path or name goes
+ * between, a sentence per shell, and what a pasted `--mount` folder cannot
+ * hold. bash keeps the `\` before a `!` inside double quotes and zsh drops
+ * it, so a `!` is escaped outside them. PowerShell reads the typographic
+ * double quotes as `"`, and Windows PowerShell 5.1 does not pass a `"` inside
+ * an argument to docker intact.
+ */
 export const PASTED_TEXT_ESCAPING_NOTE =
   'In a Linux or macOS command, put a \\ before each $, `, \\, or " in a ' +
-  "path or name you paste between double quotes.";
+  "path or name you paste between double quotes, and replace each ! with " +
+  '"\\!", quotes included. ' +
+  "In PowerShell, put a ` before each $, `, \u201C, \u201D, or \u201E " +
+  'instead; a " cannot be pasted there. A folder in a --mount option cannot ' +
+  'hold a , or ".';
 
 /** The sentence on a pasted path's `%` in a cron line, which cron reads as
  * the end of the command ({@link cronLine}). */
