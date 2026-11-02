@@ -166,7 +166,7 @@ cosign on such a host rather than by reading its source.
 
 ## What did not change
 
-Release tags stay signed with the maintainer's SSH key, and `allowed_signers`
+Release tags stay signed with a maintainer's SSH key, and `allowed_signers`
 stays as it is: tag signing establishes who authored the release commit, which
 is a different claim from who published the image, and Sigstore has nothing to
 say about it. An assessment will ask about one consequence: the SSH tag

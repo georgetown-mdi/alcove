@@ -475,10 +475,11 @@ The signature and the attestation show that `pages_deploy.yaml` built these file
 
 ### Source integrity
 
-Release tags are signed with the maintainer's SSH key. The public key fingerprint is:
+Release tags are signed with a maintainer's SSH key. The public key fingerprints are:
 
 ```
 SHA256:gILsiGXszofEYqaCjXtCFuUzIw+cZDK0WrlCGd6fohM (RSA, vdorie@gmail.com)
+SHA256:oIZgU+TUz2x087PjXSwci7tglQGJe4y1qVwPOewSKiU (ED25519, eric.giannella@gmail.com)
 ```
 
 To verify, point git at the `allowed_signers` file in the repository root, then verify the tag:
