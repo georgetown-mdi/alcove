@@ -789,8 +789,8 @@ each of those pins is, and how the current values were resolved, is in
 follows is the procedure that keeps them together.
 
 **No mechanical arrival signal, by configuration.** The docker ecosystem block
-in `.github/dependabot.yml` ignores `amazonlinux`, so once that entry sits on the
-branch Dependabot reads its configuration from (below), nothing opens a pull
+in `.github/dependabot.yml` ignores `amazonlinux/amazonlinux`, so once that entry sits on
+the branch Dependabot reads its configuration from (below), nothing opens a pull
 request when the tag is rebuilt onto a newer rootfs. The four values below have
 to name one release between them and the move imposes a re-measurement
 obligation besides, none of which a version comparison over tag components can
@@ -817,17 +817,19 @@ triage and whose pull requests against `main` it handles in
 [A security update opened against
 main](../RELEASES.md#a-security-update-opened-against-main). The
 entry is on `main`. What shows it in force is a docker-ecosystem run whose
-update-job definition has an `ignore-conditions` entry naming `amazonlinux`
+update-job definition has an `ignore-conditions` entry naming `amazonlinux/amazonlinux`
 instead of an empty list. While the list reads empty the entry is
 inert and an `amazonlinux` pull request that arrives is closed unmerged -- what
 the entry removes is a filing, and the digest freeze plus the procedure below is
 what holds the base either way.
 
-The block ignores two names for this base: `amazonlinux`, Docker Hub's name
-for the image, and `public.ecr.aws/amazonlinux/amazonlinux`, the ECR Public
-name `Dockerfile.fips` spells. Which of the two Dependabot matches against the
-ECR Public reference has not been observed on `main`. A pull request that
-arrives for it is closed unmerged, as above.
+The block ignores three names for this base: `amazonlinux`, Docker Hub's name
+for the image; `public.ecr.aws/amazonlinux/amazonlinux`, the ECR Public name
+`Dockerfile.fips` spells; and `amazonlinux/amazonlinux`, the name Dependabot
+gives that reference when it files a bump. Observed 2026-11-02 with both other
+entries on `main`: Dependabot filed this base's bump as
+`amazonlinux/amazonlinux` (PR #2608). A pull request that arrives for it is
+closed unmerged, as above.
 
 **What shows a base worth moving to**, in the absence of a filed bump:
 
