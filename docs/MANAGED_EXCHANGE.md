@@ -1274,9 +1274,8 @@ A saved exchange a newer version wrote also stops the recurring-exchanges list
 from loading as usual. The list shows its recovery view instead: every saved
 exchange is listed, and each one whose saved state this version reads opens from
 its row as it does on the usual list. A damaged one does not open, and offers
-its remove. The
-one a newer version wrote neither opens nor offers a remove. Scheduled runs of
-the others go on.
+its remove. The one a newer version wrote neither opens nor offers a remove.
+Scheduled runs of the others go on.
 
 If a reload shows the same message, the deployment was rolled back past the
 format change, and the page says so. Take the stored-records download if it is

@@ -21,6 +21,15 @@ import {
   appendDisclosureRecord,
 } from "@psi/disclosureAccounting";
 import {
+  MANAGED_EXCHANGE_STORE_NAME,
+  clearManagedExchanges,
+  createManagedExchange,
+  getManagedExchange,
+  openManagedExchangeDatabase,
+  persistManagedExchangeScheduleAdvance,
+  updateManagedExchangeLocalFields,
+} from "@psi/managed/managedExchangeStore";
+import {
   MAX_RECENT_RUNS,
   applyManagedExchangeLastRun,
   applyManagedExchangeLocalEdits,
@@ -29,14 +38,8 @@ import {
   managedAllowedRelays,
   parseManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
-import {
-  clearManagedExchanges,
-  createManagedExchange,
-  getManagedExchange,
-  persistManagedExchangeScheduleAdvance,
-  updateManagedExchangeLocalFields,
-} from "@psi/managed/managedExchangeStore";
 import { ManagedExchangeDetail } from "@recurring/ManagedExchangeDetail";
+import { ManagedRunSurface } from "@recurring/ManagedRunSurface";
 
 import {
   ALLOWED_RELAYS_FIELD_DESCRIPTION,
@@ -108,6 +111,10 @@ import type { UnfiledDisclosureRead } from "@psi/unfiledDisclosureStore";
 
 vi.mock("@tanstack/react-router", async () =>
   (await import("./moduleMocks")).reactRouterMock(),
+);
+
+vi.mock("@psi/transport/rendezvous", async () =>
+  (await import("./moduleMocks")).rendezvousMock(),
 );
 
 const webrtcLocator: WebRTCExchangeLocator = {
@@ -4552,5 +4559,64 @@ describe("a run whose record never reached the accounting", () => {
     ).toBeNull();
     await flushPendingUpdates();
     expect(onUnrecordedRunFlagShown).not.toHaveBeenCalled();
+  });
+});
+
+describe("an exchange's page beside records it does not read", () => {
+  beforeEach(clearManagedExchanges);
+  afterEach(clearManagedExchanges);
+
+  /** Seed a raw value, so a record the strict read rejects is stored beside a
+   * readable one. */
+  async function rawPut(value: unknown): Promise<void> {
+    const db = await openManagedExchangeDatabase();
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const transaction = db.transaction(
+          MANAGED_EXCHANGE_STORE_NAME,
+          "readwrite",
+        );
+        transaction.objectStore(MANAGED_EXCHANGE_STORE_NAME).put(value);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+      });
+    } finally {
+      db.close();
+    }
+  }
+
+  test("loads and shows its exchange beside a record a newer version wrote and a damaged one", async () => {
+    const stored = await createManagedExchange({
+      label: "Riverbend quarterly",
+      exchangeFile: exchangeFile(),
+      side: "inviter",
+      sharedSecret: "A".repeat(43),
+    });
+    await rawPut({
+      ...stored,
+      id: "zzz-later-record",
+      label: "Newer exchange",
+      schemaVersion: "alcove-managed-exchange/v5",
+    });
+    await rawPut({
+      ...stored,
+      id: "zzz-z-damaged-record",
+      label: "Damaged exchange",
+      schemaVersion: "alcove-managed-exchange/damaged",
+    });
+
+    app.render(createElement(ManagedRunSurface, { id: stored.id }));
+
+    await expect
+      .element(page.getByRole("heading", { name: "Riverbend quarterly" }))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByRole("button", { name: "Run exchange" }))
+      .toBeInTheDocument();
+    for (const heading of [
+      "Exchange not found",
+      "This exchange cannot be loaded",
+    ])
+      expect(page.getByRole("heading", { name: heading }).query()).toBeNull();
   });
 });
