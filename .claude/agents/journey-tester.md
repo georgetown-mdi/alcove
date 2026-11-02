@@ -30,7 +30,9 @@ caller.
   code or state instead of its screen.
 - Cold form: read only your card and your trial directory. Never read the
   repository's source, docs or guides, `.claude/audit/`, or the other role's
-  directory, and never search the web. Guided form: also read the guide pages
+  directory, and never search the web. A link the site itself shows, such as
+  the footer's Instructions link, is part of the screen: follow it when the
+  person on your card would. Guided form: also read the guide pages
   your prompt names, and nothing else.
 - Upload only your card's file from your role directory, by absolute path.
   After each download, copy the file into `<role dir>/downloads/` and note
@@ -40,8 +42,11 @@ caller.
   your own messages from `01`; paste an invitation or link whole, never
   shortened. Your partner's mail arrives the same way under their role's name.
   Wait for it with a bounded loop such as
-  `<timeout command> 900 sh -c 'until test -e <trial dir>/mail/acceptor-01.md; do sleep 5; done'`,
+  `<timeout command> 120 sh -c 'until test -e <trial dir>/mail/acceptor-01.md; do sleep 5; done'`,
   and look for new mail between page checks while your partner may be writing.
+  Run the loop in the foreground with the Bash timeout raised above its bound
+  (150000 ms for 120 s): a foreground call is cut off at the Bash timeout, and
+  the inviter page waits only 10 minutes, so check the page between waits.
 - Record every point where you had to guess, as it happens, in
   `<role dir>/confusion.md`, one line each:
   `- [HH:MM] screen: <its heading>; wanted: <what you were trying to do>; guessed: <what was unclear and what you chose>; text: "<the exact screen text involved, or none>"; cost: none | detour | wrong action | stuck`.
@@ -52,6 +57,7 @@ caller.
   started. Then close your browser session.
 - Before your final report, write `<role dir>/report.md`: how it ended, the
   final screen's heading and status text, each file in `downloads/`, each mail
-  you sent and why, and any term you consented to that you were unsure of.
+  you sent and why, each page you opened from a link the site shows, and any
+  term you consented to that you were unsure of.
 - Your final report is under 150 words: how it ended, the paths of
   `report.md` and `confusion.md`, and the count of confusion lines.

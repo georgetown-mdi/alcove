@@ -51,8 +51,8 @@ A smoke that read the link only by `eval`, the clipboard, or another command the
 - **A pain-point intake** (its form: `.claude/pm/ruleset.md`, Filing and updating items), when the command names one: fetch it (`node .claude/scripts/fetch-issues.mjs 9 <id>`) and run one reproduction trial, `repro`, first, in the cold form. Add to the card of the party the person was a goal sentence saying what the person was trying, never a step. It reproduces when a confusion log or report stops at the same screen on the same text as the intake.
 - **Cold**: `cold-1`, `cold-2`, `cold-3`.
 - **Guided**: `guided-1`, `guided-2`, `guided-3`.
-- **Haiku cold**, on the first audit day only (no earlier `scratch/audit-days/*/summary.md`): `haiku-1`, `haiku-2`, `haiku-3`, both testers on Haiku. It is a one-round hypothesis: kept only if it finds a problem the Opus trials did not, which the summary records.
-- **Step-down.** When the two latest earlier summaries each found no problem, run one trial per form, until a commit on staging since the last day's tested commit changes a screen of the invite, accept or run steps (`git log --stat <last>..<this> -- apps/web/src`), which restores three.
+- **Haiku cold**, on the first audit day only (no earlier day whose `scratch/audit-days/*/summary.md` has trial rows; a day that stopped at a precondition has none): `haiku-1`, `haiku-2`, `haiku-3`, both testers on Haiku. It is a one-round hypothesis: kept only if it finds a problem the Opus trials did not, which the summary records.
+- **Step-down.** When the two latest earlier summaries that have trial rows each found no problem, run one trial per form, until a commit on staging since the tested commit of the last day that ran trials changes a screen of the invite, accept or run steps (`git log --stat <last>..<this> -- apps/web/src`), which restores three.
 
 Run one trial at a time, or two at once: four testers is the writing-spawn cap of `.claude/orchestration/ruleset.md`, Models and spawns.
 
