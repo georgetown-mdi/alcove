@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import PSI from "@openmined/psi.js";
 
@@ -16,7 +16,11 @@ import {
   partnerRoundValues,
   runExchange,
 } from "../src/exchange";
-import { roundOneSetOverPartnerCeilingMessage } from "../src/exchange/firstRoundCapacity";
+import {
+  assertFirstRoundWithinSetMaximum,
+  roundOneSetOverMaximumAfterTermsMessage,
+  roundOneSetOverPartnerCeilingMessage,
+} from "../src/exchange/firstRoundCapacity";
 import {
   PSI_SET_REFUSED_ABORT_REASON,
   PSI_SET_TOO_LARGE_ABORT_REASON,
@@ -43,6 +47,25 @@ import { prepared } from "./utils/support";
 // moves: its own capacity against the partner's round (docs/spec/FILE_SYNC.md,
 // "The partner's round"), and its own first round against the receive ceiling
 // the partner stated (docs/spec/PROTOCOL.md, "The receive ceiling").
+
+// The per-set maximum, lowered for one describe block so a handful of
+// records reaches it; every other test runs at the real maximum.
+const setMaximum = vi.hoisted(() => ({
+  lowered: undefined as number | undefined,
+}));
+vi.mock("../src/connection/frameSize", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../src/connection/frameSize")>();
+  return {
+    ...actual,
+    get MAX_PSI_DECODE_ELEMENTS() {
+      return setMaximum.lowered ?? actual.MAX_PSI_DECODE_ELEMENTS;
+    },
+  };
+});
+afterEach(() => {
+  setMaximum.lowered = undefined;
+});
 
 const psiLibrary = await PSI();
 
@@ -618,5 +641,94 @@ describe("in a count-only exchange", () => {
     expect(seen).toEqual([12]);
     expect(local.status).toBe("fulfilled");
     expect(partner.status).toBe("fulfilled");
+  });
+
+  describe("against a partner stating the per-set maximum, with a swapped second key", () => {
+    // A swapped key has width 2 on the receiver and 1 on the sender, so 5
+    // records send 10 values as the receiver and 5 as the sender, against a
+    // maximum of 6.
+    const maximum = 6;
+    const preparedTwoKeys = (identity: string, rowCount: number) =>
+      prepared(
+        identity,
+        Array.from({ length: rowCount }, (_unused, i) => ({
+          first_name: `zq${String.fromCharCode(97 + i)}`,
+          last_name: `zq${String.fromCharCode(97 + i)}x`,
+        })),
+        {
+          terms: {
+            algorithm: "psi-c",
+            linkageStrategy: "cascade",
+            linkageFields: [
+              { name: "firstName", type: "first_name" },
+              { name: "lastName", type: "last_name" },
+            ],
+            linkageKeys: [
+              { name: "FN", elements: [{ field: "firstName" }] },
+              swappedKey,
+            ],
+          },
+          columns: ["first_name", "last_name"],
+        },
+      );
+
+    async function runTwoKeys(localRows: number, partnerRows: number) {
+      setMaximum.lowered = maximum;
+      const [local, partner] = createMessagePipe();
+      const sent: Array<unknown> = [];
+      const localPrepared = preparedTwoKeys("Local Co", localRows);
+      const outcomes = await Promise.allSettled([
+        runExchange(
+          withCeiling(local, undefined, sent),
+          "initiator",
+          localPrepared,
+          {
+            psiLibrary,
+          },
+        ),
+        runExchange(
+          partner,
+          "responder",
+          preparedTwoKeys("Partner Co", partnerRows),
+          {
+            psiLibrary,
+          },
+        ),
+      ]);
+      return { localPrepared, local: outcomes[0], partner: outcomes[1], sent };
+    }
+
+    test("a party resolved as the receiver over the maximum is refused before its first round's set is sent", async () => {
+      // The partner has more records, so this party resolves to the receiver.
+      const { localPrepared, local, partner, sent } = await runTwoKeys(5, 6);
+      // Before contact the sender role fits, so the party is not refused.
+      await expect(
+        assertFirstRoundWithinSetMaximum(localPrepared, { maxValues: maximum }),
+      ).resolves.toBeUndefined();
+      const refusal = (local as PromiseRejectedResult).reason as Error;
+      expect(refusal).toBeInstanceOf(RoundSetLimitError);
+      expect((refusal as RoundSetLimitError).reason).toBe("over-set-maximum");
+      expect(statesItsOwnNextStep(refusal, { ownOnly: true })).toBe(true);
+      expect(refusal.message).toBe(
+        roundOneSetOverMaximumAfterTermsMessage(10, maximum, "widest-key"),
+      );
+      expect(binaryFrames(sent)).toEqual([]);
+      expect(sent.at(-1)).toEqual({
+        decision: "abort",
+        abortReasons: [PSI_SET_TOO_LARGE_ABORT_REASON],
+      });
+      expect(
+        ((partner as PromiseRejectedResult).reason as PeerAbortError)
+          .partnerReason,
+      ).toBe(PSI_SET_TOO_LARGE_ABORT_REASON);
+    });
+
+    test("the same records resolved as the sender run to completion", async () => {
+      // The partner has fewer records, so this party resolves to the sender;
+      // the partner's 3 records send 6 values as the receiver.
+      const { local, partner } = await runTwoKeys(5, 3);
+      expect(local.status).toBe("fulfilled");
+      expect(partner.status).toBe("fulfilled");
+    });
   });
 });

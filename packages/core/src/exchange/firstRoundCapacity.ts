@@ -64,9 +64,10 @@ function valuesToSend(elementCount: number, scope: RoundSetScope): string {
 
 /**
  * The refusal an exchange raises at its start when this party's first round
- * holds more values than one PSI set can hold: `elementCount` is the fewest
- * values that round sends, `maxValues` the protocol's per-set maximum, and
- * `scope` the rounds the figure covers.
+ * holds more values than one PSI set can hold: `elementCount` is the values
+ * that round sends (the fewest it can send, for the first key),
+ * `maxValues` the protocol's per-set maximum, and `scope` the rounds the
+ * figure covers.
  */
 export function roundOneSetOverMaximumMessage(
   elementCount: number,
@@ -81,9 +82,28 @@ export function roundOneSetOverMaximumMessage(
 
 /**
  * The refusal raised after the terms exchange, before any linkage key is
+ * sent, when a round of a count-only exchange holds more values in the role
+ * this party resolved to than one PSI set can hold. The arguments are
+ * {@link roundOneSetOverMaximumMessage}'s.
+ */
+export function roundOneSetOverMaximumAfterTermsMessage(
+  elementCount: number,
+  maxValues: number = MAX_PSI_DECODE_ELEMENTS,
+  scope: RoundSetScope = "every-key",
+): string {
+  return (
+    `Too large to send: ${valuesToSend(elementCount, scope)}, over the ` +
+    `${maxValues} one PSI set can hold, so the exchange stopped before any ` +
+    `linkage key was sent and told your partner. ${SPLIT_INPUT_REMEDY}`
+  );
+}
+
+/**
+ * The refusal raised after the terms exchange, before any linkage key is
  * sent, when this party's first round holds more values than the partner
- * stated it can receive: `elementCount` is the fewest values that round
- * sends, `partnerReceiveCeiling` the partner's stated ceiling. `scope` is
+ * stated it can receive: `elementCount` is the values that round sends (the
+ * fewest it can send, for the first key), `partnerReceiveCeiling` the
+ * partner's stated ceiling. `scope` is
  * {@link roundOneSetOverMaximumMessage}'s.
  */
 export function roundOneSetOverPartnerCeilingMessage(
@@ -159,9 +179,9 @@ export async function assertFirstRoundWithinSetMaximum(
   const maxValues = options.maxValues ?? MAX_PSI_DECODE_ELEMENTS;
   await assertFirstRoundFits(prepared, options, [false, true], {
     exceeds: (elementCount) => elementCount > maxValues,
-    tooLarge: (fewest, scope) =>
+    tooLarge: (elementCount, scope) =>
       new RoundSetLimitError(
-        roundOneSetOverMaximumMessage(fewest, maxValues, scope),
+        roundOneSetOverMaximumMessage(elementCount, maxValues, scope),
         "over-set-maximum",
       ),
     uncounted: (failure) =>
@@ -206,12 +226,12 @@ export interface FirstRoundCheckOptions {
   signal?: AbortSignal;
 }
 
-// Hold this party's first round to the partner's stated receive ceiling, after
-// the terms exchange and before this party builds a set: counted as the
-// start-of-exchange check counts, in the role this party resolved to, and
-// in a count-only exchange every round with it. Every
-// refusal sends the partner an abort before it propagates, its reason stating
-// only that the set was too large or that it was refused.
+// Hold this party's first round, and in a count-only exchange every round, to
+// the lesser of the partner's stated receive ceiling and one PSI set's
+// maximum, after the terms exchange and before this party builds a set:
+// counted as the start-of-exchange check counts, in the role this party
+// resolved to. Every refusal sends the partner an abort before it propagates,
+// its reason stating only that the set was too large or that it was refused.
 export async function assertFirstRoundWithinPartnerCeiling(
   conn: MessageConnection,
   input: Pick<PreparedExchange, "linkageTerms" | "dataset" | "rowCount">,
@@ -220,18 +240,29 @@ export async function assertFirstRoundWithinPartnerCeiling(
   onProgress: PsiProgressReporter | undefined,
 ): Promise<void> {
   const options: FirstRoundCheckOptions = { onProgress };
+  const ceiling = Math.min(partnerReceiveCeiling, MAX_PSI_DECODE_ELEMENTS);
+  const partnerCeilingBinds = ceiling < MAX_PSI_DECODE_ELEMENTS;
   try {
     await assertFirstRoundFits(input, options, [isReceiver], {
-      exceeds: (elementCount) => elementCount > partnerReceiveCeiling,
-      tooLarge: (fewest, scope) =>
-        new RoundSetLimitError(
-          roundOneSetOverPartnerCeilingMessage(
-            fewest,
-            partnerReceiveCeiling,
-            scope,
-          ),
-          "over-partner-ceiling",
-        ),
+      exceeds: (elementCount) => elementCount > ceiling,
+      tooLarge: (elementCount, scope) =>
+        partnerCeilingBinds
+          ? new RoundSetLimitError(
+              roundOneSetOverPartnerCeilingMessage(
+                elementCount,
+                ceiling,
+                scope,
+              ),
+              "over-partner-ceiling",
+            )
+          : new RoundSetLimitError(
+              roundOneSetOverMaximumAfterTermsMessage(
+                elementCount,
+                ceiling,
+                scope,
+              ),
+              "over-set-maximum",
+            ),
       uncounted: (failure) =>
         new RoundSetLimitError(
           ROUND_ONE_SET_UNCOUNTED_FOR_PARTNER_MESSAGE,
@@ -257,17 +288,18 @@ const FIRST_ROUND_COUNT_PROGRESS_MS = 250;
 
 // A count-only exchange's rounds, each `declaredRecords` times this party's
 // width for the round, held to the bound in each of `roles`: refused where,
-// in every role counted, the widest round is over it.
+// in every role counted, the widest round is over it, naming the size of the
+// role that sends the most so the refusal never understates the run.
 function assertCountOnlyRoundsFit(
   declaredRecords: number,
   widths: ReadonlyArray<CountOnlyRoundWidths>,
   roles: ReadonlyArray<boolean>,
   bound: {
     exceeds: (elementCount: number) => boolean;
-    tooLarge: (fewest: number, scope: RoundSetScope) => Error;
+    tooLarge: (elementCount: number, scope: RoundSetScope) => Error;
   },
 ): void {
-  let fewest = Number.POSITIVE_INFINITY;
+  let most = 0;
   let scope: RoundSetScope = "every-key";
   for (const isReceiver of roles) {
     const roleWidths = widths.map((width) =>
@@ -276,13 +308,13 @@ function assertCountOnlyRoundsFit(
     const widest = Math.max(1, ...roleWidths);
     const size = declaredRecords * widest;
     if (!bound.exceeds(size)) return;
-    if (size >= fewest) continue;
-    fewest = size;
+    if (size <= most) continue;
+    most = size;
     scope = roleWidths.every((width) => width === widest)
       ? "every-key"
       : "widest-key";
   }
-  throw bound.tooLarge(fewest, scope);
+  throw bound.tooLarge(most, scope);
 }
 
 /**
@@ -368,16 +400,17 @@ async function readEveryCountOnlyRound(
 // The first-round count both checks above share, in each of `roles` (whether
 // this party counts as the PSI receiver) until one fits every round of the
 // first key. `exceeds` is the check's bound on a set of that many values,
-// `tooLarge` its refusal on the fewest values a round over the bound sends in
-// any role counted and the rounds that figure covers, `uncounted` its refusal
-// when the count fails other than with a refusal the round would raise.
+// `tooLarge` its refusal on the values a round over the bound sends (in a
+// count-only exchange the most of any role counted, else the fewest) and the
+// rounds that figure covers, `uncounted` its refusal when the count fails
+// other than with a refusal the round would raise.
 async function assertFirstRoundFits(
   prepared: Pick<PreparedExchange, "linkageTerms" | "dataset" | "rowCount">,
   options: FirstRoundCheckOptions,
   roles: ReadonlyArray<boolean>,
   bound: {
     exceeds: (elementCount: number) => boolean;
-    tooLarge: (fewest: number, scope: RoundSetScope) => Error;
+    tooLarge: (elementCount: number, scope: RoundSetScope) => Error;
     uncounted: (failure: unknown) => Error;
   },
 ): Promise<void> {

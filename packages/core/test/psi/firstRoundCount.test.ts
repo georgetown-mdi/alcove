@@ -256,9 +256,11 @@ test("the first-round check refuses a count-only exchange only where the widest 
   await expect(
     assertFirstRoundWithinSetMaximum(prepared, { maxValues: 50 }),
   ).resolves.toBeUndefined();
+  // Over in both roles, the refusal names the receiver's 100, the most the
+  // run would send, not the sender's 50.
   await expect(
     assertFirstRoundWithinSetMaximum(prepared, { maxValues: 49 }),
-  ).rejects.toThrow(roundOneSetOverMaximumMessage(50, 49, "every-key"));
+  ).rejects.toThrow(roundOneSetOverMaximumMessage(100, 49, "every-key"));
 });
 
 /**

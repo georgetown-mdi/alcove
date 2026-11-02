@@ -1870,8 +1870,10 @@ export async function runExchange(
   // parts, each held to the receive ceilings; the single-pass dataset ceiling
   // bounds the rest. This party's first round, and in a count-only exchange
   // every round, is held to the partner's stated ceiling before this party
-  // builds a set; at the protocol's maximum, the start-of-exchange check and
-  // each round's own refusal hold it already.
+  // builds a set. A count-only exchange is held here to the protocol's maximum
+  // too, since its round sizes depend on the resolved role, which the
+  // start-of-exchange check did not know; at that maximum a cascade's first
+  // round is left to that check and to the round's own refusal.
   const roundsSentInParts = !runsSinglePassLink(linkageTerms);
   if (roundsSentInParts) {
     await assertPartnerRoundWithinCapacity(
@@ -1879,7 +1881,7 @@ export async function runExchange(
       partnerRoundValues(partnerRecordCount, linkageTerms),
       options.checkPartnerRoundCapacity,
     );
-    if (partnerReceiveCeiling < MAX_PSI_DECODE_ELEMENTS)
+    if (countOnly || partnerReceiveCeiling < MAX_PSI_DECODE_ELEMENTS)
       await assertFirstRoundWithinPartnerCeiling(
         conn,
         { linkageTerms, dataset, rowCount },
