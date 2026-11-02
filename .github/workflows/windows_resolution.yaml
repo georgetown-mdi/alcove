@@ -19,7 +19,9 @@ name: Windows Path Resolution
 #            generator's output, so a change to them reaches this job. The
 #            docker lines README.md, docs/CONSOLE.md, and the console's
 #            shared-folder notice print run the same way, from a file a
-#            repository script test keeps equal to them.
+#            repository script test keeps equal to them. And a smoke of the VM
+#            pass driver: console input into set /p, and its Read-Host
+#            stand-in driving the launcher against a stub engine.
 #            It ASSERTS: a failed test fails the job. Runs on every pull request
 #            touching the paths below.
 #   clm      Both scripts run end to end in sessions a machine-wide policy has
@@ -73,6 +75,7 @@ on:
       - "support/maintainer-notes/ScheduleLines.Tests.ps1"
       - "support/maintainer-notes/schedule-lines.txt"
       - "support/maintainer-notes/ci-resolution-tests.ps1"
+      - "support/maintainer-notes/windows-vm-pass/**"
       - ".github/workflows/windows_resolution.yaml"
   workflow_dispatch:
 
