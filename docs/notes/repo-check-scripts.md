@@ -433,6 +433,9 @@ The decision to sign keylessly, and the probe runs behind the issuer and identit
   A verify step stripped of the pair, or pointed at another identity, would pass both while running a command no partner runs.
   A verify step in a job that pushes no image, the Docker Hub copy's, is held to the same pair without the step-order rule, which has no push of that job's to order it against.
 - The document publishes at least one `--signer-workflow`, since without it the attestation command's `--repo` is satisfied by an attestation any workflow in this repository produced.
+- The manifest of a `main` deploy has its own signer, `pages_deploy.yaml` at `refs/heads/main`, published as one exact `--certificate-identity` rather than a pattern, since one workflow at one ref signs it.
+  The check holds that value to the workflow's path and to the ref its signing job is gated on, and holds every `cosign verify-blob` step of that workflow to the published value, so the workflow's self-verify runs the command a partner runs.
+  The gate is compared as the exact `if` text, because a looser condition lets a run from another ref sign under an identity the published command refuses.
 
 ### What it does not cover
 
@@ -447,9 +450,11 @@ The decision to sign keylessly, and the probe runs behind the issuer and identit
   Any other character, `*` and `?` above all, fails rather than being translated on a guess.
 - Whether any of it verifies.
   Only a release run signs anything; the self-verify step measures that, and this check keeps that step's two arguments the published ones.
-- The hosted web application's manifest.
+- The release's hosted web application manifest.
   Its `cosign sign-blob` and `verify-blob` steps and its attest step, which names a `subject-path` rather than an image digest, sign a file rather than a pushed image, so the step-order and per-step argument rules do not read them.
   The `--certificate-` values its verify step and the document's `verify-blob` command hold still count toward the one-identity comparison, and `scripts/hosted-site-manifest.test.mjs` holds the steps' shape.
+- The job graph of a `main` deploy's manifest: that the deploy waits for the signature, which jobs hold which permission, and where it is published.
+  `scripts/hosted-site-manifest.test.mjs` holds those, and only a push to `main` shows that the signature verifies and the publish succeeds.
 
 ## Protocol version bump from 1.0.0
 

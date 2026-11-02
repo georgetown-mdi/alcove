@@ -19,16 +19,29 @@
 //      the published values, in its own run text, and so does every verify
 //      step in a job that pushes no image (the Docker Hub copy's). A cosign
 //      sign step in such a job is followed by a verify step in it.
-//   6. docs/RELEASES.md publishes at least one `--signer-workflow`, and each
-//      names that workflow path.
+//   6. docs/RELEASES.md publishes at least one `--signer-workflow` naming that
+//      workflow path, and each other one names MAIN_DEPLOY_WORKFLOW.
+//
+// The hosted app's manifest of a `main` deploy, signed by MAIN_DEPLOY_WORKFLOW,
+// is held by four more rules:
+//
+//   7. docs/RELEASES.md publishes one exact `--certificate-identity` value, and
+//      it names MAIN_DEPLOY_WORKFLOW at MAIN_DEPLOY_REF; it also publishes a
+//      `--signer-workflow` naming that workflow.
+//   8. MAIN_DEPLOY_WORKFLOW triggers on a push to `main`, and each job in it
+//      running `cosign sign-blob` is gated on MAIN_DEPLOY_REF, is followed in
+//      that job by a `cosign verify-blob` step, and attests a `subject-path`.
+//   9. Every `cosign verify-blob` step in it passes the published
+//      `--certificate-identity` and GitHub Actions' issuer, and no pattern.
+//  10. It runs at least one `cosign sign-blob` step.
 //
 // Reads docs/RELEASES.md and the workflow files. The `<owner>/<repo>` segment
-// of either command is not compared, and whether a release run produces this
+// of either command is not compared, and whether a run produces either
 // identity is not seen. A `cosign sign-blob` or `verify-blob` step, and an
 // attest step naming `subject-path` alone, cover a file rather than an image
-// and are outside rules 4 and 5; a `--certificate-` value they hold still
-// counts toward rule 1. Exit 0 clean, 1 on a finding. Rationale and limits:
-// docs/notes/repo-check-scripts.md.
+// and are outside rules 4 and 5; a `--certificate-identity-regexp` or issuer
+// value they hold still counts toward rule 1. Exit 0 clean, 1 on a finding.
+// Rationale and limits: docs/notes/repo-check-scripts.md.
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -51,6 +64,16 @@ export const RELEASES_DOC = "docs/RELEASES.md";
 export const ACTIONS_OIDC_ISSUER =
   "https://token.actions.githubusercontent.com";
 
+/** The workflow that deploys production on a push to main and signs that build's manifest. */
+export const MAIN_DEPLOY_WORKFLOW = `${WORKFLOW_DIR}/pages_deploy.yaml`;
+
+/** The ref the manifest of a `main` deploy is signed from. */
+export const MAIN_DEPLOY_REF = "refs/heads/main";
+
+// The gate a signing job of MAIN_DEPLOY_WORKFLOW holds in its `if`, so the
+// certificate names MAIN_DEPLOY_REF and no other branch's run signs.
+const MAIN_REF_GATE = `github.ref == '${MAIN_DEPLOY_REF}'`;
+
 const BUILD_ACTION = "docker/build-push-action@";
 const ATTEST_ACTION = "actions/attest-build-provenance@";
 
@@ -70,6 +93,17 @@ const ISSUER_FLAG = /--certificate-oidc-issuer\s+(\S+)/g;
 // `<owner>/<repo>/<workflow path>`. Unquoted where the document publishes it,
 // so the value runs to the first space the way the issuer's does.
 const SIGNER_WORKFLOW_FLAG = /--signer-workflow\s+(\S+)/g;
+
+// The exact identity a `cosign verify-blob` command names, double-quoted,
+// single-quoted or bare. `(?![-\w])` keeps the `-regexp` form out.
+const EXACT_IDENTITY_FLAG =
+  /--certificate-identity(?![-\w])\s+(?:"([^"]*)"|'([^']*)'|([^\s"'\\]+))/g;
+
+const EXACT_IDENTITY_SHAPE =
+  /^https:\/\/github\.com\/([^/@]+)\/([^/@]+)\/([^@]+)@(refs\/\S+)$/;
+
+const COSIGN_SIGN_BLOB = /\bcosign\s+sign-blob\b/;
+const COSIGN_VERIFY_BLOB = /\bcosign\s+verify-blob\b/;
 
 // The whole published shape in one pass: anchored at both ends, over
 // github.com, with the ref segment split off at `@refs/tags/`.
@@ -121,6 +155,29 @@ export function parseSignerWorkflow(value) {
     return { problem: "is not an <owner>/<repo>/<workflow path> triple" };
   }
   return { workflowPath: segments.slice(2).join("/") };
+}
+
+/** Every exact `--certificate-identity` value a source holds, in order. */
+export function exactCertificateIdentities(source) {
+  return [...source.matchAll(EXACT_IDENTITY_FLAG)].map(
+    (match) => match[1] ?? match[2] ?? match[3],
+  );
+}
+
+/**
+ * The `{repository, workflowPath, ref}` an exact signer identity names, or a
+ * `{problem}` phrase naming why it names none.
+ */
+export function parseExactIdentity(value) {
+  const match = EXACT_IDENTITY_SHAPE.exec(value);
+  if (match === null) {
+    return {
+      problem:
+        "does not have the shape `https://github.com/<owner>/<repo>/<workflow path>@refs/<ref>`",
+    };
+  }
+  const [, owner, repo, workflowPath, ref] = match;
+  return { repository: `${owner}/${repo}`, workflowPath, ref };
 }
 
 /**
@@ -511,23 +568,31 @@ export function couplingViolations({
     );
   }
 
-  const signers = [...new Set(signerWorkflows(docSource))];
-  if (signers.length === 0) {
-    violations.push(
-      `${RELEASES_DOC} publishes no \`--signer-workflow\`, so its attestation command is not tied to ${workflowPath}: with \`--repo\` alone, an attestation from any workflow in this repository satisfies it. Add \`--signer-workflow\` naming ${workflowPath} to that command, or, if the command has moved, update this check to read it where it is.`,
-    );
-  }
-  for (const signer of signers) {
+  // A value naming MAIN_DEPLOY_WORKFLOW is held by mainDeployViolations.
+  let namesSigner = false;
+  let signerReported = false;
+  for (const signer of new Set(signerWorkflows(docSource))) {
     const named = parseSignerWorkflow(signer);
     if (named.problem !== undefined) {
+      signerReported = true;
       violations.push(
         `${RELEASES_DOC} publishes \`--signer-workflow ${signer}\`, which ${named.problem}, so this check cannot tell which workflow it names.`,
       );
       continue;
     }
-    if (named.workflowPath === workflowPath) continue;
+    if (named.workflowPath === workflowPath) {
+      namesSigner = true;
+      continue;
+    }
+    if (named.workflowPath === MAIN_DEPLOY_WORKFLOW) continue;
+    signerReported = true;
     violations.push(
       `${RELEASES_DOC} publishes \`--signer-workflow ${signer}\`, naming the workflow \`${named.workflowPath}\`, but the workflow that attests the release images is \`${workflowPath}\`. The attestation records the path of the workflow whose run produced it, so the published command reports no matching attestation for an image every release attests.`,
+    );
+  }
+  if (!namesSigner && !signerReported) {
+    violations.push(
+      `${RELEASES_DOC} publishes no \`--signer-workflow\` naming ${workflowPath}, so its attestation command for a release is not tied to ${workflowPath}: with \`--repo\` alone, an attestation from any workflow in this repository satisfies it. Add \`--signer-workflow\` naming ${workflowPath} to that command, or, if the command has moved, update this check to read it where it is.`,
     );
   }
 
@@ -570,6 +635,185 @@ export function couplingViolations({
   return violations;
 }
 
+const runText = (step) => (typeof step?.run === "string" ? step.run : "");
+
+/**
+ * The published exact identity of the manifest of a `main` deploy, or
+ * undefined after reporting why the document names no usable one.
+ */
+function publishedMainDeployIdentity(docSource, workflowPath, violations) {
+  const expected = `${workflowPath}@${MAIN_DEPLOY_REF}`;
+  const published = [...new Set(exactCertificateIdentities(docSource))];
+  if (published.length !== 1) {
+    violations.push(
+      published.length === 0
+        ? `${RELEASES_DOC} publishes no \`--certificate-identity\`, so the manifest of a main deploy has no pinned signer for ${workflowPath} to be held to. Its \`cosign verify-blob\` command names the identity \`.../${expected}\` exactly.`
+        : `${RELEASES_DOC} publishes ${published.length} different \`--certificate-identity\` values: ${list(published)}. The manifest of a main deploy is signed under one identity, \`.../${expected}\`, and this check holds no other signer an exact identity could name.`,
+    );
+    return undefined;
+  }
+  const [identity] = published;
+  const parsed = parseExactIdentity(identity);
+  if (parsed.problem !== undefined) {
+    violations.push(
+      `The published signer identity \`${identity}\` ${parsed.problem}.`,
+    );
+    return undefined;
+  }
+  let usable = true;
+  if (parsed.workflowPath !== workflowPath) {
+    usable = false;
+    violations.push(
+      `The published identity \`${identity}\` pins the workflow \`${parsed.workflowPath}\`, but the workflow that signs the manifest of a main deploy is \`${workflowPath}\`. Fulcio writes the running workflow's own path into the certificate, so the published command refuses every signature it produces.`,
+    );
+  }
+  if (parsed.ref !== MAIN_DEPLOY_REF) {
+    usable = false;
+    violations.push(
+      `The published identity \`${identity}\` pins the ref \`${parsed.ref}\`, but ${workflowPath} signs the manifest only at \`${MAIN_DEPLOY_REF}\`, so the published command refuses every signature it produces.`,
+    );
+  }
+  return usable ? identity : undefined;
+}
+
+/**
+ * Every way a `cosign verify-blob` step of the main-deploy workflow does not run
+ * the published command: a missing or different exact identity, a pattern in
+ * its place, or an issuer other than GitHub Actions'.
+ */
+function verifyBlobViolations({ step, where, file, identity }) {
+  const violations = [];
+  const run = runText(step);
+  const identities = exactCertificateIdentities(run);
+  const { identities: patterns, issuers } = certificateFlags(run);
+  if (identities.length === 0) {
+    violations.push(
+      `${file}: ${where} verifies the manifest without \`--certificate-identity\`, so it does not run the command ${RELEASES_DOC} publishes.`,
+    );
+  }
+  for (const value of new Set(identities)) {
+    if (identity === undefined || value === identity) continue;
+    violations.push(
+      `${file}: ${where} verifies the manifest with \`--certificate-identity ${value}\`, but ${RELEASES_DOC} publishes \`${identity}\`. The workflow would check its own signature against a pin no partner runs.`,
+    );
+  }
+  if (patterns.length > 0) {
+    violations.push(
+      `${file}: ${where} verifies the manifest with \`--certificate-identity-regexp\`, which accepts more than the one workflow and ref that sign it. Pass the published \`--certificate-identity\` alone.`,
+    );
+  }
+  if (issuers.length === 0) {
+    violations.push(
+      `${file}: ${where} verifies the manifest without \`--certificate-oidc-issuer\`: an identity alone is satisfied by a certificate any issuer minted.`,
+    );
+  }
+  for (const issuer of new Set(issuers)) {
+    if (issuer === ACTIONS_OIDC_ISSUER) continue;
+    violations.push(
+      `${file}: ${where} pins \`${issuer}\` as the certificate's issuer, but a signature produced by a GitHub Actions job carries \`${ACTIONS_OIDC_ISSUER}\`.`,
+    );
+  }
+  return violations;
+}
+
+/**
+ * Every way the published commands for the manifest of a `main` deploy and the
+ * workflow that signs it are out of step. Empty means the document publishes
+ * one exact identity naming `workflowPath` at MAIN_DEPLOY_REF and a
+ * `--signer-workflow` naming it, and the workflow signs only from that ref,
+ * verifies each signature with the published identity, and attests the file.
+ * An absent `workflowSource` is a workflow the tree does not hold.
+ */
+export function mainDeployViolations({
+  workflowPath = MAIN_DEPLOY_WORKFLOW,
+  workflowSource,
+  docSource,
+}) {
+  const violations = [];
+  const identity = publishedMainDeployIdentity(
+    docSource,
+    workflowPath,
+    violations,
+  );
+  const attested = signerWorkflows(docSource).some(
+    (signer) => parseSignerWorkflow(signer).workflowPath === workflowPath,
+  );
+  if (!attested) {
+    violations.push(
+      `${RELEASES_DOC} publishes no \`--signer-workflow\` naming ${workflowPath}, so the attestation command for the manifest of a main deploy is satisfied by an attestation from any workflow in this repository.`,
+    );
+  }
+  if (workflowSource === undefined) {
+    violations.push(
+      `${workflowPath} does not exist, so nothing signs the manifest of a main deploy that ${RELEASES_DOC} tells a partner to verify.`,
+    );
+    return violations;
+  }
+
+  const document = parseWorkflow(workflowPath, workflowSource);
+  const branches = [document?.on?.push?.branches ?? []].flat();
+  if (!branches.includes("main")) {
+    violations.push(
+      `${workflowPath} does not trigger on a push to \`main\`, so no run signs under the identity ${RELEASES_DOC} publishes at \`${MAIN_DEPLOY_REF}\`.`,
+    );
+  }
+
+  let signingJobs = 0;
+  for (const [jobId, job] of Object.entries(document?.jobs ?? {})) {
+    const steps = Array.isArray(job?.steps) ? job.steps : [];
+    const where = (step) => `${stepName(step)} in job \`${jobId}\``;
+    for (const step of steps) {
+      if (!COSIGN_VERIFY_BLOB.test(runText(step))) continue;
+      violations.push(
+        ...verifyBlobViolations({
+          step,
+          where: where(step),
+          file: workflowPath,
+          identity,
+        }),
+      );
+    }
+
+    const sign = steps.findIndex((step) =>
+      COSIGN_SIGN_BLOB.test(runText(step)),
+    );
+    if (sign === -1) continue;
+    signingJobs += 1;
+    if (job?.if !== MAIN_REF_GATE && job?.if !== `\${{ ${MAIN_REF_GATE} }}`) {
+      violations.push(
+        `${workflowPath}: job \`${jobId}\` signs the manifest under \`if: ${JSON.stringify(job?.if ?? null)}\` rather than \`if: ${MAIN_REF_GATE}\`, so a run from another ref can sign under an identity the published command refuses.`,
+      );
+    }
+    if (
+      !steps.some(
+        (step, index) => index > sign && COSIGN_VERIFY_BLOB.test(runText(step)),
+      )
+    ) {
+      violations.push(
+        `${workflowPath}: ${where(steps[sign])} signs the manifest, but no \`cosign verify-blob\` step follows it in job \`${jobId}\`, so a signature the published command cannot verify reaches a partner unchecked.`,
+      );
+    }
+    if (
+      !steps.some(
+        (step) =>
+          typeof step?.uses === "string" &&
+          step.uses.startsWith(ATTEST_ACTION) &&
+          step?.with?.["subject-path"] !== undefined,
+      )
+    ) {
+      violations.push(
+        `${workflowPath}: job \`${jobId}\` signs the manifest but attests no \`subject-path\`, so the published \`gh attestation verify\` command finds no attestation for it.`,
+      );
+    }
+  }
+  if (signingJobs === 0) {
+    violations.push(
+      `${workflowPath} runs no \`cosign sign-blob\`, so production deploys a main build with no signed manifest, or the step shape this check reads has moved.`,
+    );
+  }
+  return violations;
+}
+
 /**
  * The workflow that signs the release images, as `{path, source}`, or a
  * `{problem}` when the tree holds other than exactly one.
@@ -599,7 +843,8 @@ export function findSigningWorkflow(workflows) {
  * over a tree of its own.
  */
 export function releaseSigningReport(root) {
-  const signing = findSigningWorkflow(readWorkflows(root));
+  const workflows = readWorkflows(root);
+  const signing = findSigningWorkflow(workflows);
   if (signing.problem !== undefined) return { violations: [signing.problem] };
   const docSource = readFileSync(resolve(root, RELEASES_DOC), "utf8");
   return {
@@ -614,6 +859,12 @@ export function releaseSigningReport(root) {
         signing.path,
         publishedCertificatePair(docSource),
       ),
+      ...mainDeployViolations({
+        workflowSource: workflows.find(
+          ({ path }) => path === MAIN_DEPLOY_WORKFLOW,
+        )?.source,
+        docSource,
+      }),
     ],
     workflowPath: signing.path,
     identity: certificateFlags(signing.source).identities[0],
@@ -629,11 +880,11 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     console.error("Release signing check failed:\n");
     for (const violation of violations) console.error(`  ${violation}`);
     console.error(
-      `\nThe signature and attestation a release produces and the commands ${RELEASES_DOC} publishes for them name one signer, which is the signing workflow's path plus its tag trigger. Change one and change all of them in the same edit.`,
+      `\nThe signature and attestation a release produces and the commands ${RELEASES_DOC} publishes for them name one signer, which is the signing workflow's path plus its tag trigger; the manifest of a main deploy names ${MAIN_DEPLOY_WORKFLOW} at ${MAIN_DEPLOY_REF}. Change one and change all of them in the same edit.`,
     );
     process.exit(1);
   }
   console.log(
-    `Release signing check passed: ${workflowPath} verifies each image it publishes against \`${identity}\`, the identity ${RELEASES_DOC} publishes, and signs, verifies and attests each pushed image before the next build. The attestation command ${RELEASES_DOC} publishes names the same workflow.`,
+    `Release signing check passed: ${workflowPath} verifies each image it publishes against \`${identity}\`, the identity ${RELEASES_DOC} publishes, and signs, verifies and attests each pushed image before the next build. The attestation command ${RELEASES_DOC} publishes names the same workflow. ${MAIN_DEPLOY_WORKFLOW} signs the manifest of a main deploy only at ${MAIN_DEPLOY_REF}, and verifies it against the identity published for it.`,
   );
 }
