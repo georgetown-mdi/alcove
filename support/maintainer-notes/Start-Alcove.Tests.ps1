@@ -16,7 +16,8 @@
 
     Nothing in this file starts a container, reaches a network, or opens a
     picker: the engine is a stub docker, put ahead of the PATH or replaced by a
-    function for the call under test. The POSIX launcher's share of this
+    function for the call under test. One block asks the PC's own docker
+    instead, and stops at the Windows-containers refusal. The POSIX launcher's share of this
     ground -- the same exit codes, driven end to end against a stub engine --
     is covered by scripts/start-alcove-launcher.test.mjs, which runs on Linux
     CI.
@@ -2064,5 +2065,54 @@ Describe 'The launcher flow, driven against a stub engine' {
         $lines = @(([string] $run.Output).TrimEnd() -split '\r?\n' | ForEach-Object { $_.TrimEnd() })
         (@($lines | Select-Object -Last $expected.Count) -join "`n") |
             Should -BeExactly ($expected -join "`n") -Because $shape
+    }
+}
+
+Describe 'The Windows-containers refusal, against this PC''s own engine' {
+    BeforeAll {
+        # Whatever docker the session's PATH reaches, with no stub ahead of it.
+        # The hosted Windows runner's engine serves Windows containers.
+        $engineOs = Invoke-EngineQuiet -Engine 'docker' -EngineArgs @('version', '--format', '{{.Server.Os}}')
+        $script:NoWindowsEngine = ''
+        if (-not $engineOs.Ran) { $script:NoWindowsEngine = 'docker is not installed on this PC' }
+        elseif ($engineOs.ExitCode -ne 0) { $script:NoWindowsEngine = "docker did not answer: $($engineOs.Output)" }
+        elseif ($engineOs.Output.Trim() -ne 'windows') {
+            $script:NoWindowsEngine = "the engine serves $($engineOs.Output.Trim()) containers, not windows"
+        }
+
+        $script:RealEngineRoot = Join-Path $env:TEMP ('alcove-launcher-real-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+        New-Item -ItemType Directory -Path $script:RealEngineRoot -Force | Out-Null
+        $source = Get-Content -Raw -LiteralPath $launcherScript
+        $placeholderLine = "`$AlcoveImageDigest = '@@ALCOVE_IMAGE_DIGEST@@'"
+        $stamped = $source.Replace($placeholderLine, "`$AlcoveImageDigest = '$script:StampedDigest'")
+        if ($stamped -eq $source) { throw 'the launcher no longer carries the digest line this suite stamps' }
+        $script:RealEngineLauncher = Join-Path $script:RealEngineRoot 'Start-Alcove.ps1'
+        [IO.File]::WriteAllText($script:RealEngineLauncher, $stamped)
+    }
+
+    AfterAll {
+        Remove-Item -LiteralPath $script:RealEngineRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    It 'refuses at its preflight and leaves the volumes as they were' {
+        if ($script:NoWindowsEngine) {
+            Set-ItResult -Skipped -Because $script:NoWindowsEngine
+            return
+        }
+
+        $before = Invoke-EngineQuiet -Engine 'docker' -EngineArgs @('volume', 'ls', '--quiet')
+        $run = Start-LauncherChild -Arguments @(
+            '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$script:RealEngineLauncher`"") -TimeoutSeconds 120
+        $after = Invoke-EngineQuiet -Engine 'docker' -EngineArgs @('volume', 'ls', '--quiet')
+
+        $output = [string] $run.Output
+        $shape = "timedout=$($run.TimedOut) exit=$($run.Exit) tail=" +
+            (($output.Substring([Math]::Max(0, $output.Length - 300))) -replace '\s+', ' ')
+        $run.TimedOut | Should -BeFalse -Because $shape
+        $run.Exit | Should -Be 1 -Because $shape
+        $lines = @($output -split '\r?\n' | ForEach-Object { $_.TrimEnd() })
+        ($lines -contains '  FAIL  Docker Desktop is in Windows containers mode.') | Should -BeTrue -Because $shape
+        $before.ExitCode | Should -Be 0 -Because "volume ls said: $($before.Output)"
+        $after.Output | Should -BeExactly $before.Output
     }
 }
