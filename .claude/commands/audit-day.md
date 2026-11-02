@@ -35,13 +35,13 @@ At the first that fails, write `D/summary.md` naming it, and stop.
   The deploy's footer reads `Commit <short sha>`; the smoke records it, and that commit is the one the day tests.
 - **Smoke.** Spawn one `general-purpose` agent with `model: "sonnet"` and the smoke below as its brief; it writes `D/smoke.md`.
 
-The smoke, run under `D/smoke/` with the same CLI and the session names `smoke-a` and `smoke-b`:
+The smoke, run with the same CLI, session `smoke-a` in `D/smoke/a/` and session `smoke-b` in `D/smoke/b/`, so one `results.csv` never overwrites the other:
 
 1. `open https://staging.data-bridge.org/` in `smoke-a`. If no browser starts, run `install-browser` for the one the error names and record it. Record the footer's `Commit` text.
 2. Isolation: `localstorage-set audit-probe 1` in `smoke-a`, then `open` the site in `smoke-b` and `localstorage-get audit-probe` there. Expected: no value.
 3. In `smoke-a`, follow `docs/guides/web-invite.md`, Practice with sample data, its "In a different browser" path: download the partner CSV, create the invitation, and write the invitation link from the page into `D/smoke/link.txt`, recording how it was read and its length.
 4. In `smoke-b`, open the link, `upload` the downloaded partner CSV by absolute path, accept, and start.
-5. Expected: "Exchange complete - 41 matched records" in both sessions. Each session runs in its own directory, `D/smoke/a/` and `D/smoke/b/`, so one `results.csv` never overwrites the other. Record where each download landed.
+5. Expected: "Exchange complete - 41 matched records" in both sessions. Record where each download landed.
 6. Close both sessions, and report every step that went otherwise than written here.
 
 A smoke that read the link only by `eval`, the clipboard, or another command the tester definition forbids is a failed precondition: the testers could not pass the real link.
@@ -83,7 +83,7 @@ Run one trial at a time, or two at once: four testers is the writing-spawn cap o
 
 ## Step 4 -- Problems
 
-- Group the day's confusion lines by screen and by what was unclear.
+- Group the day's confusion lines by screen and by what was unclear, in `D/problems-grouping.md`.
 - A problem is a group seen in two or more trials, or a critical error seen once. One remark in one trial is not a problem and changes nothing.
 - Class each problem by the forms it appeared in: in cold trials and not guided ones, a discoverability finding (the guide has what the screen lacks); in both, a defect; in guided trials only, a guide finding.
 - Disclosure copy is protected: the text telling a party what is sent, matched, received or consented to -- the terms review, the consent statement, the column-use options, the "What you will share" bar, the result and record screens. A problem against it goes to the owner as a finding, stating the confusion and its evidence, and never proposes or makes a wording change.
@@ -96,7 +96,7 @@ Each problem becomes one item on board 9, where end-user behavior and user docs 
 - File it as a draft (`gh project item-create 9`, the same section), then set Status to Decision with `node .claude/scripts/edit-issue.mjs 9 <PVTI_id> --status "Decision"`. The Decision column is the owner's ruling queue, and no session works an item there (`.claude/commands/orchestrate.md`, The work), so the item is a question -- work it as filed, rescope it, or decline it -- and the same section lets a Decision item be filed at once rather than at the follow-ups pass.
 - The body is the PM ruleset's Light tier, with this as its first line:
   `Owner reads first: an audit-day finding; no agent works from this item until the owner rules on it and moves it out of Decision.`
-  It holds the problem in one sentence, its class, the trials, the costliest confusion line of each quoted (the grouping file under `D` holds every line, and the body names it), the tested commit, and the artifacts' host path. A disclosure-copy problem adds: `Disclosure copy: the owner decides any wording change; no agent edits the copy from this item.`
+  It holds the problem in one sentence, its class, the trials, the costliest confusion line of each quoted (`D/problems-grouping.md` holds every line, and the body names it), the tested commit, and the artifacts' host path. A disclosure-copy problem adds: `Disclosure copy: the owner decides any wording change; no agent edits the copy from this item.`
 - Every problem item also carries: `A fix simplifies first: remove or shorten copy, fields and steps before adding any (owner, 2026-11-02: "Agents tend to error the side of being excessively wordy. Whatever we do in response, it should also try to simplify as much as possible.").`
 - Epic: the audit findings epic once the owner ratifies one; until then, none.
 - A pain-point intake the day reproduced is now a problem: add the reproduction to its item, which stays in Decision.

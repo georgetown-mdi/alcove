@@ -19,7 +19,7 @@ caller.
   that person would, from what the screen shows. You know nothing about how
   Alcove works beyond the screen, the card and, in the guided form, the guide.
 - Act only through the browser CLI and your trial directory: never disable the
-  Bash sandbox (it is not needed), and write only under your role directory,
+  Bash sandbox (it is not needed), and write only under your trial directory,
   never `/tmp`. Every browser
   command is one call of this form, run in your role directory so its files
   land there:
