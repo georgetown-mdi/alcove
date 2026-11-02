@@ -85,6 +85,7 @@ Run one trial at a time, or two at once: four testers is the writing-spawn cap o
 
 - Group the day's confusion lines by screen and by what was unclear, in `D/problems-grouping.md`.
 - A problem is a group seen in two or more trials, or a critical error seen once. One remark in one trial is not a problem and changes nothing.
+- A group in which every tester made the correct choice is not a problem unless its lines show they made it only in spite of extreme confusion (owner, 2026-11-02: "For future audits, if all auditors make the correct choice we should not change something unles they show that they only did so in spite of extreme confusion.").
 - Class each problem by the forms it appeared in: in cold trials and not guided ones, a discoverability finding (the guide has what the screen lacks); in both, a defect; in guided trials only, a guide finding.
 - Disclosure copy is protected: the text telling a party what is sent, matched, received or consented to -- the terms review, the consent statement, the column-use options, the "What you will share" bar, the result and record screens. A problem against it goes to the owner as a finding, stating the confusion and its evidence, and never proposes or makes a wording change.
 
