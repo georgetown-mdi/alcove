@@ -411,6 +411,7 @@ export {
   KEY_FILE_MIGRATIONS,
   KEY_FILE_SHARED_SECRET_FORMAT_MESSAGE,
   KeyFileSchema,
+  keyFileRefusedAsNewer,
   keyFileUnreadFieldNames,
   rotatedKeyExpires,
   serializeKeyFile,

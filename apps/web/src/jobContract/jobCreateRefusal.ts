@@ -36,6 +36,10 @@ export const MOUNTED_KEY_FILE_ABSENT_REFUSAL = "mounted-key-file-absent";
  * `.alcove.key` beside it cannot be read as a key file. */
 export const MOUNTED_KEY_FILE_INVALID_REFUSAL = "mounted-key-file-invalid";
 
+/** The token for a run of the opened configuration refused because a newer
+ * Alcove wrote the `.alcove.key` beside it. */
+export const MOUNTED_KEY_FILE_NEWER_REFUSAL = "mounted-key-file-newer";
+
 /** The token for a signed run of the opened configuration refused because
  * that configuration states signing paths of its own and the operator did not
  * convert it to the console's. */
@@ -88,6 +92,7 @@ export type JobCreateRefusalReason =
   | typeof SFTP_URL_DIRECTORY_REFUSAL
   | typeof MOUNTED_KEY_FILE_ABSENT_REFUSAL
   | typeof MOUNTED_KEY_FILE_INVALID_REFUSAL
+  | typeof MOUNTED_KEY_FILE_NEWER_REFUSAL
   | typeof MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL
   | typeof MOUNTED_SIGNING_IDENTITY_MISMATCH_REFUSAL
   | typeof OPENED_CONFIGURATION_NOT_RUNNABLE_REFUSAL
@@ -109,6 +114,7 @@ export function isJobCreateRefusalReason(
     value === SFTP_URL_DIRECTORY_REFUSAL ||
     value === MOUNTED_KEY_FILE_ABSENT_REFUSAL ||
     value === MOUNTED_KEY_FILE_INVALID_REFUSAL ||
+    value === MOUNTED_KEY_FILE_NEWER_REFUSAL ||
     value === MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL ||
     value === MOUNTED_SIGNING_IDENTITY_MISMATCH_REFUSAL ||
     value === OPENED_CONFIGURATION_NOT_RUNNABLE_REFUSAL ||

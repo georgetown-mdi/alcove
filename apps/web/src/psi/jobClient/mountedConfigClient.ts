@@ -44,8 +44,8 @@ export type MountedConfigurationAnswer =
        * here. */
       iceProvisionNamed?: true;
       /** The `.alcove.key` beside the configuration would refuse its run: none
-       * is there, or the file is not a key file. */
-      keyFileFault?: "absent" | "invalid";
+       * is there, the file is not a key file, or a newer Alcove wrote it. */
+      keyFileFault?: "absent" | "invalid" | "newer";
       /** The identity file a webrtc configuration run in place signs with. */
       inPlaceSigningIdentity?: InPlaceSigningIdentity;
     }
@@ -186,7 +186,8 @@ export async function fetchMountedConfiguration(
       (iceProvisionNamed !== undefined && iceProvisionNamed !== true) ||
       (keyFileFault !== undefined &&
         keyFileFault !== "absent" &&
-        keyFileFault !== "invalid")
+        keyFileFault !== "invalid" &&
+        keyFileFault !== "newer")
     )
       return { kind: "unavailable" };
     return {

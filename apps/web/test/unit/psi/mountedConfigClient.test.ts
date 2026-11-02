@@ -86,7 +86,7 @@ describe("a definitive answer", () => {
     expect(answer.keyFileFault).toBe("absent");
   });
 
-  test("a key file fault outside the two it can be is not read", async () => {
+  test("a key file fault outside the three it can be is not read", async () => {
     const { fetchImpl } = answering(200, {
       configured: true,
       present: true,

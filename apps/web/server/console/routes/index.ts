@@ -2,6 +2,7 @@ import {
   COORDINATION_SERVER_CHANGED_REFUSAL,
   MOUNTED_KEY_FILE_ABSENT_REFUSAL,
   MOUNTED_KEY_FILE_INVALID_REFUSAL,
+  MOUNTED_KEY_FILE_NEWER_REFUSAL,
   MOUNTED_SIGNING_IDENTITY_MISMATCH_REFUSAL,
   MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL,
   OPENED_CONFIGURATION_NOT_RUNNABLE_REFUSAL,
@@ -46,6 +47,14 @@ import { jobCreateIntentSchema } from "@jobContract/intentSchemas";
 
 import { defineJobRoute } from "../jobRoute";
 
+import type { MountedKeyFileFault } from "@jobs/mountedKeyFile";
+
+const MOUNTED_KEY_FILE_REFUSALS: Record<MountedKeyFileFault, string> = {
+  absent: MOUNTED_KEY_FILE_ABSENT_REFUSAL,
+  invalid: MOUNTED_KEY_FILE_INVALID_REFUSAL,
+  newer: MOUNTED_KEY_FILE_NEWER_REFUSAL,
+};
+
 /**
  * `POST /api/jobs` -- create and start an exchange job from a typed intent.
  *
@@ -88,8 +97,9 @@ import { defineJobRoute } from "../jobRoute";
  * whose saved remote directory is `/` or has a `.` or `..` segment answers
  * `{ "reason": "sftp-url-directory" }`, and a
  * run of the opened configuration refused over the `.alcove.key` beside it
- * answers `{ "reason": "mounted-key-file-absent" }` or
- * `{ "reason": "mounted-key-file-invalid" }`, and a signed run of it naming
+ * answers `{ "reason": "mounted-key-file-absent" }`,
+ * `{ "reason": "mounted-key-file-invalid" }`, or
+ * `{ "reason": "mounted-key-file-newer" }`, and a signed run of it naming
  * unconverted signing paths answers
  * `{ "reason": "mounted-signing-paths-unconverted" }`, a webrtc run of it
  * whose working folder `alcove.yaml` is no longer one the console runs in
@@ -152,16 +162,12 @@ export const route = defineJobRoute({
             { reason: SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL },
             400,
           );
-        // The key file beside the opened configuration is missing or is not
-        // a key file. The token says which, and nothing read from the file.
+        // The key file beside the opened configuration is missing, is not a
+        // key file, or a newer Alcove wrote it. The token says which, and
+        // nothing read from the file.
         if (error instanceof MountedKeyFileRefusedError)
           return jobJsonResponse(
-            {
-              reason:
-                error.fault === "absent"
-                  ? MOUNTED_KEY_FILE_ABSENT_REFUSAL
-                  : MOUNTED_KEY_FILE_INVALID_REFUSAL,
-            },
+            { reason: MOUNTED_KEY_FILE_REFUSALS[error.fault] },
             400,
           );
         // A signed run of the opened configuration whose own signing paths

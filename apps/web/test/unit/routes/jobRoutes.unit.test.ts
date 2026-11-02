@@ -2997,6 +2997,11 @@ describe("POST /api/jobs and the key file beside the opened configuration", () =
   test.each([
     ["absent", undefined, "mounted-key-file-absent"],
     ["not a key file", "{}", "mounted-key-file-invalid"],
+    [
+      "from a newer Alcove",
+      JSON.stringify({ version: 2, sharedSecret: "A".repeat(43) }),
+      "mounted-key-file-newer",
+    ],
   ] as const)(
     "a key file that is %s is a 400 naming the refusal",
     async (_label, keyFile, reason) => {
