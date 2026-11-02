@@ -179,7 +179,7 @@ The rows it adds to [PRIVACY.md](../../PRIVACY.md#what-supporting-services-can-o
 
 ### Who runs it, and what it costs
 
-- **The project, for the hosted application**, on the relay instance beside coturn and the broker: a Node process the size of the broker, about 50 to 60 MB ([webrtc-relay-deployment.md](webrtc-relay-deployment.md#does-the-coordination-server-leave-the-web-apps-deployment)), on a host with 412 MB and no headroom; the instance size is the first thing the deployment revisits.
+- **The project, for the hosted application**, on the relay instance beside coturn and the broker: a Node process the size of the broker, about 50 to 60 MB ([webrtc-relay-deployment.md](webrtc-relay-deployment.md#does-the-coordination-server-leave-the-web-apps-deployment)), on a host with no headroom; the instance size is the first thing the deployment revisits.
   Egress is the same bytes the TURN relay forwards, so the cost class is TURN's.
 - **A party**, from a reference deployment in `infra/relay/` beside coturn, under the same registrar, journald retention and verification timer; a partner's governance meets it as it meets a self-hosted TURN relay, with the one added attestation that it forwards AEAD envelopes it cannot open.
 - **No managed vendor**: the hello, the pairing and the per-exchange proof are Alcove's, so no commercial relay carries this path.

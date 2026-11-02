@@ -943,8 +943,9 @@ stops and disables it where that is unset.
   restarts it on failure. On the project's host, the relay's
   resident set peaked at about 81 MB and its cgroup at about 94 MiB through
   `verify.sh` on 2026-10-19. The resident set falls once the relay is idle,
-  because the kernel swaps part of it, so the peak is the figure. In the development container
-  its resident set peaked at 77 MB on one pairing at its full byte rate
+  because the kernel swaps part of it, so the peak is the figure. In the
+  development container its resident set peaked at 77 MB on one pairing at
+  its full byte rate
   ([web-websocket-transport.md, S3](../../docs/notes/web-websocket-transport.md#the-spikes)).
 - **Restarts.** Every `install.sh` run on a host that names the relay
   restarts it, the host pull's among them, and a certificate change restarts
