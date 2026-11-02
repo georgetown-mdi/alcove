@@ -66,6 +66,17 @@ export type RelayRegistrarUnreachableFailure =
     };
 
 /**
+ * A partner hello nobody had answered, which a file-sync run ignored at
+ * start-up as older than its unanswered-hello window.
+ */
+export interface IgnoredUnansweredHello {
+  /** The youngest such hello's age at start-up. */
+  readonly ageMs: number;
+  /** The window that hello was older than. */
+  readonly windowMs: number;
+}
+
+/**
  * A failure whose cause the catalog names. Members hold facts only: a channel,
  * a path, an errno code, a duration. A path is composed into the sentence raw
  * and escaped where the message is shown, like every other error fragment.
@@ -84,6 +95,12 @@ export type FailureCause =
        * the same name. Unset otherwise.
        */
       readonly sharedName?: true;
+      /**
+       * Set when this run ignored a partner hello nobody had answered at
+       * start-up: if that was the partner's run, its hello was ignored and
+       * neither side met the other. Unset otherwise.
+       */
+      readonly ignoredHello?: IgnoredUnansweredHello;
     }
   | {
       /** The shared folder named for a file-drop exchange is not usable. */
@@ -173,21 +190,43 @@ function relayRegistrarFailureFromUntrusted({
   }
 }
 
+function ignoredHelloFromUntrusted(
+  value: unknown,
+): IgnoredUnansweredHello | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    return undefined;
+  const { ageMs, windowMs } = value as Record<string, unknown>;
+  return isWholeNumber(ageMs) && isWholeNumber(windowMs)
+    ? { ageMs, windowMs }
+    : undefined;
+}
+
 const FROM_UNTRUSTED: {
   readonly [K in FailureCauseKind]: (
     fields: Record<string, unknown>,
   ) => FailureCauseOfKind<K> | undefined;
 } = {
-  "partner-never-arrived": ({ channel, waitedMs, sharedName }) => {
+  "partner-never-arrived": ({
+    channel,
+    waitedMs,
+    sharedName,
+    ignoredHello,
+  }) => {
     if (channel !== undefined && !oneOf(PARTNER_MEETING_CHANNELS, channel))
       return undefined;
     if (waitedMs !== undefined && !isWholeNumber(waitedMs)) return undefined;
     if (sharedName !== undefined && sharedName !== true) return undefined;
+    const hello =
+      ignoredHello === undefined
+        ? undefined
+        : ignoredHelloFromUntrusted(ignoredHello);
+    if (ignoredHello !== undefined && hello === undefined) return undefined;
     return {
       kind: "partner-never-arrived",
       ...(channel !== undefined ? { channel } : {}),
       ...(waitedMs !== undefined ? { waitedMs: waitedMs as number } : {}),
       ...(sharedName === true ? { sharedName } : {}),
+      ...(hello !== undefined ? { ignoredHello: hello } : {}),
     };
   },
   "folder-missing": ({ path, code }) =>
@@ -241,6 +280,16 @@ export function formatWaitDuration(ms: number): string {
         ? [ms / 60_000, "minute"]
         : [ms / 1000, "second"];
   return `${formatCount(count)} ${unit}${count === 1 ? "" : "s"}`;
+}
+
+/**
+ * A file's age as {@link formatWaitDuration} states it, floored to whole
+ * minutes from a minute up and to whole seconds below. A negative age, a
+ * modification time ahead of this host's clock, states no age at all.
+ */
+export function formatFileAge(ms: number): string {
+  const unit = ms >= 60_000 ? 60_000 : 1000;
+  return formatWaitDuration(Math.max(0, Math.floor(ms / unit) * unit));
 }
 
 const MEETING_PLACE: Record<PartnerMeetingChannel | "unknown", string> = {
@@ -297,16 +346,22 @@ export function relayRegistrarUnreachableRemedy({
 const SENTENCES: {
   readonly [K in FailureCauseKind]: (cause: FailureCauseOfKind<K>) => string;
 } = {
-  "partner-never-arrived": ({ channel, waitedMs, sharedName }) =>
+  "partner-never-arrived": ({ channel, waitedMs, sharedName, ignoredHello }) =>
     `Your partner did not ${MEETING_PLACE[channel ?? "unknown"]} ` +
     (waitedMs === undefined
       ? "in the time this run waited"
       : `within ${formatWaitDuration(waitedMs)}`) +
     (sharedName !== true
-      ? "."
+      ? ""
       : channel === "filedrop" || channel === "sftp"
-        ? ", and a file with this side's name appeared in it."
-        : ", and a file with this side's name appeared during the wait."),
+        ? ", and a file with this side's name appeared in it"
+        : ", and a file with this side's name appeared during the wait") +
+    (ignoredHello === undefined
+      ? ""
+      : "; at start-up, this run ignored a partner hello file nobody had " +
+        `answered for ${formatFileAge(ignoredHello.ageMs)}, past the limit ` +
+        `of ${formatWaitDuration(ignoredHello.windowMs)}`) +
+    ".",
   "folder-missing": ({ path, code }) =>
     code === "ENOENT"
       ? `The shared folder ${path} does not exist (ENOENT).`

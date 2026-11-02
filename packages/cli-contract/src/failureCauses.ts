@@ -44,7 +44,7 @@ function relayRegistrarFailureFields(
 /**
  * The stream field for each cause kind: the kind's facts copied one by one, so
  * nothing beyond them widens the line, a path or host escaped as the stream's
- * other free text is, and a wait floored to a whole count. Total over
+ * other free text is, and a wait or age floored to a whole count. Total over
  * `FailureCauseKind`, so a cause core adds fails to compile here until it has
  * a row.
  */
@@ -53,11 +53,24 @@ export const FAILURE_CAUSE_STREAM_FIELDS: {
     cause: FailureCauseOfKind<K>,
   ) => FailureCauseOfKind<K>;
 } = {
-  "partner-never-arrived": ({ channel, waitedMs, sharedName }) => ({
+  "partner-never-arrived": ({
+    channel,
+    waitedMs,
+    sharedName,
+    ignoredHello,
+  }) => ({
     kind: "partner-never-arrived",
     ...(channel !== undefined ? { channel } : {}),
     ...(waitedMs !== undefined ? { waitedMs: toStreamCount(waitedMs) } : {}),
     ...(sharedName === true ? { sharedName } : {}),
+    ...(ignoredHello !== undefined
+      ? {
+          ignoredHello: {
+            ageMs: toStreamCount(ignoredHello.ageMs),
+            windowMs: toStreamCount(ignoredHello.windowMs),
+          },
+        }
+      : {}),
   }),
   "folder-missing": ({ path, code }) => ({
     kind: "folder-missing",

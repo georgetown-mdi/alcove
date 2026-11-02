@@ -51,6 +51,7 @@ export type {
   FailureCauseKind,
   FailureCauseOfKind,
   FolderMissingCode,
+  IgnoredUnansweredHello,
   RelayRegistrarUnreachableFailure,
 } from "./failureCause";
 export {

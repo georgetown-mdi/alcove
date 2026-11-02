@@ -335,16 +335,56 @@ describe("a partner hello nobody answered", () => {
       peerTimeoutMs: 100,
     });
     expect(isPeerWaitTimeout(err)).toBe(true);
-    expect(failureCauseOf(err)?.kind).toBe("partner-never-arrived");
+    const cause = failureCauseOf(err);
+    expect(cause).toMatchObject({
+      kind: "partner-never-arrived",
+      channel: "filedrop",
+      ignoredHello: { windowMs: 100 },
+    });
+    const ageMs =
+      cause?.kind === "partner-never-arrived"
+        ? cause.ignoredHello?.ageMs
+        : undefined;
+    expect(Number.isSafeInteger(ageMs)).toBe(true);
+    expect(ageMs).toBeGreaterThanOrEqual(3 * 3_600_000);
+    expect(ageMs).toBeLessThan(3 * 3_600_000 + 60_000);
     const rendered = sanitizeErrorForDisplay(err);
     expect(rendered).toContain(
-      "At start-up this run ignored a partner hello nobody had answered for " +
-        "3 hours, longer than 0.1 seconds (unanswered_hello_window_ms). " +
-        "If that was your partner's run, raise unanswered_hello_window_ms or " +
-        "give both sides the same peer timeout. The ignored file: " +
-        hello("p1"),
+      " within 0.1 seconds; at start-up, this run ignored a partner hello " +
+        "file nobody had answered for 3 hours, past the limit of 0.1 " +
+        `seconds. The ignored partner hello file: ${hello("p1")}`,
     );
     expect(files.has(`${DIR}/${hello("p1")}`)).toBe(true);
+  });
+
+  test("beside a shared name, the timeout states both and names each file", async () => {
+    const old = hello("p1");
+    const files = new Map<string, Buffer>([[`${DIR}/${old}`, HELLO_BODY]]);
+    const modifyTimes = new Map([[`${DIR}/${old}`, Date.now() - 3_600_000]]);
+    const options = { peerId: "site-%K", peerTimeoutMs: 300 };
+    const a = await openParty(files, options, modifyTimes);
+    const b = await openParty(files, options, modifyTimes);
+    const errors = await Promise.all([
+      rejectionOf(a.synchronize()),
+      rejectionOf(b.synchronize()),
+    ]);
+    await Promise.all([a.close(), b.close()]);
+    for (const err of errors) {
+      expect(failureCauseOf(err)).toMatchObject({
+        kind: "partner-never-arrived",
+        sharedName: true,
+        ignoredHello: { windowMs: 300 },
+      });
+      const lines = new RegExp(
+        "appeared in it; at start-up, this run ignored a partner hello " +
+          "file nobody had answered for 1 hour, past the limit of 0\\.3 " +
+          "seconds\\. This run took the file with this side's name for its " +
+          "own leftover and ignored it\\. The ignored file: site-[0-9a-f]+-" +
+          `hello-\\d+\\.json\\nThe ignored partner hello file: ${old}$`,
+      );
+      expect((err as Error).message).toMatch(lines);
+      expect(sanitizeErrorForDisplay(err)).toMatch(lines);
+    }
   });
 
   test("is met as a live partner while younger than the window", async () => {
@@ -354,6 +394,7 @@ describe("a partner hello nobody answered", () => {
     });
     // Taken for a live partner: this run acks it and waits for its answer.
     expect(sanitizeErrorForDisplay(err)).not.toContain("ignored");
+    expect(failureCauseOf(err)).not.toHaveProperty("ignoredHello");
   });
 
   test("an infinite window never ignores it", async () => {
@@ -362,6 +403,7 @@ describe("a partner hello nobody answered", () => {
       unansweredHelloWindowMs: "infinite",
     });
     expect(sanitizeErrorForDisplay(err)).not.toContain("ignored");
+    expect(failureCauseOf(err)).not.toHaveProperty("ignoredHello");
   });
 });
 

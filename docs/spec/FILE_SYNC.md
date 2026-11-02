@@ -405,15 +405,13 @@ Everything else reaches the guard as before: a lock, a `joining` sentinel, a bar
 
 **The log line.** The scan logs one line: how many files it ignored, the directories, the age of the youngest, and how many of them were unanswered partner hellos past the window.
 
-**The peer-timeout message.** A run that ignored an unanswered partner hello and then reaches its peer timeout (exit 69) names that hello, its age and the window, and says that raising `unanswered_hello_window_ms` or giving both sides the same peer timeout fixes it.
+**The peer-timeout message.** A run that ignored an unanswered partner hello and then reaches its peer timeout (exit 69) names that hello, its age and the window, and says that raising `unanswered_hello_window_ms` or giving both sides the same peer timeout fixes it. Its failure cause holds the age and the window as the `ignoredHello` fact ([CLI_EVENTS.md](CLI_EVENTS.md#the-failure-cause)), so the console's timeout screen states them with its own remedy; the hello's name is in the CLI's message only.
 
 **A reused name is refused at the reusing side's start-up.** Ignoring by name holds only while each run writes new names. A run whose start-up listing holds an ack answering the hello name it would write refuses entry (exit 64), naming that ack and saying `peer_id` needs fields. It writes nothing, so its partner never sees a hello it could meet and waits out its peer timeout. An ignored name stays ignored for the whole run, whatever its listed time or size later shows, so a partner hello written again under it is never met.
 
 A `peer_id` with no field writes the same hello name on every run, so a scheduled run into one retain folder sets a `peer_id` with fields, such as `site-%Y%m%d%H%M%S` ([Per-run peer id](#per-run-peer-id)), rather than a fixed id.
 
 **Limit -- the age relies on the server's time stamp.** The listed `modifyTime` is whatever the server's file system holds. Measured on the SFTP harness with both backends: SFTP reports whole seconds, and the stamp on a file the other party wrote lay between that party's times before and after its write; a stamp set back on the server's file is listed set back. A server clock behind this host's, or a transfer or sync tool that keeps a source file's time, therefore makes a live partner's hello look older than it is, and the run may ignore it and wait out its peer timeout, whose message names the file. The harness shares one clock, so it cannot produce skew itself. No server-clock reference is taken. Raising the window, or setting it to `infinite`, is the remedy.
-
-**Limit -- the peer-timeout message is the CLI's only.** The failure cause stays a plain `partner-never-arrived` with no added fact, so the console and the event stream show the plain timeout.
 
 **Limit -- an ack moved out of the outbound directory.** In a split configuration a partner's ack counts only while it is listed. A transfer that moves files out of the outbound directory leaves this party's hello unanswered, so the window decides for it.
 

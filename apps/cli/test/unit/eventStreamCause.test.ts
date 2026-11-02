@@ -51,6 +51,22 @@ test("a no-show with a file of this side's name emits the shared-name fact and t
   expect(failureCauseFromUntrusted(event.cause)).toEqual(cause);
 });
 
+test("a no-show after an ignored partner hello emits the fact and the window remedy", () => {
+  const cause: FailureCause = {
+    kind: "partner-never-arrived",
+    channel: "filedrop",
+    waitedMs: 90_000,
+    ignoredHello: { ageMs: 7_200_000, windowMs: 90_000 },
+  };
+  const event = buildErrorEvent(causeError(cause), "prepare");
+  expect(event.cause).toEqual(cause);
+  expect(event.message).toContain("nobody had answered for 2 hours");
+  expect(event.message).toContain(
+    "unanswered_hello_window_ms (or --unanswered-hello-window)",
+  );
+  expect(failureCauseFromUntrusted(event.cause)).toEqual(cause);
+});
+
 test("the cause is read through a wrap, as the remedy is", () => {
   const cause: FailureCause = {
     kind: "folder-missing",
@@ -160,6 +176,11 @@ test("every emitted cause passes the allowlist a consumer checks it against", ()
     { kind: "partner-never-arrived", channel: "sftp", waitedMs: 60_000 },
     { kind: "partner-never-arrived", channel: "webrtc" },
     { kind: "partner-never-arrived", channel: "filedrop", sharedName: true },
+    {
+      kind: "partner-never-arrived",
+      channel: "filedrop",
+      ignoredHello: { ageMs: 7_200_000, windowMs: 90_000 },
+    },
     { kind: "folder-missing", path: "/data", code: "ENOENT" },
     { kind: "folder-missing", path: "/data", code: "ENOTDIR" },
     {

@@ -14,6 +14,7 @@ import {
   operatorSuppliedText,
   redactAndRenderOperatorSuppliedText,
   relayRegistrarUnreachableRemedy,
+  UNANSWERED_HELLO_WINDOW_KEY,
   type FailureCause,
   type FailureCauseKind,
   type FailureCauseOfKind,
@@ -60,11 +61,24 @@ const SHARED_PEER_ID_REMEDY =
   "different peer_id on one side, changing its text rather than only its " +
   "% fields, then run again.";
 
+const IGNORED_HELLO_REMEDY =
+  "If the ignored hello was your partner's run, raise " +
+  `${UNANSWERED_HELLO_WINDOW_KEY} (or --unanswered-hello-window), or give ` +
+  "both sides the same peer_timeout_ms, then run again.";
+
 const partnerNeverArrived = (
-  { channel, sharedName }: FailureCauseOfKind<"partner-never-arrived">,
+  {
+    channel,
+    sharedName,
+    ignoredHello,
+  }: FailureCauseOfKind<"partner-never-arrived">,
   { arrivalWait, fromKeyFile }: RemedyContext,
 ): string => {
-  if (sharedName === true) return SHARED_PEER_ID_REMEDY;
+  if (sharedName === true)
+    return ignoredHello === undefined
+      ? SHARED_PEER_ID_REMEDY
+      : `${SHARED_PEER_ID_REMEDY} ${IGNORED_HELLO_REMEDY}`;
+  if (ignoredHello !== undefined) return IGNORED_HELLO_REMEDY;
   if (arrivalWait === "online-invitation")
     return (
       "Run alcove invite again and have your partner accept the new " +

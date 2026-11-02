@@ -26,6 +26,7 @@ import {
   DEFAULT_MAX_DISPLAY_LENGTH,
 } from "../utils/sanitizeForDisplay";
 import {
+  keepFirstPartyLineBreaks,
   redactAndSanitizeForDisplay,
   redactPrivateKeyMaterial,
 } from "../utils/sanitizeErrorForDisplay";
@@ -48,6 +49,7 @@ import {
 import {
   failureCauseError,
   failureCauseSentence,
+  formatFileAge,
   formatWaitDuration,
   markFailureCause,
   type FailureCause,
@@ -754,20 +756,11 @@ interface EntryScan {
     { name: string; ageMs: number; windowMs: number } | undefined;
 }
 
-// A file age for an operator message, floored to whole minutes from a minute
-// up and to whole seconds below. A modification time ahead of this host's
-// clock reads as no age at all.
-const formatFileAge = (ms: number): string => {
-  const unit = ms >= 60_000 ? 60_000 : 1000;
-  return formatWaitDuration(Math.max(0, Math.floor(ms / unit) * unit));
-};
-
 // With `ignoredOwnPatternHello`, the cause states the shared name and the
 // catalog sentence is followed by the hello the wait skipped as this party's
-// own; each app's remedy then names its own way to change the name. With
-// `unansweredHello`, the sentence is followed by the partner hello the entry
-// scan ignored as unanswered, its age, and the two ways to keep a waiting
-// partner's hello from being ignored.
+// own. With `unansweredHello`, the cause states the partner hello the entry
+// scan ignored and its age, and the sentence is followed by that hello's name.
+// Each app's remedy then names its own way to change the name or the window.
 const partnerNeverArrived = (
   deps: RendezvousDeps,
   ignoredOwnPatternHello: string | undefined,
@@ -778,26 +771,37 @@ const partnerNeverArrived = (
     channel: deps.channel(),
     waitedMs: deps.arrivalBudgetMs(),
     ...(ignoredOwnPatternHello !== undefined ? { sharedName: true } : {}),
+    ...(unansweredHello !== undefined
+      ? {
+          ignoredHello: {
+            ageMs: Math.max(0, Math.floor(unansweredHello.ageMs)),
+            windowMs: unansweredHello.windowMs,
+          },
+        }
+      : {}),
   };
   if (ignoredOwnPatternHello === undefined && unansweredHello === undefined)
     return failureCauseError(cause);
   const ownPattern =
     ignoredOwnPatternHello === undefined
       ? ""
-      : " This run took it for its own leftover and ignored it. The ignored " +
-        `file: ${redactPrivateKeyMaterial(ignoredOwnPatternHello)}`;
+      : (unansweredHello === undefined
+          ? " This run took it for its own leftover and ignored it."
+          : " This run took the file with this side's name for its own " +
+            "leftover and ignored it.") +
+        ` The ignored file: ${redactPrivateKeyMaterial(ignoredOwnPatternHello)}`;
+  const first = `${failureCauseSentence(cause)}${ownPattern}`;
+  if (unansweredHello === undefined)
+    return markFailureCause(new Error(first), cause);
   const unanswered =
-    unansweredHello === undefined
-      ? ""
-      : " At start-up this run ignored a partner hello nobody had answered " +
-        `for ${formatFileAge(unansweredHello.ageMs)}, longer than ` +
-        `${formatWaitDuration(unansweredHello.windowMs)} ` +
-        `(${UNANSWERED_HELLO_WINDOW_KEY}). If that was your partner's run, ` +
-        `raise ${UNANSWERED_HELLO_WINDOW_KEY} or give both sides the same ` +
-        "peer timeout. The ignored file: " +
-        redactPrivateKeyMaterial(unansweredHello.name);
+    "The ignored partner hello file: " +
+    redactPrivateKeyMaterial(unansweredHello.name);
+  if (ignoredOwnPatternHello === undefined)
+    return markFailureCause(new Error(`${first} ${unanswered}`), cause);
+  // Each ignored file's name ends a line of its own.
+  const lines = [first, unanswered];
   return markFailureCause(
-    new Error(`${failureCauseSentence(cause)}${ownPattern}${unanswered}`),
+    keepFirstPartyLineBreaks(new Error(lines.join("\n")), lines),
     cause,
   );
 };
