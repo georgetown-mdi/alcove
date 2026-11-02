@@ -91,6 +91,25 @@ describe("a one-off command over the working folder", () => {
     expect(shellArguments(line)).toContain(`type=bind,src=${path},dst=/work`);
   });
 
+  test('a pasted path keeps its ! under sh and an interactive bash when each is written as "\\!"', () => {
+    const path = "/home/pat/a!b!";
+    const lineFor = (pasted: string) =>
+      COMMANDS.update.runCommand.replaceAll(WORKING_FOLDER_PLACEHOLDER, pasted);
+    const interactiveBash = (line: string) =>
+      execFileSync("bash", ["--norc", "-i"], {
+        input: `printf '%s\\n' ${line}\n`,
+        env: { ...process.env, HISTFILE: "/dev/null" },
+        encoding: "utf8",
+        stdio: ["pipe", "pipe", "ignore"],
+      }).split("\n");
+    const line = lineFor(path.replaceAll("!", '"\\!"'));
+    const mount = `type=bind,src=${path},dst=/work`;
+    expect(PASTED_TEXT_ESCAPING_NOTE).toContain('write each ! as "\\!"');
+    expect(shellArguments(line)).toContain(mount);
+    expect(interactiveBash(line)).toContain(mount);
+    expect(interactiveBash(lineFor(path))).not.toContain(mount);
+  });
+
   test("names no placeholder the quoting does not know", () => {
     const known = new Set([
       ...WORKING_FOLDER_PATH_PLACEHOLDERS,

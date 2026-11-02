@@ -87,7 +87,10 @@ describe("the scheduled-run panels' notes", () => {
   test("name what a pasted path needs escaped, in one sentence each", () => {
     expect(PASTED_TEXT_ESCAPING_NOTE).toBe(
       'In a Linux or macOS command, put a \\ before each $, `, \\, or " in ' +
-        "a path or name you paste between double quotes.",
+        'a path or name you paste between double quotes, and write each ! as "\\!". ' +
+        "In PowerShell, put a ` before each $, `, \u201C, \u201D, or \u201E " +
+        'instead; a " cannot be pasted there. A folder in a --mount option ' +
+        'cannot hold a , or ".',
     );
     expect(CRON_PERCENT_NOTE).toBe(
       "In a cron line, also write each % in a path as \\%.",

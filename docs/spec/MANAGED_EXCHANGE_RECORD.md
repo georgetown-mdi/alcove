@@ -1393,12 +1393,14 @@ limit is that such a character can still appear in the mount text the
 operator copies.
 
 The note on a path or name pasted between double quotes
-(`PASTED_TEXT_ESCAPING_NOTE`) covers a Linux or macOS shell only, and has two
-limits. No note says what a path or name needs inside a PowerShell line's
-double quotes. And a folder pasted into a `--mount` source still cannot hold a
-`,` or a `"` once it is escaped for the shell, since `--mount` reads its value
-as CSV, the reason `unmountableBindPaths` refuses such a path; the note does
-not say so.
+(`PASTED_TEXT_ESCAPING_NOTE`) covers a Linux or macOS shell and PowerShell.
+It has each exclamation mark written as `"\!"`, outside the double quotes,
+since inside them bash keeps the backslash before one and zsh drops it. It says a folder pasted into
+a `--mount` source cannot hold a `,` or a `"`, since `--mount` reads its value
+as CSV, the reason `unmountableBindPaths` refuses such a path. Its limit is a
+`"` in a name pasted into a PowerShell line: Windows PowerShell 5.1 does not
+pass one inside an argument to `docker` intact, so the note says it cannot be
+pasted there rather than how to escape it.
 
 ### Re-supplied each run
 
