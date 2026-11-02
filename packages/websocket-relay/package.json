@@ -8,6 +8,7 @@
   "type": "module",
   "exports": {
     ".": "./src/relay.ts",
+    "./controlFrames": "./src/controlFrames.ts",
     "./faultLatch": "./src/faultLatch.ts",
     "./forwarding": "./src/forwarding.ts",
     "./keyTable": "./src/keyTable.ts",

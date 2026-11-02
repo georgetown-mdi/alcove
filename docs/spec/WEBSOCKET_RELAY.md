@@ -107,6 +107,7 @@ The quotas key on the exchange's relay key, not on a client's address: behind th
 
 - **A party's ping.** The relay answers it with a pong and forwards nothing, counting the answer toward the ping sender's queue like a message and answering only when the answer fits under the high mark ([Forwarding](#forwarding)); the library's own automatic answer is off.
 - **The relay's ping.** The relay pings every socket it holds every 30 seconds (`RELAY_PING_INTERVAL_MS`), a tenth of the 300-second idle timeout of the reference deployment's front, since a browser's `WebSocket` cannot send a ping but answers one.
+- **The control frame limit.** The relay counts at most 60 control frames from one socket between two of its pings (`RELAY_MAX_CONTROL_FRAMES`): each ping and each pong that answers none of the relay's pings, from the socket's upgrade on. A pong answering a ping the relay sent is not counted for up to two of its pings left unanswered at a time, so a client answering one or two pings at once stays within the limit. A socket past the limit is closed with 4011, dropped if it sends another control frame while the relay waits on its close, and its control frames after that are ignored. The clients send no ping and answer each of the relay's pings: Node v26.13's `WebSocket`, the command-line client's, sent one pong for each ping in measurement, idle and while sending. The limit allows two a second.
 
 ## Close
 
@@ -137,6 +138,7 @@ Every close reason is empty except 4005's.
 | 4008 | the sender of a hello | The relay holds as many pairings as its cap |
 | 4009 | both parties | No message crossed the pairing within the idle bound |
 | 4010 | the sender | The messages it sent that its partner has not read counted above the queue limit; the partner is closed with 4000 |
+| 4011 | the sender | It sent more control frames than the control frame limit ([Keepalive](#keepalive)); the partner is closed with 4000 |
 
 ## A one-sided allocation
 

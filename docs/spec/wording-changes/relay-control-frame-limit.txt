@@ -1,0 +1,12 @@
+- - -> **The control frame limit.**
+- - -> The relay counts at most 60 control frames from one socket between two of its pings (`RELAY_MAX_CONTROL_FRAMES`): each ping and each pong that answers none of the relay's pings, from the socket's upgrade on.
+- - -> A pong answering a ping the relay sent is not counted for up to two of its pings left unanswered at a time, so a client answering one or two pings at once stays within the limit.
+- - -> A socket past the limit is closed with 4011, dropped if it sends another control frame while the relay waits on its close, and its control frames after that are ignored.
+- - -> The clients send no ping and answer each of the relay's pings: Node v26.13's `WebSocket`, the command-line client's, sent one pong for each ping in measurement, idle and while sending.
+- - -> The limit allows two a second.
+- - -> 4011 | the sender | It sent more control frames than the control frame limit ([Keepalive](#keepalive)); the partner is closed with 4000
+- - -> **The control frame limit.**
+- - -> The relay counts at most 60 control frames from one WebSocket between two of its pings (`SFTP_RELAY_MAX_CONTROL_FRAMES`), counted as the WebSocket relay counts them ([WEBSOCKET_RELAY.md](WEBSOCKET_RELAY.md#keepalive)).
+- - -> A WebSocket past the limit is closed with 4002 and its TCP connection ended, dropped if it sends another control frame while the relay waits on its close, and its control frames after that are ignored.
+- - -> A browser sends no ping and answers each of the relay's.
+- - -> 4002 | `controlFrameLimit` | The browser sent more control frames than the control frame limit.

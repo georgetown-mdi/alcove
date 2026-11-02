@@ -91,6 +91,7 @@ Each direction stops reading from its source while its destination's send buffer
 | 1009 | `messageTooBig` | A message above the per-message cap, closed by `ws`. |
 | 4000 | `targetFailed` | The target's connection failed after it was accepted. |
 | 4001 | `targetUnreachable` | The target refused the connection or did not accept it in time. |
+| 4002 | `controlFrameLimit` | The browser sent more control frames than the control frame limit. |
 
 ## Quotas and keepalive
 
@@ -98,6 +99,7 @@ Each direction stops reading from its source while its destination's send buffer
 - **No quota for each address.** Behind a front every connection arrives from the front's address, so a per-address bound is the front's.
 - **No idle bound.** The relay closes no connection for silence; the SFTP server's own bounds apply to an idle session.
 - **Pings.** The relay pings each WebSocket every 30 seconds (`SFTP_RELAY_PING_INTERVAL_MS`), so a front's idle timeout does not cut a silent SSH session.
+- **The control frame limit.** The relay counts at most 60 control frames from one WebSocket between two of its pings (`SFTP_RELAY_MAX_CONTROL_FRAMES`), counted as the WebSocket relay counts them ([WEBSOCKET_RELAY.md](WEBSOCKET_RELAY.md#keepalive)). A WebSocket past the limit is closed with 4002 and its TCP connection ended, dropped if it sends another control frame while the relay waits on its close, and its control frames after that are ignored. A browser sends no ping and answers each of the relay's.
 
 ## Diagnostics
 
