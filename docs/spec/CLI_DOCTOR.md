@@ -177,6 +177,8 @@ A local fault that stops `doctor probe` before it can compose a verdict -- the t
 
 64 is also what an image predating this command answers to `doctor probe`: option validation does not reject the two words as positionals, so they reach the zero-setup default command, which reads the first of them as a server URL and refuses it. No exit code separates that from a doctor rejecting an input, and a published image cannot be changed after the fact. So a caller that may meet an older image establishes the command's presence before it runs any check -- `doctor --help` answers that without reading an `SMB_*` value or touching the share -- rather than reading a 64 as a verdict about its own inputs.
 
+The Windows file-drop setup scripts are a stated exception: they run the image's floating tag and do not ask `doctor --help` first, so a cached copy older than this command answers their `doctor probe` with 64, and their text for 64 says an older image also ends that way and names the `docker pull` that replaces it.
+
 ## Cleanup limits
 
 Probe cleanup is attempted, never guaranteed. Every working file a run creates is named `alcove-probe-<suffix>.tmp` or `alcove-probe-<suffix>.tmp.renamed`, the suffix being the run's `SMB_TOKEN` or a random value, and on every handled exit path one masked delete, `del alcove-probe-<suffix>.tmp*`, is issued for whichever of them may still be on the share. Its outcome is not re-verified: a share that refuses deletes or a transport that dies mid-run leaves the file in place. The next probe run deletes `alcove-probe-*.tmp*` before its own staged test, which is the designed safety check for such residue.

@@ -562,11 +562,14 @@ Describe 'Invoke-Docker' {
         New-Item -ItemType Directory -Path $script:NoEngine -Force | Out-Null
 
         function Invoke-DockerFrom {
-            param([Parameter(Mandatory = $true)][string] $EngineRoot)
+            <#  -EngineOnly leaves the Windows folders off the PATH: a hosted
+                runner keeps a real docker in one of them. #>
+            param([Parameter(Mandatory = $true)][string] $EngineRoot, [switch] $EngineOnly)
 
             $originalPath = $env:PATH
             try {
-                $env:PATH = @($EngineRoot, (Join-Path $env:SystemRoot 'System32'), $env:SystemRoot) -join ';'
+                $env:PATH = if ($EngineOnly) { $EngineRoot }
+                else { @($EngineRoot, (Join-Path $env:SystemRoot 'System32'), $env:SystemRoot) -join ';' }
                 return (Invoke-Docker -DockerArgs @('version'))
             } finally {
                 $env:PATH = $originalPath
@@ -585,7 +588,7 @@ Describe 'Invoke-Docker' {
         # guard is the last case below.
         & cmd /c exit 0
 
-        $result = Invoke-DockerFrom -EngineRoot $script:NoEngine
+        $result = Invoke-DockerFrom -EngineRoot $script:NoEngine -EngineOnly
 
         $result.Ran | Should -Be $false
         $result.ExitCode | Should -Not -Be 0
@@ -997,7 +1000,9 @@ Describe 'The setup flow, driven against a stub engine' {
             # The credential prompt answered: the password is read with
             # Read-Host -AsSecureString, which reads the console rather than the
             # redirected standard input, so nothing past it could be reached
-            # otherwise.
+            # otherwise. A prompt's text goes to the console too, and never
+            # reaches the output captured here, so each is also written where
+            # the run's other lines go before the prompt itself is put.
             $script:AnsweredSetupScript = Join-Path $script:ReplayRoot 'Setup-AlcoveFileDrop.ps1'
             $replaySource = Get-Content -Raw -LiteralPath $setupScript
             $replayGuard = "if (`$LoadFunctionsOnly) { return }"
@@ -1005,6 +1010,11 @@ Describe 'The setup flow, driven against a stub engine' {
                 'function Read-ShareCredential {',
                 '    param([string] $Username, [string] $Domain, [switch] $DomainSupplied)',
                 "    return @{ Username = 'alcoveci'; Domain = ''; Password = 'hunter2' }",
+                '}',
+                'function Read-Host {',
+                '    param([string] $Prompt)',
+                '    Write-Host $Prompt',
+                '    return (Microsoft.PowerShell.Utility\Read-Host -Prompt $Prompt)',
                 '}',
                 '') -join [Environment]::NewLine
             $patchedReplay = $replaySource.Replace($replayGuard, $answeredCredential + $replayGuard)
@@ -1166,9 +1176,12 @@ Describe 'The setup flow, driven against a stub engine' {
             Assert-SetupEndsWith -Run $run -Exit 64 -Screen ($script:ProbeLead + $script:ProbeRefusedServer + @(
                     '',
                     '  FAIL  The checks refused a value they were given, so nothing was tested.',
-                    '        The message above names it: SMB_SERVER is the server, SMB_SHARE',
-                    '        the share, SMB_PATH the folder within it, and SMB_USER the',
-                    '        username. Correct it and run this again.'))
+                    '        The line above names the value. SMB_SERVER is the server,',
+                    '        SMB_SHARE the share, SMB_PATH the folder within it, and SMB_USER',
+                    '        the username; correct the one it names and run this again. An',
+                    '        image older than these checks also ends this way, and',
+                    '        downloading it again fixes that:',
+                    '            docker pull ghcr.io/georgetown-mdi/alcove:latest'))
             $run.Output | Should -Not -Match 'defect' -Because (Get-RunShape -Run $run)
         }
 
@@ -1219,9 +1232,12 @@ Describe 'The setup flow, driven against a stub engine' {
             Assert-SetupEndsWith -Run $run -Exit 9 -Screen ($script:MountLead + $script:MountRefusedToken + @(
                     '',
                     '  FAIL  The checks refused a value they were given, so nothing was tested.',
-                    '        The message above names it: SMB_SERVER is the server, SMB_SHARE',
-                    '        the share, SMB_PATH the folder within it, and SMB_USER the',
-                    '        username. Correct it and run this again.'))
+                    '        The line above names the value. SMB_SERVER is the server,',
+                    '        SMB_SHARE the share, SMB_PATH the folder within it, and SMB_USER',
+                    '        the username; correct the one it names and run this again. An',
+                    '        image older than these checks also ends this way, and',
+                    '        downloading it again fixes that:',
+                    '            docker pull ghcr.io/georgetown-mdi/alcove:latest'))
         }
 
         It 'reads a volume Docker could not mount as Docker''s failure, not the checks''' {

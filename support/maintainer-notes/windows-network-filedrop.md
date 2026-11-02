@@ -34,23 +34,23 @@ folder and reading the DFS tab.
 - `start-alcove.sh` -- the launcher for macOS and Linux. It shares only the
   doctor's exit codes with the PowerShell one; there is no resolution
   machinery in it, because a path the host can see is a path the engine can.
-
-All three run the doctor without `--json`, print the lines it writes, and
-branch on its exit code alone: 0 passes, 78 offers a run again, 69 and 64 stop,
-and 125 and above are Docker failing to start the container.
 - `README.md` -- the setup page, covering this script and the Command Prompt
   one alike.
 - `troubleshooting.md` -- the page the script's errors cite by section name.
 - `passwords.md` -- the account decision, cited by the script in two places.
+
+All three scripts run the doctor without `--json`, print the lines it writes,
+and branch on its exit code alone: 0 passes, 78 offers a run again, 69 and 64
+stop, and 125 and above are Docker failing to start the container.
 
 The Command Prompt script and its container-side shell script have their own
 notes, [`cmd_windows-network-filedrop.md`](cmd_windows-network-filedrop.md).
 
 Neither Windows script carries a container-side diagnostic of its own: both run
 the image's `alcove doctor`. The Command Prompt one keeps one shell script, the
-password check, and its notes cover it. The
-diagnostic used to live as a here-string inside `Setup-AlcoveFileDrop.ps1`, and
-a second, hand-maintained copy of it used to sit beside the script for reading;
+password check, and its notes cover it. The diagnostic used to live as a
+here-string inside `Setup-AlcoveFileDrop.ps1`, and a second, hand-maintained
+copy of it used to sit beside the script for reading;
 that copy drifted -- it read `SMB_VERS` where the script exported `SMB_DIALECT`,
 so running it with the script's own environment silently ignored the dialect --
 and was removed rather than resynchronised. The lesson outlived both: a second
@@ -453,8 +453,10 @@ still unverified on Windows. It is reached only after a failure, so the cost of
 it being wrong is a wrong message rather than a wrong outcome.
 
 A copy of the image on the PC older than the doctor is not looked for: such an
-image answers `doctor probe` with 64, which the scripts read as a refused
-value. Removing the copy, or pulling the floating tag again, is the remedy.
+image answers `doctor probe` with 64, which the setup scripts cannot tell from a
+refused value, so their text for 64 names both causes and the `docker pull` of
+the floating tag that removes the second. The launchers run the digest they
+were released with, so an older copy is not one they can meet.
 
 A later pass ran the script in the form it had on 30 July 2026, from Windows
 against the same

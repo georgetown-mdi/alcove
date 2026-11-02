@@ -780,14 +780,14 @@ with nothing to exercise it fails `npm run check:image-capabilities`, which
 
 **Each is exercised rather than matched.** `scripts/assert-image-capabilities.mjs`
 runs the argument vector, asking for the machine-readable verdict the scripts
-themselves do not read, and pipes each helper script in as the `.cmd` pipes it -- so a helper's in-image tools are
-resolved by the run and are enumerated nowhere. Two fixtures decide whether a red
-result is about the image at all, and the script sets up both. The first is a
-rendezvous directory the account the image runs as can write, because a fresh
-named volume belongs to root and the default image runs as uid 1000. The second
-is a stub peer that accepts and drops each connection on port 445, because both
-probe paths stop at their reachability check when nothing answers and leave
-`smbclient` unreached.
+themselves do not read, and pipes each helper script in as the `.cmd` pipes it --
+so a helper's in-image tools are resolved by the run and are enumerated nowhere.
+Two fixtures decide whether a red result is about the image at all, and the
+script sets up both. The first is a rendezvous directory the account the image
+runs as can write, because a fresh named volume belongs to root and the default
+image runs as uid 1000. The second is a stub peer that accepts and drops each
+connection on port 445, because both probe paths stop at their reachability
+check when nothing answers and leave `smbclient` unreached.
 
 **What a run may claim is bounded by what it treats as evidence.** A doctor
 run that refuses its input exits 64 having run no check, and an image whose

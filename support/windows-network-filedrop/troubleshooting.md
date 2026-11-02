@@ -40,13 +40,10 @@ genuinely differ. Sending output to a file there sends the questions with it,
 leaving you typing at a blank screen with nothing to say what is being asked.
 Copy out of the window instead.
 
-Both scripts run in four numbered parts. What runs inside part 3 differs. The
-PowerShell script runs the checks that ship inside the Alcove image, which name
-what they looked at rather than numbering it: every line begins `OK:`, `WARN:`,
-`FAIL:` or `SKIP:`, and a `FAIL:` carries its own MEANING and ACTION. The
-Command Prompt script carries its own copy of those checks, numbered steps 1 to
-6. The sections below name both, and a "step" on this page is always one of the
-Command Prompt script's.
+Both scripts run in four numbered parts, and part 3 runs the checks that ship
+inside the Alcove image. They name what they looked at rather than numbering it:
+every line begins `OK:`, `WARN:`, `FAIL:` or `SKIP:`, and a `FAIL:` carries its
+own MEANING and ACTION.
 
 Where the two shells need different commands, both are given: the PowerShell one
 first, the Command Prompt one after, matching
@@ -227,8 +224,7 @@ allowed.
 
 ## The container cannot find the server
 
-The name check fails -- `FAIL: cannot resolve 'fileserver'`, or step 1 in the
-Command Prompt script.
+The name check fails -- `FAIL: cannot resolve 'fileserver'`.
 
 The hidden Linux computer looks up server names on its own, and does not know
 your agency's shortcuts. A short name like `fileserver` can work perfectly in
@@ -257,9 +253,8 @@ mount it this way at all. See [Synced folders](#synced-folders).
 
 ## The container cannot reach the server
 
-The port check fails -- `FAIL: cannot reach fileserver:445`, or step 2 in the
-Command Prompt script -- or the checks report that the connection stopped
-responding.
+The port check fails -- `FAIL: cannot reach fileserver:445` -- or the checks
+report that the connection stopped responding.
 
 Remember that the file server sees the hidden Linux computer as a different
 machine. Three things commonly stop *it* while File Explorer keeps working:
@@ -321,15 +316,14 @@ agency grant, and the script says so and carries on.
 ## The share opens but the folder does not
 
 `NT_STATUS_ACCESS_DENIED` on the folder inside the share, after the share itself
-opened -- steps 5 and 4 in the Command Prompt script. Access to a share does not
-imply access to every folder inside it. Ask for rights on the
-file-drop folder specifically -- item 2 of the
+opened. Access to a share does not imply access to every folder inside it. Ask
+for rights on the file-drop folder specifically -- item 2 of the
 [IT request](#what-to-ask-your-it-department-for).
 
 ## The folder cannot be written to
 
-A write, rename, or delete check fails -- step 6 in the Command Prompt script --
-or the volume mounts and then refuses the write.
+A write, rename, or delete check fails, or the volume mounts and then refuses
+the write.
 
 When it is one of those three checks, the message names which operation failed,
 and they mean different things:

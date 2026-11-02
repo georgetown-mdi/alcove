@@ -183,9 +183,9 @@ function Show-DoctorOutcome {
         69 { Show-Info 'Follow the ACTION line above, then run this script again.' }
         64 {
             Show-Fail 'The checks refused a value they were given, so nothing was tested.'
-            Show-Note 'The message above names it: SMB_SERVER is the server, SMB_SHARE'
-            Show-Note 'the share, SMB_PATH the folder within it, and SMB_USER the'
-            Show-Note 'username. Correct it and run this script again.'
+            Show-Note 'The line above names the value. SMB_SERVER is the server,'
+            Show-Note 'SMB_SHARE the share, SMB_PATH the folder within it, and SMB_USER'
+            Show-Note 'the username; correct the one it names and run this script again.'
         }
         default {
             Show-Fail "The checks ended with exit $ExitCode, which this launcher does not know."
@@ -423,7 +423,11 @@ function Invoke-DoctorBattery {
     <#  Run one battery of the doctor, print what it said, and return its exit
         code. $BatteryArgs are the doctor's own arguments; $EngineArgs are what
         docker needs to reach the folder (a bind mount, or the network-share
-        volume). #>
+        volume).
+
+        The share password this run holds is removed from what is printed:
+        Docker echoes a volume's whole option string when it cannot mount it,
+        and masks the password there only as far as the next comma. #>
     param(
         [Parameter(Mandatory = $true)][string[]] $EngineArgs,
         [Parameter(Mandatory = $true)][string[]] $BatteryArgs
@@ -432,8 +436,12 @@ function Invoke-DoctorBattery {
     Write-Host 'Running the checks. They take a moment, and everything they found'
     Write-Host 'is printed together when they finish.'
     $run = Invoke-EngineQuiet -EngineArgs (@('run', '--rm') + $EngineArgs + @((Get-AlcoveImage)) + $BatteryArgs)
+    $output = [string] $run.Output
+    $password = ''
+    if ($script:AlcoveShareCredential) { $password = [string] $script:AlcoveShareCredential.Password }
+    if ($password) { $output = $output.Replace($password, '<password removed>') }
     Write-Host ''
-    Show-DoctorLines -Output $run.Output
+    Show-DoctorLines -Output $output
     Show-DoctorOutcome -ExitCode $run.ExitCode
     return $run.ExitCode
 }

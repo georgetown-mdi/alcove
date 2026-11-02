@@ -410,11 +410,18 @@ Describe 'The Docker wrappers' {
             'exit /b 69')
 
         function Invoke-WithPath {
-            param([Parameter(Mandatory = $true)][string] $Root, [Parameter(Mandatory = $true)][scriptblock] $Call)
+            <#  -RootOnly leaves the Windows folders off the PATH: a hosted
+                runner keeps a real docker in one of them. #>
+            param(
+                [Parameter(Mandatory = $true)][string] $Root,
+                [Parameter(Mandatory = $true)][scriptblock] $Call,
+                [switch] $RootOnly
+            )
 
             $originalPath = $env:PATH
             try {
-                $env:PATH = @($Root, (Join-Path $env:SystemRoot 'System32'), $env:SystemRoot) -join ';'
+                $env:PATH = if ($RootOnly) { $Root }
+                else { @($Root, (Join-Path $env:SystemRoot 'System32'), $env:SystemRoot) -join ';' }
                 return (& $Call)
             } finally {
                 $env:PATH = $originalPath
@@ -434,8 +441,8 @@ Describe 'The Docker wrappers' {
         # script's suite.
         & cmd /c exit 0
 
-        $quiet = Invoke-WithPath -Root $script:NoDockerRoot -Call { Invoke-EngineQuiet -EngineArgs @('version') }
-        $pulled = Invoke-WithPath -Root $script:NoDockerRoot -Call { Invoke-EnginePull -Reference 'ghcr.io/georgetown-mdi/alcove:latest' }
+        $quiet = Invoke-WithPath -Root $script:NoDockerRoot -RootOnly -Call { Invoke-EngineQuiet -EngineArgs @('version') }
+        $pulled = Invoke-WithPath -Root $script:NoDockerRoot -RootOnly -Call { Invoke-EnginePull -Reference 'ghcr.io/georgetown-mdi/alcove:latest' }
 
         $quiet.Ran | Should -Be $false
         $quiet.ExitCode | Should -Not -Be 0
@@ -883,9 +890,9 @@ Describe 'What the launcher prints under the checks' {
         $run.Screen | Should -BeExactly (($script:BatteryLead + $script:RefusedServer + @(
                     '',
                     '  FAIL  The checks refused a value they were given, so nothing was tested.',
-                    '        The message above names it: SMB_SERVER is the server, SMB_SHARE',
-                    '        the share, SMB_PATH the folder within it, and SMB_USER the',
-                    '        username. Correct it and run this script again.')) -join "`n")
+                    '        The line above names the value. SMB_SERVER is the server,',
+                    '        SMB_SHARE the share, SMB_PATH the folder within it, and SMB_USER',
+                    '        the username; correct the one it names and run this script again.')) -join "`n")
         $run.Screen | Should -Not -Match 'defect'
     }
 
@@ -919,6 +926,20 @@ Describe 'What the launcher prints under the checks' {
 
         $run.Screen | Should -Match 'before after'
         $run.Screen | Should -Not -Match ([string] [char]13)
+    }
+
+    It 'leaves the share password out of a volume Docker could not mount' {
+        $script:AlcoveShareCredential = @{ Username = 'alcoveci'; Domain = ''; Password = 'hunter2' }
+        try {
+            $run = Invoke-StagedBattery -ExitCode 125 -Lines @(
+                'docker: Error response from daemon: failed to mount local volume: mount //fs-04/exchange:/var/lib/docker/volumes/alcove-rz/_data, data: vers=3.1.1,username=alcoveci,password=hunter2: permission denied.')
+        } finally {
+            $script:AlcoveShareCredential = $null
+        }
+
+        $run.Code | Should -Be 125
+        $run.Screen | Should -Not -Match 'hunter2'
+        $run.Screen | Should -Match 'username=alcoveci,password=<password removed>: permission denied'
     }
 }
 

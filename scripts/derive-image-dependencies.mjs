@@ -313,9 +313,9 @@ export function readSources(root) {
  * The whole derived dependency set, with the tripwires that keep it accurate.
  *
  * Returns the argument vectors, the helper invocations and the support-script
- * sources, which a caller pipes into a container as the `.cmd` path does. Each derivation throws rather than returns an empty set: a pattern
- * that stops matching would otherwise report an image with nothing to answer for
- * as clean.
+ * sources, which a caller pipes into a container as the `.cmd` path does. Each
+ * derivation throws rather than returns an empty set: a pattern that stops
+ * matching would otherwise report an image with nothing to answer for as clean.
  */
 export function deriveImageDependencies(root) {
   const { support, parser, entrypoint } = readSources(root);

@@ -263,9 +263,12 @@ function Write-DoctorOutcome {
         }
         64 {
             Write-Bad 'The checks refused a value they were given, so nothing was tested.'
-            Write-Note 'The message above names it: SMB_SERVER is the server, SMB_SHARE'
-            Write-Note 'the share, SMB_PATH the folder within it, and SMB_USER the'
-            Write-Note 'username. Correct it and run this again.'
+            Write-Note 'The line above names the value. SMB_SERVER is the server,'
+            Write-Note 'SMB_SHARE the share, SMB_PATH the folder within it, and SMB_USER'
+            Write-Note 'the username; correct the one it names and run this again. An'
+            Write-Note 'image older than these checks also ends this way, and'
+            Write-Note 'downloading it again fixes that:'
+            Write-Note '    docker pull ghcr.io/georgetown-mdi/alcove:latest'
         }
         default {
             Write-Bad "The checks ended with exit $ExitCode, which this script does not know."
