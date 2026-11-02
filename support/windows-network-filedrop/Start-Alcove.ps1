@@ -147,6 +147,22 @@ function Show-FromContainer {
     Write-Host ("        " + ($Text -replace '[\x00-\x08\x0b-\x1f\x7f]', ' '))
 }
 
+function Hide-ShareSecrets {
+    <#  What Docker printed, with the share password removed. Docker echoes a
+        volume's whole option string when it cannot mount it, and masks the
+        password there only as far as the next comma. The password this run
+        holds is replaced literally, never through a pattern built from it; a
+        password= option is replaced whatever its value, which also covers the
+        runs that have already dropped the held one. #>
+    param([string] $Output)
+
+    $text = [string] $Output
+    $password = ''
+    if ($script:AlcoveShareCredential) { $password = [string] $script:AlcoveShareCredential.Password }
+    if ($password) { $text = $text.Replace($password, '<password removed>') }
+    return [regex]::Replace($text, '(?i)password=[^,\s"'']*', 'password=<password removed>')
+}
+
 function Show-DoctorLines {
     <#  What the doctor printed, line for line and unindented, with control
         characters dropped for the reason Show-FromContainer gives. Split
@@ -186,8 +202,16 @@ function Show-DoctorOutcome {
             Show-Note 'The line above names the value. SMB_SERVER is the server,'
             Show-Note 'SMB_SHARE the share, SMB_PATH the folder within it, and SMB_USER'
             Show-Note 'the username; correct the one it names and run this script again.'
+            Show-Note 'Any other name is a value this script set, not one you typed:'
+            Show-Note 'report it as a problem with this script.'
         }
         default {
+            if (-not (Test-EngineAnswers)) {
+                Show-Fail 'Docker stopped during the checks.'
+                Show-Note 'Start Docker Desktop, wait for the whale icon to stop animating,'
+                Show-Note 'and run this script again.'
+                return
+            }
             Show-Fail "The checks ended with exit $ExitCode, which this launcher does not know."
             Show-Note 'Nothing was established about your folder. Use the launcher'
             Show-Note 'published with the image it runs.'
@@ -290,7 +314,7 @@ function Invoke-EnginePull {
     $ErrorActionPreference = 'Continue'
     try {
         $lines = & docker pull $Reference 2>&1 | ForEach-Object {
-            $line = "$_"
+            $line = Hide-ShareSecrets "$_"
             Show-FromContainer $line
             $line
         }
@@ -415,6 +439,14 @@ function Test-WindowsContainerMode {
     return ($probe.Output.Trim() -eq 'windows')
 }
 
+function Test-EngineAnswers {
+    <#  Whether the engine answers the version query the start-up check makes.
+        A docker run against a stopped engine exits 1, which says nothing by
+        itself about whether the engine is up. #>
+
+    return ((Invoke-EngineQuiet -EngineArgs @('version')).ExitCode -eq 0)
+}
+
 # ==========================================================================
 # The doctor
 # ==========================================================================
@@ -436,12 +468,8 @@ function Invoke-DoctorBattery {
     Write-Host 'Running the checks. They take a moment, and everything they found'
     Write-Host 'is printed together when they finish.'
     $run = Invoke-EngineQuiet -EngineArgs (@('run', '--rm') + $EngineArgs + @((Get-AlcoveImage)) + $BatteryArgs)
-    $output = [string] $run.Output
-    $password = ''
-    if ($script:AlcoveShareCredential) { $password = [string] $script:AlcoveShareCredential.Password }
-    if ($password) { $output = $output.Replace($password, '<password removed>') }
     Write-Host ''
-    Show-DoctorLines -Output $output
+    Show-DoctorLines -Output (Hide-ShareSecrets $run.Output)
     Show-DoctorOutcome -ExitCode $run.ExitCode
     return $run.ExitCode
 }
@@ -777,6 +805,17 @@ function Test-ConsoleAnswering {
         $null = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$ConsolePort/" -TimeoutSec 5
         return $true
     } catch { return $false }
+}
+
+function Show-ConsoleStartFailure {
+    <#  The console container did not start: say so, then print what Docker
+        said with the share password removed. By now the held password is
+        gone, so the removal rests on the password= pattern alone. #>
+    param([string] $Output)
+
+    Show-Fail 'The console container would not start.'
+    Write-Host ''
+    Show-DoctorLines -Output (Hide-ShareSecrets $Output)
 }
 
 function Wait-ForConsole {
@@ -1424,9 +1463,7 @@ $consoleArgs = Get-ConsoleEngineArgs -ContainerName $containerName -ConsolePort 
 
 $started = Invoke-EngineQuiet -EngineArgs $consoleArgs
 if ($started.ExitCode -ne 0) {
-    Show-Fail 'The console container would not start.'
-    Write-Host ''
-    Write-Host $started.Output
+    Show-ConsoleStartFailure -Output $started.Output
     Show-VolumeRemoval -VolumeNames $volumesMade
     exit 1
 }
@@ -1445,7 +1482,7 @@ try {
     } else {
         Show-Fail "Nothing answered on $url."
         Write-Host ''
-        Write-Host (Invoke-EngineQuiet -EngineArgs @('logs', $containerName)).Output
+        Show-DoctorLines -Output (Hide-ShareSecrets (Invoke-EngineQuiet -EngineArgs @('logs', $containerName)).Output)
     }
 
     Write-Host ''

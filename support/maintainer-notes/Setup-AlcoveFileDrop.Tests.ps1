@@ -1030,14 +1030,18 @@ Describe 'The setup flow, driven against a stub engine' {
                     parentheses and backticks in them.
 
                     -RetriedProbeExit, when given, is what every probe after the
-                    first answers, with no lines. #>
+                    first answers, with no lines.
+
+                    -EngineStopsAfterStart makes every version query after the
+                    first exit 1, as an engine that stopped mid-run does. #>
                 param(
                     [Parameter(Mandatory = $true)][string] $Name,
                     [string[]] $ProbeLines = @(),
                     [int] $ProbeExit = 0,
                     [int] $RetriedProbeExit = -1,
                     [string[]] $MountLines = @(),
-                    [int] $MountExit = 0
+                    [int] $MountExit = 0,
+                    [switch] $EngineStopsAfterStart
                 )
 
                 $root = Join-Path $script:ReplayRoot $Name
@@ -1045,6 +1049,13 @@ Describe 'The setup flow, driven against a stub engine' {
                 $probeFile = Join-Path $root 'probe.txt'
                 $mountFile = Join-Path $root 'mount.txt'
                 $probedFile = Join-Path $root 'probed'
+                $versionedFile = Join-Path $root 'versioned'
+                $stopArm = @()
+                if ($EngineStopsAfterStart) {
+                    $stopArm = @(
+                        "if exist `"$versionedFile`" exit /b 1",
+                        "type nul >`"$versionedFile`"")
+                }
                 [IO.File]::WriteAllText($probeFile, (@($ProbeLines | ForEach-Object { "$_`r`n" }) -join ''))
                 [IO.File]::WriteAllText($mountFile, (@($MountLines | ForEach-Object { "$_`r`n" }) -join ''))
                 $retryArm = @()
@@ -1068,7 +1079,7 @@ Describe 'The setup flow, driven against a stub engine' {
                     'if not errorlevel 1 goto succeed',
                     'echo unexpected engine call: %*',
                     'exit /b 99',
-                    ':engineversion',
+                    ':engineversion') + $stopArm + @(
                     'echo linux 27.1.1',
                     'exit /b 0',
                     ':succeed',
@@ -1178,9 +1189,11 @@ Describe 'The setup flow, driven against a stub engine' {
                     '  FAIL  The checks refused a value they were given, so nothing was tested.',
                     '        The line above names the value. SMB_SERVER is the server,',
                     '        SMB_SHARE the share, SMB_PATH the folder within it, and SMB_USER',
-                    '        the username; correct the one it names and run this again. An',
-                    '        image older than these checks also ends this way, and',
-                    '        downloading it again fixes that:',
+                    '        the username; correct the one it names and run this again.',
+                    '        Any other name is a value this script set, not one you typed:',
+                    '        report it as a problem with this script. An image older than',
+                    '        these checks also ends this way, and downloading it again',
+                    '        fixes that:',
                     '            docker pull ghcr.io/georgetown-mdi/alcove:latest'))
             $run.Output | Should -Not -Match 'defect' -Because (Get-RunShape -Run $run)
         }
@@ -1204,6 +1217,26 @@ Describe 'The setup flow, driven against a stub engine' {
             Assert-SetupEndsWith -Run $run -Exit 3 -Screen @(
                 '',
                 '  FAIL  The checks ended with exit 3, which this script does not know.',
+                '        Nothing was established about your file drop. Look for a newer',
+                '        copy of this script wherever you downloaded it.')
+        }
+
+        It 'says Docker stopped when the checks ended with 1 and the engine no longer answers' {
+            $run = Invoke-ReplayRun -EngineRoot (New-ReplayEngine -Name 'probe-1-stopped' -ProbeExit 1 -EngineStopsAfterStart)
+
+            Assert-SetupEndsWith -Run $run -Exit 1 -Screen @(
+                '',
+                '  FAIL  Docker stopped during the checks.',
+                '        Start Docker Desktop, wait for the whale icon to stop animating,',
+                '        and run this script again.')
+        }
+
+        It 'keeps the unknown-code text for a code of 1 while the engine answers' {
+            $run = Invoke-ReplayRun -EngineRoot (New-ReplayEngine -Name 'probe-1-up' -ProbeExit 1)
+
+            Assert-SetupEndsWith -Run $run -Exit 1 -Screen @(
+                '',
+                '  FAIL  The checks ended with exit 1, which this script does not know.',
                 '        Nothing was established about your file drop. Look for a newer',
                 '        copy of this script wherever you downloaded it.')
         }
@@ -1234,9 +1267,11 @@ Describe 'The setup flow, driven against a stub engine' {
                     '  FAIL  The checks refused a value they were given, so nothing was tested.',
                     '        The line above names the value. SMB_SERVER is the server,',
                     '        SMB_SHARE the share, SMB_PATH the folder within it, and SMB_USER',
-                    '        the username; correct the one it names and run this again. An',
-                    '        image older than these checks also ends this way, and',
-                    '        downloading it again fixes that:',
+                    '        the username; correct the one it names and run this again.',
+                    '        Any other name is a value this script set, not one you typed:',
+                    '        report it as a problem with this script. An image older than',
+                    '        these checks also ends this way, and downloading it again',
+                    '        fixes that:',
                     '            docker pull ghcr.io/georgetown-mdi/alcove:latest'))
         }
 

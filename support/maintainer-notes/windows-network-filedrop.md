@@ -39,9 +39,12 @@ folder and reading the DFS tab.
 - `troubleshooting.md` -- the page the script's errors cite by section name.
 - `passwords.md` -- the account decision, cited by the script in two places.
 
-All three scripts run the doctor without `--json`, print the lines it writes,
-and branch on its exit code alone: 0 passes, 78 offers a run again, 69 and 64
-stop, and 125 and above are Docker failing to start the container.
+The three scripts listed above run the doctor without `--json`, print the lines
+it writes, and branch on its exit code alone: 0 passes, 78 offers a run again, 69 and 64
+stop, and 125 and above are Docker failing to start the container. A code none
+of those names is first checked against the engine: a stopped engine makes
+`docker run` exit 1 (recorded below as P4b), so when the version query no
+longer answers, the scripts say Docker stopped rather than blaming the launcher.
 
 The Command Prompt script and its container-side shell script have their own
 notes, [`cmd_windows-network-filedrop.md`](cmd_windows-network-filedrop.md).
@@ -113,9 +116,9 @@ produced is carried by the doctor batteries in `apps/cli/src/doctor/`, whose own
 CI leg drives them against a real Samba server and a real CIFS mount on every
 change to them -- the `smb-doctor` job in
 `.github/workflows/cli_build_and_test.yaml`, which is where that coverage now
-lives. The Command Prompt script still carries its own copy of both checks, and
-its state is recorded in `cmd_windows-network-filedrop.md`; parity between the
-doctor's battery and that copy is maintained by hand, not asserted by a test.
+lives. The Command Prompt script runs the same two doctor batteries from the
+image and branches on the same exit codes; its state is recorded in
+`cmd_windows-network-filedrop.md`.
 
 **The container half was verified against a real Samba server**, driven through
 the here-string the script then carried rather than a paraphrase of it.

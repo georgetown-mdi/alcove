@@ -773,10 +773,19 @@ if "%~1"=="64" (
   call :bad "The checks refused a value they were given, so nothing was tested."
   call :note "The line above names the value. SMB_SERVER is the server,"
   call :note "SMB_SHARE the share, SMB_PATH the folder within it, and SMB_USER"
-  call :note "the username; correct the one it names and run this again. An"
-  call :note "image older than these checks also ends this way, and"
-  call :note "downloading it again fixes that:"
+  call :note "the username; correct the one it names and run this again."
+  call :note "Any other name is a value this script set, not one you typed:"
+  call :note "report it as a problem with this script. An image older than"
+  call :note "these checks also ends this way, and downloading it again"
+  call :note "fixes that:"
   call :note "    docker pull ghcr.io/georgetown-mdi/alcove:latest"
+  exit /b 0
+)
+docker version --format "{{.Server.Os}} {{.Server.Version}}" >nul 2>&1
+if errorlevel 1 (
+  call :bad "Docker stopped during the checks."
+  call :note "Start Docker Desktop, wait for the whale icon to stop animating,"
+  call :note "and run this script again."
   exit /b 0
 )
 call :bad "The checks ended with exit %~1, which this script does not know."

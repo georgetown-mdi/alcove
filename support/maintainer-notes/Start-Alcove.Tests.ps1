@@ -844,11 +844,17 @@ Describe 'What the launcher prints under the checks' {
 
         function Invoke-StagedBattery {
             <#  Invoke-DoctorBattery over an engine that answers with the lines
-                and exit code given, returning the screen and the code. #>
-            param([string[]] $Lines = @(), [int] $ExitCode)
+                and exit code given, returning the screen and the code. The
+                engine answers a version query with -EngineVersionExit. #>
+            param([string[]] $Lines = @(), [int] $ExitCode, [int] $EngineVersionExit = 0)
 
             $script:StagedRun = @{ Ran = $true; Output = ($Lines -join [Environment]::NewLine); ExitCode = $ExitCode }
-            function Invoke-EngineQuiet { return $script:StagedRun }
+            $script:StagedVersion = @{ Ran = $true; Output = ''; ExitCode = $EngineVersionExit }
+            function Invoke-EngineQuiet {
+                param([string[]] $EngineArgs)
+                if ($EngineArgs[0] -eq 'version') { return $script:StagedVersion }
+                return $script:StagedRun
+            }
             $output = @(Invoke-DoctorBattery -EngineArgs @('--volume', 'C:\data:/rz') `
                     -BatteryArgs @('doctor', 'mount', '/rz') 6>&1)
             return @{
@@ -892,7 +898,9 @@ Describe 'What the launcher prints under the checks' {
                     '  FAIL  The checks refused a value they were given, so nothing was tested.',
                     '        The line above names the value. SMB_SERVER is the server,',
                     '        SMB_SHARE the share, SMB_PATH the folder within it, and SMB_USER',
-                    '        the username; correct the one it names and run this script again.')) -join "`n")
+                    '        the username; correct the one it names and run this script again.',
+                    '        Any other name is a value this script set, not one you typed:',
+                    '        report it as a problem with this script.')) -join "`n")
         $run.Screen | Should -Not -Match 'defect'
     }
 
@@ -921,6 +929,25 @@ Describe 'What the launcher prints under the checks' {
                     '        published with the image it runs.')) -join "`n")
     }
 
+    It 'says Docker stopped when the run ended with 1 and the engine no longer answers' {
+        $run = Invoke-StagedBattery -Lines @('failed to connect to the docker API') -ExitCode 1 -EngineVersionExit 1
+
+        $run.Code | Should -Be 1
+        $run.Screen | Should -BeExactly (($script:BatteryLead + @(
+                    'failed to connect to the docker API',
+                    '',
+                    '  FAIL  Docker stopped during the checks.',
+                    '        Start Docker Desktop, wait for the whale icon to stop animating,',
+                    '        and run this script again.')) -join "`n")
+    }
+
+    It 'keeps the unknown-code text for a code of 1 while the engine answers' {
+        $run = Invoke-StagedBattery -ExitCode 1 -EngineVersionExit 0
+
+        $run.Screen | Should -Match 'ended with exit 1, which this launcher does not know'
+        $run.Screen | Should -Not -Match 'Docker stopped'
+    }
+
     It 'blanks a raw carriage return in what the checks printed' {
         $run = Invoke-StagedBattery -Lines @('before' + [char]13 + 'after') -ExitCode 0
 
@@ -940,6 +967,24 @@ Describe 'What the launcher prints under the checks' {
         $run.Code | Should -Be 125
         $run.Screen | Should -Not -Match 'hunter2'
         $run.Screen | Should -Match 'username=alcoveci,password=<password removed>: permission denied'
+    }
+
+    It 'leaves the share password out of a console that would not start, once none is held' {
+        $script:AlcoveShareCredential = $null
+        $screen = Get-LauncherScreen @(Show-ConsoleStartFailure -Output (
+                'docker: Error response from daemon: failed to mount local volume: data: vers=3.1.1,username=alcoveci,PASSWORD=s3cret,uid=0: permission denied.') 6>&1)
+
+        $screen | Should -Match 'FAIL  The console container would not start.'
+        $screen | Should -Not -Match 's3cret'
+        $screen | Should -Match 'username=alcoveci,password=<password removed>,uid=0: permission denied'
+    }
+
+    It 'leaves Docker output that carries no password untouched' {
+        $script:AlcoveShareCredential = $null
+        $text = 'docker: Error response from daemon: port is already allocated.'
+
+        Hide-ShareSecrets $text | Should -BeExactly $text
+        Hide-ShareSecrets '' | Should -BeExactly ''
     }
 }
 

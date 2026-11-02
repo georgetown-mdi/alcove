@@ -216,6 +216,13 @@ function Invoke-Docker {
     finally { $ErrorActionPreference = $previous }
 }
 
+function Test-DockerAnswers {
+    <#  Whether the engine answers the version query the start-up check
+        makes. A docker run against a stopped engine exits 1, which says
+        nothing by itself about whether the engine is up. #>
+    return ((Invoke-Docker -DockerArgs @('version', '--format', '{{.Server.Os}} {{.Server.Version}}')).ExitCode -eq 0)
+}
+
 function Test-Elevated {
     try {
         $id = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -265,12 +272,20 @@ function Write-DoctorOutcome {
             Write-Bad 'The checks refused a value they were given, so nothing was tested.'
             Write-Note 'The line above names the value. SMB_SERVER is the server,'
             Write-Note 'SMB_SHARE the share, SMB_PATH the folder within it, and SMB_USER'
-            Write-Note 'the username; correct the one it names and run this again. An'
-            Write-Note 'image older than these checks also ends this way, and'
-            Write-Note 'downloading it again fixes that:'
+            Write-Note 'the username; correct the one it names and run this again.'
+            Write-Note 'Any other name is a value this script set, not one you typed:'
+            Write-Note 'report it as a problem with this script. An image older than'
+            Write-Note 'these checks also ends this way, and downloading it again'
+            Write-Note 'fixes that:'
             Write-Note '    docker pull ghcr.io/georgetown-mdi/alcove:latest'
         }
         default {
+            if (-not (Test-DockerAnswers)) {
+                Write-Bad 'Docker stopped during the checks.'
+                Write-Note 'Start Docker Desktop, wait for the whale icon to stop animating,'
+                Write-Note 'and run this script again.'
+                return
+            }
             Write-Bad "The checks ended with exit $ExitCode, which this script does not know."
             Write-Note 'Nothing was established about your file drop. Look for a newer'
             Write-Note 'copy of this script wherever you downloaded it.'
