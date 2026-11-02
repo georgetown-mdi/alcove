@@ -42,15 +42,18 @@ export interface InvitationRelayEnrollmentDependencies {
  * the exchange id derived from the same secret, with no token: one attempt,
  * waited on for at most {@link INVITATION_RELAY_ENROLLMENT_WAIT_MS}. A
  * same-key repeat, either party's or a later run's on the same secret, is
- * answered as enrolled.
+ * answered as enrolled. `otherSecrets` are those of the run's other
+ * enrollments sent at the same time, whose exchange ids and relay keys the
+ * failure detail does not repeat either.
  */
 export function enrollAtInvitationRelay(
   registrarUrl: string,
   sharedSecret: string,
   dependencies: InvitationRelayEnrollmentDependencies = {},
+  otherSecrets: readonly string[] = [],
 ): Promise<InvitationRelayEnrollment> {
   return enrollRelayKeyWithinWait(
-    { registrarUrl, sharedSecret },
+    { registrarUrl, sharedSecret, otherSecrets },
     { waitMs: INVITATION_RELAY_ENROLLMENT_WAIT_MS, ...dependencies },
   );
 }

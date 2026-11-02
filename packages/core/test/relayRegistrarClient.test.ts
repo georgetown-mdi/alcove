@@ -748,6 +748,63 @@ describe("enrollRelayKeyWithinWait", () => {
     });
     expect(fetch.authorizations).toEqual([]);
   });
+
+  test.each([
+    ["as is", (value: string) => value],
+    ["URL-encoded", (value: string) => encodeURIComponent(value)],
+    ["JSON-escaped", (value: string) => JSON.stringify(value).slice(1, -1)],
+    ["base64-encoded", (value: string) => btoa(value)],
+    [
+      "base64-encoded unpadded",
+      (value: string) => btoa(value).replace(/=+$/, ""),
+    ],
+  ])(
+    "each of two enrollments sent together repeats neither the other's exchange id nor its relay key %s",
+    async (_, form) => {
+      const secrets = [generateSharedSecret(), generateSharedSecret()];
+      const derived = await Promise.all(
+        secrets.map(async (secret) => ({
+          exchangeId: await deriveRelayExchangeId(secret),
+          key: await deriveRelayKey(secret),
+        })),
+      );
+      const fetch = ((input: string | URL | Request) => {
+        const other = derived.find(
+          ({ exchangeId }) => !String(input).endsWith(`/${exchangeId}`),
+        )!;
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              error: `held by ${form(other.exchangeId)} under ${form(other.key)}`,
+            }),
+            { status: 409 },
+          ),
+        );
+      }) as typeof globalThis.fetch;
+      const enrollments = await Promise.all(
+        secrets.map((sharedSecret, at) =>
+          enrollRelayKeyWithinWait(
+            {
+              registrarUrl: REGISTRAR_URL,
+              sharedSecret,
+              otherSecrets: [secrets[1 - at]!],
+            },
+            { waitMs: WAIT_MS, fetch },
+          ),
+        ),
+      );
+      expect(enrollments).toEqual([
+        {
+          kind: "failed",
+          detail: `HTTP 409: held by ${REMOVED_EXCHANGE_ID_TEXT} under ${REMOVED_RELAY_KEY_TEXT}`,
+        },
+        {
+          kind: "failed",
+          detail: `HTTP 409: held by ${REMOVED_EXCHANGE_ID_TEXT} under ${REMOVED_RELAY_KEY_TEXT}`,
+        },
+      ]);
+    },
+  );
 });
 
 describe("a registrar repeating the exchange id and relay key a request sent", () => {

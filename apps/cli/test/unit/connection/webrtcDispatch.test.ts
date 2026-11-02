@@ -10,6 +10,7 @@ import type {
   PreparedExchange,
   TermsRotation,
 } from "@alcove/core";
+import type { EventStreamEmitter } from "../../../src/eventStream";
 import type { KeyFile } from "../../../src/keyFile";
 
 /**
@@ -245,6 +246,8 @@ const {
   DISPLAY_TRUNCATION_MARKER,
   EncryptedMessageConnection,
   RELAY_CREDENTIAL_MAX_TTL_SECONDS,
+  REMOVED_EXCHANGE_ID_TEXT,
+  REMOVED_RELAY_KEY_TEXT,
   UsageError,
   RoundSetLimitError,
   assertFirstRoundWithinSetMaximum,
@@ -570,6 +573,7 @@ function runPartyFrom(
   role: "inviter" | "acceptor",
   keyFile: KeyFile,
   connection: Record<string, unknown> = {},
+  eventStream?: EventStreamEmitter,
 ): Promise<unknown> {
   const keyFilePath = path.join(tmpDir, `${role}.key`);
   saveKeyFile(keyFilePath, keyFile);
@@ -592,6 +596,7 @@ function runPartyFrom(
     output: path.join(tmpDir, `${role}.csv`),
     verbosity: -1,
     loggerName: "test",
+    ...(eventStream !== undefined && { fileSyncRuntime: { eventStream } }),
   });
 }
 
@@ -1795,4 +1800,68 @@ test("each enrollment line of an acceptor holding a previous secret names the se
       "run continues with its other relays, and that relay takes it only if " +
       "your partner enrolled the exchange there.",
   );
+});
+
+test("a registrar repeating one enrollment's exchange id and relay key in the other's answer gets neither onto the log or the event stream", async () => {
+  mockState.dialFailure = new ConnectionError("no partner", "transport");
+  const derived = await Promise.all(
+    [AHEAD, SECRET].map(async (secret) => ({
+      exchangeId: await deriveRelayExchangeId(secret),
+      key: await deriveRelayKey(secret),
+    })),
+  );
+  vi.stubGlobal("fetch", (async (input: string | URL | Request) => {
+    const other = derived.find(
+      ({ exchangeId }) => !String(input).endsWith(`/${exchangeId}`),
+    )!;
+    return jsonResponse(409, {
+      error:
+        `held by ${other.exchangeId} under ${other.key}, ` +
+        `${btoa(other.exchangeId)} and ${btoa(other.key)}`,
+    });
+  }) as typeof globalThis.fetch);
+  const enrollmentWarnings: string[] = [];
+  const ignored = () => {};
+  const eventStream: EventStreamEmitter = {
+    stages: ignored,
+    stage: ignored,
+    stageEnd: ignored,
+    warning: ignored,
+    payloadReceiveTaken: ignored,
+    logFileLoss: ignored,
+    invitationRelayEnrollment: (message) => enrollmentWarnings.push(message),
+    metrics: ignored,
+    result: ignored,
+    error: ignored,
+  };
+  try {
+    await runPartyFrom(
+      "acceptor",
+      { sharedSecret: AHEAD, previousSharedSecret: SECRET },
+      {
+        invitationRelay: {
+          turn: [INVITATION_TURN_URL],
+          registrar: INVITATION_REGISTRAR,
+        },
+      },
+      eventStream,
+    ).catch(() => {});
+  } finally {
+    vi.unstubAllGlobals();
+  }
+  const logged = mockState.warnLines.filter((line) =>
+    line.includes("did not enroll this exchange"),
+  );
+  expect(logged).toHaveLength(2);
+  expect(enrollmentWarnings).toHaveLength(2);
+  for (const message of [...logged, ...enrollmentWarnings]) {
+    expect(message).toContain(
+      `(HTTP 409: held by ${REMOVED_EXCHANGE_ID_TEXT} under ` +
+        `${REMOVED_RELAY_KEY_TEXT}, ${REMOVED_EXCHANGE_ID_TEXT} and ` +
+        `${REMOVED_RELAY_KEY_TEXT})`,
+    );
+    for (const { exchangeId, key } of derived)
+      for (const value of [exchangeId, key, btoa(exchangeId), btoa(key)])
+        expect(message).not.toContain(value);
+  }
 });

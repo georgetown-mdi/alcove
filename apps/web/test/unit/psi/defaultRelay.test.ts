@@ -100,7 +100,11 @@ describe("relayWithDefaultForRun", () => {
       onRunNotice,
     });
     expect(enroll).toHaveBeenCalledExactlyOnceWith(
-      { registrarUrl: DEFAULT_RELAY.registrarUrl, sharedSecret: secret },
+      {
+        registrarUrl: DEFAULT_RELAY.registrarUrl,
+        sharedSecret: secret,
+        otherSecrets: [],
+      },
       { waitMs: DEFAULT_RELAY_DIAL_WAIT_MS, signal },
     );
     expect(run).toEqual(WITH_DEFAULT);
@@ -447,6 +451,67 @@ describe("relayWithDefaultForRun", () => {
         DEFAULT_RELAY_NOT_ENROLLED_NOTICE,
       );
     });
+
+    test.each([
+      ["the current one enrolled", true],
+      ["both refused", false],
+    ])(
+      "a registrar repeating one enrollment's exchange id and relay key in the other's answer gets neither into the log, %s",
+      async (_, currentEnrolls) => {
+        const current = generateSharedSecret();
+        const previous = generateSharedSecret();
+        const [currentValues, previousValues] = await Promise.all(
+          [current, previous].map(async (secret) => ({
+            exchangeId: await deriveRelayExchangeId(secret),
+            key: await deriveRelayKey(secret),
+          })),
+        );
+        const fetch = vi.fn<typeof globalThis.fetch>((input) => {
+          const toCurrent = String(input).endsWith(
+            `/${currentValues.exchangeId}`,
+          );
+          if (toCurrent && currentEnrolls)
+            return Promise.resolve(
+              new Response(
+                JSON.stringify({ maxAgeDays: null, lapsesAt: null }),
+                { status: 200 },
+              ),
+            );
+          const other = toCurrent ? previousValues : currentValues;
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                error:
+                  `held by ${other.exchangeId} under ${other.key}, ` +
+                  `${btoa(other.exchangeId)} and ${btoa(other.key)}`,
+              }),
+              { status: 409 },
+            ),
+          );
+        });
+        const warn = vi.spyOn(getLogger("defaultRelay"), "warn");
+        try {
+          await relayWithDefaultForRun(current, OWN, NO_RESTRICTION, {
+            setting: withWebSocket,
+            enroll: enrollingThrough(fetch),
+            previousSharedSecret: previous,
+          });
+          expect(fetch).toHaveBeenCalledTimes(2);
+          expect(warn).toHaveBeenCalledOnce();
+          const logged = String(warn.mock.calls[0]?.[0]);
+          expect(logged).toContain(
+            `(HTTP 409: held by ${REMOVED_EXCHANGE_ID_TEXT} under ` +
+              `${REMOVED_RELAY_KEY_TEXT}, ${REMOVED_EXCHANGE_ID_TEXT} and ` +
+              `${REMOVED_RELAY_KEY_TEXT})`,
+          );
+          for (const { exchangeId, key } of [currentValues, previousValues])
+            for (const value of [exchangeId, key, btoa(exchangeId), btoa(key)])
+              expect(logged).not.toContain(value);
+        } finally {
+          warn.mockRestore();
+        }
+      },
+    );
 
     test("a default relay naming no WebSocket relay is enrolled at under the current secret alone", async () => {
       const current = generateSharedSecret();

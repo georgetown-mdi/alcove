@@ -798,6 +798,9 @@ async function openRunTransport(params: {
             invitationRegistrar,
             secret,
             { signal: interrupted.signal },
+            secrets
+              .filter((other) => other.kind !== kind)
+              .map((other) => other.secret),
           ),
         })),
       );

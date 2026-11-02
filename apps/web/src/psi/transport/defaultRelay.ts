@@ -234,7 +234,8 @@ export interface RelayWithDefault {
  *
  * With `previousSharedSecret`, where the run uses the WebSocket relay url,
  * that secret's key and exchange id are enrolled in a second request sent at
- * the same time, and its failure beside a confirmed current enrollment shows
+ * the same time, each request's failure detail repeating neither request's
+ * key or id, and its failure beside a confirmed current enrollment shows
  * {@link DEFAULT_RELAY_PREVIOUS_NOT_ENROLLED_NOTICE}. Its confirmation lists
  * the WebSocket relay url under that secret; the TURN url is listed by the
  * current secret's enrollment alone, since the run's relay credential is
@@ -256,9 +257,13 @@ export async function relayWithDefaultForRun(
     webSocketRelayUrlIsAllowed(websocketUrl, allowedRelays);
   if (!turnKept && !websocketKept) return unchanged;
   const enroll = dependencies.enroll ?? enrollRelayKeyWithinWait;
-  const enrollUnder = (secret: string) =>
+  const enrollUnder = (secret: string, otherSecrets: ReadonlyArray<string>) =>
     enroll(
-      { registrarUrl: setting.registrarUrl, sharedSecret: secret },
+      {
+        registrarUrl: setting.registrarUrl,
+        sharedSecret: secret,
+        otherSecrets,
+      },
       {
         waitMs: dependencies.dialWaitMs ?? DEFAULT_RELAY_DIAL_WAIT_MS,
         ...(dependencies.signal !== undefined && {
@@ -270,8 +275,13 @@ export async function relayWithDefaultForRun(
     ? dependencies.previousSharedSecret
     : undefined;
   const [enrollment, previousEnrollment] = await Promise.all([
-    enrollUnder(sharedSecret),
-    previousSecret === undefined ? undefined : enrollUnder(previousSecret),
+    enrollUnder(
+      sharedSecret,
+      previousSecret === undefined ? [] : [previousSecret],
+    ),
+    previousSecret === undefined
+      ? undefined
+      : enrollUnder(previousSecret, [sharedSecret]),
   ]);
   if (enrollment.kind === "failed") {
     log.warn(
