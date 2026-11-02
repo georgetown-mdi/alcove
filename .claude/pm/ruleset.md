@@ -266,6 +266,18 @@ the first. In order:
   owner two things together: an immediate step-back on the churning area, and
   a continuation item holding the branch's unfinished work, filed on the
   owner's word.
+- A pain point a maintainer saw someone hit while using the product --
+  observed in passing, never solicited -- is filed on board 9 when the owner
+  gives it, titled `Pain point: <where they stopped>`, its whole body this one
+  line, in Decision status so no agent works from it:
+
+  ```
+  Pain point: trying to <what the person was trying>; stopped at <the screen or step>; screen text: "<the exact text on the screen>"
+  ```
+
+  One intake is not yet a problem: it becomes one when a second intake matches
+  it or an audit day pointed at it reproduces it
+  (`.claude/commands/audit-day.md`).
 
 The board is the only queue, for work and decisions alike. Anything not
 settled in the session that raised it becomes an item -- listed as a
