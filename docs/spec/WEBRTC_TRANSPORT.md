@@ -274,13 +274,10 @@ header for a page on another origin to read it under.
 An inviter registers at the endpoint its invitation names. A saved exchange's
 later runs register at the endpoint the inviter's record stored from that
 invitation, after the validation an acceptor's dial applies (below). A
-re-invite from the record names the browser setting's address where it is set
-and readable, the deployment's address where it is unset, and the endpoint
-the record stored where the setting is unreadable, and stores it on the
-record, where the inviter's later runs then register
-([MANAGED_EXCHANGE_RECORD.md](MANAGED_EXCHANGE_RECORD.md#role-a-local-side-field-not-the-document)).
-A change to the browser setting therefore moves no invitation already
-created, and moves a saved exchange only when its inviter re-invites from it.
+re-invite from the record names the endpoint the record stored
+([MANAGED_EXCHANGE_RECORD.md](MANAGED_EXCHANGE_RECORD.md#role-a-local-side-field-not-the-document)),
+which the operator changes on the exchange's page. A change to the browser
+setting therefore moves no invitation already created and no saved exchange.
 
 An accepting party never dials its own deployment's address. A fresh accept
 dials the endpoint its invitation names, from any deployment, and a saved

@@ -28,6 +28,7 @@ import {
   RelayRegistrarSchema,
   SHARED_SECRET_REGEX,
   UsageError,
+  WebRTCEndpointSchema,
   assembleExchangeSpec,
   connectionFromLocator,
   declaresLaterFormatVersion,
@@ -41,7 +42,9 @@ import {
 
 import { z } from "zod";
 
+import { OwnRelaySchema } from "../transport/ownRelaySetting";
 import { applyDisclosure } from "../metadataEditing";
+import { refusedSignalingEndpointField } from "../transport/signalingAddress";
 import { tokenMaxAgeDaysSchema } from "../tokenMaxAge";
 
 import { deriveEditedExpiry } from "./managedTokenAgeEdit";
@@ -60,6 +63,7 @@ import type {
   TermsUpdate,
   WebRTCExchangeLocator,
 } from "@alcove/core";
+import type { OwnRelay, OwnRelayRead } from "../transport/ownRelaySetting";
 import type { DisclosureChoice } from "../metadataEditing";
 import type { ZodType } from "zod";
 
@@ -492,7 +496,7 @@ export interface ManagedExchangeRecord {
    * between the two. Absent while no rotation is in flight. */
   rotationInFlightSince?: string;
   /** The relay registrar this browser enrolled the exchange at: where a run
-   * that relays through this browser's own relay registers the relay key
+   * that relays through the exchange's own relay registers the relay key
    * derived from each rotated secret. Holds no credential; the relay-owner
    * token is asked for at enrollment and kept nowhere. Absent while the
    * exchange is not enrolled. */
@@ -510,6 +514,14 @@ export interface ManagedExchangeRecord {
    * holds. Absent beside the marker, a registration signed under the current
    * key can confirm it. */
   relayRegistrationPendingReason?: ManagedRelayRegistrationPendingReason;
+  /** The exchange's own relays: the TURN and STUN urls and the WebSocket
+   * relay url its runs list beside the invitation's, and its re-invites name.
+   * Holds no credential. Absent while it names none. */
+  ownRelay?: OwnRelay;
+  /** Present, as `true`, where the exchange's runs and re-invites use the
+   * relay server a build offers switched off (`defaultRelayInUse`);
+   * absent, they leave it off. */
+  defaultRelayOn?: true;
   /** The verifiers of the secrets this record retired, newest first and at
    * most {@link ROTATION_HISTORY_MAX_ENTRIES}: each run's rotation write and
    * each re-invite puts the retired secret's entry at the head
@@ -744,6 +756,8 @@ const ManagedExchangeRecordSchema: ZodType<ManagedExchangeRecord> = z
     relayRegistrar: RelayRegistrarSchema.optional(),
     relayRegistrationPendingSince: z.iso.datetime().optional(),
     relayRegistrationPendingReason: z.literal("reinvite").optional(),
+    ownRelay: OwnRelaySchema.optional(),
+    defaultRelayOn: z.literal(true).optional(),
     rotationHistory: rotationHistorySchema.optional(),
     previousSharedSecret: z.string().regex(SHARED_SECRET_REGEX).optional(),
     previousExpires: z.iso.datetime().optional(),
@@ -776,6 +790,8 @@ const ManagedExchangeRecordSchema: ZodType<ManagedExchangeRecord> = z
         record.rotationInFlightSince === undefined &&
         record.relayRegistrar === undefined &&
         record.relayRegistrationPendingSince === undefined &&
+        record.ownRelay === undefined &&
+        record.defaultRelayOn === undefined &&
         record.rotationHistory === undefined &&
         record.previousSharedSecret === undefined &&
         record.workingDirectoryHandle === undefined),
@@ -783,8 +799,9 @@ const ManagedExchangeRecordSchema: ZodType<ManagedExchangeRecord> = z
       message:
         "a record without a sharedSecret is configuration only and must hold " +
         "no expires, schedule, lastRun, recentRuns, rotationInFlightSince, " +
-        "relayRegistrar, relayRegistrationPendingSince, rotationHistory, " +
-        "previousSharedSecret, or platform handle",
+        "relayRegistrar, relayRegistrationPendingSince, ownRelay, " +
+        "defaultRelayOn, rotationHistory, previousSharedSecret, or platform " +
+        "handle",
     },
   )
   .refine(
@@ -1090,6 +1107,16 @@ export function managedAllowedRelays(
   return connection.channel === "webrtc" ? connection.allowedRelays : undefined;
 }
 
+/** A record's own relays in the form the run and invitation helpers of
+ * ../transport/ownRelaySetting.ts read this browser's setting in. */
+export function managedOwnRelayRead(
+  record: Pick<ManagedExchangeRecord, "ownRelay">,
+): OwnRelayRead {
+  return record.ownRelay !== undefined
+    ? { kind: "set", relay: record.ownRelay }
+    : { kind: "none" };
+}
+
 /** The fields a caller supplies to create a new managed exchange record. The
  * `id` and `schemaVersion` are assigned by {@link buildManagedExchangeRecord};
  * the local policy and bookkeeping fields default to absent (the opt-in
@@ -1135,6 +1162,11 @@ export interface NewManagedExchange {
   /** The rotation history, set only by an import of a backup or a key file
    * holding one. An empty history is stored as none. */
   rotationHistory?: ReadonlyArray<RotationHistoryEntry>;
+  /** The exchange's own relays, where it has any. */
+  ownRelay?: OwnRelay;
+  /** `true` where the exchange uses the relay server a build offers switched
+   * off. */
+  defaultRelayOn?: boolean;
 }
 
 /**
@@ -1185,6 +1217,8 @@ export function buildManagedExchangeRecord(
     fields.rotationHistory.length > 0
       ? { rotationHistory: fields.rotationHistory }
       : {}),
+    ...(fields.ownRelay !== undefined ? { ownRelay: fields.ownRelay } : {}),
+    ...(fields.defaultRelayOn === true ? { defaultRelayOn: true } : {}),
     standingCondition: fields.standingCondition ?? NO_STANDING_CONDITION,
   };
   return parseManagedExchangeRecord(record);
@@ -1859,9 +1893,9 @@ export function applyManagedExchangeRotationInFlightCleared(
 /**
  * Complete a configuration-only record with a record read from a command-line
  * `alcove.yaml` and its `.alcove.key`, producing a validated new record: the
- * document, `side`, max-age policy, key pair, relay registrar, pending
- * registration, and rotation history come from the pair, an absent policy
- * clearing the stored one.
+ * document, `side`, max-age policy, key pair, relay registrar, own relays,
+ * pending registration, and rotation history come from the pair, an absent
+ * policy clearing the stored one.
  * The `id`, label, and standing condition stay as stored. A
  * configuration-only record holds no schedule, run bookkeeping, rotation
  * marker, registrar, or folder grant, so the result holds only what the pair
@@ -1893,6 +1927,7 @@ export function applyManagedExchangeCommandLinePair(
     next.relayRegistrationPendingSince = imported.relayRegistrationPendingSince;
   if (imported.rotationHistory !== undefined)
     next.rotationHistory = imported.rotationHistory;
+  if (imported.ownRelay !== undefined) next.ownRelay = imported.ownRelay;
   return runnableManagedExchangeOrRefuse(parseManagedExchangeRecord(next));
 }
 
@@ -1900,17 +1935,31 @@ export function applyManagedExchangeCommandLinePair(
  * `alcove.yaml` with its `.alcove.key`. */
 export type ManagedImportSource = "backup" | "command-line";
 
+/** The own relays a pair import leaves: a pair names only TURN urls, so
+ * the stored STUN and WebSocket relay urls stay beside them. */
+function ownRelayAfterPairImport(
+  stored: OwnRelay | undefined,
+  imported: OwnRelay | undefined,
+): OwnRelay | undefined {
+  if (imported === undefined) return stored;
+  return { ...(stored ?? { stun: [] }), turn: imported.turn };
+}
+
 /**
  * The record an import replaces `stored` with, keeping `stored`'s entry
  * (docs/spec/MANAGED_EXCHANGE_RECORD.md, "Replacing a saved copy"):
  *
  * - From the import: the document, `side`, secret, `expires`, max-age policy,
  *   relay registration, and rotation history, each absent where the import
- *   states none, and from a backup also its schedule.
+ *   states none, and from a backup also its schedule, its own relays, and its
+ *   use of this site's relay server.
  * - From `stored`: the `id`, label, and working-folder grant, and from a pair
- *   import also the schedule, which a pair has no field for.
+ *   import also the schedule and the use of this site's relay server, which a
+ *   pair has no field for.
  * - Merged: `lastRun` is the newer of the two, and the run list holds both
- *   copies' entries, newest first.
+ *   copies' entries, newest first. A pair import's own relays are the TURN
+ *   urls the pair names beside `stored`'s STUN and WebSocket relay urls, or
+ *   `stored`'s where the pair names none ({@link ownRelayAfterPairImport}).
  * - The standing condition: `stored`'s where one stands, so the replace clears
  *   none, else the import's.
  *
@@ -1925,6 +1974,12 @@ export function applyManagedExchangeImportReplace(
   source: ManagedImportSource,
 ): RunnableManagedExchangeRecord {
   const schedule = source === "backup" ? imported.schedule : stored.schedule;
+  const ownRelay =
+    source === "backup"
+      ? imported.ownRelay
+      : ownRelayAfterPairImport(stored.ownRelay, imported.ownRelay);
+  const defaultRelayOn =
+    source === "backup" ? imported.defaultRelayOn : stored.defaultRelayOn;
   const lastRun = newerLastRun(stored.lastRun, imported.lastRun);
   const recentRuns = mergedRecentRuns(stored, imported);
   const next: ManagedExchangeRecord = {
@@ -1963,6 +2018,8 @@ export function applyManagedExchangeImportReplace(
     ...(imported.rotationHistory !== undefined
       ? { rotationHistory: imported.rotationHistory }
       : {}),
+    ...(ownRelay !== undefined ? { ownRelay } : {}),
+    ...(defaultRelayOn !== undefined ? { defaultRelayOn } : {}),
   };
   return runnableManagedExchangeOrRefuse(parseManagedExchangeRecord(next));
 }
@@ -2549,7 +2606,9 @@ export function applyManagedExchangeWorkingDirectory(
  * display label, the run schedule, the max-token-age policy, and the five
  * per-party settings of the document that are not terms (its own-columns
  * choice, its matched-key choice, its field delimiter, its retention note, and
- * its webrtc connection's allowed relays). The agreed terms, the rest of the
+ * its webrtc connection's allowed relays), and the connection settings: its
+ * coordination server, its own relays, and its use of this site's relay
+ * server. The agreed terms, the rest of the
  * connection, and the secret are not editable here: the columns this party
  * sends change in place through {@link applyManagedExchangeSentColumns}, while
  * a change to the match or identifier columns is a new exchange. */
@@ -2571,6 +2630,14 @@ export interface ManagedExchangeLocalEdits {
   /** New allowed relays for the document's webrtc connection, or `null` to
    * drop them so its runs use every relay they list. */
   allowedRelays?: ReadonlyArray<string> | null;
+  /** New own relays for the exchange, or `null` to drop them. */
+  ownRelay?: OwnRelay | null;
+  /** Whether the exchange uses the relay server a build offers switched
+   * off. */
+  defaultRelayOn?: boolean;
+  /** A new coordination server for the document's webrtc connection, held
+   * to the validation its runs apply. */
+  signalingServer?: Pick<WebRTCExchangeLocator, "host" | "port" | "path">;
 }
 
 /** The edits that change the document rather than a record field. */
@@ -2603,9 +2670,37 @@ function connectionWithAllowedRelays(
 }
 
 /**
+ * The connection `server` sets: the webrtc connection naming only the host,
+ * port and path given, as a fresh invitation's expanded locator does. A
+ * server a run would refuse (`managedSignalingEndpoint`), and an edit on
+ * another channel, which has no coordination server, are refused.
+ */
+function connectionWithSignalingServer(
+  connection: ExchangeSpec["connection"],
+  server: Pick<WebRTCExchangeLocator, "host" | "port" | "path">,
+): ExchangeSpec["connection"] {
+  if (connection.channel !== MANAGED_RUN_CHANNEL)
+    throw new Error(
+      `a coordination server applies to a webrtc connection, not ${connection.channel}`,
+    );
+  const endpoint = WebRTCEndpointSchema.parse({ channel: "webrtc", ...server });
+  if (refusedSignalingEndpointField(endpoint) !== undefined)
+    throw new Error("a run would refuse this coordination server address");
+  return {
+    ...connection,
+    server: {
+      host: server.host,
+      ...(server.port !== undefined ? { port: server.port } : {}),
+      ...(server.path !== undefined ? { path: server.path } : {}),
+    },
+  };
+}
+
+/**
  * Apply local edits to a record, producing a validated new record. Only the
- * label, schedule, max-token-age policy, and the document's five per-party
- * settings update in place; a `null` drops the corresponding optional field. The
+ * label, schedule, max-token-age policy, the document's five per-party
+ * settings, and the connection settings update in place; a `null` drops the
+ * corresponding optional field. The
  * result is re-validated through the schema, so an over-long label, a refused
  * delimiter, an allowed relay not of core's entry form, or an own-columns or
  * matched-key choice on terms that cannot act on it is rejected here exactly
@@ -2622,8 +2717,9 @@ function connectionWithAllowedRelays(
  * not touch `tokenMaxAgeDays` leaves `expires` untouched.
  *
  * @throws {ZodError} if the edited record is invalid.
- * @throws {Error} if `allowedRelays` is edited on a connection other than
- *   webrtc.
+ * @throws {Error} if `allowedRelays` or `signalingServer` is edited on a
+ *   connection other than webrtc, or `signalingServer` names a server a run
+ *   would refuse.
  */
 export function applyManagedExchangeLocalEdits(
   record: ManagedExchangeRecord,
@@ -2644,6 +2740,18 @@ export function applyManagedExchangeLocalEdits(
         edits.allowedRelays,
       ),
     };
+  if (edits.signalingServer !== undefined)
+    next.exchangeFile = {
+      ...next.exchangeFile,
+      connection: connectionWithSignalingServer(
+        next.exchangeFile.connection,
+        edits.signalingServer,
+      ),
+    };
+  if (edits.ownRelay === null) delete next.ownRelay;
+  else if (edits.ownRelay !== undefined) next.ownRelay = edits.ownRelay;
+  if (edits.defaultRelayOn === true) next.defaultRelayOn = true;
+  else if (edits.defaultRelayOn === false) delete next.defaultRelayOn;
   if (LOCAL_DOCUMENT_EDIT_FIELDS.some((field) => edits[field] !== undefined)) {
     const exchangeFile: ExchangeSpec = { ...next.exchangeFile };
     if (edits.includeOwnColumns === null) delete exchangeFile.includeOwnColumns;

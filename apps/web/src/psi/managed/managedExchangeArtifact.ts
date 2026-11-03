@@ -19,7 +19,8 @@
  *   half maps onto a valid key file;
  * - `local` holds the record fields the two CLI artifacts do not (`label`,
  *   `side`, `schedule`, `lastRun`, `standingCondition`, `tokenMaxAgeDays`, the
- *   relay registrar and the reason a pending registration has, and a marker
+ *   relay registrar and the reason a pending registration has, the own
+ *   relays and the use of this site's relay server, and a marker
  *   saying the source held a working folder), cleanly separable and ignorable
  *   by the CLI toolchain.
  *
@@ -57,6 +58,8 @@ import {
 
 import { z } from "zod";
 
+import { OwnRelaySchema } from "../transport/ownRelaySetting";
+
 import {
   MANAGED_EXCHANGE_ARTIFACT_VERSION,
   buildManagedExchangeRecord,
@@ -85,6 +88,7 @@ import type {
   ManagedStandingCondition,
   RunnableManagedExchangeRecord,
 } from "./managedExchangeRecord";
+import type { OwnRelay } from "../transport/ownRelaySetting";
 import type { ZodType } from "zod";
 
 /** The MIME type the artifact downloads as; it is a JSON document. */
@@ -120,6 +124,10 @@ interface ManagedExchangeArtifactLocal {
   /** Why no run can confirm the pending relay registration the key block
    * holds, where the source record held a reason beside it. */
   relayRegistrationPendingReason?: ManagedRelayRegistrationPendingReason;
+  /** The exchange's own relays, where the source record held any. */
+  ownRelay?: OwnRelay;
+  /** Present where the source record used this site's relay server. */
+  defaultRelayOn?: true;
   /** Read and never written: an artifact from a build that held a separate
    * input-file pointer sets it, and an import reads it as a held working folder,
    * since the folder is what the operator takes again here. */
@@ -217,6 +225,8 @@ export function encodeManagedExchangeArtifact(
               record.relayRegistrationPendingReason,
           }
         : {}),
+      ...(record.ownRelay !== undefined ? { ownRelay: record.ownRelay } : {}),
+      ...(record.defaultRelayOn === true ? { defaultRelayOn: true } : {}),
       ...(record.workingDirectoryHandle !== undefined
         ? { heldOutputFolder: true }
         : {}),
@@ -253,6 +263,8 @@ const artifactLocalSchema: ZodType<ManagedExchangeArtifactLocal> = z
     tokenMaxAgeDays: tokenMaxAgeDaysSchema.optional(),
     relayRegistrar: RelayRegistrarSchema.optional(),
     relayRegistrationPendingReason: z.literal("reinvite").optional(),
+    ownRelay: OwnRelaySchema.optional(),
+    defaultRelayOn: z.literal(true).optional(),
     heldInputFile: z.boolean().optional(),
     heldOutputFolder: z.boolean().optional(),
   })
@@ -409,6 +421,10 @@ export function reconstructRecordFromArtifact(
     ...(artifact.key.rotationHistory !== undefined
       ? { rotationHistory: artifact.key.rotationHistory }
       : {}),
+    ...(artifact.local.ownRelay !== undefined
+      ? { ownRelay: artifact.local.ownRelay }
+      : {}),
+    ...(artifact.local.defaultRelayOn === true ? { defaultRelayOn: true } : {}),
   });
 }
 

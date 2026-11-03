@@ -201,6 +201,26 @@ describe("buildManagedDeposit (inviter)", () => {
     expect(deposit.label).toBe("Riverbend quarterly");
   });
 
+  test("keeps the own relays and the switch the run used, and holds neither where it used none", () => {
+    const ownRelay = {
+      turn: ["turns:relay.example.org:443?transport=tcp"],
+      stun: [],
+    };
+    const deposit = buildManagedDeposit(
+      depositInputs({ ownRelay, defaultRelayOn: true }),
+      Date.UTC(2026, 6, 15, 12, 0, 0),
+    );
+    expect(deposit.ownRelay).toEqual(ownRelay);
+    expect(deposit.defaultRelayOn).toBe(true);
+
+    const plain = buildManagedDeposit(
+      depositInputs({ defaultRelayOn: false }),
+      Date.UTC(2026, 6, 15, 12, 0, 0),
+    );
+    expect(plain).not.toHaveProperty("ownRelay");
+    expect(plain).not.toHaveProperty("defaultRelayOn");
+  });
+
   test("holds no folder grant and no schedule: both are taken on the exchange's page", () => {
     // The unattended runner fires on a record holding BOTH a schedule and a
     // working folder. The deposit writes neither -- the offer takes no folder

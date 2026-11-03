@@ -37,7 +37,6 @@ import type {
 import type { HandlePermissionQuery } from "@psi/managed/managedInputHandle";
 import type { ManagedBackupMarkOutcome } from "@psi/managed/managedExchangeStore";
 import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
-import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
 
 // The export intents, tested in Node with injected dependencies. Every export
 // reads the record fresh rather than trusting a caller's copy. The backup
@@ -275,7 +274,6 @@ describe("exportManagedCronFiles", () => {
         order.push("download");
         downloaded.push({ fileName, content, mimeType });
       },
-      readOwn: () => ({ kind: "none" }),
     };
   }
 
@@ -309,7 +307,7 @@ describe("exportManagedCronFiles", () => {
     expect(composed.key.text).toContain(before.sharedSecret);
   });
 
-  test("composes against the relay settings read it is given, the one the panel composed with", async () => {
+  test("writes the exchange's own TURN url beside its registrar", async () => {
     const ownTurn = "turns:relay.example.org:443?transport=tcp";
     const rec = {
       ...record(),
@@ -317,12 +315,9 @@ describe("exportManagedCronFiles", () => {
         url: "https://relay.example.org:8443",
         exchangeId: "riverbend-q3",
       },
+      ownRelay: { turn: [ownTurn], stun: [] },
     };
-    const panelRead: OwnRelayRead = {
-      kind: "set",
-      relay: { turn: [ownTurn], stun: [] },
-    };
-    const deps = { ...cronDeps(rec), readOwn: () => panelRead };
+    const deps = cronDeps(rec);
 
     const composed = await exportManagedCronFiles(rec.id, deps);
 

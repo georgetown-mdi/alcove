@@ -567,7 +567,6 @@ describe("a record this app could not have composed", () => {
       exportManagedCronFiles(created.id, {
         readRecord: getManagedExchange,
         download: (fileName) => downloaded.push(fileName),
-        readOwn: () => ({ kind: "none" }),
       }),
     ).rejects.toThrow(/to the command line: turn\./);
 

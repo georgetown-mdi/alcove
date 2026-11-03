@@ -4,6 +4,7 @@ import { deriveRelayExchangeId, generateSharedSecret } from "@alcove/core";
 
 import {
   MAX_RELAY_URLS,
+  browserRelaysForSavedExchange,
   ownRelayForInvitation,
   parseRelayUrlLines,
   parseWebSocketRelayUrl,
@@ -102,6 +103,25 @@ describe("the stored own relay", () => {
   test("no storage reads as no relay", () => {
     vi.stubGlobal("localStorage", undefined);
     expect(readOwnRelaySetting()).toEqual({ kind: "none" });
+  });
+});
+
+describe("the relays a saved exchange takes from this browser", () => {
+  test("are the stored relay and the stored switch", () => {
+    const values = stubStorage();
+    expect(browserRelaysForSavedExchange()).toEqual({ defaultRelayOn: false });
+    writeOwnRelaySetting(OWN);
+    values.set("alcove-default-relay-on", "1");
+    expect(browserRelaysForSavedExchange()).toEqual({
+      ownRelay: OWN,
+      defaultRelayOn: true,
+    });
+  });
+
+  test("a stored relay this build cannot read gives none", () => {
+    const values = stubStorage();
+    values.set(STORAGE_KEY, "{");
+    expect(browserRelaysForSavedExchange()).toEqual({ defaultRelayOn: false });
   });
 });
 

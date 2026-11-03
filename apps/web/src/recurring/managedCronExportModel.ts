@@ -51,7 +51,6 @@ import type {
   WithheldRunLines,
 } from "./scheduledRunCommand";
 import type { ConnectionConfig } from "@alcove/core";
-import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
 import type { RunSchedule } from "./scheduleTemplates";
 
 /**
@@ -242,21 +241,19 @@ function exportPanelState<TComposed extends ManagedCommandLineConfig>(
 }
 
 /**
- * Derive the hand-off panel's state for `record`, composed against `readOwn`,
- * the relay settings read the panel's download composes against too. A record
- * the composer refuses -- a stored connection on another channel, or a
- * document holding anything the app could not have composed -- yields the
- * refusal and its reason; anything else yields the composed export and the
- * lines that run it, naming `image`.
+ * Derive the hand-off panel's state for `record`. A record the composer
+ * refuses -- a stored connection on another channel, or a document holding
+ * anything the app could not have composed -- yields the refusal and its
+ * reason; anything else yields the composed export and the lines that run
+ * it, naming `image`.
  */
 export function managedCronExportPanelState(
   record: RunnableManagedExchangeRecord,
-  readOwn: () => OwnRelayRead,
   image: string = buildImageReference(),
 ): ManagedCronExportPanelState<ManagedCronExport> {
   return exportPanelState(
     record,
-    () => composeManagedCronExport(record, readOwn),
+    () => composeManagedCronExport(record),
     image,
   );
 }

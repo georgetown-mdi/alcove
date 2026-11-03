@@ -1,3 +1,4 @@
+import { CHANGE_SAVED_SERVER_REMEDY } from "@psi/managed/managedFailureCopy";
 import { standingCompromiseResponse } from "@psi/managed/managedExchangeRecord";
 
 import { managedRunReinvites } from "./managedRunLaunchModel";
@@ -23,9 +24,9 @@ import type { ManagedStandingConditionView } from "./managedStandingConditionMod
  * of the page, or the detail section far below it. */
 export type ManagedReinviteSite = "recovery" | "detail";
 
-/** Why a mint failed. `saved-server-refused`: this browser's coordination
- * server setting cannot be read, so the re-invite names the server the
- * exchange saved, and that address fails the validation a run applies.
+/** Why a mint failed. `saved-server-refused`: the coordination server the
+ * exchange saved, which the re-invite names, fails the validation a run
+ * applies.
  * `secret-changed`: the re-invite write's safety check found the secret it
  * was composed over replaced. */
 export type ManagedReinviteFailureCause =
@@ -51,10 +52,8 @@ export const MANAGED_REINVITE_FAILURE_ALERTS: Readonly<
   "saved-server-refused": {
     title: "Could not create a fresh invitation",
     message:
-      "Relay settings cannot read your coordination server, and the " +
-      "coordination server address this exchange saved cannot be used. Set " +
-      "your coordination server again or clear it in relay settings first, " +
-      "then try again.",
+      "The coordination server address this exchange saved cannot be used. " +
+      `${CHANGE_SAVED_SERVER_REMEDY} Then try again.`,
   },
   "secret-changed": {
     title: "Could not create a fresh invitation",

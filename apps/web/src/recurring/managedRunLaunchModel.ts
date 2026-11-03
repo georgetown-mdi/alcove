@@ -16,6 +16,7 @@ import {
 } from "@alcove/core";
 
 import {
+  CHANGE_SAVED_SERVER_REMEDY,
   IMPORTED_FAILURE_REMEDY,
   IMPORTED_FAILURE_TITLE,
   INPUT_FAILURE_TITLE,
@@ -66,7 +67,6 @@ import {
   rotationInFlightUnansweredAtLaunch,
   storageReach,
 } from "@psi/managed/managedFailureTiers";
-import { DEFAULT_RELAY_OFF_REMEDY } from "@psi/transport/defaultRelaySwitch";
 import { ManagedSignalingEndpointRefusedError } from "@psi/managed/managedRendezvous";
 import { canReinviteFromRecord } from "@psi/managed/managedReinvite";
 import { failedWithDefaultRelayOff } from "@psi/transport/iceGathering";
@@ -763,10 +763,9 @@ const IMPORTED_FAILURE: ManagedRunFailure = {
  * no stored kind of its own, since a new stored kind would change the saved
  * record's schema: the record stamps it as a transport failure, so a later
  * visit reads the generic transport state. The same record refuses identically
- * every time, so it is not the retry state. Both sides recover by re-invite:
- * a fresh invitation from the partner saves a new address on the acceptor's
- * side, and an inviter's re-invite names this browser's current
- * coordination server and stores it on the record. */
+ * every time, so it is not the retry state. A fresh invitation from the
+ * partner saves a new address on the acceptor's side, and the inviter changes
+ * the address on the exchange's page, which a re-invite also names. */
 function savedAddressRefusedFailure(
   error: ManagedSignalingEndpointRefusedError,
 ): ManagedRunFailure {
@@ -776,13 +775,11 @@ function savedAddressRefusedFailure(
     message:
       `${error.refusal} The run stopped before connecting, so your partner ` +
       "was not contacted and nothing left this device. Running it again " +
-      "stops the same way; " +
+      "stops the same way" +
       (error.side === "acceptor"
-        ? "this exchange needs a fresh invitation."
-        : "re-invite your partner to name this browser's current " +
-          "coordination server. If relay settings cannot read your " +
-          "coordination server, set it again or clear it there first."),
-    recovery: "reinvite",
+        ? "; this exchange needs a fresh invitation."
+        : `. ${CHANGE_SAVED_SERVER_REMEDY}`),
+    recovery: error.side === "acceptor" ? "reinvite" : "none",
   };
 }
 
@@ -1140,8 +1137,8 @@ export function withShownCause(
  * Whatever state it lands on, the launch error reaches the operator only
  * through {@link managedRunCausePlacement}. The transport state of a connection
  * that did not open with this site's relay switched off
- * (`failedWithDefaultRelayOff`) adds {@link DEFAULT_RELAY_OFF_REMEDY} to its
- * own copy.
+ * (`failedWithDefaultRelayOff`) adds {@link MANAGED_DEFAULT_RELAY_OFF_REMEDY}
+ * to its own copy.
  */
 export function classifyManagedRunFailure(
   error: unknown,
@@ -1163,9 +1160,19 @@ export function classifyManagedRunFailure(
     managedRunCausePlacement(state.kind),
   );
   return state.kind === "transport" && failedWithDefaultRelayOff(error)
-    ? { ...shown, message: `${shown.message} ${DEFAULT_RELAY_OFF_REMEDY}` }
+    ? {
+        ...shown,
+        message: `${shown.message} ${MANAGED_DEFAULT_RELAY_OFF_REMEDY}`,
+      }
     : shown;
 }
+
+/** What the transport state of a run that did not connect adds where the
+ * exchange leaves this site's relay server off and could use it. */
+export const MANAGED_DEFAULT_RELAY_OFF_REMEDY =
+  "This exchange does not use this site's relay server. If a network " +
+  "blocks direct connections, turn it on under Connection settings on this " +
+  "exchange's page, then try again.";
 
 /** The state a launch failure lands on, before the launch error is offered to
  * it ({@link classifyManagedRunFailure}, which is the whole of this function's
@@ -1266,11 +1273,8 @@ const INVITER_REINVITE_RECOVERY: ManagedReinviteRecoveryCopy = {
   lead: "Re-invite your partner.",
   body: [
     "This keeps your agreed terms and replaces the secret. The fresh " +
-      "invitation names the coordination server set in relay settings, or " +
-      "this site's where none is set, or the one this exchange already " +
-      "uses where relay settings cannot read yours, and this exchange " +
-      "uses that server " +
-      "from then on. The fresh invitation includes a new one-time secret, " +
+      "invitation names this exchange's coordination server. It " +
+      "includes a new one-time secret, " +
       "so send it over your usual trusted channel, exactly as you did the " +
       "first time.",
   ],

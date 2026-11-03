@@ -22,7 +22,6 @@ import { NotFound } from "@components/NotFound";
 import { RelaySettingsScreen } from "@exchange/RelaySettingsScreen";
 import { VerifyReceiptScreen } from "@exchange/VerifyReceiptScreen";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
-import { writeOwnRelaySetting } from "@psi/transport/ownRelaySetting";
 
 import type { InvitationToken } from "@alcove/core";
 import type { ReactNode } from "react";
@@ -67,14 +66,10 @@ async function savedExchangeId(): Promise<string> {
   return created.id;
 }
 
-/** A saved exchange with three recorded runs, opened in a browser whose own
- * relay names a TURN url: the state that shows the run history list and the
- * relay registration section. */
+/** A saved exchange with three recorded runs whose own relay names a TURN
+ * url: the state that shows the run history list and the relay registration
+ * section. */
 async function exchangeWithRunsId(): Promise<string> {
-  writeOwnRelaySetting({
-    turn: ["turns:relay.example.org:443?transport=tcp"],
-    stun: [],
-  });
   const created = await createManagedExchange({
     label: "Riverbend quarterly",
     exchangeFile: composeManagedExchangeFile({
@@ -83,6 +78,10 @@ async function exchangeWithRunsId(): Promise<string> {
     }),
     side: "inviter",
     sharedSecret: generateSharedSecret(),
+    ownRelay: {
+      turn: ["turns:relay.example.org:443?transport=tcp"],
+      stun: [],
+    },
   });
   for (const [at, failureKind] of [
     ["2026-07-01T10:00:00.000Z", "input"],

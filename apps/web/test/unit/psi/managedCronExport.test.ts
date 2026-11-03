@@ -48,7 +48,6 @@ import type {
   NewManagedExchange,
   RunnableManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
-import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
 
 /** A record built from `fields` and narrowed to the runnable shape: every fixture
  * here is built with a shared secret, and the export paths take the record type
@@ -608,7 +607,6 @@ describe("the record's own allowed relays", () => {
     turn: ["turns:relay.example.org:443?transport=tcp"],
     stun: ["stun:relay.example.org:3478"],
   };
-  const noOwnRelay = (): OwnRelayRead => ({ kind: "none" });
 
   function acceptedRecord(
     allowedRelays?: ReadonlyArray<string>,
@@ -630,7 +628,7 @@ describe("the record's own allowed relays", () => {
   function exportedConnection(record: RunnableManagedExchangeRecord) {
     return parseExchangeSpec(
       parseSensitiveYaml(
-        composeManagedCronExport(record, noOwnRelay).config.text,
+        composeManagedCronExport(record).config.text,
         "exported alcove.yaml",
       ),
     ).connection;
@@ -639,7 +637,6 @@ describe("the record's own allowed relays", () => {
   test("are exported as the CLI's field", () => {
     const exported = composeManagedCronExport(
       acceptedRecord(["relay.example.org"]),
-      noOwnRelay,
     ).config.text;
 
     expect(exported).toContain("allowed_relays:");
@@ -653,8 +650,7 @@ describe("the record's own allowed relays", () => {
   });
 
   test("a record holding none writes no field", () => {
-    const exported = composeManagedCronExport(acceptedRecord(), noOwnRelay)
-      .config.text;
+    const exported = composeManagedCronExport(acceptedRecord()).config.text;
     expect(exported).not.toContain("allowed_relays");
   });
 
@@ -817,17 +813,14 @@ describe("the relay key registration", () => {
   };
   const PENDING_SINCE = "2026-09-29T12:00:00.000Z";
   const OWN_TURN = "turns:relay.example.org:443?transport=tcp";
-  const ownRelay =
-    (turn: Array<string>, stun: Array<string> = []): (() => OwnRelayRead) =>
-    () => ({ kind: "set", relay: { turn, stun } });
+  const ownTurn = { ownRelay: { turn: [OWN_TURN], stun: [] } };
 
   function exportedConfig(
     record: RunnableManagedExchangeRecord,
-    readOwn: () => OwnRelayRead,
   ): WebRTCConnectionConfig {
     const connection = parseExchangeSpec(
       parseSensitiveYaml(
-        composeManagedCronExport(record, readOwn).config.text,
+        composeManagedCronExport(record).config.text,
         "exported alcove.yaml",
       ),
     ).connection;
@@ -835,21 +828,18 @@ describe("the relay key registration", () => {
     return connection;
   }
 
-  function exportedKey(
-    record: RunnableManagedExchangeRecord,
-    readOwn: () => OwnRelayRead,
-  ) {
+  function exportedKey(record: RunnableManagedExchangeRecord) {
     return KeyFileSchema.parse(
-      JSON.parse(composeManagedCronExport(record, readOwn).key.text),
+      JSON.parse(composeManagedCronExport(record).key.text),
     );
   }
 
-  test("an enrolled record's configuration names the registrar and this browser's TURN urls, each minted", () => {
-    const record = managedRecord({ relayRegistrar: REGISTRAR });
-    const connection = exportedConfig(
-      record,
-      ownRelay([OWN_TURN], ["stun:stun.example.org:3478"]),
-    );
+  test("an enrolled record's configuration names the registrar and the exchange's own TURN urls, each minted", () => {
+    const record = managedRecord({
+      relayRegistrar: REGISTRAR,
+      ownRelay: { turn: [OWN_TURN], stun: ["stun:stun.example.org:3478"] },
+    });
+    const connection = exportedConfig(record);
     expect(connection.relayRegistrar).toEqual(REGISTRAR);
     expect(connection.turn).toEqual([{ url: OWN_TURN }]);
     expect(hasMintedTurnEntry(connection.turn)).toBe(true);
@@ -857,10 +847,10 @@ describe("the relay key registration", () => {
       { source: "own", url: OWN_TURN },
     ]);
     expect(connection.stun).toBeUndefined();
-    expect(
-      composeManagedCronExport(record, ownRelay([OWN_TURN])).config.text,
-    ).toContain("relay_registrar:\n    url: https://relay.example.org:8443");
-    expect(exportedKey(record, ownRelay([OWN_TURN]))).not.toHaveProperty(
+    expect(composeManagedCronExport(record).config.text).toContain(
+      "relay_registrar:\n    url: https://relay.example.org:8443",
+    );
+    expect(exportedKey(record)).not.toHaveProperty(
       "relayRegistrationPendingSince",
     );
   });
@@ -869,8 +859,9 @@ describe("the relay key registration", () => {
     const record = managedRecord({
       relayRegistrar: REGISTRAR,
       relayRegistrationPendingSince: PENDING_SINCE,
+      ...ownTurn,
     });
-    const key = exportedKey(record, ownRelay([OWN_TURN]));
+    const key = exportedKey(record);
     expect(key.relayRegistrationPendingSince).toBe(PENDING_SINCE);
     expect(key.sharedSecret).toBe(record.sharedSecret);
   });
@@ -880,10 +871,9 @@ describe("the relay key registration", () => {
       relayRegistrar: REGISTRAR,
       relayRegistrationPendingSince: PENDING_SINCE,
       relayRegistrationPendingReason: "reinvite",
+      ...ownTurn,
     });
-    expect(() =>
-      composeManagedCronExport(record, ownRelay([OWN_TURN])),
-    ).toThrow(
+    expect(() => composeManagedCronExport(record)).toThrow(
       "This exchange's re-invite replaced its shared secret, and the relay " +
         "registrar at https://relay.example.org:8443 (exchange riverbend-q3) " +
         "has not confirmed the relay key derived from the new one, so a " +
@@ -895,55 +885,54 @@ describe("the relay key registration", () => {
   test("a re-invite's pending registration naming no registrar is refused", () => {
     // The record schema refuses this shape; the refusal must not rely on it.
     const record: RunnableManagedExchangeRecord = {
-      ...managedRecord(),
+      ...managedRecord(ownTurn),
       relayRegistrationPendingSince: PENDING_SINCE,
       relayRegistrationPendingReason: "reinvite",
     };
-    expect(() =>
-      composeManagedCronExport(record, ownRelay([OWN_TURN])),
-    ).toThrow(
+    expect(() => composeManagedCronExport(record)).toThrow(
       "This exchange's re-invite replaced its shared secret, and the relay " +
         "registrar has not confirmed the relay key derived from the new one",
     );
   });
 
-  test.each<[string, () => OwnRelayRead]>([
-    ["no relay setting", () => ({ kind: "none" })],
+  test.each<[string, Partial<NewManagedExchange>]>([
+    ["no own relay", {}],
     [
-      "a relay setting naming STUN only",
-      ownRelay([], ["stun:stun.example.org"]),
+      "an own relay naming STUN only",
+      { ownRelay: { turn: [], stun: ["stun:stun.example.org"] } },
     ],
   ])(
-    "an enrolled record is refused under %s, naming both ways past it",
-    (_case, readOwn) => {
-      const record = managedRecord({ relayRegistrar: REGISTRAR });
-      expect(() => composeManagedCronExport(record, readOwn)).toThrow(
-        "but this browser's relay settings name no TURN url to write there. " +
-          "Add your relay's TURN url on the Relay server page, or stop " +
-          "registering under Relay registration on this exchange's page, " +
-          "then export again.",
+    "an enrolled record is refused with %s, naming both ways past it",
+    (_case, own) => {
+      const record = managedRecord({ relayRegistrar: REGISTRAR, ...own });
+      expect(() => composeManagedCronExport(record)).toThrow(
+        "but this exchange names no TURN url to write there. Add your " +
+          "relay's TURN url under Connection settings on this exchange's " +
+          "page, or stop registering under Relay registration, then export " +
+          "again.",
       );
     },
   );
 
-  test("an enrolled record is refused under an unreadable relay setting, naming setting it again", () => {
-    const record = managedRecord({ relayRegistrar: REGISTRAR });
-    let refusal: unknown;
+  test("this browser's own relay setting does not reach the export", () => {
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) =>
+        key === "alcove-own-relay"
+          ? JSON.stringify({ version: 1, turn: [OWN_TURN], stun: [] })
+          : null,
+    });
     try {
-      composeManagedCronExport(record, () => ({ kind: "unreadable" }));
-    } catch (error) {
-      refusal = error;
+      const record = managedRecord({ relayRegistrar: REGISTRAR });
+      expect(() => composeManagedCronExport(record)).toThrow(
+        "names no TURN url",
+      );
+    } finally {
+      vi.unstubAllGlobals();
     }
-    expect(refusal).toBeInstanceOf(Error);
-    expect((refusal as Error).message).toContain(
-      "but this browser's relay setting could not be read. Set it again on " +
-        "the Relay server page, then export again.",
-    );
-    expect((refusal as Error).message).not.toContain("name no TURN url");
   });
 
-  test("a record naming no registrar writes no TURN url, whatever the relay setting", () => {
-    const connection = exportedConfig(managedRecord(), ownRelay([OWN_TURN]));
+  test("a record naming no registrar writes no TURN url, whatever its own relays", () => {
+    const connection = exportedConfig(managedRecord(ownTurn));
     expect(connection.turn).toBeUndefined();
     expect(connection.relayRegistrar).toBeUndefined();
   });
@@ -968,12 +957,13 @@ describe("the relay key registration", () => {
           }),
         ),
         relayRegistrar: REGISTRAR,
+        ...ownTurn,
         ...overrides,
       });
     }
 
     function exported(record: RunnableManagedExchangeRecord) {
-      const composed = composeManagedCronExport(record, ownRelay([OWN_TURN]));
+      const composed = composeManagedCronExport(record);
       const connection = parseExchangeSpec(
         parseSensitiveYaml(composed.config.text, "exported alcove.yaml"),
       ).connection;
@@ -1025,20 +1015,17 @@ describe("the relay key registration", () => {
         relayRegistrationPendingSince: PENDING_SINCE,
         relayRegistrationPendingReason: "reinvite",
       };
-      expect(() =>
-        composeManagedCronExport(record, ownRelay([OWN_TURN])),
-      ).toThrow("This exchange's re-invite replaced its shared secret");
+      expect(() => composeManagedCronExport(record)).toThrow(
+        "This exchange's re-invite replaced its shared secret",
+      );
     });
 
-    test("is refused under a relay setting naming no TURN url, as any enrolled record is", () => {
+    test("is refused where the exchange names no TURN url, as any enrolled record is", () => {
       expect(() =>
         composeManagedCronExport(
-          invitedRecord({ turn: [PARTNER_TURN] }),
-          () => ({
-            kind: "none",
-          }),
+          invitedRecord({ turn: [PARTNER_TURN] }, { ownRelay: undefined }),
         ),
-      ).toThrow("but this browser's relay settings name no TURN url");
+      ).toThrow("but this exchange names no TURN url");
     });
   });
 });

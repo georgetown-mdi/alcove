@@ -31,8 +31,6 @@ import {
 import { ManagedImportBackupNotConfigurationError } from "@psi/managed/managedExchangeImport";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 
-import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
-
 // Sorting a control's chosen files into one file or a configuration with its key
 // file, by name alone, and what the pair import says when it refuses or lands.
 
@@ -102,8 +100,6 @@ describe("what the pair import says", () => {
     host: "signaling.example.org",
   } as const;
 
-  const noOwnRelay = (): OwnRelayRead => ({ kind: "none" });
-
   /** A pair import of a hand-written webrtc configuration stating `settings`
    * beside the connection and the terms. */
   function importedPair(settings: Record<string, unknown>) {
@@ -147,7 +143,7 @@ describe("what the pair import says", () => {
   ] as const)(
     "a landed pair whose file states %s names it as kept unchanged",
     (name, settings) => {
-      const notice = pairImportedNotice(importedPair(settings), {}, noOwnRelay);
+      const notice = pairImportedNotice(importedPair(settings));
 
       expect(notice.title).toBe(PAIR_IMPORTED_NOTICE.title);
       expect(notice.lead).toBe(PAIR_IMPORTED_NOTICE.lead);
@@ -181,17 +177,13 @@ describe("what the pair import says", () => {
   });
 
   test("a landed pair whose file states none of them adds no line", () => {
-    expect(pairImportedNotice(importedPair({}), {}, noOwnRelay)).toEqual(
-      PAIR_IMPORTED_NOTICE,
-    );
+    expect(pairImportedNotice(importedPair({}))).toEqual(PAIR_IMPORTED_NOTICE);
   });
 
   test("names the key-file fields the import did not read, escaped, never a value", () => {
-    const notice = pairImportedNotice(
-      importedPair({}),
-      { keyFileFields: ["previousSharedSecret", "prev\u202eExpires"] },
-      noOwnRelay,
-    );
+    const notice = pairImportedNotice(importedPair({}), {
+      keyFileFields: ["previousSharedSecret", "prev\u202eExpires"],
+    });
     expect(notice.consequences).toEqual([
       "The key file holds fields this app does not read, so they were not " +
         "imported: previousSharedSecret, prev\\u202eExpires.",
@@ -199,129 +191,25 @@ describe("what the pair import says", () => {
   });
 
   test("says nothing of the key file when it holds only fields it reads", () => {
-    expect(
-      pairImportedNotice(importedPair({}), { keyFileFields: [] }, noOwnRelay),
-    ).toEqual(PAIR_IMPORTED_NOTICE);
+    expect(pairImportedNotice(importedPair({}), { keyFileFields: [] })).toEqual(
+      PAIR_IMPORTED_NOTICE,
+    );
   });
 
-  describe("a pair naming a relay registrar", () => {
-    const registrar = {
-      url: "https://relay.example.org:8443",
-      exchangeId: "riverbend-q3",
-    };
-    const fileTurn = "turns:relay.example.net:443?transport=tcp";
-    const ownTurn = "turns:relay.example.org:443?transport=tcp";
-    const enrolled = () => ({ ...importedPair({}), relayRegistrar: registrar });
-    const ownRelay =
-      (turn: Array<string>): (() => OwnRelayRead) =>
-      () => ({ kind: "set", relay: { turn, stun: [] } });
-
-    test("names the file's TURN urls this browser's relay settings replace", () => {
-      const notice = pairImportedNotice(
-        enrolled(),
-        { turnUrls: [fileTurn] },
-        ownRelay([ownTurn]),
-      );
-      expect(notice.consequences).toEqual([
-        "This configuration's connection.turn urls were not kept: " +
-          `${fileTurn}. A run in this browser relays through the TURN urls ` +
-          "on this browser's Relay server page instead, and a command-line " +
-          "export writes those. To keep using the file's relay, enter its " +
-          "urls there.",
-      ]);
-    });
-
-    test("escapes each dropped url once for display", () => {
-      const [line] = pairImportedNotice(
-        enrolled(),
-        { turnUrls: ["turn:relay\u202e.example.org"] },
-        ownRelay([ownTurn]),
-      ).consequences;
-      expect(line).not.toContain("\u202e");
-      expect(line).toContain("turn:relay\\u202e.example.org");
-      expect(line).not.toContain("\\\\u202e");
-    });
-
-    test("says nothing of the urls where this browser's own are the same", () => {
-      expect(
-        pairImportedNotice(
-          enrolled(),
-          { turnUrls: [ownTurn] },
-          ownRelay([ownTurn]),
-        ),
-      ).toEqual(PAIR_IMPORTED_NOTICE);
-    });
-
-    test("compares a repeated url as one member of the set", () => {
-      const secondOwnTurn = "turn:relay.example.org:3478";
-      expect(
-        pairImportedNotice(
-          enrolled(),
-          { turnUrls: [ownTurn, ownTurn] },
-          ownRelay([ownTurn]),
-        ),
-      ).toEqual(PAIR_IMPORTED_NOTICE);
-      expect(
-        pairImportedNotice(
-          enrolled(),
-          { turnUrls: [ownTurn, ownTurn] },
-          ownRelay([ownTurn, secondOwnTurn]),
-        ).consequences,
-      ).toEqual([
-        "This configuration's connection.turn urls were not kept: " +
-          `${ownTurn}. A run in this browser relays through the TURN urls ` +
-          "on this browser's Relay server page instead, and a command-line " +
-          "export writes those. To keep using the file's relay, enter its " +
-          "urls there.",
-      ]);
-    });
-
-    test.each<[string, () => OwnRelayRead]>([
-      ["no relay setting", () => ({ kind: "none" })],
-      [
-        "a relay setting naming STUN only",
-        () => ({
-          kind: "set",
-          relay: { turn: [], stun: ["stun:stun.example.org"] },
-        }),
-      ],
-    ])(
-      "under %s, says nothing is registered until the Relay server page names a TURN url",
-      (_case, readOwn) => {
-        const notice = pairImportedNotice(enrolled(), {}, readOwn);
-        expect(notice.consequences).toEqual([
-          "Nothing is registered at the relay registrar at " +
-            "https://relay.example.org:8443 (exchange riverbend-q3) until " +
-            "this browser's Relay server page names a TURN url. Enter your " +
-            "relay's TURN url there.",
-        ]);
-      },
-    );
-
-    test("under an unreadable relay setting, says to save it again", () => {
-      const notice = pairImportedNotice(
-        enrolled(),
-        { turnUrls: [fileTurn] },
-        () => ({
-          kind: "unreadable",
-        }),
-      );
-      expect(notice.consequences).toHaveLength(2);
-      expect(notice.consequences[0]).toContain(fileTurn);
-      expect(notice.consequences[1]).toBe(
-        "Nothing is registered at the relay registrar at " +
-          "https://relay.example.org:8443 (exchange riverbend-q3) until " +
-          "this browser's relay setting is saved again: it could not be " +
-          "read. Enter your relay's TURN url on the Relay server page and " +
-          "save.",
-      );
-    });
-
-    test("a pair naming no registrar says nothing of the relay, whatever the setting", () => {
-      expect(
-        pairImportedNotice(importedPair({}), {}, () => ({ kind: "none" })),
-      ).toEqual(PAIR_IMPORTED_NOTICE);
-    });
+  test("a pair naming a relay registrar adds no line about its relay", () => {
+    expect(
+      pairImportedNotice({
+        ...importedPair({}),
+        relayRegistrar: {
+          url: "https://relay.example.org:8443",
+          exchangeId: "riverbend-q3",
+        },
+        ownRelay: {
+          turn: ["turns:relay.example.org:443?transport=tcp"],
+          stun: [],
+        },
+      }),
+    ).toEqual(PAIR_IMPORTED_NOTICE);
   });
 
   test("a refused key file states its own reason, and never the secret", () => {

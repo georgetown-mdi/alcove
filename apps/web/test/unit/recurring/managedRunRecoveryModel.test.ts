@@ -341,7 +341,7 @@ describe("the re-invite mint", () => {
     expect(managedReinviteFailureAt(failed, "recovery")).toBeUndefined();
   });
 
-  test("a mint refused over the saved server says to set or clear the coordination server in relay settings first", () => {
+  test("a mint refused over the saved server says where to change it", () => {
     const failed = fold([
       { type: "reinvite-started", site: "recovery" },
       { type: "reinvite-failed", cause: "saved-server-refused" },
@@ -349,10 +349,9 @@ describe("the re-invite mint", () => {
     expect(managedReinviteFailureAt(failed, "recovery")).toEqual({
       title: "Could not create a fresh invitation",
       message:
-        "Relay settings cannot read your coordination server, and the " +
-        "coordination server address this exchange saved cannot be used. " +
-        "Set your coordination server again or clear it in relay settings " +
-        "first, then try again.",
+        "The coordination server address this exchange saved cannot be " +
+        "used. Change the coordination server under Connection settings on " +
+        "this exchange's page. Then try again.",
     });
   });
 

@@ -16,13 +16,12 @@
  * after the validation a fresh invitation's endpoint gets
  * ({@link managedSignalingEndpoint}): the inviter registers there and the
  * acceptor dials it, so two parties on different deployments keep reaching
- * each other, and a change to this browser's coordination server setting
- * moves no saved exchange until the inviter re-invites, which stores the
- * server its invitation names. The stored connection block is read for four
- * things: its `channel` discriminant, to reject a non-webrtc record before any
- * connection, the saved signaling server, the `invitationRelay` an acceptor's
- * record keeps from the invitation it accepted, and the record's own
- * `allowedRelays`.
+ * each other; the operator changes it on the exchange's page. The stored
+ * connection block is read for four things: its `channel` discriminant, to
+ * reject a non-webrtc record before any connection, the saved signaling
+ * server, the `invitationRelay` an acceptor's record keeps from the
+ * invitation it accepted, and the record's own `allowedRelays`. The record's
+ * own relays and its use of this site's relay server are read beside it.
  *
  * The two rendezvous functions are injected (defaulting to the real
  * {@link listenAsInviter} / {@link dialAsAcceptor}) so the dispatch and the
@@ -42,8 +41,10 @@ import { relayPlanForRun } from "../transport/runRelayPlan";
 
 import {
   managedAllowedRelays,
+  managedOwnRelayRead,
   offeredManagedPreviousSecret,
 } from "./managedExchangeRecord";
+import { CHANGE_SAVED_SERVER_REMEDY } from "./managedFailureCopy";
 
 import type { DefaultRelayDependencies } from "../transport/defaultRelay";
 import type { RunRelayPlan } from "../transport/runRelayPlan";
@@ -71,7 +72,13 @@ const defaultFlows: ManagedRendezvousFlows = {
 /** The fields of a stored record the rendezvous reads. */
 export type ManagedRendezvousRecord = Pick<
   RunnableManagedExchangeRecord,
-  "side" | "sharedSecret" | "exchangeFile" | "label" | "relayRegistrar"
+  | "side"
+  | "sharedSecret"
+  | "exchangeFile"
+  | "label"
+  | "relayRegistrar"
+  | "ownRelay"
+  | "defaultRelayOn"
 >;
 
 /**
@@ -125,8 +132,7 @@ export class ManagedSignalingEndpointRefusedError extends Error {
   readonly refusal: string;
   /** The side of the record whose saved address was refused, which decides
    * the remedy: an acceptor accepts a new invitation from its partner, and an
-   * inviter re-invites, which names this browser's current coordination
-   * server. */
+   * inviter changes the address ({@link CHANGE_SAVED_SERVER_REMEDY}). */
   readonly side: ManagedRendezvousRecord["side"];
   constructor(
     label: string,
@@ -142,7 +148,7 @@ export class ManagedSignalingEndpointRefusedError extends Error {
       `${refusal} ${
         side === "acceptor"
           ? "Ask your partner for a new invitation and accept it."
-          : "Re-invite your partner with the same terms to name this browser's current coordination server. If relay settings cannot read your coordination server, set it again or clear it there first."
+          : CHANGE_SAVED_SERVER_REMEDY
       }`,
     );
     this.name = "ManagedSignalingEndpointRefusedError";
@@ -225,10 +231,11 @@ type ManagedRendezvousAcquisition =
   | { side: "acceptor"; peer: Peer; conn: DataConnection };
 
 /**
- * The relays a managed run lists ({@link relayPlanForRun}): this browser's own
- * setting and the stored connection's `invitationRelay`, read at the start of
- * each run, and the build's default relay once this run's key is enrolled
- * there, right before it connects, each only where the stored connection's
+ * The relays a managed run lists ({@link relayPlanForRun}): the record's own
+ * relays and the stored connection's `invitationRelay`, read at the start of
+ * each run, and the build's default relay, where the record uses it, once this
+ * run's key is enrolled there, right before it connects, each only where the
+ * stored connection's
  * `allowedRelays` keep it. A failed enrollment is reported through
  * `onRunNotice` as it happens, and the run goes on without the default relay.
  * With `previousSharedSecret` ({@link managedRendezvousPreviousSecret}), the
@@ -253,6 +260,8 @@ export async function managedRunRelayPlan(
     connection.channel === "webrtc" ? connection.invitationRelay : undefined,
     managedAllowedRelays(exchangeFile),
     {
+      readOwn: () => managedOwnRelayRead(record),
+      switchedOn: () => record.defaultRelayOn === true,
       ...options.defaultRelay,
       ...(record.relayRegistrar !== undefined
         ? { ownRelayExchangeId: record.relayRegistrar.exchangeId }

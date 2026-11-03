@@ -45,7 +45,6 @@ import type {
   ManagedExchangeRecord,
   ManagedExchangeSide,
 } from "@psi/managed/managedExchangeRecord";
-import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
 import type { RepeatedMissCoordination } from "./scheduleSurfacingModel";
 
 /** The operator-facing name for each side of the partnership. */
@@ -527,22 +526,21 @@ export function lastRunMayHaveSentPayload(
 }
 
 /**
- * Whether the exchange's page offers its relay registration section: where this
- * browser's own relay settings name a TURN relay a run could relay through, or
- * where the record already holds an enrollment or a pending registration the
+ * Whether the exchange's page offers its relay registration section: where the
+ * exchange's own relays name a TURN relay a run could relay through, or where
+ * the record already holds an enrollment or a pending registration the
  * section states and acts on. Elsewhere the registrar form has nothing a run
  * would use, so it is not shown.
  */
 export function relayRegistrationOffered(
   record: Pick<
     ManagedExchangeRecord,
-    "relayRegistrar" | "relayRegistrationPendingSince"
+    "relayRegistrar" | "relayRegistrationPendingSince" | "ownRelay"
   >,
-  ownRelay: OwnRelayRead,
 ): boolean {
   return (
     record.relayRegistrar !== undefined ||
     record.relayRegistrationPendingSince !== undefined ||
-    (ownRelay.kind === "set" && ownRelay.relay.turn.length > 0)
+    (record.ownRelay?.turn.length ?? 0) > 0
   );
 }

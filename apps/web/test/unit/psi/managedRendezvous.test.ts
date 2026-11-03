@@ -34,8 +34,11 @@ import type {
 import type { DataConnection } from "peerjs";
 import type Peer from "peerjs";
 
+import type {
+  ManagedRendezvousFlows,
+  ManagedRendezvousRecord,
+} from "@psi/managed/managedRendezvous";
 import type { ManagedExchangeSide } from "@psi/managed/managedExchangeRecord";
-import type { ManagedRendezvousFlows } from "@psi/managed/managedRendezvous";
 
 // The side-dispatched rendezvous, tested in Node with the rendezvous flows faked:
 // the record's local `side` selects listenAsInviter vs dialAsAcceptor, the
@@ -53,8 +56,15 @@ async function begin(
   file: ExchangeSpec,
   options: Parameters<typeof managedRunRelayPlan>[1] &
     Omit<Parameters<typeof beginManagedRendezvous>[1], "relayPlan"> = {},
+  local: Pick<ManagedRendezvousRecord, "ownRelay" | "defaultRelayOn"> = {},
 ) {
-  const record = { side, sharedSecret, exchangeFile: file, label: LABEL };
+  const record = {
+    side,
+    sharedSecret,
+    exchangeFile: file,
+    label: LABEL,
+    ...local,
+  };
   const relayPlan = await managedRunRelayPlan(record, options);
   return beginManagedRendezvous(record, { ...options, relayPlan });
 }
@@ -418,7 +428,7 @@ describe("a saved signaling address that fails validation", () => {
     ["acceptor", "Ask your partner for a new invitation and accept it."],
     [
       "inviter",
-      "Re-invite your partner with the same terms to name this browser's current coordination server. If relay settings cannot read your coordination server, set it again or clear it there first.",
+      "Change the coordination server under Connection settings on this exchange's page.",
     ],
   ] as const)("an %s's refusal ends on its own remedy", (side, remedy) => {
     expect(() =>
@@ -493,20 +503,22 @@ describe("beginManagedRendezvous: relay", () => {
     stun: [],
   };
 
-  function stubOwnRelay(): void {
+  /** This browser's own relay setting naming `turn`, which a saved
+   * exchange's run does not read. */
+  function stubBrowserRelay(turn: Array<string>): void {
     vi.stubGlobal("localStorage", {
       getItem: (key: string) =>
         key === "alcove-own-relay"
-          ? JSON.stringify({ version: 1, ...ownRelay })
+          ? JSON.stringify({ version: 1, turn, stun: [] })
           : null,
     });
   }
 
   test.each(["inviter", "acceptor"] as const)(
-    "the %s's flow gathers against this browser's own relay",
+    "the %s's flow gathers against the exchange's own relay, not this browser's",
     async (side) => {
       stubAppLocation();
-      stubOwnRelay();
+      stubBrowserRelay(["turns:browser-relay.example.org:443"]);
       const relays: Array<unknown> = [];
       const flows: ManagedRendezvousFlows = {
         listenAsInviter: (_secret, _endpoint, options) => {
@@ -519,17 +531,21 @@ describe("beginManagedRendezvous: relay", () => {
         },
       };
 
-      await begin(side, generateSharedSecret(), exchangeFile(), {
-        flows,
-      });
+      await begin(side, generateSharedSecret(), exchangeFile(), { flows });
+      await begin(
+        side,
+        generateSharedSecret(),
+        exchangeFile(),
+        { flows },
+        { ownRelay },
+      );
 
-      expect(relays).toEqual([ownRelay]);
+      expect(relays).toEqual([undefined, ownRelay]);
     },
   );
 
-  test("an acceptor's record lists this browser's own relay, then the one its invitation named", async () => {
+  test("an acceptor's record lists its own relay, then the one its invitation named", async () => {
     stubAppLocation();
-    stubOwnRelay();
     const named = {
       turn: ["turns:partner-relay.example.org:443?transport=tcp"],
       stun: ["stun:partner-relay.example.org:3478"],
@@ -541,6 +557,7 @@ describe("beginManagedRendezvous: relay", () => {
       generateSharedSecret(),
       exchangeFile({ ...webrtcLocator, relay: named }),
       { flows },
+      { ownRelay },
     );
 
     expect(acceptorCalls[0].options?.relay).toEqual({
@@ -551,7 +568,6 @@ describe("beginManagedRendezvous: relay", () => {
 
   test("an acceptor's record lists the build's default relay last once this run enrolled there", async () => {
     stubAppLocation();
-    stubOwnRelay();
     const defaultTurnUrl = "turns:turn.example.org:443?transport=tcp";
     const named = {
       turn: [
@@ -577,6 +593,7 @@ describe("beginManagedRendezvous: relay", () => {
           enroll: () => Promise.resolve({ kind: "enrolled", lapsesAt: null }),
         },
       },
+      { ownRelay },
     );
 
     expect(acceptorCalls[0].options?.relay).toEqual({
@@ -588,7 +605,6 @@ describe("beginManagedRendezvous: relay", () => {
 
   test("an acceptor's record lists only the relays its own allowed relays keep, and says which", async () => {
     stubAppLocation();
-    stubOwnRelay();
     const named = {
       turn: ["turns:partner-relay.example.org:443?transport=tcp"],
     };
@@ -604,6 +620,7 @@ describe("beginManagedRendezvous: relay", () => {
         allowedRelays: ["partner-relay.example.org"],
       }),
       { flows, onRunNotice },
+      { ownRelay },
     );
 
     expect(acceptorCalls[0].options?.relay).toEqual({
@@ -620,8 +637,6 @@ describe("beginManagedRendezvous: relay", () => {
     stubAppLocation();
     vi.stubGlobal("localStorage", {
       getItem: (key: string) => {
-        if (key === "alcove-own-relay")
-          return JSON.stringify({ version: 1, ...ownRelay });
         if (key === "alcove-relay-restriction")
           return JSON.stringify({
             version: 1,
@@ -632,23 +647,22 @@ describe("beginManagedRendezvous: relay", () => {
     });
     const { flows, acceptorCalls } = recordingFlows();
 
-    await begin("acceptor", generateSharedSecret(), exchangeFile(), { flows });
+    await begin(
+      "acceptor",
+      generateSharedSecret(),
+      exchangeFile(),
+      { flows },
+      { ownRelay },
+    );
 
     expect(acceptorCalls[0].options?.relay).toEqual(ownRelay);
     expect(acceptorCalls[0].options?.relaysLeftOut).toEqual([]);
   });
 
-  test("a record's run lists the STUN urls this browser's setting names when the run starts and the invitation's, in place of the default", async () => {
+  test("a record's run lists the STUN urls its own relay names and the invitation's, in place of the default", async () => {
     stubAppLocation();
     const ownStun = "stun:own-stun.example.org:3478";
     const named = { stun: ["stun:partner-relay.example.org:3478"] };
-    let stored: object = { ...ownRelay, stun: [ownStun] };
-    vi.stubGlobal("localStorage", {
-      getItem: (key: string) =>
-        key === "alcove-own-relay"
-          ? JSON.stringify({ version: 1, ...stored })
-          : null,
-    });
     const { flows, acceptorCalls } = recordingFlows();
     const file = exchangeFile({ ...webrtcLocator, relay: named });
     const stunListed = async (call: number) => {
@@ -660,10 +674,27 @@ describe("beginManagedRendezvous: relay", () => {
       return stun.urls;
     };
 
-    await begin("acceptor", generateSharedSecret(), file, { flows });
-    stored = ownRelay;
-    await begin("acceptor", generateSharedSecret(), file, { flows });
-    await begin("acceptor", generateSharedSecret(), exchangeFile(), { flows });
+    await begin(
+      "acceptor",
+      generateSharedSecret(),
+      file,
+      { flows },
+      { ownRelay: { ...ownRelay, stun: [ownStun] } },
+    );
+    await begin(
+      "acceptor",
+      generateSharedSecret(),
+      file,
+      { flows },
+      { ownRelay },
+    );
+    await begin(
+      "acceptor",
+      generateSharedSecret(),
+      exchangeFile(),
+      { flows },
+      { ownRelay },
+    );
 
     expect(await stunListed(0)).toEqual([ownStun, ...named.stun]);
     expect(await stunListed(1)).toEqual(named.stun);

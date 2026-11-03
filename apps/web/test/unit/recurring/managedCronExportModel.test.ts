@@ -33,7 +33,6 @@ import type {
   NewManagedExchange,
   RunnableManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
-import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
 import type { ScheduledRunLines } from "@recurring/managedCronExportModel";
 
 /** A record built from `fields` and narrowed to the runnable shape: every fixture
@@ -53,8 +52,6 @@ function runnableRecord(
 // here.
 
 const linkageTerms = getDefaultLinkageTerms("County Health Dept");
-
-const noOwnRelay = (): OwnRelayRead => ({ kind: "none" });
 
 const IMAGE = "ghcr.io/georgetown-mdi/alcove:1.2.3";
 
@@ -93,7 +90,7 @@ function managedRecord(
 /** The state for an exportable record, failing the test if the composer refused
  * one it was expected to compose. */
 function exportableState(record: RunnableManagedExchangeRecord) {
-  const state = managedCronExportPanelState(record, noOwnRelay, IMAGE);
+  const state = managedCronExportPanelState(record, IMAGE);
   if (state.kind !== "exportable")
     throw new Error(`the model refused an exportable record: ${state.reason}`);
   return state;
@@ -334,18 +331,12 @@ describe("the line naming the invitation relay's registrar", () => {
         url: "https://relay.example.org:8443",
         exchangeId: "riverbend-q3",
       },
+      ownRelay: {
+        turn: ["turns:relay.example.org:443?transport=tcp"],
+        stun: [],
+      },
     };
-    const state = managedCronExportPanelState(
-      record,
-      () => ({
-        kind: "set",
-        relay: {
-          turn: ["turns:relay.example.org:443?transport=tcp"],
-          stun: [],
-        },
-      }),
-      IMAGE,
-    );
+    const state = managedCronExportPanelState(record, IMAGE);
     if (state.kind !== "exportable")
       throw new Error(
         `the model refused an exportable record: ${state.reason}`,
@@ -544,19 +535,16 @@ describe("a record the composer refuses", () => {
     // of its values.
     const secret = generateSharedSecret();
     const base = managedRecord();
-    const state = managedCronExportPanelState(
-      {
-        ...base,
-        exchangeFile: {
-          ...base.exchangeFile,
-          authentication: {
-            sharedSecret: secret,
-            expires: "2026-04-06T14:00:00.000Z",
-          },
+    const state = managedCronExportPanelState({
+      ...base,
+      exchangeFile: {
+        ...base.exchangeFile,
+        authentication: {
+          sharedSecret: secret,
+          expires: "2026-04-06T14:00:00.000Z",
         },
       },
-      noOwnRelay,
-    );
+    });
     expect(state.kind).toBe("refused");
     if (state.kind !== "refused") return;
     expect(state.reason).toContain("authentication");

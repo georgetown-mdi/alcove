@@ -41,6 +41,7 @@ import {
   composeManagedExchangeFile,
   diagnoseManagedExchangeRecord,
   managedAllowedRelays,
+  managedOwnRelayRead,
   parseManagedExchangeRecord,
   partitionReadableManagedExchanges,
   recentRunsOf,
@@ -3504,5 +3505,169 @@ describe("applyManagedExchangeImportReplace", () => {
     const before = structuredClone([stored, imported]);
     applyManagedExchangeImportReplace(stored, imported, "backup");
     expect([stored, imported]).toEqual(before);
+  });
+});
+
+describe("the exchange's own relays and default relay switch", () => {
+  const OWN_RELAY = {
+    turn: ["turns:relay.example.org:443?transport=tcp"],
+    stun: ["stun:relay.example.org:3478"],
+    websocket: "wss://wsrelay.example.org/relay",
+  };
+
+  test("a new record keeps them, and one given none or the switch off holds neither", () => {
+    const record = buildManagedExchangeRecord(
+      newExchange({ ownRelay: OWN_RELAY, defaultRelayOn: true }),
+    );
+    expect(record.ownRelay).toEqual(OWN_RELAY);
+    expect(record.defaultRelayOn).toBe(true);
+    expect(parseManagedExchangeRecord(record)).toEqual(record);
+
+    const plain = buildManagedExchangeRecord(
+      newExchange({ defaultRelayOn: false }),
+    );
+    expect(plain).not.toHaveProperty("ownRelay");
+    expect(plain).not.toHaveProperty("defaultRelayOn");
+  });
+
+  test("a stored record with neither field reads as no own relay and the switch off", () => {
+    const {
+      ownRelay: _ownRelay,
+      defaultRelayOn: _on,
+      ...older
+    } = buildManagedExchangeRecord(
+      newExchange({ ownRelay: OWN_RELAY, defaultRelayOn: true }),
+    );
+    const read = parseManagedExchangeRecord(older);
+    expect(read.schemaVersion).toBe(MANAGED_EXCHANGE_SCHEMA_VERSION);
+    expect(managedOwnRelayRead(read)).toEqual({ kind: "none" });
+    expect(read.defaultRelayOn).toBeUndefined();
+  });
+
+  test.each([
+    ["names no url", { turn: [], stun: [] }],
+    [
+      "holds a url of the wrong scheme",
+      { turn: ["stun:relay.example.org"], stun: [] },
+    ],
+    ["holds a credential", { ...OWN_RELAY, username: "operator" }],
+  ])("an own relay that %s is refused", (_case, ownRelay) => {
+    const record = buildManagedExchangeRecord(newExchange());
+    expect(() => parseManagedExchangeRecord({ ...record, ownRelay })).toThrow(
+      ZodError,
+    );
+  });
+
+  test("a switch stored as false is refused", () => {
+    const record = buildManagedExchangeRecord(newExchange());
+    expect(() =>
+      parseManagedExchangeRecord({ ...record, defaultRelayOn: false }),
+    ).toThrow(ZodError);
+  });
+
+  test("a configuration-only record holds neither", () => {
+    const { sharedSecret: _secret, ...configuration } = newExchange();
+    const record = buildManagedExchangeRecord(configuration);
+    expect(() =>
+      parseManagedExchangeRecord({ ...record, ownRelay: OWN_RELAY }),
+    ).toThrow(/configuration only/);
+    expect(() =>
+      parseManagedExchangeRecord({ ...record, defaultRelayOn: true }),
+    ).toThrow(/configuration only/);
+  });
+
+  test("local edits set and drop them", () => {
+    const record = buildManagedExchangeRecord(newExchange());
+    const set = applyManagedExchangeLocalEdits(record, {
+      ownRelay: OWN_RELAY,
+      defaultRelayOn: true,
+    });
+    expect(set.ownRelay).toEqual(OWN_RELAY);
+    expect(set.defaultRelayOn).toBe(true);
+    expect(set.exchangeFile).toEqual(record.exchangeFile);
+
+    const untouched = applyManagedExchangeLocalEdits(set, { label: "x" });
+    expect(untouched.ownRelay).toEqual(OWN_RELAY);
+    expect(untouched.defaultRelayOn).toBe(true);
+
+    const dropped = applyManagedExchangeLocalEdits(set, {
+      ownRelay: null,
+      defaultRelayOn: false,
+    });
+    expect(dropped).not.toHaveProperty("ownRelay");
+    expect(dropped).not.toHaveProperty("defaultRelayOn");
+  });
+
+  test("a local edit sets the coordination server, leaving the rest of the connection", () => {
+    const record = buildManagedExchangeRecord(newExchange());
+    const edited = applyManagedExchangeLocalEdits(record, {
+      signalingServer: {
+        host: "coordination.agency.example",
+        port: 443,
+        path: "/signal/",
+      },
+    });
+    expect(edited.exchangeFile.connection).toEqual({
+      ...record.exchangeFile.connection,
+      server: {
+        host: "coordination.agency.example",
+        port: 443,
+        path: "/signal/",
+      },
+    });
+    expect(edited.exchangeFile.linkageTerms).toEqual(
+      record.exchangeFile.linkageTerms,
+    );
+  });
+
+  test.each([
+    ["a host that is not a host name alone", { host: "a@b", path: "/api/" }],
+    [
+      "a path that does not start with a slash",
+      { host: "example.org", path: "api/" },
+    ],
+  ])("a local edit naming %s is refused", (_case, signalingServer) => {
+    const record = buildManagedExchangeRecord(newExchange());
+    expect(() =>
+      applyManagedExchangeLocalEdits(record, { signalingServer }),
+    ).toThrow();
+  });
+
+  test("a backup replace takes the import's, and a pair replace keeps the stored switch and takes only the pair's TURN urls", () => {
+    const stored = runnableRecord({
+      ownRelay: OWN_RELAY,
+      defaultRelayOn: true,
+    });
+    const fromBackup = applyManagedExchangeImportReplace(
+      stored,
+      runnableRecord(),
+      "backup",
+    );
+    expect(fromBackup).not.toHaveProperty("ownRelay");
+    expect(fromBackup).not.toHaveProperty("defaultRelayOn");
+
+    const fromPair = applyManagedExchangeImportReplace(
+      stored,
+      runnableRecord(),
+      "command-line",
+    );
+    expect(fromPair.ownRelay).toEqual(OWN_RELAY);
+    expect(fromPair.defaultRelayOn).toBe(true);
+
+    const pairTurn = { turn: ["turns:pair.example.org:443"], stun: [] };
+    expect(
+      applyManagedExchangeImportReplace(
+        stored,
+        runnableRecord({ ownRelay: pairTurn }),
+        "command-line",
+      ).ownRelay,
+    ).toEqual({ ...OWN_RELAY, turn: pairTurn.turn });
+    expect(
+      applyManagedExchangeImportReplace(
+        runnableRecord(),
+        runnableRecord({ ownRelay: pairTurn }),
+        "command-line",
+      ).ownRelay,
+    ).toEqual(pairTurn);
   });
 });

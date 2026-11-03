@@ -28,6 +28,7 @@ import {
 } from "./managedExchangeStore";
 import {
   managedAllowedRelays,
+  managedOwnRelayRead,
   runnableManagedExchangeOrRefuse,
 } from "./managedExchangeRecord";
 import { composeManagedReinvite } from "./managedReinvite";
@@ -35,11 +36,14 @@ import { registerReinvitedManagedRelayKey } from "./managedRelayRegistration";
 import { withManagedExchangeLock } from "./managedExchangeLock";
 
 import type {
+  DefaultRelayBuild,
+  DefaultRelaySetting,
+} from "@utils/clientConfig";
+import type {
   ManagedExchangeRecord,
   RunnableManagedExchangeRecord,
 } from "./managedExchangeRecord";
 import type { ManagedReinvite, ReinviteLocation } from "./managedReinvite";
-import type { DefaultRelaySetting } from "@utils/clientConfig";
 import type { ManagedExchangeLockOptions } from "./managedExchangeLock";
 import type { RelayUrls } from "../transport/ownRelaySetting";
 
@@ -68,13 +72,33 @@ interface ManagedReinviteDriverDeps {
   registerRelayKey: typeof registerReinvitedManagedRelayKey;
   /** The moment the setup lifetime and the record's max-age stamp count from. */
   now: () => number;
-  /** Read this browser's own relay, less the TURN urls `allowedRelays`, the
-   * record's own, leaves out, which the invitation names. */
-  ownRelay: (
-    allowedRelays: ReadonlyArray<string> | undefined,
-  ) => RelayUrls | undefined;
-  /** Read the default relay in use, which the invitation also names. */
-  defaultRelay: () => DefaultRelaySetting | undefined;
+  /** The record's own relay, less the TURN urls its allowed relays leave
+   * out, which the invitation names. */
+  ownRelay: (record: RunnableManagedExchangeRecord) => RelayUrls | undefined;
+  /** The default relay the record uses, which the invitation also names. */
+  defaultRelay: (
+    record: RunnableManagedExchangeRecord,
+  ) => DefaultRelaySetting | undefined;
+}
+
+/** The relay a re-invite of `record` names of its own: the exchange's own
+ * relays, less what its allowed relays leave out. */
+export function managedReinviteOwnRelay(
+  record: Pick<RunnableManagedExchangeRecord, "exchangeFile" | "ownRelay">,
+): RelayUrls | undefined {
+  return ownRelayForInvitation(managedAllowedRelays(record.exchangeFile), () =>
+    managedOwnRelayRead(record),
+  );
+}
+
+/** The build's default relay where a re-invite of `record` names it: always
+ * where the build turns it on, and where the build offers it switched off,
+ * only where the exchange turns it on. */
+export function managedReinviteDefaultRelay(
+  record: Pick<RunnableManagedExchangeRecord, "defaultRelayOn">,
+  build?: () => DefaultRelayBuild,
+): DefaultRelaySetting | undefined {
+  return defaultRelayInUse(build, () => record.defaultRelayOn === true);
 }
 
 const defaultDeps: ManagedReinviteDriverDeps = {
@@ -87,8 +111,8 @@ const defaultDeps: ManagedReinviteDriverDeps = {
   registerRelayKey: (replaced, written) =>
     registerReinvitedManagedRelayKey(replaced, written),
   now: () => Date.now(),
-  ownRelay: (allowedRelays) => ownRelayForInvitation(allowedRelays),
-  defaultRelay: () => defaultRelayInUse(),
+  ownRelay: managedReinviteOwnRelay,
+  defaultRelay: (record) => managedReinviteDefaultRelay(record),
 };
 
 /** A completed re-invite: the shareable artifacts the operator forwards out-of-band,
@@ -142,8 +166,8 @@ export async function reinviteManagedExchange(
         generateSecret: deps.generateSecret,
         encode: deps.encode,
         now: deps.now,
-        ownRelay: deps.ownRelay(managedAllowedRelays(record.exchangeFile)),
-        defaultRelay: deps.defaultRelay(),
+        ownRelay: deps.ownRelay(record),
+        defaultRelay: deps.defaultRelay(record),
       });
       const persisted = await deps.persistRotation(
         record.id,

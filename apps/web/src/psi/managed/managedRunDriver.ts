@@ -132,7 +132,7 @@ interface ManagedRerunCarried {
   exchangeRole: HandshakeRole;
   csvDelimiter: RunnableManagedExchangeRecord["exchangeFile"]["csvDelimiter"];
   /** The relay key registration this run owes its relay's registrar once the
-   * data exchange ends, when it relays through this browser's own relay: the
+   * data exchange ends, when it relays through the exchange's own relay: the
    * record's pre-rotation secret, held for the run only, signs the
    * registration of the rotated one. */
   relayRegistration?: {

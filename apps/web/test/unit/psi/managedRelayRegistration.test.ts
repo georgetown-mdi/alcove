@@ -47,7 +47,6 @@ import type {
   RunnableManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
 import type { ManagedRelayRegistrationStore } from "@psi/managed/managedRelayRegistration";
-import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
 import type { RelayRegistrar } from "@alcove/core";
 
 const TEST_RETIRED = { verifier: "A".repeat(43), at: 0 };
@@ -170,9 +169,10 @@ function recordingStore(): ManagedRelayRegistrationStore & {
   };
 }
 
-const ownRelay =
-  (turn: Array<string>): (() => OwnRelayRead) =>
-  () => ({ kind: "set", relay: { turn, stun: [] } });
+const withOwnTurn = <T extends object>(stored: T, turn: Array<string>) => ({
+  ...stored,
+  ownRelay: { turn, stun: [] },
+});
 
 /** An exchange accepted from an invitation that named the partner's relay. */
 const partnerRelayedExchange = () =>
@@ -186,11 +186,12 @@ const partnerRelayedExchange = () =>
   });
 
 describe("which runs register", () => {
-  test("a run relaying through this browser's own relay registers at the enrolled registrar", () => {
+  test("a run relaying through the exchange's own relay registers at the enrolled registrar", () => {
     expect(
       managedRelayRegistrarForRun(
-        record({ relayRegistrar: REGISTRAR }),
-        ownRelay(["turns:relay.example.org:443?transport=tcp"]),
+        withOwnTurn(record({ relayRegistrar: REGISTRAR }), [
+          "turns:relay.example.org:443?transport=tcp",
+        ]),
       ),
     ).toEqual(REGISTRAR);
   });
@@ -203,8 +204,7 @@ describe("which runs register", () => {
     });
     expect(
       managedRelayRegistrarForRun(
-        accepted,
-        ownRelay(["turns:relay.example.org:443"]),
+        withOwnTurn(accepted, ["turns:relay.example.org:443"]),
       ),
     ).toEqual(REGISTRAR);
   });
@@ -212,37 +212,52 @@ describe("which runs register", () => {
   test("a run registers at the enrolled registrar whatever the record's allowed relays keep", () => {
     expect(
       managedRelayRegistrarForRun(
-        record({
-          relayRegistrar: REGISTRAR,
-          exchangeFile: composeManagedExchangeFile({
-            connection: { channel: "webrtc", host: "signaling.example.org" },
-            linkageTerms: getDefaultLinkageTerms("County Health Dept"),
-            allowedRelays: ["elsewhere.example.org"],
+        withOwnTurn(
+          record({
+            relayRegistrar: REGISTRAR,
+            exchangeFile: composeManagedExchangeFile({
+              connection: { channel: "webrtc", host: "signaling.example.org" },
+              linkageTerms: getDefaultLinkageTerms("County Health Dept"),
+              allowedRelays: ["elsewhere.example.org"],
+            }),
           }),
-        }),
-        ownRelay(["turns:relay.example.org:443"]),
+          ["turns:relay.example.org:443"],
+        ),
       ),
     ).toEqual(REGISTRAR);
   });
 
-  test("a browser with no relay of its own, or an exchange not enrolled, registers nothing", () => {
+  test("an exchange with no relay of its own, or one not enrolled, registers nothing", () => {
     expect(
-      managedRelayRegistrarForRun(
-        record({ relayRegistrar: REGISTRAR }),
-        () => ({
-          kind: "none",
-        }),
-      ),
+      managedRelayRegistrarForRun(record({ relayRegistrar: REGISTRAR })),
     ).toBeUndefined();
     expect(
       managedRelayRegistrarForRun(
-        record(),
-        ownRelay(["turns:relay.example.org:443"]),
+        withOwnTurn(record(), ["turns:relay.example.org:443"]),
       ),
     ).toBeUndefined();
   });
-});
 
+  test("this browser's own relay setting does not make a run register", () => {
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) =>
+        key === "alcove-own-relay"
+          ? JSON.stringify({
+              version: 1,
+              turn: ["turns:relay.example.org:443"],
+              stun: [],
+            })
+          : null,
+    });
+    try {
+      expect(
+        managedRelayRegistrarForRun(record({ relayRegistrar: REGISTRAR })),
+      ).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
 /** A run's seams whose data exchange stores `nextSecret` through the rotation
  * write, as core's terms exchange does. */
 function rotatingSeams(nextSecret: string = generateSharedSecret()) {

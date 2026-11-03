@@ -151,7 +151,7 @@ export function relayRegistrationPendingLine(
     );
   return (
     `Relay key registration pending since ${since}; the next run through ` +
-    "this browser's relay retries it before connecting. If the registrar " +
+    "this exchange's relay retries it before connecting. If the registrar " +
     "refuses it, enroll the exchange again with the relay-owner token under " +
     "Relay registration."
   );

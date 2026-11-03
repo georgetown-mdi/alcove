@@ -197,6 +197,11 @@ describe("the managed record a one-shot hand-off deposits", () => {
       "review.example.org",
       "backup.example.org:443",
     ]);
+    expect(record.ownRelay).toEqual({
+      turn: ["turn:own.example.org"],
+      stun: [],
+    });
+    expect(record).not.toHaveProperty("defaultRelayOn");
   });
 
   test("the acceptor's record holds the run's rotated secret, not the invitation's", async () => {
@@ -244,6 +249,10 @@ describe("the managed record a one-shot hand-off deposits", () => {
         "review.example.org",
         "backup.example.org:443",
       ]);
+      expect(record.ownRelay).toEqual({
+        turn: ["turn:own.example.org"],
+        stun: [],
+      });
     } finally {
       window.localStorage.removeItem("alcove-relay-restriction");
     }

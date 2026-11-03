@@ -21,6 +21,8 @@ import {
   webSocketRelayUrlSchema,
 } from "@alcove/core";
 
+import { readDefaultRelaySwitch } from "./defaultRelaySwitch";
+
 import type { RelayLocator } from "./rendezvous";
 
 const log = getLogger("ownRelaySetting");
@@ -35,7 +37,7 @@ const SETTING_VERSION = 1;
 export const MAX_RELAY_URLS = 8;
 
 /** How long one url may be, in UTF-16 code units. */
-const MAX_RELAY_URL_LENGTH = 1024;
+export const MAX_RELAY_URL_LENGTH = 1024;
 
 const TurnListSchema = z
   .array(TurnUrlSchema.check(maxCodeUnits(MAX_RELAY_URL_LENGTH)))
@@ -46,27 +48,41 @@ const StunListSchema = z
 
 const WebSocketUrlSchema = webSocketRelayUrlSchema("the WebSocket relay url");
 
+const ownRelayFields = {
+  turn: TurnListSchema,
+  stun: StunListSchema,
+  websocket: WebSocketUrlSchema.optional(),
+};
+
+function namesAUrl(value: {
+  turn: ReadonlyArray<string>;
+  stun: ReadonlyArray<string>;
+  websocket?: string;
+}): boolean {
+  return (
+    value.turn.length + value.stun.length > 0 || value.websocket !== undefined
+  );
+}
+
 // `websocket` is written only when set, so a value naming none stays
 // readable by a build that predates the key.
 const StoredOwnRelaySchema = z
-  .strictObject({
-    version: z.literal(SETTING_VERSION),
-    turn: TurnListSchema,
-    stun: StunListSchema,
-    websocket: WebSocketUrlSchema.optional(),
-  })
-  .refine(
-    (value) =>
-      value.turn.length + value.stun.length > 0 ||
-      value.websocket !== undefined,
-    { message: "a stored relay names no url" },
-  );
+  .strictObject({ version: z.literal(SETTING_VERSION), ...ownRelayFields })
+  .refine(namesAUrl, { message: "a stored relay names no url" });
 
-/** This browser's own relay: its TURN and STUN urls and its WebSocket relay. */
+/** A relay of one's own: its TURN and STUN urls and its WebSocket relay. */
 export interface OwnRelay extends RelayLocator {
   /** The `wss://` url of a WebSocket relay; absent when none is set. */
   websocket?: string;
 }
+
+/**
+ * The validator of an {@link OwnRelay} a saved exchange keeps: the url
+ * grammar and list bounds of this browser's setting, and at least one url.
+ */
+export const OwnRelaySchema: z.ZodType<OwnRelay> = z
+  .strictObject(ownRelayFields)
+  .refine(namesAUrl, { message: "a relay names no url" });
 
 /** How reading the stored setting turned out. */
 export type OwnRelayRead =
@@ -109,6 +125,22 @@ export function readOwnRelaySetting(): OwnRelayRead {
   } catch {
     return { kind: "unreadable" };
   }
+}
+
+/**
+ * This browser's own relay and its default relay switch, which a saved
+ * exchange made from a run in this browser keeps as its own. A stored relay
+ * this build cannot read gives none.
+ */
+export function browserRelaysForSavedExchange(): {
+  ownRelay?: OwnRelay;
+  defaultRelayOn: boolean;
+} {
+  const own = readOwnRelaySetting();
+  return {
+    ...(own.kind === "set" ? { ownRelay: own.relay } : {}),
+    defaultRelayOn: readDefaultRelaySwitch(),
+  };
 }
 
 /**

@@ -111,6 +111,7 @@ import {
   allowedRelaysText,
   parseExchangeAllowedRelayLines,
 } from "@psi/transport/relayRestriction";
+import { browserRelaysForSavedExchange } from "@psi/transport/ownRelaySetting";
 import { runListsRelay } from "@psi/transport/runRelayPlan";
 
 import {
@@ -902,6 +903,7 @@ export function InviterScreen() {
             },
             connection,
             allowedRelays: invitation.allowedRelays,
+            ...browserRelaysForSavedExchange(),
             rotatedSecret,
             choices,
           },

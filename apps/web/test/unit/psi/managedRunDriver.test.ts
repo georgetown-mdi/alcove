@@ -2362,25 +2362,11 @@ describe("the relay registrations of a run whose allowed relays leave its own re
       },
       relayRegistrar: REGISTRAR,
       relayRegistrationPendingSince: "2026-09-29T12:00:00.000Z",
+      ownRelay: { turn: [OWN_URL], stun: [] },
     } as unknown as RunnableManagedExchangeRecord;
   }
 
-  /** This browser's stored own relay, as a run reads it. */
-  function storeOwnRelay() {
-    vi.stubGlobal("localStorage", {
-      getItem: (key: string) =>
-        key === "alcove-own-relay"
-          ? JSON.stringify({ version: 1, turn: [OWN_URL], stun: [] })
-          : null,
-    });
-  }
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
   test("an own relay the record's allowed relays leave out still gets the pending retry and the rotated key's registration", async () => {
-    storeOwnRelay();
     const ENROLLED = enrolled(["elsewhere.example.org"]);
     vi.mocked(retryPendingManagedRelayRegistration).mockResolvedValueOnce();
     vi.mocked(registerRotatedManagedRelayKey).mockResolvedValueOnce({

@@ -124,6 +124,28 @@ describe("export/import round-trip", () => {
     });
   });
 
+  test("keeps the exchange's own relays and default relay switch, in the local block", () => {
+    const ownRelay = {
+      turn: ["turns:relay.example.org:443?transport=tcp"],
+      stun: [],
+      websocket: "wss://wsrelay.example.org/relay",
+    };
+    const record = runnableRecord(
+      newExchange({ ownRelay, defaultRelayOn: true }),
+    );
+    const artifact = encodeManagedExchangeArtifact(record);
+    expect(artifact.local).toMatchObject({ ownRelay, defaultRelayOn: true });
+    const restored = reconstructRecordFromArtifact(
+      parseManagedExchangeArtifact(serializeManagedExchangeArtifact(artifact)),
+    );
+    expect(restored.ownRelay).toEqual(ownRelay);
+    expect(restored.defaultRelayOn).toBe(true);
+
+    const plain = encodeManagedExchangeArtifact(runnableRecord(newExchange()));
+    expect(plain.local).not.toHaveProperty("ownRelay");
+    expect(plain.local).not.toHaveProperty("defaultRelayOn");
+  });
+
   test("keeps the run bookkeeping across the round trip", () => {
     const record = runnableRecord(newExchange());
     const withRun = {

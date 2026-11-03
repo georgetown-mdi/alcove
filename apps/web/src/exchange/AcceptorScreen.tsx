@@ -82,6 +82,7 @@ import {
   runDiagnosticsIntentFields,
   runDiagnosticsProblems,
 } from "@psi/runDiagnosticsModel";
+import { browserRelaysForSavedExchange } from "@psi/transport/ownRelaySetting";
 import { byteSizeLabel } from "@psi/formatting";
 import { runListsRelay } from "@psi/transport/runRelayPlan";
 import { seedRows } from "@psi/inviterEditor";
@@ -1355,6 +1356,7 @@ function AcceptorInvitationScreen({
             },
             connection: webrtcLocatorFromEndpoint(endpoint),
             allowedRelays: launched.allowedRelays,
+            ...browserRelaysForSavedExchange(),
             rotatedSecret,
             choices,
           },

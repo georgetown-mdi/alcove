@@ -49,6 +49,16 @@ The save names the column's position in the file, shows the name, and states the
 rule it broke: fix the header row. The one-off exchange that just completed is
 unaffected.
 
+### Connection settings
+
+A saved exchange has its own **Connection settings**, on its page. They hold
+the coordination server its re-invites name, its TURN, STUN and WebSocket relay
+urls, and, on a site that offers its own relay switched off, the **Use this
+site's relay server** switch. Its runs use these, not the Relay server page.
+An exchange saved from a run in this browser starts with the Relay server
+page's settings as they were when you saved it. Changing either one later does
+not change the other.
+
 ### The relays a saved exchange may use
 
 A saved exchange keeps its own **Allowed relays**, under Local settings on its
@@ -664,8 +674,8 @@ Two things are not in the files:
 - **The accounting of disclosures**, which stays in this browser.
 
 A recurring web exchange's configuration names no STUN server. In the browser
-its runs use the STUN servers this browser's relay settings or the exchange's
-invitation name, or the default where neither names one; on the command line
+its runs use the STUN servers its Connection settings or its invitation name,
+or the default where neither names one; on the command line
 they use the STUN servers the exported `invitation_relay` names, or the default
 where it names none, which then learn the scheduling machine's address instead
 of this browser's. The command line warns about the default on every run only
@@ -682,10 +692,10 @@ state, and the panel says so.
 
 A relay run from the reference deployment accepts only credentials made from the
 relay key it holds for each exchange, and that key changes each time the shared
-secret rotates. When the relay in this browser's relay settings runs the Alcove
-relay registrar, enroll the exchange there once, under **Relay registration** on
-its page. The section is shown only while the relay settings name a TURN relay,
-or the exchange is already enrolled or has a registration pending. Enter the
+secret rotates. When the relay in the exchange's Connection settings runs the
+Alcove relay registrar, enroll the exchange there once, under **Relay
+registration** on its page. The section is shown only while its Connection
+settings name a TURN relay, or the exchange is already enrolled or has a registration pending. Enter the
 registrar's address, the exchange id to hold the key under, and the relay-owner
 token. The token is sent with that one request and kept nowhere. Leave it empty
 when the registrar already holds the exchange's current key, as after enrolling
@@ -695,7 +705,8 @@ relay](CLI.md#registering-the-relay-key-at-your-relay)).
 After that, each run that relays through your relay registers the key derived
 from the new secret, signed with the key being replaced, before it lets the
 exchange go. A fresh invitation from here registers before it is shown, and
-names the exchange id beside your WebSocket relay, where your settings name one.
+names the exchange id beside your WebSocket relay, where its Connection settings
+name one.
 An exchange accepted from an invitation naming your partner's relay registers
 the same way, and its runs list your relay beside your partner's. Enrolling and
 stopping registration wait while a run of the exchange is under way. If the run
@@ -1052,9 +1063,8 @@ authentication](SECURITY_DESIGN.md#recurring-exchange-authentication)): both
 parties discard the desynced secret and set up a new one from a fresh
 invitation. The saved exchange keeps its terms, so a re-invite reuses them and
 creates only a new setup secret. Its invitation names the coordination server
-set in that browser's relay settings, the site's where none is set, or the
-server the exchange already uses where the setting cannot be read, so a
-re-invite also moves an exchange to a changed server.
+in the exchange's Connection settings, so to move an exchange to another
+server, change it there and then re-invite.
 
 The inviter creates the invitation from its saved exchange, which replaces that
 exchange's secret and coordination server in place. The acceptor accepts the
