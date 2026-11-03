@@ -40,6 +40,7 @@ import {
   UsageError,
   BilateralModeMismatchError,
   FrameSizeExceededError,
+  PartnerProtocolRefusalError,
   TransportWriteIndeterminateError,
   chainDetailCauses,
   markPeerWaitTimeout,
@@ -86,10 +87,13 @@ import {
 } from "./fileSyncNames";
 import { MAX_MESSAGE_SEQ, messageFilename } from "./fileSyncMessageLoop";
 import {
+  HELLO_VERSIONS_WHEN_ABSENT,
   HelloEnvelopeSchema,
   serializeEnvelope,
   type HelloEnvelope,
+  type HelloVersions,
 } from "./controlEnvelope";
+import { selectLayerVersion } from "../versionHello";
 import type { FileInfo, FileTransportClient } from "./fileSyncConnection";
 
 // The path/display scope a synchronize() call computes once at entry (from
@@ -325,18 +329,78 @@ export async function readControlFileWithGate(
 }
 
 // Builds a party's hello payload: the two bilateral mode flags it advertises
-// so the peer can detect a mismatch and fail fast. Written into the hello
-// body in both rendezvous branches. The hello is the only control file with
-// a body; the lockless ack is a zero-length marker with no flags.
+// so the peer can detect a mismatch and fail fast, and the versions a run with
+// no key exchange offers. Written into the hello body in both rendezvous
+// branches. The hello is the only control file with a body; the lockless ack
+// is a zero-length marker with no flags.
 /** @internal */
-export function helloEnvelope(flags: {
-  locklessRendezvous: boolean;
-  retainFiles: boolean;
-}): HelloEnvelope {
+export function helloEnvelope(
+  flags: {
+    locklessRendezvous: boolean;
+    retainFiles: boolean;
+  },
+  versions?: HelloVersions,
+): HelloEnvelope {
   return {
     locklessRendezvous: flags.locklessRendezvous,
     retainFiles: flags.retainFiles,
+    ...(versions !== undefined && {
+      versions: { protocol: versions.protocol, envelope: versions.envelope },
+    }),
   };
+}
+
+/** The versions a run with no key exchange selects from the two hellos. */
+export interface RendezvousSelectedVersions {
+  protocol: number;
+  envelope: number;
+}
+
+// The version refusals selectRendezvousVersions raised, so the cleanup sites
+// leave the refusing party's hello in place, as they do for a
+// BilateralModeMismatchError: the peer reaches the same verdict only by
+// reading it.
+const noCommonVersionRefusals = new WeakSet<Error>();
+
+const VERSION_LAYER_LABELS: Record<keyof HelloVersions, string> = {
+  protocol: "protocol",
+  envelope: "message envelope",
+};
+
+/**
+ * Selects, per layer, the highest version both hellos offer, by the
+ * key-exchange hello's rule; a peer hello with no `versions` member offers
+ * {@link HELLO_VERSIONS_WHEN_ABSENT}. With no version in common in a layer,
+ * the refusal names both parties' lists for it. Both parties read both hellos,
+ * so both reach the same result.
+ *
+ * @internal exported for the rendezvous version tests.
+ */
+export function selectRendezvousVersions(
+  own: HelloVersions,
+  peer: HelloEnvelope,
+):
+  | { ok: true; selected: RendezvousSelectedVersions }
+  | { ok: false; refusal: PartnerProtocolRefusalError } {
+  const offered = peer.versions ?? HELLO_VERSIONS_WHEN_ABSENT;
+  const selected: Partial<RendezvousSelectedVersions> = {};
+  for (const layer of ["protocol", "envelope"] as const) {
+    const selection = selectLayerVersion(own[layer], offered[layer]);
+    if (!selection.ok) {
+      const refusal = new PartnerProtocolRefusalError(
+        "the partner is running an Alcove version this one cannot " +
+          `exchange with: this party supports ${VERSION_LAYER_LABELS[layer]} ` +
+          `versions ${own[layer].join(", ")} and the partner supports ` +
+          `${offered[layer].join(", ")}; the party on the older version ` +
+          "must update",
+        { olderVersion: selection.olderVersion },
+      );
+      noCommonVersionRefusals.add(refusal);
+      return { ok: false, refusal };
+    }
+    selected[layer] = selection.version;
+  }
+  return { ok: true, selected: selected as RendezvousSelectedVersions };
 }
 
 // Compares a peer's advertised hello flags against a party's own
@@ -865,7 +929,8 @@ export interface RendezvousDeps {
 
 /**
  * The stateful file-sync rendezvous negotiation as a coordinator
- * {@link FileSyncConnection} composes. It owns no durable state: it reads the
+ * {@link FileSyncConnection} composes. It owns no durable state beyond the
+ * versions a run offers and selects: it reads the
  * connection's identity/config through {@link RendezvousDeps} accessors and
  * writes role/peerId/handshakeRole back through its setters at the commit sites,
  * mutating the connection's responsibleFiles/foreignFileSnapshot Sets by shared
@@ -877,10 +942,39 @@ export interface RendezvousDeps {
 export class FileSyncRendezvous {
   constructor(private readonly deps: RendezvousDeps) {}
 
+  // Set by run(): the versions this party's hello offers on a run with no key
+  // exchange (undefined on any other run, whose hello offers none), and what
+  // the read of the peer hello selected from the two.
+  private offeredVersions: HelloVersions | undefined;
+  private selected: RendezvousSelectedVersions | undefined;
+
+  /** The versions the last successful {@link run} that offered any selected. */
+  get selectedVersions(): RendezvousSelectedVersions | undefined {
+    return this.selected;
+  }
+
   // The body of this party's hello and joining sentinel. It depends only on
-  // the two mode flags, so both names state one byte count for the whole run.
+  // the two mode flags and the offered versions, so both names state one byte
+  // count for the whole run.
   private helloBody(): Buffer {
-    return serializeEnvelope(helloEnvelope(this.deps.options()));
+    return serializeEnvelope(
+      helloEnvelope(this.deps.options(), this.offeredVersions),
+    );
+  }
+
+  // Every site that reads a peer hello refuses on this before acting on it. A
+  // version refusal is checked first: a different build is the likelier root
+  // cause of any flag difference beside it.
+  private peerHelloRefusal(peerEnvelope: HelloEnvelope): Error | undefined {
+    if (this.offeredVersions !== undefined) {
+      const selection = selectRendezvousVersions(
+        this.offeredVersions,
+        peerEnvelope,
+      );
+      if (!selection.ok) return selection.refusal;
+      this.selected = selection.selected;
+    }
+    return bilateralMismatch(peerEnvelope, this.deps.options());
   }
 
   private ownControlName(type: Exclude<SizedControlType, "abort">): string {
@@ -895,10 +989,17 @@ export class FileSyncRendezvous {
    * Negotiates rendezvous with the peer: scans and classifies the entry
    * directory, then dispatches to the lock-joiner fast-path or the symmetric
    * hello-exchange. The connection's public synchronize() validates entry and
-   * threads the resulting {@link RendezvousScope} here.
+   * threads the resulting {@link RendezvousScope} here. `offeredVersions` is
+   * passed by a run with no key exchange only: its hello offers them, and a
+   * peer hello sharing no version in a layer is refused.
    */
-  async run(scope: RendezvousScope): Promise<void> {
+  async run(
+    scope: RendezvousScope,
+    offeredVersions?: HelloVersions,
+  ): Promise<void> {
     const { deps } = this;
+    this.offeredVersions = offeredVersions;
+    this.selected = undefined;
 
     // Scan and classify the entry directory (recognize orphaned temps and
     // leftover abort markers, snapshot foreign files, sweep-or-reject
@@ -1799,7 +1900,7 @@ export class FileSyncRendezvous {
     // keeps the peer hello: both are the directory's terminal state, untracked
     // so close()/cleanup() does not sweep them.
     const refusal =
-      bilateralMismatch(peerEnvelope, deps.options()) ??
+      this.peerHelloRefusal(peerEnvelope) ??
       peerIdPairRefusal(deps.id(), peerId);
     if (refusal) {
       await this.advertiseHelloBeforeRefusal(scope);
@@ -2089,7 +2190,7 @@ export class FileSyncRendezvous {
             // Covers a retain_files mismatch (both parties lockless) as
             // well as a lockless_rendezvous mismatch (peer is a lock party
             // that read our hello at its own two-hellos branch).
-            const mismatch = bilateralMismatch(peerEnvelope, deps.options());
+            const mismatch = this.peerHelloRefusal(peerEnvelope);
             if (mismatch) throw mismatch;
             const idRefusal = peerIdPairRefusal(deps.id(), peerId);
             if (idRefusal) throw idRefusal;
@@ -2479,7 +2580,7 @@ export class FileSyncRendezvous {
           // cannot mask the mismatch), and leave our own hello via the
           // outer catch's skip-sweep for the peer to read.
           const refusal =
-            bilateralMismatch(peerEnvelope, deps.options()) ??
+            this.peerHelloRefusal(peerEnvelope) ??
             peerIdPairRefusal(deps.id(), otherId);
           if (refusal) {
             await deps
@@ -2555,7 +2656,7 @@ export class FileSyncRendezvous {
           // only a lock joiner does, so the peer is in lock mode and a
           // mismatch cannot normally arise; on the throw the peer-hello delete
           // and the sweep are both skipped.
-          const mismatch = bilateralMismatch(peerEnvelope, deps.options());
+          const mismatch = this.peerHelloRefusal(peerEnvelope);
           if (mismatch) throw mismatch;
           const idRefusal = peerIdPairRefusal(
             deps.id(),
@@ -2629,7 +2730,7 @@ export class FileSyncRendezvous {
             peerHelloProvenance(otherFile.name, entryPeerHello),
             deps.signal(),
           );
-          const mismatch = bilateralMismatch(peerEnvelope, deps.options());
+          const mismatch = this.peerHelloRefusal(peerEnvelope);
           if (mismatch) throw mismatch;
           const idRefusal = peerIdPairRefusal(deps.id(), deps.peerId()!);
           if (idRefusal) throw idRefusal;
@@ -2802,10 +2903,10 @@ export class FileSyncRendezvous {
       if (prefixRefusal) throw prefixRefusal;
       return;
     } catch (err: unknown) {
-      // A bilateral-mode mismatch and an id-pair refusal must not sweep
-      // the directory: this party's advertised hello (written before the
-      // loop) is the directory's terminal state, left in place so the peer
-      // reads it through its own peer-hello read and refuses too. Skip the
+      // A bilateral-mode mismatch, a version refusal and an id-pair refusal
+      // must not sweep the directory: this party's advertised hello (written
+      // before the loop) is the directory's terminal state, left in place so
+      // the peer reads it through its own peer-hello read and refuses too. Skip the
       // on-disk safeDelete of hello/ack/lock; clearing responsibleFiles (so
       // a later close()/cleanup() does not delete the advertised hello) and
       // the in-memory reset still run, so the instance is not wedged. A
@@ -2813,6 +2914,7 @@ export class FileSyncRendezvous {
       // (I0) until the operator clears the directory.
       if (
         !(err instanceof BilateralModeMismatchError) &&
+        !(err instanceof Error && noCommonVersionRefusals.has(err)) &&
         !(err instanceof PeerIdsTooLongError) &&
         !(err instanceof PeerIdsPrefixError)
       ) {

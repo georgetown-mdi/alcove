@@ -142,6 +142,10 @@ const RECORDED_SITES: Readonly<Record<string, readonly string[]>> = {
   ],
   // The two hellos share no version in some layer.
   "packages/core/src/versionHello.ts :: noCommonVersionError": [PARTNER],
+  // The two rendezvous hellos of a run with no key exchange share no version
+  // in a layer.
+  "packages/core/src/connection/fileSyncRendezvous.ts :: selectRendezvousVersions":
+    [PARTNER],
 };
 
 // Each member class the scan finds, constructed bare, so the predicate is read
