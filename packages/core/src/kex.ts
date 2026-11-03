@@ -1265,8 +1265,9 @@ export async function runKex(
     // An abort holding a proof is answered (responderFailsOnAbort); a plain
     // abort folds into the same generic failure as a malformed or wrong msg3.
     // Every other failure sends an abort: the initiator has wrapped the
-    // connection and waits for terms message 2, so it reads the cleartext
-    // abort as a `security` failure of the AEAD layer at once.
+    // connection and waits for terms message 2, so the cleartext abort fails
+    // it at once as a `security` failure: on file sync the transport refuses
+    // the abort unparsed and consumes it, elsewhere the AEAD layer refuses it.
     const msg3 = z
       .union([KexMsg3Schema, KexAbortSchema])
       .safeParse(await receiveHandshake(conn));

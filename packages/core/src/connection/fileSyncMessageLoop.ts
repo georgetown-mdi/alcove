@@ -1133,6 +1133,7 @@ export class FileSyncMessageLoop {
             seq: number;
             type: number;
             data: unknown;
+            refusal?: UnencryptedMessageRefusedError;
           } => {
             let envelope: DeserializedMessage;
             try {
@@ -1176,13 +1177,21 @@ export class FileSyncMessageLoop {
                 type: envelope.type,
                 data: envelope.payload,
               };
+            // Returned rather than thrown: the file is consumed as any
+            // received message is, so a partner waiting for it to be read
+            // (the cleartext key-exchange abort) does not wait out its drain.
             if (this.binaryFramesRequired)
-              throw new UnencryptedMessageRefusedError(
-                `message file ${redactPrivateKeyMaterial(messageFile.name)} ` +
-                  `from ${redactPrivateKeyMaterial(peerId)} is an ` +
-                  `unencrypted message on an encrypted channel, so it was ` +
-                  `refused without being parsed`,
-              );
+              return {
+                seq: envelope.seq,
+                type: envelope.type,
+                data: undefined,
+                refusal: new UnencryptedMessageRefusedError(
+                  `message file ${redactPrivateKeyMaterial(messageFile.name)} ` +
+                    `from ${redactPrivateKeyMaterial(peerId)} is an ` +
+                    `unencrypted message on an encrypted channel, so it was ` +
+                    `refused without being parsed`,
+                ),
+              };
             const jsonCap = deps.options().maxJsonMessageBytes;
             if (jsonCap !== undefined && envelope.payload.length > jsonCap)
               throw new UsageError(
@@ -1230,9 +1239,12 @@ export class FileSyncMessageLoop {
             // immediately rather than silently acking or delivering a
             // mismatched message.
             if (validatedMessage.seq !== msgNNN)
-              throw new UsageError(
-                `message body seq=${validatedMessage.seq} does not match ` +
-                  `filename NNN=${msgNNN}: possible corruption or protocol bug`,
+              throw (
+                validatedMessage.refusal ??
+                new UsageError(
+                  `message body seq=${validatedMessage.seq} does not match ` +
+                    `filename NNN=${msgNNN}: possible corruption or protocol bug`,
+                )
               );
 
             deps
@@ -1271,6 +1283,7 @@ export class FileSyncMessageLoop {
                 );
             }
 
+            if (validatedMessage.refusal) throw validatedMessage.refusal;
             // `data` is already the value to deliver: the parsed object for a
             // JSON control message, or the raw frame bytes for a binary frame.
             this.deliver(validatedMessage.data, declaredSize);
@@ -1344,6 +1357,7 @@ export class FileSyncMessageLoop {
               }
             }
 
+            if (validatedMessage.refusal) throw validatedMessage.refusal;
             // `data` is already the value to deliver: the parsed object for a
             // JSON control message, or the raw frame bytes for a binary frame.
             this.deliver(validatedMessage.data, declaredSize);

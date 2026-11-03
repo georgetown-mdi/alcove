@@ -135,7 +135,7 @@ It caps any single container's width before the walker ever sees it, while the w
 
 **Per-message byte caps.**
 The structural ceilings bound a body's shape, not the memory its parse holds, which grows with the body's length.
-So a JSON message a party reads from anyone other than its authenticated partner - before the key exchange completes, or outside the encrypted channel - is held to a byte cap sized to the largest legitimate message of its type, and a longer one is refused before it reaches `parseBoundedJson`.
+So each message the table below lists is held to a byte cap sized to the largest legitimate message of its type, and a longer one is refused before it reaches `parseBoundedJson`.
 These caps sit at the parse sites rather than in the chokepoint, because only the site knows which message it reads.
 Each cap's worst case is static: the last column is the most a body at the cap was measured to hold once parsed, on Node 26.13.0 under `--expose-gc`, across the object, array, string and number shapes the structural ceilings admit.
 

@@ -1319,7 +1319,7 @@ describe("FileSyncMessageLoop requireBinaryFrames", () => {
     return name;
   };
 
-  test("a JSON message is refused unparsed as a terminal security failure, and kept", async () => {
+  test("a JSON message is refused unparsed as a terminal security failure, and consumed", async () => {
     const f = makeLoop();
     const name = plantUnparsableJsonMessage(f.files);
     f.loop.requireBinaryFrames();
@@ -1333,7 +1333,7 @@ describe("FileSyncMessageLoop requireBinaryFrames", () => {
     expect(err.kind).toBe("security");
     expect(err.message).toMatch(/unencrypted message on an encrypted channel/);
     expect(f.emitted[0].pollerActiveAtEmit).toBe(false);
-    expect(f.files.has(name)).toBe(true);
+    expect(f.files.has(name)).toBe(false);
   });
 
   test("a binary message is still delivered", async () => {
