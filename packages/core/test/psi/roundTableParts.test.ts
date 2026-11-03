@@ -11,7 +11,8 @@ import {
 import { MAX_WEBRTC_FRAME_BYTES } from "../../src/connection/binaryPackBounds";
 import { webrtcFrameExceedsBound } from "../../src/connection/webrtcOutboundBound";
 import { binaryPackByteStringLength } from "../../src/connection/webrtcOutboundBound";
-import { ConnectionError, InternalConsistencyError } from "../../src/errors";
+import { ConnectionError, UsageError } from "../../src/errors";
+import { PSI_SET_TOO_LARGE_ABORT_REASON } from "../../src/partnerAbortFrame";
 import { matchedListParts } from "../../src/psi/matchedListParts";
 import { psiSetPartPayloadBytes } from "../../src/psi/psiSetParts";
 import { readPartnerRoundGrouping } from "../../src/psi/roundGrouping";
@@ -219,7 +220,7 @@ test("an omitted grouping is one part of its own layout, apart from an empty one
     ownerLists: false,
   };
   const omitted = webRtcPipe();
-  await sendRoundGrouping(omitted.sender, undefined);
+  await sendRoundGrouping(omitted.sender, "server", undefined);
   expect(omitted.sent.map(readPartFrame)).toStrictEqual([
     {
       header: { index: 0, count: 1, entries: 0 },
@@ -239,7 +240,7 @@ test("an omitted grouping is one part of its own layout, apart from an empty one
   ).toBeUndefined();
 
   const empty = webRtcPipe();
-  await sendRoundGrouping(empty.sender, ownerLists([]));
+  await sendRoundGrouping(empty.sender, "server", ownerLists([]));
   expect(
     plain(
       await receiveRoundGrouping(empty.receiver, "server", "grouping", 0, {
@@ -486,7 +487,7 @@ test("a grouping over the frame bound in all its parts is refused, one just unde
 test("a grouping is sent only if its parts total within the frame bound", async () => {
   const sendAtBound = async (grouping: RoundGroupingField | undefined) => {
     const { sender, sent } = webRtcPipe();
-    const outcome = await sendRoundGrouping(sender, grouping).then(
+    const outcome = await sendRoundGrouping(sender, "server", grouping).then(
       () => undefined,
       (e: unknown) => e,
     );
@@ -496,13 +497,16 @@ test("a grouping is sent only if its parts total within the frame bound", async 
   expect(fits.outcome).toBeUndefined();
   expect(fits.sent).toHaveLength(1);
 
-  const grouping = largestOwnerLists(8, 60, 4);
-  const over = await sendAtBound(grouping);
-  expect(over.sent).toHaveLength(0);
-  expect(over.outcome).toBeInstanceOf(InternalConsistencyError);
-  expect(over.outcome).not.toBeInstanceOf(ConnectionError);
-  expect((over.outcome as Error).message).toMatch(
-    new RegExp(`list of \\d+ bytes is over the ${WEBRTC_BOUND} bytes`),
+  const over = await sendAtBound(largestOwnerLists(8, 60, 4));
+  expect(over.sent).toStrictEqual([
+    { decision: "abort", abortReasons: [PSI_SET_TOO_LARGE_ABORT_REASON] },
+  ]);
+  expect(over.outcome).toBeInstanceOf(UsageError);
+  expect((over.outcome as Error).message).toBe(
+    "server: This exchange found more matches than it can send. It stopped, " +
+      "and your partner was told. This usually means many records on both " +
+      "sides share a key value. Use a more distinctive key or split the data " +
+      "into smaller batches.",
   );
 });
 

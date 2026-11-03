@@ -968,7 +968,7 @@ export class PSIParticipant {
       this.log.debug(`${this.id}: sending my original indices`);
       const localGrouping = grouping?.describe(localIndices);
       await sendRoundIndexList(conn, localIndices);
-      if (grouping) await sendRoundGrouping(conn, localGrouping);
+      if (grouping) await sendRoundGrouping(conn, this.id, localGrouping);
 
       this.log.debug(`${this.id}: waiting for status completed`);
       await receiveAfterTerms(conn, statusCompletedMessage);
@@ -1010,7 +1010,7 @@ export class PSIParticipant {
       const localGrouping = grouping?.describe(localIndices);
       await sendRoundIndexList(conn, associationTable[0]);
       await sendRoundIndexList(conn, associationTable[1]);
-      if (grouping) await sendRoundGrouping(conn, localGrouping);
+      if (grouping) await sendRoundGrouping(conn, this.id, localGrouping);
 
       // Send-before-refusal: a part of the partner's original-index list or
       // grouping refused on its header or body is reported only after the

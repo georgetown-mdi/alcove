@@ -11,11 +11,9 @@
 // entries can be is refused before its body is read. Each part's body is read
 // as the part arrives, so the receiver holds one unread part at a time
 // (docs/spec/PROTOCOL.md, "A list of matched records is sent in parts").
-import {
-  ConnectionError,
-  InternalConsistencyError,
-  chainDetailCauses,
-} from "../errors";
+import { ConnectionError, UsageError, chainDetailCauses } from "../errors";
+import { PSI_SET_TOO_LARGE_ABORT_REASON } from "../partnerAbortFrame";
+import { sendAbort } from "../protocolSetup";
 import {
   MAX_JSON_ARRAY_ELEMENTS,
   parseBoundedJson,
@@ -199,6 +197,20 @@ function partStarts(
   return starts;
 }
 
+/** A list whose parts total more bytes than the bound it was to be sent within. */
+export class MatchedListOverBoundError extends Error {
+  constructor(
+    readonly listBytes: number,
+    readonly maxListBytes: number,
+  ) {
+    super(
+      `a matched-record list of ${listBytes} bytes is over the ` +
+        `${maxListBytes} bytes this party sends a list in`,
+    );
+    this.name = "MatchedListOverBoundError";
+  }
+}
+
 // The bytes of all `count` parts together: each part's header and body prefix,
 // and every entry once.
 function totalListBytes(
@@ -220,7 +232,7 @@ function totalListBytes(
  *   {@link MAX_MATCHED_LIST_PART_ENTRIES} unless a test lowers it, and for a
  *   word list the most its uint32 entry count states.
  * @param maxListBytes - The most bytes all the parts hold together, headers
- *   included. A list over it throws an {@link InternalConsistencyError}
+ *   included. A list over it throws a {@link MatchedListOverBoundError}
  *   before the first part is yielded. A JSON list is measured by its entries'
  *   longest lengths, so the figure it is held to is an upper bound.
  */
@@ -241,10 +253,7 @@ export function* matchedListParts(
   if (maxListBytes !== undefined) {
     const listBytes = totalListBytes(source, count);
     if (listBytes > maxListBytes)
-      throw new InternalConsistencyError(
-        `a matched-record list of ${listBytes} bytes is over the ` +
-          `${maxListBytes} bytes this party sends a list in`,
-      );
+      throw new MatchedListOverBoundError(listBytes, maxListBytes);
   }
   for (let index = 0; index < count; index++) {
     const start = index === 0 ? 0 : starts[index - 1];
@@ -321,6 +330,26 @@ export async function sendMatchedList(
   )) {
     await conn.send(part);
     onPartSent?.();
+  }
+}
+
+/**
+ * {@link sendMatchedList} for a list that must total at most `maxListBytes`. A
+ * list over it sends no part: the partner is sent an abort stating that a set
+ * is too large to send, and `refusal` is thrown as a {@link UsageError}.
+ */
+export async function sendMatchedListWithin(
+  conn: MessageConnection,
+  source: MatchedListSource | WordListSource,
+  maxListBytes: number,
+  refusal: string,
+): Promise<void> {
+  try {
+    await sendMatchedList(conn, source, undefined, maxListBytes);
+  } catch (err) {
+    if (!(err instanceof MatchedListOverBoundError)) throw err;
+    await sendAbort(conn, [PSI_SET_TOO_LARGE_ABORT_REASON]);
+    throw new UsageError(refusal);
   }
 }
 

@@ -10,6 +10,7 @@ import {
   MATCHED_LIST_PART_HEADER_BYTES,
   WORD_LIST_BODY_PREFIX_BYTES,
   sendMatchedList,
+  sendMatchedListWithin,
 } from "./matchedListParts";
 import { statedFrameBound } from "./psiSetParts";
 import {
@@ -97,17 +98,22 @@ export function roundGroupingSource(
  * Sends a round's grouping after the index lists it describes, in parts; an
  * omitted grouping is one part of no entries. A grouping whose parts total
  * more than the connection's stated frame bound, which the receiver holds it
- * to, sends no part and throws an `InternalConsistencyError`.
+ * to, sends no part: the partner is sent an abort and a `UsageError` naming
+ * `participantId` is thrown.
  */
 export async function sendRoundGrouping(
   conn: MessageConnection,
+  participantId: string,
   field: RoundGroupingField | undefined,
 ): Promise<void> {
-  await sendMatchedList(
+  await sendMatchedListWithin(
     conn,
     roundGroupingSource(field),
-    undefined,
     statedFrameBound(conn),
+    `${participantId}: This exchange found more matches than it can send. It ` +
+      "stopped, and your partner was told. This usually means many records " +
+      "on both sides share a key value. Use a more distinctive key or split " +
+      "the data into smaller batches.",
   );
 }
 

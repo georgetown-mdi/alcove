@@ -837,10 +837,10 @@ test("the resolved table's parts are held, in all, to one frame's bound", async 
 
 test("the resolved table is sent only if its parts total within one frame's bound", async () => {
   const sendAt64 = async (pairs: number) => {
-    const sent: Array<Uint8Array> = [];
+    const sent: Array<unknown> = [];
     const conn: MessageConnection = {
       send: (data) => {
-        sent.push(data as Uint8Array);
+        sent.push(data);
         return Promise.resolve();
       },
       receive: () => Promise.reject(new Error("unused")),
@@ -848,7 +848,10 @@ test("the resolved table is sent only if its parts total within one frame's boun
       outboundWebRtcFrameBound: () => 64,
     };
     const column = Array.from({ length: pairs }, (_, k) => k);
-    const outcome = await sendResolvedTable(conn, [column, column]).then(
+    const outcome = await sendResolvedTable(conn, "client", [
+      column,
+      column,
+    ]).then(
       () => undefined,
       (e: unknown) => e,
     );
@@ -860,12 +863,15 @@ test("the resolved table is sent only if its parts total within one frame's boun
   expect(fits.outcome).toBeUndefined();
   expect(fits.sent).toHaveLength(1);
   const over = await sendAt64(5);
-  expect(over.sent).toHaveLength(0);
-  expect(over.outcome).toBeInstanceOf(InternalConsistencyError);
-  expect(over.outcome).not.toBeInstanceOf(ConnectionError);
+  expect(over.sent).toStrictEqual([
+    { decision: "abort", abortReasons: [PSI_SET_TOO_LARGE_ABORT_REASON] },
+  ]);
+  expect(over.outcome).toBeInstanceOf(UsageError);
   expect((over.outcome as Error).message).toBe(
-    "a matched-record list of 88 bytes is over the 64 bytes this party " +
-      "sends a list in",
+    "client: This exchange found 5 matches, more than the 4 it can send. It " +
+      "stopped, and your partner was told. This usually means many records " +
+      "on both sides share a key value. Use a more distinctive key or split " +
+      "the data into smaller batches.",
   );
 });
 

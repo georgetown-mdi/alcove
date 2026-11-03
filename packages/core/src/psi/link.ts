@@ -75,8 +75,13 @@ import {
 } from "../errors";
 import { receivePsiBinaryFrame } from "./psiBinaryFrame";
 import { PSI_SET_TOO_LARGE_ABORT_REASON } from "../partnerAbortFrame";
-import { sendMatchedList, type WordListSource } from "./matchedListParts";
-import { statedFrameBound } from "./psiSetParts";
+import {
+  WORD_LIST_BODY_PREFIX_BYTES,
+  sendMatchedList,
+  sendMatchedListWithin,
+  type WordListSource,
+} from "./matchedListParts";
+import { psiSetPartPayloadBytes, statedFrameBound } from "./psiSetParts";
 import {
   MAPPED_ELEMENT_LAYOUT,
   RESOLVED_TABLE_LAYOUT,
@@ -2582,23 +2587,33 @@ export async function linkViaSinglePassPSI(
     `${participant.id}: ${result[0].length} match(es); returning sender's ` +
       `view`,
   );
-  await sendResolvedTable(conn, theirResult);
+  await sendResolvedTable(conn, participant.id, theirResult);
   stage("done");
   return result;
 }
 
 // Sends message 3 only if the receiver's check of its parts, headers
 // included, against one frame's bound in all (receiveResolvedTable) would pass.
+// Otherwise it sends none and tells the partner, as the single-pass frames over
+// the file bound do (refuseSinglePassFrameOverFileBound).
 /** @internal exported for the single-pass wire-message tests. */
 export async function sendResolvedTable(
   conn: MessageConnection,
+  id: string,
   table: AssociationTable,
 ): Promise<void> {
-  await sendMatchedList(
+  const most = Math.floor(
+    (psiSetPartPayloadBytes(conn) - WORD_LIST_BODY_PREFIX_BYTES) /
+      wordListEntryBytes(RESOLVED_TABLE_LAYOUT),
+  );
+  await sendMatchedListWithin(
     conn,
     resolvedTableSource(table),
-    undefined,
     statedFrameBound(conn),
+    `${id}: This exchange found ${table[0].length} matches, more than the ` +
+      `${most} it can send. It stopped, and your partner was told. This ` +
+      "usually means many records on both sides share a key value. Use a " +
+      "more distinctive key or split the data into smaller batches.",
   );
 }
 
