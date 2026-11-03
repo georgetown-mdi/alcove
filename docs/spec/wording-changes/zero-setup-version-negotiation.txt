@@ -39,7 +39,11 @@
 - - -> Whoever can write the shared directory can rewrite a hello to force the lowest version both builds still hold, or the refusal; the same party can already stand in for the partner outright.
 - - -> The keyed path selects from the version hello, which the handshake transcript binds.
 - - -> **Keyed runs.**
-- - -> A run with a key exchange writes no `versions` member, ignores the peer's, and selects from the version hello alone.
+- - -> A run with a key exchange writes no `versions` member and selects from the version hello alone.
+- - -> A peer's `versions` member is still read against the list rules above, so one that breaks them fails the hello read as on any run.
+- - -> Order and repeats are not rules, as in the version hello: the selection takes the highest version in both lists, which neither changes.
+- - -> A peer from before the `versions` member reads no lists and so does not refuse; it fails on its own timeout instead, which can happen only once a build no longer offers version 1.
+- - -> The command-line application shows its partner-refusal next step beneath the refusal, as it does beneath the version hello's.
 - - -> `PROTOCOL_VERSION` (`packages/core/src/versionHello.ts`) is an integer bumped only on a wire-incompatible protocol change, and only once the compatibility policy binds, from release `1.0.0` (earlier deltas hold it at 1: partners upgrade together, so there are no mixed-version peers to reconcile).
 - Errors out of `synchronize()` and `send()` fall into two classes, and the distinction is part of the contract with the CLI: -> Errors out of `synchronize()` and `send()` fall into three classes, and the distinction is part of the contract with the CLI:
 - - -> **Protocol refusal** -> CLI exit `76`.
