@@ -45,7 +45,7 @@ Each of you sets a use for every column in your own file. The inviter does it on
 Alcove fills in each column's type and use from its name. It sends nothing by default, your ID column included.
 
 <!--@include: ./_id-column.md#app-->
-On the command line, its `metadata` entry reads `role: identifier`, with `is_payload: false` to keep it or `is_payload: true` to send it.
+On the command line, your ID column's `metadata` entry reads `role: identifier`, with `is_payload: false` to keep it or `is_payload: true` to send it.
 
 ## Who receives the result
 
