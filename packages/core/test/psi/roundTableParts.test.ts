@@ -12,7 +12,7 @@ import { MAX_WEBRTC_FRAME_BYTES } from "../../src/connection/binaryPackBounds";
 import { webrtcFrameExceedsBound } from "../../src/connection/webrtcOutboundBound";
 import { binaryPackByteStringLength } from "../../src/connection/webrtcOutboundBound";
 import { ConnectionError, UsageError } from "../../src/errors";
-import { PSI_SET_TOO_LARGE_ABORT_REASON } from "../../src/partnerAbortFrame";
+import { PSI_SET_REFUSED_ABORT_REASON } from "../../src/partnerAbortFrame";
 import { matchedListParts } from "../../src/psi/matchedListParts";
 import { psiSetPartPayloadBytes } from "../../src/psi/psiSetParts";
 import { readPartnerRoundGrouping } from "../../src/psi/roundGrouping";
@@ -499,7 +499,7 @@ test("a grouping is sent only if its parts total within the frame bound", async 
 
   const over = await sendAtBound(largestOwnerLists(8, 60, 4));
   expect(over.sent).toStrictEqual([
-    { decision: "abort", abortReasons: [PSI_SET_TOO_LARGE_ABORT_REASON] },
+    { decision: "abort", abortReasons: [PSI_SET_REFUSED_ABORT_REASON] },
   ]);
   expect(over.outcome).toBeInstanceOf(UsageError);
   expect((over.outcome as Error).message).toBe(

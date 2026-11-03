@@ -60,7 +60,10 @@ import {
   statesItsOwnNextStep,
   PeerAbortError,
 } from "../../src/errors";
-import { PSI_SET_TOO_LARGE_ABORT_REASON } from "../../src/partnerAbortFrame";
+import {
+  PSI_SET_REFUSED_ABORT_REASON,
+  PSI_SET_TOO_LARGE_ABORT_REASON,
+} from "../../src/partnerAbortFrame";
 import { sortAssociationTable } from "../../src/testing";
 import { fanOutFreeBounds } from "../utils/singlePassBounds";
 import { partFrame, readPartFrame } from "../utils/matchedListPartFrames";
@@ -864,7 +867,7 @@ test("the resolved table is sent only if its parts total within one frame's boun
   expect(fits.sent).toHaveLength(1);
   const over = await sendAt64(5);
   expect(over.sent).toStrictEqual([
-    { decision: "abort", abortReasons: [PSI_SET_TOO_LARGE_ABORT_REASON] },
+    { decision: "abort", abortReasons: [PSI_SET_REFUSED_ABORT_REASON] },
   ]);
   expect(over.outcome).toBeInstanceOf(UsageError);
   expect((over.outcome as Error).message).toBe(

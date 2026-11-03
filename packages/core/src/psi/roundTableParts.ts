@@ -110,10 +110,7 @@ export async function sendRoundGrouping(
     conn,
     roundGroupingSource(field),
     statedFrameBound(conn),
-    `${participantId}: This exchange found more matches than it can send. It ` +
-      "stopped, and your partner was told. This usually means many records " +
-      "on both sides share a key value. Use a more distinctive key or split " +
-      "the data into smaller batches.",
+    `${participantId}: This exchange found more matches than it can send.`,
   );
 }
 

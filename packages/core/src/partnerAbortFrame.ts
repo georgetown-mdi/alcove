@@ -18,8 +18,9 @@ export const PSI_SET_TOO_LARGE_ABORT_REASON = "a PSI set is too large to send";
 /**
  * The reason a party puts on the abort it sends the partner when its first
  * round, checked against the partner's stated receive ceiling after the terms
- * exchange, refused for any cause other than its size. It states only that
- * the party refused to send its set.
+ * exchange, refused for any cause other than its size, and when a list of
+ * matches it would send is over the bound the partner holds that list to. It
+ * states only that the party refused to send.
  */
 export const PSI_SET_REFUSED_ABORT_REASON =
   "a PSI set was refused before sending";

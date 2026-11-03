@@ -104,4 +104,4 @@
 - - -> Run lengths, 4 bytes a record, pass the bound at about 67.1 million records on WebRTC and 134.2 million on SFTP or a synced folder.
 - - -> No round reaches either: a round's matched positions are at most `MAX_PSI_DECODE_ELEMENTS`, 2^24 ([The per-set maximum](#a-psi-set-is-sent-in-parts)), so its run lengths take at most 67,108,864 bytes before their parts' headers.
 - - -> A single-pass message 3 is held the same way: its parts, each counted whole with its header, may hold at most the transport's frame bound in all, the most one frame could hold, and a part that would take the total past it is refused before its body is read.
-- - -> A sender refuses a grouping or a message 3 whose parts would total more than that bound itself, before it sends the first part, and tells the partner it stopped.
+- - -> A sender refuses a grouping or a message 3 whose parts would total more than that bound itself, before it sends the first part, and tells the partner it stopped with the abort reason "a PSI set was refused before sending".

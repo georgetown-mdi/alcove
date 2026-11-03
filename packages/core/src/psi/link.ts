@@ -2611,9 +2611,7 @@ export async function sendResolvedTable(
     resolvedTableSource(table),
     statedFrameBound(conn),
     `${id}: This exchange found ${table[0].length} matches, more than the ` +
-      `${most} it can send. It stopped, and your partner was told. This ` +
-      "usually means many records on both sides share a key value. Use a " +
-      "more distinctive key or split the data into smaller batches.",
+      `${most} it can send.`,
   );
 }
 

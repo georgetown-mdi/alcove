@@ -12,7 +12,7 @@
 // as the part arrives, so the receiver holds one unread part at a time
 // (docs/spec/PROTOCOL.md, "A list of matched records is sent in parts").
 import { ConnectionError, UsageError, chainDetailCauses } from "../errors";
-import { PSI_SET_TOO_LARGE_ABORT_REASON } from "../partnerAbortFrame";
+import { PSI_SET_REFUSED_ABORT_REASON } from "../partnerAbortFrame";
 import { sendAbort } from "../protocolSetup";
 import {
   MAX_JSON_ARRAY_ELEMENTS,
@@ -333,10 +333,16 @@ export async function sendMatchedList(
   }
 }
 
+const TOO_MANY_MATCHES_REMEDY =
+  "It stopped, and your partner was told. This usually means many records on " +
+  "both sides share a key value. Use a more distinctive key or split the " +
+  "data into smaller batches.";
+
 /**
  * {@link sendMatchedList} for a list that must total at most `maxListBytes`. A
- * list over it sends no part: the partner is sent an abort stating that a set
- * is too large to send, and `refusal` is thrown as a {@link UsageError}.
+ * list over it sends no part: the partner is sent an abort stating that this
+ * run refused to send, and `refusal` followed by the remedy is thrown as a
+ * {@link UsageError}.
  */
 export async function sendMatchedListWithin(
   conn: MessageConnection,
@@ -348,8 +354,8 @@ export async function sendMatchedListWithin(
     await sendMatchedList(conn, source, undefined, maxListBytes);
   } catch (err) {
     if (!(err instanceof MatchedListOverBoundError)) throw err;
-    await sendAbort(conn, [PSI_SET_TOO_LARGE_ABORT_REASON]);
-    throw new UsageError(refusal);
+    await sendAbort(conn, [PSI_SET_REFUSED_ABORT_REASON]);
+    throw new UsageError(`${refusal} ${TOO_MANY_MATCHES_REMEDY}`);
   }
 }
 
