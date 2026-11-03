@@ -1,7 +1,14 @@
 // Builders and readers for the frames a matched-record list is sent in, so a
-// test that hand-crafts or rewrites one of those lists works on the JSON body
-// it means rather than on the part header (docs/spec/PROTOCOL.md, "A list of
-// matched records is sent in parts").
+// test that hand-crafts or rewrites one of those lists works on the plain
+// value it means rather than on the part header and the body's words
+// (docs/spec/PROTOCOL.md, "A list of matched records is sent in parts"). A
+// word list reads as JSON would: an index list or run lengths as an array of
+// numbers, owner lists as an array of arrays, an omitted grouping as `null`, a
+// mapped-element list as `{theirIndex, iteration}` entries whose one position
+// is a bare number, the returned list as `{theirIndex}` entries, and the
+// single-pass resolved table as its two halves. The words are written
+// here with DataView rather than by the module under test, and a value a word
+// cannot hold is written as `setUint32` truncates it.
 
 import { MATCHED_LIST_PART_HEADER_BYTES } from "../../src/psi/matchedListParts";
 import {
@@ -10,6 +17,16 @@ import {
   sendRoundGrouping,
   sendRoundIndexList,
 } from "../../src/psi/roundTableParts";
+import {
+  INDEX_LIST_LAYOUT,
+  MAPPED_ELEMENT_LAYOUT,
+  OMITTED_GROUPING_LAYOUT,
+  OWNER_LISTS_LAYOUT,
+  RESOLVED_TABLE_LAYOUT,
+  RETURNED_ELEMENT_LAYOUT,
+  RUN_LENGTHS_LAYOUT,
+  type WordListLayout,
+} from "../../src/psi/uint32ListParts";
 
 import type { MessageConnection } from "../../src/connection/messageConnection";
 
@@ -20,21 +37,127 @@ export interface PartHeader {
   readonly entries: number;
 }
 
+const LAYOUTS = [
+  INDEX_LIST_LAYOUT,
+  OMITTED_GROUPING_LAYOUT,
+  RUN_LENGTHS_LAYOUT,
+  OWNER_LISTS_LAYOUT,
+  MAPPED_ELEMENT_LAYOUT,
+  RETURNED_ELEMENT_LAYOUT,
+  RESOLVED_TABLE_LAYOUT,
+];
+
+interface Entry {
+  theirIndex: number | Array<number>;
+  iteration: number;
+}
+
+// The layout a plain value is written in where a test names none.
+function layoutOf(body: unknown): WordListLayout | undefined {
+  if (body === null) return OMITTED_GROUPING_LAYOUT;
+  if (!Array.isArray(body)) return undefined;
+  if (body.some((entry) => Array.isArray(entry))) return OWNER_LISTS_LAYOUT;
+  if (body.some((entry) => typeof entry === "object"))
+    return MAPPED_ELEMENT_LAYOUT;
+  return INDEX_LIST_LAYOUT;
+}
+
+/** The body of a word-list part holding `body` in `layout`. */
+export function wordListBody(
+  body: unknown,
+  layout: WordListLayout,
+): Uint8Array {
+  const entries = Array.isArray(body) ? (body as Array<unknown>) : [];
+  if (layout === RESOLVED_TABLE_LAYOUT) {
+    const [senderRows, receiverRows] = entries as [
+      Array<number>,
+      Array<number>,
+    ];
+    return words([
+      layout.tag,
+      senderRows.length,
+      ...senderRows,
+      ...receiverRows,
+    ]);
+  }
+  const listWords: Array<number> = [layout.tag, entries.length];
+  const asEntry = (entry: unknown): Entry => entry as Entry;
+  const positionsOf = (entry: unknown): Array<number> => {
+    const theirIndex = asEntry(entry).theirIndex;
+    return Array.isArray(theirIndex) ? theirIndex : [theirIndex];
+  };
+  if (layout === MAPPED_ELEMENT_LAYOUT) {
+    for (const entry of entries) listWords.push(asEntry(entry).iteration);
+    for (const entry of entries) listWords.push(positionsOf(entry).length);
+    for (const entry of entries) listWords.push(...positionsOf(entry));
+  } else if (layout === RETURNED_ELEMENT_LAYOUT) {
+    for (const entry of entries)
+      listWords.push(asEntry(entry).theirIndex as number);
+  } else if (layout === OWNER_LISTS_LAYOUT) {
+    for (const entry of entries)
+      listWords.push((entry as Array<number>).length);
+    for (const entry of entries) listWords.push(...(entry as Array<number>));
+  } else {
+    for (const entry of entries) listWords.push(entry as number);
+  }
+  return words(listWords);
+}
+
+function words(values: ReadonlyArray<number>): Uint8Array {
+  const bytes = new Uint8Array(4 * values.length);
+  const view = new DataView(bytes.buffer);
+  values.forEach((value, k) => view.setUint32(4 * k, value, true));
+  return bytes;
+}
+
 /**
- * A part frame holding `body`'s JSON under the stated header; the header
- * defaults to the only part of a list of `entriesOf(body)` entries.
+ * A part frame holding `body` under the stated header, in `layout` or, where
+ * none is given, the word-list layout `body`'s shape names, or JSON for a
+ * payload message; the header defaults to the only part of a list of
+ * `entriesOf(body)` entries.
  */
 export function partFrame(
   body: unknown,
   header: Partial<PartHeader> = {},
+  layout: WordListLayout | undefined = layoutOf(body),
 ): Uint8Array {
-  const json = new TextEncoder().encode(JSON.stringify(body));
-  const frame = new Uint8Array(MATCHED_LIST_PART_HEADER_BYTES + json.length);
+  if (layout === undefined) return jsonPartFrame(body, header);
+  return frameOf(wordListBody(body, layout), {
+    ...header,
+    entries:
+      header.entries ??
+      (layout === RESOLVED_TABLE_LAYOUT
+        ? (body as [Array<number>])[0].length
+        : entriesOf(body)),
+  });
+}
+
+/**
+ * A part frame holding `body` as JSON, as a payload message's part does,
+ * whatever its shape; the header defaults as {@link partFrame}'s does.
+ */
+export function jsonPartFrame(
+  body: unknown,
+  header: Partial<PartHeader> = {},
+): Uint8Array {
+  return frameOf(new TextEncoder().encode(JSON.stringify(body)), {
+    ...header,
+    entries: header.entries ?? entriesOf(body),
+  });
+}
+
+function frameOf(
+  bodyBytes: Uint8Array,
+  header: Partial<PartHeader> & { entries: number },
+): Uint8Array {
+  const frame = new Uint8Array(
+    MATCHED_LIST_PART_HEADER_BYTES + bodyBytes.length,
+  );
   const view = new DataView(frame.buffer);
   view.setUint32(0, header.index ?? 0);
   view.setUint32(4, header.count ?? 1);
-  view.setBigUint64(8, BigInt(header.entries ?? entriesOf(body)));
-  frame.set(json, MATCHED_LIST_PART_HEADER_BYTES);
+  view.setBigUint64(8, BigInt(header.entries));
+  frame.set(bodyBytes, MATCHED_LIST_PART_HEADER_BYTES);
   return frame;
 }
 
@@ -48,44 +171,88 @@ export function entriesOf(body: unknown): number {
   return Array.isArray(rows) ? rows.length : 0;
 }
 
+// The plain value a word-list body holds, or undefined for a body that is not
+// one.
+function readWordListBody(
+  body: Uint8Array,
+): { value: unknown; layout: WordListLayout } | undefined {
+  if (body.byteLength < 8 || body.byteLength % 4 !== 0) return undefined;
+  const view = new DataView(body.buffer, body.byteOffset, body.byteLength);
+  const words = Array.from({ length: body.byteLength / 4 }, (_, k) =>
+    view.getUint32(4 * k, true),
+  );
+  const layout = LAYOUTS.find((candidate) => candidate.tag === words[0]);
+  if (layout === undefined) return undefined;
+  const n = words[1];
+  const column = (c: number): Array<number> =>
+    words.slice(2 + c * n, 2 + (c + 1) * n);
+  const ragged = (): Array<Array<number>> => {
+    const counts = column(layout.columns);
+    let at = 2 + (layout.columns + 1) * n;
+    return counts.map((count) => words.slice(at, (at += count)));
+  };
+  if (layout === OMITTED_GROUPING_LAYOUT) return { value: null, layout };
+  if (layout === OWNER_LISTS_LAYOUT) return { value: ragged(), layout };
+  if (layout === MAPPED_ELEMENT_LAYOUT) {
+    const rounds = column(0);
+    return {
+      value: ragged().map((positions, i) => ({
+        theirIndex: positions.length === 1 ? positions[0] : positions,
+        iteration: rounds[i],
+      })),
+      layout,
+    };
+  }
+  if (layout === RESOLVED_TABLE_LAYOUT)
+    return { value: [column(0), column(1)], layout };
+  if (layout === RETURNED_ELEMENT_LAYOUT)
+    return {
+      value: column(0).map((theirIndex) => ({ theirIndex })),
+      layout,
+    };
+  return { value: column(0), layout };
+}
+
 /**
- * The header and parsed JSON body of a part frame, or undefined for a frame
- * that is not one: not binary, or a body that is not JSON (a PSI set part).
+ * The header and plain body of a part frame, and the word-list layout its body
+ * is in (undefined for a JSON body), or undefined for a frame that is not one:
+ * not binary, or a body that is neither (a PSI set part).
  */
 export function readPartFrame(
   frame: unknown,
-): { header: PartHeader; body: unknown } | undefined {
+): { header: PartHeader; body: unknown; layout?: WordListLayout } | undefined {
   if (
     !(frame instanceof Uint8Array) ||
     frame.byteLength <= MATCHED_LIST_PART_HEADER_BYTES
   )
     return undefined;
   const view = new DataView(frame.buffer, frame.byteOffset, frame.byteLength);
-  let body: unknown;
+  const header = {
+    index: view.getUint32(0),
+    count: view.getUint32(4),
+    entries: Number(view.getBigUint64(8)),
+  };
+  const bodyBytes = frame.subarray(MATCHED_LIST_PART_HEADER_BYTES);
+  const words = readWordListBody(bodyBytes);
+  if (words !== undefined)
+    return { header, body: words.value, layout: words.layout };
   try {
-    body = JSON.parse(
-      new TextDecoder("utf-8", { fatal: true }).decode(
-        frame.subarray(MATCHED_LIST_PART_HEADER_BYTES),
+    return {
+      header,
+      body: JSON.parse(
+        new TextDecoder("utf-8", { fatal: true }).decode(bodyBytes),
       ),
-    );
+    };
   } catch {
     return undefined;
   }
-  return {
-    header: {
-      index: view.getUint32(0),
-      count: view.getUint32(4),
-      entries: Number(view.getBigUint64(8)),
-    },
-    body,
-  };
 }
 
 /**
- * Passes a frame through `deviate` as a deviation written against JSON frames
- * reads it: a single-part list frame's body is handed over and the result sent
- * as the only part of a list of its own entries, and any other frame is handed
- * over as it arrived.
+ * Passes a frame through `deviate` as a deviation written against plain
+ * values reads it: a single-part list frame's body is handed over and the
+ * result sent, in the same layout, as the only part of a list of its own
+ * entries, and any other frame is handed over as it arrived.
  */
 export function deviateListBody(
   frame: unknown,
@@ -93,7 +260,12 @@ export function deviateListBody(
 ): unknown {
   const read = readPartFrame(frame);
   if (read === undefined || read.header.count !== 1) return deviate(frame);
-  return partFrame(deviate(read.body));
+  const deviated = deviate(read.body);
+  return partFrame(
+    deviated,
+    {},
+    read.layout === OMITTED_GROUPING_LAYOUT ? layoutOf(deviated) : read.layout,
+  );
 }
 
 /**
@@ -120,11 +292,24 @@ export function roundFramesInbound(
   const queued: Array<unknown> = [];
   let afterPsiSetPart = false;
   const indexLists = party === "starter" ? 2 : 1;
+  let groupingLayout: WordListLayout | undefined;
   const readOnePartBody = (frame: unknown): unknown => {
     const read = readPartFrame(frame);
     if (read === undefined || read.header.count !== 1)
       throw new Error("roundFramesInbound reads one-part lists only");
+    if (read.layout !== INDEX_LIST_LAYOUT) groupingLayout = read.layout;
     return read.body;
+  };
+  // A grouping's form follows its value, and an empty one keeps the form it
+  // arrived in.
+  const groupingLayoutOf = (body: unknown): WordListLayout => {
+    if (body === null) return OMITTED_GROUPING_LAYOUT;
+    const entries = body as Array<unknown>;
+    if (entries.some((entry) => Array.isArray(entry)))
+      return OWNER_LISTS_LAYOUT;
+    if (entries.length > 0 || groupingLayout !== OWNER_LISTS_LAYOUT)
+      return RUN_LENGTHS_LAYOUT;
+    return OWNER_LISTS_LAYOUT;
   };
   const receive = async (timeoutMs?: number): Promise<unknown> => {
     if (queued.length > 0) return queued.shift();
@@ -164,7 +349,15 @@ export function roundFramesInbound(
       bodies = [twoPart ? deviated[0] : deviated];
       if (grouped) bodies.push(twoPart ? deviated[1] : null);
     }
-    for (const body of bodies) queued.push(partFrame(body));
+    bodies.forEach((body, i) =>
+      queued.push(
+        partFrame(
+          body,
+          {},
+          i < indexLists ? INDEX_LIST_LAYOUT : groupingLayoutOf(body),
+        ),
+      ),
+    );
     return queued.shift();
   };
   return {
@@ -188,7 +381,6 @@ export async function receiveHandPlayedRoundTable(
       "",
       "association table",
       Number.MAX_SAFE_INTEGER,
-      Number.POSITIVE_INFINITY,
     );
   const joinerPositions = await read();
   const starterSlots = await read();
@@ -209,7 +401,7 @@ export async function sendHandPlayedOriginalIndexList(
   list: ReadonlyArray<number>,
 ): Promise<void> {
   await sendRoundIndexList(conn, list);
-  await sendRoundGrouping(conn, undefined);
+  await sendRoundGrouping(conn, "", undefined);
 }
 
 /**

@@ -1,8 +1,4 @@
-import {
-  associationTableMessage,
-  type PSIParticipant,
-  type RoundGroupingExchange,
-} from "./participant";
+import type { PSIParticipant, RoundGroupingExchange } from "./participant";
 import {
   candidatePositionCount,
   describeLocalRoundGrouping,
@@ -33,7 +29,6 @@ import {
 import type { AssociationTable } from "../types";
 import {
   connectionEndReader,
-  parseOrProtocolError,
   type MessageConnection,
 } from "../connection/messageConnection";
 import {
@@ -56,7 +51,6 @@ import {
   fanOutReachedMatchingRefusal,
   type KeyCandidates,
 } from "../standardization";
-import { singleIssueArray } from "../utils/singleIssueArray";
 import {
   assertPartnerIndexCount,
   assertPartnerIndices,
@@ -80,19 +74,22 @@ import {
   markStatesItsOwnNextStep,
 } from "../errors";
 import { receivePsiBinaryFrame } from "./psiBinaryFrame";
+import { PSI_SET_TOO_LARGE_ABORT_REASON } from "../partnerAbortFrame";
 import {
-  PSI_SET_TOO_LARGE_ABORT_REASON,
-  receiveAfterTerms,
-} from "../partnerAbortFrame";
-import {
-  arrayPart,
-  arraySource,
-  joinMatchedArrayParts,
-  receiveMatchedArray,
-  receiveMatchedListParts,
+  WORD_LIST_BODY_PREFIX_BYTES,
   sendMatchedList,
-  type MatchedListBound,
+  sendMatchedListWithin,
+  type WordListSource,
 } from "./matchedListParts";
+import { psiSetPartPayloadBytes, statedFrameBound } from "./psiSetParts";
+import {
+  MAPPED_ELEMENT_LAYOUT,
+  RESOLVED_TABLE_LAYOUT,
+  RETURNED_ELEMENT_LAYOUT,
+  receiveWordList,
+  wordListEntryBytes,
+  wordListSource,
+} from "./uint32ListParts";
 import { DistinctValues } from "../utils/distinctValues";
 import {
   EventLoopPacer,
@@ -130,51 +127,36 @@ interface MappedElementEntry {
   iteration: number;
 }
 
-function isEntryPositions(value: unknown): boolean {
-  return (
-    Number.isFinite(value) ||
-    (Array.isArray(value) && value.every(Number.isFinite))
-  );
+// The first pass's list on the wire: per entry its round, then its positions
+// (MAPPED_ELEMENT_LAYOUT).
+/** @internal exported for the mapped-element wire-message tests. */
+export function mappedElementSource(
+  list: ReadonlyArray<MappedElementEntry>,
+): WordListSource {
+  return wordListSource(MAPPED_ELEMENT_LAYOUT, {
+    entries: list.length,
+    column: (_column, index) => list[index].iteration,
+    ragged: (index) => {
+      const { theirIndex } = list[index];
+      return typeof theirIndex === "number" ? [theirIndex] : theirIndex;
+    },
+  });
 }
 
-// Parsed as the whole received message (the root array). The single-issue
-// validator caps issue accumulation at one regardless of element count
-// (utils/singleIssueArray.ts), so a pathological frame fails as a clean
-// bounded rejection rather than a stack overflow or an oversized Zod error
-// string; a count `.max()` is not an option since the legitimate count -- the
-// matched intersection -- is in the millions, bounded only by
-// MAX_FRAME_SIZE_BYTES. The predicate accepts a non-null, non-array object
-// with a finite iteration and a theirIndex that is a finite number or an array
-// of them, and it never recurses into that array, so a frame nesting arrays
-// inside a position list is one rejection too.
+// The second pass's entry, one per accepted pair: one row of the answering
+// party. The positions of the first pass are resolved to rows there, and the
+// receiver takes each pair's round from its own list, so the entry is the row
+// alone (docs/spec/PROTOCOL.md, Deriving one table from the exchanged
+// association maps).
 /** @internal exported for the mapped-element wire-message tests. */
-export const mappedElementArray = singleIssueArray<MappedElementEntry>(
-  (value) =>
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    isEntryPositions((value as Record<string, unknown>).theirIndex) &&
-    Number.isFinite((value as Record<string, unknown>).iteration),
-  "must be an array of {theirIndex, iteration} entries whose theirIndex is a " +
-    "finite number or an array of them",
-);
-
-// The second pass's entry, one per accepted pair: the round, and one row of
-// the answering party. The positions of the first pass are resolved to rows
-// there, so this half of the exchange never holds a list
-// (docs/spec/PROTOCOL.md, Deriving one table from the exchanged association
-// maps).
-/** @internal exported for the pathological-count wire-message test. */
-export const associationAndIterationArray =
-  singleIssueArray<IndexIterationPair>(
-    (value) =>
-      typeof value === "object" &&
-      value !== null &&
-      !Array.isArray(value) &&
-      Number.isFinite((value as Record<string, unknown>).theirIndex) &&
-      Number.isFinite((value as Record<string, unknown>).iteration),
-    "must be an array of {theirIndex, iteration} finite-number pairs",
-  );
+export function returnedElementSource(
+  list: ReadonlyArray<IndexIterationPair>,
+): WordListSource {
+  return wordListSource(RETURNED_ELEMENT_LAYOUT, {
+    entries: list.length,
+    column: (_column, index) => list[index].theirIndex,
+  });
+}
 
 type IndexIterationMap = Array<MappedElementEntry | undefined>;
 type MappedElementList = Array<MappedElementEntry>;
@@ -709,25 +691,13 @@ function keyWidthBound(bounds: SessionBounds, key: number): number {
 }
 
 /**
- * The most UTF-8 bytes one `{theirIndex, iteration}` entry of a mapped-element
- * list adds to a part's body as `JSON.stringify` writes it, its separator
- * included: `theirIndex` a list of at most `positions` whole numbers below
- * `indexBound`, or one such number, and `iteration` a round below `rounds`.
+ * The most bytes one entry of a mapped-element list adds to a part's body: its
+ * round, its position count, and at most `positions` positions, at least one.
  *
  * @internal
  */
-export function mappedElementEntryBytes(
-  indexBound: number,
-  positions: number,
-  rounds: number,
-): number {
-  const digits = (bound: number): number =>
-    String(Math.max(0, bound - 1)).length;
-  const index = digits(indexBound);
-  const theirIndex = positions <= 1 ? index : positions * (index + 1) + 1;
-  return (
-    '{"theirIndex":,"iteration":}'.length + theirIndex + digits(rounds) + 1
-  );
+export function mappedElementEntryBytes(positions: number): number {
+  return wordListEntryBytes(MAPPED_ELEMENT_LAYOUT, Math.max(1, positions));
 }
 
 // A side is held to one accepted pair per round exactly when it is NOT the
@@ -817,15 +787,14 @@ interface ExpectedRoundEntries {
 
 // The positions one entry of a partner's mapped-element list names, checked
 // against this party's own round before any of them indexes anything: whole
-// numbers inside that round's candidate set, distinct and ascending. A bare
-// number is the one-position case (docs/spec/PROTOCOL.md, The reading pass's
-// preconditions, at the widened entry).
+// numbers inside that round's candidate set, distinct and ascending
+// (docs/spec/PROTOCOL.md, The reading pass's preconditions, at the widened
+// entry).
 function entryPositions(
   participantId: string,
-  theirIndex: number | ReadonlyArray<number>,
+  positions: Uint32Array,
   positionCount: number,
-): ReadonlyArray<number> {
-  const positions = Array.isArray(theirIndex) ? theirIndex : [theirIndex];
+): Uint32Array {
   if (positions.length === 0)
     throw partnerProtocolError(
       participantId,
@@ -855,7 +824,7 @@ function entryPositions(
 }
 
 function positionsEqual(
-  named: ReadonlyArray<number>,
+  named: ArrayLike<number>,
   expected: ArrayLike<number>,
 ): boolean {
   if (named.length !== expected.length) return false;
@@ -1433,23 +1402,24 @@ export async function linkViaPSI(
   for (let j = 0; j < candidatesByIter.length; ++j)
     mappedEntryBytes = Math.max(
       mappedEntryBytes,
-      mappedElementEntryBytes(
-        candidatePositionCount(candidatesByIter[j]),
-        keyWidthBound(bounds, j),
-        candidatesByIter.length,
-      ),
+      mappedElementEntryBytes(keyWidthBound(bounds, j)),
     );
   // The partner states one entry per record it accepted, so a list declaring
   // more entries than its declared record count is refused at its first part.
-  const theirIdentifiedIndexIterationMap = await exchangeMappedElements(
+  const theirMappedElements = await exchangeMappedElements(
     participant.id,
     conn,
     log,
     sendFirst,
-    identifiedIndexIterationMap,
-    "mapped-element list",
-    { entries: partnerRecordCount, entryBytes: mappedEntryBytes },
-    mappedElementArray,
+    mappedElementSource(identifiedIndexIterationMap),
+    () =>
+      receiveWordList(
+        conn,
+        participant.id,
+        "mapped-element list",
+        { entries: partnerRecordCount, entryBytes: mappedEntryBytes },
+        [MAPPED_ELEMENT_LAYOUT],
+      ),
   );
 
   // Translate the partner's list of our records into our own rows, checking
@@ -1463,11 +1433,7 @@ export async function linkViaPSI(
   // (docs/spec/PROTOCOL.md, Deriving one table from the exchanged association
   // maps). Either way the rows come out in ascending row order, and the groups
   // in the order of the list being translated, which is the ordering the
-  // originating party reconstructs its own table from. The translation builds
-  // its own list rather than writing the rows over the entries it read: a
-  // transport that hands the partner the array itself rather than a
-  // serialization of it would otherwise leave this party writing over the
-  // partner's own outbound entries.
+  // originating party reconstructs its own table from.
   const expanded: IterationMap = [];
   // How many entries of our own returned list belong to each of our matched
   // records: the count of the partner's entries that expanded to it, which is
@@ -1483,12 +1449,21 @@ export async function linkViaPSI(
   const named = new Uint8Array(indexIterationMap.length);
   let namedRecords = 0;
   const entriesReadPerIter = new Int32Array(candidatesByIter.length);
-  for (const e of theirIdentifiedIndexIterationMap) {
-    if (
-      !Number.isInteger(e.iteration) ||
-      e.iteration < 0 ||
-      e.iteration >= candidatesByIter.length
-    )
+  const {
+    columns: [theirRounds],
+    counts: theirPositionCounts,
+    values: theirPositions,
+  } = theirMappedElements;
+  let positionsFrom = 0;
+  for (let entry = 0; entry < theirMappedElements.entries; ++entry) {
+    const e = { iteration: theirRounds[entry] };
+    const positionsTo = positionsFrom + theirPositionCounts[entry];
+    const entryPositionList = theirPositions.subarray(
+      positionsFrom,
+      positionsTo,
+    );
+    positionsFrom = positionsTo;
+    if (e.iteration >= candidatesByIter.length)
       throw partnerProtocolError(
         participant.id,
         "the partner's mapped-element list names a key round this exchange " +
@@ -1497,7 +1472,7 @@ export async function linkViaPSI(
     const candidates = candidatesByIter[e.iteration];
     const positions = entryPositions(
       participant.id,
-      e.theirIndex,
+      entryPositionList,
       candidatePositionCount(candidates),
     );
     const expectedEntries = partnerEntriesByIter[e.iteration];
@@ -1614,26 +1589,27 @@ export async function linkViaPSI(
     `${participant.id}: returning partner's map with original indices, ` +
       "receiving ours",
   );
-  const identifiedIndexMap = await exchangeMappedElements(
+  const returnedList = await exchangeMappedElements(
     participant.id,
     conn,
     log,
     sendFirst,
-    expanded,
-    "returned mapped-element list",
-    {
-      entries: sides.partnerKeepsDuplicates
-        ? returnedEntries
-        : numMappedElements,
-      // Each entry names one of the partner's rows.
-      entryBytes: mappedElementEntryBytes(
-        partnerRecordCount,
-        1,
-        candidatesByIter.length,
+    returnedElementSource(expanded),
+    () =>
+      receiveWordList(
+        conn,
+        participant.id,
+        "returned mapped-element list",
+        {
+          entries: sides.partnerKeepsDuplicates
+            ? returnedEntries
+            : numMappedElements,
+          entryBytes: wordListEntryBytes(RETURNED_ELEMENT_LAYOUT),
+        },
+        [RETURNED_ELEMENT_LAYOUT],
       ),
-    },
-    associationAndIterationArray,
   );
+  const returnedRows = Array.from(returnedList.columns[0]);
 
   // Our own list, come back with each entry's positions resolved into the
   // partner's row space, one row per accepted pair. Its length is ours to know
@@ -1661,10 +1637,9 @@ export async function linkViaPSI(
   assertPartnerIndexCount(
     participant.id,
     "the returned mapped-element list",
-    identifiedIndexMap.length,
+    returnedRows.length,
     sides.partnerKeepsDuplicates ? returnedEntries : numMappedElements,
   );
-  const returnedRows = identifiedIndexMap.map((x) => x.theirIndex);
   // Under a both-sided multiplicity the run answering each of our entries is
   // held to the whole set of the partner's records that entry was accepted
   // with, which resolves each of those ranks to one of the partner's rows; the
@@ -1694,14 +1669,10 @@ export async function linkViaPSI(
     );
 
   if (!sides.partnerKeepsDuplicates) {
-    const table = identifiedIndexMap.reduce(
-      (acc, x, i) => {
-        acc[0].push(originalIndices[i]);
-        acc[1].push(x.theirIndex);
-        return acc;
-      },
-      [[], []] as [Array<number>, Array<number>],
-    );
+    const table: [Array<number>, Array<number>] = [
+      originalIndices.slice(0, returnedRows.length),
+      returnedRows,
+    ];
     reportRoundOfPair?.(
       identifiedIndexIterationMap.map((entry) => entry.iteration),
     );
@@ -1726,7 +1697,7 @@ export async function linkViaPSI(
     const row = originalIndices[i];
     for (let t = returnedEntriesPerRecord![row]; t > 0; --t) {
       table[0].push(row);
-      table[1].push(identifiedIndexMap[cursor++].theirIndex);
+      table[1].push(returnedRows[cursor++]);
       roundOfPair?.push(identifiedIndexIterationMap[i].iteration);
     }
   }
@@ -2361,7 +2332,17 @@ export async function linkViaSinglePassPSI(
     // this party's own resolved label, not the table; the other half -- one
     // entry per record the many side matched -- is the anchor. Under a
     // both-sided one neither half is distinct and the bound is passed in.
-    const table = await receiveAfterTerms(conn, associationTableMessage);
+    // Each pair has a row of a half that keeps its distinctness, or, where
+    // neither does, the table is held to the pair-count bound below.
+    const table = await receiveResolvedTable(
+      conn,
+      participant.id,
+      sides.localKeepsDuplicates && sides.partnerKeepsDuplicates
+        ? numRecords * partnerRecordCount
+        : sides.partnerKeepsDuplicates
+          ? partnerRecordCount
+          : numRecords,
+    );
     const localHalf = {
       what: "the resolved association table's local half",
       indices: table[0],
@@ -2606,9 +2587,64 @@ export async function linkViaSinglePassPSI(
     `${participant.id}: ${result[0].length} match(es); returning sender's ` +
       `view`,
   );
-  await conn.send(theirResult);
+  await sendResolvedTable(conn, participant.id, theirResult);
   stage("done");
   return result;
+}
+
+// Sends message 3 only if the receiver's check of its parts, headers
+// included, against one frame's bound in all (receiveResolvedTable) would pass.
+// Otherwise it sends none and tells the partner, as the single-pass frames over
+// the file bound do (refuseSinglePassFrameOverFileBound).
+/** @internal exported for the single-pass wire-message tests. */
+export async function sendResolvedTable(
+  conn: MessageConnection,
+  id: string,
+  table: AssociationTable,
+): Promise<void> {
+  const most = Math.floor(
+    (psiSetPartPayloadBytes(conn) - WORD_LIST_BODY_PREFIX_BYTES) /
+      wordListEntryBytes(RESOLVED_TABLE_LAYOUT),
+  );
+  await sendMatchedListWithin(
+    conn,
+    resolvedTableSource(table),
+    statedFrameBound(conn),
+    `${id}: This exchange found ${table[0].length} matches, more than the ` +
+      `${most} it can send.`,
+  );
+}
+
+// Single-pass message 3, the resolved table for the sender's side: per entry
+// the sender's row, then the receiver's (RESOLVED_TABLE_LAYOUT).
+/** @internal exported for the single-pass wire-message tests. */
+export function resolvedTableSource(table: AssociationTable): WordListSource {
+  return wordListSource(RESOLVED_TABLE_LAYOUT, {
+    entries: table[0].length,
+    column: (column, index) => table[column][index],
+  });
+}
+
+/** @internal exported for the single-pass wire-message tests. */
+export async function receiveResolvedTable(
+  conn: MessageConnection,
+  participantId: string,
+  maxEntries: number,
+): Promise<AssociationTable> {
+  const list = await receiveWordList(
+    conn,
+    participantId,
+    "resolved association table",
+    {
+      entries: maxEntries,
+      entryBytes: wordListEntryBytes(RESOLVED_TABLE_LAYOUT),
+      // Every part, header included, within one frame's bound in all: the
+      // most a message of one frame could hold.
+      listBytes: () => statedFrameBound(conn),
+    },
+    [RESOLVED_TABLE_LAYOUT],
+  );
+  return [Array.from(list.columns[0]), Array.from(list.columns[1])];
 }
 
 // --- the distinct-value index table ------------------------------------------
@@ -3414,38 +3450,25 @@ export async function exchangeMappedElements<T>(
     debug: (...msg: Array<unknown>) => void;
   },
   sendFirst: boolean,
-  values: ReadonlyArray<unknown>,
-  what: string,
-  // The most entries the inbound list may declare, checked at its first part,
-  // and the most bytes one of them may take, checked at every part.
-  bound: MatchedListBound,
-  // The schema each inbound part is read under: the first pass admits an entry
-  // naming a set of positions, the second one row per accepted pair.
-  schema: { parse(value: unknown): Array<T> },
-): Promise<Array<T>> {
-  const parsePart = (value: unknown): Array<T> =>
-    parseOrProtocolError(schema, value);
+  values: WordListSource,
+  // Receives the partner's list, refusing it as a `protocol` failure.
+  receive: () => Promise<T>,
+): Promise<T> {
   if (sendFirst) {
     log.debug(`${id}: sending own mapped elements`);
-    await sendMatchedList(conn, arraySource(values));
+    await sendMatchedList(conn, values);
     log.debug(`${id}: waiting for response`);
-    const result = await receiveMatchedArray(conn, id, what, bound, parsePart);
+    const result = await receive();
     log.debug(`${id}: received other mapped elements`);
     return result;
   } else {
     // Send-before-refusal: a partner list refused at any part, on its header
     // or its body, is refused only after ours is sent, so the refusal does
     // not strand the partner waiting for our response.
-    let received: Array<Array<T>> | undefined;
+    let received: { readonly list: T } | undefined;
     let partRefusal: ConnectionError | undefined;
     try {
-      received = await receiveMatchedListParts(
-        conn,
-        id,
-        what,
-        bound,
-        arrayPart(parsePart),
-      );
+      received = { list: await receive() };
     } catch (error) {
       if (!(error instanceof ConnectionError) || error.kind !== "protocol")
         throw error;
@@ -3453,8 +3476,8 @@ export async function exchangeMappedElements<T>(
     }
     log.debug(`${id}: received other mapped elements`);
     log.debug(`${id}: sending own mapped elements`);
-    await sendMatchedList(conn, arraySource(values));
+    await sendMatchedList(conn, values);
     if (received === undefined) throw partRefusal;
-    return joinMatchedArrayParts(received);
+    return received.list;
   }
 }

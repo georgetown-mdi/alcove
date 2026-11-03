@@ -21,6 +21,7 @@ import {
   type Pair,
 } from "./largestPairingOracle";
 import { readPartFrame } from "./matchedListPartFrames";
+import { RESOLVED_TABLE_LAYOUT } from "../../src/psi/uint32ListParts";
 import { recordingConnection } from "./recordingConnection";
 import { makeParticipant, runCascade, tablesOf } from "./support";
 
@@ -235,16 +236,11 @@ function shapeOf(value: unknown): unknown {
 
 // Whether a frame is built from the association table, judged by its kind: a
 // part of the cascade's mapped-element lists, whose entries name partner
-// positions, or the single-pass receiver's returned table, two lists of row
-// indices sent as one frame. A list that is empty under both rules is neither,
-// and is compared by its bytes.
+// positions, or the single-pass receiver's returned table. A list that is
+// empty under both rules is neither, and is compared by its bytes.
 function isBuiltFromTable(strategy: Strategy, frame: unknown): boolean {
   if (strategy === "single-pass")
-    return (
-      Array.isArray(frame) &&
-      frame.length === 2 &&
-      frame.every((half) => Array.isArray(half))
-    );
+    return readPartFrame(frame)?.layout === RESOLVED_TABLE_LAYOUT;
   const body = readPartFrame(frame)?.body;
   return (
     Array.isArray(body) &&

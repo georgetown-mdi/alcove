@@ -7,10 +7,13 @@ import {
   linkViaPSI,
   linkViaSinglePassPSI,
   withholdsSenderAssociationTable,
-  associationAndIterationArray,
   exchangeMappedElements,
-  mappedElementArray,
   mappedElementEntryBytes,
+  mappedElementSource,
+  receiveResolvedTable,
+  resolvedTableSource,
+  sendResolvedTable,
+  returnedElementSource,
   encodeInt32LE,
   decodeInt32LE,
   encodeSinglePassReply,
@@ -46,8 +49,6 @@ import {
 
 import {
   createMessagePipe,
-  receiveParsed,
-  parseOrProtocolError,
   type MessageConnection,
 } from "../../src/connection/messageConnection";
 import type { AssociationTable } from "../../src/types";
@@ -59,11 +60,20 @@ import {
   statesItsOwnNextStep,
   PeerAbortError,
 } from "../../src/errors";
-import { PSI_SET_TOO_LARGE_ABORT_REASON } from "../../src/partnerAbortFrame";
+import {
+  PSI_SET_REFUSED_ABORT_REASON,
+  PSI_SET_TOO_LARGE_ABORT_REASON,
+} from "../../src/partnerAbortFrame";
 import { sortAssociationTable } from "../../src/testing";
 import { fanOutFreeBounds } from "../utils/singlePassBounds";
 import { partFrame, readPartFrame } from "../utils/matchedListPartFrames";
-import { MATCHED_LIST_PART_HEADER_BYTES } from "../../src/psi/matchedListParts";
+import { sendMatchedList } from "../../src/psi/matchedListParts";
+import {
+  MAPPED_ELEMENT_LAYOUT,
+  RESOLVED_TABLE_LAYOUT,
+  RETURNED_ELEMENT_LAYOUT,
+  receiveWordList,
+} from "../../src/psi/uint32ListParts";
 import { mirrorCardinality } from "../utils/candidateSetBounds";
 import { makeParticipant } from "../utils/support";
 
@@ -447,11 +457,14 @@ test("withholdsSenderAssociationTable withholds only for a non-receiving, no-pay
 
 // Run a single-pass exchange over a fresh pipe, capturing every frame the SENDER
 // (starter) receives AND every frame the RECEIVER (joiner) sends, so a test can
-// assert -- from both ends -- whether message 3 (the association table, the only
-// [number[], number[]] frame in the protocol) ever crosses the wire. Capturing the
-// receiver's OUTBOUND is what catches a regression that sends an empty [[], []]
-// table instead of suppressing the frame: the sender's inbound alone would miss it,
-// since a withholding sender never awaits that frame.
+// assert -- from both ends -- whether message 3 (the resolved table) ever
+// crosses the wire. Capturing the receiver's OUTBOUND is what catches a
+// regression that sends an empty table instead of suppressing the frame: the
+// sender's inbound alone would miss it, since a withholding sender never awaits
+// that frame.
+const isResolvedTable = (frame: unknown): boolean =>
+  readPartFrame(frame)?.layout === RESOLVED_TABLE_LAYOUT;
+
 async function runSinglePassCapturingFrames(
   senderSet: Array<string>,
   receiverSet: Array<string>,
@@ -525,12 +538,12 @@ test("single-pass withholding keeps a blind helper's table off the wire; the rec
   expect(base.receiverResult[0]).toHaveLength(2); // B, C overlap
 
   // Baseline (deliver): the helper receives its table -- two inbound frames, the
-  // request then the [number[], number[]] table -- and learns its two matches. The
-  // receiver sent that table frame (an Array).
+  // request then the resolved table -- and learns its two matches. The
+  // receiver sent that table frame.
   expect(base.senderResult[0]).toHaveLength(2);
   expect(base.senderInbound).toHaveLength(2);
-  expect(base.senderInbound.some((f) => Array.isArray(f))).toBe(true);
-  expect(base.receiverOutbound.some((f) => Array.isArray(f))).toBe(true);
+  expect(base.senderInbound.some(isResolvedTable)).toBe(true);
+  expect(base.receiverOutbound.some(isResolvedTable)).toBe(true);
 
   // Withheld: the helper is blind -- it returns an empty table and its
   // process never receives message 3. Its only inbound frame is the receiver's
@@ -539,14 +552,14 @@ test("single-pass withholding keeps a blind helper's table off the wire; the rec
   expect(held.senderResult).toStrictEqual([[], []]);
   expect(held.senderInbound).toHaveLength(1);
   expect(held.senderInbound[0]).toBeInstanceOf(Uint8Array);
-  expect(held.senderInbound.some((f) => Array.isArray(f))).toBe(false);
+  expect(held.senderInbound.some(isResolvedTable)).toBe(false);
 
   // Enforced from the RECEIVER's side too: it never SENT any association-table
   // frame -- not even an empty [[], []]. An "optimization" that emitted an empty
   // table instead of suppressing the frame (the count-leaking regression the design
-  // forbids) would send an Array here and fail this assertion, which the sender's
+  // forbids) would send a table here and fail this assertion, which the sender's
   // inbound alone -- a withholding sender never awaits the frame -- would not catch.
-  expect(held.receiverOutbound.some((f) => Array.isArray(f))).toBe(false);
+  expect(held.receiverOutbound.some(isResolvedTable)).toBe(false);
 });
 
 test("a deduplicating cardinality does not move the withholding rule", async () => {
@@ -575,7 +588,7 @@ test("a deduplicating cardinality does not move the withholding rule", async () 
   expect(held.senderResult).toStrictEqual([[], []]);
   expect(held.senderInbound).toHaveLength(1);
   expect(held.senderInbound[0]).toBeInstanceOf(Uint8Array);
-  expect(held.receiverOutbound.some((f) => Array.isArray(f))).toBe(false);
+  expect(held.receiverOutbound.some(isResolvedTable)).toBe(false);
 
   // Delivering it instead hands the helper the repeating half the widening
   // produces, which is the disclosure the withholding closes.
@@ -637,16 +650,9 @@ test("single-pass withholding does not leak the match count by frame presence or
 // waiting for it.
 test.each([
   [
-    "a part whose body is not JSON",
-    (() => {
-      const frame = partFrame([{ theirIndex: 0, iteration: 0 }], {
-        count: 2,
-        entries: 2,
-      });
-      frame[MATCHED_LIST_PART_HEADER_BYTES] = 0x7b;
-      return frame;
-    })(),
-    "part 0 is not a JSON message",
+    "a part whose body is not the length its counts state",
+    partFrame([{ theirIndex: 0, iteration: 0 }]).subarray(0, -4),
+    "part 0 is not the length its entry counts state",
   ],
   [
     "a part declaring more entries than admitted",
@@ -655,8 +661,8 @@ test.each([
   ],
   [
     "a part longer than its entries can be",
-    partFrame([{ theirIndex: 0, iteration: 0, padding: "x".repeat(64) }]),
-    "part 0 is over the 49 bytes this party admits for it",
+    partFrame([{ theirIndex: [0, 1, 2], iteration: 0 }]),
+    "part 0 is over the 36 bytes this party admits for it",
   ],
 ])(
   "the joiner sends its own list before refusing %s",
@@ -669,10 +675,15 @@ test.each([
       joinerConn,
       { info: () => {}, debug: () => {} },
       false,
-      own,
-      "mapped-element list",
-      { entries: 4, entryBytes: mappedElementEntryBytes(10, 1, 1) },
-      associationAndIterationArray,
+      mappedElementSource(own),
+      () =>
+        receiveWordList(
+          joinerConn,
+          "client",
+          "mapped-element list",
+          { entries: 4, entryBytes: mappedElementEntryBytes(1) },
+          [MAPPED_ELEMENT_LAYOUT],
+        ),
     ).catch((error: unknown) => error);
     expect(outcome).toBeInstanceOf(ConnectionError);
     expect((outcome as Error).message).toBe(
@@ -682,163 +693,189 @@ test.each([
   },
 );
 
-// The per-entry byte bound an index list's parts are held to is the length of
-// the longest entry an honest party writes, so no honest part is refused.
+// The per-entry byte bound a mapped-element list's parts are held to is the
+// bytes the widest entry an honest party writes takes, so no honest part is
+// refused.
 test.each([
-  [10, 1, 1, { theirIndex: 9, iteration: 0 }],
-  [1000, 1, 12, { theirIndex: 999, iteration: 11 }],
-  [1000, 3, 2, { theirIndex: [997, 998, 999], iteration: 1 }],
-  [1, 20, 1, { theirIndex: Array<number>(20).fill(0), iteration: 0 }],
-] as Array<[number, number, number, unknown]>)(
-  "mappedElementEntryBytes(%i, %i, %i) is the longest such entry and its separator",
-  (indexBound, positions, rounds, longest) => {
-    expect(mappedElementEntryBytes(indexBound, positions, rounds)).toBe(
-      JSON.stringify(longest).length + 1,
-    );
+  [0, { theirIndex: 9, iteration: 0 }],
+  [1, { theirIndex: 999, iteration: 11 }],
+  [3, { theirIndex: [997, 998, 999], iteration: 1 }],
+  [20, { theirIndex: Array<number>(20).fill(0), iteration: 0 }],
+] as Array<
+  [number, { theirIndex: number | Array<number>; iteration: number }]
+>)(
+  "mappedElementEntryBytes(%i) is the bytes the widest such entry takes",
+  (positions, widest) => {
+    const source = mappedElementSource([widest]);
+    expect(mappedElementEntryBytes(positions)).toBe(source.entryBytes(0));
   },
 );
 
-// --- associationAndIterationArray: pathological-count bound -------------------
-// The mapped-elements frame exchanged in exchangeMappedElements is partner-controlled;
-// its matched-record count is legitimately in the millions. A flat array of ~4M
-// invalid elements made Zod throw `RangeError: Invalid string length` building its
-// error string from one issue per element (a ~4.5s CPU burn); the single-issue
-// validator caps that at one clean issue. The frame is read two ways -- via
-// receiveParsed (sendFirst) and via a direct `parseOrProtocolError` (the !sendFirst
-// send-before-refusal path) -- and both must raise a clean ConnectionError("protocol").
-const pathologicalPairs = () => Array.from({ length: 4_000_000 }, () => 1);
-
-test("receiveParsed: a pathological-count mapped-elements frame fails cleanly", async () => {
-  const [connA, connB] = createMessagePipe();
-  const parsed = receiveParsed(connA, associationAndIterationArray);
-  await connB.send(pathologicalPairs());
-  const err = await parsed.catch((e: unknown) => e);
-  expect(err).toBeInstanceOf(ConnectionError);
-  expect((err as ConnectionError).kind).toBe("protocol");
-  expect((err as ConnectionError).cause).not.toBeInstanceOf(RangeError);
+test("each mapped-element list round-trips, a list of positions and an empty list included", async () => {
+  const first = [
+    { theirIndex: 4, iteration: 0 },
+    { theirIndex: [1, 2, 3], iteration: 1 },
+  ];
+  const returned = [
+    { theirIndex: 7, iteration: 0 },
+    { theirIndex: 2, iteration: 1 },
+  ];
+  const [a, b] = createMessagePipe();
+  const bound = { entries: 2, entryBytes: mappedElementEntryBytes(3) };
+  await sendMatchedList(a, mappedElementSource(first));
+  await sendMatchedList(a, mappedElementSource([]));
+  await sendMatchedList(a, returnedElementSource(returned));
+  const read = await receiveWordList(b, "", "list", bound, [
+    MAPPED_ELEMENT_LAYOUT,
+  ]);
+  expect([...read.columns[0]]).toEqual([0, 1]);
+  expect([...read.counts]).toEqual([1, 3]);
+  expect([...read.values]).toEqual([4, 1, 2, 3]);
+  const empty = await receiveWordList(b, "", "list", bound, [
+    MAPPED_ELEMENT_LAYOUT,
+  ]);
+  expect(empty.entries).toBe(0);
+  const back = await receiveWordList(b, "", "list", bound, [
+    RETURNED_ELEMENT_LAYOUT,
+  ]);
+  expect(back.columns).toHaveLength(1);
+  expect([...back.columns[0]]).toEqual([7, 2]);
 });
 
-test("direct parse: a pathological-count mapped-elements frame fails cleanly, not with a bare RangeError", () => {
-  let err: unknown;
-  try {
-    parseOrProtocolError(associationAndIterationArray, pathologicalPairs());
-  } catch (e) {
-    err = e;
-  }
-  expect(err).toBeInstanceOf(ConnectionError);
-  expect((err as ConnectionError).kind).toBe("protocol");
-  expect((err as ConnectionError).cause).not.toBeInstanceOf(RangeError);
-});
-
-test("a legitimately large mapped-elements frame parses", async () => {
-  // One pair per matched record, legitimately in the millions; 200k clears the
-  // overflow threshold, so a VALID large frame never trips the single-issue
-  // bound. The accepted shape is unchanged from the `z.object` schema it
-  // replaced (finite theirIndex/iteration per pair).
-  const n = 200_000;
-  const [connA, connB] = createMessagePipe();
-  const parsed = receiveParsed(connA, associationAndIterationArray);
-  await connB.send(
-    Array.from({ length: n }, (_, i) => ({ theirIndex: i, iteration: 0 })),
+test("one mapped-element list is not read as the other", async () => {
+  const [a, b] = createMessagePipe();
+  await sendMatchedList(
+    a,
+    returnedElementSource([{ theirIndex: 0, iteration: 0 }]),
   );
-  expect(await parsed).toHaveLength(n);
-});
-
-test("a mapped-elements element that is an array (not a plain object) is rejected", () => {
-  // z.object rejects an array outright, even one holding theirIndex/iteration
-  // own-properties; the single-issue predicate must too, so the set of accepted
-  // messages is exactly the one the replaced `z.object` schema accepted. This is
-  // unreachable over the JSON transport (an array cannot hold named own-
-  // properties through serialization), but the exact-mirror contract holds
-  // regardless -- it guards against the `!Array.isArray` check being dropped.
-  const arrayElement = [] as unknown as Record<string, unknown>;
-  arrayElement.theirIndex = 0;
-  arrayElement.iteration = 0;
-  let err: unknown;
-  try {
-    parseOrProtocolError(associationAndIterationArray, [arrayElement]);
-  } catch (e) {
-    err = e;
-  }
-  expect(err).toBeInstanceOf(ConnectionError);
-  expect((err as ConnectionError).kind).toBe("protocol");
-});
-
-// --- mappedElementArray: the widened entry's bounds ---------------------------
-// The first pass's frame is partner-controlled on the same scale, and a
-// candidate set widens its theirIndex from a number to a list of positions. The
-// same single-issue bound must hold over the wider shape, and the predicate
-// must not recurse into the list -- a frame nesting arrays inside one is a
-// clean rejection, not a stack overflow.
-const pathologicalEntries = () => Array.from({ length: 4_000_000 }, () => 1);
-
-test("receiveParsed: a pathological-count mapped-element frame fails cleanly", async () => {
-  const [connA, connB] = createMessagePipe();
-  const parsed = receiveParsed(connA, mappedElementArray);
-  await connB.send(pathologicalEntries());
-  const err = await parsed.catch((e: unknown) => e);
-  expect(err).toBeInstanceOf(ConnectionError);
-  expect((err as ConnectionError).kind).toBe("protocol");
-  expect((err as ConnectionError).cause).not.toBeInstanceOf(RangeError);
-});
-
-test("direct parse: a pathological-count mapped-element frame fails cleanly, not with a bare RangeError", () => {
-  let err: unknown;
-  try {
-    parseOrProtocolError(mappedElementArray, pathologicalEntries());
-  } catch (e) {
-    err = e;
-  }
-  expect(err).toBeInstanceOf(ConnectionError);
-  expect((err as ConnectionError).kind).toBe("protocol");
-  expect((err as ConnectionError).cause).not.toBeInstanceOf(RangeError);
-});
-
-test("a legitimately large mapped-element frame of position lists parses", async () => {
-  const n = 200_000;
-  const [connA, connB] = createMessagePipe();
-  const parsed = receiveParsed(connA, mappedElementArray);
-  await connB.send(
-    Array.from({ length: n }, (_, i) => ({
-      theirIndex: i % 2 === 0 ? i : [i, i + 1],
-      iteration: 0,
-    })),
+  await expect(
+    receiveWordList(b, "client", "mapped-element list", { entries: 1 }, [
+      MAPPED_ELEMENT_LAYOUT,
+    ]),
+  ).rejects.toThrow(
+    "client protocol error: inbound mapped-element list part 0 is not a " +
+      "list of the kind awaited",
   );
-  expect(await parsed).toHaveLength(n);
 });
 
-test("a mapped-element entry whose position list holds an array is rejected", () => {
-  let err: unknown;
-  try {
-    parseOrProtocolError(mappedElementArray, [
-      { theirIndex: [[0]], iteration: 0 },
-    ]);
-  } catch (e) {
-    err = e;
-  }
+test("a legitimately large mapped-element list of position lists round-trips", async () => {
+  const n = 200_000;
+  const list = Array.from({ length: n }, (_, i) => ({
+    theirIndex: i % 2 === 0 ? i : [i, i + 1],
+    iteration: 0,
+  }));
+  const [a, b] = createMessagePipe();
+  await sendMatchedList(a, mappedElementSource(list));
+  const read = await receiveWordList(
+    b,
+    "",
+    "list",
+    { entries: n, entryBytes: mappedElementEntryBytes(2) },
+    [MAPPED_ELEMENT_LAYOUT],
+  );
+  expect(read.entries).toBe(n);
+  expect(read.values).toHaveLength(n + n / 2);
+});
+
+test("the resolved table round-trips, and an empty one too", async () => {
+  const [a, b] = createMessagePipe();
+  await sendMatchedList(
+    a,
+    resolvedTableSource([
+      [0, 2],
+      [5, 1],
+    ]),
+  );
+  await sendMatchedList(a, resolvedTableSource([[], []]));
+  const bound = { entries: 2 };
+  const read = await receiveWordList(b, "", "table", bound, [
+    RESOLVED_TABLE_LAYOUT,
+  ]);
+  expect([...read.columns[0]]).toEqual([0, 2]);
+  expect([...read.columns[1]]).toEqual([5, 1]);
+  const empty = await receiveWordList(b, "", "table", bound, [
+    RESOLVED_TABLE_LAYOUT,
+  ]);
+  expect(empty.entries).toBe(0);
+});
+
+test("the resolved table's parts are held, in all, to one frame's bound", async () => {
+  // A part of n pairs is 16 + 8 + 8n bytes: two of one pair each fill a
+  // 64-byte frame bound exactly, and two of two pairs each pass it.
+  const deliverParts = async (perPart: number) => {
+    const [a, b] = createMessagePipe();
+    const entries = 2 * perPart;
+    for (let index = 0; index < 2; index++) {
+      const rows = Array.from({ length: perPart }, (_, k) => k + index);
+      await a.send(
+        partFrame(
+          [rows, rows],
+          { index, count: 2, entries },
+          RESOLVED_TABLE_LAYOUT,
+        ),
+      );
+    }
+    const conn: MessageConnection = {
+      send: (data) => b.send(data),
+      receive: (timeoutMs?: number) => b.receive(timeoutMs),
+      close: () => b.close(),
+      outboundWebRtcFrameBound: () => 64,
+    };
+    return receiveResolvedTable(conn, "sender", entries);
+  };
+  expect(await deliverParts(1)).toEqual([
+    [0, 1],
+    [0, 1],
+  ]);
+  const err = await deliverParts(2).then(
+    () => undefined,
+    (e: unknown) => e,
+  );
   expect(err).toBeInstanceOf(ConnectionError);
-  expect((err as ConnectionError).kind).toBe("protocol");
+  expect((err as Error).message).toBe(
+    "sender protocol error: inbound resolved association table part 1 is " +
+      "over the 24 bytes this party admits for it",
+  );
 });
 
-test("a frame of nested-array position lists is one clean rejection", () => {
-  // Every entry nests an array where a position is due, at 200k -- past the
-  // ~130k where the array frames of a `z.array` element schema overflow Zod's
-  // call stack spreading one issue per element (utils/singleIssueArray.ts).
-  let err: unknown;
-  try {
-    parseOrProtocolError(
-      mappedElementArray,
-      Array.from({ length: 200_000 }, () => ({
-        theirIndex: [[0]],
-        iteration: 0,
-      })),
+test("the resolved table is sent only if its parts total within one frame's bound", async () => {
+  const sendAt64 = async (pairs: number) => {
+    const sent: Array<unknown> = [];
+    const conn: MessageConnection = {
+      send: (data) => {
+        sent.push(data);
+        return Promise.resolve();
+      },
+      receive: () => Promise.reject(new Error("unused")),
+      close: () => Promise.resolve(),
+      outboundWebRtcFrameBound: () => 64,
+    };
+    const column = Array.from({ length: pairs }, (_, k) => k);
+    const outcome = await sendResolvedTable(conn, "client", [
+      column,
+      column,
+    ]).then(
+      () => undefined,
+      (e: unknown) => e,
     );
-  } catch (e) {
-    err = e;
-  }
-  expect(err).toBeInstanceOf(ConnectionError);
-  expect((err as ConnectionError).kind).toBe("protocol");
-  expect((err as ConnectionError).cause).not.toBeInstanceOf(RangeError);
+    return { sent, outcome };
+  };
+  // A part of n pairs is 16 + 8 + 8n bytes, so four pairs fit in one part
+  // of 56 bytes; five need two parts of 88 bytes in all.
+  const fits = await sendAt64(4);
+  expect(fits.outcome).toBeUndefined();
+  expect(fits.sent).toHaveLength(1);
+  const over = await sendAt64(5);
+  expect(over.sent).toStrictEqual([
+    { decision: "abort", abortReasons: [PSI_SET_REFUSED_ABORT_REASON] },
+  ]);
+  expect(over.outcome).toBeInstanceOf(UsageError);
+  expect((over.outcome as Error).message).toBe(
+    "client: This exchange found 5 matches, more than the 4 it can send. It " +
+      "stopped, and your partner was told. This usually means many records " +
+      "on both sides share a key value. Use a more distinctive key or split " +
+      "the data into smaller batches.",
+  );
 });
 
 // --- single-pass reply codec and the receiver's frame-length tie --------------

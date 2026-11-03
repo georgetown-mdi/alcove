@@ -5,25 +5,55 @@ import { expect, test } from "vitest";
 
 import { createMessagePipe } from "../../src/connection/messageConnection";
 import {
-  arraySource,
+  mappedElementEntryBytes,
+  mappedElementSource,
+  resolvedTableSource,
+  returnedElementSource,
+} from "../../src/psi/link";
+import {
   MATCHED_LIST_PART_HEADER_BYTES,
   matchedListParts,
-  receiveMatchedArray,
+  type WordListSource,
 } from "../../src/psi/matchedListParts";
+import {
+  INDEX_LIST_LAYOUT,
+  MAPPED_ELEMENT_LAYOUT,
+  OMITTED_GROUPING_LAYOUT,
+  OWNER_LISTS_LAYOUT,
+  receiveWordList,
+  RESOLVED_TABLE_LAYOUT,
+  RETURNED_ELEMENT_LAYOUT,
+  RUN_LENGTHS_LAYOUT,
+  wordListEntryBytes,
+  wordListSource,
+} from "../../src/psi/uint32ListParts";
+
+type MappedElementEntry = Parameters<typeof mappedElementSource>[0][number];
 
 // Replays matched-list-part-vectors.json
-// (generate-matched-list-part-vectors.mjs): the parts a cascade cuts a list of
-// matched records into, byte for byte, and the part sequences a receiver
-// refuses, with the refusal's whole message.
+// (generate-matched-list-part-vectors.mjs): the parts a list of matched
+// records is cut into, byte for byte, in every word-list layout, and the part
+// sequences a receiver refuses, with the refusal's whole message.
+
+interface LayoutVector {
+  name: string;
+  tag: number;
+  entries: number;
+  columns: Array<Array<number>>;
+  lists: Array<Array<number>>;
+  partPayloadBytes: number;
+  partsHex: Array<string>;
+}
 
 interface ListPartVectors {
   headerBytes: number;
   lists: Array<{
     name: string;
-    entries: Array<unknown>;
+    entries: Array<MappedElementEntry>;
     partPayloadBytes: number;
     partsHex: Array<string>;
   }>;
+  layouts: Array<LayoutVector>;
   refusals: Array<{
     name: string;
     partsHex: Array<string>;
@@ -43,22 +73,32 @@ const fromHex = (hex: string): Uint8Array =>
   new Uint8Array(Buffer.from(hex, "hex"));
 const toHex = (bytes: Uint8Array): string => Buffer.from(bytes).toString("hex");
 
+// The vectors' entries hold at most two positions.
+const MAX_POSITIONS = 2;
+
 async function received(
   partsHex: Array<string>,
   maxEntries: number,
-): Promise<Array<unknown>> {
+): Promise<Array<MappedElementEntry>> {
   const [a, b] = createMessagePipe();
   for (const part of partsHex) await a.send(fromHex(part));
-  return receiveMatchedArray(
+  const list = await receiveWordList(
     b,
     "client",
     "list",
-    { entries: maxEntries },
-    (value) => {
-      if (!Array.isArray(value)) throw new Error("not an array");
-      return value as Array<unknown>;
-    },
+    { entries: maxEntries, entryBytes: mappedElementEntryBytes(MAX_POSITIONS) },
+    [MAPPED_ELEMENT_LAYOUT],
   );
+  let at = 0;
+  return Array.from(list.columns[0], (iteration, index) => {
+    const positions = Array.from(
+      list.values.subarray(at, (at += list.counts[index])),
+    );
+    return {
+      theirIndex: positions.length === 1 ? positions[0] : positions,
+      iteration,
+    };
+  });
 }
 
 test("the header length is the one the vectors state", () => {
@@ -71,7 +111,7 @@ test.each(vectors.lists.map((v) => [v.name, v] as const))(
     expect(
       [
         ...matchedListParts(
-          arraySource(vector.entries),
+          mappedElementSource(vector.entries),
           vector.partPayloadBytes,
         ),
       ].map(toHex),
@@ -79,6 +119,60 @@ test.each(vectors.lists.map((v) => [v.name, v] as const))(
     expect(await received(vector.partsHex, vector.entries.length)).toEqual(
       vector.entries,
     );
+  },
+);
+
+const LAYOUT_OF_TAG = new Map(
+  [
+    INDEX_LIST_LAYOUT,
+    OMITTED_GROUPING_LAYOUT,
+    RUN_LENGTHS_LAYOUT,
+    OWNER_LISTS_LAYOUT,
+    RETURNED_ELEMENT_LAYOUT,
+    RESOLVED_TABLE_LAYOUT,
+  ].map((layout) => [layout.tag, layout]),
+);
+
+// The source a build sends a layout's list from: the returned list's and the
+// resolved table's own, and the plain columns for the round lists, which
+// roundTableParts.ts writes through wordListSource the same way.
+function layoutSource(vector: LayoutVector): WordListSource {
+  const layout = LAYOUT_OF_TAG.get(vector.tag)!;
+  const { columns, lists } = vector;
+  if (layout === RETURNED_ELEMENT_LAYOUT)
+    return returnedElementSource(
+      columns[0].map((theirIndex) => ({ theirIndex, iteration: 0 })),
+    );
+  if (layout === RESOLVED_TABLE_LAYOUT)
+    return resolvedTableSource([columns[0], columns[1]]);
+  return wordListSource(layout, {
+    entries: vector.entries,
+    column: (column, index) => columns[column][index],
+    ragged: (index) => lists[index],
+  });
+}
+
+test.each(vectors.layouts.map((v) => [v.name, v] as const))(
+  "%s",
+  async (_name, vector) => {
+    const layout = LAYOUT_OF_TAG.get(vector.tag)!;
+    expect(
+      [...matchedListParts(layoutSource(vector), vector.partPayloadBytes)].map(
+        toHex,
+      ),
+    ).toEqual(vector.partsHex);
+    const [a, b] = createMessagePipe();
+    for (const part of vector.partsHex) await a.send(fromHex(part));
+    const list = await receiveWordList(
+      b,
+      "client",
+      "list",
+      { entries: vector.entries, entryBytes: wordListEntryBytes(layout, 2) },
+      [layout],
+    );
+    expect(list.columns.map((column) => [...column])).toEqual(vector.columns);
+    expect([...list.counts]).toEqual(vector.lists.map((v) => v.length));
+    expect([...list.values]).toEqual(vector.lists.flat());
   },
 );
 

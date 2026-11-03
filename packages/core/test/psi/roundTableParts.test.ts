@@ -4,25 +4,34 @@ import {
   createMessagePipe,
   type MessageConnection,
 } from "../../src/connection/messageConnection";
-import { MAX_FRAME_SIZE_BYTES } from "../../src/connection/frameSize";
+import {
+  MAX_FRAME_SIZE_BYTES,
+  MAX_PSI_DECODE_ELEMENTS,
+} from "../../src/connection/frameSize";
 import { MAX_WEBRTC_FRAME_BYTES } from "../../src/connection/binaryPackBounds";
 import { webrtcFrameExceedsBound } from "../../src/connection/webrtcOutboundBound";
 import { binaryPackByteStringLength } from "../../src/connection/webrtcOutboundBound";
-import { ConnectionError } from "../../src/errors";
+import { ConnectionError, UsageError } from "../../src/errors";
+import { PSI_SET_REFUSED_ABORT_REASON } from "../../src/partnerAbortFrame";
+import { matchedListParts } from "../../src/psi/matchedListParts";
 import { psiSetPartPayloadBytes } from "../../src/psi/psiSetParts";
 import { readPartnerRoundGrouping } from "../../src/psi/roundGrouping";
 import {
-  numberArrayMessage,
   receiveRoundGrouping,
   receiveRoundIndexList,
   roundGroupingBound,
-  roundGroupingElement,
-  roundIndexEntryBytes,
+  roundGroupingSource,
   sendRoundGrouping,
   sendRoundIndexList,
 } from "../../src/psi/roundTableParts";
+import {
+  OMITTED_GROUPING_LAYOUT,
+  OWNER_LISTS_LAYOUT,
+  RUN_LENGTHS_LAYOUT,
+} from "../../src/psi/uint32ListParts";
 import { partFrame, readPartFrame } from "../utils/matchedListPartFrames";
 
+import type { RoundGroupingField } from "../../src/psi/roundGrouping";
 import type { RoundGroupingSizeBounds } from "../../src/psi/roundTableParts";
 
 // A cascade round's association table and original-index list, sent as
@@ -56,11 +65,25 @@ function webRtcPipe(): {
   };
 }
 
-// How many one-digit entries fill one part's body at WEBRTC_BOUND: each takes
-// its digit and a separator, inside the array's two brackets.
+// How many index entries fill one part's body at WEBRTC_BOUND: a word each,
+// after the body's layout tag and entry count.
 const ENTRIES_PER_PART = Math.floor(
-  (psiSetPartPayloadBytes(webRtcPipe().sender) - 2) / 2,
+  (psiSetPartPayloadBytes(webRtcPipe().sender) - 8) / 4,
 );
+
+// A grouping sent in the parts `conn`'s frame bound cuts it to, without the
+// sender's check of their total against that bound, which several parts
+// at that bound exceed.
+async function sendGroupingUnchecked(
+  conn: MessageConnection,
+  field: RoundGroupingField | undefined,
+): Promise<void> {
+  for (const part of matchedListParts(
+    roundGroupingSource(field),
+    psiSetPartPayloadBytes(conn),
+  ))
+    await conn.send(part);
+}
 
 const digits = (count: number): Array<number> =>
   Array.from({ length: count }, (_, i) => i % 10);
@@ -87,7 +110,7 @@ async function deliverStating(
 }
 
 const receiveList = (conn: MessageConnection, maxEntries = 1_000) =>
-  receiveRoundIndexList(conn, "server", "round index list", maxEntries, 10);
+  receiveRoundIndexList(conn, "server", "round index list", maxEntries);
 
 // Bounds wide enough that no grouping a test sends reaches its byte bound.
 const WIDE_GROUPING: RoundGroupingSizeBounds = {
@@ -95,6 +118,31 @@ const WIDE_GROUPING: RoundGroupingSizeBounds = {
   partnerRecordCount: 2 ** 31,
   ownerLists: true,
 };
+
+const runLengths = (runs: Array<number>): RoundGroupingField => ({
+  form: "run-lengths",
+  runLengths: runs,
+});
+
+const ownerLists = (lists: Array<Array<number>>): RoundGroupingField => ({
+  form: "owner-lists",
+  ownerCounts: lists.map((list) => list.length),
+  owners: lists.flat(),
+});
+
+// A received grouping with its words as plain arrays, to compare with the one
+// sent.
+function plain(
+  field: RoundGroupingField | undefined,
+): RoundGroupingField | undefined {
+  if (field === undefined || field.form === "run-lengths")
+    return field && runLengths(Array.from(field.runLengths));
+  return {
+    form: "owner-lists",
+    ownerCounts: Array.from(field.ownerCounts),
+    owners: Array.from(field.owners),
+  };
+}
 
 async function refusal(run: Promise<unknown>): Promise<ConnectionError> {
   const err = await run.then(
@@ -106,7 +154,7 @@ async function refusal(run: Promise<unknown>): Promise<ConnectionError> {
   return err as ConnectionError;
 }
 
-test("a part holds a whole number of one-digit entries at the test bound", () => {
+test("a part holds a whole number of index entries at the test bound", () => {
   expect(ENTRIES_PER_PART).toBeGreaterThan(10);
   expect(ENTRIES_PER_PART).toBeLessThan(WEBRTC_BOUND);
 });
@@ -143,37 +191,44 @@ test.each([
 );
 
 test("a grouping in several parts joins back in order, in either form", async () => {
-  const runs = digits(ENTRIES_PER_PART * 2).map((d) => d + 1);
-  const owners = Array.from({ length: 60 }, (_, i) => [i, i + 1]);
+  const runs = runLengths(digits(ENTRIES_PER_PART * 2).map((d) => d + 1));
+  const owners = ownerLists(Array.from({ length: 60 }, (_, i) => [i, i + 1]));
   for (const grouping of [runs, owners]) {
     const { sender, receiver, sent } = webRtcPipe();
-    await sendRoundGrouping(sender, grouping);
+    await sendGroupingUnchecked(sender, grouping);
     expect(sent.length).toBeGreaterThan(1);
     expect(
-      await receiveRoundGrouping(
-        receiver,
-        "server",
-        "grouping",
-        1_000,
-        WIDE_GROUPING,
+      plain(
+        await receiveRoundGrouping(
+          receiver,
+          "server",
+          "grouping",
+          1_000,
+          WIDE_GROUPING,
+        ),
       ),
     ).toStrictEqual(grouping);
   }
 });
 
-test("an omitted grouping is one part holding null, apart from an empty one", async () => {
-  // The tightest bounds a round can state, so `null` is admitted at the
-  // smallest byte bound a grouping takes.
+test("an omitted grouping is one part of its own layout, apart from an empty one", async () => {
+  // The tightest bounds a round can state, so the omitted part is admitted at
+  // the smallest byte bound a grouping takes.
   const tightest: RoundGroupingSizeBounds = {
     maxPositionsPerRecord: 1,
     partnerRecordCount: 0,
     ownerLists: false,
   };
   const omitted = webRtcPipe();
-  await sendRoundGrouping(omitted.sender, undefined);
+  await sendRoundGrouping(omitted.sender, "server", undefined);
   expect(omitted.sent.map(readPartFrame)).toStrictEqual([
-    { header: { index: 0, count: 1, entries: 0 }, body: null },
+    {
+      header: { index: 0, count: 1, entries: 0 },
+      body: null,
+      layout: OMITTED_GROUPING_LAYOUT,
+    },
   ]);
+  expect(omitted.sent[0].byteLength).toBe(24);
   expect(
     await receiveRoundGrouping(
       omitted.receiver,
@@ -185,13 +240,15 @@ test("an omitted grouping is one part holding null, apart from an empty one", as
   ).toBeUndefined();
 
   const empty = webRtcPipe();
-  await sendRoundGrouping(empty.sender, []);
+  await sendRoundGrouping(empty.sender, "server", ownerLists([]));
   expect(
-    await receiveRoundGrouping(empty.receiver, "server", "grouping", 0, {
-      ...tightest,
-      ownerLists: true,
-    }),
-  ).toStrictEqual([]);
+    plain(
+      await receiveRoundGrouping(empty.receiver, "server", "grouping", 0, {
+        ...tightest,
+        ownerLists: true,
+      }),
+    ),
+  ).toStrictEqual(ownerLists([]));
 });
 
 // Each ordinal below `records` on `perRecord` of `positions` owner lists, the
@@ -201,7 +258,7 @@ function largestOwnerLists(
   positions: number,
   records: number,
   perRecord: number,
-): Array<Array<number>> {
+): RoundGroupingField {
   const lists: Array<Array<number>> = Array.from(
     { length: positions },
     () => [],
@@ -210,7 +267,7 @@ function largestOwnerLists(
   for (let ordinal = 0; ordinal < records; ordinal++)
     for (let k = 0; k < perRecord; k++)
       lists[(ordinal % stride) + k * stride].push(ordinal);
-  return lists;
+  return ownerLists(lists);
 }
 
 test.each([
@@ -222,7 +279,7 @@ test.each([
   ],
   [
     "run lengths",
-    Array.from({ length: 400 }, () => 1),
+    runLengths(Array.from({ length: 400 }, () => 1)),
     400,
     { maxPositionsPerRecord: 20, partnerRecordCount: 400, ownerLists: false },
   ],
@@ -237,23 +294,25 @@ test.each([
       }),
     ).not.toThrow();
     const { sender, receiver, sent } = webRtcPipe();
-    await sendRoundGrouping(sender, grouping);
+    await sendGroupingUnchecked(sender, grouping);
     expect(sent.length).toBeGreaterThan(2);
     const sentBytes = sent.reduce((sum, frame) => sum + frame.byteLength, 0);
-    expect(sentBytes).toBeLessThanOrEqual(
+    expect(sentBytes).toBe(
       roundGroupingBound(
         positions.length,
         bounds,
         Number.POSITIVE_INFINITY,
-      ).listBytes?.(sent.length) ?? 0,
+      ).listBytes?.(sent.length),
     );
     expect(
-      await receiveRoundGrouping(
-        receiver,
-        "server",
-        "grouping",
-        positions.length,
-        bounds,
+      plain(
+        await receiveRoundGrouping(
+          receiver,
+          "server",
+          "grouping",
+          positions.length,
+          bounds,
+        ),
       ),
     ).toStrictEqual(grouping);
 
@@ -270,7 +329,7 @@ test.each([
         positions.length,
         bounds,
       );
-      if (accepted) expect(await run).toStrictEqual(grouping);
+      if (accepted) expect(plain(await run)).toStrictEqual(grouping);
       else
         expect((await refusal(run)).message).toMatch(
           new RegExp(`part ${sent.length - 1} is over the`),
@@ -280,38 +339,44 @@ test.each([
 );
 
 test("a grouping part over the bytes the round admits is refused as an index list's part is", async () => {
-  // Two run lengths of at most 1 in one part: its 16-byte header and 2
-  // brackets, and 2 * 2 bytes of entries, the index list's bound above for
-  // two entries below 10.
+  // Two run lengths in one part: its 16-byte header, 8 bytes of tag and
+  // count, and a word for each, the index list's bound for two entries.
   const runs = { maxPositionsPerRecord: 1, partnerRecordCount: 2 };
   expect(
     roundGroupingBound(2, { ...runs, ownerLists: false }, 1_000).listBytes?.(1),
-  ).toBe(22);
-  const first = await deliver([partFrame([10_000, 1], { entries: 2 })]);
+  ).toBe(32);
+  const threeWords = () =>
+    partFrame([1, 1, 1], { entries: 2 }, RUN_LENGTHS_LAYOUT);
   const err = await refusal(
-    receiveRoundGrouping(first, "server", "grouping", 2, {
-      ...runs,
-      ownerLists: false,
-    }),
+    receiveRoundGrouping(
+      await deliver([threeWords()]),
+      "server",
+      "grouping",
+      2,
+      {
+        ...runs,
+        ownerLists: false,
+      },
+    ),
   );
-  expect(err.message).toMatch(/part 0 is over the 22 bytes this party admits/);
+  expect(err.message).toMatch(/part 0 is over the 32 bytes this party admits/);
   expect(err.message).toBe(
     (
       await refusal(
-        receiveList(await deliver([partFrame([10_000, 1], { entries: 2 })])),
+        receiveList(await deliver([partFrame([1, 1, 1], { entries: 2 })])),
       )
     ).message.replace("round index list", "grouping"),
   );
 
-  // Three owner lists of ordinals below 3, each on one list, in two parts:
-  // 2 * 3 + 3 * 2 bytes of entries and 18 for each part, so the second part
-  // is held to what the first, 21 bytes, left.
+  // Three owner lists of ordinals below 3, each on one list, in two parts: a
+  // count word per list, a word per ordinal and 24 bytes for each part, so
+  // the second part is held to what the first, 32 bytes, left of 72.
   const owners = { maxPositionsPerRecord: 1, partnerRecordCount: 3 };
   expect(
     roundGroupingBound(3, { ...owners, ownerLists: true }, 1_000).listBytes?.(
       2,
     ),
-  ).toBe(48);
+  ).toBe(72);
   const later = await deliver([
     partFrame([[0]], { index: 0, count: 2, entries: 3 }),
     partFrame([[1, 1, 1, 1, 1, 1, 1], [2]], { index: 1, count: 2, entries: 3 }),
@@ -325,24 +390,24 @@ test("a grouping part over the bytes the round admits is refused as an index lis
         }),
       )
     ).message,
-  ).toMatch(/part 1 is over the 27 bytes this party admits/);
+  ).toMatch(/part 1 is over the 40 bytes this party admits/);
 });
 
 // The grouping a connection stating `frameBound` receives, in parts of the
-// stated numbers of run lengths of 1, the first entry of the first part
-// written `first` instead.
+// stated numbers of run lengths of 1.
 async function groupingParts(
   frameBound: number,
   sizes: Array<number>,
-  first = 1,
 ): Promise<MessageConnection> {
   const total = sizes.reduce((sum, size) => sum + size, 0);
   return deliverStating(
-    sizes.map((size, index) => {
-      const body = Array.from({ length: size }, () => 1);
-      if (index === 0) body[0] = first;
-      return partFrame(body, { index, count: sizes.length, entries: total });
-    }),
+    sizes.map((size, index) =>
+      partFrame(
+        Array.from({ length: size }, () => 1),
+        { index, count: sizes.length, entries: total },
+        RUN_LENGTHS_LAYOUT,
+      ),
+    ),
     frameBound,
   );
 }
@@ -367,52 +432,87 @@ test("a grouping's budget is the connection's frame bound at the largest declare
       { ...largest, partnerRecordCount: 1 },
       1_000,
     ).listBytes?.(3),
-  ).toBeLessThan(1_000);
+  ).toBe(4 * 3 + 4 + 24 * 3);
+});
+
+test("no round's run lengths reach either frame bound", () => {
+  const widest = {
+    maxPositionsPerRecord: 1,
+    partnerRecordCount: MAX_PSI_DECODE_ELEMENTS,
+    ownerLists: false,
+  };
+  for (const frameBound of [MAX_WEBRTC_FRAME_BYTES, MAX_FRAME_SIZE_BYTES]) {
+    expect(4 * MAX_PSI_DECODE_ELEMENTS).toBeLessThan(frameBound);
+    expect(
+      roundGroupingBound(
+        MAX_PSI_DECODE_ELEMENTS,
+        widest,
+        frameBound,
+      ).listBytes?.(1),
+    ).toBeLessThan(frameBound);
+  }
 });
 
 test("a grouping over the frame bound in all its parts is refused, one just under it accepted", async () => {
-  // A part of n run lengths of 1 is its 16-byte header and a body of 2n + 1
-  // bytes: 30 of them in four parts take 128 bytes in all.
-  const bound = 128;
-  const fit = await groupingParts(bound, [8, 8, 7, 7]);
-  expect(
-    (
-      await receiveRoundGrouping(
-        fit,
-        "server",
-        "grouping",
-        1_000,
-        WIDE_GROUPING,
-      )
-    )?.length,
-  ).toBe(30);
-
-  const over = await groupingParts(bound, [8, 8, 7, 7], 10);
+  // A part of n run lengths is its 16-byte header and a body of 8 + 4n bytes:
+  // 10 of them in four parts take 136 bytes in all.
+  const bound = 136;
+  const read = async (sizes: Array<number>) => {
+    const field = await receiveRoundGrouping(
+      await groupingParts(bound, sizes),
+      "server",
+      "grouping",
+      1_000,
+      WIDE_GROUPING,
+    );
+    return field?.form === "run-lengths" ? field.runLengths.length : undefined;
+  };
+  expect(await read([3, 3, 2, 2])).toBe(10);
+  expect(await read([3, 2, 2, 2])).toBe(9);
   expect(
     (
       await refusal(
-        receiveRoundGrouping(over, "server", "grouping", 1_000, WIDE_GROUPING),
+        receiveRoundGrouping(
+          await groupingParts(bound, [3, 3, 3, 2]),
+          "server",
+          "grouping",
+          1_000,
+          WIDE_GROUPING,
+        ),
       )
     ).message,
-  ).toMatch(/part 3 is over the 30 bytes this party admits/);
+  ).toMatch(/part 3 is over the 28 bytes this party admits/);
+});
 
-  const under = await groupingParts(bound, [8, 7, 7, 7]);
-  expect(
-    (
-      await receiveRoundGrouping(
-        under,
-        "server",
-        "grouping",
-        1_000,
-        WIDE_GROUPING,
-      )
-    )?.length,
-  ).toBe(29);
+test("a grouping is sent only if its parts total within the frame bound", async () => {
+  const sendAtBound = async (grouping: RoundGroupingField | undefined) => {
+    const { sender, sent } = webRtcPipe();
+    const outcome = await sendRoundGrouping(sender, "server", grouping).then(
+      () => undefined,
+      (e: unknown) => e,
+    );
+    return { sent, outcome };
+  };
+  const fits = await sendAtBound(ownerLists([[1, 2, 3]]));
+  expect(fits.outcome).toBeUndefined();
+  expect(fits.sent).toHaveLength(1);
+
+  const over = await sendAtBound(largestOwnerLists(8, 60, 4));
+  expect(over.sent).toStrictEqual([
+    { decision: "abort", abortReasons: [PSI_SET_REFUSED_ABORT_REASON] },
+  ]);
+  expect(over.outcome).toBeInstanceOf(UsageError);
+  expect((over.outcome as Error).message).toBe(
+    "server: This exchange found more matches than it can send. It stopped, " +
+      "and your partner was told. This usually means many records on both " +
+      "sides share a key value. Use a more distinctive key or split the data " +
+      "into smaller batches.",
+  );
 });
 
 test("a grouping of one-entry parts is refused once their bytes pass the frame bound", async () => {
   // Owner-list bounds at a partner record count no frame bound reaches, so
-  // the frame bound is the budget, and a valid one-entry part of 19 bytes for
+  // the frame bound is the budget, and a valid one-entry part of 28 bytes for
   // each of the 1,000 positions declared.
   const bound = 64;
   const positions = 1_000;
@@ -425,7 +525,11 @@ test("a grouping of one-entry parts is refused once their bytes pass the frame b
     roundGroupingBound(positions, largest, bound).listBytes?.(positions),
   ).toBe(bound);
   const frames = Array.from({ length: positions }, (_, index) =>
-    partFrame([1], { index, count: positions, entries: positions }),
+    partFrame(
+      [1],
+      { index, count: positions, entries: positions },
+      RUN_LENGTHS_LAYOUT,
+    ),
   );
   const conn = await deliverStating(frames, bound);
   let readBytes = 0;
@@ -449,69 +553,75 @@ test("a grouping of one-entry parts is refused once their bytes pass the frame b
         ),
       )
     ).message,
-  ).toMatch(/part 3 is over the 7 bytes this party admits/);
-  expect(readBytes).toBe(4 * 19);
-  expect(readBytes).toBeLessThanOrEqual(bound + 19);
+  ).toMatch(/part 2 is over the 8 bytes this party admits/);
+  expect(readBytes).toBe(3 * 28);
+  expect(readBytes).toBeLessThanOrEqual(bound + 28);
 });
 
-test("parts totalling the derived budget are accepted and one byte over it refused", async () => {
-  // Two runs of at most 1 in two parts take 4 bytes of entries and 18 bytes
-  // for each part: 40 bytes in all, each part counted with its header.
+test("parts totalling the derived budget are accepted and a word over it refused", async () => {
+  // Two runs in two parts take a word each and 24 bytes for each part: 56
+  // bytes in all, each part counted with its header.
   const bounds = {
     maxPositionsPerRecord: 1,
     partnerRecordCount: 2,
     ownerLists: false,
   };
   const exact = await deliver([
-    partFrame([10], { index: 0, count: 2, entries: 2 }),
-    partFrame([10], { index: 1, count: 2, entries: 2 }),
+    partFrame([10], { index: 0, count: 2, entries: 2 }, RUN_LENGTHS_LAYOUT),
+    partFrame([10], { index: 1, count: 2, entries: 2 }, RUN_LENGTHS_LAYOUT),
   ]);
   expect(
-    await receiveRoundGrouping(exact, "server", "grouping", 2, bounds),
-  ).toStrictEqual([10, 10]);
+    plain(await receiveRoundGrouping(exact, "server", "grouping", 2, bounds)),
+  ).toStrictEqual(runLengths([10, 10]));
 
   const over = await deliver([
-    partFrame([100], { index: 0, count: 2, entries: 2 }),
-    partFrame([10], { index: 1, count: 2, entries: 2 }),
+    partFrame([10], { index: 0, count: 2, entries: 2 }, RUN_LENGTHS_LAYOUT),
+    partFrame([10, 10], { index: 1, count: 2, entries: 2 }, RUN_LENGTHS_LAYOUT),
   ]);
   expect(
     (await refusal(receiveRoundGrouping(over, "server", "grouping", 2, bounds)))
       .message,
-  ).toMatch(/part 1 is over the 19 bytes this party admits/);
+  ).toMatch(/part 1 is over the 28 bytes this party admits/);
 });
 
-test("a grouping of more runs than records, inside its byte budget, is refused by the reader", async () => {
-  // Two records' runs of at most 12 positions are 2 * 3 bytes of entries,
-  // which three runs of 1 fit.
+test("a grouping of more runs than records is refused at its byte bound", async () => {
+  // Two records' runs are at most two words, so three runs over 12 positions
+  // are a part past the 32 bytes the round admits.
   const bounds = {
     maxPositionsPerRecord: 20,
     partnerRecordCount: 2,
     ownerLists: false,
   };
-  const conn = await deliver([partFrame([1, 1, 1])]);
-  const grouping = await receiveRoundGrouping(
-    conn,
-    "server",
-    "grouping",
-    12,
-    bounds,
-  );
-  expect(grouping).toStrictEqual([1, 1, 1]);
-  expect(() =>
-    readPartnerRoundGrouping(
-      grouping ?? [],
-      Array.from({ length: 12 }, (_, k) => k),
-      { participantId: "server", ...bounds },
-    ),
-  ).toThrow(/more runs than the 2 record\(s\) the partner/);
+  const conn = await deliver([partFrame([1, 1, 1], {}, RUN_LENGTHS_LAYOUT)]);
+  expect(
+    (
+      await refusal(
+        receiveRoundGrouping(conn, "server", "grouping", 12, bounds),
+      )
+    ).message,
+  ).toMatch(/part 0 is over the 32 bytes this party admits/);
 });
 
-test("a null part in a grouping that declares entries is refused", async () => {
+test("an omitted-grouping part in a grouping that declares entries is refused", async () => {
   const conn = await deliver([partFrame(null, { entries: 2 })]);
   const err = await refusal(
     receiveRoundGrouping(conn, "server", "grouping", 10, WIDE_GROUPING),
   );
   expect(err.message).toMatch(/inbound grouping part 0 holds no entries/);
+});
+
+test("a grouping whose later part changes layout is refused", async () => {
+  const conn = await deliver([
+    partFrame([1], { index: 0, count: 2, entries: 2 }, RUN_LENGTHS_LAYOUT),
+    partFrame([[1]], { index: 1, count: 2, entries: 2 }, OWNER_LISTS_LAYOUT),
+  ]);
+  expect(
+    (
+      await refusal(
+        receiveRoundGrouping(conn, "server", "grouping", 10, WIDE_GROUPING),
+      )
+    ).message,
+  ).toMatch(/inbound grouping part 1 is not a list of the kind awaited/);
 });
 
 // --- refusals ------------------------------------------------------------------
@@ -544,12 +654,11 @@ test("an out-of-order part is refused", async () => {
   );
 });
 
-test("a part over the bytes its remaining entries can take is refused before its body is parsed", async () => {
-  // Two entries below 10: a part of at most 16 + 2 + 2 * 2 bytes.
-  expect(roundIndexEntryBytes(10)).toBe(2);
-  const conn = await deliver([partFrame([10_000, 1], { entries: 2 })]);
+test("a part over the bytes its remaining entries can take is refused before its body is read", async () => {
+  // Two entries: a part of at most 16 + 8 + 2 * 4 bytes.
+  const conn = await deliver([partFrame([0, 1, 2], { entries: 2 })]);
   const err = await refusal(receiveList(conn));
-  expect(err.message).toMatch(/part 0 is over the 22 bytes this party admits/);
+  expect(err.message).toMatch(/part 0 is over the 32 bytes this party admits/);
 });
 
 test("a list declaring more entries than this party admits is refused at its first part", async () => {
@@ -586,51 +695,8 @@ test("parts ending short of the declared entries are refused", async () => {
 });
 
 test("a part whose body is not an index list is refused", async () => {
-  // Past an unbounded index range, so no byte bound refuses the part first.
-  const conn = await deliver([partFrame(["x"])]);
-  const run = receiveRoundIndexList(
-    conn,
-    "server",
-    "round index list",
-    1,
-    Number.POSITIVE_INFINITY,
+  const conn = await deliver([partFrame([1], {}, RUN_LENGTHS_LAYOUT)]);
+  expect((await refusal(receiveList(conn))).message).toMatch(
+    /inbound round index list part 0 is not a list of the kind awaited/,
   );
-  expect((await refusal(run)).message).toMatch(/failed schema validation/);
-});
-
-// --- the part schemas ---------------------------------------------------------
-
-test("an index list part admits finite numbers alone", () => {
-  expect(numberArrayMessage.safeParse([0, 1.5, 2]).success).toBe(true);
-  expect(numberArrayMessage.safeParse([0, "1"]).success).toBe(false);
-  expect(numberArrayMessage.safeParse([[0]]).success).toBe(false);
-});
-
-test("a grouping part admits run lengths or owner lists, nested one level", () => {
-  expect(roundGroupingElement.safeParse([1, 2]).success).toBe(true);
-  expect(roundGroupingElement.safeParse([[0], [0, 1]]).success).toBe(true);
-  expect(roundGroupingElement.safeParse([[[0]]]).success).toBe(false);
-  expect(roundGroupingElement.safeParse(["x"]).success).toBe(false);
-});
-
-test("a pathological-count grouping part fails cleanly, not with a RangeError", async () => {
-  // The grouping is partner-controlled, so it takes the single-issue
-  // validation: one issue however many invalid entries it holds.
-  const conn = await deliver([
-    partFrame(
-      Array.from({ length: 300_000 }, () => "x"),
-      { entries: 1 },
-    ),
-  ]);
-  const err = await refusal(
-    receiveRoundGrouping(conn, "", "grouping", 10, WIDE_GROUPING),
-  );
-  expect(err.cause).not.toBeInstanceOf(RangeError);
-});
-
-test("an index entry's byte bound counts the digits of the largest index", () => {
-  expect(roundIndexEntryBytes(1)).toBe(2);
-  expect(roundIndexEntryBytes(1_000)).toBe(4);
-  expect(roundIndexEntryBytes(1_001)).toBe(5);
-  expect(roundIndexEntryBytes(Number.POSITIVE_INFINITY)).toBeUndefined();
 });

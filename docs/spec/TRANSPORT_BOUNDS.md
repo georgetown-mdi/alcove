@@ -130,23 +130,25 @@ A declared length over the combined bound stays a `ProtocolRefusalError`; one wi
 
 ### Matched-record lists in parts: the aggregate bound
 
-A cascade sends each list naming matched records -- a round's association table, original-index list and groupings, a mapped-element list, the returned list, and the payload rows -- in parts, each its own frame ([PROTOCOL.md, A list of matched records is sent in parts](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts), where the header, the part size, and the refusals are specified).
+A cascade sends each list naming matched records -- a round's association table, original-index list and groupings, a mapped-element list, the returned list, and the payload rows -- in parts, each its own frame, and single-pass sends message 3, the resolved association table, the same way ([PROTOCOL.md, A list of matched records is sent in parts](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts), where the header, the body, the part size, and the refusals are specified).
 The bounds that hold over partner content across the whole list:
 
 - **Each part is held to the per-frame bound.**
   A part is an ordinary frame at the transport read gate -- `MAX_FRAME_SIZE_BYTES` (536,870,888 bytes) on file-sync, [`MAX_WEBRTC_FRAME_BYTES`](#webrtc-data-channel-inbound-bound) (268,435,456 bytes) on the WebRTC data channel.
-- **An index list's part is held to its entries' bytes.**
-  A part of either mapped-element list, or of a round's index list or grouping, is refused, before its body is parsed, past the bytes the entries it can still hold take at their longest, a bound PROTOCOL.md derives from the agreed terms, the record counts and the round's own sets ([The bytes a receiver admits](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts)).
-  The transport has read the part whole by then, so this bounds what is parsed, not what the transport reads; a payload part has no such bound.
-- **The receiver holds one unparsed part at a time.**
-  Each part's header is checked and its body parsed as the part arrives, before the next part is read (`receiveMatchedListParts`, `packages/core/src/psi/matchedListParts.ts`).
-  The unparsed bytes a list holds at any moment are therefore at most one per-frame bound, whatever its part count, and a part refused on its header or its body ends the receive at that part.
-- **The parsed list is held to the declared entry count.**
+- **A word-list part is held to its entries' bytes.**
+  A part of any of these lists but the payload is refused, before its body is read, past the bytes the entries it can still hold take at their longest, a bound PROTOCOL.md derives from the agreed terms, the record counts and the round's own sets ([The bytes a receiver admits](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts)).
+  The transport has read the part whole by then, so this bounds what is made from the part, not what the transport reads; a payload part has no such bound.
+- **A word-list body is checked against its own length first.**
+  Its tag, entry count and count words are checked against the words the body holds before any array is made from it, so no array read from a part is longer than the part's own words ([What the receiver refuses, reading the parts](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts)).
+- **The receiver holds one unread part at a time.**
+  Each part's header is checked and its body read as the part arrives, before the next part is read (`receiveListParts`, `packages/core/src/psi/matchedListParts.ts`).
+  The unread bytes a list holds at any moment are therefore at most one per-frame bound, whatever its part count, and a part refused on its header or its body ends the receive at that part.
+- **The read list is held to the declared entry count.**
   The first part's declared entry count is held to the bound PROTOCOL.md derives from the agreed terms and this party's own result, and the part count to at most that entry count (1 for an empty list).
-  Every part of a non-empty list holds at least one entry and no part runs past the declared count, so the parsed parts hold at most that many entries between them, each part parsed under the [application-layer parsed-input bounds](PARSED_INPUT_BOUNDS.md#application-layer-parsed-input-bounds).
+  Every part of a non-empty list holds at least one entry and no part runs past the declared count, so the read parts hold at most that many entries between them, each payload part parsed under the [application-layer parsed-input bounds](PARSED_INPUT_BOUNDS.md#application-layer-parsed-input-bounds).
 
 Frames the transport has delivered but the receive has not yet read sit in the inbound queue, which bounds them by count, as the [WebRTC data-channel inbound bound](#webrtc-data-channel-inbound-bound) states for every frame.
-`packages/core/test/psi/matchedListParts.test.ts` drives a refused part ending the receive before the next is read, and a part parsed before the next one arrives.
+`packages/core/test/psi/matchedListParts.test.ts` drives a refused part ending the receive before the next is read, and a part parsed before the next one arrives; `packages/core/test/psi/uint32ListParts.test.ts` drives each word-list body refused with no array made.
 
 ### The streamed match and masking chunks: no wire change
 
@@ -285,7 +287,7 @@ The refusal is the sender's own and holds no partner-authored text: its figures 
 **Deserialized-structure rules.**
 The wire-byte cap does not by itself say what a frame retains, because BinaryPack `unpack`s a frame into a JS structure _synchronously, before delivery and before any schema validation_, and that structure is a multiple of the wire.
 BinaryPack encodes an empty object or array in one byte but `unpack` allocates a real JS value per element; an `array32` header eagerly allocates `new Array(N)` for its declared count _even when the elements are absent_, because `unpack` reads past the end of the buffer as zero rather than throwing; and `unpack_string` builds a string one code point at a time, leaving a cons-string tree per character.
-So a small frame of object/array headers -- an in-protocol shape, since the association-table and mapped-element frames are arrays of numbers/objects -- deserializes to far more than its wire size.
+So a small frame of object/array headers deserializes to far more than its wire size.
 
 Before delegating to `unpack`, `scanFrameStructure` walks the frame's BinaryPack bytes and refuses it on any of five rules:
 
@@ -301,7 +303,7 @@ Before delegating to `unpack`, `scanFrameStructure` walks the frame's BinaryPack
   This ties a container's declared count to the wire.
 - **Cumulative elements**: the containers of one frame may not declare more elements between them than the whole frame's bytes can encode.
   This is what ties the frame's total declared count to the wire, which the per-container rule alone does not: nested containers can each be byte-backed against the same trailing bytes, and `unpack_array` reserves the declared width once per level, so 200 levels declaring 700,000 children over 701,000 wire bytes reserve 1.12 GB (1,598x).
-  A legitimate frame always satisfies the sum, because each declared child is a value of its own that costs at least one wire byte to encode; the largest frames Alcove sends declare about a quarter of their wire bytes (see _The largest legitimate frames_ below).
+  A legitimate frame always satisfies the sum, because each declared child is a value of its own that costs at least one wire byte to encode; the frames a current build sends declare one element over all their bytes (see _The largest legitimate frames_ below).
 - **Map keys**: a map key that is not a string on the wire is refused rather than read.
 
 The walk reads only container headers and payload lengths -- never materializing the payload, so it skips a large binary set frame in O(1) -- and refuses at the offending header before `unpack` allocates.
@@ -339,11 +341,10 @@ No rule below the wire cap constrains it: the cumulative rule is a bound on decl
 That is the stated limit of this control, accepted rather than closed -- the party who can send it is the authenticated counterparty, who can end the exchange outright at any point, so the defense sized against it is depth rather than a memory guarantee.
 
 _The largest legitimate frames._
-Measured the same way, once rather than as a standing check (a frame this size is too large for the unit run), at the single-pass ceiling (`MAX_SINGLE_PASS_CELLS`, [PROTOCOL.md](PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute)) with 3,000,000 records: the mapped-element frame (`Array<{theirIndex, iteration}>`) is 84.0 MB of wire retaining 192 MB (2.3x), a payload frame of 3,000,000 short cells is 48.0 MB retaining 287 MB (6.0x), and an association table of the same width is 30.0 MB retaining 48 MB (1.6x).
-All three sit inside the wire cap with room to spare, and none is near the amplification of the hostile shapes above -- a legitimate frame spends its wire bytes on values rather than on declarations.
-They sit as far inside the cumulative element rule.
-Measured at that ceiling, the mapped-element frame declares 0.18 elements per wire byte, the payload frame's rows array -- the tightest part of that message, and the part the check builds -- 0.29, and the association table 0.20, so the narrowest of the three has a factor of 3.5 of headroom against the one-per-byte the rule refuses at.
-That margin is held as a standing check rather than only recorded here: `packages/core/test/connection/binaryPackBounds.test.ts` builds all three shapes at two record counts with the real packer, packing each record index at the width it has at the ceiling, extrapolates each per-record slope to the ceiling -- a frame of that size being too large for the unit run -- and requires every shape to keep a factor of three, with the measured ratio in the assertion message.
+Every frame a current build sends after the key exchange is an AEAD envelope ([WEBRTC_TRANSPORT.md, Application-layer encryption](WEBRTC_TRANSPORT.md#application-layer-encryption)), which the packer writes as one binary value.
+The matched-record lists and the payload rows go inside it in binary parts ([Matched-record lists in parts](#matched-record-lists-in-parts-the-aggregate-bound)), so no frame a current build sends is an array of numbers or objects at the scale of a matched-record list.
+A binary value declares one element over all its bytes, which the scan skips in O(1), so these frames sit far inside the cumulative element rule.
+That is held as a standing check: `packages/core/test/connection/binaryPackBounds.test.ts` packs an envelope-sized binary value with the real packer at two record counts, extrapolates it to the single-pass ceiling (`MAX_SINGLE_PASS_CELLS`, [PROTOCOL.md](PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute)) at 8 bytes a record, the size of that ceiling's resolved table, and requires it to keep a factor of three of headroom against the one-per-byte the rule refuses at.
 
 **Retained chunk-count cap.**
 Each receiver retains each chunk as its own `Uint8Array`, which holds several hundred bytes resident even for a one-byte slice, an overhead the wire-byte cap -- which counts only payload bytes -- undercounts, so a flood of tiny chunks could exhaust memory while staying under the byte cap.

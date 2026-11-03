@@ -66,6 +66,7 @@ import {
   receiveHandPlayedRoundTable,
   sendHandPlayedOriginalIndexList,
 } from "../utils/matchedListPartFrames";
+import { RETURNED_ELEMENT_LAYOUT } from "../../src/psi/uint32ListParts";
 import {
   deviatingInbound,
   makeParticipant,
@@ -520,7 +521,7 @@ async function runNonConformingStarter(
   await conn.send(partFrame(report(joinerPositions)));
   const joinerList = readPartFrame(await conn.receive())!
     .body as Array<MappedElement>;
-  await conn.send(partFrame(joinerList));
+  await conn.send(partFrame(joinerList, {}, RETURNED_ELEMENT_LAYOUT));
   await conn.receive();
 }
 
@@ -1002,9 +1003,9 @@ test("a resolved table at the derived bound is accepted", async () => {
 });
 
 test("a resolved table one pair past the bound is refused", async () => {
-  // One more than the product admits. The length is checked before any entry
-  // is read, so the refusal names the bound rather than the repeated pair the
-  // tenth entry must also be.
+  // One more than the product admits. The count the table declares is checked
+  // before any entry is read, so the refusal names the bound rather than the
+  // repeated pair the tenth entry must also be.
   const { starter } = await runSinglePass(spStarterKeys, spJoinerKeys, {
     deviation: replacingResolvedTable([
       [0, 0, 0, 1, 1, 1, 2, 2, 2, 2],
@@ -1014,7 +1015,7 @@ test("a resolved table one pair past the bound is refused", async () => {
   expect(starter).toBeInstanceOf(ConnectionError);
   expect((starter as ConnectionError).kind).toBe("protocol");
   expect((starter as Error).message).toMatch(
-    /has 10 entries, more than the 9 pair\(s\) the two parties' record counts admit/,
+    /inbound resolved association table declares 10 entries, over the 9 this party admits/,
   );
 });
 

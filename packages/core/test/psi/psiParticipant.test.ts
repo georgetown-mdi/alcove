@@ -2,12 +2,8 @@ import { describe, expect, test, vi } from "vitest";
 
 import PSI from "@openmined/psi.js";
 
-import {
-  PSIParticipant,
-  associationTableMessage,
-} from "../../src/psi/participant";
-import { numberArrayMessage } from "../../src/psi/roundTableParts";
-import { MATCHED_LIST_PART_HEADER_BYTES } from "../../src/psi/matchedListParts";
+import { PSIParticipant } from "../../src/psi/participant";
+import { partFrame } from "../utils/matchedListPartFrames";
 import { InProcessPsiEngine } from "../../src/psi/psiEngine";
 import { encodeIndexTable } from "../../src/psi/countOnlyPermutation";
 import {
@@ -16,11 +12,7 @@ import {
   ConnectionError,
 } from "../../src/errors";
 
-import {
-  createMessagePipe,
-  receiveParsed,
-  parseOrProtocolError,
-} from "../../src/connection/messageConnection";
+import { createMessagePipe } from "../../src/connection/messageConnection";
 import type { MessageConnection } from "../../src/connection/messageConnection";
 import { sortAssociationTable } from "../../src/testing";
 import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
@@ -86,41 +78,6 @@ test("order doesn't matter", async () => {
   expectCorrectMirroredTables(await identify(false));
 });
 
-// --- association-table wire message: pathological-count bound -----------------
-// The association table is partner-controlled (the PPRL threat model
-// treats the counterparty as adversarial) and rides the ~512 MiB exchange
-// frame. An inner index array of hundreds of thousands of invalid elements
-// overflowed Zod's call stack, spreading one issue per element up through
-// the array/tuple frames (RangeError). receiveParsed always reports a
-// parse failure as a clean ConnectionError("protocol"), so the
-// single-issue validators make the cause a bounded validation error instead.
-
-test("a pathological-count association table fails cleanly, not with a RangeError", async () => {
-  const [connA, connB] = createMessagePipe();
-  const parsed = receiveParsed(connA, associationTableMessage);
-  // ~300k invalid (non-number) inner elements, well past the ~130k overflow
-  // threshold the unbounded `z.array(z.number())` schema would hit.
-  await connB.send([Array.from({ length: 300_000 }, () => "x"), []]);
-  const err = await parsed.catch((e: unknown) => e);
-  expect(err).toBeInstanceOf(ConnectionError);
-  expect((err as ConnectionError).kind).toBe("protocol");
-  expect((err as ConnectionError).cause).not.toBeInstanceOf(RangeError);
-});
-
-test("a legitimately large association table parses", async () => {
-  // The intersection is legitimately in the millions; a count `.max()` would
-  // reject it, the single-issue validators do not. 200k clears the overflow
-  // threshold, so a VALID large table never trips the bound.
-  const n = 200_000;
-  const [connA, connB] = createMessagePipe();
-  const parsed = receiveParsed(connA, associationTableMessage);
-  const indices = Array.from({ length: n }, (_, i) => i);
-  await connB.send([indices, indices]);
-  const [first, second] = await parsed;
-  expect(first).toHaveLength(n);
-  expect(second).toHaveLength(n);
-});
-
 // --- the original-index list: the send-before-refusal site --------------------
 
 // Replaces the value the Nth receive() on `conn` resolves with, leaving the send
@@ -143,7 +100,7 @@ function corruptNthReceive(
   };
 }
 
-test("joiner: a pathological-count final frame fails cleanly, not with a bare RangeError", async () => {
+test("joiner: a final frame whose count is past its bytes is refused after the acknowledgement", async () => {
   const [serverConn, clientConn] = createMessagePipe();
   const starter = new PSIParticipant(
     "starter",
@@ -157,23 +114,11 @@ test("joiner: a pathological-count final frame fails cleanly, not with a bare Ra
     { role: "joiner", verbose: 0 },
     UNBOUNDED_PSI_ELEMENTS,
   );
-  // ~4M invalid (non-number) elements, past the ~3.3M `Invalid string length`
-  // threshold the unbounded `z.array(z.number())` schema hit (a ~4.5s CPU burn
-  // then a bare RangeError). The joiner's 3rd receive is the original-index
-  // list's one part; replacing it with a part whose header declares the one
-  // entry the joiner admits drives the joiner to parse a pathological body
-  // while the real exchange otherwise proceeds.
-  const body = new TextEncoder().encode(
-    JSON.stringify(Array.from({ length: 4_000_000 }, () => "x")),
-  );
-  const pathological = new Uint8Array(
-    MATCHED_LIST_PART_HEADER_BYTES + body.byteLength,
-  );
-  const header = new DataView(pathological.buffer);
-  header.setUint32(0, 0);
-  header.setUint32(4, 1);
-  header.setBigUint64(8, 1n);
-  pathological.set(body, MATCHED_LIST_PART_HEADER_BYTES);
+  // The joiner's 3rd receive is the original-index list's one part; replacing
+  // it with a part whose header declares the one entry the joiner admits and
+  // whose body states that entry without holding it drives the joiner to
+  // refuse the body while the real exchange otherwise proceeds.
+  const pathological = partFrame([7]).subarray(0, -4);
   const [starterOutcome, joinerOutcome] = await Promise.allSettled([
     starter.identifyIntersection(serverConn, ["Alice", "Carol"]),
     joiner.identifyIntersection(
@@ -188,16 +133,10 @@ test("joiner: a pathological-count final frame fails cleanly, not with a bare Ra
   const err = (joinerOutcome as PromiseRejectedResult).reason;
   expect(err).toBeInstanceOf(ConnectionError);
   expect((err as ConnectionError).kind).toBe("protocol");
-  expect((err as ConnectionError).cause).not.toBeInstanceOf(RangeError);
-});
-
-test("a legitimately large original-index list part parses", () => {
-  // One part of the original-index list legitimately holds millions of
-  // entries; 200k clears the overflow threshold, so a VALID large part is
-  // never rejected by the single-issue bound.
-  const n = 200_000;
-  const valid = Array.from({ length: n }, (_, i) => i);
-  expect(parseOrProtocolError(numberArrayMessage, valid)).toHaveLength(n);
+  expect((err as Error).message).toBe(
+    "joiner protocol error: inbound round original-index list part 0 is not " +
+      "the length its entry counts state",
+  );
 });
 
 // --- PSI decode element-count guard: frame-bytes vs element-count amplification -
@@ -691,13 +630,4 @@ test("cascade identifyIntersection (joiner) rejects a non-Raw server setup frame
   );
   expect(refused?.message).toMatch(/server setup is not a Raw data structure/);
   expect(refused?.message).not.toMatch(/failed to decode/);
-});
-
-// --- single-pass's resolved-table frame stays at two elements -----------------
-
-test("single-pass's resolved-table frame rejects a third element", () => {
-  expect(associationTableMessage.safeParse([[0], [0]]).success).toBe(true);
-  expect(associationTableMessage.safeParse([[0], [0], [1]]).success).toBe(
-    false,
-  );
 });

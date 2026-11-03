@@ -1,16 +1,19 @@
-// A list naming matched records -- each party's mapped-element list, the list
-// returned with the partner's rows, and the payload rows -- is sent as one or
-// more parts, each a binary frame within the partner's per-frame receive bound
-// and each holding a JSON body that parses on its own. Every part begins with
+// A list naming matched records -- a round's index lists and groupings, each
+// party's mapped-element list, the list returned with the partner's rows, the
+// single-pass resolved table, and the payload rows -- is sent as one or more
+// parts, each a binary frame within the partner's per-frame receive bound and
+// each holding a body that reads on its own: 32-bit words
+// (uint32ListParts.ts), or JSON for the payload rows. Every part begins with
 // the header a PSI set part begins with, its third field counting the list's
 // entries rather than bytes, so a missing, repeated, or inconsistent part, and
 // a list declaring more entries than the receiver admits, is refused from the
-// header of the part that draws it, and an index list's or a grouping's part
-// longer than its remaining entries can be is refused before its body is
-// parsed. Each part's body is parsed as the part arrives, so the receiver
-// holds one unparsed part at a time (docs/spec/PROTOCOL.md, "A list of
-// matched records is sent in parts").
-import { ConnectionError, chainDetailCauses } from "../errors";
+// header of the part that draws it, and a part longer than its remaining
+// entries can be is refused before its body is read. Each part's body is read
+// as the part arrives, so the receiver holds one unread part at a time
+// (docs/spec/PROTOCOL.md, "A list of matched records is sent in parts").
+import { ConnectionError, UsageError, chainDetailCauses } from "../errors";
+import { PSI_SET_REFUSED_ABORT_REASON } from "../partnerAbortFrame";
+import { sendAbort } from "../protocolSetup";
 import {
   MAX_JSON_ARRAY_ELEMENTS,
   parseBoundedJson,
@@ -31,12 +34,21 @@ import type { MessageConnection } from "../connection/messageConnection";
 export const MATCHED_LIST_PART_HEADER_BYTES = PSI_SET_PART_HEADER_BYTES;
 
 /**
- * The most entries one part holds: a part's body is parsed as one JSON
- * message, whose arrays the receiver holds to this many elements.
+ * The most entries one part of a JSON list holds: its body is parsed as one
+ * JSON message, whose arrays the receiver holds to this many elements.
  */
 export const MAX_MATCHED_LIST_PART_ENTRIES = MAX_JSON_ARRAY_ELEMENTS;
 
+/**
+ * Bytes a word-list part's body holds before its entries: the layout tag and
+ * the part's entry count (uint32ListParts.ts).
+ */
+export const WORD_LIST_BODY_PREFIX_BYTES = 8;
+
 const MAX_PART_COUNT = 0xffff_ffff;
+
+// The most entries one part of a word list holds: its entry count is a uint32.
+const MAX_WORD_LIST_PART_ENTRIES = 0xffff_ffff;
 
 /**
  * What a receiver admits of one list, derived from the agreed terms and this
@@ -46,11 +58,10 @@ export interface MatchedListBound {
   /** The most entries the list may declare, checked at its first part. */
   readonly entries: number;
   /**
-   * The most UTF-8 bytes one entry adds to a part's body, its separator
-   * included, for a list whose parts are JSON arrays: each part is then held
-   * to {@link matchedListPartByteBound} over the entries the list has still to
-   * send. Absent where no byte bound derives from the terms, as for a
-   * payload's rows.
+   * The most bytes one entry adds to a part's body, for a list whose parts
+   * hold words: each part is then held to {@link matchedListPartByteBound}
+   * over the entries the list has still to send. Absent where no byte bound
+   * derives from the terms, as for a payload's rows.
    */
   readonly entryBytes?: number;
   /**
@@ -82,9 +93,8 @@ function partByteBound(
 }
 
 /**
- * The most bytes a part of a JSON-array list holds, its header included, when
- * it holds at most `entries` entries of at most `entryBytes` bytes each, their
- * separators included.
+ * The most bytes a part of a word list holds, its header included, when it
+ * holds at most `entries` entries of at most `entryBytes` bytes each.
  */
 export function matchedListPartByteBound(
   entries: number,
@@ -92,12 +102,26 @@ export function matchedListPartByteBound(
 ): number {
   return (
     MATCHED_LIST_PART_HEADER_BYTES +
-    2 +
-    Math.min(entries, MAX_MATCHED_LIST_PART_ENTRIES) * entryBytes
+    WORD_LIST_BODY_PREFIX_BYTES +
+    entries * entryBytes
   );
 }
 
-/** A list to send in parts, read one entry at a time. */
+/** A list to send in parts whose bodies are 32-bit words, one entry at a time. */
+export interface WordListSource {
+  /** How many entries the list holds. */
+  readonly entries: number;
+  /** The bytes entry `index` adds to a part's body. */
+  entryBytes(index: number): number;
+  /**
+   * Writes the body of a part holding entries `start` to `end` (exclusive)
+   * into `body`, which is exactly as long as those entries and the body's
+   * prefix take.
+   */
+  writeBody(start: number, end: number, body: DataView): void;
+}
+
+/** A list to send in parts whose bodies are JSON, one entry at a time. */
 export interface MatchedListSource {
   /** How many entries the list holds. */
   readonly entries: number;
@@ -131,24 +155,27 @@ export function utf8Length(text: string): number {
   return bytes;
 }
 
-/** A plain JSON array as a {@link MatchedListSource}, one entry per element. */
-export function arraySource(list: ReadonlyArray<unknown>): MatchedListSource {
-  return {
-    entries: list.length,
-    entryBytes: (index) => utf8Length(JSON.stringify(list[index])) + 1,
-    body: (start, end) => list.slice(start, end),
-  };
+function isWordListSource(
+  source: MatchedListSource | WordListSource,
+): source is WordListSource {
+  return "writeBody" in source;
+}
+
+// The bytes a part's body holds before its entries.
+function fixedBodyBytes(source: MatchedListSource | WordListSource): number {
+  return isWordListSource(source)
+    ? WORD_LIST_BODY_PREFIX_BYTES
+    : utf8Length(JSON.stringify(source.body(0, 0)));
 }
 
 // The entry index each part after the first starts at, cut so each part's body
 // fits `payloadBytes` and holds at most `maxPartEntries` entries.
 function partStarts(
-  source: MatchedListSource,
+  source: MatchedListSource | WordListSource,
   payloadBytes: number,
   maxPartEntries: number,
 ): number[] {
-  const fixedBytes = utf8Length(JSON.stringify(source.body(0, 0)));
-  const room = payloadBytes - fixedBytes;
+  const room = payloadBytes - fixedBodyBytes(source);
   const starts: number[] = [];
   let used = 0;
   let inPart = 0;
@@ -170,18 +197,52 @@ function partStarts(
   return starts;
 }
 
+/** A list whose parts total more bytes than the bound it was to be sent within. */
+export class MatchedListOverBoundError extends Error {
+  constructor(
+    readonly listBytes: number,
+    readonly maxListBytes: number,
+  ) {
+    super(
+      `a matched-record list of ${listBytes} bytes is over the ` +
+        `${maxListBytes} bytes this party sends a list in`,
+    );
+    this.name = "MatchedListOverBoundError";
+  }
+}
+
+// The bytes of all `count` parts together: each part's header and body prefix,
+// and every entry once.
+function totalListBytes(
+  source: MatchedListSource | WordListSource,
+  count: number,
+): number {
+  let bytes = count * (MATCHED_LIST_PART_HEADER_BYTES + fixedBodyBytes(source));
+  for (let index = 0; index < source.entries; index++)
+    bytes += source.entryBytes(index);
+  return bytes;
+}
+
 /**
  * The frames that send `source` in parts whose bodies hold at most
  * `payloadBytes` bytes each, in order, built one at a time. An empty list is
  * one part holding no entries.
  *
- * @param maxPartEntries - The most entries one part holds,
- *   {@link MAX_MATCHED_LIST_PART_ENTRIES} unless a test lowers it.
+ * @param maxPartEntries - The most entries one part holds: for a JSON list
+ *   {@link MAX_MATCHED_LIST_PART_ENTRIES} unless a test lowers it, and for a
+ *   word list the most its uint32 entry count states.
+ * @param maxListBytes - The most bytes all the parts hold together, headers
+ *   included. A list over it throws a {@link MatchedListOverBoundError}
+ *   before the first part is yielded. A JSON list is measured by its entries'
+ *   longest lengths, so the figure it is held to is an upper bound.
  */
 export function* matchedListParts(
-  source: MatchedListSource,
+  source: MatchedListSource | WordListSource,
   payloadBytes: number,
-  maxPartEntries: number = MAX_MATCHED_LIST_PART_ENTRIES,
+  maxPartEntries: number = isWordListSource(source)
+    ? MAX_WORD_LIST_PART_ENTRIES
+    : MAX_MATCHED_LIST_PART_ENTRIES,
+  maxListBytes?: number,
 ): Generator<Uint8Array> {
   const starts = partStarts(source, payloadBytes, maxPartEntries);
   const count = starts.length + 1;
@@ -189,40 +250,112 @@ export function* matchedListParts(
     throw new Error(
       `a matched-record list of ${source.entries} entries needs ${count} parts`,
     );
-  const encoder = new TextEncoder();
+  if (maxListBytes !== undefined) {
+    const listBytes = totalListBytes(source, count);
+    if (listBytes > maxListBytes)
+      throw new MatchedListOverBoundError(listBytes, maxListBytes);
+  }
   for (let index = 0; index < count; index++) {
     const start = index === 0 ? 0 : starts[index - 1];
     const end = index === count - 1 ? source.entries : starts[index];
-    const json = JSON.stringify(source.body(start, end));
-    const bodyBytes = utf8Length(json);
+    const part = isWordListSource(source)
+      ? wordListPart(source, start, end)
+      : jsonListPart(source, start, end);
+    const bodyBytes = part.byteLength - MATCHED_LIST_PART_HEADER_BYTES;
     if (bodyBytes > payloadBytes)
       throw new Error(
         `a matched-record list part of ${bodyBytes} bytes is over the ` +
           `${payloadBytes} bytes its entries were measured to fit`,
       );
-    const part = new Uint8Array(MATCHED_LIST_PART_HEADER_BYTES + bodyBytes);
     const header = new DataView(part.buffer);
     header.setUint32(0, index);
     header.setUint32(4, count);
     header.setBigUint64(8, BigInt(source.entries));
-    encoder.encodeInto(json, part.subarray(MATCHED_LIST_PART_HEADER_BYTES));
     yield part;
   }
+}
+
+// A part holding entries `start` to `end` of a JSON list, its header unset.
+function jsonListPart(
+  source: MatchedListSource,
+  start: number,
+  end: number,
+): Uint8Array {
+  const json = JSON.stringify(source.body(start, end));
+  const part = new Uint8Array(
+    MATCHED_LIST_PART_HEADER_BYTES + utf8Length(json),
+  );
+  new TextEncoder().encodeInto(
+    json,
+    part.subarray(MATCHED_LIST_PART_HEADER_BYTES),
+  );
+  return part;
+}
+
+// A part holding entries `start` to `end` of a word list, its header unset.
+function wordListPart(
+  source: WordListSource,
+  start: number,
+  end: number,
+): Uint8Array {
+  let bodyBytes = WORD_LIST_BODY_PREFIX_BYTES;
+  for (let index = start; index < end; index++)
+    bodyBytes += source.entryBytes(index);
+  const part = new Uint8Array(MATCHED_LIST_PART_HEADER_BYTES + bodyBytes);
+  source.writeBody(
+    start,
+    end,
+    new DataView(part.buffer, MATCHED_LIST_PART_HEADER_BYTES, bodyBytes),
+  );
+  return part;
 }
 
 /**
  * Sends `source` on `conn` in parts sized by {@link psiSetPartPayloadBytes},
  * the bound one part of a PSI set is sized to. `onPartSent` runs after each
- * part's send resolves.
+ * part's send resolves. A list over `maxListBytes` sends no part
+ * ({@link matchedListParts}).
  */
 export async function sendMatchedList(
   conn: MessageConnection,
-  source: MatchedListSource,
+  source: MatchedListSource | WordListSource,
   onPartSent?: () => void,
+  maxListBytes?: number,
 ): Promise<void> {
-  for (const part of matchedListParts(source, psiSetPartPayloadBytes(conn))) {
+  for (const part of matchedListParts(
+    source,
+    psiSetPartPayloadBytes(conn),
+    undefined,
+    maxListBytes,
+  )) {
     await conn.send(part);
     onPartSent?.();
+  }
+}
+
+const TOO_MANY_MATCHES_REMEDY =
+  "It stopped, and your partner was told. This usually means many records on " +
+  "both sides share a key value. Use a more distinctive key or split the " +
+  "data into smaller batches.";
+
+/**
+ * {@link sendMatchedList} for a list that must total at most `maxListBytes`. A
+ * list over it sends no part: the partner is sent an abort stating that this
+ * run refused to send, and `refusal` followed by the remedy is thrown as a
+ * {@link UsageError}.
+ */
+export async function sendMatchedListWithin(
+  conn: MessageConnection,
+  source: MatchedListSource | WordListSource,
+  maxListBytes: number,
+  refusal: string,
+): Promise<void> {
+  try {
+    await sendMatchedList(conn, source, undefined, maxListBytes);
+  } catch (err) {
+    if (!(err instanceof MatchedListOverBoundError)) throw err;
+    await sendAbort(conn, [PSI_SET_REFUSED_ABORT_REASON]);
+    throw new UsageError(`${refusal} ${TOO_MANY_MATCHES_REMEDY}`);
   }
 }
 
@@ -246,10 +379,18 @@ function refusal(
   );
 }
 
+/** What a part's body reader is handed beside the body. */
+export interface ListPartContext {
+  /** The entries the list has still to send, the part's own included. */
+  readonly remainingEntries: number;
+  /** The refusal naming this part, `detail` stating what is wrong with it. */
+  refuse(detail: string): ConnectionError;
+}
+
 /**
- * Receives the parts of one list sent by {@link sendMatchedList}, parsing each
- * as it arrives, and returns the parsed parts in order once their entries add
- * up to the declared count.
+ * Receives the parts of one list sent by {@link sendMatchedList}, reading
+ * each as it arrives, and returns the read parts in order once their entries
+ * add up to the declared count.
  *
  * Each part's header is checked first: the list's declared entry count
  * against `bound.entries` at the first part, and each part's index and
@@ -259,27 +400,29 @@ function refusal(
  * {@link matchedListPartByteBound} over the entries the list has still to send
  * is refused next, and where `bound.listBytes` is given, a part longer than
  * what the earlier parts, headers included, left of it at the part count the
- * first part declares. Its body is then parsed through
- * {@link parseBoundedJson} and `parsePart`, which validates it and states how
- * many entries it holds, before the next part is read. A body that is not
- * JSON, a part holding no entries in a list that is not empty, a part running
- * past the declared count, and parts ending short of it are refused. Every refusal is a `protocol`
- * {@link ConnectionError}, raised at the part that draws it. An abort frame in
- * place of any part ends the receive as a peer abort.
+ * first part declares. Its body is then read by `readPart`, which validates it
+ * and states how many entries it holds, before the next part is read. A part
+ * holding no entries in a list that is not empty, a part running past the
+ * declared count, and parts ending short of it are refused. Every refusal is
+ * a `protocol` {@link ConnectionError}, raised at the part that draws it. An
+ * abort frame in place of any part ends the receive as a peer abort.
  *
  * @param participantId - This party's participant id, prefixed on every
  *   refusal, or "" for none.
  * @param what - The list awaited, named in every refusal.
  * @param bound - What this party admits of the list.
- * @param parsePart - Validates one part's parsed body and returns it with its
- *   entry count; it throws on a body of the wrong shape.
+ * @param readPart - Reads one part's body and returns it with its entry
+ *   count; it throws on a body of the wrong shape.
  */
-export async function receiveMatchedListParts<T>(
+export async function receiveListParts<T>(
   conn: MessageConnection,
   participantId: string,
   what: string,
   bound: MatchedListBound,
-  parsePart: (value: unknown) => { readonly part: T; readonly entries: number },
+  readPart: (
+    body: Uint8Array,
+    context: ListPartContext,
+  ) => { readonly part: T; readonly entries: number },
 ): Promise<Array<T>> {
   const refuse = (detail: string, partnerValue?: string): ConnectionError =>
     refusal(participantId, what, detail, partnerValue);
@@ -334,13 +477,10 @@ export async function receiveMatchedListParts<T>(
       );
     const body = part.subarray(MATCHED_LIST_PART_HEADER_BYTES);
     if (body.byteLength === 0) throw refuse(`part ${index} has no body`);
-    let value: unknown;
-    try {
-      value = parseBoundedJson(body);
-    } catch {
-      throw refuse(`part ${index} is not a JSON message`);
-    }
-    const parsed = parsePart(value);
+    const parsed = readPart(body, {
+      remainingEntries: entries - filled,
+      refuse: (detail) => refuse(`part ${index} ${detail}`),
+    });
     if (parsed.entries === 0 && entries > 0)
       throw refuse(`part ${index} holds no entries`);
     if (parsed.entries > entries - filled)
@@ -355,47 +495,24 @@ export async function receiveMatchedListParts<T>(
 }
 
 /**
- * `parsePart` as the part parse {@link receiveMatchedListParts} takes, for a
- * list whose parts are plain JSON arrays.
+ * {@link receiveListParts} for a list whose parts are JSON: each body is
+ * parsed through {@link parseBoundedJson}, a body that is not JSON refused,
+ * and then validated by `parsePart`.
  */
-export function arrayPart<T>(
-  parsePart: (value: unknown) => Array<T>,
-): (value: unknown) => { readonly part: Array<T>; readonly entries: number } {
-  return (value) => {
-    const part = parsePart(value);
-    return { part, entries: part.length };
-  };
-}
-
-/**
- * Receives a list sent as a plain JSON array by {@link sendMatchedList} over
- * {@link arraySource}: {@link receiveMatchedListParts}, each part validated by
- * `parsePart`, the parts joined in order.
- */
-export async function receiveMatchedArray<T>(
+export async function receiveMatchedListParts<T>(
   conn: MessageConnection,
   participantId: string,
   what: string,
   bound: MatchedListBound,
-  parsePart: (value: unknown) => Array<T>,
+  parsePart: (value: unknown) => { readonly part: T; readonly entries: number },
 ): Promise<Array<T>> {
-  return joinMatchedArrayParts(
-    await receiveMatchedListParts(
-      conn,
-      participantId,
-      what,
-      bound,
-      arrayPart(parsePart),
-    ),
-  );
-}
-
-/** Joins a plain JSON array's parsed parts, in order. */
-export function joinMatchedArrayParts<T>(
-  parts: ReadonlyArray<Array<T>>,
-): Array<T> {
-  if (parts.length === 1) return parts[0];
-  const joined: Array<T> = [];
-  for (const part of parts) for (const entry of part) joined.push(entry);
-  return joined;
+  return receiveListParts(conn, participantId, what, bound, (body, part) => {
+    let value: unknown;
+    try {
+      value = parseBoundedJson(body);
+    } catch {
+      throw part.refuse("is not a JSON message");
+    }
+    return parsePart(value);
+  });
 }

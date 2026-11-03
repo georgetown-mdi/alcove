@@ -1,123 +1,123 @@
 // A cascade round's two position-naming frames -- the receiver's association
 // table and the sender's original-index list -- are sent as matched-record
-// lists in parts (matchedListParts.ts): each index list is one list, and a
-// round that states groupings sends the grouping as one more list after them.
-// A grouping the sender omits is a list of no entries whose one part holds
-// `null`, so the receiver tells it apart from a present, empty grouping
-// (docs/spec/PROTOCOL.md, "A list of matched records is sent in parts").
-import { parseOrProtocolError } from "../connection/messageConnection";
-import { singleIssueArray } from "../utils/singleIssueArray";
+// lists in parts (matchedListParts.ts) of 32-bit words (uint32ListParts.ts):
+// each index list is one list, and a round that states groupings sends the
+// grouping as one more list after them. A grouping the sender omits is a list
+// of no entries in a layout of its own, so the receiver tells it apart from a
+// present, empty grouping (docs/spec/PROTOCOL.md, "A list of matched records
+// is sent in parts").
 import {
   MATCHED_LIST_PART_HEADER_BYTES,
-  arraySource,
-  receiveMatchedArray,
-  receiveMatchedListParts,
+  WORD_LIST_BODY_PREFIX_BYTES,
   sendMatchedList,
-  utf8Length,
+  sendMatchedListWithin,
 } from "./matchedListParts";
 import { statedFrameBound } from "./psiSetParts";
+import {
+  INDEX_LIST_LAYOUT,
+  OMITTED_GROUPING_LAYOUT,
+  OWNER_LISTS_LAYOUT,
+  RUN_LENGTHS_LAYOUT,
+  receiveWordList,
+  wordListEntryBytes,
+  wordListSource,
+} from "./uint32ListParts";
 
 import type { MessageConnection } from "../connection/messageConnection";
-import type { MatchedListBound, MatchedListSource } from "./matchedListParts";
+import type { MatchedListBound, WordListSource } from "./matchedListParts";
 import type { RoundGroupingBounds, RoundGroupingField } from "./roundGrouping";
-
-// Validated in one pass for the reason every linkage-frame array is
-// (utils/singleIssueArray.ts): a partner-controlled element count in the
-// millions accumulates one issue rather than one per entry. Number.isFinite
-// mirrors `z.number()` exactly.
-/** @internal exported for the part-schema tests. */
-export const numberArrayMessage = singleIssueArray<number>(
-  Number.isFinite,
-  "must be an array of finite numbers",
-);
-
-// The grouping holds either run lengths or an owner list per matched
-// position; which of the two a party is required to have sent follows the
-// resolved cardinality both parties hold, so the schema bounds the structure
-// alone and roundGrouping.ts decides the form. A nested entry is checked by
-// the same predicate and never recurses, so a deeply nested part is one
-// rejection too.
-/** @internal exported for the part-schema tests. */
-export const roundGroupingElement = singleIssueArray<number | Array<number>>(
-  (value) =>
-    Number.isFinite(value) ||
-    (Array.isArray(value) && value.every(Number.isFinite)),
-  "must be an array of finite numbers or of arrays of finite numbers",
-);
-
-/**
- * The most UTF-8 bytes one entry of an index list adds to a part's body, its
- * separator included, when every entry is a whole number below
- * `exclusiveBound`; `undefined` where the bound is not finite.
- *
- * @internal
- */
-export function roundIndexEntryBytes(
-  exclusiveBound: number,
-): number | undefined {
-  if (!Number.isFinite(exclusiveBound)) return undefined;
-  return String(Math.max(0, exclusiveBound - 1)).length + 1;
-}
 
 /** Sends one index list of a round's position-naming frame, in parts. */
 export async function sendRoundIndexList(
   conn: MessageConnection,
-  indices: ReadonlyArray<number>,
+  indices: ArrayLike<number>,
 ): Promise<void> {
-  await sendMatchedList(conn, arraySource(indices));
+  await sendMatchedList(
+    conn,
+    wordListSource(INDEX_LIST_LAYOUT, {
+      entries: indices.length,
+      column: (_column, index) => indices[index],
+    }),
+  );
 }
 
 /**
  * Receives one index list sent by {@link sendRoundIndexList}, refusing a list
- * declaring more than `maxEntries` entries and a part longer than its
- * remaining entries can be when each is below `exclusiveBound`. The entries'
- * range itself is checked by the caller against local state.
+ * declaring more than `maxEntries` entries. The entries' range is checked by
+ * the caller against local state.
  */
 export async function receiveRoundIndexList(
   conn: MessageConnection,
   participantId: string,
   what: string,
   maxEntries: number,
-  exclusiveBound: number,
 ): Promise<Array<number>> {
-  return receiveMatchedArray(
+  const list = await receiveWordList(
     conn,
     participantId,
     what,
-    { entries: maxEntries, entryBytes: roundIndexEntryBytes(exclusiveBound) },
-    (value) => parseOrProtocolError(numberArrayMessage, value),
+    { entries: maxEntries, entryBytes: wordListEntryBytes(INDEX_LIST_LAYOUT) },
+    [INDEX_LIST_LAYOUT],
   );
+  return Array.from(list.columns[0]);
 }
 
-function groupingSource(
+/** @internal exported for the part tests, which send a grouping in many parts. */
+export function roundGroupingSource(
   field: RoundGroupingField | undefined,
-): MatchedListSource {
+): WordListSource {
   if (field === undefined)
-    return { entries: 0, entryBytes: () => 0, body: () => null };
-  return {
-    entries: field.length,
-    entryBytes: (index) => utf8Length(JSON.stringify(field[index])) + 1,
-    body: (start, end) => field.slice(start, end),
-  };
+    return wordListSource(OMITTED_GROUPING_LAYOUT, {
+      entries: 0,
+      column: () => 0,
+    });
+  if (field.form === "run-lengths") {
+    const { runLengths } = field;
+    return wordListSource(RUN_LENGTHS_LAYOUT, {
+      entries: runLengths.length,
+      column: (_column, index) => runLengths[index],
+    });
+  }
+  const { ownerCounts, owners } = field;
+  const from = new Float64Array(ownerCounts.length);
+  for (let t = 1; t < ownerCounts.length; t++)
+    from[t] = from[t - 1] + ownerCounts[t - 1];
+  return wordListSource(OWNER_LISTS_LAYOUT, {
+    entries: ownerCounts.length,
+    column: () => 0,
+    ragged: (index) =>
+      Array.prototype.slice.call(
+        owners,
+        from[index],
+        from[index] + ownerCounts[index],
+      ) as Array<number>,
+  });
 }
 
 /**
  * Sends a round's grouping after the index lists it describes, in parts; an
- * omitted grouping is one part holding `null`.
+ * omitted grouping is one part of no entries. A grouping whose parts total
+ * more than the connection's stated frame bound, which the receiver holds it
+ * to, sends no part: the partner is sent an abort and a `UsageError` naming
+ * `participantId` is thrown.
  */
 export async function sendRoundGrouping(
   conn: MessageConnection,
+  participantId: string,
   field: RoundGroupingField | undefined,
 ): Promise<void> {
-  await sendMatchedList(conn, groupingSource(field));
+  await sendMatchedListWithin(
+    conn,
+    roundGroupingSource(field),
+    statedFrameBound(conn),
+    `${participantId}: This exchange found more matches than it can send.`,
+  );
 }
 
-// A part's header and its body's brackets, charged for each part the list
-// declares; the receiver holds that count to one part per entry.
-const GROUPING_PART_OVERHEAD_BYTES = MATCHED_LIST_PART_HEADER_BYTES + 2;
-
-// The one part an omitted grouping sends: its header and `null`.
-const OMITTED_GROUPING_PART_BYTES = MATCHED_LIST_PART_HEADER_BYTES + 4;
+// A part's header and its body's layout tag and entry count, charged for each
+// part the list declares; the receiver holds that count to one part per entry.
+const GROUPING_PART_OVERHEAD_BYTES =
+  MATCHED_LIST_PART_HEADER_BYTES + WORD_LIST_BODY_PREFIX_BYTES;
 
 /** What a received grouping's size is derived from, all of it locally held. */
 export type RoundGroupingSizeBounds = Pick<
@@ -128,14 +128,13 @@ export type RoundGroupingSizeBounds = Pick<
 /**
  * What this party admits of a partner's grouping over `matchedPositions`
  * positions: at most that many entries, and bodies no longer than the longest
- * grouping `readPartnerRoundGrouping` accepts. Run lengths: one per record,
- * at most `min(matchedPositions, partnerRecordCount)`, each at most
- * `min(maxPositionsPerRecord, matchedPositions)`. Owner lists: one per
- * position, holding ordinals below `partnerRecordCount`, each ordinal on at
- * most `maxPositionsPerRecord` lists and on each list once. Each part the
- * list declares adds its header and brackets. Every byte of every part counts
- * against the total, which is at most `frameBound`, the bound a grouping was
- * held to in one frame, and at least the one part of an omitted grouping.
+ * grouping `readPartnerRoundGrouping` accepts. Run lengths: one word per
+ * record, at most `min(matchedPositions, partnerRecordCount)`. Owner lists: a
+ * count word per position and an ordinal word per owner, each ordinal on at
+ * most `maxPositionsPerRecord` lists. Each part the list declares adds its
+ * header, layout tag and entry count. Every byte of every part counts against
+ * the total, which is at most `frameBound`, the bound a grouping was held to
+ * in one frame, and at least the one part of an omitted grouping.
  *
  * @internal
  */
@@ -151,19 +150,15 @@ export function roundGroupingBound(
       partnerRecordCount * maxPositionsPerRecord,
       partnerRecordCount * matchedPositions,
     );
-    entryBytes =
-      2 * matchedPositions +
-      ordinals * (roundIndexEntryBytes(partnerRecordCount) ?? 0);
+    entryBytes = 4 * matchedPositions + 4 * ordinals;
   } else {
-    const runs = Math.min(matchedPositions, partnerRecordCount);
-    const longestRun = Math.min(maxPositionsPerRecord, matchedPositions);
-    entryBytes = runs * (roundIndexEntryBytes(longestRun + 1) ?? 0);
+    entryBytes = 4 * Math.min(matchedPositions, partnerRecordCount);
   }
   return {
     entries: matchedPositions,
     listBytes: (declaredParts) =>
       Math.max(
-        OMITTED_GROUPING_PART_BYTES,
+        GROUPING_PART_OVERHEAD_BYTES,
         Math.min(
           entryBytes + GROUPING_PART_OVERHEAD_BYTES * declaredParts,
           frameBound,
@@ -178,7 +173,7 @@ export function roundGroupingBound(
  * more entries than `matchedPositions` is refused at its first part, and a
  * part past the bytes {@link roundGroupingBound} admits, every part's header
  * included and at most the connection's stated frame bound in all, before
- * its body is parsed.
+ * its body is read.
  */
 export async function receiveRoundGrouping(
   conn: MessageConnection,
@@ -187,20 +182,19 @@ export async function receiveRoundGrouping(
   matchedPositions: number,
   bounds: RoundGroupingSizeBounds,
 ): Promise<RoundGroupingField | undefined> {
-  const parts = await receiveMatchedListParts(
+  const list = await receiveWordList(
     conn,
     participantId,
     what,
     roundGroupingBound(matchedPositions, bounds, statedFrameBound(conn)),
-    (value) => {
-      if (value === null) return { part: null, entries: 0 };
-      const part = parseOrProtocolError(roundGroupingElement, value);
-      return { part, entries: part.length };
-    },
+    [OMITTED_GROUPING_LAYOUT, RUN_LENGTHS_LAYOUT, OWNER_LISTS_LAYOUT],
   );
-  if (parts.length === 1) return parts[0] ?? undefined;
-  const joined: Array<number | Array<number>> = [];
-  for (const part of parts)
-    if (part !== null) for (const entry of part) joined.push(entry);
-  return joined;
+  if (list.layout === OMITTED_GROUPING_LAYOUT) return undefined;
+  if (list.layout === RUN_LENGTHS_LAYOUT)
+    return { form: "run-lengths", runLengths: list.columns[0] };
+  return {
+    form: "owner-lists",
+    ownerCounts: list.counts,
+    owners: list.values,
+  };
 }

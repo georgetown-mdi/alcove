@@ -185,69 +185,21 @@ interface RecordShape {
   };
 }
 
-/** The index a shape packs for its `i`th record, taken from the top of the
- * ceiling's range so it packs to the width it has in the ceiling frame. An index
- * sampled from the bottom of the range packs two bytes where the ceiling frame
- * spends five, and a slope taken from it understates the ceiling frame's wire
- * bytes by a third. The ceiling frame's own first 65,536 indices are narrower
- * than these, under half a percent of its wire bytes. */
-function ceilingScaleIndex(records: number, i: number): number {
-  return MAX_SINGLE_PASS_CELLS - records + i;
-}
-
 /** Wire bytes per declared element each shape keeps at the ceiling, at least,
  * against the one element per byte the cumulative element rule refuses at.
- * docs/spec/TRANSPORT_BOUNDS.md states this margin; the narrowest of the three
- * shapes below measures 3.5. */
+ * docs/spec/TRANSPORT_BOUNDS.md states this margin. */
 const MIN_CEILING_HEADROOM = 3;
 
-/** The three largest legitimate non-binary shapes Alcove puts on the data channel,
- * built per record with the real packer under a hand-written array32 header so a
- * record count too large for `pack`'s per-element recursion still assembles. */
+/** The shape every frame after the key exchange takes on the data channel:
+ * the AEAD envelope, packed by the real packer as one `bin`, here at the size
+ * of the single-pass ceiling's resolved table, two 4-byte rows a record. The
+ * matched-record lists and the payload rows go inside it in binary parts. */
 const RECORD_SHAPES: Array<RecordShape> = [
   {
-    label: "a mapped-element frame",
+    label: "an AEAD envelope",
     build: (records) => ({
-      frame: concatBytes([
-        array32Header(records),
-        ...Array.from({ length: records }, (_, i) =>
-          packSync({
-            theirIndex: ceilingScaleIndex(records, i),
-            iteration: i % 3,
-          }),
-        ),
-      ]),
-      // The outer array's element per record, plus the two key/value pairs of
-      // each record's fixmap.
-      declaredElements: records * 5,
-    }),
-  },
-  {
-    label: "a payload frame's rows",
-    build: (records) => ({
-      frame: concatBytes([
-        array32Header(records),
-        ...Array.from({ length: records }, () => packSync(["20001"])),
-      ]),
-      declaredElements: records * 2,
-    }),
-  },
-  {
-    // `[localIndices, partnerIndices]`, the paired index arrays the exchange
-    // sends: a two-element outer array over one declared element per index in
-    // each half.
-    label: "an association table",
-    build: (records) => ({
-      frame: concatBytes([
-        new Uint8Array([0x92]),
-        ...[0, 1].flatMap(() => [
-          array32Header(records),
-          ...Array.from({ length: records }, (_, i) =>
-            packSync(ceilingScaleIndex(records, i)),
-          ),
-        ]),
-      ]),
-      declaredElements: 2 + records * 2,
+      frame: packSync(new Uint8Array(8 * records)),
+      declaredElements: 1,
     }),
   },
 ];
@@ -279,15 +231,20 @@ describe("scanFrameStructure: the cumulative element rule", () => {
 
   test("admits the largest legitimate shapes at the single-pass ceiling", () => {
     // Both quantities are affine in the record count, so two builds fix each
-    // shape's per-record slope and the ceiling frame follows from them. The
-    // declared count per record is exact, and so is the wire slope: each sample
-    // frame packs its indices at the width the ceiling frame packs them.
+    // shape's per-record slope and the ceiling frame follows from them.
     const small = 1_000;
     const large = 3_000;
     for (const { label, build } of RECORD_SHAPES) {
       const at = { small: build(small), large: build(large) };
       expect(scan(at.small.frame), `${label} was refused`).toBeUndefined();
       expect(scan(at.large.frame), `${label} was refused`).toBeUndefined();
+      const decoded: unknown = unpack<Unpackable>(
+        at.small.frame as unknown as ArrayBuffer,
+      );
+      expect(decoded, `${label} is not one binary value`).toBeInstanceOf(
+        Uint8Array,
+      );
+      expect((decoded as Uint8Array).byteLength).toBe(8 * small);
 
       const span = large - small;
       const elementsPerRecord =

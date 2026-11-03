@@ -80,26 +80,20 @@ function recording(conn: EncryptedMessageConnection): {
 
 /**
  * The header of each first part of a list of positions alone among `sent`:
- * a matched-record list part whose JSON body is an array of numbers.
+ * a matched-record list part whose body is a word list of layout tag 1, a
+ * round's index list (docs/spec/PROTOCOL.md, The part body).
  */
 function indexListHeaders(
   sent: Array<unknown>,
 ): Array<{ count: number; entries: number }> {
   const headers: Array<{ count: number; entries: number }> = [];
   for (const frame of sent) {
-    if (!(frame instanceof Uint8Array) || frame.byteLength <= 16) continue;
-    const view = new DataView(frame.buffer, frame.byteOffset, 16);
-    let body: unknown;
-    try {
-      body = JSON.parse(new TextDecoder().decode(frame.subarray(16)));
-    } catch {
-      continue;
-    }
+    if (!(frame instanceof Uint8Array) || frame.byteLength < 24) continue;
+    const view = new DataView(frame.buffer, frame.byteOffset, 24);
     if (
       view.getUint32(0) === 0 &&
-      Array.isArray(body) &&
-      body.length > 0 &&
-      body.every((entry) => typeof entry === "number")
+      view.getUint32(16, true) === INDEX_LIST_TAG &&
+      view.getUint32(20, true) > 0
     )
       headers.push({
         count: view.getUint32(4),
@@ -108,6 +102,9 @@ function indexListHeaders(
   }
   return headers;
 }
+
+/** The layout tag a round's index list part's body opens with. */
+const INDEX_LIST_TAG = 1;
 
 const keys = (prefix: string, from: number): Array<string> =>
   Array.from({ length: RECORDS }, (_, i) => `${prefix}-${from + i}`);

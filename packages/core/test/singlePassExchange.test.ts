@@ -33,6 +33,12 @@ import {
   prepared,
   withSentNote,
 } from "./utils/support";
+import { readPartFrame } from "./utils/matchedListPartFrames";
+import { RESOLVED_TABLE_LAYOUT } from "../src/psi/uint32ListParts";
+
+// Single-pass message 3, the resolved table a helper is or is not sent.
+const isResolvedTable = (frame: unknown): boolean =>
+  readPartFrame(frame)?.layout === RESOLVED_TABLE_LAYOUT;
 
 // Integration coverage of the linkageStrategy dispatch in runExchange: a
 // single-pass exchange must flow through the full path -- role resolution, the
@@ -439,7 +445,7 @@ test("single-pass one-sided, no-payload helper is blinded: table withheld, no ha
 
   // The blindness: no association-table frame ever reached the helper's process, and
   // the exchange completed without hanging (Promise.all resolved).
-  expect(helperInbound.some((f) => Array.isArray(f))).toBe(false);
+  expect(helperInbound.some(isResolvedTable)).toBe(false);
 });
 
 test("single-pass blind helper stays blind and hang-free with the helper as initiator", async () => {
@@ -456,7 +462,7 @@ test("single-pass blind helper stays blind and hang-free with the helper as init
   expect(helper.resolvedRole).toBe("sender");
   expect(receiver.associationTable?.[0]).toHaveLength(2);
   expect(helper.associationTable).toBeUndefined();
-  expect(helperInbound.some((f) => Array.isArray(f))).toBe(false);
+  expect(helperInbound.some(isResolvedTable)).toBe(false);
 });
 
 test("single-pass one-sided, payload-disclosing helper still receives its table at the wire", async () => {
@@ -476,7 +482,7 @@ test("single-pass one-sided, payload-disclosing helper still receives its table 
   expect(receiver.partnerPayload.columns).toEqual(["note"]);
   // ...which is only possible because the helper received its association-table half:
   // the table frame (the only Array-shaped frame) DID reach the helper's process.
-  expect(helperInbound.some((f) => Array.isArray(f))).toBe(true);
+  expect(helperInbound.some(isResolvedTable)).toBe(true);
 });
 
 test("withheld-shaped agreed terms outrank an advertised disclosure", async () => {
@@ -496,7 +502,7 @@ test("withheld-shaped agreed terms outrank an advertised disclosure", async () =
   expect(receiver.resolvedRole).toBe("receiver");
   expect(helper.resolvedRole).toBe("sender");
   expect(receiver.associationTable?.[0]).toHaveLength(2);
-  expect(helperInbound.some((f) => Array.isArray(f))).toBe(false);
+  expect(helperInbound.some(isResolvedTable)).toBe(false);
 });
 
 test("disclosing agreed terms still deliver the helper its half", async () => {
@@ -513,7 +519,7 @@ test("disclosing agreed terms still deliver the helper its half", async () => {
 
   expect(helper.resolvedRole).toBe("sender");
   expect(receiver.partnerPayload.columns).toEqual(["note"]);
-  expect(helperInbound.some((f) => Array.isArray(f))).toBe(true);
+  expect(helperInbound.some(isResolvedTable)).toBe(true);
 });
 
 test("a withheld-shaped payload.send outranks the flag on a lazy receiver", async () => {
@@ -532,7 +538,7 @@ test("a withheld-shaped payload.send outranks the flag on a lazy receiver", asyn
   expect(receiver.resolvedRole).toBe("receiver");
   expect(helper.resolvedRole).toBe("sender");
   expect(receiver.associationTable?.[0]).toHaveLength(2);
-  expect(helperInbound.some((f) => Array.isArray(f))).toBe(false);
+  expect(helperInbound.some(isResolvedTable)).toBe(false);
 });
 
 test("a disclosure an empty receive list contradicts is refused at the terms exchange", async () => {
@@ -555,7 +561,7 @@ test("a disclosure an empty receive list contradicts is refused at the terms exc
     (outcome) => ((outcome as PromiseRejectedResult).reason as Error).message,
   );
   expect(reasons.some((m) => m.includes("empty payload.receive"))).toBe(true);
-  expect(helperInbound.some((f) => Array.isArray(f))).toBe(false);
+  expect(helperInbound.some(isResolvedTable)).toBe(false);
 });
 
 test("an asserted disclosure against terms stating no send set is refused", async () => {
@@ -578,7 +584,7 @@ test("an asserted disclosure against terms stating no send set is refused", asyn
   expect(reason).toBeInstanceOf(PayloadDisclosureDivergenceError);
   expect(reason.message).toContain("empty payload.receive");
   expect(reason.message).toContain("is set to send payload columns");
-  expect(helperInbound.some((f) => Array.isArray(f))).toBe(false);
+  expect(helperInbound.some(isResolvedTable)).toBe(false);
 });
 
 test("a helper owed no result may declare an empty payload.receive", async () => {
@@ -606,7 +612,7 @@ test("a helper owed no result may declare an empty payload.receive", async () =>
     // Under single-pass the helper still receives its association-table half,
     // which is what building the payload above takes.
     if (strategy === "single-pass")
-      expect(helperInbound.some((f) => Array.isArray(f))).toBe(true);
+      expect(helperInbound.some(isResolvedTable)).toBe(true);
   }
 });
 
@@ -628,7 +634,7 @@ test("the mirrored declaration on the party owed the result still refuses", asyn
   for (const outcome of [helper, receiver])
     expect(outcome.status).toBe("rejected");
   for (const inbound of [helperInbound, receiverInbound]) {
-    expect(inbound.some((f) => Array.isArray(f))).toBe(false);
+    expect(inbound.some(isResolvedTable)).toBe(false);
     expect(
       inbound.some(
         (f) => typeof f === "object" && f !== null && "hasData" in f,
@@ -674,7 +680,7 @@ test("a one-sided divergence refusal aborts the party still waiting", async () =
   // Neither the association table (the only Array-shaped frame) nor a payload
   // frame moved in either direction before the refusal.
   for (const inbound of [helperInbound, receiverInbound]) {
-    expect(inbound.some((f) => Array.isArray(f))).toBe(false);
+    expect(inbound.some(isResolvedTable)).toBe(false);
     expect(
       inbound.some(
         (f) => typeof f === "object" && f !== null && "hasData" in f,
