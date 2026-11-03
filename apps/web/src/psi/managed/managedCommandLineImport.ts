@@ -371,9 +371,10 @@ function ownRelayBesideRegistrar(
   });
   if (!ownRelay.success)
     throw new ManagedConfigurationRefusedError(
-      `This app keeps at most ${MAX_RELAY_URLS} connection.turn urls beside ` +
-        `a relay registrar, each at most ${MAX_RELAY_URL_LENGTH} characters ` +
-        "long. Shorten the list in this configuration, then import it again.",
+      `This app keeps at most ${MAX_RELAY_URLS} TURN servers from a ` +
+        `configuration, each url at most ${MAX_RELAY_URL_LENGTH} characters ` +
+        "long. Shorten the turn list in this configuration, then import it " +
+        "again.",
     );
   return ownRelay.data;
 }

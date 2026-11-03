@@ -60,7 +60,8 @@ export const RELAY_OPERATOR_DISCLOSURE =
  */
 export const DEFAULT_RELAY_SWITCH_DESCRIPTION =
   "This setting applies to the exchanges this browser runs and the " +
-  "invitations you create. When it is on, those exchanges use the site's " +
+  "invitations you create, except saved exchanges, which use their own " +
+  "Connection settings. When it is on, those exchanges use the site's " +
   "relay server, unless an exchange's allowed relays leave it out, and " +
   "those invitations name it so your partner can use it too. When it is " +
   "off, this browser uses it only where an invitation you accept names it, " +
@@ -92,8 +93,8 @@ export const RELAY_PAGE_INTRO =
 export const RELAY_PAGE_INFO =
   "If you run the relay, create the invitation so your partner uses it too. " +
   `${RELAY_OPERATOR_DISCLOSURE} The allowed relays an exchange sets on its ` +
-  "review, or a saved exchange on its own page, can leave out any of the " +
-  "relays saved here.";
+  "review can leave out any of the relays saved here. A saved exchange " +
+  "uses its own Connection settings instead, on its page.";
 
 /**
  * What the relay must hold for each run's credential, behind the TURN field's
@@ -123,10 +124,11 @@ export const STUN_FIELD_DESCRIPTION =
 export const STUN_FIELD_INFO =
   "A STUN server finds each browser's public network address, so it learns " +
   "the network address of each party that uses it. The servers you enter " +
-  "replace the default, Google's public STUN server, in every exchange this " +
-  "browser runs, and invitations you create name them, so your partner " +
-  "contacts them in place of the default too. Servers an invitation you " +
-  "accept names are contacted as well, and also replace the default.";
+  "replace the default, Google's public STUN server, in the exchanges this " +
+  "browser runs, except saved exchanges, which use their own Connection " +
+  "settings. Invitations you create name them, so your partner contacts " +
+  "them in place of the default too. Servers an invitation you accept names " +
+  "are contacted as well, and also replace the default.";
 
 /** The WebSocket relay field's description. */
 export const WEBSOCKET_RELAY_FIELD_DESCRIPTION =

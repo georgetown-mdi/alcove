@@ -345,6 +345,23 @@ describe("saved list route: the always-list surface", () => {
     expect((await quick.element()).getAttribute("href")).toBe("/quick");
   });
 
+  test("the can't-connect pointer sends a saved exchange to its Connection settings", async () => {
+    await createRunnableExchange(newExchange());
+
+    app.render(createElement(SavedExchanges));
+
+    await expect
+      .element(
+        page.getByText(
+          "If you can't connect to your partner, your IT team can give you " +
+            "a relay server address. For a saved exchange, enter it under " +
+            "Connection settings on its page. For a new exchange, enter it " +
+            "in relay settings.",
+        ),
+      )
+      .toBeInTheDocument();
+  });
+
   test("a populated list offers a create entry into the invite/configure flow and an accept entry", async () => {
     await createRunnableExchange(newExchange());
 

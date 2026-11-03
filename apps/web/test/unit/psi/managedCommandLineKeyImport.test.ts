@@ -1201,9 +1201,9 @@ describe("the relay key registration across the command-line files", () => {
     const error = thrownBy(() => readManagedCommandLinePair(edited, key));
     expect(error).toBeInstanceOf(ManagedConfigurationRefusedError);
     expect((error as Error).message).toBe(
-      "This app keeps at most 8 connection.turn urls beside a relay " +
-        "registrar, each at most 1024 characters long. Shorten the list in " +
-        "this configuration, then import it again.",
+      "This app keeps at most 8 TURN servers from a configuration, each url " +
+        "at most 1024 characters long. Shorten the turn list in this " +
+        "configuration, then import it again.",
     );
   });
 

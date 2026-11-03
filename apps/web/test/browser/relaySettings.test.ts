@@ -178,9 +178,10 @@ describe("RelaySettingsScreen", () => {
     expect(STUN_FIELD_INFO).toBe(
       "A STUN server finds each browser's public network address, so it " +
         "learns the network address of each party that uses it. The servers " +
-        "you enter replace the default, Google's public STUN server, in " +
-        "every exchange this browser runs, and invitations you create name " +
-        "them, so your partner contacts them in place of the default too. " +
+        "you enter replace the default, Google's public STUN server, in the " +
+        "exchanges this browser runs, except saved exchanges, which use " +
+        "their own Connection settings. Invitations you create name them, " +
+        "so your partner contacts them in place of the default too. " +
         "Servers an invitation you accept names are contacted as well, and " +
         "also replace the default.",
     );
@@ -355,11 +356,9 @@ describe("RelaySettingsScreen: the coordination server", () => {
         "coordination server. It learns the network address of each party " +
         "that uses it, and none of your data. Invitations you create name " +
         "this site's coordination server unless you set your own here. " +
-        "Invitations you already sent, saved exchanges, and invitations you " +
-        "accept keep the server they name, until you re-invite your partner " +
-        "from a saved exchange you created, which then names the server set " +
-        "here. If this browser cannot read the server set here, a re-invite " +
-        "names the server that exchange already uses.",
+        "Invitations you already sent and invitations you accept keep the " +
+        "server they name. A saved exchange uses the server in its own " +
+        "Connection settings, on its page.",
     );
     expect(coordinationServerFieldDescription(scheme)).toBe(
       `For example: ${scheme}://signaling.example.org/api/`,
@@ -437,15 +436,14 @@ describe("RelaySettingsScreen: the coordination server", () => {
       name: "The saved coordination server could not be read",
     });
 
-  test("a stored value this page cannot read says invitations name the site's server and a re-invite the exchange's own", async () => {
+  test("a stored value this page cannot read says invitations name the site's server", async () => {
     window.localStorage.setItem("alcove-own-coordination-server", "{not json");
     await mountScreen();
 
     expect(COORDINATION_SERVER_UNREADABLE).toBe(
       "Until you set yours again, invitations you create name this site's " +
-        "coordination server, and a re-invite from a saved exchange names " +
-        "the server that exchange already uses. Enter its address and " +
-        "choose Set coordination server.",
+        "coordination server. Enter its address and choose Set " +
+        "coordination server.",
     );
     await expect.element(unreadableAlert()).toBeVisible();
     expect(unreadableAlert().element().textContent).toContain(
@@ -491,8 +489,9 @@ describe("RelaySettingsScreen: the relays an exchange may use are its own", () =
         .query(),
     ).toBeNull();
     expect(RELAY_PAGE_INFO).toContain(
-      "The allowed relays an exchange sets on its review, or a saved " +
-        "exchange on its own page, can leave out any of the relays saved here.",
+      "The allowed relays an exchange sets on its review can leave out any " +
+        "of the relays saved here. A saved exchange uses its own Connection " +
+        "settings instead, on its page.",
     );
     await openInfo("About relays", RELAY_PAGE_INFO);
     expect(document.body.textContent).not.toContain(
@@ -809,7 +808,8 @@ describe("the switch for a site relay offered switched off", () => {
   test("its description says what it covers and that a partner can still bring the relay in", () => {
     expect(DEFAULT_RELAY_SWITCH_DESCRIPTION).toBe(
       "This setting applies to the exchanges this browser runs and the " +
-        "invitations you create. When it is on, those exchanges use the " +
+        "invitations you create, except saved exchanges, which use their " +
+        "own Connection settings. When it is on, those exchanges use the " +
         "site's relay server, unless an exchange's allowed relays leave it " +
         "out, and those invitations name it so your partner can use it too. " +
         "When it is off, this browser uses it only where an invitation you " +

@@ -21,11 +21,9 @@ export const COORDINATION_SERVER_INFO =
   "Your browser and your partner's find each other through a coordination " +
   "server. It learns the network address of each party that uses it, and " +
   "none of your data. Invitations you create name this site's coordination " +
-  "server unless you set your own here. Invitations you already sent, saved " +
-  "exchanges, and invitations you accept keep the server they name, until " +
-  "you re-invite your partner from a saved exchange you created, which then " +
-  "names the server set here. If this browser cannot read the server set " +
-  "here, a re-invite names the server that exchange already uses.";
+  "server unless you set your own here. Invitations you already sent and " +
+  "invitations you accept keep the server they name. A saved exchange uses " +
+  "the server in its own Connection settings, on its page.";
 
 /** The address field's description, its example in the scheme `scheme`. */
 export function coordinationServerFieldDescription(
@@ -53,9 +51,8 @@ export const COORDINATION_SERVER_NOT_SAVED =
  * Set or Clear replaces it. */
 export const COORDINATION_SERVER_UNREADABLE =
   "Until you set yours again, invitations you create name this site's " +
-  "coordination server, and a re-invite from a saved exchange names the " +
-  "server that exchange already uses. Enter its address and choose Set " +
-  "coordination server.";
+  "coordination server. Enter its address and choose Set coordination " +
+  "server.";
 
 /** What Review & create says where the stored setting cannot be read, before
  * the invitation is created. */

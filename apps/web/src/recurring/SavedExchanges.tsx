@@ -317,7 +317,8 @@ function SavedExchangesList({
       </p>
       <p className={`${styles.sub} ${styles.small}`}>
         If you can&apos;t connect to your partner, your IT team can give you a
-        relay server address to enter in{" "}
+        relay server address. For a saved exchange, enter it under Connection
+        settings on its page. For a new exchange, enter it in{" "}
         <Anchor inherit component={Link} to="/relay">
           relay settings
         </Anchor>
