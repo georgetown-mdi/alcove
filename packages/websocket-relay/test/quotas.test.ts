@@ -158,16 +158,22 @@ describe("the concurrent-pairing cap", () => {
 
 describe("the cap and a pairing's close wait", () => {
   it("counts a pairing until the socket that ignores the relay's close has closed", async () => {
+    // After a stall of the process, an expired timer runs before the socket
+    // reads queued behind it, so the first hello's refusal is awaited for the
+    // whole close wait: only a stall near that length can fail it.
+    const closeWaitMs = 1000;
     const { url } = await relay({
       keyTable: keyTableOf(manyExchanges(2)),
-      testing: { maxPairings: 1, closeWaitMs: 400 },
+      testing: { maxPairings: 1, closeWaitMs },
     });
     const { inviter, acceptor } = await pairUnder(url, 0);
     acceptor.socket.pause();
     inviter.socket.close(1000);
     await inviter.closed;
 
-    const tryHello = async (): Promise<number | undefined> => {
+    const tryHello = async (
+      answerWithinMs: number,
+    ): Promise<number | undefined> => {
       const hello = await connect(url);
       hello.send(
         await helloFrame({
@@ -179,15 +185,15 @@ describe("the cap and a pairing's close wait", () => {
       const outcome = await Promise.race([
         hello.closed.then((closed) => closed.code),
         new Promise<undefined>((resolve) =>
-          setTimeout(() => resolve(undefined), 100),
+          setTimeout(() => resolve(undefined), answerWithinMs),
         ),
       ]);
       return outcome;
     };
-    expect(await tryHello()).toBe(RelayCloseCode.relayFull);
+    expect(await tryHello(closeWaitMs)).toBe(RelayCloseCode.relayFull);
     expect(acceptor.socket.readyState).toBe(WebSocket.OPEN);
 
-    await eventually(async () => (await tryHello()) === undefined);
+    await eventually(async () => (await tryHello(100)) === undefined);
   });
 
   it("admits a new pairing under the key at once and closes the earlier pairing's stalled socket", async () => {

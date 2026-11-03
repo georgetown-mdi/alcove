@@ -18,6 +18,7 @@ import {
   Party,
   RELAY_KEY,
   connect,
+  connectInMemory,
   eventually,
   forwardingParties,
   helloFrame,
@@ -546,7 +547,7 @@ describe("sockets awaiting a hello", () => {
 describe("backpressure", () => {
   it("stops reading the source above the send-buffer bound and resumes below the lower one", async () => {
     const events: string[] = [];
-    const { url } = await relay({
+    const { url, server } = await relay({
       testing: {
         sendBufferHighBytes: 64 * 1024,
         sendBufferLowBytes: 16 * 1024,
@@ -557,10 +558,24 @@ describe("backpressure", () => {
         },
       },
     });
-    const { inviter, acceptor } = await forwardingParties(url);
+    // The stalled acceptor is opened in memory, so the relay's send buffer
+    // fills past the bound at once rather than after the loopback kernel
+    // buffers have taken megabytes.
+    const inviter = await connect(url);
+    const { party: acceptor } = await connectInMemory(server, url, {
+      recordServerWrites: false,
+    });
+    inviter.send(await helloFrame({ role: "inviter" }));
+    acceptor.send(await helloFrame({ role: "acceptor" }));
+    await inviter.receivedCount(1);
+    await acceptor.receivedCount(1);
+    inviter.send(START);
+    acceptor.send(START);
+    await inviter.receivedCount(2);
+    await acceptor.receivedCount(2);
     acceptor.socket.pause();
-    const messages = Array.from({ length: 1024 }, (_, index) =>
-      Buffer.alloc(16_000, index % 251),
+    const messages = Array.from({ length: 64 }, (_, index) =>
+      Buffer.alloc(16_000, index),
     );
     for (const message of messages) inviter.send(message);
     await eventually(() => events.includes("held inviter backpressure"));
