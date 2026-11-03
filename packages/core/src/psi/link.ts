@@ -2582,9 +2582,24 @@ export async function linkViaSinglePassPSI(
     `${participant.id}: ${result[0].length} match(es); returning sender's ` +
       `view`,
   );
-  await sendMatchedList(conn, resolvedTableSource(theirResult));
+  await sendResolvedTable(conn, theirResult);
   stage("done");
   return result;
+}
+
+// Sends message 3 only if the receiver's check of its parts, headers
+// included, against one frame's bound in all (receiveResolvedTable) would pass.
+/** @internal exported for the single-pass wire-message tests. */
+export async function sendResolvedTable(
+  conn: MessageConnection,
+  table: AssociationTable,
+): Promise<void> {
+  await sendMatchedList(
+    conn,
+    resolvedTableSource(table),
+    undefined,
+    statedFrameBound(conn),
+  );
 }
 
 // Single-pass message 3, the resolved table for the sender's side: per entry

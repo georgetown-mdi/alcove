@@ -4,7 +4,10 @@ import {
   createMessagePipe,
   type MessageConnection,
 } from "../../src/connection/messageConnection";
-import { MAX_FRAME_SIZE_BYTES } from "../../src/connection/frameSize";
+import {
+  MAX_FRAME_SIZE_BYTES,
+  MAX_PSI_DECODE_ELEMENTS,
+} from "../../src/connection/frameSize";
 import { MAX_WEBRTC_FRAME_BYTES } from "../../src/connection/binaryPackBounds";
 import { webrtcFrameExceedsBound } from "../../src/connection/webrtcOutboundBound";
 import { binaryPackByteStringLength } from "../../src/connection/webrtcOutboundBound";
@@ -413,6 +416,24 @@ test("a grouping's budget is the connection's frame bound at the largest declare
       1_000,
     ).listBytes?.(3),
   ).toBe(4 * 3 + 4 + 24 * 3);
+});
+
+test("no round's run lengths reach either frame bound", () => {
+  const widest = {
+    maxPositionsPerRecord: 1,
+    partnerRecordCount: MAX_PSI_DECODE_ELEMENTS,
+    ownerLists: false,
+  };
+  for (const frameBound of [MAX_WEBRTC_FRAME_BYTES, MAX_FRAME_SIZE_BYTES]) {
+    expect(4 * MAX_PSI_DECODE_ELEMENTS).toBeLessThan(frameBound);
+    expect(
+      roundGroupingBound(
+        MAX_PSI_DECODE_ELEMENTS,
+        widest,
+        frameBound,
+      ).listBytes?.(1),
+    ).toBeLessThan(frameBound);
+  }
 });
 
 test("a grouping over the frame bound in all its parts is refused, one just under it accepted", async () => {

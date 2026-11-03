@@ -12,6 +12,7 @@ import {
   mappedElementSource,
   receiveResolvedTable,
   resolvedTableSource,
+  sendResolvedTable,
   returnedElementSource,
   encodeInt32LE,
   decodeInt32LE,
@@ -831,6 +832,40 @@ test("the resolved table's parts are held, in all, to one frame's bound", async 
   expect((err as Error).message).toBe(
     "sender protocol error: inbound resolved association table part 1 is " +
       "over the 24 bytes this party admits for it",
+  );
+});
+
+test("the resolved table is sent only if its parts total within one frame's bound", async () => {
+  const sendAt64 = async (pairs: number) => {
+    const sent: Array<Uint8Array> = [];
+    const conn: MessageConnection = {
+      send: (data) => {
+        sent.push(data as Uint8Array);
+        return Promise.resolve();
+      },
+      receive: () => Promise.reject(new Error("unused")),
+      close: () => Promise.resolve(),
+      outboundWebRtcFrameBound: () => 64,
+    };
+    const column = Array.from({ length: pairs }, (_, k) => k);
+    const outcome = await sendResolvedTable(conn, [column, column]).then(
+      () => undefined,
+      (e: unknown) => e,
+    );
+    return { sent, outcome };
+  };
+  // A part of n pairs is 16 + 8 + 8n bytes, so four pairs fit in one part
+  // of 56 bytes; five need two parts of 88 bytes in all.
+  const fits = await sendAt64(4);
+  expect(fits.outcome).toBeUndefined();
+  expect(fits.sent).toHaveLength(1);
+  const over = await sendAt64(5);
+  expect(over.sent).toHaveLength(0);
+  expect(over.outcome).toBeInstanceOf(InternalConsistencyError);
+  expect(over.outcome).not.toBeInstanceOf(ConnectionError);
+  expect((over.outcome as Error).message).toBe(
+    "a matched-record list of 88 bytes is over the 64 bytes this party " +
+      "sends a list in",
   );
 });
 

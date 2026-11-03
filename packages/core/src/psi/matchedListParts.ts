@@ -11,7 +11,11 @@
 // entries can be is refused before its body is read. Each part's body is read
 // as the part arrives, so the receiver holds one unread part at a time
 // (docs/spec/PROTOCOL.md, "A list of matched records is sent in parts").
-import { ConnectionError, chainDetailCauses } from "../errors";
+import {
+  ConnectionError,
+  InternalConsistencyError,
+  chainDetailCauses,
+} from "../errors";
 import {
   MAX_JSON_ARRAY_ELEMENTS,
   parseBoundedJson,
@@ -195,6 +199,18 @@ function partStarts(
   return starts;
 }
 
+// The bytes of all `count` parts together: each part's header and body prefix,
+// and every entry once.
+function totalListBytes(
+  source: MatchedListSource | WordListSource,
+  count: number,
+): number {
+  let bytes = count * (MATCHED_LIST_PART_HEADER_BYTES + fixedBodyBytes(source));
+  for (let index = 0; index < source.entries; index++)
+    bytes += source.entryBytes(index);
+  return bytes;
+}
+
 /**
  * The frames that send `source` in parts whose bodies hold at most
  * `payloadBytes` bytes each, in order, built one at a time. An empty list is
@@ -203,6 +219,10 @@ function partStarts(
  * @param maxPartEntries - The most entries one part holds: for a JSON list
  *   {@link MAX_MATCHED_LIST_PART_ENTRIES} unless a test lowers it, and for a
  *   word list the most its uint32 entry count states.
+ * @param maxListBytes - The most bytes all the parts hold together, headers
+ *   included. A list over it throws an {@link InternalConsistencyError}
+ *   before the first part is yielded. A JSON list is measured by its entries'
+ *   longest lengths, so the figure it is held to is an upper bound.
  */
 export function* matchedListParts(
   source: MatchedListSource | WordListSource,
@@ -210,6 +230,7 @@ export function* matchedListParts(
   maxPartEntries: number = isWordListSource(source)
     ? MAX_WORD_LIST_PART_ENTRIES
     : MAX_MATCHED_LIST_PART_ENTRIES,
+  maxListBytes?: number,
 ): Generator<Uint8Array> {
   const starts = partStarts(source, payloadBytes, maxPartEntries);
   const count = starts.length + 1;
@@ -217,6 +238,14 @@ export function* matchedListParts(
     throw new Error(
       `a matched-record list of ${source.entries} entries needs ${count} parts`,
     );
+  if (maxListBytes !== undefined) {
+    const listBytes = totalListBytes(source, count);
+    if (listBytes > maxListBytes)
+      throw new InternalConsistencyError(
+        `a matched-record list of ${listBytes} bytes is over the ` +
+          `${maxListBytes} bytes this party sends a list in`,
+      );
+  }
   for (let index = 0; index < count; index++) {
     const start = index === 0 ? 0 : starts[index - 1];
     const end = index === count - 1 ? source.entries : starts[index];
@@ -275,14 +304,21 @@ function wordListPart(
 /**
  * Sends `source` on `conn` in parts sized by {@link psiSetPartPayloadBytes},
  * the bound one part of a PSI set is sized to. `onPartSent` runs after each
- * part's send resolves.
+ * part's send resolves. A list over `maxListBytes` sends no part
+ * ({@link matchedListParts}).
  */
 export async function sendMatchedList(
   conn: MessageConnection,
   source: MatchedListSource | WordListSource,
   onPartSent?: () => void,
+  maxListBytes?: number,
 ): Promise<void> {
-  for (const part of matchedListParts(source, psiSetPartPayloadBytes(conn))) {
+  for (const part of matchedListParts(
+    source,
+    psiSetPartPayloadBytes(conn),
+    undefined,
+    maxListBytes,
+  )) {
     await conn.send(part);
     onPartSent?.();
   }
