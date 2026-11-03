@@ -46,10 +46,13 @@ divergence shows as a quietly smaller intersection rather than an error.
 Three consequences follow, and they are what make these pipelines a protocol
 surface rather than a local formatting choice.
 
-- **A change to any step sequence in this document is wire-affecting.** Both
-  parties must run releases with the same sequence. Changing one is a
-  breaking protocol change even though no wire format moves.
-- **Nothing in the handshake detects a divergence.** The two parties exchange
+- **A default pipeline may change between releases without a protocol step.**
+  A change to a step sequence in this document takes no new protocol version.
+  Both parties must run releases whose defaults agree for their keys to match,
+  and the release notes name each default change (see
+  [Release Checklist](../RELEASES.md#3-update-changelogmd)).
+- **Nothing in the handshake detects a divergence, including one between two
+  releases' defaults.** The two parties exchange
   and hash their linkage terms (the agreed-terms hash covers those, and the
   terms state a field's `type` and `constraints`, not its cleaning); each
   party's standardization -- authored or reconstructed -- stays local and is
