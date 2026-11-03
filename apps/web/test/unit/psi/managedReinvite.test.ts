@@ -30,6 +30,7 @@ import {
   reinviteManagedExchange,
 } from "@psi/managed/managedReinviteDriver";
 import { NoSignalingAddressError } from "@psi/invitation";
+import { readDefaultRelaySwitch } from "@psi/transport/defaultRelaySwitch";
 import { reinviteLocation } from "@psi/invitationLocation";
 import { writeCoordinationServerSetting } from "@psi/transport/coordinationServerSetting";
 
@@ -707,5 +708,19 @@ describe("the relays a re-invite names by default", () => {
     expect(
       managedReinviteDefaultRelay({ defaultRelayOn: true }, offered),
     ).toEqual(DEFAULT_RELAY);
+  });
+
+  test("leave the build's switched-off relay out when only this browser's switch is on", () => {
+    const offered = () => ({ kind: "opt-in", relay: DEFAULT_RELAY }) as const;
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) =>
+        key === "alcove-default-relay-on" ? "1" : null,
+    });
+    try {
+      expect(readDefaultRelaySwitch()).toBe(true);
+      expect(managedReinviteDefaultRelay({}, offered)).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
