@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 //
 // Search every place a standing owner ruling can live, so a session runs one
-// command before it files or presents a decision. A question a ruling already
-// answers is not filed and not docketed: the ruling is cited instead.
+// command before it files or presents a decision. A question a ruling the
+// owner gave in his own words, quoted verbatim, already answers is not filed
+// and not docketed: the ruling is cited instead. Every other hit is context.
 //
 // Usage:
 //   node find-rulings.mjs <word> [word ...]
@@ -21,8 +22,8 @@
 //   - Cited rulings: items those ruling lines name by id that hold ruling lines
 //     of their own, so an earlier ruling worded differently is still found.
 //   - Documented behavior: lines in docs/ and docs/spec/ at origin/staging that
-//     hold every word. A default or behavior the user docs state is the
-//     ruling on what the behavior is, not an open question.
+//     hold every word: agent-written context, cited as such, settling no
+//     question.
 //   - Design records and agent rules: the same over docs/notes/,
 //     CONTRIBUTING.md, CLAUDE.md, and the markdown under .claude/.
 //   - Commits: the 10 most recent origin/staging commits whose message holds
@@ -447,7 +448,7 @@ async function main() {
     process.stdout.write(moreLine(hits.more));
   };
   heading(
-    `Documented behavior in docs/ and docs/spec/ at ${STAGING_REF}: the ruling on what the behavior is`,
+    `Documented behavior in docs/ and docs/spec/ at ${STAGING_REF}: agent-written context, not a ruling`,
   );
   printRepo(repoHits.filter((hit) => !isRecord(hit)));
   heading(

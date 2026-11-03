@@ -287,10 +287,10 @@ and a decision becomes an item in Decision status. None is held only in a PR
 follow-on line, a report tail, or a chat aside.
 Before drafting a Decision item, run
 `node .claude/scripts/find-rulings.mjs <the question's 2-3 subject words>`:
-a question a standing ruling already answers, or one asking what a default
-the user docs document is, is DECLINED, citing that ruling; a proposal to
-change a documented default is filed only on a changed assumption or a new
-driver it names.
+a question a ruling the owner gave in his own words, quoted verbatim, already
+answers is DECLINED, citing that ruling; documented behavior and a ruling with
+no owner quote are cited in the item as agent-written context, never a reason
+to decline it.
 
 The repo is `georgetown-mdi/alcove`; the owner for both projects is
 `georgetown-mdi`.
@@ -618,6 +618,9 @@ Ratified by the owner:
   control left inert.
   Open: installing from a real browser was not checked; the rest is met with
   every item Done.
+- **Release 1.0** (boards 9 and 10) -- Done is: a 1.0.0 release is published
+  whose images and hosted bundle are signed and attested, and every wire and
+  stored format it ships is negotiated or read by version.
 
 Drafted, pending the owner's ratification:
 
