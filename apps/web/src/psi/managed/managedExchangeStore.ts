@@ -61,8 +61,11 @@ import {
   findRecordsByTermsAndSide,
   sameAgreedTermsAndSide,
 } from "./managedLiveCopyMatch";
+import {
+  parseManagedLocalState,
+  storableManagedLocalState,
+} from "./managedLocalStateShape";
 import { foldElapsedWindowsUnderResponse } from "./managedSchedule";
-import { parseManagedLocalState } from "./managedLocalStateShape";
 
 import type { LinkageTerms, RelayRegistrar } from "@alcove/core";
 
@@ -523,10 +526,10 @@ function siblingCustodyByKey(
   for (let index = 0; index < keys.length; index += 1) {
     const key = String(keys[index]);
     try {
-      const { backup } = parseManagedLocalState(values[index]);
+      const state = parseManagedLocalState(values[index]);
       custodyByKey.set(key, {
         siblingReadable: true,
-        backedUp: backup !== undefined,
+        backedUp: state?.backup !== undefined,
       });
     } catch {
       custodyByKey.set(key, { siblingReadable: false, backedUp: true });
@@ -868,13 +871,13 @@ function markBackupOnLocalStore(
   raw: unknown,
   marker: ManagedBackupMarker,
 ): void {
-  const current = raw === undefined ? undefined : parseManagedLocalState(raw);
+  const current = parseManagedLocalState(raw);
   if (
     current?.backup !== undefined &&
     Date.parse(current.backup.backedUpAt) > Date.parse(marker.backedUpAt)
   )
     return;
-  store.put(parseManagedLocalState({ ...current, backup: marker }), id);
+  store.put(storableManagedLocalState({ ...current, backup: marker }), id);
 }
 
 /**
@@ -1692,10 +1695,7 @@ async function reconcileImportedSecret(
             outcome = { kind: "held", label };
             const readHeldLocal = local.get(held.id);
             readHeldLocal.onsuccess = () => {
-              if (
-                readHeldLocal.result !== undefined &&
-                parsedSiblingEntry(readHeldLocal.result) === undefined
-              )
+              if (siblingEntryUnreadable(readHeldLocal.result))
                 outcome = { kind: "held", label, stateUnreadable: true };
             };
             return;
@@ -1720,7 +1720,7 @@ async function reconcileImportedSecret(
           );
           records.put(completed);
           local.put(
-            parseManagedLocalState({ imported: { importedAt: at } }),
+            storableManagedLocalState({ imported: { importedAt: at } }),
             target.into.id,
           );
           outcome = { kind: "completed", record: completed };
@@ -1771,14 +1771,24 @@ function decideBackupTarget(
     : { kind: "no-match" };
 }
 
-/** A stored sibling entry as parsed, or `undefined` where there is none or it
- * does not parse. */
+/** A stored sibling entry as parsed, or `undefined` where there is none, it is
+ * discarded for its version, or it does not parse. */
 function parsedSiblingEntry(raw: unknown): ManagedLocalState | undefined {
-  if (raw === undefined) return undefined;
   try {
     return parseManagedLocalState(raw);
   } catch {
     return undefined;
+  }
+}
+
+/** Whether a stored sibling entry is one the schema rejects. An entry
+ * discarded for its version is read as absent, not as unreadable. */
+function siblingEntryUnreadable(raw: unknown): boolean {
+  try {
+    parseManagedLocalState(raw);
+    return false;
+  } catch {
+    return true;
   }
 }
 
@@ -1884,7 +1894,7 @@ async function replaceStoredCopy(
           )?.termsProposal;
           records.put(replaced);
           local.put(
-            parseManagedLocalState({
+            storableManagedLocalState({
               ...(termsProposal !== undefined ? { termsProposal } : {}),
               ...(source === "backup" ? { backup: { backedUpAt: at } } : {}),
               imported: { importedAt: at },
