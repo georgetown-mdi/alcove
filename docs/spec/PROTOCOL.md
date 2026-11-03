@@ -287,7 +287,7 @@ The rest of the part is its body. Known-answer vectors, one or more for each lay
 | 6 | the returned list | the partner's row | none |
 | 7 | single-pass message 3 | the sender's row, then the receiver's row | none |
 
-Every part of a list has the same tag. An empty list is one part with `n` = 0. A grouping the sender omits is one part of tag 2, so the receiver tells it apart from an empty grouping of tag 3 or 4. Every value is a whole number from 0 to 2^32 - 1, and a sender refuses to build a part containing any other.
+Every part of a list has the same tag. An empty list is one part with `n` = 0. A grouping the sender omits is one part of tag 2, so the receiver tells it apart from an empty grouping of tag 3 or 4. Every value is a whole number from 0 to 2^32 - 1, and a sender refuses a list containing any other before it sends the first part.
 
 A payload's part is a payload message (`hasData`, `columns`, `rowIndices`, `rows`) as UTF-8 JSON, holding the part's rows and their row indices, every part naming the same columns; each row is one entry. A payload with no data (`{"hasData": false}`) is one part of no entries.
 
@@ -318,7 +318,9 @@ A part of a round's grouping is held to a byte bound over the whole list instead
 
 To the entries the total adds 24 bytes, a part's header, tag and `n`, for each part the list declares at its first part, a count the receiver holds to one per entry. The total is at least 24 bytes, the one part of an omitted grouping.
 
-A round's grouping is held to the transport's frame bound (`statedFrameBound`, `packages/core/src/psi/psiSetParts.ts`: `MAX_WEBRTC_FRAME_BYTES` on WebRTC, `MAX_FRAME_SIZE_BYTES` on SFTP or a synced folder) over every byte of every part, so a round whose grouping's parts would exceed that bound in all is refused: the total above is the lesser of the figures above and that bound. A receiver therefore reads at most that bound of a round's grouping, and the one part that would cross it, before refusing it. Limit: a grouping whose entries alone are within the bound is still refused where the 24 bytes each part adds take its total past it.
+A round's grouping is held to the transport's frame bound (`statedFrameBound`, `packages/core/src/psi/psiSetParts.ts`: `MAX_WEBRTC_FRAME_BYTES` on WebRTC, `MAX_FRAME_SIZE_BYTES` on SFTP or a synced folder) over every byte of every part, so a round whose grouping's parts would exceed that bound in all is refused: the total above is the lesser of the figures above and that bound. A receiver therefore reads at most that bound of a round's grouping, and the one part that would cross it, before refusing it. Limit: a grouping whose entries alone are within the bound is still refused where the 24 bytes each part adds take its total past it. Run lengths, 4 bytes a record, pass the bound at about 67.1 million records on WebRTC and 134.2 million on SFTP or a synced folder. No round reaches either: a round's matched positions are at most `MAX_PSI_DECODE_ELEMENTS`, 2^24 ([The per-set maximum](#a-psi-set-is-sent-in-parts)), so its run lengths take at most 67,108,864 bytes before their parts' headers.
+
+A single-pass message 3 is held the same way: its parts, each counted whole with its header, may hold at most the transport's frame bound in all, the most one frame could hold, and a part that would take the total past it is refused before its body is read.
 
 A payload's part has no byte bound of this kind: its rows hold the partner's column values, which no agreed term bounds.
 

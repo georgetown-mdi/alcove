@@ -79,7 +79,7 @@
 - - -> 7 | single-pass message 3 | the sender's row, then the receiver's row | none
 - - -> Every part of a list has the same tag.
 - - -> An empty list is one part with `n` = 0.
-- - -> Every value is a whole number from 0 to 2^32 - 1, and a sender refuses to build a part containing any other.
+- - -> Every value is a whole number from 0 to 2^32 - 1, and a sender refuses a list containing any other before it sends the first part.
 - - -> A word-list entry takes 4 bytes for each word it adds.
 - - -> A payload row is measured as its UTF-8 JSON with its separator, and a payload part holds at most `MAX_JSON_ARRAY_ELEMENTS` rows.
 - - -> single-pass message 3: this party's row count, the partner's record count where only the partner keeps its duplicates, and their product where both do.
@@ -101,3 +101,6 @@
 - They sit as far inside the cumulative element rule. -> A binary value declares one element over all its bytes, which the scan skips in O(1), so these frames sit far inside the cumulative element rule.
 - Measured at that ceiling, the mapped-element frame declares 0.18 elements per wire byte, the payload frame's rows array -- the tightest part of that message, and the part the check builds -- 0.29, and the association table 0.20, so the narrowest of the three has a factor of 3.5 of headroom against the one-per-byte the rule refuses at. -> -
 - That margin is held as a standing check rather than only recorded here: `packages/core/test/connection/binaryPackBounds.test.ts` builds all three shapes at two record counts with the real packer, packing each record index at the width it has at the ceiling, extrapolates each per-record slope to the ceiling -- a frame of that size being too large for the unit run -- and requires every shape to keep a factor of three, with the measured ratio in the assertion message. -> That is held as a standing check: `packages/core/test/connection/binaryPackBounds.test.ts` packs an envelope-sized binary value with the real packer at two record counts, extrapolates it to the single-pass ceiling (`MAX_SINGLE_PASS_CELLS`, [PROTOCOL.md](PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute)) at 8 bytes a record, the size of that ceiling's resolved table, and requires it to keep a factor of three of headroom against the one-per-byte the rule refuses at.
+- - -> Run lengths, 4 bytes a record, pass the bound at about 67.1 million records on WebRTC and 134.2 million on SFTP or a synced folder.
+- - -> No round reaches either: a round's matched positions are at most `MAX_PSI_DECODE_ELEMENTS`, 2^24 ([The per-set maximum](#a-psi-set-is-sent-in-parts)), so its run lengths take at most 67,108,864 bytes before their parts' headers.
+- - -> A single-pass message 3 is held the same way: its parts, each counted whole with its header, may hold at most the transport's frame bound in all, the most one frame could hold, and a part that would take the total past it is refused before its body is read.

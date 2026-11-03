@@ -76,6 +76,7 @@ import {
 import { receivePsiBinaryFrame } from "./psiBinaryFrame";
 import { PSI_SET_TOO_LARGE_ABORT_REASON } from "../partnerAbortFrame";
 import { sendMatchedList, type WordListSource } from "./matchedListParts";
+import { statedFrameBound } from "./psiSetParts";
 import {
   MAPPED_ELEMENT_LAYOUT,
   RESOLVED_TABLE_LAYOUT,
@@ -2596,7 +2597,8 @@ export function resolvedTableSource(table: AssociationTable): WordListSource {
   });
 }
 
-async function receiveResolvedTable(
+/** @internal exported for the single-pass wire-message tests. */
+export async function receiveResolvedTable(
   conn: MessageConnection,
   participantId: string,
   maxEntries: number,
@@ -2608,6 +2610,9 @@ async function receiveResolvedTable(
     {
       entries: maxEntries,
       entryBytes: wordListEntryBytes(RESOLVED_TABLE_LAYOUT),
+      // Every part, header included, within one frame's bound in all: the
+      // most a message of one frame could hold.
+      listBytes: () => statedFrameBound(conn),
     },
     [RESOLVED_TABLE_LAYOUT],
   );

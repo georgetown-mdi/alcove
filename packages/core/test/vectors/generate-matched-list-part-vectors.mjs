@@ -163,11 +163,11 @@ const layouts = [
     partPayloadBytes: 64,
   },
   {
-    name: "a grouping's owner lists in three parts",
+    name: "a grouping's owner lists in two parts of several lists each",
     tag: 4,
     columns: [],
-    lists: [[0], [0, 1], [2]],
-    partPayloadBytes: 24,
+    lists: [[0], [0, 1, 2], [1], [2, 3], [3]],
+    partPayloadBytes: 48,
   },
   {
     name: "the returned list, one row per entry",

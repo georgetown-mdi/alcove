@@ -4,6 +4,7 @@ import { createMessagePipe } from "../../src/connection/messageConnection";
 import { ConnectionError, InternalConsistencyError } from "../../src/errors";
 import {
   matchedListParts,
+  sendMatchedList,
   MATCHED_LIST_PART_HEADER_BYTES,
   type ListPartContext,
 } from "../../src/psi/matchedListParts";
@@ -147,6 +148,50 @@ describe("the body's words", () => {
       ];
       expect(parts).toThrow(InternalConsistencyError);
       expect(parts).toThrow("is not an unsigned 32-bit whole number");
+    },
+  );
+
+  test.each([
+    ["a fixed column", -1],
+    ["a fixed column", 2 ** 32],
+    ["a list per entry", 1.5],
+    ["a list per entry", Number.NaN],
+  ] as const)(
+    "a list whose last value, in %s, is %s sends no part",
+    async (where, value) => {
+      // Ten parts of one entry each, the bad value in the last.
+      const entries = 10;
+      const last = (index: number, good: number) =>
+        index === entries - 1 ? value : good;
+      const sent: Array<unknown> = [];
+      const [a] = createMessagePipe();
+      const conn = {
+        send: (data: unknown) => {
+          sent.push(data);
+          return a.send(data);
+        },
+        receive: (timeoutMs?: number) => a.receive(timeoutMs),
+        close: () => a.close(),
+      };
+      const source = wordListSource(MAPPED_ELEMENT_LAYOUT, {
+        entries,
+        column: (_column, index) =>
+          where === "a fixed column" ? last(index, 0) : 0,
+        ragged: (index) => [where === "a list per entry" ? last(index, 1) : 1],
+      });
+      const outcome = await (async () => {
+        for (const part of matchedListParts(source, 8 + 12))
+          await conn.send(part);
+      })().then(
+        () => undefined,
+        (e: unknown) => e,
+      );
+      expect(outcome).toBeInstanceOf(InternalConsistencyError);
+      expect(sent).toStrictEqual([]);
+      await expect(
+        sendMatchedList(conn, source).then(() => undefined),
+      ).rejects.toThrow(InternalConsistencyError);
+      expect(sent).toStrictEqual([]);
     },
   );
 

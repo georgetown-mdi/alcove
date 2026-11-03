@@ -10,6 +10,7 @@ import {
   exchangeMappedElements,
   mappedElementEntryBytes,
   mappedElementSource,
+  receiveResolvedTable,
   resolvedTableSource,
   returnedElementSource,
   encodeInt32LE,
@@ -792,6 +793,45 @@ test("the resolved table round-trips, and an empty one too", async () => {
     RESOLVED_TABLE_LAYOUT,
   ]);
   expect(empty.entries).toBe(0);
+});
+
+test("the resolved table's parts are held, in all, to one frame's bound", async () => {
+  // A part of n pairs is 16 + 8 + 8n bytes: two of one pair each fill a
+  // 64-byte frame bound exactly, and two of two pairs each pass it.
+  const deliverParts = async (perPart: number) => {
+    const [a, b] = createMessagePipe();
+    const entries = 2 * perPart;
+    for (let index = 0; index < 2; index++) {
+      const rows = Array.from({ length: perPart }, (_, k) => k + index);
+      await a.send(
+        partFrame(
+          [rows, rows],
+          { index, count: 2, entries },
+          RESOLVED_TABLE_LAYOUT,
+        ),
+      );
+    }
+    const conn: MessageConnection = {
+      send: (data) => b.send(data),
+      receive: (timeoutMs?: number) => b.receive(timeoutMs),
+      close: () => b.close(),
+      outboundWebRtcFrameBound: () => 64,
+    };
+    return receiveResolvedTable(conn, "sender", entries);
+  };
+  expect(await deliverParts(1)).toEqual([
+    [0, 1],
+    [0, 1],
+  ]);
+  const err = await deliverParts(2).then(
+    () => undefined,
+    (e: unknown) => e,
+  );
+  expect(err).toBeInstanceOf(ConnectionError);
+  expect((err as Error).message).toBe(
+    "sender protocol error: inbound resolved association table part 1 is " +
+      "over the 24 bytes this party admits for it",
+  );
 });
 
 // --- single-pass reply codec and the receiver's frame-length tie --------------

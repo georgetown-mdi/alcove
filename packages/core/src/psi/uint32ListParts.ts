@@ -130,7 +130,7 @@ export function wordListEntryBytes(
 
 /**
  * `list` as a {@link WordListSource} of `layout`. A value that is not an
- * unsigned 32-bit whole number is refused as the part holding it is built.
+ * unsigned 32-bit whole number is refused before the first part is built.
  */
 export function wordListSource(
   layout: WordListLayout,
@@ -140,7 +140,15 @@ export function wordListSource(
     layout.ragged ? (list.ragged?.(index) ?? NO_VALUES) : NO_VALUES;
   return {
     entries: list.entries,
-    entryBytes: (index) => wordListEntryBytes(layout, valuesOf(index).length),
+    // The sender measures every entry before it builds the first part, so
+    // each value is checked here and a list holding a bad one sends nothing.
+    entryBytes: (index) => {
+      for (let column = 0; column < layout.columns; column++)
+        word(list.column(column, index));
+      const values = valuesOf(index);
+      for (let k = 0; k < values.length; k++) word(values[k]);
+      return wordListEntryBytes(layout, values.length);
+    },
     writeBody(start, end, body) {
       body.setUint32(0, layout.tag, true);
       body.setUint32(4, end - start, true);
