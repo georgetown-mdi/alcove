@@ -20,11 +20,13 @@
  * reader-rejects-unknown validation are the pure {@link ./managedLocalStateShape.ts}
  * (shared with the record store's rotation write, which clears the backup marker in
  * the same cross-store transaction), and the pure backup-state derivation is in
- * {@link ./managedBackupState.ts}. Every read and write validates through
- * {@link managedLocalStateSchema}, so a corrupted or app-upgrade-invalidated sibling
- * entry rejects loudly rather than loading, the same discipline the record store
- * follows; the unattended wake's read reports such an entry by key instead
- * ({@link listReadableManagedLocalState}).
+ * {@link ./managedBackupState.ts}. Every read validates through
+ * {@link parseManagedLocalStateOfKey} and every write through
+ * {@link storableManagedLocalState}, so a corrupted sibling entry rejects loudly
+ * rather than loading, the same discipline the record store follows; the
+ * unattended wake's read reports such an entry by key instead
+ * ({@link listReadableManagedLocalState}). An entry at a format version this
+ * build does not read is read as absent.
  */
 
 import {
@@ -32,9 +34,11 @@ import {
   openManagedExchangeDatabase,
 } from "./managedExchangeStore";
 import {
-  managedLocalStateSchema,
   managedTermsProposalSchema,
+  parseManagedLocalStateEntries,
+  parseManagedLocalStateOfKey,
   partitionReadableManagedLocalState,
+  storableManagedLocalState,
 } from "./managedLocalStateShape";
 
 import type {
@@ -82,9 +86,10 @@ async function withLocalStore<T>(
 }
 
 /**
- * Read the local sibling state for a record, or `undefined` when none exists. The
- * stored value is re-validated through {@link managedLocalStateSchema}, so a
- * corrupted sibling entry rejects rather than loading.
+ * Read the local sibling state for a record, or `undefined` when none exists or
+ * the entry is at a format version this build does not read. The stored value
+ * is re-validated through {@link parseManagedLocalStateOfKey}, so a corrupted sibling
+ * entry rejects rather than loading.
  *
  * @throws {ZodError} if the stored value is not valid local state.
  */
@@ -95,15 +100,15 @@ export async function getManagedLocalState(
     "readonly",
     (store) => store.get(id) as IDBRequest<unknown>,
   );
-  if (raw === undefined) return undefined;
-  return managedLocalStateSchema.parse(raw);
+  return parseManagedLocalStateOfKey(raw, id);
 }
 
 /**
  * Read every record id's local sibling state, as a map from id to state. Used by the
  * list to derive one backup state per exchange in a single sibling-store read rather
  * than one read per row. Each stored value is re-validated; a single invalid entry
- * rejects the whole read.
+ * rejects the whole read, and one at a format version this build does not read is
+ * left out.
  *
  * @throws {ZodError} if any stored value is not valid local state.
  */
@@ -125,15 +130,12 @@ export async function listManagedLocalState(): Promise<
         const valuesRequest = store.getAll();
         transaction.oncomplete = () => {
           try {
-            const map = new Map<string, ManagedLocalState>();
-            const keys = keysRequest.result;
-            const values = valuesRequest.result;
-            for (let index = 0; index < keys.length; index += 1)
-              map.set(
-                String(keys[index]),
-                managedLocalStateSchema.parse(values[index]),
-              );
-            resolve(map);
+            resolve(
+              parseManagedLocalStateEntries(
+                keysRequest.result,
+                valuesRequest.result,
+              ),
+            );
           } catch (error) {
             // A parse throws inside `oncomplete`, outside the executor's own scope:
             // reject with it so a corrupted sibling entry rejects the read (the
@@ -209,13 +211,9 @@ async function readModifyWriteLocalState(
       let failure: unknown;
       read.onsuccess = () => {
         try {
-          const current =
-            read.result === undefined
-              ? undefined
-              : managedLocalStateSchema.parse(read.result);
-          const next = transform(current);
+          const next = transform(parseManagedLocalStateOfKey(read.result, id));
           if (next === null) store.delete(id);
-          else store.put(managedLocalStateSchema.parse(next), id);
+          else store.put(storableManagedLocalState(next), id);
         } catch (error) {
           failure = error;
           transaction.abort();

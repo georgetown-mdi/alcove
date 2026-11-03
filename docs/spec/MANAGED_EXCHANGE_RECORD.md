@@ -1046,10 +1046,13 @@ does meet that surface, which is where a skipped entry is resolved.
 
 The wake reads each record's [local sibling
 state](#the-backup-and-import-markers-local-siblings-never-in-the-artifact)
-the same way. A record whose sibling entry this build cannot parse -- a member a
-newer deployment added, a corrupted value, or a handed-off state an earlier
+the same way. A record whose sibling entry this build cannot parse -- a member
+its shape does not name, a corrupted value, or a handed-off state an earlier
 version wrote, which no current shape names -- is skipped as unreadable, and
-every other record still runs.
+every other record still runs. A sibling entry at a format version this build
+does not read is not unreadable: it is read as absent and its record runs
+([The local-state entry's format
+version](#the-local-state-entrys-format-version)).
 
 #### Catch-up on wake
 
@@ -2144,8 +2147,8 @@ state together (see [Removing a managed
 exchange](../MANAGED_EXCHANGE.md#removing-a-managed-exchange)).
 
 The sibling entry, unlike the record, is strict: a member its shape does not
-name rejects the whole entry. An entry this build cannot parse -- a member a
-newer deployment added, a corrupted value, or a handed-off state an earlier
+name rejects the whole entry. An entry this build cannot parse -- a member its
+shape does not name, a corrupted value, or a handed-off state an earlier
 version wrote, which no current shape names -- rejects the strict reads. The
 attended list read joins the sibling state and rejects wholesale on it, so the
 operator meets the read-failed surface, and the exchange's own page does not
@@ -2165,6 +2168,40 @@ deletes the entry unread rather than aborting on it.
 A saved exchange an earlier pre-release build marked handed off, or whose run
 history holds a hand-off run, does not read: the recovery listing shows it as
 above, and discarding it and importing its files again restores it.
+
+#### The local-state entry's format version
+
+Every write stores the entry with `version`, the number 1
+(`MANAGED_LOCAL_STATE_VERSION`,
+`apps/web/src/psi/managed/managedLocalStateShape.ts`). The entry is
+convenience state under the compatibility policy (see
+[RELEASES.md](../RELEASES.md#compatibility-policy)): it has no migration step,
+and a version this build does not read is discarded rather than refused.
+
+- **No `version`.** An entry without the member is at version 1 and is read
+  under its shape, so an entry written before the member existed, a handed-off
+  state among them, is still refused as above.
+- **Any other `version`.** The entry is discarded. Every read treats it as
+  absent -- no backup marker, no import marker, no terms proposal -- and a
+  warning in the browser's developer console names the exchange and the cause:
+  a newer version of the app saved it, or this version of the app does not read
+  its format version. It is never shown as unreadable, its record loads and
+  runs, and the next write to it replaces it at version 1. A rotation deletes it
+  as it deletes any entry.
+
+Absent is a state each member already has. No backup marker reads "backup
+needed"; no import marker tiers a handshake failure as unexplained rather than
+as the import, as a failed import-marker write does; no proposal is the
+no-proposal state, and the next unattended run that meets the change keeps it
+again. A member whose absence would let a run go ahead that its presence stops
+does not belong in this entry, since a build that does not read the entry's
+version runs without it.
+
+A discarded marker loses the saved folder location of the exchange's automatic
+backup, so the next scheduled run's automatic folder backup writes a new file
+and does not replace the earlier one. The earlier file, which holds the secret
+as it stood when it was written, stays in the working folder until the operator
+removes it. The folder-backup replace step above covers an unreadable marker.
 
 ### Reconciling a backup import
 

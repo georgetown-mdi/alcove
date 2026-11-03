@@ -10,6 +10,11 @@ import {
 import { validateCompatibility } from "@alcove/core/testing";
 
 import {
+  MANAGED_LOCAL_STATE_VERSION,
+  parseManagedLocalState,
+  storableManagedLocalState,
+} from "@psi/managed/managedLocalStateShape";
+import {
   ManagedExchangeSecretChangedError,
   getManagedExchange,
   persistManagedExchangeTermsChange,
@@ -44,7 +49,6 @@ import {
   termsProposalText,
 } from "@recurring/managedTermsChangeModel";
 import { matchingKeyTurnedOffNotice } from "@psi/matchingKeyModel";
-import { parseManagedLocalState } from "@psi/managed/managedLocalStateShape";
 import { rerunFailureLastRun } from "@psi/managed/managedRun";
 
 import type * as ManagedExchangeStore from "@psi/managed/managedExchangeStore";
@@ -199,9 +203,11 @@ describe("the kept proposal", () => {
       change,
       new Date("2026-09-29T12:00:00.000Z"),
     );
-    const parsed = parseManagedLocalState({ termsProposal: proposal });
-    expect(parsed.termsProposal?.proposedAt).toBe("2026-09-29T12:00:00.000Z");
-    expect(managedTermsProposalDelta(parsed.termsProposal!)).toEqual(
+    const stored = storableManagedLocalState({ termsProposal: proposal });
+    expect(stored.version).toBe(MANAGED_LOCAL_STATE_VERSION);
+    const parsed = parseManagedLocalState(stored);
+    expect(parsed?.termsProposal?.proposedAt).toBe("2026-09-29T12:00:00.000Z");
+    expect(managedTermsProposalDelta(parsed!.termsProposal!)).toEqual(
       change.delta,
     );
   });

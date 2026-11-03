@@ -15,6 +15,10 @@ import {
   tickManagedSchedules,
 } from "@psi/managed/managedScheduleRunner";
 import {
+  MANAGED_LOCAL_STATE_VERSION,
+  partitionReadableManagedLocalState,
+} from "@psi/managed/managedLocalStateShape";
+import {
   NO_STANDING_CONDITION,
   applyManagedExchangeCompromiseResponse,
   applyManagedExchangeLastRun,
@@ -41,7 +45,6 @@ import { PartnerNoShowError } from "@psi/transport/waitForConnection";
 import { PartnerSecretNotSavedError } from "@psi/partnerSecretNotSaved";
 import { RotationPersistError } from "@psi/managed/managedRunRotate";
 import { managedScheduleWindow } from "@psi/managed/managedSchedule";
-import { partitionReadableManagedLocalState } from "@psi/managed/managedLocalStateShape";
 import { repeatedMissCoordination } from "@psi/managed/managedFailureCopy";
 
 import type {
@@ -1624,18 +1627,70 @@ describe("a local sibling entry the read could not parse", () => {
     expect(runner.attempts.map((attempt) => attempt.id)).toEqual([healthy.id]);
   });
 
-  test("is read per entry, so one a later build wrote costs only its own", () => {
-    // A member a later build adds is refused by this build's strict schema.
+  test("is read per entry, so one this build cannot parse costs only its own", () => {
+    // An unknown member at this build's version is refused by its strict schema.
     const read = partitionReadableManagedLocalState(
-      ["newer-build", "current"],
+      ["unknown-member", "current"],
       [
-        { imported: { importedAt: "2026-01-01T00:00:00.000Z" }, retake: {} },
-        { backup: { backedUpAt: "2026-01-01T00:00:00.000Z" } },
+        {
+          version: MANAGED_LOCAL_STATE_VERSION,
+          imported: { importedAt: "2026-01-01T00:00:00.000Z" },
+          retake: {},
+        },
+        {
+          version: MANAGED_LOCAL_STATE_VERSION,
+          backup: { backedUpAt: "2026-01-01T00:00:00.000Z" },
+        },
       ],
     );
 
-    expect(read.unreadableIds).toEqual(["newer-build"]);
+    expect(read.unreadableIds).toEqual(["unknown-member"]);
     expect([...read.states.keys()]).toEqual(["current"]);
+  });
+
+  test("skips the record whose stored value is undefined", async () => {
+    const stranded = recordWith();
+    const healthy = recordWith();
+    const read = partitionReadableManagedLocalState(
+      [stranded.id, healthy.id],
+      [
+        undefined,
+        {
+          version: MANAGED_LOCAL_STATE_VERSION,
+          backup: { backedUpAt: "2026-01-01T00:00:00.000Z" },
+        },
+      ],
+    );
+    const runner = harness({
+      records: [stranded, healthy],
+      startAt: "2026-01-06T14:30:00.000Z",
+      script: [{ kind: "succeed" }],
+      unreadableLocalStateIds: read.unreadableIds,
+    });
+
+    const entries = await tickManagedSchedules(runner.seams);
+
+    expect(entries.find((entry) => entry.id === stranded.id)).toMatchObject({
+      attempts: 0,
+      skipped: "unreadable",
+    });
+    expect(runner.attempts.map((attempt) => attempt.id)).toEqual([healthy.id]);
+  });
+
+  test("reads one a newer build wrote as absent, so its record is not skipped", () => {
+    const read = partitionReadableManagedLocalState(
+      ["newer-build"],
+      [
+        {
+          version: MANAGED_LOCAL_STATE_VERSION + 1,
+          imported: { importedAt: "2026-01-01T00:00:00.000Z" },
+          retake: {},
+        },
+      ],
+    );
+
+    expect(read.unreadableIds).toEqual([]);
+    expect(read.states.size).toBe(0);
   });
 });
 

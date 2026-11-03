@@ -67,10 +67,12 @@ import {
 import {
   getManagedLocalState,
   listManagedLocalState,
+  listReadableManagedLocalState,
   markManagedExchangeBackedUp,
   markManagedExchangeKeyImported,
 } from "@psi/managed/managedLocalState";
 import { DISCLOSURE_ACCOUNTING_VERSION } from "@psi/disclosureAccounting";
+import { MANAGED_LOCAL_STATE_VERSION } from "@psi/managed/managedLocalStateShape";
 import { buildManagedDeposit } from "@exchange/manageOfferModel";
 
 import {
@@ -1806,6 +1808,58 @@ describe("diagnostic read never rejects wholesale", () => {
     expect(states.has(created.id)).toBe(false);
     const recovered = await listManagedExchanges();
     expect(recovered.map((record) => record.id)).toEqual([good.id]);
+  });
+
+  test("a sibling entry whose stored value is undefined is unreadable on every entry read, and a key holding nothing reads as absent", async () => {
+    const created = await createRunnableExchange(
+      newExchange({ label: "Stored undefined" }),
+    );
+    const bare = await createRunnableExchange(newExchange({ label: "Bare" }));
+    await rawLocalPut(created.id, undefined);
+
+    await expect(listManagedLocalState()).rejects.toThrow();
+    expect((await listReadableManagedLocalState()).unreadableIds).toEqual([
+      created.id,
+    ]);
+    const entries = await listManagedExchangesDiagnostic();
+    expect(
+      entries.find(
+        (entry) =>
+          entry.kind === "readable" && entry.essentials.id === created.id,
+      ),
+    ).toMatchObject({ backedUp: true, stateUnreadable: true });
+    expect(await getManagedLocalState(bare.id)).toBeUndefined();
+  });
+
+  test("a sibling entry a newer version wrote reads as absent, and the next write replaces it at this version", async () => {
+    const created = await createRunnableExchange(
+      newExchange({ label: "Marked by a newer version" }),
+    );
+    await rawLocalPut(created.id, {
+      version: MANAGED_LOCAL_STATE_VERSION + 1,
+      imported: { importedAt: "2026-07-14T13:00:00.000Z" },
+      retake: { at: "2026-07-14T13:00:00.000Z" },
+    });
+
+    expect(await getManagedLocalState(created.id)).toBeUndefined();
+    expect((await listManagedLocalState()).has(created.id)).toBe(false);
+    const [entry] = await listManagedExchangesDiagnostic();
+    expect(entry).toEqual({
+      kind: "readable",
+      essentials: {
+        id: created.id,
+        label: "Marked by a newer version",
+        side: "inviter",
+      },
+      backedUp: false,
+    });
+
+    await markManagedExchangeBackedUp(created.id, "2026-07-15T09:00:00.000Z");
+
+    expect(await rawLocalStored(created.id)).toEqual({
+      version: MANAGED_LOCAL_STATE_VERSION,
+      backup: { backedUpAt: "2026-07-15T09:00:00.000Z" },
+    });
   });
 
   test("one unreadable record does not fail the read; it yields an unreadable marker keyed for delete", async () => {

@@ -8,13 +8,20 @@
  *
  * The sibling state is validated on every read and write through
  * {@link managedLocalStateSchema} with the same reader-rejects-unknown discipline
- * the record store follows, so a corrupted or app-upgrade-invalidated entry rejects
- * loudly rather than loading.
+ * the record store follows, so a corrupted entry rejects loudly rather than
+ * loading. It is convenience state under the stored-format rule
+ * (docs/RELEASES.md, "Compatibility policy"): an entry at a version other than
+ * {@link MANAGED_LOCAL_STATE_VERSION} is discarded and read as absent.
  */
 
 import { z } from "zod";
 
-import { LinkageTermsSchema, maxCodeUnits } from "@alcove/core";
+import {
+  LinkageTermsSchema,
+  formatVersionFollows,
+  getLogger,
+  maxCodeUnits,
+} from "@alcove/core";
 
 import type {
   LinkageTerms,
@@ -26,6 +33,12 @@ import type {
   ManagedBackupMarker,
 } from "./managedBackupState";
 import type { ZodType } from "zod";
+
+const log = getLogger("managedLocalState");
+
+/** The stored entry's format version: the one version this build reads and
+ * writes. */
+export const MANAGED_LOCAL_STATE_VERSION = 1;
 
 /** This device's import marker for a record: stamped when the record was installed
  * from a backup artifact or a command-line pair, or completed by a pair.
@@ -84,6 +97,12 @@ export interface ManagedLocalState {
   termsProposal?: ManagedTermsProposal;
 }
 
+/** A {@link ManagedLocalState} as the store holds it, with its format
+ * version. */
+export interface ManagedStoredLocalState extends ManagedLocalState {
+  version: typeof MANAGED_LOCAL_STATE_VERSION;
+}
+
 const storedColumnsChangeSchema: ZodType<ManagedStoredColumnsChange> = z
   .object({ added: z.array(z.string()), removed: z.array(z.string()) })
   .strict();
@@ -139,15 +158,16 @@ const backupLocationSchema: ZodType<ManagedBackupLocation> = z.union([
 ]);
 
 /**
- * The sibling-state validator: reader-rejects-unknown at every level, so a
- * corrupted or app-upgrade-invalidated entry rejects rather than loading. The
- * one exception is the terms proposal, validated on its own: one that does
- * not parse is dropped and the entry loads without it, so a proposal core's
- * terms schema no longer accepts cannot take the backup and import markers
- * down with it.
+ * The validator of a stored entry at {@link MANAGED_LOCAL_STATE_VERSION}:
+ * reader-rejects-unknown at every level, so a corrupted entry rejects rather
+ * than loading. The one exception is the terms proposal, validated on its own:
+ * one that does not parse is dropped and the entry loads without it, so a
+ * proposal core's terms schema no longer accepts cannot take the backup and
+ * import markers down with it. The version is not part of the parsed state.
  */
-export const managedLocalStateSchema: ZodType<ManagedLocalState> = z
+const managedLocalStateSchema: ZodType<ManagedLocalState> = z
   .object({
+    version: z.literal(MANAGED_LOCAL_STATE_VERSION).optional(),
     termsProposal: z.unknown().optional(),
     backup: z
       .object({
@@ -159,24 +179,89 @@ export const managedLocalStateSchema: ZodType<ManagedLocalState> = z
     imported: z.object({ importedAt: z.iso.datetime() }).strict().optional(),
   })
   .strict()
-  .transform(({ termsProposal, ...markers }): ManagedLocalState => {
-    if (termsProposal === undefined) return markers;
-    const proposal = managedTermsProposalSchema.safeParse(termsProposal);
-    return proposal.success
-      ? { ...markers, termsProposal: proposal.data }
-      : markers;
-  });
+  .transform(
+    ({ version: _version, termsProposal, ...markers }): ManagedLocalState => {
+      if (termsProposal === undefined) return markers;
+      const proposal = managedTermsProposalSchema.safeParse(termsProposal);
+      return proposal.success
+        ? { ...markers, termsProposal: proposal.data }
+        : markers;
+    },
+  );
+
+/** Why a stored entry is discarded unread, or `undefined` for one the schema
+ * reads: an object whose `version` member is present and is not
+ * {@link MANAGED_LOCAL_STATE_VERSION}. An entry with no `version` member is at
+ * that version, so one written before the member existed, a handed-off state
+ * among them, is still held to the schema. */
+function discardedEntryCause(raw: unknown): string | undefined {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw))
+    return undefined;
+  if (!Object.hasOwn(raw, "version")) return undefined;
+  const { version } = raw as { version: unknown };
+  if (version === MANAGED_LOCAL_STATE_VERSION) return undefined;
+  return formatVersionFollows(version, MANAGED_LOCAL_STATE_VERSION)
+    ? "a newer version of this app saved it"
+    : "this version of the app does not read its format version";
+}
 
 /**
- * Parse and validate a value read from the sibling store as a
- * {@link ManagedLocalState}. Throws on an unknown key or a malformed instant rather
- * than silently accepting -- the reader-rejects-unknown rule -- except inside the
- * terms proposal, which is dropped instead ({@link managedLocalStateSchema}).
+ * Parse and validate a value of a sibling-store entry that exists as a
+ * {@link ManagedLocalState}, or `undefined` where the entry is discarded for
+ * its version, whose cause is logged as a warning naming the entry's `key`,
+ * the record id it is stored under, where the caller has it.
+ * Throws on an unknown key or a malformed instant rather than silently
+ * accepting -- the reader-rejects-unknown rule -- except inside the terms
+ * proposal, which is dropped instead ({@link managedLocalStateSchema}). A
+ * stored `undefined` is not valid local state and throws.
  *
  * @throws {ZodError} if the value is not valid local state.
  */
-export function parseManagedLocalState(raw: unknown): ManagedLocalState {
-  return managedLocalStateSchema.parse(raw);
+export function parseManagedLocalState(
+  raw: unknown,
+  key?: IDBValidKey,
+): ManagedLocalState | undefined {
+  const cause = discardedEntryCause(raw);
+  if (cause === undefined) return managedLocalStateSchema.parse(raw);
+  const exchange =
+    key === undefined ? "a saved exchange" : `saved exchange ${String(key)}`;
+  log.warn(
+    `ignored ${exchange}'s backup and import markers and pending ` +
+      `terms change: ${cause}`,
+  );
+  return undefined;
+}
+
+/**
+ * {@link parseManagedLocalState} for the result of a `get` of one key, where
+ * `undefined` means the key holds nothing and reads as absent.
+ *
+ * @throws {ZodError} if the value is not valid local state.
+ */
+export function parseManagedLocalStateOfKey(
+  raw: unknown,
+  key: IDBValidKey,
+): ManagedLocalState | undefined {
+  return raw === undefined ? undefined : parseManagedLocalState(raw, key);
+}
+
+/**
+ * Validate `state` and give it the form the store holds, at
+ * {@link MANAGED_LOCAL_STATE_VERSION}. Every write to the sibling store goes
+ * through this, so no write stores an entry the reader would reject.
+ *
+ * @throws {ZodError} if `state` is not valid local state.
+ */
+export function storableManagedLocalState(
+  state: ManagedLocalState,
+): ManagedStoredLocalState {
+  return {
+    version: MANAGED_LOCAL_STATE_VERSION,
+    ...managedLocalStateSchema.parse({
+      ...state,
+      version: MANAGED_LOCAL_STATE_VERSION,
+    }),
+  };
 }
 
 /** The sibling entries a per-entry read could parse, and the stored keys of
@@ -189,11 +274,31 @@ export interface ManagedReadableLocalState {
 }
 
 /**
+ * Parse every entry of a sibling store's parallel key and value arrays, as a
+ * map from record id to state, leaving out an entry discarded for its
+ * version: the attended list's read, which rejects wholesale on an entry the
+ * schema rejects.
+ *
+ * @throws {ZodError} if any stored value is not valid local state.
+ */
+export function parseManagedLocalStateEntries(
+  keys: ReadonlyArray<IDBValidKey>,
+  values: ReadonlyArray<unknown>,
+): Map<string, ManagedLocalState> {
+  const states = new Map<string, ManagedLocalState>();
+  for (let index = 0; index < keys.length; index += 1) {
+    const state = parseManagedLocalState(values[index], keys[index]);
+    if (state !== undefined) states.set(String(keys[index]), state);
+  }
+  return states;
+}
+
+/**
  * Partition a sibling store's parallel key and value arrays into the entries
  * that parse and the keys of those that do not: the tolerant counterpart of
- * mapping {@link parseManagedLocalState} over the values, for the unattended
- * read (docs/spec/MANAGED_EXCHANGE_RECORD.md, "Every admitted schedule
- * renders"). Never throws.
+ * {@link parseManagedLocalStateEntries}, for the unattended read
+ * (docs/spec/MANAGED_EXCHANGE_RECORD.md, "Every admitted schedule renders").
+ * An entry discarded for its version is in neither. Never throws.
  */
 export function partitionReadableManagedLocalState(
   keys: ReadonlyArray<IDBValidKey>,
@@ -202,9 +307,14 @@ export function partitionReadableManagedLocalState(
   const states = new Map<string, ManagedLocalState>();
   const unreadableIds: Array<string> = [];
   for (let index = 0; index < keys.length; index += 1) {
-    const parsed = managedLocalStateSchema.safeParse(values[index]);
-    if (parsed.success) states.set(String(keys[index]), parsed.data);
-    else unreadableIds.push(String(keys[index]));
+    let state: ManagedLocalState | undefined;
+    try {
+      state = parseManagedLocalState(values[index], keys[index]);
+    } catch {
+      unreadableIds.push(String(keys[index]));
+      continue;
+    }
+    if (state !== undefined) states.set(String(keys[index]), state);
   }
   return { states, unreadableIds };
 }
