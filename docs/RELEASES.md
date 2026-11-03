@@ -32,7 +32,7 @@ Releases below 1.0.0 carry no compatibility promise and partners upgrade togethe
 Alcove has one product version, held in `apps/cli/package.json`, the canonical release version:
 
 - **The images:** the Docker image tags and the GitHub Release tag name it, the CLI reports it, and the console baked into each image (`apps/web`, run via `serve`) shows it.
-- **The hosted web application:** a release tag redeploys production from the tag's commit, and that deployment shows the tag's version in the page footer. A push to `main` also deploys production, and the next one replaces the release's deployment; a build from a push to `main` or `staging` shows the short commit hash it was built from instead, and its commands name the `latest` image.
+- **The hosted web application:** a release tag on the newest release line redeploys production from the tag's commit ([Hotfix Releases](#hotfix-releases)), and that deployment shows the tag's version in the page footer. A push to `main` also deploys production, and the next one replaces the release's deployment; a build from a push to `main` or `staging` shows the short commit hash it was built from instead, and its commands name the `latest` image.
 - **Everything else:** the workspace packages under `packages/` are internal. Each is private, none is published, and none has a release version of its own. The root and `apps/web` `package.json` versions are workspace markers and are not independently meaningful.
 
 Compatibility between the CLI and its core dependency is recorded by the lockfile and embedded in the Docker image; no separate compatibility matrix is maintained.
@@ -45,12 +45,12 @@ Each release produces:
 
 | Artifact       | Published to                   | Tag / name                                                               |
 | -------------- | ------------------------------ | ------------------------------------------------------------------------ |
-| Docker image   | GitHub Container Registry (`ghcr.io/georgetown-mdi/alcove`) and Docker Hub (`docker.io/gumdi/alcove`) | `ghcr.io/georgetown-mdi/alcove:X.Y.Z`, `ghcr.io/georgetown-mdi/alcove:X.Y`, `ghcr.io/georgetown-mdi/alcove:latest`, and the same three tags at `docker.io/gumdi/alcove` |
-| FIPS variant image | GitHub Container Registry (`ghcr.io/georgetown-mdi/alcove`) and Docker Hub (`docker.io/gumdi/alcove`) | `ghcr.io/georgetown-mdi/alcove:X.Y.Z-fips`, `ghcr.io/georgetown-mdi/alcove:X.Y-fips`, `ghcr.io/georgetown-mdi/alcove:latest-fips`, and the same three tags at `docker.io/gumdi/alcove` |
+| Docker image   | GitHub Container Registry (`ghcr.io/georgetown-mdi/alcove`) and Docker Hub (`docker.io/gumdi/alcove`) | `ghcr.io/georgetown-mdi/alcove:X.Y.Z`, `ghcr.io/georgetown-mdi/alcove:X.Y`, `ghcr.io/georgetown-mdi/alcove:latest` (newest release line only), and the same tags at `docker.io/gumdi/alcove` |
+| FIPS variant image | GitHub Container Registry (`ghcr.io/georgetown-mdi/alcove`) and Docker Hub (`docker.io/gumdi/alcove`) | `ghcr.io/georgetown-mdi/alcove:X.Y.Z-fips`, `ghcr.io/georgetown-mdi/alcove:X.Y-fips`, `ghcr.io/georgetown-mdi/alcove:latest-fips` (newest release line only), and the same tags at `docker.io/gumdi/alcove` |
 | GitHub Release | GitHub Releases                | Tag `vX.Y.Z`                                                             |
 | Launchers      | GitHub Release assets          | `start-alcove.sh`, `Start-Alcove.ps1`, `Setup-AlcoveFileDrop.ps1`     |
 | Build provenance | GitHub attestation store     | Subject `ghcr.io/georgetown-mdi/alcove`, one attestation per released manifest digest |
-| Hosted web application | Cloudflare Pages, with the demo site | The production deployment of tag `vX.Y.Z`, its footer showing `Version X.Y.Z`, until the next push to `main` replaces it |
+| Hosted web application | Cloudflare Pages, with the demo site | The production deployment of tag `vX.Y.Z` on the newest release line, its footer showing `Version X.Y.Z`, until the next push to `main` replaces it |
 | Hosted web application manifest | GitHub Release assets, and its build provenance in the GitHub attestation store | `alcove-hosted-web-X.Y.Z.manifest.json` and its Sigstore bundle, `alcove-hosted-web-X.Y.Z.manifest.json.sigstore.json` ([Hosted web application](#hosted-web-application)) |
 
 Between releases, each push to `main` that deploys production publishes one more artifact:
@@ -67,7 +67,7 @@ Each image is the same manifest on both registries, under one digest: the releas
 
 Each image contains both the CLI and the console; which role it runs is decided by its first argument (see [DEPLOYMENT.md](DEPLOYMENT.md#docker-deployment)). Both images run unprivileged ([The user the image runs as](DEPLOYMENT.md#the-user-the-image-runs-as)), take the same arguments, and speak the same protocol, so a partner on one can exchange with a partner on the other.
 
-The hosted web deployment (`apps/web`) is not this image. The release workflow redeploys production from the same tag, after both images are published ([step 8](#8-build-and-publish-the-container-image-ci)).
+The hosted web deployment (`apps/web`) is not this image. The release workflow redeploys production from the same tag when it is on the newest release line, after both images are published ([step 8](#8-build-and-publish-the-container-image-ci)).
 
 ## Which image has which posture
 
@@ -322,6 +322,8 @@ For security fixes or critical bugs in an already-released version:
 2. Apply the fix with a minimal, focused commit.
 3. Follow steps 3 through 11 above, incrementing only the PATCH component.
 4. If the vulnerability affects the previous major version as well (see [SECURITY.md](../SECURITY.md)), apply the fix there too before proceeding.
+
+A hotfix on an older release line, one whose version is below the highest `vX.Y.Z` tag in the repository, publishes its signed `X.Y.Z` and `X.Y` images on both registries, the GitHub Release with its launchers, and the hosted app's signed manifest. It does not move `latest` or `latest-fips` and does not deploy the hosted app, so those tags and production keep the newest release.
 
 For a hotfix answering a privately reported vulnerability, this section is the mechanics only. The sequencing around it -- keeping the fix out of public view until the release and the advisory land together, and what publishes alongside them -- is in [INCIDENT_RESPONSE.md](INCIDENT_RESPONSE.md#4-fix-privately-then-release).
 

@@ -23,6 +23,8 @@ check off it. Beside them:
 - the job list `nightly_core_stress.yaml` runs its tiers from;
 - the packer of the core files the signaling broker runs, which
   `broker_core_build.yaml` archives, signs, and publishes;
+- the newest-release-line decision `release.yaml` reads before it deploys
+  production or moves the `latest` image tags;
 - the hosted web application's manifest writer, which `release.yaml` runs on
   the builds it deploys and a partner runs to compare a served site against
   the signed manifest;
