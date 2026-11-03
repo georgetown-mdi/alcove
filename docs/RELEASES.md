@@ -304,7 +304,7 @@ If the command refuses on a peer conflict, do not use `@cyclonedx/cyclonedx-npm 
 
 ### 10. Publish the GitHub Release
 
-Step 8 leaves a draft release for tag `vX.Y.Z` with the stamped launchers. Open it, copy the CHANGELOG section for this version as the release body, attach `alcove-X.Y.Z.cdx.json`, record both Docker image digests from step 8 in the release notes -- the default image's and the FIPS variant's, each beside its tag -- and publish. Publish only once the `dockerhub` job has passed. Each digest is the same on ghcr.io and on Docker Hub, as that job's summary shows, so each is recorded once and names the image at both `ghcr.io/georgetown-mdi/alcove` and `docker.io/gumdi/alcove`. Leave the launcher assets in place: they are the copy an operator downloads.
+Step 8 leaves a draft release for tag `vX.Y.Z` with the stamped launchers. Open it, copy the CHANGELOG section for this version as the release body, attach `alcove-X.Y.Z.cdx.json`, record both Docker image digests from step 8 in the release notes -- the default image's and the FIPS variant's, each beside its tag -- and publish. Publish only once the `dockerhub` job has passed. Each digest is the same on ghcr.io and on Docker Hub, as that job's summary shows, so each is recorded once and names the image at both `ghcr.io/georgetown-mdi/alcove` and `docker.io/gumdi/alcove`. Leave the launcher assets in place: they are the copy an operator downloads. A hotfix on an older release line is published with "Set as the latest release" unticked.
 
 ### 11. Merge back to staging
 
@@ -323,7 +323,7 @@ For security fixes or critical bugs in an already-released version:
 3. Follow steps 3 through 11 above, incrementing only the PATCH component.
 4. If the vulnerability affects the previous major version as well (see [SECURITY.md](../SECURITY.md)), apply the fix there too before proceeding.
 
-A hotfix on an older release line, one whose version is below the highest `vX.Y.Z` tag in the repository, publishes its signed `X.Y.Z` and `X.Y` images on both registries, the GitHub Release with its launchers, and the hosted app's signed manifest. It does not move `latest` or `latest-fips` and does not deploy the hosted app, so those tags and production keep the newest release.
+A hotfix on an older release line, one whose version is below the highest `vX.Y.Z` tag in the repository, publishes its signed `X.Y.Z` and `X.Y` images on both registries, the GitHub Release with its launchers, and the hosted app's signed manifest. It does not move `latest` or `latest-fips` and does not deploy the hosted app, so those tags and production keep the newest release. Publish its GitHub Release with "Set as the latest release" unticked, so the repository's Latest release stays the newest one.
 
 For a hotfix answering a privately reported vulnerability, this section is the mechanics only. The sequencing around it -- keeping the fix out of public view until the release and the advisory land together, and what publishes alongside them -- is in [INCIDENT_RESPONSE.md](INCIDENT_RESPONSE.md#4-fix-privately-then-release).
 

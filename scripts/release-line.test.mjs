@@ -121,6 +121,44 @@ describe("the release-line script run against a repository", () => {
   });
 });
 
+describe("the release-line job's install-free run", () => {
+  const SPECIFIER =
+    /(?:\bimport|\bexport)\s*(?:[^'"`;()]*?\bfrom\s*)?["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']|\brequire\s*\(\s*["']([^"']+)["']/g;
+
+  const bareSpecifiers = (entry) => {
+    const bare = [];
+    const seen = new Set();
+    const visit = (file) => {
+      if (seen.has(file)) return;
+      seen.add(file);
+      const source = readFileSync(file, "utf8");
+      for (const match of source.matchAll(SPECIFIER)) {
+        const specifier = match[1] ?? match[2] ?? match[3];
+        if (specifier.startsWith("node:")) continue;
+        if (specifier.startsWith("./") || specifier.startsWith("../")) {
+          visit(resolve(dirname(file), specifier));
+        } else {
+          bare.push(`${file}: ${specifier}`);
+        }
+      }
+    };
+    visit(entry);
+    return { bare, visited: [...seen] };
+  };
+
+  it("imports only node: modules and relative files, transitively", () => {
+    const { bare, visited } = bareSpecifiers(SCRIPT);
+    expect(visited.map((file) => file.slice(repoRoot.length + 1))).toEqual(
+      expect.arrayContaining([
+        "scripts/check-release-version.mjs",
+        "scripts/lib/releaseManifest.mjs",
+        "scripts/release-line.mjs",
+      ]),
+    );
+    expect(bare).toEqual([]);
+  });
+});
+
 describe("the release workflow's use of the answer", () => {
   const document = workflowDocument(repoRoot, `${WORKFLOW_DIR}/release.yaml`);
   const NEWEST = "needs.release-line.outputs.newest";
@@ -195,6 +233,22 @@ describe("the release workflow's use of the answer", () => {
       /if \[ "\$\{ALCOVE_NEWEST_LINE\}" = "true" \]; then\n\s+tags\+=\("latest\$\{suffix\}"\)\n\s+fi/,
     );
     expect(step.run.match(/latest\$\{suffix\}/g)).toHaveLength(1);
+  });
+
+  it("creates the draft release not marked Latest off the newest line", () => {
+    const launchers = document.jobs.launchers;
+    expect([launchers.needs].flat()).toContain("release-line");
+    const step = launchers.steps.find((candidate) =>
+      (candidate.run ?? "").includes("gh release create"),
+    );
+    expect(step.env.ALCOVE_NEWEST_LINE).toBe(`\${{ ${NEWEST} }}`);
+    expect(step.run).toMatch(
+      /if \[ "\$\{ALCOVE_NEWEST_LINE\}" != "true" \]; then\n\s+latest_flag=\(--latest=false\)\n\s*fi/,
+    );
+    expect(step.run.match(/--latest/g)).toHaveLength(1);
+    expect(step.run).toMatch(
+      /gh release create [^\n]*\\\n\s+"\$\{latest_flag\[@\]\}"/,
+    );
   });
 
   it("reads the answer in every step that names a `latest` tag", () => {

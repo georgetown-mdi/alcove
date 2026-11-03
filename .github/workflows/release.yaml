@@ -72,7 +72,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      # The script is dependency-free, so a plain pinned Node suffices.
+      # No npm ci: scripts/release-line.test.mjs holds the script's imports to
+      # node: and relative specifiers.
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
@@ -517,7 +518,7 @@ jobs:
   # everything it publishes is a file from this checkout with one line rewritten.
   launchers:
     name: Publish the stamped launchers
-    needs: publish
+    needs: [publish, release-line]
     if: ${{ github.event_name == 'push' }}
     # Held on Ubuntu 24.04 with the publish job: it needs that job's image
     # digest, so it moves when that job does.
@@ -580,15 +581,21 @@ jobs:
 
       # A draft rather than a published release: the maintainer's own checklist
       # step still writes the notes and attaches the SBOM (docs/RELEASES.md).
+      # A tag on an older release line is created with --latest=false.
       - name: Attach the launchers to the release
         env:
           GH_TOKEN: ${{ github.token }}
           ALCOVE_TAG: ${{ github.ref_name }}
+          ALCOVE_NEWEST_LINE: ${{ needs.release-line.outputs.newest }}
         run: |
           set -euo pipefail
+          latest_flag=()
+          if [ "${ALCOVE_NEWEST_LINE}" != "true" ]; then
+            latest_flag=(--latest=false)
+          fi
           if ! gh release view "$ALCOVE_TAG" >/dev/null 2>&1; then
             gh release create "$ALCOVE_TAG" --draft --verify-tag \
-              --title "Alcove $ALCOVE_TAG" --notes ''
+              "${latest_flag[@]}" --title "Alcove $ALCOVE_TAG" --notes ''
           fi
           gh release upload "$ALCOVE_TAG" launcher-assets/* --clobber
 
