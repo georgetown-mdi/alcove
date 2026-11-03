@@ -325,7 +325,8 @@ A run's bookkeeping holds one run, so the next stamp, a benign no-show above all
 That is why such evidence is also raised as a standing condition, beside the run bookkeeping, where no later run's stamp reaches it.
 Without it, the confirmation reserved for this class would be asked for once and never again: every visit after the first no-show would report that the partner did not arrive, and stop.
 A successful run does not clear it either: it rules out neither a third party who tried and moved on nor an accidental self-fork, the two readings the confirmation exists to separate.
-The one exception, the maintainer's decision of 2026-11-02, is a save failure the partner reported, which a later successful run clears: both sides saved the next secret in that run, and the run's heal note already asks whether a second copy runs.
+The one exception, the maintainer's decisions of 2026-11-02, is a save failure on either side, the partner's reported one or this device's own, which a later successful run clears: both sides saved the next secret in that run, and where it used a previous secret, its heal note asks whether a second copy runs.
+A handshake that fails closed after that success is then not read as the save failure, and gets the confirmation.
 The first condition stands against later ones because answering it is a single act over everything that stood before it.
 A store failure can span a run's rotation write and its own best-effort bookkeeping write, then recover in time for the schedule's advance, so the window's own write raises the condition a second time.
 The raise sites and what clears the condition are in [MANAGED_EXCHANGE_RECORD.md](../spec/MANAGED_EXCHANGE_RECORD.md#the-standing-condition).

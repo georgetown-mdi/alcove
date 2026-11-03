@@ -71,6 +71,7 @@ import type {
   ManagedExchangeLastRun,
   ManagedExchangeRecord,
   ManagedExchangeSchedule,
+  ManagedExchangeScheduleAdvance,
   ManagedStandingCondition,
   NewManagedExchange,
   RunnableManagedExchangeRecord,
@@ -2528,25 +2529,173 @@ describe("the standing condition across the bookkeeping writes", () => {
     });
   });
 
-  test("a successful run after this device's failed save leaves it for the operator", () => {
-    const failedSave = applyManagedExchangeLastRun(
-      buildManagedExchangeRecord(newExchange({ schedule })),
-      {
-        at: raisedAt,
-        outcome: "failed",
-        failureKind: "storage",
-        nextRunHeals: true,
-      },
-      Date.parse(raisedAt),
-    );
-    const after = applyManagedExchangeLastRun(
-      failedSave,
-      { at: laterAt, outcome: "succeeded" },
-      Date.parse(laterAt),
-    );
-    expect(after.standingCondition).toEqual({
+  describe("this device's failed save", () => {
+    const betweenAt = "2026-07-14T12:30:00.000Z";
+    const storage: ManagedStandingCondition = {
       since: raisedAt,
       kind: "storage",
+    };
+    function withStorage(nextRunHeals?: true): RunnableManagedExchangeRecord {
+      return runnableManagedExchangeOrRefuse(
+        applyManagedExchangeLastRun(
+          buildManagedExchangeRecord(newExchange({ schedule })),
+          {
+            at: raisedAt,
+            outcome: "failed",
+            failureKind: "storage",
+            ...(nextRunHeals && { nextRunHeals }),
+          },
+          Date.parse(raisedAt),
+        ),
+      );
+    }
+    function succeed(
+      record: ManagedExchangeRecord,
+      at: string = laterAt,
+    ): ManagedExchangeRecord {
+      return applyManagedExchangeLastRun(
+        record,
+        { at, outcome: "succeeded" },
+        Date.parse(at),
+      );
+    }
+    function advance(
+      record: ManagedExchangeRecord,
+      carried: Pick<
+        ManagedExchangeScheduleAdvance,
+        "lastRun" | "standingCondition"
+      >,
+    ): ManagedExchangeRecord {
+      return applyManagedExchangeScheduleAdvance(record, {
+        schedule: {
+          ...schedule,
+          nextWindow: "2026-01-20T14:00:00.000Z",
+          consecutiveMisses: schedule.consecutiveMisses,
+        },
+        fromNextWindow: schedule.nextWindow,
+        fromConsecutiveMisses: schedule.consecutiveMisses,
+        evidenceSharedSecret: record.sharedSecret,
+        ...carried,
+      });
+    }
+
+    test.each([
+      ["", undefined],
+      [" whose partner kept the secret it used", true],
+    ] as const)("a successful run after it clears it%s", (_case, heals) => {
+      const record = withStorage(heals);
+      expect(record.standingCondition).toEqual(storage);
+      const after = succeed(record);
+      expect(after.lastRun?.outcome).toBe("succeeded");
+      expect(after.standingCondition).toEqual(NO_STANDING_CONDITION);
+    });
+
+    test.each(["auth", "storage"] as const)(
+      "a %s failure listed between it and the success keeps it",
+      (failureKind) => {
+        const between = applyManagedExchangeLastRun(
+          withStorage(),
+          { at: betweenAt, outcome: "failed", failureKind },
+          Date.parse(betweenAt),
+        );
+        expect(between.standingCondition).toEqual(storage);
+        expect(succeed(between).standingCondition).toEqual(storage);
+      },
+    );
+
+    test("one holding the operator's compromise response stays", () => {
+      const answered = applyManagedExchangeCompromiseResponse(
+        withStorage(),
+        betweenAt,
+      );
+      expect(standingCompromiseResponse(answered)).toBeDefined();
+      expect(succeed(answered).standingCondition).toEqual(
+        answered.standingCondition,
+      );
+    });
+
+    test("a no-show after it leaves it standing", () => {
+      const after = applyManagedExchangeLastRun(
+        withStorage(),
+        { at: laterAt, outcome: "missed" },
+        Date.parse(laterAt),
+      );
+      expect(after.standingCondition).toEqual(storage);
+    });
+
+    test("a success stamped before it does not clear it", () => {
+      const after = applyManagedExchangeLastRun(
+        withStorage(),
+        { at: "2026-07-14T11:00:00.000Z", outcome: "succeeded" },
+        Date.parse("2026-07-14T10:00:00.000Z"),
+      );
+      expect(after.standingCondition).toEqual(storage);
+    });
+
+    test("its entry arriving after a later success raises nothing", () => {
+      const succeeded = succeed(
+        buildManagedExchangeRecord(newExchange({ schedule })),
+      );
+      const after = applyManagedExchangeLastRun(
+        succeeded,
+        { at: raisedAt, outcome: "failed", failureKind: "storage" },
+        Date.parse(raisedAt),
+      );
+      expect(after.lastRun?.outcome).toBe("succeeded");
+      expect(after.standingCondition).toEqual(NO_STANDING_CONDITION);
+    });
+
+    test("a failed-closed handshake after the success raises its own auth condition", () => {
+      const authAt = "2026-07-14T14:00:00.000Z";
+      const after = applyManagedExchangeLastRun(
+        succeed(withStorage()),
+        { at: authAt, outcome: "failed", failureKind: "auth" },
+        Date.parse(authAt),
+      );
+      expect(after.standingCondition).toEqual({ since: authAt, kind: "auth" });
+    });
+
+    describe("the schedule-advance write applies the same rule", () => {
+      const success: ManagedExchangeLastRun = {
+        at: laterAt,
+        outcome: "succeeded",
+      };
+
+      test("a success it carries clears the condition", () => {
+        expect(
+          advance(withStorage(), { lastRun: success }).standingCondition,
+        ).toEqual(NO_STANDING_CONDITION);
+      });
+
+      test("the condition it carries over a later recorded success raises nothing", () => {
+        const succeeded = succeed(
+          buildManagedExchangeRecord(newExchange({ schedule })),
+        );
+        expect(
+          advance(succeeded, { standingCondition: storage }).standingCondition,
+        ).toEqual(NO_STANDING_CONDITION);
+      });
+
+      test("a failed-closed handshake listed between keeps the condition", () => {
+        const between = applyManagedExchangeLastRun(
+          withStorage(),
+          { at: betweenAt, outcome: "failed", failureKind: "auth" },
+          Date.parse(betweenAt),
+        );
+        expect(
+          advance(between, { lastRun: success }).standingCondition,
+        ).toEqual(storage);
+      });
+
+      test("one holding the operator's compromise response stays", () => {
+        const answered = applyManagedExchangeCompromiseResponse(
+          withStorage(),
+          betweenAt,
+        );
+        expect(
+          advance(answered, { lastRun: success }).standingCondition,
+        ).toEqual(answered.standingCondition);
+      });
     });
   });
 

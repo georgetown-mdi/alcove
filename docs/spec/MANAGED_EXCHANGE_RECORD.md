@@ -749,10 +749,14 @@ replaces `lastRun` with an entry that records no failure kind at all. The
 **Raised** by any `lastRun` entry whose `failureKind` is `"auth"`, `"storage"`, or
 `"partner-storage"`, at that entry's own instant. The first raise stands: a later condition leaves the
 standing one as it is, since answering is a single act over everything that stood
-before it, and the earlier evidence is the one still unanswered. The one
+before it, and the earlier evidence is the one still unanswered. One
 exception is an `"auth"` raise over a standing `"partner-storage"` condition,
 which replaces it only while it holds no response: this device's own failed handshake is local evidence, and the
-partner's report is a claim. It is raised at two sites, and needs both:
+partner's report is a claim. The other is an `"auth"` raise over a standing
+`"storage"` condition holding no response, which replaces it where the record
+lists a success after the condition's `since` and no later than the
+handshake: that success put both sides on one secret, so the failed save no
+longer explains the handshake. It is raised at two sites, and needs both:
 
 - the `lastRun` write above, which every runner records through; and
 - the [schedule advance](#catch-up-on-wake), which carries the condition its
@@ -783,18 +787,19 @@ cannot clear it structurally as well as by rule -- clearing runs only off a
 rotation write, a success's stamp, or an operator's act, and a no-show is none
 of them.
 
-**The exception: a `"partner-storage"` condition.** A successful run clears a
-`"partner-storage"` condition that holds no response. Both sides stored the
-next secret in that run, which answers what the partner reported, and that
-run's heal note already asks whether a second copy of the exchange runs. The
+**The exception: a failed-save condition.** A successful run clears a
+`"storage"` or `"partner-storage"` condition that holds no response. Both
+sides stored the next secret in that run, which answers a failed save on
+either side. Where that run used a previous secret, its heal note asks
+whether a second copy of the exchange runs. The
 `lastRun` write clears it where the entry it is handed is a success stamped
 after the condition's `since`, or where the record already lists such a
-success stamped no later than the writer's clock, so a partner-storage entry
+success stamped no later than the writer's clock, so a failed save's entry
 arriving after a later success raises nothing; the [schedule
 advance](#catch-up-on-wake) clears it by the same rule.
 Like the raise, the clear holds whether or not the success's own entry lands.
-A condition holding the operator's response stays, and a `"storage"` or
-`"auth"` condition is cleared only by the three acts above.
+A condition holding the operator's response stays, and an `"auth"` condition
+is cleared only by the three acts above.
 Neither write clears it while the record lists a run after the condition's
 `since` holding a failed save on this device or a failed-closed handshake,
 whichever side of the success it falls: the first raise kept that run off the
@@ -818,6 +823,10 @@ including what an adversary gains by provoking the benign reading, is [Telling a
 desync from an attack](../notes/managed-exchange-design.md#telling-a-desync-from-an-attack).
 A recorded benign cause is not displaced by either rule: it is the run's own
 actionable state, and the condition stands until something clears it.
+A handshake that fails closed after a success raises an `"auth"` condition of
+its own and tiers as one: the success cleared the `"storage"` condition, or,
+where a run listed after the condition kept it standing, the `"auth"` raise
+replaces it (above).
 
 A `"partner-storage"` condition supplies its tier only where the last run
 records no failure or a no-show. A handshake that fails closed after one raises an

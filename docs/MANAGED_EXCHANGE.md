@@ -923,8 +923,9 @@ names both, so the partner checks their logs for both. The exception is a
 handshake that fails closed after a save failure your partner reported: this
 device's own failed handshake replaces that report, because the report is the
 other side's claim and not local evidence. A handshake that fails closed after a
-save failure this device recorded is read as that save failure, which explains
-it.
+save failure this device recorded, with no successful run between them, is read
+as that save failure, which explains it. After a successful run, the failed
+handshake replaces the save failure.
 
 Three things clear any standing condition:
 
@@ -936,18 +937,26 @@ Three things clear any standing condition:
 - **A re-invite**, which installs a fresh secret.
 - **Removing the exchange.**
 
-A no-show never clears one. A successful run clears only one kind, described
+A no-show never clears one. A successful run clears a save failure, described
 next.
 
-**A successful run clears a save failure your partner reported.** Both sides
-saved the new secret in that run, which answers the report, and the run's heal
-note already asks whether the exchange also runs from another copy. It does not
-clear a report you answered as a possible compromise, or one after which this
-device could not save a new secret. A successful run leaves
-the other two in place, for your acknowledgement: a save failure this device recorded, and a handshake that
-failed closed. A later success rules out neither a third party's attempt nor a
+**A successful run clears a save failure on either side.** Both sides saved
+the new secret in that run, which answers a save failure this device recorded
+or one your partner reported. Where that run used the secret from before the
+failed save, its heal note asks whether the exchange also runs from another
+copy. A successful run does not clear a save failure in two cases:
+
+- you answered it as a possible compromise;
+- a handshake failed closed, or this device could not save a new secret, after
+  it.
+
+A handshake that fails closed after that success is not explained by the save
+failure: it raises its own standing condition and gets the full confirmation.
+
+A successful run leaves a handshake that failed closed in place, for your
+acknowledgement. A later success rules out neither a third party's attempt nor a
 copy of the exchange running elsewhere, and those are the readings the
-acknowledgement and the confirmation exist to separate.
+confirmation exists to separate.
 
 ### Telling a desync from an attack
 

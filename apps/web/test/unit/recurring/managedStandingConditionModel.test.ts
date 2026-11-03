@@ -15,6 +15,8 @@ import {
   routeConfirmationReply,
 } from "@psi/managed/managedFailureConfirmation";
 
+import { STORAGE_FAILURE_TITLE } from "@psi/managed/managedFailureCopy";
+
 import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 import type { ManagedLocalState } from "@psi/managed/managedLocalState";
 
@@ -81,11 +83,35 @@ describe("managedStandingConditionView", () => {
       undefined,
       NOW,
     );
+    expect(view?.title).toBe(STORAGE_FAILURE_TITLE);
     expect(view?.clearance).toBe("acknowledge");
+    expect(view?.message).toMatch(/Re-invite your partner to reconnect\.$/);
+    expect(view?.message).not.toMatch(/do not settle it/);
+    expect(view?.reinvite).toBeUndefined();
+  });
+
+  test("a persist failure a later failed handshake keeps past a success says runs do not settle it", () => {
+    const auth = {
+      at: LATER_AT,
+      outcome: "failed",
+      failureKind: "auth",
+    } as const;
+    const view = managedStandingConditionView(
+      record({
+        lastRun: auth,
+        recentRuns: [
+          auth,
+          { at: RAISED_AT, outcome: "failed", failureKind: "storage" },
+        ],
+        standingCondition: { since: RAISED_AT, kind: "storage" },
+      }),
+      undefined,
+      NOW,
+    );
+    expect(view?.title).toBe(STORAGE_FAILURE_TITLE);
     expect(view?.message).toMatch(
       /Re-invite your partner to reconnect\. Runs since then do not settle it, including any that succeeded\.$/,
     );
-    expect(view?.reinvite).toBeUndefined();
   });
 
   describe("this device's failed save", () => {
@@ -104,10 +130,30 @@ describe("managedStandingConditionView", () => {
     test("names the next run where the failed save recorded that it can reach the partner", () => {
       const view = managedStandingConditionView(storage(), undefined, NOW);
       expect(view?.message).toMatch(
-        /Your partner saved the new secret and kept the one that run used, so the next run can still reach them\. If runs keep missing your partner or stopping, re-invite your partner\. Once a later run succeeds, you are both on the new secret and you can clear this\.$/,
+        /Your partner saved the new secret and kept the one that run used, so the next run can still reach them\. If runs keep missing your partner or stopping, re-invite your partner\. Once a later run succeeds, you are both on the new secret and this alert clears itself\.$/,
       );
       expect(view?.reinvite).toBe("if-runs-keep-failing");
       expect(view?.clearance).toBe("acknowledge");
+    });
+
+    test("names the clear where a second failed save after it keeps it past a success", () => {
+      const second = {
+        ...failedSave,
+        at: LATER_AT,
+        nextRunHeals: true,
+      } as const;
+      const view = managedStandingConditionView(
+        storage({
+          lastRun: second,
+          recentRuns: [second, { ...failedSave, nextRunHeals: true }],
+        }),
+        undefined,
+        NOW,
+      );
+      expect(view?.message).toMatch(
+        /Once a later run succeeds, you are both on the new secret and you can clear this\.$/,
+      );
+      expect(view?.reinvite).toBe("if-runs-keep-failing");
     });
 
     test("keeps naming the next run across a later visit's no-show", () => {
@@ -142,7 +188,7 @@ describe("managedStandingConditionView", () => {
       expect(view?.reinvite).toBeUndefined();
     });
 
-    test("says a run since then succeeded and still waits for the clear", () => {
+    test("on a record an earlier version left beside a success, says a run since then succeeded", () => {
       const view = managedStandingConditionView(
         storage({
           lastRun: { at: LATER_AT, outcome: "succeeded" },
@@ -161,7 +207,7 @@ describe("managedStandingConditionView", () => {
       expect(view?.clearance).toBe("acknowledge");
     });
 
-    test("names the re-invite once a handshake after the success failed closed", () => {
+    test("on a record an earlier version left beside a success, names the re-invite once a handshake after it failed closed", () => {
       const succeeded = { at: LATER_AT, outcome: "succeeded" } as const;
       const auth = {
         at: "2026-07-13T09:00:00.000Z",

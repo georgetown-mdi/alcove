@@ -262,8 +262,15 @@ describe("a live no-show is read against the evidence standing at launch", () =>
     );
     const id = await runUntilItNoShows();
 
+    // The standing alert shares the run alert's title and shows before the
+    // run, so the wait is on the run alert's own message.
     await expect
-      .element(page.getByText("The last run could not be saved"))
+      .element(page.getByText(/^The last run connected but could not save/))
+      .toBeInTheDocument();
+    await expect
+      .element(
+        page.getByText("A run could not save this exchange's new secret"),
+      )
       .toBeInTheDocument();
     await expect
       .element(page.getByRole("button", { name: "Create a fresh invitation" }))
@@ -306,7 +313,9 @@ describe("a live no-show is read against the evidence standing at launch", () =>
 
     await runButton.click();
     await expect
-      .element(page.getByText("The last run could not be saved"))
+      .element(
+        page.getByText("A run could not save this exchange's new secret"),
+      )
       .toBeInTheDocument();
     await expect.element(runButton).toBeEnabled();
 
@@ -320,7 +329,9 @@ describe("a live no-show is read against the evidence standing at launch", () =>
     await flushPendingUpdates();
 
     await expect
-      .element(page.getByText("The last run could not be saved"))
+      .element(
+        page.getByText("A run could not save this exchange's new secret"),
+      )
       .toBeInTheDocument();
     await expect
       .element(page.getByRole("button", { name: "Create a fresh invitation" }))
