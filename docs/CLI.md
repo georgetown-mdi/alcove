@@ -221,7 +221,7 @@ If a file already exists at the output path, `init` asks before overwriting; dec
 ## Quick exchange
 
 ```sh
-alcove [--identity IDENTITY] [--save] [--linkage-strategy STRATEGY] [--deduplicate] [--csv-delimiter DELIM] [--sweep-exchange-files [--force-retain-sweep]] URL INPUT_FILE [OUTPUT_FOLDER]
+alcove [--identity IDENTITY] [--save] [--linkage-strategy STRATEGY] [--deduplicate] [--consent-to-terms] [--csv-delimiter DELIM] [--sweep-exchange-files [--force-retain-sweep]] URL INPUT_FILE [OUTPUT_FOLDER]
 ```
 
 Both parties run this command against the same server. Each party's linkage terms, metadata, and data standardizing transformations are inferred from its own input file; if the inferred terms disagree, the exchange fails with an error. By default no configuration files are written. Security rests on the transport and file system controls rather than a pre-shared secret: over SFTP or a shared folder, the server or share administrator is trusted.
@@ -234,6 +234,8 @@ Both parties run this command against the same server. Each party's linkage term
 `--linkage-strategy STRATEGY` chooses `cascade` or `single-pass` as for [`alcove invite`](#offline-invitation). Here each party infers its own terms, so both must pass the same value; a mismatch aborts the exchange. An unknown value is a usage error before any connection.
 
 `--deduplicate` lets several of this party's records match one of the partner's ([`linkage_terms.deduplicate`](EXCHANGE_REFERENCE.md#linkage_termsdeduplicate)). It is off by default and is each party's own: the two values need not agree, and the pair decides the exchange's cardinality at the terms exchange. Setting it widens what the partner discloses. Both parties setting it gives a many-to-many match, under either linkage strategy. With `--save` the value is written into the saved configuration.
+
+`--consent-to-terms` consents in advance to receiving the payload columns your partner's terms declare it sends you, so a run at a terminal does not stop to ask ([Your partner's first payload columns](#your-partners-first-payload-columns)). Use it when your partner's side is slow to answer, for example behind a file-sync service that delays each file by an hour, so neither party waits on the question. The run takes the columns, writes one line naming them and the flag, and continues; it behaves as a run with no terminal does. Review what your partner is expected to send before using it. The flag does not affect [SFTP host-key trust](#sftp-host-key-trust): an unpinned server's key is still confirmed at a terminal before the run connects, and pinned with `--server-host-key-fingerprint` to skip that. Only the quick exchange takes the flag; `alcove exchange` does not.
 
 The URL scheme determines the transport channel:
 
@@ -640,10 +642,10 @@ On a quick exchange the display is the only statement of what is sent, since not
 
 ### Your partner's first payload columns
 
-A configuration with no `linkage_terms.payload.receive` takes the columns your partner's terms declare it sends on the first run, and records them as `payload.receive` ([Leaving `payload.receive` unset](EXCHANGE_REFERENCE.md#leaving-payloadreceive-unset)). This holds for `alcove exchange`, the online `alcove invite` and `alcove accept`, and a quick exchange run with `--save`. A quick exchange without `--save` records nothing, but asks the same question at a terminal.
+A configuration with no `linkage_terms.payload.receive` takes the columns your partner's terms declare it sends on the first run, and records them as `payload.receive` ([Leaving `payload.receive` unset](EXCHANGE_REFERENCE.md#leaving-payloadreceive-unset)). This holds for `alcove exchange`, the online `alcove invite` and `alcove accept`, and a quick exchange run with `--save`. A quick exchange without `--save` records nothing, but asks the same question at a terminal unless it is given `--consent-to-terms`.
 
 - **At a terminal**, the run shows those columns and asks whether to take them. Yes records them and the run continues. No ends the run (exit 64) before any of your linkage keys or data is sent, and records nothing; your partner's run ends with a partner refusal (exit 76). Running again asks again.
-- **Unattended** -- no terminal on stdin, an `INPUT_FILE` of `-`, `alcove accept --consent-to-terms`, or a run the [console](CONSOLE.md) drives -- the run takes the columns without asking and writes one line naming each column and the configuration it wrote them to, or saying it wrote them to none. The line is written at every `--log-level`, `silent` included, to stderr or the `--log-file`, without a timestamp prefix. With `--event-stream` the run also emits a `warning` event whose `source` is `payloadReceiveTaken` ([CLI_EVENTS.md](spec/CLI_EVENTS.md#payload-columns-taken-without-asking)).
+- **Unattended** -- no terminal on stdin, an `INPUT_FILE` of `-`, a quick exchange given `--consent-to-terms`, `alcove accept --consent-to-terms`, or a run the [console](CONSOLE.md) drives -- the run takes the columns without asking and writes one line naming each column and the configuration it wrote them to, or saying it wrote them to none. A quick exchange given `--consent-to-terms` begins the line with `--consent-to-terms was given, so this run took`, at a terminal or not. The line is written at every `--log-level`, `silent` included, to stderr or the `--log-file`, without a timestamp prefix. With `--event-stream` the run also emits a `warning` event whose `source` is `payloadReceiveTaken` ([CLI_EVENTS.md](spec/CLI_EVENTS.md#payload-columns-taken-without-asking)).
 
 Nothing is asked where your partner declares no column, or where you already hold a list. A later difference from a list is a terms change.
 

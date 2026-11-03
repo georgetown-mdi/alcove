@@ -274,6 +274,29 @@ describe("the unattended fill notice", () => {
     );
   });
 
+  test("names --consent-to-terms and not an unattended run when the run was given the flag", () => {
+    expect(payloadReceiveTakenNotice(["notes"], undefined, true)).toBe(
+      "--consent-to-terms was given, so this run took the payload columns " +
+        'your partner declares it sends you, without asking: "notes". They ' +
+        "were not written to any configuration.",
+    );
+    expect(payloadReceiveTakenNotice(["notes"], "alcove.yaml", true)).toContain(
+      "They were written to alcove.yaml as linkage_terms.payload.receive",
+    );
+  });
+
+  test("keeps the consent notice within the warning cap when many long names are cut", () => {
+    const columns = Array.from(
+      { length: 200 },
+      (_, index) => `column_${String(index)}_${"x".repeat(200)}`,
+    );
+    const notice = payloadReceiveTakenNotice(columns, "/srv/alcove.yaml", true);
+    expect(notice.length).toBeLessThanOrEqual(
+      WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+    );
+    expect(notice).toContain(DISPLAY_TRUNCATION_MARKER);
+  });
+
   test("shows a double quote inside a column name escaped, so the name stays one quoted column", () => {
     expect(payloadReceiveTakenNotice(['x", "injected'], undefined)).toBe(
       "this unattended run took the payload columns your partner declares " +
@@ -338,6 +361,23 @@ describe("the unattended fill notice", () => {
       [0, 0, 1],
       [0, 0, 0],
     ]);
+  });
+
+  test("writes and emits the consent notice, not the unattended one, when given consentedInAdvance", () => {
+    const written: string[] = [];
+    const { emitter, emitted } = recordingEmitter();
+    reportPayloadReceiveFill({
+      columns: ["notes"],
+      recordedIn: undefined,
+      unattendedWriter: (line) => written.push(line),
+      eventStream: emitter,
+      log: { info: () => undefined },
+      consentedInAdvance: true,
+    });
+    const notice = payloadReceiveTakenNotice(["notes"], undefined, true);
+    expect(written).toEqual([notice]);
+    expect(emitted.map((event) => event["message"])).toEqual([notice]);
+    expect(notice).not.toContain("unattended");
   });
 });
 

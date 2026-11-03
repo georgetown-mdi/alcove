@@ -185,21 +185,35 @@ export function builder(cmd: Argv): Argv {
             ")",
         },
       ),
-    ).option("deduplicate", {
-      type: "boolean",
-      default: false,
-      describe:
-        "let several of your records match a single one of your partner's " +
-        "(default: off, each of your records matches at most one). This is " +
-        "your own side of the setting: your partner declares its own on its " +
-        "own run, and neither side is read from the other. Setting it widens " +
-        "what your partner discloses -- more of its records can match than in " +
-        "a one-to-one run of the same two files. Both parties setting it " +
-        "runs a many-to-many match under either linkage strategy, where each " +
-        "party's records may group the other's. " +
-        "See https://github.com/georgetown-mdi/alcove/blob/main/docs/" +
-        "EXCHANGE_REFERENCE.md (linkage_terms.deduplicate).",
-    }),
+    )
+      .option("deduplicate", {
+        type: "boolean",
+        default: false,
+        describe:
+          "let several of your records match a single one of your partner's " +
+          "(default: off, each of your records matches at most one). This is " +
+          "your own side of the setting: your partner declares its own on its " +
+          "own run, and neither side is read from the other. Setting it widens " +
+          "what your partner discloses -- more of its records can match than in " +
+          "a one-to-one run of the same two files. Both parties setting it " +
+          "runs a many-to-many match under either linkage strategy, where each " +
+          "party's records may group the other's. " +
+          "See https://github.com/georgetown-mdi/alcove/blob/main/docs/" +
+          "EXCHANGE_REFERENCE.md (linkage_terms.deduplicate).",
+      })
+      // No short form, as on accept: skipping a confirmation takes an
+      // explicit token.
+      .option("consent-to-terms", {
+        type: "boolean",
+        default: false,
+        describe:
+          "consent in advance to receiving the columns your partner's terms " +
+          "declare it sends you, so the run does not stop to ask at a " +
+          "terminal. The run takes them, writes one line naming them, and " +
+          "continues; review what your partner is expected to send before " +
+          "using it. It does not affect SSH host-key trust: an unpinned " +
+          "server's key is still confirmed at a terminal first.",
+      }),
     "quick exchange",
   );
   for (const [heading, keys] of ZERO_SETUP_OPTION_GROUPS)
@@ -224,6 +238,7 @@ export const ZERO_SETUP_OPTION_GROUPS: ReadonlyArray<
       "csv-delimiter",
       "deduplicate",
       "linkage-strategy",
+      "consent-to-terms",
       "record",
     ],
   ],
@@ -297,6 +312,9 @@ interface ZeroSetupArgs extends CommonBootstrapOptions {
   // terms. Resolved to a definite boolean here: the terms schema makes the
   // field mandatory, and there is no config layer to merge an unset flag with.
   deduplicate: boolean;
+  // Consent to the partner's declared payload columns, given in advance: the
+  // run takes them instead of asking at a terminal.
+  consentToTerms: boolean;
   // The field delimiter this run reads its input by and writes its result
   // with. There is no configuration to merge with here -- a zero-setup run
   // loads none -- so the flag alone decides it.
@@ -325,6 +343,7 @@ function parseArgs(argv: Arguments): ZeroSetupArgs {
     // rejects a repeat first. Undefined when unset, leaving the cascade default.
     linkageStrategy: parseLinkageStrategyFlag(argv),
     deduplicate: (argv["deduplicate"] as boolean | undefined) ?? false,
+    consentToTerms: argv["consent-to-terms"] === true,
     csvDelimiter: csvDelimiterFlag(argv),
   };
 }
@@ -548,6 +567,8 @@ export function finalizeBootstrap(params: {
    * {@link reportPayloadReceiveFill}.
    */
   unattendedFillNoticeWriter?: (line: string) => void;
+  /** The run was given `--consent-to-terms`, which the fill notice states. */
+  consentedInAdvance?: boolean;
   eventStream?: EventStreamEmitter;
 }): void {
   const {
@@ -559,6 +580,7 @@ export function finalizeBootstrap(params: {
     log,
     filledPayloadReceive,
     unattendedFillNoticeWriter,
+    consentedInAdvance,
     eventStream,
   } = params;
   const savedConfigWarning = { log };
@@ -570,6 +592,7 @@ export function finalizeBootstrap(params: {
         unattendedWriter: unattendedFillNoticeWriter,
         eventStream,
         log,
+        consentedInAdvance,
       });
   };
 
@@ -728,6 +751,7 @@ export async function handler(argv: Arguments): Promise<void> {
     allowMemoryShortfall,
     linkageStrategy,
     deduplicate,
+    consentToTerms,
     csvDelimiter,
     ...options
   } = parsed;
@@ -926,7 +950,9 @@ export async function handler(argv: Arguments): Promise<void> {
       announceRetainMode(connection, log);
 
       let filledPayloadReceive: string[] | undefined;
-      const interactive = stdinAnswersPrompts(input);
+      // --consent-to-terms answers the payload-columns question in advance, so
+      // a terminal run takes the columns as a run without one does.
+      const interactive = stdinAnswersPrompts(input) && !consentToTerms;
       const unattendedWriter = interactive ? undefined : writePlainLine;
       // auth: null is the explicit opt-out that tells runProtocol to proceed
       // without authentication and without a warning.
@@ -965,6 +991,7 @@ export async function handler(argv: Arguments): Promise<void> {
               unattendedWriter,
               eventStream: eventStreamEmitter,
               log,
+              consentedInAdvance: consentToTerms,
             });
         },
         // Without --save there is no configuration, so a yes records nothing.
@@ -1013,6 +1040,7 @@ export async function handler(argv: Arguments): Promise<void> {
                 log,
                 filledPayloadReceive,
                 unattendedFillNoticeWriter: unattendedWriter,
+                consentedInAdvance: consentToTerms,
                 eventStream: eventStreamEmitter,
               });
               return { persisted: true };
@@ -1040,6 +1068,7 @@ export async function handler(argv: Arguments): Promise<void> {
                   unattendedWriter,
                   eventStream: eventStreamEmitter,
                   log,
+                  consentedInAdvance: consentToTerms,
                 });
               reportPersistenceLoss(notice, eventStreamEmitter);
               return { persisted: false };
