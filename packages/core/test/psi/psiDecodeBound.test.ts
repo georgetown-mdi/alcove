@@ -5,8 +5,12 @@ import { MAX_FRAME_SIZE_BYTES } from "../../src/connection/frameSize";
 import { PSI_ELEMENT_BYTES } from "../../src/connection/psiElementScan";
 import { ProtocolRefusalError } from "../../src/errors";
 import { prepareForExchange, type PreparedExchange } from "../../src/exchange";
-import { PSIParticipant, type PsiDecodeBound } from "../../src/psi/participant";
-import { InProcessPsiEngine, type PsiEngine } from "../../src/psi/psiEngine";
+import { PSIParticipant } from "../../src/psi/participant";
+import {
+  InProcessPsiEngine,
+  type PsiEngine,
+  type PsiEngineMode,
+} from "../../src/psi/psiEngine";
 import { loadNativeAddonOrSkip } from "../utils/nativeAddon";
 import { phaseResult, runPsiPhasePair } from "../utils/psiPhasePair";
 import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
@@ -15,28 +19,13 @@ import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 import type { LinkageTerms } from "../../src/config/linkageTermsSchema";
 import type { PsiElementBounds } from "../../src/connection/frameSize";
 
-// The two bounds on what a partner's PSI set takes to decode
-// (docs/spec/PROTOCOL.md, "Declared PSI element counts are bounded by a
-// wire-format scan before deserialization"): the set maximum, and on
-// single-pass over file-sync the exact element length in its place.
+// Every element of a partner's PSI setup, request and response must be
+// PSI_ELEMENT_BYTES long, on every channel and strategy, so a frame's decode
+// is held to the rate of an honest frame's (docs/spec/PROTOCOL.md, "Declared
+// PSI element counts are bounded by a wire-format scan before
+// deserialization").
 
-// The per-set maximum, lowered for the tests that show which bound applies,
-// so a set of a few values reaches it.
-const setMaximum = vi.hoisted(() => ({
-  lowered: undefined as number | undefined,
-}));
-vi.mock("../../src/connection/frameSize", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("../../src/connection/frameSize")>();
-  return {
-    ...actual,
-    get MAX_PSI_DECODE_ELEMENTS() {
-      return setMaximum.lowered ?? actual.MAX_PSI_DECODE_ELEMENTS;
-    },
-  };
-});
 afterEach(() => {
-  setMaximum.lowered = undefined;
   vi.restoreAllMocks();
 });
 
@@ -47,7 +36,6 @@ const CLIENT_VALUES = ["Carol", "Erin", "Gus", "Hana", "Ivan", "Jo"];
 
 function participant(
   role: "starter" | "joiner",
-  decodeBound: PsiDecodeBound,
   elementBounds: PsiElementBounds = UNBOUNDED_PSI_ELEMENTS,
 ): PSIParticipant {
   return new PSIParticipant(
@@ -55,15 +43,10 @@ function participant(
     psiLibrary,
     { role, verbose: -1 },
     elementBounds,
-    undefined,
-    undefined,
-    undefined,
-    decodeBound,
   );
 }
 
-// A set of `count` elements of `bytes` bytes each, distinct and ascending, in
-// the message `kind` takes.
+// `count` elements of `bytes` bytes each, distinct and ascending.
 function elements(count: number, bytes: number): Array<Uint8Array> {
   return Array.from({ length: count }, (_, index) =>
     new Uint8Array(bytes).fill(index + 1, bytes - 1),
@@ -143,7 +126,7 @@ async function expectElementsOfOneLength(library: PSILibrary): Promise<void> {
 
 const nativeLibrary = await loadNativeAddonOrSkip();
 
-describe("the element-length decode bound", () => {
+describe("the element length", () => {
   for (const [backend, library] of [
     ["wasm", psiLibrary],
     ["native", nativeLibrary],
@@ -155,19 +138,16 @@ describe("the element-length decode bound", () => {
       },
     );
 
-  test("a request of short elements is refused before decode, where the set maximum admits it", async () => {
-    const hostile = requestOf(elements(64, 2));
+  test("a request of short elements is refused before decode", async () => {
     const deserialize = vi.spyOn(psiLibrary.request, "deserializeBinary");
-
-    await expect(
-      participant("starter", "element-length").processClientRequest(hostile),
-    ).rejects.toThrow(/malformed inbound PSI request frame/);
+    const refusal = participant("starter").processClientRequest(
+      requestOf(elements(64, 2)),
+    );
+    await expect(refusal).rejects.toThrow(
+      /malformed inbound PSI request frame/,
+    );
+    await expect(refusal).rejects.toBeInstanceOf(ProtocolRefusalError);
     expect(deserialize).not.toHaveBeenCalled();
-
-    await participant("starter", "set-maximum")
-      .processClientRequest(hostile)
-      .catch(() => undefined);
-    expect(deserialize).toHaveBeenCalled();
   });
 
   test.each([
@@ -190,7 +170,7 @@ describe("the element-length decode bound", () => {
         .deserializeBinary(response)
         .getEncryptedElementsList_asU8();
 
-      const receiver = participant("joiner", "element-length");
+      const receiver = participant("joiner");
       await receiver.createClientRequest(CLIENT_VALUES);
       const setupRefusal = receiver.computeValueMatches(
         setupOf(withOdd(honestSetupList)),
@@ -201,7 +181,7 @@ describe("the element-length decode bound", () => {
       );
       await expect(setupRefusal).rejects.toBeInstanceOf(ProtocolRefusalError);
 
-      const second = participant("joiner", "element-length");
+      const second = participant("joiner");
       await second.createClientRequest(CLIENT_VALUES);
       await expect(
         second.computeValueMatches(
@@ -212,47 +192,30 @@ describe("the element-length decode bound", () => {
     },
   );
 
-  test("an honest round past the set maximum matches, where the set maximum refuses it", async () => {
-    setMaximum.lowered = 4;
-    const run = async (decodeBound: PsiDecodeBound) => {
-      const sender = participant("starter", decodeBound);
-      const receiver = participant("joiner", decodeBound);
-      try {
-        const { setup } = await sender.createServerSetup(SERVER_VALUES);
-        const request = await receiver.createClientRequest(CLIENT_VALUES);
-        const response = await sender.processClientRequest(request);
-        return await receiver.computeValueMatches(setup, response);
-      } finally {
-        sender.dispose();
-        receiver.dispose();
-      }
-    };
-
-    const [local, partner] = await run("element-length");
-    expect(local.map((index) => CLIENT_VALUES[index]).sort()).toEqual([
-      "Carol",
-      "Erin",
-    ]);
-    expect(partner).toHaveLength(2);
-    await expect(run("set-maximum")).rejects.toThrow(
-      /inbound PSI request declares more than 4 encrypted element\(s\)/,
-    );
-  });
-
-  test("the authenticated bound still holds under the element-length bound", async () => {
-    const { request } = await honestRound();
-    await expect(
-      participant("starter", "element-length", {
-        ...UNBOUNDED_PSI_ELEMENTS,
-        request: CLIENT_VALUES.length - 1,
-      }).processClientRequest(request),
-    ).rejects.toThrow(
-      `inbound PSI request declares more than ${CLIENT_VALUES.length - 1} encrypted element(s)`,
-    );
+  test("an honest round matches", async () => {
+    const sender = participant("starter");
+    const receiver = participant("joiner");
+    try {
+      const { setup } = await sender.createServerSetup(SERVER_VALUES);
+      const request = await receiver.createClientRequest(CLIENT_VALUES);
+      const response = await sender.processClientRequest(request);
+      const [local, partner] = await receiver.computeValueMatches(
+        setup,
+        response,
+      );
+      expect(local.map((index) => CLIENT_VALUES[index]).sort()).toEqual([
+        "Carol",
+        "Erin",
+      ]);
+      expect(partner).toHaveLength(2);
+    } finally {
+      sender.dispose();
+      receiver.dispose();
+    }
   });
 });
 
-// --- Which bound an exchange's PSI phase takes ---------------------------------
+// --- Every channel and strategy -------------------------------------------------
 
 const TERMS: LinkageTerms = {
   version: "1.0.0",
@@ -273,6 +236,16 @@ const TERMS: LinkageTerms = {
   ],
 };
 
+const STRATEGIES: Array<[string, LinkageTerms]> = [
+  ["single-pass", TERMS],
+  ["the cascade", { ...TERMS, linkageStrategy: "cascade" }],
+  ["count-only", { ...TERMS, algorithm: "psi-c", linkageStrategy: "cascade" }],
+];
+const CHANNELS: Array<[string, number | undefined]> = [
+  ["file-sync", MAX_FRAME_SIZE_BYTES],
+  ["another channel", undefined],
+];
+
 const COLUMNS = ["first_name", "last_name"];
 const person = (first_name: string, last_name: string) => ({
   first_name,
@@ -284,7 +257,7 @@ function preparedParty(
   rows: Array<Record<string, string>>,
 ): PreparedExchange {
   return prepareForExchange(
-    { linkageTerms: { ...TERMS, identity } },
+    { linkageTerms: { ...TERMS, linkageStrategy: "cascade", identity } },
     identity,
     rows,
     COLUMNS,
@@ -303,79 +276,125 @@ const SENDER = preparedParty("Sender Co", [
   person("Fay", "Ross"),
 ]);
 
-// Each party's in-process engine, the receiver's request rewritten to hold
-// elements of two bytes, one per value, and every engine call recorded.
-function hostileReceiverEngines(calls: Array<string>) {
+// The message one engine operation builds, rewritten to hold elements of two
+// bytes: the receiver's request, the sender's setup, or its response.
+type Rewritten = "request" | "setup" | "response";
+
+// Each party's in-process engine, the `rewritten` message replaced, and
+// every engine call recorded.
+function hostileEngines(rewritten: Rewritten, calls: Array<string>) {
   return (
     role: "starter" | "joiner",
     id: string,
-    mode: "identifier-revealing" | "count-only-permuted",
+    mode: PsiEngineMode,
   ): PsiEngine => {
     const engine = new InProcessPsiEngine(psiLibrary, role, id, mode);
     return new Proxy(engine, {
       get(target, property) {
         const member: unknown = Reflect.get(target, property, target);
         if (typeof member !== "function") return member;
-        return (...args: Array<unknown>) => {
+        return async (...args: Array<unknown>) => {
           calls.push(`${role} ${String(property)}`);
-          if (property === "createClientRequest")
-            return Promise.resolve(
-              requestOf(elements((args[0] as ReadonlyArray<string>).length, 2)),
+          const result: unknown = await (
+            member as (...a: Array<unknown>) => unknown
+          ).apply(target, args);
+          if (rewritten === "request" && property === "createClientRequest")
+            return requestOf(
+              elements((args[0] as ReadonlyArray<string>).length, 2),
             );
-          return (member as (...a: Array<unknown>) => unknown).apply(
-            target,
-            args,
-          );
+          if (rewritten === "setup" && property === "createServerSetup")
+            return {
+              ...(result as object),
+              setup: setupOf(
+                elements((args[0] as ReadonlyArray<string>).length, 2),
+              ),
+            };
+          if (rewritten === "response" && property === "processClientRequest")
+            return responseOf(elements(1, 2));
+          return result;
         };
       },
     });
   };
 }
 
-describe("the PSI phase of a single-pass exchange", () => {
-  test("over file-sync matches an honest partner as over any other channel", async () => {
-    const plain = await runPsiPhasePair(psiLibrary, TERMS, RECEIVER, SENDER);
-    const fileSync = await runPsiPhasePair(
-      psiLibrary,
-      TERMS,
-      RECEIVER,
-      SENDER,
-      undefined,
-      MAX_FRAME_SIZE_BYTES,
-    );
-    for (const party of ["receiver", "sender"] as const) {
-      const table = phaseResult(fileSync[party]).associationTable;
-      expect(table?.[0]).toHaveLength(2);
-      expect(table).toEqual(phaseResult(plain[party]).associationTable);
-    }
-  });
+describe.each(CHANNELS)("over %s", (_channel, fileSyncFrameBound) => {
+  test.each(STRATEGIES)(
+    "%s matches an honest partner",
+    async (_strategy, terms) => {
+      const outcome = await runPsiPhasePair(
+        psiLibrary,
+        terms,
+        RECEIVER,
+        SENDER,
+        undefined,
+        fileSyncFrameBound,
+      );
+      const result = phaseResult(outcome.receiver);
+      expect(
+        result.associationTable?.[0].length ?? result.intersectionCount,
+      ).toBe(2);
+    },
+  );
 
-  test("over file-sync refuses a request of short elements before the engine decodes it", async () => {
-    const calls: Array<string> = [];
-    const outcome = await runPsiPhasePair(
-      psiLibrary,
-      TERMS,
-      RECEIVER,
-      SENDER,
-      hostileReceiverEngines(calls),
-      MAX_FRAME_SIZE_BYTES,
-    );
-    expect(() => phaseResult(outcome.sender)).toThrow(
-      /malformed inbound PSI request frame/,
-    );
-    expect(calls).not.toContain("starter processClientRequest");
-  });
+  test.each(STRATEGIES)(
+    "%s refuses a request of short elements before the engine decodes it",
+    async (_strategy, terms) => {
+      const calls: Array<string> = [];
+      const outcome = await runPsiPhasePair(
+        psiLibrary,
+        terms,
+        RECEIVER,
+        SENDER,
+        hostileEngines("request", calls),
+        fileSyncFrameBound,
+      );
+      expect(() => phaseResult(outcome.sender)).toThrow(
+        /malformed inbound PSI request frame/,
+      );
+      expect(calls).not.toContain("starter processClientRequest");
+    },
+  );
 
-  test("over another channel hands the same request to the engine, under the set maximum", async () => {
-    const calls: Array<string> = [];
-    const outcome = await runPsiPhasePair(
-      psiLibrary,
-      TERMS,
-      RECEIVER,
-      SENDER,
-      hostileReceiverEngines(calls),
-    );
-    expect(() => phaseResult(outcome.sender)).toThrow();
-    expect(calls).toContain("starter processClientRequest");
-  });
+  test.each(STRATEGIES.slice(0, 2))(
+    "%s refuses a setup of short elements before the engine takes it",
+    async (_strategy, terms) => {
+      const calls: Array<string> = [];
+      const outcome = await runPsiPhasePair(
+        psiLibrary,
+        terms,
+        RECEIVER,
+        SENDER,
+        hostileEngines("setup", calls),
+        fileSyncFrameBound,
+      );
+      expect(() => phaseResult(outcome.receiver)).toThrow(
+        /malformed inbound PSI serverSetup frame/,
+      );
+      expect(
+        calls.filter((call) =>
+          /^joiner (receive|complete)ServerSetup/.test(call),
+        ),
+      ).toEqual([]);
+    },
+  );
+
+  test.each(STRATEGIES.slice(0, 2))(
+    "%s refuses a response of short elements before the engine matches it",
+    async (_strategy, terms) => {
+      const calls: Array<string> = [];
+      const outcome = await runPsiPhasePair(
+        psiLibrary,
+        terms,
+        RECEIVER,
+        SENDER,
+        hostileEngines("response", calls),
+        fileSyncFrameBound,
+      );
+      expect(() => phaseResult(outcome.receiver)).toThrow(
+        /malformed inbound PSI response frame/,
+      );
+      expect(calls).not.toContain("joiner computeAssociationTable");
+    },
+  );
 });

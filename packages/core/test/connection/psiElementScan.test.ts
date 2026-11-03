@@ -97,8 +97,7 @@ test("a non-Raw (GCS) server setup declares no amplifiable element list", () => 
   gcs.setBits(new Uint8Array([1, 2, 3, 4]));
   m.setGcs(gcs);
   // The scan sees only the single `bits` field inside the oneof submessage, so a
-  // non-Raw setup can never amplify -- it is rejected downstream as non-Raw, not
-  // here.
+  // non-Raw setup can never amplify.
   expect(
     countDeclaredPsiElements(m.serializeBinary(), "serverSetup", BIG),
   ).toBeLessThanOrEqual(2);
@@ -233,6 +232,23 @@ test("with an element length, every element of that length is counted and any ot
       expect(countDeclaredPsiElements(odd, kind, BIG)).toBe(3);
     }
   }
+});
+
+test("with an element length, a GCS setup whose bits are not that long is refused", () => {
+  const m = new lib.serverSetup();
+  const gcs = new lib.serverSetup.GCSInfo();
+  gcs.setDiv(1);
+  gcs.setHashRange(1000);
+  gcs.setBits(new Uint8Array([1, 2, 3, 4]));
+  m.setGcs(gcs);
+  expect(() =>
+    countDeclaredPsiElements(
+      m.serializeBinary(),
+      "serverSetup",
+      BIG,
+      PSI_ELEMENT_BYTES,
+    ),
+  ).toThrow(`an element of 4 bytes, not ${PSI_ELEMENT_BYTES}`);
 });
 
 test("a frame scanned in pieces past its stated length, or ending short of it, throws", () => {

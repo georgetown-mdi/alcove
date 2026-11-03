@@ -26,7 +26,10 @@ import { sortAssociationTable } from "../../src/testing";
 import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
 import { asOnePsiSetPart } from "../utils/psiSetPart";
 import { PSI_SET_PART_HEADER_BYTES } from "../../src/psi/psiSetParts";
-import { countDeclaredPsiElements } from "../../src/connection/psiElementScan";
+import {
+  countDeclaredPsiElements,
+  PSI_ELEMENT_BYTES,
+} from "../../src/connection/psiElementScan";
 import { loadNativeAddonOrSkip } from "../utils/nativeAddon";
 import type { AssociationTable } from "../../src/types";
 import { makeParticipant } from "../utils/support";
@@ -203,19 +206,26 @@ test("a legitimately large original-index list part parses", () => {
 // deserializeBinary allocates one heap object per declared entry, exhausting memory.
 // The participant scans the wire format and rejects an over-declared frame before
 // deserializing (connection/psiElementScan.ts), with a ceiling of min(authenticated
-// keyCount * recordCount, MAX_PSI_DECODE_ELEMENTS). These tests craft such a frame
-// and assert the pre-scan's abort message, with the bound tightened to stand in for
-// a real count.
+// keyCount * recordCount, MAX_PSI_DECODE_ELEMENTS), and refuses an element that
+// is not PSI_ELEMENT_BYTES long. These tests craft such a frame and assert the
+// pre-scan's abort message, with the bound tightened to stand in for a real
+// count.
 
-// A tiny encrypted-element list whose declared count far exceeds any bound the
-// tests set, in a frame of only a few dozen bytes.
+// An encrypted-element list whose declared count far exceeds any bound the
+// tests set: of full-length elements, or of two-byte ones, in a frame of a few
+// dozen bytes, which the scan refuses for their length.
 const OVER_DECLARED_COUNT = 64;
+const fullElements = () =>
+  Array.from(
+    { length: OVER_DECLARED_COUNT },
+    () => new Uint8Array(PSI_ELEMENT_BYTES),
+  );
 const tinyElements = () =>
   Array.from({ length: OVER_DECLARED_COUNT }, () => new Uint8Array([1, 2]));
 
 // A round holds a set to the bytes its element bound admits before the scan
-// runs, so a round test bounds at 8: the over-declared frame is within those
-// bytes, and the scan is what refuses it.
+// runs, so a round test bounds at 8: the frame of two-byte elements is within
+// those bytes, and the scan is what refuses it.
 const ROUND_ELEMENT_BOUND = 8;
 
 test("processClientRequest rejects a request declaring more elements than the bound", async () => {
@@ -228,11 +238,11 @@ test("processClientRequest rejects a request declaring more elements than the bo
     { ...UNBOUNDED_PSI_ELEMENTS, request: 4 },
   );
   const request = new psiLibrary.request();
-  request.setEncryptedElementsList(tinyElements());
+  request.setEncryptedElementsList(fullElements());
   const bytes = request.serializeBinary();
-  // The over-declared frame is a few dozen bytes, far within any byte cap, yet
+  // The over-declared frame is a few kilobytes, far within any byte cap, yet
   // declares 64 elements against a bound of 4.
-  expect(bytes.byteLength).toBeLessThan(1024);
+  expect(bytes.byteLength).toBeLessThan(4096);
   // deserializeBinary is the amplifying allocation, so the guard must fire BEFORE
   // it. Spy on it and assert it is never reached -- this pins the pre-deserialize
   // ordering as a runtime check, not an inference from statement order.
@@ -261,7 +271,7 @@ test("computeValueMatches rejects a setup declaring more elements than the bound
   );
   const setup = new psiLibrary.serverSetup();
   const raw = new psiLibrary.serverSetup.RawInfo();
-  raw.setEncryptedElementsList(tinyElements());
+  raw.setEncryptedElementsList(fullElements());
   setup.setRaw(raw);
   // The response is never reached (the setup check fires first), so a trivial one
   // suffices.
@@ -275,9 +285,11 @@ test("computeValueMatches rejects a setup declaring more elements than the bound
 
 const EIGHT_VALUES = ["a", "b", "c", "d", "e", "f", "g", "h"];
 
-test("computeValueMatches rejects a response declaring more elements than the request it answers", async () => {
+test("computeValueMatches rejects an over-declared response of two-byte elements", async () => {
   // Single-pass receiver boundary (response): a within-bound setup, an
-  // over-declared response, so the response check is what fires.
+  // over-declared response within the request's bytes, so the response check
+  // is what fires. A response of full-length elements that many is longer
+  // than the request, and refused for its bytes.
   const receiver = new PSIParticipant(
     "receiver",
     psiLibrary,
@@ -287,7 +299,7 @@ test("computeValueMatches rejects a response declaring more elements than the re
   await receiver.createClientRequest(EIGHT_VALUES);
   const setup = new psiLibrary.serverSetup();
   const raw = new psiLibrary.serverSetup.RawInfo();
-  raw.setEncryptedElementsList([new Uint8Array([1, 2])]);
+  raw.setEncryptedElementsList([new Uint8Array(PSI_ELEMENT_BYTES)]);
   setup.setRaw(raw);
   const response = new psiLibrary.response();
   response.setEncryptedElementsList(tinyElements());
@@ -296,9 +308,7 @@ test("computeValueMatches rejects a response declaring more elements than the re
       setup.serializeBinary(),
       response.serializeBinary(),
     ),
-  ).rejects.toThrow(
-    /inbound PSI response declares more than 8 encrypted element\(s\)/,
-  );
+  ).rejects.toThrow(/malformed inbound PSI response frame/);
 });
 
 // A setup, a request, and the sender's real response to it, for the tests
@@ -540,9 +550,7 @@ test("cascade identifyIntersection (starter) rejects an over-declared request fr
   // corruptNthReceive still awaits a real frame before substituting, so send any
   // frame from the peer to unblock it; the over-declared request stands in.
   await clientConn.send(new Uint8Array([0]));
-  await expect(run).rejects.toThrow(
-    /inbound PSI request declares more than 8 encrypted element\(s\)/,
-  );
+  await expect(run).rejects.toThrow(/malformed inbound PSI request frame/);
 });
 
 test("cascade identifyIntersection (joiner) rejects an over-declared server setup frame", async () => {
@@ -566,12 +574,10 @@ test("cascade identifyIntersection (joiner) rejects an over-declared server setu
   // The joiner reads the server setup first (its 1st receive); send any frame
   // from the peer to unblock it, and the over-declared setup stands in.
   await serverConn.send(new Uint8Array([0]));
-  await expect(run).rejects.toThrow(
-    /inbound PSI serverSetup declares more than 8 encrypted element\(s\)/,
-  );
+  await expect(run).rejects.toThrow(/malformed inbound PSI serverSetup frame/);
 });
 
-test("count-only countPermutedRound (joiner) rejects a response declaring more elements than the request it answers", async () => {
+test("count-only countPermutedRound (joiner) rejects an over-declared response of two-byte elements", async () => {
   // The every-key count-only receive leg holds the response to the request this
   // party sent, as the single-pass leg does, before it deserializes the frame.
   const [serverConn, clientConn] = createMessagePipe();
@@ -620,9 +626,7 @@ test("count-only countPermutedRound (joiner) rejects a response declaring more e
   await serverConn.send(new Uint8Array([0]));
   const deserialize = vi.spyOn(psiLibrary.response, "deserializeBinary");
   try {
-    await expect(run).rejects.toThrow(
-      /inbound PSI response declares more than 8 encrypted element\(s\)/,
-    );
+    await expect(run).rejects.toThrow(/malformed inbound PSI response frame/);
     await expect(run).rejects.toBeInstanceOf(ProtocolRefusalError);
     expect(deserialize).not.toHaveBeenCalled();
   } finally {

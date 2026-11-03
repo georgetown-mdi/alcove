@@ -1,17 +1,21 @@
-- `MAX_PSI_DECODE_ELEMENTS`, as for every set. -> A single-pass setup, request or response is not held to `MAX_PSI_DECODE_ELEMENTS`.
-- - -> Instead each of its elements must be 33 bytes long, or the receiver refuses it before decoding it (below, "On single-pass over file-sync the element length bounds the decode").
-- - -> So its decode takes at most about 7.6 times its bytes, as an honest one of the same size does, and the message file bounds its element count: at most 15,339,168, `MAX_FRAME_SIZE_BYTES` over 35 bytes an element.
-- The ceiling is the smaller of the authenticated `keyCount * recordCount` bound for the relevant party -- the sender's set for a setup, the receiver's for a request, via `psiElementBounds` in `frameSize.ts`; for a response, which re-encrypts this party's own request, that request's element count -- and the absolute `MAX_PSI_DECODE_ELEMENTS` = 16,777,216, the protocol's per-set maximum ([A PSI set is sent in parts](#a-psi-set-is-sent-in-parts)). -> The ceiling is the smaller of the authenticated `keyCount * recordCount` bound for the relevant party -- the sender's set for a setup, the receiver's for a request, via `psiElementBounds` in `frameSize.ts`; for a response, which re-encrypts this party's own request, that request's element count -- and the absolute `MAX_PSI_DECODE_ELEMENTS` = 16,777,216, the protocol's per-set maximum ([A PSI set is sent in parts](#a-psi-set-is-sent-in-parts)), except on single-pass over file-sync (next paragraph).
-- - -> **On single-pass over file-sync the element length bounds the decode.**
-- - -> There the ceiling is the authenticated bound alone, without `MAX_PSI_DECODE_ELEMENTS`, and the scan refuses any element that is not 33 bytes long (`PSI_ELEMENT_BYTES`; the `element-length` decode bound in `participant.ts`).
-- - -> Every element of a conforming setup, request or response is 33 bytes, a compressed curve point, on both backends (`packages/core/test/psi/psiDecodeBound.test.ts`).
+- At the measured 211 bytes the PSI library allocates per declared element while deserializing, a request at the maximum costs about 3.3 GiB to decode; the engine's streamed match decodes neither a setup nor a response, and keeps a fixed slot per setup element instead. -> At the measured 267 bytes the PSI library holds per 33-byte element while deserializing ([below](#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute), "Every element is 33 bytes"), a request at the maximum costs about 4.2 GiB to decode; the engine's streamed match decodes neither a setup nor a response, and keeps a fixed slot per setup element instead.
+- `MAX_PSI_DECODE_ELEMENTS`, as for every set. -> `MAX_PSI_DECODE_ELEMENTS`, as for every set, and every element 33 bytes long, as on every path (below, "Every element is 33 bytes").
+- - -> At 35 bytes an element, one message file holds at most 15,339,168 elements, so the message file binds before the set maximum does.
+- This binds a cascade frame whose partner over-declares its record count and caps the worst-case deserialize allocation at ~3.3 GiB. -> This binds a cascade frame whose partner over-declares its record count, and with the element length below it caps the worst-case deserialize allocation at that of an honest set at the maximum, about 4.2 GiB.
+- - -> **Every element is 33 bytes.**
+- - -> The same scan refuses any element that is not 33 bytes long (`PSI_ELEMENT_BYTES`, `connection/psiElementScan.ts`), as a malformed frame, before the decode.
+- - -> It runs on every path: single-pass, the cascade and count-only, on every channel.
+- - -> Every element a conforming setup, request or response holds is 33 bytes, a compressed curve point.
 - - -> So no honest frame is refused.
-- - -> Each element then takes at least 35 bytes of the frame, so the frame's size bounds what its decode holds, at the rate of an honest frame.
-- - -> At `MAX_FRAME_SIZE_BYTES` that is about 4.1 GB, the same as an honest frame of that size.
-- - -> Under the set maximum alone, 2^24 empty elements take 3.3 GiB from a 33.5 MB frame.
-- - -> Measured 2026-11-03 in the development container (Linux arm64, Node 26.13.0, WebAssembly library): a request of 2,000,000 elements of one length, decoded with `deserializeBinary` in its own process under `--expose-gc`, with the heap and array buffers read before and after.
+- - -> Each element then takes at least 35 bytes of the frame, so a frame's decode holds at most what an honest frame of its size holds.
+- - -> Under the count alone, 2^24 empty elements would take 3.3 GiB to decode from a 33.5 MB frame.
+- - -> The honest element length was measured 2026-11-03 in the development container (Linux arm64, Node 26.13.0): every setup, request and response the engines build was scanned with the length check, on the WebAssembly and native libraries, in the identifier-revealing construction and the count-only one at widths 1 and 3, on one engine and on a pool of three, at 1, 100 and 10,000 records.
+- - -> All 36 combinations passed.
+- - -> `packages/core/test/psi/psiDecodeBound.test.ts` holds the length on both libraries.
+- - -> The decode figures were measured the same day: a request of 2,000,000 elements of one length, decoded with `deserializeBinary` in its own process under `--expose-gc`, on the WebAssembly library, with the heap and array buffers read before and after.
 - - -> Element length | Retained an element | Times the frame's bytes
 - - -> 0 bytes | 211.8 bytes | 105.9
 - - -> 1 byte | 235.8 bytes | 78.6
 - - -> 33 bytes | 267.1 bytes | 7.63
-- - -> On single-pass over file-sync only the first applies, and the scan refuses any element that is not 33 bytes long instead ([PROTOCOL.md, The limits over file-sync](PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute)).
+- - -> On every path the scan also refuses an element that is not 33 bytes long, so a frame's decode holds at most what an honest frame of its size holds ([PROTOCOL.md](PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute), "Every element is 33 bytes").
+- A non-Raw server setup holds a single bounded byte blob rather than a repeated element list, so it cannot amplify; it is rejected downstream as a clean protocol abort (it is not the reveal-intersection Raw structure this protocol uses), not by the scan. -> A non-Raw server setup holds a single bounded byte blob rather than a repeated element list, so it cannot amplify; it is rejected as a clean protocol abort, by the scan when that blob is not 33 bytes long and downstream otherwise (it is not the reveal-intersection Raw structure this protocol uses).

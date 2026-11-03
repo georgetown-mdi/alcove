@@ -22,7 +22,7 @@ import {
 } from "../../src/psi/shardedPsiEngine";
 import { fixedKeyPsiLibrary, psiTestKey } from "../utils/fixedKeyPsiLibrary";
 import { loadNativeAddonOrSkip } from "../utils/nativeAddon";
-import { withEmptyUnknownField } from "../utils/paddedPsiRequest";
+import { withUnknownField } from "../utils/paddedPsiRequest";
 
 import type { PsiEngine, PsiEngineMode } from "../../src/psi/psiEngine";
 
@@ -415,12 +415,12 @@ describe("the sharded engine in the count-only-permuted mode", () => {
     },
   );
 
-  test("a request padded with an empty unknown field is refused for its parsed count, before pi is drawn", async () => {
+  test("a request padded with an unknown field is refused for its parsed count, before pi is drawn", async () => {
     const draws = fixEveryPermutation();
     const sharded = shardedEngine(wasm, "starter", mode, 3);
     const joiner = keyedEngine(wasm, "joiner", mode);
     try {
-      const padded = withEmptyUnknownField(
+      const padded = withUnknownField(
         await joiner.createClientRequest(serverValues.slice(1)),
       );
       expect(

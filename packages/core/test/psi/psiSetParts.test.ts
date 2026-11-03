@@ -13,6 +13,7 @@ import {
   MAX_PSI_DECODE_ELEMENTS,
 } from "../../src/connection/frameSize";
 import { createMessagePipe } from "../../src/connection/messageConnection";
+import { PSI_ELEMENT_BYTES } from "../../src/connection/psiElementScan";
 import {
   binaryPackByteStringLength,
   webrtcFrameExceedsBound,
@@ -604,39 +605,40 @@ test("a round refuses a setup out of ascending order at the part that shows it, 
   expect(request).not.toHaveBeenCalled();
 });
 
-test("a round refuses a setup at the part whose elements pass the bound, before that part reaches the engine", async () => {
+// A Raw setup of five ascending full-length elements, then one of one byte,
+// in two parts: the first holds only full-length elements, the second the
+// short one.
+function setupWithShortElementInSecondPart(): Array<Uint8Array> {
+  const setup = serializeSetup(psiLibrary, [
+    ...Array.from({ length: 5 }, (_, index) =>
+      new Uint8Array(PSI_ELEMENT_BYTES).fill(index + 1),
+    ),
+    Uint8Array.of(9),
+  ]);
+  const parts = partsOf(setup, 140);
+  expect(parts).toHaveLength(2);
+  return parts;
+}
+
+test("a round refuses a setup at the part holding an element of another length, before that part reaches the engine", async () => {
   const pieces = vi.spyOn(
     InProcessPsiEngine.prototype,
     "receiveServerSetupPiece",
   );
-  // Fifty ascending one-byte elements under a Raw data structure, 3 bytes
-  // each: inside the byte bound for 40 elements but over its element count,
-  // with no more than 40 in the first part.
-  const setup = serializeSetup(
-    psiLibrary,
-    Array.from({ length: 50 }, (_, index) => Uint8Array.of(index)),
-  );
-  expect(setup.byteLength).toBeLessThanOrEqual(psiSetByteBound(40));
-  const parts = partsOf(setup, 100);
-  expect(parts).toHaveLength(2);
-
-  const ended = await joinerFed(
-    { ...UNBOUNDED_PSI_ELEMENTS, setup: 40 },
-    async (starter) => {
-      for (const part of parts) await starter.send(part);
-    },
-  );
+  const ended = await joinerFed(UNBOUNDED_PSI_ELEMENTS, async (starter) => {
+    for (const part of setupWithShortElementInSecondPart())
+      await starter.send(part);
+  });
   expect(ended).toBeInstanceOf(ProtocolRefusalError);
   expect((ended as Error).message).toBe(
-    "client protocol error: inbound PSI serverSetup declares more than 40 " +
-      "encrypted element(s)",
+    "client protocol error: malformed inbound PSI serverSetup frame",
   );
   expect(pieces).toHaveBeenCalledTimes(1);
 });
 
 test.each([
   ["an abort in place of its next part", "abort"],
-  ["its next part passing the element bound", "over-bound"],
+  ["its next part holding an element of another length", "short-element"],
 ] as const)(
   "a setup refused at %s after a part reached the engine leaves no live partial match",
   async (_label, refusal) => {
@@ -665,18 +667,13 @@ test.each([
         },
       },
     };
-    const setup = serializeSetup(
-      psiLibrary,
-      Array.from({ length: 50 }, (_, index) => Uint8Array.of(index)),
-    );
-    const parts = partsOf(setup, 100);
-    expect(parts).toHaveLength(2);
+    const parts = setupWithShortElementInSecondPart();
     const [a, b] = createMessagePipe();
     const joiner = new PSIParticipant(
       "client",
       counting,
       { role: "joiner", verbose: -1 },
-      { ...UNBOUNDED_PSI_ELEMENTS, setup: 40 },
+      UNBOUNDED_PSI_ELEMENTS,
     );
     const ended = joiner.identifyIntersection(b, values(3, "j")).then(
       () => "completed",

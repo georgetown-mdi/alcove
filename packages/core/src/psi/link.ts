@@ -2238,8 +2238,8 @@ export async function linkViaSinglePassPSI(
   // guidance shown is oriented to this party and does not recommend cascade.
   // The prepareForExchange pre-flight is the coarse one-party shadow of this;
   // this is the precise two-party check. File-sync has no such budget: its
-  // limits are the frame bound, which a frame's real size meets after masking
-  // (refuseSinglePassFrameOverFileBound), and the exact element length.
+  // limits are the frame bound and the set maximum, which a frame's real size
+  // meets after masking (refuseSinglePassFrameOverFileBound).
   if (conn.outboundFileSyncFrameBound?.() === undefined) {
     const ceilingBreach = singlePassCeilingBreach(localSize, partnerSize);
     if (ceilingBreach !== undefined) {

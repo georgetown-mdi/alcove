@@ -7,6 +7,7 @@ import {
   MAX_WEBRTC_FRAME_BYTES,
   MIN_CHUNK_RESIDENT_BYTES,
 } from "./binaryPackBounds";
+import { PSI_ELEMENT_BYTES } from "./psiElementScan";
 
 /**
  * Byte length past which PeerJS splits a packed message into chunks: the
@@ -29,7 +30,7 @@ const MAX_PEERJS_CHUNK_ENVELOPE_BYTES = 1 + 11 + 2 + 5 + 6 + 3 * 9 + 3;
  * elements serializes to at least `n` times this (docs/spec/PROTOCOL.md, "The
  * memory ceiling, and the CSV intake cap").
  */
-export const PSI_ENCODED_ELEMENT_BYTES = 35;
+export const PSI_ENCODED_ELEMENT_BYTES = PSI_ELEMENT_BYTES + 2;
 
 /**
  * The most bytes a serialized PSI set adds to {@link PSI_ENCODED_ELEMENT_BYTES}
