@@ -21,8 +21,8 @@
 // inbound frame-size check, whose 512 MiB limit no test sends past, and the
 // close latch call.
 export const scoreFloors = {
-  "packages/core/src/auth.ts": 73,
-  "packages/core/src/connection/abortMarker.ts": 91,
+  "packages/core/src/auth.ts": 84,
+  "packages/core/src/connection/abortMarker.ts": 94,
   "packages/core/src/connection/encryptedMessageConnection.ts": 91,
 };
 
