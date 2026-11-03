@@ -1,7 +1,7 @@
 import { ConnectionError, DeliveryUnconfirmedError } from "../../src/errors";
 import { readFileSync } from "node:fs";
 
-import { expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import {
   EncryptedMessageConnection,
@@ -1236,4 +1236,32 @@ test("the outbound frame bound and the ceiling on a partner's set are forwarded,
     2 * AEAD_ENVELOPE_OVERHEAD_BYTES,
   );
   await twice.close();
+});
+
+describe("over an inner transport that implements none of the optional members", () => {
+  async function wrapPlain() {
+    const [, rawLocal] = createMessagePipe();
+    const plain: MessageConnection = {
+      send: (data) => rawLocal.send(data),
+      receive: (timeoutMs) => rawLocal.receive(timeoutMs),
+      close: () => rawLocal.close(),
+    };
+    return EncryptedMessageConnection.create(plain, SESSION_KEY, "initiator");
+  }
+
+  test("setInboundFrameCap does not throw", async () => {
+    const conn = await wrapPlain();
+    expect(() => conn.setInboundFrameCap(4096)).not.toThrow();
+    await conn.close();
+  });
+
+  test.each([
+    "outboundWebRtcFrameBound",
+    "outboundFileSyncFrameBound",
+    "inboundPsiSetElementCeiling",
+  ] as const)("%s reports no bound", async (method) => {
+    const conn = await wrapPlain();
+    expect(conn[method]()).toBeUndefined();
+    await conn.close();
+  });
 });

@@ -541,8 +541,9 @@ describe("an authenticated run takes the negotiated versions from its authentica
       "initiator",
     ).catch((error: unknown) => error);
     expect(refused).toBeInstanceOf(InternalConsistencyError);
-    expect((refused as Error).message).toContain(
-      `envelope version ${ENVELOPE_VERSION + 1}`,
+    expect((refused as Error).message).toBe(
+      `EncryptedMessageConnection: envelope version ${ENVELOPE_VERSION + 1} ` +
+        "is not one this build implements",
     );
   });
 });
